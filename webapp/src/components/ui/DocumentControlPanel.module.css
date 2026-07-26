@@ -13,7 +13,7 @@
   position: absolute;
   inset: 0 0 auto;
   height: 4px;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 35%, var(--navy)));
+  background: linear-gradient(90deg, var(--accent), var(--navy));
   content: "";
 }
 

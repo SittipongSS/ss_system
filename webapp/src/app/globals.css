@@ -16,11 +16,13 @@
      1 = normal scale (no zoom applied on <body>). */
   --ui-scale: 1;
   
-  /* Light Theme Variables — brand palette: warm cream surfaces, near-black ink, terracotta accent */
+  /* Light Theme Variables — brand palette: warm cream surfaces, near-black ink, terracotta accent
+     ค่าชุดนี้มาจากต้นแบบ Balanced Warm Workspace (มติผู้ใช้ 2026-07-26 "เอาแบบต้นแบบเลย")
+     ที่มา: docs/system-modernization/visual-directions/system-ui-balanced-warm.html */
   --bg: #efe9dd;
-  --panel: rgba(255, 255, 255, 0.92);
-  --panel-2: rgba(245, 240, 231, 0.96);
-  --panel-3: rgba(236, 230, 219, 0.96);
+  --panel: rgba(255, 255, 255, 0.94);
+  --panel-2: #f7f4ee;
+  --panel-3: #eee9e0;
   /* พื้นผิว "แผงลอย" ของระบบ — ทึบ 100% ใช้กับทุกอย่างที่ลอยทับเนื้อหาอื่น:
      dropdown / เมนู / popover ตัวกรอง / ปฏิทิน / ตัวเลือกเวลา / แถบบันทึกลอย.
      --panel เป็นพื้น "กระจก" (alpha .92) ที่ต้องมาคู่กับ backdrop-filter เท่านั้น
@@ -29,40 +31,47 @@
      ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed หรือ z-index ≥ 1000
      ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter */
   --panel-float: #fffdf9;
-  --border: rgba(40, 33, 24, 0.13);
-  --border-strong: rgba(40, 33, 24, 0.24);
-  --glass-shadow: 0 4px 16px 0 rgba(40, 33, 24, 0.07);
+  --border: rgba(49, 55, 69, 0.13);
+  --border-strong: rgba(49, 55, 69, 0.24);
+  --glass-shadow: 0 4px 16px 0 rgba(41, 35, 27, 0.07);
 
-  --text: #1a1e27;       /* เกือบดำ (อมน้ำเงินจาง ๆ) — อ่านง่ายสุด คอนทราสต์สูง */
-  --text-2: #3a414e;     /* เทาเข้ม — เนื้อความรอง */
-  --text-3: #5d6470;     /* เทากลาง — ข้อความรอง/คำอธิบาย (ผ่าน AA บนพื้นขาว) */
+  --text: #171d29;       /* เกือบดำ (อมน้ำเงินจาง ๆ) — อ่านง่ายสุด คอนทราสต์สูง */
+  --text-2: #596170;     /* เทาเข้ม — เนื้อความรอง (6.2:1 ผ่าน AA) */
+  /* ต้นแบบใช้ #818896 ซึ่งวัดได้ 3.5:1 บนพื้นการ์ด (AA ต้องการ 4.5:1) — เข้มขึ้น
+     เท่าที่จำเป็นให้ผ่าน 4.7:1 คงเนื้อสีเทาอมน้ำเงินเดิมไว้ */
+  --text-3: #6c7382;     /* เทากลาง — ข้อความรอง/คำอธิบาย */
 
-  --accent: #c17a52;     /* terracotta/ทองแดง แบบปุ่มแบรนด์ */
-  --accent-soft: #f6e7dd;
+  --accent: #c9794d;     /* terracotta/ทองแดง แบบปุ่มแบรนด์ */
+  --accent-soft: #f7e8df;
   --accent-fg: #fff;
   --origin-edited: #2e4a73; /* navy กลาง — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
 
-  --navy: #21385e;
+  --navy: #243b63;
+  --navy-2: #1d3154;     /* ปลายเข้มของแถบระบบ (ไล่สีกับ --navy) */
   --navy-fg: #fff;
   
-  /* OKLCH color definitions */
-  --green: oklch(45% .1 155);
-  --green-soft: oklch(92% .05 155);
-  
-  --red: oklch(50% .16 28);
-  --red-soft: oklch(93% .05 28);
-  
-  --amber: #b86e28;
-  --amber-soft: #f9e4cc;
-  
-  --blue: oklch(45% .12 245);
-  --blue-soft: oklch(92% .045 245);
-  
-  --teal: oklch(45% .12 195);
-  --teal-soft: oklch(92% .04 195);
-  
-  --violet: oklch(45% .13 295);
-  --violet-soft: oklch(92% .05 295);
+  /* สีสถานะ — ชุดหม่นของต้นแบบ (เดิมเป็น oklch สดกว่า)
+     พื้นอ่อน (*-soft) ใช้ค่าต้นแบบตรง ๆ ส่วนสีตัวอักษรเข้มขึ้นจากต้นแบบเท่าที่จำเป็น:
+     ค่าต้นแบบวัดบนพื้น soft จริงได้แค่ 3.2–3.9:1 (AA ต้องการ 4.5:1) ตอนนี้ทุกตัว ≥4.6:1
+     ทั้งสองธีม — เปลี่ยนเฉพาะความสว่าง ไม่แตะเนื้อสี */
+  --green: #357558;
+  --green-soft: #e2f1e9;
+
+  --red: #a74747;
+  --red-soft: #f7e4e2;
+
+  --amber: #926024;
+  --amber-soft: #f8eddc;
+
+  --blue: #466990;
+  --blue-soft: #e3ebf5;
+
+  /* ต้นแบบไม่มี teal — ตั้งให้เข้าชุดเดียวกันไว้ก่อน */
+  --teal: #377275;
+  --teal-soft: #e0f0f0;
+
+  --violet: #6f5e9f;
+  --violet-soft: #eee9f6;
 
   /* Controlled-document accents must match the self-contained print engine. */
   --document-accent-terracotta: #ad5d43;
@@ -76,7 +85,7 @@
   --shift-color: #6b6256;
   
   /* Grid settings */
-  --ctl-h: 34px;   /* standard height for toolbar controls: search / select / toolbar buttons */
+  --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
   --row-h: 40px;
   --pad-x: 16px;
   --pad-y: 12px;
@@ -88,8 +97,25 @@
   --icon-box-md: 32px;
   --icon-box-lg: 40px;
   --radius: 8px;
-  --radius-lg: 12px;
+  /* --radius-md ถูกใช้ใน 5 ที่ (VersionControlCard ฯลฯ) แต่ไม่เคยถูกประกาศ →
+     border-radius กลายเป็น 0 มุมเหลี่ยมมาตลอด เพิ่งเจอตอนไล่โทเคน 2026-07-26 */
+  --radius-md: 10px;
+  --radius-lg: 13px;
+  --radius-xl: 16px;   /* หัวเรื่องหน้าและการ์ดใหญ่ (ต้นแบบ) */
   --radius-full: 9999px;
+
+  /* ── ชั้นขนาดตัวอักษร (ต้นแบบ) ────────────────────────────────────────
+     ก่อนหน้านี้ขนาดพวกนี้เขียนตรง ๆ กระจายอยู่หลายร้อยจุด ไม่มีที่ให้แก้ทีเดียว
+     primitive กลางใช้โทเคนพวกนี้แล้ว หน้าที่ยังเขียนเลขเองให้ทยอยย้ายมาใช้ */
+  --fs-page-title: 24px;
+  --fs-section-title: 15px;
+  --fs-body: 14px;
+  --fs-label: 11.5px;
+  --fs-table: 11px;
+  --fs-table-head: 9.5px;
+  --fs-caption: 9.5px;
+  --fs-button: 12px;
+  --fs-metric: 27px;
 
   /* Canonical M3 roles used by the shared React UI layer. Keep feature CSS on
      these aliases instead of inventing a module palette. */
@@ -105,9 +131,9 @@
   --motion-fast: 120ms;
   --motion-standard: 200ms;
   
-  --shadow-sm: 0 1px 2px #0f0f140a;
-  --shadow-md: 0 2px 8px #0f0f140f;
-  --shadow-lg: 0 12px 32px rgba(40, 33, 24, 0.12);
+  --shadow-sm: 0 2px 7px rgba(41, 35, 27, 0.05);
+  --shadow-md: 0 12px 30px rgba(41, 35, 27, 0.09);
+  --shadow-lg: 0 22px 60px rgba(41, 35, 27, 0.15);
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
@@ -140,50 +166,54 @@
 
 /* Dark Theme Variables Override */
 [data-theme="dark"] {
-  --bg: #11162b;
-  --panel: rgba(26, 33, 58, 0.88);
-  --panel-2: rgba(38, 46, 74, 0.94);
-  --panel-3: rgba(48, 57, 88, 0.94);
+  --bg: #121726;
+  --panel: rgba(27, 34, 56, 0.96);
+  --panel-2: #232b44;
+  --panel-3: #2b3550;
   --panel-float: #1a213a;
-  --border: rgba(255, 255, 255, 0.13);
-  --border-strong: rgba(255, 255, 255, 0.24);
+  --border: rgba(225, 230, 241, 0.12);
+  --border-strong: rgba(225, 230, 241, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
 
-  --text: #ecedf2;
-  --text-2: #aeb6cc;
-  --text-3: #8b93a8;
-  
-  --accent: #db8a5f; /* terracotta แบรนด์ สว่างขึ้นให้เห็นชัดบนพื้น navy เข้ม */
-  --accent-soft: #3a2a1f;
-  --accent-fg: #11162b;
+  --text: #f4f6fb;
+  --text-2: #bdc5d4;
+  --text-3: #8e99ad;
+
+  --accent: #d38a61; /* terracotta แบรนด์ สว่างขึ้นให้เห็นชัดบนพื้น navy เข้ม */
+  /* .16 ตามต้นแบบทำให้ป้ายสีแบรนด์ได้ 4.46:1 (ขาด AA นิดเดียว) — ลดความเข้มพื้นลง
+     เล็กน้อยให้ผ่าน โดยไม่ต้องแตะสีแบรนด์เอง */
+  --accent-soft: rgba(211, 138, 97, 0.12);
+  /* ⚠️ จุดเดียวที่ไม่ตามต้นแบบ: ต้นแบบไม่ได้กำหนด --accent-fg ในธีมมืด จึงตกไปใช้ #fff
+     ซึ่งได้คอนทราสต์กับพื้น #d38a61 แค่ ~2.6:1 (ไม่ผ่าน AA) — คงตัวอักษรสีเข้มไว้ */
+  --accent-fg: #121726;
   --origin-edited: #7089e6; /* น้ำเงินโลโก้ เวอร์ชันสว่างขึ้น — ให้เห็นชัดบนบาร์ navy ในธีมมืด */
-  
-  --navy: #0f1a3a;
-  
-  --green: #4ade80;
-  --green-soft: oklch(30% .05 155);
-  
-  --red: #f87171;
-  --red-soft: oklch(30% .06 28);
-  
-  --amber: #fbbf24;
-  --amber-soft: #3a2a1f;
-  
-  --blue: oklch(72% .13 245);
-  --blue-soft: oklch(30% .06 245);
-  
-  --teal: oklch(72% .13 195);
-  --teal-soft: oklch(30% .06 195);
-  
-  --violet: oklch(72% .13 295);
-  --violet-soft: oklch(30% .06 295);
-  
+
+  --navy: #20365d;
+  --navy-2: #192d4f;
+
+  /* ต้นแบบธีมมืดกำหนดเฉพาะพื้นอ่อน (soft) แล้วปล่อยให้สีหลักใช้ค่าเดียวกับธีมสว่าง
+     ⚠️ วัดจริงแล้วแบบนั้นอ่านไม่ออก: ตัวอักษรบนป้ายสถานะได้คอนทราสต์ 2.8–3.5:1
+     (AA ต้องการ 4.5:1) จึงยกความสว่างของ *สีเดียวกัน* ขึ้นเท่าที่จำเป็นให้ผ่าน 4.6:1
+     — คงเนื้อสีหม่นของต้นแบบไว้ เปลี่ยนแค่ความสว่าง ทั้งหมดวัดกับพื้น soft จริง */
+  --green: #4fad82;
+  --green-soft: rgba(63, 138, 104, 0.18);
+  --red: #cc8787;
+  --red-soft: rgba(183, 85, 85, 0.18);
+  --amber: #d08f41;
+  --amber-soft: rgba(183, 120, 45, 0.18);
+  --blue: #809ec1;
+  --blue-soft: rgba(82, 122, 168, 0.18);
+  --teal: #51a8ac;
+  --teal-soft: rgba(63, 131, 134, 0.18);
+  --violet: #9f94c0;
+  --violet-soft: rgba(122, 106, 167, 0.18);
+
   --shift-soft: var(--blue-soft);
   --shift-color: var(--blue);
-  
-  --shadow-sm: 0 1px 2px #0006;
-  --shadow-md: 0 2px 8px #00000080;
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  --shadow-sm: 0 2px 7px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.34);
 
   --gantt-line: rgba(255, 255, 255, 0.05);
   --gantt-line-weekend: rgba(255, 255, 255, 0.09);
@@ -2549,7 +2579,7 @@ button.ui-kpi-card { cursor: pointer; }
 }
 .ui-kpi-icon svg { width: 16px; height: 16px; }
 .ui-kpi-value-row { min-width: 0; min-height: 32px; display: flex; align-items: baseline; flex-wrap: nowrap; gap: 8px; }
-.ui-kpi-value { min-width: 0; color: var(--text); font-size: 24px; font-weight: 700; line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-kpi-value { min-width: 0; color: var(--text); font-size: var(--fs-metric); font-weight: 700; line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ui-kpi-value.compact { font-size: 20px; }
 .ui-kpi-tax { color: var(--text-2); font-size: 13px; font-weight: 600; }
 .ui-kpi-hint {
@@ -2764,25 +2794,28 @@ button.ui-kpi-card { cursor: pointer; }
 }
 
 /* Corporate Buttons */
+/* ต้นแบบใช้ความสูงเดียวกับ control บนแถบเครื่องมือ (--ctl-h) ปุ่มจึงไม่เตี้ยกว่า
+   ช่องค้นหาที่วางข้างกันอีกต่อไป */
 .btn {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--panel);
-  height: 32px;
-  color: var(--text);
+  min-height: var(--ctl-h);
+  color: var(--text-2);
   cursor: pointer;
   border-radius: var(--radius);
   align-items: center;
-  gap: 6px;
-  padding: 0 12px;
+  gap: 7px;
+  padding: 0 13px;
   font-family: inherit;
-  font-size: 13px;
-  transition: background .1s, border-color .1s;
+  font-size: var(--fs-button);
+  transition: background .1s, border-color .1s, color .1s;
   display: inline-flex;
-  font-weight: 500;
+  font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
 
 .btn:hover {
+  color: var(--text);
   background: var(--panel-2);
 }
 
@@ -2836,10 +2869,11 @@ button.ui-kpi-card { cursor: pointer; }
 /* small button — compact inline/footer/toolbar actions
    (replaces ad-hoc inline padding/font-size on small buttons across PM) */
 .btn.sm {
-  height: 28px;
+  min-height: 30px;
+  height: auto;
   padding: 0 10px;
-  font-size: 12px;
-  gap: 4px;
+  font-size: 11.5px;
+  gap: 5px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -3081,6 +3115,13 @@ button.empty-state { width: 100%; font: inherit; }
    ไม่ใช่ 32px ของ .btn ทั่วไป — เดิมความสูงนี้เขียน inline อยู่ใน FilterPopover.js */
 .ui-filter-trigger { height: var(--ctl-h); background: var(--panel); color: var(--text-2); }
 .ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+/* ปุ่มเลขหน้าใน Pager — แคบกว่าปุ่มทั่วไป (เลขหลักเดียวไม่ต้องกว้าง 104px)
+   และหน้าปัจจุบันเป็นพื้นสีแบรนด์ (ต้นแบบ ข้อ 9) วางไว้ที่นี่ไม่ใช่ใน CSS module
+   เพราะต้องอยู่ไฟล์เดียวกับ .btn เพื่อให้ลำดับ cascade แน่นอน */
+.ui-pager-page { min-width: 32px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
+.ui-pager-page.active { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.ui-pager-page.active:hover { background: color-mix(in oklab, var(--accent) 90%, #000); color: var(--accent-fg); }
+
 .ui-filter-clear { color: var(--text-3); }
 .ui-filter-clear-inline { font-size: 12px; color: var(--text-3); justify-content: flex-start; margin-top: 2px; }
 .ui-filter-popover {
@@ -5285,8 +5326,9 @@ button.empty-state { width: 100%; font: inherit; }
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: clamp(20px, 2vw, 27px);
+  font-size: clamp(20px, 2vw, var(--fs-page-title));
   line-height: 1.2;
+  letter-spacing: -.02em;
   font-weight: 700;
   color: var(--text);
 }
@@ -5375,7 +5417,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .ui-section-title { display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--accent); }
 .ui-section-title > div { min-width: 0; }
-.ui-section-title h2 { margin: 0; color: var(--text); font-size: 15px; }
+.ui-section-title h2 { margin: 0; color: var(--text); font-size: var(--fs-section-title); }
 .ui-section-title p { margin: 3px 0 0; color: var(--text-3); font-size: 11.5px; }
 .ui-section-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .ui-section-body { min-width: 0; padding: 16px 17px; }

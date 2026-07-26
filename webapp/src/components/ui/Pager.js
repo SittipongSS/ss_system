@@ -33,6 +33,16 @@ export default function Pager({
     onPage?.(Math.min(safePageCount, Math.max(1, nextPage)));
   };
 
+  /* หน้าต้นแบบใช้ปุ่มเลขหน้า กดข้ามได้ทันที (มติ 2026-07-26 ข้อ 9)
+     โชว์ได้มากสุด 7 ปุ่ม แล้วเลื่อนช่วงตามหน้าปัจจุบัน — ตารางที่มี 40 หน้าจะได้
+     ไม่ดันแถวล่างจนล้น และปุ่มไม่กระโดดไปมาเวลาเปลี่ยนหน้าทีละหน้า */
+  const windowSize = Math.min(7, safePageCount);
+  const windowStart = Math.min(
+    Math.max(1, safePage - Math.floor(windowSize / 2)),
+    safePageCount - windowSize + 1
+  );
+  const pageNumbers = Array.from({ length: windowSize }, (_, index) => windowStart + index);
+
   return (
     <nav className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
       <span>ทั้งหมด {safeTotal.toLocaleString("th-TH")} {itemLabel}</span>
@@ -58,9 +68,20 @@ export default function Pager({
               aria-label="ก่อนหน้า"
               icon={<ChevronLeft size={16} aria-hidden="true" />}
             />
-            <span className={styles.position} aria-live="polite">
-              หน้า {safePage} / {safePageCount}
+            <span className={styles.srOnly} aria-live="polite">
+              หน้า {safePage} จาก {safePageCount}
             </span>
+            {pageNumbers.map((number) => (
+              <Button
+                key={number}
+                className={`ui-pager-page ${number === safePage ? "active" : ""}`.trim()}
+                onClick={() => goTo(number)}
+                aria-current={number === safePage ? "page" : undefined}
+                aria-label={`หน้า ${number}`}
+              >
+                {number.toLocaleString("th-TH")}
+              </Button>
+            ))}
             <Button
               iconOnly
               className={styles.navButton}
