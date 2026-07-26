@@ -67,3 +67,18 @@ test('both detail pages gate ดึงกลับ through the shared predicate,
   assert.doesNotMatch(qt, /approvalRequestedBy === quote\?\.meId \|\| !!quote\?\.canApprove/);
   assert.doesNotMatch(so, /order\.submittedBy === order\.meId \|\| reviewer/);
 });
+
+// B5 ทางเลือก i (มติ 2026-07-26): อนุมัติ = ถือว่าส่งลูกค้าแล้ว (mig 0165)
+// ปุ่ม "ส่งให้ลูกค้า" เดิมไม่ส่งอีเมล ไม่แจ้งเตือน แค่เปลี่ยนตัวอักษรบนป้ายสถานะ
+test('the redundant ส่งให้ลูกค้า button is gone and Won takes the primary slot', () => {
+  const qt = read('src/app/sales-planning/quotations/[id]/page.js');
+
+  // เจาะจงที่ปุ่ม — ข้อความอธิบายสถานะยังพูดถึง "ถือว่าส่งให้ลูกค้าแล้ว" ได้ตามปกติ
+  assert.doesNotMatch(qt, /label: "ส่งให้ลูกค้า"/);
+  assert.doesNotMatch(qt, /sendToCustomer/);
+  assert.doesNotMatch(qt, /id: "send-customer"/);
+
+  // Won ต้องอยู่ใน primaryAction ไม่ใช่แถว secondary — ใบที่อนุมัติแล้วเคยไม่มีปุ่มหลักเลย
+  assert.match(qt, /: canCloseWon\s+\? \{\s+id: "won",/);
+  assert.doesNotMatch(qt, /id: "won",\s+kind: "approve",\s+label: "Won",\s+variant: "outline"/);
+});
