@@ -27,23 +27,23 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
-  // ใบ grandfather (not_required) ออก Revision ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
+  // ใบ grandfather (not_required) ออก Rev. ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
   // ยังแก้ได้ (มติ 2026-07-26) เพราะทุกด่านในระบบนับใบพวกนี้เป็น "อนุมัติแล้ว" อยู่แล้ว
   if (!isRevisableQuotationApprovalStatus(quote.approvalStatus)) {
     if (quote.approvalStatus === 'pending') {
-      return badRequest('ใบเสนอราคานี้กำลังรออนุมัติ — ถอนการยื่นก่อนแก้ฉบับเดิม');
+      return badRequest('ใบเสนอราคานี้กำลังรออนุมัติ — ดึงกลับก่อนแก้ฉบับเดิม');
     }
-    return badRequest('ออก Revision ได้เฉพาะใบเสนอราคาที่อนุมัติแล้ว');
+    return badRequest('ออก Rev. ได้เฉพาะใบเสนอราคาที่อนุมัติแล้ว');
   }
   if (!['draft', 'sent', 'rejected'].includes(quote.status)) {
     if (quote.status === 'closed') {
-      return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ออก Revise ไม่ได้');
+      return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ออก Rev. ไม่ได้');
     }
-    return badRequest(`ใบสถานะ "${quote.status}" ออก Revise ไม่ได้${quote.status === 'accepted' ? ' — ใบที่รับแล้วต้องยกเลิกก่อน' : ''}`);
+    return badRequest(`ใบสถานะ "${quote.status}" ออก Rev. ไม่ได้${quote.status === 'accepted' ? ' — ใบที่รับแล้วต้องยกเลิกก่อน' : ''}`);
   }
   // ดีล Lost = จบแล้ว — ห้ามออกฉบับแก้ไขใหม่ (กติกาเดียวกับ PATCH/สร้างใบ)
   if (quote.deal?.stage === 'lost') {
-    return badRequest('ดีลนี้ Lost แล้ว — ออก Revision ใหม่ไม่ได้');
+    return badRequest('ดีลนี้ Lost แล้ว — ออก Rev. ใหม่ไม่ได้');
   }
 
   const body = await req.json().catch(() => ({}));
@@ -157,7 +157,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (insertErr) {
     // ชนเลขกับ revise ที่ยิงพร้อมกัน (quoteNumber UNIQUE) → 409 อ่านรู้เรื่อง ไม่ใช่ 500 ดิบ
-    if (insertErr.code === '23505') return fail('มีการออก Revision พร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
+    if (insertErr.code === '23505') return fail('มีการออก Rev. พร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
     return fail(insertErr.message, 500);
   }
 

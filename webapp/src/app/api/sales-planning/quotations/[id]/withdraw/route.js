@@ -36,7 +36,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const approver = canApproveQuotation(user, quote.deal);
   const allowed = canWithdrawQuotationSubmission(quote, { userId: user.id, approver });
-  if (!allowed) return forbidden('ถอนการยื่นได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
+  if (!allowed) return forbidden('ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
   // A proposer who has since lost edit capability still owns the pending
   // submission and may withdraw it; they simply cannot edit afterward.
 
@@ -60,7 +60,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: id,
     before: quote,
     after: data,
-    summary: `ถอนการยื่นใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quote.deal)})`,
+    summary: `ดึงกลับใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quote.deal)})`,
     request: req,
   });
   return ok(data);

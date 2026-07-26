@@ -135,10 +135,10 @@ export default function QuotationEditorPage() {
   const canWithdrawSubmission = awaitingApproval
     && (quote?.approvalRequestedBy === quote?.meId || !!quote?.canApprove);
   // ตีกลับ = ผู้อนุมัติส่งใบกลับพร้อมเหตุผลที่ผู้จัดทำเห็น (mig 0164) — คู่ตรงข้ามของ
-  // ถอนการยื่นซึ่งเป็นการกระทำของผู้ยื่นเอง
+  // ดึงกลับซึ่งเป็นการกระทำของผู้ยื่นเอง
   const canRejectSubmission = canRejectQuotationSubmission(quote, { approver: !!quote?.canApprove });
   const rejectionNotice = quotationRejectionNotice(quote);
-  // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Revision
+  // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Rev.
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
   const canReviseDocument = !!quote && canEditCap
     && isRevisableQuotationApprovalStatus(quote.approvalStatus)
@@ -226,7 +226,7 @@ export default function QuotationEditorPage() {
     setConfirmState({
       title: "ยื่นอนุมัติใบเสนอราคา",
       description: `ยืนยันยื่นอนุมัติ ${quote.quoteNumber} หรือไม่`,
-      detail: "การยื่นถือเป็นการลงนามของผู้เสนอราคา ระบบจะล็อกการแก้ไขและบันทึกลายเซ็นกับวันที่บนเอกสาร หากต้องแก้ก่อนอนุมัติให้ถอนการยื่นก่อน",
+      detail: "การยื่นถือเป็นการลงนามของผู้เสนอราคา ระบบจะล็อกการแก้ไขและบันทึกลายเซ็นกับวันที่บนเอกสาร หากต้องแก้ก่อนอนุมัติให้ดึงกลับก่อน",
       confirmLabel: "ยื่นอนุมัติ",
       action: async () => {
         const data = await act("submit", `/api/sales-planning/quotations/${id}/submit`, {
@@ -307,7 +307,7 @@ export default function QuotationEditorPage() {
     if (data) {
       setWorkflowForm(null);
       await load();
-      setToast({ kind: "info", msg: "ถอนการยื่นแล้ว ใบเสนอราคากลับเป็นฉบับร่าง" });
+      setToast({ kind: "info", msg: "ดึงกลับแล้ว ใบเสนอราคากลับเป็นฉบับร่าง" });
     }
   };
 
@@ -425,14 +425,14 @@ export default function QuotationEditorPage() {
         })),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "ออก Revision ไม่สำเร็จ");
+      if (!res.ok) throw new Error(data.error || "ออก Rev. ไม่สำเร็จ");
       setDirty(false);
       setRevisionForm(null);
       setToast({ kind: "success", msg: `สร้าง Revision ${data.quoteNumber || ""} แล้ว` });
       router.push(`/sa/quotations/${data.id}`);
       return true;
     } catch (e) {
-      setError(e.message || "ออก Revision ไม่สำเร็จ");
+      setError(e.message || "ออก Rev. ไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -492,7 +492,7 @@ export default function QuotationEditorPage() {
       ? 1
       : 0;
   const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
-    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Revision", state: "done" }]
+    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Rev.", state: "done" }]
     : workflowStepsFromIndex([
         { id: "prepare", label: "จัดทำเอกสาร", hint: quote?.createdByName || people.preparedBy || "ผู้จัดทำ" },
         { id: "submit", label: "ยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
@@ -501,10 +501,10 @@ export default function QuotationEditorPage() {
   const controlDescription = needsSubmit
     ? "บันทึกข้อมูลให้เรียบร้อย แล้วจึงยื่นอนุมัติ"
     : awaitingApproval
-      ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะถอนการยื่นหรือได้รับอนุมัติ"
+      ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะดึงกลับหรือได้รับอนุมัติ"
       : quote?.approvalStatus === "approved"
-        ? "อนุมัติแล้ว หากต้องแก้ไขให้ออก Revision ใหม่"
-        : "เอกสารฉบับเดิมที่ออกก่อนระบบอนุมัติ — แก้ทับฉบับเดิมไม่ได้ หากต้องแก้ไขให้ออก Revision ใหม่";
+        ? "อนุมัติแล้ว หากต้องแก้ไขให้ออก Rev. ใหม่"
+        : "เอกสารฉบับเดิมที่ออกก่อนระบบอนุมัติ — แก้ทับฉบับเดิมไม่ได้ หากต้องแก้ไขให้ออก Rev. ใหม่";
   const primaryAction = editable
     ? {
         id: "save",
@@ -935,15 +935,15 @@ export default function QuotationEditorPage() {
 
       <ReasonDialog
         open={!!workflowForm}
-        title="ถอนการยื่นใบเสนอราคา"
+        title="ดึงกลับใบเสนอราคา"
         description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็นสถานะยังไม่ยื่นอนุมัติ`}
-        detail="ผู้เสนอหรือผู้อนุมัติสามารถถอนการยื่นได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
-        label="เหตุผลที่ถอนการยื่น"
+        detail="ผู้ยื่นหรือผู้อนุมัติดึงเอกสารกลับได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
+        label="เหตุผลที่ดึงกลับ"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm({ reason })}
         onClose={() => setWorkflowForm(null)}
         onConfirm={withdrawSubmission}
-        confirmLabel="ยืนยันถอนการยื่น"
+        confirmLabel="ยืนยันดึงกลับ"
         placeholder="ระบุเหตุผลที่ต้องนำเอกสารกลับไปแก้ไข"
         helpText={`อย่างน้อย 10 ตัวอักษร · ${workflowForm?.reason?.length || 0}/500`}
         error={workflowForm?.reason && workflowForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
@@ -974,10 +974,10 @@ export default function QuotationEditorPage() {
 
       <ReasonDialog
         open={!!revisionForm}
-        title="ออก Revision ใบเสนอราคา"
+        title="ออก Rev. ใบเสนอราคา"
         description={`ระบบจะเก็บ ${quote?.quoteNumber || "-"} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
         detail="เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง"
-        label="เหตุผลที่ออก Revision"
+        label="เหตุผลที่ออก Rev."
         value={revisionForm?.reason || ""}
         onChange={(reason) => setRevisionForm({ reason })}
         onClose={() => setRevisionForm(null)}

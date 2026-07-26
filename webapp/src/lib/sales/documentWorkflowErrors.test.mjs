@@ -2,12 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { documentWorkflowError } from './documentWorkflowErrors.js';
 
+// error ที่ RPC ตีกลับ (mig 0164) โยนออกมา ต้องมีในตารางแปล ไม่ใช่ตกไปข้อความกลาง 500
+test('QT rejection errors are translated, not swallowed by the generic 500', () => {
+  assert.deepEqual(documentWorkflowError(new Error('quotation_reject_forbidden')), {
+    code: 'quotation_reject_forbidden',
+    message: 'ตีกลับได้เฉพาะผู้อนุมัติของใบเสนอราคานี้',
+    status: 403,
+  });
+  assert.deepEqual(documentWorkflowError({ message: 'P0001: quotation_reject_state_invalid' }), {
+    code: 'quotation_reject_state_invalid',
+    message: 'ตีกลับได้เฉพาะใบเสนอราคาที่กำลังรออนุมัติ',
+    status: 409,
+  });
+});
+
 test('document workflow database errors become stable Thai HTTP responses', () => {
   assert.deepEqual(
     documentWorkflowError(new Error('quotation_withdraw_forbidden')),
     {
       code: 'quotation_withdraw_forbidden',
-      message: 'ถอนการยื่นได้เฉพาะผู้ยื่นหรือผู้อนุมัติ',
+      message: 'ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ',
       status: 403,
     },
   );
@@ -15,7 +29,7 @@ test('document workflow database errors become stable Thai HTTP responses', () =
     documentWorkflowError({ message: 'P0001: sales_order_revision_filing_exists' }),
     {
       code: 'sales_order_revision_filing_exists',
-      message: 'ออก Revision ไม่ได้ เนื่องจากมีใบยื่นชำระภาษีผูกอยู่',
+      message: 'ออก Rev. ไม่ได้ เนื่องจากมีใบยื่นชำระภาษีผูกอยู่',
       status: 409,
     },
   );

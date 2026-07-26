@@ -66,7 +66,7 @@ test('grandfather QT (not_required) is revisable but never editable in place', (
   for (const status of ['draft', 'sent', 'rejected']) {
     assert.equal(canReviseQuotation({ ...grandfather, status }, access), true);
   }
-  // ปลายทางแล้ว (Won/ปิด/มีฉบับใหม่) — ออก Revision ไม่ได้ เหมือนใบ approved
+  // ปลายทางแล้ว (Won/ปิด/มีฉบับใหม่) — ออก Rev. ไม่ได้ เหมือนใบ approved
   for (const status of ['accepted', 'closed', 'revised', 'cancelled']) {
     assert.equal(canReviseQuotation({ ...grandfather, status }, access), false);
   }
@@ -74,7 +74,7 @@ test('grandfather QT (not_required) is revisable but never editable in place', (
   assert.equal(canReviseQuotation(grandfather, { ...access, canEdit: false }), false);
   assert.equal(canReviseQuotation(grandfather, { ...access, inScope: false }), false);
 
-  // แก้ทับฉบับเดิมยังห้าม และถอนการยื่นก็ไม่เกี่ยว (ไม่เคยยื่น)
+  // แก้ทับฉบับเดิมยังห้าม และดึงกลับก็ไม่เกี่ยว (ไม่เคยยื่น)
   assert.equal(canEditQuotationContent(grandfather, access), false);
   assert.equal(canWithdrawQuotationSubmission(grandfather, { userId: 'USR-PROPOSER', approver: true }), false);
 });
