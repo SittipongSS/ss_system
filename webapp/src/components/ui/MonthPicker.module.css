@@ -1,0 +1,57 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.year {
+  width: 106px;
+}
+
+.month {
+  width: 150px;
+}
+
+.shortcut {
+  min-height: var(--ctl-h);
+  white-space: nowrap;
+}
+
+.allMonths {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ctl-h);
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.allMonths input {
+  accent-color: var(--accent);
+}
+
+.root[data-readonly="true"] .allMonths {
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .root {
+    width: 100%;
+  }
+
+  .year,
+  .month {
+    flex: 1 1 120px;
+    width: auto;
+    min-height: 40px;
+  }
+
+  .shortcut,
+  .allMonths {
+    min-height: 40px;
+  }
+}

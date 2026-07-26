@@ -1,0 +1,57 @@
+.root {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--text-3);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.controls,
+.size,
+.navigation {
+  display: flex;
+  align-items: center;
+}
+
+.controls {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.size {
+  gap: 6px;
+}
+
+.navigation {
+  gap: 8px;
+}
+
+.position {
+  min-width: 74px;
+  color: var(--text-2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.navButton {
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .root,
+  .controls {
+    width: 100%;
+  }
+
+  .controls {
+    justify-content: space-between;
+  }
+
+  .navButton {
+    width: 40px;
+    height: 40px;
+  }
+}
