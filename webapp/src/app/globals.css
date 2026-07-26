@@ -2842,6 +2842,7 @@ button.ui-kpi-card { cursor: pointer; }
   line-height: 1.5;
 }
 .empty-state .es-icon { opacity: 0.45; }
+.empty-state .es-action { margin-top: 4px; }
 
 /* กล่องหมายเหตุประกอบหน้า (ไอคอน + ข้อความสั้น) — ใช้ร่วมกัน เช่น หน้าวันหยุด/แจ้งเตือน Chat */
 .info-note {
@@ -3022,8 +3023,12 @@ button.empty-state { width: 100%; font: inherit; }
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.ui-filter-trigger { background: var(--panel); color: var(--text-2); }
+/* ปุ่มตัวกรองเป็น control บนแถบเครื่องมือ จึงสูงเท่าช่องค้นหา/ดรอปดาวน์ (--ctl-h)
+   ไม่ใช่ 32px ของ .btn ทั่วไป — เดิมความสูงนี้เขียน inline อยู่ใน FilterPopover.js */
+.ui-filter-trigger { height: var(--ctl-h); background: var(--panel); color: var(--text-2); }
 .ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ui-filter-clear { color: var(--text-3); }
+.ui-filter-clear-inline { font-size: 12px; color: var(--text-3); justify-content: flex-start; margin-top: 2px; }
 .ui-filter-popover {
   background: var(--panel-float);
   box-shadow: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);

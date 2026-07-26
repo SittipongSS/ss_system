@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, ChevronDown, X, Check, Search } from "lucide-react";
+import Button from "./Button";
 
 // ปุ่มเดียวยุบตัวกรองหลายตัวไว้ในแผงแบบ two-pane (ซ้าย=หมวด, ขวา=ตัวเลือก)
 // props:
@@ -89,17 +90,10 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
 
   return (
     <div ref={ref} className="ui-filter-root" style={{ position: "relative" }}>
-      <button
-        type="button"
-        className={`btn ui-filter-trigger ${active ? "active" : ""}`.trim()}
+      <Button
+        className={`ui-filter-trigger ${active ? "active" : ""}`.trim()}
         onClick={() => setOpen((v) => !v)}
         title="ตัวกรอง"
-        style={{
-          height: "var(--ctl-h)", gap: "6px", fontWeight: 500,
-          border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
-          background: active ? "var(--accent-soft)" : "var(--panel)",
-          color: active ? "var(--accent)" : "var(--text-2)",
-        }}
       >
         <SlidersHorizontal size={14} />
         {label}
@@ -107,16 +101,16 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
           <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{count}</span>
         )}
         <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
-      </button>
+      </Button>
 
       {open && typeof document !== "undefined" && createPortal(
         <div ref={panelRef} className="glass-panel ui-filter-popover" style={{ ...panelStyle, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
             {active && (
-              <button type="button" className="btn ghost sm" onClick={onClear} style={{ color: "var(--text-3)" }} title="ล้างตัวกรองทั้งหมด">
+              <Button variant="quiet" size="sm" className="ui-filter-clear" onClick={onClear} title="ล้างตัวกรองทั้งหมด">
                 <X size={12} /> ล้างทั้งหมด ({count})
-              </button>
+              </Button>
             )}
           </div>
 

@@ -36,8 +36,8 @@ test('retired workflow wording never comes back', () => {
 test('the agreed pair reads its direction from the verb', () => {
   const buttons = read('src/components/ui/ActionButtons.js');
   // ดึงกลับ**มา** = ของเราเอง · ตีกลับ**ให้** = คนอื่นส่งมา (label เต็มอยู่ที่หน้าเว็บ)
-  assert.match(buttons, /withdraw: \{ cls: "btn-secondary", Icon: Undo2, label: "ดึงกลับมาแก้ไข" \}/);
-  assert.match(buttons, /revise: \{ cls: "btn-secondary", Icon: Copy, label: "ออก Rev\." \}/);
+  assert.match(buttons, /withdraw: \{ tone: "neutral", Icon: Undo2, label: "ดึงกลับมาแก้ไข" \}/);
+  assert.match(buttons, /revise: \{ tone: "neutral", Icon: Copy, label: "ออก Rev\." \}/);
 
   const qt = read('src/app/sales-planning/quotations/[id]/page.js');
   const so = read('src/app/sales-planning/sales-orders/[id]/page.js');

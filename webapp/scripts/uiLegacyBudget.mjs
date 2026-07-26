@@ -71,7 +71,9 @@ const PATTERNS = {
   legacyTable: /\b(?:premium-glass-table|premium-table-wrapper|premium-table|fz-table)\b/g,
   legacySurface: /\b(?:glass-panel|premium-card)\b/g,
   inlineStyle: /style=\{\{/g,
-  rawButtonClass: /(["'`])[^"'`\n]*\bbtn\b[^"'`\n]*\1/g,
+  /* `(?<![\w-])` กันคลาสที่ลงท้ายด้วย -btn ของ component อื่น (`tab-btn`, `action-btn`)
+     ไม่ให้ถูกนับเป็นคลาสปุ่มดิบ — ของพวกนั้นมี selector ของตัวเองไม่ใช่ตระกูล .btn */
+  rawButtonClass: /(["'`])[^"'`\n]*(?<![\w-])btn\b[^"'`\n]*\1/g,
 };
 
 /* เอกสารพิมพ์มี CSS ของตัวเองโดยเจตนา (เครื่องพิมพ์ไม่เห็น globals.css)

@@ -1,5 +1,7 @@
 "use client";
 
+import Button from "./Button";
+
 // สถานะว่างกลางของระบบ — ไอคอน + ข้อความ (+ ปุ่มทำงาน) อยู่กึ่งกลางในกล่อง glass-panel
 // props:
 //   icon     : lucide icon component (ไม่บังคับ)
@@ -20,9 +22,9 @@ export default function EmptyState({ icon: Icon, children, onClick, dashed = fal
       {Icon && <Icon size={26} className="es-icon" />}
       <div>{children}</div>
       {action && !onClick && (
-        <button type="button" className="btn btn-primary sm" style={{ marginTop: "4px" }} onClick={action.onClick}>
+        <Button tone="primary" size="sm" className="es-action" onClick={action.onClick}>
           {action.label}
-        </button>
+        </Button>
       )}
     </Tag>
   );

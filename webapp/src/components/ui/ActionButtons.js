@@ -7,27 +7,29 @@ import {
   Check, Undo2, Pencil, Unlock, Pause, Play, Trash2, Send, ExternalLink, Ban, ArrowRight,
   Copy, Download, Printer, RotateCcw, Save, XCircle,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 
-// แต่ละ kind ผูกสี (คลาส .btn-*) + ไอคอน + ข้อความเริ่มต้นไว้ที่เดียว — แก้ที่นี่
+// แต่ละ kind ผูกสี (tone ของ Button) + ไอคอน + ข้อความเริ่มต้นไว้ที่เดียว — แก้ที่นี่
 // มีผลทั้งระบบ. ปุ่มที่ต้องใช้ข้อความ/ไอคอนเฉพาะบริบท ส่ง label/icon override ได้
 // โดยยังคงสีตามความหมายเดิม (เช่น submit ที่เขียนว่า "เริ่มยื่น" / "บันทึกชำระภาษี").
+// ไฟล์นี้เป็น "ชั้นความหมาย" เท่านั้น การประกอบคลาสจริงอยู่ที่ components/ui/Button.js
 const KINDS = {
-  approve: { cls: "btn-primary", Icon: Check, label: "อนุมัติ" },
-  reject: { cls: "btn-danger", Icon: Undo2, label: "ตีกลับ" },
-  stop: { cls: "btn-danger", Icon: Ban, label: "ไม่ไปต่อ" },
-  edit: { cls: "btn-secondary", Icon: Pencil, label: "แก้ไข" },
-  reedit: { cls: "btn-secondary", Icon: Unlock, label: "ขอแก้ไข" },
-  pause: { cls: "btn-warning", Icon: Pause, label: "พัก" },
-  resume: { cls: "btn-secondary", Icon: Play, label: "เปิดงานต่อ" },
-  delete: { cls: "btn-danger", Icon: Trash2, label: "ลบ" },
-  open: { cls: "btn-secondary", Icon: ExternalLink, label: "เปิด" },
-  goto: { cls: "btn-secondary", Icon: ArrowRight, label: "ไปที่" },
-  submit: { cls: "btn-primary", Icon: Send, label: "ยื่น" },
-  save: { cls: "btn-primary", Icon: Save, label: "บันทึก" },
-  print: { cls: "btn-secondary", Icon: Printer, label: "ออกเอกสาร" },
-  download: { cls: "btn-secondary", Icon: Download, label: "ดาวน์โหลด" },
-  restore: { cls: "btn-secondary", Icon: RotateCcw, label: "คืนเป็นฉบับร่าง" },
-  cancel: { cls: "btn-danger", Icon: XCircle, label: "ยกเลิก" },
+  approve: { tone: "primary", Icon: Check, label: "อนุมัติ" },
+  reject: { tone: "danger", Icon: Undo2, label: "ตีกลับ" },
+  stop: { tone: "danger", Icon: Ban, label: "ไม่ไปต่อ" },
+  edit: { tone: "neutral", Icon: Pencil, label: "แก้ไข" },
+  reedit: { tone: "neutral", Icon: Unlock, label: "ขอแก้ไข" },
+  pause: { tone: "warning", Icon: Pause, label: "พัก" },
+  resume: { tone: "neutral", Icon: Play, label: "เปิดงานต่อ" },
+  delete: { tone: "danger", Icon: Trash2, label: "ลบ" },
+  open: { tone: "neutral", Icon: ExternalLink, label: "เปิด" },
+  goto: { tone: "neutral", Icon: ArrowRight, label: "ไปที่" },
+  submit: { tone: "primary", Icon: Send, label: "ยื่น" },
+  save: { tone: "primary", Icon: Save, label: "บันทึก" },
+  print: { tone: "neutral", Icon: Printer, label: "ออกเอกสาร" },
+  download: { tone: "neutral", Icon: Download, label: "ดาวน์โหลด" },
+  restore: { tone: "neutral", Icon: RotateCcw, label: "คืนเป็นฉบับร่าง" },
+  cancel: { tone: "danger", Icon: XCircle, label: "ยกเลิก" },
   // ── workflow ของเอกสารควบคุม (มติ 2026-07-26) ──────────────────────────────
   // คำศัพท์ที่ตกลงกันแล้ว — สองคำนี้ต่างกันที่ "ใครเป็นคนทำ" ไม่ใช่ผลลัพธ์ และตัวกริยา
   // บอกทิศทางเอง: **ตีกลับให้**แก้ไข = คนอื่นส่งมาให้เรา · **ดึงกลับมา**แก้ไข = เราดึงของเราเอง
@@ -36,12 +38,12 @@ const KINDS = {
   // เลิกใช้คำว่า "ถอน/ถอด" ทั้งคู่: ต่างกันตัวสะกดเดียวแต่คนละความหมาย อ่านผิดกันตลอด
   // (ระวัง: "ถอด VAT" / "ถอด FG ออกจากโครงการ" เป็นคำละความหมาย ห้ามไปแก้)
   // revise = ออกฉบับใหม่จากใบที่อนุมัติแล้ว — ฉบับเดิมยังอยู่ครบ ไม่ใช่การทำลาย
-  withdraw: { cls: "btn-secondary", Icon: Undo2, label: "ดึงกลับมาแก้ไข" },
-  revise: { cls: "btn-secondary", Icon: Copy, label: "ออก Rev." },
+  withdraw: { tone: "neutral", Icon: Undo2, label: "ดึงกลับมาแก้ไข" },
+  revise: { tone: "neutral", Icon: Copy, label: "ออก Rev." },
   // ยกเลิกอนุมัติ (mig 0166) = ปลดล็อกเอกสารที่อนุมัติแล้วเพื่อออกฉบับใหม่ **ยอด Actual
   // หลุดที่ปุ่มนี้** จึงเป็น warning ไม่ใช่ secondary — แต่ไม่ใช่ danger เพราะไม่ได้ทำลาย
   // อะไร (คนละปุ่มกับ "ยกเลิก SO" ที่จบเอกสารทางธุรกิจ ซึ่งเป็น cancel/danger)
-  revoke: { cls: "btn-warning", Icon: Unlock, label: "ยกเลิกอนุมัติ" },
+  revoke: { tone: "warning", Icon: Unlock, label: "ยกเลิกอนุมัติ" },
 };
 
 // กล่องครอบกลุ่มปุ่ม action — จัดชิดขวา, ระยะห่างเท่ากัน, ตัดบรรทัดเมื่อแคบ.
@@ -59,16 +61,18 @@ export function ActionButton({ as: Component = "button", kind, label, icon, vari
   const k = KINDS[kind] || {};
   const Icon = icon === undefined ? k.Icon : icon;
   const text = children ?? label ?? k.label;
-  const defaultProps = Component === "button" && props.type === undefined ? { type: "button" } : {};
   return (
-    <Component
-      className={`${iconOnly ? "btn-icon" : "btn"} ${k.cls || "btn-secondary"} action-${variant} flex items-center gap-1.5 ${className}`.trim()}
+    <Button
+      as={Component}
+      tone={k.tone || "neutral"}
+      variant={variant}
+      iconOnly={iconOnly}
+      icon={Icon ? <Icon size={15} /> : null}
+      className={`flex items-center gap-1.5 ${className}`.trim()}
       aria-label={props["aria-label"] || (iconOnly ? text : undefined)}
-      {...defaultProps}
       {...props}
     >
-      {Icon ? <Icon size={15} /> : null}
-      {iconOnly ? null : text}
-    </Component>
+      {text}
+    </Button>
   );
 }

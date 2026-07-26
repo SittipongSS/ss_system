@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useMemo, useR
 import { AlertTriangle, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import StatusNotice from "./StatusNotice";
+import Button from "./Button";
 
 const CONFIRM_EVENT = "ss-system:confirm";
 const ConfirmContext = createContext(null);
@@ -148,20 +149,19 @@ export default function ConfirmDialog({
         ) : null}
         <div className="confirm-dialog-actions">
           {!hideCancel ? (
-            <button ref={cancelRef} type="button" className="btn ghost" onClick={close} disabled={pending}>
+            <Button ref={cancelRef} variant="quiet" onClick={close} disabled={pending}>
               {cancelLabel}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             ref={confirmRef}
-            type="button"
-            className={destructive ? "btn btn-danger" : "btn btn-accent"}
+            tone={destructive ? "danger" : "accent"}
             onClick={confirm}
             disabled={pending}
             aria-busy={pending || undefined}
           >
             {pending ? busyLabel : confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

@@ -1,0 +1,350 @@
+"use client";
+
+/* ต้นแบบดีไซน์ของระบบ — หน้าจอเดียวที่รวม primitive กลางทุกตัวไว้ให้ดูพร้อมกัน
+
+   มีไว้สองอย่าง:
+   1) คนทำหน้าใหม่เปิดดูก่อนว่า "ของกลางมีอะไรให้ใช้บ้าง" แทนการก๊อปคลาสจากหน้าอื่น
+      (ที่ผ่านมาคือสาเหตุที่ปุ่ม/ตาราง/การ์ดหน้าตาไม่ตรงกันข้ามโมดูล)
+   2) เปลี่ยนโทเคนหรือ primitive แล้วเปิดหน้านี้หน้าเดียวก็เห็นผลกระทบทั้งระบบ
+      ทั้งโหมดสว่างและมืด (สลับธีมที่แถบบนได้เลย)
+
+   หน้านี้ห้ามผูกกับข้อมูลจริงหรือ API ใด ๆ — ต้องเปิดได้เสมอแม้ระบบหลังบ้านล่ม */
+
+import { useState } from "react";
+import {
+  Palette, Plus, Search, Inbox, Trash2, Check, Info,
+} from "lucide-react";
+import Workspace, { WorkspaceSection, MetricStrip, Metric } from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
+import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
+import { TableShell, TableEmpty } from "@/components/ui/Table";
+import StatusBadge from "@/components/ui/StatusBadge";
+import Tag from "@/components/ui/Tag";
+import CountBadge from "@/components/ui/CountBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
+import KpiCard from "@/components/ui/KpiCard";
+import Tabs from "@/components/ui/Tabs";
+import Segmented from "@/components/ui/Segmented";
+import Select from "@/components/ui/Select";
+import SortControl from "@/components/ui/SortControl";
+import FilterPopover from "@/components/ui/FilterPopover";
+import Pager from "@/components/ui/Pager";
+import { notifyToast } from "@/components/ui/Toast";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import styles from "./page.module.css";
+
+const SURFACES = [
+  { cls: styles.bg, token: "--bg", use: "พื้นหน้า" },
+  { cls: styles.panel, token: "--panel", use: "การ์ด/ตาราง (กระจก)" },
+  { cls: styles.panel2, token: "--panel-2", use: "หัวตาราง/hover" },
+  { cls: styles.panelFloat, token: "--panel-float", use: "แผงลอย (ทึบ 100%)" },
+  { cls: styles.border, token: "--border-strong", use: "เส้นขอบเน้น" },
+];
+
+const COLORS = [
+  { cls: styles.accent, token: "--accent", use: "เริ่มของใหม่" },
+  { cls: styles.accentSoft, token: "--accent-soft", use: "พื้นเน้นอ่อน" },
+  { cls: styles.navy, token: "--navy", use: "ยืนยัน/บันทึก" },
+  { cls: styles.green, token: "--green", use: "สำเร็จ" },
+  { cls: styles.amber, token: "--amber", use: "เตือน/รอ" },
+  { cls: styles.red, token: "--red", use: "อันตราย/ผิดพลาด" },
+  { cls: styles.blue, token: "--blue", use: "ข้อมูล" },
+  { cls: styles.text, token: "--text", use: "ตัวอักษรหลัก" },
+  { cls: styles.text3, token: "--text-3", use: "ตัวอักษรรอง" },
+];
+
+const TONES = ["neutral", "primary", "accent", "danger", "warning"];
+const BADGE_TONES = ["neutral", "success", "warning", "danger", "info", "accent"];
+
+const ROWS = [
+  { code: "QT-26070128", customer: "บริษัท สหมิตร โปรดักส์ จำกัด", amount: 485000, tone: "warning", status: "รออนุมัติ" },
+  { code: "QT-26070096", customer: "Bright Living Co., Ltd.", amount: 920000, tone: "success", status: "อนุมัติแล้ว" },
+  { code: "QT-26070087", customer: "Maison Life Co., Ltd.", amount: 780000, tone: "neutral", status: "ฉบับร่าง" },
+];
+
+const money = (value) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function Swatches({ items }) {
+  return (
+    <div className={styles.swatchGrid}>
+      {items.map((item) => (
+        <div key={item.token} className={styles.swatch}>
+          <span className={`${styles.swatchChip} ${item.cls}`} aria-hidden="true" />
+          <span className={styles.swatchName}>{item.token}</span>
+          <span className={styles.swatchUse}>{item.use}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function DesignPreviewPage() {
+  const [tab, setTab] = useState("overview");
+  const [view, setView] = useState("list");
+  const [sort, setSort] = useState("date");
+  const [direction, setDirection] = useState("desc");
+  const [filters, setFilters] = useState([]);
+  const [page, setPage] = useState(1);
+  const [docType, setDocType] = useState("qt");
+  const [showSkeleton, setShowSkeleton] = useState(false);
+
+  return (
+    <Workspace
+      icon={<Palette size={22} />}
+      title="ต้นแบบดีไซน์ระบบ"
+      subtitle="primitive กลางทุกตัวในหน้าเดียว — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
+      back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+    >
+      <div className={styles.stack}>
+        <StatusNotice tone="info">
+          หน้านี้ไม่ต่อกับข้อมูลจริง เปลี่ยนโทเคนใน <code>globals.css</code> หรือแก้ primitive ใน
+          {" "}<code>components/ui/</code> แล้วเปิดหน้านี้เพื่อดูผลทั้งระบบพร้อมกัน ทั้งโหมดสว่างและมืด
+        </StatusNotice>
+
+        <WorkspaceSection title="พื้นผิว" subtitle="ชั้นพื้นหลังของหน้า การ์ด และแผงลอย">
+          <Swatches items={SURFACES} />
+          <p className={styles.note}>
+            แผงที่ลอยทับเนื้อหา (dropdown / popover / ปฏิทิน) ต้องใช้ <code>--panel-float</code> ที่ทึบ 100%
+            เท่านั้น — <code>--panel</code> โปร่ง 8% และต้องมาคู่กับ backdrop-filter
+          </p>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="สี" subtitle="ความหมายของแต่ละสี — ห้ามใช้ค่าสีดิบนอก token">
+          <Swatches items={COLORS} />
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ตัวอักษร" subtitle="IBM Plex Sans Thai — ชั้นพิมพ์เดียวทั้งระบบ">
+          <div className={styles.typeSample}>
+            <h1>หัวเรื่องหน้า · Page title</h1>
+            <h2>หัวข้อส่วน · Section</h2>
+            <p>เนื้อความปกติ ใช้กับคำอธิบายและข้อมูลทั่วไปในหน้าจอ</p>
+            <p className={styles.note}>ข้อความรอง — คำอธิบายใต้ช่องกรอกและหมายเหตุ</p>
+            <p className={styles.mono}>1,234,567.89 · QT-26070128 · ตัวเลขและรหัสใช้ฟอนต์ mono</p>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="ปุ่ม"
+          subtitle="components/ui/Button.js — ที่เดียวที่ได้รับอนุญาตให้เขียนคลาสปุ่มเอง"
+        >
+          <div className={styles.stack}>
+            {["filled", "outline", "ghost"].map((variant) => (
+              <div key={variant} className={styles.row}>
+                <span className={styles.caption}>{variant}</span>
+                {TONES.map((tone) => (
+                  <Button key={tone} tone={tone} variant={variant}>{tone}</Button>
+                ))}
+              </div>
+            ))}
+            <div className={styles.row}>
+              <span className={styles.caption}>พื้นฐาน / เล็ก</span>
+              <Button>ปุ่มพื้นฐาน</Button>
+              <Button size="sm">ขนาดเล็ก</Button>
+              <Button tone="accent" icon={<Plus size={14} />}>เพิ่มรายการ</Button>
+              <Button iconOnly aria-label="ค้นหา" icon={<Search size={15} />} />
+              <Button disabled>ปิดใช้งาน</Button>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>quiet vs ghost</span>
+              <Button variant="quiet">quiet (ข้อความสีปกติ)</Button>
+              <Button variant="ghost" tone="danger">ghost (ข้อความตามสี)</Button>
+            </div>
+            <p className={styles.note}>
+              ⚠️ <code>quiet</code> (<code>.btn.ghost</code>) กับ <code>ghost</code> (<code>.btn.action-ghost</code>)
+              เกือบซ้ำกัน มีมาก่อนการรวม primitive ทั้งคู่ — ต้องเลือกให้เหลือแบบเดียวแล้วไล่แก้ที่เรียกใช้
+            </p>
+            <div className={styles.row}>
+              <span className={styles.caption}>ปุ่มตามความหมาย</span>
+              <ActionBar>
+                <ActionButton kind="approve" />
+                <ActionButton kind="reject" />
+                <ActionButton kind="revise" />
+                <ActionButton kind="revoke" />
+                <ActionButton kind="delete" />
+              </ActionBar>
+            </div>
+            <p className={styles.note}>
+              ปุ่มที่มีความหมายตาม workflow ให้ใช้ <code>ActionButton kind=&quot;…&quot;</code> เสมอ —
+              สี ไอคอน และคำเรียกผูกไว้ที่เดียว ส่ง kind ที่ไม่มีจริงจะตกเป็นปุ่มเทาเงียบ ๆ
+            </p>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ป้ายสถานะ" subtitle="StatusBadge · Tag · CountBadge">
+          <div className={styles.stack}>
+            <div className={styles.row}>
+              <span className={styles.caption}>StatusBadge</span>
+              {BADGE_TONES.map((tone) => (
+                <StatusBadge key={tone} tone={tone} label={tone} dot />
+              ))}
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>Tag</span>
+              <Tag tone="accent">สหมิตร</Tag>
+              <Tag tone="info" onRemove={() => {}}>กรองแล้ว</Tag>
+              <CountBadge count={12} tone="warning" />
+            </div>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ตัวควบคุมบนแถบเครื่องมือ" subtitle="ทุกตัวสูงเท่ากันที่ --ctl-h">
+          <div className={styles.stack}>
+            <Tabs
+              tabs={[
+                { key: "overview", label: "ภาพรวม" },
+                { key: "detail", label: "รายละเอียด" },
+                { key: "history", label: "ประวัติ" },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+            <div className={styles.row}>
+              <Segmented
+                options={[{ value: "list", label: "รายการ" }, { value: "grid", label: "ตาราง" }]}
+                value={view}
+                onChange={setView}
+                ariaLabel="มุมมอง"
+              />
+              <SortControl
+                options={[{ value: "date", label: "วันที่" }, { value: "amount", label: "มูลค่า" }]}
+                value={sort}
+                onChange={(event) => setSort(event.target.value)}
+                direction={direction}
+                onDirectionChange={setDirection}
+              />
+              <FilterPopover
+                count={filters.length}
+                onClear={() => setFilters([])}
+                groups={[{
+                  key: "status",
+                  label: "สถานะ",
+                  options: [
+                    { value: "draft", label: "ฉบับร่าง" },
+                    { value: "pending", label: "รออนุมัติ" },
+                    { value: "approved", label: "อนุมัติแล้ว" },
+                  ],
+                  selected: filters,
+                  onChange: setFilters,
+                }]}
+              />
+            </div>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ฟอร์ม" subtitle="ช่องกรอกทั้งระบบใช้ .premium-input ชุดเดียว">
+          <div className={styles.formGrid}>
+            <label className={styles.field}>
+              ช่องข้อความ
+              <input className="premium-input" defaultValue="บริษัท สหมิตร โปรดักส์ จำกัด" />
+            </label>
+            <label className={styles.field}>
+              ดรอปดาวน์
+              <Select value={docType} onChange={(event) => setDocType(event.target.value)}>
+                <option value="qt">ใบเสนอราคา</option>
+                <option value="so">Sale Order</option>
+              </Select>
+            </label>
+            <label className={styles.field}>
+              ช่องที่ผิดพลาด
+              <input className="premium-input error" defaultValue="" placeholder="ต้องกรอกช่องนี้" />
+            </label>
+            <label className={styles.field}>
+              ช่องที่ล็อก
+              <input className="premium-input" defaultValue="QT-26070128" readOnly disabled />
+            </label>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ตาราง" subtitle="TableShell รวม toolbar → ตาราง → ท้ายตาราง ไว้ในพาเนลเดียว">
+          <TableShell
+            toolbar={<Button size="sm" icon={<Search size={14} />}>ค้นหา</Button>}
+            footer={<Pager page={page} pageCount={4} total={64} pageSize={20} onPage={setPage} />}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>เลขที่</th>
+                  <th>ลูกค้า</th>
+                  <th className={styles.numeric}>มูลค่า</th>
+                  <th>สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ROWS.map((row) => (
+                  <tr key={row.code}>
+                    <td className={styles.mono}>{row.code}</td>
+                    <td>{row.customer}</td>
+                    <td className={styles.numeric}>{money(row.amount)}</td>
+                    <td><StatusBadge tone={row.tone} label={row.status} dot /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableShell>
+          <p className={styles.note}>
+            ตัวเลขและจำนวนเงินชิดขวาเสมอ · หัวตารางใช้ <code>--panel-2</code> ·
+            ตารางที่ไม่ใช่รายการให้ระบุ <code>family=&quot;editable&quot;</code> หรือ <code>family=&quot;matrix&quot;</code>
+          </p>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="ตัวเลขสรุป" subtitle="MetricStrip สำหรับแถบ KPI · KpiCard สำหรับการ์ดเดี่ยว">
+          <div className={styles.stack}>
+            <MetricStrip>
+              <Metric icon={<Check size={16} />} label="อนุมัติแล้ว" value="18" note="5 ใบสัปดาห์นี้" />
+              <Metric icon={<Info size={16} />} label="รออนุมัติ" value="9" note="3 ใบใกล้เลยกำหนด" tone="warning" />
+              <Metric icon={<Inbox size={16} />} label="ฉบับร่าง" value="12" />
+            </MetricStrip>
+            <div className={styles.formGrid}>
+              <KpiCard label="ยอดขายเดือนนี้" value={4820000} hint="+12.4% เทียบเดือนก่อน" tone="accent" />
+              <KpiCard label="เป้าหมายเดือน" value={6500000} hint="ทำได้แล้ว 74.2%" tone="info" />
+            </div>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection title="สถานะและการแจ้งเตือน" subtitle="StatusNotice · Toast · ConfirmDialog · EmptyState">
+          <div className={styles.stack}>
+            <StatusNotice tone="success" title="บันทึกแล้ว">ข้อมูลถูกบันทึกเรียบร้อย</StatusNotice>
+            <StatusNotice tone="warning" title="ต้องตรวจสอบ">ใบเสนอราคานี้เลยวันยืนราคาแล้ว</StatusNotice>
+            <StatusNotice tone="error" title="บันทึกไม่สำเร็จ">ไม่พบลูกค้าที่เลือก</StatusNotice>
+            <div className={styles.row}>
+              <Button onClick={() => notifyToast("บันทึกเรียบร้อย", "success")}>ทดสอบ Toast</Button>
+              <Button
+                tone="danger"
+                onClick={() => confirmAction({
+                  description: "ลบใบเสนอราคานี้ถาวรหรือไม่",
+                  destructive: true,
+                  confirmLabel: "ลบถาวร",
+                })}
+                icon={<Trash2 size={14} />}
+              >
+                ทดสอบกล่องยืนยัน
+              </Button>
+              <Button variant="quiet" onClick={() => setShowSkeleton((value) => !value)}>
+                {showSkeleton ? "ดูสถานะว่าง" : "ดูสถานะกำลังโหลด"}
+              </Button>
+            </div>
+            {showSkeleton ? (
+              <SkeletonRows rows={3} />
+            ) : (
+              <EmptyState icon={Inbox} action={{ label: "สร้างใบแรก", onClick: () => {} }}>
+                ยังไม่มีใบเสนอราคาในช่วงที่เลือก
+              </EmptyState>
+            )}
+            <TableShell>
+              <table>
+                <thead>
+                  <tr><th>เลขที่</th><th>ลูกค้า</th><th>สถานะ</th></tr>
+                </thead>
+                <tbody>
+                  <TableEmpty colSpan={3} title="ไม่พบรายการที่ค้นหา" description="ลองล้างตัวกรองแล้วค้นใหม่" />
+                </tbody>
+              </table>
+            </TableShell>
+          </div>
+        </WorkspaceSection>
+      </div>
+    </Workspace>
+  );
+}

@@ -1,0 +1,105 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-3);
+}
+
+.caption {
+  min-width: 108px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* ── ตัวอย่างสี ─────────────────────────────────────────────────────────── */
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.swatchChip {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.swatchName {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.swatchUse {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.bg { background: var(--bg); }
+.panel { background: var(--panel); }
+.panel2 { background: var(--panel-2); }
+.panelFloat { background: var(--panel-float); }
+.accent { background: var(--accent); }
+.accentSoft { background: var(--accent-soft); }
+.navy { background: var(--navy); }
+.green { background: var(--green); }
+.amber { background: var(--amber); }
+.red { background: var(--red); }
+.blue { background: var(--blue); }
+.text { background: var(--text); }
+.text3 { background: var(--text-3); }
+.border { background: var(--border-strong); }
+
+/* ── ตัวอักษร ───────────────────────────────────────────────────────────── */
+.typeSample > * {
+  margin: 0 0 8px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── ฟอร์ม ─────────────────────────────────────────────────────────────── */
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

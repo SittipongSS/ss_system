@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, X } from "lucide-react";
+import Button from "./Button";
 
 // ปุ่มกรองแบบเลือกได้หลายค่า (multi-select) ใช้ร่วมกันในแถบเครื่องมือ
 // props:
@@ -35,22 +36,12 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button
-        type="button"
-        className="btn"
+      {/* ใช้หน้าตาเดียวกับปุ่มตัวกรองใน FilterPopover — เดิมคัดลอกค่าเดียวกันมาเขียน
+          inline ไว้ที่นี่อีกชุด แล้วสองปุ่มก็เพี้ยนหากันเวลาแก้ทีละฝั่ง */}
+      <Button
+        className={`ui-filter-trigger ${active ? "active" : ""}`.trim()}
         onClick={() => setOpen((v) => !v)}
         title={`กรองตาม${label} (เลือกได้หลายค่า)`}
-        style={{
-          height: "var(--ctl-h)",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          fontSize: "13px",
-          fontWeight: 500,
-          border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
-          background: active ? "var(--accent-soft)" : "var(--panel)",
-          color: active ? "var(--accent)" : "var(--text-2)",
-        }}
       >
         {Icon && <Icon size={14} />}
         {label}
@@ -62,7 +53,7 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
           )
         )}
         <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
-      </button>
+      </Button>
 
       {open && (
         <div
@@ -97,9 +88,9 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
             })
           )}
           {active && (
-            <button type="button" className="btn ghost" onClick={() => onChange([])} style={{ fontSize: "12px", color: "var(--text-3)", justifyContent: "flex-start", marginTop: "2px" }}>
+            <Button variant="quiet" className="ui-filter-clear-inline" onClick={() => onChange([])}>
               <X size={12} /> ล้าง{label}
-            </button>
+            </Button>
           )}
         </div>
       )}

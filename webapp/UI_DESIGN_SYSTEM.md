@@ -4,7 +4,9 @@
 
 ## Source of truth
 
+- ต้นแบบที่เปิดดูได้จริง: `/settings/design-preview` (primitive ทุกตัวในหน้าเดียว ทั้งสองธีม)
 - Design tokens และ shared classes: `src/app/globals.css`
+- Buttons: `src/components/ui/Button.js` (ปุ่มทั่วไป) และ `src/components/ui/ActionButtons.js` (ปุ่มตามความหมายของ workflow)
 - Page composition: `src/components/ui/Workspace.js`
 - Detail composition: `src/components/ui/DetailOverview.js`
 - Tables: `src/components/ui/Table.js`
@@ -25,7 +27,8 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 5. ครอบ Recharts ทุกตัวด้วย `ChartCanvas`; ใช้ `ChartCard`, `ChartTooltip`, `ChartEmptyState` และ `chartTheme` สำหรับโครงและสี
 6. ใช้ `notifyToast` และ `confirmAction` แทน native `alert`/`confirm`
 7. เอกสารพิมพ์ใช้ `PRINT_FONT_STACK` และ placeholder จาก `printTheme`
-4. หนึ่งบริบทมี filled action เพียงปุ่มเดียว (`.btn-accent`); action รองใช้ `.btn` หรือ `.btn.ghost`
+4. ปุ่มทุกตัวมาจาก `Button` หรือ `ActionButton` — ห้ามเขียน `className="btn …"` เองในหน้าใหม่
+   หนึ่งบริบทมี filled action เพียงปุ่มเดียว (`tone="accent"`); action รองใช้ `Button` เปล่าหรือ `variant="quiet"`
 5. ฟอร์มต้องมีปุ่มบันทึกชัดเจน ไม่มี auto-save และใช้ confirm ตาม workflow เดิม
 
 ## Visual rules
