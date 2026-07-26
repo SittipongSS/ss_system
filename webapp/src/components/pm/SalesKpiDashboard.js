@@ -7,6 +7,7 @@ import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import DateInput from "@/components/ui/DateInput";
 import { fmtPercent } from "@/lib/format";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 import { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 
@@ -139,7 +140,7 @@ export default function SalesKpiDashboard() {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar yAxisId="left" dataKey="total" name="งานทั้งหมด" fill="var(--text-3)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     <Bar yAxisId="left" dataKey="completed" name="งานที่เสร็จ" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                    <Line yAxisId="right" type="monotone" dataKey="score" name="คะแนนรวม" stroke="var(--amber)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                    <Line yAxisId="right" type={CHART_LINE_TYPE} dataKey="score" name="คะแนนรวม" stroke="var(--amber)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

@@ -34,10 +34,14 @@ const colorAllowList = [
 ];
 
 const rawColorViolations = [];
+const smoothedLineViolations = [];
 for (const file of uiFiles) {
   const rel = relative(file);
-  if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  if (/\btype\s*=\s*["'](?:monotone|basis|natural)["']/.test(source)) {
+    smoothedLineViolations.push(rel);
+  }
+  if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
     if (line.trimStart().startsWith("//")) return;
     const colors = line.match(/#[0-9a-f]{3,8}\b/gi);
@@ -69,26 +73,30 @@ for (const file of uiFiles) {
 }
 
 const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
-const shellPages = pageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));
+const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
+const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
+const shellPages = visualPageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const forbiddenMaterialPackages = ["@material/web", "material-components-web", "materialize-css"]
   .filter((name) => packageJson.dependencies?.[name] || packageJson.devDependencies?.[name]);
 
 const legacySalesModule = files.some((file) => relative(file) === "src/components/salesPlanning/SaWorkspace.module.css");
 const failures = [
-  ...(shellPages.length !== pageFiles.length
-    ? [`design-shell coverage incomplete: ${shellPages.length}/${pageFiles.length} routes`]
+  ...(shellPages.length !== visualPageFiles.length
+    ? [`design-shell coverage incomplete: ${shellPages.length}/${visualPageFiles.length} visual routes`]
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
+  ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
 ];
 
-console.log(`UI audit: ${pageFiles.length} routes`);
-console.log(`Design-shell coverage: ${shellPages.length}/${pageFiles.length} routes`);
+console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} visual, ${pageFiles.length - visualPageFiles.length} redirect)`);
+console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
+console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
 
 if (failures.length) {
   console.error("\nUI audit failed:");

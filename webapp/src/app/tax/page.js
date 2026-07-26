@@ -3,7 +3,7 @@ import Select from "@/components/ui/Select";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight, Calendar } from "lucide-react";
+import { BadgeCheck, BarChart3, Calendar, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LayoutDashboard, ReceiptText, RotateCcw, Send } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -145,9 +145,9 @@ export default function TaxDashboard() {
             </div>
             <div className="lg:col-span-3 kpi-grid">
               <KpiCard label="ฉบับร่าง" value={r.draft} tone="neutral" icon={ClipboardCheck} onClick={() => goReg("draft")} />
-              <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" onClick={() => goReg("pending_legal")} />
-              <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" onClick={() => goReg("approved")} />
-              <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" onClick={() => goReg("rejected")} />
+              <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" icon={Clock3} onClick={() => goReg("pending_legal")} />
+              <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" icon={BadgeCheck} onClick={() => goReg("approved")} />
+              <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" icon={RotateCcw} onClick={() => goReg("rejected")} />
             </div>
           </div>
         </section>
@@ -180,28 +180,31 @@ export default function TaxDashboard() {
                 value={getCountAndTax(o.pending).count} 
                 taxValue={getCountAndTax(o.pending).tax}
                 tone="danger" 
-                icon={ReceiptText} 
+                icon={CircleDollarSign}
                 onClick={() => goFil("pending")} 
               />
               <KpiCard 
                 label="รอยื่น" 
                 value={getCountAndTax(o.received).count} 
                 taxValue={getCountAndTax(o.received).tax}
-                tone="warning" 
+                tone="warning"
+                icon={Clock3}
                 onClick={() => goFil("received")} 
               />
               <KpiCard 
                 label="กำลังยื่น" 
                 value={getCountAndTax(o.filing).count} 
                 taxValue={getCountAndTax(o.filing).tax}
-                tone="info" 
+                tone="info"
+                icon={Send}
                 onClick={() => goFil("filing")} 
               />
               <KpiCard 
                 label="ชำระแล้ว" 
                 value={getCountAndTax(o.complete).count} 
                 taxValue={getCountAndTax(o.complete).tax}
-                tone="success" 
+                tone="success"
+                icon={BadgeCheck}
                 onClick={() => goFil("complete")} 
               />
               <KpiCard

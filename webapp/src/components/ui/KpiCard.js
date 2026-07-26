@@ -33,7 +33,14 @@ export default function KpiCard({
   const content = (
     <>
       <div className="ui-kpi-heading">
-        <span className="ui-kpi-label">{badge || <>{iconNode}{label ? <span title={typeof label === "string" ? label : undefined}>{label}</span> : null}</>}</span>
+        <span className="ui-kpi-label">
+          {badge || (
+            <>
+              {iconNode ? <span className="ui-kpi-icon">{iconNode}</span> : null}
+              {label ? <span className="ui-kpi-label-text" title={typeof label === "string" ? label : undefined}>{label}</span> : null}
+            </>
+          )}
+        </span>
       </div>
       <div className="ui-kpi-value-row">
         <div className={`ui-kpi-value${compactValue ? " compact" : ""}`} title={typeof displayValue === "string" ? displayValue : undefined}>{displayValue}</div>

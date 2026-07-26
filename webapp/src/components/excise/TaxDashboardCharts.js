@@ -5,6 +5,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Legend
 } from "recharts";
 import { fmtMoney } from "@/lib/format";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // Colors mapped to our design system
 const COLORS = {
@@ -143,7 +144,7 @@ export function OrdersComposedChart({ orders = [] }) {
         </Bar>
         <Line 
           yAxisId="right" 
-          type="monotone" 
+          type={CHART_LINE_TYPE}
           dataKey="tax" 
           name="TaxAmount" 
           stroke={COLORS.accent} 

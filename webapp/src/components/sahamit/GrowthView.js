@@ -3,9 +3,11 @@ import { useMemo, useState } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { Info } from "lucide-react";
+import { BarChart3, CalendarRange, History, Info, TrendingUp } from "lucide-react";
+import UiKpiCard from "@/components/ui/KpiCard";
 import { poGrowth, unitMultiplier } from "@/lib/sahamit/dashboard";
 import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // แท็บ "การเติบโต" — ยอด PO จริงต่อช่วง (เดือน/ไตรมาส/ปี) + %เติบโต. YoY เปิดเมื่อมี
 // ข้อมูลปีก่อน (ตอนนี้ prod มีปีเดียว → โชว์หมายเหตุ). ต่อ pure helper poGrowth.
@@ -58,10 +60,10 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
         <>
           {/* การ์ดสรุป */}
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-            <Card label={`ยอดล่าสุด (${unitLbl})`} value={fmtVal(latest?.total)} sub={fmtPeriod(latest?.period, level)} accent="var(--accent)" />
-            <Card label={`เติบโต ${seqLabel}`} value={pct(latest?.seqGrowth)} sub="เทียบช่วงก่อนหน้า" accent={latest?.seqGrowth >= 0 ? "var(--green)" : "var(--red)"} />
-            {showYoY && <Card label="เติบโต YoY" value={pct(latest?.yoyGrowth)} sub="เทียบปีก่อน" accent={latest?.yoyGrowth >= 0 ? "var(--green)" : "var(--red)"} />}
-            <Card label="จำนวนช่วง" value={fmtNumber(rows.length)} sub={LEVELS.find((l) => l[0] === level)[1]} accent="var(--text-3)" />
+            <UiKpiCard icon={BarChart3} label={`ยอดล่าสุด (${unitLbl})`} value={fmtVal(latest?.total)} hint={fmtPeriod(latest?.period, level)} color="var(--accent)" />
+            <UiKpiCard icon={TrendingUp} label={`เติบโต ${seqLabel}`} value={pct(latest?.seqGrowth)} hint="เทียบช่วงก่อนหน้า" color={latest?.seqGrowth >= 0 ? "var(--green)" : "var(--red)"} />
+            {showYoY && <UiKpiCard icon={History} label="เติบโต YoY" value={pct(latest?.yoyGrowth)} hint="เทียบปีก่อน" color={latest?.yoyGrowth >= 0 ? "var(--green)" : "var(--red)"} />}
+            <UiKpiCard icon={CalendarRange} label="จำนวนช่วง" value={fmtNumber(rows.length)} hint={LEVELS.find((l) => l[0] === level)[1]} color="var(--text-3)" />
           </div>
 
           {/* กราฟ: แท่งยอด + เส้น %เติบโต */}
@@ -78,8 +80,8 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
                   formatter={(v, n) => (n === "total" ? [fmtVal(v), `ยอด (${unitLbl})`] : [v == null ? "—" : `${v.toFixed(1)}%`, n])} />
                 <Legend wrapperStyle={{ fontSize: 13 }} />
                 <Bar yAxisId="l" dataKey="total" name={`ยอด (${unitLbl})`} fill="var(--accent)" radius={[5, 5, 0, 0]} maxBarSize={46} />
-                <Line yAxisId="r" type="monotone" dataKey="seqGrowth" name={`%เติบโต ${seqLabel}`} stroke="var(--green)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
-                {showYoY && <Line yAxisId="r" type="monotone" dataKey="yoyGrowth" name="%เติบโต YoY" stroke="var(--amber)" strokeWidth={2.5} strokeDasharray="5 3" dot={{ r: 3 }} connectNulls />}
+                <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="seqGrowth" name={`%เติบโต ${seqLabel}`} stroke="var(--green)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                {showYoY && <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="yoyGrowth" name="%เติบโต YoY" stroke="var(--amber)" strokeWidth={2.5} strokeDasharray="5 3" dot={{ r: 3 }} connectNulls />}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -117,16 +119,6 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function Card({ label, value, sub, accent }) {
-  return (
-    <div className="glass-panel ui-kpi-card" style={{ "--kpi-accent": accent }}>
-      <div className="ui-kpi-heading"><span className="ui-kpi-label">{label}</span></div>
-      <div className="ui-kpi-value-row"><div className="ui-kpi-value">{value}</div></div>
-      <div className="ui-kpi-hint">{sub || " "}</div>
     </div>
   );
 }

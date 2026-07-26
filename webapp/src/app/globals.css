@@ -56,6 +56,14 @@
   
   --violet: oklch(45% .13 295);
   --violet-soft: oklch(92% .05 295);
+
+  /* Controlled-document accents must match the self-contained print engine. */
+  --document-accent-terracotta: #ad5d43;
+  --document-accent-steel: #1e6091;
+  --document-accent-teal: #0f766e;
+  --document-accent-amber: #b45309;
+  --document-accent-green: #15803d;
+  --document-accent-navy: #1f3551;
   
   --shift-soft: #f4eee1;
   --shift-color: #6b6256;
@@ -66,6 +74,12 @@
   --pad-x: 16px;
   --pad-y: 12px;
   --gap: 16px;
+  --page-gutter: 28px;
+  --page-gutter-tablet: 18px;
+  --page-gutter-mobile: 14px;
+  --icon-box-sm: 28px;
+  --icon-box-md: 32px;
+  --icon-box-lg: 40px;
   --radius: 8px;
   --radius-lg: 12px;
   --radius-full: 9999px;
@@ -489,7 +503,7 @@ button, select, input, textarea {
 }
 
 .page {
-  padding: 24px 28px 64px;
+  padding: 24px var(--page-gutter) 64px;
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
@@ -497,13 +511,13 @@ button, select, input, textarea {
 
 @media (max-width: 1000px) {
   .page {
-    padding: 20px 18px 48px;
+    padding: 20px var(--page-gutter-tablet) 48px;
   }
 }
 
 @media (max-width: 700px) {
   .page {
-    padding: 16px 14px 40px;
+    padding: 16px var(--page-gutter-mobile) 40px;
   }
 }
 
@@ -1354,8 +1368,8 @@ h1, h2, h3, h4, h5, h6 {
 .metrics-row,
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
   margin-bottom: 20px;
 }
 
@@ -2439,13 +2453,13 @@ input[type="number"] {
 /* Canonical KPI tile shared by SA, PM, tax, management and Sahamit. */
 .ui-kpi-card {
   width: 100%;
+  height: 100%;
   min-height: 136px;
   padding: 15px 16px 14px;
   display: grid;
   grid-template-rows: minmax(34px, auto) minmax(32px, auto) minmax(32px, auto);
   align-content: start;
   gap: 7px;
-  border-left: 3px solid var(--kpi-accent, var(--accent));
   color: var(--text);
   font: inherit;
   text-align: left;
@@ -2454,14 +2468,24 @@ button.ui-kpi-card { cursor: pointer; }
 .ui-kpi-card.interactive-card { transition: transform .14s, border-color .14s, box-shadow .14s; }
 .ui-kpi-card.interactive-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--kpi-accent) 50%, var(--border)); box-shadow: var(--shadow-md); }
 .ui-kpi-heading { min-width: 0; min-height: 34px; color: var(--text-2); font-size: 12px; font-weight: 600; line-height: 1.35; }
-.ui-kpi-label { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
-.ui-kpi-label > span {
+.ui-kpi-label { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ui-kpi-icon {
+  width: var(--icon-box-md);
+  height: var(--icon-box-md);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  color: var(--kpi-accent);
+  background: color-mix(in srgb, var(--kpi-accent) 13%, transparent);
+}
+.ui-kpi-label-text {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.ui-kpi-label svg { flex: 0 0 auto; color: var(--kpi-accent); }
+.ui-kpi-icon svg { width: 16px; height: 16px; }
 .ui-kpi-value-row { min-width: 0; min-height: 32px; display: flex; align-items: baseline; flex-wrap: nowrap; gap: 8px; }
 .ui-kpi-value { min-width: 0; color: var(--text); font-size: 24px; font-weight: 700; line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ui-kpi-value.compact { font-size: 20px; }
@@ -5316,8 +5340,8 @@ button.ui-metric:hover,
 button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
 .ui-metric:last-child { border-right: 0; }
 .ui-metric-icon {
-  width: 32px;
-  height: 32px;
+  width: var(--icon-box-md);
+  height: var(--icon-box-md);
   display: grid;
   flex: 0 0 auto;
   place-items: center;

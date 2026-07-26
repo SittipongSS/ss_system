@@ -13,13 +13,13 @@
 /* ใช้ค่าสีจริงของเอกสารพิมพ์ (DOCUMENT_ACCENT_THEMES ใน quotationMasterDocument)
    ไม่ใช่ token ธีมของแอป — ตัวอย่างสีต้องตรงกับที่พิมพ์ออกมาจริง ไม่งั้นเลือกสีจาก
    หน้านี้แล้วเอกสารออกมาคนละเฉด · ค่าคงที่เพราะเอกสารพิมพ์เป็นไฟล์ self-contained */
-.terracotta { --doc-accent: #ad5d43; }
-.steel { --doc-accent: #1e6091; }
+.terracotta { --doc-accent: var(--document-accent-terracotta); }
+.steel { --doc-accent: var(--document-accent-steel); }
 /* คีย์เก่าที่เลิกให้เลือกแล้ว — คงไว้ให้มาตรฐานเวอร์ชันเดิมในประวัติยังแสดงสีถูก */
-.teal { --doc-accent: #0f766e; }
-.amber { --doc-accent: #b45309; }
-.green { --doc-accent: #15803d; }
-.navy { --doc-accent: #1f3551; }
+.teal { --doc-accent: var(--document-accent-teal); }
+.amber { --doc-accent: var(--document-accent-amber); }
+.green { --doc-accent: var(--document-accent-green); }
+.navy { --doc-accent: var(--document-accent-navy); }
 /* ค่าที่ตั้ง (ซ้าย) คู่กับตัวอย่างเอกสารจริง (ขวา) — เห็นผลของสิ่งที่กำลังแก้ทันที
    แทนกล่อง CSS จำลองแบบเดิมที่โชว์คนละสัดส่วน/คนละสีกับใบที่พิมพ์ออกมา */
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: 16px; align-items: start; }
