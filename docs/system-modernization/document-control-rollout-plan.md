@@ -1,6 +1,6 @@
 # แผนขยาย Contextual Right Rail และ Document Control ทั้งระบบ
 
-> สถานะ: Implementation ครบทุกเฟส — รอ staging UAT และ CI
+> สถานะ: Implementation และ automated acceptance ครบ — PR #738 ผ่าน CI; รอ staging UAT
 > เริ่ม: 2026-07-26
 > ฐานโค้ด: `main` หลัง PR #734
 > Branch: `codex/document-control-rollout`
@@ -42,7 +42,7 @@ business rule, permission หรือ API ownership เข้า component ก�
 | 4 | `08885f8c` | Sahamit PO + Shipment Preparation |
 | 5 | `8f3d187a` | Versioned Settings |
 | 6 | `ab4c12a0` | SO ↔ Excise Filing v2 |
-| 7 | รอ closeout commit | Acceptance + documentation |
+| 7 | `a3b19d8f`, `4a86ddd6` | Acceptance, documentation และ sync กับ `main` ล่าสุด |
 
 ## Phase 0 — ปิดหนี้ร่วมของ QT/SO
 
@@ -238,6 +238,8 @@ business rule, permission หรือ API ownership เข้า component ก�
 | Empty/error/disabled | ผ่าน | empty list, API error notice และปุ่ม create disabled เมื่อไม่มี candidate |
 | Browser console | ผ่าน | ไม่พบ console warning/error จาก UI |
 | Real-data/role/status matrix | Blocked | local ไม่มี `SUPABASE_URL` และ `SUPABASE_SERVICE_ROLE_KEY`; API data request ตอบ 500 ตาม config guard |
+| Pull request | ผ่าน | Draft PR [#738](https://github.com/SittipongSS/ss_system/pull/738), mergeable `CLEAN` |
+| GitHub CI | ผ่าน | CI + Vercel + Vercel Preview Comments สำเร็จ (2026-07-26) |
 
 ### Known issues และ deferred acceptance
 
@@ -260,4 +262,14 @@ business rule, permission หรือ API ownership เข้า component ก�
 - [x] Permission/action inventory อัปเดต
 - [x] Known issues และ deferred work ระบุชัด
 - [x] เอกสาร rollout, Excise v2 และ QT/SO plan ตรงกับโค้ด
-- [ ] Commit, push, PR และ CI สำเร็จ
+- [x] Commit, push, PR และ CI สำเร็จ
+
+## Closeout record
+
+- Branch: `codex/document-control-rollout`
+- Pull request: [#738 — Unify document control across operational workflows](https://github.com/SittipongSS/ss_system/pull/738)
+- Base: `main` (`f93c6d04` ณ เวลาตรวจ)
+- Merge state: `CLEAN`
+- CI: GitHub Actions `ci`, Vercel และ Vercel Preview Comments ผ่าน
+- Deploy prerequisite: ใช้ migration `0160` ก่อน deploy application revision นี้
+- Remaining gate: staging real-data UAT ตามรายการ Known issues ด้านบน

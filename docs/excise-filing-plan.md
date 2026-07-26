@@ -1,7 +1,8 @@
 # แผน implement: ยื่นชำระภาษีสรรพสามิตจริง ผูกกับ SO (Excise Filing v2)
 
-> สถานะ: **Implementation เสร็จใน branch `codex/document-control-rollout`**
-> (2026-07-26; migration, two entry points และ workflow ใหม่ครบ)
+> สถานะ: **Implementation เสร็จใน draft PR
+> [#738](https://github.com/SittipongSS/ss_system/pull/738)**
+> (2026-07-26; migration, two entry points, workflow ใหม่ และ CI ครบ)
 > เปลี่ยนการยื่นชำระภาษีสรรพสามิต (Track 2) จาก "สร้างมือเลือกทะเบียนทีละตัว" →
 > "ยื่นตาม SO ที่อนุมัติแล้ว" เพราะ SO คือใบที่แบก Actual = สินค้าสรรพสามิตในนั้นคือของที่ต้องยื่น
 
