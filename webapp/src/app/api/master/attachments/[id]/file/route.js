@@ -6,10 +6,13 @@
 // การคุมสิทธิ์จริงคือ canViewRecord ในนี้ (เหมือน GET /api/attachments เดิม).
 import { Readable } from 'node:stream';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord } from '@/lib/permissions';
+import { canUser, canViewRecord } from '@/lib/permissions';
 import { getAttachment, loadAttachmentParent, ATTACHMENT_RESOURCE } from '@/lib/master/attachments';
+import { canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+
+const MGMT_ENTITIES = ['mgmt_task', 'mgmt_meeting'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,11 +24,16 @@ export async function GET(request, { params }) {
   const att = await getAttachment(id);
   if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
 
-  // สิทธิ์ดูไฟล์ = สิทธิ์ดู entity แม่ (team/role scope เดิม).
+  // สิทธิ์ดูไฟล์ = สิทธิ์ดู entity แม่ — ต้องตรงกับ GET /api/attachments ทุกสาขา
+  // (โมดูลที่คุมด้วย cap ของตัวเอง ไม่ได้คุมด้วยทีมของ customer/product)
   const parent = await loadAttachmentParent(att);
   const allowed = att.entityType === 'personal_task'
     ? await canViewPersonalTask(getSupabaseAdmin(), parent, user)
-    : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
+    : MGMT_ENTITIES.includes(att.entityType)
+      ? canUser(user, 'mgmt:view')
+      : isCostingAttachment(att.entityType)
+        ? canViewCostingAttachment(user)
+        : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
   if (!parent || !allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }

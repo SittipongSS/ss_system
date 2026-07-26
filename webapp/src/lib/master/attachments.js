@@ -34,7 +34,22 @@ export async function getAttachment(id) {
 
 // entity แม่ของไฟล์แนบ ↔ ตาราง + resource key (สำหรับ permission helpers).
 // ใช้ร่วมกันทุก route ที่ต้องเช็กสิทธิ์ผ่าน entity แม่ — กัน map กระจาย/ไม่ตรงกัน.
-const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations', personal_task: 'personal_tasks' };
+//
+// ⚠️ entity ที่ไม่มีในแมปนี้ = loadAttachmentParent คืน null = proxy ดาวน์โหลดไฟล์
+// ตอบ 403 เสมอ (รูปพรีวิวไม่ขึ้น ดาวน์โหลดไม่ได้ ทั้งที่ไฟล์อยู่ครบ) — โมดูลที่ไม่ได้
+// คุมสิทธิ์ด้วยทีมของ customer/product ต้องมีสาขาของตัวเองใน route ด้วย ไม่ใช่ใส่
+// แค่ตารางแล้วปล่อยให้ตกไป canViewRecord
+const PARENT_TABLE = {
+  customer: 'customers',
+  product: 'products',
+  order: 'orders',
+  registration: 'excise_registrations',
+  personal_task: 'personal_tasks',
+  mgmt_task: 'mgmt_tasks',
+  mgmt_meeting: 'mgmt_meetings',
+  costing_item: 'costing_request_items',
+  material_ask_item: 'material_price_ask_items',
+};
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
 // โหลด record แม่ของไฟล์แนบ (หรือ null) — ใช้คู่กับ canViewRecord/canEditRecord.

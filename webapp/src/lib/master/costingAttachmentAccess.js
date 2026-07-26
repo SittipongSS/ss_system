@@ -5,12 +5,15 @@
 // ระบบขอราคาไม่ได้คุมด้วยทีม มันคุมด้วย cap ของระบบ (canViewCosting) + ฝ่ายเจ้าของ
 // จึงต้องมีเส้นทางของตัวเอง เหมือนที่โมดูล mgmt/personal_task มี
 //
-// ⚠️ ที่ต้องมีไฟล์นี้: entity ที่ไม่อยู่ใน PARENT_TABLE จะ "หลุดทั้งก้อน" ในสอง route
-//   · GET  /api/attachments        → loadParent คืน null → ตอบ [] เสมอ (ไฟล์ไม่ขึ้น)
-//   · POST /api/attachments        → 404 "ไม่พบระเบียนที่จะแนบเอกสาร"
-//   · DELETE /api/attachments/[id] → บล็อกสิทธิ์อยู่ใน `if (table)` → ข้ามทั้งก้อน
-//                                    = ใครก็ลบไฟล์แนบได้
-// costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น จึงต่อท่อพร้อมกันที่นี่
+// ⚠️ **เพิ่ม entity แนบไฟล์ใหม่ ต้องต่อครบ 5 จุด** — ขาดจุดไหนก็หลุดเงียบจุดนั้น:
+//   1 GET  /api/attachments             → loadParent คืน null → ตอบ [] เสมอ (ไฟล์ไม่ขึ้น)
+//   2 POST /api/attachments             → 404 "ไม่พบระเบียนที่จะแนบเอกสาร"
+//   3 DELETE /api/attachments/[id]      → บล็อกสิทธิ์อยู่ใน `if (table)` → ข้ามทั้งก้อน
+//                                         = ใครก็ลบไฟล์แนบได้
+//   4 lib/drive resolveFolderForEntity  → อัปโหลดพัง 500 ทั้งปุ่ม (โหมด Drive)
+//   5 attachments PARENT_TABLE + สาขา   → proxy /file ตอบ 403 = รูปพรีวิวไม่ขึ้น
+//     ใน .../attachments/[id]/file         ทั้งที่ไฟล์อัปขึ้นไปแล้วจริง
+// costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น · ทั้งคู่โดนข้อ 4–5 จนถึง 2026-07-26
 import { canUser, canViewCosting } from '@/lib/permissions';
 import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
 
