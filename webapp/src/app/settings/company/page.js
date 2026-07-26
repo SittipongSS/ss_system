@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Building2, Edit3, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Building2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import VersionControlCard from "@/components/ui/VersionControlCard";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/organizationSettings";
@@ -218,14 +219,6 @@ export default function CompanySettingsPage() {
           <h1><span className="premium-header-icon"><Building2 size={22} /></span> ข้อมูลบริษัท</h1>
           <p>จัดการข้อมูลนิติบุคคลที่ใช้บนเอกสารทั้งระบบ การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของใบที่ออกไปแล้ว</p>
         </div>
-        {/* action entity อยู่ขวาบนของเฮดเดอร์ (ตามกติกา Page Header) */}
-        <div className={styles.headerActions}>
-          {!loading && !error && data.published && !data.draft && (
-            <button type="button" className="btn btn-accent" onClick={startEdit} disabled={busy}>
-              <Edit3 size={16} /> แก้ไขข้อมูลบริษัท
-            </button>
-          )}
-        </div>
       </header>
 
       {loading ? <SkeletonRows rows={7} /> : error ? (
@@ -257,32 +250,18 @@ export default function CompanySettingsPage() {
             </div>
           </section>
 
-          {data.draft && (
-            <section className={`glass-panel ${styles.draftPanel}`} aria-label="การแก้ไขที่ยังไม่เผยแพร่">
-              <Edit3 size={20} aria-hidden="true" />
-              <div className={styles.draftCopy}>
-                <strong>มีการแก้ไขที่ยังไม่เผยแพร่</strong>
-                <p>บันทึกล่าสุด {formatDate(data.draft.updatedAt)} · ข้อมูลยังไม่มีผลจนกว่าจะยืนยันเผยแพร่</p>
-              </div>
-              <div className={styles.draftActions}>
-                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard" })} disabled={busy}>
-                  <Trash2 size={15} /> ยกเลิกการแก้ไข
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setConfirm({ action: "publish" })}
-                  disabled={busy || !hasPublishableChangeNote(data.draft)}
-                  title={!hasPublishableChangeNote(data.draft) ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}
-                >
-                  <Send size={15} /> เผยแพร่
-                </button>
-                <button type="button" className="btn btn-accent" onClick={() => openEdit()} disabled={busy}>
-                  <Edit3 size={15} /> แก้ต่อ
-                </button>
-              </div>
-            </section>
-          )}
+          <VersionControlCard
+            draft={data.draft}
+            published={data.published}
+            readyToPublish={!!data.draft && hasPublishableChangeNote(data.draft)}
+            publishDisabledReason="บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่"
+            busy={busy}
+            onCreateDraft={startEdit}
+            onEditDraft={() => openEdit()}
+            onPublish={() => setConfirm({ action: "publish" })}
+            onDiscard={() => setConfirm({ action: "discard" })}
+            title="ควบคุมข้อมูลบริษัท"
+          />
         </div>
       )}
 

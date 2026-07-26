@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Workspace from "@/components/ui/Workspace";
 import {
   AlertTriangle, ArrowDown, ArrowUp, Clock3, Copy, Edit3,
-  Eye, FilePlus2, GitBranch, Milestone, Plus, Save, Send, Trash2, Workflow,
+  Eye, GitBranch, Milestone, Plus, Trash2, Workflow,
 } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -12,6 +12,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import VersionControlCard from "@/components/ui/VersionControlCard";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import {
@@ -406,6 +407,20 @@ export default function WorkflowTemplatesPage() {
             </div>
           </section>
 
+          <VersionControlCard
+            draft={selected.draft}
+            published={selected.published}
+            dirty={draftDirty}
+            readyToPublish={!!selected.draft && !draftDirty && !!editor?.changeNote.trim() && !draftValidation?.errors.length}
+            publishDisabledReason={draftDirty ? "บันทึกฉบับร่างก่อนเผยแพร่" : !editor?.changeNote.trim() ? "ระบุหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : draftValidation?.errors[0]}
+            busy={busy}
+            onCreateDraft={createDraft}
+            onSaveDraft={selected.draft ? saveDraft : undefined}
+            onPublish={() => setConfirm({ action: "publish" })}
+            onDiscard={() => setConfirm({ action: "discard" })}
+            title={`ควบคุม ${workflowTemplateKeyLabel(selectedKey)}`}
+          />
+
           {selected.draft && editor ? (
             <section className={`glass-panel ${styles.editorPanel}`} aria-labelledby="draft-title">
               <header className={styles.panelHeader}>
@@ -414,10 +429,7 @@ export default function WorkflowTemplatesPage() {
                   <p>การแก้ไขยังไม่กระทบงานใหม่จนกว่าจะเผยแพร่ และไม่เปลี่ยน Timeline ของงานที่สร้างไปแล้ว</p>
                 </div>
                 <div className={styles.editorActions}>
-                  <button type="button" className="btn ghost" disabled={busy} onClick={() => setConfirm({ action: "discard" })}><Trash2 size={16} /> ยกเลิกร่าง</button>
                   <button type="button" className="btn ghost" disabled={busy} onClick={() => setPreviewDrawer(true)}><Eye size={16} /> Preview</button>
-                  <button type="button" className="btn ghost" title={draftDirty ? "บันทึกฉบับร่างก่อนเผยแพร่" : undefined} disabled={busy || draftDirty || !editor.changeNote.trim() || draftValidation?.errors.length} onClick={() => setConfirm({ action: "publish" })}><Send size={16} /> เผยแพร่</button>
-                  <button type="button" className="btn btn-primary" disabled={busy} onClick={saveDraft}><Save size={16} /> บันทึกฉบับร่าง</button>
                 </div>
               </header>
 
@@ -468,11 +480,7 @@ export default function WorkflowTemplatesPage() {
                 </>
               ) : <EmptyState icon={GitBranch} plain action={{ label: "เพิ่มขั้นตอนแรก", onClick: () => openStep(null) }}>ฉบับร่างยังไม่มีขั้นตอน</EmptyState>}
             </section>
-          ) : (
-            <section className={`glass-panel ${styles.noDraft}`}>
-              <FilePlus2 size={26} /><div><h2>ยังไม่มีฉบับร่าง</h2><p>สร้างฉบับร่างจาก Published version ปัจจุบันเพื่อเริ่มแก้ไข โดยงานที่มีอยู่จะไม่เปลี่ยนตาม</p></div><button type="button" className="btn btn-primary" disabled={busy} onClick={createDraft}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-            </section>
-          )}
+          ) : null}
 
           <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="history-title">
             <header className={styles.panelHeader}><div><h2 id="history-title">ประวัติเวอร์ชัน</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและเปิดดูย้อนหลังได้ที่นี่</p></div></header>

@@ -11,12 +11,17 @@ import {
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
-import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import {
+  DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { SALES_ORDER_CANCEL_REASONS, canHardDeleteSalesOrder, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
@@ -49,6 +54,7 @@ export default function SalesOrderDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const canEdit = useCan("salesplan:edit");
+  const canCreateFiling = useCan("sales:act");
   const role = useRole();
   const reviewer = ["admin", "ae_supervisor"].includes(role);
   const [order, setOrder] = useState(null);
@@ -63,12 +69,44 @@ export default function SalesOrderDetailPage() {
   const [rejectForm, setRejectForm] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [filingState, setFilingState] = useState({
+    loading: true,
+    filing: null,
+    eligible: false,
+    schemaReady: true,
+    warnings: [],
+    totalTax: 0,
+    error: "",
+  });
   useUnsavedChanges(dirty);
 
   const load = useCallback(async () => {
     setError("");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
+    const [res, filingRes] = await Promise.all([
+      fetch(`/api/sales-planning/sales-orders/${id}`),
+      fetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(id)}`),
+    ]);
     const data = await res.json().catch(() => ({}));
+    const filingData = await filingRes.json().catch(() => ({}));
+    setFilingState(filingRes.ok
+      ? {
+        loading: false,
+        filing: filingData.filing || null,
+        eligible: !!filingData.eligible,
+        schemaReady: filingData.schemaReady !== false,
+        warnings: filingData.warnings || [],
+        totalTax: Number(filingData.totalTax || filingData.filing?.amountToCollect || filingData.filing?.totalTax || 0),
+        error: "",
+      }
+      : {
+        loading: false,
+        filing: null,
+        eligible: false,
+        schemaReady: true,
+        warnings: [],
+        totalTax: 0,
+        error: filingData.error || "ตรวจสอบใบยื่นสรรพสามิตไม่สำเร็จ",
+      });
     if (!res.ok) {
       setError(data.error || "โหลด Sale Order ไม่สำเร็จ");
       setSaveState("error");
@@ -80,6 +118,35 @@ export default function SalesOrderDetailPage() {
     return true;
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  async function createFiling() {
+    setBusy("filing");
+    setError("");
+    setNotice("");
+    const res = await fetch("/api/tax/orders/from-sales-order", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ salesOrderId: id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBusy("");
+      setError(data.error || "สร้างใบยื่นสรรพสามิตไม่สำเร็จ");
+      return false;
+    }
+    setFilingState({
+      loading: false,
+      filing: data,
+      eligible: false,
+      schemaReady: true,
+      warnings: data.warnings || [],
+      totalTax: Number(data.amountToCollect || data.totalTax || 0),
+      error: "",
+    });
+    setBusy("");
+    setNotice("สร้างใบยื่นสรรพสามิตจาก Sale Order เรียบร้อยแล้ว");
+    return true;
+  }
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -285,7 +352,15 @@ export default function SalesOrderDetailPage() {
   ];
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
-    { id: "cancel", kind: "cancel", label: "ยกเลิก SO", visible: approved && reviewer, onClick: openCancel },
+    {
+      id: "cancel",
+      kind: "cancel",
+      label: "ยกเลิก SO",
+      visible: approved && reviewer,
+      disabled: !!filingState.filing,
+      disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined,
+      onClick: openCancel,
+    },
   ];
 
   return (
@@ -316,8 +391,15 @@ export default function SalesOrderDetailPage() {
           <p className={styles.statusDescription}>{status.description}</p>
         </SalesDetailOverview>
 
-        {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
-        {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
+        {error && (
+          <StatusNotice
+            tone="error"
+            action={errorActionUrl ? <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link> : null}
+          >
+            {error}
+          </StatusNotice>
+        )}
+        {notice && <StatusNotice tone="success">{notice}</StatusNotice>}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
 
         <ContextGrid>
@@ -386,24 +468,66 @@ export default function SalesOrderDetailPage() {
                 {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
               </dl>
             </DetailCard>
+
+            <RelatedDocumentCard
+              icon={FileCheck2}
+              title="การยื่นชำระสรรพสามิต"
+              meta={filingState.filing
+                ? `${filingState.filing.status || "draft"} · ${fmtMoney(filingState.filing.amountToCollect ?? filingState.filing.totalTax)}`
+                : filingState.loading
+                  ? "กำลังตรวจสอบเอกสารปลายทาง"
+                  : filingState.eligible
+                    ? `ยอดที่ต้องเรียกเก็บ ${fmtMoney(filingState.totalTax)}`
+                    : "ยังไม่มีใบยื่นที่เชื่อมกับ Sale Order นี้"}
+              actions={filingState.filing ? (
+                <Link href={`/tax/filings/${filingState.filing.id}`} className="btn ghost sm">
+                  <ExternalLink size={13} /> เปิดใบยื่น
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  disabled={
+                    filingState.loading
+                    || !filingState.schemaReady
+                    || !filingState.eligible
+                    || !canCreateFiling
+                    || busy === "filing"
+                  }
+                  onClick={createFiling}
+                >
+                  <FileCheck2 size={13} />
+                  {busy === "filing" ? "กำลังสร้าง…" : "สร้างใบยื่นชำระ"}
+                </button>
+              )}
+            >
+              {filingState.error
+                ? filingState.error
+                : !filingState.schemaReady
+                  ? "ระบบเชื่อมเอกสารยังไม่พร้อมใช้งาน"
+                  : filingState.filing
+                    ? "ใบยื่นนี้สร้างและดูแลโดยโมดูลภาษี รายการและยอดภาษีถูก snapshot จาก SO ตอนสร้าง"
+                    : order.status !== "approved"
+                      ? "สร้างได้หลัง Sale Order อนุมัติแล้ว"
+                      : !filingState.eligible
+                        ? "Sale Order นี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น"
+                        : filingState.warnings.length
+                          ? `${filingState.warnings.length} รายการควรตรวจทะเบียนสรรพสามิตเพิ่มเติม แต่ยังสร้างใบยื่นได้`
+                          : "พร้อมสร้างใบยื่นจากรายการสินค้าสรรพสามิตใน Sale Order"}
+            </RelatedDocumentCard>
           </>}
         >
           <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
-            <div className={styles.tableWrap}>
-              <table className={styles.linesTable}>
-                {/* คอลัมน์หน่วยแยกจากจำนวน (ไม่ต่อท้ายตัวเลข) — ช่องจำนวนเป็น tabular-nums
-                    ชิดขวา ต่อข้อความแล้วเลขจะเลิกตรงแนว · ลำดับตรงกับใบที่พิมพ์ */}
-                <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th>หน่วย</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
-                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<ReadableText className={styles.lineText} text={line.description} lines={3} empty="-" /></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td>{line.unit || "-"}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
-              </table>
-            </div>
-            <div className={styles.totals}>
-              <div><span>ยอดก่อนส่วนลด</span><strong>{fmtMoney(order.subtotal)}</strong></div>
-              <div><span>ส่วนลดท้ายใบ</span><strong>{fmtMoney(order.discountAmount)}</strong></div>
-              <div><span>VAT</span><strong>{fmtMoney(order.vatAmount)}</strong></div>
-              <div className={styles.grandTotal}><span>ยอดรวมทั้งสิ้น</span><strong>{fmtMoney(order.totalAmount)}</strong></div>
-              <div className={styles.actualTotal}><span>Actual ก่อน VAT</span><strong>{fmtMoney(order.actualAmount)}</strong></div>
-            </div>
+            <QuotationReadOnlyLineItems
+              lines={sortedLines}
+              summaryRows={[
+                { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
+                { id: "discount", label: "ส่วนลดท้ายใบ", value: Number(order.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : "-" },
+                { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
+              ]}
+              grandTotal={fmtMoney(order.totalAmount)}
+              highlightRows={[{ id: "actual", label: "Actual ก่อน VAT", value: fmtMoney(order.actualAmount), tone: "success" }]}
+            />
           </DetailCard>
         </DetailPageLayout>
       </div>
@@ -426,29 +550,19 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
-      {rejectForm && (
-        <Modal open onClose={() => setRejectForm(null)} title="ตีกลับให้ผู้จัดทำแก้ไข" size="sm" dismissible={!busy}>
-          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label className="form-group">
-              <span>เหตุผลที่ตีกลับ *</span>
-              <textarea
-                className="textarea-premium"
-                rows={4}
-                value={rejectForm.reason}
-                onChange={(event) => setRejectForm({ reason: event.target.value })}
-                placeholder="ระบุสิ่งที่ต้องแก้ไข"
-                autoFocus
-              />
-            </label>
-            <div className="action-bar" style={{ marginTop: 0 }}>
-              <button type="button" className="btn ghost" onClick={() => setRejectForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-danger" onClick={submitReject} disabled={!!busy || !rejectForm.reason.trim()}>
-                <Undo2 size={15} /> {busy === "reject" ? "กำลังตีกลับ…" : "ยืนยันตีกลับ"}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <ReasonDialog
+        open={!!rejectForm}
+        title="ตีกลับให้ผู้จัดทำแก้ไข"
+        label="เหตุผลที่ตีกลับ"
+        value={rejectForm?.reason || ""}
+        onChange={(reason) => setRejectForm({ reason })}
+        onClose={() => setRejectForm(null)}
+        onConfirm={submitReject}
+        confirmLabel="ยืนยันตีกลับ"
+        placeholder="ระบุสิ่งที่ต้องแก้ไข"
+        maxLength={500}
+        busy={busy === "reject"}
+      />
 
       {cancelForm && (
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>

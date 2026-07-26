@@ -4,8 +4,13 @@ import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle, PackageCheck, ExternalLink } from "lucide-react";
+import { FileText, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, PackageCheck, ExternalLink } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -232,11 +237,11 @@ export default function PoDetailPage() {
   const [linkProjectId, setLinkProjectId] = useState("");
   const [toast, setToast] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // ลบทั้งใบ — server เป็นคนตัดสินว่าลบได้ไหม (ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ = 409
   // พร้อมข้อความบอกว่าติดอะไร) หน้าเว็บแค่ถามยืนยันแล้วส่งต่อข้อความนั้นให้ผู้ใช้
   const deletePo = async () => {
-    if (!confirm(`ลบ PO ${po?.poNumber || ""}? รายการทั้งใบจะถูกลบและย้อนกลับไม่ได้`)) return;
     setDeleteBusy(true);
     try {
       await sahamitFetch(`/api/sahamit/po/${id}`, { method: "DELETE" });
@@ -410,30 +415,30 @@ export default function PoDetailPage() {
     }
   };
 
+  const poValueBeforeVat = (po?.lines || []).reduce((sum, line) => {
+    const price = Number(prodIdx.get(String(line.fgCode).trim().toLowerCase())?.price);
+    return sum + (Number.isFinite(price) && price > 0 ? Number(line.qty || 0) * price : 0);
+  }, 0);
+  const deliveredLines = (po?.lines || []).filter((line) => line.status === "delivered").length;
+  const poStatus = po?.status || (po?.lines?.length && deliveredLines === po.lines.length ? "delivered" : deliveredLines ? "partial" : "open");
+  const poStatusColor = poStatus === "delivered"
+    ? "var(--green)"
+    : poStatus === "cancelled"
+      ? "var(--red)"
+      : poStatus === "partial"
+        ? "var(--amber)"
+        : "var(--blue)";
+
   return (
     <Workspace
       icon={<FileText size={22} />}
       title={po ? `PO ${po.poNumber}` : "PO"}
       subtitle="รายละเอียดใบสั่งซื้อ (ลูกค้า AR-109)"
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}
-      // แก้/ลบ ทั้งใบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
-      // ฟอร์มแก้เป็นตัวเดียวกับตอนสร้าง; ลบมี guard ฝั่ง server (PO ที่ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ จะตีกลับพร้อมบอกว่าติดอะไร)
-      backActions={po && canEdit ? (
-        <>
-          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => router.push(`/sahamit/po/${id}/edit`)} aria-label="แก้ไข PO" title="แก้ไข PO">
-            <Pencil size={16} aria-hidden="true" />
-          </button>
-          <button type="button" className="btn-icon danger" onClick={deletePo} disabled={deleteBusy} aria-label="ลบ PO" title={deleteBusy ? "กำลังลบ..." : "ลบ PO"}>
-            <Trash2 size={16} aria-hidden="true" />
-          </button>
-        </>
-      ) : null}
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
       {error && (
-        <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        <StatusNotice tone="error">{error}</StatusNotice>
       )}
 
       {loading ? (
@@ -444,68 +449,72 @@ export default function PoDetailPage() {
           <div style={{ fontWeight: 600, fontSize: 15 }}>ไม่พบ PO นี้</div>
         </div>
       ) : (
+        <DetailPageLayout
+          asideLabel="สรุปและจัดการ Purchase Order"
+          aside={(
+            <>
+              <DocumentSummaryCard
+                title="สรุป Purchase Order"
+                total={poValueBeforeVat > 0 ? `฿${(poValueBeforeVat * 1.07).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
+                rows={[
+                  { id: "lines", label: "จำนวนรายการ", value: `${poLineCount(po)} รายการ` },
+                  { id: "qty", label: "ยอดรวม", value: `${nf(poTotalQty(po))} ชิ้น` },
+                  { id: "destination", label: "สถานที่ส่ง", value: destinationLabel(po.destination) || "-" },
+                  { id: "delivery", label: "ส่งครบแล้ว", value: `${deliveredLines}/${po.lines?.length || 0}` },
+                ]}
+                status={PO_STATUS_LABEL[poStatus] || poStatus}
+                statusColor={poStatusColor}
+              />
+              <DocumentControlCard
+                status={PO_STATUS_LABEL[poStatus] || poStatus}
+                statusColor={poStatusColor}
+                statusDescription="การจัดการข้อมูลระดับ PO"
+                primaryAction={canEdit ? {
+                  id: "save", label: "บันทึกข้อมูลหัว PO", kind: "save", icon: Save,
+                  onClick: saveHeader,
+                } : null}
+                secondaryActions={[
+                  {
+                    id: "edit", label: "เปิดฟอร์มแก้ไข PO", kind: "edit", icon: Pencil,
+                    href: `/sahamit/po/${id}/edit`, visible: canEdit,
+                  },
+                ]}
+                dangerActions={[
+                  {
+                    id: "delete", label: deleteBusy ? "กำลังลบ..." : "ลบ PO",
+                    kind: "delete", icon: Trash2, onClick: () => setDeleteOpen(true), visible: canEdit,
+                  },
+                ]}
+                busy={busy || deleteBusy}
+              />
+              <RelatedDocumentCard
+                title="โครงการและงานขาย"
+                meta="เชื่อม PO ไปยัง PM Project และท่อ QT → SO"
+                actions={(
+                  <div className="flex flex-col gap-2">
+                    {po.projectId ? (
+                      <Link className="btn ghost sm" href={`/sa/projects/${po.projectId}`}><ExternalLink size={13} /> เปิด PM Project</Link>
+                    ) : canCreateProject ? (
+                      <>
+                        <button type="button" className="btn ghost sm" onClick={openLinkProject} disabled={!po.lines?.length}><PackageCheck size={13} /> เลือกโครงการเดิม</button>
+                        <button type="button" className="btn ghost sm" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}><PackageCheck size={13} /> สร้างโครงการใหม่</button>
+                      </>
+                    ) : null}
+                    {canSettle ? (
+                      <button type="button" className="btn ghost sm" onClick={openSettleModal} disabled={!po.lines?.length || !po.projectId} title={!po.projectId ? "ต้องสร้างหรือเชื่อมโครงการ PM ก่อน" : undefined}>
+                        <PackageCheck size={13} /> {po.salesDealId ? "เชื่อมบรรทัดที่เหลือ" : "ยืนยันดีล + ออกใบเสนอราคา"}
+                      </button>
+                    ) : null}
+                    {po.salesDealId ? <Link className="btn ghost sm" href={`/sa/deals/${po.salesDealId}`}><ExternalLink size={13} /> เปิดดีลขาย</Link> : null}
+                  </div>
+                )}
+              >
+                Action ของโครงการและดีลแยกจากการแก้ข้อมูล PO เพื่อไม่ปะปนวงจรเอกสาร
+              </RelatedDocumentCard>
+            </>
+          )}
+        >
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {/* Summary */}
-          <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-            <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
-            <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
-            {(() => {
-              // มูลค่า = จำนวน × ราคาผลิต (costPrice) จาก master — อ่านอย่างเดียว
-              const sub = (po.lines || []).reduce((s, l) => {
-                const p = Number(prodIdx.get(String(l.fgCode).trim().toLowerCase())?.price);
-                return s + (Number.isFinite(p) && p > 0 ? Number(l.qty || 0) * p : 0);
-              }, 0);
-              if (sub <= 0) return null;
-              const b = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              return (
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>มูลค่ารวม (รวม VAT)</div>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>฿{b(sub * 1.07)}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>ก่อน VAT ฿{b(sub)} · VAT 7% ฿{b(sub * 0.07)}</div>
-                </div>
-              );
-            })()}
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              {/* ท่อขายเต็ม (มติ §7): 1) สร้างโครงการ PM → 2) ยืนยันดีล + ออก QT
-                  → จากนั้น Won/SO ไปทำในสายขายมาตรฐาน (เซ็น → ส่ง → accept → SO) */}
-              {po.projectId ? (
-                <button type="button" className="btn" onClick={() => router.push(`/sa/projects/${po.projectId}`)}>
-                  <ExternalLink size={14} /> เปิด PM Project
-                </button>
-              ) : canCreateProject ? (
-                <>
-                  <button type="button" className="btn" onClick={openLinkProject} disabled={!po.lines?.length} title="เชื่อม PO เข้าโครงการสหมิตรที่มีอยู่แล้ว">
-                    <PackageCheck size={14} /> 1. เลือกโครงการเดิม
-                  </button>
-                  <button type="button" className="btn btn-primary" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
-                    <PackageCheck size={14} /> หรือสร้างโครงการใหม่
-                  </button>
-                </>
-              ) : null}
-
-              {canSettle && (
-                <button
-                  type="button"
-                  className={po.projectId ? "btn btn-primary" : "btn ghost"}
-                  onClick={openSettleModal}
-                  disabled={!po.lines?.length}
-                  title={po.projectId ? undefined : "ต้องสร้างโครงการ PM ก่อน"}
-                >
-                  {/* ป้ายต้องตรงกับสิ่งที่โมดัลทำจริง = เชื่อมบรรทัดที่ยังไม่ได้เชื่อม
-                      เดิมเขียน "จัดการดีล / ใบเสนอราคา" แต่ดู/แก้ใบเดิมไม่ได้ พอ PO
-                      เชื่อมครบแล้วกดยืนยันจะขึ้น "ไม่มีบรรทัดที่จะเชื่อม" เหมือน error */}
-                  <PackageCheck size={14} /> {po.salesDealId ? "เชื่อมบรรทัดที่เหลือ" : "2. ยืนยันดีล + ออกใบเสนอราคา"}
-                </button>
-              )}
-              {po.salesDealId && (
-                <a className="btn ghost" href={`/sa/deals/${po.salesDealId}`}>
-                  <ExternalLink size={14} /> เปิดดีลขาย
-                </a>
-              )}
-
-            </div>
-          </div>
-
           {/* Header editor — ย่อ/ขยายได้ แบบหัว ISO */}
           <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}>
             <button
@@ -557,7 +566,6 @@ export default function PoDetailPage() {
                   ? <textarea className="premium-input" rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
                   : <div className="readable-field"><ReadableText text={h.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div>}
               </div>
-              {canEdit && <button className="btn btn-primary" onClick={saveHeader} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก PO"}</button>}
             </div>
             {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
             </div>
@@ -641,7 +649,17 @@ export default function PoDetailPage() {
             </table>
           </div>
         </div>
+        </DetailPageLayout>
       )}
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => !deleteBusy && setDeleteOpen(false)}
+        onConfirm={deletePo}
+        title="ลบ Purchase Order"
+        message={`ลบ PO ${po?.poNumber || ""}? รายการทั้งใบจะถูกลบและย้อนกลับไม่ได้`}
+        confirmLabel={deleteBusy ? "กำลังลบ..." : "ลบ PO"}
+        danger
+      />
       <ConfirmModal
         open={projectConfirmOpen}
         onClose={() => !projectBusy && setProjectConfirmOpen(false)}

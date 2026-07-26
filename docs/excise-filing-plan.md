@@ -1,6 +1,8 @@
 # แผน implement: ยื่นชำระภาษีสรรพสามิตจริง ผูกกับ SO (Excise Filing v2)
 
-> สถานะ: **แผนรอเคาะเริ่มโค้ด** (2026-07-22, มติหลัก 4 ข้อ lock แล้ว)
+> สถานะ: **Implementation เสร็จใน draft PR
+> [#738](https://github.com/SittipongSS/ss_system/pull/738)**
+> (2026-07-26; migration, two entry points, workflow ใหม่ และ CI ครบ)
 > เปลี่ยนการยื่นชำระภาษีสรรพสามิต (Track 2) จาก "สร้างมือเลือกทะเบียนทีละตัว" →
 > "ยื่นตาม SO ที่อนุมัติแล้ว" เพราะ SO คือใบที่แบก Actual = สินค้าสรรพสามิตในนั้นคือของที่ต้องยื่น
 
@@ -45,11 +47,23 @@ resolver ตัวนี้ใช้ร่วมทั้ง 2 entry point:
 
 | PR | เนื้อหา | migration |
 |---|---|---|
-| **1** | mig เพิ่มคอลัมน์ (salesOrderId/amountToCollect/collected*/docsDelivered* + salesOrderLineId) + `workflow.js` เพิ่ม state draft/delivered + resolver `lib/excise/soFiling.js` + เทสต์ resolver | ✅ |
-| **2** | สร้างใบยื่นจาก SO: ปุ่มบนหน้า SO + endpoint create-from-SO (derive lines, snapshot tax, กัน 1 SO 1 ใบ) | — |
-| **3** | หน้า filings สร้างใหม่แบบเลือกลูกค้า→SO (แทนโมดัลเลือกทะเบียนเดิม) + ตัวกรอง SO ค้างยื่น | — |
-| **4** | ขั้น ② ยอดเก็บ: สรุปยอด + ยืนยันเก็บเงิน (ต่อยอด ReceiveDialog) + ขั้น ⑤ delivered (SA ส่งเอกสาร + แนบหลักฐาน) | — |
-| **5** | เก็บงานเสริม: แจ้งเตือน LG ตอนส่งต่อ, รายงาน SO ค้างยื่น, ธงเตือน FG ยังไม่ขึ้นทะเบียนบนใบยื่น | — |
+| **1** | ✅ migration `0160` + `workflow.js` + resolver + 5 resolver tests | ✅ |
+| **2** | ✅ หน้า SO + Tax-owned create/read endpoint + snapshot + unique 1 SO 1 ใบ | — |
+| **3** | ✅ หน้า filings เลือกลูกค้า→SO ที่ approved, อยู่ใน scope และยังไม่มีใบยื่น | — |
+| **4** | ✅ `amountToCollect`, confirmed collection audit และ `complete → delivered` พร้อม confirm dialog | — |
+| **5** | ⚠️ dashboard/work queue + filter/report status + advisory warning เสร็จ; Google Chat Legal deferred เพราะยังไม่มี Legal space | — |
+
+### Implementation checkpoint — 2026-07-26
+
+- หน้า SO อ่าน downstream filing และเรียก API ฝั่ง Tax เท่านั้น ไม่เขียน `orders` โดยตรง
+- หน้า `/tax/filings` และหน้า SO ใช้ resolver/create endpoint เดียวกัน
+- candidate selector กรอง approved SO ตาม edit scope, ตัด SO ที่มี filing แล้ว และตัด SO
+  ที่ไม่มี taxable excise lines
+- อัตราภาษีและจำนวนถูก snapshot ลง `order_items`; ทะเบียนเป็น advisory เท่านั้น
+- หน้า filing ลิงก์กลับ SO และแสดง warning จาก `registrationId` ที่ว่าง
+- server บล็อกการยกเลิก/reverse Won ของ SO เมื่อมี downstream filing
+- workflow และ dashboard รู้จัก `draft`/`delivered`; การส่งเอกสารใช้ confirm dialog
+- 764 tests, migration checker, targeted lint และ production build ผ่าน
 
 ## 4. จุดเสี่ยง / ต้องระวัง
 

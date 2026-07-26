@@ -1,15 +1,19 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ClipboardCheck } from "lucide-react";
-import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
+import { ClipboardCheck, ExternalLink, Send, Undo2 } from "lucide-react";
+import { ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
-import { useRole, useCan } from "@/lib/roleContext";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
+import { useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
-import Timeline from "@/components/excise/Timeline";
 import ConfirmDialog from "@/components/excise/ConfirmDialog";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
@@ -18,30 +22,18 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { statusMeta } from "@/lib/excise/workflow";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
-
-function regSteps(r) {
-  const created = { label: "สร้างทะเบียน (ร่าง)", at: r.createdAt, by: r.assignee, state: "done" };
-  if (r.status === "draft") {
-    return [created, { label: "ยื่นขึ้นทะเบียน", state: "current", note: "แนบเอกสารให้ครบก่อนยื่น" }];
-  }
-  const submitted = { label: "ยื่นขึ้นทะเบียน", at: r.createdAt, by: r.assignee, state: "done" };
-  if (r.status === "rejected") {
-    return [submitted, { label: "ตีกลับให้แก้ไข", state: "rejected", note: r.rejectionReason }];
-  }
-  const approved = {
-    label: "อนุมัติขึ้นทะเบียน",
-    at: r.approvedAt, by: r.approvedByName,
-    state: r.status === "approved" ? "done" : "current",
-  };
-  return [submitted, approved];
-}
+const TONE_COLOR = {
+  neutral: "var(--text-3)", warning: "var(--amber)", danger: "var(--red)",
+  info: "var(--blue)", success: "var(--green)",
+};
 
 export default function RegistrationDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const role = useRole();
   const canEdit = useCan("products:edit");
   const canApprove = useCan("legal:approve");
 
@@ -131,6 +123,13 @@ export default function RegistrationDetailPage() {
       {s && <StatusBadge status={s.status} />}
     </div>
   );
+  const status = s ? statusMeta(s.status) : statusMeta();
+  const workflowIndex = s?.status === "approved" ? 2 : s?.status === "pending_legal" ? 1 : 0;
+  const workflowSteps = workflowStepsFromIndex([
+    { id: "draft", label: "จัดเตรียมทะเบียน", hint: s?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "แนบเอกสารให้ครบ" },
+    { id: "review", label: "ฝ่ายกฎหมายตรวจ", hint: "ตรวจข้อมูลและเอกสารประกอบ" },
+    { id: "approved", label: "ขึ้นทะเบียนแล้ว", hint: "มีเลขที่อนุมัติพร้อมใช้งาน" },
+  ], workflowIndex);
 
   return (
     <Workspace
@@ -143,7 +142,6 @@ export default function RegistrationDetailPage() {
       backActions={s ? (
         <>
           {canEdit && s.status !== "approved" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={() => setFormOpen(true)} />}
-          {canEdit && s.status === "approved" && <ActionButton kind="reedit" iconOnly title="ขอแก้ไข" onClick={() => setReviseOpen(true)} />}
           {/* ลบ: ยึด s.canDelete จาก server (อำนาจราย record — scope 'own' เทียบ
               user.id ที่ client ไม่มี) ไม่ใช่ products:edit ซึ่งกว้างกว่าจริง */}
           {s.canDelete && s.status === "draft" && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
@@ -152,7 +150,85 @@ export default function RegistrationDetailPage() {
       loading={loading && !s}
     >
       {s && (
-        <div className="flex flex-col gap-5" style={{ maxWidth: 880 }}>
+        <DetailPageLayout
+          asideLabel="สรุปและจัดการทะเบียนสรรพสามิต"
+          aside={(
+            <>
+              <DocumentSummaryCard
+                title="สรุปทะเบียน"
+                total={s.isExciseTaxable === false ? "ยกเว้นภาษี" : fmtMoney(taxPerUnit(s))}
+                rows={[
+                  { id: "fg", label: "รหัสสินค้า", value: s.fgCode || "-" },
+                  { id: "customer", label: "ลูกค้า", value: s.customerName || "-" },
+                  { id: "approval", label: "เลขที่อนุมัติ", value: s.approvalNumber || "-" },
+                  { id: "documents", label: "เอกสารบังคับ", value: req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : "กำลังตรวจ" },
+                ]}
+                status={status.label}
+                statusColor={TONE_COLOR[status.tone]}
+              />
+              <DocumentControlCard
+                status={status.label}
+                statusColor={TONE_COLOR[status.tone]}
+                statusDescription="การดำเนินการระดับทะเบียน"
+                workflowSteps={workflowSteps}
+                notices={req ? (
+                  <DocumentReadinessList
+                    items={req.ready
+                      ? [{ id: "ready", label: "เอกสารที่จำเป็นครบแล้ว", ready: true }]
+                      : (req.missing || []).map((item) => ({
+                        id: `${item.entity}-${item.docType}`,
+                        label: item.label,
+                        detail: "ต้องแนบหรือเติมข้อมูลก่อนยื่น",
+                        ready: false,
+                      }))}
+                  />
+                ) : null}
+                primaryAction={canApprove && s.status === "pending_legal"
+                  ? { id: "approve", label: "อนุมัติขึ้นทะเบียน", kind: "approve", onClick: () => setApproveOpen(true) }
+                  : canEdit && s.status === "draft"
+                    ? {
+                      id: "submit", label: "ยื่นขึ้นทะเบียน", kind: "submit", icon: Send,
+                      onClick: () => submitDraft().catch((error) => alert(error.message)),
+                      disabled: !req?.ready,
+                      disabledReason: !req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : undefined,
+                    }
+                    : canEdit && s.status === "rejected"
+                      ? {
+                        id: "resubmit", label: "ส่งกลับให้ตรวจ", kind: "submit", icon: Send,
+                        onClick: () => resubmit().catch((error) => alert(error.message)),
+                      }
+                      : null}
+                secondaryActions={[
+                  {
+                    id: "revise", label: "ขอแก้ไขทะเบียน", kind: "revise", icon: Undo2,
+                    onClick: () => setReviseOpen(true),
+                    visible: canEdit && s.status === "approved",
+                  },
+                ]}
+                dangerActions={[
+                  {
+                    id: "reject", label: "ตีกลับให้แก้ไข", kind: "reject",
+                    onClick: () => setRejectOpen(true),
+                    visible: canApprove && s.status === "pending_legal",
+                  },
+                ]}
+              />
+              <RelatedDocumentCard
+                title="ข้อมูลต้นทาง"
+                meta="สินค้าและลูกค้าที่ใช้ขึ้นทะเบียน"
+                actions={(
+                  <div className="flex flex-col gap-2">
+                    {s.productId ? <Link href={`/database/products/${s.productId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิดสินค้า</Link> : null}
+                    {s.customerId ? <Link href={`/database/customers/${s.customerId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิดลูกค้า</Link> : null}
+                  </div>
+                )}
+              >
+                ข้อมูลทะเบียนเชื่อมกับฐานข้อมูลกลางโดยไม่คัดลอกเอกสารลูกค้าซ้ำ
+              </RelatedDocumentCard>
+            </>
+          )}
+        >
+          <div className="flex flex-col gap-5">
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="grid grid-cols-2 gap-3">
               <Field label="ลูกค้า" full>{s.customerName}</Field>
@@ -161,11 +237,6 @@ export default function RegistrationDetailPage() {
               <Field label="เลขที่อนุมัติ">{s.approvalNumber || "-"}</Field>
               <Field label="ผู้ยื่น">{s.assignee || "-"}</Field>
             </div>
-          </div>
-
-          <div className="glass-panel" style={{ padding: 16 }}>
-            <div className="drawer-section-title" style={{ marginBottom: 10 }}>สถานะการดำเนินการ</div>
-            <Timeline steps={regSteps(s)} />
           </div>
 
           {s.status === "draft" && req && (
@@ -217,28 +288,8 @@ export default function RegistrationDetailPage() {
             </div>
           )}
 
-          {/* Actions — เฉพาะปุ่ม workflow; แก้ไข/ลบ ย้ายไปแถวปุ่มย้อนกลับด้านบนแล้ว */}
-          {((canApprove && s.status === "pending_legal") || (canEdit && ["draft", "rejected"].includes(s.status))) && <ActionBar>
-            {canApprove && s.status === "pending_legal" && (
-              <>
-                <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
-                <ActionButton kind="approve" onClick={() => setApproveOpen(true)} />
-              </>
-            )}
-            {canEdit && s.status === "draft" && (
-              <ActionButton
-                kind="submit"
-                label="ยื่นขึ้นทะเบียน"
-                disabled={!req?.ready}
-                title={!req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : ""}
-                onClick={() => submitDraft().catch((e) => alert(e.message))}
-              />
-            )}
-            {canEdit && s.status === "rejected" && (
-              <ActionButton kind="submit" label="ส่งกลับให้ตรวจ" onClick={() => resubmit().catch((e) => alert(e.message))} />
-            )}
-          </ActionBar>}
-        </div>
+          </div>
+        </DetailPageLayout>
       )}
 
       <RegistrationFormModal

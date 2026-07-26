@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Edit3, Expand, Eye, FileBadge2, FilePlus2, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Expand, Eye, FileBadge2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -11,6 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import VersionControlCard from "@/components/ui/VersionControlCard";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageDocumentStandards } from "@/lib/permissions";
@@ -286,25 +287,23 @@ export default function DocumentStandardsPage() {
               </div>
             </section>
 
-          {draft && (
-            <section className={`glass-panel ${base.draftPanel}`} aria-label="ฉบับร่างที่กำลังแก้ไข">
-              <Edit3 size={20} aria-hidden="true" />
-              <div className={base.draftCopy}><strong>Version {draft.versionNumber} กำลังเป็นฉบับร่าง</strong><p>บันทึกล่าสุด {formatDateTime(draft.updatedAt)} · ยังไม่มีผลจนกว่าจะยืนยันเผยแพร่</p></div>
-              <div className={base.draftActions}>
-                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard" })} disabled={busy}><Trash2 size={15} /> ยกเลิกร่าง</button>
-                <button type="button" className="btn" onClick={() => setConfirm({ action: "publish" })} disabled={busy || !hasDocumentStandardChangeNote(draft)} title={!hasDocumentStandardChangeNote(draft) ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}><Send size={15} /> เผยแพร่</button>
-                <button type="button" className="btn btn-accent" onClick={() => openEdit()} disabled={busy}><Edit3 size={15} /> แก้ไขฉบับร่าง</button>
-              </div>
-            </section>
-          )}
+          <VersionControlCard
+            draft={draft}
+            published={published}
+            readyToPublish={!!draft && hasDocumentStandardChangeNote(draft)}
+            publishDisabledReason="บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่"
+            busy={busy}
+            onCreateDraft={createDraft}
+            onEditDraft={() => openEdit()}
+            onPublish={() => setConfirm({ action: "publish" })}
+            onDiscard={() => setConfirm({ action: "discard" })}
+            title={`ควบคุม ${DOCUMENT_STANDARD_LABELS[selectedKey]}`}
+          />
 
           <section className={`glass-panel ${base.historyPanel}`} aria-labelledby="version-history-title">
             {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
             <header className={base.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและดูย้อนหลังได้ที่นี่</p></div>
-              {!draft && (
-                <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-              )}
             </header>
             <div className={`premium-table-wrapper ${base.historyTable}`}>
               <table className="premium-table"><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>

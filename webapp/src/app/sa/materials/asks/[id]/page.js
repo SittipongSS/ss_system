@@ -13,6 +13,11 @@ import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentSummaryCard,
+} from "@/components/ui/DocumentControlPanel";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -21,6 +26,7 @@ import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
   ASK_ITEM_STATUS_LABELS, ASK_OPEN_STATUSES, ASK_STATUS_LABELS, askProgress,
 } from "@/lib/materialAsks";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -138,49 +144,109 @@ export default function MaterialAskDetailPage() {
     if (ok) setConfirm(null);
   };
 
+  const workflowIndex = ask.status === "draft"
+    ? 0
+    : ask.status === "pending"
+      ? 1
+      : ask.status === "acknowledged"
+        ? 2
+        : ask.status === "answered"
+          ? 3
+          : 4;
+  const workflowSteps = workflowStepsFromIndex([
+    { id: "draft", label: "จัดทำเคส", hint: "ระบุวัสดุและชั้นจำนวน" },
+    { id: "pending", label: "รอรับเรื่อง", hint: `ส่งถึงฝ่าย ${ask.dept}` },
+    { id: "acknowledged", label: "กำลังหาราคา", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" },
+    { id: "answered", label: "ตอบครบ", hint: "บันทึกราคาเข้าทะเบียนวัสดุ" },
+    { id: "closed", label: "ปิดเคส", hint: "งานขอราคาสิ้นสุด" },
+  ], workflowIndex, ask.status === "cancelled");
+  const primaryAction = ask._mine && ask.status === "draft"
+    ? {
+      id: "submit",
+      label: "ส่งเคส",
+      kind: "submit",
+      icon: Send,
+      onClick: () => setConfirm({ kind: "submit" }),
+    }
+    : owner && ask.status === "pending"
+      ? {
+        id: "acknowledge",
+        label: "รับเรื่อง",
+        kind: "approve",
+        icon: Check,
+        onClick: () => call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว"),
+      }
+      : canClose
+        ? {
+          id: "close",
+          label: "ปิดเคส",
+          kind: "approve",
+          icon: CheckCheck,
+          onClick: () => setConfirm({ kind: "close" }),
+        }
+        : null;
+
   return (
     <Workspace hideHeader back={back}>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><ClipboardList size={22} /></span>{" "}
-            {ask.docNo || "เคสขอราคา (ร่าง)"}
-          </h1>
-          <p>
-            {ask.customerName || "ราคากลาง"} · ถึงฝ่าย {ask.dept} ·
-            {" "}ผู้ขอ {ask.requestedByName || "—"} · สร้าง {fmtDate(ask.createdAt)}
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {ask._mine && ask.status === "draft" && (
-            <>
-              <button type="button" className="btn-icon action-outline btn-danger" aria-label="ลบเคสร่าง" onClick={() => setConfirm({ kind: "delete" })} disabled={saving}>
-                <Trash2 size={14} />
-              </button>
-              <button type="button" className="btn btn-accent" onClick={() => setConfirm({ kind: "submit" })} disabled={saving}>
-                <Send size={14} /> ส่งเคส
-              </button>
-            </>
-          )}
-          {owner && ask.status === "pending" && (
-            <button type="button" className="btn btn-accent" onClick={() => call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว")} disabled={saving}>
-              <Check size={14} /> รับเรื่อง
-            </button>
-          )}
-          {canClose && (
-            <button type="button" className="btn btn-accent" onClick={() => setConfirm({ kind: "close" })} disabled={saving}>
-              <CheckCheck size={14} /> ปิดเคส
-            </button>
-          )}
-          {ask._mine && !["closed", "cancelled", "answered"].includes(ask.status) && (
-            <button type="button" className="btn" onClick={() => setCancelReason(" ")} disabled={saving}>
-              <Ban size={14} /> ยกเลิก
-            </button>
-          )}
-        </div>
-      </div>
+      <SalesDetailOverview
+        eyebrow="MATERIAL PRICE REQUEST"
+        title={ask.docNo || "เคสขอราคา (ร่าง)"}
+        description={`${ask.customerName || "ราคากลาง"} · ถึงฝ่าย ${ask.dept} · ผู้ขอ ${ask.requestedByName || "—"}`}
+        badges={<SalesStateBadge label={ASK_STATUS_LABELS[ask.status] || ask.status} color={STATUS_TONE[ask.status]} />}
+        facts={[
+          { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(ask.createdAt) },
+          { key: "department", label: "ฝ่ายผู้ตอบ", value: ask.dept },
+          { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
+          { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
+        ]}
+      />
 
-      <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
+      <DetailPageLayout
+        asideLabel="สรุปและจัดการเคสขอราคาวัสดุ"
+        aside={(
+          <>
+            <DocumentSummaryCard
+              title="สรุปเคสขอราคา"
+              rows={[
+                { id: "department", label: "ฝ่ายผู้ตอบ", value: ask.dept },
+                { id: "items", label: "รายการทั้งหมด", value: `${progress.total} รายการ` },
+                { id: "answered", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
+                { id: "pending", label: "รอคำตอบ", value: `${Math.max(progress.total - progress.done, 0)} รายการ` },
+              ]}
+              status={ASK_STATUS_LABELS[ask.status] || ask.status}
+              statusColor={STATUS_TONE[ask.status]}
+            />
+            <DocumentControlCard
+              status={ASK_STATUS_LABELS[ask.status] || ask.status}
+              statusColor={STATUS_TONE[ask.status]}
+              statusDescription="การดำเนินการระดับเคส"
+              workflowSteps={workflowSteps}
+              primaryAction={primaryAction}
+              dangerActions={[
+                {
+                  id: "delete",
+                  label: "ลบเคสร่าง",
+                  kind: "delete",
+                  icon: Trash2,
+                  onClick: () => setConfirm({ kind: "delete" }),
+                  visible: ask._mine && ask.status === "draft",
+                },
+                {
+                  id: "cancel",
+                  label: "ยกเลิกเคส",
+                  kind: "cancel",
+                  icon: Ban,
+                  onClick: () => setCancelReason(" "),
+                  visible: ask._mine && !["closed", "cancelled", "answered"].includes(ask.status),
+                },
+              ]}
+              busy={saving}
+            />
+          </>
+        )}
+      >
+        <div>
+          <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span className="status-pill" style={{ color: STATUS_TONE[ask.status], borderColor: "currentColor" }}>
             {ASK_STATUS_LABELS[ask.status] || ask.status}
@@ -267,6 +333,8 @@ export default function MaterialAskDetailPage() {
           )}
         </div>
       ))}
+        </div>
+      </DetailPageLayout>
 
       {/* ตอบราคา — ชั้นจำนวนตั้งต้นมาจากที่ผู้ขอระบุ แต่เพิ่ม/ลดได้ */}
       <Modal

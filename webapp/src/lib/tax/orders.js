@@ -20,8 +20,11 @@ export const ORDER_SELECT =
 // survive the deploy window where code lands before the schema — we attempt the
 // write WITH the new columns and, only on a missing-column error, retry without
 // them. See memory [[deploy-workflow]] (schema-cache mismatch → 500s).
-const ADDITIVE_ITEM_COLS = ['salePrice', 'exciseRatePerUnit', 'localTaxRatePerUnit'];
-const ADDITIVE_ORDER_COLS = ['taxPaidDate', 'taxInvoiceNumber'];
+const ADDITIVE_ITEM_COLS = ['salePrice', 'exciseRatePerUnit', 'localTaxRatePerUnit', 'salesOrderLineId'];
+const ADDITIVE_ORDER_COLS = [
+  'taxPaidDate', 'taxInvoiceNumber', 'amountToCollect',
+  'collectedConfirmedAt', 'collectedConfirmedBy', 'docsDeliveredAt', 'docsDeliveredBy',
+];
 
 const isMissingColumnError = (error, cols) =>
   !!error && (error.code === 'PGRST204' || error.code === '42703' ||

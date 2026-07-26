@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Edit3, Eye, FilePlus2, Send, Trash2, WalletCards } from "lucide-react";
+import { AlertTriangle, Edit3, Eye, FilePlus2, WalletCards } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -10,6 +10,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import VersionControlCard from "@/components/ui/VersionControlCard";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
@@ -362,12 +363,18 @@ export default function CommercialPresetsPage() {
                 ))}
               </div>
             </section>
-            {drawerRow.status === "draft" && (
-              <div className={styles.transitionActions}>
-                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard", preset: drawerPreset, draft: drawerRow })} disabled={busy}><Trash2 size={15} /> ยกเลิกร่าง</button>
-                <button type="button" className="btn" onClick={() => setConfirm({ action: "publish", preset: drawerPreset, draft: drawerRow })} disabled={busy || !String(drawerRow.changeNote || "").trim()} title={!String(drawerRow.changeNote || "").trim() ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}><Send size={15} /> เผยแพร่</button>
-              </div>
-            )}
+            <VersionControlCard
+              draft={drawerPreset.draft}
+              published={drawerPreset.published}
+              readyToPublish={!!drawerPreset.draft && !!String(drawerPreset.draft.changeNote || "").trim()}
+              publishDisabledReason="บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่"
+              busy={busy}
+              onCreateDraft={!drawerPreset.draft ? () => createDraft(drawerPreset) : undefined}
+              onEditDraft={drawerPreset.draft ? () => openEdit(drawerPreset, drawerPreset.draft) : undefined}
+              onPublish={drawerPreset.draft ? () => setConfirm({ action: "publish", preset: drawerPreset, draft: drawerPreset.draft }) : undefined}
+              onDiscard={drawerPreset.draft ? () => setConfirm({ action: "discard", preset: drawerPreset, draft: drawerPreset.draft }) : undefined}
+              title={`ควบคุม “${drawerPreset.title || drawerRow.title || "-"}”`}
+            />
           </div>
         ) : null}
       </RecordDrawer>

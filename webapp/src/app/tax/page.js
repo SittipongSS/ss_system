@@ -53,10 +53,12 @@ export default function TaxDashboard() {
   };
   
   const o = {
+    draft: orders.filter((x) => x.status === "draft"),
     pending: orders.filter((x) => x.status === "pending"),
     received: orders.filter((x) => x.status === "received"),
     filing: orders.filter((x) => x.status === "filing"),
     complete: orders.filter((x) => x.status === "complete"),
+    delivered: orders.filter((x) => x.status === "delivered"),
   };
 
   const getCountAndTax = (list) => {
@@ -83,10 +85,14 @@ export default function TaxDashboard() {
       queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${x.customerName || "-"} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", onClick: () => goReg("draft") }));
     regs.filter((x) => x.status === "rejected").forEach((x) =>
       queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${x.customerName || "-"} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", onClick: () => goReg("rejected") }));
+    orders.filter((x) => x.status === "draft").forEach((x) =>
+      queue.push({ id: `od-${x.id}`, status: "draft", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — ตรวจยอดก่อนส่งเก็บเงิน`, cta: "ตรวจใบยื่น", onClick: () => goFil("draft") }));
     orders.filter((x) => x.status === "pending").forEach((x) =>
       queue.push({ id: `o-${x.id}`, status: "pending", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: itemsLine(x), cta: "รับเงิน", onClick: () => goFil("pending") }));
     orders.filter((x) => x.status === "rejected").forEach((x) =>
       queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "แก้ไข", onClick: () => goFil("rejected") }));
+    orders.filter((x) => x.status === "complete").forEach((x) =>
+      queue.push({ id: `oc-${x.id}`, status: "complete", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — รอส่งหลักฐานให้ลูกค้า`, cta: "ยืนยันส่งเอกสาร", onClick: () => goFil("complete") }));
   }
   if (canLG) {
     regs.filter((x) => x.status === "pending_legal").forEach((x) =>
@@ -161,6 +167,14 @@ export default function TaxDashboard() {
               <OrdersComposedChart orders={orders} />
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+              <KpiCard
+                label="เตรียมใบยื่น"
+                value={getCountAndTax(o.draft).count}
+                taxValue={getCountAndTax(o.draft).tax}
+                tone="neutral"
+                icon={ReceiptText}
+                onClick={() => goFil("draft")}
+              />
               <KpiCard 
                 label="รอรับเงิน" 
                 value={getCountAndTax(o.pending).count} 
@@ -189,6 +203,13 @@ export default function TaxDashboard() {
                 taxValue={getCountAndTax(o.complete).tax}
                 tone="success" 
                 onClick={() => goFil("complete")} 
+              />
+              <KpiCard
+                label="ส่งเอกสารแล้ว"
+                value={getCountAndTax(o.delivered).count}
+                taxValue={getCountAndTax(o.delivered).tax}
+                tone="success"
+                onClick={() => goFil("delivered")}
               />
             </div>
           </div>
