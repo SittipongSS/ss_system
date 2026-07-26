@@ -464,7 +464,7 @@ export default function LeadsPage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ลูกค้า/ผู้ติดต่อ {sortArrow("name")}</span></th>

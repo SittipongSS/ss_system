@@ -186,7 +186,7 @@ export default function SalesHistoryMonthlyPage() {
         </p>
 
         <div className="premium-glass-table table-responsive">
-          <TableScroll family="editable"><table className="w-full text-sm" style={{ minWidth: 1180 }}>
+          <TableScroll surface="embedded" family="editable"><table className="w-full text-sm" style={{ minWidth: 1180 }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 130 }}>ระดับ</th>

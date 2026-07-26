@@ -1152,7 +1152,7 @@ export default function ProjectDetailPage() {
           </div>
           {shownPersonalTasks.length ? (
             <div className="premium-glass-table table-responsive">
-              <TableScroll><table className="premium-table">
+              <TableScroll surface="embedded"><table className="premium-table">
                 <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
                 <tbody>{shownPersonalTasks.map((task) => {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);
@@ -1245,7 +1245,7 @@ export default function ProjectDetailPage() {
             <EmptyState icon={Filter}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</EmptyState>
           ) : (
             <div className="premium-glass-table table-responsive">
-              <TableScroll><table className="premium-table timeline-task-table">
+              <TableScroll surface="embedded"><table className="premium-table timeline-task-table">
                 <colgroup>
                   <col style={{ width: 32 }} />
                   <col style={{ width: 52 }} />

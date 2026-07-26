@@ -31,6 +31,10 @@
      ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed หรือ z-index ≥ 1000
      ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter */
   --panel-float: #fffdf9;
+  /* พื้นการ์ดแบบทึบ 100% — สีเดียวกับ --panel ที่ผสมกับ --bg แล้ว ใช้กับสิ่งที่ตรึงไว้
+     แล้วมีเนื้อหาเลื่อนผ่านข้างใต้ (คอลัมน์แรกที่ freeze) ซึ่งใช้ --panel โปร่ง 6% ไม่ได้
+     เพราะตัวเลขคอลัมน์อื่นจะทะลุขึ้นมาซ้อน */
+  --panel-solid: #fefefd;
   --border: rgba(49, 55, 69, 0.13);
   --border-strong: rgba(49, 55, 69, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(41, 35, 27, 0.07);
@@ -171,6 +175,7 @@
   --panel-2: #232b44;
   --panel-3: #2b3550;
   --panel-float: #1a213a;
+  --panel-solid: #1b2237;
   --border: rgba(225, 230, 241, 0.12);
   --border-strong: rgba(225, 230, 241, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
@@ -218,60 +223,6 @@
   --gantt-line: rgba(255, 255, 255, 0.05);
   --gantt-line-weekend: rgba(255, 255, 255, 0.09);
   --gantt-line-week: rgba(255, 255, 255, 0.16);
-}
-
-/* ── ค่าผู้ท้าชิงจากต้นแบบ Balanced Warm Workspace ─────────────────────────────
-   ที่มา: docs/system-modernization/visual-directions/system-ui-balanced-warm.html
-   ใช้ที่เดียวคือหน้า /settings/design-preview/compare เพื่อวางเทียบกับค่าจริง "ทีละข้อ"
-   (ครอบตัวอย่างฝั่งขวาด้วยคลาสเดียว → เปลี่ยนเฉพาะโทเคนของข้อนั้น ตัวแปรอื่นคงเดิม)
-
-   ⚠️ ชั่วคราวโดยเจตนา — เมื่อผู้ใช้ตัดสินครบทุกข้อแล้ว ค่าที่ "เอา" ให้ย้ายขึ้นไปที่ :root
-   / [data-theme="dark"] แล้ว **ลบบล็อกนี้ทั้งก้อน** ห้ามอ้างคลาสพวกนี้จากหน้าอื่นเด็ดขาด */
-.candidate-accent { --accent: #c9794d; --accent-soft: #f7e8df; }
-.candidate-ink { --text: #171d29; --text-2: #596170; --text-3: #818896; }
-.candidate-navy { --navy: #243b63; }
-.candidate-status {
-  --green: #3f8a68; --green-soft: #e2f1e9;
-  --amber: #b7782d; --amber-soft: #f8eddc;
-  --red: #b75555; --red-soft: #f7e4e2;
-  --blue: #527aa8; --blue-soft: #e3ebf5;
-  --violet: #7a6aa7; --violet-soft: #eee9f6;
-}
-.candidate-surface {
-  --panel: rgba(255, 255, 255, .94);
-  --panel-2: #f7f4ee;
-  --panel-3: #eee9e0;
-  --border: rgba(49, 55, 69, .13);
-  --border-strong: rgba(49, 55, 69, .24);
-}
-.candidate-shape { --radius-lg: 13px; --ctl-h: 36px; }
-.candidate-shadow {
-  --shadow-sm: 0 2px 7px rgba(41, 35, 27, .05);
-  --shadow-md: 0 12px 30px rgba(41, 35, 27, .09);
-  --shadow-lg: 0 22px 60px rgba(41, 35, 27, .15);
-}
-
-[data-theme="dark"] .candidate-accent { --accent: #d38a61; --accent-soft: rgba(211, 138, 97, .16); }
-[data-theme="dark"] .candidate-ink { --text: #f4f6fb; --text-2: #bdc5d4; --text-3: #8e99ad; }
-[data-theme="dark"] .candidate-navy { --navy: #20365d; }
-[data-theme="dark"] .candidate-status {
-  --green-soft: rgba(63, 138, 104, .18);
-  --amber-soft: rgba(183, 120, 45, .18);
-  --red-soft: rgba(183, 85, 85, .18);
-  --blue-soft: rgba(82, 122, 168, .18);
-  --violet-soft: rgba(122, 106, 167, .18);
-}
-[data-theme="dark"] .candidate-surface {
-  --panel: rgba(27, 34, 56, .96);
-  --panel-2: #232b44;
-  --panel-3: #2b3550;
-  --border: rgba(225, 230, 241, .12);
-  --border-strong: rgba(225, 230, 241, .24);
-}
-[data-theme="dark"] .candidate-shadow {
-  --shadow-sm: 0 2px 7px rgba(0, 0, 0, .18);
-  --shadow-md: 0 12px 30px rgba(0, 0, 0, .24);
-  --shadow-lg: 0 22px 60px rgba(0, 0, 0, .34);
 }
 
 /* Keep minimal: an unlayered `* { margin:0; padding:0 }` would override every
@@ -519,13 +470,16 @@ button, select, input, textarea {
 .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { margin-right: auto; }
 .form-action-inline { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .form-action-inline .btn { justify-content: center; }
+/* แถบปุ่มท้ายโมดัลลอยทับเนื้อหาที่เลื่อนอยู่ข้างใต้ → ต้องใช้พื้นทึบ 100%
+   (--panel เป็นพื้นกระจกโปร่ง 6% ที่ต้องมาคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
+   แล้วช่องกรอกที่เลื่อนผ่านจะทะลุขึ้นมาปนกับปุ่ม ผู้ใช้ส่งภาพมา 2026-07-27) */
 .drawer .form-action-bar {
   position: sticky;
   bottom: -24px;
   z-index: 5;
   margin-bottom: -24px;
   padding-bottom: 18px;
-  background: var(--panel);
+  background: var(--panel-float);
 }
 .form-action-bar.page {
   position: sticky;
@@ -534,7 +488,7 @@ button, select, input, textarea {
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--panel);
+  background: var(--panel-float);
   box-shadow: var(--shadow-lg);
 }
 
@@ -1761,7 +1715,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--panel);
+  background: var(--panel-solid);
   width: 220px;
   min-width: 180px;
   max-width: 220px;
@@ -1789,7 +1743,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky;
   right: 0;
   z-index: 1;
-  background: var(--panel);
+  background: var(--panel-solid);
   min-width: 120px;
   border-left: 1px solid var(--border);
 }
@@ -3327,7 +3281,7 @@ button.empty-state { width: 100%; font: inherit; }
   position: sticky;
   left: 0;
   z-index: 4;                 /* above body cells, below the sticky header (z5) */
-  background: var(--panel);
+  background: var(--panel-solid);
   border-right: 1px solid var(--border);
 }
 .premium-table.sticky-col1 th:first-child {

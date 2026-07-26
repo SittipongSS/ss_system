@@ -75,7 +75,7 @@ export default function CarryPanel({ row, label, closedCount }) {
       </p>
       <CarryChart rows={rows} />
       <div className="premium-glass-table table-responsive" style={{ marginTop: 14 }}>
-        <TableScroll><table className="w-full text-sm">
+        <TableScroll surface="embedded"><table className="w-full text-sm">
           <thead>
             <tr>
               <th>เดือน</th>

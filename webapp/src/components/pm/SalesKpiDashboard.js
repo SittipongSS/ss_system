@@ -148,7 +148,7 @@ export default function SalesKpiDashboard() {
               </div>
 
               <div className="premium-glass-table table-responsive">
-                <TableScroll><table className="premium-table">
+                <TableScroll surface="embedded"><table className="premium-table">
                   <thead><tr><th>ทีม</th><th className="num">คน</th><th className="num">งาน</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">คะแนน</th></tr></thead>
                   <tbody>
                     {teams.map((t) => (
@@ -189,7 +189,7 @@ export default function SalesKpiDashboard() {
             )}
 
             <div className="premium-glass-table table-responsive">
-              <TableScroll><table className="premium-table">
+              <TableScroll surface="embedded"><table className="premium-table">
                 <thead>
                   <tr>
                     <th>ผู้รับผิดชอบ</th><th>ทีม</th><th className="num">งาน</th><th className="num">กำลังทำ</th><th className="num">เลยกำหนด</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">ความยาก</th><th className="num">คะแนน</th>

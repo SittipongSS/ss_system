@@ -336,7 +336,7 @@ export default function DocumentStandardsPage() {
             <header className={base.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและดูย้อนหลังได้ที่นี่</p></div>
             </header>
-            <TableScroll className={`${base.historyTable}`}>
+            <TableScroll surface="embedded" className={`${base.historyTable}`}>
               <table className="premium-table"><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
                 {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} empty="-" /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
               </tbody></table>

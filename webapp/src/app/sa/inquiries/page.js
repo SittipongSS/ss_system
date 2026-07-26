@@ -107,7 +107,7 @@ export default function InquiriesPage() {
           ))}</div>}
         >
           <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="w-full text-sm">
+          <TableScroll surface="embedded"><table className="w-full text-sm">
             <thead>
               <tr>
                 <th>เลขที่</th><th>เรื่อง</th><th>ดีล / ลูกค้า</th><th>ผู้ถาม</th><th>ผู้รับเรื่อง</th><th>วันที่ตอบ</th><th>สถานะ</th>

@@ -430,7 +430,7 @@ export default function ProductRegistry() {
         </div>
       ) : (
         <div className="glass-panel">
-          <TableScroll className="border-none" family="list">
+          <TableScroll surface="embedded" className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>

@@ -840,7 +840,7 @@ export default function DealOverviewPage() {
           <DetailCard icon={ClipboardList} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={<a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}>
             {(data.dealTasks || []).length ? (
               <div className="premium-glass-table table-responsive">
-                <TableScroll><table className="premium-table">
+                <TableScroll surface="embedded"><table className="premium-table">
                   <thead>
                     <tr>
                       <th>งาน</th>
@@ -1074,7 +1074,7 @@ export default function DealOverviewPage() {
               </div>
               {(data.quotations || []).length ? (
                 <div className="premium-glass-table table-responsive">
-                  <TableScroll><table className="w-full text-sm">
+                  <TableScroll surface="embedded"><table className="w-full text-sm">
                     <thead>
                       <tr><th>เลขที่</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr>
                     </thead>
@@ -1102,7 +1102,7 @@ export default function DealOverviewPage() {
                 <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
               </div>
               <div className="premium-glass-table table-responsive">
-                <TableScroll><table className="w-full text-sm">
+                <TableScroll surface="embedded"><table className="w-full text-sm">
                   <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th></tr></thead>
                   <tbody>{data.salesOrders.map((order) => (
                     <tr key={order.id} className="premium-row">
@@ -1124,7 +1124,7 @@ export default function DealOverviewPage() {
               </div>
               {(data.documents || []).length ? (
                 <div className="premium-glass-table table-responsive">
-                  <TableScroll><table className="w-full text-sm">
+                  <TableScroll surface="embedded"><table className="w-full text-sm">
                     <thead>
                       <tr><th>เอกสาร</th><th>สถานะ</th><th>กำหนด</th></tr>
                     </thead>

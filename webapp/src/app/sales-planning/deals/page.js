@@ -571,7 +571,7 @@ export default function SalesPlanningPipelinePage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
@@ -773,7 +773,7 @@ export default function SalesPlanningPipelinePage() {
             )}
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={quoteLoading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เลขที่</th>
@@ -892,7 +892,7 @@ export default function SalesPlanningPipelinePage() {
           )}
 
           <div className="premium-glass-table table-responsive" aria-busy={docLoading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เอกสาร</th>

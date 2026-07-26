@@ -159,7 +159,7 @@ export default function ProjectsIndexPage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>โครงการ</th>

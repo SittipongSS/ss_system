@@ -14,10 +14,17 @@ import { useState } from "react";
 import {
   Palette, Plus, Search, Inbox, Trash2, Check, Info,
 } from "lucide-react";
+import {
+  Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import { ChartCanvas, ChartLegend, ChartTooltip } from "@/components/ui/ChartCard";
+import {
+  CHART_AXIS_TICK, CHART_COLORS, CHART_GRID_PROPS, CHART_LINE_TYPE, CHART_STROKE_WIDTH,
+} from "@/lib/chartTheme";
 import Workspace, { WorkspaceSection, MetricStrip, Metric } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
-import { TableShell, TableEmpty } from "@/components/ui/Table";
+import { TableScroll, TableShell, TableEmpty } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Tag from "@/components/ui/Tag";
 import CountBadge from "@/components/ui/CountBadge";
@@ -65,6 +72,13 @@ const ROWS = [
 ];
 
 const money = (value) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const CHART_DATA = [
+  { month: "เม.ย.", actual: 3.8, target: 4.2 },
+  { month: "พ.ค.", actual: 4.4, target: 4.6 },
+  { month: "มิ.ย.", actual: 5.1, target: 5.0 },
+  { month: "ก.ค.", actual: 4.82, target: 6.5 },
+];
 
 function Swatches({ items }) {
   return (
@@ -290,6 +304,86 @@ export default function DesignPreviewPage() {
             ตัวเลขและจำนวนเงินชิดขวาเสมอ · หัวตารางใช้ <code>--panel-2</code> ·
             ตารางที่ไม่ใช่รายการให้ระบุ <code>family=&quot;editable&quot;</code> หรือ <code>family=&quot;matrix&quot;</code>
           </p>
+
+          <p className={styles.note}>
+            ตารางเดี่ยวที่ไม่มีการ์ดครอบ ใช้ <code>TableScroll</code> เปล่า ๆ ได้เลย —
+            มันเป็นพื้นข้อมูลให้ในตัว (<code>surface=&quot;auto&quot;</code>) ถ้าอยู่ในการ์ดอยู่แล้วให้ส่ง
+            {" "}<code>surface=&quot;embedded&quot;</code> ไม่งั้นจะได้กรอบซ้อนกรอบ
+          </p>
+          <TableScroll>
+            <table>
+              <thead>
+                <tr><th>เลขที่</th><th>ลูกค้า</th><th className={styles.numeric}>มูลค่า</th></tr>
+              </thead>
+              <tbody>
+                {ROWS.slice(0, 2).map((row) => (
+                  <tr key={row.code}>
+                    <td className={styles.mono}>{row.code}</td>
+                    <td>{row.customer}</td>
+                    <td className={styles.numeric}>{money(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="กราฟ"
+          subtitle="ครอบด้วย ChartCanvas เสมอ · สีและเส้นมาจาก lib/chartTheme.js"
+        >
+          <div className={styles.chartBox}>
+            <ChartCanvas>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={CHART_DATA}>
+                  <CartesianGrid {...CHART_GRID_PROPS} />
+                  <XAxis dataKey="month" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip valueFormatter={(value) => `฿${value}M`} />} />
+                  <Bar dataKey="target" name="เป้าหมาย" fill={CHART_COLORS.target} radius={[4, 4, 0, 0]} maxBarSize={38} />
+                  <Line
+                    dataKey="actual"
+                    name="ยอดจริง"
+                    type={CHART_LINE_TYPE}
+                    stroke={CHART_COLORS.actual}
+                    strokeWidth={CHART_STROKE_WIDTH.primary}
+                    dot={{ r: 4, strokeWidth: 2 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </ChartCanvas>
+          </div>
+          <ChartLegend
+            items={[
+              { key: "actual", label: "ยอดจริง", color: CHART_COLORS.actual },
+              { key: "target", label: "เป้าหมาย", color: CHART_COLORS.target },
+            ]}
+          />
+          <p className={styles.note}>
+            ⛔ ห้ามใส่ <code>max-width</code> ให้ <code>.recharts-wrapper</code> — Recharts วางกราฟไว้ใน
+            กล่องวัดขนาดที่กว้าง 0 ทำให้ <code>100%</code> คิดออกมาเป็น 0 แล้วกราฟหายทั้งอัน
+            เหลือแต่คำอธิบายสี (เคยหลุด prod มาแล้ว)
+          </p>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="แถบปุ่มท้ายฟอร์ม"
+          subtitle="ลอยติดขอบล่างขณะเลื่อน — ต้องทึบ 100% ไม่ให้ช่องกรอกทะลุขึ้นมา"
+        >
+          <div className={styles.scrollDemo}>
+            <div className={styles.formGrid}>
+              {["ผู้ประสานงาน (AC)", "ผู้ตรวจสอบ", "ทีมที่รับผิดชอบ", "วันเริ่มโครงการ", "วันส่งมอบ", "หมายเหตุ"].map((label) => (
+                <label key={label} className={styles.field}>
+                  {label}
+                  <input className="premium-input" defaultValue="— ไม่ระบุ —" />
+                </label>
+              ))}
+            </div>
+            <div className="form-action-bar">
+              <Button variant="quiet">ยกเลิก</Button>
+              <Button tone="primary">สร้างโครงการ</Button>
+            </div>
+          </div>
         </WorkspaceSection>
 
         <WorkspaceSection title="ตัวเลขสรุป" subtitle="MetricStrip สำหรับแถบ KPI · KpiCard สำหรับการ์ดเดี่ยว">

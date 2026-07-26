@@ -360,7 +360,7 @@ export default function CustomerDetails() {
                 </div>
               ) : (
                 <div className="glass-panel">
-                  <TableScroll className="border-none">
+                  <TableScroll surface="embedded" className="border-none">
                     <table className="premium-table">
                       <thead>
                         <tr>
@@ -458,7 +458,7 @@ export default function CustomerDetails() {
                 </div>
               ) : (
                 <div className="glass-panel">
-                  <TableScroll className="border-none">
+                  <TableScroll surface="embedded" className="border-none">
                     <table className="premium-table">
                       <thead>
                         <tr>

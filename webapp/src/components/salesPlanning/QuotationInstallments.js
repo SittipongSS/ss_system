@@ -104,7 +104,7 @@ export default function QuotationInstallments({
           </span>
         </div>
         <div className="premium-glass-table table-responsive">
-          <TableScroll family="editable"><table className="w-full text-sm">
+          <TableScroll surface="embedded" family="editable"><table className="w-full text-sm">
             <thead>
               <tr>
                 <th style={{ width: 40 }}>งวด</th>
