@@ -261,11 +261,17 @@ export async function resolveCostingDealContext(supabase, user, dealId, fallback
       },
     };
   }
-  const { data: deal } = await supabase
+  // ⚠️ เลือกเฉพาะคอลัมน์ที่ใช้จริง และ **ต้องมีอยู่จริง** — ของเดิมมี `status` ที่
+  // ตาราง sales_deals ไม่มี (มันชื่อ `stage`) PostgREST จึงตอบ error, data = null
+  // แล้วโค้ดที่อ่านแต่ data ก็แปลว่า "ไม่พบดีล" → เปิดใบผูกดีลไม่ได้เลยสักใบ
+  // โดยที่ข้อความไม่บอกอะไรเลยว่าเป็นปัญหา schema
+  const { data: deal, error } = await supabase
     .from('sales_deals')
-    .select('id, code, title, customerId, customerName, projectId, team, ownerId, status')
+    .select('id, code, customerId, customerName, projectId, team, ownerId')
     .eq('id', dealId)
     .maybeSingle();
+  // แยก "อ่านไม่สำเร็จ" ออกจาก "ไม่มีดีลนี้" เสมอ — ปัญหาคนละเรื่อง คนละวิธีแก้
+  if (error) return { error: `อ่านข้อมูลดีลไม่สำเร็จ: ${error.message}`, status: 500 };
   if (!deal) return { error: 'ไม่พบดีล' };
   if (!isSuperuser(user?.role) && !inSalesEditScope(user, deal)) {
     return { error: 'ไม่มีสิทธิ์เปิดใบขอราคาในนามดีลนี้', status: 403 };
