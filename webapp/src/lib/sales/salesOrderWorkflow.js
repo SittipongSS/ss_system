@@ -17,12 +17,13 @@ export function isSalesOrderSubmitter(order, userId) {
     && order?.submittedBy === userId;
 }
 
-export function canWithdrawSalesOrderSubmission(
-  order,
-  { userId = '', reviewer = false } = {},
-) {
+// ดึงกลับ = **ของผู้ยื่นเท่านั้น** (มติ 2026-07-26) — ผู้รีวิวที่อยากส่งเอกสารกลับใช้
+// "ตีกลับ" ซึ่งเก็บเหตุผลเป็นคอลัมน์ แสดงบนใบ และแจ้ง chat ให้ทีมขาย ส่วนการดึงกลับ
+// เก็บเหตุผลไว้ใน metadata แล้วไม่มีใครแสดง = ส่งเอกสารกลับแบบเงียบเมื่อผู้รีวิวใช้
+// ไม่เกิดทางตัน: ผู้รีวิวยังตีกลับได้เสมอ แม้ผู้ยื่นไม่อยู่แล้ว
+export function canWithdrawSalesOrderSubmission(order, { userId = '' } = {}) {
   return order?.status === 'pending_approval'
-    && (reviewer || isSalesOrderSubmitter(order, userId));
+    && isSalesOrderSubmitter(order, userId);
 }
 
 export function canEditSalesOrderContent(

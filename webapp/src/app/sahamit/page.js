@@ -122,8 +122,8 @@ export default function SahamitOverview() {
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
             <KpiCard label={`FC ตามแผน (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.fcTotal)} tone="info" icon={LineChart} hint={latestRound ? `ล่าสุดรอบ #${latestRound}` : "ยังไม่มีรอบ"} onClick={() => router.push("/sahamit/forecast")} />
             <KpiCard label={`PO สั่งจริง (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.poTotal)} tone="accent" icon={FileText} onClick={() => router.push("/sahamit/po")} />
-            <KpiCard label="ครอบคลุม (PO ÷ FC)" value={`${kpi.coveragePct}%`} tone={kpi.coveragePct >= 90 ? "success" : "warning"} />
-            <KpiCard label="จุดที่ต้องตาม" value={kpi.alertCount} tone={kpi.alertCount ? "danger" : "success"} hint="รอ PO + PO ไม่ครบ + นอกแผน" onClick={() => router.push("/sahamit/reconcile")} />
+            <KpiCard label="ครอบคลุม (PO ÷ FC)" value={`${kpi.coveragePct}%`} tone={kpi.coveragePct >= 90 ? "success" : "warning"} icon={Target} />
+            <KpiCard label="จุดที่ต้องตาม" value={kpi.alertCount} tone={kpi.alertCount ? "danger" : "success"} icon={AlertCircle} hint="รอ PO + PO ไม่ครบ + นอกแผน" onClick={() => router.push("/sahamit/reconcile")} />
           </div>
           {/* Status badges */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>

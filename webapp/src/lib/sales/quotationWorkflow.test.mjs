@@ -16,18 +16,20 @@ const pending = {
   approvalRequestedBy: 'USR-PROPOSER',
 };
 
-test('QT submission may be withdrawn by its proposer or approver only', () => {
+test('QT withdrawal belongs to the proposer alone — approvers use rejection', () => {
   assert.equal(isQuotationSubmitter(pending, 'USR-PROPOSER'), true);
   assert.equal(isQuotationSubmitter(pending, 'USR-OTHER'), false);
   assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-PROPOSER' }), true);
-  assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-APPROVER', approver: true }), true);
+  // ผู้อนุมัติดึงกลับไม่ได้แล้ว (มติ 2026-07-26) — ส่งเอกสารกลับต้องผ่าน "ตีกลับ" ที่ทิ้งเหตุผลไว้
+  assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-APPROVER', approver: true }), false);
+  assert.equal(canRejectQuotationSubmission(pending, { approver: true }), true);
   assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-OTHER' }), false);
 });
 
 test('QT withdrawal is unavailable before submission and after approval', () => {
   for (const approvalStatus of ['not_submitted', 'approved', 'not_required']) {
     assert.equal(
-      canWithdrawQuotationSubmission({ ...pending, approvalStatus }, { userId: 'USR-PROPOSER', approver: true }),
+      canWithdrawQuotationSubmission({ ...pending, approvalStatus }, { userId: 'USR-PROPOSER' }),
       false,
     );
   }
@@ -76,7 +78,7 @@ test('grandfather QT (not_required) is revisable but never editable in place', (
 
   // แก้ทับฉบับเดิมยังห้าม และดึงกลับก็ไม่เกี่ยว (ไม่เคยยื่น)
   assert.equal(canEditQuotationContent(grandfather, access), false);
-  assert.equal(canWithdrawQuotationSubmission(grandfather, { userId: 'USR-PROPOSER', approver: true }), false);
+  assert.equal(canWithdrawQuotationSubmission(grandfather, { userId: 'USR-PROPOSER' }), false);
 });
 
 // ตีกลับ (mig 0164) — คู่ตรงข้ามของดึงกลับ: ต่างกันที่ "ใครทำ" และ "ทิ้งร่องรอยไหม"

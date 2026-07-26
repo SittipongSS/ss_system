@@ -16,14 +16,15 @@ export function isQuotationSubmitter(quotation, userId) {
     && quotation?.approvalRequestedBy === userId;
 }
 
-export function canWithdrawQuotationSubmission(
-  quotation,
-  { userId = '', approver = false } = {},
-) {
+// ดึงกลับ = **ของผู้ยื่นเท่านั้น** (มติ 2026-07-26) — ผู้อนุมัติที่อยากส่งเอกสารกลับใช้
+// "ตีกลับ" ซึ่งเก็บเหตุผลลงคอลัมน์จริง แสดงบนใบ และแจ้งเตือน ส่วนการดึงกลับไม่ทิ้งร่องรอย
+// บนหน้าจอเลย จึงกลายเป็นช่องส่งเอกสารกลับแบบเงียบเมื่อผู้อนุมัติใช้
+// ไม่เกิดทางตัน: ผู้อนุมัติยังตีกลับได้เสมอ แม้ผู้ยื่นไม่อยู่แล้ว
+export function canWithdrawQuotationSubmission(quotation, { userId = '' } = {}) {
   return Boolean(quotation)
     && quotation.approvalStatus === 'pending'
     && EDITABLE_QUOTATION_STATUSES.has(quotation.status)
-    && (approver || isQuotationSubmitter(quotation, userId));
+    && isQuotationSubmitter(quotation, userId);
 }
 
 // ตีกลับ = ผู้อนุมัติส่งใบกลับให้ผู้จัดทำแก้ (mig 0164) — คู่ตรงข้ามของดึงกลับที่เป็น

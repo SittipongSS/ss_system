@@ -37,6 +37,7 @@ import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePri
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import {
   canRejectQuotationSubmission,
+  canWithdrawQuotationSubmission,
   isRevisableQuotationApprovalStatus,
   quotationRejectionNotice,
 } from "@/lib/sales/quotationWorkflow";
@@ -132,8 +133,8 @@ export default function QuotationEditorPage() {
   const awaitingApproval = !!quote && quote.approvalStatus === "pending";
   // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก
   const needsApproval = needsSubmit || awaitingApproval;
-  const canWithdrawSubmission = awaitingApproval
-    && (quote?.approvalRequestedBy === quote?.meId || !!quote?.canApprove);
+  // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
+  const canWithdrawSubmission = canWithdrawQuotationSubmission(quote, { userId: quote?.meId });
   // ตีกลับ = ผู้อนุมัติส่งใบกลับพร้อมเหตุผลที่ผู้จัดทำเห็น (mig 0164) — คู่ตรงข้ามของ
   // ดึงกลับซึ่งเป็นการกระทำของผู้ยื่นเอง
   const canRejectSubmission = canRejectQuotationSubmission(quote, { approver: !!quote?.canApprove });
@@ -925,7 +926,7 @@ export default function QuotationEditorPage() {
         open={!!workflowForm}
         title="ดึงกลับใบเสนอราคา"
         description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็นสถานะยังไม่ยื่นอนุมัติ`}
-        detail="ผู้ยื่นหรือผู้อนุมัติดึงเอกสารกลับได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
+        detail="ผู้ยื่นดึงเอกสารของตัวเองกลับได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
         label="เหตุผลที่ดึงกลับ"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm({ reason })}
