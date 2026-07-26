@@ -217,12 +217,11 @@ export default function AppLayout({ children }) {
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
-        // ทะเบียนวัสดุ (mig 0143 + 0157) — cap เดียวกับขอราคาผลิต
-        // (เห็นได้ทั้งฝ่ายขาย/RD/PC/ผู้บริหาร) แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/sa/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p === '/sa/materials' },
-        // เคสขอราคาวัสดุ (mig 0158) — แยกเมนูเพราะเป็นคิวงานประจำวันของ RD/PC
-        // (ทะเบียนเป็นข้อมูลหลักที่เปิดดูเป็นครั้งคราว คนละจังหวะการใช้)
-        { href: '/sa/materials/asks', name: 'เคสขอราคา', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials/asks') },
+        // วัสดุ (mig 0143 + 0157 + 0158) — ทะเบียน + เคสขอราคา อยู่หน้าเดียวกันเป็นแท็บ
+        // (มติผู้ใช้ 2026-07-26: เคยแยกสองเมนู แต่เป็นของชิ้นเดียวกันคนละจังหวะ และชื่อ
+        // "เคสขอราคา" อ่านแล้วชนกับ "ขอราคาผลิต" ที่เป็นคนละเอกสาร)
+        // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
+        { href: '/sa/materials', name: 'วัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },

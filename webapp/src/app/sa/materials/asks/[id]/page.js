@@ -77,7 +77,10 @@ export default function MaterialAskDetailPage() {
     finally { setSaving(false); }
   }, [id, load]);
 
-  const back = { href: "/sa/materials/asks", label: "กลับรายการเคส" };
+  // รายการเคสเป็นแท็บของหน้าวัสดุแล้ว — กลับไปแท็บที่คนคนนี้ใช้งานจริง
+  // (ผู้ตอบกลับเข้าคิวฝ่ายตน, ผู้ขอกลับไปดูเคสของตัวเอง)
+  const backTab = ask?._mine === false ? "queue" : "mine";
+  const back = { href: `/sa/materials?tab=${backTab}`, label: "กลับรายการเคส" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !ask) {
     return (
@@ -125,7 +128,7 @@ export default function MaterialAskDetailPage() {
   const runConfirm = async () => {
     if (confirm.kind === "delete") {
       const ok = await call("", { method: "DELETE" }, "ลบเคสร่างแล้ว");
-      if (ok) window.location.href = "/sa/materials/asks";
+      if (ok) window.location.href = "/sa/materials?tab=mine";
       return;
     }
     const labels = { submit: "ส่งเคสแล้ว", close: "ปิดเคสแล้ว" };
