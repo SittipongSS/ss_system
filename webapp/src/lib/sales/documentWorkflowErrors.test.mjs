@@ -21,7 +21,7 @@ test('document workflow database errors become stable Thai HTTP responses', () =
     documentWorkflowError(new Error('quotation_withdraw_forbidden')),
     {
       code: 'quotation_withdraw_forbidden',
-      message: 'ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ',
+      message: 'ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง',
       status: 403,
     },
   );
