@@ -24,6 +24,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
+import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
@@ -51,7 +52,9 @@ export default function FilingDetailPage() {
   const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
   const isExempt = (o?.totalTax || 0) === 0;
   const unregisteredItemCount = (o?.items || []).filter((item) => !item.registrationId).length;
-  const customer = customers.find((c) => c.id === o?.customerId) || {};
+  // ลิสต์ customers ข้างบนมีไว้ให้ picker ของ OrderFormModal — ลูกค้าของใบยื่นใบนี้
+  // ต้องอ่านรายตัว ไม่ใช่ find จากลิสต์ที่กรองทีม (ดู lib/master/useCustomerRecord.js)
+  const customer = useCustomerRecord(o?.customerId, customers.find((c) => c.id === o?.customerId));
 
   const [formOpen, setFormOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);

@@ -24,6 +24,7 @@ const ADDITIVE_ITEM_COLS = ['salePrice', 'exciseRatePerUnit', 'localTaxRatePerUn
 const ADDITIVE_ORDER_COLS = [
   'taxPaidDate', 'taxInvoiceNumber', 'amountToCollect',
   'collectedConfirmedAt', 'collectedConfirmedBy', 'docsDeliveredAt', 'docsDeliveredBy',
+  'customerAddress',
 ];
 
 const isMissingColumnError = (error, cols) =>
@@ -37,6 +38,17 @@ export async function insertOrderItems(supabase, rows) {
   let { error } = await supabase.from('order_items').insert(rows);
   if (isMissingColumnError(error, ADDITIVE_ITEM_COLS)) {
     ({ error } = await supabase.from('order_items').insert(rows.map((r) => stripCols(r, ADDITIVE_ITEM_COLS))));
+  }
+  return { error };
+}
+
+// Insert an order header, dropping additive columns (e.g. customerAddress from
+// migration 0167) if the schema predates them — ทางสร้างใบยื่นทั้งสองทาง (ทางมือ +
+// ทาง Sale Order) ต้องรอดช่วง deploy ที่โค้ดขึ้นก่อน migration เหมือน insertOrderItems
+export async function insertOrder(supabase, row) {
+  let { error } = await supabase.from('orders').insert(row);
+  if (isMissingColumnError(error, ADDITIVE_ORDER_COLS)) {
+    ({ error } = await supabase.from('orders').insert(stripCols(row, ADDITIVE_ORDER_COLS)));
   }
   return { error };
 }

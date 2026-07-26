@@ -7,7 +7,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { brandSelectOptions } from "@/lib/master/brands";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useRole } from "@/lib/roleContext";
 
@@ -108,6 +108,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
               onChange={(customerId) => setForm((f) => ({ ...f, customerId, brand: "" }))}
               options={customers.map((c) => ({ value: c.id, label: c.arCode ? `${c.arCode} — ${c.name}` : c.name, search: `${c.arCode || ""} ${c.name}` }))}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+              emptyText={CUSTOMER_PICKER_EMPTY_HINT}
             />
           </div>
           <div className="form-group">
