@@ -24,7 +24,7 @@ import {
 import Workspace, { WorkspaceSection, MetricStrip, Metric } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
-import { TableShell, TableEmpty } from "@/components/ui/Table";
+import { TableScroll, TableShell, TableEmpty } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Tag from "@/components/ui/Tag";
 import CountBadge from "@/components/ui/CountBadge";
@@ -304,6 +304,28 @@ export default function DesignPreviewPage() {
             ตัวเลขและจำนวนเงินชิดขวาเสมอ · หัวตารางใช้ <code>--panel-2</code> ·
             ตารางที่ไม่ใช่รายการให้ระบุ <code>family=&quot;editable&quot;</code> หรือ <code>family=&quot;matrix&quot;</code>
           </p>
+
+          <p className={styles.note}>
+            ตารางเดี่ยวที่ไม่มีการ์ดครอบ ใช้ <code>TableScroll</code> เปล่า ๆ ได้เลย —
+            มันเป็นพื้นข้อมูลให้ในตัว (<code>surface=&quot;auto&quot;</code>) ถ้าอยู่ในการ์ดอยู่แล้วให้ส่ง
+            {" "}<code>surface=&quot;embedded&quot;</code> ไม่งั้นจะได้กรอบซ้อนกรอบ
+          </p>
+          <TableScroll>
+            <table>
+              <thead>
+                <tr><th>เลขที่</th><th>ลูกค้า</th><th className={styles.numeric}>มูลค่า</th></tr>
+              </thead>
+              <tbody>
+                {ROWS.slice(0, 2).map((row) => (
+                  <tr key={row.code}>
+                    <td className={styles.mono}>{row.code}</td>
+                    <td>{row.customer}</td>
+                    <td className={styles.numeric}>{money(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         </WorkspaceSection>
 
         <WorkspaceSection

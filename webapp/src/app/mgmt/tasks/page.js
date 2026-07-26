@@ -134,7 +134,7 @@ export default function MgmtTasksPage() {
         ) : rows.length === 0 ? (
           <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีงานในปีนี้</div>
         ) : (
-          <TableScroll family="list">
+          <TableScroll surface="embedded" family="list">
           <table className="premium-table">
             <thead>
               <tr style={{ background: "var(--panel-2)", color: "var(--text-3)", fontSize: 12 }}>

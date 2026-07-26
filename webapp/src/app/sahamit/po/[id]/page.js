@@ -599,7 +599,7 @@ export default function PoDetailPage() {
                     <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(ไม่บังคับ — เว้นว่างได้ แก้ทีหลัง)</span></label>
                     <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เว้นว่างไว้ก่อนได้ (ระบบตั้งเลขชั่วคราวให้)" />
                   </div>
-                  <TableScroll>
+                  <TableScroll surface="embedded">
                     <table className="premium-table">
                       <thead><tr><th>สินค้า</th><th style={{ textAlign: "right" }}>เต็ม</th><th style={{ textAlign: "right" }}>ส่งจริง</th><th style={{ textAlign: "right" }}>เหลือ</th></tr></thead>
                       <tbody>

@@ -402,7 +402,7 @@ export default function SalesPlanningTargetsPage() {
 
         <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }} aria-busy={loading}>
           <div className="fz-box">
-            <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
+            <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
               <thead>
                 <tr>
                   <th className="fz-c1" style={{ background: "var(--bg)", textAlign: "left", minWidth: 210 }}>ทีม / รายบุคคล</th>

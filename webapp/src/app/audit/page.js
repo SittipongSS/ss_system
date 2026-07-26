@@ -156,7 +156,7 @@ export default function AuditLogPage() {
         <SkeletonRows rows={7} />
       ) : (
         <div className="glass-panel">
-          <TableScroll className="border-none" family="list">
+          <TableScroll surface="embedded" className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>

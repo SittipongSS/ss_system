@@ -472,7 +472,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
         </p>
       </div>
       <div className="fz-box">
-        <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
+        <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
           <thead>
             <tr>
               <th style={{ textAlign: "left", minWidth: 90 }}>ปี</th>
@@ -600,7 +600,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
       </div>
 
       <div className="fz-box">
-        <TableScroll family="editable"><table className="fz-table premium-glass-table target-team-table w-full text-sm">
+        <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table target-team-table w-full text-sm">
           <colgroup>
             <col style={{ width: "27%" }} />
             <col style={{ width: "18%" }} />
@@ -724,7 +724,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
         </div>
         <div className="fz-box">
-          <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
+          <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
             <thead>
               <tr>
                 <th style={{ textAlign: "left", minWidth: 70 }}></th>

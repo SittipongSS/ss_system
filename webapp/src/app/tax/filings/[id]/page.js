@@ -266,7 +266,7 @@ export default function FilingDetailPage() {
 
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
-            <TableScroll><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ color: "var(--text-3)", fontSize: 12, borderBottom: "1px solid var(--border)" }}>
                   <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "left" }}>รายการสินค้า</th>

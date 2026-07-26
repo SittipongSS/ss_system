@@ -342,7 +342,7 @@ function HistoryView({ history, loading, onOpen, onReload }) {
   return (
     <section className="glass-panel">
       <div className={styles.historyHeader}><div><h2>ประวัติการนำเข้า</h2><p>เก็บผู้ดำเนินการ ไฟล์ สรุปผล และหลักฐานรายแถว</p></div><button type="button" className="btn ghost" onClick={onReload}>รีเฟรช</button></div>
-      <TableScroll className={`${styles.historyTable}`}>
+      <TableScroll surface="embedded" className={`${styles.historyTable}`}>
         <table className="premium-table">
           <thead><tr><th>วันที่</th><th>ไฟล์</th><th>ผู้ดำเนินการ</th><th>สรุป</th><th>สถานะ</th><th style={{ textAlign: "right" }}>รายละเอียด</th></tr></thead>
           <tbody>{history.items.map((run) => (

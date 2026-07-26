@@ -66,7 +66,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         {/* Marketing: กรอกรายวัน */}
         <SaSection icon={<Inbox size={17} />} title="การกรอกลีด (Marketing KPI)" subtitle="ปริมาณลีดแยกตามผู้กรอก">
           <div className="premium-glass-table table-responsive">
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead><tr><th>ผู้กรอก</th><th className="num">ลีด</th><th className="num">วันที่กรอก</th><th className="num">เฉลี่ย/วัน</th></tr></thead>
               <tbody>
                 {(kpi?.byCreator || []).map((c) => (
@@ -86,7 +86,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         {/* ช่องทาง */}
         <SaSection icon={<CalendarClock size={17} />} title="แยกตามช่องทาง" subtitle="ผลลัพธ์ของลีดจากแต่ละช่องทาง">
           <div className="premium-glass-table table-responsive">
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead><tr><th>ช่องทาง</th><th>กลุ่ม</th><th className="num">ลีด</th><th className="num">เปิดลูกค้า</th></tr></thead>
               <tbody>
                 {(kpi?.byChannel || []).map((c) => (
@@ -107,7 +107,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
       <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="SLA และผลลัพธ์แยกตาม AE">
         <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="w-full text-sm">
+          <TableScroll surface="embedded"><table className="w-full text-sm">
             <thead><tr><th>AE</th><th>ทีม</th><th className="num">รับมอบ</th><th className="num">ติดต่อแล้ว</th><th className="num">SLA ทัน</th><th className="num">นัด</th><th className="num">เปิดลูกค้า</th></tr></thead>
             <tbody>
               {(kpi?.byAssignee || []).map((a) => (

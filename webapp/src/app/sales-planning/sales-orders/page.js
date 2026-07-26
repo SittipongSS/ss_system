@@ -84,7 +84,7 @@ export default function SalesOrdersPage() {
             <div className="spacer" />
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll><table className="w-full text-sm">
+            <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>วันที่ SO</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
               <tbody>
                 {pageRows.map((row) => (

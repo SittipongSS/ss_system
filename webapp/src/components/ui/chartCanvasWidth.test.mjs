@@ -26,3 +26,16 @@ test("หน้าต้นแบบมีกราฟให้ดูด้ว�
   assert.match(PREVIEW, /<ChartCanvas>/);
   assert.match(PREVIEW, /ResponsiveContainer/);
 });
+
+/* ของจริงที่เคยเกิด: ครึ่งหนึ่งของตารางในระบบวาง TableScroll เปล่า ๆ ไม่มีการ์ดครอบ
+   พอ primitive กลางไม่ให้พื้นเอง ตารางจึงลอยอยู่บนพื้นหน้าไม่มีพื้นรอง
+   (ผู้ใช้รายงานหน้าขอราคาผลิต/วัสดุ "พื้นตารางหายไป" 2026-07-27) */
+test("TableScroll เป็นพื้นข้อมูลเองเมื่อไม่ได้อยู่ในการ์ด", () => {
+  const TABLE = src("./Table.js");
+  const TABLE_CSS = src("./Table.module.css");
+  assert.match(TABLE, /surface = "auto"/);
+  assert.match(TABLE, /data-surface=\{surface\}/);
+  // TableShell มีการ์ดของตัวเองแล้ว ข้างในต้องไม่มีกรอบซ้อน
+  assert.match(TABLE, /<TableScroll family=\{family\} surface="embedded"/);
+  assert.match(TABLE_CSS, /\[data-surface="auto"\][\s\S]{0,200}background: var\(--panel\)/);
+});

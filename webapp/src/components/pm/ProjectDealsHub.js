@@ -158,7 +158,7 @@ export function ProjectQuotationsCard({ project: p }) {
       </div>
       {quotes.length ? (
         <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="premium-table">
+          <TableScroll surface="embedded"><table className="premium-table">
             <thead><tr><th>เลขที่</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr></thead>
             <tbody>{quotes.map((quote) => {
               const deal = dealById.get(quote.dealId);
@@ -188,7 +188,7 @@ export function ProjectQuotationsCard({ project: p }) {
       </div>
       {salesOrders.length ? (
         <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="premium-table">
+          <TableScroll surface="embedded"><table className="premium-table">
             <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
             <tbody>{salesOrders.map((order) => {
               const deal = dealById.get(order.dealId);

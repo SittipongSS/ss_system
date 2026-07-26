@@ -183,7 +183,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
       </p>
 
       <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
-        <TableScroll family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
+        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>

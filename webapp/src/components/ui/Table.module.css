@@ -54,6 +54,14 @@
   scrollbar-gutter: stable;
 }
 
+/* ตารางที่ไม่ได้อยู่ในการ์ดอยู่แล้ว ต้องเป็นพื้นข้อมูลด้วยตัวเอง ไม่ใช่ลอยบนพื้นหน้าเปล่า ๆ */
+.scroll[data-surface="auto"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
 .scroll :global(table) {
   width: 100%;
   border-collapse: separate;

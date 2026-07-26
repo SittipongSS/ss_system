@@ -164,7 +164,7 @@ export default function QuotationLineItems({
   return (
     <>
       <div className="premium-glass-table table-responsive">
-        <TableScroll family="editable"><table className={`w-full text-sm ${styles.linesTable}`}>
+        <TableScroll surface="embedded" family="editable"><table className={`w-full text-sm ${styles.linesTable}`}>
           <thead>
             <tr>
               <th className={styles.rowNumber} style={{ width: 36 }}>#</th>

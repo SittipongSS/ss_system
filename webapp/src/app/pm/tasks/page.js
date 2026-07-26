@@ -737,7 +737,7 @@ export default function TasksPage() {
       ) : view === "table" ? (
         /* ── Table view ── */
         <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="premium-table">
+          <TableScroll surface="embedded"><table className="premium-table">
             <thead>
               <tr>
                 <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>

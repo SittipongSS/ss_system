@@ -18,7 +18,7 @@ export default function InquiryListCard({ inquiries = [], onCreate = null, title
       </div>
       {inquiries.length ? (
         <div className="premium-glass-table table-responsive">
-          <TableScroll><table className="premium-table">
+          <TableScroll surface="embedded"><table className="premium-table">
             <thead><tr><th>เลขที่ / เรื่อง</th><th>ผู้รับ RD</th><th>SA คาดหวัง</th><th>RD จะตอบ</th><th>สถานะ</th></tr></thead>
             <tbody>{inquiries.map((q) => <tr key={q.id} className="premium-row">
               <td><Link className="linklike" href={`/sa/inquiries/${q.id}`} style={{ fontWeight: 700 }}>{q.code || q.id} · {q.title}</Link></td>
