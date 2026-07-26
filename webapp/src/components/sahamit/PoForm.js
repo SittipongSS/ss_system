@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // ฟอร์ม PO — ใช้ร่วม 2 จุด: หน้าสร้าง (/sahamit/po/new) กับหน้าแก้ (/sahamit/po/[id]/edit)
 // เพื่อไม่ให้สองฟอร์มเพี้ยนหากัน (แพตเทิร์นเดียวกับ DealFormFields).
 // กำหนดรับของ + สถานที่ส่ง เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว); รายการใส่แค่จำนวน.
@@ -214,7 +215,7 @@ export default function PoForm({
       )}
 
       {rows.length > 0 && (
-        <div className="premium-table-wrapper">
+        <TableScroll family="editable">
           <table className="premium-table">
             <thead>
               <tr>
@@ -272,7 +273,7 @@ export default function PoForm({
               </tfoot>
             )}
           </table>
-        </div>
+        </TableScroll>
       )}
     </>
   );

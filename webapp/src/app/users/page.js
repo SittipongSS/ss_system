@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import Workspace from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -24,7 +26,8 @@ import { fmtPhone, fmtDate } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
+import { TableScroll } from "@/components/ui/Table";
 
 const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", extraCaps: [] };
 
@@ -98,10 +101,10 @@ export default function UserManagement() {
         setCreateForm(emptyForm);
         await fetchUsers();
       } else {
-        alert(data.error || "เพิ่มผู้ใช้ไม่สำเร็จ");
+        notifyToast.error(data.error || "เพิ่มผู้ใช้ไม่สำเร็จ");
       }
     } catch {
-      alert("เกิดข้อผิดพลาด");
+      notifyToast.error("เกิดข้อผิดพลาด");
     }
     setSubmitting(false);
   };
@@ -144,23 +147,23 @@ export default function UserManagement() {
         setEditUser(null);
         await fetchUsers();
       } else {
-        alert(data.error || "แก้ไขไม่สำเร็จ");
+        notifyToast.error(data.error || "แก้ไขไม่สำเร็จ");
       }
     } catch {
-      alert("เกิดข้อผิดพลาด");
+      notifyToast.error("เกิดข้อผิดพลาด");
     }
     setSubmitting(false);
   };
 
   const handleDelete = async (u) => {
-    if (!confirm(`ลบผู้ใช้ ${u.email}?\nการกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!(await confirmAction(`ลบผู้ใช้ ${u.email}?\nการกระทำนี้ย้อนกลับไม่ได้`))) return;
     try {
       const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) await fetchUsers();
-      else alert(data.error || "ลบไม่สำเร็จ");
+      else notifyToast.error(data.error || "ลบไม่สำเร็จ");
     } catch {
-      alert("เกิดข้อผิดพลาด");
+      notifyToast.error("เกิดข้อผิดพลาด");
     }
   };
 
@@ -171,7 +174,7 @@ export default function UserManagement() {
     const msg = next
       ? `ปิดบัญชี ${u.email}?\nผู้ใช้จะถูกบังคับออกจากระบบและเข้าสู่ระบบไม่ได้จนกว่าจะเปิดใช้อีกครั้ง`
       : `เปิดใช้บัญชี ${u.email} อีกครั้ง?`;
-    if (!confirm(msg)) return;
+    if (!(await confirmAction(msg))) return;
     try {
       const res = await fetch(`/api/users/${u.id}`, {
         method: "PATCH",
@@ -180,19 +183,19 @@ export default function UserManagement() {
       });
       const data = await res.json();
       if (res.ok) await fetchUsers();
-      else alert(data.error || "ดำเนินการไม่สำเร็จ");
+      else notifyToast.error(data.error || "ดำเนินการไม่สำเร็จ");
     } catch {
-      alert("เกิดข้อผิดพลาด");
+      notifyToast.error("เกิดข้อผิดพลาด");
     }
   };
 
   // โอนงาน: ยิง API แล้วโชว์สรุปผลในโมดัลเดิม (ไม่ปิดทันที ให้เห็นว่าย้ายอะไรไปเท่าไหร่)
   const handleTransfer = async (e) => {
     e.preventDefault();
-    if (!transferForm.toUserId) { alert("กรุณาเลือกผู้รับโอน"); return; }
+    if (!transferForm.toUserId) { notifyToast.error("กรุณาเลือกผู้รับโอน"); return; }
     const to = users.find((x) => x.id === transferForm.toUserId);
     const toLabel = to ? `${to.firstName || ""} ${to.lastName || ""}`.trim() || to.email : "";
-    if (!confirm(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)`)) return;
+    if (!(await confirmAction(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)`))) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/users/${transferUser.id}/transfer`, {
@@ -204,7 +207,7 @@ export default function UserManagement() {
       if (!res.ok) throw new Error(data.error || "โอนงานไม่สำเร็จ");
       setTransferResult(data);
     } catch (err) {
-      alert(err.message || "โอนงานไม่สำเร็จ");
+      notifyToast.error(err.message || "โอนงานไม่สำเร็จ");
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +258,7 @@ export default function UserManagement() {
               </button>
             )}
           </div>
-          <div className="premium-table-wrapper border-none">
+          <TableScroll className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -356,7 +359,7 @@ export default function UserManagement() {
                 )}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
           {sortedUsers.length > 0 && (
             <Pager
               page={page}

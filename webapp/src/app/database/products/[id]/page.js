@@ -19,7 +19,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";

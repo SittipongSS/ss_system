@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { AlertTriangle, ArrowUp, ArrowDown, Plus, X, MoveRight, CheckCircle2 } from "lucide-react";
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
@@ -80,7 +81,7 @@ export default function RoundComparison({ comparison, productByFg }) {
       )}
 
       {/* Per-SKU change list. */}
-      <div className="premium-table-wrapper">
+      <TableScroll family="matrix">
         <table className="premium-table">
           <thead>
             <tr>
@@ -118,7 +119,7 @@ export default function RoundComparison({ comparison, productByFg }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </div>
   );
 }

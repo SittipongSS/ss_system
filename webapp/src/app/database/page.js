@@ -1,4 +1,5 @@
 "use client";
+import { ChartCanvas } from "@/components/ui/ChartCard";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -194,7 +195,7 @@ export default function DatabaseOverview() {
               <h3 className="flex items-center gap-2"><TrendingUp size={16} color="var(--accent)" /> แนวโน้มการขึ้นทะเบียน (ต่อเดือน)</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
@@ -214,7 +215,7 @@ export default function DatabaseOverview() {
                   <Area type={CHART_LINE_TYPE} dataKey="สินค้า" stroke="var(--accent)" strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
                   <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke="var(--blue)" strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></ChartCanvas>
             </div>
           </div>
 
@@ -223,7 +224,7 @@ export default function DatabaseOverview() {
               <h3 className="flex items-center gap-2"><BarChart3 size={16} color="var(--green)" /> Top 5 ลูกค้าที่มีสินค้ามากที่สุด</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topCustomersData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
                   <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
@@ -235,7 +236,7 @@ export default function DatabaseOverview() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></ChartCanvas>
             </div>
           </div>
         </div>
@@ -251,7 +252,7 @@ export default function DatabaseOverview() {
               {categoryData.length === 0 ? (
                 <EmptyState icon={Package} plain className="h-full">ไม่มีข้อมูลสินค้าตามตัวกรองนี้</EmptyState>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                   <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                     <Pie
                       data={categoryData}
@@ -271,7 +272,7 @@ export default function DatabaseOverview() {
                     <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }} />
                     <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} iconType="circle" />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></ChartCanvas>
               )}
             </div>
           </div>

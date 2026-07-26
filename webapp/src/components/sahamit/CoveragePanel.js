@@ -1,4 +1,5 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState } from "react";
 import { suggestCoverage, suggestCoverageTargets } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -43,7 +44,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
 
   const suggestions = [...pullIn, ...pushOut];
 
-  const confirm = async (sourceMonth, targetMonth, useQty) => {
+  const applyCoverage = async (sourceMonth, targetMonth, useQty) => {
     setBusy(true);
     try {
       await sahamitFetch("/api/sahamit/coverage", {
@@ -53,7 +54,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
       });
       onChanged?.();
     } catch (e) {
-      alert(e.message);
+      notifyToast.error(e.message);
     }
     setBusy(false);
   };
@@ -61,7 +62,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
     try {
       await sahamitFetch(`/api/sahamit/coverage/${id}`, { method: "DELETE" });
       onChanged?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
   };
 
   return (
@@ -90,7 +91,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                     </span>
                     <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น{caseSuffix(s.use)})</span>
                   </div>
-                  {canEdit && <button className="btn btn-primary sm" disabled={busy} onClick={() => confirm(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>}
+                  {canEdit && <button className="btn btn-primary sm" disabled={busy} onClick={() => applyCoverage(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>}
                 </div>
               );
             })}

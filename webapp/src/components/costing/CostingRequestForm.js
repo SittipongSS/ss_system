@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // ── ฟอร์มใบขอราคาผลิต — ใช้ตัวเดียวกันทั้งตอนสร้างและตอนแก้ (กฎ AGENTS.md) ──
 // ต่างกันแค่โหมดผ่าน props:
 //   mode="create" → เลือกดีลได้ (ดีลเป็นตัวตั้งของทั้งใบ)
@@ -177,7 +178,7 @@ export default function CostingRequestForm({
             ตั้งค่า → แม่แบบต้นทุนตามประเภทสินค้า ก่อน
           </EmptyState>
         ) : (
-          <div className="premium-table-wrapper">
+          <TableScroll family="editable">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -242,7 +243,7 @@ export default function CostingRequestForm({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
         <small style={{ color: "var(--text-3)", display: "block", marginTop: 8 }}>
           บรรทัดต้นทุนของแต่ละสินค้าจะถูกกางจากแม่แบบของประเภทนั้นให้อัตโนมัติ

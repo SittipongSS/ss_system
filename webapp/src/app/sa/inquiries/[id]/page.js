@@ -1,4 +1,5 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 // เธรดสอบถาม–ตอบกลับรายเรื่อง: ฝ่ายขายถาม ↔ ฝ่ายผู้ตอบ (RD) ตอบไป-มา
 // ปิดเรื่องโดยฝั่งผู้ถามเสมอ (คนถามคือคนตัดสินว่าคำตอบใช้ได้จริง)
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,10 +10,10 @@ import {
   BriefcaseBusiness, CalendarDays, CalendarClock, Edit2, FolderKanban, Paperclip,
   Plus, RotateCcw, Save, Send, Trash2, UserRound, X,
 } from "lucide-react";
-import SaWorkspace, { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { PageShell as SaPageShell } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ReadableText from "@/components/ui/ReadableText";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import InquiryRequestFields, { inquiryToRequestForm, isInquiryRequestComplete } from "@/components/salesPlanning/InquiryRequestFields";
 import { inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
@@ -80,7 +81,7 @@ export default function InquiryThreadPage() {
   const canCompose = data?.isAdmin || !!data?.side;
 
   const runAction = async (key, body, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirmText && !(await confirmAction(confirmText))) return;
     setBusy(key);
     setError("");
     try {
@@ -187,7 +188,7 @@ export default function InquiryThreadPage() {
   };
 
   const deleteInquiry = async () => {
-    if (!window.confirm("ลบเรื่องสอบถามนี้? รายการนี้ย้อนกลับไม่ได้")) return;
+    if (!(await confirmAction("ลบเรื่องสอบถามนี้? รายการนี้ย้อนกลับไม่ได้"))) return;
     setBusy("delete-inquiry");
     const res = await fetch(`/api/sales-planning/inquiries/${id}`, { method: "DELETE" });
     const payload = await res.json().catch(() => ({}));
@@ -339,7 +340,7 @@ export default function InquiryThreadPage() {
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                       {m.canAcknowledge && <button className="btn ghost sm" onClick={() => messageAction(m, "acknowledge")} disabled={!!busy}><CheckCircle2 size={12} /> รับทราบ</button>}
                       {m.canEdit && <button className="btn ghost sm" onClick={() => editMessage(m)} disabled={!!busy}><Edit2 size={12} /> แก้ไข</button>}
-                      {m.canDelete && <button className="btn ghost sm danger" onClick={() => window.confirm("ลบข้อความนี้?") && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
+                      {m.canDelete && <button className="btn ghost sm danger" onClick={async () => (await confirmAction("ลบข้อความนี้?")) && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
                       {canCompose && !closed && <button className="btn ghost sm" onClick={() => createTask(m)} disabled={!!busy}><Plus size={12} /> สร้างงาน</button>}
                       {(data.tasks || []).filter((t) => t.inquiryMessageId === m.id).map((t) => <Link key={t.id} href={`/pm/tasks/${t.id}`} className="ui-badge">งาน: {t.title}</Link>)}
                     </div>

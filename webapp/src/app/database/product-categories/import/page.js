@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -277,7 +278,7 @@ export default function ProductCategoryImportPage() {
                   <span>{visibleRows.length} แถว</span>
                 </div>
 
-                <div className={`premium-table-wrapper ${styles.previewTableWrap}`}>
+                <TableScroll className={`${styles.previewTableWrap}`}>
                   <table className={`premium-table sticky-col1 ${styles.previewTable}`}>
                     <thead><tr><th>แถว</th><th>รหัส</th><th>ผลตรวจ</th><th>ชื่อหมวดหลัก</th><th>ชื่อหมวดสินค้า</th><th>สถานะ</th><th>รายละเอียด</th></tr></thead>
                     <tbody>
@@ -294,7 +295,7 @@ export default function ProductCategoryImportPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
 
                 {error && <div className={styles.errorBanner}><AlertTriangle size={18} /><span>{error}</span></div>}
                 {!committed && (
@@ -341,7 +342,7 @@ function HistoryView({ history, loading, onOpen, onReload }) {
   return (
     <section className="glass-panel">
       <div className={styles.historyHeader}><div><h2>ประวัติการนำเข้า</h2><p>เก็บผู้ดำเนินการ ไฟล์ สรุปผล และหลักฐานรายแถว</p></div><button type="button" className="btn ghost" onClick={onReload}>รีเฟรช</button></div>
-      <div className={`premium-table-wrapper ${styles.historyTable}`}>
+      <TableScroll className={`${styles.historyTable}`}>
         <table className="premium-table">
           <thead><tr><th>วันที่</th><th>ไฟล์</th><th>ผู้ดำเนินการ</th><th>สรุป</th><th>สถานะ</th><th style={{ textAlign: "right" }}>รายละเอียด</th></tr></thead>
           <tbody>{history.items.map((run) => (
@@ -353,7 +354,7 @@ function HistoryView({ history, loading, onOpen, onReload }) {
             </tr>
           ))}</tbody>
         </table>
-      </div>
+      </TableScroll>
       <div className={styles.historyCards}>{history.items.map((run) => (
         <article key={run.id}><div><strong>{run.fileName}</strong><Badge meta={effectiveRunMeta(run)} /></div><p>{fmtDateTime(run.createdAt)} · {run.actorName || "—"}</p><small>{changeCount(run.summary)} เปลี่ยน · {(run.summary?.error || 0) + (run.summary?.conflict || 0)} ต้องแก้</small><button type="button" className="btn" onClick={() => onOpen(run)}><Eye size={14} /> ดูรายละเอียด</button></article>
       ))}</div>

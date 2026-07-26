@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
@@ -14,7 +16,8 @@ import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
+import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, categoryFlags, categoryInfo } from "@/lib/master/categoryOf";
 import { brandBoth, normalizeBrands } from "@/lib/master/brands";
@@ -94,9 +97,9 @@ export default function ProductRegistry() {
         body: JSON.stringify({ approvalStatus: status, rejectionReason }),
       });
       if (res.ok) fetchProducts();
-      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+      else notifyToast.error((await res.json()).error || "ดำเนินการไม่สำเร็จ");
     } catch {
-      alert("เกิดข้อผิดพลาดในการอนุมัติ");
+      notifyToast.error("เกิดข้อผิดพลาดในการอนุมัติ");
     }
   };
 
@@ -169,11 +172,11 @@ export default function ProductRegistry() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
-    if (!formData.customerId) { alert("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!formData.brandName?.trim() && !formData.brandNameEn?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
+    if (!formData.customerId) { notifyToast.error("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
+    if (!formData.brandName?.trim() && !formData.brandNameEn?.trim()) { notifyToast.error("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
-      alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
+      notifyToast.error("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
     // เตือนกลับด้านกับของเดิม: popup เฉพาะหมวดที่ติ๊กธงบน product_types (mig 0131 —
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
@@ -182,21 +185,17 @@ export default function ProductRegistry() {
       ? `${catInfo.code} (${catInfo.typeInfo.nameTh || catInfo.typeInfo.nameEn || ""})`
       : catInfo?.code || "";
     if (catInfo?.typeInfo?.isExcise) {
-      if (
-        !confirm(
-          `⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด ${catLabel} ซึ่งเสียภาษีสรรพสามิต\n\nสินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)\nต้องการบันทึกต่อหรือไม่?`,
-        )
-      )
-        return;
+      const accepted = await confirmAction(
+        `⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด ${catLabel} ซึ่งเสียภาษีสรรพสามิต\n\nสินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)\nต้องการบันทึกต่อหรือไม่?`,
+      );
+      if (!accepted) return;
     }
     // เฟสแรกของ "ต้องจดแจ้ง อย.": แค่เตือนตอนสร้าง — ไม่ผูกไทม์ไลน์/เอกสาร (มติ 2026-07-20)
     if (catInfo?.typeInfo?.requiresFdaNotice) {
-      if (
-        !confirm(
-          `📋 แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด ${catLabel} ซึ่งต้องจดแจ้ง อย.\n\nโปรดตรวจว่าสินค้านี้ได้จดแจ้ง อย. ก่อนวางจำหน่าย\nต้องการบันทึกต่อหรือไม่?`,
-        )
-      )
-        return;
+      const accepted = await confirmAction(
+        `📋 แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด ${catLabel} ซึ่งต้องจดแจ้ง อย.\n\nโปรดตรวจว่าสินค้านี้ได้จดแจ้ง อย. ก่อนวางจำหน่าย\nต้องการบันทึกต่อหรือไม่?`,
+      );
+      if (!accepted) return;
     }
     setSubmitting(true);
     const payload = {
@@ -218,14 +217,14 @@ export default function ProductRegistry() {
         setShowForm(false);
         await fetchProducts();
         if (created?.approvalStatus === "pending") {
-          alert("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำสินค้านี้ไปใช้งานได้");
+          notifyToast.info("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำสินค้านี้ไปใช้งานได้");
         }
       } else {
         const err = await res.json();
-        alert(err.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        notifyToast.error(err.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     } catch (err) {
-      alert("Error submitting form");
+      notifyToast.error("Error submitting form");
     } finally {
       setSubmitting(false);
     }
@@ -431,7 +430,7 @@ export default function ProductRegistry() {
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="premium-table-wrapper border-none">
+          <TableScroll className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -494,7 +493,7 @@ export default function ProductRegistry() {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 

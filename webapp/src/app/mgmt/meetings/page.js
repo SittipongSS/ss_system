@@ -9,6 +9,7 @@ import MeetingDrawer from "@/components/mgmt/MeetingDrawer";
 import { MEETING_FOLLOWUP_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace from "@/components/ui/Workspace";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -63,20 +64,19 @@ export default function MgmtMeetingsPage() {
   if (role && !canMgmt) return null;
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Users size={22} /></span> การประชุม</h1>
-          <p>บันทึกการประชุม · สรุป · ติดตามผล · แนบไฟล์/เอกสาร Google</p>
-        </div>
+    <Workspace
+      icon={<Users size={22} />}
+      title="การประชุม"
+      subtitle="บันทึกการประชุม · สรุป · ติดตามผล · แนบไฟล์/เอกสาร Google"
+      headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
           </Select>
           {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มการประชุม</button>}
         </div>
-      </div>
-
+      )}
+    >
       {loading ? (
         <SkeletonRows rows={6} />
       ) : meetings.length === 0 ? (
@@ -111,6 +111,6 @@ export default function MgmtMeetingsPage() {
         onChanged={(row) => { upsert(row); setSelected(row); }}
         onDeleted={drop}
       />
-    </>
+    </Workspace>
   );
 }

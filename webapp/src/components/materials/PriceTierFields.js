@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // ── ตารางชั้นราคาของวัสดุ 1 รุ่น (mig 0157) ────────────────────────────
 // ใช้ทั้งตอน RD/PC ใส่ราคาในทะเบียน และ (PR-2) ตอบราคาในเคสขอราคา
 //
@@ -27,7 +28,7 @@ export default function PriceTierFields({
   return (
     <div className="form-group">
       <label>ราคา ({unitLabel})</label>
-      <div className="premium-table-wrapper">
+      <TableScroll family="editable">
         <table className="premium-table">
           <thead>
             <tr>
@@ -70,7 +71,7 @@ export default function PriceTierFields({
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
         <button type="button" className="btn sm" onClick={() => addRow()} disabled={disabled}>

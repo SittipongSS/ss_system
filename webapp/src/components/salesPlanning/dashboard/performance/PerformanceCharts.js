@@ -6,6 +6,7 @@ import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { yoySeries, cumulativeSeries } from "@/lib/sales/performanceMath";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { SeriesLegend } from "./shared";
+import ChartCard from "@/components/ui/ChartCard";
 
 // กราฟของแท็บผลงานขาย — SVG เขียนเอง (แอปไม่มี chart library, แพตเทิร์นเดียวกับ
 // DashboardCharts เดิม): เทียบ Target/Forecast/Actual + เส้นประ Actual ปีก่อน,
@@ -193,16 +194,9 @@ function CumulativeChart({ cum, height = 280, onHover, onLeave }) {
 
 function Panel({ icon, title, desc, legend, children }) {
   return (
-    <section className="glass-panel" style={{ padding: 16 }}>
-      <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-        {icon}
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
-        <div className="spacer" />
-        {legend}
-      </div>
-      {desc && <p style={{ margin: "4px 0 10px", color: "var(--text-3)", fontSize: 12.5 }}>{desc}</p>}
+    <ChartCard icon={icon} title={title} description={desc} legend={legend} minHeight={220}>
       {children}
-    </section>
+    </ChartCard>
   );
 }
 

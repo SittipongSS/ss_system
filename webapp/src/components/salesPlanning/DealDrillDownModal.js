@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, X } from "lucide-react";
@@ -203,7 +204,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
               โหลดรายละเอียด FC ไม่สำเร็จ
             </EmptyState>
           ) : deals.length > 0 ? (
-            <div className="premium-table-wrapper fc-detail-table-wrap">
+            <TableScroll className="fc-detail-table-wrap">
               <table className="premium-table fc-detail-table">
                 <thead>
                   <tr>
@@ -233,7 +234,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           ) : (
             <EmptyState plain>ไม่พบโครงการที่ตรงกับเงื่อนไข</EmptyState>
           )}

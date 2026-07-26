@@ -1,9 +1,67 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import StatusNotice from "./StatusNotice";
+
+const CONFIRM_EVENT = "ss-system:confirm";
+const ConfirmContext = createContext(null);
+
+export function confirmAction(input, options = {}) {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  const request = typeof input === "string"
+    ? { ...options, description: input }
+    : { ...input, ...options };
+  return new Promise((resolve) => {
+    window.dispatchEvent(new CustomEvent(CONFIRM_EVENT, {
+      detail: { ...request, resolve },
+    }));
+  });
+}
+
+export function ConfirmProvider({ children }) {
+  const [request, setRequest] = useState(null);
+
+  const close = useCallback((result = false) => {
+    setRequest((current) => {
+      current?.resolve?.(result);
+      return null;
+    });
+  }, []);
+
+  const api = useMemo(() => ({ confirm: confirmAction }), []);
+
+  useEffect(() => {
+    const receiveConfirm = (event) => setRequest(event.detail);
+    window.addEventListener(CONFIRM_EVENT, receiveConfirm);
+    return () => window.removeEventListener(CONFIRM_EVENT, receiveConfirm);
+  }, []);
+
+  return (
+    <ConfirmContext.Provider value={api}>
+      {children}
+      <ConfirmDialog
+        open={Boolean(request)}
+        title={request?.title}
+        description={request?.description ?? request?.message}
+        detail={request?.detail}
+        confirmLabel={request?.confirmLabel}
+        cancelLabel={request?.cancelLabel}
+        tone={request?.tone}
+        danger={request?.danger}
+        onConfirm={() => close(true)}
+        onClose={() => close(false)}
+      />
+    </ConfirmContext.Provider>
+  );
+}
+
+export function useConfirm() {
+  const context = useContext(ConfirmContext);
+  if (!context) throw new Error("useConfirm must be used within ConfirmProvider");
+  return context.confirm;
+}
 
 export default function ConfirmDialog({
   open,

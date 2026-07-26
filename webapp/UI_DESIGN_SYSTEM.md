@@ -6,16 +6,25 @@
 
 - Design tokens และ shared classes: `src/app/globals.css`
 - Page composition: `src/components/ui/Workspace.js`
+- Detail composition: `src/components/ui/DetailOverview.js`
+- Tables: `src/components/ui/Table.js`
+- Dashboards and charts: `src/components/ui/ChartCard.js` and `src/lib/chartTheme.js`
+- Feedback: `src/components/ui/Toast.js` and `src/components/ui/ConfirmDialog.js`
+- Print: `src/lib/printTheme.js`
 - Shared controls: `src/components/ui/`
 - Static contract check: `npm run audit:ui`
 
-`SaWorkspace` ยังอยู่เป็น compatibility alias สำหรับ route เดิม แต่ไม่มี stylesheet เฉพาะฝ่ายขายแล้ว การแก้ `Workspace` หรือ token กลางจึงมีผลกับฝ่ายขาย ภาษี ฐานข้อมูล งานบริหาร Sahamit และหน้าตั้งค่าพร้อมกัน
+compatibility alias เฉพาะโมดูลถูกถอดแล้ว ทุก route ใช้ primitive กลางโดยตรง การแก้ `Workspace` หรือ token กลางจึงมีผลกับฝ่ายขาย ภาษี ฐานข้อมูล งานบริหาร Sahamit และหน้าตั้งค่าพร้อมกัน
 
 ## Page contract
 
 1. เริ่มหน้าด้วย `Workspace` และส่ง `icon`, `title`, `subtitle`, `headerRight`, `toolbar` หรือ `rail` ผ่าน props
 2. ใช้ `WorkspaceSection`, `MetricStrip` และ `Metric` เมื่อต้องสร้าง section หรือ KPI strip แบบเดียวกับระบบบริหารงานขาย
 3. ใช้ `KpiCard`, `Tabs`, `Select`, `SearchableSelect`, `FilterPopover`, `EmptyState`, `SkeletonRows`, `Toast` และ `FormActions` จาก `components/ui`
+4. ครอบตารางทุกชนิดด้วย `TableScroll` และระบุ `family="editable"` หรือ `family="matrix"` เมื่อไม่ใช่ list table
+5. ครอบ Recharts ทุกตัวด้วย `ChartCanvas`; ใช้ `ChartCard`, `ChartTooltip`, `ChartEmptyState` และ `chartTheme` สำหรับโครงและสี
+6. ใช้ `notifyToast` และ `confirmAction` แทน native `alert`/`confirm`
+7. เอกสารพิมพ์ใช้ `PRINT_FONT_STACK` และ placeholder จาก `printTheme`
 4. หนึ่งบริบทมี filled action เพียงปุ่มเดียว (`.btn-accent`); action รองใช้ `.btn` หรือ `.btn.ghost`
 5. ฟอร์มต้องมีปุ่มบันทึกชัดเจน ไม่มี auto-save และใช้ confirm ตาม workflow เดิม
 

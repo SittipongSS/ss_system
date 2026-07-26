@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -28,7 +30,7 @@ import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -413,7 +415,7 @@ export default function DealOverviewPage() {
   };
 
   const deleteActivity = async (act) => {
-    if (!window.confirm("ลบอัปเดตงานนี้?")) return;
+    if (!(await confirmAction("ลบอัปเดตงานนี้?"))) return;
     setFeedBusy(true);
     setError("");
     try {
@@ -460,8 +462,8 @@ export default function DealOverviewPage() {
     const done = await genOwnTimeline(genType);
     if (done) setGenOpen(false);
   };
-  const dropOwnTimeline = () => {
-    if (!window.confirm("ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ความคืบหน้าหายด้วย) แล้วค่อยสร้างใหม่?")) return;
+  const dropOwnTimeline = async () => {
+    if (!(await confirmAction("ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ความคืบหน้าหายด้วย) แล้วค่อยสร้างใหม่?"))) return;
     return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
   };
 
@@ -586,7 +588,7 @@ export default function DealOverviewPage() {
     const detachText = data?.project
       ? `\n\nโครงการ (PM)${data.project.code ? ` ${data.project.code}` : ""} ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะไทม์ไลน์ของดีลนี้ออก${ownTaskCount ? ` (${ownTaskCount} ขั้นตอน)` : ""}`
       : ownTaskCount ? `\n\nไทม์ไลน์ของดีลนี้ (${ownTaskCount} ขั้นตอน) จะถูกลบด้วย` : "";
-    if (!window.confirm(`ลบดีล "${deal.title}"?${detachText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${detachText}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
@@ -838,7 +840,7 @@ export default function DealOverviewPage() {
           <DetailCard icon={ClipboardList} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={<a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}>
             {(data.dealTasks || []).length ? (
               <div className="premium-glass-table table-responsive">
-                <table className="premium-table">
+                <TableScroll><table className="premium-table">
                   <thead>
                     <tr>
                       <th>งาน</th>
@@ -862,7 +864,7 @@ export default function DealOverviewPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></TableScroll>
               </div>
             ) : (
               <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
@@ -1072,7 +1074,7 @@ export default function DealOverviewPage() {
               </div>
               {(data.quotations || []).length ? (
                 <div className="premium-glass-table table-responsive">
-                  <table className="w-full text-sm">
+                  <TableScroll><table className="w-full text-sm">
                     <thead>
                       <tr><th>เลขที่</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr>
                     </thead>
@@ -1085,7 +1087,7 @@ export default function DealOverviewPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></TableScroll>
                 </div>
               ) : <Empty>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></Empty>}
             </section>
@@ -1100,7 +1102,7 @@ export default function DealOverviewPage() {
                 <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
               </div>
               <div className="premium-glass-table table-responsive">
-                <table className="w-full text-sm">
+                <TableScroll><table className="w-full text-sm">
                   <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th></tr></thead>
                   <tbody>{data.salesOrders.map((order) => (
                     <tr key={order.id} className="premium-row">
@@ -1109,7 +1111,7 @@ export default function DealOverviewPage() {
                       <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
                     </tr>
                   ))}</tbody>
-                </table>
+                </table></TableScroll>
               </div>
             </section>
             )}
@@ -1122,7 +1124,7 @@ export default function DealOverviewPage() {
               </div>
               {(data.documents || []).length ? (
                 <div className="premium-glass-table table-responsive">
-                  <table className="w-full text-sm">
+                  <TableScroll><table className="w-full text-sm">
                     <thead>
                       <tr><th>เอกสาร</th><th>สถานะ</th><th>กำหนด</th></tr>
                     </thead>
@@ -1135,7 +1137,7 @@ export default function DealOverviewPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></TableScroll>
                 </div>
               ) : <Empty>ยังไม่มีรายการเอกสาร</Empty>}
             </section>

@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { poRollupStatus } from "@/lib/sahamit/po";
+import ChartCard, { ChartCanvas, ChartEmptyState, ChartTooltip } from "@/components/ui/ChartCard";
 
 // --- Formatter Helpers ---
 const formatNumber = (num) => Number(num || 0).toLocaleString("th-TH");
@@ -14,23 +15,6 @@ const formatShortMonth = (ym) => {
   const [y, m] = ym.split("-");
   const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
   return `${thMonths[parseInt(m, 10) - 1]} ${(parseInt(y, 10) + 543).toString().slice(-2)}`;
-};
-
-// --- Custom Tooltips ---
-const CustomBarTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="glass-panel" style={{ padding: "12px", border: "1px solid var(--border)", background: "var(--bg)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
-        <p style={{ fontWeight: 600, marginBottom: "8px", fontSize: "14px" }}>{formatShortMonth(label)}</p>
-        {payload.map((entry, index) => (
-          <p key={`item-${index}`} style={{ color: entry.color, fontSize: "13px", margin: "4px 0" }}>
-            {entry.name}: <strong>{formatNumber(entry.value)}</strong> ชิ้น
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
 };
 
 // --- Charts Component ---
@@ -87,33 +71,34 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
   return (
     <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr", gap: "24px", marginBottom: "24px" }}>
       {/* FC vs PO Bar Chart */}
-      <div className="glass-panel" style={{ padding: "20px", display: "flex", flexDirection: "column" }}>
-        <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "16px", color: "var(--text)" }}>เปรียบเทียบ Forecast กับ PO (6 เดือน)</h3>
-        <div style={{ flex: 1, minHeight: "260px" }}>
+      <ChartCard title="เปรียบเทียบ Forecast กับ PO (6 เดือน)" minHeight={260}>
+        <div style={{ height: 260 }}>
           {barData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartCanvas><ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="month" tickFormatter={formatShortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={10} />
                 <YAxis tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dx={-10} />
-                <RechartsTooltip content={<CustomBarTooltip />} cursor={{ fill: "var(--panel-2)", opacity: 0.5 }} />
+                <RechartsTooltip
+                  content={<ChartTooltip labelFormatter={formatShortMonth} valueFormatter={(value) => `${formatNumber(value)} ชิ้น`} />}
+                  cursor={{ fill: "var(--panel-2)", opacity: 0.5 }}
+                />
                 <Legend wrapperStyle={{ fontSize: "13px", paddingTop: "10px" }} />
                 <Bar dataKey="Forecast" name="ยอด Forecast" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></ChartCanvas>
           ) : (
-            <div className="empty-state" style={{ height: "100%" }}>ไม่มีข้อมูล Forecast หรือ PO</div>
+            <ChartEmptyState>ไม่มีข้อมูล Forecast หรือ PO</ChartEmptyState>
           )}
         </div>
-      </div>
+      </ChartCard>
 
       {/* PO Status Pie Chart */}
-      <div className="glass-panel" style={{ padding: "20px", display: "flex", flexDirection: "column" }}>
-        <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "16px", color: "var(--text)" }}>สัดส่วนสถานะ PO</h3>
-        <div style={{ flex: 1, minHeight: "260px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <ChartCard title="สัดส่วนสถานะ PO" minHeight={260}>
+        <div style={{ height: 260 }}>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartCanvas><ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={pieData}
@@ -129,11 +114,7 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}
-                  itemStyle={{ fontSize: "13px", fontWeight: 500 }}
-                  formatter={(value) => [`${value} รายการ`]}
-                />
+                <RechartsTooltip content={<ChartTooltip valueFormatter={(value) => `${value} รายการ`} />} />
                 <Legend 
                   verticalAlign="bottom" 
                   height={36} 
@@ -141,12 +122,12 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
                   wrapperStyle={{ fontSize: "13px" }}
                 />
               </PieChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></ChartCanvas>
           ) : (
-            <div className="empty-state" style={{ height: "100%" }}>ไม่มีข้อมูล PO</div>
+            <ChartEmptyState>ไม่มีข้อมูล PO</ChartEmptyState>
           )}
         </div>
-      </div>
+      </ChartCard>
     </div>
   );
 }

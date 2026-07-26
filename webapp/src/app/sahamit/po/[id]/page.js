@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
@@ -61,14 +63,14 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
     try {
       await sahamitFetch(url, opts);
       onChanged?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
     setBusy(false);
   };
 
-  const save = () => {
+  const save = async () => {
     const rescheduled = (d.expectedDate || "") !== (line.expectedDate || "");
     if (rescheduled && !d.rescheduleReason) {
-      if (!confirm("เลื่อนวันคาดการณ์ส่งโดยไม่ระบุเหตุผล?")) return;
+      if (!(await confirmAction("เลื่อนวันคาดการณ์ส่งโดยไม่ระบุเหตุผล?"))) return;
     }
     call(`/api/sahamit/po/lines/${line.id}`, {
       method: "PATCH",
@@ -81,8 +83,8 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
     });
   };
 
-  const del = () => {
-    if (!confirm(`ลบรายการ ${line.fgCode}?`)) return;
+  const del = async () => {
+    if (!(await confirmAction(`ลบรายการ ${line.fgCode}?`))) return;
     call(`/api/sahamit/po/lines/${line.id}`, { method: "DELETE" });
   };
 
@@ -249,7 +251,7 @@ export default function PoDetailPage() {
       apiCache.delete("/api/sahamit/material");
       router.push("/sahamit/po");
     } catch (e) {
-      alert(e.message || "ลบ PO ไม่สำเร็จ");
+      notifyToast.error(e.message || "ลบ PO ไม่สำเร็จ");
       setDeleteBusy(false);
     }
   };
@@ -267,7 +269,7 @@ export default function PoDetailPage() {
   const doSplit = async () => {
     // เลขที่ PO ยอดเหลือไม่บังคับ — เว้นว่างได้ (ระบบตั้งเลขชั่วคราวให้)
     const lines = (po?.lines || []).map((l) => ({ lineId: l.id, shippedQty: Number(shipped[l.id]) }));
-    if (!lines.some((l) => Number.isFinite(l.shippedQty) && l.shippedQty >= 0)) { alert("กรอกยอดส่งจริง"); return; }
+    if (!lines.some((l) => Number.isFinite(l.shippedQty) && l.shippedQty >= 0)) { notifyToast.error("กรอกยอดส่งจริง"); return; }
     setSplitBusy(true);
     try {
       await sahamitFetch(`/api/sahamit/po/${id}/split`, {
@@ -275,15 +277,15 @@ export default function PoDetailPage() {
         body: JSON.stringify({ balancePoNumber: balanceNo.trim(), lines }),
       });
       setSplitOpen(false); reload();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
     setSplitBusy(false);
   };
   const doMerge = async () => {
-    if (!confirm("รวมกลับ (ยกเลิกแบ่งส่ง)? PO ยอดเหลือใบนี้จะถูกลบ และ PO แม่กลับเป็นยอดเต็ม")) return;
+    if (!(await confirmAction("รวมกลับ (ยกเลิกแบ่งส่ง)? PO ยอดเหลือใบนี้จะถูกลบ และ PO แม่กลับเป็นยอดเต็ม"))) return;
     try {
       const j = await sahamitFetch(`/api/sahamit/po/${id}/merge`, { method: "POST" });
       router.push(j?.restoredPoId ? `/sahamit/po/${j.restoredPoId}` : "/sahamit/po");
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
   };
 
   useEffect(() => {
@@ -597,7 +599,7 @@ export default function PoDetailPage() {
                     <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(ไม่บังคับ — เว้นว่างได้ แก้ทีหลัง)</span></label>
                     <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เว้นว่างไว้ก่อนได้ (ระบบตั้งเลขชั่วคราวให้)" />
                   </div>
-                  <div className="premium-table-wrapper">
+                  <TableScroll>
                     <table className="premium-table">
                       <thead><tr><th>สินค้า</th><th style={{ textAlign: "right" }}>เต็ม</th><th style={{ textAlign: "right" }}>ส่งจริง</th><th style={{ textAlign: "right" }}>เหลือ</th></tr></thead>
                       <tbody>
@@ -623,7 +625,7 @@ export default function PoDetailPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                     <button className="btn" onClick={() => setSplitOpen(false)} disabled={splitBusy}>ยกเลิก</button>
                     <button className="btn btn-primary" onClick={doSplit} disabled={splitBusy}>{splitBusy ? "กำลังแบ่ง..." : "แบ่งส่ง + เปิด PO ยอดเหลือ"}</button>
@@ -634,7 +636,7 @@ export default function PoDetailPage() {
           )}
 
           {/* Lines */}
-          <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+          <TableScroll style={{ overflowX: "auto" }}>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -647,7 +649,7 @@ export default function PoDetailPage() {
                 {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} canEdit={canEdit} />)}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
         </DetailPageLayout>
       )}
@@ -741,7 +743,7 @@ export default function PoDetailPage() {
                 — ยอดเก็บเงิน/งวดชำระ/SO จะตรงกับ PO ทั้งใบ · ดีล FC ต้นทางถูกยุบเข้าดีลรวม
                 (แบ่งได้ถ้า PO ครอบบางส่วน) · Won เกิดตอน accept ใบเสนอราคา (แนบไฟล์ PO + เลือกเดือน)
               </div>
-              <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+              <TableScroll style={{ overflowX: "auto" }}>
                 <table className="premium-table">
                   <thead>
                     <tr>
@@ -805,7 +807,7 @@ export default function PoDetailPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
                 <button className="btn" onClick={() => setSettleOpen(false)} disabled={settleBusy}>
                   {settleData.allSettled ? "ปิด" : "ยกเลิก"}

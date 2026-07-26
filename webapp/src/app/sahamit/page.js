@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Boxes, Ruler, Package, CalendarRange } from "lucide-react";
@@ -169,7 +170,7 @@ export default function SahamitOverview() {
                   <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 8px", fontSize: "12px" }} onClick={() => router.push("/sahamit/po")}>ดูทั้งหมด</button>
                 </div>
                 {recentFollowUps.length > 0 ? (
-                  <table className="premium-table" style={{ borderTop: "none" }}>
+                  <TableScroll><table className="premium-table" style={{ borderTop: "none" }}>
                     <thead><tr><th style={{ paddingLeft: "20px" }}>เลขที่ PO</th><th>วันที่รับ PO</th><th>สถานะ</th></tr></thead>
                     <tbody>
                       {recentFollowUps.map((p) => (
@@ -180,7 +181,7 @@ export default function SahamitOverview() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></TableScroll>
                 ) : (
                   <div className="empty-state" style={{ padding: "32px", fontSize: "13px" }}>ไม่มี PO ค้างส่งที่ต้องติดตาม เยี่ยมมาก!</div>
                 )}

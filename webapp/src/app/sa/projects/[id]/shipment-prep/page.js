@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -14,7 +15,7 @@ import {
 import { useCan } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
-import { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
+import { PageShell as SaPageShell } from "@/components/ui/Workspace";
 
 const num = (value) => Number(value || 0).toLocaleString("th-TH");
 const paginateShipmentLines = (lines = []) => {
@@ -175,7 +176,7 @@ export default function ShipmentPrepPage() {
           </section>}
 
           <section>
-            <table className="shipment-print-table">
+            <TableScroll><table className="shipment-print-table">
               <thead>
                 <tr>
                   <th style={{ width: "44px" }}>#</th>
@@ -199,7 +200,7 @@ export default function ShipmentPrepPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></TableScroll>
           </section>
 
           {pageIndex === shipmentPages.length - 1 && <footer className="shipment-signatures">

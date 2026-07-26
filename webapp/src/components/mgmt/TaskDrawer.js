@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
 import DocsPanel from "@/components/mgmt/DocsPanel";
@@ -34,7 +36,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
         body: JSON.stringify({ status }),
       });
       if (res.ok) { onChanged?.(await res.json()); loadUpdates(); }
-      else alert((await res.json().catch(() => ({}))).error || "เปลี่ยนสถานะไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "เปลี่ยนสถานะไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 
@@ -52,12 +54,12 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
   };
 
   const remove = async () => {
-    if (!confirm("ย้ายงานนี้ลงถังขยะ?")) return;
+    if (!(await confirmAction("ย้ายงานนี้ลงถังขยะ?"))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/mgmt/tasks/${task.id}`, { method: "DELETE" });
       if (res.ok) { onDeleted?.(task.id); onClose?.(); }
-      else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 

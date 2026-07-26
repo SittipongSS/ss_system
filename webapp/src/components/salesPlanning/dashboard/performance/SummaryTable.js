@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { Fragment } from "react";
 import { Users } from "lucide-react";
@@ -108,7 +109,7 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
         Actual = YTD · {gapHead} = Actual YTD − Target YTD (ติดลบ = ต้องทบเข้าเดือนถัดไป) · ต้องทำ/เดือน = เฉลี่ยที่เหลือเพื่อปิดเป้าทั้งปี · คลิกแถวเพื่อเจาะ
       </p>
       <div className="fz-box premium-glass-table performance-summary-table">
-        <table className="fz-table w-full text-sm" style={{ minWidth: 1080 }}>
+        <TableScroll><table className="fz-table w-full text-sm" style={{ minWidth: 1080 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>
@@ -171,7 +172,7 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
           <tfoot>
             <SummaryRow label="รวมทั้งบริษัท" s={summarize(matrix.company, opts(prevMatrix.company?.actual || null))} tone="total" />
           </tfoot>
-        </table>
+        </table></TableScroll>
       </div>
     </section>
   );

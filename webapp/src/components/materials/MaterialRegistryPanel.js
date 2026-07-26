@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // ทะเบียนวัสดุ (mig 0143 + 0157) — ข้อมูลหลักของราคาวัสดุทั้งระบบ
 //
 // วัสดุมีตัวตนถาวร (ไม่ใช่เอกสาร ไม่มีเลขที่) · ราคาเป็นรุ่น (rev) เก็บประวัติครบ
@@ -258,7 +259,7 @@ export default function MaterialRegistryPanel({
             : "ไม่มีวัสดุที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr>
@@ -358,7 +359,7 @@ export default function MaterialRegistryPanel({
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
 
       {/* เพิ่ม/แก้วัสดุ — ฟอร์มเดียวกัน (กฎ AGENTS.md) */}
@@ -430,7 +431,7 @@ export default function MaterialRegistryPanel({
           (history.revisions || []).length === 0 ? (
             <EmptyState icon={Coins}>ยังไม่มีใครออกราคาให้วัสดุนี้</EmptyState>
           ) : (
-            <div className="premium-table-wrapper">
+            <TableScroll>
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -458,7 +459,7 @@ export default function MaterialRegistryPanel({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           )
         )}
       </Modal>

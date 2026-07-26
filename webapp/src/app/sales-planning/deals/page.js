@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -6,7 +8,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
@@ -24,7 +26,7 @@ import DetailRow from "@/components/ui/DetailRow";
 import ReadableText from "@/components/ui/ReadableText";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -275,7 +277,7 @@ export default function SalesPlanningPipelinePage() {
     // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
     // มาผูกแทน; ลบดีลแค่ถอดงานของดีลนี้ออก โครงการยังอยู่ (ลบเองที่หน้าโครงการ)
     const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะงานของดีลนี้ออก" : "";
-    if (!window.confirm(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
@@ -357,7 +359,7 @@ export default function SalesPlanningPipelinePage() {
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
   const createShipmentPrep = async (deal) => {
     if (!deal.projectId) return;
-    if (!window.confirm(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`)) return;
+    if (!(await confirmAction(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`))) return;
     setShippingDealId(deal.id);
     setError("");
     try {
@@ -438,7 +440,7 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const deleteDocument = async (doc) => {
-    if (!window.confirm(`Delete "${doc.title}"?`)) return;
+    if (!(await confirmAction(`Delete "${doc.title}"?`))) return;
     setDocLoading(true);
     setError("");
     try {
@@ -569,7 +571,7 @@ export default function SalesPlanningPipelinePage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
@@ -683,7 +685,7 @@ export default function SalesPlanningPipelinePage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
 
           {filteredDeals.length > 0 && (
@@ -771,7 +773,7 @@ export default function SalesPlanningPipelinePage() {
             )}
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={quoteLoading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เลขที่</th>
@@ -828,7 +830,7 @@ export default function SalesPlanningPipelinePage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
         </div>
       </Modal>
@@ -890,7 +892,7 @@ export default function SalesPlanningPipelinePage() {
           )}
 
           <div className="premium-glass-table table-responsive" aria-busy={docLoading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เอกสาร</th>
@@ -939,7 +941,7 @@ export default function SalesPlanningPipelinePage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
         </div>
       </Modal>

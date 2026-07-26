@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
@@ -8,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
@@ -31,7 +33,7 @@ import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 
 const ACTION_COLORS = {
   screen: 'var(--blue)',
@@ -349,7 +351,7 @@ export default function LeadsPage() {
   };
 
   const deleteLead = async (lead) => {
-    if (!window.confirm(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`)) return;
+    if (!(await confirmAction(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`))) return;
     setError("");
     const res = await fetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json().catch(() => ({}))).error || "ลบลีดไม่สำเร็จ");
@@ -462,7 +464,7 @@ export default function LeadsPage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ลูกค้า/ผู้ติดต่อ {sortArrow("name")}</span></th>
@@ -580,7 +582,7 @@ export default function LeadsPage() {
                   <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีลีดตามตัวกรองนี้ {canCreate ? "— เริ่มจากปุ่มรับลีดใหม่" : ""}</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
 
           {filtered.length > 0 && (

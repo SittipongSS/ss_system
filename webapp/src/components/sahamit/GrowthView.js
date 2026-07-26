@@ -1,4 +1,6 @@
 "use client";
+import { ChartCanvas } from "@/components/ui/ChartCard";
+import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer,
@@ -70,7 +72,7 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
           <div className="glass-panel" style={{ padding: 20 }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>ยอด PO จริง {LEVELS.find((l) => l[0] === level)[1]} + %การเติบโต ({unitLbl})</h3>
             <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>แท่ง = ยอดสั่งจริงต่อช่วง (แกนซ้าย) · เส้น = %เติบโต {seqLabel}{showYoY ? " และ YoY" : ""} (แกนขวา)</div>
-            <ResponsiveContainer width="100%" height={360}>
+            <ChartCanvas><ResponsiveContainer width="100%" height={360}>
               <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
@@ -83,11 +85,11 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
                 <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="seqGrowth" name={`%เติบโต ${seqLabel}`} stroke="var(--green)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
                 {showYoY && <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="yoyGrowth" name="%เติบโต YoY" stroke="var(--amber)" strokeWidth={2.5} strokeDasharray="5 3" dot={{ r: 3 }} connectNulls />}
               </ComposedChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></ChartCanvas>
           </div>
 
           {/* ตาราง */}
-          <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+          <TableScroll family="matrix" style={{ overflowX: "auto" }}>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -116,7 +118,7 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </>
       )}
     </div>

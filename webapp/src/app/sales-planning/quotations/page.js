@@ -1,11 +1,13 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, FolderKanban, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -16,7 +18,7 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
 const statusBadge = (s) => quoteStatusBadge(s);
@@ -56,7 +58,7 @@ export default function QuotationsPage() {
   // (ใบที่ส่ง/รับแล้ว = หลักฐานการค้า ปกติให้ cancel/revise แทน)
   const deleteQuote = async (r) => {
     const warn = r.status !== "draft" ? "\n\n⚠ ใบนี้ไม่ใช่ฉบับร่าง — ลบด้วยสิทธิ์ผู้ดูแลระบบ (ปกติควรยกเลิก/Revise แทน)" : "";
-    if (!window.confirm(`ลบใบเสนอราคา ${r.quoteNumber}?${warn}`)) return;
+    if (!(await confirmAction(`ลบใบเสนอราคา ${r.quoteNumber}?${warn}`))) return;
     setError("");
     try {
       // admin: ใบ accepted (แหล่งยอด Actual) โดนบล็อก → พรีวิว Sale Order ที่จะหาย + ยืนยันบังคับลบ
@@ -157,7 +159,7 @@ export default function QuotationsPage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เลขที่</th>
@@ -224,7 +226,7 @@ export default function QuotationsPage() {
                   <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
 
           {filtered.length > 0 && (

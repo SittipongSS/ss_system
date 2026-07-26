@@ -1,4 +1,5 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
@@ -31,8 +32,8 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
   };
 
   const submit = async () => {
-    if (!form.title.trim()) { alert("กรุณาระบุหัวข้อการประชุม"); return; }
-    if (!form.meetingDate) { alert("กรุณาระบุวันที่ประชุม"); return; }
+    if (!form.title.trim()) { notifyToast.error("กรุณาระบุหัวข้อการประชุม"); return; }
+    if (!form.meetingDate) { notifyToast.error("กรุณาระบุวันที่ประชุม"); return; }
     setSaving(true);
     try {
       const payload = {
@@ -50,7 +51,7 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ"); return; }
+      if (!res.ok) { notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ"); return; }
       onSaved?.(await res.json());
       onClose?.();
     } finally { setSaving(false); }

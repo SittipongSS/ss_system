@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 // ตารางรายการสินค้า/บริการ + สรุปท้ายใบ (ส่วนลด/VAT/ยอดรวม) ของใบเสนอราคา —
 // component เดียวใช้ทั้งหน้าสร้าง (/sa/quotations/new) และหน้าแก้ไข ([id])
@@ -38,7 +39,7 @@ export function QuotationReadOnlyLineItems({
 }) {
   return (
     <>
-      <div className="premium-table-wrapper">
+      <TableScroll family="editable">
         <table className={`premium-table ${styles.readOnlyTable}`}>
           <thead>
             <tr>
@@ -77,7 +78,7 @@ export function QuotationReadOnlyLineItems({
             {!lines.length ? <tr><td colSpan={7} className={styles.emptyRows}>{emptyText}</td></tr> : null}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
 
       <div className={styles.totalsWrap}>
         <div className={styles.totalsPanel}>
@@ -163,7 +164,7 @@ export default function QuotationLineItems({
   return (
     <>
       <div className="premium-glass-table table-responsive">
-        <table className={`w-full text-sm ${styles.linesTable}`}>
+        <TableScroll family="editable"><table className={`w-full text-sm ${styles.linesTable}`}>
           <thead>
             <tr>
               <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
@@ -285,7 +286,7 @@ export default function QuotationLineItems({
             ))}
             {!lines.length && <tr><td colSpan={editable ? 7 : 6} className={styles.emptyRows}>ยังไม่มีรายการ — กด “เพิ่มสินค้า” หรือ “เพิ่มรายการเอง”</td></tr>}
           </tbody>
-        </table>
+        </table></TableScroll>
       </div>
 
       <div className={styles.totalsWrap}>

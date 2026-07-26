@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LayoutDashboard } from "lucide-react";
-import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace from "@/components/ui/Workspace";
 import { useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";

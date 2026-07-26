@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, TriangleAlert } from "lucide-react";
@@ -60,7 +61,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>
           PO เทียบ FC ต่อสินค้า {isValue ? "(มูลค่า)" : "(ชิ้น)"} — คลิกแถวเพื่อดูรายเดือน
         </h3>
-        <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+        <TableScroll family="matrix" style={{ overflowX: "auto" }}>
           <table className="premium-table">
             <thead>
               <tr>
@@ -130,7 +131,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
               </tfoot>
             )}
           </table>
-        </div>
+        </TableScroll>
       </div>
 
       {/* PO ที่ยังแบ่งส่ง / ค้างส่ง */}
@@ -140,7 +141,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
         {rep.splittable.length === 0 ? (
           <div className="empty-state dashed" style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>ไม่มีบรรทัด PO ที่ค้างส่ง</div>
         ) : (
-          <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+          <TableScroll family="matrix" style={{ overflowX: "auto" }}>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -168,7 +169,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </div>
     </div>
@@ -178,7 +179,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
 // เจาะลึกรายเดือนของสินค้าหนึ่ง: FC/PO ต่อเดือน + สถานะ + PO ที่ตัด (cellDetail).
 function MonthDrill({ rounds, pos, fgCode, cells, ppc }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+    <TableScroll family="matrix"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
       <thead>
         <tr style={{ color: "var(--text-3)" }}>
           <th style={{ textAlign: "left", padding: "8px 12px 8px 44px", fontWeight: 600 }}>เดือน</th>
@@ -207,6 +208,6 @@ function MonthDrill({ rounds, pos, fgCode, cells, ppc }) {
         })}
         {cells.length === 0 && <tr><td colSpan={5} style={{ padding: "10px 44px", color: "var(--text-3)" }}>ไม่มีเดือนที่มีข้อมูล</td></tr>}
       </tbody>
-    </table>
+    </table></TableScroll>
   );
 }

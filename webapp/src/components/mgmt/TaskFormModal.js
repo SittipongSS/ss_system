@@ -1,4 +1,5 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
@@ -33,7 +34,7 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
   };
 
   const submit = async () => {
-    if (!form.title.trim()) { alert("กรุณาระบุชื่อรายการงาน"); return; }
+    if (!form.title.trim()) { notifyToast.error("กรุณาระบุชื่อรายการงาน"); return; }
     setSaving(true);
     try {
       const payload = {
@@ -52,7 +53,7 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ"); return; }
+      if (!res.ok) { notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ"); return; }
       onSaved?.(await res.json());
       onClose?.();
     } finally {

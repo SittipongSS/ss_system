@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useMemo } from "react";
 import { Layers } from "lucide-react";
@@ -74,7 +75,7 @@ export default function CarryPanel({ row, label, closedCount }) {
       </p>
       <CarryChart rows={rows} />
       <div className="premium-glass-table table-responsive" style={{ marginTop: 14 }}>
-        <table className="w-full text-sm">
+        <TableScroll><table className="w-full text-sm">
           <thead>
             <tr>
               <th>เดือน</th>
@@ -103,7 +104,7 @@ export default function CarryPanel({ row, label, closedCount }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></TableScroll>
       </div>
     </section>
   );

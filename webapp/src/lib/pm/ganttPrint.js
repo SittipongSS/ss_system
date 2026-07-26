@@ -1,3 +1,4 @@
+import { notifyToast } from "@/lib/feedback";
 // Generates a print-ready A4 landscape ISO Timeline document (FM-SA form).
 // Ported from ss-cj. ss-team uses project.customerName (FK snapshot) for the
 // customer name; the rest of the fields are camelCase and match our schema.
@@ -279,7 +280,7 @@ export function buildGanttPrintHTML(project, company) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #ffffff; color: #21385e;
-         font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif;
+         font-family: ${PRINT_FONT_STACK};
          -webkit-font-smoothing: antialiased; font-size: 12px;
          -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
@@ -426,11 +427,11 @@ export async function openGanttPrintWindow(project) {
   // เปิดหน้าต่างก่อน (ยังไม่ await) กัน popup blocker แล้วค่อยดึงข้อมูลบริษัทที่เผยแพร่
   const w = window.open('', '_blank');
   if (!w) {
-    alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
+    notifyToast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
     return;
   }
   w.document.open();
-  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Project Timeline</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.write(printPlaceholderHtml({ title: "Project Timeline", message: "กำลังเตรียมเอกสาร…" }));
   w.document.close();
   const company = await getCompanyProfileForPrint();
   const html = buildGanttPrintHTML(project, company);
@@ -438,3 +439,4 @@ export async function openGanttPrintWindow(project) {
   w.document.write(html);
   w.document.close();
 }
+import { PRINT_FONT_STACK, printPlaceholderHtml } from "@/lib/printTheme";

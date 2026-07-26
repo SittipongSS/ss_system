@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // หน้าตั้งค่า "แม่แบบต้นทุนต่อประเภทสินค้า" (mig 0140) — ผู้ดูแลระบบเท่านั้น
 //
 // แม่แบบ = โครงบรรทัดต้นทุนที่ใบขอราคา (PR3) จะกางออกมาเป็นบรรทัดจริงตอนเลือก
@@ -126,7 +127,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
             ยังไม่มีบรรทัดต้นทุน — เพิ่มอย่างน้อย 1 บรรทัด เช่น หัวน้ำหอม ขวด ฝา หรือค่าบรรจุ
           </EmptyState>
         ) : (
-          <div className="premium-table-wrapper">
+          <TableScroll>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -225,7 +226,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
         <small style={{ color: "var(--text-3)", display: "block", marginTop: 8 }}>
           หน่วยราคาผูกกับชนิดเสมอ — วัตถุดิบ (RM) คิดเป็นบาท/กก. จึงต้องระบุกรัมต่อชิ้น

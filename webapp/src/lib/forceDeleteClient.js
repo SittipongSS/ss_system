@@ -1,3 +1,4 @@
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 // ── Client: บังคับลบสำหรับผู้ดูแลระบบ (break-glass) ───────────────────
 // ลบตามปกติก่อน; ถ้าถูกบล็อกด้วยกฎธุรกิจ (409/400) และผู้ใช้เป็น admin จะดึง
 // พรีวิว (?dryRun=1) มาแสดงว่าจะลบอะไรพ่วงบ้าง แล้วถาม window.confirm ก่อนยิงซ้ำ
@@ -34,7 +35,7 @@ export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
     cascade && `\nในฐานะผู้ดูแลระบบ การบังคับลบจะลบสิ่งเหล่านี้พ่วงไปด้วย:\n${cascade}`,
   ].filter(Boolean).join('\n');
 
-  if (!window.confirm(`${detail}\n\nยืนยันบังคับลบทั้งหมด? การลบนี้ย้อนกลับไม่ได้`)) {
+  if (!(await confirmAction(`${detail}\n\nยืนยันบังคับลบทั้งหมด? การลบนี้ย้อนกลับไม่ได้`))) {
     return { ok: false, cancelled: true };
   }
 

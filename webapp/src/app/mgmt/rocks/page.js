@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -6,6 +8,7 @@ import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import { toBuddhistYear } from "@/lib/mgmt/constants";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace from "@/components/ui/Workspace";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -25,16 +28,16 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
         body: JSON.stringify({ improved, goals }),
       });
       if (res.ok) onSaved?.(await res.json());
-      else alert((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
     } finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!confirm(`ลบข้อมูล Rock & Improve ของแผนก ${deptLabel}?`)) return;
+    if (!(await confirmAction(`ลบข้อมูล Rock & Improve ของแผนก ${deptLabel}?`))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/mgmt/rocks/${row.id}`, { method: "DELETE" });
       if (res.ok) onDeleted?.(row.id);
-      else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 
@@ -118,25 +121,24 @@ export default function MgmtRocksPage() {
       body: JSON.stringify({ year, deptCode: addDept, goals: [] }),
     });
     if (res.ok) { const created = await res.json(); setRows((p) => [...p, created]); setAddDept(""); }
-    else alert((await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ");
+    else notifyToast.error((await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ");
   };
 
   if (role && !canMgmt) return null;
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Target size={22} /></span> Rock &amp; Improve</h1>
-          <p>เป้าหมายและสิ่งที่พัฒนาขึ้น แยกตามแผนก (รายปี)</p>
-        </div>
+    <Workspace
+      icon={<Target size={22} />}
+      title="Rock & Improve"
+      subtitle="เป้าหมายและสิ่งที่พัฒนาขึ้น แยกตามแผนก (รายปี)"
+      headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
           </Select>
         </div>
-      </div>
-
+      )}
+    >
       {canEdit && addable.length > 0 && (
         <div className="glass-panel" style={{ padding: "12px 14px", marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--text-3)" }}>เพิ่มแผนก:</span>
@@ -166,6 +168,6 @@ export default function MgmtRocksPage() {
           ))}
         </div>
       )}
-    </>
+    </Workspace>
   );
 }

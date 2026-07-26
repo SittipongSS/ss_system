@@ -14,7 +14,7 @@ import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from 
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";

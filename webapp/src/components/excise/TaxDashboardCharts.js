@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { fmtMoney } from "@/lib/format";
 import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { ChartCanvas, ChartEmptyState, ChartTooltip } from "@/components/ui/ChartCard";
 
 // Colors mapped to our design system
 const COLORS = {
@@ -31,15 +32,11 @@ export function RegsDonutChart({ regs = [] }) {
   }, [regs]);
 
   if (data.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm text-[var(--text-3)]">
-        ไม่มีข้อมูล
-      </div>
-    );
+    return <ChartEmptyState>ไม่มีข้อมูลทะเบียนในช่วงนี้</ChartEmptyState>;
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ChartCanvas><ResponsiveContainer width="100%" height="100%">
       <PieChart>
         <Pie
           data={data}
@@ -54,12 +51,9 @@ export function RegsDonutChart({ regs = [] }) {
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
         </Pie>
-        <RechartsTooltip 
-          contentStyle={{ borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--bg-panel)" }}
-          itemStyle={{ color: "var(--text-1)", fontWeight: 600 }}
-        />
+        <RechartsTooltip content={<ChartTooltip />} />
       </PieChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></ChartCanvas>
   );
 }
 
@@ -86,15 +80,11 @@ export function OrdersComposedChart({ orders = [] }) {
   }, [orders]);
 
   if (data.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm text-[var(--text-3)]">
-        ไม่มีข้อมูล
-      </div>
-    );
+    return <ChartEmptyState>ไม่มีข้อมูลใบยื่นในช่วงนี้</ChartEmptyState>;
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ChartCanvas><ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={data} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
         <XAxis 
@@ -122,13 +112,12 @@ export function OrdersComposedChart({ orders = [] }) {
           }}
           tick={{ fill: "var(--text-3)", fontSize: 12 }}
         />
-        <RechartsTooltip 
-          contentStyle={{ borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--bg-panel)" }}
-          formatter={(value, name) => {
-            if (name === "TaxAmount") return [fmtMoney(value), "ยอดภาษี (฿)"];
-            return [value, "จำนวนรายการ"];
-          }}
-          labelStyle={{ color: "var(--text-2)", marginBottom: 8 }}
+        <RechartsTooltip
+          content={(
+            <ChartTooltip
+              valueFormatter={(value, name) => name === "TaxAmount" ? fmtMoney(value) : value}
+            />
+          )}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
         <Bar 
@@ -153,6 +142,6 @@ export function OrdersComposedChart({ orders = [] }) {
           activeDot={{ r: 6 }}
         />
       </ComposedChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></ChartCanvas>
   );
 }

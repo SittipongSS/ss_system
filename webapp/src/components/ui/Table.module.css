@@ -1,0 +1,118 @@
+.shell {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.heading { min-width: 0; }
+
+.heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.heading p {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.actions,
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar {
+  min-height: calc(var(--ctl-h) + 16px);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.scroll {
+  width: 100%;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.scroll :global(table) {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll[data-family="list"] :global(th),
+.scroll[data-family="list"] :global(td) {
+  padding-block: 10px;
+}
+
+.scroll[data-family="editable"] :global(th),
+.scroll[data-family="editable"] :global(td) {
+  padding-block: 8px;
+}
+
+.scroll[data-family="matrix"] :global(th:first-child),
+.scroll[data-family="matrix"] :global(td:first-child) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
+.footer {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.empty {
+  padding: 28px 18px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.empty strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.emptyAction { margin-top: 12px; }
+
+@media (max-width: 680px) {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions { justify-content: flex-start; }
+  .toolbar > * { min-height: 40px; }
+
+  .scroll[data-family="list"] :global(th),
+  .scroll[data-family="list"] :global(td) {
+    padding-block: 11px;
+  }
+}

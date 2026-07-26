@@ -17,7 +17,7 @@ import { DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";

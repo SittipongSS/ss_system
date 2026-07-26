@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { CalendarClock, Plus, Trash2 } from "lucide-react";
 import {
@@ -103,7 +104,7 @@ export default function QuotationInstallments({
           </span>
         </div>
         <div className="premium-glass-table table-responsive">
-          <table className="w-full text-sm">
+          <TableScroll family="editable"><table className="w-full text-sm">
             <thead>
               <tr>
                 <th style={{ width: 40 }}>งวด</th>
@@ -140,7 +141,7 @@ export default function QuotationInstallments({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></TableScroll>
         </div>
       </div>
     </>

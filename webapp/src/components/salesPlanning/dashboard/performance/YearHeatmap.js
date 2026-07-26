@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { CalendarRange } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
@@ -33,7 +34,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
         เขียว = เกินเป้าเดือนนั้น · แดง = ขาด · คลิกชื่อเพื่อเจาะรายคน
       </p>
       <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "150px" }}>
-        <table className="fz-table w-full" style={{ minWidth: 900, fontSize: 12.5 }}>
+        <TableScroll family="matrix"><table className="fz-table w-full" style={{ minWidth: 900, fontSize: 12.5 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน</th>
@@ -62,7 +63,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></TableScroll>
       </div>
     </section>
   );

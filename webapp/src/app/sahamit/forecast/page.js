@@ -1,4 +1,7 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -221,7 +224,7 @@ function ForecastPageInner() {
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
-    if (!dealOwnerId) { alert("ต้องเลือกผู้ดูแล (AE)"); return; }
+    if (!dealOwnerId) { notifyToast.error("ต้องเลือกผู้ดูแล (AE)"); return; }
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
@@ -231,23 +234,23 @@ function ForecastPageInner() {
       });
       const skipMsg = json.skipped ? ` (ข้ามที่สร้างดีลแล้ว ${json.skipped} รายการ)` : "";
       const supMsg = json.superseded ? ` · เคลียร์ดีลรอบเก่าที่ยังไม่ปิด ${json.superseded} ดีล (FC อัพเดท)` : "";
-      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)${skipMsg}${supMsg}`);
+      notifyToast.success(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)${skipMsg}${supMsg}`);
       setSelectedLines(new Set());
       setDealModalOpen(false);
       reloadMapped();
     } catch (e) {
-      alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
+      notifyToast.error(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
     } finally {
       setCreating(false);
     }
   };
 
   const deleteRound = async (r) => {
-    if (!confirm(`ลบ FC รอบที่ ${r.roundNo}? (ลบบรรทัดทั้งหมดในรอบนี้ด้วย)`)) return;
+    if (!(await confirmAction(`ลบ FC รอบที่ ${r.roundNo}? (ลบบรรทัดทั้งหมดในรอบนี้ด้วย)`))) return;
     try {
       await sahamitFetch(`/api/sahamit/forecast/rounds/${r.id}`, { method: "DELETE" });
       setSelectedNo(null); reload();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
   };
 
   return (
@@ -308,7 +311,7 @@ function ForecastPageInner() {
 
           {/* รายการสินค้า (Overview) — ยอดล่าสุดต่อ SKU */}
           {tab === "overview" && (
-            <div className="premium-table-wrapper">
+            <TableScroll family="matrix">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -343,7 +346,7 @@ function ForecastPageInner() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           )}
 
           {/* ตารางจัดการ (Matrix) — กริด SKU × เดือน ของรอบที่เลือก (อ่านอย่างเดียว, แก้ผ่านปุ่ม) */}
@@ -376,7 +379,7 @@ function ForecastPageInner() {
               ) : matrixGroups.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</div>
               ) : (
-                <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+                <TableScroll family="matrix" style={{ overflowX: "auto" }}>
                   <table className="premium-table sticky-col1">
                     <thead>
                       <tr>
@@ -427,7 +430,7 @@ function ForecastPageInner() {
                       </tr>
                     </tfoot>
                   </table>
-                </div>
+                </TableScroll>
               )}
             </div>
           )}
@@ -470,7 +473,7 @@ function ForecastPageInner() {
                   {q || filterCount > 0 ? "ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง" : "รอบนี้ยังไม่มีรายการ"}
                 </div>
               ) : (
-                <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+                <TableScroll family="matrix" style={{ overflowX: "auto" }}>
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -525,7 +528,7 @@ function ForecastPageInner() {
                       ])}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               )}
             </div>
           )}
@@ -533,7 +536,7 @@ function ForecastPageInner() {
           {/* ประวัติ / เทียบรอบ */}
           {tab === "history" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              <div className="premium-table-wrapper">
+              <TableScroll family="matrix">
                 <table className="premium-table">
                   <thead>
                     <tr>
@@ -572,7 +575,7 @@ function ForecastPageInner() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
 
               {comparison && (
                 <div>

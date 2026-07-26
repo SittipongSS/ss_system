@@ -4,7 +4,8 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination, DEFAULT_PAGE_SIZE } from "@/lib/usePagination";
 import EmptyState from "@/components/ui/EmptyState";
-import Pager from "./Pager";
+import Pager from "@/components/ui/Pager";
+import { TableScroll } from "@/components/ui/Table";
 
 // Core responsive list used by both excise tracks AND the reports page.
 //   • landscape → sortable .premium-table
@@ -53,7 +54,7 @@ export default function DataList({
   return (
     <div>
       {view === "table" ? (
-        <div className="prod-table-wrap">
+        <TableScroll className="prod-table-wrap" family="list">
           <table className="premium-table">
             <thead>
               <tr>
@@ -82,7 +83,7 @@ export default function DataList({
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       ) : (
         <div className="flex flex-col gap-3">
           {pageRows.map((r, i) => (

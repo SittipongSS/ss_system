@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -224,8 +226,8 @@ export default function SalesPlanningTargetsPage() {
     setInfo("");
   };
 
-  const guardPending = (proceed) => {
-    if (pendingCount && !window.confirm("มีการแก้ไขที่ยังไม่บันทึก จะทิ้งการแก้ไขไหม?")) return;
+  const guardPending = async (proceed) => {
+    if (pendingCount && !(await confirmAction("มีการแก้ไขที่ยังไม่บันทึก จะทิ้งการแก้ไขไหม?"))) return;
     setPending({});
     proceed();
   };
@@ -400,7 +402,7 @@ export default function SalesPlanningTargetsPage() {
 
         <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }} aria-busy={loading}>
           <div className="fz-box">
-            <table className="fz-table premium-glass-table w-full text-sm">
+            <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
               <thead>
                 <tr>
                   <th className="fz-c1" style={{ background: "var(--bg)", textAlign: "left", minWidth: 210 }}>ทีม / รายบุคคล</th>
@@ -461,7 +463,7 @@ export default function SalesPlanningTargetsPage() {
                   })()}
                 </tfoot>
               )}
-            </table>
+            </table></TableScroll>
           </div>
         </div>
 

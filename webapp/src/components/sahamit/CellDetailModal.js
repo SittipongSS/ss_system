@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -106,7 +107,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 {detail.fcs.length === 0 ? (
                   <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี FC เดือนนี้ —</div>
                 ) : (
-                  <div className="premium-table-wrapper">
+                  <TableScroll family="matrix">
                     <table className="premium-table">
                       <thead><tr><th>รอบที่</th><th>วันที่รับ</th><th style={{ textAlign: "right" }}>จำนวน</th></tr></thead>
                       <tbody>
@@ -115,7 +116,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 )}
               </div>
               <div>
@@ -123,7 +124,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 {detail.poLines.length === 0 ? (
                   <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี PO เดือนนี้ —</div>
                 ) : (
-                  <div className="premium-table-wrapper">
+                  <TableScroll family="matrix">
                     <table className="premium-table">
                       <thead><tr><th>เลขที่ PO</th><th>วันที่ PO</th><th>วันที่รับ PO</th><th style={{ textAlign: "right" }}>จำนวน</th><th>กำหนดส่ง</th><th>คาดส่ง</th><th>ส่งจริง</th><th>สถานะ</th></tr></thead>
                       <tbody>
@@ -141,7 +142,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 )}
               </div>
             </div>

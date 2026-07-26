@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 // เอกสารแนบหลายไฟล์แบบมีประเภท (migration 0028) — ใช้ซ้ำได้ทุก entity.
 // props:
@@ -32,7 +34,7 @@ import {
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
   if (file && file.size > MAX_UPLOAD_BYTES) {
-    alert(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`);
+    notifyToast.error(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`);
     return true;
   }
   return false;
@@ -118,7 +120,7 @@ export default function AttachmentsPanel({
     fd.append("entityId", entityId);
     const up = await fetch("/api/upload", { method: "POST", body: fd });
     if (!up.ok) {
-      alert("อัปโหลดไฟล์ไม่สำเร็จ");
+      notifyToast.error("อัปโหลดไฟล์ไม่สำเร็จ");
       return false;
     }
     const { url, driveFileId } = await up.json();
@@ -146,7 +148,7 @@ export default function AttachmentsPanel({
           body: JSON.stringify({ driveFileId }),
         }).catch(() => {});
       }
-      alert((await res.json()).error || "บันทึกเอกสารไม่สำเร็จ");
+      notifyToast.error((await res.json()).error || "บันทึกเอกสารไม่สำเร็จ");
       return false;
     }
     return true;
@@ -171,7 +173,7 @@ export default function AttachmentsPanel({
       if (await upload(f, typeKey, {})) await fetchItems();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการอัปโหลด");
+      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
     } finally {
       setUploadingType(null);
       pendingTypeRef.current = null;
@@ -195,7 +197,7 @@ export default function AttachmentsPanel({
       await fetchItems();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการอัปโหลด");
+      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
     } finally {
       setUploadingType(null);
     }
@@ -225,7 +227,7 @@ export default function AttachmentsPanel({
   // ── detailed mode: บันทึกพร้อมรายละเอียด ──
   const handleDetailedSave = async () => {
     if (!file) {
-      alert("กรุณาเลือกไฟล์");
+      notifyToast.error("กรุณาเลือกไฟล์");
       return;
     }
     setSaving(true);
@@ -242,20 +244,20 @@ export default function AttachmentsPanel({
       }
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการอัปโหลด");
+      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("ยืนยันการลบเอกสารนี้?")) return;
+    if (!(await confirmAction("ยืนยันการลบเอกสารนี้?"))) return;
     try {
       const res = await fetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) setItems((prev) => prev.filter((it) => it.id !== id));
-      else alert((await res.json()).error || "ลบไม่สำเร็จ");
+      else notifyToast.error((await res.json()).error || "ลบไม่สำเร็จ");
     } catch {
-      alert("เกิดข้อผิดพลาดในการลบ");
+      notifyToast.error("เกิดข้อผิดพลาดในการลบ");
     }
   };
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
+import Workspace from "@/components/ui/Workspace";
 import styles from "./page.module.css";
 
 export default function SettingsPage() {
@@ -116,17 +117,11 @@ export default function SettingsPage() {
     .filter((section) => section.items.length);
 
   return (
-    <>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><Settings size={22} /></span>{" "}
-            ตั้งค่าระบบ
-          </h1>
-          <p>การตั้งค่าและเครื่องมือดูแลระบบทั้งหมด รวมไว้ที่เดียว</p>
-        </div>
-      </div>
-
+    <Workspace
+      icon={<Settings size={22} />}
+      title="ตั้งค่าระบบ"
+      subtitle="การตั้งค่าและเครื่องมือดูแลระบบทั้งหมด รวมไว้ที่เดียว"
+    >
       <div className={styles.sectionList}>
         {sections.map((section) => (
           <section key={section.title} aria-labelledby={`settings-${section.title}`}>
@@ -152,6 +147,6 @@ export default function SettingsPage() {
           </section>
         ))}
       </div>
-    </>
+    </Workspace>
   );
 }

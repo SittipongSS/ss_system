@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FileText, FileSpreadsheet, File as FileIcon, Plus, Trash2, ExternalLink, Paperclip, Link2 } from "lucide-react";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
@@ -30,7 +32,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
 
   const uploadFile = async (f) => {
     if (!f) return;
-    if (f.size > MAX_UPLOAD_BYTES) { alert(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`); return; }
+    if (f.size > MAX_UPLOAD_BYTES) { notifyToast.error(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`); return; }
     setBusy(true);
     try {
       const fd = new FormData();
@@ -39,7 +41,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
       fd.append("entityType", entityType);
       fd.append("entityId", entityId);
       const up = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!up.ok) { alert("อัปโหลดไม่สำเร็จ"); return; }
+      if (!up.ok) { notifyToast.error("อัปโหลดไม่สำเร็จ"); return; }
       const { url, driveFileId } = await up.json();
       const res = await fetch("/api/master/attachments", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -48,7 +50,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
           fileName: f.name, mimeType: f.type || null, sizeBytes: f.size, metadata: { kind: "file" },
         }),
       });
-      if (res.ok) load(); else alert((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      if (res.ok) load(); else notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
     } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 
@@ -59,7 +61,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType, entityId, ...payload }),
       });
-      if (res.ok) load(); else alert((await res.json().catch(() => ({}))).error || "ดำเนินการไม่สำเร็จ");
+      if (res.ok) load(); else notifyToast.error((await res.json().catch(() => ({}))).error || "ดำเนินการไม่สำเร็จ");
     } finally { setBusy(false); }
   };
   const linkDoc = () => {
@@ -72,12 +74,12 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
   };
 
   const remove = async (id) => {
-    if (!confirm("ลบ/เลิกผูกเอกสารนี้?")) return;
+    if (!(await confirmAction("ลบ/เลิกผูกเอกสารนี้?"))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) setItems((p) => p.filter((x) => x.id !== id));
-      else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 

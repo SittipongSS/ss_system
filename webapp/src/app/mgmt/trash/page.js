@@ -1,10 +1,12 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, RotateCcw, ListTodo, Users, Target } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { fmtDateTime } from "@/lib/format";
+import Workspace from "@/components/ui/Workspace";
 
 const fmt = (d) => (d ? fmtDateTime(d) : "");
 
@@ -37,7 +39,7 @@ export default function MgmtTrashPage() {
         body: JSON.stringify({ entity, id }),
       });
       if (res.ok) setData((d) => ({ ...d, [`${entity}s`]: d[`${entity}s`].filter((x) => x.id !== id) }));
-      else alert((await res.json().catch(() => ({}))).error || "กู้คืนไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "กู้คืนไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 
@@ -69,14 +71,11 @@ export default function MgmtTrashPage() {
   if (role && !canMgmt) return null;
 
   return (
-    <>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Trash2 size={22} /></span> ถังขยะ</h1>
-          <p>รายการที่ลบไว้ — กู้คืนได้</p>
-        </div>
-      </div>
-
+    <Workspace
+      icon={<Trash2 size={22} />}
+      title="ถังขยะ"
+      subtitle="รายการที่ลบไว้ — กู้คืนได้"
+    >
       {loading ? (
         <SkeletonRows rows={6} />
       ) : (
@@ -86,6 +85,6 @@ export default function MgmtTrashPage() {
           <Section title="Rock & Improve" icon={Target} entity="rock" items={data.rocks} label={(it) => `${it.deptCode} · ปี ${Number(it.year) + 543}`} />
         </>
       )}
-    </>
+    </Workspace>
   );
 }

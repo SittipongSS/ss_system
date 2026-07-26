@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // ปฏิทินวันหยุด — ข้อมูลปฏิบัติการ แก้ตรงบนตารางเดิม (Decision 0012 ฉบับแก้ไขครั้งที่ 2:
 // ไม่ใช้ชั้นร่าง/เผยแพร่) — เพิ่มผ่าน Modal ทางเดียว ส่วนการลบยืนยันผ่าน ConfirmDialog (no-auto-save)
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -316,7 +317,7 @@ export default function HolidaysPage() {
                   {Number(year) === now.getFullYear() && <span className={`ui-badge ${styles.currentYear}`}>ปีนี้</span>}
                 </header>
 
-                <div className={`premium-table-wrapper ${styles.tableWrap}`}>
+                <TableScroll className={`${styles.tableWrap}`}>
                   <table className="premium-table">
                     <thead>
                       <tr><th>วันที่</th><th>วัน</th><th>ชื่อวันหยุด</th>{canManage && <th aria-label="การทำงาน" />}</tr>
@@ -341,7 +342,7 @@ export default function HolidaysPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
 
                 <div className={styles.cards}>
                   {items.map((holiday) => (
