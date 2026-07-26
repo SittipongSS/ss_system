@@ -130,7 +130,11 @@ export default function SearchableSelect({
               );
             }) : (
               <div className="ui-select-empty">
-                {emptyText || (allowFreeText ? "ไม่พบรายการ — ใช้ข้อความที่พิมพ์ได้" : "ไม่พบรายการ")}
+                {/* emptyText รับฟังก์ชันได้ด้วย — ผู้เรียกจะได้ตอบ "ทำไมของที่ค้นไม่อยู่ในลิสต์"
+                    ตรงจุดที่ผู้ใช้ถามจริง ไม่ใช่ข้อความคงที่ที่ไม่รู้ว่าเขาค้นอะไร */}
+                {typeof emptyText === "function"
+                  ? emptyText(search.trim())
+                  : emptyText || (allowFreeText ? "ไม่พบรายการ — ใช้ข้อความที่พิมพ์ได้" : "ไม่พบรายการ")}
               </div>
             )}
           </div>
