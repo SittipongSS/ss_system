@@ -4,7 +4,6 @@ import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
-import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
@@ -133,12 +132,10 @@ export async function POST(request) {
   const { data, error } = await supabase.from('attachments').insert(row).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  // Re-approval rule (ทุกระบบ): adding a document to an APPROVED customer/product
-  // drops it back to 'pending' for re-approval. (registration is locked above.)
-  const reapproval = resetApprovalOnEdit(parent, user);
-  if (reapproval && (entityType === 'customer' || entityType === 'product')) {
-    await supabase.from(PARENT_TABLE[entityType]).update({ ...reapproval, updatedAt: new Date().toISOString() }).eq('id', entityId);
-  }
+  // เอกสารแนบ **ไม่** ทำให้ลูกค้า/สินค้าตกกลับรออนุมัติ (มติผู้ใช้ 2026-07-27) — เหตุผล
+  // เดียวกับตอนลบไฟล์ ดู attachments/[id]/route.js. เดิมการแนบไฟล์ทำให้ลูกค้าที่อนุมัติแล้ว
+  // หลุดจากลิสต์ออกใบเสนอราคาทันที ซึ่งเป็นหนึ่งในเหตุที่ "ค้นลูกค้าไม่เจอ" แบบไม่มีคำอธิบาย
+  // (ทะเบียนสรรพสามิตยังล็อกตามเดิมด้วยด่านข้างบน — กติกาเข้มกว่าโดยเจตนา)
 
   return Response.json(data, { status: 201 });
 }

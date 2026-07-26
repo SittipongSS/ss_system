@@ -22,6 +22,7 @@ const SPACE_ENV = {
   // (ตาราง chat_webhook_settings ที่เคยมี CHECK ถูกถอนไปแล้วใน mig 0134)
   pc: 'CHAT_WEBHOOK_PC', // space ฝ่ายจัดซื้อ (ขอราคาบรรจุภัณฑ์)
   executive: 'CHAT_WEBHOOK_EXECUTIVE', // space ผู้บริหาร (ใบขอราคารออนุมัติ)
+  legal: 'CHAT_WEBHOOK_LEGAL', // space ฝ่ายกฎหมาย (ทะเบียนสรรพสามิต + ใบยื่นชำระภาษี)
 };
 
 // รายการ space มาตรฐาน — ใช้ร่วมกันทั้ง validation ฝั่ง API และหน้า UI ตั้งค่า
@@ -33,6 +34,7 @@ export const CHAT_SPACES = [
   { key: 'leads', label: 'คิวลีด', hint: 'ลีดใหม่รอคัดกรอง · คัดแล้วรอกระจาย · มอบให้ AE — คนใน space คือทีมขายที่ทำคิวลีด (SLA 1 วันทำการ)' },
   { key: 'pc', label: 'ฝ่ายจัดซื้อ (PC)', hint: 'คำขอราคาบรรจุภัณฑ์จากฝ่ายขาย — คนใน space คือฝ่ายจัดซื้อ' },
   { key: 'executive', label: 'ผู้บริหาร', hint: 'ใบขอราคาผลิตที่รออนุมัติ — คนใน space คือผู้บริหารที่อนุมัติราคาผลิต' },
+  { key: 'legal', label: 'ฝ่ายกฎหมาย (LG)', hint: 'ทะเบียนสรรพสามิตรออนุมัติ · ใบยื่นชำระภาษีที่รอยื่นกรมสรรพสามิต — คนใน space คือฝ่ายกฎหมาย' },
 ];
 
 // cache รายการ webhook จากตาราง ~60 วิ — event ถี่ ๆ ไม่ต้อง query ทุกครั้ง
@@ -108,7 +110,7 @@ export async function sendChatNow(spaceKey, card) {
 }
 
 // ส่งแบบ fire-and-forget — จุดเกี่ยวใน API ทั้งหมดใช้ตัวนี้
-// spaceKey: 'approvals' | 'sales' | 'pm' | 'rd' | 'leads'
+// spaceKey = key ใดก็ได้ใน CHAT_SPACES ข้างบน (ไม่ได้ตั้ง webhook = ข้ามเงียบ ๆ)
 export function sendChat(spaceKey, card) {
   const deliver = async () => {
     try {

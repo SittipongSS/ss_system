@@ -477,7 +477,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       && (filingError.code === 'PGRST204' || filingError.code === '42703' || (filingError.message || '').includes('salesOrderId'));
     if (filingError && !filingSchemaMissing) return fail(filingError.message, 500);
     if (filing) {
-      return badRequest(`ยกเลิก Sale Order ไม่ได้ เพราะมีใบยื่นสรรพสามิต ${filing.id} (${filing.status}) แล้ว`);
+      // บอกทางออกด้วย ไม่ใช่แค่บอกว่าไม่ได้ — ปุ่มอื่นทุกปุ่มที่แก้ใบนี้ก็ถูกใบยื่นบล็อก
+      // เหมือนกัน (ยกเลิกอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
+      return badRequest(
+        `ยกเลิก Sale Order ไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
+        + ' — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิก SO ได้',
+      );
     }
     // เหตุผลยกเลิกแบบมีโครงสร้าง (มติ 2026-07-18): เลือกรหัสจากตัวเลือกมาตรฐาน +
     // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.

@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser, redactProductMargin } from '@/lib/permissions';
-import { resetApprovalOnEdit } from '@/lib/master/approval';
+import { changedFieldsAgainst, CUSTOMER_CONTACT_FIELDS, resetApprovalOnEdit } from '@/lib/master/approval';
+import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { normalizeBrands } from '@/lib/master/brands';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
@@ -243,13 +244,19 @@ export async function PATCH(request, { params }) {
     updates.contactPhone = primary.phone || null;
     updates.email = primary.email || null;
   }
-  updates.updatedAt = new Date().toISOString();
-
   // Re-approval rule (ทุกระบบ): editing an APPROVED customer drops it back to
   // 'pending' so an AE Supervisor must re-approve. Hidden from downstream pickers
   // (GET returns approved-only) until then. No-op if it wasn't approved.
-  const reapproval = resetApprovalOnEdit(customer, user);
+  // ยกเว้นการแก้ผู้ติดต่อ (มติ 2026-07-27) — เทียบ "ค่าที่เปลี่ยนจริง" ไม่ใช่ key ที่ส่งมา
+  // เพราะฟอร์มแก้ไขส่งทั้งก้อนทุกครั้ง (ดู lib/master/approval.js)
+  const changedFields = changedFieldsAgainst(customer, updates, { ignore: ['updatedAt'] });
+  const reapproval = resetApprovalOnEdit(customer, user, {
+    changedFields,
+    exemptFields: CUSTOMER_CONTACT_FIELDS,
+  });
   if (reapproval) Object.assign(updates, reapproval);
+
+  updates.updatedAt = new Date().toISOString();
 
   const { data: updated, error } = await supabase
     .from('customers')
@@ -272,6 +279,10 @@ export async function PATCH(request, { params }) {
   void oldName; void oldTaxId;
 
   await recordAudit({ user, action: 'update', entityType: 'customer', entityId: id, before: customer, after: updated, request });
+  // ตกกลับรออนุมัติ = ลูกค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
+  if (reapproval) {
+    notifyMasterDataReapproval({ entityType: 'customer', record: updated, user, changedFields });
+  }
   return Response.json(updated);
 }
 

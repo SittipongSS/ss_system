@@ -1,7 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord } from '@/lib/permissions';
-import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -70,14 +69,10 @@ export async function DELETE(request, { params }) {
   const { error } = await supabase.from('attachments').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  // Re-approval rule (ทุกระบบ): removing a document from an APPROVED
-  // customer/product drops it back to 'pending' for re-approval.
-  if (parent && (att.entityType === 'customer' || att.entityType === 'product')) {
-    const reapproval = resetApprovalOnEdit(parent, user);
-    if (reapproval) {
-      await supabase.from(table).update({ ...reapproval, updatedAt: new Date().toISOString() }).eq('id', att.entityId);
-    }
-  }
+  // เอกสารแนบ **ไม่** ทำให้ลูกค้า/สินค้าตกกลับรออนุมัติ (มติผู้ใช้ 2026-07-27) — ไฟล์
+  // ประกอบไม่ใช่สเปกหรือตัวตนของแถว และการ reset ทำให้แถวนั้นหลุดจากลิสต์เลือกทุกหน้า
+  // ทันที (GET คืนเฉพาะ approved) ซึ่งแพงเกินกว่าเหตุ. ทะเบียนสรรพสามิตยังล็อกตามเดิม
+  // (ด่านข้างบน) เพราะเป็นกติกาที่เข้มกว่าโดยเจตนา
 
   // ลบไฟล์จริงใน storage/Drive ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
   await deleteAttachmentFile(att);

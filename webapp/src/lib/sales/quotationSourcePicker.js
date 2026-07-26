@@ -42,6 +42,46 @@ const REASONS = {
   },
 };
 
+// ── เหตุที่ลูกค้า "ไม่โผล่ในลิสต์เลย" (ไม่ใช่เรื่องดีล) ────────────────────────────
+// ลิสต์ลูกค้าที่ picker เห็นถูกกรอง 3 ชั้น: อนุมัติแล้ว + ไม่ถูกพักใช้ + ทีมที่ดูแล
+// (GET /api/customers) — สามเหตุนี้จึงหายเงียบสนิทแม้หลังมีตัวบอกเหตุรอบแรก เพราะ
+// ตัวบอกเหตุค้นได้แค่ในลิสต์ที่ถูกกรองมาแล้ว. ต้องเทียบกับทะเบียนทั้งหมดจึงจะตอบได้
+// (เคสจริง: แก้ที่อยู่ลูกค้า → ตกกลับรออนุมัติ → หายจากลิสต์ออกใบทันทีแบบไม่มีคำอธิบาย)
+const REGISTRY_REASONS = {
+  pending_approval: {
+    code: 'pending_approval',
+    label: 'ลูกค้ารออนุมัติ (ของใหม่ หรือถูกแก้ข้อมูลหลังอนุมัติ) — ออกใบได้เมื่อหัวหน้าอนุมัติแล้ว',
+    action: 'เปิดทะเบียนลูกค้า',
+    href: '/database/customers',
+  },
+  rejected: {
+    code: 'rejected',
+    label: 'ลูกค้าถูกปฏิเสธในทะเบียน — ต้องแก้ตามเหตุผลแล้วยื่นอนุมัติใหม่',
+    action: 'เปิดทะเบียนลูกค้า',
+    href: '/database/customers',
+  },
+  inactive: {
+    code: 'inactive',
+    label: 'ลูกค้าถูกพักใช้ (ปิดใช้งาน) — เปิดใช้งานก่อนจึงจะออกใบได้',
+    action: 'เปิดทะเบียนลูกค้า',
+    href: '/database/customers',
+  },
+  other_team: {
+    code: 'other_team',
+    label: 'ลูกค้าอยู่ในความดูแลของทีมอื่น — ให้ทีมที่ดูแลออกใบ หรือขอเพิ่มทีมของคุณเข้าไปดูแล',
+    action: 'เปิดทะเบียนลูกค้า',
+    href: '/database/customers',
+  },
+};
+
+function registryReasonFor(customer) {
+  const approval = customer?.approvalStatus;
+  if (approval === 'rejected') return REGISTRY_REASONS.rejected;
+  if (approval && approval !== 'approved') return REGISTRY_REASONS.pending_approval;
+  if (customer?.isActive === false) return REGISTRY_REASONS.inactive;
+  return REGISTRY_REASONS.other_team;
+}
+
 function reasonForDeals(deals) {
   if (!deals.length) return REASONS.no_deal;
   const open = deals.filter((d) => !QUOTATION_DEAL_EXCLUDED_STAGES.includes(d.stage));
@@ -63,16 +103,20 @@ function pickDeal(deals, code) {
   return deals[0] || null;
 }
 
-// คืนรายชื่อลูกค้าที่ "ค้นเจอในทะเบียน แต่ออกใบไม่ได้" พร้อมเหตุและดีลที่ควรไปจัดการ
-// customers = ลิสต์ที่ picker มองเห็นอยู่แล้ว (กรองทีม/อนุมัติแล้ว — ดู useCustomerRecord)
+// คืนรายชื่อลูกค้าที่ "ค้นเจอในทะเบียน แต่ออกใบไม่ได้" พร้อมเหตุและที่ควรไปจัดการ
+// customers        = ลิสต์ที่ picker มองเห็น (กรองอนุมัติ+พักใช้+ทีม — ดู /api/customers)
+// registryCustomers = ทะเบียนทั้งหมด (?manage=1) ใช้ตอบเฉพาะ "ทำไมไม่โผล่ในลิสต์เลย"
+//                     ห้ามเอาไปทำตัวเลือกให้เลือก — กติกาการกรองยังเหมือนเดิมทุกจุด
 export function blockedQuotationCustomers({
   search = '',
   customers = [],
+  registryCustomers = [],
   deals = [],
   limit = 3,
 } = {}) {
   const needle = norm(search);
   if (needle.length < 2) return [];
+  const matchesNeedle = (customer) => `${norm(customer.name)} ${norm(customer.arCode)}`.includes(needle);
 
   const eligibleIds = new Set(eligibleQuotationDeals(deals).map((deal) => deal.customerId));
   const dealsByCustomer = new Map();
@@ -82,24 +126,44 @@ export function blockedQuotationCustomers({
     dealsByCustomer.get(deal.customerId).push(deal);
   }
 
-  const matched = (Array.isArray(customers) ? customers : []).filter((customer) => {
-    if (!customer?.id || eligibleIds.has(customer.id)) return false;
-    return `${norm(customer.name)} ${norm(customer.arCode)}`.includes(needle);
-  });
+  const visible = Array.isArray(customers) ? customers : [];
+  const visibleIds = new Set(visible.map((customer) => customer?.id).filter(Boolean));
+  // มองเห็นแต่ออกใบไม่ได้ → เหตุอยู่ที่ดีล (ยังไม่ผูกโครงการ / ปิดแล้ว / ทีมอื่นเป็นเจ้าของ)
+  const blockedByDeal = visible
+    .filter((customer) => customer?.id && !eligibleIds.has(customer.id) && matchesNeedle(customer))
+    .map((customer) => {
+      const own = dealsByCustomer.get(customer.id) || [];
+      const reason = reasonForDeals(own);
+      const deal = pickDeal(own, reason.code);
+      return {
+        customerId: customer.id,
+        customerName: customer.name || customer.id,
+        reasonCode: reason.code,
+        reason: reason.label,
+        actionLabel: reason.action,
+        dealId: deal?.id || null,
+        dealTitle: deal?.title || null,
+        href: deal?.id ? `/sa/deals/${deal.id}` : '/sa/deals',
+      };
+    });
 
-  return matched.slice(0, limit).map((customer) => {
-    const own = dealsByCustomer.get(customer.id) || [];
-    const reason = reasonForDeals(own);
-    const deal = pickDeal(own, reason.code);
-    return {
-      customerId: customer.id,
-      customerName: customer.name || customer.id,
-      reasonCode: reason.code,
-      reason: reason.label,
-      actionLabel: reason.action,
-      dealId: deal?.id || null,
-      dealTitle: deal?.title || null,
-      href: deal?.id ? `/sa/deals/${deal.id}` : '/sa/deals',
-    };
-  });
+  // ไม่โผล่ในลิสต์เลย → เหตุอยู่ที่ตัวทะเบียนลูกค้าเอง (อนุมัติ/พักใช้/ทีมดูแล)
+  const blockedByRegistry = (Array.isArray(registryCustomers) ? registryCustomers : [])
+    .filter((customer) => customer?.id && !visibleIds.has(customer.id) && matchesNeedle(customer))
+    .map((customer) => {
+      const reason = registryReasonFor(customer);
+      return {
+        customerId: customer.id,
+        customerName: customer.name || customer.id,
+        reasonCode: reason.code,
+        reason: reason.label,
+        actionLabel: reason.action,
+        dealId: null,
+        dealTitle: null,
+        href: reason.href,
+      };
+    });
+
+  // เหตุที่ "ใกล้ออกใบได้" มาก่อน (ของที่เหลืออีกก้าวเดียว) แล้วจึงเหตุระดับทะเบียน
+  return [...blockedByDeal, ...blockedByRegistry].slice(0, limit);
 }
