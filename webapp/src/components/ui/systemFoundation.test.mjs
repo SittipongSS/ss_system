@@ -34,6 +34,16 @@ test("chart foundation owns card, legend, tooltip, empty, and summary zones", ()
     assert.match(CHART, new RegExp(`export function ${component}`));
   }
   assert.doesNotMatch(CHART_CSS, /#[0-9a-f]{3,8}|rgba?\(/i);
+  assert.doesNotMatch(
+    CHART_CSS,
+    /:global\(\.recharts-wrapper\)/,
+    "Recharts 3 mounts the chart wrapper under a zero-width measuring node; sizing it from that parent collapses every chart",
+  );
+  assert.match(
+    CHART_CSS,
+    /\.body\s*>\s*\.canvas\s*\{\s*height:\s*var\(--chart-min-height/,
+    "a ChartCanvas directly inside ChartCard needs a definite height for ResponsiveContainer",
+  );
 });
 
 test("global feedback providers accept imperative migration events", () => {

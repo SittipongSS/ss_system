@@ -39,6 +39,7 @@ const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
 const chartContractViolations = [];
+const chartSizingViolations = [];
 for (const file of uiFiles) {
   const rel = relative(file);
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
@@ -50,6 +51,18 @@ for (const file of uiFiles) {
   }
   if (source.includes("<ResponsiveContainer") && !source.includes("<ChartCanvas")) {
     chartContractViolations.push(rel);
+  }
+  if (
+    rel === "src/components/ui/ChartCard.module.css"
+    && /:global\(\.recharts-wrapper\)[\s\S]{0,160}\{[^}]*max-width\s*:\s*100%/.test(source)
+  ) {
+    chartSizingViolations.push(rel);
+  }
+  if (
+    rel === "src/components/ui/ChartCard.module.css"
+    && !/\.body\s*>\s*\.canvas\s*\{\s*height\s*:\s*var\(--chart-min-height/.test(source)
+  ) {
+    chartSizingViolations.push(`${rel} (ChartCard has no definite canvas height)`);
   }
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
@@ -126,6 +139,7 @@ const failures = [
   ...nativeFeedbackViolations.map((item) => `native alert/confirm bypasses feedback foundation: ${item}`),
   ...tableContractViolations.map((item) => `table bypasses TableScroll contract: ${item}`),
   ...chartContractViolations.map((item) => `chart bypasses ChartCanvas contract: ${item}`),
+  ...chartSizingViolations.map((item) => `chart sizing contract violation: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
   ...removedCompatibilityFiles.map((item) => `removed compatibility file returned: ${item}`),
@@ -140,6 +154,7 @@ console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`)
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length}`);
 console.log(`Table contract violations: ${tableContractViolations.length}`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
+console.log(`Chart sizing violations: ${chartSizingViolations.length}`);
 
 if (failures.length) {
   console.error("\nUI audit failed:");

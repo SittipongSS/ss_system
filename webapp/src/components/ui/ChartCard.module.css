@@ -14,7 +14,11 @@
   overflow: hidden;
 }
 
-.canvas :global(.recharts-wrapper),
+/*
+ * Recharts 3 mounts .recharts-wrapper below a 0×0 measuring node.
+ * Never constrain that wrapper relative to its parent; its inline pixel width
+ * is the rendered chart width. Only guard the SVG surface itself.
+ */
 .canvas :global(.recharts-surface) {
   max-width: 100%;
 }
@@ -65,6 +69,11 @@
 .body {
   min-height: var(--chart-min-height, 260px);
   padding: 8px 16px 16px;
+}
+
+.body > .canvas {
+  height: var(--chart-min-height, 260px);
+  min-height: var(--chart-min-height, 260px);
 }
 
 .legend {
