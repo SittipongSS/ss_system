@@ -4,6 +4,7 @@ export const SALES_ORDER_STATUS_LABELS = {
   approved: 'อนุมัติแล้ว',
   rejected: 'ตีกลับ',
   revised: 'ออกฉบับแก้ไขแล้ว',
+  approval_revoked: 'ยกเลิกอนุมัติแล้ว',
   cancelled: 'ยกเลิก',
 };
 
@@ -36,8 +37,14 @@ export function canEditSalesOrderContent(
     && (order.status === 'draft' || order.status === 'rejected');
 }
 
-export function canRevokeAndReviseSalesOrder(order, { reviewer = false } = {}) {
+// สองขั้นแยกกัน (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
+// เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
+export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved';
+}
+
+export function canIssueSalesOrderRevision(order, { reviewer = false } = {}) {
+  return Boolean(order) && reviewer && order.status === 'approval_revoked';
 }
 
 // Hard delete is only cleanup for a draft that has never entered the signed
@@ -125,7 +132,8 @@ export function canSalesOrderTransition(status, action, { reviewer = false, admi
   if (action === 'save' || action === 'submit') return status === 'draft' || status === 'rejected';
   if (action === 'approve' || action === 'reject') return reviewer && status === 'pending_approval';
   if (action === 'withdraw') return status === 'pending_approval';
-  if (action === 'revise') return reviewer && status === 'approved';
+  if (action === 'revoke') return reviewer && status === 'approved';
+  if (action === 'revise') return reviewer && status === 'approval_revoked';
   if (action === 'cancel') return status !== 'cancelled' && (status !== 'pending_approval' || reviewer);
   if (action === 'restore') return admin && status === 'cancelled';
   return false;

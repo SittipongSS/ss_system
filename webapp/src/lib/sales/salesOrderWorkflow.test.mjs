@@ -5,7 +5,8 @@ import {
   WON_REVERSAL_TARGETS,
   canEditSalesOrderContent,
   canHardDeleteSalesOrder,
-  canRevokeAndReviseSalesOrder,
+  canIssueSalesOrderRevision,
+  canRevokeSalesOrderApproval,
   canSalesOrderTransition,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
@@ -62,8 +63,8 @@ test('SO direct editing stops after submission and approved changes require revi
   assert.equal(canEditSalesOrderContent({ status: 'rejected' }, access), true);
   assert.equal(canEditSalesOrderContent({ status: 'pending_approval' }, access), false);
   assert.equal(canEditSalesOrderContent({ status: 'approved' }, access), false);
-  assert.equal(canRevokeAndReviseSalesOrder({ status: 'approved' }, { reviewer: true }), true);
-  assert.equal(canRevokeAndReviseSalesOrder({ status: 'approved' }, { reviewer: false }), false);
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, { reviewer: true }), true);
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, { reviewer: false }), false);
 });
 
 test('hard delete is limited to unsigned drafts that never entered approval', () => {
@@ -147,4 +148,44 @@ test('foreign key violations are recognised from either the code or the message'
   assert.equal(isForeignKeyViolation({ message: 'violates foreign key constraint "x_fkey"' }), true);
   assert.equal(isForeignKeyViolation({ code: '23505', message: 'duplicate key' }), false);
   assert.equal(isForeignKeyViolation(null), false);
+});
+
+// mig 0166: ยกเลิกอนุมัติ กับ ออก Rev. เป็นสองขั้นแยกกัน โดยมีสถานะกลางที่แก้ไม่ได้คั่น
+// เดิมเป็นปุ่มเดียว approved → revised ในคลิกเดียว
+test('SO revision is two steps with a locked intermediate state between them', () => {
+  const reviewer = { reviewer: true };
+
+  // ขั้นที่ 1 ทำได้เฉพาะจาก approved
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, reviewer), true);
+  assert.equal(canIssueSalesOrderRevision({ status: 'approved' }, reviewer), false);
+
+  // ขั้นที่ 2 ทำได้เฉพาะจากสถานะกลาง
+  assert.equal(canIssueSalesOrderRevision({ status: 'approval_revoked' }, reviewer), true);
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approval_revoked' }, reviewer), false);
+
+  // ทั้งสองขั้นเป็นของผู้รีวิวเท่านั้น
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, { reviewer: false }), false);
+  assert.equal(canIssueSalesOrderRevision({ status: 'approval_revoked' }, { reviewer: false }), false);
+
+  // สถานะอื่นเข้าทั้งสองขั้นไม่ได้
+  for (const status of ['draft', 'pending_approval', 'rejected', 'revised', 'cancelled']) {
+    assert.equal(canRevokeSalesOrderApproval({ status }, reviewer), false);
+    assert.equal(canIssueSalesOrderRevision({ status }, reviewer), false);
+  }
+});
+
+// ⚠️ หัวใจของมติ: สถานะกลาง **ห้ามแก้เนื้อหาได้** ไม่งั้นกลายเป็นช่องแก้ทับใบที่เคยอนุมัติ
+test('the revoked state is read-only and out of Actual', () => {
+  const revoked = { status: 'approval_revoked', actualAmount: 5000 };
+  assert.equal(canEditSalesOrderContent(revoked, { canEdit: true, inScope: true }), false);
+  assert.equal(salesOrderActual(revoked), 0);
+  assert.equal(canHardDeleteSalesOrder(revoked), false);
+  assert.equal(canWithdrawSalesOrderSubmission(revoked, { userId: 'USR-PROPOSER' }), false);
+
+  assert.equal(canSalesOrderTransition('approved', 'revoke', { reviewer: true }), true);
+  assert.equal(canSalesOrderTransition('approval_revoked', 'revise', { reviewer: true }), true);
+  assert.equal(canSalesOrderTransition('approval_revoked', 'save'), false);
+  assert.equal(canSalesOrderTransition('approval_revoked', 'submit'), false);
+  // ยกเลิก SO ยังทำได้ — กันเอกสารค้างในสถานะกลางถ้าเปลี่ยนใจไม่ออก Rev.
+  assert.equal(canSalesOrderTransition('approval_revoked', 'cancel'), true);
 });

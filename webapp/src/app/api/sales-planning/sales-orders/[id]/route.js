@@ -4,7 +4,8 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import {
   canHardDeleteSalesOrder,
-  canRevokeAndReviseSalesOrder,
+  canIssueSalesOrderRevision,
+  canRevokeSalesOrderApproval,
   canWithdrawSalesOrderSubmission,
   isForeignKeyViolation,
   isSalesOrderReviewer,
@@ -215,11 +216,60 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
-  if (action === 'revise') {
-    if (!canRevokeAndReviseSalesOrder(before, { reviewer })) {
-      return forbidden('ยกเลิกอนุมัติและออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin');
+  // ขั้นที่ 1 (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
+  if (action === 'revoke') {
+    if (!canRevokeSalesOrderApproval(before, { reviewer })) {
+      return forbidden('ยกเลิกอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
     const reason = String(body.reason || '').trim();
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
+    const { data, error } = await supabase.rpc('revoke_sales_order_approval_atomic', {
+      p_order_id: id,
+      p_expected_updated_at: expected.value,
+      p_reason: reason,
+      p_actor_id: user.id,
+      p_actor_name: user.name || null,
+      p_actor_role: user.role || null,
+    });
+    if (error) {
+      const mapped = documentWorkflowError(error, { context: `sales order revoke ${id}` });
+      return fail(mapped.message, mapped.status);
+    }
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order',
+      entityId: id,
+      before,
+      after: data,
+      summary: `ยกเลิกอนุมัติ ${before.orderNumber} (Actual ${soAmount(before)} หลุดจากยอด): ${reason}`,
+      request: req,
+    });
+    // แจ้งทีมขาย: Actual หายไปจากยอด ต้องไม่เงียบ
+    sendChat('sales', chatCard({
+      title: '⚠️ ยกเลิกอนุมัติ Sale Order',
+      subtitle: before.deal?.title || before.orderNumber,
+      rows: [
+        { label: 'เลขที่ SO', value: before.orderNumber },
+        { label: 'Actual ที่หลุดออก', value: soAmount(before) },
+        { label: 'เหตุผล', value: reason },
+        { label: 'ผู้ดำเนินการ', value: user.name || '' },
+      ],
+      linkPath: `/sa/sales-orders/${id}`,
+      linkLabel: 'ออก Rev. ต่อ',
+    }));
+    return ok(data);
+  }
+
+  // ขั้นที่ 2: ออก Rev. จากใบที่ยกเลิกอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
+  if (action === 'revise') {
+    if (!canIssueSalesOrderRevision(before, { reviewer })) {
+      return forbidden(before.status === 'approved'
+        ? 'ต้องกด "ยกเลิกอนุมัติ" ก่อนจึงจะออก Rev. ได้'
+        : 'ออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin บน SO ที่ยกเลิกอนุมัติแล้ว');
+    }
+    const reason = String(body.reason || '').trim() || before.revisionReason || '';
     const expected = resolveExpectedUpdatedAt(body);
     if (!expected.ok) return badRequest(expected.error);
     const revisionId = genId('SO');
@@ -244,7 +294,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: revision?.id || revisionId,
       before,
       after: revision,
-      summary: `ยกเลิกอนุมัติและออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
+      summary: `ออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
       request: req,
     });
     return ok(revision, 201);
