@@ -28,6 +28,22 @@ export function isKnownUpdateKind(entityType, kind) {
   return !!(UPDATE_KINDS[entityType] || {})[kind];
 }
 
+// ── เหตุการณ์ระบบ vs ข้อความคน ───────────────────────────────────────────
+// เหตุการณ์ระบบ = ของที่ไม่มีใครพิมพ์: แถวที่ kind ไม่ใช่ AUTHORABLE_KIND (ระบบเขียน
+// ให้ตอนเกิดเหตุการณ์) + รายการอ่านอย่างเดียวจากแหล่งอื่น (`extraItems` — ประวัติ
+// สถานะ/เหตุการณ์ลีด) ซึ่งไม่มีทางเป็นข้อความคนอยู่แล้ว
+//
+// ทำไมต้องแยก: พอเธรดขึ้นเอกสารที่มี action เยอะ (QT/SO มี 8 ตัวที่เขียนลงเธรด)
+// เหตุการณ์ระบบจะถมจนข้อความคนจม — ต้องมีสวิตช์ให้เหลือเฉพาะที่คนคุยกัน
+//
+// ⚠️ ข้อความที่ถูกลบแล้วยังเป็น "ข้อความคน" (kind ยังเป็น comment) — ต้องไม่ถูกซ่อน
+// ไปกับเหตุการณ์ระบบ เพราะรอยที่ว่าเคยมีข้อความคือส่วนหนึ่งของบทสนทนา
+export function isSystemUpdateItem(item) {
+  if (!item) return false;
+  if (item.kind === 'extra') return true;
+  return (item.row?.kind || AUTHORABLE_KIND) !== AUTHORABLE_KIND;
+}
+
 // ── ไฟล์แนบในข้อความ ────────────────────────────────────────────────────
 // รับเฉพาะ ref ของไฟล์ที่อัปผ่าน /api/upload แล้ว (กัน payload แปลกปลอม) —
 // แพตเทิร์นเดียวกับ sanitizeInquiryAttachments / sanitizeWonAttachments
