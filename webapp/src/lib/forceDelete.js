@@ -153,7 +153,12 @@ export async function quotationForcePreview(supabase, quote) {
   if (evidence > 0 || Boolean(quote.signatureEvidenceId) || issued > 0) {
     notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น/ฉบับตรึง — บังคับลบจะทำลายหลักฐานถาวร กู้คืนไม่ได้ ปกติควรใช้ “ยกเลิก”/“ย้อนการรับ” แทน');
   }
-  if (quote.status === 'accepted') notes.push('ใบนี้ถูกรับแล้ว (accepted) = แหล่งยอด Actual ของดีล');
+  if (quote.status === 'accepted') {
+    notes.push('ใบนี้ถูกรับแล้ว (accepted) = แหล่งยอด Actual ของดีล');
+    // mig 0168: ลบแล้วดีลจะถอยออกจาก Won ให้เอง — บอกไว้ในพรีวิวเพราะเป็นผลที่
+    // กระทบยอดและตัวเลือกในหน้าสร้างใบเสนอราคา ไม่ใช่ผลข้างเคียงที่ควรเงียบ
+    notes.push('ระบบจะถอยดีลออกจาก Won กลับไปสถานะก่อนหน้าให้อัตโนมัติ (ยอด Actual หลุด และดีลกลับมาออกใบเสนอราคาใหม่ได้)');
+  }
   return { cascade, notes, blocked: false };
 }
 

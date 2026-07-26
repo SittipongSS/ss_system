@@ -79,7 +79,9 @@ test('quotationForcePreview: โชว์ Sale Order ที่จะ cascade + n
   const { cascade, notes } = await quotationForcePreview(supabase, { id: 'Q1', status: 'accepted' });
   assert.equal(cascade.length, 1);
   assert.ok(cascade[0].label.includes('Sale Order'));
-  assert.equal(notes.length, 1);
+  // ใบ accepted ได้ 2 note: เป็นแหล่งยอด Actual + ระบบจะถอยดีลออกจาก Won ให้ (mig 0168)
+  assert.equal(notes.length, 2);
+  assert.ok(notes.some((n) => n.includes('ถอยดีลออกจาก Won')));
 });
 
 test('quotationForcePreview: ใบที่มีหลักฐาน/ฉบับตรึงไม่ blocked แล้ว แต่ต้องเตือนว่าทำลายถาวร', async () => {
