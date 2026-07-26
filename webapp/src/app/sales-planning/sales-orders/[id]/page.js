@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  Copy, ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -401,10 +401,12 @@ export default function SalesOrderDetailPage() {
   const secondaryActions = [
     { id: "edit", kind: "edit", icon: Pencil, label: "แก้ไขข้อมูล", variant: "outline", visible: canEditDocument && !editMode, onClick: () => setEditMode(true) },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
-    { id: "withdraw", kind: "restore", icon: Undo2, label: "ถอนการยื่น", variant: "outline", visible: canWithdraw, onClick: () => setWorkflowForm({ action: "withdraw", reason: "" }) },
-    { id: "revise", kind: "revise", icon: Copy, label: "ถอดอนุมัติและออก Revision", variant: "outline", visible: canRevise, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revise", reason: "" }) },
+    { id: "withdraw", kind: "withdraw", variant: "outline", visible: canWithdraw, onClick: () => setWorkflowForm({ action: "withdraw", reason: "" }) },
+    { id: "revise", kind: "revise", label: "ถอดอนุมัติและออก Revision", variant: "outline", visible: canRevise, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revise", reason: "" }) },
     { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
-    { id: "restore", kind: "restore", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
+    // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
+    // ซึ่งความหมายชนกับ "ถอนการยื่น" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
+    { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
   ];
   const dangerActions = [

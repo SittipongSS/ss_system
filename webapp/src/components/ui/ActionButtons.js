@@ -5,7 +5,7 @@
 // ใช้ <ActionBar> ครอบกลุ่มปุ่ม แล้ววางปุ่มด้วย <ActionButton kind="...">.
 import {
   Check, Undo2, Pencil, Unlock, Pause, Play, Trash2, Send, ExternalLink, Ban, ArrowRight,
-  Download, Printer, RotateCcw, Save, XCircle,
+  Copy, Download, Printer, RotateCcw, Save, XCircle,
 } from "lucide-react";
 
 // แต่ละ kind ผูกสี (คลาส .btn-*) + ไอคอน + ข้อความเริ่มต้นไว้ที่เดียว — แก้ที่นี่
@@ -28,6 +28,13 @@ const KINDS = {
   download: { cls: "btn-secondary", Icon: Download, label: "ดาวน์โหลด" },
   restore: { cls: "btn-secondary", Icon: RotateCcw, label: "คืนเป็นฉบับร่าง" },
   cancel: { cls: "btn-danger", Icon: XCircle, label: "ยกเลิก" },
+  // ── workflow ของเอกสารควบคุม (มติ 2026-07-26) ──────────────────────────────
+  // withdraw = ถอนคำขอของตัวเองก่อนได้รับอนุมัติ **ไม่ใช่การตีกลับ** จึงไม่ใช่ปุ่มแดง
+  //   (เดิม QT ยืม kind:"reject" = แดง / SO ยืม kind:"restore" = เทา ปุ่มเดียวกันคนละสี)
+  // revise = ออกฉบับใหม่จากใบที่อนุมัติแล้ว — ฉบับเดิมยังอยู่ครบ ไม่ใช่การทำลาย
+  //   (SO เขียนทับ label เป็น "ถอดอนุมัติและออก Revision" เพราะพ่วงการถอดอนุมัติด้วย)
+  withdraw: { cls: "btn-secondary", Icon: Undo2, label: "ถอนการยื่น" },
+  revise: { cls: "btn-secondary", Icon: Copy, label: "ออก Revision" },
 };
 
 // กล่องครอบกลุ่มปุ่ม action — จัดชิดขวา, ระยะห่างเท่ากัน, ตัดบรรทัดเมื่อแคบ.

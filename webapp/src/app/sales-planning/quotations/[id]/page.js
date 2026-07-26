@@ -527,16 +527,14 @@ export default function QuotationEditorPage() {
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
     {
       id: "withdraw",
-      kind: "reject",
-      label: "ถอนการยื่น",
+      kind: "withdraw",
       variant: "outline",
       visible: canWithdrawSubmission && !editMode,
       onClick: () => setWorkflowForm({ reason: "" }),
     },
     {
       id: "revise",
-      kind: "copy",
-      label: "ออก Revision",
+      kind: "revise",
       variant: "outline",
       visible: canReviseDocument && !editMode,
       onClick: () => setRevisionForm({ reason: "" }),
@@ -567,7 +565,8 @@ export default function QuotationEditorPage() {
       kind: "download",
       label: "ดาวน์โหลด PDF",
       variant: "ghost",
-      visible: quote?.approvalStatus === "approved",
+      // !editMode เหมือนปุ่มอื่นทั้งลิสต์ — เดิมตกหล่นปุ่มเดียว เข้าโหมดแก้ไขแล้วเหลือปุ่มนี้ลอย
+      visible: quote?.approvalStatus === "approved" && !editMode,
       href: quote ? `/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest` : undefined,
       external: true,
     },
