@@ -26,7 +26,18 @@ const FOCUSABLE_SELECTOR = [
 // (drawer) instead of a centered dialog — for detail/inspector surfaces where a
 // tall, scrollable side panel reads better than a centered box. Default (unset)
 // keeps the centered-modal behavior; existing callers are unaffected.
-export default function Modal({ open, onClose, title, children, size = "md", side, dismissible = true, closeOnOverlay = false }) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  size = "md",
+  side,
+  dismissible = true,
+  closeOnOverlay = false,
+  initialFocusRef,
+  ariaDescribedBy,
+}) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const dismissibleRef = useRef(dismissible);
@@ -75,7 +86,12 @@ export default function Modal({ open, onClose, title, children, size = "md", sid
 
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    (focusableElements()[0] || dialog)?.focus();
+    const initialFocus = initialFocusRef?.current;
+    if (initialFocus instanceof HTMLElement && dialog?.contains(initialFocus)) {
+      initialFocus.focus();
+    } else {
+      (focusableElements()[0] || dialog)?.focus();
+    }
 
     return () => {
       document.removeEventListener("keydown", onKey);
@@ -84,7 +100,7 @@ export default function Modal({ open, onClose, title, children, size = "md", sid
         previousActiveElement.focus();
       }
     };
-  }, [open]);
+  }, [open, initialFocusRef]);
 
   if (!open) return null;
   const overlayClose = dismissible && closeOnOverlay ? onClose : undefined;
@@ -97,6 +113,7 @@ export default function Modal({ open, onClose, title, children, size = "md", sid
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={ariaDescribedBy}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
