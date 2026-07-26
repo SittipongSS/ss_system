@@ -13,6 +13,26 @@ export const UPDATE_KINDS = {
     due: { label: 'เลื่อนกำหนด', color: 'var(--amber)' },
     late: { label: 'สาเหตุที่เสร็จช้า', color: 'var(--red)' },
   },
+  // เคสขอราคาวัสดุ (mig 0158) — เธรดสองฝ่าย: เซลถาม ↔ RD/PC ตอบ
+  // ป้าย 'ข้อความ' ไม่ใช่ 'อัปเดต' เพราะที่นี่คนคุยกันจริง ไม่ใช่รายงานความคืบหน้า
+  material_ask: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)' },
+    submit: { label: 'ส่งเคส', color: 'var(--blue)' },
+    acknowledge: { label: 'รับเรื่อง', color: 'var(--blue)' },
+    quoted: { label: 'ตอบราคา', color: 'var(--green)' },
+    no_quote: { label: 'ตอบไม่ได้', color: 'var(--amber)' },
+    close: { label: 'ปิดเคส', color: 'var(--text-3)' },
+    cancel: { label: 'ยกเลิกเคส', color: 'var(--red)' },
+  },
+  // ใบขอราคาผลิต (mig 0143) — เธรดสองฝ่าย: เซลยื่น ↔ ผู้บริหารอนุมัติ/ตีกลับ
+  // ใช้คำที่ล็อกไว้ของ workflow เอกสาร: "ตีกลับให้แก้ไข" / "ออก Rev."
+  costing_request: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)' },
+    submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
+    approve: { label: 'อนุมัติราคาผลิต', color: 'var(--green)' },
+    returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    revise: { label: 'ออก Rev.', color: 'var(--amber)' },
+  },
 };
 
 // kind ที่ "คนพิมพ์เอง" ได้ — ที่เหลือระบบเขียนให้ตอนเกิดเหตุการณ์เท่านั้น

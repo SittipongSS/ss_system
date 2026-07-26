@@ -10,6 +10,8 @@ import { can, isSuperuser } from '@/lib/permissions';
 import { inSalesEditScope } from '@/lib/salesPlanning';
 import { reviseError } from '@/lib/costing';
 import { findCostingRequest } from '@/lib/costingAdmin';
+import { costingReviseUpdates } from '@/lib/costingUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -115,5 +117,12 @@ export async function POST(request, { params }) {
     user, action: 'create', entityType: 'costing_request', entityId: newId, after: created,
     summary: `ออกฉบับแก้ไข (rev.${nextRev}) ของใบ ${before.docNo || id}`, request,
   });
+
+  // เขียนสองเธรด: ใบเก่าจะได้ไม่จบห้วนเหมือนถูกทิ้ง (คนเปิดใบเก่าเจอทางออกว่าไปต่อ
+  // ที่ใบไหน) และใบใหม่บอกที่มาของตัวเองตั้งแต่บรรทัดแรก
+  const { onBase, onNew } = costingReviseUpdates(before, created);
+  if (onBase) await appendUpdate(supabase, { entityType: 'costing_request', entityId: id, ...onBase, user });
+  if (onNew) await appendUpdate(supabase, { entityType: 'costing_request', entityId: newId, ...onNew, user });
+
   return Response.json(created, { status: 201 });
 }

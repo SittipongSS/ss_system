@@ -11,8 +11,11 @@
 // ⚠️ ทุกฟังก์ชันเป็น **async และรับ supabase** เพราะด่านของงาน/เคสต้อง query ต่อ
 // (canViewPersonalTask เป็น async อยู่แล้ว) — ถ้าทำเป็น sync จะต้องรื้อทั้งทะเบียน
 // ตอนต่อ entity ตัวที่สอง
-import { canChangeTaskStatus, isSuperuser } from '@/lib/permissions';
+import { canApproveCosting, canChangeTaskStatus, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
+import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
+import { canViewCostingRequest } from '@/lib/costing';
+import { inSalesEditScope } from '@/lib/salesPlanning';
 
 export const UPDATE_ENTITIES = {
   personal_task: {
@@ -26,6 +29,50 @@ export const UPDATE_ENTITIES = {
     async canPost(supabase, parent, user) {
       const manage = await canManagePersonalTask(supabase, parent, user);
       return manage || canChangeTaskStatus(user, parent, manage);
+    },
+  },
+
+  // ── เคสขอราคาวัสดุ (mig 0158) ────────────────────────────────────────
+  // อ่าน = เห็นระบบขอราคา (ด่านเดียวกับ GET ของเคสเอง — ต้นทุนเป็นข้อมูลลับ
+  // แต่ในระบบเห็นกันทั้งวง) **ห้ามตั้งด่านใหม่ที่แคบกว่าหน้าจอ** ไม่งั้นเปิดเคสได้
+  // แต่เธรดว่างเปล่าโดยไม่มีอะไรบอกว่าเพราะอะไร
+  material_ask: {
+    table: 'material_price_asks',
+    attachments: true,   // "ขวดหน้าตาแบบนี้" — รูปคือหัวใจของการคุยเรื่องวัสดุ
+    async canView(supabase, parent, user) {
+      return canViewCosting(user);
+    },
+    // โพสต์ = สองฝ่ายที่เกี่ยวกับเคสจริง (ผู้เปิดเคส ↔ ฝ่ายที่ต้องตอบ) และเฉพาะตอน
+    // เคสยังเดินอยู่ — ปิด/ยกเลิกแล้วถือเป็นหลักฐาน กฎเดียวกับไฟล์แนบ
+    // (canAttachToCosting) เพื่อไม่ให้เคสเดียวมีสองมาตรฐาน
+    async canPost(supabase, parent, user) {
+      if (!canViewCosting(user)) return false;
+      if (['closed', 'cancelled'].includes(parent?.status)) return false;
+      return canManageAsk(user, parent) || canAnswerAsk(user, parent);
+    },
+  },
+
+  // ── ใบขอราคาผลิต (mig 0143) ──────────────────────────────────────────
+  costing_request: {
+    table: 'costing_requests',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      return canViewCostingRequest(user, parent);
+    },
+    // โพสต์ = ผู้บริหาร (คนตีกลับ/อนุมัติ ต้องตอบกลับได้เสมอ) + ฝ่ายขายเจ้าของใบ
+    //
+    // ⚠️ ตั้งใจ **ไม่** ใช้ `canEditCostingRequest` เพราะมันปิดตายเมื่อใบอนุมัติแล้ว
+    // (approved/linked) — นั่นถูกสำหรับ "แก้เนื้อใบ" แต่ผิดสำหรับเธรด เพราะช่วงหลัง
+    // อนุมัติคือช่วงที่มีคำถามเยอะที่สุด · จึงเช็คขอบเขตเจ้าของ (inSalesEditScope)
+    // ตรง ๆ แล้วปิดเฉพาะใบที่ยกเลิกซึ่งไม่มีอะไรต้องคุยต่อ
+    //
+    // RD/PC มองเห็นใบนี้ได้ (canViewCostingRequest ปล่อยผ่านทั้งระบบ) แต่โพสต์ไม่ได้
+    // โดยเจตนา — บทสนทนาเรื่องราคาวัสดุอยู่บนเคสขอราคา ไม่ใช่บนใบขออนุมัติราคาผลิต
+    async canPost(supabase, parent, user) {
+      if (!canViewCostingRequest(user, parent)) return false;
+      if (parent?.status === 'cancelled') return false;
+      if (canApproveCosting(user) || isSuperuser(user?.role)) return true;
+      return inSalesEditScope(user, { team: parent?.team, ownerId: parent?.requestedById });
     },
   },
 };

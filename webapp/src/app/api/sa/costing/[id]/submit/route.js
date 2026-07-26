@@ -8,6 +8,8 @@ import { canEditCostingRequest, generateCostingDocNo, submitToExecError } from '
 import { libraryPricingBlocker } from '@/lib/costingLibrary';
 import { findCostingRequest, loadPendingAskLinks, syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
+import { costingSubmitUpdate } from '@/lib/costingUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -57,6 +59,13 @@ export async function POST(request, { params }) {
     user, action: 'update', entityType: 'costing_request', entityId: id, before, after,
     summary: `ส่งใบขอราคาผลิต ${after.docNo || id} ให้ผู้บริหารอนุมัติ`, request,
   });
+
+  // ยื่นรอบใหม่หลังถูกตีกลับ = บรรทัดเหนือเหตุผลรอบก่อนในเธรด คนอ่านจะเห็นเป็นรอบ ๆ
+  // ว่าใบนี้วนมากี่ครั้งและติดอะไรแต่ละครั้ง (คอลัมน์ returnReason ถูกล้างไปด้านบน)
+  const event = costingSubmitUpdate(after);
+  if (event) {
+    await appendUpdate(supabase, { entityType: 'costing_request', entityId: id, ...event, user });
+  }
 
   sendChat('executive', chatCard({
     title: `รออนุมัติราคาผลิต ${after.docNo || ''}`,

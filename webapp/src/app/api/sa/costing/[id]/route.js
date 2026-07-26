@@ -16,6 +16,7 @@ import {
   planItemChanges, planTierChanges,
 } from '@/lib/costingReconcile';
 import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
+import { purgeUpdates } from '@/lib/master/updates';
 import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 
@@ -38,6 +39,8 @@ export async function DELETE(request, { params }) {
     }
     const { error } = await supabase.rpc('force_delete_costing_request', { p_id: id });
     if (error) return Response.json({ error: error.message }, { status: 500 });
+    // เธรดเป็น polymorphic ไม่มี FK — RPC ไม่รู้จักตารางนี้ ต้องกวาดจากฝั่งนี้
+    await purgeUpdates(supabase, 'costing_request', id);
     await recordAudit({
       user, action: 'delete', entityType: 'costing_request', entityId: id, before,
       summary: `[admin force] ลบใบขอราคาผลิต ${before.docNo || id} (สถานะ ${before.status})`, request,
@@ -57,6 +60,7 @@ export async function DELETE(request, { params }) {
   }
   const { error } = await supabase.from('costing_requests').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await purgeUpdates(supabase, 'costing_request', id);
   await recordAudit({
     user, action: 'delete', entityType: 'costing_request', entityId: id, before,
     summary: `ลบใบขอราคาผลิตร่าง (${(before.items || []).length} รายการ)`, request,
