@@ -1,6 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import {
+  MODULES,
+  METRICS,
+  countLegacyUsage,
+  readBudget,
+  writeBudget,
+  compareBudget,
+} from "./uiLegacyBudget.mjs";
 
 const root = process.cwd();
 const srcRoot = path.join(root, "src");
@@ -117,6 +125,31 @@ for (const file of files.filter((f) => f.endsWith(".css"))) {
   }
 }
 
+/* CSS module ห้ามเอื้อมไปจัดการคลาสของชั้นเก่าใน globals.css ผ่าน `:global()`
+   นั่นคือการ "เพิ่มชั้นทับ" เพื่อกลบอาการ แทนที่จะลบต้นเหตุ — ถ้าตารางที่อยู่ในการ์ด
+   ไม่ควรมีกรอบซ้อน ให้ primitive รับ prop (เช่น surface="embedded") ไม่ใช่ให้ stylesheet
+   ของ primitive ไปรู้จักชื่อคลาสเก่าเป็นราย ๆ (ของจริง: สาขา system-table-visual-parity
+   2026-07-26 เพิ่ม `:global(.glass-panel) > .scroll` = ชั้นที่ 5 ทับชั้น 1–4) */
+const crossLayerOverrideViolations = [];
+for (const file of files.filter((f) => f.endsWith(".module.css"))) {
+  const rel = relative(file);
+  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  source.split(/\r?\n/).forEach((line, index) => {
+    const match = line.match(/:global\(\s*\.(premium-[\w-]+|glass-panel|fz-table)/);
+    if (match) crossLayerOverrideViolations.push(`${rel}:${index + 1} :global(.${match[1]})`);
+  });
+}
+
+/* ratchet ชั้นเก่า — ดูเหตุผลเต็มใน scripts/uiLegacyBudget.mjs */
+const budgetPath = path.join(root, "scripts", "ui-legacy-budget.json");
+const legacyCounts = countLegacyUsage(root, files);
+if (process.argv.includes("--update-budget")) {
+  writeBudget(budgetPath, legacyCounts);
+  console.log(`เขียนเพดานใหม่ลง ${relative(budgetPath)} แล้ว`);
+}
+const budget = readBudget(budgetPath);
+const { over: budgetOver, under: budgetUnder } = compareBudget(legacyCounts, budget);
+
 const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
 const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
 const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
@@ -151,6 +184,9 @@ const failures = [
   ...tableContractViolations.map((item) => `table bypasses TableScroll contract: ${item}`),
   ...chartContractViolations.map((item) => `chart bypasses ChartCanvas contract: ${item}`),
   ...floatingSurfaceViolations.map((item) => `floating panel needs var(--panel-float) or backdrop-filter: ${item}`),
+  ...crossLayerOverrideViolations.map((item) => `CSS module overrides a legacy global class instead of removing it: ${item}`),
+  ...budgetOver.map((item) => `legacy budget exceeded — PR นี้เพิ่มชั้นเก่า: ${item}`),
+  ...budgetUnder.map((item) => `legacy budget ลดได้แล้ว — รูดเพดานลงด้วย \`npm run audit:ui -- --update-budget\`: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
   ...removedCompatibilityFiles.map((item) => `removed compatibility file returned: ${item}`),
@@ -166,6 +202,18 @@ console.log(`Native feedback violations: ${nativeFeedbackViolations.length}`);
 console.log(`Table contract violations: ${tableContractViolations.length}`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
 console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);
+console.log(`Cross-layer :global() overrides: ${crossLayerOverrideViolations.length}`);
+console.log("\nชั้นสไตล์เก่าที่เหลือ (เพดาน = ขึ้นไม่ได้ ลงได้อย่างเดียว):");
+console.log(`  ${"โมดูล".padEnd(16)}${METRICS.map((metric) => metric.padStart(15)).join("")}`);
+for (const { key, label } of MODULES) {
+  const cells = METRICS.map((metric) => {
+    const actual = legacyCounts[key][metric];
+    const cap = budget?.modules?.[key]?.[metric];
+    return `${actual}/${cap ?? "-"}`.padStart(15);
+  });
+  console.log(`  ${label.padEnd(16)}${cells.join("")}`);
+}
+console.log("");
 
 if (failures.length) {
   console.error("\nUI audit failed:");

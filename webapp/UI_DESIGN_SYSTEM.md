@@ -37,6 +37,23 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 - Desktop และ mobile ใช้ top navigation ชุดเดียวกัน; mobile เปิด menu sheet จาก top bar
 - ทุก interactive element ต้องมี hover, `:focus-visible` และ disabled state
 
+## Legacy budget — กติกาเดียวของงานย้ายเข้า design system
+
+งาน design system วัดด้วย **จำนวนบรรทัดที่ลบ** ไม่ใช่จำนวน component ที่เพิ่ม
+`npm run audit:ui` นับ "ชั้นสไตล์เก่าที่เหลือ" ต่อโมดูล (`legacyTable`, `legacySurface`,
+`inlineStyle`, `rawButtonClass`) เทียบกับเพดานใน `scripts/ui-legacy-budget.json`
+
+- ตัวเลขเกินเพดาน = PR กำลังวางชั้นใหม่ทับชั้นเก่า → audit ตก แก้ที่ต้นเหตุ ไม่ใช่ขอยกเว้น
+- ตัวเลขต่ำกว่าเพดาน = ลบของเก่าได้จริง → รูดเพดานลงด้วย `npm run audit:ui -- --update-budget`
+  แล้ว commit ไฟล์งบไปกับ PR เดียวกัน
+- CSS module ห้ามใช้ `:global(.premium-*)`, `:global(.glass-panel)`, `:global(.fz-table)`
+  ปัญหา "กรอบซ้อนกรอบ/พื้นผิดชั้น" ต้องแก้ด้วย prop ของ primitive เอง ไม่ใช่ให้ stylesheet
+  ของ primitive ไปรู้จักชื่อคลาสของชั้นเก่า
+
+ที่มา (2026-07-26): audit เดิมตรวจแค่ว่าหน้าเรียก primitive กลางหรือยัง จึงผ่าน 100%
+ทั้งที่ 57 จาก 63 ไฟล์ที่ใช้ `TableScroll` ยังห่อ `<table className="premium-table">` อยู่ข้างใน
+= กฎสองชุดตีกันบนหน้าจอจริง (แถวขยับตอน hover, ตารางถูกบังคับ `min-width: 700px`)
+
 ## Verification
 
 รันตามลำดับ:
