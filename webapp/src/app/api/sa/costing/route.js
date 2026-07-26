@@ -162,7 +162,10 @@ export async function POST(request) {
   const created = await findCostingRequest(supabase, requestId);
   await recordAudit({
     user, action: 'create', entityType: 'costing_request', entityId: requestId, after: created,
-    summary: `เปิดใบขอราคาผลิต ${prepared.length} รายการ (ดีล ${resolved.deal.code || resolved.deal.id})`,
+    // ดีลไม่บังคับแล้ว — อ่าน resolved.deal ตรง ๆ ไม่ได้ (ใบสำรวจไม่มีดีล แล้วจะ
+    // throw หลังเขียน DB ครบทุกแถว = ใบถูกสร้างจริงแต่ผู้ใช้เห็น error)
+    summary: `เปิดใบขอราคาผลิต ${prepared.length} รายการ`
+      + (resolved.deal ? ` (ดีล ${resolved.deal.code || resolved.deal.id})` : ' (ใบสำรวจ ไม่ผูกดีล)'),
     request,
   });
   return Response.json(created, { status: 201 });
