@@ -921,7 +921,7 @@ export default function ProjectDetailPage() {
             <div style={{ display: "flex", gap: 8 }}>
               {canReqClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setCloseReqForm({ closeType: "completed", reason: "" })}>ขอปิดโครงการ</button>}
               {cs === "pending_close" && isRequester && <button type="button" className="btn ghost" disabled={!!closeBusy} onClick={() => closeAction("cancel_request")}>ถอนคำขอ</button>}
-              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn danger" disabled={!!closeBusy} onClick={promptReject}>ตีกลับ</button></>}
+              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn btn-danger" disabled={!!closeBusy} onClick={promptReject}>ตีกลับ</button></>}
               {cs === "pending_close" && p.canApproveClose && isRequester && <span className="ui-badge" style={{ color: "var(--text-3)" }}>คำขอของคุณ ต้องให้ผู้อนุมัติคนอื่น</span>}
               {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={promptReopen}>เปิดโครงการใหม่ (RE-ORDER)</button>}
             </div>
@@ -1771,7 +1771,7 @@ export default function ProjectDetailPage() {
             </label>
             <label style={{ fontSize: 13 }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล / สรุปการปิด (บังคับ)</span>
-              <textarea className="input" rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
+              <textarea className="premium-input" rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn ghost" onClick={() => setCloseReqForm(null)} disabled={!!closeBusy}>ยกเลิก</button>

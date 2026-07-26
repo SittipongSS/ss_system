@@ -45,6 +45,29 @@ for (const file of uiFiles) {
   });
 }
 
+/* คลาสที่ "ดูเหมือนของระบบ" แต่ไม่มี selector อยู่จริงใน globals.css — เขียนแล้ว
+   ช่องกรอก/ปุ่มจะไม่มีสไตล์เลย และไม่มีอะไรฟ้อง (ของจริงที่เคยเกิด: ปุ่มลบเคยเป็น
+   ปุ่มเทา และช่องเหตุผลปิดโครงการเคยเป็นตัวอักษรเกือบดำบนพื้นมืด = อ่านไม่ออก)
+   ตั้งใจตรวจแบบ blocklist ไม่ใช่ไล่เทียบทุกคลาส เพราะโค้ดปน Tailwind utility
+   (p-2, col-span-2) กับ CSS module อยู่ — ไล่เทียบทั้งหมดจะ false positive ท่วม
+   เจอคลาสตายตัวใหม่เมื่อไหร่ เติมเข้าลิสต์นี้ */
+const deadClasses = [
+  { pattern: /className="input"/, dead: "input", use: "premium-input" },
+  { pattern: /className="btn danger"/, dead: "btn danger", use: "btn btn-danger" },
+];
+
+const deadClassViolations = [];
+for (const file of uiFiles) {
+  const rel = relative(file);
+  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  source.split(/\r?\n/).forEach((line, index) => {
+    if (line.trimStart().startsWith("//")) return;
+    for (const { pattern, dead, use } of deadClasses) {
+      if (pattern.test(line)) deadClassViolations.push(`${rel}:${index + 1} "${dead}" → use "${use}"`);
+    }
+  });
+}
+
 const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
 const shellPages = pageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -57,6 +80,7 @@ const failures = [
     ? [`design-shell coverage incomplete: ${shellPages.length}/${pageFiles.length} routes`]
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
+  ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
 ];
@@ -64,6 +88,7 @@ const failures = [
 console.log(`UI audit: ${pageFiles.length} routes`);
 console.log(`Design-shell coverage: ${shellPages.length}/${pageFiles.length} routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
+console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 
 if (failures.length) {
   console.error("\nUI audit failed:");
