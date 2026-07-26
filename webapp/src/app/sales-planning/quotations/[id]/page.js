@@ -35,7 +35,11 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
-import { isRevisableQuotationApprovalStatus } from "@/lib/sales/quotationWorkflow";
+import {
+  canRejectQuotationSubmission,
+  isRevisableQuotationApprovalStatus,
+  quotationRejectionNotice,
+} from "@/lib/sales/quotationWorkflow";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
@@ -62,6 +66,7 @@ export default function QuotationEditorPage() {
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [workflowForm, setWorkflowForm] = useState(null);
+  const [rejectForm, setRejectForm] = useState(null);
   const [revisionForm, setRevisionForm] = useState(null);
   const [toast, setToast] = useState(null);
   const [wonOpen, setWonOpen] = useState(false);
@@ -129,6 +134,10 @@ export default function QuotationEditorPage() {
   const needsApproval = needsSubmit || awaitingApproval;
   const canWithdrawSubmission = awaitingApproval
     && (quote?.approvalRequestedBy === quote?.meId || !!quote?.canApprove);
+  // ตีกลับ = ผู้อนุมัติส่งใบกลับพร้อมเหตุผลที่ผู้จัดทำเห็น (mig 0164) — คู่ตรงข้ามของ
+  // ถอนการยื่นซึ่งเป็นการกระทำของผู้ยื่นเอง
+  const canRejectSubmission = canRejectQuotationSubmission(quote, { approver: !!quote?.canApprove });
+  const rejectionNotice = quotationRejectionNotice(quote);
   // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Revision
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
   const canReviseDocument = !!quote && canEditCap
@@ -299,6 +308,21 @@ export default function QuotationEditorPage() {
       setWorkflowForm(null);
       await load();
       setToast({ kind: "info", msg: "ถอนการยื่นแล้ว ใบเสนอราคากลับเป็นฉบับร่าง" });
+    }
+  };
+
+  const rejectSubmission = async () => {
+    const reason = rejectForm?.reason?.trim() || "";
+    if (reason.length < 10) return;
+    const data = await act("reject", `/api/sales-planning/quotations/${id}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, expectedUpdatedAt: quote.updatedAt }),
+    });
+    if (data) {
+      setRejectForm(null);
+      await load();
+      setToast({ kind: "info", msg: "ตีกลับให้ผู้จัดทำแก้ไขแล้ว" });
     }
   };
 
@@ -533,6 +557,14 @@ export default function QuotationEditorPage() {
       onClick: () => setWorkflowForm({ reason: "" }),
     },
     {
+      id: "reject",
+      kind: "reject",
+      label: "ตีกลับให้แก้ไข",
+      variant: "outline",
+      visible: canRejectSubmission && !editMode,
+      onClick: () => setRejectForm({ reason: "" }),
+    },
+    {
       id: "revise",
       kind: "revise",
       variant: "outline",
@@ -600,6 +632,16 @@ export default function QuotationEditorPage() {
           action={errorActionUrl ? <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link> : null}
         >
           {error}
+        </StatusNotice>
+      )}
+
+      {/* ตีกลับแล้ว = ผู้จัดทำต้องรู้ว่าต้องแก้อะไร ก่อนจะยื่นใหม่ (mig 0164) —
+          trigger ล้างเหตุผลให้เองเมื่อยื่นซ้ำ กล่องนี้จึงหายไปเองไม่ต้องมีปุ่มปิด */}
+      {rejectionNotice && (
+        <StatusNotice tone="error">
+          <strong>ตีกลับโดย {rejectionNotice.byName}</strong>
+          {rejectionNotice.at ? ` · ${fmtDate(rejectionNotice.at)}` : ""}
+          <div style={{ marginTop: 4 }}>{rejectionNotice.reason}</div>
         </StatusNotice>
       )}
 
@@ -908,6 +950,26 @@ export default function QuotationEditorPage() {
         minLength={10}
         maxLength={500}
         busy={busy === "withdraw"}
+      />
+
+      <ReasonDialog
+        open={!!rejectForm}
+        title="ตีกลับให้ผู้จัดทำแก้ไข"
+        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับไปให้ผู้จัดทำแก้ พร้อมเหตุผลที่คุณระบุ`}
+        detail="ผู้จัดทำจะเห็นเหตุผลนี้บนใบเสนอราคาและได้รับแจ้งเตือน แก้เสร็จต้องยื่นและลงนามใหม่"
+        label="เหตุผลที่ตีกลับ"
+        value={rejectForm?.reason || ""}
+        onChange={(reason) => setRejectForm({ reason })}
+        onClose={() => setRejectForm(null)}
+        onConfirm={rejectSubmission}
+        confirmLabel="ยืนยันตีกลับ"
+        placeholder="ระบุสิ่งที่ต้องแก้ให้ชัดเจน เช่น ราคาบรรทัดที่ 3 ไม่ตรงกับที่ตกลงกับลูกค้า"
+        helpText={`อย่างน้อย 10 ตัวอักษร · ${rejectForm?.reason?.length || 0}/500`}
+        error={rejectForm?.reason && rejectForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
+        minLength={10}
+        maxLength={500}
+        tone="danger"
+        busy={busy === "reject"}
       />
 
       <ReasonDialog

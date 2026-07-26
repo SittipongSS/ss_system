@@ -3,9 +3,11 @@ import test from 'node:test';
 import {
   canEditQuotationContent,
   canReviseQuotation,
+  canRejectQuotationSubmission,
   canWithdrawQuotationSubmission,
   isQuotationSubmitter,
   isRevisableQuotationApprovalStatus,
+  quotationRejectionNotice,
 } from './quotationWorkflow.js';
 
 const pending = {
@@ -75,4 +77,43 @@ test('grandfather QT (not_required) is revisable but never editable in place', (
   // แก้ทับฉบับเดิมยังห้าม และถอนการยื่นก็ไม่เกี่ยว (ไม่เคยยื่น)
   assert.equal(canEditQuotationContent(grandfather, access), false);
   assert.equal(canWithdrawQuotationSubmission(grandfather, { userId: 'USR-PROPOSER', approver: true }), false);
+});
+
+// ตีกลับ (mig 0164) — คู่ตรงข้ามของดึงกลับ: ต่างกันที่ "ใครทำ" และ "ทิ้งร่องรอยไหม"
+test('QT rejection belongs to the approver, withdrawal belongs to the proposer', () => {
+  assert.equal(canRejectQuotationSubmission(pending, { approver: true }), true);
+  assert.equal(canRejectQuotationSubmission(pending, { approver: false }), false);
+  // ผู้ยื่นตีกลับใบตัวเองไม่ได้ แม้เป็นเจ้าของคำขอ — ต้องใช้ดึงกลับ
+  assert.equal(canRejectQuotationSubmission(pending, {}), false);
+
+  for (const approvalStatus of ['not_submitted', 'approved', 'not_required', 'rejected']) {
+    assert.equal(canRejectQuotationSubmission({ ...pending, approvalStatus }, { approver: true }), false);
+  }
+  for (const status of ['accepted', 'closed', 'revised', 'cancelled']) {
+    assert.equal(canRejectQuotationSubmission({ ...pending, status }, { approver: true }), false);
+  }
+});
+
+test('rejection notice shows only while the document is waiting to be resubmitted', () => {
+  const rejected = {
+    status: 'draft',
+    approvalStatus: 'not_submitted',
+    rejectedByName: 'หัวหน้าทีม',
+    rejectedAt: '2026-07-26T03:00:00+00:00',
+    rejectionReason: 'ราคาบรรทัดที่ 3 ไม่ตรงกับที่ตกลงกับลูกค้า',
+  };
+  assert.deepEqual(quotationRejectionNotice(rejected), {
+    reason: 'ราคาบรรทัดที่ 3 ไม่ตรงกับที่ตกลงกับลูกค้า',
+    byName: 'หัวหน้าทีม',
+    at: '2026-07-26T03:00:00+00:00',
+  });
+
+  // ยื่นใหม่/อนุมัติแล้ว = เรื่องจบ (trigger ล้างค่าให้ที่ DB ด้วย — นี่คือด่านสอง)
+  for (const approvalStatus of ['pending', 'approved', 'not_required']) {
+    assert.equal(quotationRejectionNotice({ ...rejected, approvalStatus }), null);
+  }
+  assert.equal(quotationRejectionNotice({ ...rejected, rejectionReason: '   ' }), null);
+  assert.equal(quotationRejectionNotice(null), null);
+  // ไม่มีชื่อผู้ตีกลับก็ยังต้องอ่านรู้เรื่อง
+  assert.equal(quotationRejectionNotice({ ...rejected, rejectedByName: '' }).byName, 'ผู้อนุมัติ');
 });
