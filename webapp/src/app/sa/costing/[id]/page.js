@@ -1,15 +1,21 @@
 "use client";
 // หน้ารายละเอียดใบขอราคาผลิต — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
-// เจ้าของใบ (canEditCostingRequest). PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคา
-// จากคลัง" (fill-prices), RD/PC ยืนยันเฉพาะบรรทัดเกินอายุ (confirm-price);
-// ผู้บริหารอนุมัติราคาผลิตรายสินค้า
+// เจ้าของใบ (canEditCostingRequest).
+//
+// 0159: บรรทัดผูกวัสดุจาก **ทะเบียน** ด้วย id (MaterialPicker) + แก้กรัม/ชิ้นได้ +
+// เลือกชั้นราคาเองได้ (ระบบแนะนำจากจำนวนในใบ แต่เซลตัดสิน) — ที่ยังไม่มีราคา/
+// เกินอายุ กด "ขอราคา" เปิดเคสผูกกลับบรรทัดนี้ให้ RD/PC ตอบ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink, Boxes, Copy } from "lucide-react";
+import {
+  Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink,
+  Boxes, Copy, MessageSquarePlus,
+} from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import Select from "@/components/ui/Select";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -18,6 +24,8 @@ import Workspace from "@/components/ui/Workspace";
 import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
+import MaterialPicker from "@/components/materials/MaterialPicker";
+import AskForm, { emptyAskForm, emptyAskItem } from "@/components/materials/AskForm";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -26,13 +34,29 @@ import {
   componentUnitCost, feedCostError, feedCostValue,
   isMoqTier, itemUnitCost, pricingProgress, submitToExecError,
 } from "@/lib/costing";
-import { canQuoteMaterial } from "@/lib/materialPrices";
+import {
+  COMPONENT_LIBRARY_LABELS, componentLibraryStatus, componentSnapshotExpired,
+  suggestedTierForComponent, suggestedTierQty,
+} from "@/lib/costingLibrary";
+import { latestRevision, revisionTiers, tierUnitPrice } from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 import { productSelectOptions } from "@/components/master/productOption";
 
 const money = (value) => (value == null
   ? "—"
   : Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+const qty = (value) => Number(value).toLocaleString("th-TH");
+
+// สีป้ายสถานะการผูกทะเบียนของบรรทัด (token เท่านั้น — ห้าม hex ตรง ๆ)
+const LIBRARY_TONE = {
+  unlinked: "var(--text-3)",
+  missing: "var(--red)",
+  draft: "var(--amber)",
+  no_price: "var(--amber)",
+  expired: "var(--red)",
+  ready: "var(--green)",
+};
 
 export default function CostingDetailPage() {
   const { id } = useParams();
@@ -42,6 +66,7 @@ export default function CostingDetailPage() {
   const department = useDepartment();
 
   const [request, setRequest] = useState(null);
+  const [materials, setMaterials] = useState([]);
   const [productTypes, setProductTypes] = useState([]);
   const [templateCategories, setTemplateCategories] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -61,22 +86,30 @@ export default function CostingDetailPage() {
   // รายการที่กำลังผูก FG เดิม — { item, products } (โหลดตอนเปิด)
   const [pendingLink, setPendingLink] = useState(null);
   const [linkProducts, setLinkProducts] = useState([]);
+  // เคสขอราคาที่กำลังจะเปิดจากบรรทัดในใบ — { form, componentId }
+  const [askDraft, setAskDraft] = useState(null);
+  // ค่าที่กำลังพิมพ์ในช่องกรัม (คุมแยกจาก request เพื่อไม่ยิง API ทุกตัวอักษร)
+  const [gramsDraft, setGramsDraft] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
-      const [reqRes, typeRes, tplRes] = await Promise.all([
+      const [reqRes, typeRes, tplRes, matRes] = await Promise.all([
         fetch(`/api/sa/costing/${id}`, { cache: "no-store" }),
         fetch("/api/product-types", { cache: "no-store" }),
         fetch("/api/cost-templates", { cache: "no-store" }),
+        fetch("/api/sa/materials", { cache: "no-store" }),
       ]);
       const d = await reqRes.json().catch(() => null);
       if (!reqRes.ok) throw new Error(d?.error || "โหลดใบขอราคาไม่สำเร็จ");
       setRequest(d);
+      setGramsDraft({});
       setProductTypes(await typeRes.json().catch(() => []));
       const templates = await tplRes.json().catch(() => []);
       setTemplateCategories(new Set((Array.isArray(templates) ? templates : []).map((t) => t.categoryCode)));
+      const mats = await matRes.json().catch(() => []);
+      setMaterials(Array.isArray(mats) ? mats : []);
     } catch (e) {
       setLoadError(e.message);
     }
@@ -182,14 +215,86 @@ export default function CostingDetailPage() {
   const approval = approvalProgress(request.items || []);
   const pricing = pricingProgress((request.items || []).flatMap((i) => i.components || []));
 
-  // PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคาจากคลัง" (fill-prices),
-  // RD/PC ยืนยันเฉพาะบรรทัดที่เกินอายุ (confirm-price)
-  const fillFromLibrary = () => runAction("/fill-prices", { method: "PATCH", body: "{}" },
-    "ดึงราคาจากคลังแล้ว");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const openAskByComponent = new Map((request._openAsks || []).map((a) => [a.componentId, a]));
+  const suggestQty = suggestedTierQty(request);
 
-  const confirmLine = (componentId) => runAction("/confirm-price", {
-    method: "PATCH", body: JSON.stringify({ componentId }),
-  }, "ยืนยันราคาแล้ว");
+  // ดึงราคาล่าสุดทุกบรรทัดที่ผูกวัสดุแล้ว — toast บอกจำนวนจริง ไม่ใช่ "สำเร็จ" ลอย ๆ
+  const fillFromLibrary = async () => {
+    const res = await runAction("/fill-prices", { method: "PATCH", body: "{}" }, "ดึงราคาแล้ว");
+    if (!res) return;
+    const parts = [];
+    if (res._filled) parts.push(`เติม ${res._filled} บรรทัด`);
+    if (res._refreshed) parts.push(`ต่ออายุ ${res._refreshed}`);
+    if (res._expired) parts.push(`เกินอายุ ${res._expired} (ต้องขอราคาใหม่)`);
+    if (res._missing) parts.push(`ยังไม่มีราคา ${res._missing}`);
+    if (res._tierBelow) parts.push(`${res._tierBelow} บรรทัดใช้ชั้นที่ต่ำกว่าชั้นต่ำสุดที่มี`);
+    setToast({
+      kind: res._filled || res._refreshed ? "success" : "error",
+      msg: parts.length ? parts.join(" · ") : "ไม่มีบรรทัดไหนขยับ — ทุกบรรทัดมีราคาสดอยู่แล้ว",
+    });
+  };
+
+  // แก้บรรทัด (ผูกวัสดุ / กรัม / ชั้นราคา) — ส่งเฉพาะ key ที่เปลี่ยน
+  const patchComponent = (componentId, patch, msg) => runAction("/components", {
+    method: "PATCH", body: JSON.stringify({ componentId, ...patch }),
+  }, msg);
+
+  // เปิดเคสขอราคาจากบรรทัดในใบ — ใช้ฟอร์มเดียวกับหน้าเคส (กฎ AGENTS.md)
+  // ผูก componentId ไว้ให้ RD/PC ตอบแล้วราคาเด้งกลับบรรทัดนี้เอง
+  const openAsk = (component) => {
+    const material = materials.find((m) => m.id === component.materialId);
+    setAskDraft({
+      componentId: component.id,
+      form: {
+        ...emptyAskForm(),
+        customerId: request.customerId || "",
+        note: `จากใบขอราคาผลิต ${request.docNo || id} — บรรทัด "${component.label}"`,
+        items: [{
+          ...emptyAskItem(component.kind),
+          material: {
+            materialId: component.materialId || null,
+            label: material?.label || component.label,
+            isNew: !component.materialId,
+          },
+          componentId: component.id,
+          tiers: suggestQty ? [suggestQty] : [],
+        }],
+      },
+    });
+  };
+
+  const createAsk = async () => {
+    const form = askDraft.form;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/sa/materials/asks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: form.customerId || null,
+          customerName: request.customerName || null,
+          formulaCode: form.formulaCode || null,
+          costingRequestId: id,
+          note: form.note,
+          items: (form.items || []).map((it) => ({
+            kind: it.kind,
+            materialId: it.material?.materialId || null,
+            label: it.material?.label || "",
+            spec: it.spec,
+            componentId: it.componentId || null,
+            tiers: it.tiers,
+          })),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "เปิดเคสไม่สำเร็จ");
+      router.push(`/sa/materials/asks/${d.id}`);
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+      setSaving(false);
+    }
+  };
 
   const submit = () => {
     const blocked = submitToExecError(request);
@@ -275,11 +380,11 @@ export default function CostingDetailPage() {
               <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
                 <Ban size={14} /> ยกเลิกใบ
               </button>
-              {/* PR-B: ราคาวัสดุมาจากคลัง — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
+              {/* ราคาวัสดุมาจากทะเบียน — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
               {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
                 <>
                   <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
-                    <Boxes size={14} /> ดึงราคาจากคลัง
+                    <Boxes size={14} /> ดึงราคาล่าสุดทุกบรรทัด
                   </button>
                   <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
                     <Send size={14} /> ส่งผู้บริหารอนุมัติ
@@ -394,16 +499,23 @@ export default function CostingDetailPage() {
                 <thead>
                   <tr>
                     <th>รายการต้นทุน</th>
-                    <th style={{ width: 130 }}>ชนิด</th>
-                    <th style={{ width: 110 }}>ขอจาก</th>
+                    <th style={{ width: 230 }}>วัสดุในทะเบียน</th>
                     <th style={{ width: 110 }}>กรัม/ชิ้น</th>
-                    <th style={{ width: 190 }}>ราคาวัสดุ (จากคลัง)</th>
+                    <th style={{ width: 170 }}>ชั้นราคาที่ใช้</th>
+                    <th style={{ width: 200 }}>ราคาวัสดุ (ตรึงในใบ)</th>
                     <th style={{ width: 120 }}>ต้นทุน/ชิ้น</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(item.components || []).map((component) => {
                     const unit = componentUnitCost(component);
+                    const internal = !component.sourceDept;
+                    const state = componentLibraryStatus(component, materials, { todayIso });
+                    const openAskRow = openAskByComponent.get(component.id);
+                    const staleSnapshot = componentSnapshotExpired(component, materials, todayIso);
+                    const material = materials.find((m) => m.id === component.materialId) || null;
+                    const tiers = revisionTiers(latestRevision(material?.revisions || []));
+                    const suggestTier = suggestedTierForComponent(material, suggestQty);
                     return (
                       <tr key={component.id}>
                         <td>
@@ -411,38 +523,134 @@ export default function CostingDetailPage() {
                           {component.required === false && (
                             <span style={{ fontSize: 11, color: "var(--text-3)" }}> (ไม่บังคับ)</span>
                           )}
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                            {COST_LINE_KIND_LABELS[component.kind] || component.kind}
+                            {component.sourceDept ? ` · ขอจาก ${component.sourceDept}` : " · คิดภายใน"}
+                          </div>
                         </td>
-                        <td style={{ fontSize: 12, color: "var(--text-2)" }}>
-                          {COST_LINE_KIND_LABELS[component.kind] || component.kind}
-                        </td>
-                        <td style={{ fontSize: 12 }}>
-                          {component.sourceDept || <span style={{ color: "var(--text-3)" }}>ภายใน</span>}
-                        </td>
-                        <td>{component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+
+                        {/* วัสดุในทะเบียน — ผูกด้วย id ไม่ใช่เทียบชื่อ (0159) */}
                         <td>
-                          {!component.sourceDept ? (
+                          {internal ? (
+                            <span style={{ color: "var(--text-3)" }}>—</span>
+                          ) : canEdit ? (
+                            <MaterialPicker
+                              materials={materials}
+                              kind={component.kind}
+                              customerId={request.customerId || null}
+                              value={{ materialId: component.materialId || null, label: material?.label || "" }}
+                              disabled={saving}
+                              ariaLabel={`เลือกวัสดุของบรรทัด ${component.label}`}
+                              onChange={(picked) => {
+                                if (picked.isNew) return;   // ของใหม่เปิดผ่านปุ่ม "ขอราคา"
+                                patchComponent(component.id, { materialId: picked.materialId },
+                                  "ผูกวัสดุกับบรรทัดแล้ว");
+                              }}
+                              allowCreate={false}
+                            />
+                          ) : (
+                            <span>{material?.label || <span style={{ color: "var(--text-3)" }}>ยังไม่ผูกวัสดุ</span>}</span>
+                          )}
+                          {!internal && (
+                            <div style={{ fontSize: 11, marginTop: 4, color: LIBRARY_TONE[state.status] }}>
+                              {openAskRow
+                                ? `รอ ${component.sourceDept} ตอบเคส ${openAskRow.docNo || ""}`
+                                : COMPONENT_LIBRARY_LABELS[state.status] || ""}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* กรัม/ชิ้น — แม่แบบให้แค่ค่าตั้งต้น แก้ได้ตลอด (บั๊ก 3) */}
+                        <td>
+                          {component.unitBasis !== "per_kg" ? (
+                            <span style={{ color: "var(--text-3)" }}>—</span>
+                          ) : canEdit ? (
+                            <input
+                              className="premium-input" type="number" min="0" step="0.01"
+                              style={{ width: 90 }} disabled={saving} placeholder="กรัม"
+                              aria-label={`กรัมต่อชิ้นของบรรทัด ${component.label}`}
+                              value={gramsDraft[component.id] ?? (component.gramsPerUnit ?? "")}
+                              onChange={(e) => setGramsDraft((d) => ({ ...d, [component.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                const next = e.target.value;
+                                if (String(component.gramsPerUnit ?? "") === String(next)) return;
+                                patchComponent(component.id, { gramsPerUnit: next }, "บันทึกกรัม/ชิ้นแล้ว");
+                              }}
+                            />
+                          ) : (
+                            component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>—</span>
+                          )}
+                        </td>
+
+                        {/* ชั้นราคา — ระบบแนะนำจากจำนวนในใบ แต่เซลตัดสิน (มติ 1+2) */}
+                        <td>
+                          {internal ? (
+                            <span style={{ color: "var(--text-3)" }}>—</span>
+                          ) : (
+                            <>
+                              {canEdit && tiers.length > 0 ? (
+                                <Select
+                                  value={component.priceTierQty == null ? "" : String(component.priceTierQty)}
+                                  disabled={saving}
+                                  aria-label={`ชั้นราคาของบรรทัด ${component.label}`}
+                                  onChange={(e) => patchComponent(component.id,
+                                    { priceTierQty: e.target.value || null }, "เปลี่ยนชั้นราคาแล้ว")}
+                                  options={[
+                                    { value: "", label: "ชั้นตั้งต้น (ต่ำสุด)" },
+                                    ...tiers.filter((t) => t.qty != null).map((t) => ({
+                                      value: String(t.qty),
+                                      label: `${qty(t.qty)} ชิ้นขึ้นไป · ${money(tierUnitPrice(latestRevision(material.revisions), t))} ฿`,
+                                    })),
+                                  ]}
+                                />
+                              ) : (
+                                <span>
+                                  {component.priceTierQty == null
+                                    ? <span style={{ color: "var(--text-3)" }}>ไม่แบ่งชั้น</span>
+                                    : `ชั้น ${qty(component.priceTierQty)}`}
+                                </span>
+                              )}
+                              {suggestQty != null && (
+                                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                                  ใบนี้ {(request.items || []).length} SKU × {qty(request.moq)} = {qty(suggestQty)} ชิ้น
+                                  {suggestTier != null && suggestTier !== component.priceTierQty
+                                    ? ` → แนะนำชั้น ${qty(suggestTier)}`
+                                    : ""}
+                                </div>
+                              )}
+                              {state.tierBelow && (
+                                <div style={{ fontSize: 11, color: "var(--amber)" }}>
+                                  ชั้นที่เลือกต่ำกว่าชั้นต่ำสุดที่มี — ราคาที่ได้เป็นของล็อตใหญ่กว่า
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </td>
+
+                        <td>
+                          {internal ? (
                             <span style={{ color: "var(--text-3)" }}>คิดภายใน</span>
                           ) : component.priceStatus === "quoted" ? (
                             <div>
                               <span>
                                 {money(component.pricePerKg ?? component.pricePerUnit)} {component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}
                               </span>
-                              {component.confirmStatus === "pending" && (
-                                <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>
-                                  ⚠️ ราคาเกินอายุ รอ {component.sourceDept} ยืนยัน
-                                  {canQuoteMaterial(me, component.kind) && (
-                                    <button
-                                      type="button" className="btn sm" style={{ marginLeft: 6 }}
-                                      disabled={saving} onClick={() => confirmLine(component.id)}
-                                    >
-                                      ยืนยันราคา
-                                    </button>
-                                  )}
+                              {staleSnapshot && (
+                                <div style={{ fontSize: 11, color: "var(--red)", marginTop: 2 }}>
+                                  ⚠️ ราคาที่ตรึงไว้เกินอายุแล้ว
                                 </div>
                               )}
                             </div>
                           ) : (
                             <span style={{ color: "var(--text-3)" }}>ยังไม่ดึงราคา</span>
+                          )}
+                          {canEdit && !internal && !openAskRow && (
+                            <button
+                              type="button" className="btn sm" style={{ marginTop: 6 }}
+                              disabled={saving} onClick={() => openAsk(component)}
+                            >
+                              <MessageSquarePlus size={13} /> ขอราคา
+                            </button>
                           )}
                         </td>
                         <td>{unit == null ? <span style={{ color: "var(--text-3)" }}>—</span> : money(unit)}</td>
@@ -710,6 +918,43 @@ export default function CostingDetailPage() {
             </div>
             <div className="action-bar" style={{ marginTop: 12 }}>
               <button type="button" className="btn ghost" onClick={() => setPendingLink(null)} disabled={saving}>ปิด</button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ขอราคาวัสดุจากบรรทัดในใบ — ฟอร์มเดียวกับหน้าเคส (กฎ AGENTS.md);
+          รายการที่มาจากบรรทัดผูก componentId ไว้ ราคาที่ตอบจะเด้งกลับบรรทัดเอง */}
+      <Modal
+        open={!!askDraft} onClose={() => setAskDraft(null)}
+        title="เปิดเคสขอราคาวัสดุ" size="lg" dismissible={!saving}
+      >
+        {askDraft && (
+          <>
+            <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-2)" }}>
+              ส่งถึงฝ่ายเจ้าของวัสดุ (RM → RD · PM → PC) — ตอบแล้วราคาจะเข้าทะเบียนและ
+              เติมกลับบรรทัดในใบนี้ให้อัตโนมัติ
+            </p>
+            <AskForm
+              value={askDraft.form}
+              onChange={(form) => setAskDraft((d) => ({ ...d, form }))}
+              materials={materials}
+              customers={request.customerId
+                ? [{ id: request.customerId, name: request.customerName || request.customerId }]
+                : []}
+              disabled={saving}
+            />
+            <div className="action-bar" style={{ marginTop: 16 }}>
+              <button type="button" className="btn ghost" onClick={() => setAskDraft(null)} disabled={saving}>
+                ยกเลิก
+              </button>
+              <button
+                type="button" className="btn btn-accent" disabled={saving
+                  || !(askDraft.form.items || []).every((it) => it.material?.materialId || (it.material?.label || "").trim())}
+                onClick={createAsk}
+              >
+                เปิดเคส (ร่าง)
+              </button>
             </div>
           </>
         )}

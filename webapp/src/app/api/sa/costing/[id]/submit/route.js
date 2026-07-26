@@ -1,11 +1,12 @@
 // ส่งใบขอราคาผลิตให้ผู้บริหาร (costing:edit, proxy กันชั้นแรกแล้ว)
-// PR-B: ราคาวัสดุมาจากคลัง (เซลดึงเอง) — ไม่มีขั้น "ส่งขอราคา RD/PC" ในใบผลิตแล้ว
+// ราคาวัสดุมาจากทะเบียน (เซลผูกวัสดุ + ดึงราคาเอง) — ไม่มีขั้น "ส่งขอราคา RD/PC"
+// ในใบผลิตแล้ว; ที่ยังไม่มีราคาให้เปิดเคสขอราคาวัสดุแทน
 // เลขที่เอกสารออกครั้งแรกที่นี่ (ส่งออกจากมือฝ่ายขาย = ร่างที่ทิ้งไม่กินเลข)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canEditCostingRequest, generateCostingDocNo, submitToExecError } from '@/lib/costing';
 import { libraryPricingBlocker } from '@/lib/costingLibrary';
-import { findCostingRequest } from '@/lib/costingAdmin';
+import { findCostingRequest, loadPendingAskLinks, syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
@@ -25,12 +26,15 @@ export async function POST(request, { params }) {
 
   const nowIso = new Date().toISOString();
 
-  // เช็คด่านส่งผู้บริหาร + บรรทัดคลังที่เกินอายุยังไม่ยืนยัน
-  const materials = await loadMaterials(supabase);
+  // ธง pricing สลับเองตามคิวเคส — sync ก่อนตัดสิน ไม่งั้นใบที่เคสเพิ่งปิดจะยังส่งไม่ได้
+  const status = await syncCostingPricingStatus(supabase, id);
+  const pendingAsks = await loadPendingAskLinks(supabase, id);
+  const materials = await loadMaterials(supabase, { status: null });
   const libBlocker = libraryPricingBlocker(before.items || [], materials, {
-    customerId: before.customerId || null, todayIso: nowIso.slice(0, 10),
+    todayIso: nowIso.slice(0, 10),
+    pendingAskComponentIds: new Set(pendingAsks.map((a) => a.componentId)),
   });
-  const blocked = submitToExecError(before, libBlocker);
+  const blocked = submitToExecError({ ...before, status }, libBlocker);
   if (blocked) return Response.json({ error: blocked }, { status: 409 });
 
   // ออกเลขที่เอกสารครั้งแรกที่ส่งผู้บริหาร (guard 0141 ห้ามเปลี่ยนทีหลัง)
