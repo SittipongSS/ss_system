@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState, useEffect } from "react";
 import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -51,7 +53,7 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       onSaved?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
     setBusy(false);
   };
 
@@ -224,7 +226,7 @@ export default function MaterialPage() {
             {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {rows.length} บรรทัด</span>}
           </div>
 
-          <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+          <TableScroll style={{ overflowX: "auto" }}>
             <table className="premium-table sticky-col1">
               <thead>
                 <tr>
@@ -241,7 +243,7 @@ export default function MaterialPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </>
       )}
     </Workspace>

@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // เคสขอราคาวัสดุ (mig 0158) — รายการเคสของฉัน / คิวของฝ่ายตน
 //
 // เซลเปิดเคสถามราคาไป PC (บรรจุภัณฑ์) หรือ RD (หัวน้ำหอม/เนื้อสาร)
@@ -96,7 +97,7 @@ export default function MaterialAsksPanel({
             : "ยังไม่มีเคสของคุณ — กด \"เปิดเคสขอราคา\" เพื่อเริ่ม"}
         </EmptyState>
       ) : (
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr>
@@ -136,7 +137,7 @@ export default function MaterialAsksPanel({
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
 
       <Modal

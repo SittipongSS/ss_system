@@ -11,7 +11,8 @@ import { ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { fmtDateTime } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
+import { TableScroll } from "@/components/ui/Table";
 import Modal from "@/components/Modal";
 
 // ป้ายภาษาไทยของ entity / action ที่ audit log บันทึก (ตอนนี้ครอบ customer/product/order).
@@ -155,7 +156,7 @@ export default function AuditLogPage() {
         <SkeletonRows rows={7} />
       ) : (
         <div className="glass-panel">
-          <div className="premium-table-wrapper border-none">
+          <TableScroll className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -202,7 +203,7 @@ export default function AuditLogPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
           {pageRows.length > 0 && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
@@ -237,7 +238,7 @@ function AuditDetailModal({ log, onClose }) {
           changed.length === 0 ? (
             <div className="text-[var(--text-3)] text-sm">ไม่มีฟิลด์ที่เปลี่ยนแปลง</div>
           ) : (
-            <div className="premium-table-wrapper border-none">
+            <TableScroll className="border-none" family="list">
               <table className="premium-table">
                 <thead>
                   <tr><th>ฟิลด์</th><th>ค่าเดิม</th><th>ค่าใหม่</th></tr>
@@ -252,7 +253,7 @@ function AuditDetailModal({ log, onClose }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           )
         ) : (
           // create = แสดง after; delete = แสดง before (record ที่หายไป).

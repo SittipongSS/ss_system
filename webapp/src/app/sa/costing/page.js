@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // หน้ารายการใบขอราคาผลิต (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
 // แต่เห็นคนละชุด: ฝ่ายขายเห็นตาม scope ดีล, RD/PC เห็นคิวทั้งฝ่ายตน,
 // ผู้บริหาร/viewer เห็นทั้งหมด (กรองจริงที่ API ผ่าน canViewCostingRequest)
@@ -203,7 +204,7 @@ export default function CostingListPage() {
             : "ไม่มีใบที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr>
@@ -280,7 +281,7 @@ export default function CostingListPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
 
       <Modal

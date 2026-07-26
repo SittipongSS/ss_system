@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Workspace from "@/components/ui/Workspace";
@@ -451,7 +452,7 @@ export default function WorkflowTemplatesPage() {
               {editor.steps.length ? (
                 <>
                   <div className={styles.stepTableWrap}>
-                    <table className={styles.stepTable}>
+                    <TableScroll><table className={styles.stepTable}>
                       <thead><tr><th>ลำดับ / ขั้นตอน</th><th>ผู้รับผิดชอบ</th><th>ระยะเวลา</th><th>Dependency / เงื่อนไขหมวด</th><th><span className="sr-only">จัดการ</span></th></tr></thead>
                       <tbody>{editor.steps.map((step, index) => (
                         <tr key={`${step.stepKey}-${index}`}>
@@ -468,7 +469,7 @@ export default function WorkflowTemplatesPage() {
                           </div></td>
                         </tr>
                       ))}</tbody>
-                    </table>
+                    </table></TableScroll>
                   </div>
                   <div className={styles.stepCards}>{editor.steps.map((step, index) => (
                     <article key={`${step.stepKey}-${index}`} className={styles.stepCard}>
@@ -484,7 +485,7 @@ export default function WorkflowTemplatesPage() {
 
           <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="history-title">
             <header className={styles.panelHeader}><div><h2 id="history-title">ประวัติเวอร์ชัน</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและเปิดดูย้อนหลังได้ที่นี่</p></div></header>
-            <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>Version</th><th>สถานะ</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>เวลา</th><th><span className="sr-only">เปิดดู</span></th></tr></thead><tbody>{selected.versions.map((version) => <tr key={version.id}><td><strong>Version {version.versionNumber}</strong></td><td><StatusBadge status={version.status} /></td><td>{version.changeNote || version.description || "-"}<small>{version.steps?.length || 0} ขั้นตอน</small></td><td>{actorOf(version)}</td><td>{formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</td><td><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดู</button></td></tr>)}</tbody></table></div>
+            <div className={styles.historyTableWrap}><TableScroll><table className={styles.historyTable}><thead><tr><th>Version</th><th>สถานะ</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>เวลา</th><th><span className="sr-only">เปิดดู</span></th></tr></thead><tbody>{selected.versions.map((version) => <tr key={version.id}><td><strong>Version {version.versionNumber}</strong></td><td><StatusBadge status={version.status} /></td><td>{version.changeNote || version.description || "-"}<small>{version.steps?.length || 0} ขั้นตอน</small></td><td>{actorOf(version)}</td><td>{formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</td><td><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดู</button></td></tr>)}</tbody></table></TableScroll></div>
             <div className={styles.historyCards}>{selected.versions.map((version) => <article key={version.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {version.versionNumber}</strong><StatusBadge status={version.status} /></div><p>{version.changeNote || version.description || "ไม่มีหมายเหตุ"}</p><small>{version.steps?.length || 0} ขั้นตอน · {formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
           </section>
         </main>

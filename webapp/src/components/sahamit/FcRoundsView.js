@@ -1,4 +1,5 @@
 "use client";
+import { ChartCanvas } from "@/components/ui/ChartCard";
 import { useMemo } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer, Cell,
@@ -46,7 +47,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
           <h3 style={{ fontSize: 15, fontWeight: 600 }}>วิวัฒนาการ FC แต่ละรอบ ต่อเดือนเป้าหมาย ({unitLbl})</h3>
           <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>เส้นละรอบ · รอบใหม่ปรับขึ้น/ลง/เลื่อนเดือนได้ — เดือนที่รอบนั้นไม่ครอบจะเว้นเส้น</div>
         </div>
-        <ResponsiveContainer width="100%" height={340}>
+        <ChartCanvas><ResponsiveContainer width="100%" height={340}>
           <LineChart data={evo.data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
@@ -57,14 +58,14 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
               <Line key={r.key} type={CHART_LINE_TYPE} dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
             ))}
           </LineChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer></ChartCanvas>
       </div>
 
       <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* ยอดรวมต่อรอบ */}
         <div className="glass-panel" style={{ padding: 20 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>ยอดรวม FC แต่ละรอบ ({unitLbl})</h3>
-          <ResponsiveContainer width="100%" height={240}>
+          <ChartCanvas><ResponsiveContainer width="100%" height={240}>
             <BarChart data={totals} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="roundNo" tickFormatter={(n) => `#${n}`} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
@@ -74,7 +75,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
                 {totals.map((_, i) => <Cell key={i} fill={roundColor(i)} />)}
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer></ChartCanvas>
         </div>
 
         {/* การเปลี่ยนแปลงรอบต่อรอบ */}

@@ -24,7 +24,7 @@ import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";

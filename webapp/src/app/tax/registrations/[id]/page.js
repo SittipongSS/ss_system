@@ -1,4 +1,5 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -191,14 +192,14 @@ export default function RegistrationDetailPage() {
                   : canEdit && s.status === "draft"
                     ? {
                       id: "submit", label: "ยื่นขึ้นทะเบียน", kind: "submit", icon: Send,
-                      onClick: () => submitDraft().catch((error) => alert(error.message)),
+                      onClick: () => submitDraft().catch((error) => notifyToast.error(error.message)),
                       disabled: !req?.ready,
                       disabledReason: !req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : undefined,
                     }
                     : canEdit && s.status === "rejected"
                       ? {
                         id: "resubmit", label: "ส่งกลับให้ตรวจ", kind: "submit", icon: Send,
-                        onClick: () => resubmit().catch((error) => alert(error.message)),
+                        onClick: () => resubmit().catch((error) => notifyToast.error(error.message)),
                       }
                       : null}
                 secondaryActions={[

@@ -1,4 +1,5 @@
 "use client";
+import { ChartCanvas } from "@/components/ui/ChartCard";
 import { useMemo } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer, Cell,
@@ -52,7 +53,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
         <Swatch color="var(--panel-2)" label="FC ที่รอ PO" border />
         <Swatch color="var(--red)" label="PO เกิน FC" />
       </div>
-      <ResponsiveContainer width="100%" height={400}>
+      <ChartCanvas><ResponsiveContainer width="100%" height={400}>
         <ComposedChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
@@ -69,7 +70,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
             <Line key={r.key} type={CHART_LINE_TYPE} dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} strokeDasharray={i === 0 ? "5 3" : undefined} />
           ))}
         </ComposedChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer></ChartCanvas>
     </div>
   );
 }

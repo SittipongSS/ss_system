@@ -1,15 +1,16 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // หน้ารวมเรื่องสอบถาม–ตอบกลับ (Sale ↔ RD) — ฝั่งขายเห็นตาม scope ดีลของตัวเอง,
 // ฝ่ายผู้ตอบ (rd) เห็นทุกเรื่องของฝ่ายตน. คิวเรียงตามวันที่ RD รับปากว่าจะตอบ.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, MessageCircleQuestion, Plus } from "lucide-react";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 import { compareInquiryUrgency } from "@/lib/inquiries";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
@@ -106,7 +107,7 @@ export default function InquiriesPage() {
           ))}</div>}
         >
           <div className="premium-glass-table table-responsive">
-          <table className="w-full text-sm">
+          <TableScroll><table className="w-full text-sm">
             <thead>
               <tr>
                 <th>เลขที่</th><th>เรื่อง</th><th>ดีล / ลูกค้า</th><th>ผู้ถาม</th><th>ผู้รับเรื่อง</th><th>วันที่ตอบ</th><th>สถานะ</th>
@@ -143,7 +144,7 @@ export default function InquiriesPage() {
                 </td></tr>
               )}
             </tbody>
-          </table>
+          </table></TableScroll>
           </div>
           {!loading && sorted.length > 0 && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />

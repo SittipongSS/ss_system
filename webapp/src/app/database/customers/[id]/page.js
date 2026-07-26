@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +26,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { apiCache } from "@/lib/apiCache";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 
 // หน้า detail ลูกค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
@@ -359,7 +360,7 @@ export default function CustomerDetails() {
                 </div>
               ) : (
                 <div className="glass-panel">
-                  <div className="premium-table-wrapper border-none">
+                  <TableScroll className="border-none">
                     <table className="premium-table">
                       <thead>
                         <tr>
@@ -400,7 +401,7 @@ export default function CustomerDetails() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 </div>
               )
             )}
@@ -457,7 +458,7 @@ export default function CustomerDetails() {
                 </div>
               ) : (
                 <div className="glass-panel">
-                  <div className="premium-table-wrapper border-none">
+                  <TableScroll className="border-none">
                     <table className="premium-table">
                       <thead>
                         <tr>
@@ -488,7 +489,7 @@ export default function CustomerDetails() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 </div>
               )
             )}

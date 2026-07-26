@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import { Flag, AlertCircle, ChevronRight, ChevronDown, Save } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -21,7 +23,7 @@ function FlagRow({ flag, onSaved, canEdit }) {
 
   const save = async (statusOverride) => {
     const status = statusOverride || d.status;
-    if (status === "confirmed_shift" && !d.shiftToMonth) { alert("ระบุเดือนปลายทางที่เลื่อนไป"); return; }
+    if (status === "confirmed_shift" && !d.shiftToMonth) { notifyToast.error("ระบุเดือนปลายทางที่เลื่อนไป"); return; }
     setBusy(true);
     try {
       const res = await fetch(`/api/sahamit/flags/${flag.id}`, {
@@ -31,7 +33,7 @@ function FlagRow({ flag, onSaved, canEdit }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "บันทึกไม่สำเร็จ");
       onSaved?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
     setBusy(false);
   };
 
@@ -107,7 +109,7 @@ export default function ReviewPage() {
           <div style={{ fontSize: 13, marginTop: 6 }}>ระบบตั้งธงอัตโนมัติเมื่อ FC ลด/เลื่อน — ถ้ามี PO มารับจะเสนอเป็น “น่าจะเติมเต็มด้วย PO” ให้ยืนยัน</div>
         </div>
       ) : (
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr><th>สินค้า</th><th>เดือน</th><th>ชนิด</th><th style={{ textAlign: "right" }}>เปลี่ยน</th><th>รอบ</th><th>สถานะ</th><th></th></tr>
@@ -116,7 +118,7 @@ export default function ReviewPage() {
               {shown.map((f) => <FlagRow key={f.id} flag={f} onSaved={reload} canEdit={canEdit} />)}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </Workspace>
   );

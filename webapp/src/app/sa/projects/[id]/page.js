@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -44,14 +46,14 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { compactPersonName } from "@/lib/personName";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
+import { PageShell as SaPageShell } from "@/components/ui/Workspace";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -212,14 +214,14 @@ export default function ProjectDetailPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { alert(d.error || "ทำรายการไม่สำเร็จ"); return false; }
+      if (!res.ok) { notifyToast.error(d.error || "ทำรายการไม่สำเร็จ"); return false; }
       await load();
       return true;
     } finally { setCloseBusy(""); }
   }, [id, load]);
   const submitCloseRequest = async () => {
-    if (!closeReqForm?.closeType) { alert("เลือกประเภทการปิด"); return; }
-    if (!closeReqForm.reason.trim()) { alert("ระบุเหตุผล/สรุปการปิด"); return; }
+    if (!closeReqForm?.closeType) { notifyToast.error("เลือกประเภทการปิด"); return; }
+    if (!closeReqForm.reason.trim()) { notifyToast.error("ระบุเหตุผล/สรุปการปิด"); return; }
     const ok = await closeAction("request", { closeType: closeReqForm.closeType, reason: closeReqForm.reason.trim() });
     if (ok) setCloseReqForm(null);
   };
@@ -403,7 +405,7 @@ export default function ProjectDetailPage() {
     });
   };
 
-  // ยืนยันแบบ promise — แทน window.confirm() ด้วย ConfirmModal ที่เข้าธีม.
+  // ยืนยันแบบ promise — แทน await confirmAction() ด้วย ConfirmModal ที่เข้าธีม.
   // ใช้: if (!(await askConfirm({ title, message }))) return;
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
@@ -1150,7 +1152,7 @@ export default function ProjectDetailPage() {
           </div>
           {shownPersonalTasks.length ? (
             <div className="premium-glass-table table-responsive">
-              <table className="premium-table">
+              <TableScroll><table className="premium-table">
                 <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
                 <tbody>{shownPersonalTasks.map((task) => {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);
@@ -1163,7 +1165,7 @@ export default function ProjectDetailPage() {
                     <td>{task.dueDate || "-"}</td>
                   </tr>;
                 })}</tbody>
-              </table>
+              </table></TableScroll>
             </div>
           ) : <EmptyState icon={ListTodo}>ยังไม่มีงานจากดีลที่เลือก</EmptyState>}
         </section>
@@ -1243,7 +1245,7 @@ export default function ProjectDetailPage() {
             <EmptyState icon={Filter}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</EmptyState>
           ) : (
             <div className="premium-glass-table table-responsive">
-              <table className="premium-table timeline-task-table">
+              <TableScroll><table className="premium-table timeline-task-table">
                 <colgroup>
                   <col style={{ width: 32 }} />
                   <col style={{ width: 52 }} />
@@ -1352,7 +1354,7 @@ export default function ProjectDetailPage() {
                     </Fragment>
                   ))}
                 </tbody>
-              </table>
+              </table></TableScroll>
             </div>
           )}
         </div>

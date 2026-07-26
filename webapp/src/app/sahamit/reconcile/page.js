@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState, useEffect } from "react";
 import { ClipboardCheck, AlertCircle, Download, Search, Maximize2, Minimize2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -368,7 +369,7 @@ export default function ReconcilePage() {
           </div>
 
           <div className="reconciliation-container">
-            <table className="reconcile-grid">
+            <TableScroll family="matrix"><table className="reconcile-grid">
               <thead>
                 <tr>
                   <th>สินค้า / SKU</th>
@@ -439,7 +440,7 @@ export default function ReconcilePage() {
                   </td>
                 </tr>
               </tfoot>
-            </table>
+            </table></TableScroll>
           </div>
         </div>
       )}

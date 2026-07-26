@@ -1,4 +1,5 @@
 "use client";
+import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
@@ -16,7 +17,8 @@ import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
+import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
@@ -84,9 +86,9 @@ export default function CustomerDirectory() {
         body: JSON.stringify({ approvalStatus: status, rejectionReason }),
       });
       if (res.ok) fetchCustomers();
-      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+      else notifyToast.error((await res.json()).error || "ดำเนินการไม่สำเร็จ");
     } catch {
-      alert("เกิดข้อผิดพลาดในการอนุมัติ");
+      notifyToast.error("เกิดข้อผิดพลาดในการอนุมัติ");
     }
   };
 
@@ -126,14 +128,14 @@ export default function CustomerDirectory() {
         setShowForm(false);
         fetchCustomers();
         if (created?.approvalStatus === "pending") {
-          alert("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำลูกค้ารายนี้ไปใช้งานได้");
+          notifyToast.info("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำลูกค้ารายนี้ไปใช้งานได้");
         }
       } else {
         const errorData = await res.json();
-        alert(errorData.error || "เกิดข้อผิดพลาด");
+        notifyToast.error(errorData.error || "เกิดข้อผิดพลาด");
       }
     } catch (err) {
-      alert("Error adding customer");
+      notifyToast.error("Error adding customer");
     }
     setIsSubmitting(false);
   };
@@ -311,7 +313,7 @@ export default function CustomerDirectory() {
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="premium-table-wrapper border-none">
+          <TableScroll className="border-none" family="list">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -358,7 +360,7 @@ export default function CustomerDirectory() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 

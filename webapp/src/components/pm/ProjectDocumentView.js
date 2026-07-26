@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import DateInput from "@/components/ui/DateInput";
 // ISO Timeline document view (ported from ss-cj ProjectDocumentView).
 // แกนเวลาเป็น "รายวันต่อเนื่อง" + บาร์ลากย้าย/ยืด-หดได้แบบ Monday/ClickUp.
@@ -414,7 +415,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
               })}
             </svg>
           )}
-          <table style={{ borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed", width: "100%", minWidth: "max-content" }}>
+          <TableScroll><table style={{ borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed", width: "100%", minWidth: "max-content" }}>
             <colgroup>
               <col style={{ width: `${NO_W}px`, minWidth: `${NO_W}px` }} />
               <col style={{ width: `${descW}px`, minWidth: `${descW}px` }} />
@@ -503,7 +504,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
                 />
               ))}
             </tbody>
-          </table>
+          </table></TableScroll>
 
           {/* ลายเซ็น */}
           <div style={{ position: "sticky", left: 0, display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: "32px", padding: "24px 20px", borderTop: "1px solid var(--border)", background: "var(--panel-2)", zIndex: 1, width: "100%", minWidth: "min-content" }}>

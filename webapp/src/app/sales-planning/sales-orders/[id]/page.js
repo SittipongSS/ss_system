@@ -21,7 +21,7 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";

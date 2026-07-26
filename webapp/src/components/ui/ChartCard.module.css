@@ -1,0 +1,159 @@
+.card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.canvas :global(.recharts-wrapper),
+.canvas :global(.recharts-surface) {
+  max-width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 14px 16px 10px;
+}
+
+.title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.title h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.title p {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.headerAside {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.body {
+  min-height: var(--chart-min-height, 260px);
+  padding: 8px 16px 16px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendSwatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--legend-color);
+}
+
+.tooltip {
+  min-width: 150px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.tooltip strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.tooltipLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.empty {
+  display: grid;
+  min-height: var(--chart-min-height, 260px);
+  place-items: center;
+  padding: 24px;
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.summary > div {
+  min-width: 0;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+}
+
+.summary > div:last-child { border-right: 0; }
+.summary small { display: block; color: var(--text-3); font-size: 10.5px; }
+.summary strong { display: block; margin-top: 2px; color: var(--text); font-size: 13px; }
+
+@media (max-width: 680px) {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .headerAside { justify-content: flex-start; }
+  .body { padding-inline: 10px; }
+}

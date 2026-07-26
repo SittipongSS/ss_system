@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,9 +15,9 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -736,7 +737,7 @@ export default function TasksPage() {
       ) : view === "table" ? (
         /* ── Table view ── */
         <div className="premium-glass-table table-responsive">
-          <table className="premium-table">
+          <TableScroll><table className="premium-table">
             <thead>
               <tr>
                 <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>
@@ -796,7 +797,7 @@ export default function TasksPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></TableScroll>
         </div>
       ) : (
         /* ── List view (cards) ── */

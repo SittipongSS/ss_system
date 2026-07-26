@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // รายงานความพร้อมลายเซ็นอิเล็กทรอนิกส์ (Phase 5B go-live gate)
 //
 // mig 0125 บังคับว่าผู้อนุมัติต้องมีลายเซ็นในบัญชีก่อน ไม่งั้นอนุมัติใบเสนอราคา/SO ไม่ได้ (409)
@@ -176,7 +177,7 @@ export default function SignatureCoveragePage() {
       )}
 
       {!loading && !error && !!sort.sorted.length && (
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr>
@@ -215,7 +216,7 @@ export default function SignatureCoveragePage() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </Workspace>
   );

@@ -7,7 +7,7 @@ import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
 import MoneyInput from "@/components/ui/MoneyInput";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";

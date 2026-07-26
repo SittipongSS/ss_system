@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // ศูนย์รวมดีลในโครงการ — โครงการ = จิ๊กซอว์ครอบดีล: ดีลมีอะไร โครงการ merge หมด
 // การ์ดต่อดีล (ใบเสนอราคา + ความคืบหน้า segment ไทม์ไลน์ อยู่ "ใต้ดีล") +
@@ -156,7 +158,7 @@ export function ProjectQuotationsCard({ project: p }) {
       </div>
       {quotes.length ? (
         <div className="premium-glass-table table-responsive">
-          <table className="premium-table">
+          <TableScroll><table className="premium-table">
             <thead><tr><th>เลขที่</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr></thead>
             <tbody>{quotes.map((quote) => {
               const deal = dealById.get(quote.dealId);
@@ -170,7 +172,7 @@ export function ProjectQuotationsCard({ project: p }) {
                 </tr>
               );
             })}</tbody>
-          </table>
+          </table></TableScroll>
         </div>
       ) : (
         <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></div>
@@ -186,7 +188,7 @@ export function ProjectQuotationsCard({ project: p }) {
       </div>
       {salesOrders.length ? (
         <div className="premium-glass-table table-responsive">
-          <table className="premium-table">
+          <TableScroll><table className="premium-table">
             <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
             <tbody>{salesOrders.map((order) => {
               const deal = dealById.get(order.dealId);
@@ -197,7 +199,7 @@ export function ProjectQuotationsCard({ project: p }) {
                 <td className="num mono tabular-nums">{fmtMoney(order.status === "approved" ? order.actualAmount : 0)}</td>
               </tr>;
             })}</tbody>
-          </table>
+          </table></TableScroll>
         </div>
       ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มี Sale Order — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
     </section>
@@ -282,7 +284,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
   };
 
   const deleteActivity = async (item) => {
-    if (!window.confirm("ลบความเคลื่อนไหวรายการนี้?")) return;
+    if (!(await confirmAction("ลบความเคลื่อนไหวรายการนี้?"))) return;
     setActivityBusy(item.activityId);
     setError("");
     try {

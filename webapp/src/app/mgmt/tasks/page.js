@@ -9,6 +9,8 @@ import TaskDrawer from "@/components/mgmt/TaskDrawer";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace from "@/components/ui/Workspace";
+import { TableScroll } from "@/components/ui/Table";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -80,20 +82,19 @@ export default function MgmtTasksPage() {
   if (role && !canMgmt) return null;
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><ListTodo size={22} /></span> รายการงาน</h1>
-          <p>ติดตามงานบริหาร แยกตามแผนก · คลิกแถวเพื่อดูรายละเอียด/แนบไฟล์</p>
-        </div>
+    <Workspace
+      icon={<ListTodo size={22} />}
+      title="รายการงาน"
+      subtitle="ติดตามงานบริหาร แยกตามแผนก · คลิกแถวเพื่อดูรายละเอียด/แนบไฟล์"
+      headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
           </Select>
           {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
         </div>
-      </div>
-
+      )}
+    >
       {/* filters */}
       <div className="glass-panel" style={{ padding: "12px 14px", marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 180 }}>
@@ -133,7 +134,8 @@ export default function MgmtTasksPage() {
         ) : rows.length === 0 ? (
           <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีงานในปีนี้</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <TableScroll family="list">
+          <table className="premium-table">
             <thead>
               <tr style={{ background: "var(--panel-2)", color: "var(--text-3)", fontSize: 12 }}>
                 <th style={{ textAlign: "left", padding: "10px 8px", width: 36 }}>#</th>
@@ -159,6 +161,7 @@ export default function MgmtTasksPage() {
               ))}
             </tbody>
           </table>
+          </TableScroll>
         )}
       </div>
 
@@ -179,6 +182,6 @@ export default function MgmtTasksPage() {
         onChanged={(row) => { upsertRow(row); setSelected(row); }}
         onDeleted={dropRow}
       />
-    </>
+    </Workspace>
   );
 }

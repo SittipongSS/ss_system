@@ -7,6 +7,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TASK_STATUS_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
+import Workspace from "@/components/ui/Workspace";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -57,23 +58,19 @@ export default function MgmtOverviewPage() {
   if (role && !canMgmt) return null;
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><LayoutDashboard size={22} /></span>{" "}
-            ภาพรวมงานบริหาร
-          </h1>
-          <p>ภาพรวมการติดตามงาน แยกตามแผนก และงานด่วนที่ต้องจัดการ</p>
-        </div>
+    <Workspace
+      icon={<LayoutDashboard size={22} />}
+      title="ภาพรวมงานบริหาร"
+      subtitle="ภาพรวมการติดตามงาน แยกตามแผนก และงานด่วนที่ต้องจัดการ"
+      headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
           </Select>
           <div className="pill ok">{percent}% เสร็จ</div>
         </div>
-      </div>
-
+      )}
+    >
       {loading ? (
         <SkeletonRows rows={7} />
       ) : (
@@ -149,6 +146,6 @@ export default function MgmtOverviewPage() {
           </div>
         </>
       )}
-    </>
+    </Workspace>
   );
 }

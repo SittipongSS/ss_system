@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +16,7 @@ import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -52,7 +54,7 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
       onSaved?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { notifyToast.error(e.message); }
     setBusy(false);
   };
 
@@ -249,7 +251,7 @@ export default function PoPage() {
           </div>
 
           {view === "grouped" ? (
-            <div className="premium-table-wrapper">
+            <TableScroll>
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -276,7 +278,7 @@ export default function PoPage() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           ) : (
             <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} onSort={onSort} />
           )}
@@ -347,7 +349,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
             {lines.length === 0 ? (
               <div style={{ color: "var(--text-3)", fontSize: 13, padding: 8 }}>ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)</div>
             ) : (
-              <div className="premium-table-wrapper">
+              <TableScroll>
                 <table className="premium-table">
                   <thead>
                     <tr>
@@ -366,7 +368,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
                     {lines.map((r) => <PoLineRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={onSaved} canEdit={canEdit} />)}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
             )}
           </td>
         </tr>
@@ -418,7 +420,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
 
   return (
     <>
-    <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+    <TableScroll style={{ overflowX: "auto" }}>
       <table className="premium-table">
         <thead>
           <tr>
@@ -473,7 +475,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
           </tfoot>
         )}
       </table>
-    </div>
+    </TableScroll>
     <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
     </>
   );

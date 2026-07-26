@@ -8,6 +8,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
+import Workspace from "@/components/ui/Workspace";
+import { TableScroll } from "@/components/ui/Table";
 import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
 import styles from "./page.module.css";
@@ -215,21 +217,20 @@ export default function ProductCategoriesPage() {
 
   const editing = drawer?.mode === "edit";
   return (
-    <>
-      <header className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Tags size={22} /></span> หมวดสินค้า</h1>
-          <p>จัดการรหัสและชื่อหมวดที่ใช้ร่วมกันในสินค้า ดีล โครงการ และไทม์ไลน์</p>
-        </div>
+    <Workspace
+      icon={<Tags size={22} />}
+      title="หมวดสินค้า"
+      subtitle="จัดการรหัสและชื่อหมวดที่ใช้ร่วมกันในสินค้า ดีล โครงการ และไทม์ไลน์"
+      headerRight={(
         <div className={styles.headerActions}>
           <Link prefetch={false} className="btn ghost" href="/api/product-types/export"><Download size={16} /> ส่งออกข้อมูล</Link>
           <Link className="btn" href="/database/product-categories/import"><Upload size={16} /> นำเข้าข้อมูล</Link>
-          {/* ปุ่ม filled เดียวของหน้า — โทน accent เดียวกับปุ่มเพิ่มของหน้าสินค้า/ลูกค้า */}
           <button type="button" className="btn btn-accent" onClick={openCreate}>
             <Plus size={16} /> เพิ่มหมวดสินค้า
           </button>
         </div>
-      </header>
+      )}
+    >
 
       <section className={styles.summary} aria-label="สรุปหมวดสินค้า">
         <div><span>หมวดหลัก</span><strong>{summary.mainCategories || 0}</strong></div>
@@ -260,7 +261,7 @@ export default function ProductCategoriesPage() {
           <div className={styles.empty}>ไม่พบหมวดสินค้าตามเงื่อนไข</div>
         ) : (
           <>
-            <div className={`premium-table-wrapper ${styles.desktopTable}`}>
+            <TableScroll className={styles.desktopTable} family="list">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -278,7 +279,7 @@ export default function ProductCategoriesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
             <div className={styles.mobileList}>
               {groupedRows.map((group) => (
@@ -437,7 +438,7 @@ export default function ProductCategoriesPage() {
         onClose={() => !saving && setConfirmRow(null)}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }
 

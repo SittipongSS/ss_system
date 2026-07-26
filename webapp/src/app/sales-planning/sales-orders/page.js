@@ -1,12 +1,13 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Select from "@/components/ui/Select";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -83,7 +84,7 @@ export default function SalesOrdersPage() {
             <div className="spacer" />
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>วันที่ SO</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
               <tbody>
                 {pageRows.map((row) => (
@@ -96,7 +97,7 @@ export default function SalesOrdersPage() {
                 ))}
                 {!filtered.length && !loading && <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มี Sale Order — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
           {filtered.length > 0 && (
             <Pager

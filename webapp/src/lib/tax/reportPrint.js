@@ -1,3 +1,4 @@
+import { notifyToast } from "@/lib/feedback";
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 
@@ -102,7 +103,7 @@ export function buildReportPrintHTML(report, meta = {}, company) {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
+  body { background: #eef0f3; color: #21385e; font-family: ${PRINT_FONT_STACK}; font-size: 12px; }
   .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
@@ -144,9 +145,9 @@ export function buildReportPrintHTML(report, meta = {}, company) {
 export async function openReportPrintWindow(report, meta = {}) {
   // เปิดหน้าต่างก่อน (ยังไม่ await) กัน popup blocker แล้วค่อยดึงข้อมูลบริษัทที่เผยแพร่
   const w = window.open("", "_blank");
-  if (!w) { alert("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
+  if (!w) { notifyToast.error("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
   w.document.open();
-  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>REPORT</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.write(printPlaceholderHtml({ title: "REPORT", message: "กำลังเตรียมเอกสาร…" }));
   w.document.close();
   const company = await getCompanyProfileForPrint();
   const html = buildReportPrintHTML(report, meta, company);
@@ -155,3 +156,4 @@ export async function openReportPrintWindow(report, meta = {}) {
   w.document.close();
   w.focus();
 }
+import { PRINT_FONT_STACK, printPlaceholderHtml } from "@/lib/printTheme";

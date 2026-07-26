@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import Link from "next/link";
 import { MessageCircleQuestion, Plus } from "lucide-react";
@@ -17,7 +18,7 @@ export default function InquiryListCard({ inquiries = [], onCreate = null, title
       </div>
       {inquiries.length ? (
         <div className="premium-glass-table table-responsive">
-          <table className="premium-table">
+          <TableScroll><table className="premium-table">
             <thead><tr><th>เลขที่ / เรื่อง</th><th>ผู้รับ RD</th><th>SA คาดหวัง</th><th>RD จะตอบ</th><th>สถานะ</th></tr></thead>
             <tbody>{inquiries.map((q) => <tr key={q.id} className="premium-row">
               <td><Link className="linklike" href={`/sa/inquiries/${q.id}`} style={{ fontWeight: 700 }}>{q.code || q.id} · {q.title}</Link></td>
@@ -26,7 +27,7 @@ export default function InquiryListCard({ inquiries = [], onCreate = null, title
               <td>{q.committedDueDate ? fmtDate(q.committedDueDate) : "-"}</td>
               <td><InquiryStatusBadge status={q.status} /></td>
             </tr>)}</tbody>
-          </table>
+          </table></TableScroll>
         </div>
       ) : <div style={{ padding: 12, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีเรื่องสอบถาม RD ที่ผูกกับรายการนี้</div>}
     </section>

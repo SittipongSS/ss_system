@@ -1,3 +1,4 @@
+import { notifyToast } from "@/lib/feedback";
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { productIdentity } from '@/lib/master/productIdentity';
@@ -185,7 +186,7 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --notice-accent: ${theme.accent}; --notice-soft: ${theme.soft}; }
-  body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
+  body { background: #eef0f3; color: #21385e; font-family: ${PRINT_FONT_STACK}; font-size: 12px; }
   .toolbar { max-width: 210mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
@@ -268,9 +269,9 @@ export async function openBillPrintWindow(order, customer = {}) {
   // เปิดหน้าต่างก่อน (ยังไม่ await) เพื่อไม่ให้ popup blocker บล็อก แล้วค่อยดึงข้อมูล
   // บริษัทที่เผยแพร่มาประกอบเอกสาร
   const w = window.open("", "_blank");
-  if (!w) { alert("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
+  if (!w) { notifyToast.error("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
   w.document.open();
-  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>ใบแจ้งชำระภาษี</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.write(printPlaceholderHtml({ title: "ใบแจ้งชำระภาษี", message: "กำลังเตรียมเอกสาร…" }));
   w.document.close();
   const [company, standards] = await Promise.all([
     getCompanyProfileForPrint(),
@@ -282,3 +283,4 @@ export async function openBillPrintWindow(order, customer = {}) {
   w.document.close();
   w.focus();
 }
+import { PRINT_FONT_STACK, printPlaceholderHtml } from "@/lib/printTheme";

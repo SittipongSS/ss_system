@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sun } from "lucide-react";
@@ -182,7 +183,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
       </p>
 
       <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
-        <table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
+        <TableScroll family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>
@@ -211,7 +212,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
           <tfoot>
             <Row row={{ ...matrix.company, id: "company" }} isTotal />
           </tfoot>
-        </table>
+        </table></TableScroll>
       </div>
     </section>
   );

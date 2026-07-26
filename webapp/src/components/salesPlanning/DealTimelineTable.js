@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
 
@@ -225,8 +227,8 @@ export default function TimelineWorkspace({
     await onChanged?.();
     setSaving(false);
   };
-  const removeTask = (t) => {
-    if (!window.confirm(`ลบขั้นตอน "${t.name}"?`)) return;
+  const removeTask = async (t) => {
+    if (!(await confirmAction(`ลบขั้นตอน "${t.name}"?`))) return;
     return call(t.id, `/api/pm/project-tasks/${t.id}`, { method: "DELETE" });
   };
 
@@ -495,7 +497,7 @@ export default function TimelineWorkspace({
         </div>
       </div>
       <div className="premium-glass-table table-responsive">
-        <table className="premium-table timeline-task-table">
+        <TableScroll><table className="premium-table timeline-task-table">
           <colgroup>
             <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
             <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
@@ -598,7 +600,7 @@ export default function TimelineWorkspace({
               </FragmentGroup>
             ))}
           </tbody>
-        </table>
+        </table></TableScroll>
       </div>
       {canAdd && (
         <div style={{ marginTop: 10 }}>

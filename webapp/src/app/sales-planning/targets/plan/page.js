@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -200,9 +202,9 @@ export default function SalesTargetPlanPage() {
   const goBack = () => { setError(""); setInfo(""); setStep((s) => Math.max(1, s - 1)); };
 
   // Switching plan year restarts the wizard — history/projection/splits all change.
-  const changeYear = (y) => {
+  const changeYear = async (y) => {
     if (y === targetYear) return;
-    if (step > 1 && !window.confirm("เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?")) return;
+    if (step > 1 && !(await confirmAction("เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?"))) return;
     setTargetYear(y);
     setStep(1);
     setError("");
@@ -470,7 +472,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
         </p>
       </div>
       <div className="fz-box">
-        <table className="fz-table premium-glass-table w-full text-sm">
+        <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
           <thead>
             <tr>
               <th style={{ textAlign: "left", minWidth: 90 }}>ปี</th>
@@ -502,7 +504,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
               );
             })}
           </tbody>
-        </table>
+        </table></TableScroll>
       </div>
 
       <div>
@@ -598,7 +600,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
       </div>
 
       <div className="fz-box">
-        <table className="fz-table premium-glass-table target-team-table w-full text-sm">
+        <TableScroll family="editable"><table className="fz-table premium-glass-table target-team-table w-full text-sm">
           <colgroup>
             <col style={{ width: "27%" }} />
             <col style={{ width: "18%" }} />
@@ -642,7 +644,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
               </td>
             </tr>
           </tfoot>
-        </table>
+        </table></TableScroll>
       </div>
       <GapBanner target={Number(finalTarget || 0)} allocated={allocated} label="แบ่งลงทีมแล้ว" />
     </div>
@@ -722,7 +724,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
         </div>
         <div className="fz-box">
-          <table className="fz-table premium-glass-table w-full text-sm">
+          <TableScroll family="editable"><table className="fz-table premium-glass-table w-full text-sm">
             <thead>
               <tr>
                 <th style={{ textAlign: "left", minWidth: 70 }}></th>
@@ -752,7 +754,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                 ))}
               </tr>
             </tbody>
-          </table>
+          </table></TableScroll>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-3)" }}>
           เป้าแต่ละเดือน = เป้าทั้งปีของแต่ละคน/ทีม × % เดือนนั้น (เดือน ธ.ค. รับเศษปัด) · กด “ยืนยันวางเป้า” เพื่อบันทึกลงตารางเป้าปี {targetYear}

@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarRange, Check, History } from "lucide-react";
@@ -185,7 +186,7 @@ export default function SalesHistoryMonthlyPage() {
         </p>
 
         <div className="premium-glass-table table-responsive">
-          <table className="w-full text-sm" style={{ minWidth: 1180 }}>
+          <TableScroll family="editable"><table className="w-full text-sm" style={{ minWidth: 1180 }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 130 }}>ระดับ</th>
@@ -230,7 +231,7 @@ export default function SalesHistoryMonthlyPage() {
                 </td>
               </tr>
             </tbody>
-          </table>
+          </table></TableScroll>
         </div>
 
         {mismatch && (

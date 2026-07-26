@@ -14,10 +14,12 @@ import { createPortal } from "react-dom";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
 import {
   INITIAL_TOAST_QUEUE,
-  normalizeToast,
   toastQueueReducer,
 } from "@/lib/toastQueue";
+import { TOAST_EVENT } from "@/lib/feedback";
 import styles from "./Toast.module.css";
+
+export { notifyToast } from "@/lib/feedback";
 
 const KIND = {
   success: { icon: CheckCircle2, role: "status" },
@@ -120,6 +122,16 @@ export function ToastProvider({
 
   const dismiss = useCallback((id) => dispatch({ type: "dismiss", id }), []);
   const clear = useCallback(() => dispatch({ type: "clear" }), []);
+
+  useEffect(() => {
+    const receiveToast = (event) => {
+      const item = normalizeToast(event.detail);
+      dispatch({ type: "enqueue", toast: item, maxQueue });
+    };
+    window.addEventListener(TOAST_EVENT, receiveToast);
+    return () => window.removeEventListener(TOAST_EVENT, receiveToast);
+  }, [maxQueue]);
+
   const api = useMemo(() => {
     const byKind = (kind) => (message, options = {}) => showToast(message, { ...options, kind });
     return {

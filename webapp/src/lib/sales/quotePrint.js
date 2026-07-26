@@ -4,6 +4,8 @@
 // helper จัดการหน้าต่างพิมพ์ (เปิดแท็บระหว่าง click, เขียน HTML, แจ้ง error).
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { getCompanyProfileForPrint } from '@/lib/companyProfile';
+import { notifyToast } from '@/lib/feedback';
+import { printPlaceholderHtml } from '@/lib/printTheme';
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -20,11 +22,14 @@ export function prepareQuotePrintWindow(documentLabel = 'ใบเสนอร�
   // ไม่ระบุ window features เพื่อให้ browser เปิดพรีวิวเป็นแท็บใหม่แทน popup window.
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    window.alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
+    notifyToast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
     return null;
   }
   try { printWindow.opener = null; } catch { /* browser บางรุ่นไม่อนุญาตให้แก้ opener */ }
-  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำลังเตรียม${esc(documentLabel)}…</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:80vh;color:#555}p{padding:20px}</style></head><body><p>กำลังเตรียมเอกสารสำหรับพิมพ์…</p></body></html>`);
+  printWindow.document.write(printPlaceholderHtml({
+    title: `กำลังเตรียม${documentLabel}…`,
+    message: "กำลังเตรียมเอกสารสำหรับพิมพ์…",
+  }));
   printWindow.document.close();
   return printWindow;
 }
@@ -32,7 +37,12 @@ export function prepareQuotePrintWindow(documentLabel = 'ใบเสนอร�
 export function showQuotePrintError(printWindow, message = 'ไม่สามารถโหลดข้อมูลใบเสนอราคาได้', documentLabel = 'ใบเสนอราคา') {
   if (!printWindow || printWindow.closed) return;
   printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ไม่สามารถพิมพ์${esc(documentLabel)}</title><style>body{font-family:system-ui,sans-serif;padding:32px;color:#8b2f2f}button{padding:8px 14px}</style></head><body><h2>ไม่สามารถพิมพ์${esc(documentLabel)}</h2><p>${esc(message)}</p><button onclick="window.close()">ปิดหน้าต่าง</button></body></html>`);
+  printWindow.document.write(printPlaceholderHtml({
+    title: `ไม่สามารถพิมพ์${documentLabel}`,
+    message,
+    tone: "error",
+    closeButton: true,
+  }));
   printWindow.document.close();
 }
 

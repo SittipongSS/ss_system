@@ -8,6 +8,7 @@
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
 import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
+import { PRINT_FONT_STACK } from '@/lib/printTheme';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -229,10 +230,10 @@ const DOCUMENT_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #eceff3; -webkit-font-smoothing: antialiased;
          -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
-         font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif; }
+         font-family: ${PRINT_FONT_STACK}; }
   .toolbar { display: flex; justify-content: space-between; align-items: center;
              width: 210mm; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
-             font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; }
+             font-family: ${PRINT_FONT_STACK}; }
   .toolbar h1 { font-size: 15px; font-weight: 600; color: #1f3551; }
   .btn-print { background: #1f3551; color: #fff; border: 0; font: inherit; font-weight: 600;
                padding: 8px 18px; border-radius: 8px; cursor: pointer; }
@@ -259,7 +260,7 @@ const DOCUMENT_CSS = `
        จึงฝัง IBM Plex Sans Thai เป็น @font-face base64 ในตัว (DOCUMENT_FONT_FACE_CSS)
        = ฟอนต์เดียวกับที่ next/font เสิร์ฟให้แอป แสดงผลตรงกันทุกที่ แม้พิมพ์/ตรึง snapshot
        ออฟไลน์ (ไม่พึ่ง Google CDN ที่โหลดไม่ทัน/ไม่ได้แล้วหล่นไป Leelawadee) */
-    font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif;
+    font-family: ${PRINT_FONT_STACK};
     font-size: 9.5pt;
     line-height: 1.42;
     font-variant-numeric: tabular-nums;

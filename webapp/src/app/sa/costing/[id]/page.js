@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 // หน้ารายละเอียดใบขอราคาผลิต — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
 // เจ้าของใบ (canEditCostingRequest).
 //
@@ -25,7 +26,7 @@ import { DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
@@ -573,7 +574,7 @@ export default function CostingDetailPage() {
               </div>
             )}
 
-            <div className="premium-table-wrapper">
+            <TableScroll>
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -751,7 +752,7 @@ export default function CostingDetailPage() {
                   </tr>
                 </tfoot>
               </table>
-            </div>
+            </TableScroll>
 
             <div style={{ marginTop: 12 }}>
               <div className="toolbar-label" style={{ marginBottom: 6 }}>ราคาผลิตที่อนุมัติ (ต่อชั้นจำนวน)</div>

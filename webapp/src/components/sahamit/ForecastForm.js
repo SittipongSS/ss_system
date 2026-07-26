@@ -1,4 +1,6 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy, History } from "lucide-react";
@@ -139,9 +141,9 @@ export default function ForecastForm({ products = [], editRound = null, existing
     return existingRounds.reduce((a, b) => (Number(b.roundNo) >= Number(a.roundNo) ? b : a));
   }, [editRound, existingRounds]);
 
-  const seedFromLatest = () => {
+  const seedFromLatest = async () => {
     if (!latestRound) return;
-    if (rows.length && !confirm(`แทนที่ข้อมูลในกริดด้วย FC รอบที่ ${latestRound.roundNo}?`)) return;
+    if (rows.length && !(await confirmAction(`แทนที่ข้อมูลในกริดด้วย FC รอบที่ ${latestRound.roundNo}?`))) return;
     setUnknown([]); setError(""); setEntryUnit("piece");
     loadRoundIntoGrid(latestRound, { withFullCatalog: true });
   };
@@ -358,7 +360,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
 
       {/* Grid */}
       {hasGrid ? (
-        <div className="premium-table-wrapper" style={{ maxHeight: "56vh", overflow: "auto" }}>
+        <TableScroll family="editable" style={{ maxHeight: "56vh", overflow: "auto" }}>
           <table className="premium-table sticky-col1">
             <thead>
               <tr>
@@ -396,7 +398,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       ) : (
         <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
           เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel{latestRound ? " / ใช้ FC รอบก่อนหน้า" : ""})

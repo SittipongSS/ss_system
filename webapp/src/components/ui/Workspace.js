@@ -52,6 +52,10 @@ export default function Workspace({
   );
 }
 
+export function PageShell({ children, className = "" }) {
+  return <div className={`ui-workspace ${className}`.trim()}>{children}</div>;
+}
+
 // Compatibility export for older pages. New loading surfaces use skeletons.
 export function Spinner() {
   return <SkeletonRows rows={6} />;

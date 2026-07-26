@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
 import DocsPanel from "@/components/mgmt/DocsPanel";
@@ -38,7 +40,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
 
   // "ติดตามต่อ" → สร้างงานใน รายการงาน (prefill จากการประชุม).
   const createFollowUpTask = async () => {
-    if (!confirm(`สร้างงานติดตามจากการประชุม "${meeting.title}"?`)) return;
+    if (!(await confirmAction(`สร้างงานติดตามจากการประชุม "${meeting.title}"?`))) return;
     setBusy(true);
     try {
       const res = await fetch("/api/mgmt/tasks", {
@@ -51,7 +53,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
           notes: `สร้างจากการประชุม ${meeting.id}${meeting.summary ? `\n\nสรุป: ${meeting.summary}` : ""}`,
         }),
       });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "สร้างงานไม่สำเร็จ"); return; }
+      if (!res.ok) { notifyToast.error((await res.json().catch(() => ({}))).error || "สร้างงานไม่สำเร็จ"); return; }
       const task = await res.json();
       // บันทึกลง feed ของการประชุม + ตั้ง followUp='follow' ถ้ายังไม่ใช่
       await fetch("/api/mgmt/updates", {
@@ -67,17 +69,17 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
       }
       loadUpdates();
       onTaskCreated?.(task);
-      alert("สร้างงานติดตามแล้ว — ดูได้ที่หน้ารายการงาน");
+      notifyToast.success("สร้างงานติดตามแล้ว — ดูได้ที่หน้ารายการงาน");
     } finally { setBusy(false); }
   };
 
   const remove = async () => {
-    if (!confirm("ย้ายการประชุมนี้ลงถังขยะ?")) return;
+    if (!(await confirmAction("ย้ายการประชุมนี้ลงถังขยะ?"))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/mgmt/meetings/${meeting.id}`, { method: "DELETE" });
       if (res.ok) { onDeleted?.(meeting.id); onClose?.(); }
-      else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 

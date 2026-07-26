@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import Select from "@/components/ui/Select";
 
 // หน้ารวมโครงการ (/sa/projects — เฟส B, SALES_REVAMP_PLAN §5):
@@ -7,11 +8,11 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2 } from "lucide-react";
-import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import Pager from "@/components/excise/Pager";
+import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
@@ -158,7 +159,7 @@ export default function ProjectsIndexPage() {
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <table className="w-full text-sm">
+            <TableScroll><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>โครงการ</th>
@@ -236,7 +237,7 @@ export default function ProjectsIndexPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></TableScroll>
           </div>
           {filtered.length > 0 && (
             <Pager

@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Edit3, Eye, FilePlus2, WalletCards } from "lucide-react";
@@ -270,7 +271,7 @@ export default function CommercialPresetsPage() {
             </div>
           </header>
 
-          <div className={`premium-table-wrapper ${styles.tableWrap}`}>
+          <TableScroll className={`${styles.tableWrap}`}>
             <table className="premium-table">
               <thead><tr><th>ชื่อชุด</th><th>เวอร์ชัน</th><th>สรุป</th><th>อัปเดต</th><th aria-label="การทำงาน" /></tr></thead>
               <tbody>
@@ -301,7 +302,7 @@ export default function CommercialPresetsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
 
           <div className={styles.cards}>
             {visible.map((preset) => {

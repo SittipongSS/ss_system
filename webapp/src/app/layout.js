@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 
 // Render routes dynamically (not static) so the client Router Cache doesn't
 // reuse stale page segments — pages always re-mount + refetch on navigation,
@@ -47,9 +48,11 @@ export default function RootLayout({ children }) {
           `,
         }} />
         <ToastProvider>
-          <LayoutWrapper>
-            {children}
-          </LayoutWrapper>
+          <ConfirmProvider>
+            <LayoutWrapper>
+              {children}
+            </LayoutWrapper>
+          </ConfirmProvider>
         </ToastProvider>
       </body>
     </html>

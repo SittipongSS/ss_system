@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { AlertTriangle, Briefcase, Calendar, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
-import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import UpdateThread from "@/components/updates/UpdateThread";

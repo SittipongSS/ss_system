@@ -9,7 +9,6 @@ const MONTH_PICKER_CSS = source("./MonthPicker.module.css");
 const TABS = source("./Tabs.js");
 const SEGMENTED = source("./Segmented.js");
 const PAGER = source("./Pager.js");
-const LEGACY_PAGER = source("../excise/Pager.js");
 const EXCISE_STATUS = source("../excise/StatusBadge.js");
 
 test("MonthPicker keeps an ISO value and provides range, calendar, and keyboard contracts", () => {
@@ -30,10 +29,8 @@ test("Tabs and Segmented share roving keyboard navigation", () => {
   assert.match(SEGMENTED, /aria-pressed=\{active\}/);
 });
 
-test("Pager and Excise status use shared UI foundations through compatibility adapters", () => {
+test("Pager and Excise status use shared UI foundations", () => {
   assert.match(PAGER, /@\/components\/ui\/Segmented/);
   assert.match(PAGER, /Math\.min\(safePageCount/);
-  assert.match(LEGACY_PAGER, /@\/components\/ui\/Pager/);
   assert.match(EXCISE_STATUS, /@\/components\/ui\/StatusBadge/);
-  assert.doesNotMatch(LEGACY_PAGER, /lucide-react/);
 });

@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/ui/Table";
 import Modal from "@/components/Modal";
 import { fmtMoney, fmtDate, fmtDateNumeric } from "@/lib/format";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -119,7 +120,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
         )}
 
         {/* Items */}
-        <div className="premium-table-wrapper">
+        <TableScroll>
           <table className="premium-table">
             <thead>
               <tr>
@@ -158,7 +159,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
               )}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
 
         {/* Footer total */}
         <div className="flex justify-end items-center gap-3 pt-1">

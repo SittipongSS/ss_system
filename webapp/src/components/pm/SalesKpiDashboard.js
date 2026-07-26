@@ -1,4 +1,6 @@
 "use client";
+import { ChartCanvas } from "@/components/ui/ChartCard";
+import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, CalendarDays, ListTodo, RefreshCw, Trophy, Users, X } from "lucide-react";
@@ -9,7 +11,7 @@ import DateInput from "@/components/ui/DateInput";
 import { fmtPercent } from "@/lib/format";
 import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
-import { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
+import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 
 const today = new Date();
 const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -127,7 +129,7 @@ export default function SalesKpiDashboard() {
                 )}>
               
               <div style={{ height: 320, width: "100%", marginBottom: 24, marginTop: 12 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={teams} onClick={handleTeamClick} style={{ cursor: "pointer" }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                     <XAxis dataKey="team" stroke="var(--text-3)" fontSize={12} tickLine={false} axisLine={false} />
@@ -142,11 +144,11 @@ export default function SalesKpiDashboard() {
                     <Bar yAxisId="left" dataKey="completed" name="งานที่เสร็จ" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     <Line yAxisId="right" type={CHART_LINE_TYPE} dataKey="score" name="คะแนนรวม" stroke="var(--amber)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></ChartCanvas>
               </div>
 
               <div className="premium-glass-table table-responsive">
-                <table className="premium-table">
+                <TableScroll><table className="premium-table">
                   <thead><tr><th>ทีม</th><th className="num">คน</th><th className="num">งาน</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">คะแนน</th></tr></thead>
                   <tbody>
                     {teams.map((t) => (
@@ -161,7 +163,7 @@ export default function SalesKpiDashboard() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></TableScroll>
               </div>
             </SaSection>
           )}
@@ -170,7 +172,7 @@ export default function SalesKpiDashboard() {
 
             {top10Rows.length > 0 && (
               <div style={{ height: 280, width: "100%", marginBottom: 24, marginTop: 12 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                   <BarChart data={top10Rows} layout="vertical" margin={{ left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                     <XAxis type="number" stroke="var(--text-3)" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
@@ -182,12 +184,12 @@ export default function SalesKpiDashboard() {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="score" name="คะแนนรวม" fill="var(--green)" radius={[0, 4, 4, 0]} maxBarSize={20} />
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></ChartCanvas>
               </div>
             )}
 
             <div className="premium-glass-table table-responsive">
-              <table className="premium-table">
+              <TableScroll><table className="premium-table">
                 <thead>
                   <tr>
                     <th>ผู้รับผิดชอบ</th><th>ทีม</th><th className="num">งาน</th><th className="num">กำลังทำ</th><th className="num">เลยกำหนด</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">ความยาก</th><th className="num">คะแนน</th>
@@ -212,7 +214,7 @@ export default function SalesKpiDashboard() {
                     <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text-3)", padding: 18 }}>ไม่มีข้อมูลในช่วงวันที่นี้</td></tr>
                   )}
                 </tbody>
-              </table>
+              </table></TableScroll>
             </div>
           </SaSection>
         </div>
