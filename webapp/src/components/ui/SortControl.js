@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
 
 export default function SortControl({
   value,
@@ -21,15 +22,14 @@ export default function SortControl({
         {options.map((option) => <option key={option.value ?? option.key} value={option.value ?? option.key}>{option.label}</option>)}
       </Select>
       {onDirectionChange ? (
-        <button
-          type="button"
-          className="btn-icon ui-sort-direction"
+        <Button
+          iconOnly
+          className="ui-sort-direction"
           onClick={() => onDirectionChange(direction === "asc" ? "desc" : "asc")}
           title={direction === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
           aria-label={direction === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
-        >
-          {direction === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-        </button>
+          icon={direction === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+        />
       ) : null}
     </div>
   );

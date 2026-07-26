@@ -2,6 +2,7 @@
 
 import { CalendarDays } from "lucide-react";
 import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
 import {
   addMonths,
   clampMonth,
@@ -95,19 +96,20 @@ export default function MonthPicker({
         ))}
       </Select>
       {showCurrentShortcut && canUseToday ? (
-        <button
-          type="button"
-          className={`btn ghost sm ${styles.shortcut}`}
+        <Button
+          variant="quiet"
+          size="sm"
+          className={styles.shortcut}
           onClick={() => {
             onAllMonths?.(false);
             change(today);
           }}
           disabled={locked || (!allMonths && selected === today)}
           aria-label={`${currentShortcutLabel} ${formatMonthLabel(today, { calendar })}`}
+          icon={<CalendarDays size={14} aria-hidden="true" />}
         >
-          <CalendarDays size={14} aria-hidden="true" />
           {currentShortcutLabel}
-        </button>
+        </Button>
       ) : null}
       {onAllMonths ? (
         <label className={styles.allMonths}>

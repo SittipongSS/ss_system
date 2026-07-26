@@ -17,6 +17,7 @@ import {
   toastQueueReducer,
 } from "@/lib/toastQueue";
 import { TOAST_EVENT } from "@/lib/feedback";
+import Button from "./Button";
 import styles from "./Toast.module.css";
 
 export { notifyToast } from "@/lib/feedback";
@@ -88,9 +89,13 @@ function ToastCard({ toast, onClose, duration = 3600 }) {
           {toast.action.label}
         </button>
       ) : null}
-      <button type="button" className={`btn-icon ${styles.close}`} onClick={onClose} aria-label="ปิดการแจ้งเตือน">
-        <X size={14} aria-hidden="true" />
-      </button>
+      <Button
+        iconOnly
+        className={styles.close}
+        onClick={onClose}
+        aria-label="ปิดการแจ้งเตือน"
+        icon={<X size={14} aria-hidden="true" />}
+      />
     </div>
   );
 }

@@ -14,12 +14,12 @@ const SO_PAGE = src('../../app/sales-planning/sales-orders/[id]/page.js');
 // เงียบ ๆ — ปุ่ม "ถอนการยื่น" เลยเป็นสีแดงบน QT (ยืม kind:"reject") และสีเทาบน SO
 // (ยืม kind:"restore") ส่วน "ออก Revision" ที่ QT ส่ง kind:"copy" ก็ไม่มีไอคอน
 test('document workflow buttons are declared in KINDS, not silently falling back', () => {
-  assert.match(ACTION_BUTTONS, /withdraw: \{ cls: "btn-secondary", Icon: Undo2/);
-  assert.match(ACTION_BUTTONS, /revise: \{ cls: "btn-secondary", Icon: Copy/);
+  assert.match(ACTION_BUTTONS, /withdraw: \{ tone: "neutral", Icon: Undo2/);
+  assert.match(ACTION_BUTTONS, /revise: \{ tone: "neutral", Icon: Copy/);
   assert.match(ACTION_BUTTONS, /^import \{[\s\S]*?\bCopy\b[\s\S]*?\} from "lucide-react";/m);
 
   // ถอนการยื่น ≠ ตีกลับ — ห้ามกลับไปเป็นปุ่มทำลาย
-  assert.doesNotMatch(ACTION_BUTTONS, /withdraw: \{ cls: "btn-danger"/);
+  assert.doesNotMatch(ACTION_BUTTONS, /withdraw: \{ tone: "danger"/);
 });
 
 test('QT and SO use the same kind for the same button', () => {

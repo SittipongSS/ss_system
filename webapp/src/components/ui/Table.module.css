@@ -56,7 +56,44 @@
 
 .scroll :global(table) {
   width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
   font-variant-numeric: tabular-nums;
+}
+
+/* หัวตาราง/ช่องข้อมูลของ "ตารางเปล่า" ที่ไม่มีคลาสเก่ากำกับ
+
+   ก่อนหน้านี้ไฟล์นี้กำหนดแค่ padding แนวตั้ง — ตารางที่ไม่ใส่ `.premium-table` จึงไม่มี
+   พื้นหัวตาราง ไม่มีเส้นคั่น ไม่มี padding แนวนอนเลย (Tailwind preflight ล้างทิ้งหมด)
+   นั่นคือเหตุผลจริงที่ทุกหน้ายังพก `.premium-table` ติดไว้ทั้งที่ห่อด้วย TableScroll แล้ว
+   = ย้ายมา primitive กลางไม่ได้จริงจนกว่าตรงนี้จะครบ
+
+   ค่าที่ใช้ยกมาจาก `.premium-table` (42 ไฟล์ ซึ่งเป็นชุดที่ใช้มากที่สุด) เจาะจงผูกกับ
+   `[data-family]` เพื่อให้ specificity สูงกว่าคลาสเก่าแน่นอน ไม่ต้องลุ้นลำดับ stylesheet
+   ⚠️ `.premium-glass-table` เคยใช้ padding แนวนอน 14px — หลังจากนี้จะเป็น 12px เท่ากัน
+   ทั้งระบบ (ตั้งใจให้ลู่เข้าจังหวะเดียว ไม่ใช่ผลข้างเคียง) */
+.scroll[data-family] :global(th),
+.scroll[data-family] :global(td) {
+  padding-inline: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.scroll[data-family] :global(th) {
+  color: var(--text-2);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.scroll[data-family] :global(td) {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.scroll[data-family] :global(tbody tr:last-child td) {
+  border-bottom: none;
 }
 
 .scroll[data-family="list"] :global(th),

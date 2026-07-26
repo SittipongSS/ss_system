@@ -2,7 +2,7 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers, Palette } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
 import Workspace from "@/components/ui/Workspace";
@@ -49,6 +49,13 @@ export default function SettingsPage() {
           title: "คลังเงื่อนไขการค้า",
           desc: "เทมเพลตเงื่อนไขการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown แบบมีเวอร์ชัน",
           show: canCommercial,
+        },
+        {
+          href: "/settings/design-preview",
+          icon: Palette,
+          title: "ต้นแบบดีไซน์ระบบ",
+          desc: "ปุ่ม ตาราง ฟอร์ม ป้ายสถานะ และสีกลางทั้งหมดในหน้าเดียว — ดูก่อนทำหน้าใหม่ และใช้ตรวจผลเวลาแก้ดีไซน์กลาง",
+          show: true,
         },
       ],
     },

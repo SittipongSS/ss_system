@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PAGE_SIZE_OPTIONS } from "@/lib/usePagination";
 import Segmented from "@/components/ui/Segmented";
+import Button from "@/components/ui/Button";
 import styles from "./Pager.module.css";
 
 export default function Pager({
@@ -49,27 +50,25 @@ export default function Pager({
         ) : null}
         {showNav ? (
           <div className={styles.navigation}>
-            <button
-              type="button"
-              className={`btn-icon ${styles.navButton}`}
+            <Button
+              iconOnly
+              className={styles.navButton}
               disabled={safePage <= 1}
               onClick={() => goTo(safePage - 1)}
               aria-label="ก่อนหน้า"
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-            </button>
+              icon={<ChevronLeft size={16} aria-hidden="true" />}
+            />
             <span className={styles.position} aria-live="polite">
               หน้า {safePage} / {safePageCount}
             </span>
-            <button
-              type="button"
-              className={`btn-icon ${styles.navButton}`}
+            <Button
+              iconOnly
+              className={styles.navButton}
               disabled={safePage >= safePageCount}
               onClick={() => goTo(safePage + 1)}
               aria-label="ถัดไป"
-            >
-              <ChevronRight size={16} aria-hidden="true" />
-            </button>
+              icon={<ChevronRight size={16} aria-hidden="true" />}
+            />
           </div>
         ) : null}
       </div>

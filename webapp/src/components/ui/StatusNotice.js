@@ -2,6 +2,7 @@
 
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import styles from "./StatusNotice.module.css";
+import Button from "./Button";
 
 const TONES = {
   info: Info,
@@ -32,9 +33,13 @@ export default function StatusNotice({
       </div>
       {action ? <div className={styles.action}>{action}</div> : null}
       {onDismiss ? (
-        <button type="button" className={`btn-icon ${styles.dismiss}`} onClick={onDismiss} aria-label={dismissLabel}>
-          <X size={14} aria-hidden="true" />
-        </button>
+        <Button
+          iconOnly
+          className={styles.dismiss}
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+          icon={<X size={14} aria-hidden="true" />}
+        />
       ) : null}
     </div>
   );

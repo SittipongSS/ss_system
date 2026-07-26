@@ -2,6 +2,7 @@
 
 import Modal from "@/components/Modal";
 import styles from "./ReasonDialog.module.css";
+import Button from "./Button";
 
 export default function ReasonDialog({
   open,
@@ -52,15 +53,14 @@ export default function ReasonDialog({
           </small>
         </label>
         <div className="action-bar">
-          <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>{cancelLabel}</button>
-          <button
-            type="button"
-            className={tone === "danger" ? "btn btn-danger" : tone === "warning" ? "btn btn-warning" : "btn btn-primary"}
+          <Button variant="quiet" onClick={onClose} disabled={busy}>{cancelLabel}</Button>
+          <Button
+            tone={tone === "danger" ? "danger" : tone === "warning" ? "warning" : "primary"}
             onClick={onConfirm}
             disabled={busy || invalid}
           >
             {busy ? "กำลังดำเนินการ…" : confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

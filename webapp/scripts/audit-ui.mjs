@@ -53,7 +53,9 @@ for (const file of uiFiles) {
   if (/\btype\s*=\s*["'](?:monotone|basis|natural)["']/.test(source)) {
     smoothedLineViolations.push(rel);
   }
-  if (source.includes("<table") && !source.includes("<TableScroll")) {
+  // TableShell ห่อ TableScroll ให้ในตัว (toolbar → ตาราง → ท้ายตาราง ในพาเนลเดียว)
+  // จึงนับว่าอยู่ในสัญญาเดียวกัน
+  if (source.includes("<table") && !source.includes("<TableScroll") && !source.includes("<TableShell")) {
     tableContractViolations.push(rel);
   }
   if (source.includes("<ResponsiveContainer") && !source.includes("<ChartCanvas")) {
