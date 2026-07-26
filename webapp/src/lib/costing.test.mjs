@@ -18,6 +18,7 @@ import {
   itemUnitCost,
   normalizeCostingStatus,
   pricingProgress,
+  resolveCostingDealContext,
   reviseError,
   submitToExecError,
 } from './costing.js';
@@ -316,4 +317,82 @@ test('แก้ใบ: ปิดตายเมื่ออนุมัติค
   assert.equal(canEditCostingRequest({ role: 'executive' }, req({ status: 'draft' })), false);
   // admin break-glass แก้ได้
   assert.equal(canEditCostingRequest({ role: 'admin' }, req({ status: 'draft' })), true);
+});
+
+// ── บริบทจากดีล ─────────────────────────────────────────────────────────
+// stub supabase เท่าที่ resolveCostingDealContext ใช้: from().select().eq().maybeSingle()
+// เก็บ select string ไว้ตรวจด้วย — คอลัมน์ที่ไม่มีจริงคือต้นเหตุบั๊ก "ไม่พบดีล"
+function dealStub(result) {
+  const seen = { columns: null };
+  const api = {
+    from: () => api,
+    select: (columns) => { seen.columns = columns; return api; },
+    eq: () => api,
+    maybeSingle: async () => result,
+  };
+  return { api, seen };
+}
+
+// คอลัมน์จริงของ sales_deals (mig 0063 + 0096) — เทียบตรง ๆ กันเผลอ select
+// ชื่อที่ไม่มีอยู่จริงแล้วได้ error เงียบ ๆ (PostgREST คืน data = null)
+const SALES_DEAL_COLUMNS = new Set([
+  'id', 'customerId', 'customerName', 'title', 'stage', 'projectValue', 'probability',
+  'forecastMonth', 'expectedCloseDate', 'depositPaid', 'confirmedAt', 'lostReason',
+  'notes', 'ownerId', 'ownerName', 'team', 'projectId', 'metadata', 'createdAt',
+  'updatedAt', 'parentDealId', 'categoryCode', 'code',
+]);
+
+test('บริบทดีล: ไม่เลือกดีล = ใบสำรวจ ไม่ error', async () => {
+  const { api } = dealStub({ data: null, error: null });
+  const out = await resolveCostingDealContext(api, { team: 'KA' }, null, { customerName: '  ลูกค้าใหม่  ' });
+  assert.equal(out.error, undefined);
+  assert.equal(out.deal, null);
+  assert.equal(out.context.dealId, null);
+  assert.equal(out.context.customerName, 'ลูกค้าใหม่');
+  assert.equal(out.context.team, 'KA');
+});
+
+test('บริบทดีล: select เฉพาะคอลัมน์ที่มีจริง (regression "ไม่พบดีล" ทุกใบ)', async () => {
+  const deal = {
+    id: 'D-1', code: 'DL-2601', customerId: 'AR-1', customerName: 'ลูกค้า',
+    projectId: null, team: 'KA', ownerId: 'u-ae',
+  };
+  const { api, seen } = dealStub({ data: deal, error: null });
+  const out = await resolveCostingDealContext(api, { id: 'u-ae', role: 'ae', team: 'KA' }, 'D-1');
+  assert.equal(out.error, undefined);
+  assert.equal(out.context.customerId, 'AR-1');
+
+  const columns = seen.columns.split(',').map((c) => c.trim());
+  for (const column of columns) {
+    assert.ok(SALES_DEAL_COLUMNS.has(column), `sales_deals ไม่มีคอลัมน์ "${column}"`);
+  }
+  // ต้องมีครบเท่าที่ปลายทางใช้จริง (scope/บริบท/audit)
+  for (const column of ['id', 'code', 'customerId', 'customerName', 'projectId', 'team', 'ownerId']) {
+    assert.ok(columns.includes(column), `ขาดคอลัมน์ "${column}" ที่ผู้เรียกต้องใช้`);
+  }
+});
+
+test('บริบทดีล: query พังต้องไม่โผล่เป็น "ไม่พบดีล"', async () => {
+  const { api } = dealStub({ data: null, error: { message: 'column x does not exist' } });
+  const out = await resolveCostingDealContext(api, { role: 'admin' }, 'D-1');
+  assert.equal(out.status, 500);
+  assert.match(out.error, /อ่านข้อมูลดีลไม่สำเร็จ/);
+  assert.doesNotMatch(out.error, /ไม่พบดีล/);
+});
+
+test('บริบทดีล: ไม่มีดีลจริง / ดีลไม่มีลูกค้า / นอก scope', async () => {
+  const missing = await resolveCostingDealContext(dealStub({ data: null, error: null }).api, { role: 'admin' }, 'D-9');
+  assert.equal(missing.error, 'ไม่พบดีล');
+
+  const noCustomer = await resolveCostingDealContext(
+    dealStub({ data: { id: 'D-1', team: 'KA', ownerId: 'u-ae', customerId: null }, error: null }).api,
+    { role: 'admin' }, 'D-1',
+  );
+  assert.match(noCustomer.error, /ยังไม่ได้ระบุลูกค้า/);
+
+  const outOfScope = await resolveCostingDealContext(
+    dealStub({ data: { id: 'D-1', team: 'KA', ownerId: 'u-ae', customerId: 'AR-1' }, error: null }).api,
+    { id: 'u-other', role: 'ae', team: 'ODM' }, 'D-1',
+  );
+  assert.equal(outOfScope.status, 403);
 });
