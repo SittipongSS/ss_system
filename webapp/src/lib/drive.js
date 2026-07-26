@@ -101,6 +101,42 @@ async function resolveMgmtFolder(entityType, entityId) {
   return ensureFolder(label, parent);
 }
 
+// ── ระบบขอราคา (ใบขอราคาผลิต / เคสขอราคาวัสดุ) ────────────────────────
+// ไฟล์แนบอยู่ที่ระดับ "รายการในใบ/ในเคส" (มติ PR5 + แผนฉบับ 5) โฟลเดอร์จึงเป็น
+//   ขอราคาผลิต / <เลขที่ใบ> / <ชื่อสินค้า> (<itemId>)
+//   ขอราคาวัสดุ / <เลขที่เคส> / <ชื่อวัสดุ> (<itemId>)
+// ไม่ nest ใต้ลูกค้าเพราะใบสำรวจ/ราคากลางไม่มีลูกค้าเลย — โฟลเดอร์ต้อง resolve ได้เสมอ
+// (แพตเทิร์นเดียวกับโมดูลงานบริหาร). ร่างที่ยังไม่มีเลขที่ใช้ id แทน
+async function resolveCostingFolder(entityType, entityId) {
+  const supabase = getSupabaseAdmin();
+  const isAsk = entityType === 'material_ask_item';
+  const conf = isAsk
+    ? {
+      root: 'ขอราคาวัสดุ',
+      itemTable: 'material_price_ask_items',
+      itemLabel: 'label',
+      parentKey: 'askId',
+      parentTable: 'material_price_asks',
+    }
+    : {
+      root: 'ขอราคาผลิต',
+      itemTable: 'costing_request_items',
+      itemLabel: 'productLabel',
+      parentKey: 'requestId',
+      parentTable: 'costing_requests',
+    };
+
+  const { data: item } = await supabase
+    .from(conf.itemTable).select('*').eq('id', entityId).maybeSingle();
+  if (!item) throw new Error('ไม่พบรายการที่จะแนบไฟล์');
+  const { data: parent } = await supabase
+    .from(conf.parentTable).select('id, docNo').eq('id', item[conf.parentKey]).maybeSingle();
+
+  const root = await ensureFolder(conf.root, storageRootId());
+  const docFolder = await ensureFolder(parent?.docNo || item[conf.parentKey] || 'ไม่ระบุ', root);
+  return ensureFolder(`${item[conf.itemLabel] || 'รายการ'} (${item.id})`, docFolder);
+}
+
 async function resolvePersonalTaskFolder(entityId) {
   const root = await ensureFolder('งานขาย', storageRootId());
   const parent = await ensureFolder('งาน', root);
@@ -144,6 +180,9 @@ export async function resolveFolderForEntity(entityType, entityId) {
   if (entityType === 'mgmt_task' || entityType === 'mgmt_meeting') {
     return resolveMgmtFolder(entityType, entityId);
   }
+  if (entityType === 'costing_item' || entityType === 'material_ask_item') {
+    return resolveCostingFolder(entityType, entityId);
+  }
   if (entityType === 'customer') {
     const { data } = await supabase.from('customers').select('*').eq('id', entityId).maybeSingle();
     if (!data) throw new Error('ไม่พบลูกค้า');
@@ -176,7 +215,12 @@ export async function resolveFolderForEntity(entityType, entityId) {
     if (!customer) throw new Error('ไม่พบลูกค้าของออเดอร์');
     return ensureCustomerFolder(customer);
   }
-  throw new Error(`entityType ไม่รองรับ: ${entityType}`);
+  // ⚠️ entity ใหม่ที่ยังไม่ได้ต่อท่อ **ห้ามทำให้ปุ่มอัปโหลดพัง** — ของเดิม throw
+  // ที่นี่ แล้ว /api/upload ตอบ 500 "อัปโหลดขึ้น Google Drive ไม่สำเร็จ" ผู้ใช้จึงแนบ
+  // ไฟล์ไม่ได้เลยและไม่มีอะไรบอกว่าเพราะอะไร (โดนมาแล้วสองรอบ: costing_item และ
+  // material_ask_item). ลงถัง _unsorted + log แทน = ไฟล์ผิดที่ ยังกู้ได้ ดีกว่าใช้ไม่ได้
+  console.error(`[drive] entityType ยังไม่ได้ map โฟลเดอร์: ${entityType} — ลง _unsorted แทน`);
+  return ensureUnsortedFolder();
 }
 
 // อัปไฟล์ขึ้นโฟลเดอร์ (private — ไม่ตั้ง permission). คืน { id, webViewLink }.
