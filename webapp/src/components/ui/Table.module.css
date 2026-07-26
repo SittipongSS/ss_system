@@ -74,36 +74,47 @@
    ทั้งระบบ (ตั้งใจให้ลู่เข้าจังหวะเดียว ไม่ใช่ผลข้างเคียง) */
 .scroll[data-family] :global(th),
 .scroll[data-family] :global(td) {
-  padding-inline: 12px;
+  padding-inline: 13px;
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
 
+/* จังหวะแถวของต้นแบบ: หัวตาราง 42px แถว 52px คงที่ — ตารางทุกหน้าจึงมีจังหวะ
+   แนวตั้งเท่ากันไม่ว่าเนื้อหาในแถวจะสูงแค่ไหน (มติ 2026-07-26 ข้อ 7) */
 .scroll[data-family] :global(th) {
+  height: 42px;
   color: var(--text-2);
   background: var(--panel-2);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--fs-table-head);
+  font-weight: 700;
+  letter-spacing: .025em;
   white-space: nowrap;
 }
 
 .scroll[data-family] :global(td) {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-table);
+  vertical-align: middle;
 }
 
 .scroll[data-family] :global(tbody tr:last-child td) {
   border-bottom: none;
 }
 
-.scroll[data-family="list"] :global(th),
-.scroll[data-family="list"] :global(td) {
-  padding-block: 10px;
+/* hover เป็นสีแบรนด์จาง ไม่ใช่พื้นเทา — แถวที่ชี้อยู่จึงอ่านออกว่าชี้อยู่จริง */
+.scroll[data-family] :global(tbody tr:hover td) {
+  background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
 }
 
-.scroll[data-family="editable"] :global(th),
-.scroll[data-family="editable"] :global(td) {
+.scroll[data-family="list"] :global(td) {
+  height: 52px;
   padding-block: 8px;
+}
+
+.scroll[data-family="editable"] :global(td),
+.scroll[data-family="matrix"] :global(td) {
+  height: 48px;
+  padding-block: 6px;
 }
 
 .scroll[data-family="matrix"] :global(th:first-child),
@@ -112,6 +123,12 @@
   left: 0;
   z-index: 2;
   background: var(--panel);
+}
+
+/* คอลัมน์แรกที่ตรึงไว้ต้องทึบเสมอ (มีเนื้อหาเลื่อนอยู่ข้างใต้) — ผสมสี hover
+   ลงบนพื้นการ์ดแทนการวางสีโปร่งทับ ไม่งั้นตัวเลขคอลัมน์อื่นจะทะลุขึ้นมา */
+.scroll[data-family="matrix"] :global(tbody tr:hover td:first-child) {
+  background: color-mix(in srgb, var(--accent-soft) 25%, var(--panel));
 }
 
 .footer {
@@ -148,8 +165,10 @@
   .actions { justify-content: flex-start; }
   .toolbar > * { min-height: 40px; }
 
-  .scroll[data-family="list"] :global(th),
+  /* จอแคบ: ปล่อยให้แถวสูงตามเนื้อหา (ข้อความตัดบรรทัดบ่อย) แต่ไม่ต่ำกว่า 52px */
   .scroll[data-family="list"] :global(td) {
+    height: auto;
+    min-height: 52px;
     padding-block: 11px;
   }
 }
