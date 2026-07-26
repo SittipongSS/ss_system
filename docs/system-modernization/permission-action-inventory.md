@@ -34,6 +34,12 @@
 | chat_webhook_setting | view, create, update, delete, send_test | all | `master:manage` เดิมทุก action — ข้อมูลปฏิบัติการ แก้ตรงบนตาราง `chat_webhooks` (Decision 0012 ฉบับแก้ไขครั้งที่ 2); ลบ = เคลียร์ URL/ปิดใช้ space | Decision 0012 |
 | user_access | view, invite, update_role, update_scope, deactivate | all | `users:view`/`users:manage` | 8 |
 | audit_log | view, export | own/team/department/all | `audit:view` | 8 |
+| costing_request | view, edit, submit, approve_line, reject_line, revise, cancel, feed_cost | own/team/department/all | gates เดิม `costing:*`, `products:edit` และ scope ดีล; Document Control เปลี่ยนเฉพาะตำแหน่งปุ่ม | Document Control rollout |
+| material_price_request | view, edit, submit, answer_line, cancel | own/team/department/all | gates เดิม `materials:*` + RD/PC department ownership และ scope ดีล | Document Control rollout |
+| excise_registration | view, edit, submit, approve, reject, revise, delete | team/department/all | `sales:act`/`legal:approve`/delete gate เดิม; readiness ไม่ขยายสิทธิ์ | Document Control rollout |
+| excise_filing | view, create_from_so, edit, queue_collection, confirm_collection, start_filing, complete, reject, deliver_documents, delete | team/department/all | create/collection/delivery = `sales:act`; filing/complete/reject = `legal:approve`; SO source ต้อง approved + edit scope + unique | Document Control rollout + Excise v2 |
+| sahamit_po | view, edit_header, split_line, merge_line, link_project, create_project, settle_deal, delete | module/all | gates/API เดิมของ Sahamit; rail ไม่ย้าย line action หรือ permission | Document Control rollout |
+| shipment_preparation | view, refresh, print | project scope | project view gate เดิม; เป็น output workspace ไม่มี lifecycle ปลอม | Document Control rollout |
 
 ## หลักฐานจาก Phase 1
 

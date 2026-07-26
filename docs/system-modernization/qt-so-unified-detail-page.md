@@ -14,7 +14,11 @@
 - ✅ QT ใช้ `SalesDetailOverview` กลางและลบ CSS overview/sidebar ที่ซ้ำ
 - ✅ QT create ใช้ `DetailPageLayout` + overview/summary/control card กลาง พร้อม
   `DocumentReadinessList`; ปุ่มบันทึก/ยกเลิกอยู่ในกลุ่มจัดการเอกสาร
-- ✅ unit tests 733 รายการ, targeted lint และ production build ผ่าน
+- ✅ QT/SO ใช้ `QuotationLineItems` read-only, `StatusNotice` และ `ReasonDialog`
+  กลางแล้ว ไม่เหลือตาราง/alert/reason dialog คู่แฝดในสองหน้า
+- ✅ SO มี `RelatedDocumentCard` สำหรับ downstream Excise Filing; การสร้างเรียก
+  endpoint ของโมดูล Tax และลิงก์กลับกันสองทาง
+- ✅ unit tests 760 รายการ, targeted lint, migration checker และ production build ผ่าน
 - ✅ ตรวจ QT/SO shared components ด้วยข้อมูล QA ชั่วคราว และตรวจหน้า QT create จริงทั้ง
   desktop/mobile + light/dark; ไม่มี horizontal overflow หรือ console error
 - ⏳ acceptance matrix ทุก role/status กับข้อมูลจริงยังต้องตรวจใน staging ที่มี Supabase env

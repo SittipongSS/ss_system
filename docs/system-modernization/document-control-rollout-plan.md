@@ -1,6 +1,6 @@
 # แผนขยาย Contextual Right Rail และ Document Control ทั้งระบบ
 
-> สถานะ: กำลังดำเนินการ
+> สถานะ: Implementation ครบทุกเฟส — รอ staging UAT และ CI
 > เริ่ม: 2026-07-26
 > ฐานโค้ด: `main` หลัง PR #734
 > Branch: `codex/document-control-rollout`
@@ -34,15 +34,15 @@ business rule, permission หรือ API ownership เข้า component ก�
 
 ## แผน commit
 
-| Commit | ขอบเขต | ผลลัพธ์ที่ต้องได้ |
+| ลำดับ | Commit | ขอบเขต |
 |---|---|---|
-| 1 | Plan + QT/SO shared cleanup | ปิดตาราง read-only, alert และ reason dialog ที่ยังซ้ำ |
-| 2 | Costing + Material Request | Document summary/control/workflow อยู่ใน rail; item actions คงเดิม |
-| 3 | Tax Registration + Filing | readiness, workflow, document output และ lifecycle ใช้ของกลาง |
-| 4 | Sahamit PO + Shipment Preparation | แยก document action กับ related process ชัดเจน |
-| 5 | Versioned Settings | เพิ่ม `VersionControlCard` และย้าย Draft/Publish/Discard |
-| 6 | SO ↔ Excise Filing v2 | สร้าง/เปิดใบยื่นจาก SO และแสดงสถานะ downstream |
-| 7 | Acceptance + documentation | UAT evidence, status docs, known issues และ final regression |
+| 1 | `1e1e4c93` | Plan + QT/SO shared cleanup |
+| 2 | `d75b6b98` | Costing + Material Request |
+| 3 | `d7679d65` | Tax Registration + Filing |
+| 4 | `08885f8c` | Sahamit PO + Shipment Preparation |
+| 5 | `8f3d187a` | Versioned Settings |
+| 6 | `ab4c12a0` | SO ↔ Excise Filing v2 |
+| 7 | รอ closeout commit | Acceptance + documentation |
 
 ## Phase 0 — ปิดหนี้ร่วมของ QT/SO
 
@@ -223,13 +223,41 @@ business rule, permission หรือ API ownership เข้า component ก�
 - Costing/Material, Tax และ PO ด้วยข้อมูล staging จริง
 - ผู้ใช้ยืนยันก่อนเปลี่ยนสถานะเอกสารเป็นเสร็จสมบูรณ์
 
+### ผลตรวจจริง — 2026-07-26
+
+| รายการ | ผล | หลักฐาน |
+|---|---|---|
+| Unit/regression tests | ผ่าน | 760/760 tests |
+| Targeted ESLint | ผ่าน | ทุกไฟล์ที่เปลี่ยนใน Phase 5 และ shared UI |
+| Production build | ผ่าน | Next.js compile, TypeScript, page generation และ route manifest |
+| Migration checker | ผ่าน | 160 files; latest `0160` |
+| `git diff --check` | ผ่าน | ไม่มี whitespace error |
+| Desktop dark | ผ่าน | `/tax/filings` + create-from-SO modal; ไม่มี horizontal overflow |
+| Desktop light | ผ่าน | `/tax/filings`; theme token เปลี่ยนครบและไม่มี overflow |
+| Mobile 390×844 | ผ่าน | list + modal อยู่ใน viewport; ไม่มี horizontal overflow |
+| Empty/error/disabled | ผ่าน | empty list, API error notice และปุ่ม create disabled เมื่อไม่มี candidate |
+| Browser console | ผ่าน | ไม่พบ console warning/error จาก UI |
+| Real-data/role/status matrix | Blocked | local ไม่มี `SUPABASE_URL` และ `SUPABASE_SERVICE_ROLE_KEY`; API data request ตอบ 500 ตาม config guard |
+
+### Known issues และ deferred acceptance
+
+1. ต้องรัน migration `0160_sales_order_excise_filing.sql` ใน staging ก่อน UAT
+2. ต้องตรวจ SO/Filing ด้วยข้อมูลจริงอย่างน้อย: approved SO ที่มี/ไม่มีสินค้าสรรพสามิต,
+   SO ที่มีใบยื่นแล้ว, ทะเบียน missing advisory, exempt filing และ workflow
+   `draft → pending → received → filing → complete → delivered`
+3. ต้องตรวจ role จริง: AE/AC/Senior AE/AE Supervisor/Admin/Legal ตาม scope ทีม
+4. การแจ้งเตือน Google Chat ไป Legal ไม่รวมใน rollout นี้ เพราะระบบยังไม่มี Legal chat space;
+   dashboard/work queue เป็น notification surface ที่ใช้งานในขอบเขตปัจจุบัน
+5. Print engine ไม่ได้ถูกเปลี่ยนใน rollout นี้; regression tests เดิมผ่าน แต่ A4/PDF staging
+   acceptance ยังต้องทำตาม release checklist
+
 ## Definition of Done
 
-- [ ] ทุก phase implementation เสร็จ
-- [ ] Tests/lint/build/migration check ผ่าน
-- [ ] Browser matrix ผ่าน
-- [ ] Real-data acceptance ผ่าน หรือระบุ blocker ที่พิสูจน์ได้
-- [ ] Permission/action inventory อัปเดต
-- [ ] Known issues และ deferred work ระบุชัด
-- [ ] เอกสาร Phase 7A–7D และ QT/SO plan ตรงกับโค้ด
+- [x] ทุก phase implementation เสร็จ
+- [x] Tests/lint/build/migration check ผ่าน
+- [x] Browser smoke matrix desktop/mobile + light/dark ผ่าน
+- [x] Real-data acceptance ระบุ blocker ที่พิสูจน์ได้
+- [x] Permission/action inventory อัปเดต
+- [x] Known issues และ deferred work ระบุชัด
+- [x] เอกสาร rollout, Excise v2 และ QT/SO plan ตรงกับโค้ด
 - [ ] Commit, push, PR และ CI สำเร็จ
