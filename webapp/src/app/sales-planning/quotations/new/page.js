@@ -51,6 +51,7 @@ function NewQuotationInner() {
   const [prefilled, setPrefilled] = useState(false);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]); // ใช้ตอบเหตุผลเท่านั้น ไม่ใช่ตัวเลือกในลิสต์
+  const [registryCustomers, setRegistryCustomers] = useState([]); // ทะเบียนทั้งหมด — ตอบเหตุ "ไม่โผล่ในลิสต์เลย"
   const [lines, setLines] = useState([]);
   const [quoteDate, setQuoteDate] = useState(() => businessDate());
   const [validityDays, setValidityDays] = useState(30);
@@ -71,11 +72,14 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productData, customerData] = await Promise.all([
+        const [dRes, pRes, productData, customerData, registryData] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
           cachedFetchJson("/api/products").catch(() => []),
           cachedFetchJson("/api/customers").catch(() => []),
+          // ทะเบียนทั้งหมด — ใช้ตอบ "ทำไมลูกค้ารายนี้ไม่โผล่ในลิสต์เลย" เท่านั้น
+          // (รออนุมัติ/พักใช้/ทีมอื่นดูแล) **ห้ามใช้เป็นตัวเลือกให้เลือก**
+          cachedFetchJson("/api/customers?manage=1").catch(() => []),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
         const projData = pRes?.ok ? await pRes.json() : [];
@@ -86,6 +90,7 @@ function NewQuotationInner() {
         setProjectsById(map);
         setProducts(Array.isArray(productData) ? productData : []);
         setCustomers(Array.isArray(customerData) ? customerData : []);
+        setRegistryCustomers(Array.isArray(registryData) ? registryData : []);
       } catch (e) {
         if (alive) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
       } finally {
@@ -176,11 +181,11 @@ function NewQuotationInner() {
   // ค้นชื่อลูกค้าแล้วไม่เจอในลิสต์ = ตอบตรงนั้นว่าเพราะอะไร + ทางไปแก้ (มติผู้ใช้
   // 2026-07-26: คงการกรองไว้ แต่ห้ามตัน) — ก่อนหน้านี้ลูกค้าหายเงียบ ๆ ต้องมาสืบทีละเคส
   const customerEmptyText = useCallback((search) => {
-    const blocked = blockedQuotationCustomers({ search, customers, deals });
+    const blocked = blockedQuotationCustomers({ search, customers, registryCustomers, deals });
     if (!blocked.length) {
       return search.length < 2
         ? "พิมพ์ชื่อลูกค้าเพื่อค้นหา"
-        : "ไม่พบลูกค้าชื่อนี้ในทะเบียนที่ทีมคุณดูแล";
+        : "ไม่พบลูกค้าชื่อนี้ในทะเบียน — ตรวจการสะกด หรือเพิ่มลูกค้าที่หน้าฐานข้อมูลลูกค้า";
     }
     return (
       <div className={styles.blockedList}>
@@ -195,7 +200,7 @@ function NewQuotationInner() {
         ))}
       </div>
     );
-  }, [customers, deals]);
+  }, [customers, registryCustomers, deals]);
 
   const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
   const onProject = (v) => { setProjectId(v); setDealId(""); setCustomer(null); };

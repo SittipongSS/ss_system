@@ -77,6 +77,57 @@ test("หน้าสร้างใบเสนอราคาเรียก�
     "utf8",
   );
   assert.match(page, /eligibleQuotationDeals\(deals\)/);
-  assert.match(page, /blockedQuotationCustomers\(\{ search, customers, deals \}\)/);
+  assert.match(page, /blockedQuotationCustomers\(\{ search, customers, registryCustomers, deals \}\)/);
   assert.doesNotMatch(page, /EXCLUDE_STAGES/);
+  // ทะเบียนทั้งหมด (?manage=1) มีไว้ตอบเหตุเท่านั้น — ถ้าหลุดไปเป็น customerOptions
+  // ลูกค้าที่รออนุมัติ/พักใช้/ทีมอื่น จะกลายเป็นตัวเลือกออกใบ = พังกติกาการกรอง
+  assert.match(page, /cachedFetchJson\("\/api\/customers\?manage=1"\)/);
+  assert.doesNotMatch(page, /registryCustomers\.map|registryCustomers\.filter/);
+});
+
+// ── เหตุระดับทะเบียน (2026-07-27) — สามเหตุที่เคยหายเงียบแม้มีตัวบอกเหตุรอบแรก ──
+// ตัวบอกเหตุเดิมค้นได้แค่ในลิสต์ที่ถูกกรองมาแล้ว ลูกค้าที่ถูกกรองออกจึงไม่มีคำอธิบายเลย
+const registryCase = (customer) => blockedQuotationCustomers({
+  search: 'ลูกค้า',
+  customers: [],
+  registryCustomers: [{ id: 'CUS-9', name: 'ลูกค้า ก', ...customer }],
+  deals: [],
+});
+
+test('ลูกค้าตกกลับรออนุมัติ (เช่นถูกแก้ที่อยู่) = บอกเหตุ + ชี้ไปทะเบียนลูกค้า', () => {
+  const [row] = registryCase({ approvalStatus: 'pending' });
+  assert.equal(row.reasonCode, 'pending_approval');
+  assert.match(row.reason, /รออนุมัติ/);
+  assert.equal(row.href, '/database/customers');
+});
+
+test('ลูกค้าถูกปฏิเสธ / พักใช้ / ทีมอื่นดูแล = แยกเหตุคนละข้อ', () => {
+  assert.equal(registryCase({ approvalStatus: 'rejected' })[0].reasonCode, 'rejected');
+  assert.equal(registryCase({ approvalStatus: 'approved', isActive: false })[0].reasonCode, 'inactive');
+  assert.equal(registryCase({ approvalStatus: 'approved' })[0].reasonCode, 'other_team');
+});
+
+test('ลูกค้าที่ยังมองเห็นในลิสต์ไม่ถูกนับซ้ำเป็นเหตุระดับทะเบียน', () => {
+  const visible = { id: 'CUS-9', name: 'ลูกค้า ก', approvalStatus: 'approved' };
+  const rows = blockedQuotationCustomers({
+    search: 'ลูกค้า',
+    customers: [visible],
+    registryCustomers: [visible],
+    deals: [],
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].reasonCode, 'no_deal'); // เหตุที่ดีล ไม่ใช่เหตุที่ทะเบียน
+});
+
+test('เหตุที่ใกล้ออกใบได้มาก่อนเหตุระดับทะเบียน', () => {
+  const rows = blockedQuotationCustomers({
+    search: 'ลูกค้า',
+    customers: [{ id: 'CUS-1', name: 'ลูกค้า ข', approvalStatus: 'approved' }],
+    registryCustomers: [
+      { id: 'CUS-1', name: 'ลูกค้า ข', approvalStatus: 'approved' },
+      { id: 'CUS-2', name: 'ลูกค้า ค', approvalStatus: 'pending' },
+    ],
+    deals: [{ id: 'DL-1', customerId: 'CUS-1', canEdit: true, stage: 'qualified' }],
+  });
+  assert.deepEqual(rows.map((r) => r.reasonCode), ['no_project', 'pending_approval']);
 });

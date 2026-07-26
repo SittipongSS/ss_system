@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
-import { resetApprovalOnEdit } from '@/lib/master/approval';
+import { changedFieldsAgainst, resetApprovalOnEdit } from '@/lib/master/approval';
+import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
@@ -199,6 +200,14 @@ export async function PATCH(request, { params }) {
     body.isActive !== undefined && Object.keys(body).every((k) => k === 'isActive');
   const reapproval = isLifecycleToggleOnly ? null : resetApprovalOnEdit(product, user);
   if (reapproval) Object.assign(updated, reapproval);
+  // ใช้บอกใน chat ว่า "แก้อะไรจนต้องอนุมัติใหม่" เท่านั้น ไม่ได้ใช้ตัดสินว่าจะ reset ไหม
+  // (คอลัมน์ต้นทุนที่ derive จาก factoryPrice ถูกคำนวณใหม่ทุกครั้ง = ไม่ใช่สิ่งที่คนแก้)
+  const changedFields = reapproval
+    ? changedFieldsAgainst(product, updated, {
+      ignore: ['updatedAt', 'laborCost', 'shippingCost', 'materialCost', 'factoryProfit',
+        'approvalStatus', 'submittedBy', 'submittedByName', 'approvedBy', 'approvedByName', 'approvedAt', 'rejectionReason'],
+    })
+    : [];
 
   const { data, error } = await supabase
     .from('products')
@@ -222,6 +231,10 @@ export async function PATCH(request, { params }) {
     metadata: { fgCode: data.fgCode, customerId: data.customerId },
   });
   await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
+  // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
+  if (reapproval) {
+    notifyMasterDataReapproval({ entityType: 'product', record: data, user, changedFields });
+  }
   return Response.json(redactProductMargin(user, data));
 }
 

@@ -10,6 +10,9 @@ import {
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
+import { sendChat, chatCard } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
+import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,5 +118,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `อนุมัติใบเสนอราคา ${quote.quoteNumber} (${dealAuditLabel(quote.deal)})`,
     request: req,
   });
+  // แจ้งทีมขาย: ใบผ่านแล้ว = ถือว่าส่งลูกค้าแล้ว (mig 0165) → ขั้นถัดไปคือปิด Won
+  // เดิมเงียบทั้งขา ผู้จัดทำที่ไม่ใช่เจ้าของดีลจึงไม่รู้ว่าใบตัวเองผ่านหรือยัง
+  sendChat('sales', chatCard({
+    title: '✅ ใบเสนอราคาอนุมัติแล้ว (ถือว่าส่งลูกค้าแล้ว)',
+    subtitle: quote.deal.title || quote.quoteNumber,
+    rows: [
+      { label: 'เลขที่ใบเสนอราคา', value: quote.quoteNumber },
+      { label: 'ยอด (ก่อน VAT)', value: `${fmtMoney(quotationWonAmount({ ...quote, ...data }))} บาท` },
+      { label: 'ลูกค้า', value: quote.customerName || quote.deal.customerName || '' },
+      { label: 'ผู้อนุมัติ', value: user.name || '' },
+      { label: 'ขั้นถัดไป', value: 'ลูกค้าตอบรับแล้วให้กด "ปิดการขาย (Won)" พร้อมแนบหลักฐาน' },
+    ],
+    linkPath: `/sa/quotations/${id}`,
+    linkLabel: 'เปิดใบเสนอราคา',
+  }));
   return ok(data);
 });

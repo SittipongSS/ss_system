@@ -6,6 +6,7 @@ import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
+import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,6 +173,45 @@ export async function PATCH(request, { params }) {
   const summary = data.status !== reg.status
     ? `เปลี่ยนสถานะทะเบียน ${reg.fgCode || id}: ${reg.status} → ${data.status}` : null;
   await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
+
+  // แจ้งข้ามเลน SA ↔ LG — ทั้งสองทางเคยเงียบสนิท (ไม่มี sendChat ในไฟล์นี้เลย) แปลว่า
+  // ฝ่ายกฎหมายไม่รู้ว่ามีทะเบียนรออนุมัติ และฝ่ายขายไม่รู้ผลจนกว่าจะเปิดหน้าเช็คเอง
+  if (data.status !== reg.status) {
+    const subtitle = `${data.fgCode || id} · ${data.customerName || ''}`.trim();
+    if (data.status === 'pending_legal') {
+      sendChat('legal', chatCard({
+        title: '🏷️ ทะเบียนสรรพสามิตรออนุมัติ',
+        subtitle,
+        rows: [
+          { label: 'สินค้า', value: data.productName || data.fgCode },
+          { label: 'ลูกค้า', value: data.customerName },
+          { label: 'ผู้ยื่น', value: user?.name },
+        ],
+        linkPath: '/tax/registrations?status=pending_legal',
+        linkLabel: 'ตรวจ/อนุมัติ',
+      }));
+    } else if (data.status === 'approved' || data.status === 'rejected') {
+      const approvedNow = data.status === 'approved';
+      sendChat('sales', chatCard({
+        title: approvedNow ? '✅ ขึ้นทะเบียนสรรพสามิตแล้ว' : '↩️ ทะเบียนสรรพสามิตถูกตีกลับ',
+        subtitle,
+        rows: [
+          { label: 'สินค้า', value: data.productName || data.fgCode },
+          { label: 'ลูกค้า', value: data.customerName },
+          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ตีกลับ', value: user?.name },
+          { label: 'เหตุผล', value: approvedNow ? null : data.rejectionReason },
+          {
+            label: 'ขั้นถัดไป',
+            value: approvedNow
+              ? 'ออกใบยื่นชำระภาษีจาก Sale Order ที่อนุมัติแล้วได้'
+              : 'แก้ไขตามเหตุผลแล้วยื่นขึ้นทะเบียนอีกครั้ง',
+          },
+        ],
+        linkPath: `/tax/registrations/${id}`,
+        linkLabel: 'เปิดทะเบียน',
+      }));
+    }
+  }
   return Response.json(data);
 }
 
