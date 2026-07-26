@@ -13,6 +13,7 @@ import { useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 
@@ -210,8 +211,8 @@ export default function DatabaseOverview() {
                   <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} iconType="circle" />
-                  <Area type="monotone" dataKey="สินค้า" stroke="var(--accent)" strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
-                  <Area type="monotone" dataKey="ลูกค้า" stroke="var(--blue)" strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
+                  <Area type={CHART_LINE_TYPE} dataKey="สินค้า" stroke="var(--accent)" strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
+                  <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke="var(--blue)" strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

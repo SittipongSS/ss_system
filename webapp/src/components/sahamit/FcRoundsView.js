@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { fcEvolution, roundTotals, unitMultiplier } from "@/lib/sahamit/dashboard";
 import { fmtNumber, fmtMoneyCompact, fmtDate } from "@/lib/format";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // แท็บ "FC แต่ละรอบ" — วิวัฒนาการ FC (เส้นละรอบ) + ยอดรวมต่อรอบ + %เปลี่ยนรอบต่อรอบ.
 // รับ rounds ที่กรองสินค้าแล้ว (fg-filtered) + products (สำหรับราคา) + unit + years.
@@ -53,7 +54,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
             <RTooltip {...tip(true)} labelFormatter={shortMonth} formatter={(v, n) => [v == null ? "—" : fmtVal(v), n]} />
             <Legend wrapperStyle={{ fontSize: 13 }} />
             {evo.rounds.map((r, i) => (
-              <Line key={r.key} type="monotone" dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
+              <Line key={r.key} type={CHART_LINE_TYPE} dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>

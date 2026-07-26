@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { fcVsPoByMonth, unitMultiplier } from "@/lib/sahamit/dashboard";
 import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
+import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // แท็บ "FC ซ้อน PO รายเดือน" — กราฟซ้อน: แท่ง PO ที่มาแล้ว + แท่ง FC ที่ยังรอ PO
 // (ติดลบ = PO เกิน FC, สีแดง) + เส้น FC แต่ละรอบ. ต่อจาก peak engine (fcVsPoByMonth).
@@ -65,7 +66,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
           </Bar>
           {/* เส้น FC แต่ละรอบ */}
           {roundMeta.map((r, i) => (
-            <Line key={r.key} type="monotone" dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} strokeDasharray={i === 0 ? "5 3" : undefined} />
+            <Line key={r.key} type={CHART_LINE_TYPE} dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} strokeDasharray={i === 0 ? "5 3" : undefined} />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
