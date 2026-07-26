@@ -93,6 +93,30 @@ for (const file of uiFiles) {
   });
 }
 
+/* แผงลอย (dropdown / เมนู / popover / ปฏิทิน / toast) ที่ลอยทับเนื้อหาอื่นต้องใช้
+   พื้นผิวกลางอย่างใดอย่างหนึ่ง: var(--panel-float) ที่ทึบ 100% หรือพื้นกระจก
+   var(--panel) **คู่กับ backdrop-filter** เท่านั้น — ใช้ --panel เปล่า ๆ จะเหลือความ
+   โปร่ง 8% ให้ตัวอักษรข้างหลังลอดขึ้นมาปนกับรายการในแผง (ของจริง: dropdown เลือก
+   ลูกค้าในหน้าสร้างใบเสนอราคา 2026-07-26 — ผู้ใช้ส่งภาพมา ทั้ง .ui-select-menu และ
+   .ui-time-menu เป็นแบบนั้นมาตั้งแต่ต้น ส่วนปฏิทินของ DateInput แก้ไปก่อนแล้วด้วยสีทึบ) */
+const floatingSurfaceViolations = [];
+for (const file of files.filter((f) => f.endsWith(".css"))) {
+  const rel = relative(file);
+  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  for (const block of source.split("}")) {
+    const brace = block.indexOf("{");
+    if (brace === -1) continue;
+    const selector = block.slice(0, brace).split(/\r?\n/).filter(Boolean).pop()?.trim() || "";
+    const body = block.slice(brace + 1);
+    const floats = /position:\s*fixed/.test(body)
+      || Number((body.match(/z-index:\s*(\d+)/) || [])[1] || 0) >= 1000;
+    if (!floats) continue;
+    if (!/background[^;]*var\(--panel\)/.test(body)) continue;
+    if (/backdrop-filter/.test(body)) continue;
+    floatingSurfaceViolations.push(`${rel} ${selector}`);
+  }
+}
+
 const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
 const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
 const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
@@ -126,6 +150,7 @@ const failures = [
   ...nativeFeedbackViolations.map((item) => `native alert/confirm bypasses feedback foundation: ${item}`),
   ...tableContractViolations.map((item) => `table bypasses TableScroll contract: ${item}`),
   ...chartContractViolations.map((item) => `chart bypasses ChartCanvas contract: ${item}`),
+  ...floatingSurfaceViolations.map((item) => `floating panel needs var(--panel-float) or backdrop-filter: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
   ...removedCompatibilityFiles.map((item) => `removed compatibility file returned: ${item}`),
@@ -140,6 +165,7 @@ console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`)
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length}`);
 console.log(`Table contract violations: ${tableContractViolations.length}`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
+console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);
 
 if (failures.length) {
   console.error("\nUI audit failed:");
