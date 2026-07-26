@@ -11,12 +11,13 @@
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Pencil, Trash2, FileText, Check } from "lucide-react";
+import { Send, Paperclip, X, Pencil, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDateTime } from "@/lib/format";
 import {
-  DELETED_UPDATE_TEXT, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
+  DELETED_UPDATE_TEXT, isSystemUpdateItem, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
 } from "@/lib/master/updateTypes";
 import {
   isPreviewableImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
@@ -24,6 +25,10 @@ import {
 import styles from "./UpdateThread.module.css";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
+
+// สวิตช์ซ่อนเหตุการณ์ระบบจำรายชนิดเอกสาร ไม่ใช่รายใบ — คนที่ไม่อยากเห็นเหตุการณ์
+// ระบบบนใบ QT ก็ไม่อยากเห็นบนทุกใบ QT ไม่ใช่แค่ใบที่เพิ่งกด
+const hideSystemKey = (entityType) => `updateThread.hideSystem.${entityType}`;
 
 export default function UpdateThread({
   entityType,
@@ -44,6 +49,7 @@ export default function UpdateThread({
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(null); // { id, body }
   const [preview, setPreview] = useState(null); // { src, name }
+  const [hideSystem, setHideSystem] = useState(false); // ตั้งต้น = เห็นครบ ไม่ซ่อนอะไรเงียบ
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -61,6 +67,21 @@ export default function UpdateThread({
 
   useEffect(() => { load(); }, [load]);
 
+  // อ่านค่าที่จำไว้ใน effect (ไม่ใช่ตอน initial state) — ไม่งั้น server กับ client
+  // render ไม่ตรงกัน
+  useEffect(() => {
+    if (!entityType) return;
+    try { setHideSystem(localStorage.getItem(hideSystemKey(entityType)) === "1"); } catch { /* โหมดส่วนตัว */ }
+  }, [entityType]);
+
+  const toggleHideSystem = () => {
+    setHideSystem((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(hideSystemKey(entityType), next ? "1" : "0"); } catch { /* โหมดส่วนตัว */ }
+      return next;
+    });
+  };
+
   // รวมของในเธรดกับรายการอ่านอย่างเดียวจากแหล่งอื่น แล้วเรียงตามเวลาชุดเดียว
   const timeline = useMemo(() => {
     const own = items.map((row) => ({
@@ -74,6 +95,14 @@ export default function UpdateThread({
       : String(a.at || "").localeCompare(String(b.at || ""))));
     return all;
   }, [items, extraItems, entityType, order]);
+
+  const systemCount = useMemo(() => timeline.filter(isSystemUpdateItem).length, [timeline]);
+  // โชว์สวิตช์เฉพาะตอนที่มีทั้งสองอย่างจริง: ไม่มีเหตุการณ์ระบบ = ไม่มีอะไรให้ซ่อน ·
+  // มีแต่เหตุการณ์ระบบ (เธรดลีดที่อ่านอย่างเดียว) = กดแล้วเธรดว่างเปล่า
+  const canFilterSystem = systemCount > 0 && systemCount < timeline.length;
+  const visible = hideSystem && canFilterSystem
+    ? timeline.filter((item) => !isSystemUpdateItem(item))
+    : timeline;
 
   const pickFiles = (list) => {
     const files = Array.from(list || []).filter(Boolean);
@@ -138,9 +167,20 @@ export default function UpdateThread({
 
   return (
     <>
-      {timeline.length ? (
+      {canFilterSystem && (
+        <div className={styles.toolbar}>
+          <Button
+            variant="quiet" size="sm" onClick={toggleHideSystem} aria-pressed={hideSystem}
+            icon={hideSystem ? <Eye size={13} /> : <EyeOff size={13} />}
+          >
+            {hideSystem ? `แสดงเหตุการณ์ระบบ (${systemCount})` : `ซ่อนเหตุการณ์ระบบ (${systemCount})`}
+          </Button>
+        </div>
+      )}
+
+      {visible.length ? (
         <div className={styles.timeline}>
-          {timeline.map((item) => (
+          {visible.map((item) => (
             <div className={styles.event} key={`${item.kind}-${item.id}`}>
               <div className={styles.rail}>
                 <span className={styles.dot} style={item.color ? { background: item.color, boxShadow: `0 0 0 1px ${item.color}` } : undefined} />
@@ -156,19 +196,15 @@ export default function UpdateThread({
                   )}
                   {item.kind === "own" && canPost && !item.row.deletedAt && item.row.kind === "comment" && (
                     <span className={styles.rowActions}>
-                      <button
-                        type="button" className="btn-icon" aria-label="แก้ข้อความ" disabled={busy}
+                      <Button
+                        iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
                         onClick={() => setEditing({ id: item.row.id, body: item.row.body || "" })}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        type="button" className="btn-icon" style={{ color: "var(--red)" }}
+                      />
+                      <Button
+                        iconOnly icon={<Trash2 size={13} />} style={{ color: "var(--red)" }}
                         aria-label="ลบข้อความ" disabled={busy}
                         onClick={() => mutate(item.row.id, { method: "DELETE" })}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      />
                     </span>
                   )}
                 </div>
@@ -187,18 +223,21 @@ export default function UpdateThread({
                               onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
                             />
                             <div className={styles.composerBar}>
-                              <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setEditing(null)}>
-                                <X size={13} /> ยกเลิก
-                              </button>
-                              <button
-                                type="button" className="btn btn-primary sm" disabled={busy || !editing.body.trim()}
+                              <Button
+                                variant="quiet" size="sm" disabled={busy} icon={<X size={13} />}
+                                onClick={() => setEditing(null)}
+                              >
+                                ยกเลิก
+                              </Button>
+                              <Button
+                                tone="primary" size="sm" disabled={busy || !editing.body.trim()}
                                 onClick={() => mutate(item.row.id, {
                                   method: "PATCH",
                                   body: JSON.stringify({ action: "edit", body: editing.body.trim() }),
                                 }, () => setEditing(null))}
                               >
                                 บันทึก
-                              </button>
+                              </Button>
                             </div>
                           </>
                         ) : (
@@ -243,24 +282,24 @@ export default function UpdateThread({
           <div className={styles.composerBar}>
             {allowAttachments && (
               <>
-                <button
-                  type="button" className="btn ghost sm" disabled={busy}
+                <Button
+                  variant="quiet" size="sm" disabled={busy} icon={<Paperclip size={13} />}
                   onClick={() => fileRef.current?.click()} title="แนบไฟล์"
                 >
-                  <Paperclip size={13} /> แนบไฟล์
-                </button>
+                  แนบไฟล์
+                </Button>
                 <input
                   ref={fileRef} type="file" accept={UPLOAD_ACCEPT_ATTR} multiple hidden
                   onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
                 />
               </>
             )}
-            <button
-              type="button" className="btn btn-primary sm"
+            <Button
+              tone="primary" size="sm" icon={<Send size={13} />}
               disabled={busy || (!text.trim() && !pending.length)} onClick={post}
             >
-              <Send size={13} /> {busy ? "กำลังส่ง..." : "ส่งอัปเดต"}
-            </button>
+              {busy ? "กำลังส่ง..." : "ส่งอัปเดต"}
+            </Button>
           </div>
         </div>
       )}
