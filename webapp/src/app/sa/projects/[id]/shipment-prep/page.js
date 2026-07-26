@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileText, PackageCheck, Printer, RefreshCcw } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
@@ -24,7 +28,6 @@ const paginateShipmentLines = (lines = []) => {
 
 export default function ShipmentPrepPage() {
   const { id } = useParams();
-  const router = useRouter();
   const canEditPm = useCan("pm:edit");
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
@@ -80,37 +83,65 @@ export default function ShipmentPrepPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+      <div className="no-print">
         <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
           <ArrowLeft size={16} /> กลับไปโครงการ
         </Link>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button type="button" className="btn" onClick={load}>
-            <RefreshCcw size={14} /> รีเฟรช
-          </button>
-          {prep && (
-            <button type="button" className="btn btn-primary" onClick={() => window.print()}>
-              <Printer size={14} /> พิมพ์
-            </button>
+        <DetailPageLayout
+          asideLabel="สรุปและจัดการเอกสารเตรียมส่งของ"
+          aside={(
+            <>
+              <DocumentSummaryCard
+                title="สรุปเอกสารเตรียมส่ง"
+                rows={[
+                  { id: "project", label: "โครงการ", value: project.code || project.id },
+                  { id: "items", label: "รายการสินค้า", value: `${prep?.lines?.length || 0} รายการ` },
+                  { id: "qty", label: "จำนวนรวม", value: `${num((prep?.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0))} ชิ้น` },
+                  { id: "due", label: "กำหนดส่ง", value: fmtDate(prep?.dueDate || project.dueDate) },
+                ]}
+                status={prep ? "พร้อมพิมพ์" : "ยังไม่สร้างเอกสาร"}
+                statusColor={prep ? "var(--green)" : "var(--amber)"}
+              />
+              <DocumentControlCard
+                status={prep ? "พร้อมพิมพ์" : "ยังไม่สร้างเอกสาร"}
+                statusColor={prep ? "var(--green)" : "var(--amber)"}
+                statusDescription="เอกสาร output สำหรับคลัง"
+                primaryAction={prep
+                  ? { id: "print", label: "พิมพ์เอกสาร", kind: "print", icon: Printer, onClick: () => window.print() }
+                  : {
+                    id: "create", label: creating ? "กำลังสร้าง..." : "สร้างเอกสาร",
+                    kind: "create", icon: PackageCheck, onClick: createPrep,
+                    visible: canEditPm, disabled: creating,
+                  }}
+                secondaryActions={[
+                  { id: "refresh", label: "รีเฟรชข้อมูล", kind: "refresh", icon: RefreshCcw, onClick: load },
+                ]}
+                busy={creating}
+              />
+              <RelatedDocumentCard
+                title="โครงการต้นทาง"
+                meta={project.name || project.code || project.id}
+                actions={<Link href={`/sa/projects/${project.code || project.id}`} className="btn ghost sm">เปิดโครงการ</Link>}
+              >
+                เอกสารสร้าง snapshot จาก FG ที่ผูกกับโครงการ ณ เวลาที่สร้าง
+              </RelatedDocumentCard>
+            </>
           )}
-        </div>
-      </div>
-
-      {!prep ? (
-        <div className="glass-panel" style={{ padding: "28px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>ยังไม่มีเอกสารเตรียมส่งของ</h2>
+        >
+          <div className="glass-panel" style={{ padding: "28px" }}>
+            <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
+              {prep ? `${prep.prepNumber} พร้อมสำหรับคลัง` : "ยังไม่มีเอกสารเตรียมส่งของ"}
+            </h2>
             <p style={{ margin: "6px 0 0", color: "var(--text-2)", fontSize: "13px" }}>
-              ระบบจะสร้างรายการจาก FG ที่ผูกอยู่ในโครงการนี้ แล้วเปิดเป็นเอกสารพร้อมพิมพ์สำหรับคลัง
+              {prep
+                ? `เอกสารมี ${prep.lines?.length || 0} รายการ · สร้างเมื่อ ${fmtDate(prep.prepDate)}`
+                : "ระบบจะสร้างรายการจาก FG ที่ผูกอยู่ในโครงการนี้ แล้วเปิดเป็นเอกสารพร้อมพิมพ์สำหรับคลัง"}
             </p>
           </div>
-          {canEditPm && (
-            <button type="button" className="btn btn-primary" onClick={createPrep} disabled={creating}>
-              <PackageCheck size={14} /> {creating ? "กำลังสร้าง..." : "สร้างเอกสาร"}
-            </button>
-          )}
-        </div>
-      ) : (
+        </DetailPageLayout>
+      </div>
+
+      {prep ? (
         <div className="shipment-print-document">
           {shipmentPages.map((pageLines, pageIndex) => (
           <main className="shipment-print-sheet" aria-labelledby={pageIndex === 0 ? "shipment-title" : undefined} key={pageIndex}>
@@ -180,7 +211,7 @@ export default function ShipmentPrepPage() {
         </main>
           ))}
         </div>
-      )}
+      ) : null}
       </div>
     </SaPageShell>
   );
