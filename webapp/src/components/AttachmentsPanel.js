@@ -298,7 +298,7 @@ export default function AttachmentsPanel({
             alt={it.fileName || "รูปแนบ"}
             loading="lazy"
             style={{
-              width: 32, height: 32, objectFit: "cover", borderRadius: 6,
+              width: 44, height: 44, objectFit: "cover", borderRadius: 6,
               border: "1px solid var(--border)", flexShrink: 0,
             }}
           />
@@ -331,6 +331,62 @@ export default function AttachmentsPanel({
           <Trash2 size={13} />
         </button>
       )}
+    </div>
+  );
+
+  // ── ตารางภาพย่อ (โหมด inline) ────────────────────────────────────────
+  // รูปแนบของ "รายการในเคส/สินค้าในใบ" คือของที่ RD/PC เปิดดูเพื่อตอบราคา — ภาพย่อ
+  // ขนาดแถวข้อความเล็กเกินกว่าจะดูออกว่าเป็นขวดทรงไหน จึงแยกรูปออกมาเป็นตารางภาพ
+  // ขนาดใช้งานได้จริง (แนวเดียวกับฟีดความเคลื่อนไหวของดีล) ส่วนไฟล์ที่ไม่ใช่รูป
+  // (PDF/สเปก) ยังเป็นแถวรายชื่อเหมือนเดิม เพราะภาพย่อของมันไม่ได้บอกอะไร
+  const PhotoGrid = ({ photos }) => (
+    <div
+      className="mt-2"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))",
+        gap: 8,
+      }}
+    >
+      {photos.map((it) => (
+        <div key={it.id} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setPreview(it)}
+            title={it.fileName || "ดูรูปขนาดเต็ม"}
+            style={{
+              display: "block", width: "100%", aspectRatio: "1 / 1", padding: 0,
+              border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
+              background: "var(--panel-2)", cursor: "pointer",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={fileHref(it)}
+              alt={it.fileName || "รูปแนบ"}
+              loading="lazy"
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => handleDelete(it.id)}
+              aria-label={`ลบ ${it.fileName || "รูปแนบ"}`}
+              title="ลบ"
+              style={{
+                position: "absolute", top: 4, right: 4, width: 22, height: 22,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: 0,
+                background: "color-mix(in srgb, var(--navy) 72%, transparent)",
+                color: "var(--navy-fg)",
+              }}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 
@@ -405,11 +461,20 @@ export default function AttachmentsPanel({
           )}
         </div>
 
-        {!loading && items.length > 0 && (
-          <div className="mt-1 divide-y divide-[var(--border)]">
-            {items.map((it) => (<FileRow key={it.id} it={it} compact />))}
-          </div>
-        )}
+        {!loading && items.length > 0 && (() => {
+          const photos = items.filter(isPreviewableImage);
+          const files = items.filter((it) => !isPreviewableImage(it));
+          return (
+            <>
+              {photos.length > 0 && <PhotoGrid photos={photos} />}
+              {files.length > 0 && (
+                <div className="mt-1 divide-y divide-[var(--border)]">
+                  {files.map((it) => (<FileRow key={it.id} it={it} compact />))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {canEdit && (
           <input
