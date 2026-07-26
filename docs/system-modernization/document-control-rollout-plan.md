@@ -227,7 +227,7 @@ business rule, permission หรือ API ownership เข้า component ก�
 
 | รายการ | ผล | หลักฐาน |
 |---|---|---|
-| Unit/regression tests | ผ่าน | 760/760 tests |
+| Unit/regression tests | ผ่าน | 764/764 tests หลังรวม `origin/main` ล่าสุด |
 | Targeted ESLint | ผ่าน | ทุกไฟล์ที่เปลี่ยนใน Phase 5 และ shared UI |
 | Production build | ผ่าน | Next.js compile, TypeScript, page generation และ route manifest |
 | Migration checker | ผ่าน | 160 files; latest `0160` |

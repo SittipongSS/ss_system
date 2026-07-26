@@ -62,7 +62,7 @@ resolver ตัวนี้ใช้ร่วมทั้ง 2 entry point:
 - หน้า filing ลิงก์กลับ SO และแสดง warning จาก `registrationId` ที่ว่าง
 - server บล็อกการยกเลิก/reverse Won ของ SO เมื่อมี downstream filing
 - workflow และ dashboard รู้จัก `draft`/`delivered`; การส่งเอกสารใช้ confirm dialog
-- 760 tests, migration checker, targeted lint และ production build ผ่าน
+- 764 tests, migration checker, targeted lint และ production build ผ่าน
 
 ## 4. จุดเสี่ยง / ต้องระวัง
 
