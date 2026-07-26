@@ -324,6 +324,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'cancel') {
+    // Once Tax owns a downstream filing, cancelling/reversing the source would
+    // invalidate its immutable snapshot. Delete the eligible filing first.
+    const { data: filing, error: filingError } = await supabase
+      .from('orders')
+      .select('id, status')
+      .eq('salesOrderId', id)
+      .limit(1)
+      .maybeSingle();
+    const filingSchemaMissing = filingError
+      && (filingError.code === 'PGRST204' || filingError.code === '42703' || (filingError.message || '').includes('salesOrderId'));
+    if (filingError && !filingSchemaMissing) return fail(filingError.message, 500);
+    if (filing) {
+      return badRequest(`ยกเลิก Sale Order ไม่ได้ เพราะมีใบยื่นสรรพสามิต ${filing.id} (${filing.status}) แล้ว`);
+    }
     // เหตุผลยกเลิกแบบมีโครงสร้าง (มติ 2026-07-18): เลือกรหัสจากตัวเลือกมาตรฐาน +
     // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.
     const reasonCode = String(body.reasonCode || '').trim();

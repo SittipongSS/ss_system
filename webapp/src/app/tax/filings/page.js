@@ -10,7 +10,7 @@ import { deptOf, FILING_FILTERS } from "@/lib/excise/workflow";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
-import OrderFormModal from "@/components/excise/OrderFormModal";
+import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
 
@@ -20,14 +20,9 @@ export default function FilingsPage() {
   const canAct = useCan("sales:act");       // SA: create / receive / edit
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
-  const { data: registrations } = useApiList("/api/excise-registrations");
-  const { data: customers } = useApiList("/api/customers");
-  const { data: products } = useApiList("/api/products");
 
-  const [userName, setUserName] = useState("");
   const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
   useEffect(() => {
-    setUserName(localStorage.getItem("userName") || "Sales User");
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
     if (s && FILING_FILTERS.some((f) => f.key === s)) setFilter(s);
@@ -118,15 +113,13 @@ export default function FilingsPage() {
         emptyIcon={ReceiptText}
       />
 
-      <OrderFormModal
+      <SalesOrderFilingModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        onSaved={reload}
-        order={null}
-        registrations={registrations}
-        customers={customers}
-        products={products}
-        userName={userName}
+        onSaved={async (filing) => {
+          await reload();
+          router.push(`/tax/filings/${filing.id}`);
+        }}
       />
     </Workspace>
   );

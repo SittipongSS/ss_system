@@ -73,17 +73,26 @@ export async function PATCH(request, { params }) {
   }
 
   // ── Status transition gate ──
-  // sales:act  : pending → received, and rejected → received (resubmit)
+  // sales:act  : draft → pending → received, rejected → received, complete → delivered
   // legal:approve : received → filing → complete, + rejected, + revert to received
   if (body.status !== undefined && body.status !== order.status) {
     const target = body.status;
-    const salesTargets = ['received'];
+    const salesTargets = ['pending', 'received', 'delivered'];
     const legalTargets = ['received', 'filing', 'complete', 'rejected'];
     const ok = (isSales && salesTargets.includes(target)) || (isLegal && legalTargets.includes(target));
     if (!ok) {
       return Response.json({ error: 'ไม่อนุญาตให้เปลี่ยนสถานะนี้' }, { status: 403 });
     }
     updates.status = target;
+    if (target === 'pending' && order.status !== 'draft') {
+      return Response.json({ error: 'ส่งเข้าคิวเก็บเงินได้จากฉบับร่างเท่านั้น' }, { status: 400 });
+    }
+    if (target === 'received' && !['pending', 'rejected'].includes(order.status)) {
+      return Response.json({ error: 'ยืนยันรับเงินได้จากรายการรอรับเงินหรือรายการที่แก้ไขแล้วเท่านั้น' }, { status: 400 });
+    }
+    if (target === 'delivered' && order.status !== 'complete') {
+      return Response.json({ error: 'ยืนยันส่งเอกสารได้หลังชำระภาษีแล้วเท่านั้น' }, { status: 400 });
+    }
     // เริ่มยื่น (received → filing): LG must record the เลขที่ใบกำกับภาษี first.
     // Accept it from this request or an already-stored value. Exempt orders skip
     // 'filing' entirely (received → complete) so they're never gated here.
@@ -102,6 +111,14 @@ export async function PATCH(request, { params }) {
       updates.filedAt = new Date().toISOString();
       updates.filedBy = user?.id ?? null;
       updates.filedByName = user?.name ?? null;
+    }
+    if (target === 'received' && order.status === 'pending') {
+      updates.collectedConfirmedAt = new Date().toISOString();
+      updates.collectedConfirmedBy = user?.id ?? null;
+    }
+    if (target === 'delivered') {
+      updates.docsDeliveredAt = new Date().toISOString();
+      updates.docsDeliveredBy = user?.id ?? null;
     }
     if (target === 'rejected') {
       if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
@@ -223,7 +240,7 @@ export async function DELETE(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
   // Tax-locked orders: superuser only.
-  const locked = order.receiptNumber || order.clearedAt || order.status === 'complete';
+  const locked = order.receiptNumber || order.clearedAt || ['complete', 'delivered'].includes(order.status);
   if (locked && !isSuperuser(user?.role)) {
     return Response.json(
       { error: 'รายการนี้เข้าสู่ขั้นตอนภาษีแล้ว ต้องเป็นผู้ดูแลระบบจึงจะลบได้' },

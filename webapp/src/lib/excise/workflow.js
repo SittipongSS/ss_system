@@ -6,14 +6,15 @@
 //   Track 1 (การขึ้นทะเบียน) — excise_registrations
 //       pending_legal → approved          (rejected = correction loop)
 //   Track 2 (การยื่นชำระภาษี) — orders
-//       pending → received → filing → complete   (rejected = correction loop)
+//       draft → pending → received → filing → complete → delivered
+//       (rejected = correction loop)
 //
 // `tone` maps to the .status-pill CSS modifiers (success / warning / danger /
 // info). `icon` names a lucide-react component resolved by StatusBadge.
 
 export const STATUS = {
   // Track 1
-  draft: { label: "ฉบับร่าง (รอแนบเอกสาร)", tone: "neutral", icon: "FileEdit", track: "registration" },
+  draft: { label: "ฉบับร่าง", tone: "neutral", icon: "FileEdit", track: null },
   pending_legal: { label: "รออนุมัติ", tone: "warning", icon: "Clock", track: "registration" },
   approved: { label: "ขึ้นทะเบียนแล้ว", tone: "success", icon: "CheckCircle2", track: "registration" },
   // Track 2
@@ -21,6 +22,7 @@ export const STATUS = {
   received: { label: "รอยื่น", tone: "warning", icon: "Clock", track: "payment" },
   filing: { label: "กำลังยื่น", tone: "info", icon: "Loader", track: "payment" },
   complete: { label: "ชำระแล้ว", tone: "success", icon: "CheckCircle2", track: "payment" },
+  delivered: { label: "ส่งเอกสารให้ลูกค้าแล้ว", tone: "success", icon: "CheckCircle2", track: "payment" },
   // shared correction loop
   rejected: { label: "ตีกลับให้แก้ไข", tone: "danger", icon: "XCircle", track: null },
 };
@@ -49,10 +51,12 @@ export const TRACKS = {
     label: "การยื่นชำระภาษี",
     href: "/tax/filings",
     stages: [
+      { key: "draft", label: "เตรียมใบยื่น", owner: "SA" },
       { key: "pending", label: "รอรับเงิน", owner: "SA" },
       { key: "received", label: "รอยื่น", owner: "LG" },
       { key: "filing", label: "กำลังยื่น", owner: "LG" },
-      { key: "complete", label: "ชำระแล้ว", owner: null, done: true },
+      { key: "complete", label: "ชำระแล้ว", owner: "SA" },
+      { key: "delivered", label: "ส่งเอกสารแล้ว", owner: null, done: true },
     ],
   },
 };
@@ -79,9 +83,11 @@ export const REGISTRATION_FILTERS = [
 ];
 export const FILING_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
+  { key: "draft", label: "เตรียมใบยื่น" },
   { key: "pending", label: "รอรับเงิน" },
   { key: "received", label: "รอยื่น" },
   { key: "filing", label: "กำลังยื่น" },
   { key: "complete", label: "ชำระแล้ว" },
+  { key: "delivered", label: "ส่งเอกสารแล้ว" },
   { key: "rejected", label: "ตีกลับ" },
 ];

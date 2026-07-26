@@ -66,10 +66,12 @@ export function OrdersComposedChart({ orders = [] }) {
   const data = useMemo(() => {
     // Group orders by status
     const grouped = {
+      draft: { name: "เตรียมใบยื่น", count: 0, tax: 0, color: COLORS.neutral },
       pending: { name: "รอรับเงิน", count: 0, tax: 0, color: COLORS.danger },
       received: { name: "รอยื่น", count: 0, tax: 0, color: COLORS.warning },
       filing: { name: "กำลังยื่น", count: 0, tax: 0, color: COLORS.info },
       complete: { name: "ชำระแล้ว", count: 0, tax: 0, color: COLORS.success },
+      delivered: { name: "ส่งเอกสารแล้ว", count: 0, tax: 0, color: COLORS.accent },
     };
 
     orders.forEach(o => {

@@ -28,7 +28,10 @@ import { statusMeta } from "@/lib/excise/workflow";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
-const ORDER = ["pending", "received", "filing", "complete"];
+const amountToCollectText = (o) => ((o.amountToCollect ?? o.totalTax ?? 0) === 0
+  ? "ยกเว้นภาษี"
+  : fmtMoney(o.amountToCollect ?? o.totalTax));
+const ORDER = ["draft", "pending", "received", "filing", "complete", "delivered"];
 const TONE_COLOR = {
   neutral: "var(--text-3)", warning: "var(--amber)", danger: "var(--red)",
   info: "var(--blue)", success: "var(--green)",
@@ -48,6 +51,7 @@ export default function FilingDetailPage() {
 
   const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
   const isExempt = (o?.totalTax || 0) === 0;
+  const unregisteredItemCount = (o?.items || []).filter((item) => !item.registrationId).length;
   const customer = customers.find((c) => c.id === o?.customerId) || {};
 
   const [formOpen, setFormOpen] = useState(false);
@@ -56,7 +60,17 @@ export default function FilingDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deliverOpen, setDeliverOpen] = useState(false);
 
+  const transition = async (status) => {
+    const res = await fetch(`/api/orders/${o.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถเปลี่ยนสถานะได้");
+    await reload();
+  };
   const setDue = async (value) => {
     await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
     await reload();
@@ -92,35 +106,47 @@ export default function FilingDetailPage() {
     ? 0
     : Math.max(ORDER.indexOf(o?.status), 0);
   const workflowSteps = workflowStepsFromIndex([
+    { id: "draft", label: "เตรียมใบยื่น", hint: "ตรวจรายการและยอดที่ดึงจาก Sale Order" },
     { id: "pending", label: "รอรับเงิน", hint: o?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "ฝ่ายขายตรวจยอดและหลักฐาน" },
     { id: "received", label: "รับเงินแล้ว", hint: "ฝ่ายกฎหมายเตรียมแบบยื่น" },
     { id: "filing", label: "กำลังยื่น", hint: "ยื่นกรมสรรพสามิต" },
     { id: "complete", label: "ชำระแล้ว", hint: "บันทึกเลขที่และวันที่ชำระ" },
+    { id: "delivered", label: "ส่งเอกสารแล้ว", hint: "ส่งหลักฐานการชำระให้ลูกค้าแล้ว" },
   ], workflowIndex);
-  const primaryAction = canAct && o?.status === "pending"
+  const primaryAction = canAct && o?.status === "draft"
     ? {
-      id: "receive", label: isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว",
-      kind: "submit", icon: Wallet, onClick: () => setReceiveOpen(true),
+      id: "queue", label: "ส่งเข้าคิวเก็บเงิน",
+      kind: "submit", icon: Wallet, onClick: () => transition("pending"),
     }
-    : canAct && o?.status === "rejected"
+    : canAct && o?.status === "pending"
       ? {
-        id: "resubmit", label: "แก้ไขและส่งกลับ",
-        kind: "submit", icon: Pencil, onClick: () => setFormOpen(true),
+        id: "receive", label: isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว",
+        kind: "submit", icon: Wallet, onClick: () => setReceiveOpen(true),
       }
-      : canApprove && o?.status === "received"
-        ? (isExempt
+      : canAct && o?.status === "rejected"
+        ? {
+          id: "resubmit", label: "แก้ไขและส่งกลับ",
+          kind: "submit", icon: Pencil, onClick: () => setFormOpen(true),
+        }
+        : canApprove && o?.status === "received"
+          ? (isExempt
+            ? {
+              id: "file-exempt", label: "ยืนยันชำระ",
+              kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
+            }
+            : {
+              id: "start", label: "เริ่มยื่น",
+              kind: "submit", onClick: () => setStartOpen(true),
+            })
+          : canApprove && o?.status === "filing"
+            ? {
+              id: "file", label: "บันทึกชำระภาษี",
+              kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
+            }
+            : canAct && o?.status === "complete"
           ? {
-            id: "file-exempt", label: "ยืนยันชำระ",
-            kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
-          }
-          : {
-            id: "start", label: "เริ่มยื่น",
-            kind: "submit", onClick: () => setStartOpen(true),
-          })
-        : canApprove && o?.status === "filing"
-          ? {
-            id: "file", label: "บันทึกชำระภาษี",
-            kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
+            id: "deliver", label: "ยืนยันส่งเอกสารให้ลูกค้า",
+            kind: "submit", icon: FileCheck, onClick: () => setDeliverOpen(true),
           }
           : null;
 
@@ -146,8 +172,8 @@ export default function FilingDetailPage() {
           aside={(
             <>
               <DocumentSummaryCard
-                title="ยอดภาษีรวม"
-                total={taxText(o)}
+                title="ยอดที่ต้องเรียกเก็บ"
+                total={amountToCollectText(o)}
                 rows={[
                   { id: "items", label: "รายการสินค้า", value: `${o.items?.length || 0} รายการ` },
                   { id: "due", label: "กำหนดยื่น", value: o.taxDueDate ? fmtDate(o.taxDueDate) : "-" },
@@ -178,15 +204,30 @@ export default function FilingDetailPage() {
                 ]}
               />
               <RelatedDocumentCard
-                title="เอกสารต้นทาง"
-                meta={o.quotationRef || "ข้อมูลลูกค้าและทะเบียนสินค้า"}
-                actions={o.customerId ? (
+                title={o.salesOrderId ? "Sale Order ต้นทาง" : "เอกสารต้นทาง"}
+                meta={o.poReference || o.quotationRef || "ข้อมูลลูกค้าและทะเบียนสินค้า"}
+                actions={o.salesOrderId ? (
+                  <Link href={`/sa/sales-orders/${o.salesOrderId}`} className="btn ghost sm">
+                    <ExternalLink size={13} /> เปิด Sale Order
+                  </Link>
+                ) : o.customerId ? (
                   <Link href={`/database/customers/${o.customerId}`} className="btn ghost sm">
                     <ExternalLink size={13} /> เปิดลูกค้า
                   </Link>
                 ) : null}
               >
-                รายการสินค้าด้านซ้ายผูกกับทะเบียนสรรพสามิตที่อนุมัติแล้ว
+                {o.salesOrderId
+                  ? (
+                    <>
+                      <div>รายการและอัตราภาษีถูก snapshot จาก Sale Order ตอนสร้างใบยื่น โมดูลภาษีเป็นเจ้าของข้อมูลใบยื่นนี้</div>
+                      {unregisteredItemCount > 0 && (
+                        <div style={{ marginTop: 8, color: "var(--amber)" }}>
+                          มี {unregisteredItemCount} รายการที่ยังไม่มีทะเบียนสรรพสามิตอนุมัติ เป็นคำเตือนและไม่บล็อก workflow
+                        </div>
+                      )}
+                    </>
+                  )
+                  : "ใบยื่นเดิมที่สร้างในโมดูลภาษีโดยตรง รายการสินค้าผูกกับข้อมูลลูกค้าและทะเบียนสรรพสามิต"}
               </RelatedDocumentCard>
             </>
           )}
@@ -282,6 +323,14 @@ export default function FilingDetailPage() {
         message={`ยืนยันการลบใบยื่นชำระ ${o?.quotationRef || "รายการนี้"}? การลบนี้ย้อนกลับไม่ได้`}
         confirmLabel="ลบรายการ"
         danger
+      />
+      <ConfirmDialog
+        open={deliverOpen}
+        onClose={() => setDeliverOpen(false)}
+        onConfirm={() => transition("delivered")}
+        title="ยืนยันส่งเอกสารให้ลูกค้า"
+        message={`ยืนยันว่าได้ส่งเอกสารการชำระ ${o?.quotationRef || "รายการนี้"} ให้ลูกค้าเรียบร้อยแล้ว`}
+        confirmLabel="ยืนยันส่งเอกสารแล้ว"
       />
     </Workspace>
   );
