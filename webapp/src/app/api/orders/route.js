@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScopeUser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
+import { billedTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -148,6 +149,9 @@ export async function POST(request) {
     totalExciseTax,
     totalLocalTax,
     totalTax,
+    // ยอดที่เรียกเก็บจากลูกค้า = ค่าภาษี + VAT 7% (มติผู้ใช้ 2026-07-26) สูตรเดียว
+    // กับเอกสารที่พิมพ์ — เดิมทางนี้ไม่เคยเก็บค่านี้เลย จอจึงตกไปโชว์ยอดก่อน VAT
+    amountToCollect: billedTaxTotals(itemRows).amountToCollect,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };

@@ -6,6 +6,7 @@ import {
   resolveDocumentForm,
   resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
+import { EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals } from '@/lib/tax/exciseBilling';
 
 // Print-ready A4 (portrait) excise-tax BILLING document for a customer, built
 // from a filing order (+ the customer record). Bills the EXCISE TAX ONLY
@@ -14,7 +15,6 @@ import {
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
-const VAT_RATE = 0.07;
 const NOTICE_KEY = 'exciseTaxNotice';
 const NOTICE_ACCENTS = Object.freeze({
   terracotta: { accent: '#ad5d43', soft: '#f5ebe7' },
@@ -67,18 +67,15 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
   const noticeNumber = order.taxNoticeNumber || order.id || '-';
   const theme = NOTICE_ACCENTS[standard?.accentKey] || NOTICE_ACCENTS.amber;
   const items = order.items || [];
-  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
-  // from the VAT-excluded retail price at registration). The per-unit tax is
-  // ROUNDED first, then multiplied by qty, so the printed document reconciles by
-  // hand (ภาษี/ชิ้น × จำนวน = รวมภาษี exactly). VAT 7% added on the total.
+  // from the VAT-excluded retail price at registration). ตัวเลขทุกตัวคิดด้วย
+  // lib/tax/exciseBilling.js สูตรเดียวกับที่ตรึง amountToCollect ลงใบตอนสร้าง —
+  // ห้ามคิดเองที่นี่ ไม่งั้นเลขบนจอกับบนเอกสารจะเดินหนีกัน
   const lines = items.map((it, i) => {
     const p = it.product || {};
-    const qty = Number(it.quantity) || 0;
+    const { quantity: qty, perUnit, tax } = billedTaxLine(it);
     const incVat = p.retailPriceIncVat != null ? Number(p.retailPriceIncVat) : 0;
-    const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + VAT_RATE) : 0);
-    const rawPerUnit = qty ? (Number(it.totalTax) || 0) / qty : 0;   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
-    const perUnit = r2(rawPerUnit);
+    const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + EXCISE_VAT_RATE) : 0);
     const identity = productIdentity({
       ...(it.registration || {}),
       ...p,
@@ -90,13 +87,11 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
       brand: identity.brand,
       name: identity.detail || "-",
       qty, incVat, exVat, perUnit,
-      tax: r2(perUnit * qty),         // line total from the rounded per-unit
+      tax,                            // line total from the rounded per-unit
     };
   });
-  const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
-  const totalTax = sum("tax");        // excise + local being billed (ก่อน VAT)
-  const vat = r2(totalTax * VAT_RATE);
-  const grand = r2(totalTax + vat);   // net total billed to the customer (incl VAT)
+  // รวม / VAT / ยอดเรียกเก็บสุทธิ — ยอดสุทธินี้คือ "ยอดที่ต้องเรียกเก็บ" ที่แสดงบนจอด้วย
+  const { totalTax, vat, amountToCollect: grand } = billedTaxTotals(items);
 
   const rowsForLines = (pageLines) => pageLines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>

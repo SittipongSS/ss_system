@@ -40,6 +40,8 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import { getCompanyProfileForPrint } from "@/lib/companyProfile";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { statusMeta } from "@/lib/excise/workflow";
+import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import styles from "./page.module.css";
 
 const STATUS = {
@@ -91,7 +93,7 @@ export default function SalesOrderDetailPage() {
     eligible: false,
     schemaReady: true,
     warnings: [],
-    totalTax: 0,
+    amountToCollect: 0,
     error: "",
   });
   useUnsavedChanges(dirty);
@@ -111,7 +113,10 @@ export default function SalesOrderDetailPage() {
         eligible: !!filingData.eligible,
         schemaReady: filingData.schemaReady !== false,
         warnings: filingData.warnings || [],
-        totalTax: Number(filingData.totalTax || filingData.filing?.amountToCollect || filingData.filing?.totalTax || 0),
+        // ยอดเรียกเก็บรวม VAT 7% แล้ว (มติ 2026-07-26) — ตรงกับยอดสุทธิบนเอกสาร
+        amountToCollect: filingData.filing
+          ? orderAmountToCollect(filingData.filing)
+          : Number(filingData.amountToCollect || 0),
         error: "",
       }
       : {
@@ -120,7 +125,7 @@ export default function SalesOrderDetailPage() {
         eligible: false,
         schemaReady: true,
         warnings: [],
-        totalTax: 0,
+        amountToCollect: 0,
         error: filingData.error || "ตรวจสอบใบยื่นสรรพสามิตไม่สำเร็จ",
       });
     if (!res.ok) {
@@ -156,7 +161,7 @@ export default function SalesOrderDetailPage() {
       eligible: false,
       schemaReady: true,
       warnings: data.warnings || [],
-      totalTax: Number(data.amountToCollect || data.totalTax || 0),
+      amountToCollect: orderAmountToCollect(data),
       error: "",
     });
     setBusy("");
@@ -565,11 +570,11 @@ export default function SalesOrderDetailPage() {
               icon={FileCheck2}
               title="การยื่นชำระสรรพสามิต"
               meta={filingState.filing
-                ? `${filingState.filing.status || "draft"} · ${fmtMoney(filingState.filing.amountToCollect ?? filingState.filing.totalTax)}`
+                ? `${statusMeta(filingState.filing.status).label} · ${fmtMoney(filingState.amountToCollect)} (รวม VAT)`
                 : filingState.loading
                   ? "กำลังตรวจสอบเอกสารปลายทาง"
                   : filingState.eligible
-                    ? `ยอดที่ต้องเรียกเก็บ ${fmtMoney(filingState.totalTax)}`
+                    ? `ยอดที่ต้องเรียกเก็บ ${fmtMoney(filingState.amountToCollect)} (รวม VAT 7%)`
                     : "ยังไม่มีใบยื่นที่เชื่อมกับ Sale Order นี้"}
               actions={filingState.filing ? (
                 <Link href={`/tax/filings/${filingState.filing.id}`} className="btn ghost sm">

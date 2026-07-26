@@ -4,6 +4,7 @@ import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthor
 import { can } from "@/lib/permissions";
 import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/salesPlanning";
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
+import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
 
 export const dynamic = "force-dynamic";
@@ -119,9 +120,10 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
           registrations: registrationResult.data || [],
         });
         return {
-        ...salesOrder,
+          ...salesOrder,
           filingItemCount: resolved.lines.length,
           filingTotalTax: resolved.totalTax,
+          filingAmountToCollect: resolved.amountToCollect,
           filingWarningCount: resolved.warnings.length,
           eligible: resolved.eligible,
         };
@@ -231,7 +233,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     totalExciseTax: resolved.totalExciseTax,
     totalLocalTax: resolved.totalLocalTax,
     totalTax: resolved.totalTax,
-    amountToCollect: resolved.totalTax,
+    // ยอดที่เรียกเก็บจากลูกค้า = ค่าภาษี + VAT 7% (มติผู้ใช้ 2026-07-26) คิดด้วยสูตร
+    // เดียวกับที่เอกสารพิมพ์ ห้ามใช้ resolved.totalTax เปล่า ๆ (ต่างกัน 7%)
+    amountToCollect: billedTaxTotals(resolved.lines).amountToCollect,
     status: "draft",
     createdAt: now,
   };
