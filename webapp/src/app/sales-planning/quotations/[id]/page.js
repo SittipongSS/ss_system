@@ -14,9 +14,9 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
+import Toast from "@/components/ui/Toast";
 import { ContextualRightRail } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
-import Modal from "@/components/Modal";
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
@@ -58,9 +58,11 @@ export default function QuotationEditorPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
-  const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [workflowForm, setWorkflowForm] = useState(null);
+  const [revisionForm, setRevisionForm] = useState(null);
+  const [toast, setToast] = useState(null);
   const [wonOpen, setWonOpen] = useState(false);
   // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
   const [unacceptForm, setUnacceptForm] = useState(null);
@@ -115,7 +117,8 @@ export default function QuotationEditorPage() {
     cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
-  const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
+  const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status)
+    && quote.approvalStatus === "not_submitted";
   // สองขั้นแยกกัน (mig 0155): needsSubmit = ร่างที่ผู้จัดทำยังไม่กดยื่น ·
   // awaitingApproval = ยื่นแล้วรอเจ้าของดีล. ทั้งคู่บล็อกปุ่มส่ง/Won เหมือนกัน แต่ปุ่มที่
   // ต้องกดต่อคนละตัว — เดิมมีสถานะเดียว (pending) ทำให้อนุมัติใบที่ยังกรอกไม่เสร็จได้
@@ -123,6 +126,10 @@ export default function QuotationEditorPage() {
   const awaitingApproval = !!quote && quote.approvalStatus === "pending";
   // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก
   const needsApproval = needsSubmit || awaitingApproval;
+  const canWithdrawSubmission = awaitingApproval
+    && (quote?.approvalRequestedBy === quote?.meId || !!quote?.canApprove);
+  const canReviseDocument = !!quote && canEditCap && quote.approvalStatus === "approved"
+    && EDITABLE.has(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
@@ -189,6 +196,7 @@ export default function QuotationEditorPage() {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       await load();
       router.replace(`/sa/quotations/${id}`);
+      setToast({ kind: "success", msg: "บันทึกใบเสนอราคาแล้ว" });
       return true;
     } catch (e) {
       setError(e.message || "บันทึกไม่สำเร็จ");
@@ -205,13 +213,16 @@ export default function QuotationEditorPage() {
     setConfirmState({
       title: "ยื่นอนุมัติใบเสนอราคา",
       description: `ยืนยันยื่นอนุมัติ ${quote.quoteNumber} หรือไม่`,
-      detail: "การยื่นถือเป็นการลงนามของผู้เสนอราคา ระบบจะบันทึกลายเซ็นและวันที่บนเอกสาร หากแก้เนื้อหาภายหลังต้องยื่นใหม่",
+      detail: "การยื่นถือเป็นการลงนามของผู้เสนอราคา ระบบจะล็อกการแก้ไขและบันทึกลายเซ็นกับวันที่บนเอกสาร หากต้องแก้ก่อนอนุมัติให้ถอนการยื่นก่อน",
       confirmLabel: "ยื่นอนุมัติ",
       action: async () => {
         const data = await act("submit", `/api/sales-planning/quotations/${id}/submit`, {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
         });
-        if (data) await load();
+        if (data) {
+          await load();
+          setToast({ kind: "success", msg: "ยื่นอนุมัติใบเสนอราคาแล้ว" });
+        }
         return !!data;
       },
     });
@@ -224,13 +235,16 @@ export default function QuotationEditorPage() {
     setConfirmState({
       title: "อนุมัติใบเสนอราคา",
       description: `ยืนยันอนุมัติ ${quote.quoteNumber} หรือไม่`,
-      detail: "หลังอนุมัติจะส่งลูกค้าได้ และหากแก้เนื้อหาภายหลังต้องยื่นอนุมัติใหม่",
+      detail: "หลังอนุมัติจะส่งลูกค้าได้ เอกสารฉบับนี้จะถูกล็อก และหากต้องแก้ไขให้ใช้ Revision เท่านั้น",
       confirmLabel: "อนุมัติ",
       action: async () => {
         const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
         });
-        if (data) await load();
+        if (data) {
+          await load();
+          setToast({ kind: "success", msg: "อนุมัติใบเสนอราคาแล้ว" });
+        }
         return !!data;
       },
     });
@@ -266,6 +280,33 @@ export default function QuotationEditorPage() {
       if (completed !== false) setConfirmState(null);
     } finally {
       setConfirmBusy(false);
+    }
+  };
+
+  const withdrawSubmission = async () => {
+    const reason = workflowForm?.reason?.trim() || "";
+    if (reason.length < 10) return;
+    const data = await act("withdraw", `/api/sales-planning/quotations/${id}/withdraw`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, expectedUpdatedAt: quote.updatedAt }),
+    });
+    if (data) {
+      setWorkflowForm(null);
+      await load();
+      setToast({ kind: "info", msg: "ถอนการยื่นแล้ว ใบเสนอราคากลับเป็นฉบับร่าง" });
+    }
+  };
+
+  const sendToCustomer = async () => {
+    const data = await act("send-customer", `/api/sales-planning/quotations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "sent" }),
+    });
+    if (data) {
+      await load();
+      setToast({ kind: "success", msg: "เปลี่ยนสถานะเป็นส่งลูกค้าแล้ว" });
     }
   };
 
@@ -333,6 +374,8 @@ export default function QuotationEditorPage() {
   };
 
   const saveAsRevision = async () => {
+    const revisionReason = revisionForm?.reason?.trim() || "";
+    if (revisionReason.length < 10) return false;
     const paymentValidation = validatePaymentPlan(paymentPlanPayload());
     if (!paymentValidation.ok) {
       setError(paymentValidation.error);
@@ -344,12 +387,20 @@ export default function QuotationEditorPage() {
       const res = await fetch(`/api/sales-planning/quotations/${id}/revise`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(quotationPayload()),
+        body: JSON.stringify(quotationPayload({
+          metadata: {
+            ...people,
+            paymentPresetVersionId: payment.presetVersionId || null,
+            remarksPresetVersionId: notesPresetVersionId || null,
+            revisionReason,
+          },
+        })),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "ออก Revision ไม่สำเร็จ");
       setDirty(false);
-      setSaveChoiceOpen(false);
+      setRevisionForm(null);
+      setToast({ kind: "success", msg: `สร้าง Revision ${data.quoteNumber || ""} แล้ว` });
       router.push(`/sa/quotations/${data.id}`);
       return true;
     } catch (e) {
@@ -365,8 +416,7 @@ export default function QuotationEditorPage() {
     try {
       if (dirty && editable) {
         printWindow.close();
-        setError("กรุณาเลือกบันทึกฉบับเดิมหรือออก Revision ใหม่ก่อนพิมพ์");
-        setSaveChoiceOpen(true);
+        setError("กรุณาบันทึกการแก้ไขก่อนออกเอกสาร");
         return;
       }
       const res = await fetch(`/api/sales-planning/quotations/${id}`);
@@ -423,9 +473,9 @@ export default function QuotationEditorPage() {
   const controlDescription = needsSubmit
     ? "บันทึกข้อมูลให้เรียบร้อย แล้วจึงยื่นอนุมัติ"
     : awaitingApproval
-      ? "รอเจ้าของดีลตรวจและอนุมัติเอกสาร"
+      ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะถอนการยื่นหรือได้รับอนุมัติ"
       : quote?.approvalStatus === "approved"
-        ? "ผ่านการอนุมัติและพร้อมดำเนินการขั้นถัดไป"
+        ? "อนุมัติแล้ว หากต้องแก้ไขให้ออก Revision ใหม่"
         : "เอกสารนี้ไม่ต้องผ่านการอนุมัติแบบใหม่";
   const primaryAction = editable
     ? {
@@ -434,7 +484,13 @@ export default function QuotationEditorPage() {
         label: ["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก",
         disabled: !dirty,
         disabledReason: !dirty ? "ยังไม่มีข้อมูลที่เปลี่ยนแปลง" : undefined,
-        onClick: () => setSaveChoiceOpen(true),
+        onClick: () => setConfirmState({
+          title: "บันทึกใบเสนอราคา",
+          description: `ยืนยันบันทึกการแก้ไข ${quote.quoteNumber} หรือไม่`,
+          detail: "ระบบจะอัปเดตข้อมูลฉบับร่างปัจจุบัน",
+          confirmLabel: "บันทึก",
+          action: save,
+        }),
       }
     : needsSubmit && canEditDocument
       ? {
@@ -466,12 +522,29 @@ export default function QuotationEditorPage() {
     },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
     {
+      id: "withdraw",
+      kind: "reject",
+      label: "ถอนการยื่น",
+      variant: "outline",
+      visible: canWithdrawSubmission && !editMode,
+      onClick: () => setWorkflowForm({ reason: "" }),
+    },
+    {
+      id: "revise",
+      kind: "copy",
+      label: "ออก Revision",
+      variant: "outline",
+      visible: canReviseDocument && !editMode,
+      onClick: () => setRevisionForm({ reason: "" }),
+    },
+    {
       id: "send-customer",
       kind: "submit",
       label: "ส่งให้ลูกค้า",
       variant: "outline",
-      visible: editable && quote?.status === "draft" && !needsApproval,
-      onClick: async () => { await save({ status: "sent" }); },
+      visible: !editMode && canEditCap && quote?.status === "draft"
+        && ["approved", "not_required"].includes(quote?.approvalStatus),
+      onClick: sendToCustomer,
     },
     {
       id: "won",
@@ -815,22 +888,43 @@ export default function QuotationEditorPage() {
         busy={busy === "unaccept"}
       />
 
-      <Modal open={saveChoiceOpen} onClose={() => !busy && setSaveChoiceOpen(false)} title="เลือกวิธีบันทึกใบเสนอราคา" size="sm">
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ margin: 0, color: "var(--text-2)", lineHeight: 1.6 }}>
-            บันทึกฉบับเดิมเพื่อแก้ข้อมูลในเลขที่ปัจจุบัน หรือออก Revision ใหม่เพื่อเก็บฉบับเดิมไว้เป็นประวัติ
-          </p>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" className="btn ghost" onClick={() => setSaveChoiceOpen(false)} disabled={!!busy}>ยกเลิก</button>
-            <button type="button" className="btn" onClick={async () => { if (await save()) setSaveChoiceOpen(false); }} disabled={!!busy}>
-              บันทึกฉบับเดิม
-            </button>
-            <button type="button" className="btn btn-primary" onClick={saveAsRevision} disabled={!!busy}>
-              ออก Revision ใหม่
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <ReasonDialog
+        open={!!workflowForm}
+        title="ถอนการยื่นใบเสนอราคา"
+        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็นสถานะยังไม่ยื่นอนุมัติ`}
+        detail="ผู้เสนอหรือผู้อนุมัติสามารถถอนการยื่นได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
+        label="เหตุผลที่ถอนการยื่น"
+        value={workflowForm?.reason || ""}
+        onChange={(reason) => setWorkflowForm({ reason })}
+        onClose={() => setWorkflowForm(null)}
+        onConfirm={withdrawSubmission}
+        confirmLabel="ยืนยันถอนการยื่น"
+        placeholder="ระบุเหตุผลที่ต้องนำเอกสารกลับไปแก้ไข"
+        helpText={`อย่างน้อย 10 ตัวอักษร · ${workflowForm?.reason?.length || 0}/500`}
+        error={workflowForm?.reason && workflowForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
+        minLength={10}
+        maxLength={500}
+        busy={busy === "withdraw"}
+      />
+
+      <ReasonDialog
+        open={!!revisionForm}
+        title="ออก Revision ใบเสนอราคา"
+        description={`ระบบจะเก็บ ${quote?.quoteNumber || "-"} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
+        detail="เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง"
+        label="เหตุผลที่ออก Revision"
+        value={revisionForm?.reason || ""}
+        onChange={(reason) => setRevisionForm({ reason })}
+        onClose={() => setRevisionForm(null)}
+        onConfirm={saveAsRevision}
+        confirmLabel="สร้าง Revision"
+        placeholder="ระบุสิ่งที่ต้องแก้ไขในฉบับใหม่"
+        helpText={`อย่างน้อย 10 ตัวอักษร · ${revisionForm?.reason?.length || 0}/500`}
+        error={revisionForm?.reason && revisionForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
+        minLength={10}
+        maxLength={500}
+        busy={busy === "revise"}
+      />
 
       <ConfirmDialog
         open={!!confirmState}
@@ -843,6 +937,7 @@ export default function QuotationEditorPage() {
         onClose={() => !confirmBusy && setConfirmState(null)}
         onConfirm={runConfirmed}
       />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }

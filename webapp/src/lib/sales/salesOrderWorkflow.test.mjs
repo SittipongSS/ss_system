@@ -1,9 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SALES_ORDER_CANCEL_REASONS, WON_REVERSAL_TARGETS, canHardDeleteSalesOrder, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isCustomerCancelReason, isSalesOrderReviewer, isValidCancelReasonCode, isValidReversalTarget, salesOrderActual } from './salesOrderWorkflow.js';
+import {
+  SALES_ORDER_CANCEL_REASONS,
+  WON_REVERSAL_TARGETS,
+  canEditSalesOrderContent,
+  canHardDeleteSalesOrder,
+  canRevokeAndReviseSalesOrder,
+  canSalesOrderTransition,
+  canWithdrawSalesOrderSubmission,
+  cancelReasonLabel,
+  dealActualFromSalesOrders,
+  isCustomerCancelReason,
+  isSalesOrderReviewer,
+  isSalesOrderSubmitter,
+  isValidCancelReasonCode,
+  isValidReversalTarget,
+  salesOrderActual,
+} from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
-  for (const status of ['draft', 'pending_approval', 'rejected', 'cancelled']) {
+  for (const status of ['draft', 'pending_approval', 'rejected', 'revised', 'cancelled']) {
     assert.equal(salesOrderActual({ status, actualAmount: 1250 }), 0);
   }
   assert.equal(salesOrderActual({ status: 'approved', actualAmount: 1250 }), 1250);
@@ -24,11 +40,34 @@ test('only AE Supervisor and admin are SO reviewers', () => {
   assert.equal(isSalesOrderReviewer('ae'), false);
 });
 
+test('pending SO may be withdrawn by its proposer or reviewer only', () => {
+  const order = { status: 'pending_approval', submittedBy: 'USR-PROPOSER' };
+  assert.equal(isSalesOrderSubmitter(order, 'USR-PROPOSER'), true);
+  assert.equal(isSalesOrderSubmitter(order, 'USR-OTHER'), false);
+  assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-PROPOSER' }), true);
+  assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-REVIEWER', reviewer: true }), true);
+  assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-OTHER' }), false);
+  assert.equal(
+    canWithdrawSalesOrderSubmission({ ...order, status: 'approved' }, { userId: 'USR-PROPOSER', reviewer: true }),
+    false,
+  );
+});
+
+test('SO direct editing stops after submission and approved changes require reviewer revision', () => {
+  const access = { canEdit: true, inScope: true };
+  assert.equal(canEditSalesOrderContent({ status: 'draft' }, access), true);
+  assert.equal(canEditSalesOrderContent({ status: 'rejected' }, access), true);
+  assert.equal(canEditSalesOrderContent({ status: 'pending_approval' }, access), false);
+  assert.equal(canEditSalesOrderContent({ status: 'approved' }, access), false);
+  assert.equal(canRevokeAndReviseSalesOrder({ status: 'approved' }, { reviewer: true }), true);
+  assert.equal(canRevokeAndReviseSalesOrder({ status: 'approved' }, { reviewer: false }), false);
+});
+
 test('hard delete is limited to unsigned drafts that never entered approval', () => {
   assert.equal(canHardDeleteSalesOrder({ status: 'draft' }), true);
   assert.equal(canHardDeleteSalesOrder({ status: 'draft', signatureEvidenceId: 'DSE-1' }), false);
   assert.equal(canHardDeleteSalesOrder({ status: 'draft', hasSignatureEvidence: true }), false);
-  for (const status of ['pending_approval', 'approved', 'rejected', 'cancelled']) {
+  for (const status of ['pending_approval', 'approved', 'rejected', 'revised', 'cancelled']) {
     assert.equal(canHardDeleteSalesOrder({ status }), false);
   }
 });

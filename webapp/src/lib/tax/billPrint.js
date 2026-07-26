@@ -1,6 +1,11 @@
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { productIdentity } from '@/lib/master/productIdentity';
+import {
+  getDocumentStandardsForPrint,
+  resolveDocumentForm,
+  resolveDocumentTitleTh,
+} from '@/lib/documentStandards';
 
 // Print-ready A4 (portrait) excise-tax BILLING document for a customer, built
 // from a filing order (+ the customer record). Bills the EXCISE TAX ONLY
@@ -10,6 +15,12 @@ import { productIdentity } from '@/lib/master/productIdentity';
 
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
 const VAT_RATE = 0.07;
+const NOTICE_KEY = 'exciseTaxNotice';
+const NOTICE_ACCENTS = Object.freeze({
+  terracotta: { accent: '#ad5d43', soft: '#f5ebe7' },
+  steel: { accent: '#1e6091', soft: '#e6eef4' },
+  amber: { accent: '#b45309', soft: '#fdf1e3' },
+});
 
 const esc = (s) => String(s ?? "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -36,8 +47,14 @@ export function paginateBillLines(lines = []) {
   return pages;
 }
 
-export function buildBillPrintHTML(order, customer = {}, company) {
+export function buildBillPrintHTML(order, customer = {}, company, activeStandard = null) {
   const co = resolveCompanyBlock(company);
+  const standard = order.taxNoticeStandardSnapshot || activeStandard;
+  const form = resolveDocumentForm(standard, NOTICE_KEY);
+  const titleTh = resolveDocumentTitleTh(standard, NOTICE_KEY);
+  const titleEn = String(standard?.titleEn || form.title || 'EXCISE TAX PAYMENT NOTICE').trim();
+  const noticeNumber = order.taxNoticeNumber || order.id || '-';
+  const theme = NOTICE_ACCENTS[standard?.accentKey] || NOTICE_ACCENTS.amber;
   const items = order.items || [];
   const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
@@ -103,8 +120,10 @@ export function buildBillPrintHTML(order, customer = {}, company) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="big">EXCISE TAX</div>
-        <div class="sub">${esc(order.quotationRef || order.id || "-")}</div>
+        <div class="formno">${esc(form.code)}: Rev. No.${esc(form.revision)}. ${esc(form.effectiveDate)}</div>
+        <div class="big">${esc(titleEn)}</div>
+        <div class="title-th">${esc(titleTh)}</div>
+        <div class="sub">${esc(noticeNumber)}</div>
       </div>
     </div>
 
@@ -133,7 +152,7 @@ export function buildBillPrintHTML(order, customer = {}, company) {
       <div class="totals">
         <div class="row"><span>รวมค่าภาษี (ก่อน VAT)</span><span>${fmtMoney(totalTax)}</span></div>
         <div class="row"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>${fmtMoney(vat)}</span></div>
-        <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
+        <div class="row grand"><span>ยอดแจ้งชำระสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
       </div>
       <div class="signs">
         <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้จัดทำ</div><div class="date">วันที่ ........./........./.........</div></div>
@@ -146,12 +165,13 @@ export function buildBillPrintHTML(order, customer = {}, company) {
   }).join("");
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
-<title>ใบวางบิลค่าภาษีสรรพสามิต ${esc(order.quotationRef || order.id || "")}</title>
+<title>${esc(titleTh)} ${esc(noticeNumber)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --notice-accent: ${theme.accent}; --notice-soft: ${theme.soft}; }
   body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
   .toolbar { max-width: 210mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
@@ -161,14 +181,15 @@ export function buildBillPrintHTML(order, customer = {}, company) {
   .page-tail { display: flex; flex-direction: column; }
   .page-number { position: absolute; right: 12mm; bottom: 7mm; color: #837868; font-size: 9px; }
 
-  .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
+  .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid var(--notice-accent); padding-bottom: 8px; margin-bottom: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-img { height: 46px; width: auto; max-width: 300px; display: block; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 2px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
-  .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
+  .doc-title .big { font-size: 14px; font-weight: 800; color: var(--notice-accent); letter-spacing: 1px; text-align: right; white-space: nowrap; }
+  .doc-title .title-th { font-size: 11px; font-weight: 700; color: #21385e; text-align: right; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
@@ -180,10 +201,10 @@ export function buildBillPrintHTML(order, customer = {}, company) {
 
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; padding: 5px 7px; word-break: break-word; }
-  thead th { background: #e8e2d9; color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
+  thead th { background: var(--notice-soft); color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
   .c-no { text-align: center; font-size: 9.5px; width: 18px; }
   .c-desc { text-align: left; font-size: 10.5px; }
-  .c-desc .fg-code { font-weight: 700; font-size: 10px; color: #c17a52; letter-spacing: .3px; }
+  .c-desc .fg-code { font-weight: 700; font-size: 10px; color: var(--notice-accent); letter-spacing: .3px; }
   .c-desc .p-name { font-weight: 600; color: #21385e; margin-top: 1px; }
   .c-desc .c-sub { font-size: 8.5px; color: #837868; margin-top: 2px; font-weight: 400; }
   .c-num { text-align: right; font-size: 10px; width: 48px; }
@@ -192,7 +213,7 @@ export function buildBillPrintHTML(order, customer = {}, company) {
 
   .totals { margin-top: 14px; margin-left: auto; width: 56%; font-size: 12px; }
   .totals .row { display: flex; justify-content: space-between; padding: 5px 2px; border-bottom: 1px solid #e6ddcf; }
-  .totals .grand { font-weight: 800; font-size: 14px; color: #c17a52; border-bottom: none; border-top: 2px solid #c17a52; padding-top: 8px; margin-top: 4px; }
+  .totals .grand { font-weight: 800; font-size: 14px; color: var(--notice-accent); border-bottom: none; border-top: 2px solid var(--notice-accent); padding-top: 8px; margin-top: 4px; }
   .note-line { margin-top: 10px; font-size: 9.5px; color: #837868; }
 
   .signs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; padding: 0 20px; }
@@ -222,7 +243,7 @@ export function buildBillPrintHTML(order, customer = {}, company) {
   }
 </style></head><body>
   <div class="toolbar no-print">
-    <h1>ใบวางบิลค่าภาษีสรรพสามิต — ${esc(order.quotationRef || order.id || "")}</h1>
+    <h1>${esc(titleTh)} — ${esc(noticeNumber)}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
@@ -238,8 +259,11 @@ export async function openBillPrintWindow(order, customer = {}) {
   w.document.open();
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>ใบแจ้งชำระภาษี</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
   w.document.close();
-  const company = await getCompanyProfileForPrint();
-  const html = buildBillPrintHTML(order, customer, company);
+  const [company, standards] = await Promise.all([
+    getCompanyProfileForPrint(),
+    getDocumentStandardsForPrint(),
+  ]);
+  const html = buildBillPrintHTML(order, customer, company, standards[NOTICE_KEY]);
   w.document.open();
   w.document.write(html);
   w.document.close();

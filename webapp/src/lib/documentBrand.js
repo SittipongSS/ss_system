@@ -34,6 +34,12 @@ export const DOCUMENT_FORMS = Object.freeze({
     effectiveDate: '08/05/2568',
     title: 'SALES ORDER',
   }),
+  exciseTaxNotice: Object.freeze({
+    code: 'FM-TAX-01',
+    revision: '00',
+    effectiveDate: '26/07/2569',
+    title: 'EXCISE TAX PAYMENT NOTICE',
+  }),
   projectTimeline: Object.freeze({
     code: 'FM-PD-05',
     title: 'PROJECT TIMELINE',

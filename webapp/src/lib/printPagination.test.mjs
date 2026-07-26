@@ -32,7 +32,28 @@ test('excise bill preview splits item lines and renders totals once on the final
   });
   assert.equal((html.match(/class="sheet explicit-page"/g) || []).length, 2);
   assert.match(html, /หน้า 2 \/ 2/);
-  assert.equal((html.match(/ยอดวางบิลสุทธิ/g) || []).length, 1);
+  assert.equal((html.match(/ยอดแจ้งชำระสุทธิ/g) || []).length, 1);
+});
+
+test('excise payment notice uses its pinned controlled form and document number', () => {
+  const html = buildBillPrintHTML({
+    id: 'TAX-1',
+    taxNoticeNumber: 'ET-26070001-0',
+    taxNoticeStandardSnapshot: {
+      titleTh: 'ใบแจ้งชำระค่าภาษีทดสอบ',
+      titleEn: 'TEST EXCISE PAYMENT NOTICE',
+      formCode: 'FM-TAX-99',
+      revision: '02',
+      effectiveDate: '2026-07-26',
+      accentKey: 'amber',
+    },
+    items: [],
+  });
+  assert.match(html, /ET-26070001-0/);
+  assert.match(html, /FM-TAX-99: Rev\. No\.02\. 26\/07\/2569/);
+  assert.match(html, /TEST EXCISE PAYMENT NOTICE/);
+  assert.match(html, /ใบแจ้งชำระค่าภาษีทดสอบ/);
+  assert.doesNotMatch(html, /ใบวางบิล/);
 });
 
 test('Project Timeline preview has explicit work pages and a final approval page', () => {

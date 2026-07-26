@@ -1,40 +1,61 @@
 "use client";
-import { useEffect } from "react";
-import { CheckCircle2, AlertTriangle, Info, X } from "lucide-react";
+import { useCallback, useEffect, useRef } from "react";
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
+import styles from "./Toast.module.css";
 
 // Toast แจ้งเตือนลอยกลางล่างจอ — auto-dismiss. ใช้แทน alert() เนทีฟที่หน้าตาไม่เข้าธีม.
 // ใช้: const [toast, setToast] = useState(null); setToast({ kind, msg });
 //      <Toast toast={toast} onClose={() => setToast(null)} />
 const KIND = {
-  success: { icon: CheckCircle2, color: "var(--green)" },
-  error: { icon: AlertTriangle, color: "var(--red)" },
-  info: { icon: Info, color: "var(--accent)" },
+  success: { icon: CheckCircle2, role: "status" },
+  error: { icon: AlertCircle, role: "alert" },
+  warning: { icon: AlertTriangle, role: "alert" },
+  info: { icon: Info, role: "status" },
 };
 
 export default function Toast({ toast, onClose, duration = 3200 }) {
+  const timerRef = useRef(null);
+  const remainingRef = useRef(duration);
+  const startedAtRef = useRef(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const stopTimer = useCallback(() => {
+    if (!timerRef.current) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+    remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAtRef.current));
+  }, []);
+
+  const startTimer = useCallback(() => {
+    if (!toast || timerRef.current || remainingRef.current <= 0) return;
+    startedAtRef.current = Date.now();
+    timerRef.current = setTimeout(() => onCloseRef.current?.(), remainingRef.current);
+  }, [toast]);
+
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(onClose, duration);
-    return () => clearTimeout(t);
-  }, [toast, onClose, duration]);
+    remainingRef.current = toast.duration ?? duration;
+    startTimer();
+    return stopTimer;
+  }, [toast, duration, startTimer, stopTimer]);
 
   if (!toast) return null;
-  const { icon: Icon, color } = KIND[toast.kind] || KIND.info;
+  const kind = KIND[toast.kind] ? toast.kind : "info";
+  const { icon: Icon, role } = KIND[kind];
   return (
     <div
-      role="status"
-      style={{
-        position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
-        zIndex: 1000, display: "flex", alignItems: "center", gap: "10px",
-        padding: "12px 14px 12px 16px", background: "var(--panel)",
-        border: "1px solid var(--border)", borderLeft: `4px solid ${color}`,
-        borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.20)",
-        maxWidth: "min(92vw, 480px)", animation: "fadeIn 0.15s ease-out",
-      }}
+      className={`${styles.toast} ${styles[kind]}`}
+      role={role}
+      aria-live={role === "alert" ? "assertive" : "polite"}
+      onMouseEnter={stopTimer}
+      onMouseLeave={startTimer}
+      onFocus={stopTimer}
+      onBlur={startTimer}
     >
-      <Icon size={18} color={color} style={{ flexShrink: 0 }} />
-      <span style={{ fontSize: "13px", color: "var(--text)", flex: 1, whiteSpace: "pre-wrap" }}>{toast.msg}</span>
-      <button className="btn-icon" onClick={onClose} aria-label="ปิด" style={{ flexShrink: 0 }}>
+      <span className={styles.icon}><Icon size={18} aria-hidden="true" /></span>
+      <span className={styles.message}>{toast.msg}</span>
+      <button type="button" className={`btn-icon ${styles.close}`} onClick={onClose} aria-label="ปิดการแจ้งเตือน">
         <X size={14} />
       </button>
     </div>

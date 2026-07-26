@@ -3,11 +3,40 @@ export const SALES_ORDER_STATUS_LABELS = {
   pending_approval: 'รออนุมัติ',
   approved: 'อนุมัติแล้ว',
   rejected: 'ตีกลับ',
+  revised: 'ออกฉบับแก้ไขแล้ว',
   cancelled: 'ยกเลิก',
 };
 
 export function isSalesOrderReviewer(role) {
   return role === 'ae_supervisor' || role === 'admin';
+}
+
+export function isSalesOrderSubmitter(order, userId) {
+  return Boolean(userId)
+    && order?.status === 'pending_approval'
+    && order?.submittedBy === userId;
+}
+
+export function canWithdrawSalesOrderSubmission(
+  order,
+  { userId = '', reviewer = false } = {},
+) {
+  return order?.status === 'pending_approval'
+    && (reviewer || isSalesOrderSubmitter(order, userId));
+}
+
+export function canEditSalesOrderContent(
+  order,
+  { canEdit = false, inScope = false } = {},
+) {
+  return Boolean(order)
+    && canEdit
+    && inScope
+    && (order.status === 'draft' || order.status === 'rejected');
+}
+
+export function canRevokeAndReviseSalesOrder(order, { reviewer = false } = {}) {
+  return Boolean(order) && reviewer && order.status === 'approved';
 }
 
 // Hard delete is only cleanup for a draft that has never entered the signed
@@ -68,6 +97,8 @@ export function dealActualFromSalesOrders(deal) {
 export function canSalesOrderTransition(status, action, { reviewer = false, admin = false } = {}) {
   if (action === 'save' || action === 'submit') return status === 'draft' || status === 'rejected';
   if (action === 'approve' || action === 'reject') return reviewer && status === 'pending_approval';
+  if (action === 'withdraw') return status === 'pending_approval';
+  if (action === 'revise') return reviewer && status === 'approved';
   if (action === 'cancel') return status !== 'cancelled' && (status !== 'pending_approval' || reviewer);
   if (action === 'restore') return admin && status === 'cancelled';
   return false;

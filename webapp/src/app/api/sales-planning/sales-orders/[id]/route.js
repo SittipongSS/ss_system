@@ -2,7 +2,16 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
-import { canHardDeleteSalesOrder, isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
+import {
+  canHardDeleteSalesOrder,
+  canRevokeAndReviseSalesOrder,
+  canWithdrawSalesOrderSubmission,
+  isSalesOrderReviewer,
+  isValidCancelReasonCode,
+  cancelReasonLabel,
+  isValidReversalTarget,
+} from '@/lib/sales/salesOrderWorkflow';
+import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
   adminOverrideReasonError,
@@ -45,11 +54,18 @@ async function loadOrder(supabase, id) {
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
   ]);
   if (signatureEvidenceError) throw signatureEvidenceError;
+  const { data: revisionHistory, error: revisionHistoryError } = await supabase
+    .from('sales_orders')
+    .select('id, orderNumber, revisionNo, status, orderDate, createdAt')
+    .eq('baseNumber', order.baseNumber || order.orderNumber)
+    .order('revisionNo', { ascending: false });
+  if (revisionHistoryError) throw revisionHistoryError;
   return {
     ...order,
     deal: deal || null,
     quotation: quotation || null,
     project: project || null,
+    revisionHistory: revisionHistory || [],
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
   };
 }
@@ -147,17 +163,83 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  if (!canEditSalesPlanning(user)) return forbidden();
+  if (!canViewSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
   let before;
   try { before = await loadOrder(supabase, id); }
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
 
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '');
+  const withdrawing = action === 'withdraw';
+  if (!before.deal || !(withdrawing
+    ? inSalesViewScope(user, before.deal)
+    : canEditSalesPlanning(user) && inSalesEditScope(user, before.deal))) return forbidden();
   const reviewer = isSalesOrderReviewer(user.role);
+
+  if (action === 'withdraw') {
+    if (!canWithdrawSalesOrderSubmission(before, { userId: user.id, reviewer })) {
+      return forbidden('ถอนการยื่นได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
+    }
+    const reason = String(body.reason || '').trim();
+    const { data, error } = await supabase.rpc('withdraw_sales_order_submission_atomic', {
+      p_order_id: id,
+      p_expected_updated_at: before.updatedAt,
+      p_reason: reason,
+      p_actor_id: user.id,
+      p_actor_name: user.name || null,
+      p_actor_role: user.role || null,
+    });
+    if (error) {
+      const mapped = documentWorkflowError(error);
+      return fail(mapped.message, mapped.status);
+    }
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order',
+      entityId: id,
+      before,
+      after: data,
+      summary: `ถอนการยื่น ${before.orderNumber}: ${reason}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
+  if (action === 'revise') {
+    if (!canRevokeAndReviseSalesOrder(before, { reviewer })) {
+      return forbidden('ถอดอนุมัติและออก Revision ได้เฉพาะ AE Supervisor หรือ Admin');
+    }
+    const reason = String(body.reason || '').trim();
+    const revisionId = genId('SO');
+    const { data: result, error } = await supabase.rpc('revise_approved_sales_order_atomic', {
+      p_order_id: id,
+      p_revision_id: revisionId,
+      p_expected_updated_at: before.updatedAt,
+      p_reason: reason,
+      p_actor_id: user.id,
+      p_actor_name: user.name || null,
+      p_actor_role: user.role || null,
+    });
+    if (error) {
+      const mapped = documentWorkflowError(error);
+      return fail(mapped.message, mapped.status);
+    }
+    const revision = result?.revision || null;
+    await recordAudit({
+      user,
+      action: 'create',
+      entityType: 'sales_order',
+      entityId: revision?.id || revisionId,
+      before,
+      after: revision,
+      summary: `ถอดอนุมัติและออก Revision ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
+      request: req,
+    });
+    return ok(revision, 201);
+  }
 
   if (action === 'save') {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('แก้ไขได้เฉพาะ SO ร่างหรือรายการที่ถูกตีกลับ');

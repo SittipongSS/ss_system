@@ -117,12 +117,14 @@ test('มีมาตรฐานเผยแพร่ → ใช้ค่าน
 test('accent: ใช้ค่าที่ตั้งไว้ ส่วนคีย์เก่าที่เลิกให้เลือกแล้วตกไปใช้สีของชนิดเอกสาร', () => {
   assert.equal(resolveDocumentAccentKey({ accentKey: 'steel' }, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'terracotta' }, 'quotation'), 'terracotta');
-  // teal/amber/green/navy ถูกถอดจากตัวเลือกแล้ว — มาตรฐานเก่าที่ยังถือค่าเหล่านี้ต้องไม่พา
+  assert.equal(resolveDocumentAccentKey({ accentKey: 'amber' }, 'exciseTaxNotice'), 'amber');
+  // teal/green/navy ถูกถอดจากตัวเลือกแล้ว — มาตรฐานเก่าที่ยังถือค่าเหล่านี้ต้องไม่พา
   // เอกสารไปสีที่ไม่มีใครตั้งใจ
   assert.equal(resolveDocumentAccentKey({ accentKey: 'teal' }, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'navy' }, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey(null, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey(null, 'quotation'), 'terracotta');
+  assert.equal(resolveDocumentAccentKey(null, 'exciseTaxNotice'), 'amber');
 });
 
 test('ทุกสีที่เลือกได้ต้องมีธีมจริงในเครื่องยนต์เอกสาร (กันเลือกแล้วไม่มีผล)', () => {
@@ -152,6 +154,10 @@ test('เลขที่ที่ประกอบจากรูปแบบ�
   assert.equal(
     formatDocumentNumber(DEFAULT_NUMBERING_PATTERNS.salesOrder, { date: JULY_2026, running: 28, revision: 0 }),
     'SO-26070028-0',
+  );
+  assert.equal(
+    formatDocumentNumber(DEFAULT_NUMBERING_PATTERNS.exciseTaxNotice, { date: JULY_2026, running: 9, revision: 0 }),
+    'ET-26070009-0',
   );
 });
 
