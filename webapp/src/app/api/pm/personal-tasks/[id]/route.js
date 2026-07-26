@@ -6,7 +6,8 @@ import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
-import { appendTaskUpdate, autoTaskUpdates, listTaskUpdates } from '@/lib/pm/taskUpdates';
+import { autoTaskUpdates } from '@/lib/pm/taskUpdates';
+import { appendUpdate, listUpdates, purgeUpdates } from '@/lib/master/updates';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -63,8 +64,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     people,
     canManage: !!manage,
     canChangeStatus: canChangeTaskStatus(user, task, manage),
-    // เธรดอัปเดต (0113) — ส่งมากับงานเลย ไม่ต้องให้หน้า detail ยิงอีกรอบ
-    updates: await listTaskUpdates(supabase, id),
+    // เธรดอัปเดต (mig 0163 — ตารางกลาง) ส่งมากับงานเลยเพื่อให้หน้ารายละเอียดมีตัวนับ
+    // ตั้งแต่เฟรมแรก; ตัว UpdateThread โหลดของมันเองผ่าน /api/updates อีกที
+    updates: await listUpdates(supabase, 'personal_task', id),
     // โพสต์อัปเดตได้ = คนที่เกี่ยวข้องกับงานจริง (ผู้ดูแล/ผู้รับผิดชอบ/ผู้ทำแทน)
     canPostUpdate: !!manage || canChangeTaskStatus(user, task, manage),
     // ตัวตนผู้เรียก — โมดัลแก้งานใช้ (กันเลือกมอบหมายให้ตัวเอง/ป้ายทีม) หน้า detail
@@ -222,7 +224,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // เล่าให้ทีมฟังในเธรดงาน: เปลี่ยนสถานะ / เลื่อนกำหนด / สาเหตุที่เสร็จช้า
   // (คนละหน้าที่กับ audit — audit คือใครแก้อะไร supervisor อ่าน)
   for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason })) {
-    await appendTaskUpdate(supabase, { taskId: id, ...u, user });
+    // ไม่เช็ค error โดยตั้งใจ — ฟีดพลาดต้องไม่ทำให้การบันทึกงานพังตาม
+    await appendUpdate(supabase, { entityType: 'personal_task', entityId: id, ...u, user });
   }
   return ok(data);
 });
@@ -235,6 +238,8 @@ export const DELETE = withUser(async ({ user, supabase, ctx, req }) => {
   if (!(await canManagePersonalTask(supabase, task, user))) return forbidden();
 
   await purgeAttachments('personal_task', id);
+  // entity_updates ไม่มี FK (polymorphic) — ต้องเก็บกวาดเอง ไม่งั้นเธรดค้างเป็นขยะ
+  await purgeUpdates(supabase, 'personal_task', id);
 
   const { error } = await supabase.from('personal_tasks').delete().eq('id', id);
   if (error) return fail(error.message, 500);

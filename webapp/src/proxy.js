@@ -160,7 +160,7 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sa
 // products:edit to create (lands as 'pending'), AE Supervisor to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/attachments', '/api/updates', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -310,6 +310,10 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
       canUser(mgmtUser, 'mgmt:edit')
     );
   }
+  // เธรดอัปเดตของกลาง (mig 0163) — ปล่อยผ่านทุก role ที่ล็อกอินโดยตั้งใจ:
+  // ด่านจริงคือทะเบียน lib/master/updateAccess.js ซึ่งรู้ว่า entity นั้นใครอ่าน/โพสต์ได้
+  // (proxy เห็นแค่ role ไม่รู้จัก entity — เดาแทนไม่ได้). แพตเทิร์นเดียวกับ /api/upload
+  if (path.startsWith('/api/updates')) return true;
   return true; // e.g. /api/upload — any signed-in user
 }
 

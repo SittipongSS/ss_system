@@ -12,6 +12,7 @@
 //
 // ทุก preview เป็น pure-ish (query อย่างเดียว ไม่ลบ) เพื่อให้ ?dryRun=1 ใช้ซ้ำ
 // เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ.
+import { purgeUpdatesMany } from '@/lib/master/updates';
 
 // อ่าน query flag จาก request URL.
 function flag(req, name) {
@@ -97,16 +98,27 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
 //   • inquiries.dealId + inquiry_messages ของมัน + personal_tasks.inquiryId (mig 0104 — ไม่มี FK)
 //   • sales_deals.parentDealId ที่ชี้มาดีลนี้ (self-ref mig 0072 — ไม่มี FK): ปลดเป็น null
 // ไม่แตะลูกที่ FK cascade เองอยู่แล้ว (quotations/sales_orders/activities/...).
+// เธรดอัปเดตของงาน (entity_updates, mig 0163) ไม่มี FK — ต้องกวาดก่อนลบตัวงาน
+// ไม่งั้นเหลือเธรดกำพร้าที่ไม่มีทางเข้าถึงและไม่มีใครลบให้
+async function purgeTaskThreads(supabase, { column, values }) {
+  if (!values?.length) return;
+  const { data: tasks } = await supabase
+    .from('personal_tasks').select('id').in(column, values);
+  await purgeUpdatesMany(supabase, 'personal_task', (tasks || []).map((t) => t.id));
+}
+
 export async function cleanupDealOrphans(supabase, dealId) {
   // inquiries ผูกดีล — ลบ message + งานที่ผูก inquiry ก่อน แล้วลบตัว inquiry
   const { data: inqs } = await supabase.from('inquiries').select('id').eq('dealId', dealId);
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
     await supabase.from('inquiry_messages').delete().in('inquiryId', inquiryIds);
+    await purgeTaskThreads(supabase, { column: 'inquiryId', values: inquiryIds });
     await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
     await supabase.from('inquiries').delete().in('id', inquiryIds);
   }
   // งานส่วนตัวที่ผูกดีลโดยตรง
+  await purgeTaskThreads(supabase, { column: 'dealId', values: [dealId] });
   await supabase.from('personal_tasks').delete().eq('dealId', dealId);
   // ดีลอื่นที่อ้างดีลนี้เป็น parent — ปลด logical ref กันกำพร้า
   await supabase.from('sales_deals').update({ parentDealId: null }).eq('parentDealId', dealId);
