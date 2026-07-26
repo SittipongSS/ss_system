@@ -319,3 +319,175 @@ jsonb รูปเดียวกันอยู่แล้ว ⇒ ได้พ
 6. หลังย้ายแต่ละ PR: จำนวนข้อความเท่าเดิมทุกเธรด + ไฟล์แนบเปิดได้เหมือนเดิม
 7. แดชบอร์ดฟีดรวมยังแสดงครบเหมือนก่อนย้าย
 8. `npm test` เขียว · `npm run check:migrations` เขียว
+
+---
+
+# ภาคผนวก (ฉบับที่ 2, 2026-07-26) — รายละเอียดระดับลงมือ
+
+> ฉบับที่ 1 หยุดที่ระดับ "ออกแบบ" — พอตัดสินใจได้ แต่ยังเปิดโค้ดแล้วพิมพ์ตามไม่ได้
+> ส่วนนี้เติมของที่ขาด: ทะเบียนสิทธิ์จริง · แมป kind · แคตตาล็อกเหตุการณ์ระบบ ·
+> SQL backfill · สัญญา API/component · rollback · และของที่ยัง**ตอบไม่ได้จากในโค้ด**
+
+## 10. ทะเบียนสิทธิ์ฉบับเต็ม (`lib/master/updateAccess.js`)
+
+⚠️ **ทุกฟังก์ชันต้องเป็น async และรับ `supabase`** — ด่านของงาน/เคสต้อง query ต่อ
+(`canViewPersonalTask` เป็น async อยู่แล้ว · การโพสต์ในเคสต้องอ่านหัวเคสมาดูสถานะ)
+ถ้าเผลอออกแบบเป็น sync จะต้องรื้อทั้งทะเบียนตอนต่อ entity ตัวที่สอง
+
+| entityType | ตารางแม่ | ดู | โพสต์ | แก้/ลบข้อความตัวเอง | ไฟล์แนบ |
+|---|---|---|---|---|---|
+| `personal_task` | `personal_tasks` | `canViewPersonalTask` | `canManagePersonalTask` ∨ `canChangeTaskStatus` (proxyBy) | ✅ เจ้าของข้อความ | ✅ **เปิดใหม่** |
+| `material_ask` | `material_price_asks` | `canViewCosting` | `canManageAsk` ∨ `canAnswerAsk` | ✅ + เคสต้องยังไม่ปิด/ยกเลิก | ✅ |
+| `costing_request` | `costing_requests` | `canViewCostingRequest` | `canEditCostingRequest` ∨ `canApproveCosting` | ✅ + ใบต้องยังไม่อนุมัติ | ✅ |
+| `mgmt_task`/`mgmt_meeting`/`mgmt_rock` | `mgmt_tasks`/`_meetings`/`_rocks` | `mgmt:view` | `mgmt:edit` | ✅ เจ้าของข้อความ | ➖ คงเดิม |
+| `inquiry` | `inquiries` | `canViewInquiry` | ผู้ถาม/ฝ่ายผู้ตอบ (ของเดิม) | `canMutateInquiryMessage` (ของเดิม) | ✅ |
+| `deal` | `sales_deals` | `inSalesViewScope` | `canEditSalesPlanning` ∧ `inSalesEditScope` | ✅ ในขอบเขตดีล | ✅ |
+| `lead` *(อนาคต)* | `sales_leads` | `inLeadScope` | `salesplan:lead` | ✅ | ➖ |
+
+> ผู้บริหารโพสต์ในใบ CR ได้ (`canApproveCosting`) **โดยตั้งใจ** — เหตุผลที่ตีกลับควรอยู่
+> ในเธรด ไม่ใช่ทับช่อง `returnReason` ช่องเดียวทุกครั้งเหมือนตอนนี้
+
+## 11. แมป kind (ของเดิม → ของกลาง)
+
+**ไม่เปลี่ยนชื่อ kind ของใครเลย** — ของกลางไม่มี CHECK และชุด kind เป็นของแต่ละ entity
+อยู่แล้ว การเปลี่ยนชื่อมีแต่ทำให้ backfill พังโดยไม่ได้อะไรกลับมา
+
+| entity | kind ที่ยกมาทั้งชุด |
+|---|---|
+| `personal_task` | `comment` · `status` · `due` · `late` |
+| `deal` | `note` · `call` · `meeting` · `email` · `next_step` |
+| `inquiry` | `comment` · `status` |
+| `mgmt_*` | `edit` · `status` · `comment` · `file` · `link` |
+| `material_ask` *(ใหม่)* | `comment` · `status` |
+| `costing_request` *(ใหม่)* | `comment` · `status` |
+
+ป้าย/สีย้ายจาก `UPDATE_META` (pm/tasks:137) และ `ACTIVITY_META` (deals:52) ไป
+`lib/master/updateTypes.js` **แบบยกมาตรง ๆ** — ผู้ใช้ต้องไม่รู้สึกว่าสีเปลี่ยน
+
+**ค่าที่ต้องย้ายเข้า `meta`:** `sales_deal_activities.dueDate` → `meta.dueDate`
+(อีกสามตารางไม่มีคอลัมน์นอกมาตรฐาน)
+
+## 12. แคตตาล็อกเหตุการณ์ระบบ (ใครเขียนอะไรลงเธรด)
+
+**ของเดิม — หลังย้ายต้องทำงานเหมือนเดิมเป๊ะ**
+
+| entity | เหตุการณ์ | kind | เขียนที่ |
+|---|---|---|---|
+| `personal_task` | เปลี่ยนสถานะ · เลื่อนกำหนดเสร็จ · เหตุผลที่เสร็จช้า | `status`/`due`/`late` | `autoTaskUpdates` ← `personal-tasks/[id]` PATCH:224 |
+| `inquiry` | รับเรื่อง · ปิด · เปิดใหม่ | `status` | routes ของ inquiries |
+| `mgmt_*` | แก้ฟิลด์ · เปลี่ยนสถานะ · แนบไฟล์ · ผูกลิงก์ | `edit`/`status`/`file`/`link` | `lib/mgmt/repo.js` `appendUpdate` |
+| `deal` | — ไม่มี auto (stage อยู่คนละตาราง) | — | — |
+
+**ของใหม่ที่จะเพิ่ม**
+
+| entity | เหตุการณ์ | kind | เขียนที่ |
+|---|---|---|---|
+| `material_ask` | ส่งเคส (ออกเลข) · รับเรื่อง · ปิด · ยกเลิก | `status` | `materials/asks/[id]` PATCH |
+| | ตอบราคา rev.N · ตอบไม่ได้ + เหตุผล | `status` | `materials/asks/[id]/answer` |
+| `costing_request` | ส่งผู้บริหาร · อนุมัติรายสินค้า · ตีกลับ + เหตุผล | `status` | `costing/[id]/submit`, `/approve` |
+| | เปิดเคสขอราคาจากบรรทัด | `status` | `materials/asks` POST (เขียนสองฝั่ง) |
+
+> กติกาเดิมที่ต้องคงไว้: **auto-log ห้าม throw** (ฟีดพลาดต้องไม่ทำให้ action พัง) แต่
+> **ตอนคนกดปุ่มส่งต้องคืน error** ไม่งั้นผู้ใช้เห็น 201 ทั้งที่ไม่ได้บันทึก — บทเรียนจริง
+> ที่เขียนไว้หัว `lib/pm/taskUpdates.js` (เวอร์ชันแรก try/catch เป็นโค้ดตาย insert พังเงียบ)
+
+## 13. PR 1 ลงรายละเอียด — core + งานของฉัน
+
+### 13.1 ไฟล์ที่แตะ
+
+| ไฟล์ | ทำอะไร |
+|---|---|
+| `supabase/migrations/0160_entity_updates.sql` | ตาราง (§4.1) + backfill งานของฉัน (§13.2) |
+| `lib/master/updateTypes.js` · `updateAccess.js` (+เทสต์) · `updates.js` | core |
+| `components/updates/UpdateThread.js` (+ `.module.css`) · `UpdateComposer.js` | UI กลาง (ยกไทม์ไลน์ราง+จุดจากหน้าลีด) |
+| `app/api/updates/route.js` · `[id]/route.js` · `[id]/file/route.js` | API กลาง |
+| `src/proxy.js` | ปล่อย `/api/updates` ให้ผู้ล็อกอินทุกคน (ด่านจริงอยู่ในทะเบียน) |
+| `app/pm/tasks/[id]/page.js` | ลบ `TaskUpdates` inline → `<UpdateThread entityType="personal_task" …/>` |
+| `api/pm/personal-tasks/[id]/route.js` | `autoTaskUpdates` เขียนผ่าน `appendUpdate` ของกลาง |
+| `api/pm/personal-tasks/[id]/updates/route.js` | **คงไว้เป็น alias** ชี้ของกลาง (อาจมีคนบุ๊กมาร์ก/เรียกอยู่) |
+| `lib/pm/taskUpdates.js` | เหลือ `autoTaskUpdates` (pure มีเทสต์แล้ว) ส่วน I/O ตัดทิ้ง |
+| `lib/forceDelete.js` | `purgeUpdates('personal_task', id)` ตอนลบงาน |
+
+### 13.2 Backfill (ท้ายไฟล์ 0160 — idempotent รันซ้ำได้)
+
+```sql
+INSERT INTO public.entity_updates
+  (id, "entityType", "entityId", kind, body, meta, "authorId", "authorName", "createdAt")
+SELECT
+  u.id,                    -- คง id เดิม → รันซ้ำไม่เกิดแถวซ้ำ และตามรอยกลับได้
+  'personal_task', u."taskId", u.kind, u.body,
+  COALESCE(u.meta, '{}'::jsonb),
+  u."authorId", u."authorName", u."createdAt"
+FROM public.personal_task_updates u
+WHERE NOT EXISTS (SELECT 1 FROM public.entity_updates e WHERE e.id = u.id);
+```
+
+**ตรวจก่อน merge (ต้องเท่ากันทั้งสองคู่):**
+```sql
+SELECT (SELECT count(*) FROM personal_task_updates) AS เก่า,
+       (SELECT count(*) FROM entity_updates WHERE "entityType" = 'personal_task') AS ใหม่;
+SELECT (SELECT count(DISTINCT "taskId")   FROM personal_task_updates) AS งานเก่า,
+       (SELECT count(DISTINCT "entityId") FROM entity_updates
+         WHERE "entityType" = 'personal_task') AS งานใหม่;
+```
+
+⚠️ `personal_task_updates` **ไม่ถูกลบใน PR นี้** — เขียนลงของกลางอย่างเดียว ตารางเก่า
+ค้างไว้เป็นตาข่ายกันตก (drop ที่ PR 6)
+
+### 13.3 Rollback ของ PR 1
+
+1. revert โค้ด → หน้างานกลับไปอ่าน `personal_task_updates` ที่ยังครบทุกแถว
+2. อัปเดตที่โพสต์ระหว่างใช้ของกลางอยู่ใน `entity_updates` เท่านั้น → ก่อน revert ต้อง copy กลับ:
+   ```sql
+   INSERT INTO personal_task_updates
+     (id,"taskId",kind,body,meta,"authorId","authorName","createdAt")
+   SELECT id,"entityId",kind,body,meta,"authorId","authorName","createdAt"
+   FROM entity_updates e WHERE e."entityType" = 'personal_task'
+     AND NOT EXISTS (SELECT 1 FROM personal_task_updates p WHERE p.id = e.id);
+   ```
+   (ไฟล์แนบที่เพิ่งเปิดใช้จะหาย — ตารางเก่าไม่มีคอลัมน์นั้น ยอมรับได้ตอน rollback)
+3. ตาราง `entity_updates` ทิ้งไว้ได้ ไม่มีใครอ่าน
+
+## 14. สัญญา API / component
+
+```
+GET    /api/updates?entityType=&entityId=      → 200 [Update]  (เก่า→ใหม่)
+GET    /api/updates?mine=1&limit=50            → 200 [Update + entityLabel/entityHref]
+POST   /api/updates
+       { entityType, entityId, kind?='comment', body?, attachments?, meta? }
+       → 201 Update · 400 ต้องมีข้อความหรือไฟล์ · 403 · 404
+PATCH  /api/updates/[id]  { action:'edit', body } | { action:'acknowledge' } → 200
+DELETE /api/updates/[id]                        → 200 (soft: เซ็ต deletedBy/At แถวไม่หาย)
+GET    /api/updates/[id]/file?i=0               → stream (สิทธิ์ = สิทธิ์อ่านเธรดเดียวกัน)
+
+attachments: [{ fileUrl, driveFileId?, fileName?, mimeType?, sizeBytes? }] ≤ 8 ไฟล์
+             (รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว — sanitize เหมือน inquiries)
+```
+
+```jsx
+<UpdateThread
+  entityType="personal_task" entityId={task.id}
+  canPost={…}          // ไม่ส่ง = ให้ API ตัดสิน
+  extraItems={[]}      // รายการอ่านอย่างเดียวจากแหล่งอื่น (§5)
+  order="asc"          // งาน/สอบถาม = เก่าก่อน · ดีล = ใหม่ก่อน (คงพฤติกรรมเดิมของแต่ละหน้า)
+  emptyText="…"
+/>
+```
+
+## 15. ของที่ยังตอบไม่ได้จากในโค้ด — ต้องรันบน prod ก่อนเริ่ม PR 1
+
+```sql
+SELECT 'personal_task_updates' AS t, count(*) FROM personal_task_updates
+UNION ALL SELECT 'sales_deal_activities', count(*) FROM sales_deal_activities
+UNION ALL SELECT 'inquiry_messages',      count(*) FROM inquiry_messages
+UNION ALL SELECT 'mgmt_updates',          count(*) FROM mgmt_updates;
+```
+
+ใช้ประเมินว่า backfill ยิงรวดเดียวได้ไหม — ถ้าเกินหลักแสนต้องแบ่งก้อน
+คาดว่าไม่ถึง แต่ **ห้ามเดา** เพราะ `INSERT … SELECT` ที่ lock ยาว = หน้างานค้าง
+
+## 16. ลำดับที่แนะนำให้ทำจริง
+
+PR 1 (core + งานของฉัน) → **ใช้จริงสักสัปดาห์** → ค่อย PR 2
+ระหว่างนั้นคือช่วงที่ถอยได้ถูกที่สุด (§13.3) และเป็นช่วงที่จะรู้ว่าทะเบียนสิทธิ์กับ
+สัญญา component ออกแบบพอหรือยัง — ก่อนจะมี 5 entity ผูกกับมัน
