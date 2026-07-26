@@ -42,15 +42,16 @@ test('only AE Supervisor and admin are SO reviewers', () => {
   assert.equal(isSalesOrderReviewer('ae'), false);
 });
 
-test('pending SO may be withdrawn by its proposer or reviewer only', () => {
+test('pending SO withdrawal belongs to the proposer alone — reviewers use rejection', () => {
   const order = { status: 'pending_approval', submittedBy: 'USR-PROPOSER' };
   assert.equal(isSalesOrderSubmitter(order, 'USR-PROPOSER'), true);
   assert.equal(isSalesOrderSubmitter(order, 'USR-OTHER'), false);
   assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-PROPOSER' }), true);
-  assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-REVIEWER', reviewer: true }), true);
+  // ผู้รีวิวดึงกลับไม่ได้แล้ว (มติ 2026-07-26) — ใช้ "ตีกลับ" ที่เก็บเหตุผลและแจ้งทีมขาย
+  assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-REVIEWER', reviewer: true }), false);
   assert.equal(canWithdrawSalesOrderSubmission(order, { userId: 'USR-OTHER' }), false);
   assert.equal(
-    canWithdrawSalesOrderSubmission({ ...order, status: 'approved' }, { userId: 'USR-PROPOSER', reviewer: true }),
+    canWithdrawSalesOrderSubmission({ ...order, status: 'approved' }, { userId: 'USR-PROPOSER' }),
     false,
   );
 });

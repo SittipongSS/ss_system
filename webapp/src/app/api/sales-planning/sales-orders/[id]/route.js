@@ -182,8 +182,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const reviewer = isSalesOrderReviewer(user.role);
 
   if (action === 'withdraw') {
-    if (!canWithdrawSalesOrderSubmission(before, { userId: user.id, reviewer })) {
-      return forbidden('ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
+    // ดึงกลับเป็นการกระทำของผู้ยื่นเท่านั้น (มติ 2026-07-26) — ผู้รีวิวใช้ตีกลับแทน
+    if (!canWithdrawSalesOrderSubmission(before, { userId: user.id })) {
+      return forbidden('ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง — ผู้รีวิวให้ใช้ “ตีกลับให้แก้ไข”');
     }
     const reason = String(body.reason || '').trim();
     // เวอร์ชันที่ "หน้าเว็บเห็น" ไม่ใช่ที่ server เพิ่งอ่าน — ดู lib/sales/documentConcurrency.js

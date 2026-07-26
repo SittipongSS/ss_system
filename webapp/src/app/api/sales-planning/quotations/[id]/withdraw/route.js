@@ -1,7 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
-  canApproveQuotation,
   canViewSalesPlanning,
   dealAuditLabel,
   inSalesViewScope,
@@ -34,9 +33,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
 
-  const approver = canApproveQuotation(user, quote.deal);
-  const allowed = canWithdrawQuotationSubmission(quote, { userId: user.id, approver });
-  if (!allowed) return forbidden('ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
+  // ดึงกลับเป็นการกระทำของผู้ยื่นเท่านั้น (มติ 2026-07-26) — ผู้อนุมัติใช้ /reject แทน
+  if (!canWithdrawQuotationSubmission(quote, { userId: user.id })) {
+    return forbidden('ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง — ผู้อนุมัติให้ใช้ “ตีกลับให้แก้ไข”');
+  }
   // A proposer who has since lost edit capability still owns the pending
   // submission and may withdraw it; they simply cannot edit afterward.
 

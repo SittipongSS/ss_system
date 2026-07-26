@@ -52,3 +52,18 @@ test('unrelated uses of ถอด are left alone', () => {
   const deals = read('src/app/api/sales-planning/deals/[id]/route.js');
   assert.match(deals, /ถอด timeline segment/);   // ถอดออกจากโครงการ
 });
+
+// มติ 2026-07-26: ผู้อนุมัติ/ผู้รีวิวดึงกลับไม่ได้แล้ว — ใช้ "ตีกลับ" ที่ทิ้งเหตุผลไว้แทน
+// ด่านนี้อยู่ที่ predicate ตัวเดียวซึ่ง route ใช้ร่วมกับหน้าเว็บ ถ้าหน้าไหนเขียนตรรกะเองซ้ำ
+// (แบบที่เคยเป็น) ปุ่มกับ API จะเพี้ยนหากันเงียบ ๆ อีกรอบ
+test('both detail pages gate ดึงกลับ through the shared predicate, not a local copy', () => {
+  const qt = read('src/app/sales-planning/quotations/[id]/page.js');
+  const so = read('src/app/sales-planning/sales-orders/[id]/page.js');
+
+  assert.match(qt, /canWithdrawSubmission = canWithdrawQuotationSubmission\(/);
+  assert.match(so, /canWithdraw = canWithdrawSalesOrderSubmission\(/);
+
+  // ตรรกะเดิมที่ยอมให้ผู้อนุมัติ/ผู้รีวิวดึงกลับต้องไม่หลงเหลือ
+  assert.doesNotMatch(qt, /approvalRequestedBy === quote\?\.meId \|\| !!quote\?\.canApprove/);
+  assert.doesNotMatch(so, /order\.submittedBy === order\.meId \|\| reviewer/);
+});

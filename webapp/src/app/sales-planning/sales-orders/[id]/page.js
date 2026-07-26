@@ -28,6 +28,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import {
   SALES_ORDER_CANCEL_REASONS,
   canHardDeleteSalesOrder,
+  canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   isCustomerCancelReason,
 } from "@/lib/sales/salesOrderWorkflow";
@@ -211,7 +212,7 @@ export default function SalesOrderDetailPage() {
     setConfirmState({
       title: "ยื่นอนุมัติ Sale Order",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
-      detail: "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นหรือผู้อนุมัติดึงเอกสารกลับได้",
+      detail: "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
       confirmLabel: "ยื่นอนุมัติ",
       action: () => requestAction("submit"),
     });
@@ -372,8 +373,8 @@ export default function SalesOrderDetailPage() {
   const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
   const canEditDocument = canEdit && ["draft", "rejected"].includes(order.status);
   const editable = canEditDocument && editMode;
-  const canWithdraw = order.status === "pending_approval"
-    && (order.submittedBy === order.meId || reviewer);
+  // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
+  const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
   const canRevise = order.status === "approved" && reviewer;
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
