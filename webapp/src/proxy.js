@@ -253,8 +253,8 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.
   if (path.startsWith('/api/sa/costing')) {
     if (/\/approve$/.test(path)) return can(role, 'costing:approve');
-    // ยืนยันราคาที่เกินอายุ (RD/PC) — ราคาวัสดุมาจากคลังแล้ว (PR-B)
-    if (/\/confirm-price$/.test(path)) return can(role, 'costing:quote');
+    // ราคาวัสดุตอบที่ "เคสขอราคา" (/api/sa/materials/asks) แล้ว ไม่มีเส้นให้ RD/PC
+    // แตะใบขอราคาผลิตโดยตรงอีก — ที่เหลือเป็นงานของฝ่ายขายเจ้าของใบล้วน ๆ
     return can(role, 'costing:edit');
   }
   // ทะเบียนวัสดุ + คำขอราคาวัสดุ (mig 0143 + 0157) — สองฝ่ายใช้เส้นเดียวกันคนละ

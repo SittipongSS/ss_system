@@ -88,6 +88,7 @@ export default function MaterialAsksPage() {
           materialId: it.material?.materialId || null,
           label: it.material?.label || "",
           spec: it.spec,
+          componentId: it.componentId || null,
           tiers: it.tiers,
         })),
       };

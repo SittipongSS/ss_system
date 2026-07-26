@@ -1,6 +1,7 @@
 # แผน implement: ระบบขอราคาผลิต (Costing Request)
 
-> สถานะ: **ฉบับแก้ไขครั้งที่ 5 — เคสขอราคาวัสดุ + ราคาชั้นจำนวน (มติ 2026-07-26) รอเริ่มโค้ด**
+> สถานะ: **ฉบับแก้ไขครั้งที่ 5 — สร้างครบทั้ง 3 PR แล้ว** (PR-1 #729 · PR-2 #731 · PR-3)
+> mig 0157/0158 รัน prod แล้ว 2026-07-26 · **0159 ต้องรันก่อน deploy PR-3**
 > ฉบับที่ 1 (MERGED #637) ใบเดียวจบวงจร — สร้างครบ 6 PR (#638–#650)
 > ฉบับที่ 3 (MERGED #659) แยก 2 เอกสาร MR + CR — สร้างครบ 3 PR (#662/#665/#666) **ใช้จริงไม่ได้** (ข้อ 0)
 > ฉบับที่ 4 (MERGED #723) ยุบใบ MR เป็น "คิว" ไม่มีเลขที่ — **สมมติฐานผิด** ผู้ใช้ยืนยันว่าคำขอราคา
@@ -423,6 +424,14 @@ ALTER TABLE public.costing_item_components
   ADD CONSTRAINT costing_item_components_material_rev_fk
     FOREIGN KEY ("materialRevisionId") REFERENCES public.material_price_revisions(id) ON DELETE RESTRICT;
 
+CREATE INDEX IF NOT EXISTS costing_item_components_material_idx
+  ON public.costing_item_components ("materialId");
+
+-- + CREATE OR REPLACE guard_costing_request(): เกณฑ์ลบเปลี่ยนจาก status = 'draft'
+--   เป็น "ยังไม่เคยส่ง" (submittedAt IS NULL) + status IN (draft, pricing, assembling)
+--   เพราะธง 'pricing' แอปสลับเองเมื่อมีเคสค้าง — ใบร่างที่แค่ถามราคาต้องไม่กลาย
+--   เป็นลบไม่ได้ตลอดกาลโดยไม่ได้ตั้งใจ (ดูไฟล์จริงใน supabase/migrations/0159)
+
 COMMIT;
 NOTIFY pgrst, 'reload schema';
 ```
@@ -557,11 +566,21 @@ API เคสครบ · แจ้งเตือน space rd/pc (บั๊ก 
 redirect · entity แนบไฟล์ใหม่
 → ใบ CR ยังใช้การจับคู่ตามชื่อชั่วคราว (ไม่พัง เพราะ 0158 ไม่แตะคอลัมน์ที่โค้ดใบ CR เขียน)
 
-**PR-3 ใบ CR ผูกวัสดุจริง + เก็บกวาด**
+**PR-3 ใบ CR ผูกวัสดุจริง + เก็บกวาด** ✅ สร้างแล้ว
 mig 0159 · `MaterialPicker` + `/components` API (ผูกวัสดุ + แก้กรัม + เลือกชั้น — บั๊ก 3) ·
 `componentLibraryStatus`/`libraryPricingBlocker` ยึด id (บั๊ก 4) · `fill-prices` คืนจำนวนจริง ·
 ลบ `confirm-price` + กฎ proxy · ตัด `priceSource` ออกจากโค้ด/คอมเมนต์ (บั๊ก 7) · สถานะ `pricing`
 กลับมามีความหมาย · rulebook + memory + คอมเมนต์ที่ยังอ้าง "2 เอกสาร"
+
+> สิ่งที่ทำเพิ่มจากแผนตอนลงมือจริง (เหตุผลอยู่ในโค้ด/migration):
+> · `syncCostingPricingStatus` ใน `costingAdmin.js` = แหล่งเดียวที่สลับธง `pricing`
+>   (เรียกจาก submit + ทุก action ของเคสที่ผูกใบ) — ไม่มีปุ่มให้ใครกดเปลี่ยนเอง
+> · GET ใบคืน `_openAsks` ให้หน้าจอขึ้นป้าย "รอฝ่าย…ตอบเคส" รายบรรทัดได้
+> · ผ่อน guard การลบใบร่าง (เหตุผลข้างบน) ทั้งฝั่ง DB และ API ให้ตรงกัน
+> · `fill-prices` ไม่ทับ snapshot ที่ยังสด (มติ 2) แต่ **ต่ออายุ** อันที่หมดอายุแล้ว
+> · เก็บกวาดโค้ดตายจากใบ MR ที่ค้างมาจาก PR-1/PR-2: `bestPriceFor`,
+>   `generateMaterialRequestDocNo`, `normalizeMaterialRequestItems` + เทสต์ของมัน
+> · `AskForm` เปลี่ยนไปใช้ `productIdentity()` (มาตรฐาน PR #730) แทนการต่อ `fgCode — name` เอง
 
 ## 7. เช็คลิสต์ทดสอบ (UAT)
 

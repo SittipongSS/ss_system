@@ -11,6 +11,7 @@ import {
   deleteAskError, generateAskDocNo, submitAskError,
 } from '@/lib/materialAsks';
 import { findAsk } from '@/lib/materialPricesAdmin';
+import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -102,6 +103,9 @@ export async function PATCH(request, { params }) {
     const { error } = await supabase.from('material_price_asks').update(patch).eq('id', id);
     if (error) throw error;
 
+    // ใบขอราคาผลิตที่เคสนี้ถามแทน: เปิดเคส = ใบเป็น 'pricing', ปิด/ยกเลิก = คืนสถานะ
+    if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
+
     const after = await findAsk(supabase, id);
     await recordAudit({
       user, action: 'update', entityType: 'material_price_ask', entityId: id, before, after, summary, request,
@@ -159,6 +163,7 @@ export async function DELETE(request, { params }) {
     ? await supabase.rpc('force_delete_material_ask', { p_id: id })
     : await supabase.from('material_price_asks').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
 
   await recordAudit({
     user, action: 'delete', entityType: 'material_price_ask', entityId: id, before,

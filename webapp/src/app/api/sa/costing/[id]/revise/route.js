@@ -84,13 +84,13 @@ export async function POST(request, { params }) {
           unitBasis: c.unitBasis,
           gramsPerUnit: c.gramsPerUnit,
           sourceDept: c.sourceDept,
-          // คงราคา snapshot ที่ดึงจากคลังไว้ (เซลจะได้ไม่ต้องดึงใหม่ทั้งชุด)
+          // คงราคา snapshot ที่ดึงจากทะเบียนไว้ (เซลจะได้ไม่ต้องดึงใหม่ทั้งชุด)
           pricePerKg: c.pricePerKg,
           pricePerUnit: c.pricePerUnit,
           priceStatus: c.priceStatus,
-          priceSource: c.priceSource,
           materialId: c.materialId,
           materialRevisionId: c.materialRevisionId,
+          priceTierQty: c.priceTierQty,
           required: c.required,
         })),
       );

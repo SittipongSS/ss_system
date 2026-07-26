@@ -15,6 +15,7 @@ import { canQuoteMaterial, normalizeTiers } from '@/lib/materialPrices';
 import { answerAskError, canAnswerAsk, deriveAskStatusAfterAnswer } from '@/lib/materialAsks';
 import { acceptMaterial, appendMaterialRevision, findAsk } from '@/lib/materialPricesAdmin';
 import { componentFillFromRevision } from '@/lib/costingLibrary';
+import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -114,8 +115,12 @@ export async function PATCH(request, { params }) {
 
       // เติมราคากลับบรรทัดในใบขอราคาผลิตที่รออยู่ (ถ้ารายการนี้ผูกไว้)
       // ไม่ทับบรรทัดที่มีราคาอยู่แล้ว — เซลอาจเลือกใช้ราคาอื่นไปแล้ว
+      // ชั้นที่ใช้ = ชั้นที่เซลเลือกไว้บนบรรทัด (0159) ไม่ใช่ชั้นตั้งต้นของรุ่น
       if (item.componentId) {
-        const fill = componentFillFromRevision(revision);
+        const { data: component } = await supabase
+          .from('costing_item_components')
+          .select('priceTierQty').eq('id', item.componentId).maybeSingle();
+        const fill = componentFillFromRevision(revision, { tierQty: component?.priceTierQty ?? null });
         if (fill) {
           await supabase.from('costing_item_components').update({
             ...fill,
@@ -141,6 +146,9 @@ export async function PATCH(request, { params }) {
     }
     const { error: askError } = await supabase.from('material_price_asks').update(patch).eq('id', id);
     if (askError) throw askError;
+
+    // ตอบครบแล้วใบขอราคาผลิตที่รออยู่ไม่ควรค้างสถานะ 'pricing' อีก
+    if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
 
     const after = await findAsk(supabase, id);
     const quoted = validated.filter((a) => !a.noQuote).length;

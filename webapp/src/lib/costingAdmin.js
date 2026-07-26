@@ -2,6 +2,7 @@
 // แยกจาก lib/costing.js (logic ล้วน) เพราะไฟล์นี้แตะ DB จริง
 import { randomUUID } from 'crypto';
 import { sourceDeptForKind } from '@/lib/master/costTemplate';
+import { ASK_OPEN_STATUSES } from '@/lib/materialAsks';
 
 // โหลดใบพร้อมลูกทั้งสามชั้นในชุด query คงที่ (ไม่ยิงต่อใบ — กัน N+1 บนหน้ารายการ)
 export async function loadCostingRequests(supabase, { id = null, filters = {} } = {}) {
@@ -55,6 +56,61 @@ export async function findCostingRequest(supabase, id) {
   return request || null;
 }
 
+// ── เคสขอราคาวัสดุที่เปิดค้างจากใบนี้ (0158+0159) ──────────────────────
+// คืนรายการ { componentId, askId, docNo, askStatus } เฉพาะรายการที่ยังไม่ถูกตอบ
+// ในเคสที่ยังเดินอยู่ — ใช้ทั้งป้ายบนหน้าจอ, ด่านส่งผู้บริหาร และธงสถานะ 'pricing'
+export async function loadPendingAskLinks(supabase, requestId) {
+  const { data: asks, error } = await supabase
+    .from('material_price_asks')
+    .select('id, docNo, status, dept')
+    .eq('costingRequestId', requestId)
+    .in('status', ASK_OPEN_STATUSES);
+  if (error) throw error;
+  if (!asks?.length) return [];
+
+  const { data: items, error: itemError } = await supabase
+    .from('material_price_ask_items')
+    .select('id, askId, componentId, priceStatus, label')
+    .in('askId', asks.map((a) => a.id))
+    .eq('priceStatus', 'pending');
+  if (itemError) throw itemError;
+
+  const byId = new Map(asks.map((a) => [a.id, a]));
+  return (items || [])
+    .filter((i) => i.componentId)
+    .map((i) => ({
+      componentId: i.componentId,
+      askItemId: i.id,
+      askId: i.askId,
+      docNo: byId.get(i.askId)?.docNo || null,
+      askStatus: byId.get(i.askId)?.status || null,
+      dept: byId.get(i.askId)?.dept || null,
+    }));
+}
+
+// สถานะ 'pricing' = "ใบนี้มีเคสขอราคาวัสดุค้างอยู่" (มติ PR-3) — แอปสลับธงนี้เอง
+// ทุกครั้งที่คิวเคสของใบเปลี่ยน ไม่มีปุ่มให้ใครกด (แพตเทิร์นเดียวกับสถานะอนุมัติ)
+//
+// แตะเฉพาะสามสถานะต้นทางเท่านั้น: ใบที่ถูกตีกลับ/รออนุมัติ/อนุมัติแล้ว สถานะของมัน
+// มีความหมายแรงกว่า ห้ามให้การเปิดเคสมากลบทิ้ง (ด่านส่งผู้บริหารกันไว้อีกชั้นแล้ว)
+export async function syncCostingPricingStatus(supabase, requestId) {
+  const { data: row, error } = await supabase
+    .from('costing_requests').select('id, status').eq('id', requestId).maybeSingle();
+  if (error) throw error;
+  if (!row || !['draft', 'pricing', 'assembling'].includes(row.status)) return row?.status ?? null;
+
+  const pending = await loadPendingAskLinks(supabase, requestId);
+  let next = row.status;
+  if (pending.length) next = 'pricing';
+  else if (row.status === 'pricing') next = 'assembling';
+  if (next === row.status) return row.status;
+
+  const { error: updateError } = await supabase.from('costing_requests')
+    .update({ status: next, updatedAt: new Date().toISOString() }).eq('id', requestId);
+  if (updateError) throw updateError;
+  return next;
+}
+
 // กางบรรทัดจากแม่แบบของประเภทสินค้าเป็น "สำเนาของใบนี้เอง"
 // แม่แบบแก้ทีหลังไม่กระทบใบที่กางไปแล้ว — นั่นคือเหตุผลที่ไม่เก็บแค่ templateId
 // แล้วไป join สด ๆ ตอนอ่าน
@@ -66,6 +122,8 @@ export function componentRowsFromTemplate(itemId, templateLines = []) {
     kind: line.kind,
     label: line.label,
     unitBasis: line.unitBasis,
+    // กรัม/ชิ้นจากแม่แบบเป็นแค่ **ค่าตั้งต้น** — แก้บนบรรทัดได้ผ่าน /components
+    // (บั๊ก 3: เดิมนี่คือที่เดียวที่เขียนค่านี้ แม่แบบไม่ใส่มา = ใบค้างถาวร)
     gramsPerUnit: line.defaultGramsPerUnit ?? null,
     sourceDept: sourceDeptForKind(line.kind),
     priceStatus: 'pending',

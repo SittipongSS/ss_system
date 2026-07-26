@@ -8,7 +8,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { loadCostTemplates } from '@/lib/master/costTemplateAdmin';
 import { canEditCostingRequest, canViewCostingRequest } from '@/lib/costing';
-import { componentRowsFromTemplate, findCostingRequest, tierRowsFor } from '@/lib/costingAdmin';
+import {
+  componentRowsFromTemplate, findCostingRequest, loadPendingAskLinks, tierRowsFor,
+} from '@/lib/costingAdmin';
 import {
   blockingChangeError, blockingTierError, normalizeCostingItems, normalizeTierQuantities,
   planItemChanges, planTierChanges,
@@ -47,7 +49,10 @@ export async function DELETE(request, { params }) {
   if (!canEditCostingRequest(user, before)) {
     return Response.json({ error: 'ไม่มีสิทธิ์ลบใบนี้' }, { status: 403 });
   }
-  if (before.status !== 'draft' || before.submittedAt) {
+  // เกณฑ์คือ "ยังไม่เคยส่งออกจากมือฝ่ายขาย" ไม่ใช่ป้ายสถานะ — ใบร่างที่เพียงแค่
+  // เปิดเคสถามราคาจะขยับเป็น pricing/assembling เอง แต่ยังไม่ใช่หลักฐานของใคร
+  // (guard ระดับ DB ผ่อนตามใน mig 0159 ให้ตรงกัน)
+  if (before.submittedAt || !['draft', 'pricing', 'assembling'].includes(before.status)) {
     return Response.json({ error: 'ลบได้เฉพาะใบร่างที่ยังไม่ส่ง — ใบที่ส่งแล้วใช้ยกเลิกแทน' }, { status: 409 });
   }
   const { error } = await supabase.from('costing_requests').delete().eq('id', id);
@@ -63,12 +68,18 @@ export async function GET(request, { params }) {
   try {
     const user = await getCurrentUser();
     const { id } = await params;
-    const found = await findCostingRequest(getSupabaseAdmin(), id);
+    const supabase = getSupabaseAdmin();
+    const found = await findCostingRequest(supabase, id);
     if (!found) return Response.json({ error: 'ไม่พบใบขอราคา' }, { status: 404 });
     if (!canViewCostingRequest(user, found)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
-    return Response.json(found, { headers: { 'Cache-Control': 'no-store' } });
+    // เคสขอราคาที่เปิดค้างจากใบนี้ — หน้าจอใช้ขึ้นป้าย "รอ RD/PC ตอบ" รายบรรทัด
+    // (เก็บเป็น _openAsks ไม่ยัดเข้า components เพราะมันเป็นข้อมูลของอีกโมดูล)
+    return Response.json(
+      { ...found, _openAsks: await loadPendingAskLinks(supabase, id) },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

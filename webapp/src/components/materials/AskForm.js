@@ -9,6 +9,7 @@ import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import { MATERIAL_KINDS, MATERIAL_KIND_LABELS, sourceDeptForMaterialKind } from "@/lib/materialPrices";
+import { productIdentity } from "@/lib/master/productIdentity";
 
 const QTY_SHORTCUTS = [500, 1000, 3000, 5000, 10000];
 
@@ -17,6 +18,8 @@ export const emptyAskItem = (kind = "PM") => ({
   material: { materialId: null, label: "", isNew: false },
   spec: "",
   tiers: [],
+  // ผูกกลับบรรทัดในใบขอราคาผลิต — ตั้งค่าเฉพาะตอนเปิดเคสจากในใบ (0159)
+  componentId: null,
 });
 
 export const emptyAskForm = () => ({
@@ -91,11 +94,16 @@ export default function AskForm({
                 }}
                 options={[
                   { value: "", label: "ไม่ระบุสินค้า" },
-                  ...products.map((p) => ({
-                    value: p.id,
-                    label: p.fgCode ? `${p.fgCode} — ${p.name}` : p.name,
-                    search: `${p.name} ${p.fgCode || ""} ${p.formulaCode || ""}`,
-                  })),
+                  // ตัวตนสินค้าใช้ productIdentity ตัวเดียวทั้งระบบ (มาตรฐาน PR #730) —
+                  // ห้ามประกอบ `fgCode — name` เองอีก ไม่งั้นแบรนด์/ปริมาตรหายไปเงียบ ๆ
+                  ...products.map((p) => {
+                    const identity = productIdentity(p);
+                    return {
+                      value: p.id,
+                      label: identity.text,
+                      search: `${identity.search} ${p.formulaCode || ""}`,
+                    };
+                  }),
                 ]}
                 ariaLabel="สินค้าที่ขอราคา"
               />
@@ -129,8 +137,9 @@ export default function AskForm({
           <div key={idx} className="glass-panel" style={{ padding: 12, marginBottom: 10 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               <div style={{ width: 170 }}>
+                {/* รายการที่ผูกกลับบรรทัดในใบขอราคาผลิต ชนิดถูกกำหนดโดยบรรทัดนั้น */}
                 <Select
-                  value={item.kind} disabled={disabled || idx > 0}
+                  value={item.kind} disabled={disabled || idx > 0 || !!item.componentId}
                   onChange={(e) => {
                     const kind = e.target.value;
                     const nextDept = sourceDeptForMaterialKind(kind);

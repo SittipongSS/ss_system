@@ -123,7 +123,7 @@ export default function CostingRequestForm({
               onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
             />
             <small style={{ color: "var(--text-3)" }}>
-              ใบไม่ผูกดีล — ราคาวัสดุจะใช้ราคากลางจากคลัง (ไม่ใช่ราคาทับรายลูกค้า)
+              ใบไม่ผูกดีล — เลือกได้เฉพาะวัสดุราคากลางในทะเบียน (ไม่ใช่ราคาทับรายลูกค้า)
             </small>
           </div>
         )}

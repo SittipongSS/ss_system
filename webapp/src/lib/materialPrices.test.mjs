@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_PRICE_TTL_DAYS,
   MATERIAL_KINDS,
-  bestPriceFor,
   canQuoteMaterial,
   findMaterialByIdentity,
   isRevisionExpired,
@@ -12,7 +11,6 @@ import {
   materialIdentityKey,
   materialPriceState,
   normalizeMaterialInput,
-  normalizeMaterialRequestItems,
   normalizeQuotedPrice,
   normalizeTiers,
   revisionPriceRange,
@@ -129,36 +127,6 @@ test('เกินอายุ: เทียบวันนี้กับวั
   assert.equal(isRevisionExpired({}, '2026-07-15'), true);
 });
 
-test('bestPriceFor: ราคาทับรายลูกค้าก่อน ไม่มีค่อยราคากลาง', () => {
-  const materials = [
-    {
-      id: 'm1', kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: null, status: 'active',
-      revisions: [{ revisionNo: 1, ...piece([null, 10]) }],
-    },
-    {
-      id: 'm2', kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: 'AR-1', status: 'active',
-      revisions: [{ revisionNo: 1, ...piece([null, 8]) }],
-    },
-  ];
-  // ลูกค้า AR-1 → ได้ราคาทับ (8)
-  assert.equal(bestPriceFor(materials, { kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: 'AR-1' }).material.id, 'm2');
-  // ลูกค้าอื่น → ราคากลาง (10)
-  assert.equal(bestPriceFor(materials, { kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: 'AR-9' }).material.id, 'm1');
-  // ไม่ระบุลูกค้า → ราคากลาง
-  assert.equal(bestPriceFor(materials, { kind: 'PM', label: 'ขวดแก้ว 50ml' }).material.id, 'm1');
-  // เทียบชื่อไม่สนตัวพิมพ์/ช่องว่างหน้าหลัง
-  assert.ok(bestPriceFor(materials, { kind: 'PM', label: '  ขวดแก้ว 50ml  ' }));
-  // ไม่เจอ
-  assert.equal(bestPriceFor(materials, { kind: 'PM', label: 'ไม่มีของนี้' }), null);
-  // เก็บเข้ากรุ/ร่าง ไม่นับ — ใบขอราคาผลิตต้องได้เฉพาะวัสดุที่ใช้งานจริง
-  for (const status of ['archived', 'draft']) {
-    assert.equal(
-      bestPriceFor([{ ...materials[0], status }], { kind: 'PM', label: 'ขวดแก้ว 50ml' }), null,
-      `status=${status} ต้องไม่ถูกเลือก`,
-    );
-  }
-});
-
 test('ตัวตนวัสดุ: RM แยกด้วยสูตร ไม่ใช่ชื่อ', () => {
   const base = { kind: 'RM_F', label: 'หัวน้ำหอม Lavender', customerId: null };
   // ⚠️ นี่คือหัวใจของบั๊ก "ราคา F สองสูตรทับกัน": ชื่อเหมือนกันเป๊ะแต่คนละสูตร
@@ -228,26 +196,6 @@ test('สิทธิ์ตอบราคาวัสดุ: เฉพาะฝ
   assert.equal(canQuoteMaterial({ role: 'ae', team: 'KA' }, 'PM'), false);
   assert.equal(canQuoteMaterial({ role: 'executive' }, 'RM_F'), false);
   assert.equal(canQuoteMaterial({ role: 'admin' }, 'PM'), true);
-});
-
-test('normalize บรรทัดคำถาม: ตัดช่องว่าง ผูกฝ่ายตามชนิด กันชื่อซ้ำ', () => {
-  const { items, error } = normalizeMaterialRequestItems([
-    { kind: 'PM', label: '  ขวดแก้ว   50ml ' },
-    { kind: 'RM_F', label: 'หัวน้ำหอม A' },
-  ]);
-  assert.equal(error, null);
-  assert.equal(items[0].label, 'ขวดแก้ว 50ml');
-  assert.equal(items[0].sourceDept, 'PC');
-  assert.equal(items[1].sourceDept, 'RD');
-  assert.equal(items[0].sortOrder, 1);
-
-  assert.match(normalizeMaterialRequestItems([]).error, /อย่างน้อย 1 รายการ/);
-  assert.match(normalizeMaterialRequestItems([{ kind: 'labor', label: 'x' }]).error, /ชนิดวัสดุไม่ถูกต้อง/);
-  assert.match(normalizeMaterialRequestItems([{ kind: 'PM', label: ' ' }]).error, /ต้องระบุชื่อวัสดุ/);
-  assert.match(
-    normalizeMaterialRequestItems([{ kind: 'PM', label: 'ขวด' }, { kind: 'PM', label: 'ขวด ' }]).error,
-    /ชื่อวัสดุซ้ำ/,
-  );
 });
 
 test('normalize ราคาที่ตอบ: ปฏิเสธว่าง/ติดลบ, ยอมรับ 0', () => {
