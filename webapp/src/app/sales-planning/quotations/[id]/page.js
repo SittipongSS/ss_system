@@ -7,11 +7,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, Undo2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReasonDialog from "@/components/ui/ReasonDialog";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { ContextualRightRail } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
 import Modal from "@/components/Modal";
@@ -517,10 +519,12 @@ export default function QuotationEditorPage() {
       hideHeader
     >
       {error && (
-        <div className="glass-panel" role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>
-          <span>{error}</span>
-          {errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}
-        </div>
+        <StatusNotice
+          tone="error"
+          action={errorActionUrl ? <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link> : null}
+        >
+          {error}
+        </StatusNotice>
       )}
 
       {quote && (
@@ -791,43 +795,25 @@ export default function QuotationEditorPage() {
         onDone={async () => { setWonOpen(false); await load(); }}
       />
 
-      {/* ย้อนการรับ (มติ 2026-07-21) — เหตุผลบังคับ แบบเดียวกับ Admin Override ของ SO */}
-      {unacceptForm && (
-        <Modal open onClose={() => !busy && setUnacceptForm(null)} title="ย้อนการรับใบเสนอราคา" size="sm" dismissible={!busy}>
-          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--red)", display: "flex", gap: 10 }}>
-              <Undo2 size={20} color="var(--red)" aria-hidden="true" />
-              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
-                <strong style={{ color: "var(--text)" }}>เครื่องมือแก้กรณีรับใบผิด (ยังไม่มี Sale Order)</strong>
-                <p style={{ margin: "4px 0 0" }}>ใบ {quote?.quoteNumber} จะกลับเป็น &ldquo;ส่งลูกค้าแล้ว&rdquo; และดีลถอยออกจาก Won — หลักฐานการรับเดิมคงไว้เป็นประวัติ</p>
-              </div>
-            </div>
-            <label className="form-group" htmlFor="unaccept-reason">
-              <span>เหตุผลที่ย้อนการรับ</span>
-              <textarea
-                id="unaccept-reason"
-                className="textarea-premium"
-                rows={4}
-                required
-                maxLength={UNACCEPT_REASON_MAX}
-                value={unacceptForm.reason}
-                onChange={(event) => setUnacceptForm({ reason: event.target.value })}
-                aria-describedby="unaccept-reason-help"
-                placeholder="เช่น กดรับใบผิดฉบับ — ดีลนี้ต้องปิดด้วยใบเสนอราคาอีกใบ"
-              />
-              <small id="unaccept-reason-help" style={{ color: unacceptForm.reason && unacceptReasonValidation ? "var(--red)" : "var(--text-3)" }}>
-                {unacceptForm.reason && unacceptReasonValidation ? unacceptReasonValidation : `บังคับอย่างน้อย 10 ตัวอักษร · ${unacceptForm.reason.length}/${UNACCEPT_REASON_MAX}`}
-              </small>
-            </label>
-            <div className="action-bar" style={{ marginTop: 0 }}>
-              <button type="button" className="btn ghost" onClick={() => setUnacceptForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-danger" onClick={doUnaccept} disabled={!!busy || !!unacceptReasonValidation}>
-                <Undo2 size={15} aria-hidden="true" /> {busy === "unaccept" ? "กำลังย้อน…" : "ยืนยันย้อนการรับ"}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* ย้อนการรับ (มติ 2026-07-21) — ใช้ reason dialog กลาง แต่คง validation ของ QT */}
+      <ReasonDialog
+        open={!!unacceptForm}
+        title="ย้อนการรับใบเสนอราคา"
+        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็น “ส่งลูกค้าแล้ว” และดีลถอยออกจาก Won`}
+        detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมี Sale Order โดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
+        label="เหตุผลที่ย้อนการรับ"
+        value={unacceptForm?.reason || ""}
+        onChange={(reason) => setUnacceptForm({ reason })}
+        onClose={() => setUnacceptForm(null)}
+        onConfirm={doUnaccept}
+        confirmLabel="ยืนยันย้อนการรับ"
+        placeholder="เช่น กดรับใบผิดฉบับ — ดีลนี้ต้องปิดด้วยใบเสนอราคาอีกใบ"
+        helpText={`บังคับอย่างน้อย 10 ตัวอักษร · ${unacceptForm?.reason.length || 0}/${UNACCEPT_REASON_MAX}`}
+        error={unacceptForm?.reason ? unacceptReasonValidation : ""}
+        minLength={10}
+        maxLength={UNACCEPT_REASON_MAX}
+        busy={busy === "unaccept"}
+      />
 
       <Modal open={saveChoiceOpen} onClose={() => !busy && setSaveChoiceOpen(false)} title="เลือกวิธีบันทึกใบเสนอราคา" size="sm">
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>

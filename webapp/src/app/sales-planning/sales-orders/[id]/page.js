@@ -11,12 +11,15 @@ import {
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { SALES_ORDER_CANCEL_REASONS, canHardDeleteSalesOrder, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
@@ -316,8 +319,15 @@ export default function SalesOrderDetailPage() {
           <p className={styles.statusDescription}>{status.description}</p>
         </SalesDetailOverview>
 
-        {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
-        {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
+        {error && (
+          <StatusNotice
+            tone="error"
+            action={errorActionUrl ? <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link> : null}
+          >
+            {error}
+          </StatusNotice>
+        )}
+        {notice && <StatusNotice tone="success">{notice}</StatusNotice>}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
 
         <ContextGrid>
@@ -389,21 +399,16 @@ export default function SalesOrderDetailPage() {
           </>}
         >
           <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
-            <div className={styles.tableWrap}>
-              <table className={styles.linesTable}>
-                {/* คอลัมน์หน่วยแยกจากจำนวน (ไม่ต่อท้ายตัวเลข) — ช่องจำนวนเป็น tabular-nums
-                    ชิดขวา ต่อข้อความแล้วเลขจะเลิกตรงแนว · ลำดับตรงกับใบที่พิมพ์ */}
-                <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th>หน่วย</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
-                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<ReadableText className={styles.lineText} text={line.description} lines={3} empty="-" /></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td>{line.unit || "-"}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
-              </table>
-            </div>
-            <div className={styles.totals}>
-              <div><span>ยอดก่อนส่วนลด</span><strong>{fmtMoney(order.subtotal)}</strong></div>
-              <div><span>ส่วนลดท้ายใบ</span><strong>{fmtMoney(order.discountAmount)}</strong></div>
-              <div><span>VAT</span><strong>{fmtMoney(order.vatAmount)}</strong></div>
-              <div className={styles.grandTotal}><span>ยอดรวมทั้งสิ้น</span><strong>{fmtMoney(order.totalAmount)}</strong></div>
-              <div className={styles.actualTotal}><span>Actual ก่อน VAT</span><strong>{fmtMoney(order.actualAmount)}</strong></div>
-            </div>
+            <QuotationReadOnlyLineItems
+              lines={sortedLines}
+              summaryRows={[
+                { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
+                { id: "discount", label: "ส่วนลดท้ายใบ", value: Number(order.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : "-" },
+                { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
+              ]}
+              grandTotal={fmtMoney(order.totalAmount)}
+              highlightRows={[{ id: "actual", label: "Actual ก่อน VAT", value: fmtMoney(order.actualAmount), tone: "success" }]}
+            />
           </DetailCard>
         </DetailPageLayout>
       </div>
@@ -426,29 +431,19 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
-      {rejectForm && (
-        <Modal open onClose={() => setRejectForm(null)} title="ตีกลับให้ผู้จัดทำแก้ไข" size="sm" dismissible={!busy}>
-          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label className="form-group">
-              <span>เหตุผลที่ตีกลับ *</span>
-              <textarea
-                className="textarea-premium"
-                rows={4}
-                value={rejectForm.reason}
-                onChange={(event) => setRejectForm({ reason: event.target.value })}
-                placeholder="ระบุสิ่งที่ต้องแก้ไข"
-                autoFocus
-              />
-            </label>
-            <div className="action-bar" style={{ marginTop: 0 }}>
-              <button type="button" className="btn ghost" onClick={() => setRejectForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-danger" onClick={submitReject} disabled={!!busy || !rejectForm.reason.trim()}>
-                <Undo2 size={15} /> {busy === "reject" ? "กำลังตีกลับ…" : "ยืนยันตีกลับ"}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <ReasonDialog
+        open={!!rejectForm}
+        title="ตีกลับให้ผู้จัดทำแก้ไข"
+        label="เหตุผลที่ตีกลับ"
+        value={rejectForm?.reason || ""}
+        onChange={(reason) => setRejectForm({ reason })}
+        onClose={() => setRejectForm(null)}
+        onConfirm={submitReject}
+        confirmLabel="ยืนยันตีกลับ"
+        placeholder="ระบุสิ่งที่ต้องแก้ไข"
+        maxLength={500}
+        busy={busy === "reject"}
+      />
 
       {cancelForm && (
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>

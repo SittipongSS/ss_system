@@ -28,6 +28,83 @@ export const newManualLine = () => ({
   discountType: null, discountValue: 0, source: "manual",
 });
 
+export function QuotationReadOnlyLineItems({
+  lines = [],
+  summaryRows = [],
+  grandTotal,
+  grandTotalLabel = "ยอดรวมทั้งสิ้น",
+  highlightRows = [],
+  emptyText = "ยังไม่มีรายการ",
+}) {
+  return (
+    <>
+      <div className="premium-table-wrapper">
+        <table className={`premium-table ${styles.readOnlyTable}`}>
+          <thead>
+            <tr>
+              <th className={styles.rowNumber}>#</th>
+              <th>รหัส / รายละเอียด</th>
+              <th className="num">จำนวน</th>
+              <th>หน่วย</th>
+              <th className="num">ราคาต่อหน่วย</th>
+              <th className="num">ส่วนลด</th>
+              <th className="num">รวม</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, index) => (
+              <tr key={line.id || index}>
+                <td className={styles.rowNumber}>{index + 1}</td>
+                <td>
+                  <div className={styles.readOnlyDescription}>
+                    {line.fgCode ? <small>{line.fgCode}</small> : null}
+                    <ReadableText text={line.description} lines={3} empty="-" />
+                    {line.metadata?.note ? (
+                      <span className={styles.noteReadonly}>
+                        <strong>หมายเหตุ:</strong>
+                        <ReadableText text={line.metadata.note} lines={2} />
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="num mono">{line.qty ?? "-"}</td>
+                <td>{line.unit || "-"}</td>
+                <td className="num mono">{fmtMoney(line.unitPrice)}</td>
+                <td className="num mono">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : "-"}</td>
+                <td className="num mono">{fmtMoney(line.lineTotal)}</td>
+              </tr>
+            ))}
+            {!lines.length ? <tr><td colSpan={7} className={styles.emptyRows}>{emptyText}</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
+
+      <div className={styles.totalsWrap}>
+        <div className={styles.totalsPanel}>
+          {summaryRows.map((row, index) => (
+            <div key={row.id || row.label || index} className={styles.totalLine}>
+              <span>{row.label}</span>
+              <strong className="mono">{row.value ?? "-"}</strong>
+            </div>
+          ))}
+          {grandTotal !== undefined && grandTotal !== null ? (
+            <div className={styles.totalGrand}>
+              <strong>{grandTotalLabel}</strong>
+              <strong className="mono">{grandTotal}</strong>
+            </div>
+          ) : null}
+          {highlightRows.map((row, index) => (
+            <div key={row.id || row.label || index} className={`${styles.highlightTotal} ${row.tone === "danger" ? styles.dangerTotal : styles.successTotal}`}>
+              <span>{row.label}</span>
+              <strong className="mono">{row.value ?? "-"}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function QuotationLineItems({
   lines,
   onChange,

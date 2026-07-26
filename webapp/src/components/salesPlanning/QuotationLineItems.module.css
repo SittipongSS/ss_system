@@ -141,6 +141,48 @@
   font-size: 17px;
 }
 
+.readOnlyTable {
+  min-width: 760px;
+}
+
+.readOnlyTable th:first-child,
+.readOnlyTable td:first-child {
+  width: 42px;
+}
+
+.readOnlyDescription {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.readOnlyDescription > small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.highlightTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.successTotal {
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+  color: var(--green);
+}
+
+.dangerTotal {
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+  color: var(--red);
+}
+
 @media (max-width: 640px) {
   .totalLine { align-items: flex-start; }
   .totalControls { grid-template-columns: 1fr; }
