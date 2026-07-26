@@ -1,0 +1,231 @@
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text-2);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* สองคอลัมน์เทียบกัน — ซ้าย = ของจริงวันนี้ ขวา = ค่าจากต้นแบบ */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.sideHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.sideTag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.values {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-3);
+  white-space: pre-line;
+}
+
+.sampleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inkSample > * { margin: 0 0 4px; }
+.inkSample .lead { font-size: 14px; color: var(--text); }
+.inkSample .second { font-size: 13px; color: var(--text-2); }
+.inkSample .third { font-size: 12px; color: var(--text-3); }
+
+.card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.floatCard {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.control {
+  height: var(--ctl-h);
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* ── ตัวอย่างตาราง ────────────────────────────────────────────────────────
+   ทั้งสองฝั่งใช้ TableScroll ตัวจริง ฝั่งซ้ายจึงเป็นหน้าตาวันนี้เป๊ะ ๆ
+   ฝั่งขวาเติมเฉพาะสิ่งที่ต้นแบบต่าง: หัว 42px แถว 52px และ hover สีแบรนด์จาง
+
+   ⚠️ คลาสซ้ำสองครั้ง (.protoTable.protoTable) เพื่อดัน specificity ให้ชนะกฎของ
+   Table.module.css (`.scroll[data-family] th` = 0,2,1) แบบไม่ต้องลุ้นลำดับ stylesheet
+   ระหว่าง CSS module สองไฟล์ — ใช้ได้เฉพาะหน้าเทียบชั่วคราวหน้านี้เท่านั้น */
+.protoTable.protoTable :global(th) {
+  height: 42px;
+  padding-block: 0;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+
+.protoTable.protoTable :global(td) {
+  height: 52px;
+  padding-block: 8px;
+  vertical-align: middle;
+}
+
+.protoTable.protoTable :global(tbody tr:hover td) {
+  background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
+}
+
+.tableWrap :global(tbody tr:hover td) { background: var(--panel-2); }
+
+.tableWrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── การ์ดสรุปที่มีแถบไล่สีด้านบน ─────────────────────────────────────────── */
+.summaryCard {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.summaryCard.withBar::before {
+  content: "";
+  display: block;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--navy));
+}
+
+.summaryBody { padding: 14px; }
+.summaryBody small { font-size: 12px; color: var(--text-2); }
+
+.summaryTotal {
+  margin: 6px 0 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── ปุ่มแบ่งหน้า ────────────────────────────────────────────────────────── */
+.pagerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pageButton {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pageButton.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* ── ชั้นขนาดตัวอักษร ───────────────────────────────────────────────────── */
+.scaleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.scaleRow {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) 52px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.scaleRow:last-child { border-bottom: none; }
+
+.scaleName {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.scaleSize {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.tiny95 { font-size: 9.5px; }
+.tiny105 { font-size: 10.5px; }
+.tiny11 { font-size: 11px; }
+.size115 { font-size: 11.5px; }
+.size12 { font-size: 12px; }
+.size13 { font-size: 13px; }
+.size14 { font-size: 14px; }
+.size16 { font-size: 16px; }
+.size15 { font-size: 15px; }
+.size20 { font-size: 20px; }
+.size24 { font-size: 24px; }
+.size27 { font-size: 27px; }
+.size28 { font-size: 28px; }
+
+@media (max-width: 820px) {
+  .pair, .scaleGrid { grid-template-columns: 1fr; }
+}

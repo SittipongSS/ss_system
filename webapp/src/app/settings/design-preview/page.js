@@ -98,7 +98,10 @@ export default function DesignPreviewPage() {
       back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
     >
       <div className={styles.stack}>
-        <StatusNotice tone="info">
+        <StatusNotice
+          tone="info"
+          action={<Button as="a" href="/settings/design-preview/compare" size="sm">เทียบกับต้นแบบทีละข้อ</Button>}
+        >
           หน้านี้ไม่ต่อกับข้อมูลจริง เปลี่ยนโทเคนใน <code>globals.css</code> หรือแก้ primitive ใน
           {" "}<code>components/ui/</code> แล้วเปิดหน้านี้เพื่อดูผลทั้งระบบพร้อมกัน ทั้งโหมดสว่างและมืด
         </StatusNotice>
