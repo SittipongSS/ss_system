@@ -1,0 +1,493 @@
+# แผน implement: เธรดอัปเดตของกลาง (Entity Updates)
+
+> สถานะ: **ฉบับที่ 1 — วิเคราะห์เสร็จ รอเคาะก่อนเริ่มโค้ด** (2026-07-26)
+> ที่มา: ผู้ใช้ขอให้เคสขอราคาวัสดุมี "ระบบอัปเดต" แบบเดียวกับดีล/งาน แล้วสั่งให้
+> สำรวจทั้งระบบและทำแผนก่อน เผื่อมีที่อื่นอยากใช้ในอนาคต
+
+## 0. สภาพปัจจุบัน — มี 4 ชุด (+ลีดอ่านอย่างเดียว) ไม่มีของกลางสักชุด
+
+ระบบนี้เรียกมันว่า **"ความเคลื่อนไหว" / "เธรดอัปเดต"** (สากล = activity feed) —
+คอมเมนต์ที่คนพิมพ์เอง + เหตุการณ์ที่ระบบเขียนให้ อยู่ในสายเดียวเรียงตามเวลา
+
+นิยามที่ mig 0113 เขียนไว้และยังใช้ได้อยู่ — **คนละหน้าที่กับ `recordAudit`**:
+
+| | audit log | เธรดอัปเดต |
+|---|---|---|
+| ตอบคำถาม | ใครแก้อะไรเมื่อไร | เกิดอะไรขึ้น / ติดอะไรอยู่ |
+| คนอ่าน | หัวหน้า/ผู้ตรวจ ย้อนหลัง | ทุกคนที่เกี่ยวข้อง ระหว่างทำงาน |
+| คนเขียน | ระบบล้วน | คนพิมพ์เอง + ระบบเขียนเหตุการณ์ให้ |
+| ลบได้ไหม | ไม่ได้เด็ดขาด | เจ้าของลบข้อความตัวเองได้ (soft delete) |
+
+**ทั้งสองอย่างต้องอยู่ต่อ ไม่ยุบรวมกัน** — แผนนี้ไม่แตะ `recordAudit`
+
+### 0.1 ของเดิม 4 ชุด (เทียบทีละแกน)
+
+| แกน | ดีล `sales_deal_activities` (0063+0083) | สอบถาม RD `inquiry_messages` (0104+0106) | งานของฉัน `personal_task_updates` (0113) | งานบริหาร `mgmt_updates` (0080) |
+|---|---|---|---|---|
+| ผูกกับ | `dealId` + **FK CASCADE** | `inquiryId` (ไม่มี FK) | `taskId` (ไม่มี FK โดยเจตนา) | **polymorphic** `entityType`+`entityId` |
+| kind | note·call·meeting·email·next_step | comment·status | comment·status·due·late | edit·status·comment·file·link |
+| ข้อความ | `body` NOT NULL | `body` nullable (โพสต์รูปล้วนได้) | `body` nullable | `body` nullable |
+| meta | ไม่มี (ใช้คอลัมน์ `dueDate` แยก) | ไม่มี | `meta jsonb` {field,from,to} | `meta jsonb` {field,from,to} |
+| ไฟล์แนบ | ✅ `attachments jsonb` + proxy | ✅ `attachments jsonb` + proxy | ❌ | ❌ |
+| แก้ข้อความ | ✅ (ไม่บันทึกว่าแก้) | ✅ `editedAt` | ❌ | ❌ |
+| ลบ | ✅ **ลบจริง** | ✅ **soft** `deletedBy/At` | ❌ | ❌ |
+| รับทราบ | ❌ | ✅ `acknowledgedBy/At` | ❌ | ❌ |
+| ฝ่ายผู้เขียน | ❌ | ✅ `authorDept` (แยกฝั่งถาม/ตอบตอนแสดง) | ❌ | ❌ |
+| เขียนพลาดแล้ว | throw ปกติ | throw ปกติ | **ไม่ throw** คืน error ให้ผู้เรียกเลือก | **ไม่ throw** กลืน error |
+| UI | inline ใน `deals/[id]` (ไฟล์ 1,454 บรรทัด) | `inquiries/[id]` (465) | `pm/tasks/[id]` (211) | `TaskDrawer`/`MeetingDrawer` |
+
+**สรุปแกนที่ต่างกันจริง มีแค่ 3 อย่าง** — kind, ไฟล์แนบเปิด/ปิด, และความสามารถ
+(แก้/ลบ/รับทราบ) ที่เหลือคือ**โครงเดียวกันเป๊ะที่เขียนซ้ำ 4 รอบ**
+
+### 0.1.1 ตัวที่ 5: ลีด — อ่านอย่างเดียว แต่ **หน้าตาดีที่สุดในระบบ**
+
+`sales-planning/leads/[id]` แสดง `lead_events` เป็นไทม์ไลน์แนวตั้งมีราง+จุด
+(`page.module.css` — `.timeline/.rail/.dot`) ไม่มีช่องพิมพ์ ไม่มีไฟล์แนบ
+เป็น **การแสดงผลชุดที่ 5 ของความคิดเดียวกัน** ที่เขียนแยกอีกรอบ
+
+→ มติ: **ยืมหน้าตาของลีดมาเป็นต้นแบบ `UpdateThread`** (อีก 4 ที่วาดเส้นซ้ายทึบ
+`borderLeft` ธรรมดา ซึ่งดูเป็นรายการมากกว่าเป็นไทม์ไลน์) · ตัว `lead_events`
+ยังไม่ย้าย (เหตุผลข้อ 0.2) แต่พอ `UpdateThread` รับ "รายการอ่านอย่างเดียวจากแหล่งอื่น"
+ได้ (ดู §5 prop `extraItems`) หน้าลีดก็เปลี่ยนมาใช้ component กลางได้ทันที
+และในอนาคตถ้าอยากให้ลีด**คอมเมนต์ได้** ก็แค่เปิด entity `lead` ในทะเบียนสิทธิ์
+แล้วแสดงรวมกับ `lead_events` ในไทม์ไลน์เดียว — ไม่ต้องแตะตารางเดิม
+
+### 0.2 ของที่ "หน้าตาคล้าย" แต่ไม่ใช่เธรด — ไม่ยุบเข้ามา
+
+| ตาราง | คืออะไร | ทำไมไม่ยุบ |
+|---|---|---|
+| `sales_deal_stage_history` (0063) | ประวัติเปลี่ยน stage ของดีล | เป็นข้อมูล**ที่รายงานคิดยอดจากมัน** ไม่ใช่ข้อความเล่าเรื่อง |
+| `lead_events` (0091) | เหตุการณ์ลีด มีคอลัมน์เฉพาะโดเมน (`meetingMode`, `assigneeId`, `eventAt`) | schema เฉพาะทาง + คิว/KPI ลีด query ตรง ๆ ยัดลง `meta` แล้วรายงานพัง — แต่ **หน้าจอใช้ component กลางได้** ผ่าน `extraItems` (ดู 0.1.1) |
+| `product_price_history`, `sales_history` | ประวัติค่าเชิงตัวเลข | ไม่มีคนอ่านเป็นเรื่องราว |
+| `attachments` (0028) | ไฟล์แนบ**ของ entity** (มี docType/บังคับแนบ) | คนละความหมายกับรูปที่แปะในข้อความ — อยู่คู่กันได้ ดูข้อ 4.3 |
+
+### 0.3 ต้นทุนที่จ่ายอยู่ตอนนี้
+
+1. **แดชบอร์ดต้องเย็บเอง** — `my-dashboard` และ RD dashboard ดึงหลายตารางมา normalize
+   ทีละอันเพื่อทำฟีดรวม; ถ้าเป็นตารางเดียวคือ query เดียว
+2. **ฟีเจอร์ไม่เท่ากันแบบไม่ได้ตั้งใจ** — แนบรูปได้เฉพาะ 2 ใน 4, แก้ข้อความได้ 2 ใน 4,
+   ลบดีลทิ้งจริงแต่ลบสอบถามเป็น soft ทั้งที่เป็นหลักฐานพอกัน
+3. **ของใหม่ทุกตัวต้องเลือกว่าจะก๊อปใคร** — เคสขอราคาวัสดุคือรายล่าสุดที่มาถึงทางแยกนี้
+4. **บทเรียนไฟล์แนบเพิ่งซ้ำรอย** (PR #733: ต้องต่อ 5 จุด) — ของกระจายคือที่มาของบั๊กเงียบ
+
+## 1. มติที่ต้องเคาะ (ยังไม่ล็อก)
+
+1. **ทำของกลาง `entity_updates` แล้วย้ายของเดิมทั้ง 4 ชุดมาใช้** (ผู้ใช้เลือกแล้ว)
+2. ระหว่างทาง **ห้ามมีชุดที่ 5** — ของใหม่ (เคสขอราคา/ใบ CR) ใช้ของกลางตั้งแต่วันแรก
+3. ตารางเก่า **ไม่ drop ทันที** — ย้ายข้อมูล → สลับโค้ด → ปล่อยผ่านหนึ่งรอบ → ค่อย drop
+4. `lead_events` / `stage_history` **ไม่ย้าย** (ข้อ 0.2) แต่ฟีดหน้าจอ **merge ตอนอ่าน** ได้เหมือนเดิม
+5. ความสามารถเป็น **ต่อ entity** ไม่ใช่ต่อระบบ — entity ไหนเปิดแนบรูป/แก้/ลบได้ ประกาศในโค้ด
+
+## 2. สิ่งที่ core ต้องรองรับ (มาจากข้อ 0.1 ทั้งหมด ไม่มีเผื่อ)
+
+- kind อิสระต่อ entity + ป้าย/สีของมัน — **ไม่มี CHECK ใน DB** (แพตเทิร์นเดียวกับ
+  `attachmentTypes` / `materialTypes`: เพิ่มชนิดใหม่ = แก้โค้ดล้วน ไม่ต้อง migration)
+- ข้อความว่างได้ถ้ามีไฟล์แนบ (โพสต์รูปล้วน)
+- `meta jsonb` สำหรับ {field, from, to} ของเหตุการณ์ระบบ + ค่าเฉพาะทางอย่าง `dueDate`
+- ไฟล์แนบเป็น jsonb ref บนแถว + proxy ดาวน์โหลดตัวเดียว
+- แก้ (`editedAt`) · ลบแบบ soft (`deletedBy/At`) · รับทราบ (`acknowledgedBy/At`)
+- `authorDept` — ใช้แยกฝั่งซ้าย/ขวาในเธรดสองฝ่าย (สอบถาม RD, เคสขอราคา)
+- เขียนพลาดต้อง **ไม่ทำให้ action หลักพัง** แต่ต้องคืน error ให้ผู้เรียกที่แคร์เช็คได้
+
+## 3. จุดที่จะได้ใช้ (สำรวจหน้ารายละเอียดทั้งระบบ)
+
+| หน้า | มีเธรดไหม | ควรมีไหม | เหตุผล |
+|---|---|---|---|
+| ดีล | ✅ ของเดิม | ย้าย | — |
+| สอบถาม RD | ✅ ของเดิม | ย้าย | — |
+| งานของฉัน | ✅ ของเดิม | ย้าย | — |
+| งานบริหาร (พัก) | ✅ ของเดิม | ย้าย | ไม่มีข้อมูล prod → ย้ายง่ายสุด ใช้เป็นตัวนำร่อง |
+| **เคสขอราคาวัสดุ** | ❌ | **🔴 ต้องมี** | สองฝ่ายคุยกันจริง ("ขวดสีชามีไหม / MOQ 500 ได้ไหม") ตอนนี้ต้องโทรนอกระบบ เหตุผลของราคาหายไปกับสาย |
+| **ใบขอราคาผลิต** | ❌ | **🔴 ต้องมี** | ผู้บริหารตีกลับแล้วเซลแก้ — ตอนนี้เหตุผลอยู่ในช่อง `returnReason` ช่องเดียวทับกันทุกครั้ง |
+| **ใบเสนอราคา (QT)** | ❌ | 🟠 ควรมี | ลูกค้าขอแก้ราคา/เงื่อนไขหลายรอบก่อนตกลง ตอนนี้ร่องรอยอยู่ในหัวคนขาย |
+| **Sale Order** | ❌ | 🟠 ควรมี | ปัญหาหน้างาน (ของขาด/เลื่อนส่ง) ควรอยู่กับใบ |
+| **ทะเบียนสรรพสามิต / ใบยื่นภาษี** | ❌ | 🟠 ควรมี | LG ตีกลับให้แก้ — เหตุผลควรเป็นเธรด ไม่ใช่ช่องเดียว |
+| **ลูกค้า / สินค้า** | ❌ | 🟡 น่ามี | บันทึกข้อตกลงพิเศษรายลูกค้า ("เจ้านี้ขอวางบิลทุกวันที่ 25") |
+| **PO สหมิตร** | ❌ | 🟡 น่ามี | เคสแบ่งส่ง/ยอดไม่ตรง |
+| **ทะเบียนวัสดุ** | ❌ | 🟢 ไว้ก่อน | เหตุผลราคาอยู่ที่ rev note แล้ว |
+| โครงการ | rollup ของดีล | คงเดิม | ยืมของลูก ถูกแล้ว |
+| **ลีด** | ✅ `lead_events` (อ่านอย่างเดียว) | **เปลี่ยนมาใช้ component กลาง** ไม่ย้ายตาราง | หน้าตาดีที่สุดอยู่แล้ว (ข้อ 0.1.1) — เปลี่ยนเพื่อเลิกดูแลไทม์ไลน์คนละชุด · เปิดคอมเมนต์ทีหลังได้ |
+
+> รวม **candidate ใหม่ 8 จุด** — ถ้าไม่ทำของกลาง แต่ละจุดคือการก๊อปโค้ดอีกหนึ่งรอบ
+
+## 4. โมเดลข้อมูล
+
+### 4.1 `entity_updates` (mig 0160)
+
+```sql
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.entity_updates (
+  id            text PRIMARY KEY,
+  -- polymorphic (แพตเทิร์นเดียวกับ attachments 0028 / mgmt_updates 0080):
+  -- ไม่มี FK โดยเจตนา — entity อยู่คนละโมดูล ผู้ลบต้องเก็บกวาดเอง (ดู 4.4)
+  "entityType"  text NOT NULL,
+  "entityId"    text NOT NULL,
+  -- ไม่มี CHECK: ชุด kind เป็นของแต่ละ entity ประกาศในโค้ด (lib/master/updateTypes.js)
+  kind          text NOT NULL DEFAULT 'comment',
+  body          text CHECK (body IS NULL OR length(body) <= 4000),
+  meta          jsonb NOT NULL DEFAULT '{}'::jsonb,   -- {field,from,to} · {dueDate}
+  attachments   jsonb NOT NULL DEFAULT '[]'::jsonb,   -- ref เท่านั้น (ดู 4.3)
+  "authorId"    text, "authorName" text, "authorDept" text,
+  "editedAt"    timestamptz,
+  "acknowledgedBy" text, "acknowledgedAt" timestamptz,
+  -- soft delete: ข้อความที่คนอื่นอ่านไปแล้วเป็นหลักฐาน ลบจริงไม่ได้
+  "deletedBy"   text, "deletedAt" timestamptz,
+  "createdAt"   timestamptz NOT NULL DEFAULT now(),
+  -- โพสต์เปล่าไม่มีความหมาย: ต้องมีข้อความ หรือไฟล์ หรือเป็นเหตุการณ์ระบบ
+  CONSTRAINT entity_updates_not_empty CHECK (
+    body IS NOT NULL OR jsonb_array_length(attachments) > 0 OR kind <> 'comment'
+  )
+);
+
+CREATE INDEX entity_updates_entity_idx
+  ON public.entity_updates ("entityType", "entityId", "createdAt" DESC);
+-- ฟีดรวมข้ามโมดูล (my-dashboard / RD dashboard) — ของเดิมต้องยิงหลายตารางแล้วเย็บเอง
+CREATE INDEX entity_updates_recent_idx ON public.entity_updates ("createdAt" DESC);
+CREATE INDEX entity_updates_author_idx ON public.entity_updates ("authorId", "createdAt" DESC);
+
+ALTER TABLE public.entity_updates ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.entity_updates FROM anon, authenticated;
+GRANT  ALL ON TABLE public.entity_updates TO service_role;
+
+COMMIT;
+NOTIFY pgrst, 'reload schema';
+```
+
+### 4.2 `entityType` ที่ใช้ (ค่าคงที่ในโค้ด)
+
+`deal` · `inquiry` · `personal_task` · `mgmt_task` · `mgmt_meeting` · `mgmt_rock`
+· `material_ask` · `costing_request` (+ ที่จะเพิ่มตามข้อ 3)
+
+> ใช้ชื่อชุดเดียวกับ `attachmentTypes` ที่มีอยู่แล้วทุกตัวที่ชื่อชนกัน — คนอ่านโค้ด
+> ไม่ต้องจำสองชุด
+
+### 4.3 ไฟล์แนบ: jsonb บนแถว **ไม่ใช่** ตาราง `attachments` กลาง
+
+ตั้งใจให้ต่างจากไฟล์แนบของ entity และตรงกับที่ดีล/สอบถามทำอยู่แล้ว:
+
+| | `attachments` (0028) | `entity_updates.attachments` |
+|---|---|---|
+| ของใคร | ของ **entity** ("รูปตัวอย่างของวัสดุตัวนี้") | ของ **ข้อความนั้น** ("รูปที่ผมส่งให้ดูตอนถาม") |
+| มี docType/บังคับแนบ | ✅ | ❌ |
+| อายุ | อยู่กับ entity | ลบข้อความ = ไฟล์หมดความหมายตาม |
+
+⚠️ กฎ 5 จุดของไฟล์แนบ entity (ดูหัวไฟล์ `costingAttachmentAccess.js`) **ไม่ใช้กับเส้นนี้** —
+เส้นนี้มี proxy ตัวเดียว `/api/updates/[id]/file?i=N` ที่เช็คสิทธิ์ผ่าน adapter ตัวเดียวกับ
+การอ่านเธรด จึงไม่มีทางหลุดคนละจุดกันแบบเดิม (นี่คือเหตุผลหนึ่งที่ควรมีของกลาง)
+
+### 4.4 ลบ entity แล้วเธรดต้องไม่ค้าง
+
+ไม่มี FK → `lib/forceDelete.js` ต้อง `DELETE FROM entity_updates WHERE entityType=… AND entityId=…`
+ทุกที่ที่ลบ entity (แพตเทิร์นเดียวกับ `purgeAttachments`) → ทำเป็น `purgeUpdates()` คู่กัน
+
+## 5. โครงสร้างไฟล์
+
+### สร้างใหม่
+```
+supabase/migrations/0160_entity_updates.sql
+src/lib/master/updateTypes.js          ชุด kind + ป้าย/สี ต่อ entityType (โค้ดล้วน)
+src/lib/master/updateAccess.js         ⭐ registry เดียว: table + canView/canPost/canMutate
+src/lib/master/updateAccess.test.mjs
+src/lib/master/updates.js              server: listUpdates/appendUpdate/purgeUpdates
+src/components/updates/UpdateThread.js ⭐ component เดียว: ฟีด + composer + lightbox
+src/components/updates/UpdateComposer.js
+src/components/updates/UpdateThread.module.css  ไทม์ไลน์ราง+จุด (ยกมาจากหน้าลีด)
+src/app/api/updates/route.js           GET (entityType,entityId) · POST
+src/app/api/updates/[id]/route.js      PATCH (edit|acknowledge) · DELETE (soft)
+src/app/api/updates/[id]/file/route.js proxy ไฟล์แนบในข้อความ
+```
+
+### หัวใจของแผน: `updateAccess.js` — เพิ่ม entity ใหม่ = **แก้ไฟล์เดียว**
+
+```js
+export const UPDATE_ENTITIES = {
+  material_ask: {
+    table: 'material_price_asks',
+    kinds: ['comment', 'status'],
+    attachments: true,
+    canView:   (user, ask) => canViewCosting(user),
+    canPost:   (user, ask) => canManageAsk(user, ask) || canAnswerAsk(user, ask),
+    // แก้/ลบได้เฉพาะข้อความตัวเอง และเฉพาะตอนเคสยังเดินอยู่
+    canMutate: (user, ask, row) => row.authorId === user?.id
+                 && !['closed', 'cancelled'].includes(ask.status),
+  },
+  deal: { … }, inquiry: { … }, personal_task: { … }, mgmt_task: { … },
+};
+```
+
+บทเรียนที่ฝังไว้ตรงนี้: **ทุกด่านของ entity หนึ่งอยู่ที่เดียว** — ของเดิมกระจาย
+loadParent/view/edit/โฟลเดอร์ Drive/proxy คนละไฟล์ แล้วขาดทีละจุดโดยไม่มีใครรู้
+
+### `UpdateThread` ต้องรับ "รายการอ่านอย่างเดียวจากแหล่งอื่น" ได้
+
+```jsx
+<UpdateThread
+  entityType="deal" entityId={id}
+  extraItems={stageHistory.map(toThreadItem)}   // ← ไม่ได้อยู่ใน entity_updates
+/>
+```
+
+ทำไมต้องมี: ดีลเอา `stage_history` + เหตุการณ์สอบถามมาเรียงรวมในฟีดอยู่แล้ว และ
+หน้าลีดทั้งหน้าเป็น `lead_events` ล้วน — ถ้า component รับได้แต่ของในตารางตัวเอง
+สองที่นี้จะย้ายมาใช้ไม่ได้เลย แล้วเราจะเหลือไทม์ไลน์สองชุดตลอดไป
+
+### แก้
+| ไฟล์ | แก้อะไร |
+|---|---|
+| `lib/forceDelete.js` | เรียก `purgeUpdates()` ทุกจุดที่ลบ entity |
+| `api/sales-planning/my-dashboard`, `rd-kpi` | ฟีดรวมอ่านจากตารางเดียว เลิกเย็บเอง |
+| `app/sales-planning/deals/[id]/page.js` | ลบฟีด inline ~180 บรรทัด → `<UpdateThread entityType="deal" …/>` |
+| `app/sa/inquiries/[id]/page.js` · `app/pm/tasks/[id]/page.js` · `mgmt/*Drawer.js` | เหมือนกัน |
+| `app/sa/materials/asks/[id]/page.js` · `app/sa/costing/[id]/page.js` | **เพิ่มเธรด** (ของใหม่) |
+
+## 6. API
+
+```
+GET    /api/updates?entityType=&entityId=          เธรดของ entity (เก่า→ใหม่)
+GET    /api/updates?mine=1&limit=50                ฟีดรวมข้ามโมดูล (แดชบอร์ด)
+POST   /api/updates    { entityType, entityId, kind?, body?, attachments?, meta? }
+PATCH  /api/updates/[id]  { action: 'edit'|'acknowledge', body? }
+DELETE /api/updates/[id]                            soft delete (เจ้าของ/admin)
+GET    /api/updates/[id]/file?i=0                   proxy ไฟล์แนบในข้อความ
+```
+
+proxy: `/api/updates` ต้องผ่านทุก role ที่ล็อกอิน (ด่านจริงอยู่ใน adapter — proxy
+เห็นแค่ role ไม่รู้จัก entity) — แพตเทิร์นเดียวกับ `/api/attachments`
+
+## 7. แผนย้ายของเดิม (ทีละ PR — ห้ามย้ายพร้อมกัน)
+
+**หลักการ**: ย้าย**ข้อมูลก่อน** → สลับ**อ่าน** → สลับ**เขียน** → ปล่อยหนึ่งรอบ → **drop**
+แต่ละ migration copy แบบ idempotent (`WHERE NOT EXISTS`) รันซ้ำได้ปลอดภัย
+
+**ลำดับ (มติผู้ใช้ 2026-07-26): เริ่มที่ "งานของฉัน" เพราะคนใช้เยอะที่สุด** —
+เห็นผลเป็นรูปธรรมเร็ว และได้ต้นแบบที่ของจริงพิสูจน์แล้วก่อนไปแตะที่อื่น
+
+| PR | ย้ายอะไร | ข้อมูล prod | ความเสี่ยง |
+|---|---|---|---|
+| **1** | core (mig 0160 + registry + API + `UpdateThread`) + **ย้ายงานของฉัน** | มี — แต่ shape ใกล้เคียงที่สุด (`taskId`→`entityId`, kind เดิมทั้งชุด, `meta` เป็น jsonb อยู่แล้ว, ไม่มีไฟล์แนบ) | กลาง |
+| **2** | **เคสขอราคาวัสดุ + ใบขอราคาผลิต** (ของใหม่) | ไม่มี | ต่ำ |
+| **3** | งานบริหาร (`mgmt_updates`) + หน้าลีดเปลี่ยนมาใช้ component กลาง | mgmt ไม่มีข้อมูลจริง (โมดูลพัก) · ลีดไม่ย้ายตาราง | ต่ำ |
+| **4** | สอบถาม RD (`inquiry_messages`) | มี + ไฟล์แนบ + acknowledge + soft delete | สูง — ฟีเจอร์เยอะที่สุด |
+| **5** | ดีล (`sales_deal_activities`) | มีเยอะสุด + `dueDate`→`meta.dueDate` + แดชบอร์ด 2 ตัวอ่านอยู่ | สูง — ต้องแก้ my-dashboard/rd-kpi พร้อมกัน |
+| **6** | เก็บกวาด: drop 4 ตารางเก่า + ลบโค้ดตาย | — | ต่ำ (หลังปล่อยผ่านแล้ว) |
+
+### ทำไม PR 1 เป็น "งานของฉัน" แล้วยังปลอดภัย
+
+ถึงจะมีข้อมูลจริง แต่มันคือ **backfill ที่ง่ายที่สุดในสี่ตัว** — ไม่มีไฟล์แนบ ไม่มี
+edit/delete ให้แมป kind ตรงกันทั้งชุด (`comment/status/due/late`) และ `meta` เป็น
+jsonb รูปเดียวกันอยู่แล้ว ⇒ ได้พิสูจน์เส้นทาง copy→verify→สลับ ตั้งแต่ PR แรก
+โดยไม่ต้องแตะเคสที่ซับซ้อน (ดีกว่าเลื่อน data migration ตัวแรกไปไว้ท้าย ๆ)
+
+### PR 1 ควร "อัปเกรด" งานของฉันไปด้วย ไม่ใช่ย้ายเฉย ๆ
+
+ของกลางมีแนบรูป/แก้/ลบอยู่แล้ว → เปิดให้ `personal_task` ใช้เลย (ธงในทะเบียนสิทธิ์):
+
+- **แนบรูปในอัปเดตงาน** — "หน้างานเป็นแบบนี้" ส่งรูปได้เลย ไม่ต้องไปแปะที่อื่น
+- **แก้/ลบข้อความตัวเอง** — ตอนนี้พิมพ์ผิดแล้วแก้ไม่ได้เลย
+
+ได้สองอย่างพร้อมกัน: ผู้ใช้เห็นของดีขึ้นจริง (ไม่ใช่ "ย้ายแล้วเหมือนเดิม") และ core
+ถูกใช้งานครบทุกความสามารถตั้งแต่ PR แรก — ถ้าย้ายเฉย ๆ ต้นแบบจะพิสูจน์แค่ครึ่งเดียว
+
+> ⚠️ ถ้าหยุดหลัง PR 1 แล้วไม่ทำต่อ = ระบบมี **5 ชุด** แย่กว่าเดิม ต้องตั้งใจเดินให้จบ
+
+## 8. ความเสี่ยง
+
+1. **หยุดกลางทาง** (ข้อ 7) — PR 1 เป็นของที่คนใช้ทุกวัน ถ้าดีจริงแรงส่งจะพาไปต่อเอง;
+   ถ้า PR 1 แล้วรู้สึกไม่คุ้ม ให้**ตัดสินใจถอยตั้งแต่ตอนนั้น** (ตารางเก่ายังอยู่ครบ
+   ยังไม่ drop) ดีกว่าปล่อยค้างครึ่งทางจนกลายเป็น 5 ชุด
+2. **ดีลมีข้อมูลเยอะและมี 2 แดชบอร์ดอ่านอยู่** — ย้ายท้าย ๆ และ backfill ก่อนสลับอ่าน
+3. **`meta` ไม่มี index** — `dueDate` ของดีลย้ายไป `meta.dueDate`; ถ้าอนาคตต้องกรอง
+   ด้วยมันบ่อย ค่อยเพิ่ม expression index (`(meta->>'dueDate')`) ไม่ต้องรื้อ schema
+4. **ไม่มี FK** — เธรดค้างเมื่อลบ entity ถ้าลืมเรียก `purgeUpdates` → เทสต์ต้องครอบ
+   ทุก entityType ที่ลงทะเบียน (loop จาก registry ไม่ใช่เขียนทีละตัว)
+5. **สิทธิ์ผิดพลาดกระทบทุกโมดูลพร้อมกัน** — ของกลางแปลว่าพังทีเดียวพังหมด →
+   `updateAccess.test.mjs` ต้อง cover ทุก entity × (view/post/mutate) × role หลัก
+6. **ผู้ใช้เห็นของหายชั่วคราว** ถ้า backfill ไม่ครบก่อนสลับอ่าน → ทุก PR ต้อง
+   verify count เก่า = count ใหม่ ก่อน merge
+
+## 9. เช็คลิสต์ทดสอบ (UAT)
+
+0. **งานของฉัน (PR 1)**: อัปเดตเดิมทุกงานยังอยู่ครบเท่าเดิม · โพสต์ใหม่ได้ · แนบรูปได้
+   (ของใหม่) · แก้/ลบข้อความตัวเองได้ (ของใหม่) · เหตุการณ์ระบบ (เปลี่ยนสถานะ/เลื่อน
+   กำหนด/เหตุผลเสร็จช้า) ยังขึ้นเธรดเองเหมือนเดิม
+1. เคสขอราคา: เซลถาม → PC ตอบในเธรด → แนบรูปได้ พรีวิวได้ · ปิดเคสแล้วโพสต์เพิ่มไม่ได้
+2. เหตุการณ์ระบบขึ้นเธรดเอง: ส่งเคส → รับเรื่อง → ตอบราคา rev.N → no_quote → ปิด
+3. แก้ข้อความตัวเอง → ขึ้น "แก้ไขแล้ว" · ลบ → ขึ้น "ข้อความถูกลบ" ไม่ใช่หายเงียบ
+4. คนอื่นแก้/ลบข้อความเราไม่ได้ (ยกเว้น admin) · คนนอก scope อ่านไม่ได้เลย
+5. ลบ entity (admin force) → เธรดถูกเก็บกวาด ไม่ค้างในตาราง
+6. หลังย้ายแต่ละ PR: จำนวนข้อความเท่าเดิมทุกเธรด + ไฟล์แนบเปิดได้เหมือนเดิม
+7. แดชบอร์ดฟีดรวมยังแสดงครบเหมือนก่อนย้าย
+8. `npm test` เขียว · `npm run check:migrations` เขียว
+
+---
+
+# ภาคผนวก (ฉบับที่ 2, 2026-07-26) — รายละเอียดระดับลงมือ
+
+> ฉบับที่ 1 หยุดที่ระดับ "ออกแบบ" — พอตัดสินใจได้ แต่ยังเปิดโค้ดแล้วพิมพ์ตามไม่ได้
+> ส่วนนี้เติมของที่ขาด: ทะเบียนสิทธิ์จริง · แมป kind · แคตตาล็อกเหตุการณ์ระบบ ·
+> SQL backfill · สัญญา API/component · rollback · และของที่ยัง**ตอบไม่ได้จากในโค้ด**
+
+## 10. ทะเบียนสิทธิ์ฉบับเต็ม (`lib/master/updateAccess.js`)
+
+⚠️ **ทุกฟังก์ชันต้องเป็น async และรับ `supabase`** — ด่านของงาน/เคสต้อง query ต่อ
+(`canViewPersonalTask` เป็น async อยู่แล้ว · การโพสต์ในเคสต้องอ่านหัวเคสมาดูสถานะ)
+ถ้าเผลอออกแบบเป็น sync จะต้องรื้อทั้งทะเบียนตอนต่อ entity ตัวที่สอง
+
+| entityType | ตารางแม่ | ดู | โพสต์ | แก้/ลบข้อความตัวเอง | ไฟล์แนบ |
+|---|---|---|---|---|---|
+| `personal_task` | `personal_tasks` | `canViewPersonalTask` | `canManagePersonalTask` ∨ `canChangeTaskStatus` (proxyBy) | ✅ เจ้าของข้อความ | ✅ **เปิดใหม่** |
+| `material_ask` | `material_price_asks` | `canViewCosting` | `canManageAsk` ∨ `canAnswerAsk` | ✅ + เคสต้องยังไม่ปิด/ยกเลิก | ✅ |
+| `costing_request` | `costing_requests` | `canViewCostingRequest` | `canEditCostingRequest` ∨ `canApproveCosting` | ✅ + ใบต้องยังไม่อนุมัติ | ✅ |
+| `mgmt_task`/`mgmt_meeting`/`mgmt_rock` | `mgmt_tasks`/`_meetings`/`_rocks` | `mgmt:view` | `mgmt:edit` | ✅ เจ้าของข้อความ | ➖ คงเดิม |
+| `inquiry` | `inquiries` | `canViewInquiry` | ผู้ถาม/ฝ่ายผู้ตอบ (ของเดิม) | `canMutateInquiryMessage` (ของเดิม) | ✅ |
+| `deal` | `sales_deals` | `inSalesViewScope` | `canEditSalesPlanning` ∧ `inSalesEditScope` | ✅ ในขอบเขตดีล | ✅ |
+| `lead` *(อนาคต)* | `sales_leads` | `inLeadScope` | `salesplan:lead` | ✅ | ➖ |
+
+> ผู้บริหารโพสต์ในใบ CR ได้ (`canApproveCosting`) **โดยตั้งใจ** — เหตุผลที่ตีกลับควรอยู่
+> ในเธรด ไม่ใช่ทับช่อง `returnReason` ช่องเดียวทุกครั้งเหมือนตอนนี้
+
+## 11. แมป kind (ของเดิม → ของกลาง)
+
+**ไม่เปลี่ยนชื่อ kind ของใครเลย** — ของกลางไม่มี CHECK และชุด kind เป็นของแต่ละ entity
+อยู่แล้ว การเปลี่ยนชื่อมีแต่ทำให้ backfill พังโดยไม่ได้อะไรกลับมา
+
+| entity | kind ที่ยกมาทั้งชุด |
+|---|---|
+| `personal_task` | `comment` · `status` · `due` · `late` |
+| `deal` | `note` · `call` · `meeting` · `email` · `next_step` |
+| `inquiry` | `comment` · `status` |
+| `mgmt_*` | `edit` · `status` · `comment` · `file` · `link` |
+| `material_ask` *(ใหม่)* | `comment` · `status` |
+| `costing_request` *(ใหม่)* | `comment` · `status` |
+
+ป้าย/สีย้ายจาก `UPDATE_META` (pm/tasks:137) และ `ACTIVITY_META` (deals:52) ไป
+`lib/master/updateTypes.js` **แบบยกมาตรง ๆ** — ผู้ใช้ต้องไม่รู้สึกว่าสีเปลี่ยน
+
+**ค่าที่ต้องย้ายเข้า `meta`:** `sales_deal_activities.dueDate` → `meta.dueDate`
+(อีกสามตารางไม่มีคอลัมน์นอกมาตรฐาน)
+
+## 12. แคตตาล็อกเหตุการณ์ระบบ (ใครเขียนอะไรลงเธรด)
+
+**ของเดิม — หลังย้ายต้องทำงานเหมือนเดิมเป๊ะ**
+
+| entity | เหตุการณ์ | kind | เขียนที่ |
+|---|---|---|---|
+| `personal_task` | เปลี่ยนสถานะ · เลื่อนกำหนดเสร็จ · เหตุผลที่เสร็จช้า | `status`/`due`/`late` | `autoTaskUpdates` ← `personal-tasks/[id]` PATCH:224 |
+| `inquiry` | รับเรื่อง · ปิด · เปิดใหม่ | `status` | routes ของ inquiries |
+| `mgmt_*` | แก้ฟิลด์ · เปลี่ยนสถานะ · แนบไฟล์ · ผูกลิงก์ | `edit`/`status`/`file`/`link` | `lib/mgmt/repo.js` `appendUpdate` |
+| `deal` | — ไม่มี auto (stage อยู่คนละตาราง) | — | — |
+
+**ของใหม่ที่จะเพิ่ม**
+
+| entity | เหตุการณ์ | kind | เขียนที่ |
+|---|---|---|---|
+| `material_ask` | ส่งเคส (ออกเลข) · รับเรื่อง · ปิด · ยกเลิก | `status` | `materials/asks/[id]` PATCH |
+| | ตอบราคา rev.N · ตอบไม่ได้ + เหตุผล | `status` | `materials/asks/[id]/answer` |
+| `costing_request` | ส่งผู้บริหาร · อนุมัติรายสินค้า · ตีกลับ + เหตุผล | `status` | `costing/[id]/submit`, `/approve` |
+| | เปิดเคสขอราคาจากบรรทัด | `status` | `materials/asks` POST (เขียนสองฝั่ง) |
+
+> กติกาเดิมที่ต้องคงไว้: **auto-log ห้าม throw** (ฟีดพลาดต้องไม่ทำให้ action พัง) แต่
+> **ตอนคนกดปุ่มส่งต้องคืน error** ไม่งั้นผู้ใช้เห็น 201 ทั้งที่ไม่ได้บันทึก — บทเรียนจริง
+> ที่เขียนไว้หัว `lib/pm/taskUpdates.js` (เวอร์ชันแรก try/catch เป็นโค้ดตาย insert พังเงียบ)
+
+## 13. PR 1 ลงรายละเอียด — core + งานของฉัน
+
+### 13.1 ไฟล์ที่แตะ
+
+| ไฟล์ | ทำอะไร |
+|---|---|
+| `supabase/migrations/0160_entity_updates.sql` | ตาราง (§4.1) + backfill งานของฉัน (§13.2) |
+| `lib/master/updateTypes.js` · `updateAccess.js` (+เทสต์) · `updates.js` | core |
+| `components/updates/UpdateThread.js` (+ `.module.css`) · `UpdateComposer.js` | UI กลาง (ยกไทม์ไลน์ราง+จุดจากหน้าลีด) |
+| `app/api/updates/route.js` · `[id]/route.js` · `[id]/file/route.js` | API กลาง |
+| `src/proxy.js` | ปล่อย `/api/updates` ให้ผู้ล็อกอินทุกคน (ด่านจริงอยู่ในทะเบียน) |
+| `app/pm/tasks/[id]/page.js` | ลบ `TaskUpdates` inline → `<UpdateThread entityType="personal_task" …/>` |
+| `api/pm/personal-tasks/[id]/route.js` | `autoTaskUpdates` เขียนผ่าน `appendUpdate` ของกลาง |
+| `api/pm/personal-tasks/[id]/updates/route.js` | **คงไว้เป็น alias** ชี้ของกลาง (อาจมีคนบุ๊กมาร์ก/เรียกอยู่) |
+| `lib/pm/taskUpdates.js` | เหลือ `autoTaskUpdates` (pure มีเทสต์แล้ว) ส่วน I/O ตัดทิ้ง |
+| `lib/forceDelete.js` | `purgeUpdates('personal_task', id)` ตอนลบงาน |
+
+### 13.2 Backfill (ท้ายไฟล์ 0160 — idempotent รันซ้ำได้)
+
+```sql
+INSERT INTO public.entity_updates
+  (id, "entityType", "entityId", kind, body, meta, "authorId", "authorName", "createdAt")
+SELECT
+  u.id,                    -- คง id เดิม → รันซ้ำไม่เกิดแถวซ้ำ และตามรอยกลับได้
+  'personal_task', u."taskId", u.kind, u.body,
+  COALESCE(u.meta, '{}'::jsonb),
+  u."authorId", u."authorName", u."createdAt"
+FROM public.personal_task_updates u
+WHERE NOT EXISTS (SELECT 1 FROM public.entity_updates e WHERE e.id = u.id);
+```
+
+**ตรวจก่อน merge (ต้องเท่ากันทั้งสองคู่):**
+```sql
+SELECT (SELECT count(*) FROM personal_task_updates) AS เก่า,
+       (SELECT count(*) FROM entity_updates WHERE "entityType" = 'personal_task') AS ใหม่;
+SELECT (SELECT count(DISTINCT "taskId")   FROM personal_task_updates) AS งานเก่า,
+       (SELECT count(DISTINCT "entityId") FROM entity_updates
+         WHERE "entityType" = 'personal_task') AS งานใหม่;
+```
+
+⚠️ `personal_task_updates` **ไม่ถูกลบใน PR นี้** — เขียนลงของกลางอย่างเดียว ตารางเก่า
+ค้างไว้เป็นตาข่ายกันตก (drop ที่ PR 6)
+
+### 13.3 Rollback ของ PR 1
+
+1. revert โค้ด → หน้างานกลับไปอ่าน `personal_task_updates` ที่ยังครบทุกแถว
+2. อัปเดตที่โพสต์ระหว่างใช้ของกลางอยู่ใน `entity_updates` เท่านั้น → ก่อน revert ต้อง copy กลับ:
+   ```sql
+   INSERT INTO personal_task_updates
+     (id,"taskId",kind,body,meta,"authorId","authorName","createdAt")
+   SELECT id,"entityId",kind,body,meta,"authorId","authorName","createdAt"
+   FROM entity_updates e WHERE e."entityType" = 'personal_task'
+     AND NOT EXISTS (SELECT 1 FROM personal_task_updates p WHERE p.id = e.id);
+   ```
+   (ไฟล์แนบที่เพิ่งเปิดใช้จะหาย — ตารางเก่าไม่มีคอลัมน์นั้น ยอมรับได้ตอน rollback)
+3. ตาราง `entity_updates` ทิ้งไว้ได้ ไม่มีใครอ่าน
+
+## 14. สัญญา API / component
+
+```
+GET    /api/updates?entityType=&entityId=      → 200 [Update]  (เก่า→ใหม่)
+GET    /api/updates?mine=1&limit=50            → 200 [Update + entityLabel/entityHref]
+POST   /api/updates
+       { entityType, entityId, kind?='comment', body?, attachments?, meta? }
+       → 201 Update · 400 ต้องมีข้อความหรือไฟล์ · 403 · 404
+PATCH  /api/updates/[id]  { action:'edit', body } | { action:'acknowledge' } → 200
+DELETE /api/updates/[id]                        → 200 (soft: เซ็ต deletedBy/At แถวไม่หาย)
+GET    /api/updates/[id]/file?i=0               → stream (สิทธิ์ = สิทธิ์อ่านเธรดเดียวกัน)
+
+attachments: [{ fileUrl, driveFileId?, fileName?, mimeType?, sizeBytes? }] ≤ 8 ไฟล์
+             (รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว — sanitize เหมือน inquiries)
+```
+
+```jsx
+<UpdateThread
+  entityType="personal_task" entityId={task.id}
+  canPost={…}          // ไม่ส่ง = ให้ API ตัดสิน
+  extraItems={[]}      // รายการอ่านอย่างเดียวจากแหล่งอื่น (§5)
+  order="asc"          // งาน/สอบถาม = เก่าก่อน · ดีล = ใหม่ก่อน (คงพฤติกรรมเดิมของแต่ละหน้า)
+  emptyText="…"
+/>
+```
+
+## 15. ของที่ยังตอบไม่ได้จากในโค้ด — ต้องรันบน prod ก่อนเริ่ม PR 1
+
+```sql
+SELECT 'personal_task_updates' AS t, count(*) FROM personal_task_updates
+UNION ALL SELECT 'sales_deal_activities', count(*) FROM sales_deal_activities
+UNION ALL SELECT 'inquiry_messages',      count(*) FROM inquiry_messages
+UNION ALL SELECT 'mgmt_updates',          count(*) FROM mgmt_updates;
+```
+
+ใช้ประเมินว่า backfill ยิงรวดเดียวได้ไหม — ถ้าเกินหลักแสนต้องแบ่งก้อน
+คาดว่าไม่ถึง แต่ **ห้ามเดา** เพราะ `INSERT … SELECT` ที่ lock ยาว = หน้างานค้าง
+
+## 16. ลำดับที่แนะนำให้ทำจริง
+
+PR 1 (core + งานของฉัน) → **ใช้จริงสักสัปดาห์** → ค่อย PR 2
+ระหว่างนั้นคือช่วงที่ถอยได้ถูกที่สุด (§13.3) และเป็นช่วงที่จะรู้ว่าทะเบียนสิทธิ์กับ
+สัญญา component ออกแบบพอหรือยัง — ก่อนจะมี 5 entity ผูกกับมัน
