@@ -6,8 +6,8 @@ import {
 } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
-  canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
-  quoteTotals, toMoney,
+  canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
+  inSalesEditScope, inSalesViewScope, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
@@ -359,8 +359,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบที่มีหลักฐาน/ฉบับตรึงต้องลบผ่าน RPC break-glass (mig 0152) — มันตั้ง session flag ให้
   // guard ยอม DELETE แล้วเก็บกวาดตามลำดับ FK: SO ลูก (ซึ่ง cascade เองไม่ได้เพราะลูกของมัน
   // เป็น RESTRICT) → ฉบับตรึง+ไฟล์แนบ → หลักฐาน → ตัวใบ. เส้นทางปกติยังลบตรงเหมือนเดิม
-  const { error } = hasEvidence
-    ? await supabase.rpc('force_delete_quotation', { p_id: id })
+  //
+  // ทุกการบังคับลบเดินผ่าน RPC เสมอ (ไม่ใช่แค่ใบที่มีหลักฐาน) เพราะ mig 0168 ให้ RPC
+  // ถอยดีลออกจาก Won ในทรานแซกชันเดียวกับการลบ — ใบ accepted ที่ไม่มีหลักฐาน (ใบ
+  // grandfather approvalStatus='not_required') ก็ต้องถอยดีลเหมือนกัน
+  const { data: forceResult, error } = hasEvidence || force
+    ? await supabase.rpc('force_delete_quotation', {
+      p_id: id,
+      p_actor_id: user.id || null,
+      p_actor_name: user.name || null,
+      p_actor_role: user.role || null,
+    })
     : await supabase.from('quotations').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   const summary = force
@@ -372,5 +381,19 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     user, action: 'delete', entityType: 'quotation', entityId: id, before,
     summary, request: req,
   });
-  return ok({ ok: true, forced: force });
+  // ถอยดีลออกจาก Won ต้องมีร่องรอยของตัวเอง — ไม่ใช่ผลข้างเคียงที่เงียบ (บทเรียน
+  // 2026-07-26: ลบใบ accepted แล้วดีลค้าง Won โดยไม่มีใครรู้ จนเปิดใบใหม่ไม่ได้)
+  if (forceResult?.dealReverted && before.deal) {
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_deal',
+      entityId: before.deal.id,
+      before: before.deal,
+      after: forceResult.deal,
+      summary: `ถอยดีล ${dealAuditLabel(before.deal)} ออกจาก Won — ลบใบเสนอราคา ${before.quoteNumber} ที่รับแล้วถาวร`,
+      request: req,
+    });
+  }
+  return ok({ ok: true, forced: force, dealReverted: Boolean(forceResult?.dealReverted) });
 });
