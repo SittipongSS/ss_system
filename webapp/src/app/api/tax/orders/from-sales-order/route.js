@@ -3,7 +3,7 @@ import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can } from "@/lib/permissions";
 import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/salesPlanning";
-import { insertOrderItems } from "@/lib/tax/orders";
+import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
 
 export const dynamic = "force-dynamic";
@@ -31,17 +31,30 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
   if (error) throw error;
   if (!salesOrder) return null;
 
-  const [{ data: deal }, { data: quotation }] = await Promise.all([
+  // ทะเบียนลูกค้าอ่านรายตัวด้วย id (ไม่ผ่านลิสต์ที่กรองทีม) — ค่าที่ได้จะถูกตรึงลงใบยื่น
+  // เพื่อให้เอกสารพิมพ์เหมือนกันทุกคนที่กด (mig 0167)
+  const [{ data: deal }, { data: quotation }, { data: customer }] = await Promise.all([
     supabase.from("sales_deals").select("id, team, ownerId, ownerName").eq("id", salesOrder.dealId).maybeSingle(),
-    supabase.from("quotations").select("id, quoteNumber, customerTaxId").eq("id", salesOrder.quotationId).maybeSingle(),
+    supabase.from("quotations").select("id, quoteNumber, customerTaxId, billingAddress").eq("id", salesOrder.quotationId).maybeSingle(),
+    salesOrder.customerId
+      ? supabase.from("customers").select("id, taxId, address").eq("id", salesOrder.customerId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
-  return { ...salesOrder, deal: deal || null, quotation: quotation || null };
+  return {
+    ...salesOrder,
+    deal: deal || null,
+    quotation: quotation || null,
+    customer: customer || null,
+  };
 }
 
 async function listAvailableSalesOrders(supabase, user, customerId) {
   let query = supabase
     .from("sales_orders")
-    .select("id, orderNumber, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
+    // ⚠️ ต้องมี status ในลิสต์คอลัมน์: resolveSoFiling ตัดสิน eligible ด้วย
+    // salesOrder.status === 'approved' — ไม่ดึงมา = undefined = ลิสต์ว่างเสมอ
+    // (บั๊กจริงที่ทำให้ปุ่ม "สร้างใบยื่นจาก Sale Order" ไม่เคยมีตัวเลือกให้เลือก)
+    .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
     .eq("status", "approved")
     .order("createdAt", { ascending: false })
     .limit(200);
@@ -204,7 +217,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     salesOrderId,
     customerId: salesOrder.customerId || null,
     customerName: salesOrder.customerName || null,
-    customerTaxId: salesOrder.quotation?.customerTaxId || null,
+    // ตรึงข้อมูลลูกค้าลงใบ: snapshot บนใบเสนอราคามาก่อน (ค่าที่ลูกค้าเห็นบนเอกสารต้นทาง)
+    // แล้วจึงตกมาที่ทะเบียนลูกค้าสดสำหรับใบเก่าที่ snapshot ไม่ครบ
+    customerTaxId: salesOrder.quotation?.customerTaxId || salesOrder.customer?.taxId || null,
+    customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
     quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
     deliveryDate: "-",
@@ -233,7 +249,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     totalTax: line.totalTax,
   }));
 
-  const { error: orderError } = await supabase.from("orders").insert(filing);
+  const { error: orderError } = await insertOrder(supabase, filing);
   if (orderError?.code === "23505") {
     const existing = await findExistingFiling(supabase, salesOrderId).catch(() => ({ filing: null }));
     return conflict(existing.filing ? `Sale Order นี้มีใบยื่น ${existing.filing.id} แล้ว` : "Sale Order นี้มีใบยื่นแล้ว");

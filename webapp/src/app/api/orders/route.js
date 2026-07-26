@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScopeUser } from '@/lib/permissions';
-import { ORDER_SELECT, attachRegistrations, insertOrderItems } from '@/lib/tax/orders';
+import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -136,6 +136,8 @@ export async function POST(request) {
     customerId: customer.id,
     customerName: customer.name,
     customerTaxId: customer.taxId,
+    // ตรึงที่อยู่ลงใบ (mig 0167) — เอกสารต้องพิมพ์เหมือนกันไม่ว่าใครกด
+    customerAddress: customer.address || null,
     quotationRef: quotationRef || '-',
     poReference: body.poReference || null,
     deliveryDate: body.deliveryDate || '-',
@@ -150,7 +152,7 @@ export async function POST(request) {
     createdAt: new Date().toISOString(),
   };
 
-  const { error: orderErr } = await supabase.from('orders').insert(newOrder);
+  const { error: orderErr } = await insertOrder(supabase, newOrder);
   if (orderErr) return Response.json({ error: orderErr.message }, { status: 500 });
 
   const { error: itemsErr } = await insertOrderItems(supabase, itemRows);

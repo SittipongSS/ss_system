@@ -26,6 +26,8 @@
 .sectionHeading > span { color: var(--text-3); font-size: 11.5px; }
 
 .sourceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+/* คำอธิบายว่าลิสต์ลูกค้ามาจากไหน — ชั้นพิมพ์เดียวกับ .sectionHeading > span */
+.sourceHint { margin: 12px 0 0; color: var(--text-3); font-size: 11.5px; line-height: 1.65; }
 .sourceGrid label, .documentMeta label, .contactField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: 12px; font-weight: 650; }
 .sourceGrid label > *, .documentMeta label > *, .contactField > * { margin-top: 6px; }
 .customerSource { grid-column: 1 / -1; }

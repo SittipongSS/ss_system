@@ -110,8 +110,10 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
     <td class="c-money">${fmtMoney(l.tax)}</td>
   </tr>`).join("") || `<tr><td class="c-desc" colspan="5" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
 
-  const taxId = customer.taxId || order.customerTaxId || "-";
-  const address = customer.address || "-";
+  // ค่าที่ตรึงไว้บนใบมาก่อนทะเบียนลูกค้าสดเสมอ (mig 0167): ทะเบียนที่ผู้กดพิมพ์ "มองเห็น"
+  // ขึ้นกับทีมที่ดูแล/สถานะอนุมัติ — ถ้าให้ค่าสดชนะ เอกสารใบเดียวกันจะพิมพ์ออกมาไม่เหมือนกัน
+  const taxId = order.customerTaxId || customer.taxId || "-";
+  const address = order.customerAddress || customer.address || "-";
   const pages = paginateBillLines(lines);
   const documentPages = pages.map((pageLines, pageIndex) => {
     const isFirstPage = pageIndex === 0;

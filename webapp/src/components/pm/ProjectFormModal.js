@@ -10,7 +10,7 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { productDisplayName, productIdentity } from "@/lib/master/productIdentity";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { isExciseCategory } from "@/lib/master/categoryOf";
 import { useRole } from "@/lib/roleContext";
@@ -267,7 +267,7 @@ export default function ProjectFormModal({
               // เปลี่ยนลูกค้า → ล้างแบรนด์ (ลิสต์แบรนด์ผูกกับลูกค้า)
               onChange={(v) => setForm((f) => ({ ...f, customerId: v, brand: v === f.customerId ? f.brand : "" }))}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-              emptyText="ไม่พบลูกค้า"
+              emptyText={CUSTOMER_PICKER_EMPTY_HINT}
               options={(() => {
                 const opts = customers.map((c) => ({
                   value: c.id,

@@ -326,7 +326,7 @@ function NewQuotationInner() {
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
       {!loading && !eligible.length && (
-        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการ มีลูกค้า และยังไม่มีใบเสนอราคาที่ใช้งานอยู่ <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
+        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการ มีลูกค้า ยังไม่ Won/ไม่หลุด และเป็นดีลที่คุณแก้ไขได้ (ตามทีม/เจ้าของดีล) <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
       )}
 
       <DetailPageLayout
@@ -353,6 +353,15 @@ function NewQuotationInner() {
               <label>โครงการ *<SearchableSelect className={styles.sourceSelect} entity="project" value={projectId} onChange={onProject} disabled={!customerId} ariaLabel="เลือกโครงการ" placeholder={!customerId ? "เลือกชื่อลูกค้าก่อน" : "ค้นหารหัสหรือชื่อโครงการ…"} options={projectOptions} /></label>
               <label>ดีล *<SearchableSelect className={styles.sourceSelect} entity="deal" value={dealId} onChange={setDealId} disabled={!projectId} ariaLabel="เลือกดีล" placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} /></label>
             </div>
+            {/* ลิสต์ลูกค้าที่นี่ไม่ใช่ทะเบียนลูกค้า แต่มาจากดีลที่ออกใบได้ — ไม่มีคำอธิบาย
+                แล้วคนหาไม่เจอจะคิดว่าระบบพัง (ทะเบียนมีลูกค้าเยอะกว่านี้มาก) */}
+            {!loading && eligible.length > 0 && (
+              <p className={styles.sourceHint}>
+                เลือกได้ {customerOptions.length} ราย จากดีลที่พร้อมออกใบ {eligible.length} ดีล — ไม่เจอลูกค้าที่ต้องการ?
+                ดีลของลูกค้ารายนั้นอาจยังไม่ผูกโครงการ ปิดไปแล้ว (Won/ไม่สำเร็จ) หรือเป็นดีลที่คุณแก้ไขไม่ได้
+                {" "}<Link href="/sa/deals" className="linklike">ตรวจที่หน้าดีล</Link>
+              </p>
+            )}
           </section>
 
           {dealId && customer && (

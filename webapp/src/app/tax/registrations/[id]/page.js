@@ -20,6 +20,7 @@ import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
@@ -42,7 +43,9 @@ export default function RegistrationDetailPage() {
   const { data: customers } = useApiList("/api/customers");
 
   const s = useMemo(() => regs.find((r) => r.id === id) || null, [regs, id]);
-  const customer = customers.find((c) => c.id === s?.customerId) || {};
+  // ลิสต์ customers มีไว้ให้ picker ของ RegistrationFormModal — ลูกค้าของทะเบียนใบนี้
+  // อ่านรายตัว ไม่งั้นชื่อ/ประเภทลูกค้าหายเมื่อผู้เปิดไม่ได้ดูแลลูกค้ารายนั้น
+  const customer = useCustomerRecord(s?.customerId, customers.find((c) => c.id === s?.customerId));
 
   const [formOpen, setFormOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);

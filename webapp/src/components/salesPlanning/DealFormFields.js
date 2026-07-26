@@ -18,7 +18,7 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 // ของกฎ เปิดไว้เมื่อไรฟอร์มก็เพี้ยนกันเมื่อนั้น — ถ้าต้องมีช่องต่างจริง ใช้ props
 // แบบโหมด (เช่น alreadyWon) ไม่ใช่ช่องเสียบอิสระ
 import { brandSelectOptions } from "@/lib/master/brands";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
@@ -60,6 +60,7 @@ export default function DealFormFields({
         value={form.customerId || ""}
         onChange={(customerId) => onPatch({ customerId, brand: "", ...(!form.lockedProjectId ? { projectId: "" } : {}) })}
         placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+        emptyText={CUSTOMER_PICKER_EMPTY_HINT}
         options={[
           { value: "", label: "— ยังไม่ผูกลูกค้า —" },
           ...customers.map((customer) => ({
