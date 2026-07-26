@@ -21,6 +21,11 @@ import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
@@ -41,6 +46,7 @@ import {
 import { latestRevision, revisionTiers, tierUnitPrice } from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 import { productSelectOptions } from "@/components/master/productOption";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const money = (value) => (value == null
   ? "—"
@@ -357,52 +363,125 @@ export default function CostingDetailPage() {
       });
   };
 
+  const editableStatus = ["draft", "assembling", "returned", "pricing"].includes(request.status);
+  const workflowIndex = ["draft"].includes(request.status)
+    ? 0
+    : ["pricing", "assembling", "returned"].includes(request.status)
+      ? 1
+      : request.status === "pending_exec"
+        ? 2
+        : request.status === "approved"
+          ? 3
+          : 4;
+  const workflowSteps = workflowStepsFromIndex([
+    { id: "draft", label: "จัดทำใบ", hint: "ระบุสินค้าและโครงสร้างต้นทุน" },
+    { id: "pricing", label: "รวบรวมราคา", hint: "ผูกวัสดุและตรึงราคาล่าสุด" },
+    { id: "approval", label: "อนุมัติ", hint: "ผู้บริหารอนุมัติรายสินค้า" },
+    { id: "approved", label: "อนุมัติครบ", hint: "พร้อมป้อนต้นทุนเข้า FG" },
+    { id: "linked", label: "ป้อนต้นทุนแล้ว", hint: "ต้นทุนถูกส่งกลับทะเบียนสินค้า" },
+  ], workflowIndex, request.status === "cancelled");
+  const submitBlocked = editableStatus ? submitToExecError(request) : null;
+  const documentPrimaryAction = canEdit && editableStatus
+    ? {
+      id: "submit",
+      label: "ส่งผู้บริหารอนุมัติ",
+      kind: "submit",
+      icon: Send,
+      onClick: submit,
+      disabled: !!submitBlocked,
+      disabledReason: submitBlocked || undefined,
+    }
+    : null;
+
   return (
     <Workspace hideHeader back={{ href: "/sa/costing", label: "กลับรายการ" }}>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
-            {request.docNo || "ใบขอราคา (ร่าง)"}
-          </h1>
-          <p>
-            {request.customerName || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ {fmtDate(request.createdAt)}
-            {request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}
-          </p>
-        </div>
-        {/* action ของ entity อยู่ขวาบนนอกการ์ด ตาม page-header standard */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canEdit && (
-            <>
-              <button type="button" className="btn" onClick={openEdit} disabled={saving}>
-                <Pencil size={14} /> แก้ไข
-              </button>
-              <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
-                <Ban size={14} /> ยกเลิกใบ
-              </button>
-              {/* ราคาวัสดุมาจากทะเบียน — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
-              {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
-                <>
-                  <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
-                    <Boxes size={14} /> ดึงราคาล่าสุดทุกบรรทัด
-                  </button>
-                  <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
-                    <Send size={14} /> ส่งผู้บริหารอนุมัติ
-                  </button>
-                </>
-              )}
-            </>
-          )}
-          {/* revise = ออกใบใหม่ (เฉพาะใบที่อนุมัติ/จบแล้ว) — canEdit เป็น false ตอนนี้ */}
-          {canFeed && ["approved", "linked"].includes(request.status) && (
-            <button type="button" className="btn" onClick={revise} disabled={saving}>
-              <Copy size={14} /> ออกฉบับแก้ไข (rev.{(request.revisionNo || 1) + 1})
-            </button>
-          )}
-        </div>
-      </div>
+      <SalesDetailOverview
+        eyebrow="SA COSTING REQUEST"
+        title={request.docNo || "ใบขอราคา (ร่าง)"}
+        description={`${request.customerName || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ ${fmtDate(request.createdAt)}${request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}`}
+        badges={<SalesStateBadge label={COSTING_STATUS_LABELS[request.status] || request.status} color={COSTING_STATUS_TONES[request.status]} />}
+        actions={canEdit ? (
+          <button type="button" className="btn" onClick={openEdit} disabled={saving}>
+            <Pencil size={14} /> แก้ไขข้อมูล
+          </button>
+        ) : null}
+        facts={[
+          { key: "moq", icon: Calculator, label: "MOQ", value: `${qty(request.moq)} ชิ้น` },
+          { key: "items", icon: Boxes, label: "สินค้า", value: `${(request.items || []).length} รายการ` },
+          { key: "pricing", label: "ราคาวัสดุ", value: pricing.total ? `${pricing.quoted}/${pricing.total}` : "ไม่ต้องขอราคา" },
+          { key: "approval", label: "อนุมัติ", value: `${approval.approved}/${approval.total}` },
+        ]}
+      />
 
-      <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
+      <DetailPageLayout
+        asideLabel="สรุปและจัดการใบขอราคาผลิต"
+        aside={(
+          <>
+            <DocumentSummaryCard
+              title="สรุปใบขอราคา"
+              rows={[
+                { id: "moq", label: "MOQ", value: `${qty(request.moq)} ชิ้น` },
+                { id: "items", label: "สินค้า", value: `${(request.items || []).length} รายการ` },
+                { id: "pricing", label: "ราคาวัสดุ", value: pricing.total ? `${pricing.quoted}/${pricing.total}` : "ครบ" },
+                { id: "approval", label: "อนุมัติ", value: `${approval.approved}/${approval.total}${approval.returned ? ` · ตีกลับ ${approval.returned}` : ""}` },
+              ]}
+              status={COSTING_STATUS_LABELS[request.status] || request.status}
+              statusColor={COSTING_STATUS_TONES[request.status]}
+            />
+            <DocumentControlCard
+              status={COSTING_STATUS_LABELS[request.status] || request.status}
+              statusColor={COSTING_STATUS_TONES[request.status]}
+              statusDescription="การดำเนินการระดับใบขอราคา"
+              workflowSteps={workflowSteps}
+              primaryAction={documentPrimaryAction}
+              secondaryActions={[
+                {
+                  id: "fill-prices",
+                  label: "ดึงราคาล่าสุดทุกบรรทัด",
+                  kind: "refresh",
+                  icon: Boxes,
+                  onClick: fillFromLibrary,
+                  visible: canEdit && editableStatus,
+                },
+                {
+                  id: "revise",
+                  label: `ออกฉบับแก้ไข (rev.${(request.revisionNo || 1) + 1})`,
+                  kind: "revise",
+                  icon: Copy,
+                  onClick: revise,
+                  visible: canFeed && ["approved", "linked"].includes(request.status),
+                },
+              ]}
+              dangerActions={[
+                {
+                  id: "cancel",
+                  label: "ยกเลิกใบ",
+                  kind: "cancel",
+                  icon: Ban,
+                  onClick: () => setPendingCancel(true),
+                  visible: canEdit,
+                },
+              ]}
+              busy={saving}
+            />
+            {request.dealId ? (
+              <RelatedDocumentCard
+                title="ดีลต้นทาง"
+                meta={request.customerName || "ดีลที่ใช้สร้างใบขอราคา"}
+                actions={(
+                  <Link href={`/sa/deals/${request.dealId}`} className="btn ghost sm">
+                    <ExternalLink size={13} /> เปิดดีลต้นทาง
+                  </Link>
+                )}
+              >
+                ใบขอราคานี้อ้างอิงข้อมูลสินค้าและลูกค้าจากดีล
+              </RelatedDocumentCard>
+            ) : null}
+          </>
+        )}
+      >
+        <div>
+          <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
           <span
             className="status-pill"
@@ -751,6 +830,8 @@ export default function CostingDetailPage() {
           </div>
         );
       })}
+        </div>
+      </DetailPageLayout>
 
       <Modal open={!!form} onClose={closeEdit} title="แก้ไขใบขอราคา" size="lg" dismissible={!saving}>
         {form && (
