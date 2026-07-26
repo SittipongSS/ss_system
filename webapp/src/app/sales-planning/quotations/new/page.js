@@ -26,11 +26,10 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
+import { blockedQuotationCustomers, eligibleQuotationDeals } from "@/lib/sales/quotationSourcePicker";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import SkeletonRows from "@/components/ui/Skeleton";
-
-const EXCLUDE_STAGES = ["won", "in_project", "lost"];
 
 function NewQuotationInner() {
   const router = useRouter();
@@ -51,6 +50,7 @@ function NewQuotationInner() {
   const [creating, setCreating] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]); // ใช้ตอบเหตุผลเท่านั้น ไม่ใช่ตัวเลือกในลิสต์
   const [lines, setLines] = useState([]);
   const [quoteDate, setQuoteDate] = useState(() => businessDate());
   const [validityDays, setValidityDays] = useState(30);
@@ -64,16 +64,18 @@ function NewQuotationInner() {
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
   const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
-  // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก)
+  // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก) + ทะเบียนลูกค้าไว้ตอบว่า
+  // "ลูกค้าที่ค้นมีในทะเบียนแต่ออกใบไม่ได้เพราะอะไร" (ลิสต์นี้กรองทีมอยู่แล้วตามกติกา)
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productData] = await Promise.all([
+        const [dRes, pRes, productData, customerData] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
           cachedFetchJson("/api/products").catch(() => []),
+          cachedFetchJson("/api/customers").catch(() => []),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
         const projData = pRes?.ok ? await pRes.json() : [];
@@ -83,6 +85,7 @@ function NewQuotationInner() {
         (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
         setProjectsById(map);
         setProducts(Array.isArray(productData) ? productData : []);
+        setCustomers(Array.isArray(customerData) ? customerData : []);
       } catch (e) {
         if (alive) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
       } finally {
@@ -92,14 +95,11 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, []);
 
-  // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด (won/lost = ล็อก)
+  // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด (won/lost = ล็อก) + แก้ไขได้
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — ไม่กรองดีลที่มีใบแล้ว
-  // ต้องเป็นดีลที่ "แก้ไขได้" (canEdit จาก API — edit-scope) ไม่ใช่แค่ view-scope;
-  // ไม่งั้นเลือกดีลทีมอื่นแล้ว POST คืน forbidden (server เช็ค inSalesEditScope).
-  const eligible = useMemo(
-    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage)),
-    [deals],
-  );
+  // เงื่อนไขอยู่ที่ lib/sales/quotationSourcePicker.js ที่เดียว เพราะตัวบอกเหตุ
+  // "ทำไมลูกค้าไม่อยู่ในลิสต์" ต้องใช้เงื่อนไขชุดเดียวกันเป๊ะ ไม่งั้นสองฝั่งเถียงกัน
+  const eligible = useMemo(() => eligibleQuotationDeals(deals), [deals]);
 
   const customerOptions = useMemo(() => {
     const seen = new Map();
@@ -172,6 +172,30 @@ function NewQuotationInner() {
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const billingAddress = customer?.address || "";
   const shippingAddress = customer?.shippingAddress || customer?.address || "";
+
+  // ค้นชื่อลูกค้าแล้วไม่เจอในลิสต์ = ตอบตรงนั้นว่าเพราะอะไร + ทางไปแก้ (มติผู้ใช้
+  // 2026-07-26: คงการกรองไว้ แต่ห้ามตัน) — ก่อนหน้านี้ลูกค้าหายเงียบ ๆ ต้องมาสืบทีละเคส
+  const customerEmptyText = useCallback((search) => {
+    const blocked = blockedQuotationCustomers({ search, customers, deals });
+    if (!blocked.length) {
+      return search.length < 2
+        ? "พิมพ์ชื่อลูกค้าเพื่อค้นหา"
+        : "ไม่พบลูกค้าชื่อนี้ในทะเบียนที่ทีมคุณดูแล";
+    }
+    return (
+      <div className={styles.blockedList}>
+        {blocked.map((row) => (
+          <div key={row.customerId} className={styles.blockedRow}>
+            <strong>{row.customerName}</strong>
+            <span>
+              {row.dealTitle ? `ดีล “${row.dealTitle}” — ` : ""}{row.reason}
+            </span>
+            <Link href={row.href} className="linklike">{row.actionLabel} →</Link>
+          </div>
+        ))}
+      </div>
+    );
+  }, [customers, deals]);
 
   const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
   const onProject = (v) => { setProjectId(v); setDealId(""); setCustomer(null); };
@@ -349,7 +373,7 @@ function NewQuotationInner() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกตามลำดับ ลูกค้า → โครงการ → ดีล</span></div>
             <div className={styles.sourceGrid}>
-              <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} /></label>
+              <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} emptyText={customerEmptyText} /></label>
               <label>โครงการ *<SearchableSelect className={styles.sourceSelect} entity="project" value={projectId} onChange={onProject} disabled={!customerId} ariaLabel="เลือกโครงการ" placeholder={!customerId ? "เลือกชื่อลูกค้าก่อน" : "ค้นหารหัสหรือชื่อโครงการ…"} options={projectOptions} /></label>
               <label>ดีล *<SearchableSelect className={styles.sourceSelect} entity="deal" value={dealId} onChange={setDealId} disabled={!projectId} ariaLabel="เลือกดีล" placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} /></label>
             </div>
@@ -357,9 +381,8 @@ function NewQuotationInner() {
                 แล้วคนหาไม่เจอจะคิดว่าระบบพัง (ทะเบียนมีลูกค้าเยอะกว่านี้มาก) */}
             {!loading && eligible.length > 0 && (
               <p className={styles.sourceHint}>
-                เลือกได้ {customerOptions.length} ราย จากดีลที่พร้อมออกใบ {eligible.length} ดีล — ไม่เจอลูกค้าที่ต้องการ?
-                ดีลของลูกค้ารายนั้นอาจยังไม่ผูกโครงการ ปิดไปแล้ว (Won/ไม่สำเร็จ) หรือเป็นดีลที่คุณแก้ไขไม่ได้
-                {" "}<Link href="/sa/deals" className="linklike">ตรวจที่หน้าดีล</Link>
+                เลือกได้ {customerOptions.length} ราย จากดีลที่พร้อมออกใบ {eligible.length} ดีล —
+                ไม่เจอลูกค้าที่ต้องการ? พิมพ์ชื่อในช่องด้านบน ระบบจะบอกว่าติดอะไรและไปแก้ที่ไหน
               </p>
             )}
           </section>
