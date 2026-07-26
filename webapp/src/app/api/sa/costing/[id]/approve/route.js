@@ -12,6 +12,8 @@ import {
   approvalProgress, canDecideItem, canViewCostingRequest, deriveRequestStatusAfterApproval,
 } from '@/lib/costing';
 import { findCostingRequest } from '@/lib/costingAdmin';
+import { costingDecisionUpdate } from '@/lib/costingUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -46,10 +48,14 @@ export async function POST(request, { params }) {
   }
 
   const nowIso = new Date().toISOString();
+  // เก็บไว้ใช้เขียนลงเธรดท้ายคำขอด้วย — คอลัมน์ returnReason ถูก /submit ล้างทุกรอบ
+  // ที่เซลยื่นใหม่ เธรดจึงเป็นที่เดียวที่เหตุผลของทุกรอบอยู่ครบ
+  let returnReason = null;
 
   if (decision === 'return') {
     const reason = String(body.returnReason || '').trim();
     if (!reason) return Response.json({ error: 'ต้องระบุเหตุผลที่ตีกลับ' }, { status: 400 });
+    returnReason = reason;
     const { error } = await supabase.from('costing_request_items').update({
       approvalStatus: 'returned', returnReason: reason.slice(0, 500), updatedAt: nowIso,
     }).eq('id', item.id);
@@ -114,6 +120,13 @@ export async function POST(request, { params }) {
       : `อนุมัติราคาผลิต "${item.productLabel}" ในใบ ${after.docNo || id} (${progress.approved}/${progress.total})`,
     request,
   });
+
+  // ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: การอนุมัติ/ตีกลับบันทึกลง DB สำเร็จแล้ว
+  // เขียนเธรดพลาดต้องไม่ทำให้ผู้บริหารเห็น 500 แล้วกดซ้ำ
+  const event = costingDecisionUpdate(decision, item, { reason: returnReason });
+  if (event) {
+    await appendUpdate(supabase, { entityType: 'costing_request', entityId: id, ...event, user });
+  }
 
   // แจ้งฝ่ายขายเมื่อ "จบรอบ" เท่านั้น — อนุมัติทีละรายการไม่ต้องเด้งทุกครั้ง
   if (nextStatus !== afterWrite.status && ['approved', 'returned'].includes(nextStatus)) {

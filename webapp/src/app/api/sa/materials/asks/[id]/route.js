@@ -12,6 +12,8 @@ import {
 } from '@/lib/materialAsks';
 import { findAsk } from '@/lib/materialPricesAdmin';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
+import { askActionUpdate } from '@/lib/costingUpdates';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -111,6 +113,13 @@ export async function PATCH(request, { params }) {
       user, action: 'update', entityType: 'material_price_ask', entityId: id, before, after, summary, request,
     });
 
+    // เหตุการณ์ลงเธรดของเคส — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้
+    // action ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ autoTaskUpdates)
+    const event = askActionUpdate(action, after, { reason: patch.cancelReason });
+    if (event) {
+      await appendUpdate(supabase, { entityType: 'material_ask', entityId: id, ...event, user });
+    }
+
     // แจ้งฝ่ายเจ้าของเมื่อมีเคสใหม่เข้าคิว (space rd/pc ตามฝ่าย)
     if (action === 'submit') {
       sendChat(after.dept === 'PC' ? 'pc' : 'rd', chatCard({
@@ -163,6 +172,9 @@ export async function DELETE(request, { params }) {
     ? await supabase.rpc('force_delete_material_ask', { p_id: id })
     : await supabase.from('material_price_asks').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  // เธรดไม่มี FK กับเคส (polymorphic) — ลบเคสแล้วต้องเก็บกวาดเอง ไม่งั้นเหลือเธรด
+  // ลอยที่ไม่มีเจ้าของ · ครอบทั้งเส้นปกติและเส้น force (RPC ไม่รู้จักตารางนี้)
+  await purgeUpdates(supabase, 'material_ask', id);
   if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
 
   await recordAudit({

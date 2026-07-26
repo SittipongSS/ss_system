@@ -6,14 +6,15 @@
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ClipboardList, Send, Ban, Check, CheckCheck, Trash2 } from "lucide-react";
+import { ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
-import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -333,6 +334,19 @@ export default function MaterialAskDetailPage() {
           )}
         </div>
       ))}
+
+      {/* เธรดคุยกันในเคส (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
+          ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของเคส
+          (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
+      <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในเคสนี้">
+        <UpdateThread
+          entityType="material_ask"
+          entityId={ask.id}
+          placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
+          emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
+          onPosted={load}
+        />
+      </DetailCard>
         </div>
       </DetailPageLayout>
 

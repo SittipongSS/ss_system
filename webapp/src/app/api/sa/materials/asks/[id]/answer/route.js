@@ -16,6 +16,8 @@ import { answerAskError, canAnswerAsk, deriveAskStatusAfterAnswer } from '@/lib/
 import { acceptMaterial, appendMaterialRevision, findAsk } from '@/lib/materialPricesAdmin';
 import { componentFillFromRevision } from '@/lib/costingLibrary';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
+import { askAnswerUpdates } from '@/lib/costingUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -159,6 +161,13 @@ export async function PATCH(request, { params }) {
         + (skipped ? ` · ตอบไม่ได้ ${skipped} รายการ` : ''),
       request,
     });
+
+    // คำตอบลงเธรดรายรายการ — เหตุผลที่ "ตอบไม่ได้" เคยอยู่แต่ในคอลัมน์ของรายการ
+    // คนที่ตามเคสอยู่จึงไม่เห็นว่าเกิดอะไรขึ้นเมื่อไร (ไม่เช็ค error: เขียนเธรดพลาด
+    // ต้องไม่ทำให้คำตอบที่บันทึกลงทะเบียนแล้วตอบ 500)
+    for (const event of askAnswerUpdates(validated)) {
+      await appendUpdate(supabase, { entityType: 'material_ask', entityId: id, ...event, user });
+    }
 
     if (after.status === 'answered') {
       sendChat('sales', chatCard({

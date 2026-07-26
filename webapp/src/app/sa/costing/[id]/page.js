@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink,
-  Boxes, Copy, MessageSquarePlus,
+  Boxes, Copy, MessageSquare, MessageSquarePlus,
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -22,7 +22,8 @@ import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
-import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -831,6 +832,19 @@ export default function CostingDetailPage() {
           </div>
         );
       })}
+
+      {/* เธรดของใบ (mig 0163) — เหตุผลที่ผู้บริหารตีกลับเคยอยู่ในช่อง returnReason
+          ช่องเดียวต่อรายการ และถูกล้างทุกครั้งที่เซลยื่นใหม่ ใบที่วนสามรอบจึงเหลือ
+          เหตุผลรอบสุดท้ายรอบเดียว · เธรดเก็บครบทุกรอบ */}
+      <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในใบนี้">
+        <UpdateThread
+          entityType="costing_request"
+          entityId={request.id}
+          placeholder="ชี้แจงต้นทุน / ถามผู้บริหาร / บันทึกข้อตกลง..."
+          emptyText="ยังไม่มีการพูดคุย — ชี้แจงที่มาของต้นทุนหรือถามเงื่อนไขไว้ตรงนี้ได้"
+          onPosted={load}
+        />
+      </DetailCard>
         </div>
       </DetailPageLayout>
 

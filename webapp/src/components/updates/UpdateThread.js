@@ -189,6 +189,12 @@ export default function UpdateThread({
                 <div className={styles.head}>
                   <span className="ui-badge" style={{ color: item.color }}>{item.label}</span>
                   {item.kind === "own" && <strong>{item.row.authorName || "ระบบ"}</strong>}
+                  {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ) อ่านไม่รู้เรื่อง
+                      ถ้าไม่รู้ว่าใครพูดในฐานะอะไร · `authorDept` ถูกเขียนอยู่แล้วทุกแถว
+                      ตั้งแต่ mig 0163 แค่ไม่เคยถูกแสดง */}
+                  {item.kind === "own" && item.row.authorDept && (
+                    <span className={styles.dept}>{item.row.authorDept}</span>
+                  )}
                   <span>{item.at ? fmtDateTime(item.at) : ""}</span>
                   {item.kind === "own" && item.row.editedAt && <span>· แก้ไขแล้ว</span>}
                   {item.kind === "own" && item.row.acknowledgedAt && (

@@ -29,6 +29,12 @@
 }
 .head strong { color: var(--text-2); font-weight: 600; }
 
+/* ฝ่ายของคนพูด — เล็กและเงียบกว่าชื่อ เป็นบริบทไม่ใช่หัวข้อ */
+.dept {
+  padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 10.5px; letter-spacing: 0.02em; color: var(--text-3);
+}
+
 .body { font-size: 13.5px; color: var(--text); margin: 0; }
 .deleted { font-size: 13px; color: var(--text-3); font-style: italic; }
 
