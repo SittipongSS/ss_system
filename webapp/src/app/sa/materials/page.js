@@ -19,14 +19,16 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { ASK_OPEN_STATUSES } from "@/lib/materialAsks";
 
-const TAB_KEYS = ["registry", "queue", "mine"];
+// คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
+// ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
+const QUEUE_TAB = (dept) => `queue-${dept}`;
+const DEPT_LABEL = { RD: "RD", PC: "จัดซื้อ (PC)" };
 
-const BLURB = {
-  registry: "ข้อมูลหลักของราคาวัตถุดิบและบรรจุภัณฑ์ — ใบขอราคาผลิตเลือกวัสดุจากที่นี่ "
-    + "แต่ละราคาเป็นรุ่น (rev) เก็บประวัติครบ และมีได้หลายชั้นจำนวน",
-  queue: "เคสที่ฝ่ายคุณต้องตอบราคา — ตอบแล้วราคาเข้าทะเบียนให้ใช้ซ้ำได้ทุกงานทันที",
-  mine: "เคสที่คุณเปิดถามราคาบรรจุภัณฑ์ (PM-) กับฝ่ายจัดซื้อ และหัวน้ำหอม/เนื้อสาร (RM-) กับ RD",
-};
+const REGISTRY_BLURB = "ข้อมูลหลักของราคาวัตถุดิบและบรรจุภัณฑ์ — ใบขอราคาผลิตเลือกวัสดุจากที่นี่ "
+  + "แต่ละราคาเป็นรุ่น (rev) เก็บประวัติครบ และมีได้หลายชั้นจำนวน";
+const MINE_BLURB = "เคสที่คุณเปิดถามราคาบรรจุภัณฑ์ (PM-) กับฝ่ายจัดซื้อ และหัวน้ำหอม/เนื้อสาร (RM-) กับ RD";
+const queueBlurb = (dept) => `เคสที่ฝ่าย ${DEPT_LABEL[dept] || dept} ต้องตอบราคา`
+  + " — ตอบแล้วราคาเข้าทะเบียนให้ใช้ซ้ำได้ทุกงานทันที";
 
 export default function MaterialsPage() {
   const router = useRouter();
@@ -34,7 +36,9 @@ export default function MaterialsPage() {
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
-  const myDept = ["RD", "PC"].find((d) => canQuoteMaterial(me, d)) || null;
+  // filter ไม่ใช่ find — admin ตอบได้ทั้ง RD และ PC (isSuperuser ผ่านทุกฝ่าย)
+  // ถ้าใช้ find คิวของ PC จะหายไปทั้งก้อนโดยไม่มีอะไรบอก
+  const myDepts = useMemo(() => ["RD", "PC"].filter((d) => canQuoteMaterial(me, d)), [me]);
 
   const [materials, setMaterials] = useState([]);
   const [asks, setAsks] = useState([]);
@@ -46,9 +50,13 @@ export default function MaterialsPage() {
   // แท็บอยู่ใน URL — ลิงก์ตรงจากที่อื่น (เช่น redirect ของ /sa/materials/asks) และ
   // ปุ่มย้อนกลับของเบราว์เซอร์ทำงานได้จริง. ค่าตั้งต้นของ RD/PC = คิวของฝ่ายตน
   // เพราะนั่นคืองานประจำวัน (ก่อนรวมเมนู มันเป็นเมนูของตัวเอง ห้ามทำให้หายาก)
+  const tabKeys = ["registry", ...myDepts.map(QUEUE_TAB), "mine"];
+  const defaultTab = myDepts.length ? QUEUE_TAB(myDepts[0]) : "registry";
   const urlTab = searchParams.get("tab");
-  const defaultTab = myDept ? "queue" : "registry";
-  const tab = TAB_KEYS.includes(urlTab) ? urlTab : defaultTab;
+  // "queue" เฉย ๆ = ทางลัดของลิงก์เก่า/ปุ่มย้อนกลับหน้ารายละเอียด → คิวแรกที่มีสิทธิ์
+  const wanted = urlTab === "queue" ? defaultTab : urlTab;
+  const tab = tabKeys.includes(wanted) ? wanted : defaultTab;
+  const queueDept = tab.startsWith("queue-") ? tab.slice("queue-".length) : null;
   const setTab = (next) => router.replace(`/sa/materials?tab=${next}`, { scroll: false });
 
   const loadMaterials = useCallback(async () => {
@@ -81,10 +89,10 @@ export default function MaterialsPage() {
   }, []);
 
   const mine = useMemo(() => asks.filter((a) => a._mine), [asks]);
-  const queue = useMemo(
-    () => asks.filter((a) => a.dept === myDept && ASK_OPEN_STATUSES.includes(a.status)),
-    [asks, myDept],
-  );
+  // คิวของแต่ละฝ่ายที่ผู้ใช้คนนี้ตอบได้ — { RD: [...], PC: [...] }
+  const queues = useMemo(() => Object.fromEntries(myDepts.map((d) => [
+    d, asks.filter((a) => a.dept === d && ASK_OPEN_STATUSES.includes(a.status)),
+  ])), [asks, myDepts]);
 
   return (
     <Workspace hideHeader>
@@ -94,7 +102,9 @@ export default function MaterialsPage() {
             <span className="premium-header-icon"><Boxes size={22} /></span>{" "}
             วัสดุ
           </h1>
-          <p>{BLURB[tab]}</p>
+          <p>
+            {tab === "registry" ? REGISTRY_BLURB : queueDept ? queueBlurb(queueDept) : MINE_BLURB}
+          </p>
         </div>
       </div>
 
@@ -102,7 +112,10 @@ export default function MaterialsPage() {
         value={tab} onChange={setTab}
         tabs={[
           { key: "registry", label: "ทะเบียนวัสดุ" },
-          myDept && { key: "queue", label: `คิวเคสฝ่าย ${myDept} (${queue.length})` },
+          ...myDepts.map((d) => ({
+            key: QUEUE_TAB(d),
+            label: `คิวเคสฝ่าย ${DEPT_LABEL[d] || d} (${queues[d].length})`,
+          })),
           { key: "mine", label: `เคสที่ฉันขอ (${mine.length})` },
         ]}
         ariaLabel="มุมมองหน้าวัสดุ"
@@ -115,7 +128,8 @@ export default function MaterialsPage() {
         />
       ) : (
         <MaterialAsksPanel
-          scope={tab} rows={tab === "queue" ? queue : mine}
+          scope={queueDept ? "queue" : "mine"} dept={queueDept}
+          rows={queueDept ? queues[queueDept] : mine}
           materials={materials} customers={customers} products={products}
           loading={loading} loadError={loadError} reload={reload}
         />

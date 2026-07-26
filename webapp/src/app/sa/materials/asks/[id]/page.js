@@ -78,8 +78,8 @@ export default function MaterialAskDetailPage() {
   }, [id, load]);
 
   // รายการเคสเป็นแท็บของหน้าวัสดุแล้ว — กลับไปแท็บที่คนคนนี้ใช้งานจริง
-  // (ผู้ตอบกลับเข้าคิวฝ่ายตน, ผู้ขอกลับไปดูเคสของตัวเอง)
-  const backTab = ask?._mine === false ? "queue" : "mine";
+  // (ผู้ตอบกลับเข้าคิวของฝ่ายที่เคสนี้ถามไป, ผู้ขอกลับไปดูเคสของตัวเอง)
+  const backTab = ask?._mine === false ? `queue-${ask.dept}` : "mine";
   const back = { href: `/sa/materials?tab=${backTab}`, label: "กลับรายการเคส" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !ask) {

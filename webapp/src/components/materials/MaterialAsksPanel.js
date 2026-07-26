@@ -27,7 +27,7 @@ const STATUS_TONE = {
 };
 
 export default function MaterialAsksPanel({
-  scope = "mine", rows = [], materials = [], customers = [], products = [],
+  scope = "mine", dept = null, rows = [], materials = [], customers = [], products = [],
   loading = false, loadError = "", reload,
 }) {
   const router = useRouter();
@@ -92,7 +92,7 @@ export default function MaterialAsksPanel({
       ) : rows.length === 0 ? (
         <EmptyState icon={ClipboardList}>
           {scope === "queue"
-            ? "ไม่มีเคสรอฝ่ายคุณตอบ"
+            ? `ไม่มีเคสรอฝ่าย ${dept || "คุณ"} ตอบ`
             : "ยังไม่มีเคสของคุณ — กด \"เปิดเคสขอราคา\" เพื่อเริ่ม"}
         </EmptyState>
       ) : (
