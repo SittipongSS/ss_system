@@ -35,6 +35,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
+import { isRevisableQuotationApprovalStatus } from "@/lib/sales/quotationWorkflow";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
@@ -128,7 +129,10 @@ export default function QuotationEditorPage() {
   const needsApproval = needsSubmit || awaitingApproval;
   const canWithdrawSubmission = awaitingApproval
     && (quote?.approvalRequestedBy === quote?.meId || !!quote?.canApprove);
-  const canReviseDocument = !!quote && canEditCap && quote.approvalStatus === "approved"
+  // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Revision
+  // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
+  const canReviseDocument = !!quote && canEditCap
+    && isRevisableQuotationApprovalStatus(quote.approvalStatus)
     && EDITABLE.has(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
@@ -464,7 +468,7 @@ export default function QuotationEditorPage() {
       ? 1
       : 0;
   const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
-    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ไม่อยู่ใน workflow อนุมัติแบบใหม่", state: "done" }]
+    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Revision", state: "done" }]
     : workflowStepsFromIndex([
         { id: "prepare", label: "จัดทำเอกสาร", hint: quote?.createdByName || people.preparedBy || "ผู้จัดทำ" },
         { id: "submit", label: "ยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
@@ -476,7 +480,7 @@ export default function QuotationEditorPage() {
       ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะถอนการยื่นหรือได้รับอนุมัติ"
       : quote?.approvalStatus === "approved"
         ? "อนุมัติแล้ว หากต้องแก้ไขให้ออก Revision ใหม่"
-        : "เอกสารนี้ไม่ต้องผ่านการอนุมัติแบบใหม่";
+        : "เอกสารฉบับเดิมที่ออกก่อนระบบอนุมัติ — แก้ทับฉบับเดิมไม่ได้ หากต้องแก้ไขให้ออก Revision ใหม่";
   const primaryAction = editable
     ? {
         id: "save",

@@ -202,6 +202,19 @@ lifecycle ของเอกสารปัจจุบัน
 
 - **สถานะอนุมัติของ QT มี 4 ค่า** (`not_required` grandfather / `not_submitted` /
   `pending` / `approved`) — ปุ่มยื่นกับปุ่มอนุมัติต้องแยกกันตามนี้ (mig 0155)
+- **`not_required` = "อนุมัติแล้ว" ไม่ใช่ "ยังไม่เข้ากระบวนการ"** (มติ 2026-07-26) —
+  ใบ grandfather ส่งลูกค้า/Won ได้เลย (`documentWorkflow.js` + accept RPC ตั้งแต่ mig 0098)
+  จึง **แก้ทับฉบับเดิมไม่ได้ ต้องออก Revision** ตามกติกา "หลังอนุมัติห้ามแก้ทับ" และ
+  **ยื่นอนุมัติไม่ได้** (ไม่มีอะไรให้ยื่น). เกิดใหม่ไม่ได้แล้ว (default `not_submitted`
+  ตั้งแต่ mig 0156) — เงื่อนไขเดียวคือ `isRevisableQuotationApprovalStatus` ใน
+  `lib/sales/quotationWorkflow.js` ห้ามเขียน `=== 'approved'` ซ้ำที่อื่น
+
+| สถานะอนุมัติ QT | แก้ทับ | ยื่นอนุมัติ | ถอนการยื่น | ออก Revision |
+|---|---:|---:|---:|---:|
+| `not_submitted` | ✅ ผู้มีสิทธิ์แก้ | ✅ | — | — |
+| `pending` | ❌ | ❌ | ✅ ผู้ยื่น/ผู้อนุมัติ | ❌ |
+| `approved` | ❌ | ❌ | ❌ | ✅ ผู้มีสิทธิ์แก้ |
+| `not_required` (grandfather) | ❌ | ❌ | — | ✅ ผู้มีสิทธิ์แก้ |
 - **ปุ่มออกเอกสารต้องเรียก `openQuotePrintWindowPreferIssued` /
   `openSalesOrderPrintWindowPreferIssued` เสมอ** — ใบที่อนุมัติแล้วต้องเล่นฉบับตรึง
   ไม่ใช่เรนเดอร์สด (ADR 0011)

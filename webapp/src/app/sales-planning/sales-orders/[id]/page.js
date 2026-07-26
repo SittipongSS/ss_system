@@ -249,7 +249,9 @@ export default function SalesOrderDetailPage() {
     const action = workflowForm?.action;
     const reason = String(workflowForm?.reason || "").trim();
     if (!action || reason.length < 10) return;
-    const result = await requestAction(action, { reason });
+    // ส่งเวอร์ชันที่หน้านี้เห็นไปด้วยเสมอ — ไม่งั้นด่านกันแท็บค้างฝั่ง RPC เป็น no-op
+    // (server จะปฏิเสธคำขอที่ไม่มีค่านี้)
+    const result = await requestAction(action, { reason, expectedUpdatedAt: order?.updatedAt });
     if (result) setWorkflowForm(null);
   }
 

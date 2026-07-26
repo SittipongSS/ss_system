@@ -11,11 +11,13 @@ import {
   cancelReasonLabel,
   dealActualFromSalesOrders,
   isCustomerCancelReason,
+  isForeignKeyViolation,
   isSalesOrderReviewer,
   isSalesOrderSubmitter,
   isValidCancelReasonCode,
   isValidReversalTarget,
   salesOrderActual,
+  salesOrderRevisionChainDeleteBlock,
 } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
@@ -109,4 +111,39 @@ test('Won reversal: customer-group reasons flag deal reversal; targets validate'
   assert.equal(isValidReversalTarget('won'), false);
   assert.equal(isValidReversalTarget(''), false);
   assert.deepEqual(WON_REVERSAL_TARGETS, ['reopen', 'lost']);
+});
+
+// A4 (2026-07-26): FK ของ revision chain เป็น ON DELETE RESTRICT — เดิมลบแล้วได้ error
+// Postgres ดิบออกหน้าเว็บ ตอนนี้ต้องเป็นข้อความที่บอกว่าต้องทำอะไรต่อ
+test('deleting a Sale Order inside a revision chain is blocked with guidance, not a raw FK error', () => {
+  const history = [
+    { id: 'SO-B', orderNumber: 'SO-26070001-1' },
+    { id: 'SO-A', orderNumber: 'SO-26070001-0' },
+  ];
+
+  // ใบต้นทางที่ถูกแทนที่แล้ว — ฉบับ Revision ชี้กลับมาด้วย revisedFromId
+  const source = { id: 'SO-A', supersededById: 'SO-B', revisionHistory: history };
+  const sourceBlock = salesOrderRevisionChainDeleteBlock(source);
+  assert.match(sourceBlock, /SO-26070001-1/);
+  assert.match(sourceBlock, /ลบถาวรไม่ได้/);
+
+  // ฉบับ Revision — ใบต้นทางยังชี้มาด้วย supersededById
+  const revision = { id: 'SO-B', revisedFromId: 'SO-A', revisionHistory: history };
+  const revisionBlock = salesOrderRevisionChainDeleteBlock(revision);
+  assert.match(revisionBlock, /SO-26070001-0/);
+  assert.match(revisionBlock, /ยกเลิก SO/);
+
+  // ไม่มี chain = ลบได้ตามกติกาเดิม (canHardDeleteSalesOrder เป็นผู้ตัดสินต่อ)
+  assert.equal(salesOrderRevisionChainDeleteBlock({ id: 'SO-C', revisionHistory: [] }), null);
+  assert.equal(salesOrderRevisionChainDeleteBlock(null), null);
+
+  // ไม่มี revisionHistory ก็ยังบล็อกได้ แค่โชว์ id แทนเลขที่
+  assert.match(salesOrderRevisionChainDeleteBlock({ id: 'SO-A', supersededById: 'SO-B' }), /SO-B/);
+});
+
+test('foreign key violations are recognised from either the code or the message', () => {
+  assert.equal(isForeignKeyViolation({ code: '23503' }), true);
+  assert.equal(isForeignKeyViolation({ message: 'violates foreign key constraint "x_fkey"' }), true);
+  assert.equal(isForeignKeyViolation({ code: '23505', message: 'duplicate key' }), false);
+  assert.equal(isForeignKeyViolation(null), false);
 });

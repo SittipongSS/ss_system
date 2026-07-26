@@ -7,6 +7,7 @@ import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
-  if (quote.approvalStatus !== 'approved') {
+  // ใบ grandfather (not_required) ออก Revision ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
+  // ยังแก้ได้ (มติ 2026-07-26) เพราะทุกด่านในระบบนับใบพวกนี้เป็น "อนุมัติแล้ว" อยู่แล้ว
+  if (!isRevisableQuotationApprovalStatus(quote.approvalStatus)) {
     if (quote.approvalStatus === 'pending') {
       return badRequest('ใบเสนอราคานี้กำลังรออนุมัติ — ถอนการยื่นก่อนแก้ฉบับเดิม');
     }
