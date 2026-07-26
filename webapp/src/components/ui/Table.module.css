@@ -122,13 +122,14 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  background: var(--panel);
+  /* ทึบ 100% — มีคอลัมน์อื่นเลื่อนผ่านข้างใต้ ใช้ --panel ที่โปร่ง 6% ตัวเลขจะทะลุขึ้นมา */
+  background: var(--panel-solid);
 }
 
 /* คอลัมน์แรกที่ตรึงไว้ต้องทึบเสมอ (มีเนื้อหาเลื่อนอยู่ข้างใต้) — ผสมสี hover
    ลงบนพื้นการ์ดแทนการวางสีโปร่งทับ ไม่งั้นตัวเลขคอลัมน์อื่นจะทะลุขึ้นมา */
 .scroll[data-family="matrix"] :global(tbody tr:hover td:first-child) {
-  background: color-mix(in srgb, var(--accent-soft) 25%, var(--panel));
+  background: color-mix(in srgb, var(--accent-soft) 25%, var(--panel-solid));
 }
 
 .footer {

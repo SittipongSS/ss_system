@@ -14,10 +14,17 @@
   overflow: hidden;
 }
 
-.canvas :global(.recharts-wrapper),
-.canvas :global(.recharts-surface) {
-  max-width: 100%;
-}
+/* ⛔ ห้ามใส่ max-width ให้ .recharts-wrapper
+
+   ResponsiveContainer ของ Recharts 3 วางกราฟไว้ในกล่องวัดขนาดที่ inline เป็น
+   `width:0;height:0;overflow:visible` แล้วค่อยตั้งความกว้างจริงเป็น inline style ให้
+   `.recharts-wrapper` — พอมีกฎ `max-width:100%` เข้าไป 100% จะคิดจากกล่องวัดขนาดที่กว้าง
+   0 → wrapper ถูกบีบเหลือ 0 ทั้งที่ inline บอก 1168px กราฟเลยหายทั้งอัน เหลือแต่ legend
+   (legend เป็น HTML ไม่ใช่ SVG) = พื้นที่ว่างสูง 320px พร้อมคำอธิบายสีลอยอยู่ข้างล่าง
+
+   กฎนี้ถูกใส่มาพร้อม chart foundation แล้วไม่มีใครเปิดดูหน้าจริง กราฟทุกตัวที่ห่อด้วย
+   ChartCanvas จึงหายมาตั้งแต่นั้น (ผู้ใช้รายงาน 2026-07-27) กันล้นด้วย overflow ของ
+   .canvas พอแล้ว — มีเทสต์ chartCanvasWidth.test.mjs กันไม่ให้ใส่กลับ */
 
 .header {
   display: flex;

@@ -103,3 +103,29 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── กราฟ ───────────────────────────────────────────────────────────────── */
+.chartBox {
+  height: 280px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* ── กล่องเลื่อนสำหรับโชว์แถบปุ่มท้ายฟอร์ม ─────────────────────────────── */
+.scrollDemo {
+  max-height: 220px;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.scrollDemo :global(.form-action-bar) {
+  position: sticky;
+  bottom: -14px;
+  z-index: 5;
+  margin-bottom: -14px;
+  padding-bottom: 14px;
+  background: var(--panel-float);
+}

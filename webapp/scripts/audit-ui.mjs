@@ -118,7 +118,12 @@ for (const file of files.filter((f) => f.endsWith(".css"))) {
     if (brace === -1) continue;
     const selector = block.slice(0, brace).split(/\r?\n/).filter(Boolean).pop()?.trim() || "";
     const body = block.slice(brace + 1);
+    /* `position: sticky` ก็ลอยทับเนื้อหาเหมือนกัน — เดิมกฎนี้ตรวจแค่ fixed หรือ
+       z-index ≥ 1000 แถบปุ่มท้ายโมดัล (sticky + z-index 5) จึงหลุดไปใช้ --panel
+       แล้วช่องกรอกที่เลื่อนผ่านทะลุขึ้นมาปนกับปุ่ม (ผู้ใช้ส่งภาพมา 2026-07-27)
+       ยกเว้นหัวตาราง/คอลัมน์ที่ตรึงไว้ ซึ่งใช้ --panel-2 อยู่แล้วจึงไม่เข้าเงื่อนไข */
     const floats = /position:\s*fixed/.test(body)
+      || /position:\s*sticky/.test(body)
       || Number((body.match(/z-index:\s*(\d+)/) || [])[1] || 0) >= 1000;
     if (!floats) continue;
     if (!/background[^;]*var\(--panel\)/.test(body)) continue;

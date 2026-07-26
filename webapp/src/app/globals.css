@@ -31,6 +31,10 @@
      ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed หรือ z-index ≥ 1000
      ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter */
   --panel-float: #fffdf9;
+  /* พื้นการ์ดแบบทึบ 100% — สีเดียวกับ --panel ที่ผสมกับ --bg แล้ว ใช้กับสิ่งที่ตรึงไว้
+     แล้วมีเนื้อหาเลื่อนผ่านข้างใต้ (คอลัมน์แรกที่ freeze) ซึ่งใช้ --panel โปร่ง 6% ไม่ได้
+     เพราะตัวเลขคอลัมน์อื่นจะทะลุขึ้นมาซ้อน */
+  --panel-solid: #fefefd;
   --border: rgba(49, 55, 69, 0.13);
   --border-strong: rgba(49, 55, 69, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(41, 35, 27, 0.07);
@@ -171,6 +175,7 @@
   --panel-2: #232b44;
   --panel-3: #2b3550;
   --panel-float: #1a213a;
+  --panel-solid: #1b2237;
   --border: rgba(225, 230, 241, 0.12);
   --border-strong: rgba(225, 230, 241, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
@@ -519,13 +524,16 @@ button, select, input, textarea {
 .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { margin-right: auto; }
 .form-action-inline { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .form-action-inline .btn { justify-content: center; }
+/* แถบปุ่มท้ายโมดัลลอยทับเนื้อหาที่เลื่อนอยู่ข้างใต้ → ต้องใช้พื้นทึบ 100%
+   (--panel เป็นพื้นกระจกโปร่ง 6% ที่ต้องมาคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
+   แล้วช่องกรอกที่เลื่อนผ่านจะทะลุขึ้นมาปนกับปุ่ม ผู้ใช้ส่งภาพมา 2026-07-27) */
 .drawer .form-action-bar {
   position: sticky;
   bottom: -24px;
   z-index: 5;
   margin-bottom: -24px;
   padding-bottom: 18px;
-  background: var(--panel);
+  background: var(--panel-float);
 }
 .form-action-bar.page {
   position: sticky;
@@ -534,7 +542,7 @@ button, select, input, textarea {
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--panel);
+  background: var(--panel-float);
   box-shadow: var(--shadow-lg);
 }
 
@@ -1761,7 +1769,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--panel);
+  background: var(--panel-solid);
   width: 220px;
   min-width: 180px;
   max-width: 220px;
@@ -1789,7 +1797,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky;
   right: 0;
   z-index: 1;
-  background: var(--panel);
+  background: var(--panel-solid);
   min-width: 120px;
   border-left: 1px solid var(--border);
 }
@@ -3327,7 +3335,7 @@ button.empty-state { width: 100%; font: inherit; }
   position: sticky;
   left: 0;
   z-index: 4;                 /* above body cells, below the sticky header (z5) */
-  background: var(--panel);
+  background: var(--panel-solid);
   border-right: 1px solid var(--border);
 }
 .premium-table.sticky-col1 th:first-child {
