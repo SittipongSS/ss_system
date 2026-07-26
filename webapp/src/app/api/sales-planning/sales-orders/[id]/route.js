@@ -183,7 +183,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'withdraw') {
     if (!canWithdrawSalesOrderSubmission(before, { userId: user.id, reviewer })) {
-      return forbidden('ถอนการยื่นได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
+      return forbidden('ดึงกลับได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
     }
     const reason = String(body.reason || '').trim();
     // เวอร์ชันที่ "หน้าเว็บเห็น" ไม่ใช่ที่ server เพิ่งอ่าน — ดู lib/sales/documentConcurrency.js
@@ -208,7 +208,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: id,
       before,
       after: data,
-      summary: `ถอนการยื่น ${before.orderNumber}: ${reason}`,
+      summary: `ดึงกลับ ${before.orderNumber}: ${reason}`,
       request: req,
     });
     return ok(data);
@@ -216,7 +216,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'revise') {
     if (!canRevokeAndReviseSalesOrder(before, { reviewer })) {
-      return forbidden('ถอดอนุมัติและออก Revision ได้เฉพาะ AE Supervisor หรือ Admin');
+      return forbidden('ยกเลิกอนุมัติและออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin');
     }
     const reason = String(body.reason || '').trim();
     const expected = resolveExpectedUpdatedAt(body);
@@ -243,7 +243,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: revision?.id || revisionId,
       before,
       after: revision,
-      summary: `ถอดอนุมัติและออก Revision ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
+      summary: `ยกเลิกอนุมัติและออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
       request: req,
     });
     return ok(revision, 201);
