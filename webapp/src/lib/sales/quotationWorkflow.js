@@ -26,6 +26,27 @@ export function canWithdrawQuotationSubmission(
     && (approver || isQuotationSubmitter(quotation, userId));
 }
 
+// ตีกลับ = ผู้อนุมัติส่งใบกลับให้ผู้จัดทำแก้ (mig 0164) — คู่ตรงข้ามของดึงกลับที่เป็น
+// การกระทำของผู้ยื่นเอง. ผู้ยื่นตีกลับใบตัวเองไม่ได้ ต้องใช้ดึงกลับ
+export function canRejectQuotationSubmission(quotation, { approver = false } = {}) {
+  return Boolean(quotation)
+    && approver
+    && quotation.approvalStatus === 'pending'
+    && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
+}
+
+// ใบที่เพิ่งถูกตีกลับ = ยังไม่ยื่น + มีเหตุผลค้างอยู่ (trigger ล้างให้เมื่อยื่นใหม่)
+export function quotationRejectionNotice(quotation) {
+  if (!quotation || quotation.approvalStatus !== 'not_submitted') return null;
+  const reason = String(quotation.rejectionReason || '').trim();
+  if (!reason) return null;
+  return {
+    reason,
+    byName: String(quotation.rejectedByName || '').trim() || 'ผู้อนุมัติ',
+    at: quotation.rejectedAt || null,
+  };
+}
+
 export function canEditQuotationContent(
   quotation,
   { canEdit = false, inScope = false } = {},
