@@ -23,15 +23,18 @@ import StartFilingDialog from "@/components/excise/StartFilingDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
+import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
-const amountToCollectText = (o) => ((o.amountToCollect ?? o.totalTax ?? 0) === 0
+// ยอดเรียกเก็บ = ค่าภาษี + VAT 7% ตรงกับ "ยอดแจ้งชำระสุทธิ" บนเอกสารที่พิมพ์เสมอ
+// (มติผู้ใช้ 2026-07-26) — คิดจาก lib/tax/exciseBilling ที่เดียว
+const amountToCollectText = (o) => ((o.totalTax || 0) === 0
   ? "ยกเว้นภาษี"
-  : fmtMoney(o.amountToCollect ?? o.totalTax));
+  : fmtMoney(orderAmountToCollect(o)));
 const ORDER = ["draft", "pending", "received", "filing", "complete", "delivered"];
 const TONE_COLOR = {
   neutral: "var(--text-3)", warning: "var(--amber)", danger: "var(--red)",
@@ -168,9 +171,10 @@ export default function FilingDetailPage() {
           aside={(
             <>
               <DocumentSummaryCard
-                title="ยอดที่ต้องเรียกเก็บ"
+                title="ยอดที่ต้องเรียกเก็บ (รวม VAT 7%)"
                 total={amountToCollectText(o)}
                 rows={[
+                  { id: "tax-before-vat", label: "ค่าภาษี (ก่อน VAT)", value: taxText(o) },
                   { id: "items", label: "รายการสินค้า", value: `${o.items?.length || 0} รายการ` },
                   { id: "due", label: "กำหนดยื่น", value: o.taxDueDate ? fmtDate(o.taxDueDate) : "-" },
                   { id: "invoice", label: "ใบกำกับภาษี", value: o.taxInvoiceNumber || "-" },

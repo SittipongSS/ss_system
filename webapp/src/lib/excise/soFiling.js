@@ -1,4 +1,5 @@
 import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
+import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
@@ -81,5 +82,8 @@ export function resolveSoFiling({
     lines: filingLines,
     warnings,
     ...totals,
+    // ยอดที่เรียกเก็บจากลูกค้า = ค่าภาษี + VAT 7% (มติผู้ใช้ 2026-07-26) — สูตรเดียว
+    // กับที่เอกสารพิมพ์และที่ตรึงลงใบ ห้ามให้หน้าไหนคิด VAT เองซ้ำ
+    amountToCollect: billedTaxTotals(filingLines).amountToCollect,
   };
 }
