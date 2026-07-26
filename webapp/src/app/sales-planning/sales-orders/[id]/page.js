@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FolderKanban, ShieldAlert, Trash2,
-  Undo2, XCircle,
+  Copy, ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
+  Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -14,6 +14,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
 import StatusNotice from "@/components/ui/StatusNotice";
+import Toast from "@/components/ui/Toast";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -24,7 +25,12 @@ import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
-import { SALES_ORDER_CANCEL_REASONS, canHardDeleteSalesOrder, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
+import {
+  SALES_ORDER_CANCEL_REASONS,
+  canHardDeleteSalesOrder,
+  cancelReasonLabel,
+  isCustomerCancelReason,
+} from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -38,6 +44,7 @@ const STATUS = {
   pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
+  revised: { label: "ออก Revision แล้ว", color: "var(--amber)", description: "เก็บเป็นประวัติและมีฉบับแก้ไขใหม่แล้ว" },
   cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
 };
 
@@ -46,6 +53,8 @@ const ACTION_MESSAGE = {
   submit: "ยื่นอนุมัติเรียบร้อยแล้ว",
   approve: "อนุมัติ SO และอัปเดต Actual แล้ว",
   reject: "ตีกลับให้ผู้จัดทำแก้ไขแล้ว",
+  withdraw: "ถอนการยื่นแล้ว",
+  revise: "ถอดอนุมัติและสร้าง Revision แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
 };
@@ -61,12 +70,14 @@ export default function SalesOrderDetailPage() {
   const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", notes: "" });
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [saveState, setSaveState] = useState("idle");
   const [overrideForm, setOverrideForm] = useState(null);
   const [rejectForm, setRejectForm] = useState(null);
+  const [workflowForm, setWorkflowForm] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [filingState, setFilingState] = useState({
@@ -122,7 +133,7 @@ export default function SalesOrderDetailPage() {
   async function createFiling() {
     setBusy("filing");
     setError("");
-    setNotice("");
+    setToast(null);
     const res = await fetch("/api/tax/orders/from-sales-order", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -144,7 +155,7 @@ export default function SalesOrderDetailPage() {
       error: "",
     });
     setBusy("");
-    setNotice("สร้างใบยื่นสรรพสามิตจาก Sale Order เรียบร้อยแล้ว");
+    setToast({ kind: "success", msg: "สร้างใบยื่นสรรพสามิตจาก Sale Order เรียบร้อยแล้ว" });
     return true;
   }
 
@@ -152,14 +163,14 @@ export default function SalesOrderDetailPage() {
     setForm((current) => ({ ...current, [key]: value }));
     setDirty(true);
     setSaveState("dirty");
-    setNotice("");
+    setToast(null);
   }
 
   async function requestAction(action, payload = {}) {
     setBusy(action);
     setError("");
     setErrorActionUrl("");
-    setNotice("");
+    setToast(null);
     if (action === "save") setSaveState("saving");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`, {
       method: "PATCH",
@@ -174,23 +185,43 @@ export default function SalesOrderDetailPage() {
       if (action === "save") setSaveState("error");
       return false;
     }
+    if (action === "revise" && data?.id) {
+      setBusy("");
+      setToast({ kind: "success", msg: ACTION_MESSAGE.revise });
+      router.push(`/sa/sales-orders/${data.id}`);
+      return data;
+    }
     await load();
     setBusy("");
-    setNotice(ACTION_MESSAGE[action] || "อัปเดตเรียบร้อยแล้ว");
+    setToast({
+      kind: action === "withdraw" ? "info" : "success",
+      msg: ACTION_MESSAGE[action] || "อัปเดตเรียบร้อยแล้ว",
+    });
     if (action === "save") setSaveState("saved");
-    return true;
+    return data || true;
   }
 
-  async function save(submitAfter = false) {
+  async function save() {
     const saved = await requestAction("save", form);
-    if (!saved || !submitAfter) return;
+    if (!saved) return;
+    setEditMode(false);
+  }
+
+  function openSubmitConfirm() {
     setConfirmState({
       title: "ยื่นอนุมัติ Sale Order",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
-      detail: "หลังยื่นแล้วเอกสารจะถูกล็อกจนกว่าจะอนุมัติหรือถูกตีกลับ",
+      detail: "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นหรือผู้อนุมัติสามารถถอนการยื่นได้",
       confirmLabel: "ยื่นอนุมัติ",
       action: () => requestAction("submit"),
     });
+  }
+
+  function leaveEditMode() {
+    setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", notes: order.notes || "" });
+    setDirty(false);
+    setSaveState("idle");
+    setEditMode(false);
   }
 
   async function review(action) {
@@ -212,6 +243,14 @@ export default function SalesOrderDetailPage() {
     if (!reason) return;
     const ok = await requestAction("reject", { reason });
     if (ok) setRejectForm(null);
+  }
+
+  async function submitWorkflowAction() {
+    const action = workflowForm?.action;
+    const reason = String(workflowForm?.reason || "").trim();
+    if (!action || reason.length < 10) return;
+    const result = await requestAction(action, { reason });
+    if (result) setWorkflowForm(null);
   }
 
   async function runConfirmed() {
@@ -329,7 +368,11 @@ export default function SalesOrderDetailPage() {
   const ownSalesOrder = isSalesOrderSelfApproval(order, order.meId);
   const canReviewThis = reviewer && !ownSalesOrder;
   const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
-  const editable = canEdit && ["draft", "rejected"].includes(order.status);
+  const canEditDocument = canEdit && ["draft", "rejected"].includes(order.status);
+  const editable = canEditDocument && editMode;
+  const canWithdraw = order.status === "pending_approval"
+    && (order.submittedBy === order.meId || reviewer);
+  const canRevise = order.status === "approved" && reviewer;
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
   const workflow = [
@@ -340,18 +383,32 @@ export default function SalesOrderDetailPage() {
   ];
   const workflowSteps = workflowStepsFromIndex(workflow, workflowIndex, order.status === "cancelled");
   const primaryAction = editable
-    ? { id: "save-submit", kind: "submit", label: "บันทึกและยื่นอนุมัติ", onClick: () => save(true) }
+    ? {
+        id: "save",
+        kind: "save",
+        label: busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง",
+        disabled: !dirty,
+        disabledReason: !dirty ? "ยังไม่มีข้อมูลที่เปลี่ยนแปลง" : undefined,
+        onClick: save,
+      }
+    : canEditDocument
+      ? { id: "submit", kind: "submit", label: "ยื่นอนุมัติ", onClick: openSubmitConfirm }
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
       : null;
   const secondaryActions = [
-    { id: "save", kind: "save", label: busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง", variant: "outline", visible: editable, onClick: () => save(false) },
+    { id: "edit", kind: "edit", icon: Pencil, label: "แก้ไขข้อมูล", variant: "outline", visible: canEditDocument && !editMode, onClick: () => setEditMode(true) },
+    { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
+    { id: "withdraw", kind: "restore", icon: Undo2, label: "ถอนการยื่น", variant: "outline", visible: canWithdraw, onClick: () => setWorkflowForm({ action: "withdraw", reason: "" }) },
+    { id: "revise", kind: "revise", icon: Copy, label: "ถอดอนุมัติและออก Revision", variant: "outline", visible: canRevise, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revise", reason: "" }) },
     { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
     { id: "restore", kind: "restore", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
   ];
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
+    { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
+    { id: "force-delete", kind: "delete", icon: ShieldAlert, label: "บังคับลบพร้อมหลักฐาน", visible: role === "admin" && !canHardDeleteSalesOrder(order), onClick: forceRemove },
     {
       id: "cancel",
       kind: "cancel",
@@ -364,17 +421,7 @@ export default function SalesOrderDetailPage() {
   ];
 
   return (
-    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<>
-      <SaveStatus status={saveState} />
-      {/* ลบถาวร = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header */}
-      {role === "admin" && canHardDeleteSalesOrder(order) && (
-        <button type="button" className="btn-icon danger" disabled={!!busy} onClick={remove} aria-label="ลบฉบับร่างถาวร" title="ลบฉบับร่างถาวร"><Trash2 size={16} aria-hidden="true" /></button>
-      )}
-      {/* บังคับลบ: เฉพาะ admin และเฉพาะใบที่ลบทางปกติไม่ได้ (มีหลักฐาน/ผ่าน workflow แล้ว) */}
-      {role === "admin" && !canHardDeleteSalesOrder(order) && (
-        <button type="button" className="btn-icon danger" disabled={!!busy} onClick={forceRemove} aria-label="บังคับลบพร้อมหลักฐาน" title="บังคับลบพร้อมหลักฐาน (ผู้ดูแลระบบ)"><ShieldAlert size={16} aria-hidden="true" /></button>
-      )}
-    </>}>
+    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }}>
       <div className={styles.page}>
         <SalesDetailOverview
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
@@ -399,7 +446,6 @@ export default function SalesOrderDetailPage() {
             {error}
           </StatusNotice>
         )}
-        {notice && <StatusNotice tone="success">{notice}</StatusNotice>}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
 
         <ContextGrid>
@@ -434,11 +480,14 @@ export default function SalesOrderDetailPage() {
               secondaryActions={secondaryActions}
               dangerActions={dangerActions}
               busy={!!busy}
-              notices={canAdminOverride
-                ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
-                : reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval"
-                  ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
-                  : null}
+              notices={<>
+                {editable ? <SaveStatus status={saveState} /> : null}
+                {canAdminOverride
+                  ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
+                  : reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval"
+                    ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
+                    : null}
+              </>}
               evidence={(
                 <SignatureReadyNotice
                   active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
@@ -468,6 +517,27 @@ export default function SalesOrderDetailPage() {
                 {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
               </dl>
             </DetailCard>
+
+            {order.revisionHistory?.length > 1 ? (
+              <DetailCard icon={FileText} eyebrow="REVISION HISTORY" title="ประวัติฉบับแก้ไข">
+                <div className={styles.revisionList}>
+                  {order.revisionHistory.map((revision) => (
+                    <Link
+                      key={revision.id}
+                      href={`/sa/sales-orders/${revision.id}`}
+                      className={styles.revisionLink}
+                      aria-current={revision.id === order.id ? "page" : undefined}
+                    >
+                      <span>
+                        <strong>{revision.orderNumber}</strong>
+                        <small>{fmtDate(revision.orderDate)} · {STATUS[revision.status]?.label || revision.status}</small>
+                      </span>
+                      {revision.id === order.id ? <span className="ui-badge">ฉบับนี้</span> : <ExternalLink size={13} />}
+                    </Link>
+                  ))}
+                </div>
+              </DetailCard>
+            ) : null}
 
             <RelatedDocumentCard
               icon={FileCheck2}
@@ -551,6 +621,28 @@ export default function SalesOrderDetailPage() {
       )}
 
       <ReasonDialog
+        open={!!workflowForm}
+        title={workflowForm?.action === "revise" ? "ถอดอนุมัติและออก Revision" : "ถอนการยื่น Sale Order"}
+        description={workflowForm?.action === "revise"
+          ? `SO ${order.orderNumber} ฉบับเดิมจะถูกเก็บเป็นประวัติ และระบบจะสร้างร่าง Revision ใหม่`
+          : `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
+        detail={workflowForm?.action === "revise"
+          ? `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Revision ใหม่จะอนุมัติ`
+          : "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
+        label="เหตุผล"
+        value={workflowForm?.reason || ""}
+        onChange={(reason) => setWorkflowForm((current) => ({ ...current, reason }))}
+        onClose={() => setWorkflowForm(null)}
+        onConfirm={submitWorkflowAction}
+        confirmLabel={workflowForm?.action === "revise" ? "ถอดอนุมัติและสร้าง Revision" : "ยืนยันถอนการยื่น"}
+        placeholder="ระบุเหตุผลอย่างน้อย 10 ตัวอักษร"
+        minLength={10}
+        maxLength={500}
+        tone={workflowForm?.action === "revise" ? "danger" : "warning"}
+        busy={busy === workflowForm?.action}
+      />
+
+      <ReasonDialog
         open={!!rejectForm}
         title="ตีกลับให้ผู้จัดทำแก้ไข"
         label="เหตุผลที่ตีกลับ"
@@ -615,6 +707,7 @@ export default function SalesOrderDetailPage() {
         onConfirm={runConfirmed}
         onClose={() => { if (!confirmBusy) setConfirmState(null); }}
       />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }

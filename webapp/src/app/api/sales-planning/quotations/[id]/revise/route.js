@@ -26,6 +26,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
+  if (quote.approvalStatus !== 'approved') {
+    if (quote.approvalStatus === 'pending') {
+      return badRequest('ใบเสนอราคานี้กำลังรออนุมัติ — ถอนการยื่นก่อนแก้ฉบับเดิม');
+    }
+    return badRequest('ออก Revision ได้เฉพาะใบเสนอราคาที่อนุมัติแล้ว');
+  }
   if (!['draft', 'sent', 'rejected'].includes(quote.status)) {
     if (quote.status === 'closed') {
       return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ออก Revise ไม่ได้');

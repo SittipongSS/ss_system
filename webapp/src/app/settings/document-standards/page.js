@@ -29,6 +29,7 @@ import {
 } from "@/lib/documentStandards";
 import { buildQuotationMasterPreview } from "@/lib/sales/quotationMasterTemplate";
 import { renderQuotationMasterDocumentHTML } from "@/lib/sales/quotationMasterDocument";
+import { buildBillPrintHTML } from "@/lib/tax/billPrint";
 import base from "../company/page.module.css";
 import styles from "./page.module.css";
 
@@ -76,6 +77,35 @@ function AccentMark({ accentKey, label = true }) {
 // จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที
 function LiveDocumentPreview({ documentKey, standard, className = "" }) {
   const html = useMemo(() => {
+    if (documentKey === "exciseTaxNotice") {
+      return buildBillPrintHTML({
+        id: "TAX-PREVIEW",
+        taxNoticeNumber: numberingPatternExample(standard?.numberingPattern, "0") || "ET-26070001-0",
+        taxNoticeStandardSnapshot: standard,
+        quotationRef: "QT-26070001-0",
+        poReference: "SO-26070001-0",
+        customerName: "บริษัท ตัวอย่าง จำกัด",
+        customerTaxId: "0100000000001",
+        createdAt: "2026-07-20T09:00:00+07:00",
+        deliveryDate: "2026-08-20",
+        items: [{
+          id: "preview-line-1",
+          quantity: 100,
+          totalTax: 880,
+          product: {
+            fgCode: "PF-EDP-050-001",
+            brand: "EXAMPLE",
+            productDescription: "น้ำหอม Eau de Parfum 50 ml",
+            retailPriceIncVat: 107,
+            retailPriceExVat: 100,
+          },
+        }],
+      }, {
+        name: "บริษัท ตัวอย่าง จำกัด",
+        taxId: "0100000000001",
+        address: "กรุงเทพมหานคร",
+      });
+    }
     const model = buildQuotationMasterPreview("standard", "approved", "v4", documentKey, { standard });
     return renderQuotationMasterDocumentHTML(model, { toolbar: false });
   }, [documentKey, standard]);
@@ -321,9 +351,11 @@ export default function DocumentStandardsPage() {
                 <h2 id="live-preview-title">ตัวอย่างเอกสารจริง</h2>
                 <p>{draft ? `กำลังแสดงฉบับร่าง Version ${draft.versionNumber}` : `กำลังแสดงฉบับที่เผยแพร่ Version ${published.versionNumber}`} · เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์</p>
               </div>
-              <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
-                <Expand size={14} /> เปิดเต็มจอ
-              </Link>
+              {selectedKey !== "exciseTaxNotice" ? (
+                <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
+                  <Expand size={14} /> เปิดเต็มจอ
+                </Link>
+              ) : null}
             </header>
             <LiveDocumentPreview documentKey={selectedKey} standard={draft || published} />
           </aside>

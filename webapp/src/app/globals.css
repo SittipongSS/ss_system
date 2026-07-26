@@ -3353,38 +3353,6 @@ button.empty-state { width: 100%; font: inherit; }
   border-color: var(--accent);
 }
 
-/* Floating Alerts */
-.toast-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.toast {
-  background: var(--panel);
-  border: 1px solid var(--border-strong);
-  border-left: 4px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 10px 14px;
-  color: var(--text);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: var(--shadow-md);
-  animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.toast.success { border-left-color: var(--green); }
-.toast.error { border-left-color: var(--red); }
-.toast.warning { border-left-color: var(--amber); }
-.toast.info { border-left-color: var(--blue); }
-
-
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -3685,14 +3653,6 @@ button.empty-state { width: 100%; font: inherit; }
 /* Tighter row hover on reconcile grid */
 .reconcile-grid tbody tr {
   transition: background 0.08s;
-}
-
-/* Toast: cleaner shadow + entrance */
-.toast {
-  box-shadow: 0 8px 24px rgba(15, 15, 20, 0.10), var(--shadow-sm);
-}
-[data-theme="dark"] .toast {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), var(--shadow-sm);
 }
 
 /* Status pill: align icon tightly */

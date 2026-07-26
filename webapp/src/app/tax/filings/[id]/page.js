@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ReceiptText, Pencil, Wallet, FileCheck, Printer, ExternalLink } from "lucide-react";
-import { ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
@@ -153,17 +152,10 @@ export default function FilingDetailPage() {
   return (
     <Workspace
       icon={<ReceiptText size={22} />}
-      title={o?.quotationRef || "..."}
+      title={o?.taxNoticeNumber || o?.id || "..."}
       subtitle={o?.customerName || ""}
       headerRight={headerRight}
       back={back}
-      // แก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
-      backActions={o ? (
-        <>
-          {canAct && o.status === "pending" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={() => setFormOpen(true)} />}
-          {canDelete && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
-        </>
-      ) : null}
       loading={loading && !o}
     >
       {o && (
@@ -191,7 +183,12 @@ export default function FilingDetailPage() {
                 primaryAction={primaryAction}
                 secondaryActions={[
                   {
-                    id: "print-bill", label: "ออกใบวางบิลภาษี",
+                    id: "edit", label: "แก้ไขข้อมูล", kind: "edit", icon: Pencil,
+                    onClick: () => setFormOpen(true),
+                    visible: canAct && ["pending", "rejected"].includes(o.status),
+                  },
+                  {
+                    id: "print-notice", label: "ออกใบแจ้งชำระค่าภาษี",
                     kind: "print", icon: Printer, onClick: () => openBillPrintWindow(o, customer),
                   },
                 ]}
@@ -200,6 +197,11 @@ export default function FilingDetailPage() {
                     id: "reject", label: "ตีกลับให้แก้ไข", kind: "reject",
                     onClick: () => setRejectOpen(true),
                     visible: canApprove && ["received", "filing"].includes(o.status),
+                  },
+                  {
+                    id: "delete", label: "ลบเอกสาร", kind: "delete",
+                    onClick: () => setDeleteOpen(true),
+                    visible: canDelete,
                   },
                 ]}
               />

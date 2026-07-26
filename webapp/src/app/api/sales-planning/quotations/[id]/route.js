@@ -100,6 +100,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   return ok({
     ...filledQuote,
     revisionHistory: revisionHistory || [],
+    meId: user.id,
     canApprove: canApproveQuotation(user, filledQuote.deal),
     proposerSignature,
   });
@@ -126,6 +127,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  const bodyKeys = Object.keys(body);
+  const statusOnlySend = body.status === 'sent'
+    && before.status === 'draft'
+    && ['approved', 'not_required'].includes(before.approvalStatus)
+    && bodyKeys.every((key) => key === 'status');
+  if (before.approvalStatus !== 'not_submitted' && !statusOnlySend) {
+    if (before.approvalStatus === 'pending') {
+      return fail('ใบเสนอราคานี้ยื่นอนุมัติแล้ว — ถอนการยื่นก่อนแก้ไข', 409);
+    }
+    if (before.approvalStatus === 'approved') {
+      return fail('ใบเสนอราคานี้อนุมัติแล้ว — หากต้องการแก้ไขให้ใช้ “ออก Revision”', 409);
+    }
+    return fail('ใบเสนอราคานี้แก้ไขตรงไม่ได้ — หากต้องการแก้ไขให้ใช้ “ออก Revision”', 409);
+  }
   const now = new Date().toISOString();
   // ไม่รีเซ็ตสถานะอนุมัติที่หัว patch อีกต่อไป (มติ 2026-07-18: ใบต้องอนุมัติจริง) —
   // จะรีเซ็ตเป็น 'pending' เฉพาะเมื่อ "เนื้อห ากระทบยอด/เอกสารเปลี่ยน" (contentChanged

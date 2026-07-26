@@ -2,26 +2,32 @@ import { cachedFetchJson } from './apiCache';
 import { businessDate } from './businessDate';
 import { DOCUMENT_FORMS } from './documentBrand';
 
-export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder']);
+export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
   salesOrder: 'ใบสั่งขาย',
+  exciseTaxNotice: 'ใบแจ้งชำระค่าภาษีสรรพสามิต',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
 // (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
 // ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel']);
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
   steel: 'Steel · ใบสั่งขาย',
+  amber: 'Amber · ใบแจ้งชำระภาษี',
 });
 
 // สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
 // ที่เลิกให้เลือกแล้ว (teal/amber/green/navy) — map ที่ resolver ไม่ต้องแตะข้อมูลใน DB
-const DEFAULT_ACCENT_BY_KEY = Object.freeze({ quotation: 'terracotta', salesOrder: 'steel' });
+const DEFAULT_ACCENT_BY_KEY = Object.freeze({
+  quotation: 'terracotta',
+  salesOrder: 'steel',
+  exciseTaxNotice: 'amber',
+});
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
   titleTh: 150,
@@ -200,6 +206,7 @@ export async function getDocumentStandardsForPrint() {
 export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
   quotation: 'QT-{YY}{MM}{RUNNING:4}-{REVISION}',
   salesOrder: 'SO-{YY}{MM}{RUNNING:4}-{REVISION}',
+  exciseTaxNotice: 'ET-{YY}{MM}{RUNNING:4}-{REVISION}',
 });
 
 const REVISION_TOKEN = '{REVISION}';
