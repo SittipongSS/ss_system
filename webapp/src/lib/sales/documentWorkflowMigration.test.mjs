@@ -20,6 +20,8 @@ test('QT/SO withdrawal locks the row, requires a reason and preserves evidence h
   assert.doesNotMatch(workflowSql, /DELETE FROM public\.document_signature_evidence/i);
 });
 
+// ⚠️ เทสต์นี้ตรวจไฟล์ 0161 ตามที่มันเป็น = พฤติกรรม "คลิกเดียว" ของรอบนั้น
+// 0166 เปลี่ยนเป็นสองขั้นแล้ว (ดูเทสต์ท้ายไฟล์) — ตัวนี้คงไว้เป็นบันทึกประวัติของ migration
 test('approved SO revision is one atomic database operation and removes source Actual', () => {
   assert.match(workflowSql, /revise_approved_sales_order_atomic[\s\S]+status <> 'approved'/);
   assert.match(workflowSql, /COALESCE\(p_actor_role, ''\) NOT IN \('ae_supervisor', 'admin'\)/);
@@ -110,4 +112,50 @@ test('0165 stays a faithful copy of the 0125 definition apart from the sent line
     signatureSql.indexOf('CREATE OR REPLACE FUNCTION public.approve_sales_order_with_signature_evidence_atomic'),
   ));
   assert.deepEqual(guardsIn(approvedSentSql).sort(), original.sort());
+});
+
+const revokeSql = readFileSync(
+  new URL('../../../supabase/migrations/0166_sales_order_revoke_then_revise.sql', import.meta.url),
+  'utf8',
+);
+
+// มติ 2026-07-26: แยกเป็นสองขั้นเพราะ "ยกเลิกอนุมัติ" มีน้ำหนักของตัวเอง — Actual หลุดทันที
+test('SO revocation and revision are separate atomic steps with a locked state between', () => {
+  // สถานะกลางต้องอยู่ใน CHECK ไม่งั้น RPC จะล้มด้วย constraint violation
+  assert.match(revokeSql, /ADD CONSTRAINT sales_orders_status_check[\s\S]+'approval_revoked'/);
+
+  // ขั้นที่ 1
+  assert.match(revokeSql, /revoke_sales_order_approval_atomic[\s\S]+FOR UPDATE/);
+  assert.match(revokeSql, /status <> 'approved'[\s\S]*?sales_order_revoke_state_invalid/);
+  assert.match(revokeSql, /status = 'approval_revoked'/);
+  // ด่านใบยื่นภาษีต้องอยู่ที่ขั้นนี้ — จุดที่ Actual หลุดจริง
+  assert.match(revokeSql, /revoke_sales_order_approval_atomic[\s\S]+sales_order_revision_filing_exists/);
+
+  // ขั้นที่ 2 ต้องรับเฉพาะสถานะกลาง ไม่ใช่ approved อีกแล้ว — ตัดเฉพาะตัวฟังก์ชันมาตรวจ
+  // (ทั้งไฟล์มีคำว่า approved อยู่ในคอมเมนต์และในขั้นที่ 1 ด้วย)
+  const reviseFn = revokeSql.slice(
+    revokeSql.indexOf('CREATE OR REPLACE FUNCTION public.revise_approved_sales_order_atomic'),
+  );
+  assert.match(reviseFn, /v_source\.status <> 'approval_revoked'/);
+  assert.doesNotMatch(reviseFn, /v_source\.status <> 'approved'/);
+
+  // เหตุผลกรอกครั้งเดียวที่ขั้นแรก แล้วขั้นสองใช้ค่าเดิมต่อ
+  assert.match(reviseFn, /COALESCE\(NULLIF\(btrim\(COALESCE\(p_reason, ''\)\), ''\), v_source\."revisionReason"/);
+  assert.match(reviseFn, /length\(v_reason\) NOT BETWEEN 10 AND 500/);
+
+  // ทั้งสองขั้นเป็นของผู้รีวิว และ RPC ใหม่ให้เฉพาะ service_role
+  assert.equal((revokeSql.match(/NOT IN \('ae_supervisor', 'admin'\)/g) || []).length, 2);
+  assert.match(revokeSql, /REVOKE ALL ON FUNCTION public\.revoke_sales_order_approval_atomic[\s\S]+FROM PUBLIC, anon, authenticated/);
+  assert.match(revokeSql, /GRANT EXECUTE ON FUNCTION public\.revoke_sales_order_approval_atomic[\s\S]+TO service_role/);
+});
+
+test('0166 keeps every guard the 0161 revision RPC had', () => {
+  const workflowRevise = workflowSql.slice(workflowSql.indexOf('revise_approved_sales_order_atomic'));
+  const guardsIn = (sql) => [...new Set(sql.match(/RAISE EXCEPTION '[a-z_]+'/g) || [])];
+  const newRevise = revokeSql.slice(revokeSql.indexOf('CREATE OR REPLACE FUNCTION public.revise_approved_sales_order_atomic'));
+  for (const guard of guardsIn(workflowRevise)) {
+    // สถานะต้นทางเปลี่ยนไปโดยเจตนา ด่านอื่นต้องอยู่ครบ
+    if (guard.includes('sales_order_revision_state_invalid')) continue;
+    assert.ok(newRevise.includes(guard), `0166 ตกด่าน ${guard} ที่ 0161 มี`);
+  }
 });

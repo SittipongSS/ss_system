@@ -28,6 +28,8 @@ import { useCan, useRole } from "@/lib/roleContext";
 import {
   SALES_ORDER_CANCEL_REASONS,
   canHardDeleteSalesOrder,
+  canIssueSalesOrderRevision,
+  canRevokeSalesOrderApproval,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   isCustomerCancelReason,
@@ -45,6 +47,7 @@ const STATUS = {
   pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
+  approval_revoked: { label: "ยกเลิกอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev." },
   revised: { label: "ออก Rev. แล้ว", color: "var(--amber)", description: "เก็บเป็นประวัติและมีฉบับแก้ไขใหม่แล้ว" },
   cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
 };
@@ -55,7 +58,8 @@ const ACTION_MESSAGE = {
   approve: "อนุมัติ SO และอัปเดต Actual แล้ว",
   reject: "ตีกลับให้ผู้จัดทำแก้ไขแล้ว",
   withdraw: "ดึงกลับแล้ว",
-  revise: "ยกเลิกอนุมัติและสร้าง Rev. แล้ว",
+  revoke: "ยกเลิกอนุมัติแล้ว — ยอดหลุดจาก Actual · ขั้นถัดไปคือออก Rev.",
+  revise: "ออก Rev. ใหม่แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
 };
@@ -375,9 +379,12 @@ export default function SalesOrderDetailPage() {
   const editable = canEditDocument && editMode;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
-  const canRevise = order.status === "approved" && reviewer;
+  // สองขั้น (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
+  const canRevoke = canRevokeSalesOrderApproval(order, { reviewer });
+  const canRevise = canIssueSalesOrderRevision(order, { reviewer });
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
-  const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
+  const workflowIndex = order.status === "approved" ? 3
+    : ["pending_approval", "approval_revoked"].includes(order.status) ? 1 : 0;
   const workflow = [
     { label: "จัดทำร่าง", hint: order.createdByName || "ผู้จัดทำ" },
     { label: "ยื่นอนุมัติ", hint: order.submittedAt ? fmtDate(order.submittedAt) : "รอผู้จัดทำ" },
@@ -398,12 +405,22 @@ export default function SalesOrderDetailPage() {
       ? { id: "submit", kind: "submit", label: "ยื่นอนุมัติ", onClick: openSubmitConfirm }
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
+    // สถานะกลางหลังยกเลิกอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
+    : canRevise
+      ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: () => setConfirmState({
+          title: "ออก Rev. ใหม่",
+          description: `ระบบจะสร้างร่าง Rev. ใหม่จาก ${order.orderNumber} และเก็บฉบับนี้เป็นประวัติ`,
+          detail: order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนยกเลิกอนุมัติ: ${order.revisionReason}` : undefined,
+          confirmLabel: "สร้างร่าง Rev. ใหม่",
+          action: () => requestAction("revise", { expectedUpdatedAt: order?.updatedAt }),
+        }) }
       : null;
   const secondaryActions = [
     { id: "edit", kind: "edit", icon: Pencil, label: "แก้ไขข้อมูล", variant: "outline", visible: canEditDocument && !editMode, onClick: () => setEditMode(true) },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
     { id: "withdraw", kind: "withdraw", variant: "outline", visible: canWithdraw, onClick: () => setWorkflowForm({ action: "withdraw", reason: "" }) },
-    { id: "revise", kind: "revise", label: "ยกเลิกอนุมัติและออก Rev.", variant: "outline", visible: canRevise, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revise", reason: "" }) },
+    // ขั้นที่ 1 — ยอด Actual หลุดที่ปุ่มนี้ จึงต้องกรอกเหตุผล (ใช้ต่อในขั้นออก Rev.)
+    { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revoke", reason: "" }) },
     { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
@@ -627,23 +644,23 @@ export default function SalesOrderDetailPage() {
 
       <ReasonDialog
         open={!!workflowForm}
-        title={workflowForm?.action === "revise" ? "ยกเลิกอนุมัติและออก Rev." : "ดึงกลับ Sale Order"}
-        description={workflowForm?.action === "revise"
-          ? `SO ${order.orderNumber} ฉบับเดิมจะถูกเก็บเป็นประวัติ และระบบจะสร้างร่าง Rev. ใหม่`
+        title={workflowForm?.action === "revoke" ? "ยกเลิกอนุมัติ Sale Order" : "ดึงกลับ Sale Order"}
+        description={workflowForm?.action === "revoke"
+          ? `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`
           : `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
-        detail={workflowForm?.action === "revise"
-          ? `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ`
+        detail={workflowForm?.action === "revoke"
+          ? `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`
           : "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm((current) => ({ ...current, reason }))}
         onClose={() => setWorkflowForm(null)}
         onConfirm={submitWorkflowAction}
-        confirmLabel={workflowForm?.action === "revise" ? "ยกเลิกอนุมัติและสร้าง Rev." : "ยืนยันดึงกลับ"}
+        confirmLabel={workflowForm?.action === "revoke" ? "ยืนยันยกเลิกอนุมัติ" : "ยืนยันดึงกลับ"}
         placeholder="ระบุเหตุผลอย่างน้อย 10 ตัวอักษร"
         minLength={10}
         maxLength={500}
-        tone={workflowForm?.action === "revise" ? "danger" : "warning"}
+        tone={workflowForm?.action === "revoke" ? "danger" : "warning"}
         busy={busy === workflowForm?.action}
       />
 
