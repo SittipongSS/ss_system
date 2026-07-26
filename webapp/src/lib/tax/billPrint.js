@@ -35,12 +35,23 @@ const fmtDate = (v) => {
   return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
 };
 
+// หน้าที่ไม่มีบล็อกยอดรวมวางได้ 12 แถว · หน้าสุดท้ายต้องเหลือที่ให้ยอดรวม + ลายเซ็น
+// จึงรับได้ 8 แถว
+const BILL_LINES_PER_PAGE = 12;
+const BILL_LINES_LAST_PAGE = 8;
+
+// เดิม `take = min(12, remaining - 8)` กันที่หน้าสุดท้ายไว้ก่อน → เศษไปกองที่หน้าแรก/หน้ากลาง
+// (9 แถวได้ [1, 8] · 21 แถวได้ [12, 1, 8] = หน้ากลางมีบรรทัดเดียว). ตอนนี้เติมหน้าจากหน้าแรก
+// ไปเรื่อย ๆ แล้วให้เศษตกที่หน้าสุดท้าย — `remaining.length - 1` กันไม่ให้ตัดจนหน้าสุดท้าย
+// ว่างเปล่า (ยอดรวมลอยอยู่หน้าเดียว). ผลลัพธ์: หน้าที่ไม่ใช่หน้าสุดท้าย 8–12 แถวเสมอ
+// หน้าสุดท้าย 1–8 แถว (เอกสารที่มี ≤ 8 แถวยังจบในหน้าเดียวเหมือนเดิม)
 export function paginateBillLines(lines = []) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
+  const remaining = lines.slice();
+  if (remaining.length <= BILL_LINES_LAST_PAGE) return [remaining];
   const pages = [];
-  let remaining = lines.slice();
-  while (remaining.length > 8) {
-    const take = Math.min(12, remaining.length - 8);
+  while (remaining.length > BILL_LINES_LAST_PAGE) {
+    const take = Math.min(BILL_LINES_PER_PAGE, remaining.length - 1);
     pages.push(remaining.splice(0, take));
   }
   pages.push(remaining);

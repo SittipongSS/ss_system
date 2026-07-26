@@ -35,6 +35,35 @@ test('excise bill preview splits item lines and renders totals once on the final
   assert.equal((html.match(/ยอดแจ้งชำระสุทธิ/g) || []).length, 1);
 });
 
+// C1 (2026-07-26): เดิมกันที่หน้าสุดท้ายไว้ก่อน เศษเลยไปกองหน้าแรก/หน้ากลาง —
+// 9 แถวได้ [1, 8] · 13 แถวได้ [5, 8] · 21 แถวได้ [12, 1, 8] (หน้ากลางบรรทัดเดียว)
+// 20 แถวเป็นเคสเดียวที่สวย ซึ่งบังเอิญเป็นเคสที่เทสต์เดิมใช้พอดี
+test('excise bill pages fill from the front — no orphan single-line page before the last', () => {
+  const pageSizes = (count) => paginateBillLines(Array.from({ length: count }, (_, i) => i)).map((p) => p.length);
+
+  assert.deepEqual(pageSizes(9), [8, 1]);
+  assert.deepEqual(pageSizes(13), [12, 1]);
+  assert.deepEqual(pageSizes(20), [12, 8]);
+  assert.deepEqual(pageSizes(21), [12, 8, 1]);
+  assert.deepEqual(pageSizes(29), [12, 12, 5]);
+
+  // ≤ 8 แถวจบในหน้าเดียวพร้อมยอดรวม
+  for (const count of [1, 5, 8]) assert.deepEqual(pageSizes(count), [count]);
+  assert.deepEqual(paginateBillLines([]), [[]]);
+
+  // ค่าคงที่ของเลย์เอาต์: หน้าที่ไม่ใช่หน้าสุดท้าย 8–12 แถว · หน้าสุดท้าย 1–8 แถว
+  // (หน้าสุดท้ายว่างเปล่า = ยอดรวมกับลายเซ็นลอยอยู่หน้าเดียว ห้ามเกิด)
+  for (let count = 9; count <= 120; count += 1) {
+    const sizes = pageSizes(count);
+    const last = sizes[sizes.length - 1];
+    assert.equal(sizes.reduce((a, b) => a + b, 0), count, `รวมแถวไม่ครบที่ ${count}`);
+    assert.ok(last >= 1 && last <= 8, `หน้าสุดท้ายของ ${count} แถวมี ${last} แถว`);
+    for (const size of sizes.slice(0, -1)) {
+      assert.ok(size >= 8 && size <= 12, `หน้ากลางของ ${count} แถวมี ${size} แถว`);
+    }
+  }
+});
+
 test('excise payment notice uses its pinned controlled form and document number', () => {
   const html = buildBillPrintHTML({
     id: 'TAX-1',
