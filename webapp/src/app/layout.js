@@ -2,6 +2,7 @@ import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
+import { ToastProvider } from "@/components/ui/Toast";
 
 // Render routes dynamically (not static) so the client Router Cache doesn't
 // reuse stale page segments — pages always re-mount + refetch on navigation,
@@ -45,9 +46,11 @@ export default function RootLayout({ children }) {
             } catch (_) {}
           `,
         }} />
-        <LayoutWrapper>
-          {children}
-        </LayoutWrapper>
+        <ToastProvider>
+          <LayoutWrapper>
+            {children}
+          </LayoutWrapper>
+        </ToastProvider>
       </body>
     </html>
   );
