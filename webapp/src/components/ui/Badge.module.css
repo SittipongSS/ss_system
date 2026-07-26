@@ -1,0 +1,117 @@
+.base {
+  --badge-color: var(--text-2);
+  --badge-bg: var(--panel-2);
+  --badge-border: var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 22px;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--badge-border);
+  border-radius: var(--radius);
+  background: var(--badge-bg);
+  color: var(--badge-color);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+
+.base[data-tone="accent"] {
+  --badge-color: var(--accent);
+  --badge-bg: var(--accent-soft);
+  --badge-border: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.base[data-tone="info"] {
+  --badge-color: var(--blue);
+  --badge-bg: var(--blue-soft);
+  --badge-border: color-mix(in srgb, var(--blue) 24%, transparent);
+}
+
+.base[data-tone="success"] {
+  --badge-color: var(--green);
+  --badge-bg: var(--green-soft);
+  --badge-border: color-mix(in srgb, var(--green) 24%, transparent);
+}
+
+.base[data-tone="warning"] {
+  --badge-color: var(--amber);
+  --badge-bg: var(--amber-soft);
+  --badge-border: color-mix(in srgb, var(--amber) 24%, transparent);
+}
+
+.base[data-tone="danger"],
+.base[data-tone="error"] {
+  --badge-color: var(--red);
+  --badge-bg: var(--red-soft);
+  --badge-border: color-mix(in srgb, var(--red) 24%, transparent);
+}
+
+.dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.small {
+  min-height: 20px;
+  padding-inline: 7px;
+  font-size: 10.5px;
+}
+
+.large {
+  min-height: 26px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+.remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: -1px -5px -1px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.remove:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.count {
+  min-width: 22px;
+  min-height: 20px;
+  padding-inline: 6px;
+  border-radius: var(--radius-full);
+  font-variant-numeric: tabular-nums;
+}

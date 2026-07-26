@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart3, CalendarDays, FileText, FolderKanban, LayoutGrid, ListTodo, Table2 } from "lucide-react";
+import Segmented from "@/components/ui/Segmented";
 
 export const VIEW_META = {
   list: { icon: ListTodo, label: "รายการ" },
@@ -13,28 +14,22 @@ export const VIEW_META = {
 };
 
 export default function ViewSwitcher({ value, onChange, modes, showLabels = false, ariaLabel = "มุมมอง" }) {
-  return (
-    <div className="segmented ui-view-switcher" role="group" aria-label={ariaLabel}>
-      {modes.map((mode) => {
+  const options = modes.map((mode) => {
         const descriptor = typeof mode === "string" ? { value: mode, ...VIEW_META[mode] } : mode;
-        if (!descriptor?.value) return null;
-        const Icon = descriptor.icon;
-        const active = value === descriptor.value;
-        return (
-          <button
-            key={descriptor.value}
-            type="button"
-            onClick={() => onChange(descriptor.value)}
-            className={active ? "active" : ""}
-            title={`มุมมอง ${descriptor.label}`}
-            aria-label={`มุมมอง ${descriptor.label}`}
-            aria-pressed={active}
-          >
-            {Icon ? <Icon size={15} /> : null}
-            {showLabels ? <span>{descriptor.label}</span> : null}
-          </button>
-        );
-      })}
-    </div>
+        return descriptor?.value ? {
+          ...descriptor,
+          title: descriptor.title || `มุมมอง ${descriptor.label}`,
+          ariaLabel: descriptor.ariaLabel || `มุมมอง ${descriptor.label}`,
+        } : null;
+      }).filter(Boolean);
+  return (
+    <Segmented
+      className="ui-view-switcher"
+      options={options}
+      value={value}
+      onChange={onChange}
+      showLabels={showLabels}
+      ariaLabel={ariaLabel}
+    />
   );
 }

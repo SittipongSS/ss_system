@@ -3057,7 +3057,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .segmented > button:hover { color: var(--text); }
 .segmented > button.active,
-.segmented > button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.segmented > button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 .segmented > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .segmented > button:disabled { opacity: .4; cursor: default; }
 .segmented > button.icon { width: 28px; height: 28px; padding: 0; }

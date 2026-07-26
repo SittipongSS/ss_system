@@ -1,0 +1,105 @@
+export const MONTH_LABELS = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค.",
+];
+
+const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+export const BUSINESS_TIME_ZONE = "Asia/Bangkok";
+
+function partsOf(value) {
+  const match = MONTH_PATTERN.exec(String(value || ""));
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]) };
+}
+
+export function isMonthValue(value) {
+  return Boolean(partsOf(value));
+}
+
+export function currentMonth(date = new Date(), timeZone = BUSINESS_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return `${year}-${month}`;
+}
+
+// Compatibility name used by the Sales Planning pages.
+export const thisMonth = currentMonth;
+
+export function compareMonths(left, right) {
+  if (!isMonthValue(left) || !isMonthValue(right)) return null;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+export function isMonthInRange(value, { min, max } = {}) {
+  if (!isMonthValue(value)) return false;
+  if (isMonthValue(min) && value < min) return false;
+  if (isMonthValue(max) && value > max) return false;
+  return true;
+}
+
+export function clampMonth(value, { min, max, fallback } = {}) {
+  const validFallback = isMonthValue(fallback) ? fallback : currentMonth();
+  let next = isMonthValue(value) ? value : validFallback;
+  if (isMonthValue(min) && next < min) next = min;
+  if (isMonthValue(max) && next > max) next = max;
+  return next;
+}
+
+export function addMonths(value, amount) {
+  const parts = partsOf(value);
+  if (!parts || !Number.isInteger(amount)) return null;
+  const absoluteMonth = (parts.year * 12) + parts.month - 1 + amount;
+  const year = Math.floor(absoluteMonth / 12);
+  const month = (absoluteMonth % 12) + 1;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+}
+
+export function monthsForYear(year, { min, max } = {}) {
+  const numericYear = Number(year);
+  if (!Number.isInteger(numericYear) || numericYear < 0 || numericYear > 9999) return [];
+  return Array.from(
+    { length: 12 },
+    (_, index) => `${String(numericYear).padStart(4, "0")}-${String(index + 1).padStart(2, "0")}`,
+  ).filter((month) => isMonthInRange(month, { min, max }));
+}
+
+export function yearOptionsForMonth(
+  value,
+  { min, max, pastYears = 3, futureYears = 3, now = new Date() } = {},
+) {
+  const selected = partsOf(clampMonth(value, { min, max, fallback: currentMonth(now) }));
+  const currentYear = now.getFullYear();
+  let start = isMonthValue(min) ? partsOf(min).year : Math.min(currentYear, selected.year) - pastYears;
+  let end = isMonthValue(max) ? partsOf(max).year : Math.max(currentYear, selected.year) + futureYears;
+  if (start > end) [start, end] = [end, start];
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+export function displayYear(year, calendar = "buddhist") {
+  const numericYear = Number(year);
+  if (!Number.isFinite(numericYear)) return "";
+  return String(calendar === "buddhist" ? numericYear + 543 : numericYear);
+}
+
+export function formatMonthLabel(value, { calendar = "buddhist", includeYear = true } = {}) {
+  const parts = partsOf(value);
+  if (!parts) return "";
+  const month = MONTH_LABELS[parts.month - 1];
+  return includeYear ? `${month} ${displayYear(parts.year, calendar)}` : month;
+}

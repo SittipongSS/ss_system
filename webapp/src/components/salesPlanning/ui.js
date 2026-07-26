@@ -1,10 +1,12 @@
 "use client";
-import Select from "@/components/ui/Select";
 
 import { Trophy } from "lucide-react";
 import { DEAL_TYPE_LABELS, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoneyCompact } from "@/lib/format";
 import UiKpiCard from "@/components/ui/KpiCard";
+
+export { default as MonthPicker } from "@/components/ui/MonthPicker";
+export { MONTH_LABELS, monthsForYear, thisMonth } from "@/lib/datePeriods";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
@@ -78,58 +80,6 @@ export const SALES_TEAMS = ["KA", "ODM", "SV"];
 
 // เงินในแดชบอร์ด/ตารางสรุปแผนขาย — ใช้รูปแบบย่อกลาง (฿x.xxM / ฿x.xxK).
 export const money = (value) => fmtMoneyCompact(value);
-
-export const thisMonth = () => new Date().toISOString().slice(0, 7);
-
-// Short Thai month labels — shared so every Sales Planning page renders the same
-// month names in the period picker and year grids.
-export const MONTH_LABELS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-
-export function monthsForYear(year) {
-  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
-}
-
-// Unified period picker for the Sales Planning toolbar: a year <Select> + a Thai
-// month <Select> so the "ระยะเวลา" control looks and behaves identically on every
-// page (instead of each page hand-rolling a native <input type="month">).
-// Pass `onAllMonths` to show the "ทุกเดือน" toggle (list/filter pages); omit it on
-// focus-month pages where a single month must always be selected (overview).
-export function MonthPicker({ value, onChange, allMonths = false, onAllMonths }) {
-  const currentYear = Number(thisMonth().slice(0, 4));
-  const year = value.slice(0, 4);
-  const yearOptions = Array.from({ length: 7 }, (_, i) => String(currentYear - 3 + i));
-  // โหมด "ทุกเดือน": ปิดเฉพาะตัวเลือกเดือน (ปียังเปลี่ยนเพื่อดูทั้งปีอื่นได้)
-  const disabled = !!(onAllMonths && allMonths);
-  const dim = { opacity: disabled ? 0.5 : 1 };
-  return (
-    <>
-      <Select
-        className="premium-select"
-        value={year}
-        onChange={(e) => onChange(`${e.target.value}-${value.slice(5, 7)}`)}
-        aria-label="ปี"
-        style={{ width: 104 }}
-      >
-        {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-      </Select>
-      <Select
-        className="premium-select"
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label="เดือน"
-        style={{ width: 150, ...dim }}
-      >
-        {monthsForYear(year).map((m, i) => <option key={m} value={m}>{MONTH_LABELS[i]} {year}</option>)}
-      </Select>
-      {onAllMonths && (
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)", whiteSpace: "nowrap" }}>
-          <input type="checkbox" checked={allMonths} onChange={(e) => onAllMonths(e.target.checked)} /> ทุกเดือน
-        </label>
-      )}
-    </>
-  );
-}
 
 export function coveragePct(won, target) {
   if (!target || target <= 0) return null;
