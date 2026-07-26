@@ -48,6 +48,32 @@ export function canHardDeleteSalesOrder(order) {
     && !order?.hasSignatureEvidence;
 }
 
+// revision chain ของ SO ผูกกันด้วย FK `ON DELETE RESTRICT` ทั้งสองทิศ (mig 0161:
+// revisedFromId / supersededById) — ลบใบที่ยังมีอีกฉบับชี้อยู่จะเด้ง error Postgres ดิบ
+// ออกหน้าเว็บ. ตรวจก่อนลบแล้วบอกทางออก (A4, 2026-07-26). ใช้ revisionHistory ที่ loadOrder
+// โหลดมาอยู่แล้วเพื่อแปลง id เป็นเลขที่เอกสารให้คนอ่านรู้เรื่อง
+export function salesOrderRevisionChainDeleteBlock(order) {
+  if (!order) return null;
+  const history = Array.isArray(order.revisionHistory) ? order.revisionHistory : [];
+  const numberOf = (id) => history.find((row) => row.id === id)?.orderNumber || id;
+  if (order.supersededById) {
+    return `ลบถาวรไม่ได้: SO นี้ถูกแทนที่ด้วยฉบับ Revision ${numberOf(order.supersededById)} แล้ว`
+      + ' — ต้องจัดการฉบับ Revision ก่อน จึงจะลบใบต้นทางได้';
+  }
+  if (order.revisedFromId) {
+    return `ลบถาวรไม่ได้: SO นี้เป็นฉบับ Revision ของ ${numberOf(order.revisedFromId)} ซึ่งยังชี้มาที่ใบนี้อยู่`
+      + ' — กรุณาใช้ “ยกเลิก SO” แทน';
+  }
+  return null;
+}
+
+// ตาข่ายกันพลาดชั้นสอง เผื่อ chain เกิดขึ้นหลังจากอ่านแถวแล้ว — 23503 = foreign_key_violation
+export function isForeignKeyViolation(error) {
+  if (!error) return false;
+  if (error.code === '23503') return true;
+  return /violates foreign key constraint/i.test(String(error.message || ''));
+}
+
 // เหตุผลยกเลิก SO แบบมาตรฐาน (มติผู้ใช้ 2026-07-18) — 3 กลุ่ม:
 //   customer = ฝั่งลูกค้า (ดีลหลุดจริง → พิจารณาย้อน Won ในอนาคต)
 //   document = แก้เอกสาร (ดีลยังอยู่ ออก SO ใหม่)

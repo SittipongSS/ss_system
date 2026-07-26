@@ -6,12 +6,15 @@ import {
   canHardDeleteSalesOrder,
   canRevokeAndReviseSalesOrder,
   canWithdrawSalesOrderSubmission,
+  isForeignKeyViolation,
   isSalesOrderReviewer,
+  salesOrderRevisionChainDeleteBlock,
   isValidCancelReasonCode,
   cancelReasonLabel,
   isValidReversalTarget,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
   adminOverrideReasonError,
@@ -183,16 +186,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return forbidden('ถอนการยื่นได้เฉพาะผู้ยื่นหรือผู้อนุมัติ');
     }
     const reason = String(body.reason || '').trim();
+    // เวอร์ชันที่ "หน้าเว็บเห็น" ไม่ใช่ที่ server เพิ่งอ่าน — ดู lib/sales/documentConcurrency.js
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
     const { data, error } = await supabase.rpc('withdraw_sales_order_submission_atomic', {
       p_order_id: id,
-      p_expected_updated_at: before.updatedAt,
+      p_expected_updated_at: expected.value,
       p_reason: reason,
       p_actor_id: user.id,
       p_actor_name: user.name || null,
       p_actor_role: user.role || null,
     });
     if (error) {
-      const mapped = documentWorkflowError(error);
+      const mapped = documentWorkflowError(error, { context: `sales order withdraw ${id}` });
       return fail(mapped.message, mapped.status);
     }
     await recordAudit({
@@ -213,18 +219,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return forbidden('ถอดอนุมัติและออก Revision ได้เฉพาะ AE Supervisor หรือ Admin');
     }
     const reason = String(body.reason || '').trim();
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
     const revisionId = genId('SO');
     const { data: result, error } = await supabase.rpc('revise_approved_sales_order_atomic', {
       p_order_id: id,
       p_revision_id: revisionId,
-      p_expected_updated_at: before.updatedAt,
+      p_expected_updated_at: expected.value,
       p_reason: reason,
       p_actor_id: user.id,
       p_actor_name: user.name || null,
       p_actor_role: user.role || null,
     });
     if (error) {
-      const mapped = documentWorkflowError(error);
+      const mapped = documentWorkflowError(error, { context: `sales order revise ${id}` });
       return fail(mapped.message, mapped.status);
     }
     const revision = result?.revision || null;
@@ -535,6 +543,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ?force=1 = break-glass ผู้ดูแลระบบ (mig 0152) ลบใบที่มีหลักฐาน/ฉบับตรึงได้ — มติผู้ใช้
   // 2026-07-25; เส้นทางปกติยังยอมเฉพาะร่างที่ไม่เคยเข้า workflow เหมือนเดิม
   const force = isForceRequest(req);
+  // ด่าน revision chain มาก่อน force — break-glass ก็ข้าม FK RESTRICT ไม่ได้อยู่ดี
+  // (force_delete_sales_order ล้างหลักฐาน/ฉบับตรึง ไม่ได้ล้าง pointer ของอีกฉบับ)
+  const chainBlock = salesOrderRevisionChainDeleteBlock(before);
+  if (chainBlock) return fail(chainBlock, 409);
   if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId
@@ -546,7 +558,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { error } = force
     ? await supabase.rpc('force_delete_sales_order', { p_id: id })
     : await supabase.from('sales_orders').delete().eq('id', id);
-  if (error) return fail(error.message, 500);
+  if (error) {
+    if (isForeignKeyViolation(error)) {
+      console.error(`[sales order delete ${id}] foreign key violation:`, error);
+      return fail('ลบถาวรไม่ได้: ยังมีเอกสารอื่นอ้างอิง SO ใบนี้อยู่ — กรุณาใช้ “ยกเลิก SO” แทน', 409);
+    }
+    return fail(error.message, 500);
+  }
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
     summary: force
