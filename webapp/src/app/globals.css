@@ -21,12 +21,14 @@
   --panel: rgba(255, 255, 255, 0.92);
   --panel-2: rgba(245, 240, 231, 0.96);
   --panel-3: rgba(236, 230, 219, 0.96);
-  /* พื้นผิว "แผงลอย" ที่ต้อง **ทึบ 100%** — dropdown / เมนู / ปฏิทิน / ตัวเลือกเวลา
-     ที่ลอยทับเนื้อหาอื่น. --panel เป็นกระจก (alpha .92 + backdrop-filter บน
-     .glass-panel) ถ้าเอาไปใช้กับแผงลอยที่ไม่มี blur ตัวอักษรข้างหลังจะทะลุขึ้นมา
-     ปนกับรายการในเมนู (เจอจริงที่ dropdown เลือกลูกค้า 2026-07-26) */
+  /* พื้นผิว "แผงลอย" ของระบบ — ทึบ 100% ใช้กับทุกอย่างที่ลอยทับเนื้อหาอื่น:
+     dropdown / เมนู / popover ตัวกรอง / ปฏิทิน / ตัวเลือกเวลา / แถบบันทึกลอย.
+     --panel เป็นพื้น "กระจก" (alpha .92) ที่ต้องมาคู่กับ backdrop-filter เท่านั้น
+     (.glass-panel, Toast) — เอาไปใช้กับแผงลอยที่ไม่มี blur ตัวอักษรข้างหลังจะทะลุ
+     ขึ้นมาปนกับรายการในแผง (เจอจริงที่ dropdown เลือกลูกค้า 2026-07-26 ผู้ใช้ส่งภาพมา)
+     ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed หรือ z-index ≥ 1000
+     ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter */
   --panel-float: #fffdf9;
-  --date-calendar-bg: var(--panel-float);
   --border: rgba(40, 33, 24, 0.13);
   --border-strong: rgba(40, 33, 24, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(40, 33, 24, 0.07);
@@ -143,7 +145,6 @@
   --panel-2: rgba(38, 46, 74, 0.94);
   --panel-3: rgba(48, 57, 88, 0.94);
   --panel-float: #1a213a;
-  --date-calendar-bg: var(--panel-float);
   --border: rgba(255, 255, 255, 0.13);
   --border-strong: rgba(255, 255, 255, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
@@ -342,7 +343,7 @@ button, select, input, textarea {
   padding: 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--date-calendar-bg);
+  background: var(--panel-float);
   box-shadow: var(--shadow-lg);
   color: var(--text);
 }
@@ -3024,7 +3025,7 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-filter-trigger { background: var(--panel); color: var(--text-2); }
 .ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .ui-filter-popover {
-  background: var(--date-calendar-bg, var(--panel));
+  background: var(--panel-float);
   box-shadow: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
 }
 .ui-filter-group,
@@ -5535,7 +5536,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   padding: 14px 16px;
   border: 1px solid var(--accent);
   border-radius: 14px;
-  background: var(--date-calendar-bg, var(--panel));
+  background: var(--panel-float);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3), 0 0 0 4px color-mix(in srgb, var(--accent) 9%, transparent);
 }
 .timeline-save-message { flex: 1; min-width: 180px; font-size: 13px; color: var(--text); }
