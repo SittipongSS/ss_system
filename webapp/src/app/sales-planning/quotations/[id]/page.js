@@ -143,6 +143,11 @@ export default function QuotationEditorPage() {
   const canReviseDocument = !!quote && canEditCap
     && isRevisableQuotationApprovalStatus(quote.approvalStatus)
     && EDITABLE.has(quote.status);
+  // ปิด Won ได้เมื่อใบผ่านการอนุมัติแล้ว (หรือใบ grandfather) และยังไม่ถูกรับ/ปิด —
+  // หลัง mig 0165 ใบพวกนี้เป็น 'sent' เสมอ ส่วน 'draft' เหลือไว้รองรับใบเก่าที่อนุมัติ
+  // ก่อน migration และใบ grandfather ที่ไม่เคยผ่านเส้นทางอนุมัติ
+  const canCloseWon = !!quote && canEditCap && !needsApproval
+    && ["sent", "draft"].includes(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
@@ -326,18 +331,6 @@ export default function QuotationEditorPage() {
     }
   };
 
-  const sendToCustomer = async () => {
-    const data = await act("send-customer", `/api/sales-planning/quotations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "sent" }),
-    });
-    if (data) {
-      await load();
-      setToast({ kind: "success", msg: "เปลี่ยนสถานะเป็นส่งลูกค้าแล้ว" });
-    }
-  };
-
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
   // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังไม่
@@ -503,7 +496,7 @@ export default function QuotationEditorPage() {
     : awaitingApproval
       ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะดึงกลับหรือได้รับอนุมัติ"
       : quote?.approvalStatus === "approved"
-        ? "อนุมัติแล้ว หากต้องแก้ไขให้ออก Rev. ใหม่"
+        ? "อนุมัติแล้ว — ถือว่าส่งให้ลูกค้าแล้ว รอลูกค้าตอบรับแล้วปิด Won · หากต้องแก้ไขให้ออก Rev. ใหม่"
         : "เอกสารฉบับเดิมที่ออกก่อนระบบอนุมัติ — แก้ทับฉบับเดิมไม่ได้ หากต้องแก้ไขให้ออก Rev. ใหม่";
   const primaryAction = editable
     ? {
@@ -538,7 +531,19 @@ export default function QuotationEditorPage() {
             disabledReason: dirty ? "บันทึกการแก้ไขก่อนอนุมัติ" : undefined,
             onClick: approve,
           }
-        : null;
+        // อนุมัติแล้ว = ถือว่าส่งลูกค้าแล้ว (mig 0165) → ขั้นถัดไปคือรอลูกค้าตอบรับแล้วปิด Won
+        // เดิมใบที่อนุมัติแล้วไม่มีปุ่มหลักเลย เหลือปุ่ม outline 5 ปุ่มเท่ากันหมด
+        : canCloseWon
+          ? {
+              id: "won",
+              kind: "approve",
+              label: "Won",
+              disabled: dirty,
+              disabledReason: dirty ? "บันทึกการแก้ไขก่อนปิด Won" : undefined,
+              title: "ปิด Won ผ่านใบเสนอราคานี้",
+              onClick: doAccept,
+            }
+          : null;
   const secondaryActions = [
     {
       id: "edit",
@@ -571,26 +576,9 @@ export default function QuotationEditorPage() {
       visible: canReviseDocument && !editMode,
       onClick: () => setRevisionForm({ reason: "" }),
     },
-    {
-      id: "send-customer",
-      kind: "submit",
-      label: "ส่งให้ลูกค้า",
-      variant: "outline",
-      visible: !editMode && canEditCap && quote?.status === "draft"
-        && ["approved", "not_required"].includes(quote?.approvalStatus),
-      onClick: sendToCustomer,
-    },
-    {
-      id: "won",
-      kind: "approve",
-      label: "Won",
-      variant: "outline",
-      visible: ["sent", "draft"].includes(quote?.status) && canEditCap && !needsApproval,
-      disabled: dirty,
-      disabledReason: dirty ? "บันทึกการแก้ไขก่อนปิด Won" : undefined,
-      title: "ปิด Won ผ่านใบเสนอราคานี้",
-      onClick: doAccept,
-    },
+    // "ส่งให้ลูกค้า" ถูกถอดออก (mig 0165): การอนุมัติตั้ง status='sent' ให้เองแล้ว —
+    // ปุ่มเดิมไม่ได้ส่งอีเมลหรือแจ้งเตือนอะไร แค่เปลี่ยนตัวอักษรบนป้ายสถานะ
+    // Won ย้ายขึ้นไปเป็นปุ่มหลักของใบที่อนุมัติแล้ว (ดู primaryAction ด้านบน)
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", visible: !editMode, onClick: doPrint },
     {
       id: "download",

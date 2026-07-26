@@ -71,3 +71,43 @@ test('QT rejection RPC is service-role only', () => {
   assert.match(rejectSql, /REVOKE ALL ON FUNCTION public\.reject_quotation_submission_atomic[\s\S]+FROM PUBLIC, anon, authenticated/);
   assert.match(rejectSql, /GRANT EXECUTE ON FUNCTION public\.reject_quotation_submission_atomic[\s\S]+TO service_role/);
 });
+
+const approvedSentSql = readFileSync(
+  new URL('../../../supabase/migrations/0165_quotation_approved_implies_sent.sql', import.meta.url),
+  'utf8',
+);
+const signatureSql = readFileSync(
+  new URL('../../../supabase/migrations/0125_signature_evidence.sql', import.meta.url),
+  'utf8',
+);
+
+// มติ 2026-07-26: อนุมัติ = ถือว่าส่งลูกค้าแล้ว — ต้องเกิดในทรานแซกชันเดียวกับการอนุมัติ
+// ไม่ใช่ UPDATE ตามหลังจาก route (พลาดแล้วจะเหลือใบ approved ที่ยังเป็นร่างค้างอยู่)
+test('approving a QT marks it sent inside the same atomic RPC', () => {
+  assert.match(approvedSentSql, /CREATE OR REPLACE FUNCTION public\.approve_quotation_with_signature_evidence_atomic/);
+  assert.match(approvedSentSql, /UPDATE public\.quotations SET[\s\S]+status = 'sent'/);
+  // ด่านเดิมต้องอยู่ครบ — replace ทั้งฟังก์ชันแล้วตกด่านไหนไปคือช่องโหว่เงียบ
+  for (const guard of [
+    'signature_evidence_document_not_found',
+    'signature_evidence_approval_state_invalid',
+    'signature_evidence_document_state_invalid',
+    'signature_evidence_approval_stale',
+    'signature_evidence_lines_required',
+    'signature_evidence_deal_invalid',
+    'signature_evidence_forbidden',
+  ]) {
+    assert.match(approvedSentSql, new RegExp(guard), `0165 ตกด่าน ${guard} ที่ 0125 มี`);
+  }
+  // ไม่แตะ SO — ใบสั่งขายไม่มีแนวคิด "ส่งลูกค้า"
+  assert.doesNotMatch(approvedSentSql, /approve_sales_order_with_signature_evidence_atomic/);
+});
+
+test('0165 stays a faithful copy of the 0125 definition apart from the sent line', () => {
+  // จำนวนด่านใน 0165 ต้องไม่น้อยกว่าที่ 0125 มี (กันลอกมาไม่ครบ)
+  const guardsIn = (sql) => (sql.match(/RAISE EXCEPTION 'signature_evidence_[a-z_]+'/g) || []);
+  const original = guardsIn(signatureSql.slice(
+    signatureSql.indexOf('CREATE OR REPLACE FUNCTION public.approve_quotation_with_signature_evidence_atomic'),
+    signatureSql.indexOf('CREATE OR REPLACE FUNCTION public.approve_sales_order_with_signature_evidence_atomic'),
+  ));
+  assert.deepEqual(guardsIn(approvedSentSql).sort(), original.sort());
+});
