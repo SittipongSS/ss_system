@@ -113,7 +113,13 @@ test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล แล�
     from(table) {
       const b = {
         _table: table, _op: null, _col: null,
-        select() { return { eq: (c, v) => ({ then: (r) => { b._col = c; r({ data: [{ id: 'IQ1' }] }); } }) }; },
+        select() {
+          return {
+            eq: (c, v) => ({ then: (r) => { b._col = c; r({ data: [{ id: 'IQ1' }] }); } }),
+            // purgeTaskThreads หา id ของงานที่จะถูกลบก่อน เพื่อกวาดเธรดของมัน (mig 0163)
+            in: (c, v) => ({ then: (r) => { b._col = c; r({ data: [{ id: 'T1' }] }); } }),
+          };
+        },
         delete() { b._op = 'delete'; return b; },
         update(patch) { b._op = 'update'; b._patch = patch; return b; },
         in(col, vals) { calls.push({ table, op: b._op, in: col, vals }); return b; },
@@ -129,4 +135,10 @@ test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล แล�
   assert.ok(calls.some((c) => c.table === 'inquiries' && c.op === 'delete' && c.in === 'id'));
   assert.ok(calls.some((c) => c.table === 'personal_tasks' && c.op === 'delete' && c.eq === 'dealId' && c.val === 'D1'));
   assert.ok(calls.some((c) => c.table === 'sales_deals' && c.op === 'update' && c.eq === 'parentDealId' && c.patch?.parentDealId === null));
+  // เธรดอัปเดตของงาน (entity_updates, mig 0163) ไม่มี FK — ต้องถูกกวาดด้วย
+  // ไม่งั้นเหลือเธรดกำพร้าที่ไม่มีทางเข้าถึงและไม่มีใครลบให้
+  assert.ok(
+    calls.some((c) => c.table === 'entity_updates' && c.op === 'delete' && c.in === 'entityId'),
+    'ต้องลบ entity_updates ของงานที่ถูกกวาดไปด้วย',
+  );
 });
