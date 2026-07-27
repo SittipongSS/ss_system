@@ -6,9 +6,16 @@
 // ⚠️ ป้าย/สีของงานยกมาจาก UPDATE_META เดิมในหน้า pm/tasks แบบตรง ๆ — ผู้ใช้ต้อง
 // ไม่รู้สึกว่าอะไรเปลี่ยนหลังย้ายมาใช้ของกลาง
 
+// ── ธงต่อ kind ───────────────────────────────────────────────────────────
+// `authorable: true` = คนเลือกชนิดนี้เองได้ตอนโพสต์ · ไม่ติดธง = ระบบเขียนให้
+// เท่านั้น (ปล่อยให้ client ส่ง kind='status' มาเอง = ปลอมไทม์ไลน์ได้)
+// `due: true`        = ชนิดนี้กรอก "กำหนดวัน" ได้ เก็บใน meta.dueDate
+//
+// ⚠️ ส่วนใหญ่มี authorable ตัวเดียวคือ comment — ชุดหลายชนิดมีเฉพาะฟีดดีลที่
+// แยก โทร/ประชุม/อีเมล มาแต่เดิม (mig 0063) และผู้ใช้ยืนยันให้คงไว้ 2026-07-27
 export const UPDATE_KINDS = {
   personal_task: {
-    comment: { label: 'อัปเดต', color: 'var(--accent)' },
+    comment: { label: 'อัปเดต', color: 'var(--accent)', authorable: true },
     status: { label: 'เปลี่ยนสถานะ', color: 'var(--blue)' },
     due: { label: 'เลื่อนกำหนด', color: 'var(--amber)' },
     late: { label: 'สาเหตุที่เสร็จช้า', color: 'var(--red)' },
@@ -16,7 +23,7 @@ export const UPDATE_KINDS = {
   // เคสขอราคาวัสดุ (mig 0158) — เธรดสองฝ่าย: เซลถาม ↔ RD/PC ตอบ
   // ป้าย 'ข้อความ' ไม่ใช่ 'อัปเดต' เพราะที่นี่คนคุยกันจริง ไม่ใช่รายงานความคืบหน้า
   material_ask: {
-    comment: { label: 'ข้อความ', color: 'var(--accent)' },
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     submit: { label: 'ส่งเคส', color: 'var(--blue)' },
     acknowledge: { label: 'รับเรื่อง', color: 'var(--blue)' },
     quoted: { label: 'ตอบราคา', color: 'var(--green)' },
@@ -27,7 +34,7 @@ export const UPDATE_KINDS = {
   // ใบขอราคาผลิต (mig 0143) — เธรดสองฝ่าย: เซลยื่น ↔ ผู้บริหารอนุมัติ/ตีกลับ
   // ใช้คำที่ล็อกไว้ของ workflow เอกสาร: "ตีกลับให้แก้ไข" / "ออก Rev."
   costing_request: {
-    comment: { label: 'ข้อความ', color: 'var(--accent)' },
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
     approve: { label: 'อนุมัติราคาผลิต', color: 'var(--green)' },
     returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
@@ -35,13 +42,37 @@ export const UPDATE_KINDS = {
   },
 };
 
-// kind ที่ "คนพิมพ์เอง" ได้ — ที่เหลือระบบเขียนให้ตอนเกิดเหตุการณ์เท่านั้น
-// (ปล่อยให้ client ส่ง kind='status' มาเอง = ปลอมไทม์ไลน์ได้)
+// ชนิดตั้งต้นของ entity ที่ไม่ได้ประกาศอะไรเลย — ยังคงชื่อเดิมไว้เพราะเป็นค่าที่
+// เธรดส่วนใหญ่ใช้ตัวเดียว (ก่อนหน้านี้เป็น "ชนิดเดียวที่คนพิมพ์เองได้" ทั้งระบบ)
 export const AUTHORABLE_KIND = 'comment';
+
+// ชุดชนิดที่คนเลือกเองได้ของ entity นั้น (เรียงตามลำดับที่ประกาศ = ลำดับใน dropdown)
+export function authorableKinds(entityType) {
+  return Object.entries(UPDATE_KINDS[entityType] || {})
+    .filter(([, meta]) => meta?.authorable)
+    .map(([kind]) => kind);
+}
+
+// ชนิดที่ใช้เมื่อผู้โพสต์ไม่ได้เลือก (หรือ entity มีชนิดเดียว) — ตัวแรกที่ประกาศไว้
+export function defaultAuthorableKind(entityType) {
+  return authorableKinds(entityType)[0] || AUTHORABLE_KIND;
+}
+
+// ⚠️ ด่านกันปลอมไทม์ไลน์: API ต้องเรียกตัวนี้ก่อนรับ kind จาก client เสมอ
+export function isAuthorableKind(entityType, kind) {
+  return authorableKinds(entityType).includes(kind);
+}
+
+// ชนิดนี้กรอกกำหนดวันได้ไหม (เช่น "ขั้นถัดไป" ของฟีดดีล)
+export function kindAcceptsDueDate(entityType, kind) {
+  return !!(UPDATE_KINDS[entityType] || {})[kind]?.due;
+}
 
 export function updateKindMeta(entityType, kind) {
   const set = UPDATE_KINDS[entityType] || {};
-  return set[kind] || set[AUTHORABLE_KIND] || { label: 'อัปเดต', color: 'var(--accent)' };
+  return set[kind]
+    || set[defaultAuthorableKind(entityType)]
+    || { label: 'อัปเดต', color: 'var(--accent)' };
 }
 
 export function isKnownUpdateKind(entityType, kind) {
@@ -56,12 +87,18 @@ export function isKnownUpdateKind(entityType, kind) {
 // ทำไมต้องแยก: พอเธรดขึ้นเอกสารที่มี action เยอะ (QT/SO มี 8 ตัวที่เขียนลงเธรด)
 // เหตุการณ์ระบบจะถมจนข้อความคนจม — ต้องมีสวิตช์ให้เหลือเฉพาะที่คนคุยกัน
 //
-// ⚠️ ข้อความที่ถูกลบแล้วยังเป็น "ข้อความคน" (kind ยังเป็น comment) — ต้องไม่ถูกซ่อน
-// ไปกับเหตุการณ์ระบบ เพราะรอยที่ว่าเคยมีข้อความคือส่วนหนึ่งของบทสนทนา
-export function isSystemUpdateItem(item) {
+// ⚠️ ข้อความที่ถูกลบแล้วยังเป็น "ข้อความคน" (kind ยังเป็นชนิดที่คนเลือกได้) — ต้อง
+// ไม่ถูกซ่อนไปกับเหตุการณ์ระบบ เพราะรอยที่ว่าเคยมีข้อความคือส่วนหนึ่งของบทสนทนา
+//
+// ⚠️ ต้องรู้ entityType ด้วย: ฟีดดีลมีชนิดที่คนเลือกเองได้ห้าตัว (โทร/ประชุม/อีเมล…)
+// ถ้าเทียบกับ 'comment' ตัวเดียวเหมือนเดิม บันทึกการโทรของคนจะถูกจัดเป็น
+// "เหตุการณ์ระบบ" แล้วหายไปตอนกดซ่อน
+export function isSystemUpdateItem(entityType, item) {
   if (!item) return false;
   if (item.kind === 'extra') return true;
-  return (item.row?.kind || AUTHORABLE_KIND) !== AUTHORABLE_KIND;
+  const kind = item.row?.kind;
+  if (!kind) return false;                    // ไม่รู้ = ถือว่าข้อความคน (ไม่ซ่อน)
+  return !isAuthorableKind(entityType, kind);
 }
 
 // ── ไฟล์แนบในข้อความ ────────────────────────────────────────────────────
