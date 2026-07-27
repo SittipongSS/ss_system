@@ -9,7 +9,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import {
   canMutateUpdate, canViewUpdates, loadUpdateParent, updateEntityConfig,
 } from '@/lib/master/updateAccess';
-import { sanitizeUpdateAttachments } from '@/lib/master/updateTypes';
+import {
+  isAuthorableKind, kindAcceptsDueDate, sanitizeUpdateAttachments,
+} from '@/lib/master/updateTypes';
 import { findUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -54,6 +56,26 @@ export async function PATCH(request, { params }) {
         return Response.json({ error: 'ต้องมีข้อความหรือไฟล์แนบ' }, { status: 400 });
       }
       patch = { body: text || null, attachments, editedAt: nowIso };
+
+      // เปลี่ยนชนิดตอนแก้ได้ (โพสต์ผิดช่องแล้วอยากย้ายจาก "บันทึก" เป็น "โทร") แต่
+      // ต้องเป็นชนิดที่คนเลือกได้เท่านั้น — แก้ให้กลายเป็นเหตุการณ์ระบบไม่ได้
+      if ('kind' in body) {
+        const nextKind = String(body.kind ?? '');
+        if (!isAuthorableKind(row.entityType, nextKind)) {
+          return Response.json({ error: 'ชนิดอัปเดตไม่ถูกต้อง' }, { status: 400 });
+        }
+        patch.kind = nextKind;
+      }
+      // กำหนดวันเดินตามชนิดสุดท้ายเสมอ: ย้ายไปชนิดที่ไม่รับวันแล้ววันต้องหายตาม
+      // ไม่ใช่ค้างใน meta แบบมองไม่เห็น
+      if ('kind' in body || 'dueDate' in body) {
+        const finalKind = patch.kind || row.kind;
+        const due = String(body.dueDate ?? row.meta?.dueDate ?? '').trim();
+        const meta = { ...(row.meta || {}) };
+        if (due && kindAcceptsDueDate(row.entityType, finalKind)) meta.dueDate = due.slice(0, 10);
+        else delete meta.dueDate;
+        patch.meta = meta;
+      }
     } else {
       return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
     }

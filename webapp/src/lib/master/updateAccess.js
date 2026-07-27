@@ -16,6 +16,7 @@ import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTas
 import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
 import { canViewCostingRequest } from '@/lib/costing';
 import { inSalesEditScope } from '@/lib/salesPlanning';
+import { isAuthorableKind } from '@/lib/master/updateTypes';
 
 export const UPDATE_ENTITIES = {
   personal_task: {
@@ -113,7 +114,9 @@ export async function canPostUpdate(supabase, entityType, parent, user) {
 // ข้อความที่ระบบเขียน (kind อื่นที่ไม่ใช่ comment) แก้ไม่ได้เลย มันคือบันทึกเหตุการณ์
 export async function canMutateUpdate(supabase, entityType, parent, user, row) {
   if (!row || row.deletedAt) return false;
-  if (row.kind !== 'comment') return false;
+  // เทียบกับ "ชนิดที่คนเลือกเองได้ของ entity นี้" ไม่ใช่ 'comment' ตัวเดียว —
+  // ไม่งั้นบันทึกการโทรในฟีดดีล (kind='call') จะกลายเป็นข้อความที่เจ้าของแก้ไม่ได้
+  if (!isAuthorableKind(entityType, row.kind)) return false;
   if (isSuperuser(user?.role)) return true;
   if (!row.authorId || row.authorId !== user?.id) return false;
   return canPostUpdate(supabase, entityType, parent, user);

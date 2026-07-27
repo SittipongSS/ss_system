@@ -9,7 +9,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import {
   canPostUpdate, canViewUpdates, isUpdateEntity, loadUpdateParent, updateEntityConfig,
 } from '@/lib/master/updateAccess';
-import { AUTHORABLE_KIND, sanitizeUpdateAttachments } from '@/lib/master/updateTypes';
+import {
+  defaultAuthorableKind, isAuthorableKind, kindAcceptsDueDate, sanitizeUpdateAttachments,
+} from '@/lib/master/updateTypes';
 import { appendUpdate, listUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -41,9 +43,12 @@ export async function GET(request) {
   }
 }
 
-// POST { entityType, entityId, body?, attachments? }
-// kind บังคับเป็น 'comment' เสมอ — เหตุการณ์ระบบเขียนผ่าน appendUpdate ในฝั่ง server
-// ของโมดูลนั้น ๆ เท่านั้น (ปล่อยให้ client ส่ง kind มาเอง = ปลอมไทม์ไลน์ได้)
+// POST { entityType, entityId, body?, kind?, dueDate?, attachments? }
+//
+// `kind` รับได้เฉพาะชนิดที่ entity นั้นประกาศว่า authorable (ฟีดดีลมี โทร/ประชุม/
+// อีเมล/ขั้นถัดไป · ที่เหลือมี comment ตัวเดียว) — ชนิดของเหตุการณ์ระบบยังส่งจาก
+// client ไม่ได้เด็ดขาด มันเขียนผ่าน appendUpdate ฝั่ง server ของโมดูลนั้นเท่านั้น
+// (ปล่อยให้ client เลือก kind='status' เอง = ปลอมไทม์ไลน์ได้)
 export async function POST(request) {
   try {
     const supabase = getSupabaseAdmin();
@@ -71,9 +76,22 @@ export async function POST(request) {
       return Response.json({ error: 'ต้องพิมพ์ข้อความหรือแนบไฟล์' }, { status: 400 });
     }
 
+    // ไม่ส่ง kind มา = ชนิดตั้งต้นของ entity · ส่งมาแต่ไม่ใช่ชนิดที่คนเลือกได้ = ตีกลับ
+    // (ไม่ถอยไปใช้ค่าตั้งต้นเงียบ ๆ — ผู้ใช้ต้องรู้ว่าโพสต์ไม่ได้อย่างที่ตั้งใจ)
+    const kind = payload.kind == null || payload.kind === ''
+      ? defaultAuthorableKind(entityType)
+      : String(payload.kind);
+    if (!isAuthorableKind(entityType, kind)) {
+      return Response.json({ error: 'ชนิดอัปเดตไม่ถูกต้อง' }, { status: 400 });
+    }
+    // กำหนดวันรับเฉพาะชนิดที่ประกาศว่ารับ — ชนิดอื่นส่งมาก็ทิ้ง ไม่ให้ meta มั่ว
+    const meta = {};
+    const dueDate = String(payload.dueDate ?? '').trim();
+    if (dueDate && kindAcceptsDueDate(entityType, kind)) meta.dueDate = dueDate.slice(0, 10);
+
     // คนกดปุ่มส่ง = ต้องรู้ว่าไม่สำเร็จ ห้ามกลืน error แล้วตอบ 201
     const { row, error } = await appendUpdate(supabase, {
-      entityType, entityId, kind: AUTHORABLE_KIND, body: text || null, attachments, user,
+      entityType, entityId, kind, body: text || null, meta, attachments, user,
     });
     if (error) return Response.json({ error: `บันทึกอัปเดตไม่สำเร็จ: ${error}` }, { status: 500 });
 

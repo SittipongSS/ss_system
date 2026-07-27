@@ -60,6 +60,12 @@
 .rowActions { margin-left: auto; display: inline-flex; gap: 4px; }
 
 .composer { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+/* แถวเลือกชนิด/กำหนดวัน — มีเฉพาะ entity ที่ประกาศชนิดให้เลือกมากกว่าหนึ่ง */
+.kindRow { display: flex; gap: 8px; flex-wrap: wrap; }
+.kindSelect { width: 150px; }
+.dueInput { width: 180px; }
+/* กำหนดวันบนรายการที่โพสต์แล้ว — สีเดียวกับป้าย "ขั้นถัดไป" ให้เห็นว่าเป็นของคู่กัน */
+.due { color: var(--amber); }
 .composerBar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .pending { display: flex; gap: 8px; flex-wrap: wrap; }
 .pendingItem {

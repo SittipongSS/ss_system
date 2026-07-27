@@ -12,12 +12,16 @@
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Paperclip, X, Pencil, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
+import DateInput from "@/components/ui/DateInput";
 import ReadableText from "@/components/ui/ReadableText";
+import Select from "@/components/ui/Select";
 import { fmtDateTime } from "@/lib/format";
 import {
-  DELETED_UPDATE_TEXT, isSystemUpdateItem, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
+  authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
+  kindAcceptsDueDate, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
 } from "@/lib/master/updateTypes";
 import {
   isPreviewableImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
@@ -50,7 +54,14 @@ export default function UpdateThread({
   const [editing, setEditing] = useState(null); // { id, body }
   const [preview, setPreview] = useState(null); // { src, name }
   const [hideSystem, setHideSystem] = useState(false); // ตั้งต้น = เห็นครบ ไม่ซ่อนอะไรเงียบ
+  const [kind, setKind] = useState(() => defaultAuthorableKind(entityType));
+  const [dueDate, setDueDate] = useState("");
   const fileRef = useRef(null);
+
+  // ชนิดที่คนเลือกเองได้ของ entity นี้ — มีตัวเดียว (ส่วนใหญ่) = ไม่ต้องโชว์ dropdown
+  const kinds = useMemo(() => authorableKinds(entityType), [entityType]);
+  const showKindPicker = kinds.length > 1;
+  const showDueDate = kindAcceptsDueDate(entityType, kind);
 
   const load = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -96,12 +107,15 @@ export default function UpdateThread({
     return all;
   }, [items, extraItems, entityType, order]);
 
-  const systemCount = useMemo(() => timeline.filter(isSystemUpdateItem).length, [timeline]);
+  const systemCount = useMemo(
+    () => timeline.filter((item) => isSystemUpdateItem(entityType, item)).length,
+    [timeline, entityType],
+  );
   // โชว์สวิตช์เฉพาะตอนที่มีทั้งสองอย่างจริง: ไม่มีเหตุการณ์ระบบ = ไม่มีอะไรให้ซ่อน ·
   // มีแต่เหตุการณ์ระบบ (เธรดลีดที่อ่านอย่างเดียว) = กดแล้วเธรดว่างเปล่า
   const canFilterSystem = systemCount > 0 && systemCount < timeline.length;
   const visible = hideSystem && canFilterSystem
-    ? timeline.filter((item) => !isSystemUpdateItem(item))
+    ? timeline.filter((item) => !isSystemUpdateItem(entityType, item))
     : timeline;
 
   const pickFiles = (list) => {
@@ -138,12 +152,15 @@ export default function UpdateThread({
       const res = await fetch("/api/updates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType, entityId, body: text.trim(), attachments }),
+        body: JSON.stringify({
+          entityType, entityId, body: text.trim(), attachments, kind,
+          dueDate: showDueDate ? dueDate : "",
+        }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ส่งอัปเดตไม่สำเร็จ");
       pending.forEach((p) => URL.revokeObjectURL(p.url));
-      setText(""); setPending([]);
+      setText(""); setPending([]); setDueDate("");
       await load();
       onPosted?.();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -188,7 +205,16 @@ export default function UpdateThread({
               <div className={styles.eventBody}>
                 <div className={styles.head}>
                   <span className="ui-badge" style={{ color: item.color }}>{item.label}</span>
+                  {/* รายการอ่านอย่างเดียวจากแหล่งอื่นที่มีหน้าของตัวเอง (เรื่องสอบถาม)
+                      ต้องกดเข้าไปได้ ไม่งั้นไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
+                  {item.kind === "extra" && item.href && (
+                    <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
+                  )}
+                  {item.kind === "extra" && item.by && <strong>{item.by}</strong>}
                   {item.kind === "own" && <strong>{item.row.authorName || "ระบบ"}</strong>}
+                  {item.kind === "own" && item.row.meta?.dueDate && (
+                    <span className={styles.due}>กำหนด {item.row.meta.dueDate}</span>
+                  )}
                   {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ) อ่านไม่รู้เรื่อง
                       ถ้าไม่รู้ว่าใครพูดในฐานะอะไร · `authorDept` ถูกเขียนอยู่แล้วทุกแถว
                       ตั้งแต่ mig 0163 แค่ไม่เคยถูกแสดง */}
@@ -200,11 +226,16 @@ export default function UpdateThread({
                   {item.kind === "own" && item.row.acknowledgedAt && (
                     <span style={{ color: "var(--green)" }}><Check size={11} /> รับทราบแล้ว</span>
                   )}
-                  {item.kind === "own" && canPost && !item.row.deletedAt && item.row.kind === "comment" && (
+                  {item.kind === "own" && canPost && !item.row.deletedAt && kinds.includes(item.row.kind) && (
                     <span className={styles.rowActions}>
                       <Button
                         iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
-                        onClick={() => setEditing({ id: item.row.id, body: item.row.body || "" })}
+                        onClick={() => setEditing({
+                          id: item.row.id,
+                          body: item.row.body || "",
+                          kind: item.row.kind,
+                          dueDate: item.row.meta?.dueDate || "",
+                        })}
                       />
                       <Button
                         iconOnly icon={<Trash2 size={13} />} style={{ color: "var(--red)" }}
@@ -223,6 +254,28 @@ export default function UpdateThread({
                       <>
                         {editing?.id === item.row.id ? (
                           <>
+                            {(showKindPicker || kindAcceptsDueDate(entityType, editing.kind)) && (
+                              <div className={styles.kindRow}>
+                                {showKindPicker && (
+                                  <Select
+                                    className={`premium-select ${styles.kindSelect}`} disabled={busy}
+                                    value={editing.kind} aria-label="ชนิดอัปเดต"
+                                    onChange={(e) => setEditing((s) => ({ ...s, kind: e.target.value }))}
+                                  >
+                                    {kinds.map((k) => (
+                                      <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
+                                    ))}
+                                  </Select>
+                                )}
+                                {kindAcceptsDueDate(entityType, editing.kind) && (
+                                  <DateInput
+                                    value={editing.dueDate} disabled={busy} ariaLabel="กำหนดวัน"
+                                    className={styles.dueInput}
+                                    onChange={(v) => setEditing((s) => ({ ...s, dueDate: v }))}
+                                  />
+                                )}
+                              </div>
+                            )}
                             <textarea
                               className="premium-input" rows={2} value={editing.body} disabled={busy}
                               aria-label="แก้ข้อความ"
@@ -239,7 +292,10 @@ export default function UpdateThread({
                                 tone="primary" size="sm" disabled={busy || !editing.body.trim()}
                                 onClick={() => mutate(item.row.id, {
                                   method: "PATCH",
-                                  body: JSON.stringify({ action: "edit", body: editing.body.trim() }),
+                                  body: JSON.stringify({
+                                    action: "edit", body: editing.body.trim(),
+                                    kind: editing.kind, dueDate: editing.dueDate || "",
+                                  }),
                                 }, () => setEditing(null))}
                               >
                                 บันทึก
@@ -262,6 +318,28 @@ export default function UpdateThread({
 
       {canPost && (
         <div className={styles.composer}>
+          {/* ชนิดของอัปเดต — โผล่เฉพาะ entity ที่มีให้เลือกจริง (ฟีดดีล) เธรดที่มี
+              ชนิดเดียวไม่ต้องมี dropdown ที่เลือกอะไรไม่ได้ */}
+          {(showKindPicker || showDueDate) && (
+            <div className={styles.kindRow}>
+              {showKindPicker && (
+                <Select
+                  className={`premium-select ${styles.kindSelect}`} value={kind} disabled={busy}
+                  aria-label="ชนิดอัปเดต" onChange={(e) => setKind(e.target.value)}
+                >
+                  {kinds.map((k) => (
+                    <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
+                  ))}
+                </Select>
+              )}
+              {showDueDate && (
+                <DateInput
+                  value={dueDate} onChange={setDueDate} disabled={busy}
+                  ariaLabel="กำหนดวัน" className={styles.dueInput}
+                />
+              )}
+            </div>
+          )}
           <textarea
             className="premium-input" rows={2} value={text} disabled={busy}
             placeholder={placeholder} aria-label="ข้อความอัปเดต"
