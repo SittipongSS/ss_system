@@ -104,7 +104,7 @@ export async function POST(request) {
   // only LG may still attach (e.g. the post-approval หนังสืออนุมัติ). Everyone
   // else must press "ขอแก้ไข" first (reverts it to draft for re-approval).
   if (entityType === 'registration' && parent.status === 'approved' && !can(user?.role, 'legal:approve')) {
-    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่ายกฎหมายปลดอนุมัติก่อนจึงจะแนบเอกสารเพิ่มได้' }, { status: 403 });
   }
 
   // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.

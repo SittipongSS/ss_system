@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   CUSTOMER_CONTACT_FIELDS,
   changedFieldsAgainst,
+  normalizeRejectionReason,
+  rejectionReasonError,
   resetApprovalOnEdit,
 } from './approval.js';
 
@@ -72,4 +74,29 @@ test('ไม่ส่ง changedFields = พฤติกรรมเดิม (r
 test('แถวที่ยังไม่อนุมัติไม่ต้อง reset', () => {
   assert.equal(resetApprovalOnEdit({ approvalStatus: 'pending' }, user), null);
   assert.equal(resetApprovalOnEdit({ approvalStatus: 'rejected' }, user), null);
+});
+
+// ── เหตุผลตอนตีกลับข้อมูลหลัก (2026-07-27) ───────────────────────────────────
+// เดิมลูกค้า/สินค้าตีกลับได้โดยไม่ต้องบอกเหตุ ต่างจากทุกโมดูลอื่นที่บังคับ
+test('ตีกลับต้องมีเหตุผล — ว่าง/ช่องว่างล้วนไม่ผ่าน', () => {
+  assert.match(rejectionReasonError(''), /กรุณาระบุเหตุผล/);
+  assert.match(rejectionReasonError('   '), /กรุณาระบุเหตุผล/);
+  assert.match(rejectionReasonError(null), /กรุณาระบุเหตุผล/);
+});
+
+test('เหตุผลสั้นผ่านได้ (ไม่ใช้ขั้นต่ำ 10 ตัวอักษรแบบเอกสารที่มีลายเซ็น)', () => {
+  assert.equal(rejectionReasonError('ชื่อซ้ำ'), '');
+});
+
+test('เหตุผลยาวเกิน 500 ไม่ผ่าน', () => {
+  assert.match(rejectionReasonError('ก'.repeat(501)), /ไม่เกิน 500/);
+  assert.equal(rejectionReasonError('ก'.repeat(500)), '');
+});
+
+test('ป้ายในข้อความเปลี่ยนตามงานได้ (ตีกลับ vs ปลดอนุมัติ)', () => {
+  assert.match(rejectionReasonError('', { label: 'ที่ปลดอนุมัติ' }), /เหตุผลที่ปลดอนุมัติ/);
+});
+
+test('normalizeRejectionReason: ตัดหัวท้าย + ยุบช่องว่างซ้อน', () => {
+  assert.equal(normalizeRejectionReason('  เลขภาษี   ผิด  '), 'เลขภาษี ผิด');
 });

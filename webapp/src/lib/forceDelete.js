@@ -132,16 +132,61 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
   await supabase.from('excise_registrations').delete().eq('projectId', projectId);
 }
 
+// ── ใบยื่นชำระภาษี: ด่านที่ break-glass ก็ข้ามไม่ได้ ────────────────────────
+// orders."salesOrderId" เป็น FK ON DELETE RESTRICT (mig 0160) และ RPC บังคับลบ
+// (force_delete_sales_order / force_delete_quotation, mig 0152/0168) ไม่ได้ล้าง
+// ตาราง orders ให้ — การลบจึงพังกลางทางด้วย error ดิบจาก Postgres ทั้งที่พรีวิว
+// เพิ่งบอกว่าลบได้ (ฝั่ง SO ได้ 409 ข้อความกลาง ๆ ที่ชี้ทางผิด · ฝั่ง QT ได้ 500 ดิบ)
+//
+// เจตนา: **ไม่ลบใบยื่นให้อัตโนมัติ** — ใบยื่นเป็นเอกสารภาษีที่อาจยื่นกรมสรรพสามิตแล้ว
+// การลากลบตามเอกสารต้นทางเป็นผลข้างเคียงที่เงียบเกินไป. เส้นทางเดียวกับด่านอื่นทั้งหมด
+// (ยกเลิก SO / ยกเลิกอนุมัติ / ออก Rev. ก็ถูกใบยื่นบล็อกเหมือนกัน) คือให้จัดการใบยื่นก่อน
+export async function exciseFilingsOfSalesOrder(supabase, salesOrderId) {
+  const { data, error } = await supabase
+    .from('orders').select('id, status').eq('salesOrderId', salesOrderId);
+  // คอลัมน์ยังไม่มี (ยังไม่รัน mig 0160) = ยังไม่มีใบยื่นในระบบ → ไม่บล็อก
+  if (error) return [];
+  return data || [];
+}
+
+export async function exciseFilingsOfQuotation(supabase, quotationId) {
+  const { data: orders } = await supabase
+    .from('sales_orders').select('id').eq('quotationId', quotationId);
+  const ids = (orders || []).map((row) => row.id);
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('orders').select('id, status').in('salesOrderId', ids);
+  if (error) return [];
+  return data || [];
+}
+
+export function exciseFilingBlockMessage(filings = [], documentLabel = 'เอกสาร') {
+  const list = filings.map((row) => `${row.id}${row.status ? ` (${row.status})` : ''}`).join(', ');
+  return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีใบยื่นชำระภาษีผูกอยู่ ${list}`
+    + ` — ใบยื่นเป็นเอกสารภาษีที่ระบบจะไม่ลบให้อัตโนมัติ กรุณาลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน`
+    + ` แล้วจึงลบ${documentLabel}นี้ได้`;
+}
+
 // ── QUOTATION ─────────────────────────────────────────────────────────
 // preview การลบใบเสนอราคาหนึ่งใบ. quotation_lines cascade เอง (FK); sales_orders
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
 export async function quotationForcePreview(supabase, quote) {
-  const [salesOrders, evidence, issued] = await Promise.all([
+  const [salesOrders, evidence, issued, filings] = await Promise.all([
     countBy(supabase, 'sales_orders', 'quotationId', quote.id),
     countBy(supabase, 'document_signature_evidence', 'quotationId', quote.id),
     countBy(supabase, 'issued_documents', 'quotationId', quote.id),
+    exciseFilingsOfQuotation(supabase, quote.id),
   ]);
+  // ใบยื่นภาษีเป็นด่านที่ break-glass ก็ข้ามไม่ได้ (FK RESTRICT + RPC ไม่ล้างให้) —
+  // ต้องบอกตั้งแต่พรีวิว ไม่ใช่ปล่อยให้ไปพังตอนลบจริงแล้วได้ error ดิบจาก Postgres
+  if (filings.length) {
+    return {
+      cascade: [],
+      notes: [exciseFilingBlockMessage(filings, 'ใบเสนอราคา')],
+      blocked: true,
+    };
+  }
   const cascade = [
     line('ใบสั่งขาย (Sale Order) ที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
@@ -165,10 +210,14 @@ export async function quotationForcePreview(supabase, quote) {
 // พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
 // sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
 export async function salesOrderForcePreview(supabase, order) {
-  const [evidence, issued] = await Promise.all([
+  const [evidence, issued, filings] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
+    exciseFilingsOfSalesOrder(supabase, order.id),
   ]);
+  if (filings.length) {
+    return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'Sale Order')], blocked: true };
+  }
   const cascade = [
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),

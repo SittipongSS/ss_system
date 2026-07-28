@@ -32,7 +32,9 @@ import { captureIssuedSalesOrderSnapshot } from '@/lib/sales/issuedSalesOrderSna
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
-import { isDryRun, isForceRequest, salesOrderForcePreview } from '@/lib/forceDelete';
+import {
+  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
+} from '@/lib/forceDelete';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -603,6 +605,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // (force_delete_sales_order ล้างหลักฐาน/ฉบับตรึง ไม่ได้ล้าง pointer ของอีกฉบับ)
   const chainBlock = salesOrderRevisionChainDeleteBlock(before);
   if (chainBlock) return fail(chainBlock, 409);
+  // ใบยื่นภาษีมาก่อน force เช่นกัน — RPC break-glass ไม่ล้างตาราง orders ให้ ถ้าไม่ดัก
+  // ตรงนี้จะไปพังที่ FK RESTRICT แล้วได้ข้อความกลาง ๆ ที่ชี้ทางผิด ("ใช้ยกเลิก SO แทน"
+  // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
+  const filings = await exciseFilingsOfSalesOrder(supabase, id);
+  if (filings.length) return fail(exciseFilingBlockMessage(filings, 'Sale Order'), 409);
   if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId

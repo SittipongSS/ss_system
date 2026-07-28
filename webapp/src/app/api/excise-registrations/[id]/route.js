@@ -7,6 +7,7 @@ import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { chatCard, sendChat } from '@/lib/chat';
+import { normalizeRejectionReason, rejectionReasonError } from '@/lib/master/approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +48,24 @@ export async function PATCH(request, { params }) {
   // Re-approval rule (ทุกระบบ, stricter): an APPROVED registration is LOCKED.
   // The only permitted change is the explicit "ขอแก้ไข" (revise): SA reverts it
   // to 'draft', clearing the approval, which re-enters draft → submit → approve.
+  // มติ B2 (2026-07-27): การปลดอนุมัติเป็น **สิทธิ์ของฝ่ายกฎหมาย** + ต้องมีเหตุผล + แจ้งเตือน
+  // เดิมใครก็ได้ที่มี products:edit กดปลดได้ฟรี ไม่ต้องบอกเหตุ ไม่มีใครรู้ — ทั้งที่ทะเบียน
+  // คือหลักฐานที่ใบยื่นชำระภาษีอ้างถึง (orders.registrationId) และการถอนอนุมัติ SO ซึ่ง
+  // เบากว่านี้มากยังต้องเป็นผู้รีวิว + เหตุผล 10–500 + แจ้ง chat
+  //
+  // เหตุผลเก็บใน metadata.revokeApproval (ไม่ใช่ rejectionReason — คนละความหมาย:
+  // rejectionReason = "ผู้อนุมัติตีกลับ" ซึ่งหน้าเว็บแสดงเป็นป้ายตีกลับ) จึงไม่ต้อง migration
   if (reg.status === 'approved') {
-    if (body.status === 'draft' && can(user?.role, 'products:edit')) {
+    if (body.status === 'draft') {
+      if (!can(user?.role, 'legal:approve')) {
+        return Response.json({
+          error: 'ปลดอนุมัติทะเบียนได้เฉพาะฝ่ายกฎหมาย — ทะเบียนนี้เป็นหลักฐานที่ใบยื่นชำระภาษีอ้างถึง',
+        }, { status: 403 });
+      }
+      const reasonError = rejectionReasonError(body.reason ?? body.revokeReason, { label: 'ที่ปลดอนุมัติ' });
+      if (reasonError) return Response.json({ error: reasonError }, { status: 400 });
+      const reason = normalizeRejectionReason(body.reason ?? body.revokeReason);
+      const now = new Date().toISOString();
       const { data, error } = await supabase
         .from('excise_registrations')
         .update({
@@ -58,7 +75,11 @@ export async function PATCH(request, { params }) {
           approvedByName: null,
           approvedAt: null,
           rejectionReason: null,
-          updatedAt: new Date().toISOString(),
+          metadata: {
+            ...(reg.metadata || {}),
+            revokeApproval: { reason, by: user?.id ?? null, byName: user?.name ?? null, at: now },
+          },
+          updatedAt: now,
         })
         .eq('id', id)
         .select()
@@ -66,11 +87,24 @@ export async function PATCH(request, { params }) {
       if (error) return Response.json({ error: error.message }, { status: 500 });
       await recordAudit({
         user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data,
-        summary: `ขอแก้ไขทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง)`, request,
+        summary: `ปลดอนุมัติทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง): ${reason}`, request,
       });
+      // ปลดอนุมัติ = SO ที่รอออกใบยื่นหลุดจากตัวเลือกทันที ฝ่ายขายต้องรู้
+      sendChat('sales', chatCard({
+        title: '⚠️ ทะเบียนสรรพสามิตถูกปลดอนุมัติ',
+        subtitle: `${data.fgCode || id} · ${data.customerName || ''}`.trim(),
+        rows: [
+          { label: 'สินค้า', value: data.productName || data.fgCode },
+          { label: 'เหตุผล', value: reason },
+          { label: 'ผู้ปลดอนุมัติ', value: user?.name },
+          { label: 'ผลที่ตามมา', value: 'Sale Order ที่ใช้สินค้านี้จะออกใบยื่นชำระภาษีไม่ได้จนกว่าจะขึ้นทะเบียนใหม่' },
+        ],
+        linkPath: `/tax/registrations/${id}`,
+        linkLabel: 'เปิดทะเบียน',
+      }));
       return Response.json(data);
     }
-    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่ายกฎหมายปลดอนุมัติก่อน' }, { status: 403 });
   }
 
   // SA owns the link fields; LG owns the approval/tax fields (allowedEditFields).

@@ -1,7 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser, redactProductMargin } from '@/lib/permissions';
-import { changedFieldsAgainst, CUSTOMER_CONTACT_FIELDS, resetApprovalOnEdit } from '@/lib/master/approval';
+import {
+  changedFieldsAgainst, CUSTOMER_CONTACT_FIELDS, normalizeRejectionReason,
+  rejectionReasonError, resetApprovalOnEdit,
+} from '@/lib/master/approval';
 import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { normalizeBrands } from '@/lib/master/brands';
 import { listForCustomer } from '@/lib/excise/registrations';
@@ -135,13 +138,20 @@ export async function PATCH(request, { params }) {
     if (!['approved', 'rejected', 'pending'].includes(body.approvalStatus)) {
       return Response.json({ error: 'สถานะการอนุมัติไม่ถูกต้อง' }, { status: 400 });
     }
+    // ตีกลับต้องบอกเหตุเสมอ (2026-07-27) — เดิมไม่บังคับ คนสร้างเห็นแค่ป้ายแดง
+    // แล้วต้องเดาเองว่าต้องแก้อะไร ทั้งที่ทุกโมดูลอื่นบังคับหมด
+    const rejecting = body.approvalStatus === 'rejected';
+    if (rejecting) {
+      const reasonError = rejectionReasonError(body.rejectionReason);
+      if (reasonError) return Response.json({ error: reasonError }, { status: 400 });
+    }
     const approved = body.approvalStatus === 'approved';
     const approvalUpdates = {
       approvalStatus: body.approvalStatus,
       approvedBy: user?.id ?? null,
       approvedByName: user?.name ?? null,
       approvedAt: new Date().toISOString(),
-      rejectionReason: body.approvalStatus === 'rejected' ? (body.rejectionReason || null) : null,
+      rejectionReason: rejecting ? normalizeRejectionReason(body.rejectionReason) : null,
       updatedAt: new Date().toISOString(),
     };
     void approved;

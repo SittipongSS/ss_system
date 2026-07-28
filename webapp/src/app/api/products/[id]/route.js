@@ -1,7 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
-import { changedFieldsAgainst, resetApprovalOnEdit } from '@/lib/master/approval';
+import {
+  changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
+} from '@/lib/master/approval';
 import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
@@ -74,12 +76,18 @@ export async function PATCH(request, { params }) {
     if (!['approved', 'rejected', 'pending'].includes(body.approvalStatus)) {
       return Response.json({ error: 'สถานะการอนุมัติไม่ถูกต้อง' }, { status: 400 });
     }
+    // ตีกลับต้องบอกเหตุเสมอ (2026-07-27) — กติกาเดียวกับฝั่งลูกค้า ดู lib/master/approval.js
+    const rejecting = body.approvalStatus === 'rejected';
+    if (rejecting) {
+      const reasonError = rejectionReasonError(body.rejectionReason);
+      if (reasonError) return Response.json({ error: reasonError }, { status: 400 });
+    }
     const approvalUpdates = {
       approvalStatus: body.approvalStatus,
       approvedBy: user?.id ?? null,
       approvedByName: user?.name ?? null,
       approvedAt: new Date().toISOString(),
-      rejectionReason: body.approvalStatus === 'rejected' ? (body.rejectionReason || null) : null,
+      rejectionReason: rejecting ? normalizeRejectionReason(body.rejectionReason) : null,
       updatedAt: new Date().toISOString(),
     };
     const { data: decided, error: decErr } = await supabase
