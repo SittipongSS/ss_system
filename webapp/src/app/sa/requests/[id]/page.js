@@ -25,8 +25,8 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
-  ASK_ITEM_STATUS_LABELS, ASK_OPEN_STATUSES, ASK_STATUS_LABELS, askProgress,
-} from "@/lib/materialAsks";
+  REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, askProgress,
+} from "@/lib/deptRequests";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const STATUS_TONE = {
@@ -47,7 +47,7 @@ export default function MaterialAskDetailPage() {
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
 
-  const [ask, setAsk] = useState(null);
+  const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [answering, setAnswering] = useState(null); // { item, tiers }
@@ -60,10 +60,10 @@ export default function MaterialAskDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch(`/api/sa/materials/asks/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/sa/requests/${id}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดเคสไม่สำเร็จ");
-      setAsk(d);
+      setReq(d);
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
   }, [id]);
@@ -72,7 +72,7 @@ export default function MaterialAskDetailPage() {
   const call = useCallback(async (path, init, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/materials/asks/${id}${path}`, {
+      const res = await fetch(`/api/sa/requests/${id}${path}`, {
         headers: { "Content-Type": "application/json" }, ...init,
       });
       const d = await res.json().catch(() => ({}));
@@ -86,10 +86,10 @@ export default function MaterialAskDetailPage() {
 
   // รายการเคสเป็นแท็บของหน้าวัสดุแล้ว — กลับไปแท็บที่คนคนนี้ใช้งานจริง
   // (ผู้ตอบกลับเข้าคิวของฝ่ายที่เคสนี้ถามไป, ผู้ขอกลับไปดูเคสของตัวเอง)
-  const backTab = ask?._mine === false ? `queue-${ask.dept}` : "mine";
+  const backTab = req?._mine === false ? `queue-${req.dept}` : "mine";
   const back = { href: `/sa/materials?tab=${backTab}`, label: "กลับรายการเคส" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
-  if (loadError || !ask) {
+  if (loadError || !req) {
     return (
       <Workspace hideHeader back={back}>
         <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError || "ไม่พบเคส"}</div>
@@ -97,10 +97,10 @@ export default function MaterialAskDetailPage() {
     );
   }
 
-  const owner = canQuoteMaterial(me, ask.dept);
-  const canAnswer = owner && ASK_OPEN_STATUSES.includes(ask.status);
-  const progress = askProgress(ask.items || []);
-  const canClose = progress.complete && !["closed", "cancelled"].includes(ask.status) && (ask._mine || owner);
+  const owner = canQuoteMaterial(me, req.dept);
+  const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
+  const progress = requestProgress(req.items || []);
+  const canClose = progress.complete && !["closed", "cancelled"].includes(req.status) && (req._mine || owner);
 
   const submitAnswer = async (payload, okMsg) => {
     const ok = await call("/answer", { method: "PATCH", body: JSON.stringify({ answers: [payload] }) }, okMsg);
@@ -112,7 +112,7 @@ export default function MaterialAskDetailPage() {
     if (confirm.kind === "submit") {
       return {
         title: "ส่งเคสขอราคา",
-        description: `${(ask.items || []).length} รายการ → ฝ่าย ${ask.dept}`,
+        description: `${(req.items || []).length} รายการ → ฝ่าย ${req.dept}`,
         detail: "ระบบจะออกเลขที่เคสและแจ้งฝ่ายเจ้าของทันที — หลังส่งแล้วลบเคสไม่ได้",
         confirmLabel: "ส่งเคส",
       };
@@ -120,7 +120,7 @@ export default function MaterialAskDetailPage() {
     if (confirm.kind === "close") {
       return {
         title: "ปิดเคส",
-        description: ask.docNo || "",
+        description: req.docNo || "",
         detail: "ราคาที่ตอบแล้วยังอยู่ในทะเบียนวัสดุตามเดิม — ปิดเคสแค่บอกว่างานนี้จบ",
         confirmLabel: "ปิดเคส",
       };
@@ -145,23 +145,23 @@ export default function MaterialAskDetailPage() {
     if (ok) setConfirm(null);
   };
 
-  const workflowIndex = ask.status === "draft"
+  const workflowIndex = req.status === "draft"
     ? 0
-    : ask.status === "pending"
+    : req.status === "pending"
       ? 1
-      : ask.status === "acknowledged"
+      : req.status === "acknowledged"
         ? 2
-        : ask.status === "answered"
+        : req.status === "answered"
           ? 3
           : 4;
   const workflowSteps = workflowStepsFromIndex([
     { id: "draft", label: "จัดทำเคส", hint: "ระบุวัสดุและชั้นจำนวน" },
-    { id: "pending", label: "รอรับเรื่อง", hint: `ส่งถึงฝ่าย ${ask.dept}` },
+    { id: "pending", label: "รอรับเรื่อง", hint: `ส่งถึงฝ่าย ${req.dept}` },
     { id: "acknowledged", label: "กำลังหาราคา", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" },
     { id: "answered", label: "ตอบครบ", hint: "บันทึกราคาเข้าทะเบียนวัสดุ" },
     { id: "closed", label: "ปิดเคส", hint: "งานขอราคาสิ้นสุด" },
-  ], workflowIndex, ask.status === "cancelled");
-  const primaryAction = ask._mine && ask.status === "draft"
+  ], workflowIndex, req.status === "cancelled");
+  const primaryAction = req._mine && req.status === "draft"
     ? {
       id: "submit",
       label: "ส่งเคส",
@@ -169,7 +169,7 @@ export default function MaterialAskDetailPage() {
       icon: Send,
       onClick: () => setConfirm({ kind: "submit" }),
     }
-    : owner && ask.status === "pending"
+    : owner && req.status === "pending"
       ? {
         id: "acknowledge",
         label: "รับเรื่อง",
@@ -191,12 +191,12 @@ export default function MaterialAskDetailPage() {
     <Workspace hideHeader back={back}>
       <SalesDetailOverview
         eyebrow="MATERIAL PRICE REQUEST"
-        title={ask.docNo || "เคสขอราคา (ร่าง)"}
-        description={`${ask.customerName || "ราคากลาง"} · ถึงฝ่าย ${ask.dept} · ผู้ขอ ${ask.requestedByName || "—"}`}
-        badges={<SalesStateBadge label={ASK_STATUS_LABELS[ask.status] || ask.status} color={STATUS_TONE[ask.status]} />}
+        title={req.docNo || "เคสขอราคา (ร่าง)"}
+        description={`${req.customerName || "ราคากลาง"} · ถึงฝ่าย ${req.dept} · ผู้ขอ ${req.requestedByName || "—"}`}
+        badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
         facts={[
-          { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(ask.createdAt) },
-          { key: "department", label: "ฝ่ายผู้ตอบ", value: ask.dept },
+          { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
+          { key: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
           { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
           { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
         ]}
@@ -209,17 +209,17 @@ export default function MaterialAskDetailPage() {
             <DocumentSummaryCard
               title="สรุปเคสขอราคา"
               rows={[
-                { id: "department", label: "ฝ่ายผู้ตอบ", value: ask.dept },
+                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
                 { id: "items", label: "รายการทั้งหมด", value: `${progress.total} รายการ` },
                 { id: "answered", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
                 { id: "pending", label: "รอคำตอบ", value: `${Math.max(progress.total - progress.done, 0)} รายการ` },
               ]}
-              status={ASK_STATUS_LABELS[ask.status] || ask.status}
-              statusColor={STATUS_TONE[ask.status]}
+              status={REQUEST_STATUS_LABELS[req.status] || req.status}
+              statusColor={STATUS_TONE[req.status]}
             />
             <DocumentControlCard
-              status={ASK_STATUS_LABELS[ask.status] || ask.status}
-              statusColor={STATUS_TONE[ask.status]}
+              status={REQUEST_STATUS_LABELS[req.status] || req.status}
+              statusColor={STATUS_TONE[req.status]}
               statusDescription="การดำเนินการระดับเคส"
               workflowSteps={workflowSteps}
               primaryAction={primaryAction}
@@ -230,7 +230,7 @@ export default function MaterialAskDetailPage() {
                   kind: "delete",
                   icon: Trash2,
                   onClick: () => setConfirm({ kind: "delete" }),
-                  visible: ask._mine && ask.status === "draft",
+                  visible: req._mine && req.status === "draft",
                 },
                 {
                   id: "cancel",
@@ -238,7 +238,7 @@ export default function MaterialAskDetailPage() {
                   kind: "cancel",
                   icon: Ban,
                   onClick: () => setCancelReason(" "),
-                  visible: ask._mine && !["closed", "cancelled", "answered"].includes(ask.status),
+                  visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
                 },
               ]}
               busy={saving}
@@ -249,30 +249,30 @@ export default function MaterialAskDetailPage() {
         <div>
           <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span className="status-pill" style={{ color: STATUS_TONE[ask.status], borderColor: "currentColor" }}>
-            {ASK_STATUS_LABELS[ask.status] || ask.status}
+          <span className="status-pill" style={{ color: STATUS_TONE[req.status], borderColor: "currentColor" }}>
+            {REQUEST_STATUS_LABELS[req.status] || req.status}
           </span>
           <span style={{ fontSize: 13, color: "var(--text-2)" }}>
             ตอบแล้ว {progress.done}/{progress.total} รายการ
           </span>
-          {ask.acknowledgedByName && (
+          {req.acknowledgedByName && (
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>
-              รับเรื่องโดย {ask.acknowledgedByName} · {fmtDate(ask.acknowledgedAt)}
+              รับเรื่องโดย {req.acknowledgedByName} · {fmtDate(req.acknowledgedAt)}
             </span>
           )}
-          {ask.formulaCode && (
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>สูตร {ask.formulaCode}</span>
+          {req.formulaCode && (
+            <span style={{ fontSize: 12, color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
           )}
         </div>
-        {ask.note && <ReadableText text={ask.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />}
-        {ask.status === "cancelled" && ask.cancelReason && (
+        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />}
+        {req.status === "cancelled" && req.cancelReason && (
           <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
-            <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={ask.cancelReason} lines={4} />
+            <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
           </div>
         )}
       </div>
 
-      {(ask.items || []).map((item) => (
+      {(req.items || []).map((item) => (
         <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
@@ -288,7 +288,7 @@ export default function MaterialAskDetailPage() {
             </div>
             <div style={{ textAlign: "right" }}>
               <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.priceStatus] }}>
-                {ASK_ITEM_STATUS_LABELS[item.priceStatus]}
+                {REQUEST_ITEM_STATUS_LABELS[item.priceStatus]}
               </span>
               {item.answeredByName && (
                 <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
@@ -309,7 +309,7 @@ export default function MaterialAskDetailPage() {
             <AttachmentsPanel
               entityType="material_ask_item"
               entityId={item.id}
-              canEdit={(ask._mine || owner) && ASK_OPEN_STATUSES.concat("draft").includes(ask.status)}
+              canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
               inlineUpload
             />
           </div>
@@ -341,7 +341,7 @@ export default function MaterialAskDetailPage() {
       <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในเคสนี้">
         <UpdateThread
           entityType="material_ask"
-          entityId={ask.id}
+          entityId={req.id}
           placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
           onPosted={load}
@@ -364,7 +364,7 @@ export default function MaterialAskDetailPage() {
             />
             <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-2)" }}>
               ราคานี้จะเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของ <b>{answering.item.label}</b>
-              {ask.customerName ? ` (ราคาเฉพาะ ${ask.customerName})` : " (ราคากลาง)"}
+              {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : " (ราคากลาง)"}
             </div>
             <div className="action-bar" style={{ marginTop: 16 }}>
               <button type="button" className="btn ghost" onClick={() => setAnswering(null)} disabled={saving}>ยกเลิก</button>

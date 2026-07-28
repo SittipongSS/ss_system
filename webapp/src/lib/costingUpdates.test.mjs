@@ -14,26 +14,26 @@ import { UPDATE_KINDS } from './master/updateTypes.js';
 // kind ที่ไฟล์นี้ผลิตต้องมีป้ายในทะเบียนจริง ไม่งั้นขึ้นจอเป็น "อัปเดต" สีเดียวหมด
 const declared = (entityType, kind) => Object.hasOwn(UPDATE_KINDS[entityType] || {}, kind);
 
-test('เคสขอราคา: ทุก action คืน kind ที่ประกาศไว้ในทะเบียน', () => {
+test('คำร้อง: ทุก action คืน kind ที่ประกาศไว้ในทะเบียน', () => {
   const ask = { dept: 'PC', docNo: 'PM-26070001', items: [{}, {}] };
   for (const action of ['submit', 'acknowledge', 'close', 'cancel']) {
     const u = askActionUpdate(action, ask, { reason: 'ลูกค้าเปลี่ยนใจ' });
     assert.ok(u, `${action} ต้องคืนรายการ`);
-    assert.ok(declared('material_ask', u.kind), `kind ${u.kind} ไม่มีป้ายในทะเบียน`);
+    assert.ok(declared('dept_request', u.kind), `kind ${u.kind} ไม่มีป้ายในทะเบียน`);
     assert.ok(u.body, `${action} ต้องมีข้อความ`);
   }
   assert.equal(askActionUpdate('ยิงเล่น', ask), null);
   assert.equal(askActionUpdate('submit', null), null);
 });
 
-test('เคสขอราคา: ยกเลิกต้องพาเหตุผลไปด้วย', () => {
+test('คำร้อง: ยกเลิกต้องพาเหตุผลไปด้วย', () => {
   const ask = { dept: 'RD', items: [] };
   assert.match(askActionUpdate('cancel', ask, { reason: 'ลูกค้าถอย' }).body, /ลูกค้าถอย/);
   // ไม่ส่งเหตุผลมาต้องไม่เงียบ — บอกตรง ๆ ว่าไม่ระบุ
   assert.match(askActionUpdate('cancel', ask, {}).body, /ไม่ระบุเหตุผล/);
 });
 
-test('เคสขอราคา: คำตอบแยกรายรายการ + "ตอบไม่ได้" ต้องพาเหตุผลไปด้วย', () => {
+test('คำร้อง: คำตอบแยกรายรายการ + "ตอบไม่ได้" ต้องพาเหตุผลไปด้วย', () => {
   const events = askAnswerUpdates([
     { item: { id: 'I1', label: 'ขวด 500ml' }, tiers: [{ qty: 500 }, { qty: 1000 }], note: 'ราคานี้ถึงสิ้นเดือน' },
     { item: { id: 'I2', label: 'ฝาปั๊ม' }, noQuote: true, reason: 'โรงงานเลิกผลิต' },
@@ -46,10 +46,10 @@ test('เคสขอราคา: คำตอบแยกรายรายก
   assert.equal(events[0].meta.itemId, 'I1');
   assert.equal(events[1].kind, 'no_quote');
   assert.match(events[1].body, /โรงงานเลิกผลิต/);
-  for (const e of events) assert.ok(declared('material_ask', e.kind));
+  for (const e of events) assert.ok(declared('dept_request', e.kind));
 });
 
-test('เคสขอราคา: รายการที่ไม่มี item ต้องข้าม ไม่ใช่ทำทั้งชุดพัง', () => {
+test('คำร้อง: รายการที่ไม่มี item ต้องข้าม ไม่ใช่ทำทั้งชุดพัง', () => {
   assert.deepEqual(askAnswerUpdates([null, {}, undefined]), []);
   assert.deepEqual(askAnswerUpdates(), []);
 });

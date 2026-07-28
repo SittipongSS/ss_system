@@ -48,7 +48,7 @@ const PARENT_TABLE = {
   mgmt_task: 'mgmt_tasks',
   mgmt_meeting: 'mgmt_meetings',
   costing_item: 'costing_request_items',
-  material_ask_item: 'material_price_ask_items',
+  dept_request_item: 'dept_request_items',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 

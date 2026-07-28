@@ -225,7 +225,8 @@ export default function AppLayout({ children }) {
         // (มติผู้ใช้ 2026-07-26: เคยแยกสองเมนู แต่เป็นของชิ้นเดียวกันคนละจังหวะ และชื่อ
         // "เคสขอราคา" อ่านแล้วชนกับ "ขอราคาผลิต" ที่เป็นคนละเอกสาร)
         // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/sa/materials', name: 'วัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
+        { href: '/sa/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/requests') },
+        { href: '/sa/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },

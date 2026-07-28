@@ -22,32 +22,32 @@ const ask = (over = {}) => ({
   id: 'A1', status: 'pending', dept: 'PC', requestedById: 'U-AE', ...over,
 });
 
-test('เคสขอราคา: ผู้เปิดเคสกับฝ่ายที่ต้องตอบโพสต์ได้ · ฝ่ายอื่นอ่านได้แต่โพสต์ไม่ได้', async () => {
+test('คำร้อง: ผู้เปิดเคสกับฝ่ายที่ต้องตอบโพสต์ได้ · ฝ่ายอื่นอ่านได้แต่โพสต์ไม่ได้', async () => {
   const a = ask();
   for (const u of [OWNER, PC, ADMIN]) {
-    assert.equal(await canPostUpdate(db, 'material_ask', a, u), true, `${u.role}/${u.department} ควรโพสต์ได้`);
+    assert.equal(await canPostUpdate(db, 'dept_request', a, u), true, `${u.role}/${u.department} ควรโพสต์ได้`);
   }
   // RD อยู่ในวงคนเห็นระบบขอราคา แต่เคสนี้เป็นงานฝ่าย PC — ตอบแทนกันไม่ได้
-  assert.equal(await canViewUpdates(db, 'material_ask', a, RD), true);
-  assert.equal(await canPostUpdate(db, 'material_ask', a, RD), false);
+  assert.equal(await canViewUpdates(db, 'dept_request', a, RD), true);
+  assert.equal(await canPostUpdate(db, 'dept_request', a, RD), false);
   // เซลคนอื่นเห็นเคสได้ (ระบบขอราคาเห็นกันทั้งวง) แต่ไม่ใช่เคสของเขา
-  assert.equal(await canPostUpdate(db, 'material_ask', a, OTHER_SALES), false);
+  assert.equal(await canPostUpdate(db, 'dept_request', a, OTHER_SALES), false);
 });
 
-test('เคสขอราคา: เคสฝ่าย RD ต้องให้ RD ตอบ ไม่ใช่ PC', async () => {
+test('คำร้อง: เคสฝ่าย RD ต้องให้ RD ตอบ ไม่ใช่ PC', async () => {
   const a = ask({ dept: 'RD' });
-  assert.equal(await canPostUpdate(db, 'material_ask', a, RD), true);
-  assert.equal(await canPostUpdate(db, 'material_ask', a, PC), false);
+  assert.equal(await canPostUpdate(db, 'dept_request', a, RD), true);
+  assert.equal(await canPostUpdate(db, 'dept_request', a, PC), false);
 });
 
-test('เคสขอราคา: ปิด/ยกเลิกแล้วเป็นหลักฐาน — โพสต์ต่อไม่ได้แม้เป็นเจ้าของ', async () => {
+test('คำร้อง: ปิด/ยกเลิกแล้วเป็นหลักฐาน — โพสต์ต่อไม่ได้แม้เป็นเจ้าของ', async () => {
   // กฎเดียวกับไฟล์แนบ (canAttachToCosting) เพื่อไม่ให้เคสเดียวมีสองมาตรฐาน
   for (const status of ['closed', 'cancelled']) {
     const a = ask({ status });
-    assert.equal(await canPostUpdate(db, 'material_ask', a, OWNER), false, `status ${status}`);
-    assert.equal(await canPostUpdate(db, 'material_ask', a, PC), false, `status ${status}`);
+    assert.equal(await canPostUpdate(db, 'dept_request', a, OWNER), false, `status ${status}`);
+    assert.equal(await canPostUpdate(db, 'dept_request', a, PC), false, `status ${status}`);
     // แต่ยังอ่านย้อนหลังได้ — หลักฐานต้องเปิดอ่านได้เสมอ
-    assert.equal(await canViewUpdates(db, 'material_ask', a, OWNER), true, `status ${status}`);
+    assert.equal(await canViewUpdates(db, 'dept_request', a, OWNER), true, `status ${status}`);
   }
 });
 
@@ -91,7 +91,7 @@ test('ใบขอราคาผลิต: ใบของทีมอื่น
 });
 
 test('ไม่มี record = ปิดตายทั้งสอง entity (ห้ามตกไปเป็นปล่อยผ่าน)', async () => {
-  for (const type of ['material_ask', 'costing_request']) {
+  for (const type of ['dept_request', 'costing_request']) {
     assert.equal(await canViewUpdates(db, type, null, ADMIN), false, type);
     assert.equal(await canPostUpdate(db, type, null, ADMIN), false, type);
   }

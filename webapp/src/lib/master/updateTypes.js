@@ -22,7 +22,7 @@ export const UPDATE_KINDS = {
   },
   // เคสขอราคาวัสดุ (mig 0158) — เธรดสองฝ่าย: เซลถาม ↔ RD/PC ตอบ
   // ป้าย 'ข้อความ' ไม่ใช่ 'อัปเดต' เพราะที่นี่คนคุยกันจริง ไม่ใช่รายงานความคืบหน้า
-  material_ask: {
+  dept_request: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     submit: { label: 'ส่งเคส', color: 'var(--blue)' },
     acknowledge: { label: 'รับเรื่อง', color: 'var(--blue)' },

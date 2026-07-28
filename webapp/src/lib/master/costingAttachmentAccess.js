@@ -15,11 +15,11 @@
 //     ใน .../attachments/[id]/file         ทั้งที่ไฟล์อัปขึ้นไปแล้วจริง
 // costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น · ทั้งคู่โดนข้อ 4–5 จนถึง 2026-07-26
 import { canUser, canViewCosting } from '@/lib/permissions';
-import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
+import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
 
 export const COSTING_ATTACHMENT_TABLE = {
   costing_item: 'costing_request_items',
-  material_ask_item: 'material_price_ask_items',
+  dept_request_item: 'dept_request_items',
 };
 
 export const isCostingAttachment = (entityType) => !!COSTING_ATTACHMENT_TABLE[entityType];
@@ -36,10 +36,10 @@ export function canViewCostingAttachment(user) {
 export async function canAttachToCosting(supabase, entityType, parent, user) {
   if (!canViewCosting(user)) return false;
   if (entityType === 'costing_item') return canUser(user, 'costing:edit');
-  if (entityType !== 'material_ask_item' || !parent?.askId) return false;
+  if (entityType !== 'dept_request_item' || !parent?.askId) return false;
   const { data: ask } = await supabase
-    .from('material_price_asks').select('*').eq('id', parent.askId).maybeSingle();
+    .from('dept_requests').select('*').eq('id', parent.askId).maybeSingle();
   if (!ask) return false;
   if (['closed', 'cancelled'].includes(ask.status)) return false;
-  return canManageAsk(user, ask) || canAnswerAsk(user, ask);
+  return canManageRequest(user, ask) || canAnswerRequest(user, ask);
 }

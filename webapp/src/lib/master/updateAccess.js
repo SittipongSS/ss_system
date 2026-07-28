@@ -13,7 +13,7 @@
 // ตอนต่อ entity ตัวที่สอง
 import { canApproveCosting, canChangeTaskStatus, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
-import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
+import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
 import { canViewCostingRequest } from '@/lib/costing';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
@@ -39,8 +39,8 @@ export const UPDATE_ENTITIES = {
   // อ่าน = เห็นระบบขอราคา (ด่านเดียวกับ GET ของเคสเอง — ต้นทุนเป็นข้อมูลลับ
   // แต่ในระบบเห็นกันทั้งวง) **ห้ามตั้งด่านใหม่ที่แคบกว่าหน้าจอ** ไม่งั้นเปิดเคสได้
   // แต่เธรดว่างเปล่าโดยไม่มีอะไรบอกว่าเพราะอะไร
-  material_ask: {
-    table: 'material_price_asks',
+  dept_request: {
+    table: 'dept_requests',
     attachments: true,   // "ขวดหน้าตาแบบนี้" — รูปคือหัวใจของการคุยเรื่องวัสดุ
     async canView(supabase, parent, user) {
       return canViewCosting(user);
@@ -51,7 +51,7 @@ export const UPDATE_ENTITIES = {
     async canPost(supabase, parent, user) {
       if (!canViewCosting(user)) return false;
       if (['closed', 'cancelled'].includes(parent?.status)) return false;
-      return canManageAsk(user, parent) || canAnswerAsk(user, parent);
+      return canManageRequest(user, parent) || canAnswerRequest(user, parent);
     },
   },
 

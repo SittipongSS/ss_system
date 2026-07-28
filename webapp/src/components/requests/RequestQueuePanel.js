@@ -1,6 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-// เคสขอราคาวัสดุ (mig 0158) — รายการเคสของฉัน / คิวของฝ่ายตน
+// คำร้องข้ามฝ่าย (mig 0173) — คำร้องของฉัน / คิวของฝ่ายตน
 //
 // เซลเปิดเคสถามราคาไป PC (บรรจุภัณฑ์) หรือ RD (หัวน้ำหอม/เนื้อสาร)
 // RD/PC เห็นคิวงานที่รอตอบที่เดียว — ของเดิมไม่มีคิวเลย ต้องรอให้เซลตามเอง
@@ -14,9 +14,9 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
-import AskForm, { emptyAskForm } from "@/components/materials/AskForm";
+import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { fmtDate } from "@/lib/format";
-import { ASK_STATUS_LABELS, askProgress } from "@/lib/materialAsks";
+import { REQUEST_STATUS_LABELS, requestProgress } from "@/lib/deptRequests";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -27,7 +27,7 @@ const STATUS_TONE = {
   cancelled: "var(--text-3)",
 };
 
-export default function MaterialAsksPanel({
+export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [], materials = [], customers = [], products = [],
   loading = false, loadError = "", reload,
 }) {
@@ -56,13 +56,13 @@ export default function MaterialAsksPanel({
           tiers: it.tiers,
         })),
       };
-      const res = await fetch("/api/sa/materials/asks", {
+      const res = await fetch("/api/sa/requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "เปิดเคสไม่สำเร็จ");
-      router.push(`/sa/materials/asks/${d.id}`);
+      router.push(`/sa/requests/${d.id}`);
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
       setSaving(false);
@@ -81,7 +81,7 @@ export default function MaterialAsksPanel({
           <RefreshCw size={14} /> รีเฟรช
         </button>
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
-        <button type="button" className="btn btn-accent" onClick={() => setForm(emptyAskForm())}>
+        <button type="button" className="btn btn-accent" onClick={() => setForm(emptyRequestForm())}>
           <Plus size={14} /> เปิดเคสขอราคา
         </button>
       </div>
@@ -111,11 +111,11 @@ export default function MaterialAsksPanel({
             </thead>
             <tbody>
               {rows.map((ask) => {
-                const p = askProgress(ask.items || []);
+                const p = requestProgress(ask.items || []);
                 return (
                   <tr
                     key={ask.id} style={{ cursor: "pointer" }}
-                    onClick={() => router.push(`/sa/materials/asks/${ask.id}`)}
+                    onClick={() => router.push(`/sa/requests/${ask.id}`)}
                   >
                     <td style={{ fontWeight: 500 }}>{ask.docNo || "ร่าง"}</td>
                     <td>
@@ -128,7 +128,7 @@ export default function MaterialAsksPanel({
                     <td style={{ fontSize: 12 }}>{p.done}/{p.total} ตอบแล้ว</td>
                     <td>
                       <span className="status-pill" style={{ color: STATUS_TONE[ask.status], borderColor: "currentColor" }}>
-                        {ASK_STATUS_LABELS[ask.status] || ask.status}
+                        {REQUEST_STATUS_LABELS[ask.status] || ask.status}
                       </span>
                     </td>
                     <td style={{ fontSize: 12 }}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
@@ -146,7 +146,7 @@ export default function MaterialAsksPanel({
       >
         {form && (
           <>
-            <AskForm
+            <RequestForm
               value={form} onChange={setForm} disabled={saving}
               materials={materials} customers={customers} products={products}
             />
