@@ -21,9 +21,11 @@ import {
   requestSummaryText,
   submitRequestError,
 } from './deptRequests.js';
+import { MATERIAL_KINDS } from './materialPrices.js';
 import {
   deptForRequest,
   isRequestKind,
+  kindForMaterial,
   requestDocScope,
   requestHasItems,
   requestNeedsDeal,
@@ -101,6 +103,18 @@ test('ด่านตอนสร้าง: บรีฟกลิ่นต้อ
   assert.match(requestShapeError('price_f', { items: [{ kind: 'RM_F' }] }), /กลิ่น/);
   assert.match(requestShapeError('price_fb', { items: [{ kind: 'RM_FB' }] }), /สูตร/);
   assert.equal(requestShapeError('price_f', { items: [{ kind: 'RM_F' }], scentId: 'SCT-1' }), null);
+});
+
+test('ชนิดวัสดุทุกตัวต้องมีชนิดคำร้องคู่กัน — ไม่งั้นปุ่ม "ขอราคา" ในใบขอราคาผลิตพัง', () => {
+  // ⚠️ regression: ตอนขึ้น mig 0173 ทำให้ kind บังคับ แต่ปุ่มขอราคาจากบรรทัดในใบ
+  // ยังส่ง payload เดิมที่ไม่มี kind → API ตอบ "ชนิดคำร้องไม่ถูกต้อง" ทุกครั้ง
+  // เทสต์นี้กันเคสที่เพิ่มชนิดวัสดุใหม่แล้วลืมแมป (kindForMaterial คืน null เงียบ ๆ)
+  for (const materialKind of MATERIAL_KINDS) {
+    const kind = kindForMaterial(materialKind);
+    assert.ok(kind, `ชนิดวัสดุ ${materialKind} ยังไม่มีชนิดคำร้องคู่กัน`);
+    assert.ok(isRequestKind(kind), `${kind} ไม่อยู่ในทะเบียนชนิดคำร้อง`);
+    assert.equal(requestHasItems(kind), true, `${kind} ต้องเป็นชนิดที่มีบรรทัด`);
+  }
 });
 
 test('ชนิดที่ไม่รู้จักถูกปฏิเสธ (client ส่ง kind มั่วไม่ได้)', () => {

@@ -25,14 +25,16 @@ export const REQUEST_STATUS_LABELS = {
   cancelled: 'ยกเลิก',
 };
 
-// สีของ pill ตามระบบ token (ห้ามใส่ hex ตรง ๆ — ดู material-design skill)
+// โทนของ pill = **ชื่อโทนของ `<StatusBadge>`** ไม่ใช่ค่าสี — หน้าจอจึงไม่ต้องรู้จัก
+// token สีเลย และเปลี่ยนดีไซน์ป้ายได้ที่ Badge.module.css ที่เดียวทั้งระบบ
+// (มาตรฐานเดียวกับ SCENT_STATUS_TONES / SCENT_FEEDBACK_TONES)
 export const REQUEST_STATUS_TONES = {
-  draft: 'var(--text-3)',
-  pending: 'var(--amber)',
-  acknowledged: 'var(--blue)',
-  answered: 'var(--green)',
-  closed: 'var(--text-3)',
-  cancelled: 'var(--text-3)',
+  draft: 'neutral',
+  pending: 'warning',
+  acknowledged: 'info',
+  answered: 'success',
+  closed: 'neutral',
+  cancelled: 'neutral',
 };
 
 // คำร้องที่ "ยังเดินอยู่" — ใช้กรองคิวและนับงานค้างของฝ่าย

@@ -16,19 +16,16 @@ import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { fmtDate } from "@/lib/format";
-import { REQUEST_STATUS_LABELS, requestProgress } from "@/lib/deptRequests";
-
-const STATUS_TONE = {
-  draft: "var(--text-3)",
-  pending: "var(--amber)",
-  acknowledged: "var(--blue)",
-  answered: "var(--green)",
-  closed: "var(--text-3)",
-  cancelled: "var(--text-3)",
-};
+import StatusBadge from "@/components/ui/StatusBadge";
+import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
+import {
+  requestHasItems, requestKindLabel, requestKindMeta, requestShapeError,
+} from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [], materials = [], customers = [], products = [],
+  // ทะเบียนที่ฟอร์มอ้างตามชนิดคำร้อง — ดีล (บรีฟ/mockup/เอกสาร) · กลิ่น (F) · สูตร (FB)
+  deals = [], scents = [], formulas = [],
   loading = false, loadError = "", reload,
 }) {
   const router = useRouter();
@@ -40,6 +37,16 @@ export default function RequestQueuePanel({
     setSaving(true);
     try {
       const payload = {
+        kind: form.kind,
+        // ฝ่ายส่งไปเฉพาะชนิดที่ไม่ล็อกฝ่ายไว้ — ที่เหลือ server อนุมานเองจากชนิด/รายการ
+        dept: form.dept || null,
+        title: form.title || null,
+        body: form.body || null,
+        urgent: !!form.urgent,
+        requestedDueDate: form.requestedDueDate || null,
+        dealId: form.dealId || null,
+        scentId: form.scentId || null,
+        formulaId: form.formulaId || null,
         customerId: form.customerId || null,
         customerName: customers.find((c) => c.id === form.customerId)?.name || null,
         productId: form.productId || null,
@@ -47,21 +54,25 @@ export default function RequestQueuePanel({
         formulaCode: form.formulaCode || null,
         formulaName: form.formulaName || null,
         note: form.note,
-        items: (form.items || []).map((it) => ({
-          kind: it.kind,
-          materialId: it.material?.materialId || null,
-          label: it.material?.label || "",
-          spec: it.spec,
-          componentId: it.componentId || null,
-          tiers: it.tiers,
-        })),
+        // ชนิดที่ไม่มีบรรทัดต้องไม่ส่ง items ไปเลย ไม่ใช่ส่ง [] — server ใช้ชนิด
+        // เป็นตัวตัดสินอยู่แล้ว แต่ส่งของที่ไม่เกี่ยวไปด้วยทำให้ debug ยากขึ้นเปล่า ๆ
+        ...(requestHasItems(form.kind) ? {
+          items: (form.items || []).map((it) => ({
+            kind: it.kind,
+            materialId: it.material?.materialId || null,
+            label: it.material?.label || "",
+            spec: it.spec,
+            componentId: it.componentId || null,
+            tiers: it.tiers,
+          })),
+        } : {}),
       };
       const res = await fetch("/api/sa/requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "เปิดเคสไม่สำเร็จ");
+      if (!res.ok) throw new Error(d.error || "เปิดคำร้องไม่สำเร็จ");
       router.push(`/sa/requests/${d.id}`);
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
@@ -69,9 +80,21 @@ export default function RequestQueuePanel({
     }
   };
 
-  const formReady = form
-    && (form.items || []).length > 0
-    && (form.items || []).every((it) => it.material?.materialId || (it.material?.label || "").trim());
+  // ปุ่มบันทึกเปิดเมื่อกรอกครบตาม "ชนิด" — ใช้ requestShapeError ตัวเดียวกับ server
+  // (ฟอร์มกับ API ตัดสินด้วยกฎชุดเดียว ไม่มีทางเพี้ยนหากัน) แล้วเติมด่านของ
+  // รายการวัสดุซึ่ง server ตรวจอีกชั้นตอน normalizeRequestItems
+  const formReady = !!form
+    && !requestShapeError(form.kind, {
+      title: form.title,
+      dealId: form.dealId,
+      scentId: form.scentId,
+      formulaId: form.formulaId,
+      items: requestHasItems(form.kind) ? form.items : undefined,
+    })
+    && (!requestHasItems(form.kind)
+      || (form.items || []).every((it) => it.material?.materialId || (it.material?.label || "").trim()))
+    // ชนิดที่ไม่ล็อกฝ่ายต้องเลือกฝ่ายก่อน ไม่งั้น server ตอบ 400 หลังกดไปแล้ว
+    && (requestHasItems(form.kind) || !!requestKindMeta(form.kind)?.dept || !!form.dept);
 
   return (
     <>
@@ -82,7 +105,7 @@ export default function RequestQueuePanel({
         </button>
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
         <button type="button" className="btn btn-accent" onClick={() => setForm(emptyRequestForm())}>
-          <Plus size={14} /> เปิดเคสขอราคา
+          <Plus size={14} /> เปิดคำร้อง
         </button>
       </div>
 
@@ -93,8 +116,8 @@ export default function RequestQueuePanel({
       ) : rows.length === 0 ? (
         <EmptyState icon={ClipboardList}>
           {scope === "queue"
-            ? `ไม่มีเคสรอฝ่าย ${dept || "คุณ"} ตอบ`
-            : "ยังไม่มีเคสของคุณ — กด \"เปิดเคสขอราคา\" เพื่อเริ่ม"}
+            ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
+            : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
         </EmptyState>
       ) : (
         <TableScroll>
@@ -102,9 +125,10 @@ export default function RequestQueuePanel({
             <thead>
               <tr>
                 <th style={{ width: 140 }}>เลขที่</th>
-                <th>ลูกค้า / หมายเหตุ</th>
+                <th style={{ width: 170 }}>ชนิด</th>
+                <th>เรื่อง / ลูกค้า</th>
                 <th style={{ width: 90 }}>ถึงฝ่าย</th>
-                <th style={{ width: 120 }}>รายการ</th>
+                <th style={{ width: 120 }}>ความคืบหน้า</th>
                 <th style={{ width: 190 }}>สถานะ</th>
                 <th style={{ width: 110 }}>อัปเดต</th>
               </tr>
@@ -117,19 +141,35 @@ export default function RequestQueuePanel({
                     key={ask.id} style={{ cursor: "pointer" }}
                     onClick={() => router.push(`/sa/requests/${ask.id}`)}
                   >
-                    <td style={{ fontWeight: 500 }}>{ask.docNo || "ร่าง"}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {ask.docNo || "ร่าง"}
+                      {ask.urgent && (
+                        <span className="ui-badge" style={{ color: "var(--red)", marginLeft: 6 }}>ด่วน</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{requestKindLabel(ask.kind)}</td>
                     <td>
-                      <div>{ask.customerName || <span style={{ color: "var(--text-3)" }}>ราคากลาง</span>}</div>
+                      {/* ชนิดที่ไม่มีบรรทัดสื่อความด้วยหัวเรื่อง — ชนิดขอราคาสื่อด้วยลูกค้า/สูตร */}
+                      <div>{ask.title || ask.customerName
+                        || <span style={{ color: "var(--text-3)" }}>ราคากลาง</span>}</div>
+                      {ask.title && ask.customerName && (
+                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>{ask.customerName}</div>
+                      )}
                       {ask.formulaCode && (
                         <div style={{ fontSize: 11, color: "var(--text-3)" }}>สูตร {ask.formulaCode}</div>
                       )}
                     </td>
                     <td style={{ fontSize: 12 }}>{ask.dept}</td>
-                    <td style={{ fontSize: 12 }}>{p.done}/{p.total} ตอบแล้ว</td>
+                    <td style={{ fontSize: 12 }}>
+                      {p.total > 0
+                        ? `${p.done}/${p.total} ตอบแล้ว`
+                        : <span style={{ color: "var(--text-3)" }}>—</span>}
+                    </td>
                     <td>
-                      <span className="status-pill" style={{ color: STATUS_TONE[ask.status], borderColor: "currentColor" }}>
-                        {REQUEST_STATUS_LABELS[ask.status] || ask.status}
-                      </span>
+                      <StatusBadge
+                        tone={REQUEST_STATUS_TONES[ask.status] || "neutral"}
+                        label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
+                      />
                     </td>
                     <td style={{ fontSize: 12 }}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
                   </tr>
@@ -142,13 +182,14 @@ export default function RequestQueuePanel({
 
       <Modal
         open={!!form} onClose={() => setForm(null)} size="lg" dismissible={!saving}
-        title="เปิดเคสขอราคาวัสดุ"
+        title="เปิดคำร้องข้ามฝ่าย"
       >
         {form && (
           <>
             <RequestForm
               value={form} onChange={setForm} disabled={saving}
               materials={materials} customers={customers} products={products}
+              deals={deals} scents={scents} formulas={formulas}
             />
             <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-2)" }}>
               เคสจะถูกสร้างเป็น <b>ร่าง</b> ก่อน — เลขที่จะออกตอนกดส่ง (ร่างที่ทิ้งไว้จะไม่กินเลข)

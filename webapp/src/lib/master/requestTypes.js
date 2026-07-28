@@ -67,6 +67,19 @@ export const REQUEST_KINDS = {
 
 export const REQUEST_KIND_LIST = Object.keys(REQUEST_KINDS);
 
+// ชนิดวัสดุ → ชนิดคำร้องขอราคาที่คู่กัน
+// ใช้ตอนเปิดคำร้องจาก "บรรทัดในใบขอราคาผลิต" ซึ่งบรรทัดเป็นตัวบอกอยู่แล้วว่ากำลัง
+// ถามอะไร — ผู้ใช้ไม่ควรต้องเลือกชนิดซ้ำ และเลือกผิดไม่ได้ด้วย
+export const REQUEST_KIND_BY_MATERIAL = {
+  RM_F: 'price_f',
+  RM_FB: 'price_fb',
+  PM: 'price_pm',
+};
+
+export function kindForMaterial(materialKind) {
+  return REQUEST_KIND_BY_MATERIAL[materialKind] || null;
+}
+
 export function isRequestKind(kind) {
   return Object.prototype.hasOwnProperty.call(REQUEST_KINDS, kind);
 }
