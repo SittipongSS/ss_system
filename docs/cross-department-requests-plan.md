@@ -178,18 +178,57 @@ Unexpected duplicate versions:
 | `0169_sales_order_reissue_after_cancel` | `CREATE OR REPLACE FUNCTION create_sales_order_draft` | **ต้องรัน** — ยืนยันจากข้างนอกไม่ได้ |
 
 ตรวจตัวที่สองบน Supabase SQL Editor (ต้องเทียบ **เนื้อในฟังก์ชัน** ไม่ใช่แค่ว่ามีฟังก์ชันอยู่ —
-`CREATE OR REPLACE` ทำให้ฟังก์ชันเวอร์ชันเก่าดูเหมือนรันแล้ว):
+`CREATE OR REPLACE` ทำให้ฟังก์ชันเวอร์ชันเก่าดูเหมือนรันแล้ว)
+
+> ⚠️ **เลือกโทเคนให้อยู่ใน `$$ ... $$` เท่านั้น** — `prosrc` เก็บเฉพาะเนื้อในฟังก์ชัน คอมเมนต์
+> เหนือ `CREATE OR REPLACE` ไม่ถูกเก็บ · โทเคนที่ใช้ได้คือ `supersededById`
+> (0169 มี 2 ครั้งในตัวฟังก์ชัน · 0155 ไม่มีเลย)
 
 ```sql
-SELECT prosrc LIKE '%approval_revoked%' AS "0169_ran"
-FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public' AND p.proname = 'create_sales_order_draft';
+-- ตรวจก่อนเริ่มแผน: A) 0169 ลง prod แล้วไหม  B) มีผู้บริหาร  C) ผู้บริหารมีลายเซ็น
+SELECT 'A) migration 0169 (SO reissue)' AS "รายการ",
+       CASE WHEN bool_or(p.prosrc LIKE '%supersededById%')
+            THEN '✅ รันแล้ว'
+            ELSE '❌ ยังไม่รัน — ต้องรัน 0169_sales_order_reissue_after_cancel.sql ก่อนออกเลข 0170'
+       END AS "ผล"
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND p.proname = 'create_sales_order_draft'
+UNION ALL
+SELECT 'B) บัญชี role executive',
+       CASE WHEN count(*) = 0
+            THEN '❌ ยังไม่มีบัญชีผู้บริหาร — อย่าเพิ่ง merge PR-0'
+            ELSE '✅ มี ' || count(*) || ' บัญชี: ' || string_agg(email, ', ')
+       END
+  FROM auth.users WHERE raw_app_meta_data->>'role' = 'executive'
+UNION ALL
+SELECT 'C) ผู้บริหารมีลายเซ็นหรือยัง',
+       COALESCE(string_agg(email || ' → ' ||
+         CASE WHEN sig THEN '✅ มีลายเซ็น' ELSE '❌ ยังไม่อัปลายเซ็น = อนุมัติไม่ได้' END, ' · '),
+         '— ข้าม (ยังไม่มีบัญชี executive)')
+  FROM (SELECT u.email, (s."activeVersionId" IS NOT NULL) AS sig
+          FROM auth.users u
+          LEFT JOIN public.user_signatures s ON s."userId" = u.id::text
+         WHERE u.raw_app_meta_data->>'role' = 'executive') t;
 ```
 
-`true` = ครบ เดินหน้า 0170 ได้ · `false` = รัน `0169_sales_order_reissue_after_cancel.sql` ก่อน
-(ยังไม่ระเบิดวันนี้เพราะ prod ยังไม่มี SO สักใบ) · จากนั้น**ขยับไฟล์ที่ merge ทีหลังเป็น 0170**
-แล้วเลื่อนแผนนี้เป็น 0171/0172/0173 พร้อมเขียนหัวไฟล์กำกับว่า "รันแล้วในชื่อเดิม ไม่ต้องรันซ้ำ"
-(ดู memory `migration-drift-guard` — เกิดซ้ำแบบนี้เป็นครั้งที่ 3 แล้ว)
+**อ่านผล:** A ❌ = รัน `0169_sales_order_reissue_after_cancel.sql` ก่อน (ยังไม่ระเบิดวันนี้เพราะ
+prod ยังไม่มี SO สักใบ) แล้ว**ขยับไฟล์ที่ merge ทีหลังเป็น 0170** เลื่อนแผนนี้เป็น 0171–0174
+พร้อมเขียนหัวไฟล์กำกับว่า "รันแล้วในชื่อเดิม ไม่ต้องรันซ้ำ" · B/C ❌ = ทำ PR-1..PR-7 ได้ตามปกติ
+แต่**พัก PR-0 ไว้** (ดู §9) · (ดู memory `migration-drift-guard` — เลขซ้ำเป็นครั้งที่ 3 แล้ว)
+
+### ยืนยันตัวเลข prod ที่ใช้ตัดสินใจทั้งแผน (§0)
+
+```sql
+SELECT 'inquiries' AS "ตาราง", count(*) AS "แถว", 'ต้องเป็น 0 — แผนลบตารางนี้ทิ้ง' AS "หมายเหตุ" FROM public.inquiries
+UNION ALL SELECT 'inquiry_messages', count(*), 'ต้องเป็น 0' FROM public.inquiry_messages
+UNION ALL SELECT 'material_price_asks', count(*), 'จะถูก rename เป็น dept_requests' FROM public.material_price_asks
+UNION ALL SELECT 'costing_requests', count(*), '' FROM public.costing_requests
+UNION ALL SELECT 'material_prices', count(*), '' FROM public.material_prices
+UNION ALL SELECT 'products (มี formulaCode)', count(*), 'จำนวนสูตรที่จะ backfill' FROM public.products WHERE NULLIF(btrim("formulaCode"), '') IS NOT NULL
+UNION ALL SELECT 'sales_deal_activities', count(*), 'ต้องเป็น 0 ก่อน drop (PR-6)' FROM public.sales_deal_activities
+UNION ALL SELECT 'personal_task_updates', count(*), 'เทียบกับบรรทัดถัดไปให้เท่ากันก่อน drop' FROM public.personal_task_updates
+UNION ALL SELECT 'entity_updates (personal_task)', count(*), '' FROM public.entity_updates WHERE "entityType" = 'personal_task';
+```
 
 ### 0170 — ทะเบียนกลิ่น + ทะเบียนสูตร
 
