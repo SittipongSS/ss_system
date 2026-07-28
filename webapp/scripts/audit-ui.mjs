@@ -123,6 +123,29 @@ const deadClasses = [
   { pattern: /className="btn danger"/, dead: "btn danger", use: "btn btn-danger" },
 ];
 
+/* คลาสที่เป็น "กล่องครอบ" ไม่ใช่คลาสของ control — ใส่ผิดที่แล้วสไตล์ยังติดบางส่วน
+   จึงไม่มีใครเห็นว่าพลาด (ของจริงที่เคยเกิด: ทะเบียนกลิ่น/สูตร ใส่ .search-glass ที่
+   <input> ตรง ๆ → ได้ช่องค้นหาที่ "ไม่มีแว่นขยาย" เพราะ gap ของ flex ไม่มีลูกให้วาง
+   ผู้ใช้ส่งภาพมาบอกว่าไอคอนหาย 2026-07-28)
+   ต้องตรวจข้ามบรรทัด — ของจริงเขียน <input ขึ้นบรรทัดหนึ่งแล้ว className อีกบรรทัด
+   ([^>]* กินขึ้นบรรทัดใหม่ได้ ต่างจาก .* ที่หยุดที่ท้ายบรรทัด) */
+const wrapperOnlyClasses = [
+  { name: "search-glass", use: "<div className=\"search-glass\"> ครอบ <Search/> + <input>" },
+];
+
+const wrapperClassViolations = [];
+for (const file of uiFiles) {
+  const rel = relative(file);
+  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  for (const { name, use } of wrapperOnlyClasses) {
+    const pattern = new RegExp(`<(?:input|textarea|select)\\b[^>]*className="[^"]*\\b${name}\\b`, "g");
+    for (const match of source.matchAll(pattern)) {
+      const line = source.slice(0, match.index).split(/\r?\n/).length;
+      wrapperClassViolations.push(`${rel}:${line} "${name}" เป็นคลาสของกล่องครอบ → ${use}`);
+    }
+  }
+}
+
 const deadClassViolations = [];
 for (const file of uiFiles) {
   const rel = relative(file);
@@ -218,6 +241,7 @@ const failures = [
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
+  ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
   ...nativeFeedbackViolations.map((item) => `native alert/confirm/prompt bypasses feedback foundation: ${item}`),
   ...staleNativeFeedbackDebt.map((item) => `หนี้ prompt() เก่าลดได้แล้ว — รูดเพดาน nativeFeedbackDebt ลง: ${item}`),
@@ -237,6 +261,7 @@ console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} vis
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
+console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
 const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (หนี้ prompt() เก่าที่ยกเว้นไว้ ${nativeFeedbackDebtTotal} จุด)`);

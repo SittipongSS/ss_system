@@ -520,6 +520,13 @@ export default function DesignPreviewPage() {
               <Metric icon={<Info size={16} />} label="รออนุมัติ" value="9" note="3 ใบใกล้เลยกำหนด" tone="warning" />
               <Metric icon={<Inbox size={16} />} label="ฉบับร่าง" value="12" />
             </MetricStrip>
+            {/* ไม่ส่ง icon = ไม่มีกรอบไอคอน — แถบนับขั้น (Funnel ลีด) ใช้แบบนี้
+                เคยได้กล่องสีจางว่างเปล่าเพราะ Metric เรนเดอร์กรอบทิ้งไว้เสมอ */}
+            <MetricStrip>
+              <Metric label="เข้า" value="57" note="จำนวนลีด" />
+              <Metric label="คัดกรองแล้ว" value="57" note="จำนวนลีด" />
+              <Metric label="ติดต่อแล้ว" value="19" note="จำนวนลีด" />
+            </MetricStrip>
             <div className={styles.formGrid}>
               <KpiCard label="ยอดขายเดือนนี้" value={4820000} hint="+12.4% เทียบเดือนก่อน" tone="accent" />
               <KpiCard label="เป้าหมายเดือน" value={6500000} hint="ทำได้แล้ว 74.2%" tone="info" />

@@ -9,7 +9,7 @@
 // (เจอจริงบน prod 10 แถว) — ดูการ์ด "รอจัดระเบียบ" ที่หน้าทะเบียนสูตร
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Check, FlaskConical, Pencil, Plus, RefreshCw, Send, Trash2, Archive, ArchiveRestore, History,
+  Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore, History,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -240,10 +240,15 @@ export default function ScentsPage() {
       )}
 
       <div className="toolbar">
-        <input
-          className="search-glass" placeholder="ค้นชื่อกลิ่น · รหัส · ลูกค้า"
-          value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหากลิ่น"
-        />
+        {/* .search-glass เป็น "กล่องครอบ" (flex + gap ไว้วางไอคอน) ไม่ใช่คลาสของ input —
+            ใส่ที่ input ตรง ๆ จะได้ช่องที่ไม่มีแว่นขยาย เหมือนหน้าลูกค้า/สินค้าที่ทำถูก */}
+        <div className="search-glass">
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input
+            type="text" placeholder="ค้นชื่อกลิ่น · รหัส · ลูกค้า"
+            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหากลิ่น"
+          />
+        </div>
         <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[

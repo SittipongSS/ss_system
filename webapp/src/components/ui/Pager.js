@@ -60,9 +60,12 @@ export default function Pager({
         ) : null}
         {showNav ? (
           <div className={styles.navigation}>
+            {/* ปุ่มลูกศรต้องมีพื้น/ขอบ/ความสูงเท่าปุ่มเลขหน้า จึงใช้ ui-pager-page เหมือนกัน
+                ห้ามใช้ iconOnly ที่นี่ — iconOnly ให้คลาส btn-icon แทน btn ซึ่งตั้งใจให้
+                เป็นไอคอนเปล่า ๆ ไม่มีพื้น (ไอคอนแก้ไข/ลบในแถวตาราง) ผลคือลูกศรกลายเป็น
+                เชฟรอนลอย ๆ สูง 28px ข้างปุ่มเลขที่สูง 36px */}
             <Button
-              iconOnly
-              className={styles.navButton}
+              className={`ui-pager-page ${styles.navButton}`}
               disabled={safePage <= 1}
               onClick={() => goTo(safePage - 1)}
               aria-label="ก่อนหน้า"
@@ -83,8 +86,7 @@ export default function Pager({
               </Button>
             ))}
             <Button
-              iconOnly
-              className={styles.navButton}
+              className={`ui-pager-page ${styles.navButton}`}
               disabled={safePage >= safePageCount}
               onClick={() => goTo(safePage + 1)}
               aria-label="ถัดไป"
