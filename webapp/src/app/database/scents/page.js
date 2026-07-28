@@ -24,6 +24,7 @@ import Pager from "@/components/ui/Pager";
 import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -40,6 +41,9 @@ export default function ScentsPage() {
   const me = useMemo(() => ({ role }), [role]);
   const registrar = isScentRegistrar(me);
   const canPropose = canProposeScent(me);
+  // break-glass ของผู้ดูแลระบบ = role admin เท่านั้น (เข้มกว่า isSuperuser —
+  // ae_supervisor เป็น superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js)
+  const isAdmin = role === "admin";
 
   const [scents, setScents] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -160,24 +164,42 @@ export default function ScentsPage() {
     if (done) setFeedback(null);
   };
 
+  // ลบ: admin ที่โดนกฎธุรกิจบล็อกจะได้พรีวิวว่ากระทบอะไรบ้าง แล้วถามยืนยันบังคับลบต่อ
+  // (แพตเทิร์นเดียวกับดีล/ใบเสนอราคา — ดู lib/forceDeleteClient.js)
+  const runDelete = async (scent) => {
+    setSaving(true);
+    try {
+      const result = await deleteWithForce(`/api/master/scents/${scent.id}`, { isAdmin });
+      if (result.ok) {
+        setToast({ kind: "success", msg: result.forced ? "บังคับลบกลิ่นแล้ว" : "ลบร่างแล้ว" });
+        await reload();
+        setConfirm(null);
+      } else if (result.cancelled) setConfirm(null);
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally { setSaving(false); }
+  };
+
   const runConfirm = async () => {
     const { kind, scent } = confirm;
-    const done = kind === "delete"
-      ? await call(`/api/master/scents/${scent.id}`, { method: "DELETE" }, "ลบร่างแล้ว")
-      : await call(`/api/master/scents/${scent.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "status", status: kind === "archive" ? "archived" : "active" }),
-      }, kind === "archive" ? "เก็บกลิ่นเข้ากรุแล้ว" : "เปิดใช้กลิ่นอีกครั้งแล้ว");
+    if (kind === "delete") return runDelete(scent);
+    const done = await call(`/api/master/scents/${scent.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status", status: kind === "archive" ? "archived" : "active" }),
+    }, kind === "archive" ? "เก็บกลิ่นเข้ากรุแล้ว" : "เปิดใช้กลิ่นอีกครั้งแล้ว");
     if (done) setConfirm(null);
   };
 
   const confirmCopy = () => {
     if (!confirm) return {};
     if (confirm.kind === "delete") {
+      const draft = confirm.scent.status === "draft";
       return {
-        title: "ลบร่างกลิ่น",
-        message: `ลบร่าง "${confirm.scent.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`,
-        confirmLabel: "ลบร่าง",
+        title: draft ? "ลบร่างกลิ่น" : "ลบกลิ่นออกจากทะเบียน",
+        message: draft
+          ? `ลบร่าง "${confirm.scent.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
+          : `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ถ้ามีของอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`,
+        confirmLabel: draft ? "ลบร่าง" : "ลบกลิ่น",
       };
     }
     if (confirm.kind === "archive") {
@@ -324,9 +346,14 @@ export default function ScentsPage() {
                               <ArchiveRestore size={14} aria-hidden="true" />
                             </button>
                           )}
-                          {s._canEdit && s.status === "draft" && (s.revisions || []).length === 0 && (
-                            <button type="button" className="btn sm ghost danger" title="ลบร่าง"
-                              onClick={() => setConfirm({ kind: "delete", scent: s })}>
+                          {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะ
+                              ร่างของตัวเองที่ยังไม่มีประวัติการส่ง */}
+                          {(isAdmin || (s._canEdit && s.status === "draft" && (s.revisions || []).length === 0)) && (
+                            <button
+                              type="button" className="btn sm ghost danger"
+                              title={s.status === "draft" ? "ลบร่าง" : "ลบกลิ่น (ผู้ดูแลระบบ)"}
+                              onClick={() => setConfirm({ kind: "delete", scent: s })}
+                            >
                               <Trash2 size={14} aria-hidden="true" />
                             </button>
                           )}

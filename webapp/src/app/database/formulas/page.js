@@ -24,6 +24,7 @@ import Pager from "@/components/ui/Pager";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -35,6 +36,8 @@ export default function FormulasPage() {
   const me = useMemo(() => ({ role }), [role]);
   const registrar = isFormulaRegistrar(me);
   const canPropose = canProposeFormula(me);
+  // break-glass ของผู้ดูแลระบบ = role admin เท่านั้น (ดู lib/forceDelete.js)
+  const isAdmin = role === "admin";
 
   const [formulas, setFormulas] = useState([]);
   const [scents, setScents] = useState([]);
@@ -180,24 +183,41 @@ export default function FormulasPage() {
     } finally { setSaving(false); }
   };
 
+  // ลบ: admin ที่โดนกฎธุรกิจบล็อกจะได้พรีวิวว่ากระทบอะไรบ้าง แล้วถามยืนยันบังคับลบต่อ
+  const runDelete = async (formula) => {
+    setSaving(true);
+    try {
+      const result = await deleteWithForce(`/api/master/formulas/${formula.id}`, { isAdmin });
+      if (result.ok) {
+        setToast({ kind: "success", msg: result.forced ? "บังคับลบสูตรแล้ว" : "ลบร่างแล้ว" });
+        await reload();
+        setConfirm(null);
+      } else if (result.cancelled) setConfirm(null);
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally { setSaving(false); }
+  };
+
   const runConfirm = async () => {
     const { kind, formula } = confirm;
-    const done = kind === "delete"
-      ? await call(`/api/master/formulas/${formula.id}`, { method: "DELETE" }, "ลบร่างแล้ว")
-      : await call(`/api/master/formulas/${formula.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "status", status: kind === "archive" ? "archived" : "active" }),
-      }, kind === "archive" ? "เก็บสูตรเข้ากรุแล้ว" : "เปิดใช้สูตรอีกครั้งแล้ว");
+    if (kind === "delete") return runDelete(formula);
+    const done = await call(`/api/master/formulas/${formula.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status", status: kind === "archive" ? "archived" : "active" }),
+    }, kind === "archive" ? "เก็บสูตรเข้ากรุแล้ว" : "เปิดใช้สูตรอีกครั้งแล้ว");
     if (done) setConfirm(null);
   };
 
   const confirmCopy = () => {
     if (!confirm) return {};
     if (confirm.kind === "delete") {
+      const draft = confirm.formula.status === "draft";
       return {
-        title: "ลบร่างสูตร",
-        message: `ลบร่าง "${confirm.formula.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`,
-        confirmLabel: "ลบร่าง",
+        title: draft ? "ลบร่างสูตร" : "ลบสูตรออกจากทะเบียน",
+        message: draft
+          ? `ลบร่าง "${confirm.formula.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
+          : `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ถ้ามีสินค้าอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`,
+        confirmLabel: draft ? "ลบร่าง" : "ลบสูตร",
       };
     }
     if (confirm.kind === "archive") {
@@ -365,9 +385,13 @@ export default function FormulasPage() {
                             <ArchiveRestore size={14} aria-hidden="true" />
                           </button>
                         )}
-                        {f._canEdit && f.status === "draft" && (
-                          <button type="button" className="btn sm ghost danger" title="ลบร่าง"
-                            onClick={() => setConfirm({ kind: "delete", formula: f })}>
+                        {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) */}
+                        {(isAdmin || (f._canEdit && f.status === "draft")) && (
+                          <button
+                            type="button" className="btn sm ghost danger"
+                            title={f.status === "draft" ? "ลบร่าง" : "ลบสูตร (ผู้ดูแลระบบ)"}
+                            onClick={() => setConfirm({ kind: "delete", formula: f })}
+                          >
                             <Trash2 size={14} aria-hidden="true" />
                           </button>
                         )}

@@ -7,6 +7,8 @@ import {
   deleteScentError, isScentRegistrar, normalizeScentInput, scentTransitionError,
 } from '@/lib/master/scents';
 import { findScent, updateScent } from '@/lib/master/scentFormulaAdmin';
+import { canForceDelete, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
+import { purgeUpdates } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +103,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 });
 
+// DELETE — ปกติลบได้เฉพาะร่างที่ยังไม่มีประวัติการส่ง
+// ?dryRun=1  พรีวิวว่าจะกระทบอะไรบ้าง (admin)
+// ?force=1   break-glass ของผู้ดูแลระบบ: ลบได้ทุกสถานะ (แพตเทิร์นเดียวกับ
+//            ใบเสนอราคา/SO/ใบขอราคาผลิต — ดู lib/forceDelete.js)
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -112,6 +118,24 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(e.message, 500);
   }
   if (!scent) return notFound('ไม่พบกลิ่น');
+
+  if (isDryRun(req) || isForceRequest(req)) {
+    if (!canForceDelete(user)) return forbidden('บังคับลบต้องเป็นผู้ดูแลระบบ (admin)');
+    const preview = await scentForcePreview(supabase, scent);
+    if (isDryRun(req)) return ok(preview);
+
+    // ลูกทั้งหมดมี FK จริง (CASCADE / SET NULL) ตั้งแต่ mig 0171 → ลบตัวแม่พอ
+    // แต่เธรดเป็น polymorphic ไม่มี FK ต้องกวาดเองเหมือนทุก entity ที่ใช้ของกลาง
+    const { error: delError } = await supabase.from('scents').delete().eq('id', id);
+    if (delError) return fail(delError.message, 500);
+    await purgeUpdates(supabase, 'scent', id);
+    await recordAudit({
+      user, action: 'delete', entityType: 'scent', entityId: id, before: scent, request: req,
+      summary: `[admin force] ลบกลิ่น ${scent.code || scent.name} (สถานะ ${scent.status})`,
+    });
+    return ok({ ok: true, forced: true });
+  }
+
   if (!canEditScent(user, scent)) return forbidden('ไม่มีสิทธิ์ลบกลิ่นนี้');
 
   const error = deleteScentError(scent, { revisionCount: (scent.revisions || []).length });
@@ -119,6 +143,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { error: delError } = await supabase.from('scents').delete().eq('id', id);
   if (delError) return fail(delError.message, 500);
+  await purgeUpdates(supabase, 'scent', id);
   await recordAudit({
     user, action: 'delete', entityType: 'scent', entityId: id, before: scent, request: req,
   });
