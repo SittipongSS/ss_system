@@ -43,14 +43,14 @@
 .formSection:last-child { padding-bottom: 0; border-bottom: 0; }
 .formSection h4 { margin: 0; color: var(--text); font-size: 14px; }
 .formSection label { display: grid; gap: 5px; color: var(--text-2); font-size: 12px; font-weight: 600; }
-.formSection label b { color: var(--accent); }
+.formSection label b { color: var(--accent-ink); }
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .full { grid-column: 1 / -1; }
 .help { margin: -5px 0 0; color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
 .miniEmpty { padding: 18px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-3); background: var(--panel); font-size: 11.5px; text-align: center; }
 .preview { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); }
 .preview > header { display: grid; gap: 3px; padding: 14px; border-top: 4px solid var(--accent); border-bottom: 1px solid var(--border); background: var(--panel-2); }
-.preview > header span { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.preview > header span { color: var(--accent-ink); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
 .preview > header strong { color: var(--text); font-size: 16px; }
 .preview > header small { color: var(--text-3); font-size: 11px; }
 .preview dl, .detailSection dl { display: grid; gap: 0; margin: 0; }

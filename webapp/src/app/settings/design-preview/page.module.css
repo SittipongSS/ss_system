@@ -206,4 +206,4 @@
   white-space: nowrap;
 }
 
-.navItemActive { background: var(--accent-soft); color: var(--accent); }
+.navItemActive { background: var(--accent-soft); color: var(--accent-ink); }

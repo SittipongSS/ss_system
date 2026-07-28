@@ -77,7 +77,7 @@
   padding: 6px 8px;
   border-radius: var(--radius);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -102,7 +102,7 @@
 
 .panelGrid button:hover:not(:disabled) {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .panelGrid button:disabled { opacity: .25; cursor: not-allowed; }
@@ -115,7 +115,7 @@
 .panelGrid button.isToday:not(.isSelected) {
   box-shadow: inset 0 0 0 2px var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 800;
 }
 
@@ -129,7 +129,7 @@
    ไม่งั้นจะอ่านเหมือนเลือกเดือนใดเดือนหนึ่งไว้ 12 เดือนพร้อมกัน */
 .panelGrid button.isInRange {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ต้องเจาะจงกว่า `.panelGrid button:hover` (0,0,3,1) ไม่งั้นเดือนที่เลือกอยู่จะซีด
@@ -161,7 +161,7 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;

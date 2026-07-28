@@ -48,6 +48,13 @@
   --accent: #c9794d;     /* terracotta/ทองแดง แบบปุ่มแบรนด์ */
   --accent-soft: #f7e8df;
   --accent-fg: #fff;
+  /* terracotta เวอร์ชัน "หมึก" — ใช้ตอนเป็น *ตัวอักษร/ไอคอนบนพื้นสว่าง* ไม่ใช่ตอนเป็นพื้นเอง
+     --accent (#c9794d) วางเป็นตัวอักษรได้คอนทราสต์แค่ 3.21:1 บนพื้นการ์ด และ 2.84:1 บนพื้น
+     accent-soft (ป้าย/ชิป) ซึ่งไม่ผ่าน AA (ต้องการ 4.5:1) — วัดจริงในเบราว์เซอร์ 2026-07-29
+     พื้นที่แข็งที่สุดคือ accent-soft (ป้าย/ชิป/เมนูที่อยู่) ไม่ใช่พื้นการ์ด — ค่านี้วัดแล้ว
+     ผ่านทั้งคู่: พื้นการ์ด 5.75:1 · พื้น accent-soft 4.81:1
+     คู่กับ --navy-ink ที่ทำแบบเดียวกันให้โทน primary */
+  --accent-ink: #9c5228;
   --origin-edited: #2e4a73; /* navy กลาง — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
 
   --navy: #243b63;
@@ -195,6 +202,9 @@
   /* ⚠️ จุดเดียวที่ไม่ตามต้นแบบ: ต้นแบบไม่ได้กำหนด --accent-fg ในธีมมืด จึงตกไปใช้ #fff
      ซึ่งได้คอนทราสต์กับพื้น #d38a61 แค่ ~2.6:1 (ไม่ผ่าน AA) — คงตัวอักษรสีเข้มไว้ */
   --accent-fg: #121726;
+  /* ธีมมืด: --accent วางบนพื้นมืดได้ 5.70:1 (พื้นการ์ด) และ 4.78:1 (พื้น accent-soft)
+     ผ่าน AA อยู่แล้ว จึงใช้ค่าเดียวกัน ไม่ต้องยกความสว่างเพิ่ม */
+  --accent-ink: #d38a61;
   --origin-edited: #7089e6; /* น้ำเงินโลโก้ เวอร์ชันสว่างขึ้น — ให้เห็นชัดบนบาร์ navy ในธีมมืด */
 
   --navy: #20365d;
@@ -301,7 +311,7 @@ button, select, input, textarea {
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   font: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -369,7 +379,7 @@ button, select, input, textarea {
   color: var(--text-3);
   cursor: pointer;
 }
-.date-input-picker:hover:not(:disabled) { color: var(--accent); background: var(--panel-2); }
+.date-input-picker:hover:not(:disabled) { color: var(--accent-ink); background: var(--panel-2); }
 .date-input-picker:disabled { cursor: not-allowed; opacity: 0.5; }
 .date-input-wrap.compact { min-width: 108px; }
 .date-input-wrap.compact .date-input-text { padding-left: 8px; padding-right: 29px; font-size: 12px; }
@@ -398,10 +408,10 @@ button, select, input, textarea {
 .date-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .date-calendar-weekdays span { padding: 4px 0; text-align: center; color: var(--text-3); font-size: 11px; font-weight: 700; }
 .date-calendar-grid button { aspect-ratio: 1; border-radius: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.date-calendar-grid button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.date-calendar-grid button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
 .date-calendar-grid button.outside { color: var(--text-3); opacity: 0.55; }
 .date-calendar-grid button.today:not(.selected) {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 800;
   box-shadow: inset 0 0 0 2px var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -410,7 +420,7 @@ button, select, input, textarea {
 .date-calendar-grid button:disabled { opacity: 0.25; cursor: not-allowed; }
 .date-calendar-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .date-calendar-footer span { color: var(--text-3); font-size: 10.5px; }
-.date-calendar-footer button { min-height: 32px; padding: 0 10px; border-radius: 7px; color: var(--accent); font-weight: 600; }
+.date-calendar-footer button { min-height: 32px; padding: 0 10px; border-radius: 7px; color: var(--accent-ink); font-weight: 600; }
 .date-calendar-footer button:hover { background: var(--accent-soft); }
 .date-calendar-footer button:disabled { opacity: 0.35; cursor: not-allowed; }
 .datetime-input { display: grid; grid-template-columns: minmax(150px, 1fr) 108px; gap: 8px; }
@@ -667,7 +677,7 @@ button, select, input, textarea {
   font-size: 13.5px;
 }
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
-.topnav-sys-item.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+.topnav-sys-item.active { color: var(--accent-ink); font-weight: 600; background: var(--accent-soft); }
 
 /* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก */
 .topnav-system .btn.ghost { color: rgba(255, 255, 255, 0.85); }
@@ -712,7 +722,7 @@ button, select, input, textarea {
 .topnav-item:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .topnav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .topnav-item.active {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 .topnav-item.active::after {
@@ -725,7 +735,7 @@ button, select, input, textarea {
   border-radius: 3px 3px 0 0;
   background: var(--accent);
 }
-.topnav-item.active svg { color: var(--accent); }
+.topnav-item.active svg { color: var(--accent-ink); }
 /* เมนูอรรถประโยชน์ (วางเป้า/ตั้งค่า) — ภาษาเดียวกัน แค่โทนจางกว่าเมนูงานหลัก */
 .topnav-utility-item { color: var(--text-3); }
 
@@ -868,7 +878,7 @@ button, select, input, textarea {
     color: var(--text-2);
     text-decoration: none;
   }
-  .mobile-nav-card.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .mobile-nav-card.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
   .mobile-system-list,
   .mobile-account-actions { display: flex; flex-direction: column; }
   .mobile-system-list a,
@@ -887,7 +897,7 @@ button, select, input, textarea {
     font: inherit;
     text-align: left;
   }
-  .mobile-system-list a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .mobile-system-list a.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
   .mobile-account-actions > .danger { color: var(--red); }
 
   /* The system switcher becomes a full-width sheet on compact screens. */
@@ -985,7 +995,7 @@ h1, h2, h3, h4, h5, h6 {
   background: none;
   -webkit-background-clip: unset;
   -webkit-text-fill-color: unset;
-  color: var(--accent) !important;
+  color: var(--accent-ink) !important;
 }
 
 .unit-text {
@@ -1073,7 +1083,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--accent-soft);
   width: 24px;
   height: 24px;
-  color: var(--accent);
+  color: var(--accent-ink);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1241,7 +1251,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .home-hub-eyebrow,
 .home-continue-label {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .04em;
@@ -1359,7 +1369,7 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1378,7 +1388,7 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
   text-decoration: none;
 }
@@ -2280,7 +2290,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-3);
   font-size: 13px;
 }
-.fc-detail-period { background: var(--accent-soft); color: var(--accent); }
+.fc-detail-period { background: var(--accent-soft); color: var(--accent-ink); }
 
 .fc-detail-close {
   flex: 0 0 auto;
@@ -2358,7 +2368,7 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration: none;
   overflow-wrap: anywhere;
 }
-.fc-detail-project-link:hover { color: var(--accent); text-decoration: underline; }
+.fc-detail-project-link:hover { color: var(--accent-ink); text-decoration: underline; }
 .fc-detail-project-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .fc-detail-meta { margin-top: 3px; color: var(--text-3); font-size: 11.5px; line-height: 1.4; }
 .fc-detail-badges { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -2653,7 +2663,7 @@ button.ui-kpi-card { cursor: pointer; }
 }
 .ui-select-option:hover,
 .ui-select-option.active { background: var(--panel-2); }
-.ui-select-option.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ui-select-option.selected { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .ui-select-option:disabled { opacity: .45; cursor: not-allowed; }
 .product-option-label {
   display: flex;
@@ -2712,7 +2722,7 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text-3);
   cursor: pointer;
 }
-.ui-time-trigger:hover { color: var(--accent); }
+.ui-time-trigger:hover { color: var(--accent-ink); }
 .ui-time-menu {
   z-index: 10050;
   overflow: hidden;
@@ -2732,8 +2742,8 @@ button.ui-kpi-card { cursor: pointer; }
   font-variant-numeric: tabular-nums; cursor: pointer;
 }
 .ui-time-column button:hover { background: var(--panel-2); }
-.ui-time-column button.selected { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-.ui-time-preview { padding: 9px 12px; border-top: 1px solid var(--border); color: var(--accent); font-size: 15px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.ui-time-column button.selected { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+.ui-time-preview { padding: 9px 12px; border-top: 1px solid var(--border); color: var(--accent-ink); font-size: 15px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* ฟอร์ม: 2 คอลัมน์บนจอกว้าง → ยุบเหลือ 1 คอลัมน์บนจอตั้ง/แคบ (≤820px) กันช่องกรอกเบียดกัน */
 .pm-form-grid { display: grid; grid-template-columns: 1fr 1fr; }
@@ -2895,13 +2905,13 @@ button.ui-kpi-card { cursor: pointer; }
    (สีอ่อนสำหรับวางบนพื้น terracotta) พอ outline/ghost ล้างพื้นเป็นโปร่ง สีตัวอักษร
    ยังเป็นสีอ่อนอยู่ = **ตัวหนังสือหายไปเลย** (ผู้ใช้ส่งภาพมา 2026-07-29 ทั้งธีมสว่างและมืด)
    ตัวอื่นมีกฎครบทั้ง success/warning/danger/primary/secondary ขาดแค่ accent */
-.btn.action-outline.btn-accent, .btn-icon.action-outline.btn-accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.btn.action-outline.btn-accent, .btn-icon.action-outline.btn-accent { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .btn.action-ghost, .btn-icon.action-ghost { border-color: transparent; box-shadow: none; }
 .btn.action-ghost.btn-success, .btn-icon.action-ghost.btn-success { color: var(--green); }
 .btn.action-ghost.btn-warning, .btn-icon.action-ghost.btn-warning { color: var(--amber); }
 .btn.action-ghost.btn-danger, .btn-icon.action-ghost.btn-danger { color: var(--red); }
 .btn.action-ghost.btn-primary, .btn-icon.action-ghost.btn-primary { color: var(--navy-ink); }
-.btn.action-ghost.btn-accent, .btn-icon.action-ghost.btn-accent { color: var(--accent); }
+.btn.action-ghost.btn-accent, .btn-icon.action-ghost.btn-accent { color: var(--accent-ink); }
 .btn.action-outline:hover, .btn.action-ghost:hover,
 .btn-icon.action-outline:hover, .btn-icon.action-ghost:hover { background: var(--panel-2); box-shadow: none; }
 
@@ -2939,7 +2949,7 @@ button.ui-kpi-card { cursor: pointer; }
   font-size: 12.5px;
   color: var(--text-2);
 }
-.info-note > svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+.info-note > svg { flex-shrink: 0; margin-top: 1px; color: var(--accent-ink); }
 button.empty-state { width: 100%; font: inherit; }
 .empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
 .empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }
@@ -3108,7 +3118,7 @@ button.empty-state { width: 100%; font: inherit; }
 /* ปุ่มตัวกรองเป็น control บนแถบเครื่องมือ จึงสูงเท่าช่องค้นหา/ดรอปดาวน์ (--ctl-h)
    ไม่ใช่ 32px ของ .btn ทั่วไป — เดิมความสูงนี้เขียน inline อยู่ใน FilterPopover.js */
 .ui-filter-trigger { height: var(--ctl-h); background: var(--panel); color: var(--text-2); }
-.ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
 /* ปุ่มเลขหน้าใน Pager — แคบกว่าปุ่มทั่วไป (เลขหลักเดียวไม่ต้องกว้าง 104px)
    และหน้าปัจจุบันเป็นพื้นสีแบรนด์ (ต้นแบบ ข้อ 9) วางไว้ที่นี่ไม่ใช่ใน CSS module
    เพราะต้องอยู่ไฟล์เดียวกับ .btn เพื่อให้ลำดับ cascade แน่นอน */
@@ -3130,7 +3140,7 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-filter-group:hover,
 .ui-filter-option:hover { background: var(--panel-2) !important; }
 .ui-filter-group.active,
-.ui-filter-option.selected { background: var(--accent-soft) !important; color: var(--accent) !important; }
+.ui-filter-option.selected { background: var(--accent-soft) !important; color: var(--accent-ink) !important; }
 
 /* Segmented control — one canonical look for every view/tab/scope switcher. */
 .segmented {
@@ -3373,7 +3383,7 @@ button.empty-state { width: 100%; font: inherit; }
 .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .tab-btn.active {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -3914,7 +3924,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 .fc-card-stat-value.qty {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .fc-card-stat-value.value {
@@ -4018,7 +4028,7 @@ button.empty-state { width: 100%; font: inherit; }
   border: 1px solid var(--border);
 }
 .fc-month-cell.has-data:hover .fc-version-tag {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-color: var(--accent-soft);
   background: var(--accent-soft);
 }
@@ -4653,7 +4663,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 .field-value.highlight {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -5334,7 +5344,7 @@ button.empty-state { width: 100%; font: inherit; }
   place-items: center;
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 
@@ -5371,7 +5381,7 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: 600;
   text-decoration: none;
 }
-.ui-workspace-back:hover { color: var(--accent); }
+.ui-workspace-back:hover { color: var(--accent-ink); }
 .ui-workspace-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ui-workspace-back-actions,
 .ui-workspace-header-actions {
@@ -5408,7 +5418,7 @@ button.empty-state { width: 100%; font: inherit; }
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-2) 50%, transparent);
 }
-.ui-section-title { display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--accent); }
+.ui-section-title { display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--accent-ink); }
 .ui-section-title > div { min-width: 0; }
 .ui-section-title h2 { margin: 0; color: var(--text); font-size: var(--fs-section-title); }
 .ui-section-title p { margin: 3px 0 0; color: var(--text-3); font-size: 11.5px; }
@@ -5450,7 +5460,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   place-items: center;
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 11%, transparent);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .ui-metric-icon svg { width: 16px; }
 .ui-metric small { display: block; color: var(--text-3); font-size: 10.5px; }
@@ -5911,7 +5921,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   cursor: pointer;
 }
 .linklike:hover:not(:disabled) {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .linklike:disabled {
   cursor: default;
