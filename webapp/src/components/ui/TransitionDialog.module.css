@@ -1,0 +1,46 @@
+/* ตั้งใจให้หน้าตาเหมือน ReasonDialog เป๊ะ — กล่องของ transition ที่มีช่องเพิ่มต้องดูเป็น
+   กล่องเดียวกับกล่องขอเหตุผลล้วน ไม่ใช่กล่องคนละแบบบนหน้าเดียวกัน */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.description {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.detail {
+  padding: 10px 12px;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.warning {
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
+  background: var(--amber-soft);
+}
+
+.danger {
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border));
+  background: var(--red-soft);
+}
+
+.help,
+.error {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  color: var(--red);
+}
