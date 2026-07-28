@@ -19,12 +19,46 @@
 | `material_prices` / `_revisions` | 1 / 0 |
 | `costing_requests` | 1 |
 | `sales_deals` | 133 |
-| `products` (มี `formulaCode`) | 120 (45) |
+| `products` | 120 |
+| `products` ที่มีรหัสสูตร**จริง** | **4 แถว = 2 สูตรที่ต่างกัน** |
+| `products` ที่มีชื่อสูตรแต่**ไม่มีรหัส** | **10 แถว** — ชื่อพวกนี้คือ "ชื่อกลิ่น" (ดู §0.1) |
 | `entity_updates` | 654 |
 | `projects` / `project_tasks` | 12 / 282 |
 
 **ทั้งสามเมนูยังแทบไม่มีใครใช้จริง** ขณะที่ดีล/โครงการ/ไทม์ไลน์เดินเต็มที่แล้ว → รื้อโครงตอนนี้
 ต้นทุนย้ายข้อมูลเกือบเป็นศูนย์ ปล่อยไว้อีก 3 เดือนราคาจะคนละเรื่อง
+
+> ⚠️ **บทเรียนการนับ:** อย่านับด้วย `formulaCode IS NOT NULL` — 41 จาก 45 แถวเป็น **สตริงว่าง `''`**
+> ไม่ใช่ค่าจริง · ทุก query ที่นับ "ช่องข้อความที่กรอกแล้ว" ต้องใช้ `NULLIF(btrim(col), '') IS NOT NULL`
+> (ตัวเลข 45 ที่เคยเขียนในแผนฉบับแรกมาจากการนับผิดแบบนี้)
+
+### 0.1 ⭐ หลักฐานตรงว่า "กลิ่น" ไม่มีที่อยู่ — คนกรอกชื่อกลิ่นลงช่องชื่อสูตร
+
+ข้อมูลจริงบน prod (2026-07-28) — สินค้า 14 แถวที่มีข้อมูลสูตรอย่างน้อยหนึ่งช่อง:
+
+```
+รหัสสูตร            ชื่อสูตร                              วันที่
+(ว่าง)              Walk on beach 01                      2025-08-06
+(ว่าง)              Floral bouquet 01                     2025-08-06
+(ว่าง)              Loyal love                            2025-08-06
+(ว่าง)              Forest night                          2025-08-06
+(ว่าง)              Glass window rain                     2202-08-06  ← ปีพิมพ์ผิด
+(ว่าง)              Empire Tower EA04 Quiet and Mysterious 2024-05-28
+(ว่าง)              Party zone americano whiskey #1       2025-08-19  (×2 สินค้า)
+(ว่าง)              Silent zone tea & fig #1              2025-08-19  (×2 สินค้า)
+PF638010202-P1      Well sleep #2                         2026-03-09  (×2 สินค้า)
+PF441010201-P1.1    Activist zone look so good #1         2025-12-18  (×2 สินค้า)
+```
+
+**10 จาก 14 แถวไม่มีรหัสสูตร มีแต่ชื่อ — และชื่อพวกนั้นคือ *ชื่อกลิ่น* ทั้งหมด**
+("Walk on beach", "Forest night", "Floral bouquet") ⇒ ยืนยันว่าข้อมูลสองอย่าง (กลิ่น/สูตร)
+ปนกันอยู่ในช่องเดียวบน prod แล้วจริง ๆ เพราะระบบไม่มีที่เก็บกลิ่น
+
+**ผลต่อ backfill:** ระบบเดาแทน RD ไม่ได้ว่าแถวไหนเป็นกลิ่น แถวไหนเป็นสูตร → **backfill อัตโนมัติ
+เฉพาะแถวที่มีรหัสสูตรจริง (2 สูตร)** ส่วนที่เหลือออกเป็น**รายงานให้ RD จัดระเบียบเอง** ใน UI
+(สร้าง master data ผิดแย่กว่าไม่สร้าง)
+
+พบบั๊กข้อมูลแถม: `Glass window rain` มี `formulaDate = 2202-08-06` (ปี 2202) — แจ้งผู้ใช้แก้
 
 ---
 
@@ -319,22 +353,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS scent_revisions_no_uk
 
 -- ── 3) ทะเบียนสูตร ─────────────────────────────────────────────────────────
 -- รหัสสูตรเป็นของจริงจาก RD (ไม่ใช่เลขรันของระบบ) → ผู้ใช้กรอกเอง แต่ห้ามซ้ำ
+-- ⚠ code เป็น NULL ได้เฉพาะสถานะ 'draft' — เพราะของจริงบน prod มี 10 แถวที่มีแต่ชื่อ
+--   ไม่มีรหัส (ดู §0.1) ถ้าบังคับ NOT NULL จะเอาเข้าทะเบียนไม่ได้เลย
+--   แพตเทิร์นเดียวกับ scents (มติ 10): เข้ามาเป็นร่าง → RD ใส่รหัสตอนรับเข้าทะเบียน
 CREATE TABLE IF NOT EXISTS public.formulas (
   id             text PRIMARY KEY,
-  code           text NOT NULL CHECK (length(btrim(code)) BETWEEN 1 AND 100),
+  code           text CHECK (code IS NULL OR length(btrim(code)) BETWEEN 1 AND 100),
   name           text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 200),
   "formulaDate"  date,                             -- วันที่ของสูตร (เดิม products."formulaDate")
   -- สูตรใช้กลิ่นตัวไหน (มติผู้ใช้: สูตรเกี่ยวข้องกับกลิ่น)
   "scentId"      text REFERENCES public.scents(id) ON DELETE SET NULL,
   "customerId"   text, "customerName" text,
-  status         text NOT NULL DEFAULT 'active'
+  status         text NOT NULL DEFAULT 'draft'
                    CHECK (status IN ('draft', 'active', 'archived')),
   note           text CHECK (note IS NULL OR length(note) <= 2000),
+  "acceptedById" text, "acceptedByName" text, "acceptedAt" timestamptz,
   "createdById"  text, "createdByName" text,
   "createdAt"    timestamptz NOT NULL DEFAULT now(),
-  "updatedAt"    timestamptz NOT NULL DEFAULT now()
+  "updatedAt"    timestamptz NOT NULL DEFAULT now(),
+  CHECK (status = 'draft' OR code IS NOT NULL)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS formulas_code_uk ON public.formulas (lower(btrim(code)));
+-- partial: ร่างที่ยังไม่มีรหัสไม่นับ (เหมือน scents_code_uk)
+CREATE UNIQUE INDEX IF NOT EXISTS formulas_code_uk
+  ON public.formulas (lower(btrim(code))) WHERE code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS formulas_scent_idx    ON public.formulas ("scentId");
 CREATE INDEX IF NOT EXISTS formulas_customer_idx ON public.formulas ("customerId");
 
@@ -352,8 +393,13 @@ ALTER TABLE public.material_prices
   ADD COLUMN IF NOT EXISTS "scentId"   text REFERENCES public.scents(id)   ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS "formulaId" text REFERENCES public.formulas(id) ON DELETE SET NULL;
 
--- ── 5) backfill สูตรจาก products (45 แถวบน prod ณ 2026-07-28) ──────────────
+-- ── 5) backfill สูตร — เฉพาะแถวที่มี "รหัสสูตรจริง" เท่านั้น ────────────────
+-- prod ณ 2026-07-28: 4 แถว = 2 สูตรที่ต่างกัน (ไม่ใช่ 45 — ดูบทเรียนการนับใน §0)
 -- รวมตามรหัสสูตร (ตัดช่องว่าง/ไม่สนตัวพิมพ์) — สินค้าหลายตัวใช้สูตรเดียวกันได้
+--
+-- ⚠ อีก 10 แถวที่มี "ชื่อสูตร" แต่ไม่มีรหัส **ตั้งใจไม่ backfill** (ดู §0.1) —
+--   ชื่อพวกนั้นคือชื่อกลิ่น ระบบเดาแทน RD ไม่ได้ว่าอันไหนเป็นกลิ่น อันไหนเป็นสูตร
+--   → ออกเป็นรายงาน "รอ RD จัดระเบียบ" ในหน้าทะเบียนแทน (query ท้ายไฟล์)
 INSERT INTO public.formulas (id, code, name, "formulaDate", "customerId", "customerName", status)
 SELECT
   'FML-' || md5(lower(btrim(p."formulaCode"))),
@@ -363,7 +409,7 @@ SELECT
   -- ผูกลูกค้าให้เฉพาะสูตรที่ใช้กับลูกค้ารายเดียวล้วน ๆ (ปนกัน = สูตรกลาง)
   CASE WHEN count(DISTINCT p."customerId") = 1 THEN min(p."customerId") END,
   CASE WHEN count(DISTINCT p."customerId") = 1 THEN min(p."customerName") END,
-  'active'
+  'active'                      -- มีรหัสจริง = รับเข้าทะเบียนได้เลย ไม่ต้องเป็นร่าง
   FROM public.products p
  WHERE NULLIF(btrim(p."formulaCode"), '') IS NOT NULL
  GROUP BY lower(btrim(p."formulaCode"))
@@ -373,6 +419,12 @@ UPDATE public.products p
    SET "formulaId" = 'FML-' || md5(lower(btrim(p."formulaCode")))
  WHERE NULLIF(btrim(p."formulaCode"), '') IS NOT NULL
    AND p."formulaId" IS NULL;
+
+-- เก็บกวาดสตริงว่างให้เป็น NULL (41 แถว) — ไม่งั้นทุกการนับต่อจากนี้ต้องระวังเอง
+UPDATE public.products
+   SET "formulaCode" = NULLIF(btrim("formulaCode"), ''),
+       "formulaName" = NULLIF(btrim("formulaName"), '')
+ WHERE btrim(COALESCE("formulaCode", '')) = '' OR btrim(COALESCE("formulaName", '')) = '';
 
 -- ── 6) RLS (แพตเทิร์นเดิมทั้งระบบ: ปิดหมด เปิดเฉพาะ service_role) ──────────
 ALTER TABLE public.scents           ENABLE ROW LEVEL SECURITY;
@@ -388,10 +440,17 @@ COMMIT;
 NOTIFY pgrst, 'reload schema';
 
 -- ── ตรวจหลังรัน ────────────────────────────────────────────────────────────
--- SELECT count(*) FROM formulas;                                    -- ควรได้ 45
--- SELECT count(*) FROM products WHERE "formulaId" IS NOT NULL;      -- ควรได้ 45
+-- SELECT count(*) FROM formulas;                                    -- ควรได้ 2
+-- SELECT count(*) FROM products WHERE "formulaId" IS NOT NULL;      -- ควรได้ 4
 -- SELECT count(*) FROM products
 --  WHERE NULLIF(btrim("formulaCode"),'') IS NOT NULL AND "formulaId" IS NULL;  -- ต้องได้ 0
+--
+-- ── รายการที่ RD ต้องจัดระเบียบเอง (โชว์ในหน้าทะเบียน ไม่ backfill อัตโนมัติ) ──
+-- SELECT "fgCode", "productDescription", "formulaName", "formulaDate"
+--   FROM products
+--  WHERE "formulaId" IS NULL AND NULLIF(btrim("formulaName"), '') IS NOT NULL;
+--  → RD ตัดสินทีละแถวว่าเป็น "กลิ่น" (เข้า scents) หรือ "สูตร" (เข้า formulas + ใส่รหัส)
+--  ⚠ มีบั๊กข้อมูลรออยู่ 1 แถว: formulaDate = '2202-08-06' (ปี 2202)
 ```
 
 ### 0171 — คำร้องข้ามฝ่าย (เคสขอราคา → คำร้อง) + ลบ inquiries
@@ -640,6 +699,7 @@ NOTIFY pgrst, 'reload schema';
 | `lib/master/formulas.js` (ใหม่) | logic: normalize รหัส/ชื่อ, ผูกกลิ่น |
 | `app/api/master/scents/**` · `formulas/**` | CRUD + `POST /scents/[id]/revisions` (ส่งกลิ่น) + `PATCH .../feedback` |
 | `app/database/scents/page.js` · `formulas/page.js` | ทะเบียน + ฟอร์มเดียวใช้ทั้งสร้าง/แก้ (กฎ AGENTS.md) |
+| ↑ เพิ่มการ์ด **"รอจัดระเบียบ (10)"** | สินค้าที่มีชื่อสูตรแต่ไม่มีรหัส (§0.1) — RD กดเลือกทีละแถวว่าเป็น *กลิ่น* หรือ *สูตร* แล้วระบบสร้างให้ + ผูก `formulaId`/`scentId` กลับไปที่สินค้า |
 | `components/AppLayout.js` | เมนู "ทะเบียนกลิ่น" / "ทะเบียนสูตร" ใต้ฐานข้อมูล |
 | `components/database/ProductForm.js` | ช่องสูตร: text → `FormulaPicker` (คงค่าเดิมอ่านได้) |
 | `lib/master/updateTypes.js` | เธรด `scent` (comment / sent / feedback) |
