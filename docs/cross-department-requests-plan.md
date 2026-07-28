@@ -43,6 +43,19 @@
 6. ⭐ **"ขอราคา PM" คือขั้น `หาบรรจุภัณฑ์ที่ลูกค้าต้องการ` (step 25, PC, 30 วัน) ในไทม์ไลน์**
    ไม่ใช่งานลอย ๆ → ทุกชนิดคำร้องมี task ปลายทางในไทม์ไลน์ทั้งหมด
 
+### รอบที่ 2 (2026-07-28) — ปิดคำถามค้าง 4 ข้อ + ขยายขอบเขต 2 เรื่อง
+
+7. **เลขที่: บรีฟกลิ่นและ mockup แยกพรีฟิกซ์ของตัวเอง** ส่วนคำร้องอื่น (สอบถาม/เอกสาร/ติดตามของเข้า)
+   ใช้เลขชุดรวม → `SB-` / `MU-` / `RQ-` (+ `RM-` / `PM-` ของเดิม) รวม 5 scope
+8. **รหัสกลิ่น RD กรอกเอง** เหมือนรหัสสูตร — ไม่ใช่เลขรันของระบบ (ตัด scope `SC-` ทิ้ง
+   แต่ยังบังคับไม่ซ้ำผ่าน unique index)
+9. **กลิ่นของลูกค้า A ใช้กับลูกค้า B ไม่ได้** — กลิ่นผูกลูกค้าเสมอ ไม่มี "กลิ่นกลาง"
+   → `customerId` เป็น **NOT NULL** และการมองเห็นยึด scope ลูกค้า
+10. **SA สร้างกลิ่นเป็นร่างได้ RD เป็นคนรับเข้าทะเบียน** — แพตเทิร์นเดียวกับทะเบียนวัสดุ 0157
+    (`status draft → active`, `acceptedBy*`)
+11. 🆕 **แยก role `executive` ออกจาก `admin`** — ดู §9
+12. 🆕 **รื้อเธรดให้จบในแผนนี้ด้วย** — ดู §10
+
 ### ตารางจับคู่ ชนิดคำร้อง ↔ ขั้นในไทม์ไลน์
 
 อ้าง `webapp/src/lib/pm/templates.js` · คีย์ขั้น = `workflowTemplateStepKey`
@@ -128,7 +141,14 @@ inquiries + inquiry_messages  →  ลบทั้งคู่
 |---|---|---|
 | `price_f` / `price_fb` | `RM` | `RM-YYMMXXXX` (คงเดิม) |
 | `price_pm` | `PM` | `PM-YYMMXXXX` (คงเดิม) |
-| ที่เหลือทั้งหมด | `RQ` | `RQ-YYMMXXXX` |
+| `scent_brief` บรีฟออกแบบกลิ่น | `SB` | `SB-YYMMXXXX` |
+| `mockup` ขอ Mock-up | `MU` | `MU-YYMMXXXX` |
+| `info` / `document` / `material_eta` | `RQ` | `RQ-YYMMXXXX` |
+
+(มติข้อ 7: สองงานที่เป็น "งานพัฒนา" ของ RD แยกเลขให้ค้นย้อนหลังได้ง่าย ส่วนคำร้องเบ็ดเตล็ด
+ใช้เลขชุดเดียวพอ — `kind` บอกชนิดบนหน้าจออยู่แล้ว)
+
+**ทะเบียนกลิ่นไม่ใช้เลขรัน** — RD กรอก `code` เอง (มติข้อ 8) เหมือนรหัสสูตร บังคับไม่ซ้ำที่ index
 
 เลขออก **ตอนกดส่ง** ไม่ใช่ตอนสร้างร่าง (บทเรียนใบขอราคาผลิต PR3a — ร่างที่ถูกทิ้งจะได้ไม่กินเลข)
 scope `IQ` ของ `inquiries` เลิกใช้ (ไม่มีแถวบน prod จึงไม่ต้องกันเลขย้อนหลัง)
@@ -137,10 +157,39 @@ scope `IQ` ของ `inquiries` เลิกใช้ (ไม่มีแถว
 
 ## 5. Migration
 
-> ⚠️ **ก่อนเริ่ม:** บน main มี **migration เลข 0169 ซ้ำสองไฟล์**
-> (`0169_deal_feed_to_entity_updates.sql` + `0169_sales_order_reissue_after_cancel.sql`)
-> ต้องรัน `npm run check:schema` ยืนยันว่า prod รันครบ **ทั้งคู่** ก่อน ไม่งั้นซ้ำรอย 0076
-> (ดู memory `migration-drift-guard`)
+### ⚠️ ก่อนเริ่ม: เคลียร์เลข 0169 ที่ซ้ำบน main
+
+`npm run check:migrations` (มีอยู่แล้ว, `scripts/check-migrations.mjs`) จับได้:
+
+```
+Migration integrity check failed.
+Unexpected duplicate versions:
+- 0169: 0169_deal_feed_to_entity_updates.sql, 0169_sales_order_reissue_after_cancel.sql
+```
+
+**ข้อจำกัดที่ต้องรู้:** CI รันสคริปต์นี้เฉพาะตอน `pull_request` → เลขซ้ำที่เกิดจาก 2 PR merge
+ไล่กันจะไม่มีใครเห็นจนกว่าจะมีคนรันบน main **⇒ ต้องรันเองทุกครั้งหลัง `git pull`**
+
+ไล่เนื้อในทั้งสองไฟล์แล้ว (2026-07-28):
+
+| ไฟล์ | เนื้อใน | ต้องรันบน prod ไหม |
+|---|---|---|
+| `0169_deal_feed_to_entity_updates` | INSERT ล้วน **ไม่มี DDL** · ตารางต้นทาง `sales_deal_activities` = 0 แถว | **ไม่มีผล** รันหรือไม่รันเหมือนกัน |
+| `0169_sales_order_reissue_after_cancel` | `CREATE OR REPLACE FUNCTION create_sales_order_draft` | **ต้องรัน** — ยืนยันจากข้างนอกไม่ได้ |
+
+ตรวจตัวที่สองบน Supabase SQL Editor (ต้องเทียบ **เนื้อในฟังก์ชัน** ไม่ใช่แค่ว่ามีฟังก์ชันอยู่ —
+`CREATE OR REPLACE` ทำให้ฟังก์ชันเวอร์ชันเก่าดูเหมือนรันแล้ว):
+
+```sql
+SELECT prosrc LIKE '%approval_revoked%' AS "0169_ran"
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'create_sales_order_draft';
+```
+
+`true` = ครบ เดินหน้า 0170 ได้ · `false` = รัน `0169_sales_order_reissue_after_cancel.sql` ก่อน
+(ยังไม่ระเบิดวันนี้เพราะ prod ยังไม่มี SO สักใบ) · จากนั้น**ขยับไฟล์ที่ merge ทีหลังเป็น 0170**
+แล้วเลื่อนแผนนี้เป็น 0171/0172/0173 พร้อมเขียนหัวไฟล์กำกับว่า "รันแล้วในชื่อเดิม ไม่ต้องรันซ้ำ"
+(ดู memory `migration-drift-guard` — เกิดซ้ำแบบนี้เป็นครั้งที่ 3 แล้ว)
 
 ### 0170 — ทะเบียนกลิ่น + ทะเบียนสูตร
 
@@ -162,30 +211,41 @@ BEGIN;
 -- ── 1) ทะเบียนกลิ่น ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.scents (
   id             text PRIMARY KEY,
-  code           text UNIQUE,                      -- SC-YYMMXXXX (next_entity_number scope 'SC')
+  -- รหัสกลิ่น = ของจริงจาก RD ไม่ใช่เลขรันของระบบ (มติ 8 — เหมือนรหัสสูตร)
+  -- ร่างที่ SA เปิดยังไม่มีรหัส → RD ใส่ตอนรับเข้าทะเบียน
+  code           text,
   name           text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 200),
-  -- กลิ่นเฉพาะลูกค้า (null = กลิ่นกลางของบริษัท ใช้ซ้ำได้ทุกงาน)
-  "customerId"   text, "customerName" text,
+  -- ⚠ มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้ → ผูกลูกค้าเสมอ ไม่มี "กลิ่นกลาง"
+  "customerId"   text NOT NULL,
+  "customerName" text,
   -- ดีล SCENT ต้นทางที่สั่งออกแบบ (null = กลิ่นที่มีอยู่ก่อน/สร้างจากทะเบียนตรง ๆ)
   "dealId"       text,
-  status         text NOT NULL DEFAULT 'developing' CHECK (status IN (
-                   'developing',  -- กำลังออกแบบ/ส่งให้ลูกค้าลองอยู่
+  -- มติ 10: SA เปิดร่างได้ RD เป็นคนรับเข้าทะเบียน (แพตเทิร์นเดียวกับ material_prices 0157)
+  status         text NOT NULL DEFAULT 'draft' CHECK (status IN (
+                   'draft',       -- SA เสนอเข้ามา รอ RD รับ (ยังอ้างในคำร้องขอราคาไม่ได้)
+                   'developing',  -- RD รับแล้ว กำลังออกแบบ/ส่งให้ลูกค้าลอง
                    'active',      -- ลูกค้าอนุมัติแล้ว ใช้ผลิตได้
                    'archived')),  -- เลิกใช้
   -- Rev ล่าสุด — derive ตอนเขียนเสมอ (อ่านทะเบียนไม่ต้อง join ลูกทุกครั้ง)
   "currentRevisionNo" integer NOT NULL DEFAULT 0,
   "ownerId"      text, "ownerName" text,           -- RD เจ้าของกลิ่น
+  "acceptedById" text, "acceptedByName" text, "acceptedAt" timestamptz,
   note           text CHECK (note IS NULL OR length(note) <= 2000),
   "createdById"  text, "createdByName" text,
   "createdAt"    timestamptz NOT NULL DEFAULT now(),
-  "updatedAt"    timestamptz NOT NULL DEFAULT now()
+  "updatedAt"    timestamptz NOT NULL DEFAULT now(),
+  -- รับเข้าทะเบียนแล้วต้องมีรหัสเสมอ (ร่างยังไม่มีได้)
+  CHECK (status = 'draft' OR code IS NOT NULL)
 );
 
 -- ตัวตนของกลิ่น = ชื่อ (ตัดช่องว่าง/ไม่สนตัวพิมพ์) + ลูกค้า
 -- แพตเทิร์นเดียวกับ material_prices_identity_uk (0157) — ห้ามให้ชื่อซ้ำในลูกค้าเดียวกัน
 -- ไม่งั้นขอราคา F สองใบจะชี้คนละแถวโดยไม่มีใครรู้
 CREATE UNIQUE INDEX IF NOT EXISTS scents_identity_uk
-  ON public.scents (lower(btrim(name)), COALESCE("customerId", ''));
+  ON public.scents (lower(btrim(name)), "customerId");
+-- รหัสกลิ่นห้ามซ้ำทั้งบริษัท (partial — ร่างที่ยังไม่มีรหัสไม่นับ)
+CREATE UNIQUE INDEX IF NOT EXISTS scents_code_uk
+  ON public.scents (lower(btrim(code))) WHERE code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS scents_customer_idx ON public.scents ("customerId");
 CREATE INDEX IF NOT EXISTS scents_deal_idx     ON public.scents ("dealId");
 CREATE INDEX IF NOT EXISTS scents_status_idx   ON public.scents (status);
@@ -520,13 +580,24 @@ NOTIFY pgrst, 'reload schema';
 - `material_prices_identity_uk` เปลี่ยนจาก `formulaCode` (text) → `formulaId`
 - ลบ scope `IQ` ออกจากเอกสารประกอบ
 
+### PR-6 — รื้อเธรดให้จบ (mig เล็ก: drop 2 ตารางเก่า)
+
+รายละเอียดใน §10 — ลีดมาใช้ component กลาง + เธรด QT/SO + ตอบยกคำพูด + drop
+`personal_task_updates` / `sales_deal_activities`
+
+### PR-0 — แยก executive ออกจาก admin (ทำแยกได้ทันที ไม่ต้องรอ PR อื่น)
+
+รายละเอียดใน §9 — โค้ดล้วน ไม่มี migration · **แต่ต้องยืนยันก่อนว่ามีบัญชี executive
+พร้อมลายเซ็นบน prod แล้ว** ไม่งั้นจะไม่มีใครอนุมัติราคาผลิตได้เลย
+
 ---
 
 ## 7. ความเสี่ยง & กฎที่ต้องเคารพ
 
 | ความเสี่ยง | กันอย่างไร |
 |---|---|
-| migration 0169 ซ้ำสองไฟล์บน main | รัน `npm run check:schema` ยืนยันทั้งคู่ **ก่อน** ออก 0170 |
+| migration 0169 ซ้ำสองไฟล์บน main | `npm run check:migrations` + SQL ตรวจ `prosrc` (ดูต้น §5) **ก่อน** ออก 0170 |
+| ถอด `costing:approve` ออกจาก admin แล้วอนุมัติไม่ได้เลยตอนผู้บริหารไม่อยู่ | ใส่ไว้ใน `GRANTABLE_CAPS` — admin grant รายคนเองได้ ทิ้งร่องรอยใน audit (§9) |
 | rename ตารางแล้ว PostgREST cache ค้าง | `NOTIFY pgrst, 'reload schema'` ท้ายทุก migration (มีในทุกไฟล์แล้ว) |
 | ไฟล์แนบพังตอนเปลี่ยน entityType | ต่อครบ 5 จุด (ดู PR-2) — เคยพลาดมาแล้วสองรอบ (#733) |
 | `Number(null) = 0` ทำ "ยังไม่รู้ราคา" กลายเป็น "ฟรี" | ใช้ `numberOrNull` ทุกจุดที่คำนวณต้นทุน |
@@ -540,11 +611,97 @@ NOTIFY pgrst, 'reload schema';
 
 ## 8. คำถามที่ยังไม่ได้ตัดสิน
 
-1. **เลขที่ `RQ-` สำหรับคำร้องที่ไม่ใช่ขอราคา** — ใช้เลขชุดเดียวทุกชนิด หรืออยากได้พรีฟิกซ์
-   แยกต่อชนิด (`SB-` บรีฟกลิ่น, `MU-` mockup)?
-2. **รหัสกลิ่น** — ให้ระบบออกเลขรัน `SC-YYMMXXXX` หรือ RD กรอกรหัสของตัวเองเหมือนรหัสสูตร?
-3. **กลิ่นกลาง vs กลิ่นของลูกค้า** — กลิ่นที่ออกแบบให้ลูกค้า A ใช้กับลูกค้า B ได้ไหม
-   (กระทบ `scents_identity_uk` และการมองเห็น)
-4. **ใครแก้ทะเบียนกลิ่นได้** — RD เท่านั้น หรือ SA สร้างร่างได้แล้ว RD รับ (แบบทะเบียนวัสดุ)
-5. **`material_eta` ดึงรายการของเข้าจากไหนตอนเริ่ม** — PC กรอกเอง หรือ generate จากบรรทัด
-   ในใบขอราคาผลิตที่อนุมัติแล้ว
+ข้อ 1–4 ปิดแล้วในมติรอบ 2 (§1 ข้อ 7–10) · เหลือข้อเดียว:
+
+1. **รายการของเข้าเกิดขึ้นมาได้ยังไง** — งานหนึ่งใช้ ขวด+ฝา+กล่อง+หัวน้ำหอม = 4 แถวที่ต้องติดตาม
+   ใครสร้าง 4 แถวนั้น?
+   - **ก) PC พิมพ์เองทั้งหมด** — ยืดหยุ่นสุด แต่พิมพ์ซ้ำกับที่กรอกในใบขอราคาผลิตไปแล้ว
+   - **ข) ระบบกางให้จากบรรทัดของใบขอราคาผลิตที่อนุมัติแล้ว** (แนะนำ) — ใบนั้นมีวัสดุครบอยู่แล้ว
+     กดปุ่มเดียวได้ครบ PC เติมแค่วันที่ · เพิ่ม/ลบแถวเองทีหลังได้ · งานที่ไม่มีใบ CR ก็ยังพิมพ์เองได้
+
+---
+
+## 9. แยก role `executive` ออกจาก `admin` (มติข้อ 11)
+
+### สภาพปัจจุบัน — ปนกันจุดเดียว แต่เป็นจุดที่สำคัญที่สุด
+
+| role | ถือ `costing:approve` | ที่มา |
+|---|---|---|
+| `executive` | ✅ | `ROLE_CAPS.executive` — อำนาจเดียวที่เป็นของเขาคนเดียว |
+| `admin` | ✅ | อยู่ใน `SUPERUSER_CAPS` (`lib/permissions.js:198`) — ตั้งใจให้เป็น break-glass |
+| `ae_supervisor` | ❌ | ถูกกันไว้แล้วใน `SALES_HEAD_EXCLUDED` |
+
+⇒ **admin อนุมัติราคาผลิตแทนผู้บริหารได้** ซึ่งขัดกับเจตนาว่า "ราคาผลิตอนุมัติโดยผู้บริหารเท่านั้น"
+(มติ 2026-07-22) · ที่เหลือแยกกันดีอยู่แล้ว: executive ไม่มี `:edit`/`:act` ใด ๆ, ไม่มี `products:margin`,
+ไม่มี admin-system caps (`users:manage`/`master:manage`/`audit:view`)
+
+> `isSuperuser(admin)` เป็นเรื่อง **ขอบเขตข้อมูล (scope)** ไม่ใช่ **อำนาจ (capability)** — ไม่ต้องแตะ
+> admin ต้องเห็นทุกทีมต่อไปเพื่อดูแลระบบ ที่ตัดคืออำนาจอนุมัติ
+
+### สิ่งที่ทำ (โค้ดล้วน ไม่มี migration)
+
+1. ถอด `'costing:approve'` ออกจาก `SUPERUSER_CAPS` → **admin ไม่มีอำนาจอนุมัติราคาผลิตอีกต่อไป**
+2. เพิ่ม `'costing:approve'` เข้า `GRANTABLE_CAPS` + label
+   `'อนุมัติราคาผลิต แทนผู้บริหาร (EX)'` — ผู้บริหารไม่อยู่/ยังไม่มีลายเซ็น admin **grant ให้ตัวเอง
+   หรือคนอื่นเป็นครั้ง ๆ ได้** และการ grant ลง audit log (ต่างจาก break-glass เงียบ ๆ แบบเดิม)
+   — แพตเทิร์นเดียวกับ `legal:approve` ที่ทำไว้แล้ว
+3. `canApproveCosting` ไม่ต้องแก้ (เช็ค cap ตรง ๆ อยู่แล้ว ไม่มี `isSuperuser` ลัด)
+4. `signatureCoverage.js` — cohort ผู้ต้องมีลายเซ็นต้องรวม **ผู้ที่ถูก grant** ไม่ใช่แค่ role `executive`
+   ไม่งั้น grant แล้วกดอนุมัติไม่ได้อยู่ดี (ไม่มีลายเซ็น = อนุมัติไม่ได้)
+5. เทสต์: `permissions.test.mjs` เพิ่มเคส "admin อนุมัติราคาผลิตไม่ได้" + "admin ที่ถูก grant ทำได้"
+
+### ⚠️ ต้องเช็คก่อน merge
+
+**มีบัญชี role `executive` อยู่จริงบน prod หรือยัง และเจ้าตัวอัปลายเซ็นแล้วหรือยัง** — ถ้ายังไม่มี
+แล้วถอด break-glass ออก จะกลายเป็น **ไม่มีใครอนุมัติราคาผลิตได้เลยทั้งระบบ** (ผู้ใช้เก็บบัญชีไว้ใน
+Supabase Auth app_metadata ไม่มีตาราง `public.users` ให้ตรวจจากภายนอก) → ตรวจที่หน้า `/users`
+และ `/settings/signature-coverage` ก่อน แล้วค่อย merge
+
+---
+
+## 10. รื้อเธรดให้จบ (มติข้อ 12)
+
+### เหลืองานน้อยกว่าที่แผน entity-updates เขียนไว้มาก
+
+`docs/entity-updates-plan.md` วางไว้ 6 ขั้น และประเมินว่าขั้นสอบถาม/ดีล = "ความเสี่ยงสูง"
+แต่**นับ prod จริง 2026-07-28 แล้วสมมติฐานนั้นไม่จริง**:
+
+| ตาราง | prod | ผลต่อแผน |
+|---|---|---|
+| `entity_updates` | 654 (personal_task 653 · deal 1) | ของกลางใช้งานจริงแล้ว |
+| `personal_task_updates` (เก่า) | 573 | ย้ายครบแล้ว **รอ drop** |
+| `sales_deal_activities` (เก่า) | **0** | ย้ายครบ (ไม่มีอะไรให้ย้าย) **รอ drop** |
+| `inquiry_messages` (เก่า) | **0** | **ตายไปกับ inquiries ใน 0171 ไม่ต้องย้ายเลย** |
+| `mgmt_updates` | **ไม่มีตารางบน prod** | โมดูล mgmt พักอยู่ (mig 0076–0080 ไม่เคยรัน) — ข้ามไป |
+
+⇒ ขั้น "สอบถาม RD" (ที่ประเมินว่าเสี่ยงสูงสุด) **หายไปทั้งขั้น** เพราะแผนนี้ลบ inquiries ทิ้ง
+และขั้น mgmt ไม่มีของให้ทำ → เหลือของจริงแค่ 3 อย่าง
+
+### สิ่งที่ทำ — PR-6 (ต่อท้าย PR-5)
+
+1. **ยกหน้าลีดมาใช้ `UpdateThread` กลาง** — ตอนนี้เป็นฟีดอ่านอย่างเดียวที่เขียน CSS รางเวลาเอง
+   (หน้าตาดีที่สุดในระบบตามที่แผนเดิมบันทึกไว้) → ย้ายมาใช้ของกลางผ่าน `extraItems`
+   แล้ว **ลบ CSS รางเดิมทิ้ง** (ไม่งั้นเข้าอาการเดียวกับ `.premium-table` ที่วางทับแต่ไม่ลบของเก่า)
+2. **เพิ่มเธรดให้ QT/SO** — เอกสารสองตัวนี้มี action 8 ตัวที่ควรลงเธรด (ยื่น/อนุมัติ/ตีกลับ/
+   ดึงกลับ/ออก Rev. …) แต่ยังไม่มีเธรดเลย · `entityType` ใหม่ 2 ตัว + kind ตามคำศัพท์ที่ล็อกไว้
+   (**ตีกลับ** = ผู้อนุมัติ · **ดึงกลับ** = ผู้ยื่นเท่านั้น · **ออก Rev.** — ห้ามใช้ "ถอน/ถอด")
+3. **drop ตารางเก่า 2 ตัว** (mig เดียวกับ PR-6): `personal_task_updates`, `sales_deal_activities`
+   — ตรวจจำนวนให้เท่ากันก่อน drop เสมอ
+4. **เธรดใหม่ที่แผนนี้สร้าง** ประกาศใน `lib/master/updateTypes.js` + `updateAccess.js`:
+   - `scent` — comment / `sent` (ส่งกลิ่น Rev N) / `feedback` (ผลตอบรับลูกค้า)
+   - `dept_request` — ของเดิม `material_ask` เปลี่ยนชื่อ + kind ใหม่ตามชนิดคำร้อง
+   - `material_delivery` — `eta_changed` / `arrived` (เปลี่ยนวันของเข้าต้องมีรอย)
+
+### ยกระดับตัวเธรดเอง (ทำใน PR-6 ด้วย)
+
+- **ตอบยกคำพูด (quote reply)** — ค้างมาจากแผน entity-updates · เธรดสองฝ่าย (SA ↔ RD/PC) ที่มี
+  หลายรายการในเคสเดียว จำเป็นจริง ไม่งั้นไม่รู้ว่าตอบบรรทัดไหน
+  > ⚠️ มติเดิมยังใช้อยู่: **ไม่ลอก nested reply / โหวตแบบ Reddit** — ยกคำพูดเป็นข้อความแบน
+  > อ้าง id ข้อความต้นทาง (`meta.quotedId`) ไม่ใช่ต้นไม้ซ้อนชั้น
+- **สวิตช์ซ่อนเหตุการณ์ระบบ** มีแล้ว (`isSystemUpdateItem`) — ตรวจว่าเธรดใหม่ทุกตัวประกาศ
+  `authorable` ถูก ไม่งั้นข้อความคนจะถูกซ่อนไปกับเหตุการณ์ระบบ
+
+### ยังไม่ตัดสิน (เธรด)
+
+- **แจ้งเตือนเมื่อถูกพาดพิง (@mention)** — ต้องการไหม หรือพึ่ง Google Chat webhook รายเคสพอ
+- **ตัวนับ "ยังไม่ได้อ่าน"** — ต้องเก็บ read state รายคน (ตารางใหม่) คุ้มไหมกับจำนวนผู้ใช้ตอนนี้
