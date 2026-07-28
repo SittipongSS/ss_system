@@ -62,7 +62,7 @@ export async function DELETE(request, { params }) {
     // Registration lock (stricter): can't remove docs from an APPROVED reg unless
     // LG — others must press "ขอแก้ไข" first.
     if (att.entityType === 'registration' && parent?.status === 'approved' && !can(user?.role, 'legal:approve')) {
-      return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
+      return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่ายกฎหมายปลดอนุมัติก่อนจึงจะลบเอกสารได้' }, { status: 403 });
     }
   }
 

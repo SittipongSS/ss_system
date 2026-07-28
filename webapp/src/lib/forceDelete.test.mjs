@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
+  exciseFilingBlockMessage, exciseFilingsOfSalesOrder,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -36,9 +37,16 @@ function stubCount(map) {
           else { ctx.extra = true; } // เงื่อนไขที่สอง เช่น status='accepted'
           return builder;
         },
+        // ใบยื่นภาษีของใบเสนอราคาอ่านด้วย .in('salesOrderId', [...]) — คีย์เดียวกับ .eq
+        in(col, vals) {
+          if (ctx.col === null) { ctx.col = col; ctx.val = vals; }
+          else { ctx.extra = true; }
+          return builder;
+        },
         then(resolve) {
           const key = ctx.extra ? `${table}:${ctx.col}:extra` : `${table}:${ctx.col}`;
-          resolve({ count: map[key] ?? 0 });
+          // preview เดิมอ่านแต่ count; ตัวที่อ่านแถวจริง (ใบยื่นภาษี) อ่าน data
+          resolve({ count: map[key] ?? 0, data: map[`${key}:rows`] ?? [] });
         },
       };
       return builder;
@@ -143,4 +151,56 @@ test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล แล�
     calls.some((c) => c.table === 'entity_updates' && c.op === 'delete' && c.in === 'entityId'),
     'ต้องลบ entity_updates ของงานที่ถูกกวาดไปด้วย',
   );
+});
+
+// ── ใบยื่นชำระภาษี: ด่านที่ break-glass ก็ข้ามไม่ได้ (2026-07-27) ──────────────
+// orders."salesOrderId" เป็น FK RESTRICT แต่ RPC บังคับลบไม่ได้ล้างให้ → เดิมพรีวิว
+// บอกว่าลบได้ แล้วไปพังตอนลบจริงด้วย error ดิบจาก Postgres
+test('salesOrderForcePreview: มีใบยื่นภาษี = blocked พร้อมบอกทางออก', async () => {
+  const supabase = stubCount({
+    'orders:salesOrderId:rows': [{ id: 'TAX-1', status: 'received' }],
+    'document_signature_evidence:salesOrderId': 1,
+  });
+  const { blocked, notes, cascade } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'approved' });
+  assert.equal(blocked, true);
+  assert.equal(cascade.length, 0); // ไม่โชว์ว่าจะลบอะไร เพราะจะไม่ลบเลย
+  assert.match(notes[0], /TAX-1 \(received\)/);
+  assert.match(notes[0], /ลบใบยื่น/);
+});
+
+test('quotationForcePreview: ใบยื่นภาษีของ SO ลูกก็บล็อกการลบ QT', async () => {
+  const supabase = stubCount({
+    'sales_orders:quotationId:rows': [{ id: 'SO1' }],
+    'orders:salesOrderId:rows': [{ id: 'TAX-9', status: 'complete' }],
+  });
+  const { blocked, notes } = await quotationForcePreview(supabase, { id: 'Q1', status: 'accepted' });
+  assert.equal(blocked, true);
+  assert.match(notes[0], /TAX-9/);
+});
+
+test('ไม่มีใบยื่นภาษี = ไม่บล็อก (พฤติกรรมเดิมต้องไม่เปลี่ยน)', async () => {
+  const supabase = stubCount({ 'sales_orders:quotationId': 1 });
+  assert.equal((await quotationForcePreview(supabase, { id: 'Q1', status: 'sent' })).blocked, false);
+  assert.equal((await salesOrderForcePreview(supabase, { id: 'SO1', status: 'draft' })).blocked, false);
+});
+
+test('exciseFilingBlockMessage: บอกเลขใบยื่นทุกใบ + ชี้หน้าไปจัดการ', () => {
+  const msg = exciseFilingBlockMessage([{ id: 'TAX-1', status: 'draft' }, { id: 'TAX-2' }], 'Sale Order');
+  assert.match(msg, /TAX-1 \(draft\)/);
+  assert.match(msg, /TAX-2/);
+  assert.match(msg, /ภาษี › การยื่นชำระ/);
+  assert.match(msg, /Sale Order/);
+});
+
+test('อ่านตาราง orders ไม่ได้ (ยังไม่รัน mig 0160) = ไม่บล็อก', async () => {
+  const supabase = {
+    from() {
+      const b = {
+        select: () => b, eq: () => b, in: () => b,
+        then: (resolve) => resolve({ error: { code: '42703', message: 'column "salesOrderId" does not exist' } }),
+      };
+      return b;
+    },
+  };
+  assert.deepEqual(await exciseFilingsOfSalesOrder(supabase, 'SO1'), []);
 });

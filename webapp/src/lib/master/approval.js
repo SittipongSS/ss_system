@@ -23,6 +23,26 @@
 // คอลัมน์ 3 ตัวหลังเป็นค่า mirror ของผู้ติดต่อคนแรก (mig 0033) จึงยกเว้นตามกัน
 export const CUSTOMER_CONTACT_FIELDS = ['contacts', 'contactPerson', 'contactPhone', 'email'];
 
+// ── เหตุผลตอนตีกลับ/ปลดอนุมัติข้อมูลหลัก ──────────────────────────────────
+// เดิมลูกค้า/สินค้าตีกลับได้โดย "ไม่ต้องบอกเหตุ" (`body.rejectionReason || null`) ต่างจาก
+// ทุกโมดูลอื่นในระบบที่บังคับ — คนสร้างเห็นแค่ป้ายแดงแล้วต้องเดาเองว่าต้องแก้อะไร
+// ไม่ตั้งขั้นต่ำ 10 ตัวอักษรแบบเอกสารที่มีลายเซ็น (QT/SO) เพราะเหตุผลของข้อมูลหลัก
+// สั้นได้จริงและยังสื่อครบ ("ชื่อซ้ำ", "เลขภาษีผิด")
+export const REJECTION_REASON_MAX = 500;
+
+export function normalizeRejectionReason(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+export function rejectionReasonError(value, { label = 'ที่ตีกลับ' } = {}) {
+  const reason = normalizeRejectionReason(value);
+  if (!reason) return `กรุณาระบุเหตุผล${label}`;
+  if (reason.length > REJECTION_REASON_MAX) {
+    return `เหตุผลต้องไม่เกิน ${REJECTION_REASON_MAX} ตัวอักษร`;
+  }
+  return '';
+}
+
 const sameValue = (a, b) => {
   if (a === b) return true;
   if (a == null && b == null) return true;

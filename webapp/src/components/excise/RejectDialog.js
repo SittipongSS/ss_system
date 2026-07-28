@@ -4,7 +4,20 @@ import Modal from "@/components/Modal";
 
 // Generic "send back for correction" dialog (registrations + orders). Collects a
 // required reason and calls async `onConfirm(reason)`; surfaces errors inline.
-export default function RejectDialog({ open, onClose, onConfirm, title = "ตีกลับให้แก้ไข", entityLabel = "รายการนี้" }) {
+// โมดัล "กรอกเหตุผลแล้วยืนยัน" ตัวเดียวของโมดูลภาษี — ต่างกันได้แค่ข้อความผ่าน props
+// (กฎ AGENTS.md: โหมดผ่าน props ไม่ใช่คนละไฟล์) ใช้ทั้งตอนตีกลับการขึ้นทะเบียน
+// และตอนฝ่ายกฎหมายปลดอนุมัติทะเบียนที่อนุมัติแล้ว (มติ B2 2026-07-27)
+export default function RejectDialog({
+  open,
+  onClose,
+  onConfirm,
+  title = "ตีกลับให้แก้ไข",
+  entityLabel = "รายการนี้",
+  reasonLabel,
+  confirmLabel = "ยืนยันตีกลับ",
+  busyLabel = "กำลังส่ง...",
+  placeholder = "ระบุสิ่งที่ต้องแก้ไข...",
+}) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -31,11 +44,11 @@ export default function RejectDialog({ open, onClose, onConfirm, title = "ตี
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-2">
           <label style={{ fontSize: 13, color: "var(--text-2)" }}>
-            เหตุผลที่ตีกลับ {entityLabel} <span style={{ color: "var(--red)" }}>*</span>
+            {reasonLabel || `เหตุผลที่ตีกลับ ${entityLabel}`} <span style={{ color: "var(--red)" }}>*</span>
           </label>
           <textarea
             value={reason} onChange={(e) => setReason(e.target.value)} rows={3} autoFocus
-            className="premium-input w-full" placeholder="ระบุสิ่งที่ต้องแก้ไข..."
+            className="premium-input w-full" placeholder={placeholder}
             style={{ resize: "vertical" }}
           />
           {error && <div style={{ fontSize: 13, color: "var(--red)" }}>{error}</div>}
@@ -43,7 +56,7 @@ export default function RejectDialog({ open, onClose, onConfirm, title = "ตี
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
           <button type="submit" className="btn btn-danger" disabled={busy}>
-            {busy ? "กำลังส่ง..." : "ยืนยันตีกลับ"}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </form>

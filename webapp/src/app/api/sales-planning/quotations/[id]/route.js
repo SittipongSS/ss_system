@@ -3,8 +3,10 @@ import { isSuperuser } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans,
+  exciseFilingBlockMessage, exciseFilingsOfQuotation,
 } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
   inSalesEditScope, inSalesViewScope, quoteTotals, toMoney,
@@ -317,6 +319,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return ok({ dryRun: true, ...preview });
   }
 
+  // ใบยื่นภาษีของ SO ลูก: FK RESTRICT ที่ break-glass ก็ข้ามไม่ได้ (force_delete_quotation
+  // ลบ SO ลูกก่อนเสมอ → ชน orders.salesOrderId แล้ว error ดิบจาก Postgres หลุดออกหน้าเว็บ
+  // เป็น 500). ดักก่อนทุกเส้นทาง ทั้งลบปกติและ ?force=1
+  const filings = await exciseFilingsOfQuotation(supabase, id);
+  if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบเสนอราคา'), 409);
+
   // หลักฐานลายเซ็น (mig 0125) เป็น immutable child ที่อ้างกลับมาใบนี้ — ใบที่เคย
   // อนุมัติ+เซ็นห้าม hard-delete แม้ pointer บนใบถูกล้างหลังแก้/ยกเลิก (Decision 0008).
   // FK RESTRICT + guard trigger บล็อกที่ DB อยู่แล้ว แต่ต้องแปลงเป็นข้อความแนะนำ
@@ -371,7 +379,15 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       p_actor_role: user.role || null,
     })
     : await supabase.from('quotations').delete().eq('id', id);
-  if (error) return fail(error.message, 500);
+  if (error) {
+    // ตาข่ายชั้นสอง: ยังมีลูกที่ FK RESTRICT อยู่ (เช่นใบยื่นภาษีที่เพิ่งถูกสร้างหลังเราตรวจ)
+    // — ห้ามปล่อยข้อความ Postgres ดิบออกหน้าเว็บ (ชื่อ constraint/ตาราง/ค่าในแถวหลุด)
+    if (isForeignKeyViolation(error)) {
+      console.error(`[quotation delete ${id}] foreign key violation:`, error);
+      return fail('ลบถาวรไม่ได้: ยังมีเอกสารอื่นอ้างใบเสนอราคานี้อยู่ (เช่น ใบยื่นชำระภาษี) — กรุณาจัดการเอกสารปลายทางก่อน', 409);
+    }
+    return fail(error.message, 500);
+  }
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`
     : (isSuperuser(user.role) && before.status !== 'draft'

@@ -90,12 +90,14 @@ export default function RegistrationDetailPage() {
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ส่งกลับไม่สำเร็จ");
     await reload();
   };
-  const requestRevise = async () => {
+  // ปลดอนุมัติ = สิทธิ์ฝ่ายกฎหมาย + ต้องมีเหตุผล (มติ B2 2026-07-27) — ทะเบียนคือหลักฐาน
+  // ที่ใบยื่นชำระภาษีอ้างถึง การปลดจึงต้องหนักเท่ากับด่านอื่นในระบบ ไม่ใช่กดผ่านเงียบ ๆ
+  const revokeApproval = async (reason) => {
     const res = await fetch(`/api/excise-registrations/${s.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "draft" }),
+      body: JSON.stringify({ status: "draft", reason }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถขอแก้ไขได้");
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถปลดอนุมัติได้");
     await reload();
   };
   const doDelete = async () => {
@@ -204,9 +206,9 @@ export default function RegistrationDetailPage() {
                       : null}
                 secondaryActions={[
                   {
-                    id: "revise", label: "ขอแก้ไขทะเบียน", kind: "revise", icon: Undo2,
+                    id: "revise", label: "ปลดอนุมัติ (กลับเป็นร่าง)", kind: "revise", icon: Undo2,
                     onClick: () => setReviseOpen(true),
-                    visible: canEdit && s.status === "approved",
+                    visible: canApprove && s.status === "approved",
                   },
                 ]}
                 dangerActions={[
@@ -307,13 +309,14 @@ export default function RegistrationDetailPage() {
       />
       <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={rejectReg} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
-      <ConfirmDialog
+      <RejectDialog
         open={reviseOpen}
         onClose={() => setReviseOpen(false)}
-        onConfirm={requestRevise}
-        title="ขอแก้ไขทะเบียนที่อนุมัติแล้ว"
-        message={`ทะเบียน ${s?.fgCode || "นี้"} อนุมัติแล้ว การขอแก้ไขจะปลดล็อกกลับเป็น “ฉบับร่าง” และต้องยื่นขออนุมัติใหม่อีกครั้ง ต้องการดำเนินการต่อหรือไม่?`}
-        confirmLabel="ขอแก้ไข (กลับเป็นร่าง)"
+        onConfirm={revokeApproval}
+        title="ปลดอนุมัติทะเบียนที่อนุมัติแล้ว"
+        reasonLabel={`เหตุผลที่ปลดอนุมัติทะเบียน ${s?.fgCode || "นี้"} (กลับเป็นร่าง ต้องยื่นขออนุมัติใหม่)`}
+        placeholder="เช่น ข้อมูลบนฉลากเปลี่ยน / กรมสรรพสามิตให้แก้ไข..."
+        confirmLabel="ยืนยันปลดอนุมัติ"
       />
       <ConfirmDialog
         open={deleteOpen}
