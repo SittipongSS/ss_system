@@ -2,6 +2,7 @@
 // Routes should load projects / team scope / next code through here instead of
 // re-querying Supabase inline (which had drifted into 3 divergent copies).
 import { generateEntityCode } from '@/lib/entityCode';
+import { purgeUpdatesMany } from '@/lib/master/updates';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -39,9 +40,9 @@ export async function projectHasExciseRegistrations(supabase, projectId) {
 
 // Delete a project and every child row it owns. FK ON DELETE CASCADE already
 // removes project_tasks / project_products / shipment_prep(+lines); sahamit_pos
-// .projectId is SET NULL. But personal_tasks, project_doc_revisions AND inquiries
+// .projectId is SET NULL. But personal_tasks, project_doc_revisions AND dept_requests
 // link by a *logical* projectId (no FK, migrations 0019/0040/0104) so we clear
-// them by hand first — otherwise they dangle. inquiries also own inquiry_messages
+// them by hand first — otherwise they dangle. dept_requests also own their thread
 // + back-linked personal_tasks (both no-FK), removed transitively. Caller is
 // responsible for permission + blocker checks (see projectHasExciseRegistrations).
 // Returns the removed child counts.
@@ -53,14 +54,18 @@ export async function deleteProjectDeep(supabase, projectId) {
   // Logical-link children: remove before the project row disappears.
   await supabase.from('personal_tasks').delete().eq('projectId', projectId);
   await supabase.from('project_doc_revisions').delete().eq('projectId', projectId);
-  // inquiries.projectId is a no-FK logical link (mig 0104) — clean the thread +
+  // dept_requests.projectId is a no-FK logical link (mig 0173) — clean the thread +
   // its messages + any task created from it, else they orphan silently.
-  const { data: inqs } = await supabase.from('inquiries').select('id').eq('projectId', projectId);
+  const { data: inqs } = await supabase.from('dept_requests').select('id').eq('projectId', projectId);
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
-    await supabase.from('inquiry_messages').delete().in('inquiryId', inquiryIds);
+    // เธรดเป็น polymorphic ไม่มี FK — กวาดเอง (บรรทัด/ชั้นจำนวนมี FK CASCADE แล้ว)
+    await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
-    await supabase.from('inquiries').delete().in('id', inquiryIds);
+    // ⚠️ guard_dept_request บล็อกการลบคำร้องที่ส่งแล้ว — ต้องผ่าน RPC ทีละใบ
+    for (const requestId of inquiryIds) {
+      await supabase.rpc('force_delete_dept_request', { p_id: requestId });
+    }
   }
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) throw error;

@@ -61,3 +61,9 @@
 .colProgress { width: 120px; }
 .colStatus { width: 190px; }
 .colUpdated { width: 110px; }
+
+/* ── การ์ด "คำร้องที่ผูกกับรายการนี้" (หน้าดีล/โครงการ) ─────────────── */
+.listCard { padding: 16px; }
+.listTitle { margin: 0; font-size: 16px; font-weight: 700; }
+.listLink { font-weight: 700; }
+.listEmpty { padding: 12px; color: var(--text-3); font-size: 13px; }

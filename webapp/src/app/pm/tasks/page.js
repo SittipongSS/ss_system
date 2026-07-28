@@ -27,7 +27,7 @@ import { DIFFICULTY_LABELS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
+import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -344,8 +344,8 @@ export default function TasksPage() {
         const message = messageId ? (inquiry.messages || []).find((item) => item.id === messageId && !item.deletedAt) : null;
         if (messageId && !message) throw new Error("ไม่พบข้อความต้นทาง");
         const sourceText = message?.body?.trim() || inquiry.title || "งานจากเรื่องสอบถาม";
-        const returnToRaw = params.get("returnTo") || `/sa/inquiries/${inquiryId}`;
-        const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/sa/inquiries/${inquiryId}`;
+        const returnToRaw = params.get("returnTo") || `/sa/requests/${inquiryId}`;
+        const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/sa/requests/${inquiryId}`;
         setEditingId(null);
         setInquirySource({ inquiryId, messageId: message?.id || null, code: inquiry.code || inquiry.id, returnTo });
         setForm({
@@ -580,15 +580,15 @@ export default function TasksPage() {
 
       {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
       {inquiries.length > 0 && (
-        <SaSection icon={<MessageCircleQuestion size={17} />} title="ข้อสอบถามจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/sa/inquiries" className="linklike">ดูทั้งหมด</Link></>}>
+        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/sa/requests" className="linklike">ดูทั้งหมด</Link></>}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {inquiries.slice(0, 8).map((q) => {
-              const due = inquiryDueTone(q, todayISO);
+              const due = requestDueTone(q, todayISO);
               return (
                 <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
-                  <InquiryStatusBadge status={q.status} />
+                  <RequestStatusBadge status={q.status} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
-                  <Link href={`/sa/inquiries/${q.id}`} className="linklike" style={{ fontWeight: 600 }}>
+                  <Link href={`/sa/requests/${q.id}`} className="linklike" style={{ fontWeight: 600 }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}
                   </Link>
                   <span style={{ color: "var(--text-3)", fontSize: 12 }}>โดย {q.requesterName || "-"}</span>

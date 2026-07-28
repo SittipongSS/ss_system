@@ -52,7 +52,6 @@ const colorAllowList = [
 const nativeFeedbackDebt = {
   "src/app/database/customers/page.js": 1, // เหตุผลไม่อนุมัติลูกค้า (ยังไม่บังคับกรอก)
   "src/app/database/products/page.js": 1, // เหตุผลไม่อนุมัติสินค้า (ยังไม่บังคับกรอก)
-  "src/app/sa/inquiries/[id]/page.js": 1, // แก้ไขข้อความในเธรดความเคลื่อนไหว
   "src/components/mgmt/DocsPanel.js": 2, // ลิงก์ + ชื่อ Google Doc/Sheet (โมดูลงานบริหารที่พักไว้)
 };
 

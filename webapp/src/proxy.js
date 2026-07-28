@@ -243,12 +243,8 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ลีด (เฟส C): role marketing มีแค่ salesplan:lead (ไม่มี salesplan:edit) —
   // เปิดเขียนเฉพาะเส้นลีด; เส้น sales-planning อื่นยังต้อง salesplan:edit ตามเดิม.
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
-  // ระบบสอบถาม–ตอบกลับ (inquiries, mig 0104): ฝ่ายขายสร้าง/ถามต่อ/ปิดด้วย
-  // salesplan:edit; ฝ่ายผู้ตอบ (role rd — cap inquiries:respond) รับเรื่อง/ตอบได้
-  // แม้ไม่มีสิทธิ์แก้งานขาย. สิทธิ์รายแถว (ฝ่าย/scope ทีม) บังคับใน handler.
-  if (path.startsWith('/api/sales-planning/inquiries')) {
-    return can(role, 'salesplan:edit') || can(role, 'inquiries:respond');
-  }
+  // (ระบบสอบถาม /api/sales-planning/inquiries ถูกปลดระวางใน mig 0174 —
+  //  งานย้ายไปคำร้องข้ามฝ่าย /api/sa/requests ซึ่งมีกฎของตัวเองด้านล่าง)
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
   // ระบบขอราคาผลิต (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
   // สามเส้นนี้ถือคนละ cap: ผู้บริหารอนุมัติได้ทั้งที่ไม่มี salesplan:edit, และ

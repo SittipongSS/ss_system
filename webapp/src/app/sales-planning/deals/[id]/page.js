@@ -28,8 +28,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
-import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
-import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
+import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
@@ -215,10 +214,10 @@ export default function DealOverviewPage() {
       body: `${STAGE_LABELS[s.fromStage] || s.fromStage || "เริ่ม"} → ${STAGE_LABELS[s.toStage] || s.toStage}`,
     }));
     const inqs = (data?.inquiries || []).flatMap((q) => {
-      const href = `/sa/inquiries/${q.id}`;
+      const href = `/sa/requests/${q.id}`;
       const linkLabel = `${q.code ? `${q.code} · ` : ""}${q.title || "เรื่องสอบถาม"}`;
       const rows = [{
-        id: `iq-${q.id}-created`, at: q.createdAt, label: q.urgent ? "สอบถาม RD (ด่วน)" : "สอบถาม RD",
+        id: `iq-${q.id}-created`, at: q.createdAt, label: q.urgent ? "สอบถาม RD (ด่วน)" : "คำร้อง",
         color: q.urgent ? "var(--red)" : "var(--violet)", href, linkLabel, by: q.requesterName || null,
       }];
       if (q.answeredAt) {
@@ -308,7 +307,6 @@ export default function DealOverviewPage() {
   // ฟีดความเคลื่อนไหวย้ายไปเธรดกลางแล้ว (mig 0169) — โพสต์/แก้/ลบ/แนบรูป/พรีวิวรูป
   // อยู่ใน UpdateThread ทั้งชุด หน้านี้เหลือหน้าที่แค่ส่งเหตุการณ์อ่านอย่างเดียว
   // (ประวัติสถานะ + เรื่องสอบถาม RD) เข้าไปเรียงรวมผ่าน extraItems
-  const [inquiryOpen, setInquiryOpen] = useState(false); // โมดัล "สอบถาม RD"
 
   // โมดัลแก้ดีล + สร้าง PM
   const [customers, setCustomers] = useState([]);
@@ -774,7 +772,7 @@ export default function DealOverviewPage() {
           )}
 
           {(tab === "inquiries" || tab === "overview") && (
-            <InquiryListCard inquiries={data.inquiries || []} onCreate={canEdit ? () => setInquiryOpen(true) : null} />
+            <RequestListCard requests={data.inquiries || []} openHref={`/sa/requests?dealId=${deal.id}`} />
           )}
 
           <div style={{
@@ -1062,10 +1060,13 @@ export default function DealOverviewPage() {
                 {canEdit && (
                   <span style={{ marginLeft: "auto" }} />
                 )}
+                {/* เปิดคำร้องย้ายไปหน้า /sa/requests ทั้งหมด — ฟอร์มต้องรู้ชนิดและ
+                    ทะเบียนที่ชนิดนั้นอ้าง (กลิ่น/สูตร/วัสดุ/ดีล) ครบก่อน จึงไม่ยก
+                    โมดัลมาซ้อนบนหน้าดีลอีก */}
                 {canEdit && (
-                  <button type="button" className="btn sm" onClick={() => setInquiryOpen(true)} title="ส่งข้อสอบถามถึงฝ่าย RD ในนามดีลนี้">
-                    <MessageSquare size={13} aria-hidden="true" /> สอบถาม RD
-                  </button>
+                  <Link className="btn sm" href={`/sa/requests?dealId=${deal.id}`} title="เปิดคำร้องถึงฝ่ายอื่นในนามดีลนี้">
+                    <MessageSquare size={13} aria-hidden="true" /> เปิดคำร้อง
+                  </Link>
                 )}
               </div>
               <UpdateThread
@@ -1084,15 +1085,8 @@ export default function DealOverviewPage() {
         </div>
       )}
 
-      {/* โมดัล "สอบถาม RD" — ส่งข้อสอบถามในนามดีลนี้ แล้วเหตุการณ์ขึ้นฟีดความเคลื่อนไหวเอง */}
-      <InquiryCreateModal
-        open={inquiryOpen}
-        onClose={() => setInquiryOpen(false)}
-        onCreated={() => { setInquiryOpen(false); load(); }}
-        deal={deal ? { id: deal.id, code: deal.code, title: deal.title, customerId: deal.customerId, projectId: deal.projectId, customerName: deal.customerName || deal.customer?.name } : null}
-        onLinked={() => load()}
-        onCreateProject={() => { setInquiryOpen(false); openCreatePM(); }}
-      />
+      {/* (โมดัล "คำร้อง" ถูกถอดออกพร้อมระบบสอบถาม — เปิดคำร้องที่ /sa/requests
+          ซึ่งฟอร์มรู้จักชนิดคำร้องครบ 8 ชนิดและโหลดทะเบียนที่ต้องอ้างไว้ให้แล้ว) */}
 
       {/* ยืนยัน + เลือกประเภท (template) ก่อนสร้างไทม์ไลน์ของดีล — กัน "ดึงผิดประเภท" */}
       <Modal open={genOpen} onClose={() => !actionBusy && setGenOpen(false)} title="สร้างไทม์ไลน์ของดีล" size="sm">

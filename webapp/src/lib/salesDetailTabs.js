@@ -3,7 +3,7 @@ export const SALES_DETAIL_TABS = [
   { key: "timeline", label: "ไทม์ไลน์" },
   { key: "quotations", label: "ใบเสนอราคา" },
   { key: "tasks", label: "งาน" },
-  { key: "inquiries", label: "สอบถาม RD" },
+  { key: "inquiries", label: "คำร้อง" },
   { key: "activities", label: "ความเคลื่อนไหว" },
 ];
 

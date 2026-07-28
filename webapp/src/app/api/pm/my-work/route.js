@@ -1,4 +1,6 @@
 import { normalizeDepartment, pmTaskScopes, can } from '@/lib/permissions';
+import { canQuoteMaterial } from '@/lib/materialPrices';
+import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
@@ -114,18 +116,26 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const personalTasks = (scopedPersonal || [])
     .filter((t) => (seenP.has(t.id) ? false : seenP.add(t.id)));
 
-  // ── ข้อสอบถามค้างของฝ่าย (role rd — cap inquiries:respond): คิวเดียวกับงาน ──
+  // ── คำร้องข้ามฝ่ายที่ค้างอยู่ของฝ่ายฉัน (mig 0173): คิวเดียวกับงาน ──
   // "เก็บแยก โชว์รวม": เรื่องที่ยังไม่ปิดของฝ่ายฉันขึ้นในงานของฉัน จะได้เปิดหน้าเดียว
-  // เห็นทุกอย่างที่ต้องทำ (ตอบในเธรด /sa/inquiries/[id])
+  // เห็นทุกอย่างที่ต้องทำ (ตอบที่ /sa/requests/[id])
+  //
+  // ⚠️ เดิมดึงจากตาราง inquiries และกั้นด้วย cap inquiries:respond ซึ่งมีแต่ role rd
+  // → ฝ่ายจัดซื้อ (PC) ไม่เคยเห็นคิวของตัวเองในหน้านี้เลยทั้งที่มีงานรออยู่จริง
+  // ตอนนี้ทั้งสองฝ่ายใช้ตารางเดียวกัน จึงกั้นด้วย "ตอบคำร้องของฝ่ายนี้ได้ไหม" แทน
   let inquiries = [];
   {
     const myDept = normalizeDepartment(user.department);
-    if (can(user.role, 'inquiries:respond') && myDept) {
-      let inquiryQuery = supabase
-        .from('inquiries').select('*')
-        .eq('targetDept', myDept).neq('status', 'closed');
-      if (scope === 'mine') inquiryQuery = inquiryQuery.or(`assigneeId.eq.${user.id},assigneeId.is.null`);
-      const { data } = await inquiryQuery.order('dueDate', { ascending: true });
+    if (myDept && canQuoteMaterial(user, myDept)) {
+      let requestQuery = supabase
+        .from('dept_requests').select('*')
+        .eq('dept', myDept).in('status', REQUEST_OPEN_STATUSES);
+      // "ของฉัน" = ที่ฉันรับเรื่องไว้ + ที่ยังไม่มีใครรับ (ยังเป็นงานของทุกคนในฝ่าย)
+      if (scope === 'mine') {
+        requestQuery = requestQuery.or(`acknowledgedById.eq.${user.id},acknowledgedById.is.null`);
+      }
+      const { data, error } = await requestQuery.order('committedDueDate', { ascending: true });
+      if (error) throw error;
       inquiries = data || [];
     }
   }

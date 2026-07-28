@@ -45,7 +45,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     linkedDeal = data || null;
   }
   if (task.inquiryId) {
-    const { data } = await supabase.from('inquiries').select('id, code, title, status').eq('id', task.inquiryId).maybeSingle();
+    const { data } = await supabase.from('dept_requests')
+      .select('id, docNo, kind, title, status').eq('id', task.inquiryId).maybeSingle();
     linkedInquiry = data || null;
   }
   const userIds = [...new Set([task.ownerId, task.assigneeId, task.proxyBy, task.assignedBy].filter(Boolean))];

@@ -167,6 +167,12 @@ export function canManageRequest(user, request) {
   return !!user?.id && request.requestedById === user.id;
 }
 
+// เห็นคำร้องนี้ไหม = ผู้ขอ หรือ ฝ่ายที่ต้องตอบ (ตรงกับ scope ของ GET /api/sa/requests)
+// ใช้ตอนอ้างคำร้องจากที่อื่น เช่นปุ่ม "สร้างงานจากคำร้อง" ในระบบงานของฉัน
+export function canViewRequest(user, request) {
+  return canManageRequest(user, request) || canAnswerRequest(user, request);
+}
+
 // ── ด่านของแต่ละ action — คืนข้อความไทย หรือ null ถ้าผ่าน ───────────────
 export function submitRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';

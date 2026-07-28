@@ -272,15 +272,18 @@ const ROLE_CAPS = {
   executive: [...OBSERVER_CAPS, 'costing:view', 'costing:approve'],
   // rd: ฝ่ายวิจัยและพัฒนา — คู่คิดหลักของฝ่ายขาย. อ่านดีล/โครงการ/ใบเสนอราคา
   // ทุกทีม (salesplan:view — scope 'all' ผ่าน salesPlanningViewScope) เพื่อเห็น
-  // บริบทเต็มเวลาฝ่ายขายส่งข้อสอบถาม + ใช้ระบบงานของฉัน (workflow tier แบบ staff)
-  // + ตอบข้อสอบถามของฝ่ายตน (inquiries:respond — ตาราง inquiries, mig 0104).
+  // บริบทเต็มเวลาฝ่ายขายส่งคำร้อง + ใช้ระบบงานของฉัน (workflow tier แบบ staff)
   // ไม่มีสิทธิ์แก้ดีล/แผนโครงการ (ไม่มี salesplan:edit / pm:edit / sales:act) และ
   // ไม่เห็นต้นทุน/มาร์จิ้น (ไม่มี products:margin — grant รายคนได้ถ้าจำเป็น).
-  // + costing:quote — ตอบราคา RM (หัวน้ำหอม/เนื้อสาร) บนบรรทัดของฝ่ายตนในใบขอราคา
-  //   ต้นทุน; เห็นใบผ่าน costing:view. บรรทัดของฝ่ายอื่นแก้ไม่ได้ (canQuoteCosting
-  //   + การกรอง sourceDept ใน handler).
+  // + costing:quote — รับเรื่อง/ตอบ **คำร้องข้ามฝ่าย** ของฝ่ายตน (mig 0173) รวมถึง
+  //   ตอบราคา RM บนบรรทัดในใบขอราคาผลิต; เห็นใบผ่าน costing:view. ของฝ่ายอื่น
+  //   แตะไม่ได้ (canQuoteMaterial/canQuoteCosting + การกรอง dept ใน handler).
+  //
+  // ⚠️ cap 'inquiries:respond' ถูกถอดออกใน mig 0174 พร้อมระบบสอบถาม — งานย้ายมา
+  // อยู่ใต้ costing:quote ทั้งหมด (ฝ่ายจัดซื้อ PC ก็ใช้ cap เดียวกัน จึงได้คิวของ
+  // ตัวเองในหน้า "งานของฉัน" ด้วย ซึ่งของเดิมไม่เคยให้เพราะผูกกับ role rd อย่างเดียว)
   rd: [
-    'pm:view', 'products:view', 'customers:view', 'salesplan:view', 'inquiries:respond',
+    'pm:view', 'products:view', 'customers:view', 'salesplan:view',
     'costing:view', 'costing:quote',
   ],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
