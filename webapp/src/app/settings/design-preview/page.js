@@ -35,6 +35,10 @@ import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
 import Segmented from "@/components/ui/Segmented";
 import Select from "@/components/ui/Select";
+import DateInput from "@/components/ui/DateInput";
+import TimeInput from "@/components/ui/TimeInput";
+import DateTimeInput from "@/components/ui/DateTimeInput";
+import MonthPicker from "@/components/ui/MonthPicker";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Pager from "@/components/ui/Pager";
@@ -79,6 +83,13 @@ const ROWS = [
 ];
 
 const money = (value) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* วันนี้แบบ ISO (โซนเวลาเครื่อง) — ใช้เป็น min ของตัวอย่าง "ห้ามเลือกย้อนหลัง" */
+const DEMO_TODAY = (() => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+})();
 
 const CHART_DATA = [
   { month: "เม.ย.", actual: 3.8, target: 4.2 },
@@ -219,6 +230,12 @@ export default function DesignPreviewPage() {
   const [docType, setDocType] = useState("qt");
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [reasonDemo, setReasonDemo] = useState(null); // null = ปิด, string = เปิดพร้อมค่าที่พิมพ์
+  const [demoDate, setDemoDate] = useState(DEMO_TODAY);
+  const [demoDateBounded, setDemoDateBounded] = useState(DEMO_TODAY);
+  const [demoTime, setDemoTime] = useState("09:30");
+  const [demoDateTime, setDemoDateTime] = useState(`${DEMO_TODAY}T14:00`);
+  const [demoMonth, setDemoMonth] = useState(DEMO_TODAY.slice(0, 7));
+  const [demoAllMonths, setDemoAllMonths] = useState(false);
   const [recordStatus, setRecordStatus] = useState("pending");
   const [recordRole, setRecordRole] = useState("boss");
   const [recordLog, setRecordLog] = useState("");
@@ -398,6 +415,61 @@ export default function DesignPreviewPage() {
               ช่องที่ล็อก
               <input className="premium-input" defaultValue="QT-26070128" readOnly disabled />
             </label>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="วันที่ เดือน และเวลา"
+          subtitle="DateInput · MonthPicker · TimeInput · DateTimeInput — ทุกตัวเก็บค่าเป็น ISO ไม่พึ่ง locale ของเบราว์เซอร์"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info" title="เก็บ ISO แสดงแบบไทย">
+              ช่องพวกนี้ <strong>เก็บ</strong> เป็น <code>YYYY-MM-DD</code> · <code>YYYY-MM</code> ·
+              {" "}<code>HH:mm</code> · <code>YYYY-MM-DDTHH:mm</code> เสมอ แต่ <strong>แสดง</strong> เป็น
+              {" "}<code>DD/MM/YYYY</code> และ 24 ชั่วโมง — ห้ามใช้ <code>&lt;input type=&quot;date&quot;&gt;</code>
+              {" "}เพราะหน้าตาและรูปแบบจะเปลี่ยนตามภาษาของเครื่องผู้ใช้
+            </StatusNotice>
+
+            <div className={styles.formGrid}>
+              <label className={styles.field}>
+                เลือกวันที่
+                <DateInput value={demoDate} onChange={setDemoDate} ariaLabel="วันที่ตัวอย่าง" />
+              </label>
+              <label className={styles.field}>
+                เลือกวันที่ (จำกัดช่วง — ห้ามก่อนวันนี้)
+                <DateInput value={demoDateBounded} onChange={setDemoDateBounded} min={DEMO_TODAY} ariaLabel="วันที่ในช่วงที่กำหนด" />
+              </label>
+              <label className={styles.field}>
+                เลือกเวลา
+                <TimeInput value={demoTime} onChange={setDemoTime} ariaLabel="เวลาตัวอย่าง" />
+              </label>
+              <label className={styles.field}>
+                เลือกวันที่ + เวลา
+                <DateTimeInput value={demoDateTime} onChange={setDemoDateTime} />
+              </label>
+            </div>
+
+            <div className={styles.stack}>
+              <span className={styles.caption}>เลือกเดือน (งวด) — ปีเป็น พ.ศ. ตามค่าตั้งต้น</span>
+              <MonthPicker value={demoMonth} onChange={setDemoMonth} ariaLabel="งวดเดือนตัวอย่าง" />
+              <span className={styles.caption}>เลือกเดือน + ตัวเลือก &quot;ทุกเดือน&quot;</span>
+              <MonthPicker
+                value={demoMonth}
+                onChange={setDemoMonth}
+                allMonths={demoAllMonths}
+                onAllMonths={setDemoAllMonths}
+                ariaLabel="งวดเดือนพร้อมทุกเดือน"
+              />
+              <p className={styles.caption}>
+                PageUp / PageDown เลื่อนเดือน · กด Shift ค้างไว้เลื่อนทีละปี
+              </p>
+            </div>
+
+            {/* ค่าที่เก็บจริงโชว์ไว้ให้เห็น — เคยมีบั๊กที่ช่องแสดงค่าหนึ่งแต่เก็บอีกค่าหนึ่ง
+                ถ้าแถวนี้ไม่ตรงกับที่เห็นในช่อง แปลว่าเพี้ยนแล้ว */}
+            <p className={`${styles.caption} ${styles.mono}`}>
+              {`date=${demoDate || "\"\""} · bounded=${demoDateBounded || "\"\""} · time=${demoTime || "\"\""} · dateTime=${demoDateTime || "\"\""} · month=${demoMonth}${demoAllMonths ? " (ทุกเดือน)" : ""}`}
+            </p>
           </div>
         </WorkspaceSection>
 
