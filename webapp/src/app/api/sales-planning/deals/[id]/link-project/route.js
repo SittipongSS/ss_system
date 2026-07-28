@@ -8,7 +8,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
@@ -107,8 +107,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)
-  const stageIdx = (s) => DEAL_STAGES.indexOf(s);
-  const nextStage = stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
+  const nextStage = advanceStage(deal.stage, 'timeline_proposed');
   const adoptedCustomer = !deal.customerId;
   const { data: updatedDeal, error: linkErr } = await supabase
     .from('sales_deals')

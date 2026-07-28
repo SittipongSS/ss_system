@@ -8,7 +8,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
-import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -182,8 +182,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // เดินหน้าเท่านั้น: ก่อนขั้น "เสนอไทม์ไลน์" → เลื่อนเป็น timeline_proposed; ขั้นสูงกว่านั้น
   // (รวม won) คงสถานะเดิม. การสร้าง PM ไม่ผลักดีลเป็น won/สถานะปิด — won ปิดแยกต่างหาก.
-  const stageIdx = (s) => DEAL_STAGES.indexOf(s);
-  const nextStage = stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
+  const nextStage = advanceStage(deal.stage, 'timeline_proposed');
   const { data: updatedDeal, error: linkError } = await supabase
     .from('sales_deals')
     .update({

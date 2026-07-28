@@ -5,7 +5,7 @@
 // เลขรันจาก DB, บรรทัด (rollback ถ้าพลาด), ดีล lead/qualified → quotation, audit.
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import { advanceStage, dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
@@ -143,7 +143,10 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
     insertedLines = lineRows || [];
   }
 
-  const nextStage = deal.stage === 'lead' || deal.stage === 'qualified' ? 'quotation' : deal.stage;
+  // ออกใบเสนอราคา = ดีลเดินมาถึงขั้น "เสนอราคา" แล้ว — ดันไปข้างหน้าเท่านั้น
+  // (มติ B4) เดิมเช็คแค่ lead/qualified ตรง ๆ ดีลที่เสนอไทม์ไลน์ไปแล้วจึงค้างที่เดิม
+  // ทั้งที่ออกใบไปแล้ว. ใช้ advanceStage เพื่อให้กติกา "ไม่ย้อนกลับ" มาจากที่เดียว
+  const nextStage = advanceStage(deal.stage, 'quotation');
   let updatedDeal = deal;
   if (nextStage !== deal.stage) {
     const { data: patchedDeal } = await supabase

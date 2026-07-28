@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { isSuperuser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
+import { DEFAULT_PROBABILITY_BY_STAGE } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     stage: 'timeline_proposed',  // มีไทม์ไลน์แล้ว แต่ยังไม่ปิดการขาย (ผู้ดูแลปิด Won เอง)
     projectValue: 0,      // NOT NULL DEFAULT 0 — มูลค่าคาดการณ์รอผู้ดูแลเติม
     wonValue: null,       // ยังไม่ Won → ยังไม่มีมูลค่าปิดจริง
-    probability: 65,      // ตรงกับ DEFAULT_PROBABILITY_BY_STAGE.timeline_proposed
+    // อ่านจาก map กลางแทนการฮาร์ดโค้ดเลข — เดิมเขียน 65 ไว้ตรง ๆ แล้วค้างเป็นค่าเก่า
+    // ทันทีที่ลำดับขั้นเปลี่ยน (B4 สลับ timeline_proposed เป็น 55)
+    probability: DEFAULT_PROBABILITY_BY_STAGE.timeline_proposed,
     forecastMonth: null,  // null → ไม่ตกเดือนใดในแดชบอร์ด จนกว่าจะเติม
     expectedCloseDate: null,
     confirmedAt: null,

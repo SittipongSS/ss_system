@@ -14,7 +14,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { createClient } from "@/lib/supabaseBrowser";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -159,7 +159,10 @@ export default function SalesPlanningPipelinePage() {
     const mul = sortDir === "desc" ? -1 : 1;
     return result.sort((a, b) => {
       if (sortKey === "name") return (a.title || "").localeCompare(b.title || "", "th") * mul;
-      if (sortKey === "status") return ((DEAL_STAGES.indexOf(a.stage) || 99) - (DEAL_STAGES.indexOf(b.stage) || 99)) * mul;
+      // เดิมเขียน `indexOf(...) || 99` ซึ่งพังกับ 'lead' โดยเฉพาะ: indexOf คืน 0 แล้ว
+      // `0 || 99` = 99 → เรียงตามสถานะทีไร ลีดตกไปท้ายสุดแทนที่จะขึ้นหัว
+      const rank = (s) => { const i = stageIndex(s); return i < 0 ? 99 : i; };
+      if (sortKey === "status") return (rank(a.stage) - rank(b.stage)) * mul;
       if (sortKey === "amount") {
         const valA = ["won", "in_project"].includes(a.stage) ? (a.wonValue ?? a.projectValue ?? 0) : (a.projectValue ?? 0);
         const valB = ["won", "in_project"].includes(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);

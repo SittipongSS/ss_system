@@ -2,11 +2,18 @@ import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberParts, publishedNumberingPattern } from '@/lib/documentStandards';
 
+// ⚠️ ลำดับในอาร์เรย์นี้ = กติกา "เดินหน้าอย่างเดียว" ของทั้งระบบ ไม่ใช่แค่ลำดับที่โชว์:
+// ทุกจุดที่ผลักดีลไปข้างหน้าเทียบด้วย stageIndex() ตัวล่างนี้ ("ถ้าอยู่ก่อนเป้าหมาย ค่อยดัน")
+// สลับตำแหน่ง = เปลี่ยนพฤติกรรมจริง ไม่ใช่เปลี่ยนหน้าตา — ก่อนขยับต้องดู stageAtLeast ด้วย
+//
+// มติผู้ใช้ B4 (2026-07-28): เสนอไทม์ไลน์มาก่อนเสนอราคา — งานจริงคือเสนอกำหนดงานให้
+// ลูกค้าดูก่อน แล้วค่อยออกใบ. ลำดับเดิมกลับหัว ทำให้ดีลที่ออกใบแล้วโดน "ดึงถอย" กลับเป็น
+// timeline_proposed ทุกครั้งที่ไปสร้าง/ผูกโครงการ (เพราะ index มันมากกว่า)
 export const DEAL_STAGES = [
   'lead',
   'qualified',
-  'quotation',
   'timeline_proposed',
+  'quotation',
   'awaiting_confirm',
   'deposit_pending',
   'won',
@@ -37,11 +44,14 @@ export const SALES_FEATURES = {
   sahamitRisk: false,    // "ความเสี่ยง / ตรวจย้อน FC สหมิตร" KPI + panel
 };
 
+// ค่าตั้งต้นตอนผู้ใช้ไม่ได้เลือก FC เอง — เรียงตามลำดับใน DEAL_STAGES
+// ⚠️ ต้องตรงกับฟังก์ชัน deal_probability_for_stage() ใน migration 0170 เป๊ะ ๆ
+// (ฝั่ง DB ใช้ตอนถอยดีลออกจาก Won) — มีเทสต์อ่านไฟล์ .sql มาเทียบให้แล้ว
 export const DEFAULT_PROBABILITY_BY_STAGE = {
   lead: 10,
   qualified: 30,
-  quotation: 55,
-  timeline_proposed: 65,
+  timeline_proposed: 55,
+  quotation: 65,
   awaiting_confirm: 75,
   deposit_pending: 90,
   won: 100,
@@ -168,6 +178,25 @@ export function normalizeStage(value) {
 // normalizeStage เงียบ ๆ ดันไป 'lead' (ดีลถูกดีดถอยสุดทางโดยไม่มี error)
 export function isValidStage(value) {
   return DEAL_STAGES.includes(value);
+}
+
+// ── กติกา "เดินหน้าอย่างเดียว" — ที่เดียวของทั้งระบบ ──────────────────────
+// เดิมแต่ละ route เขียน `DEAL_STAGES.indexOf(...)` เองกระจาย 3 ที่ + หน้าเว็บฮาร์ดโค้ด
+// เป็นลิสต์ชื่อ stage ไว้อีกที่ (ซึ่งลืมอัปเดตทันทีที่ลำดับเปลี่ยน) — ยกมารวมไว้ตรงนี้
+// stage ที่ไม่รู้จัก → -1 จึงถือว่า "อยู่ก่อนทุกอย่าง" (โดนดันไปข้างหน้า ไม่ค้างที่ค่าเพี้ยน)
+export function stageIndex(stage) {
+  return DEAL_STAGES.indexOf(stage);
+}
+
+// ดีลเดินมาถึงขั้นนี้ (หรือเลยไปแล้ว) หรือยัง — ใช้เปิด/ปิดปุ่มตามความคืบหน้า
+export function stageAtLeast(stage, target) {
+  return stageIndex(stage) >= stageIndex(target);
+}
+
+// ดันดีลไปข้างหน้าถึงขั้น target — ถ้าเลยไปแล้วคงเดิม (ห้ามถอยหลังเด็ดขาด)
+// ครอบ 'lost'/'in_project' ให้ด้วยโดยอัตโนมัติ เพราะทั้งคู่อยู่ท้ายอาร์เรย์
+export function advanceStage(current, target) {
+  return stageIndex(current) < stageIndex(target) ? target : current;
 }
 
 // ประเภทดีล 3 ค่า (เฟส A Sales Revamp) — คอลัมน์จริง sales_deals.dealType (migration 0088)
