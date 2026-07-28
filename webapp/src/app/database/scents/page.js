@@ -8,6 +8,7 @@
 // ⚠️ ก่อนมีหน้านี้ คนกรอกชื่อกลิ่นลงช่อง "ชื่อสูตร" ของสินค้าเพราะไม่มีที่เก็บ
 // (เจอจริงบน prod 10 แถว) — ดูการ์ด "รอจัดระเบียบ" ที่หน้าทะเบียนสูตร
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore, History,
 } from "lucide-react";
@@ -53,8 +54,12 @@ export default function ScentsPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("open");
+  // ?q= = ลิงก์เข้ามาจากที่อื่น (แท็บกลิ่นบนหน้าลูกค้า) — ทะเบียนไม่มีหน้ารายละเอียด
+  // รายตัว ลิงก์ตรงจึงเป็น "เปิดทะเบียนแล้วค้นให้เลย" · ตั้งสถานะเป็น "ทุกสถานะ"
+  // ด้วย ไม่งั้นกลิ่นที่เก็บเข้ากรุแล้วจะถูก default "ที่ใช้งานอยู่" กรองหายไปเงียบ ๆ
+  const linkedQuery = useSearchParams().get("q") || "";
+  const [search, setSearch] = useState(linkedQuery);
+  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code }

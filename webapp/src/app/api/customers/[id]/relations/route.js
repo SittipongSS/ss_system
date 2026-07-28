@@ -5,7 +5,8 @@ import { customerRelations } from '@/lib/master/relations';
 export const dynamic = 'force-dynamic';
 
 // GET /api/customers/[id]/relations — read-only 360-view summary.
-// → { products[], registrations[], orders[], projects[] } (scoped to the viewer).
+// → { products[], registrations[], orders[], projects[], scents[], formulas[] }
+//   (scoped to the viewer).
 // Customers are a central registry: any signed-in user may view the customer,
 // but each relation list is filtered by that module's own view-scope.
 export async function GET(request, { params }) {

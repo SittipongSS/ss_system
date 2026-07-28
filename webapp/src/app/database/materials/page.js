@@ -6,7 +6,12 @@
 // งานได้ทุกชนิด (บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า — mig 0173) มันโตเกิน
 // กว่าจะเป็นแท็บของหน้าวัสดุแล้ว จึงย้ายไปเป็นเมนู "คำร้อง" ของตัวเอง
 //
-// หน้านี้เหลือหน้าที่เดียว: ข้อมูลหลักของราคาวัสดุ
+// หน้านี้เหลือหน้าที่เดียว: ข้อมูลหลักของราคาวัสดุ → ย้ายจาก /sa/materials มาอยู่
+// ใต้ "ฐานข้อมูล" กับทะเบียนกลิ่น/สูตร/สินค้า เพราะไม่มีงาน (workflow) เหลือแล้ว
+//
+// ⚠️ URL ของ **API ยังเป็น /api/sa/materials ตามเดิม** — ไม่ย้ายตาม เพราะกฎ
+// allowlist ใน proxy.js ผูกกับ prefix นั้น และ path ของ API ผู้ใช้ไม่เห็นอยู่ดี
+// (บทเรียน /api/company-profile: ย้าย prefix แล้วลืมลงทะเบียน = non-admin 403 เงียบ)
 import { useCallback, useEffect, useState } from "react";
 import { Boxes } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";

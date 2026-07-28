@@ -5,7 +5,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เซลเปิดเคสถามราคาไป PC (บรรจุภัณฑ์) หรือ RD (หัวน้ำหอม/เนื้อสาร)
 // RD/PC เห็นคิวงานที่รอตอบที่เดียว — ของเดิมไม่มีคิวเลย ต้องรอให้เซลตามเอง
 //
-// เป็น "แท็บหนึ่ง" ของหน้า /sa/materials (คู่กับ MaterialRegistryPanel) — หน้าแม่
+// เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
 import { useState } from "react";
 import { useRouter } from "next/navigation";

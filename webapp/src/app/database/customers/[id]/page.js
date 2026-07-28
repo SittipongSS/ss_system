@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, Users, Tag } from "lucide-react";
+import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, Users, Tag, FlaskConical, Beaker } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
@@ -16,6 +16,9 @@ import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import StatusBadge from "@/components/excise/StatusBadge";
+// ป้ายกลางของ design system — ชื่อชนกับ StatusBadge ของสรรพสามิตข้างบน (คนละตัว:
+// ตัวนั้นรับ `status` ของทะเบียนภาษี ตัวนี้รับ `tone`+`label`) จึงตั้งชื่อแยกไว้
+import RegistryBadge from "@/components/ui/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -24,6 +27,8 @@ import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
+import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formulas";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -34,6 +39,27 @@ import { DetailCard } from "@/components/ui/DetailPage";
 //   - คอลัมน์หลักซ้าย = การ์ดข้อมูลบริษัท "พระเอกของหน้า" ตามด้วยแท็บความสัมพันธ์ + เอกสาร
 //   - rail ขวา = ของหยิบเร็ว: ผู้ติดต่อ / แบรนด์ / ภาระภาษี — แทนแถบ KPI (StatCards)
 //     กับแถวการ์ดโครงการ (ContextCard) เดิมที่โชว์ตัวเลขซ้ำกับแถบหัวและแท็บ
+
+// แถวความสัมพันธ์ในแท็บ 360-view: ชื่อ + บรรทัดรอง + ของฝั่งขวา · ทุกแท็บทรงเดียวกัน
+// เดิมก๊อปมาร์กอัปชุดนี้ซ้ำทีละแท็บ ซึ่งเป็นวิธีที่แท็บพวกนี้เพี้ยนหากันทีละนิด
+// (กฎเดียวกับ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
+function RelationRow({ title, subtitle, right, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3"
+    >
+      <div className="min-w-0">
+        <div className="font-semibold text-sm text-[var(--text)] truncate">{title}</div>
+        {subtitle ? (
+          <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5 truncate">{subtitle}</div>
+        ) : null}
+      </div>
+      {right}
+    </div>
+  );
+}
+
 export default function CustomerDetails() {
   const params = useParams();
   const router = useRouter();
@@ -53,6 +79,11 @@ export default function CustomerDetails() {
   const [orders, setOrders] = useState([]);
   const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
   const [projects, setProjects] = useState([]); // PM projects for this customer (pm-gated)
+  // ทะเบียนกลิ่น/สูตรของลูกค้ารายนี้ (mig 0171) — scents."customerId" เป็น NOT NULL
+  // (มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้) ความสัมพันธ์จึงเป็นของลูกค้าเต็มตัว
+  // ไม่ใช่ของแถม · อ่านอย่างเดียว จัดการจริงที่ /database/scents · /database/formulas
+  const [scents, setScents] = useState([]);
+  const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
@@ -99,15 +130,20 @@ export default function CustomerDetails() {
       .catch(() => {});
   }, [id]);
 
-  // Cross-module relations (360-view): registrations + projects from one scoped
-  // endpoint instead of fetching every registration and filtering client-side.
-  // The endpoint returns [] for relations the user may not see (tax → history:view,
-  // projects → pm:view), so no extra client-side capability gate is needed here.
+  // Cross-module relations (360-view): registrations + projects + ทะเบียนกลิ่น/สูตร
+  // from one scoped endpoint instead of fetching every registration and filtering
+  // client-side. The endpoint returns [] for relations the user may not see
+  // (tax → history:view, projects → pm:view, กลิ่น/สูตร → products:view), so no
+  // extra client-side capability gate is needed here.
   useEffect(() => {
-    if (!id) { setRegs([]); setProjects([]); return; }
+    if (!id) { setRegs([]); setProjects([]); setScents([]); setFormulas([]); return; }
     fetch(`/api/master/customers/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) { setRegs(d.registrations || []); setProjects(d.projects || []); } })
+      .then((d) => {
+        if (!d) return;
+        setRegs(d.registrations || []); setProjects(d.projects || []);
+        setScents(d.scents || []); setFormulas(d.formulas || []);
+      })
       .catch(() => {});
   }, [id]);
 
@@ -323,6 +359,11 @@ export default function CustomerDetails() {
                 canViewTax && { key: "registrations", label: `การขึ้นทะเบียน (${regs.length})` },
                 canViewTax && { key: "orders", label: `การยื่นชำระภาษี (${orders.length})` },
                 projects.length > 0 && { key: "projects", label: `โครงการ (${projects.length})` },
+                // แท็บเดียวคุมทั้งกลิ่นและสูตร — สูตรผูกกลิ่น และตอนนี้ทะเบียนกลิ่นยัง
+                // ว่างอยู่ ถ้าแยกสองแท็บจะมีแท็บโล่งค้างบนหน้าลูกค้าทุกราย
+                // โผล่เมื่อมีของจริงเท่านั้น (แพตเทิร์นเดียวกับแท็บโครงการ)
+                (scents.length + formulas.length) > 0
+                  && { key: "registry", label: `กลิ่น & สูตร (${scents.length + formulas.length})` },
               ]}
             />
 
@@ -501,16 +542,77 @@ export default function CustomerDetails() {
               ) : (
                 <div className="grid grid-cols-1 gap-2">
                   {projects.map((p) => (
-                    <div key={p.id} onClick={() => router.push(`/sa/projects/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-sm text-[var(--text)] truncate">{p.name || p.code}</div>
-                        <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.code}</div>
-                      </div>
-                      {p.status && <span className="ui-badge shrink-0">{p.status}</span>}
-                    </div>
+                    <RelationRow
+                      key={p.id}
+                      onClick={() => router.push(`/sa/projects/${p.id}`)}
+                      title={p.name || p.code}
+                      subtitle={p.code}
+                      right={p.status ? <span className="ui-badge shrink-0">{p.status}</span> : null}
+                    />
                   ))}
                 </div>
               )
+            )}
+
+            {/* กลิ่น & สูตร — read-only 360-view, จัดการจริงที่ทะเบียน
+                ทะเบียนไม่มีหน้ารายละเอียดรายตัว ลิงก์จึงเป็น "เปิดทะเบียนแล้วค้นให้"
+                ผ่าน ?q= (รหัสก่อน เพราะไม่ซ้ำทั้งบริษัท ตกไปใช้ชื่อเมื่อยังเป็นร่าง) */}
+            {activeTab === "registry" && (
+              <div className="grid grid-cols-1 gap-4">
+                {scents.length > 0 && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
+                      <FlaskConical size={14} aria-hidden="true" /> กลิ่นของลูกค้ารายนี้ ({scents.length})
+                    </div>
+                    {scents.map((s) => (
+                      <RelationRow
+                        key={s.id}
+                        onClick={() => router.push(`/database/scents?q=${encodeURIComponent(s.code || s.name)}`)}
+                        title={s.name}
+                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.currentRevisionNo > 0 ? ` · Rev. ${s.currentRevisionNo}` : " · ยังไม่ส่ง"}`}
+                        right={(
+                          <RegistryBadge
+                            className="shrink-0"
+                            tone={SCENT_STATUS_TONES[s.status]}
+                            label={SCENT_STATUS_LABELS[s.status]}
+                          />
+                        )}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {formulas.length > 0 && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
+                      <Beaker size={14} aria-hidden="true" /> สูตรของลูกค้ารายนี้ ({formulas.length})
+                    </div>
+                    {formulas.map((f) => {
+                      // ชื่อกลิ่นหาจากชุดที่โหลดมาแล้ว — ไม่เจอให้เงียบ **ห้ามถอยไปโชว์ id ดิบ**
+                      const scentName = scents.find((s) => s.id === f.scentId)?.name;
+                      return (
+                        <RelationRow
+                          key={f.id}
+                          onClick={() => router.push(`/database/formulas?q=${encodeURIComponent(f.code || f.name)}`)}
+                          title={f.name}
+                          subtitle={[
+                            f.code || "ยังไม่มีรหัส",
+                            scentName ? `กลิ่น: ${scentName}` : null,
+                            f.formulaDate ? fmtDate(f.formulaDate) : null,
+                          ].filter(Boolean).join(" · ")}
+                          right={(
+                            <RegistryBadge
+                              className="shrink-0"
+                              tone={FORMULA_STATUS_TONES[f.status]}
+                              label={FORMULA_STATUS_LABELS[f.status]}
+                            />
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

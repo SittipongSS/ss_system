@@ -8,6 +8,7 @@
 // พวกนั้นส่วนใหญ่คือ *ชื่อกลิ่น* (Walk on beach 01 · Forest night · …) เพราะเมื่อก่อน
 // ไม่มีที่เก็บกลิ่น — migration ตั้งใจไม่เดาแทน RD จึงยกมาให้ตัดสินทีละแถวที่นี่
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Archive, ArchiveRestore, Beaker, Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
@@ -49,8 +50,10 @@ export default function FormulasPage() {
   const [unsorted, setUnsorted] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("open");
+  // ?q= = ลิงก์เข้ามาจากที่อื่น — ดูหมายเหตุเดียวกันในหน้าทะเบียนกลิ่น
+  const linkedQuery = useSearchParams().get("q") || "";
+  const [search, setSearch] = useState(linkedQuery);
+  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
 
   const [form, setForm] = useState(null);      // { mode, formula?, value }
   const [accept, setAccept] = useState(null);  // { formula, code }
