@@ -37,6 +37,7 @@ import {
 } from '@/lib/forceDelete';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
 
@@ -55,7 +56,8 @@ async function loadOrder(supabase, id) {
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
-      ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
+      // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย)
+      ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
   ]);
@@ -266,6 +268,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ขั้นที่ 2: ออก Rev. จากใบที่ยกเลิกอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
   if (action === 'revise') {
+    // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
+    const closedProject = projectWriteBlockedError(before.project)
+      ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. Sale Order ไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
+      : null;
+    if (closedProject) return badRequest(closedProject);
     if (!canIssueSalesOrderRevision(before, { reviewer })) {
       return forbidden(before.status === 'approved'
         ? 'ต้องกด "ยกเลิกอนุมัติ" ก่อนจึงจะออก Rev. ได้'

@@ -16,6 +16,7 @@ import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuo
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -161,8 +162,14 @@ export async function POST(request, { params }) {
     return Response.json({ error: 'PO นี้ยังไม่มีโครงการ PM — กด "สร้างโครงการ PM" ก่อน แล้วจึงยืนยันดีล/ออกใบเสนอราคา' }, { status: 400 });
   }
   const { data: project } = await supabase
-    .from('projects').select('id, code, metadata').eq('id', po.projectId).maybeSingle();
+    .from('projects').select('id, code, metadata, closeStatus').eq('id', po.projectId).maybeSingle();
   if (!project) return Response.json({ error: 'ไม่พบโครงการ PM ที่ผูกกับ PO นี้' }, { status: 400 });
+  // ทางนี้จบด้วยการออก QT เหมือนกัน → อยู่ในขอบเขตด่าน B3 (โครงการปิดแล้วห้ามออกใบใหม่)
+  if (projectWriteBlockedError(project)) {
+    return Response.json({
+      error: `โครงการ ${project.code || 'PM'} ปิดแล้ว — ยืนยันดีล/ออกใบเสนอราคาไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`,
+    }, { status: 400 });
+  }
 
   const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
   const products = await loadSahamitProducts(supabase, customerId);

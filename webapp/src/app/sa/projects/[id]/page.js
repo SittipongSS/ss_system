@@ -35,6 +35,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import ReasonDialog from "@/components/ui/ReasonDialog";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
@@ -73,6 +74,26 @@ const STAFF_DEPTS = ["PC", "PD", "WH", "RD", "QC"];
 // ตัวแทนของฝ่าย (staff ที่ department ตรง) — โมเดลปัจจุบัน 1 คนต่อฝ่าย
 function deptRep(users, dept) {
   return users.find((u) => u.role === "staff" && u.department === dept) || null;
+}
+
+// เตือนงานค้างสายขายก่อนปิดโครงการ (มติ B3 2026-07-27) — **เตือนอย่างเดียว ไม่บล็อก**
+// ปุ่มขอปิด/อนุมัติปิดยังกดได้ตามปกติแม้ตัวเลขไม่เป็นศูนย์ บางโครงการปิดทั้งที่มีใบค้าง
+// โดยเจตนา (ยกเลิกกลางคัน เอกสารที่เหลือไปตัดจบทางอื่น) — อย่าเปลี่ยนเป็นด่านโดยไม่ถามผู้ใช้
+function CloseReadinessNotice({ readiness }) {
+  if (!readiness?.total) return null;
+  return (
+    <StatusNotice tone="warning" title={`ยังมีเอกสารสายขายค้างอยู่ ${readiness.total} ใบ`}>
+      <ul className="close-readiness-list">
+        {readiness.items.map((item) => (
+          <li key={item.key}>
+            {item.label} <strong>{item.count}</strong> ใบ
+            {item.refs.length ? <span className="close-readiness-refs"> · {item.refs.slice(0, 3).join(", ")}{item.refs.length > 3 ? ` และอีก ${item.refs.length - 3}` : ""}</span> : null}
+          </li>
+        ))}
+      </ul>
+      ปิดโครงการได้ตามปกติ — แต่หลังปิดแล้วจะออกใบเสนอราคา/Sale Order ใบใหม่ในโครงการนี้ไม่ได้จนกว่าจะเปิดใหม่ (RE-ORDER)
+    </StatusNotice>
+  );
 }
 
 // ชื่อผู้รับผิดชอบที่จะโชว์บน timeline/list:
@@ -214,6 +235,20 @@ export default function ProjectDetailPage() {
   // ถอยหลัง/ตีกลับ ต้องกรอกเหตุผลเสมอ — ใช้ ReasonDialog กลาง (เดิมเป็น window.prompt)
   const [reopenForm, setReopenForm] = useState(null); // { reason } เมื่อเปิด modal เปิดโครงการใหม่
   const [rejectForm, setRejectForm] = useState(null); // { reason } เมื่อเปิด modal ตีกลับคำขอปิด
+  // งานค้างสายขาย (มติ B3): เตือนแต่ไม่บล็อก — คนขอปิดกับคนอนุมัติต้องเห็นก่อนกด
+  // ไม่ใช่ไปรู้ทีหลังตอนออกใบใหม่ไม่ได้แล้ว. โหลดเมื่อยังไม่ปิด (ปิดไปแล้วไม่มีอะไรให้เตือน)
+  const [closeReadiness, setCloseReadiness] = useState(null);
+  const closeStatusNow = data?.closeStatus || "open";
+  useEffect(() => {
+    if (!id || closeStatusNow === "closed") { setCloseReadiness(null); return undefined; }
+    let alive = true;
+    fetch(`/api/pm/projects/${id}/close`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => { if (alive) setCloseReadiness(payload); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [id, closeStatusNow]);
+
   const closeAction = useCallback(async (action, payload = {}) => {
     setCloseBusy(action);
     try {
@@ -958,6 +993,10 @@ export default function ProjectDetailPage() {
         // แสดงการ์ดเฉพาะเมื่อมีอะไรให้ทำ/แสดง (open+แก้ได้ / รออนุมัติ / ปิดแล้ว)
         if (cs === "open" && !canReqClose) return null;
         return (
+          <>
+          {/* งานค้างสายขาย — ผู้อนุมัติต้องเห็นชุดเดียวกับที่ผู้ขอเห็นในโมดัล (มติ B3
+              เตือนแต่ไม่บล็อก) ปิดไปแล้วไม่ต้องเตือน ตัวโหลดหยุดยิงเองตาม closeStatus */}
+          {cs === "pending_close" && <CloseReadinessNotice readiness={closeReadiness} />}
           <div className="glass-panel" style={{ marginTop: 16, padding: "12px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between", borderColor: cs === "pending_close" ? "var(--amber)" : cs === "closed" ? "var(--border)" : "var(--border)" }}>
             <div style={{ fontSize: 13 }}>
               <strong>สถานะการปิดโครงการ:</strong> {PROJECT_CLOSE_STATUS_LABELS[cs]}
@@ -974,6 +1013,7 @@ export default function ProjectDetailPage() {
               {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setReopenForm({ reason: "" })}>เปิดโครงการใหม่ (RE-ORDER)</button>}
             </div>
           </div>
+          </>
         );
       })()}
 
@@ -1855,6 +1895,7 @@ export default function ProjectDetailPage() {
         <Modal open onClose={() => setCloseReqForm(null)} title="ขออนุมัติปิดโครงการ" size="sm" dismissible={!closeBusy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ color: "var(--text-2)", margin: 0, fontSize: 13 }}>คำขอจะส่งให้ AE Supervisor อนุมัติ — เลือกประเภทการปิด</p>
+            <CloseReadinessNotice readiness={closeReadiness} />
             <label style={{ fontSize: 13 }}>
               <span style={{ color: "var(--text-2)" }}>ประเภทการปิด</span>
               <Select value={closeReqForm.closeType} onChange={(e) => setCloseReqForm((f) => ({ ...f, closeType: e.target.value }))}>

@@ -6,8 +6,51 @@ import { sendChat, chatCard } from '@/lib/chat';
 import {
   canApproveProjectClose, canProjectCloseTransition, isValidCloseType, PROJECT_CLOSE_TYPE_LABELS,
 } from '@/lib/pm/projectClose';
+import { summarizeProjectCloseReadiness } from '@/lib/pm/projectCloseReadiness';
+import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
+
+// GET /api/pm/projects/[id]/close — "ยังมีอะไรค้าง" ก่อนปิด (มติ B3: เตือนแต่ไม่บล็อก)
+// ทั้งคนขอปิดและคนอนุมัติเห็นชุดเดียวกัน ตัวเลขไม่ได้เป็นเงื่อนไขของ POST แต่อย่างใด
+export const GET = withUser(async ({ user, supabase, ctx }) => {
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden();
+
+  const { id: idOrCode } = await ctx.params;
+  const project = await loadProject(supabase, idOrCode);
+  if (!project) return notFound('ไม่พบโครงการ');
+
+  const { data: deals, error: dealError } = await supabase
+    .from('sales_deals').select('id').eq('projectId', project.id);
+  if (dealError) return fail(dealError.message, 500);
+  const dealIds = (deals || []).map((deal) => deal.id);
+
+  try {
+    // สองตัวแรกมาจากตัวตัดสินกลางของคิวรอยต่อ (lib/sales/handoffQueue) — คำเตือนตอนปิด
+    // กับการ์ดคิวบนแดชบอร์ดต้องนับด้วยกติกาเดียวกัน ไม่งั้นสองที่บอกไม่ตรงกัน
+    const handoff = await loadHandoffQueue(supabase, { dealIds });
+    const { data: salesOrders, error: orderError } = dealIds.length
+      ? await supabase.from('sales_orders')
+        .select('id, orderNumber, status, supersededById').in('dealId', dealIds)
+      : { data: [], error: null };
+    if (orderError) throw orderError;
+    const orderIds = (salesOrders || []).map((order) => order.id);
+    const { data: filings, error: filingError } = orderIds.length
+      ? await supabase.from('orders').select('id, status, salesOrderId').in('salesOrderId', orderIds)
+      : { data: [], error: null };
+    if (filingError) throw filingError;
+
+    return ok(summarizeProjectCloseReadiness({
+      awaitingSalesOrder: handoff.awaitingSalesOrder,
+      awaitingFiling: handoff.awaitingFiling,
+      salesOrders: salesOrders || [],
+      filings: filings || [],
+    }));
+  } catch (readinessError) {
+    return fail(`ตรวจงานค้างก่อนปิดโครงการไม่สำเร็จ: ${readinessError.message}`, 500);
+  }
+});
 
 // POST /api/pm/projects/[id]/close — ด่านอนุมัติปิดโครงการ (เฟส F, มติ 2026-07-18).
 // action: request | cancel_request | approve | reject | reopen
