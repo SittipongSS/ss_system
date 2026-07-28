@@ -1,6 +1,5 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -35,6 +34,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
+import ReasonDialog from "@/components/ui/ReasonDialog";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
@@ -59,6 +59,10 @@ const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
   "On Hold": "ระงับ (On Hold)", Dropped: "ยกเลิก (Dropped)",
 };
+
+// ทุก transition ที่ถอยหลัง/ตีกลับ บังคับกรอกเหตุผล — ความยาวเท่ากับที่ QT/SO ใช้
+const CLOSE_REASON_MIN = 10;
+const CLOSE_REASON_MAX = 500;
 
 
 
@@ -207,6 +211,9 @@ export default function ProjectDetailPage() {
   // เฟส F — อนุมัติปิดโครงการ (มติ 2026-07-18)
   const [closeBusy, setCloseBusy] = useState("");
   const [closeReqForm, setCloseReqForm] = useState(null); // { closeType, reason } เมื่อเปิด modal ขอปิด
+  // ถอยหลัง/ตีกลับ ต้องกรอกเหตุผลเสมอ — ใช้ ReasonDialog กลาง (เดิมเป็น window.prompt)
+  const [reopenForm, setReopenForm] = useState(null); // { reason } เมื่อเปิด modal เปิดโครงการใหม่
+  const [rejectForm, setRejectForm] = useState(null); // { reason } เมื่อเปิด modal ตีกลับคำขอปิด
   const closeAction = useCallback(async (action, payload = {}) => {
     setCloseBusy(action);
     try {
@@ -225,13 +232,26 @@ export default function ProjectDetailPage() {
     const ok = await closeAction("request", { closeType: closeReqForm.closeType, reason: closeReqForm.reason.trim() });
     if (ok) setCloseReqForm(null);
   };
-  const promptReopen = async () => {
-    const reason = window.prompt("เหตุผลที่เปิดโครงการใหม่ (เช่น RE-ORDER ลูกค้ากลับมา)")?.trim();
-    if (reason) await closeAction("reopen", { reason });
+  // ถอนคำขอปิด — ผู้ยื่นดึงคำขอของตัวเองกลับ ไม่ใช่การตีกลับของผู้อนุมัติ จึงยืนยันพอ
+  // ไม่บังคับเหตุผล (ไม่มีใครต้องอ่านเหตุผลที่คนถอนคำขอตัวเอง)
+  const withdrawCloseRequest = async () => {
+    if (!(await askConfirm({
+      title: "ถอนคำขอปิดโครงการ",
+      message: "คำขอปิดโครงการจะถูกถอนออกจากคิวอนุมัติ และโครงการกลับมาสถานะเปิด — ยื่นขอปิดใหม่ได้ภายหลัง",
+      confirmLabel: "ถอนคำขอ",
+      danger: false,
+    }))) return;
+    await closeAction("cancel_request");
   };
-  const promptReject = async () => {
-    const reason = window.prompt("เหตุผลที่ตีกลับคำขอปิด")?.trim();
-    if (reason) await closeAction("reject", { reason });
+  const submitReopen = async () => {
+    const reason = (reopenForm?.reason || "").trim();
+    if (reason.length < CLOSE_REASON_MIN) return;
+    if (await closeAction("reopen", { reason })) setReopenForm(null);
+  };
+  const submitReject = async () => {
+    const reason = (rejectForm?.reason || "").trim();
+    if (reason.length < CLOSE_REASON_MIN) return;
+    if (await closeAction("reject", { reason })) setRejectForm(null);
   };
 
   useEffect(() => {
@@ -496,6 +516,32 @@ export default function ProjectDetailPage() {
     if (!reason) { setToast({ kind: "error", msg: "กรุณาระบุเหตุผลที่ยกเลิก" }); return; }
     setShowDrop(false);
     await updateProject({ status: "Dropped", metadata: { ...(data.metadata || {}), lossReason: reason } });
+  };
+
+  // พัก/ดึงกลับ — เปลี่ยนสถานะโครงการทั้งใบ ต้องผ่านกล่องยืนยันก่อนเสมอ
+  const holdProject = async () => {
+    if (!(await askConfirm({
+      title: "ระงับโครงการชั่วคราว",
+      message: "โครงการจะถูกพักไว้ (On Hold) — ขั้นตอนที่ค้างยังอยู่ครบ และดึงกลับมาดำเนินการได้ภายหลัง",
+      confirmLabel: "ระงับชั่วคราว",
+      danger: false,
+    }))) return;
+    await updateProject({ status: "On Hold" });
+  };
+  // สองปุ่ม Restore เป็น "คนละ transition" กัน จึงคุมสิทธิ์ต่างกันโดยเจตนา:
+  //   จาก Dropped (ยกเลิกแล้ว) = senior_ae ขึ้นไป — ปลุกโครงการที่ตัดสินใจทิ้งไปแล้ว
+  //   จาก On Hold (พักไว้)     = เจ้าของดีล    — งานของตัวเองที่แค่พักไว้ กลับมาทำต่อได้เอง
+  // ห้ามยุบสองปุ่มนี้ให้ใช้เงื่อนไขสิทธิ์เดียวกัน
+  const restoreProject = async (from) => {
+    if (!(await askConfirm({
+      title: "ดึงกลับมาดำเนินการ",
+      message: from === "Dropped"
+        ? "โครงการที่ยกเลิกแล้วจะกลับมาสถานะดำเนินการ (In Progress) — เหตุผลที่ยกเลิกเดิมยังอยู่ในประวัติ"
+        : "โครงการที่พักไว้จะกลับมาสถานะดำเนินการ (In Progress) — ขั้นตอนที่ค้างเดินต่อจากเดิม",
+      confirmLabel: "ดึงกลับมาดำเนินการ",
+      danger: false,
+    }))) return;
+    await updateProject({ status: "In Progress" });
   };
 
   const handleDeleteProject = async () => {
@@ -922,10 +968,10 @@ export default function ProjectDetailPage() {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {canReqClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setCloseReqForm({ closeType: "completed", reason: "" })}>ขอปิดโครงการ</button>}
-              {cs === "pending_close" && isRequester && <button type="button" className="btn ghost" disabled={!!closeBusy} onClick={() => closeAction("cancel_request")}>ถอนคำขอ</button>}
-              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn btn-danger" disabled={!!closeBusy} onClick={promptReject}>ตีกลับ</button></>}
+              {cs === "pending_close" && isRequester && <button type="button" className="btn ghost" disabled={!!closeBusy} onClick={withdrawCloseRequest}>ถอนคำขอ</button>}
+              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn btn-danger" disabled={!!closeBusy} onClick={() => setRejectForm({ reason: "" })}>ตีกลับ</button></>}
               {cs === "pending_close" && p.canApproveClose && isRequester && <span className="ui-badge" style={{ color: "var(--text-3)" }}>คำขอของคุณ ต้องให้ผู้อนุมัติคนอื่น</span>}
-              {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={promptReopen}>เปิดโครงการใหม่ (RE-ORDER)</button>}
+              {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setReopenForm({ reason: "" })}>เปิดโครงการใหม่ (RE-ORDER)</button>}
             </div>
           </div>
         );
@@ -1181,8 +1227,9 @@ export default function ProjectDetailPage() {
               </div>
             )}
           </div>
+          {/* Restore จาก Dropped — สิทธิ์ senior_ae ขึ้นไป (ดูคอมเมนต์ที่ restoreProject) */}
           {hasWriteAccess && (userRole === "senior_ae" || isSuperuser(userRole)) && (
-            <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
+            <button type="button" className="btn btn-primary" onClick={() => restoreProject("Dropped")}>
               <Activity size={14} /> ดึงกลับมาดำเนินการ (Restore)
             </button>
           )}
@@ -1578,14 +1625,15 @@ export default function ProjectDetailPage() {
       {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
+            /* Restore จาก On Hold — สิทธิ์เจ้าของดีล (ดูคอมเมนต์ที่ restoreProject) */
             ((myName && p.aeOwner === myName) || isSuperuser(userRole)) && (
-              <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
+              <button type="button" className="btn btn-primary" onClick={() => restoreProject("On Hold")}>
                 <CheckCircle2 size={14} /> ดึงกลับมาดำเนินการ (Restore)
               </button>
             )
           ) : (
             <>
-              <button type="button" className="btn btn-warning" onClick={() => updateProject({ status: "On Hold" })}>
+              <button type="button" className="btn btn-warning" onClick={holdProject}>
                 <Pause size={14} /> ระงับชั่วคราว (On Hold)
               </button>
               <button type="button" className="btn btn-danger" onClick={openDrop}>
@@ -1710,6 +1758,48 @@ export default function ProjectDetailPage() {
         message={confirmState?.message}
         confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
         danger={confirmState?.danger ?? true}
+      />
+
+      {/* ตีกลับคำขอปิด — ผู้อนุมัติส่งกลับให้ผู้ขอแก้ พร้อมเหตุผลที่บังคับกรอก */}
+      <ReasonDialog
+        open={!!rejectForm}
+        title="ตีกลับคำขอปิดโครงการ"
+        description={`คำขอปิดโครงการ ${p?.code || "-"} จะกลับไปให้ผู้ขอแก้ พร้อมเหตุผลที่คุณระบุ`}
+        detail="ผู้ขอปิดจะเห็นเหตุผลนี้บนโครงการ แก้เสร็จต้องยื่นขอปิดใหม่"
+        label="เหตุผลที่ตีกลับ"
+        value={rejectForm?.reason || ""}
+        onChange={(reason) => setRejectForm({ reason })}
+        onClose={() => setRejectForm(null)}
+        onConfirm={submitReject}
+        confirmLabel="ยืนยันตีกลับ"
+        placeholder="ระบุสิ่งที่ต้องแก้ให้ชัดเจน เช่น ยังมีขั้นตอนค้างที่ยังไม่ปิด"
+        helpText={`อย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร · ${(rejectForm?.reason || "").length}/${CLOSE_REASON_MAX}`}
+        error={rejectForm?.reason && rejectForm.reason.trim().length < CLOSE_REASON_MIN ? `กรุณาระบุอย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร` : ""}
+        minLength={CLOSE_REASON_MIN}
+        maxLength={CLOSE_REASON_MAX}
+        tone="danger"
+        busy={closeBusy === "reject"}
+      />
+
+      {/* เปิดโครงการใหม่ — ถอยจาก "ปิดแล้ว" กลับมาดำเนินการ ต้องมีเหตุผลกำกับ */}
+      <ReasonDialog
+        open={!!reopenForm}
+        title="เปิดโครงการใหม่ (RE-ORDER)"
+        description={`โครงการ ${p?.code || "-"} จะกลับมาสถานะเปิด และแก้ไขขั้นตอนได้อีกครั้ง`}
+        detail="ใช้เมื่อลูกค้ากลับมาสั่งซ้ำหรือปิดโครงการผิด หลักฐานการปิดเดิมยังอยู่ในประวัติ"
+        label="เหตุผลที่เปิดโครงการใหม่"
+        value={reopenForm?.reason || ""}
+        onChange={(reason) => setReopenForm({ reason })}
+        onClose={() => setReopenForm(null)}
+        onConfirm={submitReopen}
+        confirmLabel="ยืนยันเปิดโครงการใหม่"
+        placeholder="เช่น RE-ORDER ลูกค้ากลับมาสั่งซ้ำล็อตที่ 2"
+        helpText={`อย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร · ${(reopenForm?.reason || "").length}/${CLOSE_REASON_MAX}`}
+        error={reopenForm?.reason && reopenForm.reason.trim().length < CLOSE_REASON_MIN ? `กรุณาระบุอย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร` : ""}
+        minLength={CLOSE_REASON_MIN}
+        maxLength={CLOSE_REASON_MAX}
+        tone="warning"
+        busy={closeBusy === "reopen"}
       />
 
       <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโครงการ" size="sm">
