@@ -490,6 +490,12 @@ CREATE TABLE IF NOT EXISTS public.material_deliveries (
   "dueDate"       date,                             -- กำหนดถึง
   "arrivedAt"     date,                             -- มาแล้ว (null = ยังไม่มา)
   "ownerId"       text, "ownerName" text,           -- PC ผู้รับผิดชอบ
+  -- มติ 13: แถวส่วนใหญ่ "กาง" มาจากบรรทัดของใบขอราคาผลิตที่อนุมัติแล้ว
+  -- SET NULL: ลบใบ CR แล้วรายการของเข้าต้องอยู่ต่อ (ของสั่งไปแล้วจริง)
+  "costingRequestId" text REFERENCES public.costing_requests(id) ON DELETE SET NULL,
+  "componentId"      text,                          -- บรรทัดต้นทางในใบ (logical link)
+  "source"        text NOT NULL DEFAULT 'manual'
+                    CHECK (source IN ('manual', 'costing')),
   -- คำร้องติดตามที่ทำให้แถวนี้ถูกอัปเดตล่าสุด (logical link ไม่ใส่ FK — คำร้องถูกลบได้
   -- แต่ข้อมูลของเข้าต้องอยู่ต่อ)
   "requestId"     text,
@@ -504,6 +510,11 @@ CREATE INDEX IF NOT EXISTS material_deliveries_project_idx
   ON public.material_deliveries ("projectId", "dueDate");
 CREATE INDEX IF NOT EXISTS material_deliveries_open_idx
   ON public.material_deliveries ("projectId") WHERE "arrivedAt" IS NULL;
+-- ⚠ กดปุ่ม "กางจากใบขอราคาผลิต" ซ้ำต้องไม่ได้แถวซ้ำ (idempotent ที่ระดับ DB
+--   ไม่ใช่พึ่ง client ไม่กดสองครั้ง) — partial เพราะแถวที่พิมพ์เองไม่มี componentId
+CREATE UNIQUE INDEX IF NOT EXISTS material_deliveries_component_uk
+  ON public.material_deliveries ("projectId", "componentId")
+  WHERE "componentId" IS NOT NULL;
 
 ALTER TABLE public.material_deliveries ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.material_deliveries FROM anon, authenticated;
@@ -512,6 +523,69 @@ GRANT  ALL ON TABLE public.material_deliveries TO service_role;
 COMMIT;
 
 NOTIFY pgrst, 'reload schema';
+```
+
+### 0173 — แจ้งเตือนรายคน (มติ 14/15)
+
+```sql
+-- ============================================================
+--  Migration 0173: แจ้งเตือนรายคน (notifications)
+--  แผน docs/cross-department-requests-plan.md §11
+--
+--  ระบบยังไม่มีแจ้งเตือนในแอปเลย — มีแต่ Google Chat webhook ที่ยิงเข้า
+--  **ห้องรวมของฝ่าย** (8 space ใน lib/chat.js) ซึ่งบอกไม่ได้ว่าใครต้องทำ
+--  และไม่มีทางรู้ว่าใครอ่านแล้ว → คำตอบของ RD ที่ SA ไม่เห็น = งานค้างเงียบ
+--
+--  ตารางนี้เป็นทั้งกล่องแจ้งเตือนและแหล่งของ "ตัวนับยังไม่ได้อ่าน" (มติ 15:
+--  ตัวนับ derive จาก readAt IS NULL — ไม่มีตาราง watermark ต่อเธรดต่อคน)
+--
+--  ⚠ รันมือบน Supabase SQL Editor · ต้องรัน **ก่อน** deploy โค้ด PR-7
+-- ============================================================
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id            text PRIMARY KEY,
+  -- ผู้รับ 1 คน 1 แถว (fan-out ตอนเขียน) — อ่านเร็วและนับ unread ได้ตรง ๆ
+  -- ไม่ใช้แบบ "1 เหตุการณ์ + ตารางผู้อ่าน" เพราะทุก query ที่ผู้ใช้เห็นจะต้อง join
+  "userId"      text NOT NULL,
+  -- polymorphic แบบเดียวกับ entity_updates/attachments — ไม่มี FK โดยเจตนา
+  "entityType"  text NOT NULL,
+  "entityId"    text NOT NULL,
+  -- ชนิดแจ้งเตือนประกาศในโค้ด (lib/master/notificationTypes.js) ไม่ผูก CHECK
+  kind          text NOT NULL,
+  title         text NOT NULL CHECK (length(title) <= 200),
+  body          text CHECK (body IS NULL OR length(body) <= 500),
+  "linkPath"    text,                                -- เปิดไปที่ไหนเมื่อกด
+  -- ข้อความต้นทางในเธรด (ถ้าแจ้งเตือนนี้มาจากเธรด) — ใช้พาไปยังข้อความนั้นตรง ๆ
+  "updateId"    text,
+  "actorId"     text, "actorName" text,              -- คนที่ทำให้เกิดเหตุการณ์
+  "readAt"      timestamptz,
+  "createdAt"   timestamptz NOT NULL DEFAULT now()
+);
+
+-- กล่องแจ้งเตือนของคนหนึ่ง (เรียงใหม่→เก่า) + ตัวนับ unread
+CREATE INDEX IF NOT EXISTS notifications_inbox_idx
+  ON public.notifications ("userId", "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS notifications_unread_idx
+  ON public.notifications ("userId") WHERE "readAt" IS NULL;
+-- ตัวนับต่อ entity ("เคสนี้มี 3 เรื่องที่คุณยังไม่ได้ดู")
+CREATE INDEX IF NOT EXISTS notifications_entity_idx
+  ON public.notifications ("userId", "entityType", "entityId") WHERE "readAt" IS NULL;
+-- ⚠ กันแจ้งเตือนซ้ำจากเหตุการณ์เดียวกัน (retry / กดสองครั้ง)
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe_uk
+  ON public.notifications ("userId", "updateId") WHERE "updateId" IS NOT NULL;
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.notifications FROM anon, authenticated;
+GRANT  ALL ON TABLE public.notifications TO service_role;
+
+COMMIT;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ── เก็บกวาด (ตั้ง cron ทีหลัง — ตารางนี้โตเร็วที่สุดในระบบ) ────────────────
+-- DELETE FROM notifications WHERE "readAt" IS NOT NULL AND "createdAt" < now() - interval '90 days';
 ```
 
 ---
@@ -568,6 +642,9 @@ NOTIFY pgrst, 'reload schema';
 ### PR-4 — ของเข้า & กำหนดการผลิต (mig 0172)
 
 - ตาราง `material_deliveries` + หน้า/แท็บในโครงการ + `PATCH` รายแถว (กำหนดถึง / มาแล้ว)
+- **ปุ่ม "กางรายการจากใบขอราคาผลิต"** (มติ 13) — `POST /api/pm/projects/[id]/deliveries/generate`
+  อ่านบรรทัดวัสดุของใบ CR ที่อนุมัติแล้วของดีลนั้น แล้วสร้างแถวให้ครบ (`source='costing'`)
+  · กดซ้ำไม่ได้แถวซ้ำเพราะ unique `(projectId, componentId)` · เพิ่ม/ลบ/พิมพ์เองทีหลังได้
 - สรุปขึ้นขั้น `npd-38` / `re-order-11`: `x/y รายการมาแล้ว · ช้าสุด <วันที่>`
 - คำร้อง `material_eta` = SA กดขอให้ PC อัปเดตทั้งชุด (ไม่ใช่ไล่ถามทีละตัว)
 - เมนูสหมิตร `วัสดุ / Lead time` → `ของเข้า (สหมิตร)` (แก้ชื่อชนกันอย่างเดียว ไม่ยุบรวม)
@@ -584,6 +661,10 @@ NOTIFY pgrst, 'reload schema';
 
 รายละเอียดใน §10 — ลีดมาใช้ component กลาง + เธรด QT/SO + ตอบยกคำพูด + drop
 `personal_task_updates` / `sales_deal_activities`
+
+### PR-7 — แจ้งเตือนรายคน + ตัวนับยังไม่ได้อ่าน (mig 0173)
+
+รายละเอียดใน §11
 
 ### PR-0 — แยก executive ออกจาก admin (ทำแยกได้ทันที ไม่ต้องรอ PR อื่น)
 
@@ -611,13 +692,16 @@ NOTIFY pgrst, 'reload schema';
 
 ## 8. คำถามที่ยังไม่ได้ตัดสิน
 
-ข้อ 1–4 ปิดแล้วในมติรอบ 2 (§1 ข้อ 7–10) · เหลือข้อเดียว:
+**ปิดครบทุกข้อแล้ว** (มติรอบ 2 §1 ข้อ 7–10 · มติรอบ 3 ข้อ 13–15 ข้างล่าง)
 
-1. **รายการของเข้าเกิดขึ้นมาได้ยังไง** — งานหนึ่งใช้ ขวด+ฝา+กล่อง+หัวน้ำหอม = 4 แถวที่ต้องติดตาม
-   ใครสร้าง 4 แถวนั้น?
-   - **ก) PC พิมพ์เองทั้งหมด** — ยืดหยุ่นสุด แต่พิมพ์ซ้ำกับที่กรอกในใบขอราคาผลิตไปแล้ว
-   - **ข) ระบบกางให้จากบรรทัดของใบขอราคาผลิตที่อนุมัติแล้ว** (แนะนำ) — ใบนั้นมีวัสดุครบอยู่แล้ว
-     กดปุ่มเดียวได้ครบ PC เติมแค่วันที่ · เพิ่ม/ลบแถวเองทีหลังได้ · งานที่ไม่มีใบ CR ก็ยังพิมพ์เองได้
+### มติรอบ 3 (2026-07-28)
+
+13. **รายการของเข้า: ระบบกางให้จากใบขอราคาผลิตที่อนุมัติแล้ว** — ใบ CR มีบรรทัดวัสดุครบอยู่แล้ว
+    กดปุ่มเดียวได้ทั้งชุด PC เติมแค่วันที่ · ยังเพิ่ม/ลบ/พิมพ์แถวเองได้ (งานที่ไม่มีใบ CR)
+14. **เธรดต้องมีแจ้งเตือน** → ต้องสร้างชั้นแจ้งเตือน**รายคน**ขึ้นใหม่ (ระบบตอนนี้มีแต่ Chat webhook
+    เข้าห้องรวมของฝ่าย) — ดู §11
+15. **ตัวนับยังไม่ได้อ่าน = derive จากแจ้งเตือนที่ยังไม่อ่าน** ไม่สร้างกลไกแยก · **ไม่ทำ watermark
+    ต่อเธรดต่อคนแบบ Slack** (แพงและได้เพิ่มน้อย)
 
 ---
 
@@ -701,7 +785,75 @@ Supabase Auth app_metadata ไม่มีตาราง `public.users` ให�
 - **สวิตช์ซ่อนเหตุการณ์ระบบ** มีแล้ว (`isSystemUpdateItem`) — ตรวจว่าเธรดใหม่ทุกตัวประกาศ
   `authorable` ถูก ไม่งั้นข้อความคนจะถูกซ่อนไปกับเหตุการณ์ระบบ
 
-### ยังไม่ตัดสิน (เธรด)
+(ตัดสินแล้วทั้งคู่: มีแจ้งเตือน + มีตัวนับ — ดู §11)
 
-- **แจ้งเตือนเมื่อถูกพาดพิง (@mention)** — ต้องการไหม หรือพึ่ง Google Chat webhook รายเคสพอ
-- **ตัวนับ "ยังไม่ได้อ่าน"** — ต้องเก็บ read state รายคน (ตารางใหม่) คุ้มไหมกับจำนวนผู้ใช้ตอนนี้
+---
+
+## 11. แจ้งเตือนรายคน + ตัวนับยังไม่ได้อ่าน (มติ 14/15)
+
+### สิ่งที่ระบบมีตอนนี้ vs สิ่งที่ขาด
+
+| ชั้น | สถานะ | ปัญหา |
+|---|---|---|
+| Google Chat webhook เข้า **ห้องรวมของฝ่าย** (8 space, `lib/chat.js`) | ✅ มีแล้ว | บอกไม่ได้ว่า *ใคร* ต้องทำ · ทุกคนในฝ่ายเห็นเหมือนกันหมด · **ไม่มีทางรู้ว่าใครอ่านแล้ว** |
+| แจ้งเตือน**รายคน**ในแอป | ❌ ไม่มีเลย | คำตอบของ RD ที่ SA ไม่เห็น = งานค้างเงียบทั้งที่สถานะเขียนว่า "ตอบแล้ว" |
+| ตัวนับยังไม่ได้อ่าน | ❌ ไม่มี | ต้องเปิดทุกเคสในคิวเพื่อดูว่ามีอะไรใหม่ |
+
+**Chat webhook ไม่ถูกแทนที่** — มันยังเหมาะกับ "งานใหม่เข้าคิวฝ่าย" (ทั้งฝ่ายควรเห็น)
+ส่วนตารางใหม่รับ "เรื่องที่คุณเกี่ยวข้องโดยตรง" · สองชั้นนี้ทำคนละหน้าที่
+
+### ใครได้รับแจ้งเตือนบ้าง (กฎเดียวใช้ทุกเธรด)
+
+เขียนที่ `lib/master/notificationRecipients.js` — **ที่เดียว** ห้ามให้แต่ละโมดูลคิดเอง
+
+1. **ผู้เปิดคำร้อง** (`requestedById`) — เจ้าของเรื่อง
+2. **ผู้รับเรื่อง** (`acknowledgedById`) — คนที่รับปากว่าจะตอบ
+3. **คนที่เคยโพสต์ในเธรดนั้น** (participants — `DISTINCT authorId` จาก `entity_updates`)
+4. **คนที่ถูกพาดพิง `@`** ในข้อความ (แม้ไม่เคยอยู่ในเธรด)
+5. **ไม่ยิงกลับหาคนโพสต์เอง** — กฎข้อนี้ต้องอยู่ท้ายสุดเสมอ
+
+> ⚠️ อย่าใช้ "ทุกคนในฝ่าย" เป็นผู้รับ — นั่นคือสิ่งที่ Chat webhook ทำอยู่แล้ว ถ้าทำซ้ำจะได้
+> กล่องแจ้งเตือนที่ไม่มีใครอ่านภายในสัปดาห์เดียว
+
+### เหตุการณ์ที่ยิงแจ้งเตือน
+
+| เหตุการณ์ | ถึงใคร |
+|---|---|
+| มีข้อความใหม่ในเธรด | ผู้เกี่ยวข้องตามกฎข้างบน |
+| ถูกพาดพิง `@ชื่อ` | คนนั้น (แม้ไม่เคยอยู่ในเธรด) |
+| คำร้องถูกรับเรื่อง / ตอบครบ / ปิด / ตีกลับ | ผู้เปิดคำร้อง |
+| ราคาผลิตอนุมัติ / ตีกลับ | ผู้ยื่นใบ |
+| Feedback กลิ่นเข้ามา | RD เจ้าของกลิ่น |
+| วันของเข้าเลื่อน / ของมาถึง | เจ้าของดีล + เจ้าของโครงการ |
+
+### ตัวนับ (มติ 15 — ไม่ทำ watermark)
+
+- **กระดิ่งบนแถบบน** = `count(*) WHERE userId = me AND readAt IS NULL`
+- **ป้ายบนแถวในคิว** = นับ unread ต่อ `(entityType, entityId)` — "เคสนี้มี 3 เรื่องที่คุณยังไม่ได้ดู"
+- **เปิดเธรด = mark read** ของ entity นั้นทั้งก้อน (1 UPDATE) ไม่ต้องรู้ว่าอ่านถึงข้อความไหน
+
+**ที่ตั้งใจไม่ทำ:** watermark ต่อเธรดต่อคนแบบ Slack (เส้นคั่น "ข้อความใหม่", "อ่านถึงข้อความที่ 7
+จาก 12") — ต้องมีตารางแยกและเขียนทุกครั้งที่เลื่อนดู แลกกับประโยชน์ส่วนเพิ่มที่น้อย
+
+### ไฟล์ที่แตะ (PR-7)
+
+| ไฟล์ | งาน |
+|---|---|
+| `supabase/migrations/0173_notifications.sql` | DDL |
+| `lib/master/notificationTypes.js` (ใหม่) | ชุด kind + ป้าย/ไอคอน (แพตเทิร์นเดียวกับ `updateTypes`) |
+| `lib/master/notificationRecipients.js` (ใหม่) | กฎผู้รับ **ที่เดียวของระบบ** |
+| `lib/notifications.js` (ใหม่) | `notify()` fan-out + dedupe + mark read |
+| `app/api/notifications/route.js` · `read/route.js` | กล่อง + ตัวนับ + mark read |
+| `components/ui/NotificationBell.js` (ใหม่) | กระดิ่ง + dropdown ใน `AppLayout` |
+| `components/ui/UpdateThread.js` | ยิง `notify()` ตอนโพสต์ + `@mention` picker |
+| `src/proxy.js` | ลงทะเบียน `/api/notifications*` |
+| cron | ลบแจ้งเตือนที่อ่านแล้วเกิน 90 วัน (ตารางนี้โตเร็วที่สุดในระบบ) |
+
+### ความเสี่ยงเฉพาะของ PR นี้
+
+| ความเสี่ยง | กันอย่างไร |
+|---|---|
+| ตารางโตเร็วมาก (fan-out 1 เหตุการณ์ = N แถว) | index มี partial `WHERE readAt IS NULL` + cron ลบของเก่า |
+| แจ้งเตือนซ้ำจาก retry | unique `(userId, updateId)` ที่ระดับ DB ไม่พึ่ง client |
+| ยิงหาคนโพสต์เอง = กล่องเต็มด้วยเสียงตัวเอง | กฎข้อ 5 ต้องอยู่ท้ายสุดเสมอ + เทสต์ครอบ |
+| `@mention` ทำให้เห็นชื่อคนนอกสิทธิ์ | picker ต้องกรองด้วย scope เดิมของ entity นั้น ไม่ใช่ list ผู้ใช้ทั้งบริษัท |
