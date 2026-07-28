@@ -712,7 +712,7 @@ export default function CustomerDetails() {
             showTeams
             canEditTeams={superuser}
           />
-          <div className="form-action-bar page">
+          <div className="form-action-bar is-page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary">
               {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}

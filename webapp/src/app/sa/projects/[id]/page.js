@@ -1916,7 +1916,7 @@ export default function ProjectDetailPage() {
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
       {dirtyCount > 0 && (
-        <div className="timeline-save-bar form-action-bar page" role="status">
+        <div className="timeline-save-bar form-action-bar is-page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button className="btn" onClick={cancelEdits}>ยกเลิกการแก้ไข</button>
           <button className="btn btn-primary" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>

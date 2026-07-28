@@ -8,7 +8,7 @@
   pointer-events: none;
 }
 
-:global(body:has(.form-actions, .form-action-bar.page, [data-toast-avoid])) .viewport {
+:global(body:has(.form-actions, .form-action-bar.is-page, [data-toast-avoid])) .viewport {
   bottom: max(88px, calc(env(safe-area-inset-bottom) + 80px));
 }
 

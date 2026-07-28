@@ -406,7 +406,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
       )}
 
       {/* Footer */}
-      <div className="form-action-bar page">
+      <div className="form-action-bar is-page">
         <span className="text-[13px] text-[var(--text-3)]">
           {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
           {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}

@@ -18,7 +18,9 @@ test("Toast foundation exposes a global provider, queue API, and portal", () => 
   for (const method of ["success", "error", "warning", "info", "dismiss", "clear"]) {
     assert.match(TOAST, new RegExp(`\\b${method}\\b`));
   }
-  assert.match(TOAST_CSS, /body:has\(\.form-actions, \.form-action-bar\.page, \[data-toast-avoid\]\)/);
+  // modifier ของแถบเต็มหน้าเปลี่ยนจาก `.page` เป็น `.is-page` แล้ว (ชนคลาสวางเลย์เอาต์ —
+  // ดู components/ui/formActionBar.test.mjs)
+  assert.match(TOAST_CSS, /body:has\(\.form-actions, \.form-action-bar\.is-page, \[data-toast-avoid\]\)/);
   assert.doesNotMatch(TOAST_CSS, /border-inline-start|border-left/);
 });
 
