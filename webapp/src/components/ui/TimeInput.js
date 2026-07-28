@@ -62,7 +62,18 @@ export default function TimeInput({
   }, [open]);
 
   const commit = (next) => {
-    const normalized = normalizeTime(next);
+    /* ลบข้อความจนว่าง = ตั้งใจล้างค่า ต้องบอกพ่อแม่ด้วย
+       บั๊กเดิม: onBlur ข้าม commit เมื่อ draft ว่าง (`if (draft)`) → ช่องว่างแต่ฟอร์มยัง
+       ถือเวลาเดิมไว้ และ value prop ไม่เปลี่ยนจึงไม่มี effect มาล้าง draft = เห็นช่องว่าง
+       แต่บันทึกค่าเก่า · DateInput ล้างได้อยู่แล้ว (update("") เรียก onChange(""))
+       ความไม่สมมาตรนี้คือต้นเหตุ */
+    const text = String(next ?? "").trim();
+    if (!text) {
+      setDraft("");
+      onChange?.("");
+      return true;
+    }
+    const normalized = normalizeTime(text);
     if (normalized) {
       setDraft(normalized);
       onChange?.(normalized);
@@ -95,7 +106,7 @@ export default function TimeInput({
           placeholder="HH:mm"
           maxLength={5}
           onChange={(event) => setDraft(event.target.value.replace(/[^\d:]/g, "").slice(0, 5))}
-          onBlur={() => { if (draft) commit(draft); }}
+          onBlur={() => commit(draft)}
           onKeyDown={(event) => {
             if (event.key === "Enter") commit(draft);
             if (event.key === "ArrowDown") setOpen(true);
