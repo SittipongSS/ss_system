@@ -44,9 +44,15 @@ jobs:
       - name: Migration integrity
         run: npm run check:migrations
 
-      # TODO(audit:ui): `npm run audit:ui` ยังไม่เข้า CI เพราะบน main ตอนนี้ตกอยู่
-      # (หน้า /database/scents + /database/formulas เขียนด้วยชั้นสไตล์เก่า ทะลุเพดาน
-      # โมดูลฐานข้อมูลทั้ง 4 ตัว) — เพิ่มสเต็ปนี้พร้อม PR ที่แปลงสองหน้านั้น
+      # ด่านดีไซน์: เพดานชั้นสไตล์เก่าต่อโมดูล (ratchet) + contract ของ primitive กลาง
+      # + คลาสที่ไม่มี selector จริงใน globals.css
+      #
+      # ก่อนหน้านี้ไม่เคยอยู่ใน CI เลย — ratchet จึงเป็นด่านที่ต้องมีคนเดินไปกดเอง
+      # PR #778 เลยผ่านฉลุยทั้งที่ดันเพดานเกินทั้ง 4 ตัว แล้ว main ค้างแดงอยู่หลายวัน
+      # โดยไม่มีอะไรเตือน (ตามเก็บที่ #785)
+      - name: UI audit
+        run: npm run audit:ui
+
       - name: Test
         run: npm test
 
