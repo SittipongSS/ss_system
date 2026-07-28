@@ -340,7 +340,9 @@ export default function InquiryThreadPage() {
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                       {m.canAcknowledge && <button className="btn ghost sm" onClick={() => messageAction(m, "acknowledge")} disabled={!!busy}><CheckCircle2 size={12} /> รับทราบ</button>}
                       {m.canEdit && <button className="btn ghost sm" onClick={() => editMessage(m)} disabled={!!busy}><Edit2 size={12} /> แก้ไข</button>}
-                      {m.canDelete && <button className="btn ghost sm danger" onClick={async () => (await confirmAction("ลบข้อความนี้?")) && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
+                      {/* `btn ghost sm danger` เดิมเป็นคลาสตาย — ระบบไม่มี `.btn.danger`
+                          ปุ่มลบจึงเป็นปุ่มเทาไม่ใช่แดง สีโทนผูกกับ `.btn.action-ghost.btn-danger` */}
+                      {m.canDelete && <button className="btn action-ghost sm btn-danger" onClick={async () => (await confirmAction("ลบข้อความนี้?")) && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
                       {canCompose && !closed && <button className="btn ghost sm" onClick={() => createTask(m)} disabled={!!busy}><Plus size={12} /> สร้างงาน</button>}
                       {(data.tasks || []).filter((t) => t.inquiryMessageId === m.id).map((t) => <Link key={t.id} href={`/pm/tasks/${t.id}`} className="ui-badge">งาน: {t.title}</Link>)}
                     </div>

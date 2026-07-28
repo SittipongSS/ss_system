@@ -9,6 +9,7 @@ import {
   writeBudget,
   compareBudget,
 } from "./uiLegacyBudget.mjs";
+import { DEAD_CLASSES } from "./uiDeadClasses.mjs";
 
 const root = process.cwd();
 const srcRoot = path.join(root, "src");
@@ -118,10 +119,7 @@ for (const [rel, allowed] of Object.entries(nativeFeedbackDebt)) {
    ตั้งใจตรวจแบบ blocklist ไม่ใช่ไล่เทียบทุกคลาส เพราะโค้ดปน Tailwind utility
    (p-2, col-span-2) กับ CSS module อยู่ — ไล่เทียบทั้งหมดจะ false positive ท่วม
    เจอคลาสตายตัวใหม่เมื่อไหร่ เติมเข้าลิสต์นี้ */
-const deadClasses = [
-  { pattern: /className="input"/, dead: "input", use: "premium-input" },
-  { pattern: /className="btn danger"/, dead: "btn danger", use: "btn btn-danger" },
-];
+const deadClasses = DEAD_CLASSES;
 
 /* คลาสที่เป็น "กล่องครอบ" ไม่ใช่คลาสของ control — ใส่ผิดที่แล้วสไตล์ยังติดบางส่วน
    จึงไม่มีใครเห็นว่าพลาด (ของจริงที่เคยเกิด: ทะเบียนกลิ่น/สูตร ใส่ .search-glass ที่

@@ -21,7 +21,11 @@ import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
+import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
 import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
+import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -222,21 +226,25 @@ export default function ScentsPage() {
       title="ทะเบียนกลิ่น"
       subtitle="กลิ่นที่ออกแบบให้ลูกค้าแต่ละราย — เก็บรหัส วันที่ส่งแต่ละ Rev และผลตอบรับของลูกค้า"
       headerRight={canPropose ? (
-        <button
-          type="button" className="btn btn-accent"
+        <Button
+          tone="accent"
+          icon={<Plus size={15} aria-hidden="true" />}
           onClick={() => setForm({ mode: "create", value: emptyScentForm() })}
         >
-          <Plus size={15} aria-hidden="true" /> เพิ่มกลิ่น
-        </button>
+          เพิ่มกลิ่น
+        </Button>
       ) : null}
     >
       {registrar && draftCount > 0 && (
-        <div className="glass-panel" style={{ padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="ui-badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>{draftCount}</span>
-          <span style={{ fontSize: 13 }}>มีกลิ่นที่ฝ่ายขายเสนอเข้ามารอคุณรับเข้าทะเบียน</span>
-          <span className="spacer" />
-          <button type="button" className="btn sm" onClick={() => setStatusFilter("draft")}>ดูเฉพาะร่าง</button>
-        </div>
+        <StatusNotice
+          tone="info"
+          className={styles.banner}
+          action={(
+            <Button size="sm" onClick={() => setStatusFilter("draft")}>ดูเฉพาะร่าง</Button>
+          )}
+        >
+          มีกลิ่นที่ฝ่ายขายเสนอเข้ามา {draftCount} รายการ รอคุณรับเข้าทะเบียน
+        </StatusNotice>
       )}
 
       <div className="toolbar">
@@ -262,15 +270,15 @@ export default function ScentsPage() {
           aria-label="กรองสถานะกลิ่น"
         />
         <span className="spacer" />
-        <button type="button" className="btn" onClick={reload} disabled={loading}>
-          <RefreshCw size={14} aria-hidden="true" /> รีเฟรช
-        </button>
+        <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
+          รีเฟรช
+        </Button>
       </div>
 
       {loading ? (
         <SkeletonRows rows={5} />
       ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
+        <StatusNotice tone="error">{loadError}</StatusNotice>
       ) : visible.length === 0 ? (
         <EmptyState icon={FlaskConical}>
           {scents.length === 0
@@ -280,11 +288,11 @@ export default function ScentsPage() {
       ) : (
         <>
           <TableScroll>
-            <table className="premium-table">
+            <table>
               <thead>
                 <tr>
                   <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th>
-                  <th>Rev ล่าสุด</th><th>ผลตอบรับ</th><th>สถานะ</th><th style={{ width: 180 }}></th>
+                  <th>Rev ล่าสุด</th><th>ผลตอบรับ</th><th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
@@ -293,74 +301,75 @@ export default function ScentsPage() {
                   const latest = (s.revisions || [])[0];
                   return (
                     <tr key={s.id}>
-                      <td className="mono">{s.code || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
-                      <td style={{ fontWeight: 600 }}>{s.name}</td>
-                      <td style={{ fontSize: 12.5 }}>{s.customerName || s.customerId}</td>
+                      <td className="mono">{s.code || <span className={styles.muted}>—</span>}</td>
+                      <td className={styles.name}>{s.name}</td>
+                      <td>{s.customerName || s.customerId}</td>
                       <td className="mono">
                         {sum.latestNo
                           ? <>Rev. {sum.latestNo} · {fmtDate(latest?.sentAt)}</>
-                          : <span style={{ color: "var(--text-3)" }}>ยังไม่ส่ง</span>}
+                          : <span className={styles.muted}>ยังไม่ส่ง</span>}
                       </td>
                       <td>
                         {sum.latestStatus ? (
-                          <span className="ui-badge" style={{ color: SCENT_FEEDBACK_TONES[sum.latestStatus] }}>
-                            {SCENT_FEEDBACK_LABELS[sum.latestStatus]}
-                          </span>
-                        ) : <span style={{ color: "var(--text-3)" }}>—</span>}
+                          <StatusBadge
+                            tone={SCENT_FEEDBACK_TONES[sum.latestStatus]}
+                            label={SCENT_FEEDBACK_LABELS[sum.latestStatus]}
+                          />
+                        ) : <span className={styles.muted}>—</span>}
                       </td>
                       <td>
-                        <span className="ui-badge" style={{ color: SCENT_STATUS_TONES[s.status] }}>
-                          {SCENT_STATUS_LABELS[s.status]}
-                        </span>
+                        <StatusBadge
+                          tone={SCENT_STATUS_TONES[s.status]}
+                          label={SCENT_STATUS_LABELS[s.status]}
+                        />
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                        <div className={styles.rowActions}>
                           {(s.revisions || []).length > 0 && (
-                            <button type="button" className="btn sm ghost" title="ประวัติการส่ง"
-                              onClick={() => setHistory(s)}>
-                              <History size={14} aria-hidden="true" />
-                            </button>
+                            <Button size="sm" variant="quiet" title="ประวัติการส่ง"
+                              icon={<History size={14} aria-hidden="true" />}
+                              onClick={() => setHistory(s)} />
                           )}
                           {registrar && s.status === "draft" && (
-                            <button type="button" className="btn sm" title="รับเข้าทะเบียน"
+                            <Button size="sm" title="รับเข้าทะเบียน"
+                              icon={<Check size={14} aria-hidden="true" />}
                               onClick={() => setAccept({ scent: s, code: "" })}>
-                              <Check size={14} aria-hidden="true" /> รับเข้าทะเบียน
-                            </button>
+                              รับเข้าทะเบียน
+                            </Button>
                           )}
                           {registrar && (s.status === "developing" || s.status === "active") && (
-                            <button type="button" className="btn sm" title="บันทึกการส่งกลิ่น"
+                            <Button size="sm" title="บันทึกการส่งกลิ่น"
+                              icon={<Send size={14} aria-hidden="true" />}
                               onClick={() => setSending({ scent: s, sentAt: todayIso(), sampleCode: "", note: "" })}>
-                              <Send size={14} aria-hidden="true" /> ส่งกลิ่น
-                            </button>
+                              ส่งกลิ่น
+                            </Button>
                           )}
                           {s._canEdit && (
-                            <button type="button" className="btn sm ghost" title="แก้ไข"
-                              onClick={() => setForm({ mode: "edit", scent: s, value: scentToForm(s) })}>
-                              <Pencil size={14} aria-hidden="true" />
-                            </button>
+                            <Button size="sm" variant="quiet" title="แก้ไข"
+                              icon={<Pencil size={14} aria-hidden="true" />}
+                              onClick={() => setForm({ mode: "edit", scent: s, value: scentToForm(s) })} />
                           )}
                           {registrar && s.status !== "draft" && s.status !== "archived" && (
-                            <button type="button" className="btn sm ghost" title="เก็บเข้ากรุ"
-                              onClick={() => setConfirm({ kind: "archive", scent: s })}>
-                              <Archive size={14} aria-hidden="true" />
-                            </button>
+                            <Button size="sm" variant="quiet" title="เก็บเข้ากรุ"
+                              icon={<Archive size={14} aria-hidden="true" />}
+                              onClick={() => setConfirm({ kind: "archive", scent: s })} />
                           )}
                           {registrar && s.status === "archived" && (
-                            <button type="button" className="btn sm ghost" title="เปิดใช้อีกครั้ง"
-                              onClick={() => setConfirm({ kind: "restore", scent: s })}>
-                              <ArchiveRestore size={14} aria-hidden="true" />
-                            </button>
+                            <Button size="sm" variant="quiet" title="เปิดใช้อีกครั้ง"
+                              icon={<ArchiveRestore size={14} aria-hidden="true" />}
+                              onClick={() => setConfirm({ kind: "restore", scent: s })} />
                           )}
                           {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะ
-                              ร่างของตัวเองที่ยังไม่มีประวัติการส่ง */}
+                              ร่างของตัวเองที่ยังไม่มีประวัติการส่ง
+                              ⚠️ variant="ghost" (= action-ghost) ไม่ใช่ "quiet" เพราะสีแดง
+                              ผูกกับ .btn.action-ghost.btn-danger เท่านั้น */}
                           {(isAdmin || (s._canEdit && s.status === "draft" && (s.revisions || []).length === 0)) && (
-                            <button
-                              type="button" className="btn sm ghost danger"
+                            <Button
+                              size="sm" variant="ghost" tone="danger"
                               title={s.status === "draft" ? "ลบร่าง" : "ลบกลิ่น (ผู้ดูแลระบบ)"}
+                              icon={<Trash2 size={14} aria-hidden="true" />}
                               onClick={() => setConfirm({ kind: "delete", scent: s })}
-                            >
-                              <Trash2 size={14} aria-hidden="true" />
-                            </button>
+                            />
                           )}
                         </div>
                       </td>
@@ -390,8 +399,8 @@ export default function ScentsPage() {
               onChange={(value) => setForm({ ...form, value })}
             />
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitForm} disabled={saving}>บันทึก</button>
+              <Button onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
             </div>
           </>
         )}
@@ -411,13 +420,13 @@ export default function ScentsPage() {
                 placeholder="เช่น SC-2026-001" autoFocus
                 onChange={(e) => setAccept({ ...accept, code: e.target.value })}
               />
-              <small style={{ color: "var(--text-3)" }}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
+              <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+              <Button onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
                 รับเข้าทะเบียน
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -454,10 +463,10 @@ export default function ScentsPage() {
               </div>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setSending(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitSend} disabled={saving}>
+              <Button onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitSend} disabled={saving}>
                 บันทึกเป็น Rev. {(sending.scent.currentRevisionNo || 0) + 1}
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -470,10 +479,10 @@ export default function ScentsPage() {
       >
         {history && (
           <TableScroll>
-            <table className="premium-table">
+            <table>
               <thead>
                 <tr>
-                  <th style={{ width: 70 }}>Rev</th><th>วันที่ส่ง</th><th>ตัวอย่าง</th>
+                  <th className={styles.revCol}>Rev</th><th>วันที่ส่ง</th><th>ตัวอย่าง</th>
                   <th>ผลตอบรับ</th><th>วันที่ตอบ</th><th>ความเห็นลูกค้า</th><th></th>
                 </tr>
               </thead>
@@ -484,16 +493,17 @@ export default function ScentsPage() {
                     <td className="mono">{fmtDate(r.sentAt)}</td>
                     <td className="mono">{r.sampleCode || "—"}</td>
                     <td>
-                      <span className="ui-badge" style={{ color: SCENT_FEEDBACK_TONES[r.feedbackStatus] }}>
-                        {SCENT_FEEDBACK_LABELS[r.feedbackStatus]}
-                      </span>
+                      <StatusBadge
+                        tone={SCENT_FEEDBACK_TONES[r.feedbackStatus]}
+                        label={SCENT_FEEDBACK_LABELS[r.feedbackStatus]}
+                      />
                     </td>
                     <td className="mono">{r.feedbackAt ? fmtDate(r.feedbackAt) : "—"}</td>
-                    <td style={{ fontSize: 12.5, whiteSpace: "pre-wrap" }}>{r.feedback || "—"}</td>
+                    <td className={styles.comment}>{r.feedback || "—"}</td>
                     <td>
                       {r.feedbackStatus === "pending" && canPropose && (
-                        <button
-                          type="button" className="btn sm"
+                        <Button
+                          size="sm"
                           onClick={() => {
                             setHistory(null);
                             setFeedback({
@@ -503,7 +513,7 @@ export default function ScentsPage() {
                           }}
                         >
                           บันทึกผล
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -550,14 +560,14 @@ export default function ScentsPage() {
                 />
               </div>
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-3)", margin: "4px 0 0" }}>
+            <p className={styles.effect}>
               {feedback.status === "approved" && "บันทึกแล้วกลิ่นนี้จะเปลี่ยนเป็น \"ใช้งานได้\" อัตโนมัติ"}
               {feedback.status === "revise" && "บันทึกแล้วกลิ่นนี้จะกลับไปสถานะ \"กำลังพัฒนา\" เพื่อส่ง Rev ถัดไป"}
               {feedback.status === "rejected" && "สถานะกลิ่นไม่เปลี่ยนเอง — เลือกเองว่าจะลองใหม่หรือเก็บเข้ากรุ"}
             </p>
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setFeedback(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitFeedback} disabled={saving}>บันทึกผล</button>
+              <Button onClick={() => setFeedback(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitFeedback} disabled={saving}>บันทึกผล</Button>
             </div>
           </>
         )}

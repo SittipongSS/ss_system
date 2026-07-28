@@ -9,6 +9,7 @@
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import { isScentUsable } from "@/lib/master/scents";
+import styles from "./registryForm.module.css";
 
 export const emptyFormulaForm = () => ({
   name: "",
@@ -59,13 +60,13 @@ export default function FormulaForm({
 
       {canSetCode && mode === "create" && (
         <div className="form-group">
-          <label htmlFor="formula-code">รหัสสูตร <span style={{ color: "var(--text-3)" }}>(ไม่บังคับ)</span></label>
+          <label htmlFor="formula-code">รหัสสูตร <span className={styles.hint}>(ไม่บังคับ)</span></label>
           <input
             id="formula-code" className="premium-input" value={value.code} disabled={disabled}
             placeholder="เช่น PF638010202-P1"
             onChange={(e) => set({ code: e.target.value })}
           />
-          <small style={{ color: "var(--text-3)" }}>ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง</small>
+          <small className={styles.hint}>ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง</small>
         </div>
       )}
 
@@ -89,7 +90,7 @@ export default function FormulaForm({
       </div>
 
       <div className="form-group col-span-2">
-        <label htmlFor="formula-customer">ลูกค้า <span style={{ color: "var(--text-3)" }}>(เว้นว่าง = สูตรกลาง)</span></label>
+        <label htmlFor="formula-customer">ลูกค้า <span className={styles.hint}>(เว้นว่าง = สูตรกลาง)</span></label>
         <SearchableSelect
           id="formula-customer" value={value.customerId} disabled={disabled}
           onChange={(v) => set({ customerId: v })}

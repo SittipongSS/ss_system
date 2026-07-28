@@ -1,0 +1,48 @@
+/* ชั้นสไตล์ของหน้าทะเบียนสูตร — แทน style={{...}} เดิมทั้งหมด
+   ⚠️ ไม่มีการตั้งขนาดตัวอักษรในตารางอีกแล้ว: ทุกเซลล์ใช้ --fs-table ของตารางกลาง
+   (เหมือนหน้าทะเบียนกลิ่น) */
+
+/* .ui-section ไม่มี margin — การ์ด "รอจัดระเบียบ" ต้องเว้นระยะเอง */
+.banner { margin-bottom: 12px; }
+
+.intro {
+  margin: 0 0 10px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.name { font-weight: 600; }
+.muted { color: var(--text-3); }
+
+/* ⚠️ ใช้ flex + justify-content แทน text-align: right บน td — กฎ td ของตารางกลาง
+   ตั้ง text-align: left ด้วย specificity (0,0,2,1) ซึ่งคลาสเดี่ยวสู้ไม่ได้ */
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sortCol { width: 150px; }
+.actionsCol { width: 140px; }
+
+.scentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hint { color: var(--text-3); }
+.warn { color: var(--amber); }
+
+.lead {
+  margin: 0 0 12px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.blocked {
+  margin: 8px 0 0;
+  color: var(--red);
+  font-size: 12px;
+}

@@ -14,11 +14,12 @@ export const SCENT_FEEDBACK_LABELS = {
   rejected: 'ลูกค้าไม่เอากลิ่นนี้',
 };
 
+// ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (เหมือน SCENT_STATUS_TONES)
 export const SCENT_FEEDBACK_TONES = {
-  pending: 'var(--amber)',
-  revise: 'var(--blue)',
-  approved: 'var(--green)',
-  rejected: 'var(--red)',
+  pending: 'warning',
+  revise: 'info',
+  approved: 'success',
+  rejected: 'danger',
 };
 
 // Rev ที่ยัง "รอคำตอบ" — ใช้กันไม่ให้ส่ง Rev ใหม่ทับของที่ยังไม่รู้ผล
