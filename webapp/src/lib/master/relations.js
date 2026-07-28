@@ -7,6 +7,8 @@
 // scope: กรองแถวด้วย view-scope ของผู้ใช้ (เหมือน route อื่น) — registrations/
 // orders/products ใช้ canViewRecord; projects ต้องมี pm:view + team scope.
 import { can, canViewRecord, viewScope, inScope } from '@/lib/permissions';
+import { canViewScents } from '@/lib/master/scents';
+import { canViewFormulas } from '@/lib/master/formulas';
 
 // projects ที่ผู้ใช้เห็นได้ (PM เป็นเครื่องมือของ SALES — ต้องมี pm:view).
 function visibleProjects(user, rows) {
@@ -22,9 +24,45 @@ const seesTax = (user) => can(user?.role, 'history:view');
 
 const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 
-// ความสัมพันธ์ของลูกค้า 1 ราย → { products, registrations, orders, projects }.
+// ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึง Rev/โน้ตมาทั้งก้อน
+const SCENT_COLS = 'id, code, name, status, currentRevisionNo, customerId, createdAt';
+const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId';
+
+// กลิ่น + สูตรของลูกค้า 1 ราย.
+//
+// ⚠️ สูตรหาด้วย customerId อย่างเดียวไม่พอ — formulas."customerId" เป็น NULL ได้
+// (= "สูตรกลาง") แต่ scents."customerId" เป็น NOT NULL เสมอ (มติ 9: กลิ่นของลูกค้า
+// A ใช้กับ B ไม่ได้) ดังนั้น "สูตรที่ผูกกลิ่นของลูกค้ารายนี้" ย่อมเป็นของลูกค้ารายนี้
+// เสมอ — ถ้ากรองด้วย customerId ล้วน สูตรที่ RD ผูกกลิ่นแล้วแต่ยังไม่ได้เติมลูกค้า
+// จะหายไปเงียบ ๆ · เกณฑ์นี้ over-match ไม่ได้เพราะกลิ่นหนึ่งมีลูกค้าได้รายเดียว
+async function scentsAndFormulas(supabase, customerId, user) {
+  const seesScents = canViewScents(user);
+  const seesFormulas = canViewFormulas(user);
+  if (!seesScents && !seesFormulas) return { scents: [], formulas: [] };
+
+  const { data: scentRows } = await supabase.from('scents').select(SCENT_COLS)
+    .eq('customerId', customerId).order('name', { ascending: true });
+  const scents = scentRows || [];
+  if (!seesFormulas) return { scents: seesScents ? scents : [], formulas: [] };
+
+  const scentIds = scents.map((s) => s.id);
+  const [byCustomer, byScent] = await Promise.all([
+    supabase.from('formulas').select(FORMULA_COLS).eq('customerId', customerId),
+    scentIds.length
+      ? supabase.from('formulas').select(FORMULA_COLS).in('scentId', scentIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  // รวมสองชุดแล้ว dedupe ด้วย id — สูตรที่เข้าเกณฑ์ทั้งคู่ต้องขึ้นแถวเดียว
+  const merged = new Map();
+  for (const f of [...(byCustomer.data || []), ...(byScent.data || [])]) merged.set(f.id, f);
+  const formulas = [...merged.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+
+  return { scents: seesScents ? scents : [], formulas };
+}
+
+// ความสัมพันธ์ของลูกค้า 1 ราย → { products, registrations, orders, projects, scents, formulas }.
 export async function customerRelations(supabase, customerId, user) {
-  const [prodRes, regRes, orderRes, projRes] = await Promise.all([
+  const [prodRes, regRes, orderRes, projRes, registry] = await Promise.all([
     supabase.from('products')
       .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, approvalStatus, isActive, customerId, team, teams, ownerId')
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
@@ -36,6 +74,7 @@ export async function customerRelations(supabase, customerId, user) {
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     supabase.from('projects').select(PROJECT_COLS)
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
+    scentsAndFormulas(supabase, customerId, user),
   ]);
 
   const tax = seesTax(user);
@@ -44,6 +83,10 @@ export async function customerRelations(supabase, customerId, user) {
     registrations: tax ? (regRes.data || []).filter((r) => canViewRecord(user, 'registrations', r)) : [],
     orders: tax ? (orderRes.data || []).filter((o) => canViewRecord(user, 'orders', o)) : [],
     projects: visibleProjects(user, projRes.data),
+    // ทะเบียนกลิ่น/สูตรไม่มี team/owner จึงไม่มี view-scope รายแถว — เห็นทั้งทะเบียน
+    // หรือไม่เห็นเลย ตามเจตนาเดิมของ canViewScents/canViewFormulas (แคตตาล็อกข้ามทีม)
+    scents: registry.scents,
+    formulas: registry.formulas,
   };
 }
 

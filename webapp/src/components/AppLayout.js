@@ -189,6 +189,13 @@ export default function AppLayout({ children }) {
         // อ้างถึง · อยู่ใต้ "ฐานข้อมูล" เพราะเป็น master data ไม่ใช่เอกสารงาน
         { href: '/database/scents', name: 'ทะเบียนกลิ่น', icon: FlaskConical, cap: 'products:view', match: (p) => p.startsWith('/database/scents') },
         { href: '/database/formulas', name: 'ทะเบียนสูตร', icon: Beaker, cap: 'products:view', match: (p) => p.startsWith('/database/formulas') },
+        // ทะเบียนวัสดุ — ย้ายมาจาก /sa/materials เพราะเหตุผลที่เคยอยู่ใต้ "ขาย" คือ
+        // แท็บคิวเคสขอราคา ซึ่งย้ายออกไปเป็นเมนู "คำร้อง" แล้ว (mig 0173) เหลือ
+        // งานเดียวคือข้อมูลหลักราคาวัสดุ = ทรงเดียวกับกลิ่น/สูตร/สินค้า
+        // ⚠️ cap ต้องคง costing:view + canViewCosting ไว้ ห้ามกลืนเป็น products:view
+        //    ตามเพื่อนบ้านในกลุ่มนี้ — products:view อยู่ใน DEFAULT_CAPS (แทบทุกคนถือ)
+        //    ส่วนแถวในทะเบียนนี้คือ **ราคาต้นทุน** ถ้าเปิดกว้างคือต้นทุนรั่วทั้งบริษัท
+        { href: '/database/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/database/materials') },
         { href: '/database/product-categories', name: 'หมวดสินค้า', icon: Tags, cap: 'products:view', managerOnly: true, match: (p) => p.startsWith('/database/product-categories') },
       ],
     },
@@ -221,12 +228,12 @@ export default function AppLayout({ children }) {
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
-        // วัสดุ (mig 0143 + 0157 + 0158) — ทะเบียน + เคสขอราคา อยู่หน้าเดียวกันเป็นแท็บ
-        // (มติผู้ใช้ 2026-07-26: เคยแยกสองเมนู แต่เป็นของชิ้นเดียวกันคนละจังหวะ และชื่อ
-        // "เคสขอราคา" อ่านแล้วชนกับ "ขอราคาผลิต" ที่เป็นคนละเอกสาร)
+        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอราคา F·FB·PM/
+        // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
+        // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
         // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
         { href: '/sa/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/requests') },
-        { href: '/sa/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
+        // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },

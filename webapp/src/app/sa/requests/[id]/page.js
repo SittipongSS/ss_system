@@ -84,10 +84,10 @@ export default function MaterialAskDetailPage() {
     finally { setSaving(false); }
   }, [id, load]);
 
-  // รายการเคสเป็นแท็บของหน้าวัสดุแล้ว — กลับไปแท็บที่คนคนนี้ใช้งานจริง
-  // (ผู้ตอบกลับเข้าคิวของฝ่ายที่เคสนี้ถามไป, ผู้ขอกลับไปดูเคสของตัวเอง)
+  // กลับไปแท็บที่คนคนนี้ใช้งานจริง — ผู้ตอบกลับเข้าคิวของฝ่ายที่คำร้องนี้ถามไป,
+  // ผู้ขอกลับไปดูคำร้องของตัวเอง (ชื่อแท็บตรงกับที่ /sa/requests รับผ่าน ?tab=)
   const backTab = req?._mine === false ? `queue-${req.dept}` : "mine";
-  const back = { href: `/sa/materials?tab=${backTab}`, label: "กลับรายการเคส" };
+  const back = { href: `/sa/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !req) {
     return (
@@ -135,7 +135,7 @@ export default function MaterialAskDetailPage() {
   const runConfirm = async () => {
     if (confirm.kind === "delete") {
       const ok = await call("", { method: "DELETE" }, "ลบเคสร่างแล้ว");
-      if (ok) window.location.href = "/sa/materials?tab=mine";
+      if (ok) window.location.href = "/sa/requests?tab=mine";
       return;
     }
     const labels = { submit: "ส่งเคสแล้ว", close: "ปิดเคสแล้ว" };

@@ -6,8 +6,9 @@ import { TableScroll } from "@/components/ui/Table";
 // และ 1 รุ่นมีได้หลายชั้นจำนวน · เซลเสนอวัสดุใหม่ได้เป็น "ร่าง" รอ RD/PC รับ
 // คนใส่ราคายังเป็น RD/PC เท่านั้นเสมอ
 //
-// เป็น "แท็บหนึ่ง" ของหน้า /sa/materials (คู่กับ MaterialAsksPanel) — ข้อมูลและ
-// การโหลดเป็นของหน้าแม่ เพราะทั้งสองแท็บใช้ทะเบียนชุดเดียวกัน (AskForm ก็ต้องใช้)
+// พาเนลของหน้า /database/materials — ข้อมูลและการโหลดเป็นของหน้าแม่
+// (เดิมเป็นแท็บหนึ่งของ /sa/materials คู่กับคิวเคสขอราคา ซึ่งแยกไปเป็นเมนู
+//  "คำร้อง" แล้ว ตัวทะเบียนจึงย้ายไปอยู่กับข้อมูลหลักตัวอื่นใต้ "ฐานข้อมูล")
 import { useMemo, useState } from "react";
 import {
   Boxes, RefreshCw, History, Pencil, Plus, Check, Archive,
