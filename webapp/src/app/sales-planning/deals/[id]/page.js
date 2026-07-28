@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, normalizeDealType } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
@@ -1040,7 +1040,10 @@ export default function DealOverviewPage() {
                       title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
                       <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
                     </button>
-                    {['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
+                    {/* เดิมเป็นลิสต์ชื่อ stage ฮาร์ดโค้ด — พอสลับลำดับ (B4) "เสนอราคา" ย้ายไป
+                        อยู่หลัง "เสนอไทม์ไลน์" แต่ไม่มีในลิสต์ ดีลที่ออกใบแล้วจะกดสร้าง/ผูก
+                        โครงการไม่ได้เลย. เทียบตำแหน่งแทนชื่อ = ลำดับขยับอีกกี่ครั้งก็ไม่พัง */}
+                    {stageAtLeast(deal?.stage, 'timeline_proposed') && (
                       <>
                         <button type="button" className="btn ghost" onClick={openCreatePM} disabled={!!actionBusy}>
                           <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่

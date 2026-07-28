@@ -6,11 +6,13 @@ import { categoryOf, isExciseCategory } from '@/lib/master/categoryOf';
 
 // ลำดับหลักของ pipeline (lost เป็นทางแยก terminal — จัดการแยกใน UI)
 // won = สถานะปิดสุดท้าย; งานผลิต (PM) เป็นมิติแยก ไม่ใช่ขั้นถัดไปของดีล
+// ⚠️ ต้องเรียงตรงกับ DEAL_STAGES เสมอ (นี่คือชุดเดียวกันที่ตัด in_project/lost ออก) —
+// เทสต์ล็อกไว้แล้ว. สลับลำดับที่เดียวไม่ได้ ไม่งั้น stepper กับ dropdown เรียงคนละแบบ
 export const MAIN_SEQUENCE = [
   'lead',
   'qualified',
-  'quotation',
   'timeline_proposed',
+  'quotation',
   'awaiting_confirm',
   'deposit_pending',
   'won',
@@ -41,14 +43,16 @@ function nextActionFor(stage, hasProject) {
   switch (stage) {
     case 'lead':
       return { kind: 'qualify', label: 'คัดกรองลูกค้า / บันทึกกิจกรรม', hint: 'ประเมินโอกาส แล้วเลื่อนเป็น "ผ่านคัดกรอง"' };
+    // มติผู้ใช้ B4: ลำดับคือ ผ่านคัดกรอง → เสนอไทม์ไลน์ → เสนอราคา คำแนะนำจึงเรียงตามนั้น
+    // (ยังข้ามไปออกใบเลยได้ตามปกติ — การออกใบดัน stage เป็น "เสนอราคา" ให้เอง)
     case 'qualified':
+      return { kind: 'propose', label: 'เสนอไทม์ไลน์', hint: 'สร้างไทม์ไลน์ของดีลให้ลูกค้าดูกำหนดงานก่อนออกใบ' };
+    case 'timeline_proposed':
       return quoteOn
-        ? { kind: 'quote', label: 'ทำใบเสนอราคา', hint: 'สร้างใบเสนอราคาส่งลูกค้า' }
-        : { kind: 'propose', label: 'เสนอไทม์ไลน์ / ปิด Won', hint: 'เสนอกำหนดงานหรือปิดการขายเมื่อได้ยืนยัน' };
+        ? { kind: 'quote', label: 'ทำใบเสนอราคา', hint: 'ลูกค้าเห็นกำหนดงานแล้ว — ออกใบเสนอราคาส่งได้' }
+        : { kind: 'await', label: 'รอลูกค้ายืนยัน', hint: 'ติดตามการยืนยันไทม์ไลน์' };
     case 'quotation':
       return { kind: 'accept', label: 'รอปิด Won ผ่านใบเสนอราคา', hint: 'เมื่อลูกค้ายืนยัน ให้กด Won ที่ใบเสนอราคา' };
-    case 'timeline_proposed':
-      return { kind: 'await', label: 'รอลูกค้ายืนยัน', hint: 'ติดตามการยืนยันไทม์ไลน์' };
     case 'awaiting_confirm':
       return { kind: 'deposit', label: 'รอมัดจำ', hint: 'เมื่อรับมัดจำ → ปิด Won ได้' };
     case 'deposit_pending':
