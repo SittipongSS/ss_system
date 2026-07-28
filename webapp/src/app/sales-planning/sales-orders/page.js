@@ -7,6 +7,7 @@ import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } f
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Select from "@/components/ui/Select";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
@@ -42,6 +43,20 @@ export default function SalesOrdersPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // รอยต่อ SO อนุมัติ → ใบยื่นชำระภาษี. ใช้ endpoint เดิมของโมดูลภาษี (?available=1)
+  // ซึ่งกรอง "อนุมัติแล้ว + ยังไม่มีใบยื่น + มีสินค้าสรรพสามิตจริง" ให้ครบแล้ว —
+  // ห้ามนับเองที่นี่ ไม่งั้น SO ที่ขายของนอกพิกัดจะค้างในตัวเลขตลอดกาล
+  // ไม่มีสิทธิ์ sales:act (403) หรือยิงไม่ผ่าน = ไม่ต้องมีแถบเตือน ไม่ใช่เรื่องของคนดูอย่างเดียว
+  const [awaitingFiling, setAwaitingFiling] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/tax/orders/from-sales-order?available=1")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (alive && data?.schemaReady) setAwaitingFiling((data.salesOrders || []).length); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
@@ -67,6 +82,16 @@ export default function SalesOrdersPage() {
     <SaWorkspace icon={<ClipboardList size={22} />} title="Sale Order" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">
       <div className="flex flex-col gap-4">
         {error && <div className="glass-panel" role="alert" style={{ padding: 14, color: "var(--red)", borderColor: "var(--red)" }}>{error}</div>}
+
+        {awaitingFiling > 0 && (
+          <StatusNotice
+            tone="warning"
+            title={`Sale Order ${awaitingFiling} ใบรอออกใบยื่นชำระภาษี`}
+            action={<Link href="/tax/filings" className="linklike">เปิดหน้ายื่นชำระ</Link>}
+          >
+            อนุมัติแล้วและมีสินค้าสรรพสามิตอยู่ในใบ แต่ยังไม่ได้สร้างใบยื่นต่อกรมสรรพสามิต
+          </StatusNotice>
+        )}
 
         <SaMetricStrip>
           <SaMetric icon={<ClipboardList />} label="Sale Order ทั้งหมด" value={summary.total} note="เอกสารในขอบเขตที่คุณดูได้" />

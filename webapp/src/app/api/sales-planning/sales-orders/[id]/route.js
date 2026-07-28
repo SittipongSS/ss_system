@@ -432,6 +432,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         { label: 'ผู้อนุมัติ', value: user.name || '' },
         { label: 'ผู้ยื่น', value: before.submittedByName || '' },
         ...(selfApproval ? [{ label: 'รูปแบบ', value: 'Admin Override' }] : []),
+        // รอยต่อถัดไปเป็น manual. เขียนแบบมีเงื่อนไขเพราะตรงนี้ยังไม่รู้ว่าในใบมีสินค้า
+        // สรรพสามิตไหม (ต้องยิงอีก 4 query) — ตัวกรองจริงอยู่ที่หน้ายื่นชำระกับการ์ดคิว
+        { label: 'ขั้นถัดไป', value: 'ถ้าในใบมีสินค้าสรรพสามิต ให้สร้างใบยื่นชำระภาษีที่เมนูการยื่นชำระ' },
       ],
       linkPath: `/sa/sales-orders/${id}`,
       linkLabel: 'เปิด Sale Order',

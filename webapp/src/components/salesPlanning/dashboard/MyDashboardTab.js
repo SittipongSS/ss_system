@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, FolderKanban,
-  ListTodo, RefreshCw, Target, TrendingUp,
+  Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, FileText,
+  FolderKanban, ListTodo, ReceiptText, RefreshCw, Target, TrendingUp,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 import { useCan } from "@/lib/roleContext";
+import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./RdDashboardTab.module.css";
 
 const ACTIVITY_KIND_LABEL = {
@@ -76,6 +77,10 @@ export default function MyDashboardTab({ month }) {
   const tasks = data?.taskSummary || { total: 0, today: 0, overdue: 0, urgent: 0 };
   const actionLeads = data?.actionLeads || [];
   const byForecast = data?.byForecast || [];
+  // คิวรอยต่อเอกสาร — สองจุดที่ระบบส่งไม้ต่อแล้วไม่มีอะไรคอยทวง (ดู lib/sales/handoffQueue)
+  const handoff = data?.handoff || {};
+  const awaitingSalesOrder = handoff.awaitingSalesOrder || [];
+  const awaitingFiling = handoff.awaitingFiling || [];
 
   if (error) return <div className="glass-panel" role="alert" style={{ padding: 16, color: "var(--red)" }}>{error}</div>;
 
@@ -150,6 +155,46 @@ export default function MyDashboardTab({ month }) {
             </div>
           </section>
 
+          {/* คิวรอยต่อเอกสาร: Won → Sale Order → ใบยื่นชำระภาษี. ก่อนหน้านี้สองจุดนี้เป็น
+              manual ล้วน — ไม่มีคิว ไม่มีตัวเลข ต้องมีคนจำไปกดเอง. ตัวเลขนับเฉพาะดีลที่
+              ฉันเป็นเจ้าของ (เหมือนทุกอย่างในแท็บนี้) ส่วนภาพรวมทั้งทีมดูที่หน้ารายการ */}
+          {handoff.error && (
+            <StatusNotice tone="error" title="โหลดคิวรอยต่อเอกสารไม่สำเร็จ">{handoff.error}</StatusNotice>
+          )}
+
+          <HandoffQueueCard
+            icon={<FileText size={17} />}
+            title="Won รอออก Sale Order"
+            hint="ใบเสนอราคาที่ปิดได้แล้วแต่ยังไม่มี SO"
+            items={awaitingSalesOrder}
+            allHref="/sa/quotations"
+            emptyText="ออก SO ครบทุกใบแล้ว 🎉"
+            renderItem={(quote) => ({
+              key: quote.id,
+              href: `/sa/quotations/${quote.id}`,
+              eyebrow: quote.quoteNumber,
+              title: quote.customerName || "ลูกค้า",
+              note: `Won ${fmtDate(quote.acceptedAt)} · ${fmtMoney(quote.totalAmount)}`,
+            })}
+          />
+
+          <HandoffQueueCard
+            icon={<ReceiptText size={17} />}
+            title="SO รอออกใบยื่นภาษี"
+            hint="SO อนุมัติแล้วที่มีสินค้าสรรพสามิต"
+            items={awaitingFiling}
+            allHref="/tax/filings"
+            allLabel="เปิดหน้ายื่นชำระ"
+            emptyText="ยื่นครบทุกใบแล้ว 🎉"
+            renderItem={(order) => ({
+              key: order.id,
+              href: `/sa/sales-orders/${order.id}`,
+              eyebrow: order.orderNumber,
+              title: order.customerName || "ลูกค้า",
+              note: `อนุมัติ ${fmtDate(order.approvedAt)} · ภาษี ${fmtMoney(order.filingTotalTax)}`,
+            })}
+          />
+
           {/* ตัวเลขเป้า/ทบยอด/กราฟฉบับเต็มย้ายไปแท็บ "ผลงานขาย" (2026-07-18) —
               ที่นี่เหลือสรุปบรรทัดเดียว + ลิงก์เจาะตัวเอง กันข้อมูลซ้ำสองที่แล้วเพี้ยนหากัน */}
           <section className={`${styles.card} ${styles.teamCard}`}>
@@ -196,6 +241,42 @@ export default function MyDashboardTab({ month }) {
         </aside>
       </div>
     </div>
+  );
+}
+
+// การ์ดคิวรอยต่อเอกสาร — หน้าตาเดียวกับคิวลีดข้างบน (queueCard/queueItem ชุดเดิม)
+// ทั้งสองใบใช้ component ตัวนี้ร่วมกัน ต่างกันแค่ props ไม่ใช่คนละชุด (กฎ AGENTS.md)
+const HANDOFF_PREVIEW = 5;
+
+function HandoffQueueCard({ icon, title, hint, items, allHref, allLabel = "ดูทั้งหมด", emptyText, renderItem }) {
+  return (
+    <section className={`${styles.card} ${styles.queueCard}`}>
+      <div className={styles.queueHead}>
+        <div className={styles.sectionTitle}>
+          {icon}
+          <div><h3>{title}</h3><span>{items.length ? `${items.length} ใบ · ${hint}` : hint}</span></div>
+        </div>
+        <Link href={allHref}>{allLabel}</Link>
+      </div>
+      <div className={styles.queueList}>
+        {items.slice(0, HANDOFF_PREVIEW).map((item) => {
+          const row = renderItem(item);
+          return (
+            <Link href={row.href} key={row.key} className={styles.queueItem}>
+              <div><strong>{row.eyebrow}</strong><span className={styles.dot} /></div>
+              <h4>{row.title}</h4>
+              <p>{row.note}</p>
+            </Link>
+          );
+        })}
+        {items.length > HANDOFF_PREVIEW && (
+          <Link href={allHref} className={styles.queueItem}>
+            <p>และอีก {items.length - HANDOFF_PREVIEW} ใบ — {allLabel}</p>
+          </Link>
+        )}
+        {!items.length && <div className={styles.empty}>{emptyText}</div>}
+      </div>
+    </section>
   );
 }
 
