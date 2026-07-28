@@ -7,16 +7,19 @@
   justify-content: center;
   width: fit-content;
   max-width: 100%;
-  min-height: 22px;
+  /* ⚠️ line-height 1.25 + padding 2px เดิม ทำให้ตัวหนังสือห่างเส้นขอบบนแค่ 0.8px
+     (วัดจริง) — ภาษาไทยมีสระบน/วรรณยุกต์ที่ยื่นขึ้นไปเหนือตัวอักษร จึงชนขอบป้าย
+     ต่างจากภาษาอังกฤษที่ 1.25 พอ · ผู้ใช้ส่งภาพมา 2026-07-29 */
+  min-height: 24px;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border: 1px solid var(--badge-border);
   border-radius: var(--radius);
   background: var(--badge-bg);
   color: var(--badge-color);
   font-size: var(--fs-label);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.5;
   vertical-align: middle;
 }
 
