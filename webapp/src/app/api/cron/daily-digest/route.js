@@ -3,6 +3,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { chatCard, sendChatNow } from '@/lib/chat';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { holidaySet } from '@/lib/master/holidays';
+import { agedAtLeast, businessDaysWaiting } from '@/lib/sales/handoffQueue';
+import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,10 +14,11 @@ export const maxDuration = 60;
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู vercel.json) ด้วย Authorization: Bearer CRON_SECRET
 // หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ. ไม่มีเหตุการณ์ = ไม่ส่งการ์ด (ไม่สแปม space)
 //
-// เนื้อหา 3 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
+// เนื้อหา 4 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
 //   1. งานค้างอนุมัติ (ลูกค้า/สินค้า pending) → space ผู้อนุมัติ
 //   2. ลีดค้างคิว (รอคัดกรอง/กระจาย/ติดต่อกลับ — มี SLA) → space คิวลีด
 //   3. งานโครงการเลยกำหนด/ครบใน 3 วัน (นิยาม isUrgent ใน lib/pm/derived.js) → space โครงการ
+//   4. รอยต่อเอกสารค้าง (Won ยังไม่ออก SO · SO ยังไม่ออกใบยื่นภาษี) → space ทีมขาย
 // (FC สหมิตรเสี่ยง เคยอยู่ในแผนแต่ผู้ใช้ตัดออก — ดูใน dashboard เองพอ)
 
 const fmtShortDate = (iso) => {
@@ -120,6 +124,48 @@ async function pmDigest(supabase) {
   });
 }
 
+// รอยต่อเอกสารค้าง: Won → Sale Order → ใบยื่นชำระภาษี. สองจุดนี้ไม่มีสถานะ "ค้าง"
+// ในตารางไหนเลย ของที่ยังไม่ถูกกดจึงไม่โผล่ในคิวใด — การ์ดนี้คือตัวทวงตัวเดียวที่มี
+//
+// มติผู้ใช้ 2026-07-28: เตือนเมื่อค้างเกิน 1 วันทำการ (ปิดดีลวันนี้ พรุ่งนี้เช้ายังไม่โดนทวง
+// และของที่ค้างข้ามวันหยุดยาวไม่ถูกนับเป็นค้างหลายวัน) ส่วนคิวสดไม่มีเกณฑ์อายุ อยู่บน
+// แท็บ "แดชบอร์ดของฉัน". ภาพรวมทั้งฝ่ายเหมือน approvalsDigest/leadsDigest — งานรายใบ
+// ยัง scope ที่หน้ารายการ
+async function handoffDigest(supabase) {
+  const [{ awaitingSalesOrder, awaitingFiling }, holidays] = await Promise.all([
+    loadHandoffQueue(supabase, { dealIds: null }),
+    holidaySet(),
+  ]);
+  const asOf = new Date().toISOString();
+  const agedQuotes = agedAtLeast(awaitingSalesOrder, { sinceOf: (row) => row.acceptedAt, asOf, holidays });
+  const agedOrders = agedAtLeast(awaitingFiling, { sinceOf: (row) => row.approvedAt, asOf, holidays });
+  if (!agedQuotes.length && !agedOrders.length) return null;
+
+  const waited = (since) => {
+    const days = businessDaysWaiting(since, asOf, holidays);
+    return days >= 2 ? `ค้าง ${days} วันทำการ` : 'ค้างข้ามวัน';
+  };
+  return chatCard({
+    title: '🔗 รอยต่อเอกสารค้าง',
+    subtitle: [
+      agedQuotes.length ? `Won รอออก SO ${agedQuotes.length} ใบ` : null,
+      agedOrders.length ? `SO รอออกใบยื่นภาษี ${agedOrders.length} ใบ` : null,
+    ].filter(Boolean).join(' · '),
+    rows: [
+      ...agedQuotes.slice(0, 4).map((quote) => ({
+        label: `${quote.quoteNumber} · Won ${fmtShortDate(quote.acceptedAt)}`,
+        value: `${quote.customerName || 'ลูกค้า'} — ยังไม่ออก Sale Order (${waited(quote.acceptedAt)})`,
+      })),
+      ...agedOrders.slice(0, 4).map((order) => ({
+        label: `${order.orderNumber} · อนุมัติ ${fmtShortDate(order.approvedAt)}`,
+        value: `${order.customerName || 'ลูกค้า'} — ยังไม่ออกใบยื่นภาษี (${waited(order.approvedAt)})`,
+      })),
+    ],
+    linkPath: agedQuotes.length ? '/sa/quotations' : '/tax/filings',
+    linkLabel: agedQuotes.length ? 'เปิดใบเสนอราคา' : 'เปิดหน้ายื่นชำระ',
+  });
+}
+
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   const auth = request.headers.get('authorization');
@@ -139,6 +185,7 @@ export async function GET(request) {
     ['approvals', 'approvals', approvalsDigest],
     ['leads', 'leads', leadsDigest],
     ['pm', 'pm', pmDigest],
+    ['handoff', 'sales', handoffDigest],
   ];
   for (const [name, spaceKey, build] of jobs) {
     try {

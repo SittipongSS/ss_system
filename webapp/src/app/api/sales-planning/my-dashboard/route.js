@@ -3,6 +3,7 @@ import { monthKey, forecastAmount } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
+import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,6 +142,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       projectId: task.projectId || null,
     }));
 
+  // คิวรอยต่อเอกสารของฉัน: Won → Sale Order → ใบยื่นชำระภาษี (มติผู้ใช้ 2026-07-28:
+  // นับเฉพาะดีลที่ฉันเป็นเจ้าของ เหมือนทุกตัวเลขในแท็บนี้ ไม่ใช่ทั้งทีม)
+  // พังก็ไม่ล้มทั้งหน้า — ส่ง error ขึ้นไปให้การ์ดบอกเอง ดีกว่าเงียบแล้วโชว์ 0 หลอก
+  let handoff = { awaitingSalesOrder: [], awaitingFiling: [] };
+  try {
+    handoff = await loadHandoffQueue(supabase, { dealIds: myDeals.map((deal) => deal.id) });
+  } catch (handoffError) {
+    handoff = { awaitingSalesOrder: [], awaitingFiling: [], error: handoffError.message };
+  }
+
   const [year, monthNumber] = month.split('-').map(Number);
   const periodFrom = `${month}-01`;
   const periodTo = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
@@ -166,5 +177,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     taskSummary,
     taskFeed,
     dealActivityFeed,
+    handoff,
   });
 });

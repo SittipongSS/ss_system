@@ -10,6 +10,7 @@ import { BadgeCheck, CircleDollarSign, Clock3, FileText, FolderKanban, Pencil, P
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import FilterPopover from "@/components/ui/FilterPopover";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -17,6 +18,7 @@ import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/componen
 import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
+import { quotesAwaitingSalesOrder } from "@/lib/sales/handoffQueue";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 
@@ -36,6 +38,9 @@ export default function QuotationsPage() {
   const [statusFilter, setStatusFilter] = useState([]);
   const [typeFilter, setTypeFilter] = useState([]);
   const [ownerFilter, setOwnerFilter] = useState([]);
+  // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
+  const [salesOrders, setSalesOrders] = useState([]);
+  const [pendingSoOnly, setPendingSoOnly] = useState(false);
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
@@ -50,6 +55,17 @@ export default function QuotationsPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // SO โหลดแยก: ใช้บอกว่าใบ Won ใบไหนยังไม่มี SO เท่านั้น — ล้มเหลวก็ไม่ต้องกวนหน้าหลัก
+  // (แถบเตือนหายไปเฉย ๆ ตารางใบเสนอราคายังใช้งานได้ครบ)
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/sales-planning/sales-orders")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => { if (alive) setSalesOrders(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -69,16 +85,23 @@ export default function QuotationsPage() {
     }
   };
 
+  // ใบ Won ที่ยังไม่มี SO ที่ใช้งานอยู่ — ตัวตัดสินกลางตัวเดียวกับ migration 0169
+  // และการ์ดคิวบนแดชบอร์ด (lib/sales/handoffQueue) ห้ามเขียนเงื่อนไขซ้ำที่นี่
+  const awaitingSalesOrderIds = useMemo(() => new Set(
+    quotesAwaitingSalesOrder({ quotations: rows, salesOrders }).map((r) => r.id),
+  ), [rows, salesOrders]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
+      if (pendingSoOnly && !awaitingSalesOrderIds.has(r.id)) return false;
       if (statusFilter.length && !statusFilter.includes(r.status)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
       if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerName || "")) return false;
       if (!q) return true;
       return [r.quoteNumber, r.customerName, r.deal?.title, r.deal?.ownerName].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, typeFilter, ownerFilter]);
+  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds]);
 
   // ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
   const ownerOptions = useMemo(() => (
@@ -88,7 +111,7 @@ export default function QuotationsPage() {
   ), [rows]);
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}`,
+      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}`,
     });
   const summary = useMemo(() => ({
     total: rows.length,
@@ -119,6 +142,22 @@ export default function QuotationsPage() {
       <div className="flex flex-col gap-4">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
+        )}
+
+        {/* รอยต่อ Won → Sale Order: ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เดิมไม่มีอะไร
+            บอกเลย ต้องมีคนจำไปกดเอง. ตัวเลขนับตามขอบเขตที่มองเห็นเหมือนตัวเลขอื่นในหน้านี้ */}
+        {awaitingSalesOrderIds.size > 0 && (
+          <StatusNotice
+            tone="warning"
+            title={`ใบเสนอราคา Won ${awaitingSalesOrderIds.size} ใบยังไม่ได้ออก Sale Order`}
+            action={(
+              <button type="button" className="linklike" onClick={() => setPendingSoOnly((on) => !on)}>
+                {pendingSoOnly ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}
+              </button>
+            )}
+          >
+            ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เปิดใบแล้วกดสร้าง Sale Order เพื่อให้ยอดเข้าเป็น Actual
+          </StatusNotice>
         )}
 
         <SaMetricStrip>
