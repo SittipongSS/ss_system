@@ -46,6 +46,16 @@ export const UPDATE_KINDS = {
     email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
     next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
   },
+  // ทะเบียนกลิ่น (mig 0171) — เธรดสองฝ่าย: RD ส่งกลิ่น ↔ ฝ่ายขายนำผลจากลูกค้ามาลง
+  // เหตุการณ์ระบบเขียนคู่กับ scent_revisions เสมอ (ตารางเก็บ "ผลที่เป็นทางการ"
+  // ส่วนเธรดเก็บ "บทสนทนาระหว่างทาง" — คนละหน้าที่ ต้องมีทั้งคู่)
+  scent: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    accepted: { label: 'รับเข้าทะเบียน', color: 'var(--blue)' },
+    sent: { label: 'ส่งกลิ่น', color: 'var(--violet)' },
+    feedback: { label: 'ผลตอบรับลูกค้า', color: 'var(--green)' },
+    status: { label: 'เปลี่ยนสถานะ', color: 'var(--amber)' },
+  },
   // ใบขอราคาผลิต (mig 0143) — เธรดสองฝ่าย: เซลยื่น ↔ ผู้บริหารอนุมัติ/ตีกลับ
   // ใช้คำที่ล็อกไว้ของ workflow เอกสาร: "ตีกลับให้แก้ไข" / "ออก Rev."
   costing_request: {

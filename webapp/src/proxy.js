@@ -160,7 +160,10 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sa
 // products:edit to create (lands as 'pending'), AE Supervisor to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/attachments', '/api/updates', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
+// ⚠️ /api/scents + /api/formulas = ทะเบียนกลิ่น/สูตร (mig 0171) เข้าถึงจริงผ่าน
+// /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อนี้ — ไม่ลงทะเบียนที่นี่ = non-admin
+// โดน 403 เงียบ ๆ ทั้งอ่านและเขียน (บทเรียนจาก /api/company-profile)
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -264,6 +267,14 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // วัสดุตัวนั้นเป็นของฝ่ายไหน (sourceDept) ซึ่ง proxy มองไม่เห็น
   if (path.startsWith('/api/sa/materials')) {
     return can(role, 'costing:edit') || can(role, 'costing:quote');
+  }
+  // ทะเบียนกลิ่น + ทะเบียนสูตร (mig 0171) — ข้อมูลหลักที่ **สองฝ่ายใช้เส้นเดียวกัน
+  // คนละจุดประสงค์**: ฝ่ายขายเสนอเป็นร่าง (products:edit) · RD รับเข้าทะเบียน/ใส่รหัส/
+  // ส่ง Rev (ไม่มี products:edit แต่ต้องผ่าน) → ต้องปล่อยทั้งสองทาง เหมือนที่ทะเบียน
+  // วัสดุเคยพลาดแล้วทำให้ RD/PC โดน 403 ทุกครั้งที่กดแก้ราคา
+  // ด่านจริงอยู่ใน handler ซึ่งรู้ว่าแถวนั้นเป็นร่างของใครและใครเป็นเจ้าของทะเบียน
+  if (path.startsWith('/api/scents') || path.startsWith('/api/formulas')) {
+    return can(role, 'products:edit') || role === 'rd';
   }
   // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น
   // (มติ 2026-07-22: ผู้บริหารมีหน้าที่อนุมัติ ไม่ได้ดูแล master data)
