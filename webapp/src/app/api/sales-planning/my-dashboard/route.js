@@ -96,28 +96,34 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const dealMap = new Map(myDeals.map((deal) => [deal.id, deal]));
   let dealActivityFeed = [];
   if (dealMap.size) {
+    // mig 0169: ฟีดดีลย้ายมาเธรดกลางแล้ว — กรอง entityType ด้วยเสมอ ไม่งั้นจะได้
+    // อัปเดตของ entity อื่นที่บังเอิญ id ชนกันปนมา (ตารางเดียวเก็บทุกโมดูล)
+    // ข้อความที่ถูกลบ (soft delete) ต้องไม่โผล่ในฟีดสรุป — ของเดิมลบจริงจึงไม่มีปัญหานี้
     const { data: activities, error: activityError } = await supabase
-      .from('sales_deal_activities')
+      .from('entity_updates')
       .select('*')
-      .in('dealId', Array.from(dealMap.keys()))
+      .eq('entityType', 'deal')
+      .in('entityId', Array.from(dealMap.keys()))
+      .is('deletedAt', null)
       .order('createdAt', { ascending: false })
       .limit(50);
     if (activityError) return fail(activityError.message, 500);
     dealActivityFeed = (activities || []).map((activity) => {
-      const deal = dealMap.get(activity.dealId);
+      const deal = dealMap.get(activity.entityId);
+      const dueDate = activity.meta?.dueDate || null;
       return {
         id: activity.id,
-        dealId: activity.dealId,
+        dealId: activity.entityId,
         dealCode: deal?.code || null,
         dealTitle: deal?.title || 'ดีล',
         customerName: deal?.customerName || null,
         kind: activity.kind,
         body: activity.body,
-        dueDate: activity.dueDate || null,
-        createdByName: activity.createdByName || user.name || 'ฝ่ายขาย',
+        dueDate,
+        createdByName: activity.authorName || user.name || 'ฝ่ายขาย',
         createdAt: activity.createdAt,
-        updatedAt: activity.updatedAt || null,
-        urgent: !!(activity.dueDate && activity.dueDate <= todayBangkok),
+        updatedAt: activity.editedAt || null,
+        urgent: !!(dueDate && dueDate <= todayBangkok),
       };
     });
   }

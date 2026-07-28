@@ -10,8 +10,8 @@ import {
   isUpdateEntity, loadUpdateParent, updateEntityConfig,
 } from './updateAccess.js';
 import {
-  isKnownUpdateKind, redactDeleted, sanitizeUpdateAttachments, updateKindMeta,
-  UPDATE_KINDS,
+  authorableKinds, isKnownUpdateKind, redactDeleted, sanitizeUpdateAttachments,
+  updateKindMeta, UPDATE_KINDS,
 } from './updateTypes.js';
 
 // stub supabase เท่าที่ทะเบียนใช้: from().select().eq().maybeSingle() +
@@ -47,7 +47,13 @@ test('ทุก entity ที่ลงทะเบียนต้องประ
     assert.equal(conf.canPost.constructor.name, 'AsyncFunction', `${name}: canPost ต้องเป็น async`);
     // ทุก entity ต้องมีชุด kind ของตัวเอง ไม่งั้นป้ายบนหน้าจอตกเป็นค่า fallback เงียบ ๆ
     assert.ok(UPDATE_KINDS[name], `${name}: ต้องประกาศชุด kind ใน updateTypes`);
-    assert.ok(UPDATE_KINDS[name].comment, `${name}: ต้องมี kind 'comment' (ช่องพิมพ์เอง)`);
+    // เดิมบังคับว่าต้องมี kind ชื่อ 'comment' — เลิกบังคับตั้งแต่ชนิดที่คนเลือกเองได้
+    // เป็นชุดต่อ entity (ฟีดดีลใช้ note/call/meeting/email/next_step ไม่มี comment เลย)
+    // สิ่งที่ต้องจริงคือ "มีอย่างน้อยหนึ่งชนิดที่คนพิมพ์เองได้" ไม่งั้นกล่องพิมพ์ส่งไม่ออก
+    assert.ok(
+      authorableKinds(name).length >= 1,
+      `${name}: ต้องมีชนิดที่คนเลือกเองได้อย่างน้อยหนึ่ง (ธง authorable)`,
+    );
   }
 });
 

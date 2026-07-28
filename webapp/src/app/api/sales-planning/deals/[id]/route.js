@@ -26,6 +26,7 @@ import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { purgeUpdates } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -288,6 +289,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) return fail(error.message, 500);
+  // เธรดความเคลื่อนไหว (mig 0169) เป็น polymorphic ไม่มี FK — ของเดิมหายเองเพราะ
+  // sales_deal_activities มี ON DELETE CASCADE แต่ตารางกลางไม่มี ต้องกวาดเอง
+  // ไม่งั้นเหลือเธรดของดีลที่ไม่มีอยู่แล้วค้างในฟีดรวมข้ามโมดูล
+  await purgeUpdates(supabase, 'deal', id);
 
   const forceNote = force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '';
   const detachNote = detachedFromProject

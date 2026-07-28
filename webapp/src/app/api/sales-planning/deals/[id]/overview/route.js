@@ -27,11 +27,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
-  const [quotations, salesOrders, documents, activities, stageHistory, forecasts, dealTasks, inquiries] = await Promise.all([
+  const [quotations, salesOrders, documents, stageHistory, forecasts, dealTasks, inquiries] = await Promise.all([
     safe('quotations', supabase.from('quotations').select('*, lines:quotation_lines(*)').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('sales orders', supabase.from('sales_orders').select('*').eq('dealId', deal.id).order('orderDate', { ascending: false }), []),
     safe('documents', supabase.from('sales_deal_documents').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
-    safe('activities', supabase.from('sales_deal_activities').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
+    // mig 0169: ฟีดความเคลื่อนไหวไม่ได้โหลดที่นี่แล้ว — UpdateThread ยิง /api/updates
+    // เอง ถ้าดึงซ้ำที่นี่ก็เป็นการอ่านสองรอบแล้วทิ้งชุดหนึ่ง
     safe('stage history', supabase.from('sales_deal_stage_history').select('*').eq('dealId', deal.id).order('changedAt', { ascending: false }), []),
     safe('forecasts', supabase.from('sales_deal_forecasts').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     // งาน: ผูกดีลตรง (dealId) + งานเดิมที่ผูกผ่านไทม์ไลน์ (projectId) — ฟอร์มตัด
@@ -78,7 +79,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotations.warning,
     salesOrders.warning,
     documents.warning,
-    activities.warning,
     stageHistory.warning,
     forecasts.warning,
     dealTasks.warning,
@@ -107,7 +107,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotations: latestQuotationRevisions(quotations.data),
     salesOrders: salesOrders.data,
     documents: documents.data,
-    activities: activities.data,
     inquiries: inquiries.data,
     dealTasks: enrichedDealTasks,
     stageHistory: stageHistory.data,
