@@ -245,10 +245,12 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/sales-planning/activities", {
+      // mig 0169: ฟีดดีลย้ายมาเธรดกลาง — ด่านสิทธิ์ยังเป็นชุดเดิม (ขอบเขตดีล)
+      // เพราะทะเบียน updateAccess.deal ยกมาจาก /api/sales-planning/activities ตรง ๆ
+      const res = await fetch("/api/updates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId, kind, body: body.trim() }),
+        body: JSON.stringify({ entityType: "deal", entityId: dealId, kind, body: body.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "เพิ่มความเคลื่อนไหวไม่สำเร็จ");
@@ -267,10 +269,10 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     setActivityBusy(editing.id);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/activities/${editing.id}`, {
+      const res = await fetch(`/api/updates/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: editing.kind, body: editing.body.trim() }),
+        body: JSON.stringify({ action: "edit", kind: editing.kind, body: editing.body.trim() }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "แก้ไขความเคลื่อนไหวไม่สำเร็จ");
@@ -288,7 +290,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     setActivityBusy(item.activityId);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/activities/${item.activityId}`, { method: "DELETE" });
+      const res = await fetch(`/api/updates/${item.activityId}`, { method: "DELETE" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "ลบความเคลื่อนไหวไม่สำเร็จ");
       await onChanged?.();

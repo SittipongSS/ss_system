@@ -93,9 +93,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('sales_orders')
         .select('id, dealId, quotationId, orderNumber, status, orderDate, actualAmount, totalAmount')
         .in('dealId', dealIds).order('orderDate', { ascending: false }),
-      supabase.from('sales_deal_activities')
-        .select('id, dealId, kind, body, dueDate, activityAt, meetingMode, createdByName, createdAt')
-        .in('dealId', dealIds).order('createdAt', { ascending: false }).limit(60),
+      // mig 0169: ฟีดดีลอยู่ในเธรดกลางแล้ว (dealId → entityId, dueDate/activityAt/
+      // meetingMode → meta) · normalize กลับเป็นรูปเดิมด้านล่างเพื่อไม่ให้ ProjectDealsHub
+      // ต้องรู้จัก schema ของตารางกลาง
+      supabase.from('entity_updates')
+        .select('id, entityId, kind, body, meta, authorName, createdAt')
+        .eq('entityType', 'deal').in('entityId', dealIds).is('deletedAt', null)
+        .order('createdAt', { ascending: false }).limit(60),
       supabase.from('sales_deal_stage_history')
         .select('id, dealId, fromStage, toStage, changedByName, changedAt')
         .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
@@ -103,7 +107,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     ]);
     quotations = latestQuotationRevisions(quotes || []);
     salesOrders = orderRows || [];
-    dealActivities = acts || [];
+    dealActivities = (acts || []).map((a) => ({
+      id: a.id,
+      dealId: a.entityId,
+      kind: a.kind,
+      body: a.body,
+      dueDate: a.meta?.dueDate || null,
+      activityAt: a.meta?.activityAt || null,
+      meetingMode: a.meta?.meetingMode || null,
+      createdByName: a.authorName || null,
+      createdAt: a.createdAt,
+    }));
     dealStageHistory = hist || [];
     inquiries = inquiryRows || [];
   } else {

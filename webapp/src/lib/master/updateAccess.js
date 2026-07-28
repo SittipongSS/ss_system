@@ -15,7 +15,9 @@ import { canApproveCosting, canChangeTaskStatus, canViewCosting, isSuperuser } f
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAnswerAsk, canManageAsk } from '@/lib/materialAsks';
 import { canViewCostingRequest } from '@/lib/costing';
-import { inSalesEditScope } from '@/lib/salesPlanning';
+import {
+  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
+} from '@/lib/salesPlanning';
 import { isAuthorableKind } from '@/lib/master/updateTypes';
 
 export const UPDATE_ENTITIES = {
@@ -50,6 +52,20 @@ export const UPDATE_ENTITIES = {
       if (!canViewCosting(user)) return false;
       if (['closed', 'cancelled'].includes(parent?.status)) return false;
       return canManageAsk(user, parent) || canAnswerAsk(user, parent);
+    },
+  },
+
+  // ── ดีล (ฟีดความเคลื่อนไหว ย้ายมาจาก sales_deal_activities, mig 0169) ──
+  // ด่านยกมาจาก /api/sales-planning/activities ตรง ๆ ทั้งอ่านและเขียน — ห้ามคิดใหม่
+  // ให้ต่างจากเดิม ไม่งั้นคนที่เคยโพสต์ได้จะโพสต์ไม่ได้โดยไม่มีใครสั่ง
+  deal: {
+    table: 'sales_deals',
+    attachments: true,   // ของเดิมแนบรูปได้ (mig 0083) — ต้องไม่หายไปกับการย้าย
+    async canView(supabase, parent, user) {
+      return canViewSalesPlanning(user) && inSalesViewScope(user, parent);
+    },
+    async canPost(supabase, parent, user) {
+      return canEditSalesPlanning(user) && inSalesEditScope(user, parent);
     },
   },
 

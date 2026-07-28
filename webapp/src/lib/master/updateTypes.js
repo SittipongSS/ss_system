@@ -31,6 +31,21 @@ export const UPDATE_KINDS = {
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)' },
   },
+  // ฟีดความเคลื่อนไหวของดีล (ย้ายมาจาก sales_deal_activities, mig 0063 → 0169)
+  //
+  // ⭐ เธรดเดียวในระบบที่คนเลือกชนิดเองได้หลายแบบ — ป้าย/สี/ลำดับยกมาจาก
+  // ACTIVITY_META เดิมในหน้าดีลตรง ๆ (ผู้ใช้ต้องไม่รู้สึกว่าอะไรเปลี่ยน) และ
+  // ชื่อ kind ตรงกับ CHECK ของตารางเก่าทุกตัว จึงไม่ต้องแปลงตอน backfill
+  //
+  // ไม่มีชนิด 'comment' ที่นี่โดยเจตนา — ของเดิมใช้ 'note' เป็นค่าตั้งต้น
+  // (updateKindMeta/defaultAuthorableKind ถอยไปหาตัวแรกที่ประกาศ ไม่ได้ผูกกับ 'comment')
+  deal: {
+    note: { label: 'บันทึก', color: 'var(--text-3)', authorable: true },
+    call: { label: 'โทร', color: 'var(--blue)', authorable: true },
+    meeting: { label: 'ประชุม', color: 'var(--violet)', authorable: true },
+    email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
+    next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
+  },
   // ใบขอราคาผลิต (mig 0143) — เธรดสองฝ่าย: เซลยื่น ↔ ผู้บริหารอนุมัติ/ตีกลับ
   // ใช้คำที่ล็อกไว้ของ workflow เอกสาร: "ตีกลับให้แก้ไข" / "ออก Rev."
   costing_request: {

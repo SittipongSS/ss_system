@@ -6,7 +6,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -33,7 +33,7 @@ import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
-import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
+import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 
@@ -50,14 +50,8 @@ const money = (value) => fmtMoney(value);
 // สถานะที่เลือกได้ (won = ปิดสุดท้าย; ไม่มี in_project ให้เลือก แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
 const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
-// ประเภทอัปเดตงาน (feed) — ตรงกับ CHECK ของตาราง sales_deal_activities (mig 0063)
-const ACTIVITY_META = {
-  note: { label: "บันทึก", color: "var(--text-3)" },
-  call: { label: "โทร", color: "var(--blue)" },
-  meeting: { label: "ประชุม", color: "var(--violet)" },
-  email: { label: "อีเมล", color: "var(--teal)" },
-  next_step: { label: "ขั้นถัดไป", color: "var(--amber)" },
-};
+// ป้ายประเภทอัปเดตย้ายไปทะเบียนกลางแล้ว (UPDATE_KINDS.deal ใน lib/master/updateTypes)
+// — ค่าเดิมยกไปทั้งชุด ป้าย/สีเหมือนเดิมทุกตัว
 
 function stageBadge(stage) {
   const color = {
@@ -206,19 +200,42 @@ export default function DealOverviewPage() {
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
   const pendingDocs = useMemo(() => (data?.documents || []).filter((doc) => doc.status === "pending"), [data]);
 
-  // ไทม์ไลน์รวม: อัปเดตงาน (activities) + การเปลี่ยนสถานะ (stageHistory) + เหตุการณ์
-  // เรื่องสอบถาม RD (inquiries — "เก็บแยก โชว์รวม": อ่านอย่างเดียว กดเข้าเธรดเต็ม)
-  // เรียงเวลาล่าสุดก่อน
-  const timeline = useMemo(() => {
-    const acts = (data?.activities || []).map((a) => ({ type: "activity", at: a.createdAt, act: a }));
-    const stages = (data?.stageHistory || []).map((s) => ({ type: "stage", at: s.changedAt, stage: s }));
+  // เหตุการณ์อ่านอย่างเดียวที่ส่งเข้าเธรดกลางให้เรียงรวมกับข้อความคน (extraItems)
+  //
+  // "เก็บแยก โชว์รวม": ประวัติสถานะ (sales_deal_stage_history) กับเรื่องสอบถาม RD
+  // (inquiries) **ไม่ย้ายตาราง** — ทั้งคู่มี schema เฉพาะโดเมนและมีคิว/KPI query ตรง
+  // เหมือน lead_events · เธรดแค่ยืมมาแสดงในสายเดียว แล้วกดเข้าไปดูของจริงได้
+  const extraItems = useMemo(() => {
+    const stages = (data?.stageHistory || []).map((s) => ({
+      id: `st-${s.id}`,
+      at: s.changedAt,
+      label: "สถานะ",
+      color: "var(--text-3)",
+      by: s.changedByName || null,
+      body: `${STAGE_LABELS[s.fromStage] || s.fromStage || "เริ่ม"} → ${STAGE_LABELS[s.toStage] || s.toStage}`,
+    }));
     const inqs = (data?.inquiries || []).flatMap((q) => {
-      const events = [{ type: "inquiry", at: q.createdAt, inquiry: q, event: "created" }];
-      if (q.answeredAt) events.push({ type: "inquiry", at: q.answeredAt, inquiry: q, event: "answered" });
-      if (q.closedAt) events.push({ type: "inquiry", at: q.closedAt, inquiry: q, event: "closed" });
-      return events;
+      const href = `/sa/inquiries/${q.id}`;
+      const linkLabel = `${q.code ? `${q.code} · ` : ""}${q.title || "เรื่องสอบถาม"}`;
+      const rows = [{
+        id: `iq-${q.id}-created`, at: q.createdAt, label: q.urgent ? "สอบถาม RD (ด่วน)" : "สอบถาม RD",
+        color: q.urgent ? "var(--red)" : "var(--violet)", href, linkLabel, by: q.requesterName || null,
+      }];
+      if (q.answeredAt) {
+        rows.push({
+          id: `iq-${q.id}-answered`, at: q.answeredAt, label: "RD ตอบแล้ว",
+          color: "var(--green)", href, linkLabel, by: q.assigneeName || null,
+        });
+      }
+      if (q.closedAt) {
+        rows.push({
+          id: `iq-${q.id}-closed`, at: q.closedAt, label: "ปิดเรื่องสอบถาม",
+          color: "var(--text-3)", href, linkLabel, by: q.assigneeName || null,
+        });
+      }
+      return rows;
     });
-    return [...acts, ...stages, ...inqs].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
+    return [...stages, ...inqs];
   }, [data]);
 
   // สรุปความคืบหน้าไทม์ไลน์ (จาก project_tasks ของโครงการ PM ที่ผูก)
@@ -288,45 +305,10 @@ export default function DealOverviewPage() {
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
 
-  // ฟีดอัปเดตงาน (sales_deal_activities)
-  const [feedKind, setFeedKind] = useState("note");
-  const [feedBody, setFeedBody] = useState("");
-  const [feedDue, setFeedDue] = useState("");
-  const [feedBusy, setFeedBusy] = useState(false);
-  const [feedFiles, setFeedFiles] = useState([]); // { file, url } รูปที่เลือกไว้ (ยังไม่อัป)
-  const [lightbox, setLightbox] = useState(null); // { src, name } พรีวิวเต็มจอ
+  // ฟีดความเคลื่อนไหวย้ายไปเธรดกลางแล้ว (mig 0169) — โพสต์/แก้/ลบ/แนบรูป/พรีวิวรูป
+  // อยู่ใน UpdateThread ทั้งชุด หน้านี้เหลือหน้าที่แค่ส่งเหตุการณ์อ่านอย่างเดียว
+  // (ประวัติสถานะ + เรื่องสอบถาม RD) เข้าไปเรียงรวมผ่าน extraItems
   const [inquiryOpen, setInquiryOpen] = useState(false); // โมดัล "สอบถาม RD"
-
-  // เลือกรูปแนบ (composer) — กรองขนาด/ชนิด client-side ก่อน, สร้าง objectURL พรีวิว
-  const onPickFiles = (e) => {
-    const picked = Array.from(e.target.files || []);
-    e.target.value = ""; // ให้เลือกไฟล์เดิมซ้ำได้
-    const valid = [];
-    for (const file of picked) {
-      if (!file.type.startsWith("image/")) { setError(`ไฟล์ ${file.name} ไม่ใช่รูปภาพ`); continue; }
-      if (file.size > MAX_UPLOAD_BYTES) { setError(`ไฟล์ ${file.name} ใหญ่เกิน ${MAX_UPLOAD_MB} MB`); continue; }
-      valid.push({ file, url: URL.createObjectURL(file) });
-    }
-    setFeedFiles((prev) => [...prev, ...valid].slice(0, 8));
-  };
-  const removeFeedFile = (idx) => setFeedFiles((prev) => {
-    const next = prev.slice();
-    const [gone] = next.splice(idx, 1);
-    if (gone) URL.revokeObjectURL(gone.url);
-    return next;
-  });
-
-  // อัปโหลดรูปหนึ่งไฟล์ผ่าน /api/upload (Drive/Supabase) → คืน ref สำหรับเก็บใน activity
-  const uploadOneImage = async (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    if (deal?.customerId) { fd.append("entityType", "customer"); fd.append("entityId", deal.customerId); }
-    if (deal?.customerName) fd.append("customerName", deal.customerName);
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-    return { fileUrl: payload.url, driveFileId: payload.driveFileId || null, fileName: file.name, mimeType: file.type, sizeBytes: file.size };
-  };
 
   // โมดัลแก้ดีล + สร้าง PM
   const [customers, setCustomers] = useState([]);
@@ -347,87 +329,6 @@ export default function DealOverviewPage() {
   const [pmModalOpen, setPmModalOpen] = useState(false);
   const [pmInitial, setPmInitial] = useState(null);
 
-  const postActivity = async () => {
-    if (!feedBody.trim() && !feedFiles.length) return;
-    setFeedBusy(true);
-    setError("");
-    try {
-      // อัปรูปที่เลือกไว้ก่อน แล้วแนบ ref ไปกับ activity
-      const attachments = [];
-      for (const f of feedFiles) attachments.push(await uploadOneImage(f.file));
-      const res = await fetch("/api/sales-planning/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dealId: id,
-          kind: feedKind,
-          body: feedBody.trim(),
-          dueDate: feedKind === "next_step" ? (feedDue || null) : null,
-          attachments,
-        }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โพสต์อัปเดตไม่สำเร็จ");
-      setFeedBody("");
-      setFeedDue("");
-      setFeedKind("note");
-      feedFiles.forEach((f) => URL.revokeObjectURL(f.url));
-      setFeedFiles([]);
-      await load();
-    } catch (e) {
-      setError(e.message || "โพสต์อัปเดตไม่สำเร็จ");
-    } finally {
-      setFeedBusy(false);
-    }
-  };
-
-  // แก้ไข/ลบ อัปเดตงาน
-  const [editActId, setEditActId] = useState("");
-  const [editKind, setEditKind] = useState("note");
-  const [editBody, setEditBody] = useState("");
-  const [editDue, setEditDue] = useState("");
-
-  const startEditActivity = (act) => {
-    setEditActId(act.id);
-    setEditKind(act.kind || "note");
-    setEditBody(act.body || "");
-    setEditDue(act.dueDate || "");
-  };
-  const cancelEditActivity = () => { setEditActId(""); setEditBody(""); setEditDue(""); };
-
-  const saveEditActivity = async () => {
-    if (!editBody.trim()) return;
-    setFeedBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/activities/${editActId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: editKind, body: editBody.trim(), dueDate: editKind === "next_step" ? (editDue || null) : null }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "แก้ไขอัปเดตไม่สำเร็จ");
-      cancelEditActivity();
-      await load();
-    } catch (e) {
-      setError(e.message || "แก้ไขอัปเดตไม่สำเร็จ");
-    } finally {
-      setFeedBusy(false);
-    }
-  };
-
-  const deleteActivity = async (act) => {
-    if (!(await confirmAction("ลบอัปเดตงานนี้?"))) return;
-    setFeedBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/activities/${act.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบอัปเดตไม่สำเร็จ");
-      await load();
-    } catch (e) {
-      setError(e.message || "ลบอัปเดตไม่สำเร็จ");
-    } finally {
-      setFeedBusy(false);
-    }
-  };
 
   const runAction = useCallback(async (key, url, opts) => {
     setActionBusy(key);
@@ -1153,151 +1054,26 @@ export default function DealOverviewPage() {
               <div className="flex items-center gap-2 mb-3">
                 <MessageSquare size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหว</h2>
-                <span className="ui-badge" style={{ marginLeft: "auto", color: "var(--text-3)" }}>{timeline.length} รายการ</span>
+                {/* ตัวนับย้ายออก — จำนวนรายการในเธรดเป็นของ UpdateThread ที่โหลดเอง
+                    หน้านี้ไม่รู้ยอดจริงอีกแล้ว ใส่เลขที่นับได้ครึ่งเดียวจะหลอกคนอ่าน */}
+                {canEdit && (
+                  <span style={{ marginLeft: "auto" }} />
+                )}
                 {canEdit && (
                   <button type="button" className="btn sm" onClick={() => setInquiryOpen(true)} title="ส่งข้อสอบถามถึงฝ่าย RD ในนามดีลนี้">
                     <MessageSquare size={13} aria-hidden="true" /> สอบถาม RD
                   </button>
                 )}
               </div>
-
-              {canEdit && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Select className="premium-select" value={feedKind} onChange={(e) => setFeedKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
-                      {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                    </Select>
-                    {feedKind === "next_step" && (
-                      <DateInput value={feedDue} onChange={setFeedDue} style={{ width: 180 }} ariaLabel="กำหนดวันขั้นถัดไป" />
-                    )}
-                  </div>
-                  <textarea
-                    className="premium-input"
-                    rows={2}
-                    value={feedBody}
-                    onChange={(e) => setFeedBody(e.target.value)}
-                    placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
-                    style={{ resize: "vertical" }}
-                  />
-                  {/* พรีวิวรูปที่เลือกไว้ (ยังไม่อัป) — กดกากบาทเอาออกได้ */}
-                  {!!feedFiles.length && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {feedFiles.map((f, i) => (
-                        <div key={i} style={{ position: "relative", width: 72, height: 72, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                          <img src={f.url} alt={f.file.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          <button type="button" onClick={() => removeFeedFile(i)} aria-label="เอารูปออก"
-                            style={{ position: "absolute", top: 2, right: 2, background: "color-mix(in srgb, var(--navy) 72%, transparent)", color: "var(--navy-fg)", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", lineHeight: 0 }}>
-                            <X size={13} aria-hidden="true" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-                    <label className="btn ghost sm" style={{ cursor: "pointer" }} title="แนบรูปภาพ">
-                      <Paperclip size={13} aria-hidden="true" /> แนบรูป
-                      <input type="file" accept={IMAGE_ACCEPT_ATTR} multiple onChange={onPickFiles} style={{ display: "none" }} />
-                    </label>
-                    <button type="button" className="btn btn-primary sm" onClick={postActivity} disabled={feedBusy || (!feedBody.trim() && !feedFiles.length)}>
-                      <Send size={13} aria-hidden="true" /> {feedBusy ? "กำลังโพสต์..." : "โพสต์"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {timeline.length ? (
-                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {timeline.map((item) => {
-                    if (item.type === "inquiry") {
-                      const q = item.inquiry;
-                      const eventMeta = {
-                        created: { label: "สอบถาม RD", color: "var(--violet)", text: q.title },
-                        answered: { label: "RD ตอบแล้ว", color: "var(--green)", text: q.title },
-                        closed: { label: "ปิดเรื่องสอบถาม", color: "var(--text-3)", text: q.title },
-                      }[item.event];
-                      return (
-                        <li key={`iq-${q.id}-${item.event}`} style={{ borderLeft: `3px solid ${eventMeta.color}`, paddingLeft: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            <span className="ui-badge" style={{ color: eventMeta.color }}>{eventMeta.label}</span>
-                            <Link href={`/sa/inquiries/${q.id}`} className="linklike" style={{ fontSize: 13.5 }}>
-                              {q.code ? `${q.code} · ` : ""}{eventMeta.text}
-                            </Link>
-                            {q.urgent && item.event === "created" && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
-                          </div>
-                          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>
-                            {item.event === "created" ? (q.requesterName || "-") : (q.assigneeName || "-")} · {item.at ? fmtDateTime(item.at) : "-"}
-                          </div>
-                        </li>
-                      );
-                    }
-                    if (item.type === "stage") {
-                      const row = item.stage;
-                      return (
-                        <li key={`st-${row.id}`} style={{ borderLeft: "3px solid var(--border)", paddingLeft: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            <span className="ui-badge" style={{ color: "var(--text-3)" }}>สถานะ</span>
-                            <span style={{ fontSize: 13.5 }}>
-                              {STAGE_LABELS[row.fromStage] || row.fromStage || "เริ่ม"} → <strong>{STAGE_LABELS[row.toStage] || row.toStage}</strong>
-                            </span>
-                          </div>
-                          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{row.changedByName || "-"} · {row.changedAt ? fmtDateTime(row.changedAt) : "-"}</div>
-                        </li>
-                      );
-                    }
-                    const act = item.act;
-                    const meta = ACTIVITY_META[act.kind] || ACTIVITY_META.note;
-                    if (editActId === act.id) {
-                      return (
-                        <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <Select className="premium-select" value={editKind} onChange={(e) => setEditKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
-                              {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                            </Select>
-                            {editKind === "next_step" && (
-                              <DateInput value={editDue} onChange={setEditDue} style={{ width: 180 }} ariaLabel="กำหนดวัน" />
-                            )}
-                          </div>
-                          <textarea className="premium-input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} style={{ resize: "vertical" }} />
-                          <div className="form-action-inline">
-                            <button type="button" className="btn ghost sm" onClick={cancelEditActivity} disabled={feedBusy}><X size={13} aria-hidden="true" /> ยกเลิก</button>
-                            <button type="button" className="btn btn-primary sm" onClick={saveEditActivity} disabled={feedBusy || !editBody.trim()}><Save size={13} aria-hidden="true" /> บันทึก</button>
-                          </div>
-                        </li>
-                      );
-                    }
-                    return (
-                      <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
-                          {act.dueDate && <span style={{ fontSize: 12, color: "var(--amber)" }}>กำหนด {act.dueDate}</span>}
-                          {canEdit && (
-                            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
-                              <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => startEditActivity(act)} aria-label="แก้ไขอัปเดต" disabled={feedBusy}><Pencil size={14} aria-hidden="true" /></button>
-                              <button type="button" className="btn-icon danger" onClick={() => deleteActivity(act)} aria-label="ลบอัปเดต" disabled={feedBusy}><Trash2 size={14} aria-hidden="true" /></button>
-                            </span>
-                          )}
-                        </div>
-                        {act.body && <ReadableText text={act.body} lines={4} style={{ margin: "4px 0 2px", fontSize: 13.5 }} />}
-                        {!!act.attachments?.length && (
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "6px 0 2px" }}>
-                            {act.attachments.map((att, i) => {
-                              const src = `/api/sales-planning/activities/${act.id}/file?i=${i}`;
-                              return (
-                                <button key={i} type="button" onClick={() => setLightbox({ src, name: att.fileName })}
-                                  title={att.fileName || "ดูรูป"}
-                                  style={{ width: 88, height: 88, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", padding: 0, cursor: "pointer", background: "var(--bg)" }}>
-                                  <img src={src} alt={att.fileName || "รูปแนบ"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div style={{ color: "var(--text-3)", fontSize: 12 }}>{act.createdByName || "-"} · {act.createdAt ? fmtDateTime(act.createdAt) : "-"}</div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : <Empty>ยังไม่มีความเคลื่อนไหว{canEdit ? " — เริ่มโพสต์อัปเดตได้เลย" : ""}</Empty>}
+              <UpdateThread
+                entityType="deal"
+                entityId={deal.id}
+                order="desc"
+                extraItems={extraItems}
+                placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
+                emptyText="ยังไม่มีความเคลื่อนไหว"
+                onPosted={load}
+              />
           </section>
             </div>
             )}
@@ -1435,22 +1211,6 @@ export default function DealOverviewPage() {
         createLabel="จัดการโครงการ"
       />
 
-      {/* Lightbox พรีวิวรูปเต็มจอ — คลิกที่ใดก็ปิด */}
-      {lightbox && (
-        <div
-          role="dialog"
-          aria-label={lightbox.name || "พรีวิวรูป"}
-          onClick={() => setLightbox(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}
-        >
-          <button type="button" onClick={() => setLightbox(null)} aria-label="ปิด"
-            style={{ position: "absolute", top: 16, right: 16, background: "color-mix(in srgb, var(--navy-fg) 15%, transparent)", color: "var(--navy-fg)", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center" }}>
-            <X size={20} aria-hidden="true" />
-          </button>
-          <img src={lightbox.src} alt={lightbox.name || "รูปแนบ"} onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, cursor: "default" }} />
-        </div>
-      )}
     </Workspace>
   );
 }
