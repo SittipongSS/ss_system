@@ -106,10 +106,15 @@
   line-height: 1.35;
 }
 
+/* ⚠️ ต้องมี margin ล่าง — รางนี้กินเต็มความกว้างการ์ด (margin ข้าง -18px) และมีเส้น
+   ปิดหัวท้าย ของที่ตามมาใน children (เช่น DocumentReadinessList) ไม่มี margin ของตัวเอง
+   จึงเคยเริ่มติดเส้นล่างพอดี = "ข้อมูลลูกค้าครบ" ชนเส้นใต้ "ส่งลูกค้า" (ผู้ใช้ส่งภาพมา
+   2026-07-29) · .notices/.evidence มี margin-top 14px อยู่แล้ว — margin สองฝั่งนี้
+   collapse กันเอง (cardBody เป็น block ปกติ) จึงไม่กลายเป็น 28px */
 .workflowRail {
   display: flex;
   flex-direction: column;
-  margin: 0 -18px;
+  margin: 0 -18px 14px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
