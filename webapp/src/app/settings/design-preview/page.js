@@ -41,6 +41,9 @@ import Pager from "@/components/ui/Pager";
 import { notifyToast } from "@/components/ui/Toast";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
+import RecordControlCard from "@/components/ui/RecordControlCard";
+import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import { defineLifecycle } from "@/lib/recordLifecycle";
 import styles from "./page.module.css";
 
 const SURFACES = [
@@ -95,6 +98,114 @@ function Swatches({ items }) {
   );
 }
 
+const DEMO_USERS = [
+  { id: "u1", name: "สิทธิพงษ์ ศรีสุข", team: "KA", department: "SA" },
+  { id: "u2", name: "ปัทมา วงศ์ทอง", team: "ODM", department: "SA" },
+];
+
+/* lifecycle ตัวอย่างสำหรับหน้าต้นแบบ — โครงเดียวกับที่ ลีด/ดีล/โครงการ จะประกาศจริง
+   ประกาศไว้นอก component เพราะ defineLifecycle ตรวจความถูกต้องตอนประกาศ (ทำครั้งเดียว) */
+const DEMO_LIFECYCLE = defineLifecycle({
+  entity: "demo",
+  noun: "รายการตัวอย่าง",
+  statuses: {
+    draft: { label: "ร่าง", tone: "neutral", description: "ยังไม่ยื่นอนุมัติ แก้ไขได้อิสระ" },
+    pending: { label: "รออนุมัติ", tone: "warning", description: "รอผู้อนุมัติตรวจ — ผู้ยื่นดึงกลับได้" },
+    active: { label: "ดำเนินการ", tone: "info", description: "อนุมัติแล้ว กำลังเดินงาน" },
+    done: { label: "เสร็จสิ้น", tone: "success", description: "ปิดงานเรียบร้อย" },
+    cancelled: { label: "ยกเลิก", tone: "danger", description: "หยุดกลางทาง เหตุผลอยู่ในประวัติ" },
+  },
+  cancelledStatuses: ["cancelled"],
+  steps: [
+    { id: "draft", label: "ร่าง", hint: "กรอกข้อมูล", statuses: ["draft"] },
+    { id: "approve", label: "อนุมัติ", hint: "ผู้อนุมัติตรวจ", statuses: ["pending"] },
+    { id: "run", label: "ดำเนินการ", hint: "เดินงานตามแผน", statuses: ["active"] },
+    { id: "close", label: "ปิดงาน", statuses: ["done"] },
+  ],
+  transitions: [
+    { id: "submit", label: "ยื่นอนุมัติ", kind: "submit", slot: "primary", from: "draft", to: "pending" },
+    {
+      id: "approve",
+      label: "อนุมัติ",
+      kind: "approve",
+      slot: "primary",
+      from: "pending",
+      to: "active",
+      // visible = เรื่องสิทธิ์ → คนไม่มีสิทธิ์ไม่เห็นปุ่มนี้เลย
+      visible: (record, user) => user?.role === "boss",
+      confirm: { title: "อนุมัติรายการนี้?", message: "อนุมัติแล้วรายการจะเดินไปขั้นดำเนินการ" },
+    },
+    {
+      id: "reject",
+      label: "ตีกลับ",
+      kind: "reject",
+      from: "pending",
+      to: "draft",
+      reason: "required",
+      visible: (record, user) => user?.role === "boss",
+      reasonPolicy: {
+        title: "ตีกลับให้ผู้ยื่นแก้",
+        description: "รายการจะกลับเป็นร่าง พร้อมเหตุผลที่คุณระบุ",
+        detail: "ผู้ยื่นจะเห็นเหตุผลนี้และได้รับแจ้งเตือน",
+        label: "เหตุผลที่ตีกลับ",
+        placeholder: "ระบุสิ่งที่ต้องแก้ให้ชัดเจน",
+      },
+    },
+    {
+      id: "withdraw",
+      label: "ดึงกลับมาแก้ไข",
+      kind: "withdraw",
+      slot: "secondary",
+      from: "pending",
+      to: "draft",
+      // ดึงคำขอของตัวเองกลับ = กล่องยืนยันพอ ไม่บังคับเหตุผล (มติ 2026-07-28)
+      confirm: { title: "ดึงกลับมาแก้ไข", message: "รายการจะออกจากคิวอนุมัติและกลับเป็นร่าง ยื่นใหม่ได้ภายหลัง" },
+    },
+    {
+      id: "close",
+      label: "ปิดงาน",
+      kind: "submit",
+      slot: "primary",
+      from: "active",
+      to: "done",
+      // allow = เรื่องเงื่อนไข → เห็นปุ่มแต่กดไม่ได้ พร้อมบอกเหตุ
+      allow: (record) => (record.openTasks > 0 ? `ยังมีงานค้าง ${record.openTasks} ขั้นตอน` : true),
+    },
+    {
+      id: "drop",
+      label: "ยกเลิกรายการ",
+      kind: "drop",
+      from: ["draft", "pending", "active"],
+      to: "cancelled",
+      reason: "required",
+      reasonPolicy: {
+        title: "ยกเลิกรายการนี้",
+        description: "ตัวอย่าง transition ที่ขอข้อมูลเพิ่มนอกจากเหตุผล",
+        label: "รายละเอียดที่ลูกค้าแจ้ง",
+      },
+      fields: [
+        {
+          name: "lossReason",
+          type: "select",
+          label: "สาเหตุ",
+          required: true,
+          options: [
+            { value: "price", label: "ราคาสูงเกินไป" },
+            { value: "competitor", label: "คู่แข่งได้งาน" },
+            { value: "postpone", label: "ลูกค้าเลื่อนโครงการ" },
+          ],
+        },
+        { name: "owner", type: "person", label: "ผู้รับผิดชอบที่แจ้งข่าว", users: DEMO_USERS },
+        { name: "lostValue", type: "money", label: "มูลค่าที่เสียไป (บาท)" },
+        { name: "decidedAt", type: "datetime", label: "ลูกค้าแจ้งเมื่อ", hint: "เว้นว่างได้ ไม่บังคับ" },
+      ],
+    },
+    { id: "edit", label: "แก้ไขรายการ", kind: "edit", slot: "secondary" },
+  ],
+});
+
+const DEMO_STATUSES = ["draft", "pending", "active", "done", "cancelled"];
+
 export default function DesignPreviewPage() {
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("list");
@@ -105,6 +216,17 @@ export default function DesignPreviewPage() {
   const [docType, setDocType] = useState("qt");
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [reasonDemo, setReasonDemo] = useState(null); // null = ปิด, string = เปิดพร้อมค่าที่พิมพ์
+  const [recordStatus, setRecordStatus] = useState("pending");
+  const [recordRole, setRecordRole] = useState("boss");
+  const [recordLog, setRecordLog] = useState("");
+  const demoRecord = { id: "demo-1", status: recordStatus, openTasks: recordStatus === "active" ? 2 : 0 };
+  const demoUser = { id: "u1", role: recordRole };
+  const runDemoTransition = (id, values) => {
+    const filled = Object.entries(values).filter(([, value]) => value !== "" && value != null);
+    setRecordLog(`onTransition("${id}"${filled.length ? `, ${JSON.stringify(Object.fromEntries(filled))}` : ""})`);
+    const to = DEMO_LIFECYCLE.get(id)?.to;
+    if (to) setRecordStatus(to);
+  };
 
   return (
     <Workspace
@@ -461,6 +583,101 @@ export default function DesignPreviewPage() {
                 </tbody>
               </table>
             </TableShell>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="จุดจัดการเดียวต่อ record"
+          subtitle="recordLifecycle · RecordControlCard · RecordActionMenu · TransitionDialog"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info" title="ประกาศกติกาครั้งเดียว ใช้ได้ทั้งการ์ดและแถวตาราง">
+              ลีด/ดีล/โครงการ ประกาศ <code>defineLifecycle()</code> ที่เดียว แล้วทั้งการ์ดขวาและปุ่มท้ายแถว
+              กิน <code>lifecycle.available(record, user)</code> ตัวเดียวกัน — เห็นปุ่มไหนในแถว แปลว่าในการ์ดก็กดได้
+              {" "}สลับสถานะและบทบาทข้างล่างเพื่อดูว่าปุ่มเปลี่ยนตามอะไร
+            </StatusNotice>
+
+            <div className={styles.row}>
+              <Segmented
+                ariaLabel="สถานะตัวอย่าง"
+                value={recordStatus}
+                onChange={setRecordStatus}
+                options={DEMO_STATUSES.map((status) => ({
+                  value: status,
+                  label: DEMO_LIFECYCLE.statuses[status].label,
+                }))}
+              />
+              <Segmented
+                ariaLabel="บทบาทผู้ใช้ตัวอย่าง"
+                value={recordRole}
+                onChange={setRecordRole}
+                options={[
+                  { value: "boss", label: "ผู้อนุมัติ" },
+                  { value: "staff", label: "พนักงาน" },
+                ]}
+              />
+            </div>
+
+            <p className={styles.caption}>
+              <strong>visible vs allow ห้ามสลับ</strong> — เลือก &quot;พนักงาน&quot; ที่สถานะรออนุมัติ: ปุ่มอนุมัติ/ตีกลับ
+              {" "}<em>หายไปเลย</em> (ไม่มีสิทธิ์รู้ว่ามีปุ่ม) · เลือกสถานะดำเนินการ: ปุ่มปิดงาน <em>ยังโชว์แต่กดไม่ได้</em>
+              {" "}พร้อมบอกเหตุว่ายังมีงานค้าง
+            </p>
+
+            <div className={styles.formGrid}>
+              <RecordControlCard
+                lifecycle={DEMO_LIFECYCLE}
+                record={demoRecord}
+                user={demoUser}
+                onTransition={runDemoTransition}
+              />
+              <div className={styles.stack}>
+                <TableShell>
+                  <table>
+                    <thead>
+                      <tr><th>รายการ</th><th>สถานะ</th><th className="text-right">จัดการ</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>DEMO-0001</td>
+                        <td>
+                          <StatusBadge
+                            dot
+                            tone={DEMO_LIFECYCLE.statusMeta(demoRecord).tone}
+                            label={DEMO_LIFECYCLE.statusMeta(demoRecord).label}
+                          />
+                        </td>
+                        <td>
+                          <RecordActionMenu
+                            lifecycle={DEMO_LIFECYCLE}
+                            record={demoRecord}
+                            user={demoUser}
+                            manageHref="/settings/design-preview"
+                            onTransition={runDemoTransition}
+                            onEdit={() => setRecordLog('onEdit("DEMO-0001")')}
+                            onDelete={() => setRecordLog('onDelete("DEMO-0001")')}
+                            canDelete
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </TableShell>
+                <p className={styles.caption}>
+                  แถวตารางเหลือ 3 อย่าง: ปุ่มก้าวถัดไปปุ่มเดียว · ไอคอนแก้ไข/ลบ · ลิงก์ &quot;จัดการ&quot;
+                  {" "}ไปหน้ารายละเอียด — ปุ่มที่เหลือทั้งหมดอยู่บนการ์ดฝั่งซ้าย
+                </p>
+                {recordLog ? (
+                  <p className={`${styles.caption} ${styles.mono}`}>{recordLog}</p>
+                ) : (
+                  <p className={styles.caption}>กดปุ่มดูได้ — หน้า feature ส่งมาแค่ <code>onTransition(id, values)</code></p>
+                )}
+                <p className={styles.caption}>
+                  ปุ่ม &quot;ยกเลิกรายการ&quot; คือตัวอย่าง TransitionDialog ที่มี <code>fields</code> —
+                  {" "}ช่องเลือก/เลือกคน/จำนวนเงิน/วันเวลา ใช้ primitive เดิมทุกช่อง ไม่มี input ใหม่
+                </p>
+              </div>
+            </div>
           </div>
         </WorkspaceSection>
       </div>
