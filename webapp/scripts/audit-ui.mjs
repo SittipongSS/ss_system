@@ -42,6 +42,19 @@ const colorAllowList = [
   "src/app/settings/document-standards/quotation-preview/page.module.css",
 ];
 
+/* หนี้เก่า: prompt() ที่ยังไม่ได้แปลงเป็นกล่องกรอกของระบบ — โผล่มาตอนเติม prompt เข้า
+   ตัวตรวจ (2026-07-28) และตั้งใจแยกออกจากงานหน้าโครงการ ตัวเลข = จำนวนจุดที่ยอมให้เหลือ
+   ต่อไฟล์ นับเป็น "เพดาน" แบบเดียวกับชั้นสไตล์เก่า: มากกว่านี้ = เพิ่มของใหม่ → ตก,
+   น้อยกว่า = แปลงแล้ว → ลดเลขลง (ไม่ยอมให้ทิ้งตัวเลขค้างไว้เกินจริง)
+   ⚠️ ห้ามเติมไฟล์ใหม่เข้าลิสต์นี้เพื่อให้ audit ผ่าน — ของใหม่ใช้ ReasonDialog
+   (ขอเหตุผล) หรือ ConfirmDialog (ยืนยัน) ดูตัวอย่างที่ /settings/design-preview */
+const nativeFeedbackDebt = {
+  "src/app/database/customers/page.js": 1, // เหตุผลไม่อนุมัติลูกค้า (ยังไม่บังคับกรอก)
+  "src/app/database/products/page.js": 1, // เหตุผลไม่อนุมัติสินค้า (ยังไม่บังคับกรอก)
+  "src/app/sa/inquiries/[id]/page.js": 1, // แก้ไขข้อความในเธรดความเคลื่อนไหว
+  "src/components/mgmt/DocsPanel.js": 2, // ลิงก์ + ชื่อ Google Doc/Sheet (โมดูลงานบริหารที่พักไว้)
+};
+
 const rawColorViolations = [];
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
@@ -69,15 +82,34 @@ for (const file of uiFiles) {
   });
 }
 
+const staleNativeFeedbackDebt = [];
+const nativeFeedbackHits = new Map(); // rel -> ["rel:line", ...]
 for (const file of runtimeJsFiles) {
   const rel = relative(file);
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
   source.split(/\r?\n/).forEach((line, index) => {
     if (line.trimStart().startsWith("//")) return;
-    if (/\bwindow\.(?:alert|confirm)\s*\(|(?<![\w.])(?:alert|confirm)\s*\(/.test(line)) {
-      nativeFeedbackViolations.push(`${rel}:${index + 1}`);
+    // prompt() ก็นับด้วย — window.prompt เคยหลุดอยู่ในหน้าโครงการเพราะ regex ตรวจแค่ alert/confirm
+    if (/\bwindow\.(?:alert|confirm|prompt)\s*\(|(?<![\w.])(?:alert|confirm|prompt)\s*\(/.test(line)) {
+      if (!nativeFeedbackHits.has(rel)) nativeFeedbackHits.set(rel, []);
+      nativeFeedbackHits.get(rel).push(`${rel}:${index + 1}`);
     }
   });
+}
+// นับเทียบเพดานต่อไฟล์ — เกิน = ของใหม่, ต่ำกว่า = แปลงแล้วแต่ลืมลดเลข
+for (const [rel, hits] of nativeFeedbackHits) {
+  const allowed = nativeFeedbackDebt[rel] || 0;
+  if (hits.length > allowed) {
+    nativeFeedbackViolations.push(allowed
+      ? `${rel} — เจอ ${hits.length} จุด (${hits.map((h) => h.split(":")[1]).join(", ")}) เพดานหนี้เก่า ${allowed}`
+      : hits.join(", "));
+  }
+}
+for (const [rel, allowed] of Object.entries(nativeFeedbackDebt)) {
+  const found = nativeFeedbackHits.get(rel)?.length || 0;
+  if (found < allowed) {
+    staleNativeFeedbackDebt.push(`${rel} — เหลือจริง ${found} จุด แต่ nativeFeedbackDebt ยังเขียน ${allowed} (ลดเลขลงใน scripts/audit-ui.mjs)`);
+  }
 }
 
 /* คลาสที่ "ดูเหมือนของระบบ" แต่ไม่มี selector อยู่จริงใน globals.css — เขียนแล้ว
@@ -187,7 +219,8 @@ const failures = [
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
-  ...nativeFeedbackViolations.map((item) => `native alert/confirm bypasses feedback foundation: ${item}`),
+  ...nativeFeedbackViolations.map((item) => `native alert/confirm/prompt bypasses feedback foundation: ${item}`),
+  ...staleNativeFeedbackDebt.map((item) => `หนี้ prompt() เก่าลดได้แล้ว — รูดเพดาน nativeFeedbackDebt ลง: ${item}`),
   ...tableContractViolations.map((item) => `table bypasses TableScroll contract: ${item}`),
   ...chartContractViolations.map((item) => `chart bypasses ChartCanvas contract: ${item}`),
   ...floatingSurfaceViolations.map((item) => `floating panel needs var(--panel-float) or backdrop-filter: ${item}`),
@@ -205,7 +238,8 @@ console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.lengt
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
-console.log(`Native feedback violations: ${nativeFeedbackViolations.length}`);
+const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);
+console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (หนี้ prompt() เก่าที่ยกเว้นไว้ ${nativeFeedbackDebtTotal} จุด)`);
 console.log(`Table contract violations: ${tableContractViolations.length}`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
 console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);

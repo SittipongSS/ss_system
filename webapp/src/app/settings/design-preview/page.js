@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import {
-  Palette, Plus, Search, Inbox, Trash2, Check, Info,
+  Palette, Plus, Search, Inbox, Trash2, Check, Info, Undo2,
 } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -40,6 +40,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import Pager from "@/components/ui/Pager";
 import { notifyToast } from "@/components/ui/Toast";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import ReasonDialog from "@/components/ui/ReasonDialog";
 import styles from "./page.module.css";
 
 const SURFACES = [
@@ -103,6 +104,7 @@ export default function DesignPreviewPage() {
   const [page, setPage] = useState(1);
   const [docType, setDocType] = useState("qt");
   const [showSkeleton, setShowSkeleton] = useState(false);
+  const [reasonDemo, setReasonDemo] = useState(null); // null = ปิด, string = เปิดพร้อมค่าที่พิมพ์
 
   return (
     <Workspace
@@ -400,7 +402,7 @@ export default function DesignPreviewPage() {
           </div>
         </WorkspaceSection>
 
-        <WorkspaceSection title="สถานะและการแจ้งเตือน" subtitle="StatusNotice · Toast · ConfirmDialog · EmptyState">
+        <WorkspaceSection title="สถานะและการแจ้งเตือน" subtitle="StatusNotice · Toast · ConfirmDialog · ReasonDialog · EmptyState">
           <div className={styles.stack}>
             <StatusNotice tone="success" title="บันทึกแล้ว">ข้อมูลถูกบันทึกเรียบร้อย</StatusNotice>
             <StatusNotice tone="warning" title="ต้องตรวจสอบ">ใบเสนอราคานี้เลยวันยืนราคาแล้ว</StatusNotice>
@@ -418,10 +420,30 @@ export default function DesignPreviewPage() {
               >
                 ทดสอบกล่องยืนยัน
               </Button>
+              {/* ทุก transition ที่ถอยหลัง/ยกเลิก/ปฏิเสธ ใช้กล่องนี้ — ห้ามใช้ window.prompt (audit บล็อกไว้) */}
+              <Button tone="warning" onClick={() => setReasonDemo("")} icon={<Undo2 size={14} />}>
+                ทดสอบกล่องกรอกเหตุผล
+              </Button>
               <Button variant="quiet" onClick={() => setShowSkeleton((value) => !value)}>
                 {showSkeleton ? "ดูสถานะว่าง" : "ดูสถานะกำลังโหลด"}
               </Button>
             </div>
+            <ReasonDialog
+              open={reasonDemo !== null}
+              title="ตีกลับให้ผู้จัดทำแก้ไข"
+              description="ตัวอย่างกล่องกรอกเหตุผล — ใช้แทน window.prompt ทุกกรณี"
+              detail="ผู้จัดทำจะเห็นเหตุผลนี้บนเอกสารและได้รับแจ้งเตือน"
+              label="เหตุผลที่ตีกลับ"
+              value={reasonDemo || ""}
+              onChange={setReasonDemo}
+              onClose={() => setReasonDemo(null)}
+              onConfirm={() => { setReasonDemo(null); notifyToast("ส่งเหตุผลแล้ว", "success"); }}
+              confirmLabel="ยืนยันตีกลับ"
+              placeholder="ระบุสิ่งที่ต้องแก้ให้ชัดเจน"
+              helpText={`อย่างน้อย 10 ตัวอักษร · ${(reasonDemo || "").length}/500`}
+              error={reasonDemo && reasonDemo.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
+              minLength={10}
+            />
             {showSkeleton ? (
               <SkeletonRows rows={3} />
             ) : (
