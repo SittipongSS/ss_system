@@ -6,6 +6,7 @@
 //   mode="edit"   → ไม่มีช่องรหัส เพราะ "ใส่รหัส = รับเข้าทะเบียน" เป็นคนละ action
 //                   และลูกค้าล็อก (ตัวตนของกลิ่นผูกกับลูกค้า — มติ 9)
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import styles from "./registryForm.module.css";
 
 export const emptyScentForm = () => ({
   name: "",
@@ -49,7 +50,7 @@ export default function ScentForm({
           options={customers.map((c) => ({ value: c.id, label: c.name || c.id }))}
           placeholder="เลือกลูกค้า"
         />
-        <small style={{ color: "var(--text-3)" }}>
+        <small className={styles.hint}>
           {mode === "edit"
             ? "เปลี่ยนลูกค้าไม่ได้ — ตัวตนของกลิ่นผูกกับลูกค้า"
             : "กลิ่นที่ออกแบบให้ลูกค้ารายหนึ่ง ใช้กับอีกรายไม่ได้"}
@@ -58,13 +59,13 @@ export default function ScentForm({
 
       {canSetCode && mode === "create" && (
         <div className="form-group col-span-2">
-          <label htmlFor="scent-code">รหัสกลิ่น <span style={{ color: "var(--text-3)" }}>(ไม่บังคับ)</span></label>
+          <label htmlFor="scent-code">รหัสกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span></label>
           <input
             id="scent-code" className="premium-input" value={value.code} disabled={disabled}
             placeholder="เช่น SC-2026-001"
             onChange={(e) => set({ code: e.target.value })}
           />
-          <small style={{ color: "var(--text-3)" }}>
+          <small className={styles.hint}>
             ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = เก็บเป็นร่างไว้ก่อน
           </small>
         </div>

@@ -1,0 +1,28 @@
+/* ชั้นสไตล์ของหน้าทะเบียนกลิ่น — แทน style={{...}} เดิมทั้งหมด
+   ⚠️ ไม่มีการตั้งขนาดตัวอักษรในตารางอีกแล้ว: ทุกเซลล์ใช้ --fs-table ของตารางกลาง
+   (โค้ดเดิมตั้ง 12.5px เองบางคอลัมน์ จนคอลัมน์ลูกค้าตัวใหญ่กว่าคอลัมน์ชื่อกลิ่น) */
+
+/* .ui-workspace ไม่มี gap — แถบแจ้งต้องเว้นระยะเอง ไม่งั้นชนแถบเครื่องมือ */
+.banner { margin-bottom: 12px; }
+
+.name { font-weight: 600; }
+.muted { color: var(--text-3); }
+.comment { white-space: pre-wrap; }
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.actionsCol { width: 180px; }
+.revCol { width: 70px; }
+
+.hint { color: var(--text-3); }
+
+.effect {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}

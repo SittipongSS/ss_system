@@ -16,10 +16,11 @@ export const FORMULA_STATUS_LABELS = {
   archived: 'เลิกใช้',
 };
 
+// ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (เหมือน SCENT_STATUS_TONES)
 export const FORMULA_STATUS_TONES = {
-  draft: 'var(--text-3)',
-  active: 'var(--green)',
-  archived: 'var(--text-3)',
+  draft: 'neutral',
+  active: 'success',
+  archived: 'neutral',
 };
 
 // สถานะที่อ้างอิงในคำร้องขอราคา FB ได้

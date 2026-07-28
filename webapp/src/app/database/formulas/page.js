@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive, ArchiveRestore, Beaker, Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -21,7 +21,11 @@ import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
+import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
+import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -240,57 +244,59 @@ export default function FormulasPage() {
       title="ทะเบียนสูตร"
       subtitle="สูตรของ RD พร้อมกลิ่นที่ใช้ — ใบขอราคาผลิตและคำร้องขอราคา FB อ้างจากที่นี่"
       headerRight={canPropose ? (
-        <button
-          type="button" className="btn btn-accent"
+        <Button
+          tone="accent"
+          icon={<Plus size={15} aria-hidden="true" />}
           onClick={() => setForm({ mode: "create", value: emptyFormulaForm() })}
         >
-          <Plus size={15} aria-hidden="true" /> เพิ่มสูตร
-        </button>
+          เพิ่มสูตร
+        </Button>
       ) : null}
     >
       {/* รอจัดระเบียบ — ของเก่าที่กรอกชื่อไว้ในช่องสูตรของสินค้า */}
       {unsorted.length > 0 && (
-        <div className="glass-panel" style={{ padding: 14, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <Wand2 size={16} aria-hidden="true" />
-            <strong style={{ fontSize: 14 }}>รอจัดระเบียบ ({unsorted.length})</strong>
-            <span className="spacer" />
-          </div>
-          <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "0 0 10px" }}>
+        <WorkspaceSection
+          className={styles.banner}
+          icon={<Wand2 size={16} aria-hidden="true" />}
+          title={`รอจัดระเบียบ (${unsorted.length})`}
+        >
+          <p className={styles.intro}>
             สินค้าที่กรอก &quot;ชื่อสูตร&quot; ไว้ตั้งแต่ก่อนมีทะเบียน — หลายรายการเป็น
             <strong> ชื่อกลิ่น</strong> ไม่ใช่ชื่อสูตร ระบบจึงไม่เดาให้
             {registrar ? " เลือกให้ทีละรายการว่าจะเข้าทะเบียนไหน" : " รอ RD จัดระเบียบ"}
           </p>
           <TableScroll surface="embedded">
-            <table className="premium-table">
+            <table>
               <thead>
-                <tr><th>ชื่อที่กรอกไว้</th><th>วันที่</th><th>สินค้า</th><th>ลูกค้า</th><th style={{ width: 150 }}></th></tr>
+                <tr><th>ชื่อที่กรอกไว้</th><th>วันที่</th><th>สินค้า</th><th>ลูกค้า</th><th className={styles.sortCol}></th></tr>
               </thead>
               <tbody>
                 {unsorted.map((r) => (
                   <tr key={r.productId}>
-                    <td style={{ fontWeight: 600 }}>{r.formulaName}</td>
+                    <td className={styles.name}>{r.formulaName}</td>
                     <td className="mono">{r.formulaDate ? fmtDate(r.formulaDate) : "—"}</td>
-                    <td style={{ fontSize: 12.5 }}>{r.productName}</td>
-                    <td style={{ fontSize: 12.5 }}>{r.customerName || "—"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {registrar && (
-                        <button
-                          type="button" className="btn sm"
-                          onClick={() => setSorting({
-                            row: r, as: "scent", code: "", formulaDate: r.formulaDate || "",
-                          })}
-                        >
-                          จัดระเบียบ
-                        </button>
-                      )}
+                    <td>{r.productName}</td>
+                    <td>{r.customerName || "—"}</td>
+                    <td>
+                      <div className={styles.rowActions}>
+                        {registrar && (
+                          <Button
+                            size="sm"
+                            onClick={() => setSorting({
+                              row: r, as: "scent", code: "", formulaDate: r.formulaDate || "",
+                            })}
+                          >
+                            จัดระเบียบ
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </TableScroll>
-        </div>
+        </WorkspaceSection>
       )}
 
       <div className="toolbar">
@@ -314,15 +320,15 @@ export default function FormulasPage() {
           aria-label="กรองสถานะสูตร"
         />
         <span className="spacer" />
-        <button type="button" className="btn" onClick={reload} disabled={loading}>
-          <RefreshCw size={14} aria-hidden="true" /> รีเฟรช
-        </button>
+        <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
+          รีเฟรช
+        </Button>
       </div>
 
       {loading ? (
         <SkeletonRows rows={5} />
       ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
+        <StatusNotice tone="error">{loadError}</StatusNotice>
       ) : visible.length === 0 ? (
         <EmptyState icon={Beaker}>
           {formulas.length === 0
@@ -332,72 +338,72 @@ export default function FormulasPage() {
       ) : (
         <>
           <TableScroll>
-            <table className="premium-table">
+            <table>
               <thead>
                 <tr>
                   <th>รหัส</th><th>ชื่อสูตร</th><th>กลิ่นที่ใช้</th>
-                  <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th style={{ width: 140 }}></th>
+                  <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((f) => (
                   <tr key={f.id}>
-                    <td className="mono">{f.code || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
-                    <td style={{ fontWeight: 600 }}>{f.name}</td>
-                    <td style={{ fontSize: 12.5 }}>
+                    <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
+                    <td className={styles.name}>{f.name}</td>
+                    <td>
                       {f.scentId && scentName(f.scentId)
                         ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span className={styles.scentChip}>
                             <FlaskConical size={13} aria-hidden="true" />
                             {scentName(f.scentId)}
                           </span>
                         )
-                        : <span style={{ color: "var(--text-3)" }}>—</span>}
+                        : <span className={styles.muted}>—</span>}
                     </td>
                     <td className="mono">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
-                    <td style={{ fontSize: 12.5 }}>
-                      {f.customerName || <span style={{ color: "var(--text-3)" }}>สูตรกลาง</span>}
+                    <td>
+                      {f.customerName || <span className={styles.muted}>สูตรกลาง</span>}
                     </td>
                     <td>
-                      <span className="ui-badge" style={{ color: FORMULA_STATUS_TONES[f.status] }}>
-                        {FORMULA_STATUS_LABELS[f.status]}
-                      </span>
+                      <StatusBadge
+                        tone={FORMULA_STATUS_TONES[f.status]}
+                        label={FORMULA_STATUS_LABELS[f.status]}
+                      />
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <div className={styles.rowActions}>
                         {registrar && f.status === "draft" && (
-                          <button type="button" className="btn sm" title="รับเข้าทะเบียน"
+                          <Button size="sm" title="รับเข้าทะเบียน"
+                            icon={<Check size={14} aria-hidden="true" />}
                             onClick={() => setAccept({ formula: f, code: "" })}>
-                            <Check size={14} aria-hidden="true" /> รับเข้าทะเบียน
-                          </button>
+                            รับเข้าทะเบียน
+                          </Button>
                         )}
                         {f._canEdit && (
-                          <button type="button" className="btn sm ghost" title="แก้ไข"
-                            onClick={() => setForm({ mode: "edit", formula: f, value: formulaToForm(f) })}>
-                            <Pencil size={14} aria-hidden="true" />
-                          </button>
+                          <Button size="sm" variant="quiet" title="แก้ไข"
+                            icon={<Pencil size={14} aria-hidden="true" />}
+                            onClick={() => setForm({ mode: "edit", formula: f, value: formulaToForm(f) })} />
                         )}
                         {registrar && f.status === "active" && (
-                          <button type="button" className="btn sm ghost" title="เก็บเข้ากรุ"
-                            onClick={() => setConfirm({ kind: "archive", formula: f })}>
-                            <Archive size={14} aria-hidden="true" />
-                          </button>
+                          <Button size="sm" variant="quiet" title="เก็บเข้ากรุ"
+                            icon={<Archive size={14} aria-hidden="true" />}
+                            onClick={() => setConfirm({ kind: "archive", formula: f })} />
                         )}
                         {registrar && f.status === "archived" && (
-                          <button type="button" className="btn sm ghost" title="เปิดใช้อีกครั้ง"
-                            onClick={() => setConfirm({ kind: "restore", formula: f })}>
-                            <ArchiveRestore size={14} aria-hidden="true" />
-                          </button>
+                          <Button size="sm" variant="quiet" title="เปิดใช้อีกครั้ง"
+                            icon={<ArchiveRestore size={14} aria-hidden="true" />}
+                            onClick={() => setConfirm({ kind: "restore", formula: f })} />
                         )}
-                        {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) */}
+                        {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass)
+                            ⚠️ variant="ghost" (= action-ghost) ไม่ใช่ "quiet" เพราะสีแดง
+                            ผูกกับ .btn.action-ghost.btn-danger เท่านั้น */}
                         {(isAdmin || (f._canEdit && f.status === "draft")) && (
-                          <button
-                            type="button" className="btn sm ghost danger"
+                          <Button
+                            size="sm" variant="ghost" tone="danger"
                             title={f.status === "draft" ? "ลบร่าง" : "ลบสูตร (ผู้ดูแลระบบ)"}
+                            icon={<Trash2 size={14} aria-hidden="true" />}
                             onClick={() => setConfirm({ kind: "delete", formula: f })}
-                          >
-                            <Trash2 size={14} aria-hidden="true" />
-                          </button>
+                          />
                         )}
                       </div>
                     </td>
@@ -426,8 +432,8 @@ export default function FormulasPage() {
               onChange={(value) => setForm({ ...form, value })}
             />
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitForm} disabled={saving}>บันทึก</button>
+              <Button onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
             </div>
           </>
         )}
@@ -446,13 +452,13 @@ export default function FormulasPage() {
                 placeholder="เช่น PF638010202-P1" autoFocus
                 onChange={(e) => setAccept({ ...accept, code: e.target.value })}
               />
-              <small style={{ color: "var(--text-3)" }}>รหัสของฝ่าย RD — ห้ามซ้ำกับสูตรอื่น</small>
+              <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับสูตรอื่น</small>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+              <Button onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
                 รับเข้าทะเบียน
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -465,7 +471,7 @@ export default function FormulasPage() {
       >
         {sorting && (
           <>
-            <p style={{ fontSize: 13, margin: "0 0 12px", color: "var(--text-2)" }}>
+            <p className={styles.lead}>
               ชื่อนี้ถูกกรอกไว้ในช่อง &quot;ชื่อสูตร&quot; ของสินค้า <strong>{sorting.row.productName}</strong> —
               จริง ๆ แล้วเป็นอะไร?
             </p>
@@ -483,13 +489,13 @@ export default function FormulasPage() {
               </div>
               <div className="form-group col-span-2">
                 <label htmlFor="sort-code">
-                  รหัส{sorting.as === "scent" ? "กลิ่น" : "สูตร"} <span style={{ color: "var(--text-3)" }}>(ไม่บังคับ)</span>
+                  รหัส{sorting.as === "scent" ? "กลิ่น" : "สูตร"} <span className={styles.hint}>(ไม่บังคับ)</span>
                 </label>
                 <input
                   id="sort-code" className="premium-input" value={sorting.code} disabled={saving}
                   onChange={(e) => setSorting({ ...sorting, code: e.target.value })}
                 />
-                <small style={{ color: "var(--text-3)" }}>เว้นว่าง = เก็บเป็นร่างไว้ใส่รหัสทีหลัง</small>
+                <small className={styles.hint}>เว้นว่าง = เก็บเป็นร่างไว้ใส่รหัสทีหลัง</small>
               </div>
               {sorting.as === "formula" && (
                 <div className="form-group col-span-2">
@@ -500,7 +506,7 @@ export default function FormulasPage() {
                   />
                   {/* prod มีปีพิมพ์ผิดจริง (2202) — ให้แก้ตรงนี้ได้เลย ไม่ใช่บล็อกทิ้งไว้ */}
                   {!!sorting.row.formulaDate && !/^(19|20)\d{2}-/.test(String(sorting.row.formulaDate)) && (
-                    <small style={{ color: "var(--amber)" }}>
+                    <small className={styles.warn}>
                       วันที่เดิมของสินค้า ({sorting.row.formulaDate}) ดูเหมือนพิมพ์ปีผิด — แก้ตรงนี้หรือเว้นว่างไว้ก่อนได้
                     </small>
                   )}
@@ -508,18 +514,18 @@ export default function FormulasPage() {
               )}
             </div>
             {sorting.as === "scent" && !sorting.row.customerId && (
-              <p style={{ fontSize: 12, color: "var(--red)", margin: "8px 0 0" }}>
+              <p className={styles.blocked}>
                 สินค้านี้ยังไม่มีลูกค้า — กลิ่นต้องมีลูกค้าเจ้าของเสมอ ต้องผูกลูกค้าที่หน้าสินค้าก่อน
               </p>
             )}
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</button>
-              <button
-                type="button" className="btn btn-accent" onClick={submitSorting}
+              <Button onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
+              <Button
+                tone="accent" onClick={submitSorting}
                 disabled={saving || (sorting.as === "scent" && !sorting.row.customerId)}
               >
                 ย้ายเข้าทะเบียน
-              </button>
+              </Button>
             </div>
           </>
         )}

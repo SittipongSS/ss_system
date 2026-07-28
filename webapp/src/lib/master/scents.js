@@ -17,12 +17,13 @@ export const SCENT_STATUS_LABELS = {
   archived: 'เลิกใช้',
 };
 
-// สีของ pill ตามระบบ token (ห้ามใส่ hex ตรง ๆ — ดู material-design skill)
+// โทนของ pill = ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี — หน้าจอจึงไม่ต้องรู้จัก
+// token สีเลย และเปลี่ยนดีไซน์ป้ายได้ที่ Badge.module.css ที่เดียวทั้งระบบ
 export const SCENT_STATUS_TONES = {
-  draft: 'var(--text-3)',
-  developing: 'var(--blue)',
-  active: 'var(--green)',
-  archived: 'var(--text-3)',
+  draft: 'neutral',
+  developing: 'info',
+  active: 'success',
+  archived: 'neutral',
 };
 
 // สถานะที่ "อ้างอิงในคำร้องขอราคา F ได้" — ร่างยังไม่ผ่าน RD จึงยังไม่ใช่ของจริง

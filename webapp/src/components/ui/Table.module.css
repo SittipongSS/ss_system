@@ -123,6 +123,25 @@
   padding-block: 8px;
 }
 
+/* ⚠️ กับดักตอนลบ `.premium-table` ออกจากหน้า: ฟอนต์ตัวเลขใน globals.css ผูกกับ
+   **selector ลูกของคลาสเก่า** (`.premium-table .mono` → var(--font-numeric))
+   พอลบคลาสเก่าออก `.mono` เดี่ยวจะตกไปใช้ var(--font-mono) = IBM Plex Mono แทน
+   IBM Plex Sans Thai → รหัส/วันที่ในตารางเปลี่ยนหน้าตาเงียบ ๆ ทั้งที่ตั้งใจแค่
+   ย้ายมา primitive กลาง (พิสูจน์ในเบราว์เซอร์จริง 2026-07-28)
+   ยกกฎมาไว้ที่นี่เพื่อให้ตารางกลางดูแลเรื่องนี้เอง ไม่ต้องพึ่งคลาสเก่าอีก
+   ไม่ต้อง !important เพราะ specificity (0,0,3,0) ชนะ `.mono` เดี่ยว (0,0,1,0) อยู่แล้ว */
+.scroll[data-family] :global(.mono),
+.scroll[data-family] :global(.num) {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+}
+
+.scroll[data-family] :global(.num) {
+  text-align: right;
+}
+
 .scroll[data-family="editable"] :global(td),
 .scroll[data-family="matrix"] :global(td) {
   height: 48px;
