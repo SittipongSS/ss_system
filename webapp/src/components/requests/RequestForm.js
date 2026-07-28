@@ -16,6 +16,7 @@ import {
 } from "@/lib/master/requestTypes";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
+import styles from "./requestForm.module.css";
 
 const DEPT_LABEL = { RD: "RD (วิจัยและพัฒนา)", PC: "จัดซื้อ (PC)" };
 
@@ -109,7 +110,7 @@ export default function RequestForm({
             }}
             options={REQUEST_KIND_LIST.map((k) => ({ value: k, label: requestKindLabel(k) }))}
           />
-          {meta.hint && <small style={{ color: "var(--text-3)" }}>{meta.hint}</small>}
+          {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
         </div>
 
         {/* ชนิดที่ไม่ล็อกฝ่าย ผู้ขอต้องเลือกเองว่าถามใคร */}
@@ -174,7 +175,7 @@ export default function RequestForm({
               ariaLabel="ดีลที่เกี่ยวข้อง"
             />
             {meta.dealType && (
-              <small style={{ color: "var(--text-3)" }}>
+              <small className={styles.hint}>
                 ชนิดนี้ใช้กับดีลประเภท {meta.dealType} เป็นหลัก
               </small>
             )}
@@ -234,18 +235,18 @@ export default function RequestForm({
             id="req-due" value={value.requestedDueDate} disabled={disabled}
             onChange={(v) => set({ requestedDueDate: v })}
           />
-          <small style={{ color: "var(--text-3)" }}>
+          <small className={styles.hint}>
             เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกดรับเรื่อง
           </small>
         </div>
         <div className="form-group">
           <label htmlFor="req-urgent">ความเร่งด่วน</label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, paddingTop: 8 }}>
+          <label className={styles.checkRow}>
             <input
               id="req-urgent" type="checkbox" checked={!!value.urgent} disabled={disabled}
               onChange={(e) => set({ urgent: e.target.checked })}
             />
-            <span style={{ fontSize: 13 }}>งานด่วน</span>
+            <span className={styles.checkLabel}>งานด่วน</span>
           </label>
         </div>
       </div>
@@ -265,7 +266,7 @@ export default function RequestForm({
             ]}
             ariaLabel="ลูกค้าของเคสนี้"
           />
-          <small style={{ color: "var(--text-3)" }}>
+          <small className={styles.hint}>
             ราคาที่ตอบกลับจะเข้าทะเบียนเป็นราคาของลูกค้ารายนี้โดยเฉพาะ
           </small>
         </div>
@@ -307,7 +308,7 @@ export default function RequestForm({
                 disabled={disabled} placeholder="เช่น FM-2401"
                 onChange={(e) => set({ formulaCode: e.target.value })}
               />
-              <small style={{ color: "var(--text-3)" }}>ราคา F/FB ผูกกับสูตร — คนละสูตรคือคนละราคา</small>
+              <small className={styles.hint}>ราคา F/FB ผูกกับสูตร — คนละสูตรคือคนละราคา</small>
             </div>
           </>
         )}
@@ -328,9 +329,9 @@ export default function RequestForm({
       <div className="form-group">
         <label>รายการที่ขอราคา</label>
         {items.map((item, idx) => (
-          <div key={idx} className="glass-panel" style={{ padding: 12, marginBottom: 10 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <div style={{ width: 170 }}>
+          <div key={idx} className={`glass-panel ${styles.itemCard}`}>
+            <div className={styles.itemHead}>
+              <div className={styles.itemKind}>
                 {/* รายการที่ผูกกลับบรรทัดในใบขอราคาผลิต ชนิดถูกกำหนดโดยบรรทัดนั้น */}
                 <Select
                   value={item.kind} disabled={disabled || idx > 0 || !!item.componentId}
@@ -352,10 +353,10 @@ export default function RequestForm({
                   aria-label={`ชนิดของรายการที่ ${idx + 1}`}
                 />
                 {idx > 0 && (
-                  <small style={{ color: "var(--text-3)" }}>ทุกรายการต้องเป็นฝ่ายเดียวกัน</small>
+                  <small className={styles.hint}>ทุกรายการต้องเป็นฝ่ายเดียวกัน</small>
                 )}
               </div>
-              <div style={{ flex: 1 }}>
+              <div className={styles.itemPicker}>
                 <MaterialPicker
                   materials={materials} kind={item.kind} customerId={value.customerId || null}
                   value={item.material} disabled={disabled}
@@ -374,7 +375,7 @@ export default function RequestForm({
             </div>
 
             <textarea
-              className="textarea-premium" style={{ marginTop: 8 }} rows={2} maxLength={2000}
+              className={`textarea-premium ${styles.itemSpec}`} rows={2} maxLength={2000}
               value={item.spec} disabled={disabled}
               aria-label={`สเปกของรายการที่ ${idx + 1}`}
               placeholder={item.kind === "PM"
@@ -383,12 +384,11 @@ export default function RequestForm({
               onChange={(e) => patchItem(idx, { spec: e.target.value })}
             />
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "var(--text-2)" }}>ขอราคาที่จำนวน:</span>
+            <div className={styles.tierRow}>
+              <span className={styles.tierLabel}>ขอราคาที่จำนวน:</span>
               {(item.tiers || []).map((qty) => (
                 <button
-                  key={qty} type="button" className="chip" disabled={disabled}
-                  style={{ background: "var(--accent-soft)", color: "var(--accent)", cursor: "pointer" }}
+                  key={qty} type="button" className={`chip ${styles.tierChipOn}`} disabled={disabled}
                   onClick={() => toggleTier(idx, qty)}
                   aria-label={`เอาชั้น ${qty} ออก`}
                 >
@@ -397,14 +397,14 @@ export default function RequestForm({
               ))}
               {QTY_SHORTCUTS.filter((q) => !(item.tiers || []).includes(q)).map((q) => (
                 <button
-                  key={q} type="button" className="chip" disabled={disabled}
-                  style={{ cursor: "pointer" }} onClick={() => toggleTier(idx, q)}
+                  key={q} type="button" className={`chip ${styles.tierChip}`} disabled={disabled}
+                  onClick={() => toggleTier(idx, q)}
                 >
                   +{q.toLocaleString("th-TH")}
                 </button>
               ))}
               <input
-                className="premium-input" style={{ width: 120 }} type="number" min="1"
+                className={`premium-input ${styles.tierInput}`} type="number" min="1"
                 disabled={disabled} placeholder="จำนวนอื่น"
                 aria-label={`เพิ่มจำนวนที่ขอของรายการที่ ${idx + 1}`}
                 onKeyDown={(e) => {
@@ -415,7 +415,7 @@ export default function RequestForm({
                 }}
               />
             </div>
-            <small style={{ color: "var(--text-3)" }}>
+            <small className={styles.hint}>
               ปุ่มเป็นแค่ทางลัด — พิมพ์จำนวนเท่าไรก็ได้แล้วกด Enter · ไม่เลือกเลย = ขอราคาเดียว
             </small>
           </div>

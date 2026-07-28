@@ -16,6 +16,7 @@ import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { fmtDate } from "@/lib/format";
+import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
 import {
@@ -112,7 +113,7 @@ export default function RequestQueuePanel({
       {loading ? (
         <SkeletonRows rows={4} />
       ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
+        <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
       ) : rows.length === 0 ? (
         <EmptyState icon={ClipboardList}>
           {scope === "queue"
@@ -124,13 +125,13 @@ export default function RequestQueuePanel({
           <table className="premium-table">
             <thead>
               <tr>
-                <th style={{ width: 140 }}>เลขที่</th>
-                <th style={{ width: 170 }}>ชนิด</th>
+                <th className={styles.colDoc}>เลขที่</th>
+                <th className={styles.colKind}>ชนิด</th>
                 <th>เรื่อง / ลูกค้า</th>
-                <th style={{ width: 90 }}>ถึงฝ่าย</th>
-                <th style={{ width: 120 }}>ความคืบหน้า</th>
-                <th style={{ width: 190 }}>สถานะ</th>
-                <th style={{ width: 110 }}>อัปเดต</th>
+                <th className={styles.colDept}>ถึงฝ่าย</th>
+                <th className={styles.colProgress}>ความคืบหน้า</th>
+                <th className={styles.colStatus}>สถานะ</th>
+                <th className={styles.colUpdated}>อัปเดต</th>
               </tr>
             </thead>
             <tbody>
@@ -138,32 +139,32 @@ export default function RequestQueuePanel({
                 const p = requestProgress(ask.items || []);
                 return (
                   <tr
-                    key={ask.id} style={{ cursor: "pointer" }}
+                    key={ask.id} className={styles.rowLink}
                     onClick={() => router.push(`/sa/requests/${ask.id}`)}
                   >
-                    <td style={{ fontWeight: 500 }}>
+                    <td className={styles.docCell}>
                       {ask.docNo || "ร่าง"}
                       {ask.urgent && (
-                        <span className="ui-badge" style={{ color: "var(--red)", marginLeft: 6 }}>ด่วน</span>
+                        <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
                       )}
                     </td>
-                    <td style={{ fontSize: 12.5 }}>{requestKindLabel(ask.kind)}</td>
+                    <td className={styles.kindCell}>{requestKindLabel(ask.kind)}</td>
                     <td>
                       {/* ชนิดที่ไม่มีบรรทัดสื่อความด้วยหัวเรื่อง — ชนิดขอราคาสื่อด้วยลูกค้า/สูตร */}
                       <div>{ask.title || ask.customerName
-                        || <span style={{ color: "var(--text-3)" }}>ราคากลาง</span>}</div>
+                        || <span className={styles.muted}>ราคากลาง</span>}</div>
                       {ask.title && ask.customerName && (
-                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>{ask.customerName}</div>
+                        <div className={styles.subText}>{ask.customerName}</div>
                       )}
                       {ask.formulaCode && (
-                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>สูตร {ask.formulaCode}</div>
+                        <div className={styles.subText}>สูตร {ask.formulaCode}</div>
                       )}
                     </td>
-                    <td style={{ fontSize: 12 }}>{ask.dept}</td>
-                    <td style={{ fontSize: 12 }}>
+                    <td className={styles.smallCell}>{ask.dept}</td>
+                    <td className={styles.smallCell}>
                       {p.total > 0
                         ? `${p.done}/${p.total} ตอบแล้ว`
-                        : <span style={{ color: "var(--text-3)" }}>—</span>}
+                        : <span className={styles.muted}>—</span>}
                     </td>
                     <td>
                       <StatusBadge
@@ -171,7 +172,7 @@ export default function RequestQueuePanel({
                         label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
                       />
                     </td>
-                    <td style={{ fontSize: 12 }}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
+                    <td className={styles.smallCell}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
                   </tr>
                 );
               })}
@@ -191,10 +192,10 @@ export default function RequestQueuePanel({
               materials={materials} customers={customers} products={products}
               deals={deals} scents={scents} formulas={formulas}
             />
-            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-2)" }}>
+            <div className={`glass-panel ${styles.formNote}`}>
               เคสจะถูกสร้างเป็น <b>ร่าง</b> ก่อน — เลขที่จะออกตอนกดส่ง (ร่างที่ทิ้งไว้จะไม่กินเลข)
             </div>
-            <div className="action-bar" style={{ marginTop: 16 }}>
+            <div className={`action-bar ${styles.formActions}`}>
               <button type="button" className="btn ghost" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
               <button type="button" className="btn btn-accent" onClick={create} disabled={saving || !formReady}>
                 สร้างเคส (ร่าง)

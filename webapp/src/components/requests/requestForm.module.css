@@ -1,0 +1,63 @@
+/* สไตล์ของฟอร์ม/คิว "คำร้องข้ามฝ่าย" (mig 0173)
+   ยกออกจาก inline style เพื่อให้ผ่านด่าน audit:ui — แพตเทิร์นเดียวกับ
+   components/database/registryForm.module.css ของฟอร์มทะเบียนกลิ่น/สูตร */
+
+/* ข้อความช่วยเหลือใต้ช่องกรอก (globals.css ไม่ได้ให้สไตล์ <small> ใน .form-group) */
+.hint { color: var(--text-3); }
+
+/* แถวติ๊ก "งานด่วน" — ให้เส้นฐานตรงกับช่องข้าง ๆ ที่มี label อยู่ด้านบน */
+.checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+.checkLabel { font-size: 13px; }
+
+/* บล็อกรายการวัสดุหนึ่งบรรทัดในฟอร์มขอราคา */
+.itemCard { padding: 12px; margin-bottom: 10px; }
+.itemHead { display: flex; gap: 8px; align-items: flex-start; }
+.itemKind { width: 170px; }
+.itemPicker { flex: 1; }
+.itemSpec { margin-top: 8px; }
+
+/* แถวชั้นจำนวนที่ขอ */
+.tierRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+}
+.tierLabel { font-size: 12px; color: var(--text-2); }
+.tierChip { cursor: pointer; }
+.tierChipOn {
+  cursor: pointer;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tierInput { width: 120px; }
+
+/* ── ตารางคิว ─────────────────────────────────────────────────────── */
+.rowLink { cursor: pointer; }
+.docCell { font-weight: 500; }
+.urgentTag { color: var(--red); margin-left: 6px; }
+.kindCell { font-size: 12.5px; }
+.subText { font-size: 11px; color: var(--text-3); }
+.muted { color: var(--text-3); }
+.smallCell { font-size: 12px; }
+.loadError { padding: 24px; color: var(--red); }
+.formNote {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.formActions { margin-top: 16px; }
+
+/* ความกว้างคอลัมน์ของตารางคิว — ยกออกจาก inline style ตามด่าน audit:ui */
+.colDoc { width: 140px; }
+.colKind { width: 170px; }
+.colDept { width: 90px; }
+.colProgress { width: 120px; }
+.colStatus { width: 190px; }
+.colUpdated { width: 110px; }
