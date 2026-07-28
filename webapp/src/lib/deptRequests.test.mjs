@@ -18,6 +18,8 @@ import {
   normalizeRequestTiers,
   requestDueTone,
   requestProgress,
+  requestsByStepKey,
+  stepPinSummary,
   requestSummaryText,
   submitRequestError,
 } from './deptRequests.js';
@@ -231,4 +233,59 @@ test('ป้ายสรุปหนึ่งบรรทัด: ใช้หั
   assert.equal(requestSummaryText(req({ kind: 'info', title: 'ขอสเปกขวด' })), 'สอบถามข้อมูล · ขอสเปกขวด');
   assert.equal(requestSummaryText(req({ kind: 'price_pm' }), [{}, {}]), 'ขอราคาบรรจุภัณฑ์ (PM) · 2 รายการ');
   assert.equal(requestSummaryText(req({ kind: 'mockup' })), 'ขอ Mock-up');
+});
+
+// ── หมุดไทม์ไลน์ ─────────────────────────────────────────────────────────
+const pinReq = (over = {}) => ({
+  id: 'DR-1', kind: 'mockup', status: 'pending', stepKey: 'npd-15',
+  projectId: 'PRJ-1', dealId: 'D-1', createdAt: '2026-07-01T00:00:00Z', ...over,
+});
+
+test('หมุด: จัดกลุ่มตาม stepKey และไม่นับคำร้องที่ไม่มี stepKey', () => {
+  const byStep = requestsByStepKey([
+    pinReq({ id: 'A', stepKey: 'npd-15' }),
+    pinReq({ id: 'B', stepKey: 'npd-25', kind: 'price_pm' }),
+    pinReq({ id: 'C', stepKey: null, kind: 'info' }),
+  ]);
+  assert.deepEqual([...byStep.keys()].sort(), ['npd-15', 'npd-25']);
+  assert.equal(byStep.get('npd-15').length, 1);
+});
+
+test('หมุด: ร่างยังไม่ถูกส่ง = ยังไม่ใช่งานของทีม ไม่โผล่บนไทม์ไลน์', () => {
+  const byStep = requestsByStepKey([pinReq({ status: 'draft' })]);
+  assert.equal(byStep.size, 0);
+});
+
+test('หมุด: คำร้องของโครงการอื่นไม่มาปนไทม์ไลน์นี้', () => {
+  const rows = [pinReq({ id: 'A' }), pinReq({ id: 'B', projectId: 'PRJ-2' })];
+  const byStep = requestsByStepKey(rows, { projectId: 'PRJ-1' });
+  assert.deepEqual(byStep.get('npd-15').map((r) => r.id), ['A']);
+});
+
+test('หมุด: คำร้องที่ยังไม่ผูกโครงการ (ดีลยังไม่มีโครงการ) ยังนับให้', () => {
+  // ดีลส่วนใหญ่บน prod ยังไม่มีโครงการ — ถ้าตัดทิ้งหมุดจะว่างเปล่าเกือบทั้งระบบ
+  const byStep = requestsByStepKey([pinReq({ projectId: null })], { projectId: 'PRJ-1' });
+  assert.equal(byStep.get('npd-15').length, 1);
+});
+
+test('หมุด: เรื่องที่ยังค้างขึ้นก่อนเรื่องที่ปิดแล้วเสมอ', () => {
+  const byStep = requestsByStepKey([
+    pinReq({ id: 'ปิดแล้ว', status: 'closed', createdAt: '2026-07-20T00:00:00Z' }),
+    pinReq({ id: 'ค้าง', status: 'acknowledged', createdAt: '2026-07-01T00:00:00Z' }),
+  ]);
+  assert.deepEqual(byStep.get('npd-15').map((r) => r.id), ['ค้าง', 'ปิดแล้ว']);
+});
+
+test('สรุปหมุด: นับรวม/นับค้าง และคืน null เมื่อขั้นนั้นไม่มีอะไรผูก', () => {
+  const byStep = requestsByStepKey([
+    pinReq({ id: 'A', status: 'pending' }),
+    pinReq({ id: 'B', status: 'closed' }),
+  ]);
+  const sum = stepPinSummary(byStep, 'npd-15');
+  assert.equal(sum.total, 2);
+  assert.equal(sum.open, 1);
+  assert.equal(sum.first.id, 'A');
+  assert.equal(stepPinSummary(byStep, 'npd-25'), null);
+  // task เก่าที่ไม่มี stepKey (165 จาก 282 แถวบน prod) ต้องไม่ระเบิด
+  assert.equal(stepPinSummary(byStep, null), null);
 });

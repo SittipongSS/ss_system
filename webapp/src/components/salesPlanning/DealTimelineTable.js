@@ -10,7 +10,7 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -26,6 +26,10 @@ import { useDepartment } from "@/lib/roleContext";
 import { addBusinessDays, countBusinessDays, isBusinessDay, setHolidays, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { recalculateGraph } from "@/lib/pm/schedule";
 import { cachedFetchJson } from "@/lib/apiCache";
+import Link from "next/link";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
+import { requestKindLabel } from "@/lib/master/requestTypes";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -65,8 +69,35 @@ function withOptimisticSchedule(task, body) {
   return next;
 }
 
+// ── หมุดคำร้องบนขั้นตอน (มติ 3 + 6) ──────────────────────────────────────
+// บรีฟกลิ่น / ขอ Mock-up / ขอราคา PM / ติดตามของเข้า ไม่ใช่งานลอย ๆ แต่เป็น
+// "วิธีทำ" ของขั้นที่มีอยู่แล้ว จึงแปะป้ายกลับที่ขั้นนั้น ไม่สร้าง task ใหม่ซ้อน
+// ป้ายเดียวใช้ได้ทั้งมุมมองตารางและมุมมองรายการ (ทั้งสองอยู่ในไฟล์นี้)
+function StepPin({ pin }) {
+  if (!pin) return null;
+  const many = pin.total > 1;
+  return (
+    <Link
+      className="timeline-step-pin"
+      href={many ? `/sa/requests?dealId=${pin.first.dealId || ""}` : `/sa/requests/${pin.first.id}`}
+      title={`${requestKindLabel(pin.first.kind)}${pin.first.docNo ? ` · ${pin.first.docNo}` : ""}`
+        + ` · ${pin.open ? `ค้าง ${pin.open} จาก ` : ""}${pin.total} เรื่องผูกกับขั้นนี้`}
+    >
+      <StatusBadge
+        size="sm"
+        tone={pin.open ? "warning" : "neutral"}
+        icon={ClipboardList}
+        label={pin.open ? `คำร้องค้าง ${pin.open}` : `คำร้อง ${pin.total}`}
+      />
+    </Link>
+  );
+}
+
 export default function TimelineWorkspace({
   tasks: sourceTasks = [],
+  // คำร้องข้ามฝ่ายของโครงการ/ดีลนี้ — หน้าแม่โหลดมาแล้ว ส่งต่อให้ปักหมุด
+  // (ว่าง = ไม่มีหมุด ซึ่งเป็นค่าเดิมของทุกที่ที่ยังไม่ได้ส่ง prop นี้)
+  requests = [],
   canEdit,
   canAdd = canEdit,
   canReorder = canEdit,
@@ -97,6 +128,12 @@ export default function TimelineWorkspace({
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tableSort, setTableSort] = useState("step");
+  // หมุดคำร้อง → ขั้นตอน · จับคู่ด้วย stepKey ไม่ใช่ id ของ task เพราะ resync
+  // แม่แบบลบ/สร้าง task ใหม่ (ดู lib/pm/schedule.js) ผูก id ตรง ๆ แล้วหมุดหลุดเงียบ
+  const stepPins = useMemo(
+    () => requestsByStepKey(requests, { projectId }),
+    [requests, projectId],
+  );
   // ตัวกรองสถานะ + ฝ่าย ใน FilterPopover เดียว เป็น multi-select ทั้งคู่ (มติผู้ใช้
   // 2026-07-18: ตัวกรองทั้งระบบเลือกหลายค่าได้) — ว่าง = ทั้งหมด; ขั้นที่ไม่ระบุฝ่าย/ALL
   // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
@@ -457,6 +494,7 @@ export default function TimelineWorkspace({
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                               <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                                <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey)} />
                                 <span className="timeline-role-text" style={{ color: role.color }}>{task.role || "-"}</span>
                                 {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
@@ -539,6 +577,9 @@ export default function TimelineWorkspace({
                         {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
                         <span>{t.name}</span>
                       </span>
+                      {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
+                          บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
+                      <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey)} />
                     </td>
                     <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
                     <td>

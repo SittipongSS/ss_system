@@ -93,6 +93,18 @@ export async function POST(request) {
   const requestId = `DR-${randomUUID()}`;
   const customerId = body.customerId || null;
 
+  // โครงการปลายทางของหมุดไทม์ไลน์ — **ดึงจากดีลเอง ไม่เชื่อ client** (ดีล↔โครงการ
+  // เป็น 1:1 ตั้งแต่ mig 0064) เหตุผลเดียวกับ stepKey: ปักหมุดผิดโครงการแล้ว
+  // งานไปโผล่ไทม์ไลน์ของคนอื่น · ดีลที่ยังไม่ผูกโครงการปักหมุดไม่ได้ ซึ่งเป็นเคส
+  // ส่วนใหญ่บน prod (132 ดีล มี projectId 12) — คำร้องยังโผล่บนหน้าดีลตามปกติ
+  let projectId = body.projectId || null;
+  if (body.dealId) {
+    const { data: dealRow, error: dealError } = await supabase
+      .from('sales_deals').select('projectId').eq('id', body.dealId).maybeSingle();
+    if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
+    if (dealRow?.projectId) projectId = dealRow.projectId;
+  }
+
   try {
     // 1) ชนิดขอราคา: ทุกรายการต้องมีวัสดุในทะเบียน — ของใหม่เข้าเป็นร่างรอ RD/PC รับ
     const resolved = [];
@@ -120,7 +132,7 @@ export async function POST(request) {
       body: body.body ? String(body.body).trim().slice(0, 4000) : null,
       urgent: !!body.urgent,
       dealId: body.dealId || null,
-      projectId: body.projectId || null,
+      projectId,
       stepKey: requestStepKey(kind),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,
