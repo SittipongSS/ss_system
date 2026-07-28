@@ -26,12 +26,9 @@ import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { toneColor } from "@/lib/ui/tone";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
-const TONE_COLOR = {
-  neutral: "var(--text-3)", warning: "var(--amber)", danger: "var(--red)",
-  info: "var(--blue)", success: "var(--green)",
-};
 
 export default function RegistrationDetailPage() {
   const { id } = useParams();
@@ -170,11 +167,11 @@ export default function RegistrationDetailPage() {
                   { id: "documents", label: "เอกสารบังคับ", value: req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : "กำลังตรวจ" },
                 ]}
                 status={status.label}
-                statusColor={TONE_COLOR[status.tone]}
+                statusColor={toneColor(status.tone)}
               />
               <DocumentControlCard
                 status={status.label}
-                statusColor={TONE_COLOR[status.tone]}
+                statusColor={toneColor(status.tone)}
                 statusDescription="การดำเนินการระดับทะเบียน"
                 workflowSteps={workflowSteps}
                 notices={req ? (

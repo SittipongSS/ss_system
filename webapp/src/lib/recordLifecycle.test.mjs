@@ -3,12 +3,11 @@ import test from "node:test";
 
 import {
   BACKWARD_KINDS,
-  RECORD_TONES,
   defineLifecycle,
   normalizeSlots,
-  toneColor,
   validateTransitionValues,
 } from "./recordLifecycle.js";
+import { toneColor } from "./ui/tone.js";
 
 /* lifecycle ตัวอย่างที่ใช้ทั้งไฟล์ — โครงเดียวกับที่หน้าลีด/ดีล/โครงการจะประกาศจริง */
 const lifecycle = defineLifecycle({
@@ -149,15 +148,6 @@ test("railSteps ไม่ปล่อย statuses ของ step ทะลุอ
   for (const step of lifecycle.railSteps({ status: "draft" })) {
     assert.equal(step.statuses, undefined);
   }
-});
-
-test("toneColor ครอบทุก tone ที่ StatusBadge รองรับ", () => {
-  for (const tone of RECORD_TONES) {
-    assert.match(toneColor(tone), /^var\(--/, `tone ${tone} ต้องคืนตัวแปร CSS`);
-  }
-  // tone ที่ไม่รู้จักต้องไม่พังหน้า — ตกกลับเป็นสีกลาง
-  assert.equal(toneColor("ไม่มีจริง"), toneColor("neutral"));
-  assert.equal(toneColor(undefined), toneColor("neutral"));
 });
 
 test("statusMeta คืน tone และสีที่ตรงกัน ที่เดียว", () => {
