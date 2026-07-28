@@ -13,6 +13,7 @@
 import { useState } from "react";
 import {
   Palette, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
+  ChevronDown, FileText, LayoutGrid, Settings, UserRound,
 } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -328,6 +329,43 @@ export default function DesignPreviewPage() {
           หน้านี้ไม่ต่อกับข้อมูลจริง เปลี่ยนโทเคนใน <code>globals.css</code> หรือแก้ primitive ใน
           {" "}<code>components/ui/</code> แล้วเปิดหน้านี้เพื่อดูผลทั้งระบบพร้อมกัน ทั้งโหมดสว่างและมืด
         </StatusNotice>
+
+        <WorkspaceSection
+          title="แถบนำทาง"
+          subtitle="components/AppLayout.js — แถบบนสุด 2 ชั้น ตรึงทั้งระบบ ไม่มี sidebar / bottom nav / drawer"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info" title="โครงนำทางมีแบบเดียว">
+              <strong>ชั้นบน (พื้นนาวี)</strong> = ตัวตนของระบบ — โลโก้ · ปุ่มสลับระบบ · ปุ่มผู้ใช้/ตั้งค่า ·
+              {" "}<strong>ชั้นล่าง</strong> = เมนูของระบบที่เปิดอยู่ ไอคอน + ข้อความ เมนูที่อยู่จะไฮไลต์
+              {" "}สีแบรนด์ · จอแคบเลื่อนแนวนอน <strong>ไม่มี drawer</strong> · หน้าตั้งค่าซ่อนชั้นล่างทิ้ง
+            </StatusNotice>
+            {/* จำลองแบบไม่โต้ตอบ — ของจริงอยู่บนหัวหน้านี้อยู่แล้ว ตรงนี้ไว้ดูโครงกับสถานะ */}
+            <div className={styles.pageFrame}>
+              <div className={styles.navDemo} aria-hidden="true">
+                <div className={styles.navSystem}>
+                  <span className={styles.navBrand}>SCENT &amp; SENSE</span>
+                  <span className={styles.navSysBtn}>
+                    <LayoutGrid size={15} /> บริหารงานขาย <ChevronDown size={14} />
+                  </span>
+                  <span className={styles.navSpacer} />
+                  <span className={styles.navGlobal}><Settings size={15} /></span>
+                  <span className={styles.navGlobal}><UserRound size={15} /></span>
+                </div>
+                <div className={styles.navMenu}>
+                  <span className={`${styles.navItem} ${styles.navItemActive}`}><Inbox size={16} /> ภาพรวม</span>
+                  <span className={styles.navItem}><Users size={16} /> ลีด</span>
+                  <span className={styles.navItem}><Search size={16} /> ดีล</span>
+                  <span className={styles.navItem}><FileText size={16} /> ใบเสนอราคา</span>
+                </div>
+              </div>
+            </div>
+            <p className={styles.note}>
+              เมนูมาจาก <code>menuItems</code> ต่อระบบใน <code>AppLayout</code> และกรองด้วยสิทธิ์
+              {" "}(<code>canUser</code>) — หน้าใหม่ที่ต้องมีเมนูให้เพิ่มที่นั่นที่เดียว ไม่ใช่ทำลิงก์เองในหน้า
+            </p>
+          </div>
+        </WorkspaceSection>
 
         <WorkspaceSection title="พื้นผิว" subtitle="ชั้นพื้นหลังของหน้า การ์ด และแผงลอย">
           <Swatches items={SURFACES} />

@@ -48,7 +48,10 @@ export default function MonthPicker({
   const today = currentMonth();
   const selected = clampMonth(value, { min, max, fallback: today });
   const locked = disabled || readOnly;
-  const monthLocked = locked || Boolean(onAllMonths && allMonths);
+  /* ⚠️ ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29) ไม่ใช่ทุกปี
+     ปุ่มจึงต้องยังกดได้ตอนติ๊ก เพราะยังต้องเปลี่ยนปีได้ — เดิมปิดปุ่มทิ้งไว้
+     แล้วผู้ใช้ไม่มีทางรู้เลยว่ากำลังดู "ทุกเดือนของปีไหน" */
+  const showingAllMonths = Boolean(onAllMonths && allMonths);
   const canUseToday = isMonthInRange(today, { min, max });
 
   const [open, setOpen] = useState(false);
@@ -109,30 +112,42 @@ export default function MonthPicker({
     onChange?.(clampMonth(next, { min, max, fallback: selected }));
   };
 
+  // เลือกเดือนเจาะจง = เลิกโหมด "ทุกเดือน" โดยปริยาย (เจตนาชัดว่าอยากได้เดือนเดียว)
   const choose = (month) => {
+    if (showingAllMonths) onAllMonths(false);
     change(month);
     setOpen(false);
     rootRef.current?.querySelector("button")?.focus();
   };
 
+  /* ตอนติ๊ก "ทุกเดือน" ไม่มีเดือนให้กด ลูกศรเลื่อนปีจึงต้อง **คอมมิตค่าเลย**
+     ไม่ใช่แค่เลื่อนสิ่งที่ดูอยู่ (คงเลขเดือนเดิมไว้ ปลายทางอ่านแค่ปี) */
+  const stepYear = (delta) => {
+    const next = Math.min(lastYear, Math.max(firstYear, viewYear + delta));
+    setViewYear(next);
+    if (showingAllMonths) change(addMonths(selected, (next - Number(selected.slice(0, 4))) * 12));
+  };
+
   // PageUp/PageDown เลื่อนงวดโดยไม่ต้องเปิดแผง (Shift = ทีละปี) — สัญญาเดิมของ component
   const handleKeyDown = (event) => {
-    if (locked || monthLocked || (event.key !== "PageUp" && event.key !== "PageDown")) return;
+    if (locked || (event.key !== "PageUp" && event.key !== "PageDown")) return;
     event.preventDefault();
     const direction = event.key === "PageUp" ? -1 : 1;
-    change(addMonths(selected, direction * (event.shiftKey ? 12 : 1)));
+    // โหมดทุกเดือนเลื่อนได้เฉพาะทีละปี — เลื่อนทีละเดือนไม่มีความหมาย
+    change(addMonths(selected, direction * (showingAllMonths || event.shiftKey ? 12 : 1)));
   };
 
   const openPanel = () => {
-    if (monthLocked) return;
+    if (locked) return;
     setViewYear(Number(selected.slice(0, 4)));
     setPanelStyle(null);
     setOpen((current) => !current);
   };
 
   const availableInView = monthsForYear(String(viewYear), { min, max });
-  const triggerLabel = onAllMonths && allMonths
-    ? allMonthsLabel
+  // ต้องบอกปีเสมอตอนโหมดทุกเดือน — "ทุกเดือน" เฉย ๆ อ่านไม่ออกว่าปีไหน
+  const triggerLabel = showingAllMonths
+    ? `${allMonthsLabel} ${displayYear(selected.slice(0, 4), calendar)}`
     : formatMonthLabel(selected, { calendar });
 
   const panel = open && panelStyle ? (
@@ -146,7 +161,7 @@ export default function MonthPicker({
       <span className={styles.panelHeader}>
         <button
           type="button"
-          onClick={() => setViewYear((year) => Math.max(firstYear, year - 1))}
+          onClick={() => stepYear(-1)}
           disabled={viewYear <= firstYear}
           aria-label="ปีก่อนหน้า"
         >
@@ -155,19 +170,28 @@ export default function MonthPicker({
         <strong>{displayYear(viewYear, calendar)}</strong>
         <button
           type="button"
-          onClick={() => setViewYear((year) => Math.min(lastYear, year + 1))}
+          onClick={() => stepYear(1)}
           disabled={viewYear >= lastYear}
           aria-label="ปีถัดไป"
         >
           <ChevronRight size={18} aria-hidden="true" />
         </button>
       </span>
+      {showingAllMonths ? (
+        <span className={styles.panelNote}>
+          กำลังดู <strong>{allMonthsLabel}</strong> ของปี {displayYear(viewYear, calendar)} —
+          {" "}กดเดือนใดเดือนหนึ่งเพื่อดูเฉพาะเดือนนั้น
+        </span>
+      ) : null}
       <span className={styles.panelGrid}>
         {MONTH_LABELS.map((label, index) => {
           const month = `${viewYear}-${String(index + 1).padStart(2, "0")}`;
           const classes = [
             month === today ? styles.isToday : "",
-            month === selected ? styles.isSelected : "",
+            // โหมดทุกเดือน = ทั้งปีถูกเลือก ไม่ใช่เดือนใดเดือนหนึ่ง
+            showingAllMonths
+              ? (Number(month.slice(0, 4)) === viewYear ? styles.isInRange : "")
+              : (month === selected ? styles.isSelected : ""),
           ].filter(Boolean).join(" ");
           return (
             <button
@@ -176,7 +200,7 @@ export default function MonthPicker({
               className={classes}
               disabled={!availableInView.includes(month)}
               aria-current={month === today ? "date" : undefined}
-              aria-pressed={month === selected}
+              aria-pressed={showingAllMonths ? Number(month.slice(0, 4)) === viewYear : month === selected}
               onClick={() => choose(month)}
             >
               {label}
@@ -214,7 +238,7 @@ export default function MonthPicker({
     >
       <Button
         className={styles.trigger}
-        disabled={monthLocked}
+        disabled={locked}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={openPanel}

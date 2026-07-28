@@ -416,10 +416,12 @@ button, select, input, textarea {
   .datetime-time { width: 100%; }
 }
 
+/* gap 6px เดิมทำให้ไอคอนเกือบติดตัวหนังสือ อ่านเป็นก้อนเดียวกัน (ผู้ใช้ส่งภาพมา
+   2026-07-29) — 8px คือระยะเดียวกับที่ `.btn` ใช้ระหว่างไอคอนกับป้าย */
 .save-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: 32px;
   color: var(--text-3);
   font-size: 12.5px;
@@ -2872,11 +2874,17 @@ button.ui-kpi-card { cursor: pointer; }
 .btn.action-outline.btn-danger, .btn-icon.action-outline.btn-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
 .btn.action-outline.btn-primary, .btn-icon.action-outline.btn-primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .btn.action-outline.btn-secondary, .btn-icon.action-outline.btn-secondary { color: var(--text-2); border-color: var(--border); }
+/* ⚠️ .btn-accent ตกหล่นจากชุดนี้มาตลอด — `.btn-accent` ตั้ง color: var(--accent-fg)
+   (สีอ่อนสำหรับวางบนพื้น terracotta) พอ outline/ghost ล้างพื้นเป็นโปร่ง สีตัวอักษร
+   ยังเป็นสีอ่อนอยู่ = **ตัวหนังสือหายไปเลย** (ผู้ใช้ส่งภาพมา 2026-07-29 ทั้งธีมสว่างและมืด)
+   ตัวอื่นมีกฎครบทั้ง success/warning/danger/primary/secondary ขาดแค่ accent */
+.btn.action-outline.btn-accent, .btn-icon.action-outline.btn-accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .btn.action-ghost, .btn-icon.action-ghost { border-color: transparent; box-shadow: none; }
 .btn.action-ghost.btn-success, .btn-icon.action-ghost.btn-success { color: var(--green); }
 .btn.action-ghost.btn-warning, .btn-icon.action-ghost.btn-warning { color: var(--amber); }
 .btn.action-ghost.btn-danger, .btn-icon.action-ghost.btn-danger { color: var(--red); }
 .btn.action-ghost.btn-primary, .btn-icon.action-ghost.btn-primary { color: var(--accent); }
+.btn.action-ghost.btn-accent, .btn-icon.action-ghost.btn-accent { color: var(--accent); }
 .btn.action-outline:hover, .btn.action-ghost:hover,
 .btn-icon.action-outline:hover, .btn-icon.action-ghost:hover { background: var(--panel-2); box-shadow: none; }
 

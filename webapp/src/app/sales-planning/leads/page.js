@@ -28,7 +28,7 @@ import {
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead, canWorkLead,
 } from "@/lib/sales/leads";
-import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -137,7 +137,10 @@ export default function LeadsPage() {
     try {
       const [leadsRes, kpiRes] = await Promise.all([
         fetch("/api/sales-planning/leads"),
-        fetch(`/api/sales-planning/leads/kpi?month=${allMonths ? "all" : encodeURIComponent(month)}`),
+        // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
+        fetch(allMonths
+          ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
+          : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`),
       ]);
       if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
       setLeads(await leadsRes.json());

@@ -2,6 +2,7 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { slaHit, channelGroupOf } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
+import { dateRangeOfYear, isYearValue } from '@/lib/datePeriods';
 import { canViewLeads } from '../route';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const params = new URL(req.url).searchParams;
   const param = params.get('month');
   const month = param === 'all' ? 'all' : (monthKey(param) || monthKey(new Date().toISOString()));
+  // year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บน MonthPicker)
+  // month=all ยังรับไว้เพื่อความเข้ากันได้ แต่หน้าจอไม่ส่งมาแล้ว
+  const year = isYearValue(params.get('year')) ? params.get('year') : null;
   // ฟิลเตอร์ทีม (ODM/KA/SV) — เดิม client ส่ง team มาแต่ server ไม่อ่าน = ฟิลเตอร์ไม่ทำงาน
   const team = params.get('team');
   const holidays = await holidaySet().catch(() => new Set());
@@ -25,7 +29,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // ลีดของเดือนที่เลือก (ตามวันที่รับเข้า) — KPI เป็นภาพรวมทั้งฝ่าย (นโยบายเดียวกับ
   // dashboard ขาย: ภาพรวมโปร่งใส; การทำงานรายใบยัง scope ที่หน้า /sa/leads)
   let query = supabase.from('sales_leads').select('*');
-  if (month !== 'all') {
+  if (year) {
+    const range = dateRangeOfYear(year);
+    query = query.gte('createdAt', range.from).lt('createdAt', range.until);
+  } else if (month !== 'all') {
     query = query.gte('createdAt', `${month}-01`).lt('createdAt', nextMonthStart(month));
   }
   if (team && team !== 'all') query = query.eq('team', team);

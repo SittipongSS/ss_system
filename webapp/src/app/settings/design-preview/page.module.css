@@ -139,3 +139,71 @@
   border-radius: var(--radius-lg);
   background: var(--bg);
 }
+
+/* ── แถบนำทางจำลอง ──────────────────────────────────────────────────────
+   ของจริงอยู่บนหัวหน้านี้แล้ว (AppLayout) ตรงนี้เป็นสำเนาแบบไม่โต้ตอบ ไว้ดูโครง
+   สองชั้นและสถานะ "เมนูที่อยู่" โดยไม่ต้องเปลี่ยนหน้าไปมา — ห้ามใช้คลาส .topnav
+   ของจริง เพราะมันถูกตรึงไว้บนสุดของจอ (position: fixed) จะหลุดกรอบ */
+.navDemo { border-radius: var(--radius); overflow: hidden; }
+
+.navSystem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  min-height: 46px;
+  background: var(--navy);
+}
+
+/* ตัวหนังสือบนพื้นนาวีใช้ --navy-fg ไม่ใช่ #fff — audit ห้ามสีดิบในไฟล์ module
+   (globals.css เขียน #fff ได้เพราะเป็นที่ประกาศโทเคน) */
+.navBrand { color: var(--navy-fg); font-size: 13px; font-weight: 800; letter-spacing: .08em; }
+
+.navSysBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--navy-fg) 14%, transparent);
+  color: var(--navy-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.navSpacer { flex: 1; }
+
+.navGlobal {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--navy-fg) 12%, transparent);
+  color: var(--navy-fg);
+}
+
+.navMenu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  overflow-x: auto;
+}
+
+.navItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.navItemActive { background: var(--accent-soft); color: var(--accent); }

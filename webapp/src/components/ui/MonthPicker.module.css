@@ -68,6 +68,17 @@
 .panelHeader button:hover:not(:disabled) { background: var(--panel-2); }
 .panelHeader button:disabled { opacity: .3; cursor: not-allowed; }
 
+.panelNote {
+  display: block;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .panelGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -109,6 +120,13 @@
   background: var(--accent);
   color: var(--accent-fg);
   font-weight: 700;
+}
+
+/* โหมด "ทุกเดือน" — ทั้งปีถูกเลือก ใช้พื้นจางทั้งแถบไม่ใช่พื้นทึบ 12 ช่อง
+   ไม่งั้นจะอ่านเหมือนเลือกเดือนใดเดือนหนึ่งไว้ 12 เดือนพร้อมกัน */
+.panelGrid button.isInRange {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* ต้องเจาะจงกว่า `.panelGrid button:hover` (0,0,3,1) ไม่งั้นเดือนที่เลือกอยู่จะซีด

@@ -15,7 +15,7 @@ import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, stageIndex } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
@@ -109,8 +109,14 @@ export default function SalesPlanningPipelinePage() {
     setError("");
     try {
       const [dealsRes, customersRes, projectsRes] = await Promise.all([
-        // ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือน (deal backfill มี forecastMonth=null)
-        fetch((allMonths || reviewOnly) ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
+        /* ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือนจริง ๆ (deal backfill มี forecastMonth=null
+           จึงตกทุกช่วงที่กรอง) — ต่างจากติ๊ก "ทุกเดือน" ที่แปลว่า *ทุกเดือนของปีที่เลือก*
+           เดิมสองอย่างนี้ยิง URL เดียวกัน = ติ๊กทุกเดือนแล้วได้ดีลทุกปีมาปนกัน */
+        fetch(reviewOnly
+          ? "/api/sales-planning/deals"
+          : allMonths
+            ? `/api/sales-planning/deals?year=${encodeURIComponent(yearOfMonth(month) || "")}`
+            : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
         fetch("/api/pm/projects"),
       ]);

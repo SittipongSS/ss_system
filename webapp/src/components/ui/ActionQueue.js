@@ -1,19 +1,24 @@
 "use client";
-import { ChevronRight, CheckCircle2 } from "lucide-react";
-import EmptyState from "@/components/ui/EmptyState";
 
-// Generic "งานที่ต้องทำตอนนี้" action queue for the module command centers
-// (PM / master data / SAHAMIT). Same look as excise's WorkQueue, but the leading
-// badge is a plain tone-tinted label instead of the excise StatusBadge — so it
-// works for statuses that aren't part of the excise workflow.
-//   items: { id, tone, badge, title, subtitle, cta, onClick }
-//   tone ∈ warning | danger | success | info | neutral (default neutral)
-const TONE = {
-  success: "var(--green)",
-  warning: "var(--amber)",
-  danger: "var(--red)",
-  info: "var(--blue)",
-  neutral: "var(--text-3)",
+/* คิว "งานที่ต้องทำตอนนี้" ของหน้าภาพรวมแต่ละโมดูล (PM / ฐานข้อมูล / สหมิตร)
+     items: { id, tone, icon, badge, title, subtitle, cta, onClick }
+     tone ∈ warning | danger | success | info | neutral (ค่าตั้งต้น neutral)
+
+   ⚠️ เดิมบอกความหมายด้วย **แถบสีด้านซ้าย 3px** — ผู้ใช้ขอเปลี่ยน (2026-07-29)
+   เพราะแถบสีบาง ๆ สื่อความหมายได้น้อยและกินพื้นที่ขอบการ์ด ตอนนี้ใช้
+   **กล่องไอคอนพื้นสีจาง** แทน ซึ่งบอกได้ทั้งโทนและ *ชนิดของงาน* ในที่เดียว
+   และเป็นแพตเทิร์นเดียวกับ Metric/KpiCard ที่มีอยู่แล้ว */
+
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronRight, Info, Inbox } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+import styles from "./ActionQueue.module.css";
+
+const TONE_ICON = {
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  danger: AlertCircle,
+  info: Info,
+  neutral: Inbox,
 };
 
 export default function ActionQueue({ items = [], empty = "ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉" }) {
@@ -21,40 +26,29 @@ export default function ActionQueue({ items = [], empty = "ไม่มีงา
     return <EmptyState icon={CheckCircle2}>{empty}</EmptyState>;
   }
   return (
-    <div className="flex flex-col gap-2">
-      {items.map((it) => {
-        const color = TONE[it.tone] || TONE.neutral;
+    <div className={styles.queue}>
+      {items.map((item) => {
+        const tone = TONE_ICON[item.tone] ? item.tone : "neutral";
+        const Icon = item.icon || TONE_ICON[tone];
         return (
           <button
-            key={it.id}
-            onClick={it.onClick}
-            className="glass-panel clickable-row"
-            style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-              textAlign: "left", width: "100%", cursor: "pointer",
-              border: "1px solid var(--border)", borderLeft: `3px solid ${color}`,
-            }}
+            key={item.id}
+            type="button"
+            onClick={item.onClick}
+            className={styles.row}
+            data-tone={tone}
           >
-            {it.badge && (
-              <span className="status-pill" style={{ color, borderColor: color, flexShrink: 0 }}>
-                {it.badge}
+            <span className={styles.icon} aria-hidden="true"><Icon size={17} /></span>
+            <span className={styles.copy}>
+              <strong>{item.title}</strong>
+              {item.subtitle ? <small>{item.subtitle}</small> : null}
+            </span>
+            {item.badge ? <span className={styles.badge}>{item.badge}</span> : null}
+            {item.cta ? (
+              <span className={styles.cta}>
+                {item.cta} <ChevronRight size={15} aria-hidden="true" />
               </span>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {it.title}
-              </div>
-              {it.subtitle && (
-                <div style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {it.subtitle}
-                </div>
-              )}
-            </div>
-            {it.cta && (
-              <span className="flex items-center gap-1" style={{ color: "var(--accent)", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-                {it.cta} <ChevronRight size={15} />
-              </span>
-            )}
+            ) : null}
           </button>
         );
       })}

@@ -6,7 +6,7 @@ import { fmtMoneyCompact } from "@/lib/format";
 import UiKpiCard from "@/components/ui/KpiCard";
 
 export { default as MonthPicker } from "@/components/ui/MonthPicker";
-export { MONTH_LABELS, monthsForYear, thisMonth } from "@/lib/datePeriods";
+export { MONTH_LABELS, monthsForYear, thisMonth, yearOfMonth } from "@/lib/datePeriods";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
