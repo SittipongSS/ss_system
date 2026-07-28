@@ -28,6 +28,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { toneColor } from "@/lib/ui/tone";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
 // ยอดเรียกเก็บ = ค่าภาษี + VAT 7% ตรงกับ "ยอดแจ้งชำระสุทธิ" บนเอกสารที่พิมพ์เสมอ
@@ -36,10 +37,6 @@ const amountToCollectText = (o) => ((o.totalTax || 0) === 0
   ? "ยกเว้นภาษี"
   : fmtMoney(orderAmountToCollect(o)));
 const ORDER = ["draft", "pending", "received", "filing", "complete", "delivered"];
-const TONE_COLOR = {
-  neutral: "var(--text-3)", warning: "var(--amber)", danger: "var(--red)",
-  info: "var(--blue)", success: "var(--green)",
-};
 
 export default function FilingDetailPage() {
   const { id } = useParams();
@@ -181,11 +178,11 @@ export default function FilingDetailPage() {
                   { id: "receipt", label: "ใบเสร็จสรรพสามิต", value: o.exciseReceiptNumber || "-" },
                 ]}
                 status={status.label}
-                statusColor={TONE_COLOR[status.tone]}
+                statusColor={toneColor(status.tone)}
               />
               <DocumentControlCard
                 status={status.label}
-                statusColor={TONE_COLOR[status.tone]}
+                statusColor={toneColor(status.tone)}
                 statusDescription="การดำเนินการระดับใบยื่นชำระ"
                 workflowSteps={workflowSteps}
                 primaryAction={primaryAction}

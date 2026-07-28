@@ -13,25 +13,7 @@
 // ต่อ (ปุ่มหายเงียบ) · เอาเงื่อนไขสิทธิ์ไปใส่ allow = คนไม่มีสิทธิ์เห็นปุ่มที่ตัวเองแตะไม่ได้
 
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
-
-/* โทน → สี CSS. ที่เดียวของทั้งระบบที่แปลง tone เป็นสี เพราะสองชั้นรับคนละแบบ:
-   StatusBadge รับ tone (data-tone → ตัวแปรใน Badge.module.css) แต่ DocumentControlCard
-   รับ statusColor เป็นสตริงสี. ไม่มีตัวกลางแล้วแต่ละหน้าจะเดาสีเอง แล้วป้ายกับจุดสถานะ
-   บนหน้าเดียวกันจะคนละสี
-   ⚠️ เพิ่ม tone ใน Badge.module.css ต้องเพิ่มที่นี่ด้วย — เทสต์เทียบสองฝั่งไว้ */
-export const RECORD_TONES = ["neutral", "accent", "info", "success", "warning", "danger", "error"];
-const TONE_COLORS = {
-  neutral: "var(--text-2)",
-  accent: "var(--accent)",
-  info: "var(--blue)",
-  success: "var(--green)",
-  warning: "var(--amber)",
-  danger: "var(--red)",
-  error: "var(--red)",
-};
-export function toneColor(tone) {
-  return TONE_COLORS[tone] || TONE_COLORS.neutral;
-}
+import { toneColor } from "@/lib/ui/tone";
 
 /* ช่องปุ่มบนการ์ด — ตรงกับที่ DocumentControlCard แบ่งไว้ (primary / secondary / danger) */
 export const RECORD_SLOTS = ["primary", "secondary", "danger"];

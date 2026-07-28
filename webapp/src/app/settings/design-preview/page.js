@@ -44,6 +44,7 @@ import ReasonDialog from "@/components/ui/ReasonDialog";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { defineLifecycle } from "@/lib/recordLifecycle";
+import { STATUS_TONES } from "@/lib/ui/tone";
 import styles from "./page.module.css";
 
 const SURFACES = [
@@ -66,8 +67,10 @@ const COLORS = [
   { cls: styles.text3, token: "--text-3", use: "ตัวอักษรรอง" },
 ];
 
-const TONES = ["neutral", "primary", "accent", "danger", "warning"];
-const BADGE_TONES = ["neutral", "success", "warning", "danger", "info", "accent"];
+const BUTTON_TONES = ["neutral", "primary", "accent", "danger", "warning"]; // คนละชุดกับ STATUS_TONES (ดู lib/ui/tone.js)
+/* tone ที่โชว์ = ลิสต์กลางจาก lib/ui/tone.js — เพิ่ม tone ใหม่แล้วหน้านี้ขึ้นเอง
+   (เดิมหน้านี้ถือลิสต์ของตัวเอง แล้วตกหล่นได้เงียบ ๆ) */
+const BADGE_TONES = STATUS_TONES;
 
 const ROWS = [
   { code: "QT-26070128", customer: "บริษัท สหมิตร โปรดักส์ จำกัด", amount: 485000, tone: "warning", status: "รออนุมัติ" },
@@ -274,7 +277,7 @@ export default function DesignPreviewPage() {
             {["filled", "outline", "ghost"].map((variant) => (
               <div key={variant} className={styles.row}>
                 <span className={styles.caption}>{variant}</span>
-                {TONES.map((tone) => (
+                {BUTTON_TONES.map((tone) => (
                   <Button key={tone} tone={tone} variant={variant}>{tone}</Button>
                 ))}
               </div>
