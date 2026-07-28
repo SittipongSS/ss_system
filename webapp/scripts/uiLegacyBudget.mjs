@@ -31,6 +31,12 @@ export const MODULES = [
       "src/components/pm/",
       "src/components/costing/",
       "src/components/materials/",
+      /* คำร้องข้ามฝ่าย (mig 0173) — เดิมคือ `components/materials/AskForm|AskQueuePanel`
+         หน้าจอของมันอยู่ที่ `src/app/sa/requests/` = สายขายเหมือนเดิม ไม่ได้ย้ายเจ้าของ
+         ⚠️ ถ้าไม่ประกาศตรงนี้ ตะแกรงท้ายสุด `shared` จะรับไป แล้ว ratchet จะอ่านการ
+         **ย้ายไดเรกทอรี** เป็น "sales ลดลง + shared เพิ่มขึ้น" = ตกสองฝั่งพร้อมกัน
+         ทั้งที่ไม่มีใครเขียนชั้นเก่าเพิ่มสักบรรทัด (เกิดจริงตอน merge #786) */
+      "src/components/requests/",
       "src/components/updates/",
     ],
   },
