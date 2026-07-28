@@ -19,6 +19,7 @@ import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
+import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import { usePagination } from "@/lib/usePagination";
@@ -150,15 +151,33 @@ export default function FormulasPage() {
   };
 
   const submitSorting = async () => {
-    const done = await call("/api/master/formulas/unsorted", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        productId: sorting.row.productId,
-        as: sorting.as,
-        code: sorting.code || null,
-      }),
-    }, sorting.as === "scent" ? "ย้ายเข้าทะเบียนกลิ่นแล้ว" : "ย้ายเข้าทะเบียนสูตรแล้ว");
-    if (done) setSorting(null);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/master/formulas/unsorted", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: sorting.row.productId,
+          as: sorting.as,
+          code: sorting.code || null,
+          formulaDate: sorting.as === "formula" ? (sorting.formulaDate || null) : null,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "จัดระเบียบไม่สำเร็จ");
+      const where = sorting.as === "scent" ? "กลิ่น" : "สูตร";
+      // แยกข้อความ "ผูกกับของเดิม" ออกจาก "สร้างใหม่" — ของจริงมีชื่อซ้ำข้ามสินค้า
+      // ถ้าบอกว่า "ย้ายแล้ว" เหมือนกันหมด คนจะนึกว่าเกิดของซ้ำในทะเบียน
+      setToast({
+        kind: "success",
+        msg: d.reused
+          ? `ผูกเข้าทะเบียน${where} "${d.row?.name}" ที่มีอยู่แล้ว`
+          : `ย้ายเข้าทะเบียน${where}แล้ว`,
+      });
+      await reload();
+      setSorting(null);
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally { setSaving(false); }
   };
 
   const runConfirm = async () => {
@@ -238,7 +257,9 @@ export default function FormulasPage() {
                       {registrar && (
                         <button
                           type="button" className="btn sm"
-                          onClick={() => setSorting({ row: r, as: "scent", code: "" })}
+                          onClick={() => setSorting({
+                            row: r, as: "scent", code: "", formulaDate: r.formulaDate || "",
+                          })}
                         >
                           จัดระเบียบ
                         </button>
@@ -442,6 +463,21 @@ export default function FormulasPage() {
                 />
                 <small style={{ color: "var(--text-3)" }}>เว้นว่าง = เก็บเป็นร่างไว้ใส่รหัสทีหลัง</small>
               </div>
+              {sorting.as === "formula" && (
+                <div className="form-group col-span-2">
+                  <label htmlFor="sort-date">วันที่ของสูตร</label>
+                  <DateInput
+                    id="sort-date" value={sorting.formulaDate} disabled={saving}
+                    onChange={(v) => setSorting({ ...sorting, formulaDate: v })}
+                  />
+                  {/* prod มีปีพิมพ์ผิดจริง (2202) — ให้แก้ตรงนี้ได้เลย ไม่ใช่บล็อกทิ้งไว้ */}
+                  {!!sorting.row.formulaDate && !/^(19|20)\d{2}-/.test(String(sorting.row.formulaDate)) && (
+                    <small style={{ color: "var(--amber)" }}>
+                      วันที่เดิมของสินค้า ({sorting.row.formulaDate}) ดูเหมือนพิมพ์ปีผิด — แก้ตรงนี้หรือเว้นว่างไว้ก่อนได้
+                    </small>
+                  )}
+                </div>
+              )}
             </div>
             {sorting.as === "scent" && !sorting.row.customerId && (
               <p style={{ fontSize: 12, color: "var(--red)", margin: "8px 0 0" }}>

@@ -127,6 +127,18 @@ export function normalizeFormulaInput(body = {}) {
   };
 }
 
+// วันที่ที่ "สืบทอดมา" จากสินค้าเก่าอาจเสีย (prod มีจริง: '2202-08-06')
+// ⚠️ ถ้าปล่อยให้ตัวดักปีพิมพ์ผิดปฏิเสธตอนจัดระเบียบ แถวนั้นจะจัดไม่ได้เลยตลอดไป —
+// กฎที่ตั้งใจกันข้อมูลเสียจะกลายเป็นตัวบล็อกการล้างข้อมูลเสียเอง
+// ค่าที่ผู้ใช้พิมพ์เองยังตรวจตามปกติ (ผู้เรียกส่งเข้ามาแล้วให้ normalize จับ)
+// ส่วนค่าที่สืบทอดมาถ้าไม่ผ่านให้ทิ้งเป็น null แล้ว RD เติมทีหลังได้
+export function sanitizeInheritedFormulaDate(typed, inherited) {
+  const typedValue = String(typed ?? '').trim();
+  if (typedValue) return typedValue;
+  if (!inherited) return null;
+  return normalizeFormulaInput({ name: 'x', formulaDate: inherited }).error ? null : inherited;
+}
+
 // ── "รอจัดระเบียบ" — สินค้าที่มีชื่อสูตรแต่ยังไม่ได้ผูกทะเบียน ────────────
 // prod มี 10 แถวแบบนี้ และชื่อส่วนใหญ่คือ *ชื่อกลิ่น* ไม่ใช่ชื่อสูตร
 // migration ตั้งใจไม่ backfill (เดาแทน RD ไม่ได้) — หน้าจอโชว์ให้ RD ตัดสินทีละแถว

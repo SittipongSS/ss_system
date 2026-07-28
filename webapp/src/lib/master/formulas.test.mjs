@@ -12,6 +12,7 @@ import {
   isFormulaRegistrar,
   isFormulaUsable,
   normalizeFormulaInput,
+  sanitizeInheritedFormulaDate,
   unsortedFormulaRows,
 } from './formulas.js';
 
@@ -94,6 +95,19 @@ test('ร่างเลิกใช้ไม่ได้ ต้องลบท�
 test('ร่างยังอ้างในคำร้องขอราคา FB ไม่ได้', () => {
   assert.equal(isFormulaUsable(formula({ status: 'draft' })), false);
   assert.equal(isFormulaUsable(formula({ status: 'active' })), true);
+});
+
+// ── วันที่เสียที่สืบทอดมา ต้องไม่บล็อกการจัดระเบียบ ──────────────────────
+test('วันที่เสียที่สืบทอดจากสินค้าเก่าถูกทิ้ง ไม่ทำให้จัดระเบียบไม่ได้', () => {
+  // ของจริงบน prod: สินค้า "Glass window rain" มี formulaDate = '2202-08-06'
+  // ถ้าปล่อยให้ตัวดักปีพิมพ์ผิดปฏิเสธ แถวนี้จะค้างในรายการรอจัดระเบียบตลอดไป
+  assert.equal(sanitizeInheritedFormulaDate(null, '2202-08-06'), null);
+  assert.equal(sanitizeInheritedFormulaDate('', '2025-08-06'), '2025-08-06');
+  assert.equal(sanitizeInheritedFormulaDate(null, null), null);
+});
+
+test('วันที่ที่ผู้ใช้พิมพ์เองชนะค่าที่สืบทอดมาเสมอ (แก้ปีผิดตรงนั้นได้เลย)', () => {
+  assert.equal(sanitizeInheritedFormulaDate('2025-08-06', '2202-08-06'), '2025-08-06');
 });
 
 // ── "รอจัดระเบียบ" ───────────────────────────────────────────────────────
