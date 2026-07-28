@@ -229,6 +229,33 @@ export function submitToExecError(request, libraryBlocker = null) {
   return null;
 }
 
+// ── ดึงกลับ (มติผู้ใช้ B5 2026-07-28) ──────────────────────────────────
+// คู่ตรงข้ามของ submitToExecError: ยื่นไปแล้วแต่ยังไม่ถูกตัดสิน อยากเอากลับมาแก้เอง
+// เดิมทำไม่ได้เลย ทางออกเดียวคือรอผู้บริหารตีกลับให้ หรือยกเลิกใบทั้งใบแล้วเปิดใหม่
+//
+// ⚠️ คำศัพท์ (มติ 2026-07-26 — เทสต์ workflowVocabulary กันไว้):
+//   ดึงกลับ = ผู้ยื่นดึงของตัวเองคืน · ตีกลับ = ผู้อนุมัติส่งกลับมาให้แก้
+// ที่นี่ "ผู้ยื่น" = ฝ่ายขายเจ้าของใบตาม scope (ตารางไม่มีคอลัมน์ผู้กดส่ง) ซึ่งกันผู้บริหาร
+// ออกอยู่แล้วเพราะ canEditCostingRequest ไม่รับ role ที่อนุมัติ — ผู้บริหารต้องใช้ตีกลับ
+// ที่เก็บเหตุผลลงคอลัมน์จริงและโชว์บนใบ
+//
+// รายการที่ผู้บริหารอนุมัติไปแล้วไม่ถูกแตะ (ยังอนุมัติอยู่เหมือนเดิม) — ตรงกับตอนยื่นใหม่
+// ที่รีเซ็ตเฉพาะรายการ 'returned' และ blockingChangeError กันไม่ให้ลบทิ้งอยู่แล้ว
+export function withdrawFromExecError(request, user) {
+  if (!request) return 'ไม่พบใบขอราคา';
+  if (request.status !== 'pending_exec') {
+    return 'ดึงกลับได้เฉพาะใบที่กำลังรอผู้บริหารอนุมัติ';
+  }
+  if (!canEditCostingRequest(user, request)) {
+    return 'ดึงกลับได้เฉพาะฝ่ายขายเจ้าของใบ — ผู้บริหารให้ใช้ “ตีกลับให้แก้ไข”';
+  }
+  return null;
+}
+
+export function canWithdrawCostingRequest(user, request) {
+  return withdrawFromExecError(request, user) === null;
+}
+
 // ผู้บริหารอนุมัติ/ตีกลับได้เฉพาะตอนใบรออนุมัติอยู่ และเฉพาะรายการที่ยังไม่ตัดสิน
 export function canDecideItem(user, request, item) {
   if (!canApproveCosting(user)) return false;

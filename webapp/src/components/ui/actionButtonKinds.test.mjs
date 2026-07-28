@@ -9,6 +9,7 @@ const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const ACTION_BUTTONS = src('./ActionButtons.js');
 const QT_PAGE = src('../../app/sales-planning/quotations/[id]/page.js');
 const SO_PAGE = src('../../app/sales-planning/sales-orders/[id]/page.js');
+const COSTING_PAGE = src('../../app/sa/costing/[id]/page.js');
 
 // B1 (2026-07-26): ทั้งสองหน้าส่ง kind ที่ไม่มีใน KINDS แล้วตกลง fallback btn-secondary
 // เงียบ ๆ — ปุ่ม "ถอนการยื่น" เลยเป็นสีแดงบน QT (ยืม kind:"reject") และสีเทาบน SO
@@ -32,4 +33,11 @@ test('QT and SO use the same kind for the same button', () => {
 
   // B8: restore เหลือความหมายเดียว (กู้ SO ที่ยกเลิก) จึงต้องมี label ของตัวเอง
   assert.match(SO_PAGE, /id: "restore", kind: "restore", label: "/);
+});
+
+// B5 (2026-07-28): ใบขอราคาผลิตได้ปุ่มดึงกลับด้วย — ต้องใช้ kind เดียวกับอีกสองหน้า
+// ไม่งั้นปุ่มเดียวกันจะคนละสี/คนละไอคอนอีกรอบ (บั๊กเดิมของ QT/SO)
+test('costing request uses the same withdraw kind as QT and SO', () => {
+  assert.match(COSTING_PAGE, /id: "withdraw",?\s*\n?\s*kind: "withdraw"/);
+  assert.doesNotMatch(COSTING_PAGE, /kind: "copy"/);
 });

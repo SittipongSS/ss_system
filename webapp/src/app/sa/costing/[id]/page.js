@@ -18,6 +18,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -38,7 +39,7 @@ import { fmtDate } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
   approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
-  componentUnitCost, feedCostError, feedCostValue,
+  canWithdrawCostingRequest, componentUnitCost, feedCostError, feedCostValue,
   isMoqTier, itemUnitCost, pricingProgress, submitToExecError,
 } from "@/lib/costing";
 import {
@@ -84,6 +85,7 @@ export default function CostingDetailPage() {
   const [pendingSave, setPendingSave] = useState(false);
   const [pendingCancel, setPendingCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [withdrawForm, setWithdrawForm] = useState(null); // { reason } เมื่อเปิดกล่องดึงกลับ
   const [toast, setToast] = useState(null);
   // การตัดสินของผู้บริหารต่อรายการ — { itemId, mode: 'approve'|'return' }
   const [decision, setDecision] = useState(null);
@@ -304,6 +306,16 @@ export default function CostingDetailPage() {
     }
   };
 
+  // ดึงกลับ (B5): ยื่นไปแล้วแต่ผู้บริหารยังไม่ตัดสิน — เอากลับมาแก้เองได้
+  // ด่านจริงอยู่ที่ predicate กลางตัวเดียว (withdrawFromExecError) ที่ route ใช้ร่วมกัน
+  const withdraw = () => {
+    const reason = (withdrawForm?.reason || "").trim();
+    if (reason.length < 10) return;
+    runAction("/withdraw", { method: "POST", body: JSON.stringify({ reason }) },
+      "ดึงกลับแล้ว ใบกลับมาแก้ไขได้")
+      .then((ok) => { if (ok) setWithdrawForm(null); });
+  };
+
   const submit = () => {
     const blocked = submitToExecError(request);
     if (blocked) { setToast({ kind: "error", msg: blocked }); return; }
@@ -383,6 +395,13 @@ export default function CostingDetailPage() {
     { id: "linked", label: "ป้อนต้นทุนแล้ว", hint: "ต้นทุนถูกส่งกลับทะเบียนสินค้า" },
   ], workflowIndex, request.status === "cancelled");
   const submitBlocked = editableStatus ? submitToExecError(request) : null;
+  // ปุ่มกับ API ต้องตัดสินด้วย predicate ตัวเดียวกัน — ห้ามหน้าเว็บเขียนเงื่อนไขเองซ้ำ
+  // (บทเรียนจาก QT/SO: ปุ่มโผล่แต่ API ปฏิเสธ หรือกลับกัน). รูปแบบ user เดียวกับ
+  // canEdit/canFeed ข้างบน — roleContext ไม่มี id ให้ ด่านตัวจริงจึงอยู่ที่ route เสมอ
+  const canWithdraw = canWithdrawCostingRequest(
+    { role, team, department, id: request.requestedById },
+    request,
+  );
   const documentPrimaryAction = canEdit && editableStatus
     ? {
       id: "submit",
@@ -437,6 +456,13 @@ export default function CostingDetailPage() {
               workflowSteps={workflowSteps}
               primaryAction={documentPrimaryAction}
               secondaryActions={[
+                {
+                  id: "withdraw",
+                  kind: "withdraw",
+                  icon: Undo2,
+                  onClick: () => setWithdrawForm({ reason: "" }),
+                  visible: canWithdraw,
+                },
                 {
                   id: "fill-prices",
                   label: "ดึงราคาล่าสุดทุกบรรทัด",
@@ -879,6 +905,28 @@ export default function CostingDetailPage() {
         busy={saving}
         onConfirm={save}
         onClose={() => setPendingSave(false)}
+      />
+
+      {/* ดึงกลับ = ผู้ยื่นเอาใบของตัวเองคืนก่อนถูกตัดสิน (คู่ตรงข้ามของ "ตีกลับ" ที่เป็น
+          การกระทำของผู้บริหาร) — บังคับเหตุผลเหมือน QT/SO เพราะมันจะกลายเป็นบรรทัด
+          ในเธรด อธิบายช่วงที่ใบหายไปจากคิวผู้บริหาร */}
+      <ReasonDialog
+        open={!!withdrawForm}
+        title="ดึงกลับใบขอราคาผลิต"
+        description={`ใบ ${request.docNo || "-"} จะออกจากคิวผู้บริหารและกลับมาแก้ไขได้`}
+        detail="รายการที่ผู้บริหารอนุมัติราคาไปแล้วยังอนุมัติอยู่เหมือนเดิม — ยื่นใหม่แล้วเหลือเฉพาะรายการที่ยังไม่ตัดสิน"
+        label="เหตุผลที่ดึงกลับ"
+        value={withdrawForm?.reason || ""}
+        onChange={(reason) => setWithdrawForm({ reason })}
+        onClose={() => setWithdrawForm(null)}
+        onConfirm={withdraw}
+        confirmLabel="ยืนยันดึงกลับ"
+        placeholder="ระบุเหตุผลที่ต้องนำใบกลับมาแก้ไข"
+        helpText={`อย่างน้อย 10 ตัวอักษร · ${(withdrawForm?.reason || "").length}/500`}
+        error={withdrawForm?.reason && withdrawForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
+        minLength={10}
+        maxLength={500}
+        busy={saving}
       />
 
       <Modal open={pendingCancel} onClose={() => setPendingCancel(false)} title="ยกเลิกใบขอราคา" size="sm" dismissible={!saving}>
