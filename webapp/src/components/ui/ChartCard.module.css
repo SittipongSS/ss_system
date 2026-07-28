@@ -45,7 +45,7 @@
 .title svg {
   flex: none;
   margin-top: 2px;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .title h2 {

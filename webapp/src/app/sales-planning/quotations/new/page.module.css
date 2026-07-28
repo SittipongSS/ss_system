@@ -43,7 +43,7 @@
 
 .customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
 .infoBlock { display: flex; align-items: flex-start; gap: 10px; min-width: 0; color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
-.infoBlock svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
+.infoBlock svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent-ink); }
 
 .documentMeta { display: grid; grid-template-columns: repeat(3, minmax(190px, 280px)); align-items: end; gap: 18px; }
 .documentDateInput { width: 100%; }

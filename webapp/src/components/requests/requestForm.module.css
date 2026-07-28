@@ -34,7 +34,7 @@
 .tierChipOn {
   cursor: pointer;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .tierInput { width: 120px; }
 

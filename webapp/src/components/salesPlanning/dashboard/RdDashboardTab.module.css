@@ -6,7 +6,7 @@
 .overviewCard { overflow: hidden; background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%), var(--panel); }
 .overviewHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 20px 22px 18px; }
 .overviewEyebrowRow { display: flex; align-items: center; gap: 8px 14px; margin-bottom: 7px; flex-wrap: wrap; }
-.eyebrow { color: var(--accent); font-size: 10.5px; font-weight: 750; letter-spacing: .08em; }
+.eyebrow { color: var(--accent-ink); font-size: 10.5px; font-weight: 750; letter-spacing: .08em; }
 .period { padding-left: 14px; border-left: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
 .overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(20px, 2vw, 27px); font-weight: 750; line-height: 1.2; }
 .overviewHeading p { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
@@ -16,7 +16,7 @@
 .quickFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 68%, transparent); }
 .quickFacts > div { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 16px; border-right: 1px solid var(--border); }
 .quickFacts > div:last-child { border-right: 0; }
-.factIcon { display: grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.factIcon { display: grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); }
 .factIcon svg { width: 15px; }
 .quickFacts small { display: block; color: var(--text-3); font-size: 10.5px; }
 .quickFacts strong { display: inline-block; margin-right: 6px; color: var(--text); font-size: 18px; line-height: 1.25; }
@@ -26,12 +26,12 @@
 
 .feedCard { overflow: hidden; }
 .sectionHead, .queueHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.sectionTitle { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--accent); }
+.sectionTitle { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--accent-ink); }
 .sectionTitle h3 { margin: 0; color: var(--text); font-size: 15px; }
 .sectionTitle span { display: block; margin-top: 2px; color: var(--text-3); font-size: 11.5px; }
 .filters { display: flex; gap: 4px; flex-wrap: wrap; }
 .filters button { border: 0; border-radius: 999px; padding: 5px 9px; background: transparent; color: var(--text-3); cursor: pointer; font-size: 12px; }
-.filters .activeFilter { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-weight: 700; }
+.filters .activeFilter { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-ink); font-weight: 700; }
 .feed { display: flex; flex-direction: column; }
 .post { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--border); transition: background .15s ease; }
 .post:last-child { border-bottom: 0; }
@@ -42,28 +42,28 @@
 .postMeta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; color: var(--text-3); font-size: 11.5px; }
 .postMeta strong { color: var(--text-1); }
 .postTitle { display: inline-block; margin: 4px 0 2px; color: var(--text-1); font-size: 14px; font-weight: 750; text-decoration: none; }
-.postTitle:hover { color: var(--accent); }
+.postTitle:hover { color: var(--accent-ink); }
 .postBody p { display: -webkit-box; overflow: hidden; margin: 4px 0 10px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .statusText { color: var(--text-3); font-style: italic; }
 .postFooter { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11px; }
-.postFooter a { display: flex; align-items: center; gap: 2px; margin-left: auto; color: var(--accent); text-decoration: none; }
+.postFooter a { display: flex; align-items: center; gap: 2px; margin-left: auto; color: var(--accent-ink); text-decoration: none; }
 .urgent { color: var(--red); font-weight: 700; }
 .ack { color: var(--green); }
 .important { color: var(--amber); font-weight: 700; }
 .taskPost { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent); }
-.taskAvatar { border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-.typeLabel, .taskStatus { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 10px; font-weight: 750; }
+.taskAvatar { border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-ink); }
+.typeLabel, .taskStatus { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); font-size: 10px; font-weight: 750; }
 .taskStatus.completed { background: color-mix(in srgb, var(--green) 11%, transparent); color: var(--green); }
 .taskDue { color: var(--text-3); }
 
 .aside { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; }
 .queueCard { overflow: hidden; }
-.queueHead a { color: var(--accent); font-size: 12px; }
+.queueHead a { color: var(--accent-ink); font-size: 12px; }
 .queueList { display: flex; flex-direction: column; }
 .queueItem { padding: 13px 15px; border-bottom: 1px solid var(--border); color: inherit; text-decoration: none; }
 .queueItem:last-child { border: 0; }
 .queueItem:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.queueItem > div { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 11px; }
+.queueItem > div { display: flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: 11px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
 .queueItem h4 { margin: 4px 0; font-size: 13px; line-height: 1.35; }
 .queueItem p, .queueItem small { margin: 0; color: var(--text-3); font-size: 11px; }

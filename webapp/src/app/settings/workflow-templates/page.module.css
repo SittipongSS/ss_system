@@ -3,7 +3,7 @@
 .templateTabs button { min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
 .templateTabs button:hover { border-color: var(--accent); background: var(--panel-2); transform: translateY(-1px); }
 .templateTabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.templateTabs button > span { padding: 3px 7px; border-radius: var(--radius-full); color: var(--accent); background: var(--accent-soft); font-size: 11px; font-weight: 800; }
+.templateTabs button > span { padding: 3px 7px; border-radius: var(--radius-full); color: var(--accent-ink); background: var(--accent-soft); font-size: 11px; font-weight: 800; }
 .templateTabs button > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
 .templateTabs button > i { color: var(--amber); font-size: 10.5px; font-style: normal; font-weight: 700; }
 .templateTabs .activeTab { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent); }
@@ -16,7 +16,7 @@
 .identity > p { margin-top: 4px; color: var(--text-2); font-size: 13px; line-height: 1.55; }
 .identity > small { display: block; margin-top: 11px; color: var(--text-3); font-size: 11.5px; }
 .summaryGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.summaryGrid > div { min-width: 0; padding: 10px 11px; border-radius: var(--radius); display: flex; align-items: center; gap: 9px; color: var(--accent); background: var(--panel-2); }
+.summaryGrid > div { min-width: 0; padding: 10px 11px; border-radius: var(--radius); display: flex; align-items: center; gap: 9px; color: var(--accent-ink); background: var(--panel-2); }
 .summaryGrid span { min-width: 0; color: var(--text-3); font-size: 11px; }
 .summaryGrid strong { display: block; margin-top: 1px; color: var(--text); font-size: 13px; }
 .badge { min-height: 23px; padding: 2px 8px; border: 1px solid transparent; border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: 11px; font-weight: 750; }
@@ -50,7 +50,7 @@
 .historyTable td:nth-child(3) { max-width: 420px; }
 .historyTable td small, .stepTable td small { display: block; margin-top: 3px; color: var(--text-3); }
 .stepIdentity { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
-.stepIdentity > span { width: 26px; height: 26px; border-radius: var(--radius-full); display: grid; place-items: center; flex-shrink: 0; color: var(--accent); background: var(--accent-soft); font-size: 11px; font-weight: 800; }
+.stepIdentity > span { width: 26px; height: 26px; border-radius: var(--radius-full); display: grid; place-items: center; flex-shrink: 0; color: var(--accent-ink); background: var(--accent-soft); font-size: 11px; font-weight: 800; }
 .stepIdentity > div { min-width: 0; }
 .stepIdentity strong { display: flex; align-items: center; gap: 5px; color: var(--text); font-size: 12.5px; }
 .stepIdentity small { overflow-wrap: anywhere; }
@@ -59,7 +59,7 @@
 .rowActions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
 .stepCards, .historyCards { display: none; }
 .noDraft { padding: 16px 18px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; }
-.noDraft > svg { color: var(--accent); }
+.noDraft > svg { color: var(--accent-ink); }
 .noDraft h2 { color: var(--text); font-size: 14px; font-weight: 750; }
 .noDraft p { margin-top: 2px; color: var(--text-3); font-size: 12px; }
 .errorPanel { min-height: 220px; padding: 20px; display: grid; place-items: center; text-align: center; }
@@ -85,7 +85,7 @@
 .versionDetail dd { margin-top: 2px; color: var(--text); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .versionSteps { display: flex; flex-direction: column; gap: 6px; list-style: none; }
 .versionSteps li { padding: 8px; border-radius: var(--radius); display: flex; align-items: flex-start; gap: 8px; background: var(--panel-2); }
-.versionSteps li > span { width: 23px; height: 23px; border-radius: var(--radius-full); display: grid; place-items: center; flex-shrink: 0; color: var(--accent); background: var(--accent-soft); font-size: 10px; font-weight: 800; }
+.versionSteps li > span { width: 23px; height: 23px; border-radius: var(--radius-full); display: grid; place-items: center; flex-shrink: 0; color: var(--accent-ink); background: var(--accent-soft); font-size: 10px; font-weight: 800; }
 .versionSteps li > div { min-width: 0; }
 .versionSteps strong { display: block; color: var(--text); font-size: 12px; }
 .versionSteps small { display: block; margin-top: 2px; color: var(--text-3); font-size: 10.5px; overflow-wrap: anywhere; }
@@ -102,11 +102,11 @@
 .previewTimeline strong { min-width: 0; color: var(--text); font-size: 12.5px; }
 .previewTimeline small { display: block; margin-top: 3px; color: var(--text-3); font-size: 10.5px; }
 .previewTimeline p { margin-top: 7px; display: flex; align-items: flex-start; gap: 5px; color: var(--text-2); font-size: 11px; }
-.previewTimeline p > svg { margin-top: 1px; flex-shrink: 0; color: var(--accent); }
+.previewTimeline p > svg { margin-top: 1px; flex-shrink: 0; color: var(--accent-ink); }
 .previewRail { position: relative; display: flex; justify-content: flex-start; }
 .previewRail::after { content: ""; position: absolute; top: 25px; bottom: -8px; left: 12px; width: 2px; background: var(--border); }
 .previewTimeline li:last-child .previewRail::after { display: none; }
-.previewRail i { position: relative; z-index: 1; width: 25px; height: 25px; border-radius: var(--radius-full); display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); font-size: 10px; font-style: normal; font-weight: 800; }
+.previewRail i { position: relative; z-index: 1; width: 25px; height: 25px; border-radius: var(--radius-full); display: grid; place-items: center; color: var(--accent-ink); background: var(--accent-soft); font-size: 10px; font-style: normal; font-weight: 800; }
 .previewNote { padding: 9px 10px; border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: 10.5px; line-height: 1.5; }
 
 @media (max-width: 960px) {

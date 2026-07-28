@@ -92,7 +92,7 @@
   align-items: center;
   gap: 4px;
   flex: none;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 13px;
   font-weight: 600;
 }

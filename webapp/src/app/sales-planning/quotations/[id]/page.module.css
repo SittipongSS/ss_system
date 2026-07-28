@@ -23,7 +23,7 @@
 
 .infoBlock svg {
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .infoBlock span {
@@ -133,7 +133,7 @@
 }
 
 .relatedLink:hover {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 @media (max-width: 1120px) {
