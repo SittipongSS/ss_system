@@ -6,18 +6,149 @@
   flex-wrap: wrap;
 }
 
-.year {
-  width: 106px;
+/* ปุ่มเดียวแทน <Select> สองอันเดิม — กว้างคงที่เพื่อไม่ให้แถบเครื่องมือขยับ
+   ตอนสลับจาก "ก.ย. 2573" เป็น "ธ.ค. 2573" (ชื่อเดือนไทยยาวไม่เท่ากัน) */
+.trigger {
+  justify-content: space-between;
+  width: 168px;
+  font-variant-numeric: tabular-nums;
 }
 
-.month {
-  width: 150px;
-}
-
-.shortcut {
-  min-height: var(--ctl-h);
+.triggerLabel {
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
+
+.triggerCaret {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* แผงลอย — ต้องเป็น --panel-float ที่ทึบ 100% ไม่ใช่ --panel ที่โปร่ง 8%
+   (ไม่งั้นตัวอักษรข้างหลังลอดขึ้นมาปนกับชื่อเดือน — กฎเดียวกับ .date-calendar
+   และ audit:ui บังคับไว้) ตำแหน่งมาจาก inline style ของ component เพราะคำนวณ
+   จากขอบจอตอนเปิด */
+.panel {
+  z-index: 3000;
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+
+.panelHeader {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.panelHeader strong {
+  text-align: center;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panelHeader button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.panelHeader button:hover:not(:disabled) { background: var(--panel-2); }
+.panelHeader button:disabled { opacity: .3; cursor: not-allowed; }
+
+.panelGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.panelGrid button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panelGrid button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.panelGrid button:disabled { opacity: .25; cursor: not-allowed; }
+
+/* ⚠️ ต้องเขียนเป็น `.panelGrid button.isXxx` (0,0,2,1) — คลาสเดี่ยว (0,0,1,0) แพ้
+   `.panelGrid button { background: transparent }` (0,0,1,1) แล้วเดือนที่เลือกจะพื้นใส
+   (เจอจริงตอนวัด getComputedStyle ในเบราว์เซอร์ ไม่ได้เห็นจากการอ่านโค้ด) */
+
+/* เดือนปัจจุบัน = กรอบ ไม่ใช่พื้นทึบ — ไม่ให้แย่งสายตากับเดือนที่เลือกอยู่จริง */
+.panelGrid button.isToday:not(.isSelected) {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.panelGrid button.isSelected {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+/* ต้องเจาะจงกว่า `.panelGrid button:hover` (0,0,3,1) ไม่งั้นเดือนที่เลือกอยู่จะซีด
+   กลายเป็นพื้น accent-soft ตอนเอาเมาส์ไปชี้ · ใช้ filter ไม่ใช่สีดิบ เพราะ audit
+   ห้ามค่าสีนอกโทเคน และ brightness ทำงานถูกทั้งธีมสว่างและมืด */
+.panelGrid button.isSelected:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-fg);
+  filter: brightness(.94);
+}
+
+.panelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.panelFooter > span {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.panelFooter button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panelFooter button:hover:not(:disabled) { background: var(--accent-soft); }
+.panelFooter button:disabled { opacity: .35; cursor: not-allowed; }
 
 .allMonths {
   display: inline-flex;
@@ -43,14 +174,12 @@
     width: 100%;
   }
 
-  .year,
-  .month {
-    flex: 1 1 120px;
+  .trigger {
+    flex: 1 1 auto;
     width: auto;
     min-height: 40px;
   }
 
-  .shortcut,
   .allMonths {
     min-height: 40px;
   }

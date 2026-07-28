@@ -129,3 +129,13 @@
   padding-bottom: 14px;
   background: var(--panel-float);
 }
+
+/* กรอบจำลอง "ทั้งหน้า" — ใช้กับ AccessDenied ซึ่งเป็นสถานะเต็มหน้า ไม่ใช่ชิ้นส่วน
+   ที่เอาไปวางในหน้าอื่น ถ้าปล่อยไว้เฉย ๆ จะดูเหมือนเป็นการ์ดหนึ่งของหน้าต้นแบบเอง */
+.pageFrame {
+  overflow: hidden;
+  padding: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}

@@ -81,6 +81,16 @@ test("หน้าต้นแบบต้องมีช่องกรอก�
     "SaveStatus",
     "FormActions",
     "ReadableText",
+    // ชั้นโครงหน้ารายละเอียด — ใช้ร่วมกันทุกหน้าเอกสาร (QT · SO · CR · ดีล · โครงการ)
+    "DetailOverview",
+    "DetailPageLayout",
+    "DetailCard",
+    "ContextCard",
+    "DetailRow",
+    "DocumentControlCard",
+    "VersionControlCard",
+    "ActionQueue",
+    "AccessDenied",
   ]) {
     assert.match(PREVIEW, new RegExp(`<${primitive}\\b`), `หน้าต้นแบบต้องมีตัวอย่าง ${primitive}`);
   }

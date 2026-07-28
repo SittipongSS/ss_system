@@ -3087,7 +3087,10 @@ button.empty-state { width: 100%; font: inherit; }
 /* ปุ่มเลขหน้าใน Pager — แคบกว่าปุ่มทั่วไป (เลขหลักเดียวไม่ต้องกว้าง 104px)
    และหน้าปัจจุบันเป็นพื้นสีแบรนด์ (ต้นแบบ ข้อ 9) วางไว้ที่นี่ไม่ใช่ใน CSS module
    เพราะต้องอยู่ไฟล์เดียวกับ .btn เพื่อให้ลำดับ cascade แน่นอน */
-.ui-pager-page { min-width: 32px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
+/* justify-content ต้องมี — `.btn` ตั้งแค่ align-items: center (แกนตั้ง) ไม่ได้ตั้งแกนนอน
+   พอ min-width ดันปุ่มให้กว้างกว่าตัวเลข เลขเลยไปกองชิดซ้าย (วัดจริง: ขอบซ้าย 9px
+   ขอบขวา 15.8px = เบี้ยว 6.8px) เห็นชัดสุดที่ปุ่มเลขหลักเดียว */
+.ui-pager-page { min-width: 32px; padding-inline: 8px; justify-content: center; font-variant-numeric: tabular-nums; }
 .ui-pager-page.active { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
 .ui-pager-page.active:hover { background: color-mix(in oklab, var(--accent) 90%, #000); color: var(--accent-fg); }
 

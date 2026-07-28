@@ -58,8 +58,19 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
+import DetailRow from "@/components/ui/DetailRow";
+import {
+  ContextCard, ContextGrid, ContextualRightRail, DetailCard, DetailPageLayout,
+} from "@/components/ui/DetailPage";
+import {
+  DocumentControlCard, DocumentReadinessList,
+} from "@/components/ui/DocumentControlPanel";
+import VersionControlCard from "@/components/ui/VersionControlCard";
+import ActionQueue from "@/components/ui/ActionQueue";
+import AccessDenied from "@/components/ui/AccessDenied";
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { STATUS_TONES } from "@/lib/ui/tone";
+import { STATUS_TONES, toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
 
 const SURFACES = [
@@ -91,6 +102,14 @@ const ROWS = [
   { code: "QT-26070128", customer: "บริษัท สหมิตร โปรดักส์ จำกัด", amount: 485000, tone: "warning", status: "รออนุมัติ" },
   { code: "QT-26070096", customer: "Bright Living Co., Ltd.", amount: 920000, tone: "success", status: "อนุมัติแล้ว" },
   { code: "QT-26070087", customer: "Maison Life Co., Ltd.", amount: 780000, tone: "neutral", status: "ฉบับร่าง" },
+];
+
+/* บรรทัดสินค้าสำหรับตารางในหน้ารายละเอียด — คนละชุดกับ ROWS (ซึ่งเป็น "รายการเอกสาร"
+   มี code/customer/amount) เคยเผลอเอา ROWS มาใช้แล้วหน้าพังทั้งหน้าเพราะไม่มีฟิลด์ qty/total */
+const DEMO_LINE_ITEMS = [
+  { code: "RD-0142", name: "ก้านไม้หอม 100 ml — กลิ่น Forest night", qty: 1200, total: 186000 },
+  { code: "RD-0143", name: "ก้านไม้หอม 50 ml — กลิ่น Forest night", qty: 800, total: 96200 },
+  { code: "CN-0071", name: "เทียนหอมในแก้ว 220 g", qty: 600, total: 204000 },
 ];
 
 const money = (value) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -985,6 +1004,135 @@ export default function DesignPreviewPage() {
                   ปุ่ม &quot;ยกเลิกรายการ&quot; คือตัวอย่าง TransitionDialog ที่มี <code>fields</code> —
                   {" "}ช่องเลือก/เลือกคน/จำนวนเงิน/วันเวลา ใช้ primitive เดิมทุกช่อง ไม่มี input ใหม่
                 </p>
+              </div>
+            </div>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="โครงหน้ารายละเอียด"
+          subtitle="DetailOverview หัวเรื่อง · DetailPageLayout เนื้อหาซ้าย + รางขวา · DocumentControlCard จุดจัดการเอกสาร"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info">
+              ทุกหน้ารายละเอียดของระบบ (ใบเสนอราคา · SO · ใบขอราคาผลิต · ดีล · โครงการ) ใช้ชุดนี้
+              ชุดเดียว — หน้าใหม่ประกอบจาก primitive พวกนี้ ไม่ต้องวางโครงเอง
+            </StatusNotice>
+
+            <DetailOverview
+              eyebrow="ใบเสนอราคา"
+              title="QT-26070128"
+              description="บริษัท สหมิตร โปรดักส์ จำกัด — ก้านไม้หอม 6 รายการ"
+              badges={<DetailStateBadge label="รออนุมัติ" color={toneColor("warning")} />}
+              actions={<Button size="sm" icon={<Search size={14} />}>ดูเอกสาร</Button>}
+              facts={[
+                { label: "มูลค่ารวม", value: `${money(486200)} บาท` },
+                { label: "ผู้จัดทำ", value: "สิทธิพงษ์ ศรีสุข" },
+                { label: "วันที่ออก", value: "29/07/2569" },
+                { label: "ยืนราคาถึง", value: "28/08/2569" },
+              ]}
+            />
+
+            <DetailPageLayout
+              aside={(
+                <ContextualRightRail>
+                  <DocumentControlCard
+                    status="รออนุมัติ"
+                    statusColor={toneColor("warning")}
+                    statusDescription="ยื่นเมื่อ 29/07/2569 · รอผู้จัดการอนุมัติ"
+                    workflowSteps={[
+                      { id: "draft", label: "ร่าง", state: "done" },
+                      { id: "submit", label: "ยื่นอนุมัติ", state: "done", hint: "29/07/2569" },
+                      { id: "approve", label: "อนุมัติ", state: "current" },
+                      { id: "send", label: "ส่งลูกค้า", state: "pending" },
+                    ]}
+                    primaryAction={{ id: "approve", label: "อนุมัติ", tone: "primary" }}
+                    secondaryActions={[{ id: "reject", label: "ตีกลับ" }]}
+                    dangerActions={[{ id: "withdraw", label: "ดึงกลับ" }]}
+                  >
+                    <DocumentReadinessList
+                      items={[
+                        { id: "customer", label: "ข้อมูลลูกค้าครบ", detail: "เลขผู้เสียภาษี · ที่อยู่", ready: true },
+                        { id: "price", label: "ราคาผลิตอนุมัติแล้ว", ready: true },
+                        { id: "sign", label: "ลายเซ็นผู้อนุมัติ", detail: "ยังไม่ได้อัปโหลด", ready: false },
+                      ]}
+                    />
+                  </DocumentControlCard>
+                  <VersionControlCard
+                    published={{ label: "เวอร์ชัน 3", meta: "เผยแพร่ 12/07/2569" }}
+                    draft={{ label: "ร่างใหม่", meta: "แก้ล่าสุด 29/07/2569" }}
+                    dirty
+                    onSaveDraft={() => {}}
+                    onPublish={() => {}}
+                    onDiscard={() => {}}
+                  />
+                </ContextualRightRail>
+              )}
+            >
+              <DetailCard icon={Inbox} eyebrow="รายการสินค้า" title="6 รายการ" meta="รวม 486,200.00 บาท">
+                <TableScroll surface="embedded">
+                  <table>
+                    <thead>
+                      <tr><th>รหัส</th><th>รายการ</th><th className={styles.numeric}>จำนวน</th><th className={styles.numeric}>รวม</th></tr>
+                    </thead>
+                    <tbody>
+                      {/* DetailRow = แถวที่ทั้งแถวคลิกไปหน้ารายละเอียดได้ (ไม่ใช่แค่ลิงก์ในเซลล์)
+                          แต่ยังกดปุ่ม/ลิงก์ข้างในได้ตามปกติ */}
+                      {DEMO_LINE_ITEMS.map((row) => (
+                        <DetailRow key={row.code} href="#">
+                          <td className="mono">{row.code}</td>
+                          <td>{row.name}</td>
+                          <td className="num">{row.qty.toLocaleString("th-TH")}</td>
+                          <td className="num">{money(row.total)}</td>
+                        </DetailRow>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </DetailCard>
+
+              <ContextGrid>
+                <ContextCard
+                  href="#"
+                  icon={Inbox}
+                  eyebrow="ดีลต้นทาง"
+                  title="D-2569-0042"
+                  subtitle="บริษัท สหมิตร โปรดักส์ จำกัด"
+                  badges={<DetailStateBadge label="เจรจา" color={toneColor("info")} />}
+                  facts={[{ label: "มูลค่า", value: money(486200) }, { label: "โอกาส", value: "60%" }]}
+                />
+                <ContextCard
+                  href="#"
+                  icon={Inbox}
+                  eyebrow="ใบขอราคาผลิต"
+                  title="CR-2569-0018"
+                  subtitle="อนุมัติราคาแล้ว"
+                  badges={<DetailStateBadge label="อนุมัติแล้ว" color={toneColor("success")} />}
+                />
+              </ContextGrid>
+            </DetailPageLayout>
+
+            <div className={styles.stack}>
+              <span className={styles.caption}>ActionQueue — คิวงานค้างบนหน้าภาพรวม</span>
+              <ActionQueue
+                items={[
+                  { id: "a1", title: "ใบเสนอราคา 3 ใบรออนุมัติ", subtitle: "เกินกำหนด 1 ใบ", tone: "warning", onClick: () => {} },
+                  { id: "a2", title: "ลีดใหม่ 5 รายรอคัดกรอง", tone: "info", onClick: () => {} },
+                ]}
+              />
+              <span className={styles.caption}>ActionQueue ตอนไม่มีงานค้าง</span>
+              <ActionQueue items={[]} />
+            </div>
+
+            {/* AccessDenied เป็น "สถานะทั้งหน้า" ไม่ใช่ชิ้นส่วนที่เอาไปวางในหน้าอื่น
+                วางในกรอบเพื่อให้เห็นว่าหน้าตาเต็มหน้าเป็นแบบไหน */}
+            <div className={styles.stack}>
+              <span className={styles.caption}>AccessDenied — หน้าที่สิทธิ์ไม่ถึง (แสดงในกรอบจำลอง)</span>
+              <div className={styles.pageFrame}>
+                <AccessDenied
+                  title="ใบเสนอราคา"
+                  message="บัญชีของคุณไม่มีสิทธิ์เปิดหน้านี้ — ติดต่อผู้ดูแลระบบถ้าคิดว่าควรเข้าได้"
+                />
               </div>
             </div>
           </div>
