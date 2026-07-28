@@ -41,6 +41,9 @@ export default function RequestsPage() {
   const [materials, setMaterials] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [deals, setDeals] = useState([]);
+  const [scents, setScents] = useState([]);
+  const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -66,12 +69,20 @@ export default function RequestsPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
-  // ฟอร์มเปิดคำร้องขอราคาเลือกวัสดุจากทะเบียน จึงต้องมีทะเบียนติดมาด้วย
+  // ฟอร์มเปิดคำร้องอ้างของจากหลายทะเบียนตามชนิด — วัสดุ (ขอราคา) · กลิ่น (F) ·
+  // สูตร (FB) · ดีล (บรีฟกลิ่น/mockup/ขอเอกสาร) → โหลดไว้ให้ครบตั้งแต่เปิดหน้า
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/products").then((d) => setProducts(d || [])).catch(() => {});
+    const asArray = (d) => (Array.isArray(d) ? d : []);
     fetch("/api/sa/materials", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setMaterials(Array.isArray(d) ? d : [])).catch(() => {});
+      .then((r) => r.json()).then((d) => setMaterials(asArray(d))).catch(() => {});
+    fetch("/api/master/scents?status=developing,active", { cache: "no-store" })
+      .then((r) => r.json()).then((d) => setScents(asArray(d))).catch(() => {});
+    fetch("/api/master/formulas?status=active", { cache: "no-store" })
+      .then((r) => r.json()).then((d) => setFormulas(asArray(d))).catch(() => {});
+    fetch("/api/sales-planning/deals", { cache: "no-store" })
+      .then((r) => r.json()).then((d) => setDeals(asArray(d))).catch(() => {});
   }, []);
 
   const mine = useMemo(() => requests.filter((r) => r._mine), [requests]);
@@ -101,6 +112,7 @@ export default function RequestsPage() {
         scope={queueDept ? "queue" : "mine"} dept={queueDept}
         rows={queueDept ? queues[queueDept] : mine}
         materials={materials} customers={customers} products={products}
+        deals={deals} scents={scents} formulas={formulas}
         loading={loading} loadError={loadError} reload={reload}
       />
     </Workspace>

@@ -34,6 +34,7 @@ import CostingRequestForm, {
 } from "@/components/costing/CostingRequestForm";
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import RequestForm, { emptyRequestForm, emptyAskItem } from "@/components/requests/RequestForm";
+import { kindForMaterial } from "@/lib/master/requestTypes";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -282,6 +283,10 @@ export default function CostingDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // ⚠️ ชนิดคำร้องบังคับตั้งแต่ mig 0173 — เส้นนี้เปิดได้เฉพาะชนิดขอราคา
+          // และชนิดมาจากชนิดวัสดุของบรรทัดในใบเสมอ (RM_F→F, RM_FB→FB, PM→PM)
+          // ไม่ให้ผู้ใช้เลือก เพราะบรรทัดในใบเป็นตัวกำหนดว่ากำลังถามอะไรอยู่
+          kind: kindForMaterial(form.items?.[0]?.kind),
           customerId: form.customerId || null,
           customerName: request.customerName || null,
           formulaCode: form.formulaCode || null,
