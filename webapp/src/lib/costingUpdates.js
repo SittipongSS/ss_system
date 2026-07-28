@@ -15,7 +15,7 @@
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
-// ชุด kind ต้องตรงกับ UPDATE_KINDS.material_ask ใน lib/master/updateTypes.js
+// ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
 export function askActionUpdate(action, ask, { reason = null } = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';

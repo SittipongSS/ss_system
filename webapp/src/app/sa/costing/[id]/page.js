@@ -33,7 +33,7 @@ import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
 import MaterialPicker from "@/components/materials/MaterialPicker";
-import AskForm, { emptyAskForm, emptyAskItem } from "@/components/materials/AskForm";
+import RequestForm, { emptyRequestForm, emptyAskItem } from "@/components/requests/RequestForm";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -257,7 +257,7 @@ export default function CostingDetailPage() {
     setAskDraft({
       componentId: component.id,
       form: {
-        ...emptyAskForm(),
+        ...emptyRequestForm(),
         customerId: request.customerId || "",
         note: `จากใบขอราคาผลิต ${request.docNo || id} — บรรทัด "${component.label}"`,
         items: [{
@@ -278,7 +278,7 @@ export default function CostingDetailPage() {
     const form = askDraft.form;
     setSaving(true);
     try {
-      const res = await fetch("/api/sa/materials/asks", {
+      const res = await fetch("/api/sa/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -299,7 +299,7 @@ export default function CostingDetailPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "เปิดเคสไม่สำเร็จ");
-      router.push(`/sa/materials/asks/${d.id}`);
+      router.push(`/sa/requests/${d.id}`);
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
       setSaving(false);
@@ -1079,7 +1079,7 @@ export default function CostingDetailPage() {
               ส่งถึงฝ่ายเจ้าของวัสดุ (RM → RD · PM → PC) — ตอบแล้วราคาจะเข้าทะเบียนและ
               เติมกลับบรรทัดในใบนี้ให้อัตโนมัติ
             </p>
-            <AskForm
+            <RequestForm
               value={askDraft.form}
               onChange={(form) => setAskDraft((d) => ({ ...d, form }))}
               materials={materials}

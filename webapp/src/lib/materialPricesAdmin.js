@@ -96,8 +96,8 @@ export async function ensureMaterial(supabase, input = {}) {
 
 // ── เคสขอราคาวัสดุ (mig 0158) ──────────────────────────────────────────
 // โหลดเคส + รายการ + ชั้นจำนวนที่ขอ เป็นก้อนเดียว (กัน N+1)
-export async function loadAsks(supabase, { id = null, dept = null, status = null, requestedById = null } = {}) {
-  let query = supabase.from('material_price_asks').select('*');
+export async function loadRequests(supabase, { id = null, dept = null, status = null, requestedById = null } = {}) {
+  let query = supabase.from('dept_requests').select('*');
   if (id) query = query.eq('id', id);
   if (dept) query = query.eq('dept', dept);
   if (status?.length) query = query.in('status', status);
@@ -107,18 +107,18 @@ export async function loadAsks(supabase, { id = null, dept = null, status = null
   if (!asks?.length) return [];
 
   const { data: items, error: itemError } = await supabase
-    .from('material_price_ask_items')
+    .from('dept_request_items')
     .select('*')
-    .in('askId', asks.map((a) => a.id))
+    .in('requestId', asks.map((a) => a.id))
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
   let tiers = [];
   if (items?.length) {
     const { data, error: tierError } = await supabase
-      .from('material_price_ask_tiers')
+      .from('dept_request_item_tiers')
       .select('*')
-      .in('askItemId', items.map((i) => i.id))
+      .in('requestItemId', items.map((i) => i.id))
       .order('qty', { ascending: true });
     if (tierError) throw tierError;
     tiers = data || [];
@@ -126,18 +126,18 @@ export async function loadAsks(supabase, { id = null, dept = null, status = null
 
   const itemsWithTiers = (items || []).map((i) => ({
     ...i,
-    tiers: tiers.filter((t) => t.askItemId === i.id),
+    tiers: tiers.filter((t) => t.requestItemId === i.id),
   }));
 
   return asks.map((a) => ({
     ...a,
-    items: itemsWithTiers.filter((i) => i.askId === a.id),
+    items: itemsWithTiers.filter((i) => i.requestId === a.id),
   }));
 }
 
-export async function findAsk(supabase, id) {
-  const [ask] = await loadAsks(supabase, { id });
-  return ask || null;
+export async function findRequest(supabase, id) {
+  const [row] = await loadRequests(supabase, { id });
+  return row || null;
 }
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา

@@ -109,14 +109,14 @@ async function resolveMgmtFolder(entityType, entityId) {
 // (แพตเทิร์นเดียวกับโมดูลงานบริหาร). ร่างที่ยังไม่มีเลขที่ใช้ id แทน
 async function resolveCostingFolder(entityType, entityId) {
   const supabase = getSupabaseAdmin();
-  const isAsk = entityType === 'material_ask_item';
+  const isAsk = entityType === 'dept_request_item';
   const conf = isAsk
     ? {
       root: 'ขอราคาวัสดุ',
-      itemTable: 'material_price_ask_items',
+      itemTable: 'dept_request_items',
       itemLabel: 'label',
       parentKey: 'askId',
-      parentTable: 'material_price_asks',
+      parentTable: 'dept_requests',
     }
     : {
       root: 'ขอราคาผลิต',
@@ -180,7 +180,7 @@ export async function resolveFolderForEntity(entityType, entityId) {
   if (entityType === 'mgmt_task' || entityType === 'mgmt_meeting') {
     return resolveMgmtFolder(entityType, entityId);
   }
-  if (entityType === 'costing_item' || entityType === 'material_ask_item') {
+  if (entityType === 'costing_item' || entityType === 'dept_request_item') {
     return resolveCostingFolder(entityType, entityId);
   }
   if (entityType === 'customer') {
@@ -218,7 +218,7 @@ export async function resolveFolderForEntity(entityType, entityId) {
   // ⚠️ entity ใหม่ที่ยังไม่ได้ต่อท่อ **ห้ามทำให้ปุ่มอัปโหลดพัง** — ของเดิม throw
   // ที่นี่ แล้ว /api/upload ตอบ 500 "อัปโหลดขึ้น Google Drive ไม่สำเร็จ" ผู้ใช้จึงแนบ
   // ไฟล์ไม่ได้เลยและไม่มีอะไรบอกว่าเพราะอะไร (โดนมาแล้วสองรอบ: costing_item และ
-  // material_ask_item). ลงถัง _unsorted + log แทน = ไฟล์ผิดที่ ยังกู้ได้ ดีกว่าใช้ไม่ได้
+  // dept_request_item). ลงถัง _unsorted + log แทน = ไฟล์ผิดที่ ยังกู้ได้ ดีกว่าใช้ไม่ได้
   console.error(`[drive] entityType ยังไม่ได้ map โฟลเดอร์: ${entityType} — ลง _unsorted แทน`);
   return ensureUnsortedFolder();
 }

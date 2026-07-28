@@ -22,7 +22,7 @@ export const emptyAskItem = (kind = "PM") => ({
   componentId: null,
 });
 
-export const emptyAskForm = () => ({
+export const emptyRequestForm = () => ({
   customerId: "",
   productId: "",
   formulaCode: "",
@@ -31,7 +31,7 @@ export const emptyAskForm = () => ({
   items: [emptyAskItem("PM")],
 });
 
-export default function AskForm({
+export default function RequestForm({
   value, onChange, materials = [], customers = [], products = [], disabled = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });

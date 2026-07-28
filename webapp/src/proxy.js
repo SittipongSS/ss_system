@@ -256,7 +256,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.
   if (path.startsWith('/api/sa/costing')) {
     if (/\/approve$/.test(path)) return can(role, 'costing:approve');
-    // ราคาวัสดุตอบที่ "เคสขอราคา" (/api/sa/materials/asks) แล้ว ไม่มีเส้นให้ RD/PC
+    // ราคาวัสดุตอบที่ "คำร้อง" (/api/sa/requests) แล้ว ไม่มีเส้นให้ RD/PC
     // แตะใบขอราคาผลิตโดยตรงอีก — ที่เหลือเป็นงานของฝ่ายขายเจ้าของใบล้วน ๆ
     return can(role, 'costing:edit');
   }
@@ -265,7 +265,10 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // (costing:quote) → ต้องปล่อยผ่าน **ทั้งสอง cap** ไม่งั้น RD/PC ที่ไม่มี costing:edit
   // จะโดน 403 ทุกครั้งที่กดแก้ราคา (บั๊กเดิม) ส่วน handler เป็นด่านจริง: มันรู้ว่า
   // วัสดุตัวนั้นเป็นของฝ่ายไหน (sourceDept) ซึ่ง proxy มองไม่เห็น
-  if (path.startsWith('/api/sa/materials')) {
+  // ⚠️ /api/sa/requests (mig 0173, เดิม /api/sa/materials/asks) ต้องมาก่อนกฎ
+  // /api/sa ด้านล่างด้วยเหตุผลเดียวกับทะเบียนวัสดุ — RD/PC รับเรื่อง/ตอบได้ทั้งที่
+  // ไม่มี costing:edit และไม่มีสิทธิ์แก้งานขายเลย
+  if (path.startsWith('/api/sa/requests') || path.startsWith('/api/sa/materials')) {
     return can(role, 'costing:edit') || can(role, 'costing:quote');
   }
   // ทะเบียนกลิ่น + ทะเบียนสูตร (mig 0171) — ข้อมูลหลักที่ **สองฝ่ายใช้เส้นเดียวกัน

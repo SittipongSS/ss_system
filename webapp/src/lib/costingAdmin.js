@@ -2,7 +2,7 @@
 // แยกจาก lib/costing.js (logic ล้วน) เพราะไฟล์นี้แตะ DB จริง
 import { randomUUID } from 'crypto';
 import { sourceDeptForKind } from '@/lib/master/costTemplate';
-import { ASK_OPEN_STATUSES } from '@/lib/materialAsks';
+import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 
 // โหลดใบพร้อมลูกทั้งสามชั้นในชุด query คงที่ (ไม่ยิงต่อใบ — กัน N+1 บนหน้ารายการ)
 export async function loadCostingRequests(supabase, { id = null, filters = {} } = {}) {
@@ -61,15 +61,15 @@ export async function findCostingRequest(supabase, id) {
 // ในเคสที่ยังเดินอยู่ — ใช้ทั้งป้ายบนหน้าจอ, ด่านส่งผู้บริหาร และธงสถานะ 'pricing'
 export async function loadPendingAskLinks(supabase, requestId) {
   const { data: asks, error } = await supabase
-    .from('material_price_asks')
+    .from('dept_requests')
     .select('id, docNo, status, dept')
     .eq('costingRequestId', requestId)
-    .in('status', ASK_OPEN_STATUSES);
+    .in('status', REQUEST_OPEN_STATUSES);
   if (error) throw error;
   if (!asks?.length) return [];
 
   const { data: items, error: itemError } = await supabase
-    .from('material_price_ask_items')
+    .from('dept_request_items')
     .select('id, askId, componentId, priceStatus, label')
     .in('askId', asks.map((a) => a.id))
     .eq('priceStatus', 'pending');

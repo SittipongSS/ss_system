@@ -1,4 +1,4 @@
-// ── RD/PC ตอบราคาในเคสขอราคาวัสดุ (mig 0158) ────────────────────────────
+// ── RD/PC ตอบราคาในคำร้องวัสดุ (mig 0158) ────────────────────────────
 //
 // ตอบที่เดียว ราคาเข้าทะเบียนเลย: คำตอบ = rev ใหม่ของ **วัสดุตัวเดิม** ที่รายการ
 // ผูกไว้ (ไม่เกิดวัสดุตัวใหม่อีกแล้ว) และถ้ารายการผูกกลับบรรทัดในใบขอราคาผลิตไว้
@@ -12,8 +12,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewCosting } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeTiers } from '@/lib/materialPrices';
-import { answerAskError, canAnswerAsk, deriveAskStatusAfterAnswer } from '@/lib/materialAsks';
-import { acceptMaterial, appendMaterialRevision, findAsk } from '@/lib/materialPricesAdmin';
+import { answerRequestError, canAnswerRequest, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
+import { acceptMaterial, appendMaterialRevision, findRequest } from '@/lib/materialPricesAdmin';
 import { componentFillFromRevision } from '@/lib/costingLibrary';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { askAnswerUpdates } from '@/lib/costingUpdates';
@@ -30,13 +30,13 @@ export async function PATCH(request, { params }) {
   const user = await getCurrentUser();
   const { id } = await params;
 
-  const before = await findAsk(supabase, id);
-  if (!before) return Response.json({ error: 'ไม่พบเคสขอราคา' }, { status: 404 });
+  const before = await findRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
   if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
-  if (!canAnswerAsk(user, before)) {
+  if (!canAnswerRequest(user, before)) {
     return Response.json({ error: `ตอบราคาได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
   }
-  const stageError = answerAskError(before);
+  const stageError = answerRequestError(before);
   if (stageError) return Response.json({ error: stageError }, { status: 409 });
 
   const body = await request.json().catch(() => ({}));
@@ -74,7 +74,7 @@ export async function PATCH(request, { params }) {
     for (const answer of validated) {
       const { item } = answer;
       if (answer.noQuote) {
-        const { error } = await supabase.from('material_price_ask_items').update({
+        const { error } = await supabase.from('dept_request_items').update({
           priceStatus: 'no_quote',
           noQuoteReason: answer.reason,
           answeredRevisionId: null,
@@ -104,7 +104,7 @@ export async function PATCH(request, { params }) {
         user,
       });
 
-      const { error } = await supabase.from('material_price_ask_items').update({
+      const { error } = await supabase.from('dept_request_items').update({
         priceStatus: 'quoted',
         answeredRevisionId: revision.id,
         noQuoteReason: null,
@@ -136,8 +136,8 @@ export async function PATCH(request, { params }) {
     }
 
     // สถานะเคส derive จากรายการเสมอ (ไม่เก็บตัวนับ กัน drift)
-    const mid = await findAsk(supabase, id);
-    const nextStatus = deriveAskStatusAfterAnswer(mid.items, mid.status);
+    const mid = await findRequest(supabase, id);
+    const nextStatus = deriveRequestStatusAfterAnswer(mid.items, mid.status);
     const patch = { status: nextStatus, updatedAt: nowIso };
     if (nextStatus === 'answered') patch.answeredAt = nowIso;
     // ตอบก่อนกดรับเรื่อง = ถือว่ารับเรื่องไปด้วย (คนตอบคือคนรับ)
@@ -146,17 +146,17 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedByName = user?.name ?? null;
       patch.acknowledgedAt = nowIso;
     }
-    const { error: askError } = await supabase.from('material_price_asks').update(patch).eq('id', id);
+    const { error: askError } = await supabase.from('dept_requests').update(patch).eq('id', id);
     if (askError) throw askError;
 
     // ตอบครบแล้วใบขอราคาผลิตที่รออยู่ไม่ควรค้างสถานะ 'pricing' อีก
     if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
 
-    const after = await findAsk(supabase, id);
+    const after = await findRequest(supabase, id);
     const quoted = validated.filter((a) => !a.noQuote).length;
     const skipped = validated.length - quoted;
     await recordAudit({
-      user, action: 'update', entityType: 'material_price_ask', entityId: id, before, after,
+      user, action: 'update', entityType: 'dept_request', entityId: id, before, after,
       summary: `ตอบเคส ${after.docNo || id}: ราคา ${quoted} รายการ`
         + (skipped ? ` · ตอบไม่ได้ ${skipped} รายการ` : ''),
       request,
@@ -166,7 +166,7 @@ export async function PATCH(request, { params }) {
     // คนที่ตามเคสอยู่จึงไม่เห็นว่าเกิดอะไรขึ้นเมื่อไร (ไม่เช็ค error: เขียนเธรดพลาด
     // ต้องไม่ทำให้คำตอบที่บันทึกลงทะเบียนแล้วตอบ 500)
     for (const event of askAnswerUpdates(validated)) {
-      await appendUpdate(supabase, { entityType: 'material_ask', entityId: id, ...event, user });
+      await appendUpdate(supabase, { entityType: 'dept_request', entityId: id, ...event, user });
     }
 
     if (after.status === 'answered') {
@@ -177,7 +177,7 @@ export async function PATCH(request, { params }) {
           { label: 'ผู้ตอบ', value: user?.name || '' },
           { label: 'ผู้ขอ', value: after.requestedByName || '' },
         ],
-        linkPath: `/sa/materials/asks/${id}`,
+        linkPath: `/sa/requests/${id}`,
         linkLabel: 'เปิดเคส',
       }));
     }

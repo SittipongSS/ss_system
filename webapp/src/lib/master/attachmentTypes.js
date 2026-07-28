@@ -99,7 +99,7 @@ export const ATTACHMENT_TYPES = {
   // เคสขอราคาวัสดุ (mig 0158) — แนบที่ระดับ "รายการในเคส" ไม่ใช่ทั้งเคส ด้วยเหตุผล
   // เดียวกับ costing_item: รูปขวด/แบบสกรีนเป็นของวัสดุตัวนั้น และ RD/PC เปิดดู
   // ประกอบตอนตอบราคารายบรรทัด
-  material_ask_item: [
+  dept_request_item: [
     { key: "reference_image", label: "รูปตัวอย่าง", required: false },
     { key: "spec", label: "สเปก / แบบงาน", required: false },
     { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },

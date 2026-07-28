@@ -1,0 +1,216 @@
+// ── API คำร้องข้ามฝ่ายรายเรื่อง (mig 0173) ──────────────────────────────
+// GET    : รายละเอียด (canViewCosting)
+// PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย)
+//          acknowledge (RD/PC รับเรื่อง + รับปากวันที่จะตอบ) · answer (ชนิดที่ไม่มี
+//          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
+// DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
+import { canViewCosting, isSuperuser } from '@/lib/permissions';
+import {
+  acknowledgeRequestError, answerRequestError, canAnswerRequest, canManageRequest,
+  cancelRequestError, closeRequestError, deleteRequestError, generateRequestDocNo,
+  submitRequestError,
+} from '@/lib/deptRequests';
+import { requestHasItems, requestKindLabel } from '@/lib/master/requestTypes';
+import { findRequest } from '@/lib/materialPricesAdmin';
+import { syncCostingPricingStatus } from '@/lib/costingAdmin';
+import { askActionUpdate } from '@/lib/costingUpdates';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { chatCard, sendChat } from '@/lib/chat';
+import { recordAudit } from '@/lib/audit';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request, { params }) {
+  try {
+    const user = await getCurrentUser();
+    if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { id } = await params;
+    const row = await findRequest(getSupabaseAdmin(), id);
+    if (!row) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+    // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
+    // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ
+    return Response.json(
+      { ...row, _mine: canManageRequest(user, row) },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request, { params }) {
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+  const { id } = await params;
+
+  const before = await findRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const body = await request.json().catch(() => ({}));
+  const action = body.action;
+  const nowIso = new Date().toISOString();
+  const patch = { updatedAt: nowIso };
+  let summary = '';
+
+  try {
+    if (action === 'submit') {
+      if (!canManageRequest(user, before)) {
+        return Response.json({ error: 'ส่งคำร้องได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });
+      }
+      const err = submitRequestError(before, before.items);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
+      patch.docNo = await generateRequestDocNo(supabase, before.kind, before.dept);
+      patch.status = 'pending';
+      patch.submittedAt = nowIso;
+      summary = `ส่งคำร้อง ${patch.docNo} ถึงฝ่าย ${before.dept}`;
+    } else if (action === 'acknowledge') {
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `รับเรื่องได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = acknowledgeRequestError(before);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      // "วันที่จะตอบ" ยกแนวคิดมาจากระบบสอบถามเดิมซึ่ง**บังคับ**กรอกตอนรับเรื่อง
+      // ⚠️ ที่นี่ไม่บังคับ เพราะเคสขอราคา (ของเดิมที่มีผู้ใช้จริงอยู่แล้ว) ไม่เคยมี
+      // ช่องนี้ — บังคับทันทีจะเปลี่ยนขั้นตอนของคนที่ใช้อยู่โดยไม่ได้ตกลงกัน
+      // ถ้าจะบังคับควรบังคับ "รายชนิด" ทีหลังเมื่อผู้ใช้ยืนยัน
+      const due = String(body.committedDueDate ?? '').trim();
+      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+        return Response.json({ error: 'วันที่จะตอบไม่ถูกต้อง' }, { status: 400 });
+      }
+      patch.status = 'acknowledged';
+      patch.acknowledgedById = user?.id ?? null;
+      patch.acknowledgedByName = user?.name ?? null;
+      patch.acknowledgedAt = nowIso;
+      if (due) patch.committedDueDate = due;
+      summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'answer') {
+      // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
+      // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
+      if (requestHasItems(before.kind)) {
+        return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด' }, { status: 400 });
+      }
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `ตอบได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = answerRequestError(before);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      patch.status = 'answered';
+      patch.answeredAt = nowIso;
+      summary = `ตอบคำร้อง ${before.docNo || id}`;
+    } else if (action === 'close') {
+      if (!canManageRequest(user, before) && !canAnswerRequest(user, before)) {
+        return Response.json({ error: 'ไม่มีสิทธิ์ปิดเรื่องนี้' }, { status: 403 });
+      }
+      const err = closeRequestError(before, before.items);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      patch.status = 'closed';
+      patch.closedById = user?.id ?? null;
+      patch.closedByName = user?.name ?? null;
+      patch.closedAt = nowIso;
+      summary = `ปิดเรื่อง ${before.docNo || id}`;
+    } else if (action === 'cancel') {
+      if (!canManageRequest(user, before)) {
+        return Response.json({ error: 'ยกเลิกได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });
+      }
+      const err = cancelRequestError(before);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      const reason = String(body.cancelReason ?? '').trim();
+      if (!reason) return Response.json({ error: 'ต้องระบุเหตุผลที่ยกเลิก' }, { status: 400 });
+      patch.status = 'cancelled';
+      patch.cancelReason = reason.slice(0, 500);
+      patch.cancelledAt = nowIso;
+      summary = `ยกเลิกคำร้อง ${before.docNo || id}`;
+    } else {
+      return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
+    }
+
+    const { error } = await supabase.from('dept_requests').update(patch).eq('id', id);
+    if (error) throw error;
+
+    // ใบขอราคาผลิตที่คำร้องนี้ถามแทน: เปิด = ใบเป็น 'pricing', ปิด/ยกเลิก = คืนสถานะ
+    if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
+
+    const after = await findRequest(supabase, id);
+    await recordAudit({
+      user, action: 'update', entityType: 'dept_request', entityId: id, before, after, summary, request,
+    });
+
+    // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้ action
+    // ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ autoTaskUpdates)
+    const event = askActionUpdate(action, after, { reason: patch.cancelReason });
+    if (event) {
+      await appendUpdate(supabase, { entityType: 'dept_request', entityId: id, ...event, user });
+    }
+
+    // แจ้งฝ่ายเจ้าของเมื่อมีคำร้องใหม่เข้าคิว (space rd/pc ตามฝ่าย)
+    if (action === 'submit') {
+      sendChat(after.dept === 'PC' ? 'pc' : 'rd', chatCard({
+        title: `คำร้องใหม่ ${after.docNo}`,
+        subtitle: `${requestKindLabel(after.kind)}${after.customerName ? ` · ${after.customerName}` : ''}`,
+        rows: [
+          { label: 'ผู้ขอ', value: after.requestedByName || '' },
+          { label: 'เรื่อง', value: after.title || `${(after.items || []).length} รายการ` },
+          { label: 'ต้องการคำตอบภายใน', value: after.requestedDueDate || '' },
+          { label: 'ความเร่งด่วน', value: after.urgent ? 'ด่วน' : '' },
+        ],
+        linkPath: `/sa/requests/${id}`,
+        linkLabel: 'เปิดคำร้อง',
+      }));
+    }
+    // ผู้ขอควรรู้ว่ามีคนรับเรื่องแล้ว ไม่ต้องเดาว่าเงียบเพราะอะไร
+    if (action === 'acknowledge') {
+      sendChat('sales', chatCard({
+        title: `รับเรื่อง ${after.docNo} แล้ว`,
+        subtitle: `ฝ่าย ${after.dept} กำลังดำเนินการ`,
+        rows: [
+          { label: 'ผู้รับเรื่อง', value: after.acknowledgedByName || '' },
+          { label: 'รับปากว่าจะตอบ', value: after.committedDueDate || '' },
+        ],
+        linkPath: `/sa/requests/${id}`,
+        linkLabel: 'เปิดคำร้อง',
+      }));
+    }
+    return Response.json({ ...after, _mine: canManageRequest(user, after) });
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request, { params }) {
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+  const { id } = await params;
+
+  const before = await findRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const force = new URL(request.url).searchParams.get('force') === '1';
+  if (force) {
+    if (!isSuperuser(user?.role)) return Response.json({ error: 'ต้องเป็นผู้ดูแลระบบ' }, { status: 403 });
+  } else {
+    if (!canManageRequest(user, before)) return Response.json({ error: 'ไม่มีสิทธิ์ลบคำร้องนี้' }, { status: 403 });
+    const err = deleteRequestError(before);
+    if (err) return Response.json({ error: err }, { status: 409 });
+  }
+
+  // guard ระดับ DB บล็อกการลบคำร้องที่ส่งแล้ว — admin ต้องผ่าน RPC ที่ตั้ง flag ให้
+  const { error } = force
+    ? await supabase.rpc('force_delete_dept_request', { p_id: id })
+    : await supabase.from('dept_requests').delete().eq('id', id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  // เธรดไม่มี FK กับคำร้อง (polymorphic) — ลบแล้วต้องเก็บกวาดเอง ไม่งั้นเหลือเธรด
+  // ลอยที่ไม่มีเจ้าของ · ครอบทั้งเส้นปกติและเส้น force (RPC ไม่รู้จักตารางนี้)
+  await purgeUpdates(supabase, 'dept_request', id);
+  if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
+
+  await recordAudit({
+    user, action: 'delete', entityType: 'dept_request', entityId: id, before,
+    summary: force ? `ลบคำร้อง ${before.docNo || id} (force)` : 'ลบร่างคำร้องที่ยังไม่ส่ง', request,
+  });
+  return Response.json({ ok: true });
+}
