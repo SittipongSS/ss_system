@@ -8,6 +8,7 @@ import {
 import {
   countProductsUsingFormula, findFormula, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
+import { canForceDelete, formulaForcePreview, isDryRun, isForceRequest } from '@/lib/forceDelete';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +96,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 });
 
+// DELETE — ปกติลบได้เฉพาะร่างที่ยังไม่มีสินค้าอ้างถึง
+// ?dryRun=1 / ?force=1 = break-glass ของผู้ดูแลระบบ (ดู lib/forceDelete.js)
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -108,6 +111,20 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(e.message, 500);
   }
   if (!formula) return notFound('ไม่พบสูตร');
+
+  if (isDryRun(req) || isForceRequest(req)) {
+    if (!canForceDelete(user)) return forbidden('บังคับลบต้องเป็นผู้ดูแลระบบ (admin)');
+    const preview = await formulaForcePreview(supabase, formula);
+    if (isDryRun(req)) return ok(preview);
+    const { error: delError } = await supabase.from('formulas').delete().eq('id', id);
+    if (delError) return fail(delError.message, 500);
+    await recordAudit({
+      user, action: 'delete', entityType: 'formula', entityId: id, before: formula, request: req,
+      summary: `[admin force] ลบสูตร ${formula.code || formula.name} (สถานะ ${formula.status})`,
+    });
+    return ok({ ok: true, forced: true });
+  }
+
   if (!canEditFormula(user, formula)) return forbidden('ไม่มีสิทธิ์ลบสูตรนี้');
 
   const error = deleteFormulaError(formula, { productCount });

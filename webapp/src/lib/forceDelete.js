@@ -248,3 +248,48 @@ export async function cleanupQuotationOrphans(supabase, quote) {
     // best-effort — ไม่ให้ทำลาย flow การลบหลัก
   }
 }
+
+// ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171) ─────────────────────────────
+// ต่างจากเอกสารข้างบนตรงที่ **ไม่มีอะไรถูกลบพ่วง** — ความสัมพันธ์ทั้งหมดเป็น FK
+// จริงที่ตั้ง ON DELETE SET NULL / CASCADE ไว้แล้วตั้งแต่ migration:
+//   scent_revisions.scentId    → CASCADE  (ประวัติการส่งหายไปกับกลิ่น)
+//   formulas.scentId           → SET NULL (สูตรอยู่ต่อ แต่ไม่รู้ว่าใช้กลิ่นไหน)
+//   products.scentId/formulaId → SET NULL
+//   material_prices.*          → SET NULL
+// พรีวิวจึงเป็นรายการ "ของที่จะถูกปลดการเชื่อมโยง" ไม่ใช่ "ของที่จะถูกลบ" — ต้อง
+// เขียนป้ายให้ตรงความจริง ไม่งั้นผู้ดูแลระบบเข้าใจผิดว่ากำลังจะลบสินค้าทิ้ง
+export async function scentForcePreview(supabase, scent) {
+  const [revisions, formulas, products, materials] = await Promise.all([
+    countBy(supabase, 'scent_revisions', 'scentId', scent.id),
+    countBy(supabase, 'formulas', 'scentId', scent.id),
+    countBy(supabase, 'products', 'scentId', scent.id),
+    countBy(supabase, 'material_prices', 'scentId', scent.id),
+  ]);
+  const cascade = [
+    line('ประวัติการส่งกลิ่น + ผลตอบรับลูกค้า (ลบพ่วง กู้ไม่ได้)', revisions),
+    line('สูตรที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สูตรยังอยู่)', formulas),
+    line('สินค้าที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
+    line('วัสดุในทะเบียนที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง)', materials),
+  ].filter((r) => r.count > 0);
+  const notes = [];
+  if (revisions > 0) {
+    notes.push('ประวัติการส่งกลิ่นคือหลักฐานการคุยกับลูกค้า — ปกติควรใช้ “เก็บเข้ากรุ” แทนการลบ');
+  }
+  return { cascade, notes, blocked: false };
+}
+
+export async function formulaForcePreview(supabase, formula) {
+  const [products, materials] = await Promise.all([
+    countBy(supabase, 'products', 'formulaId', formula.id),
+    countBy(supabase, 'material_prices', 'formulaId', formula.id),
+  ]);
+  const cascade = [
+    line('สินค้าที่อ้างสูตรนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
+    line('วัสดุในทะเบียนที่อ้างสูตรนี้ (ปลดการเชื่อมโยง)', materials),
+  ].filter((r) => r.count > 0);
+  const notes = [];
+  if (products > 0) {
+    notes.push('สินค้าที่ปลดแล้วจะกลับไปอยู่ในรายการ “รอจัดระเบียบ” ถ้ายังมีชื่อสูตรเป็นข้อความอยู่');
+  }
+  return { cascade, notes, blocked: false };
+}
