@@ -1138,6 +1138,7 @@ export default function ProjectDetailPage() {
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
           <TimelineWorkspace
             tasks={tasks}
+            requests={p.inquiries || []}
             canEdit={canEdit}
             canAdd={canAddTimelineTask}
             canReorder={canReorderTimeline}

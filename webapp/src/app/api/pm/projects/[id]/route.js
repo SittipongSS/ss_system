@@ -86,7 +86,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let inquiries = [];
   if (deals.length) {
     const dealIds = deals.map((d) => d.id);
-    const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist }, { data: inquiryRows }] = await Promise.all([
+    const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist },
+      { data: inquiryRows, error: inquiryError }] = await Promise.all([
       supabase.from('quotations')
         .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
         .in('dealId', dealIds).order('createdAt', { ascending: false }),
@@ -103,7 +104,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('sales_deal_stage_history')
         .select('id, dealId, fromStage, toStage, changedByName, changedAt')
         .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
-      supabase.from('inquiries').select('*').or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`).order('createdAt', { ascending: false }),
+      // 🐞 เคยชี้ตาราง `inquiries` ซึ่งถูก DROP ไปใน mig 0174 — คำร้องอยู่ที่
+      // `dept_requests` แล้ว · การ์ดคำร้องบนหน้าโครงการจึงว่างเปล่าเงียบ ๆ เพราะ
+      // `const { data }` ทิ้ง error ไป (ดู lib rule: supabase masked query errors)
+      supabase.from('dept_requests').select('*').or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`).order('createdAt', { ascending: false }),
     ]);
     quotations = latestQuotationRevisions(quotes || []);
     salesOrders = orderRows || [];
@@ -119,9 +123,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       createdAt: a.createdAt,
     }));
     dealStageHistory = hist || [];
+    // ⚠️ อย่าทิ้ง error เส้นนี้: ตอนตารางหายไปกับ mig 0174 การ์ดคำร้องว่างเปล่า
+    // โดยไม่มีอะไรบอก อยู่หลายวันกว่าจะเจอ
+    if (inquiryError) throw inquiryError;
     inquiries = inquiryRows || [];
   } else {
-    const { data } = await supabase.from('inquiries').select('*').eq('projectId', project.id).order('createdAt', { ascending: false });
+    // เส้นทางโครงการที่ยังไม่มีดีล — ตารางเดียวกับด้านบน (เคยค้างที่ `inquiries`)
+    const { data, error: reqError } = await supabase.from('dept_requests')
+      .select('*').eq('projectId', project.id).order('createdAt', { ascending: false });
+    if (reqError) throw reqError;
     inquiries = data || [];
   }
 

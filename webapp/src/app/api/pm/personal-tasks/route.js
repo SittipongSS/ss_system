@@ -55,8 +55,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectId = inq.projectId || null;
     inquiryId = inq.id;
     if (body.inquiryMessageId) {
-      const { data: message } = await supabase.from('inquiry_messages').select('*')
-        .eq('id', body.inquiryMessageId).eq('inquiryId', inquiryId).is('deletedAt', null).maybeSingle();
+      // 🐞 เคยอ่าน `inquiry_messages` ซึ่งถูก DROP ไปใน mig 0174 — เธรดของคำร้อง
+      // อยู่ในตารางกลาง `entity_updates` แล้ว (entityType='dept_request') · เส้นนี้
+      // จึงตอบ "ไม่พบข้อความต้นทาง" เสมอ ทั้งที่ฝั่งเขียนด้านล่างชี้ตารางกลางถูกอยู่แล้ว
+      const { data: message, error: msgError } = await supabase.from('entity_updates').select('*')
+        .eq('id', body.inquiryMessageId)
+        .eq('entityType', 'dept_request').eq('entityId', inquiryId)
+        .is('deletedAt', null).maybeSingle();
+      if (msgError) return fail(msgError.message, 500);
       if (!message) return badRequest('ไม่พบข้อความต้นทาง');
       inquiryMessageId = message.id;
       inquiryMessage = message;

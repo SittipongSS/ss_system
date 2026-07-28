@@ -5619,6 +5619,14 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   line-height: 1.4;
 }
 .timeline-task-name > svg { margin-top: 2px; }
+/* หมุดคำร้องบนแถวขั้นตอน — ตัวห่อลิงก์ล้วน หน้าตาเป็นของ <StatusBadge> ข้างใน
+   (ตัดสไตล์ลิงก์ทิ้งเพื่อไม่ให้ขีดเส้นใต้ทับป้าย) */
+.timeline-step-pin {
+  display: inline-flex;
+  margin-top: 4px;
+  text-decoration: none;
+  color: inherit;
+}
 .timeline-role-text {
   display: inline-block;
   min-width: 28px;

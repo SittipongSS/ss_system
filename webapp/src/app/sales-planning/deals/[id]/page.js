@@ -843,6 +843,7 @@ export default function DealOverviewPage() {
                 <div style={{ marginTop: 12 }}>
                   <TimelineWorkspace
                     tasks={data.projectTasks}
+                    requests={data.inquiries || []}
                     canEdit={canEdit}
                     dealId={deal.id}
                     projectId={data.project?.id || null}
