@@ -7,7 +7,7 @@ import Button from "./Button";
 export default function FormActions({ dirty, saving, error, onSave, onCancel, saveLabel = "บันทึก", children }) {
   const status = error ? "error" : saving ? "saving" : dirty ? "dirty" : "saved";
   return (
-    <div className="form-actions form-action-bar page" aria-label="การบันทึกข้อมูล">
+    <div className="form-actions form-action-bar is-page" aria-label="การบันทึกข้อมูล">
       <SaveStatus status={status} />
       <div className="form-actions-buttons">
         {children}

@@ -654,7 +654,7 @@ export default function TimelineWorkspace({
       )}
 
       {dirtyCount > 0 && (
-        <div className="timeline-save-bar form-action-bar page" role="status">
+        <div className="timeline-save-bar form-action-bar is-page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button type="button" className="btn" onClick={discardDrafts} disabled={saving}>ยกเลิกการแก้ไข</button>
           <button type="button" className="btn btn-primary" onClick={saveDrafts} disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}</button>

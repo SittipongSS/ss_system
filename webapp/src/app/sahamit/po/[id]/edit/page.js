@@ -128,7 +128,7 @@ export default function PoEditPage() {
         disabled={busy}
       />
       {error && <div role="alert" style={{ color: "var(--red)", fontSize: 13 }}>{error}</div>}
-      <div className="form-action-bar page">
+      <div className="form-action-bar is-page">
         <span style={{ fontSize: 13, color: "var(--text-3)" }}>
           {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ชิ้น` : "ยังไม่มีรายการ"}
         </span>
