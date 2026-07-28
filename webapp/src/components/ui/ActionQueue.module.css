@@ -1,0 +1,107 @@
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, box-shadow .12s;
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-md);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* กล่องไอคอนพื้นสีจาง — แทนแถบสีซ้าย 3px ของเดิม
+   สีมาจาก --queue-tone ที่ตั้งตาม data-tone ด้านล่าง เพื่อให้เขียนกฎครั้งเดียว */
+.icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--icon-box-md, 32px);
+  height: var(--icon-box-md, 32px);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--queue-tone) 14%, transparent);
+  color: var(--queue-tone);
+}
+
+.row[data-tone="neutral"] { --queue-tone: var(--text-3); }
+.row[data-tone="info"] { --queue-tone: var(--blue); }
+.row[data-tone="success"] { --queue-tone: var(--green); }
+.row[data-tone="warning"] { --queue-tone: var(--amber); }
+.row[data-tone="danger"] { --queue-tone: var(--red); }
+
+.copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  padding: 2px 9px;
+  border: 1px solid color-mix(in srgb, var(--queue-tone) 34%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--queue-tone) 12%, transparent);
+  color: var(--queue-tone);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .cta { margin-left: auto; }
+}

@@ -18,6 +18,7 @@ import {
   toProbability,
 } from '@/lib/salesPlanning';
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
+import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { isSuperuser } from '@/lib/permissions';
 import { inLeadScope } from '../leads/route';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS } from '@/lib/sales/leads';
@@ -37,6 +38,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const params = new URL(req.url).searchParams;
   const stage = params.get('stage');
   const month = monthKey(params.get('month'));
+  // year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บน MonthPicker) — เดิมหน้าดีล
+  // ตัดตัวกรองทิ้งทั้งก้อนแล้วดึงมาทุกปี ตัวเลขจึงไม่ตรงกับปีที่ค้างบนปุ่ม
+  const year = isYearValue(params.get('year')) ? params.get('year') : null;
 
   let query = supabase
     .from('sales_deals')
@@ -45,6 +49,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   query = applyDealScope(query, user);
   if (stage && stage !== 'all') query = query.eq('stage', normalizeStage(stage));
   if (month) query = query.eq('forecastMonth', month);
+  else if (year) {
+    const range = monthRangeOfYear(year);
+    query = query.gte('forecastMonth', range.first).lte('forecastMonth', range.last);
+  }
 
   const { data, error } = await query;
   if (error) return fail(error.message, 500);

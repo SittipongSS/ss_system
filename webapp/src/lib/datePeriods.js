@@ -103,3 +103,29 @@ export function formatMonthLabel(value, { calendar = "buddhist", includeYear = t
   const month = MONTH_LABELS[parts.month - 1];
   return includeYear ? `${month} ${displayYear(parts.year, calendar)}` : month;
 }
+
+/* ── ช่วง "ทุกเดือนของปีหนึ่ง" ────────────────────────────────────────────
+   มติผู้ใช้ 2026-07-29: ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** ไม่ใช่ทุกปี
+   ของเดิมฝั่ง API ตัดตัวกรองทิ้งทั้งก้อน (ดีล) หรือส่ง month=all (ลีด) ซึ่งแปลว่า
+   "ทั้งหมดตั้งแต่เปิดระบบ" — ตัวเลขที่เห็นจึงไม่ตรงกับปีที่ค้างอยู่บนปุ่ม */
+
+export function isYearValue(value) {
+  return /^\d{4}$/.test(String(value ?? ""));
+}
+
+/** ปีของค่างวดเดือน ("2026-07" → "2026") · คืน null ถ้าไม่ใช่งวดที่ถูกต้อง */
+export function yearOfMonth(value) {
+  return isMonthValue(value) ? String(value).slice(0, 4) : null;
+}
+
+/** ขอบเขตงวดเดือนของทั้งปี — ใช้เทียบกับคอลัมน์ที่เก็บเป็น YYYY-MM */
+export function monthRangeOfYear(year) {
+  if (!isYearValue(year)) return null;
+  return { first: `${year}-01`, last: `${year}-12` };
+}
+
+/** ขอบเขตวันที่ของทั้งปีแบบครึ่งเปิด [from, until) — ใช้กับคอลัมน์ timestamp */
+export function dateRangeOfYear(year) {
+  if (!isYearValue(year)) return null;
+  return { from: `${year}-01-01`, until: `${Number(year) + 1}-01-01` };
+}
