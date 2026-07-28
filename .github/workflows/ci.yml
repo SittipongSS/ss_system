@@ -3,6 +3,10 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # เลขซ้ำเกิดจาก "สอง PR ที่ผ่านทีละใบแล้วมาชนกันตอนอยู่บน main" — ด่านที่รันเฉพาะ
+  # ตอน pull_request จึงมองไม่เห็นตลอดกาล (0169 ซ้ำ แล้ว 0170 ซ้ำต่อทันที)
+  push:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -35,6 +39,14 @@ jobs:
       - name: Lint (errors only)
         run: npx eslint src
 
+      # เลขไฟล์ migration ห้ามซ้ำ — ถ้าซ้ำ คนรันมือบน Supabase จะข้ามไฟล์ใดไฟล์หนึ่งเงียบ ๆ
+      # (เคยหลุด 0076/0087/0099 มาแล้ว แล้วหลุดซ้ำ 0169 → 0170 ตอน merge ไล่กัน 2026-07-28)
+      - name: Migration integrity
+        run: npm run check:migrations
+
+      # TODO(audit:ui): `npm run audit:ui` ยังไม่เข้า CI เพราะบน main ตอนนี้ตกอยู่
+      # (หน้า /database/scents + /database/formulas เขียนด้วยชั้นสไตล์เก่า ทะลุเพดาน
+      # โมดูลฐานข้อมูลทั้ง 4 ตัว) — เพิ่มสเต็ปนี้พร้อม PR ที่แปลงสองหน้านั้น
       - name: Test
         run: npm test
 
