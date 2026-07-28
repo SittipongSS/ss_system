@@ -3265,13 +3265,9 @@ button.empty-state { width: 100%; font: inherit; }
   border-bottom: none;
 }
 
-.premium-table th:first-child {
-  border-top-left-radius: var(--radius-lg);
-}
-
-.premium-table th:last-child {
-  border-top-right-radius: var(--radius-lg);
-}
+/* มุมมนของหัวตารางเป็นหน้าที่ของกล่อง TableScroll ที่ครอบอยู่ (มันคลิปให้แล้ว)
+   ถ้าให้เซลล์แรก/สุดท้ายมนเองด้วย จะเกิดรอยเว้าตรงมุมบนสองข้าง = แถบหัวตารางดู
+   ไม่สม่ำเสมอ (ผู้ใช้ส่งภาพมา 2026-07-27) */
 
 /* Opt-in: freeze the first column on wide grids (SAHAMIT forecast matrix /
    material / import). Scoped via .sticky-col1 so ordinary tables are untouched.
