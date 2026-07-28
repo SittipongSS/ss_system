@@ -60,7 +60,7 @@ test('dealForcePreview: cascade เฉพาะลูกของดีล + โ
     'quotations:dealId:extra': 1,   // accepted
     'sales_orders:dealId': 1,
     'quotations:dealId': 2,
-    'inquiries:dealId': 3,
+    'dept_requests:dealId': 3,
     'personal_tasks:dealId': 0,
     'project_tasks:dealId': 5,       // timeline segment ของดีลนี้
   });
@@ -68,15 +68,15 @@ test('dealForcePreview: cascade เฉพาะลูกของดีล + โ
   const project = { id: 'P1', code: 'PJ-1' };
   const { cascade, notes } = await dealForcePreview(supabase, deal, { project });
   const labels = cascade.map((c) => c.label);
-  // ลบเฉพาะลูกของดีล: accepted/SO + quotations + งานผลิตของดีล + inquiries (ไม่มี personal_tasks=0)
+  // ลบเฉพาะลูกของดีล: accepted/SO + quotations + งานผลิตของดีล + คำร้อง (ไม่มี personal_tasks=0)
   assert.ok(labels.some((l) => l.includes('Actual')));
   assert.ok(labels.some((l) => l.includes('ขั้นตอนงานผลิต')));
   assert.ok(!labels.some((l) => l.includes('งานส่วนตัว')));
   // โครงการ/ทะเบียนสรรพสามิต "ไม่ถูกลบ" → ต้องไม่โผล่ใน cascade
   assert.ok(!labels.some((l) => l.includes('ทะเบียนสรรพสามิต')));
   assert.ok(!labels.some((l) => l.includes('โครงการผลิต')));
-  // inquiries เฉพาะของดีล = 3
-  const inq = cascade.find((c) => c.label.includes('เรื่องสอบถาม'));
+  // คำร้องเฉพาะของดีล = 3
+  const inq = cascade.find((c) => c.label.includes('คำร้องข้ามฝ่าย'));
   assert.equal(inq.count, 3);
   // note 3 รายการ: โครงการยังอยู่ + Won + PO สหมิตร
   assert.equal(notes.length, 3);
@@ -118,8 +118,9 @@ test('salesOrderForcePreview: นับหลักฐาน+ฉบับตร�
   assert.ok(notes.some((n) => n.includes('Actual')));
 });
 
-test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล และปลด parentDealId', async () => {
+test('cleanupDealOrphans: ลบเธรด+งาน+คำร้องของดีล และปลด parentDealId', async () => {
   const calls = [];
+  const rpcCalls = [];
   const supabase = {
     from(table) {
       const b = {
@@ -139,11 +140,13 @@ test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล แล�
       return b;
     },
   };
+  supabase.rpc = (fn, args) => { rpcCalls.push({ fn, args }); return Promise.resolve({ data: null, error: null }); };
   await cleanupDealOrphans(supabase, 'D1');
-  // ต้องลบ inquiry_messages + personal_tasks ตาม inquiryId, ลบ inquiries, ลบ personal_tasks.dealId, ปลด parentDealId
-  assert.ok(calls.some((c) => c.table === 'inquiry_messages' && c.op === 'delete' && c.in === 'inquiryId'));
+  // ต้องกวาดเธรดคำร้อง (entity_updates) + งานที่ผูกคำร้อง แล้วลบคำร้องผ่าน RPC
+  // ⚠️ ลบคำร้องตรง ๆ ไม่ได้ — guard_dept_request (0173) บล็อกใบที่ส่งแล้วทุกใบ
+  assert.ok(calls.some((c) => c.table === 'entity_updates' && c.op === 'delete' && c.in === 'entityId'));
   assert.ok(calls.some((c) => c.table === 'personal_tasks' && c.op === 'delete' && c.in === 'inquiryId'));
-  assert.ok(calls.some((c) => c.table === 'inquiries' && c.op === 'delete' && c.in === 'id'));
+  assert.ok(rpcCalls.some((c) => c.fn === 'force_delete_dept_request'));
   assert.ok(calls.some((c) => c.table === 'personal_tasks' && c.op === 'delete' && c.eq === 'dealId' && c.val === 'D1'));
   assert.ok(calls.some((c) => c.table === 'sales_deals' && c.op === 'update' && c.eq === 'parentDealId' && c.patch?.parentDealId === null));
   // เธรดอัปเดตของงาน (entity_updates, mig 0163) ไม่มี FK — ต้องถูกกวาดด้วย

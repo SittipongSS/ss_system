@@ -1,5 +1,5 @@
 // Tests for the project cascade-delete helpers. The point of deleteProjectDeep
-// is that personal_tasks, project_doc_revisions AND inquiries (logical projectId
+// is that personal_tasks, project_doc_revisions AND dept_requests (logical projectId
 // links, no FK — migrations 0019/0040/0104) get cleared BEFORE the project row is
 // deleted — otherwise they dangle. We drive it with a fake supabase that records
 // the order of table operations.
@@ -10,11 +10,11 @@ import { deleteProjectDeep, projectHasExciseRegistrations } from './projectsRepo
 
 // Minimal chainable fake:
 //   .from(t).select(..).eq(..)        → { count } (head-count query)
-//   .from(t).select('id').eq(..)      → { data } (list query — inquiries lookup)
+//   .from(t).select('id').eq(..)      → { data } (list query — dept_requests lookup)
 //   .from(t).delete().eq(..)/.in(..)  → records op
-// deleteProjectDeep นับด้วย select(...{head:true}) และดึงรายการ inquiry ด้วย
+// deleteProjectDeep นับด้วย select(...{head:true}) และดึงรายการคำร้องด้วย
 // select('id') — fake นี้ตอบทั้ง count และ data พร้อมกันเลยใช้ได้ทั้งสองทาง.
-function fakeSupabase({ counts = {}, rows = {}, ops = [] } = {}) {
+function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
   return {
     from(table) {
       return {
@@ -30,11 +30,15 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [] } = {}) {
           };
         },
         delete() {
+          // purgeUpdatesMany เรียกลูกโซ่ .eq(entityType).in(entityId) — ต้อง chain ต่อได้
           const done = () => { ops.push(table); return Promise.resolve({ error: null }); };
-          return { eq: done, in: done };
+          const chain = { eq: () => chain, in: done, then: undefined };
+          return { eq: (...a) => (table === 'entity_updates' ? chain : done(...a)), in: done };
         },
       };
     },
+    // คำร้องลบผ่าน RPC เท่านั้น — guard_dept_request (0173) บล็อกการลบตรง
+    rpc(fn, args) { ops.push(`rpc:${fn}`); rpcArgs.push(args); return Promise.resolve({ error: null }); },
   };
 }
 
@@ -42,7 +46,7 @@ test('deleteProjectDeep clears logical-link children before deleting the project
   const ops = [];
   const supabase = fakeSupabase({
     counts: { personal_tasks: 3, project_doc_revisions: 2 },
-    rows: { inquiries: [{ id: 'IQ1' }, { id: 'IQ2' }] },
+    rows: { dept_requests: [{ id: 'DR1' }, { id: 'DR2' }] },
     ops,
   });
   const removed = await deleteProjectDeep(supabase, 'PRJ-1');
@@ -57,7 +61,7 @@ test('deleteProjectDeep clears logical-link children before deleting the project
   assert.deepEqual(removed, { personalTasks: 3, docRevisions: 2, inquiries: 2 });
 });
 
-test('deleteProjectDeep: ไม่มี inquiry ผูก → ข้ามการลบเธรด (ไม่ยิง delete เปล่า)', async () => {
+test('deleteProjectDeep: ไม่มีคำร้องผูก → ข้ามการลบเธรด (ไม่ยิง delete เปล่า)', async () => {
   const ops = [];
   const supabase = fakeSupabase({ ops });
   const removed = await deleteProjectDeep(supabase, 'PRJ-2');

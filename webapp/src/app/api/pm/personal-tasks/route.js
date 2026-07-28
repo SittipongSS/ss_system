@@ -3,7 +3,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { can, canAssignTask, isReadOnlyObserver } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
-import { canAcknowledgeInquiryMessage, canViewInquiry } from '@/lib/inquiries';
+import { canViewRequest } from '@/lib/deptRequests';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
 
 export const dynamic = 'force-dynamic';
@@ -39,15 +39,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   let projectId = body.projectId || null;
   let dealId = body.dealId || null;
-  // ลิงก์ย้อนกลับไปเรื่องสอบถามต้นทาง (ปุ่ม "สร้างงานจากคำถาม" — mig 0104)
+  // ลิงก์ย้อนกลับไปคำร้องต้นทาง (ปุ่ม "สร้างงานจากคำถาม")
+  // ⚠️ คอลัมน์ยังชื่อ inquiryId ตามชื่อระบบเดิม — เป็น logical link ไม่มี FK
+  // เปลี่ยนชื่อคอลัมน์ต้องออก migration + ไล่แก้ทั้งสาย ยกไว้เป็นหนี้ที่รู้ตัว
   let inquiryId = null;
   let inquiryMessageId = null;
   let inquiryRecord = null;
   let inquiryMessage = null;
   if (body.inquiryId) {
-    const { data: inq } = await supabase.from('inquiries').select('*').eq('id', body.inquiryId).maybeSingle();
-    if (!inq) return badRequest('ไม่พบเรื่องสอบถามต้นทาง');
-    if (!canViewInquiry(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้เรื่องสอบถามนี้สร้างงาน');
+    const { data: inq } = await supabase.from('dept_requests').select('*').eq('id', body.inquiryId).maybeSingle();
+    if (!inq) return badRequest('ไม่พบคำร้องต้นทาง');
+    if (!canViewRequest(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้คำร้องนี้สร้างงาน');
     inquiryRecord = inq;
     dealId = inq.dealId || null;
     projectId = inq.projectId || null;
@@ -120,8 +122,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data, error } = await supabase.from('personal_tasks').insert(row).select().single();
   if (error) return fail(error.message, 500);
-  if (inquiryMessageId && canAcknowledgeInquiryMessage(user, inquiryRecord, inquiryMessage)) {
-    await supabase.from('inquiry_messages').update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() }).eq('id', inquiryMessageId);
+  // สร้างงานจากข้อความ = ถือว่า "เห็นแล้ว" — ติดธงรับทราบให้ในจังหวะเดียวกัน
+  // (กติกาเดียวกับ /api/updates/[id] action=acknowledge: ใครอ่านเธรดได้ก็รับทราบได้
+  //  ซึ่งคนที่มาถึงตรงนี้ผ่าน canViewRequest มาแล้ว)
+  if (inquiryMessageId) {
+    await supabase.from('entity_updates')
+      .update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() })
+      .eq('id', inquiryMessageId);
   }
   await recordAudit({ user, action: 'create', entityType: 'task', entityId: data.id, after: data, request: req });
   return ok(data, 201);

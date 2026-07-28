@@ -42,7 +42,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .order('createdAt', { ascending: false }), []),
     // ข้อสอบถามถึงฝ่ายอื่น (RD) ของดีลนี้ — "เก็บแยก โชว์รวม": merge เข้าฟีด
     // ความเคลื่อนไหวฝั่ง client แบบเดียวกับ stageHistory (อ่านอย่างเดียวในฟีด)
-    safe('inquiries', supabase.from('inquiries').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
+    safe('inquiries', supabase.from('dept_requests').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
   ]);
 
   let project = { data: null, warning: null };

@@ -46,7 +46,7 @@ import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_T
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
-import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
+import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
@@ -1220,7 +1220,7 @@ export default function ProjectDetailPage() {
 
       {(tab === "overview" || tab === "quotations") && <ProjectQuotationsCard project={p} />}
 
-      {(tab === "overview" || tab === "inquiries") && <InquiryListCard inquiries={p.inquiries || []} title="สอบถาม RD ของโครงการและดีล" />}
+      {(tab === "overview" || tab === "inquiries") && <RequestListCard requests={p.inquiries || []} title="คำร้องข้ามฝ่ายของโครงการและดีล" />}
 
       {(tab === "overview" || tab === "tasks") && (
         <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>

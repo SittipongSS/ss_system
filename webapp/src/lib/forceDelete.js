@@ -67,7 +67,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     countBy(supabase, 'quotations', 'dealId', id, (q) => q.eq('status', 'accepted')),
     countBy(supabase, 'sales_orders', 'dealId', id),
     countBy(supabase, 'quotations', 'dealId', id),
-    countBy(supabase, 'inquiries', 'dealId', id),
+    countBy(supabase, 'dept_requests', 'dealId', id),
     countBy(supabase, 'personal_tasks', 'dealId', id),
     countBy(supabase, 'project_tasks', 'dealId', id),
   ]);
@@ -77,7 +77,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     line('ใบสั่งขาย (Sale Order) — แหล่งยอด Actual', salesOrders),
     line('ใบเสนอราคาทั้งหมด', quotations),
     line('ขั้นตอนงานผลิต (task) ของดีลนี้', dealTasks),
-    line('เรื่องสอบถาม (inquiry) ที่ผูกดีล', inquiries),
+    line('คำร้องข้ามฝ่ายที่ผูกดีล', inquiries),
     line('งานส่วนตัวที่ผูกดีล', personalTasks),
   ].filter((r) => r.count > 0);
 
@@ -95,7 +95,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
 // เก็บกวาดลูกดีลที่ "ไม่มี FK จริง" ก่อน/หลังลบแถวดีล. เรียกก่อนลบ sales_deals
 // (ลบลูกก่อน แล้วค่อยลบแม่). ครอบคลุม:
 //   • personal_tasks.dealId (mig 0085 — ไม่มี FK)
-//   • inquiries.dealId + inquiry_messages ของมัน + personal_tasks.inquiryId (mig 0104 — ไม่มี FK)
+//   • dept_requests.dealId + เธรดของมัน + personal_tasks.inquiryId (ไม่มี FK ทั้งคู่)
 //   • sales_deals.parentDealId ที่ชี้มาดีลนี้ (self-ref mig 0072 — ไม่มี FK): ปลดเป็น null
 // ไม่แตะลูกที่ FK cascade เองอยู่แล้ว (quotations/sales_orders/activities/...).
 // เธรดอัปเดตของงาน (entity_updates, mig 0163) ไม่มี FK — ต้องกวาดก่อนลบตัวงาน
@@ -108,14 +108,20 @@ async function purgeTaskThreads(supabase, { column, values }) {
 }
 
 export async function cleanupDealOrphans(supabase, dealId) {
-  // inquiries ผูกดีล — ลบ message + งานที่ผูก inquiry ก่อน แล้วลบตัว inquiry
-  const { data: inqs } = await supabase.from('inquiries').select('id').eq('dealId', dealId);
+  // คำร้องผูกดีล — ลบเธรด + งานที่ผูกคำร้องก่อน แล้วลบตัวคำร้อง
+  const { data: inqs } = await supabase.from('dept_requests').select('id').eq('dealId', dealId);
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
-    await supabase.from('inquiry_messages').delete().in('inquiryId', inquiryIds);
+    // เธรดของคำร้องอยู่ในตารางกลาง (polymorphic ไม่มี FK) — ต้องกวาดเอง
+    // บรรทัด/ชั้นจำนวนของคำร้องมี FK CASCADE อยู่แล้ว ปล่อยให้ DB จัดการ
+    await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     await purgeTaskThreads(supabase, { column: 'inquiryId', values: inquiryIds });
     await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
-    await supabase.from('inquiries').delete().in('id', inquiryIds);
+    // ⚠️ ลบตรง ๆ ไม่ได้ — guard_dept_request (0173) บล็อกคำร้องที่ส่งแล้วทุกใบ
+    // ต้องผ่าน RPC ที่ตั้ง flag app.force_delete ให้ทีละใบ (แพตเทิร์นเดียวกับใบ CR)
+    for (const requestId of inquiryIds) {
+      await supabase.rpc('force_delete_dept_request', { p_id: requestId });
+    }
   }
   // งานส่วนตัวที่ผูกดีลโดยตรง
   await purgeTaskThreads(supabase, { column: 'dealId', values: [dealId] });
@@ -126,7 +132,7 @@ export async function cleanupDealOrphans(supabase, dealId) {
 
 // ── PROJECT ───────────────────────────────────────────────────────────
 // ลูกโครงการที่ไม่มี FK จริง เพิ่มเติมจาก deleteProjectDeep (ซึ่งเก็บ
-// personal_tasks + project_doc_revisions + inquiries ให้แล้ว): ทะเบียนสรรพสามิต
+// personal_tasks + project_doc_revisions + dept_requests ให้แล้ว): ทะเบียนสรรพสามิต
 // (mig 0066 — ไม่มี FK) ปกติถูก "บล็อก" การลบ; เมื่อ force ผู้ดูแลเลือกลบพ่วง.
 export async function forceDeleteProjectExcise(supabase, projectId) {
   await supabase.from('excise_registrations').delete().eq('projectId', projectId);

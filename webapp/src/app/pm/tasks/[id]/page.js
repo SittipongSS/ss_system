@@ -110,7 +110,7 @@ export default function TaskDetailPage() {
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
           {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: task.deal.ownerName || "-" }]} />}
-          {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/sa/inquiries/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "สอบถาม RD"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
+          {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/sa/requests/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "คำร้อง"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
         </DetailPageLayout>
     </div>}

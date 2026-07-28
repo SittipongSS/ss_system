@@ -5,7 +5,8 @@ import {
   TASK_KPI_WEIGHTS, aggregateGroup, clampPeriod, emptyPerson, finalize,
   inPeriod, loadTasksForUsers, tallyTask, taskCreditId, ymd,
 } from '@/lib/pm/taskKpi';
-import { compareInquiryUrgency } from '@/lib/inquiries';
+import { REQUEST_OPEN_STATUSES, compareRequestUrgency } from '@/lib/deptRequests';
+import { requestKindLabel } from '@/lib/master/requestTypes';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDate } from '@/lib/businessDate';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 
 // ── KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย (มติ 2026-07-15) ──
 // สองเส้นวัด:
-//   1. ตอบข้อสอบถาม (ตาราง inquiries): ตอบทันวันที่ RD รับปากไว้ตอนรับเรื่อง
+//   1. ตอบคำร้องข้ามฝ่าย (ตาราง dept_requests, mig 0173): ตอบทันวันที่รับปากไว้
 //      (committedDueDate — ไม่มี SLA อัตโนมัติแล้ว มติ 2026-07-16),
 //      เวลาตอบเฉลี่ยเป็นวันทำการ, ค้างตอบ/เลยกำหนดตอนนี้
 //      เรื่องที่ยังไม่มีผู้รับ = ยังไม่มีกำหนด จึงไม่เข้าตัวหาร onTimePct
@@ -67,9 +68,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (row) tallyTask(row, task, today);
   }
 
-  // ── ข้อสอบถามของฝ่าย (ทั้งหมด — ปริมาณต่อฝ่ายต่ำ กรองช่วงเวลาในลูป) ──
+  // ── คำร้องที่ส่งถึงฝ่ายนี้ (ทั้งหมด — ปริมาณต่อฝ่ายต่ำ กรองช่วงเวลาในลูป) ──
+  // ⚠️ ตั้งแต่ 0173 นับ **ทุกชนิดคำร้อง** ไม่ใช่เฉพาะ "สอบถาม" เดิม — บรีฟกลิ่น/
+  // mockup/ขอราคา F,FB ก็เป็นงานที่ RD ต้องรับเรื่องและตอบเหมือนกัน
   const { data: inquiries, error: inqError } = await supabase
-    .from('inquiries').select('*').eq('targetDept', DEPT).order('createdAt', { ascending: false });
+    .from('dept_requests').select('*').eq('dept', DEPT).order('createdAt', { ascending: false });
   if (inqError) return fail(inqError.message, 500);
 
   setHolidays([...(await holidaySet())]); // เวลาตอบนับเป็น "วันทำการ" ให้ตรงกับ SLA
@@ -80,7 +83,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const createdDay = ymd(q.createdAt);
     if (createdDay && createdDay >= period.from && createdDay <= period.to) createdInPeriod += 1;
 
-    const responderId = q.answeredById || q.assigneeId;
+    const responderId = q.acknowledgedById;
     const personRow = responderId ? rowsByUser.get(responderId) : null;
     const buckets = personRow ? [personRow.inquiries, deptInquiries] : [deptInquiries];
 
@@ -96,8 +99,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         }
       }
     }
-    if (q.status === 'open') {
-      if (!q.assigneeId) unassignedOpen += 1;
+    if (REQUEST_OPEN_STATUSES.includes(q.status)) {
+      if (!q.acknowledgedById) unassignedOpen += 1;
       for (const b of buckets) {
         b.openNow += 1;
         if (q.committedDueDate && q.committedDueDate < today) b.overdueNow += 1;
@@ -125,34 +128,40 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — ยังไม่มีผู้รับก่อน แล้วใกล้ครบกำหนด
   const openQueue = (inquiries || [])
-    .filter((q) => q.status === 'open')
-    .sort(compareInquiryUrgency)
+    .filter((q) => REQUEST_OPEN_STATUSES.includes(q.status))
+    .sort(compareRequestUrgency)
     .slice(0, 12);
 
+  // ฟีดบทสนทนาของฝ่าย — ย้ายจาก inquiry_messages มาอ่านเธรดกลาง (mig 0163/0173)
+  // ⚠️ entity_updates เป็น polymorphic ไม่มี FK จึงต้องกรองด้วย entityType เสมอ
+  // ไม่งั้นข้อความของ entity อื่นที่ id บังเอิญชนกันจะหลุดเข้าฟีด RD
   const inquiryMap = new Map((inquiries || []).map((q) => [q.id, q]));
   let activityFeed = [];
   if (inquiryMap.size) {
     const { data: feedRows, error: feedError } = await supabase
-      .from('inquiry_messages')
-      .select('id, inquiryId, kind, body, authorName, authorDept, createdAt, editedAt, acknowledgedAt, deletedAt')
-      .in('inquiryId', Array.from(inquiryMap.keys()))
+      .from('entity_updates')
+      .select('id, entityId, kind, body, authorName, authorDept, createdAt, editedAt, acknowledgedAt, deletedAt')
+      .eq('entityType', 'dept_request')
+      .in('entityId', Array.from(inquiryMap.keys()))
       .order('createdAt', { ascending: false })
       .limit(40);
     if (feedError) return fail(feedError.message, 500);
     activityFeed = (feedRows || []).map((message) => {
-      const inquiry = inquiryMap.get(message.inquiryId);
+      const request = inquiryMap.get(message.entityId);
       return {
         ...message,
+        inquiryId: message.entityId,        // คง key เดิมไว้ให้หน้าจอไม่ต้องแก้
         body: message.deletedAt ? null : message.body,
-        inquiryCode: inquiry?.code || null,
-        inquiryTitle: inquiry?.title || 'เรื่องสอบถาม RD',
-        inquiryStatus: inquiry?.status || 'open',
-        urgent: !!inquiry?.urgent,
-        requesterName: inquiry?.requesterName || null,
-        assigneeName: inquiry?.assigneeName || null,
-        dueDate: inquiry?.committedDueDate || inquiry?.requestedDueDate || null,
-        dealId: inquiry?.dealId || null,
-        projectId: inquiry?.projectId || null,
+        inquiryCode: request?.docNo || null,
+        // ชนิดคำร้องบอกได้ตรงกว่าคำว่า "เรื่องสอบถาม" ที่ใช้ตอนมีชนิดเดียว
+        inquiryTitle: request?.title || requestKindLabel(request?.kind),
+        inquiryStatus: request?.status || 'pending',
+        urgent: !!request?.urgent,
+        requesterName: request?.requestedByName || null,
+        assigneeName: request?.acknowledgedByName || null,
+        dueDate: request?.committedDueDate || request?.requestedDueDate || null,
+        dealId: request?.dealId || null,
+        projectId: request?.projectId || null,
       };
     });
   }
