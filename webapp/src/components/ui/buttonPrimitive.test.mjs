@@ -63,3 +63,36 @@ test("หน้าต้นแบบครอบคลุม primitive ที่
   // ห้ามผูกกับข้อมูลจริง — หน้านี้ต้องเปิดได้แม้ระบบหลังบ้านล่ม
   assert.doesNotMatch(PREVIEW, /fetch\(|supabase/);
 });
+
+/* ⭐ ช่องกรอกเป็นกลุ่มที่หลุดหน้าต้นแบบมานานที่สุด — ผู้ใช้ตรวจดีไซน์ด้วยตาที่หน้านี้
+   ของที่ไม่อยู่บนหน้านี้จึงไม่เคยถูกมองเลยสักครั้ง แล้วก็ลอกกันเองผิด ๆ ต่อไป
+   (ตรวจ 2026-07-28: มี 29 จาก 47 primitive · ที่ขาดเกือบทั้งหมดคือช่องกรอก)
+   เพิ่มชื่อในลิสต์นี้ทุกครั้งที่สร้าง primitive ใหม่ใน components/ui/ */
+test("หน้าต้นแบบต้องมีช่องกรอกและตัวเลือกครบทุกตัว", () => {
+  for (const primitive of [
+    "MoneyInput",              // จัดลูกน้ำระหว่างพิมพ์ + คืนตำแหน่งเคอร์เซอร์
+    "PhoneInput",
+    "NationalIdInput",
+    "SearchableSelect",
+    "PersonSelect",
+    "ProductCategorySelect",
+    "MultiSelectFilter",
+    "ViewSwitcher",
+    "SaveStatus",
+    "FormActions",
+    "ReadableText",
+  ]) {
+    assert.match(PREVIEW, new RegExp(`<${primitive}\\b`), `หน้าต้นแบบต้องมีตัวอย่าง ${primitive}`);
+  }
+});
+
+/* ช่องกรอกพวกนี้ใส่ `premium-input` ให้เองอยู่แล้ว — ส่งซ้ำจะได้คลาสซ้ำในสตริงเดียว
+   และทำให้คนอ่านหน้าต้นแบบเข้าใจผิดว่าต้องส่งเอง */
+test("หน้าต้นแบบไม่ส่ง premium-input ซ้ำให้ช่องที่ใส่คลาสเอง", () => {
+  for (const primitive of ["MoneyInput", "PhoneInput", "NationalIdInput"]) {
+    const usage = PREVIEW.match(new RegExp(`<${primitive}\\b[^>]*>`, "g")) || [];
+    for (const tag of usage) {
+      assert.doesNotMatch(tag, /premium-input/, `${primitive} ไม่ต้องรับ className="premium-input"`);
+    }
+  }
+});

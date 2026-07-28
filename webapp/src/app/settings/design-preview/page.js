@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import {
-  Palette, Plus, Search, Inbox, Trash2, Check, Info, Undo2,
+  Palette, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
 } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -41,6 +41,17 @@ import DateTimeInput from "@/components/ui/DateTimeInput";
 import MonthPicker from "@/components/ui/MonthPicker";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
+import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import MoneyInput from "@/components/ui/MoneyInput";
+import PhoneInput from "@/components/ui/PhoneInput";
+import NationalIdInput from "@/components/ui/NationalIdInput";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import PersonSelect from "@/components/ui/PersonSelect";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import SaveStatus from "@/components/ui/SaveStatus";
+import FormActions from "@/components/ui/FormActions";
+import ReadableText from "@/components/ui/ReadableText";
 import Pager from "@/components/ui/Pager";
 import { notifyToast } from "@/components/ui/Toast";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
@@ -116,6 +127,29 @@ const DEMO_USERS = [
   { id: "u1", name: "สิทธิพงษ์ ศรีสุข", team: "KA", department: "SA" },
   { id: "u2", name: "ปัทมา วงศ์ทอง", team: "ODM", department: "SA" },
 ];
+
+const DEMO_CUSTOMERS = [
+  { value: "c1", label: "บริษัท สหมิตร โปรดักส์ จำกัด" },
+  { value: "c2", label: "ห้างหุ้นส่วนจำกัด กลิ่นหอม" },
+  { value: "c3", label: "บริษัท เอ็กซ์แซมเปิล รีเทล จำกัด" },
+];
+
+/* หมวดสินค้าตัวอย่าง — โครงเดียวกับแถวจริงจาก /api/product-types
+   (mainCategoryCode + typeCode ประกอบเป็นรหัส "MM-TTT") */
+const DEMO_CATEGORIES = [
+  { mainCategoryCode: "AR", mainCategoryName: "Air care", typeCode: "RD", nameTh: "ก้านไม้หอม" },
+  { mainCategoryCode: "AR", mainCategoryName: "Air care", typeCode: "SPR", nameTh: "สเปรย์ปรับอากาศ" },
+  { mainCategoryCode: "CN", mainCategoryName: "Candle", typeCode: "JAR", nameTh: "เทียนหอมในแก้ว" },
+];
+
+const DEMO_LONG_TEXT = [
+  "ลูกค้าลองกลิ่นรอบที่สองแล้วให้ความเห็นว่าโทนไม้ยังหนักไปสำหรับห้องนอน",
+  "ขอให้ลดลงประมาณหนึ่งในสาม แล้วเพิ่มความสดช่วงต้นให้ชัดขึ้น",
+  "",
+  "ส่วนเรื่องบรรจุภัณฑ์ ขอให้ใช้ขวดทรงเดิมแต่เปลี่ยนฉลากเป็นกระดาษผิวด้าน",
+  "และขอตัวอย่างอีก 3 ชิ้นสำหรับนำเสนอผู้บริหารภายในสิ้นเดือนนี้",
+  "หากทันจะเริ่มสั่งผลิตล็อตแรกในไตรมาสหน้า",
+].join("\n");
 
 /* lifecycle ตัวอย่างสำหรับหน้าต้นแบบ — โครงเดียวกับที่ ลีด/ดีล/โครงการ จะประกาศจริง
    ประกาศไว้นอก component เพราะ defineLifecycle ตรวจความถูกต้องตอนประกาศ (ทำครั้งเดียว) */
@@ -236,6 +270,18 @@ export default function DesignPreviewPage() {
   const [demoDateTime, setDemoDateTime] = useState(`${DEMO_TODAY}T14:00`);
   const [demoMonth, setDemoMonth] = useState(DEMO_TODAY.slice(0, 7));
   const [demoAllMonths, setDemoAllMonths] = useState(false);
+  const [teamFilter, setTeamFilter] = useState([]);
+  const [viewMode, setViewMode] = useState("list");
+  const [demoMoney, setDemoMoney] = useState(125000.5);
+  const [demoMoneyNeg, setDemoMoneyNeg] = useState(-4800);
+  const [demoPhone, setDemoPhone] = useState("0812345678");
+  const [demoNationalId, setDemoNationalId] = useState("1234567890123");
+  const [demoCustomer, setDemoCustomer] = useState("c1");
+  const [demoFreeText, setDemoFreeText] = useState("");
+  const [demoPerson, setDemoPerson] = useState("u1");
+  const [demoCategory, setDemoCategory] = useState("AR-RD");
+  const [demoDirty, setDemoDirty] = useState(false);
+  const [demoSaving, setDemoSaving] = useState(false);
   const [recordStatus, setRecordStatus] = useState("pending");
   const [recordRole, setRecordRole] = useState("boss");
   const [recordLog, setRecordLog] = useState("");
@@ -390,6 +436,34 @@ export default function DesignPreviewPage() {
                   onChange: setFilters,
                 }]}
               />
+              {/* ตัวกรองมิติเดียว — ใช้เมื่อมีมิติเดียวจริง ๆ ถ้ามีตั้งแต่ 2 มิติขึ้นไป
+                  ต้องยุบเป็น FilterPopover ปุ่มเดียว (มติ 2026-07-18) */}
+              <MultiSelectFilter
+                label="ทีม"
+                icon={Users}
+                options={[
+                  { value: "a", label: "ทีม A" },
+                  { value: "b", label: "ทีม B" },
+                  { value: "c", label: "ทีม C" },
+                ]}
+                selected={teamFilter}
+                onChange={setTeamFilter}
+              />
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>ViewSwitcher — Segmented ที่ผูกไอคอน/ป้ายของแต่ละมุมมองไว้แล้ว</span>
+              <ViewSwitcher
+                value={viewMode}
+                onChange={setViewMode}
+                modes={["list", "table", "board", "calendar"]}
+              />
+              <ViewSwitcher
+                value={viewMode}
+                onChange={setViewMode}
+                modes={["list", "table", "board", "calendar"]}
+                showLabels
+                ariaLabel="มุมมองพร้อมป้าย"
+              />
             </div>
           </div>
         </WorkspaceSection>
@@ -415,6 +489,128 @@ export default function DesignPreviewPage() {
               ช่องที่ล็อก
               <input className="premium-input" defaultValue="QT-26070128" readOnly disabled />
             </label>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="ช่องกรอกเฉพาะทาง"
+          subtitle="MoneyInput · PhoneInput · NationalIdInput — ทุกตัวเก็บค่าดิบ แล้วจัดรูปแบบตอนแสดง"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info" title="อย่าเขียน input เองแล้วใส่ลูกน้ำ/ขีดเอง">
+              ช่องพวกนี้จัดรูปแบบ<strong>ระหว่างพิมพ์</strong>พร้อมคืนตำแหน่งเคอร์เซอร์ให้ถูก —
+              ของที่เขียนเองมักทำให้เคอร์เซอร์กระโดดไปท้ายช่องทุกครั้งที่แทรกตัวคั่น
+              และค่าที่ส่งขึ้น API ต้องเป็นตัวเลขล้วนเสมอ ไม่ใช่สตริงที่มีลูกน้ำ
+            </StatusNotice>
+
+            <div className={styles.formGrid}>
+              {/* ไม่ต้องส่ง className="premium-input" — primitive พวกนี้ใส่ให้เองแล้ว
+                  (MoneyInput เติม numeric-input, ช่อง masked เติม tabular-nums ต่อท้าย) */}
+              <label className={styles.field}>
+                จำนวนเงิน
+                <MoneyInput value={demoMoney} onChange={setDemoMoney} />
+              </label>
+              <label className={styles.field}>
+                จำนวนเงิน (ติดลบได้ — ใบลดหนี้)
+                <MoneyInput value={demoMoneyNeg} onChange={setDemoMoneyNeg} allowNegative />
+              </label>
+              <label className={styles.field}>
+                เบอร์โทร
+                <PhoneInput value={demoPhone} onChange={setDemoPhone} />
+              </label>
+              <label className={styles.field}>
+                เลขประจำตัวประชาชน
+                <NationalIdInput value={demoNationalId} onChange={setDemoNationalId} />
+              </label>
+            </div>
+
+            {/* ค่าที่เก็บจริง — แพตเทิร์นเดียวกับส่วนวันที่/เวลา ถ้าแถวนี้ไม่ตรงกับที่เห็นในช่อง แปลว่าเพี้ยน */}
+            <p className={`${styles.caption} ${styles.mono}`}>
+              {`money=${demoMoney ?? "null"} · moneyNeg=${demoMoneyNeg ?? "null"} · phone="${demoPhone}" · nationalId="${demoNationalId}"`}
+            </p>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="ดรอปดาวน์ที่ค้นหาได้"
+          subtitle="SearchableSelect เป็นฐาน — PersonSelect และ ProductCategorySelect ห่อทับอีกที"
+        >
+          <div className={styles.stack}>
+            {/* ใช้ div + span ไม่ใช่ <label> — ตัวคุมของดรอปดาวน์พวกนี้เป็น <button>
+                ซึ่งเป็น labelable element การคลิกข้อความกำกับจะเด้ง dropdown เปิดแล้วปิดทันที */}
+            <div className={styles.formGrid}>
+              <div className={styles.field}>
+                <span className={styles.caption}>เลือกลูกค้า (ค้นหาได้)</span>
+                <SearchableSelect
+                  value={demoCustomer}
+                  onChange={setDemoCustomer}
+                  options={DEMO_CUSTOMERS}
+                  placeholder="เลือกลูกค้า"
+                  ariaLabel="ลูกค้าตัวอย่าง"
+                />
+              </div>
+              <div className={styles.field}>
+                <span className={styles.caption}>พิมพ์ค่าที่ไม่มีในลิสต์ได้ (allowFreeText)</span>
+                <SearchableSelect
+                  value={demoFreeText}
+                  onChange={setDemoFreeText}
+                  options={DEMO_CUSTOMERS}
+                  allowFreeText
+                  placeholder="เลือกหรือพิมพ์เอง"
+                  ariaLabel="ช่องที่พิมพ์เองได้"
+                />
+              </div>
+              <div className={styles.field}>
+                <span className={styles.caption}>เลือกคน (PersonSelect — ค้นด้วยชื่อหรือนามสกุล)</span>
+                <PersonSelect
+                  users={DEMO_USERS}
+                  value={demoPerson}
+                  onChange={setDemoPerson}
+                  ariaLabel="ผู้รับผิดชอบตัวอย่าง"
+                />
+              </div>
+              <div className={styles.field}>
+                <span className={styles.caption}>ลิสต์ว่าง — ต้องบอกว่าว่าง ไม่ใช่เปิดแล้วไม่มีอะไร</span>
+                <SearchableSelect
+                  value=""
+                  onChange={() => {}}
+                  options={[]}
+                  emptyText="ยังไม่มีข้อมูลในทะเบียน"
+                  placeholder="ไม่มีตัวเลือก"
+                  ariaLabel="ดรอปดาวน์ที่ยังไม่มีข้อมูล"
+                />
+              </div>
+            </div>
+
+            <div className={styles.stack}>
+              <span className={styles.caption}>
+                ProductCategorySelect — หมวดหลักกับหมวดย่อยเป็นคู่เดียวกัน เลือกหมวดหลักแล้วหมวดย่อยถึงจะเปิด
+              </span>
+              <ProductCategorySelect
+                categories={DEMO_CATEGORIES}
+                value={demoCategory}
+                onChange={setDemoCategory}
+              />
+              <p className={`${styles.caption} ${styles.mono}`}>
+                {`customer="${demoCustomer}" · freeText="${demoFreeText}" · person="${demoPerson}" · category="${demoCategory}"`}
+              </p>
+            </div>
+          </div>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          title="ข้อความยาวของผู้ใช้"
+          subtitle="ReadableText — คงการขึ้นบรรทัดที่ผู้ใช้พิมพ์ และขึ้นปุ่มขยายเฉพาะตอนที่ล้นจริง"
+        >
+          <div className={styles.formGrid}>
+            <div className={styles.field}>
+              <span className={styles.caption}>ข้อความสั้น — ไม่มีปุ่มขยาย</span>
+              <ReadableText text={"ลูกค้าขอให้ลดโทนไม้ลง"} />
+            </div>
+            <div className={styles.field}>
+              <span className={styles.caption}>ข้อความยาว — ตัดที่ 4 บรรทัดแล้วมีปุ่มขยาย</span>
+              <ReadableText text={DEMO_LONG_TEXT} />
+            </div>
           </div>
         </WorkspaceSection>
 
@@ -567,20 +763,51 @@ export default function DesignPreviewPage() {
 
         <WorkspaceSection
           title="แถบปุ่มท้ายฟอร์ม"
-          subtitle="ลอยติดขอบล่างขณะเลื่อน — ต้องทึบ 100% ไม่ให้ช่องกรอกทะลุขึ้นมา"
+          subtitle="FormActions = SaveStatus + ปุ่มบันทึก/ยกเลิก · ลอยติดขอบล่างขณะเลื่อน ต้องทึบ 100% ไม่ให้ช่องกรอกทะลุขึ้นมา"
         >
-          <div className={styles.scrollDemo}>
-            <div className={styles.formGrid}>
-              {["ผู้ประสานงาน (AC)", "ผู้ตรวจสอบ", "ทีมที่รับผิดชอบ", "วันเริ่มโครงการ", "วันส่งมอบ", "หมายเหตุ"].map((label) => (
-                <label key={label} className={styles.field}>
-                  {label}
-                  <input className="premium-input" defaultValue="— ไม่ระบุ —" />
-                </label>
-              ))}
+          <div className={styles.stack}>
+            {/* SaveStatus ทุกสถานะวางเทียบกัน — FormActions เลือกให้เองจาก dirty/saving/error */}
+            <div className={styles.row}>
+              <SaveStatus status="dirty" />
+              <SaveStatus status="saving" />
+              <SaveStatus status="saved" />
+              <SaveStatus status="error" message="บันทึกไม่สำเร็จ — เลขที่เอกสารซ้ำ" />
             </div>
-            <div className="form-action-bar">
-              <Button variant="quiet">ยกเลิก</Button>
-              <Button tone="primary">สร้างโครงการ</Button>
+            <p className={styles.note}>
+              ระบบนี้<strong>ไม่มี auto-save</strong> — ทุกหน้าที่แก้ข้อมูลได้ต้องมีแถบนี้
+              กด &quot;จำลองว่ามีการแก้ไข&quot; แล้วกดบันทึกเพื่อดูวงจรจริง
+              {" "}<code>dirty</code> → <code>saving</code> → <code>saved</code> ·
+              ปุ่มบันทึกกดไม่ได้เมื่อไม่มีอะไรเปลี่ยน
+            </p>
+            <div className={styles.row}>
+              <Button size="sm" onClick={() => setDemoDirty(true)} disabled={demoDirty || demoSaving}>
+                จำลองว่ามีการแก้ไข
+              </Button>
+            </div>
+            {/* .scrollDemo ตรึงแถบไว้ในกรอบ ไม่ให้ไปลอยท้ายหน้าจริงของหน้าต้นแบบเอง */}
+            <div className={styles.scrollDemo}>
+              <div className={styles.formGrid}>
+                {["ผู้ประสานงาน (AC)", "ผู้ตรวจสอบ", "ทีมที่รับผิดชอบ", "วันเริ่มโครงการ", "วันส่งมอบ", "หมายเหตุ"].map((label) => (
+                  <label key={label} className={styles.field}>
+                    {label}
+                    <input
+                      className="premium-input"
+                      defaultValue="— ไม่ระบุ —"
+                      onChange={() => setDemoDirty(true)}
+                    />
+                  </label>
+                ))}
+              </div>
+              <FormActions
+                dirty={demoDirty}
+                saving={demoSaving}
+                saveLabel="สร้างโครงการ"
+                onCancel={() => setDemoDirty(false)}
+                onSave={() => {
+                  setDemoSaving(true);
+                  setTimeout(() => { setDemoSaving(false); setDemoDirty(false); }, 900);
+                }}
+              />
             </div>
           </div>
         </WorkspaceSection>
