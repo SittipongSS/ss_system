@@ -5874,6 +5874,20 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   cursor: default;
 }
 
+/* รายการงานค้างในคำเตือนก่อนปิดโครงการ (StatusNotice) — เตือนอย่างเดียว ไม่บล็อก */
+.close-readiness-list {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  list-style: disc;
+}
+.close-readiness-list li {
+  margin-bottom: 2px;
+}
+.close-readiness-refs {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 /* Global Search */
 .global-search-container {
   position: relative;

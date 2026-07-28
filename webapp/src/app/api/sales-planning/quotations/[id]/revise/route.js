@@ -8,6 +8,7 @@ import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
+import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const { data: quote, error } = await supabase
     .from('quotations')
-    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, team, ownerId, ownerName)')
+    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, team, ownerId, ownerName, projectId)')
     .eq('id', id)
     .maybeSingle();
   if (error) return fail(error.message, 500);
@@ -45,6 +46,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.deal?.stage === 'lost') {
     return badRequest('ดีลนี้ Lost แล้ว — ออก Rev. ใหม่ไม่ได้');
   }
+  // ฉบับ Rev. = เอกสารใบใหม่ (เลขใหม่ ใบเดิมกลายเป็น read-only) → อยู่ในขอบเขตด่าน B3
+  const closedProject = await closedProjectBlock(supabase, quote.deal?.projectId, 'ออก Rev. ใบเสนอราคา');
+  if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่

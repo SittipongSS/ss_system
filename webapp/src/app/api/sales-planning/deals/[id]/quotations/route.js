@@ -8,6 +8,7 @@ import {
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
+import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal.projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — สร้าง/ผูกโครงการก่อน แล้วจึงออกใบเสนอราคา');
   // cascade: ใบเสนอราคาต้องมีลูกค้า (มติผู้ใช้ — เลือกลูกค้าที่ดีลก่อน)
   if (!deal.customerId) return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าที่ดีลก่อน แล้วจึงออกใบเสนอราคา');
+  // โครงการปิดแล้ว = ออกใบใหม่ผูกเข้าโครงการนั้นไม่ได้ (มติ B3)
+  const closedProject = await closedProjectBlock(supabase, deal.projectId, 'ออกใบเสนอราคาใบใหม่');
+  if (closedProject) return badRequest(closedProject);
 
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — guard "1 ใบ active
   // ต่อดีล" (0099) ถูกยกเลิก (mig 0103 ดรอป unique index); ตอน Won ใบอื่นถูกปิด+ล็อกใน RPC

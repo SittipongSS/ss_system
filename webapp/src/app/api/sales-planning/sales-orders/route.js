@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (quote.status !== 'accepted') return badRequest('สร้าง Sale Order ได้เฉพาะ QT ที่ Won แล้ว');
   if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
+  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้
+  const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออก Sale Order ใบใหม่');
+  if (closedProject) return badRequest(closedProject);
 
   const orderId = genId('SOR');
   const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
