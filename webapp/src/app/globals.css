@@ -53,6 +53,10 @@
   --navy: #243b63;
   --navy-2: #1d3154;     /* ปลายเข้มของแถบระบบ (ไล่สีกับ --navy) */
   --navy-fg: #fff;
+  /* กรมท่าเวอร์ชัน "หมึก" — ใช้ตอนวางบน *พื้นหน้า* (ปุ่ม outline/ghost โทน primary)
+     ไม่ใช่ตอนเป็นพื้นเอง · ธีมมืดต้องยกความสว่างขึ้นมาก เพราะ --navy ของธีมมืด
+     เข้มเกินกว่าจะอ่านออกบนพื้นมืด (เหตุผลเดียวกับ .brand-mark ที่สลับเป็นขาว) */
+  --navy-ink: #243b63;
   
   /* สีสถานะ — ชุดหม่นของต้นแบบ (เดิมเป็น oklch สดกว่า)
      พื้นอ่อน (*-soft) ใช้ค่าต้นแบบตรง ๆ ส่วนสีตัวอักษรเข้มขึ้นจากต้นแบบเท่าที่จำเป็น:
@@ -195,6 +199,7 @@
 
   --navy: #20365d;
   --navy-2: #192d4f;
+  --navy-ink: #8fadde;   /* วัดกับพื้น --panel ธีมมืดแล้วผ่าน AA (≥4.5:1) */
 
   /* ต้นแบบธีมมืดกำหนดเฉพาะพื้นอ่อน (soft) แล้วปล่อยให้สีหลักใช้ค่าเดียวกับธีมสว่าง
      ⚠️ วัดจริงแล้วแบบนั้นอ่านไม่ออก: ตัวอักษรบนป้ายสถานะได้คอนทราสต์ 2.8–3.5:1
@@ -2405,15 +2410,20 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-2);
 }
 
+/* ⚠️ เดิมสูง 32px + padding 10px ขณะที่ `--ctl-h` (มาตรฐานที่ประกาศไว้เองว่าเป็น
+   "ความสูงของตัวควบคุมบนแถบเครื่องมือ") = 36px และ `.btn`/`.ui-select` ใช้ 36px จริง
+   ผลคือ **ช่องกรอกเตี้ยกว่าปุ่มข้าง ๆ 4px** และตัวหนังสือชิดเส้นกรอบกว่าปุ่ม 3px
+   (ผู้ใช้ทักจากภาพจริง 2026-07-29 · วัดในเบราว์เซอร์ยืนยันแล้ว)
+   ค่า 32px มาจากตอนที่ --ctl-h ยังเป็น 32px แล้วไม่ได้ตามไปแก้ */
 .premium-input {
   border: 1px solid var(--border);
   background: var(--bg);
   width: 100%;
-  height: 32px;
+  height: var(--ctl-h);
   color: var(--text);
   border-radius: var(--radius);
   outline: none;
-  padding: 0 10px;
+  padding: 0 12px;
   font-size: 13px;
   transition: border-color .12s, box-shadow .12s;
 }
@@ -2434,7 +2444,7 @@ h1, h2, h3, h4, h5, h6 {
 
 textarea.premium-input {
   height: 80px;
-  padding: 8px 10px;
+  padding: 8px 12px;   /* แนวนอนเท่าช่องบรรทัดเดียว ไม่งั้นข้อความเยื้องกันในฟอร์มเดียว */
 }
 
 /* Combobox input: free-text <input> + <datalist> ที่อยากให้หน้าตาเหมือน <select>
@@ -2558,7 +2568,9 @@ button.ui-kpi-card { cursor: pointer; }
   --select-tone: var(--accent);
   width: auto;
   min-width: 0;
-  height: 32px;
+  /* เท่ากับ --ctl-h เหมือน .btn / .premium-input — เดิมตรึง 32px ไว้ตั้งแต่ตอนที่
+     --ctl-h ยังเป็น 32px ทำให้ดรอปดาวน์เตี้ยกว่าปุ่มข้าง ๆ 4px บนแถบเครื่องมือเดียวกัน */
+  height: var(--ctl-h);
   padding: 0 8px 0 10px;
   display: inline-flex;
   align-items: center;
@@ -2574,7 +2586,9 @@ button.ui-kpi-card { cursor: pointer; }
   transition: border-color .12s, box-shadow .12s, background .12s;
 }
 .ui-select.w-full { width: 100%; }
-.ui-select.compact { height: var(--ctl-h, 32px); font-size: 12px; }
+/* compact ต้อง *เตี้ยกว่า* ปกติ — เดิมเขียน var(--ctl-h, 32px) ซึ่งพอ --ctl-h
+   ขยับเป็น 36px ค่า fallback 32 ก็ไม่เคยถูกใช้ = compact สูงเท่าตัวปกติเป๊ะ ไม่มีผลอะไรเลย */
+.ui-select.compact { height: 32px; font-size: 12px; }
 .ui-select.tone {
   height: 30px;
   min-width: 118px;
@@ -2872,7 +2886,10 @@ button.ui-kpi-card { cursor: pointer; }
 .btn.action-outline.btn-success, .btn-icon.action-outline.btn-success { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .btn.action-outline.btn-warning, .btn-icon.action-outline.btn-warning { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 55%, var(--border)); }
 .btn.action-outline.btn-danger, .btn-icon.action-outline.btn-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
-.btn.action-outline.btn-primary, .btn-icon.action-outline.btn-primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+/* primary = กรมท่า (ยืนยันสิ่งที่ทำอยู่) · accent = terracotta (เริ่มของใหม่)
+   เดิม outline/ghost ของ primary ให้สี --accent ทั้งคู่ = สองโทนนี้หน้าตาเหมือนกันเป๊ะ
+   ทั้งที่โหมด filled แยกกันชัด (navy vs terracotta) — มติผู้ใช้ 2026-07-29 ให้แยกจริง */
+.btn.action-outline.btn-primary, .btn-icon.action-outline.btn-primary { color: var(--navy-ink); border-color: color-mix(in srgb, var(--navy-ink) 55%, var(--border)); }
 .btn.action-outline.btn-secondary, .btn-icon.action-outline.btn-secondary { color: var(--text-2); border-color: var(--border); }
 /* ⚠️ .btn-accent ตกหล่นจากชุดนี้มาตลอด — `.btn-accent` ตั้ง color: var(--accent-fg)
    (สีอ่อนสำหรับวางบนพื้น terracotta) พอ outline/ghost ล้างพื้นเป็นโปร่ง สีตัวอักษร
@@ -2883,7 +2900,7 @@ button.ui-kpi-card { cursor: pointer; }
 .btn.action-ghost.btn-success, .btn-icon.action-ghost.btn-success { color: var(--green); }
 .btn.action-ghost.btn-warning, .btn-icon.action-ghost.btn-warning { color: var(--amber); }
 .btn.action-ghost.btn-danger, .btn-icon.action-ghost.btn-danger { color: var(--red); }
-.btn.action-ghost.btn-primary, .btn-icon.action-ghost.btn-primary { color: var(--accent); }
+.btn.action-ghost.btn-primary, .btn-icon.action-ghost.btn-primary { color: var(--navy-ink); }
 .btn.action-ghost.btn-accent, .btn-icon.action-ghost.btn-accent { color: var(--accent); }
 .btn.action-outline:hover, .btn.action-ghost:hover,
 .btn-icon.action-outline:hover, .btn-icon.action-ghost:hover { background: var(--panel-2); box-shadow: none; }
