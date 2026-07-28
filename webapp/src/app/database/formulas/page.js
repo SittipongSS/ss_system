@@ -9,7 +9,7 @@
 // ไม่มีที่เก็บกลิ่น — migration ตั้งใจไม่เดาแทน RD จึงยกมาให้ตัดสินทีละแถวที่นี่
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArchiveRestore, Beaker, Check, FlaskConical, Pencil, Plus, RefreshCw, Trash2, Wand2,
+  Archive, ArchiveRestore, Beaker, Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -294,10 +294,14 @@ export default function FormulasPage() {
       )}
 
       <div className="toolbar">
-        <input
-          className="search-glass" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า"
-          value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาสูตร"
-        />
+        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (ดูคอมเมนต์เดียวกันที่หน้าทะเบียนกลิ่น) */}
+        <div className="search-glass">
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input
+            type="text" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า"
+            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาสูตร"
+          />
+        </div>
         <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[

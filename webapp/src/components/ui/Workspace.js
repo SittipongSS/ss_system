@@ -109,7 +109,10 @@ export function Metric({
       className={`ui-metric ${tone ? `is-${tone}` : ""} ${active ? "is-active" : ""} ${className}`.trim()}
       {...props}
     >
-      <span className="ui-metric-icon">{icon}</span>
+      {/* ไม่ส่ง icon = ไม่วาดกรอบไอคอน — .ui-metric-icon มีพื้นสี accent 11% ของตัวเอง
+          ถ้าเรนเดอร์ทิ้งไว้เปล่า ๆ จะได้กล่องสีจาง ๆ ที่ไม่มีอะไรอยู่ข้างใน (เจอจริงที่
+          การ์ด Funnel ลีด 8 ใบ ซึ่งตั้งใจไม่มีไอคอน) */}
+      {icon ? <span className="ui-metric-icon">{icon}</span> : null}
       <span>
         <small>{label}</small>
         <strong>{value ?? "-"}</strong>

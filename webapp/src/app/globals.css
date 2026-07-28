@@ -2768,9 +2768,24 @@ button.ui-kpi-card { cursor: pointer; }
   box-shadow: var(--shadow-sm);
 }
 
-.btn:hover {
+/* :not(:disabled) จำเป็น — ไม่งั้นปุ่มมีสีที่ disabled (เช่น .btn-primary สีนาวี) จะกลาย
+   เป็นพื้น --panel-2 ตอนเอาเมาส์ไปชี้ เพราะ .btn:hover ชนะ .btn-primary ด้วย specificity
+   แพตเทิร์นเดียวกับ .ui-select:hover:not(:disabled) และ .date-input-picker ที่มีอยู่แล้ว */
+.btn:hover:not(:disabled) {
   color: var(--text);
   background: var(--panel-2);
+}
+
+/* ปุ่มที่กดไม่ได้ต้องดูออกว่ากดไม่ได้ — เดิม `.btn` ไม่มี rule นี้เลย ขณะที่ตัวควบคุมอื่น
+   มีครบ (.btn-icon .ui-select .segmented>button .tab-btn .premium-input .date-input-picker)
+   ผลคือปุ่ม "บันทึก" ที่ disabled เพราะยังไม่มีอะไรเปลี่ยน หรือ "รีเฟรช" ตอนกำลังโหลด
+   ดูเหมือนกดได้ปกติทั้งระบบ (76 ไฟล์ส่ง disabled ให้ปุ่ม) ใช้ค่าเดียวกับ .btn-icon:disabled
+   ให้ปุ่มสองแบบหรี่เท่ากัน
+   หมายเหตุ: .btn-danger:hover / .btn-warning:hover ยังเข้มขึ้นเล็กน้อยตอนชี้ปุ่มที่ disabled
+   ตั้งใจไม่แตะเพราะใต้ opacity .45 แทบมองไม่เห็น และไม่อยากไปยุ่ง hover ของทุกโทนในแพตช์นี้ */
+.btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 /* ── ปุ่ม action หลัก (มติผู้ใช้ 2026-07-17) ───────────────────────────

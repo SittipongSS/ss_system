@@ -11,7 +11,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import {
   Boxes, RefreshCw, History, Pencil, Plus, Check, Archive,
-  ArchiveRestore, Trash2, Coins,
+  ArchiveRestore, Search, Trash2, Coins,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -215,10 +215,14 @@ export default function MaterialRegistryPanel({
       )}
 
       <div className="toolbar">
-        <input
-          className="search-glass" placeholder="ค้นชื่อวัสดุ · สูตร · ลูกค้า · ผู้ขาย"
-          value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาวัสดุ"
-        />
+        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
+        <div className="search-glass">
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input
+            type="text" placeholder="ค้นชื่อวัสดุ · สูตร · ลูกค้า · ผู้ขาย"
+            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาวัสดุ"
+          />
+        </div>
         <Select
           value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}
           options={[{ value: "", label: "ทุกชนิด" }, ...MATERIAL_KINDS.map((k) => ({ value: k, label: MATERIAL_KIND_LABELS[k] }))]}
