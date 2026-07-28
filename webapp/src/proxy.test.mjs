@@ -149,3 +149,35 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
   // อ่านไม่ถูกกั้นที่ชั้นนี้ (ด่านจริงคือ canViewCosting ใน handler)
   assert.equal(apiWriteAllowed('GET', '/api/sa/materials', 'viewer', []), true);
 });
+
+test('ทะเบียนกลิ่น/สูตร (mig 0171): ลงทะเบียนใน allowlist แล้ว — non-admin ต้องไม่ 403 เงียบ', () => {
+  // บทเรียนจาก /api/company-profile: endpoint ที่ไม่อยู่ใน OPEN_*_APIS จะโดน
+  // lockdown ปัดตกทั้งที่ handler เขียนสิทธิ์ไว้ถูก แล้วหน้าจอเงียบ ๆ ใช้ค่าสำรอง
+  // ⚠️ เข้าถึงจริงผ่าน /api/master/* ซึ่ง normalizeMaster ตัดเหลือ /api/scents
+  for (const path of ['/api/scents', '/api/formulas', '/api/master/scents', '/api/master/formulas']) {
+    assert.equal(lockedOut({ role: 'rd', extraCaps: [] }, path, 'GET', true), false, `rd อ่าน ${path}`);
+    assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, path, 'POST', true), false, `ae เขียน ${path}`);
+  }
+});
+
+test('ทะเบียนกลิ่น/สูตร: RD เขียนได้ทั้งที่ไม่มี products:edit', () => {
+  // RD เป็นเจ้าของทะเบียน (รับเข้าทะเบียน/ใส่รหัส/ส่ง Rev) แต่ไม่มี products:edit
+  // ถ้ากั้นด้วย cap เดียวเหมือนแคตตาล็อกสินค้า จะซ้ำรอยบั๊ก 403 ของทะเบียนวัสดุ
+  for (const path of ['/api/master/scents', '/api/master/formulas']) {
+    assert.equal(apiWriteAllowed('POST', path, 'rd', []), true, `rd สร้าง ${path}`);
+    assert.equal(apiWriteAllowed('PATCH', `${path}/X-1`, 'rd', []), true, `rd รับเข้าทะเบียน ${path}`);
+    // ฝ่ายขายเสนอร่างได้ (products:edit) — ด่านจริงว่าใครรับเข้าทะเบียนอยู่ใน handler
+    assert.equal(apiWriteAllowed('POST', path, 'ae', []), true, `ae เสนอร่าง ${path}`);
+    // read-only observer และ role ที่ไม่เกี่ยวยังเขียนไม่ได้
+    for (const role of ['viewer', 'executive', 'marketing', 'secretary']) {
+      assert.equal(apiWriteAllowed('POST', path, role, []), false, `${role} ต้องไม่ผ่าน ${path}`);
+    }
+  }
+});
+
+test('ทะเบียนกลิ่น/สูตร: Rev + จัดระเบียบ ใช้กฎเดียวกับตัวทะเบียน', () => {
+  assert.equal(apiWriteAllowed('POST', '/api/master/scents/SCT-1/revisions', 'rd', []), true);
+  assert.equal(apiWriteAllowed('PATCH', '/api/master/scents/SCT-1/revisions/SREV-1', 'ae', []), true);
+  assert.equal(apiWriteAllowed('POST', '/api/master/formulas/unsorted', 'rd', []), true);
+  assert.equal(apiWriteAllowed('POST', '/api/master/formulas/unsorted', 'viewer', []), false);
+});

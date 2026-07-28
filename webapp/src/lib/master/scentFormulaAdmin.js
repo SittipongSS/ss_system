@@ -1,0 +1,220 @@
+// ── ทะเบียนกลิ่น + สูตร (mig 0171) — ชั้นเข้าถึงข้อมูล (server only) ──────
+//
+// ⚠️ ทุก query ที่นี่ต้องอ่าน `error` เสมอ — `const { data } = await supabase…`
+// ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
+// (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
+import { genId } from '@/lib/id';
+import { normalizeScentInput } from '@/lib/master/scents';
+import { normalizeFormulaInput } from '@/lib/master/formulas';
+
+// ── กลิ่น ────────────────────────────────────────────────────────────────
+// โหลดกลิ่นพร้อม Rev ทั้งหมดในก้อนเดียว (กัน N+1) — ชุดข้อมูลเล็ก การค้น/กรอง
+// ทำที่ client เหมือนหน้าทะเบียนวัสดุ
+export async function loadScents(supabase, { status = null, customerId = null } = {}) {
+  let query = supabase.from('scents').select('*');
+  if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
+  if (customerId) query = query.eq('customerId', customerId);
+  const { data: scents, error } = await query.order('name', { ascending: true });
+  if (error) throw error;
+  if (!scents?.length) return [];
+
+  const { data: revisions, error: revError } = await supabase
+    .from('scent_revisions')
+    .select('*')
+    .in('scentId', scents.map((s) => s.id))
+    .order('revisionNo', { ascending: false });
+  if (revError) throw revError;
+
+  return scents.map((s) => ({
+    ...s,
+    revisions: (revisions || []).filter((r) => r.scentId === s.id),
+  }));
+}
+
+export async function findScent(supabase, id) {
+  const { data, error } = await supabase.from('scents').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { data: revisions, error: revError } = await supabase
+    .from('scent_revisions').select('*').eq('scentId', id)
+    .order('revisionNo', { ascending: false });
+  if (revError) throw revError;
+  return { ...data, revisions: revisions || [] };
+}
+
+export async function createScent(supabase, input, user, { accepted = false } = {}) {
+  const { value, error } = normalizeScentInput(input);
+  if (error) throw new Error(error);
+  // รับเข้าทะเบียนตั้งแต่แรกได้เฉพาะตอน RD เป็นคนสร้าง และต้องมีรหัสมาด้วย
+  if (accepted && !value.code) throw new Error('ต้องระบุรหัสกลิ่น');
+
+  const nowIso = new Date().toISOString();
+  const row = {
+    id: genId('SCT'),
+    ...value,
+    status: accepted ? 'developing' : 'draft',
+    currentRevisionNo: 0,
+    // RD ที่สร้างเองเป็นเจ้าของกลิ่นโดยปริยาย — ฝ่ายขายเปิดร่างยังไม่มีเจ้าของ
+    ownerId: value.ownerId || (accepted ? user?.id ?? null : null),
+    ownerName: value.ownerName || (accepted ? user?.name ?? null : null),
+    acceptedById: accepted ? user?.id ?? null : null,
+    acceptedByName: accepted ? user?.name ?? null : null,
+    acceptedAt: accepted ? nowIso : null,
+    createdById: user?.id ?? null,
+    createdByName: user?.name ?? null,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const { data, error: insertError } = await supabase.from('scents').insert(row).select().single();
+  if (insertError) throw translateScentConflict(insertError);
+  return data;
+}
+
+export async function updateScent(supabase, id, patch) {
+  const { data, error } = await supabase
+    .from('scents')
+    .update({ ...patch, updatedAt: new Date().toISOString() })
+    .eq('id', id).select().single();
+  if (error) throw translateScentConflict(error);
+  return data;
+}
+
+// unique violation จาก DB อ่านไม่รู้เรื่องสำหรับผู้ใช้ — แปลเป็นภาษาคนตรงจุดที่ชน
+function translateScentConflict(error) {
+  const msg = String(error?.message || '');
+  if (error?.code === '23505') {
+    if (msg.includes('scents_identity_uk')) {
+      return new Error('ลูกค้ารายนี้มีกลิ่นชื่อนี้อยู่แล้ว — เปิดกลิ่นเดิมแทนการสร้างซ้ำ');
+    }
+    if (msg.includes('scents_code_uk')) return new Error('รหัสกลิ่นนี้ถูกใช้ไปแล้ว');
+    if (msg.includes('formulas_code_uk')) return new Error('รหัสสูตรนี้ถูกใช้ไปแล้ว');
+  }
+  return error;
+}
+
+// ── Rev ของกลิ่น ─────────────────────────────────────────────────────────
+// เขียน Rev แล้วอัปเดตตัวนับบนหัวกลิ่นในจังหวะเดียวกันเสมอ (ตัวนับเป็นค่า derive
+// ที่เก็บไว้เพื่อไม่ต้อง join ตอนอ่านทะเบียน — ปล่อยให้ค้างคือ drift)
+export async function appendScentRevision(supabase, scent, value, user) {
+  const revisionNo = Number(scent.currentRevisionNo || 0) + 1;
+  const nowIso = new Date().toISOString();
+  const row = {
+    id: genId('SREV'),
+    scentId: scent.id,
+    revisionNo,
+    sampleCode: value.sampleCode,
+    sentAt: value.sentAt,
+    sentById: user?.id ?? null,
+    sentByName: user?.name ?? null,
+    feedbackStatus: 'pending',
+    note: value.note,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const { data, error } = await supabase.from('scent_revisions').insert(row).select().single();
+  if (error) throw error;
+
+  await updateScent(supabase, scent.id, { currentRevisionNo: revisionNo });
+  return data;
+}
+
+export async function findScentRevision(supabase, id) {
+  const { data, error } = await supabase
+    .from('scent_revisions').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function recordScentFeedback(supabase, revisionId, patch, user) {
+  const { data, error } = await supabase
+    .from('scent_revisions')
+    .update({
+      ...patch,
+      feedbackById: user?.id ?? null,
+      feedbackByName: user?.name ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq('id', revisionId).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// ── สูตร ─────────────────────────────────────────────────────────────────
+export async function loadFormulas(supabase, { status = null, customerId = null } = {}) {
+  let query = supabase.from('formulas').select('*');
+  if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
+  if (customerId) query = query.eq('customerId', customerId);
+  const { data, error } = await query.order('name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function findFormula(supabase, id) {
+  const { data, error } = await supabase.from('formulas').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function createFormula(supabase, input, user, { accepted = false } = {}) {
+  const { value, error } = normalizeFormulaInput(input);
+  if (error) throw new Error(error);
+  if (accepted && !value.code) throw new Error('ต้องระบุรหัสสูตร');
+
+  const nowIso = new Date().toISOString();
+  const row = {
+    id: genId('FML'),
+    ...value,
+    status: accepted ? 'active' : 'draft',
+    acceptedById: accepted ? user?.id ?? null : null,
+    acceptedByName: accepted ? user?.name ?? null : null,
+    acceptedAt: accepted ? nowIso : null,
+    createdById: user?.id ?? null,
+    createdByName: user?.name ?? null,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const { data, error: insertError } = await supabase.from('formulas').insert(row).select().single();
+  if (insertError) throw translateScentConflict(insertError);
+  return data;
+}
+
+export async function updateFormula(supabase, id, patch) {
+  const { data, error } = await supabase
+    .from('formulas')
+    .update({ ...patch, updatedAt: new Date().toISOString() })
+    .eq('id', id).select().single();
+  if (error) throw translateScentConflict(error);
+  return data;
+}
+
+// จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ
+export async function countProductsUsingFormula(supabase, formulaId) {
+  const { count, error } = await supabase
+    .from('products').select('id', { count: 'exact', head: true }).eq('formulaId', formulaId);
+  if (error) throw error;
+  return count || 0;
+}
+
+// ── "รอจัดระเบียบ": สินค้าที่มีชื่อสูตรแต่ยังไม่ผูกทะเบียน ────────────────
+// migration ตั้งใจไม่ backfill กลุ่มนี้ (ชื่อส่วนใหญ่คือ *ชื่อกลิ่น* ไม่ใช่สูตร)
+export async function loadUnsortedProducts(supabase) {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, fgCode, productDescription, customerId, customerName, formulaName, formulaCode, formulaDate, formulaId, scentId')
+    .is('formulaId', null)
+    .is('scentId', null)
+    .not('formulaName', 'is', null);
+  if (error) throw error;
+  return data || [];
+}
+
+// ผูกสินค้ากลับไปที่ทะเบียนหลัง RD ตัดสินว่าแถวนั้นเป็นกลิ่นหรือสูตร
+export async function linkProductToRegistry(supabase, productId, { formulaId = null, scentId = null }) {
+  const patch = { updatedAt: new Date().toISOString() };
+  if (formulaId) patch.formulaId = formulaId;
+  if (scentId) patch.scentId = scentId;
+  const { data, error } = await supabase
+    .from('products').update(patch).eq('id', productId).select('id').single();
+  if (error) throw error;
+  return data;
+}
