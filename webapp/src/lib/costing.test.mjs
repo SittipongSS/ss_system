@@ -8,6 +8,8 @@ import {
   canDecideItem,
   canEditCostingRequest,
   canFeedCostFromRequest,
+  canWithdrawCostingRequest,
+  withdrawFromExecError,
   feedCostError,
   feedCostValue,
   canViewCostingRequest,
@@ -317,6 +319,44 @@ test('แก้ใบ: ปิดตายเมื่ออนุมัติค
   assert.equal(canEditCostingRequest({ role: 'executive' }, req({ status: 'draft' })), false);
   // admin break-glass แก้ได้
   assert.equal(canEditCostingRequest({ role: 'admin' }, req({ status: 'draft' })), true);
+});
+
+// ── ดึงกลับ (B5 2026-07-28) ──────────────────────────────────────────────
+test('ดึงกลับ: ได้เฉพาะตอนใบรอผู้บริหารอนุมัติ', () => {
+  const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
+  assert.equal(canWithdrawCostingRequest(ae, req({ status: 'pending_exec' })), true);
+  for (const status of ['draft', 'pricing', 'assembling', 'returned', 'approved', 'linked', 'cancelled']) {
+    assert.equal(canWithdrawCostingRequest(ae, req({ status })), false, status);
+    assert.match(withdrawFromExecError(req({ status }), ae), /รอผู้บริหารอนุมัติ/, status);
+  }
+});
+
+// มติคำศัพท์ 2026-07-26: ดึงกลับเป็นของผู้ยื่น ผู้อนุมัติต้องใช้ "ตีกลับ" ที่ทิ้งเหตุผล
+// ไว้บนใบ — ถ้าผู้บริหารดึงกลับได้ มันจะกลายเป็นช่องส่งใบกลับแบบเงียบ
+test('ดึงกลับ: ผู้บริหารทำไม่ได้ — ต้องใช้ตีกลับ', () => {
+  const pending = req({ status: 'pending_exec' });
+  assert.equal(canWithdrawCostingRequest({ role: 'executive' }, pending), false);
+  assert.match(withdrawFromExecError(pending, { role: 'executive' }), /ตีกลับให้แก้ไข/);
+  // RD/PC ที่ตอบราคาก็ไม่ใช่เจ้าของใบ
+  assert.equal(canWithdrawCostingRequest({ role: 'rd', department: 'RD' }, pending), false);
+  // AE ทีมอื่น
+  assert.equal(canWithdrawCostingRequest({ id: 'u-x', role: 'ae', team: 'ODM' }, pending), false);
+  // admin break-glass ได้ (เหมือนทุกด่านในระบบ)
+  assert.equal(canWithdrawCostingRequest({ role: 'admin' }, pending), true);
+});
+
+test('ดึงกลับ: ไม่มีใบ = บอกว่าไม่พบ ไม่ใช่เงียบ', () => {
+  assert.equal(withdrawFromExecError(null, { role: 'admin' }), 'ไม่พบใบขอราคา');
+  assert.equal(canWithdrawCostingRequest({ role: 'admin' }, null), false);
+});
+
+// ดึงกลับแล้วต้องยื่นใหม่ได้ทันที ไม่งั้นจะเป็นทางตันแบบเดียวกับที่ #771 เพิ่งปลดไป
+test('ดึงกลับแล้วสถานะ assembling ต้องยื่นเข้าผู้บริหารใหม่ได้', () => {
+  const item = {
+    productLabel: 'FG-1',
+    components: [{ sourceDept: 'RD', priceStatus: 'quoted', required: true, pricePerUnit: 10 }],
+  };
+  assert.equal(submitToExecError({ status: 'assembling', items: [item] }), null);
 });
 
 // ── บริบทจากดีล ─────────────────────────────────────────────────────────

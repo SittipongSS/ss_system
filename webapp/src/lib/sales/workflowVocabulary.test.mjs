@@ -20,6 +20,12 @@ const FILES = [
   'src/app/api/sales-planning/quotations/[id]/withdraw/route.js',
   'src/app/api/sales-planning/quotations/[id]/reject/route.js',
   'src/app/api/sales-planning/sales-orders/[id]/route.js',
+  // B5 (2026-07-28): "ดึงกลับ" ขยายมาที่ใบขอราคาผลิต — โมดูลใหม่คือช่องทางหลักที่คำเก่า
+  // จะกลับมา เพราะคนลอกแพตเทิร์นจากไฟล์เก่ากว่า
+  'src/lib/costing.js',
+  'src/lib/costingUpdates.js',
+  'src/app/sa/costing/[id]/page.js',
+  'src/app/api/sa/costing/[id]/withdraw/route.js',
 ];
 
 const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
@@ -62,6 +68,11 @@ test('both detail pages gate ดึงกลับ through the shared predicate,
 
   assert.match(qt, /canWithdrawSubmission = canWithdrawQuotationSubmission\(/);
   assert.match(so, /canWithdraw = canWithdrawSalesOrderSubmission\(/);
+  // B5: ใบขอราคาผลิตเข้ากติกาเดียวกัน — predicate ตัวเดียวที่หน้าเว็บกับ route ใช้ร่วม
+  const costing = read('src/app/sa/costing/[id]/page.js');
+  const costingRoute = read('src/app/api/sa/costing/[id]/withdraw/route.js');
+  assert.match(costing, /canWithdraw = canWithdrawCostingRequest\(/);
+  assert.match(costingRoute, /withdrawFromExecError\(before, user\)/);
 
   // ตรรกะเดิมที่ยอมให้ผู้อนุมัติ/ผู้รีวิวดึงกลับต้องไม่หลงเหลือ
   assert.doesNotMatch(qt, /approvalRequestedBy === quote\?\.meId \|\| !!quote\?\.canApprove/);

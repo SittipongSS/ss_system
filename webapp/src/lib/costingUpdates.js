@@ -78,6 +78,17 @@ export function costingSubmitUpdate(request) {
   };
 }
 
+// ผู้ยื่นดึงใบกลับมาแก้เอง — ต้องอยู่ในเธรดเหมือนการยื่น ไม่งั้นคนอ่านจะเห็นใบยื่นแล้ว
+// เงียบหายไปเฉย ๆ แล้วโผล่ยื่นใหม่อีกรอบโดยไม่มีอะไรอธิบายช่วงที่หายไป
+export function costingWithdrawUpdate(request, reason) {
+  if (!request) return null;
+  return {
+    kind: 'withdraw',
+    body: `ดึงกลับมาแก้ไข — ${clip(reason) || 'ไม่ระบุเหตุผล'}`,
+    meta: { items: (request.items || []).length },
+  };
+}
+
 // ผู้บริหารตัดสินรายรายการ — ตีกลับคือเหตุการณ์ที่ต้องเก็บให้ครบทุกรอบ (ดูหัวไฟล์)
 export function costingDecisionUpdate(decision, item, { reason = null } = {}) {
   if (!item) return null;

@@ -61,6 +61,8 @@ export const UPDATE_KINDS = {
   costing_request: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
+    // ดึงกลับ = ผู้ยื่นเอาคืนเอง (ไม่ใช่ตีกลับ) จึงเป็นสีกลาง ไม่ใช่สีแดง
+    withdraw: { label: 'ดึงกลับมาแก้ไข', color: 'var(--text-3)' },
     approve: { label: 'อนุมัติราคาผลิต', color: 'var(--green)' },
     returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     revise: { label: 'ออก Rev.', color: 'var(--amber)' },
