@@ -4,6 +4,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder,
+  scentForcePreview, formulaForcePreview,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -203,4 +204,37 @@ test('อ่านตาราง orders ไม่ได้ (ยังไม่�
     },
   };
   assert.deepEqual(await exciseFilingsOfSalesOrder(supabase, 'SO1'), []);
+});
+
+test('scentForcePreview: แยก "ลบพ่วง" ออกจาก "ปลดการเชื่อมโยง" ให้ชัด', async () => {
+  const supabase = stubCount({
+    'scent_revisions:scentId': 2,
+    'formulas:scentId': 1,
+    'products:scentId': 3,
+    'material_prices:scentId': 0,
+  });
+  const { cascade, notes, blocked } = await scentForcePreview(supabase, { id: 'SCT-1', status: 'active' });
+  assert.equal(blocked, false);
+  // เรียงตามที่ประกาศ และตัดรายการที่ count = 0 ทิ้ง
+  assert.deepEqual(cascade.map((c) => c.count), [2, 1, 3]);
+  // ⚠️ ป้ายต้องบอกตรง ๆ ว่าอะไรหายจริง อะไรแค่ถูกปลด — ทั้งหมดเป็น FK จริงที่ตั้ง
+  // SET NULL/CASCADE ไว้แล้ว ถ้าเขียนรวมว่า "จะลบ" ผู้ดูแลระบบจะนึกว่าสินค้าหายด้วย
+  assert.match(cascade[0].label, /ลบพ่วง/);
+  assert.match(cascade[1].label, /ปลดการเชื่อมโยง/);
+  assert.match(cascade[2].label, /สินค้ายังอยู่/);
+  assert.ok(notes.some((n) => n.includes('เก็บเข้ากรุ')));
+});
+
+test('scentForcePreview: กลิ่นที่ยังไม่เคยส่ง ไม่เตือนเรื่องประวัติ', async () => {
+  const supabase = stubCount({});
+  const { cascade, notes } = await scentForcePreview(supabase, { id: 'SCT-2', status: 'draft' });
+  assert.deepEqual(cascade, []);
+  assert.deepEqual(notes, []);
+});
+
+test('formulaForcePreview: เตือนว่าสินค้าจะกลับไปอยู่ "รอจัดระเบียบ"', async () => {
+  const supabase = stubCount({ 'products:formulaId': 2, 'material_prices:formulaId': 1 });
+  const { cascade, notes } = await formulaForcePreview(supabase, { id: 'FML-1', status: 'active' });
+  assert.deepEqual(cascade.map((c) => c.count), [2, 1]);
+  assert.ok(notes.some((n) => n.includes('รอจัดระเบียบ')));
 });
