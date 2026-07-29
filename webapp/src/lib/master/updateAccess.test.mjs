@@ -85,6 +85,60 @@ test('งานของฉัน: เจ้าของ/ผู้รับผ�
   assert.equal(await canPostUpdate(stub(t), 'personal_task', null, owner), false);
 });
 
+// ── ลีด ────────────────────────────────────────────────────────────────
+const lead = (extra = {}) => ({
+  id: 'LD-1', status: 'assigned', team: 'KA', assigneeId: 'u-ae', createdBy: 'u-mkt', ...extra,
+});
+
+test('ลีด: อ่านได้ตาม scope เดียวกับหน้ารายละเอียด (ไม่แคบกว่า ไม่กว้างกว่า)', async () => {
+  const l = lead();
+  const mine = { id: 'u-ae', role: 'ae', team: 'KA' };
+  const otherAe = { id: 'u-ae2', role: 'ae', team: 'KA' };
+  const otherTeamSenior = { id: 'u-sn', role: 'senior_ae', team: 'ODM' };
+
+  assert.equal(await canViewUpdates(stub(l), 'lead', l, mine), true);
+  // AE คนอื่นเห็นลีดที่ไม่ใช่ของตัวเองไม่ได้ (PII) — เธรดต้องปิดตามหน้า
+  assert.equal(await canViewUpdates(stub(l), 'lead', l, otherAe), false);
+  assert.equal(await canViewUpdates(stub(l), 'lead', l, otherTeamSenior), false);
+  assert.equal(await canViewUpdates(stub(l), 'lead', l, { id: 'u-m', role: 'marketing' }), true);
+});
+
+test('⭐ ลีด: ติดต่อแล้วยังโพสต์ได้ — เธรดต้องไม่ตายพร้อมกับสิทธิ์แก้ข้อมูล', async () => {
+  const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
+  // canEditLead ปิดตายทุกสถานะใน LEAD_LOCKED_STATUSES — ถ้าใครเผลอเอามาคุมเธรด
+  // เคสพวกนี้จะ false ทั้งแถบ ทั้งที่เป็นช่วงที่มีเรื่องต้องเล่ามากที่สุด
+  for (const status of ['contacted', 'meeting', 'qualified', 'disqualified']) {
+    assert.equal(
+      await canPostUpdate(stub(lead({ status })), 'lead', lead({ status }), ae), true,
+      `${status}: ผู้รับมอบต้องยังโพสต์ได้`,
+    );
+  }
+});
+
+test('ลีด: ใครโพสต์ได้บ้าง — ทีมที่ถือลีด / supervisor / คนกรอกลีด · observer ไม่ได้', async () => {
+  const l = lead();
+  const post = (user, row = l) => canPostUpdate(stub(row), 'lead', row, user);
+
+  assert.equal(await post({ id: 'u-ae', role: 'ae', team: 'KA' }), true);          // ผู้รับมอบ
+  assert.equal(await post({ id: 'u-sn', role: 'senior_ae', team: 'KA' }), true);   // ทีมเดียวกัน
+  assert.equal(await post({ id: 'u-s', role: 'ae_supervisor', team: 'KA' }), true); // คัดกรอง
+  assert.equal(await post({ id: 'u-mkt', role: 'marketing' }), true);              // คนกรอกลีด
+  // marketing คนอื่น: เห็นคิวรวมได้ แต่ไม่ใช่เจ้าของลีดนี้ = โพสต์ไม่ได้
+  assert.equal(await post({ id: 'u-mkt2', role: 'marketing' }), false);
+  // viewer อ่านได้ทุกใบแต่ห้ามเขียนอะไรทั้งระบบ
+  assert.equal(await canViewUpdates(stub(l), 'lead', l, { id: 'u-v', role: 'viewer' }), true);
+  assert.equal(await post({ id: 'u-v', role: 'viewer' }), false);
+  // ไม่มี parent = ปิดตาย
+  assert.equal(await canPostUpdate(stub(l), 'lead', null, { id: 'u-ae', role: 'ae', team: 'KA' }), false);
+});
+
+test('ลีด: ชุดชนิดต้องตรงกับดีลทุกตัว (ลีดที่ผ่านคัดกรองกลายเป็นดีล)', () => {
+  assert.deepEqual(authorableKinds('lead'), authorableKinds('deal'));
+  for (const kind of authorableKinds('lead')) {
+    assert.equal(updateKindMeta('lead', kind).label, updateKindMeta('deal', kind).label, kind);
+  }
+});
+
 test('แก้/ลบ: เจ้าของข้อความเท่านั้น · ข้อความระบบแก้ไม่ได้ · ลบแล้วแก้ต่อไม่ได้', async () => {
   const t = task();
   const owner = { id: 'u-own', role: 'ae', team: 'KA' };

@@ -11,7 +11,10 @@
 // ⚠️ ทุกฟังก์ชันเป็น **async และรับ supabase** เพราะด่านของงาน/เคสต้อง query ต่อ
 // (canViewPersonalTask เป็น async อยู่แล้ว) — ถ้าทำเป็น sync จะต้องรื้อทั้งทะเบียน
 // ตอนต่อ entity ตัวที่สอง
-import { canApproveCosting, canChangeTaskStatus, canViewCosting, isSuperuser } from '@/lib/permissions';
+import {
+  canApproveCosting, canChangeTaskStatus, canViewCosting, isReadOnlyObserver, isSuperuser,
+} from '@/lib/permissions';
+import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
 import { canViewCostingRequest } from '@/lib/costing';
@@ -66,6 +69,33 @@ export const UPDATE_ENTITIES = {
     },
     async canPost(supabase, parent, user) {
       return canEditSalesPlanning(user) && inSalesEditScope(user, parent);
+    },
+  },
+
+  // ── ลีด (mig 0091) ───────────────────────────────────────────────────
+  // เดิมหน้าลีด **อ่านอย่างเดียว** — มีไทม์ไลน์เหตุการณ์ระบบแต่ไม่มีที่ให้คนพิมพ์
+  // อะไรเลย ทั้งที่ช่วงลีดคือช่วงที่ข้อมูลอยู่ในหัวคนมากที่สุด (โทรแล้วไม่รับ /
+  // สนใจแต่ยังไม่มีงบ) แล้วหายไปทั้งหมดตอนแตกเป็นดีล
+  lead: {
+    table: 'sales_leads',
+    attachments: true,   // สกรีนช็อตแชท/นามบัตร = หลักฐานต้นทางของลีด
+    async canView(supabase, parent, user) {
+      // ด่านเดียวกับ GET /api/sales-planning/leads/[id] เป๊ะ ๆ — ห้ามตั้งใหม่ให้
+      // แคบกว่าหน้าจอ ไม่งั้นเปิดลีดได้แต่เธรดว่างโดยไม่มีอะไรบอกว่าเพราะอะไร
+      return canViewLeads(user) && inLeadScope(user, parent);
+    },
+    // ⚠️ **ห้ามใช้ `canEditLead`** — มันปิดตายเมื่อลีดเข้า LEAD_LOCKED_STATUSES
+    // (contacted/meeting/qualified/disqualified) ซึ่งถูกสำหรับ "แก้ข้อมูลติดต่อ"
+    // แต่ผิดสนิทสำหรับเธรด เพราะนั่นคือช่วงที่มีเรื่องต้องเล่ามากที่สุด
+    // (กับดักเดียวกับ canEditCostingRequest ด้านล่าง)
+    async canPost(supabase, parent, user) {
+      if (!canViewLeads(user) || !inLeadScope(user, parent)) return false;
+      if (isReadOnlyObserver(user?.role)) return false;
+      if (canWorkLead(user, parent)) return true;        // ทีมที่ถือลีดอยู่
+      if (isSuperuser(user?.role)) return true;          // supervisor คัดกรอง/ตีกลับ
+      // คนกรอกลีดเข้ามา (ทีม Marketing) — เจ้าของข้อมูลต้นทาง ตอบคำถามได้เสมอ
+      // แม้หลังส่งมอบให้ฝ่ายขายแล้วจะแก้ตัวลีดไม่ได้ก็ตาม
+      return !!user?.id && parent?.createdBy === user.id;
     },
   },
 

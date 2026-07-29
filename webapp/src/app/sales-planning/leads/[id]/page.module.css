@@ -14,17 +14,9 @@
 .summaryRow { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-5); }
 .summaryRow strong { color: var(--text-2); text-align: right; }
 .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-.timeline { display: flex; flex-direction: column; }
-.event { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 12px; }
-.rail { position: relative; display: flex; justify-content: center; }
-.rail::after { position: absolute; top: 17px; bottom: -7px; width: 1px; background: var(--border); content: ""; }
-.event:last-child .rail::after { display: none; }
-.dot { position: relative; z-index: 1; width: 9px; height: 9px; margin-top: 5px; border: 2px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.eventBody { padding-bottom: 18px; }
-.eventBody strong { color: var(--text-2); font-size: var(--fs-7); }
-.eventBody p { margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-5); line-height: 1.5; }
-.eventMeta { margin-top: 4px; color: var(--text-3); font-size: var(--fs-5); }
-.empty { padding: 22px; color: var(--text-3); text-align: center; }
+/* ไทม์ไลน์ราง+จุด (.timeline/.event/.rail/.dot/.eventBody/.eventMeta/.empty) ถูกลบ
+   ทั้งบล็อก — หน้านี้ใช้ `UpdateThread` กลางแล้ว · CSS ของ UpdateThread เป็น
+   **สำเนาที่ก๊อปมาจากไฟล์นี้ตั้งแต่แรก** ปล่อยไว้คือมีสองสำเนาที่เหลื่อมกันไปเรื่อย ๆ */
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }
 @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 15px; } }
 .page { display: flex; max-width: 1380px; flex-direction: column; gap: 16px; }
