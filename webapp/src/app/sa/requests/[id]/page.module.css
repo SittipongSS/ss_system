@@ -1,0 +1,26 @@
+/* หน้ารายละเอียดคำร้อง — คลาสของส่วนที่เพิ่มใหม่
+   (ส่วนที่เหลือของหน้ายังเป็น inline style เดิม ทยอยย้ายตาม ui-legacy-budget) */
+
+/* เนื้อคำร้องของชนิดที่ไม่มีบรรทัด — บรีฟ/คำถามจริงที่ผู้ตอบต้องอ่าน
+   จึงเป็นสีข้อความเต็ม ไม่ใช่สีรอง เหมือน note ที่อยู่ถัดลงไป */
+.requestBody {
+  margin-top: 12px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+/* คำอธิบายใต้ช่องกรอกในโมดัลปิดบรีฟ */
+.fieldHint {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.fieldError {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--red);
+}
+
+.modalActions {
+  margin-top: 16px;
+}

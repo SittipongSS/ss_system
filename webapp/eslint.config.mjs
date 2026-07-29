@@ -26,6 +26,19 @@ const eslintConfig = defineConfig([
       "react-hooks/immutability": "off",
       "react-hooks/refs": "off",
       "react/no-unescaped-entities": "off",
+      // ⭐ ตัวจับ "หน้าเว็บพังตอนรันแต่ทุกอย่างผ่านหมด" — ปิดอยู่โดยปริยายใน
+      // eslint-config-next (เพราะฝั่ง TS มี type checker ทำหน้าที่นี้ ส่วนโปรเจกต์นี้
+      // เป็น JS ล้วนจึงไม่มีใครตรวจเลย) · Turbopack ไม่ error ตอน import ชื่อที่
+      // ไม่มีอยู่ และตัวแปรที่ไม่ถูก import จะพังตอน "render" เท่านั้น
+      //
+      // ของจริงที่เจอตอนเปิดกฎนี้ครั้งแรก (2026-07-29) — ทั้งหมดเป็นหน้าที่พังจริงบน prod:
+      //   · sa/requests/[id] import ชื่อเก่า `askProgress` แต่เรียก `requestProgress`
+      //     → หน้ารายละเอียดคำร้อง **เปิดไม่ได้เลยทั้งหน้า**
+      //   · components/ui/Toast.js ใช้ `normalizeToast` โดยไม่ import (ToastProvider
+      //     อยู่ใน root layout → toast ทุกตัวที่ยิงผ่าน provider พัง)
+      //   · sa/projects/[id] + sahamit/po/[id] ใช้ `notifyToast` โดยไม่ import
+      //     → ทางที่ error จะพังซ้อน error เดิม ผู้ใช้ไม่เห็นข้อความอะไรเลย
+      "no-undef": "error",
     },
   },
 ]);

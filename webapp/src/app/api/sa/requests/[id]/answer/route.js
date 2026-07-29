@@ -88,10 +88,30 @@ export async function PATCH(request, { params }) {
       }
 
       // ตอบราคาวัสดุร่างที่เซลเสนอมา = รับเข้าทะเบียนไปในตัว
-      const { data: material } = await supabase
-        .from('material_prices').select('status').eq('id', item.materialId).maybeSingle();
+      const { data: material, error: materialError } = await supabase
+        .from('material_prices').select('status, scentId, formulaId')
+        .eq('id', item.materialId).maybeSingle();
+      if (materialError) throw materialError;
       if (material?.status === 'draft') {
         await acceptMaterial(supabase, { materialId: item.materialId, user });
+      }
+
+      // ประทับกลิ่น/สูตรที่คำร้องอ้างถึงลงแถววัสดุ (คอลัมน์ของ mig 0171)
+      //
+      // คำร้องขอราคา F ต้องเลือกกลิ่นจากทะเบียน · FB ต้องเลือกสูตร (requestShapeError
+      // บังคับไว้) — ตอนตอบราคาจึงเป็นจังหวะเดียวที่รู้ว่า "ราคาก้อนนี้คือราคาของ
+      // กลิ่น/สูตรตัวไหน" · ไม่ประทับ = คอลัมน์ทั้งสองตายอยู่เฉย ๆ และหน้าทะเบียน
+      // ตอบไม่ได้ว่าราคานี้มาจากกลิ่นอะไร
+      //
+      // ⚠️ **ไม่ทับของเดิม** — วัสดุตัวหนึ่งอาจถูกถามซ้ำจากหลายคำร้อง ถ้าใบหลังทับ
+      // ใบแรกได้ ประวัติราคาจะชี้กลิ่นผิดตัวย้อนหลังทั้งชุด
+      const stamp = {};
+      if (before.scentId && !material?.scentId) stamp.scentId = before.scentId;
+      if (before.formulaId && !material?.formulaId) stamp.formulaId = before.formulaId;
+      if (Object.keys(stamp).length) {
+        const { error: stampError } = await supabase.from('material_prices')
+          .update({ ...stamp, updatedAt: nowIso }).eq('id', item.materialId);
+        if (stampError) throw stampError;
       }
 
       const { revision } = await appendMaterialRevision(supabase, {
