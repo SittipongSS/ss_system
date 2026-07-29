@@ -3,7 +3,7 @@
    (โค้ดเดิมตั้ง 12.5px เองบางคอลัมน์ จนคอลัมน์ลูกค้าตัวใหญ่กว่าคอลัมน์ชื่อกลิ่น) */
 
 /* .ui-workspace ไม่มี gap — แถบแจ้งต้องเว้นระยะเอง ไม่งั้นชนแถบเครื่องมือ */
-.banner { margin-bottom: 12px; }
+.banner { margin-bottom: var(--space-3); }
 
 .name { font-weight: 600; }
 .muted { color: var(--text-3); }
@@ -13,7 +13,7 @@
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .actionsCol { width: 180px; }
@@ -22,7 +22,7 @@
 .hint { color: var(--text-3); }
 
 .effect {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-5);
 }

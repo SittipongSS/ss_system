@@ -55,10 +55,24 @@ const nativeFeedbackDebt = {
   "src/components/mgmt/DocsPanel.js": 2, // ลิงก์ + ชื่อ Google Doc/Sheet (โมดูลงานบริหารที่พักไว้)
 };
 
+/* ระยะห่างที่ยังเป็นเลขดิบ — เพดานรวม ไม่ใช่รายไฟล์ (ตรวจ 2026-07-29: ระยะห่างใน
+   CSS 1,418 จุด กระจาย 37 ค่า = แทบทุกจำนวนเต็ม 1–28 จึงไม่มีจังหวะร่วมให้ยึด)
+
+   รอบแรก (#828) แปลงเฉพาะจุดที่ **ตรงกริด 4px อยู่แล้ว** เข้าโทเคน `--space-*`
+   เพื่อให้หน้าตาไม่ขยับแม้แต่พิกเซลเดียว (มติผู้ใช้ 2026-07-30) — ที่เหลือคือค่านอก
+   กริด (10px 165 · 14px 106 · 6px 86 · 2px 84 · 18px 83 · …) ซึ่งการดูดเข้ากริดคือ
+   การขยับเลย์เอาต์จริง ต้องมีคนเปิดหน้าดูทีละจอ
+
+   กติกาเดียวกับ ratchet ชั้นสไตล์เก่า: **ขึ้นไม่ได้ ลงได้อย่างเดียว** เก็บค่านอกกริด
+   เพิ่ม = ตก · ดูดเข้ากริดแล้วลืมลดเลข = ตกเหมือนกัน
+   ⚠️ ห้ามขยับเลขนี้ขึ้นเพื่อให้ audit ผ่าน — ทางเดียวที่ควรขยับคือลง */
+const RAW_SPACING_CAP = 793;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const zIndexViolations = [];
 const motionViolations = [];
+let rawSpacingCount = 0;
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
@@ -153,6 +167,16 @@ for (const file of uiFiles) {
         if (ms >= 500) continue;
         const line = source.slice(0, decl.index + hit.index).split(/\r?\n/).length;
         motionViolations.push(`${rel}:${line} ${hit[0]} → var(--motion-…)`);
+      }
+    }
+  }
+
+  /* นับระยะห่างที่ยังเป็นเลขดิบ (ดู RAW_SPACING_CAP) — เฉพาะไฟล์ CSS
+     `(?<![\d.\-])` กันค่าติดลบและตัวเลขที่เป็นส่วนของค่าอื่น */
+  if (rel.endsWith(".css")) {
+    for (const decl of source.matchAll(/\b(?:gap|row-gap|column-gap|padding|margin)(?:-(?:top|bottom|left|right|inline|block))?:\s*[^;{}]+;/g)) {
+      for (const hit of decl[0].matchAll(/(?<![\d.\-])(\d+)px\b/g)) {
+        if (Number(hit[1]) > 0) rawSpacingCount += 1;
       }
     }
   }
@@ -323,6 +347,12 @@ const failures = [
   ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
   ...zIndexViolations.map((item) => `z-index นอกชั้นซ้อนกลาง: ${item}`),
   ...motionViolations.map((item) => `เวลาใน transition/animation นอกชั้นจังหวะกลาง: ${item}`),
+  ...(rawSpacingCount > RAW_SPACING_CAP
+    ? [`ระยะห่างเลขดิบเพิ่มขึ้น: ${rawSpacingCount} > เพดาน ${RAW_SPACING_CAP} — ของใหม่ต้องหยิบขั้นจาก --space-*`]
+    : []),
+  ...(rawSpacingCount < RAW_SPACING_CAP
+    ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
@@ -346,6 +376,7 @@ console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
+console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);

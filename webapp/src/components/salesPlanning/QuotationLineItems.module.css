@@ -75,11 +75,11 @@
 .discountControls {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .emptyRows {
-  padding: 32px !important;
+  padding: var(--space-8) !important;
   color: var(--text-3);
   text-align: center;
 }
@@ -101,8 +101,8 @@
 .totalsWrap {
   display: flex;
   justify-content: flex-end;
-  margin-top: 32px;
-  padding-top: 20px;
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--border);
 }
 
@@ -168,7 +168,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--fs-8);
 }

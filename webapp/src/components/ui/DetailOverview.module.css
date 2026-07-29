@@ -12,8 +12,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
-  padding: 20px 22px 18px;
+  gap: var(--space-5);
+  padding: var(--space-5) 22px 18px;
 }
 
 .titleBlock { min-width: 0; }
@@ -97,7 +97,7 @@
   align-items: center;
   gap: 9px;
   min-width: 0;
-  padding: 13px 16px;
+  padding: 13px var(--space-4);
   border-right: 1px solid var(--border);
   color: var(--text-2);
   font-size: var(--fs-6);
@@ -124,7 +124,7 @@
 }
 
 .extra {
-  padding: 14px 20px;
+  padding: 14px var(--space-5);
   border-top: 1px solid var(--border);
 }
 

@@ -4,7 +4,7 @@
 /* เนื้อคำร้องของชนิดที่ไม่มีบรรทัด — บรีฟ/คำถามจริงที่ผู้ตอบต้องอ่าน
    จึงเป็นสีข้อความเต็ม ไม่ใช่สีรอง เหมือน note ที่อยู่ถัดลงไป */
 .requestBody {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   font-size: var(--fs-8);
   color: var(--text);
 }
@@ -16,11 +16,11 @@
 }
 
 .fieldError {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: var(--fs-6);
   color: var(--red);
 }
 
 .modalActions {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }

@@ -1,7 +1,7 @@
 .contextGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .layout {
@@ -14,7 +14,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 .aside {
   position: sticky;
@@ -36,8 +36,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px 18px;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
   border-bottom: 1px solid var(--border);
 }
 .heading {
@@ -77,11 +77,11 @@
   flex-wrap: wrap;
 }
 .cardBody {
-  padding: 16px 18px;
+  padding: var(--space-4) 18px;
 }
 .contextCard {
   display: block;
-  padding: 15px 16px;
+  padding: 15px var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
@@ -132,7 +132,7 @@
   color: var(--accent-ink);
 }
 .contextSubtitle {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--text-3);
   font-size: var(--fs-4);
 }
@@ -147,7 +147,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 9px;
   margin: 13px 0 0;
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 .contextFacts div {

@@ -30,15 +30,15 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 58px;
-  padding: 14px 16px 10px;
+  padding: 14px var(--space-4) 10px;
 }
 
 .title {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -71,13 +71,13 @@
 
 .body {
   min-height: var(--chart-min-height, 260px);
-  padding: 8px 16px 16px;
+  padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
 .legend {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--text-2);
   font-size: var(--fs-4);
   flex-wrap: wrap;
@@ -98,7 +98,7 @@
 
 .tooltip {
   min-width: 150px;
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
@@ -117,7 +117,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   color: var(--text-2);
   font-size: var(--fs-4);
 }
@@ -132,7 +132,7 @@
   display: grid;
   min-height: var(--chart-min-height, 260px);
   place-items: center;
-  padding: 24px;
+  padding: var(--space-6);
   color: var(--text-3);
   font-size: var(--fs-7);
   text-align: center;

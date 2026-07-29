@@ -1,20 +1,20 @@
 /* ปฏิทินวันหยุด — ย้ายจาก inline style มาเป็น token ล้วน (dark mode ตามอัตโนมัติ) */
 
-.headerRight { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.headerRight { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 
 /* แถบเตือนว่าปีนั้นยังไม่มีวันหยุดในระบบ — โทน amber เพราะเป็นเรื่องต้องลงมือ ไม่ใช่ error */
-.coverageWarning { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 16px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); }
+.coverageWarning { display: flex; align-items: flex-start; gap: 9px; margin-bottom: var(--space-4); padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); }
 .coverageWarning svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
 .coverageWarning p { margin: 0; font-size: var(--fs-6); line-height: 1.55; }
 .coverageWarning strong { color: var(--text); }
 
-.errorPanel { display: grid; justify-items: center; gap: 10px; padding: 40px 20px; text-align: center; }
+.errorPanel { display: grid; justify-items: center; gap: 10px; padding: var(--space-9) var(--space-5); text-align: center; }
 .errorPanel svg { color: var(--red); }
 .errorPanel p { margin: 0; color: var(--text-2); }
 
 /* ── ปฏิทิน ───────────────────────────────────────────────────────────── */
-.calendarPanel { padding: 18px 20px; }
-.monthNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.calendarPanel { padding: 18px var(--space-5); }
+.monthNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
 .monthNav > div:last-child { display: flex; gap: 6px; }
 .monthTitle { text-align: center; }
 .monthTitle strong { display: block; font-size: var(--fs-10); font-weight: 700; }
@@ -22,11 +22,11 @@
 
 .weekHead, .dayGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .weekHead { margin-bottom: 6px; }
-.weekHead > span { padding: 4px 0; color: var(--text-3); font-size: var(--fs-5); font-weight: 600; text-align: center; }
+.weekHead > span { padding: var(--space-1) 0; color: var(--text-3); font-size: var(--fs-5); font-weight: 600; text-align: center; }
 .weekHead > .weekend { color: var(--red); }
 
 /* ช่องวัน = ปุ่มจริง (คีย์บอร์ด/screen reader เข้าถึงได้) — disabled เมื่อกดไม่ได้ */
-.day { min-height: 74px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.day { min-height: 74px; padding: 6px var(--space-2); display: flex; flex-direction: column; gap: 2px; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .day:hover:not(:disabled) { border-color: var(--border-strong); background: var(--panel-2); }
 .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .day:disabled { cursor: default; }
@@ -42,7 +42,7 @@
 .today { border-width: 2px; border-color: var(--accent); }
 .today > strong { font-weight: 700; }
 
-.legend { display: flex; gap: 16px; margin-top: 14px; color: var(--text-3); font-size: var(--fs-4); flex-wrap: wrap; }
+.legend { display: flex; gap: var(--space-4); margin-top: 14px; color: var(--text-3); font-size: var(--fs-4); flex-wrap: wrap; }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 12px; height: 12px; border-radius: 3px; }
 .legendHoliday { border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); background: color-mix(in srgb, var(--red) 14%, transparent); }
@@ -53,9 +53,9 @@
 .listSummary { color: var(--text-2); font-size: var(--fs-6); }
 /* กว้างคงที่ไม่ว่าจะสะสมกี่ปี — เหตุผลที่เลือก dropdown แทนปุ่มเรียงตั้งแต่แรก */
 .yearPicker { min-width: 150px; }
-.yearList { display: flex; flex-direction: column; gap: 16px; }
+.yearList { display: flex; flex-direction: column; gap: var(--space-4); }
 .yearPanel { padding: 0; overflow: hidden; }
-.yearHeader { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.yearHeader { display: flex; align-items: center; gap: 9px; padding: 13px var(--space-4); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .yearHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: 700; }
 .currentYear { color: var(--accent-ink); background: var(--accent-soft); }
 .tableWrap { border: 0; border-radius: 0; }
@@ -78,7 +78,7 @@
 .addForm label { display: grid; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: 600; }
 .addForm label b { color: var(--red); }
 .addHint { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
-.addActions { display: flex; justify-content: flex-end; gap: 8px; }
+.addActions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
 @media (max-width: 780px) {
   .tableWrap { display: none; }
