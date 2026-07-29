@@ -76,13 +76,14 @@ export async function POST(request) {
   // Insert at the end (max+1 never collides with the unique index); the round
   // is then renumbered into its chronological slot by receivedDate below, so a
   // backfilled historical round doesn't get read as the "latest" round.
-  const { data: last } = await supabase
+  const { data: last, error: lastError } = await supabase
     .from('sahamit_forecast_rounds')
     .select('roundNo')
     .eq('customerId', customerId)
     .order('roundNo', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastError) return Response.json({ error: lastError.message }, { status: 500 });
   const roundNo = (last?.roundNo || 0) + 1;
 
   const coverMonths = Array.isArray(body?.coverMonths) && body.coverMonths.length

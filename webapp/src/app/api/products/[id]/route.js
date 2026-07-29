@@ -124,11 +124,12 @@ export async function PATCH(request, { params }) {
 
   // Duplicate FG Code check (if changing)
   if (body.fgCode && body.fgCode !== product.fgCode) {
-    const { data: dup } = await supabase
+    const { data: dup, error: dupError } = await supabase
       .from('products')
       .select('id')
       .eq('fgCode', body.fgCode)
       .maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
     if (dup) {
       return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
     }

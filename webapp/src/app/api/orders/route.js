@@ -67,8 +67,9 @@ export async function POST(request) {
   // one filing. The '-' placeholder (legacy / blank) is exempt from the check.
   const quotationRef = (body.quotationRef || '').trim();
   if (quotationRef && quotationRef !== '-') {
-    const { data: dupQuote } = await supabase
+    const { data: dupQuote, error: dupQuoteError } = await supabase
       .from('orders').select('id').eq('quotationRef', quotationRef).maybeSingle();
+    if (dupQuoteError) return Response.json({ error: dupQuoteError.message }, { status: 500 });
     if (dupQuote) {
       return Response.json({ error: `เลขที่ใบเสนอราคานี้ถูกใช้แล้วในใบยื่น ${dupQuote.id} — ห้ามซ้ำ` }, { status: 409 });
     }

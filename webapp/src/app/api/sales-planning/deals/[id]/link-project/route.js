@@ -54,8 +54,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ต่อ segment: task ชุดตาม template ของประเภทดีล ต่อท้าย stepOrder เดิม
   setHolidays([...(await holidaySet())]);
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', project.id);
+  if (existingError) return fail(existingError.message, 500);
   // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองแล้ว → โครงการ "รับเลี้ยง" ชุดเดิม (เติม projectId
   // + ต่อ stepOrder ท้าย + pin ราก segment กันโดนดูดไป anchor โครงการ) — ไม่ gen ซ้ำ
   const { data: floating } = await supabase

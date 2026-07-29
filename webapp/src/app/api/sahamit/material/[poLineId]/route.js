@@ -33,8 +33,9 @@ export async function PATCH(request, { params }) {
   patch.updatedById = user?.id ?? null;
   patch.updatedByName = user?.name ?? null;
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('sahamit_material_tracking').select('*').eq('poLineId', poLineId).maybeSingle();
+  if (existingError) return Response.json({ error: existingError.message }, { status: 500 });
 
   let saved;
   if (existing) {

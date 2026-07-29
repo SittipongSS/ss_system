@@ -73,13 +73,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // เลข R ถัดไปของเลขฐานเดียวกัน (กันช่องโหว่ revise ใบเก่าซ้ำ → เลขชน unique)
   const base = quote.baseNumber || quote.quoteNumber;
-  const { data: maxRow } = await supabase
+  const { data: maxRow, error: maxRowError } = await supabase
     .from('quotations')
     .select('revisionNo')
     .eq('baseNumber', base)
     .order('revisionNo', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (maxRowError) return fail(maxRowError.message, 500);
   const nextRev = (maxRow?.revisionNo ?? quote.revisionNo ?? 0) + 1;
   // ตัวคั่นก่อนเลข R อ่านจากใบต้นทางเอง ไม่ใช่จากรูปแบบปัจจุบัน — ใบที่ออกไว้ก่อน
   // มีการเปลี่ยนรูปแบบเลขที่ในหน้าตั้งค่า จะได้ต่อ R ด้วยตัวคั่นเดิมของสายตัวเอง

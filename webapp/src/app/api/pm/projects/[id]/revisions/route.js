@@ -64,7 +64,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เป็นตัวชี้ที่ย้อนถอยได้; ถ้าอิง currentRev+1 หลังย้อน Rev เก่าจะได้เลขที่ชนของเดิม.
   let revNo = null;
   if (kind === 'rev') {
-    const { data: maxRow } = await supabase
+    const { data: maxRow, error: maxRowError } = await supabase
       .from('project_doc_revisions')
       .select('revNo')
       .eq('projectId', project.id)
@@ -72,6 +72,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       .order('revNo', { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (maxRowError) return fail(maxRowError.message, 500);
     revNo = maxRow?.revNo == null ? 0 : maxRow.revNo + 1;
   }
   const snapshot = { project, tasks: tasks || [], projectProducts: links || [] };

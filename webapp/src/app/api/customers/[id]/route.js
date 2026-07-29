@@ -217,11 +217,12 @@ export async function PATCH(request, { params }) {
   }
 
   if (body.arCode && body.arCode !== customer.arCode) {
-    const { data: dup } = await supabase
+    const { data: dup, error: dupError } = await supabase
       .from('customers')
       .select('id')
       .eq('arCode', body.arCode)
       .maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
     if (dup) return Response.json({ error: 'รหัสลูกค้านี้มีในระบบแล้ว' }, { status: 409 });
   }
 
