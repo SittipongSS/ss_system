@@ -1611,13 +1611,15 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Status dots & badges to match their corporate stylesheet */
 .status-pill {
-  height: 22px;
+  /* height ตายตัว + padding 0 = ตัวอักษรไทยเบียดขอบบน 1.4px · เปลี่ยนเป็น min-height
+     ให้กล่องโตตามเนื้อหาได้ (ดูหมายเหตุที่ .ui-badge) */
+  min-height: 24px;
   color: var(--text-2);
   border: 1px solid var(--border);
   border-radius: 4px;
   align-items: center;
   gap: 5px;
-  padding: 0 8px;
+  padding: 2px 8px;
   font-size: 11.5px;
   font-weight: 500;
   display: inline-flex;
@@ -2985,35 +2987,6 @@ button.empty-state { width: 100%; font: inherit; }
   z-index: 0;
 }
 
-/* Stat / summary tile that doubles as a filter toggle. Per-tile color comes
-   from a --stat CSS var so one class serves every metric. Pair with glass-panel. */
-.stat-card {
-  text-align: left;
-  cursor: pointer;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--border);
-  transition: border-color .15s, box-shadow .15s;
-}
-.stat-card.active {
-  border: 1.5px solid var(--stat);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stat) 14%, transparent);
-}
-.stat-card .stat-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--stat) 14%, transparent);
-  color: var(--stat);
-  flex-shrink: 0;
-}
-.stat-card .stat-num { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--stat); }
-.stat-card .stat-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
 
 /* Skeleton loading — shimmering placeholder bars. Replaces "กำลังโหลด..." text. */
 .skeleton {
@@ -3237,14 +3210,19 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
+/* ⚠️ `line-height: 1` เดิมทำให้กล่องเตี้ยกว่าตัวอักษรจริง — วัดได้ว่าสระบน/วรรณยุกต์ไทย
+   ล้นออกนอกกล่อง **-1.0px** (โดนตัด) เพราะภาษาไทยยื่นขึ้นเหนือความสูงตัวอักษรปกติ
+   เหตุผลเดียวกับที่ Badge.module.css ต้องเป็น 1.5 (#794) — ตอนนั้นแก้เฉพาะป้ายกลาง
+   ป้ายชุดนี้ที่ใช้มากที่สุดในระบบยังค้างอยู่ */
 .ui-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 22px;
   padding: 3px 9px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.5;
   border-radius: var(--radius);
 }
 
@@ -3256,7 +3234,7 @@ button.empty-state { width: 100%; font: inherit; }
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.5;   /* ภาษาไทยต้องการที่เหนือตัวอักษร — ดูหมายเหตุที่ .ui-badge */
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
 }
@@ -3278,13 +3256,6 @@ button.empty-state { width: 100%; font: inherit; }
 .progress > span.done { background: var(--green); }
 
 /* Tables and standard lists */
-.premium-table-wrapper {
-  overflow-x: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--panel);
-}
-
 .premium-table {
   width: 100%;
   border-collapse: separate;
@@ -3509,12 +3480,6 @@ button.empty-state { width: 100%; font: inherit; }
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
-}
-
-/* Fix table overflow in glass panels */
-.glass-panel > .premium-table-wrapper {
-  overflow-x: auto;
-  margin: -1px;
 }
 
 .glass-panel > .reconciliation-container {

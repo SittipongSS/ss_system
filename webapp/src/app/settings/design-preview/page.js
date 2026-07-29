@@ -274,6 +274,24 @@ const DEMO_LIFECYCLE = defineLifecycle({
 
 const DEMO_STATUSES = ["draft", "pending", "active", "done", "cancelled"];
 
+/* หน้านี้เคยเป็นหน้าเดียวยาว 19 ส่วนติดกัน (วัดจริง 10,217px ≈ 12.8 จอที่ 1280×800)
+   หาของไม่เจอถ้าไม่รู้ว่ามันอยู่ช่วงไหน — จัดเป็น 5 กลุ่มตาม *หน้าที่* ของ primitive
+   แล้วแสดงทีละกลุ่ม (ไม่ใช่แค่ลิงก์กระโดด เพราะความยาวจะเท่าเดิม) */
+const GROUPS = [
+  { key: "foundation", label: "พื้นฐาน", hint: "โทเคนที่ทุกอย่างอ้างถึง — พื้นผิว สี ตัวอักษร" },
+  { key: "controls", label: "ตัวควบคุม", hint: "ของที่ผู้ใช้กดและกรอก" },
+  { key: "data", label: "แสดงข้อมูล", hint: "ของที่อ่านอย่างเดียว — ตาราง กราฟ ป้าย ตัวเลข" },
+  { key: "feedback", label: "การตอบสนอง", hint: "ระบบพูดกลับหาผู้ใช้" },
+  { key: "shell", label: "โครงหน้า", hint: "กรอบที่ห่อทุกหน้า — นำทาง หน้ารายละเอียด จุดจัดการ record" },
+];
+
+/* ห่อ WorkspaceSection ให้รู้จักกลุ่ม — ตั้งใจไม่ใช้ CSS ซ่อน (display:none) เพราะ
+   กราฟกับแผงลอยคำนวณขนาดจากกล่องจริง ถ้าซ่อนไว้แล้วค่อยโชว์จะได้ขนาดเพี้ยน */
+function Section({ group, active, ...props }) {
+  if (group !== active) return null;
+  return <WorkspaceSection {...props} />;
+}
+
 export default function DesignPreviewPage() {
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("list");
@@ -302,6 +320,7 @@ export default function DesignPreviewPage() {
   const [demoCategory, setDemoCategory] = useState("AR-RD");
   const [demoDirty, setDemoDirty] = useState(false);
   const [demoSaving, setDemoSaving] = useState(false);
+  const [group, setGroup] = useState(GROUPS[0].key);
   const [recordStatus, setRecordStatus] = useState("pending");
   const [recordRole, setRecordRole] = useState("boss");
   const [recordLog, setRecordLog] = useState("");
@@ -318,19 +337,29 @@ export default function DesignPreviewPage() {
     <Workspace
       icon={<Palette size={22} />}
       title="ต้นแบบดีไซน์ระบบ"
-      subtitle="primitive กลางทุกตัวในหน้าเดียว — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
+      subtitle="primitive กลางของระบบ แยกเป็น 5 กลุ่มตามหน้าที่ — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
       back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      toolbar={(
+        <Tabs
+          ariaLabel="กลุ่มของต้นแบบ"
+          value={group}
+          onChange={setGroup}
+          tabs={GROUPS.map((entry) => ({ key: entry.key, label: entry.label }))}
+        />
+      )}
     >
       <div className={styles.stack}>
         <StatusNotice
           tone="info"
           action={<Button as="a" href="/settings/design-preview/compare" size="sm">เทียบกับต้นแบบทีละข้อ</Button>}
         >
+          <strong>{GROUPS.find((entry) => entry.key === group)?.hint}</strong>
+          <br />
           หน้านี้ไม่ต่อกับข้อมูลจริง เปลี่ยนโทเคนใน <code>globals.css</code> หรือแก้ primitive ใน
           {" "}<code>components/ui/</code> แล้วเปิดหน้านี้เพื่อดูผลทั้งระบบพร้อมกัน ทั้งโหมดสว่างและมืด
         </StatusNotice>
 
-        <WorkspaceSection
+        <Section group="shell" active={group}
           title="แถบนำทาง"
           subtitle="components/AppLayout.js — แถบบนสุด 2 ชั้น ตรึงทั้งระบบ ไม่มี sidebar / bottom nav / drawer"
         >
@@ -365,21 +394,21 @@ export default function DesignPreviewPage() {
               {" "}(<code>canUser</code>) — หน้าใหม่ที่ต้องมีเมนูให้เพิ่มที่นั่นที่เดียว ไม่ใช่ทำลิงก์เองในหน้า
             </p>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="พื้นผิว" subtitle="ชั้นพื้นหลังของหน้า การ์ด และแผงลอย">
+        <Section group="foundation" active={group} title="พื้นผิว" subtitle="ชั้นพื้นหลังของหน้า การ์ด และแผงลอย">
           <Swatches items={SURFACES} />
           <p className={styles.note}>
             แผงที่ลอยทับเนื้อหา (dropdown / popover / ปฏิทิน) ต้องใช้ <code>--panel-float</code> ที่ทึบ 100%
             เท่านั้น — <code>--panel</code> โปร่ง 8% และต้องมาคู่กับ backdrop-filter
           </p>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="สี" subtitle="ความหมายของแต่ละสี — ห้ามใช้ค่าสีดิบนอก token">
+        <Section group="foundation" active={group} title="สี" subtitle="ความหมายของแต่ละสี — ห้ามใช้ค่าสีดิบนอก token">
           <Swatches items={COLORS} />
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="ตัวอักษร" subtitle="IBM Plex Sans Thai — ชั้นพิมพ์เดียวทั้งระบบ">
+        <Section group="foundation" active={group} title="ตัวอักษร" subtitle="IBM Plex Sans Thai — ชั้นพิมพ์เดียวทั้งระบบ">
           <div className={styles.typeSample}>
             <h1>หัวเรื่องหน้า · Page title</h1>
             <h2>หัวข้อส่วน · Section</h2>
@@ -387,9 +416,9 @@ export default function DesignPreviewPage() {
             <p className={styles.note}>ข้อความรอง — คำอธิบายใต้ช่องกรอกและหมายเหตุ</p>
             <p className={styles.mono}>1,234,567.89 · QT-26070128 · ตัวเลขและรหัสใช้ฟอนต์ mono</p>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="controls" active={group}
           title="ปุ่ม"
           subtitle="components/ui/Button.js — ที่เดียวที่ได้รับอนุญาตให้เขียนคลาสปุ่มเอง"
         >
@@ -434,9 +463,9 @@ export default function DesignPreviewPage() {
               สี ไอคอน และคำเรียกผูกไว้ที่เดียว ส่ง kind ที่ไม่มีจริงจะตกเป็นปุ่มเทาเงียบ ๆ
             </p>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="ป้ายสถานะ" subtitle="StatusBadge · Tag · CountBadge">
+        <Section group="data" active={group} title="ป้ายสถานะ" subtitle="StatusBadge · Tag · CountBadge">
           <div className={styles.stack}>
             <div className={styles.row}>
               <span className={styles.caption}>StatusBadge</span>
@@ -450,10 +479,35 @@ export default function DesignPreviewPage() {
               <Tag tone="info" onRemove={() => {}}>กรองแล้ว</Tag>
               <CountBadge count={12} tone="warning" />
             </div>
-          </div>
-        </WorkspaceSection>
 
-        <WorkspaceSection title="ตัวควบคุมบนแถบเครื่องมือ" subtitle="ทุกตัวสูงเท่ากันที่ --ctl-h">
+            {/* ⚠️ ตั้งใจโชว์ของเก่าไว้เทียบ — ไม่ใช่ตัวอย่างให้ลอกไปใช้
+                ระบบมี "ป้ายเล็ก ๆ มีพื้น" อยู่ 4 ชุดขนานกัน ซึ่งไม่มีใครเห็นพร้อมกันมาก่อน
+                จึงไม่เคยมีใครตัดสินใจได้ว่าจะยุบอันไหน */}
+            <StatusNotice tone="warning" title="ยังมีป้ายซ้ำอีก 3 ชุดในระบบ">
+              ทั้งสามแถวข้างล่างทำงานเดียวกับ <code>StatusBadge</code>/<code>Tag</code> ข้างบน
+              แต่คนละ padding คนละขนาดตัวอักษร คนละมุมโค้ง — และทั้งสามยังเป็น
+              {" "}<code>line-height: 1</code> ซึ่งเป็นต้นเหตุที่สระบน/วรรณยุกต์ไทยชนขอบ
+              {" "}(แก้ไปแล้วเฉพาะ <code>Badge.module.css</code> ตัวกลาง)
+            </StatusNotice>
+            <div className={styles.row}>
+              <span className={styles.caption}>.ui-badge · 133 จุด</span>
+              <span className="ui-badge">รออนุมัติ</span>
+              <span className="ui-badge">อนุมัติแล้ว</span>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>.status-pill · 38 จุด</span>
+              <span className="status-pill">รออนุมัติ</span>
+              <span className="status-pill success">อนุมัติแล้ว</span>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>.chip · 18 จุด</span>
+              <span className="chip">รออนุมัติ</span>
+              <span className="chip">อนุมัติแล้ว</span>
+            </div>
+          </div>
+        </Section>
+
+        <Section group="controls" active={group} title="ตัวควบคุมบนแถบเครื่องมือ" subtitle="ทุกตัวสูงเท่ากันที่ --ctl-h">
           <div className={styles.stack}>
             <Tabs
               tabs={[
@@ -523,9 +577,9 @@ export default function DesignPreviewPage() {
               />
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="ฟอร์ม" subtitle="ช่องกรอกทั้งระบบใช้ .premium-input ชุดเดียว">
+        <Section group="controls" active={group} title="ฟอร์ม" subtitle="ช่องกรอกทั้งระบบใช้ .premium-input ชุดเดียว">
           <div className={styles.formGrid}>
             <label className={styles.field}>
               ช่องข้อความ
@@ -547,9 +601,9 @@ export default function DesignPreviewPage() {
               <input className="premium-input" defaultValue="QT-26070128" readOnly disabled />
             </label>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="controls" active={group}
           title="ช่องกรอกเฉพาะทาง"
           subtitle="MoneyInput · PhoneInput · NationalIdInput — ทุกตัวเก็บค่าดิบ แล้วจัดรูปแบบตอนแสดง"
         >
@@ -586,9 +640,9 @@ export default function DesignPreviewPage() {
               {`money=${demoMoney ?? "null"} · moneyNeg=${demoMoneyNeg ?? "null"} · phone="${demoPhone}" · nationalId="${demoNationalId}"`}
             </p>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="controls" active={group}
           title="ดรอปดาวน์ที่ค้นหาได้"
           subtitle="SearchableSelect เป็นฐาน — PersonSelect และ ProductCategorySelect ห่อทับอีกที"
         >
@@ -653,9 +707,9 @@ export default function DesignPreviewPage() {
               </p>
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="data" active={group}
           title="ข้อความยาวของผู้ใช้"
           subtitle="ReadableText — คงการขึ้นบรรทัดที่ผู้ใช้พิมพ์ และขึ้นปุ่มขยายเฉพาะตอนที่ล้นจริง"
         >
@@ -669,9 +723,9 @@ export default function DesignPreviewPage() {
               <ReadableText text={DEMO_LONG_TEXT} />
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="controls" active={group}
           title="วันที่ เดือน และเวลา"
           subtitle="DateInput · MonthPicker · TimeInput · DateTimeInput — ทุกตัวเก็บค่าเป็น ISO ไม่พึ่ง locale ของเบราว์เซอร์"
         >
@@ -724,9 +778,9 @@ export default function DesignPreviewPage() {
               {`date=${demoDate || "\"\""} · bounded=${demoDateBounded || "\"\""} · time=${demoTime || "\"\""} · dateTime=${demoDateTime || "\"\""} · month=${demoMonth}${demoAllMonths ? " (ทุกเดือน)" : ""}`}
             </p>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="ตาราง" subtitle="TableShell รวม toolbar → ตาราง → ท้ายตาราง ไว้ในพาเนลเดียว">
+        <Section group="data" active={group} title="ตาราง" subtitle="TableShell รวม toolbar → ตาราง → ท้ายตาราง ไว้ในพาเนลเดียว">
           <TableShell
             toolbar={<Button size="sm" icon={<Search size={14} />}>ค้นหา</Button>}
             footer={<Pager page={page} pageCount={4} total={64} pageSize={20} onPage={setPage} />}
@@ -778,9 +832,9 @@ export default function DesignPreviewPage() {
               </tbody>
             </table>
           </TableScroll>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="data" active={group}
           title="กราฟ"
           subtitle="ครอบด้วย ChartCanvas เสมอ · สีและเส้นมาจาก lib/chartTheme.js"
         >
@@ -816,9 +870,9 @@ export default function DesignPreviewPage() {
             กล่องวัดขนาดที่กว้าง 0 ทำให้ <code>100%</code> คิดออกมาเป็น 0 แล้วกราฟหายทั้งอัน
             เหลือแต่คำอธิบายสี (เคยหลุด prod มาแล้ว)
           </p>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="controls" active={group}
           title="แถบปุ่มท้ายฟอร์ม"
           subtitle="FormActions = SaveStatus + ปุ่มบันทึก/ยกเลิก · ลอยติดขอบล่างขณะเลื่อน ต้องทึบ 100% ไม่ให้ช่องกรอกทะลุขึ้นมา"
         >
@@ -867,9 +921,9 @@ export default function DesignPreviewPage() {
               />
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="ตัวเลขสรุป" subtitle="MetricStrip สำหรับแถบ KPI · KpiCard สำหรับการ์ดเดี่ยว">
+        <Section group="data" active={group} title="ตัวเลขสรุป" subtitle="MetricStrip สำหรับแถบ KPI · KpiCard สำหรับการ์ดเดี่ยว">
           <div className={styles.stack}>
             <MetricStrip>
               <Metric icon={<Check size={16} />} label="อนุมัติแล้ว" value="18" note="5 ใบสัปดาห์นี้" />
@@ -888,9 +942,9 @@ export default function DesignPreviewPage() {
               <KpiCard label="เป้าหมายเดือน" value={6500000} hint="ทำได้แล้ว 74.2%" tone="info" />
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection title="สถานะและการแจ้งเตือน" subtitle="StatusNotice · Toast · ConfirmDialog · ReasonDialog · EmptyState">
+        <Section group="feedback" active={group} title="สถานะและการแจ้งเตือน" subtitle="StatusNotice · Toast · ConfirmDialog · ReasonDialog · EmptyState">
           <div className={styles.stack}>
             <StatusNotice tone="success" title="บันทึกแล้ว">ข้อมูลถูกบันทึกเรียบร้อย</StatusNotice>
             <StatusNotice tone="warning" title="ต้องตรวจสอบ">ใบเสนอราคานี้เลยวันยืนราคาแล้ว</StatusNotice>
@@ -950,9 +1004,9 @@ export default function DesignPreviewPage() {
               </table>
             </TableShell>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="shell" active={group}
           title="จุดจัดการเดียวต่อ record"
           subtitle="recordLifecycle · RecordControlCard · RecordActionMenu · TransitionDialog"
         >
@@ -1045,9 +1099,9 @@ export default function DesignPreviewPage() {
               </div>
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
 
-        <WorkspaceSection
+        <Section group="shell" active={group}
           title="โครงหน้ารายละเอียด"
           subtitle="DetailOverview หัวเรื่อง · DetailPageLayout เนื้อหาซ้าย + รางขวา · DocumentControlCard จุดจัดการเอกสาร"
         >
@@ -1174,7 +1228,7 @@ export default function DesignPreviewPage() {
               </div>
             </div>
           </div>
-        </WorkspaceSection>
+        </Section>
       </div>
     </Workspace>
   );

@@ -96,6 +96,29 @@ test("หน้าต้นแบบต้องมีช่องกรอก�
   }
 });
 
+/* หน้าต้นแบบเคยเป็นหน้าเดียวยาว 19 ส่วน (วัดจริง 10,217px ≈ 12.8 จอ) — จัดเป็น 5 กลุ่ม
+   ตามหน้าที่แล้วแสดงทีละกลุ่ม · เทสต์นี้กันไม่ให้ส่วนใหม่หลุดกลุ่ม (ซึ่งจะทำให้มันหายไป
+   จากหน้าเงียบ ๆ เพราะไม่มี tab ไหนแสดงมัน) */
+test("ทุกส่วนของหน้าต้นแบบอยู่ในกลุ่มที่ประกาศไว้", () => {
+  // อ่านเฉพาะในบล็อก GROUPS — หน้านี้มี Tabs ตัวอย่างที่ใช้ {key,label} เหมือนกัน
+  const groupsBlock = PREVIEW.match(/const GROUPS = \[([\s\S]*?)\n\];/);
+  assert.ok(groupsBlock, "ต้องมี GROUPS ประกาศไว้");
+  const declared = [...groupsBlock[1].matchAll(/key:\s*"([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(declared.length >= 4, `GROUPS มีแค่ ${declared.length} กลุ่ม`);
+
+  const used = [...PREVIEW.matchAll(/<Section group="([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(used.length >= 15, `เจอ <Section> แค่ ${used.length} — น้อยผิดปกติ`);
+  for (const group of new Set(used)) {
+    assert.ok(declared.includes(group), `group "${group}" ไม่มีใน GROUPS`);
+  }
+  // ทุกกลุ่มต้องมีของอยู่จริง ไม่งั้นกดแท็บแล้วเจอหน้าว่าง
+  for (const group of declared) {
+    assert.ok(used.includes(group), `กลุ่ม "${group}" ไม่มีส่วนไหนอยู่เลย`);
+  }
+  // ห้ามเหลือ WorkspaceSection ที่ไม่ผ่าน Section — มันจะโผล่ทุกแท็บ
+  assert.doesNotMatch(PREVIEW, /^\s+<WorkspaceSection/m);
+});
+
 /* ช่องกรอกพวกนี้ใส่ `premium-input` ให้เองอยู่แล้ว — ส่งซ้ำจะได้คลาสซ้ำในสตริงเดียว
    และทำให้คนอ่านหน้าต้นแบบเข้าใจผิดว่าต้องส่งเอง */
 test("หน้าต้นแบบไม่ส่ง premium-input ซ้ำให้ช่องที่ใส่คลาสเอง", () => {
