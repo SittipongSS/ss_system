@@ -35,17 +35,14 @@ test('อัตราภาษีคิดใหม่เฉพาะเมื�
   );
 });
 
-// อัตราภาษีคิดจาก **ราคาขายปลีกของ FG** (มติผู้ใช้ 2026-07-29) ซึ่งทะเบียนสินค้าคำนวณ
-// เก็บไว้ใน products.exciseTax/localTax อยู่แล้ว — route นี้ต้อง "อ่าน" ไม่ใช่ "คิดเอง"
-// เดิมคิดสูตรเอง (retailPriceIncVat / 1.07 * 0.08) = สำเนาที่สองของสูตรที่ products
-// PATCH ใช้ (retailPriceExVat * 0.08) คนละฐานราคา เพี้ยนกันได้ทันทีที่สองคอลัมน์ไม่ตรง
-test('ทะเบียนอ่านอัตราภาษีจากสินค้า ไม่คิดสูตรเอง (แหล่งเดียว = ราคาขายปลีกของ FG)', () => {
-  assert.match(detailRoute, /updated\.exciseTax = product\.exciseTax \|\| 0;/);
-  assert.match(detailRoute, /updated\.localTax = product\.localTax \|\| 0;/);
+// อัตราภาษีคิดจาก **ราคาขายปลีกของ FG** ซึ่งอัปเดตได้ (มติผู้ใช้ 2026-07-29) จึงมีแหล่ง
+// เดียวคือ products — ทะเบียนสรรพสามิตห้ามคิดสูตรเอง และ (ตั้งแต่ mig 0180) ห้ามเก็บ
+// สำเนาด้วย · เดิมคิดสูตรเอง (retailPriceIncVat / 1.07 * 0.08) = สำเนาที่สองของสูตรที่
+// products PATCH ใช้ (retailPriceExVat * 0.08) คนละฐานราคา เพี้ยนกันได้ทันที
+test('ทะเบียนไม่คิดสูตรภาษีเอง — อัตรามาจากทะเบียนสินค้าที่เดียว', () => {
   assert.doesNotMatch(detailCode, /retailPriceIncVat/, 'ห้ามคิดจากราคาขายปลีกเองซ้ำ');
   assert.doesNotMatch(detailCode, /\* 0\.08/, 'อัตรา 8% ห้ามฝังในไฟล์นี้');
-  // POST ก็ต้องอ่านจากแหล่งเดียวกัน (เป็นแบบนี้อยู่แล้ว — ตรึงไว้กันเพี้ยนภายหลัง)
-  assert.match(listRoute, /exciseTax: isExciseTaxable \? \(product\.exciseTax \|\| 0\) : 0/);
+  assert.doesNotMatch(detailCode, /\* 0\.1\b/, 'อัตราท้องถิ่น 10% ห้ามฝังในไฟล์นี้');
 });
 
 // ทะเบียนซ้ำกระทบปลายน้ำจริง: soFiling ทำ Map ที่ key = productId ทะเบียนซ้ำจะทับกัน
@@ -79,4 +76,40 @@ test('0179 รวมชื่อ index ให้เหลือชื่อเ�
   assert.match(indexRename, /nspname = 'public'/);
   // ห้ามแตะข้อมูล — ไฟล์นี้จัดการชื่อ index อย่างเดียว
   assert.doesNotMatch(sqlCodeOnly(indexRename), /\b(UPDATE|DELETE|TRUNCATE)\b/);
+});
+
+// มติผู้ใช้ 2026-07-29: อัตราภาษีคิดจากราคาขายปลีกของ FG ซึ่ง**อัปเดตได้** (เหมือนราคา
+// ผลิต) จึงต้องมีแหล่งเดียว = products · สำเนาบนทะเบียนถูกปลดระวางที่ mig 0180 เพราะ
+// ไม่มีใครอัปเดตตามเมื่อราคาขยับ → หน้าทะเบียนโชว์เลขหนึ่ง ใบยื่นคิดอีกเลข ไม่มี error เตือน
+test('ทะเบียนเลิกเก็บสำเนาอัตราภาษี — เขียนคอลัมน์นั้นไม่ได้อีก', () => {
+  const dropSnapshot = read('../../../supabase/migrations/0180_excise_registration_drop_tax_snapshot.sql');
+  assert.match(dropSnapshot, /DROP COLUMN IF EXISTS "exciseTax"/);
+  assert.match(dropSnapshot, /DROP COLUMN IF EXISTS "localTax"/);
+  // ทั้งสองทางที่สร้างทะเบียนต้องไม่ส่งค่าลงคอลัมน์ที่ถูกตัดแล้ว (ไม่งั้น insert พัง)
+  for (const [name, src] of [['POST', listRoute], ['from-project', fromProjectRoute]]) {
+    assert.doesNotMatch(codeOnly(src), /^\s*exciseTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
+    assert.doesNotMatch(codeOnly(src), /^\s*localTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
+  }
+  // PATCH ก็เช่นกัน — เหลือแค่ธง isExciseTaxable ซึ่งเป็นคำตัดสินของฝ่ายกฎหมาย
+  assert.doesNotMatch(detailCode, /updated\.exciseTax/);
+  assert.doesNotMatch(detailCode, /updated\.localTax/);
+  assert.match(detailCode, /updated\.isExciseTaxable = typeof ovr === 'boolean'/);
+});
+
+// จอทุกจอที่โชว์ "ภาษี/ชิ้น" ต้องคิดด้วยตัวกลางตัวเดียวกับที่ API ใช้ตอนออกใบยื่น
+// ไม่งั้นเลขบนจอกับเลขบนใบจะเดินหนีกันอีกรอบ (จอ LG สำคัญสุด — ใช้ตัดสินใจอนุมัติ)
+test('ทุกจอที่โชว์ภาษี/ชิ้น อ่านอัตราจากสินค้าผ่านตัวคิดกลาง', () => {
+  for (const path of [
+    '../../app/tax/registrations/page.js',
+    '../../app/tax/registrations/[id]/page.js',
+    '../../components/excise/ApproveDialog.js',
+  ]) {
+    const code = codeOnly(read(path));
+    assert.match(code, /exciseTaxLineForRegistration\(\{/, `${path} ต้องเรียกตัวคิดกลาง`);
+    assert.doesNotMatch(code, /r\.exciseTax|registration\.exciseTax/, `${path} ห้ามอ่านสำเนาบนทะเบียน`);
+  }
+  // หน้าลูกค้า (API) ก็ต้องส่งอัตราของสินค้า ไม่ใช่ของทะเบียน
+  const customersRoute = codeOnly(read('../../app/api/customers/[id]/route.js'));
+  assert.doesNotMatch(customersRoute, /r\.exciseTax|r\.localTax/);
+  assert.match(customersRoute, /\? p\.exciseTax : 0/);
 });

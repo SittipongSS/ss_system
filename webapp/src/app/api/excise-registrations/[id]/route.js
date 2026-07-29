@@ -180,33 +180,22 @@ export async function PATCH(request, { params }) {
     updated.rejectionReason = null;
   }
 
-  // Recompute the tax snapshot **เฉพาะเมื่อ LG ส่งคำสั่ง taxableOverride มาจริง**
+  // ฝ่ายกฎหมายสั่งยกเว้น/ไม่ยกเว้นภาษี — ทะเบียนเก็บเฉพาะ **คำตัดสิน** ไม่เก็บอัตรา
   //
-  // 🐞 เดิมเงื่อนไขเป็น `allowed.has('taxableOverride')` = "ผู้ใช้มีสิทธิ์แก้ช่องนี้"
-  // ไม่ใช่ "ผู้ใช้สั่งแก้ช่องนี้" — และ taxableOverride อยู่ใน LEGAL_REGISTRATION_FIELDS
-  // แปลว่า**ทุกครั้งที่ฝ่ายกฎหมายแตะทะเบียน** (อนุมัติ / ตีกลับ / ใส่เลขอนุมัติ) อัตราภาษี
-  // จะถูกคิดใหม่จากราคา ณ วินาทีนั้นแล้วเขียนทับค่าเดิมเงียบ ๆ โดยไม่มีใครสั่ง
+  // อัตราภาษีคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้เหมือนราคาผลิต (มติผู้ใช้ 2026-07-29)
+  // ⇒ มีแหล่งเดียวคือ products.exciseTax/localTax · ทะเบียนไม่เก็บสำเนาอีกแล้ว
+  // (คอลัมน์ excise_registrations.exciseTax/localTax ปลดระวางที่ mig 0180) — สำเนาที่
+  // ไม่มีใครอัปเดตตามคือจุดที่เดินหนีจากต้นฉบับทันทีที่ราคาขยับ
   //
-  // และเดิมคิดสูตรเอง (`retailPriceIncVat / 1.07 * 0.08`) ซึ่งเป็น **สำเนาที่สอง** ของสูตร
-  // ที่ products PATCH ใช้ (`retailPriceExVat * 0.08`) — คนละฐานราคา เพี้ยนกันได้ทันทีที่
-  // สองคอลัมน์ราคาไม่ตรงกันเป๊ะ · ตอนนี้อ่าน `product.exciseTax/localTax` ตรง ๆ เหมือนที่
-  // POST ทำอยู่แล้ว = อัตราภาษีมีแหล่งเดียวคือทะเบียนสินค้า ซึ่งคิดจากราคาขายปลีกของ FG
-  // (มติผู้ใช้ 2026-07-29 — ราคาใน SO เป็นราคาผลิต ใช้คิดภาษีไม่ได้)
+  // ประวัติยังตามได้ครบโดยไม่ต้องพึ่งสำเนา: product_price_history เก็บทุกครั้งที่อัตรา
+  // ของสินค้าเปลี่ยน · order_items ตรึงอัตราที่ใบยื่นแต่ละใบใช้จริงไว้แล้ว (mig 0041)
   if (body.taxableOverride !== undefined) {
     const { data: product, error: prodErr } = await supabase
-      .from('products').select('isExciseTaxable, exciseTax, localTax').eq('id', reg.productId).maybeSingle();
+      .from('products').select('isExciseTaxable').eq('id', reg.productId).maybeSingle();
     if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
     const ovr = updated.taxableOverride;
     const autoTaxable = product ? product.isExciseTaxable !== false : reg.isExciseTaxable !== false;
-    const isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
-    updated.isExciseTaxable = isExciseTaxable;
-    if (!isExciseTaxable) {
-      updated.exciseTax = 0;
-      updated.localTax = 0;
-    } else if (product) {
-      updated.exciseTax = product.exciseTax || 0;
-      updated.localTax = product.localTax || 0;
-    }
+    updated.isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
   }
 
   updated.updatedAt = new Date().toISOString();

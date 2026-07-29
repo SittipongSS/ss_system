@@ -76,7 +76,9 @@ export async function POST(request) {
     return Response.json({ error: 'สินค้านี้ถูกขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว' }, { status: 409 });
   }
 
-  // Tax snapshot from the master product. LG may override taxability later.
+  // ทะเบียนเก็บเฉพาะ "เสียภาษีไหม" — ฝ่ายกฎหมาย override ได้ทีหลัง
+  // **อัตราไม่ก๊อปมาเก็บ**: คิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้ จึงมีแหล่งเดียวคือ
+  // products.exciseTax/localTax (มติผู้ใช้ 2026-07-29 · คอลัมน์สำเนาปลดระวางที่ mig 0180)
   const isExciseTaxable = product.isExciseTaxable !== false;
 
   const newReg = {
@@ -92,8 +94,6 @@ export async function POST(request) {
     taxId: customer.taxId,
     isExciseTaxable,
     taxableOverride: null,
-    exciseTax: isExciseTaxable ? (product.exciseTax || 0) : 0,
-    localTax: isExciseTaxable ? (product.localTax || 0) : 0,
     // Created as a draft — SA attaches the required documents, then submits
     // (draft → pending_legal) which is gated on those documents being present.
     status: 'draft',
