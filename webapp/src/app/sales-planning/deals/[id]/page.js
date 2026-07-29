@@ -28,6 +28,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
@@ -286,6 +287,32 @@ export default function DealOverviewPage() {
   const canEdit = !!data?.canEdit;
   const role = useRole();
   const alreadyWon = isWonStage(deal?.stage);
+  // สายภาษีของแต่ละ SO — 3 กรณีที่ต้องอ่านออกจากตาเดียว:
+  //   มีใบยื่นแล้ว → ป้ายสถานะ + ลิงก์ไปใบนั้น
+  //   ยังไม่มีแต่อยู่ในคิวกลาง → "รอออกใบยื่น" (SO อนุมัติแล้วและมีสินค้าสรรพสามิตจริง)
+  //   นอกนั้น → ว่าง = ไม่ต้องยื่น ห้ามทำให้ดูเหมือนงานค้าง
+  const filingBySalesOrder = useMemo(
+    () => new Map((data?.taxFilings || []).map((filing) => [filing.salesOrderId, filing])),
+    [data?.taxFilings],
+  );
+  const awaitingFilingIds = useMemo(
+    () => new Set(data?.awaitingFilingIds || []),
+    [data?.awaitingFilingIds],
+  );
+  const filingOf = (salesOrderId) => {
+    const filing = filingBySalesOrder.get(salesOrderId);
+    if (filing) {
+      return (
+        <Link prefetch={false} href={`/tax/filings/${filing.id}`} className="linklike" title="เปิดใบยื่นชำระภาษี">
+          <ExciseStatusBadge status={filing.status} />
+        </Link>
+      );
+    }
+    if (awaitingFilingIds.has(salesOrderId)) {
+      return <span className="ui-badge" style={{ color: "var(--amber)" }}>รอออกใบยื่น</span>;
+    }
+    return <span style={{ color: "var(--text-3)" }}>—</span>;
+  };
   // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
   const [categories, setCategories] = useState([]);
   const lc = useMemo(
@@ -1006,12 +1033,15 @@ export default function DealOverviewPage() {
               </div>
               <div className="premium-glass-table table-responsive">
                 <TableScroll surface="embedded"><table className="w-full text-sm">
-                  <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th></tr></thead>
+                  <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
                   <tbody>{data.salesOrders.map((order) => (
                     <tr key={order.id} className="premium-row">
                       <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
                       <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
                       <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
+                      {/* ปลายทางของ SO — เดิมหน้าดีลจบที่ SO ต้องไปเปิดหน้า SO ถึงจะรู้ว่าภาษีเดินถึงไหน.
+                          ว่าง = ไม่มีสินค้าสรรพสามิตต้องยื่น (คิวกลางกรองให้แล้ว) ไม่ใช่งานค้าง */}
+                      <td>{filingOf(order.id)}</td>
                     </tr>
                   ))}</tbody>
                 </table></TableScroll>

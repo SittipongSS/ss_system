@@ -3,6 +3,7 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
+import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,28 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // ความเคลื่อนไหวฝั่ง client แบบเดียวกับ stageHistory (อ่านอย่างเดียวในฟีด)
     safe('inquiries', supabase.from('dept_requests').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
   ]);
+
+  // ── สายภาษี: ปลายทางของ SO ที่เดิมหน้าดีลมองไม่เห็น ────────────────────────
+  // ใบยื่นชำระสรรพสามิตผูก SO ตัวต่อตัว (unique 1 SO = 1 ใบยื่น — mig 0160) แต่หน้าดีล
+  // จบที่ SO มาตลอด คนดูดีลจึงไม่รู้ว่าภาษีเดินถึงไหน ต้องไปเปิดหน้า SO ก่อนทุกครั้ง
+  //
+  // "ค้างรอออกใบยื่น" อ่านจากคิวกลาง (loadHandoffQueue) ไม่คิดเอง เพราะมันกรอง
+  // "มีสินค้าสรรพสามิตให้ยื่นจริง" (resolveSoFiling().eligible) ให้แล้ว — SO ที่ขายของ
+  // นอกพิกัดต้องไม่ขึ้นว่าค้าง ไม่งั้นหน้าดีลจะเตือนตลอดกาลจนคนเลิกอ่าน
+  let taxFilings = { data: [], warning: null };
+  let awaitingFilingIds = [];
+  const salesOrderIds = (salesOrders.data || []).map((order) => order.id);
+  if (salesOrderIds.length) {
+    [taxFilings, awaitingFilingIds] = await Promise.all([
+      safe('tax filings', supabase.from('orders')
+        .select('id, salesOrderId, status, totalTax, amountToCollect, createdAt')
+        .in('salesOrderId', salesOrderIds), []),
+      loadHandoffQueue(supabase, { dealIds: [deal.id] })
+        .then((queue) => (queue.awaitingFiling || []).map((order) => order.id))
+        // คิวเสียไม่ควรทำให้หน้าดีลทั้งหน้าล่ม — แค่ไม่โชว์ป้าย "รอออกใบยื่น"
+        .catch(() => []),
+    ]);
+  }
 
   let project = { data: null, warning: null };
   let projectProducts = { data: [], warning: null };
@@ -88,6 +111,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     shipmentPrep.warning,
     exciseRegistrations.warning,
     sahamitPo.warning,
+    taxFilings.warning,
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
@@ -106,6 +130,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),
     salesOrders: salesOrders.data,
+    taxFilings: taxFilings.data,
+    awaitingFilingIds,
     documents: documents.data,
     inquiries: inquiries.data,
     dealTasks: enrichedDealTasks,
