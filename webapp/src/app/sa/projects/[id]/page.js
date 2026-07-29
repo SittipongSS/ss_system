@@ -1183,6 +1183,7 @@ export default function ProjectDetailPage() {
           <DeliveriesPanel
             projectId={p.id}
             deliveries={p.deliveries || []}
+            salesOrders={p.deliverySalesOrders || []}
             canEdit={!!p.canEditDeliveries}
             onChanged={async (msg) => { await load(); if (msg) setToast({ kind: "success", msg }); }}
             onError={(message) => setToast({ kind: "error", msg: message })}

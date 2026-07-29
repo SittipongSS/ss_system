@@ -5,7 +5,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { normalizeDeliveryInput } from '@/lib/pm/deliveries';
-import { findDelivery, requireProject } from '@/lib/pm/deliveriesRepo';
+import { findDelivery, requireProject, salesOrderScopeError } from '@/lib/pm/deliveriesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +26,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const merged = { ...before, ...body };
     const { value, error } = normalizeDeliveryInput(merged);
     if (error) return badRequest(error);
+    const soError = await salesOrderScopeError(supabase, access.project, value.salesOrderId);
+    if (soError) return badRequest(soError);
     // ของมาถึงก่อนวันที่สั่งไม่สมเหตุผล แต่ "มาก่อนกำหนด" ปกติมาก → ไม่บล็อก
     // ตรวจแค่ว่าเป็นวันที่ที่เป็นไปได้ (ทำใน normalizeDeliveryInput แล้ว)
 

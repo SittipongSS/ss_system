@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import {
   canEditDeliveries,
   canViewDeliveries,
+  deliveriesForSalesOrder,
   deliveriesFromComponents,
   deliveryRollup,
   normalizeDeliveryInput,
+  productionReadiness,
 } from './deliveries.js';
 
 const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
@@ -125,4 +127,54 @@ test('⭐ กางซ้ำไม่ได้แถวซ้ำ และบอ
 test('กาง: บรรทัดซ้ำ id เดียวกันในชุดเดียวนับครั้งเดียว', () => {
   const { rows } = deliveriesFromComponents([comp({ id: 'C1' }), comp({ id: 'C1' })]);
   assert.equal(rows.length, 1);
+});
+
+// ── ผูกกับใบสั่งขาย (mig 0177) ───────────────────────────────────────────
+// มติผู้ใช้: "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต"
+const soRow = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'x', salesOrderId: 'SO-1', dueDate: null, arrivedAt: null, ...over });
+
+test('ของของ SO ใบอื่นไม่ปนกัน — โครงการเดียวมี SO ได้หลายใบ (re-order)', () => {
+  const rows = [soRow({ id: 'a' }), soRow({ id: 'b', salesOrderId: 'SO-2' }), soRow({ id: 'c', salesOrderId: null })];
+  assert.deepEqual(deliveriesForSalesOrder(rows, 'SO-1').map((r) => r.id), ['a']);
+  assert.deepEqual(deliveriesForSalesOrder(rows, 'SO-2').map((r) => r.id), ['b']);
+});
+
+test('⚠️ แถวที่ยังไม่ผูก SO ไม่ถูกเดาให้ใบไหน — เดาผิด = ใบที่ยังไม่พร้อมดูเหมือนพร้อม', () => {
+  const rows = [soRow({ id: 'c', salesOrderId: null })];
+  assert.deepEqual(deliveriesForSalesOrder(rows, 'SO-1'), []);
+  assert.deepEqual(deliveriesForSalesOrder(rows, null), []);
+});
+
+test('พร้อมผลิต: ของครบแล้ว = ready', () => {
+  const r = productionReadiness([soRow({ arrivedAt: '2026-08-01' })], '2026-08-25');
+  assert.equal(r.state, 'ready');
+  assert.equal(r.tone, 'success');
+});
+
+test('พร้อมผลิต: มีของเลยกำหนดแล้วยังไม่มา = blocked (สำคัญกว่าแค่ "รอ")', () => {
+  const r = productionReadiness([
+    soRow({ id: 'a', arrivedAt: '2026-08-01' }),
+    soRow({ id: 'b', dueDate: '2026-08-10' }),
+  ], '2026-08-25');
+  assert.equal(r.state, 'blocked');
+  assert.equal(r.tone, 'danger');
+  assert.match(r.label, /เลยกำหนดแล้ว 1 รายการ/);
+});
+
+test('พร้อมผลิต: ยังไม่ถึงกำหนด = waiting พร้อมบอกวันที่ครบ', () => {
+  const r = productionReadiness([soRow({ dueDate: '2026-09-15' })], '2026-08-25');
+  assert.equal(r.state, 'waiting');
+  assert.match(r.label, /2026-09-15/);
+});
+
+test('พร้อมผลิต: ไม่มีรายการเลย = unknown ไม่ใช่ ready', () => {
+  // ⚠️ ของยังไม่ถูกกางเข้าระบบ ≠ ของครบแล้ว — ตอบ ready ตรงนี้คือบอกให้เริ่มผลิตผิด
+  const r = productionReadiness([], '2026-08-25');
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.tone, 'neutral');
+});
+
+test('salesOrderId ผ่าน normalize ได้ และว่าง = ยังไม่ผูก', () => {
+  assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x' }).value.salesOrderId, null);
+  assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x', salesOrderId: 'SO-1' }).value.salesOrderId, 'SO-1');
 });

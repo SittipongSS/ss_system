@@ -24,15 +24,23 @@ import { deliveryRollup } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import styles from "./DeliveriesPanel.module.css";
 
-const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", dueDate: "", note: "" };
+const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", salesOrderId: "", dueDate: "", note: "" };
 
 export default function DeliveriesPanel({
   projectId,
   deliveries = [],
+  // ใบสั่งขายของโครงการ ให้ผูกรายแถว (mig 0177) — ของเข้าติดตามเพื่อตอบว่า
+  // "ใบสั่งขายใบไหนเริ่มผลิตได้" ไม่ใช่แค่ว่าของมาถึงหรือยัง
+  salesOrders = [],
   canEdit = false,
   onChanged,
   onError,
 }) {
+  const soLabel = (id) => salesOrders.find((s) => s.id === id)?.orderNumber || null;
+  const soOptions = [
+    { value: "", label: "— ยังไม่ผูก —" },
+    ...salesOrders.map((s) => ({ value: s.id, label: s.orderNumber })),
+  ];
   const [busy, setBusy] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -134,6 +142,7 @@ export default function DeliveriesPanel({
                 <th>ชนิด</th>
                 <th className={styles.numCol}>จำนวน</th>
                 <th>PR / PO</th>
+                <th className={styles.soCol}>ใบสั่งขาย</th>
                 <th className={styles.dateCol}>กำหนดถึง</th>
                 <th className={styles.dateCol}>มาถึงจริง</th>
                 {canEdit && <th className={styles.actionsCol} />}
@@ -156,6 +165,24 @@ export default function DeliveriesPanel({
                         : `${Number(row.qty).toLocaleString("th-TH")} ${row.unit || ""}`}
                     </td>
                     <td className="mono">{row.poRef || <span className={styles.muted}>—</span>}</td>
+                    {/* ผูก SO = บอกว่าของชุดนี้สั่งมาเพื่อผลิตใบไหน · ว่างได้ เพราะของ
+                        long-lead สั่งก่อนออก SO ได้จริง */}
+                    <td>
+                      {canEdit && salesOrders.length ? (
+                        <Select
+                          compact value={row.salesOrderId || ""} disabled={!!busy}
+                          /* ⚠️ Select รับ `aria-label` ไม่ใช่ `ariaLabel` (ต่างจาก DateInput)
+                             ใส่ผิดแล้วมันหลุดไปเป็น DOM attribute ที่ไม่มีอยู่จริง */
+                          aria-label={`ใบสั่งขายของ ${row.label}`}
+                          options={soOptions}
+                          onChange={(e) => patchRow(row, { salesOrderId: e.target.value || null })}
+                        />
+                      ) : (
+                        <span className="mono">
+                          {soLabel(row.salesOrderId) || <span className={styles.muted}>—</span>}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       {canEdit ? (
                         <DateInput
@@ -233,6 +260,16 @@ export default function DeliveriesPanel({
               onChange={(e) => setForm({ ...form, poRef: e.target.value })}
             />
           </div>
+          {salesOrders.length > 0 && (
+            <div className="form-group">
+              <label htmlFor="mdl-so">ใบสั่งขายที่สั่งของชุดนี้เพื่อไปผลิต</label>
+              <Select
+                id="mdl-so" value={form.salesOrderId}
+                onChange={(e) => setForm({ ...form, salesOrderId: e.target.value })}
+                options={soOptions}
+              />
+            </div>
+          )}
           <div className="form-group">
             <label htmlFor="mdl-due">กำหนดถึง</label>
             <DateInput

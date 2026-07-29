@@ -75,14 +75,35 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const nowIso = new Date().toISOString();
     // ดีลของแถว = ดีลของใบต้นทาง (ใบหนึ่งผูกดีลเดียวเสมอ — costing_requests.dealId NOT NULL)
     const dealByRequest = new Map(requests.map((r) => [r.id, r.dealId]));
+
+    // ⭐ ใบสั่งขายที่ของชุดนี้สั่งเพื่อไปผลิต (มติผู้ใช้ 2026-07-29) — SO ออกก่อน PR
+    // เสมอตามแม่แบบ (NPD 28→37→38) ตอนกางจึงมักมี SO อยู่แล้ว
+    // ⚠️ ดีลหนึ่งมี SO ได้หลายใบ (re-order) → เติมให้อัตโนมัติเฉพาะตอน **มีใบเดียว**
+    // เท่านั้น มีหลายใบให้ผู้ใช้เลือกเอง · เดาผิดแล้วใบที่ยังไม่พร้อมจะดูเหมือนพร้อมผลิต
+    const soByDeal = new Map();
+    if (dealIds.length) {
+      const { data: orders, error: soError } = await supabase
+        .from('sales_orders').select('id, dealId, status')
+        .in('dealId', dealIds).neq('status', 'cancelled');
+      if (soError) throw soError;
+      const byDeal = new Map();
+      for (const so of orders || []) {
+        byDeal.set(so.dealId, [...(byDeal.get(so.dealId) || []), so.id]);
+      }
+      for (const [dealId, ids] of byDeal) {
+        if (ids.length === 1) soByDeal.set(dealId, ids[0]);
+      }
+    }
     const payload = rows.map((row) => {
       const requestId = requestByItem.get(
         (components || []).find((c) => c.id === row.componentId)?.itemId,
       );
+      const dealId = dealByRequest.get(requestId) || null;
       return {
         id: genId('MDL'),
         projectId: project.id,
-        dealId: dealByRequest.get(requestId) || null,
+        dealId,
+        salesOrderId: (dealId && soByDeal.get(dealId)) || null,
         costingRequestId: requestId || null,
         source: 'costing',
         ...row,

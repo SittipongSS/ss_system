@@ -81,6 +81,9 @@ export function normalizeDeliveryInput(body = {}) {
       dueDate: body.dueDate || null,
       arrivedAt: body.arrivedAt || null,
       materialId: body.materialId || null,
+      // ใบสั่งขายที่ของชุดนี้สั่งเพื่อไปผลิต (มติผู้ใช้ 2026-07-29) — ไม่บังคับ
+      // เพราะของ long-lead สั่งก่อนออก SO ได้จริง (NPD step 25 เริ่มขนานตั้งแต่ต้น)
+      salesOrderId: body.salesOrderId || null,
       ownerId: body.ownerId || null,
       ownerName: body.ownerName || null,
       note: note || null,
@@ -110,6 +113,42 @@ export function deliveryRollup(rows = [], todayIso = null) {
     late,
     complete: total > 0 && arrived === total,
     lastDue: dueDates.length ? dueDates[dueDates.length - 1] : null,
+  };
+}
+
+// ── ของเข้าของใบสั่งขายใบหนึ่ง (มติผู้ใช้ 2026-07-29) ────────────────────
+// "ติดตามเพื่อสู่การผลิต" — คำถามจริงที่หน้า SO ต้องตอบคือ **ผลิตได้เมื่อไหร่**
+// ซึ่งคือ "ของครบเมื่อไหร่" ไม่ใช่ "ของมาถึงกี่ชิ้นแล้ว" เฉย ๆ
+//
+// ⚠️ แถวที่ยังไม่ผูก SO ถือว่า "ไม่ใช่ของใบนี้" — ไม่เดาให้ เพราะโครงการหนึ่งมี SO
+// ได้หลายใบ (re-order) เดาผิดแล้วใบที่ยังไม่พร้อมจะดูเหมือนพร้อมผลิต
+export function deliveriesForSalesOrder(rows = [], salesOrderId) {
+  if (!salesOrderId) return [];
+  return rows.filter((r) => r.salesOrderId === salesOrderId);
+}
+
+// พร้อมผลิตหรือยัง + ถ้ายัง ติดที่อะไร → ใช้บนหน้า SO โดยตรง
+export function productionReadiness(rows = [], todayIso = null) {
+  const sum = deliveryRollup(rows, todayIso);
+  if (!sum.total) {
+    return { ...sum, state: 'unknown', label: 'ยังไม่มีรายการของเข้า', tone: 'neutral' };
+  }
+  if (sum.complete) {
+    return { ...sum, state: 'ready', label: 'ของครบแล้ว — เริ่มผลิตได้', tone: 'success' };
+  }
+  if (sum.late) {
+    return {
+      ...sum,
+      state: 'blocked',
+      label: `ของยังไม่ครบ · เลยกำหนดแล้ว ${sum.late} รายการ`,
+      tone: 'danger',
+    };
+  }
+  return {
+    ...sum,
+    state: 'waiting',
+    label: sum.lastDue ? `รอของ — ครบเมื่อ ${sum.lastDue}` : 'รอของ — ยังไม่มีกำหนด',
+    tone: 'warning',
   };
 }
 
