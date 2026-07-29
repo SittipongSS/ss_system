@@ -70,6 +70,7 @@ test("หน้าต้นแบบครอบคลุม primitive ที่
    เพิ่มชื่อในลิสต์นี้ทุกครั้งที่สร้าง primitive ใหม่ใน components/ui/ */
 test("หน้าต้นแบบต้องมีช่องกรอกและตัวเลือกครบทุกตัว", () => {
   for (const primitive of [
+    "Input",                   // ช่องกรอกพื้นฐาน — ที่เดียวที่เขียน premium-input ได้
     "MoneyInput",              // จัดลูกน้ำระหว่างพิมพ์ + คืนตำแหน่งเคอร์เซอร์
     "PhoneInput",
     "NationalIdInput",
