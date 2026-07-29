@@ -314,7 +314,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
       {dupRound && (
         <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <AlertTriangle size={16} style={{ color: "var(--amber)" }} />
-          <span style={{ fontSize: 13 }}>
+          <span style={{ fontSize: "var(--fs-7)" }}>
             วันที่รับนี้เคยลง<strong> รอบที่ {dupRound.roundNo} </strong>แล้ว — อาจลงข้อมูลซ้ำ
           </span>
           {onEditExisting && (
@@ -328,7 +328,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
       {backfillPos != null && (
         <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <History size={16} style={{ color: "var(--blue)" }} />
-          <span style={{ fontSize: 13 }}>
+          <span style={{ fontSize: "var(--fs-7)" }}>
             วันที่รับนี้เก่ากว่ารอบล่าสุด — จะแทรกเป็น<strong> รอบที่ {backfillPos} </strong>ตามลำดับวันที่รับ (เลขรอบหลังจากนั้นขยับขึ้นให้อัตโนมัติ)
           </span>
         </div>
@@ -340,17 +340,17 @@ export default function ForecastForm({ products = [], editRound = null, existing
         </div>
       )}
 
-      {error && <div style={{ color: "var(--red)", fontSize: "13px" }}>{error}</div>}
+      {error && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>}
 
       {/* หน่วยที่กรอกในกริด — สหมิตรคุยเป็นลัง แต่ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลังตอนบันทึก) */}
       {hasGrid && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
+          <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
           <div className="segmented">
             <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeEntryUnit("piece")}>ชิ้น</button>
             <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeEntryUnit("case")}>ลัง</button>
           </div>
-          <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+          <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>
             {entryUnit === "case"
               ? "สลับหน่วยแล้วเลขในกริดแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)"
               : "เก็บตามที่กรอก (ชิ้น)"}
@@ -378,7 +378,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
                   </td>
                   <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
                     {r.productName || "— ไม่รู้จัก —"}
-                    {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
+                    {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}> ({r.productMeta})</span>}
                   </td>
                   {months.map((m) => (
                     <td key={m} style={{ padding: "2px" }}>
@@ -400,7 +400,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
           </table>
         </TableScroll>
       ) : (
-        <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
+        <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
           เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel{latestRound ? " / ใช้ FC รอบก่อนหน้า" : ""})
         </div>
       )}

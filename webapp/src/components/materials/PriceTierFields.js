@@ -79,7 +79,7 @@ export default function PriceTierFields({
         </button>
         {showShortcuts && (
           <>
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>แนะนำ:</span>
+            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แนะนำ:</span>
             {QTY_SHORTCUTS.filter((q) => !usedQty.has(String(q))).map((q) => (
               <button
                 key={q} type="button" className="chip" disabled={disabled}

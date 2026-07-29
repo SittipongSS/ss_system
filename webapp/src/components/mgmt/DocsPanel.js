@@ -87,7 +87,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
   const docIcon = (it) => (it.metadata?.kind === "gsheet" ? FileSpreadsheet : FileText);
 
   const Row = ({ it, href, Icon, external }) => (
-    <div className="flex items-center justify-between gap-2 py-1.5" style={{ fontSize: 13 }}>
+    <div className="flex items-center justify-between gap-2 py-1.5" style={{ fontSize: "var(--fs-7)" }}>
       <a href={href} target="_blank" rel="noreferrer" className="flex items-center gap-2 min-w-0" style={{ color: "var(--text-2)" }}>
         <Icon size={15} className="shrink-0" />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.fileName || "เอกสาร"}</span>
@@ -103,28 +103,28 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
 
   return (
     <div className="glass-panel" style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 14, fontWeight: 600 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: "var(--fs-8)", fontWeight: 600 }}>
         <Paperclip size={16} style={{ color: "var(--accent)" }} /> ไฟล์ & เอกสาร
       </div>
 
       {loading ? (
-        <div style={{ fontSize: 12, color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>กำลังโหลด...</div>
       ) : (
         <>
           {/* Google Doc/Sheet (เอกสารมีชีวิต) */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 12, color: "var(--text-3)" }}>Google Doc / Sheet (แก้ในที่)</span>
+              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>Google Doc / Sheet (แก้ในที่)</span>
               {canEdit && (
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button className="btn" style={{ padding: "3px 8px", fontSize: 12 }} onClick={linkDoc} disabled={busy}><Link2 size={13} /> ผูกลิงก์</button>
-                  <button className="btn" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => createDoc("gdoc")} disabled={busy}><FileText size={13} /> Doc</button>
-                  <button className="btn" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => createDoc("gsheet")} disabled={busy}><FileSpreadsheet size={13} /> Sheet</button>
+                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={linkDoc} disabled={busy}><Link2 size={13} /> ผูกลิงก์</button>
+                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => createDoc("gdoc")} disabled={busy}><FileText size={13} /> Doc</button>
+                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => createDoc("gsheet")} disabled={busy}><FileSpreadsheet size={13} /> Sheet</button>
                 </div>
               )}
             </div>
             {docs.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีเอกสาร</div>
+              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีเอกสาร</div>
             ) : (
               <div className="divide-y divide-[var(--border)]">
                 {docs.map((it) => <Row key={it.id} it={it} href={it.fileUrl} Icon={docIcon(it)} external />)}
@@ -135,16 +135,16 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
           {/* ไฟล์แนบ static (PDF) */}
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 12, color: "var(--text-3)" }}>ไฟล์แนบ (PDF)</span>
+              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ไฟล์แนบ (PDF)</span>
               {canEdit && (
                 <>
-                  <button className="btn" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => fileRef.current?.click()} disabled={busy}><Plus size={13} /> อัปไฟล์</button>
+                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => fileRef.current?.click()} disabled={busy}><Plus size={13} /> อัปไฟล์</button>
                   <input ref={fileRef} type="file" accept={UPLOAD_ACCEPT_ATTR} className="hidden" onChange={(e) => uploadFile(e.target.files?.[0])} />
                 </>
               )}
             </div>
             {files.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีไฟล์</div>
+              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีไฟล์</div>
             ) : (
               <div className="divide-y divide-[var(--border)]">
                 {files.map((it) => <Row key={it.id} it={it} href={fileHref(it)} Icon={FileIcon} />)}

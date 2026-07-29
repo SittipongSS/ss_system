@@ -171,7 +171,7 @@ export default function PoForm({
 
       {backfill && (
         <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", flexDirection: "column", gap: 10 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: disabled ? "default" : "pointer" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)", cursor: disabled ? "default" : "pointer" }}>
             <input
               type="checkbox"
               checked={!!backfill.delivered}
@@ -184,7 +184,7 @@ export default function PoForm({
             <div className="form-group" style={{ maxWidth: 240, margin: 0 }}>
               <label>วันที่ส่งมอบจริง</label>
               <DateInput value={backfill.deliveredDate || ""} onChange={(v) => onBackfill({ deliveredDate: v })} disabled={disabled} />
-              <span style={{ fontSize: 11, color: "var(--text-3)" }}>เว้นว่าง = ใช้กำหนดรับของ หรือวันที่รับ PO</span>
+              <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>เว้นว่าง = ใช้กำหนดรับของ หรือวันที่รับ PO</span>
             </div>
           )}
         </div>
@@ -192,12 +192,12 @@ export default function PoForm({
 
       {rows.length > 0 && allowUnitToggle && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
+          <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
           <div className="segmented">
             <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeUnit("piece")}>ชิ้น</button>
             <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeUnit("case")}>ลัง</button>
           </div>
-          <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+          <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>
             {entryUnit === "case" ? "สลับหน่วยแล้วเลขแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)" : "เก็บตามที่กรอก (ชิ้น)"}
           </span>
         </div>
@@ -236,8 +236,8 @@ export default function PoForm({
                     </td>
                     <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
                       {r.productName || "— ไม่รู้จัก —"}
-                      {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
-                      {lock && <span style={{ color: "var(--text-3)", fontSize: 11.5, marginLeft: 6 }}>· ล็อก: {lock}</span>}
+                      {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}> ({r.productMeta})</span>}
+                      {lock && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-4)", marginLeft: 6 }}>· ล็อก: {lock}</span>}
                     </td>
                     <td style={{ padding: 2, textAlign: "right" }}>
                       <input type="number" min={0} className="premium-input" style={{ width: 120, textAlign: "right", height: 30 }}
@@ -249,7 +249,7 @@ export default function PoForm({
                         const hint = entryUnit === "case"
                           ? `= ${Math.round(n * ppc).toLocaleString("th-TH")} ชิ้น`
                           : (casesText(n, ppc) ? `= ${casesText(n, ppc)}` : null);
-                        return hint ? <div style={{ fontSize: 10, color: "var(--text-3)" }}>{hint}</div> : null;
+                        return hint ? <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{hint}</div> : null;
                       })()}
                     </td>
                     <td style={{ textAlign: "right", color: masterPrice(r) ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>

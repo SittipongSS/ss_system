@@ -92,7 +92,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
   return (
     <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโครงการ" : "สร้างโครงการใหม่"} size="lg">
       <form onSubmit={submit}>
-        <p style={{ marginTop: 0, color: "var(--text-3)", fontSize: 13 }}>
+        <p style={{ marginTop: 0, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
           ข้อมูลระดับโครงการใช้ร่วมกันทุกดีล ส่วนไทม์ไลน์และเอกสารจะมาจากดีลที่ผูกไว้
         </p>
         <div className="pm-form-grid gap-[18px]">
@@ -134,7 +134,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           <div className="form-group"><label>ผู้ประสานงาน (AC){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label><PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} disabled={lockPeopleField === "preparedBy"} ariaLabel="ผู้ประสานงาน (AC)" onChange={(preparedBy) => setForm((f) => ({ ...f, preparedBy }))} /></div>
           <div className="form-group"><label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label><PersonSelect by="name" users={users.filter((u) => u.role === "ae_supervisor")} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} /></div>
         </div>
-        {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
+        {error && <p style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</p>}
         <div className="form-action-bar">
           <button type="button" className="btn" onClick={onClose}>ยกเลิก</button>
           <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : "สร้างโครงการ"}</button>

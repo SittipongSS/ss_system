@@ -131,14 +131,14 @@ export default function SahamitOverview() {
             {Object.entries(kpi.statusCounts).sort((a, b) => b[1] - a[1]).map(([st, n]) => {
               const [label, color] = STATUS_META[st] || [st, "var(--text-3)"];
               return (
-                <span key={st} className="ui-badge" style={{ color, borderColor: color, fontSize: 12.5 }}>
+                <span key={st} className="ui-badge" style={{ color, borderColor: color, fontSize: "var(--fs-6)" }}>
                   {label}: <b style={{ marginLeft: 4 }}>{fmtNumber(n)}</b>
                 </span>
               );
             })}
-            {Object.keys(kpi.statusCounts).length === 0 && <span style={{ color: "var(--text-3)", fontSize: 13 }}>— ยังไม่มีข้อมูล FC/PO —</span>}
+            {Object.keys(kpi.statusCounts).length === 0 && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>— ยังไม่มีข้อมูล FC/PO —</span>}
             {unit === "value" && kpi.unpricedCount > 0 && (
-              <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)", fontSize: 12.5 }}>
+              <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)", fontSize: "var(--fs-6)" }}>
                 {kpi.unpricedCount} สินค้ายังไม่ตั้งราคา — มูลค่าต่ำกว่าจริง
               </span>
             )}
@@ -166,8 +166,8 @@ export default function SahamitOverview() {
               <div className="glass-panel" style={{ padding: "0", display: "flex", flexDirection: "column" }}>
                 <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px" }}>
                   <AlertCircle size={16} style={{ color: "var(--amber)" }} />
-                  <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)" }}>PO ที่ต้องการการติดตาม (ด่วน)</h3>
-                  <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 8px", fontSize: "12px" }} onClick={() => router.push("/sahamit/po")}>ดูทั้งหมด</button>
+                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, color: "var(--text)" }}>PO ที่ต้องการการติดตาม (ด่วน)</h3>
+                  <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 8px", fontSize: "var(--fs-5)" }} onClick={() => router.push("/sahamit/po")}>ดูทั้งหมด</button>
                 </div>
                 {recentFollowUps.length > 0 ? (
                   <TableScroll><table className="premium-table" style={{ borderTop: "none" }}>
@@ -183,7 +183,7 @@ export default function SahamitOverview() {
                     </tbody>
                   </table></TableScroll>
                 ) : (
-                  <div className="empty-state" style={{ padding: "32px", fontSize: "13px" }}>ไม่มี PO ค้างส่งที่ต้องติดตาม เยี่ยมมาก!</div>
+                  <div className="empty-state" style={{ padding: "32px", fontSize: "var(--fs-7)" }}>ไม่มี PO ค้างส่งที่ต้องติดตาม เยี่ยมมาก!</div>
                 )}
               </div>
 
@@ -191,16 +191,16 @@ export default function SahamitOverview() {
               <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                   <Clock size={16} style={{ color: "var(--text-3)" }} />
-                  <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)" }}>การอัปเดต FC ล่าสุด</h3>
+                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, color: "var(--text)" }}>การอัปเดต FC ล่าสุด</h3>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {recentFCs.map((fc) => (
                     <div key={fc.id} style={{ display: "flex", flexDirection: "column", gap: "4px", paddingBottom: "12px", borderBottom: "1px dashed var(--border)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontWeight: 500, fontSize: "13px", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
-                        <span style={{ fontSize: "12px", color: "var(--text-3)" }}>{fc.receivedDate || "-"}</span>
+                        <span style={{ fontWeight: 500, fontSize: "var(--fs-7)", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
+                        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{fc.receivedDate || "-"}</span>
                       </div>
-                      <span style={{ fontSize: "12px", color: "var(--text-2)" }}>ครอบคลุม {fc.coverMonths?.length || 0} เดือน</span>
+                      <span style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>ครอบคลุม {fc.coverMonths?.length || 0} เดือน</span>
                     </div>
                   ))}
                   {recentFCs.length === 0 && <div className="empty-state" style={{ padding: "20px 0" }}>ไม่มีประวัติการนำเข้า FC</div>}

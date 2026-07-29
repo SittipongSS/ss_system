@@ -173,13 +173,13 @@ export default function SalesHistoryMonthlyPage() {
       <section className="glass-panel" style={{ padding: 16 }}>
         <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
           <CalendarRange size={17} aria-hidden="true" />
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ยอดขายจริง ปี {year} · ทั้งบริษัท</h2>
+          <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ยอดขายจริง ปี {year} · ทั้งบริษัท</h2>
           <div className="spacer" />
           <button type="button" className="btn btn-primary" onClick={save} disabled={saving || loading}>
             <Check size={15} aria-hidden="true" /> {saving ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>
-        <p style={{ margin: "0 0 14px", color: "var(--text-3)", fontSize: 12.5 }}>
+        <p style={{ margin: "0 0 14px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
           กรอกเป็น<b>ยอดรวมทั้งบริษัท</b>เท่านั้น — ทีมขายเพิ่งแบ่งจริงเมื่อ มิ.ย. 2026 ยอดก่อนหน้านั้นไม่มีเจ้าของทีม ·
           ช่องที่มีป้าย <span className="ui-badge" style={{ color: "var(--teal)" }}>กรอกเอง</span> = เคยบันทึกไว้แล้ว ·
           ช่องอื่นเติมจากยอด Won ในระบบ (ถ้ามี) แก้ทับได้ · กด &ldquo;บันทึก&rdquo; ถึงมีผล
@@ -198,7 +198,7 @@ export default function SalesHistoryMonthlyPage() {
               <tr className="premium-row" style={{ background: "var(--panel-2)", fontWeight: 600 }}>
                 <td style={{ whiteSpace: "nowrap" }}>
                   <strong>ทั้งบริษัท</strong>
-                  <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 400 }}>รวมทุกทีม</span>
+                  <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: 400 }}>รวมทุกทีม</span>
                 </td>
                 {MONTH_LABELS.map((label, mi) => {
                   const editable = isMonthEditable(year, mi, now);
@@ -209,9 +209,9 @@ export default function SalesHistoryMonthlyPage() {
                         disabled={!editable}
                         onChange={(parsed) => setMonth(mi, parsed ?? "")}
                         aria-label={`ทั้งบริษัท ${label}`}
-                        style={{ width: "100%", minWidth: 84, fontSize: 12.5, padding: "6px 8px", textAlign: "right" }}
+                        style={{ width: "100%", minWidth: 84, fontSize: "var(--fs-6)", padding: "6px 8px", textAlign: "right" }}
                       />
-                      <span style={{ display: "block", marginTop: 2, fontSize: 10, color: savedMonths.has(mi) ? "var(--teal)" : "var(--text-3)", textAlign: "right" }}>
+                      <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-2)", color: savedMonths.has(mi) ? "var(--teal)" : "var(--text-3)", textAlign: "right" }}>
                         {!editable ? "ยังไม่ถึง" : savedMonths.has(mi) ? "กรอกเอง" : systemMonths[mi] > 0 ? "ระบบ" : ""}
                       </span>
                     </td>
@@ -223,9 +223,9 @@ export default function SalesHistoryMonthlyPage() {
                     value={yearOverride ?? yearTotal}
                     onChange={(parsed) => setYearOverride(parsed ?? "")}
                     aria-label={`ยอดรวมทั้งปี ${year}`}
-                    style={{ width: "100%", minWidth: 110, fontSize: 12.5, padding: "6px 8px", textAlign: "right", fontWeight: 700 }}
+                    style={{ width: "100%", minWidth: 110, fontSize: "var(--fs-6)", padding: "6px 8px", textAlign: "right", fontWeight: 700 }}
                   />
-                  <span style={{ display: "block", marginTop: 2, fontSize: 10, textAlign: "right", color: mismatch ? "var(--amber)" : "var(--text-3)" }}>
+                  <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-2)", textAlign: "right", color: mismatch ? "var(--amber)" : "var(--text-3)" }}>
                     {mismatch ? "ไม่ตรงผลรวมรายเดือน" : yearOverride == null ? "ผลรวมรายเดือน" : "กรอกเอง"}
                   </span>
                 </td>
@@ -235,7 +235,7 @@ export default function SalesHistoryMonthlyPage() {
         </div>
 
         {mismatch && (
-          <p style={{ margin: "12px 0 0", color: "var(--amber)", fontSize: 12.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <p style={{ margin: "12px 0 0", color: "var(--amber)", fontSize: "var(--fs-6)", display: "flex", gap: 8, alignItems: "flex-start" }}>
             <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
             ยอดรวมทั้งปีที่กรอก ({fmtMoney(yearTotal)}) ไม่ตรงกับผลรวมรายเดือน ({fmtMoney(resolveYearTotal({ months }).total)}) —
             บันทึกได้ตามปกติถ้าตั้งใจ (เช่นปีที่รู้แค่ยอดรวม) ระบบจะเก็บทั้งสองค่าตามที่กรอก

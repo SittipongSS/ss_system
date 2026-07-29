@@ -33,7 +33,7 @@ export function personSelectOptions(users = [], { emptyLabel = null, by = "id" }
       render: (
         <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fullName(u)}</span>
-          {meta ? <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span> : null}
+          {meta ? <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{meta}</span> : null}
         </span>
       ),
     };

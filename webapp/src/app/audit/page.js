@@ -184,7 +184,7 @@ export default function AuditLogPage() {
                         </div>
                       </td>
                       <td>
-                        <span className={`status-pill ${ACTION_CLASS[r.action] || ""}`} style={{ height: "auto", padding: "2px 9px", fontSize: "11px", fontWeight: 600 }}>
+                        <span className={`status-pill ${ACTION_CLASS[r.action] || ""}`} style={{ height: "auto", padding: "2px 9px", fontSize: "var(--fs-3)", fontWeight: 600 }}>
                           {ACTION_LABELS[r.action] || r.action}
                         </span>
                       </td>

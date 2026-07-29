@@ -124,7 +124,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
             </button>
           ) : <strong>{label}</strong>}
           {!isTeam && !isTotal && row.team && (
-            <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 400 }}>{row.team}</span>
+            <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: 400 }}>{row.team}</span>
           )}
         </td>
         <td className={cellClass("num mono")}>{money(s.target)}</td>
@@ -139,7 +139,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
         <td className={cellClass()} style={{ minWidth: 150 }}>
           <div className="flex items-center gap-2">
             <ProgressBar stat={s} />
-            <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+            <span className="mono" style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)" }}>
               {s.pct == null ? "–" : `${Math.round(s.pct)}%`}
             </span>
           </div>
@@ -153,7 +153,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
         <Sun size={17} aria-hidden="true" style={{ color: "var(--amber)" }} />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ตารางติดตามยอดขาย — {periodLabel(win)}</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ตารางติดตามยอดขาย — {periodLabel(win)}</h2>
         <div className="spacer" />
         <div className="segmented" role="group" aria-label="ชนิดงวด">
           {KINDS.map((k) => (
@@ -176,7 +176,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
           </div>
         )}
       </div>
-      <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: 12.5 }}>
+      <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
         {" "}· แถบ: เขียว = Actual · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล

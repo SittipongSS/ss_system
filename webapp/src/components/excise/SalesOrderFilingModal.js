@@ -161,7 +161,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
               <FileCheck2 size={17} color="var(--accent)" />
               {selectedOrder.orderNumber}
             </div>
-            <div className="grid grid-cols-2 gap-3" style={{ marginTop: 12, fontSize: 13 }}>
+            <div className="grid grid-cols-2 gap-3" style={{ marginTop: 12, fontSize: "var(--fs-7)" }}>
               <div><span style={{ color: "var(--text-3)" }}>ยอด SO</span><div className="font-mono">{fmtMoney(selectedOrder.totalAmount)}</div></div>
               <div><span style={{ color: "var(--text-3)" }}>รายการสรรพสามิต</span><div>{resolution.loading ? "กำลังตรวจ…" : `${resolution.lines.length} รายการ`}</div></div>
               <div><span style={{ color: "var(--text-3)" }}>ค่าภาษี (ก่อน VAT)</span><div className="font-mono">{resolution.loading ? "…" : fmtMoney(resolution.totalTax)}</div></div>

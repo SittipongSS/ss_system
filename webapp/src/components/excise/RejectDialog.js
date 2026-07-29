@@ -43,7 +43,7 @@ export default function RejectDialog({
     <Modal open={open} onClose={() => !busy && onClose()} title={title} size="sm">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-2">
-          <label style={{ fontSize: 13, color: "var(--text-2)" }}>
+          <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             {reasonLabel || `เหตุผลที่ตีกลับ ${entityLabel}`} <span style={{ color: "var(--red)" }}>*</span>
           </label>
           <textarea
@@ -51,7 +51,7 @@ export default function RejectDialog({
             className="premium-input w-full" placeholder={placeholder}
             style={{ resize: "vertical" }}
           />
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }}>{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }}>{error}</div>}
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>

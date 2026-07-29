@@ -418,7 +418,7 @@ export default function LeadsPage() {
 
         {canSeeLeadKpi(role) && (
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
             </div>
           )}
           <SaMetricStrip aria-busy={loading}>
@@ -485,24 +485,24 @@ export default function LeadsPage() {
                   <tr key={lead.id} className="premium-row" onClick={() => router.push(`/sa/leads/${lead.id}`)} style={{ cursor: "pointer" }}>
                     <td>
                       <strong>{lead.contactName}</strong>
-                      <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
+                      <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                         {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
                       </span>
                     </td>
                     <td><span className="ui-badge" style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] || "var(--text-2)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
                     <td>
                       {SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest}
-                      {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{lead.serviceDetail}</span>}
+                      {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{lead.serviceDetail}</span>}
                     </td>
                     <td className="num mono">{lead.budget != null ? fmtMoney(lead.budget) : "-"}</td>
                     <td>
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : "-"}
-                      {lead.assigneeName && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{lead.assigneeName}</span>}
+                      {lead.assigneeName && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{lead.assigneeName}</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
                       </td>
-                    <td style={{ whiteSpace: "nowrap", fontSize: 12.5, color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
+                    <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
                     <td className="num" style={{ verticalAlign: "middle" }} onClick={(event) => event.stopPropagation()}>
                         <div style={{ display: "grid", gridTemplateColumns: "100px 80px 85px 28px 28px", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 345 }}>
                           
@@ -606,8 +606,8 @@ export default function LeadsPage() {
         <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"} style={{ padding: 18 }}>
           
           <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ fontSize: 13, color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: 13 }}>
+            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: "var(--fs-7)" }}>
               {/* คอลัมน์ต่อกลุ่ม derive จาก enum กลาง — เพิ่ม channel ใหม่ที่ lib/sales/leads.js ที่เดียว */}
               {Object.entries(CHANNEL_GROUP_LABELS).map(([group, groupLabel]) => (
                 <div key={group} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -684,7 +684,7 @@ export default function LeadsPage() {
       <Modal open={!!dealModal} onClose={() => !busy && setDealModal(null)} title="สร้างดีลจากลีด" size="lg">
         {dealModal && (
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16, maxHeight: "75vh", overflowY: "auto" }}>
-            <div style={{ fontSize: 13, color: "var(--text-3)", paddingBottom: 12, borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", paddingBottom: 12, borderBottom: "1px solid var(--border)" }}>
               ลีด: <strong style={{ color: "var(--text)" }}>{dealModal.contactName}</strong>{dealModal.company ? ` · ${dealModal.company}` : ""}
               {dealModal.team ? ` · ทีม ${TEAM_LABELS[dealModal.team] || dealModal.team}` : ""}{dealModal.assigneeName ? ` · ${dealModal.assigneeName}` : ""}
             </div>
@@ -732,11 +732,11 @@ export default function LeadsPage() {
         title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", create_deal: actionModal.lead.status === "qualified" ? "สร้างดีลเพิ่ม" : "สร้างดีล", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}>
         {actionModal && (
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
               ลีด: <strong style={{ color: "var(--text)" }}>{actionModal.lead.contactName}</strong>{actionModal.lead.company ? ` · ${actionModal.lead.company}` : ""}
             </div>
             {actionModal.action === "screen" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 ส่งให้ทีม
                 <Select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
                   <option value="">— เลือกทีม —</option>
@@ -745,7 +745,7 @@ export default function LeadsPage() {
               </label>
             )}
             {actionModal.action === "assign" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
                 <Select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
                   <option value="">— เลือก AE —</option>
@@ -756,19 +756,19 @@ export default function LeadsPage() {
               </label>
             )}
             {["contact", "meeting"].includes(actionModal.action) && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 วัน-เวลา{actionModal.action === "meeting" ? "นัด" : "ที่ติดต่อ"}
                 <DateTimeInput value={actAt} onChange={setActAt} />
               </label>
             )}
             {actionModal.action === "contact" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 หมายเหตุการติดต่อ *
                 <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder="เช่น โทรคุยแล้ว ลูกค้าขอใบเสนอราคา / ติดต่อไม่ได้ นัดโทรใหม่พรุ่งนี้" />
               </label>
             )}
             {actionModal.action === "meeting" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 รูปแบบนัด
                 <Select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
                   {MEETING_MODES.map((m) => <option key={m} value={m}>{MEETING_MODE_LABELS[m]}</option>)}
@@ -776,7 +776,7 @@ export default function LeadsPage() {
               </label>
             )}
             {["disqualify", "bounce"].includes(actionModal.action) && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 เหตุผล *
                 <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
               </label>

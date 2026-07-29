@@ -320,17 +320,17 @@ export default function MaterialAskDetailPage() {
             {REQUEST_STATUS_LABELS[req.status] || req.status}
           </span>
           {hasItems && (
-            <span style={{ fontSize: 13, color: "var(--text-2)" }}>
+            <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
               ตอบแล้ว {progress.done}/{progress.total} รายการ
             </span>
           )}
           {req.acknowledgedByName && (
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
               รับเรื่องโดย {req.acknowledgedByName} · {fmtDate(req.acknowledgedAt)}
             </span>
           )}
           {req.formulaCode && (
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
+            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
           )}
         </div>
         {/* เนื้อคำร้องของชนิดที่ไม่มีบรรทัด — บรีฟกลิ่น/สอบถาม/ขอเอกสาร เก็บเรื่องจริง
@@ -339,9 +339,9 @@ export default function MaterialAskDetailPage() {
         {!hasItems && req.body && (
           <ReadableText text={req.body} lines={12} className={styles.requestBody} />
         )}
-        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />}
+        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />}
         {req.status === "cancelled" && req.cancelReason && (
-          <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
+          <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
           </div>
         )}
@@ -353,9 +353,9 @@ export default function MaterialAskDetailPage() {
             <div style={{ flex: 1, minWidth: 220 }}>
               <div style={{ fontWeight: 600 }}>{item.label}</div>
               {item.spec && (
-                <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: 13, color: "var(--text-2)" }} />
+                <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
               )}
-              <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
+              <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                 ขอราคาที่: {(item.tiers || []).length
                   ? (item.tiers || []).map((t) => qtyText(t.qty)).join(" · ")
                   : "ราคาเดียว (ไม่แบ่งชั้นจำนวน)"}
@@ -366,7 +366,7 @@ export default function MaterialAskDetailPage() {
                 {REQUEST_ITEM_STATUS_LABELS[item.priceStatus]}
               </span>
               {item.answeredByName && (
-                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
                   {item.answeredByName} · {fmtDate(item.answeredAt)}
                 </div>
               )}
@@ -374,7 +374,7 @@ export default function MaterialAskDetailPage() {
           </div>
 
           {item.priceStatus === "no_quote" && item.noQuoteReason && (
-            <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
+            <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
               <strong>ตอบไม่ได้: </strong><ReadableText text={item.noQuoteReason} lines={3} />
             </div>
           )}
@@ -442,7 +442,7 @@ export default function MaterialAskDetailPage() {
               unitLabel={unitOf(answering.item.kind)}
               onChange={(tiers) => setAnswering({ ...answering, tiers })}
             />
-            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-2)" }}>
+            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
               ราคานี้จะเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของ <b>{answering.item.label}</b>
               {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : " (ราคากลาง)"}
             </div>

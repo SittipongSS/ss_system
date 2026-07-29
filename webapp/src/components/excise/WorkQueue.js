@@ -26,16 +26,16 @@ export default function WorkQueue({ items = [] }) {
         >
           <StatusBadge status={it.status} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {it.title}
             </div>
             {it.subtitle && (
-              <div style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {it.subtitle}
               </div>
             )}
           </div>
-          <span className="flex items-center gap-1" style={{ color: "var(--accent)", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+          <span className="flex items-center gap-1" style={{ color: "var(--accent)", fontSize: "var(--fs-7)", fontWeight: 600, flexShrink: 0 }}>
             {it.cta} <ChevronRight size={15} />
           </span>
         </button>

@@ -44,21 +44,21 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
   return (
     <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span className="pill" style={{ fontSize: 13 }}>{deptLabel}</span>
+        <span className="pill" style={{ fontSize: "var(--fs-7)" }}>{deptLabel}</span>
         {canEdit && <button className="btn-icon" style={{ color: "var(--red)" }} onClick={remove} disabled={busy} title="ลบ" aria-label="ลบ"><Trash2 size={15} /></button>}
       </div>
 
       <div>
-        <label style={{ fontSize: 12, color: "var(--text-3)", display: "block", marginBottom: 4 }}>สิ่งที่ดีขึ้น</label>
+        <label style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", display: "block", marginBottom: 4 }}>สิ่งที่ดีขึ้น</label>
         <textarea className="premium-input w-full" rows={2} value={improved} onChange={(e) => setImproved(e.target.value)} disabled={!canEdit} placeholder="สรุปสิ่งที่พัฒนาขึ้น..." />
       </div>
 
       <div>
-        <label style={{ fontSize: 12, color: "var(--text-3)", display: "block", marginBottom: 4 }}>ROCK — เป้าหมายต่อไป</label>
+        <label style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", display: "block", marginBottom: 4 }}>ROCK — เป้าหมายต่อไป</label>
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {goals.length === 0 && <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีเป้าหมาย</div>}
+          {goals.length === 0 && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontStyle: "italic" }}>ยังไม่มีเป้าหมาย</div>}
           {goals.map((g, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--accent)" }}>›</span>
               <span style={{ flex: 1 }}>{g}</span>
               {canEdit && <button className="btn-icon" onClick={() => setGoals(goals.filter((_, j) => j !== i))} title="ลบเป้าหมาย" aria-label="ลบเป้าหมาย"><X size={13} /></button>}
@@ -141,7 +141,7 @@ export default function MgmtRocksPage() {
     >
       {canEdit && addable.length > 0 && (
         <div className="glass-panel" style={{ padding: "12px 14px", marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "var(--text-3)" }}>เพิ่มแผนก:</span>
+          <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>เพิ่มแผนก:</span>
           <Select className="premium-input" style={{ width: 180 }} value={addDept} onChange={(e) => setAddDept(e.target.value)}>
             <option value="">— เลือกแผนก —</option>
             {addable.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}

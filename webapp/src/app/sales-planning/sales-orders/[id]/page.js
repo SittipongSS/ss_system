@@ -697,7 +697,7 @@ export default function SalesOrderDetailPage() {
           <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--amber)", background: "var(--amber-soft)", display: "flex", gap: 10 }}>
               <ShieldAlert size={20} color="var(--amber)" aria-hidden="true" />
-              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
+              <div style={{ color: "var(--text-2)", fontSize: "var(--fs-7)" }}>
                 <strong style={{ color: "var(--text)" }}>กรณีพิเศษเมื่อยังไม่มีผู้ตรวจสอบคนที่สอง</strong>
                 <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะนับ Actual {fmtMoney(order.actualAmount)} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
               </div>
@@ -750,27 +750,27 @@ export default function SalesOrderDetailPage() {
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ color: "var(--text-2)", margin: 0 }}>หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก</p>
-            <label style={{ display: "block", fontSize: 13 }}>
+            <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>
                 <option value="">— เลือกเหตุผล —</option>
                 {SALES_ORDER_CANCEL_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
               </Select>
             </label>
-            <label style={{ display: "block", fontSize: 13 }}>
+            <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>หมายเหตุ {cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}</span>
               <textarea className="textarea-premium" rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
             </label>
             {showReversal && (
               <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--amber)", display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 13, color: "var(--text)" }}>เหตุนี้เป็นฝั่งลูกค้า — ต้องการ <strong>ย้อน Won</strong> (ถอยดีลออกจาก Won + ถอนยอด Actual) ด้วยไหม?</span>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                <span style={{ fontSize: "var(--fs-7)", color: "var(--text)" }}>เหตุนี้เป็นฝั่งลูกค้า — ต้องการ <strong>ย้อน Won</strong> (ถอยดีลออกจาก Won + ถอนยอด Actual) ด้วยไหม?</span>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "var(--fs-7)" }}>
                   <input type="radio" name="rev" checked={cancelForm.reverseTo === ""} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "" }))} /> ไม่ย้อน (ยกเลิกเฉพาะ SO — ดีลคง Won)
                 </label>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "var(--fs-7)" }}>
                   <input type="radio" name="rev" checked={cancelForm.reverseTo === "reopen"} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "reopen" }))} /> ย้อน → เปิดดีลใหม่ (กลับสถานะก่อน Won)
                 </label>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "var(--fs-7)" }}>
                   <input type="radio" name="rev" checked={cancelForm.reverseTo === "lost"} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "lost" }))} /> ย้อน → ปิดดีลเป็น Lost (ลูกค้าเลิกถาวร)
                 </label>
                 {cancelForm.reverseTo === "lost" && (

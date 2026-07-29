@@ -137,7 +137,7 @@ export default function MgmtTasksPage() {
           <TableScroll surface="embedded" family="list">
           <table className="premium-table">
             <thead>
-              <tr style={{ background: "var(--panel-2)", color: "var(--text-3)", fontSize: 12 }}>
+              <tr style={{ background: "var(--panel-2)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                 <th style={{ textAlign: "left", padding: "10px 8px", width: 36 }}>#</th>
                 <th style={{ textAlign: "left", padding: "10px 8px" }}>รายการ</th>
                 <th style={{ textAlign: "left", padding: "10px 8px", width: 90 }}>แผนก</th>

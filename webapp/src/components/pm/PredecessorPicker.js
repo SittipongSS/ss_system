@@ -33,7 +33,7 @@ export default function PredecessorPicker({ tasks, selfId = null, value = [], on
     onChange(checked ? [...(value || []), id] : (value || []).filter((x) => x !== id));
 
   if (others.length === 0) {
-    return <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "8px" }}>ไม่มีขั้นตอนงานอื่น</div>;
+    return <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", textAlign: "center", padding: "8px" }}>ไม่มีขั้นตอนงานอื่น</div>;
   }
   return (
     <div style={{ maxHeight, overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -42,7 +42,7 @@ export default function PredecessorPicker({ tasks, selfId = null, value = [], on
         return (
           <label key={t.id}
             title={blocked ? "เลือกไม่ได้ — ขั้นตอนนี้ขึ้นกับงานปัจจุบันอยู่แล้ว (จะเกิดวงจร)" : undefined}
-            style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.4 : 1 }}>
+            style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-5)", cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.4 : 1 }}>
             <input type="checkbox" disabled={blocked} checked={sel.has(t.id)}
               onChange={(e) => toggle(t.id, e.target.checked)} style={{ accentColor: "var(--accent)" }} />
             <span>{numLabel(t)}{t.name}</span>
@@ -69,7 +69,7 @@ export function PredecessorPopover({ task, tasks, anchor, onSave, onClose }) {
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000 }} />
       <div style={{ position: "fixed", left, top, width: W, zIndex: 1001, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.28)", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontSize: "var(--fs-5)", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           งานที่ต้องรอให้เสร็จก่อน · {task.name}
         </div>
         <PredecessorPicker tasks={tasks} selfId={task.id} value={draft} onChange={setDraft} maxHeight={200} />

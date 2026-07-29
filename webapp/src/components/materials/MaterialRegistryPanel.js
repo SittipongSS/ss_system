@@ -207,7 +207,7 @@ export default function MaterialRegistryPanel({
       {draftCount > 0 && (
         <div className="glass-panel" style={{ padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="ui-badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>{draftCount}</span>
-          <span style={{ fontSize: 13 }}>
+          <span style={{ fontSize: "var(--fs-7)" }}>
             มีวัสดุที่ฝ่ายขายเสนอเข้ามารอฝ่ายคุณรับเข้าทะเบียน
           </span>
           <span className="spacer" />
@@ -288,14 +288,14 @@ export default function MaterialRegistryPanel({
                   <tr key={m.id}>
                     <td>
                       <div style={{ fontWeight: 500 }}>{m.label}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {m.kind === "PM" && m.pmType && <span>{pmTypeLabel(m.pmType)}</span>}
                         {m.formulaCode && <span>สูตร {m.formulaCode}</span>}
                         {m.supplierNote && <span>{m.supplierNote}</span>}
                       </div>
                     </td>
-                    <td style={{ fontSize: 12, color: "var(--text-2)" }}>{MATERIAL_KIND_LABELS[m.kind]}</td>
-                    <td style={{ fontSize: 12 }}>
+                    <td style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>{MATERIAL_KIND_LABELS[m.kind]}</td>
+                    <td style={{ fontSize: "var(--fs-5)" }}>
                       {m.customerName || <span style={{ color: "var(--text-3)" }}>ราคากลาง</span>}
                     </td>
                     <td>
@@ -306,7 +306,7 @@ export default function MaterialRegistryPanel({
                               ? `${money(range.min)}–${money(range.max)}`
                               : money(range.min)} {unitOf(m.kind)}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>
                             rev.{rev.revisionNo}
                             {range.count > 1 ? ` · ${range.count} ชั้น` : ""}
                             {rev ? ` · ถึง ${revisionValidUntil(rev)}` : ""}
@@ -380,7 +380,7 @@ export default function MaterialRegistryPanel({
               onChange={(value) => setForm({ ...form, value })}
             />
             {form.mode === "create" && !canQuoteMaterial(me, form.value.kind) && (
-              <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-2)" }}>
+              <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
                 วัสดุจะเข้าเป็น <b>ร่าง</b> รอฝ่ายเจ้าของรับและใส่ราคา — คนใส่ราคาคือ RD/PC เท่านั้น
               </div>
             )}
@@ -452,14 +452,14 @@ export default function MaterialRegistryPanel({
                       <td>rev.{r.revisionNo}</td>
                       <td>
                         {revisionTiers(r).map((t) => (
-                          <div key={t.id} style={{ fontSize: 12 }}>
+                          <div key={t.id} style={{ fontSize: "var(--fs-5)" }}>
                             <span style={{ color: "var(--text-3)" }}>{qtyText(t.qty)}</span>{" "}
                             {money(tierUnitPrice(r, t))} {unitOf(history.kind)}
                           </div>
                         ))}
                       </td>
-                      <td style={{ fontSize: 12 }}>{r.quotedByName || "—"}</td>
-                      <td style={{ fontSize: 12 }}>{fmtDate(r.quotedAt)}</td>
+                      <td style={{ fontSize: "var(--fs-5)" }}>{r.quotedByName || "—"}</td>
+                      <td style={{ fontSize: "var(--fs-5)" }}>{fmtDate(r.quotedAt)}</td>
                     </tr>
                   ))}
                 </tbody>

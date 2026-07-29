@@ -72,7 +72,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             ✨ คำแนะนำจากระบบ
-            <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 400 }}>
+            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 400 }}>
               ({need > 0 ? `เดือนนี้ PO เกิน FC ${nf(need)} — ต้องดึง FC เข้า` : `เดือนนี้ FC เกิน PO ${nf(spare)} — ส่ง FC ออกได้`})
             </span>
           </div>
@@ -85,7 +85,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                   className="glass-panel"
                   style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderLeft: "3px solid var(--blue)" }}
                 >
-                  <div style={{ fontSize: 13, flex: 1 }}>
+                  <div style={{ fontSize: "var(--fs-7)", flex: 1 }}>
                     <span style={{ fontWeight: 600, color: "var(--blue)" }}>
                       💡 {isPull ? `ดึง FC จาก ${s.sourceMonth}` : `ส่ง FC ไป ${s.targetMonth}`}
                     </span>
@@ -103,12 +103,12 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
       {matrix && suggestions.length === 0 && (
         <div
           className="glass-panel"
-          style={{ padding: 12, marginBottom: 14, fontSize: 13, color: "var(--text-2)", borderLeft: `3px solid ${need > 0 || spare > 0 ? "var(--amber)" : "var(--green)"}` }}
+          style={{ padding: 12, marginBottom: 14, fontSize: "var(--fs-7)", color: "var(--text-2)", borderLeft: `3px solid ${need > 0 || spare > 0 ? "var(--amber)" : "var(--green)"}` }}
         >
           {need > 0 ? (
             <>
               เดือนนี้ <b>PO เกิน FC {nf(need)}</b> — <b>ยังไม่มีเดือนอื่นที่ FC เกิน PO</b> ให้ดึง FC มา
-              <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 4 }}>
+              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginTop: 4 }}>
                 ระบบจะเสนอ “💡 ดึง FC จากเดือน…” เมื่อมีเดือนที่มี FC แต่ยังไม่มี PO (PO คงที่ ย้ายเฉพาะ FC)
               </div>
             </>
@@ -126,7 +126,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
       {related.length > 0 && (
         <>
           <h3 style={{ fontWeight: 600, marginBottom: 8 }}>ชดเชยที่ยืนยันแล้ว</h3>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 13 }}>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: "var(--fs-7)" }}>
             {related.map((c) => (
               <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <span style={{ color: "var(--blue)" }}>{c.sourceMonth} → {c.targetMonth}</span>

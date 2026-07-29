@@ -106,7 +106,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
       {open && typeof document !== "undefined" && createPortal(
         <div ref={panelRef} className="glass-panel ui-filter-popover" style={{ ...panelStyle, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
+            <span style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
             {active && (
               <Button variant="quiet" size="sm" className="ui-filter-clear" onClick={onClear} title="ล้างตัวกรองทั้งหมด">
                 <X size={12} /> ล้างทั้งหมด ({count})
@@ -129,7 +129,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                     style={{
                       display: "flex", alignItems: "center", gap: "8px", width: "100%",
                       padding: "8px 10px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
-                      fontSize: "13px", border: "none",
+                      fontSize: "var(--fs-7)", border: "none",
                       background: isActive ? "var(--accent-soft)" : "transparent",
                       color: isActive ? "var(--accent)" : "var(--text-2)",
                       fontWeight: isActive ? 600 : 500,
@@ -154,7 +154,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="ค้นหา..."
-                      style={{ width: "100%", padding: "7px 9px 7px 30px", fontSize: 13, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}
+                      style={{ width: "100%", padding: "7px 9px 7px 30px", fontSize: "var(--fs-7)", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}
                     />
                     {query && (
                       <button type="button" onClick={() => setQuery("")} style={{ position: "absolute", right: 6, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-3)", display: "flex" }} aria-label="ล้างคำค้น">
@@ -165,7 +165,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                 </div>
               )}
               {!activeGroup || shownOptions.length === 0 ? (
-                <div style={{ padding: "10px", fontSize: "12px", color: "var(--text-3)" }}>{needle ? "ไม่พบตัวเลือกที่ค้น" : "ไม่มีตัวเลือก"}</div>
+                <div style={{ padding: "10px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{needle ? "ไม่พบตัวเลือกที่ค้น" : "ไม่มีตัวเลือก"}</div>
               ) : (
                 shownOptions.map((opt) => {
                   const checked = activeGroup.selected.includes(opt.value);
@@ -179,7 +179,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                       style={{
                         display: "flex", alignItems: "center", gap: "8px", width: "100%",
                         padding: "7px 8px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
-                        fontSize: "13px", border: "none",
+                        fontSize: "var(--fs-7)", border: "none",
                         background: checked ? "var(--accent-soft)" : "transparent",
                         color: checked ? "var(--accent)" : "var(--text)",
                         fontWeight: checked ? 600 : 400,

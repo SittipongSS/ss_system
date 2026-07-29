@@ -202,7 +202,7 @@ export default function CostingRequestForm({
                           aria-label={`ประเภทสินค้ารายการที่ ${idx + 1}`}
                         />
                         {locked && (
-                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
                             มีราคาแล้ว เปลี่ยนประเภทไม่ได้
                           </div>
                         )}

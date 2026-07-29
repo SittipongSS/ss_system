@@ -54,7 +54,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
 
       {open && (
         <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 40, width: "min(90vw, 300px)", padding: "10px" }}>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
+          <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "260px", overflowY: "auto" }}>
             {ZIP_DOC_TYPES.map((t) => {
               const checked = selectedTypes.has(t.key);
@@ -66,7 +66,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
                   style={{
                     display: "flex", alignItems: "center", gap: "8px", width: "100%",
                     padding: "7px 8px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
-                    fontSize: "13px", border: "none",
+                    fontSize: "var(--fs-7)", border: "none",
                     background: checked ? "var(--accent-soft)" : "transparent",
                     color: checked ? "var(--accent)" : "var(--text)",
                   }}
@@ -175,7 +175,7 @@ export default function ReportsPage() {
           <div>
             <div>{main}</div>
             {rest.map((line, i) => (
-              <div key={i} style={{ fontSize: 11.5, color: "var(--text-3)" }}>{line}</div>
+              <div key={i} style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{line}</div>
             ))}
           </div>
         );
@@ -266,10 +266,10 @@ export default function ReportsPage() {
               },
             ]}
           />
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+          <label className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>
             จาก <DateInput style={{ height: "var(--ctl-h)" }} value={from} onChange={setFrom} />
           </label>
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+          <label className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>
             ถึง <DateInput style={{ height: "var(--ctl-h)" }} value={to} onChange={setTo} />
           </label>
         </div>
@@ -279,13 +279,13 @@ export default function ReportsPage() {
         <div className="glass-panel flex items-center gap-6 flex-wrap mb-4" style={{ padding: "12px 16px" }}>
           <span style={{ fontWeight: 600 }}>{summary._label}</span>
           {summary.qty != null && (
-            <span style={{ fontSize: 13 }}>จำนวนรวม: <strong className="font-mono">{Number(summary.qty).toLocaleString("th-TH")}</strong></span>
+            <span style={{ fontSize: "var(--fs-7)" }}>จำนวนรวม: <strong className="font-mono">{Number(summary.qty).toLocaleString("th-TH")}</strong></span>
           )}
           {summary.tax != null && (
-            <span style={{ fontSize: 13 }}>ยอดภาษีรวม: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.tax)}</strong></span>
+            <span style={{ fontSize: "var(--fs-7)" }}>ยอดภาษีรวม: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.tax)}</strong></span>
           )}
-          {typeof summary.status === "string" && <span style={{ fontSize: 13, color: "var(--text-3)" }}>{summary.status}</span>}
-          {selected.size > 0 && <span style={{ fontSize: 13, color: "var(--accent)", marginLeft: "auto" }}>เลือกไว้ {selected.size} รายการ (โหลด/พิมพ์เฉพาะที่เลือก)</span>}
+          {typeof summary.status === "string" && <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>{summary.status}</span>}
+          {selected.size > 0 && <span style={{ fontSize: "var(--fs-7)", color: "var(--accent)", marginLeft: "auto" }}>เลือกไว้ {selected.size} รายการ (โหลด/พิมพ์เฉพาะที่เลือก)</span>}
         </div>
       )}
 

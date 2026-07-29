@@ -39,7 +39,7 @@ export default function SignatureReadyNotice({ active = true, docLabel = "เอ
       style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexWrap: "wrap", gap: 12, padding: "12px 14px", marginBottom: 12,
-        borderColor: "var(--amber)", color: "var(--amber)", fontSize: 13,
+        borderColor: "var(--amber)", color: "var(--amber)", fontSize: "var(--fs-7)",
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>

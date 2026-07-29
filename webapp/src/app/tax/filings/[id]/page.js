@@ -263,9 +263,9 @@ export default function FilingDetailPage() {
 
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
-            <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
               <thead>
-                <tr style={{ color: "var(--text-3)", fontSize: 12, borderBottom: "1px solid var(--border)" }}>
+                <tr style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", borderBottom: "1px solid var(--border)" }}>
                   <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "left" }}>รายการสินค้า</th>
                   <th style={{ padding: "0 8px 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>จำนวน</th>
                   <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>รวมภาษี</th>
@@ -277,7 +277,7 @@ export default function FilingDetailPage() {
                   return (
                     <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 0", verticalAlign: "top" }}>
-                        <div className="font-mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
+                        <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
                         <div>{productDisplayName(p)}</div>
                       </td>
                       <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{(it.quantity || 0).toLocaleString("th-TH")}</td>

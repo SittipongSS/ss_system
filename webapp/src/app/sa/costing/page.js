@@ -237,7 +237,7 @@ export default function CostingListPage() {
                     </td>
                     <td>
                       <div style={{ fontWeight: 500 }}>{row.customerName || "—"}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                      <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                         {productNames.length
                           ? productNames.slice(0, 2).join(" · ")
                             + (productNames.length > 2 ? ` +${productNames.length - 2}` : "")

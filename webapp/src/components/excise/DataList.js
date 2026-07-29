@@ -96,7 +96,7 @@ export default function DataList({
               {card ? card(r) : (
                 <div className="flex flex-col gap-1">
                   {columns.map((c) => (
-                    <div key={c.key} className="flex justify-between gap-3" style={{ fontSize: 13 }}>
+                    <div key={c.key} className="flex justify-between gap-3" style={{ fontSize: "var(--fs-7)" }}>
                       <span style={{ color: "var(--text-3)" }}>{c.label}</span>
                       <span>{c.render ? c.render(r) : r[c.key] ?? "-"}</span>
                     </div>

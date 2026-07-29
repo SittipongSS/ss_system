@@ -62,7 +62,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
           {tab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <span className="ui-badge" style={{ color, borderColor: color, fontSize: 13 }}>{cell.label}</span>
+                <span className="ui-badge" style={{ color, borderColor: color, fontSize: "var(--fs-7)" }}>{cell.label}</span>
                 {cell.status === "match" && (
                   <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <Lock size={13} /> FC=PO ตกลงแล้ว (ล็อกอัตโนมัติ)
@@ -73,26 +73,26 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
               <div className="glass-panel" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
                 <div style={{ display: "flex", gap: 32 }}>
                   <div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>Forecast (FC)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>Forecast (FC)</div>
+                    <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                       {nf(fcQty)}
                       {cell.originalFc != null && cell.originalFc !== fcQty && (
-                        <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
+                        <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: "var(--fs-7)", marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
                       )}
                     </div>
-                    {casesText(fcQty, ppc) && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{casesText(fcQty, ppc)}</div>}
+                    {casesText(fcQty, ppc) && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{casesText(fcQty, ppc)}</div>}
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>Purchase Order (PO)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{nf(poQty)}</div>
-                    {casesText(poQty, ppc) && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{casesText(poQty, ppc)}</div>}
+                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>Purchase Order (PO)</div>
+                    <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{nf(poQty)}</div>
+                    {casesText(poQty, ppc) && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{casesText(poQty, ppc)}</div>}
                   </div>
                 </div>
-                <div style={{ fontSize: 13, color }}>{diffMsg}</div>
+                <div style={{ fontSize: "var(--fs-7)", color }}>{diffMsg}</div>
                 <div className="progress"><span style={{ width: `${pct}%`, background: color }} /></div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", textAlign: "right" }}>ครอบคลุม {pct}%</div>
+                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", textAlign: "right" }}>ครอบคลุม {pct}%</div>
                 {(cell.coverageIn > 0 || cell.coverageOut > 0) && (
-                  <div style={{ fontSize: 12, color: "var(--blue)" }}>
+                  <div style={{ fontSize: "var(--fs-5)", color: "var(--blue)" }}>
                     ⇄ ชดเชย FC ข้ามเดือน (รับ FC เข้า {nf(cell.coverageIn)} / ส่ง FC ออก {nf(cell.coverageOut)}) — PO อยู่กับที่ · ดูแท็บ “ชดเชยยอดข้ามเดือน”
                   </div>
                 )}
@@ -105,14 +105,14 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
               <div>
                 <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Forecast (ตามรอบ)</h3>
                 {detail.fcs.length === 0 ? (
-                  <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี FC เดือนนี้ —</div>
+                  <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>— ไม่มี FC เดือนนี้ —</div>
                 ) : (
                   <TableScroll family="matrix">
                     <table className="premium-table">
                       <thead><tr><th>รอบที่</th><th>วันที่รับ</th><th style={{ textAlign: "right" }}>จำนวน</th></tr></thead>
                       <tbody>
                         {detail.fcs.map((f, i) => (
-                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}{casesText(f.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: 11 }}> ({casesText(f.qty, ppc)})</span>}</td></tr>
+                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}{casesText(f.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> ({casesText(f.qty, ppc)})</span>}</td></tr>
                         ))}
                       </tbody>
                     </table>
@@ -122,7 +122,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
               <div>
                 <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Purchase Orders (ส่งเดือนนี้)</h3>
                 {detail.poLines.length === 0 ? (
-                  <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี PO เดือนนี้ —</div>
+                  <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>— ไม่มี PO เดือนนี้ —</div>
                 ) : (
                   <TableScroll family="matrix">
                     <table className="premium-table">
@@ -133,7 +133,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                             <td className="font-mono">{p.poNumber}</td>
                             <td>{p.docDate ? fmtDate(p.docDate) : "—"}</td>
                             <td>{p.receivedDate ? fmtDate(p.receivedDate) : "—"}</td>
-                            <td style={{ textAlign: "right" }}>{nf(p.qty)}{casesText(p.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: 11 }}> ({casesText(p.qty, ppc)})</span>}</td>
+                            <td style={{ textAlign: "right" }}>{nf(p.qty)}{casesText(p.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> ({casesText(p.qty, ppc)})</span>}</td>
                             <td>{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
                             <td>{p.expectedDate ? fmtDate(p.expectedDate) : "—"}</td>
                             <td>{p.actualDeliveredDate ? fmtDate(p.actualDeliveredDate) : "—"}</td>

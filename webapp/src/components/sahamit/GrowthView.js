@@ -50,7 +50,7 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
       </div>
 
       {singleYear && (
-        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: "var(--text-2)" }}>
+        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", gap: 8, alignItems: "center", fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
           <Info size={16} style={{ color: "var(--blue)" }} />
           ตอนนี้มีข้อมูลปี {dataYears.join(", ") || "—"} ปีเดียว — %เติบโตเทียบปีก่อน (YoY) และการเทียบปีทับกันจะเปิดเมื่อมีข้อมูลปีก่อนหน้า (backfill 2025 หรือเมื่อถึงปีถัดไป)
         </div>
@@ -70,17 +70,17 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
 
           {/* กราฟ: แท่งยอด + เส้น %เติบโต */}
           <div className="glass-panel" style={{ padding: 20 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>ยอด PO จริง {LEVELS.find((l) => l[0] === level)[1]} + %การเติบโต ({unitLbl})</h3>
-            <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>แท่ง = ยอดสั่งจริงต่อช่วง (แกนซ้าย) · เส้น = %เติบโต {seqLabel}{showYoY ? " และ YoY" : ""} (แกนขวา)</div>
+            <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 2 }}>ยอด PO จริง {LEVELS.find((l) => l[0] === level)[1]} + %การเติบโต ({unitLbl})</h3>
+            <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: 8 }}>แท่ง = ยอดสั่งจริงต่อช่วง (แกนซ้าย) · เส้น = %เติบโต {seqLabel}{showYoY ? " และ YoY" : ""} (แกนขวา)</div>
             <ChartCanvas><ResponsiveContainer width="100%" height={360}>
               <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-                <YAxis yAxisId="l" tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
-                <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={46} />
-                <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 }}
+                <XAxis dataKey="label" tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
+                <YAxis yAxisId="l" tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+                <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => `${v}%`} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={46} />
+                <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" }}
                   formatter={(v, n) => (n === "total" ? [fmtVal(v), `ยอด (${unitLbl})`] : [v == null ? "—" : `${v.toFixed(1)}%`, n])} />
-                <Legend wrapperStyle={{ fontSize: 13 }} />
+                <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
                 <Bar yAxisId="l" dataKey="total" name={`ยอด (${unitLbl})`} fill="var(--accent)" radius={[5, 5, 0, 0]} maxBarSize={46} />
                 <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="seqGrowth" name={`%เติบโต ${seqLabel}`} stroke="var(--green)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
                 {showYoY && <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="yoyGrowth" name="%เติบโต YoY" stroke="var(--amber)" strokeWidth={2.5} strokeDasharray="5 3" dot={{ r: 3 }} connectNulls />}

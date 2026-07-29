@@ -186,14 +186,14 @@ export default function ProjectsIndexPage() {
                         {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
                         <Link prefetch={false} href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
                           <strong>{p.name || "-"}</strong>
-                          <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
+                          <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                             {p.code || p.id}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
                           </span>
                         </Link>
                       </td>
                       <td>
                         <strong style={{ display: "block", fontWeight: 650 }}>{p.customerName || "-"}</strong>
-                        <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{projectBrand || "-"}</span>
+                        <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{projectBrand || "-"}</span>
                       </td>
                       <td>
                         <div style={{ minWidth: 150 }}>
@@ -203,7 +203,7 @@ export default function ProjectsIndexPage() {
                               <Link prefetch={false} href={`/sales-planning/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
                             </div>
                           ) : <span style={{ color: "var(--text-3)" }}>-</span>}
-                          <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{(p.deals || []).length} ดีล</span>
+                          <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{(p.deals || []).length} ดีล</span>
                         </div>
                       </td>
                       <td className="num mono">{money(r.fcTotal || 0)}</td>

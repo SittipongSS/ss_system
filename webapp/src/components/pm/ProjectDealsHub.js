@@ -55,9 +55,9 @@ const stageBadge = (stage) => (
 function Kpi({ label, value, hint, color }) {
   return (
     <div className="glass-panel" style={{ padding: "12px 14px" }}>
-      <div style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>{label}</div>
-      <div className="mono tabular-nums" style={{ marginTop: 6, fontSize: 19, fontWeight: 800, color: color || "inherit" }}>{value}</div>
-      {hint && <div style={{ marginTop: 3, color: "var(--text-3)", fontSize: 11.5 }}>{hint}</div>}
+      <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: 600 }}>{label}</div>
+      <div className="mono tabular-nums" style={{ marginTop: 6, fontSize: "var(--fs-11)", fontWeight: 800, color: color || "inherit" }}>{value}</div>
+      {hint && <div style={{ marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-4)" }}>{hint}</div>}
     </div>
   );
 }
@@ -83,12 +83,12 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
           </span>
         )}
         {dealTypeBadge(dealTypeOf(deal))}
-        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: "var(--fs-8)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {displayText(deal.title)}
         </Link>
         {stageBadge(deal.stage)}
       </div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-2)" }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
         <span>
           <span style={{ color: "var(--text-3)" }}>{closed ? "ปิดจริง " : "FC "}</span>
           <strong className="mono tabular-nums" style={{ color: closed ? "var(--green)" : deal.stage === "lost" ? "var(--red)" : "inherit" }}>
@@ -101,7 +101,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
       </div>
 
       {/* segment ไทม์ไลน์ของดีลนี้ (งานใน Gantt ที่ tag dealId ตรงกัน) */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-6)" }}>
         <PackageCheck size={14} aria-hidden="true" style={{ color: "var(--text-3)", flexShrink: 0 }} />
         {seg.total ? (
           <>
@@ -118,19 +118,19 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
 
       {/* ใบเสนอราคาใต้ดีล */}
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 600 }}>
           <FileText size={13} aria-hidden="true" /> ใบเสนอราคา
           <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length}</span>
         </div>
         {shown.length ? shown.map((q) => (
-          <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, minWidth: 0 }}>
+          <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-6)", minWidth: 0 }}>
             <Link prefetch={false} href={`/sa/quotations/${q.id}`} className="linklike mono" style={{ whiteSpace: "nowrap" }}>{q.quoteNumber}</Link>
             <span className="ui-badge" style={{ color: QUOTE_STATUS[q.status]?.color || "var(--text-3)" }}>{QUOTE_STATUS[q.status]?.label || q.status}</span>
             <span className="mono tabular-nums" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{fmtMoney(q.totalAmount)}</span>
           </div>
-        )) : <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
+        )) : <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
         {quotes.length > shown.length && (
-          <div style={{ fontSize: 12, color: "var(--text-3)" }}>+ อีก {quotes.length - shown.length} ใบ (ดูทั้งหมดที่หน้าดีล)</div>
+          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>+ อีก {quotes.length - shown.length} ใบ (ดูทั้งหมดที่หน้าดีล)</div>
         )}
       </div>
 
@@ -151,7 +151,7 @@ export function ProjectQuotationsCard({ project: p }) {
     <section className="glass-panel" style={{ padding: "16px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <FileText size={18} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: 16 }}>ใบเสนอราคา</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>ใบเสนอราคา</h2>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length} ใบ</span>
         <div className="spacer" />
         <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
@@ -175,13 +175,13 @@ export function ProjectQuotationsCard({ project: p }) {
           </table></TableScroll>
         </div>
       ) : (
-        <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></div>
+        <div style={{ padding: 18, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></div>
       )}
     </section>
     <section className="glass-panel" style={{ padding: "16px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <FileText size={18} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: 16 }}>Sale Order</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>Sale Order</h2>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{salesOrders.length} ใบ</span>
         <div className="spacer" />
         <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
@@ -201,7 +201,7 @@ export function ProjectQuotationsCard({ project: p }) {
             })}</tbody>
           </table></TableScroll>
         </div>
-      ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มี Sale Order — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
+      ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มี Sale Order — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
     </section>
     </div>
   );
@@ -305,10 +305,10 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     <div className="glass-panel" style={{ padding: "16px 20px", marginTop: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <MessageSquare size={16} aria-hidden="true" />
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>ความเคลื่อนไหวรวมทุกดีล</h3>
+        <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>ความเคลื่อนไหวรวมทุกดีล</h3>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{feed.length} รายการ</span>
         <div className="spacer" style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: "var(--text-3)" }}>ข้อมูลเดียวกับหน้าดีลแต่ละใบ</span>
+        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ข้อมูลเดียวกับหน้าดีลแต่ละใบ</span>
       </div>
       {canEdit && deals.length > 0 && (
         <form onSubmit={addActivity} style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) 150px minmax(240px, 2fr) auto", gap: 8, marginBottom: 14, alignItems: "end" }}>
@@ -328,14 +328,14 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           <button type="submit" className="btn btn-primary" disabled={saving} style={{ minHeight: 40, alignSelf: "end" }}>{saving ? "กำลังเพิ่ม..." : "เพิ่ม"}</button>
         </form>
       )}
-      {error && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)", marginBottom: 8 }}>{error}</div>}
       {feed.length ? <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }}>
         {feedShown.map((it) => (
-          <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
+          <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: "var(--fs-7)", borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
             <span className="ui-badge" style={{ color: it.kind.color, flexShrink: 0 }}>{it.kind.label}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
               <ReadableText text={it.body} lines={4} />
-              <div style={{ marginTop: 2, fontSize: 11.5, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ marginTop: 2, fontSize: "var(--fs-4)", color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {it.deal && (
                   <Link prefetch={false} href={`/sa/deals/${it.deal.id}`} className="linklike" style={{ display: "inline-flex", gap: 4, alignItems: "center", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {dealTypeBadge(dealTypeOf(it.deal))} {it.deal.title}
@@ -494,7 +494,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       {/* การ์ดดีล — จิ๊กซอว์แต่ละชิ้น */}
       <div className="glass-panel" style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>ดีลในโครงการ ({deals.length})</h3>
+          <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>ดีลในโครงการ ({deals.length})</h3>
           {central && (
             <span className="ui-badge" style={{ color: "var(--text-3)" }} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
               งานกลาง {central.done}/{central.total}
@@ -506,9 +506,9 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
               <Plus size={13} aria-hidden="true" /> ผูกดีล
             </button>
           )}
-          <span style={{ fontSize: 12, color: "var(--text-3)" }}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</span>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</span>
         </div>
-        {reorderError && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{reorderError}</div>}
+        {reorderError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)", marginBottom: 10 }}>{reorderError}</div>}
         {deals.length ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
             {deals.map((d, index) => (
@@ -530,7 +530,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
             <PackageCheck size={28} aria-hidden="true" style={{ margin: "0 auto 8px" }} />
             <div style={{ fontWeight: 700, color: "var(--text)" }}>ยังไม่มีดีลในโครงการ</div>
-            <div style={{ marginTop: 4, fontSize: 13 }}>ผูกดีลของลูกค้ารายนี้เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
+            <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>ผูกดีลของลูกค้ารายนี้เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
             {canEdit && <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setLinkOpen(true)}><Plus size={14} /> ผูกดีลแรก</button>}
           </div>
         )}
@@ -544,11 +544,11 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
               <option value="">— เลือกดีลที่ยังไม่ผูกโครงการ —</option>
               {availableDeals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title} · {dealTypeOf(deal)} · {STAGE_LABELS[deal.stage] || deal.stage}{!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}</option>)}
             </Select>
-            {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12 }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้หรือดีลที่ยังไม่มีลูกค้า</div>}
-            {availableDeals.some((deal) => !deal.customerId) && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12 }}>เมื่อผูกดีลที่ยังไม่มีลูกค้า ระบบจะตั้งลูกค้าให้ตรงกับโครงการอัตโนมัติ</div>}
+            {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้หรือดีลที่ยังไม่มีลูกค้า</div>}
+            {availableDeals.some((deal) => !deal.customerId) && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เมื่อผูกดีลที่ยังไม่มีลูกค้า ระบบจะตั้งลูกค้าให้ตรงกับโครงการอัตโนมัติ</div>}
           </div>
           <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>
-          {linkError && <div style={{ color: "var(--red)", fontSize: 13 }}>{linkError}</div>}
+          {linkError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{linkError}</div>}
           <div className="form-action-bar"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? "กำลังผูก..." : "ผูกเข้าโครงการ"}</button></div>
         </div>
       </Modal>

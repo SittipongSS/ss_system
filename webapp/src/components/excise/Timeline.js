@@ -38,16 +38,16 @@ export default function Timeline({ steps = [] }) {
               )}
             </div>
             <div style={{ paddingBottom: last ? 0 : 12 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: s.state === "todo" ? "var(--text-3)" : "var(--text)" }}>
+              <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, color: s.state === "todo" ? "var(--text-3)" : "var(--text)" }}>
                 {s.label}
               </div>
               {(s.at || s.by) && (
-                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 2 }}>
                   {s.by ? `${s.by}` : ""}{s.by && s.at ? " · " : ""}{s.at ? fmtDateTime(s.at) : ""}
                 </div>
               )}
               {s.note && (
-                <ReadableText text={s.note} lines={3} style={{ fontSize: 12.5, color: "var(--red)", marginTop: 2 }} />
+                <ReadableText text={s.note} lines={3} style={{ fontSize: "var(--fs-6)", color: "var(--red)", marginTop: 2 }} />
               )}
             </div>
           </li>

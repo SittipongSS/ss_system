@@ -63,14 +63,14 @@ export default function CarryPanel({ row, label, closedCount }) {
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <Layers size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ทบยอดย้อนหลัง (Carry-over) — {label}</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ทบยอดย้อนหลัง (Carry-over) — {label}</h2>
         <div className="spacer" />
-        <span className="flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-2)" }}>
+        <span className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
           <span aria-hidden="true" style={{ width: 11, height: 3, background: "var(--amber)", display: "inline-block", borderRadius: 2 }} />
           ทบสะสม (+เกิน / −ขาด)
         </span>
       </div>
-      <p style={{ margin: "4px 0 10px", color: "var(--text-3)", fontSize: 12.5 }}>
+      <p style={{ margin: "4px 0 10px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         เดือนไหนปิดไม่ถึงเป้า ยอดที่ขาดจะถูกทบเข้าเดือนถัดไป · "เป้า + ทบ" = ยอดที่ต้องปิดเดือนนั้นถ้าจะล้างยอดทบให้หมด
       </p>
       <CarryChart rows={rows} />

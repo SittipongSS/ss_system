@@ -63,7 +63,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
     <Modal open={open} onClose={() => !busy && onClose()} title={`อนุมัติขึ้นทะเบียน — ${registration.fgCode}`} size="md">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
-          <div style={{ fontSize: 13, background: "var(--panel-3)", borderRadius: 8, padding: 12 }} className="flex flex-col gap-1">
+          <div style={{ fontSize: "var(--fs-7)", background: "var(--panel-3)", borderRadius: 8, padding: 12 }} className="flex flex-col gap-1">
             <span style={{ color: "var(--text-2)" }}>{productDisplayName(registration)} ({brandLabel(registration.metadata?.brandNameTh, registration.metadata?.brandNameEn || registration.brandName) || "-"})</span>
             <span style={{ color: "var(--text-3)" }}>ลูกค้า: {registration.customerName || "-"}</span>
             <span style={{ color: "var(--text-3)" }}>
@@ -81,7 +81,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
 
           <div className="form-group">
             <label>สถานะภาษีสรรพสามิต</label>
-            <div className="flex flex-col gap-1.5" style={{ fontSize: 13 }}>
+            <div className="flex flex-col gap-1.5" style={{ fontSize: "var(--fs-7)" }}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="radio" name="tx" checked={taxable === "auto"} onChange={() => setTaxable("auto")} />
                 ตามพิกัดอัตโนมัติ ({autoTaxable ? "ต้องเสียภาษี" : "ยกเว้น"})
@@ -97,7 +97,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
             </div>
           </div>
 
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
 
         <div className="form-action-bar">

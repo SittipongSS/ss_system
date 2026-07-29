@@ -115,7 +115,7 @@ export default function SalesOrdersPage() {
                 {pageRows.map((row) => (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                     <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
-                    <td>{row.customerName || "-"}<span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.deal?.title || "-"}</span></td>
+                    <td>{row.customerName || "-"}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span></td>
                     <td><Link prefetch={false} href={`/sa/quotations/${row.quotationId}`} className="linklike mono">{row.quotation?.quoteNumber || "-"}</Link></td>
                     <td>{fmtDate(row.orderDate)}</td><td className="num mono">{fmtMoney(row.status === "approved" ? row.actualAmount : 0)}</td><td>{statusBadge(row.status)}</td>
                   </DetailRow>

@@ -49,10 +49,10 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
     <div className="flex flex-col gap-4">
       <section className="glass-panel" style={{ padding: "14px 16px" }}>
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
-          <span className="flex items-center gap-1.5" style={{ fontWeight: 700, fontSize: 15 }}>
+          <span className="flex items-center gap-1.5" style={{ fontWeight: 700, fontSize: "var(--fs-9)" }}>
             <Search size={16} aria-hidden="true" /> เจาะรายละเอียด
           </span>
-          <span style={{ fontSize: 12, color: "var(--text-3)" }}>มุมมอง</span>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>มุมมอง</span>
           <div className="segmented" role="group" aria-label="มุมมอง">
             {SCOPES.map((s) => (
               <button key={s.key} type="button" className={scope === s.key ? "active" : ""} onClick={() => onChange({ scope: s.key })}>
@@ -70,7 +70,7 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
               {matrix.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.team ? ` · ${p.team}` : ""}</option>)}
             </Select>
           )}
-          <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 6 }}>ช่วงเวลา</span>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: 6 }}>ช่วงเวลา</span>
           <div className="segmented" role="group" aria-label="ช่วงเวลา">
             {PERIODS.map((p) => (
               <button key={p.key} type="button" className={period === p.key ? "active" : ""} onClick={() => onChange({ period: p.key })}>
@@ -79,7 +79,7 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
             ))}
           </div>
         </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-3)" }}>
+        <div style={{ marginTop: 8, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
           ตัวเลือกนี้มีผลกับการ์ดสรุปและกราฟด้านล่างทั้งหมด · บอร์ดประชุมเช้าด้านบนแสดงทุกคนเสมอ
         </div>
       </section>

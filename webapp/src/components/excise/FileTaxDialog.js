@@ -104,13 +104,13 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
     <Modal open={open} onClose={() => !busy && onClose()} title={`บันทึกการชำระภาษี — ${order.quotationRef || order.id}`} size="md">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
-          <div className="flex justify-between items-center" style={{ fontSize: 13, background: "var(--panel-3)", borderRadius: 8, padding: "10px 12px" }}>
+          <div className="flex justify-between items-center" style={{ fontSize: "var(--fs-7)", background: "var(--panel-3)", borderRadius: 8, padding: "10px 12px" }}>
             <span style={{ color: "var(--text-3)" }}>ยอดภาษีที่ต้องชำระ</span>
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{isExempt ? "ยกเว้นภาษี" : fmtMoney(order.totalTax)}</span>
           </div>
 
           {isExempt ? (
-            <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันเพื่อปิดงานเป็น “ชำระแล้ว”</p>
+            <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันเพื่อปิดงานเป็น “ชำระแล้ว”</p>
           ) : (
             <>
               <div className="form-group">
@@ -132,13 +132,13 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
                 </div>
                 <div className="form-group">
                   <label>แนบไฟล์ใบเสร็จ/แบบ ภส.</label>
-                  <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: "var(--fs-5)" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
                 </div>
               </div>
             </>
           )}
 
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>

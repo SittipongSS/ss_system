@@ -91,14 +91,14 @@ export function OrdersComposedChart({ orders = [] }) {
           dataKey="name" 
           axisLine={false} 
           tickLine={false} 
-          tick={{ fill: "var(--text-2)", fontSize: 12 }} 
+          tick={{ fill: "var(--text-2)", fontSize: "var(--fs-5)" }} 
           dy={10}
         />
         <YAxis 
           yAxisId="left" 
           axisLine={false} 
           tickLine={false} 
-          tick={{ fill: "var(--text-3)", fontSize: 12 }} 
+          tick={{ fill: "var(--text-3)", fontSize: "var(--fs-5)" }} 
         />
         <YAxis 
           yAxisId="right" 
@@ -110,7 +110,7 @@ export function OrdersComposedChart({ orders = [] }) {
             if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
             return val;
           }}
-          tick={{ fill: "var(--text-3)", fontSize: 12 }}
+          tick={{ fill: "var(--text-3)", fontSize: "var(--fs-5)" }}
         />
         <RechartsTooltip
           content={(
@@ -119,7 +119,7 @@ export function OrdersComposedChart({ orders = [] }) {
             />
           )}
         />
-        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+        <Legend wrapperStyle={{ fontSize: "var(--fs-5)", paddingTop: 10 }} />
         <Bar 
           yAxisId="left" 
           dataKey="count" 

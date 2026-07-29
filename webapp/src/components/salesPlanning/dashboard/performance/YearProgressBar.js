@@ -38,7 +38,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <Target size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ความคืบหน้าเทียบเป้า — ทั้งบริษัท</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ความคืบหน้าเทียบเป้า — ทั้งบริษัท</h2>
         <div className="spacer" />
         <SeriesLegend
           items={[
@@ -80,14 +80,14 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
         </div>
         {stat.mustClose > 0 && (
           <span style={{ position: "absolute", top: -5, height: 24, width: 3, left: w(stat.mustClose), transform: "translateX(-50%)", background: "var(--text)", borderRadius: 2 }}>
-            <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap" }}>
+            <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: "var(--fs-3)", color: "var(--text-2)", whiteSpace: "nowrap" }}>
               {carryOn && stat.carry > 0 ? "เป้า+ทบ" : "เป้า"}
             </span>
           </span>
         )}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-3)" }}>
+      <div style={{ marginTop: 10, fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
         Actual {money(stat.actual)} ({pctFmt(stat.pct)}) · Forecast {money(stat.forecast)} · ต้องปิด {money(stat.mustClose)}
         {carryOn && stat.carry > 0 && <> (เป้า {money(stat.target)} + ทบยกมา {money(stat.carry)})</>}
         {kind !== "past" && stat.projected < stat.mustClose && <> · คาดขาด {money(stat.mustClose - stat.projected)}</>}

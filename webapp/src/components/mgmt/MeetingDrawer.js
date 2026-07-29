@@ -100,15 +100,15 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
           )}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>วันที่</div>{fmtDate(meeting.meetingDate)}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>เวลา</div>{meeting.timeText || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>แผนก</div>{meeting.deptCode || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>ผู้รับผิดชอบ</div>{meeting.assigneeName || "—"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: "var(--fs-7)" }}>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันที่</div>{fmtDate(meeting.meetingDate)}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เวลา</div>{meeting.timeText || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{meeting.deptCode || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{meeting.assigneeName || "—"}</div>
         </div>
         {meeting.summary && (
-          <div style={{ fontSize: 13 }}>
-            <div style={{ color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>สรุปการประชุม</div>
+          <div style={{ fontSize: "var(--fs-7)" }}>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginBottom: 4 }}>สรุปการประชุม</div>
             <ReadableText text={meeting.summary} lines={5} />
           </div>
         )}
@@ -116,7 +116,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
         <DocsPanel entityType="mgmt_meeting" entityId={meeting.id} canEdit={canEdit} />
 
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
+          <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
           {canEdit && (
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <input className="premium-input" style={{ flex: 1 }} value={comment} placeholder="เพิ่มบันทึก/คอมเมนต์..." onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />
@@ -124,13 +124,13 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
             </div>
           )}
           {updates.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-3)" }}>ยังไม่มีอัพเดท</div>
+            <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ยังไม่มีอัพเดท</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {updates.map((u) => (
-                <div key={u.id} style={{ fontSize: 12.5, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
+                <div key={u.id} style={{ fontSize: "var(--fs-6)", borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
                   <ReadableText text={u.body} lines={4} />
-                  <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>{u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}</div>
+                  <div style={{ color: "var(--text-3)", fontSize: "var(--fs-3)", marginTop: 2 }}>{u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}</div>
                 </div>
               ))}
             </div>

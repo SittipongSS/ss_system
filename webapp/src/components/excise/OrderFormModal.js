@@ -113,7 +113,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           {editing && order.status === "rejected" && order.rejectionReason && (
-            <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">
+            <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">
               <strong>เหตุผลที่ตีกลับ: </strong><ReadableText text={order.rejectionReason} lines={4} />
             </div>
           )}
@@ -187,7 +187,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                         className="btn-icon danger" title="ลบรายการ"><X size={15} /></button>
                     </div>
                     {reg && (
-                      <div style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 2 }} className="font-mono flex gap-4 flex-wrap">
+                      <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: 2 }} className="font-mono flex gap-4 flex-wrap">
                         <span>ราคาขาย/ชิ้น: {priceOf(reg) > 0 ? fmtMoney(priceOf(reg)) : "-"}</span>
                         <span>ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}</span>
                       </div>
@@ -198,12 +198,12 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             </div>
           </div>
 
-          <div className="flex justify-end" style={{ fontSize: 13 }}>
+          <div className="flex justify-end" style={{ fontSize: "var(--fs-7)" }}>
             <span style={{ color: "var(--text-3)" }}>ยอดชำระภาษีสรรพสามิตรวม (ไม่รวมภาษีมูลค่าเพิ่ม):&nbsp;</span>
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{fmtMoney(totalTax)}</span>
           </div>
 
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
 
         <div className="form-action-bar">

@@ -82,7 +82,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
 
         {/* quick status */}
         <div>
-          <label style={{ fontSize: 12, color: "var(--text-3)", display: "block", marginBottom: 6 }}>สถานะ</label>
+          <label style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", display: "block", marginBottom: 6 }}>สถานะ</label>
           <div className="segmented">
             {TASK_STATUSES.map((s) => (
               <button key={s} className={task.status === s ? "active" : ""} disabled={!canEdit || busy} onClick={() => changeStatus(s)}>
@@ -93,15 +93,15 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
         </div>
 
         {/* fields */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>ผู้รับผิดชอบ</div>{task.assigneeName || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>แผนก</div>{task.deptCode || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>วันเริ่ม</div>{fmtDate(task.startDate)}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: 12 }}>วันสิ้นสุด</div>{fmtDate(task.dueDate)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: "var(--fs-7)" }}>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{task.assigneeName || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{task.deptCode || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันเริ่ม</div>{fmtDate(task.startDate)}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันสิ้นสุด</div>{fmtDate(task.dueDate)}</div>
         </div>
         {task.notes && (
-          <div style={{ fontSize: 13 }}>
-            <div style={{ color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>หมายเหตุ</div>
+          <div style={{ fontSize: "var(--fs-7)" }}>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginBottom: 4 }}>หมายเหตุ</div>
             <ReadableText text={task.notes} lines={5} />
           </div>
         )}
@@ -111,7 +111,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
 
         {/* updates feed */}
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
+          <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
           {canEdit && (
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <input className="premium-input" style={{ flex: 1 }} value={comment} placeholder="เพิ่มบันทึก/คอมเมนต์..." onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />
@@ -119,13 +119,13 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
             </div>
           )}
           {updates.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-3)" }}>ยังไม่มีอัพเดท</div>
+            <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ยังไม่มีอัพเดท</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {updates.map((u) => (
-                <div key={u.id} style={{ fontSize: 12.5, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
+                <div key={u.id} style={{ fontSize: "var(--fs-6)", borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
                   <ReadableText text={u.body} lines={4} style={{ color: "var(--text-2)" }} />
-                  <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>
+                  <div style={{ color: "var(--text-3)", fontSize: "var(--fs-3)", marginTop: 2 }}>
                     {u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}
                   </div>
                 </div>

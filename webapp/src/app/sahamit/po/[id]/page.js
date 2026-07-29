@@ -101,18 +101,18 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
         </td>
         <td style={{ color: line.productName ? "inherit" : "var(--amber)" }}>
           {line.productName || "— ไม่รู้จัก —"}
-          {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+          {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
         </td>
         <td style={{ textAlign: "right" }}>
           <div>เต็ม {nf(line.qty)}</div>
-          {casesText(line.qty, ppcOf(product)) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{casesText(line.qty, ppcOf(product))}</div>}
+          {casesText(line.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(line.qty, ppcOf(product))}</div>}
           {Number(product?.price) > 0 && (
-            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+            <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>
               @ ฿{Number(product.price).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ฿{(Number(line.qty || 0) * Number(product.price)).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           )}
           {line.shippedQty != null && (
-            <div style={{ fontSize: 11 }}>
+            <div style={{ fontSize: "var(--fs-3)" }}>
               <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(line.shippedQty)}</span>
               {" · "}
               <span style={{ color: "var(--blue)" }}>เหลือ {nf(Number(line.qty) - Number(line.shippedQty))}</span>
@@ -145,7 +145,7 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
 
       {showHist && hist.length > 0 && (
         <tr>
-          <td colSpan={11} style={{ background: "var(--panel-2)", fontSize: 12 }}>
+          <td colSpan={11} style={{ background: "var(--panel-2)", fontSize: "var(--fs-5)" }}>
             <b>ประวัติการเลื่อนวันคาดการณ์ส่ง:</b>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {hist.map((h, i) => (
@@ -488,7 +488,7 @@ export default function PoDetailPage() {
       ) : error ? null : !po ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>ไม่พบ PO นี้</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ไม่พบ PO นี้</div>
         </div>
       ) : (
         <DetailPageLayout
@@ -569,13 +569,13 @@ export default function PoDetailPage() {
               title={headerExpanded ? "ย่อหัว PO" : "ขยายหัว PO"}
             >
               {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
-              <span style={{ fontSize: 14, fontWeight: 600, flexShrink: 0 }}>ข้อมูลหัว PO</span>
+              <span style={{ fontSize: "var(--fs-8)", fontWeight: 600, flexShrink: 0 }}>ข้อมูลหัว PO</span>
               {!headerExpanded && (
-                <span style={{ fontSize: 13, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: 8 }}>
+                <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: 8 }}>
                   {[po.poNumber, po.docDate && `เอกสาร ${fmtDate(po.docDate)}`, po.receivedDate && `รับ ${fmtDate(po.receivedDate)}`, po.dueDate && `กำหนดส่ง ${fmtDate(po.dueDate)}`, destinationLabel(po.destination), po.quoteRef].filter(Boolean).join("   ·   ")}
                 </span>
               )}
-              <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
+              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
             </button>
             {headerExpanded && (
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)" }}>
@@ -613,7 +613,7 @@ export default function PoDetailPage() {
                   : <div className="readable-field"><ReadableText text={h.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div>}
               </div>
             </div>
-            {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
+            {hErr && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{hErr}</div>}
             </div>
             )}
           </div>
@@ -621,13 +621,13 @@ export default function PoDetailPage() {
           {/* แบ่งส่ง / รวมกลับ */}
           {po.splitFromPoId ? (
             <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, color: "var(--text-2)" }}>🔗 PO นี้คือ <b>ยอดเหลือจากการแบ่งส่ง</b> (โยงกับ PO แม่)</span>
+              <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>🔗 PO นี้คือ <b>ยอดเหลือจากการแบ่งส่ง</b> (โยงกับ PO แม่)</span>
               {canEdit && <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={doMerge}>↩ รวมกลับ (ยกเลิกแบ่งส่ง)</button>}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {balancePos.length > 0 && (
-                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", fontSize: 13 }}>
+                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", fontSize: "var(--fs-7)" }}>
                   🔗 PO นี้ถูกแบ่งส่ง — ยอดเหลือไปที่:{" "}
                   {balancePos.map((bp) => (
                     <Link key={bp.id} href={`/sahamit/po/${bp.id}`} style={{ color: "var(--accent)", marginRight: 10, fontWeight: 600 }}>{bp.poNumber}</Link>
@@ -656,7 +656,7 @@ export default function PoDetailPage() {
                               <td style={{ textAlign: "right" }}>
                                 {nf(l.qty)}
                                 {casesText(l.qty, ppcOf(prodIdx.get(String(l.fgCode).trim().toLowerCase()))) && (
-                                  <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(l.qty, ppcOf(prodIdx.get(String(l.fgCode).trim().toLowerCase())))}</div>
+                                  <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(l.qty, ppcOf(prodIdx.get(String(l.fgCode).trim().toLowerCase())))}</div>
                                 )}
                               </td>
                               <td style={{ padding: 2, textAlign: "right" }}>
@@ -719,19 +719,19 @@ export default function PoDetailPage() {
       <Modal open={linkOpen} onClose={() => !linkBusy && setLinkOpen(false)} title="เลือกโครงการเดิมมาเชื่อม PO">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {linkLoading ? (
-            <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดโครงการ…</div>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>กำลังโหลดโครงการ…</div>
           ) : linkProjects.length === 0 ? (
-            <div style={{ color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีโครงการสหมิตรให้เลือก — ใช้ &quot;สร้างโครงการใหม่&quot; แทน</div>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มีโครงการสหมิตรให้เลือก — ใช้ &quot;สร้างโครงการใหม่&quot; แทน</div>
           ) : (
             <>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>โครงการ</label>
+              <label style={{ fontSize: "var(--fs-7)", fontWeight: 600 }}>โครงการ</label>
               <Select value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)}>
                 <option value="">— เลือกโครงการ —</option>
                 {linkProjects.map((p) => (
                   <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}{p.type ? ` (${p.type})` : ""}</option>
                 ))}
               </Select>
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                 FG และจำนวนจาก PO นี้จะถูกเพิ่มเข้าโครงการที่เลือก แล้วเดินขั้นตอน &quot;ยืนยันดีล + ออกใบเสนอราคา&quot; ต่อได้
               </div>
             </>
@@ -748,7 +748,7 @@ export default function PoDetailPage() {
       <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="ยืนยันดีล + ออกใบเสนอราคา (รายบรรทัด)" size="lg">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           {!settleData ? (
-            <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดดีลที่แนะนำ…</div>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>กำลังโหลดดีลที่แนะนำ…</div>
           ) : (
             <>
               {/* ยังไม่มีโครงการ = แก้ตรงนี้เลย ไม่ต้องปิดโมดัลไปหาปุ่มอื่น
@@ -807,12 +807,12 @@ export default function PoDetailPage() {
                   รวมดีล + ออกใบ) — พาไปดูใบเดิม ไม่ใช่ปล่อยให้กดยืนยันแล้วเจอ
                   "ไม่มีบรรทัดที่จะเชื่อม" */}
               {settleData.allSettled && (
-                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--green)", fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--green)", fontSize: "var(--fs-7)", display: "flex", flexDirection: "column", gap: 8 }}>
                   <div>✓ PO ใบนี้เชื่อมดีลครบทุกบรรทัดแล้ว — <b>ใบเสนอราคาออกไปแล้ว</b>ตอนกดยืนยัน ไม่ต้องออกซ้ำ</div>
                   {settleData.quotations?.length ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {settleData.quotations.map((q) => (
-                        <a key={q.id} href={`/sa/quotations/${q.id}`} style={{ color: "var(--accent)", fontSize: 12 }}>
+                        <a key={q.id} href={`/sa/quotations/${q.id}`} style={{ color: "var(--accent)", fontSize: "var(--fs-5)" }}>
                           <span className="font-mono" style={{ fontWeight: 600 }}>{q.quoteNumber}</span>
                           {" · "}{fmtMoneyCompact(q.totalAmount)}
                           {" · "}{q.approvalStatus === "approved" ? "เจ้าของดีลเซ็นแล้ว" : "รอเจ้าของดีลเซ็น"}
@@ -821,13 +821,13 @@ export default function PoDetailPage() {
                       ))}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                       ⚠ ไม่พบใบเสนอราคาของดีลนี้ — เปิดดีลขายเพื่อตรวจสอบ หรือแจ้งแอดมิน
                     </div>
                   )}
                 </div>
               )}
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                 จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด)
                 — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b> ผูกเข้าโครงการ
                 แล้วออก<b>ใบเสนอราคา 1 ใบหลายบรรทัด (ราคาตาม master)</b> เข้าคิวอนุมัติเจ้าของดีล
@@ -851,12 +851,12 @@ export default function PoDetailPage() {
                         <tr key={ln.poLineId}>
                           <td>
                             <span className="font-mono" style={{ fontWeight: 600 }}>{ln.fgCode}</span>
-                            <div style={{ fontSize: 11, color: "var(--text-3)" }}>{ln.productName || "—"}</div>
+                            <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{ln.productName || "—"}</div>
                           </td>
                           <td style={{ textAlign: "right" }}>
                             {nf(ln.qty)}
                             {casesText(ln.qty, ppcOf(prodIdx.get(String(ln.fgCode).trim().toLowerCase()))) && (
-                              <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(ln.qty, ppcOf(prodIdx.get(String(ln.fgCode).trim().toLowerCase())))}</div>
+                              <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(ln.qty, ppcOf(prodIdx.get(String(ln.fgCode).trim().toLowerCase())))}</div>
                             )}
                           </td>
                           <td>
@@ -881,7 +881,7 @@ export default function PoDetailPage() {
                                 {partial && (
                                   <Select
                                     className="premium-select"
-                                    style={{ height: 30, minWidth: 230, fontSize: 12 }}
+                                    style={{ height: 30, minWidth: 230, fontSize: "var(--fs-5)" }}
                                     value={settleModes[ln.poLineId] || "split"}
                                     onChange={(e) => setSettleModes((p) => ({ ...p, [ln.poLineId]: e.target.value }))}
                                     title={`PO ครอบ ${nf(ln.qty)} จากที่ดีลผูกไว้ ${nf(chosen.allocQty)}`}

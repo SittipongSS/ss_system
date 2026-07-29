@@ -85,17 +85,17 @@ export default function MgmtMeetingsPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {meetings.map((m) => (
             <button key={m.id} onClick={() => setSelected(m)} className="glass-panel" style={{ textAlign: "left", padding: 16, cursor: "pointer", display: "flex", flexDirection: "column", gap: 8, color: "inherit" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-2)", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-5)", color: "var(--text-2)", flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={13} /> {fmt(m.meetingDate)}</span>
                 {m.timeText && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock3 size={13} /> {m.timeText}</span>}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>{m.title}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
+              <div style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>{m.title}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-5)" }}>
                 {m.deptCode && <span className="pill">{m.deptCode}</span>}
                 {m.assigneeName && <span style={{ color: "var(--text-3)" }}>{m.assigneeName}</span>}
                 <span className={`pill ${m.followUp === "follow" ? "ok" : ""}`}>{MEETING_FOLLOWUP_LABELS[m.followUp] || m.followUp}</span>
               </div>
-              {m.summary && <div style={{ fontSize: 12.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.summary}</div>}
+              {m.summary && <div style={{ fontSize: "var(--fs-6)", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.summary}</div>}
             </button>
           ))}
         </div>

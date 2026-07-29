@@ -282,8 +282,8 @@ function ForecastPageInner() {
       ) : error ? null : rounds.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: "48px", textAlign: "center", color: "var(--text-3)" }}>
           <LineChart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มีรอบ FC</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>เริ่มจากนำเข้ารอบแรกจากลูกค้า</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มีรอบ FC</div>
+          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เริ่มจากนำเข้ารอบแรกจากลูกค้า</div>
           {canEdit && (
             <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={openCreate}>
               <Plus size={16} /> นำเข้ารอบ FC
@@ -333,11 +333,11 @@ function ForecastPageInner() {
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
                         {s.productName || "— ไม่รู้จัก —"}
-                        {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
+                        {meta && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{meta}</div>}
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 600 }}>
                         {nf(s.total)}
-                        {casesSub(s.fgCode, s.total) && <div style={{ fontSize: 10.5, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(s.fgCode, s.total)}</div>}
+                        {casesSub(s.fgCode, s.total) && <div style={{ fontSize: "var(--fs-2)", fontWeight: 400, color: "var(--text-3)" }}>{casesSub(s.fgCode, s.total)}</div>}
                       </td>
                       <td style={{ textAlign: "right" }}>#{s.roundNo}</td>
                       <td>{fmtDate(s.receivedDate)}</td>
@@ -353,7 +353,7 @@ function ForecastPageInner() {
           {tab === "matrix" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
+                <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>รอบ:</label>
                 <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
@@ -365,7 +365,7 @@ function ForecastPageInner() {
                 {canEdit && <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>}
                 {matrix.rows.length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>หน่วย:</span>
+                    <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>หน่วย:</span>
                     <div className="segmented">
                       <button className={matrixUnit === "piece" ? "active" : ""} onClick={() => setMatrixUnit("piece")}>ชิ้น</button>
                       <button className={matrixUnit === "case" ? "active" : ""} onClick={() => setMatrixUnit("case")}>ลัง</button>
@@ -375,9 +375,9 @@ function ForecastPageInner() {
               </div>
 
               {matrix.rows.length === 0 ? (
-                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>รอบนี้ยังไม่มีรายการ</div>
               ) : matrixGroups.length === 0 ? (
-                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</div>
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</div>
               ) : (
                 <TableScroll family="matrix" style={{ overflowX: "auto" }}>
                   <table className="premium-table sticky-col1">
@@ -393,7 +393,7 @@ function ForecastPageInner() {
                       {matrixGroups.flatMap(([cat, rows]) => [
                         <tr key={`cat-${cat}`}>
                           <td colSpan={matrix.months.length + 3} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
-                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
+                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
                           </td>
                         </tr>,
                         ...rows.map((r) => {
@@ -403,14 +403,14 @@ function ForecastPageInner() {
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
                             <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
                               {r.productName || "— ไม่รู้จัก —"}
-                              {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
+                              {meta && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{meta}</div>}
                             </td>
                             {matrix.months.map((m) => (
                               <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{displayQty(r.qty[m], ppcFor(r.fgCode), matrixUnit, { dot: true })}</td>
                             ))}
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
                               {displayQty(r.total, ppcFor(r.fgCode), matrixUnit)}
-                              {counterpartText(r.total, ppcFor(r.fgCode), matrixUnit) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), matrixUnit)}</div>}
+                              {counterpartText(r.total, ppcFor(r.fgCode), matrixUnit) && <div style={{ fontSize: "var(--fs-2)", fontWeight: 400, color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), matrixUnit)}</div>}
                             </td>
                           </tr>
                           );
@@ -421,7 +421,7 @@ function ForecastPageInner() {
                       <tr>
                         <td colSpan={2} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
                           รวมมูลค่า (฿)
-                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
+                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
                         </td>
                         {matrix.months.map((m) => (
                           <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.byMonth[m])}</td>
@@ -439,14 +439,14 @@ function ForecastPageInner() {
           {tab === "lines" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
+                <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>รอบ:</label>
                 <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
                 </Select>
                 {lineList.length > 0 && (
-                  <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
+                  <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: "auto" }}>
                     ติ๊กเลือกรายการ (สินค้า×เดือน) — 1 รายการ = 1 ดีล
                   </span>
                 )}
@@ -455,9 +455,9 @@ function ForecastPageInner() {
               {/* แถบสรุปที่เลือก → กดปุ่มเปิด modal ยืนยันสร้างแผนการขาย */}
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
-                  <div style={{ fontSize: 13 }}>
+                  <div style={{ fontSize: "var(--fs-7)" }}>
                     เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> ชิ้น · <b>{nfBaht(selection.value)}</b>
-                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
+                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)" }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
                   {canEdit && (
                     <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
@@ -469,7 +469,7 @@ function ForecastPageInner() {
               )}
 
               {lineList.length === 0 ? (
-                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
                   {q || filterCount > 0 ? "ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง" : "รอบนี้ยังไม่มีรายการ"}
                 </div>
               ) : (
@@ -494,7 +494,7 @@ function ForecastPageInner() {
                             <input type="checkbox" checked={rows.every((r) => selectedLines.has(r.id))} onChange={(e) => setLineGroup(rows, e.target.checked)} title={`เลือกหมวด ${cat}`} />
                           </td>
                           <td colSpan={5} style={{ background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
-                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
+                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
                           </td>
                         </tr>,
                         ...rows.map((r) => (
@@ -512,7 +512,7 @@ function ForecastPageInner() {
                             <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
                               {r.productName || "— ไม่รู้จัก —"}
                               {r.mapped && (
-                                <span className="ui-badge" style={{ marginLeft: 8, color: "var(--green)", fontSize: 10.5 }}>
+                                <span className="ui-badge" style={{ marginLeft: 8, color: "var(--green)", fontSize: "var(--fs-2)" }}>
                                   <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> สร้างดีลแล้ว
                                 </span>
                               )}
@@ -520,7 +520,7 @@ function ForecastPageInner() {
                             <td style={{ textAlign: "center" }}>{r.month}</td>
                             <td style={{ textAlign: "right", fontWeight: 600 }}>
                               {nf(r.qty)}
-                              {casesSub(r.fgCode, r.qty) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.qty)}</div>}
+                              {casesSub(r.fgCode, r.qty) && <div style={{ fontSize: "var(--fs-2)", fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.qty)}</div>}
                             </td>
                             <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? "—" : nfBaht(r.amount)}</td>
                           </tr>
@@ -558,7 +558,7 @@ function ForecastPageInner() {
                       >
                         <td style={{ fontWeight: 600 }}>#{r.roundNo}</td>
                         <td>{fmtDate(r.receivedDate)}</td>
-                        <td style={{ fontSize: 12, color: "var(--text-3)" }}>
+                        <td style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                           {(r.coverMonths || []).length ? `${r.coverMonths[0]} – ${r.coverMonths[r.coverMonths.length - 1]} (${r.coverMonths.length})` : "—"}
                         </td>
                         <td style={{ textAlign: "right" }}>{roundSkuCount(r)}</td>
@@ -579,7 +579,7 @@ function ForecastPageInner() {
 
               {comparison && (
                 <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>การเปลี่ยนแปลงของรอบที่เลือก (#{selectedNo})</h2>
+                  <h2 style={{ fontSize: "var(--fs-10)", fontWeight: 600, marginBottom: 12 }}>การเปลี่ยนแปลงของรอบที่เลือก (#{selectedNo})</h2>
                   <RoundComparison comparison={comparison} productByFg={productByFg} />
                 </div>
               )}
@@ -591,17 +591,17 @@ function ForecastPageInner() {
       {/* Modal ยืนยันสร้างแผนการขายจากรายการที่เลือก */}
       <Modal open={dealModalOpen} onClose={() => !creating && setDealModalOpen(false)} title="สร้างแผนการขายจาก Forecast" size="md">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="glass-panel" style={{ padding: "12px 14px", fontSize: 13, lineHeight: 1.7 }}>
+          <div className="glass-panel" style={{ padding: "12px 14px", fontSize: "var(--fs-7)", lineHeight: 1.7 }}>
             เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> ดีล
             <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 ดีล)</span>
             <br />
             รวม <b>{nf(selection.qty)}</b> ชิ้น · มูลค่า <b>{nfBaht(selection.value)}</b>
             {selection.unpriced > 0 && (
-              <span style={{ color: "var(--amber)", fontSize: 12 }}> · {selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)</span>
+              <span style={{ color: "var(--amber)", fontSize: "var(--fs-5)" }}> · {selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)</span>
             )}
           </div>
 
-          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             ผู้ดูแล (AE)
             <Select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
               {!aeList.length && <option value="">— ไม่มี AE —</option>}
@@ -609,7 +609,7 @@ function ForecastPageInner() {
             </Select>
           </label>
 
-          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             เดือนคาดได้รับ PO
             <Select className="premium-select" style={{ height: 36 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}

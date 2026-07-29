@@ -139,7 +139,7 @@ export default function SalesKpiDashboard() {
                       contentStyle={{ backgroundColor: "var(--panel)", borderColor: "var(--border)", borderRadius: 8, color: "var(--text)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
                       cursor={{ fill: "color-mix(in srgb, var(--accent) 5%, transparent)" }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: "var(--fs-5)" }} />
                     <Bar yAxisId="left" dataKey="total" name="งานทั้งหมด" fill="var(--text-3)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     <Bar yAxisId="left" dataKey="completed" name="งานที่เสร็จ" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     <Line yAxisId="right" type={CHART_LINE_TYPE} dataKey="score" name="คะแนนรวม" stroke="var(--amber)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
@@ -181,7 +181,7 @@ export default function SalesKpiDashboard() {
                       contentStyle={{ backgroundColor: "var(--panel)", borderColor: "var(--border)", borderRadius: 8, color: "var(--text)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
                       cursor={{ fill: "color-mix(in srgb, var(--green) 5%, transparent)" }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: "var(--fs-5)" }} />
                     <Bar dataKey="score" name="คะแนนรวม" fill="var(--green)" radius={[0, 4, 4, 0]} maxBarSize={20} />
                   </BarChart>
                 </ResponsiveContainer></ChartCanvas>
@@ -198,7 +198,7 @@ export default function SalesKpiDashboard() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.userId} className="premium-row">
-                      <td style={{ fontWeight: 700 }}>{r.name}<div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 500 }}>{r.role || "-"}</div></td>
+                      <td style={{ fontWeight: 700 }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: 500 }}>{r.role || "-"}</div></td>
                       <td>{r.team || "-"}</td>
                       <td className="num">{r.total}</td>
                       <td className="num">{r.active}</td>

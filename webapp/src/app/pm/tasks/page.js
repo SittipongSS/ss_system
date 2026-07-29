@@ -447,8 +447,8 @@ export default function TasksPage() {
     if (!proj && !deal) return null;
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
-        {proj && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>}
-        {deal && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>}
+        {proj && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>}
+        {deal && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>}
       </span>
     );
   };
@@ -464,7 +464,7 @@ export default function TasksPage() {
     return (
       <span
         title={relationship.label}
-        style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: compact ? "1px 5px" : "2px 7px", borderRadius: 9, color: palette.color, background: palette.background, fontSize: compact ? 9 : 10, fontWeight: 600 }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: compact ? "1px 5px" : "2px 7px", borderRadius: 9, color: palette.color, background: palette.background, fontSize: compact ? "var(--fs-1)" : "var(--fs-2)", fontWeight: 600 }}
       >
         <UserPlus size={compact ? 9 : 10} /> {compact ? relationship.compactLabel : relationship.label}
       </span>
@@ -482,12 +482,12 @@ export default function TasksPage() {
     const showFooter = manage || canSetStatus(t) || proxyAction;
     return (
       <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+        <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
           {t.important && <Star size={12} color="var(--amber)" fill="var(--amber)" />}
           {t.urgent && <Flame size={12} color="var(--red)" />}
           {t.title}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
           {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
           {relationshipBadge(t, true)}
           {(scope !== "mine" || (activeAssignee && activeAssignee !== me?.id)) && assigneeName && (
@@ -585,15 +585,15 @@ export default function TasksPage() {
             {inquiries.slice(0, 8).map((q) => {
               const due = requestDueTone(q, todayISO);
               return (
-                <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+                <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-7)" }}>
                   <RequestStatusBadge status={q.status} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
                   <Link href={`/sa/requests/${q.id}`} className="linklike" style={{ fontWeight: 600 }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}
                   </Link>
-                  <span style={{ color: "var(--text-3)", fontSize: 12 }}>โดย {q.requesterName || "-"}</span>
+                  <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {q.requesterName || "-"}</span>
                   {q.dueDate && (
-                    <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: due?.color || "var(--text-3)" }}>
+                    <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--fs-5)", color: due?.color || "var(--text-3)" }}>
                       กำหนดตอบ {fmtDate(q.dueDate)}{due ? ` · ${due.label}` : ""}
                     </span>
                   )}
@@ -667,16 +667,16 @@ export default function TasksPage() {
             return (
               <div key={quad.key} className="glass-panel" style={{ padding: 0, overflow: "hidden", borderTop: `3px solid ${quad.color}` }}>
                 <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ fontWeight: 700, fontSize: "13px", color: quad.color }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--fs-7)", color: quad.color }}>
                     {QUADRANT_LABELS[quad.key]}
-                    <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
+                    <span style={{ marginLeft: "8px", fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
                   </div>
-                  <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{quad.sub}</div>
+                  <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{quad.sub}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
-                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
+                  {items.length === 0 ? <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
                   {items.length > MATRIX_MAX && (
-                    <button type="button" className="linklike" style={{ alignSelf: "center", fontSize: 12 }} onClick={() => setView("table")}>
+                    <button type="button" className="linklike" style={{ alignSelf: "center", fontSize: "var(--fs-5)" }} onClick={() => setView("table")}>
                       +{items.length - MATRIX_MAX} งาน — ดูทั้งหมดในตาราง
                     </button>
                   )}
@@ -690,12 +690,12 @@ export default function TasksPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "12px" }}>
             <button className="btn-icon" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อน"><ChevronLeft size={16} /></button>
-            <div style={{ fontWeight: 700, fontSize: "15px", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
+            <div style={{ fontWeight: 700, fontSize: "var(--fs-9)", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
             <button className="btn-icon" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
           </div>
           <div className="glass-panel" style={{ padding: "10px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px", marginBottom: "4px" }}>
-              {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "11px", fontWeight: 700, color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
+              {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "var(--fs-3)", fontWeight: 700, color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px" }}>
               {calCells.map((d, i) => {
@@ -705,25 +705,25 @@ export default function TasksPage() {
                 const isToday = dayKey === todayStr;
                 return (
                   <div key={i} style={{ minHeight: "84px", borderRadius: "8px", border: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`, padding: "4px", display: "flex", flexDirection: "column", gap: "3px", background: "var(--panel)" }}>
-                    <div style={{ fontSize: "11px", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : "var(--text-3)", textAlign: "right", padding: "0 2px" }}>{d.getDate()}</div>
+                    <div style={{ fontSize: "var(--fs-3)", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : "var(--text-3)", textAlign: "right", padding: "0 2px" }}>{d.getDate()}</div>
                     {items.slice(0, 3).map((t) => {
                       const u = getUrgencyInfo(t);
                       const manage = canManageTask(t);
                       return (
-                        <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "var(--fs-2)", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                         </div>
                       );
                     })}
-                    {items.length > 3 && <div style={{ fontSize: "9px", color: "var(--text-3)", paddingLeft: "3px" }}>+{items.length - 3}</div>}
+                    {items.length > 3 && <div style={{ fontSize: "var(--fs-1)", color: "var(--text-3)", paddingLeft: "3px" }}>+{items.length - 3}</div>}
                   </div>
                 );
               })}
             </div>
           </div>
           {calNoDue.length > 0 && (
-            <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--text-3)" }}>+ อีก {calNoDue.length} งานที่ยังไม่กำหนดวันเสร็จ (ดูในมุมมองรายการ)</div>
+            <div style={{ marginTop: "10px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>+ อีก {calNoDue.length} งานที่ยังไม่กำหนดวันเสร็จ (ดูในมุมมองรายการ)</div>
           )}
         </div>
       ) : visible.length === 0 ? (
@@ -765,23 +765,23 @@ export default function TasksPage() {
                           {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                           <span style={{ flex: 1 }}>{t.title}</span>
                         </div>
-                        {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }} />}
+                        {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
                       </div>
                     </td>
                     {scope === "mine" && <td>{relationshipBadge(t)}</td>}
-                    <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
-                    {scope !== "mine" && <td style={{ fontSize: "13px" }}>
+                    <td>{t.category ? <span style={{ fontSize: "var(--fs-3)", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+                    {scope !== "mine" && <td style={{ fontSize: "var(--fs-7)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span>{(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}</span>
                         {proxyBadge(t)}
                       </div>
                     </td>}
-                    <td style={{ fontSize: "13px" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
+                    <td style={{ fontSize: "var(--fs-7)" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
                     <td>
                       {t.dueDate ? (
                         <>
-                          <div style={{ fontSize: "13px" }}>{fmtDate(t.dueDate)}</div>
-                          <div style={{ fontSize: "11px", color: u.color, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>{u.icon} {u.label}</div>
+                          <div style={{ fontSize: "var(--fs-7)" }}>{fmtDate(t.dueDate)}</div>
+                          <div style={{ fontSize: "var(--fs-3)", color: u.color, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>{u.icon} {u.label}</div>
                         </>
                       ) : <span style={{ color: "var(--text-3)" }}>—</span>}
                     </td>
@@ -812,12 +812,12 @@ export default function TasksPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>{statusIcon(t.status)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "var(--fs-8)", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" />}
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}
                     </div>
-                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }} />}
+                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
                     {proxyActions(t)}
@@ -825,7 +825,7 @@ export default function TasksPage() {
                     {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
                   {t.category && <span style={{ background: "var(--panel-2)", padding: "2px 7px", borderRadius: "10px", color: "var(--text-2)" }}><Tag size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {t.category}</span>}
                   {relationshipBadge(t)}
                   {t.difficulty === 3 && <span style={{ background: "color-mix(in srgb, var(--red) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--red)" }}>ยาก</span>}
@@ -834,7 +834,7 @@ export default function TasksPage() {
                   )}
                   {proxyBadge(t)}
                 </div>
-                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
+                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "var(--fs-3)", flexWrap: "wrap" }}>
                   {statusCell(t)}
                   {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                   {linkChip(t)}
@@ -892,7 +892,7 @@ export default function TasksPage() {
       {lateModal && (
         <Modal open onClose={() => setLateModal(null)} title="ปิดงานที่เกินกำหนด" size="sm">
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
               งาน <strong style={{ color: "var(--text)" }}>{lateModal.task.title}</strong> เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน
             </div>
             <textarea className="premium-input" rows={3} value={lateModal.reason}

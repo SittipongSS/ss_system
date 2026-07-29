@@ -117,7 +117,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           <div className="form-group">
             <label>สินค้า (Master FG) <span style={{ color: "var(--red)" }}>*</span></label>
             {!customerId ? (
-              <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
+              <div style={{ fontSize: "var(--fs-7)" }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
                 เลือก{CUSTOMER_NAME_LABEL}ก่อน — รายการ FG จะกรองเฉพาะของลูกค้ารายนั้น
               </div>
             ) : (
@@ -133,17 +133,17 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                     : "ลูกค้ารายนี้ยังไม่มี FG — สร้างที่ฐานข้อมูลก่อน"}
                 />
                 {hiddenCount > 0 && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
+                  <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                     ซ่อน {hiddenCount} FG ที่ขึ้นทะเบียนกับลูกค้ารายนี้แล้ว (1 FG ขึ้นทะเบียนต่อลูกค้าได้ครั้งเดียว)
                   </div>
                 )}
                 {isOrphanPick && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber)" }}>
+                  <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--amber)" }}>
                     FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — จะผูกกับ{customer?.name || "ลูกค้ารายนี้"} ควรไปกำหนดเจ้าของที่ข้อมูลสินค้าให้เรียบร้อย
                   </div>
                 )}
                 {selected && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
+                  <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
                     <span>ปริมาตร: {selected.volume} {selected.volumeUnit || "ml"}</span>
                     <span>ราคาขายปลีก: {fmtMoney(selected.retailPriceIncVat || 0)}</span>
                     <span>ภาษี/ชิ้น: {selected.isExciseTaxable === false ? "ยกเว้น" : fmtMoney((selected.exciseTax || 0) + (selected.localTax || 0))}</span>
@@ -154,12 +154,12 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           </div>
 
           {!editing && (
-            <div style={{ fontSize: 12.5 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
+            <div style={{ fontSize: "var(--fs-6)" }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
               บันทึกเป็น “ฉบับร่าง” ก่อน จากนั้นแนบเอกสารที่จำเป็น (แผนที่ + ฉลาก/Artwork) แล้วจึงกด “ยื่นขึ้นทะเบียน”
             </div>
           )}
 
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
 
         <div className="form-action-bar">

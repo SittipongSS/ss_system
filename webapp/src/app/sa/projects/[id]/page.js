@@ -911,15 +911,15 @@ export default function ProjectDetailPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                     <span className="font-mono text-[13px] font-semibold">{actualProd.fgCode}</span>
-                    <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{actualProd.volume ? `(${actualProd.volume} ml)` : ""}</span>
-                    <span style={{ fontSize: "11px", background: "var(--blue-soft)", color: "var(--blue)", padding: "2px 6px", borderRadius: "4px", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{actualProd.volume ? `(${actualProd.volume} ml)` : ""}</span>
+                    <span style={{ fontSize: "var(--fs-3)", background: "var(--blue-soft)", color: "var(--blue)", padding: "2px 6px", borderRadius: "4px", whiteSpace: "nowrap" }}>
                       {mainCatName(actualProd.productMainCategory) || "ไม่มีหมวด"}
                     </span>
                   </div>
                   {canEdit && <button className="btn-icon danger" onClick={() => removeProduct(pp.productId)} aria-label="นำสินค้าออก"><X size={16} /></button>}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                  <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
+                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
                     {identity.detail || "-"}
                   </div>
                   <div style={{ display: "flex", gap: "8px", width: "220px", maxWidth: "100%", flexShrink: 0 }}>
@@ -943,7 +943,7 @@ export default function ProjectDetailPage() {
             onChange={setAddingProduct}
             placeholder="ค้นหา Product Code (FG)..."
           />
-          <button onClick={addProduct} disabled={!addingProduct} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", flexShrink: 0, height: "30px", opacity: addingProduct ? 1 : 0.5 }}><Plus size={14} /> เพิ่ม</button>
+          <button onClick={addProduct} disabled={!addingProduct} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "var(--fs-5)", flexShrink: 0, height: "30px", opacity: addingProduct ? 1 : 0.5 }}><Plus size={14} /> เพิ่ม</button>
         </div>
       )}
     </div>
@@ -960,7 +960,7 @@ export default function ProjectDetailPage() {
             alignItems: "center",
             gap: "6px",
             color: "var(--text-2)",
-            fontSize: "13px",
+            fontSize: "var(--fs-7)",
             fontWeight: 500,
             textDecoration: "none",
           }}
@@ -1019,7 +1019,7 @@ export default function ProjectDetailPage() {
               เตือนแต่ไม่บล็อก) ปิดไปแล้วไม่ต้องเตือน ตัวโหลดหยุดยิงเองตาม closeStatus */}
           {cs === "pending_close" && <CloseReadinessNotice readiness={closeReadiness} />}
           <div className="glass-panel" style={{ marginTop: 16, padding: "12px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between", borderColor: cs === "pending_close" ? "var(--amber)" : cs === "closed" ? "var(--border)" : "var(--border)" }}>
-            <div style={{ fontSize: 13 }}>
+            <div style={{ fontSize: "var(--fs-7)" }}>
               <strong>สถานะการปิดโครงการ:</strong> {PROJECT_CLOSE_STATUS_LABELS[cs]}
               {cs !== "open" && p.closeType ? ` · ${PROJECT_CLOSE_TYPE_LABELS[p.closeType]}` : ""}
               {cs === "pending_close" && p.closeRequestedByName ? <span style={{ color: "var(--text-3)" }}> · ขอโดย {p.closeRequestedByName}</span> : null}
@@ -1077,7 +1077,7 @@ export default function ProjectDetailPage() {
           <div className="timeline-header-row">
             <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
               <GanttChart size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
+              <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ไทม์ไลน์</h2>
             </div>
             <div className="project-detail-actions">
               {!showTimeline ? (
@@ -1145,14 +1145,14 @@ export default function ProjectDetailPage() {
         {(p.deals || []).length > 0 && (
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
+              <div style={{ fontSize: "var(--fs-7)", fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
+              <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
             </div>
             <div style={{ marginLeft: "auto" }}>
               <MultiSelectFilter label="ดีลที่แสดง" selected={timelineDealFilters} onChange={setTimelineDealFilters} options={timelineFilterOptions} />
             </div>
             {timelineDealFilters.length > 0 && <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>}
-            {timelineDealFilters.length > 1 && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
+            {timelineDealFilters.length > 1 && <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
           </div>
         )}
 
@@ -1217,8 +1217,8 @@ export default function ProjectDetailPage() {
               <GanttChart size={18} />
             </span>
             <div style={{ minWidth: 160 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>ไทม์ไลน์โครงการ</div>
-              <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
+              <div style={{ fontWeight: 700, fontSize: "var(--fs-9)" }}>ไทม์ไลน์โครงการ</div>
+              <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>
                 {(() => {
                   const doing = tasks.filter((t) => t.status === "In Progress").map((t) => t.name);
                   return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : (timelineDealFilters.length ? "ไม่มีขั้นตอนที่กำลังทำในดีลที่เลือก" : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว");
@@ -1234,7 +1234,7 @@ export default function ProjectDetailPage() {
                     <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={done} aria-valuemax={total} aria-label="ความคืบหน้าไทม์ไลน์">
                       <span className={total && done === total ? "done" : undefined} style={{ width: total ? `${Math.round((done / total) * 100)}%` : 0 }} />
                     </div>
-                    <span className="mono tabular-nums" style={{ fontSize: 13, color: "var(--text-2)", whiteSpace: "nowrap" }}>{done}/{total} ขั้นตอน</span>
+                    <span className="mono tabular-nums" style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", whiteSpace: "nowrap" }}>{done}/{total} ขั้นตอน</span>
                   </>
                 );
               })()}
@@ -1265,8 +1265,8 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             <ListTodo size={18} />
             <div>
-              <h2 style={{ margin: 0, fontSize: 16 }}>งานของโครงการ</h2>
-              <div style={{ marginTop: 2, fontSize: 12, color: "var(--text-3)" }}>ดึงงานจาก /sa/tasks ตามดีลที่ผูกกับโครงการ</div>
+              <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>งานของโครงการ</h2>
+              <div style={{ marginTop: 2, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ดึงงานจาก /sa/tasks ตามดีลที่ผูกกับโครงการ</div>
             </div>
             <span className="ui-badge" style={{ color: "var(--text-2)" }}>{completedPersonalTasks}/{shownPersonalTasks.length} เสร็จ</span>
             <div style={{ marginLeft: "auto" }}>
@@ -1282,7 +1282,7 @@ export default function ProjectDetailPage() {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);
                   const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
                   return <tr key={task.id} className="premium-row">
-                    <td style={{ fontWeight: 700 }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 400, marginTop: 2 }} />}</td>
+                    <td style={{ fontWeight: 700 }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: 400, marginTop: 2 }} />}</td>
                     <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
                     <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
                     <td>{assignee?.name || task.assigneeName || task.ownerName || "-"}</td>
@@ -1298,9 +1298,9 @@ export default function ProjectDetailPage() {
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
           <div>
-            <div style={{ color: "var(--red)", fontWeight: 800, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}><X size={16} strokeWidth={3} /> โครงการนี้ถูกยกเลิกแล้ว</div>
+            <div style={{ color: "var(--red)", fontWeight: 800, fontSize: "var(--fs-8)", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}><X size={16} strokeWidth={3} /> โครงการนี้ถูกยกเลิกแล้ว</div>
             {p.metadata?.lossReason && (
-              <div style={{ fontSize: "13px", color: "var(--red)", display: "flex", alignItems: "flex-start", gap: "6px", fontWeight: 500 }}>
+              <div style={{ fontSize: "var(--fs-7)", color: "var(--red)", display: "flex", alignItems: "flex-start", gap: "6px", fontWeight: 500 }}>
                 <span style={{ fontWeight: 700 }}>เหตุผล:</span> <span>{p.metadata.lossReason}</span>
               </div>
             )}
@@ -1333,7 +1333,7 @@ export default function ProjectDetailPage() {
       ) : view === "table" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: 600 }}>
               ตารางขั้นตอนงาน
               <span style={{ fontWeight: 400, color: "var(--text-3)", marginLeft: "6px" }}>
                 ({tableGroups.reduce((n, g) => n + g.tasks.length, 0)}{tableStatusFilter !== "all" ? ` / ${total}` : ""} ขั้นตอน)
@@ -1405,10 +1405,10 @@ export default function ProjectDetailPage() {
                       {g.phase && (
                         <tr className="timeline-phase-row">
                           <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "var(--fs-7)" }}>
                               <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
                               {g.num ? `${g.num}. ` : ""}{g.phase}
-                              <span style={{ fontWeight: 600, fontSize: "11px", color: "var(--text-3)", marginLeft: "auto" }}>{g.done}/{g.tasks.length}</span>
+                              <span style={{ fontWeight: 600, fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: "auto" }}>{g.done}/{g.tasks.length}</span>
                             </div>
                           </td>
                         </tr>
@@ -1427,12 +1427,12 @@ export default function ProjectDetailPage() {
                               </span>
                             </td>
                             <td><span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span></td>
-                            <td style={{ fontSize: "12px", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
+                            <td style={{ fontSize: "var(--fs-5)", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
                               <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : compactPersonName(assignee)}</span>
                             </td>
                             <td>
                               {canEdit ? (
-                                <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
+                                <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "var(--fs-3)" }}>●</span>}</>
                               ) : (
                                 <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                               )}
@@ -1443,14 +1443,14 @@ export default function ProjectDetailPage() {
                             <td onClick={(e) => e.stopPropagation()}>
                               <DateInput compact value={task.finishDate || ""} min={task.startDate || undefined} disabled={!canEdit || !task.startDate} onChange={(value) => stageScheduleEdit(task.id, { finishDate: value || null })} ariaLabel={`วันจบ ${task.name}`} style={{ width: "116px" }} />
                             </td>
-                            <td style={{ textAlign: "center", fontSize: "12.5px" }}>{task.durationDays}</td>
+                            <td style={{ textAlign: "center", fontSize: "var(--fs-6)" }}>{task.durationDays}</td>
                             <td onClick={(e) => e.stopPropagation()}>
                               {(() => {
                                 const preds = (Array.isArray(task.predecessors) ? task.predecessors : []).filter((p) => taskNumById[p]);
                                 const chips = (
                                   <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}>
                                     {preds.map((p) => (
-                                      <span key={p} style={{ fontSize: "11px", fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", borderRadius: "10px", padding: "1px 7px" }}>{taskNumById[p]}</span>
+                                      <span key={p} style={{ fontSize: "var(--fs-3)", fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", borderRadius: "10px", padding: "1px 7px" }}>{taskNumById[p]}</span>
                                     ))}
                                   </span>
                                 );
@@ -1459,7 +1459,7 @@ export default function ProjectDetailPage() {
                                   <button
                                     onClick={(e) => setDepPopover({ task, x: e.clientX, y: e.clientY })}
                                     title="ตั้งงานที่ต้องรอให้เสร็จก่อน"
-                                    style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontSize: "12px", color: preds.length ? "var(--text)" : "var(--text-3)" }}>
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontSize: "var(--fs-5)", color: preds.length ? "var(--text)" : "var(--text-3)" }}>
                                     {preds.length ? chips : <span style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}><Plus size={12} /> เพิ่ม</span>}
                                   </button>
                                 );
@@ -1487,7 +1487,7 @@ export default function ProjectDetailPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* title row */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canAddTimelineTask && (
               <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ ...EMPTY_STEP_FORM, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [] }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
@@ -1499,10 +1499,10 @@ export default function ProjectDetailPage() {
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "12px", marginBottom: "14px", flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
-                <span style={{ fontSize: "36px", fontWeight: 700, lineHeight: 1, color: accent, letterSpacing: "-1px" }}>
-                  {pct}<span style={{ fontSize: "18px", fontWeight: 600 }}>%</span>
+                <span style={{ fontSize: "var(--fs-17)", fontWeight: 700, lineHeight: 1, color: accent, letterSpacing: "-1px" }}>
+                  {pct}<span style={{ fontSize: "var(--fs-11)", fontWeight: 600 }}>%</span>
                 </span>
-                <span style={{ fontSize: "13px", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                   <TrendingUp size={15} color={accent} /> เสร็จแล้ว {done} จาก {total} ขั้นตอน
                 </span>
               </div>
@@ -1525,12 +1525,12 @@ export default function ProjectDetailPage() {
                     const mDone = m.status === "Completed";
                     const mProg = m.status === "In Progress";
                     const color = mDone ? "var(--green)" : (mProg ? "var(--accent)" : "var(--border-strong)");
-                    const icon = mDone ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="var(--accent-fg)" /> : <span style={{ fontSize: "10px", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
+                    const icon = mDone ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="var(--accent-fg)" /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
                     return (
                       <Fragment key={m.id}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", opacity: mDone || mProg ? 1 : 0.6 }}>
                           <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: mDone || mProg ? color : "var(--bg)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
-                          <div style={{ fontSize: "12px", fontWeight: 600, color: mDone || mProg ? "var(--text)" : "var(--text-2)" }}>{m.name}</div>
+                          <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: mDone || mProg ? "var(--text)" : "var(--text-2)" }}>{m.name}</div>
                         </div>
                         {i < milestones.length - 1 && <div style={{ width: "30px", height: "2px", background: mDone ? "var(--green)" : "var(--border)" }} />}
                       </Fragment>
@@ -1574,8 +1574,8 @@ export default function ProjectDetailPage() {
                 {isFirstOfPhase && phaseHeader && (
                   <button onClick={() => togglePhase(task.phase)} style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "9px 14px", marginBottom: isCollapsedPhase ? "0" : "8px", background: `color-mix(in srgb, ${phaseHeader.accent} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseHeader.accent}`, borderRadius: "10px", cursor: "pointer", textAlign: "left" }}>
                     {isCollapsedPhase ? <ChevronRight size={14} color={phaseHeader.accent} /> : <ChevronDown size={14} color={phaseHeader.accent} />}
-                    <span style={{ flex: 1, fontSize: "13px", fontWeight: 700, color: "var(--text)" }}>{phaseHeader.num}. {task.phase}</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: phaseHeader.color }}>{phaseHeader.done}/{phaseHeader.total}</span>
+                    <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: 700, color: "var(--text)" }}>{phaseHeader.num}. {task.phase}</span>
+                    <span style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: phaseHeader.color }}>{phaseHeader.done}/{phaseHeader.total}</span>
                     {phaseHeader.allDone ? <CheckCircle2 size={13} color="var(--green)" /> : (
                       <div style={{ width: "52px", height: "4px", background: "var(--border)", borderRadius: "2px", overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${phaseHeader.pct}%`, background: phaseHeader.color, borderRadius: "2px", transition: "width 0.3s" }} />
@@ -1605,7 +1605,7 @@ export default function ProjectDetailPage() {
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                         <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "var(--accent-fg)", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
-                          {isCompleted ? <Check size={16} strokeWidth={3} /> : (isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</span>)}
+                          {isCompleted ? <Check size={16} strokeWidth={3} /> : (isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "var(--fs-3)", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</span>)}
                         </button>
                       </div>
 
@@ -1621,7 +1621,7 @@ export default function ProjectDetailPage() {
                         ) : (
                           <>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px", gap: "8px" }}>
-                              <h4 onClick={() => { if (canEdit) startEditing(task); }} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ margin: 0, fontSize: "15px", color: isCompleted ? "var(--green)" : "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", cursor: canEdit ? "pointer" : "default" }}>
+                              <h4 onClick={() => { if (canEdit) startEditing(task); }} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ margin: 0, fontSize: "var(--fs-9)", color: isCompleted ? "var(--green)" : "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", cursor: canEdit ? "pointer" : "default" }}>
                                 {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} style={{ flexShrink: 0 }} />}
                                 <span style={{ borderBottom: "1px dashed transparent" }} onMouseEnter={(e) => { if (canEdit) e.currentTarget.style.borderBottomColor = "var(--text-3)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = "transparent"; }}>{task.displayNumber}. {task.name}</span>
                               </h4>
@@ -1630,7 +1630,7 @@ export default function ProjectDetailPage() {
                                   <span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span>
                                 ); })()}
                                 {canEdit ? (
-                                  <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
+                                  <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "var(--fs-3)" }}>●</span>}</>
                                 ) : (
                                   <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                                 )}
@@ -1642,7 +1642,7 @@ export default function ProjectDetailPage() {
                                 )}
                               </div>
                             </div>
-                            <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: "16px", fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> {task.durationDays} วันทำการ</div>
                               {canEdit ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
@@ -1658,16 +1658,16 @@ export default function ProjectDetailPage() {
                             {(() => {
                               const v = getVariance(task);
                               return v ? (
-                                <div style={{ fontSize: "11px", color: v.color, marginTop: "6px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                <div style={{ fontSize: "var(--fs-3)", color: v.color, marginTop: "6px", display: "flex", alignItems: "center", gap: "4px" }}>
                                   <CheckCircle2 size={12} /> เสร็จจริง {formatDate(task.actualFinishDate)} · {v.label}
                                 </div>
                               ) : null;
                             })()}
                             {task.note && (
-                              <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "6px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px" }}>
+                              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "6px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px" }}>
                                 <span style={{ color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>หมายเหตุ:</span>
                                 <ReadableText text={task.note} lines={4} style={{ flex: 1 }} />
-                                {task.showNoteInPrint && <span title="จะแสดงตอนพิมพ์เอกสาร" style={{ fontSize: "10px", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", borderRadius: "10px", padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>🖨 พิมพ์</span>}
+                                {task.showNoteInPrint && <span title="จะแสดงตอนพิมพ์เอกสาร" style={{ fontSize: "var(--fs-2)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", borderRadius: "10px", padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>🖨 พิมพ์</span>}
                               </div>
                             )}
                           </>
@@ -1676,7 +1676,7 @@ export default function ProjectDetailPage() {
 
                       {isInProgress && !isEditing && canEdit && (
                         <div style={{ display: "flex", alignItems: "center" }}>
-                          <button className="btn btn-primary" onClick={() => stageTaskEdit(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
+                          <button className="btn btn-primary" onClick={() => stageTaskEdit(task.id, { status: "Completed" })} style={{ fontSize: "var(--fs-5)" }}>✔ ทำเสร็จแล้ว</button>
                         </div>
                       )}
                     </div>
@@ -1759,11 +1759,11 @@ export default function ProjectDetailPage() {
 
       <Modal open={showIssueRev} onClose={() => !issuingRev && setShowIssueRev(false)} title="ออกเวอร์ชันเอกสารใหม่ (Revise)" size="sm">
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "var(--text-2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             <GitCommit size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
             <span>จะ freeze เอกสารชุดปัจจุบันทั้งหมด และรันเลขอัตโนมัติเป็น <b className="ui-badge">Rev. {nextRev}</b></span>
           </div>
-          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "var(--text-3)" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
             หมายเหตุการแก้ (ไม่บังคับ)
             <textarea
               value={revNote}
@@ -1771,10 +1771,10 @@ export default function ProjectDetailPage() {
               rows={3}
               maxLength={500}
               placeholder="เช่น ปรับวันส่งมอบตาม PO ใหม่"
-              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "13px", fontFamily: "inherit" }}
+              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "var(--fs-7)", fontFamily: "inherit" }}
             />
           </label>
-          {revError && <div style={{ fontSize: "12px", color: "var(--red)" }}>{revError}</div>}
+          {revError && <div style={{ fontSize: "var(--fs-5)", color: "var(--red)" }}>{revError}</div>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
           <button className="btn" disabled={issuingRev} onClick={() => setShowIssueRev(false)}>ยกเลิก</button>
@@ -1786,11 +1786,11 @@ export default function ProjectDetailPage() {
 
       <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชัน (Rev)" size="md">
         <div style={{ padding: "16px 20px" }}>
-          <div style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "10px" }}>
+          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: "10px" }}>
             <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการ (เก็บถาวร) — เป็นจุดเดียวที่ย้อนกลับได้. กด “ออก Rev” เพื่อ freeze เอกสารชุดปัจจุบันเป็นเวอร์ชันใหม่
           </div>
           {revisions.length === 0 ? (
-            <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
               ยังไม่มีเวอร์ชัน — กด “ออก Rev” เพื่อสร้างจุดย้อนแรก
             </div>
           ) : (
@@ -1803,10 +1803,10 @@ export default function ProjectDetailPage() {
                     {isRev ? `Rev. ${r.revNo}` : "บันทึก"}
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
                       {r.createdAt ? fmtDateTime(r.createdAt) : "-"} · {r.createdByName || "-"}
                     </div>
-                    {r.note && <ReadableText text={r.note} lines={4} style={{ fontSize: "12px", color: "var(--text-3)" }} />}
+                    {r.note && <ReadableText text={r.note} lines={4} style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }} />}
                   </div>
                   {canEdit && (
                     <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => restoreSnapshot(r)} title="ย้อนงานทั้งชุดกลับไปเท่ากับจุดนี้">
@@ -1882,14 +1882,14 @@ export default function ProjectDetailPage() {
 
       <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโครงการ" size="sm">
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "var(--text-3)" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
             เหตุผลที่ลูกค้ายกเลิก/ไม่ไปต่อ
             <textarea
               value={dropReason}
               onChange={(e) => setDropReason(e.target.value)}
               rows={3}
               placeholder="เช่น ราคาแพงไป, ลูกค้าเปลี่ยนใจ, คู่แข่งได้งาน"
-              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "13px", fontFamily: "inherit" }}
+              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "var(--fs-7)", fontFamily: "inherit" }}
             />
           </label>
         </div>
@@ -1932,15 +1932,15 @@ export default function ProjectDetailPage() {
       {closeReqForm && (
         <Modal open onClose={() => setCloseReqForm(null)} title="ขออนุมัติปิดโครงการ" size="sm" dismissible={!closeBusy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ color: "var(--text-2)", margin: 0, fontSize: 13 }}>คำขอจะส่งให้ AE Supervisor อนุมัติ — เลือกประเภทการปิด</p>
+            <p style={{ color: "var(--text-2)", margin: 0, fontSize: "var(--fs-7)" }}>คำขอจะส่งให้ AE Supervisor อนุมัติ — เลือกประเภทการปิด</p>
             <CloseReadinessNotice readiness={closeReadiness} />
-            <label style={{ fontSize: 13 }}>
+            <label style={{ fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>ประเภทการปิด</span>
               <Select value={closeReqForm.closeType} onChange={(e) => setCloseReqForm((f) => ({ ...f, closeType: e.target.value }))}>
                 {PROJECT_CLOSE_TYPES.map((t) => <option key={t} value={t}>{PROJECT_CLOSE_TYPE_LABELS[t]}</option>)}
               </Select>
             </label>
-            <label style={{ fontSize: 13 }}>
+            <label style={{ fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล / สรุปการปิด (บังคับ)</span>
               <textarea className="premium-input" rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
             </label>
