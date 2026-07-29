@@ -4,13 +4,14 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // พรีวิว (?dryRun=1) มาแสดงว่าจะลบอะไรพ่วงบ้าง แล้วถาม window.confirm ก่อนยิงซ้ำ
 // ด้วย ?force=1. (ยึด window.confirm ตามแนวทาง UI เดิม — ไม่ใช้ ConfirmDialog).
 //
-// คืน { ok, forced, cancelled }:
+// คืน { ok, forced, cancelled, data }:
 //   ok=true  → ลบสำเร็จ (forced=true ถ้าผ่านทาง force)
+//   data     → body ที่ API ตอบกลับ (ผู้เรียกอ่านต่อได้ เช่น emptyProject ของการลบดีล)
 //   cancelled=true → ผู้ใช้กดยกเลิกตอนถามยืนยัน force
 // โยน Error เมื่อ (ก) ผู้ใช้ทั่วไปโดนบล็อก หรือ (ข) force แล้วยังพลาด.
 export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
   let res = await fetch(baseUrl, { method: 'DELETE' });
-  if (res.ok) return { ok: true, forced: false };
+  if (res.ok) return { ok: true, forced: false, data: await res.json().catch(() => ({})) };
 
   const payload = await res.json().catch(() => ({}));
   const blockedMsg = payload.error || 'ลบไม่สำเร็จ';
@@ -40,6 +41,7 @@ export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
   }
 
   res = await fetch(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}force=1`, { method: 'DELETE' });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'บังคับลบไม่สำเร็จ');
-  return { ok: true, forced: true };
+  const forcedPayload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(forcedPayload.error || 'บังคับลบไม่สำเร็จ');
+  return { ok: true, forced: true, data: forcedPayload };
 }

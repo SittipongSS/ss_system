@@ -20,6 +20,7 @@ import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
+import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -515,12 +516,21 @@ export default function DealOverviewPage() {
     const detachText = data?.project
       ? `\n\nโครงการ (PM)${data.project.code ? ` ${data.project.code}` : ""} ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะไทม์ไลน์ของดีลนี้ออก${ownTaskCount ? ` (${ownTaskCount} ขั้นตอน)` : ""}`
       : ownTaskCount ? `\n\nไทม์ไลน์ของดีลนี้ (${ownTaskCount} ขั้นตอน) จะถูกลบด้วย` : "";
-    if (!(await confirmAction(`ลบดีล "${deal.title}"?${detachText}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
+    // งานที่ผูกดีลใบนี้จะถูกลบไปด้วย (ไม่งั้นค้างอยู่ในเมนูงานโดยชี้ดีลที่ไม่มีแล้ว) —
+    // นับเฉพาะที่ผูก dealId ตรง ๆ · งานที่ผูกผ่านโครงการไม่ถูกแตะ
+    const ownDealTasks = (data?.dealTasks || []).filter((t) => t.dealId === deal.id).length;
+    const taskText = ownDealTasks ? `\n\nงานที่ผูกดีลนี้ (${ownDealTasks} งาน) จะถูกลบไปด้วย` : "";
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${detachText}${taskText}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
       const result = await deleteWithForce(`/api/sales-planning/deals/${id}`, { isAdmin: role === "admin" });
-      if (result.ok) router.push("/sa/deals");
+      if (!result.ok) return;
+      // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
+      const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
+      // ลบโครงการพลาด = ดีลลบไปแล้ว แต่ยังต้องบอกให้รู้ จึงคาไว้ที่หน้านี้ ไม่เด้งออก
+      if (cleanup.error) setError(`ลบดีลแล้ว แต่${cleanup.error}`);
+      else router.push("/sa/deals");
     } catch (e) {
       setError(e.message || "ลบไม่สำเร็จ");
     }

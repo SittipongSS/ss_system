@@ -13,6 +13,7 @@ import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
+import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
@@ -286,12 +287,16 @@ export default function SalesPlanningPipelinePage() {
     // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
     // มาผูกแทน; ลบดีลแค่ถอดงานของดีลนี้ออก โครงการยังอยู่ (ลบเองที่หน้าโครงการ)
     const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะงานของดีลนี้ออก" : "";
-    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}\n\nงานที่ผูกดีลนี้จะถูกลบไปด้วย\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
       const result = await deleteWithForce(`/api/sales-planning/deals/${deal.id}`, { isAdmin: role === "admin" });
-      if (result.ok) await load();
+      if (!result.ok) return;
+      // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
+      const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
+      if (cleanup.error) setError(`ลบดีลแล้ว แต่${cleanup.error}`);
+      await load();
     } catch (e) {
       setError(e.message || "ลบดีลไม่สำเร็จ");
     }
