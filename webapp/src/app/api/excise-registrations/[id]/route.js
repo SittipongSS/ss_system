@@ -124,8 +124,9 @@ export async function PATCH(request, { params }) {
     if (!product) return Response.json({ error: 'ไม่พบสินค้าที่เลือก' }, { status: 404 });
 
     const customerId = product.customerId || (allowed.has('customerId') ? body.customerId : null) || reg.customerId;
-    const { data: customer } = await supabase
+    const { data: customer, error: customerError } = await supabase
       .from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (customerError) return Response.json({ error: customerError.message }, { status: 500 });
     if (!customer) return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในฐานข้อมูลก่อน' }, { status: 400 });
 
     updated.productId = product.id;

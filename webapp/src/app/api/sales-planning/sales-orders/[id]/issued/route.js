@@ -23,8 +23,9 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (orderError) return fail(orderError.message, 500);
   if (!order) return notFound('ไม่พบใบสั่งขาย');
-  const { data: deal } = await supabase
+  const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
+  if (dealError) return fail(dealError.message, 500);
   if (!deal || !inSalesViewScope(user, deal)) return forbidden();
 
   const { data: snapshots, error } = await supabase

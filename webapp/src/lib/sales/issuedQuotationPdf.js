@@ -64,11 +64,14 @@ export async function captureIssuedQuotationPdf(supabase, { quotationId, snapsho
   if (inserted) return { row: inserted, reused: false };
 
   // แข่งกันสร้าง (race) — อีก request ชนะไปแล้ว: อ่านแถวที่ commit จริง
-  const { data: row } = await supabase
+  const { data: row, error: rowError } = await supabase
     .from('issued_document_pdf_artifacts')
     .select('*')
     .eq('issuedDocumentId', snapshotId)
     .maybeSingle();
+  // อ่านแถวที่อีก request ชนะ race ไปแล้ว — พังตรงนี้ต้องดัง เพราะ row = undefined
+  // จะไหลไปเป็น "ไม่มีไฟล์ PDF" ที่ปลายทางแทนที่จะบอกว่าอ่านไม่ได้
+  if (rowError) throw rowError;
   return { row, reused: true };
 }
 

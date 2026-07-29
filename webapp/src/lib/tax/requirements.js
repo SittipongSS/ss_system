@@ -46,8 +46,11 @@ export async function registrationRequirements(supabase, regId) {
     missing.push({ entity: 'customer', docType: 'address_map', label: attachmentTypeLabel('customer', 'address_map') });
   }
 
-  const { data: cust } = await supabase
+  const { data: cust, error: custError } = await supabase
     .from('customers').select('email, phone, contactPhone, taxId, branchCode').eq('id', reg.customerId).maybeSingle();
+  // query พังต้องดัง — ไม่งั้น `if (cust)` เป็นเท็จแล้ว **ข้ามด่าน identity ทั้งก้อน**
+  // ปล่อยให้ยื่นทะเบียนได้ทั้งที่ยังไม่มีเลขผู้เสียภาษี/รหัสสาขา
+  if (custError) throw custError;
   if (cust) {
     // ── 5.4 identity gate (BOUNDARY_MAP) ──
     // เลขประจำตัวผู้เสียภาษี + สาขา ระบุตัวผู้เสียภาษีในเอกสารสรรพสามิต — บังคับ

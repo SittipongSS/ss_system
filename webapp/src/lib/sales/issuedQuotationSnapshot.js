@@ -119,15 +119,20 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
 export async function loadActiveSignatureAsset(supabase, userId) {
   if (!userId) return null;
   try {
-    const { data: root } = await supabase
+    const { data: root, error: rootError } = await supabase
       .from('user_signatures').select('activeVersionId').eq('userId', userId).maybeSingle();
+    if (rootError) throw rootError;
     if (!root?.activeVersionId) return null;
-    const { data: version } = await supabase
+    const { data: version, error: versionError } = await supabase
       .from('user_signature_versions')
       .select('storageBucket, storagePath, mimeType')
       .eq('id', root.activeVersionId).maybeSingle();
+    if (versionError) throw versionError;
     return version || null;
-  } catch {
+  } catch (error) {
+    // กลืนโดยเจตนา: ตรึงเอกสารต่อได้แม้ไม่มีลายเซ็น (ดีกว่าตรึงไม่ได้เลย) — แต่ต้องมี
+    // ร่องรอย ไม่งั้นเอกสารออกมาไม่มีลายเซ็นแล้วไม่มีใครรู้ว่าเพราะอะไร
+    console.error('[snapshot] โหลดลายเซ็นที่ใช้งานอยู่ไม่สำเร็จ:', error?.message || error);
     return null;
   }
 }
