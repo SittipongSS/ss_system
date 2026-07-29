@@ -57,6 +57,7 @@ const nativeFeedbackDebt = {
 
 const rawColorViolations = [];
 const typeScaleViolations = [];
+const zIndexViolations = [];
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
@@ -108,6 +109,26 @@ for (const file of uiFiles) {
     source.split(/\r?\n/).forEach((line, index) => {
       for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
         typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
+      }
+    });
+  }
+
+  /* ชั้นซ้อนระดับหน้าต้องมาจากโทเคน `--z-*` — ตรวจ 2026-07-29 พบ 82 จุดกระจายเป็น
+     22 ค่า ตั้งแต่ 1 ถึง 10050 โดยไม่มีที่ไหนบอกว่าอะไรควรอยู่เหนืออะไร คนเขียน
+     ของใหม่จึงเดาเลขเอง แล้วก็ได้ 9000/9999/10050 แบบ "ใหญ่ไว้ก่อน" ซึ่งพอมีสองคน
+     ทำเหมือนกันก็ทับกันอยู่ดี
+
+     เกณฑ์ **≥ 30** โดยเจตนา: เลข 0–10 (59 จุด) เป็นการเรียงลำดับกันเองภายใน
+     stacking context ของตัวเอง — หัวตารางตรึง · คอลัมน์ freeze · แถบ gantt ·
+     วงโฟกัส — พวกนั้นไม่ได้แข่งกับแผงลอยระดับหน้า และการบังคับให้ไปใช้โทเคนกลาง
+     จะทำให้ชั้นกลางเต็มไปด้วยชื่อที่ไม่มีความหมายข้ามหน้า
+     globals.css ยกเว้นเฉพาะบรรทัดที่ *ประกาศ* โทเคน (`--z-…: 1100;`) */
+  if (!rel.startsWith("src/components/documents/")) {
+    source.split(/\r?\n/).forEach((line, index) => {
+      if (/^\s*--z-[\w-]+:/.test(line)) return;
+      for (const hit of line.matchAll(/z-?[Ii]ndex:\s*"?(\d+)"?/g)) {
+        if (Number(hit[1]) < 30) continue;
+        zIndexViolations.push(`${rel}:${index + 1} ${hit[0]} → var(--z-…)`);
       }
     });
   }
@@ -276,6 +297,7 @@ const failures = [
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
+  ...zIndexViolations.map((item) => `z-index นอกชั้นซ้อนกลาง: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
@@ -297,6 +319,7 @@ console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} vis
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
+console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);

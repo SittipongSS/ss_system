@@ -188,6 +188,44 @@
   --topnav-menu-h: 44px;            /* ชั้นเมนูของระบบปัจจุบัน */
   --topnav-h: calc(var(--topbar-h) + var(--topnav-menu-h));
 
+  /* ── ชั้นซ้อน (z-index) ────────────────────────────────────────────────
+     **ของใหม่ต้องหยิบชื่อจากที่นี่ ห้ามคิดเลขเอง** (audit:ui บังคับไว้)
+
+     ตรวจ 2026-07-29: ทั้งระบบมี 82 จุด กระจายเป็น 22 ค่า ตั้งแต่ 1 ถึง 10050
+     โดยไม่มีที่ไหนบอกว่าอะไรควรอยู่เหนืออะไร — คนเขียนของใหม่จึงเดาเลขเอง
+     แล้วก็ได้ 9000/9999/10050 ที่ "ใหญ่ไว้ก่อน" ซึ่งพอมีคนทำแบบเดียวกันสองที่
+     ก็กลับไปทับกันอยู่ดี
+
+     ⚠️ **ค่าทุกตัวยกมาจากของเดิมเป๊ะ ไม่ได้จัดลำดับใหม่** — รอบนี้แค่ตั้งชื่อให้
+     ลำดับที่มีอยู่แล้วมองเห็นได้ที่เดียว การรื้อลำดับต้องเปิดหน้าจริงดูทีละจอ
+     ซึ่งเป็นงานแยก
+
+     ⚠️ เลข 0–10 ที่กระจายอยู่ในตาราง/gantt (59 จุด) **ไม่อยู่ในชั้นนี้โดยเจตนา**
+     พวกนั้นเรียงลำดับกันเองภายใน stacking context ของตัวเอง (หัวตารางตรึง ·
+     คอลัมน์ freeze · แถบ gantt) ไม่ได้แข่งกับแผงลอยระดับหน้า */
+  --z-sticky: 30;          /* แถบ/หัวที่ตรึงอยู่ในหน้า (แถบปุ่มท้ายฟอร์ม) */
+  /* ⚠️ จุดเดียวที่ค่าขยับ: เมนูของ MultiSelectFilter เคยเป็น 30 = ชั้นเดียวกับแถบ
+     ที่ตรึงไว้ ทั้งที่เมนูควรกางทับแถบเสมอ · เมนูในหน้าอีกตัว (เลือกเอกสารใน ZIP)
+     เป็น 40 อยู่แล้ว รอบนี้จึงให้ทั้งสองใช้ชั้นเดียวกันที่ 40 */
+  --z-inline-menu: 40;     /* เมนูที่กางในหน้า ไม่ได้ portal ออกไป */
+  --z-tooltip: 100;        /* tooltip ของกราฟ — ลอยเหนือเนื้อในการ์ดของตัวเอง */
+  --z-topnav: 100;         /* แถบบนสุด 2 ชั้น */
+  --z-topnav-menu: 120;    /* เมนูที่กางจากแถบบน */
+  --z-account-menu: 125;
+  --z-mobile-nav: 140;
+  --z-dropdown: 1000;      /* แผงลอยที่เกาะกับตัวควบคุม (+ ฉากหลังของมัน) */
+  --z-modal: 1100;         /* overlay + drawer */
+  /* 🔴 เท่ากับ --z-modal พอดี = ตอนนี้ใครอยู่บนขึ้นกับลำดับใน DOM ล้วน ๆ
+     ที่ถูกคือแจ้งเตือนต้องอยู่เหนือโมดัลเสมอ แต่การยกค่าต้องเปิดจอจริงดูก่อน
+     จึงคงค่าเดิมไว้และตั้งชื่อแยกไว้ให้แก้ได้ที่บรรทัดเดียวเมื่อพร้อม */
+  --z-toast: 1100;
+  --z-fullscreen: 1200;    /* โหมดเต็มจอ (กริดกระทบยอด) */
+  --z-calendar: 3000;      /* ปฏิทิน/ตัวเลือกเดือน */
+  --z-save-bar: 9000;      /* แถบบันทึกลอยของไทม์ไลน์ */
+  --z-drilldown: 9999;     /* แผงเจาะดูรายละเอียด FC */
+  --z-portal-menu: 10050;  /* เมนูที่ portal ไป body — ต้องอยู่เหนือทุกอย่าง
+                              เพราะเปิดจากในโมดัลได้ */
+
   /* ── Legacy alias tokens ──────────────────────────────────────
      Older components reference these names (often with stale green
      fallbacks). Map them to the canonical tokens so everything stays
@@ -421,7 +459,7 @@ button, select, input, textarea {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 3000;
+  z-index: var(--z-calendar);
   width: 292px;
   padding: 12px;
   border: 1px solid var(--border-strong);
@@ -483,7 +521,7 @@ button, select, input, textarea {
 .form-actions {
   position: sticky;
   bottom: 12px;
-  z-index: 30;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -544,7 +582,7 @@ button, select, input, textarea {
 .form-action-bar.is-page {
   position: sticky;
   bottom: 12px;
-  z-index: 30;
+  z-index: var(--z-sticky);
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -633,7 +671,7 @@ button, select, input, textarea {
 .topnav {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: var(--z-topnav);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 96%, transparent);
   box-shadow: var(--glass-shadow);
@@ -704,7 +742,7 @@ button, select, input, textarea {
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow), var(--shadow-lg);
   padding: 8px;
-  z-index: 120;
+  z-index: var(--z-topnav-menu);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -889,7 +927,7 @@ button, select, input, textarea {
   .mobile-nav-sheet {
     position: fixed;
     inset: 0;
-    z-index: 140;
+    z-index: var(--z-mobile-nav);
     display: block;
     overflow-y: auto;
     padding: 0 16px calc(24px + env(safe-area-inset-bottom));
@@ -1718,7 +1756,7 @@ h1, h2, h3, h4, h5, h6 {
 .recon-fs {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: var(--z-fullscreen);
   background: var(--bg);
   padding: 14px 18px 18px;
   overflow: auto;
@@ -2075,7 +2113,7 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  z-index: 1100;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2248,7 +2286,7 @@ h1, h2, h3, h4, h5, h6 {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 125;
+  z-index: var(--z-account-menu);
   display: flex;
   width: 230px;
   flex-direction: column;
@@ -2290,7 +2328,7 @@ h1, h2, h3, h4, h5, h6 {
 .fc-detail-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-drilldown);
   display: flex;
   justify-content: flex-end;
   background: color-mix(in srgb, var(--text) 48%, transparent);
@@ -2687,7 +2725,7 @@ button.ui-kpi-card { cursor: pointer; }
 .ui-select.premium-select,
 [data-theme="dark"] .ui-select.premium-select { background-image: none; }
 .ui-select-menu {
-  z-index: 10050;
+  z-index: var(--z-portal-menu);
   overflow-y: auto;
   padding: 5px;
   /* แผงลอยต้องทึบ + ขอบเข้ม เหมือนปฏิทินของ DateInput (ดู --panel-float) */
@@ -2786,7 +2824,7 @@ button.ui-kpi-card { cursor: pointer; }
 }
 .ui-time-trigger:hover { color: var(--accent-ink); }
 .ui-time-menu {
-  z-index: 10050;
+  z-index: var(--z-portal-menu);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -5623,7 +5661,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   left: 50%;
   bottom: 30px !important;
   transform: translateX(-50%);
-  z-index: 9000 !important;
+  z-index: var(--z-save-bar) !important;
   width: min(720px, calc(100vw - 32px));
   display: flex;
   align-items: center;
@@ -5956,7 +5994,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   min-width: 300px;
   max-height: 400px;
   overflow-y: auto;
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   padding: 8px 0;
   display: flex;
   flex-direction: column;
@@ -6355,7 +6393,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   color: var(--text-1);
   font-size: var(--fs-7);
-  z-index: 100;
+  z-index: var(--z-tooltip);
   transform: translate(-50%, -100%);
   margin-top: -12px;
   min-width: 150px;

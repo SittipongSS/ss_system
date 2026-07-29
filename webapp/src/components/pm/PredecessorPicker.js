@@ -67,8 +67,8 @@ export function PredecessorPopover({ task, tasks, anchor, onSave, onClose }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000 }} />
-      <div style={{ position: "fixed", left, top, width: W, zIndex: 1001, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.28)", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "var(--z-dropdown)" }} />
+      <div style={{ position: "fixed", left, top, width: W, zIndex: "calc(var(--z-dropdown) + 1)", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.28)", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ fontSize: "var(--fs-5)", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           งานที่ต้องรอให้เสร็จก่อน · {task.name}
         </div>

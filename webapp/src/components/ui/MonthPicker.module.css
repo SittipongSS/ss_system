@@ -33,7 +33,7 @@
    และ audit:ui บังคับไว้) ตำแหน่งมาจาก inline style ของ component เพราะคำนวณ
    จากขอบจอตอนเปิด */
 .panel {
-  z-index: 3000;
+  z-index: var(--z-calendar);
   display: block;
   padding: 12px;
   border: 1px solid var(--border-strong);
