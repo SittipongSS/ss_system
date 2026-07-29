@@ -47,7 +47,7 @@ export default function FilingsPage() {
       render: (o) => (
         <div>
           <div className="font-semibold">{o.quotationRef}</div>
-          {o.poReference && <div style={{ fontSize: 11, color: "var(--text-3)" }} className="font-mono">PO: {o.poReference}</div>}
+          {o.poReference && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="font-mono">PO: {o.poReference}</div>}
         </div>
       ),
     },
@@ -62,11 +62,11 @@ export default function FilingsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold text-sm">{o.quotationRef}</div>
-          <div style={{ fontSize: 11, color: "var(--accent)" }} className="truncate">{o.customerName || "-"}</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--accent)" }} className="truncate">{o.customerName || "-"}</div>
         </div>
         <StatusBadge status={o.status} />
       </div>
-      <div className="flex items-center justify-between" style={{ fontSize: 12 }}>
+      <div className="flex items-center justify-between" style={{ fontSize: "var(--fs-5)" }}>
         <span style={{ color: "var(--text-3)" }}>{o.items?.length || 0} รายการ</span>
         <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{taxText(o)}</span>
       </div>

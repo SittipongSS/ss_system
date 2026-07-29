@@ -60,7 +60,7 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
 
   // viewer (ไม่มี sahamit:edit) เห็นสถานะอย่างเดียว — ซ่อนปุ่มเดินสถานะ
   let action = null;
-  if (stage === "waiting_materials") action = <span style={{ fontSize: 11, color: "var(--text-3)" }}>รอ PM/RM</span>;
+  if (stage === "waiting_materials") action = <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>รอ PM/RM</span>;
   else if (canEdit && stage === "ready_produce") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "produced" })}>ผลิตเสร็จ →</button>;
   else if (canEdit && stage === "produced") action = <button className="btn btn-primary sm" disabled={busy} onClick={() => advance({ status: "delivered", actualDeliveredDate: today() })}>ส่งแล้ว →</button>;
   else if (canEdit && stage === "delivered") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "closed" })}>ปิดงาน →</button>;
@@ -69,24 +69,24 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
     <tr>
       <td className="font-mono" style={{ fontWeight: 600 }}>
         {row.fgCode}
-        <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
-        {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+        <div style={{ fontSize: "var(--fs-3)", color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
+        {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
       </td>
       <td style={{ textAlign: "right" }}>
         {nf(row.qty)}
-        {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
+        {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
       </td>
       <td>{row.deliveryMonth || "—"}</td>
       <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
       <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
       <td>
         {row.readyDate ? fmtDate(row.readyDate) : "—"}
-        {row.lateVsDue && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
+        {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
       </td>
       <td><span className="ui-badge" style={{ color, borderColor: color }}>{STAGE_LABEL[stage]}</span></td>
       <td>
         {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
-        {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
+        {row.ourSlip && <div style={{ fontSize: "var(--fs-2)", color: "var(--red)" }}>เราส่งช้า</div>}
       </td>
       <td style={{ textAlign: "right" }}>{action}</td>
     </tr>
@@ -203,8 +203,8 @@ export default function PoPage() {
       ) : error ? null : pos.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มี PO</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มี PO</div>
+          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
           {canEdit && (
             <Link href="/sahamit/po/new" className="btn btn-accent" style={{ marginTop: 16 }}>
               <Plus size={16} /> บันทึก PO
@@ -226,14 +226,14 @@ export default function PoPage() {
                 { key: "dest", label: "สถานที่ส่ง", options: destOptions, selected: destSel, onChange: setDestSel },
               ]}
             />
-            {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
+            {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
             {(() => {
               const fields = view === "grouped"
                 ? [["po", "เลข PO"], ["doc", "วันที่เอกสาร"], ["recv", "วันรับ PO"], ["due", "กำหนดส่ง"], ["qty", "จำนวนรวม"], ["value", "มูลค่า"], ["status", "สถานะ"]]
                 : [["po", "เลข PO"], ["month", "เดือนส่ง"], ["fg", "สินค้า"], ["qty", "จำนวน"], ["value", "มูลค่า"], ["status", "สถานะ"]];
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-3)" }}>เรียงตาม</span>
+                  <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>เรียงตาม</span>
                   <Select className="premium-select" style={{ height: 32 }} value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
                     <option value="">— ไม่เรียง —</option>
                     {fields.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
@@ -327,7 +327,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         <td style={{ textAlign: "right", fontWeight: 600 }}>
           {nf(fullQty)}
           {isSplit && (
-            <div style={{ fontSize: 10.5, fontWeight: 400 }}>
+            <div style={{ fontSize: "var(--fs-2)", fontWeight: 400 }}>
               <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(keptQty)}</span>{" · "}
               <span style={{ color: "var(--blue)" }}>เหลือ {nf(fullQty - keptQty)}</span>
             </div>
@@ -335,8 +335,8 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         </td>
         <td style={{ textAlign: "right" }}>
           <div style={{ fontWeight: 600 }}>{baht(exVat)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
-          {unpriced > 0 && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
+          {unpriced > 0 && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
         </td>
         <td><span className="ui-badge" style={{ color: stageColor, borderColor: stageColor }}>{stageLabel}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
@@ -347,7 +347,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         <tr>
           <td colSpan={11} style={{ background: "var(--panel-2)", padding: "8px 12px" }}>
             {lines.length === 0 ? (
-              <div style={{ color: "var(--text-3)", fontSize: 13, padding: 8 }}>ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)</div>
+              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", padding: 8 }}>ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)</div>
             ) : (
               <TableScroll>
                 <table className="premium-table">
@@ -443,16 +443,16 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
                 <td className="font-mono" style={{ fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : "—")}
-                  <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{r.l.deliveryMonth || "—"}</div>
+                  <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{r.l.deliveryMonth || "—"}</div>
                 </td>
                 <td>
                   <span className="font-mono" style={{ fontWeight: 600 }}>{r.l.fgCode}</span>
-                  <div style={{ fontSize: 11, color: r.l.productName ? "var(--text-2)" : "var(--amber)" }}>{r.l.productName || "— ไม่รู้จัก —"}</div>
-                  {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+                  <div style={{ fontSize: "var(--fs-3)", color: r.l.productName ? "var(--text-2)" : "var(--amber)" }}>{r.l.productName || "— ไม่รู้จัก —"}</div>
+                  {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
                 </td>
                 <td style={{ textAlign: "right", fontWeight: 600 }}>
                   {nf(r.l.qty)}
-                  {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
+                  {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", fontWeight: 400, color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
                 </td>
                 <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : "—"}</td>
                 <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : "—")}</td>

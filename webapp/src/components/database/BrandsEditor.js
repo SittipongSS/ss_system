@@ -28,7 +28,7 @@ export default function BrandsEditor({ value = [], onChange }) {
           </button>
         </div>
       ))}
-      <button type="button" className="btn" style={{ alignSelf: "flex-start", fontSize: "12px" }} onClick={add}>
+      <button type="button" className="btn" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={add}>
         <Plus size={14} /> เพิ่มแบรนด์
       </button>
     </div>

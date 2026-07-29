@@ -200,8 +200,8 @@ export default function MyDashboardTab({ month }) {
           <section className={`${styles.card} ${styles.teamCard}`}>
             <div className={styles.sectionTitle}><TrendingUp size={18} /><div><h3>เป้าหมายของฉัน</h3><span>เดือนนี้</span></div></div>
             <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <strong style={{ fontSize: 22 }}>{fmtMoney(actual)}</strong>
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>
+              <strong style={{ fontSize: "var(--fs-13)" }}>{fmtMoney(actual)}</strong>
+              <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                 {hasTarget ? `/ ${fmtMoney(target)} · ${fmtPercent(targetPct)}` : data ? "/ — · ยังไม่ตั้งเป้า" : "/ —"}
               </span>
             </div>

@@ -57,12 +57,12 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
     <Modal open={open} onClose={() => !busy && onClose()} title={`ยืนยันรับเงิน — ${order.quotationRef || order.id}`} size="sm">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-3">
-          <div className="flex justify-between items-center" style={{ fontSize: 13, background: "var(--panel-3)", borderRadius: 8, padding: "10px 12px" }}>
+          <div className="flex justify-between items-center" style={{ fontSize: "var(--fs-7)", background: "var(--panel-3)", borderRadius: 8, padding: "10px 12px" }}>
             <span style={{ color: "var(--text-3)" }}>ยอดภาษีรวม</span>
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{isExempt ? "ยกเว้นภาษี" : fmtMoney(order.totalTax)}</span>
           </div>
           {isExempt ? (
-            <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันว่ารับเงินจากลูกค้าแล้ว เพื่อส่งต่อให้ฝ่ายกฎหมาย</p>
+            <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันว่ารับเงินจากลูกค้าแล้ว เพื่อส่งต่อให้ฝ่ายกฎหมาย</p>
           ) : (
             <div className="form-group">
               <label>เลขที่ Invoice / Receipt (S&amp;S) <span style={{ color: "var(--red)" }}>*</span></label>
@@ -71,10 +71,10 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           )}
           <div className="form-group">
             <label>แนบหลักฐานการชำระจากลูกค้า</label>
-            <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>เช่น สลิปโอนเงิน/หลักฐานที่ลูกค้าส่งมา (แนบทีหลังที่หน้ารายละเอียดก็ได้)</p>
+            <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: "var(--fs-5)" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <p style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>เช่น สลิปโอนเงิน/หลักฐานที่ลูกค้าส่งมา (แนบทีหลังที่หน้ารายละเอียดก็ได้)</p>
           </div>
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }}>{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }}>{error}</div>}
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>

@@ -208,10 +208,10 @@ export default function DatabaseOverview() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} iconType="circle" />
+                  <XAxis dataKey="name" tick={{ fontSize: "var(--fs-3)", fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: "var(--fs-3)", fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: "var(--fs-5)" }} />
+                  <Legend wrapperStyle={{ fontSize: "var(--fs-5)", color: 'var(--text-2)' }} iconType="circle" />
                   <Area type={CHART_LINE_TYPE} dataKey="สินค้า" stroke="var(--accent)" strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
                   <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke="var(--blue)" strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
                 </AreaChart>
@@ -227,9 +227,9 @@ export default function DatabaseOverview() {
               <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topCustomersData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }} width={100} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: 'var(--border)' }} contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }} />
+                  <XAxis type="number" tick={{ fontSize: "var(--fs-3)", fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: "var(--fs-3)", fill: 'var(--text-3)' }} width={100} axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{ fill: 'var(--border)' }} contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: "var(--fs-5)" }} />
                   <Bar dataKey="count" name="จำนวนสินค้า" fill="var(--green)" radius={[0, 4, 4, 0]}>
                     {topCustomersData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -269,8 +269,8 @@ export default function DatabaseOverview() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }} />
-                    <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} iconType="circle" />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: "var(--fs-5)" }} />
+                    <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "var(--fs-3)", color: 'var(--text-2)' }} iconType="circle" />
                   </PieChart>
                 </ResponsiveContainer></ChartCanvas>
               )}

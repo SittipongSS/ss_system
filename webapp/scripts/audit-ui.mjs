@@ -95,6 +95,23 @@ for (const file of uiFiles) {
     }
   });
 
+  /* ฝั่ง JSX: `style={{ fontSize: 12 }}` — ชั้นพิมพ์คุมแค่ไฟล์ CSS มาตลอด ส่วน JS
+     ไม่เคยมีกฎเลย ตรวจ 2026-07-29 พบ 758 จุดเขียนเลขดิบ **ใช้โทเคน 0 จุด** ใน 20 ค่า
+     (รวมค่าที่ไม่มีในชั้นเลย: 9 · 10 · 13.5 · 17 · 19) = ต่อให้ไฟล์ CSS สะอาดหมด
+     ก็ยังแก้ขนาดตัวอักษรทีเดียวทั้งระบบไม่ได้อยู่ดี
+
+     ⚠️ เอกสารพิมพ์ยกเว้น — หน้าต่างพิมพ์ประกอบ HTML ของตัวเองและไม่ได้โหลด
+     globals.css โทเคนจึงไม่มีค่าที่นั่น (ต้องเขียน px ตรง ๆ)
+     ✅ ใช้ได้ทั้งใน `style` และ prop ของกราฟ (Recharts ส่งลง SVG เป็น attribute
+     ซึ่ง `var()` ก็ resolve — วัดจริงในเบราว์เซอร์แล้ว ไม่ได้เดา) */
+  if (!rel.startsWith("src/components/documents/")) {
+    source.split(/\r?\n/).forEach((line, index) => {
+      for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
+        typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
+      }
+    });
+  }
+
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
     if (line.trimStart().startsWith("//")) return;

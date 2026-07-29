@@ -105,8 +105,8 @@ export default function PoEditPage() {
     return shell(
       <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
         <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-        <div style={{ fontWeight: 600, fontSize: 15 }}>ไม่มีสิทธิ์แก้ PO</div>
-        <div style={{ fontSize: 13, marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
+        <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์แก้ PO</div>
+        <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
       </div>,
     );
   }
@@ -127,9 +127,9 @@ export default function PoEditPage() {
         lockOf={lockOf}
         disabled={busy}
       />
-      {error && <div role="alert" style={{ color: "var(--red)", fontSize: 13 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>}
       <div className="form-action-bar is-page">
-        <span style={{ fontSize: 13, color: "var(--text-3)" }}>
+        <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
           {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ชิ้น` : "ยังไม่มีรายการ"}
         </span>
         <div style={{ display: "flex", gap: 8 }}>

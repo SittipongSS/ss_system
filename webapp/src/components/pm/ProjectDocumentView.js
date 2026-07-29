@@ -319,11 +319,11 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       {/* Toolbar */}
       <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap", minWidth: 0 }}>
-          <span style={{ fontSize: "15px", fontWeight: 600 }}>เอกสาร Timeline (ISO)</span>
-          <span style={{ fontSize: "13px", color: statusColor || "var(--text-2)", display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>เอกสาร Timeline (ISO)</span>
+          <span style={{ fontSize: "var(--fs-7)", color: statusColor || "var(--text-2)", display: "flex", alignItems: "center", gap: "6px" }}>
             สถานะ: <strong>{statusLabel || project.status}</strong>
           </span>
-          <span style={{ fontSize: "12px", color: "var(--text-3)" }}>· ลากบาร์เพื่อย้าย · ลากขอบเพื่อยืด-หด · อัปเดตวันทันที</span>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>· ลากบาร์เพื่อย้าย · ลากขอบเพื่อยืด-หด · อัปเดตวันทันที</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <ZoomControl px={pxPerDay} onChange={changePx} />
@@ -332,7 +332,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 
       {/* ผู้เกี่ยวข้องกับเอกสารยังแก้ไขได้ แต่ไม่ปะปนกับข้อมูลที่ระบบดึงไปพิมพ์อัตโนมัติ */}
       <div style={{ flexShrink: 0, border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", padding: "14px 16px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
+        <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
         <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
           {/* ผู้ดูแล = AE / Senior AE เท่านั้น (มติผู้ใช้ 2026-07-19) — หัวหน้ามีอำนาจเหนือ AE
               แต่ไม่ลงชื่อเป็นผู้ดูแล. ต้องตรงกับ QT_PEOPLE_ROLES.aeOwner ไม่งั้นชื่อที่เลือก
@@ -365,7 +365,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
         </div>
       </div>
 
-      <div style={{ flexShrink: 0, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", fontSize: "11px", color: "var(--text-2)" }}>
+      <div style={{ flexShrink: 0, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", fontSize: "var(--fs-3)", color: "var(--text-2)" }}>
         <span style={{ color: "var(--text-3)" }}>สถานะ:</span>
         {Object.entries(TASK_STATUS_META).map(([status, meta]) => (
           <span key={status} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -376,7 +376,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       </div>
 
       {/* Legend: ที่มาของบาร์ */}
-      <div style={{ flexShrink: 0, display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", fontSize: "11px", color: "var(--text-2)" }}>
+      <div style={{ flexShrink: 0, display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", fontSize: "var(--fs-3)", color: "var(--text-2)" }}>
         <span style={{ color: "var(--text-3)" }}>ที่มาของขั้นตอน:</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
           <span style={{ width: "18px", height: "12px", borderRadius: "3px", background: "var(--accent)" }} /> จาก template
@@ -415,7 +415,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
               })}
             </svg>
           )}
-          <TableScroll><table style={{ borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed", width: "100%", minWidth: "max-content" }}>
+          <TableScroll><table style={{ borderCollapse: "collapse", fontSize: "var(--fs-7)", tableLayout: "fixed", width: "100%", minWidth: "max-content" }}>
             <colgroup>
               <col style={{ width: `${NO_W}px`, minWidth: `${NO_W}px` }} />
               <col style={{ width: `${descW}px`, minWidth: `${descW}px` }} />
@@ -438,7 +438,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
                     {axis.months.map((m) => (
                       <div key={m.key} style={{
                         width: m.count * pxPerDay, height: MONTH_H, lineHeight: `${MONTH_H}px`,
-                        fontSize: "11px", fontWeight: 600, color: "var(--text-2)", textAlign: "center",
+                        fontSize: "var(--fs-3)", fontWeight: 600, color: "var(--text-2)", textAlign: "center",
                         borderLeft: "1px solid var(--border)", overflow: "hidden", whiteSpace: "nowrap",
                       }}>
                         {m.count * pxPerDay >= 34 ? `${THAI_MONTHS_SHORT[m.m0]} ${String(m.year).slice(2)}` : ""}
@@ -463,7 +463,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
                       return (
                         <div key={d.i} style={{
                           width: pxPerDay, height: DAY_BAND_H, lineHeight: `${DAY_BAND_H}px`,
-                          fontSize: "9.5px", fontWeight: weekend ? 400 : 500,
+                          fontSize: "var(--fs-1)", fontWeight: weekend ? 400 : 500,
                           color: weekend ? "var(--text-3)" : "var(--text-2)", textAlign: "center",
                           background: weekend ? weekendShade : "transparent",
                           borderLeft: d.dow === 1 ? "1px solid var(--border)" : (pxPerDay >= 14 ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none"),
@@ -535,16 +535,16 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 function PersonField({ label, role, value, users, disabled, onCommit, detail }) {
   return (
     <div style={{ minWidth: 0, padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel-2)" }}>
-      <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>{label}</div>
-      <div style={{ fontSize: "10px", color: "var(--text-3)", margin: "2px 0 7px" }}>{role}</div>
+      <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text)" }}>{label}</div>
+      <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)", margin: "2px 0 7px" }}>{role}</div>
       <SelectUserField value={value} users={users} disabled={disabled} onCommit={onCommit} style={{ width: "100%" }} />
-      {detail && <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--text-2)", overflowWrap: "anywhere" }}>{detail}</div>}
+      {detail && <div style={{ marginTop: "6px", fontSize: "var(--fs-3)", color: "var(--text-2)", overflowWrap: "anywhere" }}>{detail}</div>}
     </div>
   );
 }
 
 const thStyle = (top = 0) => ({
-  border: "1px solid var(--border)", padding: "6px 10px", fontSize: "12px",
+  border: "1px solid var(--border)", padding: "6px 10px", fontSize: "var(--fs-5)",
   fontWeight: 600, color: "var(--text-2)", textAlign: "center", whiteSpace: "nowrap",
   position: "sticky", top, background: "var(--panel-2)", zIndex: 2,
 });
@@ -584,7 +584,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
       {/* เฟส B: แถบคั่น segment — โชว์ว่างานช่วงถัดไปเป็นของดีลไหน (เฉพาะโครงการหลายดีล) */}
       {group.segLabel && (
         <tr style={{ background: segBg }}>
-          <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "6px 12px", fontWeight: 700, fontSize: "12.5px", position: "sticky", left: 0 }}>
+          <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "6px 12px", fontWeight: 700, fontSize: "var(--fs-6)", position: "sticky", left: 0 }}>
             {group.segLabel}
           </td>
         </tr>
@@ -595,7 +595,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {collapsed ? <ChevronRight size={16} color="var(--text-2)" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="var(--text-2)" style={{ flexShrink: 0 }} />}
             {group.phase}
-            {collapsed && <span style={{ fontSize: "11px", color: "var(--text-3)", fontWeight: 400 }}>({group.tasks.length} รายการ)</span>}
+            {collapsed && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: 400 }}>({group.tasks.length} รายการ)</span>}
           </div>
         </td>
         <td style={{ ...freezeTd(freezeLeft[2], { background: phaseBg }) }}></td>
@@ -606,7 +606,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
       </tr>
       {!collapsed && group.tasks.map((task, ti) => (
         <tr key={task.id}>
-          <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", color: "var(--text-3)", fontSize: "12px" }) }}>{group.phaseNum}.{ti + 1}</td>
+          <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-5)" }) }}>{group.phaseNum}.{ti + 1}</td>
           <td style={{ ...freezeTd(freezeLeft[1]) }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               {task.isMilestone && <Flag size={14} color="var(--amber)" style={{ flexShrink: 0 }} />}
@@ -615,11 +615,11 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
                 defaultValue={task.name}
                 disabled={!canEdit}
                 onBlur={(e) => { if (e.target.value !== task.name) onCommitTask(task.id, { name: e.target.value }); }}
-                style={{ height: "30px", fontSize: "13px", padding: "2px 8px", border: "none", background: "transparent", width: "100%", whiteSpace: "nowrap" }}
+                style={{ height: "30px", fontSize: "var(--fs-7)", padding: "2px 8px", border: "none", background: "transparent", width: "100%", whiteSpace: "nowrap" }}
               />
             </div>
             {task.showNoteInPrint && task.note && (
-              <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "pre-wrap" }}>
+              <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "pre-wrap" }}>
                 หมายเหตุ: {task.note}
               </div>
             )}
@@ -637,7 +637,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
               onBlur={(e) => { const n = parseInt(e.target.value, 10) || 1; if (n !== task.durationDays) onCommitTask(task.id, { durationDays: n }); }}
               title="พิมพ์จำนวนวันแล้วกด Enter เพื่ออัพเดท"
-              style={{ height: "30px", fontSize: "13px", padding: "2px 4px", width: "48px", textAlign: "center", border: "none", background: "transparent" }}
+              style={{ height: "30px", fontSize: "var(--fs-7)", padding: "2px 4px", width: "48px", textAlign: "center", border: "none", background: "transparent" }}
             />
           </td>
           <td style={{ ...freezeTd(freezeLeft[4], { textAlign: "center", padding: "2px 4px" }) }}>
@@ -648,7 +648,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               disabled={!canEdit}
               onChange={(value) => { if (value && value !== task.startDate) onCommitTask(task.id, { startDate: value }); }}
               title="เลือกวันเริ่ม"
-              style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
+              style={{ border: "none", background: "transparent", fontSize: "var(--fs-3)", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
             />
           </td>
           <td style={{ ...freezeTd(freezeLeft[5], { textAlign: "center", padding: "2px 4px" }) }}>
@@ -660,7 +660,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               min={task.startDate || undefined}
               onChange={(value) => { if (value && value !== task.finishDate) onCommitTask(task.id, { finishDate: value }); }}
               title="เลือกวันจบ"
-              style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
+              style={{ border: "none", background: "transparent", fontSize: "var(--fs-3)", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
             />
           </td>
           <TimelineCell pxPerDay={pxPerDay} timelineWidth={timelineWidth} gridBg={gridBg} todayIdx={todayIdx} totalDays={totalDays}>
@@ -838,7 +838,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
       {kind === "edited" && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)", zIndex: 1, pointerEvents: "none" }} />}
       {canEdit && !saving && <div onPointerDown={begin("left")} style={handle("left")}><span style={grip} /></div>}
       <span style={{
-        fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        fontSize: "var(--fs-3)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         color: isPending ? "var(--text-2)" : "var(--accent-fg)", pointerEvents: "none", flex: 1,
       }}>
         {width > 44 ? task.name : ""}
@@ -852,9 +852,9 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
 function SignBlock({ label, role, value, disabled, users, onCommit }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: "13px", color: "var(--text-2)", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", fontWeight: 500 }}>{label}</span>
       <SelectUserField value={value} users={users} disabled={disabled} onCommit={onCommit} style={{ width: "220px" }} />
-      <span style={{ fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>({role})</span>
+      <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 500 }}>({role})</span>
     </div>
   );
 }

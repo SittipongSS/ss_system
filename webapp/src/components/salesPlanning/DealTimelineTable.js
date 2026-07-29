@@ -407,8 +407,8 @@ export default function TimelineWorkspace({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           {showHeading && (
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
-              <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
+              <div style={{ fontSize: "var(--fs-8)", fontWeight: 700 }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
+              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
             </div>
           )}
           {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
@@ -432,7 +432,7 @@ export default function TimelineWorkspace({
       {view === "list" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {filterControl}
               {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
@@ -442,8 +442,8 @@ export default function TimelineWorkspace({
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span className="mono tabular-nums" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1, color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: 18 }}>%</span></span>
-                <span style={{ fontSize: 13, color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
+                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: 700, lineHeight: 1, color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
+                <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอดำเนินการ {tasks.length - done - inProgress}</span>
@@ -463,9 +463,9 @@ export default function TimelineWorkspace({
                     return <FragmentGroup key={milestone.id}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: complete || active ? 1 : 0.62 }}>
                         <div style={{ width: 24, height: 24, borderRadius: "50%", background: complete || active ? color : "var(--bg)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {complete ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : active ? <Clock size={13} color="var(--accent-fg)" /> : <span style={{ fontSize: 10, color: "var(--text-3)" }}>{numberOf.get(milestone.id)}</span>}
+                          {complete ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : active ? <Clock size={13} color="var(--accent-fg)" /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{numberOf.get(milestone.id)}</span>}
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 600 }}>{milestone.name}</span>
+                        <span style={{ fontSize: "var(--fs-5)", fontWeight: 600 }}>{milestone.name}</span>
                       </div>
                       {index < milestones.length - 1 && <div style={{ width: 30, height: 2, background: complete ? "var(--green)" : "var(--border)" }} />}
                     </FragmentGroup>;
@@ -489,8 +489,8 @@ export default function TimelineWorkspace({
               <section key={phaseKey}>
                 <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
                   {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
+                  <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: 700 }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
+                  <span style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
                   {phaseDone === phaseTasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
                 </button>
                 {!collapsed && <div style={{ paddingLeft: 12 }}>
@@ -504,11 +504,11 @@ export default function TimelineWorkspace({
                         <div className="pm-task-card" style={{ position: "relative", flex: 1, marginBottom: 8, background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, var(--panel))" : complete ? "color-mix(in srgb, var(--green) 5%, var(--panel))" : active ? "var(--panel-2)" : "var(--panel)", border: `1px solid ${complete ? "color-mix(in srgb, var(--green) 30%, transparent)" : active ? "var(--accent)" : task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"}`, boxShadow: active ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
                           {taskIndex < phaseTasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
                           <button type="button" onClick={() => canEdit && task.status !== "Pending" && patch(task, { status: complete ? "In Progress" : "Completed" })} disabled={!canEdit || task.status === "Pending" || !!busyId} style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: complete ? "var(--green)" : active ? "var(--accent)" : "var(--bg)", border: `2px solid ${complete ? "var(--green)" : active ? "var(--accent)" : "var(--border)"}`, color: "var(--accent-fg)", padding: 0, cursor: canEdit && task.status !== "Pending" ? "pointer" : "default", boxShadow: active ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
-                            {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 700 }}>{numberOf.get(task.id)}</span>}
+                            {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)", fontWeight: 700 }}>{numberOf.get(task.id)}</span>}
                           </button>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                              <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
+                              <h4 style={{ margin: 0, fontSize: "var(--fs-9)", color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                                 <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey)} />
                                 <StepBadge badge={stepBadgeFor?.(task)} />
@@ -517,12 +517,12 @@ export default function TimelineWorkspace({
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
                               </div>
                             </div>
-                            <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 16, fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={14} /> {task.durationDays || 1} วันทำการ</span>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={task.assignee || undefined}><User size={14} /> {task.assignee ? compactPersonName(task.assignee) : "ยังไม่ระบุผู้รับผิดชอบ"}</span>
                             </div>
-                            {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: "var(--radius)" }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong><ReadableText text={task.note} lines={3} /></div>}
+                            {task.note && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: "var(--radius)" }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong><ReadableText text={task.note} lines={3} /></div>}
                           </div>
                           {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
                         </div>
@@ -540,7 +540,7 @@ export default function TimelineWorkspace({
       {view === "table" && (
       <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{filterCount ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
+        <div style={{ fontSize: "var(--fs-7)", fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{filterCount ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
         <div className="toolbar">
           {filterControl}
           <SortControl
@@ -571,10 +571,10 @@ export default function TimelineWorkspace({
               <FragmentGroup key={`${g.phase}|${gi}`}>
                 <tr className="timeline-phase-row">
                   <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: "var(--fs-7)" }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
                       {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
-                      <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: 600, fontSize: 11 }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
+                      <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: 600, fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
                     </div>
                   </td>
                 </tr>
@@ -602,7 +602,7 @@ export default function TimelineWorkspace({
                     <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
                     <td>
                       {canEdit ? (
-                        <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}
+                        <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
                           aria-label={`ผู้รับผิดชอบ ${t.name}`}
                           onChange={(e) => {
                             const u = assigneeOptions.find((x) => x.id === e.target.value);
@@ -645,7 +645,7 @@ export default function TimelineWorkspace({
                     <td>
                       {(t.predecessors || []).length
                         ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
-                        : <span style={{ color: "var(--text-3)", fontSize: 12 }}>-</span>}
+                        : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>-</span>}
                     </td>
                     {canEdit && (
                       <td style={{ whiteSpace: "nowrap" }}>

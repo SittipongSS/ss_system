@@ -122,28 +122,28 @@ export default function ChatWebhooksPage() {
           {rows.map((row) => (
             <section key={row.key} className="glass-panel" style={{ padding: "16px 18px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{row.label}</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>{row.label}</h2>
                 <span className="ui-badge" style={{ color: row.enabled && (row.url || row.envFallback) ? "var(--green)" : "var(--text-3)" }}>
                   {!row.enabled ? "ปิดใช้" : row.url ? "ใช้ค่าจากหน้านี้" : row.envFallback ? "ใช้ค่าจาก env (Vercel)" : "ยังไม่ได้ตั้ง"}
                 </span>
                 {row.updatedAt && (
-                  <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                  <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>
                     แก้ล่าสุด {row.updatedByName || "-"} · {fmtDateTime(row.updatedAt)}
                   </span>
                 )}
               </div>
-              <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--text-3)" }}>{row.hint}</p>
+              <p style={{ margin: "0 0 10px", fontSize: "var(--fs-6)", color: "var(--text-3)" }}>{row.hint}</p>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   type="text"
                   className="premium-input"
-                  style={{ flex: 1, minWidth: 280, fontFamily: "monospace", fontSize: 12 }}
+                  style={{ flex: 1, minWidth: 280, fontFamily: "monospace", fontSize: "var(--fs-5)" }}
                   placeholder="https://chat.googleapis.com/v1/spaces/…"
                   value={row.url}
                   onChange={(e) => patchRow(row.key, { url: e.target.value })}
                 />
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--fs-7)", whiteSpace: "nowrap" }}>
                   <input type="checkbox" checked={row.enabled} onChange={(e) => patchRow(row.key, { enabled: e.target.checked })} />
                   เปิดใช้
                 </label>

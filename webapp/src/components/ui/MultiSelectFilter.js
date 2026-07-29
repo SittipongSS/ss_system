@@ -61,7 +61,7 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
           style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, padding: "6px", minWidth: "180px", maxHeight: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}
         >
           {options.length === 0 ? (
-            <div style={{ padding: "8px", fontSize: "12px", color: "var(--text-3)" }}>ไม่มีตัวเลือก</div>
+            <div style={{ padding: "8px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ไม่มีตัวเลือก</div>
           ) : (
             options.map((opt) => {
               const checked = selected.includes(opt.value);
@@ -73,7 +73,7 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
                   style={{
                     display: "flex", alignItems: "center", gap: "8px", width: "100%",
                     padding: "7px 8px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
-                    fontSize: "13px", border: "none",
+                    fontSize: "var(--fs-7)", border: "none",
                     background: checked ? "var(--accent-soft)" : "transparent",
                     color: checked ? "var(--accent)" : "var(--text)",
                     fontWeight: checked ? 600 : 400,

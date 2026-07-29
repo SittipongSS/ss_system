@@ -42,13 +42,13 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
   return (
     <div className="glass-panel" style={{ padding: 20 }}>
       <div style={{ marginBottom: 8 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>FC ซ้อน PO รายเดือน ({unitLbl})</h3>
-        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+        <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>FC ซ้อน PO รายเดือน ({unitLbl})</h3>
+        <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 2 }}>
           แท่ง = PO ที่มาแล้ว (เข้ม) + FC ที่ยังรอ PO (เทา) รวมกัน = FC ที่ commit ไว้ (peak) · แดง = PO เกิน FC · เส้น = FC แต่ละรอบมองเดือนนั้นไว้เท่าไร
         </div>
       </div>
       {/* legend สีแท่ง (นอกเหนือจากเส้นรอบที่ Legend ของ recharts จัดการ) */}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 6, fontSize: 12, color: "var(--text-3)" }}>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
         <Swatch color="var(--accent)" label="PO (มาแล้ว)" />
         <Swatch color="var(--panel-2)" label="FC ที่รอ PO" border />
         <Swatch color="var(--red)" label="PO เกิน FC" />
@@ -56,10 +56,10 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
       <ChartCanvas><ResponsiveContainer width="100%" height={400}>
         <ComposedChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-          <YAxis tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
-          <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 }} labelFormatter={shortMonth} formatter={tipFormatter} />
-          <Legend wrapperStyle={{ fontSize: 13 }} />
+          <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
+          <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+          <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" }} labelFormatter={shortMonth} formatter={tipFormatter} />
+          <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
           {/* แท่งซ้อน: PO ที่มาแล้ว + FC ที่ยังรอ = ความสูง FC ที่ commit (peak) */}
           <Bar dataKey="PO" stackId="fill" fill="var(--accent)" name="PO (มาแล้ว)" barSize={38} />
           <Bar dataKey="waiting" stackId="fill" name="FC ที่รอ PO" barSize={38} radius={[4, 4, 0, 0]}>

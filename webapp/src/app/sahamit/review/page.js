@@ -105,8 +105,8 @@ export default function ReviewPage() {
       {loading ? <Spinner /> : error ? null : shown.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Flag size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{tab === "open" ? "ไม่มีรายการต้องตรวจ 🎉" : "ยังไม่มีธง"}</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>ระบบตั้งธงอัตโนมัติเมื่อ FC ลด/เลื่อน — ถ้ามี PO มารับจะเสนอเป็น “น่าจะเติมเต็มด้วย PO” ให้ยืนยัน</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>{tab === "open" ? "ไม่มีรายการต้องตรวจ 🎉" : "ยังไม่มีธง"}</div>
+          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>ระบบตั้งธงอัตโนมัติเมื่อ FC ลด/เลื่อน — ถ้ามี PO มารับจะเสนอเป็น “น่าจะเติมเต็มด้วย PO” ให้ยืนยัน</div>
         </div>
       ) : (
         <TableScroll>

@@ -85,7 +85,7 @@ export default function ShipmentPrepPage() {
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="no-print">
-        <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+        <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "var(--fs-7)" }}>
           <ArrowLeft size={16} /> กลับไปโครงการ
         </Link>
         <DetailPageLayout
@@ -130,10 +130,10 @@ export default function ShipmentPrepPage() {
           )}
         >
           <div className="glass-panel" style={{ padding: "28px" }}>
-            <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
+            <h2 style={{ margin: 0, fontSize: "var(--fs-11)", fontWeight: 700 }}>
               {prep ? `${prep.prepNumber} พร้อมสำหรับคลัง` : "ยังไม่มีเอกสารเตรียมส่งของ"}
             </h2>
-            <p style={{ margin: "6px 0 0", color: "var(--text-2)", fontSize: "13px" }}>
+            <p style={{ margin: "6px 0 0", color: "var(--text-2)", fontSize: "var(--fs-7)" }}>
               {prep
                 ? `เอกสารมี ${prep.lines?.length || 0} รายการ · สร้างเมื่อ ${fmtDate(prep.prepDate)}`
                 : "ระบบจะสร้างรายการจาก FG ที่ผูกอยู่ในโครงการนี้ แล้วเปิดเป็นเอกสารพร้อมพิมพ์สำหรับคลัง"}

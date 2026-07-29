@@ -530,24 +530,24 @@ export default function CostingDetailPage() {
             อนุมัติ {approval.approved}/{approval.total}
             {approval.returned > 0 ? ` · ตีกลับ ${approval.returned}` : ""}
           </span>
-          <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
             ผู้ขอ {request.requestedByName || "—"}
           </span>
           {/* ลิงก์กลับดีลต้นทาง — เฉพาะใบที่ผูกดีล (ใบสำรวจไม่มีดีล) */}
           {request.dealId && (
             <Link
               href={`/sa/deals/${request.dealId}`}
-              style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+              style={{ fontSize: "var(--fs-5)", display: "inline-flex", alignItems: "center", gap: 4 }}
             >
               <ExternalLink size={12} /> เปิดดีลต้นทาง
             </Link>
           )}
         </div>
         {request.note && (
-          <ReadableText text={request.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />
+          <ReadableText text={request.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
         )}
         {request.status === "cancelled" && request.cancelReason && (
-          <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
+          <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={request.cancelReason} lines={4} />
           </div>
         )}
@@ -558,7 +558,7 @@ export default function CostingDetailPage() {
         return (
           <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-              <strong style={{ fontSize: 15 }}>{item.productLabel}</strong>
+              <strong style={{ fontSize: "var(--fs-9)" }}>{item.productLabel}</strong>
               <span className="ui-badge" style={{ background: "var(--panel-2)", color: "var(--text-2)" }}>
                 {item.categoryCode}
               </span>
@@ -582,10 +582,10 @@ export default function CostingDetailPage() {
             {/* สถานะการผูก FG — ไปต่อ = กดขึ้นทะเบียน/ผูก FG เดิม */}
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
               {item.productId ? (
-                <span style={{ fontSize: 12, color: "var(--green)" }}>ผูกสินค้าแล้ว (FG)</span>
+                <span style={{ fontSize: "var(--fs-5)", color: "var(--green)" }}>ผูกสินค้าแล้ว (FG)</span>
               ) : (
                 <>
-                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>ยังไม่ผูกสินค้า (FG)</span>
+                  <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ยังไม่ผูกสินค้า (FG)</span>
                   {canEdit || ["approved", "linked"].includes(request.status) ? (
                     <>
                       <button type="button" className="btn sm" onClick={() => registerFg(item)}>
@@ -601,7 +601,7 @@ export default function CostingDetailPage() {
             </div>
 
             {item.approvalStatus === "returned" && item.returnReason && (
-              <div style={{ margin: "0 0 12px", fontSize: 13, color: "var(--red)" }}>
+              <div style={{ margin: "0 0 12px", fontSize: "var(--fs-7)", color: "var(--red)" }}>
                 <strong>ผู้บริหารตีกลับ: </strong><ReadableText text={item.returnReason} lines={4} />
               </div>
             )}
@@ -633,9 +633,9 @@ export default function CostingDetailPage() {
                         <td>
                           {component.label}
                           {component.required === false && (
-                            <span style={{ fontSize: 11, color: "var(--text-3)" }}> (ไม่บังคับ)</span>
+                            <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}> (ไม่บังคับ)</span>
                           )}
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>
                             {COST_LINE_KIND_LABELS[component.kind] || component.kind}
                             {component.sourceDept ? ` · ขอจาก ${component.sourceDept}` : " · คิดภายใน"}
                           </div>
@@ -664,7 +664,7 @@ export default function CostingDetailPage() {
                             <span>{material?.label || <span style={{ color: "var(--text-3)" }}>ยังไม่ผูกวัสดุ</span>}</span>
                           )}
                           {!internal && (
-                            <div style={{ fontSize: 11, marginTop: 4, color: LIBRARY_TONE[state.status] }}>
+                            <div style={{ fontSize: "var(--fs-3)", marginTop: 4, color: LIBRARY_TONE[state.status] }}>
                               {openAskRow
                                 ? `รอ ${component.sourceDept} ตอบเคส ${openAskRow.docNo || ""}`
                                 : COMPONENT_LIBRARY_LABELS[state.status] || ""}
@@ -723,7 +723,7 @@ export default function CostingDetailPage() {
                                 </span>
                               )}
                               {suggestQty != null && (
-                                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
                                   ใบนี้ {(request.items || []).length} SKU × {qty(request.moq)} = {qty(suggestQty)} ชิ้น
                                   {suggestTier != null && suggestTier !== component.priceTierQty
                                     ? ` → แนะนำชั้น ${qty(suggestTier)}`
@@ -731,7 +731,7 @@ export default function CostingDetailPage() {
                                 </div>
                               )}
                               {state.tierBelow && (
-                                <div style={{ fontSize: 11, color: "var(--amber)" }}>
+                                <div style={{ fontSize: "var(--fs-3)", color: "var(--amber)" }}>
                                   ชั้นที่เลือกต่ำกว่าชั้นต่ำสุดที่มี — ราคาที่ได้เป็นของล็อตใหญ่กว่า
                                 </div>
                               )}
@@ -748,7 +748,7 @@ export default function CostingDetailPage() {
                                 {money(component.pricePerKg ?? component.pricePerUnit)} {component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}
                               </span>
                               {staleSnapshot && (
-                                <div style={{ fontSize: 11, color: "var(--red)", marginTop: 2 }}>
+                                <div style={{ fontSize: "var(--fs-3)", color: "var(--red)", marginTop: 2 }}>
                                   ⚠️ ราคาที่ตรึงไว้เกินอายุแล้ว
                                 </div>
                               )}
@@ -775,7 +775,7 @@ export default function CostingDetailPage() {
                     <td colSpan={5} style={{ textAlign: "right", fontWeight: 600 }}>
                       ต้นทุนรวมต่อชิ้น
                       {!cost.complete && (
-                        <span style={{ color: "var(--amber)", fontWeight: 400, fontSize: 12 }}>
+                        <span style={{ color: "var(--amber)", fontWeight: 400, fontSize: "var(--fs-5)" }}>
                           {" "}(ยังไม่ครบ — รอราคาบางรายการ)
                         </span>
                       )}
@@ -817,7 +817,7 @@ export default function CostingDetailPage() {
 
             {/* ป้อนต้นทุนกลับสินค้า — โผล่หลังอนุมัติ และหายเมื่อป้อนแล้ว */}
             {item.costFedAt ? (
-              <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--green)" }}>
+              <p style={{ margin: "12px 0 0", fontSize: "var(--fs-5)", color: "var(--green)" }}>
                 ป้อนราคาผลิต {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
                 {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
                 {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
@@ -827,7 +827,7 @@ export default function CostingDetailPage() {
               </p>
             ) : canFeed && item.approvalStatus === "approved" && (
               <div className="action-bar" style={{ marginTop: 12 }}>
-                <span style={{ marginRight: "auto", fontSize: 12, color: "var(--text-3)" }}>
+                <span style={{ marginRight: "auto", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                   {feedCostError(item, request.moq)
                     || `จะเขียนราคาผลิต ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
                 </span>
@@ -989,7 +989,7 @@ export default function CostingDetailPage() {
                 </div>
               ) : (
                 <>
-                  <p style={{ fontSize: 13, color: "var(--text-2)" }}>
+                  <p style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
                     ต้นทุนรวมต่อชิ้น <strong>{money(cost.total)} ฿</strong>
                     {!cost.complete && (
                       <span style={{ color: "var(--amber)" }}> (ยังไม่ครบ)</span>
@@ -1080,7 +1080,7 @@ export default function CostingDetailPage() {
       >
         {askDraft && (
           <>
-            <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-2)" }}>
+            <p style={{ marginTop: 0, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
               ส่งถึงฝ่ายเจ้าของวัสดุ (RM → RD · PM → PC) — ตอบแล้วราคาจะเข้าทะเบียนและ
               เติมกลับบรรทัดในใบนี้ให้อัตโนมัติ
             </p>

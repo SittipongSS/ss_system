@@ -63,32 +63,32 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
       <tr>
         <td className="font-mono" style={{ fontWeight: 600 }}>
           {row.fgCode}
-          <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
-          {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+          <div style={{ fontSize: "var(--fs-3)", color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
+          {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
         </td>
         <td className="font-mono">{row.poNumber}</td>
         <td style={{ textAlign: "right" }}>
           {nf(row.qty)}
-          {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
+          {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
         </td>
         <td>{row.deliveryMonth || "—"}</td>
         <td>
           <span className="ui-badge" style={{ color: row.inForecast ? "var(--green)" : "var(--violet)", borderColor: row.inForecast ? "var(--green)" : "var(--violet)" }}>
             {row.inForecast ? "ตรง FC" : "นอก FC"}
           </span>
-          <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 4 }}>{row.leadDays} วัน</span>
+          <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: 4 }}>{row.leadDays} วัน</span>
         </td>
         <td>{row.receivedDate ? fmtDate(row.receivedDate) : "—"}</td>
         <td>
           {row.readyDate ? fmtDate(row.readyDate) : "—"}
-          {row.lateVsDue && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
+          {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
         </td>
         <td>{row.dueDate ? fmtDate(row.dueDate) : "—"}</td>
         <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
         <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
         <td>
           {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
-          {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
+          {row.ourSlip && <div style={{ fontSize: "var(--fs-2)", color: "var(--red)" }}>เราส่งช้า</div>}
         </td>
         <td>{canEdit && <button className="btn-icon" onClick={() => setOpen((v) => !v)} title="แก้สถานะวัสดุ">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}</td>
       </tr>
@@ -100,14 +100,14 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
                 <label>PM กำหนดถึง</label>
                 <DateInput style={{ height: 30 }} value={d.pmDueDate} onChange={(value) => setD({ ...d, pmDueDate: value })} />
               </div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--fs-7)", paddingBottom: 6 }}>
                 <input type="checkbox" checked={d.pmArrived} onChange={(e) => setD({ ...d, pmArrived: e.target.checked })} /> PM มาแล้ว
               </label>
               <div className="form-group" style={{ width: 160 }}>
                 <label>RM กำหนดถึง</label>
                 <DateInput style={{ height: 30 }} value={d.rmDueDate} onChange={(value) => setD({ ...d, rmDueDate: value })} />
               </div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--fs-7)", paddingBottom: 6 }}>
                 <input type="checkbox" checked={d.rmArrived} onChange={(e) => setD({ ...d, rmArrived: e.target.checked })} /> RM มาแล้ว
               </label>
               <div className="form-group" style={{ flex: "1 1 160px", minWidth: 140 }}>
@@ -172,8 +172,8 @@ export default function MaterialPage() {
 
   const Stat = ({ n, label, color }) => (
     <div className="glass-panel" style={{ padding: "12px 16px", minWidth: 120 }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || "var(--text)" }}>{n}</div>
-      <div style={{ fontSize: 12, color: "var(--text-3)" }}>{label}</div>
+      <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, color: color || "var(--text)" }}>{n}</div>
+      <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{label}</div>
     </div>
   );
 
@@ -197,8 +197,8 @@ export default function MaterialPage() {
       {loading ? <Spinner /> : error ? null : rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Boxes size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มีบรรทัด PO ให้ติดตาม</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>บันทึก PO ก่อน แล้วระบบจะคำนวณ lead time ให้</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มีบรรทัด PO ให้ติดตาม</div>
+          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บันทึก PO ก่อน แล้วระบบจะคำนวณ lead time ให้</div>
         </div>
       ) : (
         <>
@@ -223,7 +223,7 @@ export default function MaterialPage() {
                 { key: "issue", label: "ปัญหา", options: [{ value: "late", label: "เกินกำหนด (PO/lead)" }, { value: "slip", label: "เราส่งช้า" }], selected: issueSel, onChange: setIssueSel },
               ]}
             />
-            {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {rows.length} บรรทัด</span>}
+            {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {rows.length} บรรทัด</span>}
           </div>
 
           <TableScroll style={{ overflowX: "auto" }}>

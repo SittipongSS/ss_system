@@ -118,7 +118,7 @@ export default function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="drawer-header">
-          <h3 id={titleId} style={{ fontSize: "15px", fontWeight: 600 }}>{title}</h3>
+          <h3 id={titleId} style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>{title}</h3>
           {dismissible && (
             <button type="button" className="drawer-close" onClick={onClose} aria-label="ปิด">
               <X size={16} />

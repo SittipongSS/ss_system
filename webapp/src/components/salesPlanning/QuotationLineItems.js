@@ -226,7 +226,7 @@ export default function QuotationLineItems({
                     {editable
                       ? ((line._noteOpen || line.metadata?.note)
                         ? <textarea className="premium-input" rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
-                        : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
+                        : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
                       : (line.metadata?.note && (
                         <div className={styles.noteReadonly}>
                           <strong>หมายเหตุ:</strong>

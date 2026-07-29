@@ -77,13 +77,13 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
             <ChartCanvas><ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="month" tickFormatter={formatShortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={10} />
-                <YAxis tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dx={-10} />
+                <XAxis dataKey="month" tickFormatter={formatShortMonth} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={10} />
+                <YAxis tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dx={-10} />
                 <RechartsTooltip
                   content={<ChartTooltip labelFormatter={formatShortMonth} valueFormatter={(value) => `${formatNumber(value)} ชิ้น`} />}
                   cursor={{ fill: "var(--panel-2)", opacity: 0.5 }}
                 />
-                <Legend wrapperStyle={{ fontSize: "13px", paddingTop: "10px" }} />
+                <Legend wrapperStyle={{ fontSize: "var(--fs-7)", paddingTop: "10px" }} />
                 <Bar dataKey="Forecast" name="ยอด Forecast" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
@@ -119,7 +119,7 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
                   verticalAlign="bottom" 
                   height={36} 
                   iconType="circle"
-                  wrapperStyle={{ fontSize: "13px" }}
+                  wrapperStyle={{ fontSize: "var(--fs-7)" }}
                 />
               </PieChart>
             </ResponsiveContainer></ChartCanvas>

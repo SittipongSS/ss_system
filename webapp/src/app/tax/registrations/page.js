@@ -76,7 +76,7 @@ export default function RegistrationsPage() {
       render: (r) => (
         <div>
           <div className="font-semibold font-mono">{r.fgCode}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
         </div>
       ),
     },
@@ -86,7 +86,7 @@ export default function RegistrationsPage() {
       sortValue: (r) => taxPerUnit(r, productOf(r)),
       render: (r) => <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>,
     },
-    { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{r.approvalNumber || "-"}</span> },
+    { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{r.approvalNumber || "-"}</span> },
     { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
   ];
 
@@ -95,11 +95,11 @@ export default function RegistrationsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold font-mono text-sm">{r.fgCode}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
         </div>
         <StatusBadge status={r.status} />
       </div>
-      <div className="flex items-center justify-between" style={{ fontSize: 12 }}>
+      <div className="flex items-center justify-between" style={{ fontSize: "var(--fs-5)" }}>
         <span style={{ color: "var(--text-2)" }} className="truncate">{r.customerName}</span>
         <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>
       </div>

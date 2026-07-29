@@ -255,7 +255,7 @@ export default function RegistrationDetailPage() {
             <div className="flex flex-col gap-2">
               <div
                 className="rounded p-2.5"
-                style={{ fontSize: 12.5, border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
+                style={{ fontSize: "var(--fs-6)", border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
               >
                 {missingDocs.length
                   ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
@@ -264,7 +264,7 @@ export default function RegistrationDetailPage() {
               {warnings.length > 0 && (
                 <div
                   className="rounded p-2.5"
-                  style={{ fontSize: 12.5, border: "1px solid var(--border)", background: "var(--amber-soft)", color: "var(--amber)" }}
+                  style={{ fontSize: "var(--fs-6)", border: "1px solid var(--border)", background: "var(--amber-soft)", color: "var(--amber)" }}
                 >
                   ข้อมูลที่ควรเติม (ไม่บังคับ): {warnings.map((w) => w.message).join(", ")}
                 </div>

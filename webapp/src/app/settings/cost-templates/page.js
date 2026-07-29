@@ -185,7 +185,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
                         <span className="ui-badge" style={{ background: "var(--panel-2)", color: "var(--text-2)" }}>
                           {UNIT_BASIS_LABELS[basis]}
                         </span>
-                        <div style={{ marginTop: 4, fontSize: 11, color: DEPT_TONE[dept || "internal"] }}>
+                        <div style={{ marginTop: 4, fontSize: "var(--fs-3)", color: DEPT_TONE[dept || "internal"] }}>
                           {dept ? `ขอราคาจาก ${dept}` : "คิดภายใน"}
                         </div>
                       </td>
@@ -210,7 +210,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
                             checked={line.required !== false}
                             onChange={(e) => patchLine(idx, { required: e.target.checked })}
                           />
-                          <span style={{ fontSize: 12, color: "var(--text-2)" }}>บังคับ</span>
+                          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>บังคับ</span>
                         </label>
                       </td>
                       <td>
@@ -422,7 +422,7 @@ export default function CostTemplatesPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <strong style={{ fontSize: 15 }}>{typeLabel(t.categoryCode)}</strong>
+                      <strong style={{ fontSize: "var(--fs-9)" }}>{typeLabel(t.categoryCode)}</strong>
                       <span className="ui-badge" style={{ background: "var(--panel-2)", color: "var(--text-2)" }}>
                         {t.categoryCode}
                       </span>
@@ -439,9 +439,9 @@ export default function CostTemplatesPage() {
                       {summary.internal > 0 && <span className="chip">ภายใน {summary.internal}</span>}
                     </div>
                     {t.note && (
-                      <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-3)" }}>{t.note}</p>
+                      <p style={{ margin: "8px 0 0", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{t.note}</p>
                     )}
-                    <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--text-3)" }}>
+                    <p style={{ margin: "6px 0 0", fontSize: "var(--fs-3)", color: "var(--text-3)" }}>
                       แก้ไขล่าสุด {fmtDateTime(t.updatedAt)}
                       {t.updatedByName ? ` โดย ${t.updatedByName}` : ""}
                     </p>

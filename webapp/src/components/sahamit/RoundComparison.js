@@ -23,7 +23,7 @@ function ChangeChips({ diff }) {
   diff.shifts.forEach((s) => chips.push({ k: `sh-${s.fromMonth}`, c: COLORS.shift, Icon: MoveRight, text: `${s.fromMonth}→${s.toMonth}${s.diff ? ` (${s.diff > 0 ? "+" : ""}${fmt(s.diff)})` : ""}` }));
   diff.added.forEach((a) => chips.push({ k: `ad-${a.month}`, c: COLORS.add, Icon: Plus, text: `${a.month} ${fmt(a.qty)}` }));
   diff.removed.forEach((r) => chips.push({ k: `rm-${r.month}`, c: COLORS.remove, Icon: X, text: `${r.month} −${fmt(r.qty)}` }));
-  if (!chips.length) return <span style={{ color: "var(--text-3)", fontSize: "12px" }}>ไม่เปลี่ยนแปลง</span>;
+  if (!chips.length) return <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ไม่เปลี่ยนแปลง</span>;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
       {chips.map(({ k, c, Icon, text }) => (
@@ -41,7 +41,7 @@ export default function RoundComparison({ comparison, productByFg }) {
   if (!comparison) return null;
   if (!comparison.hasPrev) {
     return (
-      <div className="empty-state" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
+      <div className="empty-state" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
         <CheckCircle2 size={22} style={{ marginBottom: 8 }} />
         <div>รอบแรก — ยังไม่มีรอบก่อนหน้าให้เปรียบเทียบ</div>
       </div>
@@ -53,7 +53,7 @@ export default function RoundComparison({ comparison, productByFg }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <div style={{ fontSize: "13px", color: "var(--text-2)" }}>
+      <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
         เปรียบเทียบ <b>รอบที่ {comparison.targetRoundNo}</b> กับ <b>รอบที่ {comparison.prevRoundNo}</b>
       </div>
 
@@ -66,7 +66,7 @@ export default function RoundComparison({ comparison, productByFg }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {peakDrops.map((s) => (
               <div key={s.fgCode} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div style={{ fontSize: "13px" }}>
+                <div style={{ fontSize: "var(--fs-7)" }}>
                   <span className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</span>
                   {s.productName ? <span style={{ color: "var(--text-3)" }}> · {s.productName}</span> : null}
                   <span style={{ color: "var(--red)", fontWeight: 600, marginLeft: 8 }}>
@@ -101,15 +101,15 @@ export default function RoundComparison({ comparison, productByFg }) {
                 <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
                 <td>
                   {s.productName || <span style={{ color: "var(--amber)" }}>— ไม่รู้จัก —</span>}
-                  {metaOf(s.fgCode) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{metaOf(s.fgCode)}</div>}
+                  {metaOf(s.fgCode) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{metaOf(s.fgCode)}</div>}
                 </td>
                 <td style={{ textAlign: "right" }}>
                   {fmt(s.prevTotal)}
-                  {casesOf(s.fgCode, s.prevTotal) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesOf(s.fgCode, s.prevTotal)}</div>}
+                  {casesOf(s.fgCode, s.prevTotal) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesOf(s.fgCode, s.prevTotal)}</div>}
                 </td>
                 <td style={{ textAlign: "right" }}>
                   {fmt(s.targetTotal)}
-                  {casesOf(s.fgCode, s.targetTotal) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesOf(s.fgCode, s.targetTotal)}</div>}
+                  {casesOf(s.fgCode, s.targetTotal) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesOf(s.fgCode, s.targetTotal)}</div>}
                 </td>
                 <td style={{ textAlign: "right", color: s.net > 0 ? "var(--green)" : s.net < 0 ? "var(--red)" : "var(--text-3)", fontWeight: 600 }}>
                   {s.net > 0 ? "+" : ""}{fmt(s.net)}

@@ -39,7 +39,7 @@ export default function StartFilingDialog({ open, onClose, onDone, order }) {
     <Modal open={open} onClose={() => !busy && onClose()} title={`เริ่มยื่นภาษี — ${order.quotationRef || order.id}`} size="sm">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-3">
-          <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+          <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>
             กรอกเลขที่ใบกำกับภาษีของรายการนี้เพื่อเริ่มดำเนินการยื่นต่อกรมสรรพสามิต
             (1 ใบกำกับ ต่อ 1 ใบเสนอราคา)
           </p>
@@ -48,7 +48,7 @@ export default function StartFilingDialog({ open, onClose, onDone, order }) {
             <input className="premium-input w-full font-mono" value={taxInvoiceNumber} required
               onChange={(e) => setTaxInvoiceNumber(e.target.value)} placeholder="เช่น INV-2026-001" />
           </div>
-          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>

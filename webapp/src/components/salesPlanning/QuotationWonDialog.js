@@ -121,7 +121,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
         </p>
 
         {error && (
-          <div role="alert" style={{ padding: "10px 12px", border: "1px solid var(--red)", borderRadius: 10, color: "var(--red)", fontSize: 13 }}>{error}</div>
+          <div role="alert" style={{ padding: "10px 12px", border: "1px solid var(--red)", borderRadius: 10, color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>
         )}
 
         <div className="form-grid">
@@ -138,14 +138,14 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
           </label>
         </div>
         {needsDueDate && (
-          <p style={{ margin: 0, color: "var(--text-3)", fontSize: 12.5 }}>
+          <p style={{ margin: 0, color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
             เอกสารนี้ไม่ใช่เอกสารการชำระเงิน — ต้องระบุกำหนดชำระ
           </p>
         )}
 
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
+            <span style={{ fontSize: "var(--fs-7)", fontWeight: 600 }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
             <div className="spacer" />
             <button type="button" className="btn ghost sm" onClick={() => fileInputRef.current?.click()} disabled={busy || files.length >= MAX_WON_ATTACHMENTS}>
               <Paperclip size={14} aria-hidden="true" /> แนบไฟล์
@@ -155,7 +155,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
           {files.length ? (
             <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
               {files.map((f, i) => (
-                <li key={`${f.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, border: "1px solid var(--border)", borderRadius: 10, padding: "6px 10px" }}>
+                <li key={`${f.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)", border: "1px solid var(--border)", borderRadius: 10, padding: "6px 10px" }}>
                   <FileText size={14} aria-hidden="true" style={{ color: "var(--text-3)", flexShrink: 0 }} />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
                   <span style={{ color: "var(--text-3)", flexShrink: 0 }}>{(f.size / (1024 * 1024)).toFixed(2)} MB</span>
@@ -167,7 +167,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
               ))}
             </ul>
           ) : (
-            <p style={{ margin: 0, color: "var(--text-3)", fontSize: 12.5 }}>ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
+            <p style={{ margin: 0, color: "var(--text-3)", fontSize: "var(--fs-6)" }}>ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
           )}
         </div>
 

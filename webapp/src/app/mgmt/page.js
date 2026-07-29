@@ -85,20 +85,20 @@ export default function MgmtOverviewPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 18 }}>
             <div className="glass-panel" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>ความคืบหน้าตามแผนก</div>
+              <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 14 }}>ความคืบหน้าตามแผนก</div>
               {(data?.progressByDept || []).length === 0 ? (
-                <div style={{ fontSize: 13, color: "var(--text-3)" }}>ยังไม่มีข้อมูล</div>
+                <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>ยังไม่มีข้อมูล</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {data.progressByDept.map((d) => {
                     const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
                     return (
                       <div key={d.code} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 12, width: 56, color: "var(--text-2)" }}>{d.code}</span>
+                        <span style={{ fontSize: "var(--fs-5)", width: 56, color: "var(--text-2)" }}>{d.code}</span>
                         <span style={{ flex: 1, height: 9, background: "var(--panel-2)", borderRadius: 6, overflow: "hidden" }}>
                           <span style={{ display: "block", width: `${pct}%`, height: "100%", background: "var(--accent)" }} />
                         </span>
-                        <span style={{ fontSize: 12, color: "var(--text-3)", width: 44, textAlign: "right" }}>{d.done}/{d.total}</span>
+                        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", width: 44, textAlign: "right" }}>{d.done}/{d.total}</span>
                       </div>
                     );
                   })}
@@ -107,10 +107,10 @@ export default function MgmtOverviewPage() {
             </div>
 
             <div className="glass-panel" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>สัดส่วนสถานะ</div>
+              <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 14 }}>สัดส่วนสถานะ</div>
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                 <div style={{ width: 96, height: 96, borderRadius: "50%", background: donut, flexShrink: 0 }} />
-                <div style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
                   {["done", "in_progress", "todo", "cancelled"].map((k) => (
                     <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       <span style={{ width: 11, height: 11, borderRadius: 3, background: STATUS_TONE[k] }} />
@@ -123,18 +123,18 @@ export default function MgmtOverviewPage() {
           </div>
 
           <div className="glass-panel" style={{ padding: "16px 18px" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
               <AlertTriangle size={16} color="var(--red)" /> งานด่วน — ยังไม่เสร็จ
             </div>
             {(data?.urgent || []).length === 0 ? (
-              <div style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", padding: "18px 0" }}>ไม่มีงานด่วนที่ค้างอยู่ 🎉</div>
+              <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", textAlign: "center", padding: "18px 0" }}>ไม่มีงานด่วนที่ค้างอยู่ 🎉</div>
             ) : (
               <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: 12, color: "var(--text-3)", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: "var(--fs-5)", color: "var(--text-3)", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
                   <span>รายการ</span><span>แผนก</span><span>ผู้รับผิดชอบ</span><span style={{ textAlign: "right" }}>กำหนดส่ง</span>
                 </div>
                 {data.urgent.map((t) => (
-                  <div key={t.id} onClick={() => router.push("/mgmt/tasks")} style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: 13, padding: "9px 0", borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
+                  <div key={t.id} onClick={() => router.push("/mgmt/tasks")} style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: "var(--fs-7)", padding: "9px 0", borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                     <span style={{ color: "var(--text-2)" }}>{t.deptCode || "—"}</span>
                     <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.assigneeName || "—"}</span>

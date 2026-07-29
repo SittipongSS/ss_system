@@ -116,13 +116,13 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
             display: "flex", flexDirection: "column", gap: "8px",
           }}
         >
-          <div style={{ fontSize: "12px", fontWeight: 600 }}>เพิ่มแบรนด์ใหม่ให้ลูกค้ารายนี้</div>
+          <div style={{ fontSize: "var(--fs-5)", fontWeight: 600 }}>เพิ่มแบรนด์ใหม่ให้ลูกค้ารายนี้</div>
           <input autoFocus className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (ไทย)" value={th} onChange={(e) => setTh(e.target.value)} onKeyDown={onKey} />
           <input className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (อังกฤษ)" value={en} onChange={(e) => setEn(e.target.value)} onKeyDown={onKey} />
-          {error && <div style={{ fontSize: "11px", color: "var(--red)" }}>{error}</div>}
+          {error && <div style={{ fontSize: "var(--fs-3)", color: "var(--red)" }}>{error}</div>}
           <div className="form-action-inline">
-            <button type="button" className="btn" style={{ fontSize: "12px" }} onClick={close}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" style={{ fontSize: "12px" }} disabled={saving} onClick={save}>
+            <button type="button" className="btn" style={{ fontSize: "var(--fs-5)" }} onClick={close}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" style={{ fontSize: "var(--fs-5)" }} disabled={saving} onClick={save}>
               {saving ? "กำลังเพิ่ม..." : "เพิ่มแบรนด์"}
             </button>
           </div>

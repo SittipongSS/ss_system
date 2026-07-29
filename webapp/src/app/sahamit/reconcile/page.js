@@ -187,7 +187,7 @@ export default function ReconcilePage() {
     const dispStatus = isFilled ? "covered" : cell.status;
     const dispLabel = isFilled ? "เติมเต็มด้วย PO" : cell.label;
     const badges = hasCov ? (
-      <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
+      <span style={{ position: "absolute", top: 3, left: 4, fontSize: "var(--fs-1)", lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
     // ไฮไลต์: ช่องที่ PO "รับในรอบ FC ที่เลือก" มาลง (ตีกรอบสีส้ม + จุด) — ไม่แตะตัวเลข
     const isHl = highlightCells.has(`${fg}||${m}`);
@@ -201,7 +201,7 @@ export default function ReconcilePage() {
         <td key={m} style={{ padding: "5px 5px" }}>
           <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
             {badges}{hlBadge}
-            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
+            <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
             <span className="cell-status-tag">{dispLabel}</span>
           </div>
         </td>
@@ -222,7 +222,7 @@ export default function ReconcilePage() {
             <span className="cell-val fc">
               {displayQty(cell.fcQty, ppc, unit)}
               {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
-                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
               )}
             </span>
           </div>
@@ -314,12 +314,12 @@ export default function ReconcilePage() {
             />
           )}
           {selectedWindow && (
-            <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span className="ui-badge" style={{ fontSize: "var(--fs-5)", color: "var(--accent)", borderColor: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 6 }}>
               ◻ ไฮไลต์รอบ #{selectedWindow.roundNo} · PO ที่รับ {fmtDate(selectedWindow.start, { short: true })}–{selectedWindow.end ? fmtDate(selectedWindow.end, { short: true }) : "ปัจจุบัน"} ({selectedPos.length} ใบ)
               <button onClick={() => setRoundSel("all")} title="ล้างไฮไลต์" style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", display: "flex", padding: 0 }}>✕</button>
             </span>
           )}
-          {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
+          {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
         </div>
       )}
       {error && (
@@ -333,17 +333,17 @@ export default function ReconcilePage() {
       ) : error ? null : matrix.rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <ClipboardCheck size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มีข้อมูลให้กระทบยอด</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>เพิ่มรอบ FC หรือ PO ก่อน</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มีข้อมูลให้กระทบยอด</div>
+          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เพิ่มรอบ FC หรือ PO ก่อน</div>
         </div>
       ) : (
         <div className={expanded ? "recon-fs" : undefined}>
           {expanded && (
             <div className="recon-fs-bar">
               <ClipboardCheck size={18} style={{ color: "var(--accent)" }} />
-              <strong style={{ fontSize: 14 }}>กระทบยอด</strong>
+              <strong style={{ fontSize: "var(--fs-8)" }}>กระทบยอด</strong>
               {selectedWindow && (
-                <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)" }}>รอบ #{selectedWindow.roundNo}</span>
+                <span className="ui-badge" style={{ fontSize: "var(--fs-5)", color: "var(--accent)", borderColor: "var(--accent)" }}>รอบ #{selectedWindow.roundNo}</span>
               )}
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
                 {viewUnitControls}
@@ -352,7 +352,7 @@ export default function ReconcilePage() {
             </div>
           )}
           {/* Legend */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14, fontSize: 12 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14, fontSize: "var(--fs-5)" }}>
             {LEGEND.map((x) => (
               <span key={x.s} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: `color-mix(in srgb, ${C[x.c]} 35%, var(--panel))`, border: `1px solid ${C[x.c]}` }} />
@@ -383,7 +383,7 @@ export default function ReconcilePage() {
                 {catGroups.flatMap(([cat, rows]) => [
                   <tr key={`cat-${cat}`}>
                     <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
-                      {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
+                      {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
                     </td>
                   </tr>,
                   ...rows.map((r) => {
@@ -395,12 +395,12 @@ export default function ReconcilePage() {
                           <div className="product-row-info">
                             <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
                             <span className="product-row-sku">{r.fgCode}</span>
-                            {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
+                            {meta && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{meta}</span>}
                           </div>
                         </td>
                         {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                         <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
+                          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
                           <div style={{ fontWeight: 700 }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
                         </td>
                       </tr>
@@ -420,7 +420,7 @@ export default function ReconcilePage() {
                   <td>
                     รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
                     {valueSummary.unpriced > 0 && (
-                      <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
+                      <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: 400 }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
                         {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
                       </span>
                     )}
@@ -429,13 +429,13 @@ export default function ReconcilePage() {
                     const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
                     return (
                       <td key={m} style={{ textAlign: "right" }}>
-                        {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
+                        {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
                         {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(v.po)}</div>}
                       </td>
                     );
                   })}
                   <td style={{ textAlign: "right" }}>
-                    {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
+                    {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
                     {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(valueSummary.gPo)}</div>}
                   </td>
                 </tr>

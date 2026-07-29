@@ -289,7 +289,7 @@ export default function UserManagement() {
                       <td className="text-[var(--text-2)] font-mono text-xs">
                         {u.email}
                         {u.disabled && (
-                          <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "10px", fontWeight: 600 }}>
+                          <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "var(--fs-2)", fontWeight: 600 }}>
                             ปิดบัญชี
                           </span>
                         )}
@@ -419,10 +419,10 @@ export default function UserManagement() {
       >
         {transferResult ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="status-pill success" style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: 13 }}>
+            <div className="status-pill success" style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: "var(--fs-7)" }}>
               โอนงานให้ {transferResult.toName} เรียบร้อย
             </div>
-            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
               <li>ดีลเปิดที่ย้ายผู้ดูแล: <b>{transferResult.deals}</b> ใบ (FC ย้ายตามทันที)</li>
               <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{Number(transferResult.targetAmount || 0).toLocaleString("th-TH")}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
               <li>ดีลที่ปิด Won/Lost แล้ว และเป้าเดือนที่ผ่านมา: ไม่ถูกแตะ (ประวัติคงเดิม)</li>
@@ -444,11 +444,11 @@ export default function UserManagement() {
                 placeholder="เลือกพนักงานที่รับช่วงต่อ"
               />
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)" }}>
               <input type="checkbox" checked={transferForm.transferDeals} onChange={(e) => setTransferForm((f) => ({ ...f, transferDeals: e.target.checked }))} />
               โอนดีลที่ยังเปิดทั้งหมด (Forecast ย้ายตามผู้ดูแลใหม่)
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)", flexWrap: "wrap" }}>
               <input type="checkbox" checked={transferForm.transferTargets} onChange={(e) => setTransferForm((f) => ({ ...f, transferTargets: e.target.checked }))} />
               โยกเป้า (Target) ตั้งแต่เดือน
               <input
@@ -460,7 +460,7 @@ export default function UserManagement() {
                 disabled={!transferForm.transferTargets}
               />
             </label>
-            <div style={{ fontSize: 12, color: "var(--text-3)", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
               เดือนที่ผ่านมาแล้วและดีลที่ปิด Won จะไม่ถูกย้าย — Target/Actual ย้อนหลังคงใต้ชื่อเดิมเสมอ (ค่าเริ่มต้น = เดือนถัดไป; เดือนปัจจุบันแนะนำวัดที่ระดับทีม)
             </div>
             <div className="form-action-bar">

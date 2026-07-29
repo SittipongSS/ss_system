@@ -306,14 +306,14 @@ export default function ProjectFormModal({
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)", marginBottom: "18px" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, cursor: "pointer", fontSize: "14px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, cursor: "pointer", fontSize: "var(--fs-8)" }}>
             <input type="checkbox" checked={linkFg} onChange={(e) => setLinkFg(e.target.checked)} style={{ accentColor: "var(--accent)", width: "16px", height: "16px" }} />
             ผูกสินค้า (FG) ที่มีอยู่แล้ว
           </label>
           
           {linkFg && (
             <div style={{ marginTop: "12px" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "8px" }}>เลือก FG (รายการกรองตาม <b>แบรนด์</b> ที่เลือกด้านบน — ไม่เลือกแบรนด์ = โชว์ทุกแบรนด์ของลูกค้า) ระบบจะดึงข้อมูลลูกค้าและหมวดหมู่มาให้อัตโนมัติ</div>
+              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginBottom: "8px" }}>เลือก FG (รายการกรองตาม <b>แบรนด์</b> ที่เลือกด้านบน — ไม่เลือกแบรนด์ = โชว์ทุกแบรนด์ของลูกค้า) ระบบจะดึงข้อมูลลูกค้าและหมวดหมู่มาให้อัตโนมัติ</div>
               
               {form.projectProducts.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
@@ -327,12 +327,12 @@ export default function ProjectFormModal({
                         <div style={{ flex: 1, minWidth: "160px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <span className="font-mono text-[13px] font-semibold">{p.fgCode}</span>
-                            <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{p.volume ? `(${p.volume} ml)` : ""}</span>
-                            <span style={{ fontSize: "11px", background: "var(--blue-soft)", color: "var(--blue)", padding: "2px 6px", borderRadius: "4px" }}>
+                            <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{p.volume ? `(${p.volume} ml)` : ""}</span>
+                            <span style={{ fontSize: "var(--fs-3)", background: "var(--blue-soft)", color: "var(--blue)", padding: "2px 6px", borderRadius: "4px" }}>
                               {cat ? cat.nameTh : p.categoryCode || "ไม่มีหมวด"}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{identity.detail || "-"}</div>
+                          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>{identity.detail || "-"}</div>
                         </div>
                         <div style={{ display: "flex", gap: "8px", width: "240px", maxWidth: "100%" }}>
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
@@ -362,7 +362,7 @@ export default function ProjectFormModal({
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)" }}>
-          <div style={{ fontSize: "12px", color: "var(--text-2)", fontWeight: 600, marginBottom: "12px" }}>
+          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", fontWeight: 600, marginBottom: "12px" }}>
             หมวดสินค้า <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(หมวดหลัก → หมวดรอง — มีผลต่อขั้นตอนสรรพสามิต)</span>
           </div>
           <ProductCategorySelect
@@ -380,13 +380,13 @@ export default function ProjectFormModal({
             disabled={fgCategoryLock}
           />
           {fgCategoryLock && (
-            <div style={{ fontSize: "11px", color: "var(--blue)", marginTop: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <div style={{ fontSize: "var(--fs-3)", color: "var(--blue)", marginTop: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
               🔒 หมวดอิงตามสินค้า (FG) ที่ผูกไว้โดยอัตโนมัติ
               {isExciseCategory(form.productMainCategory, categories) && ` — มีสินค้าเข้าข่ายสรรพสามิต จึงใช้หมวด ${form.productMainCategory}`}
             </div>
           )}
           {form.productMainCategory && (
-            <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "8px" }}>
+            <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "8px" }}>
               รหัสหมวด: <span className="font-mono">{form.productMainCategory}</span>
               {isExciseCategory(form.productMainCategory, categories) && <span style={{ color: "var(--amber)" }}> · เข้าข่ายสรรพสามิต (จะมีขั้นตอนขึ้นทะเบียน)</span>}
             </div>

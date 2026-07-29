@@ -72,7 +72,7 @@ export function SeriesLegend({ items }) {
   return (
     <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
       {items.map((s) => (
-        <span key={s.label} className="flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-2)" }}>
+        <span key={s.label} className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
           <span
             aria-hidden="true"
             style={{

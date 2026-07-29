@@ -817,7 +817,7 @@ export default function QuotationEditorPage() {
                   <CheckCircle2 size={17} aria-hidden="true" />
                   <h2>หลักฐานการปิด Won</h2>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "var(--fs-7)" }}>
                   <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || quote.wonDocType || "-"}</div>
                   <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : "-"}</div>
                   {quote.wonPaymentDueDate && <div><small style={{ color: "var(--text-3)", display: "block" }}>กำหนดชำระ</small>{fmtDate(quote.wonPaymentDueDate)}</div>}

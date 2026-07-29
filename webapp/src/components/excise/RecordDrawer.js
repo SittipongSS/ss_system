@@ -91,10 +91,10 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
         >
           <div style={{ minWidth: 0 }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 id={titleId} style={{ fontSize: 16, fontWeight: 700 }}>{title}</h3>
+              <h3 id={titleId} style={{ fontSize: "var(--fs-10)", fontWeight: 700 }}>{title}</h3>
               {badge}
             </div>
-            {subtitle && <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 3 }}>{subtitle}</p>}
+            {subtitle && <p style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", marginTop: 3 }}>{subtitle}</p>}
           </div>
           <button className="drawer-close" onClick={onClose} aria-label="ปิด"><X size={16} /></button>
         </header>
@@ -118,8 +118,8 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
 export function Field({ label, children, full = false }) {
   return (
     <div style={{ gridColumn: full ? "1 / -1" : undefined }}>
-      <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 13.5, color: "var(--text)" }}>{children ?? "-"}</div>
+      <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: "var(--fs-7)", color: "var(--text)" }}>{children ?? "-"}</div>
     </div>
   );
 }

@@ -215,11 +215,11 @@ export default function QuotationsPage() {
                     <td>
                       {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
                       <Link prefetch={false} href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
-                      {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: 11 }}>ฉบับแก้ไข R{r.revisionNo}</span>}
+                      {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: "var(--fs-3)" }}>ฉบับแก้ไข R{r.revisionNo}</span>}
                     </td>
                     <td>
                       {r.customerName || "-"}
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: 12 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                         {r.deal && dealTypeBadge(dealTypeOf(r.deal))}
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>

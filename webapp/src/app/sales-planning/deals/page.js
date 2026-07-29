@@ -609,7 +609,7 @@ export default function SalesPlanningPipelinePage() {
                             <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
                           )}
                         </strong>
-                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
+                        <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                           {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
                         </span>
                       </Link>
@@ -770,7 +770,7 @@ export default function SalesPlanningPipelinePage() {
       <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
         <div style={{ padding: 18 }}>
           <div className="flex items-center gap-2 mb-3">
-            <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
               {quoteDeal?.projectId ? "สร้าง line จาก FG ใน PM project และ freeze ราคาขาย ณ วันที่สร้าง" : "ต้องสร้าง/ผูก PM project และ FG ก่อนจึง seed quotation อัตโนมัติได้"}
             </div>
             <div className="spacer" />
@@ -916,7 +916,7 @@ export default function SalesPlanningPipelinePage() {
                   <tr key={doc.id} className="premium-row">
                     <td>
                       <strong>{doc.title}</strong>
-                      <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{doc.kind}</span>
+                      <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{doc.kind}</span>
                     </td>
                     <td>{stageBadge(doc.status === "received" ? "won" : doc.status === "waived" ? "lost" : "awaiting_confirm")}</td>
                     <td className="mono">{doc.dueDate || "-"}</td>

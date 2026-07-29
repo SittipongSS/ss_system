@@ -131,7 +131,7 @@ export default function TaxDashboard() {
         
         {/* Track 1: การขึ้นทะเบียน */}
         <section>
-          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
+          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: "var(--fs-10)" }}>
             <ClipboardCheck size={20} className="text-[var(--accent)]" /> การขึ้นทะเบียน (Registrations)
             <Link href="/tax/registrations" className="flex items-center ml-auto text-sm text-[var(--accent)] hover:underline">
               เปิดหน้างาน <ChevronRight size={16} />
@@ -154,7 +154,7 @@ export default function TaxDashboard() {
 
         {/* Track 2: การยื่นชำระภาษี */}
         <section>
-          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
+          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: "var(--fs-10)" }}>
             <ReceiptText size={20} className="text-[var(--accent)]" /> การยื่นชำระภาษี (Tax Filings)
             <Link href="/tax/filings" className="flex items-center ml-auto text-sm text-[var(--accent)] hover:underline">
               เปิดหน้างาน <ChevronRight size={16} />
@@ -220,7 +220,7 @@ export default function TaxDashboard() {
 
         {/* Action queue */}
         <section>
-          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: "var(--fs-10)" }}>
             งานของฉันตอนนี้ {queue.length > 0 && <span className="ui-badge danger">{queue.length}</span>}
           </div>
           <WorkQueue items={queue} />

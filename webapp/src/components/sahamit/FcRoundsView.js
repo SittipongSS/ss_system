@@ -33,7 +33,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
   const roundColor = (i) => ROUND_COLORS[i % ROUND_COLORS.length];
   const empty = !evo.data.length;
 
-  const tip = (rows) => (rows ? { contentStyle: { borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 } } : {});
+  const tip = (rows) => (rows ? { contentStyle: { borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" } } : {});
 
   if (empty) {
     return <div className="glass-panel empty-state" style={{ padding: 40 }}>ไม่มีข้อมูล FC ตามตัวกรองที่เลือก</div>;
@@ -44,16 +44,16 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
       {/* วิวัฒนาการ FC รายรอบ */}
       <div className="glass-panel" style={{ padding: 20 }}>
         <div style={{ marginBottom: 8 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600 }}>วิวัฒนาการ FC แต่ละรอบ ต่อเดือนเป้าหมาย ({unitLbl})</h3>
-          <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>เส้นละรอบ · รอบใหม่ปรับขึ้น/ลง/เลื่อนเดือนได้ — เดือนที่รอบนั้นไม่ครอบจะเว้นเส้น</div>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>วิวัฒนาการ FC แต่ละรอบ ต่อเดือนเป้าหมาย ({unitLbl})</h3>
+          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 2 }}>เส้นละรอบ · รอบใหม่ปรับขึ้น/ลง/เลื่อนเดือนได้ — เดือนที่รอบนั้นไม่ครอบจะเว้นเส้น</div>
         </div>
         <ChartCanvas><ResponsiveContainer width="100%" height={340}>
           <LineChart data={evo.data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-            <YAxis tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+            <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
+            <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
             <RTooltip {...tip(true)} labelFormatter={shortMonth} formatter={(v, n) => [v == null ? "—" : fmtVal(v), n]} />
-            <Legend wrapperStyle={{ fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
             {evo.rounds.map((r, i) => (
               <Line key={r.key} type={CHART_LINE_TYPE} dataKey={r.key} name={`รอบ #${r.roundNo}`} stroke={roundColor(i)} strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
             ))}
@@ -64,12 +64,12 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
       <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* ยอดรวมต่อรอบ */}
         <div className="glass-panel" style={{ padding: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>ยอดรวม FC แต่ละรอบ ({unitLbl})</h3>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 8 }}>ยอดรวม FC แต่ละรอบ ({unitLbl})</h3>
           <ChartCanvas><ResponsiveContainer width="100%" height={240}>
             <BarChart data={totals} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="roundNo" tickFormatter={(n) => `#${n}`} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-              <YAxis tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+              <XAxis dataKey="roundNo" tickFormatter={(n) => `#${n}`} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
+              <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
               <RTooltip {...tip(true)} labelFormatter={(n) => `รอบ #${n}`} formatter={(v) => [fmtVal(v), `ยอดรวม (${unitLbl})`]} />
               <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={54}>
                 {totals.map((_, i) => <Cell key={i} fill={roundColor(i)} />)}
@@ -80,18 +80,18 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
 
         {/* การเปลี่ยนแปลงรอบต่อรอบ */}
         <div className="glass-panel" style={{ padding: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>การเปลี่ยนแปลงรอบต่อรอบ</h3>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 8 }}>การเปลี่ยนแปลงรอบต่อรอบ</h3>
           <div>
             {totals.map((r, i) => (
               <div key={r.roundNo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < totals.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>รอบ #{r.roundNo}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>รับ {r.receivedDate ? fmtDate(r.receivedDate) : "—"}</div>
+                  <div style={{ fontWeight: 700, fontSize: "var(--fs-8)" }}>รอบ #{r.roundNo}</div>
+                  <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>รับ {r.receivedDate ? fmtDate(r.receivedDate) : "—"}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>
+                  <div style={{ fontWeight: 700, fontSize: "var(--fs-9)", fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>
                   {r.prevPct != null && (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: r.prevPct >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <div style={{ fontSize: "var(--fs-5)", fontWeight: 700, color: r.prevPct >= 0 ? "var(--green)" : "var(--red)" }}>
                       {r.prevPct > 0 ? "+" : ""}{r.prevPct.toFixed(1)}% vs รอบก่อน
                     </div>
                   )}

@@ -45,18 +45,18 @@ export default function MgmtTrashPage() {
 
   const Section = ({ title, icon: Icon, entity, items, label }) => (
     <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 14 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
         <Icon size={16} /> {title} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>({items.length})</span>
       </div>
       {items.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", fontStyle: "italic" }}>ว่าง</div>
+        <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", fontStyle: "italic" }}>ว่าง</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {items.map((it) => (
             <div key={it.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label(it)}</div>
-                <div style={{ fontSize: 11, color: "var(--text-3)" }}>ลบเมื่อ {fmt(it.deletedAt)}</div>
+                <div style={{ fontSize: "var(--fs-7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label(it)}</div>
+                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>ลบเมื่อ {fmt(it.deletedAt)}</div>
               </div>
               {canEdit && (
                 <button className="btn" style={{ flexShrink: 0 }} onClick={() => restore(entity, it.id)} disabled={busy}><RotateCcw size={13} /> กู้คืน</button>

@@ -370,8 +370,8 @@ export default function SalesPlanningTargetsPage() {
           <div style={{ fontWeight: extra.bold ? 800 : 500, whiteSpace: "nowrap" }}>{extra.label ?? labelOf(node)}</div>
         </div>
         {extra.gap && <GapNote target={node.annual} allocated={node.allocated} allocLabel={extra.allocLabel} />}
-        {node.role === "senior_ae" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>หัวหน้าทีม</div>}
-        {node.ghost && <div style={{ fontSize: 11, color: "var(--amber)" }}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
+        {node.role === "senior_ae" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>หัวหน้าทีม</div>}
+        {node.ghost && <div style={{ fontSize: "var(--fs-3)", color: "var(--amber)" }}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
       </td>
       {node.monthAmounts.map((amt, i) => (
         <td key={i} className="num" style={{ minWidth: 76, padding: "4px 6px" }}>
@@ -424,7 +424,7 @@ export default function SalesPlanningTargetsPage() {
                       })}
                       {!isCollapsed && t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
                       {!isCollapsed && !t.members.length && (
-                        <tr><td colSpan={14} style={{ paddingLeft: 40, color: "var(--text-3)", fontSize: 12 }}>ยังไม่มี AE ในทีมนี้</td></tr>
+                        <tr><td colSpan={14} style={{ paddingLeft: 40, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ยังไม่มี AE ในทีมนี้</td></tr>
                       )}
                     </FragmentRows>
                   );
@@ -467,7 +467,7 @@ export default function SalesPlanningTargetsPage() {
           </div>
         </div>
 
-        <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+        <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
           คลิกที่ตัวเลขเพื่อแก้ · Enter/Tab เพื่อยืนยันช่อง · Esc ยกเลิกช่อง · ช่องที่แก้จะไฮไลต์ไว้จนกด “บันทึก” · สถานะ “เหลือแบ่ง/เกิน” เป็นการเตือน ไม่บังคับให้ผลรวมเท่ากัน
         </div>
       </div>
@@ -484,7 +484,7 @@ export default function SalesPlanningTargetsPage() {
               <X size={16} aria-hidden="true" /> ยกเลิก
             </button>
             <button type="button" className="btn btn-primary" onClick={saveAll} disabled={saving}
-              style={{ fontSize: 16, fontWeight: 800, padding: "12px 28px", minWidth: 200 }}>
+              style={{ fontSize: "var(--fs-10)", fontWeight: 800, padding: "12px 28px", minWidth: 200 }}>
               <Save size={18} aria-hidden="true" /> {saving ? "กำลังบันทึก..." : "บันทึกเป้าหมาย"}
             </button>
           </div>
@@ -547,7 +547,7 @@ function GapNote({ target, allocated, allocLabel = "แบ่งแล้ว" })
   const color = over ? "var(--red)" : done ? "var(--green)" : "var(--amber)";
   const text = target <= 0 ? "ยังไม่ตั้งเป้ารวม" : over ? `เกินเป้า ${money(-remaining)}` : done ? "ครบพอดี" : `เหลืออีก ${money(remaining)}`;
   return (
-    <div style={{ fontSize: 11, color, fontWeight: 600, whiteSpace: "nowrap" }}>
+    <div style={{ fontSize: "var(--fs-3)", color, fontWeight: 600, whiteSpace: "nowrap" }}>
       {allocLabel} {money(allocated)} · {text}
     </div>
   );

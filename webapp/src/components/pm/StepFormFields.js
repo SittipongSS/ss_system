@@ -64,12 +64,12 @@ export function AssigneeField({ form, setForm, users }) {
   if (STAFF_DEPTS.includes(role)) {
     const rep = deptRep(users, role);
     return (
-      <span style={{ flex: 1, fontSize: "12px", color: "var(--text-2)", background: "var(--panel-2)", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+      <span style={{ flex: 1, fontSize: "var(--fs-5)", color: "var(--text-2)", background: "var(--panel-2)", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
         มอบหมายอัตโนมัติ → ตัวแทนฝ่าย {role}{rep ? `: ${rep.name}` : " (ยังไม่มีตัวแทน)"}
       </span>
     );
   }
-  return <span style={{ flex: 1, fontSize: "12px", color: "var(--text-3)" }}>— ไม่ระบุรายคน ({role}) —</span>;
+  return <span style={{ flex: 1, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>— ไม่ระบุรายคน ({role}) —</span>;
 }
 
 export default function StepFormFields({
@@ -125,15 +125,15 @@ export default function StepFormFields({
         />
       </div>
 
-      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
         <input type="checkbox" checked={!!form.isMilestone} onChange={(e) => setForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
-        ตั้งเป็น Milestone <span style={{ fontSize: "10px", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
+        ตั้งเป็น Milestone <span style={{ fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
       </label>
 
       <div className="form-group">
         <label>หมายเหตุ</label>
         <textarea value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
-        <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
           <input type="checkbox" checked={!!form.showNoteInPrint} onChange={(e) => setForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
           แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
         </label>
