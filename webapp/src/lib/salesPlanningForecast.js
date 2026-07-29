@@ -1,6 +1,4 @@
-import { monthKey } from '@/lib/salesPlanning';
-
-const CLOSED_STAGES = ['won', 'in_project', 'lost'];
+import { isClosedStage, monthKey } from '@/lib/salesPlanning';
 const lc = (v) => String(v || '').trim().toLowerCase();
 
 // Distance (in months) between two 'YYYY-MM' strings, or Infinity if unknown.
@@ -21,7 +19,7 @@ function monthDistance(a, b) {
 
 // คำนวณ drift ของหลายดีลพร้อมกัน (ใช้ query ชุดเดียว) → Map<dealId, drift|absent>.
 export async function loadForecastDriftMap(supabase, deals) {
-  const fcDeals = (deals || []).filter((d) => d.metadata?.source === 'sahamit-forecast' && !CLOSED_STAGES.includes(d.stage));
+  const fcDeals = (deals || []).filter((d) => d.metadata?.source === 'sahamit-forecast' && !isClosedStage(d.stage));
   if (!fcDeals.length) return new Map();
   const dealIds = fcDeals.map((d) => d.id);
 

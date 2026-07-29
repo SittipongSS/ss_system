@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { canEditSalesPlanning, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
@@ -193,7 +193,7 @@ export async function POST(request, { params }) {
     .eq('metadata->>source', 'sahamit-forecast');
   const superseded = [];
   for (const d of fcDeals || []) {
-    if (['won', 'in_project', 'lost'].includes(d.stage) || d.projectId) continue;
+    if (isClosedStage(d.stage) || d.projectId) continue;
     if (d.metadata?.sahamitForecastRoundId === round.id) continue; // ดีลรอบนี้เอง (รวมที่เพิ่งสร้าง)
     const fgs = (d.metadata?.fgCodes || []).map((fg) => String(fg || '').trim().toLowerCase());
     if (!fgs.some((fg) => createdFg.has(fg))) continue;

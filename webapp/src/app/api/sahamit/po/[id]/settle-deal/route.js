@@ -10,7 +10,7 @@
 // SO ใบเดียวยอดตรง PO. จากนั้นวิ่งท่อมาตรฐานล้วน: เซ็น → ส่ง → accept (แนบไฟล์ PO +
 // เลือกเดือน = Won) → SO → คิวอนุมัติสองคน → Actual (trigger 0110), ย้อนผ่าน 0116.
 import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } from '@/lib/sahamit/server';
-import { canEditSalesPlanning, canViewSalesPlanning, forecastAmount, inSalesEditScope, monthKey, toMoney } from '@/lib/salesPlanning';
+import { CLOSED_STAGES, canEditSalesPlanning, canViewSalesPlanning, forecastAmount, inSalesEditScope, monthKey, toMoney } from '@/lib/salesPlanning';
 import { monthGap } from '@/lib/salesPlanningForecast';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
@@ -20,7 +20,7 @@ import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
-const CLOSED = ['won', 'in_project', 'lost'];
+const CLOSED = CLOSED_STAGES;
 const lc = (v) => String(v || '').trim().toLowerCase();
 // normalize fgCode สำหรับจับคู่: ตัดช่องว่าง/ขีด/จุด ให้ "ABC-001" = "ABC 001" = "abc001"
 const norm = (v) => lc(v).replace(/[\s\-_.]/g, '');

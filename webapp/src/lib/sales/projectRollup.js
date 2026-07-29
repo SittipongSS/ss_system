@@ -7,15 +7,16 @@
 // หมายเหตุ: FC Total − Actual ≠ FC คงเหลือ เมื่อยอดปิดจริงต่างจาก FC — ส่วนต่างคือ
 // variance (วัดความแม่น FC). นิยามตรงกับ dashboard เดิม (fullForecast/remainingForecast).
 // ห้ามกรอกมูลค่าที่ตัวโครงการ — rollup จากดีลเสมอ (กัน double-count).
-import { DEAL_TYPES, dealTypeOf } from '@/lib/salesPlanning';
+import { DEAL_TYPES, dealTypeOf, isOpenStage, isWonStage } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 // Actual ของดีล — อ่าน cache ที่ DB คำนวณจาก Approved SO เท่านั้น.
 export const wonAmt = dealActualFromSalesOrders;
 export const forecastAmt = (d) => Number(d?.projectValue ?? 0);
 // 'in_project' = สถานะเก่าก่อน mig 0082 (ยุบเป็น won) — ข้อมูลเก่าอาจยังมี
-export const isWonDeal = (d) => ['won', 'in_project'].includes(d?.stage);
-export const isOpenDeal = (d) => !['won', 'in_project', 'lost'].includes(d?.stage);
+// (นิยามอยู่ที่ isWonStage/isOpenStage ใน lib/salesPlanning — เดิมไฟล์นี้มีสำเนาของตัวเอง)
+export const isWonDeal = (d) => isWonStage(d?.stage);
+export const isOpenDeal = (d) => isOpenStage(d?.stage);
 
 const emptyBucket = () => ({ fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0 });
 

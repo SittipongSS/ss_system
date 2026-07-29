@@ -14,7 +14,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { createClient } from "@/lib/supabaseBrowser";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, stageIndex } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -170,8 +170,8 @@ export default function SalesPlanningPipelinePage() {
       const rank = (s) => { const i = stageIndex(s); return i < 0 ? 99 : i; };
       if (sortKey === "status") return (rank(a.stage) - rank(b.stage)) * mul;
       if (sortKey === "amount") {
-        const valA = ["won", "in_project"].includes(a.stage) ? (a.wonValue ?? a.projectValue ?? 0) : (a.projectValue ?? 0);
-        const valB = ["won", "in_project"].includes(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);
+        const valA = isWonStage(a.stage) ? (a.wonValue ?? a.projectValue ?? 0) : (a.projectValue ?? 0);
+        const valB = isWonStage(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);
         return (valA - valB) * mul;
       }
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
@@ -498,7 +498,7 @@ export default function SalesPlanningPipelinePage() {
   const pipelineValue = kpiDeals
     .filter((d) => !["won", "lost", "in_project"].includes(d.stage))
     .reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
-  const wonDeals = kpiDeals.filter((d) => ["won", "in_project"].includes(d.stage));
+  const wonDeals = kpiDeals.filter((d) => isWonStage(d.stage));
   const wonValue = wonDeals.reduce(
     (sum, d) => sum + Number(d.wonValue ?? d.projectValue ?? 0),
     0,
@@ -616,7 +616,7 @@ export default function SalesPlanningPipelinePage() {
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      {["won", "in_project", "lost"].includes(deal.stage)
+                      {isClosedStage(deal.stage)
                         ? <span style={{ color: "var(--text-3)" }}>-</span>
                         : forecastBadge(deal.probability)}
                     </td>
@@ -624,8 +624,8 @@ export default function SalesPlanningPipelinePage() {
                       {dealTypeBadge(dealTypeOf(deal))}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
-                    <td className="num mono" style={{ whiteSpace: "nowrap" }} title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
-                      {["won", "in_project"].includes(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
+                    <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
+                      {isWonStage(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       <Link prefetch={false} className="btn ghost" href={`/sa/deals/${deal.id}?tab=timeline`} title="เปิดไทม์ไลน์ของดีล" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
@@ -677,7 +677,7 @@ export default function SalesPlanningPipelinePage() {
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
-                        {(role === "admin" || (deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId)) && (
+                        {(role === "admin" || (deal.canEdit && (!isWonStage(deal.stage) || superuser) && !deal.metadata?.sahamitPoId)) && (
                           <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ไม่ลบโครงการ PM ที่ผูก)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
@@ -775,7 +775,7 @@ export default function SalesPlanningPipelinePage() {
             </div>
             <div className="spacer" />
             {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
-            {quoteDeal?.canEdit && !["won", "in_project", "lost"].includes(quoteDeal?.stage) && (
+            {quoteDeal?.canEdit && !isClosedStage(quoteDeal?.stage) && (
               <button type="button" className="btn btn-primary" onClick={createQuotation} disabled={quoteLoading || !quoteDeal?.projectId}>
                 <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา
               </button>

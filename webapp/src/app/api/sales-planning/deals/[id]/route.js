@@ -15,6 +15,7 @@ import {
   inSalesEditScope,
   inSalesViewScope,
   isValidStage,
+  isWonStage,
   monthKey,
   normalizeDealType,
   normalizeStage,
@@ -67,7 +68,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ปฏิเสธ stage เพี้ยน (สะกดผิด/พิมพ์ใหญ่) แทนที่จะให้ normalizeStage ดันไป 'lead' เงียบ ๆ
   if ('stage' in body && !isValidStage(body.stage)) return badRequest(`สถานะดีล "${body.stage}" ไม่ถูกต้อง`);
 
-  const alreadyWon = ['won', 'in_project'].includes(before.stage);
+  const alreadyWon = isWonStage(before.stage);
   const nextStage = 'stage' in body ? normalizeStage(body.stage) : before.stage;
   const transitioningToWon = nextStage === 'won' && !alreadyWon;
   if (transitioningToWon) return badRequest('ปิด Won ผ่านใบเสนอราคาเท่านั้น');
@@ -263,7 +264,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.
   // force (admin) ข้ามด่านเหล่านี้ทั้งหมด แล้วรับผิดชอบ cascade เอง.
   if (!force) {
-    if (['won', 'in_project'].includes(before.stage) && !isSuperuser(user.role)) {
+    if (isWonStage(before.stage) && !isSuperuser(user.role)) {
       return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย (ต้องการสิทธิ์แอดมิน)');
     }
     // ใบเสนอราคา accepted = แหล่งยอด Actual — ห้ามลบแม้ superuser (กติกาเดียวกับ

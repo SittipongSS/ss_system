@@ -14,7 +14,7 @@ import DateInput from "@/components/ui/DateInput";
 import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
 import { useCan } from "@/lib/roleContext";
-import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
@@ -70,7 +70,7 @@ const displayText = (value, fallback = "-") => {
 
 // การ์ดดีล 1 ใบ = จิ๊กซอว์ 1 ชิ้น: หัวดีล + segment ไทม์ไลน์ + ใบเสนอราคาใต้ดีล
 function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
-  const closed = ["won", "in_project"].includes(deal.stage);
+  const closed = isWonStage(deal.stage);
   const value = closed ? (deal.wonValue ?? deal.projectValue) : deal.projectValue;
   const shown = quotes.slice(0, 3);
   return (

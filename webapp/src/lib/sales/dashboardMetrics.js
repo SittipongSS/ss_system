@@ -1,12 +1,13 @@
 // กติกากลางของภาพรวมงานขาย — ตัวรวมยอดฝั่ง server (api/sales-planning/dashboard)
 // และ drill-down modal ฝั่ง client ต้องใช้ชุดเดียวกัน ไม่งั้นตัวเลขบนการ์ด KPI
 // กับรายการดีลที่กดเข้าไปดูไม่ตรงกัน (ผลตรวจระบบขาย 2026-07-16)
-import { monthKey } from '@/lib/salesPlanning';
+import { isOpenStage, isWonStage, monthKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
-// Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ)
-export const isWonDeal = (d) => ['won', 'in_project'].includes(d?.stage);
-export const isOpenDeal = (d) => !['won', 'in_project', 'lost'].includes(d?.stage);
+// Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ) — กติกาอยู่ที่ isWonStage
+// ตัวกลาง สองตัวนี้เป็นแค่รูปที่รับ "ทั้งดีล" ให้เรียกง่ายในตัวกรอง
+export const isWonDeal = (d) => isWonStage(d?.stage);
+export const isOpenDeal = (d) => isOpenStage(d?.stage);
 
 // ดีล lost "เชิงธุรการ" ของสายสหมิตร — ไม่ใช่แพ้จริง ห้ามปนสถิติแพ้/FC:
 // - sahamitMergedIntoDealId: ดีล FC ถูกยุบเข้าดีลรวมของ PO (ขายได้จริง! demand ไป

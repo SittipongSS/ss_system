@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, monthKey, normalizeTargetPeriod, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canViewSalesPlanning, isWonStage, monthKey, normalizeTargetPeriod, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 function aggregateWonDeals(deals) {
   const wonAmt = dealActualFromSalesOrders;
   const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
-  const isWon = (d) => ['won', 'in_project'].includes(d.stage);
+  const isWon = (d) => isWonStage(d.stage);
   const years = {};
   for (const d of deals || []) {
     if (!isWon(d)) continue;

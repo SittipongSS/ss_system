@@ -45,6 +45,7 @@ import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
 import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_TYPES } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
+import { isWonStage } from "@/lib/salesPlanning";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -810,7 +811,7 @@ export default function ProjectDetailPage() {
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต (ติ๊ก isExcise) อย่างน้อยหนึ่งตัว —
   // ไม่งั้นไม่ต้องมีทะเบียนภาษี.
-  const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
+  const dealWon = !p.dealId || isWonStage(p.dealStage);
   const hasExciseFg = (p.projectProducts || []).some((x) => isExciseCategory(x.product?.categoryCode || "", categories));
   const recommendTaxReg = dealWon && hasExciseFg;
   const formPhases = [...new Set(processedTasks.map((t) => t.phase).filter(Boolean))];

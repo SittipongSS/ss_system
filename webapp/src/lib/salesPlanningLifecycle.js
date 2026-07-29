@@ -1,4 +1,4 @@
-import { SALES_FEATURES, STAGE_LABELS } from '@/lib/salesPlanning';
+import { CLOSED_STAGES, SALES_FEATURES, STAGE_LABELS } from '@/lib/salesPlanning';
 import { categoryOf, isExciseCategory } from '@/lib/master/categoryOf';
 
 // ── Deal lifecycle: single source ของ "สถานะ + ขั้นต่อไป + go/no-go + routing" ──
@@ -18,7 +18,7 @@ export const MAIN_SEQUENCE = [
   'won',
 ];
 
-const CLOSED = ['won', 'in_project', 'lost'];
+const CLOSED = CLOSED_STAGES;
 
 // รวบ fgCode ทั้งหมดของดีล (จาก metadata.fgCodes + project_products ถ้ามีโครงการ)
 export function dealFgCodes(deal, projectProducts = []) {
