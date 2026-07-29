@@ -24,6 +24,7 @@ const REGISTRY_BLURB = "ข้อมูลหลักของราคาว�
 export default function MaterialsPage() {
   const [materials, setMaterials] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -41,6 +42,11 @@ export default function MaterialsPage() {
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    // ทะเบียนสูตร — วัสดุ RM ผูกสูตรจากที่นี่ ไม่ใช่พิมพ์รหัสเอง (mig 0181)
+    fetch("/api/master/formulas?status=active", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setFormulas(Array.isArray(d) ? d : []))
+      .catch(() => setFormulas([]));
   }, []);
 
   return (
@@ -50,7 +56,7 @@ export default function MaterialsPage() {
       subtitle={REGISTRY_BLURB}
     >
       <MaterialRegistryPanel
-        materials={materials} customers={customers}
+        materials={materials} customers={customers} formulas={formulas}
         loading={loading} loadError={loadError} reload={reload}
       />
     </Workspace>

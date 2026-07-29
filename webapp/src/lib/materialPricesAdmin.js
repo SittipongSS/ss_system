@@ -56,6 +56,16 @@ export async function findMaterial(supabase, id) {
   return rows.find((m) => m.id === id) || null;
 }
 
+// ชื่อ/รหัสสูตร ณ เวลาที่ผูก — เก็บลงแถววัสดุเพื่อให้เอกสารเก่าที่ snapshot ค่านี้
+// ไว้ยังอ่านได้ · คืน {} เมื่อไม่ผูกสูตร (PM) หรือหาไม่เจอ
+export async function formulaSnapshotFor(supabase, formulaId) {
+  if (!formulaId) return { formulaCode: null, formulaName: null };
+  const { data, error } = await supabase
+    .from('formulas').select('code, name').eq('id', formulaId).maybeSingle();
+  if (error) throw error;
+  return { formulaCode: data?.code || null, formulaName: data?.name || null };
+}
+
 // หา "วัสดุตัวเดิม" จากตัวตน (ชนิด+ชื่อ+สูตร+ลูกค้า) ไม่เจอค่อยสร้างใหม่
 //
 // ⚠️ นี่คือจุดที่ปิดบั๊ก "ตอบใบขอราคาทุกครั้ง = สร้างวัสดุตัวใหม่ ไม่เคยเป็น rev.2":
@@ -77,6 +87,11 @@ export async function ensureMaterial(supabase, input = {}) {
   const row = {
     id: `MAT-${randomUUID()}`,
     ...value,
+    // snapshot ชื่อ/รหัสสูตรจากทะเบียน (mig 0181) — ตัวตนยึด formulaId แล้ว แต่
+    // ⚠️ ใบขอราคาผลิตที่ออกไปแล้ว snapshot `formulaCode`/`formulaName` ไว้ ลบ/หยุด
+    // เขียนตอนนี้จะทำให้เอกสารเก่าอ่านไม่ได้ → เก็บเป็นค่า derive ที่ **ไม่มีใคร
+    // พิมพ์เองได้อีกแล้ว** (ฟอร์มเลือกจากทะเบียนอย่างเดียว) จึง drift ไม่ได้
+    ...(await formulaSnapshotFor(supabase, value.formulaId)),
     pmType: normalizePmType(value.kind, input.pmType),
     status,
     createdById: input.user?.id ?? null,

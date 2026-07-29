@@ -45,7 +45,7 @@ const STATE_TONE = {
 };
 
 export default function MaterialRegistryPanel({
-  materials = [], customers = [], loading = false, loadError = "", reload,
+  materials = [], customers = [], formulas = [], loading = false, loadError = "", reload,
 }) {
   const role = useRole();
   const department = useDepartment();
@@ -104,8 +104,8 @@ export default function MaterialRegistryPanel({
       kind: v.kind,
       label: v.label,
       pmType: v.kind === "PM" ? v.pmType : null,
-      formulaCode: v.kind === "PM" ? null : v.formulaCode,
-      formulaName: v.kind === "PM" ? null : v.formulaName,
+      // สูตรมาจากทะเบียน (mig 0181) — ชื่อ/รหัสเป็น snapshot ที่ server เติมเอง
+      formulaId: v.kind === "PM" ? null : (v.formulaId || null),
       customerId: v.scope === "customer" ? v.customerId : null,
       customerName: v.scope === "customer"
         ? (customers.find((c) => c.id === v.customerId)?.name || null) : null,
@@ -375,7 +375,7 @@ export default function MaterialRegistryPanel({
         {form && (
           <>
             <MaterialForm
-              mode={form.mode} value={form.value} customers={customers} disabled={saving}
+              mode={form.mode} value={form.value} customers={customers} formulas={formulas} disabled={saving}
               canPrice={canQuoteMaterial(me, form.value.kind)}
               onChange={(value) => setForm({ ...form, value })}
             />
