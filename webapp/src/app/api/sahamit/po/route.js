@@ -89,8 +89,9 @@ export async function POST(request) {
   if (!cleaned.length) return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ (รหัส + จำนวน > 0)' }, { status: 400 });
 
   // Reject duplicate PO number for this customer up-front (DB also enforces).
-  const { data: dup } = await supabase
+  const { data: dup, error: dupError } = await supabase
     .from('sahamit_pos').select('id').eq('customerId', customerId).eq('poNumber', poNumber).maybeSingle();
+  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
   if (dup) return Response.json({ error: `เลขที่ PO "${poNumber}" มีอยู่แล้ว` }, { status: 409 });
 
   let products;

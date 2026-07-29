@@ -39,8 +39,9 @@ export async function refreshSahamitFlags(supabase, customerId) {
 // เพราะ refreshSahamitFlags ถูกเรียกทุกครั้งที่เซฟ FC/PO; พอธงสะสมหลายสิบตัว การ
 // วนทีละแถว = หลายสิบ round-trip ต่อการเซฟ → ช้าจน timeout (เซฟ PO ไม่ได้).
 async function syncFlags(supabase, customerId, desired, validRoundNos) {
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('sahamit_fc_flags').select('*').eq('customerId', customerId);
+  if (existingError) throw existingError;
   const exByKey = new Map((existing || []).map((f) => [keyOf(f), f]));
   const desiredKeys = new Set(desired.map(keyOf));
   const now = new Date().toISOString();

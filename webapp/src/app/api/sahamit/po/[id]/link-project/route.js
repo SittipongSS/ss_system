@@ -98,8 +98,9 @@ export async function POST(request, { params }) {
   }
   // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดโครงการ
   templateOptions.categoryFlags = await categoryFlagsOf(project.productMainCategory);
-  const { data: existingTasks } = await supabase
+  const { data: existingTasks, error: existingTasksError } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', project.id);
+  if (existingTasksError) return Response.json({ error: existingTasksError.message }, { status: 500 });
   const segTasks = applyAutoStatuses(buildAppendedTasks(project, {
     dealType: 'RE-ORDER',
     dealId: null,
@@ -146,8 +147,9 @@ export async function POST(request, { params }) {
   for (const { line, product } of knownLines) {
     productQty.set(product.id, (productQty.get(product.id) || 0) + toQty(line.qty));
   }
-  const { data: currentPP } = await supabase
+  const { data: currentPP, error: currentPPError } = await supabase
     .from('project_products').select('id, productId, orderQty, productionQty').eq('projectId', project.id);
+  if (currentPPError) return Response.json({ error: currentPPError.message }, { status: 500 });
   const ppByProduct = new Map((currentPP || []).map((r) => [r.productId, r]));
   const toInsert = [];
   for (const [productId, qty] of productQty.entries()) {

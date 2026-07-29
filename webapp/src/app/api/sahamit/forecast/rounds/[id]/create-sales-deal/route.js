@@ -83,11 +83,12 @@ export async function POST(request, { params }) {
   // กันซ้ำ: forecast line ที่เคยสร้างดีลไปแล้ว (ดีลยังไม่ถูกยกเลิก) จะไม่สร้างดีลซ้ำอีก.
   // ใช้ junction (sales_deal_forecast_lines.forecastLineId) เป็นกุญแจกันซ้ำ.
   const pickedLineIds = picked.map((line) => String(line.id));
-  const { data: existingLinks } = await supabase
+  const { data: existingLinks, error: existingLinksError } = await supabase
     .from('sales_deal_forecast_lines')
     .select('forecastLineId, dealId')
     .eq('customerId', customerId)
     .in('forecastLineId', pickedLineIds);
+  if (existingLinksError) return Response.json({ error: existingLinksError.message }, { status: 500 });
   const blockedLineIds = new Set();
   if (existingLinks?.length) {
     const linkDealIds = [...new Set(existingLinks.map((l) => l.dealId).filter(Boolean))];

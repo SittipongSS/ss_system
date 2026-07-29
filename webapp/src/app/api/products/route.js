@@ -78,11 +78,12 @@ export async function POST(request) {
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
   // Duplicate FG Code check
-  const { data: dup } = await supabase
+  const { data: dup, error: dupError } = await supabase
     .from('products')
     .select('id')
     .eq('fgCode', body.fgCode)
     .maybeSingle();
+  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
   if (dup) {
     return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
   }

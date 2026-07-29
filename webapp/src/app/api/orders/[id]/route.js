@@ -64,8 +64,9 @@ export async function PATCH(request, { params }) {
   if (updates.quotationRef !== undefined) {
     const q = String(updates.quotationRef || '').trim();
     if (q && q !== '-') {
-      const { data: dupQuote } = await supabase
+      const { data: dupQuote, error: dupQuoteError } = await supabase
         .from('orders').select('id').eq('quotationRef', q).neq('id', id).maybeSingle();
+      if (dupQuoteError) return Response.json({ error: dupQuoteError.message }, { status: 500 });
       if (dupQuote) {
         return Response.json({ error: `เลขที่ใบเสนอราคานี้ถูกใช้แล้วในใบยื่น ${dupQuote.id} — ห้ามซ้ำ` }, { status: 409 });
       }

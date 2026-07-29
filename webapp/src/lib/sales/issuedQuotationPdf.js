@@ -26,11 +26,12 @@ export function issuedQuotationPdfPath(quotationId, snapshotId) {
 export async function captureIssuedQuotationPdf(supabase, { quotationId, snapshotId, html }) {
   if (!snapshotId) throw new Error('captureIssuedQuotationPdf: missing snapshotId');
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('issued_document_pdf_artifacts')
     .select('*')
     .eq('issuedDocumentId', snapshotId)
     .maybeSingle();
+  if (existingError) throw existingError;
   if (existing) return { row: existing, reused: true };
 
   const buffer = await renderQuotationPdf(html);

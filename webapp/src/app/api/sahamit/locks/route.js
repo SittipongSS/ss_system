@@ -29,8 +29,9 @@ export async function POST(request) {
     return Response.json({ error: 'ข้อมูลล็อกไม่ครบ (สินค้า/เดือน/จำนวน)' }, { status: 400 });
   }
 
-  const { data: dup } = await supabase
+  const { data: dup, error: dupError } = await supabase
     .from('sahamit_fc_locks').select('id').eq('customerId', customerId).eq('fgCode', fgCode).eq('month', month).maybeSingle();
+  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
   if (dup) return Response.json({ error: 'ช่องนี้ถูกล็อกอยู่แล้ว' }, { status: 409 });
 
   const row = {

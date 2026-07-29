@@ -78,8 +78,9 @@ export async function PATCH(request, { params }) {
   if ('destination' in patch) patch.destination = cleanDestination(patch.destination);
   if (patch.poNumber) {
     patch.poNumber = String(patch.poNumber).trim();
-    const { data: dup } = await supabase
+    const { data: dup, error: dupError } = await supabase
       .from('sahamit_pos').select('id').eq('customerId', customerId).eq('poNumber', patch.poNumber).maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
     if (dup && dup.id !== id) return Response.json({ error: `เลขที่ PO "${patch.poNumber}" มีอยู่แล้ว` }, { status: 409 });
   }
   const wantsLines = Array.isArray(body?.lines);

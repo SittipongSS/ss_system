@@ -63,10 +63,11 @@ export async function POST(request) {
   };
 
   // Update the existing (cell, round, kind) flag if present; else insert.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('sahamit_fc_flags').select('*')
     .eq('customerId', customerId).eq('fgCode', fgCode).eq('month', month).eq('roundNo', roundNo).eq('kind', kind)
     .maybeSingle();
+  if (existingError) return Response.json({ error: existingError.message }, { status: 500 });
 
   let data, error;
   if (existing) {

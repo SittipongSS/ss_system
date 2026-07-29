@@ -160,7 +160,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let revisedAt = null;
   let maxRev = null;
   {
-    const { data: maxRow } = await supabase
+    const { data: maxRow, error: maxRowError } = await supabase
       .from('project_doc_revisions')
       .select('revNo')
       .eq('projectId', project.id)
@@ -168,6 +168,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .order('revNo', { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (maxRowError) return fail(maxRowError.message, 500);
     maxRev = maxRow?.revNo ?? null;
   }
   if (project.currentRev != null) {
@@ -234,8 +235,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     ('startDate' in updates && (updates.startDate || null) !== (project.startDate || null));
   if (exciseFlipped) {
     setHolidays([...(await holidaySet())]);
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
+    if (existingError) return fail(existingError.message, 500);
     // เฟส B: โครงการหลาย segment (หลายดีล) — merge/resync ทั้งชุดจะจับคู่ชื่อข้าม segment
     // แล้วลบงานผิดตัว → ข้าม resync อัตโนมัติ (จัดการขั้นสรรพสามิตของ segment ใหม่
     // ตั้งแต่ตอน gen ด้วย categoryOnly อยู่แล้ว; ปรับย้อนหลังทำมือ/เฟสถัดไป)
@@ -287,8 +289,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   } else if (dateChanged) {
     // หมวดไม่เปลี่ยน แต่วันเริ่ม/วันจบเปลี่ยน → คำนวณ start/finish ทุก task ใหม่
     setHolidays([...(await holidaySet())]);
-    const { data: existing } = await supabase
+    // query พังแล้วเงียบ = ไม่ได้เลื่อนวันของ task ใด ๆ ทั้งที่ผู้ใช้เปลี่ยนวันโครงการไปแล้ว
+    // → ไทม์ไลน์ค้างวันเก่าโดยไม่มีอะไรบอก
+    const { data: existing, error: existingError } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
+    if (existingError) return fail(existingError.message, 500);
     if (existing && existing.length) {
       const recalced = recalculateGraph(existing, resolveSchedule(data).anchor);
       await Promise.all(
