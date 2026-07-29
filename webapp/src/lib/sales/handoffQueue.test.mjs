@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   agedAtLeast,
   bangkokDate,
@@ -116,4 +117,34 @@ test('ไม่มีวันที่เข้าคิว = ไม่เต�
     minBusinessDays: 1,
   });
   assert.deepEqual(kept, []);
+});
+
+// ── หน้าดีลต้องเห็นสายภาษี และต้องอ่านจากคิวกลางเท่านั้น ────────────────────────
+// เดิม overview ของดีลดึงแค่ QT + SO — คนดูดีลไม่รู้ว่าใบยื่นภาษีเดินถึงไหน ต้องไปเปิด
+// หน้า SO ก่อนทุกครั้ง. ข้อบังคับสำคัญคือ "ค้างรอออกใบยื่น" ต้องมาจาก loadHandoffQueue
+// ไม่ใช่คิดเอง เพราะคิวกลางกรอง resolveSoFiling().eligible ให้แล้ว — SO ที่ขายของนอก
+// พิกัดสรรพสามิตต้องไม่ขึ้นว่าค้าง ไม่งั้นหน้าดีลเตือนตลอดกาลจนคนเลิกอ่าน
+test('overview ของดีลส่งใบยื่นภาษี + ใช้คิวกลางตัดสิน "รอออกใบยื่น"', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/deals/[id]/overview/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /from\('orders'\)/, 'ต้องดึงใบยื่นภาษีที่ผูก SO ของดีล');
+  assert.match(route, /\.in\('salesOrderId', salesOrderIds\)/, 'ผูกด้วย salesOrderId (1 SO = 1 ใบยื่น)');
+  assert.match(route, /loadHandoffQueue\(supabase, \{ dealIds: \[deal\.id\] \}\)/, 'ต้องใช้คิวกลาง');
+  assert.match(route, /taxFilings: taxFilings\.data/, 'ต้องส่งออกให้หน้าเว็บ');
+  assert.match(route, /awaitingFilingIds/, 'ต้องส่งรายการ SO ที่ยังค้าง');
+  // ห้ามคิด eligible เองซ้ำในหน้านี้ — ตรรกะอยู่ที่ resolveSoFiling ผ่าน loadHandoffQueue
+  // (ตรวจที่ import ไม่ใช่ทั้งไฟล์ ไม่งั้นชื่อที่โผล่ในคอมเมนต์อธิบายจะทำให้แดงเอง)
+  assert.doesNotMatch(route, /^import .*resolveSoFiling/m, 'ห้ามคิด eligible เองในหน้าดีล');
+});
+
+test('หน้าดีลแยก "รอออกใบยื่น" ออกจาก "ไม่ต้องยื่น" ไม่ใช่โชว์ค้างทุกใบ', () => {
+  const page = readFileSync(
+    new URL('../../app/sales-planning/deals/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /awaitingFilingIds\.has\(salesOrderId\)/, 'ค้างจริงต้องมาจากคิวกลาง');
+  assert.match(page, /filingBySalesOrder\.get\(salesOrderId\)/, 'มีใบยื่นแล้วต้องโชว์สถานะจริง');
+  assert.match(page, /\/tax\/filings\/\$\{filing\.id\}/, 'ต้องลิงก์ไปใบยื่นใบนั้น');
 });

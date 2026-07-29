@@ -5,19 +5,19 @@
    จึงเป็นสีข้อความเต็ม ไม่ใช่สีรอง เหมือน note ที่อยู่ถัดลงไป */
 .requestBody {
   margin-top: 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-8);
   color: var(--text);
 }
 
 /* คำอธิบายใต้ช่องกรอกในโมดัลปิดบรีฟ */
 .fieldHint {
-  font-size: 12.5px;
+  font-size: var(--fs-6);
   color: var(--text-3);
 }
 
 .fieldError {
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-6);
   color: var(--red);
 }
 
