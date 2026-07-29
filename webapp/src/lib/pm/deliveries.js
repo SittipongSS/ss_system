@@ -152,15 +152,33 @@ export function productionReadiness(rows = [], todayIso = null) {
   };
 }
 
+// ── ของเข้า "ของรอบไหน" (มติผู้ใช้ 2026-07-29) ───────────────────────────
+// ⭐ คอนเซป: **โครงการคือศูนย์รวมข้อมูลดีล** — สินค้าตัวหนึ่งมีดีลได้หลายรอบ
+// (SCENT → NPD → RE-ORDER × N) โดยของที่ทำครั้งเดียวต่อสินค้า (สูตร/กลิ่น/ทะเบียน
+// สรรพสามิต/BOM/Code) อยู่ที่โครงการ ส่วนของที่เป็น "ของรอบ" (จำนวน/กำหนดส่ง/
+// ของเข้า/ไทม์ไลน์รอบนั้น) อยู่ที่ดีลกับ SO
+//
+// ⚠️ **ตัวสรุปจึงต้องแยกตามรอบ** ไม่งั้นพอ RE-ORDER สะสม ของรอบ 1 จะถูกนับรวมกับ
+// รอบ 5 แล้วบอกว่า "ยังไม่ครบ" ทั้งที่รอบ 5 ครบแล้ว (ป้ายบน milestone อ่านผิด)
+// แต่ **พาเนลระดับโครงการยังต้องเห็นทุกรอบ** ตามคอนเซปศูนย์รวม
+export function deliveriesForDeal(rows = [], dealId) {
+  if (!dealId) return [];
+  return rows.filter((r) => r.dealId === dealId);
+}
+
 // ป้ายสรุปที่แปะบนขั้น milestone ของไทม์ไลน์ — คืน null เมื่อยังไม่มีรายการเลย
 // (ขั้นที่ไม่มีของให้ติดตามไม่ควรมีป้ายเปล่าห้อยอยู่)
-export function deliveryStepBadge(rows = [], todayIso = null) {
+//
+// `scope` ใช้บอกผู้อ่านว่าตัวเลขนี้เป็นของรอบไหน — ป้ายบนไทม์ไลน์เป็นของ "ดีลนั้น"
+// ส่วนพาเนลโครงการเป็นของ "ทั้งโครงการ"
+export function deliveryStepBadge(rows = [], todayIso = null, { scope = 'deal' } = {}) {
   const sum = deliveryRollup(rows, todayIso);
   if (!sum.total) return null;
   return {
     tone: sum.complete ? 'success' : sum.late ? 'danger' : 'info',
     label: `ของเข้า ${sum.arrived}/${sum.total}`,
     title: [
+      scope === 'project' ? 'รวมทุกรอบของโครงการ' : 'เฉพาะรอบ (ดีล) นี้',
       `มาแล้ว ${sum.arrived} จาก ${sum.total} รายการ`,
       sum.late ? `เลยกำหนดแล้ว ${sum.late} รายการ` : null,
       sum.lastDue ? `ของชิ้นสุดท้ายกำหนดถึง ${sum.lastDue}` : null,
