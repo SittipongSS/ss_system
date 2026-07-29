@@ -8,13 +8,9 @@ import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
+import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-// Per-unit tax = ราคาถอด VAT × 8.8% (excise 8% + local 0.8%), rounded ONCE to 2
-// decimals, then × qty — so ภาษี/ชิ้น × จำนวน = ยอดรวม exactly. Same rule the
-// order API uses to store the totals.
-const regTax = (r) => (r && r.isExciseTaxable !== false ? r2((r.exciseTax || 0) + (r.localTax || 0)) : 0);
 
 // Create a new tax-filing order, or edit/resubmit an existing one. Lines bind an
 // approved registration of the chosen customer + quantity. The excise tax is
@@ -59,16 +55,23 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
 
   // Sale price (retail incl VAT) is pulled from the master product via the
   // registration's productId — shown read-only for reference, never entered.
-  const priceOf = (reg) => products.find((p) => p.id === reg?.productId)?.retailPriceIncVat || 0;
+  const productOf = (reg) => products.find((p) => p.id === reg?.productId) || null;
+  const priceOf = (reg) => productOf(reg)?.retailPriceIncVat || 0;
+  // ภาษี/ชิ้น ต้องคิดด้วยตัวคิดกลางตัวเดียวกับที่ API บันทึก — เดิมฟอร์มคิดเองจาก
+  // snapshot บนทะเบียน (reg.exciseTax + reg.localTax ปัดรวมครั้งเดียว) ส่วน API
+  // อ่านอัตราจากสินค้า → เลขบนจอกับเลขที่บันทึกจะเดินหนีกันทันทีที่ราคาสินค้าเปลี่ยน
+  const regTaxLine = (reg, quantity = 1) =>
+    exciseTaxLineForRegistration({ registration: reg, product: productOf(reg), quantity });
+  const regTax = (reg) => regTaxLine(reg, 1).totalTax;
 
   const setItem = (i, patch) => setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const addItem = () => setItems((arr) => [...arr, blankItem()]);
   const removeItem = (i) => setItems((arr) => (arr.length === 1 ? arr : arr.filter((_, idx) => idx !== i)));
 
-  const totalTax = items.reduce((s, it) => {
+  const totalTax = exciseTaxTotals(items.map((it) => {
     const r = approvedRegs.find((x) => x.id === it.registrationId);
-    return s + regTax(r) * (parseInt(it.quantity) || 0);
-  }, 0);
+    return regTaxLine(r, parseInt(it.quantity) || 0);
+  })).totalTax;
 
   const submit = async (e) => {
     e.preventDefault();

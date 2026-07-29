@@ -2,10 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScopeUser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
-import { billedTaxTotals } from '@/lib/tax/exciseBilling';
+import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
-
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 export const dynamic = 'force-dynamic';
 
@@ -95,11 +93,19 @@ export async function POST(request) {
     }
   }
 
+  // อัตราภาษีมาจาก **สินค้า** (ราคาขายปลีกของ FG) ไม่ใช่ snapshot บนทะเบียน — ทะเบียน
+  // ทำหน้าที่เป็นหลักฐานว่า FG นี้ขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว ส่วนตัวเลขอ่านจากแหล่งเดียว
+  // กับทางที่ออกใบยื่นจาก Sale Order (มติผู้ใช้ 2026-07-29)
+  const productIds = [...new Set([...regMap.values()].map((r) => r.productId).filter(Boolean))];
+  const { data: taxProducts, error: taxProdErr } = productIds.length
+    ? await supabase.from('products').select('id, fgCode, exciseTax, localTax').in('id', productIds)
+    : { data: [], error: null };
+  if (taxProdErr) return Response.json({ error: taxProdErr.message }, { status: 500 });
+  const productMap = new Map((taxProducts || []).map((p) => [p.id, p]));
+
   const orderId = 'PO-' + Date.now().toString().slice(-6);
 
-  // Build line items + accumulate rollup totals (tax from the registration).
-  let totalExciseTax = 0;
-  let totalLocalTax = 0;
+  // Build line items + accumulate rollup totals.
   const itemRows = [];
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -107,30 +113,26 @@ export async function POST(request) {
     if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
     const qty = parseInt(it.quantity);
     if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-    // Per-unit tax = ราคาถอด VAT × 8.8% (excise + local combined), rounded ONCE,
-    // THEN × qty — so ภาษี/ชิ้น × จำนวน = ยอดรวม exactly. Split the line back into
-    // excise:local = 10:1 so the stored breakdown still sums to the total.
-    const perUnit = r2((reg.exciseTax || 0) + (reg.localTax || 0));
-    const itemTax = r2(perUnit * qty);
-    const itemExcise = r2(itemTax * 10 / 11);
-    const itemLocal = r2(itemTax - itemExcise);
-    totalExciseTax += itemExcise;
-    totalLocalTax += itemLocal;
+    // สินค้าหาย = คิดภาษีไม่ได้ · เด้งดีกว่าถอยไปใช้ snapshot เก่าบนทะเบียนเงียบ ๆ
+    // แล้วได้ใบที่ตัวเลขไม่ตรงกับทางที่ออกจาก Sale Order
+    const product = productMap.get(reg.productId);
+    if (!product) {
+      return Response.json({ error: `ไม่พบสินค้าของทะเบียน ${reg.fgCode || reg.id} — คิดอัตราภาษีไม่ได้` }, { status: 400 });
+    }
+    const taxLine = exciseTaxLineForRegistration({ registration: reg, product, quantity: qty });
     itemRows.push({
       id: `OIT-${orderId.slice(3)}-${i + 1}`,
       orderId,
       registrationId: reg.id,
       productId: reg.productId,
-      quantity: qty,
       salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
-      exciseRatePerUnit: r2(reg.exciseTax),
-      localTaxRatePerUnit: r2(reg.localTax),
-      totalExciseTax: itemExcise,
-      totalLocalTax: itemLocal,
-      totalTax: itemTax,
+      ...taxLine,
     });
   }
-  const totalTax = totalExciseTax + totalLocalTax;
+  const rollup = exciseTaxTotals(itemRows);
+  const totalExciseTax = rollup.totalExciseTax;
+  const totalLocalTax = rollup.totalLocalTax;
+  const totalTax = rollup.totalTax;
 
   const newOrder = {
     id: orderId,
