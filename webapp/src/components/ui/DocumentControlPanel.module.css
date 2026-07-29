@@ -20,7 +20,7 @@
 .summaryLabel {
   margin-top: 3px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-4);
   font-weight: 650;
 }
 
@@ -53,14 +53,14 @@
 
 .summaryRows dt {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--fs-5);
 }
 
 .summaryRows dd {
   margin: 0;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-5);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -95,14 +95,14 @@
 .documentStatus small {
   display: block;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-2);
 }
 
 .documentStatus strong,
 .controlStatus strong {
   display: block;
   color: var(--text-2);
-  font-size: 12.5px;
+  font-size: var(--fs-6);
   line-height: 1.35;
 }
 
@@ -142,7 +142,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-3);
   font-weight: 800;
 }
 
@@ -160,13 +160,13 @@
 
 .stepCopy strong {
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-5);
 }
 
 .stepCopy small {
   margin-top: 2px;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-2);
 }
 
 .done .stepMarker {
@@ -224,13 +224,13 @@
 }
 
 .readinessList strong {
-  font-size: 12px;
+  font-size: var(--fs-5);
   font-weight: 650;
 }
 
 .readinessList small {
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: var(--fs-2);
 }
 
 .readinessMarker {
@@ -289,13 +289,13 @@
 
 .footer {
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-4);
   line-height: 1.5;
 }
 
 .relatedBody {
   color: var(--text-2);
-  font-size: 12.5px;
+  font-size: var(--fs-6);
   line-height: 1.5;
 }
 

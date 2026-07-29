@@ -12,7 +12,7 @@
   gap: 8px;
   padding-top: 8px;
 }
-.checkLabel { font-size: 13px; }
+.checkLabel { font-size: var(--fs-7); }
 
 /* บล็อกรายการวัสดุหนึ่งบรรทัดในฟอร์มขอราคา */
 .itemCard { padding: 12px; margin-bottom: 10px; }
@@ -29,7 +29,7 @@
   margin-top: 8px;
   align-items: center;
 }
-.tierLabel { font-size: 12px; color: var(--text-2); }
+.tierLabel { font-size: var(--fs-5); color: var(--text-2); }
 .tierChip { cursor: pointer; }
 .tierChipOn {
   cursor: pointer;
@@ -42,14 +42,14 @@
 .rowLink { cursor: pointer; }
 .docCell { font-weight: 500; }
 .urgentTag { color: var(--red); margin-left: 6px; }
-.kindCell { font-size: 12.5px; }
-.subText { font-size: 11px; color: var(--text-3); }
+.kindCell { font-size: var(--fs-6); }
+.subText { font-size: var(--fs-3); color: var(--text-3); }
 .muted { color: var(--text-3); }
-.smallCell { font-size: 12px; }
+.smallCell { font-size: var(--fs-5); }
 .loadError { padding: 24px; color: var(--red); }
 .formNote {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--fs-5);
   color: var(--text-2);
 }
 .formActions { margin-top: 16px; }
@@ -64,6 +64,6 @@
 
 /* ── การ์ด "คำร้องที่ผูกกับรายการนี้" (หน้าดีล/โครงการ) ─────────────── */
 .listCard { padding: 16px; }
-.listTitle { margin: 0; font-size: 16px; font-weight: 700; }
+.listTitle { margin: 0; font-size: var(--fs-10); font-weight: 700; }
 .listLink { font-weight: 700; }
-.listEmpty { padding: 12px; color: var(--text-3); font-size: 13px; }
+.listEmpty { padding: 12px; color: var(--text-3); font-size: var(--fs-7); }
