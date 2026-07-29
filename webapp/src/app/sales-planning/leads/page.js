@@ -674,7 +674,7 @@ export default function LeadsPage() {
           </label>
           
           <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setFormOpen(false)}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
           </div>
         </form>
@@ -718,7 +718,7 @@ export default function LeadsPage() {
             </div>
             
             <div className="form-action-bar">
-              <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !dealsToCreate.length}>
                 {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${dealsToCreate.length} ดีล`}
               </button>
@@ -782,7 +782,7 @@ export default function LeadsPage() {
               </label>
             )}
             <div className="form-action-bar">
-              <button type="button" className="btn ghost" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-primary" onClick={submitAction}
                 disabled={!!busy
                   || (actionModal.action === "screen" && !actTeam)

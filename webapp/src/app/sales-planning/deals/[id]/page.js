@@ -1175,7 +1175,7 @@ export default function DealOverviewPage() {
             <DateInput value={linkStartDate} onChange={setLinkStartDate} />
           </label>
           <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
               {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
             </button>
@@ -1196,7 +1196,7 @@ export default function DealOverviewPage() {
             />
           </label>
           <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={doLost} disabled={!!actionBusy}>
               <Ban size={14} aria-hidden="true" /> {actionBusy === "lost" ? "กำลังบันทึก..." : "ยืนยัน Lost"}
             </button>

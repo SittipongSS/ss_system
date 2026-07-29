@@ -512,8 +512,12 @@ button, select, input, textarea {
   border-top: 1px solid var(--border);
 }
 .form-action-bar .btn { min-width: 96px; min-height: 38px; justify-content: center; }
-.form-action-bar .btn.ghost { border-color: var(--border); background: var(--panel); box-shadow: var(--shadow-sm); }
-.form-action-bar .btn.ghost:hover { background: var(--panel-2); }
+/* เดิมมี `.form-action-bar .btn.ghost` คืนขอบ+พื้น+เงาให้ปุ่ม ghost ทั้งหมด = ยกเลิก
+   ตัว variant ทิ้งด้วย descendant selector ทำให้คลาสเดียวกันหน้าตาคนละแบบในแถบนี้
+   กับที่อื่น (วัดจริง 2026-07-29: ขอบ .12 vs โปร่งใส · พื้นการ์ด vs โปร่งใส · มีเงา vs ไม่มี)
+   ต้นเหตุคือปุ่ม "ยกเลิก" เลือก variant ผิด — มันคือ *การกระทำรอง* จึงเป็น .btn-secondary
+   ตั้งแต่แรก ตอนนี้แก้ที่ผู้เรียกแล้วจึงลบกฎนี้ได้ · ห้ามเขียนกฎแบบนี้กลับมา
+   ถ้าปุ่มในบริบทไหนต้องหน้าตาต่าง ให้เปลี่ยน tone/variant ที่ผู้เรียก ไม่ใช่ทับที่ปลายทาง */
 /* ความกว้างขั้นต่ำมาจาก .btn-primary/.btn-accent เอง (104px) — เดิม override เป็น
    116px เฉพาะแถบนี้ ทำให้ปุ่มบันทึกในโมดัลกว้างไม่เท่าปุ่มที่อื่น */
 .form-action-bar .btn-danger { min-width: 104px; justify-content: center; }
@@ -718,9 +722,15 @@ button, select, input, textarea {
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
 .topnav-sys-item.active { color: var(--accent-ink); font-weight: 600; background: var(--accent-soft); }
 
-/* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก */
-.topnav-system .btn.ghost { color: rgba(255, 255, 255, 0.85); }
-.topnav-system .btn.ghost:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก
+   ⚠️ นี่คือการปรับ *สีตัวอักษรตามพื้นผิว* ไม่ใช่การนิยาม ghost ใหม่ — รูปทรง
+   (ขอบ/พื้น/เงา) ยังมาจาก `.btn.ghost` ที่เดียว แถบนี้เป็นกรมท่าทั้งสองธีม
+   `--text-2` จึงอ่านไม่ออก ต้องใช้สีตัวอักษรของพื้นกรมท่า (`--navy-fg`) แทน */
+.topnav-system .btn.ghost { color: color-mix(in srgb, var(--navy-fg) 85%, transparent); }
+.topnav-system .btn.ghost:hover {
+  background: color-mix(in srgb, var(--navy-fg) 12%, transparent);
+  color: var(--navy-fg);
+}
 .topnav-system .user-name { color: #fff; }
 .topnav-system .user-avatar { background: rgba(255, 255, 255, 0.16); color: #fff; }
 
