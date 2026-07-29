@@ -147,6 +147,12 @@
   --fs-13: 22px;
   --fs-14: 24px;
   --fs-15: 27px;
+  /* สองขั้นบนสุดใช้กับ *หัวเรื่องที่ยืดตามจอ* เท่านั้น (clamp) — ตอนตรวจ 2026-07-29
+     พบว่า 3 จุดเขียน clamp() ด้วย px ดิบ จึงหลุด regex ของ audit:ui มาตลอด และสอง
+     ในนั้นชี้ไปที่ 34/36px ซึ่งสูงกว่าขั้นบนสุดเดิม (27px) = ชั้นพิมพ์ไม่ได้ครอบจริง
+     เติมสองขั้นนี้แทนการดูดลงมาที่ 27px เพื่อไม่ให้หัวเรื่องหน้าแรกหดโดยไม่มีใครสั่ง */
+  --fs-16: 34px;
+  --fs-17: 36px;
 
   /* ชื่อตามหน้าที่ — ชี้ไปที่ขั้นข้างบน ห้ามใส่ค่า px ตรงนี้
      มีเฉพาะชื่อที่ **มีคนใช้จริง** · ไม่ตั้งชื่อเผื่อไว้ เพราะรอบก่อนประกาศไว้ 9 ชื่อ
@@ -968,7 +974,7 @@ button, select, input, textarea {
 }
 
 .topbar-user-email {
-  font-size: 0.8125rem;
+  font-size: var(--fs-7);
   color: var(--text-3);
   max-width: 160px;
   overflow: hidden;
@@ -1292,7 +1298,7 @@ h1, h2, h3, h4, h5, h6 {
 .home-hub-greeting h1 {
   margin: 7px 0 8px;
   color: var(--text);
-  font-size: clamp(25px, 3vw, 36px);
+  font-size: clamp(var(--fs-14), 3vw, var(--fs-17));
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -.02em;
@@ -5296,7 +5302,7 @@ button.empty-state { width: 100%; font: inherit; }
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: clamp(20px, 2vw, var(--fs-page-title));
+  font-size: clamp(var(--fs-12), 2vw, var(--fs-page-title));
   line-height: 1.2;
   letter-spacing: -.02em;
   font-weight: 700;

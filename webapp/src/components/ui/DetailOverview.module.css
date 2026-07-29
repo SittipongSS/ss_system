@@ -32,7 +32,7 @@
   overflow-wrap: anywhere;
   margin: 0;
   color: var(--text);
-  font-size: clamp(20px, 2vw, 27px);
+  font-size: clamp(var(--fs-12), 2vw, var(--fs-15));
   font-weight: 750;
   line-height: 1.2;
 }
