@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
@@ -285,7 +285,7 @@ export default function DealOverviewPage() {
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
   const role = useRole();
-  const alreadyWon = ["won", "in_project"].includes(deal?.stage);
+  const alreadyWon = isWonStage(deal?.stage);
   // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
   const [categories, setCategories] = useState([]);
   const lc = useMemo(
@@ -505,7 +505,7 @@ export default function DealOverviewPage() {
   const isAdmin = role === "admin";
   // admin เห็นปุ่มลบเสมอ (บังคับลบผ่านพรีวิว) — คนอื่นซ่อนปุ่มในเคสที่ API จะปฏิเสธ (U3)
   const canDelete = deal && (isAdmin || (
-    (!["won", "in_project"].includes(deal.stage) || superuser)
+    (!isWonStage(deal.stage) || superuser)
     && !acceptedQuote && !deal.metadata?.sahamitPoId
   ));
 
@@ -970,7 +970,7 @@ export default function DealOverviewPage() {
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ใบเสนอราคา</h2>
                 <div className="spacer" />
                 {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
-                {canEdit && deal.projectId && deal.customerId && !["lost", "won", "in_project"].includes(deal.stage) && (
+                {canEdit && deal.projectId && deal.customerId && !isClosedStage(deal.stage) && (
                   <Link prefetch={false} href={`/sa/quotations/new?dealId=${deal.id}`} className="btn btn-primary sm"><Plus size={13} aria-hidden="true" /> สร้างใบเสนอราคา</Link>
                 )}
                 <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>

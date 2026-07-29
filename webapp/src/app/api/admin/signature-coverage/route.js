@@ -2,11 +2,11 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { buildSignatureCoverage, canViewSignatureCoverage } from '@/lib/admin/signatureCoverage';
+import { CLOSED_STAGES } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
-// ดีลที่ปิด/ส่งต่อฝ่ายผลิตแล้ว ไม่ก่อใบเสนอราคาใหม่ให้ต้องอนุมัติ
-const CLOSED_STAGES = ['won', 'in_project', 'lost'];
+// ดีลที่ปิด/ส่งต่อฝ่ายผลิตแล้ว ไม่ก่อใบเสนอราคาใหม่ให้ต้องอนุมัติ (นิยามกลาง = CLOSED_STAGES)
 // ใบที่ยังอนุมัติได้อยู่จริง — ตรงกับเงื่อนไขใน quotations/[id]/approval
 const APPROVABLE_STATUSES = ['draft', 'sent', 'rejected'];
 

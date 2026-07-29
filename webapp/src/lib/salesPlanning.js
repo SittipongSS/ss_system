@@ -21,6 +21,20 @@ export const DEAL_STAGES = [
   'lost',
 ];
 
+// ── "ดีลปิดแล้วหรือยัง" — ตัวตัดสินกลาง ห้ามสะกด ['won','in_project'] เองอีก ─────
+// in_project ถูกยุบเป็น won ตั้งแต่ mig 0082 (ตัดออกจาก CHECK แล้ว) แต่แถวเก่ายังมีอยู่
+// ทุกจุดที่ถามว่า "ปิดได้แล้วหรือยัง" จึงต้องนับสองค่านี้เสมอ — เดิมสะกดเองกระจาย 30+ จุด
+// ทั้ง route/หน้าเว็บ/lib และมีสำเนา isWonDeal/isOpenDeal ซ้ำกันเป๊ะใน 2 ไฟล์
+// (dashboardMetrics + projectRollup) · ด่านใหม่ที่ลืมใส่ in_project จะรั่วเงียบ ๆ
+// เพราะดีลเก่าหลุดด่านไปโดยไม่มี error ให้เห็น
+export const WON_STAGES = ['won', 'in_project'];
+export const CLOSED_STAGES = [...WON_STAGES, 'lost'];
+
+// รับ "stage" (สตริง) — ตัวที่รับทั้งดีลอยู่ที่ isWonDeal/isOpenDeal ใน sales/dashboardMetrics
+export const isWonStage = (stage) => WON_STAGES.includes(stage);
+export const isClosedStage = (stage) => CLOSED_STAGES.includes(stage);
+export const isOpenStage = (stage) => !isClosedStage(stage);
+
 export const STAGE_LABELS = {
   lead: 'ลีด',
   qualified: 'ผ่านคัดกรอง',

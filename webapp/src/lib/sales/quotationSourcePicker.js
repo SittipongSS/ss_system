@@ -5,7 +5,11 @@
 // คิดว่าระบบพัง (เสียเวลาสืบทีละเคส) — มติผู้ใช้ 2026-07-26: **คงกติกาไว้ แต่ต้องบอกเหตุ
 // ตอนค้นไม่เจอ** พร้อมทางไปแก้ ไม่ใช่โชว์ทุกรายให้ลิสต์ยาว
 
-export const QUOTATION_DEAL_EXCLUDED_STAGES = ['won', 'in_project', 'lost'];
+import { CLOSED_STAGES } from '@/lib/salesPlanning';
+
+// = ดีลที่ปิดแล้วทุกแบบ (นิยามกลางที่ lib/salesPlanning) — คงชื่อเดิมไว้เพราะสื่อ
+// เจตนาเฉพาะที่ของลิสต์นี้ ("ออกใบไม่ได้แล้ว") และมีเทสต์อ้างชื่อนี้อยู่
+export const QUOTATION_DEAL_EXCLUDED_STAGES = CLOSED_STAGES;
 
 // ดีลที่ออกใบเสนอราคาได้: ผูกโครงการ + มีลูกค้า + stage ยังเปิด + เป็นดีลที่ผู้ใช้แก้ไขได้
 // (canEdit มาจาก API — edit scope; ไม่ใช่ view scope ไม่งั้น POST จะเด้ง forbidden)

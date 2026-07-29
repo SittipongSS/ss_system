@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import {
+  CLOSED_STAGES,
   DEAL_STAGES,
   DEFAULT_PROBABILITY_BY_STAGE,
+  WON_STAGES,
   advanceStage,
+  isClosedStage,
+  isOpenStage,
+  isWonStage,
   stageAtLeast,
   stageIndex,
 } from './salesPlanning.js';
@@ -146,4 +152,41 @@ test('0170 ต้องยุบสำเนา CASE ทั้ง 3 ชุดใ
     3,
   );
   assert.ok(!/probability = CASE v_target_stage/.test(sql), 'ต้องไม่เหลือบล็อก CASE ฝังในตัวฟังก์ชัน');
+});
+
+// ── isWonStage / isClosedStage: ตัวตัดสิน "ปิดแล้วหรือยัง" ที่เดียวของระบบ ────────
+// in_project ยุบเป็น won ตั้งแต่ mig 0082 แต่แถวเก่ายังมี ทุกด่านจึงต้องนับสองค่านี้
+// เดิมสะกด ['won','in_project'] เองกระจาย 30+ จุด รวมสำเนา isWonDeal/isOpenDeal
+// ที่ซ้ำกันเป๊ะใน 2 lib — ด่านใหม่ที่ลืม in_project จะรั่วเงียบ ๆ (ดีลเก่าหลุดด่าน)
+test('isWonStage / isClosedStage / isOpenStage แบ่ง DEAL_STAGES ครบไม่ทับกัน', () => {
+  assert.deepEqual(WON_STAGES, ['won', 'in_project']);
+  assert.deepEqual(CLOSED_STAGES, ['won', 'in_project', 'lost']);
+  for (const stage of DEAL_STAGES) {
+    // ปิดแล้ว = won หรือ lost · เปิดอยู่ = ที่เหลือ — สองฝั่งต้องตรงข้ามกันเสมอ
+    assert.equal(isClosedStage(stage), !isOpenStage(stage), stage);
+    if (isWonStage(stage)) assert.ok(isClosedStage(stage), `${stage} won ต้องนับว่าปิดแล้ว`);
+  }
+  assert.ok(isWonStage('won') && isWonStage('in_project'));
+  assert.ok(!isWonStage('lost'), 'lost ปิดแล้วแต่ไม่ใช่ Won');
+  assert.ok(isClosedStage('lost'));
+  assert.ok(isOpenStage('deposit_pending') && isOpenStage('quotation'));
+  // stage ที่ไม่รู้จักถือว่ายังเปิด — เหมือน stageIndex ที่ให้ของแปลกอยู่ก่อนทุกอย่าง
+  assert.ok(isOpenStage('ขยะ'));
+  assert.ok(isOpenStage(undefined));
+});
+
+// ล็อกไม่ให้กลับไปสะกดลิสต์เอง — ตรวจทั้ง src/ ยกเว้นตัวนิยามเองกับไฟล์เทสต์นี้
+test('ไม่มีใครสะกด [won, in_project] เองนอกจากนิยามกลางใน salesPlanning.js', () => {
+  const root = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  let hits = '';
+  try {
+    hits = execSync(
+      'git grep -n -E "[\'\\"]won[\'\\"], ?[\'\\"]in_project[\'\\"]" -- "*.js" ":!*salesPlanning.js" ":!*dealStageOrder.test.mjs"',
+      { cwd: root, encoding: 'utf8' },
+    );
+  } catch (error) {
+    // git grep exit 1 = ไม่เจอ = ผ่าน
+    if (error.status !== 1) throw error;
+  }
+  assert.equal(hits.trim(), '', `ต้องใช้ isWonStage/isClosedStage แทน:\n${hits}`);
 });

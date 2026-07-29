@@ -13,6 +13,7 @@
 // ทุก preview เป็น pure-ish (query อย่างเดียว ไม่ลบ) เพื่อให้ ?dryRun=1 ใช้ซ้ำ
 // เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ.
 import { purgeUpdatesMany } from '@/lib/master/updates';
+import { isWonStage } from '@/lib/salesPlanning';
 
 // อ่าน query flag จาก request URL.
 function flag(req, name) {
@@ -87,7 +88,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     notes.push(`โครงการผลิต ${project.code || project.id} จะยังอยู่ (ถอดเฉพาะงานของดีลนี้ออก) — ลบโครงการทำที่หน้าโครงการ`);
   }
   if (deal.metadata?.sahamitPoId) notes.push('ดีลนี้มาจาก PO สหมิตร (settle เข้ายอดแล้ว)');
-  if (['won', 'in_project'].includes(deal.stage)) notes.push('ดีลนี้ปิดการขาย (Won) แล้ว');
+  if (isWonStage(deal.stage)) notes.push('ดีลนี้ปิดการขาย (Won) แล้ว');
 
   return { cascade, notes };
 }

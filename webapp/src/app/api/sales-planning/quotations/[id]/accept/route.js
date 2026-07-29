@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope, isWonStage } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
@@ -41,7 +41,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (!deal.projectId) return badRequest('ต้องเชื่อมโครงการกับดีลก่อนปิด Won ผ่านใบเสนอราคา');
   if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถปิด Won ผ่านใบเสนอราคาได้');
-  if (['won', 'in_project'].includes(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
+  if (isWonStage(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
 
   // Private evidence refs must point only to this quotation's folder in the
   // dedicated bucket. Legacy public URLs / Drive refs remain valid.

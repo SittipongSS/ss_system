@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { DEFAULT_PROBABILITY_BY_STAGE, canEditSalesPlanning, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
+import { DEFAULT_PROBABILITY_BY_STAGE, canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
@@ -124,7 +124,7 @@ export async function POST(request, { params }) {
     // ก็ซิงก์เดือนนี้แค่กลุ่มเดียว → reuse (reassign) แทนสร้างดีลซ้ำ (ปลอดภัย ไม่กำกวม).
     if (!existing && bucketsPerMonth[bucket.demandMonth] === 1) {
       const openSameMonth = (existingByMonth.get(bucket.demandMonth) || [])
-        .filter((d) => !['won', 'in_project', 'lost'].includes(d.stage));
+        .filter((d) => !isClosedStage(d.stage));
       if (openSameMonth.length === 1) existing = openSameMonth[0];
     }
     const metadata = {
@@ -141,7 +141,7 @@ export async function POST(request, { params }) {
       syncedAt: now,
     };
 
-    if (existing && ['won', 'in_project', 'lost'].includes(existing.stage)) {
+    if (existing && isClosedStage(existing.stage)) {
       skipped.push(existing);
       continue;
     }

@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
+import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { planTargetTransfer, nextMonthKey } from '@/lib/usersTransfer';
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,8 @@ export async function POST(request, { params }) {
       .from('sales_deals')
       .update({ ownerId: toUserId, ownerName: toName, team: toTeam, updatedAt: now })
       .eq('ownerId', fromId)
-      .not('stage', 'in', '(won,in_project,lost)')
+      // เฉพาะดีลที่ยังเปิด — สร้างจากนิยามกลางเพื่อไม่ให้ลิสต์ในสตริง SQL เพี้ยนจากที่อื่น
+      .not('stage', 'in', `(${CLOSED_STAGES.join(',')})`)
       .select('id, title, stage');
     if (error) return Response.json({ error: `โอนดีลไม่สำเร็จ: ${error.message}` }, { status: 500 });
     movedDeals = data || [];

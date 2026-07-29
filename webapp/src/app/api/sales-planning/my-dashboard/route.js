@@ -1,5 +1,5 @@
 import { withUser, ok, fail, unauthorized } from '@/lib/http';
-import { monthKey, forecastAmount } from '@/lib/salesPlanning';
+import { monthKey, forecastAmount, isOpenStage, isWonStage } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
@@ -52,8 +52,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }).format(new Date());
   const taskSummary = summarizeOpenTasks(myTasks, todayBangkok);
 
-  const isWon = (d) => ['won', 'in_project'].includes(d.stage);
-  const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
+  const isWon = (d) => isWonStage(d.stage);
+  const isOpen = (d) => isOpenStage(d.stage);
   
   const wonAmt = dealActualFromSalesOrders;
   const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);

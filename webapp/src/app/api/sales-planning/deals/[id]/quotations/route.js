@@ -4,6 +4,7 @@ import {
   canViewSalesPlanning,
   inSalesEditScope,
   inSalesViewScope,
+  isWonStage,
 } from '@/lib/salesPlanning';
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
@@ -49,7 +50,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างใบเสนอราคาจากโครงการที่ Lost แล้ว');
   // ดีลปิด Won แล้ว = ใบเสนอราคาถูกล็อกทั้งชุด (เพิ่ม/แก้/ลบไม่ได้ — มติผู้ใช้ 2026-07-15)
-  if (['won', 'in_project'].includes(deal.stage)) {
+  if (isWonStage(deal.stage)) {
     return badRequest('ดีลนี้ปิด Won แล้ว — ใบเสนอราคาถูกล็อก เพิ่มใบใหม่ไม่ได้');
   }
 
