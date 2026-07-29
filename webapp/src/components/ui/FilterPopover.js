@@ -100,7 +100,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
         {active && (
           <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{count}</span>
         )}
-        <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+        <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform var(--motion-medium)" }} />
       </Button>
 
       {open && typeof document !== "undefined" && createPortal(

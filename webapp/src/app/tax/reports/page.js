@@ -49,7 +49,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
         title="เลือกประเภทเอกสารที่จะดาวน์โหลด แบ่งโฟลเดอร์ตามรายการสินค้า"
       >
         <FolderArchive size={16} /> ไฟล์แนบ (ZIP)
-        <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+        <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform var(--motion-medium)" }} />
       </button>
 
       {open && (

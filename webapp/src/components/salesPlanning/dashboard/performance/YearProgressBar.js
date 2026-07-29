@@ -75,8 +75,8 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
             borderRadius: 8, background: "var(--panel-2)", border: "1px solid var(--border)",
           }}
         >
-          <i style={{ display: "block", height: "100%", width: w(stat.actual), background: "var(--green)", transition: "width .3s" }} />
-          <i style={{ display: "block", height: "100%", width: w(stat.forecast), background: "var(--amber)", opacity: 0.75, transition: "width .3s" }} />
+          <i style={{ display: "block", height: "100%", width: w(stat.actual), background: "var(--green)", transition: "width var(--motion-slow)" }} />
+          <i style={{ display: "block", height: "100%", width: w(stat.forecast), background: "var(--amber)", opacity: 0.75, transition: "width var(--motion-slow)" }} />
         </div>
         {stat.mustClose > 0 && (
           <span style={{ position: "absolute", top: -5, height: 24, width: 3, left: w(stat.mustClose), transform: "translateX(-50%)", background: "var(--text)", borderRadius: 2 }}>

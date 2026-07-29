@@ -86,7 +86,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                   <>
                     <tr key={s.fgCode} onClick={() => setOpen(isOpen ? null : s.fgCode)} style={{ cursor: "pointer" }} className="hover-row">
                       <td style={{ textAlign: "center", color: "var(--text-3)" }}>
-                        <ChevronRight size={14} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+                        <ChevronRight size={14} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform var(--motion-medium)" }} />
                       </td>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>

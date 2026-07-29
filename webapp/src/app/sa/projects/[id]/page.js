@@ -1156,7 +1156,7 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all var(--motion-slow)", pointerEvents: isLocked ? "none" : "auto" }}>
           <TimelineWorkspace
             tasks={tasks}
             requests={p.inquiries || []}
@@ -1316,7 +1316,7 @@ export default function ProjectDetailPage() {
 
       {showTimeline && (
       <>
-      <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
+      <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all var(--motion-slow)", pointerEvents: isLocked ? "none" : "auto" }}>
       {false && (<>
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
@@ -1578,7 +1578,7 @@ export default function ProjectDetailPage() {
                     <span style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: phaseHeader.color }}>{phaseHeader.done}/{phaseHeader.total}</span>
                     {phaseHeader.allDone ? <CheckCircle2 size={13} color="var(--green)" /> : (
                       <div style={{ width: "52px", height: "4px", background: "var(--border)", borderRadius: "2px", overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${phaseHeader.pct}%`, background: phaseHeader.color, borderRadius: "2px", transition: "width 0.3s" }} />
+                        <div style={{ height: "100%", width: `${phaseHeader.pct}%`, background: phaseHeader.color, borderRadius: "2px", transition: "width var(--motion-slow)" }} />
                       </div>
                     )}
                   </button>
@@ -1588,7 +1588,7 @@ export default function ProjectDetailPage() {
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: task.phase ? "12px" : "0" }}>
                     {isFirstOfPhase && canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px", zIndex: 2 }}>
-                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
+                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "var(--motion-standard)", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1604,7 +1604,7 @@ export default function ProjectDetailPage() {
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "var(--accent-fg)", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
+                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "var(--accent-fg)", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all var(--motion-standard)" }}>
                           {isCompleted ? <Check size={16} strokeWidth={3} /> : (isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "var(--fs-3)", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</span>)}
                         </button>
                       </div>
@@ -1684,7 +1684,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "", predecessors: [task.id] }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "", predecessors: [task.id] }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "var(--motion-standard)", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>

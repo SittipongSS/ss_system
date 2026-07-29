@@ -324,7 +324,7 @@ export default function AppLayout({ children }) {
             >
               <ActiveSystemIcon size={15} aria-hidden="true" />
               {systemSubtitle}
-              <ChevronDown size={14} strokeWidth={2.5} style={{ transform: sysMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+              <ChevronDown size={14} strokeWidth={2.5} style={{ transform: sysMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform var(--motion-medium)' }} />
             </button>
             {sysMenuOpen && (
               <div className="topnav-sys-menu" role="menu">

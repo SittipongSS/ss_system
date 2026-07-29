@@ -17,7 +17,7 @@
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: background .12s, border-color .12s, box-shadow .12s;
+  transition: background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 .row:hover {
