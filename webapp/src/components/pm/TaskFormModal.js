@@ -208,7 +208,7 @@ export default function TaskFormModal({
         <div className="grid gap-[14px]">
           {inquirySource && (
             <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-              สร้างจากเรื่องสอบถาม <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
+              สร้างจากคำร้อง <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
               <div style={{ marginTop: 3, color: "var(--text-3)" }}>ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ</div>
             </div>
           )}

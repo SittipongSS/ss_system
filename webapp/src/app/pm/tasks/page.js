@@ -338,30 +338,44 @@ export default function TasksPage() {
     if (deepLinkHandled.current || (!inquiryId && !dealId)) return;
     deepLinkHandled.current = true;
     if (inquiryId) {
-      fetch(`/api/sales-planning/inquiries/${inquiryId}`).then(async (res) => {
-        const inquiry = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(inquiry.error || "โหลดข้อความต้นทางไม่สำเร็จ");
-        const message = messageId ? (inquiry.messages || []).find((item) => item.id === messageId && !item.deletedAt) : null;
-        if (messageId && !message) throw new Error("ไม่พบข้อความต้นทาง");
-        const sourceText = message?.body?.trim() || inquiry.title || "งานจากเรื่องสอบถาม";
+      // ⚠️ ต้นทางคือ **คำร้องข้ามฝ่าย** (dept_requests) แล้ว — ระบบสอบถามเดิมถูก
+      // ปลดระวางใน mig 0174 พร้อม API /api/sales-planning/inquiries · พารามิเตอร์
+      // ยังชื่อ inquiryId ตามคอลัมน์ personal_tasks.inquiryId (หนี้ที่รู้ตัว ดู
+      // api/pm/personal-tasks/route.js) แต่ค่าคือ id ของคำร้อง
+      (async () => {
+        const res = await fetch(`/api/sa/requests/${inquiryId}`);
+        const req = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(req.error || "โหลดคำร้องต้นทางไม่สำเร็จ");
+        // เธรดไม่ได้ติดมากับคำร้อง — อยู่ตารางกลาง entity_updates ต้องขอแยก
+        // (ขอเฉพาะตอนมี messageId จะได้ไม่ยิงฟรีทุกครั้งที่เปิดจากหัวเรื่อง)
+        let message = null;
+        if (messageId) {
+          const msgRes = await fetch(`/api/updates?entityType=dept_request&entityId=${encodeURIComponent(inquiryId)}`);
+          const thread = await msgRes.json().catch(() => ({}));
+          if (!msgRes.ok) throw new Error(thread.error || "โหลดข้อความต้นทางไม่สำเร็จ");
+          message = (thread.items || []).find((item) => item.id === messageId && !item.deletedAt) || null;
+          if (!message) throw new Error("ไม่พบข้อความต้นทาง");
+        }
+        // หัวเรื่องเป็น null ได้ในชนิดขอราคา (บรรทัดบอกเองว่าถามอะไร) → ถอยไปที่ body
+        const sourceText = message?.body?.trim() || req.title?.trim() || req.body?.trim() || "งานจากคำร้องข้ามฝ่าย";
         const returnToRaw = params.get("returnTo") || `/sa/requests/${inquiryId}`;
         const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/sa/requests/${inquiryId}`;
         setEditingId(null);
-        setInquirySource({ inquiryId, messageId: message?.id || null, code: inquiry.code || inquiry.id, returnTo });
+        setInquirySource({ inquiryId, messageId: message?.id || null, code: req.docNo || req.id, returnTo });
         setForm({
           ...TASK_BLANK,
-          title: `[${inquiry.code || "IQ"}] ${sourceText.slice(0, 120)}`,
+          title: `[${req.docNo || "คำร้อง"}] ${sourceText.slice(0, 120)}`,
           note: sourceText,
-          dueDate: inquiry.committedDueDate || inquiry.requestedDueDate || inquiry.dueDate || "",
-          linkType: inquiry.dealId ? "deal" : "none",
-          dealId: inquiry.dealId || "",
+          dueDate: req.committedDueDate || req.requestedDueDate || "",
+          linkType: req.dealId ? "deal" : "none",
+          dealId: req.dealId || "",
           category: "ประสานงานภายใน",
-          important: !!inquiry.urgent,
-          urgent: !!inquiry.urgent,
+          important: !!req.urgent,
+          urgent: !!req.urgent,
         });
-       
+
         setShowModal(true);
-      }).catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
+      })().catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
       return;
     }
     setEditingId(null);
