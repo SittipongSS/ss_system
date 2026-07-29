@@ -9,7 +9,8 @@
 // รายการที่ต้องสั่งจริงอยู่แล้ว ให้ PC พิมพ์ซ้ำทีละแถวคือทางที่ข้อมูลจะไม่ตรงกัน
 // ตั้งแต่วันแรก · กดซ้ำไม่ได้แถวซ้ำ (unique ที่ระดับ DB)
 import { useState } from "react";
-import { PackageCheck, Plus, RefreshCw, Trash2, Wand2 } from "lucide-react";
+import Link from "next/link";
+import { PackageCheck, Plus, RefreshCw, Send, Trash2, Wand2 } from "lucide-react";
 import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -20,7 +21,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { fmtDate } from "@/lib/format";
 import { MATERIAL_KINDS, MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
-import { deliveryRollup } from "@/lib/pm/deliveries";
+import { deliveryRollup, openDeliveriesToChase } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import styles from "./DeliveriesPanel.module.css";
 
@@ -58,6 +59,8 @@ export default function DeliveriesPanel({
 
   const today = toLocalISODate(new Date());
   const sum = deliveryRollup(deliveries, today);
+  // จำนวนที่ "ขอให้อัปเดตได้" — ยังไม่มา และยังไม่มีคำร้องค้างอยู่
+  const chaseable = openDeliveriesToChase(deliveries).length;
 
   const call = async (path, init, okMsg) => {
     setBusy(path);
@@ -74,6 +77,14 @@ export default function DeliveriesPanel({
       onError?.(e.message);
       return null;
     } finally { setBusy(""); }
+  };
+
+  // ขอให้ PC อัปเดตกำหนดทั้งชุด — เปิดคำร้องชนิด material_eta ให้ในคลิกเดียว
+  // (endpoint เดียวจบ: เปิด + ส่งเข้าคิว + ติดธงบนแถวที่ขอ — ดู request-update/route.js)
+  const requestUpdate = async () => {
+    const d = await call("/request-update", { method: "POST" });
+    if (!d) return;
+    onChanged?.(`ส่งคำร้อง ${d.docNo} ถึงฝ่ายจัดซื้อแล้ว (${d.asked} รายการ)`);
   };
 
   const generate = async () => {
@@ -118,6 +129,17 @@ export default function DeliveriesPanel({
         <div className={styles.spacer} />
         {canEdit && (
           <>
+            {/* ขอให้ PC อัปเดต — โผล่เฉพาะตอนมีของค้างที่ยังไม่ได้ขอ ไม่งั้นกดแล้ว
+                ได้ error เปล่า ๆ (server กันขอซ้ำอยู่แล้ว แต่ปุ่มไม่ควรหลอกให้กด) */}
+            {chaseable > 0 && (
+              <Button
+                size="sm" onClick={requestUpdate} disabled={!!busy}
+                icon={<Send size={14} aria-hidden="true" />}
+                title={`เปิดคำร้องถึงฝ่ายจัดซื้อให้อัปเดตกำหนด ${chaseable} รายการ`}
+              >
+                ขอให้ PC อัปเดตกำหนด ({chaseable})
+              </Button>
+            )}
             <Button
               size="sm" onClick={generate} disabled={!!busy}
               icon={<Wand2 size={14} aria-hidden="true" />}
@@ -169,6 +191,13 @@ export default function DeliveriesPanel({
                       {/* บอกรอบของแถว — พาเนลนี้รวมทุกรอบของโครงการไว้ด้วยกัน */}
                       {deals.length > 1 && dealLabel(row.dealId) && (
                         <span className={styles.round}>{dealLabel(row.dealId)}</span>
+                      )}
+                      {/* ขอให้ PC อัปเดตไปแล้ว — ลิงก์ไปคำร้องเพื่อคุยต่อในเธรดที่นั่น
+                          (แถวนี้จะไม่ถูกขอซ้ำจนกว่าจะเคลียร์) */}
+                      {row.requestId && !row.arrivedAt && (
+                        <Link className={styles.asked} href={`/sa/requests/${row.requestId}`}>
+                          ขออัปเดตแล้ว
+                        </Link>
                       )}
                       {row.note && <div className={styles.hint}>{row.note}</div>}
                     </td>

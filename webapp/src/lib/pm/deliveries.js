@@ -186,6 +186,39 @@ export function deliveryStepBadge(rows = [], todayIso = null, { scope = 'deal' }
   };
 }
 
+// ── ขอให้ PC อัปเดตกำหนด (คำร้องชนิด material_eta) ───────────────────────
+// แถวที่ควร "ตาม" = ยังไม่มา **และยังไม่มีคำร้องค้างอยู่**
+//
+// ⚠️ กันขอซ้ำเป็นเรื่องความอยู่รอดของคิว ไม่ใช่ความสวยงาม — ถ้า SA กดได้ทุกวัน
+// คิวฝ่ายจัดซื้อจะเต็มไปด้วยเรื่องเดิม แล้วกลายเป็นคิวที่ไม่มีใครอ่าน (บทเรียน
+// เดียวกับที่ตัดสินใจไม่ส่งแจ้งเตือน "ทุกคนในฝ่าย" ในมติ 14)
+//
+// dealId ที่ส่งมา = ขอเฉพาะรอบนั้น · ไม่ส่ง = ทั้งโครงการทุกรอบ
+export function openDeliveriesToChase(rows = [], { dealId = null } = {}) {
+  return rows.filter((r) => {
+    if (r.arrivedAt) return false;      // มาแล้ว ไม่ต้องตาม
+    if (r.requestId) return false;      // ขอไปแล้ว รอ PC ตอบ
+    if (dealId && r.dealId !== dealId) return false;
+    return true;
+  });
+}
+
+// เนื้อคำร้อง — PC ต้องอ่านแล้วรู้ทันทีว่าต้องอัปเดตอะไรบ้าง โดยไม่ต้องเปิดโครงการ
+export function chaseRequestBody(rows = []) {
+  const lines = rows.map((r) => {
+    const qty = r.qty == null ? '' : ` · ${Number(r.qty).toLocaleString('th-TH')}${r.unit ? ` ${r.unit}` : ''}`;
+    const po = r.poRef ? ` · ${r.poRef}` : '';
+    const due = r.dueDate ? ` · กำหนดเดิม ${r.dueDate}` : ' · ยังไม่มีกำหนด';
+    return `• ${r.label}${qty}${po}${due}`;
+  });
+  return [
+    `ขอให้ฝ่ายจัดซื้ออัปเดตกำหนดของเข้า ${rows.length} รายการ:`,
+    ...lines,
+    '',
+    'อัปเดตได้ที่พาเนล "ของเข้า" ใต้ไทม์ไลน์ของโครงการ',
+  ].join('\n');
+}
+
 // ── กางรายการจากใบขอราคาผลิต (มติ 13) ───────────────────────────────────
 // บรรทัดวัสดุของใบที่อนุมัติแล้ว = รายการที่ "ต้องสั่งจริง" อยู่แล้ว ไม่ต้องพิมพ์ซ้ำ
 //

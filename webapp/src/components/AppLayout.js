@@ -254,7 +254,11 @@ export default function AppLayout({ children }) {
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
-        { href: '/sahamit/material', name: 'วัสดุ / Lead time', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
+        // "ของเข้า (สหมิตร)" — เดิมชื่อ "วัสดุ / Lead time" ซึ่งชนกับสองเมนูใหม่:
+        // "ทะเบียนวัสดุ" (ฐานข้อมูล — ข้อมูลหลักราคาวัสดุ) และพาเนล "ของเข้า" ของ
+        // โครงการ (mig 0176) · หน้านี้ทำงานเดียวกับพาเนลนั้นแต่เป็นของสายสหมิตร
+        // ซึ่งติดตามราย PO line (pmDueDate/rmDueDate/arrivedAt — คนละตารางกัน)
+        { href: '/sahamit/material', name: 'ของเข้า (สหมิตร)', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
       ],
     },
   ];
