@@ -5,7 +5,7 @@
   min-width: 0;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

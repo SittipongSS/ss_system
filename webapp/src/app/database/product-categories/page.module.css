@@ -1,15 +1,15 @@
-.headerActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.headerActions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 
 .summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .summary > div {
   min-height: 82px;
-  padding: 14px 16px;
+  padding: 14px var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
@@ -23,46 +23,46 @@
 .summary strong { color: var(--text); font-size: var(--fs-14); line-height: 1; font-variant-numeric: tabular-nums; }
 
 .panel { overflow: hidden; }
-.toolbar { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 1px solid var(--border); }
-.search { min-width: 260px; flex: 1; min-height: var(--ctl-h); display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); color: var(--text-3); }
+.toolbar { display: flex; align-items: center; gap: 10px; padding: var(--space-3); border-bottom: 1px solid var(--border); }
+.search { min-width: 260px; flex: 1; min-height: var(--ctl-h); display: flex; align-items: center; gap: var(--space-2); padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); color: var(--text-3); }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
 .search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); }
 .resultCount { color: var(--text-3); font-size: var(--fs-5); white-space: nowrap; }
 .empty { min-height: 220px; display: grid; place-items: center; color: var(--text-3); }
 
 .groupRow td { padding: 9px 14px !important; background: var(--panel-2); border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border); }
-.groupRow td strong { display: inline-flex; min-width: 34px; margin-right: 8px; color: var(--accent-ink); font-family: var(--font-mono); }
+.groupRow td strong { display: inline-flex; min-width: 34px; margin-right: var(--space-2); color: var(--accent-ink); font-family: var(--font-mono); }
 .groupRow td span { font-weight: 700; }
 .groupRow td small { margin-left: 10px; color: var(--text-3); }
 .cellNote { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-4); font-weight: 400; }
 .muted { color: var(--text-3); }
-.rowActions { display: flex; justify-content: flex-end; gap: 4px; }
+.rowActions { display: flex; justify-content: flex-end; gap: var(--space-1); }
 
 .statusBadge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 9px; border-radius: 999px; font-size: var(--fs-4); font-weight: 700; border: 1px solid transparent; }
 .active { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
 .inactive { color: var(--text-3); background: var(--panel-3); border-color: var(--border); }
 
-.form { display: flex; flex-direction: column; gap: 16px; }
+.form { display: flex; flex-direction: column; gap: var(--space-4); }
 .form label { display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: var(--fs-6); font-weight: 600; }
 .form label b { color: var(--red); }
 .form label small { color: var(--text-3); font-size: var(--fs-4); font-weight: 400; }
 .form textarea { min-height: 92px; resize: vertical; }
-.codeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.codeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 
 /* ช่องติ๊กกำกับดูแล (mig 0131) — เสียภาษีสรรพสามิต / ต้องจดแจ้ง อย. */
-.complianceBox { margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
-.complianceBox legend { padding: 0 4px; font-size: var(--fs-6); font-weight: 700; color: var(--text-2); }
+.complianceBox { margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); display: flex; flex-direction: column; gap: var(--space-3); }
+.complianceBox legend { padding: 0 var(--space-1); font-size: var(--fs-6); font-weight: 700; color: var(--text-2); }
 .form .checkRow { flex-direction: row; align-items: flex-start; gap: 10px; cursor: pointer; }
 .form .checkRow input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
 .form .checkRow span { display: flex; flex-direction: column; gap: 2px; }
 .form .checkRow strong { color: var(--text); font-size: var(--fs-7); }
 .form .checkRow small { color: var(--text-3); font-size: var(--fs-4); font-weight: 400; }
-.compliancePills { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.compliancePills { display: inline-flex; gap: var(--space-1); margin-left: var(--space-2); vertical-align: middle; }
 .codeNote { margin-top: -10px; color: var(--text-3); font-size: var(--fs-4); }
 .usageBox { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .usageBox h3, .usageBox p { grid-column: 1 / -1; }
 .usageBox h3 { font-size: var(--fs-7); font-weight: 700; }
-.usageBox div { padding: 10px; border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; gap: 4px; }
+.usageBox div { padding: 10px; border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; gap: var(--space-1); }
 .usageBox div span, .usageBox p { color: var(--text-3); font-size: var(--fs-4); }
 .usageBox div strong { font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
 
@@ -75,14 +75,14 @@
   .toolbar select { flex: 1; min-height: 40px; }
   .resultCount { align-self: center; }
   .desktopTable { display: none; }
-  .mobileList { display: flex; flex-direction: column; gap: 14px; padding: 12px; }
+  .mobileList { display: flex; flex-direction: column; gap: 14px; padding: var(--space-3); }
   .mobileGroup { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
-  .mobileGroup > header { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .mobileGroup > header { display: flex; align-items: baseline; gap: var(--space-2); padding: 10px var(--space-3); background: var(--panel-2); border-bottom: 1px solid var(--border); }
   .mobileGroup > header strong { color: var(--accent-ink); font-family: var(--font-mono); }
   .mobileGroup > header span { font-weight: 700; }
-  .mobileCard { padding: 12px; border-bottom: 1px solid var(--border); }
+  .mobileCard { padding: var(--space-3); border-bottom: 1px solid var(--border); }
   .mobileCard:last-child { border-bottom: 0; }
-  .mobileCardHead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .mobileCardHead { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
   .mobileCardHead > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .mobileCardHead > div > strong { color: var(--text); font-family: var(--font-mono); }
   .mobileCardHead > div > span { font-weight: 700; }
@@ -95,8 +95,8 @@
   .headerActions { width: 100%; }
   .headerActions > * { min-height: 40px; flex: 1 1 calc(50% - 4px); justify-content: center; }
   .headerActions > :last-child { flex-basis: 100%; }
-  .summary { gap: 8px; }
-  .summary > div { min-height: 72px; padding: 12px; }
+  .summary { gap: var(--space-2); }
+  .summary > div { min-height: 72px; padding: var(--space-3); }
   .summary strong { font-size: var(--fs-12); }
   .codeGrid, .usageBox { grid-template-columns: 1fr; }
   .usageBox h3, .usageBox p { grid-column: 1; }

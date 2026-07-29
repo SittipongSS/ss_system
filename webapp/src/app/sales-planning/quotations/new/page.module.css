@@ -9,25 +9,25 @@
 
 .errorPanel,
 .emptyPanel {
-  margin-bottom: 16px;
-  padding: 12px 14px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
 }
 
 .errorPanel { border-color: var(--red); color: var(--red); }
-.emptyPanel { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-2); font-size: var(--fs-7); }
+.emptyPanel { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-2); font-size: var(--fs-7); }
 
 .infoBlock small { display: block; margin-bottom: 1px; color: var(--text-3); font-size: var(--fs-2); font-weight: 500; }
 
-.sectionHeading { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--text-2); }
+.sectionHeading { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 14px; color: var(--text-2); }
 .sectionHeading h2 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: 700; }
 .sectionHeading > span { color: var(--text-3); font-size: var(--fs-4); }
 
-.sourceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.sourceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-5); }
 /* คำอธิบายว่าลิสต์ลูกค้ามาจากไหน — ชั้นพิมพ์เดียวกับ .sectionHeading > span */
-.sourceHint { margin: 12px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.65; }
+.sourceHint { margin: var(--space-3) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.65; }
 
 /* คำตอบใน dropdown ตอนค้นเจอลูกค้าในทะเบียนแต่ออกใบไม่ได้ — ชิดซ้าย อ่านเป็นรายการ
    (พื้นที่ .ui-select-empty เดิมจัดกลางไว้สำหรับข้อความบรรทัดเดียว) */
@@ -41,14 +41,14 @@
 .customerSource { grid-column: 1 / -1; }
 .sourceSelect { width: 100%; min-width: 0; }
 
-.customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+.customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-6); }
 .infoBlock { display: flex; align-items: flex-start; gap: 10px; min-width: 0; color: var(--text-2); font-size: var(--fs-6); line-height: 1.5; }
 .infoBlock svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent-ink); }
 
 .documentMeta { display: grid; grid-template-columns: repeat(3, minmax(190px, 280px)); align-items: end; gap: 18px; }
 .documentDateInput { width: 100%; }
 
-.lineActions { display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.lineActions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; flex-wrap: wrap; }
 /* ตารางรายการ + สรุปท้ายใบย้ายไป QuotationLineItems.module.css (component กลาง) */
 
 .card > textarea { width: 100%; }

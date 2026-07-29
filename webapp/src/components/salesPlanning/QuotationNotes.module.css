@@ -1,6 +1,6 @@
 /* หัวการ์ดหมายเหตุ — จัดชุดเดียวกับหัวการ์ดเงื่อนไขการชำระเงิน */
-.heading { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-.title { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.heading { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.title { display: flex; align-items: center; gap: var(--space-2); color: var(--text-2); }
 .title h2 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: 700; }
 
 @media (max-width: 640px) {

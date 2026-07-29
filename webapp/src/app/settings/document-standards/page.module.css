@@ -1,5 +1,5 @@
-.standardSelector { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: 8px; margin-bottom: 16px; }
-.standardTab { min-height: 58px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
+.standardSelector { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: var(--space-2); margin-bottom: var(--space-4); }
+.standardTab { min-height: 58px; padding: 9px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .standardTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .standardTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .standardTab:disabled { cursor: not-allowed; opacity: .45; }
@@ -22,16 +22,16 @@
 .navy { --doc-accent: var(--document-accent-navy); }
 /* ค่าที่ตั้ง (ซ้าย) คู่กับตัวอย่างเอกสารจริง (ขวา) — เห็นผลของสิ่งที่กำลังแก้ทันที
    แทนกล่อง CSS จำลองแบบเดิมที่โชว์คนละสัดส่วน/คนละสีกับใบที่พิมพ์ออกมา */
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: 16px; align-items: start; }
-.previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; }
-.previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: var(--space-4); align-items: start; }
+.previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-3); padding: 14px var(--space-4); }
+.previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); }
 .previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
 /* เอกสารย่อตัวเองตามความกว้างที่ได้ (zoom ใน quotationMasterDocument) — ที่นี่แค่ให้พื้นที่ */
 .livePreview { width: 100%; height: 560px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 .previewInDrawer { height: 420px; }
 .fieldHelp { margin-top: 6px; color: var(--text-3); font-size: var(--fs-4); line-height: 1.55; }
-.numberExample { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 10px 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
+.numberExample { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: 10px; padding: 10px 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
 .numberExample span { font-size: var(--fs-4); font-weight: 600; }
 .numberExample strong { color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
 

@@ -3,7 +3,7 @@
    (เหมือนหน้าทะเบียนกลิ่น) */
 
 /* .ui-section ไม่มี margin — การ์ด "รอจัดระเบียบ" ต้องเว้นระยะเอง */
-.banner { margin-bottom: 12px; }
+.banner { margin-bottom: var(--space-3); }
 
 .intro {
   margin: 0 0 10px;
@@ -20,7 +20,7 @@
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .sortCol { width: 150px; }
@@ -29,20 +29,20 @@
 .scentChip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .hint { color: var(--text-3); }
 .warn { color: var(--amber); }
 
 .lead {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   color: var(--text-2);
   font-size: var(--fs-7);
 }
 
 .blocked {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--red);
   font-size: var(--fs-5);
 }

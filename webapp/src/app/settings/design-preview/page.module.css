@@ -76,7 +76,7 @@
 
 /* ── ตัวอักษร ───────────────────────────────────────────────────────────── */
 .typeSample > * {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 .mono {
@@ -88,7 +88,7 @@
 .formGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .field {
@@ -144,7 +144,7 @@
    ที่เอาไปวางในหน้าอื่น ถ้าปล่อยไว้เฉย ๆ จะดูเหมือนเป็นการ์ดหนึ่งของหน้าต้นแบบเอง */
 .pageFrame {
   overflow: hidden;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--bg);
@@ -196,7 +196,7 @@
 .navMenu {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 0 10px;
   min-height: 42px;
   border-bottom: 1px solid var(--border);
