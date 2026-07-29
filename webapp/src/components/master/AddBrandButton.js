@@ -39,7 +39,7 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
         // ชิดขอบขวาของปุ่มเหมือน right:0 เดิม แล้ว clamp ไม่ให้หลุดจอ
         left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
         width,
-        zIndex: 10050,
+        zIndex: "var(--z-portal-menu)",
       };
       // พลิกขึ้นบน: ยึด "ขอบล่างแผง" ไว้เหนือปุ่มด้วย bottom — กันแผงลอยห่างปุ่ม
       // เมื่อความสูงจริงเตี้ยกว่าประมาณการ

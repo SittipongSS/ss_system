@@ -53,7 +53,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
       </button>
 
       {open && (
-        <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 40, width: "min(90vw, 300px)", padding: "10px" }}>
+        <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: "var(--z-inline-menu)", width: "min(90vw, 300px)", padding: "10px" }}>
           <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "260px", overflowY: "auto" }}>
             {ZIP_DOC_TYPES.map((t) => {

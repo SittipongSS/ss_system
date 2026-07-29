@@ -58,7 +58,7 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
       {open && (
         <div
           className="glass-panel"
-          style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, padding: "6px", minWidth: "180px", maxHeight: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}
+          style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: "var(--z-inline-menu)", padding: "6px", minWidth: "180px", maxHeight: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}
         >
           {options.length === 0 ? (
             <div style={{ padding: "8px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ไม่มีตัวเลือก</div>

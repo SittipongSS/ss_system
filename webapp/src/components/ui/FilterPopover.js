@@ -35,7 +35,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
         position: "fixed",
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
         width,
-        zIndex: 10050,
+        zIndex: "var(--z-portal-menu)",
         // จอเตี้ย: จำกัดสูงตามพื้นที่ฝั่งที่เปิด แล้วให้ pane ข้างในเลื่อนเอง
         maxHeight: Math.max(120, (above ? rect.top : roomBelow) - 14),
       };
