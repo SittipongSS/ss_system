@@ -1,0 +1,64 @@
+/* ของเข้า PM/RM ของโครงการ (mig 0176)
+   ⚠️ โมดูล "บริหารงานขาย" ชน ratchet ทั้ง inlineStyle และ rawButtonClass อยู่แล้ว
+   → พาเนลนี้ห้ามมี style={{…}} และห้ามเขียนคลาส btn เอง ใช้ <Button> กลางเท่านั้น */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: var(--fs-section-title);
+  font-weight: 700;
+  margin: 0;
+}
+
+.spacer { flex: 1; }
+
+.summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.muted { color: var(--text-3); }
+
+.numCol { text-align: right; white-space: nowrap; }
+.dateCol { width: 132px; }
+.actionsCol { width: 76px; }
+
+.rowActions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* แถวที่เลยกำหนดแล้วยังไม่มา — ตัวเลขที่ต้องเห็นก่อนใครในตาราง */
+.late td:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-inline-end: 6px;
+  vertical-align: -0.15em;
+  background: var(--red);
+  border-radius: 2px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.formActions { margin-top: 16px; }
+
+.hint {
+  font-size: var(--fs-label);
+  color: var(--text-3);
+  margin-top: 4px;
+}

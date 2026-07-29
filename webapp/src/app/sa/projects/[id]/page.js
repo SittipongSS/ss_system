@@ -48,6 +48,8 @@ import { fmtDateTime } from "@/lib/format";
 import { isWonStage } from "@/lib/salesPlanning";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import RequestListCard from "@/components/requests/RequestListCard";
+import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
+import { DELIVERY_STEP_KEYS, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
@@ -718,6 +720,13 @@ export default function ProjectDetailPage() {
     () => filterTimelineTasks(allTasks, timelineDealFilters),
     [allTasks, timelineDealFilters],
   );
+  // สรุปของเข้าแปะบน milestone "สั่งซื้อสารและบรรจุภัณฑ์ — กำหนดของเข้าทั้งหมด"
+  // (npd-38 / re-order-11) เพื่อให้ขั้นนั้นมีของจริงข้างในแทนที่จะเป็นกล่องเปล่า 45 วัน
+  const deliveryStepBadges = useMemo(() => {
+    const badge = deliveryStepBadge(data?.deliveries || [], toLocalISODate(new Date()));
+    if (!badge) return null;
+    return Object.fromEntries(DELIVERY_STEP_KEYS.map((key) => [key, badge]));
+  }, [data?.deliveries]);
   const phaseColorMap = useMemo(() => {
     const seen = [];
     tasks.forEach((t) => { if (t.phase && !seen.includes(t.phase)) seen.push(t.phase); });
@@ -1140,6 +1149,7 @@ export default function ProjectDetailPage() {
           <TimelineWorkspace
             tasks={tasks}
             requests={p.inquiries || []}
+            stepBadges={deliveryStepBadges}
             canEdit={canEdit}
             canAdd={canAddTimelineTask}
             canReorder={canReorderTimeline}
@@ -1162,6 +1172,19 @@ export default function ProjectDetailPage() {
               statusColor: statusDotColor(getComputedStatus(p)),
             }}
             onChanged={load}
+            onError={(message) => setToast({ kind: "error", msg: message })}
+          />
+        </div>
+
+        {/* ของเข้า PM/RM (mig 0176) — อยู่ใต้ไทม์ไลน์โดยตั้งใจ ไม่แยกแท็บ:
+            มันคือ "ข้างในของ milestone สั่งซื้อสารและบรรจุภัณฑ์" ที่เคยเป็นกล่องเปล่า
+            45 วัน · ป้ายสรุปบนขั้นนั้นกับตารางนี้อ่านจากชุดข้อมูลเดียวกัน */}
+        <div className="timeline-deliveries">
+          <DeliveriesPanel
+            projectId={p.id}
+            deliveries={p.deliveries || []}
+            canEdit={!!p.canEditDeliveries}
+            onChanged={async (msg) => { await load(); if (msg) setToast({ kind: "success", msg }); }}
             onError={(message) => setToast({ kind: "error", msg: message })}
           />
         </div>

@@ -1,0 +1,260 @@
+"use client";
+// ── ของเข้า PM/RM ของโครงการ (mig 0176) ─────────────────────────────────
+//
+// ⭐ ที่มา (คำขอตั้งต้นของผู้ใช้): "ขอเช็คสถานะติดตามการเข้าของ PM และ RM เพื่อ
+// ติดตามกำหนดการผลิต" · ก่อนหน้านี้ไทม์ไลน์มีแค่ milestone เดียว 45 วัน
+// "สั่งซื้อสารและบรรจุภัณฑ์ — กำหนดของเข้าทั้งหมด" ที่ไม่มีอะไรอยู่ข้างใน
+//
+// ⚠️ ปุ่ม "กางจากใบขอราคาผลิต" คือทางหลัก — บรรทัดวัสดุของใบที่อนุมัติแล้วคือ
+// รายการที่ต้องสั่งจริงอยู่แล้ว ให้ PC พิมพ์ซ้ำทีละแถวคือทางที่ข้อมูลจะไม่ตรงกัน
+// ตั้งแต่วันแรก · กดซ้ำไม่ได้แถวซ้ำ (unique ที่ระดับ DB)
+import { useState } from "react";
+import { PackageCheck, Plus, RefreshCw, Trash2, Wand2 } from "lucide-react";
+import { TableScroll } from "@/components/ui/Table";
+import Button from "@/components/ui/Button";
+import Select from "@/components/ui/Select";
+import DateInput from "@/components/ui/DateInput";
+import Modal from "@/components/Modal";
+import EmptyState from "@/components/ui/EmptyState";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { fmtDate } from "@/lib/format";
+import { MATERIAL_KINDS, MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
+import { deliveryRollup } from "@/lib/pm/deliveries";
+import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import styles from "./DeliveriesPanel.module.css";
+
+const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", dueDate: "", note: "" };
+
+export default function DeliveriesPanel({
+  projectId,
+  deliveries = [],
+  canEdit = false,
+  onChanged,
+  onError,
+}) {
+  const [busy, setBusy] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  const today = toLocalISODate(new Date());
+  const sum = deliveryRollup(deliveries, today);
+
+  const call = async (path, init, okMsg) => {
+    setBusy(path);
+    try {
+      const res = await fetch(`/api/pm/projects/${projectId}/deliveries${path}`, {
+        headers: { "Content-Type": "application/json" },
+        ...init,
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
+      await onChanged?.(okMsg || d.message || null);
+      return d;
+    } catch (e) {
+      onError?.(e.message);
+      return null;
+    } finally { setBusy(""); }
+  };
+
+  const generate = async () => {
+    const d = await call("/generate", { method: "POST" });
+    if (!d) return;
+    // กางซ้ำ = ไม่มีอะไรใหม่ ซึ่งไม่ใช่ error — บอกตามจริงว่าข้ามไปกี่แถว
+    onChanged?.(d.created
+      ? `กางรายการของเข้า ${d.created} รายการ${d.skipped ? ` (ข้ามที่มีอยู่แล้ว ${d.skipped})` : ""}`
+      : d.message || "ไม่มีรายการใหม่");
+  };
+
+  const patchRow = (row, patch) => call(`/${row.id}`, {
+    method: "PATCH", body: JSON.stringify(patch),
+  });
+
+  const removeRow = async (row) => {
+    if (!(await confirmAction(`ลบรายการของเข้า "${row.label}"?`))) return;
+    await call(`/${row.id}`, { method: "DELETE" }, "ลบรายการแล้ว");
+  };
+
+  const submitAdd = async () => {
+    const d = await call("", { method: "POST", body: JSON.stringify(form) }, "เพิ่มรายการแล้ว");
+    if (d) { setAddOpen(false); setForm(EMPTY_FORM); }
+  };
+
+  return (
+    <section>
+      <div className={styles.head}>
+        <PackageCheck size={17} aria-hidden="true" />
+        <h2 className={styles.title}>ของเข้า (PM / RM)</h2>
+        <div className={styles.summary}>
+          <StatusBadge
+            size="sm"
+            tone={sum.complete ? "success" : sum.late ? "danger" : "info"}
+            label={`มาแล้ว ${sum.arrived}/${sum.total}`}
+          />
+          {sum.late > 0 && <StatusBadge size="sm" tone="danger" label={`เลยกำหนด ${sum.late}`} />}
+          {sum.lastDue && (
+            <StatusBadge size="sm" tone="neutral" label={`ครบเมื่อ ${fmtDate(sum.lastDue)}`} />
+          )}
+        </div>
+        <div className={styles.spacer} />
+        {canEdit && (
+          <>
+            <Button
+              size="sm" onClick={generate} disabled={!!busy}
+              icon={<Wand2 size={14} aria-hidden="true" />}
+            >
+              กางจากใบขอราคาผลิต
+            </Button>
+            <Button
+              size="sm" tone="accent" onClick={() => setAddOpen(true)} disabled={!!busy}
+              icon={<Plus size={14} aria-hidden="true" />}
+            >
+              เพิ่มรายการ
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm" variant="quiet" onClick={() => onChanged?.()} disabled={!!busy}
+          icon={<RefreshCw size={14} aria-hidden="true" />}
+          aria-label="รีเฟรช"
+        />
+      </div>
+
+      {!deliveries.length ? (
+        <EmptyState icon={PackageCheck}>
+          ยังไม่มีรายการของเข้า
+          {canEdit ? ' — กด "กางจากใบขอราคาผลิต" เพื่อดึงบรรทัดวัสดุของใบที่อนุมัติแล้วมาทั้งชุด' : ""}
+        </EmptyState>
+      ) : (
+        <TableScroll>
+          <table>
+            <thead>
+              <tr>
+                <th>วัสดุ</th>
+                <th>ชนิด</th>
+                <th className={styles.numCol}>จำนวน</th>
+                <th>PR / PO</th>
+                <th className={styles.dateCol}>กำหนดถึง</th>
+                <th className={styles.dateCol}>มาถึงจริง</th>
+                {canEdit && <th className={styles.actionsCol} />}
+              </tr>
+            </thead>
+            <tbody>
+              {deliveries.map((row) => {
+                const late = !row.arrivedAt && row.dueDate && String(row.dueDate) < today;
+                return (
+                  <tr key={row.id} className={late ? styles.late : undefined}>
+                    <td>
+                      {row.label}
+                      {row.note && <div className={styles.hint}>{row.note}</div>}
+                    </td>
+                    <td>{MATERIAL_KIND_LABELS[row.kind] || row.kind}</td>
+                    <td className={`mono ${styles.numCol}`}>
+                      {/* จำนวนว่าง = ยังไม่รู้ยอด **ห้ามแสดงเป็น 0** */}
+                      {row.qty == null
+                        ? <span className={styles.muted}>—</span>
+                        : `${Number(row.qty).toLocaleString("th-TH")} ${row.unit || ""}`}
+                    </td>
+                    <td className="mono">{row.poRef || <span className={styles.muted}>—</span>}</td>
+                    <td>
+                      {canEdit ? (
+                        <DateInput
+                          compact value={row.dueDate || ""} disabled={!!busy}
+                          ariaLabel={`กำหนดถึง ${row.label}`}
+                          onChange={(v) => patchRow(row, { dueDate: v || null })}
+                        />
+                      ) : (row.dueDate ? fmtDate(row.dueDate) : <span className={styles.muted}>—</span>)}
+                    </td>
+                    <td>
+                      {canEdit ? (
+                        <DateInput
+                          compact value={row.arrivedAt || ""} disabled={!!busy}
+                          ariaLabel={`มาถึงจริง ${row.label}`}
+                          onChange={(v) => patchRow(row, { arrivedAt: v || null })}
+                        />
+                      ) : (row.arrivedAt ? fmtDate(row.arrivedAt) : <span className={styles.muted}>ยังไม่มา</span>)}
+                    </td>
+                    {canEdit && (
+                      <td>
+                        <div className={styles.rowActions}>
+                          <Button
+                            iconOnly tone="danger" variant="ghost" onClick={() => removeRow(row)}
+                            disabled={!!busy} aria-label={`ลบ ${row.label}`}
+                            icon={<Trash2 size={14} aria-hidden="true" />}
+                          />
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableScroll>
+      )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} size="md" title="เพิ่มรายการของเข้า">
+        <div className={styles.formGrid}>
+          <div className="form-group">
+            <label htmlFor="mdl-kind">ชนิดวัสดุ</label>
+            <Select
+              id="mdl-kind" value={form.kind}
+              onChange={(e) => setForm({ ...form, kind: e.target.value })}
+              options={MATERIAL_KINDS.map((k) => ({ value: k, label: MATERIAL_KIND_LABELS[k] }))}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="mdl-label">ชื่อวัสดุ</label>
+            <input
+              id="mdl-label" className="input-premium" maxLength={200} value={form.label}
+              placeholder="เช่น ขวดแก้ว 200ml ฝาไม้"
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="mdl-qty">จำนวน (ว่าง = ยังไม่รู้ยอด)</label>
+            <input
+              id="mdl-qty" className="input-premium mono" inputMode="decimal" value={form.qty}
+              onChange={(e) => setForm({ ...form, qty: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="mdl-unit">หน่วย</label>
+            <input
+              id="mdl-unit" className="input-premium" maxLength={30} value={form.unit}
+              placeholder="ชิ้น / กก."
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="mdl-po">เลข PR / PO</label>
+            <input
+              id="mdl-po" className="input-premium mono" maxLength={100} value={form.poRef}
+              onChange={(e) => setForm({ ...form, poRef: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="mdl-due">กำหนดถึง</label>
+            <DateInput
+              id="mdl-due" value={form.dueDate}
+              onChange={(v) => setForm({ ...form, dueDate: v || "" })}
+            />
+          </div>
+        </div>
+        <div className="form-group">
+          <label htmlFor="mdl-note">หมายเหตุ</label>
+          <textarea
+            id="mdl-note" className="textarea-premium" rows={2} maxLength={1000} value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+        </div>
+        <div className={`action-bar ${styles.formActions}`}>
+          <Button variant="quiet" onClick={() => setAddOpen(false)} disabled={!!busy}>ยกเลิก</Button>
+          <Button tone="accent" onClick={submitAdd} disabled={!!busy || !form.label.trim()}>
+            เพิ่มรายการ
+          </Button>
+        </div>
+      </Modal>
+    </section>
+  );
+}
