@@ -66,7 +66,7 @@ const nativeFeedbackDebt = {
    กติกาเดียวกับ ratchet ชั้นสไตล์เก่า: **ขึ้นไม่ได้ ลงได้อย่างเดียว** เก็บค่านอกกริด
    เพิ่ม = ตก · ดูดเข้ากริดแล้วลืมลดเลข = ตกเหมือนกัน
    ⚠️ ห้ามขยับเลขนี้ขึ้นเพื่อให้ audit ผ่าน — ทางเดียวที่ควรขยับคือลง */
-const RAW_SPACING_CAP = 796;
+const RAW_SPACING_CAP = 793;
 
 const rawColorViolations = [];
 const typeScaleViolations = [];

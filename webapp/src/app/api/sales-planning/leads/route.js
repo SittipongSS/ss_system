@@ -1,45 +1,17 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { can, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf,
-  LEAD_CHANNEL_LABELS,
+  LEAD_CHANNEL_LABELS, applyLeadScope, canViewLeads,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { sendChat, chatCard } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
-// ใครเห็นลีดแค่ไหน (เฟส C):
-//   supervisor/admin/viewer → ทุกใบ · senior_ae/ac → ของทีม + คิวกลาง (new)
-//   ae → ที่ถูกมอบหมายให้ตัวเอง · marketing → ทุกใบ (ทีม intake เห็นคิวรวมเพื่อไม่กรอกซ้ำ)
-export function applyLeadScope(query, user) {
-  const role = user?.role;
-  // supervisor sees all leads (to screen them)
-  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return query;
-  if (role === 'senior_ae' || role === 'ac') {
-    // Senior/AC only see leads that have been screened to their team.
-    return query.eq('team', user?.team ?? '__no_team__');
-  }
-  if (role === 'ae') {
-    return query.or(`assigneeId.eq.${user?.id ?? ''},createdBy.eq.${user?.id ?? ''}`);
-  }
-  return query.eq('id', '__no_lead_scope__');
-}
-
-// scope รายใบ — กติกาเดียวกับ applyLeadScope (ใช้กับ GET /leads/[id] ที่โหลดมาแล้ว)
-export function inLeadScope(user, lead) {
-  const role = user?.role;
-  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return true;
-  if (role === 'senior_ae' || role === 'ac') return !!lead.team && lead.team === user?.team;
-  if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
-  return false;
-}
-
-export function canViewLeads(user) {
-  return !!user && (can(user.role, 'salesplan:lead') || can(user.role, 'salesplan:view'));
-}
+// applyLeadScope / inLeadScope / canViewLeads ย้ายไป `lib/sales/leads.js` แล้ว
+// (ทะเบียนเธรดกลางเป็น lib จะ import จาก app route ไม่ได้)
 
 export function canCreateLead(role) {
   return role === 'marketing' || role === 'admin';

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { BriefcaseBusiness, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -8,6 +8,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
+import UpdateThread from "@/components/updates/UpdateThread";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
@@ -39,6 +40,18 @@ export default function LeadDetailPage() {
 
   useEffect(() => { load(); }, [load]);
   const change = (key) => (e) => setForm((v) => ({ ...v, [key]: e?.target ? e.target.value : e }));
+
+  // เหตุการณ์ระบบของลีด → รายการอ่านอย่างเดียวในเธรดกลาง ("เก็บแยก โชว์รวม")
+  // ท่าเดียวกับประวัติสถานะบนหน้าดีล · `reason`/`assigneeName` เป็นเนื้อของเหตุการณ์
+  // ส่วนคนทำไปอยู่ช่อง `by` ของเธรด ไม่ใช่ยัดรวมเป็นข้อความเดียวเหมือนของเดิม
+  const leadEventItems = useMemo(() => (lead?.events || []).map((event) => ({
+    id: `ev-${event.id}`,
+    at: event.createdAt,
+    label: EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด",
+    color: "var(--text-3)",
+    by: event.createdByName || null,
+    body: [event.reason, event.assigneeName].filter(Boolean).join(" · "),
+  })), [lead?.events]);
 
   async function save() {
     setBusy(true); setError("");
@@ -111,8 +124,20 @@ export default function LeadDetailPage() {
           {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={BriefcaseBusiness} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
         </ContextGrid></DetailCard>}
 
-        <DetailCard icon={CalendarClock} eyebrow="Lead history" title="ประวัติการดำเนินการ" meta={`${lead.events?.length || 0} รายการ`}>
-          {lead.events?.length ? <div className={styles.timeline}>{lead.events.map((event) => <div className={styles.event} key={event.id}><div className={styles.rail}><span className={styles.dot} /></div><div className={styles.eventBody}><strong>{EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด"}</strong><ReadableText className={styles.eventMeta} text={[event.createdByName, event.reason, event.assigneeName, fmtDateTime(event.createdAt)].filter(Boolean).join(" · ")} lines={3} /></div></div>)}</div> : <div className={styles.empty}>ยังไม่มีประวัติเพิ่มเติม</div>}
+        {/* เธรดกลาง (mig 0163) — เดิมการ์ดนี้เป็นไทม์ไลน์ **อ่านอย่างเดียว** ที่วาดเอง
+            ทั้งที่ช่วงลีดคือช่วงที่ข้อมูลอยู่ในหัวคนมากที่สุด · เหตุการณ์ระบบยังมาจาก
+            `lead_events` ตัวเดิม (ตารางไม่ย้าย — มีคิว/KPI query ตรง) แค่ส่งเข้าไป
+            เรียงรวมกับข้อความคนผ่าน extraItems */}
+        <DetailCard icon={CalendarClock} eyebrow="Lead history" title="ประวัติการดำเนินการ" meta={`${lead.events?.length || 0} เหตุการณ์ระบบ`}>
+          <UpdateThread
+            entityType="lead"
+            entityId={lead.id}
+            order="desc"
+            extraItems={leadEventItems}
+            placeholder="พิมพ์อัปเดต เช่น โทรแล้วไม่รับ นัดโทรใหม่ศุกร์นี้..."
+            emptyText="ยังไม่มีประวัติเพิ่มเติม"
+            onPosted={load}
+          />
         </DetailCard>
         </DetailPageLayout>
     </div>}
