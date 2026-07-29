@@ -8,6 +8,7 @@ import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -101,6 +102,14 @@ export async function POST(request) {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
 
+  // สูตรมาจากทะเบียน — ชื่อ/รหัส/วันที่เป็น snapshot ที่ derive จาก formulaId
+  let formulaSnapshot;
+  try {
+    formulaSnapshot = await productFormulaSnapshot(supabase, body.formulaId);
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 400 });
+  }
+
   // Taxability is auto-derived from the category's isExcise flag (mig 0131 —
   // not re-parsed from fgCode, and no hardcoded category code), but LG may
   // override it.
@@ -137,10 +146,9 @@ export async function POST(request) {
     productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,
     brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
-    // ข้อมูลสูตร (0112) — optional ทั้งชุด: FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) ก็สร้างได้
-    formulaName: body.formulaName?.trim() || null,
-    formulaCode: body.formulaCode?.trim() || null,
-    formulaDate: body.formulaDate || null,
+    // ข้อมูลสูตร (0112 → ทะเบียน 0171) — optional: FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
+    // ก็สร้างได้ · ทั้งชุดมาจาก formulaId ไม่รับข้อความที่พิมพ์เอง
+    ...formulaSnapshot,
     volume,
     volumeUnit: body.volumeUnit || 'ml',
     // หน่วยขายที่แสดงบนใบเสนอราคา/ใบสั่งขาย (0146) — ต่างจาก volumeUnit (ปริมาตรบรรจุ)

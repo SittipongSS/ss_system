@@ -353,11 +353,40 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
                 <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
               </div>
-              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
+              {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
+                  โชว์ — ได้ · ชื่อ/รหัส/วันที่เป็น snapshot จากทะเบียน จึงยังอ่านจาก
+                  แถวสินค้าตรง ๆ เหมือนเดิม ต่างแค่มีลิงก์กลับไปตัวสูตรเมื่อผูกแล้ว */}
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
+                {product.formulaId ? (
+                  <Link
+                    href={`/database/formulas?q=${encodeURIComponent(product.formulaCode || product.formulaName || "")}`}
+                    className="font-semibold text-[var(--accent)] text-sm hover:underline"
+                  >
+                    {product.formulaName || product.formulaCode}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[var(--text)] text-sm">
+                    {product.formulaName || "—"}
+                    {product.formulaName && (
+                      <span className="ml-2 text-xs font-normal text-[var(--amber)]">ยังไม่ผูกทะเบียนสูตร</span>
+                    )}
+                  </span>
+                )}
               </div>
+              {/* กลิ่น — โผล่เฉพาะสินค้าที่ RD จัดระเบียบแล้วว่าค่าเดิมในช่อง "ชื่อสูตร"
+                  จริง ๆ เป็นชื่อกลิ่น (ตอนนั้นระบบยังไม่มีที่เก็บกลิ่น) */}
+              {product.scentId && (
+                <div>
+                  <span className="text-[var(--text-3)] block mb-1">กลิ่น (Scent)</span>
+                  <Link
+                    href={`/database/scents?q=${encodeURIComponent(product.scentName || "")}`}
+                    className="font-semibold text-[var(--accent)] text-sm hover:underline"
+                  >
+                    {product.scentName || product.scentId}
+                  </Link>
+                </div>
+              )}
               <div>
                 <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>

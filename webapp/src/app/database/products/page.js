@@ -26,6 +26,9 @@ import { productNameBoth, fmtMoney } from "@/lib/format";
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
 const MANAGE_KEY = "/api/master/products?manage=1";
+// ร่างสูตรที่ RD ยังไม่รับก็เลือกได้ (สินค้าเข้าระบบก่อนสูตรถูกรับเป็นเรื่องปกติ)
+// — ตัดเฉพาะที่เก็บเข้ากรุออกที่ฝั่งฟอร์ม
+const FORMULA_KEY = "/api/master/formulas";
 
 // Master product catalog. Every FG is created here owned by a customer
 // (chosen in the form). Excise approval still happens later in the excise
@@ -46,6 +49,8 @@ export default function ProductRegistry() {
   const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
+  // ทะเบียนสูตร — ช่อง "สูตร" ในฟอร์มเลือกจากที่นี่ ไม่ให้พิมพ์เอง (mig 0171)
+  const [formulas, setFormulas] = useState(() => apiCache.get(FORMULA_KEY) ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
@@ -123,6 +128,10 @@ export default function ProductRegistry() {
     fetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set("/api/master/customers", d || []); setCustomers(d || []); })
+      .catch(() => {});
+    fetch(FORMULA_KEY)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { apiCache.set(FORMULA_KEY, d || []); setFormulas(d || []); })
       .catch(() => {});
   }, []);
 
@@ -517,6 +526,7 @@ export default function ProductRegistry() {
             onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
             productTypes={productTypes}
             customers={customerList}
+            formulas={formulas}
             brandOptions={brandOptions}
             creatorName={userName}
             onCustomerChange={(v) => setFormData((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }))}

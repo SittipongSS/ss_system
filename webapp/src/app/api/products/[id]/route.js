@@ -13,6 +13,7 @@ import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -36,8 +37,18 @@ export async function GET(request, { params }) {
       .from('customers').select('customerType').eq('id', data.customerId).maybeSingle();
     customerType = owner?.customerType ?? null;
   }
+  // ชื่อกลิ่นจากทะเบียน (mig 0171) — สินค้าเก็บแค่ scentId ไม่มี snapshot ชื่อ
+  // อ่านสดเหมือน customerType · ไม่ทิ้ง error เพราะ "อ่านไม่ได้" กับ "ไม่มีกลิ่น"
+  // คนละเรื่อง (ดู [[supabase-masked-query-errors]])
+  let scentName = null;
+  if (data.scentId) {
+    const { data: scent, error: scentError } = await supabase
+      .from('scents').select('name').eq('id', data.scentId).maybeSingle();
+    if (scentError) return Response.json({ error: scentError.message }, { status: 500 });
+    scentName = scent?.name ?? null;
+  }
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json({ ...redactProductMargin(user, data), customerType });
+  return Response.json({ ...redactProductMargin(user, data), customerType, scentName });
 }
 
 // PATCH /api/products/[id]
@@ -142,14 +153,22 @@ export async function PATCH(request, { params }) {
     'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
     'volume', 'volumeUnit', 'saleUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
-    'formulaName', 'formulaCode', // ข้อมูลสูตร (0112)
     'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
-  // วันที่สูตร (0112) — คอลัมน์เป็น date: ฟอร์มส่ง '' ตอนล้างค่า ต้องเป็น null
-  // ไม่งั้น Postgres ตีกลับ invalid input syntax for type date
-  if (body.formulaDate !== undefined) updated.formulaDate = body.formulaDate || null;
+  // ข้อมูลสูตร (0112 → ทะเบียน 0171) — ฟอร์มส่งมาแค่ formulaId ชื่อ/รหัส/วันที่
+  // derive ใหม่ทุกครั้ง จึงตาม RD ที่แก้ตัวสูตรในทะเบียนได้เอง ไม่ค้างเป็นค่าเก่า
+  //
+  // ⚠️ เงื่อนไข `!== undefined`: ผู้เรียกที่ไม่ได้ส่ง formulaId มาเลย (เช่นปุ่ม
+  // อนุมัติ/พักใช้งาน ที่ PATCH แค่ field เดียว) ต้องไม่ถูกล้างสูตรทิ้ง
+  if (body.formulaId !== undefined) {
+    try {
+      Object.assign(updated, await productFormulaSnapshot(supabase, body.formulaId));
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 400 });
+    }
+  }
   // ชิ้นต่อลัง (0075) — coerce เป็นตัวเลข/null (ฟอร์มส่งมาเป็น string).
   if (body.piecesPerCase !== undefined) {
     updated.piecesPerCase =
