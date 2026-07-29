@@ -29,6 +29,7 @@ import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import ExciseStatusBadge from "@/components/excise/StatusBadge";
+import UiStatusBadge from "@/components/ui/StatusBadge";
 import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
@@ -309,9 +310,9 @@ export default function DealOverviewPage() {
       );
     }
     if (awaitingFilingIds.has(salesOrderId)) {
-      return <span className="ui-badge" style={{ color: "var(--amber)" }}>รอออกใบยื่น</span>;
+      return <UiStatusBadge label="รอออกใบยื่น" tone="warning" showIcon={false} />;
     }
-    return <span style={{ color: "var(--text-3)" }}>—</span>;
+    return <span className="muted">—</span>;
   };
   // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
   const [categories, setCategories] = useState([]);
