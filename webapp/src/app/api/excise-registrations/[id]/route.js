@@ -180,11 +180,22 @@ export async function PATCH(request, { params }) {
     updated.rejectionReason = null;
   }
 
-  // Recompute the tax snapshot when LG overrides taxability. Re-derive from the
-  // master product's retail price so the registration stays consistent.
-  if (allowed.has('taxableOverride')) {
-    const { data: product } = await supabase
-      .from('products').select('retailPriceIncVat, isExciseTaxable, exciseTax, localTax').eq('id', reg.productId).maybeSingle();
+  // Recompute the tax snapshot **เฉพาะเมื่อ LG ส่งคำสั่ง taxableOverride มาจริง**
+  //
+  // 🐞 เดิมเงื่อนไขเป็น `allowed.has('taxableOverride')` = "ผู้ใช้มีสิทธิ์แก้ช่องนี้"
+  // ไม่ใช่ "ผู้ใช้สั่งแก้ช่องนี้" — และ taxableOverride อยู่ใน LEGAL_REGISTRATION_FIELDS
+  // แปลว่า**ทุกครั้งที่ฝ่ายกฎหมายแตะทะเบียน** (อนุมัติ / ตีกลับ / ใส่เลขอนุมัติ) อัตราภาษี
+  // จะถูกคิดใหม่จากราคา ณ วินาทีนั้นแล้วเขียนทับค่าเดิมเงียบ ๆ โดยไม่มีใครสั่ง
+  //
+  // และเดิมคิดสูตรเอง (`retailPriceIncVat / 1.07 * 0.08`) ซึ่งเป็น **สำเนาที่สอง** ของสูตร
+  // ที่ products PATCH ใช้ (`retailPriceExVat * 0.08`) — คนละฐานราคา เพี้ยนกันได้ทันทีที่
+  // สองคอลัมน์ราคาไม่ตรงกันเป๊ะ · ตอนนี้อ่าน `product.exciseTax/localTax` ตรง ๆ เหมือนที่
+  // POST ทำอยู่แล้ว = อัตราภาษีมีแหล่งเดียวคือทะเบียนสินค้า ซึ่งคิดจากราคาขายปลีกของ FG
+  // (มติผู้ใช้ 2026-07-29 — ราคาใน SO เป็นราคาผลิต ใช้คิดภาษีไม่ได้)
+  if (body.taxableOverride !== undefined) {
+    const { data: product, error: prodErr } = await supabase
+      .from('products').select('isExciseTaxable, exciseTax, localTax').eq('id', reg.productId).maybeSingle();
+    if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
     const ovr = updated.taxableOverride;
     const autoTaxable = product ? product.isExciseTaxable !== false : reg.isExciseTaxable !== false;
     const isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
@@ -193,9 +204,8 @@ export async function PATCH(request, { params }) {
       updated.exciseTax = 0;
       updated.localTax = 0;
     } else if (product) {
-      const exVat = (product.retailPriceIncVat || 0) / 1.07;
-      updated.exciseTax = exVat * 0.08;
-      updated.localTax = updated.exciseTax * 0.1;
+      updated.exciseTax = product.exciseTax || 0;
+      updated.localTax = product.localTax || 0;
     }
   }
 

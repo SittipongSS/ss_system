@@ -34,12 +34,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!links?.length) return badRequest('โครงการนี้ยังไม่มี FG');
 
   const productIds = links.map((l) => l.productId).filter(Boolean);
-  const { data: existing } = productIds.length
+  // ทิ้ง error ที่นี่ = ถือว่า "ยังไม่มีทะเบียน" แล้วสร้างซ้ำ (ด่านจริงคือ unique index
+  // mig 0178 ซึ่ง handler ดัก 23505 ไว้ด้านล่างอยู่แล้ว — แต่ข้อความจะงงกว่า)
+  const { data: existing, error: existingError } = productIds.length
     ? await supabase
         .from('excise_registrations')
         .select('id, productId, customerId')
         .in('productId', productIds)
-    : { data: [] };
+    : { data: [], error: null };
+  if (existingError) return fail(existingError.message, 500);
 
   const existingKey = new Set((existing || []).map((r) => `${r.productId}:${r.customerId || project.customerId || ''}`));
   const eligible = (link) => {
