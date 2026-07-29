@@ -13,6 +13,10 @@ const detailCode = codeOnly(detailRoute);
 const listRoute = read('../../app/api/excise-registrations/route.js');
 const fromProjectRoute = read('../../app/api/excise-registrations/from-project/route.js');
 const migration = read('../../../supabase/migrations/0178_excise_registration_unique.sql');
+const indexRename = read('../../../supabase/migrations/0179_excise_registration_index_name.sql');
+// คอมเมนต์ SQL (`--`) ต้องถูกตัดก่อน assertion แบบ "ต้องไม่มี" — ไม่งั้นบรรทัดที่อธิบายว่า
+// "ไม่มี UPDATE/DELETE ข้อมูล" จะทำให้เทสต์ที่ห้ามคำเหล่านั้นแดงเอง
+const sqlCodeOnly = (src) => src.replace(/--.*$/gm, '');
 
 // 🐞 บั๊กจริง 2026-07-29: เงื่อนไข recompute เป็น `allowed.has('taxableOverride')` =
 // "ผู้ใช้มีสิทธิ์แก้ช่องนี้" ไม่ใช่ "ผู้ใช้สั่งแก้" — taxableOverride อยู่ใน
@@ -57,4 +61,22 @@ test('กันทะเบียนซ้ำครบสองชั้น: ด
   // ทั้งสองทางที่สร้างทะเบียนต้องแปลง 23505 เป็นข้อความที่ผู้ใช้อ่านรู้เรื่อง
   assert.match(listRoute, /error\?\.code === '23505'/);
   assert.match(fromProjectRoute, /error\.code === '23505'/);
+});
+
+// 0178 ประกาศชื่อ excise_reg_product_customer_uidx แต่ของจริงบน prod ถูกสร้างด้วยชื่อ
+// excise_reg_prod_cust_uniq (ยืนยันจาก error ตอน insert ซ้ำ) — ชื่อไม่ตรงแปลว่า
+// `CREATE UNIQUE INDEX IF NOT EXISTS` มองไม่เห็นตัวที่มีอยู่ รันซ้ำ/bootstrap ใหม่
+// จะได้ unique index ตัวที่สองบนคู่คอลัมน์เดียวกัน
+test('0179 รวมชื่อ index ให้เหลือชื่อเดียว และครอบคลุมทุกสถานะของฐาน', () => {
+  // มีแต่ชื่อเก่า → เปลี่ยนชื่อ (ไม่ drop แล้วสร้างใหม่ ซึ่งจะเปิดช่วงที่ไม่มี unique คุม)
+  assert.match(indexRename, /ALTER INDEX public\.excise_reg_prod_cust_uniq\s+RENAME TO excise_reg_product_customer_uidx/);
+  // มีทั้งสองชื่อ → ทิ้งตัวเก่า
+  assert.match(indexRename, /DROP INDEX public\.excise_reg_prod_cust_uniq/);
+  // ไม่มีสักตัว → ยังต้องได้ตัวกลาง
+  assert.match(indexRename, /CREATE UNIQUE INDEX IF NOT EXISTS excise_reg_product_customer_uidx/);
+  // ตรวจการมีอยู่จาก catalog จริง ไม่ใช่เดาจาก IF EXISTS ของ ALTER (ซึ่งไม่มีในไวยากรณ์)
+  assert.match(indexRename, /FROM pg_class c/);
+  assert.match(indexRename, /nspname = 'public'/);
+  // ห้ามแตะข้อมูล — ไฟล์นี้จัดการชื่อ index อย่างเดียว
+  assert.doesNotMatch(sqlCodeOnly(indexRename), /\b(UPDATE|DELETE|TRUNCATE)\b/);
 });
