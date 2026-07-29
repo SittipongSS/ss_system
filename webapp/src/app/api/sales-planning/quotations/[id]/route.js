@@ -1,4 +1,5 @@
 import { recordAudit } from '@/lib/audit';
+import { purgeUpdates } from '@/lib/master/updates';
 import { isSuperuser } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
@@ -389,6 +390,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return fail(error.message, 500);
   }
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง (แพตเทิร์นเดียวกับ purgeAttachments)
+  await purgeUpdates(supabase, 'quotation', id);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`
     : (isSuperuser(user.role) && before.status !== 'draft'

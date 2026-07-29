@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileText, FolderKanban, MessagesSquare, Pencil, ShieldAlert,
   PackageCheck, Trash2, Undo2, XCircle,
 } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -687,6 +688,19 @@ export default function SalesOrderDetailPage() {
               ]}
               grandTotal={fmtMoney(order.totalAmount)}
               highlightRows={[{ id: "actual", label: "Actual ก่อน VAT", value: fmtMoney(order.actualAmount), tone: "success" }]}
+            />
+          </DetailCard>
+
+          {/* เธรดกลาง (mig 0163) — SO บังคับกรอกเหตุผล 5 จุด (ดึงกลับ/ตีกลับ/ยกเลิกอนุมัติ/
+              ออก Rev./ยกเลิก) แต่ `rejectionReason`/`cancelReason` ถูกล้างทิ้งตอนกู้คืน
+              → เหตุผลรอบก่อนหายถาวร · เธรดเก็บครบทุกรอบและอยู่บนหน้าใบที่คนทำงานเปิดจริง */}
+          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+            <UpdateThread
+              entityType="sales_order"
+              entityId={order.id}
+              order="desc"
+              placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเลื่อนกำหนดส่ง..."
+              emptyText="ยังไม่มีความเคลื่อนไหว"
             />
           </DetailCard>
         </DetailPageLayout>

@@ -3,6 +3,8 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope, isWonStage } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { appendUpdate } from '@/lib/master/updates';
+import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
 import { sendChat, chatCard } from '@/lib/chat';
@@ -107,6 +109,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
   const accepted = { ...(result?.quotation || {}), lines: quote.lines || [] };
   const updatedDeal = result?.deal;
+
+  // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
+  const threadEvent = quotationActionUpdate('accept', quote);
+  if (threadEvent) {
+    await appendUpdate(supabase, { entityType: 'quotation', entityId: quote.id, ...threadEvent, user });
+  }
 
   await recordAudit({
     user,
