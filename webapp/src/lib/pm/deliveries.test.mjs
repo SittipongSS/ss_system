@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import {
   canEditDeliveries,
   canViewDeliveries,
+  deliveriesForDeal,
   deliveriesForSalesOrder,
   deliveriesFromComponents,
   deliveryRollup,
+  deliveryStepBadge,
   normalizeDeliveryInput,
   productionReadiness,
 } from './deliveries.js';
@@ -177,4 +179,37 @@ test('พร้อมผลิต: ไม่มีรายการเลย = 
 test('salesOrderId ผ่าน normalize ได้ และว่าง = ยังไม่ผูก', () => {
   assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x' }).value.salesOrderId, null);
   assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x', salesOrderId: 'SO-1' }).value.salesOrderId, 'SO-1');
+});
+
+// ── แยกตามรอบ แต่โครงการยังเห็นรวม (มติผู้ใช้ 2026-07-29) ────────────────
+// ⭐ "โครงการคือศูนย์รวมข้อมูลดีล" — สินค้าตัวหนึ่งมีดีลได้หลายรอบ
+const rnd = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'x', dealId: 'D-1', dueDate: null, arrivedAt: null, ...over });
+
+test('แยกของเข้าตามดีล (รอบ) ได้', () => {
+  const rows = [rnd({ id: 'a' }), rnd({ id: 'b', dealId: 'D-2' }), rnd({ id: 'c', dealId: null })];
+  assert.deepEqual(deliveriesForDeal(rows, 'D-1').map((r) => r.id), ['a']);
+  assert.deepEqual(deliveriesForDeal(rows, 'D-2').map((r) => r.id), ['b']);
+  assert.deepEqual(deliveriesForDeal(rows, null), []);
+});
+
+test('⭐ RE-ORDER รอบใหม่ครบแล้วต้องไม่ถูกรอบเก่าลากให้ดูเหมือนยังไม่ครบ', () => {
+  // รอบเก่า (D-1) มีของค้าง 1 · รอบใหม่ (D-2) ครบแล้ว
+  const rows = [
+    rnd({ id: 'old-1', dealId: 'D-1', arrivedAt: '2026-01-10' }),
+    rnd({ id: 'old-2', dealId: 'D-1' }),
+    rnd({ id: 'new-1', dealId: 'D-2', arrivedAt: '2026-08-01' }),
+  ];
+  const newRound = deliveryStepBadge(deliveriesForDeal(rows, 'D-2'), '2026-08-25');
+  assert.equal(newRound.label, 'ของเข้า 1/1');
+  assert.equal(newRound.tone, 'success');
+  // ถ้าเผลอรวมทั้งโครงการจะได้ 2/3 = ยังไม่ครบ ซึ่งอ่านผิดสำหรับรอบใหม่
+  const wholeProject = deliveryStepBadge(rows, '2026-08-25');
+  assert.equal(wholeProject.label, 'ของเข้า 2/3');
+  assert.notEqual(wholeProject.tone, 'success');
+});
+
+test('ป้ายบอกขอบเขตให้คนอ่านรู้ว่าเป็นของรอบไหน', () => {
+  const rows = [rnd({ arrivedAt: '2026-08-01' })];
+  assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'deal' }).title, /เฉพาะรอบ/);
+  assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'project' }).title, /รวมทุกรอบ/);
 });

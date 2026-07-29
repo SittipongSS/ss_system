@@ -1,0 +1,32 @@
+/* หน้า PO สหมิตร — คลาสของส่วนที่เพิ่มใหม่
+   ⚠️ โมดูล "สหมิตร" ชน ratchet ทั้ง inlineStyle และ rawButtonClass แล้ว
+   ของใหม่ในไฟล์นี้จึงต้องมาที่นี่ + ใช้ <Button> กลาง ห้ามเขียนคลาส btn เอง
+   (ส่วนที่เหลือของหน้ายังเป็น inline style เดิม ทยอยย้ายตาม ui-legacy-budget) */
+
+/* กล่อง "ยังไม่มีโครงการ" ในโมดัลยืนยันดีล — เป็นทางออก ไม่ใช่แค่คำเตือน */
+.needProject {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-inline-start: 3px solid var(--amber);
+  font-size: var(--fs-7);
+}
+
+.needProjectWhy {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.needProjectPick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.needProjectNote {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}

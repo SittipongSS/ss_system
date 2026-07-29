@@ -32,10 +32,21 @@ export default function DeliveriesPanel({
   // ใบสั่งขายของโครงการ ให้ผูกรายแถว (mig 0177) — ของเข้าติดตามเพื่อตอบว่า
   // "ใบสั่งขายใบไหนเริ่มผลิตได้" ไม่ใช่แค่ว่าของมาถึงหรือยัง
   salesOrders = [],
+  // ดีลของโครงการ = "รอบ" การสั่ง (SCENT → NPD → RE-ORDER × N)
+  // ⭐ พาเนลนี้อยู่ระดับโครงการจึงโชว์ **ทุกรอบ** ตามคอนเซป "โครงการคือศูนย์รวม
+  // ข้อมูลดีล" — แต่ต้องบอกให้ชัดว่าแถวไหนของรอบไหน ไม่งั้นพอ RE-ORDER สะสม
+  // จะอ่านไม่ออกว่าของกองนี้เป็นของรอบเก่าที่จบไปแล้วหรือรอบที่กำลังทำ
+  // (ป้ายบน milestone ในไทม์ไลน์นับเฉพาะรอบนั้น — คนละหน้าที่กัน)
+  deals = [],
   canEdit = false,
   onChanged,
   onError,
 }) {
+  const dealLabel = (id) => {
+    const d = deals.find((x) => x.id === id);
+    if (!d) return null;
+    return d.dealType ? `${d.dealType}` : (d.title || null);
+  };
   const soLabel = (id) => salesOrders.find((s) => s.id === id)?.orderNumber || null;
   const soOptions = [
     { value: "", label: "— ยังไม่ผูก —" },
@@ -155,6 +166,10 @@ export default function DeliveriesPanel({
                   <tr key={row.id} className={late ? styles.late : undefined}>
                     <td>
                       {row.label}
+                      {/* บอกรอบของแถว — พาเนลนี้รวมทุกรอบของโครงการไว้ด้วยกัน */}
+                      {deals.length > 1 && dealLabel(row.dealId) && (
+                        <span className={styles.round}>{dealLabel(row.dealId)}</span>
+                      )}
                       {row.note && <div className={styles.hint}>{row.note}</div>}
                     </td>
                     <td>{MATERIAL_KIND_LABELS[row.kind] || row.kind}</td>

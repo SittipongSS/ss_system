@@ -64,3 +64,14 @@
 }
 
 .soCol { width: 148px; }
+
+/* ป้ายบอก "รอบ" ของแถว — โครงการเดียวมีดีลได้หลายรอบ (SCENT → NPD → RE-ORDER × N) */
+.round {
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: var(--fs-1);
+  color: var(--text-3);
+  white-space: nowrap;
+}

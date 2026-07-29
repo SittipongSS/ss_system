@@ -49,7 +49,7 @@ import { isWonStage } from "@/lib/salesPlanning";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import RequestListCard from "@/components/requests/RequestListCard";
 import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
-import { DELIVERY_STEP_KEYS, deliveryStepBadge } from "@/lib/pm/deliveries";
+import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
@@ -722,10 +722,21 @@ export default function ProjectDetailPage() {
   );
   // สรุปของเข้าแปะบน milestone "สั่งซื้อสารและบรรจุภัณฑ์ — กำหนดของเข้าทั้งหมด"
   // (npd-38 / re-order-11) เพื่อให้ขั้นนั้นมีของจริงข้างในแทนที่จะเป็นกล่องเปล่า 45 วัน
-  const deliveryStepBadges = useMemo(() => {
-    const badge = deliveryStepBadge(data?.deliveries || [], toLocalISODate(new Date()));
-    if (!badge) return null;
-    return Object.fromEntries(DELIVERY_STEP_KEYS.map((key) => [key, badge]));
+  //
+  // ⚠️ **นับเฉพาะของเข้าของดีลที่เป็นเจ้าของ task นั้น** ไม่ใช่ทั้งโครงการ —
+  // โครงการคือศูนย์รวมข้อมูลดีล สินค้าตัวหนึ่งมี RE-ORDER ได้หลายรอบ ถ้ารวมทุกรอบ
+  // ของรอบเก่าจะลากให้รอบใหม่ดูเหมือนยังไม่ครบตลอดไป (task มี dealId อยู่แล้ว)
+  // · ขั้นที่ไม่มี dealId (ข้อมูลเก่า 18 แถวบน prod) ตกไปใช้ยอดรวมทั้งโครงการ
+  //   เพราะไม่มีทางรู้ว่าเป็นของรอบไหน — ดีกว่าไม่โชว์อะไรเลย
+  const deliveryStepBadgeFor = useMemo(() => {
+    const rows = data?.deliveries || [];
+    if (!rows.length) return null;
+    const today = toLocalISODate(new Date());
+    return (task) => {
+      if (!DELIVERY_STEP_KEYS.includes(task?.workflowTemplateStepKey)) return null;
+      const scoped = task.dealId ? deliveriesForDeal(rows, task.dealId) : rows;
+      return deliveryStepBadge(scoped, today, { scope: task.dealId ? 'deal' : 'project' });
+    };
   }, [data?.deliveries]);
   const phaseColorMap = useMemo(() => {
     const seen = [];
@@ -1149,7 +1160,7 @@ export default function ProjectDetailPage() {
           <TimelineWorkspace
             tasks={tasks}
             requests={p.inquiries || []}
-            stepBadges={deliveryStepBadges}
+            stepBadgeFor={deliveryStepBadgeFor}
             canEdit={canEdit}
             canAdd={canAddTimelineTask}
             canReorder={canReorderTimeline}
@@ -1184,6 +1195,7 @@ export default function ProjectDetailPage() {
             projectId={p.id}
             deliveries={p.deliveries || []}
             salesOrders={p.deliverySalesOrders || []}
+            deals={p.deals || []}
             canEdit={!!p.canEditDeliveries}
             onChanged={async (msg) => { await load(); if (msg) setToast({ kind: "success", msg }); }}
             onError={(message) => setToast({ kind: "error", msg: message })}
