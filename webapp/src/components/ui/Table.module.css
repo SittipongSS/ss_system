@@ -22,13 +22,13 @@
 .heading h2 {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--fs-9);
 }
 
 .heading p {
   margin: 3px 0 0;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--fs-5);
 }
 
 .actions,
@@ -178,12 +178,12 @@
   display: block;
   margin-bottom: 3px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--fs-7);
 }
 
 .empty p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-5);
 }
 
 .emptyAction { margin-top: 12px; }

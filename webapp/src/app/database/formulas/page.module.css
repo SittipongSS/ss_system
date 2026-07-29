@@ -8,7 +8,7 @@
 .intro {
   margin: 0 0 10px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: var(--fs-6);
 }
 
 .name { font-weight: 600; }
@@ -38,11 +38,11 @@
 .lead {
   margin: 0 0 12px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--fs-7);
 }
 
 .blocked {
   margin: 8px 0 0;
   color: var(--red);
-  font-size: 12px;
+  font-size: var(--fs-5);
 }

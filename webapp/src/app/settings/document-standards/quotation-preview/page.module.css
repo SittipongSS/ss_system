@@ -4,16 +4,16 @@
 .controlPanel { padding: 16px 18px; }
 .controlIntro { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; }
 .controlIntro :global(.ui-badge) { width: max-content; color: var(--blue); background: var(--blue-soft); }
-.controlIntro strong { color: var(--text); font-size: 14px; }
-.controlIntro p { grid-column: 2; margin: 0; color: var(--text-3); font-size: 12px; }
+.controlIntro strong { color: var(--text); font-size: var(--fs-8); }
+.controlIntro p { grid-column: 2; margin: 0; color: var(--text-3); font-size: var(--fs-5); }
 .controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: end; gap: 14px; margin-top: 14px; }
 .controls :global(.form-group) { margin: 0; }
-.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: 11.5px; font-weight: 600; }
+.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: var(--fs-4); font-weight: 600; }
 .controls :global(.segmented) { min-height: var(--ctl-h); }
 .controls :global(.segmented button) { min-height: var(--ctl-h); }
 .scenarioSummary { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-.scenarioSummary strong { color: var(--text); font-size: 12.5px; }
-.scenarioSummary span { color: var(--text-3); font-size: 12px; }
+.scenarioSummary strong { color: var(--text); font-size: var(--fs-6); }
+.scenarioSummary span { color: var(--text-3); font-size: var(--fs-5); }
 .scenarioSummary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
 
 .previewStage {

@@ -66,13 +66,13 @@
 .small {
   min-height: 20px;
   padding-inline: 7px;
-  font-size: 10.5px;
+  font-size: var(--fs-2);
 }
 
 .large {
   min-height: 26px;
   padding-inline: 10px;
-  font-size: 12px;
+  font-size: var(--fs-5);
 }
 
 .label {

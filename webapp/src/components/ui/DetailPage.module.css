@@ -54,7 +54,7 @@
   display: block;
   margin-bottom: 2px;
   color: var(--accent-ink);
-  font-size: 9.5px;
+  font-size: var(--fs-1);
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -62,12 +62,12 @@
 .heading h2 {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--fs-9);
 }
 .heading p {
   margin: 3px 0 0;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-4);
 }
 .actions {
   display: flex;
@@ -110,7 +110,7 @@
   display: block;
   margin-bottom: 3px;
   color: var(--accent-ink);
-  font-size: 9.5px;
+  font-size: var(--fs-1);
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -118,7 +118,7 @@
 .contextTop strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 13.5px;
+  font-size: var(--fs-7);
   line-height: 1.35;
 }
 .contextIcon {
@@ -134,7 +134,7 @@
 .contextSubtitle {
   margin: 8px 0 0;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-4);
 }
 .contextBadges {
   display: flex;
@@ -155,13 +155,13 @@
 }
 .contextFacts dt {
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-1);
 }
 .contextFacts dd {
   overflow: hidden;
   margin: 2px 0 0;
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-4);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;

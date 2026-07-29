@@ -5,7 +5,7 @@
   gap: 12px;
   margin-top: 12px;
   color: var(--text-3);
-  font-size: 13px;
+  font-size: var(--fs-7);
   flex-wrap: wrap;
 }
 

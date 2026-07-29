@@ -25,18 +25,18 @@
 
 .head {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 12px; color: var(--text-3);
+  font-size: var(--fs-5); color: var(--text-3);
 }
 .head strong { color: var(--text-2); font-weight: 600; }
 
 /* ฝ่ายของคนพูด — เล็กและเงียบกว่าชื่อ เป็นบริบทไม่ใช่หัวข้อ */
 .dept {
   padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
-  font-size: 10.5px; letter-spacing: 0.02em; color: var(--text-3);
+  font-size: var(--fs-2); letter-spacing: 0.02em; color: var(--text-3);
 }
 
-.body { font-size: 13.5px; color: var(--text); margin: 0; }
-.deleted { font-size: 13px; color: var(--text-3); font-style: italic; }
+.body { font-size: var(--fs-7); color: var(--text); margin: 0; }
+.deleted { font-size: var(--fs-7); color: var(--text-3); font-style: italic; }
 
 /* ตารางภาพย่อของไฟล์แนบในข้อความ — ขนาดเดียวกับไฟล์แนบของ entity (AttachmentsPanel) */
 .photos {
@@ -53,7 +53,7 @@
 .files { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
 .fileLink {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--text-2); min-width: 0;
+  font-size: var(--fs-5); color: var(--text-2); min-width: 0;
 }
 .fileLink:hover { color: var(--accent-ink); }
 
@@ -79,5 +79,5 @@
   border: none; border-radius: 50%; cursor: pointer; line-height: 0;
   background: color-mix(in srgb, var(--navy) 72%, transparent); color: var(--navy-fg);
 }
-.empty { font-size: 13px; color: var(--text-3); }
-.error { font-size: 12.5px; color: var(--red); }
+.empty { font-size: var(--fs-7); color: var(--text-3); }
+.error { font-size: var(--fs-6); color: var(--red); }

@@ -10,7 +10,7 @@
 .description {
   margin: 0;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--fs-8);
   line-height: 1.6;
 }
 
@@ -19,7 +19,7 @@
   border: 1px solid;
   border-radius: var(--radius-md);
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: var(--fs-7);
   line-height: 1.6;
 }
 
@@ -36,7 +36,7 @@
 .help,
 .error {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--fs-5);
   line-height: 1.5;
 }
 

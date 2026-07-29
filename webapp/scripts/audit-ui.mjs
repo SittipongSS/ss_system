@@ -56,6 +56,7 @@ const nativeFeedbackDebt = {
 };
 
 const rawColorViolations = [];
+const typeScaleViolations = [];
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
@@ -74,6 +75,16 @@ for (const file of uiFiles) {
   if (source.includes("<ResponsiveContainer") && !source.includes("<ChartCanvas")) {
     chartContractViolations.push(rel);
   }
+  /* ชั้นขนาดตัวอักษรต้องมาจากโทเคนเท่านั้น — เขียน px เองแล้วแก้ทั้งระบบทีเดียวไม่ได้
+     (ตรวจ 2026-07-29: มี 521 จุดเขียนเลขดิบใน 22 ค่า ขณะที่โทเคนถูกอ้างแค่ 7 จุด)
+     globals.css เป็นที่ประกาศขั้นจึงยกเว้น — ที่อื่นห้ามหมด */
+  if (rel !== "src/app/globals.css") {
+    source.split(/\r?\n/).forEach((line, index) => {
+      const raw = line.match(/font-size:\s*[0-9.]+px/);
+      if (raw) typeScaleViolations.push(`${rel}:${index + 1} ${raw[0]} → var(--fs-…)`);
+    });
+  }
+
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
     if (line.trimStart().startsWith("//")) return;
@@ -237,6 +248,7 @@ const failures = [
     ? [`design-shell coverage incomplete: ${shellPages.length}/${visualPageFiles.length} visual routes`]
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
+  ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
@@ -257,6 +269,7 @@ const failures = [
 console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} visual, ${pageFiles.length - visualPageFiles.length} redirect)`);
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
+console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);

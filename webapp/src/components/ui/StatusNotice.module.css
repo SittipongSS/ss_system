@@ -10,7 +10,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--notice-soft) 26%, var(--panel));
-  font-size: 13px;
+  font-size: var(--fs-7);
 }
 
 .icon {
