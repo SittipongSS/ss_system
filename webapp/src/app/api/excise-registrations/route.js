@@ -60,13 +60,18 @@ export async function POST(request) {
   if (custErr) return Response.json({ error: custErr.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
-  // One registration per (product, customer).
-  const { data: dup } = await supabase
+  // One registration per (product, customer) — ด่านนี้เป็นแค่ "ข้อความที่อ่านรู้เรื่อง"
+  // ตัวกันจริงคือ unique index ชั้น DB (mig 0178) เพราะด่านฝั่งแอปกันการกดพร้อมกันสองครั้ง
+  // ไม่ได้ · เดิมทิ้ง error ของ query นี้ (`const { data: dup }`) → query สะดุดเมื่อไหร่
+  // จะถือว่า "ไม่ซ้ำ" แล้วสร้างซ้ำเงียบ ๆ ซึ่งกระทบปลายน้ำจริง: soFiling ทำ Map ที่ key
+  // เป็น productId ทะเบียนซ้ำจึงทับกันแล้วเลือกอันสุดท้ายโดยพลการ
+  const { data: dup, error: dupErr } = await supabase
     .from('excise_registrations')
     .select('id')
     .eq('productId', body.productId)
     .eq('customerId', customerId)
     .maybeSingle();
+  if (dupErr) return Response.json({ error: dupErr.message }, { status: 500 });
   if (dup) {
     return Response.json({ error: 'สินค้านี้ถูกขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว' }, { status: 409 });
   }
@@ -109,6 +114,11 @@ export async function POST(request) {
 
   const { data, error } = await supabase
     .from('excise_registrations').insert(newReg).select().single();
+  // 23505 = unique_violation จาก excise_reg_product_customer_uidx (mig 0178) — เกิดเมื่อ
+  // กดสร้างพร้อมกันสองครั้งจนด่านข้างบนผ่านทั้งคู่ ตอบข้อความเดียวกับด่านฝั่งแอป
+  if (error?.code === '23505') {
+    return Response.json({ error: 'สินค้านี้ถูกขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว' }, { status: 409 });
+  }
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await recordAudit({
     user, action: 'create', entityType: 'registration', entityId: data.id, after: data,
