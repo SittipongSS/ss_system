@@ -364,7 +364,7 @@ export default function TimelineWorkspace({
         <StepFormFields form={form} setForm={setForm} users={users} phases={phases} tasks={tasksWithNumbers} selfId={editTask?.id || null} />
       </div>
       <div className="form-action-bar" style={{ padding: "16px 18px" }}>
-        <button type="button" className="btn ghost" onClick={() => { setEditTask(null); setAddOpen(false); }} disabled={saving}>ยกเลิก</button>
+        <button type="button" className="btn btn-secondary" onClick={() => { setEditTask(null); setAddOpen(false); }} disabled={saving}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "กำลังบันทึก…" : submitLabel}</button>
       </div>
     </form>
