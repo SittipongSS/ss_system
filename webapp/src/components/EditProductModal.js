@@ -15,6 +15,8 @@ import { fmtMoney } from "@/lib/format";
 export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [], customers = [] }) {
   const [form, setForm] = useState({});
   const [productTypes, setProductTypes] = useState([]);
+  // ทะเบียนสูตร — โหลดเองเหมือน productTypes เพราะโมดัลนี้ถูกเปิดจากหลายหน้า
+  const [formulas, setFormulas] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [priceEditorOpen, setPriceEditorOpen] = useState(false);
@@ -43,6 +45,12 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           .then(res => res.json())
           .then(data => setProductTypes(data))
           .catch(err => console.error("Failed to fetch product types", err));
+      }
+      if (formulas.length === 0) {
+        fetch("/api/master/formulas")
+          .then(res => (res.ok ? res.json() : []))
+          .then(data => setFormulas(Array.isArray(data) ? data : []))
+          .catch(err => console.error("Failed to fetch formulas", err));
       }
     }
   }, [open, product?.id]);
@@ -154,6 +162,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           onForm={(patch) => setForm((f) => ({ ...f, ...patch }))}
           productTypes={productTypes}
           customers={customers}
+          formulas={formulas}
           brandOptions={brandOptionList}
           factoryPrice="readonly"
           currentCostPrice={product.costPrice}

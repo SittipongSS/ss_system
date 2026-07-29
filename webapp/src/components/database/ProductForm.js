@@ -10,7 +10,6 @@
 //   creatorName    — ป้าย "ผู้สร้าง" มีเฉพาะตอนสร้าง
 //   factoryPrice   — "input" (สร้าง: กรอกได้) | "readonly" (แก้: ดูอย่างเดียว
 //                    ต้องกดปุ่มอัปเดตราคาผลิตแยก เพราะกระทบประวัติราคา/ต้นทุน)
-import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -29,14 +28,17 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
   brandName: "", brandNameEn: "",
-  formulaName: "", formulaCode: "", formulaDate: "",
+  // สูตรมาจากทะเบียน (mig 0171) — formulaName/Code/Date เป็น snapshot ที่ server
+  // เติมให้จาก formulaId ฟอร์มไม่ต้องส่ง (เก็บไว้ใน state เพื่อโชว์ค่าเดิมของ
+  // สินค้าที่ยังไม่ผูกทะเบียนเท่านั้น)
+  formulaId: "", formulaName: "", formulaCode: "", formulaDate: "",
   volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
 };
 
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
 export const PRODUCT_EDIT_FIELDS = [
   "customerId", "fgCode", "productDescription", "productDescriptionEn",
-  "brandName", "brandNameEn", "formulaName", "formulaCode", "formulaDate",
+  "brandName", "brandNameEn", "formulaId", "formulaName", "formulaCode", "formulaDate",
   "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
 ];
 
@@ -92,6 +94,7 @@ export default function ProductForm({
   onForm,                    // (patch) => void
   productTypes = [],
   customers = [],
+  formulas = [],             // ทะเบียนสูตร (mig 0171) — ที่มาเดียวของข้อมูลสูตร
   brandOptions = [],         // [{th,en}] ของลูกค้าที่เลือก
   onCustomerChange,          // (customerId) => void — caller ล้างแบรนด์/โหลดใหม่
   creatorName = null,        // ป้าย "ผู้สร้าง" (เฉพาะตอนสร้าง)
@@ -100,6 +103,18 @@ export default function ProductForm({
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const money = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v));
+
+  // สูตรที่เก็บเข้ากรุแล้วไม่ให้เลือกใหม่ แต่ตัวที่สินค้านี้ผูกอยู่ต้องคงอยู่ในลิสต์
+  // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
+  const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
+  const formulaOptions = formulas
+    .filter((f) => f.status !== "archived" || f.id === form.formulaId)
+    .map((f) => ({
+      value: f.id,
+      label: `${f.code ? `${f.code} · ` : ""}${f.name}`
+        + (f.customerName ? ` · ${f.customerName}` : "")
+        + (f.status === "archived" ? " (เก็บเข้ากรุแล้ว)" : ""),
+    }));
 
   return (
     <>
@@ -177,19 +192,41 @@ export default function ProductForm({
           <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสูตร (Formula)</h3>
         </div>
         <div className="form-grid cols-2">
+          {/* ⭐ เลือกจากทะเบียนสูตร ไม่ใช่พิมพ์เอง (PR-5) — เดิมเป็นสามช่องข้อความ
+              (ชื่อ/รหัส/วันที่) ซึ่งเป็นสาเหตุที่บน prod มี **สินค้า 10 แถวที่เอา
+              ชื่อกลิ่นไปกรอกช่องชื่อสูตร** เพราะตอนนั้นระบบยังไม่มีที่เก็บกลิ่น
+              · ชื่อ/รหัส/วันที่ตอนนี้ derive จากทะเบียน server เติมให้เอง */}
           <div className="form-group col-span-2">
-            <label>ชื่อสูตร</label>
-            <input type="text" name="formulaName" value={form.formulaName ?? ""} onChange={set("formulaName")} placeholder="เช่น มิดไนท์บลูม v2" className="premium-input w-full" />
+            <label>สูตร</label>
+            <SearchableSelect
+              value={form.formulaId ?? ""}
+              onChange={(v) => onForm({ formulaId: v })}
+              placeholder="— เลือกสูตรจากทะเบียน —"
+              options={formulaOptions}
+            />
+            <span className="text-xs text-[var(--text-3)] mt-1">
+              {!formulas.length
+                ? "ยังไม่มีสูตรในทะเบียน — เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร ก่อน"
+                : pickedFormula
+                  ? `วันที่สูตร ${pickedFormula.formulaDate || "— ยังไม่ระบุ —"} · ชื่อ/รหัส/วันที่ ดึงจากทะเบียนอัตโนมัติ`
+                  : "ชื่อ · รหัส · วันที่สูตร มาจากทะเบียนสูตรอัตโนมัติ — แก้ตัวสูตรที่ ฐานข้อมูล → ทะเบียนสูตร"}
+            </span>
           </div>
-          <div className="form-group">
-            <label>รหัสสูตร</label>
-            <input type="text" name="formulaCode" value={form.formulaCode ?? ""} onChange={set("formulaCode")} placeholder="เช่น F-2569-014" className="premium-input w-full font-mono" />
-          </div>
-          <div className="form-group">
-            <label>วันที่สูตร</label>
-            <DateInput value={form.formulaDate ?? ""} onChange={(v) => onForm({ formulaDate: v || "" })} className="w-full" />
-            <span className="text-xs text-[var(--text-3)] mt-1">วันที่ของตัวสูตร (เวอร์ชันที่ RD ออกให้) ไม่ใช่วันที่บันทึกเข้าระบบ</span>
-          </div>
+          {/* สินค้าเก่าที่ยังไม่ผูกทะเบียน (prod เหลือ 1 แถว) — โชว์ค่าเดิมไว้ให้เห็น
+              ว่ามีอะไรค้างอยู่ ไม่ใช่ทำหายไปเฉย ๆ แต่แก้ไม่ได้แล้ว ต้องผูกทะเบียนแทน */}
+          {!form.formulaId && (form.formulaName || form.formulaCode) && (
+            <div className="form-group col-span-2">
+              <label>ข้อมูลสูตรเดิม (ยังไม่ผูกทะเบียน)</label>
+              <div className="text-sm text-[var(--text-2)]">
+                {form.formulaName || "—"}
+                {form.formulaCode ? ` · ${form.formulaCode}` : ""}
+                {form.formulaDate ? ` · ${form.formulaDate}` : ""}
+              </div>
+              <span className="text-xs text-[var(--text-3)] mt-1">
+                เลือกสูตรจากทะเบียนด้านบนเพื่อแทนที่ข้อความเดิม
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -187,6 +187,26 @@ export async function updateFormula(supabase, id, patch) {
   return data;
 }
 
+// ข้อมูลสูตรบนสินค้า = snapshot จากทะเบียน (PR-5) — ฟอร์มส่งมาแค่ formulaId
+// ชื่อ/รหัส/วันที่ server เติมให้เอง ไม่รับค่าที่พิมพ์มา
+//
+// ⚠️ นี่คือจุดที่ปิดต้นเหตุของกอง "รอจัดระเบียบ": ตอนสามช่องนั้นพิมพ์เองได้
+// prod จึงมี 10 แถวที่เอา *ชื่อกลิ่น* ไปกรอกช่องชื่อสูตร แล้วไม่มีใครกลับมาตรวจ
+// (ดู loadUnsortedProducts) · โยน error เมื่อ id ไม่มีจริง — บันทึกผ่านแบบเงียบ ๆ
+// โดยไม่ผูกอะไรเลยแย่กว่า เพราะสินค้าจะโผล่กลับมาเป็น "รอจัดระเบียบ" อีกรอบ
+export async function productFormulaSnapshot(supabase, formulaId) {
+  const empty = { formulaId: null, formulaCode: null, formulaName: null, formulaDate: null };
+  if (!formulaId) return empty;
+  const formula = await findFormula(supabase, formulaId);
+  if (!formula) throw new Error('ไม่พบสูตรที่เลือกในทะเบียนสูตร');
+  return {
+    formulaId: formula.id,
+    formulaCode: formula.code || null,
+    formulaName: formula.name || null,
+    formulaDate: formula.formulaDate || null,
+  };
+}
+
 // จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ
 export async function countProductsUsingFormula(supabase, formulaId) {
   const { count, error } = await supabase
@@ -209,10 +229,18 @@ export async function loadUnsortedProducts(supabase) {
 }
 
 // ผูกสินค้ากลับไปที่ทะเบียนหลัง RD ตัดสินว่าแถวนั้นเป็นกลิ่นหรือสูตร
+//
+// สามช่องข้อความเดิมต้องถูกจัดการไปพร้อมกัน ไม่งั้นแถวจะ "ผูกแล้วแต่ยังโชว์ของเก่า":
+//   เป็นสูตร → เขียนทับด้วย snapshot จากทะเบียน (ชื่อที่ RD ตั้งอาจไม่เท่าที่พิมพ์ไว้)
+//   เป็นกลิ่น → ล้างทิ้ง เพราะค่านั้น *ไม่เคยเป็นข้อมูลสูตร* มาตั้งแต่แรก
+//               (ตัวกลิ่นย้ายไปอยู่ในทะเบียนกลิ่นแล้ว หน้าสินค้าอ่านผ่าน scentId)
 export async function linkProductToRegistry(supabase, productId, { formulaId = null, scentId = null }) {
   const patch = { updatedAt: new Date().toISOString() };
-  if (formulaId) patch.formulaId = formulaId;
-  if (scentId) patch.scentId = scentId;
+  if (formulaId) Object.assign(patch, await productFormulaSnapshot(supabase, formulaId));
+  if (scentId) {
+    patch.scentId = scentId;
+    patch.formulaName = null; patch.formulaCode = null; patch.formulaDate = null;
+  }
   const { data, error } = await supabase
     .from('products').update(patch).eq('id', productId).select('id').single();
   if (error) throw error;
