@@ -68,23 +68,29 @@ export async function loadPendingAskLinks(supabase, requestId) {
   if (error) throw error;
   if (!asks?.length) return [];
 
+  // 🐞 เคย select/filter ด้วย `askId` ซึ่งไม่มีในตาราง — คอลัมน์จริงคือ `requestId`
+  // (ตกค้างจากตอน rename inquiries → dept_requests, mig 0173/0174) · query ตอบ 42703
+  // และที่นี่ throw ต่อ ⇒ หน้ารายละเอียดใบขอราคาผลิตเปิดไม่ได้ + กดส่งอนุมัติไม่ได้
+  // ทันทีที่ใบนั้นมีเคสขอราคาวัสดุเปิดค้างสักใบ · prod ยังไม่กัดเพราะยังไม่มีเคสที่ผูก
+  // costingRequestId เลย (0 แถว 2026-07-29) แต่จะระเบิดทันทีที่เปิดเคสแรก
   const { data: items, error: itemError } = await supabase
     .from('dept_request_items')
-    .select('id, askId, componentId, priceStatus, label')
-    .in('askId', asks.map((a) => a.id))
+    .select('id, requestId, componentId, priceStatus, label')
+    .in('requestId', asks.map((a) => a.id))
     .eq('priceStatus', 'pending');
   if (itemError) throw itemError;
 
   const byId = new Map(asks.map((a) => [a.id, a]));
+  // ชื่อ field ขาออกยังเป็น askId ตามสัญญาเดิมของผู้เรียก (หน้าใบขอราคาผลิต)
   return (items || [])
     .filter((i) => i.componentId)
     .map((i) => ({
       componentId: i.componentId,
       askItemId: i.id,
-      askId: i.askId,
-      docNo: byId.get(i.askId)?.docNo || null,
-      askStatus: byId.get(i.askId)?.status || null,
-      dept: byId.get(i.askId)?.dept || null,
+      askId: i.requestId,
+      docNo: byId.get(i.requestId)?.docNo || null,
+      askStatus: byId.get(i.requestId)?.status || null,
+      dept: byId.get(i.requestId)?.dept || null,
     }));
 }
 

@@ -63,8 +63,12 @@ async function scentsAndFormulas(supabase, customerId, user) {
 // ความสัมพันธ์ของลูกค้า 1 ราย → { products, registrations, orders, projects, scents, formulas }.
 export async function customerRelations(supabase, customerId, user) {
   const [prodRes, regRes, orderRes, projRes, registry] = await Promise.all([
+    // 🐞 เคย select `teams` ซึ่ง **ไม่มีในตาราง** (products มี `team` เดี่ยว) → PostgREST
+    // ตอบ 42703 ทั้ง query · โค้ดข้างล่างอ่าน `.data || []` โดยไม่ดู `.error` แท็บสินค้า
+    // บนหน้าลูกค้าจึงว่างเปล่าทุกราย ทั้งที่ prod มีสินค้าผูกลูกค้า 120 ชิ้น (2026-07-29)
+    // — ไม่มีใครใช้ค่านี้ด้วยซ้ำ แค่ค้างอยู่ใน select list
     supabase.from('products')
-      .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, approvalStatus, isActive, customerId, team, teams, ownerId')
+      .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, approvalStatus, isActive, customerId, team, ownerId')
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     supabase.from('excise_registrations')
       .select('id, fgCode, productName, brandName, status, approvalNumber, customerId, team, ownerId')
@@ -76,6 +80,19 @@ export async function customerRelations(supabase, customerId, user) {
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     scentsAndFormulas(supabase, customerId, user),
   ]);
+
+  // query พัง = ต้องดัง ไม่ใช่คืนลิสต์ว่าง · `.data || []` เพียว ๆ ทำให้ schema error
+  // (ชื่อคอลัมน์ผิด / RLS) กลายเป็น "ลูกค้ารายนี้ไม่มีสินค้า" ซึ่งอ่านแล้วเชื่อสนิท
+  // — เป็นสาเหตุที่บั๊ก `teams` ข้างบนอยู่เงียบ ๆ ได้นาน
+  const failed = [
+    ['สินค้า', prodRes.error],
+    ['ทะเบียนสรรพสามิต', regRes.error],
+    ['ใบยื่นภาษี', orderRes.error],
+    ['โครงการ', projRes.error],
+  ].filter(([, error]) => error);
+  if (failed.length) {
+    throw new Error(`โหลดข้อมูลที่เกี่ยวข้องไม่สำเร็จ (${failed.map(([label]) => label).join(', ')}): ${failed[0][1].message}`);
+  }
 
   const tax = seesTax(user);
   return {
