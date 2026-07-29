@@ -58,7 +58,6 @@
   --origin-edited: #2e4a73; /* navy กลาง — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
 
   --navy: #243b63;
-  --navy-2: #1d3154;     /* ปลายเข้มของแถบระบบ (ไล่สีกับ --navy) */
   --navy-fg: #fff;
   /* กรมท่าเวอร์ชัน "หมึก" — ใช้ตอนวางบน *พื้นหน้า* (ปุ่ม outline/ghost โทน primary)
      ไม่ใช่ตอนเป็นพื้นเอง · ธีมมืดต้องยกความสว่างขึ้นมาก เพราะ --navy ของธีมมืด
@@ -96,27 +95,24 @@
   --document-accent-green: #15803d;
   --document-accent-navy: #1f3551;
   
-  --shift-soft: #f4eee1;
-  --shift-color: #6b6256;
-  
   /* Grid settings */
   --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
-  --row-h: 40px;
-  --pad-x: 16px;
-  --pad-y: 12px;
   --gap: 16px;
   --page-gutter: 28px;
   --page-gutter-tablet: 18px;
   --page-gutter-mobile: 14px;
-  --icon-box-sm: 28px;
   --icon-box-md: 32px;
-  --icon-box-lg: 40px;
   --radius: 8px;
   /* --radius-md ถูกใช้ใน 5 ที่ (VersionControlCard ฯลฯ) แต่ไม่เคยถูกประกาศ →
      border-radius กลายเป็น 0 มุมเหลี่ยมมาตลอด เพิ่งเจอตอนไล่โทเคน 2026-07-26 */
   --radius-md: 10px;
   --radius-lg: 13px;
-  --radius-xl: 16px;   /* หัวเรื่องหน้าและการ์ดใหญ่ (ต้นแบบ) */
+  /* 🪤 ห้ามลบเพราะ "ไม่มีใครเขียน var(--radius-xl)" — ตัวนี้ **Tailwind อ่านเอง**
+     `--radius-xl` เป็นชื่อในธีมของ Tailwind v4 ที่ขับ utility `rounded-xl` (ใช้อยู่
+     8 จุด) การประกาศทับตรงนี้คือการตั้งค่าให้ utility นั้นเป็น 16px แทนค่าเริ่มต้น
+     .75rem (=12px) · เคยลบไปแล้วตอนไล่โทเคนตาย 2026-07-29 แล้วมุมของ 8 จุดนั้น
+     หดลง 4px เงียบ ๆ — จับได้ตอนวัดในเบราว์เซอร์ ไม่ใช่ตอน grep */
+  --radius-xl: 16px;
   --radius-full: 9999px;
 
   /* ── ชั้นขนาดตัวอักษร ────────────────────────────────────────────────
@@ -165,15 +161,10 @@
   --fs-page-title: var(--fs-14);
   --fs-metric: var(--fs-15);
 
-  /* Canonical M3 roles used by the shared React UI layer. Keep feature CSS on
-     these aliases instead of inventing a module palette. */
-  --surface-page: var(--bg);
-  --surface-card: var(--panel);
-  --surface-subtle: var(--panel-2);
-  --surface-inset: var(--panel-3);
-  --on-surface: var(--text);
-  --on-surface-muted: var(--text-2);
-  --on-surface-quiet: var(--text-3);
+  /* ⚠️ เคยมีชุด alias แบบ M3 อยู่ตรงนี้ (--surface-page/card/subtle/inset +
+     --on-surface*) พร้อมคอมเมนต์สั่งว่า "ให้ feature CSS ยึดชื่อพวกนี้" — แต่ตรวจ
+     2026-07-29 พบว่า **ไม่มีใครอ้างถึงสักจุดเดียว** ตั้งแต่วันที่ประกาศ ลบทิ้งแล้ว
+     ชื่อจริงที่ทั้งระบบใช้คือ --bg / --panel / --panel-2 / --panel-3 / --text* */
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   --content-max: 1480px;
   --motion-fast: 120ms;
@@ -186,8 +177,6 @@
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
   --topnav-menu-h: 44px;            /* ชั้นเมนูของระบบปัจจุบัน */
-  --topnav-h: calc(var(--topbar-h) + var(--topnav-menu-h));
-
   /* ── ชั้นซ้อน (z-index) ────────────────────────────────────────────────
      **ของใหม่ต้องหยิบชื่อจากที่นี่ ห้ามคิดเลขเอง** (audit:ui บังคับไว้)
 
@@ -227,27 +216,13 @@
                               เพราะเปิดจากในโมดัลได้ */
 
   /* ── Legacy alias tokens ──────────────────────────────────────
-     Older components reference these names (often with stale green
-     fallbacks). Map them to the canonical tokens so everything stays
-     on-theme and dark-mode works automatically (aliases point at vars
-     that are overridden under [data-theme="dark"]). */
-  --bg-primary: var(--bg);
-  --bg-card: var(--panel);
-  --border-primary: var(--border);
-
-  --text-primary: var(--text);
+     ชื่อเก่าที่ยังมีคนอ้างอยู่จริง ชี้กลับไปที่โทเคนหลักเพื่อให้ธีมมืดทำงานตาม
+     ⚠️ ตรวจ 2026-07-29: อีก 7 ชื่อในชุดนี้ (--bg-primary · --bg-card ·
+     --border-primary · --text-primary · --text-secondary · --text-muted ·
+     --accent-primary · --danger) ไม่มีใครอ้างสักจุด ลบทิ้งแล้ว
+     เหลือเฉพาะที่มีคนใช้จริง — อย่าเติมชื่อกลับมาเผื่อไว้ */
   --text-1: var(--text);
-  --text-secondary: var(--text-2);
-  --text-muted: var(--text-3);
-
-  --accent-primary: var(--accent);
-  --danger: var(--red);
   --purple: var(--violet);
-
-  /* Gantt grid lines (theme-aware) */
-  --gantt-line: rgba(40, 33, 24, 0.05);
-  --gantt-line-weekend: rgba(40, 33, 24, 0.08);
-  --gantt-line-week: rgba(40, 33, 24, 0.14);
 }
 
 /* Dark Theme Variables Override */
@@ -279,7 +254,6 @@
   --origin-edited: #7089e6; /* น้ำเงินโลโก้ เวอร์ชันสว่างขึ้น — ให้เห็นชัดบนบาร์ navy ในธีมมืด */
 
   --navy: #20365d;
-  --navy-2: #192d4f;
   --navy-ink: #8fadde;   /* วัดกับพื้น --panel ธีมมืดแล้วผ่าน AA (≥4.5:1) */
 
   /* ต้นแบบธีมมืดกำหนดเฉพาะพื้นอ่อน (soft) แล้วปล่อยให้สีหลักใช้ค่าเดียวกับธีมสว่าง
@@ -298,17 +272,9 @@
   --teal-soft: rgba(63, 131, 134, 0.18);
   --violet: #9f94c0;
   --violet-soft: rgba(122, 106, 167, 0.18);
-
-  --shift-soft: var(--blue-soft);
-  --shift-color: var(--blue);
-
   --shadow-sm: 0 2px 7px rgba(0, 0, 0, 0.18);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.24);
   --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.34);
-
-  --gantt-line: rgba(255, 255, 255, 0.05);
-  --gantt-line-weekend: rgba(255, 255, 255, 0.09);
-  --gantt-line-week: rgba(255, 255, 255, 0.16);
 }
 
 /* Keep minimal: an unlayered `* { margin:0; padding:0 }` would override every
@@ -667,7 +633,10 @@ button, select, input, textarea {
 
 /* ── Top navigation (เฟส T): 2 ชั้นตรึงบนสุดทั้งระบบ — แทน sidebar เดิม ─────
    ชั้นระบบ = พื้น navy (โทนโลโก้ตามมาตรฐานแบรนด์) · ชั้นเมนู = รายการของระบบ
-   ปัจจุบัน แนวนอน จอแคบเลื่อนข้างได้. sticky element อื่นอ้าง --topnav-h ได้ */
+   ปัจจุบัน แนวนอน จอแคบเลื่อนข้างได้
+   ⚠️ เคยมี --topnav-h (ผลรวมความสูงสองชั้น) ประกาศไว้พร้อมคอมเมนต์ว่า sticky
+   element อื่นอ้างได้ — ตรวจ 2026-07-29 พบว่าไม่มีใครอ้างเลยสักจุด ลบทิ้งแล้ว
+   ถ้าวันหนึ่งต้องใช้จริงค่อยประกาศใหม่ตอนนั้น */
 .topnav {
   position: sticky;
   top: 0;
@@ -6059,9 +6028,6 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   --text-2: #3a414e;
   --text-3: #5d6470;
   --bg: #ffffff;
-  --gantt-line: rgba(40, 33, 24, 0.05);
-  --gantt-line-weekend: rgba(40, 33, 24, 0.08);
-  --gantt-line-week: rgba(40, 33, 24, 0.14);
   background: #ffffff !important;
 }
 
