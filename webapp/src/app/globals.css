@@ -1636,46 +1636,45 @@ h1, h2, h3, h4, h5, h6 {
   stroke-width: 2;
 }
 
-/* Status dots & badges to match their corporate stylesheet */
-.status-pill {
-  /* height ตายตัว + padding 0 = ตัวอักษรไทยเบียดขอบบน 1.4px · เปลี่ยนเป็น min-height
-     ให้กล่องโตตามเนื้อหาได้ (ดูหมายเหตุที่ .ui-badge) */
-  min-height: 24px;
-  color: var(--text-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  font-size: var(--fs-4);
-  font-weight: 500;
+/* ── ป้ายเล็ก: นิยามเดียวของทั้งระบบ ─────────────────────────────────────
+   ตรวจ 2026-07-29 พบว่ามี "ป้ายเล็กมีพื้น" อยู่ **4 ชุดขนานกัน** ทำงานเดียวกันหมด
+   แต่คนละ padding / ขนาดตัวอักษร / มุมโค้ง:
+     Badge.module.css (StatusBadge·Tag·CountBadge) = ตัวกลางของ React
+     .ui-badge    137 จุด · .status-pill 43 จุด · .chip 22 จุด
+   ยุบรูปทรงมาที่นี่ที่เดียว ให้เท่ากับ Badge.module.css เป๊ะ (เทสต์เทียบสองฝั่งไว้)
+
+   ⭐ พื้นและขอบมาจาก `currentColor` — 99 จุดที่ส่งสีเองผ่าน style={{color}}
+   จึงได้พื้นจาง+ขอบในโทนของตัวเองอัตโนมัติ ไม่ต้องไล่แก้ทีละจุด
+   (ที่ไม่ส่งสีมาจะได้ --text-2 เป็นค่าตั้งต้น = โทนกลาง)
+
+   ⚠️ ระยะแนวตั้งกับ line-height ห้ามลดลงกว่านี้ — ภาษาไทยมีสระบน/วรรณยุกต์ที่ยื่น
+   เหนือตัวอักษร (ดู thai-text-vertical-space) */
+.ui-badge,
+.status-pill,
+.chip {
   display: inline-flex;
-  background: var(--panel-2);
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-label);   /* ชื่อเดียวกับที่ Badge.module.css ใช้ — เทสต์เทียบสตริงตรง ๆ */
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: middle;
 }
 
-.status-pill.success {
-  background: var(--green-soft);
-  color: var(--green);
-  border: none;
-}
-
-.status-pill.warning {
-  background: var(--amber-soft);
-  color: var(--amber);
-  border: none;
-}
-
-.status-pill.danger {
-  background: var(--red-soft);
-  color: var(--red);
-  border: none;
-}
-
-.status-pill.info {
-  background: var(--blue-soft);
-  color: var(--blue);
-  border: none;
-}
+/* โทนสำเร็จรูป — ใช้ได้กับทั้งสามชื่อ (เดิม `.ui-badge.warning` / `.ui-badge.danger`
+   ถูกเขียนไว้ในโค้ดแต่ **ไม่มี selector อยู่จริง** = ป้ายไม่มีโทนเงียบ ๆ) */
+.ui-badge.success, .status-pill.success, .chip.success { color: var(--green); }
+.ui-badge.warning, .status-pill.warning, .chip.warning { color: var(--amber); }
+.ui-badge.danger, .status-pill.danger, .chip.danger { color: var(--red); }
+.ui-badge.info, .status-pill.info, .chip.info { color: var(--blue); }
 
 /* leading status dot (opt-in via .dot) — color via --dot, falls back to text color.
    keeps icon-bearing pills untouched and removes the repeated inline dot span. */
@@ -3237,34 +3236,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
-/* ⚠️ `line-height: 1` เดิมทำให้กล่องเตี้ยกว่าตัวอักษรจริง — วัดได้ว่าสระบน/วรรณยุกต์ไทย
-   ล้นออกนอกกล่อง **-1.0px** (โดนตัด) เพราะภาษาไทยยื่นขึ้นเหนือความสูงตัวอักษรปกติ
-   เหตุผลเดียวกับที่ Badge.module.css ต้องเป็น 1.5 (#794) — ตอนนั้นแก้เฉพาะป้ายกลาง
-   ป้ายชุดนี้ที่ใช้มากที่สุดในระบบยังค้างอยู่ */
-.ui-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 22px;
-  padding: 3px 9px;
-  font-size: var(--fs-3);
-  font-weight: 600;
-  line-height: 1.5;
-  border-radius: var(--radius);
-}
 
-/* Chip — icon + label, used for summary counters and inline tags. */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  font-size: var(--fs-5);
-  font-weight: 600;
-  line-height: 1.5;   /* ภาษาไทยต้องการที่เหนือตัวอักษร — ดูหมายเหตุที่ .ui-badge */
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-}
 
 /* Progress bar — track + fill. Set fill width inline (style={{ width: pct+'%' }}). */
 .progress {
