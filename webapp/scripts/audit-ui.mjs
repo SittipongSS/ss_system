@@ -77,13 +77,23 @@ for (const file of uiFiles) {
   }
   /* ชั้นขนาดตัวอักษรต้องมาจากโทเคนเท่านั้น — เขียน px เองแล้วแก้ทั้งระบบทีเดียวไม่ได้
      (ตรวจ 2026-07-29: มี 521 จุดเขียนเลขดิบใน 22 ค่า ขณะที่โทเคนถูกอ้างแค่ 7 จุด)
-     globals.css เป็นที่ประกาศขั้นจึงยกเว้น — ที่อื่นห้ามหมด */
-  if (rel !== "src/app/globals.css") {
-    source.split(/\r?\n/).forEach((line, index) => {
-      const raw = line.match(/font-size:\s*[0-9.]+px/);
-      if (raw) typeScaleViolations.push(`${rel}:${index + 1} ${raw[0]} → var(--fs-…)`);
-    });
-  }
+
+     ⚠️ เดิมกฎนี้จับแค่ `font-size: <ตัวเลข>px` ที่ต้นค่า และยกเว้น globals.css ทั้งไฟล์
+     จึงมี 6 จุดหลุดมาตลอด (ตรวจรอบสอง 2026-07-29): `clamp(20px, 2vw, 27px)` 3 จุด —
+     ในนั้นคือ DetailOverview = **หัวเรื่องของทุกหน้ารายละเอียด** — กับ `0.8125rem` 1 จุด
+     รอบนี้จึงอ่าน *ทั้งค่า* แล้วห้ามหน่วยความยาวคงที่ทุกชนิด ส่วน vw/vh ยังใช้ได้
+     เพราะเป็นตัวกลางของ clamp() ที่ทำให้หัวเรื่องยืดตามจอ (ปลายทั้งสองข้างต้องเป็นโทเคน)
+
+     globals.css ไม่ยกเว้นแล้ว — ที่นั่นประกาศขั้นด้วย `--fs-N: 12px` ซึ่งไม่ใช่
+     `font-size:` จึงไม่ชนกฎนี้อยู่แล้ว การยกเว้นทั้งไฟล์มีแต่จะเปิดรูเพิ่ม */
+  source.split(/\r?\n/).forEach((line, index) => {
+    const declaration = line.match(/font-size:\s*([^;}]+)/);
+    if (!declaration) return;
+    const fixedUnit = declaration[1].match(/[0-9.]+\s*(?:px|pt|rem|em|ch|ex|cm|mm|in|pc)\b/);
+    if (fixedUnit) {
+      typeScaleViolations.push(`${rel}:${index + 1} font-size: ${declaration[1].trim()} → var(--fs-…)`);
+    }
+  });
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {

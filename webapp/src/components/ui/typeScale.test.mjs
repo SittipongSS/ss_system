@@ -56,6 +56,47 @@ test("ไม่ประกาศชื่อตามหน้าที่ท�
   }
 });
 
+/* ตรวจรอบสอง 2026-07-29: กฎเดิมใน audit:ui จับแค่ `font-size: <ตัวเลข>px` ที่ต้นค่า
+   จึงมี 6 จุดหลุดมาตลอด — `clamp(20px, 2vw, 27px)` 3 จุด (หนึ่งในนั้นคือ DetailOverview
+   = หัวเรื่องของทุกหน้ารายละเอียด) กับ `0.8125rem` 1 จุด และ globals.css ถูกยกเว้นทั้งไฟล์
+   สองจุดในนั้นชี้ไปที่ 34/36px ซึ่งสูงกว่าขั้นบนสุดเดิม = ชั้นพิมพ์ไม่ได้ครอบจริง */
+function allCssFiles() {
+  const files = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".css")) files.push(full);
+    }
+  })(root);
+  return files;
+}
+
+test("ไม่มี font-size ไหนเขียนหน่วยความยาวคงที่ — รวมที่ซ่อนใน clamp()/calc()", () => {
+  const offenders = [];
+  for (const file of allCssFiles()) {
+    fs.readFileSync(file, "utf8").split(/\r?\n/).forEach((line, index) => {
+      const declaration = line.match(/font-size:\s*([^;}]+)/);
+      if (!declaration) return;
+      // vw/vh ใช้ได้ — เป็นตัวกลางของ clamp() ที่ทำให้หัวเรื่องยืดตามจอ
+      if (/[0-9.]+\s*(?:px|pt|rem|em|ch|ex|cm|mm|in|pc)\b/.test(declaration[1])) {
+        offenders.push(`${path.relative(process.cwd(), file)}:${index + 1} ${declaration[1].trim()}`);
+      }
+    });
+  }
+  assert.deepEqual(offenders, [],
+    "ปลายทั้งสองข้างของ clamp() ต้องเป็น var(--fs-N) ไม่งั้นแก้ชั้นพิมพ์ทีเดียวทั้งระบบไม่ได้");
+});
+
+test("ไม่ประกาศขั้นทิ้งไว้โดยไม่มีใครใช้", () => {
+  const allCss = allCssFiles().map((f) => fs.readFileSync(f, "utf8")).join("\n");
+  for (const step of steps) {
+    const uses = allCss.split(`var(${step.name})`).length - 1;
+    assert.ok(uses > 0,
+      `${step.name} ไม่มีใครใช้ — ขั้นที่เติมเผื่อไว้ทำให้เข้าใจผิดว่าชั้นนี้ครอบทั้งระบบแล้ว`);
+  }
+});
+
 test("ทุกโทเคนที่ถูกอ้างถึงมีประกาศอยู่จริง", () => {
   const cssFiles = [];
   (function walk(dir) {

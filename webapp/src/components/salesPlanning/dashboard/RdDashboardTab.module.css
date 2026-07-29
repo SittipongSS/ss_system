@@ -8,7 +8,10 @@
 .overviewEyebrowRow { display: flex; align-items: center; gap: 8px 14px; margin-bottom: 7px; flex-wrap: wrap; }
 .eyebrow { color: var(--accent-ink); font-size: var(--fs-2); font-weight: 750; letter-spacing: .08em; }
 .period { padding-left: 14px; border-left: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-4); }
-.overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(20px, 2vw, 27px); font-weight: 750; line-height: 1.2; }
+/* ⚠️ ค่าชุดนี้ก๊อปมาจาก DetailOverview.module.css `.overviewHeading h1` เป๊ะทุกบรรทัด
+   (ตรวจเจอ 2026-07-29) — ถ้าจะแก้หัวเรื่องแบบยืดตามจอ ต้องแก้ทั้งสองที่ หรือยกหน้านี้
+   ไปใช้ DetailOverview ให้จบ */
+.overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(var(--fs-12), 2vw, var(--fs-15)); font-weight: 750; line-height: 1.2; }
 .overviewHeading p { margin: 6px 0 0; color: var(--text-3); font-size: var(--fs-7); }
 .headerActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .liveBadge { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--green) 28%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); font-size: var(--fs-2); font-weight: 750; }
