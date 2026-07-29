@@ -25,10 +25,14 @@ import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
+import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
 
-const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
+// ภาษี/ชิ้น อ่านจากทะเบียนสินค้าเสมอ (ดูเหตุผลเต็มที่หน้ารายการทะเบียน) — ทะเบียน
+// สรรพสามิตตัดสินแค่ว่า "เสียภาษีไหม" ส่วนตัวเลขอัตรามาจากราคาขายปลีกของ FG
+const taxPerUnit = (r, product) =>
+  exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax;
 
 export default function RegistrationDetailPage() {
   const { id } = useParams();
@@ -41,6 +45,11 @@ export default function RegistrationDetailPage() {
   const { data: customers } = useApiList("/api/customers");
 
   const s = useMemo(() => regs.find((r) => r.id === id) || null, [regs, id]);
+  // อัตราภาษีมาจากสินค้า ไม่ใช่สำเนาบนทะเบียน (ราคาขายปลีกอัปเดตได้ อัตราจึงขยับตาม)
+  const taxProduct = useMemo(
+    () => products.find((p) => p.id === s?.productId) || null,
+    [products, s?.productId],
+  );
   // ลิสต์ customers มีไว้ให้ picker ของ RegistrationFormModal — ลูกค้าของทะเบียนใบนี้
   // อ่านรายตัว ไม่งั้นชื่อ/ประเภทลูกค้าหายเมื่อผู้เปิดไม่ได้ดูแลลูกค้ารายนั้น
   const customer = useCustomerRecord(s?.customerId, customers.find((c) => c.id === s?.customerId));
@@ -159,7 +168,7 @@ export default function RegistrationDetailPage() {
             <>
               <DocumentSummaryCard
                 title="สรุปทะเบียน"
-                total={s.isExciseTaxable === false ? "ยกเว้นภาษี" : fmtMoney(taxPerUnit(s))}
+                total={s.isExciseTaxable === false ? "ยกเว้นภาษี" : fmtMoney(taxPerUnit(s, taxProduct))}
                 rows={[
                   { id: "fg", label: "รหัสสินค้า", value: s.fgCode || "-" },
                   { id: "customer", label: "ลูกค้า", value: s.customerName || "-" },
@@ -236,7 +245,7 @@ export default function RegistrationDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <Field label="ลูกค้า" full>{s.customerName}</Field>
               <Field label="เลขผู้เสียภาษี">{s.taxId || "-"}</Field>
-              <Field label="ภาษี/ชิ้น">{s.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(s))}</Field>
+              <Field label="ภาษี/ชิ้น">{s.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(s, taxProduct))}</Field>
               <Field label="เลขที่อนุมัติ">{s.approvalNumber || "-"}</Field>
               <Field label="ผู้ยื่น">{s.assignee || "-"}</Field>
             </div>
@@ -304,7 +313,7 @@ export default function RegistrationDetailPage() {
         customers={customers}
         registrations={regs}
       />
-      <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} />
+      <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} product={taxProduct} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={rejectReg} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
       <RejectDialog
         open={reviseOpen}

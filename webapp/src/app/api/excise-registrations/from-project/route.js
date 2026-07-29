@@ -84,8 +84,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     taxId: customer.taxId,
     isExciseTaxable,
     taxableOverride: null,
-    exciseTax: isExciseTaxable ? (product.exciseTax || 0) : 0,
-    localTax: isExciseTaxable ? (product.localTax || 0) : 0,
     status: 'draft',
     team: project.team || user.team || null,
     ownerId: user.id || null,

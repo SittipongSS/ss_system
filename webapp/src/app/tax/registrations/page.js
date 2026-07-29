@@ -13,8 +13,13 @@ import StatusBadge from "@/components/excise/StatusBadge";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
 
-const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
+// ภาษี/ชิ้น อ่านจาก **ทะเบียนสินค้า** เสมอ (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้
+// เหมือนราคาผลิต) — ทะเบียนสรรพสามิตเป็นแค่ผู้ตัดสินว่า "เสียภาษีไหม" ผ่าน
+// isExciseTaxable · ตัวคิดตัวเดียวกับที่ API ใช้ตอนออกใบยื่น ตัวเลขบนสองหน้าจึงตรงกันเสมอ
+const taxPerUnit = (r, product) =>
+  exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax;
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
 const registrationProduct = (r) => productDisplayName(r);
 
@@ -62,6 +67,9 @@ export default function RegistrationsPage() {
     if (created && saved?.id) router.push(`/tax/registrations/${saved.id}`);
   };
 
+  // อัตราภาษีมาจากสินค้า ไม่ใช่สำเนาบนทะเบียน — หาสินค้าจาก productId ของทะเบียน
+  const productOf = (r) => products.find((p) => p.id === r?.productId) || null;
+
   const columns = [
     {
       key: "fgCode", label: "รหัสสินค้า (FG)",
@@ -75,8 +83,8 @@ export default function RegistrationsPage() {
     { key: "customerName", label: "ลูกค้า", render: (r) => <span style={{ color: "var(--text-2)" }}>{r.customerName}</span> },
     {
       key: "tax", label: "ภาษี/ชิ้น", align: "right",
-      sortValue: (r) => taxPerUnit(r),
-      render: (r) => <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r))}</span>,
+      sortValue: (r) => taxPerUnit(r, productOf(r)),
+      render: (r) => <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>,
     },
     { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{r.approvalNumber || "-"}</span> },
     { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
@@ -93,7 +101,7 @@ export default function RegistrationsPage() {
       </div>
       <div className="flex items-center justify-between" style={{ fontSize: 12 }}>
         <span style={{ color: "var(--text-2)" }} className="truncate">{r.customerName}</span>
-        <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r))}</span>
+        <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>
       </div>
     </div>
   );

@@ -5,10 +5,12 @@ import { fmtMoney } from "@/lib/format";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
 
 // LG approval for an excise registration: approval number + taxability override.
 // PATCH contract unchanged from the old ApproveProductModal.
-export default function ApproveDialog({ open, onClose, onDone, registration }) {
+// `product` = สินค้าของทะเบียนใบนี้ — แหล่งเดียวของอัตราภาษี (ผู้เรียกส่งมาให้)
+export default function ApproveDialog({ open, onClose, onDone, registration, product = null }) {
   const [approvalNumber, setApprovalNumber] = useState("");
   const [taxable, setTaxable] = useState("auto"); // auto | taxable | exempt
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,11 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
 
   if (!registration) return null;
   const autoTaxable = isExciseCategory(categoryOf(registration.fgCode), productTypes);
-  const taxPerUnit = (registration.exciseTax || 0) + (registration.localTax || 0);
+  // ภาษี/ชิ้น มาจากทะเบียนสินค้า (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้) — จอที่
+  // ฝ่ายกฎหมายใช้ตัดสินใจอนุมัติต้องเห็นเลขเดียวกับที่ใบยื่นจะคิดจริง ไม่ใช่สำเนาเก่า
+  const taxPerUnit = exciseTaxLineForRegistration({
+    registration, product, quantity: 1,
+  }).totalTax;
 
   const submit = async (e) => {
     e.preventDefault();
