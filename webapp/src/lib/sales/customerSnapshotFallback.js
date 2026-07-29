@@ -39,11 +39,14 @@ export async function fillCustomerSnapshotFromMaster(supabase, record) {
   if (!record || !record.customerId) return record;
   if (!CUSTOMER_SNAPSHOT_FIELDS.some((field) => isBlank(record[field]))) return record;
 
-  const { data: customer } = await supabase
+  const { data: customer, error: customerError } = await supabase
     .from('customers')
     .select('taxId, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
     .eq('id', record.customerId)
     .maybeSingle();
+  // fallback เติมช่องที่ว่างบนเอกสาร — โหลดไม่ได้ก็คืนของเดิม (เอกสารยังออกได้ แค่มีช่องว่าง)
+  // แต่ต้อง log ไม่งั้นเอกสารขาดข้อมูลลูกค้าโดยไม่มีใครรู้ว่าเพราะ query พัง
+  if (customerError) console.error('[snapshot] เติมข้อมูลลูกค้าบนเอกสารไม่สำเร็จ:', customerError.message);
   if (!customer) return record;
 
   const fromMaster = customerToSnapshot(customer);

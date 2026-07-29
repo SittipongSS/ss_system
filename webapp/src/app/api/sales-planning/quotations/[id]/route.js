@@ -56,11 +56,12 @@ const EDITABLE_STATUSES = new Set(['draft', 'sent', 'rejected']);
 // ฉบับตรึง snapshot มีเส้นทางของตัวเอง (captureIssuedQuotationSnapshot) ไม่ผ่านทางนี้
 async function loadProposerSignature(supabase, quote) {
   if (!quote?.proposerSignatureEvidenceId) return null;
-  const { data: ev } = await supabase
+  const { data: ev, error: evError } = await supabase
     .from('document_signature_evidence')
     .select('id, signerName, signedAt, signatureAssetSnapshot')
     .eq('id', quote.proposerSignatureEvidenceId)
     .maybeSingle();
+  if (evError) console.error('[quotation] โหลดหลักฐานลายเซ็นผู้จัดทำไม่สำเร็จ:', evError.message);
   if (!ev?.signatureAssetSnapshot) return null;
   const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
   if (!imageDataUri) return null;

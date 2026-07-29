@@ -23,8 +23,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const closedErr = projectWriteBlockedError(project);
   if (closedErr) return conflict(closedErr);
 
-  const { data: tasks } = await supabase
+  const { data: tasks, error: tasksError } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', body.projectId);
+  // query พังต้องไม่ตอบ ok({changed:0}) — นั่นแปลว่า "จัดลำดับสำเร็จ" ทั้งที่ไม่ได้แตะอะไร
+  if (tasksError) return fail(tasksError.message, 500);
   if (!tasks || !tasks.length) return ok({ changed: 0 });
 
   const changes = reindexByOrder(tasks, body.orderedIds);

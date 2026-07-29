@@ -12,8 +12,9 @@ export async function GET(request, { params }) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
 
-  const { data: product } = await supabase
+  const { data: product, error: productError } = await supabase
     .from('products').select('*').eq('id', id).maybeSingle();
+  if (productError) return Response.json({ error: productError.message }, { status: 500 });
   // 404 (not 403) for out-of-team products so we don't leak their existence.
   if (!product || !canViewRecord(user, 'products', product)) {
     return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });

@@ -23,11 +23,13 @@ const EDITABLE = [
 // DL1: task ลอยของดีล (projectId ว่าง — mig 0094) ใช้ scope จากดีลแทน
 // (pseudo-project {team, aeOwner} ให้ pmTaskEditTier/inScope เช็คทีมได้เหมือนเดิม)
 async function loadTaskWithProject(supabase, id) {
-  const { data: task } = await supabase.from('project_tasks').select('*').eq('id', id).maybeSingle();
+  const { data: task, error: taskError } = await supabase.from('project_tasks').select('*').eq('id', id).maybeSingle();
+  if (taskError) throw taskError;
   if (!task) return { task: null, project: null, scopeRow: null };
   if (!task.projectId && task.dealId) {
-    const { data: deal } = await supabase.from('sales_deals')
+    const { data: deal, error: dealError } = await supabase.from('sales_deals')
       .select('id, team, ownerName').eq('id', task.dealId).maybeSingle();
+    if (dealError) throw dealError;
     return { task, project: null, scopeRow: deal ? { team: deal.team, aeOwner: deal.ownerName } : null };
   }
   const { data: project } = await supabase.from('projects').select('*').eq('id', task.projectId).maybeSingle();

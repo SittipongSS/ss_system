@@ -37,8 +37,9 @@ export async function canAttachToCosting(supabase, entityType, parent, user) {
   if (!canViewCosting(user)) return false;
   if (entityType === 'costing_item') return canUser(user, 'costing:edit');
   if (entityType !== 'dept_request_item' || !parent?.askId) return false;
-  const { data: ask } = await supabase
+  const { data: ask, error: askError } = await supabase
     .from('dept_requests').select('*').eq('id', parent.askId).maybeSingle();
+  if (askError) throw askError;
   if (!ask) return false;
   if (['closed', 'cancelled'].includes(ask.status)) return false;
   return canManageRequest(user, ask) || canAnswerRequest(user, ask);

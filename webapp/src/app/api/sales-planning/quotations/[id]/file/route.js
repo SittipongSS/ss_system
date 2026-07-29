@@ -28,7 +28,8 @@ export async function GET(request, { params }) {
   if (quoteError) return Response.json({ error: quoteError.message }, { status: 500 });
   if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
 
-  const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  const { data: deal, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
   if (!deal || !inSalesViewScope(user, deal)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const list = Array.isArray(quote.wonAttachments) ? quote.wonAttachments : [];

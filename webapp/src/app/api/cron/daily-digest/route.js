@@ -90,13 +90,19 @@ async function pmDigest(supabase) {
 
   // finishDate เป็นคอลัมน์ date — เทียบด้วย YYYY-MM-DD ตรง ๆ
   const soonISO = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
-  const { data: tasks } = await supabase
+  const { data: tasks, error: tasksError } = await supabase
     .from('project_tasks')
     .select('projectId, name, status, finishDate')
     .neq('status', 'Completed')
     .not('finishDate', 'is', null)
     .lte('finishDate', soonISO)
     .limit(200);
+  // การ์ดสรุปเช้าเป็น best-effort — query พังไม่ควรทำให้ทั้งการ์ดหาย แต่ต้องมีร่องรอย
+  // ไม่งั้นหมวด "งานใกล้ครบกำหนด" หายไปเงียบ ๆ แล้วไม่มีใครรู้ว่าเคยมี
+  if (tasksError) {
+    console.error('[digest] โหลดงานใกล้ครบกำหนดไม่สำเร็จ:', tasksError.message);
+    return null;
+  }
   if (!tasks?.length) return null;
 
   const projectIds = [...new Set(tasks.map((t) => t.projectId))];

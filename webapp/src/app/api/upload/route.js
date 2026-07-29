@@ -75,8 +75,9 @@ export async function POST(request) {
       if (!['draft', 'sent'].includes(quote.status)) {
         return Response.json({ error: 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้' }, { status: 409 });
       }
-      const { data: deal } = await supabase
+      const { data: deal, error: dealError } = await supabase
         .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+      if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
       if (!deal || !inSalesEditScope(user, deal)) {
         return Response.json({ error: 'forbidden' }, { status: 403 });
       }
@@ -187,13 +188,15 @@ export async function DELETE(request) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
     const supabase = getSupabaseAdmin();
-    const { data: quote } = await supabase
+    const { data: quote, error: quoteLoadError } = await supabase
       .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
+    if (quoteLoadError) return Response.json({ error: quoteLoadError.message }, { status: 500 });
     if (!quote || !['draft', 'sent'].includes(quote.status) || !canEditSalesPlanning(user)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
-    const { data: deal } = await supabase
+    const { data: deal, error: dealError } = await supabase
       .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+    if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
     if (!deal || !inSalesEditScope(user, deal)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }

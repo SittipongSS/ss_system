@@ -27,8 +27,9 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  const { data: deal } = await supabase
+  const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  if (dealError) return fail(dealError.message, 500);
   if (!deal || !inSalesViewScope(user, deal)) return forbidden();
 
   const { data: snapshots, error } = await supabase

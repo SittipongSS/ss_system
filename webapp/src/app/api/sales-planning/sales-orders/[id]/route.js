@@ -86,7 +86,7 @@ async function loadApproverSignature(supabase, order) {
   // ต้องกรอง signingRole (mig 0151) — เอกสารหนึ่งใบมีหลักฐานหลายบทบาทได้ (ผู้ยื่น/ผู้อนุมัติ)
   // ถ้าเรียงด้วย approvalSequence ล้วน แถวของผู้ยื่นที่เกิดหลังสุด (เช่น approved → ยกเลิก →
   // คืนร่าง → ยื่นใหม่) จะถูกหยิบมาแสดงในช่องผู้อนุมัติ = ลายเซ็นผิดคนบนเอกสาร
-  const { data: ev } = await supabase
+  const { data: ev, error: evError } = await supabase
     .from('document_signature_evidence')
     .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
     .eq('salesOrderId', order.id)
@@ -94,6 +94,9 @@ async function loadApproverSignature(supabase, order) {
     .order('approvalSequence', { ascending: false })
     .limit(1)
     .maybeSingle();
+  // ลายเซ็นผู้อนุมัติหาย = เอกสารยังพิมพ์ได้แต่ไม่มีลายเซ็น · ไม่ throw (จะทำให้เปิดหน้า
+  // SO ไม่ได้ทั้งใบ) แต่ต้อง log เพราะลายเซ็นคือหลักฐานอนุมัติ หายเงียบ ๆ ไม่ได้
+  if (evError) console.error('[sales-order] โหลดหลักฐานลายเซ็นผู้อนุมัติไม่สำเร็จ:', evError.message);
   if (!ev?.signatureAssetSnapshot) return null;
   const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
   if (!imageDataUri) return null;
