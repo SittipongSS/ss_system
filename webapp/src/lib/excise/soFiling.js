@@ -1,5 +1,5 @@
 import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
-import { billedTaxTotals } from "@/lib/tax/exciseBilling";
+import { billedTaxTotals, exciseTaxLine } from "@/lib/tax/exciseBilling";
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
@@ -38,11 +38,13 @@ export function resolveSoFiling({
       continue;
     }
 
-    const exciseRatePerUnit = roundMoney(product.exciseTax);
-    const localTaxRatePerUnit = roundMoney(product.localTax);
-    const totalExciseTax = roundMoney(exciseRatePerUnit * quantity);
-    const totalLocalTax = roundMoney(localTaxRatePerUnit * quantity);
-    const totalTax = roundMoney(totalExciseTax + totalLocalTax);
+    // อัตรามาจากสินค้า (= ราคาขายปลีกของ FG) และคิดด้วยตัวคิดกลางตัวเดียวกับใบยื่น
+    // ที่สร้างด้วยมือ — สองทางเคยคิดคนละสูตร ดูเหตุผลเต็มที่ exciseTaxLine
+    const taxLine = exciseTaxLine({
+      exciseRatePerUnit: product.exciseTax,
+      localTaxRatePerUnit: product.localTax,
+      quantity,
+    });
     const registration = approvedRegistrationByProduct.get(product.id) || null;
     const needsRegistration = !registration;
 
@@ -52,12 +54,7 @@ export function resolveSoFiling({
       productId: product.id,
       fgCode,
       description: line.description || product.name || product.productName || fgCode,
-      quantity,
-      exciseRatePerUnit,
-      localTaxRatePerUnit,
-      totalExciseTax,
-      totalLocalTax,
-      totalTax,
+      ...taxLine,
       needsRegistration,
     });
     if (needsRegistration) {

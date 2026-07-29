@@ -53,8 +53,10 @@ test('the agreed pair reads its direction from the verb', () => {
 
 // "ถอด" ยังใช้ได้ในความหมายอื่นที่ไม่เกี่ยวกับ workflow — ห้ามไล่แก้เหมารวม
 test('unrelated uses of ถอด are left alone', () => {
-  const orders = read('src/app/api/orders/route.js');
-  assert.match(orders, /ถอด VAT/);   // ถอด VAT = คิดราคาก่อนภาษี
+  // ย้ายจาก api/orders/route.js มาที่เอกสารพิมพ์: คอมเมนต์ที่เคยอ้างถูกลบไปพร้อมสูตร
+  // ภาษีเก่า (2026-07-29 — ยกการคิดภาษีไปที่ exciseBilling) ส่วนคำบนเอกสารจริงถาวรกว่า
+  const billPrint = read('src/lib/tax/billPrint.js');
+  assert.match(billPrint, /ถอด VAT/);   // ถอด VAT = คิดราคาก่อนภาษี
   const deals = read('src/app/api/sales-planning/deals/[id]/route.js');
   assert.match(deals, /ถอด timeline segment/);   // ถอดออกจากโครงการ
 });

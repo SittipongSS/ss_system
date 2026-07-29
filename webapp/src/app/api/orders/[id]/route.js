@@ -4,8 +4,7 @@ import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, 
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 import { notifyFilingHandoff } from '@/lib/tax/filingNotify';
 import { recordAudit } from '@/lib/audit';
-
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+import { exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -158,7 +157,15 @@ export async function PATCH(request, { params }) {
       }
     }
 
-    let totalExciseTax = 0, totalLocalTax = 0;
+    // อัตราภาษีอ่านจาก **สินค้า** (ราคาขายปลีกของ FG) ด้วยตัวคิดกลางตัวเดียวกับ
+    // POST /api/orders และทางที่ออกใบยื่นจาก Sale Order — เดิมสามที่คิดคนละสูตร
+    const productIds = [...new Set([...regMap.values()].map((r) => r.productId).filter(Boolean))];
+    const { data: taxProducts, error: taxProdErr } = productIds.length
+      ? await supabase.from('products').select('id, fgCode, exciseTax, localTax').in('id', productIds)
+      : { data: [], error: null };
+    if (taxProdErr) return Response.json({ error: taxProdErr.message }, { status: 500 });
+    const productMap = new Map((taxProducts || []).map((p) => [p.id, p]));
+
     newItemRows = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -166,31 +173,24 @@ export async function PATCH(request, { params }) {
       if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
       const qty = parseInt(it.quantity);
       if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-      // Per-unit tax = ราคาถอด VAT × 8.8% rounded ONCE, THEN × qty (matches POST
-      // + the form). Split the line into excise:local = 10:1 to sum to the total.
-      const perUnit = r2((reg.exciseTax || 0) + (reg.localTax || 0));
-      const itemTax = r2(perUnit * qty);
-      const itemExcise = r2(itemTax * 10 / 11);
-      const itemLocal = r2(itemTax - itemExcise);
-      totalExciseTax += itemExcise;
-      totalLocalTax += itemLocal;
+      const product = productMap.get(reg.productId);
+      if (!product) {
+        return Response.json({ error: `ไม่พบสินค้าของทะเบียน ${reg.fgCode || reg.id} — คิดอัตราภาษีไม่ได้` }, { status: 400 });
+      }
+      const taxLine = exciseTaxLineForRegistration({ registration: reg, product, quantity: qty });
       newItemRows.push({
         id: `OIT-${id.slice(3)}-${i + 1}`,
         orderId: id,
         registrationId: reg.id,
         productId: reg.productId,
-        quantity: qty,
         salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
-        exciseRatePerUnit: r2(reg.exciseTax),
-        localTaxRatePerUnit: r2(reg.localTax),
-        totalExciseTax: itemExcise,
-        totalLocalTax: itemLocal,
-        totalTax: itemTax,
+        ...taxLine,
       });
     }
-    updates.totalExciseTax = totalExciseTax;
-    updates.totalLocalTax = totalLocalTax;
-    updates.totalTax = totalExciseTax + totalLocalTax;
+    const rollup = exciseTaxTotals(newItemRows);
+    updates.totalExciseTax = rollup.totalExciseTax;
+    updates.totalLocalTax = rollup.totalLocalTax;
+    updates.totalTax = rollup.totalTax;
   }
 
   const { error: updErr } = await updateOrderResilient(supabase, id, updates);

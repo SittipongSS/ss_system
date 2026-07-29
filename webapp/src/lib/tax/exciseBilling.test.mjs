@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals, orderAmountToCollect,
+  exciseTaxLine, exciseTaxLineForRegistration, exciseTaxTotals, round2,
 } from "./exciseBilling.js";
 import { buildBillPrintHTML } from "./billPrint.js";
 
@@ -69,5 +70,86 @@ test("VAT คิดที่ lib เดียว — ห้ามฮาร์ด
     "../../app/tax/filings/[id]/page.js",
   ]) {
     assert.doesNotMatch(read(path), /0\.07/, path);
+  }
+});
+
+// ── ตัวคิดบรรทัดภาษี: ทางเดียวของทั้งระบบ (มติผู้ใช้ 2026-07-29) ────────────────
+// อัตรามาจากราคาขายปลีกของ FG ซึ่งเก็บที่ products.exciseTax/localTax — ราคาใน SO
+// เป็นราคาผลิต ใช้คิดภาษีไม่ได้ ทุกทางจึงต้องอ้างเลข FG กลับไปดึงอัตราจากสินค้า
+test('exciseTaxLine: ปัดอัตราต่อหน่วยก่อน แล้วคูณจำนวน (ภาษี/ชิ้น × จำนวน = ยอดรวม)', () => {
+  const line = exciseTaxLine({ exciseRatePerUnit: 8.044, localTaxRatePerUnit: 0.8044, quantity: 10 });
+  assert.equal(line.exciseRatePerUnit, 8.04);
+  assert.equal(line.localTaxRatePerUnit, 0.8);
+  assert.equal(line.totalExciseTax, 80.4);
+  assert.equal(line.totalLocalTax, 8);
+  assert.equal(line.totalTax, 88.4);
+  // กระทบยอดด้วยมือได้: อัตรา/ชิ้น × จำนวน ต้องเท่ากับยอดรวมของบรรทัดเป๊ะ
+  assert.equal(round2(line.exciseRatePerUnit * line.quantity), line.totalExciseTax);
+  assert.equal(round2(line.localTaxRatePerUnit * line.quantity), line.totalLocalTax);
+});
+
+// 🐞 สูตรเดิมของใบยื่นที่สร้างด้วยมือ: ปัด "ผลรวมต่อหน่วย" แล้วแตกกลับด้วยสัดส่วน
+// คงที่ excise:local = 10:1 — ยอดรวมเท่ากัน แต่ **ยอดแยกผิด** ทันทีที่สินค้ามีอัตรา
+// ไม่เป็น 10:1 ซึ่งแก้มือได้ · สองยอดนี้ต้องกรอกแบบฟอร์มสรรพสามิตคนละช่อง
+test('ยอดแยก excise/local ต้องตามอัตราจริงของสินค้า ไม่ใช่บังคับสัดส่วน 10:1', () => {
+  const line = exciseTaxLine({ exciseRatePerUnit: 10, localTaxRatePerUnit: 5, quantity: 4 });
+  assert.equal(line.totalExciseTax, 40);
+  assert.equal(line.totalLocalTax, 20);
+  assert.equal(line.totalTax, 60);
+  // สูตรเก่าจะได้ perUnit=15 → itemTax=60 → excise=60*10/11=54.55 · local=5.45 (ผิด)
+  const legacyExcise = round2(round2(round2(10 + 5) * 4) * 10 / 11);
+  assert.notEqual(line.totalExciseTax, legacyExcise, 'ต้องไม่กลับไปใช้สัดส่วน 10:1');
+});
+
+test('exciseTaxTotals: รวมหลายบรรทัดแล้วยังปัดสองตำแหน่ง', () => {
+  const lines = [
+    exciseTaxLine({ exciseRatePerUnit: 8.04, localTaxRatePerUnit: 0.8, quantity: 3 }),
+    exciseTaxLine({ exciseRatePerUnit: 1.11, localTaxRatePerUnit: 0.11, quantity: 7 }),
+  ];
+  const totals = exciseTaxTotals(lines);
+  assert.equal(totals.totalExciseTax, round2(24.12 + 7.77));
+  assert.equal(totals.totalLocalTax, round2(2.4 + 0.77));
+  assert.equal(totals.totalTax, round2(totals.totalExciseTax + totals.totalLocalTax));
+});
+
+// ทะเบียนตัดสินว่า "เสียภาษีไหม" (LG override) · สินค้าให้ "ตัวเลขอัตรา"
+// ⚠️ ถ้าอ่านอัตราจากสินค้าอย่างเดียวโดยไม่ดูธงของทะเบียน override ของ LG จะหายเงียบ ๆ
+test('taxableOverride ของฝ่ายกฎหมายชนะอัตราของสินค้า', () => {
+  const product = { exciseTax: 8.04, localTax: 0.8 };
+  const taxed = exciseTaxLineForRegistration({
+    registration: { isExciseTaxable: true }, product, quantity: 10,
+  });
+  assert.equal(taxed.totalTax, 88.4);
+  const exempt = exciseTaxLineForRegistration({
+    registration: { isExciseTaxable: false }, product, quantity: 10,
+  });
+  assert.deepEqual(
+    { e: exempt.totalExciseTax, l: exempt.totalLocalTax, t: exempt.totalTax, rate: exempt.exciseRatePerUnit },
+    { e: 0, l: 0, t: 0, rate: 0 },
+    'ยกเว้นภาษีแล้วต้องเป็น 0 ทุกช่อง',
+  );
+  // ทะเบียนที่ไม่ได้ระบุธง = เสียภาษีตามปกติ (ค่าตั้งต้นเดิมของระบบ)
+  assert.equal(exciseTaxLineForRegistration({ registration: {}, product, quantity: 1 }).totalTax, 8.84);
+});
+
+// ล็อกว่าทุกทางเรียกตัวคิดกลาง ไม่มีใครคิดสูตรเองอีก
+test('ทุกทางที่สร้างบรรทัดภาษีต้องเรียกตัวคิดกลาง และอ่านอัตราจากสินค้า', () => {
+  const codeOnly = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // จาก Sale Order: ไม่มีทะเบียนเสมอ (บรรทัดที่ยังไม่ขึ้นทะเบียนก็คิดยอดให้ดู) จึงเรียก
+  // ตัวคิดฐานตรง ๆ โดยส่งอัตราของสินค้าเข้าไป
+  const soFiling = codeOnly(read('../excise/soFiling.js'));
+  assert.match(soFiling, /exciseTaxLine\(\{/);
+  assert.match(soFiling, /exciseRatePerUnit: product\.exciseTax/);
+
+  // ทางที่อ้างทะเบียน (สร้างมือ + แก้ใบ + ฟอร์มฝั่งจอ) ต้องผ่านตัวที่เคารพ override
+  for (const path of [
+    '../../app/api/orders/route.js',
+    '../../app/api/orders/[id]/route.js',
+    '../../components/excise/OrderFormModal.js',
+  ]) {
+    const code = codeOnly(read(path));
+    assert.match(code, /exciseTaxLineForRegistration\(\{/, `${path} ต้องเรียกตัวคิดกลาง`);
+    assert.doesNotMatch(code, /reg\.exciseTax|r\.exciseTax/, `${path} ห้ามอ่านอัตราจาก snapshot บนทะเบียน`);
+    assert.doesNotMatch(code, /10 \/ 11/, `${path} ห้ามแตกยอดด้วยสัดส่วนคงที่`);
   }
 });
