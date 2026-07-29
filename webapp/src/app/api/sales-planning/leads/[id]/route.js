@@ -1,9 +1,12 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can } from '@/lib/permissions';
-import { LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead, canDeleteLead, LEAD_LOCKED_STATUSES } from '@/lib/sales/leads';
+import {
+  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead,
+  canDeleteLead, LEAD_LOCKED_STATUSES, canViewLeads, inLeadScope,
+} from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
-import { canViewLeads, inLeadScope } from '../route';
+import { purgeUpdates } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +99,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);
   if (error) return fail(error.message, 500);
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง ไม่งั้นข้อความค้างในตารางตลอดไป
+  // (lead_events มี FK ของตัวเอง จึงหายไปพร้อมลีดอยู่แล้ว)
+  await purgeUpdates(supabase, 'lead', id);
   await recordAudit({ user, action: 'delete', entityType: 'sales_lead', entityId: id, before, summary: `ลบลีด ${before.contactName}`, request: req });
   return ok({ ok: true });
 });

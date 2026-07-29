@@ -20,8 +20,7 @@ import {
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { isSuperuser } from '@/lib/permissions';
-import { inLeadScope } from '../leads/route';
-import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf } from '@/lib/sales/leads';
+import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';

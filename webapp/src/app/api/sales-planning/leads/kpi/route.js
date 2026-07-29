@@ -1,9 +1,8 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
-import { slaHit, channelGroupOf } from '@/lib/sales/leads';
+import { slaHit, channelGroupOf, canViewLeads } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import { dateRangeOfYear, isYearValue } from '@/lib/datePeriods';
-import { canViewLeads } from '../route';
 
 export const dynamic = 'force-dynamic';
 

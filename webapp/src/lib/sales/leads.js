@@ -4,7 +4,7 @@
 // เปิดลูกค้า (qualified) / ไม่ไปต่อ (disqualified) / ตีกลับทีมผิด (bounce → new).
 // KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ.
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
-import { isSuperuser } from '@/lib/permissions';
+import { can, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform',
@@ -69,6 +69,41 @@ export const MEETING_MODE_LABELS = {
 
 // สถานะที่เริ่มติดต่อแล้ว — ข้อมูลลีดล็อกสำหรับทุก role ยกเว้น admin
 export const LEAD_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
+
+// ── ใครเห็นลีดแค่ไหน (เฟส C) ─────────────────────────────────────────────
+//   supervisor/admin/viewer → ทุกใบ · senior_ae/ac → ของทีม + คิวกลาง (new)
+//   ae → ที่ถูกมอบหมายให้ตัวเอง · marketing → ทุกใบ (ทีม intake เห็นคิวรวมเพื่อไม่กรอกซ้ำ)
+//
+// เดิมสามตัวนี้อยู่ในไฟล์ API route แล้วไฟล์อื่นต้อง `import … from '../route'` —
+// ย้ายมาอยู่กับ canEditLead/canWorkLead ที่นี่เพราะทะเบียนเธรดกลาง (updateAccess)
+// เป็น lib จะ import จาก app route ไม่ได้ · และสองตัวล่างต้องตรงกันเสมอ
+// (`applyLeadScope` กรองที่ DB · `inLeadScope` ตัดสินแถวที่โหลดมาแล้ว)
+export function applyLeadScope(query, user) {
+  const role = user?.role;
+  // supervisor sees all leads (to screen them)
+  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return query;
+  if (role === 'senior_ae' || role === 'ac') {
+    // Senior/AC only see leads that have been screened to their team.
+    return query.eq('team', user?.team ?? '__no_team__');
+  }
+  if (role === 'ae') {
+    return query.or(`assigneeId.eq.${user?.id ?? ''},createdBy.eq.${user?.id ?? ''}`);
+  }
+  return query.eq('id', '__no_lead_scope__');
+}
+
+// scope รายใบ — กติกาเดียวกับ applyLeadScope (ใช้กับ GET /leads/[id] ที่โหลดมาแล้ว)
+export function inLeadScope(user, lead) {
+  const role = user?.role;
+  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return true;
+  if (role === 'senior_ae' || role === 'ac') return !!lead.team && lead.team === user?.team;
+  if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
+  return false;
+}
+
+export function canViewLeads(user) {
+  return !!user && (can(user.role, 'salesplan:lead') || can(user.role, 'salesplan:view'));
+}
 
 // นโยบายแก้/ลบลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ):
 //   admin → ทุกใบทุกสถานะ · supervisor → ก่อนเริ่มติดต่อ

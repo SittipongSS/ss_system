@@ -46,6 +46,20 @@ export const UPDATE_KINDS = {
     email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
     next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
   },
+  // ลีด (mig 0091) — ชุดชนิด **เหมือนดีลทุกตัว** โดยเจตนา: คนกลุ่มเดียวกันทำงาน
+  // แบบเดียวกัน และลีดที่ผ่านคัดกรองจะกลายเป็นดีล ถ้าคำศัพท์ต่างกันบันทึกการโทร
+  // ก่อน/หลังแตกดีลจะอ่านเป็นคนละเรื่องทั้งที่เป็นการคุยกับคนเดียวกัน
+  //
+  // ⚠️ ไม่มีชนิดเหตุการณ์ระบบที่นี่ — เหตุการณ์ของลีด (คัดกรอง/มอบหมาย/ตีกลับ)
+  // ยังอยู่ในตาราง `lead_events` ของตัวเอง (schema เฉพาะโดเมน + คิว/KPI query ตรง)
+  // แล้วส่งเข้าเธรดผ่าน `extraItems` เป็นรายการอ่านอย่างเดียว — ตารางไม่ย้าย
+  lead: {
+    note: { label: 'บันทึก', color: 'var(--text-3)', authorable: true },
+    call: { label: 'โทร', color: 'var(--blue)', authorable: true },
+    meeting: { label: 'ประชุม', color: 'var(--violet)', authorable: true },
+    email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
+    next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
+  },
   // ทะเบียนกลิ่น (mig 0171) — เธรดสองฝ่าย: RD ส่งกลิ่น ↔ ฝ่ายขายนำผลจากลูกค้ามาลง
   // เหตุการณ์ระบบเขียนคู่กับ scent_revisions เสมอ (ตารางเก็บ "ผลที่เป็นทางการ"
   // ส่วนเธรดเก็บ "บทสนทนาระหว่างทาง" — คนละหน้าที่ ต้องมีทั้งคู่)
