@@ -43,12 +43,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectValue: 0,      // NOT NULL DEFAULT 0 — มูลค่าคาดการณ์รอผู้ดูแลเติม
     wonValue: null,       // ยังไม่ Won → ยังไม่มีมูลค่าปิดจริง
     // อ่านจาก map กลางแทนการฮาร์ดโค้ดเลข — เดิมเขียน 65 ไว้ตรง ๆ แล้วค้างเป็นค่าเก่า
-    // ทันทีที่ลำดับขั้นเปลี่ยน (B4 สลับ timeline_proposed เป็น 55)
+    // ทันทีที่ค่าตั้งต้นเปลี่ยน (B4 สลับลำดับขั้น → 55, มติ 2026-07-29 ปัดเข้าระดับจริง → 20)
     probability: DEFAULT_PROBABILITY_BY_STAGE.timeline_proposed,
     forecastMonth: null,  // null → ไม่ตกเดือนใดในแดชบอร์ด จนกว่าจะเติม
     expectedCloseDate: null,
     confirmedAt: null,
-    depositPaid: false,
     ownerId: p.ownerId || null,
     ownerName: p.aeOwner || null,
     team: p.team || null,

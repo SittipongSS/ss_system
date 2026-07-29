@@ -14,6 +14,8 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 //
 // ไม่มี prop `extra` แล้ว (มติผู้ใช้ 2026-07-17): เดิมหน้ารายละเอียดดีลใช้ยัด
 // checkbox "ได้รับมัดจำแล้ว" เข้ามาที่เดียว ฟอร์มแก้ดีลเลยหน้าตาไม่ตรงกับหน้ารวม
+// (คอลัมน์ depositPaid ที่ checkbox นั้นเขียน ถูกปลดระวางแล้วที่ mig 0175 — ไม่มีใครอ่าน
+//  ค่ามันเลยตั้งแต่ accept_quotation_atomic ถูกเขียนใหม่ที่ 0101/0102)
 // — ผิดกฎ "แก้ = ฟอร์มเดียวกับสร้าง" (ดู AGENTS.md). ช่องเฉพาะจุดแบบนี้คือรูรั่ว
 // ของกฎ เปิดไว้เมื่อไรฟอร์มก็เพี้ยนกันเมื่อนั้น — ถ้าต้องมีช่องต่างจริง ใช้ props
 // แบบโหมด (เช่น alreadyWon) ไม่ใช่ช่องเสียบอิสระ
@@ -150,12 +152,20 @@ export default function DealFormFields({
     </label>
   );
 
+  // ปิด Won แล้ว = 100% ซึ่งเป็น "ยอดจริง (Actual)" ไม่ใช่ FC อีกต่อไป (มติผู้ใช้ 2026-07-29)
+  // จึงไม่โยนค่าเข้า Select ที่มีแค่ 20/50/80 — snapForecastLevel จะปัด 100 ลงมาเป็น 80
+  // แล้วฟอร์มดีลที่ปิดได้แล้วจะโชว์ "80% · มี FC / ชำระค่า Scent Design" ซึ่งอ่านผิดความหมาย
+  // (ช่องถูก disabled อยู่แล้วจึงไม่มีใครกดเปลี่ยนได้ แต่ค่าที่ตาเห็นยังผิด)
   const fcField = (
     <label className="deal-field" key="fc">
       โอกาสที่จะปิดได้ (FC%)
-      <Select className="premium-select" value={snapForecastLevel(form.probability)} disabled={alreadyWon} onChange={(e) => set("probability")(e.target.value)}>
-        {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-      </Select>
+      {alreadyWon ? (
+        <input className="premium-input" value="ปิดได้แล้ว (Won) — ยอดจริงมาจาก Sale Order" readOnly disabled />
+      ) : (
+        <Select className="premium-select" value={snapForecastLevel(form.probability)} onChange={(e) => set("probability")(e.target.value)}>
+          {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </Select>
+      )}
     </label>
   );
 

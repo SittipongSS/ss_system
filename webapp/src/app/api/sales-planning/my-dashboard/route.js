@@ -4,6 +4,7 @@ import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
+import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,13 +67,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
 
-  // Group Pipeline by Probability (FC%)
-  const fcLevels = [20, 50, 80, 100];
-  const snapFc = (p) => {
-    const n = Number(p);
-    if (!Number.isFinite(n)) return 50;
-    return fcLevels.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), fcLevels[0]);
-  };
+  // Group Pipeline by Probability (FC%) — ระดับมาจาก lib/sales/forecastLevels
+  // (แหล่งเดียว) เดิมก๊อปลิสต์ไว้ที่นี่เอง แล้วต้องไล่แก้ตามทุกครั้งที่ระดับเปลี่ยน
+  const fcLevels = FORECAST_VALUES;
+  const snapFc = snapForecastLevel;
 
   const byForecast = fcLevels.map(level => {
     const dealsInLevel = openDeals.filter(d => snapFc(d.probability) === level);

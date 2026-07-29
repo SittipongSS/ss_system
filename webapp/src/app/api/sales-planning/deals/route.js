@@ -21,7 +21,7 @@ import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { isSuperuser } from '@/lib/permissions';
 import { inLeadScope } from '../leads/route';
-import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS } from '@/lib/sales/leads';
+import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf } from '@/lib/sales/leads';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +90,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerName = customer?.name || customerName;
   }
 
+  // ลีดต้นทาง: ตัดสินครั้งเดียวจากทั้งสองช่อง แล้วใช้ค่านี้ทั้งด่านตรวจสิทธิ์และคอลัมน์
+  // (ดูเหตุผลเต็มที่ sourceLeadIdOf) — ห้ามอ่าน body.leadId / metadata.leadId ตรง ๆ อีก
+  const leadSource = sourceLeadIdOf(body);
+  if (leadSource.error) return badRequest(leadSource.error);
+  const sourceLeadId = leadSource.leadId;
+
   let stage = normalizeStage(body.stage);
   // in_project ถูกยุบเป็น won แล้ว (mig 0082 ตัดออกจาก CHECK) — กัน insert พัง 500
   // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
@@ -112,7 +118,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
     expectedCloseDate: body.expectedCloseDate || null,
-    depositPaid: !!body.depositPaid,
     confirmedAt: null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
@@ -134,8 +139,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       ...(body.metadata || {}),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
+      // สะท้อนคอลัมน์เสมอ กันไม่ให้เกิดสองความจริงในแถวเดียว (ผู้อ่านใหม่ต้องใช้คอลัมน์)
+      ...(sourceLeadId ? { leadId: sourceLeadId } : {}),
     },
-    leadId: body.leadId || body.metadata?.leadId || null,
+    leadId: sourceLeadId,
   };
 
   // The creator may only mint deals within its own edit scope: an AE cannot
@@ -146,11 +153,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // แตกดีลจากลีด: deal-POST คือทางเดียวที่ปิดลีด (transition route ปิด create_deal
   // ของตัวเองไว้) — ต้อง re-implement guard เหมือน transition route: ห้ามแตะลีดนอก
   // scope ของผู้แก้ และลีดต้องอยู่สถานะที่แตกดีลได้ (contacted/meeting/qualified).
-  // เชื่อ metadata.leadId ดิบไม่ได้ (เดิมยิงลีดทีมอื่น/สถานะใดก็บังคับ qualified ได้).
+  // เชื่อค่าที่ client ส่งมาดิบ ๆ ไม่ได้ (เดิมยิงลีดทีมอื่น/สถานะใดก็บังคับ qualified ได้)
+  // ⚠️ ด่านนี้ต้องผูกกับ `row.leadId` เท่านั้น = ค่าเดียวกับที่เขียนลงคอลัมน์ ห้ามเพิ่ม
+  // เงื่อนไขอย่าง metadata.source มาคั่น ไม่งั้นจะกลับไปมี "ทางเขียนคอลัมน์ที่ไม่ผ่านด่าน"
   let sourceLead = null;
-  if (row.metadata?.leadId && row.metadata?.source === 'lead') {
-    const { data: lead } = await supabase.from('sales_leads')
-      .select('id, status, team, assigneeId, createdBy').eq('id', row.metadata.leadId).maybeSingle();
+  if (row.leadId) {
+    const { data: lead, error: leadError } = await supabase.from('sales_leads')
+      .select('id, status, team, assigneeId, createdBy').eq('id', row.leadId).maybeSingle();
+    if (leadError) return fail(leadError.message, 500);
     if (!lead) return badRequest('ไม่พบลีดต้นทาง');
     if (!inLeadScope(user, lead)) return forbidden('ไม่มีสิทธิ์แตกดีลจากลีดนี้');
     if (!LEAD_TRANSITIONS[lead.status]?.includes('create_deal')) {

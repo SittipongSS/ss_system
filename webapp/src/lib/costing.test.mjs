@@ -373,11 +373,11 @@ function dealStub(result) {
   return { api, seen };
 }
 
-// คอลัมน์จริงของ sales_deals (mig 0063 + 0096) — เทียบตรง ๆ กันเผลอ select
-// ชื่อที่ไม่มีอยู่จริงแล้วได้ error เงียบ ๆ (PostgREST คืน data = null)
+// คอลัมน์จริงของ sales_deals (mig 0063 + 0096 · ตัด depositPaid ที่ 0175) — เทียบตรง ๆ
+// กันเผลอ select ชื่อที่ไม่มีอยู่จริงแล้วได้ error เงียบ ๆ (PostgREST คืน data = null)
 const SALES_DEAL_COLUMNS = new Set([
   'id', 'customerId', 'customerName', 'title', 'stage', 'projectValue', 'probability',
-  'forecastMonth', 'expectedCloseDate', 'depositPaid', 'confirmedAt', 'lostReason',
+  'forecastMonth', 'expectedCloseDate', 'confirmedAt', 'lostReason',
   'notes', 'ownerId', 'ownerName', 'team', 'projectId', 'metadata', 'createdAt',
   'updatedAt', 'parentDealId', 'categoryCode', 'code',
 ]);

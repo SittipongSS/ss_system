@@ -265,7 +265,6 @@ export async function POST(request, { params }) {
     probability: 80,
     forecastMonth: monthKey(po.receivedDate || po.dueDate || now),
     expectedCloseDate: po.dueDate || null,
-    depositPaid: false,
     confirmedAt: null,
     notes: `ดีลรวมจาก PO สหมิตร ${po.poNumber} (${chosen.length} รายการ)`,
     ownerId: ownerSrc?.ownerId || user.id || null,

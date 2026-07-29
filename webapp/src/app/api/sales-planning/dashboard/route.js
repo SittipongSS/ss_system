@@ -3,6 +3,7 @@ import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey,
 import { cachedJson } from '@/lib/serverCache';
 import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
+import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
@@ -119,14 +120,11 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
     byStage[d.stage] = bucket;
   }
 
-  // pipeline ของดีลที่ยังเปิด แยกตามระดับโอกาสปิด (FC% 20/50/80/100) — โชว์บนภาพรวม.
+  // pipeline ของดีลที่ยังเปิด แยกตามระดับโอกาสปิด — โชว์บนภาพรวม.
   // FC% เป็นข้อมูลจัดลำดับความน่าจะปิด ไม่ถ่วงมูลค่า (value = projectValue เต็ม).
-  const FC_LEVELS = [20, 50, 80, 100];
-  const snapFc = (p) => {
-    const n = Number(p);
-    if (!Number.isFinite(n)) return 50;
-    return FC_LEVELS.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), FC_LEVELS[0]);
-  };
+  // ระดับมาจาก lib/sales/forecastLevels (แหล่งเดียว) — เดิมก๊อปลิสต์ไว้ที่นี่เอง
+  const FC_LEVELS = FORECAST_VALUES;
+  const snapFc = snapForecastLevel;
   const fcMap = {};
   for (const d of openDeals) {
     const k = snapFc(d.probability);

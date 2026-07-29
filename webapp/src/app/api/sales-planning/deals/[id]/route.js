@@ -76,7 +76,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = {
     updatedAt: new Date().toISOString(),
   };
-  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'depositPaid', 'lostReason', 'notes', 'ownerId', 'ownerName', 'team']) {
+  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'lostReason', 'notes', 'ownerId', 'ownerName', 'team']) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key];
   }
   // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน เพราะกุญแจระบบที่ flow อื่น
@@ -91,7 +91,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('stage' in body) patch.stage = nextStage;
   // projectValue = มูลค่าคาดการณ์ — freeze เมื่อปิด Won แล้ว (แก้ไม่ได้อีก); ก่อน Won แก้ได้
   if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
-  if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
+  // FC% — freeze เมื่อปิด Won แล้ว เหมือน projectValue บรรทัดบน: 100 ของดีล Won คือ
+  // "ยอดจริง (Actual)" ไม่ใช่ FC (มติผู้ใช้ 2026-07-29) และ 100 ไม่ใช่ตัวเลือกในฟอร์มแล้ว
+  // — ฟอร์มแก้ดีลส่ง probability ที่ผ่าน snapForecastLevel มาทั้งก้อนทุกครั้ง ถ้าไม่กันไว้
+  // การเปิดดีล Won แล้วกดบันทึก (เช่น แก้หมายเหตุ) จะเขียนทับ 100 ด้วย 80 เงียบ ๆ
+  // เดิมบั๊กนี้ไม่กัดเพราะ snap(100) = 100 ตอนที่ 100 ยังเป็นระดับที่เลือกได้
+  if (('probability' in body || 'stage' in body) && !alreadyWon) {
+    patch.probability = toProbability(body.probability ?? before.probability, nextStage);
+  }
   // เดือนพยากรณ์ (FC): อนุมานจาก "วันที่คาดปิด" อย่างเดียว (มติผู้ใช้ 2026-07-16 —
   // ฟอร์มไม่มีช่องเดือนแล้ว ไม่รับค่า forecastMonth จาก client). ขยับได้เฉพาะก่อนปิด
   // Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิดเพื่อวัดความแม่นยำ FC vs AT; buildWinPatch

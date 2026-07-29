@@ -60,7 +60,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // 1 เฟส เพื่อ backward compat กับ UI ที่ยังไม่ย้ายไปใช้ deals[] (ตัดในเฟสถัดไป).
   const { data: linkedDeals } = await supabase
     .from('sales_deals')
-    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerName, team, probability, expectedCloseDate, depositPaid, metadata, createdAt')
+    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
   const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);
