@@ -8,7 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewCosting } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeMaterialInput } from '@/lib/materialPrices';
-import { acceptMaterial, findMaterial } from '@/lib/materialPricesAdmin';
+import { acceptMaterial, findMaterial, formulaSnapshotFor } from '@/lib/materialPricesAdmin';
 import { normalizePmType } from '@/lib/master/materialTypes';
 import { recordAudit } from '@/lib/audit';
 
@@ -85,8 +85,10 @@ export async function PATCH(request, { params }) {
         label: value.label,
         customerId: value.customerId,
         customerName: value.customerName,
-        formulaCode: value.formulaCode,
-        formulaName: value.formulaName,
+        formulaId: value.formulaId,
+        // snapshot ชื่อ/รหัสสูตรตามทะเบียน ณ เวลาที่ผูก (mig 0181) — ไม่ได้มาจาก
+        // ที่ผู้ใช้พิมพ์อีกแล้ว จึง drift จากทะเบียนไม่ได้
+        ...(await formulaSnapshotFor(supabase, value.formulaId)),
         supplierNote: value.supplierNote,
         pmType: normalizePmType(before.kind, body.pmType),
         updatedAt: nowIso,

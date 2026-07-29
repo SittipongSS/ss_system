@@ -15,8 +15,9 @@ export const emptyMaterialForm = () => ({
   kind: "PM",
   label: "",
   pmType: "",
-  formulaCode: "",
-  formulaName: "",
+  // ⭐ ตัวตนของ F/FB คือ "สูตรในทะเบียน" ไม่ใช่รหัสที่พิมพ์เอง (mig 0181) —
+  // ของเดิมเป็น text ซึ่งพิมพ์ต่างช่องว่าง/ตัวพิมพ์แล้วกลายเป็นวัสดุคนละตัวเงียบ ๆ
+  formulaId: "",
   scope: "central", // central = ราคากลาง · customer = ทับรายลูกค้า
   customerId: "",
   supplierNote: "",
@@ -28,8 +29,7 @@ export function materialToForm(material) {
     kind: material.kind,
     label: material.label || "",
     pmType: material.pmType || "",
-    formulaCode: material.formulaCode || "",
-    formulaName: material.formulaName || "",
+    formulaId: material.formulaId || "",
     scope: material.customerId ? "customer" : "central",
     customerId: material.customerId || "",
     supplierNote: material.supplierNote || "",
@@ -38,7 +38,7 @@ export function materialToForm(material) {
 }
 
 export default function MaterialForm({
-  mode = "create", value, onChange, customers = [], canPrice = false, disabled = false,
+  mode = "create", value, onChange, customers = [], formulas = [], canPrice = false, disabled = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const isPm = value.kind === "PM";
@@ -83,26 +83,25 @@ export default function MaterialForm({
             <small style={{ color: "var(--text-3)" }}>ใช้กรองตัวเลือกวัสดุตอนประกอบต้นทุน</small>
           </div>
         ) : (
-          <>
-            <div className="form-group">
-              <label htmlFor="mat-formula-code">รหัสสูตร</label>
-              <input
-                id="mat-formula-code" className="premium-input" value={value.formulaCode}
-                disabled={disabled} placeholder="เช่น FM-2401"
-                onChange={(e) => set({ formulaCode: e.target.value })}
-              />
-              <small style={{ color: "var(--text-3)" }}>
-                ตัวตนของ F/FB คือสูตร — ชื่อเดียวกันแต่คนละสูตร = คนละราคา
-              </small>
-            </div>
-            <div className="form-group">
-              <label htmlFor="mat-formula-name">ชื่อสูตร</label>
-              <input
-                id="mat-formula-name" className="premium-input" value={value.formulaName}
-                disabled={disabled} onChange={(e) => set({ formulaName: e.target.value })}
-              />
-            </div>
-          </>
+          <div className="form-group">
+            <label htmlFor="mat-formula">สูตร</label>
+            {/* ⭐ เลือกจากทะเบียน ไม่ใช่พิมพ์รหัสเอง (mig 0181) — ตัวตนของ F/FB
+                คือสูตร ถ้าเป็นข้อความ พิมพ์ต่างช่องว่างนิดเดียวก็กลายเป็นวัสดุ
+                คนละตัวโดยไม่มีใครรู้ (บั๊กตระกูล "จับคู่ด้วยข้อความ") */}
+            <SearchableSelect
+              id="mat-formula" value={value.formulaId} disabled={disabled}
+              onChange={(v) => set({ formulaId: v })}
+              placeholder="— เลือกสูตรจากทะเบียน —"
+              options={formulas.map((f) => ({
+                value: f.id,
+                label: `${f.code ? `${f.code} · ` : ""}${f.name}`,
+              }))}
+            />
+            <small style={{ color: "var(--text-3)" }}>
+              ตัวตนของ F/FB คือสูตร — ชื่อเดียวกันแต่คนละสูตร = คนละราคา
+              {formulas.length ? "" : " · ยังไม่มีสูตรในทะเบียน เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร"}
+            </small>
+          </div>
         )}
 
         <div className="form-group">

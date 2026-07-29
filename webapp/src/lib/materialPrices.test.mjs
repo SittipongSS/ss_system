@@ -1,6 +1,7 @@
 // ทะเบียนวัสดุ (mig 0143 + 0157) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   DEFAULT_PRICE_TTL_DAYS,
   MATERIAL_KINDS,
@@ -130,9 +131,16 @@ test('เกินอายุ: เทียบวันนี้กับวั
 test('ตัวตนวัสดุ: RM แยกด้วยสูตร ไม่ใช่ชื่อ', () => {
   const base = { kind: 'RM_F', label: 'หัวน้ำหอม Lavender', customerId: null };
   // ⚠️ นี่คือหัวใจของบั๊ก "ราคา F สองสูตรทับกัน": ชื่อเหมือนกันเป๊ะแต่คนละสูตร
+  // mig 0181: ตัวตนยึด formulaId ของทะเบียน ไม่ใช่รหัสที่พิมพ์เอง (text)
   assert.notEqual(
-    materialIdentityKey({ ...base, formulaCode: 'FM-01' }),
-    materialIdentityKey({ ...base, formulaCode: 'FM-02' }),
+    materialIdentityKey({ ...base, formulaId: 'FML-01' }),
+    materialIdentityKey({ ...base, formulaId: 'FML-02' }),
+  );
+  // ⚠️ รหัสสูตรที่พิมพ์เองต้อง **ไม่มีผลกับตัวตนอีกแล้ว** — ไม่งั้นจะกลับไปเป็น
+  // "จับคู่ด้วยข้อความ" ซึ่งเป็นบั๊กที่ mig 0181 มาแก้พอดี
+  assert.equal(
+    materialIdentityKey({ ...base, formulaId: 'FML-01', formulaCode: 'พิมพ์อะไรก็ได้' }),
+    materialIdentityKey({ ...base, formulaId: 'FML-01' }),
   );
   // ชื่อต่างที่ช่องว่าง/ตัวพิมพ์ = ตัวเดียวกัน (ต้องตรงกับ unique index ใน DB)
   assert.equal(
@@ -167,18 +175,22 @@ test('สถานะราคาของวัสดุ: ร่าง / ไม
 
 test('normalize ข้อมูลวัสดุ: ผูกฝ่ายตามชนิด · PM ห้ามมีสูตร', () => {
   const { value, error } = normalizeMaterialInput({
-    kind: 'RM_F', label: '  หัวน้ำหอม   A ', formulaCode: ' FM-01 ',
+    kind: 'RM_F', label: '  หัวน้ำหอม   A ', formulaId: ' FML-01 ',
   });
   assert.equal(error, null);
   assert.equal(value.label, 'หัวน้ำหอม A');
   assert.equal(value.sourceDept, 'RD');
-  assert.equal(value.formulaCode, 'FM-01');
+  assert.equal(value.formulaId, 'FML-01');
+  // ⚠️ ชื่อ/รหัสสูตรไม่ผ่าน normalize อีกแล้ว — เป็น snapshot ที่ server ดึงจาก
+  // ทะเบียนเอง (formulaSnapshotFor) client พิมพ์ส่งมาเองไม่ได้
+  assert.equal(value.formulaCode, undefined);
+  assert.equal(value.formulaName, undefined);
 
   assert.equal(normalizeMaterialInput({ kind: 'PM', label: 'ขวด' }).value.sourceDept, 'PC');
   assert.match(normalizeMaterialInput({ kind: 'labor', label: 'x' }).error, /ชนิดวัสดุไม่ถูกต้อง/);
   assert.match(normalizeMaterialInput({ kind: 'PM', label: '  ' }).error, /ต้องระบุชื่อวัสดุ/);
   assert.match(
-    normalizeMaterialInput({ kind: 'PM', label: 'ขวด', formulaCode: 'FM-01' }).error,
+    normalizeMaterialInput({ kind: 'PM', label: 'ขวด', formulaId: 'FML-01' }).error,
     /ไม่ผูกกับสูตร/,
   );
 });
@@ -205,4 +217,29 @@ test('normalize ราคาที่ตอบ: ปฏิเสธว่าง/�
   assert.match(normalizeQuotedPrice('PM', null).error, /ต้องระบุราคา/);
   assert.match(normalizeQuotedPrice('PM', '-5').error, /ไม่ติดลบ/);
   assert.match(normalizeQuotedPrice('PM', 'abc').error, /ไม่ติดลบ/);
+});
+
+// ── ตัวตนในโค้ดต้องตรงกับ unique index ใน DB ─────────────────────────────
+// ⚠️ ถ้าสองอย่างนี้หลุดจากกัน ฝั่งแอปจะคิดว่าเป็นวัสดุคนละตัวแล้วยิง insert ไปชน
+// constraint → ผู้ใช้เห็น error ดิบของ Postgres แทนข้อความที่อ่านรู้เรื่อง
+// (เคยเขียนเตือนไว้ใน mig 0157/0171 แล้วแต่ไม่มีอะไรบังคับ — ใบนี้บังคับ)
+test('materialIdentityKey ตรงกับคอลัมน์ใน material_prices_identity_uk', () => {
+  const dir = new URL('../../supabase/migrations/', import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  // ใบล่าสุดที่ประกาศ index นี้ = นิยามที่ใช้จริงบน prod
+  let definition = null;
+  for (const f of files) {
+    const sql = readFileSync(new URL(f, dir), 'utf8');
+    const m = sql.match(/CREATE UNIQUE INDEX[^;]*material_prices_identity_uk[^;]*;/s);
+    if (m) definition = m[0];
+  }
+  assert.ok(definition, 'หา material_prices_identity_uk ในไฟล์ migration ไม่เจอ');
+  for (const col of ['kind', 'label', 'formulaId', 'customerId']) {
+    assert.match(definition, new RegExp(col), `index ต้องมี ${col}`);
+  }
+  // ตัวที่ **ต้องไม่มี** แล้ว — ถ้าใครเผลอเอา formulaCode กลับเข้า index
+  // แต่ลืมแก้โค้ด (หรือกลับกัน) เทสต์นี้จะจับได้
+  assert.doesNotMatch(definition, /formulaCode/, 'ตัวตนเลิกใช้ formulaCode แล้ว (mig 0181)');
+  const key = materialIdentityKey({ kind: 'RM_F', label: 'x', formulaId: 'F1', customerId: 'C1' });
+  assert.equal(key, 'RM_F::x::F1::C1');
 });

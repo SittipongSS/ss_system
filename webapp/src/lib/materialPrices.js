@@ -125,8 +125,11 @@ export function normLabel(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-export function materialIdentityKey({ kind, label, formulaCode, customerId } = {}) {
-  return [kind, normLabel(label), formulaCode || '', customerId || ''].join('::');
+// ⚠️ ต้องตรงกับ unique index `material_prices_identity_uk` เป๊ะ ๆ ไม่งั้นฝั่งแอป
+// จะคิดว่าเป็นคนละตัวแล้วยิง insert ไปชน constraint (ผู้ใช้เห็น error ดิบของ Postgres)
+// mig 0181: เปลี่ยนจาก `formulaCode` (text ที่คนพิมพ์เอง) → `formulaId` ของทะเบียนสูตร
+export function materialIdentityKey({ kind, label, formulaId, customerId } = {}) {
+  return [kind, normLabel(label), formulaId || '', customerId || ''].join('::');
 }
 
 export function findMaterialByIdentity(materials = [], identity = {}) {
@@ -233,9 +236,11 @@ export function normalizeMaterialInput(body = {}) {
   const supplierNote = String(body.supplierNote ?? '').trim();
   if (supplierNote.length > 500) return { value: null, error: 'หมายเหตุผู้ขายยาวเกิน 500 ตัวอักษร' };
 
-  const formulaCode = String(body.formulaCode ?? '').trim() || null;
+  // mig 0181: สูตรมาจากทะเบียน (`formulaId`) ไม่ใช่รหัสที่พิมพ์เอง — ผู้เรียกต้อง
+  // เติม formulaCode/formulaName เป็น snapshot จากทะเบียนให้เอง (ดู materialPricesAdmin)
+  const formulaId = String(body.formulaId ?? '').trim() || null;
   // RM ผูกสูตร (ตัวตนของ F/FB คือสูตร) — PM ไม่มีสูตร กันเผลอส่งมาแล้วตัวตนเพี้ยน
-  if (body.kind === 'PM' && formulaCode) {
+  if (body.kind === 'PM' && formulaId) {
     return { value: null, error: 'บรรจุภัณฑ์ (PM) ไม่ผูกกับสูตร' };
   }
   return {
@@ -245,8 +250,7 @@ export function normalizeMaterialInput(body = {}) {
       sourceDept: sourceDeptForMaterialKind(body.kind),
       customerId: body.customerId || null,
       customerName: body.customerName || null,
-      formulaCode,
-      formulaName: String(body.formulaName ?? '').trim() || null,
+      formulaId,
       supplierNote: supplierNote || null,
     },
     error: null,
