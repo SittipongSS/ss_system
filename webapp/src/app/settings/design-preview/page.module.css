@@ -121,12 +121,16 @@
   background: var(--panel);
 }
 
+/* ⚠️ เดิมเขียน bottom/margin-bottom เป็น -14px เพื่อหักล้าง padding ของกรอบ ให้แถบ
+   ไปสุดขอบกรอบตอนเลื่อน — ผลคือ **เส้นล่างของแถบไปทับเส้นกรอบพอดี (ห่าง 0.8px)**
+   ดูเหมือนแถบติดขอบจนเป็นเส้นคู่ (ผู้ใช้ทัก 2026-07-29)
+   และมันยัง *แสดงผิดจากของจริง* ด้วย — `.form-actions` ของจริงลอยที่ `bottom: 12px`
+   คือมีระยะห่างจากขอบเสมอ ไม่ได้ติดขอบ · ใช้ bottom: 0 ให้หยุดที่ขอบ padding ของกรอบ
+   จะได้ระยะ 14px ตรงกับพฤติกรรมจริง */
 .scrollDemo :global(.form-action-bar) {
   position: sticky;
-  bottom: -14px;
+  bottom: 0;
   z-index: 5;
-  margin-bottom: -14px;
-  padding-bottom: 14px;
   background: var(--panel-float);
 }
 
