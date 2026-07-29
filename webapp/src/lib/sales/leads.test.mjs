@@ -2,10 +2,12 @@
 // Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
   LEAD_CHANNELS, channelGroupOf, LEAD_TRANSITIONS, TRANSITION_TO_STATUS,
   slaBusinessDays, slaHit, SERVICE_DETAIL_REQUIRED,
   canEditLead, canDeleteLead, canWorkLead, LEAD_LOCKED_STATUSES,
+  sourceLeadIdOf,
 } from './leads';
 
 test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website→website', () => {
@@ -106,4 +108,50 @@ test('supervisor จบงานที่คัดกรอง: ขั้นท�
   // ปุ่มกำกับดูแลยังอยู่ใน transition map หลังคัดกรอง
   assert.ok(LEAD_TRANSITIONS.screened.includes('bounce'));
   assert.ok(LEAD_TRANSITIONS.assigned.includes('disqualify'));
+});
+
+// บั๊กจริง 2026-07-29: ด่านตรวจสิทธิ์ "แตกดีลจากลีด" อ่าน metadata.leadId + metadata.source
+// แต่คอลัมน์ sales_deals.leadId (แหล่งจริงที่หน้าลีดใช้หาดีลของตัวเอง) เขียนจาก body.leadId
+// คนละช่อง → ส่ง leadId เดี่ยว ๆ ก็ผูกลีดทีมอื่นได้โดยไม่ผ่านด่าน ลีดไม่ถูกปิด qualified
+// และไม่มี lead_event = conversion นับตกหล่น
+test('sourceLeadIdOf: ด่านกับคอลัมน์ต้องได้ลีดใบเดียวกันเสมอ ไม่ว่า client ส่งช่องไหนมา', () => {
+  assert.deepEqual(sourceLeadIdOf({ leadId: 'LEAD-1' }), { leadId: 'LEAD-1', error: null });
+  assert.deepEqual(sourceLeadIdOf({ metadata: { leadId: 'LEAD-1' } }), { leadId: 'LEAD-1', error: null });
+  // หน้าลีดส่งมาทั้งคู่ (ค่าเดียวกัน) — ต้องผ่านตามปกติ
+  assert.deepEqual(
+    sourceLeadIdOf({ leadId: 'LEAD-1', metadata: { leadId: 'LEAD-1', source: 'lead' } }),
+    { leadId: 'LEAD-1', error: null },
+  );
+  // metadata.source ไม่ใช่เงื่อนไขอีกต่อไป — มี leadId = ต้องผ่านด่าน
+  assert.equal(sourceLeadIdOf({ metadata: { leadId: 'LEAD-9' } }).leadId, 'LEAD-9');
+  // ไม่มีลีดต้นทาง = ดีลอิสระ ไม่ต้องแตะลีด
+  assert.equal(sourceLeadIdOf({}).leadId, null);
+  assert.equal(sourceLeadIdOf({ leadId: '  ' }).leadId, null);
+});
+
+test('sourceLeadIdOf: ส่งสองช่องคนละใบ = เจตนากำกวม ต้องเด้ง ไม่ใช่เงียบ ๆ เลือกข้าง', () => {
+  const clash = sourceLeadIdOf({ leadId: 'LEAD-1', metadata: { leadId: 'LEAD-2' } });
+  assert.equal(clash.leadId, null);
+  assert.match(clash.error, /ไม่ตรงกัน/);
+});
+
+// ล็อกสัญญาฝั่ง route: ค่าที่ผ่านด่านต้องเป็นค่าเดียวกับที่ลงคอลัมน์ ถ้ามีใครแยกสองช่อง
+// กลับมาอีก เทสต์นี้ต้องแดง (ตรรกะจริงอยู่ใน route ที่ยังไม่มี harness เรียกตรง ๆ ได้)
+test('POST /deals: ด่านลีดผูกกับ row.leadId ตัวเดียวกับที่เขียนลงคอลัมน์', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/deals/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(routeSource, /leadId: sourceLeadId,/, 'คอลัมน์ leadId ต้องมาจากค่าที่ resolve แล้ว');
+  assert.match(routeSource, /if \(row\.leadId\) \{/, 'ด่านต้องยิงเมื่อ row.leadId มีค่า');
+  assert.doesNotMatch(
+    routeSource,
+    /metadata\?\.source === 'lead'/,
+    'metadata.source ห้ามกลับมาเป็นเงื่อนไขของด่าน — เป็นทางเขียนคอลัมน์ที่ไม่ผ่านด่าน',
+  );
+  assert.doesNotMatch(
+    routeSource,
+    /leadId: body\.leadId/,
+    'ห้ามอ่าน body.leadId ตรง ๆ ลงคอลัมน์อีก ต้องผ่าน sourceLeadIdOf',
+  );
 });

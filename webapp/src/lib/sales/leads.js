@@ -129,6 +129,26 @@ export const TRANSITION_TO_STATUS = {
   bounce: 'new', // ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ)
 };
 
+// ลีดต้นทางของดีล — ตัวตัดสินช่องเดียวที่ POST /deals ต้องใช้ทั้งตอน "ตรวจสิทธิ์" และ
+// ตอน "เขียนคอลัมน์ sales_deals.leadId"
+//
+// คอลัมน์ leadId คือแหล่งจริง: หน้ารายละเอียดลีดหาดีลของลีดด้วย eq('leadId', id)
+// เดิมด่านตรวจสิทธิ์อ่าน metadata.leadId + metadata.source === 'lead' แต่คอลัมน์เขียนจาก
+// body.leadId — คนละช่องกัน ผลคือ:
+//   * ส่ง leadId เดี่ยว ๆ → ผูกดีลกับลีดทีมอื่น/สถานะใดก็ได้ โดยไม่ผ่านด่านเลย
+//     ลีดไม่ถูกปิดเป็น qualified และไม่มี lead_event = conversion นับตกหล่น
+//   * ส่ง metadata.leadId เดี่ยว ๆ → ลีดถูกปิด qualified แต่คอลัมน์ว่าง
+//     หน้าลีดจึงมองไม่เห็นดีลที่แตกจากมัน
+// ส่งมาทั้งคู่แต่คนละค่า = เจตนากำกวม ต้องเด้งกลับ ไม่ใช่เงียบ ๆ เลือกข้างใดข้างหนึ่ง
+export function sourceLeadIdOf(body = {}) {
+  const direct = String(body?.leadId || '').trim();
+  const nested = String(body?.metadata?.leadId || '').trim();
+  if (direct && nested && direct !== nested) {
+    return { leadId: null, error: 'ระบุลีดต้นทางไม่ตรงกัน (leadId กับ metadata.leadId) — ต้องเป็นลีดใบเดียวกัน' };
+  }
+  return { leadId: direct || nested || null, error: null };
+}
+
 // SLA "ภายใน 1 วันทำการ": จำนวนวันทำการที่ผ่านไประหว่าง 2 เวลา ≤ 1
 // (เกิดวันเดียวกัน = 0; ข้าม 1 วันทำการ = 1 → ยังทัน; ข้ามเสาร์-อาทิตย์/วันหยุดไม่นับ)
 export function slaBusinessDays(fromIso, toIso, holidays) {

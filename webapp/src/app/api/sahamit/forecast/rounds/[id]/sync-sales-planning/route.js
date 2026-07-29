@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { canEditSalesPlanning, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
+import { DEFAULT_PROBABILITY_BY_STAGE, canEditSalesPlanning, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
@@ -185,10 +185,11 @@ export async function POST(request, { params }) {
       title: `Sahamit FC ${bucket.demandMonth}${bucket.ownerName ? ` · ${bucket.ownerName}` : ''}`,
       stage: 'qualified',
       projectValue: toMoney(bucket.value),
-      probability: 30,
+      // อ่านจาก map กลาง — เดิมฮาร์ดโค้ด 30 ซึ่งไม่ใช่ระดับที่เลือกได้ (ถูก snap เป็น 20
+      // ตอนแสดงผล = ค่าที่เก็บกับค่าที่เห็นคนละตัว) เหมือนที่ backfill-projects ทำ
+      probability: DEFAULT_PROBABILITY_BY_STAGE.qualified,
       forecastMonth: bucket.closeMonth,
       expectedCloseDate: closeDate,
-      depositPaid: false,
       confirmedAt: null,
       lostReason: null,
       notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} เดือนรับของ ${bucket.demandMonth}`,

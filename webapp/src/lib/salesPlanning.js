@@ -45,15 +45,27 @@ export const SALES_FEATURES = {
 };
 
 // ค่าตั้งต้นตอนผู้ใช้ไม่ได้เลือก FC เอง — เรียงตามลำดับใน DEAL_STAGES
-// ⚠️ ต้องตรงกับฟังก์ชัน deal_probability_for_stage() ใน migration 0170 เป๊ะ ๆ
+// ⚠️ ต้องตรงกับฟังก์ชัน deal_probability_for_stage() ใน migration 0175 เป๊ะ ๆ
 // (ฝั่ง DB ใช้ตอนถอยดีลออกจาก Won) — มีเทสต์อ่านไฟล์ .sql มาเทียบให้แล้ว
+//
+// ทุกค่าของดีลที่ยังเปิดต้องเป็นหนึ่งใน 3 ระดับที่เลือกได้จริง (FORECAST_LEVELS: 20/50/80)
+// มติผู้ใช้ 2026-07-29: เดิมเป็นเลขอิสระ 10/30/55/65/75/90 ซึ่งไม่มีอยู่ในดรอปดาวน์เลย
+// สักตัว แล้วไปพึ่ง snapForecastLevel ปัดตอนแสดงผล — ค่าที่เก็บกับค่าที่คนเห็นจึงคนละตัว
+//
+// การแมปยึด "หลักฐานที่ต้องมี" ของแต่ละระดับ ไม่ใช่ระยะทางบน pipeline:
+//   ก่อนออกใบเสนอราคา (lead/qualified/timeline_proposed) → 20
+//   ออกใบเสนอราคาแล้ว (quotation)                        → 50
+//   รอยืนยัน / รอมัดจำ (awaiting_confirm/deposit_pending) → 80
+//
+// 100 = ค่าที่ **ระบบตั้งเองตอนปิด Won เท่านั้น** เลือกจากฟอร์มไม่ได้แล้ว (เหมือน lost=0)
+// — ดีลที่ยังไม่ Won จึงสูงสุดได้แค่ 80 รวมถึงขั้น "รอมัดจำ"
 export const DEFAULT_PROBABILITY_BY_STAGE = {
-  lead: 10,
-  qualified: 30,
-  timeline_proposed: 55,
-  quotation: 65,
-  awaiting_confirm: 75,
-  deposit_pending: 90,
+  lead: 20,
+  qualified: 20,
+  timeline_proposed: 20,
+  quotation: 50,
+  awaiting_confirm: 80,
+  deposit_pending: 80,
   won: 100,
   in_project: 100,
   lost: 0,

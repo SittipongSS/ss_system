@@ -126,7 +126,6 @@ export async function POST(request, { params }) {
       probability: 80,
       forecastMonth,
       expectedCloseDate: closeDate,
-      depositPaid: false,
       confirmedAt: null,
       lostReason: null,
       notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} · ${line.fgCode} (${line.month})`,
