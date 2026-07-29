@@ -6,6 +6,8 @@ import {
   inSalesViewScope,
 } from '@/lib/salesPlanning';
 import { canWithdrawQuotationSubmission } from '@/lib/sales/quotationWorkflow';
+import { appendUpdate } from '@/lib/master/updates';
+import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 
@@ -52,6 +54,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const mapped = documentWorkflowError(rpcError, { context: `quotation withdraw ${id}` });
     return fail(mapped.message, mapped.status);
   }
+
+  // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
+  const threadEvent = quotationActionUpdate('withdraw', quote, { reason });
+  if (threadEvent) await appendUpdate(supabase, { entityType: 'quotation', entityId: id, ...threadEvent, user });
 
   await recordAudit({
     user,

@@ -23,6 +23,20 @@ import {
 } from '@/lib/salesPlanning';
 import { isAuthorableKind } from '@/lib/master/updateTypes';
 
+// ดีลแม่ของใบเสนอราคา/ใบสั่งขาย — scope ของสองใบนี้อยู่บนดีล ไม่ได้อยู่บนตัวใบ
+//
+// ⚠️ คืน null = ใบลอยที่ไม่มีเจ้าของ ผู้เรียก**ต้องเช็ค null เอง**แล้วปิดตาย —
+// ส่ง null เข้า `inSalesViewScope` ตรง ๆ ไม่ได้ เพราะ role ที่ scope = 'all'
+// (supervisor/viewer/marketing) จะได้ true จากเรกคอร์ดว่างเปล่า = เธรดเปิดให้
+// คนที่ไม่มีทางรู้ว่าใบนี้ของใคร
+async function parentDeal(supabase, parent) {
+  if (!parent?.dealId) return null;
+  const { data, error } = await supabase
+    .from('sales_deals').select('id, team, ownerId').eq('id', parent.dealId).maybeSingle();
+  if (error) throw new Error(`อ่านดีลของเอกสารไม่สำเร็จ: ${error.message}`);
+  return data || null;
+}
+
 export const UPDATE_ENTITIES = {
   personal_task: {
     table: 'personal_tasks',
@@ -96,6 +110,45 @@ export const UPDATE_ENTITIES = {
       // คนกรอกลีดเข้ามา (ทีม Marketing) — เจ้าของข้อมูลต้นทาง ตอบคำถามได้เสมอ
       // แม้หลังส่งมอบให้ฝ่ายขายแล้วจะแก้ตัวลีดไม่ได้ก็ตาม
       return !!user?.id && parent?.createdBy === user.id;
+    },
+  },
+
+  // ── ใบเสนอราคา / ใบสั่งขาย ───────────────────────────────────────────
+  // scope ของสองใบนี้ไม่ได้อยู่บนตัวใบ แต่อยู่บน**ดีลแม่** (ทั้ง GET ของทั้งคู่
+  // เช็ค `inSalesViewScope(user, X.deal)`) → ด่านต้อง query ดีลต่อ ซึ่งเป็นเหตุผล
+  // ที่ทะเบียนนี้บังคับให้ทุกด่านเป็น async รับ supabase มาตั้งแต่ต้น
+  //
+  // ⚠️ เธรด **ไม่ปิดตามสถานะใบ** ต่างจากเคสขอราคา: ใบที่ถูกตีกลับ/ยกเลิก/ออก Rev.
+  // แทนแล้ว คือใบที่มีคำถามค้างมากที่สุด ปิดเธรดตอนนั้น = ตัดบทสนทนาตรงจุดที่
+  // ต้องการที่สุด · สิ่งที่ล็อกคือ "แก้เนื้อใบ" ซึ่งเป็นคนละด่าน
+  quotation: {
+    table: 'quotations',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      if (!canViewSalesPlanning(user)) return false;
+      const deal = await parentDeal(supabase, parent);
+      return !!deal && inSalesViewScope(user, deal);
+    },
+    // ผู้อนุมัติ (= เจ้าของดีล / superuser) อยู่ใน inSalesEditScope อยู่แล้ว ไม่ต้อง
+    // แยกสาขาเพิ่ม — ต่างจากใบขอราคาผลิตที่ผู้อนุมัติเป็นผู้บริหารนอกสายดีล
+    async canPost(supabase, parent, user) {
+      if (!canEditSalesPlanning(user)) return false;
+      const deal = await parentDeal(supabase, parent);
+      return !!deal && inSalesEditScope(user, deal);
+    },
+  },
+  sales_order: {
+    table: 'sales_orders',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      if (!canViewSalesPlanning(user)) return false;
+      const deal = await parentDeal(supabase, parent);
+      return !!deal && inSalesViewScope(user, deal);
+    },
+    async canPost(supabase, parent, user) {
+      if (!canEditSalesPlanning(user)) return false;
+      const deal = await parentDeal(supabase, parent);
+      return !!deal && inSalesEditScope(user, deal);
     },
   },
 

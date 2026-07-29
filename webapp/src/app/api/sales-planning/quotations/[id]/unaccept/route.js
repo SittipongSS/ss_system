@@ -2,6 +2,8 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
+import { appendUpdate } from '@/lib/master/updates';
+import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +50,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (message.includes('unaccept_reason_invalid')) return badRequest('เหตุผลต้องมีความยาว 10–500 ตัวอักษร');
     const clientError = /quotation_not_found|deal_not_found/.test(message);
     return fail(message, clientError ? 400 : 500);
+  }
+
+  // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
+  const threadEvent = quotationActionUpdate('unaccept', before, { reason });
+  if (threadEvent) {
+    await appendUpdate(supabase, { entityType: 'quotation', entityId: before.id, ...threadEvent, user });
   }
 
   await recordAudit({

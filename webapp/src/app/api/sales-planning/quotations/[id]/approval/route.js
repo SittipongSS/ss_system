@@ -3,6 +3,8 @@ import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { appendUpdate } from '@/lib/master/updates';
+import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
 import {
   approveQuotationWithSignatureEvidence,
   signatureEvidenceErrorResponse,
@@ -112,6 +114,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } catch (pdfError) {
     console.error('issued quotation pdf capture failed', id, pdfError);
   }
+
+  // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
+  const threadEvent = quotationActionUpdate('approve', quote, { note: reqBody?.note });
+  if (threadEvent) await appendUpdate(supabase, { entityType: 'quotation', entityId: id, ...threadEvent, user });
 
   await recordAudit({
     user, action: 'update', entityType: 'quotation', entityId: id, before: quote, after: data,

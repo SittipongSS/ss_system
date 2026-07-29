@@ -60,6 +60,33 @@ export const UPDATE_KINDS = {
     email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
     next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
   },
+  // ── ใบเสนอราคา / ใบสั่งขาย ───────────────────────────────────────────
+  // คำศัพท์ล็อกตามมติผู้ใช้: **ตีกลับ** (ผู้อนุมัติส่งคืน) · **ดึงกลับ** (ผู้ยื่น
+  // เอาคืนเอง) · **ออก Rev.** — ห้ามใช้ "ถอน/ถอด" · ป้ายต้องตรงกับปุ่มบนหน้าใบ
+  //
+  // ⚠️ ไม่มีชนิดที่ระบบเขียนบน `deal` ทั้งที่มี kind ชื่อเดียวกันบน entity อื่น —
+  // ชุด kind เป็นของแต่ละ entity โดยตั้งใจ (ดูหัวไฟล์) เทียบข้าม entity ไม่ได้
+  quotation: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
+    approve: { label: 'อนุมัติ', color: 'var(--green)' },
+    returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    withdraw: { label: 'ดึงกลับมาแก้ไข', color: 'var(--text-3)' },
+    revise: { label: 'ออก Rev.', color: 'var(--amber)' },
+    accept: { label: 'ลูกค้ารับใบ', color: 'var(--green)' },
+    unaccept: { label: 'ย้อนการรับ', color: 'var(--amber)' },
+  },
+  sales_order: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
+    approve: { label: 'อนุมัติ', color: 'var(--green)' },
+    returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    withdraw: { label: 'ดึงกลับมาแก้ไข', color: 'var(--text-3)' },
+    revoke: { label: 'ยกเลิกอนุมัติ', color: 'var(--red)' },
+    revise: { label: 'ออก Rev.', color: 'var(--amber)' },
+    cancel: { label: 'ยกเลิก', color: 'var(--red)' },
+    restore: { label: 'กู้คืนเป็นร่าง', color: 'var(--blue)' },
+  },
   // ทะเบียนกลิ่น (mig 0171) — เธรดสองฝ่าย: RD ส่งกลิ่น ↔ ฝ่ายขายนำผลจากลูกค้ามาลง
   // เหตุการณ์ระบบเขียนคู่กับ scent_revisions เสมอ (ตารางเก็บ "ผลที่เป็นทางการ"
   // ส่วนเธรดเก็บ "บทสนทนาระหว่างทาง" — คนละหน้าที่ ต้องมีทั้งคู่)

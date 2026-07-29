@@ -1,5 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { salesOrderActionUpdate } from '@/lib/sales/documentUpdates';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import {
@@ -203,6 +205,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     : canEditSalesPlanning(user) && inSalesEditScope(user, before.deal))) return forbidden();
   const reviewer = isSalesOrderReviewer(user.role);
 
+  // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้ action
+  // ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ askActionUpdate)
+  // ⚠️ ทุก action เรียกด้วย `before` ไม่ใช่แถวหลังอัปเดต — เธรดเล่า "ใบเลขนี้ Rev.นี้
+  // ถูกทำอะไร" ซึ่งเป็นข้อมูลของใบก่อนเปลี่ยนสถานะ
+  const logThread = async (act, opts = {}) => {
+    const event = salesOrderActionUpdate(act, before, opts);
+    if (event) await appendUpdate(supabase, { entityType: 'sales_order', entityId: id, ...event, user });
+  };
+
   if (action === 'withdraw') {
     // ดึงกลับเป็นการกระทำของผู้ยื่นเท่านั้น (มติ 2026-07-26) — ผู้รีวิวใช้ตีกลับแทน
     if (!canWithdrawSalesOrderSubmission(before, { userId: user.id })) {
@@ -224,6 +235,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const mapped = documentWorkflowError(error, { context: `sales order withdraw ${id}` });
       return fail(mapped.message, mapped.status);
     }
+    await logThread('withdraw', { reason });
     await recordAudit({
       user,
       action: 'update',
@@ -257,6 +269,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const mapped = documentWorkflowError(error, { context: `sales order revoke ${id}` });
       return fail(mapped.message, mapped.status);
     }
+    await logThread('revoke', { reason });
     await recordAudit({
       user,
       action: 'update',
@@ -313,6 +326,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return fail(mapped.message, mapped.status);
     }
     const revision = result?.revision || null;
+    // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ
+    await logThread('revise', { reason, toRevisionNo: revision?.revisionNo ?? null });
     await recordAudit({
       user,
       action: 'create',
@@ -369,6 +384,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return signatureEvidenceErrorResponse(submitError, { action: 'submit' });
     }
     const data = submitResult.document;
+    await logThread('submit');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ)`, request: req });
     // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
     sendChat('approvals', chatCard({
@@ -434,6 +450,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       console.error('issued sales order snapshot capture failed', id, snapshotError);
     }
 
+    await logThread('approve', { overrideReason });
     await recordAudit({
       user,
       action: 'update',
@@ -476,6 +493,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
+    // ⭐ หัวใจของ PR: `rejectionReason` ถูกล้างทิ้งตอนกู้คืน/ยื่นใหม่ — เหตุผลที่
+    // ตีกลับรอบก่อน ๆ จึงไม่เคยเหลือให้คนทำใบรอบถัดไปอ่าน
+    await logThread('reject', { reason });
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `reject ${before.orderNumber}: ${reason}`, request: req });
     // แจ้งทีมขาย: SO ถูกตีกลับ ให้ผู้ยื่นแก้แล้วยื่นใหม่
     sendChat('sales', chatCard({
@@ -552,6 +572,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
       const revReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
       const targetLabel = reverseTo === 'lost' ? 'Lost' : 'เปิดใหม่';
+      await logThread('cancel', { reason: `${revReason} → ดีล ${targetLabel}` });
       await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: result?.order, summary: `cancel + reverse Won ${before.orderNumber}: ${revReason} → ดีล ${targetLabel}`, request: req });
       if (before.dealId) {
         await recordAudit({ user, action: 'update', entityType: 'sales_deal', entityId: before.dealId, after: result?.deal, summary: `ย้อน Won (${targetLabel}) จากยกเลิก SO ${before.orderNumber}: ${revReason}`, request: req });
@@ -584,6 +605,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
+    await logThread('cancel', { reason: summaryReason });
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${summaryReason}`, request: req });
     return ok(data);
   }
@@ -604,6 +626,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
+    await logThread('restore');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `restore ${before.orderNumber}`, request: req });
     return ok(data);
   }
@@ -655,6 +678,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return fail(error.message, 500);
   }
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง (แพตเทิร์นเดียวกับ purgeAttachments)
+  await purgeUpdates(supabase, 'sales_order', id);
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
     summary: force
