@@ -24,7 +24,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const table = MGMT_TABLE[entityType];
   if (!table || !entityId) return badRequest('entityType/entityId ไม่ถูกต้อง');
 
-  const { data: parent } = await supabase.from(table).select('id').eq('id', entityId).maybeSingle();
+  const { data: parent, error: parentError } = await supabase.from(table).select('id').eq('id', entityId).maybeSingle();
+  if (parentError) return fail(parentError.message, 500);
   if (!parent) return notFound('ไม่พบระเบียนที่จะแนบเอกสาร');
 
   let file; // { id, name, mimeType, webViewLink }

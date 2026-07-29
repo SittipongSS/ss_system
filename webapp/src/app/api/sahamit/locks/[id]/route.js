@@ -10,8 +10,9 @@ export async function DELETE(request, { params }) {
   const { supabase, customerId, user } = ctx;
   const { id } = await params;
 
-  const { data: lock } = await supabase
+  const { data: lock, error: lockError } = await supabase
     .from('sahamit_fc_locks').select('*').eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (lockError) return Response.json({ error: lockError.message }, { status: 500 });
   if (!lock) return Response.json({ error: 'ไม่พบล็อก' }, { status: 404 });
 
   const { error } = await supabase.from('sahamit_fc_locks').delete().eq('id', id).eq('customerId', customerId);

@@ -148,7 +148,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('งานที่เสร็จแล้วไม่สามารถเปลี่ยนผู้รับผิดชอบได้ กรุณาเปิดงานอีกครั้งก่อน');
     }
     if (next && next !== user.id) {
-      const { data: au } = await supabase.auth.admin.getUserById(next);
+      const { data: au, error: auError } = await supabase.auth.admin.getUserById(next);
+      if (auError) return fail(auError.message, 500);
       if (!au?.user) return badRequest('ไม่พบผู้รับมอบหมาย');
       const assignee = {
         id: next,
@@ -173,7 +174,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let nextProjectId = 'projectId' in updates ? updates.projectId : task.projectId;
     const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
     if (nextDealId) {
-      const { data: deal } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
+      const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
+      if (dealError) return fail(dealError.message, 500);
       if (!deal) return badRequest('ไม่พบดีล');
       if (nextDealId !== task.dealId && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
       if (deal.projectId) {
@@ -185,7 +187,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
     if (nextProjectId) {
-      const { data: proj } = await supabase.from('projects').select('id').eq('id', nextProjectId).maybeSingle();
+      const { data: proj, error: projError } = await supabase.from('projects').select('id').eq('id', nextProjectId).maybeSingle();
+      if (projError) return fail(projError.message, 500);
       if (!proj) return badRequest('ไม่พบโครงการ');
     }
   }

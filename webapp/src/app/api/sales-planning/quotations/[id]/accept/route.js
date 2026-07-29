@@ -36,7 +36,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ยอดต้อง > 0 ไม่งั้นการรับจะไปล้าง projectValue ของดีลเป็น 0 (N3)
   if (!(quotationWonAmount(quote) > 0)) return badRequest('ยอดใบเสนอราคาก่อน VAT ต้องมากกว่า 0');
 
-  const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  const { data: deal, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  if (dealError) return fail(dealError.message, 500);
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (!deal.projectId) return badRequest('ต้องเชื่อมโครงการกับดีลก่อนปิด Won ผ่านใบเสนอราคา');

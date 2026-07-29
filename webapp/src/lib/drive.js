@@ -126,11 +126,13 @@ async function resolveCostingFolder(entityType, entityId) {
       parentTable: 'costing_requests',
     };
 
-  const { data: item } = await supabase
+  const { data: item, error: itemError } = await supabase
     .from(conf.itemTable).select('*').eq('id', entityId).maybeSingle();
+  if (itemError) throw itemError;
   if (!item) throw new Error('ไม่พบรายการที่จะแนบไฟล์');
-  const { data: parent } = await supabase
+  const { data: parent, error: parentError } = await supabase
     .from(conf.parentTable).select('id, docNo').eq('id', item[conf.parentKey]).maybeSingle();
+  if (parentError) throw parentError;
 
   const root = await ensureFolder(conf.root, storageRootId());
   const docFolder = await ensureFolder(parent?.docNo || item[conf.parentKey] || 'ไม่ระบุ', root);
@@ -140,11 +142,12 @@ async function resolveCostingFolder(entityType, entityId) {
 async function resolvePersonalTaskFolder(entityId) {
   const root = await ensureFolder('งานขาย', storageRootId());
   const parent = await ensureFolder('งาน', root);
-  const { data } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from('personal_tasks')
     .select('id, title')
     .eq('id', entityId)
     .maybeSingle();
+  if (error) throw error;
   if (!data) throw new Error('ไม่พบงาน');
   return ensureFolder(`${data.title} (${data.id})`, parent);
 }
@@ -184,7 +187,8 @@ export async function resolveFolderForEntity(entityType, entityId) {
     return resolveCostingFolder(entityType, entityId);
   }
   if (entityType === 'customer') {
-    const { data } = await supabase.from('customers').select('*').eq('id', entityId).maybeSingle();
+    const { data, error } = await supabase.from('customers').select('*').eq('id', entityId).maybeSingle();
+    if (error) throw error;
     if (!data) throw new Error('ไม่พบลูกค้า');
     return ensureCustomerFolder(data);
   }
@@ -193,25 +197,30 @@ export async function resolveFolderForEntity(entityType, entityId) {
     let productId = entityId;
     let regCustomerId = null;
     if (entityType === 'registration') {
-      const { data: reg } = await supabase
+      const { data: reg, error: regError } = await supabase
         .from('excise_registrations').select('productId, customerId').eq('id', entityId).maybeSingle();
+      if (regError) throw regError;
       productId = reg?.productId;
       regCustomerId = reg?.customerId || null;
     }
-    const { data: product } = await supabase.from('products').select('*').eq('id', productId).maybeSingle();
+    const { data: product, error: productError } = await supabase.from('products').select('*').eq('id', productId).maybeSingle();
+    if (productError) throw productError;
     if (!product) throw new Error('ไม่พบสินค้า');
     // ลูกค้า = เจ้าของสินค้า; ถ้าสินค้าไม่มีเจ้าของ → fallback เป็น customerId ของทะเบียน.
     const customerId = product.customerId || regCustomerId;
-    const { data: customer } = customerId
+    const { data: customer, error: customerError } = customerId
       ? await supabase.from('customers').select('*').eq('id', customerId).maybeSingle()
-      : { data: null };
+      : { data: null, error: null };
+    if (customerError) throw customerError;
     if (!customer) throw new Error('สินค้านี้ยังไม่มีลูกค้าเจ้าของ');
     return ensureProductFolder(product, customer);
   }
   if (entityType === 'order') {
-    const { data: order } = await supabase.from('orders').select('customerId').eq('id', entityId).maybeSingle();
+    const { data: order, error: orderError } = await supabase.from('orders').select('customerId').eq('id', entityId).maybeSingle();
+    if (orderError) throw orderError;
     if (!order) throw new Error('ไม่พบออเดอร์');
-    const { data: customer } = await supabase.from('customers').select('*').eq('id', order.customerId).maybeSingle();
+    const { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('id', order.customerId).maybeSingle();
+    if (customerError) throw customerError;
     if (!customer) throw new Error('ไม่พบลูกค้าของออเดอร์');
     return ensureCustomerFolder(customer);
   }

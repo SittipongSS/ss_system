@@ -16,8 +16,11 @@ import { listAttachments } from '@/lib/master/attachments';
 import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
 
 export async function registrationRequirements(supabase, regId) {
-  const { data: reg } = await supabase
+  // query พังต้องดัง — ไม่งั้นด่าน "แนบเอกสารครบไหม" จะตอบว่าไม่พบทะเบียน
+  // แล้วผู้ใช้จะไล่หาว่าทะเบียนหายไปไหน ทั้งที่ปัญหาอยู่ที่ DB/schema
+  const { data: reg, error: regError } = await supabase
     .from('excise_registrations').select('id, customerId').eq('id', regId).maybeSingle();
+  if (regError) throw regError;
   if (!reg) return { ready: false, missing: [], warnings: [], notFound: true };
 
   const missing = [];

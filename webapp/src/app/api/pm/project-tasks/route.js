@@ -24,7 +24,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // (own team / all). Without this any user could read another team's tasks
     // just by passing its projectId. Mirrors the no-projectId branch below
     // and the inScope checks on the other PM routes.
-    const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
+    const { data: project, error: projectError } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
+    if (projectError) return fail(projectError.message, 500);
     if (!project) return notFound('ไม่พบโครงการ');
     if (!inScope(viewScope(user?.role), user, project)) return forbidden();
 
@@ -78,8 +79,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (closedErr) return conflict(closedErr);
   } else {
     // ไทม์ไลน์ลอยของดีล — scope จากทีม/AE ของดีล (pseudo-project เหมือน PATCH task ลอย)
-    const { data: deal } = await supabase.from('sales_deals')
+    const { data: deal, error: dealError } = await supabase.from('sales_deals')
       .select('id, team, ownerName, projectId').eq('id', body.dealId).maybeSingle();
+    if (dealError) return fail(dealError.message, 500);
     if (!deal) return notFound('ไม่พบดีล');
     if (deal.projectId) return badRequest('ดีลนี้ผูกโครงการแล้ว — เพิ่มขั้นตอนด้วย projectId');
     if (!inScope(pmEditScope(user?.role), user, { team: deal.team, aeOwner: deal.ownerName })) {

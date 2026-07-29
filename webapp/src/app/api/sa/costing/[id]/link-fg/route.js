@@ -30,9 +30,10 @@ export async function PATCH(request, { params }) {
   if (!item) return Response.json({ error: 'ไม่พบรายการสินค้า' }, { status: 404 });
   if (item.productId) return Response.json({ error: 'รายการนี้ผูกสินค้าไว้แล้ว' }, { status: 409 });
 
-  const { data: product } = await supabase
+  const { data: product, error: productError } = await supabase
     .from('products').select('id, fgCode, customerId, formulaName, formulaCode, formulaDate')
     .eq('id', body.productId).maybeSingle();
+  if (productError) return Response.json({ error: productError.message }, { status: 500 });
   if (!product) return Response.json({ error: 'ไม่พบสินค้าที่เลือก' }, { status: 404 });
 
   // สินค้าต้องเป็นของลูกค้าเดียวกับใบ (ถ้าใบผูกลูกค้าไว้) — กันผูกข้ามลูกค้า

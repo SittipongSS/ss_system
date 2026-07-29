@@ -10,8 +10,9 @@ export async function DELETE(request, { params }) {
   const { supabase, customerId, user } = ctx;
   const { id } = await params;
 
-  const { data: cov } = await supabase
+  const { data: cov, error: covError } = await supabase
     .from('sahamit_po_coverage').select('*').eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (covError) return Response.json({ error: covError.message }, { status: 500 });
   if (!cov) return Response.json({ error: 'ไม่พบรายการชดเชย' }, { status: 404 });
 
   const { error } = await supabase.from('sahamit_po_coverage').delete().eq('id', id).eq('customerId', customerId);

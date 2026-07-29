@@ -68,8 +68,9 @@ export async function POST(request) {
         return Response.json({ error: 'forbidden' }, { status: 403 });
       }
       const supabase = getSupabaseAdmin();
-      const { data: quote } = await supabase
+      const { data: quote, error: quoteError } = await supabase
         .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
+      if (quoteError) return Response.json({ error: quoteError.message }, { status: 500 });
       if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
       if (!['draft', 'sent'].includes(quote.status)) {
         return Response.json({ error: 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้' }, { status: 409 });

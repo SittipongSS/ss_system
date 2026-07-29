@@ -161,8 +161,9 @@ export async function POST(request, { params }) {
   if (!po.projectId) {
     return Response.json({ error: 'PO นี้ยังไม่มีโครงการ PM — กด "สร้างโครงการ PM" ก่อน แล้วจึงยืนยันดีล/ออกใบเสนอราคา' }, { status: 400 });
   }
-  const { data: project } = await supabase
+  const { data: project, error: projectError } = await supabase
     .from('projects').select('id, code, metadata, closeStatus').eq('id', po.projectId).maybeSingle();
+  if (projectError) return Response.json({ error: projectError.message }, { status: 500 });
   if (!project) return Response.json({ error: 'ไม่พบโครงการ PM ที่ผูกกับ PO นี้' }, { status: 400 });
   // ทางนี้จบด้วยการออก QT เหมือนกัน → อยู่ในขอบเขตด่าน B3 (โครงการปิดแล้วห้ามออกใบใหม่)
   if (projectWriteBlockedError(project)) {

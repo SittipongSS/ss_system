@@ -44,8 +44,9 @@ export async function POST(request, { params }) {
   const blocked = feedCostError(item, before.moq);
   if (blocked) return Response.json({ error: blocked }, { status: 409 });
 
-  const { data: product } = await supabase
+  const { data: product, error: productLoadError } = await supabase
     .from('products').select('*').eq('id', item.productId).maybeSingle();
+  if (productLoadError) return Response.json({ error: productLoadError.message }, { status: 500 });
   if (!product) return Response.json({ error: 'ไม่พบสินค้าที่ผูกไว้กับรายการนี้' }, { status: 404 });
 
   // สินค้าต้องเป็นของลูกค้าเดียวกับใบขอราคา — กันป้อนต้นทุนข้ามลูกค้าโดยพลาด
