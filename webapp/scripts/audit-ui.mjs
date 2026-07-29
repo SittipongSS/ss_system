@@ -58,6 +58,7 @@ const nativeFeedbackDebt = {
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const zIndexViolations = [];
+const motionViolations = [];
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
@@ -131,6 +132,29 @@ for (const file of uiFiles) {
         zIndexViolations.push(`${rel}:${index + 1} ${hit[0]} → var(--z-…)`);
       }
     });
+  }
+
+  /* จังหวะต้องมาจากโทเคน `--motion-*` — ตรวจ 2026-07-29 พบเวลาดิบ 136 จุดใน 15 ค่า
+     (.06 .08 .1 .12 120ms .14 .15 .16 .18 .2 200ms .22 220ms .24 .3) ขณะที่โทเคน
+     ที่ประกาศไว้ตั้งแต่ต้นถูกอ้างจริงแค่ 3 จุด = ปรับจังหวะทั้งระบบทีเดียวไม่ได้
+
+     ยกเว้นสองอย่าง:
+     - `prefers-reduced-motion` ที่บังคับ 0.01ms — เป็นสวิตช์ปิด ไม่ใช่จังหวะ
+     - แอนิเมชัน **≥ 500ms** (spinner / pulse / progress ที่วนไม่จบ) — คนละเรื่องกับ
+       เวลาตอบสนองของ UI และมีจังหวะเฉพาะตัวของมันเอง */
+  /* ⚠️ ต้องอ่านทั้ง declaration ไม่ใช่ทีละบรรทัด — `transition:` ยาว ๆ ใน globals.css
+     ตัดขึ้นบรรทัดใหม่ (`.btn` / `.metric-card`) บรรทัดต่อจึงไม่มีคำว่า transition
+     แล้วรอดกฎแบบทีละบรรทัดไป 5 จุด (เจอตอนเทสต์เส้นโค้งฟ้อง ไม่ใช่ตอนกฎนี้ฟ้อง) */
+  if (!rel.startsWith("src/components/documents/")) {
+    for (const decl of source.matchAll(/(?:transition|animation)[^;{}]*;/g)) {
+      if (/prefers-reduced-motion|0\.01ms/.test(decl[0])) continue;
+      for (const hit of decl[0].matchAll(/(?<![\w-])(\d*\.?\d+)(ms|s)(?![\w-])/g)) {
+        const ms = hit[2] === "ms" ? Number(hit[1]) : Number(hit[1]) * 1000;
+        if (ms >= 500) continue;
+        const line = source.slice(0, decl.index + hit.index).split(/\r?\n/).length;
+        motionViolations.push(`${rel}:${line} ${hit[0]} → var(--motion-…)`);
+      }
+    }
   }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
@@ -298,6 +322,7 @@ const failures = [
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
   ...zIndexViolations.map((item) => `z-index นอกชั้นซ้อนกลาง: ${item}`),
+  ...motionViolations.map((item) => `เวลาใน transition/animation นอกชั้นจังหวะกลาง: ${item}`),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
@@ -320,6 +345,7 @@ console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.lengt
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
+console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);

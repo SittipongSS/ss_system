@@ -36,7 +36,7 @@
 .filters button { border: 0; border-radius: 999px; padding: 5px 9px; background: transparent; color: var(--text-3); cursor: pointer; font-size: var(--fs-5); }
 .filters .activeFilter { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-ink); font-weight: 700; }
 .feed { display: flex; flex-direction: column; }
-.post { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--border); transition: background .15s ease; }
+.post { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--border); transition: background var(--motion-medium) ease; }
 .post:last-child { border-bottom: 0; }
 .post:hover { background: color-mix(in srgb, var(--accent) 3%, transparent); }
 .feedMore { display: flex; justify-content: center; padding: 12px 18px; }

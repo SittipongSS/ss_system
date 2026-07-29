@@ -1,7 +1,7 @@
 .headerActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* แท็บสลับคลัง — แพตเทิร์นเดียวกับตัวเลือกชนิดเอกสารในหน้ามาตรฐานเอกสาร */
 .kindTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: 8px; margin-bottom: 16px; }
-.kindTab { min-height: 58px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
+.kindTab { min-height: 58px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .kindTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .kindTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .kindTab:disabled { cursor: not-allowed; opacity: .45; }

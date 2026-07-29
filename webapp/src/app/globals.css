@@ -167,8 +167,23 @@
      ชื่อจริงที่ทั้งระบบใช้คือ --bg / --panel / --panel-2 / --panel-3 / --text* */
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   --content-max: 1480px;
-  --motion-fast: 120ms;
-  --motion-standard: 200ms;
+  /* ── จังหวะ (duration + easing) ───────────────────────────────────────
+     **ของใหม่ต้องหยิบชื่อจากที่นี่ ห้ามเขียนเวลาเอง** (audit:ui บังคับไว้)
+
+     ตรวจ 2026-07-29: สองชื่อล่างนี้ประกาศไว้ตั้งแต่ต้นแต่มีคนอ้างจริง **3 จุด**
+     ขณะที่ทั้งระบบเขียนเวลาดิบ 136 จุดใน 15 ค่า (.06 .08 .1 .12 120ms .14 .15
+     .16 .18 .2 200ms .22 220ms .24 .3) = ปรับจังหวะทั้งระบบทีเดียวไม่ได้เลย
+
+     ⚠️ ต่างจากชั้นพิมพ์/ชั้นซ้อนตรงที่ **นี่คือการเปลี่ยนที่รู้สึกได้** (ไม่ใช่แค่
+     ย้ายที่เก็บค่า) — ค่าที่ถูกดูดเข้าขั้นขยับไม่เกิน 40ms ยกเว้น transform ตอนกด
+     3 จุดที่ขยับ 40–60ms · เลือกขั้นด้วยระยะใกล้สุด ไม่ใช่ปัดขึ้น/ลงอย่างเดียว */
+  --motion-fast: 120ms;      /* hover · เปลี่ยนสี · ตอบสนองการกด */
+  --motion-medium: 150ms;    /* ปุ่ม/การ์ดขยับ */
+  --motion-standard: 200ms;  /* แผงเปิด-ปิด · เลื่อน · เข้าหน้า */
+  --motion-slow: 300ms;      /* ช่องค้นหาที่ยืดออก · เด้งแบบตั้งใจให้เห็น */
+  /* เส้นโค้งสองเส้นที่ระบบใช้ซ้ำจริง — ที่เหลือเป็น `ease`/`linear` ของ CSS เอง */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* ออกเร็ว จบนุ่ม (ปุ่ม/การ์ด) */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);    /* เข้าหน้า/เลื่อนแผง */
   
   --shadow-sm: 0 2px 7px rgba(41, 35, 27, 0.05);
   --shadow-md: 0 12px 30px rgba(41, 35, 27, 0.09);
@@ -298,7 +313,7 @@ body {
   letter-spacing: 0;
   font-size: var(--fs-8);
   line-height: 1.5;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-medium), color var(--motion-medium);
 }
 
 [data-theme="dark"] body {
@@ -675,7 +690,7 @@ button, select, input, textarea {
   height: 34px;
   width: auto;
   color: #fff;
-  transition: transform 0.2s ease, opacity .2s ease;
+  transition: transform var(--motion-standard) ease, opacity var(--motion-standard) ease;
 }
 .topnav-brand:hover .topnav-brand-img { transform: translateY(-1px); opacity: .88; }
 
@@ -698,7 +713,7 @@ button, select, input, textarea {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background var(--motion-medium);
 }
 .topnav-sys-btn:hover { background: rgba(255, 255, 255, 0.18); }
 .topnav-sys-menu {
@@ -773,7 +788,7 @@ button, select, input, textarea {
   white-space: nowrap;
   position: relative;
   border-radius: var(--radius) var(--radius) 0 0;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--motion-fast), background var(--motion-fast);
 }
 .topnav-item:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .topnav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -830,7 +845,7 @@ button, select, input, textarea {
   font-size: var(--fs-7);
   font-weight: 600;
   text-decoration: none;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--motion-medium), color var(--motion-medium), border-color var(--motion-medium);
 }
 .topnav-global-action:hover {
   background: rgba(255, 255, 255, 0.16);
@@ -979,7 +994,7 @@ button, select, input, textarea {
   .mobile-system-list a {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+    transition: transform var(--motion-fast) ease, background-color var(--motion-fast) ease, color var(--motion-fast) ease;
   }
   .topnav-sys-btn:active,
   .topnav-sys-item:active,
@@ -1085,7 +1100,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--fs-7);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 }
 
 .brand-info-link {
@@ -1096,7 +1111,7 @@ h1, h2, h3, h4, h5, h6 {
   color: inherit;
   flex-grow: 1;
   overflow: hidden;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--motion-standard) ease;
 }
 
 .brand-info-link:hover .brand-logo {
@@ -1109,7 +1124,7 @@ h1, h2, h3, h4, h5, h6 {
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
-  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform var(--motion-slow) cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .brand-info-link:hover .brand-logo-img {
@@ -1212,11 +1227,11 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
-  transition: border-color 0.12s, box-shadow 0.12s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 /* Kanban / list card lift on hover (PM Board + Tasks) */
-.hover-card { transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.hover-card { transition: transform var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast); }
 .hover-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow-md, var(--glass-shadow)); }
 
 .glass-panel.glow-emerald,
@@ -1393,7 +1408,7 @@ h1, h2, h3, h4, h5, h6 {
   gap: 14px;
   color: inherit;
   text-decoration: none;
-  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+  transition: transform var(--motion-medium) ease, box-shadow var(--motion-medium) ease, border-color var(--motion-medium) ease, background var(--motion-medium) ease;
 }
 .home-system-card:hover {
   transform: translateY(-2px);
@@ -1519,7 +1534,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
-  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
 
 .metric-card:hover {
@@ -1729,7 +1744,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg);
   padding: 14px 18px 18px;
   overflow: auto;
-  animation: fadeIn 0.15s forwards;
+  animation: fadeIn var(--motion-medium) forwards;
 }
 .recon-fs-bar {
   position: sticky;
@@ -1894,7 +1909,7 @@ h1, h2, h3, h4, h5, h6 {
   gap: 3px;
   cursor: pointer;
   min-width: 110px;
-  transition: border-color 0.1s;
+  transition: border-color var(--motion-fast);
   box-shadow: var(--shadow-sm);
 }
 
@@ -2088,7 +2103,7 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   padding: 24px;
   opacity: 0;
-  animation: fadeIn 0.2s forwards;
+  animation: fadeIn var(--motion-standard) forwards;
 }
 
 /* Centered modal dialog (replaces the old right-side drawer).
@@ -2104,7 +2119,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-md);
-  animation: modalIn 0.22s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  animation: modalIn var(--motion-standard) forwards var(--ease-out);
   overflow-y: auto;
 }
 
@@ -2122,7 +2137,7 @@ h1, h2, h3, h4, h5, h6 {
   border-top: none;
   border-right: none;
   border-bottom: none;
-  animation: drawerInRight 0.24s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  animation: drawerInRight var(--motion-standard) forwards var(--ease-out);
 }
 @keyframes drawerInRight {
   from { opacity: 0.4; transform: translateX(28px); }
@@ -2139,7 +2154,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Entrance animation for inline-styled glass-panel modals (Stock/Inventory/BOM) */
 .overlay > .glass-panel {
-  animation: modalIn 0.22s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  animation: modalIn var(--motion-standard) forwards var(--ease-out);
 }
 
 .drawer-header {
@@ -2162,7 +2177,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background var(--motion-fast);
 }
 
 .drawer-close:hover {
@@ -2200,7 +2215,7 @@ h1, h2, h3, h4, h5, h6 {
   color: #fff;
   font: inherit;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 .account-menu-trigger:hover,
 .account-menu-trigger[aria-expanded="true"] {
@@ -2249,7 +2264,7 @@ h1, h2, h3, h4, h5, h6 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.account-menu-chevron { flex: 0 0 auto; transition: transform 0.12s ease; }
+.account-menu-chevron { flex: 0 0 auto; transition: transform var(--motion-fast) ease; }
 .account-menu-chevron.open { transform: rotate(180deg); }
 .account-menu-popover {
   position: absolute;
@@ -2301,7 +2316,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   justify-content: flex-end;
   background: color-mix(in srgb, var(--text) 48%, transparent);
-  animation: fc-detail-fade-in 200ms cubic-bezier(0.2, 0, 0, 1);
+  animation: fc-detail-fade-in var(--motion-standard) var(--ease-standard);
 }
 
 .fc-detail-drawer {
@@ -2312,7 +2327,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--panel);
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
-  animation: fc-detail-slide-in 220ms cubic-bezier(0.2, 0, 0, 1);
+  animation: fc-detail-slide-in var(--motion-standard) var(--ease-standard);
 }
 
 @keyframes fc-detail-fade-in {
@@ -2361,7 +2376,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--panel);
   color: var(--text-2);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 .fc-detail-close:hover { color: var(--text); background: var(--panel-2); border-color: var(--border-strong); }
 .fc-detail-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -2492,7 +2507,7 @@ h1, h2, h3, h4, h5, h6 {
   outline: none;
   padding: 0 12px;
   font-size: var(--fs-7);
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 /* ช่องที่ถูกล็อก (เช่น ราคาบรรทัด FG — ราคามาจากฐานข้อมูลสินค้าทางเดียว) ต้องดูออก
@@ -2602,7 +2617,7 @@ input[type="number"] {
   text-align: left;
 }
 button.ui-kpi-card { cursor: pointer; }
-.ui-kpi-card.interactive-card { transition: transform .14s, border-color .14s, box-shadow .14s; }
+.ui-kpi-card.interactive-card { transition: transform var(--motion-medium), border-color var(--motion-medium), box-shadow var(--motion-medium); }
 .ui-kpi-card.interactive-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--kpi-accent) 50%, var(--border)); box-shadow: var(--shadow-md); }
 .ui-kpi-heading { min-width: 0; min-height: 34px; color: var(--text-2); font-size: var(--fs-5); font-weight: 600; line-height: 1.35; }
 .ui-kpi-label { display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -2662,7 +2677,7 @@ button.ui-kpi-card { cursor: pointer; }
   font-size: var(--fs-7);
   text-align: left;
   cursor: pointer;
-  transition: border-color .12s, box-shadow .12s, background .12s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
 .ui-select.w-full { width: 100%; }
 /* compact ต้อง *เตี้ยกว่า* ปกติ — เดิมเขียน var(--ctl-h, 32px) ซึ่งพอ --ctl-h
@@ -2686,7 +2701,7 @@ button.ui-kpi-card { cursor: pointer; }
 .ui-select:disabled { opacity: .55; cursor: not-allowed; }
 .ui-select-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select-value.placeholder { color: var(--text-3); }
-.ui-select-chevron { flex: 0 0 auto; color: var(--text-3); transition: transform .15s; }
+.ui-select-chevron { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-medium); }
 .ui-select.open .ui-select-chevron { transform: rotate(180deg); }
 /* A migrated Select may still carry the legacy premium-select class. Its
    background SVG (especially the higher-specificity dark-theme rule) must not
@@ -2857,7 +2872,7 @@ button.ui-kpi-card { cursor: pointer; }
   padding: 0 13px;
   font-family: inherit;
   font-size: var(--fs-button);
-  transition: background .1s, border-color .1s, color .1s;
+  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
   display: inline-flex;
   font-weight: 600;
   box-shadow: var(--shadow-sm);
@@ -3035,7 +3050,7 @@ button.empty-state { width: 100%; font: inherit; }
   background: var(--panel);
   border-radius: 14px;
   position: relative;
-  transition: all 0.2s;
+  transition: all var(--motion-standard);
 }
 .pm-task-connector {
   position: absolute;
@@ -3080,7 +3095,7 @@ button.empty-state { width: 100%; font: inherit; }
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
-  transition: background .1s, color .1s, border-color .1s;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
 .btn-icon:hover { background: var(--panel-2); color: var(--text); }
 .btn-icon.danger { color: var(--red); }
@@ -3176,7 +3191,7 @@ button.empty-state { width: 100%; font: inherit; }
   box-shadow: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
 }
 .ui-filter-group,
-.ui-filter-option { transition: background .1s, color .1s; }
+.ui-filter-option { transition: background var(--motion-fast), color var(--motion-fast); }
 .ui-filter-group:hover,
 .ui-filter-option:hover { background: var(--panel-2) !important; }
 .ui-filter-group.active,
@@ -3208,7 +3223,7 @@ button.empty-state { width: 100%; font: inherit; }
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  transition: background .12s, color .12s;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
 .segmented > button:hover { color: var(--text); }
 .segmented > button.active,
@@ -3282,7 +3297,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 100%;
   background: var(--accent);
   border-radius: inherit;
-  transition: width .2s ease-out;
+  transition: width var(--motion-standard) ease-out;
 }
 .progress > span.done { background: var(--green); }
 
@@ -3379,7 +3394,7 @@ button.empty-state { width: 100%; font: inherit; }
   position: relative;
   white-space: nowrap;
   border-radius: var(--radius) var(--radius) 0 0;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--motion-fast), background var(--motion-fast);
   margin-bottom: -1px;
 }
 .tab-btn:disabled { opacity: .4; cursor: not-allowed; }
@@ -3780,7 +3795,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 /* Smoother nav-item icon transitions */
 .nav-item svg {
-  transition: color 0.1s;
+  transition: color var(--motion-fast);
 }
 
 /* Topbar/header title alignment polish */
@@ -3790,7 +3805,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 /* Tighter row hover on reconcile grid */
 .reconcile-grid tbody tr {
-  transition: background 0.08s;
+  transition: background var(--motion-fast);
 }
 
 /* Status pill: align icon tightly */
@@ -3837,7 +3852,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 /* Grid cell box: snappier hover */
 .grid-cell-box {
-  transition: border-color 0.1s, background 0.1s, box-shadow 0.1s, transform 0.06s;
+  transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
 }
 .grid-cell-box:active {
   transform: translateY(0.5px);
@@ -3856,7 +3871,7 @@ button.empty-state { width: 100%; font: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 20px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-medium), box-shadow var(--motion-medium);
 }
 .fc-product-card:hover {
   border-color: var(--border-strong);
@@ -3963,7 +3978,7 @@ button.empty-state { width: 100%; font: inherit; }
   align-items: stretch;
   gap: 6px;
   cursor: pointer;
-  transition: border-color 0.1s, background 0.1s, box-shadow 0.1s, transform 0.06s;
+  transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
   position: relative;
   min-height: 100px;
 }
@@ -4068,7 +4083,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 100%;
   background: var(--accent);
   border-radius: 2px;
-  transition: width 0.2s ease;
+  transition: width var(--motion-standard) ease;
 }
 
 /* Slide-out Drawer customizations specific to Forecast Timeline */
@@ -4302,7 +4317,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 .clickable-product-cell {
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-medium) ease;
 }
 
 .clickable-product-cell:hover {
@@ -4378,7 +4393,7 @@ button.empty-state { width: 100%; font: inherit; }
   border: 1.5px solid var(--border);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-medium), background var(--motion-medium), box-shadow var(--motion-medium);
   text-align: left;
   font-family: inherit;
   color: inherit;
@@ -4405,7 +4420,7 @@ button.empty-state { width: 100%; font: inherit; }
   flex-shrink: 0;
   background: color-mix(in srgb, var(--card-accent, var(--text)) 12%, transparent);
   color: var(--card-accent, var(--text));
-  transition: background 0.15s;
+  transition: background var(--motion-medium);
 }
 
 .prod-card-info {
@@ -4444,7 +4459,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 36px;
   width: 280px;
   color: var(--text-3);
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-medium);
 }
 
 .prod-search:focus-within {
@@ -4501,7 +4516,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 .premium-table tbody tr {
   border-bottom: 1px solid var(--border);
-  transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color var(--motion-medium) ease, transform var(--motion-medium) ease, box-shadow var(--motion-medium) ease;
 }
 
 .premium-table tbody tr.clickable-row {
@@ -4518,7 +4533,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 .prod-row {
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background var(--motion-fast);
 }
 
 .prod-row:hover {
@@ -4711,7 +4726,7 @@ button.empty-state { width: 100%; font: inherit; }
   border-radius: 50%;
   border: 2.5px solid var(--border);
   background: var(--panel);
-  transition: background 0.2s, border-color 0.2s;
+  transition: background var(--motion-standard), border-color var(--motion-standard);
 }
 
 .stage-done .stage-dot {
@@ -4983,7 +4998,7 @@ button.empty-state { width: 100%; font: inherit; }
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: height 0.2s ease-in-out, filter 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  transition: height var(--motion-standard) ease-in-out, filter var(--motion-standard) ease-in-out, box-shadow var(--motion-standard) ease-in-out;
 }
 
 .prod-gantt-bar:hover {
@@ -5015,7 +5030,7 @@ button.empty-state { width: 100%; font: inherit; }
   font-size: var(--fs-1);
   color: #fff;
   line-height: 1;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 }
 
 .prod-gantt-marker:hover {
@@ -5158,7 +5173,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 .premium-card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform var(--motion-standard) ease, box-shadow var(--motion-standard) ease, border-color var(--motion-standard) ease;
 }
 
 .premium-card-hover:hover {
@@ -5198,7 +5213,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 36px;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s, border-color 0.2s;
+  transition: transform var(--motion-standard) cubic-bezier(0.4, 0, 0.2, 1), background var(--motion-standard), border-color var(--motion-standard);
 }
 .action-btn:hover {
   transform: translateY(-1px);
@@ -5250,15 +5265,15 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 .page {
-  animation: pageEnter var(--motion-standard) cubic-bezier(0.2, 0, 0, 1);
+  animation: pageEnter var(--motion-standard) var(--ease-standard);
 }
 
 /* Button & Card Micro-Animations */
 .btn {
-  transition: background 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background var(--motion-medium) var(--ease-out),
+              border-color var(--motion-medium) var(--ease-out),
+              box-shadow var(--motion-medium) var(--ease-out),
+              transform var(--motion-medium) var(--ease-out);
 }
 .btn:hover {
   transform: none;
@@ -5267,9 +5282,9 @@ button.empty-state { width: 100%; font: inherit; }
   transform: none;
 }
 .metric-card {
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--motion-standard) var(--ease-out),
+              border-color var(--motion-standard) var(--ease-out),
+              box-shadow var(--motion-standard) var(--ease-out);
 }
 .metric-card:hover {
   transform: translateY(-2px);
@@ -5510,7 +5525,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: width 0.3s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: width var(--motion-slow) ease, border-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
   width: min(300px, 100%);
   position: relative;
   z-index: 1;
@@ -5688,7 +5703,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 
 .premium-row {
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: background var(--motion-standard) ease, box-shadow var(--motion-standard) ease, transform var(--motion-standard) ease;
 }
 
 .premium-row:hover {
@@ -5900,7 +5915,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   padding: 6px 12px;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--motion-standard) ease;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -5948,7 +5963,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .global-search-input {
   width: 100%;
   margin: 0;
-  transition: all 0.2s ease;
+  transition: all var(--motion-standard) ease;
 }
 .global-search-input.active {
   background: var(--surface-2);
@@ -5991,7 +6006,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .global-search-item {
   padding: 10px 16px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--motion-medium) ease;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -6306,7 +6321,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 /* Interactive Cards */
 .interactive-card {
-  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all var(--motion-standard) cubic-bezier(0.25, 0.46, 0.45, 0.94);
   cursor: default;
 }
 .interactive-card:hover {
@@ -6328,7 +6343,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 /* Interactive Cell (Drill-down) */
 .cell-interactive {
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--motion-medium) ease;
   position: relative;
 }
 .cell-interactive:hover {
@@ -6341,7 +6356,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   inset: 0;
   border: 1px solid color-mix(in srgb, var(--primary-color) 50%, transparent);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-medium) ease;
   pointer-events: none;
 }
 .cell-interactive:hover::after {
@@ -6363,7 +6378,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   transform: translate(-50%, -100%);
   margin-top: -12px;
   min-width: 150px;
-  transition: opacity 0.1s ease, transform 0.1s ease;
+  transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease;
   backdrop-filter: blur(8px);
 }
 .chart-tooltip-header {
@@ -6392,7 +6407,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 
 /* Chart bar hover interaction */
 .chart-bar {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--motion-standard) ease;
 }
 .chart-group:hover .chart-bar:not(:hover) {
   opacity: 0.3;

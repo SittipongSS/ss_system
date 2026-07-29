@@ -832,7 +832,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
         userSelect: "none", touchAction: "none",
         opacity: saving ? 0.8 : 1,
         boxShadow: dragging ? "0 3px 10px rgba(0,0,0,0.25)" : "none",
-        transition: dragging ? "none" : "box-shadow 0.15s, opacity 0.15s",
+        transition: dragging ? "none" : "box-shadow var(--motion-medium), opacity var(--motion-medium)",
       }}
     >
       {kind === "edited" && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)", zIndex: 1, pointerEvents: "none" }} />}

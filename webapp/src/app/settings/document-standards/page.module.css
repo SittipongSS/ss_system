@@ -1,5 +1,5 @@
 .standardSelector { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: 8px; margin-bottom: 16px; }
-.standardTab { min-height: 58px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background 120ms ease, border-color 120ms ease, transform 120ms ease; }
+.standardTab { min-height: 58px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .standardTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .standardTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .standardTab:disabled { cursor: not-allowed; opacity: .45; }
