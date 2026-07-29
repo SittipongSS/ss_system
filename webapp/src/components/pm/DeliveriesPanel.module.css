@@ -75,3 +75,17 @@
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* "ขออัปเดตแล้ว" — ลิงก์ไปคำร้อง material_eta ที่ค้างอยู่กับแถวนี้ */
+.asked {
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  font-size: var(--fs-1);
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.asked:hover { border-color: var(--amber); }

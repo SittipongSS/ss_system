@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canEditDeliveries,
+  chaseRequestBody,
   canViewDeliveries,
   deliveriesForDeal,
   deliveriesForSalesOrder,
@@ -10,6 +11,7 @@ import {
   deliveryRollup,
   deliveryStepBadge,
   normalizeDeliveryInput,
+  openDeliveriesToChase,
   productionReadiness,
 } from './deliveries.js';
 
@@ -212,4 +214,34 @@ test('ป้ายบอกขอบเขตให้คนอ่านรู�
   const rows = [rnd({ arrivedAt: '2026-08-01' })];
   assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'deal' }).title, /เฉพาะรอบ/);
   assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'project' }).title, /รวมทุกรอบ/);
+});
+
+// ── ขอให้ PC อัปเดตกำหนด (kind material_eta) ─────────────────────────────
+const chase = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'ขวด', qty: 5000, unit: 'ชิ้น', dealId: 'D-1', dueDate: '2026-09-01', arrivedAt: null, requestId: null, ...over });
+
+test('ขออัปเดต: เอาเฉพาะของที่ยังไม่มา', () => {
+  const rows = [chase({ id: 'a' }), chase({ id: 'b', arrivedAt: '2026-08-01' })];
+  assert.deepEqual(openDeliveriesToChase(rows).map((r) => r.id), ['a']);
+});
+
+test('⭐ ขออัปเดต: แถวที่ขอไปแล้วไม่ถูกขอซ้ำ — กันคิว PC เต็มด้วยเรื่องเดิม', () => {
+  const rows = [chase({ id: 'a' }), chase({ id: 'b', requestId: 'DR-9' })];
+  assert.deepEqual(openDeliveriesToChase(rows).map((r) => r.id), ['a']);
+});
+
+test('ขออัปเดต: จำกัดเฉพาะรอบได้ (โครงการเดียวมีหลายดีล)', () => {
+  const rows = [chase({ id: 'a', dealId: 'D-1' }), chase({ id: 'b', dealId: 'D-2' })];
+  assert.deepEqual(openDeliveriesToChase(rows, { dealId: 'D-2' }).map((r) => r.id), ['b']);
+  assert.equal(openDeliveriesToChase(rows).length, 2); // ไม่ระบุ = ทั้งโครงการ
+});
+
+test('เนื้อคำร้องอ่านแล้วรู้ว่าต้องอัปเดตอะไร โดยไม่ต้องเปิดโครงการ', () => {
+  const text = chaseRequestBody([
+    chase({ label: 'ขวดแก้ว', qty: 5000, unit: 'ชิ้น', poRef: 'PR-001', dueDate: '2026-09-01' }),
+    chase({ id: 'b', label: 'หัวน้ำหอม', qty: null, unit: null, poRef: null, dueDate: null }),
+  ]);
+  assert.match(text, /2 รายการ/);
+  assert.match(text, /ขวดแก้ว · 5,000 ชิ้น · PR-001 · กำหนดเดิม 2026-09-01/);
+  // แถวที่ยังไม่รู้ยอด/กำหนด ต้องบอกตามจริง ไม่ใช่เว้นว่างให้เดา
+  assert.match(text, /หัวน้ำหอม · ยังไม่มีกำหนด/);
 });
