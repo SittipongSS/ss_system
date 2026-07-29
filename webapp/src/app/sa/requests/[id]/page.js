@@ -25,8 +25,14 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
-  REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, askProgress,
+  REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
+  answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
+import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
+import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
+import styles from "./page.module.css";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 
 const STATUS_TONE = {
@@ -56,6 +62,9 @@ export default function MaterialAskDetailPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  // ผลลัพธ์ตอนปิดบรีฟกลิ่น — { mode: 'link'|'create'|'none', scentId, scentName, code }
+  const [outcome, setOutcome] = useState(null);
+  const [scentOptions, setScentOptions] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
@@ -68,6 +77,16 @@ export default function MaterialAskDetailPage() {
     setLoading(false);
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  // กลิ่นของลูกค้ารายนี้ — ใช้ในโมดัลปิดบรีฟ (มติ 9: กลิ่นข้ามลูกค้าไม่ได้ จึงกรอง
+  // ที่ต้นทางเลย ไม่ปล่อยให้เลือกผิดแล้วค่อยให้ server ตีกลับ)
+  useEffect(() => {
+    if (!req?.customerId || !requestNeedsOutcome(req?.kind)) { setScentOptions([]); return; }
+    fetch(`/api/master/scents?customerId=${encodeURIComponent(req.customerId)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setScentOptions(Array.isArray(d) ? d : []))
+      .catch(() => setScentOptions([]));
+  }, [req?.customerId, req?.kind]);
 
   const call = useCallback(async (path, init, okMsg) => {
     setSaving(true);
@@ -100,7 +119,17 @@ export default function MaterialAskDetailPage() {
   const owner = canQuoteMaterial(me, req.dept);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
-  const canClose = progress.complete && !["closed", "cancelled"].includes(req.status) && (req._mine || owner);
+  // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
+  // ชนิด) มี progress.complete = false เสมอเพราะ total = 0 · เดิมเงื่อนไขปิดเคสอ่านจาก
+  // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
+  // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
+  const hasItems = requestHasItems(req.kind);
+  const canClose = !closeRequestError(req, req.items || []) && (req._mine || owner);
+  // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
+  const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
+  // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
+  const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
+  const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;
 
   const submitAnswer = async (payload, okMsg) => {
     const ok = await call("/answer", { method: "PATCH", body: JSON.stringify({ answers: [payload] }) }, okMsg);
@@ -117,18 +146,29 @@ export default function MaterialAskDetailPage() {
         confirmLabel: "ส่งเคส",
       };
     }
+    if (confirm.kind === "answer") {
+      return {
+        title: "ทำเครื่องหมายว่าตอบแล้ว",
+        description: req.docNo || "",
+        detail: "ชนิดนี้ไม่มีรายการให้ระบบนับ — ผู้ตอบเป็นคนบอกเองว่าตอบครบแล้ว"
+          + " · ผู้ขอจะเป็นคนกดปิดเรื่องเมื่อพอใจกับคำตอบ",
+        confirmLabel: "ตอบแล้ว",
+      };
+    }
     if (confirm.kind === "close") {
       return {
-        title: "ปิดเคส",
+        title: "ปิดเรื่อง",
         description: req.docNo || "",
-        detail: "ราคาที่ตอบแล้วยังอยู่ในทะเบียนวัสดุตามเดิม — ปิดเคสแค่บอกว่างานนี้จบ",
-        confirmLabel: "ปิดเคส",
+        detail: hasItems
+          ? "ราคาที่ตอบแล้วยังอยู่ในทะเบียนวัสดุตามเดิม — ปิดเรื่องแค่บอกว่างานนี้จบ"
+          : "ปิดเรื่องแล้วยังอ่านย้อนหลังได้ตามเดิม — แค่บอกว่างานนี้จบ",
+        confirmLabel: "ปิดเรื่อง",
       };
     }
     return {
-      title: "ลบเคสร่าง",
-      description: "เคสนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
-      confirmLabel: "ลบเคส",
+      title: "ลบคำร้องร่าง",
+      description: "คำร้องนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
+      confirmLabel: "ลบคำร้อง",
     };
   };
 
@@ -138,7 +178,7 @@ export default function MaterialAskDetailPage() {
       if (ok) window.location.href = "/sa/requests?tab=mine";
       return;
     }
-    const labels = { submit: "ส่งเคสแล้ว", close: "ปิดเคสแล้ว" };
+    const labels = { submit: "ส่งคำร้องแล้ว", answer: "บันทึกว่าตอบแล้ว", close: "ปิดเรื่องแล้ว" };
     const ok = await call("", {
       method: "PATCH", body: JSON.stringify({ action: confirm.kind }),
     }, labels[confirm.kind]);
@@ -154,17 +194,18 @@ export default function MaterialAskDetailPage() {
         : req.status === "answered"
           ? 3
           : 4;
+  // ขั้นตอนบนการ์ดควบคุมพูดภาษาของชนิดนั้น — ชนิดที่ไม่มีบรรทัดไม่ได้ "หาราคา"
   const workflowSteps = workflowStepsFromIndex([
-    { id: "draft", label: "จัดทำเคส", hint: "ระบุวัสดุและชั้นจำนวน" },
+    { id: "draft", label: "จัดทำคำร้อง", hint: hasItems ? "ระบุวัสดุและชั้นจำนวน" : "ระบุเรื่องที่ต้องการ" },
     { id: "pending", label: "รอรับเรื่อง", hint: `ส่งถึงฝ่าย ${req.dept}` },
-    { id: "acknowledged", label: "กำลังหาราคา", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" },
-    { id: "answered", label: "ตอบครบ", hint: "บันทึกราคาเข้าทะเบียนวัสดุ" },
-    { id: "closed", label: "ปิดเคส", hint: "งานขอราคาสิ้นสุด" },
+    { id: "acknowledged", label: hasItems ? "กำลังหาราคา" : "กำลังดำเนินการ", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" },
+    { id: "answered", label: "ตอบแล้ว", hint: hasItems ? "บันทึกราคาเข้าทะเบียนวัสดุ" : "ผู้ตอบยืนยันว่าตอบครบ" },
+    { id: "closed", label: "ปิดเรื่อง", hint: "งานนี้สิ้นสุด" },
   ], workflowIndex, req.status === "cancelled");
   const primaryAction = req._mine && req.status === "draft"
     ? {
       id: "submit",
-      label: "ส่งเคส",
+      label: "ส่งคำร้อง",
       kind: "submit",
       icon: Send,
       onClick: () => setConfirm({ kind: "submit" }),
@@ -177,42 +218,68 @@ export default function MaterialAskDetailPage() {
         icon: Check,
         onClick: () => call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว"),
       }
-      : canClose
+      // ชนิดที่ไม่มีบรรทัด: ผู้ตอบกด "ตอบแล้ว" ก่อน แล้วผู้ขอค่อยปิดเรื่อง
+      // (ระบบนับคำตอบเองไม่ได้ — ไม่มีบรรทัดให้นับ)
+      : canMarkAnswered
         ? {
-          id: "close",
-          label: "ปิดเคส",
+          id: "answer",
+          label: "ตอบแล้ว",
           kind: "approve",
           icon: CheckCheck,
-          onClick: () => setConfirm({ kind: "close" }),
+          onClick: () => setConfirm({ kind: "answer" }),
         }
-        : null;
+        : canClose
+          ? {
+            id: "close",
+            label: "ปิดเรื่อง",
+            kind: "approve",
+            icon: CheckCheck,
+            // บรีฟกลิ่นต้องบอกก่อนว่าได้กลิ่นตัวไหน — ถามในโมดัลแทน confirm ธรรมดา
+            onClick: () => (needsOutcome
+              ? setOutcome({ mode: scentOptions.length ? "link" : "create", scentId: "", scentName: "", code: "" })
+              : setConfirm({ kind: "close" })),
+          }
+          : null;
 
   return (
     <Workspace hideHeader back={back}>
+      {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
+          ทั้งที่รับคำร้อง 8 ชนิด · บรีฟกลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
+          อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก */}
       <SalesDetailOverview
-        eyebrow="MATERIAL PRICE REQUEST"
-        title={req.docNo || "เคสขอราคา (ร่าง)"}
-        description={`${req.customerName || "ราคากลาง"} · ถึงฝ่าย ${req.dept} · ผู้ขอ ${req.requestedByName || "—"}`}
+        eyebrow={requestKindLabel(req.kind)}
+        title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
+        description={`${req.title || req.customerName || "ราคากลาง"} · ถึงฝ่าย ${req.dept} · ผู้ขอ ${req.requestedByName || "—"}`}
         badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
         facts={[
           { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
           { key: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-          { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
-          { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
+          ...(hasItems ? [
+            { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
+            { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
+          ] : [
+            { key: "customer", label: "ลูกค้า", value: req.customerName || "—" },
+            { key: "due", label: "ต้องการคำตอบ", value: req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—" },
+          ]),
         ]}
       />
 
       <DetailPageLayout
-        asideLabel="สรุปและจัดการเคสขอราคาวัสดุ"
+        asideLabel="สรุปและจัดการคำร้อง"
         aside={(
           <>
             <DocumentSummaryCard
-              title="สรุปเคสขอราคา"
-              rows={[
+              title="สรุปคำร้อง"
+              rows={hasItems ? [
                 { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
                 { id: "items", label: "รายการทั้งหมด", value: `${progress.total} รายการ` },
                 { id: "answered", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
                 { id: "pending", label: "รอคำตอบ", value: `${Math.max(progress.total - progress.done, 0)} รายการ` },
+              ] : [
+                { id: "kind", label: "ชนิดคำร้อง", value: requestKindLabel(req.kind) },
+                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
+                { id: "acknowledged", label: "ผู้รับเรื่อง", value: req.acknowledgedByName || "ยังไม่มีผู้รับ" },
+                { id: "committed", label: "รับปากว่าจะตอบ", value: req.committedDueDate ? fmtDate(req.committedDueDate) : "—" },
               ]}
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
@@ -220,13 +287,13 @@ export default function MaterialAskDetailPage() {
             <DocumentControlCard
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
-              statusDescription="การดำเนินการระดับเคส"
+              statusDescription="การดำเนินการระดับคำร้อง"
               workflowSteps={workflowSteps}
               primaryAction={primaryAction}
               dangerActions={[
                 {
                   id: "delete",
-                  label: "ลบเคสร่าง",
+                  label: "ลบคำร้องร่าง",
                   kind: "delete",
                   icon: Trash2,
                   onClick: () => setConfirm({ kind: "delete" }),
@@ -234,7 +301,7 @@ export default function MaterialAskDetailPage() {
                 },
                 {
                   id: "cancel",
-                  label: "ยกเลิกเคส",
+                  label: "ยกเลิกคำร้อง",
                   kind: "cancel",
                   icon: Ban,
                   onClick: () => setCancelReason(" "),
@@ -252,9 +319,11 @@ export default function MaterialAskDetailPage() {
           <span className="status-pill" style={{ color: STATUS_TONE[req.status], borderColor: "currentColor" }}>
             {REQUEST_STATUS_LABELS[req.status] || req.status}
           </span>
-          <span style={{ fontSize: 13, color: "var(--text-2)" }}>
-            ตอบแล้ว {progress.done}/{progress.total} รายการ
-          </span>
+          {hasItems && (
+            <span style={{ fontSize: 13, color: "var(--text-2)" }}>
+              ตอบแล้ว {progress.done}/{progress.total} รายการ
+            </span>
+          )}
           {req.acknowledgedByName && (
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>
               รับเรื่องโดย {req.acknowledgedByName} · {fmtDate(req.acknowledgedAt)}
@@ -264,6 +333,12 @@ export default function MaterialAskDetailPage() {
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
           )}
         </div>
+        {/* เนื้อคำร้องของชนิดที่ไม่มีบรรทัด — บรีฟกลิ่น/สอบถาม/ขอเอกสาร เก็บเรื่องจริง
+            ไว้ใน title+body ซึ่งหน้านี้ไม่เคยแสดงเลย (แสดงแต่ note) ผู้ตอบจึงเห็น
+            แต่หัวเรื่องบนแถบบน แล้วต้องเดาเอาว่าเขาขออะไร */}
+        {!hasItems && req.body && (
+          <ReadableText text={req.body} lines={12} className={styles.requestBody} />
+        )}
         {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />}
         {req.status === "cancelled" && req.cancelReason && (
           <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
@@ -307,7 +382,7 @@ export default function MaterialAskDetailPage() {
           <div style={{ marginTop: 12 }}>
             <div className="toolbar-label">รูป / สเปกแนบ</div>
             <AttachmentsPanel
-              entityType="material_ask_item"
+              entityType="dept_request_item"
               entityId={item.id}
               canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
               inlineUpload
@@ -338,9 +413,14 @@ export default function MaterialAskDetailPage() {
       {/* เธรดคุยกันในเคส (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
           ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของเคส
           (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
-      <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในเคสนี้">
+      <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในคำร้องนี้">
+        {/* 🐞 เคยส่งชื่อชุดก่อน mig 0173 (ชื่อเก่าของคำร้อง/บรรทัดคำร้อง) — เธรดเลย
+            อ่านคนละคีย์กับที่ server เขียนเหตุการณ์ลงไป (`dept_request`) ผลคือ
+            **ไม่เห็นทั้งเหตุการณ์ของระบบและข้อความเก่า** และข้อความใหม่ตกไปอยู่คีย์
+            ที่ไม่มีใครอ่าน (ไฟล์แนบพลาดคู่กัน) · เทสต์กันไว้แล้วที่
+            lib/master/entityTypeUsage.test.mjs */}
         <UpdateThread
-          entityType="material_ask"
+          entityType="dept_request"
           entityId={req.id}
           placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
@@ -410,6 +490,95 @@ export default function MaterialAskDetailPage() {
               >
                 บันทึก
               </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ปิดบรีฟกลิ่น — ต้องบอกว่าได้กลิ่นตัวไหน (มติ 3)
+          ⚠️ ไม่เดาชื่อกลิ่นจากหัวเรื่องคำร้อง: หัวเรื่องเป็นข้อความบรีฟ ไม่ใช่ชื่อกลิ่น
+          สร้าง master data ผิดแย่กว่าไม่สร้าง (ของจริงบน prod: สินค้า 10 แถวเอาชื่อ
+          กลิ่นไปกรอกช่องชื่อสูตร เพราะไม่มีที่เก็บกลิ่น) */}
+      <Modal
+        open={!!outcome} onClose={() => setOutcome(null)} size="sm" dismissible={!saving}
+        title="ปิดบรีฟกลิ่น — ได้กลิ่นตัวไหน"
+      >
+        {outcome && (
+          <>
+            <div className="form-group">
+              <label htmlFor="close-outcome-mode">ผลของบรีฟนี้</label>
+              <Select
+                id="close-outcome-mode" value={outcome.mode} disabled={saving}
+                onChange={(e) => setOutcome({ ...outcome, mode: e.target.value })}
+                options={[
+                  { value: "link", label: "ผูกกับกลิ่นที่มีอยู่ในทะเบียน", disabled: !scentOptions.length },
+                  { value: "create", label: "เพิ่มกลิ่นใหม่เข้าทะเบียน" },
+                  { value: "none", label: "ไม่ได้กลิ่นจากบรีฟนี้" },
+                ]}
+              />
+            </div>
+
+            {outcome.mode === "link" && (
+              <div className="form-group">
+                <label htmlFor="close-outcome-scent">กลิ่นของ {req.customerName || "ลูกค้ารายนี้"}</label>
+                <Select
+                  id="close-outcome-scent" value={outcome.scentId} disabled={saving}
+                  onChange={(e) => setOutcome({ ...outcome, scentId: e.target.value })}
+                  options={[
+                    { value: "", label: "— เลือกกลิ่น —" },
+                    ...scentOptions.map((s) => ({
+                      value: s.id,
+                      label: `${s.code ? `${s.code} · ` : ""}${s.name} (${SCENT_STATUS_LABELS[s.status] || s.status})`,
+                    })),
+                  ]}
+                />
+              </div>
+            )}
+
+            {outcome.mode === "create" && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="close-outcome-name">ชื่อกลิ่น</label>
+                  <input
+                    id="close-outcome-name" className="input-premium" maxLength={200}
+                    value={outcome.scentName} disabled={saving}
+                    placeholder="ชื่อกลิ่นจริงที่ RD ตั้ง ไม่ใช่หัวเรื่องบรีฟ"
+                    onChange={(e) => setOutcome({ ...outcome, scentName: e.target.value })}
+                  />
+                </div>
+                {/* รหัสกลิ่นเป็นของ RD (มติ 8) — คนอื่นเปิดได้แค่ร่างรอ RD รับเข้าทะเบียน */}
+                {isScentRegistrar(me) ? (
+                  <div className="form-group">
+                    <label htmlFor="close-outcome-code">รหัสกลิ่น (ใส่แล้วเข้าทะเบียนเลย)</label>
+                    <input
+                      id="close-outcome-code" className="input-premium mono" maxLength={100}
+                      value={outcome.code} disabled={saving} placeholder="เช่น SC-2026-001"
+                      onChange={(e) => setOutcome({ ...outcome, code: e.target.value })}
+                    />
+                  </div>
+                ) : (
+                  <p className={styles.fieldHint}>
+                    กลิ่นจะเข้าเป็น <strong>ร่าง</strong> รอ RD ใส่รหัสและรับเข้าทะเบียน
+                  </p>
+                )}
+              </>
+            )}
+
+            {outcomeError && <p className={styles.fieldError}>{outcomeError}</p>}
+
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" onClick={() => setOutcome(null)} disabled={saving}>ยกเลิก</Button>
+              <Button
+                tone="accent" disabled={saving || !!outcomeError}
+                onClick={async () => {
+                  const ok = await call("", {
+                    method: "PATCH", body: JSON.stringify({ action: "close", outcome }),
+                  }, outcome.mode === "none" ? "ปิดเรื่องแล้ว" : "ปิดเรื่องแล้ว · บันทึกกลิ่นลงทะเบียน");
+                  if (ok) setOutcome(null);
+                }}
+              >
+                ปิดเรื่อง
+              </Button>
             </div>
           </>
         )}

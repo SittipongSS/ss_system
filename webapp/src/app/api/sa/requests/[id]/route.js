@@ -9,10 +9,12 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewCosting, isSuperuser } from '@/lib/permissions';
 import {
   acknowledgeRequestError, answerRequestError, canAnswerRequest, canManageRequest,
-  cancelRequestError, closeRequestError, deleteRequestError, generateRequestDocNo,
-  submitRequestError,
+  cancelRequestError, closeOutcomeError, closeRequestError, deleteRequestError,
+  generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
 import { requestHasItems, requestKindLabel } from '@/lib/master/requestTypes';
+import { isScentRegistrar } from '@/lib/master/scents';
+import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { askActionUpdate } from '@/lib/costingUpdates';
@@ -21,6 +23,44 @@ import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
+
+// ผลลัพธ์ของบรีฟกลิ่นตอนปิดเรื่อง → id ของกลิ่นในทะเบียน (หรือ null ถ้า "ไม่ได้กลิ่น")
+//
+// สร้างใหม่ใช้กติกาเดียวกับหน้าทะเบียนเป๊ะ ๆ ผ่าน `createScent`: RD ที่ใส่รหัสมาด้วย
+// = เข้าทะเบียนเลย (`developing`) · คนอื่นหรือ RD ที่ยังไม่มีรหัส = ร่างรอ RD รับ
+// ห้ามเขียน insert เองที่นี่ ไม่งั้นกฎสองชุดจะเพี้ยนหากันเหมือนที่ AGENTS.md เตือน
+async function resolveScentOutcome(supabase, request, outcome, user) {
+  if (request?.scentId) return { scentId: request.scentId };
+  if (!outcome || outcome.mode === 'none') return null;
+
+  if (outcome.mode === 'link') {
+    const { data, error } = await supabase.from('scents')
+      .select('id, customerId').eq('id', outcome.scentId).maybeSingle();
+    if (error) return { error: error.message };
+    if (!data) return { error: 'ไม่พบกลิ่นที่เลือก' };
+    // มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้ — ผูกข้ามลูกค้าคือทำทะเบียนพัง
+    if (request.customerId && data.customerId !== request.customerId) {
+      return { error: 'กลิ่นนี้เป็นของลูกค้ารายอื่น ผูกกับคำร้องนี้ไม่ได้' };
+    }
+    return { scentId: data.id };
+  }
+
+  const accepted = isScentRegistrar(user) && !!String(outcome.code ?? '').trim();
+  try {
+    const scent = await createScent(supabase, {
+      name: outcome.scentName,
+      code: accepted ? outcome.code : undefined,
+      customerId: request.customerId,
+      customerName: request.customerName,
+      dealId: request.dealId || null,
+      note: outcome.note || null,
+    }, user, { accepted });
+    return { scentId: scent.id, created: true };
+  } catch (e) {
+    // ชื่อซ้ำในลูกค้าเดียวกัน ฯลฯ = เรื่องที่ผู้ใช้แก้เองได้ ไม่ใช่ 500
+    return { error: e.message };
+  }
+}
 
 export async function GET(request, { params }) {
   try {
@@ -107,11 +147,21 @@ export async function PATCH(request, { params }) {
       }
       const err = closeRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });
+
+      // ชนิดที่มีผลลัพธ์ (บรีฟกลิ่น) ต้องบอกก่อนว่าได้ของอะไรออกมา — ดูเหตุผลใน
+      // lib/deptRequests.js · ทำก่อน update หัวเรื่อง เพื่อไม่ให้ปิดสำเร็จแต่ทะเบียนพัง
+      const outcomeErr = closeOutcomeError(before, body.outcome);
+      if (outcomeErr) return Response.json({ error: outcomeErr }, { status: 400 });
+      const linked = await resolveScentOutcome(supabase, before, body.outcome, user);
+      if (linked?.error) return Response.json({ error: linked.error }, { status: 400 });
+      if (linked?.scentId) patch.scentId = linked.scentId;
+
       patch.status = 'closed';
       patch.closedById = user?.id ?? null;
       patch.closedByName = user?.name ?? null;
       patch.closedAt = nowIso;
-      summary = `ปิดเรื่อง ${before.docNo || id}`;
+      summary = `ปิดเรื่อง ${before.docNo || id}`
+        + (linked?.created ? ' · เพิ่มกลิ่นเข้าทะเบียน' : linked?.scentId ? ' · ผูกกลิ่นในทะเบียน' : '');
     } else if (action === 'cancel') {
       if (!canManageRequest(user, before)) {
         return Response.json({ error: 'ยกเลิกได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });

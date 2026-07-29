@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
 import {
   INITIAL_TOAST_QUEUE,
+  normalizeToast,
   toastQueueReducer,
 } from "@/lib/toastQueue";
 import { TOAST_EVENT } from "@/lib/feedback";

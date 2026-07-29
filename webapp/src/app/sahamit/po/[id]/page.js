@@ -24,7 +24,7 @@ import { DestinationToggle, destinationLabel } from "@/components/sahamit/destin
 import { useCan } from "@/lib/roleContext";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Modal from "@/components/Modal";
-import Toast from "@/components/ui/Toast";
+import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];

@@ -10,6 +10,7 @@ import {
   canAnswerRequest,
   canManageRequest,
   cancelRequestError,
+  closeOutcomeError,
   closeRequestError,
   compareRequestUrgency,
   deleteRequestError,
@@ -17,6 +18,7 @@ import {
   normalizeRequestItems,
   normalizeRequestTiers,
   requestDueTone,
+  requestNeedsOutcome,
   requestProgress,
   requestsByStepKey,
   stepPinSummary,
@@ -288,4 +290,48 @@ test('สรุปหมุด: นับรวม/นับค้าง แล�
   assert.equal(stepPinSummary(byStep, 'npd-25'), null);
   // task เก่าที่ไม่มี stepKey (165 จาก 282 แถวบน prod) ต้องไม่ระเบิด
   assert.equal(stepPinSummary(byStep, null), null);
+});
+
+// ── ผลลัพธ์ตอนปิดบรีฟกลิ่น ────────────────────────────────────────────────
+const brief = (over = {}) => ({
+  id: 'DR-9', kind: 'scent_brief', status: 'answered',
+  customerId: 'CUS-1', customerName: 'ลูกค้า A', dealId: 'D-1', scentId: null, ...over,
+});
+
+test('ชนิดที่ไม่มีผลลัพธ์ ปิดได้เลยไม่ต้องถามอะไร', () => {
+  for (const kind of ['info', 'mockup', 'document', 'material_eta', 'price_pm']) {
+    assert.equal(requestNeedsOutcome(kind), false, kind);
+    assert.equal(closeOutcomeError({ kind }, undefined), null, kind);
+  }
+});
+
+test('บรีฟกลิ่นต้องระบุผลลัพธ์ก่อนปิด — ปิดเงียบ ๆ ไม่ได้', () => {
+  assert.equal(requestNeedsOutcome('scent_brief'), true);
+  assert.equal(closeOutcomeError(brief(), undefined), 'ต้องระบุว่าบรีฟนี้ได้กลิ่นตัวไหน');
+  assert.equal(closeOutcomeError(brief(), { mode: 'อะไรก็ไม่รู้' }), 'ต้องระบุว่าบรีฟนี้ได้กลิ่นตัวไหน');
+});
+
+test('บรีฟที่ผูกกลิ่นไว้แล้วไม่ต้องถามซ้ำ', () => {
+  assert.equal(closeOutcomeError(brief({ scentId: 'SCT-1' }), undefined), null);
+});
+
+test('"ไม่ได้กลิ่น" เป็นคำตอบที่ถูกต้อง — บรีฟที่ลูกค้าไม่เอาต้องปิดได้', () => {
+  assert.equal(closeOutcomeError(brief(), { mode: 'none' }), null);
+});
+
+test('ผูกกลิ่นเดิมต้องเลือกตัวจริง · สร้างใหม่ต้องมีชื่อ', () => {
+  assert.equal(closeOutcomeError(brief(), { mode: 'link' }), 'ต้องเลือกกลิ่นจากทะเบียน');
+  assert.equal(closeOutcomeError(brief(), { mode: 'link', scentId: 'SCT-1' }), null);
+  assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: '  ' }), 'ต้องระบุชื่อกลิ่นที่จะเพิ่มเข้าทะเบียน');
+  assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: 'Well sleep' }), null);
+  assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: 'x'.repeat(201) }), 'ชื่อกลิ่นยาวเกิน 200 ตัวอักษร');
+});
+
+test('กลิ่นผูกลูกค้าเสมอ (มติ 9) — บรีฟที่ไม่มีลูกค้าสร้างกลิ่นใหม่ไม่ได้', () => {
+  assert.equal(
+    closeOutcomeError(brief({ customerId: null }), { mode: 'create', scentName: 'Well sleep' }),
+    'คำร้องนี้ไม่มีลูกค้า จึงเพิ่มกลิ่นเข้าทะเบียนไม่ได้',
+  );
+  // แต่ผูกกับกลิ่นที่มีอยู่แล้ว/ไม่ได้กลิ่น ยังปิดได้ (ด่านข้ามลูกค้าอยู่ฝั่ง server)
+  assert.equal(closeOutcomeError(brief({ customerId: null }), { mode: 'none' }), null);
 });
