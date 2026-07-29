@@ -13,8 +13,9 @@ export async function PATCH(request, { params }) {
   const { supabase, customerId, user } = ctx;
   const { id } = await params;
 
-  const { data: flag } = await supabase
+  const { data: flag, error: flagError } = await supabase
     .from('sahamit_fc_flags').select('*').eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (flagError) return Response.json({ error: flagError.message }, { status: 500 });
   if (!flag) return Response.json({ error: 'ไม่พบรายการ' }, { status: 404 });
 
   let body;

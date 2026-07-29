@@ -11,8 +11,9 @@ export async function POST(request, { params }) {
   const { supabase, customerId, user } = ctx;
   const { id } = await params;
 
-  const { data: balance } = await supabase
+  const { data: balance, error: balanceError } = await supabase
     .from('sahamit_pos').select('*').eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (balanceError) return Response.json({ error: balanceError.message }, { status: 500 });
   if (!balance) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
   if (!balance.splitFromPoId) return Response.json({ error: 'PO นี้ไม่ใช่ยอดเหลือจากการแบ่งส่ง' }, { status: 400 });
 

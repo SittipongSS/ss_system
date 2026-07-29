@@ -17,11 +17,12 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
 
   // สิทธิ์คุมด้วย view-scope ของดีลเจ้าของ (pattern เดียวกับ [id]/file) — capability
   // อย่างเดียวไม่พอ: เอกสารตรึงมีราคา/ลูกค้าครบ ห้ามให้ AE ข้ามทีมดึงตาม id ได้
-  const { data: quote } = await supabase
+  const { data: quote, error: quoteError } = await supabase
     .from('quotations')
     .select('id, dealId, approvalStatus')
     .eq('id', id)
     .maybeSingle();
+  if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   const { data: deal } = await supabase
     .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();

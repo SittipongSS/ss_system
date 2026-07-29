@@ -20,11 +20,12 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canViewSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
 
-  const { data: quote } = await supabase
+  const { data: quote, error: quoteError } = await supabase
     .from('quotations')
     .select('id, dealId, approvalStatus')
     .eq('id', id)
     .maybeSingle();
+  if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   const { data: deal } = await supabase
     .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();

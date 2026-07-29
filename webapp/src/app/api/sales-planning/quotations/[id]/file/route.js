@@ -20,11 +20,12 @@ export async function GET(request, { params }) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: quote } = await supabase
+  const { data: quote, error: quoteError } = await supabase
     .from('quotations')
     .select('id, dealId, wonAttachments')
     .eq('id', id)
     .maybeSingle();
+  if (quoteError) return Response.json({ error: quoteError.message }, { status: 500 });
   if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();

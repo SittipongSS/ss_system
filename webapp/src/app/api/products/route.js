@@ -72,8 +72,9 @@ export async function POST(request) {
 
   // FG always belongs to a customer (selected in the create form).
   if (!body.customerId) return Response.json({ error: 'กรุณาเลือกลูกค้าเจ้าของสินค้า' }, { status: 400 });
-  const { data: customer } = await supabase
+  const { data: customer, error: customerError } = await supabase
     .from('customers').select('*').eq('id', body.customerId).maybeSingle();
+  if (customerError) return Response.json({ error: customerError.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
   // Duplicate FG Code check

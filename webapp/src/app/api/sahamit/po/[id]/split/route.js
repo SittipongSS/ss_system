@@ -23,8 +23,9 @@ export async function POST(request, { params }) {
   const autoNumber = !balancePoNumber;
 
   // PO ต้นทาง + บรรทัด
-  const { data: po } = await supabase
+  const { data: po, error: poError } = await supabase
     .from('sahamit_pos').select('*').eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (poError) return Response.json({ error: poError.message }, { status: 500 });
   if (!po) return Response.json({ error: 'ไม่พบ PO ต้นทาง' }, { status: 404 });
   const { data: lines } = await supabase
     .from('sahamit_po_lines').select('*').eq('poId', id).eq('customerId', customerId);

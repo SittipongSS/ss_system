@@ -47,7 +47,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   let inquiryRecord = null;
   let inquiryMessage = null;
   if (body.inquiryId) {
-    const { data: inq } = await supabase.from('dept_requests').select('*').eq('id', body.inquiryId).maybeSingle();
+    const { data: inq, error: inqError } = await supabase.from('dept_requests').select('*').eq('id', body.inquiryId).maybeSingle();
+    if (inqError) return fail(inqError.message, 500);
     if (!inq) return badRequest('ไม่พบคำร้องต้นทาง');
     if (!canViewRequest(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้คำร้องนี้สร้างงาน');
     inquiryRecord = inq;
@@ -73,7 +74,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   let assigneeId = null;
   let assignedBy = null;
   if (body.assigneeId && body.assigneeId !== user.id) {
-    const { data: au } = await supabase.auth.admin.getUserById(body.assigneeId);
+    const { data: au, error: auError } = await supabase.auth.admin.getUserById(body.assigneeId);
+    if (auError) return fail(auError.message, 500);
     if (!au?.user) return badRequest('ไม่พบผู้รับมอบหมาย');
     const assignee = {
       id: body.assigneeId,
@@ -89,7 +91,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
   if (dealId) {
-    const { data: deal } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', dealId).maybeSingle();
+    const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', dealId).maybeSingle();
+    if (dealError) return fail(dealError.message, 500);
     if (!deal) return badRequest('ไม่พบดีล');
     // งานจาก Inquiry ใช้ดีลต้นทางตามสิทธิ์ของเรื่องนั้น ส่วนการเลือกดีลเองต้องอยู่ทีมเดียวกัน.
     if (!inquiryRecord && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
@@ -101,7 +104,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
   }
   if (projectId) {
-    const { data: proj } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
+    const { data: proj, error: projError } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
+    if (projError) return fail(projError.message, 500);
     if (!proj) return badRequest('ไม่พบโครงการ');
   }
 

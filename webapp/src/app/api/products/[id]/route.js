@@ -160,8 +160,9 @@ export async function PATCH(request, { params }) {
   // excise registrations carry their own point-in-time customer snapshot and are
   // not retro-updated here.
   if (body.customerId !== undefined && body.customerId !== product.customerId) {
-    const { data: cust } = await supabase
+    const { data: cust, error: custError } = await supabase
       .from('customers').select('*').eq('id', body.customerId).maybeSingle();
+    if (custError) return Response.json({ error: custError.message }, { status: 500 });
     if (!cust) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
     updated.customerId = cust.id;
     updated.customerName = cust.name;

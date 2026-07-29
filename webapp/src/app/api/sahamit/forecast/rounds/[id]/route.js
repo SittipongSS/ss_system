@@ -33,9 +33,10 @@ export async function PATCH(request, { params }) {
   let body;
   try { body = await request.json(); } catch { return Response.json({ error: 'invalid json' }, { status: 400 }); }
 
-  const { data: round } = await supabase
+  const { data: round, error: roundError } = await supabase
     .from('sahamit_forecast_rounds').select('*')
     .eq('id', id).eq('customerId', customerId).maybeSingle();
+  if (roundError) return Response.json({ error: roundError.message }, { status: 500 });
   if (!round) return Response.json({ error: 'ไม่พบรอบ FC นี้' }, { status: 404 });
 
   const receivedDate = body?.receivedDate || round.receivedDate;
@@ -125,12 +126,13 @@ export async function DELETE(request, { params }) {
   const { supabase, customerId, user } = ctx;
   const { id } = await params;
 
-  const { data: round } = await supabase
+  const { data: round, error: roundError } = await supabase
     .from('sahamit_forecast_rounds')
     .select('*')
     .eq('id', id)
     .eq('customerId', customerId)
     .maybeSingle();
+  if (roundError) return Response.json({ error: roundError.message }, { status: 500 });
   if (!round) return Response.json({ error: 'ไม่พบรอบ FC นี้' }, { status: 404 });
 
   const { error } = await supabase

@@ -28,7 +28,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const table = TABLE[entity];
   if (!table || !id) return badRequest('entity/id ไม่ถูกต้อง');
 
-  const { data: before } = await supabase.from(table).select('*').eq('id', id).maybeSingle();
+  const { data: before, error: beforeError } = await supabase.from(table).select('*').eq('id', id).maybeSingle();
+  if (beforeError) return fail(beforeError.message, 500);
   if (!before) return notFound('ไม่พบรายการ');
   if (!before.deletedAt) return ok(before); // กู้แล้ว/ไม่ได้ถูกลบ
 

@@ -17,8 +17,9 @@ export async function PATCH(request, { params }) {
   const { poLineId } = await params;
 
   // Verify the line is ours.
-  const { data: line } = await supabase
+  const { data: line, error: lineError } = await supabase
     .from('sahamit_po_lines').select('id,customerId,fgCode').eq('id', poLineId).eq('customerId', customerId).maybeSingle();
+  if (lineError) return Response.json({ error: lineError.message }, { status: 500 });
   if (!line) return Response.json({ error: 'ไม่พบรายการ PO นี้' }, { status: 404 });
 
   let body;
