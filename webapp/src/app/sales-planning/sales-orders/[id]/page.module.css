@@ -32,3 +32,18 @@
 .revisionLink span:first-child { min-width: 0; display: grid; gap: 2px; }
 .revisionLink strong { color: var(--text); font-size: var(--fs-6); }
 .revisionLink small { color: var(--text-3); font-size: var(--fs-3); }
+
+/* ของเข้าที่สั่งเพื่อผลิตใบนี้ (mig 0177) — อ่านอย่างเดียว แก้ที่หน้าโครงการ */
+.deliveryList { display: grid; gap: 8px; }
+.deliveryRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.deliveryRow strong { min-width: 0; flex: 1; color: var(--text); font-size: var(--fs-6); font-weight: 650; }
+.deliveryMeta { color: var(--text-3); font-size: var(--fs-4); white-space: nowrap; }
+.deliveryEmpty { color: var(--text-3); font-size: var(--fs-5); margin: 0; }

@@ -14,7 +14,7 @@ import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose, projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
-import { loadDeliveries } from '@/lib/pm/deliveriesRepo';
+import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
 
 export const dynamic = 'force-dynamic';
@@ -137,9 +137,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     inquiries = data || [];
   }
 
-  // ของเข้า PM/RM (mig 0176) — โหลดมากับหน้าโครงการเลย เพราะทั้งแท็บ "ของเข้า"
+  // ของเข้า PM/RM (mig 0176) — โหลดมากับหน้าโครงการเลย เพราะทั้งพาเนล "ของเข้า"
   // และป้ายสรุปบนขั้นไทม์ไลน์ใช้ชุดเดียวกัน (ยิงสองรอบ = ตัวเลขสองที่ไม่ตรงกันได้)
-  const deliveries = await loadDeliveries(supabase, project.id);
+  // deliverySalesOrders = ตัวเลือก SO ให้ผูกรายแถว (mig 0177 — ของเข้าติดตามเพื่อ
+  // ตอบว่าใบสั่งขายใบไหนเริ่มผลิตได้)
+  const [deliveries, deliverySalesOrders] = await Promise.all([
+    loadDeliveries(supabase, project.id),
+    loadProjectSalesOrders(supabase, project),
+  ]);
 
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
@@ -175,7 +180,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]

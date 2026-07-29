@@ -165,8 +165,22 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     try { proposerSignature = await loadProposerSignature(supabase, order); }
     catch { proposerSignature = null; }
   }
+  // ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177 · มติผู้ใช้ 2026-07-29:
+  // "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต")
+  // อ่านอย่างเดียวที่นี่ — แก้ที่หน้าโครงการซึ่ง PC เป็นเจ้าของงาน
+  // ไม่บล็อกถ้าโหลดไม่ได้: SO ต้องเปิดดูได้เสมอ ของเข้าเป็นข้อมูลประกอบ
+  let deliveries = [];
+  try {
+    const { data } = await supabase
+      .from('material_deliveries')
+      .select('id, kind, label, qty, unit, poRef, dueDate, arrivedAt, projectId')
+      .eq('salesOrderId', id)
+      .order('dueDate', { ascending: true, nullsFirst: false });
+    deliveries = data || [];
+  } catch { deliveries = []; }
+
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null, approverSignature, proposerSignature });
+  return ok({ ...order, meId: user.id || null, approverSignature, proposerSignature, deliveries });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {

@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
   ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
-  Trash2, Undo2, XCircle,
+  PackageCheck, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -43,6 +43,11 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { statusMeta } from "@/lib/excise/workflow";
 import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import styles from "./page.module.css";
+import StatusBadge from "@/components/ui/StatusBadge";
+import Button from "@/components/ui/Button";
+import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
+import { productionReadiness } from "@/lib/pm/deliveries";
+import { toLocalISODate } from "@/lib/pm/dateHelpers";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -371,6 +376,14 @@ export default function SalesOrderDetailPage() {
     [order?.lines],
   );
 
+  // ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — สรุปเป็น "พร้อมผลิตหรือยัง"
+  const deliveries = useMemo(() => order?.deliveries || [], [order?.deliveries]);
+  const todayIso = toLocalISODate(new Date());
+  const readiness = useMemo(
+    () => productionReadiness(deliveries, todayIso),
+    [deliveries, todayIso],
+  );
+
   if (!order) {
     return <Workspace icon={<ClipboardList size={22} />} title="Sale Order" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
@@ -614,6 +627,56 @@ export default function SalesOrderDetailPage() {
             </RelatedDocumentCard>
           </>}
         >
+          {/* ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — มติผู้ใช้ 2026-07-29:
+              "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต"
+              คำถามที่การ์ดนี้ต้องตอบคือ **ใบนี้เริ่มผลิตได้เมื่อไหร่** ไม่ใช่แค่
+              ของมาถึงกี่ชิ้น · อ่านอย่างเดียว แก้ที่หน้าโครงการซึ่ง PC เป็นเจ้าของงาน */}
+          <DetailCard
+            icon={PackageCheck}
+            eyebrow="MATERIAL READINESS"
+            title="ของเข้าเพื่อผลิตใบนี้"
+            meta={readiness.total ? `${readiness.total} รายการ` : undefined}
+            actions={order.projectId
+              ? (
+                <Button
+                  as={Link} href={`/sa/projects/${order.projectId}?tab=timeline`}
+                  variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
+                >
+                  จัดการที่โครงการ
+                </Button>
+              )
+              : undefined}
+          >
+            <StatusNotice tone={readiness.tone === "danger" ? "error" : readiness.tone === "success" ? "success" : readiness.tone === "warning" ? "warning" : "info"}>
+              {readiness.label}
+            </StatusNotice>
+            {deliveries.length ? (
+              <div className={styles.deliveryList}>
+                {deliveries.map((row) => (
+                  <div key={row.id} className={styles.deliveryRow}>
+                    <StatusBadge
+                      size="sm"
+                      tone={row.arrivedAt ? "success" : (row.dueDate && row.dueDate < todayIso) ? "danger" : "neutral"}
+                      label={row.arrivedAt ? "มาแล้ว" : "รอของ"}
+                    />
+                    <strong>{row.label}</strong>
+                    <span className={styles.deliveryMeta}>
+                      {MATERIAL_KIND_LABELS[row.kind] || row.kind}
+                      {row.poRef ? ` · ${row.poRef}` : ""}
+                      {row.arrivedAt
+                        ? ` · ถึง ${fmtDate(row.arrivedAt)}`
+                        : row.dueDate ? ` · กำหนด ${fmtDate(row.dueDate)}` : " · ยังไม่มีกำหนด"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.deliveryEmpty}>
+                ยังไม่มีรายการของเข้าที่ผูกกับใบนี้ — ผูกได้ที่พาเนล &ldquo;ของเข้า&rdquo; ใต้ไทม์ไลน์ของโครงการ
+              </p>
+            )}
+          </DetailCard>
+
           <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}

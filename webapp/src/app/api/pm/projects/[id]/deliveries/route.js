@@ -8,7 +8,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { normalizeDeliveryInput } from '@/lib/pm/deliveries';
-import { loadDeliveries, requireProject } from '@/lib/pm/deliveriesRepo';
+import { loadDeliveries, requireProject, salesOrderScopeError } from '@/lib/pm/deliveriesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +46,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       if (dealError) throw dealError;
       if (deal?.projectId !== project.id) return badRequest('ดีลที่ระบุไม่ได้อยู่ในโครงการนี้');
     }
+    const soError = await salesOrderScopeError(supabase, project, value.salesOrderId);
+    if (soError) return badRequest(soError);
 
     const nowIso = new Date().toISOString();
     const row = {
