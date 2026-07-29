@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { isSuperuser } from '@/lib/permissions';
-import { loadProject } from '@/lib/pm/projectsRepo';
+import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
@@ -287,13 +287,23 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // แค่ถอด timeline segment ของดีลนี้ออก; การลบโครงการทำที่หน้าโครงการโดยตรง.
   const detachedFromProject = project?.id || null;
 
-  // force: เก็บกวาดลูกดีลที่ไม่มี FK จริง (งานส่วนตัว/inquiry/parent-ref) ก่อนลบแม่
-  if (force) await cleanupDealOrphans(supabase, id);
+  // เก็บกวาดลูกดีลที่ไม่มี FK จริง (งานส่วนตัว/คำร้องข้ามฝ่าย/parent-ref) ก่อนลบแม่ —
+  // ต้องทำ **ทุกครั้ง** ไม่ใช่เฉพาะตอน force: เดิมอยู่ใต้ `if (force)` ทำให้การลบดีล
+  // ตามปกติทิ้งงานที่ผูกดีลค้างไว้ชี้ดีลที่ไม่มีอยู่แล้ว — เข้าถึงจากดีลไม่ได้อีกและ
+  // ไม่มีเส้นทางไหนตามลบให้ (prod 2026-07-30 เจอค้าง 5 งานจากดีลที่ถูกลบไปแล้ว).
+  try {
+    await cleanupDealOrphans(supabase, id);
+  } catch (cleanupError) {
+    return fail(`เก็บกวาดงาน/คำร้องที่ผูกดีลไม่สำเร็จ: ${cleanupError.message} — ยังไม่ได้ลบดีล`, 500);
+  }
 
   // ลบ task ทั้งหมดของดีลนี้ — ทั้ง segment ใต้โครงการ (mig 0090) และไทม์ไลน์ลอย
   // (projectId ว่าง). FK dealId เป็น SET NULL ถ้าไม่ลบเองจะเหลือ task ของดีลที่หายไป
   // ค้างในโครงการ (แถวไร้เจ้าของ) — โครงการและ task ของดีลอื่นไม่ถูกแตะ.
-  await supabase.from('project_tasks').delete().eq('dealId', id);
+  // ⚠️ ต้องหยุดเมื่อลบไม่สำเร็จ: พอแถวดีลหายไปแล้ว SET NULL จะล้าง dealId ของขั้นตอน
+  // ที่เหลือทิ้ง กลายเป็นแถวไร้เจ้าของที่ตามเก็บไม่ได้อีกเลย = ไทม์ไลน์ค้างถาวร.
+  const { error: taskError } = await supabase.from('project_tasks').delete().eq('dealId', id);
+  if (taskError) return fail(`ลบไทม์ไลน์ของดีลไม่สำเร็จ: ${taskError.message} — ยังไม่ได้ลบดีล`, 500);
 
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) return fail(error.message, 500);
@@ -301,6 +311,18 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // sales_deal_activities มี ON DELETE CASCADE แต่ตารางกลางไม่มี ต้องกวาดเอง
   // ไม่งั้นเหลือเธรดของดีลที่ไม่มีอยู่แล้วค้างในฟีดรวมข้ามโมดูล
   await purgeUpdates(supabase, 'deal', id);
+
+  // โครงการที่ไม่เหลือดีลผูกเลย = โครงเปล่า — ไม่ลบให้เอง (เฟส B: อาจรอดีลใหม่มาผูก)
+  // แต่ต้องส่งกลับให้หน้าเว็บถามผู้ใช้ว่าจะลบทิ้งด้วยไหม ไม่งั้นค้างในรายการเงียบ ๆ.
+  // นับพลาดตรงนี้ไม่ใช่เหตุให้ทั้ง request ล้ม (ดีลถูกลบไปแล้ว) — log แล้วไปต่อ.
+  let emptyProject = null;
+  if (project) {
+    try {
+      emptyProject = await emptyProjectAfterDealDelete(supabase, project);
+    } catch (emptyError) {
+      console.error('[deal-delete] ตรวจว่าโครงการเหลือดีลไหมไม่สำเร็จ:', emptyError.message);
+    }
+  }
 
   const forceNote = force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '';
   const detachNote = detachedFromProject
@@ -315,5 +337,5 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `ลบดีล ${dealAuditLabel(before)}${detachNote}${forceNote}`,
     request: req,
   });
-  return ok({ ok: true, deletedProject: null, detachedFromProject, forced: force });
+  return ok({ ok: true, deletedProject: null, detachedFromProject, emptyProject, forced: force });
 });

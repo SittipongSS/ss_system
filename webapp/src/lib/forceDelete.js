@@ -103,32 +103,44 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
 // ไม่งั้นเหลือเธรดกำพร้าที่ไม่มีทางเข้าถึงและไม่มีใครลบให้
 async function purgeTaskThreads(supabase, { column, values }) {
   if (!values?.length) return;
-  const { data: tasks } = await supabase
+  const { data: tasks, error } = await supabase
     .from('personal_tasks').select('id').in(column, values);
+  // query พังแล้วเงียบ = ได้ [] แล้วสรุปว่า "ไม่มีเธรดให้กวาด" ทั้งที่ยังไม่ได้อ่านเลย
+  if (error) throw new Error(`อ่านงานที่ผูก ${column} ไม่สำเร็จ: ${error.message}`);
   await purgeUpdatesMany(supabase, 'personal_task', (tasks || []).map((t) => t.id));
 }
 
+// ⚠️ โยน error ออกมาเสมอเมื่อกวาดไม่สำเร็จ — ผู้เรียกต้องหยุดก่อนลบแถวดีล ไม่งั้น
+// ดีลหายแต่ลูกยังอยู่ กลายเป็นแถวกำพร้าที่ไม่มีทางเข้าถึงและไม่มีใครตามลบให้
 export async function cleanupDealOrphans(supabase, dealId) {
   // คำร้องผูกดีล — ลบเธรด + งานที่ผูกคำร้องก่อน แล้วลบตัวคำร้อง
-  const { data: inqs } = await supabase.from('dept_requests').select('id').eq('dealId', dealId);
+  const { data: inqs, error: inqError } = await supabase
+    .from('dept_requests').select('id').eq('dealId', dealId);
+  if (inqError) throw new Error(`อ่านคำร้องข้ามฝ่ายที่ผูกดีลไม่สำเร็จ: ${inqError.message}`);
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
     // เธรดของคำร้องอยู่ในตารางกลาง (polymorphic ไม่มี FK) — ต้องกวาดเอง
     // บรรทัด/ชั้นจำนวนของคำร้องมี FK CASCADE อยู่แล้ว ปล่อยให้ DB จัดการ
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     await purgeTaskThreads(supabase, { column: 'inquiryId', values: inquiryIds });
-    await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
+    const { error: reqTaskError } = await supabase
+      .from('personal_tasks').delete().in('inquiryId', inquiryIds);
+    if (reqTaskError) throw new Error(`ลบงานที่ผูกคำร้องไม่สำเร็จ: ${reqTaskError.message}`);
     // ⚠️ ลบตรง ๆ ไม่ได้ — guard_dept_request (0173) บล็อกคำร้องที่ส่งแล้วทุกใบ
     // ต้องผ่าน RPC ที่ตั้ง flag app.force_delete ให้ทีละใบ (แพตเทิร์นเดียวกับใบ CR)
     for (const requestId of inquiryIds) {
-      await supabase.rpc('force_delete_dept_request', { p_id: requestId });
+      const { error: rpcError } = await supabase.rpc('force_delete_dept_request', { p_id: requestId });
+      if (rpcError) throw new Error(`ลบคำร้อง ${requestId} ไม่สำเร็จ: ${rpcError.message}`);
     }
   }
   // งานส่วนตัวที่ผูกดีลโดยตรง
   await purgeTaskThreads(supabase, { column: 'dealId', values: [dealId] });
-  await supabase.from('personal_tasks').delete().eq('dealId', dealId);
+  const { error: taskError } = await supabase.from('personal_tasks').delete().eq('dealId', dealId);
+  if (taskError) throw new Error(`ลบงานที่ผูกดีลไม่สำเร็จ: ${taskError.message}`);
   // ดีลอื่นที่อ้างดีลนี้เป็น parent — ปลด logical ref กันกำพร้า
-  await supabase.from('sales_deals').update({ parentDealId: null }).eq('parentDealId', dealId);
+  const { error: parentError } = await supabase
+    .from('sales_deals').update({ parentDealId: null }).eq('parentDealId', dealId);
+  if (parentError) throw new Error(`ปลดดีลลูกออกจากดีลนี้ไม่สำเร็จ: ${parentError.message}`);
 }
 
 // ── PROJECT ───────────────────────────────────────────────────────────

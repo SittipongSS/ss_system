@@ -74,6 +74,31 @@ export async function deleteProjectDeep(supabase, projectId) {
   return { personalTasks: taskCount || 0, docRevisions: revCount || 0, inquiries: inquiryIds.length };
 }
 
+// โครงการเหลือ "โครงเปล่า" ไหมหลังดีลใบหนึ่งถูกลบ — คืน null ถ้ายังมีดีลอื่นผูกอยู่.
+// เฟส B ตั้งใจไม่ลบโครงการตามดีล (โครงการอาจรอดีลใหม่มาผูก) แต่ถ้าไม่บอกใครเลย
+// โครงเปล่าจะค้างในรายการโดยไม่มีใครสังเกต — prod 2026-07-30 เจอค้าง 3 ใบ (0 ดีล
+// 0 ขั้นตอน) ซึ่งผู้ใช้อ่านว่า "ลบดีลแล้วไทม์ไลน์ยังอยู่". ผู้เรียกเอาไปถามผู้ใช้ต่อ
+// ว่าจะลบโครงการทิ้งด้วยไหม — ไม่ลบให้เอง.
+// tasksLeft = ขั้นตอนที่ยังเหลือในโครงการ (งานกลางที่ไม่ได้ผูกดีลใบไหน) ต้องบอกด้วย
+// เพราะถ้ามีเหลือ การลบโครงการจะพาไทม์ไลน์ชุดนั้นไปด้วย — ผู้ใช้ควรรู้ก่อนตัดสินใจ.
+export async function emptyProjectAfterDealDelete(supabase, project) {
+  if (!project?.id) return null;
+  const { count: dealsLeft, error: dealsError } = await supabase
+    .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', project.id);
+  // นับพลาดแล้วเงียบ = count เป็น null → อ่านเป็น 0 → ชวนผู้ใช้ลบโครงการที่ยังมีดีลผูกอยู่
+  if (dealsError) throw new Error(`นับดีลที่เหลือในโครงการไม่สำเร็จ: ${dealsError.message}`);
+  if ((dealsLeft || 0) > 0) return null;
+  const { count: tasksLeft, error: tasksError } = await supabase
+    .from('project_tasks').select('id', { count: 'exact', head: true }).eq('projectId', project.id);
+  if (tasksError) throw new Error(`นับขั้นตอนที่เหลือในโครงการไม่สำเร็จ: ${tasksError.message}`);
+  return {
+    id: project.id,
+    code: project.code || project.id,
+    name: project.name || '',
+    tasksLeft: tasksLeft || 0,
+  };
+}
+
 // รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก atomic ต่อเดือน — mig 0096).
 // แสดงเป็น PJ-YYMMXXXX-R ที่ฝั่ง UI/เอกสาร (R = currentRev ผ่าน entityCodeDisplay).
 // atomic แล้ว (RPC) จึงไม่ชนกัน แต่ callers เดิมยัง retry on unique(code) ได้ (ไม่เสียหาย).
