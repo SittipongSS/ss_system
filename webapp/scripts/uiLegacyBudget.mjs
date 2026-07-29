@@ -70,16 +70,28 @@ export const MODULES = [
    legacyTable   : คลาสตารางเก่า 4 ชุดที่ต้องยุบเข้า components/ui/Table.js
    legacySurface : พื้นผิว/การ์ดเก่าที่ต้องยุบเข้า Workspace + WorkspaceSection
    inlineStyle   : style={{...}} — ที่เป็น "สไตล์" ต้องออก เหลือเฉพาะค่าที่มาจากข้อมูล
-   rawButtonClass: สตริงที่มีคลาส btn — ต้องยุบเข้า components/ui/Button.js (ยังไม่มี) */
-export const METRICS = ["legacyTable", "legacySurface", "inlineStyle", "rawButtonClass"];
+   rawButtonClass: สตริงที่มีคลาส btn — ต้องยุบเข้า components/ui/Button.js (ยังไม่มี)
+   rawInputClass : สตริงที่มี premium-input / premium-select — ต้องยุบเข้า
+                   components/ui/Input.js กับ components/ui/Select.js
 
-const PATTERNS = {
+   ⚠️ metric ตัวหลังเพิ่ม 2026-07-29 ตอนสร้าง Input.js: ปุ่มมี ratchet มาตั้งแต่ #761
+   แต่ช่องกรอกไม่เคยมีเลย ทั้งที่ใช้พอกัน (224 + 43 จุด) = เขียนคลาสดิบเพิ่มได้เรื่อย ๆ
+   โดยไม่มีอะไรฟ้อง · **ไม่รวม `.textarea-premium`** (17 จุด) โดยเจตนา — คลาสนั้นเป็น
+   กล่องวางข้อมูลดิบคนละงานกับช่องกรอกฟอร์ม และยังไม่มี primitive ให้ย้ายไป
+   การนับสิ่งที่ไม่มีปลายทางจะได้เลขที่ลดไม่ได้ */
+export const METRICS = ["legacyTable", "legacySurface", "inlineStyle", "rawButtonClass", "rawInputClass"];
+
+/* export เพื่อให้เทสต์ยิงกฎตัวจริงได้ ไม่ใช่ก๊อป regex ไปเขียนซ้ำแล้วเพี้ยนจากกัน */
+export const PATTERNS = {
   legacyTable: /\b(?:premium-glass-table|premium-table-wrapper|premium-table|fz-table)\b/g,
   legacySurface: /\b(?:glass-panel|premium-card)\b/g,
   inlineStyle: /style=\{\{/g,
   /* `(?<![\w-])` กันคลาสที่ลงท้ายด้วย -btn ของ component อื่น (`tab-btn`, `action-btn`)
      ไม่ให้ถูกนับเป็นคลาสปุ่มดิบ — ของพวกนั้นมี selector ของตัวเองไม่ใช่ตระกูล .btn */
   rawButtonClass: /(["'`])[^"'`\n]*(?<![\w-])btn\b[^"'`\n]*\1/g,
+  /* `(?<![\w-])` กัน `.textarea-premium` และคลาสอื่นที่ลงท้ายด้วยชื่อเดียวกัน
+     ไม่ให้ถูกนับ — นับเฉพาะ premium-input / premium-select ที่มี primitive รองรับแล้ว */
+  rawInputClass: /(["'`])[^"'`\n]*(?<![\w-])premium-(?:input|select)\b[^"'`\n]*\1/g,
 };
 
 /* เอกสารพิมพ์มี CSS ของตัวเองโดยเจตนา (เครื่องพิมพ์ไม่เห็น globals.css)

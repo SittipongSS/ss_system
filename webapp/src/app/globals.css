@@ -2497,6 +2497,18 @@ textarea.premium-input {
   padding: 8px 12px;   /* แนวนอนเท่าช่องบรรทัดเดียว ไม่งั้นข้อความเยื้องกันในฟอร์มเดียว */
 }
 
+/* สถานะกรอกผิด — ไม่เคยมีอยู่จริง หน้าต้นแบบเขียน `premium-input error` โชว์ไว้
+   ตั้งแต่แรกแต่ไม่มี selector รองรับ ช่อง "ที่ผิดพลาด" บนหน้าต้นแบบจึงหน้าตาเหมือน
+   ช่องปกติเป๊ะมาตลอด (ตรวจเจอ 2026-07-29) · ใส่ผ่าน <Input invalid> เท่านั้น
+   ชื่อ modifier ขึ้นต้น `is-` ตามกติกา ไม่ใช้ `.error` ที่ชนกับคำทั่วไปได้ง่าย */
+.premium-input.is-invalid {
+  border-color: var(--red);
+}
+.premium-input.is-invalid:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 25%, transparent);
+}
+
 /* Combobox input: free-text <input> + <datalist> ที่อยากให้หน้าตาเหมือน <select>
    (ลูกศร dropdown + เว้นที่ขวา) — ใช้ลูกศรชุดเดียวกับ .premium-select */
 .premium-input.combo {

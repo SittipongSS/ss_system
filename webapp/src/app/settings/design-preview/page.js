@@ -36,6 +36,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
 import Segmented from "@/components/ui/Segmented";
 import Select from "@/components/ui/Select";
+import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
 import TimeInput from "@/components/ui/TimeInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
@@ -579,11 +580,11 @@ export default function DesignPreviewPage() {
           </div>
         </Section>
 
-        <Section group="controls" active={group} title="ฟอร์ม" subtitle="ช่องกรอกทั้งระบบใช้ .premium-input ชุดเดียว">
+        <Section group="controls" active={group} title="ฟอร์ม" subtitle="ช่องกรอกทุกช่องมาจาก <Input> ตัวเดียว — ไม่ต้องเขียนคลาสเอง">
           <div className={styles.formGrid}>
             <label className={styles.field}>
               ช่องข้อความ
-              <input className="premium-input" defaultValue="บริษัท สหมิตร โปรดักส์ จำกัด" />
+              <Input defaultValue="บริษัท สหมิตร โปรดักส์ จำกัด" />
             </label>
             <label className={styles.field}>
               ดรอปดาวน์
@@ -594,13 +595,34 @@ export default function DesignPreviewPage() {
             </label>
             <label className={styles.field}>
               ช่องที่ผิดพลาด
-              <input className="premium-input error" defaultValue="" placeholder="ต้องกรอกช่องนี้" />
+              <Input invalid defaultValue="" placeholder="ต้องกรอกช่องนี้" />
             </label>
             <label className={styles.field}>
               ช่องที่ล็อก
-              <input className="premium-input" defaultValue="QT-26070128" readOnly disabled />
+              <Input defaultValue="QT-26070128" readOnly disabled />
+            </label>
+            <label className={styles.field}>
+              ตัวเลข/รหัสเอกสาร (mono)
+              <Input mono defaultValue="QT-26070128" />
+            </label>
+            <label className={styles.field}>
+              พิมพ์เองได้ + มีรายการแนะนำ (combo)
+              <Input combo list="design-preview-combo" defaultValue="" placeholder="พิมพ์ชื่อบริษัท" />
+              <datalist id="design-preview-combo">
+                <option value="บริษัท สหมิตร โปรดักส์ จำกัด" />
+                <option value="บริษัท เซนต์ แอนด์ เซนส์ จำกัด" />
+              </datalist>
+            </label>
+            <label className={`${styles.field} ${styles.fieldWide}`}>
+              ช่องหลายบรรทัด
+              <Input as="textarea" defaultValue="" placeholder="รายละเอียดเพิ่มเติม" />
             </label>
           </div>
+          <StatusNotice tone="info" title="อย่าเติม w-full / text-xs / h-[32px] ที่ปลายทาง">
+            <code>.premium-input</code> ตั้งความกว้าง 100% ความสูง <code>--ctl-h</code> และขนาด
+            ตัวอักษรไว้แล้ว — ที่ผ่านมามี 50 จุดเติม <code>w-full</code> ซ้ำ และบางจุดเขียน
+            <code>h-[30px]</code> ทับความสูงมาตรฐาน ทำให้ช่องกรอกในฟอร์มเดียวกันสูงไม่เท่ากัน
+          </StatusNotice>
         </Section>
 
         <Section group="controls" active={group}
@@ -901,8 +923,7 @@ export default function DesignPreviewPage() {
                 {["ผู้ประสานงาน (AC)", "ผู้ตรวจสอบ", "ทีมที่รับผิดชอบ", "วันเริ่มโครงการ", "วันส่งมอบ", "หมายเหตุ"].map((label) => (
                   <label key={label} className={styles.field}>
                     {label}
-                    <input
-                      className="premium-input"
+                    <Input
                       defaultValue="— ไม่ระบุ —"
                       onChange={() => setDemoDirty(true)}
                     />

@@ -18,4 +18,12 @@ export const DEAD_CLASSES = [
     dead: "btn … danger",
     use: "btn btn-danger (ปุ่มเต็ม) หรือ btn-icon danger (ปุ่มไอคอน)",
   },
+  /* `.error` ไม่เคยมี selector อยู่จริงเลย — หน้าต้นแบบเองโชว์ "ช่องที่ผิดพลาด" ด้วย
+     `premium-input error` มาตลอด แล้วได้ช่องหน้าตาปกติเป๊ะ (ตรวจเจอ 2026-07-29)
+     ตอนนี้มีสถานะจริงแล้วที่ `.premium-input.is-invalid` ผ่าน <Input invalid> */
+  {
+    pattern: /className="(?=[^"]*(?<![\w-])premium-input(?![\w-]))(?=[^"]*(?<![\w-])error(?![\w-]))[^"]*"/,
+    dead: "premium-input … error",
+    use: "<Input invalid> (คลาสจริงคือ .premium-input.is-invalid)",
+  },
 ];
