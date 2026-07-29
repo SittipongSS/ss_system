@@ -100,6 +100,16 @@ const BUTTON_TONES = ["neutral", "primary", "accent", "danger", "warning"]; // �
    (เดิมหน้านี้ถือลิสต์ของตัวเอง แล้วตกหล่นได้เงียบ ๆ) */
 const BADGE_TONES = STATUS_TONES;
 
+/* ชื่อคลาสป้ายเก่าที่ยังเหลือในโค้ด + จำนวนจุดที่ใช้จริง
+   ⚠️ ตัวเลขพวกนี้เคยเขียนฝังไว้ในข้อความแล้วไม่มีใครอัปเดต — หน้าต้นแบบจึงบอกเลข
+   ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
+   ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
+const BADGE_FAMILIES = [
+  { cls: "ui-badge", count: 135 },
+  { cls: "status-pill", count: 40 },
+  { cls: "chip", count: 20 },
+];
+
 const ROWS = [
   { code: "QT-26070128", customer: "บริษัท สหมิตร โปรดักส์ จำกัด", amount: 485000, tone: "warning", status: "รออนุมัติ" },
   { code: "QT-26070096", customer: "Bright Living Co., Ltd.", amount: 920000, tone: "success", status: "อนุมัติแล้ว" },
@@ -481,30 +491,28 @@ export default function DesignPreviewPage() {
               <CountBadge count={12} tone="warning" />
             </div>
 
-            {/* ⚠️ ตั้งใจโชว์ของเก่าไว้เทียบ — ไม่ใช่ตัวอย่างให้ลอกไปใช้
-                ระบบมี "ป้ายเล็ก ๆ มีพื้น" อยู่ 4 ชุดขนานกัน ซึ่งไม่มีใครเห็นพร้อมกันมาก่อน
-                จึงไม่เคยมีใครตัดสินใจได้ว่าจะยุบอันไหน */}
-            <StatusNotice tone="warning" title="ยังมีป้ายซ้ำอีก 3 ชุดในระบบ">
-              ทั้งสามแถวข้างล่างทำงานเดียวกับ <code>StatusBadge</code>/<code>Tag</code> ข้างบน
-              แต่คนละ padding คนละขนาดตัวอักษร คนละมุมโค้ง — และทั้งสามยังเป็น
-              {" "}<code>line-height: 1</code> ซึ่งเป็นต้นเหตุที่สระบน/วรรณยุกต์ไทยชนขอบ
-              {" "}(แก้ไปแล้วเฉพาะ <code>Badge.module.css</code> ตัวกลาง)
+            {/* ⚠️ ตั้งใจโชว์ชื่อเก่าไว้เทียบ — ไม่ใช่ตัวอย่างให้ลอกไปใช้
+                **รูปทรงยุบเสร็จแล้วใน #803** ทั้งสามชื่อใช้บล็อกเดียวกับ Badge.module.css
+                ที่เหลือคือไล่เปลี่ยน *ชื่อ* ในโค้ดให้เป็น <StatusBadge>
+                ตัวเลขต่อแถวถูกเทสต์ตรวจให้ตรงกับของจริงเสมอ (badgeFamilies.test.mjs) */}
+            <StatusNotice tone="info" title="รูปทรงยุบเสร็จแล้ว เหลือแค่ชื่อ">
+              สามแถวข้างล่างใช้ชื่อคลาสเก่า แต่ตอนนี้ดึงค่าจาก<strong>บล็อกเดียวกับ</strong>
+              {" "}<code>StatusBadge</code>/<code>Tag</code> ข้างบนแล้ว — วัดจริงบน production
+              {" "}ทั้งสี่ชุดได้สูง 24.9px · padding 3px 10px · 11.5/17.25 · มุมโค้ง 8px เท่ากันหมด
+              {" "}และโทนสี (<code>success</code>/<code>warning</code>/<code>danger</code>)
+              {" "}ใช้ได้กับทุกชื่อ · ที่เหลือคือไล่เปลี่ยนชื่อในโค้ดเป็น <code>&lt;StatusBadge&gt;</code>
+              {" "}ซึ่งต้องทำทีละหน้า (สคริปต์แปลงรวดเดียวทำโทนหายเงียบ ๆ มาแล้ว)
             </StatusNotice>
-            <div className={styles.row}>
-              <span className={styles.caption}>.ui-badge · 133 จุด</span>
-              <span className="ui-badge">รออนุมัติ</span>
-              <span className="ui-badge">อนุมัติแล้ว</span>
-            </div>
-            <div className={styles.row}>
-              <span className={styles.caption}>.status-pill · 38 จุด</span>
-              <span className="status-pill">รออนุมัติ</span>
-              <span className="status-pill success">อนุมัติแล้ว</span>
-            </div>
-            <div className={styles.row}>
-              <span className={styles.caption}>.chip · 18 จุด</span>
-              <span className="chip">รออนุมัติ</span>
-              <span className="chip">อนุมัติแล้ว</span>
-            </div>
+            {/* ทุกแถวใช้โทนชุดเดียวกัน เพื่อให้เห็นด้วยตาว่า "ชื่อต่างกันแต่ได้ของเหมือนกัน"
+                เดิมมีแค่แถว .status-pill ที่ใส่ success ทำให้ดูเหมือนอีกสองชื่อรับโทนไม่ได้ */}
+            {BADGE_FAMILIES.map(({ cls, count }) => (
+              <div key={cls} className={styles.row}>
+                <span className={styles.caption}>.{cls} · {count} จุด</span>
+                <span className={cls}>รออนุมัติ</span>
+                <span className={`${cls} success`}>อนุมัติแล้ว</span>
+                <span className={`${cls} danger`}>ไม่อนุมัติ</span>
+              </div>
+            ))}
           </div>
         </Section>
 

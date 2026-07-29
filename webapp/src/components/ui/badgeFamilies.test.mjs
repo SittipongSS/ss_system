@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import path from "node:path";
 
 /* ระบบเคยมี "ป้ายเล็กมีพื้น" อยู่ 4 ชุดขนานกัน ทำงานเดียวกันหมดแต่คนละหน้าตา:
      Badge.module.css (StatusBadge · Tag · CountBadge) = ตัวกลางของ React
@@ -66,6 +67,40 @@ test("ป้ายเว้นที่ให้สระ/วรรณยุก�
       `${label} line-height ${lineHeight} — ต่ำกว่า 1.4 ภาษาไทยจะชนขอบ`);
     assert.equal(declValue(block, "height"), null,
       `${label} ตรึง height ตายตัว — ใช้ min-height เพื่อให้กล่องโตตามตัวอักษรได้`);
+  }
+});
+
+/* หน้าต้นแบบเคยเขียนคำเตือนว่าสามชื่อนี้ "คนละ padding คนละขนาดตัวอักษร คนละมุมโค้ง
+   และยังเป็น line-height: 1" ค้างไว้ **หลังจาก #798/#803 แก้ไปหมดแล้ว** พร้อมตัวเลข
+   133/38/18 ที่ไม่มีใครอัปเดต (ของจริงตอนนั้น 135/44/20) — ผู้ใช้เปิดหน้าต้นแบบเจอเอง
+   2026-07-29 · หน้าที่เอาไว้อ้างอิงแล้วพูดไม่ตรงความจริง อันตรายกว่าไม่มีหน้าเลย
+   เทสต์นี้ผูกตัวเลขบนหน้ากับการนับจริงในโค้ด */
+test("ตัวเลขจำนวนจุดบนหน้าต้นแบบตรงกับของจริง", () => {
+  const preview = read("../../app/settings/design-preview/page.js");
+  const declared = [...preview.matchAll(/\{\s*cls:\s*"([\w-]+)",\s*count:\s*(\d+)\s*\}/g)]
+    .map(([, cls, count]) => ({ cls, count: Number(count) }));
+  assert.ok(declared.length >= 3, "หา BADGE_FAMILIES บนหน้าต้นแบบไม่เจอ");
+
+  const files = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.js$/.test(entry.name)) files.push(full);
+    }
+  })(path.join(process.cwd(), "src"));
+
+  for (const { cls, count } of declared) {
+    /* นับแบบเดียวกับที่ audit ทำ: สตริงที่มีชื่อคลาสนั้น — ไม่รวมหน้าต้นแบบเอง
+       เพราะแถวสาธิตไม่ใช่ "จุดที่ใช้งานจริง" */
+    const pattern = new RegExp(`(["'\`])[^"'\`\\n]*(?<![\\w-])${cls}(?![\\w-])[^"'\`\\n]*\\1`, "g");
+    let actual = 0;
+    for (const file of files) {
+      if (file.includes(`design-preview`)) continue;
+      actual += (fs.readFileSync(file, "utf8").match(pattern) || []).length;
+    }
+    assert.equal(count, actual,
+      `หน้าต้นแบบเขียน .${cls} = ${count} จุด แต่ของจริงมี ${actual} — แก้ตัวเลขใน BADGE_FAMILIES`);
   }
 });
 
