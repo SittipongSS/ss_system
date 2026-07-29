@@ -93,11 +93,24 @@ function StepPin({ pin }) {
   );
 }
 
+// ป้ายสรุปที่หน้าแม่แปะเพิ่มบนขั้นใด ๆ — { [stepKey]: { tone, label, title } }
+// generic โดยตั้งใจ: ไทม์ไลน์ไม่ต้องรู้จัก "ของเข้า" หรืออะไรก็ตามที่จะมาทีหลัง
+function StepBadge({ badge }) {
+  if (!badge) return null;
+  return (
+    <span className="timeline-step-pin" title={badge.title || undefined}>
+      <StatusBadge size="sm" tone={badge.tone || "neutral"} label={badge.label} />
+    </span>
+  );
+}
+
 export default function TimelineWorkspace({
   tasks: sourceTasks = [],
   // คำร้องข้ามฝ่ายของโครงการ/ดีลนี้ — หน้าแม่โหลดมาแล้ว ส่งต่อให้ปักหมุด
   // (ว่าง = ไม่มีหมุด ซึ่งเป็นค่าเดิมของทุกที่ที่ยังไม่ได้ส่ง prop นี้)
   requests = [],
+  // ป้ายเพิ่มเติมต่อขั้น เช่นสรุปของเข้าบน milestone "สั่งซื้อสารและบรรจุภัณฑ์"
+  stepBadges = null,
   canEdit,
   canAdd = canEdit,
   canReorder = canEdit,
@@ -495,6 +508,7 @@ export default function TimelineWorkspace({
                               <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                                 <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey)} />
+                                <StepBadge badge={stepBadges?.[task.workflowTemplateStepKey]} />
                                 <span className="timeline-role-text" style={{ color: role.color }}>{task.role || "-"}</span>
                                 {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
@@ -580,6 +594,7 @@ export default function TimelineWorkspace({
                       {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
                           บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
                       <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey)} />
+                      <StepBadge badge={stepBadges?.[t.workflowTemplateStepKey]} />
                     </td>
                     <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
                     <td>

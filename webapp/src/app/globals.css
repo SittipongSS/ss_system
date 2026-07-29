@@ -5617,6 +5617,12 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   line-height: 1.4;
 }
 .timeline-task-name > svg { margin-top: 2px; }
+/* ของเข้า PM/RM — วางต่อท้ายไทม์ไลน์ในกล่องเดียวกัน (mig 0176) */
+.timeline-deliveries {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
 /* หมุดคำร้องบนแถวขั้นตอน — ตัวห่อลิงก์ล้วน หน้าตาเป็นของ <StatusBadge> ข้างใน
    (ตัดสไตล์ลิงก์ทิ้งเพื่อไม่ให้ขีดเส้นใต้ทับป้าย) */
 .timeline-step-pin {

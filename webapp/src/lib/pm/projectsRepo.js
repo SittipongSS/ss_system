@@ -40,9 +40,9 @@ export async function projectHasExciseRegistrations(supabase, projectId) {
 
 // Delete a project and every child row it owns. FK ON DELETE CASCADE already
 // removes project_tasks / project_products / shipment_prep(+lines); sahamit_pos
-// .projectId is SET NULL. But personal_tasks, project_doc_revisions AND dept_requests
-// link by a *logical* projectId (no FK, migrations 0019/0040/0104) so we clear
-// them by hand first — otherwise they dangle. dept_requests also own their thread
+// .projectId is SET NULL. But personal_tasks, project_doc_revisions, dept_requests
+// AND material_deliveries link by a *logical* projectId (no FK, migrations
+// 0019/0040/0104/0176) so we clear them by hand first — otherwise they dangle. dept_requests also own their thread
 // + back-linked personal_tasks (both no-FK), removed transitively. Caller is
 // responsible for permission + blocker checks (see projectHasExciseRegistrations).
 // Returns the removed child counts.
@@ -54,6 +54,8 @@ export async function deleteProjectDeep(supabase, projectId) {
   // Logical-link children: remove before the project row disappears.
   await supabase.from('personal_tasks').delete().eq('projectId', projectId);
   await supabase.from('project_doc_revisions').delete().eq('projectId', projectId);
+  // ของเข้า (mig 0176) — projectId เป็น logical link ไม่มี FK เช่นกัน
+  await supabase.from('material_deliveries').delete().eq('projectId', projectId);
   // dept_requests.projectId is a no-FK logical link (mig 0173) — clean the thread +
   // its messages + any task created from it, else they orphan silently.
   const { data: inqs } = await supabase.from('dept_requests').select('id').eq('projectId', projectId);
