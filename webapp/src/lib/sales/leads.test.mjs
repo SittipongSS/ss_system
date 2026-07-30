@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   LEAD_CHANNELS, channelGroupOf, LEAD_TRANSITIONS, TRANSITION_TO_STATUS,
   slaBusinessDays, slaHit, SERVICE_DETAIL_REQUIRED,
-  canEditLead, canDeleteLead, canWorkLead, LEAD_LOCKED_STATUSES,
+  canEditLead, canDeleteLead, canWorkLead, canCreateLead, LEAD_LOCKED_STATUSES,
   sourceLeadIdOf,
 } from './leads';
 
@@ -108,6 +108,38 @@ test('supervisor จบงานที่คัดกรอง: ขั้นท�
   // ปุ่มกำกับดูแลยังอยู่ใน transition map หลังคัดกรอง
   assert.ok(LEAD_TRANSITIONS.screened.includes('bounce'));
   assert.ok(LEAD_TRANSITIONS.assigned.includes('disqualify'));
+});
+
+// มติผู้ใช้ 2026-07-30: หัวหน้าฝ่ายขาย (ae_supervisor) เพิ่มลีดเข้าคิวเองได้ ไม่ต้องฝาก MKT
+// กรอกแทน — ฝ่ายขายที่เหลือยังเพิ่มไม่ได้ (ลีดต้องเข้าคิวกลางก่อนถูกคัดกรอง)
+test('เพิ่มลีดได้เฉพาะ MKT + admin/หัวหน้าฝ่ายขาย — role ขายอื่นเพิ่มไม่ได้', () => {
+  assert.equal(canCreateLead('marketing'), true);
+  assert.equal(canCreateLead('admin'), true);
+  assert.equal(canCreateLead('ae_supervisor'), true);
+  for (const role of ['senior_ae', 'ac', 'ae', 'rd', 'legal', 'executive', 'viewer', 'secretary', 'staff', undefined]) {
+    assert.equal(canCreateLead(role), false, `${role} ต้องเพิ่มลีดไม่ได้`);
+  }
+});
+
+// ปุ่ม "รับลีดใหม่" บนหน้า list กับด่าน POST ต้องอ่านกติกาตัวเดียวกัน — เคยเขียนซ้ำสองที่
+// (route.js กับ page.js) ซึ่งเพี้ยนหากันได้เงียบ ๆ เวลาปรับสิทธิ์
+test('canCreateLead: หน้า list และ API อ่านจากแหล่งเดียว ไม่เขียนกติกาซ้ำ', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/route.js', import.meta.url),
+    'utf8',
+  );
+  const pageSource = readFileSync(
+    new URL('../../app/sales-planning/leads/page.js', import.meta.url),
+    'utf8',
+  );
+  for (const [name, source] of [['route', routeSource], ['page', pageSource]]) {
+    assert.match(source, /canCreateLead/, `${name} ต้องเรียก canCreateLead`);
+    assert.doesNotMatch(
+      source,
+      /['"]marketing['"]\s*\|\|\s*(role\s*===\s*['"]admin['"]|isSuperuser\()/,
+      `${name} ห้ามเขียนกติกา "ใครเพิ่มลีดได้" ซ้ำ — เรียก canCreateLead จาก lib/sales/leads`,
+    );
+  }
 });
 
 // บั๊กจริง 2026-07-29: ด่านตรวจสิทธิ์ "แตกดีลจากลีด" อ่าน metadata.leadId + metadata.source

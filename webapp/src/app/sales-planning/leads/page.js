@@ -26,7 +26,7 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead, canWorkLead,
+  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead, canWorkLead, canCreateLead,
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
@@ -66,7 +66,7 @@ export default function LeadsPage() {
   const role = useRole();
   const team = useTeam();
   const superuser = isSuperuser(role);
-  const canCreate = role === 'marketing' || role === 'admin';
+  const canCreate = canCreateLead(role);
   const [meId, setMeId] = useState(null);
 
   useEffect(() => {
