@@ -10,9 +10,10 @@
 // splits into a main line + a small secondary line.
 //
 // Server-only: uses the service-role admin client. The API route decides team
-// scope (via viewScope, passes `team`) and whether cost/profit is visible
-// (`margin` — LG/admin only).
+// scope (บังคับตาม role → `scopeTeam`) แยกจากตัวกรองทีมที่ผู้ใช้เลือก (`team`) — ดู
+// reportFilters.js · และตัดสินว่าเห็นราคาผลิต/กำไรไหม (`margin` — LG/admin เท่านั้น)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { applyTeamScope, asList } from '@/lib/tax/reportFilters';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { statusMeta } from '@/lib/excise/workflow';
 import { TEAM_LABELS } from '@/lib/permissions';
@@ -33,29 +34,19 @@ const statusLabel = (s) => statusMeta(s).label;
 const teamLabel = (t) => (t ? (TEAM_LABELS[t] || t) : '-');
 const two = (a, b) => `${a}\n${b}`;
 
-// ตัวกรองรับได้ทั้งค่าเดียว/หลายค่า (comma-separated จาก query string หรือ array) —
-// ตัวกรองทั้งระบบเป็น multi-select (มติผู้ใช้ 2026-07-18); ว่าง/'all' = ไม่กรอง
-const asList = (v) => {
-  if (Array.isArray(v)) return v.filter(Boolean);
-  if (!v || v === 'all') return [];
-  return String(v).split(',').filter(Boolean);
-};
-
-async function fetchRegistrations({ team, customerId } = {}) {
+async function fetchRegistrations(filter = {}) {
   const supabase = getSupabaseAdmin();
-  let q = supabase.from('excise_registrations').select('*');
-  if (team) q = q.eq('team', team);
-  const customerIds = asList(customerId);
+  let q = applyTeamScope(supabase.from('excise_registrations').select('*'), filter);
+  const customerIds = asList(filter.customerId);
   if (customerIds.length) q = q.in('customerId', customerIds);
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }
-async function fetchOrders({ team, customerId } = {}) {
+async function fetchOrders(filter = {}) {
   const supabase = getSupabaseAdmin();
-  let q = supabase.from('orders').select(ORDER_SELECT);
-  if (team) q = q.eq('team', team);
-  const customerIds = asList(customerId);
+  let q = applyTeamScope(supabase.from('orders').select(ORDER_SELECT), filter);
+  const customerIds = asList(filter.customerId);
   if (customerIds.length) q = q.in('customerId', customerIds);
   const { data, error } = await q;
   if (error) throw error;
