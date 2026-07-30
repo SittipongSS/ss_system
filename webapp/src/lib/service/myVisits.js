@@ -1,0 +1,98 @@
+// ── คิวงานของช่าง (S-3) — logic ล้วน ──────────────────────────────────────
+//
+// ⭐ หน้ามือถือของช่างคือ **จุดที่ข้อมูลจริงเข้าระบบ** ถ้าหน้านี้ใช้ยาก ทั้งโมดูลตาย
+// ตารางสวยแค่ไหนก็ไม่มีค่าถ้าไม่มีใครปิดงาน แล้วทุกแถวค้างเป็น 'นัดไว้' ตลอดกาล
+import { toLocalISODate } from '@/lib/pm/dateHelpers';
+import { sortByTime } from './rounds';
+
+export const VISIT_SCOPES = ['mine', 'team'];
+export const VISIT_SCOPE_LABELS = { mine: 'ของฉัน', team: 'ทั้งทีม' };
+
+const shiftDays = (iso, days) => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setDate(d.getDate() + days);
+  return toLocalISODate(d);
+};
+
+// ── จัดกลุ่มคิวเป็น 4 ก้อนตามที่ช่างคิด ไม่ใช่ตามที่ DB เก็บ ────────────
+//
+// ⚠️ **"ค้าง" ต้องมาก่อนทุกอย่าง** — นัดที่เลยวันแล้วแต่ยังไม่ปิดคือหนี้ที่โตขึ้น
+// ทุกวัน · ถ้าเอาไปไว้ท้ายรายการ (เรียงตามวันตรง ๆ) มันจะเลื่อนหลุดจอไปเรื่อย ๆ
+// จนไม่มีใครเห็น แล้วประวัติการเข้าไซต์ก็ขาดเป็นช่วง ๆ โดยไม่มีใครรู้ตัว
+//
+// ⚠️ นัดที่ปิดไปแล้ววันนี้ยัง**อยู่ในกลุ่มวันนี้** (ไม่หายไปทันทีที่กดปิด) — ช่างต้อง
+// เห็นว่าตัวเองทำอะไรไปแล้วบ้าง และกดกลับเข้าไปแก้ได้ถ้ากรอกผิด
+export function groupVisits(visits = [], todayIso = toLocalISODate(new Date())) {
+  const tomorrowIso = shiftDays(todayIso, 1);
+  const overdue = [];
+  const today = [];
+  const tomorrow = [];
+  const later = [];
+
+  for (const visit of visits) {
+    if (visit.status === 'cancelled' || visit.status === 'rescheduled') continue;
+    const date = String(visit.scheduledDate || '');
+    if (date < todayIso) {
+      // เลยวันแล้ว: ปิดไปแล้ว = ประวัติ (ไม่ต้องทวง) · ยังไม่ปิด = ค้าง
+      if (visit.status !== 'done') overdue.push(visit);
+      continue;
+    }
+    if (date === todayIso) { today.push(visit); continue; }
+    if (date === tomorrowIso) { tomorrow.push(visit); continue; }
+    later.push(visit);
+  }
+
+  const byDateThenTime = (rows) => {
+    const groups = new Map();
+    for (const row of rows) {
+      const key = row.scheduledDate;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    }
+    return [...groups.keys()].sort().flatMap((key) => sortByTime(groups.get(key)));
+  };
+
+  return {
+    overdue: byDateThenTime(overdue),
+    today: sortByTime(today),
+    tomorrow: sortByTime(tomorrow),
+    later: byDateThenTime(later),
+  };
+}
+
+// นัดที่ยังต้องทำจริง ๆ วันนี้ — ตัวเลขบนหัวหน้าจอ (ปิดแล้วไม่นับ)
+export function openCount(groups) {
+  const open = (rows = []) => rows.filter((v) => v.status !== 'done').length;
+  return {
+    overdue: open(groups?.overdue),
+    today: open(groups?.today),
+    tomorrow: open(groups?.tomorrow),
+  };
+}
+
+// ── ค่าตั้งต้นของฟอร์มปิดงาน ─────────────────────────────────────────────
+// ⭐ เติมให้ครบที่สุดเท่าที่รู้ — ช่างที่ยืนอยู่หน้างานจะไม่พิมพ์เวลาเอง
+//   วันที่เข้าจริง  = วันนี้ (ไม่ใช่วันที่นัด — คนปิดงานตอนที่ทำเสร็จจริง)
+//   เวลาเริ่ม/จบ    = เวลาที่นัดไว้ ถ้ามี · ไม่มีก็เว้นไว้ให้กดปุ่ม "ตอนนี้"
+export function closeFormDefaults(visit, { todayIso = toLocalISODate(new Date()), nowHHMM = null } = {}) {
+  const hhmm = (value) => (value ? String(value).slice(0, 5) : '');
+  return {
+    actualDate: visit?.actualDate || todayIso,
+    actualStartTime: hhmm(visit?.actualStartTime) || hhmm(visit?.startTime),
+    actualEndTime: hhmm(visit?.actualEndTime) || hhmm(visit?.endTime) || nowHHMM || '',
+    summary: visit?.summary || '',
+    attachments: Array.isArray(visit?.attachments) ? visit.attachments : [],
+    customerSignatureUrl: visit?.customerSignatureUrl || null,
+  };
+}
+
+// ── สิ่งที่ยังไม่ได้กรอก — เตือน ไม่บล็อก ───────────────────────────────
+// ⚠️ รูปและลายเซ็น **ไม่บังคับ** (มติผู้ใช้) แต่ต้องบอกให้รู้ว่าขาด ไม่ใช่เงียบ
+// ป้ายนี้ติดไปกับนัดหลังปิดงานด้วย เพื่อให้หัวหน้าตามเก็บทีหลังได้
+export function missingEvidence(form = {}) {
+  const out = [];
+  if (!Array.isArray(form.attachments) || form.attachments.length === 0) out.push('ยังไม่มีรูปหน้างาน');
+  if (!form.customerSignatureUrl) out.push('ยังไม่มีลายเซ็นผู้รับงาน');
+  return out;
+}

@@ -215,6 +215,23 @@ export async function resolveFolderForEntity(entityType, entityId) {
     if (!customer) throw new Error('สินค้านี้ยังไม่มีลูกค้าเจ้าของ');
     return ensureProductFolder(product, customer);
   }
+  // นัดเข้าบริการ (S-3) → โฟลเดอร์ลูกค้าเจ้าของไซต์ · รูปหน้างาน/ลายเซ็นของไซต์
+  // เดียวกันจึงกองอยู่ที่เดียวกับเอกสารอื่นของลูกค้ารายนั้น
+  if (entityType === 'service_visit') {
+    const { data: visit, error: visitError } = await supabase
+      .from('service_visits').select('siteId').eq('id', entityId).maybeSingle();
+    if (visitError) throw visitError;
+    if (!visit) throw new Error('ไม่พบนัดเข้าบริการ');
+    const { data: site, error: siteError } = await supabase
+      .from('service_sites').select('customerId').eq('id', visit.siteId).maybeSingle();
+    if (siteError) throw siteError;
+    const { data: customer, error: customerError } = site?.customerId
+      ? await supabase.from('customers').select('*').eq('id', site.customerId).maybeSingle()
+      : { data: null, error: null };
+    if (customerError) throw customerError;
+    if (!customer) throw new Error('ไม่พบลูกค้าของไซต์บริการ');
+    return ensureCustomerFolder(customer);
+  }
   if (entityType === 'order') {
     const { data: order, error: orderError } = await supabase.from('orders').select('customerId').eq('id', entityId).maybeSingle();
     if (orderError) throw orderError;

@@ -11,6 +11,10 @@ export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
 export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove'];
 export const VISIT_STATUSES = ['scheduled', 'done', 'rescheduled', 'cancelled'];
 
+// ชนิดรูปหน้างาน — ก่อน/หลัง คือสิ่งที่ลูกค้าถามย้อนหลังจริง
+export const ATTACHMENT_KINDS = ['before', 'after', 'other'];
+export const ATTACHMENT_KIND_LABELS = { before: 'ก่อน', after: 'หลัง', other: 'อื่น ๆ' };
+
 export const VISIT_KIND_LABELS = {
   install: 'ติดตั้ง',
   refill: 'เติมน้ำหอม',
@@ -139,6 +143,27 @@ export function normalizeVisitInput(body = {}) {
     ? body.assistantIds.map((v) => String(v)).filter(Boolean)
     : [];
 
+  // ── รูปหน้างาน + ลายเซ็น (S-3) ──
+  // ⚠️ **ไม่บังคับทั้งคู่** (มติผู้ใช้ 2026-07-30) — ลูกค้าไม่อยู่หน้างานมีจริง และ
+  // สัญญาณมือถือที่ไซต์แย่เป็นเรื่องปกติ · บังคับแล้วช่างจะปิดงานไม่ได้ตรงนั้น
+  // แล้วไปบันทึกย้อนหลังทีหลัง ซึ่งทำให้เวลาที่บันทึกผิดทั้งชุด
+  const attachments = [];
+  if (Array.isArray(body.attachments)) {
+    for (const raw of body.attachments) {
+      const url = String(raw?.url ?? '').trim();
+      if (!url) continue;
+      if (url.length > 1000) return { value: null, error: 'ลิงก์ไฟล์แนบยาวเกินไป' };
+      attachments.push({
+        url,
+        name: String(raw?.name ?? '').trim().slice(0, 200) || 'ไฟล์แนบ',
+        kind: ATTACHMENT_KINDS.includes(raw?.kind) ? raw.kind : 'other',
+      });
+    }
+  }
+
+  const signature = String(body.customerSignatureUrl ?? '').trim();
+  if (signature.length > 1000) return { value: null, error: 'ลิงก์ลายเซ็นยาวเกินไป' };
+
   return {
     value: {
       siteId,
@@ -156,6 +181,8 @@ export function normalizeVisitInput(body = {}) {
       actualEndTime: times.actualEndTime,
       summary: summary || null,
       note: note || null,
+      attachments,
+      customerSignatureUrl: signature || null,
     },
     error: null,
   };
