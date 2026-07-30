@@ -11,7 +11,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import {
   FOLDER, driveEnvStatus, getDrive, getFileMeta, uploadFile, deleteFile, moveFile,
   folderPathForEntity, folderPathLabel, resolveFolderForEntity, ensureUnsortedFolder,
-  ensureCustomerFolder, ensureRootFolder, ensureSubFolder,
+  ensureCustomerFolder, ensureRootFolder, ensureSubFolder, listChildren,
 } from '@/lib/drive';
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -181,10 +181,13 @@ export async function auditDriveFiles() {
 // ทุกอันในระบบและ driveFolderId ที่ cache ไว้จึงยังใช้ได้ ไม่มีการอัป/ดาวน์โหลดซ้ำ
 // และย้อนกลับได้ · ทั้งหมด idempotent — กดซ้ำได้ ของที่อยู่ถูกที่แล้วจะถูกข้าม
 
-// โฟลเดอร์ชื่อเดิมที่เปลี่ยนชื่อได้เลย (ของข้างในตามมาเองทั้งก้อน ไม่ต้องย้ายทีละไฟล์)
-const LEGACY_RENAMES = [
-  { path: ['_unsorted'], to: FOLDER.unsorted },
-  { path: [FOLDER.sales, 'งาน'], to: FOLDER.salesTasks },
+// โฟลเดอร์ชื่อเดิม → ยุบเข้าโฟลเดอร์ชื่อใหม่ (ของข้างในย้ายตาม แล้วทิ้งกล่องเปล่า)
+// 🐞 เดิมใช้วิธี "เปลี่ยนชื่อ" ซึ่งพังเมื่อโฟลเดอร์ชื่อใหม่มีอยู่แล้ว — Drive ยอมให้ชื่อซ้ำ
+// จึงได้โฟลเดอร์ชื่อเดียวกันสองอัน (เจอจริง: ปุ่มทดสอบเขียนไฟล์สร้าง `_รอจัดที่` ไว้ก่อน
+// แล้วขั้นเปลี่ยนชื่อสร้างอันที่สองทับ) · ยุบเข้าหากันจึงถูกต้องกว่าและกดซ้ำได้เสมอ
+const LEGACY_ABSORB = [
+  { from: ['_unsorted'], toParent: [], toName: FOLDER.unsorted },
+  { from: [FOLDER.sales, 'งาน'], toParent: [FOLDER.sales], toName: FOLDER.salesTasks },
 ];
 
 async function findFolder(name, parentId) {
@@ -267,7 +270,7 @@ export async function planRestructure() {
       .map(([path, list]) => ({ path, count: list.length, sample: list.slice(0, 3).map((f) => f.fileName) }))
       .sort((a, b) => b.count - a.count),
     failed,
-    renames: LEGACY_RENAMES.map((r) => ({ from: r.path.join(' / '), to: r.to })),
+    renames: LEGACY_ABSORB.map((r) => ({ from: r.from.join(' / '), to: [...r.toParent, r.toName].join(' / ') })),
   };
 }
 
@@ -299,93 +302,100 @@ async function driveFileTargets(supabase) {
   return files;
 }
 
+// งานทั้งหมดของการจัดโครง เรียงตามลำดับที่ต้องทำ (โฟลเดอร์ก่อน แล้วค่อยไฟล์)
+// 🐞 เดิมงานระดับโฟลเดอร์ (61 โฟลเดอร์สินค้า + 5 ลูกค้า) ทำทั้งหมดใน "คำขอแรก" คำขอเดียว
+// → ชน**เพดาน 60 วินาที**ของ serverless แล้วถูกฆ่ากลางทาง: ย้ายไปได้ราวครึ่งเดียว
+// ที่เหลือค้างที่ราก และ UI เห็นเป็น error โดยไม่รู้ว่าทำไปถึงไหน (เจอจริงบน prod)
+// → รวมทุกอย่างเป็นลิสต์งานเดียวที่เรียงคงที่ แล้วหั่นด้วย offset เหมือนกันหมด
+async function buildRestructureTasks(supabase) {
+  const [custRes, prodRes] = await Promise.all([
+    supabase.from('customers').select('id, name, driveFolderId').not('driveFolderId', 'is', null).order('id'),
+    supabase.from('products').select('id, fgCode, customerId, driveFolderId').not('driveFolderId', 'is', null).order('id'),
+  ]);
+  if (custRes.error) throw custRes.error;
+  if (prodRes.error) throw prodRes.error;
+
+  return [
+    ...LEGACY_ABSORB.map((absorb) => ({ kind: 'absorb', absorb, label: absorb.from.join(' / ') })),
+    ...(custRes.data || []).map((customer) => ({ kind: 'customerFolder', customer, label: `โฟลเดอร์ลูกค้า ${customer.name}` })),
+    ...(prodRes.data || []).map((product) => ({ kind: 'productFolder', product, label: `โฟลเดอร์สินค้า ${product.fgCode || product.id}` })),
+    ...(await driveFileTargets(supabase)).map((file) => ({ kind: 'file', file, label: file.fileName || file.rowId })),
+  ];
+}
+
 // ย้ายจริง — ทำเป็นชุด (batch) เพราะ serverless มีเพดานเวลา 60 วินาที
-// offset = ตำแหน่งไฟล์ที่จะเริ่มทำต่อ · UI เรียกซ้ำด้วย nextOffset จนกว่า done = true
-// รอบแรก (offset 0) ทำงาน "ระดับโฟลเดอร์" ให้เสร็จก่อน: เปลี่ยนชื่อชุดเก่า + ย้าย
-// โฟลเดอร์ลูกค้า/สินค้าเข้าที่ใหม่ ซึ่งลากไฟล์ข้างในตามไปทั้งก้อนโดยไม่ต้องแตะทีละใบ
-export async function runRestructure({ limit = 40, offset = 0 } = {}) {
+// offset = ตำแหน่งงานที่จะเริ่มทำต่อ · UI เรียกซ้ำด้วย nextOffset จนกว่า done = true
+// ทุกงาน idempotent: ของที่อยู่ถูกที่แล้วจะถูกนับเป็น skipped ไม่ใช่ทำซ้ำ
+export async function runRestructure({ limit = 25, offset = 0 } = {}) {
   const supabase = getSupabaseAdmin();
+  // memo ต่อ "รอบทำงาน" — กันสร้างโฟลเดอร์ชื่อซ้ำจากดัชนีค้นหาของ Drive ที่ตามไม่ทัน
+  const ctx = { memo: new Map() };
   const log = [];
   const errors = [];
   let moved = 0;
   let skipped = 0;
 
-  if (offset === 0) {
-    // 3.1 เปลี่ยนชื่อโฟลเดอร์ชุดเก่า (ของข้างในตามไปเอง ไม่ต้องย้ายทีละไฟล์)
-    for (const rename of LEGACY_RENAMES) {
-      try {
-        const id = await findFolderByPath(rename.path);
-        if (!id) continue;
-        await getDrive().files.update({ fileId: id, requestBody: { name: rename.to }, supportsAllDrives: true });
-        log.push(`เปลี่ยนชื่อโฟลเดอร์ ${rename.path.join(' / ')} → ${rename.to}`);
-        moved += 1;
-      } catch (err) {
-        errors.push({ what: `เปลี่ยนชื่อ ${rename.path.join(' / ')}`, error: errText(err) });
-      }
-    }
+  const tasks = await buildRestructureTasks(supabase);
+  const batch = tasks.slice(offset, offset + limit);
 
-    // 3.2 ย้ายโฟลเดอร์ลูกค้าเข้าใต้ "ลูกค้า/"
-    const customersRoot = await ensureRootFolder(FOLDER.customers);
-    const { data: customers, error: custError } = await supabase
-      .from('customers').select('id, name, driveFolderId').not('driveFolderId', 'is', null);
-    if (custError) throw custError;
-    const customerFolderId = new Map();
-    for (const customer of customers || []) {
-      try {
-        const folderId = await ensureCustomerFolder(customer);
-        customerFolderId.set(customer.id, folderId);
+  for (const task of batch) {
+    try {
+      if (task.kind === 'absorb') {
+        // ยุบโฟลเดอร์ชื่อเก่าเข้าชื่อใหม่ (ย้ายของข้างในแล้วทิ้งกล่องเปล่าลงถังขยะ)
+        const sourceId = await findFolderByPath(task.absorb.from);
+        if (!sourceId) { skipped += 1; continue; }
+        let parentId = rootId();
+        for (const name of task.absorb.toParent) parentId = await ensureSubFolder(name, parentId, ctx);
+        const targetId = await ensureSubFolder(task.absorb.toName, parentId, ctx);
+        if (targetId === sourceId) { skipped += 1; continue; }
+        for (const child of await listChildren(sourceId)) await moveFile(child.id, targetId);
+        await deleteFile(sourceId); // ทิ้งถังขยะ ไม่ลบถาวร
+        moved += 1;
+        log.push(`ยุบโฟลเดอร์ ${task.absorb.from.join(' / ')} → ${task.absorb.toName}`);
+        continue;
+      }
+
+      if (task.kind === 'customerFolder') {
+        const customersRoot = await ensureRootFolder(FOLDER.customers, ctx);
+        const folderId = await ensureCustomerFolder(task.customer, ctx);
         if (await moveFile(folderId, customersRoot)) {
           moved += 1;
-          log.push(`ย้ายโฟลเดอร์ลูกค้า: ${customer.name}`);
+          log.push(`ย้ายโฟลเดอร์ลูกค้า: ${task.customer.name}`);
         } else skipped += 1;
-      } catch (err) {
-        errors.push({ what: `โฟลเดอร์ลูกค้า ${customer.name}`, error: errText(err) });
+        continue;
       }
-    }
 
-    // 3.3 ย้ายโฟลเดอร์สินค้าเข้าใต้ "<ลูกค้า>/สินค้า/"
-    const { data: products, error: prodError } = await supabase
-      .from('products').select('id, fgCode, customerId, driveFolderId').not('driveFolderId', 'is', null);
-    if (prodError) throw prodError;
-    const productsFolderOf = new Map(); // customerId → id ของโฟลเดอร์ "สินค้า"
-    for (const product of products || []) {
-      try {
+      if (task.kind === 'productFolder') {
+        const { product } = task;
         if (!product.customerId) {
-          errors.push({ what: `สินค้า ${product.fgCode || product.id}`, error: 'ไม่มีลูกค้าเจ้าของ — ข้ามไว้ก่อน' });
+          errors.push({ what: task.label, error: 'ไม่มีลูกค้าเจ้าของ — ข้ามไว้ก่อน' });
           continue;
         }
-        let parentId = productsFolderOf.get(product.customerId);
-        if (!parentId) {
-          const custFolder = customerFolderId.get(product.customerId)
-            || await ensureCustomerFolder(
-              (await supabase.from('customers').select('*').eq('id', product.customerId).maybeSingle()).data || {},
-            );
-          parentId = await ensureSubFolder(FOLDER.customerProducts, custFolder);
-          productsFolderOf.set(product.customerId, parentId);
+        const { data: customer, error: custError } = await supabase
+          .from('customers').select('*').eq('id', product.customerId).maybeSingle();
+        if (custError) throw custError;
+        if (!customer) {
+          errors.push({ what: task.label, error: 'ลูกค้าเจ้าของถูกลบไปแล้ว' });
+          continue;
         }
+        const custFolder = await ensureCustomerFolder(customer, ctx);
+        const parentId = await ensureSubFolder(FOLDER.customerProducts, custFolder, ctx);
         if (await moveFile(product.driveFolderId, parentId)) {
           moved += 1;
           log.push(`ย้ายโฟลเดอร์สินค้า: ${product.fgCode || product.id}`);
         } else skipped += 1;
-      } catch (err) {
-        errors.push({ what: `โฟลเดอร์สินค้า ${product.fgCode || product.id}`, error: errText(err) });
+        continue;
       }
-    }
-  }
 
-  // 3.4 ไฟล์ที่เหลือ (เอกสารบริษัท/ออเดอร์/งาน/ขอราคา/เธรด) ย้ายทีละใบตามชนิด entity
-  // ไฟล์ในโฟลเดอร์สินค้า (ทะเบียนภาษี) ถูกลากไปพร้อมโฟลเดอร์แล้ว จึงตกเป็น skipped
-  const files = await driveFileTargets(supabase);
-  const batch = files.slice(offset, offset + limit);
-  for (const f of batch) {
-    try {
-      const target = await resolveFolderForEntity(f.entityType, f.entityId);
-      if (await moveFile(f.driveFileId, target)) {
+      // ไฟล์เดี่ยว (เอกสารบริษัท/ออเดอร์/งาน/ขอราคา/เธรด) — ไฟล์ในโฟลเดอร์สินค้า
+      // ถูกลากไปพร้อมโฟลเดอร์แล้ว จึงตกเป็น skipped
+      const target = await resolveFolderForEntity(task.file.entityType, task.file.entityId, ctx);
+      if (await moveFile(task.file.driveFileId, target)) {
         moved += 1;
-        log.push(`ย้ายไฟล์ ${f.fileName || f.driveFileId}`);
+        log.push(`ย้ายไฟล์ ${task.label}`);
       } else skipped += 1;
     } catch (err) {
-      errors.push({ what: f.fileName || f.rowId, error: errText(err) });
+      errors.push({ what: task.label, error: errText(err) });
     }
   }
 
@@ -394,10 +404,10 @@ export async function runRestructure({ limit = 40, offset = 0 } = {}) {
     moved,
     skipped,
     errors,
-    total: files.length,
+    total: tasks.length,
     nextOffset,
-    remaining: Math.max(0, files.length - nextOffset),
-    done: nextOffset >= files.length,
+    remaining: Math.max(0, tasks.length - nextOffset),
+    done: nextOffset >= tasks.length,
     log: log.slice(0, 60),
   };
 }

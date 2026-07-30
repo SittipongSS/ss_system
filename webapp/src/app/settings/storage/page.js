@@ -113,7 +113,7 @@ export default function StoragePage() {
         const res = await call("/api/admin/drive", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "restructure", offset, limit: 40 }),
+          body: JSON.stringify({ action: "restructure", offset, limit: 25 }),
         });
         moved += res.moved;
         skipped += res.skipped;
