@@ -29,25 +29,51 @@ test("มาตรฐานความสูงตัวควบคุมม�
    selector ที่ทับความสูงให้โดยไม่มีใครสั่ง จึงไม่ใช่ drift */
 const SIZE_VARIANTS = [".btn.sm", ".btn-icon"];
 
-/* หนี้ที่ยังไม่ตัดสิน: หน้าแรกทำปุ่มลัดสูง 40px (ระหว่างมาตรฐาน 36 กับจอสัมผัส 44)
-   น่าจะจงใจ — หน้าแรกเป็น launchpad ที่ตั้งใจให้กดง่าย — แต่ยังไม่มีชื่อรองรับ
-   ผมยืนยันด้วยตาไม่ได้จากที่นี่ (หน้าแรกต้องมีเซสชัน) จึงยังไม่แตะ
-   ⚠️ ทางออกคือ *ตั้งชื่อ* ให้มัน (เช่น --ctl-h-lg) หรือยุบเข้ามาตรฐาน — ไม่ใช่ปล่อยไว้
-   ห้ามเติมชื่อใหม่เข้าลิสต์นี้เพื่อให้เทสต์ผ่าน */
-const UNRESOLVED = [".home-hub-shortcuts .btn", ".home-continue-card .btn"];
+/* ✅ ปิดหนี้ 40px ของหน้าแรกแล้ว (2026-07-30) — เดิมเดาว่า "จงใจ เพราะ launchpad
+   ต้องกดง่าย" แต่จำลอง markup แล้ววัดจริงบนจอ 375px: ปุ่มลัดหน้าแรกได้ 40px ขณะที่
+   ปุ่มบันทึกในฟอร์มได้ 44px — **launchpad มีเป้าเล็กกว่าฟอร์ม** ตรงข้ามกับเหตุผลที่
+   ใช้อ้าง 40px จึงไม่เคยทำหน้าที่ที่ตั้งใจไว้เลย
+   ทางออก: จอแคบใช้ --ctl-h-touch (เกณฑ์ "กดง่าย" ที่มีชื่ออยู่แล้ว) · เดสก์ท็อปยุบเข้า
+   --ctl-h เพราะเมาส์ไม่ต้องการเป้าใหญ่ = ไม่เหลือเหตุผลให้มีขนาดที่สาม
+   (ไม่ตั้ง --ctl-h-lg เพราะจะได้โทเคนที่มีผู้ใช้จุดเดียวและไม่มีกฎว่าใช้เมื่อไหร่)
+   ⚠️ ลิสต์นี้ต้องว่างเสมอ — เจอความสูงปุ่มที่ไม่มีชื่อ ให้ตัดสินตอนนั้น อย่าพักไว้ */
+const UNRESOLVED = [];
 
-test("ไม่มีบริบทไหนเขียนความสูงปุ่มทับด้วยเลขดิบ", () => {
+/* 🔴 รูที่เพิ่งปิด (2026-07-30): กฎนี้เคยอ่าน **แค่ globals.css** ไฟล์เดียว
+   CSS module จึงเขียนความสูงปุ่มทับได้ฟรีมาตลอด และมีของหลุดจริง 3 จุด —
+   ทั้งหมดตั้ง 40px ในจอแคบ ทั้งที่ระบบตั้งเกณฑ์จอสัมผัสไว้เอง 44px (WCAG 2.5.5):
+   StatusNotice · CommercialPresetPicker ×2 · อีกจุดยังตั้ง 32px ทับ `.btn.sm`
+   ที่ผู้เรียกขอมาแล้ว = สู้กับ variant ของตัวเอง
+   ตอนนี้ไล่ทุกไฟล์ CSS รวม `:global(.btn)` ของ CSS module ด้วย */
+const CSS_FILES = (function collect(dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collect(full, out);
+    else if (full.endsWith(".css")) out.push(full);
+  }
+  return out;
+})(path.join(process.cwd(), "src"));
+
+/* เอกสารพิมพ์ประกอบ CSS ของตัวเองและไม่โหลด globals.css โทเคนไม่มีค่าที่นั่น */
+const EXEMPT = ["src\\components\\documents\\", "src/components/documents/"];
+
+test("ไม่มีบริบทไหนเขียนความสูงปุ่มทับด้วยเลขดิบ (ทุกไฟล์ CSS)", () => {
   const offenders = [];
-  for (const block of stripComments(GLOBALS).split("}")) {
-    const brace = block.indexOf("{");
-    if (brace === -1) continue;
-    const selector = block.slice(0, brace).split("\n").filter(Boolean).join(" ").trim();
-    if (!/\.btn\b/.test(selector)) continue;
-    const flat = selector.replace(/\s+/g, " ").trim();
-    if (SIZE_VARIANTS.includes(flat) || UNRESOLVED.includes(flat)) continue;
-    const body = block.slice(brace + 1);
-    const hit = body.match(/(?:^|;)\s*(?:min-)?height:\s*(\d+)px/m);
-    if (hit) offenders.push(`${selector} → ${hit[0].trim()}`);
+  for (const file of CSS_FILES) {
+    const rel = path.relative(process.cwd(), file).replaceAll("\\", "/");
+    if (EXEMPT.some((p) => rel.startsWith(p.replaceAll("\\", "/")))) continue;
+    for (const block of stripComments(fs.readFileSync(file, "utf8")).split("}")) {
+      const brace = block.indexOf("{");
+      if (brace === -1) continue;
+      const selector = block.slice(0, brace).split("\n").filter(Boolean).join(" ").trim();
+      /* `:global(.btn)` ของ CSS module ก็คือปุ่มตัวเดียวกัน — เดิมหลุดเพราะไม่ได้อ่านไฟล์นี้ */
+      if (!/\.btn\b|:global\(\.btn\b/.test(selector)) continue;
+      const flat = selector.replace(/\s+/g, " ").trim();
+      if (SIZE_VARIANTS.includes(flat) || UNRESOLVED.includes(flat)) continue;
+      const body = block.slice(brace + 1);
+      const hit = body.match(/(?:^|;)\s*(?:min-)?height:\s*(\d+)px/m);
+      if (hit) offenders.push(`${rel} — ${flat} → ${hit[0].trim()}`);
+    }
   }
   assert.deepEqual(offenders, [],
     "ความสูงปุ่มต้องมาจาก --ctl-h / --ctl-h-touch — บริบทเปลี่ยนได้แค่สี (ดู #816)");
@@ -59,6 +85,16 @@ test("หนี้ที่ยกเว้นไว้ยังมีอยู�
     assert.ok(css.includes(selector),
       `${selector} ไม่มีแล้ว — เอาออกจาก UNRESOLVED (ไม่งั้นลิสต์ยกเว้นจะบวมขึ้นเรื่อย ๆ)`);
   }
+});
+
+/* ปุ่มหน้าแรกเคยเป็นข้อยกเว้นเดียวที่ค้างมานาน — ตรึงผลการตัดสินไว้ ไม่ให้ 40px
+   กลับมาเงียบ ๆ และให้จอแคบยังได้เป้าตามเกณฑ์ */
+test("ปุ่มหน้าแรกใช้ความสูงที่มีชื่อ ไม่ใช่ 40px ลอย ๆ", () => {
+  const css = stripComments(GLOBALS);
+  assert.doesNotMatch(css, /\.home-(?:hub-shortcuts|continue-card) \.btn \{[^}]*min-height:\s*40px/,
+    "40px กลับมาแล้ว — เดสก์ท็อปต้องรับจาก .btn (--ctl-h)");
+  assert.match(css, /\.home-hub-shortcuts \.btn,\s*\.home-continue-card \.btn \{[^}]*min-height:\s*var\(--ctl-h-touch\)/,
+    "จอแคบต้องได้เป้าขนาดจอสัมผัส ไม่งั้น launchpad จะกดยากกว่าปุ่มในฟอร์ม");
 });
 
 test("ค่าจอสัมผัสถูกใช้เฉพาะกับตัวควบคุมจริง", () => {

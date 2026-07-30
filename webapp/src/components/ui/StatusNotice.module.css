@@ -81,8 +81,11 @@
     padding-left: 42px;
   }
 
+  /* จอแคบ = น่าจะใช้นิ้ว → --ctl-h-touch (44px, WCAG 2.5.5) เดิมเขียน 40px เลขดิบ
+     ซึ่งต่ำกว่าเกณฑ์ที่ระบบตั้งไว้เอง และไม่มีตัวตรวจไหนเห็นเพราะ controlHeight
+     เคยอ่านแต่ globals.css */
   .action :global(.btn) {
     width: 100%;
-    min-height: 40px;
+    min-height: var(--ctl-h-touch);
   }
 }

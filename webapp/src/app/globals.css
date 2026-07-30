@@ -1256,7 +1256,6 @@ h1, h2, h3, h4, h5, h6 {
   gap: var(--space-1);
   flex-wrap: wrap;
 }
-.home-hub-shortcuts .btn { min-height: 40px; }
 .home-hub-hero {
   padding: clamp(22px, 4vw, 38px);
   display: grid;
@@ -1333,7 +1332,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .home-continue-title strong { color: var(--text); font-size: var(--fs-10); }
 .home-continue-title div > span { color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
-.home-continue-card .btn { min-height: 40px; margin-top: auto; }
+.home-continue-card .btn { margin-top: auto; }
 .home-systems { display: flex; flex-direction: column; gap: 14px; }
 .home-section-heading {
   display: flex;
@@ -1441,6 +1440,12 @@ h1, h2, h3, h4, h5, h6 {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* วัดจริง 2026-07-30 บนจอ 375px: ปุ่ม "บันทึก" ในแถบท้ายฟอร์มได้ 44px ตามเกณฑ์
+     จอสัมผัส แต่ปุ่มลัดหน้าแรกค้างที่ 40px — **หน้าแรกซึ่งเป็น launchpad กลับมีเป้า
+     เล็กกว่าปุ่มในฟอร์ม** ตรงข้ามกับเจตนา (เดิมเดาไว้ว่า 40px คือ "ตั้งใจให้กดง่าย")
+     จอแคบจึงต้องได้ --ctl-h-touch เหมือนปุ่มอื่นทั้งระบบ */
+  .home-hub-shortcuts .btn,
+  .home-continue-card .btn { min-height: var(--ctl-h-touch); }
   .home-hub-shortcuts .btn { justify-content: flex-start; min-width: 0; }
   .home-hub-hero { padding: var(--space-5); gap: var(--space-5); }
   .home-system-grid,
