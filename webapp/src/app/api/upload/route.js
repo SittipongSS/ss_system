@@ -5,8 +5,8 @@ import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
 import {
   MAX_UPLOAD_BYTES, MAX_UPLOAD_MB,
   ACCEPTED_UPLOAD_MIME, ACCEPTED_UPLOAD_EXT,
+  fileExt, resolveUploadMime,
 } from '@/lib/master/attachmentTypes';
-import { uploadBucket } from '@/lib/master/attachmentStorage';
 
 // googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
@@ -28,14 +28,13 @@ export async function POST(request) {
 
     const formData = await request.formData();
     const file = formData.get('file');
-    const customerName = formData.get('customerName');
-    // entity context (Drive backend ใช้ resolve โฟลเดอร์ลูกค้า/สินค้า).
+    // entity context — ใช้ resolve โฟลเดอร์ปลายทางบน Drive
     const entityType = formData.get('entityType');
     const entityId = formData.get('entityId');
     const isWonEvidence = entityType === 'quotation_won_evidence';
 
     if (!file) {
-      return Response.json({ error: 'No file received.' }, { status: 400 });
+      return Response.json({ error: 'ไม่พบไฟล์ที่ส่งมา' }, { status: 400 });
     }
 
     // จำกัดขนาดไฟล์ก่อนอ่านลง buffer (กันไฟล์ใหญ่ถมพื้นที่/ค่าใช้จ่าย).
@@ -46,18 +45,24 @@ export async function POST(request) {
       );
     }
 
-    // รับเฉพาะเอกสาร PDF/รูป — กันไฟล์อันตราย (.exe/.html) ที่ยิง API ตรง.
+    // รับเฉพาะเอกสาร/รูปที่ใช้ทำงานจริง — กันไฟล์อันตราย (.exe/.html) ที่ยิง API ตรง.
     // ผ่านถ้า mime อยู่ในลิสต์ หรือ (mime ว่าง/กว้าง) แต่นามสกุลถูกต้อง.
-    const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
+    const ext = fileExt(file.name);
     const mimeOk = file.type && ACCEPTED_UPLOAD_MIME.includes(file.type);
     const extOk = ACCEPTED_UPLOAD_EXT.includes(ext);
     if (!mimeOk && !extOk) {
+      // บอกให้ตรงว่าไฟล์ไหนและนามสกุลอะไรที่ไม่ผ่าน — ข้อความรวม ๆ ทำให้ผู้ใช้เดาไม่ออก
       return Response.json(
-        { error: 'ชนิดไฟล์ไม่รองรับ (PDF, Word, Excel, PowerPoint, CSV, TXT และรูปภาพ)' },
+        {
+          error: `ชนิดไฟล์ไม่รองรับ: ${file.name || 'ไฟล์นี้'}${ext ? ` (.${ext})` : ''} — `
+            + `รองรับ ${ACCEPTED_UPLOAD_EXT.map((e) => `.${e}`).join(' ')}`,
+        },
         { status: 415 },
       );
     }
 
+    // Content-Type ตัดสินฝั่ง server จากนามสกุล ไม่เชื่อค่าที่ client ประกาศมา
+    const contentType = resolveUploadMime(file.name, file.type);
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // ── Won evidence: private Supabase bucket, regardless of the global backend ──
@@ -90,7 +95,8 @@ export async function POST(request) {
       const { error: uploadError } = await supabase.storage
         .from(PRIVATE_EVIDENCE_BUCKET)
         .upload(objectPath, buffer, {
-          contentType: file.type || 'application/octet-stream',
+          // contentType จาก server เช่นกัน — bucket นี้ private แต่กติกาเดียวกันทั้งระบบ
+          contentType,
           upsert: false,
         });
       if (uploadError) {
@@ -104,67 +110,34 @@ export async function POST(request) {
       });
     }
 
-    // ── Google Drive backend (STORAGE_BACKEND=drive) ──────────────────
-    // dynamic import: โหลด googleapis เฉพาะตอนใช้ Drive — โหมด supabase (default)
-    // ไม่แตะ จึงไม่ต้องลง deps ก็รัน flow เดิมได้ และ flag กั้น prod ไว้.
-    // Task files are required to live on Google Drive regardless of the legacy
-    // default used by other entities. Other uploads continue to follow the env.
-    const useDrive = entityType === 'personal_task' || (process.env.STORAGE_BACKEND || 'supabase') === 'drive';
-    if (useDrive) {
-      try {
-        const { resolveFolderForEntity, uploadFile, ensureUnsortedFolder } = await import('@/lib/drive');
-        // มี entity context → โฟลเดอร์ลูกค้า/สินค้า; ไม่มี → _unsorted (ไม่ทิ้งไว้ที่ root).
-        const folderId = (entityType && entityId)
-          ? await resolveFolderForEntity(entityType, entityId)
-          : await ensureUnsortedFolder();
-        const { id, webViewLink } = await uploadFile(folderId, {
-          buffer,
-          name: file.name || 'file',
-          mimeType: file.type || 'application/octet-stream',
-        });
-        // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
-        return Response.json({ url: webViewLink, driveFileId: id });
-      } catch (err) {
-        console.error('[upload] Google Drive upload failed:', err);
-        return Response.json({ error: 'อัปโหลดขึ้น Google Drive ไม่สำเร็จ' }, { status: 500 });
-      }
-    }
-
-    // ── Supabase Storage backend (default) ────────────────────────────
-    const supabase = getSupabaseAdmin();
-
-    // Supabase Storage keys must be ASCII-safe. Thai/Unicode chars cause an
-    // "Invalid key" error, so we strip to [A-Za-z0-9] for the folder and to a
-    // safe set for the filename (Thai customer names -> "general" folder).
-    const folder =
-      (customerName || '')
-        .replace(/[^a-zA-Z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') || 'general';
-    const safeName =
-      (file.name || 'file')
-        .replace(/[^a-zA-Z0-9.\-_]+/g, '_')
-        .replace(/^_+/, '') || 'file';
-    const timestamp = Date.now();
-    const objectPath = `${folder}/${timestamp}_${safeName}`;
-    const bucket = uploadBucket();
-
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(objectPath, buffer, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: false,
+    // ── Google Drive — ที่เก็บเดียวของไฟล์แนบ ─────────────────────────
+    // (ทาง Supabase Storage ถูกตัดออก 2026-07-30: prod อยู่บน Drive 100% อยู่แล้ว
+    //  128/128 แถว และโค้ดสองทางคือแหล่งของบั๊กเกือบทุกข้อในสายอัปโหลด)
+    // dynamic import: โหลด googleapis เฉพาะตอนอัปจริง ไม่ถ่วง route อื่น
+    try {
+      const { uploadForEntity } = await import('@/lib/drive');
+      const { id, webViewLink } = await uploadForEntity({
+        entityType,
+        entityId,
+        buffer,
+        name: file.name || 'file',
+        mimeType: contentType,
       });
-    if (uploadError) {
-      // ชื่อ bucket ผิด/ไม่มีจริงเป็นสาเหตุที่เจอบ่อยสุด — ใส่ไว้ใน log ให้ตามได้
-      console.error(`Upload error (bucket=${bucket}):`, uploadError);
-      return Response.json({ error: 'File upload failed' }, { status: 500 });
+      // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
+      return Response.json({ url: webViewLink, driveFileId: id, mimeType: contentType });
+    } catch (err) {
+      console.error('[upload] Google Drive upload failed:', err);
+      // ส่งสาเหตุจริงกลับไปให้ผู้ใช้เห็น — "อัปโหลดไม่สำเร็จ" เฉย ๆ ทำให้ทั้งผู้ใช้และ
+      // คนดูแลระบบตามต่อไม่ได้เลย (ตรวจการเชื่อมต่อได้ที่ ตั้งค่า → ที่เก็บไฟล์)
+      const detail = String(err?.errors?.[0]?.message || err?.message || '').slice(0, 200);
+      return Response.json(
+        { error: `อัปโหลดขึ้น Google Drive ไม่สำเร็จ${detail ? ` — ${detail}` : ''}` },
+        { status: 502 },
+      );
     }
-
-    const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
-    return Response.json({ url: data.publicUrl });
   } catch (error) {
     console.error('Upload error:', error);
-    return Response.json({ error: 'File upload failed' }, { status: 500 });
+    return Response.json({ error: 'อัปโหลดไฟล์ไม่สำเร็จ' }, { status: 500 });
   }
 }
 

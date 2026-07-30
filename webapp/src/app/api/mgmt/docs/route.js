@@ -2,6 +2,7 @@ import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest, notFound } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/mgmt/repo';
+import { driveEnvStatus } from '@/lib/drive';
 
 // googleapis (Drive) ต้อง Node runtime.
 export const runtime = 'nodejs';
@@ -15,8 +16,12 @@ const FEED_ENTITY = { mgmt_task: 'task', mgmt_meeting: 'meeting' };
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!canUser(user, 'mgmt:edit')) return forbidden();
 
-  if ((process.env.STORAGE_BACKEND || 'supabase') !== 'drive') {
-    return fail('ต้องตั้งค่า Google Drive (STORAGE_BACKEND=drive) ก่อนจึงจะผูก/สร้างเอกสาร Google ได้', 400);
+  // 🐞 เดิมเช็ค STORAGE_BACKEND ที่ prod ตั้งไว้แต่ที่อื่นไม่ตั้ง → ปุ่มสร้าง/ผูกเอกสาร
+  // Google ตอบ 400 ทั้งที่ Drive ใช้งานได้ · ตอนนี้ไฟล์แนบอยู่บน Drive ที่เดียวเสมอ
+  // ด่านที่เหลือคือ "ตั้งค่า env ครบไหม" ซึ่งเป็นเรื่องของการ deploy ไม่ใช่ของ backend
+  const env = driveEnvStatus();
+  if (!env.ok) {
+    return fail(`ยังตั้งค่า Google Drive ไม่ครบ (ขาด ${env.missing.join(', ')}) — ดูได้ที่ ตั้งค่า → ที่เก็บไฟล์`, 400);
   }
 
   const body = await req.json().catch(() => ({}));

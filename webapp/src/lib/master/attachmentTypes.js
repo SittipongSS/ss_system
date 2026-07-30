@@ -128,26 +128,120 @@ export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
 export const MAX_UPLOAD_MB = 10;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-// ── ชนิดไฟล์ที่อนุญาต (เอกสาร PDF + รูปภาพ) ──────────────────────────
+// ── ชนิดไฟล์ที่อนุญาต ────────────────────────────────────────────────
 // ค่ากลางชุดเดียว: server ใช้บังคับจริง (กัน .exe/.html), client ใช้เป็น accept.
-// รูปภาพเปิดให้ตั้งแต่ความเคลื่อนไหวงานขายแนบรูปได้ (ตรงกับข้อความ error เดิม
-// ที่ระบุ PDF/PNG/JPG/WEBP อยู่แล้ว).
-export const ACCEPTED_IMAGE_MIME = ["image/png", "image/jpeg", "image/webp"];
-export const ACCEPTED_IMAGE_EXT = ["png", "jpg", "jpeg", "webp"];
+//
+// 🐞 ชุดเดิมแคบเกินจริงจนคนแนบไฟล์ที่ใช้ทำงานกันจริง ๆ ไม่ได้ แล้ว UI ก็ไม่บอกสาเหตุ
+// (AttachmentsPanel กลืนข้อความจาก server) = "กดแล้วไม่ขึ้น" โดยไม่มีใครรู้ว่าเพราะอะไร
+// ที่ขาดไปและเติมเข้ามารอบนี้:
+//   • .heic/.heif — รูปจาก iPhone ตามค่าตั้งต้นของเครื่อง (ช่างถ่ายหน้างานส่งมาไม่ได้เลย)
+//   • .ai/.psd/.eps — ไฟล์ Artwork ที่กราฟิกส่งมา ซึ่งเป็นเอกสารบังคับของสินค้า
+//   • .doc/.xls/.ppt — Office รุ่นเก่าที่ลูกค้า/ราชการยังส่งมาอยู่
+//   • .zip/.rar/.7z — ชุดไฟล์งานที่ส่งกันเป็นก้อน
+// ความปลอดภัยไม่ได้พึ่ง "ชนิดไฟล์" อีกต่อไป: ไฟล์ทุกใบเป็น private บน Drive และไหล
+// ผ่าน proxy ที่บังคับ Content-Type จากนามสกุล + nosniff + ดาวน์โหลดแทนการเปิดในหน้า
+// สำหรับชนิดที่ไม่ปลอดภัยจะแสดงในเบราว์เซอร์ (ดู isInlineSafeMime)
+export const ACCEPTED_IMAGE_MIME = [
+  "image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif", "image/tiff", "image/bmp",
+];
+export const ACCEPTED_IMAGE_EXT = [
+  "png", "jpg", "jpeg", "webp", "gif", "heic", "heif", "tif", "tiff", "bmp",
+];
 export const ACCEPTED_DOCUMENT_MIME = [
   "application/pdf",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/postscript",
+  "image/vnd.adobe.photoshop",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/vnd.rar",
+  "application/x-7z-compressed",
   "text/csv",
   "text/plain",
 ];
-export const ACCEPTED_DOCUMENT_EXT = ["pdf", "docx", "xlsx", "pptx", "csv", "txt"];
+export const ACCEPTED_DOCUMENT_EXT = [
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt",
+  "ai", "psd", "eps", "zip", "rar", "7z",
+];
 export const ACCEPTED_UPLOAD_MIME = [...ACCEPTED_DOCUMENT_MIME, ...ACCEPTED_IMAGE_MIME];
 export const ACCEPTED_UPLOAD_EXT = [...ACCEPTED_DOCUMENT_EXT, ...ACCEPTED_IMAGE_EXT];
-export const UPLOAD_ACCEPT_ATTR = ".pdf,.docx,.xlsx,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp";
+export const UPLOAD_ACCEPT_ATTR = [...ACCEPTED_UPLOAD_EXT.map((e) => `.${e}`)].join(",");
 // accept สำหรับที่รับเฉพาะรูป (เช่น composer ความเคลื่อนไหวงานขาย).
-export const IMAGE_ACCEPT_ATTR = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+export const IMAGE_ACCEPT_ATTR = [
+  ...ACCEPTED_IMAGE_MIME,
+  ...ACCEPTED_IMAGE_EXT.map((e) => `.${e}`),
+].join(",");
+
+// นามสกุล → Content-Type ที่ **server** เป็นคนตัดสิน
+// 🐞 เดิมเก็บ `contentType: file.type` ที่ client ส่งมาดิบ ๆ = ตั้งชื่อ x.pdf แล้วประกาศ
+// text/html ก็ได้ ซึ่งกลายเป็น stored XSS ทันทีที่ไฟล์ถูกเสิร์ฟกลับมาแบบเปิดในหน้า
+const EXT_MIME = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  csv: "text/csv",
+  txt: "text/plain",
+  ai: "application/postscript",
+  eps: "application/postscript",
+  psd: "image/vnd.adobe.photoshop",
+  zip: "application/zip",
+  rar: "application/vnd.rar",
+  "7z": "application/x-7z-compressed",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  bmp: "image/bmp",
+};
+
+export const fileExt = (fileName) => String(fileName || "").split(".").pop()?.toLowerCase() || "";
+
+// Content-Type ที่จะเก็บ/เสิร์ฟจริง — ยึดนามสกุลก่อนเสมอ ค่าที่ client ประกาศใช้ได้
+// ต่อเมื่ออยู่ในลิสต์ที่อนุญาต ไม่งั้นตกเป็น octet-stream (ดาวน์โหลดอย่างเดียว)
+export function resolveUploadMime(fileName, clientType) {
+  const byExt = EXT_MIME[fileExt(fileName)];
+  if (byExt) return byExt;
+  if (clientType && ACCEPTED_UPLOAD_MIME.includes(clientType)) return clientType;
+  return "application/octet-stream";
+}
+
+// ชนิดที่ปล่อยให้เบราว์เซอร์เปิดในหน้าได้ (inline) — นอกลิสต์นี้บังคับดาวน์โหลด
+// เพื่อไม่ให้ไฟล์ที่ผู้ใช้อัปกลายเป็นหน้าเว็บที่รันสคริปต์บนโดเมนของระบบ
+const INLINE_SAFE_MIME = new Set([
+  "application/pdf", "text/plain",
+  "image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp",
+]);
+export const isInlineSafeMime = (mime) => INLINE_SAFE_MIME.has(String(mime || "").toLowerCase());
+
+// header ชุดเดียวของทุก proxy ที่เสิร์ฟไฟล์แนบ (เอกสารแนบ + ไฟล์ในเธรด)
+// — Content-Type คำนวณจากนามสกุลใหม่ทุกครั้ง ไม่ใช้ค่าที่เก็บไว้ในแถวดิบ ๆ (แถวเก่า
+//   เก็บค่าที่ client ประกาศมา)
+// — ชนิดที่ไม่ปลอดภัยจะเปิดในหน้า (เช่น .html ที่หลุดเข้ามา) บังคับเป็นดาวน์โหลด
+// — nosniff กันเบราว์เซอร์เดาชนิดเองแล้วรันเป็น HTML/สคริปต์บนโดเมนของระบบ
+export function attachmentFileHeaders({ mimeType, fileName } = {}) {
+  const mime = resolveUploadMime(fileName, mimeType);
+  const disposition = isInlineSafeMime(mime) ? "inline" : "attachment";
+  return {
+    "Content-Type": mime,
+    "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName || "file")}`,
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "private, max-age=60",
+  };
+}
 
 // docType ที่ "จำเป็น" ของ entity หนึ่งๆ (รับ override การ์ดได้ เช่น เอกสาร
 // ลูกค้าตามประเภท). ใช้บังคับแนบเอกสารก่อนยื่น — ทั้งฝั่ง UI และ API.

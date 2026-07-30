@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewRecord } from '@/lib/permissions';
 import { getAttachment, loadAttachmentParent, ATTACHMENT_RESOURCE } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
+import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
 import { canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -56,15 +57,14 @@ export async function GET(request, { params }) {
   try {
     const { getFileStream } = await import('@/lib/drive');
     const stream = await getFileStream(att.driveFileId);
-    return new Response(Readable.toWeb(stream), {
-      headers: {
-        'Content-Type': att.mimeType || 'application/pdf',
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(att.fileName || 'file')}`,
-        'Cache-Control': 'private, max-age=60',
-      },
-    });
+    return new Response(Readable.toWeb(stream), { headers: attachmentFileHeaders(att) });
   } catch (err) {
     console.error('[attachments/file] drive stream failed:', err);
-    return Response.json({ error: 'ดึงไฟล์จาก Google Drive ไม่สำเร็จ' }, { status: 502 });
+    // บอกสาเหตุจริง — ผู้ใช้ที่กดแล้วไม่ขึ้นต้องรู้ว่าควรแจ้งใคร (ตรวจได้ที่ ตั้งค่า → ที่เก็บไฟล์)
+    const detail = String(err?.errors?.[0]?.message || err?.message || '').slice(0, 200);
+    return Response.json(
+      { error: `ดึงไฟล์จาก Google Drive ไม่สำเร็จ${detail ? ` — ${detail}` : ''}` },
+      { status: 502 },
+    );
   }
 }
