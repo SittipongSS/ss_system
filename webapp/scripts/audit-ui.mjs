@@ -116,11 +116,27 @@ const RAW_LINE_HEIGHT_CAP = 34;
    (เคยเจอทางกลับมาแล้ว: ลบ --radius-xl ที่ "ไม่มีใครใช้" แล้วมุมหด 16→12px) */
 const RAW_RADIUS_CAP = 22;
 
+/* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+
+   2026-07-30: ยกเงาของ "แผงลอย" ขึ้นเป็น --shadow-float (รู้จักธีมเอง) แล้ว 3 จุด
+   พร้อมลบ override `[data-theme="dark"] .ui-select-menu` ที่เขียนมือทิ้ง
+   ที่เหลือ 7 จุด **ไม่ใช่เงายกระดับ** จึงยังไม่มีปลายทางให้ย้าย:
+   - keyframes ของ pulse 3 จุด (วงแหวนกะพริบ ไม่ใช่ความลึก)
+   - เงาขอบคอลัมน์ตรึง 2 จุด (ทิศทางแนวนอน คู่ซ้าย/ขวา)
+   - `.premium-row:hover` และ tooltip ของกราฟ อย่างละ 1 จุด (ค่าเฉพาะตัว)
+   `box-shadow: none` ไม่นับ — การ *ปิด* เงาไม่ต้องมีชื่อ
+
+   🪤 เหมือน --radius-*: Tailwind v4 อ่าน namespace `--shadow-*` เองแล้วทำ utility
+   `shadow-*` (ในโค้ดใช้ shadow-lg / shadow-sm อยู่) เพิ่ม/ลบชื่อต้องวัดผลของ
+   utility ด้วย ดู radiusScale.test.mjs / shadowScale.test.mjs */
+const RAW_SHADOW_CAP = 7;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
 let rawLineHeightCount = 0;
 let rawRadiusCount = 0;
+let rawShadowCount = 0;
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -273,6 +289,13 @@ for (const file of uiFiles) {
       if (/\s/.test(value) || value.includes("var(") || value.endsWith("%")) continue;
       if (/^0[a-z]*$/.test(value) || value === "inherit") continue;
       if (/^[0-9.]+(?:px|rem|em)$/.test(value)) rawRadiusCount += 1;
+    }
+
+    /* เงาเลขดิบ (ดู RAW_SHADOW_CAP) — `none` ไม่นับ การปิดเงาไม่ต้องมีชื่อ */
+    for (const hit of source.matchAll(/box-shadow:\s*([^;{}]+)/g)) {
+      const value = hit[1].trim();
+      if (value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
+      rawShadowCount += 1;
     }
   }
 
@@ -476,6 +499,12 @@ const failures = [
   ...(rawRadiusCount < RAW_RADIUS_CAP
     ? [`ความมนมุมเลขดิบลดได้แล้ว: เหลือ ${rawRadiusCount} แต่ RAW_RADIUS_CAP ยังเขียน ${RAW_RADIUS_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawShadowCount > RAW_SHADOW_CAP
+    ? [`เงาที่เขียนเองเพิ่มขึ้น: ${rawShadowCount} > เพดาน ${RAW_SHADOW_CAP} — แผงลอยใช้ var(--shadow-float), การ์ดใช้ --shadow-sm/md/lg`]
+    : []),
+  ...(rawShadowCount < RAW_SHADOW_CAP
+    ? [`เงาที่เขียนเองลดได้แล้ว: เหลือ ${rawShadowCount} แต่ RAW_SHADOW_CAP ยังเขียน ${RAW_SHADOW_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -515,6 +544,7 @@ console.log(`Motion violations (นอกโทเคน --motion-*): ${motionVi
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ความสูงบรรทัดเลขดิบ: ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ความมนมุมเลขดิบ: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`เงาที่เขียนเอง: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(

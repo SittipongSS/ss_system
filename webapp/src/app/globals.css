@@ -265,6 +265,18 @@
   --shadow-sm: 0 2px 7px rgba(41, 35, 27, 0.05);
   --shadow-md: 0 12px 30px rgba(41, 35, 27, 0.09);
   --shadow-lg: 0 22px 60px rgba(41, 35, 27, 0.15);
+  /* เงาของ "แผงลอย" (dropdown / เมนู / popover / ปฏิทิน) — คู่กับ --panel-float
+
+     🐛 ตรวจ 2026-07-30: สามแผงที่อยู่ในสัญญาเดียวกัน (audit บังคับให้ใช้ --panel-float
+     เหมือนกันหมด) กลับเขียนเงาเองคนละแบบ วัดจริงได้:
+       .ui-select-menu    2 ชั้น + มี override ธีมมืดเขียนมือ
+       .ui-filter-popover 2 ชั้น + **ไม่มี** ธีมมืด
+       .ui-time-menu      1 ชั้น + **ไม่มี** ธีมมืด
+     ในธีมมืด rgba(31,25,18,.18) คือเงาเกือบดำบนพื้นเข้ม = มองไม่เห็น สองแผงหลัง
+     จึงแบนราบไม่มีระดับความลึก ทั้งที่แผงแรกถูกแก้ไปแล้ว
+     ทำเป็นโทเคนที่รู้จักธีมเอง แผงลอยทุกตัวจึงได้เงาเดียวกันโดยไม่ต้องเขียน
+     [data-theme="dark"] ทับทีละอัน */
+  --shadow-float: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
@@ -375,6 +387,9 @@
   --shadow-sm: 0 2px 7px rgba(0, 0, 0, 0.18);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.24);
   --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.34);
+  /* ค่านี้คือของเดิมที่ `.ui-select-menu` ใช้อยู่แล้วในธีมมืด (พิสูจน์แล้วว่าใช้ได้จริง)
+     ยกขึ้นมาเป็นโทเคนให้แผงลอยตัวอื่นได้ด้วย */
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, .48);
 }
 
 /* Keep minimal: an unlayered `* { margin:0; padding:0 }` would override every
@@ -2533,9 +2548,8 @@ button.ui-kpi-card { cursor: pointer; }
   border-radius: var(--radius-lg);
   background: var(--panel-float);
   color: var(--text);
-  box-shadow: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
+  box-shadow: var(--shadow-float);
 }
-[data-theme="dark"] .ui-select-menu { box-shadow: 0 18px 48px rgba(0, 0, 0, .48); }
 .ui-select-group {
   padding: var(--space-2) 9px var(--space-1);
   color: var(--text-3);
@@ -2630,7 +2644,7 @@ button.ui-kpi-card { cursor: pointer; }
   border-radius: var(--radius-lg);
   background: var(--panel-float);
   color: var(--text);
-  box-shadow: 0 16px 44px rgba(31, 25, 18, .18);
+  box-shadow: var(--shadow-float);
 }
 .ui-time-title { padding: 10px var(--space-3); border-bottom: 1px solid var(--border); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .ui-time-columns { display: grid; grid-template-columns: 1fr 1fr; height: 210px; }
@@ -3003,7 +3017,7 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-filter-clear-inline { font-size: var(--fs-5); color: var(--text-3); justify-content: flex-start; margin-top: 2px; }
 .ui-filter-popover {
   background: var(--panel-float);
-  box-shadow: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
+  box-shadow: var(--shadow-float);
 }
 .ui-filter-group,
 .ui-filter-option { transition: background var(--motion-fast), color var(--motion-fast); }
@@ -4409,11 +4423,6 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .close-readiness-refs {
   color: var(--text-3);
   font-size: var(--fs-5);
-}
-.global-search-input.active {
-  background: var(--surface-2);
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(45, 120, 246, 0.1);
 }
 
 .shipment-print-sheet {
