@@ -19,7 +19,7 @@
   color: var(--badge-color);
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
-  line-height: 1.5;
+  line-height: var(--lh-text);
   vertical-align: middle;
 }
 

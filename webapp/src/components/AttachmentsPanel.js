@@ -379,7 +379,7 @@ export default function AttachmentsPanel({
               style={{
                 position: "absolute", top: 4, right: 4, width: 22, height: 22,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: 0,
+                border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: "var(--lh-none)",
                 background: "color-mix(in srgb, var(--navy) 72%, transparent)",
                 color: "var(--navy-fg)",
               }}

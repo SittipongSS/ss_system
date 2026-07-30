@@ -1134,7 +1134,7 @@ export default function DealOverviewPage() {
       {/* ยืนยัน + เลือกประเภท (template) ก่อนสร้างไทม์ไลน์ของดีล — กัน "ดึงผิดประเภท" */}
       <Modal open={genOpen} onClose={() => !actionBusy && setGenOpen(false)} title="สร้างไทม์ไลน์ของดีล" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", lineHeight: 1.6 }}>
+          <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
             ระบบจะสร้างขั้นตอนงานจาก <strong>Workflow Template</strong> ตาม “ประเภทดีล” ด้านล่าง
             {deal?.categoryCode ? <> · หมวดสินค้า <strong>{deal.categoryCode}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
           </div>

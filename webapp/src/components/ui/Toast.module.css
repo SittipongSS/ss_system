@@ -62,7 +62,7 @@
   flex: 1;
   color: var(--text);
   font-size: var(--fs-7);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }

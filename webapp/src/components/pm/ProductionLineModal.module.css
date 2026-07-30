@@ -22,8 +22,7 @@
 .field > small {
   color: var(--text-3);
   font-size: var(--fs-label);
-  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 .wide { grid-column: 1 / -1; }

@@ -79,7 +79,7 @@
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-3);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .panelGrid {

@@ -187,7 +187,7 @@ export default function ReconcilePage() {
     const dispStatus = isFilled ? "covered" : cell.status;
     const dispLabel = isFilled ? "เติมเต็มด้วย PO" : cell.label;
     const badges = hasCov ? (
-      <span style={{ position: "absolute", top: 3, left: 4, fontSize: "var(--fs-1)", lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
+      <span style={{ position: "absolute", top: 3, left: 4, fontSize: "var(--fs-1)", lineHeight: "var(--lh-flat)", color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
     // ไฮไลต์: ช่องที่ PO "รับในรอบ FC ที่เลือก" มาลง (ตีกรอบสีส้ม + จุด) — ไม่แตะตัวเลข
     const isHl = highlightCells.has(`${fg}||${m}`);

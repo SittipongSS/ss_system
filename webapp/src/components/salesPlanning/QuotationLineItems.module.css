@@ -43,7 +43,7 @@
   overflow-wrap: break-word;
   color: var(--text);
   font-size: var(--fs-7);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 /* แถวรายการสูงไม่เท่ากันในแต่ละคอลัมน์ (บรรทัด FG 2 บรรทัด, ลิงก์ใต้ช่องราคา) —

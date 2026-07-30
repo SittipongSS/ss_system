@@ -20,7 +20,7 @@
 }
 
 .summary span { color: var(--text-3); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
-.summary strong { color: var(--text); font-size: var(--fs-14); line-height: 1; font-variant-numeric: tabular-nums; }
+.summary strong { color: var(--text); font-size: var(--fs-14); line-height: var(--lh-flat); font-variant-numeric: tabular-nums; }
 
 .panel { overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 10px; padding: var(--space-3); border-bottom: 1px solid var(--border); }

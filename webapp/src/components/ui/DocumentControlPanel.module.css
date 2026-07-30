@@ -32,7 +32,7 @@
   font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
 }
 
 .summaryRows {
@@ -290,13 +290,13 @@
 .footer {
   color: var(--text-3);
   font-size: var(--fs-4);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .relatedBody {
   color: var(--text-2);
   font-size: var(--fs-6);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .relatedActions {

@@ -36,7 +36,7 @@
   margin: 0 0 14px;
   color: var(--amber);
   font-size: var(--fs-4);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 .ready {

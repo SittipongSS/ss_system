@@ -28,7 +28,7 @@
 .summaryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 18px; }
 .summaryGrid > div { min-height: 76px; padding: var(--space-3) 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); display: flex; flex-direction: column; justify-content: space-between; }
 .summaryGrid span { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
-.summaryGrid strong { color: var(--text); font-size: var(--fs-13); line-height: 1; font-variant-numeric: tabular-nums; }
+.summaryGrid strong { color: var(--text); font-size: var(--fs-13); line-height: var(--lh-flat); font-variant-numeric: tabular-nums; }
 .summaryGrid .issueCard { border-color: color-mix(in srgb, var(--red) 32%, var(--border)); background: var(--red-soft); }
 .summaryGrid .issueCard strong { color: var(--red); }
 .previewToolbar { min-height: 50px; padding: var(--space-2) 18px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }

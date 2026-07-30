@@ -48,7 +48,7 @@ export default function QuotationPeopleFields({ value, onChange, disabled = fals
           {optionsFor(roles, current).map((name) => <option key={name} value={name}>{name}</option>)}
         </Select>
         {invalid && (
-          <span style={{ color: "var(--amber)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-medium)", lineHeight: 1.45 }}>
+          <span style={{ color: "var(--amber)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-medium)", lineHeight: "var(--lh-thai)" }}>
             “{current}” ไม่ใช่ {qtRoleText(key)} — เลือกชื่อใหม่ก่อนบันทึก
           </span>
         )}

@@ -34,7 +34,7 @@
 .blockedList { display: flex; flex-direction: column; gap: 10px; text-align: left; }
 .blockedRow { display: flex; flex-direction: column; gap: 2px; }
 .blockedRow strong { color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-bold); }
-.blockedRow span { color: var(--amber); font-size: var(--fs-4); line-height: 1.5; }
+.blockedRow span { color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-text); }
 .blockedRow a { align-self: flex-start; font-size: var(--fs-4); }
 .sourceGrid label, .documentMeta label, .contactField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .sourceGrid label > *, .documentMeta label > *, .contactField > * { margin-top: 6px; }
@@ -42,7 +42,7 @@
 .sourceSelect { width: 100%; min-width: 0; }
 
 .customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-6); }
-.infoBlock { display: flex; align-items: flex-start; gap: 10px; min-width: 0; color: var(--text-2); font-size: var(--fs-6); line-height: 1.5; }
+.infoBlock { display: flex; align-items: flex-start; gap: 10px; min-width: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
 .infoBlock svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent-ink); }
 
 .documentMeta { display: grid; grid-template-columns: repeat(3, minmax(190px, 280px)); align-items: end; gap: 18px; }

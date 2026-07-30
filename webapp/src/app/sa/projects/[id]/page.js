@@ -1500,7 +1500,7 @@ export default function ProjectDetailPage() {
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "12px", marginBottom: "14px", flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
-                <span style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: 1, color: accent, letterSpacing: "-1px" }}>
+                <span style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: accent, letterSpacing: "-1px" }}>
                   {pct}<span style={{ fontSize: "var(--fs-11)", fontWeight: "var(--fw-semibold)" }}>%</span>
                 </span>
                 <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "6px" }}>

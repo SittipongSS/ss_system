@@ -26,7 +26,7 @@
 .previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-3); padding: 14px var(--space-4); }
 .previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); }
-.previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
+.previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 /* เอกสารย่อตัวเองตามความกว้างที่ได้ (zoom ใน quotationMasterDocument) — ที่นี่แค่ให้พื้นที่ */
 .livePreview { width: 100%; height: 560px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 .previewInDrawer { height: 420px; }

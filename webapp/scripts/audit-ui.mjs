@@ -86,9 +86,23 @@ const RAW_SPACING_CAP = 723;
    การลบ CSS กำพร้า ไม่ได้เกิดจากการยุบจุดตัดจอจริง */
 const BREAKPOINT_CAP = 21;
 
+/* ความสูงบรรทัดที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+
+   ค่าที่ตรงขั้น `--lh-*` เป๊ะถูกยกเข้าโทเคนหมดแล้ว (2026-07-30) ที่เหลือคือค่าที่
+   อยู่ระหว่างขั้น: 1.55 ×9 · 1.4 ×7 · 1.35 ×7 · 1.7 ×3 · 1.25 ×3 · 1.65 ×3 · 1.1 · 1.3
+   การดูดเข้าขั้นคือ **ปรับดีไซน์จริง** ไม่ใช่เก็บกวาด — ความสูงบรรทัดคูณด้วยจำนวน
+   บรรทัด ยิ่งกล่องข้อความยาวยิ่งขยับเยอะ ต้องมีคนเปิดหน้าดูทีละจอ
+   (บทเรียนเดียวกับรอบระยะห่าง: เคยคิดว่า "ห่างนิดเดียวมองไม่เห็น" แล้ววัดจริง
+   ได้ 113 จาก 126 element ขยับ)
+
+   ⚠️ 6 จุดในนี้ต่ำกว่า 1.45 (1.1 · 1.25 ×3 · 1.3 · 1.35 ×7 · 1.4 ×7) = จุดเสี่ยง
+   สระไทยชนขอบ ถ้าจะแตะทีละหน้า ให้เริ่มจากพวกนี้ก่อน */
+const RAW_LINE_HEIGHT_CAP = 34;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
+let rawLineHeightCount = 0;
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -226,6 +240,13 @@ for (const file of uiFiles) {
         if (Number(hit[1]) > 0) rawSpacingCount += 1;
       }
     }
+  }
+
+  /* นับความสูงบรรทัดที่ยังเป็นเลขดิบ (ดู RAW_LINE_HEIGHT_CAP) — ทั้ง CSS และ JSX
+     เอกสารพิมพ์ยกเว้น: ประกอบ HTML เองและไม่โหลด globals.css โทเคนไม่มีค่าที่นั่น */
+  if (!rel.startsWith("src/components/documents/") && !rel.startsWith("src/lib/")) {
+    for (const _ of source.matchAll(/line-height:\s*[0-9.]+\s*[;}]/g)) rawLineHeightCount += 1;
+    for (const _ of source.matchAll(/lineHeight:\s*(?:"[0-9.]+"|'[0-9.]+'|[0-9.]+)\s*[,}]/g)) rawLineHeightCount += 1;
   }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
@@ -416,6 +437,12 @@ const failures = [
   ...(rawSpacingCount < RAW_SPACING_CAP
     ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
+  ...(rawLineHeightCount > RAW_LINE_HEIGHT_CAP
+    ? [`ความสูงบรรทัดเลขดิบเพิ่มขึ้น: ${rawLineHeightCount} > เพดาน ${RAW_LINE_HEIGHT_CAP} — หยิบขั้นจาก --lh-* (ข้อความไทยต้อง ≥ 1.45)`]
+    : []),
+  ...(rawLineHeightCount < RAW_LINE_HEIGHT_CAP
+    ? [`ความสูงบรรทัดเลขดิบลดได้แล้ว: เหลือ ${rawLineHeightCount} แต่ RAW_LINE_HEIGHT_CAP ยังเขียน ${RAW_LINE_HEIGHT_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -453,6 +480,7 @@ console.log(`Font-weight violations (นอกโทเคน --fw-*): ${fontWei
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ความสูงบรรทัดเลขดิบ: ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(

@@ -44,7 +44,7 @@
   margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-4);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .cardSkeleton {
@@ -217,7 +217,7 @@
   margin: 3px 0 0;
   color: var(--text-3);
   font-size: var(--fs-4);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 .previewBox {
@@ -295,7 +295,7 @@
   margin: 7px 0 0;
   color: var(--text-3);
   font-size: var(--fs-3);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .validationError {

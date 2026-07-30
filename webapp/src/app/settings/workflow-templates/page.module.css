@@ -26,7 +26,7 @@
 .editorPanel, .historyPanel { overflow: hidden; }
 .panelHeader { padding: 15px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .panelHeader h2 { color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
-.panelHeader p { margin-top: 3px; color: var(--text-3); font-size: var(--fs-5); line-height: 1.5; }
+.panelHeader p { margin-top: 3px; color: var(--text-3); font-size: var(--fs-5); line-height: var(--lh-text); }
 .editorActions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
 .metadataGrid { padding: var(--space-4) 18px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
 .metadataGrid label, .stepFormGrid label { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
@@ -87,7 +87,7 @@
 .versionSteps small { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-2); overflow-wrap: anywhere; }
 .previewBody { display: flex; flex-direction: column; gap: 14px; }
 .previewFilter { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
-.previewFilter small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-medium); line-height: 1.45; }
+.previewFilter small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-medium); line-height: var(--lh-thai); }
 .previewSummary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .previewSummary > div { padding: 9px 6px; border-radius: var(--radius); background: var(--panel); text-align: center; }
 .previewSummary strong { display: block; color: var(--text); font-size: var(--fs-9); }
@@ -103,7 +103,7 @@
 .previewRail::after { content: ""; position: absolute; top: 25px; bottom: -8px; left: 12px; width: 2px; background: var(--border); }
 .previewTimeline li:last-child .previewRail::after { display: none; }
 .previewRail i { position: relative; z-index: 1; width: 25px; height: 25px; border-radius: var(--radius-full); display: grid; place-items: center; color: var(--accent-ink); background: var(--accent-soft); font-size: var(--fs-2); font-style: normal; font-weight: var(--fw-bold); }
-.previewNote { padding: 9px 10px; border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-2); line-height: 1.5; }
+.previewNote { padding: 9px 10px; border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-2); line-height: var(--lh-text); }
 
 @media (max-width: 960px) {
   .templateTabs { grid-template-columns: 1fr; }

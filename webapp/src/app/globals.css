@@ -220,6 +220,24 @@
   --fw-semibold: 600;
   --fw-bold: 700;
 
+  /* ความสูงบรรทัด — ชั้นนี้มีไว้บังคับกฎ "ข้อความไทยต้อง ≥ 1.45" ให้เป็นของจริง
+
+     🔴 ที่มา (#794): ผู้ใช้ส่งภาพว่าป้ายสถานะชิดขอบ วัดจริงเหลือระยะ 0.8px
+     เพราะภาษาไทยมีสระบน/วรรณยุกต์ (ั ิ ี ่ ้ ๊ ๋) ยื่นเหนือความสูงตัวอักษรปกติ
+     คำอย่าง "รออนุมัติ" จึงชนขอบทุกใบ ขณะที่คำอังกฤษดูปกติ
+     ตั้งแต่นั้นกฎนี้เป็นแค่ **คอมเมนต์ที่ก๊อปตามกันไปทีละไฟล์** (ไฟล์เดียวเขียนซ้ำ 6 รอบ)
+     ใครลืมก๊อปก็ไม่มีอะไรฟ้อง — ตรวจ 2026-07-30 พบ 102 จุดกระจาย 14 ค่า โทเคน 0
+
+     ⚠️ สามตัวแรกอยู่ต่ำกว่า 1.45 โดยเจตนา ใช้ได้เฉพาะกล่องที่ **ไม่มีข้อความไทย**
+     (ตัวเลขล้วน · ป้ายนับ · กล่องไอคอน) ถ้าเผลอเอาไปใส่ข้อความไทยจะชนขอบทันที
+     ตัวที่ใช้กับข้อความต้อง ≥ 1.45 เสมอ — lineHeightScale.test.mjs บังคับไว้ */
+  --lh-none: 0;      /* กล่องไอคอนล้วน ไม่มีกล่องบรรทัด */
+  --lh-flat: 1;      /* ตัวเลขบรรทัดเดียว (tabular-nums) · ป้ายนับ */
+  --lh-tight: 1.2;   /* ตัวเลขใหญ่/หัวเรื่องสั้นที่คุมความสูงเอง */
+  --lh-thai: 1.45;   /* ขั้นต่ำของกล่องที่ห่อข้อความไทยแน่น ๆ (ป้าย/ชิป/แท็บ) */
+  --lh-text: 1.5;    /* ข้อความทั่วไป — ค่าที่วัดแล้วสมดุลบน/ล่างใน Badge (3.0/3.3px) */
+  --lh-relaxed: 1.6; /* ย่อหน้ายาวที่ต้องอ่านต่อเนื่อง */
+
   /* ⚠️ เคยมีชุด alias แบบ M3 อยู่ตรงนี้ (--surface-page/card/subtle/inset +
      --on-surface*) พร้อมคอมเมนต์สั่งว่า "ให้ feature CSS ยึดชื่อพวกนี้" — แต่ตรวจ
      2026-07-29 พบว่า **ไม่มีใครอ้างถึงสักจุดเดียว** ตั้งแต่วันที่ประกาศ ลบทิ้งแล้ว
@@ -379,7 +397,7 @@ body {
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0;
   font-size: var(--fs-8);
-  line-height: 1.5;
+  line-height: var(--lh-text);
   transition: background var(--motion-medium), color var(--motion-medium);
 }
 
@@ -1314,7 +1332,7 @@ h1, h2, h3, h4, h5, h6 {
   gap: var(--space-1);
 }
 .home-continue-title strong { color: var(--text); font-size: var(--fs-10); }
-.home-continue-title div > span { color: var(--text-2); font-size: var(--fs-6); line-height: 1.5; }
+.home-continue-title div > span { color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
 .home-continue-card .btn { min-height: 40px; margin-top: auto; }
 .home-systems { display: flex; flex-direction: column; gap: 14px; }
 .home-section-heading {
@@ -1371,7 +1389,7 @@ h1, h2, h3, h4, h5, h6 {
   gap: 6px;
 }
 .home-system-copy strong { color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-bold); }
-.home-system-copy > span { color: var(--text-2); font-size: var(--fs-7); line-height: 1.6; }
+.home-system-copy > span { color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); }
 .home-system-enter {
   margin-top: auto;
   align-self: flex-end;
@@ -1506,7 +1524,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-2);
   font-size: var(--fs-label);   /* ชื่อเดียวกับที่ Badge.module.css ใช้ — เทสต์เทียบสตริงตรง ๆ */
   font-weight: var(--fw-semibold);
-  line-height: 1.5;
+  line-height: var(--lh-text);
   vertical-align: middle;
 }
 
@@ -2035,7 +2053,7 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 220px;
   flex-direction: column;
   align-items: flex-start;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
 }
 .account-menu-identity .user-name {
   max-width: 100%;
@@ -2204,7 +2222,7 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0;
   color: var(--text-2);
   font-size: var(--fs-6);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 .fc-detail-statuses {
   grid-column: 1 / -1;
@@ -2229,7 +2247,7 @@ h1, h2, h3, h4, h5, h6 {
 .fc-detail-project-link {
   color: var(--text);
   font-weight: var(--fw-semibold);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -2808,7 +2826,7 @@ button.ui-kpi-card { cursor: pointer; }
   text-align: center;
   color: var(--text-3);
   font-size: var(--fs-7);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 .empty-state .es-icon { opacity: 0.45; }
 .empty-state .es-action { margin-top: var(--space-1); }
@@ -3009,7 +3027,7 @@ button.empty-state { width: 100%; font: inherit; }
   font-family: inherit;
   font-size: var(--fs-5);
   font-weight: var(--fw-semibold);
-  line-height: 1;
+  line-height: var(--lh-flat);
   border: none;
   border-radius: var(--radius);
   background: transparent;
@@ -3169,7 +3187,7 @@ button.empty-state { width: 100%; font: inherit; }
   font-family: var(--font-sans);
   font-weight: var(--fw-medium);
   font-size: var(--fs-7);
-  line-height: 1;
+  line-height: var(--lh-flat);
   padding: 10px 14px;
   cursor: pointer;
   position: relative;
@@ -3834,7 +3852,7 @@ button.empty-state { width: 100%; font: inherit; }
   gap: 10px;
   margin: 0;
   font-size: clamp(var(--fs-12), 2vw, var(--fs-page-title));
-  line-height: 1.2;
+  line-height: var(--lh-tight);
   letter-spacing: -.02em;
   font-weight: var(--fw-bold);
   color: var(--text);
@@ -4124,7 +4142,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   min-width: 28px;
   font-size: var(--fs-5);
   font-weight: var(--fw-bold);
-  line-height: 1;
+  line-height: var(--lh-flat);
   text-align: center;
 }
 .timeline-save-bar {
@@ -4461,7 +4479,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .shipment-print-head h1 {
   margin: var(--space-1) 0;
   font-size: var(--fs-14);
-  line-height: 1.2;
+  line-height: var(--lh-tight);
   text-wrap: balance;
 }
 

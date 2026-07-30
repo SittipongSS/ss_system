@@ -16,7 +16,7 @@
 .listPanel { padding: 0; overflow: hidden; }
 .panelHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) 18px; border-bottom: 1px solid var(--border); }
 .panelHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-10); }
-.panelHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
+.panelHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 .tableWrap { border: 0; border-radius: 0; }
 .tableWrap td > strong, .tableWrap td > small { display: block; }
 .tableWrap td > small { margin-top: 3px; color: var(--text-3); font-size: var(--fs-2); }
@@ -46,7 +46,7 @@
 .formSection label b { color: var(--accent-ink); }
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .full { grid-column: 1 / -1; }
-.help { margin: -5px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
+.help { margin: -5px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 .preview { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); }
 .preview > header { display: grid; gap: 3px; padding: 14px; border-top: 4px solid var(--accent); border-bottom: 1px solid var(--border); background: var(--panel-2); }
 .preview > header span { color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); letter-spacing: .04em; }
@@ -56,7 +56,7 @@
 .preview dl > div, .detailSection dl > div { display: grid; gap: 3px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .preview dl > div:last-child, .detailSection dl > div:last-child { border-bottom: 0; }
 .preview dt, .detailSection dt { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-semibold); }
-.preview dd, .detailSection dd { margin: 0; color: var(--text); font-size: var(--fs-6); line-height: 1.6; white-space: pre-wrap; }
+.preview dd, .detailSection dd { margin: 0; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-relaxed); white-space: pre-wrap; }
 .preview dd :global(.readable-text), .detailSection dd :global(.readable-text) { max-inline-size: none; }
 .drawerBody { display: grid; gap: var(--space-4); }
 .detailSection { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }

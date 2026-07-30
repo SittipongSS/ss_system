@@ -115,7 +115,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   return (
     <Modal open={open} onClose={close} title={`ยืนยัน Won · ${quote.quoteNumber || "ใบเสนอราคา"}`} size="md">
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ margin: 0, color: "var(--text-2)", lineHeight: 1.6 }}>
+        <p style={{ margin: 0, color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
           ยอดก่อน VAT <strong>{fmtMoney(wonAmount)}</strong> จะถูกบันทึกเป็นยอด Won (นับ AT ตามเดือนของวันที่เอกสาร)
           และใบเสนอราคาฉบับอื่นในดีลนี้จะถูก<strong>ปิดและล็อก</strong> แก้ไข/ลบไม่ได้
         </p>

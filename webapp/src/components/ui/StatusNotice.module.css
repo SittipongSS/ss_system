@@ -39,7 +39,7 @@
 
 .message {
   color: var(--text-2);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 .action {

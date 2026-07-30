@@ -11,7 +11,7 @@
 /* ⚠️ ค่าชุดนี้ก๊อปมาจาก DetailOverview.module.css `.overviewHeading h1` เป๊ะทุกบรรทัด
    (ตรวจเจอ 2026-07-29) — ถ้าจะแก้หัวเรื่องแบบยืดตามจอ ต้องแก้ทั้งสองที่ หรือยกหน้านี้
    ไปใช้ DetailOverview ให้จบ */
-.overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(var(--fs-12), 2vw, var(--fs-15)); font-weight: var(--fw-bold); line-height: 1.2; }
+.overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(var(--fs-12), 2vw, var(--fs-15)); font-weight: var(--fw-bold); line-height: var(--lh-tight); }
 .overviewHeading p { margin: 6px 0 0; color: var(--text-3); font-size: var(--fs-7); }
 .headerActions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 .liveBadge { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--green) 28%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); font-size: var(--fs-2); font-weight: var(--fw-bold); }

@@ -442,7 +442,7 @@ export default function TimelineWorkspace({
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: 1, color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
+                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
                 <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>

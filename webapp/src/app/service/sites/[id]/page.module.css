@@ -23,8 +23,7 @@
 
 .info dd {
   margin: 0;
-  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
-  line-height: 1.45;
+  line-height: var(--lh-thai);
   word-break: break-word;
 }
 

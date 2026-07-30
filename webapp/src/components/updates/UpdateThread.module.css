@@ -46,7 +46,7 @@
   border-left: 2px solid var(--border-strong);
   border-radius: 0 var(--radius) var(--radius) 0;
   background: var(--panel-2);
-  color: var(--text-2); font-size: var(--fs-5); line-height: 1.5;
+  color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text);
   overflow-wrap: anywhere;
 }
 .quote strong { color: var(--text-3); font-weight: var(--fw-bold); flex: 0 0 auto; }
@@ -95,7 +95,7 @@
 .pendingRemove {
   position: absolute; top: 2px; right: 2px; width: 20px; height: 20px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 50%; cursor: pointer; line-height: 0;
+  border: none; border-radius: 50%; cursor: pointer; line-height: var(--lh-none);
   background: color-mix(in srgb, var(--navy) 72%, transparent); color: var(--navy-fg);
 }
 .empty { font-size: var(--fs-7); color: var(--text-3); }
