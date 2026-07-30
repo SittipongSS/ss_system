@@ -99,10 +99,28 @@ const BREAKPOINT_CAP = 21;
    สระไทยชนขอบ ถ้าจะแตะทีละหน้า ให้เริ่มจากพวกนี้ก่อน */
 const RAW_LINE_HEIGHT_CAP = 34;
 
+/* ความมนมุมที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+
+   ค่าที่ตรงขั้นเป๊ะถูกยกเข้าโทเคนหมดแล้ว (2026-07-30) — 8px → --radius ·
+   10px → --radius-md · 999px → --radius-full (ย่อตาม scale factor เท่ากับ 9999px เป๊ะ)
+   ที่เหลือคือค่าระหว่างขั้น: 9px ×5 · 2px ×5 · 7px ×3 · 6px ×2 · 14px ×2 · 3px ×2 · 5px · 11px · 4px
+
+   ไม่นับ (คนละเรื่อง ไม่ใช่หนี้):
+   - `50%` — เปอร์เซ็นต์กับความยาวไม่เท่ากันบน element ที่ไม่จัตุรัส (วงรี vs แคปซูล)
+   - `0` / `inherit` — ศูนย์ไม่ต้องมีชื่อ
+   - ค่าราย 4 มุม (`3px 3px 0 0`) — ต้องดูทีละมุม ไม่ใช่ค่าเดียวที่หยิบจากขั้นได้
+
+   🪤 **ห้ามเพิ่มชื่อ `--radius-*` ใหม่เพื่อรองรับค่าที่เหลือ** — Tailwind v4 อ่าน
+   namespace นี้เองและเอาไปทำ utility `rounded-*` (ในโค้ดมีใช้ 58 จุด) การเพิ่ม
+   `--radius-sm` = เปลี่ยนความหมายของ `rounded-sm` ทั้งระบบเงียบ ๆ
+   (เคยเจอทางกลับมาแล้ว: ลบ --radius-xl ที่ "ไม่มีใครใช้" แล้วมุมหด 16→12px) */
+const RAW_RADIUS_CAP = 22;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
 let rawLineHeightCount = 0;
+let rawRadiusCount = 0;
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -247,6 +265,15 @@ for (const file of uiFiles) {
   if (!rel.startsWith("src/components/documents/") && !rel.startsWith("src/lib/")) {
     for (const _ of source.matchAll(/line-height:\s*[0-9.]+\s*[;}]/g)) rawLineHeightCount += 1;
     for (const _ of source.matchAll(/lineHeight:\s*(?:"[0-9.]+"|'[0-9.]+'|[0-9.]+)\s*[,}]/g)) rawLineHeightCount += 1;
+
+    /* ความมนมุมเลขดิบ (ดู RAW_RADIUS_CAP) — เฉพาะ **ค่าเดียวที่เป็นความยาว**
+       ข้าม % (คนละความหมาย) · 0 / inherit · และค่าราย 4 มุมที่ต้องดูทีละมุม */
+    for (const hit of source.matchAll(/border-radius:\s*([^;{}]+)/g)) {
+      const value = hit[1].trim();
+      if (/\s/.test(value) || value.includes("var(") || value.endsWith("%")) continue;
+      if (/^0[a-z]*$/.test(value) || value === "inherit") continue;
+      if (/^[0-9.]+(?:px|rem|em)$/.test(value)) rawRadiusCount += 1;
+    }
   }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
@@ -443,6 +470,12 @@ const failures = [
   ...(rawLineHeightCount < RAW_LINE_HEIGHT_CAP
     ? [`ความสูงบรรทัดเลขดิบลดได้แล้ว: เหลือ ${rawLineHeightCount} แต่ RAW_LINE_HEIGHT_CAP ยังเขียน ${RAW_LINE_HEIGHT_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawRadiusCount > RAW_RADIUS_CAP
+    ? [`ความมนมุมเลขดิบเพิ่มขึ้น: ${rawRadiusCount} > เพดาน ${RAW_RADIUS_CAP} — หยิบขั้นจาก --radius-* (ห้ามตั้งชื่อใหม่ Tailwind อ่าน namespace นี้)`]
+    : []),
+  ...(rawRadiusCount < RAW_RADIUS_CAP
+    ? [`ความมนมุมเลขดิบลดได้แล้ว: เหลือ ${rawRadiusCount} แต่ RAW_RADIUS_CAP ยังเขียน ${RAW_RADIUS_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -481,6 +514,7 @@ console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolat
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ความสูงบรรทัดเลขดิบ: ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ความมนมุมเลขดิบ: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(

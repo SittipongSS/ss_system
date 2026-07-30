@@ -38,7 +38,7 @@
 .muted { color: var(--text-3); }
 .rowActions { display: flex; justify-content: flex-end; gap: var(--space-1); }
 
-.statusBadge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 9px; border-radius: 999px; font-size: var(--fs-4); font-weight: var(--fw-bold); border: 1px solid transparent; }
+.statusBadge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 9px; border-radius: var(--radius-full); font-size: var(--fs-4); font-weight: var(--fw-bold); border: 1px solid transparent; }
 .active { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
 .inactive { color: var(--text-3); background: var(--panel-3); border-color: var(--border); }
 

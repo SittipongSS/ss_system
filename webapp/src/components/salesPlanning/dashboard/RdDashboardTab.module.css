@@ -14,7 +14,7 @@
 .overviewHeading h2 { margin: 0; color: var(--text); font-size: clamp(var(--fs-12), 2vw, var(--fs-15)); font-weight: var(--fw-bold); line-height: var(--lh-tight); }
 .overviewHeading p { margin: 6px 0 0; color: var(--text-3); font-size: var(--fs-7); }
 .headerActions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
-.liveBadge { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--green) 28%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); font-size: var(--fs-2); font-weight: var(--fw-bold); }
+.liveBadge { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--green) 28%, transparent); border-radius: var(--radius-full); background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); font-size: var(--fs-2); font-weight: var(--fw-bold); }
 
 .quickFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 68%, transparent); }
 .quickFacts > div { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px var(--space-4); border-right: 1px solid var(--border); }
@@ -33,7 +33,7 @@
 .sectionTitle h3 { margin: 0; color: var(--text); font-size: var(--fs-9); }
 .sectionTitle span { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-4); }
 .filters { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.filters button { border: 0; border-radius: 999px; padding: 5px 9px; background: transparent; color: var(--text-3); cursor: pointer; font-size: var(--fs-5); }
+.filters button { border: 0; border-radius: var(--radius-full); padding: 5px 9px; background: transparent; color: var(--text-3); cursor: pointer; font-size: var(--fs-5); }
 .filters .activeFilter { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-ink); font-weight: var(--fw-bold); }
 .feed { display: flex; flex-direction: column; }
 .post { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: var(--space-4) 18px; border-bottom: 1px solid var(--border); transition: background var(--motion-medium) ease; }
@@ -55,7 +55,7 @@
 .important { color: var(--amber); font-weight: var(--fw-bold); }
 .taskPost { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent); }
 .taskAvatar { border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-ink); }
-.typeLabel, .taskStatus { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); }
+.typeLabel, .taskStatus { padding: 2px 6px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); }
 .taskStatus.completed { background: color-mix(in srgb, var(--green) 11%, transparent); color: var(--green); }
 .taskDue { color: var(--text-3); }
 
@@ -72,7 +72,7 @@
 .queueItem p, .queueItem small { margin: 0; color: var(--text-3); font-size: var(--fs-3); }
 .teamCard { padding: var(--space-4) 18px; }
 .teamFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
-.teamFacts p { margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel-2) 60%, transparent); color: var(--text-3); font-size: var(--fs-2); }
+.teamFacts p { margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--panel-2) 60%, transparent); color: var(--text-3); font-size: var(--fs-2); }
 .teamFacts strong { display: block; margin-top: 2px; color: var(--text); font-size: var(--fs-10); }
 .empty { padding: var(--space-7); color: var(--text-3); text-align: center; font-size: var(--fs-7); }
 

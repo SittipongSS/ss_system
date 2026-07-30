@@ -539,12 +539,12 @@ button, select, input, textarea {
 .date-calendar-header button,
 .date-calendar-grid button,
 .date-calendar-footer button { border: 0; background: transparent; color: inherit; cursor: pointer; }
-.date-calendar-header button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; }
+.date-calendar-header button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--radius); }
 .date-calendar-header button:hover { background: var(--panel-2); }
 .date-calendar-weekdays,
 .date-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .date-calendar-weekdays span { padding: var(--space-1) 0; text-align: center; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
-.date-calendar-grid button { aspect-ratio: 1; border-radius: 8px; font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
+.date-calendar-grid button { aspect-ratio: 1; border-radius: var(--radius); font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
 .date-calendar-grid button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
 .date-calendar-grid button.outside { color: var(--text-3); opacity: 0.55; }
 .date-calendar-grid button.today:not(.selected) {
@@ -793,7 +793,7 @@ button, select, input, textarea {
   gap: 6px;
   height: 36px;
   padding: 0 13px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   /* T2 (มติ 2026-07-18): pill เงียบ — ตัดขอบขาวออก เหลือพื้นจางอย่างเดียว
      (ลดเสียงให้เข้าภาษานำทางใหม่ที่เลิกใช้กล่อง pill) */
   background: rgba(255, 255, 255, 0.10);
@@ -928,7 +928,7 @@ button, select, input, textarea {
   gap: 7px;
   padding: 0 11px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.88);
   font-size: var(--fs-7);
@@ -979,7 +979,7 @@ button, select, input, textarea {
     margin-left: auto;
     flex: 0 0 40px;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: rgba(255, 255, 255, 0.1);
     color: #fff;
     cursor: pointer;
@@ -1039,7 +1039,7 @@ button, select, input, textarea {
     min-height: 48px;
     padding: var(--space-2) 6px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: transparent;
     color: var(--text-2);
     text-decoration: none;
@@ -1132,7 +1132,7 @@ h1, h2, h3, h4, h5, h6 {
   height: 32px;
   font-family: var(--font-mono);
   letter-spacing: .02em;
-  border-radius: 8px;
+  border-radius: var(--radius);
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -2553,7 +2553,7 @@ button.ui-kpi-card { cursor: pointer; }
   justify-content: space-between;
   gap: 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -2594,7 +2594,7 @@ button.ui-kpi-card { cursor: pointer; }
   align-items: center;
   gap: 7px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text-3);
 }
@@ -2843,7 +2843,7 @@ button.ui-kpi-card { cursor: pointer; }
   gap: var(--space-2);
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: var(--space-3) 14px;
   margin: 0 0 18px;
   font-size: var(--fs-6);
@@ -3408,7 +3408,7 @@ button.empty-state { width: 100%; font: inherit; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -3869,7 +3869,7 @@ button.empty-state { width: 100%; font: inherit; }
   padding: 0;
   display: inline-grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent-ink);
   flex-shrink: 0;
@@ -4030,7 +4030,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   min-height: 38px;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 7px var(--space-3);
   display: flex;
   align-items: center;
@@ -4425,7 +4425,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   background: #fff;
   color: #171717;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: var(--space-7);
   box-shadow: var(--shadow-sm);
 }
@@ -4710,7 +4710,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   pointer-events: none;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 10px 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   color: var(--text-1);

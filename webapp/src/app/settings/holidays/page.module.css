@@ -26,7 +26,7 @@
 .weekHead > .weekend { color: var(--red); }
 
 /* ช่องวัน = ปุ่มจริง (คีย์บอร์ด/screen reader เข้าถึงได้) — disabled เมื่อกดไม่ได้ */
-.day { min-height: 74px; padding: 6px var(--space-2); display: flex; flex-direction: column; gap: 2px; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.day { min-height: 74px; padding: 6px var(--space-2); display: flex; flex-direction: column; gap: 2px; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .day:hover:not(:disabled) { border-color: var(--border-strong); background: var(--panel-2); }
 .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .day:disabled { cursor: default; }

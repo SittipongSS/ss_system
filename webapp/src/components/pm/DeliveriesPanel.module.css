@@ -70,7 +70,7 @@
   margin-inline-start: 6px;
   padding: 1px 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: var(--fs-1);
   color: var(--text-3);
   white-space: nowrap;
@@ -81,7 +81,7 @@
   margin-inline-start: 6px;
   padding: 1px 6px;
   border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--amber) 10%, transparent);
   font-size: var(--fs-1);
   color: var(--text-2);

@@ -49,7 +49,7 @@
 .today {
   display: inline-block;
   min-width: 22px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--accent-ink);
 }
