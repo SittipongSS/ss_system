@@ -1,0 +1,35 @@
+/* โมดัลนำเข้าวันหยุดจากปฏิทิน Google — token ล้วน ธีมมืดตามอัตโนมัติ */
+
+.body { display: grid; gap: var(--space-3); padding: var(--space-4); }
+
+.toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.toolbarLabel { color: var(--text-2); font-size: var(--fs-5); font-weight: 600; }
+.yearPicker { min-width: 120px; }
+.summary { color: var(--text-2); font-size: var(--fs-5); }
+
+.hint { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.55; }
+.hint b { color: var(--text-2); }
+
+.errorBox { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); text-align: center; }
+.errorBox svg { color: var(--amber); }
+.errorBox p { margin: 0; }
+
+.tableWrap { max-height: 52vh; }
+.tableWrap td { vertical-align: middle; }
+.checkCell { width: 36px; text-align: center; }
+.dowCell { width: 52px; }
+.dateCell { white-space: nowrap; font-weight: 600; }
+.currentName { color: var(--text-3); font-size: var(--fs-5); }
+.weekend { color: var(--red); }
+/* แถวที่ไม่ได้ติ๊ก = ยังไม่ถูกบันทึก ถอยไปเป็นพื้นหลังให้แถวที่เลือกเด่นขึ้น */
+.dim td { color: var(--text-3); }
+
+/* รูปทรงป้ายมาจาก .ui-badge กลาง — ที่นี่จัดแค่การวางเรียง */
+.tags { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+
+.actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+@media (max-width: 640px) {
+  .dowCell, .dim td:nth-child(3), .tableWrap td:nth-child(3), .tableWrap th:nth-child(3) { display: none; }
+  .actions button { flex: 1; min-height: 40px; justify-content: center; }
+}

@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 // ปฏิทินวันหยุด — ข้อมูลปฏิบัติการ แก้ตรงบนตารางเดิม (Decision 0012 ฉบับแก้ไขครั้งที่ 2:
 // ไม่ใช้ชั้นร่าง/เผยแพร่) — เพิ่มผ่าน Modal ทางเดียว ส่วนการลบยืนยันผ่าน ConfirmDialog (no-auto-save)
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
+import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange, CalendarPlus } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -12,7 +12,10 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
+import Button from "@/components/ui/Button";
+import HolidayImportModal from "@/components/master/HolidayImportModal";
 import { useCan } from "@/lib/roleContext";
+import { primeCache } from "@/lib/apiCache";
 import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCoverage";
 import styles from "./page.module.css";
 
@@ -47,6 +50,8 @@ export default function HolidaysPage() {
   const [addForm, setAddForm] = useState(null);
   // การลบผ่าน dialog ยืนยัน: { date, name }
   const [pendingDelete, setPendingDelete] = useState(null);
+  // นำเข้าจากปฏิทิน Google: null = ปิด, ตัวเลขปี = เปิดโดยตั้งปีนั้นไว้ให้
+  const [importYear, setImportYear] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -100,6 +105,13 @@ export default function HolidaysPage() {
     [holidays, now, tab, cursor.y],
   );
 
+  // หน้าอื่น (ปฏิทินผู้บริหาร/ไทม์ไลน์ดีล) อ่าน /api/holidays ผ่าน cachedFetchJson ที่
+  // จำไว้ 2 นาที — ไม่ prime ที่นี่ ผู้ใช้แก้วันหยุดเสร็จแล้วเดินไปหน้าอื่นจะยังเห็นของเก่า
+  const applyHolidays = useCallback((next) => {
+    setHolidays(next);
+    primeCache("/api/holidays", next);
+  }, []);
+
   const addHoliday = async (date, name) => {
     const res = await fetch("/api/holidays", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -107,7 +119,7 @@ export default function HolidaysPage() {
     });
     if (res.ok) {
       const saved = await res.json();
-      setHolidays((prev) => [...prev, saved].sort((a, b) => a.date.localeCompare(b.date)));
+      applyHolidays([...holidays, saved].sort((a, b) => a.date.localeCompare(b.date)));
       return true;
     }
     setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ" });
@@ -117,7 +129,7 @@ export default function HolidaysPage() {
   const removeHoliday = async (date) => {
     const res = await fetch(`/api/holidays/${date}`, { method: "DELETE" });
     if (res.ok) {
-      setHolidays((prev) => prev.filter((holiday) => holiday.date !== date));
+      applyHolidays(holidays.filter((holiday) => holiday.date !== date));
       return true;
     }
     setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
@@ -211,6 +223,12 @@ export default function HolidaysPage() {
             <strong>ยังไม่มีวันหยุดปี {year} ในระบบ</strong> — ไทม์ไลน์โครงการที่กินเวลาข้ามไปปี {year} จะนับวันหยุดของปีนั้นเป็น<b>วันทำการทั้งหมด</b> กำหนดส่งงานจะเร็วกว่าความจริง
             {canManage && " · กรอกวันหยุดปีนั้นล่วงหน้าก่อนเริ่มวางแผนงานข้ามปี"}
           </p>
+          {/* ปุ่มอยู่ตรงจุดที่ผู้ใช้เพิ่งรู้ตัวว่าขาดอะไร ไม่ต้องไปหาเองในแท็บอื่น */}
+          {canManage && (
+            <Button size="sm" icon={<CalendarPlus size={14} />} onClick={() => setImportYear(year)}>
+              นำเข้าจาก Google
+            </Button>
+          )}
         </div>
       ))}
 
@@ -304,6 +322,11 @@ export default function HolidaysPage() {
             <span className={styles.listSummary}>{byYear.length} ปีในระบบ</span>
             <span className="spacer" />
             {canManage && (
+              <Button icon={<CalendarPlus size={16} />} onClick={() => setImportYear(Number(activeYear === "all" ? now.getFullYear() : activeYear))}>
+                นำเข้าจาก Google
+              </Button>
+            )}
+            {canManage && (
               <button type="button" className="btn btn-accent" onClick={openAdd}><Plus size={16} /> เพิ่มวันหยุด</button>
             )}
           </div>
@@ -392,6 +415,21 @@ export default function HolidaysPage() {
           </div>
         </form>
       </Modal>
+
+      {/* นำเข้าจากปฏิทิน Google — ทางเข้าสองจุด (แบนเนอร์เตือน / toolbar) ใช้โมดัลตัวเดียว */}
+      <HolidayImportModal
+        open={importYear !== null}
+        initialYear={importYear}
+        onClose={() => setImportYear(null)}
+        onDone={({ year, summary, holidays: saved }) => {
+          if (Array.isArray(saved)) applyHolidays(saved);
+          setImportYear(null);
+          setToast({
+            kind: "success",
+            msg: `นำเข้าวันหยุดปี ${year} แล้ว — เพิ่ม ${summary.inserted} วัน${summary.renamed ? ` · แก้ชื่อ ${summary.renamed} วัน` : ""}`,
+          });
+        }}
+      />
 
       <ConfirmDialog
         open={!!pendingDelete}
