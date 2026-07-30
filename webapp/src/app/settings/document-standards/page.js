@@ -33,6 +33,7 @@ import { renderQuotationMasterDocumentHTML } from "@/lib/sales/quotationMasterDo
 import { buildBillPrintHTML } from "@/lib/tax/billPrint";
 import base from "../company/page.module.css";
 import styles from "./page.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EMPTY_FORM = {
   titleTh: "",
@@ -142,7 +143,7 @@ function DocumentStandardFields({ form, setForm }) {
       </section>
       <section className={base.formSection}>
         <h4>หลักฐานการเปลี่ยนแปลง</h4>
-        <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><textarea className="premium-input" value={form.changeNote} onChange={(event) => update("changeNote", event.target.value)} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการมาตรฐานที่เปลี่ยน" /></label>
+        <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><Textarea value={form.changeNote} onChange={(event) => update("changeNote", event.target.value)} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการมาตรฐานที่เปลี่ยน" /></label>
       </section>
     </>
   );

@@ -51,6 +51,7 @@ import { latestRevision, revisionTiers, tierUnitPrice } from "@/lib/materialPric
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 import { productSelectOptions } from "@/components/master/productOption";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import Textarea from "@/components/ui/Textarea";
 
 const money = (value) => (value == null
   ? "—"
@@ -937,8 +938,8 @@ export default function CostingDetailPage() {
       <Modal open={pendingCancel} onClose={() => setPendingCancel(false)} title="ยกเลิกใบขอราคา" size="sm" dismissible={!saving}>
         <div className="form-group">
           <label htmlFor="cr-cancel-reason">เหตุผลที่ยกเลิก</label>
-          <textarea
-            id="cr-cancel-reason" className="textarea-premium" rows={3} maxLength={500}
+          <Textarea variant="data"
+            id="cr-cancel-reason" rows={3} maxLength={500}
             placeholder="เช่น ดีลไม่ไปต่อ / ลูกค้าเปลี่ยนสเปก"
             value={cancelReason}
             onChange={(e) => setCancelReason(e.target.value)}
@@ -977,8 +978,8 @@ export default function CostingDetailPage() {
               {decision.mode === "return" ? (
                 <div className="form-group">
                   <label htmlFor="cr-return-reason">เหตุผลที่ตีกลับ</label>
-                  <textarea
-                    id="cr-return-reason" className="textarea-premium" rows={3} maxLength={500}
+                  <Textarea variant="data"
+                    id="cr-return-reason" rows={3} maxLength={500}
                     placeholder="เช่น ต้นทุนบรรจุภัณฑ์สูงผิดปกติ ให้ตรวจสอบราคาใหม่"
                     value={returnReason}
                     onChange={(e) => setReturnReason(e.target.value)}

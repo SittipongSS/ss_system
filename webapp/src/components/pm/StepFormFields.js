@@ -9,6 +9,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
+import Textarea from "@/components/ui/Textarea";
 
 export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 
@@ -132,7 +133,7 @@ export default function StepFormFields({
 
       <div className="form-group">
         <label>หมายเหตุ</label>
-        <textarea value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
+        <Textarea value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
         <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
           <input type="checkbox" checked={!!form.showNoteInPrint} onChange={(e) => setForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
           แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร

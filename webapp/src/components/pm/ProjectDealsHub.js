@@ -18,6 +18,7 @@ import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/sa
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
+import Textarea from "@/components/ui/Textarea";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -316,8 +317,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           <div className="form-group"><label>ประเภท</label><Select fullWidth value={kind} onChange={(event) => setKind(event.target.value)}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
           <div className="form-group">
             <label>รายละเอียด</label>
-            <textarea
-              className="premium-input w-full"
+            <Textarea className="w-full"
               rows={2}
               value={body}
               onChange={(event) => setBody(event.target.value)}
@@ -363,7 +363,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
         {editing && (
           <form onSubmit={updateActivity} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div className="form-group"><label>ประเภท</label><Select fullWidth value={editing.kind} onChange={(event) => setEditing((current) => ({ ...current, kind: event.target.value }))}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
-            <div className="form-group"><label>รายละเอียด</label><textarea className="premium-input w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
+            <div className="form-group"><label>รายละเอียด</label><Textarea className="w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
             <div className="form-action-bar">
               <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)} disabled={!!activityBusy}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={!!activityBusy || !editing.body.trim()}>{activityBusy ? "กำลังบันทึก..." : "บันทึก"}</button>

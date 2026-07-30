@@ -34,6 +34,7 @@ import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import Textarea from "@/components/ui/Textarea";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -472,8 +473,8 @@ export default function MaterialAskDetailPage() {
           <>
             <div className="form-group">
               <label htmlFor="ask-no-quote">เหตุผล</label>
-              <textarea
-                id="ask-no-quote" className="textarea-premium" rows={3} maxLength={500}
+              <Textarea variant="data"
+                id="ask-no-quote" rows={3} maxLength={500}
                 value={noQuote.reason} disabled={saving}
                 placeholder="เช่น โรงงานไม่รับผลิตขนาดนี้ / เลิกผลิตแล้ว / ต้องขอสเปกเพิ่ม"
                 onChange={(e) => setNoQuote({ ...noQuote, reason: e.target.value })}
@@ -588,8 +589,8 @@ export default function MaterialAskDetailPage() {
       <Modal open={!!cancelReason} onClose={() => setCancelReason("")} title="ยกเลิกเคสขอราคา" size="sm" dismissible={!saving}>
         <div className="form-group">
           <label htmlFor="ask-cancel">เหตุผลที่ยกเลิก</label>
-          <textarea
-            id="ask-cancel" className="textarea-premium" rows={3} maxLength={500}
+          <Textarea variant="data"
+            id="ask-cancel" rows={3} maxLength={500}
             value={cancelReason.trim() ? cancelReason : ""} disabled={saving}
             onChange={(e) => setCancelReason(e.target.value || " ")}
           />

@@ -28,6 +28,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
+import Textarea from "@/components/ui/Textarea";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -895,7 +896,7 @@ export default function SalesPlanningPipelinePage() {
               </label>
               <label style={{ gridColumn: "1 / -1" }}>
                 หมายเหตุ
-                <textarea className="premium-input" rows={2} value={docForm.notes} onChange={(e) => setDocForm({ ...docForm, notes: e.target.value })} />
+                <Textarea rows={2} value={docForm.notes} onChange={(e) => setDocForm({ ...docForm, notes: e.target.value })} />
               </label>
               <div className="form-action-bar">
                 <button type="submit" className="btn btn-primary" disabled={docLoading}>

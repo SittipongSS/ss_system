@@ -28,6 +28,7 @@ import {
 } from "@/lib/master/attachmentTypes";
 import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -308,8 +309,7 @@ export default function UpdateThread({
                                 )}
                               </div>
                             )}
-                            <textarea
-                              className="premium-input" rows={2} value={editing.body} disabled={busy}
+                            <Textarea rows={2} value={editing.body} disabled={busy}
                               aria-label="แก้ข้อความ"
                               onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
                             />
@@ -387,8 +387,7 @@ export default function UpdateThread({
               )}
             </div>
           )}
-          <textarea
-            className="premium-input" rows={2} value={text} disabled={busy}
+          <Textarea rows={2} value={text} disabled={busy}
             placeholder={placeholder} aria-label="ข้อความอัปเดต"
             onChange={(e) => setText(e.target.value)}
             onPaste={allowAttachments ? (e) => pickFiles(e.clipboardData?.files) : undefined}

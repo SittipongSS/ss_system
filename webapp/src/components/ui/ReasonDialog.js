@@ -3,6 +3,7 @@
 import Modal from "@/components/Modal";
 import styles from "./ReasonDialog.module.css";
 import Button from "./Button";
+import Textarea from "@/components/ui/Textarea";
 
 export default function ReasonDialog({
   open,
@@ -35,8 +36,7 @@ export default function ReasonDialog({
         {detail ? <div className={`${styles.detail} ${styles[tone] || styles.warning}`}>{detail}</div> : null}
         <label className="form-group">
           <span>{label} *</span>
-          <textarea
-            className="textarea-premium"
+          <Textarea variant="data"
             rows={rows}
             required
             minLength={minLength}

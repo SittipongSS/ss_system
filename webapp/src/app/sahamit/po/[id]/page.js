@@ -29,6 +29,7 @@ import ConfirmModal from "@/components/tax/ConfirmModal";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import Textarea from "@/components/ui/Textarea";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -610,7 +611,7 @@ export default function PoDetailPage() {
               <div className="form-group" style={{ flex: 1 }}>
                 <label>หมายเหตุ</label>
                 {canEdit
-                  ? <textarea className="premium-input" rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
+                  ? <Textarea rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
                   : <div className="readable-field"><ReadableText text={h.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div>}
               </div>
             </div>

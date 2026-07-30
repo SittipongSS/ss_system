@@ -28,6 +28,7 @@ import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
+import Textarea from "@/components/ui/Textarea";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -909,7 +910,7 @@ export default function TasksPage() {
             <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
               งาน <strong style={{ color: "var(--text)" }}>{lateModal.task.title}</strong> เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน
             </div>
-            <textarea className="premium-input" rows={3} value={lateModal.reason}
+            <Textarea rows={3} value={lateModal.reason}
               onChange={(e) => setLateModal((v) => ({ ...v, reason: e.target.value }))}
               placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." autoFocus />
             <div className="form-action-inline">

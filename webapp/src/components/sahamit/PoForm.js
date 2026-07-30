@@ -14,6 +14,7 @@ import { DestinationToggle } from "@/components/sahamit/destinations";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
+import Textarea from "@/components/ui/Textarea";
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -143,7 +144,7 @@ export default function PoForm({
               <ReadableText text={header.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} />
             </div>
           ) : (
-            <textarea className="premium-input" rows={2} value={header.note}
+            <Textarea rows={2} value={header.note}
               onChange={(e) => onHeader({ note: e.target.value })} placeholder="(ไม่บังคับ)" />
           )}
         </div>

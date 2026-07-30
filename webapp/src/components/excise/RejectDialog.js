@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import Textarea from "@/components/ui/Textarea";
 
 // Generic "send back for correction" dialog (registrations + orders). Collects a
 // required reason and calls async `onConfirm(reason)`; surfaces errors inline.
@@ -46,9 +47,8 @@ export default function RejectDialog({
           <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             {reasonLabel || `เหตุผลที่ตีกลับ ${entityLabel}`} <span style={{ color: "var(--red)" }}>*</span>
           </label>
-          <textarea
-            value={reason} onChange={(e) => setReason(e.target.value)} rows={3} autoFocus
-            className="premium-input w-full" placeholder={placeholder}
+          <Textarea
+            value={reason} onChange={(e) => setReason(e.target.value)} rows={3} autoFocus className="w-full" placeholder={placeholder}
             style={{ resize: "vertical" }}
           />
           {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }}>{error}</div>}

@@ -30,6 +30,7 @@ import {
 import { categoryFlags } from "@/lib/master/categoryOf";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EMPTY_STEP = {
   stepKey: "",
@@ -436,8 +437,8 @@ export default function WorkflowTemplatesPage() {
 
               <div className={styles.metadataGrid}>
                 <label><span>ชื่อ Template <b>*</b></span><input value={editor.nameTh} maxLength={WORKFLOW_TEMPLATE_LIMITS.nameTh} onChange={(event) => setEditor({ ...editor, nameTh: event.target.value })} /></label>
-                <label><span>คำอธิบาย</span><textarea value={editor.description} maxLength={WORKFLOW_TEMPLATE_LIMITS.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} /></label>
-                <label className={styles.full}><span>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b></span><textarea value={editor.changeNote} maxLength={WORKFLOW_TEMPLATE_LIMITS.changeNote} onChange={(event) => setEditor({ ...editor, changeNote: event.target.value })} placeholder="อธิบายว่าเปลี่ยนอะไรและเพราะเหตุใด" /></label>
+                <label><span>คำอธิบาย</span><Textarea value={editor.description} maxLength={WORKFLOW_TEMPLATE_LIMITS.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} /></label>
+                <label className={styles.full}><span>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b></span><Textarea value={editor.changeNote} maxLength={WORKFLOW_TEMPLATE_LIMITS.changeNote} onChange={(event) => setEditor({ ...editor, changeNote: event.target.value })} placeholder="อธิบายว่าเปลี่ยนอะไรและเพราะเหตุใด" /></label>
               </div>
 
               <div className={styles.stepsHeader}>

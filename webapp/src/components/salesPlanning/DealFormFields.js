@@ -25,6 +25,7 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
+import Textarea from "@/components/ui/Textarea";
 
 // จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17).
 // ปล่อยไหลแล้วคุมไม่ได้: จำนวนช่องเปลี่ยนตาม showProject และ ProductCategorySelect
@@ -226,7 +227,7 @@ export default function DealFormFields({
 
       <label className="deal-field" style={{ gridColumn: "1 / -1" }}>
         รายละเอียด
-        <textarea className="premium-input" rows={3} value={form.notes || ""} onChange={(e) => set("notes")(e.target.value)} />
+        <Textarea rows={3} value={form.notes || ""} onChange={(e) => set("notes")(e.target.value)} />
       </label>
     </>
   );

@@ -7,6 +7,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { matchesRemarksPreset, remarksPresetToFormValue } from "@/lib/commercialPresets";
 import CommercialPresetPicker from "./CommercialPresetPicker";
 import styles from "./QuotationNotes.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 export default function QuotationNotes({
   value = "",
@@ -47,8 +48,7 @@ export default function QuotationNotes({
           />
         </div>
       ) : (
-        <textarea
-          className="premium-input"
+        <Textarea
           rows={4}
           value={value}
           placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา"

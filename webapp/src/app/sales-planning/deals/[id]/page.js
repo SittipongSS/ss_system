@@ -38,6 +38,7 @@ import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
+import Textarea from "@/components/ui/Textarea";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -1197,7 +1198,7 @@ export default function DealOverviewPage() {
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             เหตุผล (ไม่บังคับ)
-            <textarea
+            <Textarea
               rows={3}
               value={lostReason}
               onChange={(e) => setLostReason(e.target.value)}

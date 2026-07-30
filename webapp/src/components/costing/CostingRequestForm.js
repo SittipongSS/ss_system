@@ -11,6 +11,7 @@ import { Plus, Trash2 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import EmptyState from "@/components/ui/EmptyState";
+import Textarea from "@/components/ui/Textarea";
 
 export function emptyCostingItem() {
   return { id: null, categoryCode: "", productLabel: "", fragranceName: "" };
@@ -152,8 +153,8 @@ export default function CostingRequestForm({
 
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="cr-note">หมายเหตุ</label>
-          <textarea
-            id="cr-note" className="textarea-premium" rows={2} maxLength={2000}
+          <Textarea variant="data"
+            id="cr-note" rows={2} maxLength={2000}
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
           />

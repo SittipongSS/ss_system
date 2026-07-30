@@ -7,6 +7,7 @@
 //                   และลูกค้าล็อก (ตัวตนของกลิ่นผูกกับลูกค้า — มติ 9)
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import styles from "./registryForm.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 export const emptyScentForm = () => ({
   name: "",
@@ -73,8 +74,8 @@ export default function ScentForm({
 
       <div className="form-group col-span-2">
         <label htmlFor="scent-note">หมายเหตุ</label>
-        <textarea
-          id="scent-note" className="premium-input" rows={3} value={value.note} disabled={disabled}
+        <Textarea
+          id="scent-note" rows={3} value={value.note} disabled={disabled}
           placeholder="โน้ตกลิ่น / ที่มา / ข้อจำกัด"
           onChange={(e) => set({ note: e.target.value })}
         />

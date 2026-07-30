@@ -18,6 +18,7 @@ import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm
 import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import Textarea from "@/components/ui/Textarea";
 
 // ค่าโครงการใน dropdown ที่แปลว่า "ดีลที่ยังไม่ผูกโครงการ" (ดีลกลุ่มนี้มีจริงและ
 // ผูกงานได้ — ถ้าไม่มีถังนี้ การกรองตามโครงการจะทำให้มันหายไปเฉย ๆ)
@@ -233,7 +234,7 @@ export default function TaskFormModal({
           {needLateReason && (
             <div className="form-group">
               <label style={{ color: "var(--amber)" }}>สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
-              <textarea className="premium-input w-full" rows={2} value={lateReason} autoFocus
+              <Textarea className="w-full" rows={2} value={lateReason} autoFocus
                 onChange={(e) => setLateReason(e.target.value)}
                 placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." />
             </div>
@@ -241,7 +242,7 @@ export default function TaskFormModal({
 
           <div className="form-group">
             <label>รายละเอียด</label>
-            <textarea value={form.note} onChange={(e) => set({ note: e.target.value })} disabled={!canManage} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
+            <Textarea value={form.note} onChange={(e) => set({ note: e.target.value })} disabled={!canManage} className="w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
             {editing ? (
               <AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={canManage} inlineUpload />
             ) : (

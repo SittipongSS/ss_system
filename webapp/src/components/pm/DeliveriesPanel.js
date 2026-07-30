@@ -24,6 +24,7 @@ import { MATERIAL_KINDS, MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { deliveryRollup, openDeliveriesToChase } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import styles from "./DeliveriesPanel.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", salesOrderId: "", dueDate: "", note: "" };
 
@@ -324,8 +325,8 @@ export default function DeliveriesPanel({
         </div>
         <div className="form-group">
           <label htmlFor="mdl-note">หมายเหตุ</label>
-          <textarea
-            id="mdl-note" className="textarea-premium" rows={2} maxLength={1000} value={form.note}
+          <Textarea variant="data"
+            id="mdl-note" rows={2} maxLength={1000} value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
           />
         </div>

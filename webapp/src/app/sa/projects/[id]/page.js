@@ -58,6 +58,7 @@ import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib
 import { compactPersonName } from "@/lib/personName";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { PageShell as SaPageShell } from "@/components/ui/Workspace";
+import Textarea from "@/components/ui/Textarea";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -1765,7 +1766,7 @@ export default function ProjectDetailPage() {
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
             หมายเหตุการแก้ (ไม่บังคับ)
-            <textarea
+            <Textarea
               value={revNote}
               onChange={(e) => setRevNote(e.target.value)}
               rows={3}
@@ -1884,7 +1885,7 @@ export default function ProjectDetailPage() {
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
             เหตุผลที่ลูกค้ายกเลิก/ไม่ไปต่อ
-            <textarea
+            <Textarea
               value={dropReason}
               onChange={(e) => setDropReason(e.target.value)}
               rows={3}
@@ -1942,7 +1943,7 @@ export default function ProjectDetailPage() {
             </label>
             <label style={{ fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล / สรุปการปิด (บังคับ)</span>
-              <textarea className="premium-input" rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
+              <Textarea rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn ghost" onClick={() => setCloseReqForm(null)} disabled={!!closeBusy}>ยกเลิก</button>

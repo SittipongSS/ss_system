@@ -17,6 +17,7 @@ import {
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import styles from "./requestForm.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const DEPT_LABEL = { RD: "RD (วิจัยและพัฒนา)", PC: "จัดซื้อ (PC)" };
 
@@ -144,8 +145,8 @@ export default function RequestForm({
             </div>
             <div className="form-group col-span-2">
               <label htmlFor="req-body">รายละเอียด</label>
-              <textarea
-                id="req-body" className="textarea-premium" rows={4} maxLength={4000}
+              <Textarea variant="data"
+                id="req-body" rows={4} maxLength={4000}
                 value={value.body} disabled={disabled}
                 placeholder={kind === "scent_brief"
                   ? "โทนกลิ่นที่ต้องการ · กลุ่มลูกค้า · ตัวอย่างอ้างอิง · ข้อจำกัด"
@@ -317,8 +318,8 @@ export default function RequestForm({
 
       <div className="form-group">
         <label htmlFor="ask-note">หมายเหตุถึงฝ่าย{dept === "PC" ? "จัดซื้อ" : dept === "RD" ? "RD" : "ปลายทาง"}</label>
-        <textarea
-          id="ask-note" className="textarea-premium" rows={2} maxLength={2000}
+        <Textarea variant="data"
+          id="ask-note" rows={2} maxLength={2000}
           value={value.note} disabled={disabled}
           placeholder="เช่น งานด่วน ลูกค้าต้องการราคาภายในสัปดาห์นี้"
           onChange={(e) => set({ note: e.target.value })}
@@ -374,8 +375,9 @@ export default function RequestForm({
               )}
             </div>
 
-            <textarea
-              className={`textarea-premium ${styles.itemSpec}`} rows={2} maxLength={2000}
+            <Textarea
+              variant="data"
+              className={styles.itemSpec} rows={2} maxLength={2000}
               value={item.spec} disabled={disabled}
               aria-label={`สเปกของรายการที่ ${idx + 1}`}
               placeholder={item.kind === "PM"
