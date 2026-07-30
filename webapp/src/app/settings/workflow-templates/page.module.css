@@ -11,7 +11,7 @@
 .publishedPanel { padding: 18px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 18px; }
 .identity { min-width: 0; }
 .titleLine { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.eyebrow { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: .05em; }
+.eyebrow { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 .identity h2 { margin-top: 6px; color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
 .identity > p { margin-top: var(--space-1); color: var(--text-2); font-size: var(--fs-7); line-height: 1.55; }
 .identity > small { display: block; margin-top: 11px; color: var(--text-3); font-size: var(--fs-4); }

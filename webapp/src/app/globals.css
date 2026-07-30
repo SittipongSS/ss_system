@@ -1054,7 +1054,7 @@ button, select, input, textarea {
   .mobile-nav-sheet-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-10); }
   .mobile-nav-sheet-header span { color: var(--text-3); font-size: var(--fs-4); }
   .mobile-nav-section { padding: var(--space-3) 0 18px; border-bottom: 1px solid var(--border); }
-  .mobile-nav-section h2 { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: 0.04em; text-transform: uppercase; }
+  .mobile-nav-section h2 { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); text-transform: uppercase; }
   .mobile-nav-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
   .mobile-nav-card {
     display: flex;
@@ -1321,7 +1321,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--accent-ink);
   font-size: var(--fs-5);
   font-weight: var(--fw-bold);
-  letter-spacing: .04em;
+  letter-spacing: var(--ls-label);
 }
 .home-hub-greeting h1 {
   margin: 7px 0 var(--space-2);
@@ -2051,7 +2051,7 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: var(--fw-medium);
   text-transform: uppercase;
   color: var(--text-3);
-  letter-spacing: .06em;
+  letter-spacing: var(--ls-label);
   margin-bottom: var(--space-2);
 }
 
@@ -2581,7 +2581,7 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text-3);
   font-size: var(--fs-3);
   font-weight: var(--fw-bold);
-  letter-spacing: .04em;
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 .ui-select-option {

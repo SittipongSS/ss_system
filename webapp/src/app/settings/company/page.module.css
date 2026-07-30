@@ -2,7 +2,7 @@
 .layout { display: flex; flex-direction: column; gap: var(--space-4); }
 .publishedPanel { padding: 18px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 18px; }
 .identity { min-width: 0; }
-.eyebrow { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-bold); letter-spacing: .02em; }
+.eyebrow { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 .identity h2 { margin-top: 5px; color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
 .identity .english { margin-top: 2px; color: var(--text-2); font-size: var(--fs-7); }
 .identity .address { margin-top: var(--space-3); max-width: 760px; color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); }
