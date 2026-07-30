@@ -4,8 +4,10 @@
 // DELETE : ลบไซต์ — บล็อกถ้ายังมีเครื่องอยู่ (ให้ปิดใช้งานแทน)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
+import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { findCustomer, loadAssets, requireSite } from '@/lib/service/sitesRepo';
+import { siteScheduleContext } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +16,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const access = await requireSite({ user, supabase, id });
     if (access.response) return access.response;
-    return ok({ site: access.site, assets: await loadAssets(supabase, id) });
+    // schedule = เข้าเติมล่าสุด + นัดครั้งหน้า → ตารางเครื่องใช้ประเมินว่าน้ำหอม
+    // จะหมดวันไหน และมีนัดครอบแล้วหรือยัง (S-4)
+    const todayIso = toLocalISODate(new Date());
+    const schedule = await siteScheduleContext(supabase, [id], todayIso);
+    return ok({
+      site: access.site,
+      assets: await loadAssets(supabase, id),
+      schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
+    });
   } catch (e) {
     return fail(e.message, 500);
   }
