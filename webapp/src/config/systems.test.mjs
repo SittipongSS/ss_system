@@ -50,7 +50,7 @@ test('system visibility covers every supported role and sales team', () => {
 
 test('⭐ ระบบของฝ่ายขึ้นกับ *ฝ่าย* ไม่ใช่ role — cap ของ staff ใช้ร่วมกันทั้ง 5 ฝ่าย', () => {
   // `staff` ถือ production:* / service:* ทั้งก้อน ฝ่ายคือตัวกั้นจริง
-  // ถ้าวันไหนกฎนี้หลุด คลัง/QC จะได้ระบบโรงงาน + ระบบงานบริการมาโดยไม่มีใครสังเกต
+  // ถ้าวันไหนกฎนี้หลุด คลัง/QC จะได้ระบบโรงงาน + ระบบธุรกิจบริการมาโดยไม่มีใครสังเกต
   const at = (department) => keysFor({ role: 'staff', team: null, department, extraCaps: [] });
 
   assert.ok(at('PC').includes('production'));
@@ -59,7 +59,7 @@ test('⭐ ระบบของฝ่ายขึ้นกับ *ฝ่าย* 
     assert.ok(!at(dept).includes('production'), dept);
   }
 
-  // ฝ่ายเทคนิคบริการเห็นระบบงานบริการ · ฝ่ายโรงงานไม่เห็น
+  // ฝ่ายเทคนิคบริการเห็นระบบธุรกิจบริการ · ฝ่ายโรงงานไม่เห็น
   assert.ok(at('TS').includes('service'));
   for (const dept of ['PC', 'PD', 'WH', 'QC']) {
     assert.ok(!at(dept).includes('service'), dept);

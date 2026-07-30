@@ -11,7 +11,7 @@ import {
   refillDueDate,
   toHHMM,
 } from './sites.js';
-import { canEditService, canViewService } from '../permissions.js';
+import { canEditService, canViewService, isServiceTechnician } from '../permissions.js';
 
 const site = (over = {}) => ({ id: 'S1', name: 'สาขาเอ็มควอเทียร์', accessDays: [], ...over });
 
@@ -112,7 +112,7 @@ test('สรุปเครื่องแยกตามสถานะ', () =>
 });
 
 // ── สิทธิ์ (แผน §6) ──────────────────────────────────────────────────────
-test('⭐ ช่างฝ่าย TS แก้งานบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
+test('⭐ ช่างฝ่าย TS แก้ธุรกิจบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
   const ts = { role: 'staff', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   const aeKa = { role: 'ae', team: 'KA' };
@@ -122,7 +122,15 @@ test('⭐ ช่างฝ่าย TS แก้งานบริการได
   assert.equal(canViewService(aeKa), true);
 });
 
-test('staff ฝ่ายอื่นแตะงานบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
+test('⭐ "งานของฉัน" เปิดให้เฉพาะช่างฝ่าย TS — ทีมขาย SV แก้ข้อมูลได้แต่ไม่เคยถูกมอบหมายนัด', () => {
+  // เมนูที่กดเข้าไปแล้วว่างเสมอ คือเมนูที่สอนให้คนเลิกเชื่อเมนู
+  assert.equal(isServiceTechnician({ role: 'staff', department: 'TS' }), true);
+  assert.equal(isServiceTechnician({ role: 'ae', team: 'SV' }), false);
+  assert.equal(isServiceTechnician({ role: 'admin' }), false);
+  assert.equal(isServiceTechnician({ role: 'staff', department: 'WH' }), false);
+});
+
+test('staff ฝ่ายอื่นแตะธุรกิจบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
   for (const department of ['PC', 'PD', 'WH', 'QC']) {
     assert.equal(canEditService({ role: 'staff', department }), false, department);
   }

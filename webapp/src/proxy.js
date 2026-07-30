@@ -257,7 +257,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/production')) {
     return canUser({ role, extraCaps }, 'production:edit');
   }
-  // งานบริการ (ฝ่าย TS) — รูปเดียวกัน: ด่านหยาบที่นี่ ตัวกั้นจริงคือ canEditService()
+  // ธุรกิจบริการ (ฝ่าย TS) — รูปเดียวกัน: ด่านหยาบที่นี่ ตัวกั้นจริงคือ canEditService()
   // ใน handler ซึ่งเห็นทั้ง department (TS) และ team (SV)
   if (path.startsWith('/api/service')) {
     return canUser({ role, extraCaps }, 'service:edit');
