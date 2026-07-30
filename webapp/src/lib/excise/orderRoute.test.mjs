@@ -61,9 +61,19 @@ test('POST ตรึงทีมจากลูกค้าเมื่อคน
   assert.match(listRoute, /\.from\('customers'\)\s*\n\s*\.select\('\*'\)/);
 });
 
-// อีกทางที่สร้างใบยื่น (ออกจาก Sale Order) ตรึงทีมจากดีลแม่อยู่แล้ว — แหล่งที่ตรงกว่า
-// ลูกค้า จึงไม่ต้องแก้ ล็อกไว้กันใครเปลี่ยนไปใช้ทีมของคนกดแทน
-test('ทางออกใบยื่นจาก SO ยังตรึงทีมจากดีลแม่ ไม่ใช่ทีมของคนกด', () => {
-  assert.match(fromSalesOrderRoute, /team: salesOrder\.deal\?\.team \|\| null/);
+// อีกทางที่สร้างใบยื่น (ออกจาก Sale Order) ตรึงทีมจากดีลแม่ — แหล่งที่ตรงกว่าลูกค้า แต่
+// SO ที่ไม่ผูกดีล / ดีลที่ไม่มีทีม จะได้ team = null แล้วกลายเป็นแถวไร้เจ้าภาพชุดเดียวกับ
+// ที่บั๊กนี้พูดถึง จึงต้องมีชั้นถอยเหมือน POST · ห้ามใช้ทีมของคนกด (คนกดคือฝ่ายภาษี)
+test('ทางออกใบยื่นจาก SO: ดีลแม่มาก่อน แล้วถอยมาที่ทีมที่ดูแลลูกค้า', () => {
+  assert.match(fromSalesOrderRoute, /team: salesOrder\.deal\?\.team \|\| soCaretakerTeam\(salesOrder\.customer\)/);
+  assert.match(fromSalesOrderRoute, /const teams = caretakerTeamsOf\(customer\)/);
+  assert.match(fromSalesOrderRoute, /return teams\.length === 1 \? teams\[0\] : null/);
   assert.doesNotMatch(codeOnly(fromSalesOrderRoute), /team: user\?\.team/);
+  // ⚠️ fallback ตายเงียบถ้า select ของลูกค้าไม่ได้ดึง team/teams มา — caretakerTeamsOf
+  // จะได้ [] ทุกครั้งโดยไม่มี error ให้เห็น
+  assert.match(
+    fromSalesOrderRoute,
+    /\.from\("customers"\)\.select\("id, taxId, address, team, teams"\)/,
+    'ต้องดึง team/teams มาด้วย ไม่งั้น fallback เป็นโค้ดตาย',
+  );
 });

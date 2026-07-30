@@ -1,7 +1,7 @@
 import { genId } from "@/lib/id";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
-import { can } from "@/lib/permissions";
+import { can, caretakerTeamsOf } from "@/lib/permissions";
 import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/salesPlanning";
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
@@ -11,6 +11,13 @@ export const dynamic = "force-dynamic";
 
 const missingSalesOrderColumn = (error) =>
   !!error && (error.code === "PGRST204" || error.code === "42703" || (error.message || "").includes("salesOrderId"));
+
+// ทีมที่ดูแลลูกค้า ใช้เป็นเจ้าภาพสำรองของใบยื่น — เอาเฉพาะกรณีมีทีมเดียว ลูกค้าที่หลายทีม
+// ดูแลแปลว่าเดาไม่ได้ว่าใบนี้เป็นของใคร ตรึงผิดทีมแย่กว่าปล่อยเป็นของกลาง
+const soCaretakerTeam = (customer) => {
+  const teams = caretakerTeamsOf(customer);
+  return teams.length === 1 ? teams[0] : null;
+};
 
 async function findExistingFiling(supabase, salesOrderId) {
   const { data, error } = await supabase
@@ -38,7 +45,9 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
     supabase.from("sales_deals").select("id, team, ownerId, ownerName").eq("id", salesOrder.dealId).maybeSingle(),
     supabase.from("quotations").select("id, quoteNumber, customerTaxId, billingAddress").eq("id", salesOrder.quotationId).maybeSingle(),
     salesOrder.customerId
-      ? supabase.from("customers").select("id, taxId, address").eq("id", salesOrder.customerId).maybeSingle()
+      // team/teams ต้องอยู่ใน select ด้วย — ใช้ถอยหาทีมเจ้าภาพของใบยื่นเมื่อดีลแม่ไม่มีทีม
+      // (ถ้าไม่ดึงมา caretakerTeamsOf จะได้ [] เงียบ ๆ แล้ว fallback กลายเป็นโค้ดตาย)
+      ? supabase.from("customers").select("id, taxId, address, team, teams").eq("id", salesOrder.customerId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   return {
@@ -228,7 +237,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     deliveryDate: "-",
     remarks: `สร้างจาก Sale Order ${salesOrder.orderNumber}`,
     assignee: user.name || salesOrder.createdByName || "Sales",
-    team: salesOrder.deal?.team || null,
+    // ทีมเจ้าภาพของใบยื่น: ดีลแม่มาก่อน (แหล่งที่ตรงที่สุด) แล้วถอยมาที่ทีมที่ดูแลลูกค้า
+    // เมื่อดีลไม่มีทีม/SO ไม่ผูกดีล — ใบที่ได้ team = null จะกลายเป็น "ของกลาง" ที่เห็นได้
+    // ทุกทีมแต่ไม่มีใครใน scope 'team' แก้ได้เลย · ลูกค้าหลายทีม = เดาไม่ได้ ปล่อย null
+    team: salesOrder.deal?.team || soCaretakerTeam(salesOrder.customer),
     ownerId: user.id || null,
     totalExciseTax: resolved.totalExciseTax,
     totalLocalTax: resolved.totalLocalTax,
