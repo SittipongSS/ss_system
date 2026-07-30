@@ -1,4 +1,4 @@
-// ── ไลน์ผลิต + กำลังผลิตรายวัน (mig 0184) — logic ล้วน ────────────────────
+// ── ไลน์ผลิต + กำลังผลิตรายวัน (mig 0186) — logic ล้วน ────────────────────
 //
 // ⭐ ที่มา: โรงงานไม่เคยมีตัวตนในระบบ — ขั้น "ผลิตสินค้า" ในไทม์ไลน์เป็นแท่งบน
 // Gantt ที่ไม่ผูกกับไลน์ไหน กำลังผลิตไม่ถูกนับ → SO หลายใบที่ขั้นผลิตทับสัปดาห์
@@ -18,7 +18,7 @@ export const LINE_KIND_LABELS = {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ปีนอกช่วงนี้ = พิมพ์ผิดแน่ ๆ (ของจริงบน prod เคยมี formulaDate = '2202-08-06')
-// ต้องตรงกับ CHECK production_capacity_days_date_sane ใน mig 0184
+// ต้องตรงกับ CHECK production_capacity_days_date_sane ใน mig 0186
 function dateError(value, label) {
   const text = String(value ?? '');
   if (!ISO_DATE.test(text)) return `${label}ไม่ถูกต้อง`;

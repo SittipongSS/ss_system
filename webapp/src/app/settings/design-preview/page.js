@@ -18,7 +18,7 @@ import {
 import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { ChartCanvas, ChartLegend, ChartTooltip } from "@/components/ui/ChartCard";
+import ChartCard, { ChartCanvas, ChartLegend, ChartTooltip } from "@/components/ui/ChartCard";
 import {
   CHART_AXIS_TICK, CHART_COLORS, CHART_GRID_PROPS, CHART_LINE_TYPE, CHART_STROKE_WIDTH,
 } from "@/lib/chartTheme";
@@ -899,6 +899,31 @@ export default function DesignPreviewPage() {
             ⛔ ห้ามใส่ <code>max-width</code> ให้ <code>.recharts-wrapper</code> — Recharts วางกราฟไว้ใน
             กล่องวัดขนาดที่กว้าง 0 ทำให้ <code>100%</code> คิดออกมาเป็น 0 แล้วกราฟหายทั้งอัน
             เหลือแต่คำอธิบายสี (เคยหลุด prod มาแล้ว)
+          </p>
+
+          {/* วาง ChartCanvas ใน ChartCard ตรง ๆ — ต้องได้ความสูงจาก prop minHeight เอง
+              ถ้ากราฟข้างล่างนี้หาย แปลว่ากฎ .body > .canvas หลุดไป */}
+          <ChartCard
+            title="วางใน ChartCard ตรง ๆ"
+            description="ไม่ต้องมี div ครอบตั้งความสูงเอง — ความสูงมาจาก prop minHeight"
+            minHeight={220}
+          >
+            <ChartCanvas>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={CHART_DATA}>
+                  <CartesianGrid {...CHART_GRID_PROPS} />
+                  <XAxis dataKey="month" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip valueFormatter={(value) => `฿${value}M`} />} />
+                  <Bar dataKey="target" name="เป้าหมาย" fill={CHART_COLORS.target} radius={[4, 4, 0, 0]} maxBarSize={38} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </ChartCanvas>
+          </ChartCard>
+          <p className={styles.note}>
+            ⛔ <code>.canvas</code> ตั้ง <code>height: 100%</code> ไว้ ถ้าแม่มีแค่ <code>min-height</code>
+            เบราว์เซอร์จะตีเป็น <code>auto</code> = สูง 0 แล้ว <code>ResponsiveContainer</code> ไม่วาดอะไรเลย
+            — การ์ดจึงต้องส่งความสูงเป็นตัวเลขจริงให้ลูกตรงของมันเสมอ
           </p>
         </Section>
 

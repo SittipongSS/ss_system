@@ -1,4 +1,4 @@
-// ── API เครื่องรายตัว (mig 0185) ─────────────────────────────────────────
+// ── API เครื่องรายตัว (mig 0187) ─────────────────────────────────────────
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeAssetInput } from '@/lib/service/sites';

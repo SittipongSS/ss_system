@@ -1,4 +1,4 @@
-// ── Data access ของรอบบริการ + ตารางนัด (mig 0186) ───────────────────────
+// ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
 import { notFound } from '@/lib/http';
 import { requireService } from './sitesRepo';
 

@@ -11,6 +11,7 @@ import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
+import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, systemLandingForUser, systemsForUser } from '@/config/systems';
@@ -374,6 +375,9 @@ export default function AppLayout({ children }) {
           </button>
 
           <div className="topbar-actions">
+            {/* กระดิ่งอยู่ก่อน "ตั้งค่า" — งานของคุณสำคัญกว่าเมนูตั้งค่า และตำแหน่ง
+                ขวาสุดถูก AccountMenu จองไว้แล้ว */}
+            <NotificationBell />
             <Link
               href="/settings"
               className={`topnav-global-action${isSettingsContext ? ' active' : ''}`}

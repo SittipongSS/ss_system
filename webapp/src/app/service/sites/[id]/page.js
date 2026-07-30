@@ -1,5 +1,5 @@
 "use client";
-// ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0185/0186) ──
+// ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { use } from "react";
 import { MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";

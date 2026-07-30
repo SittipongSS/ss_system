@@ -1,4 +1,4 @@
-// ทะเบียนไซต์บริการ + เครื่อง (mig 0185) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
+// ทะเบียนไซต์บริการ + เครื่อง (mig 0187) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

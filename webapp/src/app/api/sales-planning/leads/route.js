@@ -3,19 +3,16 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf,
-  LEAD_CHANNEL_LABELS, applyLeadScope, canViewLeads,
+  LEAD_CHANNEL_LABELS, applyLeadScope, canViewLeads, canCreateLead,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { sendChat, chatCard } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
-// applyLeadScope / inLeadScope / canViewLeads ย้ายไป `lib/sales/leads.js` แล้ว
-// (ทะเบียนเธรดกลางเป็น lib จะ import จาก app route ไม่ได้)
-
-export function canCreateLead(role) {
-  return role === 'marketing' || role === 'admin';
-}
+// applyLeadScope / inLeadScope / canViewLeads / canCreateLead ย้ายไป
+// `lib/sales/leads.js` แล้ว (ทะเบียนเธรดกลางเป็น lib จะ import จาก app route ไม่ได้
+// · และ canCreateLead ต้องตรงกับปุ่ม "รับลีดใหม่" บนหน้า list เสมอ)
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -35,7 +32,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!canCreateLead(user.role)) return forbidden('ลีดต้องเพิ่มโดยทีม Marketing เท่านั้น');
+  if (!canCreateLead(user.role)) return forbidden('ลีดเพิ่มได้เฉพาะทีม Marketing และหัวหน้าฝ่ายขาย');
 
   const body = await req.json();
   if (!body.contactName?.trim()) return badRequest('ต้องระบุชื่อลูกค้า/ผู้ติดต่อ');

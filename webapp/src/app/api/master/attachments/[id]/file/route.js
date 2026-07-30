@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewRecord } from '@/lib/permissions';
 import { getAttachment, loadAttachmentParent, ATTACHMENT_RESOURCE } from '@/lib/master/attachments';
+import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
 import { canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -38,9 +39,16 @@ export async function GET(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  // ไฟล์เก่าบน Supabase (ก่อนย้าย Drive) — redirect ไป public URL เดิม.
+  // ไฟล์เก่าบน Supabase (ก่อนย้าย Drive) + เอกสาร Google native ของงานบริหาร —
+  // redirect ไปลิงก์เดิม · **ต้องตรวจที่อยู่ก่อน redirect ทุกครั้ง**: ถ้าไม่ตรวจ endpoint นี้
+  // จะเป็น open redirect จากโดเมนของแอปเราเอง ตามค่า fileUrl ที่อยู่ในแถว · ด่านตอน
+  // บันทึก (POST /api/attachments) กันแถวใหม่แล้ว ตัวนี้กันแถวเก่า/แถวที่เขียนมาทางอื่น
   if (!att.driveFileId) {
     if (!att.fileUrl) return Response.json({ error: 'ไม่พบไฟล์' }, { status: 404 });
+    if (attachmentUrlErrorForEnv(att.fileUrl)) {
+      console.error('[attachments/file] ปฏิเสธ redirect ไปที่อยู่ภายนอก:', att.id, att.fileUrl);
+      return Response.json({ error: 'ที่อยู่ไฟล์ของเอกสารนี้ไม่ถูกต้อง' }, { status: 400 });
+    }
     return Response.redirect(att.fileUrl, 307);
   }
 

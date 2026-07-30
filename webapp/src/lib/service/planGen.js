@@ -1,4 +1,4 @@
-// ── gen นัดตามรอบบริการ (mig 0186) — ฝั่ง server ─────────────────────────
+// ── gen นัดตามรอบบริการ (mig 0188) — ฝั่ง server ─────────────────────────
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';

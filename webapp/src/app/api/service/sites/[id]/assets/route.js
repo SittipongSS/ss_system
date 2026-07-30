@@ -1,4 +1,4 @@
-// ── API เครื่องกระจายกลิ่นในไซต์ (mig 0185) ──────────────────────────────
+// ── API เครื่องกระจายกลิ่นในไซต์ (mig 0187) ──────────────────────────────
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';

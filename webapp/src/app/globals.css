@@ -134,6 +134,11 @@
 
   /* Grid settings */
   --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
+  /* จอสัมผัส — นิ้วต้องการเป้าที่ใหญ่กว่าเมาส์ (เกณฑ์ ≥44px ของ WCAG 2.5.5 / HIG)
+     ใช้ใน media query จอแคบ ซึ่งเป็นตัวแทนของ "น่าจะใช้นิ้ว" ที่ระบบนี้มีอยู่
+     ⚠️ ตัวเลข 44 นี้เคยกระจายอยู่ 4 ที่แบบไม่มีชื่อ ปนกับ 38px ที่เป็น drift จริง ๆ
+     จนแยกไม่ออกว่าอันไหนตั้งใจ */
+  --ctl-h-touch: 44px;
   --gap: var(--space-4);
   --page-gutter: 28px;
   --page-gutter-tablet: 18px;
@@ -256,10 +261,18 @@
   --z-mobile-nav: 140;
   --z-dropdown: 1000;      /* แผงลอยที่เกาะกับตัวควบคุม (+ ฉากหลังของมัน) */
   --z-modal: 1100;         /* overlay + drawer */
-  /* 🔴 เท่ากับ --z-modal พอดี = ตอนนี้ใครอยู่บนขึ้นกับลำดับใน DOM ล้วน ๆ
-     ที่ถูกคือแจ้งเตือนต้องอยู่เหนือโมดัลเสมอ แต่การยกค่าต้องเปิดจอจริงดูก่อน
-     จึงคงค่าเดิมไว้และตั้งชื่อแยกไว้ให้แก้ได้ที่บรรทัดเดียวเมื่อพร้อม */
-  --z-toast: 1100;
+  /* แจ้งเตือนต้องอยู่เหนือ **พื้นผิวที่ลอยทับหน้า** ทุกชนิด — โมดัลกับโหมดเต็มจอ
+     ไม่งั้นผู้ใช้กดปุ่มในโมดัลแล้วไม่เห็นผลลัพธ์ของสิ่งที่เพิ่งกด
+
+     เดิมเป็น 1100 เท่ากับ --z-modal พอดี = ใครอยู่บนขึ้นกับ **ลำดับใน DOM ล้วน ๆ**
+     ทดสอบจริง 2026-07-30: วางกล่อง z-index 1100 ที่ mount ทีหลัง toast → toast ถูกบัง
+     ทั้งใบทันที · ที่ผ่านมารอดมาได้เพราะ portal ของ toast บังเอิญอยู่หลัง overlay
+     ใน body (index 16 vs 15) ซึ่งไม่ใช่สิ่งที่รับประกันได้
+
+     ⚠️ ยังต่ำกว่าชั้นเมนู (calendar 3000 / portal-menu 10050) โดยเจตนา — เมนูที่
+     ผู้ใช้กำลังอ่านตัวเลือกอยู่ ไม่ควรถูกแจ้งเตือนบัง และทั้งคู่แทบไม่ทับกัน
+     (toast อยู่กลางล่าง เมนูเกาะกับตัวควบคุมของมัน) */
+  --z-toast: 1250;
   --z-fullscreen: 1200;    /* โหมดเต็มจอ (กริดกระทบยอด) */
   --z-calendar: 3000;      /* ปฏิทิน/ตัวเลือกเดือน */
   --z-save-bar: 9000;      /* แถบบันทึกลอยของไทม์ไลน์ */
@@ -567,7 +580,13 @@ button, select, input, textarea {
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
-.form-action-bar .btn { min-width: 96px; min-height: 38px; justify-content: center; }
+/* ⚠️ เคยมี `min-height: 38px` ตรงนี้ = ปุ่มในแถบท้ายฟอร์มสูงกว่าปุ่มที่อื่น 2px
+   ทั้งที่ `.btn` ตั้ง `min-height: var(--ctl-h)` ไว้แล้ว — ไม่มีเหตุผลด้านดีไซน์
+   รองรับ เป็น drift แบบเดียวกับที่ `.btn.ghost` เคยโดน (ดู #816: บริบทเปลี่ยนได้
+   แค่ *สี* ห้ามเขียนรูปทรงทับ) · ความสูงมาจาก --ctl-h ที่เดียวแล้ว
+   ส่วน min-width ยังอยู่ — นั่นคือกติกา "ปุ่มบันทึก/ยกเลิกกว้างเท่ากัน" ของแถบนี้
+   ซึ่งเป็นเรื่องการจัดวาง ไม่ใช่ขนาดตัวควบคุม */
+.form-action-bar .btn { min-width: 96px; justify-content: center; }
 /* เดิมมี `.form-action-bar .btn.ghost` คืนขอบ+พื้น+เงาให้ปุ่ม ghost ทั้งหมด = ยกเลิก
    ตัว variant ทิ้งด้วย descendant selector ทำให้คลาสเดียวกันหน้าตาคนละแบบในแถบนี้
    กับที่อื่น (วัดจริง 2026-07-29: ขอบ .12 vs โปร่งใส · พื้นการ์ด vs โปร่งใส · มีเงา vs ไม่มี)
@@ -637,12 +656,12 @@ button, select, input, textarea {
 @media (max-width: 700px) {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
   .form-actions-buttons { width: 100%; }
-  .form-actions-buttons .btn { min-height: 44px; flex: 1; }
+  .form-actions-buttons .btn { min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar { gap: var(--space-2); flex-wrap: wrap; }
-  .form-action-bar .btn { min-width: 0; min-height: 44px; flex: 1; }
+  .form-action-bar .btn { min-width: 0; min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { flex-basis: 100%; margin-right: 0; }
   .drawer .form-action-bar { bottom: -18px; margin-bottom: -18px; }
-  .confirm-dialog-actions .btn { min-height: 44px; flex: 1; }
+  .confirm-dialog-actions .btn { min-height: var(--ctl-h-touch); flex: 1; }
 }
 
 /* App Container Layout — เฟส T: top bar ตรึงบน + เนื้อหาเต็มความกว้าง (ไม่มี sidebar) */

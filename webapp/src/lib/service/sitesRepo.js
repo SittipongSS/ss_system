@@ -1,4 +1,4 @@
-// ── Data access + ด่านสิทธิ์ของทะเบียนไซต์บริการ (mig 0185) ───────────────
+// ── Data access + ด่านสิทธิ์ของทะเบียนไซต์บริการ (mig 0187) ───────────────
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditService, canViewService } from '@/lib/permissions';

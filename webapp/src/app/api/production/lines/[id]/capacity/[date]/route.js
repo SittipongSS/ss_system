@@ -1,4 +1,4 @@
-// ── ลบค่ากำลังผลิตของวันหนึ่ง (mig 0184) — วันนั้นกลับไปใช้กำลังมาตรฐานของไลน์
+// ── ลบค่ากำลังผลิตของวันหนึ่ง (mig 0186) — วันนั้นกลับไปใช้กำลังมาตรฐานของไลน์
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, notFound } from '@/lib/http';
 import { requireProduction } from '@/lib/pm/productionLinesRepo';

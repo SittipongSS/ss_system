@@ -1,4 +1,4 @@
-// ไลน์ผลิต + กำลังผลิตรายวัน (mig 0184) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
+// ไลน์ผลิต + กำลังผลิตรายวัน (mig 0186) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

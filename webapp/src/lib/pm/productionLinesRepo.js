@@ -1,4 +1,4 @@
-// ── Data access + ด่านสิทธิ์ของ "ไลน์ผลิต" (mig 0184) ────────────────────
+// ── Data access + ด่านสิทธิ์ของ "ไลน์ผลิต" (mig 0186) ────────────────────
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { forbidden, unauthorized } from '@/lib/http';
 import { canEditProduction, canViewProduction } from '@/lib/permissions';
@@ -43,14 +43,14 @@ export async function loadCapacityDays(supabase, { lineId = null, from = null, t
   return data || [];
 }
 
-// ไลน์ที่มีคิวผลิตค้างอยู่ห้ามลบ — งานผลิตอ้าง lineId ไว้ (production_jobs, mig 0185)
+// ไลน์ที่มีคิวผลิตค้างอยู่ห้ามลบ — งานผลิตอ้าง lineId ไว้ (production_jobs, mig 0187)
 // ⚠️ PR-1 ยังไม่มีตารางนั้น ฟังก์ชันจึงกลืน error ตอนตารางยังไม่ถูกสร้าง แล้วคืน 0
 //    (ไม่ใช่การซ่อน error — เป็นช่วงเปลี่ยนผ่านที่รู้ตัวว่า 0185 ยังไม่รัน)
 export async function countJobsOnLine(supabase, lineId) {
   const { count, error } = await supabase
     .from('production_jobs').select('id', { count: 'exact', head: true }).eq('lineId', lineId);
   if (error) {
-    if (error.code === '42P01') return 0; // ยังไม่มีตาราง production_jobs (ก่อน mig 0185)
+    if (error.code === '42P01') return 0; // ยังไม่มีตาราง production_jobs (ก่อน mig 0187)
     throw error;
   }
   return count || 0;

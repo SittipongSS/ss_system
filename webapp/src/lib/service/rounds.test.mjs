@@ -1,4 +1,4 @@
-// รอบบริการ + ตารางนัด (mig 0186) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
+// รอบบริการ + ตารางนัด (mig 0188) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
