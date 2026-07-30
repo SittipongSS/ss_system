@@ -39,7 +39,7 @@ export async function getAttachment(id) {
 // ตอบ 403 เสมอ (รูปพรีวิวไม่ขึ้น ดาวน์โหลดไม่ได้ ทั้งที่ไฟล์อยู่ครบ) — โมดูลที่ไม่ได้
 // คุมสิทธิ์ด้วยทีมของ customer/product ต้องมีสาขาของตัวเองใน route ด้วย ไม่ใช่ใส่
 // แค่ตารางแล้วปล่อยให้ตกไป canViewRecord
-const PARENT_TABLE = {
+export const PARENT_TABLE = {
   customer: 'customers',
   product: 'products',
   order: 'orders',

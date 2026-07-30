@@ -10,6 +10,7 @@ import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import {
   driveHealth, auditDriveFiles, auditOrphanDriveItems, trashOrphanDriveItems,
+  auditOrphanAttachmentRows, purgeOrphanAttachmentRows,
   planRestructure, runRestructure,
 } from '@/lib/driveMaintenance';
 
@@ -39,6 +40,7 @@ export async function GET(request) {
     }
     if (action === 'audit') return Response.json(await auditDriveFiles());
     if (action === 'orphans') return Response.json(await auditOrphanDriveItems());
+    if (action === 'orphan-rows') return Response.json(await auditOrphanAttachmentRows());
     if (action === 'plan') return Response.json(await planRestructure());
     return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
   } catch (err) {
@@ -73,6 +75,25 @@ export async function POST(request) {
       return Response.json(result);
     } catch (err) {
       console.error('[admin/drive] trash-orphans failed', err);
+      return Response.json({ error: String(err?.message || err) }, { status: 500 });
+    }
+  }
+
+  // ลบแถวไฟล์แนบที่ระเบียนแม่ถูกลบไปแล้ว (ไม่แตะไฟล์บน Drive)
+  if (body.action === 'purge-orphan-rows') {
+    try {
+      const result = await purgeOrphanAttachmentRows();
+      await recordAudit({
+        user,
+        action: 'delete',
+        entityType: 'attachment_orphan_rows',
+        entityId: `deleted-${result.deleted}`,
+        after: result,
+        request,
+      });
+      return Response.json(result);
+    } catch (err) {
+      console.error('[admin/drive] purge-orphan-rows failed', err);
       return Response.json({ error: String(err?.message || err) }, { status: 500 });
     }
   }

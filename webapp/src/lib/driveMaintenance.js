@@ -8,6 +8,7 @@
 //   3. จัดโครงโฟลเดอร์ (planRestructure/runRestructure)
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { PARENT_TABLE } from '@/lib/master/attachments';
 import {
   FOLDER, driveEnvStatus, getDrive, getFileMeta, uploadFile, deleteFile, moveFile,
   folderPathForEntity, folderPathLabel, resolveFolderForEntity, ensureUnsortedFolder,
@@ -171,6 +172,66 @@ export async function auditDriveFiles() {
     // แถวที่ปกติไม่ต้องโชว์ — ส่งกลับเฉพาะที่มีปัญหาเพื่อไม่ให้หน้าจอท่วม
     problems: checked.filter((r) => r.status !== 'ok'),
   };
+}
+
+// ── 2.2 แถวไฟล์แนบที่ระเบียนแม่ถูกลบไปแล้ว ────────────────────────────
+// 🐞 เจอจริงบน prod 2026-07-31: **96 จาก 129 แถวเป็นแถวกำพร้า** (ทะเบียน 92 · ใบยื่น 3 ·
+// ขอราคา 1) — มีคนลบทะเบียนทิ้งช่วงทดสอบ แต่แถวไฟล์แนบไม่ถูกลบตาม เลยค้างชี้ไปยัง
+// ระเบียนที่ไม่มีอยู่จริง · มองไม่เห็นจากหน้าไหนเลยเพราะไม่มีหน้าแม่ให้เปิด และทำให้
+// รายงาน "ไฟล์เข้าถึงไม่ได้" อ่านแล้วเข้าใจผิดว่าของสำคัญหาย ทั้งที่เป็นของตายทั้งหมด
+async function loadOrphanAttachmentRows(supabase) {
+  const { data, error } = await supabase.from('attachments').select('*');
+  if (error) throw error;
+
+  const byType = {};
+  for (const row of data || []) (byType[row.entityType] ||= []).push(row);
+
+  const orphans = [];
+  const unknownTypes = [];
+  for (const [entityType, rows] of Object.entries(byType)) {
+    const table = PARENT_TABLE[entityType];
+    // entityType ที่ยังไม่ได้ลงทะเบียนตาราง = **ห้ามเดาว่ากำพร้า** (ลบผิดกู้ยาก)
+    if (!table) { unknownTypes.push(entityType); continue; }
+    const ids = [...new Set(rows.map((r) => r.entityId))];
+    const parents = await supabase.from(table).select('id').in('id', ids);
+    if (parents.error) throw new Error(`${table}: ${parents.error.message}`);
+    const alive = new Set((parents.data || []).map((r) => r.id));
+    orphans.push(...rows.filter((r) => !alive.has(r.entityId)));
+  }
+  return { orphans, unknownTypes, total: data?.length || 0 };
+}
+
+export async function auditOrphanAttachmentRows() {
+  const { orphans, unknownTypes, total } = await loadOrphanAttachmentRows(getSupabaseAdmin());
+  const byType = {};
+  for (const row of orphans) byType[row.entityType] = (byType[row.entityType] || 0) + 1;
+  return {
+    total,
+    orphanCount: orphans.length,
+    byType,
+    unknownTypes,
+    withDriveFile: orphans.filter((r) => r.driveFileId).length,
+    rows: orphans.slice(0, 200).map((r) => ({
+      id: r.id, entityType: r.entityType, entityId: r.entityId, docType: r.docType, fileName: r.fileName,
+    })),
+  };
+}
+
+// ลบแถวกำพร้าออกจากตาราง attachments — **ไม่แตะไฟล์บน Drive**
+// ไฟล์จะกลายเป็น "ของกำพร้าบนไดรฟ์" ซึ่งตรวจและทิ้งได้จากหัวข้อถัดไปของหน้าเดียวกัน
+// (แยกสองขั้นโดยเจตนา: ลบแถวคืนความถูกต้องให้ฐานข้อมูลทันที ส่วนไฟล์ให้คนดูก่อนทิ้ง)
+export async function purgeOrphanAttachmentRows() {
+  const supabase = getSupabaseAdmin();
+  const { orphans, unknownTypes } = await loadOrphanAttachmentRows(supabase);
+  if (!orphans.length) return { deleted: 0, unknownTypes, byType: {} };
+
+  const byType = {};
+  for (const row of orphans) byType[row.entityType] = (byType[row.entityType] || 0) + 1;
+
+  const { data, error } = await supabase
+    .from('attachments').delete().in('id', orphans.map((r) => r.id)).select('id');
+  if (error) throw error;
+  return { deleted: data?.length || 0, byType, unknownTypes, withDriveFile: orphans.filter((r) => r.driveFileId).length };
 }
 
 // ── 2.5 ไฟล์บน Drive ที่ไม่มีใครในระบบอ้างถึง ──────────────────────────
