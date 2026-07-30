@@ -7,7 +7,7 @@ import { generateEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { normalizeVisitInput } from '@/lib/service/rounds';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
-import { loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
+import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +42,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   try {
     const site = await findSite(supabase, value.siteId);
     if (!site) return badRequest('ไม่พบไซต์ที่ระบุ');
+
+    // ⚠️ รอบที่ผูกต้องเป็นรอบ**ของไซต์เดียวกัน** — ผูกข้ามไซต์ได้เมื่อไหร่
+    // `nextAfterDone` จะสร้างนัดรอบถัดไปให้ไซต์ของ *รอบ* ไม่ใช่ไซต์ที่เพิ่งเข้า
+    // = นัดโผล่ผิดที่โดยไม่มีใครสังเกต จนกว่าช่างจะขับไปถึงหน้างานผิดแห่ง
+    if (value.planId) {
+      const plan = await findPlan(supabase, value.planId);
+      if (!plan) return badRequest('ไม่พบรอบบริการที่ระบุ');
+      if (plan.siteId !== value.siteId) return badRequest('รอบบริการที่เลือกเป็นของไซต์อื่น');
+    }
 
     const row = {
       id: genId('SVV'),

@@ -445,9 +445,9 @@ export function canEditProduction(user) {
 export const SERVICE_DEPARTMENT = 'TS';
 export const SERVICE_SALES_TEAM = 'SV';
 
-// อ่านงานบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
+// อ่านธุรกิจบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
 // ⚠️ แต่ `staff` ต้องแคบด้วยฝ่าย — cap อยู่ที่ role ซึ่งใช้ร่วมกันทั้ง PC/PD/WH/QC/TS
-// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบงานบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
+// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบธุรกิจบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
 // (รูปเดียวกับ canViewCosting ที่แคบ staff เหลือ RD/PC)
 export function canViewService(user) {
   if (!canUser(user, 'service:view')) return false;
@@ -463,6 +463,15 @@ export function canEditService(user) {
   if (isSuperuser(user?.role)) return true;
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
   return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
+}
+
+// ช่างหน้างานจริง ๆ (ฝ่าย TS) — คนเดียวที่ "งานของฉัน" มีความหมาย
+//
+// 🐞 ของเดิมเปิดเมนูนั้นด้วย `service:view` ซึ่งฝ่ายขายทุกคนถือ → AE เปิดเข้าไป
+// เจอหน้าว่างตลอดกาล เพราะ dropdown มอบหมายงานกรองเฉพาะฝ่าย TS อยู่แล้ว
+// **นัดจะไม่มีวันถูกมอบหมายให้เขา** · เมนูที่กดแล้วว่างเสมอคือเมนูที่สอนให้คนเลิกเชื่อเมนู
+export function isServiceTechnician(user) {
+  return departmentOf(user) === SERVICE_DEPARTMENT;
 }
 
 // อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.
