@@ -134,6 +134,11 @@
 
   /* Grid settings */
   --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
+  /* จอสัมผัส — นิ้วต้องการเป้าที่ใหญ่กว่าเมาส์ (เกณฑ์ ≥44px ของ WCAG 2.5.5 / HIG)
+     ใช้ใน media query จอแคบ ซึ่งเป็นตัวแทนของ "น่าจะใช้นิ้ว" ที่ระบบนี้มีอยู่
+     ⚠️ ตัวเลข 44 นี้เคยกระจายอยู่ 4 ที่แบบไม่มีชื่อ ปนกับ 38px ที่เป็น drift จริง ๆ
+     จนแยกไม่ออกว่าอันไหนตั้งใจ */
+  --ctl-h-touch: 44px;
   --gap: var(--space-4);
   --page-gutter: 28px;
   --page-gutter-tablet: 18px;
@@ -567,7 +572,13 @@ button, select, input, textarea {
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
-.form-action-bar .btn { min-width: 96px; min-height: 38px; justify-content: center; }
+/* ⚠️ เคยมี `min-height: 38px` ตรงนี้ = ปุ่มในแถบท้ายฟอร์มสูงกว่าปุ่มที่อื่น 2px
+   ทั้งที่ `.btn` ตั้ง `min-height: var(--ctl-h)` ไว้แล้ว — ไม่มีเหตุผลด้านดีไซน์
+   รองรับ เป็น drift แบบเดียวกับที่ `.btn.ghost` เคยโดน (ดู #816: บริบทเปลี่ยนได้
+   แค่ *สี* ห้ามเขียนรูปทรงทับ) · ความสูงมาจาก --ctl-h ที่เดียวแล้ว
+   ส่วน min-width ยังอยู่ — นั่นคือกติกา "ปุ่มบันทึก/ยกเลิกกว้างเท่ากัน" ของแถบนี้
+   ซึ่งเป็นเรื่องการจัดวาง ไม่ใช่ขนาดตัวควบคุม */
+.form-action-bar .btn { min-width: 96px; justify-content: center; }
 /* เดิมมี `.form-action-bar .btn.ghost` คืนขอบ+พื้น+เงาให้ปุ่ม ghost ทั้งหมด = ยกเลิก
    ตัว variant ทิ้งด้วย descendant selector ทำให้คลาสเดียวกันหน้าตาคนละแบบในแถบนี้
    กับที่อื่น (วัดจริง 2026-07-29: ขอบ .12 vs โปร่งใส · พื้นการ์ด vs โปร่งใส · มีเงา vs ไม่มี)
@@ -637,12 +648,12 @@ button, select, input, textarea {
 @media (max-width: 700px) {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
   .form-actions-buttons { width: 100%; }
-  .form-actions-buttons .btn { min-height: 44px; flex: 1; }
+  .form-actions-buttons .btn { min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar { gap: var(--space-2); flex-wrap: wrap; }
-  .form-action-bar .btn { min-width: 0; min-height: 44px; flex: 1; }
+  .form-action-bar .btn { min-width: 0; min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { flex-basis: 100%; margin-right: 0; }
   .drawer .form-action-bar { bottom: -18px; margin-bottom: -18px; }
-  .confirm-dialog-actions .btn { min-height: 44px; flex: 1; }
+  .confirm-dialog-actions .btn { min-height: var(--ctl-h-touch); flex: 1; }
 }
 
 /* App Container Layout — เฟส T: top bar ตรึงบน + เนื้อหาเต็มความกว้าง (ไม่มี sidebar) */
