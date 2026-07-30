@@ -79,11 +79,12 @@
 // (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
 //   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
 //   EX = ฝ่ายบริหาร · PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
-export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
+//   TS = ฝ่ายเทคนิคบริการ (Technic Service) — ช่างที่เข้าไซต์ลูกค้าดูแลระบบกระจายกลิ่น
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC', 'TS'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
   AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', EX: 'EX', Viewer: 'Viewer',
-  PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC',
+  PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC', TS: 'TS',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
@@ -91,6 +92,7 @@ export const DEPARTMENT_NAMES_TH = {
   EX: 'ฝ่ายบริหาร', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
   RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
+  TS: 'ฝ่ายเทคนิคบริการ',
 };
 
 // Legacy app_metadata.department values written before the codes were shortened.
@@ -116,6 +118,12 @@ const DEPARTMENT_ROLES = {
   // RD ได้ role เฉพาะ (rd) — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีมเพื่อตอบ
   // ข้อสอบถาม; ยังอนุญาต staff ไว้สำหรับข้อมูลเก่า/คนที่ไม่ต้องเข้าระบบขาย.
   PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['rd', 'staff'], QC: ['staff'],
+  // TS = ฝ่ายเทคนิคบริการ — ช่างที่เข้าไซต์ลูกค้า (แผน service-production-scheduling §6).
+  // ⚠️ เป็น **ฝ่าย** ไม่ใช่ทีมใต้ SA โดยเจตนา: ทีมมีได้เฉพาะ role ฝ่ายขาย (TEAM_ROLES)
+  // ดังนั้นถ้าจับช่างไปเป็นทีม ช่างต้องถือ role `ae` แล้วจะได้ cap ขายมาทั้งชุด
+  // (เห็นดีล/ใบเสนอราคา/มูลค่าทั้งทีม) ซึ่งไม่ใช่สิ่งที่ตั้งใจ.
+  // ทีม SV (Services) ยังเป็นทีม**ขาย**ธุรกิจบริการเหมือนเดิม — TS คือฝ่ายที่รับงานต่อ.
+  TS: ['staff'],
 };
 
 // A role's home/default department — used to display legacy users whose
@@ -180,6 +188,13 @@ const SALES_OPS = [
   // (ราคาผลิตอนุมัติโดยผู้บริหารเท่านั้น — มติ 2026-07-22) และไม่มี costing:quote
   // (ราคา RM/PM มาจาก RD/PC ฝ่ายขายกรอกแทนไม่ได้ ไม่งั้นที่มาของราคาหายไป).
   'costing:view', 'costing:edit',
+  // ตารางผลิต / ตาราง service (แผน service-production-scheduling §6):
+  // ฝ่ายขายต้องตอบลูกค้าได้ว่า "ผลิตวันไหน / ช่างเข้าเมื่อไหร่" จึงอ่านได้ทุกคน
+  // แต่ **แก้ตารางผลิตไม่ได้** (ไม่มี production:edit) — คนวางคิวคือ PC/PD
+  'production:view',
+  // service:edit ถือกว้างระดับ role แล้วแคบด้วย **ทีม SV** ใน canEditService
+  // (รูปเดียวกับ sahamit ที่ทุก sales role ถือ cap แล้ว team===KA เป็นตัวกั้นจริง)
+  'service:view', 'service:edit',
   'history:view',
 ];
 
@@ -196,6 +211,8 @@ const SUPERUSER_CAPS = [
   'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target', 'salesplan:lead',
   'sahamit:view', 'sahamit:edit',
   'costing:view', 'costing:edit', 'costing:quote', 'costing:approve',
+  'production:view', 'production:edit',   // ตารางผลิต — วางคิวจริงคือ PC/PD (แคบด้วยฝ่าย)
+  'service:view', 'service:edit',         // ตารางเข้า service — ช่างฝ่าย TS + ทีมขาย SV
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
 
@@ -230,6 +247,7 @@ const OBSERVER_CAPS = [
   'customers:view', 'products:view',
   'sales:view', 'legal:view', 'history:view',
   'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
+  'production:view', 'service:view',
 ];
 
 const ROLE_CAPS = {
@@ -295,7 +313,15 @@ const ROLE_CAPS = {
   // shape as sahamit (cap on every sales role, team===KA narrows). PD/WH/QC hold
   // the cap but reach nothing: always gate through those two helpers, never
   // through can(role, 'costing:view') alone, or their cost data leaks.
-  staff: ['pm:view', 'products:view', 'customers:view', 'costing:view', 'costing:quote'],
+  // + production:* / service:* ถือระดับ role ด้วยเหตุผลเดียวกับ costing:* —
+  //   ฝ่ายผลิต (PD) / จัดซื้อ (PC) / เทคนิคบริการ (TS) ไม่มี role ของตัวเอง
+  //   **ACCESS แคบด้วยฝ่าย** ที่ canEditProduction / canEditService เสมอ
+  //   ⚠️ ห้าม gate ด้วย can(role, 'production:edit') ล้วน ไม่งั้น WH/QC แก้ตารางผลิตได้
+  staff: [
+    'pm:view', 'products:view', 'customers:view', 'costing:view', 'costing:quote',
+    'production:view', 'production:edit',
+    'service:view', 'service:edit',
+  ],
 };
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -389,6 +415,54 @@ export function canQuoteCosting(user) {
   if (!canUser(user, 'costing:quote')) return false;
   if (isSuperuser(user?.role)) return true; // admin break-glass
   return COSTING_SOURCE_DEPARTMENTS.includes(departmentOf(user));
+}
+
+// ── ตารางผลิต (Production Schedule) ─────────────────────────────────
+// ฝ่ายที่ "วางคิวผลิตจริง" — จัดซื้อวางแผนของเข้า/ผลิตวางแผนไลน์
+export const PRODUCTION_PLANNER_DEPARTMENTS = ['PC', 'PD'];
+
+// อ่านตารางผลิตได้กว้างโดยเจตนา: ฝ่ายขายต้องตอบลูกค้าได้ว่าผลิตวันไหน
+// โดยไม่ต้องเดินไปถามโรงงาน (ข้อมูลกำหนดการ ไม่ใช่ต้นทุน — ต่างจาก costing)
+export function canViewProduction(user) {
+  return canUser(user, 'production:view');
+}
+
+// แก้ไลน์/กำลังผลิต/คิวผลิต. ⚠️ cap อย่างเดียวไม่พอ — `staff` ถือ cap นี้ทั้ง
+// PC/PD/WH/QC/TS ต้องแคบด้วยฝ่ายตรงนี้เสมอ ไม่งั้นคลัง/QC แก้ตารางโรงงานได้
+//
+// ⚠️⚠️ บทเรียนตรงที่ห้ามกลับไปทำซ้ำ: ห้ามกั้นด้วย pmEditScope() แทน —
+// PC/PD เป็น role `staff` ซึ่ง pmEditScope = 'none' แปลว่า **คนที่วางคิวผลิตจริง
+// จะเป็นกลุ่มเดียวที่แก้ไม่ได้** (เกิดมาแล้วกับ /api/pm/my-work ที่กั้นด้วย
+// inquiries:respond จน PC ไม่เคยเห็นคิวตัวเอง — แก้ไปใน #790)
+export function canEditProduction(user) {
+  if (!canUser(user, 'production:edit')) return false;
+  if (isSuperuser(user?.role)) return true; // admin / หัวหน้าฝ่ายขาย
+  return PRODUCTION_PLANNER_DEPARTMENTS.includes(departmentOf(user));
+}
+
+// ── ตารางเข้า service (Technic Service) ─────────────────────────────
+// ฝ่ายช่างที่เข้าไซต์ + ทีมขายธุรกิจบริการที่เป็นเจ้าของสัญญา
+export const SERVICE_DEPARTMENT = 'TS';
+export const SERVICE_SALES_TEAM = 'SV';
+
+// อ่านงานบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
+// ⚠️ แต่ `staff` ต้องแคบด้วยฝ่าย — cap อยู่ที่ role ซึ่งใช้ร่วมกันทั้ง PC/PD/WH/QC/TS
+// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบงานบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
+// (รูปเดียวกับ canViewCosting ที่แคบ staff เหลือ RD/PC)
+export function canViewService(user) {
+  if (!canUser(user, 'service:view')) return false;
+  if (user?.role !== 'staff') return true;
+  return departmentOf(user) === SERVICE_DEPARTMENT;
+}
+
+// แก้ไซต์/เครื่อง/รอบ/นัด — ช่างฝ่าย TS หรือคนขายทีม SV
+// มติผู้ใช้ 2026-07-30: ช่างเห็น/แก้งานของ **ทีม SV ทั้งหมด** ไม่ใช่แค่นัดที่ตัวเอง
+// ถูกมอบหมาย — ช่างสลับกันไปแทนกันเป็นเรื่องปกติ ถ้าล็อกรายคนงานจะค้างทันทีที่คนลา
+export function canEditService(user) {
+  if (!canUser(user, 'service:edit')) return false;
+  if (isSuperuser(user?.role)) return true;
+  if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
+  return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
 }
 
 // อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.

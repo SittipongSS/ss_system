@@ -1,0 +1,52 @@
+/* ไลน์ผลิต (mig 0184)
+   ⚠️ อยู่ใต้ ratchet เดียวกับ "บริหารงานขาย" → ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง */
+
+.numCol { text-align: right; white-space: nowrap; }
+
+.rowActions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+/* "ยังไม่ระบุกำลัง" ต้องอ่านออกทันทีว่าไม่ใช่ 0 — สองอย่างนี้คนละความหมายสิ้นเชิง */
+.unknown { color: var(--text-3); font-style: italic; }
+.closed { color: var(--red); font-weight: 600; }
+
+.inactive td { opacity: 0.55; }
+.past td { opacity: 0.6; }
+
+.dayPanel {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+}
+
+.hint {
+  font-size: var(--fs-label);
+  color: var(--text-3);
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+  margin: var(--space-2) 0 0;
+}
+
+.dayForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.dayField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 140px;
+}
+
+.dayField > span {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.reasonField { flex: 1; min-width: 200px; }

@@ -1,0 +1,137 @@
+/* ปฏิทินเข้าบริการ: ช่าง × วัน (mig 0186)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.weekLabel {
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+  min-width: 190px;
+  text-align: center;
+}
+
+.count {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  margin-inline-start: auto;
+}
+
+.board {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.board th,
+.board td {
+  border: 1px solid var(--border);
+  vertical-align: top;
+  padding: var(--space-1);
+}
+
+.board thead th {
+  text-align: center;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  padding-block: var(--space-2);
+}
+
+.dayName {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+.today {
+  display: inline-block;
+  min-width: 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.techCol {
+  width: 150px;
+  text-align: start;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.weekend { background: var(--bg); }
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 64px;
+}
+
+.cellWarn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  color: var(--amber);
+}
+
+.visitChip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: start;
+  cursor: pointer;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}
+
+.visitTime { font-weight: 700; white-space: nowrap; }
+
+.visitSite {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ยกเลิก/เลื่อนแล้ว = ยังเห็นได้แต่ไม่แย่งสายตาไปจากงานที่ยังต้องทำ */
+.visitMuted { opacity: 0.5; text-decoration: line-through; }
+
+.addCell {
+  align-self: flex-start;
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.emptyRow {
+  text-align: center;
+  color: var(--text-3);
+  padding: var(--space-6);
+  line-height: 1.45;
+}
+
+/* สีชิปตามชนิดงาน — ช่างกวาดตาแล้วรู้ว่าวันนี้เป็นงานแบบไหนโดยไม่ต้องอ่าน
+   ⚠️ สีเป็น *ตัวช่วย* ไม่ใช่ตัวบอกความหมายเดี่ยว ๆ — ชนิดงานเขียนอยู่ใน title
+   ของชิปด้วยเสมอ (คนตาบอดสีและ screen reader ต้องได้ข้อมูลเท่ากัน) */
+.kind_install { background: var(--violet-soft); }
+.kind_refill { background: var(--accent-soft); }
+.kind_maintenance { background: var(--blue-soft); }
+.kind_repair { background: var(--red-soft); }
+.kind_inspect { background: var(--teal-soft); }
+.kind_remove { background: var(--amber-soft); }

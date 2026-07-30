@@ -9,6 +9,12 @@ test('systemForPathname keeps public and legacy sales routes in one system', () 
   assert.equal(systemForPathname('/sahamit/po'), 'sahamit');
 });
 
+test('⭐ วางแผนผลิตเป็นระบบของตัวเอง ไม่ถูกดูดเข้าบริหารงานขาย', () => {
+  // มติผู้ใช้ 2026-07-30: แยกโมดูล · เส้นทางจึงต้องไม่อยู่ใต้ /pm ซึ่งเป็นของฝ่ายขาย
+  assert.equal(systemForPathname('/production/lines'), 'production');
+  assert.equal(systemForPathname('/production'), 'production');
+});
+
 test('sortSystems follows the global navigation order', () => {
   const groups = ['mgmt', 'master', 'tax', 'salesplan', 'sahamit'].map((system) => ({ system }));
   assert.deepEqual(sortSystems(groups).map((group) => group.system), ['salesplan', 'tax', 'sahamit', 'master', 'mgmt']);

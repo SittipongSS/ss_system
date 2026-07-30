@@ -15,6 +15,10 @@ export function sortSystems(groups) {
 export function systemForPathname(pathname) {
   if (isSettingsPathname(pathname)) return 'settings';
   if (pathname.startsWith('/database')) return 'master';
+  // ⚠️ ต้องอยู่ก่อนกฎ salesplan: โมดูลผลิตเป็นระบบของตัวเอง ไม่ใช่ของฝ่ายขาย
+  // (เส้นทางจึงไม่ได้อยู่ใต้ /pm ซึ่งเป็นของ project management ฝั่งขาย)
+  if (pathname.startsWith('/production')) return 'production';
+  if (pathname.startsWith('/service')) return 'service';
   if (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) return 'salesplan';
   if (pathname.startsWith('/sahamit')) return 'sahamit';
   if (pathname.startsWith('/mgmt')) return 'mgmt';

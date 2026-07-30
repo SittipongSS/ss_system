@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canEditProduction, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -235,6 +235,27 @@ export default function AppLayout({ children }) {
         { href: '/sa/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/requests') },
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+      ],
+    },
+    {
+      // วางแผนผลิต — ระบบแยก ไม่ใช่เมนูใต้ "บริหารงานขาย" (มติผู้ใช้ 2026-07-30)
+      system: 'production',
+      items: [
+        // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PC/PD
+        // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
+        // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
+        { href: '/production/lines', name: 'ไลน์ผลิต', icon: Factory, cap: 'production:edit', visible: canEditProduction, match: (p) => p.startsWith('/production/lines') },
+      ],
+    },
+    {
+      // งานบริการของฝ่าย TS — คนละโมดูลกับผลิต (มติผู้ใช้ 2026-07-30)
+      system: 'service',
+      items: [
+        // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
+        // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
+        // ตารางมาก่อนทะเบียน — หน้าที่ช่าง/หัวหน้าเปิดทุกเช้าคือตาราง ไม่ใช่ทะเบียน
+        { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', match: (p) => p.startsWith('/service/schedule') },
+        { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', match: (p) => p.startsWith('/service/sites') },
       ],
     },
     {
