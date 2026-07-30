@@ -11,7 +11,7 @@
   font-size: var(--fs-6);
 }
 
-.name { font-weight: 600; }
+.name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
 
 /* ⚠️ ใช้ flex + justify-content แทน text-align: right บน td — กฎ td ของตารางกลาง

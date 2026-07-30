@@ -178,7 +178,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               </div>
               <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700, color: "var(--text)" }}>ราคาผลิต</h4>
+                  <h4 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)", color: "var(--text)" }}>ราคาผลิต</h4>
                   <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>อัปเดตแยก</span>
                 </div>
                 <p style={{ margin: "6px 0 0", color: "var(--text-3)", fontSize: "var(--fs-7)", lineHeight: 1.65 }}>
@@ -187,7 +187,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               </div>
               <div style={{ textAlign: "right", minWidth: 150 }}>
                 <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ราคาปัจจุบัน</div>
-                <div className="font-mono tabular-nums" style={{ color: "var(--text)", fontWeight: 800, fontSize: "var(--fs-11)" }}>
+                <div className="font-mono tabular-nums" style={{ color: "var(--text)", fontWeight: "var(--fw-bold)", fontSize: "var(--fs-11)" }}>
                   {money(product.costPrice)}
                 </div>
               </div>
@@ -234,7 +234,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                     </span>
                   </div>
                   <div style={{ padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
-                    <div className="flex items-center gap-2" style={{ color: "var(--amber)", fontWeight: 700, fontSize: "var(--fs-7)" }}>
+                    <div className="flex items-center gap-2" style={{ color: "var(--amber)", fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
                       <AlertTriangle size={15} aria-hidden="true" /> ยืนยันก่อนบันทึก
                     </div>
                     <label className="flex items-start gap-2 mt-3" style={{ cursor: "pointer", color: "var(--text-2)", fontSize: "var(--fs-7)", lineHeight: 1.55 }}>

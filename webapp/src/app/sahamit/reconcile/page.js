@@ -201,7 +201,7 @@ export default function ReconcilePage() {
         <td key={m} style={{ padding: "5px 5px" }}>
           <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
             {badges}{hlBadge}
-            <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
+            <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>{displayQty(val, ppc, unit, { dot: true })}</span>
             <span className="cell-status-tag">{dispLabel}</span>
           </div>
         </td>
@@ -222,7 +222,7 @@ export default function ReconcilePage() {
             <span className="cell-val fc">
               {displayQty(cell.fcQty, ppc, unit)}
               {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
-                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
               )}
             </span>
           </div>
@@ -333,7 +333,7 @@ export default function ReconcilePage() {
       ) : error ? null : matrix.rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <ClipboardCheck size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มีข้อมูลให้กระทบยอด</div>
+          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มีข้อมูลให้กระทบยอด</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เพิ่มรอบ FC หรือ PO ก่อน</div>
         </div>
       ) : (
@@ -382,8 +382,8 @@ export default function ReconcilePage() {
               <tbody>
                 {catGroups.flatMap(([cat, rows]) => [
                   <tr key={`cat-${cat}`}>
-                    <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
-                      {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
+                    <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", color: "var(--text-2)", padding: "8px 10px" }}>
+                      {cat} <span style={{ fontWeight: "var(--fw-normal)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
                     </td>
                   </tr>,
                   ...rows.map((r) => {
@@ -401,7 +401,7 @@ export default function ReconcilePage() {
                         {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                         <td style={{ textAlign: "right", verticalAlign: "middle" }}>
                           <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
-                          <div style={{ fontWeight: 700 }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
+                          <div style={{ fontWeight: "var(--fw-bold)" }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
                         </td>
                       </tr>
                     );
@@ -420,7 +420,7 @@ export default function ReconcilePage() {
                   <td>
                     รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
                     {valueSummary.unpriced > 0 && (
-                      <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: 400 }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
+                      <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
                         {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
                       </span>
                     )}
@@ -430,13 +430,13 @@ export default function ReconcilePage() {
                     return (
                       <td key={m} style={{ textAlign: "right" }}>
                         {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
-                        {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(v.po)}</div>}
+                        {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(v.po)}</div>}
                       </td>
                     );
                   })}
                   <td style={{ textAlign: "right" }}>
                     {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
-                    {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(valueSummary.gPo)}</div>}
+                    {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(valueSummary.gPo)}</div>}
                   </td>
                 </tr>
               </tfoot>

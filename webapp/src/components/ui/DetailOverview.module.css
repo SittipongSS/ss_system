@@ -23,7 +23,7 @@
   margin-bottom: 6px;
   color: var(--accent-ink);
   font-size: var(--fs-2);
-  font-weight: 750;
+  font-weight: var(--fw-bold);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -33,7 +33,7 @@
   margin: 0;
   color: var(--text);
   font-size: clamp(var(--fs-12), 2vw, var(--fs-15));
-  font-weight: 750;
+  font-weight: var(--fw-bold);
   line-height: 1.2;
 }
 
@@ -72,7 +72,7 @@
   background: color-mix(in srgb, var(--state-color) 10%, transparent);
   color: var(--state-color);
   font-size: var(--fs-4);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   white-space: nowrap;
 }
 
@@ -118,7 +118,7 @@
   display: block;
   overflow: hidden;
   color: var(--text-2);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

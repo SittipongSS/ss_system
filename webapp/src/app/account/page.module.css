@@ -21,7 +21,7 @@
   margin: 0;
   color: var(--text);
   font-size: var(--fs-10);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .panelHeader p {
@@ -78,7 +78,7 @@
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-10);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .identityCopy strong,
@@ -126,7 +126,7 @@
   margin: 0;
   color: var(--text);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   text-align: right;
 }
 

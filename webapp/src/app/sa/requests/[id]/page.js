@@ -351,7 +351,7 @@ export default function MaterialAskDetailPage() {
         <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 600 }}>{item.label}</div>
+              <div style={{ fontWeight: "var(--fw-semibold)" }}>{item.label}</div>
               {item.spec && (
                 <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
               )}

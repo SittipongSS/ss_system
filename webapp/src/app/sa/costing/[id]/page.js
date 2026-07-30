@@ -772,15 +772,15 @@ export default function CostingDetailPage() {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={5} style={{ textAlign: "right", fontWeight: 600 }}>
+                    <td colSpan={5} style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>
                       ต้นทุนรวมต่อชิ้น
                       {!cost.complete && (
-                        <span style={{ color: "var(--amber)", fontWeight: 400, fontSize: "var(--fs-5)" }}>
+                        <span style={{ color: "var(--amber)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-5)" }}>
                           {" "}(ยังไม่ครบ — รอราคาบางรายการ)
                         </span>
                       )}
                     </td>
-                    <td style={{ fontWeight: 600 }}>{money(cost.total)}</td>
+                    <td style={{ fontWeight: "var(--fw-semibold)" }}>{money(cost.total)}</td>
                   </tr>
                 </tfoot>
               </table>

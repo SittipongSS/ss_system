@@ -89,7 +89,7 @@ export default function MgmtMeetingsPage() {
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={13} /> {fmt(m.meetingDate)}</span>
                 {m.timeText && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock3 size={13} /> {m.timeText}</span>}
               </div>
-              <div style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>{m.title}</div>
+              <div style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>{m.title}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-5)" }}>
                 {m.deptCode && <span className="pill">{m.deptCode}</span>}
                 {m.assigneeName && <span style={{ color: "var(--text-3)" }}>{m.assigneeName}</span>}

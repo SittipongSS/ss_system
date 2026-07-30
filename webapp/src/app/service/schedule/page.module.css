@@ -59,7 +59,7 @@
   width: 150px;
   text-align: start;
   vertical-align: middle;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   line-height: 1.45;
 }
 
@@ -97,7 +97,7 @@
   line-height: 1.45;
 }
 
-.visitTime { font-weight: 700; white-space: nowrap; }
+.visitTime { font-weight: var(--fw-bold); white-space: nowrap; }
 
 .visitSite {
   overflow: hidden;

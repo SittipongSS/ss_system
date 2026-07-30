@@ -45,8 +45,8 @@ export default function MgmtTrashPage() {
 
   const Section = ({ title, icon: Icon, entity, items, label }) => (
     <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 14 }}>
-      <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
-        <Icon size={16} /> {title} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>({items.length})</span>
+      <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+        <Icon size={16} /> {title} <span style={{ color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>({items.length})</span>
       </div>
       {items.length === 0 ? (
         <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", fontStyle: "italic" }}>ว่าง</div>

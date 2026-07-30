@@ -34,7 +34,7 @@
   display: block;
   margin-bottom: 2px;
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .message {

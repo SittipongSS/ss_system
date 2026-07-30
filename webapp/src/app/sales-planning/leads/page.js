@@ -418,7 +418,7 @@ export default function LeadsPage() {
 
         {canSeeLeadKpi(role) && (
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: "var(--fw-medium)", color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
             </div>
           )}
           <SaMetricStrip aria-busy={loading}>
@@ -606,7 +606,7 @@ export default function LeadsPage() {
         <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"} style={{ padding: 18 }}>
           
           <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
+            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: "var(--fw-semibold)" }}>ช่องทางที่รับลีด</h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: "var(--fs-7)" }}>
               {/* คอลัมน์ต่อกลุ่ม derive จาก enum กลาง — เพิ่ม channel ใหม่ที่ lib/sales/leads.js ที่เดียว */}
               {Object.entries(CHANNEL_GROUP_LABELS).map(([group, groupLabel]) => (

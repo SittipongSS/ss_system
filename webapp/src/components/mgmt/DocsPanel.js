@@ -103,7 +103,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
 
   return (
     <div className="glass-panel" style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: "var(--fs-8)", fontWeight: 600 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>
         <Paperclip size={16} style={{ color: "var(--accent)" }} /> ไฟล์ & เอกสาร
       </div>
 

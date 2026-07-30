@@ -21,6 +21,6 @@
 .inactive td { opacity: 0.55; }
 
 .siteLink {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--accent);
 }

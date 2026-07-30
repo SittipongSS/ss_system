@@ -70,7 +70,7 @@
   margin: 0;
   color: var(--text);
   font-size: var(--fs-10);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .sectionHeading > span {
@@ -90,7 +90,7 @@
   min-width: 0;
   color: var(--text-2);
   font-size: var(--fs-5);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .documentMeta label > * {
@@ -128,7 +128,7 @@
   border-top: 1px solid var(--border);
   color: var(--text-2);
   font-size: var(--fs-5);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
   text-decoration: none;
 }
 

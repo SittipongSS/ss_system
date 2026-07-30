@@ -287,7 +287,7 @@ export default function MaterialRegistryPanel({
                 return (
                   <tr key={m.id}>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{m.label}</div>
+                      <div style={{ fontWeight: "var(--fw-medium)" }}>{m.label}</div>
                       <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {m.kind === "PM" && m.pmType && <span>{pmTypeLabel(m.pmType)}</span>}
                         {m.formulaCode && <span>สูตร {m.formulaCode}</span>}

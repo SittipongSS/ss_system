@@ -145,7 +145,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
 
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: "var(--fs-7)", fontWeight: 600 }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
+            <span style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
             <div className="spacer" />
             <button type="button" className="btn ghost sm" onClick={() => fileInputRef.current?.click()} disabled={busy || files.length >= MAX_WON_ATTACHMENTS}>
               <Paperclip size={14} aria-hidden="true" /> แนบไฟล์

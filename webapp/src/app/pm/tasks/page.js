@@ -428,7 +428,7 @@ export default function TasksPage() {
     const name = usersMap[t.proxyBy] || "ใครบางคน";
     const mine = t.proxyBy === me?.id;
     return (
-      <span title={`ทำแทนโดย ${name} · งานนี้คิด KPI ให้ ${name}`} style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "color-mix(in srgb, var(--accent) 14%, transparent)", padding: "1px 7px", borderRadius: "9px", color: "var(--accent)", fontWeight: 500 }}>
+      <span title={`ทำแทนโดย ${name} · งานนี้คิด KPI ให้ ${name}`} style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "color-mix(in srgb, var(--accent) 14%, transparent)", padding: "1px 7px", borderRadius: "9px", color: "var(--accent)", fontWeight: "var(--fw-medium)" }}>
         <HandHelping size={11} style={{ display: "inline", verticalAlign: "-1px" }} /> {mine ? "ฉันทำแทน" : name}
       </span>
     );
@@ -478,7 +478,7 @@ export default function TasksPage() {
     return (
       <span
         title={relationship.label}
-        style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: compact ? "1px 5px" : "2px 7px", borderRadius: 9, color: palette.color, background: palette.background, fontSize: compact ? "var(--fs-1)" : "var(--fs-2)", fontWeight: 600 }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: compact ? "1px 5px" : "2px 7px", borderRadius: 9, color: palette.color, background: palette.background, fontSize: compact ? "var(--fs-1)" : "var(--fs-2)", fontWeight: "var(--fw-semibold)" }}
       >
         <UserPlus size={compact ? 9 : 10} /> {compact ? relationship.compactLabel : relationship.label}
       </span>
@@ -496,7 +496,7 @@ export default function TasksPage() {
     const showFooter = manage || canSetStatus(t) || proxyAction;
     return (
       <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
-        <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+        <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
           {t.important && <Star size={12} color="var(--amber)" fill="var(--amber)" />}
           {t.urgent && <Flame size={12} color="var(--red)" />}
           {t.title}
@@ -602,7 +602,7 @@ export default function TasksPage() {
                 <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-7)" }}>
                   <RequestStatusBadge status={q.status} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
-                  <Link href={`/sa/requests/${q.id}`} className="linklike" style={{ fontWeight: 600 }}>
+                  <Link href={`/sa/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}
                   </Link>
                   <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {q.requesterName || "-"}</span>
@@ -637,7 +637,7 @@ export default function TasksPage() {
         </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
-            กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
+            กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
           </button>
         )}
         {/* หมวดหมู่/ผู้รับมอบหมาย = ตัวเลือกจากงานที่โหลดมา — ซ่อนหมวดที่มีค่าเดียว
@@ -681,9 +681,9 @@ export default function TasksPage() {
             return (
               <div key={quad.key} className="glass-panel" style={{ padding: 0, overflow: "hidden", borderTop: `3px solid ${quad.color}` }}>
                 <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ fontWeight: 700, fontSize: "var(--fs-7)", color: quad.color }}>
+                  <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", color: quad.color }}>
                     {QUADRANT_LABELS[quad.key]}
-                    <span style={{ marginLeft: "8px", fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
+                    <span style={{ marginLeft: "8px", fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{items.length}</span>
                   </div>
                   <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{quad.sub}</div>
                 </div>
@@ -704,12 +704,12 @@ export default function TasksPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "12px" }}>
             <button className="btn-icon" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อน"><ChevronLeft size={16} /></button>
-            <div style={{ fontWeight: 700, fontSize: "var(--fs-9)", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
+            <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
             <button className="btn-icon" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
           </div>
           <div className="glass-panel" style={{ padding: "10px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px", marginBottom: "4px" }}>
-              {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "var(--fs-3)", fontWeight: 700, color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
+              {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "var(--fs-3)", fontWeight: "var(--fw-bold)", color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px" }}>
               {calCells.map((d, i) => {
@@ -772,7 +772,7 @@ export default function TasksPage() {
                 return (
                   <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
                     <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
-                    <td style={{ fontWeight: 500, minWidth: "220px" }}>
+                    <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
                       <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
                           {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
@@ -826,7 +826,7 @@ export default function TasksPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>{statusIcon(t.status)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "var(--fs-8)", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" />}
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}

@@ -1,6 +1,6 @@
 .paymentHeading { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .paymentTitle { display: flex; align-items: center; gap: var(--space-2); color: var(--text-2); }
-.paymentTitle h2 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: 700; }
+.paymentTitle h2 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-bold); }
 
 .installmentToggle { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); color: var(--text-2); cursor: pointer; text-align: left; }
 .installmentToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -16,7 +16,7 @@
 .installmentOn .toggleTrack > span { transform: translateX(14px); }
 
 .paymentTermsGrid { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(280px, 1.3fr); gap: var(--space-4); }
-.paymentTermsGrid label, .paymentField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: 650; }
+.paymentTermsGrid label, .paymentField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .paymentTermsGrid label > *, .paymentField > * { margin-top: 6px; }
 .paymentFieldLabel { margin-top: 0 !important; }
 .paymentTermsGrid input, .paymentTermsGrid textarea { width: 100%; }

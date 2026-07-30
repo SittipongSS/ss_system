@@ -34,7 +34,7 @@ const poExVat = (po, priceByFg) => (po.lines || []).reduce((s, l) => {
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / —  (แก้ที่เมนูวัสดุเท่านั้น)
 function matCell(dueDate, arrivedAt) {
-  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
   return <span style={{ color: "var(--text-3)" }}>—</span>;
 }
@@ -67,7 +67,7 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
 
   return (
     <tr>
-      <td className="font-mono" style={{ fontWeight: 600 }}>
+      <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
         {row.fgCode}
         <div style={{ fontSize: "var(--fs-3)", color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
         {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
@@ -203,7 +203,7 @@ export default function PoPage() {
       ) : error ? null : pos.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มี PO</div>
+          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มี PO</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
           {canEdit && (
             <Link href="/sahamit/po/new" className="btn btn-accent" style={{ marginTop: 16 }}>
@@ -318,23 +318,23 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
       {/* กดที่แถว = เข้าหน้ารายละเอียด; ปุ่มลูกศร = ขยายดูรายการในแถว (ไม่เข้าหน้า) */}
       <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
         <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
-        <td className="font-mono" style={{ fontWeight: 600 }}>{po.poNumber}</td>
+        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{po.poNumber}</td>
         <td>{po.docDate ? fmtDate(po.docDate) : "—"}</td>
         <td>{po.receivedDate ? fmtDate(po.receivedDate) : "—"}</td>
         <td>{po.dueDate ? fmtDate(po.dueDate) : "—"}</td>
         <td>{destinationLabel(po.destination) || "—"}</td>
         <td style={{ textAlign: "right" }}>{poLineCount(po)}</td>
-        <td style={{ textAlign: "right", fontWeight: 600 }}>
+        <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>
           {nf(fullQty)}
           {isSplit && (
-            <div style={{ fontSize: "var(--fs-2)", fontWeight: 400 }}>
+            <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)" }}>
               <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(keptQty)}</span>{" · "}
               <span style={{ color: "var(--blue)" }}>เหลือ {nf(fullQty - keptQty)}</span>
             </div>
           )}
         </td>
         <td style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: 600 }}>{baht(exVat)}</div>
+          <div style={{ fontWeight: "var(--fw-semibold)" }}>{baht(exVat)}</div>
           <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
           {unpriced > 0 && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
         </td>
@@ -440,22 +440,22 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
             const product = prodIdx.get(String(r.l.fgCode).trim().toLowerCase());
             return (
               <tr key={`${r.po.id}-${r.l.id || i}`} className="clickable-row" style={{ cursor: "pointer", opacity: r.cancelled ? 0.55 : 1 }} onClick={() => router.push(`/sahamit/po/${r.po.id}`)}>
-                <td className="font-mono" style={{ fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
+                <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)", color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : "—")}
                   <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{r.l.deliveryMonth || "—"}</div>
                 </td>
                 <td>
-                  <span className="font-mono" style={{ fontWeight: 600 }}>{r.l.fgCode}</span>
+                  <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{r.l.fgCode}</span>
                   <div style={{ fontSize: "var(--fs-3)", color: r.l.productName ? "var(--text-2)" : "var(--amber)" }}>{r.l.productName || "— ไม่รู้จัก —"}</div>
                   {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
                 </td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>
+                <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>
                   {nf(r.l.qty)}
-                  {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", fontWeight: 400, color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
+                  {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)", color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
                 </td>
                 <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : "—"}</td>
-                <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : "—")}</td>
+                <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : "—")}</td>
                 <td><span className="ui-badge" style={{ color: lineStatusColor(r.l.status), borderColor: lineStatusColor(r.l.status) }}>{lineStatusLabel(r.l.status)}</span></td>
               </tr>
             );
@@ -465,11 +465,11 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
           <tfoot>
             <tr>
               <td colSpan={5} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td>
-              <td style={{ textAlign: "right", fontWeight: 600 }}>{baht(totalExVat)}</td><td />
+              <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>{baht(totalExVat)}</td><td />
             </tr>
             <tr>
-              <td colSpan={5} style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td>
-              <td style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{baht(totalExVat * VAT)}</td>
+              <td colSpan={5} style={{ textAlign: "right", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td>
+              <td style={{ textAlign: "right", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{baht(totalExVat * VAT)}</td>
               <td style={{ borderTop: "2px solid var(--border)" }} />
             </tr>
           </tfoot>

@@ -198,7 +198,7 @@ export default function SignatureCoveragePage() {
                 return (
                   <tr key={row.id}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{row.name}</div>
+                      <div style={{ fontWeight: "var(--fw-semibold)" }}>{row.name}</div>
                       {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
                     </td>
                     <td>{ROLE_LABELS[row.role] || row.role}</td>

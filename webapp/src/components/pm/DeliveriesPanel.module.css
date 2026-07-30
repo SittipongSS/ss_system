@@ -12,7 +12,7 @@
 
 .title {
   font-size: var(--fs-section-title);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   margin: 0;
 }
 

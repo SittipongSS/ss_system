@@ -153,7 +153,7 @@ export default function SalesKpiDashboard() {
                   <tbody>
                     {teams.map((t) => (
                       <tr key={t.team} className={`premium-row ${chartTeamFilter === t.team ? "active" : ""}`} onClick={() => setChartTeamFilter(prev => prev === t.team ? "" : t.team)} style={{ cursor: "pointer", backgroundColor: chartTeamFilter === t.team ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}>
-                        <td style={{ fontWeight: 700 }}>{t.team}</td>
+                        <td style={{ fontWeight: "var(--fw-bold)" }}>{t.team}</td>
                         <td className="num">{t.people}</td>
                         <td className="num">{t.total}</td>
                         <td className="num">{t.completed}</td>
@@ -198,7 +198,7 @@ export default function SalesKpiDashboard() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.userId} className="premium-row">
-                      <td style={{ fontWeight: 700 }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: 500 }}>{r.role || "-"}</div></td>
+                      <td style={{ fontWeight: "var(--fw-bold)" }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{r.role || "-"}</div></td>
                       <td>{r.team || "-"}</td>
                       <td className="num">{r.total}</td>
                       <td className="num">{r.active}</td>

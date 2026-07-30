@@ -58,7 +58,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
 
       {/* ตารางต่อสินค้า + เจาะลึกรายเดือน */}
       <div>
-        <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, marginBottom: 10 }}>
+        <h3 style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", marginBottom: 10 }}>
           PO เทียบ FC ต่อสินค้า {isValue ? "(มูลค่า)" : "(ชิ้น)"} — คลิกแถวเพื่อดูรายเดือน
         </h3>
         <TableScroll family="matrix" style={{ overflowX: "auto" }}>
@@ -88,7 +88,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                       <td style={{ textAlign: "center", color: "var(--text-3)" }}>
                         <ChevronRight size={14} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform var(--motion-medium)" }} />
                       </td>
-                      <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
+                      <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
                         {s.productName || "— ไม่รู้จัก —"}
                         {meta && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{meta}</div>}
@@ -97,7 +97,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                       <td style={{ textAlign: "right" }}>{qtyCell(s.poQty, ppc)}</td>
                       {isValue && <td style={{ textAlign: "right", color: s.price == null ? "var(--amber)" : "inherit" }}>{s.price == null ? "—" : fmtMoney(s.price)}</td>}
                       {isValue && <td style={{ textAlign: "right" }}>{fmtMoney(s.fcValue)}</td>}
-                      {isValue && <td style={{ textAlign: "right", fontWeight: 600, color: "var(--teal)" }}>{fmtMoney(s.poValue)}</td>}
+                      {isValue && <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", color: "var(--teal)" }}>{fmtMoney(s.poValue)}</td>}
                       <td>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                           {Object.entries(s.statuses).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([st, n]) => (
@@ -119,7 +119,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
             </tbody>
             {isValue && (
               <tfoot>
-                <tr style={{ fontWeight: 700, borderTop: "2px solid var(--border)" }}>
+                <tr style={{ fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>
                   <td></td><td colSpan={2}>รวม (ครอบคลุม {rep.coveragePct}%)</td>
                   <td style={{ textAlign: "right" }}>{fmtNumber(rep.totals.fcQty)}</td>
                   <td style={{ textAlign: "right" }}>{fmtNumber(rep.totals.poQty)}</td>
@@ -136,7 +136,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
 
       {/* PO ที่ยังแบ่งส่ง / ค้างส่ง */}
       <div>
-        <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, marginBottom: 4 }}>PO ที่ยังแบ่งส่งได้ / รอส่ง</h3>
+        <h3 style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", marginBottom: 4 }}>PO ที่ยังแบ่งส่งได้ / รอส่ง</h3>
         <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: 10 }}>บรรทัด PO ที่ยังไม่ส่งครบ — แบ่งส่งหรือติดตามได้ที่หน้า PO</div>
         {rep.splittable.length === 0 ? (
           <div className="empty-state dashed" style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ไม่มีบรรทัด PO ที่ค้างส่ง</div>
@@ -154,14 +154,14 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                 {rep.splittable.map((s) => (
                   <tr key={s.lineId}>
                     <td>
-                      <Link href={`/sahamit/po/${s.poId}`} className="font-mono" style={{ fontWeight: 600, color: "var(--green)" }}>{s.poNumber}</Link>
+                      <Link href={`/sahamit/po/${s.poId}`} className="font-mono" style={{ fontWeight: "var(--fw-semibold)", color: "var(--green)" }}>{s.poNumber}</Link>
                       {s.isBalance && <span className="ui-badge" style={{ marginLeft: 6, color: "var(--blue)", borderColor: "var(--blue)" }}>ยอดแยก</span>}
                     </td>
                     <td>
                       <span className="font-mono" style={{ fontSize: "var(--fs-5)" }}>{s.fgCode}</span>
                       <span style={{ color: s.productName ? "var(--text-3)" : "var(--amber)", fontSize: "var(--fs-5)" }}> · {s.productName || "ไม่รู้จัก"}</span>
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 600 }}>{qtyCell(s.qty, ppcOf(prodIdx.get(String(s.fgCode).trim().toLowerCase())))}</td>
+                    <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>{qtyCell(s.qty, ppcOf(prodIdx.get(String(s.fgCode).trim().toLowerCase())))}</td>
                     <td>{s.deliveryMonth ? shortM(s.deliveryMonth) : "—"}</td>
                     <td>{s.expectedDate ? fmtDate(s.expectedDate) : (s.dueDate ? fmtDate(s.dueDate) : "—")}</td>
                     <td><span className="status-pill">{PO_STATUS_LABEL[s.status] || s.status}</span></td>
@@ -182,7 +182,7 @@ function MonthDrill({ rounds, pos, fgCode, cells, ppc }) {
     <TableScroll family="matrix"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-6)" }}>
       <thead>
         <tr style={{ color: "var(--text-3)" }}>
-          <th style={{ textAlign: "left", padding: "8px 12px 8px 44px", fontWeight: 600 }}>เดือน</th>
+          <th style={{ textAlign: "left", padding: "8px 12px 8px 44px", fontWeight: "var(--fw-semibold)" }}>เดือน</th>
           <th style={{ textAlign: "right", padding: "8px 12px" }}>FC</th>
           <th style={{ textAlign: "right", padding: "8px 12px" }}>PO</th>
           <th style={{ textAlign: "left", padding: "8px 12px" }}>สถานะ</th>

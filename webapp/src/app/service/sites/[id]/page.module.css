@@ -17,7 +17,7 @@
 
 .info dt {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text-3);
 }
 

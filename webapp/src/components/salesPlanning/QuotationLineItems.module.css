@@ -36,7 +36,7 @@
 
 .fgInfoMeta strong {
   color: var(--text-2);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .fgInfoName {
@@ -95,7 +95,7 @@
 }
 
 .noteReadonly strong {
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .totalsWrap {

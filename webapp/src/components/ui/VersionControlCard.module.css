@@ -27,7 +27,7 @@
   margin: 3px 0 0;
   color: var(--text-2);
   font-size: var(--fs-5);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -98,7 +98,7 @@
   color: var(--text-2);
   background: var(--panel-2);
   font-size: var(--fs-table-head);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: .025em;
   white-space: nowrap;
 }

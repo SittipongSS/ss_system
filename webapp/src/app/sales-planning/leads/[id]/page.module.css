@@ -6,7 +6,7 @@
 .heading h2 { margin: 0; color: var(--text); font-size: var(--fs-10); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) 22px; }
 .field { min-width: 0; }
-.field label, .label { display: block; margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-3); font-weight: 650; }
+.field label, .label { display: block; margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .value { color: var(--text-2); font-size: var(--fs-7); line-height: 1.55; overflow-wrap: anywhere; }
 .field input, .field textarea, .field select { width: 100%; }
 .field textarea { min-height: 88px; resize: vertical; }

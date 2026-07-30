@@ -63,7 +63,7 @@ export default function CarryPanel({ row, label, closedCount }) {
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <Layers size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ทบยอดย้อนหลัง (Carry-over) — {label}</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ทบยอดย้อนหลัง (Carry-over) — {label}</h2>
         <div className="spacer" />
         <span className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
           <span aria-hidden="true" style={{ width: 11, height: 3, background: "var(--amber)", display: "inline-block", borderRadius: 2 }} />
@@ -93,12 +93,12 @@ export default function CarryPanel({ row, label, closedCount }) {
                 <td>{MONTH_LABELS[i]}</td>
                 <td className="num mono">{money(r.target)}</td>
                 <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : "–"}</td>
-                <td className="num mono" style={{ fontWeight: 600 }}>{money(r.mustClose)}</td>
+                <td className="num mono" style={{ fontWeight: "var(--fw-semibold)" }}>{money(r.mustClose)}</td>
                 <td className="num mono" style={{ color: "var(--green)" }}>{r.actual == null ? "–" : money(r.actual)}</td>
                 <td className="num mono" style={{ color: r.diff == null ? "var(--text-3)" : r.diff >= 0 ? "var(--green)" : "var(--red)" }}>
                   {r.diff == null ? "–" : `${r.diff >= 0 ? "+" : ""}${money(r.diff)}`}
                 </td>
-                <td className="num mono" style={{ fontWeight: 600, color: r.cumAfter == null ? "var(--text-3)" : r.cumAfter >= 0 ? "var(--green)" : "var(--red)" }}>
+                <td className="num mono" style={{ fontWeight: "var(--fw-semibold)", color: r.cumAfter == null ? "var(--text-3)" : r.cumAfter >= 0 ? "var(--green)" : "var(--red)" }}>
                   {r.cumAfter == null ? "–" : `${r.cumAfter >= 0 ? "+" : ""}${money(r.cumAfter)}`}
                 </td>
               </tr>

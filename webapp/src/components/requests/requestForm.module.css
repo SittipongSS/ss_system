@@ -40,7 +40,7 @@
 
 /* ── ตารางคิว ─────────────────────────────────────────────────────── */
 .rowLink { cursor: pointer; }
-.docCell { font-weight: 500; }
+.docCell { font-weight: var(--fw-medium); }
 .urgentTag { color: var(--red); margin-left: 6px; }
 .kindCell { font-size: var(--fs-6); }
 .subText { font-size: var(--fs-3); color: var(--text-3); }
@@ -64,6 +64,6 @@
 
 /* ── การ์ด "คำร้องที่ผูกกับรายการนี้" (หน้าดีล/โครงการ) ─────────────── */
 .listCard { padding: var(--space-4); }
-.listTitle { margin: 0; font-size: var(--fs-10); font-weight: 700; }
-.listLink { font-weight: 700; }
+.listTitle { margin: 0; font-size: var(--fs-10); font-weight: var(--fw-bold); }
+.listLink { font-weight: var(--fw-bold); }
 .listEmpty { padding: var(--space-3); color: var(--text-3); font-size: var(--fs-7); }

@@ -17,7 +17,7 @@
 .field > span,
 .timeField > span {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .field > small {
@@ -38,7 +38,7 @@
 
 .fieldset > legend {
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   padding-inline: var(--space-2);
 }
 

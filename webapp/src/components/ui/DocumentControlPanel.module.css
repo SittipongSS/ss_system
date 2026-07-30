@@ -21,7 +21,7 @@
   margin-top: 3px;
   color: var(--text-3);
   font-size: var(--fs-4);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .totalAmount {
@@ -29,7 +29,7 @@
   color: var(--text);
   font-family: var(--font-mono);
   font-size: clamp(var(--fs-14), 3vw, var(--fs-16));
-  font-weight: 750;
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
   line-height: 1.2;
@@ -61,7 +61,7 @@
   color: var(--text-2);
   font-family: var(--font-mono);
   font-size: var(--fs-5);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -143,7 +143,7 @@
   border-radius: var(--radius-full);
   color: var(--text-3);
   font-size: var(--fs-3);
-  font-weight: 800;
+  font-weight: var(--fw-bold);
 }
 
 .stepCopy {
@@ -225,7 +225,7 @@
 
 .readinessList strong {
   font-size: var(--fs-5);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .readinessList small {

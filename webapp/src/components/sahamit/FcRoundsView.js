@@ -44,7 +44,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
       {/* วิวัฒนาการ FC รายรอบ */}
       <div className="glass-panel" style={{ padding: 20 }}>
         <div style={{ marginBottom: 8 }}>
-          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>วิวัฒนาการ FC แต่ละรอบ ต่อเดือนเป้าหมาย ({unitLbl})</h3>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>วิวัฒนาการ FC แต่ละรอบ ต่อเดือนเป้าหมาย ({unitLbl})</h3>
           <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 2 }}>เส้นละรอบ · รอบใหม่ปรับขึ้น/ลง/เลื่อนเดือนได้ — เดือนที่รอบนั้นไม่ครอบจะเว้นเส้น</div>
         </div>
         <ChartCanvas><ResponsiveContainer width="100%" height={340}>
@@ -64,7 +64,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
       <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* ยอดรวมต่อรอบ */}
         <div className="glass-panel" style={{ padding: 20 }}>
-          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 8 }}>ยอดรวม FC แต่ละรอบ ({unitLbl})</h3>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>ยอดรวม FC แต่ละรอบ ({unitLbl})</h3>
           <ChartCanvas><ResponsiveContainer width="100%" height={240}>
             <BarChart data={totals} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -80,18 +80,18 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
 
         {/* การเปลี่ยนแปลงรอบต่อรอบ */}
         <div className="glass-panel" style={{ padding: 20 }}>
-          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 8 }}>การเปลี่ยนแปลงรอบต่อรอบ</h3>
+          <h3 style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>การเปลี่ยนแปลงรอบต่อรอบ</h3>
           <div>
             {totals.map((r, i) => (
               <div key={r.roundNo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < totals.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: "var(--fs-8)" }}>รอบ #{r.roundNo}</div>
+                  <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)" }}>รอบ #{r.roundNo}</div>
                   <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>รับ {r.receivedDate ? fmtDate(r.receivedDate) : "—"}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, fontSize: "var(--fs-9)", fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>
+                  <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>
                   {r.prevPct != null && (
-                    <div style={{ fontSize: "var(--fs-5)", fontWeight: 700, color: r.prevPct >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <div style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-bold)", color: r.prevPct >= 0 ? "var(--green)" : "var(--red)" }}>
                       {r.prevPct > 0 ? "+" : ""}{r.prevPct.toFixed(1)}% vs รอบก่อน
                     </div>
                   )}

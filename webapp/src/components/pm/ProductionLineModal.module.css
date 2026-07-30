@@ -16,7 +16,7 @@
 
 .field > span {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .field > small {

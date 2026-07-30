@@ -319,7 +319,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       {/* Toolbar */}
       <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap", minWidth: 0 }}>
-          <span style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>เอกสาร Timeline (ISO)</span>
+          <span style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>เอกสาร Timeline (ISO)</span>
           <span style={{ fontSize: "var(--fs-7)", color: statusColor || "var(--text-2)", display: "flex", alignItems: "center", gap: "6px" }}>
             สถานะ: <strong>{statusLabel || project.status}</strong>
           </span>
@@ -332,7 +332,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 
       {/* ผู้เกี่ยวข้องกับเอกสารยังแก้ไขได้ แต่ไม่ปะปนกับข้อมูลที่ระบบดึงไปพิมพ์อัตโนมัติ */}
       <div style={{ flexShrink: 0, border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", padding: "14px 16px" }}>
-        <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
+        <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
         <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
           {/* ผู้ดูแล = AE / Senior AE เท่านั้น (มติผู้ใช้ 2026-07-19) — หัวหน้ามีอำนาจเหนือ AE
               แต่ไม่ลงชื่อเป็นผู้ดูแล. ต้องตรงกับ QT_PEOPLE_ROLES.aeOwner ไม่งั้นชื่อที่เลือก
@@ -438,7 +438,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
                     {axis.months.map((m) => (
                       <div key={m.key} style={{
                         width: m.count * pxPerDay, height: MONTH_H, lineHeight: `${MONTH_H}px`,
-                        fontSize: "var(--fs-3)", fontWeight: 600, color: "var(--text-2)", textAlign: "center",
+                        fontSize: "var(--fs-3)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)", textAlign: "center",
                         borderLeft: "1px solid var(--border)", overflow: "hidden", whiteSpace: "nowrap",
                       }}>
                         {m.count * pxPerDay >= 34 ? `${THAI_MONTHS_SHORT[m.m0]} ${String(m.year).slice(2)}` : ""}
@@ -535,7 +535,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 function PersonField({ label, role, value, users, disabled, onCommit, detail }) {
   return (
     <div style={{ minWidth: 0, padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel-2)" }}>
-      <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text)" }}>{label}</div>
+      <div style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text)" }}>{label}</div>
       <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)", margin: "2px 0 7px" }}>{role}</div>
       <SelectUserField value={value} users={users} disabled={disabled} onCommit={onCommit} style={{ width: "100%" }} />
       {detail && <div style={{ marginTop: "6px", fontSize: "var(--fs-3)", color: "var(--text-2)", overflowWrap: "anywhere" }}>{detail}</div>}
@@ -545,7 +545,7 @@ function PersonField({ label, role, value, users, disabled, onCommit, detail }) 
 
 const thStyle = (top = 0) => ({
   border: "1px solid var(--border)", padding: "6px 10px", fontSize: "var(--fs-5)",
-  fontWeight: 600, color: "var(--text-2)", textAlign: "center", whiteSpace: "nowrap",
+  fontWeight: "var(--fw-semibold)", color: "var(--text-2)", textAlign: "center", whiteSpace: "nowrap",
   position: "sticky", top, background: "var(--panel-2)", zIndex: 2,
 });
 function Th({ children, w, align = "center", top = 0, freeze }) {
@@ -584,18 +584,18 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
       {/* เฟส B: แถบคั่น segment — โชว์ว่างานช่วงถัดไปเป็นของดีลไหน (เฉพาะโครงการหลายดีล) */}
       {group.segLabel && (
         <tr style={{ background: segBg }}>
-          <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "6px 12px", fontWeight: 700, fontSize: "var(--fs-6)", position: "sticky", left: 0 }}>
+          <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "6px 12px", fontWeight: "var(--fw-bold)", fontSize: "var(--fs-6)", position: "sticky", left: 0 }}>
             {group.segLabel}
           </td>
         </tr>
       )}
       <tr style={{ background: phaseBg, cursor: "pointer" }} onClick={onToggleCollapse} title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}>
-        <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", fontWeight: 600, background: phaseBg }) }}>{group.phaseNum}</td>
-        <td style={{ ...freezeTd(freezeLeft[1], { fontWeight: 600, background: phaseBg }) }}>
+        <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>{group.phaseNum}</td>
+        <td style={{ ...freezeTd(freezeLeft[1], { fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {collapsed ? <ChevronRight size={16} color="var(--text-2)" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="var(--text-2)" style={{ flexShrink: 0 }} />}
             {group.phase}
-            {collapsed && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: 400 }}>({group.tasks.length} รายการ)</span>}
+            {collapsed && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>({group.tasks.length} รายการ)</span>}
           </div>
         </td>
         <td style={{ ...freezeTd(freezeLeft[2], { background: phaseBg }) }}></td>
@@ -838,7 +838,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
       {kind === "edited" && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)", zIndex: 1, pointerEvents: "none" }} />}
       {canEdit && !saving && <div onPointerDown={begin("left")} style={handle("left")}><span style={grip} /></div>}
       <span style={{
-        fontSize: "var(--fs-3)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        fontSize: "var(--fs-3)", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         color: isPending ? "var(--text-2)" : "var(--accent-fg)", pointerEvents: "none", flex: 1,
       }}>
         {width > 44 ? task.name : ""}
@@ -852,9 +852,9 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
 function SignBlock({ label, role, value, disabled, users, onCommit }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", fontWeight: "var(--fw-medium)" }}>{label}</span>
       <SelectUserField value={value} users={users} disabled={disabled} onCommit={onCommit} style={{ width: "220px" }} />
-      <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 500 }}>({role})</span>
+      <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>({role})</span>
     </div>
   );
 }

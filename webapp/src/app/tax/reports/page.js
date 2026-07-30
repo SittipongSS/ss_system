@@ -54,7 +54,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
 
       {open && (
         <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: "var(--z-inline-menu)", width: "min(90vw, 300px)", padding: "10px" }}>
-          <div style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
+          <div style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "260px", overflowY: "auto" }}>
             {ZIP_DOC_TYPES.map((t) => {
               const checked = selectedTypes.has(t.key);
@@ -277,7 +277,7 @@ export default function ReportsPage() {
     >
       {summary && report?.rows?.length > 0 && (
         <div className="glass-panel flex items-center gap-6 flex-wrap mb-4" style={{ padding: "12px 16px" }}>
-          <span style={{ fontWeight: 600 }}>{summary._label}</span>
+          <span style={{ fontWeight: "var(--fw-semibold)" }}>{summary._label}</span>
           {summary.qty != null && (
             <span style={{ fontSize: "var(--fs-7)" }}>จำนวนรวม: <strong className="font-mono">{Number(summary.qty).toLocaleString("th-TH")}</strong></span>
           )}

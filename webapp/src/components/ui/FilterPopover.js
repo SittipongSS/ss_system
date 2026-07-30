@@ -106,7 +106,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
       {open && typeof document !== "undefined" && createPortal(
         <div ref={panelRef} className="glass-panel ui-filter-popover" style={{ ...panelStyle, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-            <span style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
+            <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)" }}>{label}</span>
             {active && (
               <Button variant="quiet" size="sm" className="ui-filter-clear" onClick={onClear} title="ล้างตัวกรองทั้งหมด">
                 <X size={12} /> ล้างทั้งหมด ({count})

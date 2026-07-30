@@ -2,7 +2,7 @@
 
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
 .steps li { min-height: 54px; display: flex; align-items: center; gap: 9px; padding: 10px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); color: var(--text-3); }
-.steps li > span { width: 26px; height: 26px; border-radius: var(--radius-full); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--panel-3); font-size: var(--fs-5); font-weight: 700; }
+.steps li > span { width: 26px; height: 26px; border-radius: var(--radius-full); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--panel-3); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .steps li strong { font-size: var(--fs-6); }
 .steps .currentStep { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); background: var(--accent-soft); }
 .steps .currentStep > span { color: var(--accent-fg); background: var(--accent); }
@@ -23,11 +23,11 @@
 
 .previewPanel { overflow: hidden; }
 .previewHeading, .historyHeader { padding: var(--space-4) 18px; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); border-bottom: 1px solid var(--border); }
-.previewHeading h2, .historyHeader h2 { font-size: var(--fs-10); font-weight: 700; }
+.previewHeading h2, .historyHeader h2 { font-size: var(--fs-10); font-weight: var(--fw-bold); }
 .previewHeading p, .historyHeader p { margin-top: 3px; color: var(--text-3); font-size: var(--fs-6); }
 .summaryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 18px; }
 .summaryGrid > div { min-height: 76px; padding: var(--space-3) 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); display: flex; flex-direction: column; justify-content: space-between; }
-.summaryGrid span { color: var(--text-3); font-size: var(--fs-5); font-weight: 600; }
+.summaryGrid span { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
 .summaryGrid strong { color: var(--text); font-size: var(--fs-13); line-height: 1; font-variant-numeric: tabular-nums; }
 .summaryGrid .issueCard { border-color: color-mix(in srgb, var(--red) 32%, var(--border)); background: var(--red-soft); }
 .summaryGrid .issueCard strong { color: var(--red); }
@@ -41,7 +41,7 @@
 .previewTable td:nth-child(3) { width: 130px; }
 .previewTable td:nth-child(7) { min-width: 240px; white-space: normal; }
 .previewTable td small, .historyTable td small { display: block; margin-top: 2px; color: var(--text-3); }
-.badge { min-height: 23px; padding: 2px var(--space-2); border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: var(--fs-3); font-weight: 700; border: 1px solid transparent; }
+.badge { min-height: 23px; padding: 2px var(--space-2); border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: var(--fs-3); font-weight: var(--fw-bold); border: 1px solid transparent; }
 .green { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
 .blue { color: var(--blue); background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 24%, transparent); }
 .amber { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 24%, transparent); }
@@ -63,8 +63,8 @@
 .detailBody dl { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .detailBody dl > div { padding: 10px; border-radius: var(--radius); background: var(--panel); }
 .detailBody dt { color: var(--text-3); font-size: var(--fs-4); }
-.detailBody dd { margin: 3px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
-.detailBody h4 { font-size: var(--fs-7); font-weight: 700; }
+.detailBody dd { margin: 3px 0 0; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.detailBody h4 { font-size: var(--fs-7); font-weight: var(--fw-bold); }
 .detailRows { display: flex; flex-direction: column; gap: var(--space-2); }
 .detailRows article { padding: 10px 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
 .detailRows article > div { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }

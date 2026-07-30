@@ -8,7 +8,7 @@
 .controlIntro p { grid-column: 2; margin: 0; color: var(--text-3); font-size: var(--fs-5); }
 .controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: end; gap: 14px; margin-top: 14px; }
 .controls :global(.form-group) { margin: 0; }
-.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: var(--fs-4); font-weight: 600; }
+.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
 .controls :global(.segmented) { min-height: var(--ctl-h); }
 .controls :global(.segmented button) { min-height: var(--ctl-h); }
 .scenarioSummary { display: flex; flex-wrap: wrap; gap: 6px var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }

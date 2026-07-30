@@ -88,6 +88,7 @@ const BREAKPOINT_CAP = 21;
 
 const rawColorViolations = [];
 const typeScaleViolations = [];
+const fontWeightViolations = [];
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -143,6 +144,26 @@ for (const file of uiFiles) {
     source.split(/\r?\n/).forEach((line, index) => {
       for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
         typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
+      }
+    });
+  }
+
+  /* น้ำหนักตัวอักษรต้องมาจาก --fw-* — ชั้นพิมพ์คุมแต่ *ขนาด* มาตลอด ส่วน *น้ำหนัก*
+     ไม่เคยมีกฎเลย ตรวจ 2026-07-30 พบ 558 จุด ใช้โทเคน 0 และกระจาย 8 ค่า ทั้งที่
+     layout.js โหลดฟอนต์มาแค่ 4 น้ำหนัก → 76 จุดสั่งค่าที่ไม่มีตัวจริง (650/750/800/450)
+     เบราว์เซอร์ปัดให้เงียบ ๆ = ไล่ระดับความหนา 3 ขั้นแล้วได้หน้าตาขั้นเดียว
+     (วัดความกว้างข้อความจริงแล้ว ไม่ได้อนุมานจากสเปก)
+
+     ⚠️ เอกสารพิมพ์ (`components/documents/`, `lib/`) ยกเว้น — ประกอบ HTML เองและ
+     ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น */
+  if (!rel.startsWith("src/components/documents/")) {
+    source.split(/\r?\n/).forEach((line, index) => {
+      const cssHit = line.match(/font-weight:\s*(\d+)/);
+      if (cssHit) {
+        fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
+      }
+      for (const hit of line.matchAll(/fontWeight:\s*(?:"(\d+)"|'(\d+)'|(\d+))(?=\s*[,}])/g)) {
+        fontWeightViolations.push(`${rel}:${index + 1} fontWeight: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fw-…)`);
       }
     });
   }
@@ -380,6 +401,7 @@ const failures = [
     : []),
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
+  ...fontWeightViolations.map((item) => `น้ำหนักตัวอักษรนอกชั้นกลาง: ${item}`),
   ...zIndexViolations.map((item) => `z-index นอกชั้นซ้อนกลาง: ${item}`),
   ...motionViolations.map((item) => `เวลาใน transition/animation นอกชั้นจังหวะกลาง: ${item}`),
   ...(rawSpacingCount > RAW_SPACING_CAP
@@ -427,6 +449,7 @@ console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} vis
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
+console.log(`Font-weight violations (นอกโทเคน --fw-*): ${fontWeightViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);

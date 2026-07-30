@@ -62,7 +62,7 @@
   overflow: hidden;
   color: var(--text);
   font-size: var(--fs-8);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -83,7 +83,7 @@
   background: color-mix(in srgb, var(--queue-tone) 12%, transparent);
   color: var(--queue-tone);
   font-size: var(--fs-4);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   white-space: nowrap;
 }
 
@@ -94,7 +94,7 @@
   flex: none;
   color: var(--accent-ink);
   font-size: var(--fs-7);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 @media (max-width: 640px) {

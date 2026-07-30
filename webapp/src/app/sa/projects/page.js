@@ -192,7 +192,7 @@ export default function ProjectsIndexPage() {
                         </Link>
                       </td>
                       <td>
-                        <strong style={{ display: "block", fontWeight: 650 }}>{p.customerName || "-"}</strong>
+                        <strong style={{ display: "block", fontWeight: "var(--fw-bold)" }}>{p.customerName || "-"}</strong>
                         <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{projectBrand || "-"}</span>
                       </td>
                       <td>

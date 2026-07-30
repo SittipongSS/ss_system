@@ -83,7 +83,7 @@ export default function MgmtCalendarPage() {
       <div className="glass-panel" style={{ padding: "18px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <button onClick={() => goMonth(-1)} className="btn btn-secondary" style={{ padding: "6px 10px" }}><ChevronLeft size={16} /></button>
-          <div style={{ fontSize: "var(--fs-10)", fontWeight: 700 }}>{MONTHS_TH[cursor.m]} {cursor.y + 543}</div>
+          <div style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>{MONTHS_TH[cursor.m]} {cursor.y + 543}</div>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn btn-secondary" style={{ padding: "6px 12px", fontSize: "var(--fs-5)" }}>วันนี้</button>
             <button onClick={() => goMonth(1)} className="btn btn-secondary" style={{ padding: "6px 10px" }}><ChevronRight size={16} /></button>
@@ -92,7 +92,7 @@ export default function MgmtCalendarPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 6, marginBottom: 6 }}>
           {WEEKDAYS_TH.map((w, i) => (
-            <div key={w} style={{ textAlign: "center", fontSize: "var(--fs-5)", fontWeight: 600, color: i === 0 || i === 6 ? "var(--red)" : "var(--text-3)", padding: "4px 0" }}>{w}</div>
+            <div key={w} style={{ textAlign: "center", fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: i === 0 || i === 6 ? "var(--red)" : "var(--text-3)", padding: "4px 0" }}>{w}</div>
           ))}
         </div>
 

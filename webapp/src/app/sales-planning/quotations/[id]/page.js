@@ -862,7 +862,7 @@ export default function QuotationEditorPage() {
                 actions={<Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด SO</Link>}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="linklike mono" style={{ fontWeight: 700 }}>{quote.salesOrder.orderNumber}</Link>
+                  <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="linklike mono" style={{ fontWeight: "var(--fw-bold)" }}>{quote.salesOrder.orderNumber}</Link>
                   <span className="ui-badge" style={{ color: quote.salesOrder.status === "approved" ? "var(--green)" : quote.salesOrder.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[quote.salesOrder.status] || quote.salesOrder.status}</span>
                   <span style={{ color: "var(--text-2)" }}>Actual ก่อน VAT {fmtMoney(quote.salesOrder.status === "approved" ? quote.salesOrder.actualAmount : 0)}</span>
                 </div>
@@ -893,12 +893,12 @@ export default function QuotationEditorPage() {
                       href={`/sa/quotations/${revision.id}`}
                       className={styles.relatedLink}
                       aria-current={revision.id === quote.id ? "page" : undefined}
-                      style={revision.id === quote.id ? { color: "var(--blue)", fontWeight: 700 } : undefined}
+                      style={revision.id === quote.id ? { color: "var(--blue)", fontWeight: "var(--fw-bold)" } : undefined}
                     >
                       <span>
                         {revision.quoteNumber}
                         {revision.id === quote.id ? " · ฉบับนี้" : ""}
-                        <small style={{ display: "block", color: "var(--text-3)", fontWeight: 400 }}>
+                        <small style={{ display: "block", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>
                           {fmtDate(revision.quoteDate)} · {revision.status === "revised" ? "ฉบับเก่า" : "ฉบับล่าสุด"}
                         </small>
                       </span>

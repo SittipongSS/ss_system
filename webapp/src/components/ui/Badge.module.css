@@ -18,7 +18,7 @@
   background: var(--badge-bg);
   color: var(--badge-color);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   line-height: 1.5;
   vertical-align: middle;
 }

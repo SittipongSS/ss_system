@@ -17,12 +17,12 @@
 .monthNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
 .monthNav > div:last-child { display: flex; gap: 6px; }
 .monthTitle { text-align: center; }
-.monthTitle strong { display: block; font-size: var(--fs-10); font-weight: 700; }
+.monthTitle strong { display: block; font-size: var(--fs-10); font-weight: var(--fw-bold); }
 .monthTitle small { display: block; color: var(--text-3); font-size: var(--fs-3); }
 
 .weekHead, .dayGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .weekHead { margin-bottom: 6px; }
-.weekHead > span { padding: var(--space-1) 0; color: var(--text-3); font-size: var(--fs-5); font-weight: 600; text-align: center; }
+.weekHead > span { padding: var(--space-1) 0; color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-semibold); text-align: center; }
 .weekHead > .weekend { color: var(--red); }
 
 /* ช่องวัน = ปุ่มจริง (คีย์บอร์ด/screen reader เข้าถึงได้) — disabled เมื่อกดไม่ได้ */
@@ -30,7 +30,7 @@
 .day:hover:not(:disabled) { border-color: var(--border-strong); background: var(--panel-2); }
 .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .day:disabled { cursor: default; }
-.day > strong { font-size: var(--fs-7); font-weight: 500; }
+.day > strong { font-size: var(--fs-7); font-weight: var(--fw-medium); }
 .day > small { overflow: hidden; color: var(--red); font-size: var(--fs-2); line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 .dayBlank { min-height: 74px; }
@@ -40,7 +40,7 @@
 .holidayDay { border-color: color-mix(in srgb, var(--red) 40%, transparent); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .holidayDay > strong { color: var(--red); }
 .today { border-width: 2px; border-color: var(--accent); }
-.today > strong { font-weight: 700; }
+.today > strong { font-weight: var(--fw-bold); }
 
 .legend { display: flex; gap: var(--space-4); margin-top: 14px; color: var(--text-3); font-size: var(--fs-4); flex-wrap: wrap; }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; }
@@ -56,11 +56,11 @@
 .yearList { display: flex; flex-direction: column; gap: var(--space-4); }
 .yearPanel { padding: 0; overflow: hidden; }
 .yearHeader { display: flex; align-items: center; gap: 9px; padding: 13px var(--space-4); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.yearHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: 700; }
+.yearHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
 .currentYear { color: var(--accent-ink); background: var(--accent-soft); }
 .tableWrap { border: 0; border-radius: 0; }
 .tableWrap td { vertical-align: middle; }
-.dateCell { white-space: nowrap; font-weight: 600; }
+.dateCell { white-space: nowrap; font-weight: var(--fw-semibold); }
 .rowActions { display: flex; justify-content: flex-end; }
 /* วันที่ผ่านมาแล้ว = ข้อมูลอ้างอิง ไม่ใช่สิ่งที่ต้องดูแลต่อ → ถอยไปเป็นพื้นหลัง */
 .past td { color: var(--text-3); }
@@ -75,7 +75,7 @@
 
 /* ── ฟอร์มเพิ่มวันหยุดใน Modal ────────────────────────────────────────── */
 .addForm { display: grid; gap: 14px; padding: 18px; }
-.addForm label { display: grid; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: 600; }
+.addForm label { display: grid; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
 .addForm label b { color: var(--red); }
 .addHint { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
 .addActions { display: flex; justify-content: flex-end; gap: var(--space-2); }

@@ -21,7 +21,7 @@
 .caption {
   min-width: 108px;
   font-size: var(--fs-5);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--text-2);
 }
 
@@ -167,7 +167,7 @@
 
 /* ตัวหนังสือบนพื้นนาวีใช้ --navy-fg ไม่ใช่ #fff — audit ห้ามสีดิบในไฟล์ module
    (globals.css เขียน #fff ได้เพราะเป็นที่ประกาศโทเคน) */
-.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: 800; letter-spacing: .08em; }
+.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: var(--fw-bold); letter-spacing: .08em; }
 
 .navSysBtn {
   display: inline-flex;
@@ -178,7 +178,7 @@
   background: color-mix(in srgb, var(--navy-fg) 14%, transparent);
   color: var(--navy-fg);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .navSpacer { flex: 1; }
@@ -212,7 +212,7 @@
   border-radius: var(--radius);
   color: var(--text-2);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
 }
 

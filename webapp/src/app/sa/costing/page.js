@@ -231,12 +231,12 @@ export default function CostingListPage() {
                 return (
                   <tr key={row.id} className="clickable-row">
                     <td>
-                      <Link href={`/sa/costing/${row.id}`} style={{ fontWeight: 600 }}>
+                      <Link href={`/sa/costing/${row.id}`} style={{ fontWeight: "var(--fw-semibold)" }}>
                         {row.docNo || "ร่าง"}
                       </Link>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{row.customerName || "—"}</div>
+                      <div style={{ fontWeight: "var(--fw-medium)" }}>{row.customerName || "—"}</div>
                       <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                         {productNames.length
                           ? productNames.slice(0, 2).join(" · ")

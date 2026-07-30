@@ -7,7 +7,7 @@
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) 22px; }
 .field { min-width: 0; }
 .wide { grid-column: 1 / -1; }
-.field label, .label { display: block; margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-3); font-weight: 650; }
+.field label, .label { display: block; margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .field input, .field textarea, .field select { width: 100%; }
 .field textarea { min-height: 110px; resize: vertical; }
 .value { color: var(--text-2); font-size: var(--fs-7); line-height: 1.6; overflow-wrap: anywhere; }

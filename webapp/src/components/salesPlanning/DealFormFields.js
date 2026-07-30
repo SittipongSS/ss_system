@@ -133,9 +133,9 @@ export default function DealFormFields({
         onChange={(e) => set("dealType")(e.target.value)}
         style={{ color: form.dealType ? DEAL_TYPE_COLORS[form.dealType] : "var(--text-3)", fontWeight: form.dealType ? 600 : 400 }}
       >
-        <option value="" disabled style={{ color: "var(--text-3)", fontWeight: 400 }}>— เลือกประเภทดีล —</option>
+        <option value="" disabled style={{ color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>— เลือกประเภทดีล —</option>
         {DEAL_TYPES.map((t) => (
-          <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: 600 }}>
+          <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: "var(--fw-semibold)" }}>
             {t} · {DEAL_TYPE_LABELS[t]}
           </option>
         ))}

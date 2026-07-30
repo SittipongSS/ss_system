@@ -11,7 +11,7 @@
 
 /* "ยังไม่ระบุกำลัง" ต้องอ่านออกทันทีว่าไม่ใช่ 0 — สองอย่างนี้คนละความหมายสิ้นเชิง */
 .unknown { color: var(--text-3); font-style: italic; }
-.closed { color: var(--red); font-weight: 600; }
+.closed { color: var(--red); font-weight: var(--fw-semibold); }
 
 .inactive td { opacity: 0.55; }
 .past td { opacity: 0.6; }
@@ -46,7 +46,7 @@
 
 .dayField > span {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .reasonField { flex: 1; min-width: 200px; }

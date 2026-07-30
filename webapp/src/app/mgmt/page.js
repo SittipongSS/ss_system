@@ -85,7 +85,7 @@ export default function MgmtOverviewPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 18 }}>
             <div className="glass-panel" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 14 }}>ความคืบหน้าตามแผนก</div>
+              <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 14 }}>ความคืบหน้าตามแผนก</div>
               {(data?.progressByDept || []).length === 0 ? (
                 <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>ยังไม่มีข้อมูล</div>
               ) : (
@@ -107,7 +107,7 @@ export default function MgmtOverviewPage() {
             </div>
 
             <div className="glass-panel" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 14 }}>สัดส่วนสถานะ</div>
+              <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 14 }}>สัดส่วนสถานะ</div>
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                 <div style={{ width: 96, height: 96, borderRadius: "50%", background: donut, flexShrink: 0 }} />
                 <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -123,7 +123,7 @@ export default function MgmtOverviewPage() {
           </div>
 
           <div className="glass-panel" style={{ padding: "16px 18px" }}>
-            <div style={{ fontSize: "var(--fs-8)", fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
               <AlertTriangle size={16} color="var(--red)" /> งานด่วน — ยังไม่เสร็จ
             </div>
             {(data?.urgent || []).length === 0 ? (
