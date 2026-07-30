@@ -28,6 +28,11 @@ const HREF = {
   quotation: (id) => `/sa/quotations/${id}`,
   sales_order: (id) => `/sa/sales-orders/${id}`,
   costing_request: (id) => `/sa/costing/${id}`,
+  customer: (id) => `/database/customers/${id}`,
+  product: (id) => `/database/products/${id}`,
+  excise_registration: (id) => `/tax/registrations/${id}`,
+  excise_order: (id) => `/tax/filings/${id}`,
+  sahamit_po: (id) => `/sahamit/po/${id}`,
 };
 
 // ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
@@ -40,11 +45,19 @@ const ENTITY_LABEL = {
   quotation: 'ใบเสนอราคา',
   sales_order: 'ใบสั่งขาย',
   costing_request: 'ใบขอราคาผลิต',
+  customer: 'ลูกค้า',
+  product: 'สินค้า',
+  excise_registration: 'ทะเบียนสรรพสามิต',
+  excise_order: 'ใบยื่นชำระภาษี',
+  sahamit_po: 'PO สหมิตร',
 };
 
 export function entityTitle(entityType, parent) {
+  // ⚠️ ลำดับสำคัญ: ของที่มี "เลขที่เอกสาร" ต้องมาก่อน `name`/`title` เสมอ —
+  // ทะเบียนสรรพสามิตมีทั้ง fgCode และชื่อสินค้า คนทำงานเรียกด้วยรหัส FG
   const name = parent?.title || parent?.code || parent?.quoteNumber || parent?.orderNumber
-    || parent?.docNo || parent?.contactName || parent?.name || parent?.id || '';
+    || parent?.poNumber || parent?.docNo || parent?.fgCode
+    || parent?.contactName || parent?.name || parent?.id || '';
   const label = ENTITY_LABEL[entityType] || 'รายการ';
   return `${label} ${name}`.trim().slice(0, 200);
 }

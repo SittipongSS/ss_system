@@ -12,8 +12,10 @@
 // (canViewPersonalTask เป็น async อยู่แล้ว) — ถ้าทำเป็น sync จะต้องรื้อทั้งทะเบียน
 // ตอนต่อ entity ตัวที่สอง
 import {
-  canApproveCosting, canChangeTaskStatus, canViewCosting, isReadOnlyObserver, isSuperuser,
+  canAccessSahamit, canApproveCosting, canChangeTaskStatus, canEditRecord, canUser,
+  canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
+import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
@@ -166,6 +168,91 @@ export const UPDATE_ENTITIES = {
       const deal = await parentDeal(supabase, parent);
       return [parent?.createdBy, deal?.ownerId];
     },
+  },
+
+  // ── master data: ลูกค้า / สินค้า ─────────────────────────────────────
+  // ⭐ ด่านยกมาจาก `canViewRecord`/`canEditRecord` ตรง ๆ — ทะเบียนกลางของสิทธิ์
+  // รายแถวทั้งระบบ · ห้ามคิดกฎใหม่ให้ต่างจากหน้าจอ ไม่งั้นเปิดหน้าได้แต่เธรดว่าง
+  //
+  // อ่านได้ทุกคน (แคตตาล็อกข้ามทีม มติ 2026-07-20) แต่โพสต์ = ทีมผู้ดูแลเท่านั้น
+  customer: {
+    table: 'customers',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      return canViewRecord(user, 'customers', parent);
+    },
+    async canPost(supabase, parent, user) {
+      return canEditRecord(user, 'customers', parent);
+    },
+    // ไม่มี "เจ้าของ" รายคนบน master data — ผู้รับคือคนที่เคยคุยในเธรด/ถูก @ ถึง
+    // ซึ่ง notificationRecipients เติมให้เองอยู่แล้ว (มติ 14 ห้ามใช้ทั้งทีมเป็นผู้รับ)
+    recipients: () => [],
+  },
+  product: {
+    table: 'products',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      return canViewRecord(user, 'products', parent);
+    },
+    // ⚠️ สินค้าใช้ทีมผู้ดูแลของ **ลูกค้าเจ้าของ** ไม่ใช่ `product.team` (ซึ่งบันทึก
+    // แค่คนสร้าง) → ต้อง resolve เองแล้วส่งเข้าไป · `canEditRecord` fail-closed
+    // เมื่อค่านี้เป็น undefined จึงลืมส่งไม่ได้แบบเงียบ ๆ
+    async canPost(supabase, parent, user) {
+      const teams = await productCaretakerTeams(parent, supabase);
+      return canEditRecord(user, 'products', parent, teams);
+    },
+    recipients: () => [],
+  },
+
+  // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
+  excise_registration: {
+    table: 'excise_registrations',
+    attachments: true,   // ฉลาก/Artwork คือหัวใจของการคุยเรื่องทะเบียน
+    async canView(supabase, parent, user) {
+      return canViewRecord(user, 'registrations', parent);
+    },
+    // ⚠️ **ห้ามใช้ `canEditRecord`** ตรงนี้ — สำหรับ registrations มันตกไปที่
+    // `inScope(editScope(role), …)` ซึ่งเทียบ `record.ownerId` ที่ทะเบียน**ไม่มี**
+    // (มีแต่ `createdBy`) ⇒ AE ทุกคนโพสต์ไม่ได้เลย เธรดจะเหลือแค่ LG กับ supervisor
+    // → ใช้ด่านชุดเดียวกับที่ *หน้าจอ* ใช้ตัดสินปุ่ม: products:edit (SA ผู้จัดเตรียม)
+    // + legal:approve (LG ผู้ตรวจ) — สองฝ่ายที่คุยกันจริงบนทะเบียนใบหนึ่ง
+    async canPost(supabase, parent, user) {
+      if (!canViewRecord(user, 'registrations', parent)) return false;
+      if (isReadOnlyObserver(user?.role)) return false;
+      return canUser(user, 'products:edit') || canUser(user, 'legal:approve');
+    },
+    recipients: (parent) => [parent?.createdBy, parent?.approvedBy],
+  },
+  excise_order: {
+    table: 'orders',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      return canViewRecord(user, 'orders', parent);
+    },
+    // เหตุผลเดียวกับทะเบียน — ยึดด่านของหน้าจอ: sales:act (SA รับเงิน/แก้ใบ)
+    // + legal:approve (LG ยื่น/ตีกลับ)
+    async canPost(supabase, parent, user) {
+      if (!canViewRecord(user, 'orders', parent)) return false;
+      if (isReadOnlyObserver(user?.role)) return false;
+      return canUser(user, 'sales:act') || canUser(user, 'legal:approve');
+    },
+    recipients: (parent) => [parent?.createdBy],
+  },
+
+  // ── PO สหมิตร ────────────────────────────────────────────────────────
+  // ⚠️ ด่านของสหมิตรเป็น **ระดับโมดูล** ไม่ใช่รายแถว (ทั้งโมดูลเป็นของลูกค้า
+  // รายเดียว) — `canAccessSahamit` คือด่านเดียวกับที่ getSahamitContext ใช้
+  sahamit_po: {
+    table: 'sahamit_pos',
+    attachments: true,
+    async canView(supabase, parent, user) {
+      return canAccessSahamit(user?.role, user?.team);
+    },
+    async canPost(supabase, parent, user) {
+      if (!canAccessSahamit(user?.role, user?.team)) return false;
+      return !isReadOnlyObserver(user?.role);   // viewer/executive อ่านได้ ไม่เขียน
+    },
+    recipients: () => [],
   },
 
   // ── ใบขอราคาผลิต (mig 0143) ──────────────────────────────────────────

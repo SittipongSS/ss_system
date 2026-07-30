@@ -8,9 +8,10 @@ import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, PackageCheck, ExternalLink } from "lucide-react";
+import { FileText, MessagesSquare, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, PackageCheck, ExternalLink } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
-import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -695,6 +696,19 @@ export default function PoDetailPage() {
             </table>
           </TableScroll>
         </div>
+
+        {/* เธรดกลาง (mig 0163) — PO สหมิตรมีข้อตกลงนอกเอกสารเยอะที่สุดในระบบ
+            (เลื่อนกำหนดส่ง/เปลี่ยนปลายทาง/แบ่งงวด) และเจ้านี้เป็นลูกค้าอันดับ 1
+            เดิมข้อมูลพวกนี้อยู่ในแชทฝ่าย ไม่ได้ติดอยู่กับตัว PO */}
+        <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+          <UpdateThread
+            entityType="sahamit_po"
+            entityId={po.id}
+            order="desc"
+            placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเลื่อนส่งงวดสอง..."
+            emptyText="ยังไม่มีความเคลื่อนไหว"
+          />
+        </DetailCard>
         </DetailPageLayout>
       )}
       <ConfirmModal

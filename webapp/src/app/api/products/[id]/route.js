@@ -9,6 +9,8 @@ import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/maste
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
@@ -104,6 +106,11 @@ export async function PATCH(request, { params }) {
     const { data: decided, error: decErr } = await supabase
       .from('products').update(approvalUpdates).eq('id', id).select().single();
     if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา (ดู customers/[id]/route.js)
+    const threadEvent = masterApprovalUpdate(body.approvalStatus, { reason: decided.rejectionReason });
+    if (threadEvent) {
+      await appendUpdate(supabase, { entityType: 'product', entityId: id, ...threadEvent, user });
+    }
     await recordAudit({
       user, action: 'update', entityType: 'product', entityId: id,
       before: product, after: decided,
@@ -263,6 +270,10 @@ export async function PATCH(request, { params }) {
   // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
   if (reapproval) {
     notifyMasterDataReapproval({ entityType: 'product', record: data, user, changedFields });
+    const resetEvent = masterReapprovalUpdate(changedFields);
+    if (resetEvent) {
+      await appendUpdate(supabase, { entityType: 'product', entityId: id, ...resetEvent, user });
+    }
   }
   return Response.json(redactProductMargin(user, data));
 }
@@ -308,6 +319,8 @@ export async function DELETE(request, { params }) {
   // Cascade: purge attachments (rows + storage/Drive files) so deleting a
   // product never orphans its documents.
   await purgeAttachments('product', id);
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  await purgeUpdates(supabase, 'product', id);
   await recordAudit({ user, action: 'delete', entityType: 'product', entityId: id, before: product, request });
   return Response.json({ success: true, message: 'ลบสินค้าเรียบร้อยแล้ว' });
 }
