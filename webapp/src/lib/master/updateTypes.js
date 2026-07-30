@@ -87,6 +87,41 @@ export const UPDATE_KINDS = {
     cancel: { label: 'ยกเลิก', color: 'var(--red)' },
     restore: { label: 'กู้คืนเป็นร่าง', color: 'var(--blue)' },
   },
+  // ── master data: ลูกค้า / สินค้า ─────────────────────────────────────
+  // ด่านอนุมัติชุดเดียวกัน (approvalStatus + rejectionReason + resetApprovalOnEdit)
+  // จึงใช้ชุด kind เหมือนกันเป๊ะ — ป้ายต่างกันเมื่อไรคือสัญญาณว่ากฎเริ่มแตกเป็นสองชุด
+  customer: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    approve: { label: 'อนุมัติ', color: 'var(--green)' },
+    reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
+  },
+  product: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    approve: { label: 'อนุมัติ', color: 'var(--green)' },
+    reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
+  },
+  // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
+  excise_registration: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    submit: { label: 'ยื่นให้ฝ่ายกฎหมาย', color: 'var(--blue)' },
+    approve: { label: 'ขึ้นทะเบียนแล้ว', color: 'var(--green)' },
+    reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+    revoke: { label: 'ปลดอนุมัติ', color: 'var(--red)' },
+  },
+  excise_order: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    status: { label: 'เปลี่ยนสถานะ', color: 'var(--blue)' },
+    reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
+  },
+  // ── PO สหมิตร ────────────────────────────────────────────────────────
+  // ไม่มีด่านอนุมัติของตัวเอง (ลูกค้าเป็นคนออก PO) — เหตุการณ์เดียวที่มีค่าคือ
+  // จุดส่งมอบเข้าท่อขาย
+  sahamit_po: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    settle: { label: 'แปลงเป็นดีล', color: 'var(--green)' },
+  },
   // ทะเบียนกลิ่น (mig 0171) — เธรดสองฝ่าย: RD ส่งกลิ่น ↔ ฝ่ายขายนำผลจากลูกค้ามาลง
   // เหตุการณ์ระบบเขียนคู่กับ scent_revisions เสมอ (ตารางเก็บ "ผลที่เป็นทางการ"
   // ส่วนเธรดเก็บ "บทสนทนาระหว่างทาง" — คนละหน้าที่ ต้องมีทั้งคู่)

@@ -9,6 +9,7 @@ import { blockedLinesMessage, diffPoLines, lineLockReason, poDeleteBlock } from 
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { refreshSahamitFlags } from '@/lib/sahamit/flagsSync';
 import { recordAudit } from '@/lib/audit';
+import { purgeUpdates } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -187,6 +188,9 @@ export async function DELETE(request, { params }) {
   const { error } = await supabase
     .from('sahamit_pos').delete().eq('id', id).eq('customerId', customerId);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  await purgeUpdates(supabase, 'sahamit_po', id);
 
   // ลบ PO ทำให้ยอด PO ที่เคยหักหายไป — รีเฟรชธง. Best-effort.
   try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }

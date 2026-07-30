@@ -11,6 +11,8 @@ import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 
@@ -161,6 +163,13 @@ export async function PATCH(request, { params }) {
     const { data: decided, error: decErr } = await supabase
       .from('customers').update(approvalUpdates).eq('id', id).select().single();
     if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา (action สำเร็จแล้ว เธรดพลาดต้องไม่ 500)
+    // ⭐ `rejectionReason` ถูกล้างเป็น null ทั้งตอนอนุมัติและตอนแก้ (resetApprovalOnEdit)
+    // → ตีกลับรอบสองลบเหตุผลรอบแรกทิ้งถาวร · เธรดเก็บครบทุกรอบ
+    const threadEvent = masterApprovalUpdate(body.approvalStatus, { reason: decided.rejectionReason });
+    if (threadEvent) {
+      await appendUpdate(supabase, { entityType: 'customer', entityId: id, ...threadEvent, user });
+    }
     await recordAudit({
       user, action: 'update', entityType: 'customer', entityId: id,
       before: customer, after: decided,
@@ -296,6 +305,12 @@ export async function PATCH(request, { params }) {
   // ตกกลับรออนุมัติ = ลูกค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
   if (reapproval) {
     notifyMasterDataReapproval({ entityType: 'customer', record: updated, user, changedFields });
+    // เดิมเรื่องนี้ไปโผล่แค่ใน Chat ของฝ่าย → คนเปิดหน้าดูทีหลังไม่มีทางรู้ว่า
+    // "ทำไมของที่เคยอนุมัติแล้วกลับมา pending" · ลงเธรดให้ติดอยู่กับตัวลูกค้า
+    const resetEvent = masterReapprovalUpdate(changedFields);
+    if (resetEvent) {
+      await appendUpdate(supabase, { entityType: 'customer', entityId: id, ...resetEvent, user });
+    }
   }
   return Response.json(updated);
 }
@@ -343,6 +358,8 @@ export async function DELETE(request, { params }) {
   // Cascade: purge attachments (rows + storage/Drive files) so deleting a
   // customer never orphans its documents.
   await purgeAttachments('customer', id);
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  await purgeUpdates(supabase, 'customer', id);
   await recordAudit({ user, action: 'delete', entityType: 'customer', entityId: id, before: customer, request });
   return Response.json({ success: true, message: 'ลบข้อมูลลูกค้าเรียบร้อยแล้ว' });
 }

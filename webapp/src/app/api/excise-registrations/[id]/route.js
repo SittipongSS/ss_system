@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { registrationRevokeUpdate, registrationStatusUpdate } from '@/lib/master/recordUpdates';
 import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
@@ -85,6 +87,12 @@ export async function PATCH(request, { params }) {
         .select()
         .single();
       if (error) return Response.json({ error: error.message }, { status: 500 });
+      // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา · เหตุผลปลดอนุมัติเดิมไปอยู่ใน
+      // `metadata.revokeApproval` ซึ่งหน้าจอไม่แสดง และรอบถัดไปเขียนทับ
+      await appendUpdate(supabase, {
+        entityType: 'excise_registration', entityId: id,
+        ...registrationRevokeUpdate({ reason }), user,
+      });
       await recordAudit({
         user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data,
         summary: `ปลดอนุมัติทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง): ${reason}`, request,
@@ -206,6 +214,16 @@ export async function PATCH(request, { params }) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   const summary = data.status !== reg.status
     ? `เปลี่ยนสถานะทะเบียน ${reg.fgCode || id}: ${reg.status} → ${data.status}` : null;
+  // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา
+  // ⭐ `rejectionReason` ถูกล้างเป็น null ตอนอนุมัติ → เหตุผลที่ LG ตีกลับรอบก่อน
+  // หายถาวร ทั้งที่รอบถัดไปคือคนที่ต้องอ่านมันที่สุด · ใช้ `body.rejectionReason`
+  // เพราะแถวหลังอัปเดตอาจโดนล้างไปแล้ว
+  if (data.status !== reg.status) {
+    const threadEvent = registrationStatusUpdate(data.status, { reason: body.rejectionReason });
+    if (threadEvent) {
+      await appendUpdate(supabase, { entityType: 'excise_registration', entityId: id, ...threadEvent, user });
+    }
+  }
   await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
 
   // แจ้งข้ามเลน SA ↔ LG — ทั้งสองทางเคยเงียบสนิท (ไม่มี sendChat ในไฟล์นี้เลย) แปลว่า
@@ -288,6 +306,8 @@ export async function DELETE(request, { params }) {
   // Cascade: purge this registration's attachments (rows + storage/Drive files)
   // so deleting a draft never orphans documents or storage.
   await purgeAttachments('registration', id);
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  await purgeUpdates(supabase, 'excise_registration', id);
   await recordAudit({
     user, action: 'delete', entityType: 'registration', entityId: id, before: reg,
     summary: `ลบทะเบียน ${reg.fgCode || id} (${reg.customerName || ''})`.trim(), request,

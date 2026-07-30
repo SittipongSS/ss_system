@@ -3,10 +3,11 @@ import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, Pencil, Wallet, FileCheck, Printer, ExternalLink } from "lucide-react";
+import { ReceiptText, Pencil, Wallet, FileCheck, MessagesSquare, Printer, ExternalLink } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
-import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -304,6 +305,18 @@ export default function FilingDetailPage() {
               cardColumns={1}
             />
           </div>
+
+          {/* เธรดกลาง (mig 0163) — ใบยื่นเดินข้ามเลน ขาย ↔ กฎหมาย/บัญชี หลายรอบ
+              และ `rejectionReason` ถูกล้างทุกครั้งที่ยื่นใหม่หลังถูกตีกลับ */}
+          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+            <UpdateThread
+              entityType="excise_order"
+              entityId={o.id}
+              order="desc"
+              placeholder="พิมพ์ข้อความ เช่น ลูกค้าโอนเงินแล้ว รอสลิป..."
+              emptyText="ยังไม่มีความเคลื่อนไหว"
+            />
+          </DetailCard>
 
           </div>
         </DetailPageLayout>

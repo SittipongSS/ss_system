@@ -3,10 +3,11 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ClipboardCheck, ExternalLink, Send, Undo2 } from "lucide-react";
+import { ClipboardCheck, ExternalLink, MessagesSquare, Send, Undo2 } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
-import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -299,6 +300,19 @@ export default function RegistrationDetailPage() {
               />
             </div>
           )}
+
+          {/* เธรดกลาง (mig 0163) — เธรดสองฝ่าย SA ↔ LG · `rejectionReason` ถูกล้าง
+              เป็น null ตอนอนุมัติ และเหตุผลปลดอนุมัติไปอยู่ใน metadata ที่หน้าจอ
+              ไม่แสดง → รอบก่อน ๆ หายหมด ทั้งที่คนแก้รอบถัดไปคือคนที่ต้องอ่านที่สุด */}
+          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+            <UpdateThread
+              entityType="excise_registration"
+              entityId={s.id}
+              order="desc"
+              placeholder="พิมพ์ข้อความ เช่น แนบฉลากฉบับแก้ไขแล้ว..."
+              emptyText="ยังไม่มีความเคลื่อนไหว"
+            />
+          </DetailCard>
 
           </div>
         </DetailPageLayout>
