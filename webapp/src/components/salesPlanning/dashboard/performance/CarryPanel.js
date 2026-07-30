@@ -89,7 +89,7 @@ export default function CarryPanel({ row, label, closedCount }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="premium-row" style={r.actual == null ? { opacity: 0.55 } : undefined}>
+              <tr key={i} className="premium-row" style={r.actual == null ? { opacity: "var(--op-muted)" } : undefined}>
                 <td>{MONTH_LABELS[i]}</td>
                 <td className="num mono">{money(r.target)}</td>
                 <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : "–"}</td>

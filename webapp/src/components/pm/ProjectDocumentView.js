@@ -568,7 +568,7 @@ function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, tot
     <td style={{ border: "1px solid var(--border)", padding: 0, height: `${ROW_H}px`, position: "relative", zIndex: 0, backgroundImage: gridBg }}>
       <div style={{ position: "relative", width: timelineWidth, height: ROW_H }}>
         {todayIdx >= 0 && todayIdx < totalDays && (
-          <div style={{ position: "absolute", top: 0, bottom: 0, left: todayIdx * pxPerDay + pxPerDay / 2 - 1, width: "2px", background: "var(--red)", opacity: 0.55, zIndex: 1, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: todayIdx * pxPerDay + pxPerDay / 2 - 1, width: "2px", background: "var(--red)", opacity: "var(--op-muted)", zIndex: 1, pointerEvents: "none" }} />
         )}
         {children}
       </div>

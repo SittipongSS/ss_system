@@ -326,7 +326,7 @@ export default function CustomerDirectory() {
               </thead>
               <tbody>
                 {pageRows.map((c) => (
-                  <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: 0.55 } : undefined}>
+                  <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                     <td className="font-semibold font-mono text-[var(--accent)]">{c.arCode}</td>
                     <td>
                       <div className="font-medium text-[var(--text)]">{c.name}</div>

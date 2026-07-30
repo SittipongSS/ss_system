@@ -458,7 +458,7 @@ export default function ProductRegistry() {
                   const isExciseCat = flags.isExcise;
                   const cat = categoryLabelOf(p);
                   return (
-                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
+                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
                         <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>

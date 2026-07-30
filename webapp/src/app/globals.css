@@ -231,6 +231,18 @@
      ⚠️ สามตัวแรกอยู่ต่ำกว่า 1.45 โดยเจตนา ใช้ได้เฉพาะกล่องที่ **ไม่มีข้อความไทย**
      (ตัวเลขล้วน · ป้ายนับ · กล่องไอคอน) ถ้าเผลอเอาไปใส่ข้อความไทยจะชนขอบทันที
      ตัวที่ใช้กับข้อความต้อง ≥ 1.45 เสมอ — lineHeightScale.test.mjs บังคับไว้ */
+  /* ความจาง — มีสองความหมายที่ต่างกันจริง อย่ายุบรวม
+
+     ตรวจ 2026-07-30: opacity 50 จุด โทเคน 0 · เฉพาะสถานะ "ปิดใช้งาน" อย่างเดียว
+     ใช้อยู่ 7 ค่า (.25 .3 .35 .4 .45 .5 .55) — `.btn:disabled` ได้ .45 แต่
+     `.panelGrid button:disabled` ได้ .25 และ `MonthPicker` ไฟล์เดียวใช้ 3 ค่า
+     ต่างกันในตัวเอง = ปุ่มที่กดไม่ได้เหมือนกันแต่ดู "ปิด" ไม่เท่ากัน
+
+     ⚠️ สองชื่อนี้ไม่ใช่ค่าเดียวกันโดยเจตนา — ปุ่มที่กดไม่ได้จางได้เต็มที่ แต่ช่องกรอก
+     ที่ถูกล็อกยัง **ต้องอ่านค่าข้างในออก** จึงจางน้อยกว่า */
+  --op-disabled: 0.45; /* ตัวควบคุมที่กดไม่ได้ (ปุ่ม/แท็บ/ตัวเลือก) */
+  --op-muted: 0.55;    /* ลดความเด่นแต่ยังต้องอ่านออก (แถวปิด/ยกเลิก/ช่องที่ล็อก) */
+
   --lh-none: 0;      /* กล่องไอคอนล้วน ไม่มีกล่องบรรทัด */
   --lh-flat: 1;      /* ตัวเลขบรรทัดเดียว (tabular-nums) · ป้ายนับ */
   --lh-tight: 1.2;   /* ตัวเลขใหญ่/หัวเรื่องสั้นที่คุมความสูงเอง */
@@ -561,7 +573,7 @@ button, select, input, textarea {
 .date-calendar-weekdays span { padding: var(--space-1) 0; text-align: center; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .date-calendar-grid button { aspect-ratio: 1; border-radius: var(--radius); font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
 .date-calendar-grid button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
-.date-calendar-grid button.outside { color: var(--text-3); opacity: 0.55; }
+.date-calendar-grid button.outside { color: var(--text-3); opacity: var(--op-muted); }
 .date-calendar-grid button.today:not(.selected) {
   color: var(--accent-ink);
   font-weight: var(--fw-bold);
@@ -2344,7 +2356,7 @@ h1, h2, h3, h4, h5, h6 {
 /* ช่องที่ถูกล็อก (เช่น ราคาบรรทัด FG — ราคามาจากฐานข้อมูลสินค้าทางเดียว) ต้องดูออก
    ว่ากดไม่ได้ ไม่ใช่หน้าตาเหมือนช่องปกติ */
 .premium-input:disabled {
-  opacity: 0.55;
+  opacity: var(--op-muted);
   cursor: not-allowed;
   background: var(--panel-2);
 }
@@ -2529,7 +2541,7 @@ button.ui-kpi-card { cursor: pointer; }
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
-.ui-select:disabled { opacity: .55; cursor: not-allowed; }
+.ui-select:disabled { opacity: var(--op-muted); cursor: not-allowed; }
 .ui-select-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select-value.placeholder { color: var(--text-3); }
 .ui-select-chevron { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-medium); }
@@ -2578,7 +2590,7 @@ button.ui-kpi-card { cursor: pointer; }
 .ui-select-option:hover,
 .ui-select-option.active { background: var(--panel-2); }
 .ui-select-option.selected { background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
-.ui-select-option:disabled { opacity: .45; cursor: not-allowed; }
+.ui-select-option:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .product-option-label {
   display: flex;
   min-width: 0;
@@ -2724,7 +2736,7 @@ button.ui-kpi-card { cursor: pointer; }
    หมายเหตุ: .btn-danger:hover / .btn-warning:hover ยังเข้มขึ้นเล็กน้อยตอนชี้ปุ่มที่ disabled
    ตั้งใจไม่แตะเพราะใต้ opacity .45 แทบมองไม่เห็น และไม่อยากไปยุ่ง hover ของทุกโทนในแพตช์นี้ */
 .btn:disabled {
-  opacity: .45;
+  opacity: var(--op-disabled);
   cursor: not-allowed;
 }
 
@@ -2930,7 +2942,7 @@ button.empty-state { width: 100%; font: inherit; }
 .btn-icon:hover { background: var(--panel-2); color: var(--text); }
 .btn-icon.danger { color: var(--red); }
 .btn-icon.danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
-.btn-icon:disabled { opacity: .45; cursor: not-allowed; }
+.btn-icon:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Toolbar row — filter / sort / search controls live here. */

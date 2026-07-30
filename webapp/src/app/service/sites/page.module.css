@@ -18,7 +18,7 @@
 
 .numCol { text-align: right; white-space: nowrap; }
 .muted { color: var(--text-3); }
-.inactive td { opacity: 0.55; }
+.inactive td { opacity: var(--op-muted); }
 
 .siteLink {
   font-weight: var(--fw-semibold);

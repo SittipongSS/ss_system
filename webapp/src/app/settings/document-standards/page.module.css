@@ -2,7 +2,7 @@
 .standardTab { min-height: 58px; padding: 9px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .standardTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .standardTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.standardTab:disabled { cursor: not-allowed; opacity: .45; }
+.standardTab:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .standardTab span, .standardTab small { display: block; }
 .standardTab span { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
 .standardTab small { margin-top: 2px; color: var(--text-3); font-size: var(--fs-4); }

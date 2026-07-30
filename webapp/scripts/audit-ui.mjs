@@ -131,12 +131,26 @@ const RAW_RADIUS_CAP = 22;
    utility ด้วย ดู radiusScale.test.mjs / shadowScale.test.mjs */
 const RAW_SHADOW_CAP = 7;
 
+/* ความจางที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+   ไม่นับ `0` / `1` (โปร่งสุด/ทึบสุด ไม่ใช่ขั้นของดีไซน์ — ส่วนใหญ่เป็นปลายทางของ
+   keyframes และการคืนค่าเต็มตอน hover)
+
+   2026-07-30: ยก 18 จุดที่ตรงขั้นเป๊ะเข้า --op-disabled / --op-muted แล้ว (CSS 14 · JSX 4)
+   ⚠️ ที่เหลือ **9 จุดเป็นสถานะ "ปิดใช้งาน" ที่ยังใช้ค่าอื่น** (.25 ×2 · .3 · .35 ×2 ·
+   .4 ×3 · .5) = ปุ่มที่กดไม่ได้เหมือนกันแต่ดู "ปิด" ไม่เท่ากัน โดยเฉพาะ
+   MonthPicker.module.css ที่ใช้ 3 ค่าต่างกันในไฟล์เดียว (.25/.3/.35)
+   การยุบเข้า --op-disabled คือ *ปรับดีไซน์* (บางจุดจางลง บางจุดชัดขึ้น) ต้องมีคนดู
+   ที่เหลืออีกส่วนเป็นค่าเชิงข้อมูลของกริดกระทบยอด (.75 ×2 · .85 · .8 · .6) และ
+   โลโก้ตอน hover (.88) ซึ่งไม่ใช่สถานะปิดใช้งาน */
+const RAW_OPACITY_CAP = 25;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
 let rawLineHeightCount = 0;
 let rawRadiusCount = 0;
 let rawShadowCount = 0;
+let rawOpacityCount = 0;
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -296,6 +310,15 @@ for (const file of uiFiles) {
       const value = hit[1].trim();
       if (value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
       rawShadowCount += 1;
+    }
+
+    /* ความจางเลขดิบ (ดู RAW_OPACITY_CAP) — 0 กับ 1 ไม่นับ */
+    for (const hit of source.matchAll(/(?:^|[;{])\s*opacity:\s*([^;}]+)/g)) {
+      const value = hit[1].trim();
+      if (value.includes("var(")) continue;
+      const number = Number(value);
+      if (!Number.isFinite(number) || number === 0 || number === 1) continue;
+      rawOpacityCount += 1;
     }
   }
 
@@ -505,6 +528,12 @@ const failures = [
   ...(rawShadowCount < RAW_SHADOW_CAP
     ? [`เงาที่เขียนเองลดได้แล้ว: เหลือ ${rawShadowCount} แต่ RAW_SHADOW_CAP ยังเขียน ${RAW_SHADOW_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawOpacityCount > RAW_OPACITY_CAP
+    ? [`ความจางเลขดิบเพิ่มขึ้น: ${rawOpacityCount} > เพดาน ${RAW_OPACITY_CAP} — สถานะปิดใช้งานใช้ var(--op-disabled), เนื้อหาที่ลดความเด่นใช้ var(--op-muted)`]
+    : []),
+  ...(rawOpacityCount < RAW_OPACITY_CAP
+    ? [`ความจางเลขดิบลดได้แล้ว: เหลือ ${rawOpacityCount} แต่ RAW_OPACITY_CAP ยังเขียน ${RAW_OPACITY_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -545,6 +574,7 @@ console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingC
 console.log(`ความสูงบรรทัดเลขดิบ: ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ความมนมุมเลขดิบ: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`เงาที่เขียนเอง: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ความจางเลขดิบ: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(

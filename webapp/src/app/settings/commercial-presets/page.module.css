@@ -4,7 +4,7 @@
 .kindTab { min-height: 58px; padding: 9px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .kindTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .kindTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.kindTab:disabled { cursor: not-allowed; opacity: .45; }
+.kindTab:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .kindTab span, .kindTab small { display: block; }
 .kindTab span { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
 .kindTab small { margin-top: 2px; color: var(--text-3); font-size: var(--fs-4); }
