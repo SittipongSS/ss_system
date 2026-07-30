@@ -8,7 +8,7 @@
 //      id ไม่เปลี่ยน ลิงก์เดิมใช้ได้หมด และกดซ้ำได้)
 import { useCallback, useEffect, useState } from "react";
 import {
-  HardDrive, CheckCircle2, XCircle, RefreshCw, FolderTree, FileSearch, PlayCircle,
+  HardDrive, CheckCircle2, XCircle, RefreshCw, FolderTree, FileSearch, PlayCircle, Trash2,
 } from "lucide-react";
 import { useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
@@ -40,6 +40,8 @@ export default function StoragePage() {
   const [healthBusy, setHealthBusy] = useState(true);
   const [audit, setAudit] = useState(null);
   const [auditBusy, setAuditBusy] = useState(false);
+  const [orphans, setOrphans] = useState(null);
+  const [orphanBusy, setOrphanBusy] = useState(false);
   const [plan, setPlan] = useState(null);
   const [planBusy, setPlanBusy] = useState(false);
   const [moving, setMoving] = useState(null); // { done, total, moved, skipped }
@@ -78,6 +80,52 @@ export default function StoragePage() {
       setError(e.message);
     } finally {
       setAuditBusy(false);
+    }
+  };
+
+  const loadOrphans = async () => {
+    setOrphanBusy(true);
+    setError("");
+    try {
+      setOrphans(await call("/api/admin/drive?action=orphans"));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOrphanBusy(false);
+    }
+  };
+
+  // ทิ้งของกำพร้า — ถังขยะของ Shared Drive เก็บให้ 30 วัน จึงกู้คืนได้ถ้าพลาด
+  const trashOrphans = async () => {
+    const list = orphans?.orphans || [];
+    if (!list.length) return;
+    const okToRun = await confirmAction(
+      `ทิ้ง ${list.length} รายการที่ไม่มีใครอ้างถึงลงถังขยะ?`,
+      {
+        detail: "ของจะไปอยู่ในถังขยะของ Shared Drive ซึ่งกู้คืนได้ภายใน 30 วัน — ไม่ใช่การลบถาวร",
+        danger: true,
+        confirmLabel: "ทิ้งลงถังขยะ",
+      },
+    );
+    if (!okToRun) return;
+
+    setOrphanBusy(true);
+    setError("");
+    try {
+      const res = await call("/api/admin/drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "trash-orphans", ids: list.map((o) => o.id) }),
+      });
+      notifyToast.success(`ทิ้งลงถังขยะแล้ว ${res.trashed} รายการ`);
+      if (res.errors?.length) {
+        setError(`ทิ้งไม่สำเร็จ ${res.errors.length} รายการ: ${res.errors.slice(0, 3).map((e) => `${e.what} (${e.error})`).join(" · ")}`);
+      }
+      await loadOrphans();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOrphanBusy(false);
     }
   };
 
@@ -231,6 +279,57 @@ export default function StoragePage() {
             ) : (
               <StatusNotice tone="success" title="ไฟล์ครบทุกใบ">
                 ทุกแถวชี้ไปที่ไฟล์ที่เปิดได้จริงบน Drive
+              </StatusNotice>
+            )}
+          </>
+        ) : null}
+      </section>
+
+      {/* ── 2.5 ของบน Drive ที่ไม่มีใครอ้างถึง ── */}
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <div>
+            <h2 className={styles.sectionTitle}>ของบน Drive ที่ไม่มีใครอ้างถึง</h2>
+            <p className={styles.sectionDesc}>
+              ตรวจทางกลับ: ไล่ของจริงบนไดรฟ์ว่ามีแถวไหนในระบบชี้มาไหม — นับผู้อ้างอิงครบทุกทาง
+              (เอกสารแนบ · เอกสาร Google ของงานบริหาร · ไฟล์ในเธรด · หลักฐาน Won · โฟลเดอร์ลูกค้า/สินค้า)
+            </p>
+          </div>
+          <div className={styles.actions}>
+            <Button onClick={loadOrphans} disabled={orphanBusy} icon={<FileSearch size={15} />}>
+              {orphanBusy ? "กำลังตรวจ..." : "ตรวจของกำพร้า"}
+            </Button>
+            {orphans?.orphans?.length ? (
+              <Button tone="danger" onClick={trashOrphans} disabled={orphanBusy} icon={<Trash2 size={15} />}>
+                ทิ้งลงถังขยะ {orphans.orphans.length} รายการ
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {orphans ? (
+          <>
+            <p className={styles.progress}>
+              ไล่ของบนไดรฟ์ {orphans.scanned} รายการ · มีคนอ้างถึง {orphans.referenced} · ไม่มีใครอ้าง {orphans.orphans.length}
+              {orphans.orphanBytes ? ` (${(orphans.orphanBytes / 1048576).toFixed(1)} MB)` : ""}
+            </p>
+            {orphans.orphans.length ? (
+              <div className={styles.planGrid}>
+                {orphans.orphans.map((o) => (
+                  <div key={o.id} className={styles.planRow}>
+                    <span className={styles.planPath}>
+                      {o.name}
+                      <span className={styles.planMeta}>{o.path}</span>
+                    </span>
+                    <span className={styles.planCount}>
+                      {o.kind}{o.sizeBytes ? ` · ${(o.sizeBytes / 1024).toFixed(0)} KB` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <StatusNotice tone="success" title="ไม่มีของกำพร้า">
+                ทุกไฟล์และโฟลเดอร์บนไดรฟ์มีที่มาที่ไปในระบบครบ
               </StatusNotice>
             )}
           </>

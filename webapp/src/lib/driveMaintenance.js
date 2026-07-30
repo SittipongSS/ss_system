@@ -173,6 +173,147 @@ export async function auditDriveFiles() {
   };
 }
 
+// ── 2.5 ไฟล์บน Drive ที่ไม่มีใครในระบบอ้างถึง ──────────────────────────
+// ตรวจ "ทางกลับ" ของข้อ 2: ไล่ของจริงบน Drive แล้วถามว่ามีแถวไหนในระบบชี้มาไหม
+//
+// ⭐ บทเรียนจากรอบตรวจ 2026-07-30: **ก่อนบอกว่าไฟล์ไหนกำพร้า ต้องไล่ผู้อ้างอิงให้ครบ
+// ทุกคอลัมน์ ไม่ใช่แค่ `attachments.driveFileId`** — เกือบลบแผนที่บริษัทของสหมิตรทิ้ง
+// เพราะดูตารางเดียว · ที่ต้องนับเป็น "มีคนอ้าง" ทั้งหมด:
+//   attachments: driveFileId · id ที่ฝังใน fileUrl · metadata.googleFileId (เอกสาร
+//     Google native ของงานบริหารซึ่ง driveFileId เป็น null โดยเจตนา)
+//   entity_updates.attachments[]: driveFileId · id ใน fileUrl
+//   quotations.wonAttachments[]: driveFileId
+//   customers/products.driveFolderId: โฟลเดอร์ที่ระบบ cache ไว้
+const STRUCTURE_FOLDER_NAMES = new Set(Object.values(FOLDER));
+
+// ไล่ทุกไฟล์/โฟลเดอร์ใน Shared Drive (ที่ยังไม่อยู่ถังขยะ)
+async function listAllDriveItems() {
+  const drive = getDrive();
+  const items = [];
+  let pageToken;
+  do {
+    const res = await drive.files.list({
+      q: 'trashed = false',
+      fields: 'nextPageToken, files(id, name, mimeType, parents, size, modifiedTime)',
+      pageSize: 1000,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'drive',
+      driveId: sharedDriveId(),
+    });
+    items.push(...(res.data.files || []));
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+  return items;
+}
+
+// id ของ Drive ที่ฝังอยู่ใน URL (เอกสาร Google native เก็บเป็น webViewLink ไม่มี driveFileId)
+const driveIdFromUrl = (url) => {
+  const s = String(url || '');
+  const m = s.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  return m ? m[1] : null;
+};
+
+async function collectReferencedIds(supabase) {
+  const refs = new Set();
+  const add = (id) => { if (id) refs.add(String(id)); };
+
+  const [attRes, updRes, quoRes, custRes, prodRes] = await Promise.all([
+    supabase.from('attachments').select('driveFileId, fileUrl, metadata'),
+    supabase.from('entity_updates').select('attachments').not('attachments', 'is', null),
+    supabase.from('quotations').select('wonAttachments').not('wonAttachments', 'is', null),
+    supabase.from('customers').select('driveFolderId').not('driveFolderId', 'is', null),
+    supabase.from('products').select('driveFolderId').not('driveFolderId', 'is', null),
+  ]);
+  const firstError = attRes.error || updRes.error || quoRes.error || custRes.error || prodRes.error;
+  if (firstError) throw firstError;
+
+  for (const row of attRes.data || []) {
+    add(row.driveFileId);
+    add(driveIdFromUrl(row.fileUrl));
+    add(row.metadata?.googleFileId);
+  }
+  for (const row of updRes.data || []) {
+    for (const att of Array.isArray(row.attachments) ? row.attachments : []) {
+      add(att?.driveFileId);
+      add(driveIdFromUrl(att?.fileUrl));
+    }
+  }
+  for (const row of quoRes.data || []) {
+    for (const att of Array.isArray(row.wonAttachments) ? row.wonAttachments : []) add(att?.driveFileId);
+  }
+  for (const row of custRes.data || []) add(row.driveFolderId);
+  for (const row of prodRes.data || []) add(row.driveFolderId);
+  return refs;
+}
+
+export async function auditOrphanDriveItems() {
+  const supabase = getSupabaseAdmin();
+  const [items, refs] = await Promise.all([listAllDriveItems(), collectReferencedIds(supabase)]);
+
+  const byId = new Map(items.map((f) => [f.id, f]));
+  const hasChildren = new Set(items.flatMap((f) => f.parents || []));
+  const pathOf = (item) => {
+    const parts = [];
+    let cur = item;
+    for (let i = 0; i < 12 && cur; i += 1) {
+      parts.unshift(cur.name);
+      cur = byId.get(cur.parents?.[0]);
+    }
+    return parts.join(' / ');
+  };
+
+  const orphans = [];
+  for (const item of items) {
+    if (refs.has(item.id)) continue;
+    const isFolder = item.mimeType === FOLDER_MIME;
+    // โฟลเดอร์ของโครงสร้าง (ลูกค้า/ขอราคา/งานขาย/...) และโฟลเดอร์ที่ยังมีของข้างใน
+    // ไม่ใช่ขยะ — ตัวที่ควรเก็บกวาดคือ "กล่องเปล่าที่ไม่มีใครอ้าง"
+    if (isFolder && (STRUCTURE_FOLDER_NAMES.has(item.name) || hasChildren.has(item.id))) continue;
+    orphans.push({
+      id: item.id,
+      name: item.name,
+      kind: isFolder ? 'โฟลเดอร์ว่าง' : 'ไฟล์',
+      path: pathOf(item),
+      sizeBytes: Number(item.size) || null,
+      modifiedTime: item.modifiedTime || null,
+    });
+  }
+  orphans.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0));
+
+  return {
+    scanned: items.length,
+    referenced: items.filter((f) => refs.has(f.id)).length,
+    orphans,
+    orphanBytes: orphans.reduce((sum, o) => sum + (o.sizeBytes || 0), 0),
+  };
+}
+
+// ทิ้งรายการที่ผู้ใช้ยืนยันแล้วลงถังขยะ (ไม่ลบถาวร — กู้ได้ 30 วัน)
+// ⚠️ คำนวณ "กำพร้า" ใหม่ฝั่ง server เสมอ แล้วทิ้งเฉพาะตัวที่ยังกำพร้าจริงและอยู่ใน
+// รายการที่ผู้ใช้เห็นตอนกด — กัน id แปลกปลอมและกันเคสข้อมูลเปลี่ยนระหว่างที่เปิดหน้าค้างไว้
+export async function trashOrphanDriveItems(ids) {
+  const wanted = new Set((ids || []).map(String));
+  const { orphans } = await auditOrphanDriveItems();
+  const targets = orphans.filter((o) => wanted.has(o.id));
+  const trashed = [];
+  const errors = [];
+  for (const item of targets) {
+    try {
+      await getDrive().files.update({
+        fileId: item.id,
+        requestBody: { trashed: true },
+        supportsAllDrives: true,
+      });
+      trashed.push(item.name);
+    } catch (err) {
+      errors.push({ what: item.name, error: errText(err) });
+    }
+  }
+  return { requested: wanted.size, trashed: trashed.length, skipped: wanted.size - targets.length, names: trashed.slice(0, 50), errors };
+}
+
 // ── 3. จัดโครงโฟลเดอร์ ────────────────────────────────────────────────
 // โครงเดิม: โฟลเดอร์ลูกค้าทุกรายกองที่ root ปนกับโฟลเดอร์ของโมดูล และเอกสารบริษัท
 // ปนกับโฟลเดอร์สินค้าในโฟลเดอร์เดียวกัน · โครงใหม่ดู FOLDER ใน lib/drive.js
