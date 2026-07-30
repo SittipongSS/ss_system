@@ -30,10 +30,17 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
           };
         },
         delete() {
-          // purgeUpdatesMany เรียกลูกโซ่ .eq(entityType).in(entityId) — ต้อง chain ต่อได้
+          // ⚠️ ต้อง chain ได้ทั้ง `.eq()` เดี่ยว และ `.eq(...).in(...)` (purgeUpdatesMany
+          // + purgeNotificationsMany ใช้ท่าหลัง) · เดิม hardcode ชื่อ 'entity_updates'
+          // ไว้ตัวเดียว พอเพิ่มตารางที่ใช้ท่าเดียวกันเทสต์ก็ล้มด้วย TypeError ทันที
+          // → ทำเป็น chain ที่นับ op ตอนถูก await หรือตอนจบด้วย .in() แทน
           const done = () => { ops.push(table); return Promise.resolve({ error: null }); };
-          const chain = { eq: () => chain, in: done, then: undefined };
-          return { eq: (...a) => (table === 'entity_updates' ? chain : done(...a)), in: done };
+          const chain = {
+            eq: () => chain,
+            in: done,
+            then: (resolve, reject) => done().then(resolve, reject),
+          };
+          return chain;
         },
       };
     },

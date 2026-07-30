@@ -80,6 +80,18 @@ export default function UpdateThread({
 
   useEffect(() => { load(); }, [load]);
 
+  // เปิดเธรด = อ่านแจ้งเตือนของ entity นี้ทั้งก้อน (มติ 15 — ตั้งใจไม่ทำ watermark
+  // ต่อข้อความแบบ Slack) · ทำที่นี่ที่เดียวจึงครอบทั้ง "กดจากกล่องแจ้งเตือน" และ
+  // "เปิดหน้าตรงจาก URL" · พลาดแล้วเงียบได้ — แค่ตัวเลขบนกระดิ่งไม่ลด
+  useEffect(() => {
+    if (!entityType || !entityId) return;
+    fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read_thread", entityType, entityId }),
+    }).catch(() => {});
+  }, [entityType, entityId]);
+
   // อ่านค่าที่จำไว้ใน effect (ไม่ใช่ตอน initial state) — ไม่งั้น server กับ client
   // render ไม่ตรงกัน
   useEffect(() => {

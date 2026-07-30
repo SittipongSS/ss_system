@@ -50,6 +50,7 @@ export const UPDATE_ENTITIES = {
       const manage = await canManagePersonalTask(supabase, parent, user);
       return manage || canChangeTaskStatus(user, parent, manage);
     },
+    recipients: (parent) => [parent?.ownerId, parent?.assigneeId],
   },
 
   // ── เคสขอราคาวัสดุ (mig 0158) ────────────────────────────────────────
@@ -70,6 +71,10 @@ export const UPDATE_ENTITIES = {
       if (['closed', 'cancelled'].includes(parent?.status)) return false;
       return canManageRequest(user, parent) || canAnswerRequest(user, parent);
     },
+    // ⚠️ ฝ่ายที่ต้องตอบเป็น **ฝ่าย ไม่ใช่คน** → ไม่ใส่เป็นผู้รับ (มติ 14 ห้าม
+    // "ทุกคนในฝ่าย") · งาน "เคสใหม่เข้าคิวฝ่าย" เป็นของ Chat webhook อยู่แล้ว
+    // และเมื่อ RD/PC ตอบครั้งแรก เขาจะเข้าเงื่อนไข "คนเคยโพสต์" เอง
+    recipients: (parent) => [parent?.requestedById],
   },
 
   // ── ดีล (ฟีดความเคลื่อนไหว ย้ายมาจาก sales_deal_activities, mig 0169) ──
@@ -84,6 +89,7 @@ export const UPDATE_ENTITIES = {
     async canPost(supabase, parent, user) {
       return canEditSalesPlanning(user) && inSalesEditScope(user, parent);
     },
+    recipients: (parent) => [parent?.ownerId],
   },
 
   // ── ลีด (mig 0091) ───────────────────────────────────────────────────
@@ -111,6 +117,7 @@ export const UPDATE_ENTITIES = {
       // แม้หลังส่งมอบให้ฝ่ายขายแล้วจะแก้ตัวลีดไม่ได้ก็ตาม
       return !!user?.id && parent?.createdBy === user.id;
     },
+    recipients: (parent) => [parent?.assigneeId, parent?.createdBy],
   },
 
   // ── ใบเสนอราคา / ใบสั่งขาย ───────────────────────────────────────────
@@ -136,6 +143,11 @@ export const UPDATE_ENTITIES = {
       const deal = await parentDeal(supabase, parent);
       return !!deal && inSalesEditScope(user, deal);
     },
+    // ผู้จัดทำใบ + เจ้าของดีล (= ผู้อนุมัติ) · ดีลต้อง query ต่อ จึงเป็น async
+    async recipients(parent, supabase) {
+      const deal = await parentDeal(supabase, parent);
+      return [parent?.createdBy, deal?.ownerId];
+    },
   },
   sales_order: {
     table: 'sales_orders',
@@ -149,6 +161,10 @@ export const UPDATE_ENTITIES = {
       if (!canEditSalesPlanning(user)) return false;
       const deal = await parentDeal(supabase, parent);
       return !!deal && inSalesEditScope(user, deal);
+    },
+    async recipients(parent, supabase) {
+      const deal = await parentDeal(supabase, parent);
+      return [parent?.createdBy, deal?.ownerId];
     },
   },
 
@@ -174,8 +190,30 @@ export const UPDATE_ENTITIES = {
       if (canApproveCosting(user) || isSuperuser(user?.role)) return true;
       return inSalesEditScope(user, { team: parent?.team, ownerId: parent?.requestedById });
     },
+    // ผู้บริหารผู้อนุมัติเป็น **บทบาท ไม่ใช่คนที่ผูกกับใบ** → ไม่ใส่เป็นผู้รับ
+    // (มติ 14) · webhook แจ้ง "ใบใหม่รออนุมัติ" อยู่แล้ว และเมื่อเขาตอบครั้งแรก
+    // จะเข้าเงื่อนไข "คนเคยโพสต์" เอง
+    recipients: (parent) => [parent?.requestedById],
   },
 };
+
+// ── ผู้รับแจ้งเตือนของเธรด (mig 0185) ────────────────────────────────────
+//
+// ⭐ **กฎผู้รับอยู่ที่เดียวคือที่นี่** (มติ 14) — เพิ่ม entity ใหม่ = ประกาศ
+// `recipients` ไปพร้อม canView/canPost ในทะเบียนเดียวกัน ไม่ต้องไปแก้ที่อื่น
+//
+// ⚠️ **ห้ามคืน "ทุกคนในฝ่าย"** — ซ้ำกับ Chat webhook แล้วกล่องแจ้งเตือนจะตายใน
+// 1 สัปดาห์เพราะ 90% ไม่เกี่ยวกับตัวเอง · ฝ่ายที่ต้องรับงานใหม่เป็นหน้าที่ของ
+// webhook · คนของฝ่ายนั้นจะกลายเป็นผู้รับเองเมื่อเขาโพสต์ตอบครั้งแรก
+//
+// entity ที่ไม่ประกาศ `recipients` = ไม่มีใครถูกแจ้งจากตัว entity (ยังเหลือ
+// "คนเคยโพสต์ในเธรด" ซึ่งผู้เรียกรวมเข้ามาให้)
+export async function updateRecipients(supabase, entityType, parent) {
+  const conf = UPDATE_ENTITIES[entityType];
+  if (!conf?.recipients || !parent) return [];
+  const ids = await conf.recipients(parent, supabase);
+  return [...new Set((ids || []).filter(Boolean).map(String))];
+}
 
 export const isUpdateEntity = (entityType) => !!UPDATE_ENTITIES[entityType];
 
