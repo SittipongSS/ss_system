@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, Wrench } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -255,6 +255,8 @@ export default function AppLayout({ children }) {
         // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
         // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
         // ตารางมาก่อนทะเบียน — หน้าที่ช่าง/หัวหน้าเปิดทุกเช้าคือตาราง ไม่ใช่ทะเบียน
+        // งานของฉันมาก่อนสุด — ช่างเปิดระบบมาเพื่อดูงานตัวเองวันนี้ ไม่ใช่ตารางทั้งฝ่าย
+        { href: '/service/my-visits', name: 'งานของฉัน', icon: Wrench, cap: 'service:view', match: (p) => p.startsWith('/service/my-visits') },
         { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', match: (p) => p.startsWith('/service/schedule') },
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', match: (p) => p.startsWith('/service/sites') },
       ],

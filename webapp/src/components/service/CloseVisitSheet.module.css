@@ -1,0 +1,98 @@
+/* แผ่นปิดงานหน้าไซต์ (S-3)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.site {
+  margin: 0 0 var(--space-3);
+  color: var(--text-2);
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+}
+
+.block { margin-bottom: var(--space-4); }
+
+.blockTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.note {
+  margin: 0 0 var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field > span {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.grow { flex: 1 1 140px; }
+.qtyInput { width: 90px; }
+.unitInput { width: 80px; }
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.itemLabel { flex: 1; line-height: 1.45; }
+.itemQty { color: var(--text-3); white-space: nowrap; }
+
+.photoRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.photo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 56px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}
+
+/* ช่องไฟล์จริงถูกซ่อน — ปุ่มกลางเป็นตัวกดแทน (input file ดิบสไตล์ไม่ได้) */
+.fileInput { display: none; }
+
+.warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}

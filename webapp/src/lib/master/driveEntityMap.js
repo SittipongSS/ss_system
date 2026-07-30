@@ -31,6 +31,8 @@ export const FOLDER_ENTITY_TYPES = [
   'quotation',
   'sales_order',
   'sahamit_po',
+  // นัดเข้าบริการ (S-3) — รูปหน้างาน + ลายเซ็นผู้รับงาน ลงโฟลเดอร์ไซต์ใต้ลูกค้า
+  'service_visit',
 ];
 
 export const resolveEntityAlias = (entityType) => THREAD_ALIAS[entityType] || entityType;

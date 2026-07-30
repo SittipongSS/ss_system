@@ -41,6 +41,8 @@ export const FOLDER = {
   salesQuotations: 'ใบเสนอราคา',
   salesOrders: 'ใบสั่งขาย',
   sahamit: 'สหมิตร',
+  // งานบริการหน้าไซต์ (S-3) — รูปก่อน/หลัง + ลายเซ็นผู้รับงาน แยกเป็นโฟลเดอร์ต่อไซต์
+  service: 'งานบริการ',
   unsorted: '_รอจัดที่',
 };
 
@@ -348,6 +350,28 @@ export async function folderPathForEntity(entityType, entityId) {
         cachedId: product.driveFolderId || null,
         cache: { table: 'products', id: product.id },
       },
+    ];
+  }
+
+  // นัดเข้าบริการ (S-3) → โฟลเดอร์ "งานบริการ" ใต้ลูกค้าเจ้าของไซต์
+  // รูปหน้างาน/ลายเซ็นของไซต์เดียวกันจึงกองอยู่ที่เดียวกับเอกสารอื่นของลูกค้ารายนั้น
+  if (type === 'service_visit') {
+    const { data: visit, error: visitError } = await supabase
+      .from('service_visits').select('siteId, code').eq('id', entityId).maybeSingle();
+    if (visitError) throw visitError;
+    if (!visit) throw new Error('ไม่พบนัดเข้าบริการ');
+    const { data: site, error: siteError } = await supabase
+      .from('service_sites').select('customerId, name').eq('id', visit.siteId).maybeSingle();
+    if (siteError) throw siteError;
+    if (!site) throw new Error('ไม่พบไซต์บริการของนัดนี้');
+    const customer = await loadCustomer(supabase, site.customerId);
+    if (!customer) throw new Error('ไม่พบลูกค้าของไซต์บริการ');
+    // แยกตามไซต์ ไม่ใช่ตามนัด — ลูกค้ารายหนึ่งเข้าไซต์เดิมปีละ 12 ครั้ง
+    // ถ้าแยกรายนัดจะได้โฟลเดอร์เปล่า ๆ กองเป็นร้อยภายในปีเดียว
+    return [
+      ...(await customerSegments(customer)),
+      { name: FOLDER.service },
+      { name: safeName(site.name, visit.siteId) },
     ];
   }
 

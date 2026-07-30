@@ -66,6 +66,73 @@ export async function loadVisitItems(supabase, visitId) {
   return data || [];
 }
 
+// ── ตารางเข้า/เติมล่าสุดของหลายไซต์ (S-4) ────────────────────────────────
+// คืน Map<siteId, { lastRefillDate, nextVisitDate }>
+//   lastRefillDate = วันที่เข้าเติม/บำรุงล่าสุดที่ปิดงานแล้ว → ตัวตั้งของ refillDue
+//   nextVisitDate  = นัดที่ยังไม่ถึงและยังไม่ปิด → ใช้ตัดสินว่า "มีนัดครอบแล้ว"
+//
+// ⚠️ สองคำสั่ง ไม่ใช่รายไซต์ — หน้าลูกค้าที่มี 12 สาขาจะยิง 24 คำขอถ้าทำแบบไร้เดียงสา
+// ⚠️ นับเฉพาะ **นัดที่ปิดงานแล้ว** เป็นวันเติมล่าสุด — นัดที่ตั้งไว้แต่ยังไม่ไปไม่ได้
+//    เติมอะไรจริง ถ้านับด้วยจะได้วันหมดที่เลื่อนออกไปเรื่อย ๆ ทั้งที่ขวดแห้งอยู่
+export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
+  const out = new Map();
+  const ids = [...new Set((siteIds || []).filter(Boolean))];
+  if (!ids.length) return out;
+  const seed = (id) => {
+    if (!out.has(id)) out.set(id, { lastRefillDate: null, nextVisitDate: null });
+    return out.get(id);
+  };
+
+  const { data: done, error: doneError } = await supabase
+    .from('service_visits')
+    .select('siteId, actualDate')
+    .in('siteId', ids)
+    .eq('status', 'done')
+    .in('kind', ['refill', 'maintenance', 'install'])
+    .order('actualDate', { ascending: false });
+  if (doneError) throw doneError;
+  for (const row of done || []) {
+    const entry = seed(row.siteId);
+    if (row.actualDate && (!entry.lastRefillDate || row.actualDate > entry.lastRefillDate)) {
+      entry.lastRefillDate = row.actualDate;
+    }
+  }
+
+  const { data: upcoming, error: upcomingError } = await supabase
+    .from('service_visits')
+    .select('siteId, scheduledDate')
+    .in('siteId', ids)
+    .eq('status', 'scheduled')
+    .gte('scheduledDate', todayIso)
+    .order('scheduledDate', { ascending: true });
+  if (upcomingError) throw upcomingError;
+  for (const row of upcoming || []) {
+    const entry = seed(row.siteId);
+    if (row.scheduledDate && (!entry.nextVisitDate || row.scheduledDate < entry.nextVisitDate)) {
+      entry.nextVisitDate = row.scheduledDate;
+    }
+  }
+
+  return out;
+}
+
+// เครื่องของหลายไซต์รวดเดียว — แท็บบนหน้าลูกค้าต้องรู้ว่าเครื่องไหนใกล้หมด
+export async function assetsForSites(supabase, siteIds = []) {
+  const out = new Map();
+  const ids = [...new Set((siteIds || []).filter(Boolean))];
+  if (!ids.length) return out;
+  const { data, error } = await supabase
+    .from('service_assets')
+    .select('id, siteId, label, status, bottleMl, mlPerDay, installedAt, productName')
+    .in('siteId', ids);
+  if (error) throw error;
+  for (const row of data || []) {
+    if (!out.has(row.siteId)) out.set(row.siteId, []);
+    out.get(row.siteId).push(row);
+  }
+  return out;
+}
+
 // ── ไซต์ที่นัดชุดหนึ่งอ้างถึง — ปฏิทินต้องรู้ชื่อ/โซน/ช่วงเวลาเข้าไซต์ ───
 // ⚠️ ยิงรวดเดียวด้วย `in` ไม่ใช่รายนัด (สัปดาห์หนึ่ง 40 นัด = 40 คำขอ)
 export async function sitesForVisits(supabase, visits = []) {
