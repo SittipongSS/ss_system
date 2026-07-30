@@ -5,6 +5,7 @@
 // (address_map, shared master data). Server-only (Node runtime — JSZip + fetch).
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { listAttachments } from '@/lib/master/attachments';
+import { applyTeamScope } from '@/lib/tax/reportFilters';
 import JSZip from 'jszip';
 
 const sanitize = (s) =>
@@ -33,10 +34,12 @@ const uniqueName = (used, base) => {
 
 // docTypes: จำกัดว่าจะรวมเอกสารประเภทไหนบ้าง (undefined/null = รวมทุกประเภท ตามเดิม).
 // 'address_map' เป็นคีย์พิเศษหมายถึงแผนที่บริษัทของลูกค้าเจ้าของทะเบียน.
-export async function buildRegistrationFilesZip({ team, customerId, from, to, ids, docTypes } = {}) {
+export async function buildRegistrationFilesZip(filter = {}) {
+  const { customerId, from, to, ids, docTypes } = filter;
   const supabase = getSupabaseAdmin();
-  let q = supabase.from('excise_registrations').select('*');
-  if (team) q = q.eq('team', team);
+  // ขอบเขตทีม + ตัวกรองทีม ใช้ตัวเดียวกับตัวรายงาน (reportFilters.js) — ZIP กับตาราง
+  // ต้องได้ชุดแถวเดียวกันเสมอ ไม่งั้นผู้ใช้เห็นอย่างหนึ่งแล้วดาวน์โหลดได้อีกอย่าง
+  let q = applyTeamScope(supabase.from('excise_registrations').select('*'), filter);
   if (customerId) q = q.eq('customerId', customerId);
   const { data, error } = await q;
   if (error) throw error;

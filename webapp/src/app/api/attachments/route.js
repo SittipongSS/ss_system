@@ -5,6 +5,7 @@ import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
 import { listAttachments } from '@/lib/master/attachments';
+import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -78,7 +79,11 @@ export async function POST(request) {
   if (!ATTACHMENT_ENTITY_TYPES.includes(entityType) || !entityId) {
     return Response.json({ error: 'entityType/entityId ไม่ถูกต้อง' }, { status: 400 });
   }
-  if (!fileUrl) return Response.json({ error: 'ไม่พบไฟล์ที่อัปโหลด' }, { status: 400 });
+  // ที่อยู่ไฟล์ต้องเป็นของ storage เราเท่านั้น — client ส่ง fileUrl อะไรมาก็ได้ และตั้ง
+  // driveFileId เป็น null เองได้ ซึ่งทำให้แถวนั้นถูก render เป็น <a href> ดิบ ๆ และทำให้
+  // proxy ดาวน์โหลดกลายเป็น open redirect จากโดเมนของแอปเราเอง (ดู attachmentStorage)
+  const urlError = attachmentUrlErrorForEnv(fileUrl);
+  if (urlError) return Response.json({ error: urlError }, { status: 400 });
 
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });

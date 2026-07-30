@@ -6,11 +6,11 @@ import {
   MAX_UPLOAD_BYTES, MAX_UPLOAD_MB,
   ACCEPTED_UPLOAD_MIME, ACCEPTED_UPLOAD_EXT,
 } from '@/lib/master/attachmentTypes';
+import { uploadBucket } from '@/lib/master/attachmentStorage';
 
 // googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
 
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
 const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
 
 // ขนาดสูงสุดต่อไฟล์ — ค่ากลางจาก attachmentTypes (env override ได้).
@@ -146,19 +146,21 @@ export async function POST(request) {
         .replace(/^_+/, '') || 'file';
     const timestamp = Date.now();
     const objectPath = `${folder}/${timestamp}_${safeName}`;
+    const bucket = uploadBucket();
 
     const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
+      .from(bucket)
       .upload(objectPath, buffer, {
         contentType: file.type || 'application/octet-stream',
         upsert: false,
       });
     if (uploadError) {
-      console.error('Upload error:', uploadError);
+      // ชื่อ bucket ผิด/ไม่มีจริงเป็นสาเหตุที่เจอบ่อยสุด — ใส่ไว้ใน log ให้ตามได้
+      console.error(`Upload error (bucket=${bucket}):`, uploadError);
       return Response.json({ error: 'File upload failed' }, { status: 500 });
     }
 
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
+    const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
     return Response.json({ url: data.publicUrl });
   } catch (error) {
     console.error('Upload error:', error);
