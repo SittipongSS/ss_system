@@ -11,7 +11,7 @@
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Pencil, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
+import { Send, Paperclip, X, Pencil, Quote, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -26,6 +26,7 @@ import {
 import {
   isPreviewableImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
+import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
@@ -52,6 +53,7 @@ export default function UpdateThread({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(null); // { id, body }
+  const [replyTo, setReplyTo] = useState(null);  // แถวที่กำลังยกคำพูดตอบ
   const [preview, setPreview] = useState(null); // { src, name }
   const [hideSystem, setHideSystem] = useState(false); // ตั้งต้น = เห็นครบ ไม่ซ่อนอะไรเงียบ
   const [kind, setKind] = useState(() => defaultAuthorableKind(entityType));
@@ -107,6 +109,11 @@ export default function UpdateThread({
     return all;
   }, [items, extraItems, entityType, order]);
 
+  // ที่มาของกล่อง "ยกคำพูด" — หาจากชุดที่โหลดมาทั้งหมด **ไม่ใช่ `visible`**
+  // ไม่งั้นตอนกดซ่อนเหตุการณ์ระบบ คำตอบที่ยกเหตุการณ์ระบบมาจะกลายเป็น
+  // "ข้อความต้นทางไม่อยู่ในเธรดนี้แล้ว" ทั้งที่มันยังอยู่
+  const byId = useMemo(() => new Map(items.map((row) => [row.id, row])), [items]);
+
   const systemCount = useMemo(
     () => timeline.filter((item) => isSystemUpdateItem(entityType, item)).length,
     [timeline, entityType],
@@ -155,12 +162,13 @@ export default function UpdateThread({
         body: JSON.stringify({
           entityType, entityId, body: text.trim(), attachments, kind,
           dueDate: showDueDate ? dueDate : "",
+          quotedId: replyTo?.id || "",
         }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ส่งอัปเดตไม่สำเร็จ");
       pending.forEach((p) => URL.revokeObjectURL(p.url));
-      setText(""); setPending([]); setDueDate("");
+      setText(""); setPending([]); setDueDate(""); setReplyTo(null);
       await load();
       onPosted?.();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -225,6 +233,18 @@ export default function UpdateThread({
                   {item.kind === "own" && item.row.editedAt && <span>· แก้ไขแล้ว</span>}
                   {item.kind === "own" && item.row.acknowledgedAt && (
                     <span style={{ color: "var(--green)" }}><Check size={11} /> รับทราบแล้ว</span>
+                  )}
+                  {/* ยกคำพูดตอบ — ได้ทั้งข้อความคนและ**เหตุการณ์ระบบ** (ตอบเรื่องที่
+                      ถูกตีกลับคือเคสหลักที่ต้องการ) ต่างจากปุ่มแก้/ลบที่จำกัดเฉพาะ
+                      ชนิดที่คนพิมพ์เอง */}
+                  {canPost && canQuoteItem(item) && (
+                    <span className={styles.rowActions}>
+                      <Button
+                        iconOnly icon={<Quote size={13} />} aria-label="ยกคำพูดนี้มาตอบ"
+                        title="ยกคำพูดนี้มาตอบ" disabled={busy}
+                        onClick={() => setReplyTo(item.row)}
+                      />
+                    </span>
                   )}
                   {item.kind === "own" && canPost && !item.row.deletedAt && kinds.includes(item.row.kind) && (
                     <span className={styles.rowActions}>
@@ -303,7 +323,12 @@ export default function UpdateThread({
                             </div>
                           </>
                         ) : (
-                          item.row.body && <ReadableText className={styles.body} text={item.row.body} lines={6} />
+                          <>
+                            {quotedIdOf(item.row) && (
+                              <QuoteBlock quoted={byId.get(quotedIdOf(item.row))} />
+                            )}
+                            {item.row.body && <ReadableText className={styles.body} text={item.row.body} lines={6} />}
+                          </>
                         )}
                         <ThreadAttachments row={item.row} onOpen={setPreview} />
                       </>
@@ -318,6 +343,16 @@ export default function UpdateThread({
 
       {canPost && (
         <div className={styles.composer}>
+          {/* กำลังตอบข้อความไหน — ต้องเห็นก่อนกดส่ง ไม่ใช่รู้ทีหลังว่ายกผิดอัน */}
+          {replyTo && (
+            <div className={styles.replyBar}>
+              <QuoteBlock quoted={replyTo} />
+              <Button
+                iconOnly icon={<X size={13} />} aria-label="ยกเลิกการยกคำพูด"
+                disabled={busy} onClick={() => setReplyTo(null)}
+              />
+            </div>
+          )}
           {/* ชนิดของอัปเดต — โผล่เฉพาะ entity ที่มีให้เลือกจริง (ฟีดดีล) เธรดที่มี
               ชนิดเดียวไม่ต้องมี dropdown ที่เลือกอะไรไม่ได้ */}
           {(showKindPicker || showDueDate) && (
@@ -403,6 +438,18 @@ export default function UpdateThread({
         )}
       </Modal>
     </>
+  );
+}
+
+// กล่องข้อความที่ยกมา — ใช้ทั้งบนคำตอบและในช่องพิมพ์ (ที่เดียวกัน หน้าตาต้องตรงกัน
+// ไม่งั้นคนพิมพ์เห็นอย่างหนึ่ง คนอ่านเห็นอีกอย่าง)
+function QuoteBlock({ quoted }) {
+  const view = quoteView(quoted, { deletedText: DELETED_UPDATE_TEXT });
+  return (
+    <div className={`${styles.quote} ${view.state === "ok" ? "" : styles.quoteGone}`.trim()}>
+      {view.author && <strong>{view.author}</strong>}
+      <span>{view.text}</span>
+    </div>
   );
 }
 
