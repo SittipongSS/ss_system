@@ -12,7 +12,8 @@ import {
 import {
   defaultAuthorableKind, isAuthorableKind, kindAcceptsDueDate, sanitizeUpdateAttachments,
 } from '@/lib/master/updateTypes';
-import { appendUpdate, listUpdates } from '@/lib/master/updates';
+import { quoteTargetError } from '@/lib/master/updateQuote';
+import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,17 @@ export async function POST(request) {
     const meta = {};
     const dueDate = String(payload.dueDate ?? '').trim();
     if (dueDate && kindAcceptsDueDate(entityType, kind)) meta.dueDate = dueDate.slice(0, 10);
+
+    // ยกคำพูด — ต้องยืนยันว่าข้อความต้นทางอยู่ในเธรดเดียวกันจริง ไม่ใช่เชื่อ id
+    // ที่ client ส่งมา (กล่อง quote แสดงเนื้อความต้นทาง = ยก id ข้ามเธรดได้เท่ากับ
+    // อ่านข้อความของเอกสารที่ตัวเองไม่มีสิทธิ์)
+    const quotedId = String(payload.quotedId ?? '').trim();
+    if (quotedId) {
+      const quotedRow = await findUpdate(supabase, quotedId);
+      const problem = quoteTargetError(quotedRow, { entityType, entityId });
+      if (problem) return Response.json({ error: problem }, { status: 400 });
+      meta.quotedId = quotedRow.id;
+    }
 
     // คนกดปุ่มส่ง = ต้องรู้ว่าไม่สำเร็จ ห้ามกลืน error แล้วตอบ 201
     const { row, error } = await appendUpdate(supabase, {

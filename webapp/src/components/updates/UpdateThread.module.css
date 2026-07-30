@@ -38,6 +38,25 @@
 .body { font-size: var(--fs-7); color: var(--text); margin: 0; }
 .deleted { font-size: var(--fs-7); color: var(--text-3); font-style: italic; }
 
+/* ข้อความที่ยกมาตอบ — แถบซ้ายแบบ blockquote ให้แยกออกจากเนื้อคำตอบด้วยสายตา
+   ⚠️ line-height ≥1.45 เพราะสระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร (ดู #794) */
+.quote {
+  display: flex; gap: var(--space-2); align-items: baseline; flex-wrap: wrap;
+  margin: 0 0 var(--space-1); padding: var(--space-1) var(--space-2);
+  border-left: 2px solid var(--border-strong);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--panel-2);
+  color: var(--text-2); font-size: var(--fs-5); line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.quote strong { color: var(--text-3); font-weight: 650; flex: 0 0 auto; }
+.quote span { min-width: 0; }
+/* ต้นทางหาย/ถูกลบ — บอกให้รู้ แต่ไม่ต้องเด่นกว่าคำตอบ */
+.quoteGone { color: var(--text-3); font-style: italic; }
+/* แถบ "กำลังตอบ…" ในช่องพิมพ์ — quote กินพื้นที่ ปุ่มยกเลิกชิดขวา */
+.replyBar { display: flex; gap: var(--space-2); align-items: flex-start; }
+.replyBar > .quote { flex: 1 1 auto; margin-bottom: 0; }
+
 /* ตารางภาพย่อของไฟล์แนบในข้อความ — ขนาดเดียวกับไฟล์แนบของ entity (AttachmentsPanel) */
 .photos {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
