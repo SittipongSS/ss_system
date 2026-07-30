@@ -4,6 +4,7 @@
 //
 // Server-only: ใช้ service-role admin client (bypass RLS). ห้าม import ใน client.
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { uploadBucket } from '@/lib/master/attachmentStorage';
 
 // เอกสารทั้งหมดของ entity หนึ่งๆ (ใหม่สุดก่อน).
 export async function listAttachments(entityType, entityId) {
@@ -62,13 +63,14 @@ export async function loadAttachmentParent(attachment) {
 }
 
 // ── File deletion (storage / Drive) ───────────────────────────────────
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
 
 // แกะ object path ออกจาก public URL ของ Supabase Storage เพื่อลบไฟล์จริง.
 // รูปแบบ: .../storage/v1/object/public/<bucket>/<objectPath>
+// ⚠️ marker มีชื่อ bucket อยู่ข้างใน — ชื่อไม่ตรงกับของจริง = คืน null = ลบแถวได้แต่
+// **ไฟล์ยังอยู่ใน bucket public อ่านได้ตลอดไป** (เดิม default 'uploads' ที่ไม่มีจริง)
 function objectPathFromUrl(url) {
   if (!url) return null;
-  const marker = `/object/public/${BUCKET}/`;
+  const marker = `/object/public/${uploadBucket()}/`;
   const i = url.indexOf(marker);
   if (i === -1) return null;
   return decodeURIComponent(url.slice(i + marker.length));
@@ -90,7 +92,7 @@ export async function deleteAttachmentFile(att) {
   const path = objectPathFromUrl(att?.fileUrl);
   if (path) {
     try {
-      await getSupabaseAdmin().storage.from(BUCKET).remove([path]);
+      await getSupabaseAdmin().storage.from(uploadBucket()).remove([path]);
     } catch {
       /* ไฟล์อาจถูกลบไปแล้ว หรือ path แกะไม่ได้ — ข้ามได้ */
     }
