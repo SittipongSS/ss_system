@@ -105,6 +105,15 @@ export function canViewLeads(user) {
   return !!user && (can(user.role, 'salesplan:lead') || can(user.role, 'salesplan:view'));
 }
 
+// ใครเพิ่มลีดเข้าคิวได้ — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ):
+//   marketing → ช่องทางหลัก (ทีม intake) · admin/ae_supervisor (isSuperuser) →
+//   มติผู้ใช้ 2026-07-30: หัวหน้าฝ่ายขายรับลีดตรงจากลูกค้า/งานแสดงสินค้าเองด้วย
+//   ต้องกรอกเข้าคิวได้ ไม่ต้องฝาก MKT กรอกแทน (คนคัดกรองก็คือคนเดิม)
+// ฝ่ายขายที่เหลือ (senior_ae/ac/ae) ยังเพิ่มไม่ได้ — ลีดต้องเข้าคิวกลางก่อนคัดกรอง
+export function canCreateLead(role) {
+  return role === 'marketing' || isSuperuser(role);
+}
+
 // นโยบายแก้/ลบลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ):
 //   admin → ทุกใบทุกสถานะ · supervisor → ก่อนเริ่มติดต่อ
 //   marketing → เฉพาะใบที่ตัวเองกรอก และเฉพาะก่อนคัดกรอง (status = new) —
