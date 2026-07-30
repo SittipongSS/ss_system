@@ -4,6 +4,8 @@ import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, 
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 import { notifyFilingHandoff } from '@/lib/tax/filingNotify';
 import { recordAudit } from '@/lib/audit';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { orderStatusUpdate } from '@/lib/master/recordUpdates';
 import { exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 
 export const dynamic = 'force-dynamic';
@@ -214,6 +216,17 @@ export async function PATCH(request, { params }) {
   await attachRegistrations(supabase, data);
   const summary = body.status && body.status !== order.status
     ? `เปลี่ยนสถานะใบยื่น ${id}: ${order.status} → ${body.status}` : null;
+  // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา
+  // ⭐ ยื่นใหม่หลังถูกตีกลับล้าง `rejectionReason` เป็น null (บรรทัด ~131) →
+  // เหตุผลรอบก่อนหายถาวร · ใช้ `body.rejectionReason` ไม่ใช่แถวหลังอัปเดต
+  if (body.status && body.status !== order.status) {
+    const threadEvent = orderStatusUpdate(body.status, {
+      reason: body.rejectionReason, fromStatus: order.status,
+    });
+    if (threadEvent) {
+      await appendUpdate(supabase, { entityType: 'excise_order', entityId: id, ...threadEvent, user });
+    }
+  }
   // Audit เก็บ header แบบ plain — ตัด items/registrations ที่ฝังมา (ORDER_SELECT +
   // attachRegistrations) ออก กันบวมและให้ changedKeys เทียบกับ before (plain) ได้ตรง.
   const { items: _items, registrations: _regs, ...plainAfter } = data;
@@ -254,6 +267,8 @@ export async function DELETE(request, { params }) {
   const { data, error } = await supabase.from('orders').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
+  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  await purgeUpdates(supabase, 'excise_order', id);
   await recordAudit({ user, action: 'delete', entityType: 'order', entityId: id, before: order, request });
   return Response.json({ success: true, message: 'ลบใบสั่งซื้อเรียบร้อยแล้ว' });
 }

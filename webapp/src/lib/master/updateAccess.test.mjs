@@ -198,6 +198,65 @@ test('⭐ QT/SO: ใบที่ถูกตีกลับ/ยกเลิก�
   }
 });
 
+// ── master data / ภาษี / PO สหมิตร ─────────────────────────────────────
+test('ลูกค้า/สินค้า: อ่านได้ทุกคน (แคตตาล็อกข้ามทีม) แต่โพสต์เฉพาะทีมผู้ดูแล', async () => {
+  const customer = { id: 'CUS-1', teams: ['KA'] };
+  const inTeam = { id: 'u-1', role: 'ae', team: 'KA' };
+  const outTeam = { id: 'u-2', role: 'ae', team: 'ODM' };
+
+  assert.equal(await canViewUpdates(stub(customer), 'customer', customer, outTeam), true);
+  assert.equal(await canPostUpdate(stub(customer), 'customer', customer, inTeam), true);
+  assert.equal(await canPostUpdate(stub(customer), 'customer', customer, outTeam), false);
+  // viewer อ่านแคตตาล็อกได้แต่เขียนไม่ได้ทั้งระบบ
+  assert.equal(await canPostUpdate(stub(customer), 'customer', customer, { id: 'v', role: 'viewer' }), false);
+});
+
+test('⭐ สินค้า: ทีมผู้ดูแลมาจาก **ลูกค้าเจ้าของ** ไม่ใช่ product.team (ซึ่งเก็บแค่คนสร้าง)', async () => {
+  // product.team = ODM (คนสร้างอยู่ ODM) แต่ลูกค้าเจ้าของเป็นของ KA
+  const product = { id: 'PRD-1', customerId: 'CUS-1', team: 'ODM' };
+  const owner = { teams: ['KA'] };                    // แถวลูกค้าที่ stub จะคืนให้
+  const ka = { id: 'u-1', role: 'ae', team: 'KA' };
+  const odm = { id: 'u-2', role: 'ae', team: 'ODM' };
+
+  assert.equal(await canPostUpdate(stub(owner), 'product', product, ka), true);
+  assert.equal(await canPostUpdate(stub(owner), 'product', product, odm), false,
+    'คนสร้างที่อยู่คนละทีมกับลูกค้าเจ้าของต้องโพสต์ไม่ได้');
+});
+
+test('⭐ ทะเบียน/ใบยื่นภาษี: เธรดเป็นของสองฝ่าย SA ↔ LG — ห้ามใช้ canEditRecord', async () => {
+  // 🪤 `canEditRecord('registrations')` ตกไปที่ inScope(editScope) ซึ่งเทียบ
+  // `record.ownerId` ที่ทะเบียน**ไม่มี** (มีแต่ createdBy) → AE ทุกคนโพสต์ไม่ได้เลย
+  // เธรดจะเหลือแค่ LG กับ supervisor · ด่านจริงต้องตรงกับปุ่มบนหน้าจอ
+  const reg = { id: 'REG-1', team: 'KA', createdBy: 'u-sa' };
+  const order = { id: 'ORD-1', team: 'KA', createdBy: 'u-sa' };
+  const lg = { id: 'u-lg', role: 'legal', team: null };
+  const sa = { id: 'u-other-ae', role: 'ae', team: 'KA' };   // ไม่ใช่คนสร้างใบนี้
+  const viewer = { id: 'u-v', role: 'viewer' };
+
+  assert.equal(await canPostUpdate(stub(reg), 'excise_registration', reg, lg), true);
+  assert.equal(await canPostUpdate(stub(reg), 'excise_registration', reg, sa), true,
+    'AE ที่ไม่ใช่คนสร้างทะเบียนก็ต้องคุยในเธรดได้');
+  assert.equal(await canPostUpdate(stub(order), 'excise_order', order, lg), true);
+  assert.equal(await canPostUpdate(stub(order), 'excise_order', order, sa), true);
+  // viewer/executive อ่านทุกโมดูลได้ แต่เขียนไม่ได้ทั้งระบบ
+  assert.equal(await canViewUpdates(stub(reg), 'excise_registration', reg, viewer), true);
+  assert.equal(await canPostUpdate(stub(reg), 'excise_registration', reg, viewer), false);
+  assert.equal(await canPostUpdate(stub(order), 'excise_order', order, viewer), false);
+});
+
+test('PO สหมิตร: ด่านเป็นระดับโมดูล — นอกทีม KA เข้าไม่ได้ · viewer อ่านได้แต่ไม่เขียน', async () => {
+  const po = { id: 'PO-1' };
+  const ka = { id: 'u-1', role: 'ae', team: 'KA' };
+  const other = { id: 'u-2', role: 'ae', team: 'ODM' };
+  const viewer = { id: 'u-v', role: 'viewer' };
+
+  assert.equal(await canViewUpdates(stub(po), 'sahamit_po', po, ka), true);
+  assert.equal(await canPostUpdate(stub(po), 'sahamit_po', po, ka), true);
+  assert.equal(await canViewUpdates(stub(po), 'sahamit_po', po, other), false);
+  assert.equal(await canViewUpdates(stub(po), 'sahamit_po', po, viewer), true);
+  assert.equal(await canPostUpdate(stub(po), 'sahamit_po', po, viewer), false);
+});
+
 test('แก้/ลบ: เจ้าของข้อความเท่านั้น · ข้อความระบบแก้ไม่ได้ · ลบแล้วแก้ต่อไม่ได้', async () => {
   const t = task();
   const owner = { id: 'u-own', role: 'ae', team: 'KA' };

@@ -16,6 +16,8 @@ import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuo
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { appendUpdate } from '@/lib/master/updates';
+import { sahamitPoSettleUpdate } from '@/lib/master/recordUpdates';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
@@ -433,6 +435,14 @@ export async function POST(request, { params }) {
       .update({ metadata: { ...(project.metadata || {}), salesDealId: merged.id } })
       .eq('id', project.id), 'ผูกดีลเข้า metadata โครงการ');
   }
+
+  // เหตุการณ์ลงเธรดของ PO — ไม่เช็ค error โดยเจตนา (action สำเร็จแล้ว)
+  // จุดส่งมอบเข้าท่อขาย: อ่านจากตัว PO ได้เลยว่ากลายเป็นดีลไหน ไม่ต้องไปไล่ audit log
+  await appendUpdate(supabase, {
+    entityType: 'sahamit_po', entityId: id,
+    ...sahamitPoSettleUpdate({ dealCode: merged.code || merged.title, lineCount: chosen.length }),
+    user,
+  });
 
   await recordAudit({
     user,

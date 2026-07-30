@@ -3,7 +3,8 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, Users, Tag, FlaskConical, Beaker } from "lucide-react";
+import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
@@ -671,6 +672,19 @@ export default function CustomerDetails() {
               ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
               : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่บริษัท"}
           />
+
+          {/* เธรดกลาง (mig 0163) — ด่านอนุมัติ master data บังคับกรอกเหตุผลที่ตีกลับ
+              แต่ `rejectionReason` ถูกล้างทั้งตอนอนุมัติและตอนแก้ (resetApprovalOnEdit)
+              → ตีกลับรอบสองลบเหตุผลรอบแรกทิ้ง · เธรดเก็บครบทุกรอบไว้กับตัวลูกค้า */}
+          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+            <UpdateThread
+              entityType="customer"
+              entityId={id}
+              order="desc"
+              placeholder="พิมพ์ข้อความ เช่น ลูกค้าแจ้งเปลี่ยนที่อยู่ออกใบกำกับ..."
+              emptyText="ยังไม่มีความเคลื่อนไหว"
+            />
+          </DetailCard>
         </div>
 
         {/* rail ขวา: ของหยิบเร็ว — ผู้ติดต่อ / แบรนด์ / ภาระภาษี */}

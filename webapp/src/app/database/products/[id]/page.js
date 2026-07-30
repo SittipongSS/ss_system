@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban, AlertTriangle, Clock, Send } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban, AlertTriangle, Clock, MessagesSquare, Send } from "lucide-react";
+import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -534,6 +535,18 @@ export default function ProductDetails() {
               note="เอกสารของลูกค้าที่เป็นเจ้าของสินค้านี้ (จัดการได้ที่หน้าข้อมูลลูกค้า)"
             />
           )}
+
+          {/* เธรดกลาง (mig 0163) — ด่านอนุมัติเดียวกับลูกค้า: เหตุผลที่ตีกลับถูกล้าง
+              ทั้งตอนอนุมัติและตอนแก้ · เธรดเก็บครบทุกรอบไว้กับตัวสินค้า */}
+          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+            <UpdateThread
+              entityType="product"
+              entityId={id}
+              order="desc"
+              placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
+              emptyText="ยังไม่มีความเคลื่อนไหว"
+            />
+          </DetailCard>
         </div>
 
         {/* rail ขวา: ของประกอบด้านภาษี — เฉพาะหมวดสรรพสามิต (ธง isExcise) + tax-gated */}
