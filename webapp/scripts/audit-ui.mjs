@@ -10,6 +10,7 @@ import {
   compareBudget,
 } from "./uiLegacyBudget.mjs";
 import { DEAD_CLASSES } from "./uiDeadClasses.mjs";
+import { countOrphanCss } from "./uiOrphanCss.mjs";
 
 const root = process.cwd();
 const srcRoot = path.join(root, "src");
@@ -67,10 +68,10 @@ const nativeFeedbackDebt = {
    เพิ่ม = ตก · ดูดเข้ากริดแล้วลืมลดเลข = ตกเหมือนกัน
    ⚠️ ห้ามขยับเลขนี้ขึ้นเพื่อให้ audit ผ่าน — ทางเดียวที่ควรขยับคือลง
 
-   793 → 736 (2026-07-30): ลบกฎ CSS ที่ไม่มีใครเรียกออกจาก globals.css 254 rule
+   793 → 736 → 723 (2026-07-30): ลบกฎ CSS ที่ไม่มีใครเรียกออกจาก globals.css 254 rule
    ค่านอกกริด 57 จุดในนั้นหายไปด้วย — ไม่ได้ "ดูดเข้ากริด" แต่เป็นหนี้ที่ไม่มีอยู่จริง
    ตั้งแต่แรกเพราะไม่มี element ไหนกินกฎพวกนั้น */
-const RAW_SPACING_CAP = 736;
+const RAW_SPACING_CAP = 723;
 
 /* จำนวน **ค่าจุดตัดจอที่ต่างกัน** ในไฟล์ CSS — เพดาน ขึ้นไม่ได้ ลงได้อย่างเดียว
 
@@ -275,6 +276,15 @@ for (const file of uiFiles) {
   }
 }
 
+/* ทางกลับของ deadClasses: selector ที่ไม่มี element ไหนกินแล้ว
+   เพดานเป็น 0 สำหรับ globals.css เพราะเพิ่งเก็บกวาดครบ (2026-07-30) — ของใหม่
+   ที่ไม่มีคนเรียกจึงเข้ามาไม่ได้อีก · CSS module ยังเหลือหนี้ตามเพดานด้านล่าง
+   ⚠️ ห้ามขยับเพดานขึ้นเพื่อให้ audit ผ่าน — ถ้าคลาสถูกประกอบตอนรันไทม์จนตัวกัน
+   มองไม่เห็น ให้เพิ่มเคสนั้นใน uiOrphanCss.mjs + orphanCss.test.mjs ไม่ใช่เพิ่มเลข */
+const ORPHAN_GLOBALS_CAP = 0;
+const ORPHAN_MODULE_CAP = 0;
+const orphanCss = countOrphanCss(root, files);
+
 const deadClassViolations = [];
 for (const file of uiFiles) {
   const rel = relative(file);
@@ -385,6 +395,18 @@ const failures = [
     ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
+  ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
+    ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
+    : []),
+  ...(orphanCss.globals.length < ORPHAN_GLOBALS_CAP
+    ? [`CSS กำพร้าใน globals ลดได้แล้ว: เหลือ ${orphanCss.globals.length} แต่ ORPHAN_GLOBALS_CAP ยังเขียน ${ORPHAN_GLOBALS_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(orphanCss.modules.length > ORPHAN_MODULE_CAP
+    ? orphanCss.modules.map((item) => `CSS ที่ไม่มีใครเรียกใน CSS module: ${item}`)
+    : []),
+  ...(orphanCss.modules.length < ORPHAN_MODULE_CAP
+    ? [`CSS กำพร้าใน module ลดได้แล้ว: เหลือ ${orphanCss.modules.length} แต่ ORPHAN_MODULE_CAP ยังเขียน ${ORPHAN_MODULE_CAP} (รูดเพดานลง)`]
+    : []),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
   ...nativeFeedbackViolations.map((item) => `native alert/confirm/prompt bypasses feedback foundation: ${item}`),
@@ -410,6 +432,10 @@ console.log(`Motion violations (นอกโทเคน --motion-*): ${motionVi
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
+console.log(
+  `CSS ที่ไม่มีใครเรียก: globals ${orphanCss.globals.length}/${ORPHAN_GLOBALS_CAP}` +
+    ` · module ${orphanCss.modules.length}/${ORPHAN_MODULE_CAP} (เพดาน ขึ้นไม่ได้)`,
+);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
 const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);

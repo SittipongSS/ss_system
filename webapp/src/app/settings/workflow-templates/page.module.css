@@ -58,10 +58,6 @@
 .dependency { display: block; color: var(--text); font-size: var(--fs-5); font-weight: 650; }
 .rowActions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
 .stepCards, .historyCards { display: none; }
-.noDraft { padding: var(--space-4) 18px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; }
-.noDraft > svg { color: var(--accent-ink); }
-.noDraft h2 { color: var(--text); font-size: var(--fs-8); font-weight: 750; }
-.noDraft p { margin-top: 2px; color: var(--text-3); font-size: var(--fs-5); }
 .errorPanel { min-height: 220px; padding: var(--space-5); display: grid; place-items: center; text-align: center; }
 .errorPanel > svg { color: var(--red); }
 .errorPanel p { margin: var(--space-2) 0 var(--space-3); color: var(--text-2); }
@@ -141,8 +137,6 @@
   .editorActions > button { min-height: 40px; flex: 1; justify-content: center; }
   .stepsHeader { align-items: flex-start; }
   .stepsHeader > button { min-height: 40px; flex-shrink: 0; }
-  .noDraft { grid-template-columns: auto 1fr; }
-  .noDraft > button { grid-column: 1 / -1; min-height: 40px; justify-content: center; }
   .stepCard dl { grid-template-columns: 1fr; }
   .previewSummary { grid-template-columns: 1fr 1fr; }
 }

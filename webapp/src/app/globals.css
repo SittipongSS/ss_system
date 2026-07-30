@@ -1442,31 +1442,6 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-.metric-card {
-  flex: 1 0 200px;
-  padding: var(--space-4) 18px;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  overflow: hidden;
-  background: var(--panel);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow);
-  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
-}
-
-.metric-card:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-}
-
-.metric-card::before {
-  display: none;
-}
-
 
 
 .chart-card {
@@ -3688,39 +3663,6 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: 600;
 }
 
-.prod-gantt-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px var(--space-3);
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  min-height: 44px;
-  justify-content: center;
-}
-
-.prod-gantt-label:last-of-type {
-  border-bottom: none;
-}
-
-.prod-gantt-timeline {
-  position: relative;
-  min-height: 44px;
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(
-    to right,
-    transparent 0,
-    transparent calc(100% - 1px),
-    color-mix(in srgb, var(--border) 40%, transparent) calc(100% - 1px),
-    color-mix(in srgb, var(--border) 40%, transparent) 100%
-  );
-}
-
-.prod-gantt-timeline:last-of-type {
-  border-bottom: none;
-}
-
 @keyframes marker-pulse {
   0% { box-shadow: 0 0 0 0 rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0.4); }
   70% { box-shadow: 0 0 0 6px rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0); }
@@ -3816,14 +3758,6 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .btn:active {
   transform: none;
-}
-.metric-card {
-  transition: transform var(--motion-standard) var(--ease-out),
-              border-color var(--motion-standard) var(--ease-out),
-              box-shadow var(--motion-standard) var(--ease-out);
-}
-.metric-card:hover {
-  transform: translateY(-2px);
 }
 
 /* ── Accessibility: honour the user's reduced-motion preference ── */
@@ -4440,31 +4374,6 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   background: var(--surface-2);
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(45, 120, 246, 0.1);
-}
-.exporting-mode {
-  padding: var(--space-9) !important;
-  width: max-content !important;
-  min-width: 1200px !important;
-  /* Force the light "paper" palette during capture so exported PNG/PDF
-     stay legible (dark text on white) even when the app is in dark mode. */
-  --panel: #ffffff;
-  --panel-2: #f5f0e7;
-  --panel-3: #ece6db;
-  --panel-float: #ffffff;
-  --origin-edited: #2e4a73;
-  --border: rgba(40, 33, 24, 0.13);
-  --border-strong: rgba(40, 33, 24, 0.24);
-  --text: #1a1e27;
-  --text-2: #3a414e;
-  --text-3: #5d6470;
-  --bg: #ffffff;
-  background: #ffffff !important;
-}
-
-.exporting-mode * {
-  overflow: visible !important;
-  overflow-x: visible !important;
-  overflow-y: visible !important;
 }
 
 .shipment-print-sheet {

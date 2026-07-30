@@ -10,12 +10,6 @@
 .metaGrid > div { min-width: 0; padding: 10px 11px; border-radius: var(--radius); background: var(--panel-2); }
 .metaGrid span { display: block; color: var(--text-3); font-size: var(--fs-4); }
 .metaGrid strong { display: block; margin-top: 3px; color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
-.draftPanel { padding: 14px var(--space-4); display: flex; align-items: flex-start; gap: var(--space-3); border-color: color-mix(in srgb, var(--amber) 34%, var(--border)); background: var(--amber-soft); }
-.draftPanel > svg { flex-shrink: 0; color: var(--amber); margin-top: 2px; }
-.draftCopy { min-width: 0; flex: 1; }
-.draftCopy strong { color: var(--text); }
-.draftCopy p { margin-top: 2px; color: var(--text-2); font-size: var(--fs-6); }
-.draftActions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .badge { min-height: 23px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: var(--fs-3); font-weight: 700; }
 .published { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
 .draft { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 24%, transparent); }
@@ -44,7 +38,4 @@
   .publishedPanel { padding: 14px; }
   .metaGrid, .formGrid { grid-template-columns: 1fr; }
   .full { grid-column: 1; }
-  .draftPanel { flex-wrap: wrap; }
-  .draftActions { width: 100%; }
-  .draftActions button { min-height: 40px; flex: 1; justify-content: center; }
 }
