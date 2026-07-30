@@ -172,7 +172,9 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
-const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
+// ⚠️ /production = ระบบวางแผนผลิต (แยกจาก /pm ตามมติ 2026-07-30) — ไม่ลงทะเบียน
+// ที่นี่ = ฝ่ายผลิต/จัดซื้อเปิดหน้าไม่ได้เลย ทั้งที่เป็นเจ้าของโมดูล
+const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
@@ -182,7 +184,7 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sa
 // ⚠️ /api/scents + /api/formulas = ทะเบียนกลิ่น/สูตร (mig 0171) เข้าถึงจริงผ่าน
 // /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อนี้ — ไม่ลงทะเบียนที่นี่ = non-admin
 // โดน 403 เงียบ ๆ ทั้งอ่านและเขียน (บทเรียนจาก /api/company-profile)
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/notifications', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/service', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/notifications', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -247,6 +249,19 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'sales:act'); // create
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
+  // วางแผนผลิต — ระบบแยกจาก PM ของฝ่ายขาย (มติ 2026-07-30). คนวางคิวคือฝ่าย PC/PD
+  // ซึ่งเป็น role `staff` **ไม่มี pm:edit** จึงต้องมีกฎของตัวเอง
+  // ⚠️ ด่านนี้หยาบ (เห็นแค่ role) — `staff` ทุกฝ่ายผ่านตรงนี้หมด รวม WH/QC
+  //    **ตัวกั้นจริงคือ canEditProduction() ใน handler** ที่เห็น department
+  //    (รูปเดียวกับ /api/sahamit ที่ proxy มองไม่เห็น team) ห้ามลืมด่านนั้น
+  if (path.startsWith('/api/production')) {
+    return canUser({ role, extraCaps }, 'production:edit');
+  }
+  // งานบริการ (ฝ่าย TS) — รูปเดียวกัน: ด่านหยาบที่นี่ ตัวกั้นจริงคือ canEditService()
+  // ใน handler ซึ่งเห็นทั้ง department (TS) และ team (SV)
+  if (path.startsWith('/api/service')) {
+    return canUser({ role, extraCaps }, 'service:edit');
+  }
   if (path.startsWith('/api/pm')) {
     if (can(role, 'pm:edit')) return true;
     // staff/rd (ฝ่ายที่ไม่ใช่ sales) ต้องใช้ "งานของฉัน" ได้จริง — เปิดเฉพาะสอง

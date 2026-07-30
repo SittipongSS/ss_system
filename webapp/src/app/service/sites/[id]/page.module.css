@@ -1,0 +1,42 @@
+/* รายละเอียดไซต์บริการ (mig 0187)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.info > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.info dt {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.info dd {
+  margin: 0;
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.wide { grid-column: 1 / -1; }
+
+.numCol { text-align: right; white-space: nowrap; }
+.muted { color: var(--text-3); }
+.serial { color: var(--text-3); }
+.inactive td { opacity: 0.55; }
+
+.rowActions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}

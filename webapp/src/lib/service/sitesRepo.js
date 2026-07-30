@@ -1,0 +1,86 @@
+// ── Data access + ด่านสิทธิ์ของทะเบียนไซต์บริการ (mig 0187) ───────────────
+// แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
+import { forbidden, notFound, unauthorized } from '@/lib/http';
+import { canEditService, canViewService } from '@/lib/permissions';
+
+// ⚠️ ด่านจริงของโมดูลบริการอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
+// ผ่านมาถึงนี่ (รวม PC/PD/WH/QC) · canEditService เป็นตัวที่เห็น department/team
+export function requireService({ user, edit = false }) {
+  if (!user) return { response: unauthorized() };
+  if (edit) {
+    if (!canEditService(user)) return { response: forbidden('ไม่มีสิทธิ์แก้ข้อมูลงานบริการ') };
+  } else if (!canViewService(user)) {
+    return { response: forbidden() };
+  }
+  return {};
+}
+
+export async function loadSites(supabase, { customerId = null, includeInactive = true } = {}) {
+  let query = supabase.from('service_sites').select('*');
+  if (customerId) query = query.eq('customerId', customerId);
+  if (!includeInactive) query = query.eq('isActive', true);
+  const { data, error } = await query
+    .order('customerName', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function findSite(supabase, id) {
+  const { data, error } = await supabase
+    .from('service_sites').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+// โหลดไซต์ + กันกรณีไม่พบในที่เดียว (ทุก route ของเครื่องต้องผ่านตรงนี้)
+export async function requireSite({ user, supabase, id, edit = false }) {
+  const access = requireService({ user, edit });
+  if (access.response) return access;
+  const site = await findSite(supabase, id);
+  if (!site) return { response: notFound('ไม่พบไซต์บริการ') };
+  return { site };
+}
+
+export async function loadAssets(supabase, siteId) {
+  const { data, error } = await supabase
+    .from('service_assets').select('*').eq('siteId', siteId)
+    .order('status', { ascending: true })
+    .order('label', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// นับเครื่องของหลายไซต์ในคำสั่งเดียว — หน้าทะเบียนต้องโชว์จำนวนเครื่องต่อแถว
+// โดยไม่ยิง N+1 (ไซต์ 200 แห่ง = 200 คำขอ ถ้าทำแบบไร้เดียงสา)
+export async function assetCountsBySite(supabase, siteIds = []) {
+  const counts = new Map();
+  if (!siteIds.length) return counts;
+  const { data, error } = await supabase
+    .from('service_assets').select('siteId, status').in('siteId', siteIds);
+  if (error) throw error;
+  for (const row of data || []) {
+    const entry = counts.get(row.siteId) || { total: 0, active: 0 };
+    entry.total += 1;
+    if (row.status === 'active') entry.active += 1;
+    counts.set(row.siteId, entry);
+  }
+  return counts;
+}
+
+export async function findAsset(supabase, siteId, assetId) {
+  const { data, error } = await supabase
+    .from('service_assets').select('*')
+    .eq('id', assetId).eq('siteId', siteId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+// ลูกค้าที่ไซต์ผูกอยู่ต้องมีจริง — ผูกไปยัง id มั่วแล้วไซต์จะกลายเป็นเด็กกำพร้า
+// ที่ไม่โผล่ในแท็บของลูกค้ารายไหนเลย (คืน { name } หรือ null)
+export async function findCustomer(supabase, customerId) {
+  const { data, error } = await supabase
+    .from('customers').select('id, name, arCode').eq('id', customerId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}

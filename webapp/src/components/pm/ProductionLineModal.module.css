@@ -1,0 +1,38 @@
+/* ฟอร์มไลน์ผลิต (mig 0186)
+   ⚠️ โมดูลนี้อยู่ใต้ ratchet เดียวกับ "บริหารงานขาย" → ห้าม style={{…}}
+      และห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field > span {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.field > small {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+}
+
+.wide { grid-column: 1 / -1; }
+
+.check {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.check > small { flex-basis: 100%; }

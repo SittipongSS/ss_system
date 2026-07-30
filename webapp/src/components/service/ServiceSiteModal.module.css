@@ -1,0 +1,112 @@
+/* ฟอร์มไซต์บริการ (mig 0187)
+   ⚠️ ห้าม style={{…}} และห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field > span,
+.timeField > span {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.field > small {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
+  line-height: 1.45;
+}
+
+.wide { grid-column: 1 / -1; }
+
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  gap: var(--space-2);
+}
+
+.fieldset > legend {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  padding-inline: var(--space-2);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.timeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.timeField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 120px;
+}
+
+.dayRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dayChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  /* ป้ายไทยตัวสั้น (จ. อ. พ.) มีจุด — เผื่อพื้นที่แนวตั้งไว้เหมือนข้อความไทยอื่น */
+  line-height: 1.45;
+}
+
+.check {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.check > small { flex-basis: 100%; }
+
+/* ป้ายเตือนของฟอร์มนัด — **เตือน ไม่บล็อก** จึงเป็นน้ำเสียง warning ไม่ใช่ error */
+.warnList {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.warnList > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}

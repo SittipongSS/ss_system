@@ -1,5 +1,5 @@
-import { Briefcase, CircleDollarSign, Database, LineChart, Scale } from 'lucide-react';
-import { canAccessMgmt, canAccessSahamit, canUser } from '@/lib/permissions';
+import { Briefcase, CircleDollarSign, Database, Factory, LineChart, Scale, Wrench } from 'lucide-react';
+import { canAccessMgmt, canAccessSahamit, canEditProduction, canUser, canViewService } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -15,6 +15,36 @@ export const SYSTEM_CATALOG = [
       if (canUser(user, 'salesplan:lead')) return '/sa/leads';
       return '/sa/tasks';
     },
+  },
+  {
+    // วางแผนผลิต — แยกจาก "บริหารงานขาย" โดยเจตนา (มติผู้ใช้ 2026-07-30):
+    // เจ้าของงานคือฝ่ายผลิต/จัดซื้อ ไม่ใช่ฝ่ายขาย · ฝ่ายขายเข้ามา *อ่าน* ได้เพื่อ
+    // ตอบลูกค้าว่าผลิตวันไหน แต่ไม่ใช่เมนูในระบบงานของเขา
+    key: 'production',
+    label: 'วางแผนผลิต',
+    description: 'ไลน์ผลิต กำลังผลิตต่อวัน และคิวงานผลิตของโรงงาน',
+    icon: Factory,
+    // ⚠️ ตอนนี้เปิดให้เฉพาะ "คนที่ทำอะไรได้จริง" (ฝ่าย PC/PD) ไม่ใช่ทุกคนที่ถือ
+    // production:view — เพราะ PR-1 มีแต่หน้า *ตั้งค่าไลน์* การ์ดระบบที่กดเข้าไป
+    // แล้วทำอะไรไม่ได้คือขยะบนหน้าแรกของฝ่ายขายทุกคน
+    // 👉 PR-3 (บอร์ดตารางผลิต ซึ่งฝ่ายขายเข้ามาอ่านเพื่อตอบลูกค้า) ค่อยเปลี่ยนเป็น
+    //    canViewProduction แล้วให้ landing ชี้ไปบอร์ดแทนหน้าไลน์
+    isVisible: (user) => canEditProduction(user),
+    landing: () => '/production/lines',
+  },
+  {
+    // งานบริการ (ฝ่าย TS) — แยกจาก "วางแผนผลิต" คนละโมดูล คนละตาราง คนละสิทธิ์
+    // (มติผู้ใช้ 2026-07-30) · ต่างจากระบบผลิตตรงที่ **เปิดตามสิทธิ์อ่าน** เพราะ
+    // ทะเบียนไซต์ตอบคำถามที่ฝ่ายขายถามจริง ("ลูกค้ารายนี้มีเครื่องกี่จุด")
+    // ไม่ใช่หน้าตั้งค่าที่คนอ่านอย่างเดียวเข้าไปแล้วทำอะไรไม่ได้
+    key: 'service',
+    label: 'งานบริการ',
+    description: 'ไซต์ติดตั้ง เครื่องกระจายกลิ่น และตารางเข้าบริการของฝ่ายเทคนิค',
+    icon: Wrench,
+    isVisible: (user) => canViewService(user),
+    // ลงที่ **ตาราง** ไม่ใช่ทะเบียน — คำถามที่ทุกคนเปิดระบบนี้มาถามคือ
+    // "ช่างจะเข้าไซต์ไหนเมื่อไหร่" ไม่ใช่ "มีไซต์อะไรบ้าง"
+    landing: () => '/service/schedule',
   },
   {
     key: 'tax',
