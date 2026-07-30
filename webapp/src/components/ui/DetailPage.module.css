@@ -56,7 +56,7 @@
   color: var(--accent-ink);
   font-size: var(--fs-1);
   font-weight: var(--fw-bold);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 .heading h2 {
@@ -112,7 +112,7 @@
   color: var(--accent-ink);
   font-size: var(--fs-1);
   font-weight: var(--fw-bold);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 .contextTop strong {

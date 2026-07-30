@@ -167,7 +167,7 @@
 
 /* ตัวหนังสือบนพื้นนาวีใช้ --navy-fg ไม่ใช่ #fff — audit ห้ามสีดิบในไฟล์ module
    (globals.css เขียน #fff ได้เพราะเป็นที่ประกาศโทเคน) */
-.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: var(--fw-bold); letter-spacing: .08em; }
+.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 
 .navSysBtn {
   display: inline-flex;

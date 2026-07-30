@@ -240,6 +240,20 @@
 
      ⚠️ สองชื่อนี้ไม่ใช่ค่าเดียวกันโดยเจตนา — ปุ่มที่กดไม่ได้จางได้เต็มที่ แต่ช่องกรอก
      ที่ถูกล็อกยัง **ต้องอ่านค่าข้างในออก** จึงจางน้อยกว่า */
+  /* ระยะห่างตัวอักษร — หน่วยต้องเป็น `em` เสมอ
+
+     em ขยับตามขนาดตัวอักษร ส่วน px ไม่ขยับ — ป้ายเดียวกันที่ใช้ --fs-1 กับ --fs-5
+     จะได้ระยะห่างต่างกันทันทีถ้าเขียนเป็น px (ตอนนี้ทั้งระบบใช้ em อยู่แล้ว
+     lsScale.test.mjs ล็อกไว้ไม่ให้ px หลุดเข้ามา)
+
+     ⚠️ ตรวจ 2026-07-30: 22 จุด 13 ค่า · เฉพาะ "ป้ายตัวเล็กพิมพ์ใหญ่" กลุ่มเดียว
+     ใช้อยู่ 6 ค่า (.02 .025 .04 .05 .06 .08em) — คลาสชื่อ `.eyebrow` เหมือนกันใน
+     4 ไฟล์ยังใช้ 3 ค่าต่างกัน สามชื่อข้างล่างคือกลุ่มที่ *สม่ำเสมออยู่แล้ว* จึงยกได้
+     โดยหน้าตาไม่ขยับ ที่เหลือคุมด้วยเพดานใน audit:ui */
+  --ls-heading: -0.02em; /* หัวเรื่องใหญ่ — บีบเข้าให้ดูแน่น */
+  --ls-tabular: -0.01em; /* ตัวเลขคอลัมน์ตรง (tabular-nums / mono) */
+  --ls-label: 0.08em;    /* ป้ายตัวเล็กพิมพ์ใหญ่ (eyebrow / หัวข้อย่อย) */
+
   --op-disabled: 0.45; /* ตัวควบคุมที่กดไม่ได้ (ปุ่ม/แท็บ/ตัวเลือก) */
   --op-muted: 0.55;    /* ลดความเด่นแต่ยังต้องอ่านออก (แถวปิด/ยกเลิก/ช่องที่ล็อก) */
 
@@ -1315,7 +1329,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: clamp(var(--fs-14), 3vw, var(--fs-17));
   font-weight: var(--fw-bold);
   line-height: 1.25;
-  letter-spacing: -.02em;
+  letter-spacing: var(--ls-heading);
 }
 .home-hub-greeting > p {
   max-width: 640px;
@@ -3884,7 +3898,7 @@ button.empty-state { width: 100%; font: inherit; }
   margin: 0;
   font-size: clamp(var(--fs-12), 2vw, var(--fs-page-title));
   line-height: var(--lh-tight);
-  letter-spacing: -.02em;
+  letter-spacing: var(--ls-heading);
   font-weight: var(--fw-bold);
   color: var(--text);
 }
@@ -4635,7 +4649,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-family: var(--font-numeric) !important;
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-tabular);
 }
 
 .target-value-toggle {

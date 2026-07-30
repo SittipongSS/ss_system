@@ -144,6 +144,17 @@ const RAW_SHADOW_CAP = 7;
    โลโก้ตอน hover (.88) ซึ่งไม่ใช่สถานะปิดใช้งาน */
 const RAW_OPACITY_CAP = 25;
 
+/* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+   `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
+
+   2026-07-30: ยก 9 จุดที่กลุ่มสม่ำเสมออยู่แล้วเข้า --ls-heading / --ls-tabular /
+   --ls-label ⚠️ ที่เหลือ 11 จุดเกือบทั้งหมดเป็น **บทบาทเดียวกัน คือ "ป้ายตัวเล็ก
+   พิมพ์ใหญ่" แต่ใช้คนละค่า** (.02 ×3 · .04 ×4 · .025 · .05 · .06) — คลาสชื่อ
+   `.eyebrow` เหมือนกันใน 4 ไฟล์ยังใช้ 3 ค่าต่างกัน การยุบเข้า --ls-label คือ
+   *ปรับดีไซน์* (ตัวอักษรขยับจริง) ต้องมีคนเปิดหน้าดู
+   ส่วน -0.04em ของ .totalAmount เป็นตัวเลขใหญ่พิเศษ คนละบทบาทกับ --ls-tabular */
+const RAW_LETTER_SPACING_CAP = 11;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
@@ -151,6 +162,8 @@ let rawLineHeightCount = 0;
 let rawRadiusCount = 0;
 let rawShadowCount = 0;
 let rawOpacityCount = 0;
+let rawLetterSpacingCount = 0;
+const letterSpacingUnitViolations = [];
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
@@ -320,6 +333,21 @@ for (const file of uiFiles) {
       if (!Number.isFinite(number) || number === 0 || number === 1) continue;
       rawOpacityCount += 1;
     }
+
+    /* ระยะห่างตัวอักษร (ดู RAW_LETTER_SPACING_CAP)
+       หน่วยความยาวคงที่เป็น **ข้อห้าม ไม่ใช่เพดาน** — px ไม่ขยับตามขนาดตัวอักษร
+       ป้ายเดียวกันที่ใช้ --fs-1 กับ --fs-5 จะได้ระยะห่างต่างกันทันที */
+    source.split(/\r?\n/).forEach((line, index) => {
+      const hit = line.match(/letter-spacing:\s*([^;}]+)/);
+      if (!hit) return;
+      const value = hit[1].trim();
+      if (/[0-9.]\s*(?:px|pt|rem|cm|mm|in|pc)\b/.test(value)) {
+        letterSpacingUnitViolations.push(`${rel}:${index + 1} letter-spacing: ${value} → ใช้หน่วย em`);
+        return;
+      }
+      if (value.includes("var(") || value === "0") return;
+      rawLetterSpacingCount += 1;
+    });
   }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
@@ -534,6 +562,13 @@ const failures = [
   ...(rawOpacityCount < RAW_OPACITY_CAP
     ? [`ความจางเลขดิบลดได้แล้ว: เหลือ ${rawOpacityCount} แต่ RAW_OPACITY_CAP ยังเขียน ${RAW_OPACITY_CAP} (รูดเพดานลง)`]
     : []),
+  ...letterSpacingUnitViolations.map((item) => `ระยะห่างตัวอักษรต้องเป็นหน่วย em (px ไม่ขยับตามขนาดตัวอักษร): ${item}`),
+  ...(rawLetterSpacingCount > RAW_LETTER_SPACING_CAP
+    ? [`ระยะห่างตัวอักษรค่าดิบเพิ่มขึ้น: ${rawLetterSpacingCount} > เพดาน ${RAW_LETTER_SPACING_CAP} — หยิบจาก --ls-heading / --ls-tabular / --ls-label`]
+    : []),
+  ...(rawLetterSpacingCount < RAW_LETTER_SPACING_CAP
+    ? [`ระยะห่างตัวอักษรค่าดิบลดได้แล้ว: เหลือ ${rawLetterSpacingCount} แต่ RAW_LETTER_SPACING_CAP ยังเขียน ${RAW_LETTER_SPACING_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -575,6 +610,8 @@ console.log(`ความสูงบรรทัดเลขดิบ: ${rawLin
 console.log(`ความมนมุมเลขดิบ: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`เงาที่เขียนเอง: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ความจางเลขดิบ: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ระยะห่างตัวอักษรค่าดิบ: ${rawLetterSpacingCount}/${RAW_LETTER_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ระยะห่างตัวอักษรที่ใช้หน่วยคงที่ (ต้องเป็น em): ${letterSpacingUnitViolations.length}`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(

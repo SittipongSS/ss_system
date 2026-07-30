@@ -6,7 +6,7 @@
 .overviewCard { overflow: hidden; background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%), var(--panel); }
 .overviewHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5); padding: var(--space-5) 22px 18px; }
 .overviewEyebrowRow { display: flex; align-items: center; gap: var(--space-2) 14px; margin-bottom: 7px; flex-wrap: wrap; }
-.eyebrow { color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); letter-spacing: .08em; }
+.eyebrow { color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 .period { padding-left: 14px; border-left: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-4); }
 /* ⚠️ ค่าชุดนี้ก๊อปมาจาก DetailOverview.module.css `.overviewHeading h1` เป๊ะทุกบรรทัด
    (ตรวจเจอ 2026-07-29) — ถ้าจะแก้หัวเรื่องแบบยืดตามจอ ต้องแก้ทั้งสองที่ หรือยกหน้านี้
