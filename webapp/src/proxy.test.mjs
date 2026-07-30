@@ -181,3 +181,63 @@ test('ทะเบียนกลิ่น/สูตร: Rev + จัดระ�
   assert.equal(apiWriteAllowed('POST', '/api/master/formulas/unsorted', 'rd', []), true);
   assert.equal(apiWriteAllowed('POST', '/api/master/formulas/unsorted', 'viewer', []), false);
 });
+
+// 🐞 บั๊กจริง 2026-07-30: `/api/tax/*` ไม่ตรงกับ OPEN_WRITE_APIS สักตัว (ในลิสต์มีแต่
+// `/api/orders` กับ `/api/excise-registrations`) → **ทุก role ที่ไม่ใช่แอดมินโดน 403**
+// เมื่อ POST /api/tax/orders/from-sales-order ซึ่งเป็นทางเดียวที่ปุ่ม "สร้างใบยื่นจาก
+// Sale Order" ใช้ · GET ผ่านเพราะ OPEN_READ_APIS มี `/api/tax` จึงเห็นรายการ SO ครบ
+// แต่กดสร้างแล้วเด้ง — ดูเหมือนระบบพังทั้งที่ handler ถูกทุกบรรทัด
+test('ทางสร้างใบยื่นจาก Sale Order เปิดให้ฝ่ายขาย ไม่ใช่แอดมินคนเดียว', () => {
+  for (const role of ['ae_supervisor', 'senior_ae', 'ac', 'ae']) {
+    assert.equal(
+      lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true),
+      false,
+      `${role} ต้องสร้างใบยื่นจาก SO ได้`,
+    );
+    assert.equal(apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []), true, role);
+  }
+  // role ที่ไม่ได้ทำงานขายยังเขียนไม่ได้ (ด่าน cap ต้องยังทำงาน ไม่ใช่เปิดหมด)
+  for (const role of ['viewer', 'executive', 'marketing', 'secretary', 'rd', 'staff']) {
+    const open = !lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true)
+      && apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []);
+    assert.equal(open, false, `${role} ต้องไม่ผ่าน`);
+  }
+});
+
+// alias /api/tax/{registrations,orders} re-export handler ตัวเดียวกับชื่อเดิม และไฟล์
+// alias เขียนกำกับไว้ว่า "behaves identically" — สิทธิ์จึงต้องเท่ากันทุกเมธอด/ทุก role
+// ไม่งั้นชื่อที่เรียกตัดสินสิทธิ์ ซึ่งเป็นบั๊กที่หาต้นตอยากมาก
+test('alias /api/tax/* ได้สิทธิ์เท่ากับชื่อเดิมเป๊ะ ทุกเมธอด', () => {
+  const ROLES_ALL = ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'rd', 'staff', 'secretary', 'marketing', 'executive', 'viewer'];
+  const pairs = [
+    ['/api/tax/registrations', '/api/excise-registrations'],
+    ['/api/tax/registrations/REG-1', '/api/excise-registrations/REG-1'],
+    ['/api/tax/registrations/REG-1/requirements', '/api/excise-registrations/REG-1/requirements'],
+    ['/api/tax/orders', '/api/orders'],
+    ['/api/tax/orders/PO-1', '/api/orders/PO-1'],
+  ];
+  for (const [alias, canonical] of pairs) {
+    for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+      for (const role of ROLES_ALL) {
+        const u = { role, extraCaps: [] };
+        assert.equal(
+          lockedOut(u, alias, method, true), lockedOut(u, canonical, method, true),
+          `lockedOut ${method} ${alias} (${role})`,
+        );
+        assert.equal(
+          apiWriteAllowed(method, alias, role, []), apiWriteAllowed(method, canonical, role, []),
+          `apiWriteAllowed ${method} ${alias} (${role})`,
+        );
+      }
+    }
+  }
+});
+
+// /api/tax/reports เป็นรายงาน (อ่านอย่างเดียว) ไม่ใช่ alias — ห้ามถูกยุบไปเป็น
+// /api/orders ไม่งั้นจะได้สิทธิ์เขียนใบยื่นติดมาโดยไม่มีใครสั่ง
+test('/api/tax/reports ไม่ถูกยุบเป็น alias — อ่านได้ทุก role เขียนไม่ได้', () => {
+  for (const role of ['ae', 'legal', 'viewer', 'staff']) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/api/tax/reports', 'GET', true), false, `${role} อ่านรายงาน`);
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/api/tax/reports', 'POST', true), true, `${role} เขียนรายงานไม่ได้`);
+  }
+});

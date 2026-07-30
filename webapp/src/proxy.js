@@ -149,6 +149,25 @@ const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || pat
 // both. e.g. /api/master/customers/123 -> /api/customers/123.
 const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 
+// โมดูลภาษีเรียกใช้ได้ทั้งชื่อเดิม (/api/excise-registrations, /api/orders) และชื่อใน
+// namespace /api/tax/* ซึ่งเป็น alias ที่ re-export handler ตัวเดียวกัน (ดู
+// app/api/tax/*/route.js) — ยุบชื่อ alias ลงบนชื่อเดิมเหมือนที่ normalizeMaster ทำกับ
+// /api/master/* เพื่อให้กฎ **ชุดเดียวกัน** คุมทั้งสองชื่อ
+//
+// 🐞 บั๊กจริง: ไม่มีบรรทัดนี้ = `/api/tax/*` ไม่ตรงกับ OPEN_WRITE_APIS สักตัว (มีแต่
+// `/api/orders`, `/api/excise-registrations`) → **ทุก role ที่ไม่ใช่แอดมินโดน 403** เมื่อ
+// POST /api/tax/orders/from-sales-order ซึ่งเป็นทางเดียวที่ปุ่ม "สร้างใบยื่นจาก Sale
+// Order" ใช้ · GET ผ่านได้เพราะ OPEN_READ_APIS มี `/api/tax` จึงเห็นรายการ SO ครบ
+// แต่กดสร้างแล้วเด้ง — ดูเหมือนระบบพังทั้งที่ handler ถูกทุกบรรทัด
+//
+// ⚠️ /api/tax/reports ไม่ต้องยุบ (อ่านอย่างเดียว + `/api/tax` อยู่ใน OPEN_READ_APIS แล้ว)
+const normalizeTax = (path) => path
+  .replace(/^\/api\/tax\/registrations/, '/api/excise-registrations')
+  .replace(/^\/api\/tax\/orders/, '/api/orders');
+
+// ชื่อ path ที่ใช้ตัดสินสิทธิ์ — ทุกด่านต้องเรียกตัวนี้ ไม่ใช่ path ดิบ
+const normalizePath = (path) => normalizeTax(normalizeMaster(path));
+
 // Pages a non-admin may open: own account + hub + PM + database + excise tax + Sales Planning + SAHAMIT.
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
@@ -179,7 +198,7 @@ export function lockedOut(user, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
   const role = user?.role;
   if (can(role, 'users:manage')) return false; // admin — full access to all systems
-  path = normalizeMaster(path); // /api/master/X gated identically to /api/X
+  path = normalizePath(path); // /api/master/X + /api/tax/X gated identically to /api/X
   if (isApi) {
     if (startsWithAny(path, OPEN_WRITE_APIS)) return false; // PM + own account: read+write
     if (method === 'GET' && startsWithAny(path, OPEN_READ_APIS)) return false; // supporting reads
@@ -212,7 +231,7 @@ export function lockedOut(user, path, method, isApi) {
 // only sees method + path.
 export function apiWriteAllowed(method, path, role, extraCaps) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
-  path = normalizeMaster(path); // /api/master/X gated identically to /api/X
+  path = normalizePath(path); // /api/master/X + /api/tax/X gated identically to /api/X
   // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
   // role — so mgmt checks go through canUser, not can(role, …).
   const mgmtUser = { role, extraCaps };
