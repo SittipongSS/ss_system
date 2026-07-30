@@ -22,9 +22,23 @@ test("ChartCanvas ต้องไม่บีบความกว้างข�
   }
 });
 
+/* อาการฝาแฝดของกฎข้างบน แต่คนละแกน: `.canvas` ตั้ง `height: 100%` ไว้ ถ้าแม่มีแค่
+   `min-height` (ไม่มี `height`) เบราว์เซอร์ตีเปอร์เซ็นต์เป็น auto → `.canvas` สูง 0
+   ทั้งที่การ์ดสูง 260px แล้ว ResponsiveContainer ที่ตั้ง height="100%" ก็ไม่วาดอะไรเลย */
+test("ChartCard ต้องให้ความสูงเป็นตัวเลขจริงกับ ChartCanvas ที่เป็นลูกตรง", () => {
+  const rule = CHART_CSS
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("}")
+    .find((block) => /\.body\s*>\s*\.canvas\s*\{/.test(block));
+  assert.ok(rule, "ต้องมีกฎ .body > .canvas");
+  assert.match(rule, /\bheight\s*:\s*var\(--chart-min-height/, "ความสูงต้องมาจาก prop minHeight ของการ์ด");
+});
+
 test("หน้าต้นแบบมีกราฟให้ดูด้วยตา", () => {
   assert.match(PREVIEW, /<ChartCanvas>/);
   assert.match(PREVIEW, /ResponsiveContainer/);
+  // ต้องมีกราฟที่วางใน ChartCard ตรง ๆ ด้วย ไม่งั้นกฎความสูงจะไม่มีใครเห็นตอนพัง
+  assert.match(PREVIEW, /<ChartCard[\s\S]{0,400}?<ChartCanvas>/);
 });
 
 /* ของจริงที่เคยเกิด: ครึ่งหนึ่งของตารางในระบบวาง TableScroll เปล่า ๆ ไม่มีการ์ดครอบ

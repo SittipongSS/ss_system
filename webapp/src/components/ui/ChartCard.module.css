@@ -74,6 +74,20 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
+/* ChartCanvas ที่เป็นลูกตรงของ .body ต้องได้ความสูงเป็นตัวเลขจริง
+
+   `.canvas` ตั้ง `height: 100%` ไว้ แต่ถ้าแม่มีแค่ `min-height` (ไม่มี `height`)
+   เบราว์เซอร์จะตีเป็น `auto` → `.canvas` สูง 0 ทั้งที่การ์ดสูง 260px และ
+   ResponsiveContainer ที่ตั้ง `height="100%"` จะไม่วาดกราฟออกมาเลย
+   (คนละอาการกับความกว้างที่เคยพังเพราะ max-width — ดูคอมเมนต์ข้างบน)
+
+   ตอนนี้ทุกจุดที่เรียกใช้ครอบ ChartCanvas ด้วย div ที่ตั้งความสูงเองอยู่แล้ว
+   กฎนี้จึงเป็นด่านกันคนถัดไปที่เขียน <ChartCard><ChartCanvas> ตรง ๆ
+   ความสูงมาจาก prop `minHeight` ของ ChartCard = สูงเท่าที่การ์ดประกาศไว้ */
+.body > .canvas {
+  height: var(--chart-min-height, 260px);
+}
+
 .legend {
   display: flex;
   align-items: center;
