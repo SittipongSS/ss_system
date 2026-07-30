@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -449,7 +449,7 @@ export default function ProjectFormModal({
         </div>
       </form>
 
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmState}
         onClose={() => resolveConfirm(false)}
         onConfirm={() => resolveConfirm(true)}

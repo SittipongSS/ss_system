@@ -508,12 +508,21 @@ const removedCompatibilityFiles = [
   "src/components/salesPlanning/SaWorkspace.js",
   "src/components/salesPlanning/SalesDetailOverview.js",
   "src/components/salesPlanning/SalesDetailOverview.module.css",
+  /* ปลดระวาง 2026-07-30 — สอง shim ที่เขียนคอมเมนต์ตัวเองว่า "one-release migration
+     window" แต่อยู่ยาว: tax/ConfirmModal ตั้ง danger=true ให้เงียบ ๆ (ผู้ใช้ 7 ไฟล์
+     ไม่มีสักไฟล์ที่เป็นภาษี) · excise/ConfirmDialog บังคับ closeOnSuccess
+     ค่าที่มันแอบตั้งให้ถูกเขียนกลับที่จุดเรียกครบแล้ว */
+  "src/components/tax/ConfirmModal.js",
+  "src/components/excise/ConfirmDialog.js",
 ].filter((file) => fs.existsSync(path.join(root, file)));
 const legacyCompatibilityImports = [];
 for (const file of runtimeJsFiles) {
   const rel = relative(file);
   const source = fs.readFileSync(file, "utf8");
   if (/components\/excise\/Pager|salesPlanning\/(?:SaWorkspace|SalesDetailOverview)/.test(source)) {
+    legacyCompatibilityImports.push(rel);
+  }
+  if (/components\/tax\/ConfirmModal|components\/excise\/ConfirmDialog/.test(source)) {
     legacyCompatibilityImports.push(rel);
   }
 }

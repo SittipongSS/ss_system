@@ -1,6 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { confirmAction } from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
@@ -25,7 +25,6 @@ import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
-import ConfirmModal from "@/components/tax/ConfirmModal";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
@@ -712,7 +711,7 @@ export default function PoDetailPage() {
         </DetailCard>
         </DetailPageLayout>
       )}
-      <ConfirmModal
+      <ConfirmDialog
         open={deleteOpen}
         onClose={() => !deleteBusy && setDeleteOpen(false)}
         onConfirm={deletePo}
@@ -721,7 +720,7 @@ export default function PoDetailPage() {
         confirmLabel={deleteBusy ? "กำลังลบ..." : "ลบ PO"}
         danger
       />
-      <ConfirmModal
+      <ConfirmDialog
         open={projectConfirmOpen}
         onClose={() => !projectBusy && setProjectConfirmOpen(false)}
         onConfirm={createProject}

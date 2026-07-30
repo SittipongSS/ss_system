@@ -16,7 +16,7 @@ import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
-import ConfirmDialog from "@/components/excise/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import OrderFormModal from "@/components/excise/OrderFormModal";
 import ReceiveDialog from "@/components/excise/ReceiveDialog";
@@ -336,6 +336,7 @@ export default function FilingDetailPage() {
       <FileTaxDialog open={fileOpen} onClose={() => setFileOpen(false)} onDone={reload} order={o} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} title="ตีกลับใบยื่นชำระ" entityLabel="ใบยื่นนี้" />
       <ConfirmDialog
+        closeOnSuccess
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={doDelete}
@@ -345,6 +346,7 @@ export default function FilingDetailPage() {
         danger
       />
       <ConfirmDialog
+        closeOnSuccess
         open={deliverOpen}
         onClose={() => setDeliverOpen(false)}
         onConfirm={() => transition("delivered")}

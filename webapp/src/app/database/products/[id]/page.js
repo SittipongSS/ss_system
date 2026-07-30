@@ -14,7 +14,7 @@ import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
@@ -627,7 +627,7 @@ export default function ProductDetails() {
       </div>
 
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmBox}
         onClose={() => setConfirmBox(null)}
         onConfirm={async () => { await confirmBox?.onConfirm?.(); setConfirmBox(null); }}

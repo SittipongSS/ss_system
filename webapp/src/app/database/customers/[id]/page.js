@@ -23,7 +23,7 @@ import RegistryBadge from "@/components/ui/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
@@ -736,7 +736,7 @@ export default function CustomerDetails() {
       </Modal>
 
       <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmBox}
         onClose={() => setConfirmBox(null)}
         onConfirm={async () => { await confirmBox?.onConfirm?.(); setConfirmBox(null); }}

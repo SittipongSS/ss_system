@@ -14,7 +14,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -895,7 +895,7 @@ export default function TasksPage() {
 
 
       <Toast toast={toast} onClose={() => setToast(null)} />
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmState}
         onClose={() => resolveConfirm(false)}
         onConfirm={() => resolveConfirm(true)}

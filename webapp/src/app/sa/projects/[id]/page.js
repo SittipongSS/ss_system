@@ -33,7 +33,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast, { notifyToast } from "@/components/ui/Toast";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -464,7 +464,7 @@ export default function ProjectDetailPage() {
     });
   };
 
-  // ยืนยันแบบ promise — แทน await confirmAction() ด้วย ConfirmModal ที่เข้าธีม.
+  // ยืนยันแบบ promise — แทน await confirmAction() ด้วย ConfirmDialog ที่เข้าธีม.
   // ใช้: if (!(await askConfirm({ title, message }))) return;
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
@@ -1829,7 +1829,7 @@ export default function ProjectDetailPage() {
 
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmState}
         onClose={() => resolveConfirm(false)}
         onConfirm={() => resolveConfirm(true)}
