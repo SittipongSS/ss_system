@@ -163,7 +163,7 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sa
 // ⚠️ /api/scents + /api/formulas = ทะเบียนกลิ่น/สูตร (mig 0171) เข้าถึงจริงผ่าน
 // /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อนี้ — ไม่ลงทะเบียนที่นี่ = non-admin
 // โดน 403 เงียบ ๆ ทั้งอ่านและเขียน (บทเรียนจาก /api/company-profile)
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/notifications', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -324,6 +324,10 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ด่านจริงคือทะเบียน lib/master/updateAccess.js ซึ่งรู้ว่า entity นั้นใครอ่าน/โพสต์ได้
   // (proxy เห็นแค่ role ไม่รู้จัก entity — เดาแทนไม่ได้). แพตเทิร์นเดียวกับ /api/upload
   if (path.startsWith('/api/updates')) return true;
+  // กล่องแจ้งเตือน (mig 0185) — เป็นของ "ตัวเอง" ล้วน: route อ่าน userId จาก session
+  // ไม่รับพารามิเตอร์ผู้ใช้เลย จึงไม่มีอะไรให้ proxy กั้นเพิ่ม · ทุก role ที่ล็อกอิน
+  // ต้องมีกล่องของตัวเอง (รวม viewer/marketing) ไม่งั้นกระดิ่งขึ้น 403 เงียบทั้งระบบ
+  if (path.startsWith('/api/notifications')) return true;
   return true; // e.g. /api/upload — any signed-in user
 }
 

@@ -1,0 +1,59 @@
+.wrap { position: relative; display: inline-flex; }
+
+/* ป้ายตัวเลขมุมกระดิ่ง — trigger ต้องเป็น relative ให้ป้ายเกาะได้ */
+.trigger { position: relative; }
+.badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 16px; height: 16px; padding: 0 var(--space-1);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  /* 🪤 เดิมเป็น `background: var(--red); color: #fff` — สีดิบตายตัวแบบนั้นคือกับดัก
+     เดิมของ ViewSwitcher (#807): มันไม่พลิกตามธีมแล้วอัตราคอนทราสต์ตกในธีมมืด
+     · ระบบนี้ไม่มีโทเคน "สีตัวอักษรบนพื้นแดงทึบ" → ใช้คู่ soft+เข้ม ซึ่งเป็นภาษา
+     เดียวกับป้ายสถานะทั้งระบบ (.confirm-dialog-icon.danger ฯลฯ) และพลิกครบสองธีม */
+  background: var(--red-soft); color: var(--red);
+  border: 1px solid var(--red);
+  font-size: var(--fs-1); font-weight: 700; line-height: 1;
+}
+
+/* กล่องลอย — ใช้ชั้น z กลาง ห้ามคิดเลขเอง (ดู [[z-index-scale]]) */
+.panel {
+  position: absolute; top: calc(100% + var(--space-2)); right: 0; z-index: var(--z-dropdown);
+  width: min(360px, calc(100vw - var(--space-5)));
+  max-height: min(70vh, 520px); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  /* พื้นผิวลอยต้องทึบ 100% (--panel-float) ไม่ใช่ --panel — ไม่งั้นเนื้อหาใต้กล่อง
+     ทะลุขึ้นมาอ่านทับกัน (กฎ floating surface ของ audit:ui) */
+  background: var(--panel-float); box-shadow: var(--glass-shadow);
+}
+.head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  color: var(--text); font-size: var(--fs-7);
+  position: sticky; top: 0; background: var(--panel-float);
+}
+
+.list { margin: 0; padding: 0; list-style: none; }
+.item { border-bottom: 1px solid var(--border); }
+.item:last-child { border-bottom: 0; }
+/* ยังไม่อ่าน = พื้นอ่อน + ขอบซ้ายสีเน้น (ไม่พึ่งสีตัวอักษรอย่างเดียว) */
+.itemUnread { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+
+.link {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  color: inherit; text-decoration: none;
+}
+a.link:hover { background: var(--panel-2); }
+
+/* ⚠️ line-height ≥1.45 ทุกกล่องที่ห่อข้อความไทย (สระบน/วรรณยุกต์ยื่นเหนือตัวอักษร) */
+.title { color: var(--text); font-size: var(--fs-6); font-weight: 650; line-height: 1.5; }
+.body {
+  color: var(--text-2); font-size: var(--fs-5); line-height: 1.5;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.meta { color: var(--text-3); font-size: var(--fs-3); line-height: 1.5; }
+
+.empty { padding: var(--space-6); color: var(--text-3); font-size: var(--fs-5); text-align: center; }

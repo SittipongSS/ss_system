@@ -2,6 +2,8 @@
 // ตารางเดียวสำหรับทุก entity — ดูทะเบียนสิทธิ์ที่ lib/master/updateAccess.js
 import { randomUUID } from 'crypto';
 import { redactDeleted, sanitizeUpdateAttachments } from '@/lib/master/updateTypes';
+import { loadUpdateParent } from '@/lib/master/updateAccess';
+import { notifyThreadUpdate, purgeNotificationsMany } from '@/lib/notifications';
 
 // เธรดของ entity หนึ่ง — เก่าไปใหม่ (อ่านไล่เป็นเรื่องราว)
 // พลาด = คืน [] ไม่ทำหน้ารายละเอียดพัง (เช่นยังไม่ได้รัน migration) แต่ log ไว้
@@ -53,6 +55,16 @@ export async function appendUpdate(supabase, {
     console.error('[updates] appendUpdate failed', entityType, entityId, error.message);
     return { row: null, error: error.message };
   }
+
+  // ── แจ้งเตือนรายคน (mig 0185) ──────────────────────────────────────────
+  // ⭐ ต่อไว้ **ที่นี่ที่เดียว** ไม่ใช่ที่ผู้เรียก 50 จุด — ทุกจุดที่เขียนเธรดได้แจ้ง
+  // เตือนฟรี รวมทั้งจุดที่จะเพิ่มในอนาคต (ต่อรายจุด = ตกหล่นเงียบแน่นอน)
+  // fire-and-forget: notifyThreadUpdate กลืน error เอง (ดูหัวไฟล์ notifications.js)
+  const parent = await loadUpdateParent(supabase, entityType, entityId).catch(() => null);
+  await notifyThreadUpdate(supabase, {
+    entityType, entityId, parent, update: data, actor: user,
+  });
+
   return { row: data, error: null };
 }
 
@@ -71,4 +83,6 @@ export async function purgeUpdatesMany(supabase, entityType, entityIds = []) {
     .from('entity_updates').delete()
     .eq('entityType', entityType).in('entityId', ids);
   if (error) console.error('[updates] purgeUpdates failed', entityType, ids.length, error.message);
+  // แจ้งเตือนก็ไม่มี FK เหมือนกัน — กวาดคู่กันที่นี่ที่เดียว ไม่ใช่ที่ผู้เรียก 10 จุด
+  await purgeNotificationsMany(supabase, entityType, ids);
 }
