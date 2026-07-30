@@ -68,11 +68,22 @@ const nativeFeedbackDebt = {
    ⚠️ ห้ามขยับเลขนี้ขึ้นเพื่อให้ audit ผ่าน — ทางเดียวที่ควรขยับคือลง */
 const RAW_SPACING_CAP = 793;
 
+/* จำนวน **ค่าจุดตัดจอที่ต่างกัน** ในไฟล์ CSS — เพดาน ขึ้นไม่ได้ ลงได้อย่างเดียว
+
+   ตรวจ 2026-07-29: มี 24 ค่า รวมคู่ที่ห่างกัน 1–8px (760/767/768) ซึ่งเป็นการพิมพ์
+   ต่างกันมากกว่าเป็นการตัดสินใจ — ยุบเหลือ 768 แล้วจึงเหลือ 22
+
+   🪤 ชั้นนี้ทำเป็นโทเคนไม่ได้ (custom property ใช้ใน media query ไม่ได้ตามสเปก)
+   จึงล็อกที่ **จำนวนค่า** แทนการบังคับให้อ้างตัวแปร — กันไม่ให้ใครเพิ่มค่าที่ 23
+   ส่วนการยุบค่าที่เหลือคือการเปลี่ยนจุดที่เลย์เอาต์สลับ ต้องมีคนเปิดหน้าจริงดู */
+const BREAKPOINT_CAP = 22;
+
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const zIndexViolations = [];
 const motionViolations = [];
 let rawSpacingCount = 0;
+const breakpointValues = new Set();
 const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
@@ -168,6 +179,13 @@ for (const file of uiFiles) {
         const line = source.slice(0, decl.index + hit.index).split(/\r?\n/).length;
         motionViolations.push(`${rel}:${line} ${hit[0]} → var(--motion-…)`);
       }
+    }
+  }
+
+  // เก็บค่าจุดตัดจอที่ต่างกัน (ดู BREAKPOINT_CAP)
+  if (rel.endsWith(".css")) {
+    for (const hit of source.matchAll(/@media[^{]*?(?:max|min)-width:\s*(\d+)px/g)) {
+      breakpointValues.add(Number(hit[1]));
     }
   }
 
@@ -350,6 +368,12 @@ const failures = [
   ...(rawSpacingCount > RAW_SPACING_CAP
     ? [`ระยะห่างเลขดิบเพิ่มขึ้น: ${rawSpacingCount} > เพดาน ${RAW_SPACING_CAP} — ของใหม่ต้องหยิบขั้นจาก --space-*`]
     : []),
+  ...(breakpointValues.size > BREAKPOINT_CAP
+    ? [`จุดตัดจอมีค่าใหม่เพิ่ม: ${breakpointValues.size} > เพดาน ${BREAKPOINT_CAP} (${[...breakpointValues].sort((a, b) => a - b).join(", ")}) — หยิบจากค่าที่มีอยู่แล้ว`]
+    : []),
+  ...(breakpointValues.size < BREAKPOINT_CAP
+    ? [`จุดตัดจอยุบได้แล้ว: เหลือ ${breakpointValues.size} ค่า แต่ BREAKPOINT_CAP ยังเขียน ${BREAKPOINT_CAP} (รูดเพดานลง)`]
+    : []),
   ...(rawSpacingCount < RAW_SPACING_CAP
     ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
@@ -377,6 +401,7 @@ console.log(`Type-scale violations (font-size นอกโทเคน): ${typeS
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
