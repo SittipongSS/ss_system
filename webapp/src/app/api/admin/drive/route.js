@@ -8,7 +8,10 @@
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
-import { driveHealth, auditDriveFiles, planRestructure, runRestructure } from '@/lib/driveMaintenance';
+import {
+  driveHealth, auditDriveFiles, auditOrphanDriveItems, trashOrphanDriveItems,
+  planRestructure, runRestructure,
+} from '@/lib/driveMaintenance';
 
 // googleapis + OIDC token ต้อง Node runtime · การย้ายทีละชุดกินเวลาได้ถึงเพดาน
 export const runtime = 'nodejs';
@@ -35,6 +38,7 @@ export async function GET(request) {
       return Response.json(await driveHealth({ writeTest: searchParams.get('write') === '1' }));
     }
     if (action === 'audit') return Response.json(await auditDriveFiles());
+    if (action === 'orphans') return Response.json(await auditOrphanDriveItems());
     if (action === 'plan') return Response.json(await planRestructure());
     return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
   } catch (err) {
@@ -50,6 +54,29 @@ export async function POST(request) {
   if (error) return error;
 
   const body = await request.json().catch(() => ({}));
+
+  // ทิ้งของกำพร้าลงถังขยะ — รับ id ที่ผู้ใช้เห็นตอนกด แล้ว server คำนวณซ้ำเองก่อนทิ้ง
+  if (body.action === 'trash-orphans') {
+    if (!Array.isArray(body.ids) || !body.ids.length) {
+      return Response.json({ error: 'ไม่มีรายการที่จะทิ้ง' }, { status: 400 });
+    }
+    try {
+      const result = await trashOrphanDriveItems(body.ids);
+      await recordAudit({
+        user,
+        action: 'delete',
+        entityType: 'drive_orphan_cleanup',
+        entityId: `trashed-${result.trashed}`,
+        after: { requested: result.requested, trashed: result.trashed, skipped: result.skipped },
+        request,
+      });
+      return Response.json(result);
+    } catch (err) {
+      console.error('[admin/drive] trash-orphans failed', err);
+      return Response.json({ error: String(err?.message || err) }, { status: 500 });
+    }
+  }
+
   if (body.action !== 'restructure') {
     return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
   }
