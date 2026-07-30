@@ -557,6 +557,58 @@ test('canViewRecord: ลูกค้า + สินค้า = แคตตา�
   assert.equal(canViewRecord(odmAe, 'orders', { team: 'KA', ownerId: 'x' }), false);
 });
 
+// 🐞 บั๊กจริง: ลิสต์เอกสารภาษีโชว์แถวไร้ทีมให้ทุกทีม (กฎ "ไม่มีทีม = ของกลาง") แต่ด่านราย
+// record เทียบ `user.team === record.team` ตรง ๆ ซึ่งเป็น false เมื่อ team เป็น null →
+// แถวเดียวกันที่เห็นในลิสต์ กดเข้าไป/กดอนุมัติ/กดลบ ได้ 404-403 · ผลจริงคือเอกสารที่ถูก
+// ตีกลับไม่มีใครในฝ่ายขายแก้ได้เลย ต้องรออแดมิน
+test('เอกสารภาษีที่ไม่มีทีม = ของกลาง ทุกทีมเห็น/แก้/ลบได้ (ด่านรายแถวตรงกับลิสต์)', () => {
+  const odmAe = { role: 'ae', id: 'u1', team: 'ODM' };
+  const odmSenior = { role: 'senior_ae', id: 'u2', team: 'ODM' };
+  const teamless = { team: null, ownerId: 'someone-else' };
+
+  for (const resource of ['orders', 'registrations']) {
+    assert.equal(canViewRecord(odmAe, resource, teamless), true, `view ${resource}`);
+    // แก้: senior_ae/ac คือสาย editScope 'team'
+    assert.equal(canEditRecord(odmSenior, resource, teamless), true, `edit ${resource}`);
+    // ลบ: senior_ae ลบ orders ได้ / registrations เปิดถึง ae — ทั้งคู่เป็น scope 'team'
+    assert.equal(canDeleteRecord(odmSenior, resource, teamless), true, `delete ${resource}`);
+  }
+  assert.equal(canDeleteRecord(odmAe, 'registrations', teamless), true);
+
+  // แถวที่ **มีทีม** ยังกันข้ามทีมเหมือนเดิม — กฎของกลางห้ามกลายเป็นประตูหลัง
+  const kaRow = { team: 'KA', ownerId: 'someone-else' };
+  for (const resource of ['orders', 'registrations']) {
+    assert.equal(canViewRecord(odmAe, resource, kaRow), false, `view ${resource} ข้ามทีม`);
+    assert.equal(canEditRecord(odmSenior, resource, kaRow), false, `edit ${resource} ข้ามทีม`);
+    assert.equal(canDeleteRecord(odmSenior, resource, kaRow), false, `delete ${resource} ข้ามทีม`);
+  }
+
+  // scope 'own' (ae แก้ได้แค่ของตัวเอง) ห้ามได้สิทธิ์จากกฎนี้ — ไม่มีทีมไม่ได้ทำให้เป็นเจ้าของ
+  assert.equal(editScope('ae'), 'own');
+  assert.equal(canEditRecord({ role: 'ae', id: 'u1', team: 'ODM' }, 'orders', teamless), false);
+  assert.equal(canEditRecord({ role: 'ae', id: 'u1', team: 'ODM' }, 'orders', { team: null, ownerId: 'u1' }), true);
+
+  // viewer/marketing ที่ไม่มีสิทธิ์แก้อยู่แล้ว ห้ามได้สิทธิ์เพราะแถวไร้ทีม
+  assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'ODM' }, 'orders', teamless), false);
+  assert.equal(canDeleteRecord({ role: 'viewer', id: 'v', team: 'ODM' }, 'orders', teamless), false);
+  assert.equal(canDeleteRecord({ role: 'ac', id: 'c', team: 'ODM' }, 'orders', teamless), false); // ac ลบใบยื่นไม่ได้อยู่แล้ว
+
+  // โครงการ/PM ไม่อยู่ในกฎนี้ (ยังไม่มีมติ) — แถวไร้ทีมของโครงการยังกันเหมือนเดิม
+  assert.equal(canDeleteRecord(odmSenior, 'projects', teamless), false);
+});
+
+// บัญชีที่ role เป็นสายทีมแต่ `team = null` scope ไม่ได้ → ลิสต์ข้ามตัวกรองทิ้งแล้วโชว์ทุกแถว
+// ด่านรายแถวต้องยอมให้ "เห็น" ตรงกัน ไม่งั้นได้ 404 บนแถวที่ลิสต์เพิ่งโชว์
+test('คนที่ scope team แต่ไม่มีทีม: เห็นเอกสารภาษีได้ทั้งหมด แต่แก้/ลบยัง fail closed', () => {
+  const noTeam = { role: 'senior_ae', id: 'u9', team: null };
+  assert.equal(canViewRecord(noTeam, 'orders', { team: 'KA' }), true);
+  assert.equal(canViewRecord(noTeam, 'registrations', { team: 'KA' }), true);
+  assert.equal(canEditRecord(noTeam, 'orders', { team: 'KA' }), false);
+  assert.equal(canDeleteRecord(noTeam, 'orders', { team: 'KA' }), false);
+  // แถวไร้ทีมยังแก้ได้ (กฎของกลางเป็นคนละข้อ ผูกกับตัวแถว)
+  assert.equal(canEditRecord(noTeam, 'orders', { team: null }), true);
+});
+
 test('canEditRecord (customers): ทั้งทีมที่ดูแลแก้ได้ รวม AE — กันข้ามทีม', () => {
   const kaCustomer = { teams: ['KA'] };
   for (const role of ['senior_ae', 'ac', 'ae']) {

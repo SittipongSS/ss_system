@@ -556,6 +556,27 @@ export function inScope(scope, user, record) {
 // Combine capability scope (role) with a record's {team, ownerId}. Used by
 // API route handlers. `user` = { id, role, team }.
 
+// เอกสารภาษี (ใบยื่น orders / ทะเบียน registrations) ที่ **ไม่มีทีมเลย** = "ของกลาง"
+// ทุกทีมทั้งเห็นและจัดการได้ — กฎเดียวกับตัวกรองของลิสต์ (`or('team.eq.X,team.is.null')`)
+// และกับ master data ที่ caretakerTeamsOf ถือว่า `[]` = ของกลาง
+//
+// **ทำไมต้องมี** — ลิสต์โชว์แถวไร้ทีมให้ทุกทีมแล้ว แต่ inScope('team') เทียบ
+// `user.team === record.team` ตรง ๆ ซึ่งเป็น false เมื่อ `record.team` เป็น null →
+// แถวเดียวกันที่เห็นในลิสต์ กด GET/PATCH/DELETE รายตัวแล้วได้ 404/403 · ถ้าปล่อยไว้
+// เอกสารที่ถูกตีกลับจะไม่มีใครในฝ่ายขายแก้ได้เลย (ของจริง: ทะเบียนที่ Admin สร้าง
+// ค้าง "รออนุมัติ" 6 วันโดยไม่มีใครในทีมเห็น)
+//
+// ⚠️ เฉพาะ scope 'team' — 'own' วัดด้วย ownerId การที่แถวไม่มีทีมไม่ได้ทำให้ใครเป็นเจ้าของ
+// ⚠️ ห้ามยกไปแก้ที่ inScope() เอง: ที่นั่นถูกใช้กับโครงการ/PM/แผนการขายด้วย ซึ่งยังไม่มี
+//    มติว่าแถวไร้ทีมของโมดูลนั้นเป็นของกลาง
+const TEAMLESS_SHARED_RESOURCES = new Set(['orders', 'registrations']);
+
+function sharedTeamlessRow(resource, scope, record) {
+  return scope === 'team'
+    && TEAMLESS_SHARED_RESOURCES.has(resource)
+    && caretakerTeamsOf(record).length === 0;
+}
+
 export function canViewRecord(user, resource, record) {
   // Customers AND products are the shared central catalog — any signed-in user
   // may VIEW the record (มติ 2026-07-20: แคตตาล็อกสินค้าเห็นทุกทีม, เหมือนลูกค้า).
@@ -565,7 +586,13 @@ export function canViewRecord(user, resource, record) {
   // though the LIST (GET /api/products) already showed the row to every team —
   // so the caretaker team could never reach the edit form on it.
   if (resource === 'customers' || resource === 'products') return true;
-  return inScope(viewScopeUser(user), user, record);
+  const scope = viewScopeUser(user);
+  if (sharedTeamlessRow(resource, scope, record)) return true;
+  // คนที่ scope 'team' แต่ตัวเองไม่มีทีม scope ไม่ได้ → เห็นทั้งหมด (ลิสต์ข้ามตัวกรองทิ้ง
+  // ในกรณีนี้เหมือนกัน) · ปิดไว้แค่ชั้น "เห็น" — แก้/ลบยัง fail closed เพราะบัญชีที่
+  // role เป็นสายทีมแต่ไม่มีทีมคือบัญชีที่ตั้งค่าไม่ครบ ไม่ใช่สิทธิ์ที่ตั้งใจให้
+  if (scope === 'team' && TEAMLESS_SHARED_RESOURCES.has(resource) && !user?.team) return true;
+  return inScope(scope, user, record);
 }
 
 // Caretaker teams of a master record (a customer, or any {teams,team} shape).
@@ -608,12 +635,20 @@ export function canEditRecord(user, resource, record, caretakerTeams) {
     return !!user?.team && teams.includes(user.team);
   }
 
-  // Orders / registrations / projects — creator/team/own scope (unchanged).
-  return inScope(editScope(user?.role), user, record);
+  // Orders / registrations / projects — creator/team/own scope. เอกสารภาษีที่ไม่มีทีม
+  // = ของกลาง ทุกทีมแก้ได้ (ไม่งั้นใบที่ถูกตีกลับไม่มีใครในฝ่ายขายแก้ได้เลย)
+  const scope = editScope(user?.role);
+  if (sharedTeamlessRow(resource, scope, record)) return true;
+  return inScope(scope, user, record);
 }
 
 export function canDeleteRecord(user, resource, record) {
-  return inScope(deleteScope(user?.role, resource), user, record);
+  // ของกลางก็ลบได้ ไม่งั้นร่างไร้ทีมจะค้างระบบไปตลอดโดยมีแต่แอดมินที่เก็บกวาดได้ ·
+  // ด่านที่กันของจริงคือด่านสถานะของ handler (ทะเบียน: ร่าง + ไม่มีใบยื่นอ้างถึง ·
+  // ใบยื่น: ที่เข้าขั้นตอนภาษีแล้วต้องเป็นแอดมิน) ซึ่งยังทำงานเหมือนเดิมทุกกรณี
+  const scope = deleteScope(user?.role, resource);
+  if (sharedTeamlessRow(resource, scope, record)) return true;
+  return inScope(scope, user, record);
 }
 
 // ── PM (project management) predicates ────────────────────────────────
