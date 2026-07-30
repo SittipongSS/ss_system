@@ -40,6 +40,8 @@ export default function StoragePage() {
   const [healthBusy, setHealthBusy] = useState(true);
   const [audit, setAudit] = useState(null);
   const [auditBusy, setAuditBusy] = useState(false);
+  const [orphanRows, setOrphanRows] = useState(null);
+  const [rowBusy, setRowBusy] = useState(false);
   const [orphans, setOrphans] = useState(null);
   const [orphanBusy, setOrphanBusy] = useState(false);
   const [plan, setPlan] = useState(null);
@@ -80,6 +82,49 @@ export default function StoragePage() {
       setError(e.message);
     } finally {
       setAuditBusy(false);
+    }
+  };
+
+  const loadOrphanRows = async () => {
+    setRowBusy(true);
+    setError("");
+    try {
+      setOrphanRows(await call("/api/admin/drive?action=orphan-rows"));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRowBusy(false);
+    }
+  };
+
+  // ลบแถวกำพร้าออกจากฐานข้อมูล — ไฟล์บน Drive ไม่ถูกแตะ (ตัดสินใจแยกที่หัวข้อถัดไป)
+  const purgeOrphanRows = async () => {
+    const count = orphanRows?.orphanCount || 0;
+    if (!count) return;
+    const okToRun = await confirmAction(
+      `ลบแถวไฟล์แนบกำพร้า ${count} แถวออกจากฐานข้อมูล?`,
+      {
+        detail: "แถวเหล่านี้ชี้ไปยังระเบียนที่ถูกลบไปแล้ว จึงไม่มีหน้าไหนแสดงอยู่ · ไฟล์บน Google Drive จะยังอยู่ครบ ไม่ถูกแตะ",
+        danger: true,
+        confirmLabel: "ลบแถวกำพร้า",
+      },
+    );
+    if (!okToRun) return;
+
+    setRowBusy(true);
+    setError("");
+    try {
+      const res = await call("/api/admin/drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "purge-orphan-rows" }),
+      });
+      notifyToast.success(`ลบแถวกำพร้าแล้ว ${res.deleted} แถว`);
+      await loadOrphanRows();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRowBusy(false);
     }
   };
 
@@ -279,6 +324,49 @@ export default function StoragePage() {
             ) : (
               <StatusNotice tone="success" title="ไฟล์ครบทุกใบ">
                 ทุกแถวชี้ไปที่ไฟล์ที่เปิดได้จริงบน Drive
+              </StatusNotice>
+            )}
+          </>
+        ) : null}
+      </section>
+
+      {/* ── 2.2 แถวที่ระเบียนแม่ถูกลบไปแล้ว ── */}
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <div>
+            <h2 className={styles.sectionTitle}>แถวไฟล์แนบที่ระเบียนแม่ถูกลบไปแล้ว</h2>
+            <p className={styles.sectionDesc}>
+              แถวที่ชี้ไปยังทะเบียน/ใบยื่น/ใบขอราคาที่ไม่มีอยู่ในระบบแล้ว — มองไม่เห็นจากหน้าไหน
+              เพราะไม่มีหน้าแม่ให้เปิด และทำให้รายงานด้านบนอ่านแล้วเข้าใจผิด
+            </p>
+          </div>
+          <div className={styles.actions}>
+            <Button onClick={loadOrphanRows} disabled={rowBusy} icon={<FileSearch size={15} />}>
+              {rowBusy ? "กำลังตรวจ..." : "ตรวจแถวกำพร้า"}
+            </Button>
+            {orphanRows?.orphanCount ? (
+              <Button tone="danger" onClick={purgeOrphanRows} disabled={rowBusy} icon={<Trash2 size={15} />}>
+                ลบ {orphanRows.orphanCount} แถว
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {orphanRows ? (
+          <>
+            <p className={styles.progress}>
+              ไฟล์แนบทั้งหมด {orphanRows.total} แถว · แม่ถูกลบแล้ว {orphanRows.orphanCount}
+              {Object.entries(orphanRows.byType).map(([k, v]) => ` · ${k} ${v}`)}
+              {orphanRows.unknownTypes?.length ? ` · ข้ามชนิดที่ยังไม่รู้จัก: ${orphanRows.unknownTypes.join(", ")}` : ""}
+            </p>
+            {orphanRows.orphanCount ? (
+              <StatusNotice tone="warning" title="ลบแถวไม่กระทบไฟล์บน Drive">
+                ไฟล์ {orphanRows.withDriveFile} ใบที่แถวเหล่านี้ชี้ถึงจะยังอยู่บนไดรฟ์ตามเดิม —
+                ไปตรวจและตัดสินใจต่อได้ที่หัวข้อ &quot;ของบน Drive ที่ไม่มีใครอ้างถึง&quot; ด้านล่าง
+              </StatusNotice>
+            ) : (
+              <StatusNotice tone="success" title="ไม่มีแถวกำพร้า">
+                ทุกแถวไฟล์แนบมีระเบียนแม่อยู่จริง
               </StatusNotice>
             )}
           </>
