@@ -77,5 +77,5 @@
 .empty { padding: var(--space-7); color: var(--text-3); text-align: center; font-size: var(--fs-7); }
 
 @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } .aside { position: static; display: grid; grid-template-columns: 1fr 1fr; } }
-@media (max-width: 760px) { .quickFacts { grid-template-columns: repeat(2, 1fr); } .quickFacts > div:nth-child(2) { border-right: 0; } .quickFacts > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .overviewHeading, .sectionHead { align-items: stretch; flex-direction: column; } .headerActions { justify-content: flex-start; } }
+@media (max-width: 768px) { .quickFacts { grid-template-columns: repeat(2, 1fr); } .quickFacts > div:nth-child(2) { border-right: 0; } .quickFacts > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .overviewHeading, .sectionHead { align-items: stretch; flex-direction: column; } .headerActions { justify-content: flex-start; } }
 @media (max-width: 620px) { .aside { grid-template-columns: 1fr; } .overviewHeading { padding: 18px; } .period { width: 100%; padding: 0; border: 0; } .post { padding: 14px; } }

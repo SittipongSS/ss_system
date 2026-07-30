@@ -116,6 +116,22 @@
   --space-8: 32px;
   --space-9: 40px;
 
+  /* ── จุดตัดจอ ─────────────────────────────────────────────────────────
+     🪤 **ทำเป็นโทเคนไม่ได้** — สเปก CSS ไม่ให้ใช้ custom property ใน media query
+     (`@media (max-width: var(--bp-md))` ไม่ทำงาน เพราะ media query ถูกประเมินก่อน
+     ที่ค่าตัวแปรจะ resolve) ต้องเขียนเลขตรง ๆ เท่านั้น ชั้นนี้จึงเป็น *ข้อตกลง*
+     ที่บังคับด้วย audit:ui แทนการอ้างตัวแปร
+
+     ตรวจ 2026-07-29: ทั้งระบบมี 24 ค่า รวมคู่ที่ห่างกัน 1–8px (760/767/768) ซึ่งเป็น
+     การพิมพ์ต่างกันมากกว่าเป็นการตัดสินใจ · รอบนี้ยุบสามค่านั้นเหลือ 768 แล้ว
+
+     **ของใหม่ให้หยิบจากแปดค่านี้** (ค่าที่ระบบใช้จริงเยอะที่สุด — ไล่จากจอเล็ก):
+       480 · 560 · 640 · 680 · 768 · 900 · 1000 · 1200
+     ค่าอื่นที่ยังเหลืออยู่ (520 576 600 620 650 700 780 800 820 860 960 1050 1100 1120)
+     เป็นของเดิมที่ยังไม่ได้จัด — การย้ายมันคือการเปลี่ยน *จุดที่เลย์เอาต์สลับ*
+     ต้องมีคนเปิดหน้าจริงลากหน้าต่างดู = งานแยก
+     ⚠️ audit:ui ล็อก **จำนวนค่าที่ต่างกัน** ไว้แล้ว — เพิ่มค่าใหม่ = ตก */
+
   /* Grid settings */
   --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
   --gap: var(--space-4);
@@ -898,7 +914,7 @@ button, select, input, textarea {
 .mobile-nav-sheet,
 .mobile-top-more { display: none; }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   :root {
     --topnav-menu-h: 0px;
     --mobile-nav-h: 0px;
@@ -6243,7 +6259,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-size: var(--fs-5);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .shipment-print-sheet { width: 100%; height: auto; min-height: 297mm; padding: 18px; }
   .shipment-print-head { flex-direction: column; }
   .shipment-print-brand { align-items: flex-start; flex-direction: column; }
