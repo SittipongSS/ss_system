@@ -13,7 +13,7 @@ import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
-import { canEditService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import {
   VISIT_KIND_LABELS,
@@ -91,8 +91,10 @@ export default function ServiceSchedulePage() {
           const res = await fetch("/api/pm/assignable-users");
           const data = await res.json().catch(() => null);
           if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
-          // ฝ่าย TS = ฝ่ายช่าง · คนอื่นไม่ควรโผล่ใน dropdown มอบหมายงานเข้าไซต์
-          setTechnicians((Array.isArray(data) ? data : []).filter((u) => u.department === "TS"));
+          // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
+          // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
+          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานของฉัน" ก็ว่างตลอดกาล
+          setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
         } catch (e) {
           setToast({ kind: "error", msg: e.message });
         }

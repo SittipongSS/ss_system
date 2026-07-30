@@ -26,7 +26,7 @@ import {
 } from "@/lib/service/rounds";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
-import { canEditService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 
 export default function ServiceSiteDetailPage({ params }) {
@@ -91,7 +91,7 @@ export default function ServiceSiteDetailPage({ params }) {
         const res = await fetch("/api/pm/assignable-users");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
-        setTechnicians((Array.isArray(data) ? data : []).filter((u) => u.department === "TS"));
+        setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
       } catch (e) {
         setToast({ kind: "error", msg: e.message });
       }

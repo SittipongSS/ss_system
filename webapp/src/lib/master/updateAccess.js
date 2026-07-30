@@ -13,6 +13,7 @@
 // ตอนต่อ entity ตัวที่สอง
 import {
   canAccessSahamit, canApproveCosting, canChangeTaskStatus, canEditRecord, canUser,
+  canEditService, canViewService,
   canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
 import { productCaretakerTeams } from '@/lib/master/productScope';
@@ -253,6 +254,27 @@ export const UPDATE_ENTITIES = {
       return !isReadOnlyObserver(user?.role);   // viewer/executive อ่านได้ ไม่เขียน
     },
     recipients: () => [],
+  },
+
+  // ── นัดเข้าบริการ (mig 0188 · S-5) ────────────────────────────────────
+  // อ่าน = ใครที่เห็นระบบธุรกิจบริการ (ฝ่ายขายต้องตอบลูกค้าได้ว่าทำไมช่างเลื่อน)
+  // โพสต์ = คนที่แก้ตารางได้จริง (ฝ่าย TS + ทีมขาย SV)
+  //
+  // ⚠️ **ห้ามเอาสถานะนัดมาปิดเธรด** — ช่วงที่นัดถูกเลื่อน/ยกเลิก/ติดปัญหา คือช่วงที่
+  // มีเรื่องต้องเล่ามากที่สุด · นัดที่ปิดงานแล้วก็ยังต้องคุยต่อได้ (ลูกค้าโทรมาบ่น
+  // ทีหลังว่ากลิ่นยังไม่ออก) กฎเดียวกับ canEditX ที่ห้ามคุมเธรดในโมดูลอื่น
+  service_visit: {
+    table: 'service_visits',
+    attachments: true,   // รูปหน้างานเพิ่มเติมที่ถ่ายทีหลัง
+    async canView(supabase, parent, user) {
+      return canViewService(user);
+    },
+    async canPost(supabase, parent, user) {
+      return canEditService(user);
+    },
+    // แจ้งช่างที่รับผิดชอบนัดนั้น — ไม่กระจายทั้งฝ่าย (คิวที่เต็มไปด้วยเรื่องคนอื่น
+    // คือคิวที่ไม่มีใครอ่าน · บทเรียนเดียวกับมติ 14 ของคำร้องข้ามฝ่าย)
+    recipients: (parent) => [parent?.assigneeId],
   },
 
   // ── ใบขอราคาผลิต (mig 0143) ──────────────────────────────────────────
