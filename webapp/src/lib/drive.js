@@ -97,10 +97,49 @@ const isNotFound = (err) => err?.code === 404
   || err?.response?.status === 404
   || /notFound|File not found/i.test(String(err?.message || ''));
 
+// ลูกทั้งหมดของโฟลเดอร์ (ใช้ตอนยุบโฟลเดอร์ชื่อซ้ำ + ตอนยุบโฟลเดอร์ชื่อเก่า)
+export async function listChildren(folderId) {
+  const res = await getDrive().files.list({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'files(id, name)',
+    pageSize: 1000,
+    ...sharedDriveParams(),
+  });
+  return res.data.files || [];
+}
+
+// ยุบโฟลเดอร์ชื่อซ้ำเข้าตัวที่เก่าที่สุด แล้วทิ้งตัวซ้ำลงถังขยะ
+// 🐞 บั๊กจริง: Drive ค้นหาไฟล์ผ่าน **ดัชนีที่อัปเดตช้ากว่าการสร้างจริงหลายวินาที** —
+// ตอนจัดโครงเรียก ensureFolder('ลูกค้า', root) ซ้ำทุกลูกค้าในคำขอเดียว ตัวที่สองจึง
+// "หาไม่เจอ" แล้วสร้างใหม่ = ได้โฟลเดอร์ชื่อ "ลูกค้า" สองอันคาไว้บน Drive จริง
+// (เจอบน prod 2026-07-31: ลูกค้า ×2 · _รอจัดที่ ×2) · ป้องกันด้วย memo ต่อรอบทำงาน
+// (ดู ctx) และซ่อมของที่ซ้ำไปแล้วตรงนี้ให้อัตโนมัติ
+async function mergeDuplicateFolders(keepId, duplicateIds) {
+  for (const dupId of duplicateIds) {
+    try {
+      for (const child of await listChildren(dupId)) {
+        await moveFile(child.id, keepId);
+      }
+      await getDrive().files.update({
+        fileId: dupId,
+        requestBody: { trashed: true },
+        supportsAllDrives: true,
+      });
+      console.error('[drive] ยุบโฟลเดอร์ชื่อซ้ำเข้าตัวหลัก', dupId, '→', keepId);
+    } catch (err) {
+      console.error('[drive] ยุบโฟลเดอร์ซ้ำไม่สำเร็จ', dupId, err?.message);
+    }
+  }
+}
+
 // หาโฟลเดอร์ตามชื่อใต้ parent ก่อน ถ้าไม่มีค่อยสร้าง (idempotent กันสร้างซ้ำ).
-async function ensureFolder(name, parentId) {
+// ctx.memo = จำผลภายใน "รอบทำงานเดียว" กันสร้างซ้ำจากดัชนีที่ยังไม่ทัน (ดูด้านบน)
+async function ensureFolder(name, parentId, ctx) {
   const drive = getDrive();
   const finalName = safeName(name);
+  const memoKey = `${parentId}/${finalName}`;
+  if (ctx?.memo?.has(memoKey)) return ctx.memo.get(memoKey);
+
   const q = [
     `name = '${finalName.replace(/'/g, "\\'")}'`, // escape quote ใน query
     `'${parentId}' in parents`,
@@ -110,17 +149,25 @@ async function ensureFolder(name, parentId) {
 
   const found = await drive.files.list({
     q,
-    fields: 'files(id, name)',
-    pageSize: 1,
+    fields: 'files(id, name, createdTime)',
+    orderBy: 'createdTime',
+    pageSize: 20,
     ...sharedDriveParams(),
   });
-  if (found.data.files?.length) return found.data.files[0].id;
+  const matches = found.data.files || [];
+  if (matches.length) {
+    const keepId = matches[0].id; // ตัวเก่าสุดคือตัวหลัก
+    if (matches.length > 1) await mergeDuplicateFolders(keepId, matches.slice(1).map((f) => f.id));
+    ctx?.memo?.set(memoKey, keepId);
+    return keepId;
+  }
 
   const created = await drive.files.create({
     requestBody: { name: finalName, mimeType: FOLDER_MIME, parents: [parentId] },
     fields: 'id',
     supportsAllDrives: true,
   });
+  ctx?.memo?.set(memoKey, created.data.id);
   return created.data.id;
 }
 
@@ -150,14 +197,14 @@ function storageRootId() {
 
 // เดิน path ทีละชั้นจาก root — สร้างชั้นที่ยังไม่มี. ชั้นที่มี cache (ลูกค้า/สินค้า)
 // ใช้ id เดิมถ้ายังมีชีวิตอยู่ เพื่อให้ "คนเปลี่ยนชื่อโฟลเดอร์บน Drive" ไม่ทำให้ไฟล์แตกเป็นสองที่
-async function ensureFolderPath(segments) {
+async function ensureFolderPath(segments, ctx) {
   let parentId = storageRootId();
   for (const seg of segments) {
     if (seg.cachedId && await folderAlive(seg.cachedId)) {
       parentId = seg.cachedId;
       continue;
     }
-    const folderId = await ensureFolder(seg.name, parentId);
+    const folderId = await ensureFolder(seg.name, parentId, ctx);
     if (seg.cache && folderId !== seg.cachedId) {
       // cache ใหม่ลง DB (ครั้งแรก หรือของเดิมหายไปแล้ว)
       await getSupabaseAdmin()
@@ -171,8 +218,8 @@ async function ensureFolderPath(segments) {
 }
 
 // โฟลเดอร์สำรองเมื่ออัปโดยไม่มี entity context (กันไฟล์หลุดไปกอง root ของ Shared Drive).
-export async function ensureUnsortedFolder() {
-  return ensureFolderPath([{ name: FOLDER.unsorted }]);
+export async function ensureUnsortedFolder(ctx) {
+  return ensureFolderPath([{ name: FOLDER.unsorted }], ctx);
 }
 
 // ── entity → path ของโฟลเดอร์ ─────────────────────────────────────────
@@ -359,25 +406,25 @@ export async function folderPathForEntity(entityType, entityId) {
 export const folderPathLabel = (segments) => segments.map((s) => s.name).join(' / ');
 
 // map entity → id โฟลเดอร์ปลายทาง (สร้างชั้นที่ยังไม่มีให้ครบ).
-export async function resolveFolderForEntity(entityType, entityId) {
-  return ensureFolderPath(await folderPathForEntity(entityType, entityId));
+export async function resolveFolderForEntity(entityType, entityId, ctx) {
+  return ensureFolderPath(await folderPathForEntity(entityType, entityId), ctx);
 }
 
 // โฟลเดอร์ลูกค้า — ใช้โดยโค้ดที่อยากได้โฟลเดอร์ตรง ๆ (เช่น ปุ่ม "เปิดใน Drive"
 // และตัวจัดโครงโฟลเดอร์). คืน id ที่ cache ไว้ถ้ายังมีชีวิต **โดยไม่สนใจว่ามันอยู่ชั้นไหน**
 // — ตัวจัดโครงจึงเอา id นี้ไปย้ายเข้าที่ใหม่ได้ โดยไฟล์ข้างในตามไปทั้งก้อน
-export async function ensureCustomerFolder(customer) {
-  return ensureFolderPath(await customerSegments(customer));
+export async function ensureCustomerFolder(customer, ctx) {
+  return ensureFolderPath(await customerSegments(customer), ctx);
 }
 
 // โฟลเดอร์ชั้นบนสุดของระบบ (ลูกค้า / ขอราคา / งานบริหาร ...)
-export async function ensureRootFolder(name) {
-  return ensureFolderPath([{ name }]);
+export async function ensureRootFolder(name, ctx) {
+  return ensureFolderPath([{ name }], ctx);
 }
 
 // โฟลเดอร์ย่อยใต้ parent ที่รู้ id อยู่แล้ว
-export async function ensureSubFolder(name, parentId) {
-  return ensureFolder(name, parentId);
+export async function ensureSubFolder(name, parentId, ctx) {
+  return ensureFolder(name, parentId, ctx);
 }
 
 // อัปไฟล์ขึ้นโฟลเดอร์ (private — ไม่ตั้ง permission). คืน { id, webViewLink }.
