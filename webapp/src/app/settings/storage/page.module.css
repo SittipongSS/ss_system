@@ -1,0 +1,133 @@
+/* หน้า ตั้งค่า → ที่เก็บไฟล์ (Google Drive) */
+
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--fs-10);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.sectionDesc {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-7);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* รายการผลตรวจทีละขั้น */
+.steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  gap: var(--space-3);
+}
+
+.stepIcon {
+  display: inline-flex;
+  flex: none;
+}
+
+.stepOk .stepIcon { color: var(--green); }
+.stepFail .stepIcon { color: var(--red); }
+.stepFail { border-color: var(--red); }
+
+.stepBody { min-width: 0; }
+
+.stepLabel {
+  font-size: var(--fs-8);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.stepDetail {
+  color: var(--text-3);
+  font-size: var(--fs-7);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* แผนการย้าย */
+.planGrid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.planRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  gap: var(--space-3);
+}
+
+.planPath {
+  font-size: var(--fs-7);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.planMeta {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.planCount {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-7);
+}
+
+.progress {
+  margin-top: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-7);
+  line-height: 1.5;
+}
+
+.logBox {
+  max-height: 240px;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  font-size: var(--fs-5);
+  line-height: 1.6;
+}
+
+.logLine { overflow-wrap: anywhere; }

@@ -115,12 +115,15 @@ export default function AttachmentsPanel({
   const upload = async (theFile, theDocType, theMeta) => {
     const fd = new FormData();
     fd.append("file", theFile);
-    fd.append("customerName", `${entityType}-${entityId}`); // ใช้เป็นชื่อโฟลเดอร์ (Supabase)
-    fd.append("entityType", entityType); // Drive: resolve โฟลเดอร์ลูกค้า/สินค้า
+    fd.append("entityType", entityType); // Drive: resolve โฟลเดอร์ปลายทาง
     fd.append("entityId", entityId);
     const up = await fetch("/api/upload", { method: "POST", body: fd });
     if (!up.ok) {
-      notifyToast.error("อัปโหลดไฟล์ไม่สำเร็จ");
+      // 🐞 เดิมโชว์ "อัปโหลดไฟล์ไม่สำเร็จ" ตายตัวแล้วทิ้งข้อความจริงจาก server ทิ้ง —
+      // ผู้ใช้จึงไม่มีทางรู้ว่าเป็นเพราะชนิดไฟล์ ขนาด หรือ Drive มีปัญหา และคนดูแลระบบ
+      // ก็ตามไม่ได้ (FileTaxDialog/ReceiveDialog โชว์ของจริงถูกอยู่แล้ว — ตัวนี้นอกคอก)
+      const detail = await up.json().catch(() => ({}));
+      notifyToast.error(detail.error || "อัปโหลดไฟล์ไม่สำเร็จ");
       return false;
     }
     const { url, driveFileId } = await up.json();

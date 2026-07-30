@@ -161,7 +161,11 @@ export default function UpdateThread({
         fd.append("entityType", entityType);
         fd.append("entityId", entityId);
         const up = await fetch("/api/upload", { method: "POST", body: fd });
-        if (!up.ok) throw new Error("อัปโหลดไฟล์ไม่สำเร็จ");
+        // ข้อความจริงจาก server (ชนิดไฟล์/ขนาด/ปัญหาที่ Drive) — ตายตัวแล้วผู้ใช้ตามต่อไม่ได้
+        if (!up.ok) {
+          const detail = await up.json().catch(() => ({}));
+          throw new Error(detail.error || "อัปโหลดไฟล์ไม่สำเร็จ");
+        }
         const payload = await up.json();
         attachments.push({
           fileUrl: payload.url, driveFileId: payload.driveFileId || null,

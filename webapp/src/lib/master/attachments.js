@@ -4,7 +4,6 @@
 //
 // Server-only: ใช้ service-role admin client (bypass RLS). ห้าม import ใน client.
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { uploadBucket } from '@/lib/master/attachmentStorage';
 
 // เอกสารทั้งหมดของ entity หนึ่งๆ (ใหม่สุดก่อน).
 export async function listAttachments(entityType, entityId) {
@@ -62,40 +61,21 @@ export async function loadAttachmentParent(attachment) {
   return data || null;
 }
 
-// ── File deletion (storage / Drive) ───────────────────────────────────
+// ── File deletion (Drive) ─────────────────────────────────────────────
 
-// แกะ object path ออกจาก public URL ของ Supabase Storage เพื่อลบไฟล์จริง.
-// รูปแบบ: .../storage/v1/object/public/<bucket>/<objectPath>
-// ⚠️ marker มีชื่อ bucket อยู่ข้างใน — ชื่อไม่ตรงกับของจริง = คืน null = ลบแถวได้แต่
-// **ไฟล์ยังอยู่ใน bucket public อ่านได้ตลอดไป** (เดิม default 'uploads' ที่ไม่มีจริง)
-function objectPathFromUrl(url) {
-  if (!url) return null;
-  const marker = `/object/public/${uploadBucket()}/`;
-  const i = url.indexOf(marker);
-  if (i === -1) return null;
-  return decodeURIComponent(url.slice(i + marker.length));
-}
-
-// ลบไฟล์จริงของ attachment หนึ่งตัว (Drive หรือ Supabase Storage) — best-effort:
-// ไม่ throw เพื่อไม่ให้ block การลบ row ถ้าไฟล์หายไปแล้ว/แกะ path ไม่ได้.
+// ทิ้งไฟล์จริงของ attachment หนึ่งตัวลงถังขยะของ Shared Drive — best-effort:
+// ไม่ throw เพื่อไม่ให้ block การลบ row ถ้าไฟล์หายไปแล้ว
+//
+// แถวที่ไม่มี driveFileId = เอกสาร Google native (Doc/Sheet ของงานบริหาร) ซึ่งเป็น
+// "ไฟล์มีชีวิต" ที่คนยังใช้ร่วมกันอยู่ใน Drive — ลบแถวคือเลิกผูกกับระเบียน ไม่ใช่ลบเอกสาร
 export async function deleteAttachmentFile(att) {
-  if (att?.driveFileId) {
-    // Drive backend — dynamic import กัน googleapis โหลดในโหมด supabase.
-    try {
-      const { deleteFile } = await import('@/lib/drive');
-      await deleteFile(att.driveFileId);
-    } catch {
-      /* best-effort */
-    }
-    return;
-  }
-  const path = objectPathFromUrl(att?.fileUrl);
-  if (path) {
-    try {
-      await getSupabaseAdmin().storage.from(uploadBucket()).remove([path]);
-    } catch {
-      /* ไฟล์อาจถูกลบไปแล้ว หรือ path แกะไม่ได้ — ข้ามได้ */
-    }
+  if (!att?.driveFileId) return;
+  try {
+    const { deleteFile } = await import('@/lib/drive');
+    await deleteFile(att.driveFileId);
+  } catch (err) {
+    // ไม่ throw แต่ต้องดัง — ลบแถวสำเร็จแต่ไฟล์ค้างคือของที่ต้องตามเก็บ
+    console.error('[attachments] ทิ้งไฟล์บน Drive ไม่สำเร็จ', att.id, err?.message);
   }
 }
 
