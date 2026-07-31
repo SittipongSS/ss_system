@@ -42,5 +42,5 @@
 
 /* สถานะน้ำหอม (S-4) — สีเป็นตัวช่วย ข้อความบอกความหมายครบอยู่แล้ว
    (คนตาบอดสีต้องได้ข้อมูลเท่ากัน) */
-.overdue { color: var(--red); font-weight: 600; }
-.soon { color: var(--amber); font-weight: 600; }
+.overdue { color: var(--red); font-weight: var(--fw-semibold); }
+.soon { color: var(--amber); font-weight: var(--fw-semibold); }

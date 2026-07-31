@@ -105,7 +105,7 @@
 }
 
 /* ยกเลิก/เลื่อนแล้ว = ยังเห็นได้แต่ไม่แย่งสายตาไปจากงานที่ยังต้องทำ */
-.visitMuted { opacity: 0.5; text-decoration: line-through; }
+.visitMuted { opacity: var(--op-muted); text-decoration: line-through; }
 
 .addCell {
   align-self: flex-start;
