@@ -95,6 +95,24 @@ export function normalizePlanInput(body = {}) {
   };
 }
 
+// ── การเลื่อนนัด (S-5) ───────────────────────────────────────────────────
+//
+// ⭐ "เลื่อน" = เปลี่ยน **วันที่นัด** ของนัดที่ยังไม่ปิด · เปลี่ยนเวลาในวันเดิมไม่นับ
+// (ขยับ 30 นาทีเพราะรถติดไม่ใช่เรื่องที่ต้องอธิบายให้ลูกค้าฟัง)
+export function isReschedule(before, after) {
+  if (!before || !after) return false;
+  if (before.status === 'done' || before.status === 'cancelled') return false;
+  return !!before.scheduledDate && !!after.scheduledDate
+    && String(before.scheduledDate) !== String(after.scheduledDate);
+}
+
+// ข้อความเหตุการณ์ที่ลงเธรด — ต้องอ่านย้อนหลังแล้วเห็นภาพโดยไม่ต้องเปิดนัด
+export function rescheduleSummary(before, after, reason) {
+  const from = before?.scheduledDate || '—';
+  const to = after?.scheduledDate || '—';
+  return `เลื่อนนัดจาก ${from} → ${to}${reason ? ` · ${reason}` : ''}`;
+}
+
 // ── ตรวจข้อมูลนัด ────────────────────────────────────────────────────────
 export function normalizeVisitInput(body = {}) {
   const siteId = String(body.siteId ?? '').trim();

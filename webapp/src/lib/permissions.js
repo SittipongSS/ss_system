@@ -465,14 +465,23 @@ export function canEditService(user) {
   return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
 }
 
-// ช่างหน้างานจริง ๆ (ฝ่าย TS) — คนเดียวที่ "งานของฉัน" มีความหมาย
+// คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ฝ่ายช่าง TS **หรือ** ทีมขาย SV
 //
-// 🐞 ของเดิมเปิดเมนูนั้นด้วย `service:view` ซึ่งฝ่ายขายทุกคนถือ → AE เปิดเข้าไป
-// เจอหน้าว่างตลอดกาล เพราะ dropdown มอบหมายงานกรองเฉพาะฝ่าย TS อยู่แล้ว
-// **นัดจะไม่มีวันถูกมอบหมายให้เขา** · เมนูที่กดแล้วว่างเสมอคือเมนูที่สอนให้คนเลิกเชื่อเมนู
-export function isServiceTechnician(user) {
-  return departmentOf(user) === SERVICE_DEPARTMENT;
+// 🐞 บั๊กจริงบน prod (2026-07-31): ของเดิมกรองเฉพาะฝ่าย TS แต่ **ยังไม่มีบัญชี
+// ฝ่าย TS สักคน** (23 ผู้ใช้ ไม่มี TS เลย) → dropdown "ช่างผู้รับผิดชอบ" ว่างเปล่า
+// → ทุกนัดถูกบันทึกด้วย assigneeId = null → "งานของฉัน" ว่างตลอดกาลสำหรับทุกคน
+// และเมนูก็ถูกซ่อนจากทุกคนไปด้วย = ฟีเจอร์ที่ไม่มีทางถูกใช้
+//
+// ทีม SV (3 คนบน prod) คือคนที่ทำงานบริการอยู่จริงวันนี้ และถือ service:edit
+// อยู่แล้วตาม canEditService — ให้รับงานได้เลยจึงตรงกับของจริงมากกว่ารอสร้างฝ่าย TS
+// 👉 พอเปิดบัญชีฝ่าย TS จริงแล้ว ทั้งสองกลุ่มยังใช้ได้ ไม่ต้องแก้โค้ดอีก
+export function canBeServiceAssignee(user) {
+  if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
+  return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
 }
+
+// ชื่อเดิมที่หน้าจอเรียกอยู่ — คงไว้เป็น alias ให้ชัดว่าใช้เกณฑ์เดียวกัน
+export const isServiceTechnician = canBeServiceAssignee;
 
 // อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.
 // คนเดียวจบ ไม่มีอนุมัติซ้อน (มติ 2026-07-22)

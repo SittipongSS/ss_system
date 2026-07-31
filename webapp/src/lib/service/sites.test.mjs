@@ -11,7 +11,7 @@ import {
   refillDueDate,
   toHHMM,
 } from './sites.js';
-import { canEditService, canViewService, isServiceTechnician } from '../permissions.js';
+import { canBeServiceAssignee, canEditService, canViewService, isServiceTechnician } from '../permissions.js';
 
 const site = (over = {}) => ({ id: 'S1', name: 'สาขาเอ็มควอเทียร์', accessDays: [], ...over });
 
@@ -122,12 +122,17 @@ test('⭐ ช่างฝ่าย TS แก้ธุรกิจบริกา
   assert.equal(canViewService(aeKa), true);
 });
 
-test('⭐ "งานของฉัน" เปิดให้เฉพาะช่างฝ่าย TS — ทีมขาย SV แก้ข้อมูลได้แต่ไม่เคยถูกมอบหมายนัด', () => {
-  // เมนูที่กดเข้าไปแล้วว่างเสมอ คือเมนูที่สอนให้คนเลิกเชื่อเมนู
-  assert.equal(isServiceTechnician({ role: 'staff', department: 'TS' }), true);
-  assert.equal(isServiceTechnician({ role: 'ae', team: 'SV' }), false);
-  assert.equal(isServiceTechnician({ role: 'admin' }), false);
-  assert.equal(isServiceTechnician({ role: 'staff', department: 'WH' }), false);
+test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
+  // 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
+  // dropdown ว่าง → ทุกนัด assigneeId = null → "งานของฉัน" ว่างตลอดกาล
+  assert.equal(canBeServiceAssignee({ role: 'staff', department: 'TS' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'SV' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'senior_ae', team: 'SV' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'KA' }), false);
+  assert.equal(canBeServiceAssignee({ role: 'admin' }), false);   // แอดมินไม่ได้ออกหน้างาน
+  assert.equal(canBeServiceAssignee({ role: 'staff', department: 'WH' }), false);
+  // ชื่อเดิมที่หน้าจอเรียกต้องเป็นเกณฑ์เดียวกัน (ไม่งั้นเมนูกับ dropdown ไม่ตรงกัน)
+  assert.equal(isServiceTechnician, canBeServiceAssignee);
 });
 
 test('staff ฝ่ายอื่นแตะธุรกิจบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {

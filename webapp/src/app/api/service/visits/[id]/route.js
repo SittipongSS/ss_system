@@ -3,7 +3,8 @@
 // DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
-import { nextAfterDone, normalizeVisitInput } from '@/lib/service/rounds';
+import { appendUpdate } from '@/lib/master/updates';
+import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { value, error } = normalizeVisitInput({ ...before, ...body });
     if (error) return badRequest(error);
 
+    // ⭐ เลื่อนนัดต้องมีเหตุผล (S-5) — ลูกค้าถามว่า "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่า
+    // เลื่อนกี่ครั้งเพราะอะไรบ้าง · เหตุผลลง**เธรด** ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียว
+    // ถูกเขียนทับทุกครั้งที่เลื่อน = ประวัติเลื่อน 5 ครั้งเหลือ 1
+    const rescheduled = isReschedule(before, value);
+    const reason = String(body.rescheduleReason ?? '').trim();
+    if (rescheduled && !reason) {
+      return badRequest('เลื่อนนัดต้องระบุเหตุผล — ประวัติการเลื่อนคือสิ่งที่ต้องตอบลูกค้าทีหลัง');
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
       .update({ ...value, updatedAt: new Date().toISOString() })
@@ -40,6 +50,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'service_visit', entityId: id, before, after: data,
       summary: `แก้นัดเข้าบริการ ${data.code || id} · ${data.scheduledDate}`, request: req,
     });
+
+    // ── เหตุการณ์ที่ต้องเล่าย้อนหลังได้ ลงเธรดกลาง (S-5) ────────────────
+    // ⚠️ เขียนหลัง update สำเร็จเท่านั้น — เธรดที่บอกว่าเลื่อนแล้วแต่วันไม่เปลี่ยนจริง
+    // แย่กว่าไม่มีเธรด เพราะคนจะเชื่อเธรดมากกว่าตาราง
+    if (rescheduled) {
+      await appendUpdate(supabase, {
+        entityType: 'service_visit', entityId: id, kind: 'reschedule',
+        body: rescheduleSummary(before, data, reason), user,
+      });
+    }
+    if (data.status === 'done' && before.status !== 'done') {
+      await appendUpdate(supabase, {
+        entityType: 'service_visit', entityId: id, kind: 'done',
+        body: [`ปิดงาน · เข้าจริง ${data.actualDate}`, data.summary].filter(Boolean).join(' — '),
+        user,
+      });
+    }
+    if (data.status === 'cancelled' && before.status !== 'cancelled') {
+      await appendUpdate(supabase, {
+        entityType: 'service_visit', entityId: id, kind: 'cancel',
+        body: reason || 'ยกเลิกนัด', user,
+      });
+    }
 
     // ⭐ ปิดงานแล้วเสนอนัดรอบถัดไป — **เสนอ ไม่สร้างให้เอง** เพราะรอบอาจถูกยกเลิก
     // ระหว่างทาง หรือช่างรู้ว่าลูกค้าจะย้ายไซต์ · ผู้ใช้กดยืนยันแล้วค่อย POST
