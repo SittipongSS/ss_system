@@ -6,7 +6,7 @@ import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptT
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canEditProduction, canViewCosting, isServiceTechnician, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canEditProduction, canEditService, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -259,8 +259,11 @@ export default function AppLayout({ children }) {
         // ⚠️ ชื่อต้องไม่ซ้ำกับ "งานของฉัน" ของระบบบริหารงานขาย (/sa/tasks) — คนละเรื่อง
         // กันคนละระบบ: ฝั่งขาย = งานติดตามส่วนบุคคล · ฝั่งนี้ = นัดเข้าไซต์ที่ต้องไปทำจริง
         // ชื่อซ้ำข้ามระบบทำให้คนจำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
+        // ใครเห็นเมนูนี้ = **คนที่แก้งานบริการได้** (มติผู้ใช้ 2026-07-31) — ฝ่ายช่าง TS ·
+        // ทีมขาย SV · admin/หัวหน้าฝ่ายขาย · กว้างกว่า "คนที่รับงานได้" หนึ่งขั้นเพื่อให้
+        // หัวหน้าเปิดดูรูปหน้าจอของช่างได้ โดยไม่เปิดให้ฝ่ายขายทีมอื่นที่ไม่เกี่ยวเลย
         // 🐞 เดิมเปิดด้วย service:view = ฝ่ายขายทุกคนเห็นเมนูที่กดเข้าไปแล้วว่างเสมอ
-        { href: '/service/my-visits', name: 'นัดของฉัน', icon: Wrench, cap: 'service:view', visible: isServiceTechnician, match: (p) => p.startsWith('/service/my-visits') },
+        { href: '/service/my-visits', name: 'นัดของฉัน', icon: Wrench, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/my-visits') },
         { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', match: (p) => p.startsWith('/service/schedule') },
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', match: (p) => p.startsWith('/service/sites') },
       ],

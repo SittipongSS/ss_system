@@ -11,7 +11,7 @@ import {
   refillDueDate,
   toHHMM,
 } from './sites.js';
-import { canBeServiceAssignee, canEditService, canViewService, isServiceTechnician } from '../permissions.js';
+import { canBeServiceAssignee, canEditService, canViewService } from '../permissions.js';
 
 const site = (over = {}) => ({ id: 'S1', name: 'สาขาเอ็มควอเทียร์', accessDays: [], ...over });
 
@@ -131,8 +131,19 @@ test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายช�
   assert.equal(canBeServiceAssignee({ role: 'ae', team: 'KA' }), false);
   assert.equal(canBeServiceAssignee({ role: 'admin' }), false);   // แอดมินไม่ได้ออกหน้างาน
   assert.equal(canBeServiceAssignee({ role: 'staff', department: 'WH' }), false);
-  // ชื่อเดิมที่หน้าจอเรียกต้องเป็นเกณฑ์เดียวกัน (ไม่งั้นเมนูกับ dropdown ไม่ตรงกัน)
-  assert.equal(isServiceTechnician, canBeServiceAssignee);
+});
+
+test('⭐ เมนู "นัดของฉัน" กว้างกว่าคนที่รับงานได้หนึ่งขั้น — หัวหน้าเปิดดูได้ ทีมขายอื่นไม่เห็น', () => {
+  // มติผู้ใช้ 2026-07-31: เห็นเมนู = คนที่ "แก้งานบริการได้" (canEditService)
+  // ⚠️ ต่างจาก canBeServiceAssignee ตรงที่ admin/หัวหน้าฝ่ายขายเห็นด้วย แม้ไม่เคย
+  // ถูกมอบหมายนัด — เปิดเข้าไปจะว่าง ซึ่งยอมรับได้เพราะเขาเข้าไปดูของทีม (สลับ "ทั้งทีม")
+  assert.equal(canEditService({ role: 'admin' }), true);
+  assert.equal(canEditService({ role: 'ae_supervisor' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'admin' }), false);
+  // ⚠️ ทีมขายที่ไม่ใช่ SV ยังไม่เห็นเมนูนี้ (เช่น senior_ae ทีม KA) — อ่านระบบได้
+  // แต่ไม่ใช่คนทำงานบริการ
+  assert.equal(canEditService({ role: 'senior_ae', team: 'KA' }), false);
+  assert.equal(canViewService({ role: 'senior_ae', team: 'KA' }), true);
 });
 
 test('staff ฝ่ายอื่นแตะธุรกิจบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
