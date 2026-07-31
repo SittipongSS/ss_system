@@ -17,8 +17,8 @@ import {
   ASSET_STATUS_LABELS,
   accessWindowText,
   assetRollup,
-  refillDueDate,
 } from "@/lib/service/sites";
+import { refillStatus } from "@/lib/service/refill";
 import {
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
@@ -26,7 +26,7 @@ import {
 } from "@/lib/service/rounds";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
-import { canEditService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 
 export default function ServiceSiteDetailPage({ params }) {
@@ -38,6 +38,8 @@ export default function ServiceSiteDetailPage({ params }) {
 
   const [site, setSite] = useState(null);
   const [assets, setAssets] = useState([]);
+  // เข้าเติมล่าสุด + นัดครั้งหน้า — ตัวตั้งของการประเมินว่าน้ำหอมจะหมดวันไหน (S-4)
+  const [schedule, setSchedule] = useState({ lastRefillDate: null, nextVisitDate: null });
   const [plans, setPlans] = useState([]);
   const [visits, setVisits] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -64,6 +66,7 @@ export default function ServiceSiteDetailPage({ params }) {
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดข้อมูลไซต์ไม่สำเร็จ");
       setSite(siteData?.site || null);
       setAssets(Array.isArray(siteData?.assets) ? siteData.assets : []);
+      setSchedule(siteData?.schedule || { lastRefillDate: null, nextVisitDate: null });
 
       const planData = await planRes.json().catch(() => null);
       if (!planRes.ok) throw new Error(planData?.error || "โหลดรอบบริการไม่สำเร็จ");
@@ -88,7 +91,7 @@ export default function ServiceSiteDetailPage({ params }) {
         const res = await fetch("/api/pm/assignable-users");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
-        setTechnicians((Array.isArray(data) ? data : []).filter((u) => u.department === "TS"));
+        setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
       } catch (e) {
         setToast({ kind: "error", msg: e.message });
       }
@@ -278,7 +281,10 @@ export default function ServiceSiteDetailPage({ params }) {
               </thead>
               <tbody>
                 {assets.map((asset) => {
-                  const due = refillDueDate(asset);
+                  const refill = refillStatus(asset, {
+                    lastSiteRefillDate: schedule.lastRefillDate,
+                    nextVisitDate: schedule.nextVisitDate,
+                  });
                   return (
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
                       <td>{asset.label}</td>
@@ -292,7 +298,11 @@ export default function ServiceSiteDetailPage({ params }) {
                         {asset.mlPerDay ? ` / ${Number(asset.mlPerDay).toLocaleString("th-TH")} ต่อวัน` : ""}
                       </td>
                       {/* ⚠️ ข้อมูลไม่พอ = ไม่เดา · ป้ายที่มั่วจะทำให้ป้ายจริงถูกเมินไปด้วย */}
-                      <td>{due || <span className={styles.muted}>ยังประเมินไม่ได้</span>}</td>
+                      <td className={refill.state === "overdue" ? styles.overdue : refill.state === "soon" ? styles.soon : undefined}>
+                        {refill.state === "unknown"
+                          ? <span className={styles.muted}>{refill.label}</span>
+                          : refill.label}
+                      </td>
                       <td><span className="ui-badge">{ASSET_STATUS_LABELS[asset.status] || asset.status}</span></td>
                       {canEdit && (
                         <td>

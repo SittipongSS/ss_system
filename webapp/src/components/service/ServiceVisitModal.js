@@ -19,15 +19,18 @@ import {
   VISIT_KIND_LABELS,
   VISIT_STATUSES,
   VISIT_STATUS_LABELS,
+  isReschedule,
   normalizeVisitInput,
   visitWarnings,
 } from "@/lib/service/rounds";
+import UpdateThread from "@/components/updates/UpdateThread";
 import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
   siteId: "", kind: "refill", scheduledDate: "", startTime: "", endTime: "",
   assigneeId: "", assigneeName: "", status: "scheduled",
   actualDate: "", actualStartTime: "", actualEndTime: "", summary: "", note: "",
+  rescheduleReason: "",
 };
 
 export default function ServiceVisitModal({
@@ -56,6 +59,7 @@ export default function ServiceVisitModal({
         actualEndTime: (visit.actualEndTime || "").slice(0, 5),
         summary: visit.summary || "",
         note: visit.note || "",
+        rescheduleReason: "",   // ไม่ค้างจากรอบก่อน — เหตุผลผูกกับการเลื่อนครั้งนี้เท่านั้น
       });
     } else {
       // คลิกช่องว่างบนปฏิทิน = รู้วันและช่างอยู่แล้ว — เติมให้เลย
@@ -74,6 +78,13 @@ export default function ServiceVisitModal({
     [form, site, visit?.id],
   );
 
+  // ⭐ เลื่อนนัด = เปลี่ยน **วัน** ของนัดที่ยังไม่ปิด → ต้องมีเหตุผล (S-5)
+  // เปลี่ยนเวลาในวันเดิมไม่นับ (ขยับ 30 นาทีเพราะรถติดไม่ต้องอธิบายให้ลูกค้าฟัง)
+  const rescheduling = useMemo(
+    () => isReschedule(visit, { ...form, scheduledDate: form.scheduledDate }),
+    [visit, form],
+  );
+
   const applyPreset = (preset) =>
     setForm((prev) => ({ ...prev, startTime: preset.startTime, endTime: preset.endTime }));
 
@@ -85,6 +96,11 @@ export default function ServiceVisitModal({
   const submit = async () => {
     const { error: invalid } = normalizeVisitInput(form);
     if (invalid) { setError(invalid); return; }
+    // ตรวจฝั่งหน้าจอด้วย เพื่อให้ผู้ใช้เห็นก่อนกด ไม่ใช่โดน server ตีกลับ
+    if (rescheduling && !form.rescheduleReason.trim()) {
+      setError("เลื่อนนัดต้องระบุเหตุผล");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -130,6 +146,22 @@ export default function ServiceVisitModal({
           <span>วันที่นัด *</span>
           <DateInput value={form.scheduledDate} onChange={(iso) => setForm((prev) => ({ ...prev, scheduledDate: iso }))} />
         </label>
+
+        {/* ⭐ ช่องนี้โผล่เฉพาะตอนเลื่อนวันจริง — บังคับกรอกเพราะลูกค้าถามทีหลังว่า
+            "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่าเลื่อนกี่ครั้งเพราะอะไร · เหตุผลลงเธรด
+            ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียวถูกเขียนทับทุกครั้งที่เลื่อน */}
+        {rescheduling && (
+          <label className={`${styles.field} ${styles.wide}`}>
+            <span>เหตุผลที่เลื่อน *</span>
+            <Input
+              value={form.rescheduleReason}
+              onChange={change("rescheduleReason")}
+              placeholder="เช่น ลูกค้าขอเลื่อน · ห้างปิดปรับปรุง · ช่างติดงานด่วน"
+              maxLength={500}
+            />
+            <small>เลื่อนจาก {visit.scheduledDate} → {form.scheduledDate} · เหตุผลจะถูกบันทึกลงความเคลื่อนไหวของนัดนี้</small>
+          </label>
+        )}
 
         <fieldset className={`${styles.field} ${styles.wide} ${styles.fieldset}`}>
           <legend>เวลานัด</legend>
@@ -226,6 +258,21 @@ export default function ServiceVisitModal({
       )}
 
       {error && <p className="form-error" role="alert">{error}</p>}
+
+      {/* ⚠️ เธรดไม่ถูกปิดตามสถานะนัด — ช่วงที่นัดถูกเลื่อน/ยกเลิก/ติดปัญหา คือช่วงที่
+          มีเรื่องต้องเล่ามากที่สุด (กฎเดียวกับ canEditX ที่ห้ามคุมเธรดในโมดูลอื่น) */}
+      {editing && (
+        <div className={styles.thread}>
+          <h3 className={styles.threadTitle}>ความเคลื่อนไหวของนัดนี้</h3>
+          <UpdateThread
+            entityType="service_visit"
+            entityId={visit.id}
+            order="desc"
+            placeholder="พิมพ์บันทึกหน้างาน เช่น ลูกค้าแจ้งว่าเครื่องมีเสียงดัง..."
+            emptyText="ยังไม่มีความเคลื่อนไหว"
+          />
+        </div>
+      )}
 
       <div className="form-actions">
         <Button tone="neutral" onClick={onClose} disabled={saving}>ยกเลิก</Button>

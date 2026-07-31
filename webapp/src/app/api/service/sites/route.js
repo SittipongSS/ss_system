@@ -5,11 +5,17 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { generateEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
+import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
+import { siteRefillSummary } from '@/lib/service/refill';
 import { assetCountsBySite, findCustomer, loadSites, requireService } from '@/lib/service/sitesRepo';
+import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
+// GET ?customerId= &includeInactive=0 &withSchedule=1
+//   withSchedule = แนบ เข้าล่าสุด / ครั้งหน้า / สรุปน้ำหอมใกล้หมด มาด้วย (S-4)
+//   ⚠️ ไม่ทำเป็นค่าตั้งต้น — หน้าทะเบียนที่มีไซต์เป็นร้อยไม่ต้องใช้ 3 คำสั่งเพิ่มทุกครั้ง
 export const GET = withUser(async ({ user, supabase, req }) => {
   const access = requireService({ user });
   if (access.response) return access.response;
@@ -19,13 +25,39 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       customerId: url.searchParams.get('customerId'),
       includeInactive: url.searchParams.get('includeInactive') !== '0',
     });
+    const siteIds = sites.map((s) => s.id);
     // นับเครื่องรวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
-    const counts = await assetCountsBySite(supabase, sites.map((s) => s.id));
-    return ok(sites.map((site) => ({
-      ...site,
-      assetCount: counts.get(site.id)?.total || 0,
-      activeAssetCount: counts.get(site.id)?.active || 0,
-    })));
+    const counts = await assetCountsBySite(supabase, siteIds);
+
+    if (url.searchParams.get('withSchedule') !== '1') {
+      return ok(sites.map((site) => ({
+        ...site,
+        assetCount: counts.get(site.id)?.total || 0,
+        activeAssetCount: counts.get(site.id)?.active || 0,
+      })));
+    }
+
+    const todayIso = toLocalISODate(new Date());
+    const [schedule, assets] = await Promise.all([
+      siteScheduleContext(supabase, siteIds, todayIso),
+      assetsForSites(supabase, siteIds),
+    ]);
+
+    return ok(sites.map((site) => {
+      const ctx = schedule.get(site.id) || { lastRefillDate: null, nextVisitDate: null };
+      return {
+        ...site,
+        assetCount: counts.get(site.id)?.total || 0,
+        activeAssetCount: counts.get(site.id)?.active || 0,
+        lastRefillDate: ctx.lastRefillDate,
+        nextVisitDate: ctx.nextVisitDate,
+        refill: siteRefillSummary(assets.get(site.id) || [], {
+          lastSiteRefillDate: ctx.lastRefillDate,
+          nextVisitDate: ctx.nextVisitDate,
+          todayIso,
+        }),
+      };
+    }));
   } catch (e) {
     return fail(e.message, 500);
   }

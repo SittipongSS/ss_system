@@ -4,8 +4,10 @@
 // DELETE : ลบไซต์ — บล็อกถ้ายังมีเครื่องอยู่ (ให้ปิดใช้งานแทน)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
+import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { findCustomer, loadAssets, requireSite } from '@/lib/service/sitesRepo';
+import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +16,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const access = await requireSite({ user, supabase, id });
     if (access.response) return access.response;
-    return ok({ site: access.site, assets: await loadAssets(supabase, id) });
+    // schedule = เข้าเติมล่าสุด + นัดครั้งหน้า → ตารางเครื่องใช้ประเมินว่าน้ำหอม
+    // จะหมดวันไหน และมีนัดครอบแล้วหรือยัง (S-4)
+    const todayIso = toLocalISODate(new Date());
+    const schedule = await siteScheduleContext(supabase, [id], todayIso);
+    return ok({
+      site: access.site,
+      assets: await loadAssets(supabase, id),
+      schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
+    });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -69,6 +79,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const assets = await loadAssets(supabase, id);
     if (assets.length) {
       return conflict(`ไซต์นี้ยังมีเครื่องอยู่ ${assets.length} เครื่อง — ปิดใช้งานแทนการลบ`);
+    }
+
+    // 🐞 ของเดิมเช็คแค่เครื่อง แต่ FK ของ **นัด** เป็น RESTRICT → ไซต์ที่ไม่มีเครื่อง
+    // แล้วแต่ยังมีประวัตินัด จะพังที่ Postgres แล้วผู้ใช้เห็นข้อความดิบภาษาอังกฤษ
+    // ("violates foreign key constraint …") ซึ่งไม่บอกว่าต้องทำอะไรต่อ
+    const visits = await loadVisits(supabase, { siteId: id });
+    if (visits.length) {
+      return conflict(`ไซต์นี้มีประวัตินัดอยู่ ${visits.length} ครั้ง — ปิดใช้งานแทนการลบ เพื่อไม่ให้ประวัติการเข้าไซต์หาย`);
     }
 
     const { error } = await supabase.from('service_sites').delete().eq('id', id);

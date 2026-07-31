@@ -8,7 +8,7 @@ import { canEditService, canViewService } from '@/lib/permissions';
 export function requireService({ user, edit = false }) {
   if (!user) return { response: unauthorized() };
   if (edit) {
-    if (!canEditService(user)) return { response: forbidden('ไม่มีสิทธิ์แก้ข้อมูลงานบริการ') };
+    if (!canEditService(user)) return { response: forbidden('ไม่มีสิทธิ์แก้ข้อมูลธุรกิจบริการ') };
   } else if (!canViewService(user)) {
     return { response: forbidden() };
   }

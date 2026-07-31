@@ -11,7 +11,7 @@ import {
   refillDueDate,
   toHHMM,
 } from './sites.js';
-import { canEditService, canViewService } from '../permissions.js';
+import { canBeServiceAssignee, canEditService, canViewService } from '../permissions.js';
 
 const site = (over = {}) => ({ id: 'S1', name: 'สาขาเอ็มควอเทียร์', accessDays: [], ...over });
 
@@ -112,7 +112,7 @@ test('สรุปเครื่องแยกตามสถานะ', () =>
 });
 
 // ── สิทธิ์ (แผน §6) ──────────────────────────────────────────────────────
-test('⭐ ช่างฝ่าย TS แก้งานบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
+test('⭐ ช่างฝ่าย TS แก้ธุรกิจบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
   const ts = { role: 'staff', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   const aeKa = { role: 'ae', team: 'KA' };
@@ -122,7 +122,31 @@ test('⭐ ช่างฝ่าย TS แก้งานบริการได
   assert.equal(canViewService(aeKa), true);
 });
 
-test('staff ฝ่ายอื่นแตะงานบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
+test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
+  // 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
+  // dropdown ว่าง → ทุกนัด assigneeId = null → "นัดของฉัน" ว่างตลอดกาล
+  assert.equal(canBeServiceAssignee({ role: 'staff', department: 'TS' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'SV' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'senior_ae', team: 'SV' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'KA' }), false);
+  assert.equal(canBeServiceAssignee({ role: 'admin' }), false);   // แอดมินไม่ได้ออกหน้างาน
+  assert.equal(canBeServiceAssignee({ role: 'staff', department: 'WH' }), false);
+});
+
+test('⭐ เมนู "นัดของฉัน" กว้างกว่าคนที่รับงานได้หนึ่งขั้น — หัวหน้าเปิดดูได้ ทีมขายอื่นไม่เห็น', () => {
+  // มติผู้ใช้ 2026-07-31: เห็นเมนู = คนที่ "แก้งานบริการได้" (canEditService)
+  // ⚠️ ต่างจาก canBeServiceAssignee ตรงที่ admin/หัวหน้าฝ่ายขายเห็นด้วย แม้ไม่เคย
+  // ถูกมอบหมายนัด — เปิดเข้าไปจะว่าง ซึ่งยอมรับได้เพราะเขาเข้าไปดูของทีม (สลับ "ทั้งทีม")
+  assert.equal(canEditService({ role: 'admin' }), true);
+  assert.equal(canEditService({ role: 'ae_supervisor' }), true);
+  assert.equal(canBeServiceAssignee({ role: 'admin' }), false);
+  // ⚠️ ทีมขายที่ไม่ใช่ SV ยังไม่เห็นเมนูนี้ (เช่น senior_ae ทีม KA) — อ่านระบบได้
+  // แต่ไม่ใช่คนทำงานบริการ
+  assert.equal(canEditService({ role: 'senior_ae', team: 'KA' }), false);
+  assert.equal(canViewService({ role: 'senior_ae', team: 'KA' }), true);
+});
+
+test('staff ฝ่ายอื่นแตะธุรกิจบริการไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
   for (const department of ['PC', 'PD', 'WH', 'QC']) {
     assert.equal(canEditService({ role: 'staff', department }), false, department);
   }

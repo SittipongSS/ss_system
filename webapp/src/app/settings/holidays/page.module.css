@@ -3,9 +3,12 @@
 .headerRight { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 
 /* แถบเตือนว่าปีนั้นยังไม่มีวันหยุดในระบบ — โทน amber เพราะเป็นเรื่องต้องลงมือ ไม่ใช่ error */
-.coverageWarning { display: flex; align-items: flex-start; gap: 9px; margin-bottom: var(--space-4); padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); }
+.coverageWarning { display: flex; align-items: flex-start; gap: 9px; margin-bottom: var(--space-4); padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); flex-wrap: wrap; }
 .coverageWarning svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
-.coverageWarning p { margin: 0; font-size: var(--fs-6); line-height: 1.55; }
+.coverageWarning p { flex: 1; min-width: 220px; margin: 0; font-size: var(--fs-6); line-height: 1.55; }
+/* ปุ่มนำเข้าอยู่ในแถบเตือน — จุดที่ผู้ใช้เพิ่งรู้ตัวว่าปีนั้นยังว่าง */
+.coverageWarning button { flex: 0 0 auto; align-self: center; }
+.coverageWarning button svg { margin-top: 0; color: inherit; }
 .coverageWarning strong { color: var(--text); }
 
 .errorPanel { display: grid; justify-items: center; gap: var(--space-2-5); padding: var(--space-9) var(--space-5); text-align: center; }

@@ -445,9 +445,9 @@ export function canEditProduction(user) {
 export const SERVICE_DEPARTMENT = 'TS';
 export const SERVICE_SALES_TEAM = 'SV';
 
-// อ่านงานบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
+// อ่านธุรกิจบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
 // ⚠️ แต่ `staff` ต้องแคบด้วยฝ่าย — cap อยู่ที่ role ซึ่งใช้ร่วมกันทั้ง PC/PD/WH/QC/TS
-// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบงานบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
+// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบธุรกิจบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
 // (รูปเดียวกับ canViewCosting ที่แคบ staff เหลือ RD/PC)
 export function canViewService(user) {
   if (!canUser(user, 'service:view')) return false;
@@ -461,6 +461,21 @@ export function canViewService(user) {
 export function canEditService(user) {
   if (!canUser(user, 'service:edit')) return false;
   if (isSuperuser(user?.role)) return true;
+  if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
+  return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
+}
+
+// คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ฝ่ายช่าง TS **หรือ** ทีมขาย SV
+//
+// 🐞 บั๊กจริงบน prod (2026-07-31): ของเดิมกรองเฉพาะฝ่าย TS แต่ **ยังไม่มีบัญชี
+// ฝ่าย TS สักคน** (23 ผู้ใช้ ไม่มี TS เลย) → dropdown "ช่างผู้รับผิดชอบ" ว่างเปล่า
+// → ทุกนัดถูกบันทึกด้วย assigneeId = null → "นัดของฉัน" ว่างตลอดกาลสำหรับทุกคน
+// และเมนูก็ถูกซ่อนจากทุกคนไปด้วย = ฟีเจอร์ที่ไม่มีทางถูกใช้
+//
+// ทีม SV (3 คนบน prod) คือคนที่ทำงานบริการอยู่จริงวันนี้ และถือ service:edit
+// อยู่แล้วตาม canEditService — ให้รับงานได้เลยจึงตรงกับของจริงมากกว่ารอสร้างฝ่าย TS
+// 👉 พอเปิดบัญชีฝ่าย TS จริงแล้ว ทั้งสองกลุ่มยังใช้ได้ ไม่ต้องแก้โค้ดอีก
+export function canBeServiceAssignee(user) {
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
   return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
 }

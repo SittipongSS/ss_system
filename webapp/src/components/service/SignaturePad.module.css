@@ -1,0 +1,35 @@
+/* แผ่นเซ็นชื่อผู้รับงาน (S-3)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.wrap { position: relative; }
+
+.pad {
+  width: 100%;
+  height: 140px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  /* เส้นลายเซ็นอ่าน strokeStyle จาก color ของ canvas — ธีมมืดต้องได้เส้นสว่าง */
+  color: var(--text);
+  touch-action: none;   /* กันหน้าจอเลื่อนตามนิ้วขณะเซ็น */
+  display: block;
+}
+
+.hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

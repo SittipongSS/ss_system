@@ -8,6 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewUpdates, loadUpdateParent } from '@/lib/master/updateAccess';
 import { findUpdate } from '@/lib/master/updates';
+import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,15 +39,13 @@ export async function GET(request, { params }) {
   try {
     const { getFileStream } = await import('@/lib/drive');
     const stream = await getFileStream(att.driveFileId);
-    return new Response(Readable.toWeb(stream), {
-      headers: {
-        'Content-Type': att.mimeType || 'application/octet-stream',
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(att.fileName || 'file')}`,
-        'Cache-Control': 'private, max-age=60',
-      },
-    });
+    return new Response(Readable.toWeb(stream), { headers: attachmentFileHeaders(att) });
   } catch (err) {
     console.error('[updates/file] drive stream failed:', err);
-    return Response.json({ error: 'ดึงไฟล์จาก Google Drive ไม่สำเร็จ' }, { status: 502 });
+    const detail = String(err?.errors?.[0]?.message || err?.message || '').slice(0, 200);
+    return Response.json(
+      { error: `ดึงไฟล์จาก Google Drive ไม่สำเร็จ${detail ? ` — ${detail}` : ''}` },
+      { status: 502 },
+    );
   }
 }

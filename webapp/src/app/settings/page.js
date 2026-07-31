@@ -2,7 +2,7 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers, Palette } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers, Palette, HardDrive } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
 import Workspace from "@/components/ui/Workspace";
@@ -15,6 +15,9 @@ export default function SettingsPage() {
   // เรียก hook ก่อนเสมอ (ห้ามอยู่หลัง || ที่ short-circuit ได้ — ลำดับ hook ต้องคงที่)
   const canUsersView = useCan("users:view");
   const canUsers = can(role, "users:manage") || canUsersView;
+  // เครื่องมือที่เก็บไฟล์แตะของจริงบน Drive (ย้ายโฟลเดอร์) — เปิดให้แอดมินเท่านั้น
+  // ไม่ใช่ canUsers ที่รวมสิทธิ์ "ดูรายชื่อผู้ใช้" เข้ามาด้วย
+  const canManageStorage = can(role, "users:manage");
   const canDocuments = canManageDocumentStandards(role);
   const canCommercial = canManageCommercialPresets(role);
 
@@ -117,6 +120,13 @@ export default function SettingsPage() {
           title: "บันทึกการใช้งาน",
           desc: "ประวัติการเพิ่ม แก้ และเปลี่ยนสถานะข้อมูลทั้งระบบ",
           show: canAudit,
+        },
+        {
+          href: "/settings/storage",
+          icon: HardDrive,
+          title: "ที่เก็บไฟล์ (Google Drive)",
+          desc: "ตรวจการเชื่อมต่อ Shared Drive ตรวจว่าไฟล์แนบทุกใบยังเปิดได้ และจัดโครงโฟลเดอร์",
+          show: canManageStorage,
         },
       ],
     },

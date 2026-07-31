@@ -39,3 +39,8 @@
   gap: var(--space-1);
   justify-content: flex-end;
 }
+
+/* สถานะน้ำหอม (S-4) — สีเป็นตัวช่วย ข้อความบอกความหมายครบอยู่แล้ว
+   (คนตาบอดสีต้องได้ข้อมูลเท่ากัน) */
+.overdue { color: var(--red); font-weight: 600; }
+.soon { color: var(--amber); font-weight: 600; }

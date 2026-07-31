@@ -20,6 +20,7 @@ import StatusBadge from "@/components/excise/StatusBadge";
 // ป้ายกลางของ design system — ชื่อชนกับ StatusBadge ของสรรพสามิตข้างบน (คนละตัว:
 // ตัวนั้นรับ `status` ของทะเบียนภาษี ตัวนี้รับ `tone`+`label`) จึงตั้งชื่อแยกไว้
 import RegistryBadge from "@/components/ui/StatusBadge";
+import { siteRefillBadge } from "@/lib/service/refill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -85,6 +86,9 @@ export default function CustomerDetails() {
   // ไม่ใช่ของแถม · อ่านอย่างเดียว จัดการจริงที่ /database/scents · /database/formulas
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
+  // ไซต์บริการของลูกค้ารายนี้ (S-4) — อ่านอย่างเดียว จัดการจริงที่ /service/sites
+  // ⭐ ลูกค้าหนึ่งรายมีได้หลายจุดติดตั้ง ซึ่ง `customers.address` ช่องเดียวเก็บไม่ได้
+  const [serviceSites, setServiceSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
@@ -145,6 +149,17 @@ export default function CustomerDetails() {
         setRegs(d.registrations || []); setProjects(d.projects || []);
         setScents(d.scents || []); setFormulas(d.formulas || []);
       })
+      .catch(() => {});
+  }, [id]);
+
+  // ไซต์บริการ (S-4) — แยกคำขอเพราะเป็นคนละระบบ (ธุรกิจบริการ ไม่ใช่ฐานข้อมูล)
+  // ⚠️ ผู้ใช้ที่ไม่มี service:view จะได้ 403 → ตกเป็น [] เงียบ ๆ แล้วแท็บไม่โผล่
+  // (แพตเทิร์นเดียวกับ relations ที่คืน [] สำหรับความสัมพันธ์ที่ผู้ใช้ไม่มีสิทธิ์เห็น)
+  useEffect(() => {
+    if (!id) { setServiceSites([]); return; }
+    fetch(`/api/service/sites?customerId=${id}&withSchedule=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setServiceSites(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, [id]);
 
@@ -360,6 +375,8 @@ export default function CustomerDetails() {
                 canViewTax && { key: "registrations", label: `การขึ้นทะเบียน (${regs.length})` },
                 canViewTax && { key: "orders", label: `การยื่นชำระภาษี (${orders.length})` },
                 projects.length > 0 && { key: "projects", label: `โครงการ (${projects.length})` },
+                // โผล่เมื่อมีไซต์จริงเท่านั้น — ลูกค้า OEM ส่วนใหญ่ไม่มีระบบกระจายกลิ่น
+                serviceSites.length > 0 && { key: "serviceSites", label: `ไซต์บริการ (${serviceSites.length})` },
                 // แท็บเดียวคุมทั้งกลิ่นและสูตร — สูตรผูกกลิ่น และตอนนี้ทะเบียนกลิ่นยัง
                 // ว่างอยู่ ถ้าแยกสองแท็บจะมีแท็บโล่งค้างบนหน้าลูกค้าทุกราย
                 // โผล่เมื่อมีของจริงเท่านั้น (แพตเทิร์นเดียวกับแท็บโครงการ)
@@ -553,6 +570,33 @@ export default function CustomerDetails() {
                   ))}
                 </div>
               )
+            )}
+
+            {/* ไซต์บริการ — read-only 360-view, จัดการจริงที่ระบบธุรกิจบริการ
+                ⭐ คำถามที่หน้านี้ต้องตอบคือ "ลูกค้ารายนี้มีเครื่องอยู่กี่จุด ช่างจะเข้า
+                เมื่อไหร่ และมีจุดไหนน้ำหอมใกล้หมด" — ไม่ใช่รายละเอียดเครื่องรายตัว */}
+            {activeTab === "serviceSites" && (
+              <div className="grid grid-cols-1 gap-2">
+                {serviceSites.map((site) => {
+                  const badge = siteRefillBadge(site.refill);
+                  return (
+                    <RelationRow
+                      key={site.id}
+                      onClick={() => router.push(`/service/sites/${site.id}`)}
+                      title={site.name}
+                      subtitle={[
+                        site.zone,
+                        `เครื่อง ${site.activeAssetCount ?? 0} ตัว`,
+                        site.nextVisitDate ? `ครั้งหน้า ${site.nextVisitDate}` : "ยังไม่มีนัดครั้งหน้า",
+                        site.isActive === false ? "ปิดใช้งาน" : null,
+                      ].filter(Boolean).join(" · ")}
+                      right={badge
+                        ? <RegistryBadge className="shrink-0" tone={badge.tone} label={badge.label} />
+                        : null}
+                    />
+                  );
+                })}
+              </div>
             )}
 
             {/* กลิ่น & สูตร — read-only 360-view, จัดการจริงที่ทะเบียน
