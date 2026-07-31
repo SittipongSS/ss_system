@@ -119,7 +119,7 @@
   display: block;
   overflow-wrap: anywhere;
   font-size: var(--fs-7);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
 }
 .contextIcon {
   display: grid;

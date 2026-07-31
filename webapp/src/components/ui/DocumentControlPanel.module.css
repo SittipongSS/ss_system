@@ -103,7 +103,7 @@
   display: block;
   color: var(--text-2);
   font-size: var(--fs-6);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
 }
 
 /* ⚠️ ต้องมี margin ล่าง — รางนี้กินเต็มความกว้างการ์ด (margin ข้าง -18px) และมีเส้น
@@ -220,7 +220,7 @@
 .readinessList strong,
 .readinessList small {
   display: block;
-  line-height: 1.4;
+  line-height: var(--lh-thai);
 }
 
 .readinessList strong {

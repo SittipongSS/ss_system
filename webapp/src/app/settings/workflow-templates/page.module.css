@@ -62,7 +62,7 @@
 .errorPanel > svg { color: var(--red); }
 .errorPanel p { margin: var(--space-2) 0 var(--space-3); color: var(--text-2); }
 .stepFormGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 11px; }
-.stepFormGrid label small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-medium); line-height: 1.4; }
+.stepFormGrid label small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-medium); line-height: var(--lh-thai); }
 .dependencyBox { margin: 0; padding: 10px 11px; border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: 5px; }
 .dependencyBox legend { padding: 0 var(--space-1); color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-bold); }
 .dependencyBox .checkRow, .switchRow { padding: 7px var(--space-2); border-radius: var(--radius); flex-direction: row; align-items: flex-start; gap: var(--space-2); font-weight: var(--fw-medium); cursor: pointer; }

@@ -1328,7 +1328,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text);
   font-size: clamp(var(--fs-14), 3vw, var(--fs-17));
   font-weight: var(--fw-bold);
-  line-height: 1.25;
+  line-height: var(--lh-thai);
   letter-spacing: var(--ls-heading);
 }
 .home-hub-greeting > p {
@@ -2212,7 +2212,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text);
   font-size: var(--fs-11);
   font-weight: var(--fw-bold);
-  line-height: 1.4;
+  line-height: var(--lh-thai);
 }
 .fc-detail-heading p {
   margin: var(--space-1) 0 0;
@@ -2259,7 +2259,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text);
   font-size: var(--fs-13);
   font-weight: var(--fw-bold);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
   font-variant-numeric: tabular-nums;
 }
 .fc-detail-summary strong.fc-detail-count { font-size: var(--fs-9); }
@@ -2299,7 +2299,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .fc-detail-project-link:hover { color: var(--accent-ink); text-decoration: underline; }
 .fc-detail-project-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
-.fc-detail-meta { margin-top: 3px; color: var(--text-3); font-size: var(--fs-4); line-height: 1.4; }
+.fc-detail-meta { margin-top: 3px; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
 .fc-detail-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .fc-detail-amount { color: var(--text); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .fc-detail-skeleton { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
@@ -2476,7 +2476,7 @@ input[type="number"] {
 button.ui-kpi-card { cursor: pointer; }
 .ui-kpi-card.interactive-card { transition: transform var(--motion-medium), border-color var(--motion-medium), box-shadow var(--motion-medium); }
 .ui-kpi-card.interactive-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--kpi-accent) 50%, var(--border)); box-shadow: var(--shadow-md); }
-.ui-kpi-heading { min-width: 0; min-height: 34px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: 1.35; }
+.ui-kpi-heading { min-width: 0; min-height: 34px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
 .ui-kpi-label { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .ui-kpi-icon {
   width: var(--icon-box-md);
@@ -2508,7 +2508,7 @@ button.ui-kpi-card { cursor: pointer; }
   -webkit-line-clamp: 2;
   color: var(--text-3);
   font-size: var(--fs-5);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
 }
 .ui-kpi-hint.is-empty { visibility: hidden; }
 
@@ -2623,7 +2623,7 @@ button.ui-kpi-card { cursor: pointer; }
   overflow-wrap: anywhere;
   color: var(--text);
   font-size: var(--fs-7);
-  line-height: 1.4;
+  line-height: var(--lh-thai);
 }
 .ui-select-empty { padding: var(--space-4) 10px; color: var(--text-3); font-size: var(--fs-5); text-align: center; }
 .ui-select-search {
@@ -3664,7 +3664,7 @@ button.empty-state { width: 100%; font: inherit; }
   .product-row-name {
     font-size: var(--fs-3);
     white-space: normal;
-    line-height: 1.3;
+    line-height: var(--lh-thai);
   }
 
   .product-row-sku {
@@ -4165,7 +4165,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;
-  line-height: 1.4;
+  line-height: var(--lh-thai);
 }
 .timeline-task-name > svg { margin-top: 2px; }
 /* ของเข้า PM/RM — วางต่อท้ายไทม์ไลน์ในกล่องเดียวกัน (mig 0176) */

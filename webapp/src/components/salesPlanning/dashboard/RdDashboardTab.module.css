@@ -22,7 +22,7 @@
 .factIcon { display: grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); }
 .factIcon svg { width: 15px; }
 .quickFacts small { display: block; color: var(--text-3); font-size: var(--fs-2); }
-.quickFacts strong { display: inline-block; margin-right: 6px; color: var(--text); font-size: var(--fs-11); line-height: 1.25; }
+.quickFacts strong { display: inline-block; margin-right: 6px; color: var(--text); font-size: var(--fs-11); line-height: var(--lh-thai); }
 .quickFacts em { color: var(--text-3); font-size: var(--fs-2); font-style: normal; white-space: nowrap; }
 .danger { color: var(--red) !important; }
 .good { color: var(--green) !important; }
@@ -68,7 +68,7 @@
 .queueItem:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .queueItem > div { display: flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: var(--fs-3); }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
-.queueItem h4 { margin: var(--space-1) 0; font-size: var(--fs-7); line-height: 1.35; }
+.queueItem h4 { margin: var(--space-1) 0; font-size: var(--fs-7); line-height: var(--lh-thai); }
 .queueItem p, .queueItem small { margin: 0; color: var(--text-3); font-size: var(--fs-3); }
 .teamCard { padding: var(--space-4) 18px; }
 .teamFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
