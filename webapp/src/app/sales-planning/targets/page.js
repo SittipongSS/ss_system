@@ -316,7 +316,7 @@ export default function SalesPlanningTargetsPage() {
           <Link href="/sa/targets/history" className="btn ghost" title="กรอกยอดขายจริงของช่วงที่ยังไม่ได้ใช้ระบบ (ปีก่อน ๆ และเดือนต้นปีนี้)">
             ยอดขายย้อนหลัง
           </Link>
-          <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
+          <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: "var(--fw-bold)" }}>
             <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
           </Link>
         </>
@@ -447,7 +447,7 @@ export default function SalesPlanningTargetsPage() {
                       const bottom = (rows.length - 1 - ri) * FOOT_H;
                       const cell = { background: bg, borderTop: border, height: FOOT_H, bottom };
                       return (
-                        <tr key={r.label} style={{ fontWeight: 800 }}>
+                        <tr key={r.label} style={{ fontWeight: "var(--fw-bold)" }}>
                           <td className="fz-c1 fz-foot" style={{ ...cell, paddingLeft: 10, minWidth: 210 }}>{r.label}</td>
                           {r.months.map((v, i) => (
                             <td key={i} className="num mono tabular-nums fz-foot" style={{ ...cell, minWidth: 76, padding: "0 6px", color: v ? "var(--text)" : "var(--text-3)" }}>
@@ -476,7 +476,7 @@ export default function SalesPlanningTargetsPage() {
       {canTarget && pendingCount > 0 && (
         <div className="glass-panel form-action-bar is-page" role="region" aria-label="ยืนยันการบันทึก"
           style={{ borderColor: "var(--amber)" }}>
-          <span style={{ fontWeight: 700 }}>
+          <span style={{ fontWeight: "var(--fw-bold)" }}>
             มีการแก้ไข {pendingCount} รายการ ที่ยังไม่บันทึก
           </span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
@@ -484,7 +484,7 @@ export default function SalesPlanningTargetsPage() {
               <X size={16} aria-hidden="true" /> ยกเลิก
             </button>
             <button type="button" className="btn btn-primary" onClick={saveAll} disabled={saving}
-              style={{ fontSize: "var(--fs-10)", fontWeight: 800, padding: "12px 28px", minWidth: 200 }}>
+              style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)", padding: "12px 28px", minWidth: 200 }}>
               <Save size={18} aria-hidden="true" /> {saving ? "กำลังบันทึก..." : "บันทึกเป้าหมาย"}
             </button>
           </div>
@@ -547,7 +547,7 @@ function GapNote({ target, allocated, allocLabel = "แบ่งแล้ว" })
   const color = over ? "var(--red)" : done ? "var(--green)" : "var(--amber)";
   const text = target <= 0 ? "ยังไม่ตั้งเป้ารวม" : over ? `เกินเป้า ${money(-remaining)}` : done ? "ครบพอดี" : `เหลืออีก ${money(remaining)}`;
   return (
-    <div style={{ fontSize: "var(--fs-3)", color, fontWeight: 600, whiteSpace: "nowrap" }}>
+    <div style={{ fontSize: "var(--fs-3)", color, fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>
       {allocLabel} {money(allocated)} · {text}
     </div>
   );

@@ -11,7 +11,7 @@ import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Clipboar
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
@@ -192,7 +192,7 @@ export default function ProjectsIndexPage() {
                         </Link>
                       </td>
                       <td>
-                        <strong style={{ display: "block", fontWeight: 650 }}>{p.customerName || "-"}</strong>
+                        <strong style={{ display: "block", fontWeight: "var(--fw-bold)" }}>{p.customerName || "-"}</strong>
                         <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{projectBrand || "-"}</span>
                       </td>
                       <td>
@@ -270,10 +270,11 @@ export default function ProjectsIndexPage() {
         customers={customers}
         categories={categories}
       />
-      <ConfirmModal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={deleteProject}
+        danger
         title="ลบโครงการ"
         message={deleteTarget ? `ต้องการลบโครงการ “${deleteTarget.code || deleteTarget.id} — ${deleteTarget.name || "-"}” และขั้นตอนทั้งหมดใช่หรือไม่?${(deleteTarget.deals || []).length ? " หากโครงการยังผูกกับดีล ระบบจะไม่อนุญาตให้ลบจากหน้านี้" : ""}` : ""}
         confirmLabel="ลบ"

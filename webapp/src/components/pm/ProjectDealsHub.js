@@ -18,6 +18,7 @@ import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/sa
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
+import Textarea from "@/components/ui/Textarea";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -55,8 +56,8 @@ const stageBadge = (stage) => (
 function Kpi({ label, value, hint, color }) {
   return (
     <div className="glass-panel" style={{ padding: "12px 14px" }}>
-      <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: 600 }}>{label}</div>
-      <div className="mono tabular-nums" style={{ marginTop: 6, fontSize: "var(--fs-11)", fontWeight: 800, color: color || "inherit" }}>{value}</div>
+      <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)" }}>{label}</div>
+      <div className="mono tabular-nums" style={{ marginTop: 6, fontSize: "var(--fs-11)", fontWeight: "var(--fw-bold)", color: color || "inherit" }}>{value}</div>
       {hint && <div style={{ marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-4)" }}>{hint}</div>}
     </div>
   );
@@ -83,7 +84,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
           </span>
         )}
         {dealTypeBadge(dealTypeOf(deal))}
-        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: "var(--fs-8)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {displayText(deal.title)}
         </Link>
         {stageBadge(deal.stage)}
@@ -118,7 +119,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
 
       {/* ใบเสนอราคาใต้ดีล */}
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 600 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>
           <FileText size={13} aria-hidden="true" /> ใบเสนอราคา
           <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length}</span>
         </div>
@@ -305,7 +306,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     <div className="glass-panel" style={{ padding: "16px 20px", marginTop: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <MessageSquare size={16} aria-hidden="true" />
-        <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>ความเคลื่อนไหวรวมทุกดีล</h3>
+        <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ความเคลื่อนไหวรวมทุกดีล</h3>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{feed.length} รายการ</span>
         <div className="spacer" style={{ flex: 1 }} />
         <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ข้อมูลเดียวกับหน้าดีลแต่ละใบ</span>
@@ -316,8 +317,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           <div className="form-group"><label>ประเภท</label><Select fullWidth value={kind} onChange={(event) => setKind(event.target.value)}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
           <div className="form-group">
             <label>รายละเอียด</label>
-            <textarea
-              className="premium-input w-full"
+            <Textarea className="w-full"
               rows={2}
               value={body}
               onChange={(event) => setBody(event.target.value)}
@@ -363,7 +363,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
         {editing && (
           <form onSubmit={updateActivity} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div className="form-group"><label>ประเภท</label><Select fullWidth value={editing.kind} onChange={(event) => setEditing((current) => ({ ...current, kind: event.target.value }))}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
-            <div className="form-group"><label>รายละเอียด</label><textarea className="premium-input w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
+            <div className="form-group"><label>รายละเอียด</label><Textarea className="w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
             <div className="form-action-bar">
               <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)} disabled={!!activityBusy}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={!!activityBusy || !editing.body.trim()}>{activityBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
@@ -494,7 +494,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       {/* การ์ดดีล — จิ๊กซอว์แต่ละชิ้น */}
       <div className="glass-panel" style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>ดีลในโครงการ ({deals.length})</h3>
+          <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ดีลในโครงการ ({deals.length})</h3>
           {central && (
             <span className="ui-badge" style={{ color: "var(--text-3)" }} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
               งานกลาง {central.done}/{central.total}
@@ -529,7 +529,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         ) : (
           <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
             <PackageCheck size={28} aria-hidden="true" style={{ margin: "0 auto 8px" }} />
-            <div style={{ fontWeight: 700, color: "var(--text)" }}>ยังไม่มีดีลในโครงการ</div>
+            <div style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>ยังไม่มีดีลในโครงการ</div>
             <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>ผูกดีลของลูกค้ารายนี้เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
             {canEdit && <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setLinkOpen(true)}><Plus size={14} /> ผูกดีลแรก</button>}
           </div>

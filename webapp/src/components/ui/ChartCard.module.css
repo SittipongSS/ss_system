@@ -32,7 +32,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-height: 58px;
-  padding: 14px var(--space-4) 10px;
+  padding: var(--space-3-5) var(--space-4) var(--space-2-5);
 }
 
 .title {
@@ -44,7 +44,7 @@
 
 .title svg {
   flex: none;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--accent-ink);
 }
 
@@ -52,7 +52,7 @@
   margin: 0;
   color: var(--text);
   font-size: var(--fs-9);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
 }
 
 .title p {
@@ -65,7 +65,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-2-5);
   flex-wrap: wrap;
 }
 
@@ -112,7 +112,7 @@
 
 .tooltip {
   min-width: 150px;
-  padding: 10px var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
@@ -121,7 +121,7 @@
 
 .tooltip strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
   color: var(--text);
   font-size: var(--fs-5);
 }
@@ -130,7 +130,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--space-3-5);
   margin-top: var(--space-1);
   color: var(--text-2);
   font-size: var(--fs-4);
@@ -161,13 +161,13 @@
 
 .summary > div {
   min-width: 0;
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   border-right: 1px solid var(--border);
 }
 
 .summary > div:last-child { border-right: 0; }
 .summary small { display: block; color: var(--text-3); font-size: var(--fs-2); }
-.summary strong { display: block; margin-top: 2px; color: var(--text); font-size: var(--fs-7); }
+.summary strong { display: block; margin-top: var(--space-0-5); color: var(--text); font-size: var(--fs-7); }
 
 @media (max-width: 680px) {
   .header {
@@ -176,5 +176,5 @@
   }
 
   .headerAside { justify-content: flex-start; }
-  .body { padding-inline: 10px; }
+  .body { padding-inline: var(--space-2-5); }
 }

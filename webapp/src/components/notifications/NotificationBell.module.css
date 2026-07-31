@@ -13,7 +13,7 @@
      เดียวกับป้ายสถานะทั้งระบบ (.confirm-dialog-icon.danger ฯลฯ) และพลิกครบสองธีม */
   background: var(--red-soft); color: var(--red);
   border: 1px solid var(--red);
-  font-size: var(--fs-1); font-weight: 700; line-height: 1;
+  font-size: var(--fs-1); font-weight: var(--fw-bold); line-height: var(--lh-flat);
 }
 
 /* กล่องลอย — ใช้ชั้น z กลาง ห้ามคิดเลขเอง (ดู [[z-index-scale]]) */
@@ -48,12 +48,12 @@
 a.link:hover { background: var(--panel-2); }
 
 /* ⚠️ line-height ≥1.45 ทุกกล่องที่ห่อข้อความไทย (สระบน/วรรณยุกต์ยื่นเหนือตัวอักษร) */
-.title { color: var(--text); font-size: var(--fs-6); font-weight: 650; line-height: 1.5; }
+.title { color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-bold); line-height: var(--lh-text); }
 .body {
-  color: var(--text-2); font-size: var(--fs-5); line-height: 1.5;
+  color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text);
   overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.meta { color: var(--text-3); font-size: var(--fs-3); line-height: 1.5; }
+.meta { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-text); }
 
 .empty { padding: var(--space-6); color: var(--text-3); font-size: var(--fs-5); text-align: center; }

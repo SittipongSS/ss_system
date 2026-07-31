@@ -116,7 +116,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
         <DocsPanel entityType="mgmt_meeting" entityId={meeting.id} canEdit={canEdit} />
 
         <div>
-          <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
+          <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>
           {canEdit && (
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <input className="premium-input" style={{ flex: 1 }} value={comment} placeholder="เพิ่มบันทึก/คอมเมนต์..." onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />

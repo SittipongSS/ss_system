@@ -12,14 +12,14 @@
      ต่างจากภาษาอังกฤษที่ 1.25 พอ · ผู้ใช้ส่งภาพมา 2026-07-29 */
   min-height: 24px;
   gap: 5px;
-  padding: 3px 10px;
+  padding: 3px var(--space-2-5);
   border: 1px solid var(--badge-border);
   border-radius: var(--radius);
   background: var(--badge-bg);
   color: var(--badge-color);
   font-size: var(--fs-label);
-  font-weight: 600;
-  line-height: 1.5;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-text);
   vertical-align: middle;
 }
 
@@ -71,7 +71,7 @@
 
 .large {
   min-height: 26px;
-  padding-inline: 10px;
+  padding-inline: var(--space-2-5);
   font-size: var(--fs-5);
 }
 
@@ -114,7 +114,7 @@
 .count {
   min-width: 22px;
   min-height: 20px;
-  padding-inline: 6px;
+  padding-inline: var(--space-1-5);
   border-radius: var(--radius-full);
   font-variant-numeric: tabular-nums;
 }

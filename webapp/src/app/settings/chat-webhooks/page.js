@@ -122,7 +122,7 @@ export default function ChatWebhooksPage() {
           {rows.map((row) => (
             <section key={row.key} className="glass-panel" style={{ padding: "16px 18px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                <h2 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>{row.label}</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>{row.label}</h2>
                 <span className="ui-badge" style={{ color: row.enabled && (row.url || row.envFallback) ? "var(--green)" : "var(--text-3)" }}>
                   {!row.enabled ? "ปิดใช้" : row.url ? "ใช้ค่าจากหน้านี้" : row.envFallback ? "ใช้ค่าจาก env (Vercel)" : "ยังไม่ได้ตั้ง"}
                 </span>

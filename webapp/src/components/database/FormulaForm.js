@@ -10,6 +10,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import { isScentUsable } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 export const emptyFormulaForm = () => ({
   name: "",
@@ -101,8 +102,8 @@ export default function FormulaForm({
 
       <div className="form-group col-span-2">
         <label htmlFor="formula-note">หมายเหตุ</label>
-        <textarea
-          id="formula-note" className="premium-input" rows={3} value={value.note} disabled={disabled}
+        <Textarea
+          id="formula-note" rows={3} value={value.note} disabled={disabled}
           placeholder="โน้ตสูตร / ที่มา / ข้อจำกัด"
           onChange={(e) => set({ note: e.target.value })}
         />

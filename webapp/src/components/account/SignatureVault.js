@@ -17,6 +17,7 @@ import RecordDrawer from "@/components/excise/RecordDrawer";
 import Toast from "@/components/ui/Toast";
 import SignatureCropper from "./SignatureCropper";
 import styles from "./SignatureVault.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const ACTION_LABELS = {
   upload: "เพิ่มลายเซ็น",
@@ -363,7 +364,7 @@ export default function SignatureVault() {
               {revokeMode ? (
                 <div className="form-group">
                   <label htmlFor="signature-revoke-reason">เหตุผลที่ยกเลิก</label>
-                  <textarea id="signature-revoke-reason" className="premium-input" rows={3} maxLength={500} value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} placeholder="เช่น เปลี่ยนรูปแบบลายเซ็น หรือไฟล์เดิมไม่ถูกต้อง" />
+                  <Textarea id="signature-revoke-reason" rows={3} maxLength={500} value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} placeholder="เช่น เปลี่ยนรูปแบบลายเซ็น หรือไฟล์เดิมไม่ถูกต้อง" />
                   <p className={styles.assistText}>{revokeReason.length}/500 ตัวอักษร</p>
                 </div>
               ) : (

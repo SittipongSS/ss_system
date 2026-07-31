@@ -9,6 +9,7 @@ import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
+import Textarea from "@/components/ui/Textarea";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 
@@ -150,7 +151,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             </div>
             <div className="form-group">
               <label>หมายเหตุ</label>
-              <textarea className="premium-input w-full" rows={3} value={form.remarks}
+              <Textarea className="w-full" rows={3} value={form.remarks}
                 onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
             </div>
           </div>

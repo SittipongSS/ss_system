@@ -21,24 +21,24 @@
   margin-top: 3px;
   color: var(--text-3);
   font-size: var(--fs-4);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .totalAmount {
-  margin: 6px 0 18px;
+  margin: var(--space-1-5) 0 var(--space-4-5);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: clamp(var(--fs-14), 3vw, var(--fs-16));
-  font-weight: 750;
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
 }
 
 .summaryRows {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   margin: 0;
   padding: 15px 0 17px;
   border-top: 1px solid var(--border);
@@ -61,7 +61,7 @@
   color: var(--text-2);
   font-family: var(--font-mono);
   font-size: var(--fs-5);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -70,7 +70,7 @@
 .controlStatus {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .documentStatus {
@@ -78,7 +78,7 @@
 }
 
 .controlStatus {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3-5);
 }
 
 .statusDot {
@@ -103,7 +103,7 @@
   display: block;
   color: var(--text-2);
   font-size: var(--fs-6);
-  line-height: 1.35;
+  line-height: var(--lh-thai);
 }
 
 /* ⚠️ ต้องมี margin ล่าง — รางนี้กินเต็มความกว้างการ์ด (margin ข้าง -18px) และมีเส้น
@@ -114,7 +114,7 @@
 .workflowRail {
   display: flex;
   flex-direction: column;
-  margin: 0 -18px 14px;
+  margin: 0 -18px var(--space-3-5);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
@@ -123,9 +123,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
-  padding: 11px 18px;
+  padding: 11px var(--space-4-5);
   border-bottom: 1px solid var(--border);
 }
 
@@ -143,7 +143,7 @@
   border-radius: var(--radius-full);
   color: var(--text-3);
   font-size: var(--fs-3);
-  font-weight: 800;
+  font-weight: var(--fw-bold);
 }
 
 .stepCopy {
@@ -164,7 +164,7 @@
 }
 
 .stepCopy small {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-2);
 }
@@ -186,7 +186,7 @@
 }
 
 .cancelled {
-  opacity: 0.55;
+  opacity: var(--op-muted);
 }
 
 .notices,
@@ -194,13 +194,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: 14px;
+  margin-top: var(--space-3-5);
 }
 
 .readinessList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -220,16 +220,16 @@
 .readinessList strong,
 .readinessList small {
   display: block;
-  line-height: 1.4;
+  line-height: var(--lh-thai);
 }
 
 .readinessList strong {
   font-size: var(--fs-5);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
 }
 
 .readinessList small {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   font-size: var(--fs-2);
 }
 
@@ -259,7 +259,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: 18px;
+  margin-top: var(--space-4-5);
 }
 
 .action {
@@ -270,7 +270,7 @@
 
 .action[aria-disabled="true"] {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--op-disabled);
   pointer-events: none;
 }
 
@@ -283,20 +283,20 @@
 .footer,
 .relatedActions {
   margin-top: var(--space-4);
-  padding-top: 14px;
+  padding-top: var(--space-3-5);
   border-top: 1px solid var(--border);
 }
 
 .footer {
   color: var(--text-3);
   font-size: var(--fs-4);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .relatedBody {
   color: var(--text-2);
   font-size: var(--fs-6);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .relatedActions {
@@ -312,7 +312,7 @@
 
 @media (max-width: 680px) {
   .panel {
-    padding: 18px;
+    padding: var(--space-4-5);
   }
 
   .workflowRail {

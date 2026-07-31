@@ -38,6 +38,7 @@ import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
+import Textarea from "@/components/ui/Textarea";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -85,8 +86,8 @@ function stageBadge(stage) {
 function Stat({ label, value, hint }) {
   return (
     <div className="glass-panel" style={{ padding: 14 }}>
-      <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: 600 }}>{label}</div>
-      <div className="mono tabular-nums" style={{ marginTop: 8, fontSize: "var(--fs-12)", fontWeight: 800 }}>{value}</div>
+      <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)" }}>{label}</div>
+      <div className="mono tabular-nums" style={{ marginTop: 8, fontSize: "var(--fs-12)", fontWeight: "var(--fw-bold)" }}>{value}</div>
       {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{hint}</div>}
     </div>
   );
@@ -111,7 +112,7 @@ function TaskStatusBadge({ status }) {
 function DealStepper({ steps, lost }) {
   if (lost) {
     return (
-      <div style={{ color: "var(--red)", display: "flex", gap: 8, alignItems: "center", fontSize: "var(--fs-7)", fontWeight: 600 }}>
+      <div style={{ color: "var(--red)", display: "flex", gap: 8, alignItems: "center", fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>
         <Ban size={16} aria-hidden="true" /> ดีลนี้ปิดแบบไม่สำเร็จ (Lost)
       </div>
     );
@@ -644,7 +645,7 @@ export default function DealOverviewPage() {
             eyebrow="รายละเอียดดีล"
             title={deal.title}
             description={<>
-              {deal.code && <span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
+              {deal.code && <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
               <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
               {(dealBrand.en || dealBrand.th) && <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? ` · ${dealBrand.th}` : ""}</span>}
             </>}
@@ -662,8 +663,8 @@ export default function DealOverviewPage() {
             {lc?.nextAction && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 600 }}>ขั้นต่อไป</div>
-                  <div style={{ fontSize: "var(--fs-10)", fontWeight: 700, marginTop: 2 }}>{lc.nextAction.label}</div>
+                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>ขั้นต่อไป</div>
+                  <div style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)", marginTop: 2 }}>{lc.nextAction.label}</div>
                   {lc.nextAction.hint && <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>{lc.nextAction.hint}</div>}
                 </div>
                 {nextPrimary()}
@@ -718,7 +719,7 @@ export default function DealOverviewPage() {
 
           {data?.forecastDrift?.hasDrift && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", borderColor: "var(--amber)", borderLeft: "3px solid var(--amber)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--amber)", fontWeight: 700 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--amber)", fontWeight: "var(--fw-bold)" }}>
                 <AlertTriangle size={16} aria-hidden="true" />
                 FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างดีล
               </div>
@@ -790,9 +791,9 @@ export default function DealOverviewPage() {
                   <tbody>
                     {data.dealTasks.map((task) => (
                       <tr key={task.id} className="premium-row">
-                        <td style={{ fontWeight: 700 }}>
+                        <td style={{ fontWeight: "var(--fw-bold)" }}>
                           {task.title}
-                          {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: 500 }} />}
+                          {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-medium)" }} />}
                         </td>
                         <td><TaskStatusBadge status={task.status} /></td>
                         <td>{task.assigneeName || task.ownerName || "-"}</td>
@@ -835,7 +836,7 @@ export default function DealOverviewPage() {
                 <PackageCheck size={18} aria-hidden="true" />
               </span>
               <div style={{ minWidth: 150 }}>
-                <div style={{ fontWeight: 700, fontSize: "var(--fs-9)" }}>ไทม์ไลน์</div>
+                <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)" }}>ไทม์ไลน์</div>
                 <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>
                   {!taskSummary.total ? "ยังไม่ได้สร้าง — กดเพื่อเริ่ม" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : deal.projectId ? `ในโครงการ ${data.project?.code || ""}` : "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)"}
                 </div>
@@ -855,7 +856,7 @@ export default function DealOverviewPage() {
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="timeline-header-row mb-3">
               <PackageCheck size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ไทม์ไลน์</h2>
+              <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ไทม์ไลน์</h2>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
                   <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
@@ -906,7 +907,7 @@ export default function DealOverviewPage() {
               {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
               {(data.siblingDeals || []).length > 0 && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 600, marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
+                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {data.siblingDeals.map((sib) => (
                       <Link key={sib.id} href={`/sa/deals/${sib.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -1005,7 +1006,7 @@ export default function DealOverviewPage() {
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <FileText size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ใบเสนอราคา</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ใบเสนอราคา</h2>
                 <div className="spacer" />
                 {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
                 {canEdit && deal.projectId && deal.customerId && !isClosedStage(deal.stage) && (
@@ -1038,7 +1039,7 @@ export default function DealOverviewPage() {
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>Sale Order</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>Sale Order</h2>
                 <div className="spacer" />
                 <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
               </div>
@@ -1064,7 +1065,7 @@ export default function DealOverviewPage() {
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>เอกสาร</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>เอกสาร</h2>
               </div>
               {(data.documents || []).length ? (
                 <div className="premium-glass-table table-responsive">
@@ -1096,7 +1097,7 @@ export default function DealOverviewPage() {
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <MessageSquare size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ความเคลื่อนไหว</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ความเคลื่อนไหว</h2>
                 {/* ตัวนับย้ายออก — จำนวนรายการในเธรดเป็นของ UpdateThread ที่โหลดเอง
                     หน้านี้ไม่รู้ยอดจริงอีกแล้ว ใส่เลขที่นับได้ครึ่งเดียวจะหลอกคนอ่าน */}
                 {canEdit && (
@@ -1133,7 +1134,7 @@ export default function DealOverviewPage() {
       {/* ยืนยัน + เลือกประเภท (template) ก่อนสร้างไทม์ไลน์ของดีล — กัน "ดึงผิดประเภท" */}
       <Modal open={genOpen} onClose={() => !actionBusy && setGenOpen(false)} title="สร้างไทม์ไลน์ของดีล" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", lineHeight: 1.6 }}>
+          <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
             ระบบจะสร้างขั้นตอนงานจาก <strong>Workflow Template</strong> ตาม “ประเภทดีล” ด้านล่าง
             {deal?.categoryCode ? <> · หมวดสินค้า <strong>{deal.categoryCode}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
           </div>
@@ -1143,10 +1144,10 @@ export default function DealOverviewPage() {
               className="premium-select"
               value={genType}
               onChange={(e) => setGenType(e.target.value)}
-              style={{ color: DEAL_TYPE_COLORS[normalizeDealType(genType)], fontWeight: 600 }}
+              style={{ color: DEAL_TYPE_COLORS[normalizeDealType(genType)], fontWeight: "var(--fw-semibold)" }}
             >
               {DEAL_TYPES.map((t) => (
-                <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: 600 }}>{t} · {DEAL_TYPE_LABELS[t]}</option>
+                <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: "var(--fw-semibold)" }}>{t} · {DEAL_TYPE_LABELS[t]}</option>
               ))}
             </Select>
           </label>
@@ -1197,7 +1198,7 @@ export default function DealOverviewPage() {
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             เหตุผล (ไม่บังคับ)
-            <textarea
+            <Textarea
               rows={3}
               value={lostReason}
               onChange={(e) => setLostReason(e.target.value)}

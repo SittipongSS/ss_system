@@ -2,13 +2,13 @@
 .standardTab { min-height: 58px; padding: 9px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .standardTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
 .standardTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.standardTab:disabled { cursor: not-allowed; opacity: .45; }
+.standardTab:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .standardTab span, .standardTab small { display: block; }
-.standardTab span { color: var(--text); font-size: var(--fs-7); font-weight: 700; }
-.standardTab small { margin-top: 2px; color: var(--text-3); font-size: var(--fs-4); }
+.standardTab span { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
+.standardTab small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-4); }
 .standardTab.active { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .publishedPanel { grid-template-columns: minmax(0, 1.1fr) minmax(260px, .9fr) minmax(220px, .75fr); }
-.accentMark { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--fs-5); font-weight: 600; }
+.accentMark { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
 .swatch { width: 18px; height: 18px; flex: 0 0 18px; border: 1px solid color-mix(in srgb, var(--doc-accent) 45%, var(--border)); border-radius: var(--radius-full); background: var(--doc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--doc-accent) 12%, transparent); }
 /* ใช้ค่าสีจริงของเอกสารพิมพ์ (DOCUMENT_ACCENT_THEMES ใน quotationMasterDocument)
    ไม่ใช่ token ธีมของแอป — ตัวอย่างสีต้องตรงกับที่พิมพ์ออกมาจริง ไม่งั้นเลือกสีจาก
@@ -23,16 +23,16 @@
 /* ค่าที่ตั้ง (ซ้าย) คู่กับตัวอย่างเอกสารจริง (ขวา) — เห็นผลของสิ่งที่กำลังแก้ทันที
    แทนกล่อง CSS จำลองแบบเดิมที่โชว์คนละสัดส่วน/คนละสีกับใบที่พิมพ์ออกมา */
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: var(--space-4); align-items: start; }
-.previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-3); padding: 14px var(--space-4); }
+.previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3-5) var(--space-4); }
 .previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); }
-.previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.5; }
+.previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 /* เอกสารย่อตัวเองตามความกว้างที่ได้ (zoom ใน quotationMasterDocument) — ที่นี่แค่ให้พื้นที่ */
 .livePreview { width: 100%; height: 560px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 .previewInDrawer { height: 420px; }
-.fieldHelp { margin-top: 6px; color: var(--text-3); font-size: var(--fs-4); line-height: 1.55; }
-.numberExample { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: 10px; padding: 10px 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
-.numberExample span { font-size: var(--fs-4); font-weight: 600; }
+.fieldHelp { margin-top: var(--space-1-5); color: var(--text-3); font-size: var(--fs-4); line-height: 1.55; }
+.numberExample { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-2-5); padding: var(--space-2-5) 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
+.numberExample span { font-size: var(--fs-4); font-weight: var(--fw-semibold); }
 .numberExample strong { color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
 
 @media (max-width: 1200px) {

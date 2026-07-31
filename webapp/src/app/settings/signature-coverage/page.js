@@ -140,7 +140,7 @@ export default function SignatureCoveragePage() {
       {/* ทำไมไม่มีปุ่ม "เพิ่มลายเซ็นให้" — กันคนเข้าใจผิดว่าหน้านี้ยังทำไม่เสร็จ */}
       <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
         <ShieldCheck size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-        <p style={{ margin: 0, color: "var(--text-2)", fontSize: "var(--fs-7)", lineHeight: 1.6 }}>
+        <p style={{ margin: 0, color: "var(--text-2)", fontSize: "var(--fs-7)", lineHeight: "var(--lh-relaxed)" }}>
           ลายเซ็นเป็นข้อมูลส่วนบุคคล — ผู้ดูแลระบบอัปโหลดแทนกันไม่ได้ และไม่ควรได้ ไม่งั้นหลักฐานการเซ็นบนเอกสารจะไม่มีความหมาย
           แต่ละคนต้องเพิ่มเองที่หน้า <Link href="/account" className="linklike"><strong>บัญชีของฉัน</strong></Link> หน้านี้ใช้ติดตามว่าเหลือใครบ้างเท่านั้น
         </p>
@@ -198,7 +198,7 @@ export default function SignatureCoveragePage() {
                 return (
                   <tr key={row.id}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{row.name}</div>
+                      <div style={{ fontWeight: "var(--fw-semibold)" }}>{row.name}</div>
                       {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
                     </td>
                     <td>{ROLE_LABELS[row.role] || row.role}</td>

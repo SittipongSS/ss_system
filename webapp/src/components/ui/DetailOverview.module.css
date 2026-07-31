@@ -13,18 +13,18 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-5);
-  padding: var(--space-5) 22px 18px;
+  padding: var(--space-5) 22px var(--space-4-5);
 }
 
 .titleBlock { min-width: 0; }
 
 .eyebrow {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
   color: var(--accent-ink);
   font-size: var(--fs-2);
-  font-weight: 750;
-  letter-spacing: .08em;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 
@@ -33,8 +33,8 @@
   margin: 0;
   color: var(--text);
   font-size: clamp(var(--fs-12), 2vw, var(--fs-15));
-  font-weight: 750;
-  line-height: 1.2;
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
 }
 
 .description {
@@ -66,20 +66,20 @@
   display: inline-flex;
   align-items: center;
   min-height: 28px;
-  padding: 5px 10px;
+  padding: 5px var(--space-2-5);
   border: 1px solid color-mix(in srgb, var(--state-color) 28%, transparent);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--state-color) 10%, transparent);
   color: var(--state-color);
   font-size: var(--fs-4);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   white-space: nowrap;
 }
 
 .stateBadge::before {
   width: 6px;
   height: 6px;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
   border-radius: var(--radius-full);
   background: currentColor;
   content: "";
@@ -109,7 +109,7 @@
 
 .quickFacts small {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-2);
 }
@@ -118,13 +118,13 @@
   display: block;
   overflow: hidden;
   color: var(--text-2);
-  font-weight: 650;
+  font-weight: var(--fw-bold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .extra {
-  padding: 14px var(--space-5);
+  padding: var(--space-3-5) var(--space-5);
   border-top: 1px solid var(--border);
 }
 
@@ -137,7 +137,7 @@
 @media (max-width: 680px) {
   .overviewHeading {
     flex-direction: column;
-    padding: 18px;
+    padding: var(--space-4-5);
   }
 
   .headingActions {

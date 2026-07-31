@@ -173,7 +173,7 @@ export default function SalesHistoryMonthlyPage() {
       <section className="glass-panel" style={{ padding: 16 }}>
         <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
           <CalendarRange size={17} aria-hidden="true" />
-          <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ยอดขายจริง ปี {year} · ทั้งบริษัท</h2>
+          <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ยอดขายจริง ปี {year} · ทั้งบริษัท</h2>
           <div className="spacer" />
           <button type="button" className="btn btn-primary" onClick={save} disabled={saving || loading}>
             <Check size={15} aria-hidden="true" /> {saving ? "กำลังบันทึก…" : "บันทึก"}
@@ -195,10 +195,10 @@ export default function SalesHistoryMonthlyPage() {
               </tr>
             </thead>
             <tbody>
-              <tr className="premium-row" style={{ background: "var(--panel-2)", fontWeight: 600 }}>
+              <tr className="premium-row" style={{ background: "var(--panel-2)", fontWeight: "var(--fw-semibold)" }}>
                 <td style={{ whiteSpace: "nowrap" }}>
                   <strong>ทั้งบริษัท</strong>
-                  <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: 400 }}>รวมทุกทีม</span>
+                  <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>รวมทุกทีม</span>
                 </td>
                 {MONTH_LABELS.map((label, mi) => {
                   const editable = isMonthEditable(year, mi, now);
@@ -223,7 +223,7 @@ export default function SalesHistoryMonthlyPage() {
                     value={yearOverride ?? yearTotal}
                     onChange={(parsed) => setYearOverride(parsed ?? "")}
                     aria-label={`ยอดรวมทั้งปี ${year}`}
-                    style={{ width: "100%", minWidth: 110, fontSize: "var(--fs-6)", padding: "6px 8px", textAlign: "right", fontWeight: 700 }}
+                    style={{ width: "100%", minWidth: 110, fontSize: "var(--fs-6)", padding: "6px 8px", textAlign: "right", fontWeight: "var(--fw-bold)" }}
                   />
                   <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-2)", textAlign: "right", color: mismatch ? "var(--amber)" : "var(--text-3)" }}>
                     {mismatch ? "ไม่ตรงผลรวมรายเดือน" : yearOverride == null ? "ผลรวมรายเดือน" : "กรอกเอง"}

@@ -5,7 +5,7 @@
 /* .ui-workspace ไม่มี gap — แถบแจ้งต้องเว้นระยะเอง ไม่งั้นชนแถบเครื่องมือ */
 .banner { margin-bottom: var(--space-3); }
 
-.name { font-weight: 600; }
+.name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
 .comment { white-space: pre-wrap; }
 

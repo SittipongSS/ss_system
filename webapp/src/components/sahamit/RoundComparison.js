@@ -60,16 +60,16 @@ export default function RoundComparison({ comparison, productByFg }) {
       {/* Peak-drop alert — the heart of the feature (FC peak ไม่ควรลด). */}
       {peakDrops.length > 0 && (
         <div className="glass-panel" style={{ padding: "16px", borderLeft: "3px solid var(--red)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--red)", fontWeight: 600, marginBottom: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--red)", fontWeight: "var(--fw-semibold)", marginBottom: "10px" }}>
             <AlertTriangle size={18} /> ยอด FC ลดลงจากจุดสูงสุด — ควรสอบถามลูกค้า ({peakDrops.length} รายการ)
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {peakDrops.map((s) => (
               <div key={s.fgCode} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <div style={{ fontSize: "var(--fs-7)" }}>
-                  <span className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</span>
+                  <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{s.fgCode}</span>
                   {s.productName ? <span style={{ color: "var(--text-3)" }}> · {s.productName}</span> : null}
-                  <span style={{ color: "var(--red)", fontWeight: 600, marginLeft: 8 }}>
+                  <span style={{ color: "var(--red)", fontWeight: "var(--fw-semibold)", marginLeft: 8 }}>
                     {fmt(s.peak.newTotal)} / peak {fmt(s.peak.oldTotal)} ({fmt(s.peak.totalDiff)})
                   </span>
                 </div>
@@ -98,7 +98,7 @@ export default function RoundComparison({ comparison, productByFg }) {
               <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-3)", padding: "24px" }}>ไม่มีรายการเปลี่ยนแปลงระหว่างสองรอบนี้</td></tr>
             ) : changed.map((s) => (
               <tr key={s.fgCode}>
-                <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
+                <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{s.fgCode}</td>
                 <td>
                   {s.productName || <span style={{ color: "var(--amber)" }}>— ไม่รู้จัก —</span>}
                   {metaOf(s.fgCode) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{metaOf(s.fgCode)}</div>}
@@ -111,7 +111,7 @@ export default function RoundComparison({ comparison, productByFg }) {
                   {fmt(s.targetTotal)}
                   {casesOf(s.fgCode, s.targetTotal) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesOf(s.fgCode, s.targetTotal)}</div>}
                 </td>
-                <td style={{ textAlign: "right", color: s.net > 0 ? "var(--green)" : s.net < 0 ? "var(--red)" : "var(--text-3)", fontWeight: 600 }}>
+                <td style={{ textAlign: "right", color: s.net > 0 ? "var(--green)" : s.net < 0 ? "var(--red)" : "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>
                   {s.net > 0 ? "+" : ""}{fmt(s.net)}
                 </td>
                 <td><ChangeChips diff={s.diff} /></td>

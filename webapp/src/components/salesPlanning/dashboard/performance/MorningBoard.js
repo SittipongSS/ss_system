@@ -107,9 +107,9 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
       <tr
         className="premium-row"
         style={isTotal
-          ? { background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }
+          ? { background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }
           : isTeam
-            ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: 600 }
+            ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: "var(--fw-semibold)" }
             : undefined}
       >
         <td className={cellClass("fz-c1")} style={{ whiteSpace: "nowrap" }}>
@@ -124,22 +124,22 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
             </button>
           ) : <strong>{label}</strong>}
           {!isTeam && !isTotal && row.team && (
-            <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: 400 }}>{row.team}</span>
+            <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>{row.team}</span>
           )}
         </td>
         <td className={cellClass("num mono")}>{money(s.target)}</td>
         {carry && <td className={cellClass("num mono")} style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : "—"}</td>}
-        {carry && <td className={cellClass("num mono")} style={{ fontWeight: 600 }}>{money(s.mustClose)}</td>}
+        {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
         <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
-        <td className={cellClass("num")} style={{ fontWeight: 600 }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}</td>
+        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}</td>
         <td className={cellClass("num mono")} style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
           {s.diff >= 0 ? "+" : ""}{money(s.diff)}
         </td>
         <td className={cellClass()} style={{ minWidth: 150 }}>
           <div className="flex items-center gap-2">
             <ProgressBar stat={s} />
-            <span className="mono" style={{ fontSize: "var(--fs-5)", fontWeight: 600, color: "var(--text-2)" }}>
+            <span className="mono" style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)" }}>
               {s.pct == null ? "–" : `${Math.round(s.pct)}%`}
             </span>
           </div>
@@ -153,7 +153,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
         <Sun size={17} aria-hidden="true" style={{ color: "var(--amber)" }} />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ตารางติดตามยอดขาย — {periodLabel(win)}</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ตารางติดตามยอดขาย — {periodLabel(win)}</h2>
         <div className="spacer" />
         <div className="segmented" role="group" aria-label="ชนิดงวด">
           {KINDS.map((k) => (

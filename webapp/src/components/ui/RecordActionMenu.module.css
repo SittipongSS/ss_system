@@ -3,18 +3,18 @@
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 /* ลิงก์ "จัดการ" ตั้งใจไม่ทำเป็นปุ่ม — มันคือทางไปหน้ารายละเอียด ไม่ใช่ action
    ที่เปลี่ยนข้อมูล ถ้าทำเป็นปุ่มจะแย่งสายตากับปุ่มก้าวถัดไปที่อยู่ข้างกัน */
 .manage {
   flex: none;
-  padding: 2px var(--space-1);
+  padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius);
   color: var(--accent-ink);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
 }
 

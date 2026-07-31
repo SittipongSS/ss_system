@@ -98,7 +98,7 @@
   color: var(--text-2);
   background: var(--panel-2);
   font-size: var(--fs-table-head);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: .025em;
   white-space: nowrap;
 }
@@ -135,7 +135,7 @@
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-tabular);
 }
 
 .scroll[data-family] :global(.num) {
@@ -145,7 +145,7 @@
 .scroll[data-family="editable"] :global(td),
 .scroll[data-family="matrix"] :global(td) {
   height: 48px;
-  padding-block: 6px;
+  padding-block: var(--space-1-5);
 }
 
 .scroll[data-family="matrix"] :global(th:first-child),
@@ -164,12 +164,12 @@
 }
 
 .footer {
-  padding: 10px 14px 14px;
+  padding: var(--space-2-5) var(--space-3-5) var(--space-3-5);
   border-top: 1px solid var(--border);
 }
 
 .empty {
-  padding: var(--space-7) 18px;
+  padding: var(--space-7) var(--space-4-5);
   color: var(--text-3);
   text-align: center;
 }

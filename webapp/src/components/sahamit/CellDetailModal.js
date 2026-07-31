@@ -74,17 +74,17 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 <div style={{ display: "flex", gap: 32 }}>
                   <div>
                     <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>Forecast (FC)</div>
-                    <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                    <div style={{ fontSize: "var(--fs-13)", fontWeight: "var(--fw-bold)", fontVariantNumeric: "tabular-nums" }}>
                       {nf(fcQty)}
                       {cell.originalFc != null && cell.originalFc !== fcQty && (
-                        <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: "var(--fs-7)", marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
+                        <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-7)", marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
                       )}
                     </div>
                     {casesText(fcQty, ppc) && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{casesText(fcQty, ppc)}</div>}
                   </div>
                   <div>
                     <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>Purchase Order (PO)</div>
-                    <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{nf(poQty)}</div>
+                    <div style={{ fontSize: "var(--fs-13)", fontWeight: "var(--fw-bold)", color, fontVariantNumeric: "tabular-nums" }}>{nf(poQty)}</div>
                     {casesText(poQty, ppc) && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{casesText(poQty, ppc)}</div>}
                   </div>
                 </div>
@@ -103,7 +103,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
           {tab === "docs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
               <div>
-                <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Forecast (ตามรอบ)</h3>
+                <h3 style={{ fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>Forecast (ตามรอบ)</h3>
                 {detail.fcs.length === 0 ? (
                   <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>— ไม่มี FC เดือนนี้ —</div>
                 ) : (
@@ -120,7 +120,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 )}
               </div>
               <div>
-                <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Purchase Orders (ส่งเดือนนี้)</h3>
+                <h3 style={{ fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>Purchase Orders (ส่งเดือนนี้)</h3>
                 {detail.poLines.length === 0 ? (
                   <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>— ไม่มี PO เดือนนี้ —</div>
                 ) : (

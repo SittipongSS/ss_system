@@ -16,7 +16,7 @@ function cellStyle(diff, hasTarget, isClosed) {
   const mag = Math.min(28, 8 + Math.round(Math.abs(diff) / 50000));
   return {
     color: tone,
-    fontWeight: 600,
+    fontWeight: "var(--fw-semibold)",
     background: `color-mix(in srgb, ${tone} ${mag}%, transparent)`,
     borderRadius: 6,
   };
@@ -28,7 +28,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
         <CalendarRange size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ภาพรวมทั้งปี {year} — ± เทียบเป้ารายเดือน</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ภาพรวมทั้งปี {year} — ± เทียบเป้ารายเดือน</h2>
       </div>
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         เขียว = เกินเป้าเดือนนั้น · แดง = ขาด · คลิกชื่อเพื่อเจาะรายคน
@@ -46,7 +46,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
               <tr key={p.id} className="premium-row">
                 <td className="fz-c1" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
                   <strong>{p.name}</strong>
-                  {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: 400 }}>{p.team}</span>}
+                  {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
                 </td>
                 {MONTH_LABELS.map((_, i) => {
                   const diff = Number(p.actual[i] || 0) - Number(p.target[i] || 0);

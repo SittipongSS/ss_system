@@ -130,7 +130,7 @@ export default function ShipmentPrepPage() {
           )}
         >
           <div className="glass-panel" style={{ padding: "28px" }}>
-            <h2 style={{ margin: 0, fontSize: "var(--fs-11)", fontWeight: 700 }}>
+            <h2 style={{ margin: 0, fontSize: "var(--fs-11)", fontWeight: "var(--fw-bold)" }}>
               {prep ? `${prep.prepNumber} พร้อมสำหรับคลัง` : "ยังไม่มีเอกสารเตรียมส่งของ"}
             </h2>
             <p style={{ margin: "6px 0 0", color: "var(--text-2)", fontSize: "var(--fs-7)" }}>

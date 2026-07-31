@@ -9,6 +9,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
+import Textarea from "@/components/ui/Textarea";
 
 export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 
@@ -125,14 +126,14 @@ export default function StepFormFields({
         />
       </div>
 
-      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text)", fontWeight: "var(--fw-medium)" }}>
         <input type="checkbox" checked={!!form.isMilestone} onChange={(e) => setForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
-        ตั้งเป็น Milestone <span style={{ fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
+        ตั้งเป็น Milestone <span style={{ fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: "var(--fw-semibold)" }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
       </label>
 
       <div className="form-group">
         <label>หมายเหตุ</label>
-        <textarea value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
+        <Textarea value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
         <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--fs-7)", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
           <input type="checkbox" checked={!!form.showNoteInPrint} onChange={(e) => setForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
           แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร

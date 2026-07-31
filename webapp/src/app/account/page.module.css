@@ -14,14 +14,14 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: 18px;
+  margin-bottom: var(--space-4-5);
 }
 
 .panelHeader h2 {
   margin: 0;
   color: var(--text);
   font-size: var(--fs-10);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .panelHeader p {
@@ -33,7 +33,7 @@
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: var(--space-3-5);
 }
 
 .fullWidth {
@@ -78,7 +78,7 @@
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-10);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .identityCopy strong,
@@ -96,7 +96,7 @@
 }
 
 .identityCopy span {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   overflow: hidden;
   color: var(--text-3);
   font-size: var(--fs-4);
@@ -113,7 +113,7 @@
   display: grid;
   grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1fr);
   gap: var(--space-3);
-  padding: 10px 0;
+  padding: var(--space-2-5) 0;
   border-top: 1px solid var(--border);
 }
 
@@ -126,7 +126,7 @@
   margin: 0;
   color: var(--text);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   text-align: right;
 }
 
@@ -140,7 +140,7 @@
 .securityCopy {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
 }
 
@@ -166,7 +166,7 @@
 }
 
 .securityCopy span {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-4);
 }
@@ -209,7 +209,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 560px) {
   .panel {
     padding: var(--space-4);
   }

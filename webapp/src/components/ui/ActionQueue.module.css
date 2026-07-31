@@ -9,7 +9,7 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3) 14px;
+  padding: var(--space-3) var(--space-3-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
@@ -55,14 +55,14 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .copy strong {
   overflow: hidden;
   color: var(--text);
   font-size: var(--fs-8);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -77,13 +77,13 @@
 
 .badge {
   flex: none;
-  padding: 2px 9px;
+  padding: var(--space-0-5) 9px;
   border: 1px solid color-mix(in srgb, var(--queue-tone) 34%, transparent);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--queue-tone) 12%, transparent);
   color: var(--queue-tone);
   font-size: var(--fs-4);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   white-space: nowrap;
 }
 
@@ -94,7 +94,7 @@
   flex: none;
   color: var(--accent-ink);
   font-size: var(--fs-7);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 @media (max-width: 640px) {

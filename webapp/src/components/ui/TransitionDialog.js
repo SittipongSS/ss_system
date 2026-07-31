@@ -20,6 +20,7 @@ import DateTimeInput from "@/components/ui/DateTimeInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { validateTransitionValues } from "@/lib/recordLifecycle";
 import styles from "./TransitionDialog.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 function TransitionField({ field, value, onChange, disabled }) {
   const common = { disabled, "aria-label": field.label || field.name };
@@ -163,8 +164,7 @@ export default function TransitionDialog({
         {reason !== "none" ? (
           <label className="form-group">
             <span>{reasonPolicy.label}{reasonRequired ? " *" : ""}</span>
-            <textarea
-              className="textarea-premium"
+            <Textarea variant="data"
               rows={4}
               required={reasonRequired}
               minLength={reasonPolicy.minLength}

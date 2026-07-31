@@ -91,7 +91,7 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
         >
           <div style={{ minWidth: 0 }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 id={titleId} style={{ fontSize: "var(--fs-10)", fontWeight: 700 }}>{title}</h3>
+              <h3 id={titleId} style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>{title}</h3>
               {badge}
             </div>
             {subtitle && <p style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", marginTop: 3 }}>{subtitle}</p>}

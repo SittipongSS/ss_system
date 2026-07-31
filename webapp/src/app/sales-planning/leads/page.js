@@ -34,6 +34,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
+import Textarea from "@/components/ui/Textarea";
 
 const ACTION_COLORS = {
   screen: 'var(--blue)',
@@ -418,7 +419,7 @@ export default function LeadsPage() {
 
         {canSeeLeadKpi(role) && (
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: "var(--fw-medium)", color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
             </div>
           )}
           <SaMetricStrip aria-busy={loading}>
@@ -606,7 +607,7 @@ export default function LeadsPage() {
         <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"} style={{ padding: 18 }}>
           
           <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
+            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: "var(--fw-semibold)" }}>ช่องทางที่รับลีด</h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: "var(--fs-7)" }}>
               {/* คอลัมน์ต่อกลุ่ม derive จาก enum กลาง — เพิ่ม channel ใหม่ที่ lib/sales/leads.js ที่เดียว */}
               {Object.entries(CHANNEL_GROUP_LABELS).map(([group, groupLabel]) => (
@@ -670,7 +671,7 @@ export default function LeadsPage() {
           
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
-            <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
+            <Textarea rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
           
           <div className="form-action-bar">
@@ -764,7 +765,7 @@ export default function LeadsPage() {
             {actionModal.action === "contact" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 หมายเหตุการติดต่อ *
-                <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder="เช่น โทรคุยแล้ว ลูกค้าขอใบเสนอราคา / ติดต่อไม่ได้ นัดโทรใหม่พรุ่งนี้" />
+                <Textarea rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder="เช่น โทรคุยแล้ว ลูกค้าขอใบเสนอราคา / ติดต่อไม่ได้ นัดโทรใหม่พรุ่งนี้" />
               </label>
             )}
             {actionModal.action === "meeting" && (
@@ -778,7 +779,7 @@ export default function LeadsPage() {
             {["disqualify", "bounce"].includes(actionModal.action) && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
                 เหตุผล *
-                <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
+                <Textarea rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
               </label>
             )}
             <div className="form-action-bar">

@@ -1,14 +1,14 @@
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-4-5);
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .note {
@@ -21,7 +21,7 @@
 .caption {
   min-width: 108px;
   font-size: var(--fs-5);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--text-2);
 }
 
@@ -29,14 +29,14 @@
 .swatchGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .swatch {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-2-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
@@ -94,7 +94,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: var(--fs-5);
   color: var(--text-2);
 }
@@ -114,13 +114,13 @@
 .chartBox {
   height: 280px;
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2-5);
 }
 
 /* ── กล่องเลื่อนสำหรับโชว์แถบปุ่มท้ายฟอร์ม ─────────────────────────────── */
 .scrollDemo {
   max-height: 220px;
-  padding: 14px;
+  padding: var(--space-3-5);
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -159,26 +159,26 @@
 .navSystem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
+  gap: var(--space-2-5);
+  padding: 0 var(--space-3-5);
   min-height: 46px;
   background: var(--navy);
 }
 
 /* ตัวหนังสือบนพื้นนาวีใช้ --navy-fg ไม่ใช่ #fff — audit ห้ามสีดิบในไฟล์ module
    (globals.css เขียน #fff ได้เพราะเป็นที่ประกาศโทเคน) */
-.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: 800; letter-spacing: .08em; }
+.navBrand { color: var(--navy-fg); font-size: var(--fs-7); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 
 .navSysBtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: var(--space-1-5);
+  padding: 5px var(--space-2-5);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--navy-fg) 14%, transparent);
   color: var(--navy-fg);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .navSpacer { flex: 1; }
@@ -197,7 +197,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
   min-height: 42px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
@@ -207,12 +207,12 @@
 .navItem {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: 7px 11px;
   border-radius: var(--radius);
   color: var(--text-2);
   font-size: var(--fs-6);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
 }
 

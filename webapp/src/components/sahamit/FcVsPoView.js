@@ -42,7 +42,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
   return (
     <div className="glass-panel" style={{ padding: 20 }}>
       <div style={{ marginBottom: 8 }}>
-        <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>FC ซ้อน PO รายเดือน ({unitLbl})</h3>
+        <h3 style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>FC ซ้อน PO รายเดือน ({unitLbl})</h3>
         <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 2 }}>
           แท่ง = PO ที่มาแล้ว (เข้ม) + FC ที่ยังรอ PO (เทา) รวมกัน = FC ที่ commit ไว้ (peak) · แดง = PO เกิน FC · เส้น = FC แต่ละรอบมองเดือนนั้นไว้เท่าไร
         </div>

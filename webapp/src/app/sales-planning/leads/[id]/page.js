@@ -14,6 +14,7 @@ import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
 import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", meeting: "นัดหมาย", qualify: "สร้างดีล", bounce: "ส่งกลับคิวคัดกรอง", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
 const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", details: "" };
@@ -108,7 +109,7 @@ export default function LeadDetailPage() {
             <div className={styles.field}><label>บริการที่สนใจ</label><Select value={form.serviceInterest} onChange={change("serviceInterest")}>{SERVICE_INTERESTS.map((v) => <option key={v} value={v}>{SERVICE_INTEREST_LABELS[v]}</option>)}</Select></div>
             <div className={styles.field}><label>งบประมาณ</label><MoneyInput value={form.budget} onChange={change("budget")} /></div>
             <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียดบริการ</label><input value={form.serviceDetail || ""} onChange={change("serviceDetail")} /></div>
-            <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียดเพิ่มเติม</label><textarea value={form.details || ""} onChange={change("details")} /></div>
+            <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียดเพิ่มเติม</label><Textarea value={form.details || ""} onChange={change("details")} /></div>
           </div> : <div className={styles.grid}>
             {info("ชื่อผู้ติดต่อ", <><Contact size={14} /> {lead.contactName}</>)}
             {info("บริษัท", <><Building2 size={14} /> {lead.company || "-"}</>)}

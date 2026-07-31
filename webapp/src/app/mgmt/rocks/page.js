@@ -9,6 +9,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import { toBuddhistYear } from "@/lib/mgmt/constants";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
+import Textarea from "@/components/ui/Textarea";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -50,7 +51,7 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
 
       <div>
         <label style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", display: "block", marginBottom: 4 }}>สิ่งที่ดีขึ้น</label>
-        <textarea className="premium-input w-full" rows={2} value={improved} onChange={(e) => setImproved(e.target.value)} disabled={!canEdit} placeholder="สรุปสิ่งที่พัฒนาขึ้น..." />
+        <Textarea className="w-full" rows={2} value={improved} onChange={(e) => setImproved(e.target.value)} disabled={!canEdit} placeholder="สรุปสิ่งที่พัฒนาขึ้น..." />
       </div>
 
       <div>

@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import { MEETING_FOLLOWUPS, MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
+import Textarea from "@/components/ui/Textarea";
 
 export default function MeetingFormModal({ open, onClose, onSaved, meeting, departments = [], users = [] }) {
   const editing = !!meeting;
@@ -96,7 +97,7 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
         </div>
         <div className="form-group" style={{ margin: 0 }}>
           <label>สรุปการประชุม</label>
-          <textarea className="premium-input w-full" rows={4} value={form.summary || ""} onChange={(e) => set("summary", e.target.value)} />
+          <Textarea className="w-full" rows={4} value={form.summary || ""} onChange={(e) => set("summary", e.target.value)} />
         </div>
       </div>
       <div className="form-action-bar">

@@ -115,7 +115,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   return (
     <Modal open={open} onClose={close} title={`ยืนยัน Won · ${quote.quoteNumber || "ใบเสนอราคา"}`} size="md">
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ margin: 0, color: "var(--text-2)", lineHeight: 1.6 }}>
+        <p style={{ margin: 0, color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
           ยอดก่อน VAT <strong>{fmtMoney(wonAmount)}</strong> จะถูกบันทึกเป็นยอด Won (นับ AT ตามเดือนของวันที่เอกสาร)
           และใบเสนอราคาฉบับอื่นในดีลนี้จะถูก<strong>ปิดและล็อก</strong> แก้ไข/ลบไม่ได้
         </p>
@@ -145,7 +145,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
 
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: "var(--fs-7)", fontWeight: 600 }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
+            <span style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
             <div className="spacer" />
             <button type="button" className="btn ghost sm" onClick={() => fileInputRef.current?.click()} disabled={busy || files.length >= MAX_WON_ATTACHMENTS}>
               <Paperclip size={14} aria-hidden="true" /> แนบไฟล์

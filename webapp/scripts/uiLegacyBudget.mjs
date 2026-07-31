@@ -89,9 +89,11 @@ export const PATTERNS = {
   /* `(?<![\w-])` กันคลาสที่ลงท้ายด้วย -btn ของ component อื่น (`tab-btn`, `action-btn`)
      ไม่ให้ถูกนับเป็นคลาสปุ่มดิบ — ของพวกนั้นมี selector ของตัวเองไม่ใช่ตระกูล .btn */
   rawButtonClass: /(["'`])[^"'`\n]*(?<![\w-])btn\b[^"'`\n]*\1/g,
-  /* `(?<![\w-])` กัน `.textarea-premium` และคลาสอื่นที่ลงท้ายด้วยชื่อเดียวกัน
-     ไม่ให้ถูกนับ — นับเฉพาะ premium-input / premium-select ที่มี primitive รองรับแล้ว */
-  rawInputClass: /(["'`])[^"'`\n]*(?<![\w-])premium-(?:input|select)\b[^"'`\n]*\1/g,
+  /* `(?<![\w-])` กันคลาสอื่นที่ลงท้ายด้วยชื่อเดียวกันไม่ให้ถูกนับ
+     2026-07-30: เพิ่ม `textarea-premium` เข้ามา — เดิมยกเว้นไว้เพราะ "ยังไม่มี
+     primitive ให้ย้ายไป" (การนับสิ่งที่ไม่มีปลายทางจะได้เลขที่ลดไม่ได้) ตอนนี้มี
+     `components/ui/Textarea.js` (`variant="data"`) รับแล้ว จึงนับได้เต็มตัว */
+  rawInputClass: /(["'`])[^"'`\n]*(?<![\w-])(?:premium-(?:input|select)|textarea-premium)\b[^"'`\n]*\1/g,
 };
 
 /* เอกสารพิมพ์มี CSS ของตัวเองโดยเจตนา (เครื่องพิมพ์ไม่เห็น globals.css)

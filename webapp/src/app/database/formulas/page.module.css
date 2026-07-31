@@ -6,12 +6,12 @@
 .banner { margin-bottom: var(--space-3); }
 
 .intro {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-2-5);
   color: var(--text-3);
   font-size: var(--fs-6);
 }
 
-.name { font-weight: 600; }
+.name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
 
 /* ⚠️ ใช้ flex + justify-content แทน text-align: right บน td — กฎ td ของตารางกลาง

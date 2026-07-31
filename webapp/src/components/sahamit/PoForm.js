@@ -14,6 +14,7 @@ import { DestinationToggle } from "@/components/sahamit/destinations";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
+import Textarea from "@/components/ui/Textarea";
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -107,7 +108,7 @@ export default function PoForm({
     <>
       {/* หัวเอกสาร PO */}
       <div className="glass-panel" style={{ padding: 18 }}>
-        <div style={{ fontWeight: 600, marginBottom: 12 }}>ข้อมูลหัว PO</div>
+        <div style={{ fontWeight: "var(--fw-semibold)", marginBottom: 12 }}>ข้อมูลหัว PO</div>
         <div className="form-grid cols-3">
           <div className="form-group">
             <label>เลขที่ PO <span style={{ color: "var(--red)" }}>*</span></label>
@@ -143,7 +144,7 @@ export default function PoForm({
               <ReadableText text={header.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} />
             </div>
           ) : (
-            <textarea className="premium-input" rows={2} value={header.note}
+            <Textarea rows={2} value={header.note}
               onChange={(e) => onHeader({ note: e.target.value })} placeholder="(ไม่บังคับ)" />
           )}
         </div>
@@ -231,7 +232,7 @@ export default function PoForm({
                 const lock = lockOf(r);
                 return (
                   <tr key={r.id || `${r.fgCode}-${ri}`}>
-                    <td className="font-mono" style={{ fontWeight: 600 }}>
+                    <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
                       {r.fgCode}{!r.known && <span title="ไม่รู้จัก" style={{ color: "var(--amber)", marginLeft: 4 }}>⚠</span>}
                     </td>
                     <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
@@ -255,7 +256,7 @@ export default function PoForm({
                     <td style={{ textAlign: "right", color: masterPrice(r) ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>
                       {masterPrice(r) ? nfBaht(masterPrice(r)) : "—"}
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : "—"}</td>
+                    <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : "—"}</td>
                     <td style={{ textAlign: "center" }}>
                       {lock
                         ? <Lock size={13} style={{ color: "var(--text-3)" }} aria-label={`ล็อก: ${lock}`} />
@@ -267,9 +268,9 @@ export default function PoForm({
             </tbody>
             {subtotal > 0 && (
               <tfoot>
-                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td><td style={{ textAlign: "right", fontWeight: 600 }}>{nfBaht(subtotal)}</td><td /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td><td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>{nfBaht(subtotal)}</td><td /></tr>
                 <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>VAT 7%</td><td style={{ textAlign: "right" }}>{nfBaht(vat)}</td><td /></tr>
-                <tr><td colSpan={4} style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td><td style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(grand)}</td><td style={{ borderTop: "2px solid var(--border)" }} /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td><td style={{ textAlign: "right", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{nfBaht(grand)}</td><td style={{ borderTop: "2px solid var(--border)" }} /></tr>
               </tfoot>
             )}
           </table>

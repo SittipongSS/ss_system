@@ -1,6 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { confirmAction } from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
@@ -25,17 +25,17 @@ import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
-import ConfirmModal from "@/components/tax/ConfirmModal";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import Textarea from "@/components/ui/Textarea";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / — (แก้ที่เมนูวัสดุเท่านั้น)
 function matCell(dueDate, arrivedAt) {
-  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
   return <span style={{ color: "var(--text-3)" }}>—</span>;
 }
@@ -96,7 +96,7 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
   return (
     <>
       <tr>
-        <td className="font-mono" style={{ fontWeight: 600 }}>
+        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
           {line.fgCode}
           {line.splitFromPoLineId && <span className="ui-badge" style={{ marginLeft: 6, color: "var(--blue)", borderColor: "var(--blue)" }}>ยอดแยก</span>}
         </td>
@@ -489,7 +489,7 @@ export default function PoDetailPage() {
       ) : error ? null : !po ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ไม่พบ PO นี้</div>
+          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่พบ PO นี้</div>
         </div>
       ) : (
         <DetailPageLayout
@@ -570,13 +570,13 @@ export default function PoDetailPage() {
               title={headerExpanded ? "ย่อหัว PO" : "ขยายหัว PO"}
             >
               {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
-              <span style={{ fontSize: "var(--fs-8)", fontWeight: 600, flexShrink: 0 }}>ข้อมูลหัว PO</span>
+              <span style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", flexShrink: 0 }}>ข้อมูลหัว PO</span>
               {!headerExpanded && (
                 <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: 8 }}>
                   {[po.poNumber, po.docDate && `เอกสาร ${fmtDate(po.docDate)}`, po.receivedDate && `รับ ${fmtDate(po.receivedDate)}`, po.dueDate && `กำหนดส่ง ${fmtDate(po.dueDate)}`, destinationLabel(po.destination), po.quoteRef].filter(Boolean).join("   ·   ")}
                 </span>
               )}
-              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
+              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: "auto", fontWeight: "var(--fw-medium)" }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
             </button>
             {headerExpanded && (
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)" }}>
@@ -610,7 +610,7 @@ export default function PoDetailPage() {
               <div className="form-group" style={{ flex: 1 }}>
                 <label>หมายเหตุ</label>
                 {canEdit
-                  ? <textarea className="premium-input" rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
+                  ? <Textarea rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
                   : <div className="readable-field"><ReadableText text={h.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div>}
               </div>
             </div>
@@ -631,7 +631,7 @@ export default function PoDetailPage() {
                 <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", fontSize: "var(--fs-7)" }}>
                   🔗 PO นี้ถูกแบ่งส่ง — ยอดเหลือไปที่:{" "}
                   {balancePos.map((bp) => (
-                    <Link key={bp.id} href={`/sahamit/po/${bp.id}`} style={{ color: "var(--accent)", marginRight: 10, fontWeight: 600 }}>{bp.poNumber}</Link>
+                    <Link key={bp.id} href={`/sahamit/po/${bp.id}`} style={{ color: "var(--accent)", marginRight: 10, fontWeight: "var(--fw-semibold)" }}>{bp.poNumber}</Link>
                   ))}
                 </div>
               )}
@@ -639,9 +639,9 @@ export default function PoDetailPage() {
                 canEdit ? <button className="btn" style={{ alignSelf: "flex-start" }} onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button> : null
               ) : (
                 <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ fontWeight: 600 }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>
+                  <div style={{ fontWeight: "var(--fw-semibold)" }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>
                   <div className="form-group" style={{ maxWidth: 300 }}>
-                    <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(ไม่บังคับ — เว้นว่างได้ แก้ทีหลัง)</span></label>
+                    <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>(ไม่บังคับ — เว้นว่างได้ แก้ทีหลัง)</span></label>
                     <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เว้นว่างไว้ก่อนได้ (ระบบตั้งเลขชั่วคราวให้)" />
                   </div>
                   <TableScroll surface="embedded">
@@ -711,7 +711,7 @@ export default function PoDetailPage() {
         </DetailCard>
         </DetailPageLayout>
       )}
-      <ConfirmModal
+      <ConfirmDialog
         open={deleteOpen}
         onClose={() => !deleteBusy && setDeleteOpen(false)}
         onConfirm={deletePo}
@@ -720,7 +720,7 @@ export default function PoDetailPage() {
         confirmLabel={deleteBusy ? "กำลังลบ..." : "ลบ PO"}
         danger
       />
-      <ConfirmModal
+      <ConfirmDialog
         open={projectConfirmOpen}
         onClose={() => !projectBusy && setProjectConfirmOpen(false)}
         onConfirm={createProject}
@@ -738,7 +738,7 @@ export default function PoDetailPage() {
             <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มีโครงการสหมิตรให้เลือก — ใช้ &quot;สร้างโครงการใหม่&quot; แทน</div>
           ) : (
             <>
-              <label style={{ fontSize: "var(--fs-7)", fontWeight: 600 }}>โครงการ</label>
+              <label style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>โครงการ</label>
               <Select value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)}>
                 <option value="">— เลือกโครงการ —</option>
                 {linkProjects.map((p) => (
@@ -827,7 +827,7 @@ export default function PoDetailPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {settleData.quotations.map((q) => (
                         <a key={q.id} href={`/sa/quotations/${q.id}`} style={{ color: "var(--accent)", fontSize: "var(--fs-5)" }}>
-                          <span className="font-mono" style={{ fontWeight: 600 }}>{q.quoteNumber}</span>
+                          <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{q.quoteNumber}</span>
                           {" · "}{fmtMoneyCompact(q.totalAmount)}
                           {" · "}{q.approvalStatus === "approved" ? "เจ้าของดีลเซ็นแล้ว" : "รอเจ้าของดีลเซ็น"}
                           {" →"}
@@ -864,7 +864,7 @@ export default function PoDetailPage() {
                       return (
                         <tr key={ln.poLineId}>
                           <td>
-                            <span className="font-mono" style={{ fontWeight: 600 }}>{ln.fgCode}</span>
+                            <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{ln.fgCode}</span>
                             <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{ln.productName || "—"}</div>
                           </td>
                           <td style={{ textAlign: "right" }}>

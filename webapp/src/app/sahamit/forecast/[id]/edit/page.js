@@ -38,7 +38,7 @@ export default function ForecastEditPage() {
     return shell(
       <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
         <LineChart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-        <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์แก้รอบ FC</div>
+        <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์แก้รอบ FC</div>
         <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
       </div>,
     );

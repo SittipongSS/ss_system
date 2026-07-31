@@ -373,7 +373,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
             <tbody>
               {rows.map((r, ri) => (
                 <tr key={`${r.fgCode}-${ri}`}>
-                  <td className="font-mono" style={{ fontWeight: 600 }}>
+                  <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
                     {r.fgCode}{!r.known && <span title="ไม่รู้จัก" style={{ color: "var(--amber)", marginLeft: 4 }}>⚠</span>}
                   </td>
                   <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
