@@ -8,7 +8,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   align-items: start;
-  gap: 18px;
+  gap: var(--space-4-5);
 }
 .main {
   min-width: 0;
@@ -22,7 +22,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3-5);
 }
 .card {
   min-width: 0;
@@ -37,7 +37,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) 18px;
+  padding: var(--space-4) var(--space-4-5);
   border-bottom: 1px solid var(--border);
 }
 .heading {
@@ -52,7 +52,7 @@
 }
 .heading small {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   color: var(--accent-ink);
   font-size: var(--fs-1);
   font-weight: var(--fw-bold);
@@ -77,7 +77,7 @@
   flex-wrap: wrap;
 }
 .cardBody {
-  padding: var(--space-4) 18px;
+  padding: var(--space-4) var(--space-4-5);
 }
 .contextCard {
   display: block;
@@ -159,7 +159,7 @@
 }
 .contextFacts dd {
   overflow: hidden;
-  margin: 2px 0 0;
+  margin: var(--space-0-5) 0 0;
   color: var(--text-2);
   font-size: var(--fs-4);
   font-weight: var(--fw-bold);

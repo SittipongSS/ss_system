@@ -2,9 +2,9 @@
    ซึ่งเป็นการแสดงผลเธรดที่อ่านง่ายที่สุดในระบบ; อีก 4 ที่ใช้ borderLeft ทึบ
    ซึ่งดูเป็น "รายการ" มากกว่า "ไทม์ไลน์" */
 /* แถบสวิตช์ซ่อนเหตุการณ์ระบบ — ชิดขวาแนวเดียวกับแถบปุ่มของกล่องพิมพ์ */
-.toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2-5); }
 
-.timeline { display: flex; flex-direction: column; gap: 14px; }
+.timeline { display: flex; flex-direction: column; gap: var(--space-3-5); }
 
 .event { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: var(--space-3); }
 
@@ -60,7 +60,7 @@
 /* ตารางภาพย่อของไฟล์แนบในข้อความ — ขนาดเดียวกับไฟล์แนบของ entity (AttachmentsPanel) */
 .photos {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: var(--space-2); margin-top: 2px;
+  gap: var(--space-2); margin-top: var(--space-0-5);
 }
 .photoBtn {
   display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; cursor: pointer;
@@ -69,16 +69,16 @@
 }
 .photoBtn img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.files { display: flex; flex-direction: column; gap: var(--space-1); margin-top: 2px; }
+.files { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-0-5); }
 .fileLink {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: var(--space-1-5);
   font-size: var(--fs-5); color: var(--text-2); min-width: 0;
 }
 .fileLink:hover { color: var(--accent-ink); }
 
 .rowActions { margin-left: auto; display: inline-flex; gap: var(--space-1); }
 
-.composer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: 14px; }
+.composer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3-5); }
 /* แถวเลือกชนิด/กำหนดวัน — มีเฉพาะ entity ที่ประกาศชนิดให้เลือกมากกว่าหนึ่ง */
 .kindRow { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .kindSelect { width: 150px; }

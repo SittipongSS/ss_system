@@ -1,9 +1,9 @@
 .sectionList { display: flex; flex-direction: column; gap: 22px; }
-.sectionHeader { margin-bottom: 10px; }
+.sectionHeader { margin-bottom: var(--space-2-5); }
 .sectionHeader h2 { font-size: var(--fs-9); font-weight: var(--fw-bold); color: var(--text); }
-.sectionHeader p { margin-top: 2px; font-size: var(--fs-6); color: var(--text-3); }
+.sectionHeader p { margin-top: var(--space-0-5); font-size: var(--fs-6); color: var(--text-3); }
 .cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-3); }
-.navCard { min-height: 112px; display: flex; align-items: center; gap: 14px; padding: 17px 18px; color: inherit; text-decoration: none; }
+.navCard { min-height: 112px; display: flex; align-items: center; gap: var(--space-3-5); padding: 17px var(--space-4-5); color: inherit; text-decoration: none; }
 .navCard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .icon { width: 44px; height: 44px; border-radius: var(--radius-lg); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--accent-ink); background: var(--accent-soft); }
 .copy { min-width: 0; flex: 1; }
@@ -12,7 +12,7 @@
 .chevron { flex-shrink: 0; color: var(--text-3); }
 
 @media (max-width: 560px) {
-  .sectionList { gap: 18px; }
+  .sectionList { gap: var(--space-4-5); }
   .cardGrid { grid-template-columns: 1fr; }
   .navCard { min-height: 104px; padding: 15px; }
 }

@@ -2,12 +2,12 @@
 .paymentTitle { display: flex; align-items: center; gap: var(--space-2); color: var(--text-2); }
 .paymentTitle h2 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-bold); }
 
-.installmentToggle { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-2); color: var(--text-2); cursor: pointer; text-align: left; }
+.installmentToggle { display: flex; align-items: center; gap: 9px; padding: var(--space-1-5) var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-2); color: var(--text-2); cursor: pointer; text-align: left; }
 .installmentToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .installmentToggle:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .installmentToggle > span:last-child { display: flex; flex-direction: column; line-height: var(--lh-tight); }
 .installmentToggle strong { font-size: var(--fs-4); }
-.installmentToggle small { margin-top: 2px; color: var(--text-3); font-size: var(--fs-1); }
+.installmentToggle small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-1); }
 
 .toggleTrack { position: relative; width: 34px; height: 20px; flex: 0 0 auto; border-radius: var(--radius-full); background: var(--border-strong); transition: background var(--motion-standard) ease; }
 .toggleTrack > span { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); box-shadow: var(--shadow-sm); transition: transform var(--motion-standard) ease; }
@@ -17,14 +17,14 @@
 
 .paymentTermsGrid { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(280px, 1.3fr); gap: var(--space-4); }
 .paymentTermsGrid label, .paymentField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
-.paymentTermsGrid label > *, .paymentField > * { margin-top: 6px; }
+.paymentTermsGrid label > *, .paymentField > * { margin-top: var(--space-1-5); }
 .paymentFieldLabel { margin-top: 0 !important; }
 .paymentTermsGrid input, .paymentTermsGrid textarea { width: 100%; }
 
 .installmentPanel { min-width: 0; }
 .installmentPanel input { width: 100%; }
 .rowNumber { color: var(--text-3); text-align: center; }
-.readonlyValue { display: inline-block; padding: var(--space-2) 10px; color: var(--text); }
+.readonlyValue { display: inline-block; padding: var(--space-2) var(--space-2-5); color: var(--text); }
 
 @media (max-width: 680px) {
   .paymentHeading { align-items: flex-start; }

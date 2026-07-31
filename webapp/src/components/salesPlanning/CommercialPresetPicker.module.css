@@ -1,11 +1,11 @@
-.picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.picker { display: flex; align-items: center; gap: var(--space-2-5); flex-wrap: wrap; }
 .field { display: flex; align-items: center; gap: var(--space-2); }
 .label { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-semibold); white-space: nowrap; }
 .field select { min-width: 220px; max-width: 320px; }
-.edited { padding: 2px var(--space-2); border: 1px solid color-mix(in srgb, var(--amber) 28%, transparent); border-radius: var(--radius-full); color: var(--amber); background: var(--amber-soft); font-size: var(--fs-2); font-weight: var(--fw-bold); white-space: nowrap; }
-.empty { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-3); }
+.edited { padding: var(--space-0-5) var(--space-2); border: 1px solid color-mix(in srgb, var(--amber) 28%, transparent); border-radius: var(--radius-full); color: var(--amber); background: var(--amber-soft); font-size: var(--fs-2); font-weight: var(--fw-bold); white-space: nowrap; }
+.empty { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); }
 .empty a { color: var(--blue); font-weight: var(--fw-bold); text-decoration: underline; text-underline-offset: 2px; }
-.loadError { display: inline-flex; align-items: center; gap: 6px; color: var(--red); font-size: var(--fs-3); }
+.loadError { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--red); font-size: var(--fs-3); }
 /* บริบทเปลี่ยนได้แค่ *สี* — ความสูงมาจาก variant ที่ผู้เรียกเลือกเอง (ปุ่มนี้ขอ
    `sm` มาแล้วใน JSX) เดิมเขียน `min-height: 32px` ทับ = สู้กับ variant ของตัวเอง */
 .loadError :global(.btn) { color: var(--red); }

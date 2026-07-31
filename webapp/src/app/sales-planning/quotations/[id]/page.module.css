@@ -2,7 +2,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   align-items: start;
-  gap: 18px;
+  gap: var(--space-4-5);
 }
 
 .documentColumn {
@@ -14,7 +14,7 @@
 
 .card {
   min-width: 0;
-  padding: 18px;
+  padding: var(--space-4-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
@@ -32,13 +32,13 @@
 
 .infoBlock small {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-2);
 }
 
 .customerCard {
-  padding: 18px var(--space-5);
+  padding: var(--space-4-5) var(--space-5);
 }
 
 .customerGrid {
@@ -50,7 +50,7 @@
 .infoBlock {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
   color: var(--text-2);
   font-size: var(--fs-6);
@@ -61,7 +61,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3-5);
   color: var(--text-2);
   flex-wrap: wrap;
 }
@@ -83,7 +83,7 @@
   grid-template-columns: repeat(3, minmax(190px, 280px));
   align-items: end;
   justify-content: start;
-  gap: 18px;
+  gap: var(--space-4-5);
 }
 
 .documentMeta label {
@@ -94,7 +94,7 @@
 }
 
 .documentMeta label > * {
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .documentDateInput {
@@ -115,7 +115,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-4-5);
   align-self: start;
 }
 
@@ -124,7 +124,7 @@
   align-items: center;
   justify-content: space-between;
   margin-top: var(--space-5);
-  padding-top: 18px;
+  padding-top: var(--space-4-5);
   border-top: 1px solid var(--border);
   color: var(--text-2);
   font-size: var(--fs-5);

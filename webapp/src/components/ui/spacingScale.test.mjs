@@ -13,9 +13,16 @@ import path from "node:path";
 const root = path.join(process.cwd(), "src");
 const GLOBALS = fs.readFileSync(path.join(root, "app", "globals.css"), "utf8");
 
+/* ⚠️ ต้องจับ **ทั้งขั้นเต็มและครึ่งขั้น** — regex เดิมเป็น `--space-\d+` จึงมองไม่เห็น
+   `--space-0-5` ที่มีขีดคั่น ผลคือเทสต์ "ไม่มีค่าที่ตรงขั้นหลงเหลือ" จะปล่อย 10px ดิบผ่าน
+   ทั้งที่มีโทเคนรองรับแล้ว (เจอตอนเพิ่มครึ่งขั้น 2026-07-30) */
 const STEPS = new Map(
-  [...GLOBALS.matchAll(/^\s*(--space-\d+):\s*(\d+)px;/gm)].map(([, n, v]) => [n, Number(v)]),
+  [...GLOBALS.matchAll(/^\s*(--space-\d+(?:-5)?):\s*(\d+)px;/gm)].map(([, n, v]) => [n, Number(v)]),
 );
+/* 🪤 อย่าใช้ `name.endsWith("-5")` แยก — `--space-5` (ขั้นเต็ม 20px) ก็ลงท้ายด้วย "-5"
+   เหมือนกัน ต้องเทียบทั้งรูปแบบ */
+const FULL = new Map([...STEPS].filter(([n]) => /^--space-\d+$/.test(n)));
+const HALF = new Map([...STEPS].filter(([n]) => /^--space-\d+-5$/.test(n)));
 
 function cssFiles() {
   const out = [];
@@ -29,14 +36,29 @@ function cssFiles() {
   return out;
 }
 
-test("ขั้นระยะห่างอยู่บนกริด 4px เรียงจากน้อยไปมาก", () => {
-  assert.ok(STEPS.size >= 7, `เจอขั้นแค่ ${STEPS.size}`);
-  const values = [...STEPS.values()];
-  for (const [name, value] of STEPS) {
-    assert.equal(value % 4, 0, `${name} = ${value}px หลุดกริด 4px — ขั้นต้องเป็นตัวคูณของ 4`);
+test("ขั้นเต็มอยู่บนกริด 4px และเรียงจากน้อยไปมาก", () => {
+  assert.ok(FULL.size >= 7, `เจอขั้นเต็มแค่ ${FULL.size}`);
+  const values = [...FULL.values()];
+  for (const [name, value] of FULL) {
+    assert.equal(value % 4, 0, `${name} = ${value}px หลุดกริด 4px — ขั้นเต็มต้องเป็นตัวคูณของ 4`);
   }
   for (let i = 1; i < values.length; i += 1) {
     assert.ok(values[i] > values[i - 1], "ขั้นต้องเรียงจากน้อยไปมาก");
+  }
+});
+
+/* ครึ่งขั้น (2026-07-30) — 482 จาก 723 จุดที่เคยเป็นเลขดิบคือ 2·6·10·14·18px ซึ่งเป็น
+   *จุดกึ่งกลางของกริด 4px เป๊ะ ๆ* = ระบบเดินจังหวะ 2px มาตั้งแต่ต้น จึงตั้งชื่อให้
+   แทนการดันเข้ากริด (รอบก่อนลองดันแล้วขยับจริง 113 จาก 126 element)
+   กฎ: ต้องอยู่กึ่งกลางระหว่างขั้นเต็มจริง ๆ ไม่ใช่ค่ามั่วที่มาแอบใช้ชื่อครึ่งขั้น */
+test("ครึ่งขั้นอยู่กึ่งกลางของกริด 4px พอดี", () => {
+  assert.ok(HALF.size > 0, "ไม่เจอครึ่งขั้นเลย");
+  for (const [name, value] of HALF) {
+    assert.equal(value % 4, 2,
+      `${name} = ${value}px ไม่ได้อยู่กึ่งกลางกริด 4px — ครึ่งขั้นต้องลงท้ายด้วย 2 หรือ 6`);
+    const n = Number(name.match(/--space-(\d+)-5/)[1]);
+    assert.equal(value, n * 4 + 2,
+      `${name} ควรเป็น ${n * 4 + 2}px ตามชื่อ (ขั้น ${n} = ${n * 4}px บวกครึ่งขั้น)`);
   }
 });
 

@@ -1,17 +1,17 @@
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 18px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: var(--space-4-5); }
 .main, .sidebar { display: flex; min-width: 0; flex-direction: column; gap: var(--space-4); }
 .sidebar { position: sticky; top: 18px; }
-.card { padding: 18px var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
+.card { padding: var(--space-4-5) var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: 15px; }
 .heading h2 { margin: 0; color: var(--text); font-size: var(--fs-10); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) 22px; }
 .field { min-width: 0; }
 .wide { grid-column: 1 / -1; }
-.field label, .label { display: block; margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
+.field label, .label { display: block; margin-bottom: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .field input, .field textarea, .field select { width: 100%; }
 .field textarea { min-height: 110px; resize: vertical; }
 .value { color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); overflow-wrap: anywhere; }
-.summaryRow { display: flex; justify-content: space-between; gap: var(--space-4); padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-5); }
+.summaryRow { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2-5) 0; border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-5); }
 .summaryRow strong { color: var(--text-2); text-align: right; }
 .links { display: flex; flex-direction: column; gap: 9px; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }

@@ -5,7 +5,7 @@
 .head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   flex-wrap: wrap;
   margin-bottom: var(--space-3);
 }
@@ -68,7 +68,7 @@
 /* ป้ายบอก "รอบ" ของแถว — โครงการเดียวมีดีลได้หลายรอบ (SCENT → NPD → RE-ORDER × N) */
 .round {
   margin-inline-start: 6px;
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   font-size: var(--fs-1);
@@ -79,7 +79,7 @@
 /* "ขออัปเดตแล้ว" — ลิงก์ไปคำร้อง material_eta ที่ค้างอยู่กับแถวนี้ */
 .asked {
   margin-inline-start: 6px;
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--amber) 10%, transparent);

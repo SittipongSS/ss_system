@@ -10,7 +10,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .lineDescriptionCell > input { width: 100%; }
@@ -26,7 +26,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .fgInfoMeta {
@@ -119,7 +119,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--space-3-5);
 }
 
 .totalControls {
@@ -135,8 +135,8 @@
 }
 
 .totalGrand {
-  margin-top: 2px;
-  padding-top: 10px;
+  margin-top: var(--space-0-5);
+  padding-top: var(--space-2-5);
   border-top: 2px solid var(--border);
   font-size: var(--fs-10);
 }
@@ -167,8 +167,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 10px var(--space-3);
+  gap: var(--space-3-5);
+  padding: var(--space-2-5) var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--fs-8);
 }
