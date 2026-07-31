@@ -93,7 +93,7 @@ export default function ServiceSchedulePage() {
           if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
           // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
           // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
-          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานของฉัน" ก็ว่างตลอดกาล
+          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "นัดของฉัน" ก็ว่างตลอดกาล
           setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
         } catch (e) {
           setToast({ kind: "error", msg: e.message });

@@ -1,8 +1,12 @@
 "use client";
-// ── หน้ามือถือของช่าง: งานของฉัน (S-3) ────────────────────────────────────
+// ── หน้ามือถือของช่าง: นัดของฉัน (S-3) ────────────────────────────────────
 //
 // ⭐ **จุดที่ข้อมูลจริงเข้าระบบ** — ถ้าหน้านี้ใช้ยาก ทั้งโมดูลตาย · ตารางสวยแค่ไหน
 // ก็ไม่มีค่าถ้าไม่มีใครปิดงาน แล้วทุกแถวค้างเป็น "นัดไว้" ตลอดกาล
+//
+// ⚠️ ชื่อหน้าเป็น "นัดของฉัน" ไม่ใช่ "งานของฉัน" — ชื่อหลังเป็นของระบบบริหารงานขาย
+// (/sa/tasks = งานติดตามส่วนบุคคล) คนละเรื่องกันคนละระบบ · ชื่อซ้ำข้ามระบบทำให้คน
+// จำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, MapPin, Phone, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -89,7 +93,7 @@ export default function MyVisitsPage() {
   return (
     <Workspace
       icon={<Wrench size={20} aria-hidden="true" />}
-      title="งานของฉัน"
+      title="นัดของฉัน"
       subtitle={subtitle}
       toolbar={(
         <div className={styles.toolbar}>
