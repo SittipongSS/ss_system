@@ -105,7 +105,7 @@
 .previewRail i { position: relative; z-index: 1; width: 25px; height: 25px; border-radius: var(--radius-full); display: grid; place-items: center; color: var(--accent-ink); background: var(--accent-soft); font-size: var(--fs-2); font-style: normal; font-weight: var(--fw-bold); }
 .previewNote { padding: 9px var(--space-2-5); border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-2); line-height: var(--lh-text); }
 
-@media (max-width: 960px) {
+@media (max-width: 1000px) {
   .templateTabs { grid-template-columns: 1fr; }
   .publishedPanel { grid-template-columns: 1fr; }
   .panelHeader { flex-direction: column; }

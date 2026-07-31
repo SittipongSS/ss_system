@@ -418,7 +418,7 @@
   text-align: center;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 560px) {
   .card {
     padding: var(--space-4);
   }

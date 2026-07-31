@@ -209,7 +209,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 560px) {
   .panel {
     padding: var(--space-4);
   }

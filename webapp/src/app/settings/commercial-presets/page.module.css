@@ -74,7 +74,7 @@
 .historySection button small { margin-top: var(--space-0-5); overflow: hidden; color: var(--text-3); font-size: var(--fs-2); text-overflow: ellipsis; white-space: nowrap; }
 .historySection .historyActive { background: var(--accent-soft); }
 
-@media (max-width: 780px) {
+@media (max-width: 768px) {
   .tableWrap { display: none; }
   .cards { display: block; }
   .panelHeader { padding: var(--space-3-5); }
