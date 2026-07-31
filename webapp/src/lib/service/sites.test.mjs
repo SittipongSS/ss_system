@@ -124,7 +124,7 @@ test('⭐ ช่างฝ่าย TS แก้ธุรกิจบริกา
 
 test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
   // 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
-  // dropdown ว่าง → ทุกนัด assigneeId = null → "งานของฉัน" ว่างตลอดกาล
+  // dropdown ว่าง → ทุกนัด assigneeId = null → "นัดของฉัน" ว่างตลอดกาล
   assert.equal(canBeServiceAssignee({ role: 'staff', department: 'TS' }), true);
   assert.equal(canBeServiceAssignee({ role: 'ae', team: 'SV' }), true);
   assert.equal(canBeServiceAssignee({ role: 'senior_ae', team: 'SV' }), true);
