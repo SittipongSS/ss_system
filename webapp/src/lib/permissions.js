@@ -480,9 +480,6 @@ export function canBeServiceAssignee(user) {
   return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
 }
 
-// ชื่อเดิมที่หน้าจอเรียกอยู่ — คงไว้เป็น alias ให้ชัดว่าใช้เกณฑ์เดียวกัน
-export const isServiceTechnician = canBeServiceAssignee;
-
 // อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.
 // คนเดียวจบ ไม่มีอนุมัติซ้อน (มติ 2026-07-22)
 export function canApproveCosting(user) {
