@@ -18,7 +18,6 @@ import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import RichText from "@/components/ui/RichText";
 import Select from "@/components/ui/Select";
-import { personInitials } from "@/lib/ui/personName";
 import { fmtDateTime } from "@/lib/format";
 import {
   authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
@@ -233,93 +232,54 @@ export default function UpdateThread({
               />
             ) : null;
 
-            // ── เหตุการณ์ระบบ = บรรทัดเดียว เงียบ ๆ ──────────────────────
-            // ⭐ เหตุผลที่แยกทรงจากข้อความคน: เอกสารที่มี action เยอะ (QT/SO เขียน
-            // ลงเธรดถึง 15 จุด) ทำให้แถวระบบท่วมจนบทสนทนาจม · ที่นี่จึงให้ระบบ
-            // กินความสูงน้อยที่สุดและไม่มีกรอบ ส่วนข้อความคนเป็นการ์ดที่ตาหยุด
+            // ── เหตุการณ์ระบบ ────────────────────────────────────────────
+            // คอลัมน์ซ้าย = ชนิด + เวลา · ขวา = สิ่งที่เกิดขึ้น (สีจางกว่าข้อความคน)
             if (isSystemUpdateItem(entityType, item)) {
               const body = item.kind === "extra" ? item.body : item.row.body;
               const who = item.kind === "extra" ? item.by : item.row.authorName;
               return (
-                <div className={styles.systemRow} key={key}>
-                  <span className={styles.systemDot} style={item.color ? { background: item.color } : undefined} />
-                  <span className={styles.systemLabel} style={item.color ? { color: item.color } : undefined}>
-                    {item.label}
-                  </span>
-                  <span className={styles.systemText}>
-                    {body ? <RichText text={body} lines={2} className={styles.systemBody} /> : null}
-                    {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
-                        ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
-                    {item.kind === "extra" && item.href && (
-                      <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
-                    )}
-                  </span>
-                  <span className={styles.systemMeta}>
-                    {who ? `${who} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
-                  </span>
-                  {quoteButton && <span className={styles.rowActions}>{quoteButton}</span>}
+                <div className={`${styles.row} ${styles.systemRow}`} key={key}>
+                  <div className={styles.meta}>
+                    <span className={styles.metaName} style={item.color ? { color: item.color } : undefined}>
+                      {item.label}
+                    </span>
+                    <span className={styles.metaSub}>{item.at ? fmtDateTime(item.at) : ""}</span>
+                  </div>
+                  <div className={styles.content}>
+                    <div className={styles.systemText}>
+                      {body ? <RichText text={body} lines={2} className={styles.systemBody} /> : null}
+                      {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
+                          ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
+                      {item.kind === "extra" && item.href && (
+                        <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
+                      )}
+                      {who && <span className={styles.systemWho}>{who}</span>}
+                      {quoteButton && <span className={styles.rowActions}>{quoteButton}</span>}
+                    </div>
+                  </div>
                 </div>
               );
             }
 
-            // ── ข้อความคน = การ์ด ────────────────────────────────────────
+            // ── ข้อความคน ────────────────────────────────────────────────
+            // ⭐ ชื่อคนอยู่คอลัมน์ซ้ายชิดขวา (มติผู้ใช้ 2026-08-01 — แบบ G): กวาดตา
+            // หาว่า "ใครพูด" ได้เร็วเพราะชื่อเรียงตรงกันเป็นแนวเดียว และเนื้อความได้
+            // พื้นที่เต็มโดยไม่มีกรอบ/วงกลมมาเบียด
+            // ⚠️ จอแคบยุบเป็นแถวเดียว (ดู media query ใน .module.css) — คอลัมน์ 104px
+            // บนมือถือจะบีบเนื้อความไทยจนตัดคำเสีย
             const row = item.row;
             const isEditing = editing?.id === row.id;
             return (
-              <article className={styles.message} key={key}>
-                <span className={styles.avatar} aria-hidden="true">{personInitials(row.authorName)}</span>
-                <div className={styles.messageBody}>
-                  <div className={styles.head}>
-                    <strong>{row.authorName || "ระบบ"}</strong>
+              <article className={styles.row} key={key}>
+                <div className={styles.meta}>
+                  <span className={styles.metaName}>{row.authorName || "ระบบ"}</span>
+                  <span className={styles.metaSub}>
                     {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ)
                         อ่านไม่รู้เรื่องถ้าไม่รู้ว่าใครพูดในฐานะอะไร */}
-                    {row.authorDept && <span className={styles.dept}>{row.authorDept}</span>}
-                    <span>{item.at ? fmtDateTime(item.at) : ""}</span>
-                    {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
-                    {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มี
-                        ชนิดเดียวไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
-                    {showKindPicker && (
-                      <span className="ui-badge" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
-                    )}
-                    {row.editedAt && <span>· แก้ไขแล้ว</span>}
-                    {row.acknowledgedAt && (
-                      <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
-                    )}
-                    <span className={styles.rowActions}>
-                      {quoteButton}
-                      {/* รับทราบ = "เห็นแล้ว" ไม่ใช่การแก้เนื้อหา — ใครที่โพสต์ในเธรด
-                          ได้ก็กดได้ (กติกาเดียวกับ API) · คอลัมน์มีมาตั้งแต่ mig 0163
-                          แต่ไม่เคยมีปุ่มให้กด ป้ายด้านบนจึงไม่มีทางขึ้นเลย */}
-                      {canPost && !row.deletedAt && !row.acknowledgedAt && (
-                        <Button
-                          iconOnly icon={<Check size={13} />} aria-label="รับทราบข้อความนี้"
-                          title="รับทราบ" disabled={busy}
-                          onClick={() => mutate(row.id, {
-                            method: "PATCH", body: JSON.stringify({ action: "acknowledge" }),
-                          })}
-                        />
-                      )}
-                      {canPost && !row.deletedAt && kinds.includes(row.kind) && (
-                        <>
-                          <Button
-                            iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
-                            onClick={() => setEditing({
-                              id: row.id,
-                              body: row.body || "",
-                              kind: row.kind,
-                              dueDate: row.meta?.dueDate || "",
-                            })}
-                          />
-                          <Button
-                            iconOnly icon={<Trash2 size={13} />} className={styles.danger}
-                            aria-label="ลบข้อความ" disabled={busy}
-                            onClick={() => mutate(row.id, { method: "DELETE" })}
-                          />
-                        </>
-                      )}
-                    </span>
-                  </div>
-
+                    {row.authorDept ? `${row.authorDept} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
+                  </span>
+                </div>
+                <div className={styles.content}>
                   {row.deletedAt ? (
                     <p className={styles.deleted}>{DELETED_UPDATE_TEXT}</p>
                   ) : (
@@ -382,6 +342,55 @@ export default function UpdateThread({
                       <ThreadAttachments row={row} onOpen={setPreview} />
                     </>
                   )}
+
+                  {/* สถานะ + ปุ่ม อยู่ **ท้ายข้อความ** ไม่ใช่หัวแถว — หัวแถวเป็นที่ของ
+                      เนื้อความล้วน ๆ ตามโครงคอลัมน์ซ้าย และปุ่มอยู่ตรงที่สายตาหยุด
+                      พอดีหลังอ่านจบ */}
+                  <div className={styles.head}>
+                    {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
+                    {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มี
+                        ชนิดเดียวไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
+                    {showKindPicker && (
+                      <span className="ui-badge" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
+                    )}
+                    {row.editedAt && <span>แก้ไขแล้ว</span>}
+                    {row.acknowledgedAt && (
+                      <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
+                    )}
+                    <span className={styles.rowActions}>
+                      {quoteButton}
+                      {/* รับทราบ = "เห็นแล้ว" ไม่ใช่การแก้เนื้อหา — ใครที่โพสต์ในเธรด
+                          ได้ก็กดได้ (กติกาเดียวกับ API) · คอลัมน์มีมาตั้งแต่ mig 0163
+                          แต่ไม่เคยมีปุ่มให้กด ป้าย "รับทราบแล้ว" จึงไม่มีทางขึ้นเลย */}
+                      {canPost && !row.deletedAt && !row.acknowledgedAt && (
+                        <Button
+                          iconOnly icon={<Check size={13} />} aria-label="รับทราบข้อความนี้"
+                          title="รับทราบ" disabled={busy}
+                          onClick={() => mutate(row.id, {
+                            method: "PATCH", body: JSON.stringify({ action: "acknowledge" }),
+                          })}
+                        />
+                      )}
+                      {canPost && !row.deletedAt && kinds.includes(row.kind) && (
+                        <>
+                          <Button
+                            iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
+                            onClick={() => setEditing({
+                              id: row.id,
+                              body: row.body || "",
+                              kind: row.kind,
+                              dueDate: row.meta?.dueDate || "",
+                            })}
+                          />
+                          <Button
+                            iconOnly icon={<Trash2 size={13} />} className={styles.danger}
+                            aria-label="ลบข้อความ" disabled={busy}
+                            onClick={() => mutate(row.id, { method: "DELETE" })}
+                          />
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </article>
             );
