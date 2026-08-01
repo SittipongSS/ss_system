@@ -7,6 +7,8 @@ import {
   canApproveProjectClose, canProjectCloseTransition, isValidCloseType, PROJECT_CLOSE_TYPE_LABELS,
 } from '@/lib/pm/projectClose';
 import { summarizeProjectCloseReadiness } from '@/lib/pm/projectCloseReadiness';
+import { projectCloseUpdate } from '@/lib/pm/projectUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
@@ -137,6 +139,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .from('projects').update(patch).eq('id', id).eq('closeStatus', closeStatus).select().maybeSingle();
   if (error) return fail(error.message, 500);
   if (!data) return badRequest('สถานะการปิดโครงการเปลี่ยนแล้ว กรุณาโหลดใหม่');
+
+  // จุดจบ (และจุดกลับมา) ของเส้นเรื่องโครงการ — ต้องอยู่ในเธรดที่คนอ่านกัน ไม่ใช่
+  // เห็นเฉพาะใน audit log ซึ่งเปิดได้แค่ supervisor และไม่มีลิงก์จากหน้าโครงการ
+  // ⚠️ เหตุผลอยู่ในตัวข้อความ ไม่ใช่ซ่อนใน meta (บทเรียนเหตุผลตีกลับของ QT/SO)
+  await appendUpdate(supabase, {
+    entityType: 'project', entityId: id,
+    ...projectCloseUpdate(action, {
+      closeType: data.closeType || project.closeType || null,
+      reason: String(body.reason || '').trim(),
+    }),
+    user,
+  });
 
   await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary, request: req });
 

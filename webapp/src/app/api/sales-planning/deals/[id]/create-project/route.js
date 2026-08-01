@@ -10,6 +10,8 @@ import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -228,6 +230,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       changedByName: user.name || null,
     });
   }
+
+  // บรรทัดแรกของเส้นเรื่องโครงการ: บอกว่าโครงการนี้เกิดจากดีลใบไหน
+  await appendUpdate(supabase, {
+    entityType: 'project', entityId: project.id,
+    ...dealLinkedUpdate(updatedDeal || deal, { how: 'create' }), user,
+  });
 
   await recordAudit({
     user,

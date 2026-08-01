@@ -5,7 +5,9 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { normalizeDeliveryInput } from '@/lib/pm/deliveries';
-import { findDelivery, requireProject, salesOrderScopeError } from '@/lib/pm/deliveriesRepo';
+import { findDelivery, loadDeliveries, requireProject, salesOrderScopeError } from '@/lib/pm/deliveriesRepo';
+import { deliveriesCompletedUpdate } from '@/lib/pm/projectUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +41,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     // สรุปให้อ่านรู้เรื่องใน audit: การกด "มาแล้ว" คือเหตุการณ์ที่คนตามหาย้อนหลัง
     const arrivedNow = !before.arrivedAt && data.arrivedAt;
+
+    // เธรดโครงการเอาเฉพาะจังหวะ "ครบทุกรายการ" — การติ๊กรับของรายชิ้นเป็นงานประจำวัน
+    // ของ PC ซึ่งถ้าลงเธรดทุกครั้งจะกลบบทสนทนาจนหมด · จังหวะที่ระดับโครงการสนใจคือ
+    // ตอนที่ของครบแล้วเริ่มผลิตได้ ซึ่งเกิดครั้งเดียว
+    if (arrivedNow) {
+      const rows = await loadDeliveries(supabase, access.project.id);
+      const event = deliveriesCompletedUpdate(
+        rows.map((row) => (row.id === deliveryId ? before : row)),
+        rows,
+      );
+      if (event) {
+        await appendUpdate(supabase, { entityType: 'project', entityId: access.project.id, ...event, user });
+      }
+    }
     await recordAudit({
       user, action: 'update', entityType: 'material_delivery', entityId: deliveryId,
       before, after: data,

@@ -27,7 +27,8 @@ import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { activeProductTypeError } from '@/lib/master/productTypes';
-import { purgeUpdates } from '@/lib/master/updates';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 
 export const dynamic = 'force-dynamic';
 
@@ -311,6 +312,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // sales_deal_activities มี ON DELETE CASCADE แต่ตารางกลางไม่มี ต้องกวาดเอง
   // ไม่งั้นเหลือเธรดของดีลที่ไม่มีอยู่แล้วค้างในฟีดรวมข้ามโมดูล
   await purgeUpdates(supabase, 'deal', id);
+
+  // ⚠️ เธรดของ**โครงการแม่**ต้องรู้ว่าดีลใบนี้หลุดไป — ความเคลื่อนไหวของมันที่เคย
+  // ไหลเข้าหน้าโครงการหายไปทั้งชุดพร้อมกัน ถ้าไม่มีบรรทัดอธิบาย เส้นเรื่องจะเป็นรู
+  // (เขียนหลังลบสำเร็จ และไม่เช็ค error — เธรดพลาดต้องไม่ทำให้การลบที่สำเร็จแล้วล้ม)
+  if (detachedFromProject) {
+    await appendUpdate(supabase, {
+      entityType: 'project', entityId: detachedFromProject,
+      ...dealUnlinkedUpdate(before, { reason: force ? 'ลบดีล (บังคับ)' : 'ลบดีล' }), user,
+    });
+  }
 
   // โครงการที่ไม่เหลือดีลผูกเลย = โครงเปล่า — ไม่ลบให้เอง (เฟส B: อาจรอดีลใหม่มาผูก)
   // แต่ต้องส่งกลับให้หน้าเว็บถามผู้ใช้ว่าจะลบทิ้งด้วยไหม ไม่งั้นค้างในรายการเงียบ ๆ.
