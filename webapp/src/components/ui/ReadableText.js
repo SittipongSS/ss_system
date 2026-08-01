@@ -15,6 +15,9 @@ export default function ReadableText({
   style,
   empty = null,
   defaultExpanded = false,
+  // ชิ้นส่วนที่ประกอบไว้แล้ว (RichText ส่งข้อความที่มีลิงก์ในตัวเข้ามา) — ยังต้องส่ง
+  // `text` มาด้วยเสมอ เพราะการวัด/ตัดสินว่าว่างเปล่าใช้ข้อความดิบเป็นเกณฑ์
+  children = null,
 }) {
   const content = text == null ? "" : String(text);
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -47,7 +50,7 @@ export default function ReadableText({
         className={`readable-text ${expanded ? "is-expanded" : "is-collapsed"}`}
         style={{ "--readable-lines": lines }}
       >
-        {content}
+        {children ?? content}
       </div>
       {(canExpand || expanded) && (
         <button
