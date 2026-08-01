@@ -47,19 +47,26 @@ export default function RecordActionMenu({
 
   return (
     <div className={`${styles.row} ${className}`.trim()}>
-      {step ? (
-        <ActionButton
-          kind={step.kind}
-          label={step.label}
-          variant="outline"
-          disabled={busy || step.disabled}
-          title={step.disabledReason}
-          onClick={() => {
-            if (onSelect?.(step.transition) === true) return;
-            setPending({ transition: step.transition, values: {} });
-          }}
-        />
-      ) : null}
+      {/* ช่องปุ่มก้าวถัดไปกว้างคงที่ทุกแถว — ไม่งั้นไอคอนแก้ไข/ลบ กับลิงก์ "จัดการ"
+          จะขยับตามความยาวป้ายของแต่ละแถว อ่านเป็นคอลัมน์ไม่ได้
+          แถวที่ไม่มีก้าวถัดไปก็ยังกินที่เท่าเดิม (ช่องว่าง ไม่ใช่ปุ่มหาย) */}
+      <span className={styles.step}>
+        {step ? (
+          <ActionButton
+            kind={step.kind}
+            label={step.rowLabel || step.label}
+            variant="outline"
+            className={styles.stepButton}
+            disabled={busy || step.disabled}
+            /* ป้ายในแถวถูกย่อ — เอาป้ายเต็มมาไว้ที่ tooltip ไม่ให้ความหมายหาย */
+            title={step.disabledReason || step.label}
+            onClick={() => {
+              if (onSelect?.(step.transition) === true) return;
+              setPending({ transition: step.transition, values: {} });
+            }}
+          />
+        ) : null}
+      </span>
       {onEdit && canEdit ? (
         <ActionButton kind="edit" iconOnly variant="quiet" disabled={busy} onClick={onEdit} />
       ) : null}
