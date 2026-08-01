@@ -49,11 +49,13 @@
   border-left: 1px solid var(--border);
 }
 /* ป้ายชนิดในคอลัมน์ซ้าย — ตัวอักษรสีล้วน ไม่มีพื้น/ขอบ (ป้ายพื้นเทาอ่านเป็น "ปุ่ม")
-   บรรทัดของตัวเองใต้วันเวลา จึงอ่านเป็นชุดเดียวกับชื่อคน */
+   บรรทัดของตัวเองใต้วันเวลา จึงอ่านเป็นชุดเดียวกับชื่อคน
+   ⚠️ ใช้ `--kind-label-color` (สีชนิดจริง) ไม่ใช่ `--kind-color` ซึ่งเป็นสีแถบซ้าย
+   ที่ถูกบังคับเป็น accent สำหรับข้อความคน */
 .kindBadge {
   display: block; margin-top: var(--space-0-5);
   font-size: var(--fs-3); font-weight: var(--fw-semibold);
-  color: var(--kind-color, var(--text-3));
+  color: var(--kind-label-color, var(--text-3));
 }
 
 /* ── เหตุการณ์ระบบ = โครงเดิม เสียงเบากว่า ─────────────────────────── */
@@ -129,8 +131,21 @@
 .fileLink:hover { color: var(--accent-ink); }
 
 /* ปุ่มชิดขวาของ **บล็อกข้อความ** (78ch) ไม่ใช่ขอบจอ — จึงอยู่แนวตั้งเดียวกันทุกแถว
-   ไม่ขยับไปมาตามความยาวของสถานะที่นำหน้ามัน */
-.rowActions { margin-left: auto; display: inline-flex; gap: var(--space-1); }
+   ไม่ขยับไปมาตามความยาวของสถานะที่นำหน้ามัน
+   ⭐ ซ่อนไว้จนกว่าจะชี้เมาส์: ปกติคนเปิดเธรดมา "อ่าน" ไม่ได้จะกดอะไร ปุ่มสี่ตัวที่
+   โผล่ตลอดทุกแถวคือสิ่งที่ทำให้ดูรก · ⚠️ ต้องโผล่ตอน `:focus-within` ด้วย ไม่งั้น
+   คนที่ใช้คีย์บอร์ด Tab มาถึงปุ่มที่มองไม่เห็น */
+.rowActions {
+  margin-left: auto; display: inline-flex; gap: var(--space-1);
+  opacity: 0; transition: opacity var(--motion-fast) var(--ease-out);
+}
+.row:hover .rowActions,
+.row:focus-within .rowActions { opacity: 1; }
+
+/* ⚠️ จอสัมผัสไม่มี hover — ซ่อนแล้วจะกดไม่ได้เลย จึงแสดงตลอดบนอุปกรณ์เหล่านั้น */
+@media (hover: none) {
+  .rowActions { opacity: 1; }
+}
 
 .composer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3-5); }
 /* แถวเลือกชนิด/กำหนดวัน — มีเฉพาะ entity ที่ประกาศชนิดให้เลือกมากกว่าหนึ่ง */
