@@ -95,6 +95,7 @@ export async function POST(request, { params }) {
     type: 'RE-ORDER',
     urgency: body.urgency || 'Schedule',
     aeOwner: user.name || '',
+    aeOwnerId: user.id || null,   // ตัวตนจริงคู่กับชื่อ snapshot (mig 0190)
     acOwner: '',
     status: 'New',
     startDate,

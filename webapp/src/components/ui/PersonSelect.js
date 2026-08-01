@@ -7,7 +7,11 @@
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { TEAM_LABELS, DEPARTMENT_LABELS } from "@/lib/permissions";
 
-const fullName = (u) => String(u?.name || u?.email || "").trim();
+// ⭐ ชื่อที่ตัวเลือกนี้เขียนลง DB กับตัวจับคู่กลับเป็น id ต้องใช้กฎเดียวกันเสมอ
+// จึงอยู่ไฟล์ล้วนไฟล์เดียว (เทสต์เรียกได้ตรง ๆ ด้วย)
+import { personFullName as fullName, personIdByName } from "@/lib/ui/personName";
+
+export { personIdByName };
 
 /** คำที่ใช้ค้น — ชื่อเต็ม (มีนามสกุล) + อีเมล + ทีม/ฝ่าย เพื่อพิมพ์ "KA" แล้วเห็นทั้งทีมได้ */
 export const personSearchText = (u) =>

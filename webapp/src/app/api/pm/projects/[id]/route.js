@@ -23,7 +23,9 @@ export const dynamic = 'force-dynamic';
 // Fields a client may PATCH on a project (commercial/ISO header — not scope/owner).
 const EDITABLE = [
   'code', 'name', 'customerId', 'customerName', 'type', 'urgency',
-  'aeOwner', 'acOwner', 'status', 'startDate', 'dueDate',
+  // คู่ ชื่อ+id ของผู้ดูแล (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร · id คือตัวตนจริง
+  // ⚠️ ต้องแก้มาคู่กันเสมอ — ฟอร์มส่งทั้งสองค่าจากตัวเลือกเดียวกัน
+  'aeOwner', 'aeOwnerId', 'acOwner', 'acOwnerId', 'status', 'startDate', 'dueDate',
   'productMainCategory', 'productSubCategory',
   'docNumber', 'productName', 'productCode', 'orderQty', 'productionQty',
   'aeSupervisor', 'keyAccountExec', 'customerEmail', 'preparedBy', 'reviewedBy',

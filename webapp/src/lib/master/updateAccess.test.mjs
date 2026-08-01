@@ -349,29 +349,31 @@ test('เธรดโครงการ: staff อ่านได้แต่โ
   assert.equal(await canPostUpdate(s, 'project', { ...project, status: 'Closed' }, ae), true);
 });
 
-test('ผู้รับแจ้งเตือนของโครงการ: เจ้าของ + AE/AC ที่ระบุบนหัวโครงการ (เก็บเป็นชื่อ)', async () => {
-  const directory = {
-    auth: { admin: { listUsers: async ({ page }) => ({
-      data: { users: page > 1 ? [] : [
-        { id: 'u-ae', app_metadata: { role: 'ae' }, user_metadata: { name: 'สมชาย ขายดี' } },
-        { id: 'u-ac', app_metadata: { role: 'ac' }, user_metadata: { name: 'สมหญิง ประสาน' } },
-      ] },
-    }) } },
-  };
-  const ids = await updateRecipients(directory, 'project', {
-    id: 'PRJ-1', ownerId: 'u-pm', aeOwner: 'สมชาย ขายดี', acOwner: 'สมหญิง ประสาน',
-  });
-  assert.deepEqual(ids.sort(), ['u-ac', 'u-ae', 'u-pm']);
+// 🐞 บั๊กจริงที่ทำให้ต้องมี mig 0190: รอบแรกผู้รับมาจากการ **จับคู่ชื่อ** กับสมุด
+// รายชื่อ แล้วตรวจ prod พบว่า 8 จาก 11 โครงการเก็บชื่อย่อ ("Threerapong P.") ซึ่ง
+// ไม่ตรงกับชื่อบัญชี ("Threerapong Phankam") ⇒ 73% ไม่ได้รับแจ้งเตือนแบบเงียบ ๆ
+test('ผู้รับแจ้งเตือนของโครงการ: อ่านจาก id ไม่ใช่ชื่อ และไม่แตะสมุดรายชื่อเลย', async () => {
+  // สมุดรายชื่อพังก็ต้องไม่กระทบ — ด่านนี้ต้องเป็นการอ่านฟิลด์ล้วน ๆ
+  const boom = { auth: { admin: { listUsers: async () => { throw new Error('ห้ามเรียก'); } } } };
 
-  // ชื่อที่จับคู่ไม่ได้ (คนลาออก/พิมพ์ชื่อเอง) ต้องข้ามเงียบ ๆ ไม่ทำให้ทั้งก้อนพัง
-  const fallback = await updateRecipients(directory, 'project', {
-    id: 'PRJ-2', ownerId: 'u-pm', aeOwner: 'คนที่ไม่มีในระบบ',
-  });
-  assert.deepEqual(fallback, ['u-pm']);
+  assert.deepEqual(
+    (await updateRecipients(boom, 'project', {
+      id: 'PRJ-1', ownerId: 'u-pm', aeOwnerId: 'u-ae', acOwnerId: 'u-ac',
+      aeOwner: 'สมชาย ขายดี', acOwner: 'สมหญิง ประสาน',
+    })).sort(),
+    ['u-ac', 'u-ae', 'u-pm'],
+  );
 
-  // ไม่มีชื่อเลย = ไม่ต้องเปิดสมุดรายชื่อ (แพง) — เจ้าของอย่างเดียวพอ
-  let opened = false;
-  const spy = { auth: { admin: { listUsers: async () => { opened = true; return { data: { users: [] } }; } } } };
-  assert.deepEqual(await updateRecipients(spy, 'project', { id: 'PRJ-3', ownerId: 'u-pm' }), ['u-pm']);
-  assert.equal(opened, false, 'ไม่มี aeOwner/acOwner ต้องไม่เรียก listUsers');
+  // ⚠️ มีแต่ "ชื่อ" ไม่มี id (แถวเก่าที่ backfill จับคู่ไม่ได้) = ไม่มีใครถูกแจ้ง
+  // นอกจากเจ้าของ — ตั้งใจให้เงียบ ไม่ใช่เดาจากชื่อ (เดาผิด = แจ้งไปผิดคน)
+  assert.deepEqual(
+    await updateRecipients(boom, 'project', { id: 'PRJ-2', ownerId: 'u-pm', aeOwner: 'Threerapong P.' }),
+    ['u-pm'],
+  );
+
+  // คนเดียวถือหลายบทบาทบนโครงการเดียว = ต้องได้แจ้งเตือนแถวเดียว
+  assert.deepEqual(
+    await updateRecipients(boom, 'project', { id: 'PRJ-3', ownerId: 'u-pm', aeOwnerId: 'u-pm' }),
+    ['u-pm'],
+  );
 });

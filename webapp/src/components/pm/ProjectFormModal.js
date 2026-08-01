@@ -4,7 +4,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
-import PersonSelect from "@/components/ui/PersonSelect";
+import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { productOptionDisplay } from "@/components/master/productOption";
@@ -175,6 +175,10 @@ export default function ProjectFormModal({
     setSubmitting(true);
     const payload = { ...form };
     if (lockPeopleField) payload[lockPeopleField] = myName; // บังคับค่าช่องที่ล็อก = ผู้สร้าง
+    // ตัวตนของผู้ดูแลเดินคู่ชื่อเสมอ (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร (ต้องเป็น
+    // snapshot) · id ไว้แจ้งเตือน/เช็คสิทธิ์ · จับคู่ไม่ได้ = null ไม่ใช่เดา
+    payload.aeOwnerId = personIdByName(users, payload.aeOwner);
+    payload.acOwnerId = personIdByName(users, payload.acOwner);
     if (form.customerId) payload.customerName = customers.find((c) => c.id === form.customerId)?.name || "";
     payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber, brand: form.brand, poNumber: form.poNumber };
     delete payload.quotationNumber;

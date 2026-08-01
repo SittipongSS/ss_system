@@ -16,7 +16,6 @@ import {
   canEditService, canViewService, inPmProjectScope, inScope, viewScope,
   canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
-import { loadUserDirectory } from '@/lib/usersRepo';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -105,18 +104,15 @@ export const UPDATE_ENTITIES = {
       return inPmProjectScope(user, parent);
     },
     // เจ้าของโครงการ + AE/AC ที่ระบุไว้บนหัวโครงการ (มติผู้ใช้ 2026-08-01)
-    // ⚠️ `aeOwner`/`acOwner` เก็บเป็น **ชื่อ** ไม่ใช่ user id — ต้องเปิดสมุดรายชื่อ
-    // มาจับคู่ · ทำเฉพาะตอนมีชื่อจริงเท่านั้น เพราะ `loadUserDirectory` วนทุกหน้า
-    // ของ auth ซึ่งแพงเกินจะเรียกทุกครั้งที่มีคนพิมพ์ข้อความ
-    // หาไม่เจอ = ข้ามไปเงียบ ๆ (แจ้งเตือนขาดคนดีกว่าโพสต์ไม่สำเร็จ)
-    async recipients(parent, supabase) {
-      const names = [parent?.aeOwner, parent?.acOwner]
-        .map((n) => String(n || '').trim()).filter(Boolean);
-      if (!names.length) return [parent?.ownerId];
-      const dir = await loadUserDirectory(supabase);
-      const byName = new Map([...dir.values()].map((u) => [String(u.name || '').trim(), u.id]));
-      return [parent?.ownerId, ...names.map((n) => byName.get(n))];
-    },
+    //
+    // ⭐ อ่านจาก `aeOwnerId`/`acOwnerId` (mig 0190) **ไม่ใช่ชื่อ** — ตอนแรกทำเป็น
+    // จับคู่ชื่อกับสมุดรายชื่อ แล้วตรวจ prod พบว่าใช้ไม่ได้จริง: 8 จาก 11 โครงการ
+    // เก็บชื่อย่อ ("Threerapong P.") ซึ่งไม่ตรงกับชื่อบัญชี ("Threerapong Phankam")
+    // ⇒ 73% ไม่มีทางได้รับแจ้งเตือน และเงียบโดยไม่มีอะไรฟ้อง
+    //
+    // ผลพลอยได้: ไม่ต้องเปิดสมุดรายชื่อ (วนทุกหน้าของ auth) ทุกครั้งที่มีคนพิมพ์
+    // ข้อความอีกต่อไป — ด่านนี้กลายเป็นการอ่านฟิลด์ล้วน ๆ
+    recipients: (parent) => [parent?.ownerId, parent?.aeOwnerId, parent?.acOwnerId],
   },
 
   // ── ดีล (ฟีดความเคลื่อนไหว ย้ายมาจาก sales_deal_activities, mig 0169) ──
