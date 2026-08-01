@@ -309,3 +309,22 @@ test('ข้อความที่ลบแล้วต้องไม่ห�
   // ยังไม่ลบ = ไม่แตะ
   assert.equal(redactDeleted({ body: 'ปกติ' }).body, 'ปกติ');
 });
+
+// ── หน้าโครงการยืมความเคลื่อนไหวของดีลมาแสดง (PR-A) ──────────────────────
+// 🐞 บั๊กจริง: GET /api/pm/projects/[id] เคยอ่าน entity_updates ของดีลลูกตรงจาก
+// ตาราง โดยผ่านแค่ `pm:view` ซึ่ง role `staff` (PC/PD/WH/QC) ก็มี ทั้งที่ไม่มี
+// `salesplan:view` เลย → บทสนทนาในดีลหลุดไปถึงคนที่เปิดหน้าดีลไม่ได้
+// เทสต์นี้ล็อกว่าด่านของ 'deal' ยังปฏิเสธ staff และยังปล่อย AE เจ้าของดีลผ่าน
+// (ถ้าเผลอตัด `ownerId` ออกจาก select ของหน้าโครงการ AE จะเห็นเธรดตัวเองไม่ได้)
+test('เธรดดีล: staff อ่านไม่ได้ · AE เจ้าของดีลอ่านได้ (ด่านที่หน้าโครงการต้องใช้)', async () => {
+  const deal = { id: 'D-1', team: 'KA', ownerId: 'u-ae' };
+  const staff = { id: 'u-staff', role: 'staff', team: 'KA', department: 'PC' };
+  const owner = { id: 'u-ae', role: 'ae', team: 'KA' };
+  const otherAe = { id: 'u-other', role: 'ae', team: 'KA' };
+
+  assert.equal(await canViewUpdates(stub(deal), 'deal', deal, staff), false);
+  assert.equal(await canViewUpdates(stub(deal), 'deal', deal, owner), true);
+  // AE คนอื่นในทีมเดียวกันก็ไม่ผ่าน (scope ของ ae = 'own') — การกรองที่หน้าโครงการ
+  // จึงต้องเป็นรายดีล ไม่ใช่ "ทีมเดียวกันเห็นหมด"
+  assert.equal(await canViewUpdates(stub(deal), 'deal', deal, otherAe), false);
+});

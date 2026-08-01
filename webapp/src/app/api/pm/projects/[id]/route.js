@@ -16,6 +16,7 @@ import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTyp
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
+import { canViewUpdates } from '@/lib/master/updateAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +63,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // 1 เฟส เพื่อ backward compat กับ UI ที่ยังไม่ย้ายไปใช้ deals[] (ตัดในเฟสถัดไป).
   const { data: linkedDeals } = await supabase
     .from('sales_deals')
-    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
+    // ⚠️ `ownerId` ต้องมีเสมอ — ด่านของเธรดดีล (scope 'own' ของ AE) เทียบช่องนี้
+    // ขาดไปเมื่อไร AE จะไม่เห็นความเคลื่อนไหวของดีลตัวเองบนหน้าโครงการ
+    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerId, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
   const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);
@@ -86,8 +89,25 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let dealActivities = [];
   let dealStageHistory = [];
   let inquiries = [];
+  let hiddenDealFeeds = 0;
   if (deals.length) {
     const dealIds = deals.map((d) => d.id);
+
+    // ⭐ ความเคลื่อนไหวของดีล (เธรด + ประวัติสถานะ) มีด่านของตัวเองซึ่ง **แคบกว่า**
+    // ด่านของหน้าโครงการ: หน้านี้เปิดด้วย `pm:view` ซึ่ง role `staff` (PC/PD/WH/QC)
+    // ก็มี ทั้งที่ไม่มี `salesplan:view` เลย → อ่านตารางตรงแบบเดิมเท่ากับปล่อย
+    // บทสนทนาในดีลให้คนที่เปิดหน้าดีลไม่ได้อ่าน
+    // ⚠️ ใช้ทะเบียน `canViewUpdates` ตัวเดียวกับ GET /api/updates เสมอ — ห้ามเขียน
+    // กฎใหม่ตรงนี้ ไม่งั้นสองด่านจะเพี้ยนกันเองในวันที่ทะเบียนเปลี่ยน
+    const dealVisibility = await Promise.all(
+      deals.map((deal) => canViewUpdates(supabase, 'deal', deal, user)),
+    );
+    const feedDealIds = deals.filter((_, i) => dealVisibility[i]).map((deal) => deal.id);
+    // จำนวนที่ถูกกรองออกส่งไปให้หน้าจอบอกผู้ใช้ตรง ๆ — เส้นเรื่องที่สั้นลงเงียบ ๆ
+    // อ่านเหมือน "ไม่มีความเคลื่อนไหว" ซึ่งคนละความหมายกับ "คุณไม่มีสิทธิ์เห็น"
+    hiddenDealFeeds = deals.length - feedDealIds.length;
+    const emptyRows = Promise.resolve({ data: [] });
+
     const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist },
       { data: inquiryRows, error: inquiryError }] = await Promise.all([
       supabase.from('quotations')
@@ -99,13 +119,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       // mig 0169: ฟีดดีลอยู่ในเธรดกลางแล้ว (dealId → entityId, dueDate/activityAt/
       // meetingMode → meta) · normalize กลับเป็นรูปเดิมด้านล่างเพื่อไม่ให้ ProjectDealsHub
       // ต้องรู้จัก schema ของตารางกลาง
-      supabase.from('entity_updates')
+      feedDealIds.length ? supabase.from('entity_updates')
         .select('id, entityId, kind, body, meta, authorName, createdAt')
-        .eq('entityType', 'deal').in('entityId', dealIds).is('deletedAt', null)
-        .order('createdAt', { ascending: false }).limit(60),
-      supabase.from('sales_deal_stage_history')
+        .eq('entityType', 'deal').in('entityId', feedDealIds).is('deletedAt', null)
+        .order('createdAt', { ascending: false }).limit(60) : emptyRows,
+      feedDealIds.length ? supabase.from('sales_deal_stage_history')
         .select('id, dealId, fromStage, toStage, changedByName, changedAt')
-        .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
+        .in('dealId', feedDealIds).order('changedAt', { ascending: false }).limit(40) : emptyRows,
       // 🐞 เคยชี้ตาราง `inquiries` ซึ่งถูก DROP ไปใน mig 0174 — คำร้องอยู่ที่
       // `dept_requests` แล้ว · การ์ดคำร้องบนหน้าโครงการจึงว่างเปล่าเงียบ ๆ เพราะ
       // `const { data }` ทิ้ง error ไป (ดู lib rule: supabase masked query errors)
@@ -181,7 +201,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
