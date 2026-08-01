@@ -289,7 +289,7 @@ export default function UserManagement() {
                       <td className="text-[var(--text-2)] font-mono text-xs">
                         {u.email}
                         {u.disabled && (
-                          <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "var(--fs-2)", fontWeight: 600 }}>
+                          <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "var(--fs-2)", fontWeight: "var(--fw-semibold)" }}>
                             ปิดบัญชี
                           </span>
                         )}

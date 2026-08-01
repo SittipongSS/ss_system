@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import ConfirmModal from "@/components/tax/ConfirmModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -306,7 +306,7 @@ export default function ProjectFormModal({
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)", marginBottom: "18px" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, cursor: "pointer", fontSize: "var(--fs-8)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "var(--fw-semibold)", cursor: "pointer", fontSize: "var(--fs-8)" }}>
             <input type="checkbox" checked={linkFg} onChange={(e) => setLinkFg(e.target.checked)} style={{ accentColor: "var(--accent)", width: "16px", height: "16px" }} />
             ผูกสินค้า (FG) ที่มีอยู่แล้ว
           </label>
@@ -362,8 +362,8 @@ export default function ProjectFormModal({
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)" }}>
-          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", fontWeight: 600, marginBottom: "12px" }}>
-            หมวดสินค้า <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(หมวดหลัก → หมวดรอง — มีผลต่อขั้นตอนสรรพสามิต)</span>
+          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", fontWeight: "var(--fw-semibold)", marginBottom: "12px" }}>
+            หมวดสินค้า <span style={{ color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>(หมวดหลัก → หมวดรอง — มีผลต่อขั้นตอนสรรพสามิต)</span>
           </div>
           <ProductCategorySelect
             categories={categories}
@@ -449,7 +449,7 @@ export default function ProjectFormModal({
         </div>
       </form>
 
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmState}
         onClose={() => resolveConfirm(false)}
         onConfirm={() => resolveConfirm(true)}

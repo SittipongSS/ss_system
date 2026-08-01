@@ -57,13 +57,23 @@ test("รูปทรงของป้ายใน globals ตรงกับ B
   }
 });
 
+/* ตั้งแต่ 2026-07-30 ความสูงบรรทัดมาจากโทเคน `--lh-*` แล้ว เทสต์จึงต้อง **คลี่โทเคน
+   ก่อนเทียบ** ไม่ใช่อ่านเลขตรง ๆ — ถ้าอ่านตรง ๆ จะได้ NaN แล้วผ่าน/ตกด้วยเหตุผลผิด */
+const resolveLineHeight = (value) => {
+  const token = value?.match(/var\(\s*(--lh-[\w-]+)\s*\)/);
+  if (!token) return Number(value);
+  const declared = GLOBALS.match(new RegExp(`${token[1]}:\\s*([0-9.]+);`));
+  assert.ok(declared, `ไม่มีการประกาศ ${token[1]} ใน globals.css`);
+  return Number(declared[1]);
+};
+
 test("ป้ายเว้นที่ให้สระ/วรรณยุกต์ไทยพอ และไม่ตรึงความสูง", () => {
   for (const [label, block] of [
     ["globals (3 ชื่อรวม)", blockOf(GLOBALS, SHARED)],
     ["Badge.module .base", blockOf(BADGE_CSS, ".base {")],
   ]) {
     const lineHeight = declValue(block, "line-height");
-    assert.ok(Number(lineHeight) >= 1.4,
+    assert.ok(resolveLineHeight(lineHeight) >= 1.4,
       `${label} line-height ${lineHeight} — ต่ำกว่า 1.4 ภาษาไทยจะชนขอบ`);
     assert.equal(declValue(block, "height"), null,
       `${label} ตรึง height ตายตัว — ใช้ min-height เพื่อให้กล่องโตตามตัวอักษรได้`);

@@ -70,9 +70,9 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
       {/* คำแนะนำจากระบบ: ดึงเข้า (เดือนนี้ขาด) หรือ ส่งออก (เดือนนี้ PO เกิน) */}
       {suggestions.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ fontWeight: "var(--fw-semibold)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             ✨ คำแนะนำจากระบบ
-            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: 400 }}>
+            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>
               ({need > 0 ? `เดือนนี้ PO เกิน FC ${nf(need)} — ต้องดึง FC เข้า` : `เดือนนี้ FC เกิน PO ${nf(spare)} — ส่ง FC ออกได้`})
             </span>
           </div>
@@ -86,7 +86,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                   style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderLeft: "3px solid var(--blue)" }}
                 >
                   <div style={{ fontSize: "var(--fs-7)", flex: 1 }}>
-                    <span style={{ fontWeight: 600, color: "var(--blue)" }}>
+                    <span style={{ fontWeight: "var(--fw-semibold)", color: "var(--blue)" }}>
                       💡 {isPull ? `ดึง FC จาก ${s.sourceMonth}` : `ส่ง FC ไป ${s.targetMonth}`}
                     </span>
                     <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น{caseSuffix(s.use)})</span>
@@ -125,12 +125,12 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
       {/* รายการชดเชยที่ยืนยันแล้ว (ลบได้) */}
       {related.length > 0 && (
         <>
-          <h3 style={{ fontWeight: 600, marginBottom: 8 }}>ชดเชยที่ยืนยันแล้ว</h3>
+          <h3 style={{ fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>ชดเชยที่ยืนยันแล้ว</h3>
           <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: "var(--fs-7)" }}>
             {related.map((c) => (
               <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <span style={{ color: "var(--blue)" }}>{c.sourceMonth} → {c.targetMonth}</span>
-                <span style={{ fontWeight: 600 }}>{Number(c.qty).toLocaleString("th-TH")}{caseSuffix(Number(c.qty))}</span>
+                <span style={{ fontWeight: "var(--fw-semibold)" }}>{Number(c.qty).toLocaleString("th-TH")}{caseSuffix(Number(c.qty))}</span>
                 {c.targetMonth === month ? (
                   <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)" }}>รับเข้า</span>
                 ) : (

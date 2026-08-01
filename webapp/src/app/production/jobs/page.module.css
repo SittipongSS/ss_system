@@ -1,0 +1,43 @@
+/* คิวงานผลิต (mig 0189)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.counts {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  margin-inline-start: auto;
+}
+
+.numCol { text-align: right; white-space: nowrap; }
+.muted { color: var(--text-3); }
+.danger { color: var(--red); font-weight: var(--fw-semibold); }
+.warn { color: var(--amber); font-weight: var(--fw-semibold); }
+.inactive td { opacity: var(--op-muted); }
+
+/* รหัสงานเป็นปุ่มเปิดฟอร์ม — ไม่ใช่ลิงก์ เพราะงานยังไม่มีหน้ารายละเอียดของตัวเอง */
+.codeBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.warnRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  color: var(--amber);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}

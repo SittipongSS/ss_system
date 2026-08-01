@@ -7,7 +7,7 @@
 .needProject {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   padding: var(--space-3);
   border-inline-start: 3px solid var(--amber);
   font-size: var(--fs-7);

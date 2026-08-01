@@ -32,6 +32,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
+import Textarea from "@/components/ui/Textarea";
 import {
   SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent, isScentRegistrar,
 } from "@/lib/master/scents";
@@ -461,8 +462,8 @@ export default function ScentsPage() {
               </div>
               <div className="form-group col-span-2">
                 <label htmlFor="send-note">หมายเหตุ</label>
-                <textarea
-                  id="send-note" className="premium-input" rows={2} value={sending.note} disabled={saving}
+                <Textarea
+                  id="send-note" rows={2} value={sending.note} disabled={saving}
                   onChange={(e) => setSending({ ...sending, note: e.target.value })}
                 />
               </div>
@@ -558,8 +559,8 @@ export default function ScentsPage() {
               </div>
               <div className="form-group col-span-2">
                 <label htmlFor="fb-text">ความเห็นของลูกค้า</label>
-                <textarea
-                  id="fb-text" className="premium-input" rows={4} value={feedback.text} disabled={saving}
+                <Textarea
+                  id="fb-text" rows={4} value={feedback.text} disabled={saving}
                   placeholder="เช่น ขอให้ลดโทนไม้ลง เพิ่มความสดช่วงต้น"
                   onChange={(e) => setFeedback({ ...feedback, text: e.target.value })}
                 />

@@ -14,6 +14,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/organizationSettings";
 import styles from "./page.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EMPTY_FORM = {
   legalNameTh: "",
@@ -298,8 +299,8 @@ export default function CompanySettingsPage() {
           <section className={styles.formSection}>
             <h4>ที่อยู่จดทะเบียน</h4>
             <div className={styles.formGrid}>
-              <label className={styles.full}>ที่อยู่ภาษาไทย <b>*</b><textarea className="premium-input" value={form.registeredAddressTh} onChange={(event) => setForm({ ...form, registeredAddressTh: event.target.value })} required maxLength={1000} /></label>
-              <label className={styles.full}>ที่อยู่ภาษาอังกฤษ<textarea className="premium-input" value={form.registeredAddressEn} onChange={(event) => setForm({ ...form, registeredAddressEn: event.target.value })} maxLength={1000} /></label>
+              <label className={styles.full}>ที่อยู่ภาษาไทย <b>*</b><Textarea value={form.registeredAddressTh} onChange={(event) => setForm({ ...form, registeredAddressTh: event.target.value })} required maxLength={1000} /></label>
+              <label className={styles.full}>ที่อยู่ภาษาอังกฤษ<Textarea value={form.registeredAddressEn} onChange={(event) => setForm({ ...form, registeredAddressEn: event.target.value })} maxLength={1000} /></label>
             </div>
           </section>
           <section className={styles.formSection}>
@@ -313,7 +314,7 @@ export default function CompanySettingsPage() {
           </section>
           <section className={styles.formSection}>
             <h4>หลักฐานการเปลี่ยนแปลง</h4>
-            <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><textarea className="premium-input" value={form.changeNote} onChange={(event) => setForm({ ...form, changeNote: event.target.value })} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการข้อมูลที่เปลี่ยน (จำเป็นก่อนเผยแพร่)" /></label>
+            <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><Textarea value={form.changeNote} onChange={(event) => setForm({ ...form, changeNote: event.target.value })} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการข้อมูลที่เปลี่ยน (จำเป็นก่อนเผยแพร่)" /></label>
           </section>
         </form>
       </RecordDrawer>

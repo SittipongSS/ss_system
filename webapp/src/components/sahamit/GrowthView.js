@@ -70,7 +70,7 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
 
           {/* กราฟ: แท่งยอด + เส้น %เติบโต */}
           <div className="glass-panel" style={{ padding: 20 }}>
-            <h3 style={{ fontSize: "var(--fs-9)", fontWeight: 600, marginBottom: 2 }}>ยอด PO จริง {LEVELS.find((l) => l[0] === level)[1]} + %การเติบโต ({unitLbl})</h3>
+            <h3 style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)", marginBottom: 2 }}>ยอด PO จริง {LEVELS.find((l) => l[0] === level)[1]} + %การเติบโต ({unitLbl})</h3>
             <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: 8 }}>แท่ง = ยอดสั่งจริงต่อช่วง (แกนซ้าย) · เส้น = %เติบโต {seqLabel}{showYoY ? " และ YoY" : ""} (แกนขวา)</div>
             <ChartCanvas><ResponsiveContainer width="100%" height={360}>
               <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
@@ -106,13 +106,13 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
                   const chg = prev == null ? null : r.total - prev;
                   return (
                     <tr key={r.period}>
-                      <td style={{ fontWeight: 600 }}>{fmtPeriod(r.period, level)}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{fmtVal(r.total)}</td>
+                      <td style={{ fontWeight: "var(--fw-semibold)" }}>{fmtPeriod(r.period, level)}</td>
+                      <td style={{ textAlign: "right", fontWeight: "var(--fw-bold)" }}>{fmtVal(r.total)}</td>
                       <td style={{ textAlign: "right", color: chg == null ? "var(--text-3)" : chg >= 0 ? "var(--green)" : "var(--red)" }}>
                         {chg == null ? "—" : `${chg > 0 ? "+" : ""}${fmtVal(chg)}`}
                       </td>
-                      <td style={{ textAlign: "right", fontWeight: 700, color: r.seqGrowth == null ? "var(--text-3)" : r.seqGrowth >= 0 ? "var(--green)" : "var(--red)" }}>{pct(r.seqGrowth)}</td>
-                      {showYoY && <td style={{ textAlign: "right", fontWeight: 700, color: r.yoyGrowth == null ? "var(--text-3)" : r.yoyGrowth >= 0 ? "var(--green)" : "var(--red)" }}>{pct(r.yoyGrowth)}</td>}
+                      <td style={{ textAlign: "right", fontWeight: "var(--fw-bold)", color: r.seqGrowth == null ? "var(--text-3)" : r.seqGrowth >= 0 ? "var(--green)" : "var(--red)" }}>{pct(r.seqGrowth)}</td>
+                      {showYoY && <td style={{ textAlign: "right", fontWeight: "var(--fw-bold)", color: r.yoyGrowth == null ? "var(--text-3)" : r.yoyGrowth >= 0 ? "var(--green)" : "var(--red)" }}>{pct(r.yoyGrowth)}</td>}
                     </tr>
                   );
                 })}

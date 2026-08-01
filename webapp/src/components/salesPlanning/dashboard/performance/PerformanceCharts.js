@@ -261,7 +261,7 @@ export default function PerformanceCharts({ row, lastYear, label, year, ytdCount
           <div className="chart-tooltip-header">{tooltip.label}</div>
           <div className="chart-tooltip-row">
             <span><span className="chart-tooltip-color" style={{ background: tooltip.color }} />{tooltip.series}</span>
-            <span className="font-mono" style={{ fontWeight: 700 }}>
+            <span className="font-mono" style={{ fontWeight: "var(--fw-bold)" }}>
               {tooltip.isPct ? `${tooltip.value >= 0 ? "+" : ""}${tooltip.value.toFixed(1)}%` : fmtMoney(tooltip.value)}
             </span>
           </div>

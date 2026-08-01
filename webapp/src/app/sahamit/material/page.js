@@ -18,7 +18,7 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
 // สถานะวัสดุ 1 ช่อง: มาแล้ว (เขียว+วันที่) / กำหนดถึง (วันที่) / —
 function matCell(dueDate, arrivedAt) {
-  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
   return <span style={{ color: "var(--text-3)" }}>—</span>;
 }
@@ -61,7 +61,7 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
   return (
     <>
       <tr>
-        <td className="font-mono" style={{ fontWeight: 600 }}>
+        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
           {row.fgCode}
           <div style={{ fontSize: "var(--fs-3)", color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
           {productMetaText(product) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{productMetaText(product)}</div>}
@@ -172,7 +172,7 @@ export default function MaterialPage() {
 
   const Stat = ({ n, label, color }) => (
     <div className="glass-panel" style={{ padding: "12px 16px", minWidth: 120 }}>
-      <div style={{ fontSize: "var(--fs-13)", fontWeight: 700, color: color || "var(--text)" }}>{n}</div>
+      <div style={{ fontSize: "var(--fs-13)", fontWeight: "var(--fw-bold)", color: color || "var(--text)" }}>{n}</div>
       <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{label}</div>
     </div>
   );
@@ -197,7 +197,7 @@ export default function MaterialPage() {
       {loading ? <Spinner /> : error ? null : rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Boxes size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>ยังไม่มีบรรทัด PO ให้ติดตาม</div>
+          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มีบรรทัด PO ให้ติดตาม</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บันทึก PO ก่อน แล้วระบบจะคำนวณ lead time ให้</div>
         </div>
       ) : (

@@ -17,14 +17,13 @@
 
 .info dt {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text-3);
 }
 
 .info dd {
   margin: 0;
-  /* สระบน/วรรณยุกต์ไทยยื่นเหนือตัวอักษร — 1.25 ที่พอสำหรับอังกฤษทำให้ไทยชนขอบ */
-  line-height: 1.45;
+  line-height: var(--lh-thai);
   word-break: break-word;
 }
 
@@ -33,7 +32,7 @@
 .numCol { text-align: right; white-space: nowrap; }
 .muted { color: var(--text-3); }
 .serial { color: var(--text-3); }
-.inactive td { opacity: 0.55; }
+.inactive td { opacity: var(--op-muted); }
 
 .rowActions {
   display: flex;
@@ -43,5 +42,5 @@
 
 /* สถานะน้ำหอม (S-4) — สีเป็นตัวช่วย ข้อความบอกความหมายครบอยู่แล้ว
    (คนตาบอดสีต้องได้ข้อมูลเท่ากัน) */
-.overdue { color: var(--red); font-weight: 600; }
-.soon { color: var(--amber); font-weight: 600; }
+.overdue { color: var(--red); font-weight: var(--fw-semibold); }
+.soon { color: var(--amber); font-weight: var(--fw-semibold); }

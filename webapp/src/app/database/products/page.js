@@ -19,6 +19,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfo } from "@/lib/master/categoryOf";
 import { brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney } from "@/lib/format";
@@ -89,23 +90,20 @@ export default function ProductRegistry() {
   };
 
   // Approve / reject a pending product (AE Supervisor only — enforced server-side too).
+  // ด่านเอกสารบังคับ + ทางยกเว้น อยู่ในฮุคชุดเดียวกับหน้าลูกค้า (กฎของโปรเจกต์:
+  // ตรรกะเดียวกันห้ามเขียนสองชุด — เดี๋ยวเพี้ยนหากันโดยไม่มีใครรู้)
+  const { decide: sendDecision, overrideDialog } = useApprovalDecision({
+    endpoint: "/api/master/products",
+    onDone: fetchProducts,
+  });
+
   const decide = async (id, status) => {
     let rejectionReason = null;
     if (status === "rejected") {
       rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
       if (rejectionReason === null) return; // ยกเลิก
     }
-    try {
-      const res = await fetch(`/api/master/products/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalStatus: status, rejectionReason }),
-      });
-      if (res.ok) fetchProducts();
-      else notifyToast.error((await res.json()).error || "ดำเนินการไม่สำเร็จ");
-    } catch {
-      notifyToast.error("เกิดข้อผิดพลาดในการอนุมัติ");
-    }
+    await sendDecision(id, status, { rejectionReason });
   };
 
   const getCategoryInfo = (fgCode) => categoryInfo(fgCode, productTypes);
@@ -458,7 +456,7 @@ export default function ProductRegistry() {
                   const isExciseCat = flags.isExcise;
                   const cat = categoryLabelOf(p);
                   return (
-                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
+                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
                         <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
@@ -539,6 +537,9 @@ export default function ProductRegistry() {
           </div>
         </form>
       </Modal>
+
+      {/* กล่องขอเหตุผลเมื่ออนุมัติทั้งที่เอกสารบังคับยังไม่ครบ */}
+      {overrideDialog}
     </Workspace>
   );
 }

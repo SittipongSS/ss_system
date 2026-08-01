@@ -157,7 +157,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
 
         {selectedOrder && (
           <div className="glass-panel" style={{ padding: 14 }}>
-            <div className="flex items-center gap-2" style={{ fontWeight: 700 }}>
+            <div className="flex items-center gap-2" style={{ fontWeight: "var(--fw-bold)" }}>
               <FileCheck2 size={17} color="var(--accent)" />
               {selectedOrder.orderNumber}
             </div>
@@ -165,7 +165,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
               <div><span style={{ color: "var(--text-3)" }}>ยอด SO</span><div className="font-mono">{fmtMoney(selectedOrder.totalAmount)}</div></div>
               <div><span style={{ color: "var(--text-3)" }}>รายการสรรพสามิต</span><div>{resolution.loading ? "กำลังตรวจ…" : `${resolution.lines.length} รายการ`}</div></div>
               <div><span style={{ color: "var(--text-3)" }}>ค่าภาษี (ก่อน VAT)</span><div className="font-mono">{resolution.loading ? "…" : fmtMoney(resolution.totalTax)}</div></div>
-              <div><span style={{ color: "var(--text-3)" }}>ยอดที่ต้องเรียกเก็บ (รวม VAT 7%)</span><div className="font-mono" style={{ color: "var(--accent)", fontWeight: 700 }}>{resolution.loading ? "…" : fmtMoney(resolution.amountToCollect)}</div></div>
+              <div><span style={{ color: "var(--text-3)" }}>ยอดที่ต้องเรียกเก็บ (รวม VAT 7%)</span><div className="font-mono" style={{ color: "var(--accent)", fontWeight: "var(--fw-bold)" }}>{resolution.loading ? "…" : fmtMoney(resolution.amountToCollect)}</div></div>
               <div><span style={{ color: "var(--text-3)" }}>ทะเบียนที่ควรตรวจ</span><div>{resolution.loading ? "…" : `${resolution.warnings.length} รายการ`}</div></div>
             </div>
           </div>

@@ -38,7 +38,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <Target size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>ความคืบหน้าเทียบเป้า — ทั้งบริษัท</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ความคืบหน้าเทียบเป้า — ทั้งบริษัท</h2>
         <div className="spacer" />
         <SeriesLegend
           items={[

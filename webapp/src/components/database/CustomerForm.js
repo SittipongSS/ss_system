@@ -18,6 +18,7 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import Textarea from "@/components/ui/Textarea";
 
 export const EMPTY_CUSTOMER = {
   arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000",
@@ -119,11 +120,11 @@ export default function CustomerForm({
           </div>
           <div className="form-group col-span-2">
             <label>ที่อยู่ลูกค้า (ออกเอกสาร) <span className="text-[var(--red)]">*</span></label>
-            <textarea name="address" value={form.address} onChange={set("address")} required rows={2} placeholder="ที่อยู่สำหรับออกเอกสาร..." className="premium-input w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
+            <Textarea name="address" value={form.address} onChange={set("address")} required rows={2} placeholder="ที่อยู่สำหรับออกเอกสาร..." className="w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
           </div>
           <div className="form-group col-span-2">
             <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
-            <textarea name="shippingAddress" value={form.shippingAddress} onChange={set("shippingAddress")} rows={2} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง" className="premium-input w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
+            <Textarea name="shippingAddress" value={form.shippingAddress} onChange={set("shippingAddress")} rows={2} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง" className="w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
           </div>
           <div className="form-group col-span-2">
             <label>แบรนด์สินค้า</label>

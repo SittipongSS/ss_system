@@ -49,7 +49,7 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
     <div className="flex flex-col gap-4">
       <section className="glass-panel" style={{ padding: "14px 16px" }}>
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
-          <span className="flex items-center gap-1.5" style={{ fontWeight: 700, fontSize: "var(--fs-9)" }}>
+          <span className="flex items-center gap-1.5" style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)" }}>
             <Search size={16} aria-hidden="true" /> เจาะรายละเอียด
           </span>
           <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>มุมมอง</span>

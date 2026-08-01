@@ -88,11 +88,11 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="radio" name="tx" checked={taxable === "taxable"} onChange={() => setTaxable("taxable")} />
-                กำหนดเอง: <span style={{ color: "var(--red)", fontWeight: 600 }}>ต้องเสียภาษี</span>
+                กำหนดเอง: <span style={{ color: "var(--red)", fontWeight: "var(--fw-semibold)" }}>ต้องเสียภาษี</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="radio" name="tx" checked={taxable === "exempt"} onChange={() => setTaxable("exempt")} />
-                กำหนดเอง: <span style={{ color: "var(--green)", fontWeight: 600 }}>ยกเว้นภาษี</span>
+                กำหนดเอง: <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>ยกเว้นภาษี</span>
               </label>
             </div>
           </div>

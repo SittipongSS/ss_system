@@ -250,6 +250,35 @@ export function requiredDocKeys(entityType, docTypes) {
   return list.filter((t) => t.required).map((t) => t.key);
 }
 
+// ── ด่านเอกสารบังคับตอนอนุมัติ master data (มติ 2026-07-31) ─────────────
+// ชุดการ์ดเอกสารของ entity — ลูกค้าใช้ชุดตามประเภท (นิติบุคคล/บุคคลธรรมดา)
+// ⚠️ ตาราง products ไม่มีคอลัมน์ customerType — GET /api/products/[id] เติมให้สดจาก
+// ลูกค้าเจ้าของตอนอ่าน ฉะนั้น API ที่อ่าน row ตรงจากตารางจะไม่มีค่านี้ ต้อง lookup เอง
+export function docTypesFor(entityType, record) {
+  if (entityType === "customer") return customerDocTypes(record?.customerType);
+  return ATTACHMENT_TYPES[entityType] || [];
+}
+
+// ข้อความบอกผู้ใช้ว่าขาดอะไร — ต้องอ่านแล้วรู้ทันทีว่าต้องไปทำอะไรต่อ
+export function missingDocsMessage(missing, entityLabel = "ระเบียนนี้") {
+  return `${entityLabel}ยังไม่มีเอกสารบังคับครบ — ขาด ${missing.map((m) => m.label).join(" · ")} `
+    + "(แนบได้ที่หัวข้อเอกสารในหน้ารายละเอียด)";
+}
+
+// เหตุผลตอนขอ "อนุมัติโดยยกเว้นเอกสาร" — บังคับให้เขียนจริง ไม่ใช่เคาะช่องว่าง
+// ⭐ ทำไมต้องมีทางยกเว้น: ระเบียนที่อนุมัติอยู่แล้วจะตกกลับเป็น "รออนุมัติ" ทุกครั้งที่มี
+// คนแก้ (resetApprovalOnEdit) — ถ้าไม่มีทางออก ลูกค้า 92 รายที่ยังไม่มีเอกสารจะกลายเป็น
+// ระเบียนที่ **แก้แล้วอนุมัติกลับไม่ได้** ทันทีที่ด่านนี้ขึ้น prod = ออกใบเสนอราคาให้ไม่ได้
+// การยกเว้นถูกบันทึกทั้งใน audit และเธรดของระเบียน จึงตามย้อนหลังได้ว่าใครยกเว้นเพราะอะไร
+export const MIN_OVERRIDE_REASON = 10;
+export function overrideReasonError(reason) {
+  const text = String(reason ?? "").trim();
+  if (text.length < MIN_OVERRIDE_REASON) {
+    return `ต้องระบุเหตุผลที่อนุมัติโดยยังไม่มีเอกสารครบ (อย่างน้อย ${MIN_OVERRIDE_REASON} ตัวอักษร)`;
+  }
+  return null;
+}
+
 // ── พรีวิวรูปในหน้า ────────────────────────────────────────────────────
 // ไฟล์ที่แสดงเป็นภาพย่อ + คลิกขยายได้. ยึด mimeType เป็นหลัก แต่ไฟล์เก่าบางแถว
 // ไม่มี mimeType (อัปก่อนที่ระบบจะเก็บ) จึงเดาจากนามสกุลชื่อไฟล์เป็นทางสำรอง

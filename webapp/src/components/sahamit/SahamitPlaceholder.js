@@ -11,8 +11,8 @@ export default function SahamitPlaceholder({ phase, note }) {
       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "48px 24px", textAlign: "center" }}
     >
       <Hammer size={28} strokeWidth={1.5} style={{ color: "var(--text-3)" }} />
-      <div style={{ fontSize: "var(--fs-9)", fontWeight: 600 }}>อยู่ระหว่างพัฒนา · {phase}</div>
-      {note && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", maxWidth: "520px", lineHeight: 1.6 }}>{note}</div>}
+      <div style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>อยู่ระหว่างพัฒนา · {phase}</div>
+      {note && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", maxWidth: "520px", lineHeight: "var(--lh-relaxed)" }}>{note}</div>}
     </div>
   );
 }

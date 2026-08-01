@@ -40,12 +40,12 @@ function FlagRow({ flag, onSaved, canEdit }) {
   return (
     <>
       <tr>
-        <td className="font-mono" style={{ fontWeight: 600 }}>{flag.fgCode}</td>
+        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{flag.fgCode}</td>
         <td>{flag.month}</td>
         <td><span className="ui-badge" style={{ color: KIND_COLOR[flag.kind], borderColor: KIND_COLOR[flag.kind] }}>{FLAG_KIND_LABEL[flag.kind] || flag.kind}</span></td>
         <td style={{ textAlign: "right" }}>{nf(flag.prevQty)} → {nf(flag.newQty)} <span style={{ color: "var(--red)" }}>(−{nf(flag.drop)})</span></td>
         <td>#{flag.roundNo}</td>
-        <td><span style={{ color: STATUS_COLOR[flag.status], fontWeight: 600 }}>{FLAG_STATUS_LABEL[flag.status] || flag.status}{flag.status === "confirmed_shift" && flag.shiftToMonth ? ` → ${flag.shiftToMonth}` : ""}</span></td>
+        <td><span style={{ color: STATUS_COLOR[flag.status], fontWeight: "var(--fw-semibold)" }}>{FLAG_STATUS_LABEL[flag.status] || flag.status}{flag.status === "confirmed_shift" && flag.shiftToMonth ? ` → ${flag.shiftToMonth}` : ""}</span></td>
         <td style={{ textAlign: "right" }}>{canEdit && <button className="btn-icon" onClick={() => setOpen((v) => !v)} title="เคลียร์">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}</td>
       </tr>
       {open && (
@@ -105,7 +105,7 @@ export default function ReviewPage() {
       {loading ? <Spinner /> : error ? null : shown.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Flag size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, fontSize: "var(--fs-9)" }}>{tab === "open" ? "ไม่มีรายการต้องตรวจ 🎉" : "ยังไม่มีธง"}</div>
+          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>{tab === "open" ? "ไม่มีรายการต้องตรวจ 🎉" : "ยังไม่มีธง"}</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>ระบบตั้งธงอัตโนมัติเมื่อ FC ลด/เลื่อน — ถ้ามี PO มารับจะเสนอเป็น “น่าจะเติมเต็มด้วย PO” ให้ยืนยัน</div>
         </div>
       ) : (

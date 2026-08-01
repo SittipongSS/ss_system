@@ -1,0 +1,136 @@
+/* บอร์ดตารางผลิต: ไลน์ × วัน (P-3)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rangeLabel {
+  line-height: var(--lh-thai);
+  min-width: 200px;
+  text-align: center;
+}
+
+.counts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  margin-inline-start: auto;
+}
+
+.overCount { color: var(--red); }
+
+.board {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.board th,
+.board td {
+  border: 1px solid var(--border);
+  vertical-align: top;
+  padding: var(--space-1);
+}
+
+.board thead th {
+  text-align: center;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  padding-block: var(--space-2);
+  /* 28 คอลัมน์ในจอเดียว — บีบให้พอดีแล้วให้กล่องเลื่อนแนวนอนแทนหน้าเพจ */
+  min-width: 40px;
+}
+
+.dayName {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+.today {
+  display: inline-block;
+  min-width: 22px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.lineCol {
+  width: 170px;
+  min-width: 170px;
+  text-align: start;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  /* ⚠️ ไม่เขียน sticky เอง — TableScroll family="matrix" แช่แข็งคอลัมน์แรกให้แล้ว
+     พร้อมพื้น --panel-solid ที่ทึบ 100% (พื้นโปร่งจะให้ตัวเลขคอลัมน์อื่นทะลุขึ้นมา) */
+}
+
+.lineMeta {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+
+/* เสาร์-อาทิตย์/วันหยุด · วันที่ไลน์ปิด — เทาทึบ ไม่ใช่ที่ว่างให้วางงาน */
+.off { background: var(--bg); }
+.closed { background: var(--bg); }
+
+/* จองเกินกำลัง — เตือน ไม่บล็อก */
+.over { background: var(--red-soft); }
+
+.inactive th,
+.inactive td { opacity: var(--op-muted); }
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-height: 44px;
+}
+
+.pct {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.free {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.chipJob {
+  display: block;
+  width: 100%;
+  padding: var(--space-0-5) var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: start;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipJob:disabled { cursor: default; }
+
+/* วางก่อนของมาถึง — สีเป็นตัวช่วย เหตุผลเต็มอยู่ใน title ของชิปเสมอ */
+.chipLate {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}

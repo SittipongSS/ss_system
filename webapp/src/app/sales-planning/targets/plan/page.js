@@ -376,12 +376,12 @@ export default function SalesTargetPlanPage() {
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             {step < 4 ? (
               <button type="button" className="btn btn-primary" onClick={goNext} disabled={loading || saving}
-                style={{ fontWeight: 700, padding: "10px 24px" }}>
+                style={{ fontWeight: "var(--fw-bold)", padding: "10px 24px" }}>
                 ถัดไป <ArrowRight size={16} aria-hidden="true" />
               </button>
             ) : (
               <button type="button" className="btn btn-primary" onClick={confirmPlan} disabled={saving}
-                style={{ fontWeight: 800, padding: "10px 28px", minWidth: 200 }}>
+                style={{ fontWeight: "var(--fw-bold)", padding: "10px 28px", minWidth: 200 }}>
                 <Check size={18} aria-hidden="true" /> {saving ? "กำลังวางเป้า…" : "ยืนยันวางเป้า"}
               </button>
             )}
@@ -407,12 +407,12 @@ function StepNav({ step }) {
             <div style={{
               width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", flexShrink: 0,
               background: active ? "var(--accent)" : done ? "var(--green)" : "color-mix(in srgb, var(--text) 10%, transparent)",
-              color: active || done ? "var(--accent-fg)" : "var(--text-3)", fontWeight: 800, fontSize: "var(--fs-7)",
+              color: active || done ? "var(--accent-fg)" : "var(--text-3)", fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)",
             }}>
               {done ? <Check size={15} /> : s.n}
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: "var(--fs-7)", whiteSpace: "nowrap" }}>{s.label}</div>
+              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", whiteSpace: "nowrap" }}>{s.label}</div>
               <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", whiteSpace: "nowrap" }}>{s.hint}</div>
             </div>
           </div>
@@ -466,7 +466,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h3 style={{ fontWeight: 800, fontSize: "var(--fs-10)", marginBottom: 4 }}>1 · ประวัติ เป้า vs ขายจริง (ระดับบริษัท)</h3>
+        <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-10)", marginBottom: 4 }}>1 · ประวัติ เป้า vs ขายจริง (ระดับบริษัท)</h3>
         <p style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
           กรอกยอดของแต่ละปี — ปีที่ระบบมีดีลปิดแล้วจะเติมยอด “ขายจริง” ให้อัตโนมัติ (แก้ทับได้)
         </p>
@@ -489,10 +489,10 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
               const hasSystem = Number(systemActuals?.[y]?.total || 0) > 0;
               return (
                 <tr key={y} className="premium-row">
-                  <td style={{ fontWeight: 700 }}>{y}</td>
+                  <td style={{ fontWeight: "var(--fw-bold)" }}>{y}</td>
                   <td className="num"><MoneyInput value={Number(row.target || 0)} onChange={(v) => setC(y, "target", v)} /></td>
                   <td className="num"><MoneyInput value={Number(row.actual || 0)} onChange={(v) => setC(y, "actual", v)} /></td>
-                  <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
+                  <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: "var(--fw-bold)" }}>
                     {attain == null ? "–" : fmtPercent(attain)}
                   </td>
                   <td style={{ textAlign: "center" }}>
@@ -508,14 +508,14 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
       </div>
 
       <div>
-        <h3 style={{ fontWeight: 800, fontSize: "var(--fs-9)", marginBottom: 4 }}>สัดส่วนยอดขายจริงรายทีม (ปี {latestYear})</h3>
+        <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", marginBottom: 4 }}>สัดส่วนยอดขายจริงรายทีม (ปี {latestYear})</h3>
         <p style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", marginBottom: 10 }}>
           ใช้เป็นสัดส่วนตั้งต้นในการแบ่งเป้าลงทีม (ขั้นที่ 3)
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           {SALES_TEAMS.map((t) => (
             <div key={t} className="glass-panel" style={{ padding: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: "var(--fs-7)", marginBottom: 6 }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
+              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", marginBottom: 6 }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
               <MoneyInput value={Number(teamHist[t] || 0)} onChange={(v) => setTeamHist((h) => ({ ...h, [t]: v }))} />
             </div>
           ))}
@@ -532,12 +532,12 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
   if (!projection.hasData) {
     return (
       <div className="flex flex-col gap-4">
-        <h3 style={{ fontWeight: 800, fontSize: "var(--fs-10)" }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
+        <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-10)" }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
         <div className="glass-panel" style={{ padding: 14, color: "var(--text-3)" }}>
           ยังไม่มีข้อมูล “ขายจริง” ย้อนหลังพอให้คำนวณ — กรอกเป้าปี {targetYear} เองได้เลย
         </div>
         <div style={{ maxWidth: 260 }}>
-          <label style={{ fontSize: "var(--fs-7)", fontWeight: 700 }}>เป้าจริงปี {targetYear}</label>
+          <label style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>เป้าจริงปี {targetYear}</label>
           <MoneyInput value={finalTarget} onChange={setFinalTarget} />
         </div>
       </div>
@@ -551,7 +551,7 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h3 style={{ fontWeight: 800, fontSize: "var(--fs-10)", marginBottom: 4 }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
+        <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-10)", marginBottom: 4 }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
         <p style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
           จากยอดขายจริงล่าสุด {fmt(projection.lastActual)} · โต YoY เฉลี่ย {pct(projection.rawGrowth)}
           {projection.attainment != null && <> · ปีก่อนทำได้ {fmtPercent(projection.attainment * 100)} ของเป้า</>}
@@ -564,10 +564,10 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
           return (
             <button key={c.key} type="button" onClick={() => setFinalTarget(c.amount)} className="glass-panel interactive-card"
               style={{ padding: 16, textAlign: "left", borderColor: active ? c.color : "var(--border)", borderWidth: active ? 2 : 1, cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: c.color, fontWeight: 800, fontSize: "var(--fs-7)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: c.color, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
                 <TrendingUp size={15} /> {c.label}
               </div>
-              <div className="mono tabular-nums" style={{ fontSize: "var(--fs-14)", fontWeight: 800, marginTop: 8 }}>{fmt(c.amount)}</div>
+              <div className="mono tabular-nums" style={{ fontSize: "var(--fs-14)", fontWeight: "var(--fw-bold)", marginTop: 8 }}>{fmt(c.amount)}</div>
               <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 4 }}>{c.hint}</div>
             </button>
           );
@@ -575,7 +575,7 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
       </div>
 
       <div className="glass-panel" style={{ padding: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderColor: "var(--accent)" }}>
-        <div style={{ fontWeight: 800, fontSize: "var(--fs-9)" }}>เป้าจริงปี {targetYear}</div>
+        <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)" }}>เป้าจริงปี {targetYear}</div>
         <div style={{ width: 200 }}><MoneyInput value={finalTarget} onChange={setFinalTarget} /></div>
         <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>เลือกจากการ์ดด้านบน หรือพิมพ์ตัวเลขของคุณเอง</div>
       </div>
@@ -591,7 +591,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
     <div className="flex flex-col gap-5">
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <h3 style={{ fontWeight: 800, fontSize: "var(--fs-10)", marginBottom: 4 }}>3 · แบ่งเป้า {fmt(finalTarget)} ลงทีม</h3>
+          <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-10)", marginBottom: 4 }}>3 · แบ่งเป้า {fmt(finalTarget)} ลงทีม</h3>
           <p style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
             สัดส่วนตั้งต้นจากยอดขายจริงปี {latestYear} — ปรับจำนวนเงินได้ตามต้องการ
           </p>
@@ -624,7 +624,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
               const sug = suggested.find((s) => s.key === t)?.amount || 0;
               return (
                 <tr key={t} className="premium-row">
-                  <td style={{ fontWeight: 700 }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
+                  <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
                   <td className="num mono">{fmt(actual)}</td>
                   <td className="num mono" style={{ color: "var(--text-3)" }}>{pct(share)}</td>
                   <td className="num mono" style={{ color: "var(--text-3)" }}>{fmt(sug)}</td>
@@ -634,7 +634,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
             })}
           </tbody>
           <tfoot>
-            <tr style={{ fontWeight: 800 }}>
+            <tr style={{ fontWeight: "var(--fw-bold)" }}>
               <td>รวม</td>
               <td className="num mono">{fmt(totalActual)}</td>
               <td className="num mono">{fmtPercent(100)}</td>
@@ -660,7 +660,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h3 style={{ fontWeight: 800, fontSize: "var(--fs-10)", marginBottom: 4 }}>4 · แบ่งรายคน + กระจายรายเดือน</h3>
+        <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-10)", marginBottom: 4 }}>4 · แบ่งรายคน + กระจายรายเดือน</h3>
         <p style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
           สัดส่วนคนตั้งต้นจากยอดที่แต่ละคนทำได้ · รายเดือนกระจายตามฤดูกาลของปีก่อน — ปรับได้ทั้งคู่
         </p>
@@ -669,7 +669,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
       {/* Per-person split */}
       <div className="flex flex-col gap-3">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <h4 style={{ fontWeight: 800, fontSize: "var(--fs-8)" }}>เป้ารายบุคคล</h4>
+          <h4 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)" }}>เป้ารายบุคคล</h4>
           <ValueModeToggle value={personMode} onChange={setPersonMode} ariaLabel="รูปแบบกรอกเป้ารายบุคคล" />
           <button type="button" className="btn sm" onClick={reseedPeople} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> คำนวณสัดส่วนใหม่</button>
         </div>
@@ -680,9 +680,9 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           return (
             <div key={t} className="glass-panel" style={{ padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontWeight: 800 }}>{TEAM_LABELS[t]}</span>
+                <span style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t]}</span>
                 <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เป้าทีม {fmt(teamTot)}</span>
-                <span style={{ marginLeft: "auto", fontSize: "var(--fs-5)", fontWeight: 700, color: alloc === teamTot ? "var(--green)" : alloc > teamTot ? "var(--red)" : "var(--amber)" }}>
+                <span style={{ marginLeft: "auto", fontSize: "var(--fs-5)", fontWeight: "var(--fw-bold)", color: alloc === teamTot ? "var(--green)" : alloc > teamTot ? "var(--red)" : "var(--amber)" }}>
                   แบ่งแล้ว {fmt(alloc)}{alloc !== teamTot && ` (${alloc > teamTot ? "เกิน" : "เหลือ"} ${fmt(Math.abs(teamTot - alloc))})`}
                 </span>
               </div>
@@ -716,9 +716,9 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
       {/* Seasonal distribution */}
       <div className="flex flex-col gap-3">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <h4 style={{ fontWeight: 800, fontSize: "var(--fs-8)" }}>สัดส่วนรายเดือน (ฤดูกาล)</h4>
+          <h4 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)" }}>สัดส่วนรายเดือน (ฤดูกาล)</h4>
           <ValueModeToggle value={seasonMode} onChange={setSeasonMode} ariaLabel="รูปแบบกรอกสัดส่วนรายเดือน" />
-          <span style={{ fontSize: "var(--fs-5)", color: Math.abs(seasonSumPct - 100) < 0.5 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
+          <span style={{ fontSize: "var(--fs-5)", color: Math.abs(seasonSumPct - 100) < 0.5 ? "var(--green)" : "var(--amber)", fontWeight: "var(--fw-bold)" }}>
             รวม {seasonMode === "percent" ? fmtPercent(seasonSumPct) : fmt(annualTarget * seasonSumPct / 100)}
           </span>
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
@@ -733,7 +733,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
             </thead>
             <tbody>
               <tr className="premium-row">
-                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{seasonMode === "percent" ? "%" : "มูลค่า"}</td>
+                <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{seasonMode === "percent" ? "%" : "มูลค่า"}</td>
                 {monthPct.map((p, i) => (
                   <td key={i} className="num" style={{ padding: "3px 4px" }}>
                     {seasonMode === "percent" ? (
@@ -748,7 +748,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                 ))}
               </tr>
               <tr>
-                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>บริษัท</td>
+                <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>บริษัท</td>
                 {distributeBySeasonal(sum(SALES_TEAMS.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
                   <td key={i} className="num mono" style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", padding: "3px 4px" }}>{fmt(v)}</td>
                 ))}
@@ -772,8 +772,8 @@ function GapBanner({ target, allocated, label }) {
   const color = over ? "var(--red)" : done ? "var(--green)" : "var(--amber)";
   const text = over ? `เกินเป้ารวม ${fmt(-remaining)}` : done ? "ครบพอดี" : `ยังเหลือ ${fmt(remaining)}`;
   return (
-    <div className="glass-panel" style={{ padding: "10px 14px", borderColor: color, color, fontWeight: 700, fontSize: "var(--fs-7)" }}>
-      {label} {fmt(allocated)} / {fmt(target)} · {text} <span style={{ color: "var(--text-3)", fontWeight: 500 }}>(เตือนเท่านั้น ไม่บังคับให้เท่ากัน)</span>
+    <div className="glass-panel" style={{ padding: "10px 14px", borderColor: color, color, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
+      {label} {fmt(allocated)} / {fmt(target)} · {text} <span style={{ color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>(เตือนเท่านั้น ไม่บังคับให้เท่ากัน)</span>
     </div>
   );
 }

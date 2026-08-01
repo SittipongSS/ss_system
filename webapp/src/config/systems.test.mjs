@@ -12,8 +12,8 @@ const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 test('system catalog keeps the agreed global order and role visibility', () => {
   assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']);
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'service', 'tax', 'master']);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'service', 'tax', 'sahamit', 'master']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'master']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
   assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt']);
   assert.deepEqual(keysFor({ role: 'legal', team: null, extraCaps: [] }), ['tax', 'master']);
@@ -29,18 +29,18 @@ test('system visibility covers every supported role and sales team', () => {
     ['rd', null, ['salesplan', 'master']],
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
-    ['viewer', null, ['salesplan', 'service', 'tax', 'sahamit', 'master', 'mgmt']],
+    ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']],
     // staff ที่ไม่ระบุฝ่าย = ไม่ใช่ PC/PD → ไม่เห็นระบบผลิต (ดูเคส PC/PD ข้างล่าง)
     ['staff', null, ['salesplan', 'master']],
-    ['senior_ae', 'ODM', ['salesplan', 'service', 'tax', 'master']],
-    ['senior_ae', 'KA', ['salesplan', 'service', 'tax', 'sahamit', 'master']],
-    ['senior_ae', 'SV', ['salesplan', 'service', 'tax', 'master']],
-    ['ac', 'ODM', ['salesplan', 'service', 'tax', 'master']],
-    ['ac', 'KA', ['salesplan', 'service', 'tax', 'sahamit', 'master']],
-    ['ac', 'SV', ['salesplan', 'service', 'tax', 'master']],
-    ['ae', 'ODM', ['salesplan', 'service', 'tax', 'master']],
-    ['ae', 'KA', ['salesplan', 'service', 'tax', 'sahamit', 'master']],
-    ['ae', 'SV', ['salesplan', 'service', 'tax', 'master']],
+    ['senior_ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['senior_ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
+    ['senior_ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['ac', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['ac', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
+    ['ac', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
+    ['ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
   ];
 
   for (const [role, team, expected] of cases) {
@@ -53,11 +53,12 @@ test('⭐ ระบบของฝ่ายขึ้นกับ *ฝ่าย* 
   // ถ้าวันไหนกฎนี้หลุด คลัง/QC จะได้ระบบโรงงาน + ระบบธุรกิจบริการมาโดยไม่มีใครสังเกต
   const at = (department) => keysFor({ role: 'staff', team: null, department, extraCaps: [] });
 
-  assert.ok(at('PC').includes('production'));
-  assert.ok(at('PD').includes('production'));
-  for (const dept of ['WH', 'QC', 'TS']) {
-    assert.ok(!at(dept).includes('production'), dept);
+  // ⭐ สายงานโรงงาน (PC/PD/WH/QC) เห็นระบบวางแผนผลิต — WH/QC อ่านบอร์ดเพื่อวางแผน
+  // งานตัวเอง (มติผู้ใช้ 2026-07-31) · **TS เป็นฝ่ายเดียวที่ถูกกันออก** เพราะคนละทีม
+  for (const dept of ['PC', 'PD', 'WH', 'QC']) {
+    assert.ok(at(dept).includes('production'), dept);
   }
+  assert.ok(!at('TS').includes('production'));
 
   // ฝ่ายเทคนิคบริการเห็นระบบธุรกิจบริการ · ฝ่ายโรงงานไม่เห็น
   assert.ok(at('TS').includes('service'));

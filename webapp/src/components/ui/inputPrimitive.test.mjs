@@ -60,6 +60,7 @@ test("ratchet มีตัวนับช่องกรอก และไม�
   const count = (code) => (code.match(new RegExp(PATTERNS.rawInputClass.source, "g")) || []).length;
   assert.equal(count('className="premium-input w-full"'), 1);
   assert.equal(count('className="premium-select compact"'), 1);
-  // .textarea-premium เป็นกล่องวางข้อมูลดิบคนละงาน และยังไม่มี primitive ให้ย้ายไป
-  assert.equal(count('className="textarea-premium"'), 0);
+  /* .textarea-premium เคยยกเว้นไว้เพราะไม่มี primitive ให้ย้ายไป — ตั้งแต่มี
+     Textarea.js (variant="data") จึงนับได้แล้ว ไม่งั้นคลาสนั้นเขียนเพิ่มได้ฟรี */
+  assert.equal(count('className="textarea-premium"'), 1);
 });

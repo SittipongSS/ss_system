@@ -1,17 +1,17 @@
 .previewPage { display: flex; flex-direction: column; gap: var(--space-4); }
 .headerActions { display: flex; align-items: center; gap: var(--space-2); }
 
-.controlPanel { padding: var(--space-4) 18px; }
-.controlIntro { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-1) 10px; }
+.controlPanel { padding: var(--space-4) var(--space-4-5); }
+.controlIntro { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-1) var(--space-2-5); }
 .controlIntro :global(.ui-badge) { width: max-content; color: var(--blue); background: var(--blue-soft); }
 .controlIntro strong { color: var(--text); font-size: var(--fs-8); }
 .controlIntro p { grid-column: 2; margin: 0; color: var(--text-3); font-size: var(--fs-5); }
-.controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: end; gap: 14px; margin-top: 14px; }
+.controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: end; gap: var(--space-3-5); margin-top: var(--space-3-5); }
 .controls :global(.form-group) { margin: 0; }
-.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: var(--fs-4); font-weight: 600; }
+.controls :global(.form-group) > span { display: block; margin-bottom: var(--space-1-5); color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
 .controls :global(.segmented) { min-height: var(--ctl-h); }
 .controls :global(.segmented button) { min-height: var(--ctl-h); }
-.scenarioSummary { display: flex; flex-wrap: wrap; gap: 6px var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.scenarioSummary { display: flex; flex-wrap: wrap; gap: var(--space-1-5) var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .scenarioSummary strong { color: var(--text); font-size: var(--fs-6); }
 .scenarioSummary span { color: var(--text-3); font-size: var(--fs-5); }
 .scenarioSummary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }

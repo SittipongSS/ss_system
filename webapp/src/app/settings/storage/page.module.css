@@ -16,15 +16,15 @@
 .sectionTitle {
   margin: 0;
   font-size: var(--fs-10);
-  font-weight: 600;
-  line-height: 1.5;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-text);
 }
 
 .sectionDesc {
   margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-7);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .actions {
@@ -65,14 +65,14 @@
 
 .stepLabel {
   font-size: var(--fs-8);
-  font-weight: 500;
-  line-height: 1.5;
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-text);
 }
 
 .stepDetail {
   color: var(--text-3);
   font-size: var(--fs-7);
-  line-height: 1.5;
+  line-height: var(--lh-text);
   overflow-wrap: anywhere;
 }
 
@@ -95,7 +95,7 @@
 
 .planPath {
   font-size: var(--fs-7);
-  line-height: 1.5;
+  line-height: var(--lh-text);
   overflow-wrap: anywhere;
 }
 
@@ -115,7 +115,7 @@
   margin-top: var(--space-2);
   color: var(--text-3);
   font-size: var(--fs-7);
-  line-height: 1.5;
+  line-height: var(--lh-text);
 }
 
 .logBox {
@@ -127,7 +127,7 @@
   border-radius: var(--radius-md);
   background: var(--panel-2);
   font-size: var(--fs-5);
-  line-height: 1.6;
+  line-height: var(--lh-relaxed);
 }
 
 .logLine { overflow-wrap: anywhere; }

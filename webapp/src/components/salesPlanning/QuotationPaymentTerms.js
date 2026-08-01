@@ -9,6 +9,7 @@ import {
 } from "@/lib/commercialPresets";
 import CommercialPresetPicker from "./CommercialPresetPicker";
 import styles from "./QuotationPaymentTerms.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 export default function QuotationPaymentTerms({
   value,
@@ -81,8 +82,7 @@ export default function QuotationPaymentTerms({
           </div>
         ) : (
           <label>ข้อความเงื่อนไขการชำระ
-            <textarea
-              className="textarea-premium"
+            <Textarea variant="data"
               rows={3}
               value={payment.paymentTerms}
               placeholder="เช่น เครดิต 30 วันนับจากวันส่งมอบ"

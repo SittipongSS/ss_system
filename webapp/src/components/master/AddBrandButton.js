@@ -116,7 +116,7 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
             display: "flex", flexDirection: "column", gap: "8px",
           }}
         >
-          <div style={{ fontSize: "var(--fs-5)", fontWeight: 600 }}>เพิ่มแบรนด์ใหม่ให้ลูกค้ารายนี้</div>
+          <div style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)" }}>เพิ่มแบรนด์ใหม่ให้ลูกค้ารายนี้</div>
           <input autoFocus className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (ไทย)" value={th} onChange={(e) => setTh(e.target.value)} onKeyDown={onKey} />
           <input className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (อังกฤษ)" value={en} onChange={(e) => setEn(e.target.value)} onKeyDown={onKey} />
           {error && <div style={{ fontSize: "var(--fs-3)", color: "var(--red)" }}>{error}</div>}

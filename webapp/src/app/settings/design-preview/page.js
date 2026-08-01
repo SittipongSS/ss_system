@@ -37,6 +37,7 @@ import Tabs from "@/components/ui/Tabs";
 import Segmented from "@/components/ui/Segmented";
 import Select from "@/components/ui/Select";
 import Input from "@/components/ui/Input";
+import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
 import TimeInput from "@/components/ui/TimeInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
@@ -623,9 +624,24 @@ export default function DesignPreviewPage() {
             </label>
             <label className={`${styles.field} ${styles.fieldWide}`}>
               ช่องหลายบรรทัด
-              <Input as="textarea" defaultValue="" placeholder="รายละเอียดเพิ่มเติม" />
+              <Textarea defaultValue="" placeholder="รายละเอียดเพิ่มเติม" />
+            </label>
+            <label className={`${styles.field} ${styles.fieldWide}`}>
+              กล่องวางข้อมูลดิบ <code>variant=&quot;data&quot;</code>
+              <Textarea
+                variant="data"
+                defaultValue={'{ "poNumber": "PO-26070128", "lines": 3 }'}
+                readOnly
+              />
             </label>
           </div>
+          <StatusNotice tone="info" title="ช่องหลายบรรทัดมีสองงาน อย่าสลับกัน">
+            <code>&lt;Textarea&gt;</code> เปล่า ๆ = <b>ช่องกรอกของฟอร์ม</b> (หน้าตาเดียวกับ
+            ช่องบรรทัดเดียว) ส่วน <code>variant=&quot;data&quot;</code> = <b>กล่องวางข้อมูลดิบ</b>
+            ฟอนต์ mono สูงคงที่ ลากขยายไม่ได้ — สำหรับ JSON/ล็อก/ข้อความที่ก๊อปมาวาง
+            เคยมี <code>&lt;textarea&gt;</code> 3 จุดที่ไม่ใส่คลาสเลย ได้กล่องไม่มีขอบ
+            พื้นโปร่งใส และสีตัวอักษรไม่เปลี่ยนตามธีม
+          </StatusNotice>
           <StatusNotice tone="info" title="อย่าเติม w-full / text-xs / h-[32px] ที่ปลายทาง">
             <code>.premium-input</code> ตั้งความกว้าง 100% ความสูง <code>--ctl-h</code> และขนาด
             ตัวอักษรไว้แล้ว — ที่ผ่านมามี 50 จุดเติม <code>w-full</code> ซ้ำ และบางจุดเขียน

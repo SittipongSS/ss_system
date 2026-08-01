@@ -24,7 +24,7 @@ export function DestinationToggle({ value, onChange, size = "sm" }) {
             key={d.key}
             type="button"
             className={`btn ${size} ${on ? "" : "ghost"}`}
-            style={on ? { borderColor: "var(--teal)", color: "var(--teal)", fontWeight: 600 } : undefined}
+            style={on ? { borderColor: "var(--teal)", color: "var(--teal)", fontWeight: "var(--fw-semibold)" } : undefined}
             onClick={() => onChange(on ? null : d.key)}
           >
             {on && <MapPin size={13} />} {d.label}

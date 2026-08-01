@@ -166,7 +166,7 @@ export default function SahamitOverview() {
               <div className="glass-panel" style={{ padding: "0", display: "flex", flexDirection: "column" }}>
                 <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px" }}>
                   <AlertCircle size={16} style={{ color: "var(--amber)" }} />
-                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, color: "var(--text)" }}>PO ที่ต้องการการติดตาม (ด่วน)</h3>
+                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", color: "var(--text)" }}>PO ที่ต้องการการติดตาม (ด่วน)</h3>
                   <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 8px", fontSize: "var(--fs-5)" }} onClick={() => router.push("/sahamit/po")}>ดูทั้งหมด</button>
                 </div>
                 {recentFollowUps.length > 0 ? (
@@ -175,7 +175,7 @@ export default function SahamitOverview() {
                     <tbody>
                       {recentFollowUps.map((p) => (
                         <tr key={p.id} onClick={() => router.push(`/sahamit/po?q=${p.poNumber}`)} style={{ cursor: "pointer" }} className="hover-row">
-                          <td style={{ paddingLeft: "20px", fontWeight: 500, color: "var(--accent)" }}>{p.poNumber}</td>
+                          <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)", color: "var(--accent)" }}>{p.poNumber}</td>
                           <td>{p.receivedDate || "-"}</td>
                           <td><span className={`status-pill ${poRollupStatus(p) === "open" ? "warning" : "info"}`}>{poRollupStatus(p) === "open" ? "รอผลิต" : "ทยอยส่ง"}</span></td>
                         </tr>
@@ -191,13 +191,13 @@ export default function SahamitOverview() {
               <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                   <Clock size={16} style={{ color: "var(--text-3)" }} />
-                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: 600, color: "var(--text)" }}>การอัปเดต FC ล่าสุด</h3>
+                  <h3 style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", color: "var(--text)" }}>การอัปเดต FC ล่าสุด</h3>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {recentFCs.map((fc) => (
                     <div key={fc.id} style={{ display: "flex", flexDirection: "column", gap: "4px", paddingBottom: "12px", borderBottom: "1px dashed var(--border)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontWeight: 500, fontSize: "var(--fs-7)", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
+                        <span style={{ fontWeight: "var(--fw-medium)", fontSize: "var(--fs-7)", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
                         <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{fc.receivedDate || "-"}</span>
                       </div>
                       <span style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>ครอบคลุม {fc.coverMonths?.length || 0} เดือน</span>

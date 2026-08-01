@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
+import Textarea from "@/components/ui/Textarea";
 
 // สร้าง/แก้ไขงาน. task=null → สร้างใหม่. onSaved(row) เรียกหลังบันทึกสำเร็จ.
 export default function TaskFormModal({ open, onClose, onSaved, task, departments = [], users = [] }) {
@@ -106,7 +107,7 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
         </div>
         <div className="form-group" style={{ margin: 0 }}>
           <label>หมายเหตุ</label>
-          <textarea className="premium-input w-full" rows={3} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} />
+          <Textarea className="w-full" rows={3} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} />
         </div>
       </div>
       <div className="form-action-bar">

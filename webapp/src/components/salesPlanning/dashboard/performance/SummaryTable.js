@@ -33,7 +33,7 @@ function SummaryRow({ label, sublabel, s, tone, onClick }) {
   return (
     <tr
       className="premium-row"
-      style={{ cursor: onClick ? "pointer" : "default", ...(tone === "team" ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: 600 } : tone === "total" ? { background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" } : {}) }}
+      style={{ cursor: onClick ? "pointer" : "default", ...(tone === "team" ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: "var(--fw-semibold)" } : tone === "total" ? { background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" } : {}) }}
       onClick={onClick}
       onKeyDown={onClick ? (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
@@ -44,25 +44,25 @@ function SummaryRow({ label, sublabel, s, tone, onClick }) {
     >
       <td className={cellClass("fz-c1")} style={{ whiteSpace: "nowrap" }}>
         <strong>{label}</strong>
-        {sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: 400 }}>{sublabel}</span>}
+        {sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>{sublabel}</span>}
       </td>
       <td className={cellClass("num mono")}>{money(s.targetYear)}</td>
       <td className={cellClass("num mono")} style={{ color: "var(--blue)" }}>{money(s.fcTotalYear)}</td>
       <td className={cellClass("num mono")} style={{ color: "var(--amber)" }}>{money(s.forecastYear)}</td>
-      <td className={cellClass("num mono")} style={{ color: "var(--green)", fontWeight: 600 }}>{money(s.actualYtd)}</td>
+      <td className={cellClass("num mono")} style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>{money(s.actualYtd)}</td>
       <td className={cellClass("num")} style={{ minWidth: 110 }}>
-        <span className="mono" style={{ fontSize: "var(--fs-6)", fontWeight: 600 }}>{pctFmt(s.achv)}</span>
+        <span className="mono" style={{ fontSize: "var(--fs-6)", fontWeight: "var(--fw-semibold)" }}>{pctFmt(s.achv)}</span>
         {hasTarget && (
           <span style={{ display: "block", height: 5, borderRadius: 3, background: "var(--panel-2)", overflow: "hidden", marginTop: 4 }}>
             <i style={{ display: "block", height: "100%", width: `${Math.min(100, s.achv || 0)}%`, background: (s.achv || 0) >= 100 ? "var(--green)" : (s.achv || 0) >= 70 ? "var(--amber)" : "var(--red)", borderRadius: 3 }} />
           </span>
         )}
       </td>
-      <td className={cellClass("num mono")} style={{ color: s.gap >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+      <td className={cellClass("num mono")} style={{ color: s.gap >= 0 ? "var(--green)" : "var(--red)", fontWeight: "var(--fw-semibold)" }}>
         {hasTarget || s.actualYtd > 0 ? `${s.gap >= 0 ? "+" : ""}${money(s.gap)}` : "–"}
       </td>
       <td className={cellClass("num mono")}>{s.needPerMonth == null ? "—" : s.needPerMonth === 0 ? "ปิดแล้ว ✓" : money(s.needPerMonth)}</td>
-      <td className={cellClass("num mono")} style={{ color: s.yoy == null ? "var(--text-3)" : s.yoy >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+      <td className={cellClass("num mono")} style={{ color: s.yoy == null ? "var(--text-3)" : s.yoy >= 0 ? "var(--green)" : "var(--red)", fontWeight: "var(--fw-semibold)" }}>
         {s.yoy == null ? "–" : `${s.yoy >= 0 ? "+" : ""}${s.yoy.toFixed(1)}%`}
       </td>
       <td className={cellClass()}>
@@ -103,7 +103,7 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
         <Users size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: 700 }}>สรุปรายคน / รายทีม — ใครปิดเป้าได้ ใครมียอดทบ</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>สรุปรายคน / รายทีม — ใครปิดเป้าได้ ใครมียอดทบ</h2>
       </div>
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         Actual = YTD · {gapHead} = Actual YTD − Target YTD (ติดลบ = ต้องทบเข้าเดือนถัดไป) · ต้องทำ/เดือน = เฉลี่ยที่เหลือเพื่อปิดเป้าทั้งปี · คลิกแถวเพื่อเจาะ

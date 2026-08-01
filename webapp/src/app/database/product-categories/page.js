@@ -13,6 +13,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
 import styles from "./page.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 const EMPTY_FORM = {
   mainSelection: "",
@@ -366,7 +367,7 @@ export default function ProductCategoriesPage() {
           </label>
           <label>
             <span>หมายเหตุ</span>
-            <textarea className="premium-input" rows={4} maxLength={255} value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} />
+            <Textarea rows={4} maxLength={255} value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} />
             <small>{form.note.length}/255</small>
           </label>
 

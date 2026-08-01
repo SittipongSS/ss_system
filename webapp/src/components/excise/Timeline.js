@@ -38,7 +38,7 @@ export default function Timeline({ steps = [] }) {
               )}
             </div>
             <div style={{ paddingBottom: last ? 0 : 12 }}>
-              <div style={{ fontSize: "var(--fs-7)", fontWeight: 600, color: s.state === "todo" ? "var(--text-3)" : "var(--text)" }}>
+              <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", color: s.state === "todo" ? "var(--text-3)" : "var(--text)" }}>
                 {s.label}
               </div>
               {(s.at || s.by) && (

@@ -16,7 +16,7 @@ import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
-import ConfirmDialog from "@/components/excise/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
@@ -339,6 +339,7 @@ export default function RegistrationDetailPage() {
         confirmLabel="ยืนยันปลดอนุมัติ"
       />
       <ConfirmDialog
+        closeOnSuccess
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={doDelete}

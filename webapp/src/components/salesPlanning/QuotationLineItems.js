@@ -19,6 +19,7 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
+import Textarea from "@/components/ui/Textarea";
 
 export const newProductLine = () => ({
   _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: 0,
@@ -225,7 +226,7 @@ export default function QuotationLineItems({
                     {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา */}
                     {editable
                       ? ((line._noteOpen || line.metadata?.note)
-                        ? <textarea className="premium-input" rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
+                        ? <Textarea rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
                         : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
                       : (line.metadata?.note && (
                         <div className={styles.noteReadonly}>

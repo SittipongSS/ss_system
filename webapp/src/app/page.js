@@ -78,7 +78,7 @@ export default function LoginPage() {
           {error && (
             <div
               className="status-pill danger"
-              style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: "var(--fs-6)", fontWeight: 500, borderRadius: "var(--radius)" }}
+              style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: "var(--fs-6)", fontWeight: "var(--fw-medium)", borderRadius: "var(--radius)" }}
             >
               {error}
             </div>

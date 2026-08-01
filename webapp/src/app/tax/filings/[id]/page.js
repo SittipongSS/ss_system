@@ -16,7 +16,7 @@ import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
-import ConfirmDialog from "@/components/excise/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import OrderFormModal from "@/components/excise/OrderFormModal";
 import ReceiveDialog from "@/components/excise/ReceiveDialog";
@@ -267,9 +267,9 @@ export default function FilingDetailPage() {
             <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
               <thead>
                 <tr style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", borderBottom: "1px solid var(--border)" }}>
-                  <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "left" }}>รายการสินค้า</th>
-                  <th style={{ padding: "0 8px 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>จำนวน</th>
-                  <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>รวมภาษี</th>
+                  <th style={{ padding: "0 0 6px", fontWeight: "var(--fw-semibold)", textAlign: "left" }}>รายการสินค้า</th>
+                  <th style={{ padding: "0 8px 6px", fontWeight: "var(--fw-semibold)", textAlign: "right", whiteSpace: "nowrap" }}>จำนวน</th>
+                  <th style={{ padding: "0 0 6px", fontWeight: "var(--fw-semibold)", textAlign: "right", whiteSpace: "nowrap" }}>รวมภาษี</th>
                 </tr>
               </thead>
               <tbody>
@@ -288,7 +288,7 @@ export default function FilingDetailPage() {
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ fontWeight: 700 }}>
+                <tr style={{ fontWeight: "var(--fw-bold)" }}>
                   <td colSpan={2} style={{ padding: "8px 8px 0 0", textAlign: "right" }}>รวมภาษี</td>
                   <td className="font-mono" style={{ padding: "8px 0 0", textAlign: "right", color: "var(--red)" }}>{taxText(o)}</td>
                 </tr>
@@ -336,6 +336,7 @@ export default function FilingDetailPage() {
       <FileTaxDialog open={fileOpen} onClose={() => setFileOpen(false)} onDone={reload} order={o} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} title="ตีกลับใบยื่นชำระ" entityLabel="ใบยื่นนี้" />
       <ConfirmDialog
+        closeOnSuccess
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={doDelete}
@@ -345,6 +346,7 @@ export default function FilingDetailPage() {
         danger
       />
       <ConfirmDialog
+        closeOnSuccess
         open={deliverOpen}
         onClose={() => setDeliverOpen(false)}
         onConfirm={() => transition("delivered")}
