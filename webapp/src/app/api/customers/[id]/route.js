@@ -14,6 +14,8 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
 import { recordAudit } from '@/lib/audit';
+import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
+import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
 import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
@@ -150,7 +152,28 @@ export async function PATCH(request, { params }) {
       const reasonError = rejectionReasonError(body.rejectionReason);
       if (reasonError) return Response.json({ error: reasonError }, { status: 400 });
     }
+    // ── ด่านเอกสารบังคับ (มติ 2026-07-31) ──────────────────────────────
+    // การ์ด required ใน attachmentTypes เคยเป็นป้ายเฉย ๆ ไม่มีผลจริง — ตอนนี้อนุมัติ
+    // ไม่ผ่านถ้าเอกสารบังคับไม่ครบ · ยกเว้นได้แต่ต้องเขียนเหตุผล และถูกบันทึกไว้ทั้งใน
+    // audit และเธรด (ดูเหตุผลที่ต้องมีทางยกเว้นใน lib/master/attachmentRequirements)
     const approved = body.approvalStatus === 'approved';
+    let overrideReason = null;
+    if (approved) {
+      const missing = await missingRequiredDocs('customer', id, customer);
+      if (missing.length) {
+        if (!body.overrideDocuments) {
+          return Response.json({
+            error: missingDocsMessage(missing, `ลูกค้า ${customer.name || id} `),
+            code: 'missing-documents',
+            missing,
+          }, { status: 409 });
+        }
+        const reasonError = overrideReasonError(body.overrideReason);
+        if (reasonError) return Response.json({ error: reasonError, code: 'missing-documents' }, { status: 400 });
+        overrideReason = String(body.overrideReason).trim();
+      }
+    }
+
     const approvalUpdates = {
       approvalStatus: body.approvalStatus,
       approvedBy: user?.id ?? null,
@@ -159,7 +182,6 @@ export async function PATCH(request, { params }) {
       rejectionReason: rejecting ? normalizeRejectionReason(body.rejectionReason) : null,
       updatedAt: new Date().toISOString(),
     };
-    void approved;
     const { data: decided, error: decErr } = await supabase
       .from('customers').update(approvalUpdates).eq('id', id).select().single();
     if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
@@ -170,10 +192,21 @@ export async function PATCH(request, { params }) {
     if (threadEvent) {
       await appendUpdate(supabase, { entityType: 'customer', entityId: id, ...threadEvent, user });
     }
+    // การยกเว้นเอกสารต้องเห็นได้ตลอดไปในเธรด ไม่ใช่รู้กันแค่ตอนกด
+    if (overrideReason) {
+      await appendUpdate(supabase, {
+        entityType: 'customer',
+        entityId: id,
+        kind: 'note',
+        body: `อนุมัติโดยยกเว้นเอกสารบังคับ — เหตุผล: ${overrideReason}`,
+        user,
+      });
+    }
     await recordAudit({
       user, action: 'update', entityType: 'customer', entityId: id,
       before: customer, after: decided,
-      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}ลูกค้า ${decided.name || id}`,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}ลูกค้า ${decided.name || id}`
+        + (overrideReason ? ` (ยกเว้นเอกสาร: ${overrideReason})` : ''),
       request,
     });
     // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)

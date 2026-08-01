@@ -20,6 +20,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Management view sees every status (pending/approved/rejected); the default
@@ -73,23 +74,20 @@ export default function CustomerDirectory() {
   }, []);
 
   // Approve / reject a pending customer (AE Supervisor only — enforced server-side too).
+  // ด่านเอกสารบังคับ + ทางยกเว้น อยู่ในฮุคชุดเดียวกับหน้าสินค้า (กฎของโปรเจกต์:
+  // ตรรกะเดียวกันห้ามเขียนสองชุด — เดี๋ยวเพี้ยนหากันโดยไม่มีใครรู้)
+  const { decide: sendDecision, overrideDialog } = useApprovalDecision({
+    endpoint: "/api/master/customers",
+    onDone: fetchCustomers,
+  });
+
   const decide = async (id, status) => {
     let rejectionReason = null;
     if (status === "rejected") {
       rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
       if (rejectionReason === null) return; // ยกเลิก
     }
-    try {
-      const res = await fetch(`/api/master/customers/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalStatus: status, rejectionReason }),
-      });
-      if (res.ok) fetchCustomers();
-      else notifyToast.error((await res.json()).error || "ดำเนินการไม่สำเร็จ");
-    } catch {
-      notifyToast.error("เกิดข้อผิดพลาดในการอนุมัติ");
-    }
+    await sendDecision(id, status, { rejectionReason });
   };
 
   const handleChange = (e) =>
@@ -411,6 +409,9 @@ export default function CustomerDirectory() {
           </div>
         </form>
       </Modal>
+
+      {/* กล่องขอเหตุผลเมื่ออนุมัติทั้งที่เอกสารบังคับยังไม่ครบ */}
+      {overrideDialog}
     </Workspace>
   );
 }
