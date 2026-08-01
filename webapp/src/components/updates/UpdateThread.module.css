@@ -16,7 +16,9 @@
 
 /* ⚠️ `baseline` ไม่ใช่ `start`: ชื่อคน (fs-5) กับบรรทัดแรกของเนื้อความ (fs-7) สูงไม่
    เท่ากัน ถ้าจัดชิดขอบบนจะเหลื่อมกันทุกแถว */
-.row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--space-4); align-items: baseline; }
+/* 140px = ชื่อไทยเต็ม ("สมชาย ขายดี") + ป้ายชนิดยาวสุด ("ขั้นถัดไป") ไม่ตัดบรรทัด
+   — ของเดิม 104px ทำให้ชื่อกับวันเวลาตัดเป็นสามบรรทัด */
+.row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--space-4); align-items: baseline; }
 
 /* คอลัมน์ซ้าย — ชิดขวาเพื่อให้ชิดกับเนื้อความที่มันกำกับ (ragged ด้านนอก) */
 .meta { text-align: right; min-width: 0; }
@@ -46,11 +48,12 @@
   margin-left: var(--space-6); padding-left: var(--space-4);
   border-left: 1px solid var(--border);
 }
-/* ป้ายชนิด — ตัวอักษรสีล้วน ไม่มีพื้น/ขอบ เพราะป้ายที่มีพื้นเทาอ่านเป็น "ปุ่ม"
-   และมันอยู่ในแถวเดียวกับปุ่มจริง ๆ อยู่แล้ว */
+/* ป้ายชนิดในคอลัมน์ซ้าย — ตัวอักษรสีล้วน ไม่มีพื้น/ขอบ (ป้ายพื้นเทาอ่านเป็น "ปุ่ม")
+   บรรทัดของตัวเองใต้วันเวลา จึงอ่านเป็นชุดเดียวกับชื่อคน */
 .kindBadge {
+  display: block; margin-top: var(--space-0-5);
+  font-size: var(--fs-3); font-weight: var(--fw-semibold);
   color: var(--kind-color, var(--text-3));
-  font-weight: var(--fw-semibold);
 }
 
 /* ── เหตุการณ์ระบบ = โครงเดิม เสียงเบากว่า ─────────────────────────── */
