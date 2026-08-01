@@ -11,7 +11,7 @@
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Pencil, Quote, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
+import { Send, Paperclip, X, Pencil, Reply, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -122,9 +122,8 @@ export default function UpdateThread({
     return all;
   }, [items, extraItems, entityType, order]);
 
-  // ที่มาของกล่อง "ยกคำพูด" — หาจากชุดที่โหลดมาทั้งหมด **ไม่ใช่ `visible`**
-  // ไม่งั้นตอนกดซ่อนเหตุการณ์ระบบ คำตอบที่ยกเหตุการณ์ระบบมาจะกลายเป็น
-  // "ข้อความต้นทางไม่อยู่ในเธรดนี้แล้ว" ทั้งที่มันยังอยู่
+  // หาต้นทางจากชุดที่โหลดมาทั้งหมด **ไม่ใช่ `visible`** — ไม่งั้นตอนกดซ่อนเหตุการณ์
+  // ระบบ คำตอบที่ตอบเหตุการณ์ระบบจะกลายเป็นข้อความลอยที่ไม่รู้ว่าตอบอะไร
   const byId = useMemo(() => new Map(items.map((row) => [row.id, row])), [items]);
 
   const systemCount = useMemo(
@@ -134,9 +133,57 @@ export default function UpdateThread({
   // โชว์สวิตช์เฉพาะตอนที่มีทั้งสองอย่างจริง: ไม่มีเหตุการณ์ระบบ = ไม่มีอะไรให้ซ่อน ·
   // มีแต่เหตุการณ์ระบบ (เธรดลีดที่อ่านอย่างเดียว) = กดแล้วเธรดว่างเปล่า
   const canFilterSystem = systemCount > 0 && systemCount < timeline.length;
-  const visible = hideSystem && canFilterSystem
-    ? timeline.filter((item) => !isSystemUpdateItem(entityType, item))
-    : timeline;
+
+  // ── คำตอบซ้อนใต้ข้อความที่ถูกตอบ (มติผู้ใช้ 2026-08-01) ─────────────────
+  //
+  // ⭐ **ไม่ต้องมี migration**: `meta.quotedId` ที่ปุ่มยกคำพูดเขียนไว้อยู่แล้ว คือ
+  // ข้อมูลชุดเดียวกับที่การซ้อนชั้นต้องใช้ — เปลี่ยนแค่วิธีแสดงผล
+  //
+  // ⚠️ **ซ้อนชั้นเดียวเท่านั้น** (มติเดิม 2026-07-27 ที่ยังถือ): คำตอบของคำตอบถูก
+  // ยกขึ้นมาอยู่ใต้ต้นเรื่องเดียวกัน ไม่ไล่ลึกแบบ Reddit — ลำดับเวลาระดับบนสุด
+  // จึงไม่เพี้ยน ซึ่งเป็นเหตุผลที่ตอนแรกไม่เอา nested reply เลย
+  //
+  // ⚠️ คำตอบเรียง **เก่า→ใหม่** เสมอแม้เธรดหลักจะเรียงใหม่ก่อน เพราะในกลุ่มคำตอบ
+  // คนอ่านเป็นบทสนทนา ไม่ใช่ไล่ดูของใหม่
+  const { roots, repliesOf } = useMemo(() => {
+    const rootIdOf = (row) => {
+      let cur = row;
+      for (let hop = 0; hop < 20; hop += 1) {   // กันวงวนถ้าข้อมูลเพี้ยน
+        const parentId = quotedIdOf(cur);
+        const parent = parentId ? byId.get(parentId) : null;
+        if (!parent) return cur.id;             // แม่ไม่อยู่ในเธรด = ตัวเองเป็นต้นเรื่อง
+        cur = parent;
+      }
+      return cur.id;
+    };
+    const groups = new Map();
+    const tops = [];
+    for (const item of timeline) {
+      const rootId = item.kind === "own" ? rootIdOf(item.row) : item.id;
+      if (rootId === item.id) { tops.push(item); continue; }
+      const list = groups.get(rootId) || [];
+      list.push(item);
+      groups.set(rootId, list);
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+    }
+    return { roots: tops, repliesOf: groups };
+  }, [timeline, byId]);
+
+  // กรองเหตุการณ์ระบบทีหลังเสมอ — และถ้าต้นเรื่องถูกซ่อนแต่คำตอบยังอยู่
+  // ให้คำตอบเลื่อนขึ้นมาเป็นระดับบนสุด ไม่ใช่หายตามแม่ไปด้วย
+  const visibleGroups = useMemo(() => {
+    const pass = (item) => !(hideSystem && canFilterSystem) || !isSystemUpdateItem(entityType, item);
+    const out = [];
+    for (const root of roots) {
+      const replies = (repliesOf.get(root.id) || []).filter(pass);
+      if (pass(root)) out.push({ root, replies });
+      else if (replies.length) out.push({ root: null, replies });
+    }
+    return out;
+  }, [roots, repliesOf, hideSystem, canFilterSystem, entityType]);
+  const visibleCount = visibleGroups.reduce((n, g) => n + (g.root ? 1 : 0) + g.replies.length, 0);
 
   const pickFiles = (list) => {
     const files = Array.from(list || []).filter(Boolean);
@@ -205,6 +252,182 @@ export default function UpdateThread({
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
+  // ── วาดหนึ่งรายการ ───────────────────────────────────────────────────
+  // ใช้ทั้งระดับบนสุดและคำตอบที่ซ้อนเข้ามา — ต่างกันแค่กรอบนอก (ดู .replies)
+  const renderItem = (item, isReply) => {
+    const key = `${item.kind}-${item.id}`;
+    // ⭐ สีของ **ชนิดรายการ** เป็นแถบซ้าย (มติผู้ใช้ 2026-08-01): ยกสีที่ทะเบียนชนิด
+    // กำหนดไว้อยู่แล้วจากป้ายเล็ก ๆ มาเป็นเส้นที่เห็นแต่ไกล — ไม่ได้สร้างระบบสีที่สอง
+    // และสีจะตรงกับปุ่มบนหน้าเอกสารที่ทำให้เหตุการณ์นั้นเกิดโดยอัตโนมัติ
+    const tint = { "--kind-color": item.color || "var(--border)" };
+    const replyButton = canPost && canQuoteItem(item) ? (
+      <Button
+        iconOnly icon={<Reply size={13} />} aria-label="ตอบกลับข้อความนี้"
+        title="ตอบกลับ" disabled={busy}
+        onClick={() => setReplyTo(item.row)}
+      />
+    ) : null;
+
+    // ── เหตุการณ์ระบบ ──────────────────────────────────────────────────
+    // คอลัมน์ซ้าย = ชนิด + เวลา · ขวา = สิ่งที่เกิดขึ้น (ตัวอักษรจางกว่าข้อความคน)
+    if (isSystemUpdateItem(entityType, item)) {
+      const body = item.kind === "extra" ? item.body : item.row.body;
+      const who = item.kind === "extra" ? item.by : item.row.authorName;
+      return (
+        <div className={`${styles.row} ${styles.systemRow}`} key={key} style={tint}>
+          <div className={styles.meta}>
+            <span className={styles.metaName}>{item.label}</span>
+            <span className={styles.metaSub}>{item.at ? fmtDateTime(item.at) : ""}</span>
+          </div>
+          <div className={styles.content}>
+            <div className={styles.systemText}>
+              {body ? <RichText text={body} lines={2} className={styles.systemBody} /> : null}
+              {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
+                  ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
+              {item.kind === "extra" && item.href && (
+                <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
+              )}
+              {who && <span className={styles.systemWho}>{who}</span>}
+              {replyButton && <span className={styles.rowActions}>{replyButton}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── ข้อความคน ──────────────────────────────────────────────────────
+    // ⭐ ชื่อคนอยู่คอลัมน์ซ้ายชิดขวา (แบบ G): กวาดตาหาว่า "ใครพูด" ได้เร็วเพราะชื่อ
+    // เรียงตรงกันเป็นแนวเดียว และเนื้อความได้พื้นที่เต็มโดยไม่มีกรอบมาเบียด
+    const row = item.row;
+    const isEditing = editing?.id === row.id;
+    const orphanReply = quotedIdOf(row) && !byId.has(quotedIdOf(row));
+    return (
+      <article className={styles.row} key={key} style={tint}>
+        <div className={styles.meta}>
+          <span className={styles.metaName}>{row.authorName || "ระบบ"}</span>
+          <span className={styles.metaSub}>
+            {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ)
+                อ่านไม่รู้เรื่องถ้าไม่รู้ว่าใครพูดในฐานะอะไร */}
+            {row.authorDept ? `${row.authorDept} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
+          </span>
+        </div>
+        <div className={styles.content}>
+          {row.deletedAt ? (
+            <p className={styles.deleted}>{DELETED_UPDATE_TEXT}</p>
+          ) : (
+            <>
+              {isEditing ? (
+                <>
+                  {(showKindPicker || kindAcceptsDueDate(entityType, editing.kind)) && (
+                    <div className={styles.kindRow}>
+                      {showKindPicker && (
+                        <Select
+                          className={`premium-select ${styles.kindSelect}`} disabled={busy}
+                          value={editing.kind} aria-label="ชนิดอัปเดต"
+                          onChange={(e) => setEditing((s) => ({ ...s, kind: e.target.value }))}
+                        >
+                          {kinds.map((k) => (
+                            <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
+                          ))}
+                        </Select>
+                      )}
+                      {kindAcceptsDueDate(entityType, editing.kind) && (
+                        <DateInput
+                          value={editing.dueDate} disabled={busy} ariaLabel="กำหนดวัน"
+                          className={styles.dueInput}
+                          onChange={(v) => setEditing((s) => ({ ...s, dueDate: v }))}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <Textarea rows={2} value={editing.body} disabled={busy}
+                    aria-label="แก้ข้อความ"
+                    onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
+                  />
+                  <div className={styles.composerBar}>
+                    <Button
+                      variant="quiet" size="sm" disabled={busy} icon={<X size={13} />}
+                      onClick={() => setEditing(null)}
+                    >
+                      ยกเลิก
+                    </Button>
+                    <Button
+                      tone="primary" size="sm" disabled={busy || !editing.body.trim()}
+                      onClick={() => mutate(row.id, {
+                        method: "PATCH",
+                        body: JSON.stringify({
+                          action: "edit", body: editing.body.trim(),
+                          kind: editing.kind, dueDate: editing.dueDate || "",
+                        }),
+                      }, () => setEditing(null))}
+                    >
+                      บันทึก
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* ปกติคำตอบจะซ้อนใต้ข้อความที่ถูกตอบอยู่แล้ว จึงไม่ต้องยกเนื้อมาซ้ำ —
+                      ยกเว้นตอนที่ **หาต้นทางไม่เจอ** (ถูกลบ/อยู่นอกชุดที่โหลดมา)
+                      ซึ่งต้องบอกว่าตอบอะไรอยู่ ไม่ใช่ปล่อยเป็นข้อความลอย */}
+                  {orphanReply && <QuoteBlock quoted={null} />}
+                  {row.body && <RichText className={styles.body} text={row.body} lines={6} />}
+                </>
+              )}
+              <ThreadAttachments row={row} onOpen={setPreview} />
+            </>
+          )}
+
+          {/* สถานะ + ปุ่ม อยู่ **ท้ายข้อความ** ไม่ใช่หัวแถว — หัวแถวเป็นที่ของ
+              เนื้อความล้วน ๆ และปุ่มอยู่ตรงที่สายตาหยุดพอดีหลังอ่านจบ */}
+          <div className={styles.head}>
+            {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
+            {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มีชนิดเดียว
+                ไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
+            {showKindPicker && <span className={`ui-badge ${styles.kindBadge}`}>{item.label}</span>}
+            {row.editedAt && <span>แก้ไขแล้ว</span>}
+            {row.acknowledgedAt && (
+              <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
+            )}
+            <span className={styles.rowActions}>
+              {replyButton}
+              {/* รับทราบ = "เห็นแล้ว" ไม่ใช่การแก้เนื้อหา — ใครที่โพสต์ในเธรดได้ก็กดได้
+                  (กติกาเดียวกับ API) · คอลัมน์มีมาตั้งแต่ mig 0163 แต่ไม่เคยมีปุ่ม
+                  ให้กด ป้าย "รับทราบแล้ว" จึงไม่มีทางขึ้นเลย */}
+              {canPost && !row.deletedAt && !row.acknowledgedAt && (
+                <Button
+                  iconOnly icon={<Check size={13} />} aria-label="รับทราบข้อความนี้"
+                  title="รับทราบ" disabled={busy}
+                  onClick={() => mutate(row.id, {
+                    method: "PATCH", body: JSON.stringify({ action: "acknowledge" }),
+                  })}
+                />
+              )}
+              {canPost && !row.deletedAt && kinds.includes(row.kind) && (
+                <>
+                  <Button
+                    iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
+                    onClick={() => setEditing({
+                      id: row.id,
+                      body: row.body || "",
+                      kind: row.kind,
+                      dueDate: row.meta?.dueDate || "",
+                    })}
+                  />
+                  <Button
+                    iconOnly icon={<Trash2 size={13} />} className={styles.danger}
+                    aria-label="ลบข้อความ" disabled={busy}
+                    onClick={() => mutate(row.id, { method: "DELETE" })}
+                  />
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      </article>
+    );
+  };
+
   if (loading) return <div className={styles.empty}>กำลังโหลด...</div>;
 
   return (
@@ -220,181 +443,20 @@ export default function UpdateThread({
         </div>
       )}
 
-      {visible.length ? (
+      {visibleCount ? (
         <div className={styles.timeline}>
-          {visible.map((item) => {
-            const key = `${item.kind}-${item.id}`;
-            const quoteButton = canPost && canQuoteItem(item) ? (
-              <Button
-                iconOnly icon={<Quote size={13} />} aria-label="ยกคำพูดนี้มาตอบ"
-                title="ยกคำพูดนี้มาตอบ" disabled={busy}
-                onClick={() => setReplyTo(item.row)}
-              />
-            ) : null;
-
-            // ── เหตุการณ์ระบบ ────────────────────────────────────────────
-            // คอลัมน์ซ้าย = ชนิด + เวลา · ขวา = สิ่งที่เกิดขึ้น (สีจางกว่าข้อความคน)
-            if (isSystemUpdateItem(entityType, item)) {
-              const body = item.kind === "extra" ? item.body : item.row.body;
-              const who = item.kind === "extra" ? item.by : item.row.authorName;
-              return (
-                <div className={`${styles.row} ${styles.systemRow}`} key={key}>
-                  <div className={styles.meta}>
-                    <span className={styles.metaName} style={item.color ? { color: item.color } : undefined}>
-                      {item.label}
-                    </span>
-                    <span className={styles.metaSub}>{item.at ? fmtDateTime(item.at) : ""}</span>
-                  </div>
-                  <div className={styles.content}>
-                    <div className={styles.systemText}>
-                      {body ? <RichText text={body} lines={2} className={styles.systemBody} /> : null}
-                      {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
-                          ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
-                      {item.kind === "extra" && item.href && (
-                        <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
-                      )}
-                      {who && <span className={styles.systemWho}>{who}</span>}
-                      {quoteButton && <span className={styles.rowActions}>{quoteButton}</span>}
-                    </div>
-                  </div>
+          {visibleGroups.map((group) => (
+            <div className={styles.group} key={`g-${group.root?.id || group.replies[0]?.id}`}>
+              {group.root && renderItem(group.root, false)}
+              {/* คำตอบซ้อนเข้ามาหนึ่งขั้น มีเส้นเชื่อมทางซ้าย — **ชั้นเดียวเท่านั้น**
+                  คำตอบของคำตอบถูกยกขึ้นมาอยู่กลุ่มเดียวกันแล้วตั้งแต่ตอนจัดกลุ่ม */}
+              {group.replies.length > 0 && (
+                <div className={styles.replies}>
+                  {group.replies.map((reply) => renderItem(reply, true))}
                 </div>
-              );
-            }
-
-            // ── ข้อความคน ────────────────────────────────────────────────
-            // ⭐ ชื่อคนอยู่คอลัมน์ซ้ายชิดขวา (มติผู้ใช้ 2026-08-01 — แบบ G): กวาดตา
-            // หาว่า "ใครพูด" ได้เร็วเพราะชื่อเรียงตรงกันเป็นแนวเดียว และเนื้อความได้
-            // พื้นที่เต็มโดยไม่มีกรอบ/วงกลมมาเบียด
-            // ⚠️ จอแคบยุบเป็นแถวเดียว (ดู media query ใน .module.css) — คอลัมน์ 104px
-            // บนมือถือจะบีบเนื้อความไทยจนตัดคำเสีย
-            const row = item.row;
-            const isEditing = editing?.id === row.id;
-            return (
-              <article className={styles.row} key={key}>
-                <div className={styles.meta}>
-                  <span className={styles.metaName}>{row.authorName || "ระบบ"}</span>
-                  <span className={styles.metaSub}>
-                    {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ)
-                        อ่านไม่รู้เรื่องถ้าไม่รู้ว่าใครพูดในฐานะอะไร */}
-                    {row.authorDept ? `${row.authorDept} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
-                  </span>
-                </div>
-                <div className={styles.content}>
-                  {row.deletedAt ? (
-                    <p className={styles.deleted}>{DELETED_UPDATE_TEXT}</p>
-                  ) : (
-                    <>
-                      {isEditing ? (
-                        <>
-                          {(showKindPicker || kindAcceptsDueDate(entityType, editing.kind)) && (
-                            <div className={styles.kindRow}>
-                              {showKindPicker && (
-                                <Select
-                                  className={`premium-select ${styles.kindSelect}`} disabled={busy}
-                                  value={editing.kind} aria-label="ชนิดอัปเดต"
-                                  onChange={(e) => setEditing((s) => ({ ...s, kind: e.target.value }))}
-                                >
-                                  {kinds.map((k) => (
-                                    <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
-                                  ))}
-                                </Select>
-                              )}
-                              {kindAcceptsDueDate(entityType, editing.kind) && (
-                                <DateInput
-                                  value={editing.dueDate} disabled={busy} ariaLabel="กำหนดวัน"
-                                  className={styles.dueInput}
-                                  onChange={(v) => setEditing((s) => ({ ...s, dueDate: v }))}
-                                />
-                              )}
-                            </div>
-                          )}
-                          <Textarea rows={2} value={editing.body} disabled={busy}
-                            aria-label="แก้ข้อความ"
-                            onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
-                          />
-                          <div className={styles.composerBar}>
-                            <Button
-                              variant="quiet" size="sm" disabled={busy} icon={<X size={13} />}
-                              onClick={() => setEditing(null)}
-                            >
-                              ยกเลิก
-                            </Button>
-                            <Button
-                              tone="primary" size="sm" disabled={busy || !editing.body.trim()}
-                              onClick={() => mutate(row.id, {
-                                method: "PATCH",
-                                body: JSON.stringify({
-                                  action: "edit", body: editing.body.trim(),
-                                  kind: editing.kind, dueDate: editing.dueDate || "",
-                                }),
-                              }, () => setEditing(null))}
-                            >
-                              บันทึก
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          {quotedIdOf(row) && <QuoteBlock quoted={byId.get(quotedIdOf(row))} />}
-                          {row.body && <RichText className={styles.body} text={row.body} lines={6} />}
-                        </>
-                      )}
-                      <ThreadAttachments row={row} onOpen={setPreview} />
-                    </>
-                  )}
-
-                  {/* สถานะ + ปุ่ม อยู่ **ท้ายข้อความ** ไม่ใช่หัวแถว — หัวแถวเป็นที่ของ
-                      เนื้อความล้วน ๆ ตามโครงคอลัมน์ซ้าย และปุ่มอยู่ตรงที่สายตาหยุด
-                      พอดีหลังอ่านจบ */}
-                  <div className={styles.head}>
-                    {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
-                    {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มี
-                        ชนิดเดียวไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
-                    {showKindPicker && (
-                      <span className="ui-badge" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
-                    )}
-                    {row.editedAt && <span>แก้ไขแล้ว</span>}
-                    {row.acknowledgedAt && (
-                      <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
-                    )}
-                    <span className={styles.rowActions}>
-                      {quoteButton}
-                      {/* รับทราบ = "เห็นแล้ว" ไม่ใช่การแก้เนื้อหา — ใครที่โพสต์ในเธรด
-                          ได้ก็กดได้ (กติกาเดียวกับ API) · คอลัมน์มีมาตั้งแต่ mig 0163
-                          แต่ไม่เคยมีปุ่มให้กด ป้าย "รับทราบแล้ว" จึงไม่มีทางขึ้นเลย */}
-                      {canPost && !row.deletedAt && !row.acknowledgedAt && (
-                        <Button
-                          iconOnly icon={<Check size={13} />} aria-label="รับทราบข้อความนี้"
-                          title="รับทราบ" disabled={busy}
-                          onClick={() => mutate(row.id, {
-                            method: "PATCH", body: JSON.stringify({ action: "acknowledge" }),
-                          })}
-                        />
-                      )}
-                      {canPost && !row.deletedAt && kinds.includes(row.kind) && (
-                        <>
-                          <Button
-                            iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
-                            onClick={() => setEditing({
-                              id: row.id,
-                              body: row.body || "",
-                              kind: row.kind,
-                              dueDate: row.meta?.dueDate || "",
-                            })}
-                          />
-                          <Button
-                            iconOnly icon={<Trash2 size={13} />} className={styles.danger}
-                            aria-label="ลบข้อความ" disabled={busy}
-                            onClick={() => mutate(row.id, { method: "DELETE" })}
-                          />
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className={styles.empty}>{emptyText}</div>
