@@ -6,7 +6,7 @@ import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptT
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -242,6 +242,9 @@ export default function AppLayout({ children }) {
       // วางแผนผลิต — ระบบแยก ไม่ใช่เมนูใต้ "บริหารงานขาย" (มติผู้ใช้ 2026-07-30)
       system: 'production',
       items: [
+        // ภาพรวมมาก่อนสุด (X-1) — เปิดระบบมาเห็นว่า "ต้องตัดสินใจอะไรก่อน" แล้วค่อย
+        // กดเข้าคิว/บอร์ด · แยกจากภาพรวมของธุรกิจบริการ เพราะคนละทีมปฏิบัติงาน
+        { href: '/production', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'production:view', visible: canViewProduction, match: (p) => p === '/production' },
         // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PC/PD
         // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
         // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
@@ -257,6 +260,9 @@ export default function AppLayout({ children }) {
       // ธุรกิจบริการของฝ่าย TS — คนละโมดูลกับผลิต (มติผู้ใช้ 2026-07-30)
       system: 'service',
       items: [
+        // ภาพรวมมาก่อนสุด (X-1) — หัวหน้าทีมบริการเปิดมาเห็นนัดค้าง/วันนี้ใครไปไหน/
+        // ไซต์ที่น้ำหอมกำลังจะหมด · **คนละหน้ากับภาพรวมของวางแผนผลิต** ตามมติแยกทีม
+        { href: '/service', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'service:view', visible: canViewService, match: (p) => p === '/service' },
         // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
         // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
         // ตารางมาก่อนทะเบียน — หน้าที่ช่าง/หัวหน้าเปิดทุกเช้าคือตาราง ไม่ใช่ทะเบียน
@@ -269,8 +275,11 @@ export default function AppLayout({ children }) {
         // หัวหน้าเปิดดูรูปหน้าจอของช่างได้ โดยไม่เปิดให้ฝ่ายขายทีมอื่นที่ไม่เกี่ยวเลย
         // 🐞 เดิมเปิดด้วย service:view = ฝ่ายขายทุกคนเห็นเมนูที่กดเข้าไปแล้วว่างเสมอ
         { href: '/service/my-visits', name: 'นัดของฉัน', icon: Wrench, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/my-visits') },
-        { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', match: (p) => p.startsWith('/service/schedule') },
-        { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', match: (p) => p.startsWith('/service/sites') },
+        // ⚠️ ต้องมี visible: canViewService ทุกรายการ — cap service:view ถือกว้างระดับ role
+        // (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService · ถ้าเช็คแค่ cap
+        // ฝ่ายคลัง/QC จะเห็นเมนูของทีมช่าง ซึ่งขัดมติแยกทีม (PD ≠ TS) ที่ตกลงไว้
+        { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/schedule') },
+        { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
       ],
     },
     {

@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessSahamit, canEditProduction, canViewProduction, canUser, canViewService } from '@/lib/permissions';
+import { canAccessMgmt, canAccessSahamit, canViewProduction, canUser, canViewService } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -30,9 +30,11 @@ export const SYSTEM_CATALOG = [
     // ⚠️ canViewProduction แคบ staff เหลือ PC/PD/WH/QC — **ฝ่าย TS ไม่เห็น**
     //    เพราะเป็นคนละทีมปฏิบัติงาน (มติผู้ใช้ 2026-07-31)
     isVisible: (user) => canViewProduction(user),
-    // คนที่วางคิวได้ลงที่ **คิวงาน** (ต้องตัดสินใจว่าผลิตอะไรก่อน) · คนอ่านอย่างเดียว
-    // ลงที่ **บอร์ด** (มาดูว่าผลิตวันไหน ไม่ได้มาจัดคิว)
-    landing: (user) => (canEditProduction(user) ? '/production/jobs' : '/production/board'),
+    // ⭐ X-1: ลงที่ **ภาพรวม** ทุกคน — หน้าเดียวที่ตอบพร้อมกันว่าต้องตัดสินใจอะไรก่อน
+    // (สำหรับ PC/PD) และโรงงานจะผลิตอะไรวันไหน (สำหรับคลัง/QC/ฝ่ายขาย) แล้วค่อยกด
+    // ต่อไปคิว/บอร์ดจากตรงนั้น · เลิกแยกปลายทางตามสิทธิ์เพราะทั้งสองกลุ่มเริ่มที่
+    // คำถามเดียวกัน ("ตอนนี้สถานะเป็นยังไง") ต่างกันแค่ทำอะไรต่อ
+    landing: () => '/production',
   },
   {
     // ธุรกิจบริการ (ฝ่าย TS) — แยกจาก "วางแผนผลิต" คนละโมดูล คนละตาราง คนละสิทธิ์
@@ -46,9 +48,10 @@ export const SYSTEM_CATALOG = [
     description: 'ไซต์ติดตั้ง เครื่องกระจายกลิ่น และตารางเข้าบริการของฝ่ายเทคนิค',
     icon: Wrench,
     isVisible: (user) => canViewService(user),
-    // ลงที่ **ตาราง** ไม่ใช่ทะเบียน — คำถามที่ทุกคนเปิดระบบนี้มาถามคือ
-    // "ช่างจะเข้าไซต์ไหนเมื่อไหร่" ไม่ใช่ "มีไซต์อะไรบ้าง"
-    landing: () => '/service/schedule',
+    // ⭐ X-1: ลงที่ **ภาพรวม** — ตอบ "มีอะไรค้าง / วันนี้ใครไปไหน / ไซต์ไหนกำลังจะ
+    // มีปัญหา" ในหน้าเดียว แล้วค่อยกดต่อไปตาราง · **คนละหน้ากับภาพรวมของวางแผนผลิต**
+    // ตามมติแยกทีม (TS ≠ PD) — ไม่มีปฏิทินรวมสองระบบ
+    landing: () => '/service',
   },
   {
     key: 'tax',

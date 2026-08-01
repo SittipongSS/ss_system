@@ -1,0 +1,50 @@
+/* ภาพรวมธุรกิจบริการ (X-1)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.sub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+
+/* ของที่ยังไม่มีเจ้าของ / ยังไม่มีนัด — ต้องอ่านออกว่าเป็นช่องว่างที่ต้องเติม
+   ไม่ใช่ข้อมูลที่หายไป */
+.unassigned {
+  color: var(--amber);
+  line-height: var(--lh-thai);
+}
+
+/* เตือน ไม่บล็อก — งานแน่นเกินเกณฑ์ยังจัดได้ แค่ต้องรู้ตัว */
+.over {
+  display: block;
+  color: var(--red);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+
+.visitList { line-height: var(--lh-thai); }
+
+/* ชื่อไซต์กดเข้าหน้ารายละเอียดได้ — ใช้ปุ่มเปล่าเพราะอยู่ใน <th> ของตาราง
+   (ratchet ห้ามเขียนคลาส btn เอง · นี่คือลิงก์ในเนื้อความ ไม่ใช่ปุ่มสั่งการ) */
+.siteLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  line-height: var(--lh-thai);
+  text-align: start;
+  cursor: pointer;
+}
+
+.siteLink:hover { text-decoration: underline; }

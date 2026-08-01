@@ -34,6 +34,25 @@ test('⭐ คิวงานของตัวเองสองระบบต�
   assert.equal(service, 'นัดของฉัน');
 });
 
+test('⭐ X-1: สองระบบมีหน้าภาพรวมของตัวเอง คนละเส้นทาง — ไม่ใช่ปฏิทินรวม', () => {
+  // มติผู้ใช้ 2026-08-01: เลิกทำหน้ารวมสองโมดูล เพราะเป็นคนละทีมปฏิบัติงาน
+  // ถ้าวันไหนมีคนยุบสองเมนูนี้ให้ชี้ที่เดียวกัน เทสต์นี้จะดับ
+  assert.equal(menuNameFor('/production'), 'ภาพรวม');
+  assert.equal(menuNameFor('/service'), 'ภาพรวม');
+  assert.ok(!SOURCE.includes("href: '/schedule'"), 'ห้ามมีปฏิทินรวมสองระบบ');
+});
+
+test('⭐ ทุกเมนูของธุรกิจบริการต้องแคบด้วยฝ่าย ไม่ใช่แค่ cap', () => {
+  // cap `service:view` อยู่ที่ role `staff` ซึ่ง PC/PD/WH/QC/TS ใช้ร่วมกัน —
+  // ตัวกั้นจริงคือ canViewService ที่แคบเหลือฝ่าย TS · เมนูที่เช็คแค่ cap จะโผล่
+  // ให้ฝ่ายโรงงานเห็น ซึ่งขัดมติแยกทีม (ดู lib/pm/teamSeparation.test.mjs)
+  const lines = SOURCE.split(/\r?\n/).filter((row) => /href: '\/service(\/|')/.test(row));
+  assert.ok(lines.length >= 4, 'ควรเจอเมนูของระบบธุรกิจบริการอย่างน้อย 4 รายการ');
+  for (const line of lines) {
+    assert.match(line, /visible: canViewService|visible: canEditService/, line.trim());
+  }
+});
+
 test('เมนูของแต่ละระบบอยู่ใต้เส้นทางของระบบตัวเอง — ไม่ยืมเส้นทางข้ามระบบ', () => {
   // /sa/tasks อยู่ในกลุ่ม salesplan · /service/* อยู่ในกลุ่ม service
   // ถ้าวันไหนมีคนย้าย my-visits ไปไว้ใต้ /sa หรือ /pm ระบบธุรกิจบริการจะกลายเป็น
