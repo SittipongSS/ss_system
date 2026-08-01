@@ -31,7 +31,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     supabase.from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false }),
     supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId').eq('leadId', id).order('createdAt', { ascending: false }),
   ]);
-  return ok({ ...lead, events: events || [], relatedDeals: relatedDeals || [], canEdit: canEditLead(user, lead) });
+  // canDelete คำนวณที่นี่เหมือน canEdit — หน้ารายละเอียดจะได้ไม่ต้องคิดนโยบายซ้ำ
+  // (หน้า list คิดฝั่ง client เพราะมีลีดหลายใบในจอเดียว ไม่คุ้มยิงถามทีละใบ)
+  return ok({
+    ...lead,
+    events: events || [],
+    relatedDeals: relatedDeals || [],
+    canEdit: canEditLead(user, lead),
+    canDelete: canDeleteLead(user, lead),
+  });
 });
 
 // PATCH — แก้ข้อมูลติดต่อ/บริการ/งบ (ไม่ใช่ transition — สถานะเปลี่ยนผ่าน /transition)

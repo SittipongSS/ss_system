@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { BriefcaseBusiness, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, UserRound, Users, X } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { BriefcaseBusiness, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
@@ -10,7 +10,12 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
-import { fmtDateTime, fmtMoney } from "@/lib/format";
+import Button from "@/components/ui/Button";
+import RecordControlCard from "@/components/ui/RecordControlCard";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
 import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
@@ -21,12 +26,41 @@ const blank = { contactName: "", company: "", phone: "", email: "", contactChann
 
 export default function LeadDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [lead, setLead] = useState(null);
   const [form, setForm] = useState(blank);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  /* ตัวตนผู้ใช้สำหรับตัดสินว่าปุ่มไหนควรโผล่ — ท่าเดียวกับหน้ารายการลีด
+     (role/team มาจาก context ส่วน id ต้องถามเพราะ context ไม่ได้เก็บไว้) */
+  const role = useRole();
+  const team = useTeam();
+  const canCreateDeals = useCan("salesplan:deal");
+  const [meId, setMeId] = useState(null);
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
+      .then((me) => setMeId(me?.id || null)).catch(() => setMeId(null));
+  }, []);
+
+  // รายชื่อสำหรับช่อง "ผู้รับผิดชอบ" ตอนมอบหมาย — โหลดเมื่อผู้ใช้มีสิทธิ์มอบหมายเท่านั้น
+  const needsAssignees = lead?.status === "screened";
+  useEffect(() => {
+    if (!needsAssignees) return;
+    fetch("/api/users").then((r) => (r.ok ? r.json() : null))
+      .then((rows) => setUsers(Array.isArray(rows) ? rows : rows?.items || []))
+      .catch(() => setUsers([]));
+  }, [needsAssignees]);
+
+  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  const lifecycle = useMemo(
+    () => createLeadLifecycle({ users, canCreateDeals }),
+    [users, canCreateDeals],
+  );
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -65,6 +99,62 @@ export default function LeadDetailPage() {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
+  /* จุดเดียวที่ปุ่มบนการ์ดวิ่งเข้า — คืน false = ทำไม่สำเร็จ การ์ดจะค้างกล่องไว้
+     พร้อมค่าที่กรอก ผู้ใช้ไม่ต้องพิมพ์เหตุผลใหม่ (สัญญาของ RecordControlCard) */
+  async function runTransition(actionId, values) {
+    /* เปิดดีล = สร้าง entity คนละตัว ต้องผ่านฟอร์มดีล (เลือกลูกค้า/มูลค่า/เดือน FC)
+       ไม่ใช่ย้ายสถานะเฉย ๆ — lifecycle ประกาศไว้เพื่อให้ "ขั้นถัดไป" ถูกต้อง
+       แต่การลงมือเกิดที่หน้าดีล ดักที่นี่ก่อนจะไปถึง /transition */
+    if (actionId === "create_deal") {
+      router.push(`/sales-planning/deals?fromLead=${encodeURIComponent(lead.id)}`);
+      return true;
+    }
+    if (!LEAD_TRANSITION_ACTIONS.includes(actionId)) return false;
+
+    setBusy(true); setError("");
+    try {
+      const assignee = users.find((u) => u.id === values.assigneeId);
+      const res = await fetch(`/api/sales-planning/leads/${id}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: actionId,
+          team: values.team || undefined,
+          assigneeId: values.assigneeId || undefined,
+          assigneeName: assignee ? fmtName(assignee) : undefined,
+          reason: values.reason || undefined,
+          meetingMode: actionId === "meeting" ? values.meetingMode : undefined,
+          eventAt: values.eventAt ? new Date(values.eventAt).toISOString() : undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "ทำรายการไม่สำเร็จ");
+      await load();
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    } finally { setBusy(false); }
+  }
+
+  /* ลบ = ไม่ใช่การย้ายสถานะ จึงไม่อยู่ใน lifecycle — แต่ยังต้องอยู่บนการ์ดเดียวกัน
+     เพราะจุดจัดการต้องมีที่เดียว (นโยบายจริงอยู่ที่ canDeleteLead ฝั่ง API) */
+  async function removeLead() {
+    const ok = await confirmAction({
+      title: "ลบลีดนี้",
+      message: `ลบลีดของ "${lead.contactName}" ออกจากระบบถาวร? ประวัติการดำเนินการจะหายไปด้วย`,
+      confirmLabel: "ลบลีด",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true); setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/leads/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ลบไม่สำเร็จ");
+      router.push("/sa/leads");
+    } catch (e) { setError(e.message); setBusy(false); }
+  }
+
   const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{typeof value === "string" ? <ReadableText text={value || "-"} lines={wide ? 5 : 3} /> : value || "-"}</div></div>;
 
   // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
@@ -96,7 +186,23 @@ export default function LeadDetailPage() {
           ]}
         />
 
-        <DetailPageLayout aside={<LeadSummary lead={lead} />}>
+        {/* จุดจัดการเดียวของลีด — เดิมหน้านี้ทำได้แค่ "แก้ไข" ผู้ใช้ต้องถอยกลับไป
+            หน้ารายการเพื่อเปลี่ยนสถานะหรือลบ ทั้งที่ API รองรับมาตลอด */}
+        <DetailPageLayout aside={<>
+          <RecordControlCard
+            lifecycle={lifecycle}
+            record={lead}
+            user={viewer}
+            onTransition={runTransition}
+            busy={busy}
+            footer={lead.canDelete ? (
+              <Button tone="danger" icon={<Trash2 size={14} aria-hidden="true" />} onClick={removeLead} disabled={busy}>
+                ลบลีดนี้
+              </Button>
+            ) : null}
+          />
+          <LeadSummary lead={lead} />
+        </>}>
 
         <DetailCard icon={Contact} eyebrow="Lead information" title="ข้อมูลผู้ติดต่อและความต้องการ">
           {editing ? <div className={styles.grid}>
