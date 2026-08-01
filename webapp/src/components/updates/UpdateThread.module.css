@@ -1,33 +1,52 @@
-/* ไทม์ไลน์ราง+จุด — ยกมาจากหน้าลีด (sales-planning/leads/[id]/page.module.css)
-   ซึ่งเป็นการแสดงผลเธรดที่อ่านง่ายที่สุดในระบบ; อีก 4 ที่ใช้ borderLeft ทึบ
-   ซึ่งดูเป็น "รายการ" มากกว่า "ไทม์ไลน์" */
+/* ⭐ เธรดแยกน้ำหนักสองระดับ (มติผู้ใช้ 2026-08-01)
+   · ข้อความคน   = การ์ดมีขอบ + วงกลมชื่อย่อ → ตาหยุดที่บทสนทนาก่อนเสมอ
+   · เหตุการณ์ระบบ = บรรทัดเดียวไม่มีกรอบ กินความสูงน้อยที่สุด
+   เพราะเอกสารที่มี action เยอะ (QT/SO เขียนลงเธรด 15 จุด) ทำให้แถวระบบท่วมจน
+   ข้อความคนจม — ของเดิมทุกแถวเป็นราง+จุดทรงเดียวกันหมดจึงแยกด้วยตาไม่ออก */
 /* แถบสวิตช์ซ่อนเหตุการณ์ระบบ — ชิดขวาแนวเดียวกับแถบปุ่มของกล่องพิมพ์ */
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2-5); }
 
-.timeline { display: flex; flex-direction: column; gap: var(--space-3-5); }
+.timeline { display: flex; flex-direction: column; gap: var(--space-2); }
 
-.event { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: var(--space-3); }
-
-.rail { position: relative; display: flex; justify-content: center; }
-.rail::after {
-  position: absolute; top: 17px; bottom: -21px; width: 1px;
-  background: var(--border); content: "";
+/* ── ข้อความคน ──────────────────────────────────────────────────────── */
+.message {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--panel-2);
 }
-.event:last-child .rail::after { display: none; }
-
-.dot {
-  position: relative; z-index: 1; width: 9px; height: 9px; margin-top: 5px;
-  border: 2px solid var(--panel); border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+.avatar {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: var(--radius-full);
+  background: var(--accent-soft); color: var(--accent);
+  font-size: var(--fs-3); font-weight: var(--fw-semibold);
+  line-height: var(--lh-none); user-select: none;
 }
+.messageBody { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 
-.eventBody { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+/* ── เหตุการณ์ระบบ ──────────────────────────────────────────────────── */
+.systemRow {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2-5);
+  font-size: var(--fs-5); color: var(--text-3);
+}
+.systemDot {
+  flex: 0 0 auto; width: 6px; height: 6px; border-radius: var(--radius-full);
+  background: var(--text-3); transform: translateY(-1px);
+}
+.systemLabel { flex: 0 0 auto; font-weight: var(--fw-semibold); }
+.systemText { min-width: 0; flex: 1 1 220px; display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.systemBody { color: var(--text-2); }
+.systemMeta { flex: 0 0 auto; color: var(--text-3); }
 
 .head {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   font-size: var(--fs-5); color: var(--text-3);
 }
-.head strong { color: var(--text-2); font-weight: var(--fw-semibold); }
+.head strong { color: var(--text); font-weight: var(--fw-semibold); }
+/* ป้าย "รับทราบแล้ว" — สีเดียวกับปุ่มที่ทำให้มันเกิด */
+.ack { display: inline-flex; align-items: center; gap: var(--space-0-5); color: var(--green); }
+.danger { color: var(--red); }
 
 /* ฝ่ายของคนพูด — เล็กและเงียบกว่าชื่อ เป็นบริบทไม่ใช่หัวข้อ */
 .dept {

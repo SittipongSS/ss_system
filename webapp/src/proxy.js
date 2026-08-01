@@ -174,7 +174,10 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
 // ⚠️ /production = ระบบวางแผนผลิต (แยกจาก /pm ตามมติ 2026-07-30) — ไม่ลงทะเบียน
 // ที่นี่ = ฝ่ายผลิต/จัดซื้อเปิดหน้าไม่ได้เลย ทั้งที่เป็นเจ้าของโมดูล
-const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
+// ⚠️ /go = เส้นทางกลาง "รหัสเอกสาร → หน้าจริง" ที่ลิงก์ในเธรดชี้มา — ไม่ลงทะเบียน
+// ที่นี่ = ทุกลิงก์รหัสเอกสารในข้อความพาไปหน้า 403 (บทเรียนจาก /api/company-profile)
+// ตัวมันเองไม่เปิดข้อมูลอะไรเพิ่ม: แปลงรหัสเป็น id แล้วส่งต่อ ด่านจริงอยู่หน้าปลายทาง
+const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
