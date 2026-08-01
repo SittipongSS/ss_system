@@ -27,6 +27,10 @@ export default function RecordControlCard({
      ต่างจาก transition ตรงที่ **กด onClick ตรง ๆ ไม่เปิด TransitionDialog** —
      ของพวกนี้มีกล่องยืนยันของตัวเอง (confirmAction) หรือเป็นการสลับโหมดในหน้า */
   extraActions = [],
+  /* ดัก transition ก่อนเปิดกล่องกรอก — คืน true = หน้าจัดการเองแล้ว การ์ดไม่ต้องเปิดกล่อง
+     ใช้กับ transition ที่ "ลงมือที่อื่น" เช่น เปิดดีลจากลีด (สร้าง entity คนละตัว ต้องไป
+     ฟอร์มดีล) ถ้าไม่ดัก ผู้ใช้จะเจอกล่องยืนยันเปล่า ๆ คั่นก่อนถึงฟอร์มจริงหนึ่งชั้น */
+  onSelect,
   busy = false,
   notices,
   evidence,
@@ -50,17 +54,25 @@ export default function RecordControlCard({
     icon: entry.icon,
     disabled: entry.disabled,
     disabledReason: entry.disabledReason,
-    // extraActions มี onClick ของตัวเอง · transition เปิดกล่องให้กรอกก่อน
-    onClick: entry.onClick || (() => setPending({ transition: entry.transition, values: {} })),
+    // extraActions มี onClick ของตัวเอง · transition เปิดกล่องให้กรอกก่อน (เว้นแต่ onSelect ดักไว้)
+    onClick: entry.onClick || (() => {
+      if (onSelect?.(entry.transition) === true) return;
+      setPending({ transition: entry.transition, values: {} });
+    }),
   });
 
   /* รวมสองแหล่งก่อนค่อยจัดช่อง — normalizeSlots คุมกติกา "primary ได้ตัวเดียว"
      ให้ทั้งชุด ไม่งั้นส่ง extraActions slot="primary" มาแล้วจะได้ปุ่มหลักสองปุ่ม
-     ลำดับ: transition มาก่อน extraActions (ก้าวถัดไปสำคัญกว่าการจัดการตัวระเบียน) */
+     ลำดับ: transition มาก่อน extraActions (ก้าวถัดไปสำคัญกว่าการจัดการตัวระเบียน)
+
+     🪤 id ที่ชนกับ transition ถูกทิ้ง — lifecycle เป็นเจ้าของ id นั้น ปล่อยผ่านแล้วจะได้
+     ปุ่มสอง key เดียวกัน React จะรวม/ตัดทิ้งเงียบ ๆ (เจอจริงที่หน้าต้นแบบ: transition
+     `edit` ของ lifecycle ตัวอย่าง ชนกับ extraAction `edit` → ปุ่มหนึ่งหายไปโดยไม่มีใครรู้) */
+  const takenIds = new Set(entries.map((entry) => entry.id));
   const all = normalizeSlots([
     ...entries,
     ...extraActions
-      .filter((action) => action && action.visible !== false)
+      .filter((action) => action && action.visible !== false && !takenIds.has(action.id))
       .map((action) => ({ ...action, slot: action.slot || "secondary" })),
   ]);
   const inSlot = (slot) => all.filter((entry) => entry.slot === slot).map(toAction);

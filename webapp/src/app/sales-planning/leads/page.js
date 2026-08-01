@@ -9,42 +9,33 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
-import DateTimeInput from "@/components/ui/DateTimeInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { canSeeLeadKpi } from "@/lib/permissions";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { TEAM_LABELS } from "@/lib/permissions";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
-import DealFormFields from "@/components/salesPlanning/DealFormFields";
+import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
+import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead, canWorkLead, canCreateLead,
+  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
 } from "@/lib/sales/leads";
-import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
-import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
+import { FORECAST_LEVELS, MonthPicker, thisMonth, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
+import { fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
-
-const ACTION_COLORS = {
-  screen: 'var(--blue)',
-  assign: 'var(--violet)',
-  contact: 'var(--teal)',
-  meeting: 'var(--teal)',
-  create_deal: 'var(--green)',
-  bounce: 'var(--amber)',
-  disqualify: 'var(--red)'
-};
 
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
@@ -66,7 +57,6 @@ export default function LeadsPage() {
   const canView = useCan("salesplan:view");
   const role = useRole();
   const team = useTeam();
-  const superuser = isSuperuser(role);
   const canCreate = canCreateLead(role);
   const [meId, setMeId] = useState(null);
 
@@ -125,12 +115,6 @@ export default function LeadsPage() {
   // modals
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
-  const [actionModal, setActionModal] = useState(null); // { lead, action }
-  const [actTeam, setActTeam] = useState("");
-  const [actAssignee, setActAssignee] = useState("");
-  const [actReason, setActReason] = useState("");
-  const [actMode, setActMode] = useState("online");
-  const [actAt, setActAt] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -220,139 +204,32 @@ export default function LeadsPage() {
     }
   };
 
-  const openAction = (lead, action) => {
-    setActionModal({ lead, action });
-    setActTeam(lead.team || "");
-    setActAssignee("");
-    setActReason("");
-    setActMode("online");
-    setActAt(new Date().toISOString().slice(0, 16));
-  };
-
-  const submitAction = async () => {
-    const { lead, action } = actionModal || {};
-    if (!lead) return;
+  /* จุดเดียวที่ปุ่มในแถววิ่งเข้า — คืน false = ไม่สำเร็จ RecordActionMenu จะค้างกล่องไว้
+     พร้อมค่าที่กรอก ผู้ใช้ไม่ต้องพิมพ์ใหม่ (สัญญาเดียวกับหน้ารายละเอียด) */
+  const runTransition = async (lead, actionId, values) => {
+    if (!LEAD_TRANSITION_ACTIONS.includes(actionId)) return false;
     setBusy("action");
     setError("");
     try {
-      const assignee = users.find((u) => u.id === actAssignee);
       const res = await fetch(`/api/sales-planning/leads/${lead.id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          team: actTeam || undefined,
-          assigneeId: actAssignee || undefined,
-          assigneeName: assignee ? fmtName(assignee) : undefined,
-          reason: actReason || undefined,
-          meetingMode: action === "meeting" ? actMode : undefined,
-          eventAt: ["meeting", "contact"].includes(action) && actAt ? new Date(actAt).toISOString() : undefined,
-        }),
+        body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
-      setActionModal(null);
       await load();
+      return true;
     } catch (e) {
       setError(e.message || "ทำรายการไม่สำเร็จ");
+      return false;
     } finally {
       setBusy("");
     }
   };
 
-  // สร้างดีลจากลีด (feedback ผู้ใช้): ติ้กประเภทที่จะเปิดได้หลายอันในครั้งเดียว —
-  // ลดขั้นการกรอก (ลูกค้า/ทีม/ผู้ดูแล/มูลค่า ดึงจากลีดให้หมด)
-  // สร้างดีลได้เฉพาะ AE / Senior AE (+ admin) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
-  // มติผู้ใช้ 2026-07-21: AE Supervisor ไม่สร้างดีลจากคิวลีด (งานจบที่คัดกรอง)
-  const canCreateDeals = role === "admin" || role === "ae" || role === "senior_ae";
-  const [dealModal, setDealModal] = useState(null); // lead
-  const [dealsToCreate, setDealsToCreate] = useState([]);
-  
-  const openDealModal = (lead) => {
-    setDealModal(lead);
-    setDealsToCreate([{
-      ...initialDealForm,
-      title: `${lead.company || lead.contactName} — SCENT`,
-      customerId: lead.customerId || "",
-      dealType: "SCENT",
-      stage: "qualified",
-      projectValue: lead.budget || "",
-    }]);
-  };
-  
-  const addDealToCreate = () => {
-    setDealsToCreate((prev) => [...prev, {
-      ...initialDealForm,
-      title: `${dealModal.company || dealModal.contactName} — NPD`,
-      customerId: dealModal.customerId || "",
-      dealType: "NPD",
-      stage: "qualified",
-      projectValue: "",
-    }]);
-  };
-  
-  const updateDealToCreate = (index, field, value) => {
-    setDealsToCreate((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)));
-  };
-  
-  const removeDealToCreate = (index) => {
-    setDealsToCreate((prev) => prev.filter((_, i) => i !== index));
-  };
+  const canCreateDeals = canCreateDealFromLead(role);
+  const [dealModal, setDealModal] = useState(null); // lead ที่กำลังเปิดดีลให้
 
-  const submitDeals = async () => {
-    if (!dealModal || !dealsToCreate.length) return;
-    setBusy("deals");
-    setError("");
-    try {
-      const created = [];
-      for (const d of dealsToCreate) {
-        if (!d.title) throw new Error("กรุณาระบุชื่อดีลให้ครบ");
-        if (!d.dealType) throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER)${d.title ? ` — "${d.title}"` : ""}`);
-        const res = await fetch("/api/sales-planning/deals", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: d.title,
-            customerId: d.customerId,
-            dealType: d.dealType,
-            categoryCode: d.categoryCode || undefined,
-            startDate: d.startDate || undefined,
-            endDate: d.endDate || undefined,
-            brand: d.brand || undefined,
-            stage: d.stage,
-            probability: Number(d.probability) || 50,
-            expectedCloseDate: d.expectedCloseDate || undefined,
-            projectValue: d.projectValue || 0,
-            notes: d.notes || undefined,
-            ownerId: dealModal.assigneeId || undefined,
-            ownerName: dealModal.assigneeName || undefined,
-            team: dealModal.team || undefined,
-            leadId: dealModal.id,
-            metadata: { leadId: dealModal.id, source: "lead", leadChannel: dealModal.channel },
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `สร้างดีล ${d.title} ไม่สำเร็จ`);
-        // deal-POST ไม่รับ projectId — ผูกโครงการผ่าน link-project (ต่อ segment ไทม์ไลน์
-        // ให้ด้วย) แพตเทิร์นเดียวกับหน้ารวมดีล
-        if (d.projectId) {
-          const linkRes = await fetch(`/api/sales-planning/deals/${data.id}/link-project`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: d.projectId, startDate: d.startDate || undefined }),
-          });
-          if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || `สร้างดีล ${d.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
-        }
-        created.push(data);
-      }
-      setDealModal(null);
-      setError("");
-      window.location.href = created.length === 1 ? `/sa/deals/${created[0].id}` : "/sa/deals";
-    } catch (e) {
-      setError(e.message || "สร้างดีลไม่สำเร็จ");
-    } finally {
-      setBusy("");
-    }
-  };
 
   const deleteLead = async (lead) => {
     if (!(await confirmAction(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`))) return;
@@ -362,26 +239,14 @@ export default function LeadsPage() {
     await load();
   };
 
-  // ปุ่ม action ต่อแถว ตามสถานะ + role (กติกาจริงบังคับซ้ำที่ API)
-  // มติผู้ใช้ 2026-07-21: หลังคัดกรอง supervisor เหลือเฉพาะปุ่มกำกับดูแล
-  // (ตีกลับ/ไม่ไปต่อ) — ขั้นทำงานใช้ canWorkLead (ทีมเจ้าของงาน + admin)
-  const rowActions = (lead) => {
-    const allowed = LEAD_TRANSITIONS[lead.status] || [];
-    const inTeam = (role === "senior_ae" || role === "ac") && lead.team === team;
-    const isAssignee = role === "ae" && meId != null && lead.assigneeId === meId;
-    const oversees = superuser || inTeam || isAssignee;
-    const works = canWorkLead({ role, id: meId, team }, lead);
-    const btns = [];
-    if (allowed.includes("screen") && superuser) btns.push({ a: "screen", label: "คัดกรอง", icon: Filter, primary: true });
-    if (allowed.includes("assign") && (role === "admin" || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
-    if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
-    if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
-    if (allowed.includes("create_deal") && works && canCreateDeals && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
-    if (allowed.includes("bounce") && oversees) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
-    if (allowed.includes("disqualify") && oversees) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
-    return btns;
-  };
-
+  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  /* กติกา "ลีดใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับหน้ารายละเอียด — เดิมหน้านี้มี
+     rowActions() ของตัวเองที่คิดซ้ำจาก LEAD_TRANSITIONS + เช็ค role เอง แล้วเพี้ยนจาก
+     หน้ารายละเอียดได้เงียบ ๆ (เจอจริง: contact บังคับเหตุผลที่นี่ แต่หน้าโน้นไม่บังคับ) */
+  const lifecycle = useMemo(
+    () => createLeadLifecycle({ users, canCreateDeals }),
+    [users, canCreateDeals],
+  );
   // นโยบายเดียวกับ API (lib/sales/leads.js) — ปุ่มโชว์เฉพาะเมื่อ action จะสำเร็จจริง
   const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
   const canDeleteRow = (lead) => canDeleteLead({ role, id: meId, team }, lead);
@@ -504,82 +369,28 @@ export default function LeadsPage() {
                         {statusBadge(lead.status)}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
-                    <td className="num" style={{ verticalAlign: "middle" }} onClick={(event) => event.stopPropagation()}>
-                        <div style={{ display: "grid", gridTemplateColumns: "100px 80px 85px 28px 28px", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 345 }}>
-                          
-                          {/* Slot 1: Primary Action */}
-                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-                            {(() => {
-                              const primary = rowActions(lead).find(a => ["screen", "assign", "contact", "meeting", "create_deal"].includes(a.a));
-                              if (primary) {
-                                return (
-                                  <button type="button" className="btn btn-status sm" onClick={() => primary.a === "create_deal" ? openDealModal(lead) : openAction(lead, primary.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[primary.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
-                                    <primary.icon size={13} aria-hidden="true" /> {primary.label}
-                                  </button>
-                                );
-                              }
-                              if (lead.status === "qualified" && canCreateDeals) {
-                                return (
-                                  <button type="button" className="btn btn-status sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ '--btn-bg': 'var(--green)', width: "100%", padding: "0 4px", justifyContent: "center" }}>
-                                    <Plus size={13} aria-hidden="true" /> สร้างดีล
-                                  </button>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-
-                          {/* Slot 2: Bounce */}
-                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-                            {(() => {
-                              const bounce = rowActions(lead).find(a => a.a === "bounce");
-                              if (bounce) {
-                                return (
-                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[bounce.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
-                                    <bounce.icon size={13} aria-hidden="true" /> {bounce.label}
-                                  </button>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-
-                          {/* Slot 3: Disqualify */}
-                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-                            {(() => {
-                              const dq = rowActions(lead).find(a => a.a === "disqualify");
-                              if (dq) {
-                                return (
-                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[dq.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
-                                    <dq.icon size={13} aria-hidden="true" /> {dq.label}
-                                  </button>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-
-                          {/* Slot 4: Edit */}
-                          <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-                            {canEditRow(lead) && (
-                              <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไขลีด" aria-label={`แก้ไข ${lead.contactName}`}
-                                onClick={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}>
-                                <Pencil size={14} aria-hidden="true" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Slot 5: Delete */}
-                          <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-                            {canDeleteRow(lead) && (
-                              <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
-                                <Trash2 size={14} aria-hidden="true" />
-                              </button>
-                            )}
-                          </div>
-
-                        </div>
-                      </td>
+                    <td className="num" onClick={(event) => event.stopPropagation()}>
+                      {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —
+                          แถวโชว์เฉพาะ "ก้าวถัดไป" + แก้ไข/ลบ + ลิงก์จัดการ (มติผู้ใช้ ข้อ 2)
+                          ตีกลับ/ไม่ไปต่อ อยู่บนการ์ดที่หน้ารายละเอียด ไม่ยัดกลับมาในแถว */}
+                      <RecordActionMenu
+                        lifecycle={lifecycle}
+                        record={lead}
+                        user={viewer}
+                        busy={!!busy}
+                        manageHref={`/sa/leads/${lead.id}`}
+                        onSelect={(transition) => {
+                          if (transition.id !== "create_deal") return false;
+                          setDealModal(lead); // เปิดดีล = ไปฟอร์มดีล ไม่ใช่ย้ายสถานะ
+                          return true;
+                        }}
+                        onTransition={(actionId, values) => runTransition(lead, actionId, values)}
+                        canEdit={canEditRow(lead)}
+                        canDelete={canDeleteRow(lead)}
+                        onEdit={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}
+                        onDelete={() => deleteLead(lead)}
+                      />
+                    </td>
                   </tr>
                 ))}
                 {!filtered.length && !loading && (
@@ -681,120 +492,18 @@ export default function LeadsPage() {
         </form>
       </Modal>
 
-      {/* สร้างดีลจากลีด (ดึงฟอร์มเต็มมาให้กรอก สามารถสร้างหลายรายการพร้อมกันได้) */}
-      <Modal open={!!dealModal} onClose={() => !busy && setDealModal(null)} title="สร้างดีลจากลีด" size="lg">
-        {dealModal && (
-          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16, maxHeight: "75vh", overflowY: "auto" }}>
-            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", paddingBottom: 12, borderBottom: "1px solid var(--border)" }}>
-              ลีด: <strong style={{ color: "var(--text)" }}>{dealModal.contactName}</strong>{dealModal.company ? ` · ${dealModal.company}` : ""}
-              {dealModal.team ? ` · ทีม ${TEAM_LABELS[dealModal.team] || dealModal.team}` : ""}{dealModal.assigneeName ? ` · ${dealModal.assigneeName}` : ""}
-            </div>
-            
-            {dealsToCreate.map((d, i) => (
-              <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: "var(--surface-50)", position: "relative" }}>
-                {dealsToCreate.length > 1 && (
-                  <button type="button" onClick={() => removeDealToCreate(i)} className="btn-icon danger" style={{ position: "absolute", top: 12, right: 12, background: "var(--surface)" }} title="ลบรายการนี้">
-                    <Trash2 size={16} />
-                  </button>
-                )}
-                
-                <div className="form-grid cols-2">
-                  <DealFormFields
-                    form={d}
-                    onPatch={(patch) => setDealsToCreate((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}
-                    customers={customers}
-                    projects={projects}
-                    showProject
-                    categories={categories}
-                    stages={DEAL_STAGES.filter((st) => st !== "won")}
-                  />
-                </div>
-              </div>
-            ))}
-            
-            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
-              <button type="button" className="btn ghost" onClick={addDealToCreate}>
-                <Plus size={14} aria-hidden="true" /> เพิ่มดีลอีกรายการ
-              </button>
-            </div>
-            
-            <div className="form-action-bar">
-              <button type="button" className="btn btn-secondary" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !dealsToCreate.length}>
-                {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${dealsToCreate.length} ดีล`}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* โมดัล action ตาม transition */}
-      <Modal open={!!actionModal} onClose={() => !busy && setActionModal(null)} size="sm"
-        title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", create_deal: actionModal.lead.status === "qualified" ? "สร้างดีลเพิ่ม" : "สร้างดีล", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}>
-        {actionModal && (
-          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
-              ลีด: <strong style={{ color: "var(--text)" }}>{actionModal.lead.contactName}</strong>{actionModal.lead.company ? ` · ${actionModal.lead.company}` : ""}
-            </div>
-            {actionModal.action === "screen" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                ส่งให้ทีม
-                <Select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
-                  <option value="">— เลือกทีม —</option>
-                  {TEAMS.map((t) => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
-                </Select>
-              </label>
-            )}
-            {actionModal.action === "assign" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
-                <Select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
-                  <option value="">— เลือก AE —</option>
-                  {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!actionModal.lead.team || u.team === actionModal.lead.team)).map((u) => (
-                    <option key={u.id} value={u.id}>{fmtName(u)}{u.role === "senior_ae" ? " (Senior)" : ""}</option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            {["contact", "meeting"].includes(actionModal.action) && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                วัน-เวลา{actionModal.action === "meeting" ? "นัด" : "ที่ติดต่อ"}
-                <DateTimeInput value={actAt} onChange={setActAt} />
-              </label>
-            )}
-            {actionModal.action === "contact" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                หมายเหตุการติดต่อ *
-                <Textarea rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder="เช่น โทรคุยแล้ว ลูกค้าขอใบเสนอราคา / ติดต่อไม่ได้ นัดโทรใหม่พรุ่งนี้" />
-              </label>
-            )}
-            {actionModal.action === "meeting" && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                รูปแบบนัด
-                <Select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
-                  {MEETING_MODES.map((m) => <option key={m} value={m}>{MEETING_MODE_LABELS[m]}</option>)}
-                </Select>
-              </label>
-            )}
-            {["disqualify", "bounce"].includes(actionModal.action) && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-                เหตุผล *
-                <Textarea rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
-              </label>
-            )}
-            <div className="form-action-bar">
-              <button type="button" className="btn btn-secondary" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary" onClick={submitAction}
-                disabled={!!busy
-                  || (actionModal.action === "screen" && !actTeam)
-                  || (actionModal.action === "assign" && !actAssignee)
-                  || (["contact", "disqualify", "bounce"].includes(actionModal.action) && !actReason.trim())}>
-                {busy === "action" ? "กำลังบันทึก…" : "ยืนยัน"}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* สร้างดีลจากลีด — ฟอร์มเดียวกับที่หน้ารายละเอียดใช้
+          mount ตอนเปิดเท่านั้น (ดูคำเตือนใน LeadDealModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
+      {dealModal && (
+        <LeadDealModal
+          key={dealModal.id}
+          lead={dealModal}
+          customers={customers}
+          projects={projects}
+          categories={categories}
+          onClose={() => setDealModal(null)}
+        />
+      )}
     </SaWorkspace>
   );
 }

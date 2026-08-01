@@ -4798,22 +4798,3 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   display: inline-block;
   margin-right: var(--space-1-5);
 }
-
-.btn-status {
-  background: var(--btn-bg, var(--navy));
-  border: 1px solid var(--border-strong);
-  color: #fff;
-}
-.btn-status:hover {
-  background: color-mix(in oklab, var(--btn-bg, var(--navy)) 85%, #fff);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-status-ghost {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--btn-bg);
-}
-.btn-status-ghost:hover {
-  background: color-mix(in srgb, var(--btn-bg) 10%, transparent);
-}

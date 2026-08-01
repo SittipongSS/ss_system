@@ -22,6 +22,8 @@ export default function RecordActionMenu({
   user,
   manageHref,
   onTransition,
+  /* ดัก transition ก่อนเปิดกล่องกรอก — คืน true = หน้าจัดการเองแล้ว (ดู RecordControlCard) */
+  onSelect,
   onEdit,
   onDelete,
   canEdit = true,
@@ -52,7 +54,10 @@ export default function RecordActionMenu({
           variant="outline"
           disabled={busy || step.disabled}
           title={step.disabledReason}
-          onClick={() => setPending({ transition: step.transition, values: {} })}
+          onClick={() => {
+            if (onSelect?.(step.transition) === true) return;
+            setPending({ transition: step.transition, values: {} });
+          }}
         />
       ) : null}
       {onEdit && canEdit ? (

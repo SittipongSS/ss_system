@@ -16,6 +16,7 @@
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
   LEAD_TRANSITIONS,
@@ -23,6 +24,14 @@ import {
   MEETING_MODE_LABELS,
   canWorkLead,
 } from "@/lib/sales/leads";
+
+/* action ที่ handler ตอบ badRequest ถ้าไม่มี `body.reason?.trim()`
+   — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
+   🐞 เคยประกาศ contact เป็น "optional" (#864) → กดยืนยันโดยไม่พิมพ์ได้ แล้วโดน 400
+   เทสต์ `leadLifecycle.test.mjs` อ่าน route.js จริงมาเทียบกับลิสต์นี้ ดริฟต์แล้วแดง */
+export const LEAD_REASON_REQUIRED = ["contact", "bounce", "disqualify"];
+
+const reasonRule = (action) => (LEAD_REASON_REQUIRED.includes(action) ? "required" : "none");
 
 /* สถานะ → tone ของป้าย · ชุดคำศัพท์ของ *สถานะ* (Badge.module.css) ไม่ใช่ของปุ่ม
    สีจริงมาจาก toneColor() ใน lib/ui/tone.js — ไม่ประกาศ CSS var ซ้ำที่นี่ */
@@ -126,8 +135,8 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
         from: allowedFrom("contact"),
         to: "contacted",
         visible: (lead, user) => canWorkLead(user, lead),
-        // หมายเหตุการติดต่อไม่บังคับ แต่เก็บลงประวัติถ้ากรอก (API เก็บใน event.reason)
-        reason: "optional",
+        // API บังคับหมายเหตุการติดต่อ (เก็บใน event.reason) — ดู LEAD_REASON_REQUIRED
+        reason: reasonRule("contact"),
         reasonPolicy: {
           title: "บันทึกการติดต่อลูกค้า",
           label: "หมายเหตุการติดต่อ",
@@ -172,7 +181,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
         kind: "bounce",
         from: allowedFrom("bounce"),
         to: "new",
-        reason: "required",
+        reason: reasonRule("bounce"),
         visible: (lead, user) => oversees(user, lead),
         reasonPolicy: {
           title: "ตีกลับไปคิวคัดกรอง",
@@ -187,7 +196,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
         kind: "disqualify",
         from: allowedFrom("disqualify"),
         to: "disqualified",
-        reason: "required",
+        reason: reasonRule("disqualify"),
         visible: (lead, user) => oversees(user, lead),
         reasonPolicy: {
           title: "ปิดลีดนี้",
@@ -202,3 +211,28 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
 
 /* transition ที่ต้องส่งไป `POST /transition` (ที่เหลือหน้าจัดการเอง) */
 export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "contact", "meeting", "bounce", "disqualify"];
+
+/**
+ * แปลงค่าที่ผู้ใช้กรอกใน TransitionDialog → body ของ `POST /leads/[id]/transition`
+ *
+ * แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพราะหน้ารายการกับหน้ารายละเอียดเคยประกอบ body เองคนละที่
+ * แล้วไม่ตรงกัน (หน้ารายการส่ง eventAt เฉพาะ contact/meeting · หน้ารายละเอียดส่งทุก action)
+ * — ต่างกันไม่ทำให้พังวันนี้ แต่เป็นทางที่กติกาจะแตกออกจากกันอีกรอบ
+ *
+ * ⚠️ ค่าว่างต้องเป็น `undefined` ไม่ใช่ `null`/`""` — `JSON.stringify` ตัด undefined ทิ้ง
+ * ส่วน `null` จะไปถึง handler แล้วเข้าเงื่อนไข `!body.assigneeId` เหมือนกันก็จริง
+ * แต่ `team: null` ทำให้ `TEAMS.includes(null)` ตกด้วยข้อความคนละอันกับที่ตั้งใจ
+ */
+export function buildLeadTransitionPayload({ action, values = {}, users = [] } = {}) {
+  const assignee = users.find((user) => user.id === values.assigneeId);
+  const eventAt = values.eventAt ? new Date(values.eventAt) : null;
+  return {
+    action,
+    team: values.team || undefined,
+    assigneeId: values.assigneeId || undefined,
+    assigneeName: assignee ? fmtName(assignee) : undefined,
+    reason: values.reason?.trim() || undefined,
+    meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
+    eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
+  };
+}
