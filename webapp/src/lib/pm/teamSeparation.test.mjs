@@ -30,6 +30,14 @@ test('⭐ ฝ่ายผลิต/จัดซื้อ (PD/PC) เห็นแ
   }
 });
 
+test('⭐ TS เป็นฝ่ายเดียวในกลุ่ม staff ที่ถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน', () => {
+  // ⚠️ จุดที่พลาดง่าย: กันเฉพาะ TS ไม่ใช่กวาดทุกฝ่ายที่ไม่ได้วางแผน (WH/QC ต้องอ่านได้)
+  assert.equal(canViewProduction(at('TS')), false);
+  for (const dept of ['PC', 'PD', 'WH', 'QC']) {
+    assert.equal(canViewProduction(at(dept)), true, dept);
+  }
+});
+
 test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแต่ธุรกิจบริการ — ไม่เห็นตารางผลิตแม้แต่อ่าน', () => {
   // 🐞 ของเดิม canViewProduction ไม่แคบด้วยฝ่าย → TS อ่านตารางผลิตได้ทั้งระบบ
   // ยังไม่มีใครเห็นเพราะการ์ดระบบกั้นด้วย canEditProduction แต่ P-3 วางแผนจะเปิด
@@ -42,11 +50,14 @@ test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแ�
   assert.ok(keys(at('TS')).includes('service'));
 });
 
-test('ฝ่ายคลัง/QC ไม่ใช่ทีมปฏิบัติงานของทั้งสองระบบ — ไม่เห็นทั้งคู่', () => {
+test('⭐ ฝ่ายคลัง/QC อยู่ในสายงานโรงงาน — **อ่าน**ตารางผลิตได้ แต่แก้ไม่ได้ และไม่แตะธุรกิจบริการ', () => {
+  // มติผู้ใช้ 2026-07-31: QC ตรวจของขาเข้าก่อนเข้าไลน์ · คลังรับของเข้าคลังแล้วจัดส่ง
+  // ทั้งคู่เป็นขั้นตอนในแม่แบบไทม์ไลน์เดียวกับ "ผลิตสินค้า" จึงต้องรู้ว่าโรงงานจะผลิตวันไหน
   for (const dept of ['WH', 'QC']) {
-    assert.equal(canViewProduction(at(dept)), false, dept);
+    assert.equal(canViewProduction(at(dept)), true, dept);
+    assert.equal(canEditProduction(at(dept)), false, dept);   // อ่านอย่างเดียว ไม่แก้ตาราง
     assert.equal(canViewService(at(dept)), false, dept);
-    assert.deepEqual(keys(at(dept)).filter((k) => k === 'production' || k === 'service'), [], dept);
+    assert.deepEqual(keys(at(dept)).filter((k) => k === 'service'), [], dept);
   }
 });
 
