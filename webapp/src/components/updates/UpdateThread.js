@@ -315,6 +315,11 @@ export default function UpdateThread({
             {row.authorDept ? `${DEPARTMENT_LABELS[row.authorDept] || row.authorDept} · ` : ""}
             {item.at ? fmtDayTime(item.at) : ""}
           </span>
+          {/* ⭐ ป้ายชนิดอยู่ **คอลัมน์ซ้าย** ไม่ใช่ในเนื้อความ (มติผู้ใช้ 2026-08-02) —
+              แนวเดียวกับที่เหตุการณ์ระบบแสดง "สถานะ/ผูกดีล" อยู่แล้ว ทั้งสองแบบจึง
+              อ่านเป็นคอลัมน์เดียวกัน: ซ้าย = นี่คืออะไร/ใครพูด · ขวา = เนื้อหา
+              · โผล่เฉพาะเธรดที่เลือกชนิดได้จริง (ฟีดดีล/ลีด) */}
+          {showKindPicker && <span className={styles.kindBadge}>{item.label}</span>}
         </div>
         <div className={styles.content}>
           {row.deletedAt ? (
@@ -387,12 +392,6 @@ export default function UpdateThread({
               เนื้อความล้วน ๆ และปุ่มอยู่ตรงที่สายตาหยุดพอดีหลังอ่านจบ */}
           <div className={styles.head}>
             {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
-            {/* ⚠️ ป้ายชนิดโผล่เฉพาะเมื่อ **ไม่ใช่ชนิดตั้งต้น** — ในเธรดดีล/ลีด ข้อความ
-                ส่วนใหญ่เป็น "บันทึก" อยู่แล้ว ป้ายที่ขึ้นทุกแถวจึงไม่ได้บอกอะไรนอกจาก
-                ทำให้รก · "โทร/ประชุม/อีเมล/ขั้นถัดไป" คือของที่ต่างจากปกติจริง ๆ */}
-            {row.kind !== defaultAuthorableKind(entityType) && (
-              <span className={styles.kindBadge}>{item.label}</span>
-            )}
             {row.editedAt && <span>แก้ไขแล้ว</span>}
             {row.acknowledgedAt && (
               <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
