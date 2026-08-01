@@ -15,8 +15,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
-import { ActionButton } from "@/components/ui/ActionButtons";
+import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import TransitionDialog from "@/components/ui/TransitionDialog";
 import styles from "./RecordActionMenu.module.css";
@@ -55,32 +54,33 @@ export default function RecordActionMenu({
   /* ทุกอย่างที่ไม่ใช่ก้าวถัดไป ลงเมนูหมด — เรียงตามน้ำหนัก: เดินหน้ารอง → แก้ไข → อันตราย
      `separatorBefore` ขีดเส้นแยก "จัดการตัวระเบียน" ออกจาก "ย้ายสถานะ" */
   const rest = entries.filter((entry) => entry !== step);
-  const items = [
-    ...rest.filter((entry) => entry.slot === "secondary").map((entry) => ({
+  /* ไอคอนและสีของรายการมาจาก `kind` ที่ ActionButtons ผูกไว้ที่เดียวกับปุ่มบนการ์ด —
+     ไม่ใช่ทาสีตาม slot เอง ไม่งั้นเมนูกับการ์ดพูดคนละอย่างเรื่องเดียวกัน
+     (เจอจริง: เมนูทา "ตีกลับ" เป็นแดง แต่การ์ดโชว์เทา ทั้งที่เป็น action เดียวกัน) */
+  const fromEntry = (entry) => {
+    const meta = kindMeta(entry.kind);
+    return {
       id: entry.id,
       label: entry.rowLabel || entry.label,
-      icon: entry.icon,
-      tone: "neutral",
+      icon: entry.icon || meta?.Icon,
+      tone: meta?.tone || "neutral",
       disabled: entry.disabled,
       disabledReason: entry.disabledReason,
       onClick: () => openTransition(entry),
-    })),
+    };
+  };
+  const items = [
+    ...rest.filter((entry) => entry.slot === "secondary").map(fromEntry),
     ...(onEdit && canEdit
-      ? [{ id: "edit", label: "แก้ไขข้อมูล", icon: Pencil, tone: "neutral", separatorBefore: true, onClick: onEdit }]
+      ? [{ id: "edit", label: "แก้ไขข้อมูล", icon: kindMeta("edit").Icon, tone: kindMeta("edit").tone, separatorBefore: true, onClick: onEdit }]
       : []),
     ...rest.filter((entry) => entry.slot === "danger").map((entry, index) => ({
-      id: entry.id,
-      label: entry.rowLabel || entry.label,
-      icon: entry.icon,
-      tone: "danger",
+      ...fromEntry(entry),
       // ขีดเส้นก่อนกลุ่มอันตราย ถ้ายังไม่มีใครขีดไว้ก่อนหน้า
       separatorBefore: index === 0 && !(onEdit && canEdit),
-      disabled: entry.disabled,
-      disabledReason: entry.disabledReason,
-      onClick: () => openTransition(entry),
     })),
     ...(onDelete && canDelete
-      ? [{ id: "delete", label: "ลบรายการนี้", icon: Trash2, tone: "danger", onClick: onDelete }]
+      ? [{ id: "delete", label: "ลบรายการนี้", icon: kindMeta("delete").Icon, tone: kindMeta("delete").tone, onClick: onDelete }]
       : []),
   ];
 
