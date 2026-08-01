@@ -12,7 +12,8 @@
 
 import { useState } from "react";
 import {
-  Palette, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
+  Palette,
+  Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
   ChevronDown, FileText, LayoutGrid, Settings, UserRound,
 } from "lucide-react";
 import {
@@ -1120,6 +1121,10 @@ export default function DesignPreviewPage() {
                 record={demoRecord}
                 user={demoUser}
                 onTransition={runDemoTransition}
+                extraActions={[
+                  { id: "edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูล", icon: Pencil, onClick: () => notifyToast.info("ตัวอย่าง: เปิดโหมดแก้ไขในหน้า") },
+                  { id: "delete", kind: "delete", slot: "danger", label: "ลบรายการนี้", icon: Trash2, onClick: () => notifyToast.warning("ตัวอย่าง: เปิดกล่องยืนยันลบ") },
+                ]}
               />
               <div className={styles.stack}>
                 <TableShell>

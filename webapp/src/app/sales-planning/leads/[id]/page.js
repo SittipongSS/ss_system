@@ -157,18 +157,42 @@ export default function LeadDetailPage() {
 
   const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{typeof value === "string" ? <ReadableText text={value || "-"} lines={wide ? 5 : 3} /> : value || "-"}</div></div>;
 
-  // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
-  // ระหว่างแก้ไข ปุ่มยกเลิก/บันทึกอยู่แถวเดียวกัน (แพตเทิร์นเดียวกับหน้าใบเสนอราคา)
-  const backActions = lead?.canEdit ? (!editing ? (
-    <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => setEditing(true)} aria-label="แก้ไขลีด" title="แก้ไข">
-      <Pencil size={16} aria-hidden="true" />
-    </button>
-  ) : (
+  /* ปุ่มยกเลิก/บันทึก **ระหว่างแก้ไข** ยังอยู่ที่หัวหน้า — ต้องอยู่ใกล้ช่องที่กำลังพิมพ์
+     ส่วนปุ่ม "แก้ไขข้อมูล" (ตอนยังไม่แก้) ย้ายไปอยู่บนการ์ดควบคุมแล้ว
+
+     มติผู้ใช้ 2026-08-01: **การควบคุมคือการควบคุม** ไม่ว่าจะเดินหน้าหรือจัดการตัว
+     ระเบียน — แยกด้วย *ช่อง* ในการ์ด (primary/secondary/danger) ไม่ใช่แยกไปคนละที่
+     ตรงกับหน้าเอกสาร 6 จาก 7 หน้าที่วางแก้ไข/ลบไว้บนการ์ดอยู่แล้ว (SO · QT · คำร้อง
+     · ขอราคาผลิต · PO · ใบยื่นภาษี) — มีแต่หน้าทะเบียนภาษีที่ยังใช้ไอคอนหัวหน้า */
+  const backActions = editing ? (
     <>
-      <button type="button" className="btn" onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "" }); }} disabled={busy}><X size={14} /> ยกเลิก</button>
-      <button type="button" className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button>
+      <Button icon={<X size={14} aria-hidden="true" />} onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "" }); }} disabled={busy}>ยกเลิก</Button>
+      <Button tone="primary" icon={<Save size={14} aria-hidden="true" />} onClick={save} disabled={busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </>
-  )) : null;
+  ) : null;
+
+  /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน
+     แก้ไข = secondary (ทำได้ แต่ไม่ใช่ก้าวถัดไป) · ลบ = danger (ทำลาย) */
+  const recordActions = [
+    {
+      id: "edit",
+      kind: "edit",
+      slot: "secondary",
+      label: "แก้ไขข้อมูล",
+      icon: Pencil,
+      visible: !!lead?.canEdit && !editing,
+      onClick: () => setEditing(true),
+    },
+    {
+      id: "delete",
+      kind: "delete",
+      slot: "danger",
+      label: "ลบลีดนี้",
+      icon: Trash2,
+      visible: !!lead?.canDelete,
+      onClick: removeLead,
+    },
+  ];
 
   return <Workspace icon={<Inbox size={22} />} title={lead?.contactName || "รายละเอียดลีด"} subtitle="ข้อมูลต้นทาง ผู้ติดต่อ และประวัติการดำเนินการ" back={{ href: "/sa/leads", label: "กลับหน้าลีด" }} backActions={backActions} hideHeader loading={loading}>
     {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>}
@@ -186,20 +210,16 @@ export default function LeadDetailPage() {
           ]}
         />
 
-        {/* จุดจัดการเดียวของลีด — เดิมหน้านี้ทำได้แค่ "แก้ไข" ผู้ใช้ต้องถอยกลับไป
-            หน้ารายการเพื่อเปลี่ยนสถานะหรือลบ ทั้งที่ API รองรับมาตลอด */}
+        {/* จุดจัดการเดียวของลีด — เดินหน้า (คัดกรอง/มอบหมาย/ติดต่อ) และจัดการตัว
+            ระเบียน (แก้ไข/ลบ) อยู่การ์ดเดียวกัน แยกด้วยช่องตามน้ำหนักของ action */}
         <DetailPageLayout aside={<>
           <RecordControlCard
             lifecycle={lifecycle}
             record={lead}
             user={viewer}
             onTransition={runTransition}
+            extraActions={recordActions}
             busy={busy}
-            footer={lead.canDelete ? (
-              <Button tone="danger" icon={<Trash2 size={14} aria-hidden="true" />} onClick={removeLead} disabled={busy}>
-                ลบลีดนี้
-              </Button>
-            ) : null}
           />
           <LeadSummary lead={lead} />
         </>}>

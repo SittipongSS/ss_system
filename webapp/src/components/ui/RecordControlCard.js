@@ -11,12 +11,22 @@
 import { useState } from "react";
 import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
 import TransitionDialog from "@/components/ui/TransitionDialog";
+import { normalizeSlots } from "@/lib/recordLifecycle";
 
 export default function RecordControlCard({
   lifecycle,
   record,
   user,
   onTransition,
+  /* action ที่ **ไม่ใช่การย้ายสถานะ** — แก้ไข / ลบ / พิมพ์ ฯลฯ
+     ทำไมต้องมี: lifecycle ตอบว่า "ใบนี้เดินไปไหนได้" ซึ่งไม่ครอบคลุมการจัดการตัว
+     ระเบียนเอง แต่ผู้ใช้มองว่ามันคือ "การควบคุม" เหมือนกัน (มติผู้ใช้ 2026-08-01)
+     และหน้าเอกสาร 6 จาก 7 หน้าก็วางแก้ไข/ลบไว้บนการ์ดอยู่แล้ว (secondary/danger)
+
+     รูป: { id, label, kind, icon, slot, visible, disabled, disabledReason, onClick }
+     ต่างจาก transition ตรงที่ **กด onClick ตรง ๆ ไม่เปิด TransitionDialog** —
+     ของพวกนี้มีกล่องยืนยันของตัวเอง (confirmAction) หรือเป็นการสลับโหมดในหน้า */
+  extraActions = [],
   busy = false,
   notices,
   evidence,
@@ -40,8 +50,20 @@ export default function RecordControlCard({
     icon: entry.icon,
     disabled: entry.disabled,
     disabledReason: entry.disabledReason,
-    onClick: () => setPending({ transition: entry.transition, values: {} }),
+    // extraActions มี onClick ของตัวเอง · transition เปิดกล่องให้กรอกก่อน
+    onClick: entry.onClick || (() => setPending({ transition: entry.transition, values: {} })),
   });
+
+  /* รวมสองแหล่งก่อนค่อยจัดช่อง — normalizeSlots คุมกติกา "primary ได้ตัวเดียว"
+     ให้ทั้งชุด ไม่งั้นส่ง extraActions slot="primary" มาแล้วจะได้ปุ่มหลักสองปุ่ม
+     ลำดับ: transition มาก่อน extraActions (ก้าวถัดไปสำคัญกว่าการจัดการตัวระเบียน) */
+  const all = normalizeSlots([
+    ...entries,
+    ...extraActions
+      .filter((action) => action && action.visible !== false)
+      .map((action) => ({ ...action, slot: action.slot || "secondary" })),
+  ]);
+  const inSlot = (slot) => all.filter((entry) => entry.slot === slot).map(toAction);
 
   const run = async () => {
     if (!pending) return;
@@ -61,9 +83,9 @@ export default function RecordControlCard({
         workflowSteps={lifecycle.railSteps(record)}
         notices={notices}
         evidence={evidence}
-        primaryAction={entries.filter((entry) => entry.slot === "primary").map(toAction)[0] || null}
-        secondaryActions={entries.filter((entry) => entry.slot === "secondary").map(toAction)}
-        dangerActions={entries.filter((entry) => entry.slot === "danger").map(toAction)}
+        primaryAction={inSlot("primary")[0] || null}
+        secondaryActions={inSlot("secondary")}
+        dangerActions={inSlot("danger")}
         busy={busy}
         footer={footer}
         className={className}
