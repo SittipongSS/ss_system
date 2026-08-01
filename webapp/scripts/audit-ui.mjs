@@ -216,6 +216,21 @@ const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
 const chartContractViolations = [];
+
+/* ไฟล์ที่ได้รับอนุญาตให้ใช้ `family="matrix"` (คอลัมน์แรกแช่แข็ง) — 8 ไฟล์ 14 จุด
+   ณ 2026-07-31 · ดูเหตุผลและข้อควรระวังที่จุดตรวจด้านล่าง */
+const MATRIX_FAMILY_ALLOWLIST = new Set([
+  "src/app/sahamit/forecast/page.js",
+  "src/app/sahamit/reconcile/page.js",
+  "src/components/sahamit/CellDetailModal.js",
+  "src/components/sahamit/GrowthView.js",
+  "src/components/sahamit/PoVsFcView.js",
+  "src/components/sahamit/RoundComparison.js",
+  "src/components/salesPlanning/dashboard/performance/MorningBoard.js",
+  "src/components/salesPlanning/dashboard/performance/YearHeatmap.js",
+]);
+const matrixFamilyViolations = [];
+
 for (const file of uiFiles) {
   const rel = relative(file);
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
@@ -227,6 +242,22 @@ for (const file of uiFiles) {
   if (source.includes("<table") && !source.includes("<TableScroll") && !source.includes("<TableShell")) {
     tableContractViolations.push(rel);
   }
+  /* `family="matrix"` ไม่ใช่แค่ชื่อ — มันตรึงคอลัมน์แรก (sticky + พื้นทึบ + ผสมสี hover)
+     และตั้งความสูงแถวเป็น 48px ตารางธรรมดาที่เผลอใส่จะได้คอลัมน์แรกแช่แข็งโดยไม่มี
+     ใครสั่ง ซึ่งเห็นเฉพาะตอนเลื่อนแนวนอน = บั๊กที่หาสาเหตุยากมาก
+     ลิสต์นี้จึงเป็นเพดาน: **เพิ่มไฟล์ใหม่ไม่ได้** ของใหม่ที่อยากได้คอลัมน์ตรึงต้องมา
+     คุยกันก่อน (ที่มา: กฎนี้ Codex เขียนไว้ในสาขา table-visual-parity ยกมาเขียนใหม่
+     บนฐานปัจจุบัน 2026-07-31)
+
+     ⚠️ ลิสต์นี้สะท้อน "ของที่มีอยู่วันนี้" ไม่ได้แปลว่าทั้ง 8 ไฟล์ใช้ matrix ถูกต้อง —
+     Codex เคยเสนอให้ 4 ไฟล์ของสหมิตร (CellDetailModal · GrowthView · PoVsFcView ·
+     RoundComparison) เปลี่ยนเป็น `list` เพราะไม่ได้ต้องการคอลัมน์ตรึง แต่การสลับ
+     เปลี่ยนหน้าตาจริง (แถว 48→52px · พื้นคอลัมน์แรก) ต้องมีคนเปิดหน้าดูก่อนตัดสิน */
+  const matrixHits = [...source.matchAll(/<Table(?:Scroll|Shell)\b[^>]*\bfamily=["']matrix["']/g)];
+  if (matrixHits.length && !MATRIX_FAMILY_ALLOWLIST.has(rel)) {
+    matrixFamilyViolations.push(`${rel} (${matrixHits.length} จุด)`);
+  }
+
   if (source.includes("<ResponsiveContainer") && !source.includes("<ChartCanvas")) {
     chartContractViolations.push(rel);
   }
@@ -640,6 +671,7 @@ const failures = [
   ...nativeFeedbackViolations.map((item) => `native alert/confirm/prompt bypasses feedback foundation: ${item}`),
   ...staleNativeFeedbackDebt.map((item) => `หนี้ prompt() เก่าลดได้แล้ว — รูดเพดาน nativeFeedbackDebt ลง: ${item}`),
   ...tableContractViolations.map((item) => `table bypasses TableScroll contract: ${item}`),
+  ...matrixFamilyViolations.map((item) => `ตารางธรรมดาขอคอลัมน์แรกแช่แข็ง (family="matrix") โดยไม่ได้อยู่ในลิสต์: ${item}`),
   ...chartContractViolations.map((item) => `chart bypasses ChartCanvas contract: ${item}`),
   ...floatingSurfaceViolations.map((item) => `floating panel needs var(--panel-float) or backdrop-filter: ${item}`),
   ...crossLayerOverrideViolations.map((item) => `CSS module overrides a legacy global class instead of removing it: ${item}`),
@@ -676,6 +708,7 @@ console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`)
 const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (หนี้ prompt() เก่าที่ยกเว้นไว้ ${nativeFeedbackDebtTotal} จุด)`);
 console.log(`Table contract violations: ${tableContractViolations.length}`);
+console.log(`family="matrix" นอกลิสต์: ${matrixFamilyViolations.length} (อนุญาต ${MATRIX_FAMILY_ALLOWLIST.size} ไฟล์)`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
 console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);
 console.log(`Cross-layer :global() overrides: ${crossLayerOverrideViolations.length}`);
