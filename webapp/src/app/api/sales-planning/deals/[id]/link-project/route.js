@@ -8,6 +8,8 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
+import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
@@ -144,6 +146,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       changedByName: user.name || null,
     });
   }
+
+  // เส้นเรื่องของโครงการต้องรู้ว่ามีดีลใบใหม่เข้ามาร่วม — ความเคลื่อนไหวของดีลใบนี้
+  // จะเริ่มไหลเข้าหน้าโครงการทันที ถ้าไม่มีบรรทัดบอกจะอ่านเหมือนโผล่มาเฉย ๆ
+  await appendUpdate(supabase, {
+    entityType: 'project', entityId: project.id,
+    ...dealLinkedUpdate(updatedDeal || deal, { how: 'link' }), user,
+  });
 
   await recordAudit({
     user,

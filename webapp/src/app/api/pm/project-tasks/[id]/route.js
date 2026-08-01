@@ -6,6 +6,8 @@ import { propagateAndPersist } from '@/lib/pm/status';
 import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
+import { milestoneDoneUpdate } from '@/lib/pm/projectUpdates';
+import { appendUpdate } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +104,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
+
+  // หมุดหมายของโครงการเข้าเธรด — **เฉพาะขั้นที่ติดธง `isMilestone`** เท่านั้น
+  // โครงการหนึ่งมี 20–40 ขั้น ถ้าเอาทุกขั้นที่เปลี่ยนสถานะ เธรดจะกลายเป็น log ของ
+  // ระบบงานแล้วบทสนทนาจม (บทเรียนจากเธรดงานส่วนบุคคล: 92% ของแถวเป็นเหตุการณ์ระบบ)
+  // ⚠️ ต้องอยู่ก่อนบล็อก recalc ด้านล่างซึ่งมีทางออกหลายทาง (return ได้ 2 จุด)
+  // · ขั้นตอนลอยของดีลไม่มีโครงการแม่ = ไม่มีเธรดให้ลง ข้ามไป
+  if (project?.id) {
+    const event = milestoneDoneUpdate(task, data);
+    if (event) await appendUpdate(supabase, { entityType: 'project', entityId: project.id, ...event, user });
+  }
 
   // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
   // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
