@@ -15,7 +15,15 @@ export const searchableForEntity = (entity, fallback = true) =>
     ? ENTITY_SELECT_RULES[entity].searchable
     : fallback;
 
-// Rows with a known detail URL are navigable from the non-interactive area.
-// Buttons, links and form controls inside the row retain their own action.
-export const isInteractiveTarget = (target) =>
-  Boolean(target?.closest?.("a,button,input,select,textarea,[role='button'],[role='link'],[data-no-row-navigation]"));
+// แถวที่รู้ URL ปลายทางกดได้จากพื้นที่ที่ไม่ใช่ตัวควบคุม — ปุ่ม/ลิงก์/ช่องกรอกข้างในยังทำงาน
+// ของตัวเองตามเดิม
+//
+// 🐞 `boundary` เพิ่มมาแก้บั๊กที่ทำให้ **คลิกแถวไม่ทำงานเลยทุกหน้า**: `DetailRow` ใส่
+// `role="link"` ไว้บน `<tr>` เอง แล้วฟังก์ชันนี้ไล่ `closest()` ขึ้นไปเจอ `<tr>` ตัวนั้น
+// → คืน true ทุกครั้งไม่ว่าจะกดตรงไหน → เงื่อนไข `!isInteractiveTarget(...)` เป็นเท็จเสมอ
+// → `navigate()` ไม่เคยถูกเรียก ทั้งคลิกและกด Enter (หน้าดีล/โครงการ/QT/SO โดนหมด)
+// ตัวมันเองไม่นับว่าเป็น "ตัวควบคุมข้างใน" — ส่ง boundary มาเพื่อหยุดการไล่ขึ้นที่ตรงนั้น
+export const isInteractiveTarget = (target, boundary) => {
+  const found = target?.closest?.("a,button,input,select,textarea,[role='button'],[role='link'],[data-no-row-navigation]");
+  return Boolean(found) && found !== boundary;
+};
