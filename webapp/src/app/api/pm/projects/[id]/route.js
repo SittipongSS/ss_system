@@ -90,6 +90,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let dealStageHistory = [];
   let inquiries = [];
   let hiddenDealFeeds = 0;
+  let dealFeedIds = [];
   if (deals.length) {
     const dealIds = deals.map((d) => d.id);
 
@@ -106,6 +107,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // จำนวนที่ถูกกรองออกส่งไปให้หน้าจอบอกผู้ใช้ตรง ๆ — เส้นเรื่องที่สั้นลงเงียบ ๆ
     // อ่านเหมือน "ไม่มีความเคลื่อนไหว" ซึ่งคนละความหมายกับ "คุณไม่มีสิทธิ์เห็น"
     hiddenDealFeeds = deals.length - feedDealIds.length;
+    // ตัวกรอง "เลือกดีล" บนหน้าโครงการต้องเสนอเฉพาะใบที่อ่านเธรดได้จริง ไม่งั้น
+    // เลือกแล้วได้ผลว่างโดยไม่รู้ว่าเพราะไม่มีความเคลื่อนไหวหรือไม่มีสิทธิ์
+    dealFeedIds = feedDealIds;
     const emptyRows = Promise.resolve({ data: [] });
 
     const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist },
@@ -201,7 +205,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]

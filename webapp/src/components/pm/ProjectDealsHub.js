@@ -1,6 +1,5 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // ศูนย์รวมดีลในโครงการ — โครงการ = จิ๊กซอว์ครอบดีล: ดีลมีอะไร โครงการ merge หมด
 // การ์ดต่อดีล (ใบเสนอราคา + ความคืบหน้า segment ไทม์ไลน์ อยู่ "ใต้ดีล") +
@@ -8,17 +7,17 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
+import UpdateThread from "@/components/updates/UpdateThread";
+import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
+import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
-import Textarea from "@/components/ui/Textarea";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -33,13 +32,6 @@ const QUOTE_STATUS = {
   cancelled: { label: "ยกเลิก", color: "var(--red)" },
   revised: { label: "ถูกแก้ไข", color: "var(--amber)" },
   closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
-};
-const ACTIVITY_KIND = {
-  note: { label: "บันทึก", color: "var(--text-3)" },
-  call: { label: "โทร", color: "var(--blue)" },
-  meeting: { label: "ประชุม", color: "var(--violet)" },
-  email: { label: "อีเมล", color: "var(--teal)" },
-  next_step: { label: "ขั้นถัดไป", color: "var(--amber)" },
 };
 const localToday = () => {
   const now = new Date();
@@ -208,174 +200,96 @@ export function ProjectQuotationsCard({ project: p }) {
   );
 }
 
-// ฟีดความเคลื่อนไหวรวมทุกดีล + การเปลี่ยนสถานะ เรียงเวลาเดียวกัน — วางท้ายหน้า
-// โครงการ (หลังไทม์ไลน์) แยกจาก hub เพื่อไม่ดันไทม์ไลน์ให้จมลงล่าง
+// ── ความเคลื่อนไหวโครงการ ────────────────────────────────────────────────
+// เธรดของ **ตัวโครงการ** เป็นเจ้าของกล่องพิมพ์เพียงกล่องเดียวบนหน้านี้ ส่วนความ
+// เคลื่อนไหวของดีลลูกไหลเข้ามาเรียงในเส้นเรื่องเดียวกันแบบ **อ่านอย่างเดียว**
+// พร้อมลิงก์เข้าไปดีลใบนั้น (ท่า "เก็บแยก โชว์รวม" เดียวกับลีด/ดีล)
+//
+// ⭐ มติผู้ใช้ 2026-08-01: **พิมพ์ที่ไหน = ลงที่นั่น** — ของเดิมเป็นฟอร์มที่เลือกดีล
+// จาก dropdown แล้วโพสต์ข้ามใบ ซึ่งพังสามชั้น: (ก) ข้อความขาดบริบทตอนถูกอ่านจาก
+// หน้าดีล (เขียนตอนเทียบหลายดีลอยู่) (ข) เลือกผิดใบแล้วกู้ไม่ได้ — ย้ายเธรดข้าม
+// entity ไม่ได้ ต้องลบทิ้งซึ่งเหลือรอย "ข้อความนี้ถูกลบแล้ว" ในดีลผิดใบถาวร
+// (ค) เป็น UI ชุดที่สองที่ขาดไฟล์แนบ/ยกคำพูด/ป้ายฝ่าย/กำหนดวันไปเงียบ ๆ
+//
+// เส้นแบ่งว่าเรื่องไหนลงเธรดไหน: **"ถ้าดีลใบนี้ถูกยกเลิก ข้อความนี้ยังจริงไหม"**
+// ยังจริง (ลูกค้าเลื่อนส่งมอบทั้งล็อต) → เธรดโครงการ · ไม่จริงแล้ว (ต่อราคาใบนั้น)
+// → เธรดของดีลใบนั้น
 export function ProjectActivityFeed({ project: p, onChanged }) {
-  const canEdit = useCan("salesplan:edit");
-  const [showAllFeed, setShowAllFeed] = useState(false);
-  const [dealId, setDealId] = useState("");
-  const [kind, setKind] = useState("note");
-  const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [activityBusy, setActivityBusy] = useState("");
-  const [error, setError] = useState("");
-  const deals = useMemo(() => p.deals || [], [p.deals]);
+  // ทั้งหมด | project (เฉพาะเรื่องระดับโครงการ) | <dealId> (เฉพาะดีลใบเดียว)
+  const [scope, setScope] = useState("all");
 
-  const feed = useMemo(() => {
-    const dealById = new Map(deals.map((d) => [d.id, d]));
-    return [
+  // เสนอเฉพาะดีลที่ **อ่านเธรดได้จริง** (server กรองมาให้ใน dealFeedIds) — ไม่งั้น
+  // เลือกแล้วได้ผลว่าง โดยแยกไม่ออกว่าไม่มีความเคลื่อนไหวหรือไม่มีสิทธิ์
+  const feedDeals = useMemo(() => {
+    const allowed = new Set(p.dealFeedIds || []);
+    return (p.deals || []).filter((deal) => allowed.has(deal.id));
+  }, [p.deals, p.dealFeedIds]);
+
+  // ความเคลื่อนไหวของดีล → รายการอ่านอย่างเดียวของเธรดกลาง
+  // ป้าย/สีมาจาก **ทะเบียนชนิดกลาง** (updateKindMeta) ไม่ใช่ตารางท้องถิ่นอีกชุด —
+  // ของเดิมมี ACTIVITY_KIND ของตัวเองที่ต้องแก้คู่มือกับ UPDATE_KINDS.deal ทุกครั้ง
+  const extraItems = useMemo(() => {
+    const dealById = new Map((p.deals || []).map((d) => [d.id, d]));
+    const dealLink = (deal) => (deal
+      ? { href: `/sa/deals/${deal.id}`, linkLabel: deal.title || deal.id }
+      : {});
+    const rows = [
       ...(p.dealActivities || []).map((a) => ({
-        id: `act-${a.id}`, at: a.activityAt || a.createdAt, deal: dealById.get(a.dealId),
-        activityId: a.id, editable: true, kindKey: a.kind || "note",
-        kind: ACTIVITY_KIND[a.kind] || ACTIVITY_KIND.note, body: a.body, by: a.createdByName,
+        id: `act-${a.id}`,
+        at: a.activityAt || a.createdAt,
+        dealId: a.dealId,
+        ...updateKindMeta("deal", a.kind),
+        body: a.body,
+        by: a.createdByName,
+        ...dealLink(dealById.get(a.dealId)),
       })),
       ...(p.dealStageHistory || []).map((h) => ({
-        id: `st-${h.id}`, at: h.changedAt, deal: dealById.get(h.dealId),
-        kind: { label: "สถานะ", color: "var(--accent)" },
+        id: `st-${h.id}`,
+        at: h.changedAt,
+        dealId: h.dealId,
+        label: "สถานะ",
+        color: "var(--text-3)",
         body: `${STAGE_LABELS[h.fromStage] || h.fromStage || "เริ่ม"} → ${STAGE_LABELS[h.toStage] || h.toStage}`,
         by: h.changedByName,
+        ...dealLink(dealById.get(h.dealId)),
       })),
-    ].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
-  }, [p.dealActivities, p.dealStageHistory, deals]);
-  const feedShown = showAllFeed ? feed : feed.slice(0, 12);
-
-  const addActivity = async (event) => {
-    event.preventDefault();
-    if (!dealId || !body.trim()) return setError("กรุณาเลือกดีลและระบุรายละเอียด");
-    setSaving(true);
-    setError("");
-    try {
-      // mig 0169: ฟีดดีลย้ายมาเธรดกลาง — ด่านสิทธิ์ยังเป็นชุดเดิม (ขอบเขตดีล)
-      // เพราะทะเบียน updateAccess.deal ยกมาจาก /api/sales-planning/activities ตรง ๆ
-      const res = await fetch("/api/updates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType: "deal", entityId: dealId, kind, body: body.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "เพิ่มความเคลื่อนไหวไม่สำเร็จ");
-      setBody("");
-      await onChanged?.();
-    } catch (err) {
-      setError(err.message || "เพิ่มความเคลื่อนไหวไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const updateActivity = async (event) => {
-    event.preventDefault();
-    if (!editing?.body?.trim()) return;
-    setActivityBusy(editing.id);
-    setError("");
-    try {
-      const res = await fetch(`/api/updates/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "edit", kind: editing.kind, body: editing.body.trim() }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "แก้ไขความเคลื่อนไหวไม่สำเร็จ");
-      setEditing(null);
-      await onChanged?.();
-    } catch (err) {
-      setError(err.message || "แก้ไขความเคลื่อนไหวไม่สำเร็จ");
-    } finally {
-      setActivityBusy("");
-    }
-  };
-
-  const deleteActivity = async (item) => {
-    if (!(await confirmAction("ลบความเคลื่อนไหวรายการนี้?"))) return;
-    setActivityBusy(item.activityId);
-    setError("");
-    try {
-      const res = await fetch(`/api/updates/${item.activityId}`, { method: "DELETE" });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "ลบความเคลื่อนไหวไม่สำเร็จ");
-      await onChanged?.();
-    } catch (err) {
-      setError(err.message || "ลบความเคลื่อนไหวไม่สำเร็จ");
-    } finally {
-      setActivityBusy("");
-    }
-  };
+    ];
+    if (scope === "project") return [];
+    if (scope === "all") return rows;
+    return rows.filter((row) => row.dealId === scope);
+  }, [p.dealActivities, p.dealStageHistory, p.deals, scope]);
 
   return (
     <div className="glass-panel" style={{ padding: "16px 20px", marginTop: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <MessageSquare size={16} aria-hidden="true" />
-        <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ความเคลื่อนไหวรวมทุกดีล</h3>
-        <span className="ui-badge" style={{ color: "var(--text-3)" }}>{feed.length} รายการ</span>
+        <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ความเคลื่อนไหวโครงการ</h3>
         {/* ดีลที่ผู้อ่านไม่มีสิทธิ์เห็นถูกกรองที่ server — ต้องบอกตรง ๆ ว่ามีของที่ถูกซ่อน
             ไม่งั้นเส้นเรื่องที่สั้นลงจะอ่านเป็น "ยังไม่มีความเคลื่อนไหว" คนละความหมายกัน */}
         {p.hiddenDealFeeds > 0 && (
           <span className="ui-badge">ซ่อน {p.hiddenDealFeeds} ดีลที่ไม่มีสิทธิ์เห็น</span>
         )}
         <div className="spacer" style={{ flex: 1 }} />
-        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ข้อมูลเดียวกับหน้าดีลแต่ละใบ</span>
-      </div>
-      {canEdit && deals.length > 0 && (
-        <form onSubmit={addActivity} style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) 150px minmax(240px, 2fr) auto", gap: 8, marginBottom: 14, alignItems: "end" }}>
-          <div className="form-group"><label>ดีล</label><Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}><option value="">— เลือกดีล —</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</Select></div>
-          <div className="form-group"><label>ประเภท</label><Select fullWidth value={kind} onChange={(event) => setKind(event.target.value)}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
-          <div className="form-group">
-            <label>รายละเอียด</label>
-            <Textarea className="w-full"
-              rows={2}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
-              style={{ resize: "vertical" }}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={saving} style={{ minHeight: 40, alignSelf: "end" }}>{saving ? "กำลังเพิ่ม..." : "เพิ่ม"}</button>
-        </form>
-      )}
-      {error && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)", marginBottom: 8 }}>{error}</div>}
-      {feed.length ? <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }}>
-        {feedShown.map((it) => (
-          <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: "var(--fs-7)", borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-            <span className="ui-badge" style={{ color: it.kind.color, flexShrink: 0 }}>{it.kind.label}</span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <ReadableText text={it.body} lines={4} />
-              <div style={{ marginTop: 2, fontSize: "var(--fs-4)", color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                {it.deal && (
-                  <Link prefetch={false} href={`/sa/deals/${it.deal.id}`} className="linklike" style={{ display: "inline-flex", gap: 4, alignItems: "center", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {dealTypeBadge(dealTypeOf(it.deal))} {it.deal.title}
-                  </Link>
-                )}
-                {it.by && <span>{it.by}</span>}
-                <span>{fmtDateTime(it.at)}</span>
-              </div>
-            </div>
-            {canEdit && it.editable && (
-              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                <button type="button" className="btn-icon" disabled={activityBusy === it.activityId} onClick={() => setEditing({ id: it.activityId, kind: it.kindKey, body: it.body || "" })} aria-label="แก้ไขความเคลื่อนไหว" title="แก้ไข"><Pencil size={14} /></button>
-                <button type="button" className="btn-icon danger" disabled={activityBusy === it.activityId} onClick={() => deleteActivity(it)} aria-label="ลบความเคลื่อนไหว" title="ลบ"><Trash2 size={14} /></button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div> : <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>{deals.length ? "ยังไม่มีความเคลื่อนไหว" : "ผูกดีลก่อนเพื่อเริ่มบันทึกความเคลื่อนไหว"}</div>}
-      {feed.length > 12 && (
-        <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => setShowAllFeed((v) => !v)}>
-          {showAllFeed ? "ย่อ" : `ดูทั้งหมด (${feed.length})`}
-        </button>
-      )}
-      <Modal open={!!editing} onClose={() => !activityBusy && setEditing(null)} title="แก้ไขความเคลื่อนไหว" size="sm">
-        {editing && (
-          <form onSubmit={updateActivity} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className="form-group"><label>ประเภท</label><Select fullWidth value={editing.kind} onChange={(event) => setEditing((current) => ({ ...current, kind: event.target.value }))}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
-            <div className="form-group"><label>รายละเอียด</label><Textarea className="w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
-            <div className="form-action-bar">
-              <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)} disabled={!!activityBusy}>ยกเลิก</button>
-              <button type="submit" className="btn btn-primary" disabled={!!activityBusy || !editing.body.trim()}>{activityBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
-            </div>
-          </form>
+        {feedDeals.length > 0 && (
+          <Select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="ความเคลื่อนไหวที่แสดง">
+            <option value="all">ทั้งหมด</option>
+            <option value="project">เฉพาะเรื่องระดับโครงการ</option>
+            {feedDeals.map((deal) => (
+              <option key={deal.id} value={deal.id}>ดีล: {deal.title}</option>
+            ))}
+          </Select>
         )}
-      </Modal>
+      </div>
+      {/* กล่องพิมพ์ลงเธรดของโครงการเสมอ · เรื่องของดีลกดลิงก์เข้าไปพิมพ์ในดีลใบนั้น */}
+      <UpdateThread
+        entityType="project"
+        entityId={p.id}
+        order="desc"
+        extraItems={extraItems}
+        placeholder="พิมพ์เรื่องระดับโครงการ เช่น ลูกค้าขอเลื่อนส่งมอบทั้งล็อตเป็นสิงหาคม..."
+        emptyText="ยังไม่มีความเคลื่อนไหว — เรื่องที่ยังจริงแม้ดีลใบใดใบหนึ่งถูกยกเลิก บันทึกไว้ตรงนี้ได้"
+        onPosted={onChanged}
+      />
     </div>
   );
 }

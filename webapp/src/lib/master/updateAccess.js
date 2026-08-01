@@ -13,9 +13,10 @@
 // ตอนต่อ entity ตัวที่สอง
 import {
   canAccessSahamit, canApproveCosting, canChangeTaskStatus, canEditRecord, canUser,
-  canEditService, canViewService,
+  canEditService, canViewService, inPmProjectScope, inScope, viewScope,
   canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
+import { loadUserDirectory } from '@/lib/usersRepo';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -78,6 +79,44 @@ export const UPDATE_ENTITIES = {
     // "ทุกคนในฝ่าย") · งาน "เคสใหม่เข้าคิวฝ่าย" เป็นของ Chat webhook อยู่แล้ว
     // และเมื่อ RD/PC ตอบครั้งแรก เขาจะเข้าเงื่อนไข "คนเคยโพสต์" เอง
     recipients: (parent) => [parent?.requestedById],
+  },
+
+  // ── โครงการ (เธรดระดับโครงการ) ───────────────────────────────────────
+  // อ่าน = **ด่านเดียวกับ GET /api/pm/projects/[id] เป๊ะ** (`pm:view` + ทีมของโครงการ
+  // เมื่อ scope เป็น 'team') — ห้ามตั้งใหม่ให้แคบกว่าหน้าจอ ไม่งั้นเปิดโครงการได้
+  // แต่เธรดว่างโดยไม่มีอะไรบอกว่าเพราะอะไร
+  //
+  // ⚠️ ด่านนี้**กว้างกว่าด่านของดีล**โดยตั้งใจ: `staff` (PC/PD/WH/QC) อ่านเธรด
+  // โครงการได้เพราะเขาทำงานอยู่ในโครงการจริง แต่จะไม่เห็นความเคลื่อนไหวของดีลที่
+  // ไหลเข้ามาแสดงรวม (กรองด้วยทะเบียนของ 'deal' รายใบที่ฝั่ง API — PR #861)
+  project: {
+    table: 'projects',
+    attachments: true,   // รูปหน้างาน/ไฟล์ที่คุยกันระหว่างทำโครงการ
+    async canView(supabase, parent, user) {
+      if (!canUser(user, 'pm:view')) return false;
+      return viewScope(user?.role) !== 'team' || inScope('team', user, parent);
+    },
+    // โพสต์ = คนที่แก้แผนโครงการได้จริง · `inPmProjectScope` ต้องการ `pm:edit`
+    // อยู่แล้วจึงไม่ต้องกัน observer ซ้ำ (pmEditScope ของ viewer/executive = 'none')
+    //
+    // ⚠️ **ไม่ผูกกับสถานะโครงการ** — โครงการที่ปิดแล้วยังต้องคุยต่อได้ (ลูกค้าโทรมา
+    // ทีหลัง / ของมีปัญหาหลังส่ง) กฎเดียวกับที่ห้ามใช้ `canEditX` คุมเธรดในโมดูลอื่น
+    async canPost(supabase, parent, user) {
+      return inPmProjectScope(user, parent);
+    },
+    // เจ้าของโครงการ + AE/AC ที่ระบุไว้บนหัวโครงการ (มติผู้ใช้ 2026-08-01)
+    // ⚠️ `aeOwner`/`acOwner` เก็บเป็น **ชื่อ** ไม่ใช่ user id — ต้องเปิดสมุดรายชื่อ
+    // มาจับคู่ · ทำเฉพาะตอนมีชื่อจริงเท่านั้น เพราะ `loadUserDirectory` วนทุกหน้า
+    // ของ auth ซึ่งแพงเกินจะเรียกทุกครั้งที่มีคนพิมพ์ข้อความ
+    // หาไม่เจอ = ข้ามไปเงียบ ๆ (แจ้งเตือนขาดคนดีกว่าโพสต์ไม่สำเร็จ)
+    async recipients(parent, supabase) {
+      const names = [parent?.aeOwner, parent?.acOwner]
+        .map((n) => String(n || '').trim()).filter(Boolean);
+      if (!names.length) return [parent?.ownerId];
+      const dir = await loadUserDirectory(supabase);
+      const byName = new Map([...dir.values()].map((u) => [String(u.name || '').trim(), u.id]));
+      return [parent?.ownerId, ...names.map((n) => byName.get(n))];
+    },
   },
 
   // ── ดีล (ฟีดความเคลื่อนไหว ย้ายมาจาก sales_deal_activities, mig 0169) ──

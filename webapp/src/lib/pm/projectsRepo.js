@@ -69,6 +69,9 @@ export async function deleteProjectDeep(supabase, projectId) {
       await supabase.rpc('force_delete_dept_request', { p_id: requestId });
     }
   }
+  // เธรดของตัวโครงการเอง (entity_updates + notifications) — polymorphic ไม่มี FK
+  // เช่นกัน ไม่กวาด = กระดิ่งเหลือแถวที่กดแล้วไปเจอโครงการที่ไม่มีแล้ว
+  await purgeUpdatesMany(supabase, 'project', [projectId]);
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) throw error;
   return { personalTasks: taskCount || 0, docRevisions: revCount || 0, inquiries: inquiryIds.length };
