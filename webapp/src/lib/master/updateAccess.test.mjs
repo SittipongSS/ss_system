@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   UPDATE_ENTITIES, canMutateUpdate, canPostUpdate, canViewUpdates,
-  isUpdateEntity, loadUpdateParent, updateEntityConfig,
+  isUpdateEntity, loadUpdateParent, updateEntityConfig, updateRecipients,
 } from './updateAccess.js';
 import {
   authorableKinds, isKnownUpdateKind, redactDeleted, sanitizeUpdateAttachments,
@@ -327,4 +327,51 @@ test('เธรดดีล: staff อ่านไม่ได้ · AE เจ�
   // AE คนอื่นในทีมเดียวกันก็ไม่ผ่าน (scope ของ ae = 'own') — การกรองที่หน้าโครงการ
   // จึงต้องเป็นรายดีล ไม่ใช่ "ทีมเดียวกันเห็นหมด"
   assert.equal(await canViewUpdates(stub(deal), 'deal', deal, otherAe), false);
+});
+
+// ── เธรดโครงการ (entity ที่ 14) ──────────────────────────────────────────
+// ⭐ ด่านอ่าน **กว้างกว่า**ของดีลโดยตั้งใจ: staff (PC/PD/WH/QC) ทำงานอยู่ในโครงการจริง
+// จึงต้องอ่านเรื่องระดับโครงการได้ แต่ **โพสต์ไม่ได้** เพราะไม่มี pm:edit — และจะไม่
+// เห็นความเคลื่อนไหวของดีลที่ไหลเข้ามาแสดงรวม (กรองรายใบด้วยทะเบียนของ 'deal')
+test('เธรดโครงการ: staff อ่านได้แต่โพสต์ไม่ได้ · AE ในทีมโพสต์ได้', async () => {
+  const project = { id: 'PRJ-1', team: 'KA', ownerId: 'u-pm' };
+  const staff = { id: 'u-staff', role: 'staff', team: 'PC', department: 'PC' };
+  const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
+  const aeOtherTeam = { id: 'u-ae2', role: 'ae', team: 'ODM' };
+  const s = stub(project);
+
+  assert.equal(await canViewUpdates(s, 'project', project, staff), true);
+  assert.equal(await canPostUpdate(s, 'project', project, staff), false);
+  assert.equal(await canPostUpdate(s, 'project', project, ae), true);
+  // PM เป็นเครื่องมือของทีม — AE ทีมอื่นแก้แผนไม่ได้จึงโพสต์ไม่ได้
+  assert.equal(await canPostUpdate(s, 'project', project, aeOtherTeam), false);
+  // ⚠️ เธรดต้องไม่ปิดตามสถานะโครงการ (ปิดโครงการแล้วยังต้องคุยเรื่องของที่ส่งไปได้)
+  assert.equal(await canPostUpdate(s, 'project', { ...project, status: 'Closed' }, ae), true);
+});
+
+test('ผู้รับแจ้งเตือนของโครงการ: เจ้าของ + AE/AC ที่ระบุบนหัวโครงการ (เก็บเป็นชื่อ)', async () => {
+  const directory = {
+    auth: { admin: { listUsers: async ({ page }) => ({
+      data: { users: page > 1 ? [] : [
+        { id: 'u-ae', app_metadata: { role: 'ae' }, user_metadata: { name: 'สมชาย ขายดี' } },
+        { id: 'u-ac', app_metadata: { role: 'ac' }, user_metadata: { name: 'สมหญิง ประสาน' } },
+      ] },
+    }) } },
+  };
+  const ids = await updateRecipients(directory, 'project', {
+    id: 'PRJ-1', ownerId: 'u-pm', aeOwner: 'สมชาย ขายดี', acOwner: 'สมหญิง ประสาน',
+  });
+  assert.deepEqual(ids.sort(), ['u-ac', 'u-ae', 'u-pm']);
+
+  // ชื่อที่จับคู่ไม่ได้ (คนลาออก/พิมพ์ชื่อเอง) ต้องข้ามเงียบ ๆ ไม่ทำให้ทั้งก้อนพัง
+  const fallback = await updateRecipients(directory, 'project', {
+    id: 'PRJ-2', ownerId: 'u-pm', aeOwner: 'คนที่ไม่มีในระบบ',
+  });
+  assert.deepEqual(fallback, ['u-pm']);
+
+  // ไม่มีชื่อเลย = ไม่ต้องเปิดสมุดรายชื่อ (แพง) — เจ้าของอย่างเดียวพอ
+  let opened = false;
+  const spy = { auth: { admin: { listUsers: async () => { opened = true; return { data: { users: [] } }; } } } };
+  assert.deepEqual(await updateRecipients(spy, 'project', { id: 'PRJ-3', ownerId: 'u-pm' }), ['u-pm']);
+  assert.equal(opened, false, 'ไม่มี aeOwner/acOwner ต้องไม่เรียก listUsers');
 });

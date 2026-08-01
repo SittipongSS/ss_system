@@ -26,6 +26,8 @@ export const FOLDER_ENTITY_TYPES = [
   'mgmt_task',
   'mgmt_meeting',
   'personal_task',
+  // โครงการ — เธรดระดับโครงการ (entity ที่ 14) ลง `งานขาย/โครงการ/<รหัส>`
+  'project',
   'lead',
   'deal',
   'quotation',

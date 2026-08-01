@@ -75,13 +75,15 @@ test('deleteProjectDeep clears logical-link children before deleting the project
   assert.deepEqual(removed, { personalTasks: 3, docRevisions: 2, inquiries: 2 });
 });
 
-test('deleteProjectDeep: ไม่มีคำร้องผูก → ข้ามการลบเธรด (ไม่ยิง delete เปล่า)', async () => {
+test('deleteProjectDeep: ไม่มีคำร้องผูก → ยังต้องกวาดเธรดของตัวโครงการเอง', async () => {
   const ops = [];
   const supabase = fakeSupabase({ ops });
   const removed = await deleteProjectDeep(supabase, 'PRJ-2');
-  assert.equal(ops.includes('entity_updates'), false);
+  // โครงการมีเธรดของตัวเองแล้ว (entity ที่ 14) — ไม่มีคำร้องไม่ได้แปลว่าไม่มีเธรด
+  // เธรด/แจ้งเตือนเป็น polymorphic ไม่มี FK ถ้าไม่กวาดจะเหลือแถวชี้โครงการที่หายไป
+  assert.ok(ops.includes('entity_updates'), 'ต้องกวาดเธรดของโครงการ');
   assert.equal(ops.includes('rpc:force_delete_dept_request'), false);
-  assert.equal(ops[ops.length - 1], 'projects');
+  assert.equal(ops[ops.length - 1], 'projects', 'ต้องกวาดของลูกให้หมดก่อนลบตัวโครงการ');
   assert.deepEqual(removed, { personalTasks: 0, docRevisions: 0, inquiries: 0 });
 });
 

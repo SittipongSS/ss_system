@@ -36,6 +36,9 @@ export const FOLDER = {
   mgmtMeetings: 'การประชุม',
   sales: 'งานขาย',
   salesTasks: 'งานส่วนบุคคล',
+  // โครงการ (เธรดระดับโครงการ) — อยู่ใต้ "งานขาย" ไม่ใช่ใต้ลูกค้า เพราะไฟล์ในเธรด
+  // เป็นของบทสนทนาระหว่างทำงาน ไม่ใช่เอกสารประจำตัวลูกค้า (กติกาเดียวกับดีล/ลีด)
+  salesProjects: 'โครงการ',
   salesLeads: 'ลีด',
   salesDeals: 'ดีล',
   salesQuotations: 'ใบเสนอราคา',
@@ -299,6 +302,8 @@ async function costingSegments(supabase, entityType, entityId) {
 // ตารางของ entity ที่ตกลงมาเป็น "เธรดงานขาย" — ไม่ต้อง join ถึงลูกค้า (ไฟล์ในเธรด
 // เป็นของบทสนทนา ไม่ใช่เอกสารประจำตัวลูกค้า) แค่จัดเข้าลิ้นชักของตัวเองให้หาเจอ
 const SALES_THREAD_FOLDER = {
+  // โครงการเรียกกันด้วย "รหัส" (PJ-xxxx) เสมอ จึงให้ code มาก่อนชื่อ
+  project: { folder: FOLDER.salesProjects, table: 'projects', labelKeys: ['code', 'name', 'title'] },
   lead: { folder: FOLDER.salesLeads, table: 'sales_leads', labelKeys: ['name', 'companyName', 'title'] },
   deal: { folder: FOLDER.salesDeals, table: 'sales_deals', labelKeys: ['docNo', 'title', 'name'] },
   quotation: { folder: FOLDER.salesQuotations, table: 'quotations', labelKeys: ['quotationNo', 'docNo'] },

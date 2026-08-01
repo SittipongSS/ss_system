@@ -22,6 +22,7 @@ export const NOTIFICATION_LIST_LIMIT = 30;
 // รู้จัก routing ของทุกโมดูล · entity ที่ไม่มีในนี้ = แจ้งเตือนไม่มีลิงก์ (ยังอ่านได้)
 const HREF = {
   personal_task: (id) => `/pm/tasks/${id}`,
+  project: (id) => `/sa/projects/${id}`,
   dept_request: (id) => `/sa/requests/${id}`,
   deal: (id) => `/sa/deals/${id}`,
   lead: (id) => `/sa/leads/${id}`,
@@ -42,6 +43,7 @@ const HREF = {
 // (⚠️ กฎเดิม: อย่า fallback เป็น id ดิบบนหน้าจอถ้าเลี่ยงได้ — ลองหลายช่องก่อน)
 const ENTITY_LABEL = {
   personal_task: 'งาน',
+  project: 'โครงการ',
   dept_request: 'คำร้อง',
   deal: 'ดีล',
   lead: 'ลีด',
