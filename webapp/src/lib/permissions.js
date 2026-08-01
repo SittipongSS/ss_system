@@ -423,8 +423,18 @@ export const PRODUCTION_PLANNER_DEPARTMENTS = ['PC', 'PD'];
 
 // อ่านตารางผลิตได้กว้างโดยเจตนา: ฝ่ายขายต้องตอบลูกค้าได้ว่าผลิตวันไหน
 // โดยไม่ต้องเดินไปถามโรงงาน (ข้อมูลกำหนดการ ไม่ใช่ต้นทุน — ต่างจาก costing)
+//
+// ⚠️ แต่ `staff` ต้องแคบด้วยฝ่ายเหมือน canViewService — cap `production:view` อยู่ที่
+// role ซึ่ง PC/PD/WH/QC/**TS** ใช้ร่วมกันหมด
+//
+// ⭐ **แผนการผลิต (PD/PC) กับ ธุรกิจบริการ (TS) เป็นคนละทีมปฏิบัติงาน** (มติผู้ใช้
+// 2026-07-31) — ของเดิมไม่แคบตรงนี้ ช่าง TS จึงอ่านตารางผลิตได้ทั้งระบบ · วันนี้ยัง
+// ไม่มีใครเห็นเพราะการ์ดระบบกั้นด้วย canEditProduction แต่ P-3 วางแผนจะเปิดบอร์ด
+// ด้วย canViewProduction — ถ้าไม่แคบตอนนี้ ระบบโรงงานจะโผล่ให้ TS ตอนนั้นเงียบ ๆ
 export function canViewProduction(user) {
-  return canUser(user, 'production:view');
+  if (!canUser(user, 'production:view')) return false;
+  if (user?.role !== 'staff') return true;
+  return PRODUCTION_PLANNER_DEPARTMENTS.includes(departmentOf(user));
 }
 
 // แก้ไลน์/กำลังผลิต/คิวผลิต. ⚠️ cap อย่างเดียวไม่พอ — `staff` ถือ cap นี้ทั้ง
