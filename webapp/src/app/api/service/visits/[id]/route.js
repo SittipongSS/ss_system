@@ -3,7 +3,7 @@
 // DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
-import { appendUpdate } from '@/lib/master/updates';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 
@@ -102,6 +102,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
     const { error } = await supabase.from('service_visits').delete().eq('id', id);
     if (error) return fail(error.message, 500);
+
+    // เธรด + แจ้งเตือนไม่มี FK — ไม่กวาดคู่กัน = กระดิ่งมีแถวที่กดแล้วไปเจอนัดที่ไม่มีแล้ว
+    // (entity อื่นทั้ง 12 ตัวเรียกตัวนี้ตอนลบอยู่แล้ว นัดเข้าบริการเป็นตัวเดียวที่ตกหล่น)
+    await purgeUpdates(supabase, 'service_visit', id);
 
     await recordAudit({
       user, action: 'delete', entityType: 'service_visit', entityId: id, before,

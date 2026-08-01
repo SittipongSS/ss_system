@@ -307,6 +307,11 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
         <MessageSquare size={16} aria-hidden="true" />
         <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: 700 }}>ความเคลื่อนไหวรวมทุกดีล</h3>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{feed.length} รายการ</span>
+        {/* ดีลที่ผู้อ่านไม่มีสิทธิ์เห็นถูกกรองที่ server — ต้องบอกตรง ๆ ว่ามีของที่ถูกซ่อน
+            ไม่งั้นเส้นเรื่องที่สั้นลงจะอ่านเป็น "ยังไม่มีความเคลื่อนไหว" คนละความหมายกัน */}
+        {p.hiddenDealFeeds > 0 && (
+          <span className="ui-badge">ซ่อน {p.hiddenDealFeeds} ดีลที่ไม่มีสิทธิ์เห็น</span>
+        )}
         <div className="spacer" style={{ flex: 1 }} />
         <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ข้อมูลเดียวกับหน้าดีลแต่ละใบ</span>
       </div>
