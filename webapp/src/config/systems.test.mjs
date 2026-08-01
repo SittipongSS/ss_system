@@ -76,10 +76,25 @@ test('specialized users land on the one workspace they can use', () => {
   assert.deepEqual(keysFor(staff), ['salesplan', 'master']);
   assert.equal(systemLandingForUser('salesplan', staff), '/sa/tasks');
 
-  // ช่างฝ่าย TS ลงที่ **ตาราง** ซึ่งเป็นหน้าที่เขาเปิดทุกเช้า
+  // ช่างฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
   const tech = { role: 'staff', team: null, department: 'TS', extraCaps: [] };
   assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master']);
-  assert.equal(systemLandingForUser('service', tech), '/service/schedule');
+  assert.equal(systemLandingForUser('service', tech), '/service');
+});
+
+test('X-1: สองระบบลงที่หน้าภาพรวมของตัวเอง — ไม่มีปลายทางร่วม', () => {
+  // ⚠️ มติผู้ใช้ 2026-08-01: เลิกทำปฏิทินรวม · ถ้าวันหนึ่งมีคนทำ landing ของสอง
+  // ระบบให้ชี้ที่เดียวกัน เทสต์นี้จะดับ — นั่นคือการกลับไปรวมสองทีมเข้าด้วยกันอีก
+  const planner = { role: 'staff', team: null, department: 'PC', extraCaps: [] };
+  const tech = { role: 'staff', team: null, department: 'TS', extraCaps: [] };
+  const admin = { role: 'admin', team: null, extraCaps: [] };
+
+  assert.equal(systemLandingForUser('production', planner), '/production');
+  assert.equal(systemLandingForUser('service', tech), '/service');
+  assert.notEqual(
+    systemLandingForUser('production', admin),
+    systemLandingForUser('service', admin),
+  );
 });
 
 test('ฐานข้อมูล lands on the product list when the user has no customers:view', () => {
