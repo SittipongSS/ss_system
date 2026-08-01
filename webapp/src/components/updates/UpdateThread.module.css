@@ -19,7 +19,26 @@
 }
 .metaSub { display: block; font-size: var(--fs-3); color: var(--text-3); }
 
-.content { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+/* ⭐ แถบสีซ้ายของเนื้อความ = **ชนิดของรายการ** (มติผู้ใช้ 2026-08-01)
+   สีมาจากทะเบียนชนิดที่มีอยู่แล้ว (ยื่น=น้ำเงิน · ตีกลับ=แดง · อนุมัติ=เขียว …)
+   จึงตรงกับปุ่มบนหน้าเอกสารที่ทำให้เหตุการณ์นั้นเกิดโดยอัตโนมัติ — ไม่ได้สร้าง
+   ระบบสีที่สองให้ต้องจำ · `--kind-color` ตั้งที่แถวเดียว (ดู renderItem) */
+.content {
+  min-width: 0; display: flex; flex-direction: column; gap: var(--space-1);
+  border-left: 2px solid var(--kind-color, var(--border));
+  padding-left: var(--space-3);
+}
+
+/* ── คำตอบซ้อนใต้ข้อความที่ถูกตอบ ─────────────────────────────────────
+   ชั้นเดียวเท่านั้น · เส้นเชื่อมทางซ้ายบอกว่าทั้งกลุ่มเป็นเรื่องเดียวกัน */
+.group { display: flex; flex-direction: column; gap: var(--space-3-5); }
+.replies {
+  display: flex; flex-direction: column; gap: var(--space-3-5);
+  margin-left: var(--space-6); padding-left: var(--space-4);
+  border-left: 1px solid var(--border);
+}
+/* ป้ายชนิดท้ายข้อความ — สีเดียวกับแถบซ้ายของแถวนั้น */
+.kindBadge { color: var(--kind-color, var(--text-3)); }
 
 /* ── เหตุการณ์ระบบ = โครงเดิม เสียงเบากว่า ─────────────────────────── */
 .systemRow .metaName { font-weight: var(--fw-medium); color: var(--text-3); }
