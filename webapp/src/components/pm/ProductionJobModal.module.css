@@ -1,0 +1,78 @@
+/* ฟอร์มงานผลิต (mig 0189)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field > span {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+.field > small {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.wide { grid-column: 1 / -1; }
+
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  gap: var(--space-2);
+}
+
+.fieldset > legend {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  padding-inline: var(--space-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.row > .field { flex: 1 1 150px; }
+
+.hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* ป้ายเตือน — **เตือน ไม่บล็อก** จึงเป็นน้ำเสียง warning ไม่ใช่ error */
+.warnList {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.warnList > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}

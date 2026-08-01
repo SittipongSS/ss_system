@@ -245,6 +245,8 @@ export default function AppLayout({ children }) {
         // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PC/PD
         // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
         // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
+        // คิวมาก่อนไลน์ — PC เปิดระบบมาเพื่อดูว่าต้องผลิตอะไรก่อน ไม่ใช่มาตั้งค่าไลน์
+        { href: '/production/jobs', name: 'คิวงานผลิต', icon: ClipboardList, cap: 'production:view', visible: canEditProduction, match: (p) => p.startsWith('/production/jobs') },
         { href: '/production/lines', name: 'ไลน์ผลิต', icon: Factory, cap: 'production:edit', visible: canEditProduction, match: (p) => p.startsWith('/production/lines') },
       ],
     },
