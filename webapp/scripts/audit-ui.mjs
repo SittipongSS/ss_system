@@ -217,7 +217,7 @@ const nativeFeedbackViolations = [];
 const tableContractViolations = [];
 const chartContractViolations = [];
 
-/* ไฟล์ที่ได้รับอนุญาตให้ใช้ `family="matrix"` (คอลัมน์แรกแช่แข็ง) — 8 ไฟล์ 14 จุด
+/* ไฟล์ที่ได้รับอนุญาตให้ใช้ `family="matrix"` (คอลัมน์แรกแช่แข็ง) — 9 ไฟล์ 15 จุด
    ณ 2026-07-31 · ดูเหตุผลและข้อควรระวังที่จุดตรวจด้านล่าง */
 const MATRIX_FAMILY_ALLOWLIST = new Set([
   "src/app/sahamit/forecast/page.js",
@@ -228,6 +228,9 @@ const MATRIX_FAMILY_ALLOWLIST = new Set([
   "src/components/sahamit/RoundComparison.js",
   "src/components/salesPlanning/dashboard/performance/MorningBoard.js",
   "src/components/salesPlanning/dashboard/performance/YearHeatmap.js",
+  // บอร์ดตารางผลิต (P-3): 28 คอลัมน์วัน เลื่อนแนวนอนแน่นอน — ชื่อไลน์ต้องอ่านได้
+  // ตลอดการเลื่อน ไม่งั้นไม่รู้ว่ากำลังดูแถวไหน · เป็นการใช้ที่ตรงเจตนาของ matrix
+  "src/app/production/board/page.js",
 ]);
 const matrixFamilyViolations = [];
 

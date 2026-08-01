@@ -307,6 +307,52 @@ export function sortQueue(jobs = []) {
   });
 }
 
+// ── สรุปแผนผลิตของ SO ใบเดียว — การ์ดบนหน้า SO (P-3) ─────────────────────
+//
+// ⭐ คำถามที่การ์ดนี้ต้องตอบใน 3 วินาที (หลักการข้อ 6) คือ **"ผลิตวันไหน"**
+// ไม่ใช่รายการงานทั้งหมด · SA เปิดมาเพื่อตอบลูกค้าทางโทรศัพท์
+//
+// state: none (ยังไม่มีงาน) · draft (มีงานแต่ยังไม่วางคิว) · planned · running · done
+export function salesOrderPlanSummary(jobs = [], lines = [], opts = {}) {
+  const rows = jobs.filter((j) => j.status !== 'cancelled');
+  if (!rows.length) {
+    return { state: 'none', label: 'ยังไม่ได้วางคิวผลิต', tone: 'neutral', jobs: [], start: null, finish: null };
+  }
+
+  const linesById = new Map(lines.map((l) => [l.id, l]));
+  const detailed = rows.map((job) => ({
+    job,
+    range: jobDateRange(job, linesById.get(job.lineId), opts),
+  }));
+
+  const starts = detailed.map((d) => d.range?.start).filter(Boolean).sort();
+  const finishes = detailed.map((d) => d.range?.finish).filter(Boolean).sort();
+  const start = starts[0] || null;
+  const finish = finishes.length ? finishes[finishes.length - 1] : null;
+
+  if (rows.every((j) => j.status === 'done')) {
+    return { state: 'done', label: 'ผลิตเสร็จแล้ว', tone: 'success', jobs: detailed, start, finish };
+  }
+  if (rows.some((j) => j.status === 'in_progress')) {
+    return {
+      state: 'running',
+      label: finish ? `กำลังผลิต · คาดจบ ${finish}` : 'กำลังผลิต',
+      tone: 'info', jobs: detailed, start, finish,
+    };
+  }
+  // ⚠️ "ยังไม่วางคิว" กับ "วางแล้วแต่คำนวณวันไม่ออก" ต้องพูดคนละอย่าง — อันหลัง
+  // แปลว่าไลน์ยังไม่กรอกกำลัง ซึ่งแก้ได้ ส่วนอันแรกคือยังไม่มีใครตัดสินใจ
+  if (rows.every((j) => j.status === 'draft')) {
+    return { state: 'draft', label: `มีงานผลิต ${rows.length} ใบ · ยังไม่วางคิว`, tone: 'warning', jobs: detailed, start, finish };
+  }
+  return {
+    state: 'planned',
+    label: start && finish ? `วางคิวแล้ว ${start} – ${finish}` : 'วางคิวแล้ว · ยังคำนวณวันไม่ได้',
+    tone: start && finish ? 'success' : 'warning',
+    jobs: detailed, start, finish,
+  };
+}
+
 // ── งานร่างที่ควรสร้างจาก SO ที่อนุมัติแล้ว ───────────────────────────────
 // ⭐ หนึ่งใบต่อ 1 SO line ที่มี `productId` — บรรทัดบริการ/ค่าออกแบบฉลากไม่มี
 // productId จึงไม่สร้าง (ไม่งั้นคิวผลิตจะมีงาน "ค่าออกแบบฉลาก" ให้ PC งง)

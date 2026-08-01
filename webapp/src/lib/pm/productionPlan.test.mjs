@@ -11,6 +11,7 @@ import {
   normalizeJobInput,
   overloadedDays,
   readinessConflict,
+  salesOrderPlanSummary,
   sortQueue,
   spreadJob,
 } from './productionPlan.js';
@@ -216,4 +217,51 @@ test('⭐ กดซ้ำไม่ได้งานซ้ำ — บรรท�
 
 test('บรรทัดจำนวนเป็น 0 หรือติดลบไม่สร้างงาน', () => {
   assert.deepEqual(draftJobsForSalesOrder(order(), [{ id: 'L1', productId: 'P', qty: 0 }]), []);
+});
+
+// ── สรุปแผนผลิตของ SO — การ์ดบนหน้า SO (P-3) ─────────────────────────────
+test('SO ที่ยังไม่มีงานผลิต → "ยังไม่ได้วางคิวผลิต"', () => {
+  const s = salesOrderPlanSummary([], [line()]);
+  assert.equal(s.state, 'none');
+  assert.equal(s.tone, 'neutral');
+});
+
+test('⭐ มีงานแต่ยังเป็นร่างทั้งหมด ต้องพูดว่า "ยังไม่วางคิว" ไม่ใช่บอกวัน', () => {
+  const s = salesOrderPlanSummary([job({ status: 'draft', lineId: null, plannedStart: null })], [line()]);
+  assert.equal(s.state, 'draft');
+  assert.equal(s.tone, 'warning');
+  assert.match(s.label, /ยังไม่วางคิว/);
+});
+
+test('วางคิวแล้ว → บอกช่วงวันที่ผลิตจริง (SA ตอบลูกค้าได้ทันที)', () => {
+  const s = salesOrderPlanSummary([job()], [line()]);
+  assert.equal(s.state, 'planned');
+  assert.equal(s.start, '2026-08-03');
+  assert.equal(s.finish, '2026-08-05');
+  assert.match(s.label, /2026-08-03 – 2026-08-05/);
+});
+
+test('⭐ วางคิวแล้วแต่คำนวณวันไม่ออก ต้องพูดคนละอย่างกับ "ยังไม่วางคิว" — อันนี้แก้ได้ด้วยการกรอกกำลังไลน์', () => {
+  const s = salesOrderPlanSummary([job()], [line({ capacityPerDay: null })]);
+  assert.equal(s.state, 'planned');
+  assert.equal(s.tone, 'warning');
+  assert.match(s.label, /ยังคำนวณวันไม่ได้/);
+});
+
+test('หลายงานในใบเดียว → ช่วงคือ เริ่มเร็วสุด ถึง จบช้าสุด', () => {
+  const s = salesOrderPlanSummary([
+    job({ id: 'J1', qty: 100 }),                                  // 08-03
+    job({ id: 'J2', qty: 100, plannedStart: '2026-08-10' }),       // 08-10
+  ], [line()]);
+  assert.equal(s.start, '2026-08-03');
+  assert.equal(s.finish, '2026-08-10');
+});
+
+test('กำลังผลิตอยู่ → บอกวันคาดจบ · จบครบทุกใบ → ผลิตเสร็จแล้ว', () => {
+  assert.equal(salesOrderPlanSummary([job({ status: 'in_progress' })], [line()]).state, 'running');
+  assert.equal(salesOrderPlanSummary([job({ status: 'done' })], [line()]).state, 'done');
+});
+
+test('งานที่ยกเลิกไม่นับในสรุป — ยกเลิกหมดแล้วเท่ากับยังไม่ได้วางคิว', () => {
+  assert.equal(salesOrderPlanSummary([job({ status: 'cancelled' })], [line()]).state, 'none');
 });
