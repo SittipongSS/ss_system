@@ -16,8 +16,9 @@ import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
-import ReadableText from "@/components/ui/ReadableText";
+import RichText from "@/components/ui/RichText";
 import Select from "@/components/ui/Select";
+import { personInitials } from "@/lib/ui/personName";
 import { fmtDateTime } from "@/lib/format";
 import {
   authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
@@ -222,136 +223,169 @@ export default function UpdateThread({
 
       {visible.length ? (
         <div className={styles.timeline}>
-          {visible.map((item) => (
-            <div className={styles.event} key={`${item.kind}-${item.id}`}>
-              <div className={styles.rail}>
-                <span className={styles.dot} style={item.color ? { background: item.color, boxShadow: `0 0 0 1px ${item.color}` } : undefined} />
-              </div>
-              <div className={styles.eventBody}>
-                <div className={styles.head}>
-                  <span className="ui-badge" style={{ color: item.color }}>{item.label}</span>
-                  {/* รายการอ่านอย่างเดียวจากแหล่งอื่นที่มีหน้าของตัวเอง (เรื่องสอบถาม)
-                      ต้องกดเข้าไปได้ ไม่งั้นไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
-                  {item.kind === "extra" && item.href && (
-                    <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
-                  )}
-                  {item.kind === "extra" && item.by && <strong>{item.by}</strong>}
-                  {item.kind === "own" && <strong>{item.row.authorName || "ระบบ"}</strong>}
-                  {item.kind === "own" && item.row.meta?.dueDate && (
-                    <span className={styles.due}>กำหนด {item.row.meta.dueDate}</span>
-                  )}
-                  {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ) อ่านไม่รู้เรื่อง
-                      ถ้าไม่รู้ว่าใครพูดในฐานะอะไร · `authorDept` ถูกเขียนอยู่แล้วทุกแถว
-                      ตั้งแต่ mig 0163 แค่ไม่เคยถูกแสดง */}
-                  {item.kind === "own" && item.row.authorDept && (
-                    <span className={styles.dept}>{item.row.authorDept}</span>
-                  )}
-                  <span>{item.at ? fmtDateTime(item.at) : ""}</span>
-                  {item.kind === "own" && item.row.editedAt && <span>· แก้ไขแล้ว</span>}
-                  {item.kind === "own" && item.row.acknowledgedAt && (
-                    <span style={{ color: "var(--green)" }}><Check size={11} /> รับทราบแล้ว</span>
-                  )}
-                  {/* ยกคำพูดตอบ — ได้ทั้งข้อความคนและ**เหตุการณ์ระบบ** (ตอบเรื่องที่
-                      ถูกตีกลับคือเคสหลักที่ต้องการ) ต่างจากปุ่มแก้/ลบที่จำกัดเฉพาะ
-                      ชนิดที่คนพิมพ์เอง */}
-                  {canPost && canQuoteItem(item) && (
+          {visible.map((item) => {
+            const key = `${item.kind}-${item.id}`;
+            const quoteButton = canPost && canQuoteItem(item) ? (
+              <Button
+                iconOnly icon={<Quote size={13} />} aria-label="ยกคำพูดนี้มาตอบ"
+                title="ยกคำพูดนี้มาตอบ" disabled={busy}
+                onClick={() => setReplyTo(item.row)}
+              />
+            ) : null;
+
+            // ── เหตุการณ์ระบบ = บรรทัดเดียว เงียบ ๆ ──────────────────────
+            // ⭐ เหตุผลที่แยกทรงจากข้อความคน: เอกสารที่มี action เยอะ (QT/SO เขียน
+            // ลงเธรดถึง 15 จุด) ทำให้แถวระบบท่วมจนบทสนทนาจม · ที่นี่จึงให้ระบบ
+            // กินความสูงน้อยที่สุดและไม่มีกรอบ ส่วนข้อความคนเป็นการ์ดที่ตาหยุด
+            if (isSystemUpdateItem(entityType, item)) {
+              const body = item.kind === "extra" ? item.body : item.row.body;
+              const who = item.kind === "extra" ? item.by : item.row.authorName;
+              return (
+                <div className={styles.systemRow} key={key}>
+                  <span className={styles.systemDot} style={item.color ? { background: item.color } : undefined} />
+                  <span className={styles.systemLabel} style={item.color ? { color: item.color } : undefined}>
+                    {item.label}
+                  </span>
+                  <span className={styles.systemText}>
+                    {body ? <RichText text={body} lines={2} className={styles.systemBody} /> : null}
+                    {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
+                        ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
+                    {item.kind === "extra" && item.href && (
+                      <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
+                    )}
+                  </span>
+                  <span className={styles.systemMeta}>
+                    {who ? `${who} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
+                  </span>
+                  {quoteButton && <span className={styles.rowActions}>{quoteButton}</span>}
+                </div>
+              );
+            }
+
+            // ── ข้อความคน = การ์ด ────────────────────────────────────────
+            const row = item.row;
+            const isEditing = editing?.id === row.id;
+            return (
+              <article className={styles.message} key={key}>
+                <span className={styles.avatar} aria-hidden="true">{personInitials(row.authorName)}</span>
+                <div className={styles.messageBody}>
+                  <div className={styles.head}>
+                    <strong>{row.authorName || "ระบบ"}</strong>
+                    {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ)
+                        อ่านไม่รู้เรื่องถ้าไม่รู้ว่าใครพูดในฐานะอะไร */}
+                    {row.authorDept && <span className={styles.dept}>{row.authorDept}</span>}
+                    <span>{item.at ? fmtDateTime(item.at) : ""}</span>
+                    {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
+                    {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มี
+                        ชนิดเดียวไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
+                    {showKindPicker && (
+                      <span className="ui-badge" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
+                    )}
+                    {row.editedAt && <span>· แก้ไขแล้ว</span>}
+                    {row.acknowledgedAt && (
+                      <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>
+                    )}
                     <span className={styles.rowActions}>
-                      <Button
-                        iconOnly icon={<Quote size={13} />} aria-label="ยกคำพูดนี้มาตอบ"
-                        title="ยกคำพูดนี้มาตอบ" disabled={busy}
-                        onClick={() => setReplyTo(item.row)}
-                      />
+                      {quoteButton}
+                      {/* รับทราบ = "เห็นแล้ว" ไม่ใช่การแก้เนื้อหา — ใครที่โพสต์ในเธรด
+                          ได้ก็กดได้ (กติกาเดียวกับ API) · คอลัมน์มีมาตั้งแต่ mig 0163
+                          แต่ไม่เคยมีปุ่มให้กด ป้ายด้านบนจึงไม่มีทางขึ้นเลย */}
+                      {canPost && !row.deletedAt && !row.acknowledgedAt && (
+                        <Button
+                          iconOnly icon={<Check size={13} />} aria-label="รับทราบข้อความนี้"
+                          title="รับทราบ" disabled={busy}
+                          onClick={() => mutate(row.id, {
+                            method: "PATCH", body: JSON.stringify({ action: "acknowledge" }),
+                          })}
+                        />
+                      )}
+                      {canPost && !row.deletedAt && kinds.includes(row.kind) && (
+                        <>
+                          <Button
+                            iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
+                            onClick={() => setEditing({
+                              id: row.id,
+                              body: row.body || "",
+                              kind: row.kind,
+                              dueDate: row.meta?.dueDate || "",
+                            })}
+                          />
+                          <Button
+                            iconOnly icon={<Trash2 size={13} />} className={styles.danger}
+                            aria-label="ลบข้อความ" disabled={busy}
+                            onClick={() => mutate(row.id, { method: "DELETE" })}
+                          />
+                        </>
+                      )}
                     </span>
-                  )}
-                  {item.kind === "own" && canPost && !item.row.deletedAt && kinds.includes(item.row.kind) && (
-                    <span className={styles.rowActions}>
-                      <Button
-                        iconOnly icon={<Pencil size={13} />} aria-label="แก้ข้อความ" disabled={busy}
-                        onClick={() => setEditing({
-                          id: item.row.id,
-                          body: item.row.body || "",
-                          kind: item.row.kind,
-                          dueDate: item.row.meta?.dueDate || "",
-                        })}
-                      />
-                      <Button
-                        iconOnly icon={<Trash2 size={13} />} style={{ color: "var(--red)" }}
-                        aria-label="ลบข้อความ" disabled={busy}
-                        onClick={() => mutate(item.row.id, { method: "DELETE" })}
-                      />
-                    </span>
+                  </div>
+
+                  {row.deletedAt ? (
+                    <p className={styles.deleted}>{DELETED_UPDATE_TEXT}</p>
+                  ) : (
+                    <>
+                      {isEditing ? (
+                        <>
+                          {(showKindPicker || kindAcceptsDueDate(entityType, editing.kind)) && (
+                            <div className={styles.kindRow}>
+                              {showKindPicker && (
+                                <Select
+                                  className={`premium-select ${styles.kindSelect}`} disabled={busy}
+                                  value={editing.kind} aria-label="ชนิดอัปเดต"
+                                  onChange={(e) => setEditing((s) => ({ ...s, kind: e.target.value }))}
+                                >
+                                  {kinds.map((k) => (
+                                    <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
+                                  ))}
+                                </Select>
+                              )}
+                              {kindAcceptsDueDate(entityType, editing.kind) && (
+                                <DateInput
+                                  value={editing.dueDate} disabled={busy} ariaLabel="กำหนดวัน"
+                                  className={styles.dueInput}
+                                  onChange={(v) => setEditing((s) => ({ ...s, dueDate: v }))}
+                                />
+                              )}
+                            </div>
+                          )}
+                          <Textarea rows={2} value={editing.body} disabled={busy}
+                            aria-label="แก้ข้อความ"
+                            onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
+                          />
+                          <div className={styles.composerBar}>
+                            <Button
+                              variant="quiet" size="sm" disabled={busy} icon={<X size={13} />}
+                              onClick={() => setEditing(null)}
+                            >
+                              ยกเลิก
+                            </Button>
+                            <Button
+                              tone="primary" size="sm" disabled={busy || !editing.body.trim()}
+                              onClick={() => mutate(row.id, {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  action: "edit", body: editing.body.trim(),
+                                  kind: editing.kind, dueDate: editing.dueDate || "",
+                                }),
+                              }, () => setEditing(null))}
+                            >
+                              บันทึก
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {quotedIdOf(row) && <QuoteBlock quoted={byId.get(quotedIdOf(row))} />}
+                          {row.body && <RichText className={styles.body} text={row.body} lines={6} />}
+                        </>
+                      )}
+                      <ThreadAttachments row={row} onOpen={setPreview} />
+                    </>
                   )}
                 </div>
-
-                {item.kind === "extra"
-                  ? item.body && <ReadableText className={styles.body} text={item.body} lines={4} />
-                  : item.row.deletedAt
-                    ? <p className={styles.deleted}>{DELETED_UPDATE_TEXT}</p>
-                    : (
-                      <>
-                        {editing?.id === item.row.id ? (
-                          <>
-                            {(showKindPicker || kindAcceptsDueDate(entityType, editing.kind)) && (
-                              <div className={styles.kindRow}>
-                                {showKindPicker && (
-                                  <Select
-                                    className={`premium-select ${styles.kindSelect}`} disabled={busy}
-                                    value={editing.kind} aria-label="ชนิดอัปเดต"
-                                    onChange={(e) => setEditing((s) => ({ ...s, kind: e.target.value }))}
-                                  >
-                                    {kinds.map((k) => (
-                                      <option key={k} value={k}>{updateKindMeta(entityType, k).label}</option>
-                                    ))}
-                                  </Select>
-                                )}
-                                {kindAcceptsDueDate(entityType, editing.kind) && (
-                                  <DateInput
-                                    value={editing.dueDate} disabled={busy} ariaLabel="กำหนดวัน"
-                                    className={styles.dueInput}
-                                    onChange={(v) => setEditing((s) => ({ ...s, dueDate: v }))}
-                                  />
-                                )}
-                              </div>
-                            )}
-                            <Textarea rows={2} value={editing.body} disabled={busy}
-                              aria-label="แก้ข้อความ"
-                              onChange={(e) => setEditing((s) => ({ ...s, body: e.target.value }))}
-                            />
-                            <div className={styles.composerBar}>
-                              <Button
-                                variant="quiet" size="sm" disabled={busy} icon={<X size={13} />}
-                                onClick={() => setEditing(null)}
-                              >
-                                ยกเลิก
-                              </Button>
-                              <Button
-                                tone="primary" size="sm" disabled={busy || !editing.body.trim()}
-                                onClick={() => mutate(item.row.id, {
-                                  method: "PATCH",
-                                  body: JSON.stringify({
-                                    action: "edit", body: editing.body.trim(),
-                                    kind: editing.kind, dueDate: editing.dueDate || "",
-                                  }),
-                                }, () => setEditing(null))}
-                              >
-                                บันทึก
-                              </Button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            {quotedIdOf(item.row) && (
-                              <QuoteBlock quoted={byId.get(quotedIdOf(item.row))} />
-                            )}
-                            {item.row.body && <ReadableText className={styles.body} text={item.row.body} lines={6} />}
-                          </>
-                        )}
-                        <ThreadAttachments row={item.row} onOpen={setPreview} />
-                      </>
-                    )}
-              </div>
-            </div>
-          ))}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className={styles.empty}>{emptyText}</div>

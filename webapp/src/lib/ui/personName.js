@@ -12,6 +12,20 @@ export const personFullName = (u) => String(u?.name || u?.email || '').trim();
  *
  * ⚠️ ชื่อซ้ำสองบัญชี = คืน null ดีกว่าเดา เพราะค่านี้ไปตัดสินว่าจะแจ้งเตือนใคร
  */
+/**
+ * ตัวย่อสำหรับวงกลมแทนรูปคน — "สมชาย ขายดี" → "สข" · "Sittipong Kaenthaw" → "SK"
+ *
+ * ⚠️ ภาษาไทยไม่มีตัวพิมพ์ใหญ่ จึงตัดอักษรแรกของสองคำแรกตรง ๆ · ชื่อคำเดียวเอา
+ * สองอักษรแรก (สระ/วรรณยุกต์ที่ตามมาเป็นอักขระแยกใน JS แต่แสดงซ้อนตัวเดิม
+ * จึงไม่กินที่เพิ่ม) · ไม่มีชื่อเลย = จุดเดียว ไม่ใช่วงกลมว่าง
+ */
+export function personInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '·';
+  if (parts.length === 1) return parts[0].slice(0, 2);
+  return `${parts[0][0]}${parts[1][0]}`;
+}
+
 export function personIdByName(users = [], name) {
   const wanted = String(name || '').trim();
   if (!wanted) return null;
