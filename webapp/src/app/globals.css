@@ -321,6 +321,23 @@
      ทำเป็นโทเคนที่รู้จักธีมเอง แผงลอยทุกตัวจึงได้เงาเดียวกันโดยไม่ต้องเขียน
      [data-theme="dark"] ทับทีละอัน */
   --shadow-float: 0 16px 44px rgba(31, 25, 18, .18), 0 2px 8px rgba(31, 25, 18, .08);
+
+  /* ── สีพื้นปุ่ม "ก้าวถัดไป" ในแถวตาราง (ROW_TONES ที่ lib/recordLifecycle.js) ────
+     มติผู้ใช้ 2026-08-01: แต่ละขั้นสีต่างกัน เพื่อกวาดตาลงคอลัมน์แล้วรู้ว่าแถวไหน
+     ค้างอยู่ขั้นไหน
+
+     ทำไมต้องเป็นโทเคนแยก ไม่ใช้ --blue/--teal ตรง ๆ: วัดจริงแล้ว **ธีมมืดตกมาตรฐาน**
+     โทเคนสีชุดนั้นสว่างขึ้นในธีมมืด ตัวอักษรขาวทับลงไปได้ contrast แค่ 2.75–2.81
+     (ต้อง ≥4.5) ส่วนธีมสว่างผ่านอยู่แล้วที่ 5.47–5.70
+     จึงผสม navy ลงไปเฉพาะธีมมืด — ทำที่โทเคน แผงไหนใช้ก็ได้ค่าที่อ่านออกเหมือนกัน
+     โดยไม่ต้องเขียน [data-theme="dark"] ทับทีละคอมโพเนนต์ (ท่าเดียวกับ --shadow-float) */
+  --row-tone-navy: var(--navy);
+  --row-tone-blue: var(--blue);
+  --row-tone-violet: var(--violet);
+  --row-tone-teal: var(--teal);
+  --row-tone-green: var(--green);
+  --row-tone-amber: var(--amber);
+  --row-tone-red: var(--red);
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
@@ -434,6 +451,16 @@
   /* ค่านี้คือของเดิมที่ `.ui-select-menu` ใช้อยู่แล้วในธีมมืด (พิสูจน์แล้วว่าใช้ได้จริง)
      ยกขึ้นมาเป็นโทเคนให้แผงลอยตัวอื่นได้ด้วย */
   --shadow-float: 0 18px 48px rgba(0, 0, 0, .48);
+
+  /* ผสม navy 55% — วัดแล้วได้ contrast กับตัวอักษรขาว 5.14–5.19 (ผ่าน AA)
+     ก่อนผสมอยู่ที่ 2.75–2.81 คือ **อ่านไม่ออกจริง ๆ** ไม่ใช่แค่จาง
+     เลข 55 มาจากการวัด ไม่ใช่เดา: 70% ได้ 4.12–4.18 (เฉียดเกินไป) · 40% ได้ 6.4 (ทึบจนสีหาย) */
+  --row-tone-blue: color-mix(in srgb, var(--blue) 55%, var(--navy));
+  --row-tone-violet: color-mix(in srgb, var(--violet) 55%, var(--navy));
+  --row-tone-teal: color-mix(in srgb, var(--teal) 55%, var(--navy));
+  --row-tone-green: color-mix(in srgb, var(--green) 55%, var(--navy));
+  --row-tone-amber: color-mix(in srgb, var(--amber) 55%, var(--navy));
+  --row-tone-red: color-mix(in srgb, var(--red) 55%, var(--navy));
 }
 
 /* Keep minimal: an unlayered `* { margin:0; padding:0 }` would override every
