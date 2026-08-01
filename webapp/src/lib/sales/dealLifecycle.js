@@ -20,6 +20,7 @@ import {
   CLOSED_STAGES,
   DEAL_STAGES,
   STAGE_LABELS,
+  WON_STAGES,
   isClosedStage,
   isWonStage,
 } from "@/lib/salesPlanning";
@@ -55,7 +56,10 @@ const STEPS = [
   { id: "open", label: "เปิดดีล", hint: "คัดกรองและตั้งต้น", statuses: ["lead", "qualified"] },
   { id: "project", label: "ผูกโครงการ", hint: "ต้องมีก่อนออกใบเสนอราคา", statuses: ["timeline_proposed"] },
   { id: "quote", label: "เสนอราคา", hint: "รอลูกค้าตอบ", statuses: ["quotation", "awaiting_confirm", "deposit_pending"] },
-  { id: "won", label: "ปิดได้", hint: "รับใบเสนอราคาแล้ว", statuses: ["won", "in_project"] },
+  /* ต้องกาง WON_STAGES ห้ามพิมพ์รายชื่อสถานะ Won เองซ้ำ — มีเทสต์ git grep ทั้ง repo
+     ห้ามไว้ (นิยามอยู่ที่ salesPlanning.js ที่เดียว) · คอมเมนต์เองก็ห้ามพิมพ์ ตัวสแกน
+     ไม่ได้แยกโค้ดกับคอมเมนต์ */
+  { id: "won", label: "ปิดได้", hint: "รับใบเสนอราคาแล้ว", statuses: [...WON_STAGES] },
 ];
 
 /* สิทธิ์แก้ดีลมาจาก API ต่อแถว (`deal.canEdit` = canEditSalesPlanning + inSalesEditScope)
