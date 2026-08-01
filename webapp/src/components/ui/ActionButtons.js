@@ -5,7 +5,7 @@
 // ใช้ <ActionBar> ครอบกลุ่มปุ่ม แล้ววางปุ่มด้วย <ActionButton kind="...">.
 import {
   Check, Undo2, Pencil, Unlock, Pause, Play, Trash2, Send, ExternalLink, Ban, ArrowRight,
-  Copy, Download, Printer, RotateCcw, Save, XCircle,
+  Copy, Download, Printer, RotateCcw, RefreshCw, Save, XCircle, CornerUpLeft,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
@@ -44,7 +44,28 @@ const KINDS = {
   // หลุดที่ปุ่มนี้** จึงเป็น warning ไม่ใช่ secondary — แต่ไม่ใช่ danger เพราะไม่ได้ทำลาย
   // อะไร (คนละปุ่มกับ "ยกเลิก SO" ที่จบเอกสารทางธุรกิจ ซึ่งเป็น cancel/danger)
   revoke: { tone: "warning", Icon: Unlock, label: "ยกเลิกอนุมัติ" },
+
+  // ── kind ของ record ที่มี lifecycle (ลีด/ดีล/โครงการ) ──────────────────────
+  // 🐞 5 ตัวนี้อยู่ใน BACKWARD_KINDS ของ lib/recordLifecycle.js มาตั้งแต่ต้น แต่ **ไม่เคย
+  // มีในตารางนี้** → `KINDS[kind]` เป็น undefined → ปุ่มออกมา **ไม่มีไอคอนและไม่มีสี**
+  // เงียบ ๆ (ผู้ใช้ทักจากภาพจริง 2026-08-01: "ตีกลับ"/"ไม่ไปต่อ" โล่งอยู่ปุ่มเดียวในกลุ่ม)
+  // มี `recordActionKinds.test.mjs` บังคับให้สองไฟล์ตรงกันแล้ว เพิ่ม kind ใหม่ต้องมาที่นี่ด้วย
+  //
+  // ไล่ระดับความรุนแรง — ไม่ใช่ทาแดงหมดเพราะทั้งกลุ่มอยู่ช่อง danger:
+  //   ยังกู้ได้ (warning) : bounce = ส่งกลับต้นทาง · revert = ย้อนสถานะ
+  //   ปิดเส้นทาง (danger) : disqualify = ไม่ไปต่อ · drop = ยกเลิกดีล/โครงการ
+  //   ไม่ได้ทำลาย (neutral): reopen = เปิดใหม่หลังปิด
+  bounce: { tone: "warning", Icon: CornerUpLeft, label: "ตีกลับ" },
+  revert: { tone: "warning", Icon: Undo2, label: "ย้อนสถานะ" },
+  disqualify: { tone: "danger", Icon: Ban, label: "ไม่ไปต่อ" },
+  drop: { tone: "danger", Icon: XCircle, label: "ยกเลิก" },
+  reopen: { tone: "neutral", Icon: RefreshCw, label: "เปิดใหม่" },
 };
+
+/** ความหมายของ kind (ไอคอน/สี/ข้อความ) — ให้เมนูและที่อื่นหยิบไปใช้ได้โดยไม่ต้องรู้จัก KINDS */
+export function kindMeta(kind) {
+  return KINDS[kind] || null;
+}
 
 // กล่องครอบกลุ่มปุ่ม action — จัดชิดขวา, ระยะห่างเท่ากัน, ตัดบรรทัดเมื่อแคบ.
 export function ActionBar({ children, className = "", ...props }) {
