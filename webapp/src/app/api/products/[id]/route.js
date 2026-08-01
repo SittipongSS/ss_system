@@ -12,6 +12,8 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
 import { recordAudit } from '@/lib/audit';
+import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
+import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
@@ -95,6 +97,27 @@ export async function PATCH(request, { params }) {
       const reasonError = rejectionReasonError(body.rejectionReason);
       if (reasonError) return Response.json({ error: reasonError }, { status: 400 });
     }
+    // ── ด่านเอกสารบังคับ (มติ 2026-07-31) — กติกาเดียวกับฝั่งลูกค้า ─────────
+    // สินค้าบังคับ "Artwork สินค้า" · บน prod ยังไม่มีสินค้าใบไหนแนบเลยสักตัว
+    // (100 ไฟล์ที่มีอยู่แนบเป็นฉลากของทะเบียนภาษี ไม่ใช่ของสินค้า) จึงต้องมีทางยกเว้น
+    const approved = body.approvalStatus === 'approved';
+    let overrideReason = null;
+    if (approved) {
+      const missing = await missingRequiredDocs('product', id, product);
+      if (missing.length) {
+        if (!body.overrideDocuments) {
+          return Response.json({
+            error: missingDocsMessage(missing, `สินค้า ${productDisplayName(product) || id} `),
+            code: 'missing-documents',
+            missing,
+          }, { status: 409 });
+        }
+        const reasonError = overrideReasonError(body.overrideReason);
+        if (reasonError) return Response.json({ error: reasonError, code: 'missing-documents' }, { status: 400 });
+        overrideReason = String(body.overrideReason).trim();
+      }
+    }
+
     const approvalUpdates = {
       approvalStatus: body.approvalStatus,
       approvedBy: user?.id ?? null,
@@ -111,10 +134,20 @@ export async function PATCH(request, { params }) {
     if (threadEvent) {
       await appendUpdate(supabase, { entityType: 'product', entityId: id, ...threadEvent, user });
     }
+    if (overrideReason) {
+      await appendUpdate(supabase, {
+        entityType: 'product',
+        entityId: id,
+        kind: 'note',
+        body: `อนุมัติโดยยกเว้นเอกสารบังคับ — เหตุผล: ${overrideReason}`,
+        user,
+      });
+    }
     await recordAudit({
       user, action: 'update', entityType: 'product', entityId: id,
       before: product, after: decided,
-      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${productDisplayName(decided) || id}`,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${productDisplayName(decided) || id}`
+        + (overrideReason ? ` (ยกเว้นเอกสาร: ${overrideReason})` : ''),
       request,
     });
     // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
