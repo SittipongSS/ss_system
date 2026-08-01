@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 const FOCUSABLE_SELECTOR = [
@@ -42,6 +43,9 @@ export default function Modal({
   const onCloseRef = useRef(onClose);
   const dismissibleRef = useRef(dismissible);
   const titleId = useId();
+  /* portal ต่อเมื่อ mount ฝั่ง client แล้ว — รอบ SSR ไม่มี document */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -102,10 +106,14 @@ export default function Modal({
     };
   }, [open, initialFocusRef]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
   const overlayClose = dismissible && closeOnOverlay ? onClose : undefined;
   const isSide = side === "right";
-  return (
+  /* 🐞 ต้อง portal ไป body — `.overlay` เป็น position:fixed ก็จริง แต่ **สไตล์ที่สืบทอดได้
+     ยังไหลลงมาจาก DOM parent** ที่มันไปเกิดอยู่ เจอจริง 2026-08-01: กล่อง transition ของ
+     แถวตารางเกิดใน `<td className="num">` ซึ่งมี `text-align: right` → ป้ายชื่อช่องทุกอัน
+     ในกล่องชิดขวาหมด · portal ยังกันชั้นซ้อนพังจาก ancestor ที่มี transform/filter ด้วย */
+  return createPortal((
     <div className={`overlay${isSide ? " to-right" : ""}`} onClick={overlayClose}>
       <div
         ref={dialogRef}
@@ -128,5 +136,5 @@ export default function Modal({
         {children}
       </div>
     </div>
-  );
+  ), document.body);
 }
