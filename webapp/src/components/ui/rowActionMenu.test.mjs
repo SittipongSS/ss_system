@@ -81,3 +81,25 @@ test("ช่องปุ่มก้าวถัดไปกว้างคง�
   assert.match(RECORD_CSS, /--record-step-w:/);
   assert.match(RECORD_CSS, /width:\s*var\(--record-step-w\)/);
 });
+
+/* `extraItems` = ทางไปหน้าอื่นที่ lifecycle ไม่รู้จัก (ไทม์ไลน์ / ใบเสนอราคา / โครงการ)
+   หน้าดีลยุบ 4 คอลัมน์เดิมมาไว้ตรงนี้ */
+test("รายการที่มี href ต้องเป็น <Link> จริง ไม่ใช่ปุ่มที่ router.push", () => {
+  const MENU = readFileSync(path.join(process.cwd(), "src", "components", "ui", "RowActionMenu.js"), "utf8");
+  assert.match(MENU, /item\.href \?/, "ต้องแยกทางเรนเดอร์ตาม href");
+  assert.match(MENU, /<Link\b[\s\S]{0,200}role="menuitem"/,
+    "รายการที่เป็นลิงก์ต้องใช้ next/link — ไม่งั้นเปิดแท็บใหม่/คัดลอกลิงก์ไม่ได้");
+  // ตัดคอมเมนต์ทิ้งก่อนสแกน — ตัวคอมเมนต์เองพูดถึงท่าที่ห้ามใช้อยู่
+  const code = MENU.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(!/router\.push/.test(code), "ห้ามใช้ router.push แทนลิงก์");
+});
+
+test("extraItems มาก่อนกลุ่ม action และมีเส้นคั่น", () => {
+  const RECORD = readFileSync(path.join(process.cwd(), "src", "components", "ui", "RecordActionMenu.js"), "utf8");
+  assert.match(RECORD, /const navItems = extraItems/);
+  const items = RECORD.slice(RECORD.indexOf("const items = ["));
+  assert.ok(items.indexOf("...navItems") < items.indexOf("rest.filter"),
+    "ทางไปหน้าอื่นต้องอยู่บนสุดของเมนู");
+  assert.match(RECORD, /separatorBefore: index === 0 && navItems\.length > 0/,
+    "ต้องมีเส้นคั่นแยกทางไปหน้าอื่น ออกจาก action ที่เปลี่ยนข้อมูล");
+});

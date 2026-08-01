@@ -14,7 +14,7 @@ import { useState } from "react";
 import {
   Palette,
   Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
-  ChevronDown, FileText, LayoutGrid, Settings, UserRound,
+  CalendarClock, ChevronDown, FileText, LayoutGrid, Settings, UserRound,
 } from "lucide-react";
 import {
   Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -1155,6 +1155,12 @@ export default function DesignPreviewPage() {
                             onDelete={() => setRecordLog('onDelete("DEMO-0001")')}
                             canDelete
                             recordLabel="DEMO-0001"
+                            /* ทางไปหน้าอื่นที่ lifecycle ไม่รู้จัก — ใช้ href เพื่อให้เป็น
+                               <Link> จริง (เปิดแท็บใหม่/คัดลอกลิงก์ได้) ไม่ใช่ปุ่มที่ router.push */
+                            extraItems={[
+                              { id: "demo-timeline", label: "ไทม์ไลน์", icon: CalendarClock, href: "/settings/design-preview" },
+                              { id: "demo-doc", label: "เอกสารที่เกี่ยวข้อง", icon: FileText, href: "/settings/design-preview" },
+                            ]}
                           />
                         </td>
                       </tr>

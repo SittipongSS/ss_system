@@ -5,7 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -24,6 +24,8 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
+import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
 import ReadableText from "@/components/ui/ReadableText";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
@@ -67,6 +69,10 @@ export default function SalesPlanningPipelinePage() {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
   }, []);
   const me = { id: meId, team };
+  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ —
+     ของเดิมหน้านี้เช็คเงื่อนไขเองในแต่ละปุ่ม แล้วหลวมกว่า API อยู่ 3 จุด */
+  const dealLc = useMemo(() => createDealLifecycle(), []);
 
   const SORT_OPTIONS = [
     { key: "created", label: "อัปเดตล่าสุด" },
@@ -415,6 +421,50 @@ export default function SalesPlanningPipelinePage() {
     await loadDocuments(deal);
   };
 
+  /* ทางไปหน้าอื่นของแถว — ย้ายจาก 4 คอลัมน์เดิมเข้าเมนู "…"
+     ที่เป็นลิงก์ใช้ `href` ไม่ใช่ onClick+router.push เพื่อให้เปิดแท็บใหม่/คัดลอกลิงก์ได้ */
+  const rowLinks = (deal) => [
+    { id: "timeline", label: "ไทม์ไลน์", icon: PackageCheck, href: `/sa/deals/${deal.id}?tab=timeline` },
+    {
+      id: "quotations", label: "ใบเสนอราคา", icon: FileText,
+      href: `/sa/deals/${deal.id}?tab=quotations`, visible: SALES_FEATURES.quotations,
+    },
+    {
+      id: "project", label: "เปิดโครงการที่ผูกไว้", icon: FolderKanban,
+      href: deal.projectId ? `/sa/projects/${deal.projectId}` : undefined, visible: !!deal.projectId,
+    },
+    {
+      id: "documents", label: "เอกสาร", icon: ClipboardList,
+      visible: SALES_FEATURES.documents, onClick: () => openDocuments(deal),
+    },
+    {
+      id: "shipment", label: "เตรียมส่งของ", icon: Truck,
+      visible: SALES_FEATURES.shipment && !!deal.projectId && !!deal.canEdit,
+      disabled: shippingDealId === deal.id,
+      onClick: () => createShipmentPrep(deal),
+    },
+  ];
+
+  /* transition ที่ยิง PATCH ตรง ๆ — ตอนนี้มีแค่ "ไม่ไปต่อ" (ดู DEAL_PATCH_TRANSITIONS)
+     คืน false = ไม่สำเร็จ เมนูจะค้างกล่องไว้พร้อมเหตุผลที่พิมพ์ไปแล้ว */
+  const runDealTransition = async (deal, actionId, values) => {
+    if (!DEAL_PATCH_TRANSITIONS.includes(actionId)) return false;
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: "lost", lostReason: values.reason?.trim() || null }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ปิดดีลไม่สำเร็จ");
+      await load();
+      return true;
+    } catch (e) {
+      setError(e.message || "ปิดดีลไม่สำเร็จ");
+      return false;
+    }
+  };
+
   const createDocument = async (e) => {
     e.preventDefault();
     if (!docDeal) return;
@@ -595,10 +645,7 @@ export default function SalesPlanningPipelinePage() {
                   <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
-                  <th style={{ textAlign: "center" }}>ไทม์ไลน์</th>
-                  {SALES_FEATURES.quotations && <th style={{ textAlign: "center" }}>ใบเสนอ</th>}
-                  {SALES_FEATURES.documents && <th style={{ textAlign: "center" }}>เอกสาร</th>}
-                  {SALES_FEATURES.shipment && <th style={{ textAlign: "center" }}>ส่ง</th>}
+                  {/* 4 คอลัมน์เดิม (ไทม์ไลน์/ใบเสนอ/เอกสาร/ส่ง) ยุบเข้าเมนู "…" ในคอลัมน์นี้ */}
                   <th style={{ textAlign: "right" }}>จัดการ</th>
                 </tr>
               </thead>
@@ -633,68 +680,36 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
                       {isWonStage(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
-                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      <Link prefetch={false} className="btn ghost" href={`/sa/deals/${deal.id}?tab=timeline`} title="เปิดไทม์ไลน์ของดีล" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
-                        <PackageCheck size={14} aria-hidden="true" /> ไทม์ไลน์
-                      </Link>
-                    </td>
-                    {SALES_FEATURES.quotations && (
-                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                        <Link prefetch={false} className="btn ghost" href={`/sa/deals/${deal.id}?tab=quotations`} title="เปิดใบเสนอราคาของดีล" style={{ minWidth: 96, justifyContent: "center" }}>
-                          <FileText size={14} aria-hidden="true" /> ใบเสนอ
-                        </Link>
-                      </td>
-                    )}
-                    {SALES_FEATURES.documents && (
-                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                        <button type="button" className="btn ghost" onClick={() => openDocuments(deal)} style={{ minWidth: 96, justifyContent: "center" }}>
-                          <ClipboardList size={14} aria-hidden="true" /> เอกสาร
-                        </button>
-                      </td>
-                    )}
-                    {SALES_FEATURES.shipment && (
-                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                        {deal.projectId ? (
-                          deal.canEdit ? (
-                            <button type="button" className="btn ghost" onClick={() => createShipmentPrep(deal)} disabled={shippingDealId === deal.id}>
-                              <Truck size={14} aria-hidden="true" /> {shippingDealId === deal.id ? "กำลังสร้าง..." : "ส่ง"}
-                            </button>
-                          ) : (
-                            <span style={{ color: "var(--text-3)" }}>-</span>
-                          )
-                        ) : (
-                          <span style={{ color: "var(--text-3)" }} title="ต้องส่งต่อ PM ก่อน">-</span>
-                        )}
-                      </td>
-                    )}
-                    <td className="num" style={{ whiteSpace: "nowrap" }}>
-                      <div className="flex items-center gap-2 justify-end">
-                        {deal.projectId ? (
-                          <Link href={`/sa/projects/${deal.projectId}`} className="btn ghost sm" title="เปิดโครงการที่เชื่อมแล้ว">
-                            <FolderKanban size={14} aria-hidden="true" /> ไปโครงการ
-                          </Link>
-                        ) : deal.canEdit ? (
-                          <button type="button" className="btn ghost sm" onClick={() => openEditDeal(deal)} title="แนะนำให้เชื่อมโครงการก่อนออกใบเสนอราคา">
-                            <FolderKanban size={14} aria-hidden="true" /> เชื่อมโครงการ
-                          </button>
-                        ) : null}
-                        {deal.canEdit && (
-                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขดีล">
-                            <Pencil size={15} aria-hidden="true" />
-                          </button>
-                        )}
-                        {(role === "admin" || (deal.canEdit && (!isWonStage(deal.stage) || superuser) && !deal.metadata?.sahamitPoId)) && (
-                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ไม่ลบโครงการ PM ที่ผูก)">
-                            <Trash2 size={15} aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
+                    <td className="num" onClick={(event) => event.stopPropagation()}>
+                      {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" รวมที่เหลือ (มติผู้ใช้ 2026-08-01)
+                          ของเดิมกระจาย 8 ปุ่มใน 5 คอลัมน์ · กติกาว่าปุ่มไหนโผล่มาจาก
+                          dealLifecycle ตัวเดียวกับที่หน้ารายละเอียดจะใช้ */}
+                      <RecordActionMenu
+                        lifecycle={dealLc}
+                        record={deal}
+                        user={viewer}
+                        busy={shippingDealId === deal.id}
+                        recordLabel={deal.title}
+                        onSelect={(transition) => {
+                          /* ทั้งผูกและสร้างโครงการลงมือที่ฟอร์มแก้ไขดีล (ต้องเลือกโครงการ)
+                             ไม่ใช่ยิง /transition — ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ */
+                          if (!["link_project", "create_project"].includes(transition.id)) return false;
+                          openEditDeal(deal);
+                          return true;
+                        }}
+                        onTransition={(actionId, values) => runDealTransition(deal, actionId, values)}
+                        canEdit={!!deal.canEdit}
+                        canDelete={canDeleteDeal(deal, { role, superuser })}
+                        onEdit={() => openEditDeal(deal)}
+                        onDelete={() => deleteDeal(deal)}
+                        extraItems={rowLinks(deal)}
+                      />
                     </td>
                   </DetailRow>
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={8 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>

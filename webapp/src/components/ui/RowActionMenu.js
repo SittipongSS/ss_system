@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import styles from "./RowActionMenu.module.css";
@@ -20,7 +21,8 @@ import styles from "./RowActionMenu.module.css";
 const MENU_WIDTH = 232;
 
 /**
- * @param items  [{ id, label, icon, tone, disabled, disabledReason, onClick, separatorBefore }]
+ * @param items  [{ id, label, icon, tone, disabled, disabledReason, onClick, href, separatorBefore }]
+ *               href แทน onClick = รายการที่พาไปหน้าอื่น (เรนเดอร์เป็น <Link> จริง)
  *               tone: "neutral" | "warning" | "danger" — คุมสีข้อความ/ไอคอนของรายการ
  * @param label  ข้อความ aria ของปุ่มเปิด (ควรบอกว่าเป็นของแถวไหน)
  */
@@ -119,21 +121,42 @@ export default function RowActionMenu({ items = [], label = "การจัด�
       style={style || { position: "fixed", left: -9999, top: 0, width: MENU_WIDTH }}
       onKeyDown={onMenuKeyDown}
     >
-      {visible.map((item) => (
-        <div key={item.id} className={item.separatorBefore ? styles.group : undefined}>
-          <button
-            type="button"
-            role="menuitem"
-            className={`${styles.item} ${styles[item.tone || "neutral"] || ""}`.trim()}
-            disabled={busy || item.disabled}
-            title={item.disabledReason || undefined}
-            onClick={() => run(item)}
-          >
+      {visible.map((item) => {
+        const body = (
+          <>
             {item.icon ? <item.icon size={15} aria-hidden="true" /> : <span className={styles.noIcon} />}
             <span className={styles.itemLabel}>{item.label}</span>
-          </button>
-        </div>
-      ))}
+          </>
+        );
+        const className = `${styles.item} ${styles[item.tone || "neutral"] || ""}`.trim();
+        return (
+          <div key={item.id} className={item.separatorBefore ? styles.group : undefined}>
+            {/* รายการที่พาไปหน้าอื่นต้องเป็น <Link> จริง ไม่ใช่ปุ่มที่ router.push —
+                ผู้ใช้ต้องเปิดแท็บใหม่/คัดลอกลิงก์ได้ และโปรแกรมอ่านหน้าจอต้องรู้ว่าเป็นทางไป */}
+            {item.href ? (
+              <Link
+                href={item.href}
+                role="menuitem"
+                className={className}
+                onClick={() => close(false)}
+              >
+                {body}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                className={className}
+                disabled={busy || item.disabled}
+                title={item.disabledReason || undefined}
+                onClick={() => run(item)}
+              >
+                {body}
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 
