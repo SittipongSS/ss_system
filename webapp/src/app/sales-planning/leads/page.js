@@ -379,8 +379,8 @@ export default function LeadsPage() {
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
                     <td className="num" onClick={(event) => event.stopPropagation()}>
                       {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —
-                          แถวโชว์เฉพาะ "ก้าวถัดไป" + แก้ไข/ลบ (มติผู้ใช้ ข้อ 2)
-                          ตีกลับ/ไม่ไปต่อ อยู่บนการ์ดที่หน้ารายละเอียด ไม่ยัดกลับมาในแถว
+                          แถวโชว์ "ก้าวถัดไป" 1 ปุ่ม (มีสีตามขั้น) + เมนู "…" ที่รวม
+                          ตีกลับ/ไม่ไปต่อ/แก้ไข/ลบ (มติผู้ใช้ 2026-08-01)
 
                           ไม่ส่ง manageHref: ตารางนี้ชื่อลีดเป็นลิงก์ไปหน้ารายละเอียดอยู่แล้ว
                           ลิงก์ "จัดการ" ท้ายแถวจึงเป็นทางที่สองไปที่เดิม — กินที่และแย่งสายตา
@@ -390,6 +390,7 @@ export default function LeadsPage() {
                         record={lead}
                         user={viewer}
                         busy={!!busy}
+                        recordLabel={lead.contactName}
                         onSelect={(transition) => {
                           if (transition.id !== "create_deal") return false;
                           setDealModal(lead); // เปิดดีล = ไปฟอร์มดีล ไม่ใช่ย้ายสถานะ

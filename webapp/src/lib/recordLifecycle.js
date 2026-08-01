@@ -35,6 +35,16 @@ export const BACKWARD_KINDS = [
   "disqualify", // ไม่ไปต่อ
 ];
 
+/* สีของปุ่ม "ก้าวถัดไป" ในแถวตาราง — มติผู้ใช้ 2026-08-01: ให้แต่ละก้าวมีสีต่างกัน
+   เพื่อกวาดตาลงคอลัมน์แล้วแยกออกว่าแถวไหนค้างอยู่ขั้นไหน (ของเดิมก่อน #870 เป็นแบบนี้)
+
+   ⚠️ นี่คือ **สีตามขั้นตอน ไม่ใช่สีตามความหมาย** ซึ่งต่างจากกฎปกติของระบบที่ `kind`
+   ผูก tone ไว้ที่ ActionButtons.js — ยอมให้เกิดเฉพาะ *ในแถวตาราง* ที่ต้องอ่านเป็นคอลัมน์
+   บนการ์ดยังใช้ tone ตาม kind เหมือนเดิม
+   ชื่อจึงเป็นชื่อสีตรง ๆ ไม่ใช่ชื่อความหมาย — จะได้ไม่หลอกตัวเองว่ามันคือ semantic tone
+   ค่าจริงแมปเป็นคลาสที่ RecordActionMenu.module.css ที่เดียว (ห้ามเขียน --btn-bg ในหน้า) */
+export const ROW_TONES = ["navy", "blue", "violet", "teal", "green", "amber", "red"];
+
 const REASON_MODES = ["none", "optional", "required"];
 const DEFAULT_REASON_MIN = 10;
 const DEFAULT_REASON_MAX = 500;
@@ -118,6 +128,7 @@ export function defineLifecycle({
              เขียนให้อ่านเป็นประโยคได้ ("มอบหมายผู้รับผิดชอบ") ยาวเกินจนแถวตกบรรทัด
              ไม่ระบุ = ใช้ label เดิม (สั้นอยู่แล้วก็ไม่ต้องเขียนซ้ำ) */
           rowLabel: transition.rowLabel || transition.label,
+          rowTone: transition.rowTone,
           kind: transition.kind,
           icon: transition.icon,
           slot: transition.slot,
@@ -166,6 +177,11 @@ function normalizeTransition(transition, entity) {
     throw new Error(`defineLifecycle(${entity}): transition ${id} slot ไม่ถูกต้อง — ${slot}`);
   }
 
+  const rowTone = transition.rowTone || "navy";
+  if (!ROW_TONES.includes(rowTone)) {
+    throw new Error(`defineLifecycle(${entity}): transition ${id} rowTone ต้องเป็น ${ROW_TONES.join("|")}`);
+  }
+
   const reason = transition.reason || "none";
   if (!REASON_MODES.includes(reason)) {
     throw new Error(`defineLifecycle(${entity}): transition ${id} reason ต้องเป็น ${REASON_MODES.join("|")}`);
@@ -184,6 +200,7 @@ function normalizeTransition(transition, entity) {
     id,
     kind,
     label,
+    rowTone,
     slot,
     // ไม่ระบุ from = ทำได้จากทุกสถานะ (เช่น "แก้ไข" ที่ไม่ผูกกับขั้นตอน)
     from: transition.from == null || transition.from === "*" ? "*" : asArray(transition.from),

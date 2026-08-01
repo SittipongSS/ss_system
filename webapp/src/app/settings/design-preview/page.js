@@ -1154,6 +1154,7 @@ export default function DesignPreviewPage() {
                             onEdit={() => setRecordLog('onEdit("DEMO-0001")')}
                             onDelete={() => setRecordLog('onDelete("DEMO-0001")')}
                             canDelete
+                            recordLabel="DEMO-0001"
                           />
                         </td>
                       </tr>
@@ -1161,8 +1162,9 @@ export default function DesignPreviewPage() {
                   </table>
                 </TableShell>
                 <p className={styles.caption}>
-                  แถวตารางเหลือ 3 อย่าง: ปุ่มก้าวถัดไปปุ่มเดียว · ไอคอนแก้ไข/ลบ · ลิงก์ &quot;จัดการ&quot;
-                  {" "}ไปหน้ารายละเอียด — ปุ่มที่เหลือทั้งหมดอยู่บนการ์ดฝั่งซ้าย
+                  แถวตารางเหลือ 2 ชิ้น: ปุ่มก้าวถัดไปปุ่มเดียว มีสีตามขั้น (rowTone) และเมนู
+                  {" "}&quot;…&quot; ที่รวมของที่เหลือ (ย้ายสถานะอื่น · แก้ไข · ลบ) — เมนูเปิดผ่าน portal
+                  {" "}จึงไม่โดนกรอบตารางตัด · ลิงก์ &quot;จัดการ&quot; ใส่เฉพาะตารางที่ชื่อในแถวยังไม่เป็นลิงก์
                 </p>
                 {recordLog ? (
                   <p className={`${styles.caption} ${styles.mono}`}>{recordLog}</p>

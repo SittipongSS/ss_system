@@ -29,6 +29,28 @@
   padding-inline: var(--space-1);
 }
 
+/* สีปุ่มก้าวถัดไป — แมป ROW_TONES (lib/recordLifecycle.js) ไว้ที่เดียวทั้งระบบ
+   หน้าเพจห้ามเขียน `--btn-bg` หรือ inline style เอง (ของเดิมก่อน #870 ทำแบบนั้น 7 จุด)
+
+   ⚠️ บริบทเปลี่ยนได้แค่ *สีพื้น* — ขอบ/เงา/ความสูง ยังเป็นของ variant ตามเดิม */
+.tone-navy { background: var(--row-tone-navy); }
+.tone-blue { background: var(--row-tone-blue); }
+.tone-violet { background: var(--row-tone-violet); }
+.tone-teal { background: var(--row-tone-teal); }
+.tone-green { background: var(--row-tone-green); }
+.tone-amber { background: var(--row-tone-amber); }
+.tone-red { background: var(--row-tone-red); }
+
+.tone-navy:hover:not(:disabled),
+.tone-blue:hover:not(:disabled),
+.tone-violet:hover:not(:disabled),
+.tone-teal:hover:not(:disabled),
+.tone-green:hover:not(:disabled),
+.tone-amber:hover:not(:disabled),
+.tone-red:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
 /* ลิงก์ "จัดการ" ตั้งใจไม่ทำเป็นปุ่ม — มันคือทางไปหน้ารายละเอียด ไม่ใช่ action
    ที่เปลี่ยนข้อมูล ถ้าทำเป็นปุ่มจะแย่งสายตากับปุ่มก้าวถัดไปที่อยู่ข้างกัน */
 .manage {
