@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessSahamit, canEditProduction, canUser, canViewService } from '@/lib/permissions';
+import { canAccessMgmt, canAccessSahamit, canEditProduction, canViewProduction, canUser, canViewService } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -24,15 +24,15 @@ export const SYSTEM_CATALOG = [
     label: 'วางแผนผลิต',
     description: 'ไลน์ผลิต กำลังผลิตต่อวัน และคิวงานผลิตของโรงงาน',
     icon: Factory,
-    // ⚠️ ตอนนี้เปิดให้เฉพาะ "คนที่ทำอะไรได้จริง" (ฝ่าย PC/PD) ไม่ใช่ทุกคนที่ถือ
-    // production:view — เพราะ PR-1 มีแต่หน้า *ตั้งค่าไลน์* การ์ดระบบที่กดเข้าไป
-    // แล้วทำอะไรไม่ได้คือขยะบนหน้าแรกของฝ่ายขายทุกคน
-    // 👉 P-3 (บอร์ดตารางผลิต ซึ่งฝ่ายขายเข้ามาอ่านเพื่อตอบลูกค้า) ค่อยเปลี่ยนเป็น
-    //    canViewProduction แล้วให้ landing ชี้ไปบอร์ดแทนหน้าไลน์
-    isVisible: (user) => canEditProduction(user),
-    // ลงที่ **คิวงาน** ไม่ใช่หน้าตั้งค่าไลน์ — คำถามที่ PC เปิดระบบมาถามคือ
-    // "ต้องผลิตอะไรก่อน" ไม่ใช่ "ไลน์มีกี่ไลน์" (P-2)
-    landing: () => '/production/jobs',
+    // ⭐ P-3 เปิดให้ **ทุกคนที่อ่านตารางผลิตได้** แล้ว — บอร์ดตอบคำถามที่ฝ่ายขาย/
+    // คลัง/QC ถามจริง ("โรงงานจะผลิตวันไหน") ต่างจากตอน P-1 ที่มีแต่หน้าตั้งค่าไลน์
+    // ซึ่งคนอ่านอย่างเดียวกดเข้าไปแล้วทำอะไรไม่ได้
+    // ⚠️ canViewProduction แคบ staff เหลือ PC/PD/WH/QC — **ฝ่าย TS ไม่เห็น**
+    //    เพราะเป็นคนละทีมปฏิบัติงาน (มติผู้ใช้ 2026-07-31)
+    isVisible: (user) => canViewProduction(user),
+    // คนที่วางคิวได้ลงที่ **คิวงาน** (ต้องตัดสินใจว่าผลิตอะไรก่อน) · คนอ่านอย่างเดียว
+    // ลงที่ **บอร์ด** (มาดูว่าผลิตวันไหน ไม่ได้มาจัดคิว)
+    landing: (user) => (canEditProduction(user) ? '/production/jobs' : '/production/board'),
   },
   {
     // ธุรกิจบริการ (ฝ่าย TS) — แยกจาก "วางแผนผลิต" คนละโมดูล คนละตาราง คนละสิทธิ์

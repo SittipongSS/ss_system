@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
   ExternalLink, FileCheck2, FileText, FolderKanban, MessagesSquare, Pencil, ShieldAlert,
-  PackageCheck, Trash2, Undo2, XCircle,
+  Factory, PackageCheck, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
@@ -48,6 +48,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import Button from "@/components/ui/Button";
 import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productionReadiness } from "@/lib/pm/deliveries";
+import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import Textarea from "@/components/ui/Textarea";
 
@@ -386,6 +387,23 @@ export default function SalesOrderDetailPage() {
     [deliveries, todayIso],
   );
 
+  // ── แผนผลิตของใบนี้ (P-3) ────────────────────────────────────────────
+  // ⭐ คำถามที่ SA เปิดหน้านี้มาตอบลูกค้าทางโทรศัพท์คือ **"ผลิตวันไหน"**
+  // ⚠️ อ่านอย่างเดียว — วางคิวจริงทำที่ระบบวางแผนผลิต ซึ่ง PC เป็นเจ้าของงาน
+  //    (สองทางแก้ = สองชุดกฎที่เพี้ยนหากันเสมอ)
+  const [production, setProduction] = useState({ jobs: [], lines: [] });
+  useEffect(() => {
+    if (!order?.id) return;
+    fetch(`/api/production/jobs?salesOrderId=${order.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setProduction({ jobs: d?.jobs || [], lines: d?.lines || [] }))
+      .catch(() => {});
+  }, [order?.id]);
+  const plan = useMemo(
+    () => salesOrderPlanSummary(production.jobs, production.lines),
+    [production],
+  );
+
   if (!order) {
     return <Workspace icon={<ClipboardList size={22} />} title="Sale Order" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
@@ -676,6 +694,46 @@ export default function SalesOrderDetailPage() {
               <p className={styles.deliveryEmpty}>
                 ยังไม่มีรายการของเข้าที่ผูกกับใบนี้ — ผูกได้ที่พาเนล &ldquo;ของเข้า&rdquo; ใต้ไทม์ไลน์ของโครงการ
               </p>
+            )}
+          </DetailCard>
+
+          {/* ⭐ แผนผลิต (P-3) — วางถัดจากการ์ดของเข้าโดยตั้งใจ: ของเข้าตอบว่า
+              "เริ่มได้เมื่อไหร่" การ์ดนี้ตอบว่า "จริง ๆ แล้ววางไว้วันไหน" · สองอันคู่กัน
+              คือคำตอบเต็มของคำถาม "ของจะเสร็จเมื่อไหร่" ที่ลูกค้าถามจริง */}
+          <DetailCard
+            icon={Factory}
+            eyebrow="PRODUCTION PLAN"
+            title="แผนผลิตของใบนี้"
+            meta={plan.jobs.length ? `${plan.jobs.length} งานผลิต` : undefined}
+            actions={(
+              <Button
+                as={Link} href="/production/jobs"
+                variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
+              >
+                เปิดคิวงานผลิต
+              </Button>
+            )}
+          >
+            <StatusNotice tone={plan.tone === "warning" ? "warning" : plan.tone === "success" ? "success" : "info"}>
+              {plan.label}
+            </StatusNotice>
+            {plan.jobs.length > 0 && (
+              <div className={styles.deliveryList}>
+                {plan.jobs.map(({ job, range }) => (
+                  <div key={job.id} className={styles.deliveryRow}>
+                    <StatusBadge
+                      size="sm"
+                      tone={job.status === "done" ? "success" : job.status === "in_progress" ? "info" : job.status === "draft" ? "warning" : "neutral"}
+                      label={JOB_STATUS_LABELS[job.status] || job.status}
+                    />
+                    <strong>{job.productName || job.fgCode || job.code}</strong>
+                    <span className={styles.deliveryMeta}>
+                      {Number(job.qty).toLocaleString("th-TH")}{job.unit ? ` ${job.unit}` : ""}
+                      {range ? ` · ผลิต ${fmtDate(range.start)} – ${fmtDate(range.finish)}` : " · ยังไม่ได้วางวัน"}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </DetailCard>
 
