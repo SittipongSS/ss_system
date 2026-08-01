@@ -5,7 +5,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
-import PersonSelect from "@/components/ui/PersonSelect";
+import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -75,6 +75,8 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
         body: JSON.stringify({
           ...form,
           ...(lockPeopleField ? { [lockPeopleField]: myName } : {}), // บังคับช่องที่ล็อก = ผู้สร้าง
+          // ตัวตนของผู้ดูแลเดินคู่ชื่อเสมอ (mig 0190) — ชื่อไว้พิมพ์เอกสาร id ไว้แจ้งเตือน
+          aeOwnerId: personIdByName(users, lockPeopleField === "aeOwner" ? myName : form.aeOwner),
           customerName: customer?.name || null,
           metadata: { ...(initialData?.metadata || {}), brand: form.brand, containerOnly: true },
         }),

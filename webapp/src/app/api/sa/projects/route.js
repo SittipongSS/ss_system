@@ -39,7 +39,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     formulaName: body.formulaName || null,
     urgency: body.urgency || 'Schedule',
     aeOwner: body.aeOwner || user.name || '',
+    // ตัวตนจริงของผู้ดูแล (mig 0190) — ชื่อข้างบนเป็น snapshot สำหรับพิมพ์เอกสาร
+    // ไม่ได้เลือกชื่อเอง = ผู้สร้างเป็นผู้ดูแลเอง จึงใส่ id ของตัวเองให้ตรงกัน
+    aeOwnerId: body.aeOwnerId || (body.aeOwner ? null : user.id) || null,
     acOwner: body.acOwner || '',
+    acOwnerId: body.acOwnerId || null,
     status: 'New',
     startDate,
     dueDate,

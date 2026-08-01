@@ -67,7 +67,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     formulaName: body.formulaName ?? deal.formulaName ?? null,
     urgency: body.urgency || 'Schedule',
     aeOwner: body.aeOwner || deal.ownerName || user.name || '',
+    // ตัวตนจริงของผู้ดูแล (mig 0190) — ชื่อข้างบนเป็น snapshot สำหรับพิมพ์เอกสาร
+    // ⚠️ ตกไปหา `deal.ownerId` ได้เฉพาะตอน**ไม่ได้เลือกชื่อเอง**: เลือกชื่อคนอื่น
+    // แล้วยังใส่ id ของเจ้าของดีล = แจ้งเตือนไปผิดคนแบบเงียบ ๆ
+    aeOwnerId: body.aeOwnerId || (body.aeOwner ? null : (deal.ownerId || user.id)) || null,
     acOwner: body.acOwner || '',
+    acOwnerId: body.acOwnerId || null,
     status: 'New',
     startDate,
     dueDate,
