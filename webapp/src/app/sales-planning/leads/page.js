@@ -8,7 +8,6 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
@@ -35,6 +34,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
+import DetailRow from "@/components/ui/DetailRow";
 import Textarea from "@/components/ui/Textarea";
 
 const initialForm = {
@@ -52,7 +52,6 @@ function statusBadge(status) {
 }
 
 export default function LeadsPage() {
-  const router = useRouter();
   const canLead = useCan("salesplan:lead");
   const canView = useCan("salesplan:view");
   const role = useRole();
@@ -347,13 +346,22 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
+                {/* DetailRow แทน <tr onClick> ดิบ — ท่าเดียวกับหน้าดีล/โครงการ
+                    ได้ 2 อย่างที่ของเดิมไม่มี: กด Enter/Space บนแถวได้ (คีย์บอร์ด) และ
+                    `isInteractiveTarget` กันแถวยิง router.push ซ้ำตอนกดลิงก์ชื่อ/ปุ่มข้างใน */}
                 {pageRows.map((lead) => (
-                  <tr key={lead.id} className="premium-row" onClick={() => router.push(`/sa/leads/${lead.id}`)} style={{ cursor: "pointer" }}>
+                  <DetailRow key={lead.id} href={`/sa/leads/${lead.id}`} className="premium-row">
                     <td>
-                      <strong>{lead.contactName}</strong>
-                      <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
-                      </span>
+                      {/* ชื่อเป็นลิงก์จริง ไม่ใช่ข้อความในแถวที่กดได้ — คลิกทั้งแถวใช้ได้เฉพาะ
+                          เมาส์ ส่วนลิงก์ได้ทั้งคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
+                          ท่าเดียวกับหน้าดีลและหน้าโครงการ (`linklike` = ลิงก์ที่ไม่ทำสีทับข้อความ)
+                          prefetch={false}: ลิสต์ยาว ๆ เคยยิง RSC prefetch เป็นพันครั้ง/วัน */}
+                      <Link prefetch={false} href={`/sa/leads/${lead.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดลีด">
+                        <strong>{lead.contactName}</strong>
+                        <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
+                          {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
+                        </span>
+                      </Link>
                     </td>
                     <td><span className="ui-badge" style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] || "var(--text-2)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
                     <td>
@@ -371,14 +379,17 @@ export default function LeadsPage() {
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
                     <td className="num" onClick={(event) => event.stopPropagation()}>
                       {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —
-                          แถวโชว์เฉพาะ "ก้าวถัดไป" + แก้ไข/ลบ + ลิงก์จัดการ (มติผู้ใช้ ข้อ 2)
-                          ตีกลับ/ไม่ไปต่อ อยู่บนการ์ดที่หน้ารายละเอียด ไม่ยัดกลับมาในแถว */}
+                          แถวโชว์เฉพาะ "ก้าวถัดไป" + แก้ไข/ลบ (มติผู้ใช้ ข้อ 2)
+                          ตีกลับ/ไม่ไปต่อ อยู่บนการ์ดที่หน้ารายละเอียด ไม่ยัดกลับมาในแถว
+
+                          ไม่ส่ง manageHref: ตารางนี้ชื่อลีดเป็นลิงก์ไปหน้ารายละเอียดอยู่แล้ว
+                          ลิงก์ "จัดการ" ท้ายแถวจึงเป็นทางที่สองไปที่เดิม — กินที่และแย่งสายตา
+                          จากปุ่มก้าวถัดไป (มติผู้ใช้ 2026-08-01) */}
                       <RecordActionMenu
                         lifecycle={lifecycle}
                         record={lead}
                         user={viewer}
                         busy={!!busy}
-                        manageHref={`/sa/leads/${lead.id}`}
                         onSelect={(transition) => {
                           if (transition.id !== "create_deal") return false;
                           setDealModal(lead); // เปิดดีล = ไปฟอร์มดีล ไม่ใช่ย้ายสถานะ
@@ -391,7 +402,7 @@ export default function LeadsPage() {
                         onDelete={() => deleteLead(lead)}
                       />
                     </td>
-                  </tr>
+                  </DetailRow>
                 ))}
                 {!filtered.length && !loading && (
                   <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีลีดตามตัวกรองนี้ {canCreate ? "— เริ่มจากปุ่มรับลีดใหม่" : ""}</td></tr>

@@ -125,3 +125,32 @@ test("หน้าต้นแบบต้องไม่สาธิตกา�
       `id "${id}" ของ extraActions ชนกับ transition ใน lifecycle ตัวอย่าง — การ์ดจะทิ้งตัวนี้`);
   }
 });
+
+/* ⚠️ ลิงก์ "จัดการ" ถูกถอดออกจากแถวลีด (มติผู้ใช้ 2026-08-01: ซ้ำกับการกดที่รายการ)
+   — ถอดได้ต่อเมื่อ **ยังมีลิงก์จริงอยู่ในแถว** เพราะ onClick บน <tr> ใช้ได้เฉพาะเมาส์
+   ถ้าวันหนึ่งมีคนเอาลิงก์ที่ชื่อออกด้วย คีย์บอร์ด/โปรแกรมอ่านหน้าจอจะเข้าหน้ารายละเอียด
+   ไม่ได้เลย และไม่มีอะไรฟ้อง — เทสต์นี้คือตัวฟ้อง */
+test("ตารางลีดต้องมีลิงก์จริงไปหน้ารายละเอียด ไม่ใช่แค่ onClick ทั้งแถว", () => {
+  const LIST = readFileSync(
+    path.join(process.cwd(), "src", "app", "sales-planning", "leads", "page.js"),
+    "utf8",
+  );
+  const hasRowClick = /<tr[^>]*onClick=\{\(\) => router\.push/.test(LIST);
+  const hasRealLink = /<Link[^>]*href=\{`\/sa\/leads\/\$\{lead\.id\}`\}/.test(LIST);
+  assert.ok(hasRealLink,
+    "แถวลีดไม่มี <Link> ไปหน้ารายละเอียด — ถ้าถอด manageHref ออกแล้ว ต้องมีลิงก์ที่ชื่อแทน");
+  if (hasRowClick) {
+    assert.ok(hasRealLink, "คลิกทั้งแถวไม่นับ — ต้องมีลิงก์จริงคู่กันเสมอ");
+  }
+});
+
+/* ปุ่มก้าวถัดไปในแถวต้องทึบ — ไม่งั้นกวาดตาลงคอลัมน์แล้วแยกไม่ออกว่าแถวไหนมีงานรอ */
+test("ปุ่มก้าวถัดไปในแถวใช้ tone จาก kind ไม่ใช่สีรายปุ่ม", () => {
+  const MENU = readFileSync(
+    path.join(process.cwd(), "src", "components", "ui", "RecordActionMenu.js"),
+    "utf8",
+  );
+  assert.match(MENU, /variant="filled"/, "ปุ่มก้าวถัดไปต้องเป็นแบบทึบ");
+  assert.ok(!/--btn-bg/.test(MENU),
+    "ห้ามกำหนดสีปุ่มเองด้วย --btn-bg — สีต้องมาจาก tone ที่ผูกกับ kind ใน ActionButtons.js");
+});
