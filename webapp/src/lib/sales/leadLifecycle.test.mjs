@@ -211,3 +211,25 @@ test("buildLeadTransitionPayload: เติมชื่อผู้รับผ�
   assert.equal(body.assigneeId, "u1");
   assert.ok(body.assigneeName, "assign ที่ไม่มี assigneeName จะโดน badRequest");
 });
+
+/* 🐞 #870 เอาป้ายของ *การ์ด* ไปใส่แถวตาราง ("มอบหมายผู้รับผิดชอบ") → แถวตกบรรทัด
+   บนของจริง · ป้ายแถวต้องสั้นพอที่จะอยู่ในช่องความกว้างคงที่ได้ */
+test("ทุก transition ที่โผล่ในแถวตาราง ต้องมีป้ายสั้นพอ", () => {
+  const ROW_LIMIT = 11; // ตัวอักษร — ช่อง 124px ที่ fs-label รับได้ประมาณนี้
+  for (const transition of lifecycle.transitions) {
+    if (transition.slot !== "primary") continue; // แถวโชว์แค่ช่อง primary
+    const rowLabel = transition.rowLabel || transition.label;
+    assert.ok(rowLabel.length <= ROW_LIMIT,
+      `${transition.id}: ป้ายในแถวยาว ${rowLabel.length} ตัว ("${rowLabel}") — ใส่ rowLabel ที่สั้นกว่านี้`);
+  }
+});
+
+test("rowLabel ไม่ระบุ = ใช้ label เดิม ไม่ใช่ว่าง", () => {
+  const entry = lifecycle.available(lead({ status: "new" }), ADMIN).find((e) => e.id === "screen");
+  assert.equal(entry.rowLabel, "คัดกรอง");
+  const noRow = lifecycle.transitions.find((t) => !t.rowLabel);
+  if (noRow) {
+    const rendered = lifecycle.available(lead({ status: "contacted", team: "A", assigneeId: "u-ae" }), AE_A);
+    for (const e of rendered) assert.ok(e.rowLabel, `${e.id} ต้องมี rowLabel เสมอ (fallback เป็น label)`);
+  }
+});

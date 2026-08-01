@@ -100,6 +100,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
       {
         id: "screen",
         label: "คัดกรองและส่งทีม",
+        rowLabel: "คัดกรอง",
         kind: "submit",
         slot: "primary",
         from: allowedFrom("screen"),
@@ -118,6 +119,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
       {
         id: "assign",
         label: "มอบหมายผู้รับผิดชอบ",
+        rowLabel: "มอบหมาย",
         kind: "submit",
         slot: "primary",
         from: allowedFrom("assign"),
@@ -130,6 +132,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
       {
         id: "contact",
         label: "บันทึกการติดต่อ",
+        rowLabel: "ติดต่อแล้ว",
         kind: "submit",
         slot: "primary",
         from: allowedFrom("contact"),
@@ -147,6 +150,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
       {
         id: "meeting",
         label: "บันทึกนัดประชุม",
+        rowLabel: "นัดประชุม",
         kind: "submit",
         slot: "secondary",
         from: allowedFrom("meeting"),
@@ -169,6 +173,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
            ยังประกาศไว้ที่นี่เพราะทั้งการ์ดและแถวตารางต้องรู้ว่า "ขั้นถัดไปคืออันนี้" */
         id: "create_deal",
         label: "เปิดดีลจากลีดนี้",
+        rowLabel: "สร้างดีล",
         kind: "submit",
         slot: "primary",
         from: allowedFrom("create_deal"),

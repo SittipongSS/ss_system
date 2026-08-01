@@ -114,6 +114,10 @@ export function defineLifecycle({
         return {
           id: transition.id,
           label: transition.label,
+          /* ป้ายสำหรับ *แถวตาราง* — ที่นั่นมีความกว้างเท่าคอลัมน์เดียว ป้ายของการ์ด
+             เขียนให้อ่านเป็นประโยคได้ ("มอบหมายผู้รับผิดชอบ") ยาวเกินจนแถวตกบรรทัด
+             ไม่ระบุ = ใช้ label เดิม (สั้นอยู่แล้วก็ไม่ต้องเขียนซ้ำ) */
+          rowLabel: transition.rowLabel || transition.label,
           kind: transition.kind,
           icon: transition.icon,
           slot: transition.slot,
