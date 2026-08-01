@@ -102,3 +102,26 @@ test("ตอนแก้ไข ปุ่มยกเลิก/บันทึก
     "หัวหน้าต้องมีปุ่มเฉพาะตอน editing");
   assert.match(LEAD_PAGE, /backActions[\s\S]{0,400}กำลังบันทึก/);
 });
+
+/* 🪤 id ที่ชนกับ transition = React key ซ้ำในช่องเดียวกัน → ปุ่มหนึ่งหายเงียบ ๆ
+   (DocumentControlPanel ใช้ `key={action.id}`) — เจอจริงที่หน้าต้นแบบหลัง #866 */
+test("extraActions ที่ id ชนกับ transition ถูกทิ้ง — lifecycle เป็นเจ้าของ id", () => {
+  assert.match(CARD_SRC, /takenIds/,
+    "การ์ดต้องกันไม่ให้ extraActions ใช้ id ซ้ำกับ transition");
+  assert.match(CARD_SRC, /!takenIds\.has\(action\.id\)/,
+    "ตัวกรอง extraActions ต้องเช็ค id ที่ transition จองไว้แล้ว");
+});
+
+test("หน้าต้นแบบต้องไม่สาธิตการใช้ id ที่ชนกันเอง", () => {
+  const PREVIEW = readFileSync(
+    path.join(process.cwd(), "src", "app", "settings", "design-preview", "page.js"),
+    "utf8",
+  );
+  const block = PREVIEW.slice(PREVIEW.indexOf("extraActions={["));
+  const extraIds = [...block.slice(0, block.indexOf("]}")).matchAll(/id: "([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(extraIds.length >= 2, "หน้าต้นแบบต้องยังสาธิต extraActions อยู่");
+  for (const id of extraIds) {
+    assert.ok(!PREVIEW.includes(`{ id: "${id}", label:`),
+      `id "${id}" ของ extraActions ชนกับ transition ใน lifecycle ตัวอย่าง — การ์ดจะทิ้งตัวนี้`);
+  }
+});

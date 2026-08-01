@@ -13,11 +13,12 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import Button from "@/components/ui/Button";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
+import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
+import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import { useRole, useTeam } from "@/lib/roleContext";
+import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, channelGroupOf } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -38,9 +39,11 @@ export default function LeadDetailPage() {
      (role/team มาจาก context ส่วน id ต้องถามเพราะ context ไม่ได้เก็บไว้) */
   const role = useRole();
   const team = useTeam();
-  const canCreateDeals = useCan("salesplan:deal");
+  const canCreateDeals = canCreateDealFromLead(role);
   const [meId, setMeId] = useState(null);
   const [users, setUsers] = useState([]);
+  const [dealOpen, setDealOpen] = useState(false);
+  const [dealOptions, setDealOptions] = useState({ customers: [], projects: [], categories: [] });
 
   useEffect(() => {
     fetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
@@ -102,30 +105,14 @@ export default function LeadDetailPage() {
   /* จุดเดียวที่ปุ่มบนการ์ดวิ่งเข้า — คืน false = ทำไม่สำเร็จ การ์ดจะค้างกล่องไว้
      พร้อมค่าที่กรอก ผู้ใช้ไม่ต้องพิมพ์เหตุผลใหม่ (สัญญาของ RecordControlCard) */
   async function runTransition(actionId, values) {
-    /* เปิดดีล = สร้าง entity คนละตัว ต้องผ่านฟอร์มดีล (เลือกลูกค้า/มูลค่า/เดือน FC)
-       ไม่ใช่ย้ายสถานะเฉย ๆ — lifecycle ประกาศไว้เพื่อให้ "ขั้นถัดไป" ถูกต้อง
-       แต่การลงมือเกิดที่หน้าดีล ดักที่นี่ก่อนจะไปถึง /transition */
-    if (actionId === "create_deal") {
-      router.push(`/sales-planning/deals?fromLead=${encodeURIComponent(lead.id)}`);
-      return true;
-    }
     if (!LEAD_TRANSITION_ACTIONS.includes(actionId)) return false;
 
     setBusy(true); setError("");
     try {
-      const assignee = users.find((u) => u.id === values.assigneeId);
       const res = await fetch(`/api/sales-planning/leads/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: actionId,
-          team: values.team || undefined,
-          assigneeId: values.assigneeId || undefined,
-          assigneeName: assignee ? fmtName(assignee) : undefined,
-          reason: values.reason || undefined,
-          meetingMode: actionId === "meeting" ? values.meetingMode : undefined,
-          eventAt: values.eventAt ? new Date(values.eventAt).toISOString() : undefined,
-        }),
+        body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "ทำรายการไม่สำเร็จ");
@@ -170,6 +157,25 @@ export default function LeadDetailPage() {
       <Button tone="primary" icon={<Save size={14} aria-hidden="true" />} onClick={save} disabled={busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </>
   ) : null;
+
+  /* เปิดดีล = สร้าง entity คนละตัว ต้องผ่านฟอร์มดีล (เลือกลูกค้า/มูลค่า/เดือน FC)
+     ไม่ใช่ย้ายสถานะเฉย ๆ — lifecycle ประกาศ transition ไว้เพื่อให้ "ขั้นถัดไป" ถูกต้อง
+     แล้วดักที่นี่ก่อนการ์ดจะเปิดกล่องยืนยัน (คืน true = จัดการเองแล้ว)
+     ตัวเลือกที่ประกอบฟอร์มโหลดตอนเปิดจริงเท่านั้น — คนส่วนใหญ่เข้าหน้านี้มาอ่าน ไม่ได้เปิดดีล */
+  function openDealForm(transition) {
+    if (transition.id !== "create_deal") return false;
+    Promise.all([
+      fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    ]).then(([customerRows, projectRows, categoryRows]) => setDealOptions({
+      customers: Array.isArray(customerRows) ? customerRows : [],
+      projects: Array.isArray(projectRows) ? projectRows : projectRows?.items || [],
+      categories: Array.isArray(categoryRows) ? categoryRows : [],
+    }));
+    setDealOpen(true);
+    return true;
+  }
 
   /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน
      แก้ไข = secondary (ทำได้ แต่ไม่ใช่ก้าวถัดไป) · ลบ = danger (ทำลาย) */
@@ -218,6 +224,7 @@ export default function LeadDetailPage() {
             record={lead}
             user={viewer}
             onTransition={runTransition}
+            onSelect={openDealForm}
             extraActions={recordActions}
             busy={busy}
           />
@@ -267,6 +274,17 @@ export default function LeadDetailPage() {
           />
         </DetailCard>
         </DetailPageLayout>
+
+        {/* ฟอร์มเดียวกับที่หน้ารายการลีดใช้ — ไม่ได้ก๊อปมา */}
+        {dealOpen && (
+          <LeadDealModal
+            lead={lead}
+            customers={dealOptions.customers}
+            projects={dealOptions.projects}
+            categories={dealOptions.categories}
+            onClose={() => setDealOpen(false)}
+          />
+        )}
     </div>}
   </Workspace>;
 }

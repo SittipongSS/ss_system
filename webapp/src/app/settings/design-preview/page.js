@@ -1121,9 +1121,11 @@ export default function DesignPreviewPage() {
                 record={demoRecord}
                 user={demoUser}
                 onTransition={runDemoTransition}
+                /* id ต้องไม่ชนกับ transition ของ lifecycle (ตัวอย่างนี้มี transition ชื่อ
+                   `edit` อยู่แล้ว) — ชนแล้วการ์ดจะทิ้งตัวที่ส่งมา ไม่ใช่โชว์ทั้งคู่ */
                 extraActions={[
-                  { id: "edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูล", icon: Pencil, onClick: () => notifyToast.info("ตัวอย่าง: เปิดโหมดแก้ไขในหน้า") },
-                  { id: "delete", kind: "delete", slot: "danger", label: "ลบรายการนี้", icon: Trash2, onClick: () => notifyToast.warning("ตัวอย่าง: เปิดกล่องยืนยันลบ") },
+                  { id: "record-edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูล", icon: Pencil, onClick: () => notifyToast.info("ตัวอย่าง: เปิดโหมดแก้ไขในหน้า") },
+                  { id: "record-delete", kind: "delete", slot: "danger", label: "ลบรายการนี้", icon: Trash2, onClick: () => notifyToast.warning("ตัวอย่าง: เปิดกล่องยืนยันลบ") },
                 ]}
               />
               <div className={styles.stack}>

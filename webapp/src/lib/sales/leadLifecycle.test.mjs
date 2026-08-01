@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
+import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
+import { validateTransitionValues } from "../recordLifecycle.js";
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
@@ -144,4 +145,69 @@ test("กติกา role ฝั่ง UI ยังอ้างตัวช่�
     assert.match(apiSrc, new RegExp(helper), `API ควรใช้ ${helper}`);
     assert.match(uiSrc, new RegExp(helper), `lifecycle ต้องใช้ ${helper} ให้ตรงกับ API`);
   }
+});
+
+/* 🐞 บั๊กจริงที่เทสต์ชุดแรกจับไม่ได้: lifecycle ประกาศ contact เป็น reason "optional"
+   ทั้งที่ handler ตอบ badRequest ถ้าไม่มีเหตุผล → กดยืนยันโดยไม่พิมพ์ = 400
+   เทสต์นี้ **อ่าน route.js จริง** หาว่า action ไหนมีด่าน `body.reason?.trim()`
+   แล้วบังคับให้ฝั่ง UI ตรงกันทั้งสองทาง (ขาดก็ตก เกินก็ตก) */
+test("action ที่ API บังคับเหตุผล ต้องตรงกับ reason ของ lifecycle เป๊ะ", () => {
+  const apiSrc = readFileSync(
+    path.join(process.cwd(), "src/app/api/sales-planning/leads/[id]/transition/route.js"),
+    "utf8",
+  );
+  // ตัดไฟล์เป็นบล็อกต่อ action ตาม `if/else if (action === 'x')` แล้วดูว่าบล็อกไหนมีด่านเหตุผล
+  const blocks = apiSrc.split(/(?:\}\s*else\s+)?if\s*\(action === '/).slice(1);
+  const requiredByApi = blocks
+    .map((block) => [block.slice(0, block.indexOf("'")), block])
+    .filter(([, block]) => /!body\.reason\?\.trim\(\)/.test(block.split("} else if")[0]))
+    .map(([action]) => action)
+    .sort();
+
+  assert.deepEqual([...LEAD_REASON_REQUIRED].sort(), requiredByApi,
+    `API บังคับเหตุผลกับ [${requiredByApi}] แต่ LEAD_REASON_REQUIRED = [${LEAD_REASON_REQUIRED}]`);
+
+  for (const transition of lifecycle.transitions) {
+    if (!LEAD_TRANSITION_ACTIONS.includes(transition.id)) continue;
+    const expected = requiredByApi.includes(transition.id) ? "required" : "none";
+    assert.equal(transition.reason, expected,
+      `${transition.id}: API ${expected === "required" ? "บังคับ" : "ไม่บังคับ"}เหตุผล แต่ lifecycle ว่า "${transition.reason}"`);
+  }
+});
+
+/* ปุ่มยืนยันต้องกดไม่ได้ในกรณีที่ API จะปฏิเสธ — ไม่ใช่ปล่อยให้ยิงไปแล้วเด้ง error */
+test("ยังไม่กรอกเหตุผล = validateTransitionValues ต้องทัก", () => {
+  const contacted = lead({ status: "assigned", team: "A", assigneeId: "u-ae" });
+  const contact = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "contact");
+  assert.ok(contact, "สถานะ assigned ควรมีปุ่มบันทึกการติดต่อ");
+  assert.ok(validateTransitionValues(contact.transition, {}), "ไม่กรอกเหตุผลต้องได้ข้อความทัก");
+  assert.equal(validateTransitionValues(contact.transition, { reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา" }), null);
+});
+
+/* body ที่ส่งไป API ต้องมาจากที่เดียว — เคยประกอบเองคนละแบบใน 2 หน้า */
+test("buildLeadTransitionPayload: ค่าว่างหายไปจาก body ไม่ใช่ส่ง null ไป", () => {
+  const body = buildLeadTransitionPayload({ action: "screen", values: { team: "ODM" } });
+  assert.equal(body.team, "ODM");
+  assert.equal("assigneeId" in JSON.parse(JSON.stringify(body)), false,
+    "ค่าว่างต้องหลุดจาก JSON ไม่ใช่ไปเป็น null ที่ handler");
+});
+
+test("buildLeadTransitionPayload: meetingMode ติดไปเฉพาะ action meeting", () => {
+  const values = { meetingMode: "onsite" };
+  assert.equal(buildLeadTransitionPayload({ action: "meeting", values }).meetingMode, "onsite");
+  assert.equal(buildLeadTransitionPayload({ action: "contact", values }).meetingMode, undefined,
+    "contact ไม่มีรูปแบบนัด — ส่งไปด้วยคือขยะที่ handler ไม่ได้ขอ");
+});
+
+test("buildLeadTransitionPayload: eventAt แปลงเป็น ISO · ค่าเสียกลายเป็น undefined ไม่ใช่ Invalid Date", () => {
+  const good = buildLeadTransitionPayload({ action: "meeting", values: { eventAt: "2026-08-05T10:30" } });
+  assert.match(good.eventAt, /^2026-08-05T\d{2}:30:00\.000Z$/);
+  assert.equal(buildLeadTransitionPayload({ action: "meeting", values: { eventAt: "ไม่ใช่วันที่" } }).eventAt, undefined);
+});
+
+test("buildLeadTransitionPayload: เติมชื่อผู้รับผิดชอบจากรายชื่อ (API บังคับทั้ง id และชื่อ)", () => {
+  const users = [{ id: "u1", firstName: "สมชาย", lastName: "ใจดี" }];
+  const body = buildLeadTransitionPayload({ action: "assign", values: { assigneeId: "u1" }, users });
+  assert.equal(body.assigneeId, "u1");
+  assert.ok(body.assigneeName, "assign ที่ไม่มี assigneeName จะโดน badRequest");
 });
