@@ -100,6 +100,21 @@ export const fmtDateTime = (value) => {
   return `${fmtDateNumeric(d)} ${hh}:${mi}`;
 };
 
+// Date + time แบบสั้น → DD/MM HH:MM (ไม่มีปี) สำหรับคอลัมน์แคบ เช่น หัวแถวเธรด
+// ⚠️ คู่กับ `title={fmtDateTime(v)}` เสมอ — ปีหายจากหน้าจอได้ แต่ต้องยังหาเจอเมื่อ
+// ต้องการ · ไม่ใช้เวลาแบบ "2 ชม.ที่แล้ว" เพราะต้องอ่านนาฬิกาตอน render ซึ่งผิดกฎ
+// react-hooks/purity (ดูแพตเทิร์น nowMs ในหน้าดีล)
+export const fmtDayTime = (value) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+};
+
 // Time is always rendered as 24-hour HH:mm. This also normalizes editable
 // values such as "9", "930" and "9:30" without relying on browser locale.
 export const normalizeTime = (value) => {
