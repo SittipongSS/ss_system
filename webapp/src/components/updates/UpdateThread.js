@@ -18,7 +18,8 @@ import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import RichText from "@/components/ui/RichText";
 import Select from "@/components/ui/Select";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtDayTime } from "@/lib/format";
+import { DEPARTMENT_LABELS } from "@/lib/permissions";
 import {
   authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
   kindAcceptsDueDate, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
@@ -277,7 +278,9 @@ export default function UpdateThread({
         <div className={`${styles.row} ${styles.systemRow}`} key={key} style={tint}>
           <div className={styles.meta}>
             <span className={styles.metaName}>{item.label}</span>
-            <span className={styles.metaSub}>{item.at ? fmtDateTime(item.at) : ""}</span>
+            <span className={styles.metaSub} title={item.at ? fmtDateTime(item.at) : undefined}>
+              {item.at ? fmtDayTime(item.at) : ""}
+            </span>
           </div>
           <div className={styles.content}>
             <div className={styles.systemText}>
@@ -305,10 +308,12 @@ export default function UpdateThread({
       <article className={styles.row} key={key} style={tint}>
         <div className={styles.meta}>
           <span className={styles.metaName}>{row.authorName || "ระบบ"}</span>
-          <span className={styles.metaSub}>
-            {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ)
-                อ่านไม่รู้เรื่องถ้าไม่รู้ว่าใครพูดในฐานะอะไร */}
-            {row.authorDept ? `${row.authorDept} · ` : ""}{item.at ? fmtDateTime(item.at) : ""}
+          <span className={styles.metaSub} title={item.at ? fmtDateTime(item.at) : undefined}>
+            {/* ฝ่ายของคนพูด — เธรดสองฝ่าย (เซลถาม ↔ RD/PC/ผู้บริหารตอบ) อ่านไม่รู้เรื่อง
+                ถ้าไม่รู้ว่าใครพูดในฐานะอะไร · ใช้ชื่อจากทะเบียนฝ่าย ไม่ใช่รหัสดิบ
+                · วันที่ตัดปีออกให้พอดีคอลัมน์ (ปียังอยู่ใน title ตอน hover) */}
+            {row.authorDept ? `${DEPARTMENT_LABELS[row.authorDept] || row.authorDept} · ` : ""}
+            {item.at ? fmtDayTime(item.at) : ""}
           </span>
         </div>
         <div className={styles.content}>
@@ -382,9 +387,12 @@ export default function UpdateThread({
               เนื้อความล้วน ๆ และปุ่มอยู่ตรงที่สายตาหยุดพอดีหลังอ่านจบ */}
           <div className={styles.head}>
             {row.meta?.dueDate && <span className={styles.due}>กำหนด {row.meta.dueDate}</span>}
-            {/* ชนิดโผล่เฉพาะเธรดที่เลือกชนิดได้ (ฟีดดีล/ลีด) — เธรดที่มีชนิดเดียว
-                ไม่ต้องมีป้ายที่บอกสิ่งเดียวกันทุกแถว */}
-            {showKindPicker && <span className={`ui-badge ${styles.kindBadge}`}>{item.label}</span>}
+            {/* ⚠️ ป้ายชนิดโผล่เฉพาะเมื่อ **ไม่ใช่ชนิดตั้งต้น** — ในเธรดดีล/ลีด ข้อความ
+                ส่วนใหญ่เป็น "บันทึก" อยู่แล้ว ป้ายที่ขึ้นทุกแถวจึงไม่ได้บอกอะไรนอกจาก
+                ทำให้รก · "โทร/ประชุม/อีเมล/ขั้นถัดไป" คือของที่ต่างจากปกติจริง ๆ */}
+            {row.kind !== defaultAuthorableKind(entityType) && (
+              <span className={styles.kindBadge}>{item.label}</span>
+            )}
             {row.editedAt && <span>แก้ไขแล้ว</span>}
             {row.acknowledgedAt && (
               <span className={styles.ack}><Check size={11} aria-hidden="true" /> รับทราบแล้ว</span>

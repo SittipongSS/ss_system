@@ -59,7 +59,10 @@ export const UPDATE_KINDS = {
   // ไม่มีชนิด 'comment' ที่นี่โดยเจตนา — ของเดิมใช้ 'note' เป็นค่าตั้งต้น
   // (updateKindMeta/defaultAuthorableKind ถอยไปหาตัวแรกที่ประกาศ ไม่ได้ผูกกับ 'comment')
   deal: {
-    note: { label: 'บันทึก', color: 'var(--text-3)', authorable: true },
+    // สีเดียวกับ `comment` ของ entity อื่น — ข้อความที่คนพิมพ์เองต้องมีสีเดียวกัน
+    // ทั้งระบบ (ของเดิมเป็นสีจางเพราะยกมาจากฟีดดีล ซึ่งพอเอามาทำแถบซ้ายแล้ว
+    // ข้อความคนในเธรดดีล/ลีดกลายเป็นเทาเหมือนกันหมด = สีไม่ได้ช่วยอะไร)
+    note: { label: 'บันทึก', color: 'var(--accent)', authorable: true },
     call: { label: 'โทร', color: 'var(--blue)', authorable: true },
     meeting: { label: 'ประชุม', color: 'var(--violet)', authorable: true },
     email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },
@@ -73,7 +76,10 @@ export const UPDATE_KINDS = {
   // ยังอยู่ในตาราง `lead_events` ของตัวเอง (schema เฉพาะโดเมน + คิว/KPI query ตรง)
   // แล้วส่งเข้าเธรดผ่าน `extraItems` เป็นรายการอ่านอย่างเดียว — ตารางไม่ย้าย
   lead: {
-    note: { label: 'บันทึก', color: 'var(--text-3)', authorable: true },
+    // สีเดียวกับ `comment` ของ entity อื่น — ข้อความที่คนพิมพ์เองต้องมีสีเดียวกัน
+    // ทั้งระบบ (ของเดิมเป็นสีจางเพราะยกมาจากฟีดดีล ซึ่งพอเอามาทำแถบซ้ายแล้ว
+    // ข้อความคนในเธรดดีล/ลีดกลายเป็นเทาเหมือนกันหมด = สีไม่ได้ช่วยอะไร)
+    note: { label: 'บันทึก', color: 'var(--accent)', authorable: true },
     call: { label: 'โทร', color: 'var(--blue)', authorable: true },
     meeting: { label: 'ประชุม', color: 'var(--violet)', authorable: true },
     email: { label: 'อีเมล', color: 'var(--teal)', authorable: true },

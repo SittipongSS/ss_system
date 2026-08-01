@@ -7,9 +7,16 @@
 /* แถบสวิตช์ซ่อนเหตุการณ์ระบบ — ชิดขวาแนวเดียวกับแถบปุ่มของกล่องพิมพ์ */
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2-5); }
 
-.timeline { display: flex; flex-direction: column; gap: var(--space-3-5); }
+.timeline { display: flex; flex-direction: column; }
 
-.row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--space-4); }
+/* จังหวะเดียวทั้งเธรด: ทุกกลุ่มมีระยะบน-ล่างเท่ากันและคั่นด้วยเส้นบาง — ของเดิม
+   ปล่อยให้แต่ละแถวลอย ทำให้ตาแยกไม่ออกว่าแถวไหนจบตรงไหน (ผู้ใช้ว่า "สเปะสปะ") */
+.group { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) 0; }
+.group + .group { border-top: 1px solid var(--border); }
+
+/* ⚠️ `baseline` ไม่ใช่ `start`: ชื่อคน (fs-5) กับบรรทัดแรกของเนื้อความ (fs-7) สูงไม่
+   เท่ากัน ถ้าจัดชิดขอบบนจะเหลื่อมกันทุกแถว */
+.row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--space-4); align-items: baseline; }
 
 /* คอลัมน์ซ้าย — ชิดขวาเพื่อให้ชิดกับเนื้อความที่มันกำกับ (ragged ด้านนอก) */
 .meta { text-align: right; min-width: 0; }
@@ -23,22 +30,28 @@
    สีมาจากทะเบียนชนิดที่มีอยู่แล้ว (ยื่น=น้ำเงิน · ตีกลับ=แดง · อนุมัติ=เขียว …)
    จึงตรงกับปุ่มบนหน้าเอกสารที่ทำให้เหตุการณ์นั้นเกิดโดยอัตโนมัติ — ไม่ได้สร้าง
    ระบบสีที่สองให้ต้องจำ · `--kind-color` ตั้งที่แถวเดียว (ดู renderItem) */
+/* ⚠️ กว้างเท่ากับ measure ของข้อความ (`.readable-text` = 78ch) — ถ้าปล่อยให้ยืดเต็ม
+   จอ แถวสถานะ+ปุ่มจะกว้างกว่าตัวข้อความมาก แล้วปุ่มลอยไปไกลคนละที่ทุกแถว
+   (วัดจริงก่อนแก้: ปุ่มอยู่ที่ 14 / 91 / 189 / 317px จากขอบข้อความ) */
 .content {
-  min-width: 0; display: flex; flex-direction: column; gap: var(--space-1);
+  min-width: 0; max-width: 78ch; display: flex; flex-direction: column; gap: var(--space-1);
   border-left: 2px solid var(--kind-color, var(--border));
   padding-left: var(--space-3);
 }
 
 /* ── คำตอบซ้อนใต้ข้อความที่ถูกตอบ ─────────────────────────────────────
    ชั้นเดียวเท่านั้น · เส้นเชื่อมทางซ้ายบอกว่าทั้งกลุ่มเป็นเรื่องเดียวกัน */
-.group { display: flex; flex-direction: column; gap: var(--space-3-5); }
 .replies {
-  display: flex; flex-direction: column; gap: var(--space-3-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
   margin-left: var(--space-6); padding-left: var(--space-4);
   border-left: 1px solid var(--border);
 }
-/* ป้ายชนิดท้ายข้อความ — สีเดียวกับแถบซ้ายของแถวนั้น */
-.kindBadge { color: var(--kind-color, var(--text-3)); }
+/* ป้ายชนิด — ตัวอักษรสีล้วน ไม่มีพื้น/ขอบ เพราะป้ายที่มีพื้นเทาอ่านเป็น "ปุ่ม"
+   และมันอยู่ในแถวเดียวกับปุ่มจริง ๆ อยู่แล้ว */
+.kindBadge {
+  color: var(--kind-color, var(--text-3));
+  font-weight: var(--fw-semibold);
+}
 
 /* ── เหตุการณ์ระบบ = โครงเดิม เสียงเบากว่า ─────────────────────────── */
 .systemRow .metaName { font-weight: var(--fw-medium); color: var(--text-3); }
@@ -112,6 +125,8 @@
 }
 .fileLink:hover { color: var(--accent-ink); }
 
+/* ปุ่มชิดขวาของ **บล็อกข้อความ** (78ch) ไม่ใช่ขอบจอ — จึงอยู่แนวตั้งเดียวกันทุกแถว
+   ไม่ขยับไปมาตามความยาวของสถานะที่นำหน้ามัน */
 .rowActions { margin-left: auto; display: inline-flex; gap: var(--space-1); }
 
 .composer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3-5); }
