@@ -16,6 +16,8 @@ import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectDealTypes";
+import styles from "./page.module.css";
 import {
   CLOSED_WORK_STATUSES, createProjectLifecycle, PROJECT_CLOSE_ACTIONS,
   PROJECT_PATCH_TRANSITIONS, PROJECT_WORK_STATUSES, projectStatusLabel,
@@ -234,7 +236,7 @@ export default function ProjectsIndexPage() {
                 {pageRows.map((p) => {
                   const r = p.dealsRollup || {};
                   const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
-                  const firstDeal = (p.deals || [])[0];
+                  const dealTypes = summarizeProjectDealTypes(p.deals);
                   const canEditProject = canEdit && p.canEdit && !["On Hold", "Dropped", "Completed"].includes(p.status);
                   const canDeleteProject = !!p.canDelete;
                   return (
@@ -253,15 +255,29 @@ export default function ProjectsIndexPage() {
                         <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{projectBrand || "-"}</span>
                       </td>
                       <td>
-                        <div style={{ minWidth: 150 }}>
-                          {firstDeal ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                              {dealTypeBadge(firstDeal.dealType || firstDeal.metadata?.projectType)}
-                              <Link prefetch={false} href={`/sales-planning/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
-                            </div>
-                          ) : <span style={{ color: "var(--text-3)" }}>-</span>}
-                          <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{(p.deals || []).length} ดีล</span>
-                        </div>
+                        {/* โครงการสะสมดีลไปเรื่อย ๆ — คอลัมน์นี้ตอบว่า "ผ่านงานชนิดไหนมาแล้วกี่ครั้ง"
+                            ไม่ใช่ชื่อดีลใบแรกใบเดียวเหมือนเดิม (มติผู้ใช้ 2026-08-02)
+                            ชนิดมีแค่ 3 → ยาวสุด 3 ชิป ไม่ต้องมีกติกาตัดทิ้งให้ข้อมูลหายเงียบ */}
+                        {dealTypes.length ? (
+                          <div className={styles.dealTypes}>
+                            {dealTypes.map((row) => (
+                              <Link
+                                key={row.type}
+                                prefetch={false}
+                                /* 1 ใบ → ไปดีลใบนั้นเลย · หลายใบ → ไปหน้าโครงการที่ลิสต์ครบ
+                                   ความหมายเดียวกันทั้งสองทาง: "กดแล้วได้เห็นดีลกลุ่มนี้" */
+                                href={row.count === 1
+                                  ? `/sales-planning/deals/${row.deals[0].id}`
+                                  : `/sa/projects/${p.code || p.id}`}
+                                className={styles.dealTypeChip}
+                                title={dealTypeTooltip(row)}
+                              >
+                                {dealTypeBadge(row.type)}
+                                {row.count > 1 && <span className={styles.dealTypeCount}>×{row.count}</span>}
+                              </Link>
+                            ))}
+                          </div>
+                        ) : <span style={{ color: "var(--text-3)" }}>-</span>}
                       </td>
                       <td className="num mono">{money(r.fcTotal || 0)}</td>
                       <td className="num mono" style={{ color: "var(--green)" }}>{money(r.actual || 0)}</td>
