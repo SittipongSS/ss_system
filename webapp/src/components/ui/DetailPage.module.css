@@ -10,6 +10,9 @@
   align-items: start;
   gap: var(--space-4-5);
 }
+.layoutSolo {
+  grid-template-columns: minmax(0, 1fr);
+}
 .main {
   min-width: 0;
   display: flex;

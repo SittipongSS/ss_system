@@ -8,12 +8,11 @@ import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
-  Activity, BriefcaseBusiness, Building2, CircleDashed, Pause,
+  BriefcaseBusiness, Building2, CircleDashed,
   Check, Printer, Table2, Filter, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
-import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser } from "@/lib/permissions";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/StepFormFields";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
@@ -34,15 +33,19 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
+import RecordControlCard from "@/components/ui/RecordControlCard";
+import {
+  canDeleteProject, createProjectLifecycle,
+  PROJECT_CLOSE_ACTIONS, PROJECT_PATCH_TRANSITIONS,
+} from "@/lib/pm/projectLifecycle";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import { isExciseCategory } from "@/lib/master/categoryOf";
 import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
-import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_TYPES } from "@/lib/pm/projectClose";
+import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import { isWonStage } from "@/lib/salesPlanning";
@@ -51,7 +54,7 @@ import RequestListCard from "@/components/requests/RequestListCard";
 import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
 import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
+import { ContextCard, ContextGrid, DetailPageLayout } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
@@ -65,10 +68,8 @@ const STATUS_TH = {
   "On Hold": "ระงับ (On Hold)", Dropped: "ยกเลิก (Dropped)",
 };
 
-// ทุก transition ที่ถอยหลัง/ตีกลับ บังคับกรอกเหตุผล — ความยาวเท่ากับที่ QT/SO ใช้
-const CLOSE_REASON_MIN = 10;
-const CLOSE_REASON_MAX = 500;
-
+// ความยาวเหตุผล 10–500 ย้ายไปอยู่ที่ recordLifecycle (ค่าเริ่มต้นของ reasonPolicy)
+// แล้ว — TransitionDialog บังคับให้เอง หน้านี้ไม่ต้องถือเลขของตัวเองอีก
 
 
 // ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (staff 1 คนต่อฝ่าย). ขั้นตอนของ
@@ -158,9 +159,16 @@ export default function ProjectDetailPage() {
   const hasEditCap = useCan("salesplan:edit");
   const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
+  const team = useTeam();
   // ชื่อผู้ใช้ปัจจุบัน — ใช้เทียบกับ aeOwner ซึ่งเก็บเป็นข้อความ ไม่ใช่ id (แบบเดียวกับฟอร์มโครงการ)
   const [myName, setMyName] = useState("");
   useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  /* กติกา "โครงการใบนี้ทำอะไรได้บ้าง" — ไฟล์เดียวกับหน้ารายการ (lib/pm/projectLifecycle)
+     ⚠️ ห้ามคำนวณสิทธิ์ซ้ำในหน้านี้: ของเดิมเช็ค `salesplan:edit` ทั้งที่ทุก API ตรวจ
+     `pm:edit` — lifecycle แก้ให้แล้ว เอาไปใช้ตรง ๆ
+     name เข้าไปด้วยเพราะ transition "ดึงกลับจากระงับ" เทียบเจ้าของด้วย *ชื่อ* ไม่ใช่ id */
+  const viewer = useMemo(() => ({ role: userRole, team, name: myName }), [userRole, team, myName]);
+  const projectLc = useMemo(() => createProjectLifecycle(), []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allProducts, setAllProducts] = useState([]);
@@ -211,8 +219,6 @@ export default function ProjectDetailPage() {
   const [creatingTaxReg, setCreatingTaxReg] = useState(false);
 
   const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
-  const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโครงการ (แทน window.prompt)
-  const [dropReason, setDropReason] = useState("");
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -233,12 +239,11 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // เฟส F — อนุมัติปิดโครงการ (มติ 2026-07-18)
+  /* เฟส F — อนุมัติปิดโครงการ (มติ 2026-07-18)
+     ขอปิด/ถอน/อนุมัติ/ตีกลับ/เปิดใหม่ เคยถือ state โมดัลของตัวเองคนละก้อน (closeReqForm ·
+     reopenForm · rejectForm · showDrop) — ย้ายไปให้ RecordControlCard ถือแทนทั้งชุดแล้ว
+     เหลือแค่ตัวบอกว่ากำลังยิงอะไรอยู่ */
   const [closeBusy, setCloseBusy] = useState("");
-  const [closeReqForm, setCloseReqForm] = useState(null); // { closeType, reason } เมื่อเปิด modal ขอปิด
-  // ถอยหลัง/ตีกลับ ต้องกรอกเหตุผลเสมอ — ใช้ ReasonDialog กลาง (เดิมเป็น window.prompt)
-  const [reopenForm, setReopenForm] = useState(null); // { reason } เมื่อเปิด modal เปิดโครงการใหม่
-  const [rejectForm, setRejectForm] = useState(null); // { reason } เมื่อเปิด modal ตีกลับคำขอปิด
   // งานค้างสายขาย (มติ B3): เตือนแต่ไม่บล็อก — คนขอปิดกับคนอนุมัติต้องเห็นก่อนกด
   // ไม่ใช่ไปรู้ทีหลังตอนออกใบใหม่ไม่ได้แล้ว. โหลดเมื่อยังไม่ปิด (ปิดไปแล้วไม่มีอะไรให้เตือน)
   const [closeReadiness, setCloseReadiness] = useState(null);
@@ -265,33 +270,34 @@ export default function ProjectDetailPage() {
       return true;
     } finally { setCloseBusy(""); }
   }, [id, load]);
-  const submitCloseRequest = async () => {
-    if (!closeReqForm?.closeType) { notifyToast.error("เลือกประเภทการปิด"); return; }
-    if (!closeReqForm.reason.trim()) { notifyToast.error("ระบุเหตุผล/สรุปการปิด"); return; }
-    const ok = await closeAction("request", { closeType: closeReqForm.closeType, reason: closeReqForm.reason.trim() });
-    if (ok) setCloseReqForm(null);
-  };
-  // ถอนคำขอปิด — ผู้ยื่นดึงคำขอของตัวเองกลับ ไม่ใช่การตีกลับของผู้อนุมัติ จึงยืนยันพอ
-  // ไม่บังคับเหตุผล (ไม่มีใครต้องอ่านเหตุผลที่คนถอนคำขอตัวเอง)
-  const withdrawCloseRequest = async () => {
-    if (!(await askConfirm({
-      title: "ถอนคำขอปิดโครงการ",
-      message: "คำขอปิดโครงการจะถูกถอนออกจากคิวอนุมัติ และโครงการกลับมาสถานะเปิด — ยื่นขอปิดใหม่ได้ภายหลัง",
-      confirmLabel: "ถอนคำขอ",
-      danger: false,
-    }))) return;
-    await closeAction("cancel_request");
-  };
-  const submitReopen = async () => {
-    const reason = (reopenForm?.reason || "").trim();
-    if (reason.length < CLOSE_REASON_MIN) return;
-    if (await closeAction("reopen", { reason })) setReopenForm(null);
-  };
-  const submitReject = async () => {
-    const reason = (rejectForm?.reason || "").trim();
-    if (reason.length < CLOSE_REASON_MIN) return;
-    if (await closeAction("reject", { reason })) setRejectForm(null);
-  };
+
+  /* จุดเดียวที่ปุ่มบนการ์ด Control วิ่งเข้า — โครงการยิงสองปลายทางตามชนิดของ transition
+     สถานะงาน (ระงับ / ยกเลิก / ดึงกลับ) → PATCH · ชั้นการปิด → POST /close
+     ท่าเดียวกับ runProjectTransition ของหน้ารายการ อ่านกติกาจาก lifecycle ตัวเดียวกัน
+     คืน false = ไม่สำเร็จ การ์ดค้างกล่องไว้พร้อมเหตุผลที่พิมพ์ไปแล้ว ไม่ต้องพิมพ์ใหม่ */
+  const runControlTransition = useCallback(async (actionId, values) => {
+    const action = PROJECT_CLOSE_ACTIONS[actionId];
+    const reason = values.reason?.trim() || undefined;
+    if (action) return closeAction(action, { reason, closeType: values.closeType || undefined });
+    if (!PROJECT_PATCH_TRANSITIONS.includes(actionId)) return false;
+    setCloseBusy(actionId);
+    try {
+      const res = await fetch(`/api/pm/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(actionId === "drop"
+          // เหตุผลที่ยกเลิกเก็บใน metadata.lossReason ตามของเดิม ไม่ใช่คอลัมน์ของตัวเอง
+          ? { status: "Dropped", metadata: { ...(data?.metadata || {}), lossReason: reason || null } }
+          : { status: projectLc.get(actionId).to }),
+      });
+      if (!res.ok) {
+        notifyToast.error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
+        return false;
+      }
+      await load();
+      return true;
+    } finally { setCloseBusy(""); }
+  }, [closeAction, data?.metadata, id, load, projectLc]);
 
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
@@ -549,39 +555,9 @@ export default function ProjectDetailPage() {
     if (res.ok) load();
   };
 
-  const openDrop = () => { setDropReason(""); setShowDrop(true); };
-  const confirmDrop = async () => {
-    const reason = dropReason.trim();
-    if (!reason) { setToast({ kind: "error", msg: "กรุณาระบุเหตุผลที่ยกเลิก" }); return; }
-    setShowDrop(false);
-    await updateProject({ status: "Dropped", metadata: { ...(data.metadata || {}), lossReason: reason } });
-  };
-
-  // พัก/ดึงกลับ — เปลี่ยนสถานะโครงการทั้งใบ ต้องผ่านกล่องยืนยันก่อนเสมอ
-  const holdProject = async () => {
-    if (!(await askConfirm({
-      title: "ระงับโครงการชั่วคราว",
-      message: "โครงการจะถูกพักไว้ (On Hold) — ขั้นตอนที่ค้างยังอยู่ครบ และดึงกลับมาดำเนินการได้ภายหลัง",
-      confirmLabel: "ระงับชั่วคราว",
-      danger: false,
-    }))) return;
-    await updateProject({ status: "On Hold" });
-  };
-  // สองปุ่ม Restore เป็น "คนละ transition" กัน จึงคุมสิทธิ์ต่างกันโดยเจตนา:
-  //   จาก Dropped (ยกเลิกแล้ว) = senior_ae ขึ้นไป — ปลุกโครงการที่ตัดสินใจทิ้งไปแล้ว
-  //   จาก On Hold (พักไว้)     = เจ้าของดีล    — งานของตัวเองที่แค่พักไว้ กลับมาทำต่อได้เอง
-  // ห้ามยุบสองปุ่มนี้ให้ใช้เงื่อนไขสิทธิ์เดียวกัน
-  const restoreProject = async (from) => {
-    if (!(await askConfirm({
-      title: "ดึงกลับมาดำเนินการ",
-      message: from === "Dropped"
-        ? "โครงการที่ยกเลิกแล้วจะกลับมาสถานะดำเนินการ (In Progress) — เหตุผลที่ยกเลิกเดิมยังอยู่ในประวัติ"
-        : "โครงการที่พักไว้จะกลับมาสถานะดำเนินการ (In Progress) — ขั้นตอนที่ค้างเดินต่อจากเดิม",
-      confirmLabel: "ดึงกลับมาดำเนินการ",
-      danger: false,
-    }))) return;
-    await updateProject({ status: "In Progress" });
-  };
+  /* ระงับ / ยกเลิก / ดึงกลับ (สองแบบ — คนละสิทธิ์กันโดยเจตนา) ย้ายไปประกาศที่
+     lib/pm/projectLifecycle.js แล้ว ทั้งกล่องยืนยันและช่องกรอกเหตุผล ที่นี่เหลือ
+     runControlTransition ตัวเดียวเป็นทางออกสู่ API */
 
   const handleDeleteProject = async () => {
     if (!data) return;
@@ -866,6 +842,87 @@ export default function ProjectDetailPage() {
   }));
   const completedPersonalTasks = shownPersonalTasks.filter((task) => task.status === "Completed").length;
 
+  /* ───────── การ์ด Record Control ─────────
+     ของเดิมกระจายอยู่ 4 ที่: แถบไอคอนหัวหน้า (แก้ไข/ลบ) · การ์ดสถานะการปิดกลางหน้า ·
+     แบนเนอร์แดง "ยกเลิกแล้ว" · แถบปุ่มท้ายหน้า (ระงับ/ยกเลิก) ที่โผล่เฉพาะแท็บไทม์ไลน์
+     — ผู้ใช้ต้องรู้เองว่าปุ่มไหนอยู่ตรงไหน · ตอนนี้รวมเป็นการ์ดเดียวที่แถบขวา */
+  const closeStatus = p.closeStatus || "open";
+  const linkedDealCount = (p.deals || []).length;
+  const isCloseRequester = !!p.me?.id && p.closeRequestedBy === p.me.id;
+
+  /* ⚠️ CloseReadinessNotice เป็น **คำเตือน ไม่ใช่ด่าน** (มติ B3) — อยู่ที่ notices เท่านั้น
+     ห้ามเอาไปผูกกับ allow() ของ transition ไม่งั้นโครงการที่ตั้งใจปิดทั้งที่มีใบค้าง
+     จะปิดไม่ได้เลย
+
+     โชว์เฉพาะตอนที่ "การปิด" เป็นเรื่องที่กดได้จริง: กำลังจะยื่น (ของเดิมเห็นในโมดัล
+     ขอปิดเท่านั้น — สายไป ต้องเห็นก่อนกด) หรือกำลังรออนุมัติ (ผู้อนุมัติต้องเห็นชุด
+     เดียวกับผู้ขอ) · โครงการที่ยกเลิกไปแล้วขอปิดไม่ได้ เตือนไปก็ไม่มีปุ่มให้กด */
+  const showCloseReadiness = closeStatus === "pending_close"
+    || projectLc.available(p, viewer).some((entry) => entry.id === "request_close");
+  const controlNotices = [
+    p.status === "Dropped" ? (
+      <StatusNotice key="dropped" tone="error" title="โครงการนี้ถูกยกเลิกแล้ว">
+        {p.metadata?.lossReason ? `เหตุผล: ${p.metadata.lossReason}` : "เหตุผลที่ยกเลิกอยู่ในประวัติ"}
+      </StatusNotice>
+    ) : null,
+    showCloseReadiness && closeReadiness?.total ? <CloseReadinessNotice key="readiness" readiness={closeReadiness} /> : null,
+    // ผู้อนุมัติที่เป็นคนยื่นเอง — lifecycle ซ่อนปุ่มอนุมัติ/ตีกลับให้แล้ว แต่ต้องบอกว่าทำไม
+    closeStatus === "pending_close" && p.canApproveClose && isCloseRequester ? (
+      <StatusNotice key="own-request" tone="info" title="คำขอปิดนี้เป็นของคุณเอง">
+        ต้องให้ผู้อนุมัติคนอื่นเป็นคนกดอนุมัติหรือตีกลับ
+      </StatusNotice>
+    ) : null,
+  ].filter(Boolean);
+
+  // หลักฐานการปิด — เดิมเป็นการ์ด "สถานะการปิดโครงการ" กลางหน้า ที่บอกเรื่องเดียวกับ
+  // สถานะบนหัวการ์ดอยู่แล้ว เหลือไว้เฉพาะส่วนที่การ์ดไม่ได้บอก (ใคร/เมื่อไหร่/เหตุผล)
+  const controlEvidence = closeStatus !== "open" || p.closeReason ? (
+    <div className="project-close-evidence">
+      <div>
+        <strong>{PROJECT_CLOSE_STATUS_LABELS[closeStatus]}</strong>
+        {p.closeType ? ` · ${PROJECT_CLOSE_TYPE_LABELS[p.closeType]}` : ""}
+      </div>
+      {closeStatus === "pending_close" && p.closeRequestedByName ? <div>ขอโดย {p.closeRequestedByName}</div> : null}
+      {closeStatus === "closed" && p.closedByName ? <div>อนุมัติโดย {p.closedByName}</div> : null}
+      {p.closeReason ? <div className="project-close-reason">{p.closeReason}</div> : null}
+    </div>
+  ) : null;
+
+  /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่ผู้ใช้มองว่าเป็น "การควบคุม"
+     เหมือนกัน (มติ 2026-08-01) กด onClick ตรง ๆ เพราะมีกล่องยืนยันของตัวเองอยู่แล้ว */
+  const recordActions = [
+    {
+      id: "edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูลโครงการ", icon: Edit2,
+      visible: canEdit, disabled: !!closeBusy, onClick: () => setShowEditProject(true),
+    },
+    {
+      id: "delete", kind: "delete", slot: "danger", label: "ลบโครงการนี้", icon: Trash2,
+      /* ⚠️ ใช้ canDelete ที่ API ส่งมา ห้ามเดาจาก canEdit — ของเดิมเดา แล้ว AE ที่
+         deleteScope='none' เห็นปุ่มลบ กดแล้วเจอ 403 (คอมเมนต์ที่ canDeleteProject) */
+      visible: canDeleteProject(p) && closeStatus !== "closed",
+      // ผูกดีลอยู่ = API ตอบ 409 — บอกเหตุผลไว้บนปุ่มแทนที่จะให้กดแล้วค่อยรู้
+      // (ของเดิมสลับปุ่มลบเป็นไอคอนลิงก์ไปหน้าดีล ซึ่งอ่านไม่ออกว่าแปลว่าอะไร)
+      disabled: !!closeBusy || linkedDealCount > 0,
+      disabledReason: linkedDealCount > 0
+        ? `โครงการนี้ยังผูกดีลอยู่ ${linkedDealCount} ใบ — ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน`
+        : undefined,
+      onClick: handleDeleteProject,
+    },
+  ];
+
+  const controlCard = (
+    <RecordControlCard
+      lifecycle={projectLc}
+      record={p}
+      user={viewer}
+      onTransition={runControlTransition}
+      extraActions={recordActions}
+      notices={controlNotices.length ? controlNotices : null}
+      evidence={controlEvidence}
+      busy={!!closeBusy}
+    />
+  );
+
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
       <Icon size={13} /> {label}
@@ -968,20 +1025,8 @@ export default function ProjectDetailPage() {
         >
           <ArrowLeft size={16} /> กลับไปหน้ารวมโครงการ
         </Link>
-        
-        {canEdit && (
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโครงการ" title="แก้ไขโครงการ"><Edit2 size={16} /></button>
-            {/* เฟส B: ลบดีลไม่ลบโครงการ — โครงการที่ยังมีดีลผูก API ปฏิเสธการลบตรงนี้
-                (ให้ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน) แล้วโครงการกำพร้า (0 ดีล)
-                จึงลบที่หน้านี้ได้. */}
-            {data.dealId ? (
-              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ยังมีดีลผูกอยู่ — ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน แล้วจึงลบโครงการที่หน้านี้ได้"><ExternalLink size={16} /></Link>
-            ) : (
-              <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโครงการ" title="ลบโครงการ"><Trash2 size={16} /></button>
-            )}
-          </div>
-        )}
+        {/* ไอคอนแก้ไข/ลบ ย้ายไปการ์ด Control แล้ว — การควบคุมอยู่ที่เดียว ไม่ว่าจะเป็น
+            การเดินสถานะหรือการจัดการตัวระเบียน (มติ 2026-08-01) */}
       </div>
 
       <SalesDetailOverview
@@ -1007,39 +1052,16 @@ export default function ProjectDetailPage() {
         ]}
       />
 
-      {tab === "overview" && (() => {
-        const cs = p.closeStatus || "open";
-        const isRequester = p.me?.id && p.closeRequestedBy === p.me.id;
-        const canReqClose = hasEditCap && p.canEdit && cs === "open";
-        const canApprove = p.canApproveClose && cs === "pending_close" && !isRequester;
-        // แสดงการ์ดเฉพาะเมื่อมีอะไรให้ทำ/แสดง (open+แก้ได้ / รออนุมัติ / ปิดแล้ว)
-        if (cs === "open" && !canReqClose) return null;
-        return (
-          <>
-          {/* งานค้างสายขาย — ผู้อนุมัติต้องเห็นชุดเดียวกับที่ผู้ขอเห็นในโมดัล (มติ B3
-              เตือนแต่ไม่บล็อก) ปิดไปแล้วไม่ต้องเตือน ตัวโหลดหยุดยิงเองตาม closeStatus */}
-          {cs === "pending_close" && <CloseReadinessNotice readiness={closeReadiness} />}
-          <div className="glass-panel" style={{ marginTop: 16, padding: "12px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between", borderColor: cs === "pending_close" ? "var(--amber)" : cs === "closed" ? "var(--border)" : "var(--border)" }}>
-            <div style={{ fontSize: "var(--fs-7)" }}>
-              <strong>สถานะการปิดโครงการ:</strong> {PROJECT_CLOSE_STATUS_LABELS[cs]}
-              {cs !== "open" && p.closeType ? ` · ${PROJECT_CLOSE_TYPE_LABELS[p.closeType]}` : ""}
-              {cs === "pending_close" && p.closeRequestedByName ? <span style={{ color: "var(--text-3)" }}> · ขอโดย {p.closeRequestedByName}</span> : null}
-              {cs === "closed" && p.closedByName ? <span style={{ color: "var(--text-3)" }}> · อนุมัติโดย {p.closedByName}</span> : null}
-              {p.closeReason ? <div style={{ color: "var(--text-2)", marginTop: 2 }}>{p.closeReason}</div> : null}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {canReqClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setCloseReqForm({ closeType: "completed", reason: "" })}>ขอปิดโครงการ</button>}
-              {cs === "pending_close" && isRequester && <button type="button" className="btn ghost" disabled={!!closeBusy} onClick={withdrawCloseRequest}>ถอนคำขอ</button>}
-              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn btn-danger" disabled={!!closeBusy} onClick={() => setRejectForm({ reason: "" })}>ตีกลับ</button></>}
-              {cs === "pending_close" && p.canApproveClose && isRequester && <span className="ui-badge" style={{ color: "var(--text-3)" }}>คำขอของคุณ ต้องให้ผู้อนุมัติคนอื่น</span>}
-              {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setReopenForm({ reason: "" })}>เปิดโครงการใหม่ (RE-ORDER)</button>}
-            </div>
-          </div>
-          </>
-        );
-      })()}
+      {/* จุดจัดการเดียวของโครงการ — การ์ดสถานะการปิดเดิมที่เคยอยู่ตรงนี้ถูกยุบเข้าไปแล้ว
+          (สถานะ + ปุ่มเดินสถานะ + แก้ไข/ลบ + หลักฐานการปิด)
 
-      {tab === "overview" && <div style={{ marginTop: 16 }}><ContextGrid>
+          ⚠️ **ซ่อนบนแท็บไทม์ไลน์** (มติผู้ใช้ 2026-08-02) ต่างจากหน้าดีลที่การ์ดอยู่ทุกแท็บ
+          — วัดที่ 1280px แล้วตารางไทม์ไลน์อยากได้ 1250px แต่การ์ดกินไป 348px เหลือ 818px
+          ⇒ ซ่อนหลังสกอลล์แนวนอน 432px (ไม่มีการ์ดซ่อนแค่ ~84px) ไทม์ไลน์คือพื้นที่ทำงาน
+          จริงของหน้านี้ ความกว้างจึงชนะความสม่ำเสมอ · ทุกปุ่มยังกดได้จากแท็บอื่นครบ */}
+      <DetailPageLayout aside={showTimeline ? null : controlCard}>
+
+      {tab === "overview" && <div><ContextGrid>
         <ContextCard
           icon={Building2}
           href={p.customerId ? `/database/customers/${p.customerId}` : undefined}
@@ -1296,24 +1318,8 @@ export default function ProjectDetailPage() {
         </section>
       )}
 
-      {p.status === "Dropped" && (
-        <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
-          <div>
-            <div style={{ color: "var(--red)", fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}><X size={16} strokeWidth={3} /> โครงการนี้ถูกยกเลิกแล้ว</div>
-            {p.metadata?.lossReason && (
-              <div style={{ fontSize: "var(--fs-7)", color: "var(--red)", display: "flex", alignItems: "flex-start", gap: "6px", fontWeight: "var(--fw-medium)" }}>
-                <span style={{ fontWeight: "var(--fw-bold)" }}>เหตุผล:</span> <span>{p.metadata.lossReason}</span>
-              </div>
-            )}
-          </div>
-          {/* Restore จาก Dropped — สิทธิ์ senior_ae ขึ้นไป (ดูคอมเมนต์ที่ restoreProject) */}
-          {hasWriteAccess && (userRole === "senior_ae" || isSuperuser(userRole)) && (
-            <button type="button" className="btn btn-primary" onClick={() => restoreProject("Dropped")}>
-              <Activity size={14} /> ดึงกลับมาดำเนินการ (Restore)
-            </button>
-          )}
-        </div>
-      )}
+      {/* แบนเนอร์แดง "ยกเลิกแล้ว" + ปุ่มกู้คืน ย้ายไปการ์ด Control แล้ว — ข้อความไปอยู่
+          notices ส่วนปุ่มเป็น transition `restore_from_dropped` (สิทธิ์เดิม senior_ae ขึ้นไป) */}
 
       {showTimeline && (
       <>
@@ -1700,39 +1706,16 @@ export default function ProjectDetailPage() {
       </>)}
       </div>
 
-      {/* Footer — ยกเลิกโครงการ (Drop) หรือ On Hold */}
-      {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
-        <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-          {p.status === "On Hold" ? (
-            /* Restore จาก On Hold — สิทธิ์เจ้าของดีล (ดูคอมเมนต์ที่ restoreProject) */
-            ((myName && p.aeOwner === myName) || isSuperuser(userRole)) && (
-              <button type="button" className="btn btn-primary" onClick={() => restoreProject("On Hold")}>
-                <CheckCircle2 size={14} /> ดึงกลับมาดำเนินการ (Restore)
-              </button>
-            )
-          ) : (
-            <>
-              <button type="button" className="btn btn-warning" onClick={holdProject}>
-                <Pause size={14} /> ระงับชั่วคราว (On Hold)
-              </button>
-              <button type="button" className="btn btn-danger" onClick={openDrop}>
-                <X size={14} /> ยกเลิกโครงการ (Drop)
-              </button>
-            </>
-          )}
-
-          {p.status === "On Hold" && (
-            <button type="button" className="btn btn-danger" onClick={openDrop}>
-              <X size={14} /> ยกเลิกโครงการ (Drop)
-            </button>
-          )}
-        </div>
-      )}
+      {/* แถบปุ่มท้ายหน้า (ระงับ / ยกเลิก / ดึงกลับ) ย้ายไปการ์ด Control แล้ว
+          🐞 ของเดิมอยู่ใน `{showTimeline && …}` — แปลว่าคนที่อยู่แท็บภาพรวมกดระงับหรือ
+          ยกเลิกโครงการไม่ได้เลย ต้องเข้าไทม์ไลน์ก่อนถึงจะเห็นปุ่ม */}
       </>
       )}
 
       {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
       {(tab === "overview" || tab === "activities") && <ProjectActivityFeed project={p} onChanged={load} />}
+
+      </DetailPageLayout>
 
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">
@@ -1839,66 +1822,8 @@ export default function ProjectDetailPage() {
         danger={confirmState?.danger ?? true}
       />
 
-      {/* ตีกลับคำขอปิด — ผู้อนุมัติส่งกลับให้ผู้ขอแก้ พร้อมเหตุผลที่บังคับกรอก */}
-      <ReasonDialog
-        open={!!rejectForm}
-        title="ตีกลับคำขอปิดโครงการ"
-        description={`คำขอปิดโครงการ ${p?.code || "-"} จะกลับไปให้ผู้ขอแก้ พร้อมเหตุผลที่คุณระบุ`}
-        detail="ผู้ขอปิดจะเห็นเหตุผลนี้บนโครงการ แก้เสร็จต้องยื่นขอปิดใหม่"
-        label="เหตุผลที่ตีกลับ"
-        value={rejectForm?.reason || ""}
-        onChange={(reason) => setRejectForm({ reason })}
-        onClose={() => setRejectForm(null)}
-        onConfirm={submitReject}
-        confirmLabel="ยืนยันตีกลับ"
-        placeholder="ระบุสิ่งที่ต้องแก้ให้ชัดเจน เช่น ยังมีขั้นตอนค้างที่ยังไม่ปิด"
-        helpText={`อย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร · ${(rejectForm?.reason || "").length}/${CLOSE_REASON_MAX}`}
-        error={rejectForm?.reason && rejectForm.reason.trim().length < CLOSE_REASON_MIN ? `กรุณาระบุอย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร` : ""}
-        minLength={CLOSE_REASON_MIN}
-        maxLength={CLOSE_REASON_MAX}
-        tone="danger"
-        busy={closeBusy === "reject"}
-      />
-
-      {/* เปิดโครงการใหม่ — ถอยจาก "ปิดแล้ว" กลับมาดำเนินการ ต้องมีเหตุผลกำกับ */}
-      <ReasonDialog
-        open={!!reopenForm}
-        title="เปิดโครงการใหม่ (RE-ORDER)"
-        description={`โครงการ ${p?.code || "-"} จะกลับมาสถานะเปิด และแก้ไขขั้นตอนได้อีกครั้ง`}
-        detail="ใช้เมื่อลูกค้ากลับมาสั่งซ้ำหรือปิดโครงการผิด หลักฐานการปิดเดิมยังอยู่ในประวัติ"
-        label="เหตุผลที่เปิดโครงการใหม่"
-        value={reopenForm?.reason || ""}
-        onChange={(reason) => setReopenForm({ reason })}
-        onClose={() => setReopenForm(null)}
-        onConfirm={submitReopen}
-        confirmLabel="ยืนยันเปิดโครงการใหม่"
-        placeholder="เช่น RE-ORDER ลูกค้ากลับมาสั่งซ้ำล็อตที่ 2"
-        helpText={`อย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร · ${(reopenForm?.reason || "").length}/${CLOSE_REASON_MAX}`}
-        error={reopenForm?.reason && reopenForm.reason.trim().length < CLOSE_REASON_MIN ? `กรุณาระบุอย่างน้อย ${CLOSE_REASON_MIN} ตัวอักษร` : ""}
-        minLength={CLOSE_REASON_MIN}
-        maxLength={CLOSE_REASON_MAX}
-        tone="warning"
-        busy={closeBusy === "reopen"}
-      />
-
-      <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโครงการ" size="sm">
-        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-            เหตุผลที่ลูกค้ายกเลิก/ไม่ไปต่อ
-            <Textarea
-              value={dropReason}
-              onChange={(e) => setDropReason(e.target.value)}
-              rows={3}
-              placeholder="เช่น ราคาแพงไป, ลูกค้าเปลี่ยนใจ, คู่แข่งได้งาน"
-              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "var(--fs-7)", fontFamily: "inherit" }}
-            />
-          </label>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
-          <button className="btn" onClick={() => setShowDrop(false)}>ยกเลิก</button>
-          <button className="btn btn-danger" onClick={confirmDrop}>ยืนยันยกเลิกโครงการ</button>
-        </div>
-      </Modal>
+      {/* กล่องกรอกเหตุผลของ ตีกลับ / เปิดใหม่ / ยกเลิกโครงการ ย้ายไปเป็น TransitionDialog
+         ของ RecordControlCard แล้ว — reasonPolicy ประกาศที่ projectLifecycle ที่เดียว */}
 
       {showEditProject && (
         <SalesProjectCreateModal
@@ -1929,29 +1854,8 @@ export default function ProjectDetailPage() {
         />
       )}
 
-      {/* เฟส F: modal ขอปิดโครงการ — เลือกประเภท (ปิดสำเร็จ/ยกเลิก) + เหตุผล */}
-      {closeReqForm && (
-        <Modal open onClose={() => setCloseReqForm(null)} title="ขออนุมัติปิดโครงการ" size="sm" dismissible={!closeBusy}>
-          <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ color: "var(--text-2)", margin: 0, fontSize: "var(--fs-7)" }}>คำขอจะส่งให้ AE Supervisor อนุมัติ — เลือกประเภทการปิด</p>
-            <CloseReadinessNotice readiness={closeReadiness} />
-            <label style={{ fontSize: "var(--fs-7)" }}>
-              <span style={{ color: "var(--text-2)" }}>ประเภทการปิด</span>
-              <Select value={closeReqForm.closeType} onChange={(e) => setCloseReqForm((f) => ({ ...f, closeType: e.target.value }))}>
-                {PROJECT_CLOSE_TYPES.map((t) => <option key={t} value={t}>{PROJECT_CLOSE_TYPE_LABELS[t]}</option>)}
-              </Select>
-            </label>
-            <label style={{ fontSize: "var(--fs-7)" }}>
-              <span style={{ color: "var(--text-2)" }}>เหตุผล / สรุปการปิด (บังคับ)</span>
-              <Textarea rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
-            </label>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" className="btn ghost" onClick={() => setCloseReqForm(null)} disabled={!!closeBusy}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary" onClick={submitCloseRequest} disabled={!!closeBusy}>ส่งคำขอ</button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* โมดัล "ขออนุมัติปิดโครงการ" (เลือกชนิดการปิด + เหตุผล) ย้ายไปเป็น transition
+         `request_close` ของ projectLifecycle — ช่อง closeType ประกาศเป็น fields ในนั้น */}
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
       {dirtyCount > 0 && (

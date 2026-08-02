@@ -5,8 +5,10 @@ export function ContextualRightRail({ children, label = "ข้อมูลส�
   return <aside className={`${styles.aside} ${className}`.trim()} aria-label={label}>{children}</aside>;
 }
 
+/* ไม่มี aside = ต้องยุบเหลือคอลัมน์เดียวด้วย ไม่งั้น grid ยังกันที่ 330px ไว้ให้ช่องว่าง
+   (หน้าที่สลับการ์ดเข้า-ออกตามแท็บ เช่นหน้าโครงการ จะเสียความกว้างไปเปล่า ๆ) */
 export function DetailPageLayout({ children, aside, asideLabel, className = "" }) {
-  return <div className={`${styles.layout} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <ContextualRightRail label={asideLabel}>{aside}</ContextualRightRail> : null}</div>;
+  return <div className={`${styles.layout} ${aside ? "" : styles.layoutSolo} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <ContextualRightRail label={asideLabel}>{aside}</ContextualRightRail> : null}</div>;
 }
 
 export function ContextGrid({ children, className = "" }) {
