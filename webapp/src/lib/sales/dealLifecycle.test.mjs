@@ -112,3 +112,22 @@ test("ทุก stage ที่ระบบรู้จักมีป้าย�
     assert.ok(meta.description, `stage ${stage} ไม่มีคำอธิบาย`);
   }
 });
+
+/* หน้ารายละเอียดดีลต้องกินกติกาชุดเดียวกับหน้ารายการ — ไม่ใช่เขียนเงื่อนไขซ้ำอีกชุด
+   (ของเดิมหน้ารายละเอียดมี canDelete ของตัวเอง แล้วหน้ารายการลืมข้อใบเสนอราคาที่รับแล้ว) */
+test("หน้ารายละเอียดดีลใช้ canDeleteDeal ไม่ใช่เงื่อนไขของตัวเอง", () => {
+  const DETAIL = read("src", "app", "sales-planning", "deals", "[id]", "page.js");
+  assert.match(DETAIL, /canDeleteDeal\(/, "ต้องเรียกตัวกลาง");
+  assert.ok(!/const canDelete = deal && \(isAdmin/.test(DETAIL),
+    "เงื่อนไขลบชุดเดิมของหน้ารายละเอียดต้องถูกถอดออกแล้ว");
+});
+
+test("การ์ด Control อยู่บนหน้ารายละเอียดดีล และปุ่มที่เปลี่ยนข้อมูลไม่อยู่หัวหน้าแล้ว", () => {
+  const DETAIL = read("src", "app", "sales-planning", "deals", "[id]", "page.js");
+  assert.match(DETAIL, /<RecordControlCard/, "หน้ารายละเอียดต้องมีการ์ด Control");
+  assert.ok(!/backActions=\{backActions\}/.test(DETAIL),
+    "ไอคอนแก้ไข/ลบ ที่หัวหน้าต้องถูกย้ายไปการ์ดแล้ว");
+  // หัวหน้าเหลือได้แค่ทางไปโครงการ (ลิงก์) — ห้ามมีปุ่มที่ยิง API
+  const header = DETAIL.slice(DETAIL.indexOf("const headerRight"), DETAIL.indexOf("async function runControlTransition"));
+  assert.ok(!/onClick=/.test(header), `หัวหน้ายังมีปุ่มที่กดแล้วทำงาน:\n${header}`);
+});
