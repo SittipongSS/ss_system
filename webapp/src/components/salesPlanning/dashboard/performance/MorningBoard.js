@@ -5,8 +5,8 @@ import { Fragment, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sun } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
-import { windowStat, windowForPeriod, prevPeriod, nextPeriod, periodKindOf } from "@/lib/sales/performanceMath";
-import { money, StatusPill, ProgressBar } from "./shared";
+import { windowStat, windowForPeriod, prevPeriod, nextPeriod } from "@/lib/sales/performanceMath";
+import { money, ProgressBar } from "./shared";
 
 // ☀️ บอร์ดประชุมเช้า — ทุกคน ทุกทีม ในตารางเดียว ตามยอดของงวดที่เลือก.
 // "ต้องปิด" = เป้างวด + ยอดทบยกมา (ปิดโหมดทบ = เป้าปกติ คอลัมน์ทบหาย).
@@ -44,14 +44,15 @@ function periodOptions(kind, year) {
   return MONTH_LABELS.map((m, i) => ({ value: `${year}-${String(i + 1).padStart(2, "0")}`, label: `${m} ${year}` }));
 }
 
-export default function MorningBoard({ matrix, year, now, closedCount, carry, bp, onBpChange, onDrill, onDealDrill }) {
+/* `now` มากับ {...common} แต่บอร์ดนี้ไม่ได้ใช้แล้ว — เคยใช้ตัวเดียวคือหา periodKind
+   ให้คอลัมน์สถานะ ซึ่งถอดออกไปแล้ว (มติผู้ใช้ 2026-08-03) จึงไม่รับไว้ในลายเซ็น */
+export default function MorningBoard({ matrix, year, closedCount, carry, bp, onBpChange, onDrill, onDealDrill }) {
   // งวดต้องอยู่ในปีที่ดูเสมอ (ข้อมูล matrix เป็นรายปี) — ถ้าหลุด (เช่นเปลี่ยนปี) ดึงกลับ
   const win = useMemo(() => {
     const w = windowForPeriod(bp);
     return w && w.year === year ? w : windowForPeriod(String(year));
   }, [bp, year]);
   const kind = win.kind;
-  const periodKind = periodKindOf(win, now);
 
   const prev = prevPeriod(bp);
   const next = nextPeriod(bp);
@@ -144,7 +145,6 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
             </span>
           </div>
         </td>
-        <td className={cellClass()}><StatusPill stat={s} periodKind={periodKind} /></td>
       </tr>
     );
   };
@@ -183,7 +183,10 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
       </p>
 
       <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
-        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
+        {/* พื้นล่างของความกว้าง — วัดจาก min-content จริงหลังถอดคอลัมน์สถานะแล้วเผื่อขึ้น
+            เล็กน้อยกันหัวตารางไทยโดนบีบ: 7 คอลัมน์ = 858px · 9 คอลัมน์ (โหมดทบ) = 1026px
+            ⚠️ เลขนี้ไม่ใช่ค่าประดับ — ต่ำกว่านี้คอลัมน์จะเบียดจนตัวเลขตกบรรทัด */}
+        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1040 : 880 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>
@@ -195,7 +198,6 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
               <th className="num">Actual</th>
               <th className="num">ขาด / เกิน</th>
               <th>% ปิดได้{carry ? " (เทียบต้องปิด)" : ""}</th>
-              <th>สถานะ</th>
             </tr>
           </thead>
           <tbody>
