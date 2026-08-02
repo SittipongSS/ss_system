@@ -34,6 +34,10 @@ export default function RecordActionMenu({
   canDelete = false,
   busy = false,
   manageLabel = "จัดการ",
+  /* รายการเพิ่มในเมนูที่ lifecycle ไม่รู้จัก — ปกติคือ **ทางไปหน้าอื่น** (ไทม์ไลน์ /
+     ใบเสนอราคา / โครงการที่ผูกไว้) จึงวางไว้บนสุด ก่อนกลุ่มจัดการตัวระเบียน
+     รูป: { id, label, icon, href | onClick, tone, disabled, visible } */
+  extraItems = [],
   /* ข้อความอ้างอิงแถว เอาไปต่อท้าย aria-label ของปุ่ม "…" ให้โปรแกรมอ่านหน้าจอรู้ว่าแถวไหน */
   recordLabel = "",
   className = "",
@@ -69,8 +73,14 @@ export default function RecordActionMenu({
       onClick: () => openTransition(entry),
     };
   };
+  const navItems = extraItems.filter((item) => item && item.visible !== false);
   const items = [
-    ...rest.filter((entry) => entry.slot === "secondary").map(fromEntry),
+    ...navItems,
+    ...rest.filter((entry) => entry.slot === "secondary").map((entry, index) => ({
+      ...fromEntry(entry),
+      // ขีดเส้นแยกทางไปหน้าอื่น ออกจาก action ที่เปลี่ยนข้อมูล
+      separatorBefore: index === 0 && navItems.length > 0,
+    })),
     ...(onEdit && canEdit
       ? [{ id: "edit", label: "แก้ไขข้อมูล", icon: kindMeta("edit").Icon, tone: kindMeta("edit").tone, separatorBefore: true, onClick: onEdit }]
       : []),
