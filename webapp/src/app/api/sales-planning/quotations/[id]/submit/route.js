@@ -6,8 +6,7 @@ import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
-import { appendUpdate } from '@/lib/master/updates';
-import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   submitQuotationWithSignatureEvidence,
   signatureEvidenceErrorResponse,
@@ -61,8 +60,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้
   // action ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ askActionUpdate)
-  const threadEvent = quotationActionUpdate('submit', quote);
-  if (threadEvent) await appendUpdate(supabase, { entityType: 'quotation', entityId: id, ...threadEvent, user });
+  await appendDocumentEvent(supabase, {
+    docType: 'quotation', doc: quote, action: 'submit', user, docId: id,
+  });
 
   await recordAudit({
     user,

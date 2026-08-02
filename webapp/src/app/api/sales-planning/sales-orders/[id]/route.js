@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
-import { salesOrderActionUpdate } from '@/lib/sales/documentUpdates';
+import { purgeUpdates } from '@/lib/master/updates';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import {
@@ -209,9 +209,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ askActionUpdate)
   // ⚠️ ทุก action เรียกด้วย `before` ไม่ใช่แถวหลังอัปเดต — เธรดเล่า "ใบเลขนี้ Rev.นี้
   // ถูกทำอะไร" ซึ่งเป็นข้อมูลของใบก่อนเปลี่ยนสถานะ
+  // ⭐ เขียนสองที่ในครั้งเดียว: เธรดของใบ + เธรดของ**ดีลแม่** (ดู documentThread.js)
+  // — action ที่ดีลไม่สนใจ (ดึงกลับ/กู้ร่าง) ตัวมันคืน null ให้เอง
   const logThread = async (act, opts = {}) => {
-    const event = salesOrderActionUpdate(act, before, opts);
-    if (event) await appendUpdate(supabase, { entityType: 'sales_order', entityId: id, ...event, user });
+    await appendDocumentEvent(supabase, {
+      docType: 'sales_order', doc: before, action: act, opts, user, docId: id,
+      dealId: before.dealId || before.deal?.id || null,
+    });
   };
 
   if (action === 'withdraw') {

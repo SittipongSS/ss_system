@@ -29,6 +29,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
+import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 
 export const dynamic = 'force-dynamic';
 
@@ -202,6 +203,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       changedBy: user.id || null,
       changedByName: user.name || null,
     });
+  }
+
+  // 🐞 ตัวเลขที่ขยับเคยลงแต่ตาราง forecast (เพื่อ KPI) แล้ว **ไม่มีใครเห็นบนหน้าจอ
+  // เลย** — คนเปิดดีลย้อนหลังไม่รู้ว่ามูลค่าเคยเป็นเท่าไรและใครแก้ · เขียนลงเธรดคู่กัน
+  const forecastEvent = dealForecastUpdate(before, data);
+  if (forecastEvent) {
+    await appendUpdate(supabase, { entityType: 'deal', entityId: data.id, ...forecastEvent, user });
   }
 
   if (before.forecastMonth !== data.forecastMonth || before.projectValue !== data.projectValue || before.probability !== data.probability) {

@@ -1,6 +1,5 @@
 import { recordAudit } from '@/lib/audit';
-import { appendUpdate } from '@/lib/master/updates';
-import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { chatCard, sendChat } from '@/lib/chat';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -57,8 +56,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   // ⭐ แถวนี้คือหัวใจของ PR: `rejectionReason` ถูกล้างทิ้งตอนยื่นใหม่/กู้คืน
   // เหตุผลที่ตีกลับรอบก่อน ๆ จึงไม่เคยเหลือให้คนทำใบรอบถัดไปอ่าน
-  const threadEvent = quotationActionUpdate('reject', quote, { reason });
-  if (threadEvent) await appendUpdate(supabase, { entityType: 'quotation', entityId: id, ...threadEvent, user });
+  await appendDocumentEvent(supabase, {
+    docType: 'quotation', doc: quote, action: 'reject', opts: { reason }, user, docId: id,
+  });
 
   await recordAudit({
     user,
