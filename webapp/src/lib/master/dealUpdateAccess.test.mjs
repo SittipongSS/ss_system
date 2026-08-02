@@ -46,10 +46,16 @@ test('ดีล: ไม่มี record = ปิดตาย ไม่ใช่�
   assert.equal(await canPostUpdate(db, 'deal', null, ADMIN), false);
 });
 
-test('ชุดชนิดของฟีดดีลต้องครบห้าตัวเท่าของเดิม (CHECK ของ mig 0063)', () => {
-  // ชื่อต้องตรงกับ CHECK เดิมเป๊ะ ไม่งั้น backfill ของ mig 0169 จะได้ kind ที่
-  // ทะเบียนไม่รู้จัก แล้วขึ้นจอเป็นป้ายผิด
-  assert.deepEqual(authorableKinds('deal'), ['note', 'call', 'meeting', 'email', 'next_step']);
+test('ชุดชนิดของฟีดดีล: ห้าตัวเดิมต้องอยู่ครบเสมอ (แถวที่ backfill มาใช้ชื่อพวกนี้)', () => {
+  const kinds = authorableKinds('deal');
+  // ⚠️ **ห้ามลบหรือเปลี่ยนชื่อห้าตัวนี้** — แถวที่ backfill มาจาก sales_deal_activities
+  // (mig 0169) ใช้ชื่อเหล่านี้ หายเมื่อไรของเก่าขึ้นจอเป็นป้ายผิดทันที
+  // 🔄 แต่ **เพิ่มชนิดใหม่ได้**: CHECK เดิมอยู่บนตารางที่ถูก drop ไปแล้ว (mig 0184)
+  // และ `entity_updates` ไม่มี CHECK บน kind โดยเจตนา (ดูหัว updateTypes.js)
+  for (const kind of ['note', 'call', 'meeting', 'email', 'next_step']) {
+    assert.ok(kinds.includes(kind), `ชนิดเดิม ${kind} หายไป`);
+  }
+  assert.equal(kinds[0], 'note', 'ค่าตั้งต้นต้องยังเป็น note');
 });
 
 test('ฟีดดีล: กำหนดวันมีเฉพาะ "ขั้นถัดไป" เหมือนของเดิม', () => {

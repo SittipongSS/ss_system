@@ -257,10 +257,18 @@ export default function UpdateThread({
   // ใช้ทั้งระดับบนสุดและคำตอบที่ซ้อนเข้ามา — ต่างกันแค่กรอบนอก (ดู .replies)
   const renderItem = (item, isReply) => {
     const key = `${item.kind}-${item.id}`;
-    // ⭐ สีของ **ชนิดรายการ** เป็นแถบซ้าย (มติผู้ใช้ 2026-08-01): ยกสีที่ทะเบียนชนิด
-    // กำหนดไว้อยู่แล้วจากป้ายเล็ก ๆ มาเป็นเส้นที่เห็นแต่ไกล — ไม่ได้สร้างระบบสีที่สอง
-    // และสีจะตรงกับปุ่มบนหน้าเอกสารที่ทำให้เหตุการณ์นั้นเกิดโดยอัตโนมัติ
-    const tint = { "--kind-color": item.color || "var(--border)" };
+    // ⭐ สีทำงานสองชั้น แยกหน้าที่กัน (มติผู้ใช้ 2026-08-02):
+    //   · แถบซ้ายของ **ข้อความคน** = accent เสมอ → ทั้งเธรดอ่านเป็นชุดเดียว
+    //     ไม่เปลี่ยนสีไปมาตามว่าเป็นบันทึก/โทร/ประชุม
+    //   · แถบซ้ายของ **เหตุการณ์ระบบ** = สีชนิด → ยื่น/ตีกลับ/อนุมัติ ต่างกันชัด
+    //   · **ป้ายชนิด** ในคอลัมน์ซ้าย = สีชนิดเสมอ (ดู updateTypes)
+    // ของเดิมให้สีชนิดคุมทั้งแถบและป้าย ทำให้ "บันทึก" กับ "ขั้นถัดไป" ซึ่งสีใกล้กัน
+    // แยกด้วยตาไม่ออก
+    const systemItem = isSystemUpdateItem(entityType, item);
+    const tint = {
+      "--kind-color": (systemItem ? item.color : "var(--accent)") || "var(--border)",
+      "--kind-label-color": item.color || "var(--text-3)",
+    };
     const replyButton = canPost && canQuoteItem(item) ? (
       <Button
         iconOnly icon={<Reply size={13} />} aria-label="ตอบกลับข้อความนี้"
@@ -271,7 +279,7 @@ export default function UpdateThread({
 
     // ── เหตุการณ์ระบบ ──────────────────────────────────────────────────
     // คอลัมน์ซ้าย = ชนิด + เวลา · ขวา = สิ่งที่เกิดขึ้น (ตัวอักษรจางกว่าข้อความคน)
-    if (isSystemUpdateItem(entityType, item)) {
+    if (systemItem) {
       const body = item.kind === "extra" ? item.body : item.row.body;
       const who = item.kind === "extra" ? item.by : item.row.authorName;
       return (
