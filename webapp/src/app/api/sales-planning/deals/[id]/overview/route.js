@@ -4,6 +4,7 @@ import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
+import { canViewUpdates } from '@/lib/master/updateAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,9 +123,44 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     assigneeName: task.assigneeId ? (users.get(task.assigneeId)?.name || null) : null,
   }));
 
+  // ── ความคืบหน้าที่คนพิมพ์ไว้ในเธรดของ "งานที่ผูกดีล" ────────────────────
+  //
+  // เดิมดีลได้แค่ 3 จังหวะ (สร้าง/เสร็จ/เลยกำหนด) ส่วนเนื้อความจริง — "ลูกค้าขอเลื่อน
+  // ส่งตัวอย่าง" "โรงพิมพ์ตอบกลับแล้ว" — อยู่ในเธรดของงานใบนั้นและไม่ไหลออกมาไหน
+  // คนดูดีลจึงเห็นว่ามีงาน แต่ไม่รู้ว่างานเดินไปถึงไหน
+  //
+  // 🔴 ด่านสิทธิ์: เธรดงานมีกติกาของตัวเอง (`canViewPersonalTask` — คนเกี่ยวข้อง +
+  // ทีม) **แคบกว่าด่านของดีล** → ต้องกรองรายใบเหมือนที่หน้าโครงการทำกับดีล (PR #861)
+  // ห้ามเหมาว่า "เห็นดีล = เห็นทุกอย่างใต้ดีล"
+  //
+  // ⚠️ อ่านอย่างเดียว — ไม่เขียนซ้ำลงเธรดดีล (เก็บแยก โชว์รวม) แก้/ลบที่งานแล้ว
+  // ดีลจึงเปลี่ยนตามเองโดยไม่ต้องมีตัวซิงค์
+  let taskUpdates = [];
+  let hiddenTaskFeeds = 0;
+  if (enrichedDealTasks.length) {
+    const visible = await Promise.all(
+      enrichedDealTasks.map((task) => canViewUpdates(supabase, 'personal_task', task, user)),
+    );
+    const readableIds = enrichedDealTasks.filter((_, i) => visible[i]).map((task) => task.id);
+    hiddenTaskFeeds = enrichedDealTasks.length - readableIds.length;
+    if (readableIds.length) {
+      const titleById = new Map(enrichedDealTasks.map((task) => [task.id, task.title]));
+      const feed = await safe('task updates', supabase.from('entity_updates')
+        .select('id, entityId, kind, body, authorName, createdAt')
+        .eq('entityType', 'personal_task').in('entityId', readableIds).is('deletedAt', null)
+        .order('createdAt', { ascending: false }).limit(40), []);
+      if (feed.warning) warnings.push(feed.warning);
+      taskUpdates = (feed.data || []).map((row) => ({
+        ...row, taskTitle: titleById.get(row.entityId) || null,
+      }));
+    }
+  }
+
   const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, deal);
 
   return ok({
+    taskUpdates,
+    hiddenTaskFeeds,
     deal,
     canEdit,
     forecastDrift,
