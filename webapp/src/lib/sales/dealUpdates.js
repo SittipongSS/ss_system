@@ -49,8 +49,9 @@ export function dealForecastUpdate(before, after) {
 // เพราะเธรดงานคือเธรดที่เสียงดังที่สุดในระบบ (92% ของแถวเป็นเหตุการณ์ระบบ ·
 // 305 จาก 338 งานไม่มีบทสนทนามนุษย์เลย) ยกมาทั้งหมดเมื่อไรเธรดดีลจมทันที
 //
-// ⚠️ **ห้ามยกเนื้อข้อความในเธรดงานมาด้วย** — ด่านของงาน (canViewPersonalTask) แคบ
-// กว่าด่านของดีล · ที่ยกมาได้คือระดับหัวข้อ (ชื่องาน/ผู้รับผิดชอบ/เหตุผลที่ช้า)
+// ⚠️ เนื้อข้อความในเธรดงาน**ไม่ได้เขียนลงที่นี่** — ด่านของงาน (canViewPersonalTask)
+// แคบกว่าด่านของดีล เขียนลงเธรดดีลเมื่อไรก็ข้ามด่านทันที · ความคืบหน้าที่คนพิมพ์ใน
+// งานถูก "ยืมมาแสดง" ที่หน้าดีลแทน โดยกรองสิทธิ์รายใบตอนอ่าน (ดู overview route)
 export function dealTaskUpdate(action, task, { lateReason = null } = {}) {
   if (!task) return null;
   const title = clip(task.title, 200) || 'งาน';
@@ -58,9 +59,15 @@ export function dealTaskUpdate(action, task, { lateReason = null } = {}) {
   const meta = { taskId: task.id || null, action };
 
   if (action === 'created') {
+    /* รายละเอียดงานอยู่บรรทัดที่สอง — หัวข้ออย่างเดียวบอกไม่ได้ว่าต้องทำอะไร
+       ⚠️ เป็น **บันทึก ณ ตอนสร้าง** ไม่ใช่กระจกของงาน · แก้รายละเอียดทีหลังแล้ว
+       บรรทัดนี้ไม่เปลี่ยนตาม (ตั้งใจ — เธรดคือประวัติ ไม่ใช่หน้าแสดงข้อมูลปัจจุบัน)
+       ของปัจจุบันดูได้ที่หน้างานผ่านลิงก์ในบรรทัดเดียวกัน */
+    const detail = clip(task.note, 300);
+    const head = `สร้างงาน: ${title}${who ? ` · ${who}` : ''}${task.dueDate ? ` · กำหนด ${task.dueDate}` : ''}`;
     return {
       kind: 'task',
-      body: `สร้างงาน: ${title}${who ? ` · ${who}` : ''}${task.dueDate ? ` · กำหนด ${task.dueDate}` : ''}`,
+      body: detail ? `${head}\n${detail}` : head,
       meta,
     };
   }
