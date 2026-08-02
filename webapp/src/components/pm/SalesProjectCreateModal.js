@@ -103,11 +103,11 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
         </p>
         <div className="pm-form-grid gap-[18px]">
           <div className="form-group col-span-2">
-            <label>ชื่อโครงการ <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>ชื่อโครงการ <span className="text-[var(--red)]">*</span></label>
             <input className="premium-input w-full" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           </div>
           <div className="form-group">
-            <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>{CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span></label>
             <SearchableSelect
               entity="customer"
               value={form.customerId}
@@ -124,7 +124,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           {/* สายธุรกิจ (mig 0191) — ตัดสินว่าโครงการนี้ "จบยังไง" ⇒ เลือกแม่แบบไทม์ไลน์
               ⚠️ วางไว้ก่อนหมวดสินค้าเพราะเป็นคำถามที่กว้างกว่า ตอบก่อนแล้วที่เหลือตามมา */}
           <div className="form-group col-span-2">
-            <label>สายธุรกิจ <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>สายธุรกิจ <span className="text-[var(--red)]">*</span></label>
             <BusinessLineSelect required value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
           </div>
           <ProductCategorySelect
@@ -135,7 +135,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
             onChange={(productMainCategory, meta) => setForm((f) => ({ ...f, mainCode: meta.mainCode, typeCode: meta.typeCode, productMainCategory, productSubCategory: meta.category?.nameTh || meta.category?.nameEn || "" }))}
           />
           <div className="form-group">
-            <label>วันที่เริ่มโครงการ <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>วันที่เริ่มโครงการ <span className="text-[var(--red)]">*</span></label>
             <DateInput value={form.startDate} onChange={(startDate) => setForm((f) => ({ ...f, startDate }))} className="w-full" />
           </div>
           <div className="form-group">
