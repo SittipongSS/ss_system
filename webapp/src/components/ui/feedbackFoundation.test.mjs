@@ -45,10 +45,16 @@ test("shim ยืนยันของภาษี/สรรพสามิต�
   }
 
   /* จุดเดียวที่เคยพึ่งค่าเริ่มต้น danger=true ของ shim — ถ้าหาย กล่อง "ลบโครงการ"
-     จะเปลี่ยนจากแดงเป็นสีแบรนด์เงียบ ๆ */
-  const deleteProject = source("../../app/sa/projects/page.js");
-  assert.match(deleteProject, /onConfirm=\{deleteProject\}\s*\r?\n\s*danger/,
-    "กล่องลบโครงการต้องส่ง danger เอง (เดิม shim ตั้งให้)");
+     จะเปลี่ยนจากแดงเป็นสีแบรนด์เงียบ ๆ
+     ⚠️ ย้ายบ้านแล้ว: หน้า *รายการ* โครงการเป็นหน้าอ่านอย่างเดียวตั้งแต่ 2026-08-02
+     (การควบคุมอยู่บนการ์ด Record Control ของหน้ารายละเอียด) กล่องลบจึงอยู่ที่
+     หน้ารายละเอียดที่เดียว — เทสต์ตามไปตรึงที่นั่นแทน ไม่ใช่ปล่อยผ่าน */
+  const listPage = source("../../app/sa/projects/page.js");
+  assert.equal(/<ConfirmDialog\b/.test(listPage), false,
+    "หน้ารายการโครงการมีกล่องยืนยันกลับมาแล้ว — ถ้าตั้งใจ ให้ตรึง danger ของมันด้วย");
+  const detailPage = source("../../app/sa/projects/[id]/page.js");
+  assert.match(detailPage, /danger=\{confirmState\?\.danger \?\? true\}/,
+    "กล่องยืนยันหน้ารายละเอียดโครงการต้อง default danger=true (เดิม shim ตั้งให้)");
 
   /* ทุกจุดที่เคยได้ closeOnSuccess ฟรีจาก shim ต้องส่งเอง */
   for (const page of ["../../app/tax/filings/[id]/page.js", "../../app/tax/registrations/[id]/page.js"]) {
