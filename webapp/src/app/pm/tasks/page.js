@@ -1,11 +1,13 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
+import TaskDetailPanel, { TaskNoteLine } from "@/components/pm/TaskDetailPanel";
+import Button from "@/components/ui/Button";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -149,6 +151,14 @@ export default function TasksPage() {
   const [categoryFilter, setCategoryFilter] = useState([]);
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("asc");
+  // แถวที่กางดูรายละเอียดอยู่ — กางได้หลายใบพร้อมกันเพื่อ "เทียบกัน" ซึ่งเป็นเหตุผล
+  // เดียวที่คนอยากอ่านในหน้ารายการแทนที่จะเปิดหน้างานทีละใบ
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpanded = (id) => setExpandedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
   const [calRef, setCalRef] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
@@ -468,6 +478,37 @@ export default function TasksPage() {
     );
   };
 
+  // แผงรายละเอียดแบบกางในที่ — ใช้ชุดเดียวกันทั้งตารางและการ์ด (ตัวเดียวจริง ๆ
+  // ไม่ใช่สองชุดที่ต้องตามแก้ให้ตรงกันทุกครั้งที่เพิ่มช่อง)
+  const detailPanel = (t) => {
+    const proj = t.projectId ? resolveProj(t.projectId) : null;
+    const deal = t.dealId ? resolveDeal(t.dealId) : null;
+    return (
+      <TaskDetailPanel
+        task={t}
+        nameOf={(id) => (id ? usersMap[id] || "" : "")}
+        href={`/sa/tasks/${t.id}`}
+        links={[
+          deal && { label: `ดีล: ${deal.title}`, href: `/sa/deals/${deal.id}` },
+          proj && { label: `โครงการ: ${proj.code || proj.name}`, href: `/sa/projects/${proj.code || t.projectId}` },
+        ].filter(Boolean)}
+      />
+    );
+  };
+
+  // ปุ่มกาง/พับ — อยู่ในแถวที่คลิกแล้วเปิดหน้างาน จึงต้องกันคลิกไม่ให้ทะลุ
+  const expandButton = (t) => (
+    <Button
+      iconOnly
+      aria-expanded={expandedIds.has(t.id)}
+      aria-label={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
+      title={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
+      onClick={(e) => { e.stopPropagation(); toggleExpanded(t.id); }}
+    >
+      {expandedIds.has(t.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+    </Button>
+  );
+
   const relationshipBadge = (task, compact = false) => {
     if (scope !== "mine" || !me?.id) return null;
     const relationship = taskRelationship(task, me.id, (id) => usersMap[id] || "");
@@ -502,6 +543,7 @@ export default function TasksPage() {
           {t.urgent && <Flame size={12} color="var(--red)" />}
           {t.title}
         </div>
+        <TaskNoteLine text={t.note} />
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
           {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
           {relationshipBadge(t, true)}
@@ -771,16 +813,19 @@ export default function TasksPage() {
                 const u = getUrgencyInfo(t);
                 const manage = canManageTask(t);
                 return (
-                  <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
+                  <Fragment key={t.id}>
+                  <tr className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
                     <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
                     <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
                       <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
+                          {expandButton(t)}
                           {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                           {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                           <span style={{ flex: 1 }}>{t.title}</span>
                         </div>
-                        {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
+                        {/* กางแล้วแผงด้านล่างมีโน้ตเต็ม — บรรทัดย่อตรงนี้จะซ้ำเปล่า ๆ */}
+                        {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
                       </div>
                     </td>
                     {scope === "mine" && <td>{relationshipBadge(t)}</td>}
@@ -809,6 +854,14 @@ export default function TasksPage() {
                       </div>
                     </td>
                   </tr>
+                  {/* ⚠️ colSpan = 8 เสมอ — คอลัมน์ "บทบาทของฉัน" กับ "ผู้รับมอบหมาย"
+                      สลับกันตามสโคป ไม่ได้บวกกัน (ผิดแล้วแถวจะกินเกินตารางเงียบ ๆ) */}
+                  {expandedIds.has(t.id) && (
+                    <tr className="premium-row" onClick={(e) => e.stopPropagation()}>
+                      <td colSpan={8}>{detailPanel(t)}</td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -832,9 +885,10 @@ export default function TasksPage() {
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}
                     </div>
-                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
+                    {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                    {expandButton(t)}
                     {proxyActions(t)}
                     {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
                     {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
@@ -854,6 +908,7 @@ export default function TasksPage() {
                   {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                   {linkChip(t)}
                 </div>
+                {expandedIds.has(t.id) && <div onClick={(e) => e.stopPropagation()}>{detailPanel(t)}</div>}
               </div>
             );
           })}
