@@ -14,7 +14,12 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import {
+  CLOSED_WORK_STATUSES, createProjectLifecycle, PROJECT_CLOSE_ACTIONS,
+  PROJECT_PATCH_TRANSITIONS, PROJECT_WORK_STATUSES, projectStatusLabel,
+} from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
@@ -24,6 +29,12 @@ const money = (v) => fmtMoneyCompact(v);
 export default function ProjectsIndexPage() {
   const canView = useCan("salesplan:view");
   const canEdit = useCan("salesplan:edit");
+  const role = useRole();
+  const team = useTeam();
+  const viewer = useMemo(() => ({ role, team }), [role, team]);
+  /* กติกา "โครงการใบนี้ทำอะไรได้บ้าง" — ไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ */
+  const projectLc = useMemo(() => createProjectLifecycle(), []);
+  const [busyId, setBusyId] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -58,6 +69,43 @@ export default function ProjectsIndexPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* จุดเดียวที่ปุ่มในแถววิ่งเข้า — โครงการยิงสองปลายทางตามชนิดของ transition
+     สถานะงาน (ระงับ/ยกเลิก/ดึงกลับ) → PATCH · ชั้นการปิด → POST /close
+     คืน false = ไม่สำเร็จ เมนูค้างกล่องไว้พร้อมเหตุผลที่พิมพ์ไปแล้ว */
+  const runProjectTransition = async (project, actionId, values) => {
+    const closeAction = PROJECT_CLOSE_ACTIONS[actionId];
+    if (!closeAction && !PROJECT_PATCH_TRANSITIONS.includes(actionId)) return false;
+    setBusyId(project.id);
+    setError("");
+    try {
+      const reason = values.reason?.trim() || undefined;
+      const res = closeAction
+        ? await fetch(`/api/pm/projects/${project.id}/close`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: closeAction, reason, closeType: values.closeType || undefined }),
+        })
+        : await fetch(`/api/pm/projects/${project.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            actionId === "drop"
+              // เหตุผลที่ยกเลิกเก็บใน metadata.lossReason ตามของเดิม ไม่ใช่คอลัมน์ของตัวเอง
+              ? { status: "Dropped", metadata: { ...(project.metadata || {}), lossReason: reason || null } }
+              : { status: projectLc.get(actionId).to },
+          ),
+        });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
+      await load();
+      return true;
+    } catch (e) {
+      setError(e.message || "ทำรายการไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const deleteProject = async () => {
     if (!deleteTarget) return;
     const res = await fetch(`/api/pm/projects/${deleteTarget.id}`, { method: "DELETE" });
@@ -73,8 +121,12 @@ export default function ProjectsIndexPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((p) => {
-      if (statusFilter === "active" && ["Done", "Drop"].includes(p.status)) return false;
-      if (statusFilter !== "active" && statusFilter !== "all" && p.status !== statusFilter) return false;
+      /* 🐞 ของเดิมกรองด้วย ["Done","Drop"] ซึ่ง **ไม่ใช่ค่าที่มีอยู่จริง** — CHECK ของตาราง
+         ยอมแค่ New / In Progress / Completed / On Hold / Dropped
+         ผลคือ "กำลังดำเนินการ" ไม่เคยกรองอะไรออกเลย และเลือก Done/Drop แล้วตารางว่างตลอด */
+      if (statusFilter === "active" && CLOSED_WORK_STATUSES.includes(p.status)) return false;
+      if (statusFilter === "closed" && !CLOSED_WORK_STATUSES.includes(p.status)) return false;
+      if (!["active", "all", "closed"].includes(statusFilter) && p.status !== statusFilter) return false;
       if (!q) return true;
       const brand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
       return [p.code, p.name, p.customerName, brand, p.formulaName, ...(p.deals || []).map((d) => d.title)]
@@ -101,7 +153,9 @@ export default function ProjectsIndexPage() {
   const taskProgress = (p) => {
     const tasks = p.tasks || [];
     if (!tasks.length) return "-";
-    const done = tasks.filter((t) => t.status === "Done").length;
+    // 🐞 ของเดิมนับ "Done" แต่ project_tasks ใช้ Pending / In Progress / Completed
+    //    คอลัมน์ "ขั้นตอน" จึงอ่านว่า 0/N ทุกแถวมาตลอด
+    const done = tasks.filter((t) => t.status === "Completed").length;
     return `${done}/${tasks.length}`;
   };
 
@@ -152,8 +206,11 @@ export default function ProjectsIndexPage() {
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
               <option value="active">กำลังดำเนินการ</option>
               <option value="all">ทุกสถานะ</option>
-              <option value="Done">Done</option>
-              <option value="Drop">Drop</option>
+              <option value="closed">ปิด/ยกเลิกแล้ว</option>
+              {/* ตัวเลือกรายสถานะมาจากรายชื่อจริง — เดิมพิมพ์ค่าที่ระบบไม่รู้จักไว้ 2 ค่า */}
+              {PROJECT_WORK_STATUSES.map((status) => (
+                <option key={status} value={status}>{projectStatusLabel(status)}</option>
+              ))}
             </Select>
             <div className="spacer" />
           </div>
@@ -211,20 +268,22 @@ export default function ProjectsIndexPage() {
                       <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                       <td>{taskProgress(p)}</td>
                       <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (p.team || "-")}</td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <div className="flex items-center gap-2 justify-end">
-                          {canEditProject && (
-                            <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => setEditingProject(p)} aria-label={`แก้ไข ${p.name || p.code}`} title="แก้ไขโครงการ">
-                              <Pencil size={15} aria-hidden="true" />
-                            </button>
-                          )}
-                          {canDeleteProject && (
-                            <button type="button" className="btn-icon danger" onClick={() => setDeleteTarget(p)} aria-label={`ลบ ${p.name || p.code}`} title="ลบโครงการ">
-                              <Trash2 size={15} aria-hidden="true" />
-                            </button>
-                          )}
-                          {!canEditProject && !canDeleteProject && <span style={{ color: "var(--text-3)" }}>-</span>}
-                        </div>
+                      <td className="num" onClick={(event) => event.stopPropagation()}>
+                        {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" — กติกามาจาก projectLifecycle ตัวเดียว
+                            กับที่หน้ารายละเอียดจะใช้ · ของเดิมมีแค่ไอคอนแก้ไข/ลบ ส่วนการ
+                            ขอปิด/อนุมัติปิด ต้องเข้าหน้ารายละเอียดถึงจะเห็น */}
+                        <RecordActionMenu
+                          lifecycle={projectLc}
+                          record={p}
+                          user={viewer}
+                          busy={busyId === p.id}
+                          recordLabel={p.name || p.code}
+                          onTransition={(actionId, values) => runProjectTransition(p, actionId, values)}
+                          canEdit={canEditProject}
+                          canDelete={canDeleteProject}
+                          onEdit={() => setEditingProject(p)}
+                          onDelete={() => setDeleteTarget(p)}
+                        />
                       </td>
                     </DetailRow>
                   );
