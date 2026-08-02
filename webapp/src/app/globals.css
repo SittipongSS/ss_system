@@ -1056,13 +1056,28 @@ button, select, input, textarea {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .topbar-actions { display: none; }
+  /* 🐞 เดิมซ่อน .topbar-actions ทั้งก้อน = **กระดิ่งแจ้งเตือนหายไปจากมือถือทั้งใบ**
+     และแผ่นเมนูก็ไม่มีกระดิ่ง → ผู้ใช้มือถือไม่มีทางรู้เลยว่ามีแจ้งเตือน
+     ตั้งค่า/บัญชี ซ่อนได้เพราะมีอยู่ในแผ่นเมนูแล้ว แต่กระดิ่งไม่มีที่อื่นเลย
+
+     กระดิ่งกับ `…` เกาะขวาเป็นคู่: ตัวที่ดัน (margin-left:auto) คือ .topbar-actions
+     ซึ่งมาก่อนตาม order — ถ้าปล่อยให้ทั้งคู่เป็น auto ที่ว่างจะถูกหารสอง */
+  .topbar-actions { display: flex; gap: var(--space-1); order: 1; margin-left: auto; }
+  /* ⚠️ ซ่อน "เฉพาะตัวที่ระบุชื่อ" ห้ามซ่อนด้วยลูกโดยตรงของ .topbar-actions —
+     กระดิ่งใช้คลาส .topnav-global-action เหมือนกัน วันนี้รอดเพราะบังเอิญมี div ครอบ
+     ถ้าวันหน้ามีคนถอด div นั้นออก กระดิ่งจะหายจากมือถืออีกรอบแบบเงียบ ๆ */
+  .topbar-actions .topnav-settings-link,
+  .topbar-actions .account-menu { display: none; }
+  /* กระดิ่งเดิมสูง 36px (ขนาดเดสก์ท็อป) — บนมือถือต้องเท่าปุ่ม `…` ที่อยู่ติดกัน
+     ไม่งั้นเป้ากดเล็กกว่าเพื่อนบ้านทั้งที่อยู่คู่กัน */
+  .topbar-actions .topnav-global-action { min-height: 40px; min-width: 40px; }
   .mobile-top-more {
+    order: 2;
     display: grid;
     place-items: center;
     width: 40px;
     height: 40px;
-    margin-left: auto;
+    margin-left: 0;
     flex: 0 0 40px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: var(--radius-md);

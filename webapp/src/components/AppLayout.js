@@ -401,9 +401,11 @@ export default function AppLayout({ children }) {
             {/* กระดิ่งอยู่ก่อน "ตั้งค่า" — งานของคุณสำคัญกว่าเมนูตั้งค่า และตำแหน่ง
                 ขวาสุดถูก AccountMenu จองไว้แล้ว */}
             <NotificationBell />
+            {/* topnav-settings-link = จุดเกาะให้ CSS ซ่อนเฉพาะตัวนี้บนมือถือ (ตั้งค่า
+                มีอยู่ในแผ่นเมนูแล้ว) โดยไม่พลาดไปซ่อนกระดิ่งซึ่งใช้คลาสเดียวกัน */}
             <Link
               href="/settings"
-              className={`topnav-global-action${isSettingsContext ? ' active' : ''}`}
+              className={`topnav-global-action topnav-settings-link${isSettingsContext ? ' active' : ''}`}
               aria-current={isSettingsContext ? 'page' : undefined}
             >
               <SettingsIcon size={17} aria-hidden="true" />
