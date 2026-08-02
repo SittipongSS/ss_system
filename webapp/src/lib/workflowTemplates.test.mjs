@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
   EXCISE_CATEGORY_TOKEN,
+  WORKFLOW_TEMPLATE_ROLES,
   normalizeWorkflowTemplateDraft,
   templateMatchesCategory,
   validateWorkflowTemplateSteps,
@@ -110,3 +112,46 @@ test('workflow summary reports counts without pretending summed days are critica
   ] });
   assert.deepEqual(summary, { steps: 3, phases: 2, milestones: 1, durationDays: 6 });
 });
+
+// ── กติกา role อยู่ 3 ที่ ต้องตรงกันเป๊ะ (mig 0192) ───────────────────────
+//
+// ⭐ บทเรียนจากรอบตรวจ Record Control: **เอากติกาสองที่มาเทียบกันแล้วเจอบั๊กเงียบ**
+// ที่เทสต์เดิมจับไม่ได้ · ที่นี่มีถึงสามที่ (โค้ด · CHECK ของตาราง · validation ใน RPC)
+// ถ้าแก้ไม่ครบ อาการคือ "เลือกได้ในหน้าตั้งค่า แต่กดบันทึกแล้วเด้ง
+// workflow_template_steps_invalid" ซึ่งอ่านไม่ออกว่าเป็นเพราะอะไร
+{
+  const sqlUrl = new URL('../../supabase/migrations/0192_workflow_step_role_ts.sql', import.meta.url);
+  const sql = readFileSync(sqlUrl, 'utf8');
+  // ดึงรายชื่อ role จากคำสั่ง SQL แบบเดียวกับที่ Postgres อ่าน — ไม่ใช่ regex หลวม ๆ
+  const rolesFrom = (pattern) => {
+    const match = sql.match(pattern);
+    assert.ok(match, `หาไม่เจอใน 0192: ${pattern}`);
+    return match[1].split(',').map((value) => value.trim().replace(/^'|'$/g, ''));
+  };
+
+  test('0192: CHECK ของตารางมี TS และครบทุกค่าที่โค้ดยอมรับ', () => {
+    const checkRoles = rolesFrom(/ADD CONSTRAINT workflow_template_steps_role_check\s*\n\s*CHECK \(role IN \(([^)]+)\)\)/);
+    assert.ok(checkRoles.includes('TS'), 'CHECK ของตารางยังไม่มี TS');
+    assert.deepEqual(checkRoles, [...WORKFLOW_TEMPLATE_ROLES], 'CHECK ของตารางกับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
+  });
+
+  test('0192: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
+    const rpcRoles = rolesFrom(/\(s->>'role'\) NOT IN \(([^)]+)\)/);
+    assert.ok(rpcRoles.includes('TS'), 'RPC ยังไม่รับ TS — เลือกได้แต่บันทึกไม่ผ่าน');
+    assert.deepEqual(rpcRoles, [...WORKFLOW_TEMPLATE_ROLES], 'RPC กับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
+  });
+
+  // ⚠️ RPC ในใบนี้คัดมาทั้งดวงจาก 0121 — ถ้าใครเขียนใหม่จากความจำแล้วกลืนกติกาอื่นหาย
+  // เทสต์นี้จะฟ้อง (ด่านที่ต้องมีครบตามนิยามเดิม)
+  test('0192: RPC ยังมีด่านอื่นครบตามนิยามเดิมของ 0121', () => {
+    for (const guard of [
+      'workflow_template_version_not_found',
+      'workflow_template_version_not_draft',
+      'workflow_template_draft_stale',
+      'workflow_template_step_key_duplicate',
+      'workflow_template_dependency_invalid',
+    ]) {
+      assert.ok(sql.includes(guard), `RPC ใน 0192 ทำด่าน ${guard} หาย`);
+    }
+  });
+}
