@@ -108,8 +108,14 @@ test("ค่าจอสัมผัสถูกใช้เฉพาะกั�
     if (!/var\(--ctl-h-touch\)/.test(block.slice(brace + 1))) continue;
     uses.push(block.slice(0, brace).split("\n").filter(Boolean).join(" ").trim());
   }
+  /* เป้าที่นิ้วต้องกดจริงแต่ไม่ใช่ `.btn` — ต้องระบุชื่อไว้ตรงนี้ทีละตัวเท่านั้น
+     ห้ามผ่อนเป็นแพตเทิร์นกว้าง ๆ ไม่งั้นด่านนี้กลับไปเหมาเลข 44 ทั้งไฟล์เหมือนเดิม */
+  const TOUCH_TARGETS_NOT_BTN = [
+    ".mbn-item", // ปุ่มเมนูบนแถบล่างมือถือ — เป็น <a> ไม่ใช่ .btn แต่คือเป้ากดหลักของทั้งจอ
+  ];
   assert.ok(uses.length > 0, "ไม่มีใครใช้ --ctl-h-touch เลย");
   for (const selector of uses) {
+    if (TOUCH_TARGETS_NOT_BTN.some((allowed) => selector.includes(allowed))) continue;
     assert.match(selector, /\.btn\b/,
       `${selector} ไม่ใช่ปุ่ม — --ctl-h-touch มีไว้สำหรับเป้าที่นิ้วต้องกดเท่านั้น`);
   }

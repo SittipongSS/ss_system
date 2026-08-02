@@ -11,6 +11,7 @@ import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
+import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
@@ -463,6 +464,12 @@ export default function AppLayout({ children }) {
           </RoleContext.Provider>
         </div>
       </main>
+
+      {/* แถบเมนูล่างบนมือถือ — เมนูของระบบครบทุกตัว แบ่งหน้าปัดเอา (มติ 2026-08-02)
+          ไม่โผล่ในบริบทตั้งค่า เพราะที่นั่นไม่มีเมนูของระบบ */}
+      {!isSettingsContext && (
+        <MobileBottomNav items={menuItems} pathname={pathname} label={systemSubtitle} />
+      )}
 
       {mobileMoreOpen && (
         <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label={`เมนู${systemSubtitle}`}>
