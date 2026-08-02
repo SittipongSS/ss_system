@@ -366,7 +366,7 @@ export default function UpdateThread({
               {/* รายการจากแหล่งอื่นที่มีหน้าของตัวเอง ต้องกดเข้าไปได้ ไม่งั้น
                   ไทม์ไลน์บอกว่าเกิดอะไรแต่ไปต่อไม่ได้ */}
               {item.kind === "extra" && item.href && (
-                <Link href={item.href} className="linklike">{item.linkLabel || "เปิดดู"}</Link>
+                <Link href={item.href} className="rich-link">{item.linkLabel || "เปิดดู"}</Link>
               )}
               {who && <span className={styles.systemWho}>{who}</span>}
               {replyButton && <span className={styles.rowActions}>{replyButton}</span>}
