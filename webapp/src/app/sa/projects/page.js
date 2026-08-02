@@ -7,37 +7,34 @@ import Select from "@/components/ui/Select";
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2, Split } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Split } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import RecordActionMenu from "@/components/ui/RecordActionMenu";
+import { useCan } from "@/lib/roleContext";
 import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectDealTypes";
 import styles from "./page.module.css";
-import {
-  CLOSED_WORK_STATUSES, createProjectLifecycle, PROJECT_CLOSE_ACTIONS,
-  PROJECT_PATCH_TRANSITIONS, PROJECT_WORK_STATUSES, projectStatusLabel,
-} from "@/lib/pm/projectLifecycle";
+import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtMoneyCompact, fmtName } from "@/lib/format";
+import { fmtMoney, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { businessLineLabel, countUnsetBusinessLine, isBusinessLine } from "@/lib/master/businessLines";
 
-const money = (v) => fmtMoneyCompact(v);
+/* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
+   ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
+   คืนความกว้างมาให้พอดี */
+const money = (v) => fmtMoney(v);
 
 export default function ProjectsIndexPage() {
   const canView = useCan("salesplan:view");
-  const canEdit = useCan("salesplan:edit");
-  const role = useRole();
-  const team = useTeam();
-  const viewer = useMemo(() => ({ role, team }), [role, team]);
-  /* กติกา "โครงการใบนี้ทำอะไรได้บ้าง" — ไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ */
-  const projectLc = useMemo(() => createProjectLifecycle(), []);
-  const [busyId, setBusyId] = useState(null);
+  /* ⚠️ หน้านี้ "อ่านอย่างเดียว" โดยเจตนา (มติผู้ใช้ 2026-08-02) — ต่างจากหน้ารายการ
+     ลีด/ดีล ที่ยังมีปุ่มก้าวถัดไป + เมนู "…" ในแถว
+     ทำไม: การควบคุมโครงการทั้งชุดอยู่บนการ์ด Record Control ของหน้ารายละเอียดแล้ว
+     (#902) การมีปุ่มสองที่แปลว่าต้องดูแลกติกาสองที่ และแถวก็ยาวจนเลขเงินไม่มีที่อยู่
+     ⇒ ถ้าจะเอาปุ่มกลับมา ให้เอา `RecordActionMenu` + lifecycle เดิมกลับมาทั้งก้อน
+     อย่าเขียนปุ่มเฉพาะกิจใหม่ */
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,8 +42,6 @@ export default function ProjectsIndexPage() {
   const [statusFilter, setStatusFilter] = useState("active"); // active = ไม่รวม Done/Drop
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -72,54 +67,9 @@ export default function ProjectsIndexPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* จุดเดียวที่ปุ่มในแถววิ่งเข้า — โครงการยิงสองปลายทางตามชนิดของ transition
-     สถานะงาน (ระงับ/ยกเลิก/ดึงกลับ) → PATCH · ชั้นการปิด → POST /close
-     คืน false = ไม่สำเร็จ เมนูค้างกล่องไว้พร้อมเหตุผลที่พิมพ์ไปแล้ว */
-  const runProjectTransition = async (project, actionId, values) => {
-    const closeAction = PROJECT_CLOSE_ACTIONS[actionId];
-    if (!closeAction && !PROJECT_PATCH_TRANSITIONS.includes(actionId)) return false;
-    setBusyId(project.id);
-    setError("");
-    try {
-      const reason = values.reason?.trim() || undefined;
-      const res = closeAction
-        ? await fetch(`/api/pm/projects/${project.id}/close`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: closeAction, reason, closeType: values.closeType || undefined }),
-        })
-        : await fetch(`/api/pm/projects/${project.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            actionId === "drop"
-              // เหตุผลที่ยกเลิกเก็บใน metadata.lossReason ตามของเดิม ไม่ใช่คอลัมน์ของตัวเอง
-              ? { status: "Dropped", metadata: { ...(project.metadata || {}), lossReason: reason || null } }
-              : { status: projectLc.get(actionId).to },
-          ),
-        });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
-      await load();
-      return true;
-    } catch (e) {
-      setError(e.message || "ทำรายการไม่สำเร็จ");
-      return false;
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const deleteProject = async () => {
-    if (!deleteTarget) return;
-    const res = await fetch(`/api/pm/projects/${deleteTarget.id}`, { method: "DELETE" });
-    const payload = await res.json().catch(() => ({}));
-    setDeleteTarget(null);
-    if (!res.ok) {
-      setError(payload.error || "ลบโครงการไม่สำเร็จ");
-      return;
-    }
-    await load();
-  };
+  /* การเดินสถานะ (ระงับ / ยกเลิก / ดึงกลับ / ขอปิด / อนุมัติปิด) และการแก้ไข-ลบ
+     ย้ายไปอยู่บนการ์ด Record Control ของหน้ารายละเอียดทั้งหมดแล้ว (#902)
+     หน้านี้จึงไม่ยิง PATCH / DELETE / POST close อีกต่อไป — โหลดอย่างเดียว */
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -245,7 +195,6 @@ export default function ProjectsIndexPage() {
                   <th className="num">FC คงเหลือ</th>
                   <th>ขั้นตอน</th>
                   <th>ผู้ดูแล (AE)</th>
-                  <th style={{ textAlign: "right" }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -253,8 +202,6 @@ export default function ProjectsIndexPage() {
                   const r = p.dealsRollup || {};
                   const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
                   const dealTypes = summarizeProjectDealTypes(p.deals);
-                  const canEditProject = canEdit && p.canEdit && !["On Hold", "Dropped", "Completed"].includes(p.status);
-                  const canDeleteProject = !!p.canDelete;
                   return (
                     <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                       <td>
@@ -305,29 +252,12 @@ export default function ProjectsIndexPage() {
                       <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                       <td>{taskProgress(p)}</td>
                       <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (p.team || "-")}</td>
-                      <td className="num" onClick={(event) => event.stopPropagation()}>
-                        {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" — กติกามาจาก projectLifecycle ตัวเดียว
-                            กับที่หน้ารายละเอียดจะใช้ · ของเดิมมีแค่ไอคอนแก้ไข/ลบ ส่วนการ
-                            ขอปิด/อนุมัติปิด ต้องเข้าหน้ารายละเอียดถึงจะเห็น */}
-                        <RecordActionMenu
-                          lifecycle={projectLc}
-                          record={p}
-                          user={viewer}
-                          busy={busyId === p.id}
-                          recordLabel={p.name || p.code}
-                          onTransition={(actionId, values) => runProjectTransition(p, actionId, values)}
-                          canEdit={canEditProject}
-                          canDelete={canDeleteProject}
-                          onEdit={() => setEditingProject(p)}
-                          onDelete={() => setDeleteTarget(p)}
-                        />
-                      </td>
                     </DetailRow>
                   );
                 })}
                 {!filtered.length && !loading && (
                   <tr>
-                    <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีโครงการตามตัวกรองนี้
                     </td>
                   </tr>
@@ -347,17 +277,11 @@ export default function ProjectsIndexPage() {
           )}
         </SaSection>
         </div>
+      {/* เหลือแค่ "สร้าง" — แก้ไขโครงการที่มีอยู่ทำที่หน้ารายละเอียด (การ์ด Control) */}
       <SalesProjectCreateModal
-        open={showCreateModal || !!editingProject}
-        onClose={() => { setShowCreateModal(false); setEditingProject(null); }}
-        editingId={editingProject?.id || null}
-        initialData={editingProject}
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
         onSuccess={(data) => {
-          if (editingProject) {
-            setEditingProject(null);
-            load();
-            return;
-          }
           setShowCreateModal(false);
           const project = data?.project;
           if (project?.code || project?.id) window.location.href = `/sa/projects/${project.code || project.id}`;
@@ -365,15 +289,6 @@ export default function ProjectsIndexPage() {
         }}
         customers={customers}
         categories={categories}
-      />
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={deleteProject}
-        danger
-        title="ลบโครงการ"
-        message={deleteTarget ? `ต้องการลบโครงการ “${deleteTarget.code || deleteTarget.id} — ${deleteTarget.name || "-"}” และขั้นตอนทั้งหมดใช่หรือไม่?${(deleteTarget.deals || []).length ? " หากโครงการยังผูกกับดีล ระบบจะไม่อนุญาตให้ลบจากหน้านี้" : ""}` : ""}
-        confirmLabel="ลบ"
       />
     </SaWorkspace>
   );
