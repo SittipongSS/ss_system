@@ -66,6 +66,9 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
     if (!form.name.trim()) return setError("กรุณาระบุชื่อโครงการ");
     if (!form.customerId) return setError("กรุณาเลือกลูกค้า");
     if (!form.startDate) return setError("กรุณาระบุวันที่เริ่มโครงการ");
+    // บังคับเลือกสายธุรกิจ — ทั้งตอนสร้างและตอนแก้ (โครงการเก่าที่ยังว่างจะได้เคลียร์
+    // ตัวเองตอนมีคนแตะ ไม่ต้องมีงานกวาดแยก) · ดู mig 0191 ว่าทำไมไม่ใช้ default แทน
+    if (!form.line) return setError("กรุณาเลือกสายธุรกิจ (สินค้า / บริการ)");
     setSubmitting(true);
     setError("");
     try {
@@ -121,8 +124,8 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           {/* สายธุรกิจ (mig 0191) — ตัดสินว่าโครงการนี้ "จบยังไง" ⇒ เลือกแม่แบบไทม์ไลน์
               ⚠️ วางไว้ก่อนหมวดสินค้าเพราะเป็นคำถามที่กว้างกว่า ตอบก่อนแล้วที่เหลือตามมา */}
           <div className="form-group col-span-2">
-            <label>สายธุรกิจ</label>
-            <BusinessLineSelect value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
+            <label>สายธุรกิจ <span style={{ color: "var(--red)" }}>*</span></label>
+            <BusinessLineSelect required value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
           </div>
           <ProductCategorySelect
             categories={categories}

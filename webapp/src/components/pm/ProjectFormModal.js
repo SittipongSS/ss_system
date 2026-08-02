@@ -161,6 +161,9 @@ export default function ProjectFormModal({
     setFormError("");
     // วันเริ่ม = anchor ของ timeline → บังคับใส่ (โครงการย้อนหลังต้องตั้งวันจริงในอดีต)
     if (!form.startDate) { setFormError("กรุณาระบุวันที่เริ่มโครงการ"); return; }
+    // บังคับเลือกสายธุรกิจ — เงื่อนไขเดียวกับฟอร์มหน้าโครงการ (ช่องมาจาก
+    // BusinessLineSelect ตัวเดียวกัน กติกาจึงต้องตรงกันด้วย)
+    if (!form.line) { setFormError("กรุณาเลือกสายธุรกิจ (สินค้า / บริการ)"); return; }
     // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โครงการเดิมแล้วสถานะสรรพสามิต
     // (flag isExcise ของหมวด) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
     if (editingId) {
@@ -244,8 +247,8 @@ export default function ProjectFormModal({
               ⚠️ ไม่ disabled ตอนแก้ (ต่างจาก `type` ที่ล็อกเพราะแม่แบบ gen ไปแล้ว) —
                  โครงการเก่าเป็น NULL ทั้งหมด ต้องเปิดให้มาเลือกทีหลังได้ */}
           <div className="form-group col-span-2">
-            <label>สายธุรกิจ</label>
-            <BusinessLineSelect value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
+            <label>สายธุรกิจ <span className="text-[var(--red)]">*</span></label>
+            <BusinessLineSelect required value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
           </div>
           <div className="form-group col-span-2">
             <label>ชื่อโครงการ / สินค้า <span className="text-[var(--red)]">*</span></label>
