@@ -11,6 +11,7 @@ import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTyp
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // ประเภทมาจาก body (โมดัลไทม์ไลน์) → ตกไปที่ประเภทดีล (dealType คอลัมน์จริง →
     // fallback metadata เก่า) — SCENT/NPD/RE-ORDER ตรงกับ template ของ PM 1:1
     type: normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType),
+    // สายธุรกิจ (mig 0191) — มาจากโมดัลเท่านั้น **ไม่มี fallback โดยเจตนา**
+    // ⚠️ ห้ามเดาจาก `deal.team === 'SV'` — prod มี `SDS_…EGCO_HAND GEL` อยู่ใต้ทีม SV
+    // (ทีมขาย ≠ สายธุรกิจ · มติ #868) · ไม่เลือก = NULL แล้วไปโผล่ตัวนับ "ยังไม่ระบุสาย"
+    line: normalizeBusinessLine(body.line) ?? null,
     // ชื่อสูตรกลิ่น: โครงการรับสูตรจากดีล (SCENT เขียนสูตร; กลิ่นเดิมอ้างสูตรผ่านโครงการ)
     formulaName: body.formulaName ?? deal.formulaName ?? null,
     urgency: body.urgency || 'Schedule',

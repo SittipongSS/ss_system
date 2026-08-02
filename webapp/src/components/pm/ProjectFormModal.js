@@ -14,6 +14,7 @@ import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels"
 import { cachedFetchJson } from "@/lib/apiCache";
 import { isExciseCategory } from "@/lib/master/categoryOf";
 import { useRole } from "@/lib/roleContext";
+import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -39,7 +40,7 @@ export default function ProjectFormModal({
       : role === "ae_supervisor" ? "aeSupervisor" : null)
     : null;
   const blank = useMemo(() => ({
-    code: "", name: "", customerId: "", type: "NPD",
+    code: "", name: "", customerId: "", type: "NPD", line: "",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
     mainCode: "", typeCode: "",
     aeSupervisor: "", preparedBy: "",
@@ -237,6 +238,14 @@ export default function ProjectFormModal({
               <option value="NPD">NPD (พัฒนาสินค้า)</option>
               <option value="RE-ORDER">RE-ORDER (สั่งผลิตซ้ำ)</option>
             </Select>
+          </div>
+          {/* สายธุรกิจ (mig 0191) — ช่องเดียวกับหน้า /sa/projects ผ่าน BusinessLineSelect
+              ⚠️ โครงการมีฟอร์มสองตัว ห้ามเขียน <option> เองที่นี่ ไม่งั้นตัวเลือกเพี้ยนหากัน
+              ⚠️ ไม่ disabled ตอนแก้ (ต่างจาก `type` ที่ล็อกเพราะแม่แบบ gen ไปแล้ว) —
+                 โครงการเก่าเป็น NULL ทั้งหมด ต้องเปิดให้มาเลือกทีหลังได้ */}
+          <div className="form-group col-span-2">
+            <label>สายธุรกิจ</label>
+            <BusinessLineSelect value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
           </div>
           <div className="form-group col-span-2">
             <label>ชื่อโครงการ / สินค้า <span className="text-[var(--red)]">*</span></label>

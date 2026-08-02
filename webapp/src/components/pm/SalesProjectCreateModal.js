@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
@@ -32,7 +33,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
-    name: "", customerId: "", brand: "", mainCode: "", typeCode: "",
+    name: "", customerId: "", brand: "", line: "", mainCode: "", typeCode: "",
     productMainCategory: "", productSubCategory: "", startDate: today(), dueDate: "",
     aeOwner: "", preparedBy: "", aeSupervisor: "",
   });
@@ -43,7 +44,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
     const categoryCode = initialData?.productMainCategory || "";
     const [mainCode = "", typeCode = ""] = categoryCode.split("-");
     setForm({
-      name: initialData?.name || "", customerId: initialData?.customerId || "", brand: initialData?.metadata?.brand || "",
+      name: initialData?.name || "", customerId: initialData?.customerId || "", brand: initialData?.metadata?.brand || "", line: initialData?.line || "",
       mainCode, typeCode, productMainCategory: categoryCode, productSubCategory: initialData?.productSubCategory || "",
       startDate: initialData?.startDate || today(), dueDate: initialData?.dueDate || "", aeOwner: initialData?.aeOwner || "",
       preparedBy: initialData?.preparedBy || "", aeSupervisor: initialData?.aeSupervisor || "",
@@ -116,6 +117,12 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           <div className="form-group">
             <label>แบรนด์ (อังกฤษ · ไทย)</label>
             <SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า" />
+          </div>
+          {/* สายธุรกิจ (mig 0191) — ตัดสินว่าโครงการนี้ "จบยังไง" ⇒ เลือกแม่แบบไทม์ไลน์
+              ⚠️ วางไว้ก่อนหมวดสินค้าเพราะเป็นคำถามที่กว้างกว่า ตอบก่อนแล้วที่เหลือตามมา */}
+          <div className="form-group col-span-2">
+            <label>สายธุรกิจ</label>
+            <BusinessLineSelect value={form.line} onChange={(line) => setForm((f) => ({ ...f, line }))} />
           </div>
           <ProductCategorySelect
             categories={categories}

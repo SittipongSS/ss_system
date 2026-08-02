@@ -6,6 +6,7 @@ import { todayStr } from '@/lib/pm/schedule';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { normalizeDealType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerId: body.customerId || null,
     customerName: body.customerName || null,
     type: normalizeDealType(body.type || 'NPD'),
+    // สายธุรกิจ (mig 0191) — มาจากฟอร์มเท่านั้น **ไม่มี fallback โดยเจตนา**
+    // ⚠️ บรรทัดเหนือขึ้นไปคือตัวอย่างของสิ่งที่ห้ามทำซ้ำ: `body.type || 'NPD'`
+    //    คือเหตุผลที่โครงการทั้ง 11 ใบบน prod เป็น NPD หมด · ไม่เลือก = NULL
+    //    แล้วไปโผล่ตัวนับ "ยังไม่ระบุสาย" ให้คนมาเลือก ไม่ใช่เดาแทน
+    line: normalizeBusinessLine(body.line) ?? null,
     formulaName: body.formulaName || null,
     urgency: body.urgency || 'Schedule',
     aeOwner: body.aeOwner || user.name || '',

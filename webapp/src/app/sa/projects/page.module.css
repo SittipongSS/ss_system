@@ -35,3 +35,14 @@
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
+
+/* ป้ายสายธุรกิจใต้ชื่อโครงการ (mig 0191) — ตัวทวงที่ตัวกรองพัดหายไม่ได้
+   ⚠️ บริบทเปลี่ยนได้แค่ *สี* เท่านั้น — รูปทรง/พื้น/ขอบ มาจาก .ui-badge ตามเดิม
+   โครงการที่ยังไม่ระบุสายใช้โทน amber ให้สะดุดตา ส่วนที่ระบุแล้วเป็นโทนกลาง */
+.lineBadge {
+  margin-top: var(--space-1);
+  color: var(--text-2);
+}
+.lineBadgeUnset {
+  color: var(--amber);
+}
