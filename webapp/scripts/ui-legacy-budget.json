@@ -2,11 +2,11 @@
   "note": "เพดานชั้นสไตล์เก่าต่อโมดูล — ขึ้นไม่ได้ ลงได้อย่างเดียว ดู scripts/uiLegacyBudget.mjs",
   "modules": {
     "sales": {
-      "legacyTable": 58,
-      "legacySurface": 86,
-      "inlineStyle": 1246,
-      "rawButtonClass": 225,
-      "rawInputClass": 76
+      "legacyTable": 56,
+      "legacySurface": 84,
+      "inlineStyle": 1126,
+      "rawButtonClass": 206,
+      "rawInputClass": 74
     },
     "sahamit": {
       "legacyTable": 21,
