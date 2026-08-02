@@ -206,6 +206,8 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
         { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
+        // shortName ไม่ต้องมี — ระบบภาษีมี 4 เมนู ช่องบนแถบล่างจึงกว้าง 93.8px
+        // ซึ่งพอดีป้ายนี้ (73.3px) · วัดในแอปจริง 2026-08-02
         { href: '/tax/filings', name: 'การยื่นชำระภาษี', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
         { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
       ],
@@ -289,7 +291,7 @@ export default function AppLayout({ children }) {
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
         { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
         { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
-        { href: '/mgmt/rocks', name: 'Rock & Improve', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
+        { href: '/mgmt/rocks', name: 'Rock & Improve', shortName: 'Rocks', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
         { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
       ],
     },
@@ -298,13 +300,15 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
-        { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
+        { href: '/sahamit/po', name: 'Purchase Orders', shortName: 'PO', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
         // "ของเข้า (สหมิตร)" — เดิมชื่อ "วัสดุ / Lead time" ซึ่งชนกับสองเมนูใหม่:
         // "ทะเบียนวัสดุ" (ฐานข้อมูล — ข้อมูลหลักราคาวัสดุ) และพาเนล "ของเข้า" ของ
         // โครงการ (mig 0176) · หน้านี้ทำงานเดียวกับพาเนลนั้นแต่เป็นของสายสหมิตร
         // ซึ่งติดตามราย PO line (pmDueDate/rmDueDate/arrivedAt — คนละตารางกัน)
-        { href: '/sahamit/material', name: 'ของเข้า (สหมิตร)', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
+        // shortName ตัด "(สหมิตร)" ทิ้ง — อยู่ในระบบสหมิตรอยู่แล้ว วงเล็บนั้นมีไว้กัน
+        // สับสนกับ "ทะเบียนวัสดุ"/พาเนลของเข้าของโครงการ ซึ่งไม่ได้อยู่บนแถบนี้
+        { href: '/sahamit/material', name: 'ของเข้า (สหมิตร)', shortName: 'ของเข้า', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
       ],
     },
   ];
