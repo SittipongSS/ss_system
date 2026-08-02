@@ -29,16 +29,29 @@ function trimUrl(raw) {
   return { url, dropped };
 }
 
+// หนีอักขระพิเศษของ regex ในชื่อคน (ชื่อจริงมี "." ได้ เช่น "Threerapong P.")
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * แยกข้อความเป็นชิ้นส่วนที่ render ได้ — ลำดับตัวอักษรเดิมทุกตัว ไม่มีการตัดทิ้ง
  *
  * ⚠️ URL มาก่อนรหัสเอกสารเสมอ: ลิงก์ที่มีคำว่า QT-… อยู่ข้างในต้องไม่ถูกผ่าครึ่ง
+ *
+ * @param mentionNames ชื่อคนที่ถูก @ ในข้อความนี้ (จาก `meta.mentionNames`) — ต้อง
+ *   ส่งมาเพราะชื่อไทยมีช่องว่าง เดาขอบเขตจากข้อความดิบไม่ได้ · ไม่ส่ง = ไม่ไฮไลต์
  */
-export function parseRichText(input) {
+export function parseRichText(input, { mentionNames = [] } = {}) {
   const text = input == null ? '' : String(input);
   if (!text) return [];
 
   const hits = [];
+  for (const name of mentionNames) {
+    const clean = String(name || '').trim();
+    if (!clean) continue;
+    for (const m of text.matchAll(new RegExp(`@${escapeRe(clean)}`, 'g'))) {
+      hits.push({ start: m.index, end: m.index + m[0].length, type: 'mention', text: m[0] });
+    }
+  }
   for (const m of text.matchAll(URL_PATTERN)) {
     const { url, dropped } = trimUrl(m[0]);
     if (!url) continue;
@@ -72,6 +85,8 @@ export function parseRichText(input) {
         href: hit.text.startsWith('www.') ? `https://${hit.text}` : hit.text,
       });
       if (hit.dropped) pushText(hit.dropped);
+    } else if (hit.type === 'mention') {
+      parts.push({ type: 'mention', text: hit.text });
     } else {
       parts.push({ type: 'doc', text: hit.text, href: docRefHref(hit.text) });
     }
@@ -82,6 +97,6 @@ export function parseRichText(input) {
 }
 
 // มีอะไรให้ทำเป็นลิงก์ไหม — ผู้เรียกใช้เลี่ยงงาน render ที่ไม่จำเป็น
-export const hasRichContent = (text) => parseRichText(text).some((part) => part.type !== 'text');
+export const hasRichContent = (text, opts) => parseRichText(text, opts).some((p) => p.type !== 'text');
 
 export { parseDocRef };

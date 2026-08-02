@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 // query คอลัมน์เดียวเองตรง ๆ ซึ่งถูกกว่าโหลดเธรดทั้งเธรดอยู่แล้ว
 import { updateEntityConfig, updateRecipients } from '@/lib/master/updateAccess';
 import { isSystemUpdateItem, updateKindMeta } from '@/lib/master/updateTypes';
+import { mentionIdsOf } from '@/lib/master/mentions';
 
 export const NOTIFICATION_LIST_LIMIT = 30;
 
@@ -99,12 +100,14 @@ async function pastAuthors(supabase, entityType, entityId) {
   return data || [];
 }
 
-export async function recipientsForUpdate(supabase, { entityType, entityId, parent, actorId }) {
+export async function recipientsForUpdate(supabase, { entityType, entityId, parent, actorId, update }) {
   const [owners, thread] = await Promise.all([
     updateRecipients(supabase, entityType, parent),
     pastAuthors(supabase, entityType, entityId),
   ]);
-  const all = new Set([...owners, ...threadParticipants(thread)]);
+  // คนที่ถูก @ ถึงในข้อความนี้ — id ถูกกรองด้วยด่านของ entity ตั้งแต่ตอนโพสต์แล้ว
+  // (ดู lib/master/mentions) จึงเชื่อได้ตรงนี้
+  const all = new Set([...owners, ...threadParticipants(thread), ...mentionIdsOf(update)]);
   if (actorId) all.delete(String(actorId));
   return [...all];
 }
@@ -116,7 +119,7 @@ export async function notifyThreadUpdate(supabase, { entityType, entityId, paren
   try {
     if (!updateEntityConfig(entityType) || !update?.id) return { sent: 0 };
     const userIds = await recipientsForUpdate(supabase, {
-      entityType, entityId, parent, actorId: actor?.id,
+      entityType, entityId, parent, actorId: actor?.id, update,
     });
     if (!userIds.length) return { sent: 0 };
 
