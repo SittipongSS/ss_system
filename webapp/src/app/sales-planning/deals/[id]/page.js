@@ -52,6 +52,14 @@ function driftText(it) {
 
 const money = (value) => fmtMoney(value);
 
+/* เนื้อความย่อของรายการที่ยืมมาแสดงในเธรด — ยาวกว่านี้แล้วเส้นเรื่องจะถูกกลบด้วย
+   เนื้อหาของเรื่องอื่น · จบด้วย … เพื่อบอกว่ายังมีต่อที่ต้นทาง (กดลิงก์ไปอ่านได้) */
+const clipText = (value, max = 160) => {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+};
+
 // สถานะที่เลือกได้ (won = ปิดสุดท้าย; ไม่มี in_project ให้เลือก แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
 const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
@@ -219,28 +227,50 @@ export default function DealOverviewPage() {
       by: s.changedByName || null,
       body: `${STAGE_LABELS[s.fromStage] || s.fromStage || "เริ่ม"} → ${STAGE_LABELS[s.toStage] || s.toStage}`,
     }));
+    // ⚠️ ทุกแถวต้องมี `body` — ป้ายกับลิงก์เปล่า ๆ บอกแค่ว่า "มีอะไรเกิดขึ้น" คนอ่าน
+    // ต้องกดออกไปอีกหน้าทุกครั้งจึงจะรู้ว่าเกิดอะไร ทั้งที่ข้อความอยู่ในมือแล้ว
     const inqs = (data?.inquiries || []).flatMap((q) => {
       const href = `/sa/requests/${q.id}`;
       const linkLabel = `${q.code ? `${q.code} · ` : ""}${q.title || "เรื่องสอบถาม"}`;
       const rows = [{
         id: `iq-${q.id}-created`, at: q.createdAt, label: q.urgent ? "สอบถาม RD (ด่วน)" : "คำร้อง",
-        color: q.urgent ? "var(--red)" : "var(--violet)", href, linkLabel, by: q.requesterName || null,
+        color: q.urgent ? "var(--red)" : "var(--violet)", href, linkLabel,
+        // 🐞 เคยอ้าง `q.requesterName`/`q.assigneeName` ซึ่งไม่มีในตาราง (คอลัมน์จริง
+        // คือ requestedByName / closedByName) → ชื่อคนในบรรทัดคำร้องว่างมาตลอด
+        by: q.requestedByName || null,
+        body: clipText([q.title, q.body || q.note].filter(Boolean).join(" — ")),
       }];
       if (q.answeredAt) {
         rows.push({
           id: `iq-${q.id}-answered`, at: q.answeredAt, label: "RD ตอบแล้ว",
-          color: "var(--green)", href, linkLabel, by: q.assigneeName || null,
+          color: "var(--green)", href, linkLabel, by: null,
+          // ⚠️ คำตอบอยู่ที่ระดับ **บรรทัด** (dept_request_items) ไม่ใช่ที่หัวคำร้อง
+          // ดึงมาที่นี่ไม่ได้โดยไม่ยิงเพิ่ม — บรรทัดนี้จึงบอกได้แค่ว่าตอบแล้ว
+          body: null,
         });
       }
       if (q.closedAt) {
         rows.push({
           id: `iq-${q.id}-closed`, at: q.closedAt, label: "ปิดเรื่องสอบถาม",
-          color: "var(--text-3)", href, linkLabel, by: q.assigneeName || null,
+          color: "var(--text-3)", href, linkLabel, by: q.closedByName || null,
+          body: null,
         });
       }
       return rows;
     });
-    return [...stages, ...inqs];
+    // ความคืบหน้าที่คนพิมพ์ไว้ในเธรดของงานที่ผูกดีล — ของจริงอยู่ที่งาน ที่นี่ยืมมา
+    // แสดงในสายเดียว (server กรองงานที่ผู้อ่านไม่มีสิทธิ์เห็นออกไปแล้ว)
+    const taskRows = (data?.taskUpdates || []).map((u) => ({
+      id: `tu-${u.id}`,
+      at: u.createdAt,
+      label: "อัปเดตงาน",
+      color: "var(--blue)",
+      by: u.authorName || null,
+      body: u.body,
+      href: `/sa/tasks/${u.entityId}`,
+      linkLabel: u.taskTitle || "งาน",
+    }));
+    return [...stages, ...inqs, ...taskRows];
   }, [data]);
 
   // สรุปความคืบหน้าไทม์ไลน์ (จาก project_tasks ของโครงการ PM ที่ผูก)
@@ -1127,6 +1157,11 @@ export default function DealOverviewPage() {
                 <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ความเคลื่อนไหว</h2>
                 {/* ตัวนับย้ายออก — จำนวนรายการในเธรดเป็นของ UpdateThread ที่โหลดเอง
                     หน้านี้ไม่รู้ยอดจริงอีกแล้ว ใส่เลขที่นับได้ครึ่งเดียวจะหลอกคนอ่าน */}
+                {/* งานที่ผู้อ่านไม่มีสิทธิ์เปิดเธรดถูกกรองที่ server — ต้องบอกตรง ๆ ว่ามี
+                    ของที่ถูกซ่อน ไม่งั้นเส้นเรื่องที่สั้นลงจะอ่านเป็น "ไม่มีความคืบหน้า" */}
+                {data?.hiddenTaskFeeds > 0 && (
+                  <span className="ui-badge">ซ่อน {data.hiddenTaskFeeds} งานที่ไม่มีสิทธิ์เห็น</span>
+                )}
                 {canEdit && (
                   <span style={{ marginLeft: "auto" }} />
                 )}
