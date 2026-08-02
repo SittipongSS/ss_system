@@ -103,3 +103,59 @@ export function salesOrderActionUpdate(action, order, { reason = null, overrideR
   }
   return null;
 }
+
+// ── เงาของเหตุการณ์เอกสารบน "เธรดของดีลแม่" ─────────────────────────────
+//
+// ⭐ **จุดประสงค์ของเธรดดีลคือสมุดบันทึกความเคลื่อนไหวของดีล** (มติผู้ใช้) — แต่
+// ความเคลื่อนไหวที่มีค่าที่สุดของดีล (ราคาที่เสนอไป · ลูกค้ารับหรือตีกลับ) เกิดบน
+// *ใบ* ทั้งหมด คนเปิดดีลย้อนหลังจึงไม่เห็นอะไรเลยนอกจากที่ AE พิมพ์เอง
+//
+// ⚠️ **ไม่ใช่ทุก action ที่ขึ้นดีล** — ดีลสนใจเฉพาะจังหวะที่ *ทิศทางการขายเปลี่ยน*:
+//   · `withdraw` (ผู้ยื่นดึงกลับเอง) และ `restore` (กู้ร่าง) = การบ้านภายในของคนทำใบ
+//     ดีลยังอยู่ที่เดิม → ไม่ส่งขึ้น ไม่งั้นเธรดดีลจะเต็มไปด้วยการแก้ใบไปมา
+//   · `unaccept` / `revoke` ส่งขึ้นเพราะ **ยอดหลุดจาก Actual / ดีลหลุด Won**
+//
+// เลขที่ใบอยู่ในเนื้อความเสมอ — `RichText` แปลงเป็นลิงก์ `/go/<รหัส>` ให้เอง
+const DEAL_MIRROR_KIND = {
+  submit: 'doc_submit',
+  approve: 'doc_approve',
+  reject: 'doc_return',
+  accept: 'doc_accept',
+  revise: 'doc_revise',
+  cancel: 'doc_cancel',
+  revoke: 'doc_cancel',
+  unaccept: 'doc_cancel',
+};
+const DOC_LABEL = { quotation: 'ใบเสนอราคา', sales_order: 'ใบสั่งขาย' };
+
+export function dealDocumentUpdate(docType, action, doc, opts = {}) {
+  const kind = DEAL_MIRROR_KIND[action];
+  const label = DOC_LABEL[docType];
+  if (!kind || !label || !doc) return null;
+
+  const number = clip(doc.quoteNumber || doc.orderNumber) || '';
+  const head = `${label}${number ? ` ${number}` : ''}`;
+  const { reason = null, overrideReason = null, toRevisionNo = null } = opts;
+  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept'].includes(action)
+    ? REASON_SUFFIX(reason)
+    : '';
+
+  const text = {
+    submit: `ยื่นขออนุมัติ${head ? ` ${head}` : ''}`,
+    approve: clip(overrideReason)
+      ? `อนุมัติ ${head} (แอดมินอนุมัติแทน) — ${clip(overrideReason)}`
+      : `อนุมัติ ${head}`,
+    reject: `${head} ถูกตีกลับให้แก้ไข`,
+    accept: `ลูกค้ารับ ${head}`,
+    revise: `${head} ออก Rev. ใหม่${toRevisionNo == null ? '' : ` (Rev.${toRevisionNo})`}`,
+    cancel: `ยกเลิก ${head}`,
+    revoke: `ยกเลิกอนุมัติ ${head} — ยอดหลุดจาก Actual`,
+    unaccept: `ย้อนการรับ ${head} — ดีลหลุดจาก Won`,
+  }[action];
+
+  return {
+    kind,
+    body: `${text}${tail}`,
+    meta: { docType, docId: doc.id || null, docNumber: number || null, action },
+  };
+}

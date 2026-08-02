@@ -7,6 +7,7 @@ import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIden
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
 import { autoTaskUpdates } from '@/lib/pm/taskUpdates';
+import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 import { appendUpdate, listUpdates, purgeUpdates } from '@/lib/master/updates';
 import { businessDate } from '@/lib/businessDate';
 
@@ -230,6 +231,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason })) {
     // ไม่เช็ค error โดยตั้งใจ — ฟีดพลาดต้องไม่ทำให้การบันทึกงานพังตาม
     await appendUpdate(supabase, { entityType: 'personal_task', entityId: id, ...u, user });
+  }
+
+  // ── เงาบนเธรดของดีลที่ผูกอยู่ ────────────────────────────────────────
+  // ⚠️ **เอาเฉพาะ "งานเสร็จ" กับ "เหตุผลที่เสร็จช้า"** — ไม่ใช่ทุกการเปลี่ยนสถานะ
+  // เธรดงานคือเธรดที่เสียงดังที่สุดในระบบ (92% ของแถวเป็นเหตุการณ์ระบบ) ยกมาหมด
+  // เมื่อไรเธรดดีลจมทันที · และ **ไม่ยกเนื้อข้อความในเธรดงาน** เพราะด่านของงาน
+  // แคบกว่าด่านของดีล — ที่ยกมาได้คือระดับหัวข้อเท่านั้น
+  if (data.dealId) {
+    const done = task.status !== 'Completed' && data.status === 'Completed';
+    const event = updates.lateReason
+      ? dealTaskUpdate('late', data, { lateReason: updates.lateReason })
+      : (done ? dealTaskUpdate('done', data) : null);
+    if (event) await appendUpdate(supabase, { entityType: 'deal', entityId: data.dealId, ...event, user });
   }
   return ok(data);
 });

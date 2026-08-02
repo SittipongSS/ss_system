@@ -2,8 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
-import { appendUpdate } from '@/lib/master/updates';
-import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,10 +52,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
-  const threadEvent = quotationActionUpdate('unaccept', before, { reason });
-  if (threadEvent) {
-    await appendUpdate(supabase, { entityType: 'quotation', entityId: before.id, ...threadEvent, user });
-  }
+  await appendDocumentEvent(supabase, {
+    docType: 'quotation', doc: before, action: 'unaccept', opts: { reason }, user,
+  });
 
   await recordAudit({
     user,

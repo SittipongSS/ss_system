@@ -5,6 +5,8 @@ import { can, canAssignTask, isReadOnlyObserver } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canViewRequest } from '@/lib/deptRequests';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
+import { appendUpdate } from '@/lib/master/updates';
+import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,6 +142,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       .update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() })
       .eq('id', inquiryMessageId);
   }
+  // งานที่ผูกดีล = ความเคลื่อนไหวของดีลด้วย — ดีลต้องรู้ว่ามีงานอะไรเปิดค้างอยู่
+  // (ยกเฉพาะระดับหัวข้อ ไม่ยกเนื้อในเธรดงาน เพราะด่านของงานแคบกว่าด่านของดีล)
+  if (data.dealId) {
+    const event = dealTaskUpdate('created', data);
+    if (event) await appendUpdate(supabase, { entityType: 'deal', entityId: data.dealId, ...event, user });
+  }
+
   await recordAudit({ user, action: 'create', entityType: 'task', entityId: data.id, after: data, request: req });
   return ok(data, 201);
 });

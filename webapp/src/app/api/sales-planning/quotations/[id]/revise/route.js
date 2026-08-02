@@ -5,8 +5,7 @@ import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
-import { appendUpdate } from '@/lib/master/updates';
-import { quotationActionUpdate } from '@/lib/sales/documentUpdates';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
@@ -208,12 +207,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ
   // โดยไม่บอกว่าไปต่อที่ไหน · เหตุผลที่ออก Rev. เดิมมีที่เดียวคือ audit log
-  const threadEvent = quotationActionUpdate('revise', quote, {
-    reason: notes, toRevisionNo: nextRev,
+  await appendDocumentEvent(supabase, {
+    docType: 'quotation', doc: quote, action: 'revise',
+    opts: { reason: notes, toRevisionNo: nextRev }, user, docId: quote.id,
   });
-  if (threadEvent) {
-    await appendUpdate(supabase, { entityType: 'quotation', entityId: quote.id, ...threadEvent, user });
-  }
 
   await recordAudit({
     user, action: 'create', entityType: 'quotation', entityId: newId,
