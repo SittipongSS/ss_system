@@ -3,7 +3,10 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
   EXCISE_CATEGORY_TOKEN,
+  WORKFLOW_TEMPLATE_KEYS,
   WORKFLOW_TEMPLATE_ROLES,
+  findWorkflowTemplate,
+  missingWorkflowTemplatePairs,
   normalizeWorkflowTemplateDraft,
   templateMatchesCategory,
   validateWorkflowTemplateSteps,
@@ -155,3 +158,82 @@ test('workflow summary reports counts without pretending summed days are critica
     }
   });
 }
+
+// ── คู่ (line, templateKey) — mig 0193 ────────────────────────────────────
+test('0193: ทุกแถวเดิมถูก backfill เป็น PRODUCT และปิด NULL', () => {
+  const sql = readFileSync(new URL('../../supabase/migrations/0193_workflow_template_line.sql', import.meta.url), 'utf8');
+  // เทียบด้วยสตริงตรง ๆ ไม่ใช้ regex — ช่องว่างในไฟล์จัดคอลัมน์ไว้ให้อ่านง่าย
+  // การยืดหยุ่นด้วย \s+ เคยทำให้เทสต์นี้พังจากการ escape ตอนเขียนไฟล์มาแล้ว
+  const squeeze = (text) => text.replace(/\s+/g, ' ');
+  const flat = squeeze(sql);
+  for (const table of ['workflow_templates', 'workflow_template_versions']) {
+    assert.ok(
+      flat.includes(squeeze(`UPDATE public.${table} SET line = 'PRODUCT' WHERE line IS NULL`)),
+      `${table} ไม่มี backfill`,
+    );
+    assert.ok(
+      flat.includes(squeeze(`ALTER TABLE public.${table} ALTER COLUMN line SET NOT NULL`)),
+      `${table} ไม่ได้ปิด NULL — แม่แบบที่ line ว่างจะไม่มีทางถูกค้นเจอด้วย (line, type)`,
+    );
+  }
+  // ⚠️ ต่างจาก projects.line (0191) ที่ตั้งใจให้ NULL ได้ — ที่นี่ห้ามมี default
+  // (แม่แบบต้องระบุสายเสมอ ไม่งั้นค้นด้วยคู่ (line, type) ไม่เจอ)
+  assert.ok(!/ADD COLUMN IF NOT EXISTS line text DEFAULT/i.test(flat), 'ห้ามมี DEFAULT บนคอลัมน์ line');
+});
+
+// 🔴 บทเรียนจากรอบแรกที่ใบนี้ล้มบน prod: guard_workflow_template_version บล็อก
+// UPDATE **ทุกชนิด** บนแถวที่ไม่ใช่ draft (published_immutable / archived_immutable)
+// โดยไม่ดูว่าแก้คอลัมน์ไหน ⇒ backfill ต้องปิด trigger ชั่วคราว
+test('0193: backfill ฝั่ง versions ต้องปิด trigger แล้วเปิดคืนครบคู่', () => {
+  const sql = readFileSync(new URL('../../supabase/migrations/0193_workflow_template_line.sql', import.meta.url), 'utf8');
+  const flat = sql.replace(/\s+/g, ' ');
+  const disable = 'ALTER TABLE public.workflow_template_versions DISABLE TRIGGER workflow_template_versions_guard';
+  const enable = 'ALTER TABLE public.workflow_template_versions ENABLE TRIGGER workflow_template_versions_guard';
+  assert.ok(flat.includes(disable), 'ไม่ได้ปิด trigger — backfill จะล้มด้วย published_immutable บน prod');
+  assert.ok(flat.includes(enable), 'ปิด trigger แล้วไม่ได้เปิดคืน — ด่านของตารางจะหายถาวร');
+  assert.ok(flat.indexOf(disable) < flat.indexOf(enable), 'ลำดับผิด: ต้องปิดก่อน backfill แล้วเปิดหลัง');
+  // ต้องอยู่ในทรานแซกชันเดียวกัน — ล้มกลางคันแล้ว trigger ต้องกลับมาเอง
+  assert.ok(flat.indexOf('BEGIN;') < flat.indexOf(disable) && flat.indexOf(enable) < flat.indexOf('COMMIT;'),
+    'disable/enable ต้องอยู่ระหว่าง BEGIN…COMMIT');
+});
+
+// ⚠️ guard ในใบนี้คัดมาทั้งดวงจาก 0136 — เทสต์นี้ฟ้องถ้าใครเขียนใหม่จากความจำ
+// แล้วกลืนด่านอื่นหาย (แพตเทิร์นเดียวกับที่ทำกับ RPC ใน 0192)
+test('0193: guard ที่เขียนทับยังมีด่านเดิมครบ + เพิ่ม line เข้าชุดตัวตน', () => {
+  const sql = readFileSync(new URL('../../supabase/migrations/0193_workflow_template_line.sql', import.meta.url), 'utf8');
+  for (const guard of [
+    'workflow_template_version_delete_forbidden',
+    'workflow_template_version_identity_immutable',
+    'workflow_template_version_archived_immutable',
+    'workflow_template_version_published_immutable',
+    'workflow_template_version_hide_active_forbidden',
+    'workflow_template_version_transition_payload_changed',
+  ]) {
+    assert.ok(sql.includes(guard), `guard ใน 0193 ทำด่าน ${guard} หาย`);
+  }
+  assert.ok(sql.replace(/\s+/g, ' ').includes('OR NEW.line IS DISTINCT FROM OLD.line'),
+    'ยังไม่ได้กัน line ของเวอร์ชันไม่ให้เปลี่ยน — เวอร์ชันจะหลุดสายจากแม่แบบได้');
+});
+
+test('findWorkflowTemplate: หาไม่เจอคืน null ไม่ตกไปหาสายอื่น', () => {
+  const rows = [
+    { line: 'PRODUCT', templateKey: 'NPD', publishedVersionId: 'workflow-npd-v2' },
+    { line: 'PRODUCT', templateKey: 'SCENT', publishedVersionId: 'workflow-scent-v1' },
+  ];
+  assert.equal(findWorkflowTemplate(rows, 'PRODUCT', 'NPD').publishedVersionId, 'workflow-npd-v2');
+  // ⭐ ข้อสำคัญ: SERVICE/NPD ยังไม่มี ต้องคืน null ไม่ใช่ยืม PRODUCT/NPD มาให้
+  assert.equal(findWorkflowTemplate(rows, 'SERVICE', 'NPD'), null);
+  assert.equal(findWorkflowTemplate(rows, '', 'NPD'), null);
+  assert.equal(findWorkflowTemplate(rows, 'PRODUCT', ''), null);
+  assert.equal(findWorkflowTemplate([], 'PRODUCT', 'NPD'), null);
+});
+
+test('missingWorkflowTemplatePairs: บอกช่องว่างครบ 6 คู่', () => {
+  assert.equal(missingWorkflowTemplatePairs([]).length, 6);
+  const prodOnly = WORKFLOW_TEMPLATE_KEYS.map((templateKey) => ({ line: 'PRODUCT', templateKey }));
+  assert.deepEqual(missingWorkflowTemplatePairs(prodOnly), [
+    { line: 'SERVICE', templateKey: 'SCENT' },
+    { line: 'SERVICE', templateKey: 'NPD' },
+    { line: 'SERVICE', templateKey: 'RE-ORDER' },
+  ]);
+});

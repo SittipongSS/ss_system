@@ -1,5 +1,40 @@
 export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER']);
 
+// ── แม่แบบถูกค้นด้วย **คู่** (line, templateKey) — mig 0193/0194 ─────────
+//
+// ⭐ มติ 2026-08-02: แกนสายธุรกิจอยู่ที่โครงการ ส่วนชนิดงานอยู่ที่ดีล
+// ⇒ แม่แบบไทม์ไลน์ = คู่ `(project.line, deal.type)` = **บริบท × ส่วน**
+// วันนี้ `templateKey` เป็น PK ค่าเดียว จึงมี 'NPD' ได้ใบเดียวทั้งระบบ —
+// 0194 จะย้าย PK เป็นคู่ ส่วนตัวช่วยข้างล่างใช้ได้ตั้งแต่ตอนนี้
+//
+// ⚠️ คู่ที่ "มีได้" ไม่เท่ากับคู่ที่ "มีจริง" — ระบบยอมให้ครบทั้ง 6 คู่ แต่บน prod
+// วันนี้มีแค่ 3 ใบสายสินค้า · ผู้เรียกต้องทนกรณีหาไม่เจอเสมอ (คืน null ไม่ใช่เดา
+// ให้เป็นสายสินค้า — เดาแล้วจะได้ไทม์ไลน์สายผิดโดยไม่มีอะไรเตือน)
+export const WORKFLOW_TEMPLATE_LINES = Object.freeze(['PRODUCT', 'SERVICE']);
+
+// คีย์อ่านง่ายสำหรับใช้เป็น index ฝั่ง JS (Map/object) — **ไม่ใช่ค่าที่เก็บลง DB**
+// DB เก็บสองคอลัมน์แยกกัน ห้ามเอาสตริงนี้ไปเขียนลง `templateKey`
+export const workflowTemplateRef = (line, templateKey) => `${line}:${templateKey}`;
+
+// หาแม่แบบจากคู่ — คืน null เมื่อไม่มี ไม่ตกไปหาสายอื่นให้เอง
+export function findWorkflowTemplate(templates = [], line, templateKey) {
+  if (!line || !templateKey) return null;
+  return templates.find((row) => row?.line === line && row?.templateKey === templateKey) || null;
+}
+
+// คู่ที่ยังไม่มีแม่แบบ — หน้าตั้งค่าใช้บอกว่าต้องสร้างอะไรอีกบ้าง
+// (แบบเดียวกับตัวนับ "โครงการที่ยังไม่ระบุสาย" ของ 0191: บอกช่องว่าง ไม่เดาแทน)
+export function missingWorkflowTemplatePairs(templates = []) {
+  const have = new Set((templates || []).map((row) => workflowTemplateRef(row?.line, row?.templateKey)));
+  const missing = [];
+  for (const line of WORKFLOW_TEMPLATE_LINES) {
+    for (const templateKey of WORKFLOW_TEMPLATE_KEYS) {
+      if (!have.has(workflowTemplateRef(line, templateKey))) missing.push({ line, templateKey });
+    }
+  }
+  return missing;
+}
+
 // มติ 2026-07-20 (mig 0131): token พิเศษใน categoryOnly/categoryExclude —
 // 'flag:excise' = "หมวดสินค้าที่ติ๊กเสียภาษีสรรพสามิต" (product_types.isExcise)
 // แทนการอ้างรหัสหมวดตรง ๆ. รหัสหมวดปกติ (เช่น '01-002') ยังเทียบแบบ literal ได้
