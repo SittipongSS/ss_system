@@ -1,0 +1,59 @@
+/* ตารางกรอกยอดย้อนหลัง — สามระดับในตารางเดียว (บริษัท / ทีม / รายคน)
+   เพดาน inlineStyle ของโมดูล "บริหารงานขาย" เต็มพอดี สไตล์ใหม่จึงต้องอยู่ในไฟล์นี้ */
+
+.label {
+  white-space: nowrap;
+}
+
+/* ระดับอ่านจาก "น้ำหนัก + พื้น" ไม่ใช่จากการเยื้องอย่างเดียว — ตารางกว้าง 14 คอลัมน์
+   ผู้ใช้เลื่อนแนวนอนแล้วเยื้องซ้ายอย่างเดียวจะแยกไม่ออกว่าแถวไหนเป็นระดับไหน */
+.scope_company {
+  background: var(--panel-2);
+  font-weight: var(--fw-bold);
+}
+.scope_team {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-weight: var(--fw-semibold);
+}
+.scope_owner .labelBox {
+  padding-left: var(--space-5);
+}
+
+.sub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+
+.cell {
+  padding: var(--space-1-5) var(--space-1-5);
+}
+
+.input {
+  width: 100%;
+  min-width: 84px;
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--fs-6);
+  text-align: right;
+}
+.inputTotal {
+  min-width: 110px;
+  font-weight: var(--fw-bold);
+}
+
+.hint {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+  text-align: right;
+  color: var(--text-3);
+}
+.hintSaved {
+  color: var(--teal);
+}
+.hintWarn {
+  color: var(--amber);
+}

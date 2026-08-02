@@ -35,12 +35,39 @@ function fetchHistory(year) {
     .catch(() => ({ rows: [] })); // ไม่มีประวัติ = กราฟใช้ยอดระบบล้วน ไม่ใช่ error
 }
 
-// ทับเส้น Actual ด้วยยอดที่กรอกย้อนหลัง (ระดับบริษัท/ทีม — รายคนไม่รับ)
+const zero12 = () => Array(12).fill(0);
+
+/* ทับเส้น Actual ด้วยยอดที่กรอกย้อนหลัง — **ครบทั้งสามระดับ** (บริษัท / ทีม / รายคน)
+   รายคนเพิ่งรับตั้งแต่ 2026-08-03 พร้อมกับที่หน้ากรอกเปิดช่องให้ ก่อนหน้านี้ `continue`
+   ทิ้งแถวที่มี ownerId ⇒ ถ้าเปิดช่องกรอกโดยไม่แก้ตรงนี้ ตัวเลขที่พิมพ์จะลง DB แล้วหายเงียบ
+   (บั๊กชนิดเดียวกับ deals.notes)
+
+   ⚠️ ทั้งสามระดับเป็น *เส้นแยกกัน* ใน matrix (บริษัทมาจาก totals · ทีมจาก byTeam ·
+   คนจาก byOwner) ไม่ได้บวกกันขึ้นไป จึงเขียนทับทีละระดับได้โดยไม่นับซ้ำ */
 function overlayHistory(matrix, rows) {
   for (const row of rows || []) {
     const mi = Number(String(row.period || "").slice(5, 7)) - 1;
-    if (mi < 0 || mi > 11 || row.ownerId) continue;
+    if (mi < 0 || mi > 11) continue;
     const amt = Number(row.actualAmount || 0);
+
+    if (row.ownerId) {
+      const person = matrix.people.find((x) => x.id === row.ownerId);
+      if (person) person.actual[mi] = amt;
+      else {
+        // คนที่ไม่มีดีลในปีนั้นเลย (เข้าใหม่/ลาออก) ยังต้องมีแถว ไม่งั้นยอดที่กรอกหาย
+        matrix.people.push({
+          id: row.ownerId,
+          name: row.ownerName || row.ownerId,
+          team: row.team || null,
+          target: zero12(),
+          fcTotal: zero12(),
+          forecast: zero12(),
+          actual: Object.assign(zero12(), { [mi]: amt }),
+        });
+      }
+      continue;
+    }
+
     if (!row.team) matrix.company.actual[mi] = amt;
     else {
       const team = matrix.teams.find((x) => x.team === row.team);
@@ -48,10 +75,10 @@ function overlayHistory(matrix, rows) {
       else {
         matrix.teams.push({
           team: row.team,
-          target: Array(12).fill(0),
-          fcTotal: Array(12).fill(0),
-          forecast: Array(12).fill(0),
-          actual: Object.assign(Array(12).fill(0), { [mi]: amt }),
+          target: zero12(),
+          fcTotal: zero12(),
+          forecast: zero12(),
+          actual: Object.assign(zero12(), { [mi]: amt }),
         });
       }
     }

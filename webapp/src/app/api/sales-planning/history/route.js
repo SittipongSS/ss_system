@@ -82,7 +82,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json();
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) return badRequest('ไม่มีรายการประวัติ');
-  if (items.length > 200) return badRequest('รายการมากเกินไป');
+  /* หน้ากรอกยอดย้อนหลังส่งได้ทั้งตารางในครั้งเดียว: (1 บริษัท + 3 ทีม + N คน) × 13 งวด
+     — ทีมขาย 12 คนก็ทะลุ 200 แล้ว · ขยับเพดานให้พอกับทีมขนาดจริง (ราว 60 แถว)
+     ยังต้องมีเพดานอยู่เพราะแต่ละ item = upsert แบบ sequential */
+  if (items.length > 800) return badRequest('รายการมากเกินไป');
 
   const results = [];
   for (const item of items) {
