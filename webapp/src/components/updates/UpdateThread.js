@@ -7,7 +7,9 @@
 //   entityType/entityId  ตัวที่เธรดผูกอยู่ (ต้องลงทะเบียนใน lib/master/updateAccess)
 //   extraItems           รายการ "อ่านอย่างเดียว" จากแหล่งอื่นที่อยากให้เรียงรวมใน
 //                        ไทม์ไลน์เดียวกัน (ประวัติสถานะ/เหตุการณ์ลีด) —
-//                        [{ id, at, label, color, body }]
+//                        [{ id, at, label, color, body, href, linkLabel, threadKey }]
+//                        `threadKey` = เรื่องเดียวกันแม้มาจากคนละตาราง (เช่น
+//                        `task:<id>` ให้ความคืบหน้าของงานไปซ้อนใต้ "สร้างงาน")
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +29,7 @@ import {
 import {
   isPreviewableImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
+import { groupThreadItems } from "@/lib/master/updateGrouping";
 import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
 import Textarea from "@/components/ui/Textarea";
@@ -153,31 +156,10 @@ export default function UpdateThread({
   //
   // ⚠️ คำตอบเรียง **เก่า→ใหม่** เสมอแม้เธรดหลักจะเรียงใหม่ก่อน เพราะในกลุ่มคำตอบ
   // คนอ่านเป็นบทสนทนา ไม่ใช่ไล่ดูของใหม่
-  const { roots, repliesOf } = useMemo(() => {
-    const rootIdOf = (row) => {
-      let cur = row;
-      for (let hop = 0; hop < 20; hop += 1) {   // กันวงวนถ้าข้อมูลเพี้ยน
-        const parentId = quotedIdOf(cur);
-        const parent = parentId ? byId.get(parentId) : null;
-        if (!parent) return cur.id;             // แม่ไม่อยู่ในเธรด = ตัวเองเป็นต้นเรื่อง
-        cur = parent;
-      }
-      return cur.id;
-    };
-    const groups = new Map();
-    const tops = [];
-    for (const item of timeline) {
-      const rootId = item.kind === "own" ? rootIdOf(item.row) : item.id;
-      if (rootId === item.id) { tops.push(item); continue; }
-      const list = groups.get(rootId) || [];
-      list.push(item);
-      groups.set(rootId, list);
-    }
-    for (const list of groups.values()) {
-      list.sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
-    }
-    return { roots: tops, repliesOf: groups };
-  }, [timeline, byId]);
+  const { roots, repliesOf } = useMemo(
+    () => groupThreadItems(timeline, { byId, order }),
+    [timeline, byId, order],
+  );
 
   // กรองเหตุการณ์ระบบทีหลังเสมอ — และถ้าต้นเรื่องถูกซ่อนแต่คำตอบยังอยู่
   // ให้คำตอบเลื่อนขึ้นมาเป็นระดับบนสุด ไม่ใช่หายตามแม่ไปด้วย
