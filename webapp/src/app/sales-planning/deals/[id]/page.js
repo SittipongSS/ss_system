@@ -269,6 +269,9 @@ export default function DealOverviewPage() {
       body: u.body,
       href: `/sa/tasks/${u.entityId}`,
       linkLabel: u.taskTitle || "งาน",
+      // เข้ากลุ่มเดียวกับ "สร้างงาน/งานเสร็จ" ของงานใบเดียวกัน (เธรดอ่านคีย์นี้คู่กับ
+      // meta.taskId ของเหตุการณ์ในเธรด) — ไม่งั้นงานใบเดียวกินหัวเรื่องหลายอัน
+      threadKey: `task:${u.entityId}`,
     }));
     return [...stages, ...inqs, ...taskRows];
   }, [data]);
