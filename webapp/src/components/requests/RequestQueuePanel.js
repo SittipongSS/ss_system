@@ -18,84 +18,48 @@ import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { createAndSendRequest, requestFormBlocker } from "@/lib/master/requestCreate";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
-import {
-  requestHasItems, requestKindLabel, requestKindMeta, requestShapeError,
-} from "@/lib/master/requestTypes";
+import { requestKindLabel } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
-  scope = "mine", dept = null, rows = [], materials = [], customers = [], products = [],
-  // ทะเบียนที่ฟอร์มอ้างตามชนิดคำร้อง — ดีล (บรีฟ/mockup/เอกสาร) · กลิ่น (F) · สูตร (FB)
-  deals = [], scents = [], formulas = [],
-  loading = false, loadError = "", reload,
+  scope = "mine", dept = null, rows = [], materials = [], products = [],
+  // ทะเบียน/รายการที่ฟอร์มอ้าง — โครงการ+ดีล (บังคับทุกชนิด) · กลิ่น (F) · สูตร (FB)
+  projects = [], deals = [], scents = [], formulas = [], mentionPeople = [],
+  loading = false, loadError = "", reload, newRequestDefaults = null,
 }) {
   const router = useRouter();
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
+  // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
+  //
+  // ⭐ ปุ่มเดียว "ส่งคำร้อง" ไม่ใช่ "สร้างร่าง" แล้วให้ไปกดส่งอีกหน้า (มติ 2026-08-03
+  // ให้ทำงานคล้ายเธรด — ไม่มีใครร่างโพสต์ในเธรดไว้แล้วกลับมากดส่งทีหลัง) · ที่สำคัญ
+  // กว่านั้น: ไฟล์แนบกับ @mention จะแขวนอยู่บนร่างที่ไม่มีใครเห็น ถ้าหยุดแค่ร่าง
+  //
+  // กลไกร่างยังอยู่ข้างใน เพราะสองอย่างต้องมี id ของคำร้องก่อน:
+  //   1 POST     → ได้ร่าง + id (ยังไม่กินเลขที่)
+  //   2 upload   → ไฟล์แนบเกาะ id นั้น
+  //   3 PATCH ส่ง → ออกเลขที่ + ลงเธรดคำร้อง/เธรดดีล + ยิงแจ้งเตือนคนที่ถูก @
+  // ⚠️ ล้มกลางทางแล้ว **ไม่ rollback ร่างทิ้ง** — ของที่พิมพ์มายังอยู่ พาไปหน้า
+  // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
   const create = async () => {
     setSaving(true);
-    try {
-      const payload = {
-        kind: form.kind,
-        // ฝ่ายส่งไปเฉพาะชนิดที่ไม่ล็อกฝ่ายไว้ — ที่เหลือ server อนุมานเองจากชนิด/รายการ
-        dept: form.dept || null,
-        title: form.title || null,
-        body: form.body || null,
-        urgent: !!form.urgent,
-        requestedDueDate: form.requestedDueDate || null,
-        dealId: form.dealId || null,
-        scentId: form.scentId || null,
-        formulaId: form.formulaId || null,
-        customerId: form.customerId || null,
-        customerName: customers.find((c) => c.id === form.customerId)?.name || null,
-        productId: form.productId || null,
-        productName: products.find((p) => p.id === form.productId)?.name || null,
-        formulaCode: form.formulaCode || null,
-        formulaName: form.formulaName || null,
-        note: form.note,
-        // ชนิดที่ไม่มีบรรทัดต้องไม่ส่ง items ไปเลย ไม่ใช่ส่ง [] — server ใช้ชนิด
-        // เป็นตัวตัดสินอยู่แล้ว แต่ส่งของที่ไม่เกี่ยวไปด้วยทำให้ debug ยากขึ้นเปล่า ๆ
-        ...(requestHasItems(form.kind) ? {
-          items: (form.items || []).map((it) => ({
-            kind: it.kind,
-            materialId: it.material?.materialId || null,
-            label: it.material?.label || "",
-            spec: it.spec,
-            componentId: it.componentId || null,
-            tiers: it.tiers,
-          })),
-        } : {}),
-      };
-      const res = await fetch("/api/sa/requests", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "เปิดคำร้องไม่สำเร็จ");
-      router.push(`/sa/requests/${d.id}`);
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
+    const productName = products.find((p) => p.id === form.productId)?.name || null;
+    const { id, error } = await createAndSendRequest(form, { productName });
+    if (error) {
+      setToast({ kind: "error", msg: error });
       setSaving(false);
     }
+    // มีร่างค้างแล้ว = พาไปทำต่อที่หน้ารายละเอียด ไม่ให้ของที่พิมพ์หาย
+    if (id) router.push(`/sa/requests/${id}`);
   };
 
-  // ปุ่มบันทึกเปิดเมื่อกรอกครบตาม "ชนิด" — ใช้ requestShapeError ตัวเดียวกับ server
-  // (ฟอร์มกับ API ตัดสินด้วยกฎชุดเดียว ไม่มีทางเพี้ยนหากัน) แล้วเติมด่านของ
-  // รายการวัสดุซึ่ง server ตรวจอีกชั้นตอน normalizeRequestItems
-  const formReady = !!form
-    && !requestShapeError(form.kind, {
-      title: form.title,
-      dealId: form.dealId,
-      scentId: form.scentId,
-      formulaId: form.formulaId,
-      items: requestHasItems(form.kind) ? form.items : undefined,
-    })
-    && (!requestHasItems(form.kind)
-      || (form.items || []).every((it) => it.material?.materialId || (it.material?.label || "").trim()))
-    // ชนิดที่ไม่ล็อกฝ่ายต้องเลือกฝ่ายก่อน ไม่งั้น server ตอบ 400 หลังกดไปแล้ว
-    && (requestHasItems(form.kind) || !!requestKindMeta(form.kind)?.dept || !!form.dept);
+  // ปุ่มส่งเปิดเมื่อกรอกครบ — ด่านเดียวกับข้อความที่ฟอร์มแสดง (requestFormBlocker)
+  // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล
+  const formReady = !requestFormBlocker(form);
 
   return (
     <>
@@ -105,7 +69,10 @@ export default function RequestQueuePanel({
           <RefreshCw size={14} /> รีเฟรช
         </button>
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
-        <button type="button" className="btn btn-accent" onClick={() => setForm(emptyRequestForm())}>
+        <button
+          type="button" className="btn btn-accent"
+          onClick={() => setForm(emptyRequestForm(newRequestDefaults || {}))}
+        >
           <Plus size={14} /> เปิดคำร้อง
         </button>
       </div>
@@ -189,16 +156,18 @@ export default function RequestQueuePanel({
           <>
             <RequestForm
               value={form} onChange={setForm} disabled={saving}
-              materials={materials} customers={customers} products={products}
-              deals={deals} scents={scents} formulas={formulas}
+              materials={materials} products={products}
+              projects={projects} deals={deals} scents={scents} formulas={formulas}
+              mentionPeople={mentionPeople}
             />
             <div className={`glass-panel ${styles.formNote}`}>
-              เคสจะถูกสร้างเป็น <b>ร่าง</b> ก่อน — เลขที่จะออกตอนกดส่ง (ร่างที่ทิ้งไว้จะไม่กินเลข)
+              กดส่งแล้วระบบจะออกเลขที่ · แจ้งฝ่าย {form.dept || "ปลายทาง"} ·
+              และลงเรื่องนี้ในเธรดของดีลที่เลือกไว้ให้เอง
             </div>
             <div className={`action-bar ${styles.formActions}`}>
               <button type="button" className="btn ghost" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
               <button type="button" className="btn btn-accent" onClick={create} disabled={saving || !formReady}>
-                สร้างเคส (ร่าง)
+                ส่งคำร้อง
               </button>
             </div>
           </>

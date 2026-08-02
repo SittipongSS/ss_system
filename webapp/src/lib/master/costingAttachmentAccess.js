@@ -20,6 +20,11 @@ import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
 export const COSTING_ATTACHMENT_TABLE = {
   costing_item: 'costing_request_items',
   dept_request_item: 'dept_request_items',
+  // หัวคำร้อง (มติผู้ใช้ 2026-08-03) — ชนิดที่ไม่มีบรรทัดไม่มีที่แนบไฟล์มาก่อนเลย
+  // ทั้งที่บรีฟกลิ่น/Mock-up ต้องมีรูปอ้างอิงเป็นหลัก · ทั้ง 5 จุดข้างบนเดินผ่าน
+  // ตารางนี้ จึงต่อครบด้วยการเพิ่มบรรทัดเดียว (จุด 4 อยู่ที่ driveEntityMap ซึ่งมี
+  // `dept_request` อยู่แล้วตั้งแต่ mig 0173)
+  dept_request: 'dept_requests',
 };
 
 export const isCostingAttachment = (entityType) => !!COSTING_ATTACHMENT_TABLE[entityType];
@@ -36,11 +41,27 @@ export function canViewCostingAttachment(user) {
 export async function canAttachToCosting(supabase, entityType, parent, user) {
   if (!canViewCosting(user)) return false;
   if (entityType === 'costing_item') return canUser(user, 'costing:edit');
-  if (entityType !== 'dept_request_item' || !parent?.askId) return false;
-  const { data: ask, error: askError } = await supabase
-    .from('dept_requests').select('*').eq('id', parent.askId).maybeSingle();
-  if (askError) throw askError;
-  if (!ask) return false;
-  if (['closed', 'cancelled'].includes(ask.status)) return false;
-  return canManageRequest(user, ask) || canAnswerRequest(user, ask);
+
+  // หัวคำร้อง = parent เป็นตัวคำร้องเอง ไม่ต้องไปโหลดแม่อีกชั้น
+  if (entityType === 'dept_request') return canAttachToRequest(parent, user);
+
+  if (entityType !== 'dept_request_item') return false;
+  // 🐞 เคยอ่าน `parent.askId` ซึ่ง **mig 0173 เปลี่ยนชื่อเป็น `requestId` ไปแล้ว** →
+  // undefined ทุกครั้ง → ด่านนี้คืน false ทุกครั้ง = แนบไฟล์ในรายการคำร้องไม่ได้เลย
+  // ตั้งแต่ 0173 (ยืนยันกับ schema จริง: `dept_request_items.askId does not exist`)
+  // · ไม่มีอะไร error เพราะ `?.` กลืนให้หมด — บทเรียนเดิม: rename คอลัมน์ต้อง grep
+  //   ผู้อ่านทุกจุด ชื่อคอลัมน์ที่เป็นสตริงไม่มีใครตรวจให้
+  const requestId = parent?.requestId;
+  if (!requestId) return false;
+  const { data: req, error } = await supabase
+    .from('dept_requests').select('*').eq('id', requestId).maybeSingle();
+  if (error) throw error;
+  return canAttachToRequest(req, user);
+}
+
+// ปิด/ยกเลิกแล้วถือเป็นหลักฐาน ไม่ให้แก้ของแนบย้อนหลัง (กฎเดียวกับเธรดใน updateAccess)
+function canAttachToRequest(req, user) {
+  if (!req) return false;
+  if (['closed', 'cancelled'].includes(req.status)) return false;
+  return canManageRequest(user, req) || canAnswerRequest(user, req);
 }

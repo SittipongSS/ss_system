@@ -35,6 +35,7 @@ import CostingRequestForm, {
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import RequestForm, { emptyRequestForm, emptyAskItem } from "@/components/requests/RequestForm";
 import { kindForMaterial } from "@/lib/master/requestTypes";
+import { createAndSendRequest, requestFormBlocker } from "@/lib/master/requestCreate";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
@@ -47,7 +48,9 @@ import {
   COMPONENT_LIBRARY_LABELS, componentLibraryStatus, componentSnapshotExpired,
   suggestedTierForComponent, suggestedTierQty,
 } from "@/lib/costingLibrary";
-import { latestRevision, revisionTiers, tierUnitPrice } from "@/lib/materialPrices";
+import {
+  latestRevision, revisionTiers, sourceDeptForMaterialKind, tierUnitPrice,
+} from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 import { productSelectOptions } from "@/components/master/productOption";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
@@ -100,6 +103,11 @@ export default function CostingDetailPage() {
   const [linkProducts, setLinkProducts] = useState([]);
   // เคสขอราคาที่กำลังจะเปิดจากบรรทัดในใบ — { form, componentId }
   const [askDraft, setAskDraft] = useState(null);
+  // ทะเบียนที่ฟอร์มคำร้องต้องใช้ — โหลด **ตอนกดเปิดโมดัล** ไม่ใช่ตอนเปิดหน้า
+  // (คนเข้าหน้าใบขอราคาผลิตส่วนใหญ่ไม่ได้มาเปิดคำร้อง จะดึง 5 endpoint ทิ้งเปล่า)
+  const [askRefs, setAskRefs] = useState({
+    projects: [], deals: [], scents: [], formulas: [], mentionPeople: [],
+  });
   // ค่าที่กำลังพิมพ์ในช่องกรัม (คุมแยกจาก request เพื่อไม่ยิง API ทุกตัวอักษร)
   const [gramsDraft, setGramsDraft] = useState({});
 
@@ -252,16 +260,49 @@ export default function CostingDetailPage() {
     method: "PATCH", body: JSON.stringify({ componentId, ...patch }),
   }, msg);
 
-  // เปิดเคสขอราคาจากบรรทัดในใบ — ใช้ฟอร์มเดียวกับหน้าเคส (กฎ AGENTS.md)
+  // เปิดคำร้องขอราคาจากบรรทัดในใบ — ใช้ฟอร์มเดียวกับหน้าคำร้อง (กฎ AGENTS.md)
   // ผูก componentId ไว้ให้ RD/PC ตอบแล้วราคาเด้งกลับบรรทัดนี้เอง
+  //
+  // 🔴 **บั๊กที่ปิดที่นี่:** เดิมฟอร์มตั้งต้นด้วย `emptyRequestForm()` ซึ่งหัวข้อเป็น
+  // `price_pm` ตายตัว แล้วยัดบรรทัดชนิด RM_F/RM_FB ทับลงไป · ตอนกดส่ง payload
+  // ส่ง `kind: kindForMaterial(...)` = `price_f`/`price_fb` ซึ่ง **บังคับ scentId/
+  // formulaId** แต่ฟอร์มไม่เคยถามเพราะมันคิดว่าตัวเองเป็น price_pm
+  // → บรรทัดหัวน้ำหอม/เนื้อสารเปิดคำร้องแล้วได้ 400 ทุกครั้ง และผู้ใช้แก้เองไม่ได้
+  //   เพราะช่องที่ขาดไม่โผล่ (มีแต่บรรทัด PM ที่ผ่าน)
+  // แก้ที่ต้นทาง: หัวข้อ+ฝ่ายมาจากชนิดวัสดุของบรรทัดตั้งแต่ตอนเปิดโมดัล แล้วล็อกไว้
+  // (`lockKind`) ช่องกลิ่น/สูตรจึงโผล่เองตามหัวข้อ
+  const loadAskRefs = () => {
+    const asArray = (d) => (Array.isArray(d) ? d : []);
+    const json = (u) => fetch(u, { cache: "no-store" }).then((r) => (r.ok ? r.json() : []));
+    Promise.all([
+      json("/api/pm/projects"),
+      json("/api/sales-planning/deals"),
+      json("/api/master/scents?status=developing,active"),
+      json("/api/master/formulas?status=active"),
+      json("/api/sa/requests/mentionable"),
+    ]).then(([projects, deals, scents, formulas, mentionPeople]) => setAskRefs({
+      projects: asArray(projects),
+      deals: asArray(deals),
+      scents: asArray(scents),
+      formulas: asArray(formulas),
+      mentionPeople: asArray(mentionPeople),
+    })).catch(() => {});
+  };
+
   const openAsk = (component) => {
+    loadAskRefs();
     const material = materials.find((m) => m.id === component.materialId);
+    const kind = kindForMaterial(component.kind);
     setAskDraft({
       componentId: component.id,
-      form: {
-        ...emptyRequestForm(),
-        customerId: request.customerId || "",
-        note: `จากใบขอราคาผลิต ${request.docNo || id} — บรรทัด "${component.label}"`,
+      form: emptyRequestForm({
+        kind,
+        dept: sourceDeptForMaterialKind(component.kind),
+        // โครงการ/ดีลบังคับทุกหัวข้อแล้ว — เติมจากใบถ้าใบผูกดีลไว้ ที่เหลือผู้ใช้เลือก
+        projectId: request.projectId || "",
+        dealId: request.dealId || "",
+        title: `ขอราคา ${component.label} — จากใบขอราคาผลิต ${request.docNo || id}`,
+        body: `บรรทัด "${component.label}" ในใบขอราคาผลิต ${request.docNo || id}`,
         items: [{
           ...emptyAskItem(component.kind),
           material: {
@@ -272,44 +313,25 @@ export default function CostingDetailPage() {
           componentId: component.id,
           tiers: suggestQty ? [suggestQty] : [],
         }],
-      },
+      }),
     });
   };
 
+  // ด่านของฟอร์มคำร้องในโมดัลนี้ = ตัวเดียวกับที่ฟอร์มแสดงข้อความและกับ server
+  const askBlocked = askDraft ? requestFormBlocker(askDraft.form) : "ยังไม่เปิดฟอร์ม";
+
+  // ⚠️ ขั้นตอนสร้าง+ส่งอยู่ที่ lib/master/requestCreate.js ที่เดียว — โมดัลบนหน้า
+  // คำร้องใช้ตัวเดียวกัน · เดิมสองที่ประกอบ payload กันเองแล้วเพี้ยนหากันจริง
   const createAsk = async () => {
-    const form = askDraft.form;
     setSaving(true);
-    try {
-      const res = await fetch("/api/sa/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // ⚠️ ชนิดคำร้องบังคับตั้งแต่ mig 0173 — เส้นนี้เปิดได้เฉพาะชนิดขอราคา
-          // และชนิดมาจากชนิดวัสดุของบรรทัดในใบเสมอ (RM_F→F, RM_FB→FB, PM→PM)
-          // ไม่ให้ผู้ใช้เลือก เพราะบรรทัดในใบเป็นตัวกำหนดว่ากำลังถามอะไรอยู่
-          kind: kindForMaterial(form.items?.[0]?.kind),
-          customerId: form.customerId || null,
-          customerName: request.customerName || null,
-          formulaCode: form.formulaCode || null,
-          costingRequestId: id,
-          note: form.note,
-          items: (form.items || []).map((it) => ({
-            kind: it.kind,
-            materialId: it.material?.materialId || null,
-            label: it.material?.label || "",
-            spec: it.spec,
-            componentId: it.componentId || null,
-            tiers: it.tiers,
-          })),
-        }),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "เปิดเคสไม่สำเร็จ");
-      router.push(`/sa/requests/${d.id}`);
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
+    const { id: createdId, error } = await createAndSendRequest(askDraft.form, {
+      costingRequestId: id,
+    });
+    if (error) {
+      setToast({ kind: "error", msg: error });
       setSaving(false);
     }
+    if (createdId) router.push(`/sa/requests/${createdId}`);
   };
 
   // ดึงกลับ (B5): ยื่นไปแล้วแต่ผู้บริหารยังไม่ตัดสิน — เอากลับมาแก้เองได้
@@ -1077,33 +1099,39 @@ export default function CostingDetailPage() {
           รายการที่มาจากบรรทัดผูก componentId ไว้ ราคาที่ตอบจะเด้งกลับบรรทัดเอง */}
       <Modal
         open={!!askDraft} onClose={() => setAskDraft(null)}
-        title="เปิดเคสขอราคาวัสดุ" size="lg" dismissible={!saving}
+        title="เปิดคำร้องขอราคาวัสดุ" size="lg" dismissible={!saving}
       >
         {askDraft && (
           <>
             <p style={{ marginTop: 0, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
-              ส่งถึงฝ่ายเจ้าของวัสดุ (RM → RD · PM → PC) — ตอบแล้วราคาจะเข้าทะเบียนและ
-              เติมกลับบรรทัดในใบนี้ให้อัตโนมัติ
+              หัวข้อและฝ่ายมาจากชนิดวัสดุของบรรทัดนี้แล้ว (RM → RD · PM → PC) —
+              ตอบแล้วราคาจะเข้าทะเบียนและเติมกลับบรรทัดในใบนี้ให้อัตโนมัติ
             </p>
             <RequestForm
               value={askDraft.form}
               onChange={(form) => setAskDraft((d) => ({ ...d, form }))}
               materials={materials}
-              customers={request.customerId
-                ? [{ id: request.customerId, name: request.customerName || request.customerId }]
-                : []}
+              // หัวข้อ price_f/price_fb บังคับอ้างกลิ่น/สูตร → ต้องส่งทะเบียนมาด้วย
+              // ไม่งั้น picker ว่างเปล่าและผู้ใช้กรอกให้ผ่านด่านไม่ได้เลย
+              projects={askRefs.projects} deals={askRefs.deals}
+              scents={askRefs.scents} formulas={askRefs.formulas}
+              mentionPeople={askRefs.mentionPeople}
+              lockKind
               disabled={saving}
             />
+            {/* เหตุผลที่ยังส่งไม่ได้แสดงอยู่ในตัว RequestForm แล้ว (ที่เดียว) */}
             <div className="action-bar" style={{ marginTop: 16 }}>
               <button type="button" className="btn ghost" onClick={() => setAskDraft(null)} disabled={saving}>
                 ยกเลิก
               </button>
+              {/* ด่านเดียวกับที่ฟอร์มแสดงเหตุผลไว้ในตัว — เดิมเช็คแค่ว่ามีชื่อวัสดุ
+                  แล้วปล่อยให้ 400 ตอนกดส่ง โดยที่ผู้ใช้ไม่รู้ว่าขาดอะไร */}
               <button
-                type="button" className="btn btn-accent" disabled={saving
-                  || !(askDraft.form.items || []).every((it) => it.material?.materialId || (it.material?.label || "").trim())}
+                type="button" className="btn btn-accent"
+                disabled={saving || !!askBlocked}
                 onClick={createAsk}
               >
-                เปิดเคส (ร่าง)
+                ส่งคำร้อง
               </button>
             </div>
           </>

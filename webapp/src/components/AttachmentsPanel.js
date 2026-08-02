@@ -17,6 +17,7 @@ import Select from "@/components/ui/Select";
 //    เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ ลง metadata.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDate } from "@/lib/format";
+import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import {
   FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
 } from "lucide-react";
@@ -112,49 +113,14 @@ export default function AttachmentsPanel({
   }, [items, onItemsChange]);
 
   // อัปไฟล์ขึ้น storage แล้วบันทึก metadata row. คืน true ถ้าสำเร็จ.
+  // ⚠️ ตัวอัปจริงอยู่ที่ lib/master/attachmentUpload.js — โมดัลเปิดคำร้องใช้ตัวเดียวกัน
+  // (มันอัปหลังคำร้องถูกสร้าง จึง render พาเนลนี้ไม่ได้) · ที่นี่เหลือหน้าที่ toast
   const upload = async (theFile, theDocType, theMeta) => {
-    const fd = new FormData();
-    fd.append("file", theFile);
-    fd.append("entityType", entityType); // Drive: resolve โฟลเดอร์ปลายทาง
-    fd.append("entityId", entityId);
-    const up = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!up.ok) {
-      // 🐞 เดิมโชว์ "อัปโหลดไฟล์ไม่สำเร็จ" ตายตัวแล้วทิ้งข้อความจริงจาก server ทิ้ง —
-      // ผู้ใช้จึงไม่มีทางรู้ว่าเป็นเพราะชนิดไฟล์ ขนาด หรือ Drive มีปัญหา และคนดูแลระบบ
-      // ก็ตามไม่ได้ (FileTaxDialog/ReceiveDialog โชว์ของจริงถูกอยู่แล้ว — ตัวนี้นอกคอก)
-      const detail = await up.json().catch(() => ({}));
-      notifyToast.error(detail.error || "อัปโหลดไฟล์ไม่สำเร็จ");
-      return false;
-    }
-    const { url, driveFileId } = await up.json();
-    const res = await fetch("/api/master/attachments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        entityType,
-        entityId,
-        docType: theDocType,
-        fileUrl: url,
-        driveFileId,
-        fileName: theFile.name,
-        mimeType: theFile.type || null,
-        sizeBytes: theFile.size,
-        metadata: theMeta,
-      }),
+    const { ok, error } = await uploadAttachment({
+      entityType, entityId, file: theFile, docType: theDocType, metadata: theMeta,
     });
-    if (!res.ok) {
-      // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive ที่เพิ่งอัป กัน orphan.
-      if (driveFileId) {
-        fetch("/api/upload", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ driveFileId }),
-        }).catch(() => {});
-      }
-      notifyToast.error((await res.json()).error || "บันทึกเอกสารไม่สำเร็จ");
-      return false;
-    }
-    return true;
+    if (!ok) notifyToast.error(error);
+    return ok;
   };
 
   // ── card mode: อัปไฟล์เข้าประเภทที่กดในการ์ด ──

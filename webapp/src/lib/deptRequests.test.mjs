@@ -26,13 +26,17 @@ import {
   submitRequestError,
 } from './deptRequests.js';
 import { MATERIAL_KINDS } from './materialPrices.js';
+import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
+  REQUEST_KIND_LIST,
   deptForRequest,
   isRequestKind,
   kindForMaterial,
+  kindsForDept,
+  materialKindForRequest,
+  requestDeptError,
   requestDocScope,
   requestHasItems,
-  requestNeedsDeal,
   requestShapeError,
   requestStepKey,
 } from './master/requestTypes.js';
@@ -77,13 +81,60 @@ test('ชนิดที่มีบรรทัด = ชนิดขอรา�
   assert.equal(requestHasItems('info'), false);
 });
 
-test('บังคับผูกดีลเฉพาะงานลูกค้า ไม่ใช่ชนิดขอราคา (มติ 5)', () => {
-  assert.equal(requestNeedsDeal('scent_brief'), true);
-  assert.equal(requestNeedsDeal('mockup'), true);
-  assert.equal(requestNeedsDeal('document'), true);
-  assert.equal(requestNeedsDeal('price_f'), false);
-  assert.equal(requestNeedsDeal('price_pm'), false);
-  assert.equal(requestNeedsDeal('info'), false);
+test('บังคับผูกดีล **ทุกหัวข้อ** ไม่มีข้อยกเว้น (มติ 2026-08-03 กลับมติ 5)', () => {
+  // ⭐ เทสต์นี้แทนของเดิมที่ล็อกไว้ว่า "ชนิดขอราคาไม่บังคับดีล" — ผู้ใช้กลับมติเอง
+  // หลังทราบผลกระทบแล้ว (ราคากลางที่ไม่ผูกดีลเปิดจากคำร้องไม่ได้อีก) · เทสต์เดิม
+  // ไม่ได้ผิดตอนนั้น มันเลิกเป็นกฎแล้วเท่านั้น
+  for (const kind of REQUEST_KIND_LIST) {
+    const body = { title: 'เรื่อง', scentId: 'SCT-1', formulaId: 'FM-1', items: [{ kind: 'PM' }] };
+    assert.match(requestShapeError(kind, body), /โครงการและดีล/, `${kind} ต้องบังคับดีล`);
+  }
+});
+
+test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมชนิดขอราคา', () => {
+  // เดิมชนิดขอราคายกเว้นไว้เพราะสื่อความด้วยบรรทัดวัสดุ — แต่บนคิวรวมและในเธรดดีล
+  // บรรทัดวัสดุมองไม่เห็น เหลือแต่ช่องว่าง
+  assert.match(requestShapeError('price_pm', { dealId: 'D1', items: [{ kind: 'PM' }] }), /ชื่อเรื่อง/);
+  assert.match(requestShapeError('info', { dealId: 'D1' }), /ชื่อเรื่อง/);
+});
+
+test('ฝ่ายที่เลือกต้องเข้ากับหัวข้อ — ไม่ override เงียบ ๆ', () => {
+  assert.equal(requestDeptError('scent_brief', 'RD'), null);
+  assert.match(requestDeptError('scent_brief', 'PC'), /ฝ่าย RD/);
+  assert.match(requestDeptError('price_pm', 'RD'), /ฝ่าย PC/);
+  // หัวข้อที่ไม่ล็อกฝ่ายส่งถึงใครก็ได้ แต่ต้องเลือก
+  assert.equal(requestDeptError('info', 'RD'), null);
+  assert.equal(requestDeptError('info', 'PC'), null);
+  assert.match(requestDeptError('info', ''), /ต้องระบุฝ่าย/);
+  assert.match(requestDeptError('info', 'PD'), /ต้องระบุฝ่าย/);
+});
+
+test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
+  const rd = kindsForDept('RD');
+  const pc = kindsForDept('PC');
+  assert.ok(rd.includes('scent_brief') && rd.includes('price_f') && rd.includes('mockup'));
+  assert.ok(!rd.includes('price_pm') && !rd.includes('material_eta'));
+  assert.ok(pc.includes('price_pm') && pc.includes('material_eta'));
+  assert.ok(!pc.includes('scent_brief'));
+  // หัวข้อที่ไม่ล็อกฝ่ายต้องอยู่ทั้งสองฝ่าย ไม่งั้นเลือกฝ่ายแล้วหาหัวข้อไม่เจอ
+  for (const shared of ['info', 'document']) {
+    assert.ok(rd.includes(shared) && pc.includes(shared), `${shared} ต้องเลือกได้ทั้งสองฝ่าย`);
+  }
+  assert.deepEqual(kindsForDept('PD'), []);
+});
+
+test('ชนิดวัสดุของบรรทัด derive จากหัวข้อได้เสมอ (ปิดบั๊กเปิดคำร้อง F/FB จากใบขอราคาผลิต)', () => {
+  // 🔴 บั๊กจริง: โมดัลในใบขอราคาผลิตตั้งหัวข้อเป็น price_pm ตายตัวแล้วยัดบรรทัด
+  // RM_F ทับ · payload ส่ง kind=price_f ซึ่งบังคับ scentId แต่ฟอร์มไม่เคยถาม
+  // → 400 ทุกครั้ง แก้ด้วยการให้หัวข้อเป็นตัวตั้งแล้ว derive ชนิดวัสดุลงมา
+  assert.equal(materialKindForRequest('price_f'), 'RM_F');
+  assert.equal(materialKindForRequest('price_fb'), 'RM_FB');
+  assert.equal(materialKindForRequest('price_pm'), 'PM');
+  assert.equal(materialKindForRequest('info'), null);
+  // ไป-กลับต้องปิดวง ไม่งั้นเพิ่มชนิดวัสดุใหม่แล้วสองทิศทางไม่ตรงกันเงียบ ๆ
+  for (const mk of MATERIAL_KINDS) {
+    assert.equal(materialKindForRequest(kindForMaterial(mk)), mk);
+  }
 });
 
 test('หมุดไทม์ไลน์ตรงกับขั้นจริงใน lib/pm/templates.js (มติ 3 + 6)', () => {
@@ -94,19 +145,36 @@ test('หมุดไทม์ไลน์ตรงกับขั้นจร�
   assert.equal(requestStepKey('info'), null);
 });
 
-test('ด่านตอนสร้าง: ชนิดมีบรรทัดต้องมีรายการ · ชนิดไม่มีบรรทัดต้องมีหัวเรื่อง', () => {
-  assert.match(requestShapeError('price_pm', {}), /อย่างน้อย 1 รายการ/);
-  assert.equal(requestShapeError('price_pm', { items: [{ kind: 'PM' }] }), null);
-  assert.match(requestShapeError('info', {}), /หัวเรื่อง/);
-  assert.equal(requestShapeError('info', { title: 'ขอสเปกขวด' }), null);
+test('ด่านตอนสร้าง: หัวข้อที่มีบรรทัดต้องมีรายการ', () => {
+  const base = { dealId: 'D1', title: 'ขอราคาขวด' };
+  assert.match(requestShapeError('price_pm', base), /อย่างน้อย 1 รายการ/);
+  assert.equal(requestShapeError('price_pm', { ...base, items: [{ kind: 'PM' }] }), null);
+  assert.equal(requestShapeError('info', { dealId: 'D1', title: 'ขอสเปกขวด' }), null);
 });
 
-test('ด่านตอนสร้าง: บรีฟกลิ่นต้องมีดีล · ขอราคา F ต้องเลือกกลิ่น · FB ต้องเลือกสูตร', () => {
-  assert.match(requestShapeError('scent_brief', { title: 'บรีฟ' }), /ดีล/);
-  assert.equal(requestShapeError('scent_brief', { title: 'บรีฟ', dealId: 'D1' }), null);
-  assert.match(requestShapeError('price_f', { items: [{ kind: 'RM_F' }] }), /กลิ่น/);
-  assert.match(requestShapeError('price_fb', { items: [{ kind: 'RM_FB' }] }), /สูตร/);
-  assert.equal(requestShapeError('price_f', { items: [{ kind: 'RM_F' }], scentId: 'SCT-1' }), null);
+test('ด่านตอนสร้าง: ขอราคา F ต้องเลือกกลิ่น · FB ต้องเลือกสูตร', () => {
+  const f = { dealId: 'D1', title: 'ขอราคาหัวน้ำหอม', items: [{ kind: 'RM_F' }] };
+  const fb = { dealId: 'D1', title: 'ขอราคาเนื้อสาร', items: [{ kind: 'RM_FB' }] };
+  assert.match(requestShapeError('price_f', f), /กลิ่น/);
+  assert.match(requestShapeError('price_fb', fb), /สูตร/);
+  assert.equal(requestShapeError('price_f', { ...f, scentId: 'SCT-1' }), null);
+  assert.equal(requestShapeError('price_fb', { ...fb, formulaId: 'FM-1' }), null);
+});
+
+test('ด่านของฟอร์มกับ payload ที่โมดัลในใบขอราคาผลิตส่งจริงต้องตรงกัน', () => {
+  // 🔴 regression: payload ชุดเดิม (ไม่มี dealId/title/scentId) ผ่านด่านฝั่งฟอร์ม
+  // แต่ตายที่ server ทุกครั้ง — เทสต์นี้ยิงด้วย "ของที่หน้าจอส่งจริง" ไม่ใช่ของสมมุติ
+  const payload = (materialKind, over = {}) => ({
+    dealId: 'D1',
+    title: `ขอราคา X — จากใบขอราคาผลิต CR-1`,
+    items: [{ kind: materialKind, materialId: null, label: 'X', componentId: 'CMP-1', tiers: [1000] }],
+    ...over,
+  });
+  assert.equal(requestShapeError('price_pm', payload('PM')), null);
+  assert.equal(requestShapeError('price_f', payload('RM_F', { scentId: 'SCT-1' })), null);
+  assert.equal(requestShapeError('price_fb', payload('RM_FB', { formulaId: 'FM-1' })), null);
+  // ไม่มีดีล = ตกทันที (ทั้งฟอร์มและ server อ่านกฎเดียวกัน)
+  assert.match(requestShapeError('price_pm', payload('PM', { dealId: null })), /โครงการและดีล/);
 });
 
 test('ชนิดวัสดุทุกตัวต้องมีชนิดคำร้องคู่กัน — ไม่งั้นปุ่ม "ขอราคา" ในใบขอราคาผลิตพัง', () => {
@@ -334,4 +402,49 @@ test('กลิ่นผูกลูกค้าเสมอ (มติ 9) — �
   );
   // แต่ผูกกับกลิ่นที่มีอยู่แล้ว/ไม่ได้กลิ่น ยังปิดได้ (ด่านข้ามลูกค้าอยู่ฝั่ง server)
   assert.equal(closeOutcomeError(brief({ customerId: null }), { mode: 'none' }), null);
+});
+
+// ── ด่านฝั่งจอ: ปุ่มส่งกับข้อความต้องพูดตรงกันเสมอ ──────────────────────
+test('requestFormBlocker: ปุ่มส่งกับข้อความเหตุผลใช้ตัวเดียวกัน', () => {
+  const base = {
+    projectId: 'PRJ-1', dealId: 'D-1', dept: 'RD', kind: 'price_f',
+    title: 'ขอราคาหัวน้ำหอม', scentId: 'SCT-1',
+    items: [{ kind: 'RM_F', material: { materialId: 'MAT-1', label: 'Forest night' }, tiers: [1000] }],
+  };
+  assert.equal(requestFormBlocker(base), null);
+
+  // 🐞 เคสที่เจอตอนกดจริงในเบราว์เซอร์: ผ่าน requestShapeError หมดแล้ว แต่บรรทัด
+  // ยังไม่ได้เลือกวัสดุ → เดิมปุ่มจางลงโดย **ไม่มีข้อความบอก** เพราะเงื่อนไขนี้อยู่ที่
+  // ผู้เรียก ไม่ได้อยู่ในตัวที่ฟอร์มเอาไปแสดง
+  const noMaterial = { ...base, items: [{ kind: 'RM_F', material: { materialId: null, label: '  ' }, tiers: [] }] };
+  assert.match(requestFormBlocker(noMaterial), /วัสดุของทุกรายการ/);
+
+  // ยังไม่เลือกฝ่าย/หัวข้อ = ข้อความแรกสุด ไม่ใช่ "ชนิดคำร้องไม่ถูกต้อง" ที่อ่านไม่รู้เรื่อง
+  assert.match(requestFormBlocker({ ...base, kind: '', dept: '' }), /เลือกฝ่ายและหัวข้อ/);
+  assert.match(requestFormBlocker({ ...base, dept: '' }), /เลือกฝ่ายและหัวข้อ/);
+  // ไม่มีดีล / ไม่มีชื่อเรื่อง ต้องได้ข้อความของตัวเอง
+  assert.match(requestFormBlocker({ ...base, dealId: '' }), /โครงการและดีล/);
+  assert.match(requestFormBlocker({ ...base, title: '' }), /ชื่อเรื่อง/);
+  assert.equal(requestFormBlocker(null), 'ยังไม่มีข้อมูล');
+});
+
+test('requestPayload: ไม่ส่งของที่ server ตัดสินเอง และไม่ส่ง items ให้หัวข้อที่ไม่มีบรรทัด', () => {
+  const form = {
+    projectId: 'PRJ-1', dealId: 'D-1', dept: 'RD', kind: 'scent_brief',
+    title: 'บรีฟกลิ่น', body: 'โทนไม้', urgent: true,
+    items: [{ kind: 'RM_F', material: { label: 'x' } }],
+    files: [], mentions: [{ id: 'u-1', name: 'ก' }],
+  };
+  const p = requestPayload(form);
+  assert.equal('items' in p, false, 'หัวข้อที่ไม่มีบรรทัดต้องไม่ส่ง items');
+  // projectId/customerId/customerName เป็นของ server (ดึงจากแถวดีล) · note เลิกใช้
+  for (const banned of ['projectId', 'customerId', 'customerName', 'note']) {
+    assert.equal(banned in p, false, `payload ต้องไม่มี ${banned}`);
+  }
+  assert.equal(p.dealId, 'D-1');
+  assert.equal(p.title, 'บรีฟกลิ่น');
+  // หัวข้อที่มีบรรทัดต้องส่ง items และ kind ของบรรทัดต้องมาจากฟอร์ม
+  const priced = requestPayload({ ...form, kind: 'price_f' });
+  assert.equal(priced.items.length, 1);
+  assert.equal(priced.items[0].kind, 'RM_F');
 });

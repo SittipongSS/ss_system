@@ -1,6 +1,6 @@
 // ── API คำร้องข้ามฝ่ายรายเรื่อง (mig 0173) ──────────────────────────────
 // GET    : รายละเอียด (canViewCosting)
-// PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย)
+// PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย + @mention)
 //          acknowledge (RD/PC รับเรื่อง + รับปากวันที่จะตอบ) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
@@ -17,8 +17,9 @@ import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
-import { askActionUpdate } from '@/lib/costingUpdates';
-import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { appendRequestEvent } from '@/lib/sales/documentThread';
+import { sanitizeMentions } from '@/lib/master/mentions';
+import { purgeUpdates } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -189,12 +190,20 @@ export async function PATCH(request, { params }) {
       user, action: 'update', entityType: 'dept_request', entityId: id, before, after, summary, request,
     });
 
-    // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้ action
-    // ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ autoTaskUpdates)
-    const event = askActionUpdate(action, after, { reason: patch.cancelReason });
-    if (event) {
-      await appendUpdate(supabase, { entityType: 'dept_request', entityId: id, ...event, user });
-    }
+    // เหตุการณ์ลงเธรด **ทั้งของคำร้องและของดีลแม่** ในครั้งเดียว (มติ 2026-08-03:
+    // "รวมเข้าเธรดของดีล") — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้
+    // action ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ autoTaskUpdates)
+    //
+    // @mention มาพร้อมตอน "ส่ง" เท่านั้น — ร่างยังไม่ใช่งานของใคร แจ้งเตือนคนอื่น
+    // ให้มาดูเรื่องที่ยังไม่ถูกส่งคือเรียกเขามาดูหน้าที่กดอะไรไม่ได้
+    // ⚠️ ด่านจริงคือ sanitizeMentions ซึ่งเช็คทีละคนด้วย canViewUpdates ของ
+    // `dept_request` — @คนที่เปิดคำร้องนี้ไม่ได้ จะถูกตัดออกที่นี่ ไม่ใช่ที่ dropdown
+    const mentions = action === 'submit'
+      ? await sanitizeMentions(supabase, 'dept_request', after, body.mentions)
+      : [];
+    await appendRequestEvent(supabase, {
+      request: after, action, opts: { reason: patch.cancelReason }, user, mentions,
+    });
 
     // แจ้งฝ่ายเจ้าของเมื่อมีคำร้องใหม่เข้าคิว (space rd/pc ตามฝ่าย)
     if (action === 'submit') {
