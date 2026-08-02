@@ -11,8 +11,8 @@ import Link from "next/link";
 import ReadableText from "@/components/ui/ReadableText";
 import { parseRichText } from "@/lib/master/richText";
 
-export default function RichText({ text, lines = 6, className = "", style }) {
-  const parts = parseRichText(text);
+export default function RichText({ text, lines = 6, className = "", style, mentionNames = [] }) {
+  const parts = parseRichText(text, { mentionNames });
   // ไม่มีอะไรให้ทำเป็นลิงก์ = ใช้ของเดิมตรง ๆ (ทางเดินปกติของเธรดส่วนใหญ่)
   if (!parts.some((part) => part.type !== "text")) {
     return <ReadableText text={text} lines={lines} className={className} style={style} />;
@@ -29,6 +29,11 @@ export default function RichText({ text, lines = 6, className = "", style }) {
               {part.text}
             </a>
           );
+        }
+        if (part.type === "mention") {
+          // ไม่ใช่ลิงก์ — ระบบไม่มีหน้าโปรไฟล์รายคน · ทำหน้าที่แค่บอกว่า "ข้อความนี้
+          // เรียกคุณ" ซึ่งคู่กับแจ้งเตือนที่ถูกส่งไปแล้วตอนโพสต์
+          return <mark key={i} className="mention-chip">{part.text}</mark>;
         }
         if (part.type === "doc") {
           // เส้นทางกลาง /go/<รหัส> — resolve เป็นหน้าจริงตอนกด (ดู lib/master/docRefs)

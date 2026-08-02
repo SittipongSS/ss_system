@@ -4468,6 +4468,17 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .search-glass:focus-within { width: 100%; }
 }
 
+/* ชื่อคนที่ถูก @ ในข้อความเธรด — ใช้ <mark> เพราะความหมายคือ "ส่วนที่เกี่ยวข้องกับ
+   ผู้อ่านคนนี้โดยตรง" (screen reader อ่านเป็นข้อความเน้น) · ไม่ใช่ลิงก์ เพราะระบบ
+   ไม่มีหน้าโปรไฟล์รายคนให้ไป */
+.mention-chip {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
 .linklike {
   border: 0;
   background: transparent;

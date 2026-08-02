@@ -61,6 +61,13 @@ export default function UpdateThread({
   const [kind, setKind] = useState(() => defaultAuthorableKind(entityType));
   const [dueDate, setDueDate] = useState("");
   const fileRef = useRef(null);
+  // ── กล่าวถึงคน (@) ────────────────────────────────────────────────────
+  // `picked` = คนที่เลือกจากรายการ (id + ชื่อ ณ ตอนพิมพ์) · ตอนส่งจะกรองอีกที
+  // ให้เหลือเฉพาะชื่อที่ยัง**อยู่ในข้อความจริง** เผื่อผู้ใช้ลบชื่อออกหลังเลือกไปแล้ว
+  const [people, setPeople] = useState(null);      // null = ยังไม่โหลด
+  const [picked, setPicked] = useState([]);
+  const [mentionQuery, setMentionQuery] = useState(null); // null = ไม่ได้กำลังพิมพ์ @
+  const textRef = useRef(null);
 
   // ชนิดที่คนเลือกเองได้ของ entity นี้ — มีตัวเดียว (ส่วนใหญ่) = ไม่ต้องโชว์ dropdown
   const kinds = useMemo(() => authorableKinds(entityType), [entityType]);
@@ -186,6 +193,66 @@ export default function UpdateThread({
   }, [roots, repliesOf, hideSystem, canFilterSystem, entityType]);
   const visibleCount = visibleGroups.reduce((n, g) => n + (g.root ? 1 : 0) + g.replies.length, 0);
 
+  // รายชื่อที่ @ ได้ — โหลดครั้งแรกที่ผู้ใช้พิมพ์ @ เท่านั้น (server ต้องวนเช็ค
+  // สิทธิ์ทีละคน จึงไม่ควรยิงตอนเปิดหน้าทุกครั้งทั้งที่ส่วนใหญ่ไม่ได้ใช้)
+  const loadPeople = useCallback(async () => {
+    if (people) return people;
+    try {
+      const res = await fetch(
+        `/api/updates/mentionable?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+        { cache: "no-store" },
+      );
+      const d = await res.json().catch(() => null);
+      const list = res.ok ? (d?.users || []) : [];
+      setPeople(list);
+      return list;
+    } catch { setPeople([]); return []; }
+  }, [people, entityType, entityId]);
+
+  // หา "@คำที่กำลังพิมพ์" ตรงตำแหน่งเคอร์เซอร์ — ต้องอยู่ต้นข้อความหรือหลังช่องว่าง
+  // เท่านั้น ไม่งั้นอีเมลในข้อความ (a@b.com) จะเปิดรายการทุกครั้ง
+  const readMentionQuery = (value, caret) => {
+    const upto = value.slice(0, caret);
+    const at = upto.lastIndexOf("@");
+    if (at < 0) return null;
+    if (at > 0 && !/\s/.test(upto[at - 1])) return null;
+    const q = upto.slice(at + 1);
+    if (/[\n]/.test(q)) return null;
+    return { at, q };
+  };
+
+  const onComposerChange = (value, caret) => {
+    setText(value);
+    const found = readMentionQuery(value, caret);
+    setMentionQuery(found);
+    if (found) loadPeople();
+  };
+
+  const insertMention = (person) => {
+    const node = textRef.current;
+    const caret = node?.selectionStart ?? text.length;
+    const found = readMentionQuery(text, caret);
+    if (!found) return;
+    const next = `${text.slice(0, found.at)}@${person.name} ${text.slice(caret)}`;
+    setText(next);
+    setPicked((list) => (list.some((p) => p.id === person.id) ? list : [...list, person]));
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      node?.focus();
+      const pos = found.at + person.name.length + 2;
+      node?.setSelectionRange(pos, pos);
+    });
+  };
+
+  // เสนอเฉพาะคนที่ชื่อตรงกับที่พิมพ์ · จำกัด 8 คนให้รายการไม่ยาวจนบังข้อความ
+  const mentionMatches = useMemo(() => {
+    if (!mentionQuery || !people) return [];
+    const q = mentionQuery.q.trim().toLowerCase();
+    return people
+      .filter((p) => !q || String(p.name || "").toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [mentionQuery, people]);
+
   const pickFiles = (list) => {
     const files = Array.from(list || []).filter(Boolean);
     if (!files.length) return;
@@ -228,12 +295,15 @@ export default function UpdateThread({
           entityType, entityId, body: text.trim(), attachments, kind,
           dueDate: showDueDate ? dueDate : "",
           quotedId: replyTo?.id || "",
+          // ⚠️ ส่งเฉพาะคนที่ชื่อ **ยังอยู่ในข้อความจริง** — เลือกไปแล้วลบชื่อออก
+          // ต้องไม่ถูกแจ้งเตือน (server กรองสิทธิ์ให้อีกชั้นอยู่แล้ว)
+          mentions: picked.filter((p) => text.includes(`@${p.name}`)).map((p) => p.id),
         }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ส่งอัปเดตไม่สำเร็จ");
       pending.forEach((p) => URL.revokeObjectURL(p.url));
-      setText(""); setPending([]); setDueDate(""); setReplyTo(null);
+      setText(""); setPending([]); setDueDate(""); setReplyTo(null); setPicked([]);
       await load();
       onPosted?.();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -389,7 +459,14 @@ export default function UpdateThread({
                       ยกเว้นตอนที่ **หาต้นทางไม่เจอ** (ถูกลบ/อยู่นอกชุดที่โหลดมา)
                       ซึ่งต้องบอกว่าตอบอะไรอยู่ ไม่ใช่ปล่อยเป็นข้อความลอย */}
                   {orphanReply && <QuoteBlock quoted={null} />}
-                  {row.body && <RichText className={styles.body} text={row.body} lines={6} />}
+                  {row.body && (
+                    <RichText
+                      className={styles.body} text={row.body} lines={6}
+                      // ชื่อ ณ ตอนพิมพ์ (เก็บคู่กับ id ตอนโพสต์) — ใช้จับคู่กับข้อความ
+                      // ที่บันทึกไว้ ไม่ใช่ชื่อปัจจุบันซึ่งอาจเปลี่ยนไปแล้ว
+                      mentionNames={row.meta?.mentionNames || []}
+                    />
+                  )}
                 </>
               )}
               <ThreadAttachments row={row} onOpen={setPreview} />
@@ -511,11 +588,31 @@ export default function UpdateThread({
               )}
             </div>
           )}
-          <Textarea rows={2} value={text} disabled={busy}
-            placeholder={placeholder} aria-label="ข้อความอัปเดต"
-            onChange={(e) => setText(e.target.value)}
-            onPaste={allowAttachments ? (e) => pickFiles(e.clipboardData?.files) : undefined}
-          />
+          <div className={styles.composerField}>
+            <Textarea ref={textRef} rows={2} value={text} disabled={busy}
+              placeholder={placeholder} aria-label="ข้อความอัปเดต"
+              onChange={(e) => onComposerChange(e.target.value, e.target.selectionStart)}
+              onKeyDown={(e) => { if (e.key === "Escape" && mentionQuery) setMentionQuery(null); }}
+              onPaste={allowAttachments ? (e) => pickFiles(e.clipboardData?.files) : undefined}
+            />
+            {/* รายชื่อที่ @ ได้ — กรองด้วยสิทธิ์ของเธรดนี้มาจาก server แล้ว
+                (ดู /api/updates/mentionable) จึงไม่มีชื่อคนที่เปิดเธรดไม่ได้ */}
+            {mentionQuery && mentionMatches.length > 0 && (
+              <ul className={styles.mentionList}>
+                {mentionMatches.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button" className={styles.mentionItem}
+                      onClick={() => insertMention(p)}
+                    >
+                      <span>{p.name}</span>
+                      {p.department && <span className={styles.dept}>{p.department}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {!!pending.length && (
             <div className={styles.pending}>
               {pending.map((p, i) => (

@@ -13,6 +13,7 @@ import {
   defaultAuthorableKind, isAuthorableKind, kindAcceptsDueDate, sanitizeUpdateAttachments,
 } from '@/lib/master/updateTypes';
 import { quoteTargetError } from '@/lib/master/updateQuote';
+import { sanitizeMentions } from '@/lib/master/mentions';
 import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -99,6 +100,17 @@ export async function POST(request) {
       const problem = quoteTargetError(quotedRow, { entityType, entityId });
       if (problem) return Response.json({ error: problem }, { status: 400 });
       meta.quotedId = quotedRow.id;
+    }
+
+    // ── กล่าวถึงคน ─────────────────────────────────────────────────────
+    // 🔴 กรองด้วยด่านของ entity นี้เสมอ — @คนที่เปิดเธรดไม่ได้ = เขาได้แจ้งเตือน
+    // ที่กดแล้วเจอ 404 และรู้ว่ามีเอกสารนี้อยู่ทั้งที่ไม่ควรรู้
+    // เก็บทั้ง id (ใช้ส่งแจ้งเตือน) และชื่อ ณ ตอนพิมพ์ (ใช้ไฮไลต์ให้ตรงกับข้อความ
+    // ที่บันทึกไว้ แม้เจ้าตัวจะเปลี่ยนชื่อทีหลัง)
+    const mentions = await sanitizeMentions(supabase, entityType, parent, payload.mentions);
+    if (mentions.length) {
+      meta.mentions = mentions.map((m) => m.id);
+      meta.mentionNames = mentions.map((m) => m.name).filter(Boolean);
     }
 
     // คนกดปุ่มส่ง = ต้องรู้ว่าไม่สำเร็จ ห้ามกลืน error แล้วตอบ 201
