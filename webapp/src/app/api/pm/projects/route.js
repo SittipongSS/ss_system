@@ -1,6 +1,7 @@
 import { viewScope, can, canDeleteRecord, inPmProjectScope } from '@/lib/permissions';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { rollupDeals } from '@/lib/sales/projectRollup';
+import { canApproveProjectClose } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,11 @@ export const GET = withUser(async ({ user, supabase }) => {
   for (const project of data || []) {
     project.canEdit = inPmProjectScope(user, project);
     project.canDelete = canDeleteRecord(user, 'projects', project);
+    // ผู้อนุมัติปิดโครงการ — หน้ารายการต้องรู้ ไม่งั้นปุ่ม "อนุมัติปิด"/"ตีกลับ" ในแถว
+    // ไม่มีทางโผล่เลย (หน้ารายละเอียดส่งค่านี้อยู่แล้ว หน้ารายการเพิ่งมีคนใช้)
+    project.canApproveClose = canApproveProjectClose(user);
+    // ใช้เทียบว่าคำขอปิดเป็นของเราเอง — คนยื่นอนุมัติเองไม่ได้ (API ก็ปฏิเสธ)
+    project.me = { id: user.id, name: user.name, role: user.role, team: user.team };
   }
 
   return ok(data);
