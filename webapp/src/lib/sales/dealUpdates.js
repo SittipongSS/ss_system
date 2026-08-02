@@ -9,6 +9,7 @@
 // สำเร็จแล้ว ห้าม throw
 
 import { fmtMoney } from '@/lib/format';
+import { requestKindLabel } from '@/lib/master/requestTypes';
 
 const clip = (s, n = 300) => String(s ?? '').trim().slice(0, n) || null;
 const money = (v) => (v == null || v === '' ? null : fmtMoney(Number(v) || 0));
@@ -84,4 +85,43 @@ export function dealTaskUpdate(action, task, { lateReason = null } = {}) {
     };
   }
   return null;
+}
+
+// ── คำร้องข้ามฝ่ายที่ผูกดีล (มติผู้ใช้ 2026-08-03) ────────────────────────
+//
+// ⭐ เจตนาของผู้ใช้: "ระบบคล้าย ๆ เธรด เพราะต้องการให้รวมเข้าเธรดของดีล" — คำร้อง
+// ทุกใบผูกดีลแล้ว (บังคับ) ดีลจึงต้องเล่าได้ว่าเคยขออะไรไปฝ่ายไหน ได้คำตอบเมื่อไร
+// โดยไม่ต้องเดินไปเปิดหน้าคำร้องทีละใบ
+//
+// 🔴 **เอาแค่พาดหัว ไม่เอาเนื้อ** — ด่านของเธรดคำร้องคือ `canViewCosting` ส่วนเธรด
+// ดีลคือขอบเขตดีล สองด่านนี้ไม่ครอบกันทั้งสองทาง (คนเห็นดีลแต่ไม่มี costing:view
+// ก็มี) · ยกเนื้อที่คุยกันเรื่องราคา/ต้นทุนไปกองในเธรดดีลเมื่อไรคือข้ามด่านทันที
+// กับดักเดียวกับที่ `dealTaskUpdate` เตือนไว้ข้างบน — บรรทัดนี้จึงมีแค่ ชนิด ·
+// เลขที่ · ฝ่าย · สถานะ แล้วให้คนกดลิงก์เข้าไปอ่านของจริงซึ่งมีด่านของตัวเอง
+//
+// ⚠️ ไม่เล่าตอน "สร้างร่าง" โดยเจตนา: ร่างยังไม่ใช่งานของใคร (กฎเดียวกับที่คิว
+// ฝ่ายกรองร่างของคนอื่นออก) · เริ่มเล่าตอนกดส่งเท่านั้น
+export function dealRequestUpdate(action, request, { reason = null } = {}) {
+  if (!request) return null;
+  // ชื่อชนิดมาจากทะเบียนชนิดตัวเดียวของระบบ ไม่ให้ผู้เรียกส่งข้อความมาเอง —
+  // ไม่งั้นเธรดดีลกับหน้าคำร้องเรียกชนิดเดียวกันคนละชื่อ
+  const head = `${requestKindLabel(request.kind)}${request.docNo ? ` ${request.docNo}` : ''}`;
+  const dept = request.dept || '';
+  const meta = {
+    requestId: request.id || null,
+    requestKind: request.kind || null,
+    docNo: request.docNo || null,
+    dept: dept || null,
+    action,
+  };
+
+  const text = {
+    submit: `เปิด${head} ถึงฝ่าย ${dept}`,
+    answer: `${head} — ฝ่าย ${dept} ตอบแล้ว`,
+    close: `ปิด${head}`,
+    cancel: `ยกเลิก${head}${clip(reason) ? ` — ${clip(reason)}` : ''}`,
+  }[action];
+  if (!text) return null;
+
+  return { kind: 'request', body: text, meta };
 }

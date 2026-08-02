@@ -14,10 +14,23 @@
 }
 .checkLabel { font-size: var(--fs-7); }
 
+/* ป้ายชื่อช่องที่ไม่มี input ให้ผูก htmlFor ได้ (SearchableSelect ไม่รับ prop `id`)
+   — ก่อนหน้านี้เขียน <label htmlFor="req-deal"> ทับไว้ ทั้งที่ไม่มี element ไอดีนั้น
+   จริง ผลคือคลิกป้ายแล้วโฟกัสไม่ไปไหน และ screen reader ประกาศป้ายที่ชี้ที่ว่าง ·
+   ตัวช่องบอกชื่อตัวเองผ่าน ariaLabel อยู่แล้ว จึงเหลือแค่ทำให้ *หน้าตา* เท่ากับ
+   `.form-group label` (globals.css) */
+.fieldLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+
 /* บล็อกรายการวัสดุหนึ่งบรรทัดในฟอร์มขอราคา */
 .itemCard { padding: var(--space-3); margin-bottom: var(--space-2-5); }
 .itemHead { display: flex; gap: var(--space-2); align-items: flex-start; }
-.itemKind { width: 170px; }
 .itemPicker { flex: 1; }
 .itemSpec { margin-top: var(--space-2); }
 
@@ -37,6 +50,49 @@
   color: var(--accent-ink);
 }
 .tierInput { width: 120px; }
+
+/* ── แนบไฟล์ + กล่าวถึง ในโมดัลเปิดคำร้อง ─────────────────────────── */
+/* ปุ่มเลือกไฟล์เป็น <label> ครอบ input[type=file] ที่ซ่อนไว้ — input ตัวจริงต้อง
+   ยังอยู่ใน DOM (ไม่ใช่ display:none) ไม่งั้นคีย์บอร์ดโฟกัสไม่ถึง */
+.fileDrop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--ctl-h);
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-2);
+  font-size: var(--fs-6);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.fileList { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.fileName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+.mentionPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
 
 /* ── ตารางคิว ─────────────────────────────────────────────────────── */
 .rowLink { cursor: pointer; }

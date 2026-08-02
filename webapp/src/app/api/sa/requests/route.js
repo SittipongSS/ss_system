@@ -14,7 +14,8 @@ import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
 import {
-  deptForRequest, requestHasItems, requestKindLabel, requestShapeError, requestStepKey,
+  deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestKindLabel,
+  requestShapeError, requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -61,9 +62,12 @@ export async function GET(request) {
 }
 
 // POST /api/sa/requests
-// { kind, dept?, title?, body?, urgent?, dealId?, projectId?, scentId?, formulaId?,
-//   customerId?, customerName?, productId?, costingRequestId?, requestedDueDate?, note,
+// { kind, dept, dealId, title, body?, urgent?, scentId?, formulaId?, productId?,
+//   productName?, formulaCode?, formulaName?, costingRequestId?, requestedDueDate?,
 //   items?: [{ kind, materialId?, label, spec?, componentId?, tiers: [qty…] }] }
+//
+// ⚠️ `dealId` + `title` บังคับทุกชนิด (มติ 2026-08-03) · `projectId` / `customerId` /
+// `customerName` **ไม่รับจาก client** — ดึงจากแถวดีลเสมอ · `note` เลิกใช้แล้ว
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
@@ -82,28 +86,57 @@ export async function POST(request) {
   // ฝ่ายผู้ตอบ: ชนิดที่ล็อกไว้ใช้ค่านั้น · ชนิดที่ไม่ล็อกอนุมานจากรายการ/ที่ผู้ขอเลือก
   const dept = deptForRequest(kind, { dept: body.dept, items: body.items });
   if (!dept) return Response.json({ error: 'ต้องระบุฝ่ายที่ต้องการให้ตอบ' }, { status: 400 });
+  // ฟอร์มให้เลือกฝ่ายเองแล้ว (มติ 2026-08-03) — เลือกไม่เข้ากับชนิดต้องตีกลับ
+  // ไม่ใช่เงียบ ๆ ส่งไปฝ่ายอื่นแล้วให้คนขอรอคำตอบจากฝ่ายที่ไม่เคยได้รับเรื่อง
+  if (body.dept) {
+    const deptError = requestDeptError(kind, body.dept);
+    if (deptError) return Response.json({ error: deptError }, { status: 400 });
+  }
 
   let items = [];
   if (requestHasItems(kind)) {
     const normalized = normalizeRequestItems(body.items, { dept });
     if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
     items = normalized.items;
+    // ชนิดวัสดุของบรรทัดต้องตรงกับชนิดคำร้อง — ปิดรอยที่เคยทำให้เปิดคำร้องจาก
+    // บรรทัด RM_F ในใบขอราคาผลิตแล้วได้ `kind: price_pm` (หัวใบบอกบรรจุภัณฑ์
+    // แต่บรรทัดเป็นหัวน้ำหอม → เลขที่ออกผิด scope และช่องกลิ่นไม่เคยถูกถาม)
+    const want = materialKindForRequest(kind);
+    const off = items.find((i) => i.kind !== want);
+    if (off) {
+      return Response.json({
+        error: `"${requestKindLabel(kind)}" รับได้เฉพาะรายการชนิด ${want} — พบ ${off.kind}`,
+      }, { status: 400 });
+    }
   }
 
   const requestId = `DR-${randomUUID()}`;
-  const customerId = body.customerId || null;
 
-  // โครงการปลายทางของหมุดไทม์ไลน์ — **ดึงจากดีลเอง ไม่เชื่อ client** (ดีล↔โครงการ
-  // เป็น 1:1 ตั้งแต่ mig 0064) เหตุผลเดียวกับ stepKey: ปักหมุดผิดโครงการแล้ว
-  // งานไปโผล่ไทม์ไลน์ของคนอื่น · ดีลที่ยังไม่ผูกโครงการปักหมุดไม่ได้ ซึ่งเป็นเคส
-  // ส่วนใหญ่บน prod (132 ดีล มี projectId 12) — คำร้องยังโผล่บนหน้าดีลตามปกติ
-  let projectId = body.projectId || null;
-  if (body.dealId) {
-    const { data: dealRow, error: dealError } = await supabase
-      .from('sales_deals').select('projectId').eq('id', body.dealId).maybeSingle();
-    if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-    if (dealRow?.projectId) projectId = dealRow.projectId;
+  // ── ดีล + โครงการ + ลูกค้า มาจากแถวดีลจริง ไม่เชื่อ client ────────────────
+  //
+  // ⭐ มติผู้ใช้ 2026-08-03: คำร้อง**ทุกชนิด**ต้องผูกโครงการและดีล (กลับมติ 5 เดิม
+  // ที่ยกเว้นชนิดขอราคาไว้) · ผลที่ผู้ใช้รับทราบแล้ว: ราคากลางที่ไม่ผูกดีลเปิดจาก
+  // คำร้องไม่ได้อีก และดีลที่ยังไม่ผูกโครงการเปิดคำร้องไม่ได้ (นับ prod 2026-08-03:
+  // 122 จาก 136 ดีลยังไม่ผูกโครงการ)
+  //
+  // ⚠️ **ยังไม่ใส่ NOT NULL ที่ DB** — prod มีคำร้องเก่า 2 ใบที่ dealId ว่าง
+  // migration จะล้มทันที · บังคับที่ชั้นโค้ดก่อน แล้วค่อยออก migration เมื่อเคลียร์
+  // สองใบนั้นแล้ว (แพตเทิร์นเดียวกับ mig 0194 ที่รอเคลียร์แถว TEST)
+  const { data: dealRow, error: dealError } = await supabase
+    .from('sales_deals').select('id, projectId, customerId, customerName')
+    .eq('id', body.dealId).maybeSingle();
+  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
+  if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
+  if (!dealRow.projectId) {
+    return Response.json({
+      error: 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้',
+    }, { status: 400 });
   }
+  const projectId = dealRow.projectId;
+  // ลูกค้ามาจากดีล ไม่ใช่จาก client: ดีลบังคับแล้ว ลูกค้าจึงมีคำตอบเดียวเสมอ ·
+  // ปล่อยให้ส่งมาเองคือเปิดช่องให้ราคาเข้าทะเบียนใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
+  const customerId = dealRow.customerId || null;
+  const customerName = dealRow.customerName || null;
 
   try {
     // 1) ชนิดขอราคา: ทุกรายการต้องมีวัสดุในทะเบียน — ของใหม่เข้าเป็นร่างรอ RD/PC รับ
@@ -114,7 +147,7 @@ export async function POST(request) {
         kind: item.kind,
         label: item.label,
         customerId,
-        customerName: body.customerName || null,
+        customerName,
         // ผู้ขอเสนอได้แต่ตัววัสดุ (ร่าง); ถ้าคนเปิดเป็น RD/PC ของฝ่ายนั้นเองก็รับเข้าเลย
         status: canQuoteMaterial(user, item.kind) ? 'active' : 'draft',
         user,
@@ -131,13 +164,13 @@ export async function POST(request) {
       title: body.title ? String(body.title).trim().slice(0, 200) : null,
       body: body.body ? String(body.body).trim().slice(0, 4000) : null,
       urgent: !!body.urgent,
-      dealId: body.dealId || null,
+      dealId: dealRow.id,
       projectId,
       stepKey: requestStepKey(kind),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,
       customerId,
-      customerName: body.customerName || null,
+      customerName,
       productId: body.productId || null,
       productName: body.productName || null,
       formulaCode: body.formulaCode || null,
@@ -148,7 +181,10 @@ export async function POST(request) {
       requestedByName: user?.name ?? null,
       requestedDueDate: body.requestedDueDate || null,
       team: user?.team ?? null,
-      note: body.note ? String(body.note).trim().slice(0, 2000) : null,
+      // ⚠️ เลิกเขียน `note` (มติผู้ใช้ 2026-08-03: "ไม่ต้องมีหมายเหตุ") — คำร้องมี
+      // "รายละเอียด" (body) ที่ทำงานเดียวกันอยู่แล้ว สองช่องข้อความอิสระบนเรื่อง
+      // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่
+      // · คอลัมน์ยังอยู่เพื่ออ่านของเก่า (หน้ารายละเอียดยังแสดงถ้ามีค่า) ไม่ DROP
     });
     if (headError) throw headError;
 

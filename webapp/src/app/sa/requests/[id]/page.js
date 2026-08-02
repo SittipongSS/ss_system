@@ -13,6 +13,7 @@ import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import RichText from "@/components/ui/RichText";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
@@ -334,18 +335,35 @@ export default function MaterialAskDetailPage() {
             <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
           )}
         </div>
-        {/* เนื้อคำร้องของชนิดที่ไม่มีบรรทัด — บรีฟกลิ่น/สอบถาม/ขอเอกสาร เก็บเรื่องจริง
-            ไว้ใน title+body ซึ่งหน้านี้ไม่เคยแสดงเลย (แสดงแต่ note) ผู้ตอบจึงเห็น
-            แต่หัวเรื่องบนแถบบน แล้วต้องเดาเอาว่าเขาขออะไร */}
-        {!hasItems && req.body && (
-          <ReadableText text={req.body} lines={12} className={styles.requestBody} />
+        {/* รายละเอียดคำร้อง — เดิมแสดงเฉพาะชนิดที่ไม่มีบรรทัด แต่ตอนนี้ทุกหัวข้อมี
+            ชื่อเรื่อง+รายละเอียดบังคับ (มติ 2026-08-03) จึงต้องแสดงทุกใบ
+            ⭐ RichText ไม่ใช่ ReadableText: ผู้ใช้วาง URL หรือรหัสเอกสารในรายละเอียด
+            ได้ (ฟอร์มบอกไว้ว่าได้) ถ้าเรนเดอร์เป็นข้อความเปล่าก็กดไม่ได้ = สัญญาที่
+            ฟอร์มให้ไว้ไม่เป็นจริง */}
+        {req.body && (
+          <RichText text={req.body} lines={12} className={styles.requestBody} />
         )}
+        {/* `note` เลิกเขียนใหม่แล้ว — ยังแสดงของเก่าที่มีค่าอยู่ ไม่ซ่อนข้อมูลที่คน
+            เคยพิมพ์ไว้ (คอลัมน์ยังไม่ถูก DROP) */}
         {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />}
         {req.status === "cancelled" && req.cancelReason && (
           <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
           </div>
         )}
+
+        {/* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะ
+            รายวัสดุ ซึ่งมีแต่ 3 ชนิดขอราคา → บรีฟกลิ่น/Mock-up ที่ต้องมีรูปอ้างอิง
+            มากที่สุดแนบไม่ได้เลย ต้องไปส่งกันทาง LINE) */}
+        <div className={styles.attachBlock}>
+          <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
+          <AttachmentsPanel
+            entityType="dept_request"
+            entityId={req.id}
+            canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+            inlineUpload
+          />
+        </div>
       </div>
 
       {(req.items || []).map((item) => (

@@ -17,6 +17,7 @@ import { acceptMaterial, appendMaterialRevision, findRequest } from '@/lib/mater
 import { componentFillFromRevision } from '@/lib/costingLibrary';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { askAnswerUpdates } from '@/lib/costingUpdates';
+import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
@@ -187,6 +188,16 @@ export async function PATCH(request, { params }) {
     // ต้องไม่ทำให้คำตอบที่บันทึกลงทะเบียนแล้วตอบ 500)
     for (const event of askAnswerUpdates(validated)) {
       await appendUpdate(supabase, { entityType: 'dept_request', entityId: id, ...event, user });
+    }
+
+    // ตอบครบแล้ว = เรื่องนี้เดินจบขั้นหนึ่ง ดีลแม่ต้องเห็นด้วย (มติ 2026-08-03)
+    //
+    // ⚠️ ยิงเฉพาะจังหวะที่ **เพิ่งครบ** ไม่ใช่ทุกครั้งที่บันทึกคำตอบ — ใบที่มี 10
+    // รายการตอบทีละใบจะได้ 10 บรรทัดในเธรดดีลทั้งที่ดีลสนใจแค่ "ตอบครบหรือยัง"
+    // (บทเรียนเดียวกับที่ dealTaskUpdate ยกมาแค่ 3 จังหวะจากงาน)
+    // ⚠️ ไม่ส่ง mentions: คนถูกแท็กตอนเปิดเรื่อง ไม่ใช่ตอนตอบรายบรรทัด
+    if (after.status === 'answered' && before.status !== 'answered') {
+      await appendRequestEvent(supabase, { request: after, action: 'answer', user, dealOnly: true });
     }
 
     if (after.status === 'answered') {

@@ -29,6 +29,13 @@ export function askActionUpdate(action, ask, { reason = null } = {}) {
   if (action === 'acknowledge') {
     return { kind: 'acknowledge', body: `ฝ่าย ${dept} รับเรื่องแล้ว — กำลังหาราคา`, meta: { dept } };
   }
+  // 🐞 เดิมไม่มีกรณีนี้ → ชนิดที่ไม่มีบรรทัด (5 ใน 8: สอบถาม/บรีฟกลิ่น/mockup/
+  // ขอเอกสาร/ติดตามของเข้า) กด "ตอบแล้ว" แล้ว **ไม่มีอะไรลงเธรดเลย** และเพราะ
+  // แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด (appendUpdate → notifyThreadUpdate) ผู้ขอจึง
+  // ไม่เคยรู้ว่ามีคนตอบแล้ว ต้องเข้ามาเปิดดูเอง
+  if (action === 'answer') {
+    return { kind: 'answer', body: `ฝ่าย ${dept} ตอบเรื่องนี้แล้ว`, meta: { dept } };
+  }
   if (action === 'close') {
     return { kind: 'close', body: 'ปิดเคส', meta: {} };
   }
