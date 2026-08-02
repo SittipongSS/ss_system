@@ -38,6 +38,9 @@
   --border: rgba(49, 55, 69, 0.13);
   --border-strong: rgba(49, 55, 69, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(41, 35, 27, 0.07);
+  /* เงาทิศขึ้น — สำหรับพื้นผิวที่เกาะ **ขอบล่าง** จอ (แถบเมนูล่างของมือถือ)
+     ค่าเดียวกับ --glass-shadow ทุกอย่างยกเว้นทิศ ไม่ใช่สีใหม่ */
+  --glass-shadow-up: 0 -4px 16px 0 rgba(41, 35, 27, 0.07);
 
   --text: #171d29;       /* เกือบดำ (อมน้ำเงินจาง ๆ) — อ่านง่ายสุด คอนทราสต์สูง */
   --text-2: #596170;     /* เทาเข้ม — เนื้อความรอง (6.2:1 ผ่าน AA) */
@@ -366,6 +369,10 @@
   --z-topnav: 100;         /* แถบบนสุด 2 ชั้น */
   --z-topnav-menu: 120;    /* เมนูที่กางจากแถบบน */
   --z-account-menu: 125;
+  /* แถบเมนูล่างบนมือถือ — ต้องทับเนื้อหา/แถบตรึงในหน้า แต่ต้องอยู่ **ใต้** แผ่นเมนู
+     เพราะแผ่นกางเต็มจอทับแถบ · ห้ามให้เท่ากับ --z-mobile-nav เด็ดขาด ค่าที่เท่ากัน
+     แปลว่าใครอยู่บนขึ้นกับลำดับใน DOM ล้วน ๆ (บทเรียนเดียวกับ --z-toast) */
+  --z-mobile-bar: 130;
   --z-mobile-nav: 140;
   --z-dropdown: 1000;      /* แผงลอยที่เกาะกับตัวควบคุม (+ ฉากหลังของมัน) */
   --z-modal: 1100;         /* overlay + drawer */
@@ -409,6 +416,7 @@
   --border: rgba(225, 230, 241, 0.12);
   --border-strong: rgba(225, 230, 241, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
+  --glass-shadow-up: 0 -4px 16px 0 rgba(0, 0, 0, 0.3);
 
   --text: #f4f6fb;
   --text-2: #bdc5d4;
@@ -805,21 +813,30 @@ button, select, input, textarea {
 }
 
 .page {
-  padding: var(--space-6) var(--page-gutter) 64px;
+  /* 🪤 ระยะล่างต้องเผื่อความสูงแถบเมนูล่างของมือถือด้วย — เดิมเป็น 64px ดิบ ๆ ที่
+     ไม่รู้จัก --mobile-nav-h เลย พอเปิดแถบล่างขึ้นมาเนื้อหาท้ายหน้าจะถูกแถบทับ
+     (บนจอใหญ่ --mobile-nav-h เป็น 0px ค่าจึงเท่าเดิมเป๊ะ) */
+  padding: var(--space-6) var(--page-gutter)
+    calc(64px + var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
 }
 
+/* 🪤 สองบล็อกข้างล่างเขียนทับ padding ของ .page ทั้งชุด — ระยะเผื่อแถบเมนูล่างจึงต้อง
+   ใส่ซ้ำที่นั่นด้วย ไม่งั้นค่าที่ตั้งไว้ในกฎฐานหายเกลี้ยง แล้วเนื้อหาท้ายหน้าถูกแถบทับ
+   (เจอตอนวัดจริง 2026-08-02: กฎฐานให้ 130px แต่ที่เรนเดอร์จริงเหลือ 40px) */
 @media (max-width: 1000px) {
   .page {
-    padding: var(--space-5) var(--page-gutter-tablet) 48px;
+    padding: var(--space-5) var(--page-gutter-tablet)
+      calc(48px + var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
   }
 }
 
 @media (max-width: 680px) {
   .page {
-    padding: var(--space-4) var(--page-gutter-mobile) var(--space-9);
+    padding: var(--space-4) var(--page-gutter-mobile)
+      calc(var(--space-9) + var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
   }
 }
 
@@ -1039,12 +1056,16 @@ button, select, input, textarea {
 /* Responsive application navigation: the fixed two-row top bar remains the
    only navigation model. Compact screens open the same menu in a full sheet. */
 .mobile-nav-sheet,
+.mobile-bottom-nav,
 .mobile-top-more { display: none; }
 
 @media (max-width: 768px) {
   :root {
     --topnav-menu-h: 0px;
-    --mobile-nav-h: 0px;
+    /* แถวปุ่ม 54px + แถวจุดบอกหน้า 12px · ค่านี้คือสิ่งที่ .page และ .overlay
+       ใช้เผื่อระยะล่าง แถบจึงต้องสูงเท่านี้เป๊ะเสมอ ไม่ว่าจะมีจุดหรือไม่ —
+       ระบบที่มีหน้าเดียวจะได้ 12px นั้นเป็นระยะหายใจเหนือ home indicator แทน */
+    --mobile-nav-h: 66px;
   }
 
   .topnav-system { height: var(--topbar-h); padding: 0 var(--space-2-5); gap: var(--space-2); }
@@ -1086,6 +1107,99 @@ button, select, input, textarea {
     cursor: pointer;
   }
   .mobile-top-more:active { transform: scale(0.96); }
+
+  /* ── แถบเมนูล่าง (แบบปัดหน้า · มติผู้ใช้ 2026-08-02) ────────────────── */
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-mobile-bar);
+    display: flex;
+    flex-direction: column;
+    height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--border);
+    background: var(--panel-solid);
+    box-shadow: var(--glass-shadow-up);
+  }
+  .mbn-pager {
+    flex: 1;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    /* บอกเบราว์เซอร์ว่าแถบนี้กินท่าทางแค่แนวนอน — ลดการชนท่าปัดของ OS
+       ที่ขอบล่างจอ (ปัดถอยหลัง/ปัดขึ้น home) */
+    touch-action: pan-x;
+  }
+  .mbn-pager::-webkit-scrollbar { display: none; }
+  /* หนึ่งหน้า = เต็มความกว้างแถบพอดี — scroll-snap จึงหยุดตรงขอบหน้าเสมอ */
+  .mbn-page {
+    flex: 0 0 100%;
+    display: flex;
+    justify-content: center;
+    scroll-snap-align: start;
+  }
+  /* 🪤 ต้องเป็น flex:1 1 0 + min-width:0 ห้าม flex-shrink:0 — ป้ายยาวจะดันช่อง
+     กว้างเกินแล้วแถบล้นออกนอกจอ (วัดเจอจริง 2026-08-02)
+     max-width กันกรณีระบบที่มีเมนู 1–2 ตัว ไม่ให้ปุ่มกางเต็มครึ่งจอ */
+  .mbn-item {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-0-5);
+    min-height: var(--ctl-h-touch);
+    padding: 0 var(--space-0-5);
+    color: var(--text-3);
+    text-decoration: none;
+    font-size: var(--fs-2);
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-thai);
+    text-align: center;
+  }
+  .mbn-item > span:last-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mbn-ico {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    transition: background var(--motion-fast);
+  }
+  .mbn-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); }
+  .mbn-item.active .mbn-ico { background: var(--accent-soft); }
+  .mbn-item.is-empty { pointer-events: none; }
+  /* แถวจุดสูงคงที่เสมอ แม้ไม่มีจุด — ความสูงแถบต้องนิ่งเท่า --mobile-nav-h
+     ที่ .page เอาไปเผื่อระยะไว้ ไม่งั้นเนื้อหาท้ายหน้าถูกทับในบางระบบ */
+  .mbn-dots {
+    flex: 0 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1-5);
+  }
+  .mbn-dots button {
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--border-strong);
+    cursor: pointer;
+    transition: width var(--motion-medium), background var(--motion-medium);
+  }
+  .mbn-dots button[aria-selected="true"] { width: 18px; background: var(--accent); }
 
   .mobile-nav-sheet {
     position: fixed;
@@ -1167,6 +1281,7 @@ button, select, input, textarea {
   .topnav-sys-btn,
   .topnav-sys-item,
   .topnav-item,
+  .mbn-item,
   .mobile-nav-card,
   .mobile-account-actions > a,
   .mobile-account-actions > button,
@@ -1178,6 +1293,7 @@ button, select, input, textarea {
   .topnav-sys-btn:active,
   .topnav-sys-item:active,
   .topnav-item:active,
+  .mbn-item:active,
   .mobile-nav-card:active,
   .mobile-account-actions > a:active,
   .mobile-account-actions > button:active,
