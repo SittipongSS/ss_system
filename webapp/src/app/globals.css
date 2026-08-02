@@ -4533,6 +4533,24 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-size: var(--fs-5);
 }
 
+/* หลักฐานการปิดโครงการ บนการ์ด Record Control — ใคร/ชนิด/เหตุผล
+   (สถานะกับคำอธิบายอยู่บนหัวการ์ดแล้ว ตรงนี้ไม่ต้องพูดซ้ำ) */
+.project-close-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+.project-close-evidence strong {
+  color: var(--text-2);
+}
+.project-close-reason {
+  color: var(--text-2);
+  line-height: var(--lh-text);
+}
+
 .shipment-print-sheet {
   width: 210mm;
   height: 297mm;
