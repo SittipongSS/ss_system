@@ -179,6 +179,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
   const canEdit = inPmProjectScope(user, project);
+  // สิทธิ์ลบ (deleteScope 'projects') — กติกาเดียวกับที่ DELETE ข้างล่างบังคับ
+  // 🐞 หน้ารายการส่งค่านี้มาตั้งแต่แรก แต่หน้ารายละเอียดไม่เคยส่ง → การ์ด Control
+  // ที่ถาม `canDelete` จะไม่เห็นปุ่มลบเลย (ของเดิมหน้านี้เดาเอาจาก canEdit)
+  const canDelete = canDeleteRecord(user, 'projects', project);
   // ⚠️ สิทธิ์แก้ของเข้า ≠ canEdit ของโครงการ — PC (role staff) แก้ได้ทั้งที่
   // pmEditScope = 'none' ไม่งั้นคนที่รู้กำหนดจริงจะเป็นคนเดียวที่อัปเดตไม่ได้
   const canEditDeliveryRows = canEditDeliveries(user, project);
@@ -211,7 +215,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canDelete, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
