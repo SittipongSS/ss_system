@@ -17,7 +17,9 @@ import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
-import { useRole } from "@/lib/roleContext";
+import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
+import RecordControlCard from "@/components/ui/RecordControlCard";
+import { useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
@@ -33,7 +35,7 @@ import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import UiStatusBadge from "@/components/ui/StatusBadge";
 import RequestListCard from "@/components/requests/RequestListCard";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
+import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -330,6 +332,15 @@ export default function DealOverviewPage() {
     [deal, data, categories],
   );
 
+  /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" ฝั่ง Record Control — ไฟล์เดียวกับหน้ารายการ (PR #882)
+     ⚠️ คนละตัวกับ `lc` (salesPlanningLifecycle) ที่ยังคุมแถบขั้นตอน/การ์ดปลายทาง
+     (ทะเบียนสรรพสามิต · PO สหมิตร · ส่งของ) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
+  const team = useTeam();
+  /* dealLifecycle ตัดสินจาก `deal.canEdit` (API ส่งมาต่อใบ) + สิทธิ์ตาม role — ไม่ต้องใช้ id
+     จึงไม่ต้องยิง /api/users/me เพิ่มที่หน้านี้ */
+  const viewer = useMemo(() => ({ role, team }), [role, team]);
+  const controlLc = useMemo(() => createDealLifecycle(), []);
+
   const [actionBusy, setActionBusy] = useState("");
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
@@ -540,13 +551,10 @@ export default function DealOverviewPage() {
   // ห้ามแม้ superuser) / มาจาก PO สหมิตร (นับยอดแล้ว) — ตรงกับที่ API DELETE จะปฏิเสธ
   // จึงไม่โชว์ปุ่มให้กดแล้วเจอ 409 (U3). เฟส B: ลบดีลไม่ลบโครงการที่ผูก — สิทธิ์ลบ project
   // และทะเบียนสรรพสามิตของโครงการจึงไม่เกี่ยวกับการลบดีลอีกต่อไป.
+  //
+  // เงื่อนไขจริงย้ายไป `canDeleteDeal()` ใน lib/sales/dealLifecycle.js แล้ว (PR #882)
+  // — หน้ารายการกับหน้านี้เคยเขียนคนละชุด แล้วหน้ารายการลืมข้อ "ใบเสนอราคาที่รับแล้ว"
   const superuser = isSuperuser(role);
-  const isAdmin = role === "admin";
-  // admin เห็นปุ่มลบเสมอ (บังคับลบผ่านพรีวิว) — คนอื่นซ่อนปุ่มในเคสที่ API จะปฏิเสธ (U3)
-  const canDelete = deal && (isAdmin || (
-    (!isWonStage(deal.stage) || superuser)
-    && !acceptedQuote && !deal.metadata?.sahamitPoId
-  ));
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {
@@ -584,42 +592,52 @@ export default function DealOverviewPage() {
     if (okDone) { setLostOpen(false); setLostReason(""); }
   };
 
-  // ปุ่มหลักของการ์ด "ขั้นต่อไป" ตาม nextAction.kind
-  const nextPrimary = () => {
-    return null;
-  };
-  const headerRight = (
-    <>
-      {deal?.projectId ? (
-        <Link href={`/sa/projects/${deal.projectId}`} className="btn btn-primary">
-          <FolderKanban size={15} aria-hidden="true" /> ไปโครงการ
-        </Link>
-      ) : canEdit ? (
-        <button type="button" className="btn btn-primary" onClick={openLinkProject} disabled={!!actionBusy} title="แนะนำให้เชื่อมโครงการก่อนออกใบเสนอราคา">
-          <FolderKanban size={15} aria-hidden="true" /> เชื่อมโครงการ
-        </button>
-      ) : null}
-      {canEdit && lc?.canNoGo && (
-        <button type="button" className="btn ghost" onClick={() => setLostOpen(true)} disabled={!!actionBusy}>
-          <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
-        </button>
-      )}
-    </>
-  );
-
-  // ปุ่มแก้ไข/ลบ — ไอคอนล้วน วางแถวเดียวกับปุ่มย้อนกลับ (R2)
-  const backActions = canEdit ? (
-    <>
-      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขดีล" title="แก้ไข">
-        <Pencil size={16} aria-hidden="true" />
-      </button>
-      {canDelete && (
-        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบดีล" title="ลบดีล (ไม่ลบโครงการ PM ที่ผูก)">
-          <Trash2 size={16} aria-hidden="true" />
-        </button>
-      )}
-    </>
+  /* หัวหน้าเหลือแค่ทางไปโครงการ — ปุ่มที่ *เปลี่ยนข้อมูล* ทั้งหมดย้ายไปการ์ด Control
+     (มติผู้ใช้ 2026-08-01: การควบคุมคือการควบคุม ไม่ว่าจะเดินหน้าหรือจัดการตัวระเบียน) */
+  const headerRight = deal?.projectId ? (
+    <Link href={`/sa/projects/${deal.projectId}`} className="btn btn-secondary">
+      <FolderKanban size={15} aria-hidden="true" /> ไปโครงการ
+    </Link>
   ) : null;
+
+  /* จุดเดียวที่ปุ่มบนการ์ดวิ่งเข้า — คืน false = ไม่สำเร็จ การ์ดจะค้างกล่องไว้พร้อมเหตุผล
+     ที่พิมพ์ไปแล้ว ผู้ใช้ไม่ต้องพิมพ์ซ้ำ */
+  async function runControlTransition(actionId, values) {
+    if (!DEAL_PATCH_TRANSITIONS.includes(actionId)) return false;
+    const okDone = await runAction("lost", `/api/sales-planning/deals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "lost", lostReason: values.reason?.trim() || null }),
+    });
+    return !!okDone;
+  }
+
+  /* ผูก/สร้างโครงการ = ต้องเลือกโครงการในฟอร์มของมันเอง ไม่ใช่ย้ายสถานะเฉย ๆ
+     ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ คั่นหนึ่งชั้น */
+  function openProjectFlow(transition) {
+    if (transition.id === "link_project") { openLinkProject(); return true; }
+    if (transition.id === "create_project") { openCreatePM(); return true; }
+    return false;
+  }
+
+  /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน */
+  const recordActions = [
+    {
+      id: "edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูลดีล", icon: Pencil,
+      visible: canEdit, disabled: !!actionBusy, onClick: openEditDeal,
+    },
+    {
+      id: "delete", kind: "delete", slot: "danger", label: "ลบดีลนี้", icon: Trash2,
+      /* เงื่อนไขเดียวกับที่ API DELETE บังคับ — รวมข้อ "มีใบเสนอราคาที่รับแล้ว" ที่หน้า
+         รายการเคยลืม (PR #882) · ส่ง acceptedQuotationId เข้าไปเพราะหน้านี้รู้จากตัวใบจริง */
+      visible: !!deal && canDeleteDeal(
+        { ...deal, acceptedQuotationId: acceptedQuote ? "yes" : null },
+        { role, superuser },
+      ),
+      disabled: !!actionBusy,
+      onClick: deleteDeal,
+    },
+  ];
 
   return (
     <Workspace
@@ -627,7 +645,6 @@ export default function DealOverviewPage() {
       title={deal?.title || "ศูนย์รวมดีล"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมดีล"}
       back={{ href: "/sa/deals", label: "กลับหน้าดีล" }}
-      backActions={backActions}
       headerRight={headerRight}
       hideHeader
       loading={loading}
@@ -660,17 +677,11 @@ export default function DealOverviewPage() {
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
-            {lc?.nextAction && (
-              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>ขั้นต่อไป</div>
-                  <div style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)", marginTop: 2 }}>{lc.nextAction.label}</div>
-                  {lc.nextAction.hint && <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>{lc.nextAction.hint}</div>}
-                </div>
-                {nextPrimary()}
-              </div>
-            )}
-            {/* route actions (ทะเบียนสรรพสามิต/PO สหมิตร/ส่งของ) — ย้ายจากแถบเมนูที่ถูกตัดออก */}
+            {/* บล็อก "ขั้นต่อไป" เดิมถูกยุบเข้าการ์ด Control แล้ว — การ์ดบอกทั้งสถานะ
+                คำอธิบาย และปุ่มก้าวถัดไปในที่เดียว ปล่อยไว้สองที่คือผู้ใช้ต้องอ่านสองรอบ
+                (ปุ่มหลักของบล็อกนั้นคืน null ตลอดอยู่แล้ว — Won เกิดที่ใบเสนอราคา ไม่ใช่ที่ดีล) */}
+            {/* route actions (ทะเบียนสรรพสามิต/PO สหมิตร/ส่งของ) — ปลายทางที่ *สร้าง entity
+                อื่น* ไม่ใช่การควบคุมตัวดีล จึงยังอยู่ตรงนี้ ไม่ยัดเข้าการ์ด */}
             {(lc?.routes || []).length > 0 && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                 {lc.routes.map((route) => (
@@ -680,6 +691,22 @@ export default function DealOverviewPage() {
             )}
             </div>
           </SalesDetailOverview>
+
+          {/* จุดจัดการเดียวของดีล — อยู่แถบขวาตลอดทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
+              เดินหน้า (เชื่อม/สร้างโครงการ) · จัดการตัวระเบียน (แก้ไข/ลบ) · ปิดดีล
+              แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม */}
+          <DetailPageLayout aside={
+            <RecordControlCard
+              lifecycle={controlLc}
+              record={deal}
+              user={viewer}
+              onTransition={runControlTransition}
+              onSelect={openProjectFlow}
+              extraActions={recordActions}
+              busy={!!actionBusy}
+            />
+          }>
+          <div className="flex flex-col gap-5">
 
           {tab === "overview" && <ContextGrid>
             <ContextCard
@@ -1125,6 +1152,8 @@ export default function DealOverviewPage() {
             </div>
             )}
           </div>
+          </div>
+          </DetailPageLayout>
         </div>
       )}
 
