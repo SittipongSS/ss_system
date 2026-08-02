@@ -16,6 +16,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json().catch(() => ({}));
   if (!body.name) return badRequest('ต้องระบุชื่อโครงการ');
+  // สายธุรกิจบังคับ **เฉพาะตอนสร้าง** (mig 0191 + มติ 2026-08-02)
+  // ⚠️ ไม่บังคับที่ PATCH โดยเจตนา — โครงการถูก patch จากหลายทางที่ไม่เกี่ยวกับสาย
+  // (เปลี่ยนสถานะ · ปิด/เปิดโครงการ · แก้วันที่) ถ้าบังคับที่นั่นด้วย ทางเหล่านั้น
+  // จะพังทันทีกับโครงการเก่า 13 ใบที่ line ยังว่าง · ตัวบังคับสำหรับของเก่าอยู่ที่
+  // ฟอร์ม ซึ่งเป็นจุดที่คนกำลังมองโครงการนั้นอยู่จริง
+  if (!normalizeBusinessLine(body.line)) return badRequest('ต้องเลือกสายธุรกิจ (PRODUCT หรือ SERVICE)');
   const categoryError = await activeProductTypeError(body.productMainCategory || null);
   if (categoryError) return badRequest(categoryError);
 

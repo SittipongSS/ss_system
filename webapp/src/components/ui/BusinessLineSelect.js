@@ -19,6 +19,10 @@ export default function BusinessLineSelect({
   value = "",
   onChange,
   disabled = false,
+  // ⚠️ required เปลี่ยนแค่ *คำ* ของตัวเลือกว่าง — ตัวบังคับจริงอยู่ที่ฟอร์มและ API
+  // ปล่อยให้ "ยังไม่ระบุ" เป็นตัวเลือกที่กดได้อยู่ ไม่งั้นโครงการเก่าที่ line ว่าง
+  // จะเปิดฟอร์มมาแล้วเห็นค่าที่ไม่ใช่ของจริงถูกเลือกไว้ให้เงียบ ๆ
+  required = false,
   className = "",
   ariaLabel = "สายธุรกิจ",
 }) {
@@ -33,7 +37,7 @@ export default function BusinessLineSelect({
       aria-label={ariaLabel}
     >
       {/* ⚠️ ตัวเลือกแรกไม่ใช่ค่าตั้งต้นที่ "ปลอดภัย" — มันคือสถานะที่ต้องมีคนมาเลือก */}
-      <option value="">— ยังไม่ระบุ —</option>
+      <option value="">{required ? "— เลือกสายธุรกิจ —" : "— ยังไม่ระบุ —"}</option>
       {/* 🪤 ข้อความต้องเป็น **สตริงเดียว** — ลูกหลายตัวใน <option> React จะ join
           ด้วยคอมม่า ได้ "สินค้า, (,Products,)" บน DOM จริง (เจอมาแล้วใน #893
           ตอนวัดในเบราว์เซอร์) · eslint กับ test ไม่จับ เห็นตอนเปิดหน้าเท่านั้น */}

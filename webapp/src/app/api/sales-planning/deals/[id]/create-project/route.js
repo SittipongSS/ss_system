@@ -31,6 +31,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างโครงการจากดีลที่ Lost แล้ว');
+  // สายธุรกิจบังคับตอนสร้าง (mig 0191 + มติ 2026-08-02) — เงื่อนไขเดียวกับ
+  // /api/sa/projects · ⚠️ ห้าม fallback จาก deal.team: prod มี SDS_…EGCO_HAND GEL
+  // อยู่ใต้ทีม SV ทั้งที่เป็นสายสินค้า (ทีมขาย ≠ สายธุรกิจ · มติ #868)
+  if (!normalizeBusinessLine(body.line)) return badRequest('ต้องเลือกสายธุรกิจ (PRODUCT หรือ SERVICE)');
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));

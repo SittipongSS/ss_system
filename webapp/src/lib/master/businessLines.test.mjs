@@ -68,3 +68,33 @@ test('ลิสต์ว่างไม่ระเบิด', () => {
   assert.equal(countUnsetBusinessLine(), 0);
   assert.deepEqual(summarizeBusinessLines(), { PRODUCT: 0, SERVICE: 0, unset: 0 });
 });
+
+// ── บังคับเลือก (มติ 2026-08-02) ─────────────────────────────────────────
+//
+// ⭐ "บังคับเลือก" ต่างจาก "ใส่ default" คนละเรื่อง — default คือการ**เลี่ยง**
+// ให้คนไม่ต้องเลือก (แล้ว projects.type ก็ตายแบบนั้น) · บังคับคือการ**บีบ**ให้เลือก
+// ⇒ บังคับจึงตรงกับเจตนาของ mig 0191 มากกว่าการปล่อยว่างได้เสียอีก
+//
+// ⚠️ แต่บังคับได้แค่ "ตอนสร้าง" กับ "ตอนกดบันทึกในฟอร์ม" — บังคับที่ PATCH ทุกใบ
+// ไม่ได้ เพราะโครงการถูก patch จากทางที่ไม่เกี่ยวกับสาย (เปลี่ยนสถานะ · ปิดโครงการ)
+// ซึ่งจะพังทันทีกับโครงการเก่าที่ line ยังว่าง
+test('ตัวตรวจของ API: ค่าที่ผ่านได้มีแค่สองค่า ว่าง/ผิด ต้องตก', () => {
+  const passes = (value) => !!normalizeBusinessLine(value);
+  assert.equal(passes('PRODUCT'), true);
+  assert.equal(passes('SERVICE'), true);
+  // ว่าง = ไม่ผ่าน (normalize คืน null ซึ่ง falsy) ⇒ API ตอบ 400
+  assert.equal(passes(''), false);
+  assert.equal(passes(null), false);
+  assert.equal(passes(undefined), false);
+  // ค่าผิด = ไม่ผ่านเช่นกัน (normalize คืน undefined)
+  assert.equal(passes('ODM'), false);
+  assert.equal(passes('product line'), false);
+});
+
+test('บังคับแล้วยังต้องอ่านค่าเดิมที่ว่างได้ — โครงการเก่าไม่พังตอนเปิดฟอร์ม', () => {
+  // ฟอร์มเปิดโครงการเก่าที่ line = null ⇒ ต้องได้ค่าว่าง ไม่ใช่ถูกเดาให้เป็นสายใดสายหนึ่ง
+  assert.equal(normalizeBusinessLine(null), null);
+  assert.equal(businessLineLabel(null), UNSET_BUSINESS_LINE_LABEL);
+  // และยังต้องนับเป็น "ยังไม่ระบุ" อยู่ ตัวนับบนหน้ารวมจึงยังทำงาน
+  assert.equal(countUnsetBusinessLine([{ id: '1', line: null }]), 1);
+});
