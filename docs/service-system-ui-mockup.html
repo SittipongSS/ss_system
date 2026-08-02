@@ -1,0 +1,1224 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบธุรกิจบริการ — SA · FN · TS</title>
+
+
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;--panel-float:#fffdf9;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;--origin-edited:#2e4a73;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--violet:#6f5e9f;--violet-soft:#eee9f6;--teal:#377275;--teal-soft:#e0f0f0;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);--shadow-lg:0 16px 44px rgba(31,25,18,.14);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--ctl-h:36px;--ctl-h-touch:44px;--topbar-h:52px;--topnav-menu-h:44px;
+--space-1:4px;--space-2:8px;--space-2-5:10px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;
+--lh-tight:1.45;--lh-normal:1.55;
+--motion-fast:120ms;--ease-out:cubic-bezier(.2,.8,.3,1);
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+--font-mono:ui-monospace,"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--origin-edited:#7089e6;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--origin-edited:#7089e6;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}
+
+.mock{font-family:var(--font-sans);font-size:var(--fs-14);line-height:var(--lh-normal);color:var(--text);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased}
+.mock *,.mock *::before,.mock *::after{box-sizing:border-box}
+.mock h1,.mock h2,.mock h3,.mock h4,.mock h5,.mock p,.mock ul,.mock ol,.mock dl{margin:0}
+.mock ul,.mock ol{padding:0;list-style:none}
+.mock :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius)}
+
+/* แถบบน */
+.topnav-sys{height:var(--topbar-h);background:var(--navy);color:var(--navy-fg);display:flex;align-items:center;gap:var(--space-4);padding:0 var(--space-5)}
+.brand-mark{font-size:var(--fs-14);font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+.brand-dot{width:22px;height:22px;border-radius:var(--radius);background:var(--accent);display:grid;place-items:center;font-size:var(--fs-12);color:var(--accent-fg)}
+.sys-switch{margin-inline-start:var(--space-4);display:flex;gap:var(--space-1);font-size:var(--fs-13);overflow-x:auto}
+.sys-switch span{padding:5px 12px;border-radius:var(--radius-full);color:rgba(255,255,255,.7);white-space:nowrap}
+.sys-switch span.is-current{background:rgba(255,255,255,.16);color:#fff;font-weight:600}
+.topnav-right{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-3)}
+.who{font-size:var(--fs-12);color:rgba(255,255,255,.78);white-space:nowrap}.who b{color:#fff;font-weight:600}
+.theme-btn{height:30px;padding:0 12px;border-radius:var(--radius-full);border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.theme-btn:hover{background:rgba(255,255,255,.14)}
+.topnav-menu{height:var(--topnav-menu-h);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:var(--space-1);padding:0 var(--space-5);overflow-x:auto}
+.topnav-menu a{display:flex;align-items:center;padding:0 var(--space-3);font-size:var(--fs-13);color:var(--text-2);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+.topnav-menu a.is-current{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+.topnav-menu a.is-new::after{content:"ใหม่";margin-inline-start:6px;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--accent);color:var(--accent-fg)}
+
+/* แถบสารบัญ (ไม่ใช่ส่วนของแอป) */
+.deck{position:sticky;top:0;z-index:20;background:var(--panel-2);border-bottom:1px solid var(--border);padding:var(--space-3) var(--space-5);display:flex;gap:var(--space-4);align-items:center;flex-wrap:wrap}
+.deck-group{display:flex;align-items:center;gap:var(--space-2)}
+.deck-label{font-size:var(--fs-11);letter-spacing:.06em;font-weight:700;color:var(--text-3);white-space:nowrap}
+.deck-label.sa{color:var(--accent-ink)}.deck-label.fn{color:var(--green)}.deck-label.ts{color:var(--teal)}
+.seg{display:flex;gap:2px;padding:3px;background:var(--panel-3);border-radius:var(--radius-full);flex-wrap:wrap}
+.seg button{height:28px;padding:0 11px;border:0;border-radius:var(--radius-full);background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--text)}
+.seg button[aria-selected="true"]{background:var(--panel-float);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm)}
+
+.workspace{padding:var(--space-6) var(--space-5) var(--space-8);max-width:1340px;margin:0 auto}
+.ws-head{display:flex;align-items:flex-start;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap}
+.ws-icon{width:42px;height:42px;flex:none;border-radius:var(--radius-lg);background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:var(--fs-18)}
+.ws-title{font-size:var(--fs-22);font-weight:700;line-height:var(--lh-tight);text-wrap:balance}
+.ws-sub{font-size:var(--fs-13);color:var(--text-2);margin-top:2px}
+.ws-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+
+.btn{height:var(--ctl-h);padding:0 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel-float);color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);white-space:nowrap;transition:background var(--motion-fast) var(--ease-out),border-color var(--motion-fast) var(--ease-out)}
+.btn:hover{background:var(--panel-2);border-color:var(--text-3)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn-accent:hover{background:var(--accent-ink);border-color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:var(--panel-3);color:var(--text)}
+.btn:disabled{opacity:.42;cursor:not-allowed}.btn:disabled:hover{background:var(--panel-float);border-color:var(--border-strong)}
+.btn-sm{height:30px;padding:0 11px;font-size:var(--fs-12)}
+.btn-touch{height:var(--ctl-h-touch);font-size:var(--fs-14)}
+
+.chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:24px;max-width:100%;padding:3px var(--space-2-5);border:1px solid color-mix(in srgb,currentColor 24%,transparent);border-radius:var(--radius);background:color-mix(in srgb,currentColor 12%,transparent);color:var(--text-2);font-size:var(--fs-12);font-weight:600;line-height:var(--lh-tight);white-space:nowrap;vertical-align:middle}
+.chip.green{color:var(--green)}.chip.red{color:var(--red)}.chip.amber{color:var(--amber)}
+.chip.blue{color:var(--blue)}.chip.violet{color:var(--violet)}.chip.teal{color:var(--teal)}
+.chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.sm{min-height:20px;padding:1px 7px;font-size:var(--fs-11)}
+
+.section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);margin-bottom:var(--space-5);overflow:hidden}
+.section-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.section-head h3{font-size:var(--fs-16);font-weight:700;line-height:var(--lh-tight)}
+.section-head .sh-note{font-size:var(--fs-12);color:var(--text-3)}
+.section-head .sh-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+.section-body{padding:var(--space-5)}
+
+.callout{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-4);border-radius:var(--radius-lg);font-size:var(--fs-13);line-height:var(--lh-tight);border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);margin-bottom:var(--space-4)}
+.callout.amber{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 34%,transparent);color:var(--text)}
+.callout.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 34%,transparent);color:var(--text)}
+.callout.green{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 34%,transparent);color:var(--text)}
+.callout b{color:var(--text)}.callout .co-ic{flex:none;font-size:var(--fs-16);line-height:1.3}
+.callout:last-child{margin-bottom:0}
+.note{border-inline-start:3px solid var(--accent);background:var(--accent-soft);padding:var(--space-3) var(--space-4);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-12);line-height:var(--lh-tight);color:var(--text);margin-bottom:var(--space-5)}
+.note b{color:var(--accent-ink)}
+.mono{font-family:var(--font-mono);font-size:var(--fs-12)}
+
+.metric-strip{display:grid;gap:var(--space-3);margin-bottom:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-sm)}
+.metric .m-label{font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)}
+.metric .m-value{font-size:var(--fs-22);font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;line-height:1.2}
+.metric .m-foot{font-size:var(--fs-11);color:var(--text-3);margin-top:3px}
+.metric.is-alert .m-value{color:var(--red)}.metric.is-warn .m-value{color:var(--amber)}.metric.is-good .m-value{color:var(--green)}
+
+.table-scroll{overflow-x:auto}
+table.premium{width:100%;border-collapse:collapse;font-size:var(--fs-13);font-variant-numeric:tabular-nums;min-width:720px}
+table.premium th{text-align:start;font-weight:600;font-size:var(--fs-12);color:var(--text-3);padding:10px var(--space-4);border-bottom:1px solid var(--border-strong);white-space:nowrap;background:var(--panel-2)}
+table.premium td{padding:11px var(--space-4);border-bottom:1px solid var(--border);vertical-align:top;line-height:var(--lh-tight)}
+table.premium tbody tr:last-child td{border-bottom:0}
+table.premium tbody tr{transition:background var(--motion-fast) var(--ease-out)}
+table.premium tbody tr:hover{background:var(--panel-2)}
+.num{text-align:end;white-space:nowrap}
+.t-strong{font-weight:600}
+.t-sub{font-size:var(--fs-12);color:var(--text-3);display:block;margin-top:2px}
+
+table.plain{width:100%;border-collapse:collapse;font-size:var(--fs-13);min-width:520px}
+table.plain th{text-align:start;font-size:var(--fs-12);color:var(--text-3);font-weight:600;padding:9px var(--space-3);border-bottom:1px solid var(--border-strong);background:var(--panel-2)}
+table.plain td{padding:10px var(--space-3);border-bottom:1px solid var(--border);vertical-align:top;line-height:var(--lh-tight)}
+table.plain tbody tr:last-child td{border-bottom:0}
+table.plain td.num,table.plain th.num{text-align:end;font-variant-numeric:tabular-nums}
+
+.split{display:grid;gap:var(--space-5);grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:start}
+@media (max-width:940px){.split{grid-template-columns:1fr}}
+
+/* หน้าเปิด */
+.hero{padding:var(--space-8) var(--space-5);max-width:1100px;margin:0 auto}
+.hero h1{font-size:var(--fs-28);font-weight:700;line-height:var(--lh-tight);text-wrap:balance;margin-bottom:var(--space-2)}
+.hero .lead{font-size:var(--fs-16);color:var(--text-2);line-height:var(--lh-normal);margin-bottom:var(--space-6);max-width:64ch}
+.bignum{display:grid;gap:var(--space-4);grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-bottom:var(--space-6)}
+.bignum > div{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-5);box-shadow:var(--shadow-sm)}
+.bignum b{display:block;font-size:var(--fs-28);font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.bignum span{display:block;font-size:var(--fs-13);color:var(--text-2);margin-top:6px;line-height:var(--lh-tight)}
+.bignum .red b{color:var(--red)}.bignum .amber b{color:var(--amber)}.bignum .green b{color:var(--green)}
+.roles{display:grid;gap:var(--space-4);grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.role{border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-5);background:var(--panel)}
+.role h4{font-size:var(--fs-16);font-weight:700;display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.role.sa h4{color:var(--accent-ink)}.role.fn h4{color:var(--green)}.role.ts h4{color:var(--teal)}
+.role p{font-size:var(--fs-13);color:var(--text-2);line-height:var(--lh-tight)}
+.role ul{margin-top:var(--space-3);display:grid;gap:5px;font-size:var(--fs-12);color:var(--text-3)}
+.role li::before{content:"· "}
+
+/* ไทม์ไลน์ */
+.phase-head{display:flex;align-items:center;gap:var(--space-2-5);width:100%;padding:9px 14px;margin-bottom:var(--space-2);border:none;border-inline-start:3px solid var(--phase,var(--accent));border-radius:var(--radius-lg);text-align:start;font:inherit;cursor:pointer;background:color-mix(in srgb,var(--phase,var(--accent)) 7%,var(--panel))}
+.phase-head .p-caret{color:var(--phase,var(--accent));font-size:var(--fs-12)}
+.phase-head .p-name{flex:1;font-size:var(--fs-14);font-weight:700}
+.phase-head .p-count{font-size:var(--fs-12);font-weight:600;color:var(--text-3);font-variant-numeric:tabular-nums}
+.phase-head .p-count.done{color:var(--green)}.phase-head .p-count.active{color:var(--accent)}
+table.timeline{width:100%;border-collapse:collapse;font-size:var(--fs-13);min-width:900px}
+table.timeline th{text-align:start;font-weight:600;font-size:var(--fs-12);color:var(--text-3);padding:8px var(--space-3);border-bottom:1px solid var(--border-strong);white-space:nowrap}
+table.timeline td{padding:10px var(--space-3);border-bottom:1px solid var(--border);vertical-align:middle;font-variant-numeric:tabular-nums}
+table.timeline tr.is-locked{background:var(--red-soft)}
+.step-name{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;font-weight:600}
+.step-pins{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.role-tag{display:inline-grid;place-items:center;min-width:30px;height:22px;padding:0 6px;border-radius:5px;font-size:var(--fs-11);font-weight:700;background:var(--panel-3);color:var(--text-2)}
+.role-tag.fn{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.role-tag.ts{background:color-mix(in srgb,var(--teal) 16%,transparent);color:var(--teal)}
+
+/* งวดจ่าย */
+.pay-row{display:grid;gap:var(--space-3) var(--space-4);align-items:center;grid-template-columns:74px 1fr auto auto;padding:var(--space-4) 0;border-bottom:1px solid var(--border)}
+.pay-row:last-child{border-bottom:0}
+.pay-seq{width:62px;height:46px;border-radius:var(--radius);background:var(--panel-3);display:grid;place-content:center;text-align:center}
+.pay-seq b{font-size:var(--fs-16);font-weight:700;line-height:1.1}.pay-seq span{font-size:var(--fs-11);color:var(--text-3)}
+.pay-main b{font-size:var(--fs-14);font-variant-numeric:tabular-nums}
+.pay-main span{display:block;font-size:var(--fs-12);color:var(--text-3);margin-top:2px;line-height:var(--lh-tight)}
+.pay-sign{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-11);color:var(--text-3);min-width:176px}
+.pay-sign i{font-style:normal}.pay-sign .ok{color:var(--green);font-weight:600}.pay-sign .none{color:var(--text-3)}
+
+/* ด่าน */
+.gate{display:grid;gap:var(--space-3)}
+.gate-item{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-4);border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel-2)}
+.gate-item.is-blocked{border-color:var(--red);background:var(--red-soft)}
+.gate-mark{width:22px;height:22px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-12);font-weight:700;background:var(--green);color:#fff}
+.gate-item.is-blocked .gate-mark{background:var(--red)}
+.gate-txt{flex:1;min-width:0}
+.gate-txt b{display:block;font-size:var(--fs-13);line-height:var(--lh-tight)}
+.gate-txt span{font-size:var(--fs-12);color:var(--text-2);display:block;margin-top:3px;line-height:var(--lh-tight)}
+.gate-act{flex:none;display:flex;align-items:center}
+.gate-owner{font-size:var(--fs-11);color:var(--text-3);font-weight:700;letter-spacing:.04em;align-self:center;flex:none}
+
+/* มือถือ */
+.phone-stage{display:grid;gap:var(--space-6);grid-template-columns:392px minmax(0,1fr);align-items:start}
+@media (max-width:960px){.phone-stage{grid-template-columns:1fr}}
+.phone{width:392px;max-width:100%;border:1px solid var(--border-strong);border-radius:28px;background:var(--bg);box-shadow:var(--shadow-lg);overflow:hidden}
+.phone-bar{height:30px;background:var(--navy);color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:space-between;padding:0 var(--space-5);font-size:var(--fs-11)}
+.phone-head{padding:var(--space-4) var(--space-4) var(--space-3);background:var(--panel);border-bottom:1px solid var(--border)}
+.phone-title{font-size:var(--fs-18);font-weight:700;line-height:var(--lh-tight)}
+.phone-sub{font-size:var(--fs-12);color:var(--text-2);margin-top:2px}
+.phone-body{padding:var(--space-4);display:grid;gap:var(--space-4)}
+.phone-foot{padding:var(--space-3) var(--space-4);background:var(--panel);border-top:1px solid var(--border);display:flex;gap:var(--space-2)}
+.phone-foot .btn{flex:1}
+.grp{display:grid;gap:var(--space-2-5)}
+.grp-title{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-12);font-weight:700;color:var(--text-3);letter-spacing:.03em}
+.grp-title.danger{color:var(--red)}
+.grp-count{margin-inline-start:auto;font-weight:600}
+.job{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-sm)}
+.job.is-running{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow-md)}
+.job.is-overdue{border-color:color-mix(in srgb,var(--red) 45%,transparent);background:var(--red-soft)}
+.job.is-done{opacity:.62}
+.job-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-2)}
+.job-time{font-size:var(--fs-13);font-weight:700;font-variant-numeric:tabular-nums}
+.job-site{font-size:var(--fs-16);font-weight:700;line-height:var(--lh-tight)}
+.job-meta{font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight);margin-top:3px}
+.job-warn{font-size:var(--fs-12);color:var(--amber);margin-top:var(--space-2);line-height:var(--lh-tight)}
+.job-acts{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+.job-acts .btn{flex:1}
+.job-acts .btn.icon-only{flex:0 0 auto;width:var(--ctl-h-touch);padding:0}
+.running-bar{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2-5) var(--space-3);margin:calc(var(--space-4)*-1) calc(var(--space-4)*-1) var(--space-3);background:var(--accent);color:var(--accent-fg);font-size:var(--fs-12);font-weight:600}
+.running-bar .rb-time{margin-inline-start:auto;font-variant-numeric:tabular-nums}
+.pulse{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1.8s var(--ease-out) infinite;flex:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.stamp{display:flex;align-items:center;gap:6px;font-size:var(--fs-12);color:var(--text-2);margin-top:var(--space-2);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.stamp .edited{color:var(--origin-edited);font-weight:600}
+
+/* ปิดงานรายเครื่อง */
+.mach{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden}
+.mach+.mach{margin-top:var(--space-2-5)}
+.mach.ok{border-color:color-mix(in srgb,var(--green) 40%,transparent)}
+.mach.swap{border-color:color-mix(in srgb,var(--amber) 45%,transparent)}
+.mach.skip{border-color:color-mix(in srgb,var(--red) 40%,transparent);background:var(--red-soft)}
+.mach-head{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-3);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.mach-no{width:26px;height:26px;flex:none;border-radius:var(--radius);background:var(--panel-3);display:grid;place-items:center;font-size:var(--fs-12);font-weight:700}
+.mach.ok .mach-no{background:var(--green);color:#fff}
+.mach.swap .mach-no{background:var(--amber);color:#fff}
+.mach.skip .mach-no{background:var(--red);color:#fff}
+.mach-id{font-size:var(--fs-13);font-weight:700;line-height:var(--lh-tight)}
+.mach-pos{font-size:var(--fs-11);color:var(--text-3);width:100%;line-height:var(--lh-tight)}
+.mach-body{padding:var(--space-3);display:grid;gap:var(--space-2-5)}
+.setting{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-3);align-items:center;font-size:var(--fs-12)}
+.setting dt{color:var(--text-3)}
+.setting dd{margin:0;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.setting dd.changed{color:var(--accent-ink);font-weight:700}
+.setting .was{color:var(--text-3);font-weight:400;text-decoration:line-through}
+.mach-acts{display:flex;gap:var(--space-2)}.mach-acts .btn{flex:1}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:var(--space-2-5)}
+.ph{aspect-ratio:1;border-radius:6px;border:1px solid var(--border);background:var(--panel-3);display:grid;place-items:center;font-size:22px;color:var(--text-3)}
+.ph.setting-shot{background:var(--blue-soft);color:var(--blue)}
+.ph.front{background:var(--teal-soft);color:var(--teal)}
+
+/* ใบส่งงาน */
+.report{background:var(--panel-float);border:1px solid var(--border-strong);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md)}
+.report-head{padding:var(--space-4) var(--space-5);background:var(--navy);color:#fff}
+.report-head h4{font-size:var(--fs-16);font-weight:700;line-height:var(--lh-tight)}
+.report-head p{font-size:var(--fs-12);color:rgba(255,255,255,.8);margin-top:2px}
+.report-body{padding:var(--space-5);font-size:var(--fs-13);line-height:var(--lh-normal)}
+.rrow{display:grid;grid-template-columns:120px 1fr;gap:var(--space-2) var(--space-4);padding:6px 0;border-bottom:1px solid var(--border)}
+.rrow:last-of-type{border-bottom:0}
+.rrow dt{color:var(--text-3);font-size:var(--fs-12)}.rrow dd{margin:0}
+.rsec{margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--border-strong)}
+.rsec h5{font-size:var(--fs-13);font-weight:700;margin-bottom:var(--space-2-5)}
+.rlist{display:grid;gap:6px;font-size:var(--fs-12);line-height:var(--lh-tight)}
+.rlist li{display:flex;gap:var(--space-2);align-items:flex-start}
+
+/* จัดคิว */
+.dispatch{display:grid;gap:var(--space-5);grid-template-columns:300px minmax(0,1fr);align-items:start}
+@media (max-width:1000px){.dispatch{grid-template-columns:1fr}}
+.rail{position:sticky;top:76px}
+.q-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3);margin-bottom:var(--space-2-5);cursor:grab}
+.q-card:hover{border-color:var(--text-3);background:var(--panel-3)}
+.q-card.is-blocked{border-color:color-mix(in srgb,var(--red) 40%,transparent);background:var(--red-soft);cursor:not-allowed}
+.q-top{display:flex;align-items:center;gap:var(--space-2);margin-bottom:4px}
+.q-name{font-size:var(--fs-13);font-weight:600;line-height:var(--lh-tight)}
+.q-meta{font-size:var(--fs-11);color:var(--text-3);line-height:var(--lh-tight);margin-top:3px}
+.q-nums{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.nbadge{font-size:var(--fs-11);font-weight:700;border-radius:5px;padding:1px 6px;font-variant-numeric:tabular-nums;border:1px solid color-mix(in srgb,currentColor 26%,transparent);background:color-mix(in srgb,currentColor 11%,transparent);white-space:nowrap}
+.nbadge.m{color:var(--blue)}.nbadge.p{color:var(--green)}.nbadge.r{color:var(--violet)}.nbadge.l{color:var(--teal)}
+table.board{width:100%;border-collapse:collapse;min-width:980px;font-size:var(--fs-12)}
+table.board th,table.board td{border:1px solid var(--border);vertical-align:top;padding:0}
+table.board thead th{background:var(--panel-2);padding:8px var(--space-2);font-size:var(--fs-12);color:var(--text-3);font-weight:600;text-align:center}
+table.board thead th.weekend{background:var(--panel-3)}
+.tech-col{width:176px;text-align:start !important;padding:var(--space-3) !important;background:var(--panel-2)}
+.tech-name{font-size:var(--fs-13);font-weight:700}
+.tech-live{font-size:var(--fs-11);color:var(--green);font-weight:600;margin-top:3px;display:flex;align-items:center;gap:5px}
+.tech-idle{font-size:var(--fs-11);color:var(--text-3);margin-top:3px}
+.cell{padding:6px;display:grid;gap:5px;min-height:86px}
+.cell-load{display:flex;align-items:center;gap:5px;font-size:var(--fs-11);color:var(--text-3);font-variant-numeric:tabular-nums}
+.cell-load .bar{flex:1;height:4px;border-radius:var(--radius-full);background:var(--panel-3);overflow:hidden}
+.cell-load .bar>i{display:block;height:100%;background:var(--green)}
+.cell-load.over{color:var(--red);font-weight:700}.cell-load.over .bar>i{background:var(--red)}
+.vchip{display:block;width:100%;text-align:start;border:1px solid color-mix(in srgb,currentColor 28%,transparent);background:color-mix(in srgb,currentColor 12%,transparent);color:var(--blue);border-radius:6px;padding:4px 6px;font:inherit;font-size:var(--fs-11);cursor:pointer;line-height:1.4}
+.vchip b{display:block;font-weight:700;font-variant-numeric:tabular-nums}
+.vchip .vnums{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
+.vchip.install{color:var(--violet)}.vchip.repair{color:var(--red)}.vchip.inspect{color:var(--teal)}
+.vchip.running{color:var(--accent);border-width:2px}
+.add-cell{width:100%;border:1px dashed var(--border-strong);background:transparent;color:var(--text-3);border-radius:6px;padding:3px;font:inherit;font-size:var(--fs-12);cursor:pointer}
+.add-cell:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+/* ฟีดส่งงาน */
+.feed{display:grid;gap:var(--space-3)}
+.fcard{display:grid;grid-template-columns:auto 1fr auto;gap:var(--space-3);align-items:start;padding:var(--space-4);border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel-2)}
+.fcard.flag{border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:var(--amber-soft)}
+.fcard.flagred{border-color:color-mix(in srgb,var(--red) 45%,transparent);background:var(--red-soft)}
+.avatar{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-12);font-weight:700;color:#fff}
+.a-ta{background:var(--blue)}.a-fluke{background:var(--violet)}.a-ice{background:var(--teal)}.a-pee{background:var(--amber)}
+.fmain b{font-size:var(--fs-13);font-weight:700}
+.fmeta{font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight);margin-top:2px}
+.fflags{display:flex;gap:5px;flex-wrap:wrap;margin-top:var(--space-2)}
+.fthumbs{display:flex;gap:4px;margin-top:var(--space-2)}
+.fthumbs .ph{width:38px;height:38px;font-size:15px;aspect-ratio:auto}
+.ftime{font-size:var(--fs-11);color:var(--text-3);white-space:nowrap}
+
+/* ฟอร์ม */
+.form-grid{display:grid;gap:var(--space-4);grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.field label{display:block;font-size:var(--fs-12);color:var(--text-2);margin-bottom:5px}
+.field .ctl{min-height:var(--ctl-h);border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-float);display:flex;align-items:center;padding:0 12px;font-size:var(--fs-13)}
+.field .ctl.readonly{background:var(--panel-3);color:var(--text-2);border-style:dashed}
+.field .hint{font-size:var(--fs-11);color:var(--text-3);margin-top:4px;line-height:var(--lh-tight)}
+.checkline{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.checkline .opt{display:inline-flex;align-items:center;gap:7px;height:var(--ctl-h);padding:0 13px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:var(--fs-13);background:var(--panel-float)}
+.checkline .opt.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.box{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--border-strong);flex:none;display:grid;place-items:center;font-size:10px}
+.checkline .opt.on .box{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.action-bar{display:flex;justify-content:flex-end;gap:var(--space-2);padding-top:var(--space-4);margin-top:var(--space-4);border-top:1px solid var(--border);flex-wrap:wrap}
+.tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--border);margin-bottom:var(--space-5);overflow-x:auto}
+.tabs button{height:40px;padding:0 var(--space-4);border:0;background:transparent;font:inherit;font-size:var(--fs-13);color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+
+.flow{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;font-size:var(--fs-13)}
+.flow .st{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius);border:1px solid color-mix(in srgb,currentColor 28%,transparent);background:color-mix(in srgb,currentColor 12%,transparent);font-weight:600}
+.flow .st.s0{color:var(--text-2)}.flow .st.s1{color:var(--accent)}.flow .st.s2{color:var(--green)}.flow .st.s3{color:var(--red)}
+.flow .arrow{color:var(--text-3);font-size:var(--fs-12)}
+.flow .key{font-size:var(--fs-11);font-weight:400;opacity:.85}
+
+.screen{display:none}.screen.is-active{display:block}
+@media (max-width:640px){.workspace,.hero{padding:var(--space-5) var(--space-4) var(--space-7)}}
+@media (prefers-reduced-motion:reduce){.mock *,.mock *::before,.mock *::after{transition-duration:1ms !important;animation:none !important}}
+</style>
+</head>
+<body>
+
+<div class="mock">
+  <div class="topnav-sys">
+    <div class="brand-mark"><span class="brand-dot">S</span> SS SYSTEM</div>
+    <nav class="sys-switch" id="sys-switch">
+      <span data-sys="sales">บริหารงานขาย</span>
+      <span data-sys="service">ธุรกิจบริการ</span>
+      <span>วางแผนผลิต</span><span>ภาษี</span><span>ฐานข้อมูล</span>
+    </nav>
+    <div class="topnav-right">
+      <span class="who">เข้าใช้เป็น <b id="who-role">—</b></span>
+      <button type="button" class="theme-btn" id="theme-toggle">สลับธีม</button>
+    </div>
+  </div>
+  <nav class="topnav-menu" id="menu-row"></nav>
+
+  <div class="deck">
+    <div class="deck-group"><span class="deck-label">เริ่ม</span><div class="seg" role="tablist">
+      <button type="button" role="tab" data-s="s0" aria-selected="true">ทำไมต้องทำ</button></div></div>
+    <div class="deck-group"><span class="deck-label sa">SA · ฝ่ายขาย</span><div class="seg" role="tablist">
+      <button type="button" role="tab" data-s="s1" aria-selected="false">ทะเบียนสัญญา</button>
+      <button type="button" role="tab" data-s="s2" aria-selected="false">สัญญา + งวดจ่าย</button></div></div>
+    <div class="deck-group"><span class="deck-label fn">FN · บัญชี</span><div class="seg" role="tablist">
+      <button type="button" role="tab" data-s="s3" aria-selected="false">คำร้องขอเอกสาร</button>
+      <button type="button" role="tab" data-s="s4" aria-selected="false">ยืนยันการชำระเงิน</button></div></div>
+    <div class="deck-group"><span class="deck-label ts">TS · ช่าง</span><div class="seg" role="tablist">
+      <button type="button" role="tab" data-s="s5" aria-selected="false">งานวันนี้</button>
+      <button type="button" role="tab" data-s="s6" aria-selected="false">ปิดงานรายเครื่อง</button>
+      <button type="button" role="tab" data-s="s7" aria-selected="false">ใบส่งงาน</button>
+      <button type="button" role="tab" data-s="s8" aria-selected="false">จัดคิวช่าง</button>
+      <button type="button" role="tab" data-s="s9" aria-selected="false">จอหัวหน้า</button></div></div>
+    <div class="deck-group"><span class="deck-label">ตัวเชื่อม</span><div class="seg" role="tablist">
+      <button type="button" role="tab" data-s="s13" aria-selected="false">⭐ คิวรับงาน</button>
+      <button type="button" role="tab" data-s="s10" aria-selected="false">ไทม์ไลน์ + ล็อก</button>
+      <button type="button" role="tab" data-s="s11" aria-selected="false">ด่านเข้าคิว</button>
+      <button type="button" role="tab" data-s="s12" aria-selected="false">หน่วยนับ + สถานะ</button></div></div>
+  </div>
+
+  <!-- ══════ 0 · ทำไมต้องทำ ══════ -->
+  <section class="screen is-active" id="s0">
+    <div class="hero">
+      <h1>ระบบธุรกิจบริการ — เชื่อมงานขาย · บัญชี · ช่างหน้างาน</h1>
+      <p class="lead">
+        วันนี้ตารางช่างกับทะเบียนสัญญาไม่มีอะไรเชื่อมกันเลย นอกจากคนที่จำได้ ·
+        ตัวเลขข้างล่างมาจากชีตที่ทีมใช้อยู่จริง ซึ่งเขียนสูตรเทียบสองโลกไว้เอง
+      </p>
+
+      <div class="bignum">
+        <div class="green"><b>25.3%</b><span>รายการบริการที่ตรงกับสัญญา<br>(42 จาก 166)</span></div>
+        <div class="red"><b>25</b><span>จุดที่ <b>ส่งช่างไปทั้งที่หมดสัญญาแล้ว</b></span></div>
+        <div class="red"><b>102</b><span>จุดที่ <b>จ่ายเงินแล้วแต่ไม่มีคิวบริการ</b></span></div>
+        <div class="amber"><b>64%</b><span>สัญญาที่ยัง <b>ไม่ได้กระดาษเซ็นคืนจากลูกค้า</b><br>(138 จาก 215)</span></div>
+      </div>
+
+      <div class="callout red">
+        <span class="co-ic">🔴</span>
+        <div><b>อ่านสองตัวเลขกลางรวมกัน</b> — บริษัทส่งช่างไปที่ที่หมดสัญญา 25 จุด <b>และ</b> ไม่ได้ไปที่ที่จ่ายเงินแล้ว 102 จุด <b>พร้อมกัน</b></div>
+      </div>
+      <div class="callout amber">
+        <span class="co-ic">📋</span>
+        <div>
+          <b>ชีตติดตามลูกค้าไม่ต่อสัญญา 172 แถว มีคอลัมน์ "สถานะติดตาม" = "ยังไม่ติดต่อ" ทุกแถว</b> —
+          ไม่ใช่เพราะไม่มีใครทำ แต่ชีตถูกสร้างใหม่จากสูตรทุกครั้ง <b>สิ่งที่ SA พิมพ์ลงไปหายทุกรอบ</b>
+        </div>
+      </div>
+
+      <div class="roles">
+        <div class="role sa">
+          <h4>🧑‍💼 SA · ฝ่ายขาย</h4>
+          <p>เจ้าของสัญญา — ติดตามวันหมด แจ้งว่าลูกค้าจ่ายแล้ว ขอเอกสารจากบัญชี</p>
+          <ul><li>ทะเบียนสัญญา + วันหมด</li><li>แจ้งจ่าย + แนบหลักฐาน</li><li>ขอใบวางบิล / ใบกำกับภาษี</li><li>ติดตามลูกค้าที่ไม่ต่อ</li></ul>
+        </div>
+        <div class="role fn">
+          <h4>💰 FN · ฝ่ายบัญชี</h4>
+          <p>คนเดียวที่ยืนยันได้ว่าเงินเข้าจริง — เพราะรายการเดินบัญชีอยู่ใน Express</p>
+          <ul><li>คิวยืนยันเงินเข้า</li><li>คิวคำร้องขอเอกสาร</li><li>เห็นว่ากดแล้วปลดอะไร</li></ul>
+        </div>
+        <div class="role ts">
+          <h4>🔧 TS · ฝ่ายเทคนิคบริการ</h4>
+          <p>คนที่เข้าไซต์จริง — 4 คน ดูแล 380 จุดติดตั้ง เดือนละ 167 งาน</p>
+          <ul><li>งานวันนี้ (มือถือ)</li><li>ปิดงานรายเครื่อง</li><li>จัดคิว/เกลี่ยภาระ</li><li>ใบส่งงานที่ระบบสร้างเอง</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 1 · ทะเบียนสัญญา ══════ -->
+  <section class="screen" id="s1">
+    <div class="workspace">
+      <div class="note"><b>SA</b> — ยุบชีต “SDS ระบบกระจายกลิ่น” + “ข้อมูลสัญญา” + Dashboard เป็นหน้าเดียว · สถานะคำนวณจากวันที่เสมอ ไม่ได้พิมพ์มือ</div>
+      <div class="ws-head">
+        <div class="ws-icon">📄</div>
+        <div><h1 class="ws-title">สัญญาบริการ</h1><p class="ws-sub">380 จุดติดตั้ง · 148 ลูกค้า · 1 สัญญาครอบได้หลายไซต์</p></div>
+        <div class="ws-right"><button type="button" class="btn">ตัวกรอง</button><button type="button" class="btn">ส่งออก</button><button type="button" class="btn btn-accent">+ สัญญาใหม่</button></div>
+      </div>
+      <div class="metric-strip">
+        <div class="metric is-good"><div class="m-label">อยู่ระหว่างให้บริการ</div><div class="m-value">135</div><div class="m-foot">13.4 ล้านบาท</div></div>
+        <div class="metric is-warn"><div class="m-label">ใกล้หมดสัญญา (90 วัน)</div><div class="m-value">47</div><div class="m-foot">ต้องมี SA ติดต่อ</div></div>
+        <div class="metric is-alert"><div class="m-label">มีงวดค้าง — ไซต์ถูกล็อก</div><div class="m-value">6</div><div class="m-foot">ครอบ 23 จุดติดตั้ง</div></div>
+        <div class="metric is-alert"><div class="m-label">ยังไม่ได้สัญญาคืน</div><div class="m-value">64%</div><div class="m-foot">138 จาก 215 ใบ</div></div>
+        <div class="metric is-alert"><div class="m-label">อัตราต่อสัญญา (รายจุด)</div><div class="m-value">12.2%</div><div class="m-foot">รายลูกค้า 20.4%</div></div>
+      </div>
+      <div class="section">
+        <div class="section-head"><h3>รายการสัญญา</h3><span class="sh-note">เรียงตามวันหมดสัญญา · ใกล้ที่สุดก่อน</span><div class="sh-right"><span class="chip">ทั้งหมด 380</span></div></div>
+        <div class="table-scroll"><table class="premium">
+          <thead><tr><th>เลขที่ / ลูกค้า</th><th>ไซต์ที่ครอบ</th><th>ช่วงสัญญา</th><th>สถานะบริการ</th><th>เอกสาร</th><th class="num">มูลค่า</th><th>งวดถัดไป</th><th>SA</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono t-strong">SC-26080012</span><span class="t-sub">ออลซีซั่นส์ พร็อพเพอร์ตี้</span></td><td>3 ไซต์<span class="t-sub">CRC · MTHAI · MTHAI ติดตั้งเพิ่ม</span></td><td>01/08/68 – 01/08/69</td><td><span class="chip amber dot">ใกล้หมด · 1 วัน</span></td><td><span class="chip green sm">ได้แล้ว</span></td><td class="num">154,080</td><td><span class="chip green dot">ครบแล้ว</span></td><td>แตงกวา</td></tr>
+            <tr><td><span class="mono t-strong">SC-26080011</span><span class="t-sub">เคพี อาร์ท เซ็นเตอร์</span></td><td>6 ไซต์<span class="t-sub">Forest · Flower · Beach · Volcano · +2</span></td><td>05/08/68 – 05/08/69</td><td><span class="chip amber dot">ใกล้หมด · 5 วัน</span></td><td><span class="chip amber sm">รอลูกค้าส่งคืน</span></td><td class="num">600,912</td><td><span class="chip green dot">ครบแล้ว</span></td><td>ออม</td></tr>
+            <tr><td><span class="mono t-strong">SC-26070004</span><span class="t-sub">มัลตี้ บิวตี้</span></td><td>4 ไซต์<span class="t-sub">เมกาบางนา · ฟิวเจอร์พาร์ค · +2</span></td><td>01/10/68 – 01/10/69</td><td><span class="chip green dot">ให้บริการอยู่</span></td><td><span class="chip green sm">ได้แล้ว</span></td><td class="num">480,601</td><td><span class="chip red dot">เลยกำหนด 12 วัน</span></td><td>แตงกวา</td></tr>
+            <tr><td><span class="mono t-strong">SC-26060021</span><span class="t-sub">อุตสาหกรรมไหมไทย (Jim Thompson)</span></td><td>8 ไซต์<span class="t-sub">Emquartier · Iconsiam · One Bangkok · +5</span></td><td>01/09/68 – 01/09/69</td><td><span class="chip amber dot">ใกล้หมด · 32 วัน</span></td><td><span class="chip amber sm">รอลูกค้าส่งคืน</span></td><td class="num">102,720</td><td><span class="chip amber dot">SA แจ้งแล้ว รอบัญชี</span></td><td>ลาเต้</td></tr>
+            <tr><td><span class="mono t-strong">SC-26050009</span><span class="t-sub">แร็บบิท ลาซูลี</span></td><td>6 ไซต์<span class="t-sub">สยาม · อโศก · เพลินจิต · +3</span></td><td>15/07/68 – 15/07/69</td><td><span class="chip red dot">หมดแล้ว 17 วัน</span></td><td><span class="chip green sm">ได้แล้ว</span></td><td class="num">192,600</td><td><span class="chip">—</span></td><td>แตงกวา</td></tr>
+            <tr><td><span class="mono t-strong">SC-26040017</span><span class="t-sub">มหาจักรดีเวลอปเมนส์</span></td><td>5 ไซต์<span class="t-sub">รามคำแหง · นานา · Emquartier · +2</span></td><td>01/03/69 – 01/03/70</td><td><span class="chip green dot">ให้บริการอยู่</span></td><td><span class="chip red sm">ยังไม่ได้ทำ</span></td><td class="num">96,300</td><td><span class="chip green dot">ครบแล้ว</span></td><td>หมิง</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="callout"><span class="co-ic">📄</span><div><b>คอลัมน์ “เอกสาร” เป็นมิติที่สาม</b> — คนละเรื่องกับสถานะบริการที่คำนวณจากวันที่ · บนชีตจริง <b>64% ยังไม่ได้กระดาษเซ็นคืน</b> และไม่มีที่ไหนในระบบเก็บเรื่องนี้เลย</div></div>
+    </div>
+  </section>
+
+  <!-- ══════ 2 · สัญญา + งวดจ่าย ══════ -->
+  <section class="screen" id="s2">
+    <div class="workspace">
+      <div class="note"><b>SA</b> — ข้อมูลจริงบังคับรูป: มูลค่าในชีตอยู่ที่แถวแรกของกลุ่ม แถวที่เหลือเป็น 0 ⇒ <b>สัญญา : ไซต์ = 1 : N</b> · งวดจ่ายแขวนที่สัญญา ล็อก/ปลดพร้อมกันทั้งกลุ่ม</div>
+      <div class="ws-head">
+        <div class="ws-icon">📄</div>
+        <div><h1 class="ws-title">SC-26070004 · บริษัท มัลตี้ บิวตี้ จำกัด</h1><p class="ws-sub">01/10/2568 – 01/10/2569 · ราย 3 เดือน · SA แตงกวา · AC เกล</p></div>
+        <div class="ws-right"><button type="button" class="btn">แก้ไขสัญญา</button><button type="button" class="btn">ขอเอกสารจากบัญชี</button><button type="button" class="btn btn-accent">แจ้งว่าลูกค้าจ่ายแล้ว</button></div>
+      </div>
+      <div class="callout red"><span class="co-ic">🔒</span><div><b>ไซต์ทั้ง 4 จุดถูกล็อก — งวดที่ 3 เลยกำหนด 12 วันและบัญชียังไม่ยืนยัน</b><br>นัดใหม่ยังสร้างเป็น “ร่าง” ได้ตามปกติ แต่เข้าคิวช่างไม่ได้จนกว่างวดนี้จะยืนยัน · มีนัดร่างค้างอยู่ 2 ใบ</div></div>
+      <div class="split">
+        <div>
+          <div class="section">
+            <div class="section-head"><h3>งวดจ่าย</h3><span class="sh-note">4 งวด · ราย 3 เดือน</span><div class="sh-right"><span class="chip red">ค้าง 1 งวด</span></div></div>
+            <div class="section-body" style="padding-block:var(--space-2)">
+              <div class="pay-row"><div class="pay-seq"><b>1</b><span>01/10/68</span></div><div class="pay-main"><b>120,150.30 บาท</b><span>IV6810022 · ขอผ่านคำร้อง RQ-26100031</span></div><div class="pay-sign"><i class="ok">✓ SA แจ้ง — แตงกวา · 03/10/68</i><i class="ok">✓ บัญชียืนยัน — น้ำทิพย์ · 04/10/68</i></div><div><span class="chip green dot">ยืนยันแล้ว</span></div></div>
+              <div class="pay-row"><div class="pay-seq"><b>2</b><span>01/01/69</span></div><div class="pay-main"><b>120,150.30 บาท</b><span>IV6901014 · ขอผ่านคำร้อง RQ-26010008</span></div><div class="pay-sign"><i class="ok">✓ SA แจ้ง — แตงกวา · 06/01/69</i><i class="ok">✓ บัญชียืนยัน — น้ำทิพย์ · 07/01/69</i></div><div><span class="chip green dot">ยืนยันแล้ว</span></div></div>
+              <div class="pay-row" style="background:var(--red-soft);margin-inline:calc(var(--space-4)*-1);padding-inline:var(--space-4);border-radius:var(--radius)"><div class="pay-seq"><b>3</b><span>01/04/69</span></div><div class="pay-main"><b>120,150.30 บาท</b><span>เลยกำหนด 12 วัน · ยังไม่ได้ขอเอกสารจากบัญชี</span></div><div class="pay-sign"><i class="none">— SA ยังไม่แจ้ง</i><i class="none">— บัญชียังไม่ยืนยัน</i></div><div><button type="button" class="btn btn-accent btn-sm">แจ้งว่าจ่ายแล้ว</button></div></div>
+              <div class="pay-row"><div class="pay-seq"><b>4</b><span>01/07/69</span></div><div class="pay-main"><b>120,150.30 บาท</b><span>ยังไม่ถึงกำหนด</span></div><div class="pay-sign"><i class="none">— ยังไม่ถึงรอบ</i></div><div><span class="chip">รอรอบ</span></div></div>
+            </div>
+          </div>
+          <div class="callout"><span class="co-ic">ℹ️</span><div><b>“SA แจ้งแล้ว” ยังไม่ปลดล็อก</b> — ปลดเมื่อบัญชีกดยืนยันเท่านั้น · ถ้าปลดตั้งแต่ SA กด คนแจ้งกับคนปลดจะเป็นคนเดียวกัน ซึ่งเท่ากับไม่มีด่าน</div></div>
+        </div>
+        <div>
+          <div class="section">
+            <div class="section-head"><h3>ไซต์ที่สัญญานี้ครอบ</h3><span class="sh-note">4 จุด</span></div>
+            <div class="table-scroll"><table class="premium" style="min-width:0">
+              <thead><tr><th>ไซต์</th><th>รอบเข้า</th><th>สถานะ</th></tr></thead>
+              <tbody>
+                <tr><td class="t-strong">เมกาบางนา (Size L)<span class="t-sub">HI ! BARBIE #1</span></td><td>วันที่ 1–5/เดือน</td><td><span class="chip red dot">ล็อก</span></td></tr>
+                <tr><td class="t-strong">ฟิวเจอร์พาร์ค รังสิต<span class="t-sub">HI ! BARBIE #1</span></td><td>วันที่ 1–5/เดือน</td><td><span class="chip red dot">ล็อก</span></td></tr>
+                <tr><td class="t-strong">ยูเนี่ยน มอลล์<span class="t-sub">HI ! BARBIE #1</span></td><td>วันที่ 1–5/เดือน</td><td><span class="chip red dot">ล็อก</span></td></tr>
+                <tr><td class="t-strong">สยาม<span class="t-sub">HI ! BARBIE #1</span></td><td>วันที่ 1–5/เดือน</td><td><span class="chip red dot">ล็อก</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><h3>เตือนต่อสัญญา</h3></div>
+            <div class="section-body">
+              <div class="callout amber"><span class="co-ic">⏰</span><div>เหลือ <b>60 วัน</b> ก่อนหมดสัญญา — ระบบจะแจ้ง SA อีกครั้งที่ 30 และ 7 วัน</div></div>
+              <p style="font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)">หมดแล้วไม่ต่อ สัญญาจะไหลไปหน้า “ติดตามไม่ต่อสัญญา” พร้อมมูลค่าเดิมและผู้รับผิดชอบ — <b style="color:var(--text)">สิ่งที่พิมพ์ลงไปจะไม่หายเหมือนในชีต</b></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 3 · คำร้องขอเอกสาร ══════ -->
+  <section class="screen" id="s3">
+    <div class="workspace">
+      <div class="note"><b>FN</b> — <b>หน้าที่มีอยู่แล้ว ไม่ใช่หน้าใหม่</b> · <span class="mono">/sa/requests</span> ทำงานอยู่ทุกวันกับ RD/PC · เพิ่มชนิด <span class="mono">billing_doc</span> แล้ว <b>แท็บ “คิวฝ่าย FN” โผล่เองจากฝ่ายของผู้ใช้</b></div>
+      <div class="ws-head"><div class="ws-icon">📋</div><div><h1 class="ws-title">คำร้องข้ามฝ่าย</h1><p class="ws-sub">คิวของฝ่ายคุณ — เรื่องที่รอฝ่ายบัญชีจัดการ</p></div></div>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="false">คิวฝ่าย RD (3)</button>
+        <button type="button" role="tab" aria-selected="false">คิวฝ่าย PC (5)</button>
+        <button type="button" role="tab" aria-selected="true">คิวฝ่าย FN (4)</button>
+        <button type="button" role="tab" aria-selected="false">คำร้องที่ฉันเปิด (2)</button>
+      </div>
+      <div class="split">
+        <div class="section">
+          <div class="section-head"><h3>คิวฝ่าย FN</h3><span class="sh-note">รับงานจากทั้งสายสินค้าและสายบริการ</span></div>
+          <div class="table-scroll"><table class="premium" style="min-width:0">
+            <thead><tr><th>เลขที่ / เรื่อง</th><th>ผู้ขอ</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              <tr><td><span class="mono t-strong">RQ-26080007</span><span class="t-sub">ใบวางบิล 50% ก่อนผลิต + ใบกำกับภาษี · เซนท์ สตูดิโอ</span></td><td>ฟลุ๊ค<span class="t-sub">สายสินค้า</span></td><td><span class="chip amber dot">รอรับเรื่อง</span></td></tr>
+              <tr><td><span class="mono t-strong">RQ-26080006</span><span class="t-sub">ใบแจ้งหนี้งวด 3 · มัลตี้ บิวตี้</span></td><td>แตงกวา<span class="t-sub">สายบริการ</span></td><td><span class="chip amber dot">รอรับเรื่อง</span></td></tr>
+              <tr><td><span class="mono t-strong">RQ-26080004</span><span class="t-sub">ใบเสร็จรับเงิน · แร็บบิท ลาซูลี</span></td><td>แตงกวา<span class="t-sub">สายบริการ</span></td><td><span class="chip blue dot">รับเรื่องแล้ว</span></td></tr>
+              <tr><td><span class="mono t-strong">RQ-26080002</span><span class="t-sub">ใบกำกับภาษี · ไซม์ ดาร์บี้ ออโต้ สปอร์ตส</span></td><td>ออม<span class="t-sub">สายสินค้า</span></td><td><span class="chip green dot">ส่งไฟล์แล้ว</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="section">
+          <div class="section-head"><h3>RQ-26080007</h3><span class="sh-note">ปักหมุดที่ขั้น “รับชำระก่อนผลิต”</span></div>
+          <div class="section-body">
+            <div class="form-grid" style="margin-bottom:var(--space-4)">
+              <div class="field"><label>ลูกค้า</label><div class="ctl readonly">เซนท์ สตูดิโอ (Scent Studio)</div><div class="hint">ดึงจากดีล ไม่ให้พิมพ์</div></div>
+              <div class="field"><label>ใบเสนอราคา</label><div class="ctl readonly mono">Q#260731-0006</div><div class="hint">อ้างด้วย id ไม่ใช่ข้อความ</div></div>
+              <div class="field"><label>AE เจ้าของดีล</label><div class="ctl readonly">ฟลุ๊ค</div></div>
+              <div class="field"><label>AC ผู้ประสาน <span style="color:var(--text-3)">(ฝ่ายขาย)</span></label><div class="ctl readonly">เกล</div></div>
+            </div>
+            <div class="field" style="margin-bottom:var(--space-4)"><label>ขอเอกสาร</label><div class="checkline">
+              <span class="opt on"><span class="box">✓</span> ใบวางบิล</span><span class="opt on"><span class="box">✓</span> ใบกำกับภาษี</span>
+              <span class="opt"><span class="box"></span> ใบแจ้งหนี้</span><span class="opt"><span class="box"></span> ใบเสร็จรับเงิน</span></div></div>
+            <div class="form-grid">
+              <div class="field"><label>ยอดเต็มตามใบเสนอราคา</label><div class="ctl readonly" style="font-variant-numeric:tabular-nums">181,016.25 บาท</div></div>
+              <div class="field"><label>ขอเรียกเก็บ</label><div class="ctl" style="justify-content:space-between"><span>50 %</span><b style="font-variant-numeric:tabular-nums">90,508.13</b></div><div class="hint">พิมพ์ % แล้วระบบคูณให้ — ไม่ให้พิมพ์ยอดเอง</div></div>
+            </div>
+            <div class="field" style="margin-top:var(--space-4)"><label>หมายเหตุ</label><div class="ctl" style="padding:10px 12px;align-items:flex-start">ก่อนผลิต (เป็นบรรจุภัณฑ์)</div></div>
+            <div class="action-bar"><button type="button" class="btn ghost">ตีกลับให้แก้</button><button type="button" class="btn">รับเรื่อง</button><button type="button" class="btn btn-accent">แนบไฟล์แล้วปิดคำร้อง</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="callout amber"><span class="co-ic">⚠️</span><div><b>ตัวอย่างข้างบนเป็นงานบรรจุภัณฑ์ = สายสินค้า ไม่ใช่งานบริการ</b> ⇒ คำร้องขอเอกสารการเงินต้องอยู่ <b>นอกโมดูลบริการตั้งแต่วันแรก</b> · Express ยังออกใบขายเชื่อต่อไป ⇒ คำร้องนี้คือ <b>สะพานเดียว</b>ระหว่างสองระบบ</div></div>
+    </div>
+  </section>
+
+  <!-- ══════ 4 · ยืนยันการชำระเงิน ══════ -->
+  <section class="screen" id="s4">
+    <div class="workspace">
+      <div class="note"><b>FN</b> — ยืนยันเงินเข้าไม่ใช่ “คำร้อง” จึงแยกหน้า · และ<b>ไม่เอาไว้ใต้ธุรกิจบริการ</b> เพราะจะต้องให้ FN ถือ <span class="mono">service:view</span> ซึ่งพ่วงทะเบียนไซต์ เครื่อง และตารางช่างมาทั้งก้อน</div>
+      <div class="ws-head"><div class="ws-icon">💰</div><div><h1 class="ws-title">ยืนยันการชำระเงิน</h1><p class="ws-sub">ฝ่าย FN · เข้าใช้เป็น น้ำทิพย์</p></div>
+        <div class="ws-right"><button type="button" class="btn">ตัวกรอง</button><button type="button" class="btn">ประวัติที่ยืนยันแล้ว</button></div></div>
+      <div class="metric-strip">
+        <div class="metric is-warn"><div class="m-label">รอยืนยันเงินเข้า</div><div class="m-value">7</div><div class="m-foot">เก่าสุด 3 วัน</div></div>
+        <div class="metric is-alert"><div class="m-label">งวดที่บล็อกงานอยู่</div><div class="m-value">3</div><div class="m-foot">2 ไทม์ไลน์ · 1 สัญญาบริการ</div></div>
+        <div class="metric is-alert"><div class="m-label">ไซต์ที่ถูกล็อก</div><div class="m-value">23</div><div class="m-foot">จาก 6 สัญญา</div></div>
+        <div class="metric"><div class="m-label">ยืนยันแล้วเดือนนี้</div><div class="m-value">18</div><div class="m-foot">2.4 ล้านบาท</div></div>
+      </div>
+      <div class="section">
+        <div class="section-head"><h3>รอยืนยันเงินเข้า</h3><span class="sh-note">SA แจ้งแล้วพร้อมหลักฐาน — รอบัญชีกด</span><div class="sh-right"><span class="chip amber">7 รายการ</span></div></div>
+        <div class="table-scroll"><table class="premium">
+          <thead><tr><th>ที่มา</th><th>งวด</th><th class="num">จำนวนเงิน</th><th>ผู้แจ้ง</th><th>หลักฐาน</th><th>ยืนยันแล้วจะปลดอะไร</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono t-strong">PJ-2608012</span><span class="t-sub">เซนท์ สตูดิโอ · ไทม์ไลน์โครงการ</span></td><td>1 / 2<span class="t-sub">50% ก่อนผลิต</span></td><td class="num t-strong">90,508.13</td><td>ฟลุ๊ค<span class="t-sub">30 นาทีก่อน</span></td><td><span class="chip blue">📎 สลิป 1 ไฟล์</span></td><td><span class="chip red">🔒 ปลดเฟส “ผลิต” 4 ขั้น</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">ยืนยัน</button> <button type="button" class="btn ghost btn-sm">ตีกลับ</button></td></tr>
+            <tr><td><span class="mono t-strong">SC-26060021</span><span class="t-sub">Jim Thompson · สัญญาบริการ</span></td><td>4 / 12<span class="t-sub">ครบ 01/07/69</span></td><td class="num t-strong">8,560.00</td><td>ลาเต้<span class="t-sub">เมื่อวาน 16:22</span></td><td><span class="chip blue">📎 สลิป 1 ไฟล์</span></td><td><span class="chip amber">ปลดล็อก 8 ไซต์</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">ยืนยัน</button> <button type="button" class="btn ghost btn-sm">ตีกลับ</button></td></tr>
+            <tr><td><span class="mono t-strong">SC-26030044</span><span class="t-sub">ชนินทร์ ลิฟวิ่ง · สัญญาบริการ</span></td><td>2 / 4<span class="t-sub">ครบ 15/07/69</span></td><td class="num t-strong">37,236.00</td><td>ออม<span class="t-sub">2 วันก่อน</span></td><td><span class="chip blue">📎 สลิป 2 ไฟล์</span></td><td><span class="chip amber">ปลดล็อก 4 ไซต์</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">ยืนยัน</button> <button type="button" class="btn ghost btn-sm">ตีกลับ</button></td></tr>
+            <tr><td><span class="mono t-strong">SC-26020018</span><span class="t-sub">พีเอ็มแอลอินเตอร์ (Meko) · สัญญาบริการ</span></td><td>1 / 1<span class="t-sub">ครบ 16/07/69</span></td><td class="num t-strong">38,520.00</td><td>เอิร์น<span class="t-sub">3 วันก่อน</span></td><td><span class="chip">ไม่มีไฟล์แนบ</span></td><td><span class="chip amber">ปลดล็อก 1 ไซต์</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">ยืนยัน</button> <button type="button" class="btn ghost btn-sm">ตีกลับ</button></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="callout"><span class="co-ic">🔗</span><div>คอลัมน์ <b>“ยืนยันแล้วจะปลดอะไร”</b> คือจุดที่ทำให้บัญชีเห็นผลของการกดของตัวเอง — วันนี้บัญชีกดยืนยันโดยไม่รู้ว่ามีคนรออยู่ปลายทาง</div></div>
+      <div class="callout green"><span class="co-ic">⭐</span><div><b>Express ถือใบขายเชื่อต่อไป ⇒ ระบบนี้จะไม่มีทางรู้เองว่าเงินเข้า</b> · สองลายเซ็น (SA แจ้ง → FN ยืนยัน) จึงไม่ใช่ทางเลือกออกแบบ <b>มันเป็นทางเดียวที่มี</b></div></div>
+    </div>
+  </section>
+
+  <!-- ══════ 5 · งานวันนี้ ══════ -->
+  <section class="screen" id="s5">
+    <div class="workspace">
+      <div class="note"><b>TS</b> — แทน “นัดของฉัน” · ตัดปุ่ม “ทั้งทีม” ออกไปหน้าจัดคิว ชื่อจะได้ไม่โกหก · ปุ่มที่ช่างต้องกดตอนยืนถือของสูง <span class="mono">44px</span> ไม่ใช่ 36</div>
+      <div class="phone-stage">
+        <div class="phone">
+          <div class="phone-bar"><span>09:54</span><span>▮▮▮ 4G</span></div>
+          <div class="phone-head"><div class="phone-title">งานวันนี้</div><div class="phone-sub">ศุกร์ 2 ส.ค. · 4 งาน · 12 เครื่อง · 6.5 แพ็ค</div></div>
+          <div class="phone-body">
+            <div class="grp"><div class="grp-title danger">⚠ ค้างจากเมื่อวาน <span class="grp-count">1</span></div>
+              <article class="job is-overdue"><div class="job-top"><span class="job-time">พฤ. 1 ส.ค.</span><span class="chip red dot">เริ่มไว้แต่ไม่ได้ปิด</span></div>
+                <p class="job-site">Jim Thompson : Outlet 93</p><p class="job-meta">อุตสาหกรรมไหมไทย · พระโขนง · 8 เครื่อง · 4 แพ็ค</p>
+                <div class="stamp">⏱ เริ่มงาน 15:40 — ผ่านมา 18 ชั่วโมง</div>
+                <div class="job-acts"><button type="button" class="btn btn-touch">ไม่ได้ทำ</button><button type="button" class="btn btn-accent btn-touch">ปิดงานย้อนหลัง</button></div></article></div>
+            <div class="grp"><div class="grp-title">กำลังทำอยู่ <span class="grp-count">1</span></div>
+              <article class="job is-running"><div class="running-bar"><span class="pulse"></span> กำลังทำอยู่ <span class="rb-time">42 นาที</span></div>
+                <div class="job-top"><span class="job-time">10:00–11:30</span><span class="chip blue">เติมน้ำหอม</span></div>
+                <p class="job-site">มหาจักร : รามคำแหง</p><p class="job-meta">มหาจักรดีเวลอปเมนส์ · สะพานสูง · 2 เครื่อง · 1.5 แพ็ค</p>
+                <div class="stamp">⏱ เริ่มงาน 10:12 <span class="chip green sm">ระบบจับเวลา</span></div>
+                <div class="job-acts"><button type="button" class="btn btn-touch icon-only" aria-label="เพิ่มเติม">⋯</button><button type="button" class="btn btn-accent btn-touch">ปิดงาน</button></div></article></div>
+            <div class="grp"><div class="grp-title">ถัดไปวันนี้ <span class="grp-count">2</span></div>
+              <article class="job"><div class="job-top"><span class="job-time">13:00</span><span class="chip violet">ติดตั้ง</span><span class="chip">ไปกับ ไอซ์</span></div>
+                <p class="job-site">Mii Hotel</p><p class="job-meta">ธนธรรม พร็อพเพอร์ตี้ · ประเวศ · 3 เครื่อง · 3 แพ็ค</p>
+                <p class="job-warn">⚠ เข้าได้ 10:00–20:00 · แจ้ง รปภ. ล่วงหน้า 30 นาที</p>
+                <div class="job-acts"><button type="button" class="btn btn-touch icon-only" aria-label="นำทาง">🧭</button><button type="button" class="btn btn-touch icon-only" aria-label="โทร">📞</button><button type="button" class="btn btn-accent btn-touch">เริ่มงาน</button></div></article>
+              <article class="job"><div class="job-top"><span class="job-time">15:30</span><span class="chip red">ซ่อม</span></div>
+                <p class="job-site">Meko Hospital</p><p class="job-meta">พีเอ็มแอลอินเตอร์ · จตุจักร · 4 เครื่อง · 4 แพ็ค · <b style="color:var(--violet)">Reed 16 จุด</b></p>
+                <div class="job-acts"><button type="button" class="btn btn-touch icon-only" aria-label="นำทาง">🧭</button><button type="button" class="btn btn-touch icon-only" aria-label="โทร">📞</button><button type="button" class="btn btn-accent btn-touch">เริ่มงาน</button></div></article></div>
+          </div>
+        </div>
+        <div>
+          <div class="section"><div class="section-head"><h3>สิ่งที่เปลี่ยนในหน้าช่าง</h3></div>
+            <div class="section-body"><div class="table-scroll"><table class="plain">
+              <thead><tr><th style="width:190px">เปลี่ยนอะไร</th><th>ทำไม</th></tr></thead>
+              <tbody>
+                <tr><td><b>ตัดปุ่ม “ทั้งทีม” ออก</b></td><td>หน้าชื่อ “ของฉัน” แต่ดูของคนอื่นได้ = ชื่อโกหก · ย้ายไปหน้าจัดคิว</td></tr>
+                <tr><td><b>เพิ่มกลุ่ม “กำลังทำอยู่”</b></td><td>ของเดิมมี 4 กลุ่มที่ไม่มีที่ให้งานที่กำลังทำ</td></tr>
+                <tr><td><b>ปุ่มสูง 44px</b></td><td>คนกดคือคนที่ยืนถือขวดน้ำหอมหน้างาน ไม่ใช่คนนั่งหน้าจอ</td></tr>
+                <tr><td><b>บอกจำนวนเครื่อง ไม่ใช่แค่แพ็ค</b></td><td>แพ็คคือหน่วยราคา · <b>เครื่องคือของที่ต้องเดินไปเปิดทีละตัว</b></td></tr>
+                <tr><td><b>เวลาเป็น stamp ไม่ใช่ช่องกรอก</b></td><td><span class="mono">actualStartTime</span> มีในตารางแล้ว แต่วันนี้พิมพ์ย้อนหลังตอนปิดงาน = เลขที่เดาเอา</td></tr>
+                <tr><td><b>ค้างจากเมื่อวานรวมงานที่ “เริ่มแล้วไม่ปิด”</b></td><td>ลืมกดปิดคืออาการที่จะเกิดแน่ — ถ้าไม่เด้งขึ้นหัวจอ มันค้างเงียบตลอดกาล</td></tr>
+              </tbody></table></div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 6 · ปิดงานรายเครื่อง ══════ -->
+  <section class="screen" id="s6">
+    <div class="workspace">
+      <div class="note"><b>TS</b> — จอนี้มาจากใบส่งงานจริงใน LINE · ค่าตั้งเครื่องเดิมเติมไว้ให้แล้ว <b>แก้เฉพาะที่เปลี่ยนวันนี้</b> · ปิดงานได้ <b>ทีละเครื่อง</b> ไม่ใช่ทั้งใบ</div>
+      <div class="phone-stage">
+        <div class="phone">
+          <div class="phone-bar"><span>11:38</span><span>▮▮▮ 4G</span></div>
+          <div class="phone-head"><div class="phone-title">ปิดงาน · Jim Thompson Outlet 93</div><div class="phone-sub">8 เครื่อง · A Breath of Dream · เริ่ม 10:12</div></div>
+          <div class="phone-body">
+            <div class="callout green" style="margin:0"><span class="co-ic">✓</span><div>ทำแล้ว <b>6</b> · เปลี่ยนเครื่อง <b>1</b> · ยังไม่ทำ <b>1</b></div></div>
+            <div>
+              <div class="mach ok"><div class="mach-head"><span class="mach-no">1</span><span class="mach-id">MAX (สีขาว)</span><span class="chip green sm dot">ทำแล้ว</span><span class="mach-pos">ชั้น 1 · ประตูทางเข้า</span></div>
+                <div class="mach-body"><dl class="setting"><dt>กระจายกลิ่น</dt><dd>30 / 225 วิ</dd><dt>เวลาทำงาน</dt><dd>จ.–อา. 07:00–19:00</dd><dt>เติมน้ำหอม</dt><dd>500 ml</dd></dl></div></div>
+              <div class="mach ok"><div class="mach-head"><span class="mach-no">2</span><span class="mach-id">O800 (สีขาว)</span><span class="chip green sm dot">ทำแล้ว</span><span class="mach-pos">ชั้น 1 · ประตูทางออกซ้ายมือ</span></div>
+                <div class="mach-body"><dl class="setting"><dt>กระจายกลิ่น</dt><dd class="changed">Grade 5 <span class="was">Grade 3</span> <span class="chip amber sm">ปรับวันนี้</span></dd><dt>เวลาทำงาน</dt><dd>09:00–12:00 · 12:30–15:30 · 16:00–18:00</dd><dt>เติมน้ำหอม</dt><dd>500 ml</dd></dl></div></div>
+              <div class="mach swap"><div class="mach-head"><span class="mach-no">3</span><span class="mach-id">O800 (สีขาว)</span><span class="chip amber sm dot">เปลี่ยนเครื่อง</span><span class="mach-pos">ชั้น 2 · ประตูทางเข้าขวามือ</span></div>
+                <div class="mach-body"><div class="callout amber" style="margin:0;padding:var(--space-3)"><span class="co-ic">🔧</span><div>เครื่องเดิม <span class="mono">SN-0431</span> ชำรุด — ถอดออก<br>ติดตั้งเครื่องใหม่ <span class="mono">SN-0918</span> ทำงานปกติแล้ว</div></div>
+                  <p style="font-size:var(--fs-11);color:var(--text-3);line-height:var(--lh-tight)">ทะเบียนเครื่องจะบันทึกให้เอง: ตัวเก่า <span class="mono">removedAt</span> · ตัวใหม่ <span class="mono">installedAt</span></p></div></div>
+              <div class="mach skip"><div class="mach-head"><span class="mach-no">✕</span><span class="mach-id">Reed 4 จุด</span><span class="chip red sm dot">ยังไม่ได้ทำ</span><span class="mach-pos">ชั้น 1 · โซนรับรองลูกค้า</span></div>
+                <div class="mach-body"><dl class="setting"><dt>เหตุผล</dt><dd>อยู่ระหว่างปรับสูตร ทีมยังไม่ได้ Service</dd></dl>
+                  <p style="font-size:var(--fs-11);color:var(--text-3);line-height:var(--lh-tight)">⚠️ ทำให้ใบนี้ปิดเป็น <b style="color:var(--text)">ทำไม่ครบ</b> ไม่ใช่ <span class="mono">done</span> — และไม่ใช่ <span class="mono">unable</span> ทั้งใบ</p></div></div>
+              <div class="mach"><div class="mach-head"><span class="mach-no">4</span><span class="mach-id">O800 (สีดำ)</span><span class="chip sm">ยังไม่กด</span><span class="mach-pos">ชั้น 2 · กลางห้อง</span></div>
+                <div class="mach-body"><div class="mach-acts"><button type="button" class="btn btn-sm">ทำไม่ได้</button><button type="button" class="btn btn-sm">เปลี่ยนเครื่อง</button><button type="button" class="btn btn-accent btn-sm">ทำแล้ว</button></div></div></div>
+            </div>
+            <div class="grp"><div class="grp-title">รูปหน้างาน <span class="grp-count">14 รูป</span></div>
+              <div class="photos"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph front">🏢</span><span class="ph" style="background:transparent;border-style:dashed">＋</span></div>
+              <p style="font-size:var(--fs-11);color:var(--text-3);line-height:var(--lh-tight)">📷 เครื่อง+ขวด · <span style="color:var(--blue)">⚙ หน้าจอตั้งค่า</span> · <span style="color:var(--teal)">🏢 หน้าตึก</span> — แยกชนิดตั้งแต่ถ่าย ระบบจะได้ตรวจได้ว่าขาดชนิดไหน</p></div>
+          </div>
+          <div class="phone-foot"><button type="button" class="btn btn-touch">ลายเซ็นลูกค้า</button><button type="button" class="btn btn-accent btn-touch">ปิดงาน (ทำไม่ครบ)</button></div>
+        </div>
+        <div>
+          <div class="section"><div class="section-head"><h3>ทำไมต้องปิดรายเครื่อง</h3></div><div class="section-body">
+            <div class="callout red"><span class="co-ic">🔴</span><div><b>ใบส่งงาน MB สวนหลวง เขียนเองว่า</b> “Reed diffuser ยังอยู่ในขั้นตอนปรับสูตร ทางทีมจึงยังไม่ได้ Service”<br>เครื่อง 4 ตัวทำแล้ว · Reed 6 ขวดยังไม่ได้ทำ ⇒ <b>ปิด <span class="mono">done</span> ก็โกหก ปิด <span class="mono">unable</span> ก็โกหก</b></div></div>
+            <div class="callout amber"><span class="co-ic">🔧</span><div><b>ใบส่งงาน Jim Thompson เขียนว่า</b> “เครื่องบริเวณทางเข้าชั้น 3 ชำรุด ทางทีมได้นำเครื่องมาเปลี่ยน”<br>ถ้าเก็บเป็นข้อความในช่องหมายเหตุ <b>ทะเบียนเครื่องจะเพี้ยนตั้งแต่เดือนแรก</b></div></div>
+            <div class="callout"><span class="co-ic">⚙</span><div><b>ค่าตั้งเครื่องวันนี้อยู่ในรูปถ่าย ไม่ใช่ในฐานข้อมูล</b> — ช่างถ่ายหน้าจอ <span class="mono">Work 60 / Pause 180</span> มาทุกใบ แต่ทะเบียนเครื่องไม่มีช่องเก็บ · ทั้งที่ตัวเลขที่ใช้ทำนายว่าน้ำหอมจะหมดวันไหน คำนวณจากค่าพวกนี้</div></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 7 · ใบส่งงาน ══════ -->
+  <section class="screen" id="s7">
+    <div class="workspace">
+      <div class="note"><b>TS</b> — <b>ใบส่งงานที่ระบบประกอบเอง</b> หน้าตาเหมือนข้อความ LINE ที่ทีมส่งกันอยู่ แต่ <b>ช่างไม่ได้พิมพ์สักบรรทัด</b> · 90% ดึงจากทะเบียนไซต์/เครื่อง ช่างกรอกแค่สิ่งที่เปลี่ยน</div>
+      <div class="split">
+        <div class="report">
+          <div class="report-head"><h4>ใบส่งงาน SV-26080042</h4><p>01/08/2569 · Jim Thompson Outlet 93 · ต้า, ไอซ์</p></div>
+          <div class="report-body">
+            <dl>
+              <div class="rrow"><dt>Brand</dt><dd>Jim Thompson : Outlet 93</dd></div>
+              <div class="rrow"><dt>ลูกค้า</dt><dd>บริษัท อุตสาหกรรมไหมไทย จำกัด</dd></div>
+              <div class="rrow"><dt>Objective</dt><dd>Service รายเดือน</dd></div>
+              <div class="rrow"><dt>Scent name</dt><dd>A BREATH OF DREAM <span class="mono">FG-015-02-001-0908</span></dd></div>
+              <div class="rrow"><dt>Position No.</dt><dd>8 เครื่อง — MAX ขาว 1 · O800 ขาว 2 · O800 ดำ 5</dd></div>
+              <div class="rrow"><dt>หน่วยตามสัญญา</dt><dd><span class="nbadge p">4 แพ็ค</span> <span class="nbadge m">8 เครื่อง</span> <span class="nbadge l">4 L/เดือน</span> <span class="nbadge r">Reed 4</span></dd></div>
+            </dl>
+            <div class="rsec"><h5>ตำแหน่งและค่าตั้ง</h5><ul class="rlist">
+              <li><b>1.</b> ชั้น 1 ประตูทางเข้า — 30/225 · จ.–อา. 07:00–19:00</li>
+              <li><b>2.</b> ชั้น 1 ประตูทางออกซ้ายมือ — <b style="color:var(--accent-ink)">Grade 5 (ปรับวันนี้)</b> · 3 ช่วง</li>
+              <li><b>3.</b> ชั้น 2 ประตูทางเข้าขวามือ — <b style="color:var(--amber)">เปลี่ยนเครื่อง SN-0431 → SN-0918</b></li>
+              <li><b>4.</b> ชั้น 2 กลางห้อง — Grade 5 · 3 ช่วง</li>
+              <li><b>5–7.</b> ชั้น 3 — Grade 3 · 3 ช่วง</li>
+              <li><b>8.</b> ชั้น 4 กลางห้อง — Grade 3 · 3 ช่วง</li></ul></div>
+            <div class="rsec"><h5>สิ่งที่ทำวันนี้</h5><ul class="rlist">
+              <li><span class="chip green sm">✓</span> เติมน้ำหอม 6 เครื่อง รวม 3,000 ml</li>
+              <li><span class="chip amber sm">🔧</span> เปลี่ยนเครื่องที่ 3 (ชำรุด) — ทำงานปกติแล้ว</li>
+              <li><span class="chip amber sm">⚙</span> ปรับเครื่องที่ 2 จาก Grade 3 เป็น Grade 5 ตามที่ลูกค้าขอ</li>
+              <li><span class="chip red sm">✕</span> Reed 4 จุด ยังไม่ได้ Service — อยู่ระหว่างปรับสูตร</li></ul></div>
+            <div class="rsec"><h5>รูปหน้างาน 14 รูป</h5><div class="photos"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph front">🏢</span></div></div>
+            <div class="rsec"><div class="stamp" style="margin:0">⏱ เข้า 10:12 — ออก 11:38 · รวม 1 ชม. 26 นาที <span class="chip green sm">ระบบจับเวลา</span></div>
+              <div class="stamp">✍ ลายเซ็นผู้รับงาน — คุณสมชาย (ผจก.สาขา)</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="section"><div class="section-head"><h3>ใครได้ใบนี้บ้าง</h3></div><div class="section-body">
+            <table class="plain" style="min-width:0"><tbody>
+              <tr><td><b>หัวหน้าทีม</b></td><td>เด้งขึ้นฟีด “ส่งงานล่าสุด” พร้อมป้ายว่าต้องดูไหม</td></tr>
+              <tr><td><b>SA เจ้าของไซต์</b></td><td>แจ้งเตือน — แทนการถูกแท็กใน LINE</td></tr>
+              <tr><td><b>ลูกค้า</b></td><td>ปุ่มแชร์ลิงก์/PDF — ไม่ต้องก๊อปข้อความส่งต่อ</td></tr>
+              <tr><td><b>เธรดของไซต์</b></td><td>เก็บถาวร — เปิดย้อนได้ว่าเดือนก่อนตั้งค่าเท่าไหร่</td></tr>
+            </tbody></table>
+            <div class="callout green" style="margin-top:var(--space-4)"><span class="co-ic">⭐</span><div><b>เดือนหน้าช่างเปิดมาเจอค่าเดิมรออยู่แล้ว</b> — ไม่ต้องเปิดรูปเก่าใน LINE ไล่ดูว่าตั้งไว้เท่าไหร่ ซึ่งเป็นสิ่งที่ต้องทำอยู่ตอนนี้</div></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 8 · จัดคิวช่าง ══════ -->
+  <section class="screen" id="s8">
+    <div class="workspace">
+      <div class="note"><b>TS</b> — แทน “ตารางเข้าบริการ” · ของเดิมดูได้อย่างเดียว · ของใหม่มี <b>คิวรอจัดเป็นแผงถาวรทางซ้าย</b> และภาระนับเป็น <b>เครื่อง</b> ไม่ใช่จำนวนนัด</div>
+      <div class="ws-head"><div class="ws-icon">🧭</div><div><h1 class="ws-title">จัดคิวช่าง</h1><p class="ws-sub">4–10 ส.ค. 2569 · ทีม 4 คน · เพดาน 12 เครื่อง/คน/วัน</p></div>
+        <div class="ws-right"><button type="button" class="btn">◀</button><button type="button" class="btn">สัปดาห์นี้</button><button type="button" class="btn">▶</button><button type="button" class="btn btn-accent">+ นัดใหม่</button></div></div>
+      <div class="callout amber"><span class="co-ic">📐</span><div><b>สี่หน่วยคนละความหมาย ห้ามยุบเป็นเลขเดียว</b> — <span class="nbadge m">เครื่อง</span> ภาระช่าง · <span class="nbadge p">แพ็ค</span> มูลค่า (<span class="mono">STD + SM÷2</span> ตรวจแล้วถูก 167/167 แถว) · <span class="nbadge l">ลิตร</span> ของที่ต้องเตรียมไป · <span class="nbadge r">Reed</span> ชนิดบริการหนึ่ง บางลูกค้าใช้ Reed อย่างเดียวไม่มีเครื่องเลย</div></div>
+      <div class="dispatch">
+        <div class="rail">
+          <div class="section" style="margin-bottom:var(--space-4)">
+            <div class="section-head" style="padding:var(--space-3) var(--space-4)"><h3 style="font-size:var(--fs-14)">คิวรอจัด</h3><div class="sh-right"><span class="chip amber">5</span></div></div>
+            <div class="section-body" style="padding:var(--space-3)">
+              <div class="q-card"><div class="q-top"><span class="q-name">Rapi Rabi : สีลม</span></div><p class="q-meta">แร็บบิท ลาซูลี · เติมน้ำหอม · ครบรอบ 5 ส.ค.</p><div class="q-nums"><span class="nbadge m">1 เครื่อง</span><span class="nbadge p">1 แพ็ค</span><span class="nbadge l">1 L</span></div></div>
+              <div class="q-card"><div class="q-top"><span class="q-name">The Empire ชั้น M</span></div><p class="q-meta">AWC ไลฟ์สโตล์ · <b style="color:var(--violet)">ผูกวันที่ 3 ของเดือนเท่านั้น</b></p><div class="q-nums"><span class="nbadge m">7 เครื่อง</span><span class="nbadge p">7 แพ็ค</span><span class="nbadge l">7 L</span></div></div>
+              <div class="q-card"><div class="q-top"><span class="q-name">AWC เครื่องกดสบู่ Empire Tower</span></div><p class="q-meta">เติมน้ำยาสบู่โฟม ATRIUM02</p><div class="q-nums"><span class="nbadge p">สบู่ 242 จุด</span><span class="nbadge l">≈ 15 ชม.คน</span></div><p class="q-meta" style="color:var(--red)">🔴 ต้องจัด 3 คนทั้งวัน — ในชีตเดิมช่องรวมว่างเปล่า</p></div>
+              <div class="q-card"><div class="q-top"><span class="q-name">CP LAND : Solvani พิษณุโลก</span></div><p class="q-meta">เปลี่ยนก้าน Reed — <b>ไม่มีเครื่องเลย</b></p><div class="q-nums"><span class="nbadge r">Reed 9 จุด</span><span class="nbadge p">แพ็ค ?</span></div><p class="q-meta" style="color:var(--amber)">⚠ 1 ใน 17 ไซต์ที่ใช้ Reed อย่างเดียว</p></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-head" style="padding:var(--space-3) var(--space-4)"><h3 style="font-size:var(--fs-14)">ติดด่าน จัดไม่ได้</h3><div class="sh-right"><span class="chip red">2</span></div></div>
+            <div class="section-body" style="padding:var(--space-3)">
+              <div class="q-card is-blocked"><div class="q-top"><span class="q-name">🔒 Multy Beauty : เมกาบางนา</span></div><p class="q-meta">งวดที่ 3 เลยกำหนด 12 วัน · รอบัญชียืนยัน</p></div>
+              <div class="q-card is-blocked"><div class="q-top"><span class="q-name">🔒 Rapi Rabi : อโศก</span></div><p class="q-meta">สัญญาหมด 15/07/69 · รอ SA ต่อสัญญา</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><h3>ตารางสัปดาห์</h3><span class="sh-note">ลากการ์ดจากคิวซ้ายลงช่อง · ตัวเลขบนหัวช่อง = เครื่อง/วัน</span></div>
+          <div class="table-scroll"><table class="board">
+            <thead><tr><th class="tech-col" style="text-align:start">ช่าง</th><th>จ. 4</th><th>อ. 5</th><th>พ. 6</th><th>พฤ. 7</th><th>ศ. 8</th><th class="weekend">ส. 9</th><th class="weekend">อา. 10</th></tr></thead>
+            <tbody>
+              <tr><th class="tech-col"><div class="tech-name">ต้า</div><div class="tech-live"><span class="pulse"></span> กำลังทำ · มหาจักร รามคำแหง</div></th>
+                <td><div class="cell"><div class="cell-load">5 เครื่อง<span class="bar"><i style="width:42%"></i></span></div><button type="button" class="vchip"><b>09:00</b>มหาจักร : นานา<span class="vnums"><span class="nbadge m">2</span><span class="nbadge p">2</span></span></button><button type="button" class="vchip"><b>13:00</b>EA ชั้น 55<span class="vnums"><span class="nbadge m">3</span><span class="nbadge p">2.5</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load over">21 เครื่อง<span class="bar"><i style="width:100%"></i></span></div><button type="button" class="vchip"><b>09:00</b>Empire ชั้น G<span class="vnums"><span class="nbadge m">7</span></span></button><button type="button" class="vchip"><b>13:00</b>Empire ชั้น M<span class="vnums"><span class="nbadge m">7</span></span></button><button type="button" class="vchip"><b>16:00</b>AWC Pittore<span class="vnums"><span class="nbadge m">7</span></span></button></div></td>
+                <td><div class="cell"><div class="cell-load">3 เครื่อง<span class="bar"><i style="width:25%"></i></span></div><button type="button" class="vchip install"><b>10:00</b>Mii Hotel<span class="vnums"><span class="nbadge m">3</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">1 เครื่อง<span class="bar"><i style="width:8%"></i></span></div><button type="button" class="vchip inspect"><b>14:00</b>Rolex สีลม<span class="vnums"><span class="nbadge m">1</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td class="weekend"><div class="cell"></div></td><td class="weekend"><div class="cell"></div></td></tr>
+              <tr><th class="tech-col"><div class="tech-name">ฟลุ๊ค</div><div class="tech-idle">ยังไม่เริ่มงานวันนี้</div></th>
+                <td><div class="cell"><div class="cell-load">10 เครื่อง<span class="bar"><i style="width:83%"></i></span></div><button type="button" class="vchip"><b>09:30</b>Jim Thompson Outlet<span class="vnums"><span class="nbadge m">8</span><span class="nbadge p">4</span><span class="nbadge r">R4</span></span></button><button type="button" class="vchip repair"><b>14:00</b>MB สุขุมวิท 83<span class="vnums"><span class="nbadge m">3</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">2 เครื่อง<span class="bar"><i style="width:17%"></i></span></div><button type="button" class="vchip"><b>10:00</b>มหาจักร รามคำแหง<span class="vnums"><span class="nbadge m">2</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">4 เครื่อง<span class="bar"><i style="width:33%"></i></span></div><button type="button" class="vchip repair"><b>09:00</b>Meko Hospital<span class="vnums"><span class="nbadge m">4</span><span class="nbadge r">R16</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td class="weekend"><div class="cell"></div></td><td class="weekend"><div class="cell"></div></td></tr>
+              <tr><th class="tech-col"><div class="tech-name">ไอซ์</div><div class="tech-live"><span class="pulse"></span> กำลังทำ · ChaninTR paragon</div></th>
+                <td><div class="cell"><div class="cell-load">2 เครื่อง<span class="bar"><i style="width:17%"></i></span></div><button type="button" class="vchip running"><b>10:30</b>ChaninTR : paragon<span class="vnums"><span class="nbadge m">2</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">3 เครื่อง<span class="bar"><i style="width:25%"></i></span></div><button type="button" class="vchip install"><b>10:00</b>Mii Hotel <em style="font-style:normal;opacity:.7">(คู่ ต้า)</em><span class="vnums"><span class="nbadge m">3</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td class="weekend"><div class="cell"></div></td><td class="weekend"><div class="cell"></div></td></tr>
+              <tr><th class="tech-col"><div class="tech-name">พี</div><div class="tech-idle" style="color:var(--amber)">🐞 มีในชีตไทยแต่ไม่มีในชีตอังกฤษ</div></th>
+                <td><div class="cell"><div class="cell-load">2 เครื่อง<span class="bar"><i style="width:17%"></i></span></div><button type="button" class="vchip"><b>09:00</b>มหาจักร : นานา <em style="font-style:normal;opacity:.7">(คู่ ต้า)</em><span class="vnums"><span class="nbadge m">2</span></span></button><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td><div class="cell"><div class="cell-load">0<span class="bar"><i style="width:0"></i></span></div><button type="button" class="add-cell">+</button></div></td>
+                <td class="weekend"><div class="cell"></div></td><td class="weekend"><div class="cell"></div></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+      <div class="callout red"><span class="co-ic">🔴</span><div><b>วันอังคารของต้า 21 เครื่อง เกินเพดาน</b> — ระบบเดิมนับ “จำนวนนัด” เพดาน 5 ⇒ 3 นัดนี้ขึ้นว่า “ไม่เกิน” ทั้งที่เป็น Empire 7 เครื่องสามรอบ</div></div>
+    </div>
+  </section>
+
+  <!-- ══════ 9 · จอหัวหน้า ══════ -->
+  <section class="screen" id="s9">
+    <div class="workspace">
+      <div class="note"><b>TS</b> — ตอบคำถาม “หัวหน้ามอนิเตอร์จากหน้าไหน” · วันนี้คำตอบคือ <b>“จากการถูกแท็กใน LINE”</b> ⇒ ระบบต้องแทนที่ <b>กลไกนั้น</b> ไม่ใช่แค่มีหน้าให้เข้าไปดู</div>
+      <div class="ws-head"><div class="ws-icon">📡</div><div><h1 class="ws-title">ภาพรวมธุรกิจบริการ</h1><p class="ws-sub">ศุกร์ 2 ส.ค. 2569 · หัวหน้าทีมบริการ</p></div>
+        <div class="ws-right"><button type="button" class="btn">สัปดาห์นี้</button><button type="button" class="btn">ส่งออก</button></div></div>
+      <div class="metric-strip">
+        <div class="metric is-alert"><div class="m-label">ค้างไม่ปิด</div><div class="m-value">3</div><div class="m-foot">1 ใบเริ่มไว้ 18 ชม.</div></div>
+        <div class="metric"><div class="m-label">ส่งงานวันนี้</div><div class="m-value">7</div><div class="m-foot">จาก 10 นัด</div></div>
+        <div class="metric is-warn"><div class="m-label">ต้องดู</div><div class="m-value">3</div><div class="m-foot">เปลี่ยนเครื่อง · ทำไม่ครบ</div></div>
+        <div class="metric is-alert"><div class="m-label">ไซต์ถูกล็อกเรื่องเงิน</div><div class="m-value">23</div><div class="m-foot">จาก 6 สัญญา</div></div>
+        <div class="metric is-warn"><div class="m-label">น้ำหอมจะหมด ไม่มีนัด</div><div class="m-value">5</div><div class="m-foot">ภายใน 14 วัน</div></div>
+      </div>
+      <div class="split">
+        <div class="section">
+          <div class="section-head"><h3>ส่งงานล่าสุด</h3><span class="sh-note">เรียงตาม “ต้องดู” ก่อน ไม่ใช่ตามเวลา</span><div class="sh-right"><span class="chip amber">ต้องดู 3</span></div></div>
+          <div class="section-body"><div class="feed">
+            <article class="fcard flagred"><span class="avatar a-ta">ต้</span><div class="fmain"><b>Jim Thompson : Outlet 93</b>
+              <div class="fmeta">ต้า, ไอซ์ · 8 เครื่อง · 4 แพ็ค · 1 ชม. 26 นาที</div>
+              <div class="fflags"><span class="chip red sm">ทำไม่ครบ — Reed 4 จุด</span><span class="chip amber sm">เปลี่ยนเครื่อง SN-0431 → SN-0918</span><span class="chip amber sm">ปรับ Grade 3 → 5</span></div>
+              <div class="fthumbs"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph front">🏢</span><span class="ph" style="background:transparent;border:0;color:var(--text-3);font-size:var(--fs-11)">+10</span></div></div><span class="ftime">13:29</span></article>
+            <article class="fcard flag"><span class="avatar a-fluke">ฟ</span><div class="fmain"><b>MB สวนหลวง ออโต้</b>
+              <div class="fmeta">ฟลุ๊ค · 4 เครื่อง · 2 แพ็ค · 52 นาที</div>
+              <div class="fflags"><span class="chip red sm">ทำไม่ครบ — Reed 6 ขวด รอปรับสูตร</span></div>
+              <div class="fthumbs"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph front">🏢</span></div></div><span class="ftime">13:22</span></article>
+            <article class="fcard flag"><span class="avatar a-ice">ไ</span><div class="fmain"><b>MB สุขุมวิท 83</b>
+              <div class="fmeta">ไอซ์ · 3 เครื่อง · 2 แพ็ค · 38 นาที</div>
+              <div class="fflags"><span class="chip amber sm">ไม่มีลายเซ็นผู้รับงาน</span></div>
+              <div class="fthumbs"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph">📷</span><span class="ph front">🏢</span></div></div><span class="ftime">12:09</span></article>
+            <article class="fcard"><span class="avatar a-pee">พ</span><div class="fmain"><b>Rapi Rabi : เพลินจิต</b>
+              <div class="fmeta">พี · 1 เครื่อง · 1 แพ็ค · 22 นาที</div>
+              <div class="fflags"><span class="chip green sm dot">ครบถ้วน</span></div>
+              <div class="fthumbs"><span class="ph">📷</span><span class="ph setting-shot">⚙</span><span class="ph front">🏢</span></div></div><span class="ftime">11:40</span></article>
+          </div></div>
+        </div>
+        <div>
+          <div class="section"><div class="section-head"><h3>สองชั้นของการมอนิเตอร์</h3></div><div class="section-body">
+            <table class="plain" style="min-width:0"><thead><tr><th>ชั้น</th><th>ที่ไหน</th></tr></thead><tbody>
+              <tr><td><b>ดัน</b><br><span style="font-size:var(--fs-12);color:var(--text-3)">แทนการแท็ก</span></td><td>แจ้งเตือน + เธรดของไซต์ — <b>เฉพาะใบที่ติดป้าย “ต้องดู”</b></td></tr>
+              <tr><td><b>ดึง</b><br><span style="font-size:var(--fs-12);color:var(--text-3)">เปิดดูเอง</span></td><td>หน้านี้ — ฟีดส่งงานล่าสุด เรียงตามสิ่งที่ต้องดู</td></tr>
+            </tbody></table>
+            <div class="callout amber" style="margin-top:var(--space-4)"><span class="co-ic">⚠️</span><div><b>ถ้าดันทุกใบ = LINE เวอร์ชันในระบบ</b> — หัวหน้าจะปิดแจ้งเตือนภายในสัปดาห์เดียว</div></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 13 · คิวรับงานเข้าบริการ ══════ -->
+  <section class="screen" id="s13">
+    <div class="workspace">
+      <div class="note">
+        <b>⭐ จอที่ตอบว่า “งานไปรวมรออยู่ตรงไหน”</b> — หลัง SO อนุมัติ งานจะ<b>ไม่ลอยหาย</b>อีก
+        แต่มาตกที่นี่เป็นคิว · ลอกกลไก <b>เดียวกับที่ระบบภาษีใช้ส่ง SO ให้ฝ่ายกฎหมายไปยื่น</b>
+        (<span class="mono">handoffQueue</span>) — ตัวตัดสินกลางตัวเดียว ทุกหน้าใช้เลขชุดเดียวกัน
+      </div>
+
+      <div class="ws-head">
+        <div class="ws-icon">📥</div>
+        <div><h1 class="ws-title">คิวรับงานเข้าบริการ</h1><p class="ws-sub">งานที่ส่งต่อมาจากฝ่ายขาย และงานที่ค้างอยู่ระหว่างขั้น</p></div>
+        <div class="ws-right"><button type="button" class="btn">ตัวกรอง</button></div>
+      </div>
+
+      <!-- เส้นทางส่งไม้ต่อ -->
+      <div class="section">
+        <div class="section-head"><h3>เส้นทางส่งไม้ต่อ</h3><span class="sh-note">แต่ละลูกศรคือจุดที่ของเคยหายไปเงียบ ๆ</span></div>
+        <div class="section-body">
+          <div class="flow">
+            <span class="st s2">SO อนุมัติ</span>
+            <span class="arrow">──▶</span><span class="chip amber dot">คิว 1</span><span class="arrow">──▶</span>
+            <span class="st s0">สัญญา + งวดจ่าย</span>
+            <span class="arrow">──▶</span><span class="chip amber dot">คิว 2</span><span class="arrow">──▶</span>
+            <span class="st s0">ไซต์ + ตั้งรอบ</span>
+            <span class="arrow">──▶</span><span class="chip amber dot">คิว 3</span><span class="arrow">──▶</span>
+            <span class="st s1">นัดเข้าไซต์</span>
+          </div>
+          <div class="callout red" style="margin-top:var(--space-4)">
+            <span class="co-ic">🔴</span>
+            <div>
+              <b>วันนี้ไม่มีคิวไหนจับสามจุดนี้ได้เลย</b> — ของที่ยังไม่ถูกกดจึงไม่ปรากฏที่ไหน ต้องมีคนจำเอง<br>
+              <b>“102 จุดที่จ่ายเงินแล้วแต่ไม่มีคิวบริการ” หลุดอยู่ที่คิว 2 กับ 3 นี่เอง</b> — มันไม่ได้หายไปไหน มัน<b>ไม่เคยปรากฏ</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-strip">
+        <div class="metric is-warn"><div class="m-label">คิว 1 · รอทำสัญญา</div><div class="m-value">2</div><div class="m-foot">SA · เก่าสุด 4 วันทำการ</div></div>
+        <div class="metric is-alert"><div class="m-label">คิว 2 · รอตั้งไซต์/รอบ</div><div class="m-value">5</div><div class="m-foot">TS · เก่าสุด 11 วันทำการ</div></div>
+        <div class="metric is-alert"><div class="m-label">คิว 3 · ครบรอบไม่มีนัด</div><div class="m-value">14</div><div class="m-foot">TS · จ่ายเงินแล้วทั้งหมด</div></div>
+        <div class="metric"><div class="m-label">รับเข้าเดือนนี้</div><div class="m-value">6</div><div class="m-foot">จบครบวงจรแล้ว</div></div>
+      </div>
+
+      <!-- คิว 1 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>คิว 1 · งานใหม่รอทำสัญญา</h3>
+          <span class="sh-note">SO อนุมัติแล้ว · โครงการเป็นสายบริการ · ยังไม่มีสัญญาบริการ</span>
+          <div class="sh-right"><span class="chip">เจ้าของคิว: SA</span></div>
+        </div>
+        <div class="table-scroll"><table class="premium">
+          <thead><tr><th>Sale Order</th><th>ลูกค้า / โครงการ</th><th class="num">มูลค่า</th><th>อนุมัติเมื่อ</th><th>ค้างมา</th><th>สิ่งที่ต้องทำ</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="mono t-strong">SO-26080004</span><span class="t-sub">Q#260728-0011</span></td>
+              <td class="t-strong">บริษัท ชนินทร์ ลิฟวิ่ง จำกัด<span class="t-sub">PJ-2608019 · <span class="chip teal sm">บริการ</span></span></td>
+              <td class="num t-strong">446,832</td><td>29/07/69</td>
+              <td><span class="chip amber dot">4 วันทำการ</span></td>
+              <td>สร้างสัญญา + วางงวดจ่าย</td>
+              <td class="num"><button type="button" class="btn btn-accent btn-sm">สร้างสัญญา</button></td>
+            </tr>
+            <tr>
+              <td><span class="mono t-strong">SO-26080009</span><span class="t-sub">Q#260801-0003</span></td>
+              <td class="t-strong">บริษัท โอเชี่ยน อาย จำกัด<span class="t-sub">PJ-2608022 · <span class="chip teal sm">บริการ</span></span></td>
+              <td class="num t-strong">173,596</td><td>01/08/69</td>
+              <td><span class="chip dot">1 วันทำการ</span></td>
+              <td>สร้างสัญญา + วางงวดจ่าย</td>
+              <td class="num"><button type="button" class="btn btn-accent btn-sm">สร้างสัญญา</button></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <!-- คิว 2 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>คิว 2 · สัญญาที่ยังไม่มีไซต์ / ยังไม่ตั้งรอบ</h3>
+          <span class="sh-note">มีสัญญาแล้วแต่ยังไม่มีรอบดูแล ⇒ ไม่มีนัดถูก gen เลย</span>
+          <div class="sh-right"><span class="chip">เจ้าของคิว: TS</span></div>
+        </div>
+        <div class="table-scroll"><table class="premium">
+          <thead><tr><th>สัญญา</th><th>ลูกค้า</th><th>หน่วยตามสัญญา</th><th>งวดแรก</th><th>ค้างมา</th><th>ติดอะไร</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="mono t-strong">SC-26070021</span><span class="t-sub">01/07/69 – 01/07/70</span></td>
+              <td class="t-strong">บริษัท ธนบุรีพานิช จำกัด</td>
+              <td><span class="nbadge m">8 เครื่อง</span> <span class="nbadge p">8 แพ็ค</span> <span class="nbadge l">8 L</span></td>
+              <td><span class="chip green sm dot">ยืนยันแล้ว</span></td>
+              <td><span class="chip red dot">11 วันทำการ</span></td>
+              <td><b style="color:var(--red)">จ่ายเงินแล้ว แต่ยังไม่มีใครไปตั้งเครื่อง</b></td>
+              <td class="num"><button type="button" class="btn btn-accent btn-sm">ตั้งไซต์ + รอบ</button></td>
+            </tr>
+            <tr>
+              <td><span class="mono t-strong">SC-26070033</span><span class="t-sub">15/07/69 – 15/07/70</span></td>
+              <td class="t-strong">บริษัท มีเมตตา จำกัด</td>
+              <td><span class="nbadge m">2 เครื่อง</span> <span class="nbadge p">2 แพ็ค</span> <span class="nbadge l">2 L</span></td>
+              <td><span class="chip green sm dot">ยืนยันแล้ว</span></td>
+              <td><span class="chip amber dot">6 วันทำการ</span></td>
+              <td>รอนัดวันเข้าติดตั้งกับลูกค้า</td>
+              <td class="num"><button type="button" class="btn btn-accent btn-sm">ตั้งไซต์ + รอบ</button></td>
+            </tr>
+            <tr>
+              <td><span class="mono t-strong">SC-26080002</span><span class="t-sub">01/08/69 – 01/08/70</span></td>
+              <td class="t-strong">บริษัท เสนาดีเวลลอปเม้นท์ จำกัด</td>
+              <td><span class="nbadge m">1 เครื่อง</span> <span class="nbadge p">1 แพ็ค</span> <span class="nbadge l">1 L</span></td>
+              <td><span class="chip amber sm dot">SA แจ้งแล้ว รอบัญชี</span></td>
+              <td><span class="chip dot">2 วันทำการ</span></td>
+              <td><b style="color:var(--amber)">ตั้งรอบได้ แต่นัดจะยังเข้าคิวไม่ได้จนบัญชียืนยัน</b></td>
+              <td class="num"><button type="button" class="btn btn-sm">ตั้งไซต์ + รอบ</button></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <!-- คิว 3 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>คิว 3 · ไซต์ที่ครบรอบแล้วแต่ยังไม่มีนัด</h3>
+          <span class="sh-note">รอบมาถึงแล้ว ยังไม่มีใครสร้างนัด — นี่คือช่องที่ 102 จุดหลุดไป</span>
+          <div class="sh-right"><span class="chip red">14 จุด</span></div>
+        </div>
+        <div class="table-scroll"><table class="premium">
+          <thead><tr><th>ไซต์</th><th>ลูกค้า</th><th>รอบ</th><th>ครบรอบเมื่อ</th><th>เลยมา</th><th>น้ำหอมพอถึงเมื่อไหร่</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="t-strong">Jim Thompson : Central Krabi</td><td>อุตสาหกรรมไหมไทย</td><td>ทุก 30 วัน</td><td>18/07/69</td><td><span class="chip red dot">เลยมา 11 วันทำการ</span></td><td><span class="chip red">หมดแล้ว</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">สร้างนัด</button></td></tr>
+            <tr><td class="t-strong">CP LAND : Solvani พิษณุโลก</td><td>ซี.พี.แลนด์</td><td>วันที่ 1–5/เดือน</td><td>05/07/69</td><td><span class="chip red dot">เลยมา 20 วันทำการ</span></td><td><span class="chip">Reed ไม่มีน้ำหอม</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">สร้างนัด</button></td></tr>
+            <tr><td class="t-strong">TCC Hotel : ห้องอาหารชั้น 2</td><td>TCC Hotel Collection</td><td>ทุก 30 วัน</td><td>25/07/69</td><td><span class="chip amber dot">เลยมา 5 วันทำการ</span></td><td><span class="chip amber">อีก 6 วัน</span></td><td class="num"><button type="button" class="btn btn-accent btn-sm">สร้างนัด</button></td></tr>
+            <tr><td class="t-strong">Multy Beauty : สยาม</td><td>มัลตี้ บิวตี้</td><td>วันที่ 1–5/เดือน</td><td>05/07/69</td><td><span class="chip red dot">เลยมา 20 วันทำการ</span></td><td><span class="chip red">หมดแล้ว</span></td><td class="num"><button type="button" class="btn btn-sm" disabled>🔒 ติดงวดค้าง</button></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="split">
+        <div class="section"><div class="section-head"><h3>ทำไมต้องแยกเป็นสามคิว ไม่ใช่คิวเดียว</h3></div><div class="section-body">
+          <table class="plain" style="min-width:0"><thead><tr><th>คิว</th><th>คนทำ</th><th>ออกจากคิวเมื่อ</th></tr></thead><tbody>
+            <tr><td><b>1</b> รอทำสัญญา</td><td>SA</td><td>สร้างสัญญาแล้ว</td></tr>
+            <tr><td><b>2</b> รอตั้งไซต์/รอบ</td><td>TS</td><td>ตั้งรอบแล้ว</td></tr>
+            <tr><td><b>3</b> ครบรอบไม่มีนัด</td><td>TS</td><td>สร้างนัดแล้ว</td></tr>
+          </tbody></table>
+          <p style="font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-3);line-height:var(--lh-tight)">
+            รวมเป็นคิวเดียวแล้ว <b style="color:var(--text)">ไม่มีใครรู้ว่าเป็นงานของตัวเอง</b> — คิว 1 เป็นงานเอกสารของ SA ส่วนคิว 2/3 เป็นงานหน้างานของ TS
+          </p>
+        </div></div>
+        <div class="section"><div class="section-head"><h3>สองกฎที่ลอกมาจากระบบภาษี</h3></div><div class="section-body">
+          <div class="callout amber" style="margin-bottom:var(--space-3)"><span class="co-ic">1️⃣</span><div>
+            <b>เงื่อนไขคิวต้องตรงกับด่านเป๊ะ</b> — เข้มกว่าจริงจะซ่อนใบที่กดได้ · หลวมกว่าจริงจะชวนให้กดแล้วเด้ง error
+          </div></div>
+          <div class="callout red"><span class="co-ic">2️⃣</span><div>
+            <b>ต้องกรองเฉพาะงานสายบริการ</b> — ไม่งั้น SO สายสินค้าทุกใบจะค้างคิวนี้ <b>ตลอดกาล ไม่มีวันเคลียร์</b> แล้วคิวจะกลายเป็นขยะภายในเดือนแรก
+          </div></div>
+          <p style="font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)">
+            ⇒ นี่คือเหตุผลที่ต้องมีคอลัมน์ <b style="color:var(--text)">สายธุรกิจบนโครงการ</b> ก่อน จึงจะทำคิวนี้ได้
+          </p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 10 · ไทม์ไลน์ ══════ -->
+  <section class="screen" id="s10">
+    <div class="workspace">
+      <div class="note"><b>ตัวเชื่อม</b> — เงินไม่ได้อยู่แยกอีกโมดูล มันเป็น <b>ขั้นหนึ่งบนไทม์ไลน์เดียวกับที่ทุกฝ่ายดูอยู่แล้ว</b> · ปักหมุดแบบเดียวกับคำร้องข้ามฝ่าย และมีป้ายสรุปบนขั้นแบบเดียวกับ “ของเข้า x/y”</div>
+      <div class="ws-head"><div class="ws-icon">🗂️</div><div><h1 class="ws-title">PJ-2608012 · Scent Studio — บรรจุภัณฑ์ NPD</h1><p class="ws-sub">ดีล SDS_SCENTSTUDIO_NPD · AE ฟลุ๊ค · AC เกล · 22 ขั้น · เสร็จ 9</p></div>
+        <div class="ws-right"><button type="button" class="btn">ตัวกรอง</button><button type="button" class="btn">Gantt</button><button type="button" class="btn btn-accent">บันทึก</button></div></div>
+      <div class="callout red"><span class="co-ic">🔒</span><div><b>เฟส “ผลิต” ล็อกอยู่ — งวดก่อนผลิต 90,508.13 บาท ยังไม่มีการยืนยันจากบัญชี</b><br>คำร้องขอใบวางบิล <span class="mono">RQ-26080007</span> ส่งไปที่ฝ่าย FN แล้วเมื่อ 2 ชั่วโมงก่อน · สถานะ “รอรับเรื่อง”</div></div>
+      <div class="section">
+        <div class="section-head"><h3>ไทม์ไลน์</h3><span class="sh-note">แม่แบบ NPD v1</span><div class="sh-right"><span class="chip green">เสร็จ 9</span><span class="chip amber">กำลังทำ 2</span><span class="chip red">ล็อก 4</span></div></div>
+        <div class="section-body">
+          <button type="button" class="phase-head" style="--phase:var(--accent)"><span class="p-caret">▸</span><span class="p-name">1. กระบวนการขายและบริการ</span><span class="p-count done">6/6</span></button>
+          <button type="button" class="phase-head" style="--phase:var(--violet)"><span class="p-caret">▸</span><span class="p-name">2. ขึ้นต้นแบบ (Mock-up)</span><span class="p-count done">3/3</span></button>
+          <button type="button" class="phase-head" style="--phase:var(--teal)"><span class="p-caret">▾</span><span class="p-name">3. เตรียมการผลิต</span><span class="p-count active">3/6</span></button>
+          <div class="table-scroll" style="margin-bottom:var(--space-5)"><table class="timeline">
+            <thead><tr><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>เริ่ม</th><th>เสร็จ</th><th class="num">วัน</th></tr></thead>
+            <tbody>
+              <tr><td>10</td><td><div class="step-name">หาบรรจุภัณฑ์ที่ลูกค้าต้องการ</div><div class="step-pins"><span class="chip blue">📌 PM-26070003 · ตอบราคาแล้ว</span></div></td><td><span class="role-tag">PC</span></td><td>พี่นก</td><td><span class="chip green dot">เสร็จแล้ว</span></td><td>02/07/69</td><td>28/07/69</td><td class="num">30</td></tr>
+              <tr><td>11</td><td><div class="step-name">ใบเสนอราคาผลิต <span class="mono" style="color:var(--text-3)">Q#260731-0006</span></div></td><td><span class="role-tag">SA</span></td><td>ฟลุ๊ค</td><td><span class="chip green dot">เสร็จแล้ว</span></td><td>31/07/69</td><td>31/07/69</td><td class="num">1</td></tr>
+              <tr><td>12</td><td><div class="step-name">สัญญาจ้างผลิต 🏁</div></td><td><span class="role-tag">SA</span></td><td>ฟลุ๊ค</td><td><span class="chip green dot">เสร็จแล้ว</span></td><td>01/08/69</td><td>01/08/69</td><td class="num">2</td></tr>
+              <tr class="is-locked"><td>13</td><td><div class="step-name">🔒 รับชำระก่อนผลิต 50% <span class="chip red">รอชำระ 90,508.13</span></div>
+                <div class="step-pins"><span class="chip amber">📌 RQ-26080007 · ขอใบวางบิล — รอรับเรื่อง</span><span class="chip">งวด 1/2 ของ SO6908011</span><span class="chip" style="color:var(--text-3)">ขั้นใหม่ในแม่แบบ</span></div></td>
+                <td><span class="role-tag fn">FN</span></td><td style="color:var(--text-3)">รอฝ่ายบัญชีรับเรื่อง</td><td><span class="chip red dot">ติดด่าน</span></td><td>02/08/69</td><td>—</td><td class="num">1</td></tr>
+              <tr class="is-locked"><td>14</td><td><div class="step-name">ใบสั่งขายผลิต</div></td><td><span class="role-tag">SA</span></td><td>ฟลุ๊ค</td><td><span class="chip red dot">ล็อก · ขึ้นกับขั้น 13</span></td><td>—</td><td>—</td><td class="num">1</td></tr>
+              <tr class="is-locked"><td>15</td><td><div class="step-name">สั่งซื้อสารและบรรจุภัณฑ์ 🏁</div><div class="step-pins"><span class="chip teal">ของเข้า 0/7</span></div></td><td><span class="role-tag">PC</span></td><td>พี่นก</td><td><span class="chip red dot">ล็อก · ขึ้นกับขั้น 13</span></td><td>—</td><td>—</td><td class="num">45</td></tr>
+            </tbody>
+          </table></div>
+          <button type="button" class="phase-head" style="--phase:var(--amber)"><span class="p-caret">▾</span><span class="p-name">4. ผลิต</span><span class="p-count">0/4</span></button>
+          <div class="table-scroll"><table class="timeline"><tbody>
+            <tr class="is-locked"><td style="width:34px">16</td><td><div class="step-name">ผลิตสินค้า <span class="chip red">🔒 รอชำระงวดก่อนผลิต</span></div></td><td style="width:78px"><span class="role-tag">PD</span></td><td style="width:130px">พี่เอ</td><td style="width:170px"><span class="chip red dot">ล็อก</span></td><td style="width:96px">—</td><td style="width:96px">—</td><td class="num" style="width:60px">14</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+      <div class="split">
+        <div class="section"><div class="section-head"><h3>เธรดโครงการ</h3><span class="sh-note">เข้าแค่เหตุการณ์ที่เปลี่ยนทิศทาง</span></div><div class="section-body">
+          <div class="callout amber" style="margin-bottom:var(--space-4)"><span class="co-ic">💬</span><div><b>ระบบ · เมื่อ 2 ชั่วโมงก่อน</b><br>ส่งคำร้องขอใบวางบิล 50% (90,508.13) ไปฝ่ายบัญชี — ขั้น “รับชำระก่อนผลิต” เปิดด่าน</div></div>
+          <p style="font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)">เธรดโครงการรับแค่ <b style="color:var(--text)">ยืนยันเงินเข้าแล้ว</b> กับ <b style="color:var(--text)">บัญชีตีกลับ</b> · การกดแจ้ง อัปสลิป และการทวงงวด ลงเธรดของ <b style="color:var(--text)">สัญญา</b> ไม่ใช่ของโครงการ</p>
+        </div></div>
+        <div class="section"><div class="section-head"><h3>งวดไหนขึ้นไทม์ไลน์ งวดไหนไม่ขึ้น</h3></div><div class="section-body">
+          <div class="callout green" style="margin-bottom:var(--space-3)"><span class="co-ic">✓</span><div><b>ขึ้นไทม์ไลน์</b> — งวดที่บล็อกงานจริง (มัดจำ · 50% ก่อนผลิต · ก่อนติดตั้ง)</div></div>
+          <div class="callout" style="margin-bottom:var(--space-3)"><span class="co-ic">✕</span><div><b>ไม่ขึ้นไทม์ไลน์</b> — งวดรอบดูแลรายเดือน/ราย Q ปีที่ 2, 3 · อยู่กับสัญญาอย่างเดียว</div></div>
+          <p style="font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)">ถ้าใส่ให้ทุกงวด <b style="color:var(--text)">โครงการที่ปิดไปแล้วจะมีหมุดใหม่งอกทุกเดือนตลอดกาล</b></p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 11 · ด่านเข้าคิว ══════ -->
+  <section class="screen" id="s11">
+    <div class="workspace">
+      <div class="note"><b>ตัวเชื่อม — จอที่สำคัญที่สุด</b> · ด่านต้อง<b>บอกเหตุผลเป็นรายการติ๊ก ไม่ใช่ปุ่มเทา</b> และต้องมีทางข้าม ไม่งั้นคนจะหาทางอ้อม</div>
+      <div class="ws-head"><div class="ws-icon">🔒</div><div><h1 class="ws-title">นัดร่าง · Multy Beauty เมกาบางนา</h1><p class="ws-sub">เติมน้ำหอม · เสาร์ 1 ส.ค. 2569 · สร้างโดย แตงกวา เมื่อ 2 ชั่วโมงก่อน</p></div>
+        <div class="ws-right"><span class="chip">ร่าง</span></div></div>
+      <div class="split">
+        <div class="section"><div class="section-head"><h3>ต้องครบ 4 ข้อจึงเข้าคิวได้</h3><span class="sh-note">ผ่านแล้ว 2 จาก 4</span></div><div class="section-body">
+          <div class="gate">
+            <div class="gate-item"><span class="gate-mark">✓</span><div class="gate-txt"><b>สัญญายังมีผล ณ วันนัด</b><span>SC-26070004 · 01/10/2568 – 01/10/2569</span></div><span class="gate-owner">SA</span></div>
+            <div class="gate-item is-blocked"><span class="gate-mark">✕</span><div class="gate-txt"><b>งวดที่ 3 เลยกำหนด 12 วัน และบัญชียังไม่ยืนยัน</b><span>ครบกำหนด 01/04/2569 · 120,150.30 บาท · SA ยังไม่แจ้ง</span></div><div class="gate-act"><button type="button" class="btn btn-sm">แจ้งว่าจ่ายแล้ว</button></div><span class="gate-owner">SA → FN</span></div>
+            <div class="gate-item is-blocked"><span class="gate-mark">✕</span><div class="gate-txt"><b>ยังไม่มีช่างผู้รับผิดชอบ</b><span>วันนั้นทีมรับไปแล้ว 19.5 จาก 20 — เหลือรับได้ 0.5</span></div><div class="gate-act"><button type="button" class="btn btn-sm">เลือกช่าง</button></div><span class="gate-owner">TS</span></div>
+            <div class="gate-item"><span class="gate-mark">✓</span><div class="gate-txt"><b>วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า</b><span>จันทร์–เสาร์ 10:00–20:00 · รอบผูกไว้วันที่ 1–5 ของเดือน</span></div><span class="gate-owner">TS</span></div>
+          </div>
+          <div class="action-bar"><button type="button" class="btn ghost">ทิ้งร่าง</button><button type="button" class="btn ghost">บันทึกร่างไว้ก่อน</button><button type="button" class="btn btn-accent" disabled>เข้าคิว — ติดอยู่ 2 ข้อ</button></div>
+        </div></div>
+        <div>
+          <div class="section"><div class="section-head"><h3>ทางข้ามด่าน</h3><span class="sh-note">หัวหน้าเท่านั้น</span></div><div class="section-body">
+            <div class="callout amber" style="margin-bottom:var(--space-4)"><span class="co-ic">🔑</span><div>ของจริงมี <b>25 จุดที่วิ่งอยู่ตอนนี้ทั้งที่หมดสัญญา</b> — ถ้าบล็อกแข็งวันแรก งานหยุดทันที จึงต้องมีทางข้าม แต่ต้องบอกเหตุผลและถูกบันทึกไว้</div></div>
+            <div class="field" style="margin-bottom:var(--space-4)"><label>เหตุผลที่ข้ามด่าน <span style="color:var(--red)">*</span></label>
+              <div class="ctl" style="padding:10px 12px;align-items:flex-start;color:var(--text-3)">ลูกค้าโอนแล้วแต่หลักฐานตามมาพรุ่งนี้ — ยืนยันทางโทรศัพท์กับคุณเกล</div>
+              <div class="hint">บันทึกลงเธรดของนัดและของสัญญา พร้อมชื่อผู้อนุมัติ</div></div>
+            <div class="action-bar" style="border-top:0;padding-top:0;margin-top:0"><button type="button" class="btn">ข้ามด่านแล้วเข้าคิว</button></div>
+          </div></div>
+          <div class="section"><div class="section-head"><h3>ทำไมไม่ห้ามสร้างไปเลย</h3></div><div class="section-body">
+            <p style="font-size:var(--fs-13);color:var(--text-2);line-height:var(--lh-normal)">เพราะคนวางแผนกับคนถือเงินเป็นคนละฝ่าย ถ้าห้ามสร้างตั้งแต่ต้น <b style="color:var(--text)">TS จะไม่มีที่จดว่าตั้งใจจะไปที่ไหน</b> แล้วก็กลับไปจดในชีตของตัวเองเหมือนเดิม — ซึ่งเป็นอาการที่โครงการนี้ตั้งใจแก้</p>
+            <p style="font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-3);line-height:var(--lh-tight)">ร่างสร้างได้เสมอ · เห็นในรายการ “รอเข้าคิว” · แต่ไม่ขึ้นตารางจริง ไม่นับใน “งานของฉัน” และไม่นับภาระรายวัน</p>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 12 · หน่วยนับ + สถานะ ══════ -->
+  <section class="screen" id="s12">
+    <div class="workspace">
+      <div class="ws-head"><div class="ws-icon">📐</div><div><h1 class="ws-title">หน่วยนับ · ชนิดอุปกรณ์ · สถานะ</h1><p class="ws-sub">สรุปจากไฟล์ Excel ทั้ง 8 ชีต + ใบส่งงานจริง 3 ใบ</p></div></div>
+
+      <div class="section"><div class="section-head"><h3>สี่หน่วยที่ห้ามยุบเป็นเลขเดียว</h3></div><div class="section-body">
+        <div class="table-scroll"><table class="plain">
+          <thead><tr><th>หน่วย</th><th>คืออะไร</th><th>เก็บที่</th></tr></thead><tbody>
+            <tr><td><span class="nbadge p">แพ็ค</span></td><td><b>หน่วยคิดราคาลูกค้า</b> ครอบทุกชนิดอุปกรณ์ · <span class="mono">รวม = STD + SM÷2</span> (ตรวจแล้วถูก 167/167 แถว)</td><td>สัญญา</td></tr>
+            <tr><td><span class="nbadge m">จุดบริการ</span></td><td><b>ภาระช่าง</b> — เดินไปเปิด/เติม/ตั้งค่าทีละจุด <b>× น้ำหนักตามชนิด</b></td><td>ไซต์ (คงที่ทุกรอบ)</td></tr>
+            <tr><td><span class="nbadge l">ลิตร/เดือน</span></td><td><b>ของที่ต้องเตรียมไป</b></td><td>ไซต์ (คงที่ทุกรอบ)</td></tr>
+            <tr><td><span class="nbadge r">Reed</span></td><td><b>ชนิดบริการหนึ่ง คิดเงินและมีภาระงาน</b> — ไม่ใช่ของแถม</td><td>ไซต์</td></tr>
+        </tbody></table></div>
+        <div class="callout green" style="margin-top:var(--space-4)"><span class="co-ic">✓</span><div><b>ตรวจสามทางแล้วตรงกันเป๊ะ</b> — Jim Thompson Outlet 93: ชีตสัญญา = 4 แพ็ค / 8 เครื่อง / 4 L · ชีตช่าง = Pkg STD 4 · ใบส่งงาน LINE = 8 เครื่อง</div></div>
+        <div class="callout"><span class="co-ic">📊</span><div><b>แพ็คเดินคู่กับลิตร ไม่ใช่เครื่อง</b> — 10 จาก 13 แถวที่ตรวจ แพ็ค = ลิตร/เดือน เป๊ะ · เครื่องต่อแพ็คแกว่ง 1–2 ตัว</div></div>
+      </div></div>
+
+      <div class="section"><div class="section-head"><h3>🔴 คอลัมน์ “Reed” = ถังขยะของทุกอย่างที่ไม่ใช่เครื่องกระจายกลิ่น</h3></div><div class="section-body">
+        <div class="callout red"><span class="co-ic">💥</span><div><b>AWC เครื่องกดสบู่ Empire Tower</b> — Pkg STD <b>–</b> · Reed <b>242</b> · <b>รวม = ว่างเปล่า</b><br>หมายเหตุในชีตเขียนเอง: <b>“ใช้เวลา 5 ชั่วโมงต่อ 3 คน”</b> = <b>900 คน-นาที</b> ⇒ งานหนึ่งวันเต็มของสามคน มีค่าภาระในระบบเท่ากับ <b>ศูนย์</b></div></div>
+        <div class="table-scroll"><table class="plain"><thead><tr><th style="width:210px">ค่าที่เจอในคอลัมน์ Reed</th><th>จริง ๆ คืออะไร</th></tr></thead><tbody>
+          <tr><td><span class="mono">242</span> (AWC Empire Tower)</td><td><b>เครื่องกดสบู่ 242 จุด</b></td></tr>
+          <tr><td><span class="mono">2 KG</span> (CASTLE BLACK)</td><td><b>น้ำหนักน้ำยา</b> ไม่ใช่จำนวนจุด</td></tr>
+          <tr><td><span class="mono">35</span> (R3 Life) · <span class="mono">16</span> (Meko)</td><td>reed diffuser จริง</td></tr>
+          <tr><td><span class="mono">BIS Energy … SDS (3 L)</span> + <span class="mono">สบู่โฟม (2 KG)</span></td><td>ไซต์เดียวมีทั้งน้ำหอมและสบู่</td></tr>
+        </tbody></table></div>
+        <div class="callout amber" style="margin-top:var(--space-4)"><span class="co-ic">⚠️</span><div><b>ลูกค้าที่ใช้ Reed อย่างเดียวมีจริง — 17 แถวที่ไม่มีเครื่องเลย</b> (CP LAND 6 แถว · EA Rooftop · CASTLE BLACK) · 🔴 <b>และทั้ง 17 แถว ช่องแพ็คว่างหมด</b> ⇒ ข้อมูลตกหล่น ไม่ใช่ไม่คิดเงิน</div></div>
+      </div></div>
+
+      <div class="section"><div class="section-head"><h3>ชนิดอุปกรณ์ — ไม่ใช่ทุกตัวเป็นเครื่องกระจายกลิ่น</h3></div><div class="section-body">
+        <div class="table-scroll"><table class="plain"><thead><tr><th style="width:120px">ชนิด</th><th style="width:210px">1 แถว = อะไร</th><th>ค่าตั้งเฉพาะตัว</th></tr></thead><tbody>
+          <tr><td><span class="nbadge m">diffuser</span></td><td><b>1 เครื่อง</b><br><span style="font-size:var(--fs-11);color:var(--text-3)">มี serial · ค่าตั้งรายตัว · เปลี่ยนเครื่องรายตัวได้</span></td><td>work/pause · ตารางเวลา · Grade · ขนาดขวด</td></tr>
+          <tr><td><span class="nbadge r">reed</span></td><td rowspan="3" style="vertical-align:middle"><b>1 แถว + จำนวนจุด</b><br><span style="font-size:var(--fs-11);color:var(--text-3)">ไม่มี serial รายจุด · ค่าตั้งเหมือนกันทั้งชุด · <b>242 แถวคือขยะ</b></span></td><td>ขนาดขวด · จำนวนก้าน · รอบเปลี่ยนก้าน</td></tr>
+          <tr><td><span class="nbadge p">soap</span></td><td rowspan="2" style="vertical-align:middle">ขนาดถัง · ชนิดน้ำยา (สบู่โฟม / เจล / แอลกอฮอล์)</td></tr>
+          <tr><td><span class="nbadge l">alcohol</span></td></tr>
+        </tbody></table></div>
+        <div class="callout green" style="margin-top:var(--space-4)"><span class="co-ic">⭐</span><div><b>ภาระงาน = จุด × น้ำหนักตามชนิด</b> — 242 จุดสบู่ = 900 คน-นาที ⇒ ~3.7 นาที/จุด · <b>ให้ระบบเรียนน้ำหนักจากเวลาที่ stamp จริง</b> ไม่ต้องเดาเลขไว้ล่วงหน้า</div></div>
+      </div></div>
+
+      <div class="section"><div class="section-head"><h3>สถานะที่ต้องมี — สามชุด ไม่ใช่ชุดเดียว</h3></div><div class="section-body">
+        <p style="font-size:var(--fs-12);color:var(--text-3);margin-bottom:var(--space-3)">1 · สถานะนัด</p>
+        <div class="flow" style="margin-bottom:var(--space-5)">
+          <span class="st s0">นัดไว้ <span class="key">scheduled</span></span><span class="arrow">─[เริ่มงาน]─▶</span>
+          <span class="st s1">กำลังทำ <span class="key">in_progress</span></span><span class="arrow">─[ปิดงาน]─▶</span>
+          <span class="st s2">ปิดงาน <span class="key">done</span></span><span class="arrow">/</span>
+          <span class="st s3">ทำไม่ครบ <span class="key">partial</span></span><span class="arrow">/</span>
+          <span class="st s3">ทำไม่ได้ <span class="key">unable</span></span></div>
+        <p style="font-size:var(--fs-12);color:var(--text-3);margin-bottom:var(--space-3)">2 · งวดจ่าย — <b style="color:var(--text)">สองลายเซ็น</b></p>
+        <div class="flow" style="margin-bottom:var(--space-5)">
+          <span class="st s0">รอชำระ <span class="key">pending</span></span><span class="arrow">─[SA แจ้ง + แนบหลักฐาน]─▶</span>
+          <span class="st s1">แจ้งแล้ว <span class="key">reported</span></span><span class="arrow">─[FN ยืนยัน]─▶</span>
+          <span class="st s2">ยืนยันแล้ว <span class="key">confirmed</span></span>
+          <span style="font-size:var(--fs-12);color:var(--red);font-weight:600">← ปลดด่านที่นี่เท่านั้น</span></div>
+        <p style="font-size:var(--fs-12);color:var(--text-3);margin-bottom:var(--space-3)">3 · เอกสารสัญญา <b style="color:var(--red)">— มิติที่ยังไม่มีในระบบเลย</b></p>
+        <div class="table-scroll"><table class="plain" style="min-width:0"><thead><tr><th>ค่าในชีต</th><th class="num">จำนวน</th><th class="num">สัดส่วน</th></tr></thead><tbody>
+          <tr style="background:var(--red-soft)"><td><b>รอลูกค้าส่งสัญญา</b></td><td class="num"><b>138</b></td><td class="num"><b>64%</b></td></tr>
+          <tr><td>เรียบร้อย</td><td class="num">43</td><td class="num">20%</td></tr>
+          <tr><td>ยังไม่ได้ทำสัญญา</td><td class="num">30</td><td class="num">14%</td></tr>
+        </tbody></table></div>
+      </div></div>
+
+      <div class="section"><div class="section-head"><h3>🪤 กับดักข้อมูลก่อนนำเข้า</h3></div><div class="section-body"><div class="table-scroll"><table class="plain">
+        <thead><tr><th style="width:230px">กับดัก</th><th>รายละเอียด</th></tr></thead><tbody>
+          <tr><td><b>ข้อมูลอยู่ในชีตที่ซ่อน</b></td><td>คอลัมน์ เครื่อง/ลิตร อยู่ใน <span class="mono">Sheet3</span> ที่ซ่อนไว้และหยุดอัปเดตแล้ว ⇒ <b>184 ไซต์ (49%) ไม่มีข้อมูลเลย</b></td></tr>
+          <tr><td><b>หน่วยปนในคอลัมน์เดียว</b></td><td>ลิตร/เดือน มีทั้ง <span class="mono">1</span> <span class="mono">0.5</span> และ <span class="mono">500 ML</span> · Reed มี <span class="mono">2 KG</span> ปนกับจำนวนชิ้น</td></tr>
+          <tr><td><b>ตัวเลขปนข้อความ</b></td><td>จำนวนเครื่องมี <span class="mono">รอติดตั้ง</span> และ <span class="mono">-</span></td></tr>
+          <tr><td><b>ระยะเวลาขัดกันเอง</b></td><td>ช่วงวันเดียวกันแต่ใส่ <span class="mono">0.25</span> กับ <span class="mono">1</span> ⇒ <b>ห้าม import คำนวณจากวันที่เสมอ</b></td></tr>
+          <tr><td><b>ช่องเดียวสองที่ ไม่ตรงกัน</b></td><td>ผู้รับผิดชอบมี 2 คอลัมน์ (ไทย 10/167 · อังกฤษ 139/167) · <b>“พี” มีเฉพาะคอลัมน์ไทย ⇒ ทีมมี 4 คน ไม่ใช่ 3</b></td></tr>
+          <tr><td><b>เงื่อนไขเก็บเงิน 29 แบบพิมพ์มือ</b></td><td>รวมสะกดผิดซ้ำ และของที่ควรเป็นสถานะ (<span class="mono">ชำระครบแล้ว 100%</span>)</td></tr>
+        </tbody></table></div>
+        <div class="callout red" style="margin-top:var(--space-4)"><span class="co-ic">🔴</span><div><b>กฎเหล็กของตัวนำเข้า: แถวที่แปลงไม่ได้ต้องค้างให้คนตัดสิน ห้ามใส่ค่า default แล้วเงียบ</b><br>ไม่งั้นได้ระบบที่หน้าตาครบแต่ตัวเลขผิดโดยไม่มีใครรู้ — <b>แย่กว่าชีตเดิม เพราะชีตอย่างน้อยยังเห็นช่องว่าง</b></div></div>
+      </div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var MENUS={
+    sales:['แดชบอร์ด','ลีด','ดีล',{n:'โครงการ',k:'projects'},'ใบเสนอราคา','Sale Order','ขอราคาผลิต',{n:'คำร้อง',k:'requests'},{n:'ยืนยันการชำระเงิน',k:'payments',isNew:true},'งานของฉัน'],
+    service:[{n:'ภาพรวม',k:'overview'},{n:'คิวรับงาน',k:'intake',isNew:true},{n:'สัญญาบริการ',k:'contracts',isNew:true},'ไซต์บริการ',{n:'งานวันนี้',k:'today',isNew:true},{n:'จัดคิวช่าง',k:'dispatch',isNew:true},'ติดตามไม่ต่อสัญญา']
+  };
+  var MAP={
+    s0:{sys:'service',menu:null,role:'—'},
+    s1:{sys:'service',menu:'contracts',role:'SA · ทีม SV'},
+    s2:{sys:'service',menu:'contracts',role:'SA · ทีม SV'},
+    s3:{sys:'sales',menu:'requests',role:'FN · ฝ่ายบัญชี'},
+    s4:{sys:'sales',menu:'payments',role:'FN · ฝ่ายบัญชี'},
+    s5:{sys:'service',menu:'today',role:'TS · ต้า'},
+    s6:{sys:'service',menu:'today',role:'TS · ต้า'},
+    s7:{sys:'service',menu:'today',role:'TS · ต้า'},
+    s8:{sys:'service',menu:'dispatch',role:'TS · หัวหน้าทีม'},
+    s9:{sys:'service',menu:'overview',role:'TS · หัวหน้าทีม'},
+    s10:{sys:'sales',menu:'projects',role:'SA · ทีม ODM'},
+    s11:{sys:'service',menu:'dispatch',role:'TS · หัวหน้าทีม'},
+    s12:{sys:'service',menu:null,role:'—'},
+    s13:{sys:'service',menu:'intake',role:'TS · หัวหน้าทีม'}
+  };
+  var menuRow=document.getElementById('menu-row'),whoEl=document.getElementById('who-role');
+  var sysEls=document.querySelectorAll('#sys-switch [data-sys]');
+  var tabs=document.querySelectorAll('.deck [data-s]'),screens=document.querySelectorAll('.screen');
+  function show(id){
+    var cfg=MAP[id]; if(!cfg) return;
+    tabs.forEach(function(t){t.setAttribute('aria-selected',String(t.getAttribute('data-s')===id));});
+    screens.forEach(function(s){s.classList.toggle('is-active',s.id===id);});
+    sysEls.forEach(function(s){s.classList.toggle('is-current',s.getAttribute('data-sys')===cfg.sys);});
+    menuRow.textContent='';
+    MENUS[cfg.sys].forEach(function(item){
+      var name=typeof item==='string'?item:item.n, key=typeof item==='string'?null:item.k;
+      var a=document.createElement('a'); a.href='#'; a.textContent=name;
+      if(key&&key===cfg.menu) a.className='is-current';
+      else if(typeof item==='object'&&item.isNew) a.className='is-new';
+      a.addEventListener('click',function(e){e.preventDefault();});
+      menuRow.appendChild(a);
+    });
+    whoEl.textContent=cfg.role;
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-s'));window.scrollTo({top:0});});});
+  document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+    if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;
+    var ids=Array.prototype.map.call(tabs,function(t){return t.getAttribute('data-s');});
+    var cur=ids.indexOf(document.querySelector('.screen.is-active').id);
+    var next=e.key==='ArrowRight'?Math.min(cur+1,ids.length-1):Math.max(cur-1,0);
+    show(ids[next]);
+  });
+  var root=document.documentElement;
+  document.getElementById('theme-toggle').addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme',dark?'light':'dark');
+  });
+  show('s0');
+})();
+</script>
+</body>
+</html>
