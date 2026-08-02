@@ -1146,6 +1146,7 @@ button, select, input, textarea {
      กว้างเกินแล้วแถบล้นออกนอกจอ (วัดเจอจริง 2026-08-02)
      max-width กันกรณีระบบที่มีเมนู 1–2 ตัว ไม่ให้ปุ่มกางเต็มครึ่งจอ */
   .mbn-item {
+    position: relative; /* ให้ขีดชี้ของ .active เกาะได้ */
     flex: 1 1 0;
     min-width: 0;
     max-width: 96px;
@@ -1174,11 +1175,23 @@ button, select, input, textarea {
     place-items: center;
     width: 38px;
     height: 24px;
-    border-radius: var(--radius-full);
-    transition: background var(--motion-fast);
   }
+  /* active = **ขีดชี้ + อักษร accent** ภาษาเดียวกับเมนูบนแถบบน (มติ 2026-07-18)
+     ⚠️ ห้ามกลับไปใช้เม็ดยารอบไอคอน — ทรง pill สงวนให้ .segmented ที่เป็น *ตัวกรอง*
+     ขีดอยู่ **ขอบบน** ของปุ่ม ไม่ใช่ขอบล่าง เพราะนั่นคือด้านที่ติดกับเนื้อหา
+     (แถบบนก็วางขีดไว้ด้านที่ติดเนื้อหาเหมือนกัน คือขอบล่างของมัน) · ขอบล่างของ
+     แถบนี้ชนโซนท่าทางของ OS ขีดตรงนั้นจะโดนนิ้วบังและอ่านยาก */
   .mbn-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); }
-  .mbn-item.active .mbn-ico { background: var(--accent-soft); }
+  .mbn-item.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--space-2-5);
+    right: var(--space-2-5);
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent);
+  }
   .mbn-item.is-empty { pointer-events: none; }
   /* แถวจุดสูงคงที่เสมอ แม้ไม่มีจุด — ความสูงแถบต้องนิ่งเท่า --mobile-nav-h
      ที่ .page เอาไปเผื่อระยะไว้ ไม่งั้นเนื้อหาท้ายหน้าถูกทับในบางระบบ */
