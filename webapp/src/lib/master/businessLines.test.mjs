@@ -27,7 +27,16 @@ test('ค่าที่ยังไม่ระบุได้ป้ายข�
   assert.equal(businessLineLabel(null), UNSET_BUSINESS_LINE_LABEL);
   assert.equal(businessLineLabel(undefined), UNSET_BUSINESS_LINE_LABEL);
   assert.equal(businessLineLabel(''), UNSET_BUSINESS_LINE_LABEL);
-  assert.equal(businessLineLabel('PRODUCT'), 'สายสินค้า');
+  assert.equal(businessLineLabel('PRODUCT'), 'สินค้า (Products)');
+  assert.equal(businessLineLabel('SERVICE'), 'บริการ (Services)');
+});
+
+// ⚠️ มติผู้ใช้ 2026-08-02: ป้ายสั้น ไม่ต้องอธิบายในตัวเลือก
+// เดิมเป็น "สายสินค้า (ส่งมอบของแล้วจบ)" ซึ่งฟุ่มเฟือยบน dropdown ที่มีสองค่า
+test('ป้ายไม่พ่วงคำอธิบายยาว ๆ', () => {
+  for (const label of Object.values(BUSINESS_LINE_LABELS)) {
+    assert.ok(label.length <= 20, `ป้าย "${label}" ยาวเกินไปสำหรับตัวเลือก`);
+  }
 });
 
 // สตริงว่างจากฟอร์มต้องกลายเป็น null — CHECK ของ mig 0191 ปฏิเสธ ''
