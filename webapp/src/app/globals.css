@@ -4475,8 +4475,34 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   padding: 0 var(--space-1);
   border-radius: var(--radius);
   background: var(--accent-soft);
-  color: var(--accent);
+  /* เหตุผลเดียวกับ `.rich-link` ข้างล่าง — `--accent` บนพื้น `--accent-soft`
+     ได้คอนทราสต์แค่ 2.78:1 ในธีมสว่าง ต้องใช้ตัว ink */
+  color: var(--accent-ink);
   font-weight: var(--fw-semibold);
+}
+
+/* ── ลิงก์ที่ฝังอยู่ในเนื้อความ (เธรด: รหัสเอกสาร · URL · รายการที่กดเข้าไปดูได้) ──
+   ⚠️ ต่างจาก `.linklike` ตรงที่ **ต้องเห็นว่ากดได้ตั้งแต่ยังไม่เอาเมาส์ไปชี้** —
+   `.linklike` เป็น `color: inherit` ซึ่งเหมาะกับปุ่มที่อยู่ในบริบทของตัวเอง แต่พอ
+   เอามาใช้กลางย่อหน้าแล้วมันกลมกลืนกับข้อความธรรมดาจนไม่มีใครรู้ว่ากดได้
+   ⚠️ `text-underline-offset` เผื่อสระล่างของไทย (ุ ู ฺ) ไม่ให้เส้นทับ
+   🔴 สีต้องเป็น `--accent-ink` ไม่ใช่ `--accent` — วัดบนพื้นจริงแล้ว `--accent`
+   ได้คอนทราสต์แค่ 2.75:1 ในธีมสว่าง (ตก AA) ส่วน `--accent-ink` ได้ 4.76:1
+   ธีมมืดสองตัวนี้เป็นสีเดียวกัน (6.44:1) จึงไม่เสียอะไร */
+.rich-link {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+/* ชี้แล้วเส้นทึบขึ้น — ยืนยันว่าเล็งถูกชิ้น โดยตัวอักษรไม่ขยับ (ห้ามเปลี่ยนความหนา
+   ตัวอักษรหรือ padding ตรงนี้ ข้อความรอบข้างจะไหลตาม) */
+.rich-link:hover,
+.rich-link:focus-visible {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
 }
 
 .linklike {
