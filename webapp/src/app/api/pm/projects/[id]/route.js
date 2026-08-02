@@ -13,6 +13,7 @@ import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose, projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
@@ -23,6 +24,9 @@ export const dynamic = 'force-dynamic';
 // Fields a client may PATCH on a project (commercial/ISO header — not scope/owner).
 const EDITABLE = [
   'code', 'name', 'customerId', 'customerName', 'type', 'urgency',
+  // สายธุรกิจ (mig 0191) — แก้ได้ตลอด เพราะโครงการเก่าเป็น NULL ทั้งหมดและ
+  // ต้องมีคนมาเลือกทีหลัง · ต่างจาก `type` ที่ล็อกหลังสร้าง (แม่แบบ gen ไปแล้ว)
+  'line',
   // คู่ ชื่อ+id ของผู้ดูแล (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร · id คือตัวตนจริง
   // ⚠️ ต้องแก้มาคู่กันเสมอ — ฟอร์มส่งทั้งสองค่าจากตัวเลือกเดียวกัน
   'aeOwner', 'aeOwnerId', 'acOwner', 'acOwnerId', 'status', 'startDate', 'dueDate',
@@ -226,7 +230,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const id = project.id;
 
   const body = await req.json();
-  const updates = pickFields(body, EDITABLE, { nullable: ['startDate', 'dueDate'] });
+  const updates = pickFields(body, EDITABLE, { nullable: ['startDate', 'dueDate', 'line'] });
+  // สายธุรกิจ: '' จากฟอร์ม → null (CHECK ของ 0191 ปฏิเสธ '') · ค่าที่ไม่รู้จัก → 400
+  // ⚠️ ห้ามเงียบแล้วใส่ค่าให้เอง — เหตุผลเดียวกับที่คอลัมน์นี้ไม่มี default
+  if (updates.line !== undefined) {
+    const line = normalizeBusinessLine(updates.line);
+    if (line === undefined) return badRequest('สายธุรกิจต้องเป็น PRODUCT หรือ SERVICE');
+    updates.line = line;
+  }
   if (
     updates.productMainCategory !== undefined &&
     (updates.productMainCategory || '') !== (project.productMainCategory || '')

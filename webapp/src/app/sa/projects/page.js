@@ -7,7 +7,7 @@ import Select from "@/components/ui/Select";
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2 } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2, Split } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
@@ -25,6 +25,7 @@ import {
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
+import { businessLineLabel, countUnsetBusinessLine, isBusinessLine } from "@/lib/master/businessLines";
 
 const money = (v) => fmtMoneyCompact(v);
 
@@ -152,6 +153,10 @@ export default function ProjectsIndexPage() {
     return t;
   }, [filtered]);
 
+  // โครงการที่ยังไม่ระบุสายธุรกิจ — นับตามตัวกรองเดียวกับ KPI อื่นบนแถบนี้
+  // (ตัวเลขบนแถบเดียวกันต้องขยับพร้อมกัน ไม่งั้นคนอ่านว่าเป็นคนละชุดข้อมูล)
+  const unsetLineCount = useMemo(() => countUnsetBusinessLine(filtered), [filtered]);
+
   const taskProgress = (p) => {
     const tasks = p.tasks || [];
     if (!tasks.length) return "-";
@@ -197,6 +202,17 @@ export default function ProjectsIndexPage() {
           <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก Sale Order ที่อนุมัติแล้ว" tone="good" />
           <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
           <SaMetric icon={<ClipboardList />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
+          {/* ⭐ ตัวนับนี้คือสิ่งที่มาแทน "ค่าตั้งต้น" ของคอลัมน์ `line` (mig 0191)
+              `projects.type` มี default 'NPD' แล้วโครงการ 11 ใบบน prod เป็น NPD หมด
+              — คอลัมน์สายธุรกิจจึงไม่มี default และใช้ตัวนับเป็นตัวทวงแทน
+              ⚠️ ต้องโผล่แม้เป็น 0 ไม่งั้นวันที่มันโตขึ้นจะไม่มีใครสังเกตว่ามันเคยมี */}
+          <SaMetric
+            icon={<Split />}
+            label="ยังไม่ระบุสาย"
+            value={unsetLineCount}
+            note="ต้องเลือกก่อน ระบบจึงจะรู้ว่าโครงการนี้จบยังไง"
+            tone={unsetLineCount ? "warning" : undefined}
+          />
         </SaMetricStrip>
 
         <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
@@ -247,6 +263,11 @@ export default function ProjectsIndexPage() {
                           <strong>{p.name || "-"}</strong>
                           <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                             {p.code || p.id}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
+                          </span>
+                          {/* ⚠️ ป้ายนี้คือตัวทวงที่ตัวกรองพัดหายไม่ได้ — ต่างจากตัวนับบนแถบ KPI
+                              ที่ขยับตามตัวกรอง · โครงการที่ยังไม่ระบุสายต้องสะดุดตาตรงที่มันอยู่ */}
+                          <span className={`ui-badge ${styles.lineBadge}${isBusinessLine(p.line) ? "" : ` ${styles.lineBadgeUnset}`}`}>
+                            {businessLineLabel(p.line)}
                           </span>
                         </Link>
                       </td>

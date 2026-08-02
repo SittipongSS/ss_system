@@ -93,6 +93,10 @@ export async function POST(request, { params }) {
     customerId: customer.id,
     customerName: customer.name || null,
     type: 'RE-ORDER',
+    // สายธุรกิจ (mig 0191): PO สหมิตรเป็นงานสั่งผลิตซ้ำส่งของ **ไม่มีของค้างหน้างาน
+    // ให้กลับไปดูแล** ⇒ PRODUCT เสมอ · ระบุตรงนี้เพราะรู้จริง ไม่ใช่ค่าตั้งต้นของคอลัมน์
+    // (คอลัมน์ไม่มี default โดยเจตนา — ดูหัว mig 0191)
+    line: 'PRODUCT',
     urgency: body.urgency || 'Schedule',
     aeOwner: user.name || '',
     aeOwnerId: user.id || null,   // ตัวตนจริงคู่กับชื่อ snapshot (mig 0190)
