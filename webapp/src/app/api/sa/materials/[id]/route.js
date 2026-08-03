@@ -2,6 +2,7 @@
 // GET    : รายละเอียด + ประวัติรุ่นราคา (canViewCosting)
 // PATCH  : accept (RD/PC รับวัสดุร่างเข้าทะเบียน) · archive/restore · edit
 // DELETE : ลบได้เฉพาะร่างที่ยังไม่มีราคาและยังไม่มีใครอ้างถึง
+//          ?dryRun=1 พรีวิวว่าจะกระทบอะไร (admin) · ?force=1 break-glass (admin)
 //
 // ⚠️ ด่านจริงอยู่ที่นี่ — proxy เห็นแค่ role ไม่รู้ว่าวัสดุตัวนี้เป็นของฝ่ายไหน
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -10,6 +11,9 @@ import { canUser, canViewCosting } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeMaterialInput } from '@/lib/materialPrices';
 import { acceptMaterial, findMaterial, formulaSnapshotFor } from '@/lib/materialPricesAdmin';
 import { normalizePmType } from '@/lib/master/materialTypes';
+import {
+  canForceDelete, isDryRun, isForceRequest, materialForcePreview,
+} from '@/lib/forceDelete';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -131,32 +135,57 @@ export async function DELETE(request, { params }) {
   const before = await findMaterial(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบวัสดุในทะเบียน' }, { status: 404 });
   if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
-  if (!canQuoteMaterial(user, before.kind) && !canEditDraft(user, before)) {
-    return Response.json({ error: 'ไม่มีสิทธิ์ลบวัสดุนี้' }, { status: 403 });
-  }
-  // มีราคาแล้ว = เป็นประวัติของงานที่ผ่านมา ลบไม่ได้ (ซ่อนแทน)
-  if ((before.revisions || []).length) {
-    return Response.json({
-      error: 'วัสดุนี้มีประวัติราคาแล้ว ลบไม่ได้ — ใช้ "เก็บเข้ากรุ" แทน',
-    }, { status: 409 });
-  }
-  // ยังมีบรรทัดในใบขอราคาผลิตอ้างอยู่ = ลบแล้วใบจะชี้ไปที่ว่าง
-  const { count, error: refError } = await supabase
-    .from('costing_item_components')
-    .select('id', { count: 'exact', head: true })
-    .eq('materialId', id);
-  if (refError) return Response.json({ error: refError.message }, { status: 500 });
-  if (count) {
-    return Response.json({
-      error: `มีใบขอราคาผลิตอ้างวัสดุนี้อยู่ ${count} บรรทัด — ใช้ "เก็บเข้ากรุ" แทน`,
-    }, { status: 409 });
+
+  // ── บังคับลบ (break-glass ของผู้ดูแลระบบ) ──────────────────────────────
+  // ทะเบียนกลิ่น/สูตร/คำร้องมีเส้นนี้แล้ว (#779/#915) — ทะเบียนวัสดุเป็นตัวสุดท้าย
+  // ⚠️ FK สองตัวเป็น RESTRICT (บรรทัดคำร้อง 0158 · บรรทัดใบขอราคาผลิต 0159) ซึ่ง
+  // break-glass ข้ามไม่ได้ · `materialForcePreview` ตอบ blocked:true ให้ตั้งแต่พรีวิว
+  // เพื่อไม่ให้ไปพังกลางทางด้วย error ดิบจาก Postgres
+  const force = isForceRequest(request);
+  const dryRun = isDryRun(request);
+  if (force || dryRun) {
+    if (!canForceDelete(user)) {
+      return Response.json({ error: 'บังคับลบต้องเป็นผู้ดูแลระบบ (admin)' }, { status: 403 });
+    }
+    const preview = await materialForcePreview(supabase, before);
+    if (dryRun) return Response.json(preview);
+    if (preview.blocked) {
+      return Response.json({ error: preview.notes[0] }, { status: 409 });
+    }
+  } else {
+    if (!canQuoteMaterial(user, before.kind) && !canEditDraft(user, before)) {
+      return Response.json({ error: 'ไม่มีสิทธิ์ลบวัสดุนี้' }, { status: 403 });
+    }
+    // มีราคาแล้ว = เป็นประวัติของงานที่ผ่านมา ลบไม่ได้ (ซ่อนแทน)
+    if ((before.revisions || []).length) {
+      return Response.json({
+        error: 'วัสดุนี้มีประวัติราคาแล้ว ลบไม่ได้ — ใช้ "เก็บเข้ากรุ" แทน',
+      }, { status: 409 });
+    }
+    // ยังมีบรรทัดในใบขอราคาผลิตอ้างอยู่ = ลบแล้วใบจะชี้ไปที่ว่าง
+    const { count, error: refError } = await supabase
+      .from('costing_item_components')
+      .select('id', { count: 'exact', head: true })
+      .eq('materialId', id);
+    if (refError) return Response.json({ error: refError.message }, { status: 500 });
+    if (count) {
+      return Response.json({
+        error: `มีใบขอราคาผลิตอ้างวัสดุนี้อยู่ ${count} บรรทัด — ใช้ "เก็บเข้ากรุ" แทน`,
+      }, { status: 409 });
+    }
   }
 
+  // ลูกทั้งหมดมี FK จริง (CASCADE ประวัติราคา / SET NULL ของเข้า) ตั้งแต่ migration
+  // และวัสดุไม่มีเธรดกับไฟล์แนบของตัวเอง (ไม่อยู่ใน updateAccess/attachmentTypes)
+  // → ลบตัวแม่พอ ไม่ต้องเก็บกวาดเพิ่ม
   const { error } = await supabase.from('material_prices').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await recordAudit({
     user, action: 'delete', entityType: 'material_price', entityId: id, before,
-    summary: `ลบวัสดุร่าง "${before.label}"`, request,
+    summary: force
+      ? `[admin force] ลบวัสดุ "${before.label}" (สถานะ ${before.status}, ${(before.revisions || []).length} รุ่นราคา)`
+      : `ลบวัสดุร่าง "${before.label}"`,
+    request,
   });
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, forced: force });
 }

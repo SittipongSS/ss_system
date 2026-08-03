@@ -23,6 +23,7 @@ import Select from "@/components/ui/Select";
 import MaterialForm, { emptyMaterialForm, materialToForm } from "@/components/materials/MaterialForm";
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { fmtDate } from "@/lib/format";
 import {
   MATERIAL_KINDS, MATERIAL_KIND_LABELS, MATERIAL_STATE_LABELS,
@@ -50,6 +51,9 @@ export default function MaterialRegistryPanel({
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
+  // break-glass = role admin เท่านั้น (เข้มกว่า isSuperuser — ae_supervisor เป็น
+  // superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js)
+  const isAdmin = role === "admin";
 
   const [kindFilter, setKindFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("open"); // open = ไม่รวมที่เก็บเข้ากรุ
@@ -140,8 +144,19 @@ export default function MaterialRegistryPanel({
     const { kind, material } = confirm;
     if (kind === "price") return submitPrice();
     if (kind === "delete") {
-      const ok = await call(`/api/sa/materials/${material.id}`, { method: "DELETE" }, "ลบวัสดุร่างแล้ว");
-      if (ok) setConfirm(null);
+      // ลบตามปกติก่อน · ถูกกฎธุรกิจบล็อกและเป็น admin → ดึงพรีวิว (?dryRun=1) มาแสดง
+      // ว่าจะลบอะไรพ่วง แล้วถามยืนยันก่อนยิง ?force=1 (แพตเทิร์นเดียวกับทะเบียน
+      // กลิ่น/สูตร/คำร้อง — ห้ามเขียนกลไกใหม่ ดู lib/forceDeleteClient.js)
+      setSaving(true);
+      try {
+        const result = await deleteWithForce(`/api/sa/materials/${material.id}`, { isAdmin });
+        if (result.cancelled) { setConfirm(null); return; }
+        setToast({ kind: "success", msg: result.forced ? "บังคับลบวัสดุแล้ว" : "ลบวัสดุร่างแล้ว" });
+        setConfirm(null);
+        await reload?.();
+      } catch (e) {
+        setToast({ kind: "error", msg: e.message });
+      } finally { setSaving(false); }
       return;
     }
     const labels = { accept: "รับวัสดุเข้าทะเบียนแล้ว", archive: "เก็บเข้ากรุแล้ว", restore: "นำกลับมาใช้งานแล้ว" };
@@ -194,11 +209,17 @@ export default function MaterialRegistryPanel({
     if (kind === "restore") {
       return { title: "นำวัสดุกลับมาใช้งาน", description: material.label, confirmLabel: "นำกลับมาใช้" };
     }
+    // ร่างเปล่าลบได้ตรง ๆ · แถวที่มีราคา/มีคนอ้างเป็นทาง admin ซึ่งจะเจอพรีวิว
+    // cascade อีกชั้นจาก deleteWithForce (ที่นี่จึงบอกแค่ว่ากำลังจะทำอะไร)
+    const plainDraft = (material.revisions || []).length === 0 && material.status === "draft";
     return {
-      title: "ลบวัสดุร่าง",
+      title: plainDraft ? "ลบวัสดุร่าง" : "ลบวัสดุออกจากทะเบียน",
       description: material.label,
-      detail: "ลบได้เพราะยังไม่มีประวัติราคาและยังไม่มีใบไหนอ้างถึง",
-      confirmLabel: "ลบวัสดุ",
+      detail: plainDraft
+        ? "ลบได้เพราะยังไม่มีประวัติราคาและยังไม่มีใบไหนอ้างถึง"
+        : "วัสดุนี้มีประวัติราคาหรือมีคนอ้างอยู่ — ปกติควรใช้ \"เก็บเข้ากรุ\" แทน"
+          + " · ระบบจะแสดงรายการที่จะถูกลบพ่วง (หรือเหตุผลที่ลบไม่ได้) ให้ยืนยันอีกครั้ง",
+      confirmLabel: plainDraft ? "ลบวัสดุ" : "ดำเนินการต่อ",
     };
   };
 
@@ -283,7 +304,10 @@ export default function MaterialRegistryPanel({
                 const state = materialPriceState(m, todayIso());
                 const tone = STATE_TONE[state] || STATE_TONE.no_price;
                 const owner = canQuoteMaterial(me, m.kind);
-                const canDelete = (m.revisions || []).length === 0 && m.status === "draft";
+                // ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างที่
+                // ยังไม่มีราคา · ตรงกับทะเบียนกลิ่น/สูตร (#779) และคำร้อง (#915)
+                const canDelete = isAdmin
+                  || ((m.revisions || []).length === 0 && m.status === "draft");
                 return (
                   <tr key={m.id}>
                     <td>
@@ -353,7 +377,13 @@ export default function MaterialRegistryPanel({
                           </button>
                         )}
                         {canDelete && (
-                          <button type="button" className="btn-icon action-outline btn-danger" aria-label="ลบวัสดุร่าง" onClick={() => setConfirm({ kind: "delete", material: m })}>
+                          <button
+                            type="button" className="btn-icon action-outline btn-danger"
+                            aria-label={(m.revisions || []).length === 0 && m.status === "draft"
+                              ? "ลบวัสดุร่าง"
+                              : "ลบวัสดุ (ผู้ดูแลระบบ)"}
+                            onClick={() => setConfirm({ kind: "delete", material: m })}
+                          >
                             <Trash2 size={14} />
                           </button>
                         )}
