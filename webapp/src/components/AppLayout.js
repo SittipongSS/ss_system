@@ -96,6 +96,11 @@ export default function AppLayout({ children }) {
       setUserName(dName);
       setUserInitials(inits);
       try { localStorage.setItem('userName', dName); } catch {}
+      // ⭐ id ของคนที่ล็อกอิน — หน้า/โมดัลที่ต้อง "รู้ว่าฉันคือใคร" ต้องใช้ช่องนี้
+      // ไม่ใช่ `userName` เพราะ `userName` เป็นชื่อ**ย่อ** (fmtName → "Sittipong K.")
+      // ที่เอาไปเทียบ/บันทึกเป็นชื่อเต็มไม่ได้ — ของจริงบน prod มีโครงการ 11 ใบที่
+      // `aeOwner` ถูกเขียนเป็นชื่อย่อจากช่องนี้จน `aeOwnerId` ว่างทั้งหมด
+      try { localStorage.setItem('userId', user.id); } catch {}
     });
   }, [router]);
 
@@ -173,6 +178,8 @@ export default function AppLayout({ children }) {
       } catch {}
     }
     apiCache.clear(); // don't leak the outgoing user's cached data to the next login
+    // ตัวตนของคนที่ออกไปต้องไม่ค้างให้คนถัดไปหยิบไปใช้ก่อน getUser() จะตอบ
+    try { localStorage.removeItem('userId'); localStorage.removeItem('userName'); } catch {}
     router.replace('/');
   };
 

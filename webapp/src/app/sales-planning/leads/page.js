@@ -16,6 +16,8 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { canSeeLeadKpi } from "@/lib/permissions";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
@@ -68,7 +70,14 @@ export default function LeadsPage() {
 
   const [leads, setLeads] = useState([]);
   const [kpi, setKpi] = useState(null);
-  const [users, setUsers] = useState([]);
+  /* รายชื่อผู้ใช้ 2 หน้าที่ แยกกันคนละชุดโดยตั้งใจ:
+     - `directory` (รวมคนที่ปิดบัญชีแล้ว) = ใช้ *อ่านชื่อปัจจุบัน* ของผู้รับผิดชอบ
+       ในแถว — ต้องมีคนที่ลาออกด้วย ไม่งั้นลีดเก่าตกไปใช้ชื่อที่ค้างในแถว
+     - `users` (เฉพาะคนที่ยังทำงาน) = dropdown มอบหมายงาน
+     ⚠️ ต้องโหลดโดยไม่ติดเงื่อนไข role เพราะทุกคนที่เปิดหน้านี้ได้ต้องอ่านชื่อออก
+     (ของเดิมโหลดเฉพาะ role ที่ทำคิวได้) · ยิงไม่ผ่าน = [] แล้วถอยไปชื่อในแถวเอง */
+  const directory = usePeopleDirectory();
+  const users = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   const [customers, setCustomers] = useState([]);
   const [projects, setProjects] = useState([]);
   // หมวดสินค้า (product-types) — DealFormFields ในโมดัลสร้างดีลใช้ (hotfix: state ตัวนี้
@@ -141,14 +150,18 @@ export default function LeadsPage() {
   // รายชื่อ AE (มอบหมาย) + ลูกค้า (qualify) — โหลดเมื่อ role ทำงานคิวได้เท่านั้น
   useEffect(() => {
     if (role === "marketing" || !canLead) return;
-    // ใช้ assignable-users (gate ที่ pm:view) ไม่ใช่ /api/users (admin-only) — ไม่งั้น
-    // senior_ae โดน 403 แล้ว dropdown มอบหมายว่างเปล่า (มองไม่เห็นชื่อ AE)
-    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
     // โครงการ — โมดัลแตกดีลจากลีดเลือกโครงการได้เหมือนหน้ารวมดีล (ไม่งั้นดีลที่มาจาก
     // ลีดจะไม่มีโครงการติดมาเลย แล้วสอบถาม RD ในนามดีลนั้นไม่ได้)
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
   }, [role, canLead]);
+
+  // ชื่อผู้รับผิดชอบที่ควรขึ้นจอ — อ่านจาก `assigneeId` ไม่ใช่สำเนาชื่อในแถว
+  // (prod มี 64 แถวที่ `assigneeName` เป็นชื่อย่อ/ชื่อเก่าซึ่งไม่ตรงบัญชีใครเลย)
+  const assigneeNameOf = useCallback(
+    (lead) => livePersonName(directory, lead?.assigneeId, lead?.assigneeName),
+    [directory],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -159,7 +172,8 @@ export default function LeadsPage() {
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
       if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
-      return [l.contactName, l.company, l.phone, l.email, l.details, l.assigneeName].some((v) => (v || "").toLowerCase().includes(q));
+      // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
+      return [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l)].some((v) => (v || "").toLowerCase().includes(q));
     });
     
     const mul = sortDir === "desc" ? -1 : 1;
@@ -170,7 +184,7 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, statusFilter, channelFilter, openOnly, sortKey, sortDir]);
+  }, [leads, query, statusFilter, channelFilter, openOnly, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
@@ -371,7 +385,7 @@ export default function LeadsPage() {
                     <td className="num mono">{lead.budget != null ? fmtMoney(lead.budget) : "-"}</td>
                     <td>
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : "-"}
-                      {lead.assigneeName && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{lead.assigneeName}</span>}
+                      {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}

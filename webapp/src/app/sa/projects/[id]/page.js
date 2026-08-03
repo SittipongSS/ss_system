@@ -83,14 +83,21 @@ export default function ProjectDetailPage() {
   const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
   const team = useTeam();
-  // ชื่อผู้ใช้ปัจจุบัน — ใช้เทียบกับ aeOwner ซึ่งเก็บเป็นข้อความ ไม่ใช่ id (แบบเดียวกับฟอร์มโครงการ)
+  // ตัวตนของผู้ใช้ปัจจุบัน — `id` เป็นหลัก (เทียบกับ aeOwnerId) ส่วน `name` เก็บไว้
+  // เป็นทางถอยสำหรับใบเก่าที่ยังไม่มี aeOwnerId (ดู isAeOwner ใน projectLifecycle)
+  const [myId, setMyId] = useState("");
   const [myName, setMyName] = useState("");
-  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  useEffect(() => {
+    try {
+      setMyId(localStorage.getItem("userId") || "");
+      setMyName(localStorage.getItem("userName") || "");
+    } catch { /* ssr */ }
+  }, []);
   /* กติกา "โครงการใบนี้ทำอะไรได้บ้าง" — ไฟล์เดียวกับหน้ารายการ (lib/pm/projectLifecycle)
      ⚠️ ห้ามคำนวณสิทธิ์ซ้ำในหน้านี้: ของเดิมเช็ค `salesplan:edit` ทั้งที่ทุก API ตรวจ
      `pm:edit` — lifecycle แก้ให้แล้ว เอาไปใช้ตรง ๆ
      name เข้าไปด้วยเพราะ transition "ดึงกลับจากระงับ" เทียบเจ้าของด้วย *ชื่อ* ไม่ใช่ id */
-  const viewer = useMemo(() => ({ role: userRole, team, name: myName }), [userRole, team, myName]);
+  const viewer = useMemo(() => ({ role: userRole, team, id: myId, name: myName }), [userRole, team, myId, myName]);
   const projectLc = useMemo(() => createProjectLifecycle(), []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -313,7 +320,7 @@ export default function ProjectDetailPage() {
       tasks: snapshot?.tasks || [],
       projectProducts: enrichProducts(snapshot?.projectProducts || []),
       categoryFallback: fallback,
-      ...resolveAe(proj.aeOwner),
+      ...resolveAe(proj.aeOwner, proj.aeOwnerId),
       rev: revNo,
       revDate: revRow?.createdAt || null, // วันที่ออก Rev นี้ → โชว์ DD/MM/YY ในหัวเอกสาร
     });
@@ -555,10 +562,14 @@ export default function ProjectDetailPage() {
   const categoryFallback = p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : "";
 
   // ── เติมข้อมูลให้เอกสาร ISO (CR §3) ──────────────────────────────────
-  // เบอร์มือถือ + อีเมลของ AE ผู้ดูแล: aeOwner เก็บเป็น "ชื่อเต็ม" → จับคู่กับรายชื่อ
-  // ผู้ใช้ (assignable-users) เพื่อดึง phone/email จากข้อมูลผู้ใช้ (ไม่ใช่ของลูกค้า).
-  const resolveAe = (aeName) => {
-    const u = users.find((x) => x.name === aeName);
+  /* เบอร์มือถือ + อีเมลของ AE ผู้ดูแล — ดึงจากข้อมูลผู้ใช้ (ไม่ใช่ของลูกค้า)
+     🐞 เดิมจับคู่ด้วย **ชื่อ** อย่างเดียว (`x.name === aeName`) ซึ่งพังสองทาง:
+     คนเปลี่ยนชื่อ → ชื่อในใบไม่ตรงบัญชีอีกต่อไป · ใบเก่าเก็บชื่อย่อ ("Kantima T.")
+     ที่ไม่เคยตรงกับชื่อบัญชีเลย ⇒ เบอร์/อีเมลบนเอกสาร ISO หายเงียบ ๆ ไม่มี error
+     ตอนนี้ยึด `aeOwnerId` ก่อน แล้วค่อยถอยไปเทียบชื่อสำหรับใบที่ยังไม่มี id */
+  const resolveAe = (aeName, aeOwnerId) => {
+    const u = (aeOwnerId && users.find((x) => x.id === aeOwnerId))
+      || users.find((x) => x.name === aeName);
     return { aeMobile: u?.phone || "", aeEmail: u?.email || "" };
   };
   // หมวดหลัก / หมวดรอง ของ FG หนึ่งๆ → "ODM / Shower Gel" (lookup จาก categoryCode).
@@ -718,7 +729,7 @@ export default function ProjectDetailPage() {
               </button>
               <button
                 onClick={() => openGanttPrintWindow({ ...p, tasks, categoryFallback,
-                  ...resolveAe(p.aeOwner),
+                  ...resolveAe(p.aeOwner, p.aeOwnerId),
                   projectProducts: enrichProducts(p.projectProducts),
                   // ถ้า live ถูกแก้หลังออก Rev (revStale) อย่าปั๊มเลข Rev ทางการทับเนื้อหาที่ต่าง —
                   // พิมพ์เป็น "ฉบับร่าง" (ไม่มีเลข/วันที่ Rev). พิมพ์เวอร์ชันทางการแท้ใช้ปุ่มในประวัติ.

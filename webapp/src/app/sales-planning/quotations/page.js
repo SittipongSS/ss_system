@@ -17,6 +17,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { quotesAwaitingSalesOrder } from "@/lib/sales/handoffQueue";
 import { usePagination } from "@/lib/usePagination";
@@ -37,7 +39,13 @@ export default function QuotationsPage() {
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
   const [statusFilter, setStatusFilter] = useState([]);
   const [typeFilter, setTypeFilter] = useState([]);
+  // ⚠️ เก็บเป็น **ownerId** ไม่ใช่ชื่อ — ชื่อเปลี่ยนได้ ตัวกรองจะแตกเป็นสองคน
   const [ownerFilter, setOwnerFilter] = useState([]);
+  const directory = usePeopleDirectory();
+  const ownerNameOf = useCallback(
+    (row) => livePersonName(directory, row?.deal?.ownerId, row?.deal?.ownerName),
+    [directory],
+  );
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
   const [salesOrders, setSalesOrders] = useState([]);
   const [pendingSoOnly, setPendingSoOnly] = useState(false);
@@ -97,18 +105,28 @@ export default function QuotationsPage() {
       if (pendingSoOnly && !awaitingSalesOrderIds.has(r.id)) return false;
       if (statusFilter.length && !statusFilter.includes(r.status)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
-      if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerName || "")) return false;
+      if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerId || "")) return false;
       if (!q) return true;
-      return [r.quoteNumber, r.customerName, r.deal?.title, r.deal?.ownerName].some((v) => (v || "").toLowerCase().includes(q));
+      return [r.quoteNumber, r.customerName, r.deal?.title, ownerNameOf(r)].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds]);
+  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds, ownerNameOf]);
 
-  // ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
-  const ownerOptions = useMemo(() => (
-    [...new Set(rows.map((r) => r.deal?.ownerName).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, "th"))
-      .map((name) => ({ value: name, label: name }))
-  ), [rows]);
+  /* ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
+     🐞 เดิมรวมกลุ่มด้วย **ชื่อ** ที่ค้างอยู่ในแถว → คนเดียวที่เปลี่ยนชื่อกลางทาง
+     โผล่เป็นสองบรรทัดในตัวกรอง (ใบเก่าชื่อเก่า ใบใหม่ชื่อใหม่) และเลือกอันไหน
+     ก็ได้ใบไม่ครบ · ตอนนี้กลุ่มผูกกับ `ownerId` ส่วนชื่อเป็นแค่ป้ายที่อ่านสด */
+  const ownerOptions = useMemo(() => {
+    const byId = new Map();
+    for (const r of rows) {
+      const id = r.deal?.ownerId;
+      if (!id || byId.has(id)) continue;
+      byId.set(id, ownerNameOf(r));
+    }
+    return [...byId]
+      .filter(([, name]) => name)
+      .sort((a, b) => a[1].localeCompare(b[1], "th"))
+      .map(([id, name]) => ({ value: id, label: name }));
+  }, [rows, ownerNameOf]);
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
       resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}`,

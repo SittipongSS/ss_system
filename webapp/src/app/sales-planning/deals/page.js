@@ -18,6 +18,8 @@ import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -160,6 +162,14 @@ export default function SalesPlanningPipelinePage() {
     cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
+  /* ชื่อเจ้าของดีลที่ควรขึ้นจอ — `ownerName` ในแถวเป็นสำเนา ณ ตอนบันทึก ซึ่งไม่ขยับ
+     ตอนเจ้าตัวเปลี่ยนชื่อ · ดีลทุกใบมี `ownerId` ครบ จึงอ่านจาก id ได้เสมอ */
+  const directory = usePeopleDirectory();
+  const ownerNameOf = useCallback(
+    (deal) => livePersonName(directory, deal?.ownerId, deal?.ownerName),
+    [directory],
+  );
+
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = deals.filter((deal) => {
@@ -167,7 +177,7 @@ export default function SalesPlanningPipelinePage() {
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
-      return [deal.title, deal.customerName, deal.ownerName, deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
+      return [deal.title, deal.customerName, ownerNameOf(deal), deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
     });
 
     const mul = sortDir === "desc" ? -1 : 1;
@@ -185,7 +195,7 @@ export default function SalesPlanningPipelinePage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir]);
+  }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
@@ -363,7 +373,10 @@ export default function SalesPlanningPipelinePage() {
       startDate: deal.startDate || new Date().toISOString().slice(0, 10),
       dueDate: deal.endDate || deal.expectedCloseDate || "",
       type: dealTypeOf(deal),
-      aeOwner: deal.ownerName || "",
+      // ชื่อ *ปัจจุบัน* + id ของเจ้าของดีล — ถ้าส่งชื่อที่ค้างในแถวไป ตัวจับคู่ใน
+      // ฟอร์มจะหาบัญชีไม่เจอแล้วโครงการใหม่เกิดมาพร้อม `aeOwnerId` ว่างตั้งแต่วันแรก
+      aeOwner: ownerNameOf(deal),
+      aeOwnerId: deal.ownerId || null,
       metadata: { brand: deal.metadata?.brand || "" },
     });
     setPmModalOpen(true);
@@ -676,7 +689,7 @@ export default function SalesPlanningPipelinePage() {
                     <td style={{ textAlign: "center" }}>
                       {dealTypeBadge(dealTypeOf(deal))}
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
                     <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
                       {isWonStage(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>

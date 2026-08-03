@@ -142,26 +142,20 @@ export function canApproveQuotation(user, deal) {
   return !!user.id && user.id === deal.ownerId;
 }
 
+/* ── ตัวตน = id เท่านั้น ห้ามเทียบด้วยชื่อ ──────────────────────────────────
+   เดิมมี `inPmBackfillOwnerScope` ที่ให้สิทธิ์ดู/แก้ดีลเมื่อ **ชื่อผู้ใช้ตรงกับ
+   `ownerName` ในแถว** (ตกค้างจากยุคที่ดีล backfill มาจาก PM แล้วไม่มี `ownerId`)
+   ตัดทิ้งแล้วเพราะเป็นกับดักสองด้าน:
+   - เปลี่ยนชื่อตัวเอง = **หลุดสิทธิ์ดีลของตัวเองทันที** โดยไม่มี error อะไรเลย
+   - เปลี่ยนชื่อให้ไปตรงกับ `ownerName` ของคนอื่น = **ได้สิทธิ์แก้ดีลคนอื่น**
+   ตรวจ prod แล้วปลอดภัยที่จะตัด: `sales_deals` 137 ใบ มี `ownerId` ครบ 100%
+   และไม่มีแถวไหนเหลือ `metadata.source = 'pm-backfill'` เลย (0 แถว) */
 export function inSalesViewScope(user, record) {
-  return inScope(salesPlanningViewScope(user?.role), user, record)
-    || inPmBackfillOwnerScope(user, record);
-}
-
-function normalizeOwnerName(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function inPmBackfillOwnerScope(user, record) {
-  if (salesPlanningEditScope(user?.role) !== 'own') return false;
-  if (record?.metadata?.source !== 'pm-backfill') return false;
-  const userName = normalizeOwnerName(user?.name);
-  const ownerName = normalizeOwnerName(record?.ownerName);
-  return !!userName && userName === ownerName;
+  return inScope(salesPlanningViewScope(user?.role), user, record);
 }
 
 export function inSalesEditScope(user, record) {
-  return inScope(salesPlanningEditScope(user?.role), user, record)
-    || inPmBackfillOwnerScope(user, record);
+  return inScope(salesPlanningEditScope(user?.role), user, record);
 }
 
 export function monthKey(value) {
@@ -262,11 +256,10 @@ export function forecastAmount(deal) {
 export function applyDealScope(query, user) {
   const scope = salesPlanningViewScope(user?.role);
   if (scope === 'team') return query.eq('team', user?.team ?? null);
-  if (scope === 'own') {
-    const id = user?.id ?? '';
-    const name = user?.name ?? '';
-    return name ? query.or(`ownerId.eq.${id},ownerName.eq.${name}`) : query.eq('ownerId', id);
-  }
+  // ⚠️ เทียบ `ownerId` อย่างเดียว — เดิมมี `or(ownerId.eq.…,ownerName.eq.…)` พ่วงมา
+  // ซึ่งแปลว่า "เปลี่ยนชื่อ = ดีลของตัวเองหายจากหน้าจอ" (ชื่อในแถวเป็นสำเนาที่ไม่ถูก
+  // อัปเดตตอน rename). ตรวจ prod แล้วสาขาชื่อไม่ได้ครอบแถวไหนเพิ่มเลย — ดีลทุกใบมี ownerId
+  if (scope === 'own') return query.eq('ownerId', user?.id ?? '');
   if (scope === 'none') return query.eq('id', '__no_sales_planning_scope__');
   return query;
 }

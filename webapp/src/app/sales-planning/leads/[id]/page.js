@@ -16,6 +16,8 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
 import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
@@ -42,6 +44,9 @@ export default function LeadDetailPage() {
   const canCreateDeals = canCreateDealFromLead(role);
   const [meId, setMeId] = useState(null);
   const [users, setUsers] = useState([]);
+  // ใช้อ่าน "ชื่อปัจจุบัน" ของผู้รับผิดชอบเท่านั้น (คนละชุดกับ `users` ที่เป็น
+  // dropdown มอบหมาย ซึ่งยิง /api/users แบบ admin-only)
+  const directory = usePeopleDirectory();
   const [dealOpen, setDealOpen] = useState(false);
   const [dealOptions, setDealOptions] = useState({ customers: [], projects: [], categories: [] });
 
@@ -212,7 +217,8 @@ export default function LeadDetailPage() {
             { icon: Sparkles, label: "บริการที่สนใจ", value: SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest },
             { icon: CircleDollarSign, label: "งบประมาณ", value: lead.budget != null ? fmtMoney(lead.budget) : "ไม่ระบุ" },
             { icon: Users, label: "ทีม", value: TEAM_LABELS[lead.team] || lead.team || "ยังไม่มอบหมาย" },
-            { icon: UserRound, label: "ผู้รับผิดชอบ", value: lead.assigneeName || "ยังไม่มอบหมาย" },
+            // ชื่อจาก `assigneeId` — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ
+            { icon: UserRound, label: "ผู้รับผิดชอบ", value: livePersonName(directory, lead.assigneeId, lead.assigneeName) || "ยังไม่มอบหมาย" },
           ]}
         />
 

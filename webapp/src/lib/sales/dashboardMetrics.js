@@ -55,6 +55,11 @@ export const normalizedOwnerName = (name) => String(name || '').trim().replace(/
 // แล้วค่อยถอยไปชื่อ+ทีม สำหรับแถว legacy ที่ id เก่า stale จับบัญชีไม่ได้
 export const dealMatchesOwner = (deal, { ownerId, ownerName, team } = {}) => {
   if (ownerId && deal?.ownerId === ownerId) return true;
+  /* ⭐ ทั้งสองฝั่งมี id แล้วไม่ตรง = จบ ไม่ต้องถอยไปเทียบชื่อ
+     เดิมถอยเสมอ ทำให้ดีลของ "คนที่ชื่อพ้องกันในทีมเดียวกัน" ไหลไปนับให้ผิดคน และ
+     ที่เจอบ่อยกว่าคือดีลของคนที่เปลี่ยนชื่อ **หายจากยอด** เพราะชื่อในแถวเป็นชื่อเก่า
+     ⚠️ ยังต้องมีทางถอยด้วยชื่อ สำหรับแถวเก่าที่ `ownerId` ว่าง (ยอดย้อนหลัง) */
+  if (ownerId && deal?.ownerId) return false;
   if (ownerName) {
     return normalizedOwnerName(deal?.ownerName) === normalizedOwnerName(ownerName)
       && (deal?.team || null) === (team || null);

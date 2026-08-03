@@ -94,7 +94,10 @@ export function buildHistoryRows({ teams = [], users = [], savedRows = [], owner
         scope: 'owner',
         team,
         ownerId,
-        ownerName: info.ownerName || ownerId,
+        // บัญชีที่ยังอยู่ = ใช้ชื่อ *ปัจจุบัน* · `info.ownerName` เป็นชื่อ ณ ตอน
+        // บันทึกยอด ซึ่งค้างเป็นชื่อเก่าทันทีที่เจ้าตัวเปลี่ยนชื่อ (เหลือไว้ให้
+        // เฉพาะคนที่ไม่มีบัญชีแล้ว — ไม่งั้นแถวจะเหลือแต่ uuid)
+        ownerName: still?.name || info.ownerName || ownerId,
         // ผู้เรียกเป็นคนเรียบเรียงข้อความเอง — โมดูลนี้ไม่ถือคำแสดงผล
         detached: still ? { movedTo: still.team || null } : { gone: true },
       });

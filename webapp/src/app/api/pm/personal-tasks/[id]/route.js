@@ -42,7 +42,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     linkedProject = data || null;
   }
   if (task.dealId) {
-    const { data } = await supabase.from('sales_deals').select('id, title, customerName, team, ownerName, projectId').eq('id', task.dealId).maybeSingle();
+    // ownerId มาด้วยเสมอ — หน้ารายละเอียดงานใช้แปลงเป็นชื่อ *ปัจจุบัน* ของเจ้าของดีล
+    const { data } = await supabase.from('sales_deals').select('id, title, customerName, team, ownerId, ownerName, projectId').eq('id', task.dealId).maybeSingle();
     linkedDeal = data || null;
   }
   if (task.inquiryId) {

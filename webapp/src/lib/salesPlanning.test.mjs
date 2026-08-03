@@ -35,22 +35,26 @@ test('buildSahamitReverseRiskRows uses latest covering FC round and flags late F
   assert.equal(rows[0].risk, true);
 });
 
-test('AE can edit PM-backfilled sales deal when PM owner name matches', () => {
+/* 🔒 ตัวตน = `ownerId` เท่านั้น — เดิมมีทางลัดให้ดีล pm-backfill ผ่านด่านเมื่อ
+   **ชื่อ**ผู้ใช้ตรงกับ `ownerName` ในแถว ซึ่งพังทั้งสองทิศ: เปลี่ยนชื่อตัวเอง =
+   หลุดสิทธิ์ดีลตัวเอง · เปลี่ยนชื่อไปชนคนอื่น = ได้สิทธิ์แก้ดีลคนอื่น */
+test('ชื่อไม่ใช่ตัวตน: ชื่อตรงแต่ ownerId ไม่ใช่ = ไม่มีสิทธิ์ (ทุกกรณี รวม pm-backfill)', () => {
   const ae = { id: 'u-ae-1', role: 'ae', name: 'Sittipong SS', team: 'SA' };
 
-  assert.equal(inSalesEditScope(ae, {
-    ownerId: null,
-    ownerName: '  sittipong   ss ',
-    team: null,
-    metadata: { source: 'pm-backfill' },
-  }), true);
+  for (const source of ['pm-backfill', 'manual']) {
+    assert.equal(inSalesEditScope(ae, {
+      ownerId: null, ownerName: '  sittipong   ss ', team: null, metadata: { source },
+    }), false, `ชื่อตรงแต่ไม่มี ownerId ต้องไม่ผ่าน (${source})`);
 
+    assert.equal(inSalesEditScope(ae, {
+      ownerId: 'other-user', ownerName: 'Sittipong SS', team: 'SA', metadata: { source },
+    }), false, `ชื่อตรงแต่ ownerId เป็นคนอื่น ต้องไม่ผ่าน (${source})`);
+  }
+
+  // เจ้าของตัวจริงยังผ่านแม้ชื่อในแถวจะเป็นชื่อเก่า (เคสคนเปลี่ยนนามสกุล)
   assert.equal(inSalesEditScope(ae, {
-    ownerId: 'other-user',
-    ownerName: 'Sittipong SS',
-    team: 'SA',
-    metadata: { source: 'manual' },
-  }), false);
+    ownerId: 'u-ae-1', ownerName: 'ชื่อเก่าที่ยังไม่ได้อัปเดต', team: 'SA',
+  }), true);
 });
 
 test('sales plan project auth scopes by sales role', () => {
@@ -72,12 +76,12 @@ test('sales plan project auth scopes by sales role', () => {
   assert.equal(salesPlanningEditScope('rd'), 'none');
 });
 
-test('AE sees only own sales plan projects, including PM backfill by owner name', () => {
+test('AE เห็นเฉพาะดีลของตัวเอง — ตัดสินด้วย ownerId ไม่ใช่ชื่อ', () => {
   const ae = { id: 'u-ae-1', role: 'ae', name: 'Sittipong SS', team: 'KA' };
 
   assert.equal(inSalesViewScope(ae, { ownerId: 'u-ae-1', ownerName: 'Someone', team: 'ODM' }), true);
   assert.equal(inSalesViewScope(ae, { ownerId: 'other-user', ownerName: 'Sittipong SS', team: 'KA', metadata: { source: 'manual' } }), false);
-  assert.equal(inSalesViewScope(ae, { ownerId: null, ownerName: 'sittipong ss', team: null, metadata: { source: 'pm-backfill' } }), true);
+  assert.equal(inSalesViewScope(ae, { ownerId: null, ownerName: 'sittipong ss', team: null, metadata: { source: 'pm-backfill' } }), false);
 });
 
 test('canApproveQuotation: only deal owner and superuser may approve (owner sign-off)', () => {

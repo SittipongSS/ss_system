@@ -37,6 +37,8 @@ import {
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import { getCompanyProfileForPrint } from "@/lib/companyProfile";
@@ -82,6 +84,7 @@ export default function SalesOrderDetailPage() {
   const role = useRole();
   const reviewer = ["admin", "ae_supervisor"].includes(role);
   const [order, setOrder] = useState(null);
+  const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
   const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", notes: "" });
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
@@ -510,7 +513,9 @@ export default function SalesOrderDetailPage() {
 
         <ContextGrid>
           <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "สถานะ SO", value: status.label }]} />
-          <ContextCard icon={FolderKanban} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${order.deal?.ownerName || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
+          {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
+              snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
+          <ContextCard icon={FolderKanban} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName) || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
           <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={order.quotation?.quoteNumber || "-"} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
           <ContextCard icon={Building2} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
         </ContextGrid>

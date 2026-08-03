@@ -1,7 +1,7 @@
 // จับคู่ "ชื่อบนช่อง" กลับเป็นบัญชี — ตัวที่ทำให้ projects.aeOwnerId (mig 0190) ตรงคน
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { personFullName, personIdByName } from './personName.js';
+import { personFullName, personIdByName, livePersonName } from './personName.js';
 
 const users = [
   { id: 'u1', name: 'Threerapong Phankam', role: 'ae' },
@@ -32,4 +32,26 @@ test('personFullName: ไม่มีชื่อให้ถอยไปอี�
   assert.equal(personFullName({ name: ' A B ' }), 'A B');
   assert.equal(personFullName({ email: 'x@y.z' }), 'x@y.z');
   assert.equal(personFullName(null), '');
+});
+
+// 🐞 เคสจริงบน prod: เปลี่ยนนามสกุล Roitiean → Sangkaew แล้วสำเนาชื่อในแถวเก่าไม่ขยับ
+test('livePersonName: มี id = ใช้ชื่อปัจจุบัน ไม่ใช่ชื่อที่ค้างในแถว', () => {
+  const dir = [{ id: 'u1', name: 'Supisara Sangkaew' }];
+  assert.equal(livePersonName(dir, 'u1', 'Supisara Roitiean'), 'Supisara Sangkaew');
+  assert.equal(livePersonName(dir, 'u1', 'Supisara S.'), 'Supisara Sangkaew', 'ชื่อย่อที่ค้างก็ต้องถูกแทนที่');
+  assert.equal(livePersonName(dir, 'u1', null), 'Supisara Sangkaew', 'ไม่มีชื่อในแถวก็ยังอ่านออก');
+});
+
+test('livePersonName: รับ Map ได้เท่ากับ array (ฝั่ง server ใช้ loadUserDirectory)', () => {
+  const map = new Map([['u1', { id: 'u1', name: 'Supisara Sangkaew' }]]);
+  assert.equal(livePersonName(map, 'u1', 'Supisara Roitiean'), 'Supisara Sangkaew');
+});
+
+// ⚠️ ถอยไปชื่อที่เก็บไว้ ไม่ใช่คืนค่าว่าง — ไม่งั้นแถวเก่ากลายเป็น "-" ทั้งกระดาน
+test('livePersonName: ไม่มี id / หาบัญชีไม่เจอ = คงชื่อที่เก็บไว้', () => {
+  const dir = [{ id: 'u1', name: 'Supisara Sangkaew' }];
+  assert.equal(livePersonName(dir, null, 'Threerapong P.'), 'Threerapong P.');
+  assert.equal(livePersonName(dir, 'ลบบัญชีไปแล้ว', 'คนเก่า'), 'คนเก่า');
+  assert.equal(livePersonName([], 'u1', '  เว้นวรรค  '), 'เว้นวรรค');
+  assert.equal(livePersonName(null, null, null), '');
 });
