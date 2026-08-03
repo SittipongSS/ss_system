@@ -12,6 +12,7 @@ import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
+import { nextNavTuck } from '@/lib/navTuck';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
@@ -42,6 +43,8 @@ export default function AppLayout({ children }) {
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  // แบบ D (มติผู้ใช้ 2026-08-02): ชั้นเมนูหุบตอนเลื่อนลง คลี่กลับตอนเลื่อนขึ้น
+  const [navTucked, setNavTucked] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -130,6 +133,9 @@ export default function AppLayout({ children }) {
     }
     setSysMenuOpen(false); // navigating closes the system dropdown
     setMobileMoreOpen(false);
+    // เข้าหน้าใหม่ต้องเห็นเมนูเสมอ — ปกติ Next เลื่อนขึ้นบนสุดให้แล้ว แต่บางเส้นทาง
+    // (เปลี่ยนแค่ query / กลับด้วยปุ่ม back) ไม่เลื่อน แล้วเมนูจะค้างหุบอยู่
+    setNavTucked(false);
   }, [pathname]);
 
   // ปิด dropdown สลับระบบเมื่อคลิกนอกเมนู
@@ -153,6 +159,32 @@ export default function AppLayout({ children }) {
       document.removeEventListener('keydown', onKey);
     };
   }, [mobileMoreOpen]);
+
+  // ── แบบ D: หุบชั้นเมนูตอนเลื่อนลง คลี่กลับตอนเลื่อนขึ้น (มติผู้ใช้ 2026-08-02) ──
+  //
+  // ทำไมไม่ยัดเป็นแถวเดียว: วัดแถบบนจริงแล้ว **แถวเดียวขาด 251px ที่ 1280px** ต้องถอด
+  // ไอคอนเมนูทิ้งทั้งชุด (−207px) + ย่อ actions ถึงจะพอ · แบบนี้ได้ 44px คืนตอนอ่าน
+  // โดยไม่เสียไอคอน ไม่เสียชื่อผู้ใช้ ไม่ต้องมีกลไกรับเมนูล้น (docs/nav-topbar-single-row.html)
+  //
+  // กติกา (deadzone / เกณฑ์ระยะ) อยู่ใน lib/navTuck.js เพราะทดสอบในเบราว์เซอร์ไม่ได้ —
+  // rAF ไม่ยิงและ scrollTo เป็น no-op ใน Browser pane ที่ไม่ได้แสดงผล
+  useEffect(() => {
+    let state = { tucked: false, lastY: window.scrollY };
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return; // อ่านตำแหน่งครั้งเดียวต่อเฟรม
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        state = nextNavTuck({ y: window.scrollY, lastY: state.lastY, tucked: state.tucked });
+        setNavTucked(state.tucked);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 
   // (เดิมมี effect เลื่อนแถบล่างหาปุ่ม active — ตัดออกแล้ว: แถบล่างไม่เลื่อนอีกต่อไป
   //  ปุ่มพอดีจอ 4+เพิ่มเติม ตามมติ 2026-07-18)
@@ -361,7 +393,7 @@ export default function AppLayout({ children }) {
   const isSettingsContext = isSettingsPathname(pathname);
 
   return (
-    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}`}>
+    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${navTucked ? ' nav-tucked' : ''}`}>
       {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}

@@ -967,6 +967,25 @@ button, select, input, textarea {
   scrollbar-width: thin;
 }
 .topnav-menu-spacer { flex: 1; }
+
+/* ── แบบ D (มติผู้ใช้ 2026-08-02): ชั้นเมนูหุบตอนเลื่อนลง คลี่กลับตอนเลื่อนขึ้น ──
+   คืนความสูง 44px ให้เนื้อหาตอนอ่าน โดยไม่ต้องยัดทุกอย่างเป็นแถวเดียว
+   (วัดแล้วแถวเดียวขาด 251px ที่ 1280px ต้องถอดไอคอนเมนูทิ้งถึงจะพอ — ดู
+   docs/nav-topbar-single-row.html · แบบ D ไม่ต้องเสียอะไรเลย)
+
+   ⚠️ .topnav เป็น sticky ที่ยังกินที่ในโฟลว์ ⇒ พอชั้นนี้หุบ เนื้อหาจะเลื่อนขึ้นตาม
+   44px ด้วย นั่นคือ **จุดประสงค์** ไม่ใช่บั๊ก (เนื้อหาได้ที่คืนจริง) และเคลื่อนพร้อมกัน
+   ในจังหวะเดียว 220ms จึงอ่านเป็นการเคลื่อนไหวชิ้นเดียว
+
+   ⚠️ จอ ≤768px ไม่ต้องทำอะไร — ชั้นนี้ display:none และ --topnav-menu-h เป็น 0 อยู่แล้ว
+   คลาส .nav-tucked จึงไม่มีผลที่นั่นโดยอัตโนมัติ */
+/* --motion-standard (200ms) ไม่ใช่ --motion-medium — โทเคนกลางระบุเองว่า standard
+   คือ "แผงเปิด-ปิด · เลื่อน" ส่วน medium คือ "ปุ่ม/การ์ดขยับ" การหุบแถวเป็นอย่างแรก */
+.topnav-menu { transition: height var(--motion-standard) ease; }
+.app-container.nav-tucked .topnav-menu { height: 0; }
+/* 🔴 คีย์บอร์ด: แถวที่หุบอยู่ยังโฟกัสได้ (height:0 ไม่ถอดออกจากลำดับ tab) ถ้าไม่คลี่คืน
+   คนกด Tab จะไปโดนลิงก์ที่มองไม่เห็น — :focus-within คลี่ให้เองเมื่อโฟกัสเข้ามา */
+.app-container.nav-tucked .topnav-menu:focus-within { height: var(--topnav-menu-h); }
 /* เมนูระบบ = ภาษาเดียวกับแท็บ (มติผู้ใช้ 2026-07-18 — ตัวเลือก B):
    active = ตัวอักษรสี accent + แถบชี้ 3px ปลายมนชิดเส้นล่าง · hover = state layer จาง
    (เลิกกล่อง pill/เงา/เด้ง — ภาษานั้นสงวนให้ .segmented ที่เป็น "ตัวกรอง") */
@@ -1689,6 +1708,8 @@ h1, h2, h3, h4, h5, h6 {
   .home-hub-footer { align-items: flex-start; flex-direction: column; padding: var(--space-3-5) 0; }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* หุบ/คลี่ชั้นเมนูทันที ไม่ต้องมีจังหวะ — คนที่ตั้งค่านี้ไว้มักไวต่อการเคลื่อนไหว */
+  .topnav-menu { transition: none; }
   .home-system-card { transition: none; }
   .home-system-card:hover { transform: none; }
 }
