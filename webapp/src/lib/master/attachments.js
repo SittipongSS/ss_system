@@ -49,6 +49,10 @@ export const PARENT_TABLE = {
   mgmt_meeting: 'mgmt_meetings',
   costing_item: 'costing_request_items',
   dept_request_item: 'dept_request_items',
+  // 🐞 หัวคำร้อง (2026-08-03) เพิ่มที่แนบไฟล์ครบทุกจุดยกเว้นบรรทัดนี้ → อัปโหลดขึ้น
+  // จริง รายการโชว์จริง แต่ proxy /file ตอบ 403 ทุกใบ (parent = null) = **แนบได้แต่
+  // เปิดดูไม่ได้สักไฟล์** ซึ่งอ่านจากหน้าจอแล้วเหมือนไฟล์เสีย ไม่ใช่เหมือนสิทธิ์
+  dept_request: 'dept_requests',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
