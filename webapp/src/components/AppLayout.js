@@ -45,6 +45,9 @@ export default function AppLayout({ children }) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // แบบ D (มติผู้ใช้ 2026-08-02): ชั้นเมนูหุบตอนเลื่อนลง คลี่กลับตอนเลื่อนขึ้น
   const [navTucked, setNavTucked] = useState(false);
+  // ⚠️ ต้องประกาศ **ก่อน** effect ที่ใช้มันเป็น dependency — dependency array ถูกอ่าน
+  // ตอน render ถ้าประกาศไว้ล่างกว่านั้นจะระเบิด TDZ ทันที (const ไม่ hoist ค่า)
+  const isSettingsContext = isSettingsPathname(pathname);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -168,15 +171,26 @@ export default function AppLayout({ children }) {
   //
   // กติกา (deadzone / เกณฑ์ระยะ) อยู่ใน lib/navTuck.js เพราะทดสอบในเบราว์เซอร์ไม่ได้ —
   // rAF ไม่ยิงและ scrollTo เป็น no-op ใน Browser pane ที่ไม่ได้แสดงผล
+  //
+  // 🐞 กระพริบตอนเลื่อน (ผู้ใช้เจอจริงหลัง merge #922) — สองสาเหตุ แก้ทั้งคู่ที่นี่:
+  //   1. เดิมเรียก setNavTucked **ทุกเฟรม** แม้ค่าไม่เปลี่ยน · React ต้องเรนเดอร์
+  //      คอมโพเนนต์นี้อีกครั้งก่อนจะรู้ว่าค่าเท่าเดิมแล้วค่อย bail out ⇒ AppLayout
+  //      (ซึ่งประกอบ allGroups ~39 รายการใหม่ทุกครั้ง) เรนเดอร์ ~60 ครั้ง/วินาที
+  //      ตอนนี้เทียบก่อนแล้วค่อย set ⇒ เรนเดอร์เฉพาะตอน "เปลี่ยนทิศ" จริง
+  //   2. บริบทตั้งค่า **ไม่มีชั้นเมนูให้หุบเลย** (isSettingsContext ตัดออก) แต่เดิมยัง
+  //      ติดตั้ง listener และปั่น state อยู่ = จ่ายค่ากระพริบฟรี ๆ ⇒ ไม่ติดตั้งเลย
   useEffect(() => {
+    if (isSettingsContext) return; // ไม่มีชั้นเมนูในบริบทนี้ ไม่ต้องเฝ้าการเลื่อน
     let state = { tucked: false, lastY: window.scrollY };
     let frame = 0;
     const onScroll = () => {
       if (frame) return; // อ่านตำแหน่งครั้งเดียวต่อเฟรม
       frame = requestAnimationFrame(() => {
         frame = 0;
-        state = nextNavTuck({ y: window.scrollY, lastY: state.lastY, tucked: state.tucked });
-        setNavTucked(state.tucked);
+        const next = nextNavTuck({ y: window.scrollY, lastY: state.lastY, tucked: state.tucked });
+        const changed = next.tucked !== state.tucked;
+        state = next;
+        if (changed) setNavTucked(next.tucked); // ⚠️ set เฉพาะตอนเปลี่ยน ห้าม set ทุกเฟรม
       });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -184,7 +198,7 @@ export default function AppLayout({ children }) {
       window.removeEventListener('scroll', onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [isSettingsContext]); // เข้า/ออกบริบทตั้งค่า = ติดตั้ง/ถอด listener ตาม
 
   // (เดิมมี effect เลื่อนแถบล่างหาปุ่ม active — ตัดออกแล้ว: แถบล่างไม่เลื่อนอีกต่อไป
   //  ปุ่มพอดีจอ 4+เพิ่มเติม ตามมติ 2026-07-18)
@@ -390,12 +404,13 @@ export default function AppLayout({ children }) {
   const ActiveSystemIcon = activeSystem === 'settings'
     ? SettingsIcon
     : (activeSystemDefinition?.icon || LayoutDashboard);
-  const isSettingsContext = isSettingsPathname(pathname);
 
   return (
-    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${navTucked ? ' nav-tucked' : ''}`}>
+    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}`}>
       {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
-      <header className="topnav">
+      {/* คลาส nav-tucked อยู่ที่นี่ ไม่ใช่ที่ .app-container — สลับคลาสบนกล่องรากทำให้
+          เบราว์เซอร์คิดสไตล์ใหม่ทั้งต้นไม้ใต้มัน = กระพริบตอนเลื่อน (เจอจริงหลัง #922) */}
+      <header className={`topnav${navTucked ? ' nav-tucked' : ''}`}>
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
