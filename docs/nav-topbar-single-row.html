@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แถบบนแถวเดียว — 4 แบบ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ — ห้ามแต่งค่าเอง */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;--panel-float:#fffdf9;--panel-solid:#fefefd;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;--navy-ink:#243b63;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--glass-shadow:0 4px 16px 0 rgba(41,35,27,.07);
+--shadow-sm:0 2px 7px rgba(41,35,27,.06);--shadow-md:0 12px 30px rgba(41,35,27,.10);--shadow-lg:0 22px 60px rgba(31,25,18,.16);
+--radius:8px;--radius-md:10px;--radius-lg:13px;--radius-xl:16px;--radius-full:9999px;
+--ctl-h:36px;--ctl-h-touch:44px;--topbar-h:52px;--topnav-menu-h:44px;
+--space-1:4px;--space-1-5:6px;--space-2:8px;--space-2-5:10px;--space-3:12px;--space-3-5:14px;
+--space-4:16px;--space-4-5:18px;--space-5:20px;--space-6:24px;--space-7:28px;--space-8:32px;--space-9:40px;
+--fs-1:9.5px;--fs-2:10.5px;--fs-3:11px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;--fs-7:13px;
+--fs-8:14px;--fs-9:15px;--fs-10:16px;--fs-11:18px;--fs-12:20px;--fs-13:22px;--fs-14:24px;
+--fw-normal:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;
+--lh-thai:1.45;--lh-text:1.5;--lh-relaxed:1.6;--ls-label:.06em;
+--motion-fast:120ms;--motion-standard:180ms;--motion-medium:220ms;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);--shadow-lg:0 22px 60px rgba(0,0,0,.34);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-8);line-height:var(--lh-text);-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;line-height:var(--lh-thai)}
+.wrap{max-width:1760px;margin:0 auto;padding:var(--space-8) var(--space-5) var(--space-9)}
+.doc-head h1{font-size:var(--fs-14);font-weight:var(--fw-bold)}
+.doc-head p{margin:var(--space-2) 0 0;color:var(--text-2);max-width:80ch}
+
+.toolbar{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
+  margin:var(--space-5) 0 var(--space-6);padding:var(--space-3);border:1px solid var(--border);
+  border-radius:var(--radius-lg);background:var(--panel-float);box-shadow:var(--shadow-sm)}
+.toolbar b{font-size:var(--fs-5);color:var(--text-3);font-weight:var(--fw-semibold);letter-spacing:var(--ls-label);text-transform:uppercase}
+.tbtn{height:var(--ctl-h);padding:0 var(--space-3);border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--panel-solid);color:var(--text-2);font:inherit;font-size:var(--fs-6);cursor:pointer}
+.tbtn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:var(--fw-semibold)}
+.sep{width:1px;height:22px;background:var(--border)}
+
+.variant{margin-bottom:var(--space-6);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel-solid)}
+.vhead{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2-5);padding:var(--space-3) var(--space-4);
+  border-bottom:1px solid var(--border);background:var(--panel-2)}
+.vhead h3{font-size:var(--fs-9);font-weight:var(--fw-semibold)}
+.vhead p{margin:var(--space-1) 0 0;flex-basis:100%;color:var(--text-2);font-size:var(--fs-6)}
+.tag{padding:2px var(--space-2);border-radius:var(--radius-full);font-size:var(--fs-2);font-weight:var(--fw-bold);letter-spacing:var(--ls-label)}
+.tag.ok{background:var(--green-soft);color:var(--green)}
+.tag.warn{background:var(--amber-soft);color:var(--amber)}
+.tag.no{background:var(--red-soft);color:var(--red)}
+.tag.info{background:var(--blue-soft);color:var(--blue)}
+.stage{padding:var(--space-5);background:var(--bg);overflow-x:auto}
+.frame{width:var(--vw,1280px);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--glass-shadow)}
+
+/* ── ชิ้นส่วนแถบบน (คัดจาก globals.css ทุกค่า) ── */
+.sysbar{display:flex;align-items:center;gap:var(--space-3-5);height:var(--topbar-h);
+  padding:0 clamp(var(--space-3-5),2.2vw,var(--space-8));color:#fff;
+  background:radial-gradient(circle at 28% -80%,color-mix(in srgb,var(--accent) 42%,transparent),transparent 48%),
+             linear-gradient(110deg,color-mix(in srgb,var(--navy) 94%,#000),var(--navy))}
+.brand{display:flex;align-items:center;gap:var(--space-2-5);flex-shrink:0;padding-right:var(--space-3-5);
+  border-right:1px solid rgba(255,255,255,.16);font-weight:var(--fw-bold);font-size:var(--fs-10);white-space:nowrap}
+.brand .mk{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);font-size:var(--fs-8)}
+.brand.markonly{padding-right:var(--space-3-5)}
+.brand.markonly .wordmark{display:none}
+.pill{display:inline-flex;align-items:center;gap:var(--space-1-5);height:36px;padding:0 13px;border:0;
+  border-radius:var(--radius-md);background:rgba(255,255,255,.10);color:#fff;font:inherit;font-size:var(--fs-7);
+  font-weight:var(--fw-semibold);white-space:nowrap;cursor:pointer;flex-shrink:0}
+.acts{display:flex;align-items:center;gap:var(--space-2);margin-left:auto;flex-shrink:0}
+.ga{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 11px;border:1px solid transparent;
+  border-radius:var(--radius-md);background:rgba(255,255,255,.08);color:rgba(255,255,255,.88);
+  font-size:var(--fs-7);font-weight:var(--fw-semibold);white-space:nowrap}
+.acct{display:inline-flex;align-items:center;gap:var(--space-2);padding:0 var(--space-2) 0 var(--space-1);
+  min-height:36px;border-radius:var(--radius-md);background:rgba(255,255,255,.06)}
+.av{display:grid;place-items:center;width:30px;height:30px;border-radius:var(--radius-full);
+  background:rgba(255,255,255,.16);color:#fff;font-size:var(--fs-4);font-weight:var(--fw-semibold);flex-shrink:0}
+.ident{display:flex;flex-direction:column;line-height:1.15;white-space:nowrap}
+.ident .nm{font-size:var(--fs-6);font-weight:var(--fw-semibold);color:#fff}
+.ident .rl{font-size:var(--fs-2);color:rgba(255,255,255,.7)}
+.compact .ident{display:none}
+.compact .ga .lb{display:none}
+.compact .acct{padding:0;background:none}
+
+/* ชั้นเมนูแบบเดิม (อ้างอิง) */
+.menurow{display:flex;align-items:stretch;gap:var(--space-1-5);height:var(--topnav-menu-h);
+  padding:0 clamp(var(--space-2-5),2vw,var(--space-7));background:color-mix(in srgb,var(--navy) 7%,var(--panel));
+  overflow-x:auto;scrollbar-width:thin}
+.mi{display:inline-flex;align-items:center;gap:7px;padding:0 var(--space-3);color:var(--text-2);
+  font-size:var(--fs-7);font-weight:var(--fw-medium);white-space:nowrap;position:relative;flex-shrink:0;
+  border-radius:var(--radius) var(--radius) 0 0;cursor:pointer}
+.mi.active{color:var(--accent-ink);font-weight:var(--fw-semibold)}
+.mi.active::after{content:'';position:absolute;left:10px;right:10px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--accent)}
+.mi svg{width:16px;height:16px;flex-shrink:0}
+.spacer{flex:1}
+
+/* เมนูที่ย้ายขึ้นไปอยู่บนพื้นกรมท่า (แถวเดียว) */
+.inrow{display:flex;align-items:center;gap:var(--space-1-5);flex:1 1 auto;min-width:0;height:100%;overflow-x:auto;scrollbar-width:none}
+.inrow::-webkit-scrollbar{display:none}
+.inrow .mi{color:rgba(255,255,255,.78);height:100%}
+.inrow .mi:hover{color:#fff}
+.inrow .mi.active{color:#fff;font-weight:var(--fw-semibold)}
+.inrow .mi.active::after{background:var(--accent);bottom:6px}
+.noicon .mi svg{display:none}
+.noicon .mi{gap:0}
+
+/* ปุ่มอื่น ๆ */
+.more{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 var(--space-2-5);border:0;flex-shrink:0;
+  border-radius:var(--radius-md);background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:var(--fs-6);
+  font-weight:var(--fw-semibold);white-space:nowrap;cursor:pointer}
+.hidden{display:none!important}
+
+/* เนื้อหาปลอม + แบบ D */
+.body{height:230px;overflow-y:auto;padding:var(--space-4);background:var(--bg)}
+.card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel-solid);padding:var(--space-3-5);margin-bottom:var(--space-2-5)}
+.card b{display:block;font-size:var(--fs-8);margin-bottom:var(--space-2)}
+.ln{height:9px;border-radius:var(--radius-full);background:var(--panel-3);margin-bottom:var(--space-2)}
+.ln:last-child{width:58%;margin-bottom:0}
+.dwrap .menurow{transition:height var(--motion-medium) ease,opacity var(--motion-medium) ease;overflow:hidden}
+.dwrap.tucked .menurow{height:0;opacity:0}
+
+.metrics{margin:var(--space-3) 0 0;padding:var(--space-3);border:1px dashed var(--border-strong);border-radius:var(--radius);
+  background:var(--panel-2);font-size:var(--fs-5);color:var(--text-2);line-height:var(--lh-relaxed);white-space:pre-wrap}
+.calib{margin:var(--space-4) 0 var(--space-6);padding:var(--space-3-5) var(--space-4);border-left:3px solid var(--green);
+  border-radius:0 var(--radius) var(--radius) 0;background:var(--green-soft);color:var(--green);font-size:var(--fs-6);line-height:var(--lh-relaxed)}
+.calib.bad{border-left-color:var(--red);background:var(--red-soft);color:var(--red)}
+.warnbox{margin:var(--space-3) 0 0;padding:var(--space-3);border-left:3px solid var(--amber);
+  border-radius:0 var(--radius) var(--radius) 0;background:var(--amber-soft);color:var(--amber);font-size:var(--fs-6);line-height:var(--lh-relaxed)}
+table.cmp{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel-solid)}
+table.cmp th,table.cmp td{padding:var(--space-3);text-align:left;border-bottom:1px solid var(--border);font-size:var(--fs-6);vertical-align:top;line-height:var(--lh-relaxed)}
+table.cmp th{background:var(--panel-2);font-weight:var(--fw-semibold);font-size:var(--fs-5);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+table.cmp tr:last-child td{border-bottom:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="doc-head">
+  <h1>แถบบนแถวเดียว — 4 แบบ</h1>
+  <p>ทุกค่าสี/ระยะ/ตัวอักษรยกจาก <code>globals.css</code> ตรง ๆ · ชิปเมนูใช้ CSS ชุดเดียวกับ <code>.topnav-item</code> ของจริง
+  (<code>--fs-7</code> · padding <code>--space-3</code> · gap 7px · ไอคอน 16px) <b>เพื่อให้ความกว้างตรงกับแอปจริง</b></p>
+</div>
+
+<div id="calib" class="calib">กำลังสอบเทียบ…</div>
+
+<div class="toolbar">
+  <b>ความกว้างจอ</b>
+  <button class="tbtn" data-vw="1024">1024</button>
+  <button class="tbtn" data-vw="1152">1152</button>
+  <button class="tbtn" data-vw="1280">1280</button>
+  <button class="tbtn on" data-vw="1440">1440</button>
+  <button class="tbtn" data-vw="1680">1680</button>
+  <span class="sep"></span>
+  <b>ระบบ</b>
+  <button class="tbtn on" data-sys="salesplan">ขาย (9)</button>
+  <button class="tbtn" data-sys="master">ฐานข้อมูล (7)</button>
+  <button class="tbtn" data-sys="sahamit">สหมิตร (5)</button>
+  <button class="tbtn" data-sys="tax">ภาษี (4)</button>
+  <span class="sep"></span>
+  <button class="tbtn" id="theme">🌙 ธีม</button>
+</div>
+
+<!-- ของเดิม -->
+<div class="variant">
+  <div class="vhead"><span class="tag info">ของเดิม</span><h3>สองชั้น — สูงรวม 97px</h3>
+    <p>ชั้นระบบ 52px + ชั้นเมนู 44px + เส้น 1px · เมนูล้นแล้วเลื่อนแนวนอนเงียบ ๆ ไม่มีสัญญาณบอก</p></div>
+  <div class="stage"><div class="frame">
+    <div class="sysbar">
+      <div class="brand"><span class="mk">S</span><span class="wordmark">Scent &amp; Sense</span></div>
+      <button class="pill">◈ <span class="sysname">บริหารงานขาย</span> ▾</button>
+      <div class="acts">
+        <span class="ga" title="แจ้งเตือน">🔔</span>
+        <span class="ga">⚙ <span class="lb">ตั้งค่า</span></span>
+        <span class="acct"><span class="av">สศ</span><span class="ident"><span class="nm">สิทธิพงษ์ ส.</span><span class="rl">หัวหน้าฝ่ายขาย · New ODM</span></span></span>
+      </div>
+    </div>
+    <nav class="menurow" data-menu="cur"></nav>
+  </div>
+  <div class="metrics" id="m-cur">—</div></div>
+</div>
+
+<!-- แบบ A -->
+<div class="variant">
+  <div class="vhead"><span class="tag warn">แบบ A</span><h3>แถวเดียว + เมนูเลื่อนแนวนอน — เปลี่ยนน้อยสุด</h3>
+    <p>เก็บชิปเดิมครบรวมไอคอน ให้แถบเมนูเลื่อนข้างได้ (พฤติกรรมเดียวกับวันนี้ แค่ย้ายมาแถวเดียว) · <b>ได้ความสูงคืน 44px ทันที</b></p></div>
+  <div class="stage"><div class="frame">
+    <div class="sysbar">
+      <div class="brand"><span class="mk">S</span><span class="wordmark">Scent &amp; Sense</span></div>
+      <button class="pill">◈ <span class="sysname">บริหารงานขาย</span> ▾</button>
+      <nav class="inrow" data-menu="a"></nav>
+      <div class="acts">
+        <span class="ga">🔔</span><span class="ga">⚙ <span class="lb">ตั้งค่า</span></span>
+        <span class="acct"><span class="av">สศ</span><span class="ident"><span class="nm">สิทธิพงษ์ ส.</span><span class="rl">หัวหน้าฝ่ายขาย · New ODM</span></span></span>
+      </div>
+    </div>
+  </div>
+  <div class="metrics" id="m-a">—</div></div>
+</div>
+
+<!-- แบบ B -->
+<div class="variant">
+  <div class="vhead"><span class="tag ok">แบบ B</span><h3>แถวเดียว + ถอดไอคอนเมนู + ย่อ actions</h3>
+    <p>ชิปเมนูเหลือตัวอักษรล้วน (−207px) · บัญชีเหลืออวตาร (−75.5px) · ตั้งค่าเหลือไอคอน (−37.9px)</p></div>
+  <div class="stage"><div class="frame">
+    <div class="sysbar compact">
+      <div class="brand"><span class="mk">S</span><span class="wordmark">Scent &amp; Sense</span></div>
+      <button class="pill">◈ <span class="sysname">บริหารงานขาย</span> ▾</button>
+      <nav class="inrow noicon" data-menu="b"></nav>
+      <div class="acts">
+        <span class="ga">🔔</span><span class="ga">⚙ <span class="lb">ตั้งค่า</span></span>
+        <span class="acct"><span class="av">สศ</span><span class="ident"><span class="nm">สิทธิพงษ์ ส.</span><span class="rl">หัวหน้าฝ่ายขาย</span></span></span>
+      </div>
+    </div>
+  </div>
+  <div class="metrics" id="m-b">—</div></div>
+</div>
+
+<!-- แบบ C -->
+<div class="variant">
+  <div class="vhead"><span class="tag ok">แบบ C</span><h3>แถวเดียว + ยุบเมนูล้นเป็น “อื่น ๆ” อัตโนมัติ</h3>
+    <p>วัดความกว้างจริงแล้วดันชิปที่เกินเข้าปุ่ม <b>อื่น ๆ</b> — ของที่ซ่อนมีป้ายบอกว่ามีอยู่ ต่างจากแบบ A ที่เลื่อนแล้วหายเงียบ</p></div>
+  <div class="stage"><div class="frame">
+    <div class="sysbar compact">
+      <div class="brand"><span class="mk">S</span><span class="wordmark">Scent &amp; Sense</span></div>
+      <button class="pill">◈ <span class="sysname">บริหารงานขาย</span> ▾</button>
+      <nav class="inrow noicon" data-menu="c" style="overflow:hidden"></nav>
+      <button class="more hidden" id="moreC">อื่น ๆ <span id="moreCount"></span> ▾</button>
+      <div class="acts">
+        <span class="ga">🔔</span><span class="ga">⚙ <span class="lb">ตั้งค่า</span></span>
+        <span class="acct"><span class="av">สศ</span><span class="ident"><span class="nm">สิทธิพงษ์ ส.</span><span class="rl">หัวหน้าฝ่ายขาย</span></span></span>
+      </div>
+    </div>
+  </div>
+  <div class="metrics" id="m-c">—</div></div>
+</div>
+
+<!-- แบบ D -->
+<div class="variant">
+  <div class="vhead"><span class="tag info">แบบ D</span><h3>คงสองชั้น แต่ซ่อนชั้นเมนูตอนเลื่อนลง <span class="tag warn">นอกโจทย์</span></h3>
+    <p><b>เลื่อนในกล่องเนื้อหาข้างล่างดู</b> — เลื่อนลง ชั้นเมนูหุบ · เลื่อนขึ้น กลับมา · ได้ 44px คืนตอนอ่าน โดยไม่เสียไอคอน ไม่เสียชื่อผู้ใช้ ไม่ต้องมีเมนูล้น</p></div>
+  <div class="stage"><div class="frame dwrap" id="dwrap">
+    <div class="sysbar">
+      <div class="brand"><span class="mk">S</span><span class="wordmark">Scent &amp; Sense</span></div>
+      <button class="pill">◈ <span class="sysname">บริหารงานขาย</span> ▾</button>
+      <div class="acts">
+        <span class="ga">🔔</span><span class="ga">⚙ <span class="lb">ตั้งค่า</span></span>
+        <span class="acct"><span class="av">สศ</span><span class="ident"><span class="nm">สิทธิพงษ์ ส.</span><span class="rl">หัวหน้าฝ่ายขาย · New ODM</span></span></span>
+      </div>
+    </div>
+    <nav class="menurow" data-menu="d"></nav>
+    <div class="body" id="dbody">
+      <div class="card"><b>เลื่อนลงเพื่อดูชั้นเมนูหุบ</b><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+      <div class="card"><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+      <div class="card"><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+      <div class="card"><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+      <div class="card"><b>เลื่อนขึ้นเพื่อเรียกกลับ</b><div class="ln"></div><div class="ln"></div></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="warnbox" id="contrast">กำลังวัดคอนทราสต์…</div>
+
+<div style="margin-top:var(--space-7)">
+  <table class="cmp">
+    <thead><tr><th>ประเด็น</th><th>A เลื่อน</th><th>B ถอดไอคอน</th><th>C อื่น ๆ</th><th>D หุบตอนเลื่อน</th></tr></thead>
+    <tbody>
+      <tr><td><b>ความสูงที่คืนมา</b></td><td>44px</td><td>44px</td><td>44px</td><td>44px (เฉพาะตอนอ่าน)</td></tr>
+      <tr><td><b>เมนูครบบนจอ 1440</b></td><td><span class="tag no">ไม่ครบ</span> ต้องเลื่อน</td><td><span class="tag ok">ครบ</span></td><td><span class="tag ok">ครบ</span></td><td><span class="tag ok">ครบ</span></td></tr>
+      <tr><td><b>ของที่ซ่อนมีป้ายบอก</b></td><td><span class="tag no">ไม่มี</span></td><td>—</td><td><span class="tag ok">มี</span></td><td>—</td></tr>
+      <tr><td><b>เสียอะไร</b></td><td>เมนูขวาสุดถูกลืม</td><td>ไอคอนเมนู + ชื่อผู้ใช้</td><td>ไอคอนเมนู + ชื่อผู้ใช้</td><td><span class="tag ok">ไม่เสียอะไร</span></td></tr>
+      <tr><td><b>ความยาก</b></td><td>CSS ล้วน</td><td>CSS ล้วน</td><td>ต้องมี ResizeObserver</td><td>ต้องดักการเลื่อน</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</div>
+
+<script>
+const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="4"/></svg>';
+const SYS = {
+  salesplan:{label:'บริหารงานขาย',items:['แดชบอร์ด','ลีด','ดีล','โครงการ','ใบเสนอราคา','Sale Order','ขอราคาผลิต','คำร้อง','งานของฉัน'],active:2},
+  master:{label:'ฐานข้อมูล',items:['ภาพรวม','ข้อมูลลูกค้า','ข้อมูลสินค้า','ทะเบียนกลิ่น','ทะเบียนสูตร','ทะเบียนวัสดุ','หมวดสินค้า'],active:1},
+  sahamit:{label:'งานสหมิตร',items:['ภาพรวม','Forecast','Purchase Orders','กระทบยอด','ของเข้า (สหมิตร)'],active:2},
+  tax:{label:'ภาษีสรรพสามิต',items:['ภาพรวม','การขึ้นทะเบียน','การยื่นชำระภาษี','รายงาน'],active:2},
+};
+let cur='salesplan';
+
+function chip(name, active){
+  const a=document.createElement('a');
+  a.className='mi'+(active?' active':''); a.href='#';
+  a.innerHTML=ICON+'<span>'+name+'</span>';
+  a.onclick=e=>e.preventDefault();
+  return a;
+}
+function render(){
+  const s=SYS[cur];
+  document.querySelectorAll('.sysname').forEach(e=>e.textContent=s.label);
+  for(const nav of document.querySelectorAll('[data-menu]')){
+    nav.innerHTML='';
+    s.items.forEach((n,i)=>nav.appendChild(chip(n,i===s.active)));
+    if(nav.dataset.menu==='cur'){
+      const sp=document.createElement('span'); sp.className='spacer'; nav.appendChild(sp);
+      nav.appendChild(chip('วางเป้า',false));
+    }
+  }
+  layoutC(); measure();
+}
+
+/* แบบ C — ดันชิปที่เกินเข้าปุ่ม "อื่น ๆ" (priority+) */
+function layoutC(){
+  const nav=document.querySelector('[data-menu="c"]');
+  const btn=document.getElementById('moreC');
+  const chips=[...nav.children];
+  chips.forEach(c=>c.classList.remove('hidden'));
+  btn.classList.add('hidden');
+  const avail=nav.getBoundingClientRect().width;
+  let used=0, hidden=0;
+  const gap=6, reserve=86; // เผื่อที่ให้ปุ่มอื่น ๆ
+  for(const c of chips){
+    const w=c.getBoundingClientRect().width;
+    if(used+w<=avail-(hidden?0:0)) { used+=w+gap; }
+    else { c.classList.add('hidden'); hidden++; }
+  }
+  if(hidden){
+    // ถอยอีกหนึ่งชิปเพื่อให้ปุ่ม "อื่น ๆ" มีที่ยืน
+    const shown=chips.filter(c=>!c.classList.contains('hidden'));
+    let need=reserve, i=shown.length-1;
+    while(need>0 && i>=0){ need-=shown[i].getBoundingClientRect().width+gap; shown[i].classList.add('hidden'); hidden++; i--; }
+    btn.classList.remove('hidden');
+    document.getElementById('moreCount').textContent='('+hidden+')';
+  }
+}
+
+function widthOf(el){ return +el.getBoundingClientRect().width.toFixed(1); }
+function sumChips(nav){ return +[...nav.querySelectorAll('.mi')].reduce((a,c)=>a+widthOf(c),0).toFixed(1); }
+
+function measure(){
+  const s=SYS[cur];
+  // ของเดิม
+  const curNav=document.querySelector('[data-menu="cur"]');
+  const curChips=[...curNav.querySelectorAll('.mi')].filter(c=>c.textContent.trim()!=='วางเป้า');
+  const curSum=+curChips.reduce((a,c)=>a+widthOf(c),0).toFixed(1);
+  document.getElementById('m-cur').textContent =
+    'ชิป '+curChips.length+' ตัว รวม '+curSum+'px (+ วางเป้า '+widthOf([...curNav.querySelectorAll('.mi')].slice(-1)[0])+'px) · สูงรวม header '+
+    Math.round(curNav.closest('.frame').querySelector('.sysbar').getBoundingClientRect().height+curNav.getBoundingClientRect().height)+'px';
+
+  for(const [key,id] of [['a','m-a'],['b','m-b'],['c','m-c']]){
+    const nav=document.querySelector('[data-menu="'+key+'"]');
+    const bar=nav.closest('.sysbar');
+    const avail=widthOf(nav);
+    const need=sumChips(nav)+6*(s.items.length-1);
+    const fits=nav.scrollWidth<=Math.ceil(nav.clientWidth)+1;
+    const hidden=[...nav.children].filter(c=>c.classList.contains('hidden')).length;
+    let txt='พื้นที่เมนูที่เหลือ '+avail+'px · ชิปต้องการ '+need.toFixed(1)+'px · ';
+    if(key==='c') txt += (hidden? '⚠ ยุบเข้า “อื่น ๆ” '+hidden+' ตัว' : '✓ ครบทุกตัว');
+    else txt += (fits? '✓ พอดี ไม่ต้องเลื่อน' : '⚠ ล้น '+(need-avail).toFixed(1)+'px → ต้องเลื่อน');
+    txt += ' · สูง header '+Math.round(bar.getBoundingClientRect().height)+'px';
+    document.getElementById(id).textContent=txt;
+  }
+  calibrate(); contrast();
+}
+
+/* สอบเทียบกับตัวเลขที่วัดจากแอปจริง — ถ้าไม่ตรง ตัวอย่างนี้เชื่อไม่ได้ */
+function calibrate(){
+  const box=document.getElementById('calib');
+  if(cur!=='salesplan'){ box.textContent='สอบเทียบทำเฉพาะระบบขาย (9 เมนู) — สลับกลับไปที่ “ขาย (9)” เพื่อดูผล'; box.className='calib'; return; }
+  const nav=document.querySelector('[data-menu="cur"]');
+  const chips=[...nav.querySelectorAll('.mi')].filter(c=>c.textContent.trim()!=='วางเป้า');
+  const sum=chips.reduce((a,c)=>a+c.getBoundingClientRect().width,0);
+  const REAL=854.2, diff=Math.abs(sum-REAL), pct=diff/REAL*100;
+  const ok=pct<=2;
+  box.className='calib'+(ok?'':' bad');
+  box.textContent=(ok?'✓ ':'✗ ')+'สอบเทียบกับแอปจริง: ชิปเมนู 9 ตัวในตัวอย่างนี้กว้างรวม '+sum.toFixed(1)+
+    'px · วัดจากแอปจริงได้ 854.2px · ต่างกัน '+diff.toFixed(1)+'px ('+pct.toFixed(1)+'%) '+
+    (ok?'— ตัวเลขในหน้านี้ใช้อ้างอิงได้':'— ⚠ ตัวอย่างเพี้ยนจากของจริง อย่าเชื่อตัวเลขข้างล่าง');
+}
+
+/* คอนทราสต์ของขีด active บนพื้นกรมท่า — เมนูย้ายขึ้นไปอยู่บนพื้นเข้ม ต้องเช็ค */
+function contrast(){
+  const el=document.getElementById('contrast');
+  const cs=getComputedStyle(document.documentElement);
+  const toRgb=c=>{const d=document.createElement('div');d.style.color=c;document.body.appendChild(d);
+    const v=getComputedStyle(d).color.match(/[\d.]+/g).map(Number);d.remove();return v.slice(0,3)};
+  const lin=v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)};
+  const L=([r,g,b])=>0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+  const ratio=(a,b)=>{const [x,y]=[L(a),L(b)].sort((m,n)=>n-m);return (x+0.05)/(y+0.05)};
+  const navy=toRgb(cs.getPropertyValue('--navy').trim());
+  const accent=toRgb(cs.getPropertyValue('--accent').trim());
+  const white=[255,255,255];
+  const rA=ratio(accent,navy), rW=ratio(white,navy);
+  el.innerHTML='<b>คอนทราสต์บนพื้นกรมท่า (เมนูย้ายขึ้นมาอยู่บนแถบสีเข้ม):</b><br>'+
+   '• ขีด/ตัวอักษรสี <code>--accent</code> บน <code>--navy</code> = <b>'+rA.toFixed(2)+':1</b> '+
+   (rA>=3?'✓ ผ่านเกณฑ์ 3:1 ของกราฟิก':'✗ <b>ตกเกณฑ์ 3:1</b>')+
+   (rA>=4.5?' · ผ่าน AA สำหรับตัวอักษร':' · <b>ตก AA สำหรับตัวอักษร (4.5:1)</b>')+'<br>'+
+   '• ตัวอักษรขาวบน <code>--navy</code> = <b>'+rW.toFixed(2)+':1</b> ✓<br>'+
+   '⇒ <b>active ต้องเป็นอักษร “ขาว” + ขีด accent ไม่ใช่อักษรสี accent</b> (ตัวอย่างข้างบนทำแบบนี้แล้ว) '+
+   'และถ้าขีดยังตกเกณฑ์ ต้องใช้ขีดขาวหรือรองพื้นจางแทน';
+}
+
+document.querySelectorAll('[data-vw]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('[data-vw]').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('.frame').forEach(f=>f.style.setProperty('--vw',b.dataset.vw+'px'));
+  requestAnimationFrame(()=>{layoutC();measure()});
+});
+document.querySelectorAll('[data-sys]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('[data-sys]').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  cur=b.dataset.sys; render();
+});
+document.getElementById('theme').onclick=()=>{
+  const d=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',d?'light':'dark');
+  measure();
+};
+// แบบ D — หุบชั้นเมนูตอนเลื่อนลง
+(function(){
+  const body=document.getElementById('dbody'), wrap=document.getElementById('dwrap');
+  let last=0;
+  body.addEventListener('scroll',()=>{
+    const y=body.scrollTop;
+    if(y>last+4 && y>16) wrap.classList.add('tucked');
+    else if(y<last-4) wrap.classList.remove('tucked');
+    last=y;
+  });
+})();
+document.querySelectorAll('.frame').forEach(f=>f.style.setProperty('--vw','1440px'));
+render();
+document.fonts.ready.then(()=>{layoutC();measure()});
+window.__m=()=>{const o={};document.querySelectorAll('.metrics,.calib').forEach(e=>o[e.id||e.className]=e.textContent.trim());return o};
+</script>
+</body>
+</html>
