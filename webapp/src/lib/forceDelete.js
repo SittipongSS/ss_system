@@ -298,6 +298,57 @@ export async function scentForcePreview(supabase, scent) {
   return { cascade, notes, blocked: false };
 }
 
+// ── ทะเบียนวัสดุ (mig 0143/0157) ───────────────────────────────────────
+//
+// ต่างจากทะเบียนกลิ่น/สูตรตรงที่ **มี FK สองตัวเป็น RESTRICT** ซึ่ง break-glass
+// ข้ามไม่ได้ (เหมือนใบยื่นภาษีของ QT/SO):
+//   material_price_revisions.materialId   → CASCADE     (0143) ประวัติราคาหายตาม
+//   dept_request_items.materialId         → **RESTRICT** (0158) บล็อกการลบ
+//   costing_item_components.materialId    → **RESTRICT** (0159) บล็อกการลบ
+//   material_deliveries.materialId        → SET NULL    (0176) ของเข้ายังอยู่
+//
+// ⚠️ **ไม่ลบบรรทัดของใบขอราคาผลิต/คำร้องให้อัตโนมัติ** — สองอย่างนั้นเป็นเอกสารของ
+// คนอื่น (ใบขอราคาผลิตคือกระดาษทำงานที่เซลกำลังคิดราคาอยู่ · บรรทัดคำร้องคือประวัติว่า
+// เคยถามอะไรไป) การลากลบตามวัสดุคือผลข้างเคียงที่เงียบเกินไป · เจตนาเดียวกับ
+// `exciseFilingBlockMessage`: บอกตั้งแต่พรีวิวว่าทำไม่ได้ แล้วชี้ทางไปจัดการต้นทางก่อน
+export async function materialForcePreview(supabase, material) {
+  const [revisions, requestItems, costingLines, deliveries] = await Promise.all([
+    countBy(supabase, 'material_price_revisions', 'materialId', material.id),
+    countBy(supabase, 'dept_request_items', 'materialId', material.id),
+    countBy(supabase, 'costing_item_components', 'materialId', material.id),
+    countBy(supabase, 'material_deliveries', 'materialId', material.id),
+  ]);
+
+  // RESTRICT = ลบไม่ผ่านแม้ใช้สิทธิ์ผู้ดูแลระบบ → หยุดที่พรีวิว ไม่เสนอ confirm ที่ยังไงก็ล้ม
+  if (requestItems || costingLines) {
+    const where = [
+      requestItems && `บรรทัดในคำร้องขอราคา ${requestItems} รายการ`,
+      costingLines && `บรรทัดในใบขอราคาผลิต ${costingLines} รายการ`,
+    ].filter(Boolean).join(' · ');
+    return {
+      cascade: [],
+      notes: [`ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: ยังมี${where} อ้างวัสดุนี้อยู่`
+        + ' — ระบบจะไม่ลบเอกสารของคนอื่นตามให้อัตโนมัติ'
+        + ' กรุณาใช้ "เก็บเข้ากรุ" แทน (วัสดุหายจากตัวเลือกใหม่ แต่เอกสารเก่ายังอ่านได้)'],
+      blocked: true,
+    };
+  }
+
+  const cascade = [
+    line('ประวัติรุ่นราคาของวัสดุนี้ (ลบพ่วง กู้ไม่ได้)', revisions),
+    line('รายการของเข้าที่อ้างวัสดุนี้ (ปลดการเชื่อมโยง ของเข้ายังอยู่)', deliveries),
+  ].filter((r) => r.count > 0);
+
+  const notes = [];
+  if (revisions > 0) {
+    notes.push('ประวัติราคาคือหลักฐานว่าเคยเสนอลูกค้าเท่าไร — ปกติควรใช้ “เก็บเข้ากรุ” แทนการลบ');
+  }
+  if (material.status === 'active') {
+    notes.push('วัสดุนี้ยังใช้งานอยู่ (active) ไม่ใช่ร่างที่เสนอมาแล้วไม่ได้ใช้');
+  }
+  return { cascade, notes, blocked: false };
+}
+
 // ── คำร้องข้ามฝ่าย (mig 0173) ─────────────────────────────────────────
 // เส้นทาง force มีมาตั้งแต่ #779 แต่ **ไม่มีพรีวิวและไม่มีปุ่มบนหน้าจอ** — ผู้ดูแล
 // ระบบต้องยิง URL เอง · และของที่จะโดนลบพ่วงมีจริงหลายอย่างที่ไม่มี FK:

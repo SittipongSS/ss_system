@@ -4,7 +4,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder,
-  scentForcePreview, formulaForcePreview, requestForcePreview,
+  scentForcePreview, formulaForcePreview, requestForcePreview, materialForcePreview,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -240,6 +240,45 @@ test('formulaForcePreview: เตือนว่าสินค้าจะก�
   const { cascade, notes } = await formulaForcePreview(supabase, { id: 'FML-1', status: 'active' });
   assert.deepEqual(cascade.map((c) => c.count), [2, 1]);
   assert.ok(notes.some((n) => n.includes('รอจัดระเบียบ')));
+});
+
+test('materialForcePreview: บรรทัดคำร้อง/ใบขอราคาผลิตเป็น RESTRICT → blocked ตั้งแต่พรีวิว', async () => {
+  // 🔴 FK สองตัวนี้เป็น ON DELETE RESTRICT (0158/0159) — break-glass ข้ามไม่ได้
+  // ถ้าพรีวิวไม่บอก ผู้ดูแลระบบจะกดยืนยันแล้วไปเจอ error ดิบจาก Postgres
+  // (โรคเดียวกับใบยื่นภาษีของ QT/SO ที่ exciseFilingBlockMessage แก้ไปแล้ว)
+  const byRequest = await materialForcePreview(
+    stubCount({ 'dept_request_items:materialId': 3, 'material_price_revisions:materialId': 5 }),
+    { id: 'MAT-1', status: 'active' },
+  );
+  assert.equal(byRequest.blocked, true);
+  assert.deepEqual(byRequest.cascade, [], 'blocked แล้วต้องไม่โชว์รายการลบพ่วงให้เข้าใจผิด');
+  assert.match(byRequest.notes[0], /บรรทัดในคำร้องขอราคา 3 รายการ/);
+  assert.match(byRequest.notes[0], /เก็บเข้ากรุ/, 'ต้องชี้ทางออก ไม่ใช่บอกแค่ว่าทำไม่ได้');
+
+  const byCosting = await materialForcePreview(
+    stubCount({ 'costing_item_components:materialId': 2 }),
+    { id: 'MAT-2', status: 'active' },
+  );
+  assert.equal(byCosting.blocked, true);
+  assert.match(byCosting.notes[0], /บรรทัดในใบขอราคาผลิต 2 รายการ/);
+});
+
+test('materialForcePreview: ไม่มีใครอ้าง → ลบได้ ประวัติราคาหายพ่วง ของเข้าปลดการเชื่อมโยง', async () => {
+  const { cascade, notes, blocked } = await materialForcePreview(
+    stubCount({
+      'material_price_revisions:materialId': 4,
+      'material_deliveries:materialId': 2,
+    }),
+    { id: 'MAT-3', status: 'active' },
+  );
+  assert.equal(blocked, false);
+  const labels = cascade.map((c) => c.label).join(' | ');
+  assert.match(labels, /ประวัติรุ่นราคา.*ลบพ่วง/);
+  // ⭐ ของเข้าเป็น SET NULL ไม่ใช่ CASCADE — ป้ายต้องบอกว่า "ปลดการเชื่อมโยง" ไม่ใช่ "ลบ"
+  // (บทเรียนเดิมจากทะเบียนกลิ่น: เขียนรวมว่า "จะลบ" ผู้ดูแลจะนึกว่าของเข้าหายด้วย)
+  assert.match(labels, /ของเข้า.*ปลดการเชื่อมโยง/);
+  assert.ok(notes.some((n) => /เก็บเข้ากรุ/.test(n)), 'มีประวัติราคาต้องเตือนให้ใช้เก็บเข้ากรุ');
+  assert.ok(notes.some((n) => /active/.test(n)), 'วัสดุที่ยังใช้งานอยู่ต้องเตือน');
 });
 
 test('requestForcePreview: บอกของที่ลบพ่วง และย้ำว่าราคาที่ตอบแล้วไม่หาย', async () => {
