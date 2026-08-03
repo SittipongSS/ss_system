@@ -1001,8 +1001,12 @@ button, select, input, textarea {
   background: var(--accent);
 }
 .topnav-item.active svg { color: var(--accent-ink); }
-/* เมนูอรรถประโยชน์ (วางเป้า/ตั้งค่า) — ภาษาเดียวกัน แค่โทนจางกว่าเมนูงานหลัก */
-.topnav-utility-item { color: var(--text-3); }
+/* เมนูอรรถประโยชน์ (วางเป้า/ตั้งค่า) — ภาษาเดียวกัน แค่ "เบา" กว่าเมนูงานหลัก
+   🔴 เดิมทำให้เบาด้วย --text-3 ซึ่งวัดบนพื้นแถวเมนูจริงได้ **4.21:1 ในธีมสว่าง** = ตก AA
+   (ตัวอักษร 13px ต้องการ 4.5:1) · ธีมมืดผ่านที่ 5.40:1 — ตกเฉพาะธีมสว่าง
+   ระบบไม่มีโทเคนสีระหว่าง --text-3 กับ --text-2 จึงต้องขึ้นมาที่ --text-2 (5.52:1 ผ่าน)
+   แล้วย้าย "ความเบา" ไปไว้ที่ **น้ำหนักตัวอักษร** แทน ซึ่งไม่กระทบคอนทราสต์เลย */
+.topnav-utility-item { color: var(--text-2); font-weight: var(--fw-normal); }
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
