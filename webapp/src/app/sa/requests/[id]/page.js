@@ -25,6 +25,7 @@ import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierF
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
@@ -54,6 +55,9 @@ export default function MaterialAskDetailPage() {
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
+  // break-glass = role admin เท่านั้น (เข้มกว่า isSuperuser — ae_supervisor เป็น
+  // superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js) · ตรงกับทะเบียนกลิ่น/สูตร
+  const isAdmin = role === "admin";
 
   const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -167,17 +171,43 @@ export default function MaterialAskDetailPage() {
         confirmLabel: "ปิดเรื่อง",
       };
     }
+    if (req.status === "draft") {
+      return {
+        title: "ลบคำร้องร่าง",
+        description: "คำร้องนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
+        confirmLabel: "ลบคำร้อง",
+      };
+    }
+    // ใบที่ส่งแล้ว = ทาง admin เท่านั้น · กฎธุรกิจจะบล็อกก่อน แล้ว deleteWithForce
+    // จะแสดงพรีวิวของที่จะโดนลบพ่วงอีกชั้น ที่นี่จึงบอกแค่ว่ากำลังจะทำอะไร
     return {
-      title: "ลบคำร้องร่าง",
-      description: "คำร้องนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
-      confirmLabel: "ลบคำร้อง",
+      title: "ลบคำร้องที่ส่งแล้ว",
+      description: `${req.docNo || id} · สถานะ ${REQUEST_STATUS_LABELS[req.status] || req.status}`,
+      detail: "คำร้องที่ออกเลขแล้วถือเป็นหลักฐาน — ปกติควรใช้ \"ยกเลิกคำร้อง\" แทน"
+        + " · ระบบจะแสดงรายการที่จะถูกลบพ่วงให้ยืนยันอีกครั้ง",
+      confirmLabel: "ดำเนินการต่อ",
     };
   };
 
   const runConfirm = async () => {
     if (confirm.kind === "delete") {
-      const ok = await call("", { method: "DELETE" }, "ลบเคสร่างแล้ว");
-      if (ok) window.location.href = "/sa/requests?tab=mine";
+      // ลบตามปกติก่อน · ถูกกฎธุรกิจบล็อกและเป็น admin → ดึงพรีวิว (?dryRun=1) มาแสดง
+      // ว่าจะลบอะไรพ่วง แล้วถามยืนยันก่อนยิง ?force=1 (แพตเทิร์นเดียวกับทะเบียน
+      // กลิ่น/สูตร/ดีล — ห้ามเขียนกลไกใหม่ ดู lib/forceDeleteClient.js)
+      setSaving(true);
+      try {
+        const result = await deleteWithForce(`/api/sa/requests/${id}`, { isAdmin });
+        if (result.cancelled) { setConfirm(null); return; }
+        setToast({
+          kind: "success",
+          msg: result.forced ? "บังคับลบคำร้องแล้ว" : "ลบร่างคำร้องแล้ว",
+        });
+        window.location.href = "/sa/requests?tab=mine";
+      } catch (e) {
+        setToast({ kind: "error", msg: e.message });
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     const labels = { submit: "ส่งคำร้องแล้ว", answer: "บันทึกว่าตอบแล้ว", close: "ปิดเรื่องแล้ว" };
@@ -295,11 +325,15 @@ export default function MaterialAskDetailPage() {
               dangerActions={[
                 {
                   id: "delete",
-                  label: "ลบคำร้องร่าง",
+                  // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
+                  // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
+                  label: isAdmin && req.status !== "draft"
+                    ? "ลบคำร้อง (ผู้ดูแลระบบ)"
+                    : "ลบคำร้องร่าง",
                   kind: "delete",
                   icon: Trash2,
                   onClick: () => setConfirm({ kind: "delete" }),
-                  visible: req._mine && req.status === "draft",
+                  visible: isAdmin || (req._mine && req.status === "draft"),
                 },
                 {
                   id: "cancel",
