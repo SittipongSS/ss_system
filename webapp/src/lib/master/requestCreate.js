@@ -22,11 +22,11 @@ export function requestFormBlocker(form) {
   if (!form) return 'ยังไม่มีข้อมูล';
   if (!form.kind || !form.dept) return 'เลือกฝ่ายและหัวข้อก่อน';
 
+  // ส่งทั้ง form เข้าไปเลย — `requestShapeError` อ่านเฉพาะช่องที่หัวข้อนั้นต้องใช้
+  // (ก่อนหน้านี้เลือกช่องส่งเองทีละตัว → เพิ่มของที่ต้องผูกใหม่แล้วลืมเติมที่นี่
+  //  ด่านฝั่งจอจะหลวมกว่า server เงียบ ๆ ทันที)
   const shape = requestShapeError(form.kind, {
-    title: form.title,
-    dealId: form.dealId,
-    scentId: form.scentId,
-    formulaId: form.formulaId,
+    ...form,
     items: requestHasItems(form.kind) ? form.items : undefined,
   });
   if (shape) return shape;
@@ -47,7 +47,10 @@ export function requestPayload(form, extra = {}) {
   return {
     kind: form.kind,
     dept: form.dept || null,
+    // ของที่ผูก — ส่งไปเท่าที่มี server ตรวจตามหัวข้อเอง (ดู `needs`)
     dealId: form.dealId || null,
+    salesOrderId: form.salesOrderId || null,
+    productTypeId: form.productTypeId || null,
     title: form.title || null,
     body: form.body || null,
     urgent: !!form.urgent,

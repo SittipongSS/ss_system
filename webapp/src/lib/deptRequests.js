@@ -66,7 +66,10 @@ export const MAX_REQUEST_TIERS = 12;
 
 // items เข้ามาเป็น [{ kind, materialId?, label, spec?, componentId?, tiers: [qty…] }]
 // materialId ว่าง = ของใหม่ ผู้เรียก (API) ต้องสร้างวัสดุร่างแล้วเติม id กลับมาก่อนบันทึก
-export function normalizeRequestItems(input, { dept } = {}) {
+// `hasTiers` มาจากหัวข้อ (requestHasTiers) — false = บังคับราคาเดียว ทิ้งชั้นที่
+// client ส่งมาทั้งหมด · มติผู้ใช้ 2026-08-03: **ขอราคา F/FB ไม่มีขั้น MOQ** มีเฉพาะ
+// วัสดุ (PM) กับราคาผลิต · หัวน้ำหอม/เนื้อสารคิดเป็นราคาต่อกิโลเดียว ไม่ลดตามจำนวน
+export function normalizeRequestItems(input, { dept, hasTiers = true } = {}) {
   const rows = Array.isArray(input) ? input : [];
   if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
   if (rows.length > MAX_REQUEST_ITEMS) {
@@ -97,7 +100,11 @@ export function normalizeRequestItems(input, { dept } = {}) {
     if (seen.has(dupKey)) return { items: [], error: `${at}: ถามวัสดุตัวนี้ซ้ำในคำร้องเดียวกัน` };
     seen.add(dupKey);
 
-    const { tiers, error } = normalizeRequestTiers(raw.tiers);
+    // หัวข้อที่ไม่มีชั้นจำนวน = ทิ้งของที่ส่งมาเงียบ ๆ ไม่ error — ฟอร์มไม่แสดงช่องนี้
+    // อยู่แล้ว ค่าที่หลุดมาได้คือของค้างจากตอนสลับหัวข้อ ไม่ใช่เจตนาของผู้ใช้
+    const { tiers, error } = hasTiers
+      ? normalizeRequestTiers(raw.tiers)
+      : { tiers: [], error: null };
     if (error) return { items: [], error: `${at}: ${error}` };
 
     items.push({

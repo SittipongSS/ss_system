@@ -25,7 +25,8 @@ import { requestKindLabel } from "@/lib/master/requestTypes";
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [], materials = [], products = [],
   // ทะเบียน/รายการที่ฟอร์มอ้าง — โครงการ+ดีล (บังคับทุกชนิด) · กลิ่น (F) · สูตร (FB)
-  projects = [], deals = [], scents = [], formulas = [], mentionPeople = [],
+  projects = [], deals = [], salesOrders = [], scents = [], formulas = [],
+  productTypes = [], mentionPeople = [],
   loading = false, loadError = "", reload, newRequestDefaults = null,
 }) {
   const router = useRouter();
@@ -157,7 +158,8 @@ export default function RequestQueuePanel({
             <RequestForm
               value={form} onChange={setForm} disabled={saving}
               materials={materials} products={products}
-              projects={projects} deals={deals} scents={scents} formulas={formulas}
+              projects={projects} deals={deals} salesOrders={salesOrders}
+              scents={scents} formulas={formulas} productTypes={productTypes}
               mentionPeople={mentionPeople}
             />
             <div className={`glass-panel ${styles.formNote}`}>

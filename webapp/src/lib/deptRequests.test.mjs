@@ -35,6 +35,9 @@ import {
   kindsForDept,
   materialKindForRequest,
   requestDeptError,
+  requestHasTiers,
+  requestNeeds,
+  requestNeedsRef,
   requestDocScope,
   requestHasItems,
   requestShapeError,
@@ -81,21 +84,65 @@ test('ชนิดที่มีบรรทัด = ชนิดขอรา�
   assert.equal(requestHasItems('info'), false);
 });
 
-test('บังคับผูกดีล **ทุกหัวข้อ** ไม่มีข้อยกเว้น (มติ 2026-08-03 กลับมติ 5)', () => {
-  // ⭐ เทสต์นี้แทนของเดิมที่ล็อกไว้ว่า "ชนิดขอราคาไม่บังคับดีล" — ผู้ใช้กลับมติเอง
-  // หลังทราบผลกระทบแล้ว (ราคากลางที่ไม่ผูกดีลเปิดจากคำร้องไม่ได้อีก) · เทสต์เดิม
-  // ไม่ได้ผิดตอนนั้น มันเลิกเป็นกฎแล้วเท่านั้น
-  for (const kind of REQUEST_KIND_LIST) {
-    const body = { title: 'เรื่อง', scentId: 'SCT-1', formulaId: 'FM-1', items: [{ kind: 'PM' }] };
-    assert.match(requestShapeError(kind, body), /โครงการและดีล/, `${kind} ต้องบังคับดีล`);
+test('สิ่งที่ต้องผูกต่างกันตามหัวข้อ (มติ 2026-08-03 รอบสอง)', () => {
+  // ⭐ รอบแรกบังคับโครงการ+ดีลทุกหัวข้อเท่ากันหมด · รอบสองผู้ใช้แก้ให้ตรงงานจริง:
+  //   ขอราคา = ไม่ผูกดีล (กลิ่น/สูตรผูกลูกค้าอยู่แล้ว · วัสดุเป็นราคากลาง)
+  //   บรีฟกลิ่น = ผูก SO (ค่าบริการ — ยืนยันกับ SCENT_TEMPLATE ขั้น 4 → 6)
+  //   Mock-up = ผูกโครงการ+ดีล+กลิ่น+หมวดสินค้า
+  assert.deepEqual(requestNeeds('price_f'), ['scent']);
+  assert.deepEqual(requestNeeds('price_fb'), ['formula']);
+  assert.deepEqual(requestNeeds('price_pm'), []);
+  assert.deepEqual(requestNeeds('scent_brief'), ['salesOrder']);
+  assert.deepEqual(requestNeeds('mockup'), ['project', 'deal', 'scent', 'productType']);
+  assert.deepEqual(requestNeeds('info'), ['project', 'deal']);
+  // ⚠️ ขอราคาต้องไม่บังคับดีลอีกแล้ว — regression ที่สำคัญที่สุดของรอบนี้
+  for (const kind of ['price_f', 'price_fb', 'price_pm']) {
+    assert.equal(requestNeedsRef(kind, 'deal'), false, `${kind} ต้องไม่ผูกดีล`);
   }
 });
 
-test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมชนิดขอราคา', () => {
-  // เดิมชนิดขอราคายกเว้นไว้เพราะสื่อความด้วยบรรทัดวัสดุ — แต่บนคิวรวมและในเธรดดีล
-  // บรรทัดวัสดุมองไม่เห็น เหลือแต่ช่องว่าง
-  assert.match(requestShapeError('price_pm', { dealId: 'D1', items: [{ kind: 'PM' }] }), /ชื่อเรื่อง/);
-  assert.match(requestShapeError('info', { dealId: 'D1' }), /ชื่อเรื่อง/);
+test('ด่านตอนสร้าง: ขอราคาส่งได้โดยไม่มีดีล · บรีฟกลิ่นส่งไม่ได้ถ้าไม่มี SO', () => {
+  // ขอราคา PM = ราคากลาง ไม่ต้องผูกอะไรเลยนอกจากชื่อเรื่อง+บรรทัด
+  assert.equal(requestShapeError('price_pm', {
+    title: 'ขอราคาขวด 30ml', items: [{ kind: 'PM' }],
+  }), null);
+  assert.equal(requestShapeError('price_f', {
+    title: 'ขอราคาหัวน้ำหอม', scentId: 'SCT-1', items: [{ kind: 'RM_F' }],
+  }), null);
+  // บรีฟกลิ่น: ไม่มี SO = ตก และข้อความต้องบอกเหตุผล (ค่าบริการ) ไม่ใช่แค่ "ต้องเลือก"
+  assert.match(requestShapeError('scent_brief', { title: 'บรีฟ' }), /ใบสั่งขาย/);
+  assert.equal(requestShapeError('scent_brief', { title: 'บรีฟ', salesOrderId: 'SO-1' }), null);
+  // Mock-up ต้องครบทั้งสี่ — ไล่ทีละข้อว่าข้อความตรงกับของที่ขาด
+  const mock = { title: 'ขอ Mock-up', projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1', productTypeId: '6' };
+  assert.equal(requestShapeError('mockup', mock), null);
+  assert.match(requestShapeError('mockup', { ...mock, productTypeId: '' }), /ประเภทสินค้า/);
+  assert.match(requestShapeError('mockup', { ...mock, scentId: '' }), /กลิ่น/);
+  assert.match(requestShapeError('mockup', { ...mock, projectId: '' }), /โครงการ/);
+});
+
+test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมหัวข้อขอราคา', () => {
+  // หัวข้อขอราคาสื่อความด้วยบรรทัดวัสดุ แต่บนคิวรวมและในเธรดดีล บรรทัดมองไม่เห็น
+  assert.match(requestShapeError('price_pm', { items: [{ kind: 'PM' }] }), /ชื่อเรื่อง/);
+  assert.match(requestShapeError('info', { projectId: 'P1', dealId: 'D1' }), /ชื่อเรื่อง/);
+});
+
+test('ชั้นจำนวน (MOQ) มีเฉพาะวัสดุ — ขอราคา F/FB เป็นราคาเดียว', () => {
+  assert.equal(requestHasTiers('price_pm'), true);
+  assert.equal(requestHasTiers('price_f'), false);
+  assert.equal(requestHasTiers('price_fb'), false);
+  // ชั้นที่หลุดมากับ payload ของหัวข้อไม่มีชั้น ต้องถูกทิ้งเงียบ ๆ ไม่ error
+  const { items, error } = normalizeRequestItems(
+    [{ kind: 'RM_F', label: 'Forest night', tiers: [500, 1000] }],
+    { dept: 'RD', hasTiers: false },
+  );
+  assert.equal(error, null);
+  assert.deepEqual(items[0].tiers, [], 'หัวข้อไม่มีชั้นจำนวน = ทิ้งชั้นที่ส่งมา');
+  // ฝั่งวัสดุยังเก็บชั้นตามเดิม
+  const pm = normalizeRequestItems(
+    [{ kind: 'PM', label: 'ขวด 30ml', tiers: [1000, 500] }],
+    { dept: 'PC', hasTiers: true },
+  );
+  assert.deepEqual(pm.items[0].tiers, [500, 1000], 'ชั้นจำนวนเรียงจากน้อยไปมาก');
 });
 
 test('ฝ่ายที่เลือกต้องเข้ากับหัวข้อ — ไม่ override เงียบ ๆ', () => {
@@ -146,15 +193,16 @@ test('หมุดไทม์ไลน์ตรงกับขั้นจร�
 });
 
 test('ด่านตอนสร้าง: หัวข้อที่มีบรรทัดต้องมีรายการ', () => {
-  const base = { dealId: 'D1', title: 'ขอราคาขวด' };
-  assert.match(requestShapeError('price_pm', base), /อย่างน้อย 1 รายการ/);
-  assert.equal(requestShapeError('price_pm', { ...base, items: [{ kind: 'PM' }] }), null);
-  assert.equal(requestShapeError('info', { dealId: 'D1', title: 'ขอสเปกขวด' }), null);
+  assert.match(requestShapeError('price_pm', { title: 'ขอราคาขวด' }), /อย่างน้อย 1 รายการ/);
+  assert.equal(requestShapeError('price_pm', { title: 'ขอราคาขวด', items: [{ kind: 'PM' }] }), null);
+  assert.equal(requestShapeError('info', {
+    projectId: 'P1', dealId: 'D1', title: 'ขอสเปกขวด',
+  }), null);
 });
 
 test('ด่านตอนสร้าง: ขอราคา F ต้องเลือกกลิ่น · FB ต้องเลือกสูตร', () => {
-  const f = { dealId: 'D1', title: 'ขอราคาหัวน้ำหอม', items: [{ kind: 'RM_F' }] };
-  const fb = { dealId: 'D1', title: 'ขอราคาเนื้อสาร', items: [{ kind: 'RM_FB' }] };
+  const f = { title: 'ขอราคาหัวน้ำหอม', items: [{ kind: 'RM_F' }] };
+  const fb = { title: 'ขอราคาเนื้อสาร', items: [{ kind: 'RM_FB' }] };
   assert.match(requestShapeError('price_f', f), /กลิ่น/);
   assert.match(requestShapeError('price_fb', fb), /สูตร/);
   assert.equal(requestShapeError('price_f', { ...f, scentId: 'SCT-1' }), null);
@@ -162,19 +210,19 @@ test('ด่านตอนสร้าง: ขอราคา F ต้องเ
 });
 
 test('ด่านของฟอร์มกับ payload ที่โมดัลในใบขอราคาผลิตส่งจริงต้องตรงกัน', () => {
-  // 🔴 regression: payload ชุดเดิม (ไม่มี dealId/title/scentId) ผ่านด่านฝั่งฟอร์ม
-  // แต่ตายที่ server ทุกครั้ง — เทสต์นี้ยิงด้วย "ของที่หน้าจอส่งจริง" ไม่ใช่ของสมมุติ
+  // 🔴 regression: payload ชุดเดิม (ไม่มี title/scentId) ผ่านด่านฝั่งฟอร์มแต่ตายที่
+  // server ทุกครั้ง — เทสต์นี้ยิงด้วย "ของที่หน้าจอส่งจริง" ไม่ใช่ของสมมุติ
+  // ⚠️ ไม่มี dealId โดยเจตนา: เปิดจากใบขอราคาผลิตที่ไม่ผูกดีลก็ต้องผ่าน (มติรอบสอง)
   const payload = (materialKind, over = {}) => ({
-    dealId: 'D1',
-    title: `ขอราคา X — จากใบขอราคาผลิต CR-1`,
+    title: 'ขอราคา X — จากใบขอราคาผลิต CR-1',
     items: [{ kind: materialKind, materialId: null, label: 'X', componentId: 'CMP-1', tiers: [1000] }],
     ...over,
   });
   assert.equal(requestShapeError('price_pm', payload('PM')), null);
   assert.equal(requestShapeError('price_f', payload('RM_F', { scentId: 'SCT-1' })), null);
   assert.equal(requestShapeError('price_fb', payload('RM_FB', { formulaId: 'FM-1' })), null);
-  // ไม่มีดีล = ตกทันที (ทั้งฟอร์มและ server อ่านกฎเดียวกัน)
-  assert.match(requestShapeError('price_pm', payload('PM', { dealId: null })), /โครงการและดีล/);
+  // ขาดชื่อเรื่อง = ตกทันที (ทั้งฟอร์มและ server อ่านกฎเดียวกัน)
+  assert.match(requestShapeError('price_pm', payload('PM', { title: '' })), /ชื่อเรื่อง/);
 });
 
 test('ชนิดวัสดุทุกตัวต้องมีชนิดคำร้องคู่กัน — ไม่งั้นปุ่ม "ขอราคา" ในใบขอราคาผลิตพัง', () => {
@@ -406,10 +454,11 @@ test('กลิ่นผูกลูกค้าเสมอ (มติ 9) — �
 
 // ── ด่านฝั่งจอ: ปุ่มส่งกับข้อความต้องพูดตรงกันเสมอ ──────────────────────
 test('requestFormBlocker: ปุ่มส่งกับข้อความเหตุผลใช้ตัวเดียวกัน', () => {
+  // ขอราคา F ไม่ผูกดีลแล้ว (มติรอบสอง) — ฟอร์มต้องปล่อยผ่านโดยไม่มีโครงการ/ดีล
   const base = {
-    projectId: 'PRJ-1', dealId: 'D-1', dept: 'RD', kind: 'price_f',
+    dept: 'RD', kind: 'price_f',
     title: 'ขอราคาหัวน้ำหอม', scentId: 'SCT-1',
-    items: [{ kind: 'RM_F', material: { materialId: 'MAT-1', label: 'Forest night' }, tiers: [1000] }],
+    items: [{ kind: 'RM_F', material: { materialId: 'MAT-1', label: 'Forest night' }, tiers: [] }],
   };
   assert.equal(requestFormBlocker(base), null);
 
@@ -422,10 +471,19 @@ test('requestFormBlocker: ปุ่มส่งกับข้อความเ
   // ยังไม่เลือกฝ่าย/หัวข้อ = ข้อความแรกสุด ไม่ใช่ "ชนิดคำร้องไม่ถูกต้อง" ที่อ่านไม่รู้เรื่อง
   assert.match(requestFormBlocker({ ...base, kind: '', dept: '' }), /เลือกฝ่ายและหัวข้อ/);
   assert.match(requestFormBlocker({ ...base, dept: '' }), /เลือกฝ่ายและหัวข้อ/);
-  // ไม่มีดีล / ไม่มีชื่อเรื่อง ต้องได้ข้อความของตัวเอง
-  assert.match(requestFormBlocker({ ...base, dealId: '' }), /โครงการและดีล/);
   assert.match(requestFormBlocker({ ...base, title: '' }), /ชื่อเรื่อง/);
   assert.equal(requestFormBlocker(null), 'ยังไม่มีข้อมูล');
+
+  // หัวข้อที่ผูกของ ต้องได้ข้อความของ "ของที่ขาด" ตัวนั้น ไม่ใช่ข้อความรวม ๆ
+  const brief = { dept: 'RD', kind: 'scent_brief', title: 'บรีฟกลิ่นชุดใหม่' };
+  assert.match(requestFormBlocker(brief), /ใบสั่งขาย/);
+  assert.equal(requestFormBlocker({ ...brief, salesOrderId: 'SO-1' }), null);
+  const mock = {
+    dept: 'RD', kind: 'mockup', title: 'ขอ Mock-up ขวด 30ml',
+    projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1', productTypeId: '6',
+  };
+  assert.equal(requestFormBlocker(mock), null);
+  assert.match(requestFormBlocker({ ...mock, dealId: '' }), /ดีล/);
 });
 
 test('requestPayload: ไม่ส่งของที่ server ตัดสินเอง และไม่ส่ง items ให้หัวข้อที่ไม่มีบรรทัด', () => {
