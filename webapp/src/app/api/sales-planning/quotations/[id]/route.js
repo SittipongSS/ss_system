@@ -268,7 +268,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       action: 'send',
       status: before.status,
       lineCount: finalLines.length,
-      totalAmount: finalQuote.totalAmount,
       approvalStatus: effApprovalStatus,
       approvalFingerprint: effFingerprint,
       currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),

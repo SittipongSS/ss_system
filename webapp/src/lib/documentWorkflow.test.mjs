@@ -39,7 +39,6 @@ test('approved document is blocked when its fingerprint is stale', () => {
     action: 'accept',
     status: 'sent',
     lineCount: 1,
-    totalAmount: 100,
     approvalStatus: 'approved',
     approvalFingerprint: 'sha256:old',
     currentFingerprint: 'sha256:new',
@@ -48,9 +47,11 @@ test('approved document is blocked when its fingerprint is stale', () => {
   assert.match(result.error, /changed after approval/);
 });
 
-test('send rejects an empty document but allows a zero total (discounted to 0)', () => {
-  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 0, totalAmount: 100 }).ok, false);
-  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 1, totalAmount: 0 }).ok, true);
-  // accept/Won ยังต้อง > 0 — การรับใบเขียนทับ projectValue ของดีล
-  assert.equal(validateDocumentReadiness({ action: 'accept', lineCount: 1, totalAmount: 0 }).ok, false);
+test('send/accept reject an empty document but allow a zero total (discounted to 0)', () => {
+  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 0 }).ok, false);
+  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 1 }).ok, true);
+  // มติผู้ใช้ 2026-08-03: accept/Won ยอด 0 ก็ปิดได้ — ยอด Won 0 คือค่าที่ถูกของใบนั้น
+  // (ยอดไม่ใช่เงื่อนไขความพร้อมอีกต่อไป จึงไม่มีพารามิเตอร์ totalAmount แล้ว)
+  assert.equal(validateDocumentReadiness({ action: 'accept', lineCount: 1 }).ok, true);
+  assert.equal(validateDocumentReadiness({ action: 'accept', lineCount: 0 }).ok, false);
 });

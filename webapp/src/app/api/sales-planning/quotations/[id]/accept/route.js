@@ -34,8 +34,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.status === 'accepted') return badRequest('ใบเสนอราคานี้ถูกรับแล้ว');
   if (quote.status === 'closed') return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น)');
   if (['cancelled', 'rejected', 'revised'].includes(quote.status)) return badRequest('quotation cannot be accepted');
-  // ยอดต้อง > 0 ไม่งั้นการรับจะไปล้าง projectValue ของดีลเป็น 0 (N3)
-  if (!(quotationWonAmount(quote) > 0)) return badRequest('ยอดใบเสนอราคาก่อน VAT ต้องมากกว่า 0');
+  // ยอดก่อน VAT 0 บาทปิด Won ได้ (มติผู้ใช้ 2026-08-03) — ใบที่ลด/แถมจนเหลือ 0 ก็เป็นดีล
+  // ที่ปิดได้จริง ยอด Won 0 ที่เขียนลงดีลคือค่าที่ถูกต้องของใบนั้น ไม่ใช่ข้อมูลหาย
 
   const { data: deal, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
   if (dealError) return fail(dealError.message, 500);
@@ -75,7 +75,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     action: 'accept',
     status: quote.status,
     lineCount: quote.lines?.length || 0,
-    totalAmount: quote.totalAmount,
     approvalStatus: quote.approvalStatus,
     approvalFingerprint: quote.approvalFingerprint,
     currentFingerprint,

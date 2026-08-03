@@ -62,8 +62,9 @@ test('FG line identity is refreshed from master without duplicating brand in des
 });
 
 test('master with no factory price keeps previously saved price — never zeroes the quote', async () => {
-  // บั๊กจริง 2026-07-15: master ยังไม่ตั้งราคา → ราคาในใบโดนทับเป็น 0 →
-  // ยอดใบเป็น 0 → กด Won ติด "ยอดก่อน VAT ต้องมากกว่า 0"
+  // บั๊กจริง 2026-07-15: master ยังไม่ตั้งราคา → ราคาในใบโดนทับเป็น 0 → ยอดใบเป็น 0
+  // (ตอนนั้นกด Won ไม่ได้เลย; ตั้งแต่มติ 2026-08-03 ยอด 0 ปิด Won ได้ ใบจึงยิ่งต้อง
+  // ไม่ถูกทับเป็น 0 เงียบ ๆ เพราะจะกลายเป็นดีลมูลค่า 0 โดยไม่มีใครทัก)
   for (const costPrice of [0, null, undefined]) {
     const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', costPrice }];
     const prev = [{ productId: 'P1', unitPrice: 150 }];

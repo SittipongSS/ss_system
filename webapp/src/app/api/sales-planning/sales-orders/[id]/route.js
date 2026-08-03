@@ -366,8 +366,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'submit') {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('SO ใบนี้ยื่นอนุมัติไม่ได้');
-    if (!before.orderDate || !(Number(before.actualAmount) > 0) || !(before.lines?.length > 0)) {
-      return badRequest('ข้อมูล SO ไม่ครบ: ต้องมีวันที่ ยอดก่อน VAT และรายการสินค้า');
+    // ยอดก่อน VAT 0 บาทยื่นได้ (มติผู้ใช้ 2026-08-03) — ต่อจาก QT ที่ปิด Won ด้วยยอด 0 ได้
+    // (mig 0196); ถ้าด่านนี้ยังบังคับ > 0 ใบที่ Won แล้วจะเดินต่อไม่ได้เลย
+    if (!before.orderDate || !(before.lines?.length > 0)) {
+      return badRequest('ข้อมูล SO ไม่ครบ: ต้องมีวันที่และรายการสินค้า');
     }
     if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
