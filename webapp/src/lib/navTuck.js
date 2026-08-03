@@ -15,17 +15,43 @@ export const NAV_DEADZONE = 4;
 
 /**
  * ตัดสินสถานะถัดไปของชั้นเมนู
- * @param {{y:number, lastY:number, tucked:boolean}} state ตำแหน่งเลื่อนปัจจุบัน · ค่าที่จำไว้รอบก่อน · สถานะปัจจุบัน
- * @returns {{tucked:boolean, lastY:number}} สถานะใหม่ + ค่าที่ต้องจำไว้รอบถัดไป
+ * @param {{y:number, lastY:number, tucked:boolean, settling?:boolean}} state
+ *   ตำแหน่งเลื่อนปัจจุบัน · ค่าที่จำไว้รอบก่อน · สถานะปัจจุบัน · กำลังรอการชดเชยของเบราว์เซอร์
+ * @returns {{tucked:boolean, lastY:number, settling:boolean}} สถานะใหม่ + ค่าที่ต้องจำไว้รอบถัดไป
  */
-export function nextNavTuck({ y, lastY, tucked }) {
-  // ใกล้บนสุดต้องคลี่เสมอ — สำคัญกว่าทิศทางการเลื่อน
-  if (y <= NAV_REVEAL_AT) return { tucked: false, lastY: y };
+export function nextNavTuck({ y, lastY, tucked, settling = false }) {
+  // 🔴 กันวงจรป้อนกลับ — อาการ "scroll น้อยแล้วกระพริบ" ที่ผู้ใช้เจอหลัง #922/#923:
+  //
+  // พอหุบ → header เตี้ยลง 44px → เอกสารเตี้ยลง → **เบราว์เซอร์ขยับ scrollTop ชดเชยเอง**
+  // (scroll anchoring หรือการ clamp ท้ายเอกสาร) → เกิด scroll event ที่ dy ประมาณ −44
+  // → ถ้าอ่านว่า "ผู้ใช้เลื่อนขึ้น" ก็จะคลี่ → เอกสารสูงขึ้น → ขยับกลับ → หุบ → วนไม่จบ
+  //
+  // settling = "เพิ่งสลับสถานะ กำลังรอดูการขยับที่ตัวเองทำให้เกิด" — เห็นการขยับครั้งแรก
+  // แล้ว **ตั้งฐานใหม่โดยไม่ตัดสิน** จากนั้นกลับมาทำงานปกติ
+  //
+  // ⚠️ ต้องรอจนเห็นการขยับจริง (ถึง deadzone) ไม่ใช่ข้ามไปหนึ่งเฟรมเฉย ๆ — จังหวะที่
+  // React commit เสร็จแล้วเบราว์เซอร์ชดเชย ไม่รับประกันว่าจะจบในเฟรมถัดไปเสมอ
+  //
+  // ต้นทุน: การเลื่อนของผู้ใช้ครั้งแรกหลังสลับสถานะจะถูกใช้เป็น "ตั้งฐานใหม่" แทนการ
+  // ตัดสิน — มองไม่เห็นความต่าง เพราะตอนนั้นสถานะตรงกับทิศที่กำลังเลื่อนอยู่แล้ว
+  if (settling) {
+    if (Math.abs(y - lastY) < NAV_DEADZONE) return { tucked, lastY, settling: true };
+    return { tucked, lastY: y, settling: false };
+  }
 
-  const dy = y - lastY;
-  // ยังขยับไม่ถึง deadzone: คงสถานะ **และคง lastY** ไว้ให้สะสมต่อ
-  if (Math.abs(dy) < NAV_DEADZONE) return { tucked, lastY };
+  const decide = () => {
+    // ใกล้บนสุดต้องคลี่เสมอ — สำคัญกว่าทิศทางการเลื่อน
+    if (y <= NAV_REVEAL_AT) return { tucked: false, lastY: y };
 
-  if (dy > 0) return { tucked: y > NAV_TUCK_AFTER ? true : tucked, lastY: y };
-  return { tucked: false, lastY: y }; // เลื่อนขึ้น = คลี่คืนทันที
+    const dy = y - lastY;
+    // ยังขยับไม่ถึง deadzone: คงสถานะ **และคง lastY** ไว้ให้สะสมต่อ
+    if (Math.abs(dy) < NAV_DEADZONE) return { tucked, lastY };
+
+    if (dy > 0) return { tucked: y > NAV_TUCK_AFTER ? true : tucked, lastY: y };
+    return { tucked: false, lastY: y }; // เลื่อนขึ้น = คลี่คืนทันที
+  };
+
+  const next = decide();
+  // สลับสถานะเมื่อไหร่ = เริ่มรอการชดเชยของเบราว์เซอร์
+  return { ...next, settling: next.tucked !== tucked };
 }

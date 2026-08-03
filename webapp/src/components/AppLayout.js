@@ -181,13 +181,17 @@ export default function AppLayout({ children }) {
   //      ติดตั้ง listener และปั่น state อยู่ = จ่ายค่ากระพริบฟรี ๆ ⇒ ไม่ติดตั้งเลย
   useEffect(() => {
     if (isSettingsContext) return; // ไม่มีชั้นเมนูในบริบทนี้ ไม่ต้องเฝ้าการเลื่อน
-    let state = { tucked: false, lastY: window.scrollY };
+    let state = { tucked: false, lastY: window.scrollY, settling: false };
     let frame = 0;
     const onScroll = () => {
       if (frame) return; // อ่านตำแหน่งครั้งเดียวต่อเฟรม
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const next = nextNavTuck({ y: window.scrollY, lastY: state.lastY, tucked: state.tucked });
+        // ⚠️ ต้องส่ง settling เข้า-ออกด้วย — เป็นตัวกันวงจรป้อนกลับตอนเบราว์เซอร์
+        // ขยับ scroll ชดเชยความสูงที่เราเพิ่งเปลี่ยน (ดู lib/navTuck.js)
+        const next = nextNavTuck({
+          y: window.scrollY, lastY: state.lastY, tucked: state.tucked, settling: state.settling,
+        });
         const changed = next.tucked !== state.tucked;
         state = next;
         if (changed) setNavTucked(next.tucked); // ⚠️ set เฉพาะตอนเปลี่ยน ห้าม set ทุกเฟรม
