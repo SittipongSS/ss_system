@@ -17,6 +17,8 @@ import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
 
 const STAGE_COLORS = {
@@ -62,7 +64,7 @@ const displayText = (value, fallback = "-") => {
 };
 
 // การ์ดดีล 1 ใบ = จิ๊กซอว์ 1 ชิ้น: หัวดีล + segment ไทม์ไลน์ + ใบเสนอราคาใต้ดีล
-function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
+function DealCard({ deal, seg, quotes, directory, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
   const closed = isWonStage(deal.stage);
   const value = closed ? (deal.wonValue ?? deal.projectValue) : deal.projectValue;
   const shown = quotes.slice(0, 3);
@@ -89,7 +91,8 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
           </strong>
           {!closed && deal.forecastMonth ? <span style={{ color: "var(--text-3)" }}> · {deal.forecastMonth}</span> : null}
         </span>
-        <span><span style={{ color: "var(--text-3)" }}>AE </span>{displayText(deal.ownerName)}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</span>
+        {/* ชื่อ AE อ่านจาก ownerId — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ */}
+        <span><span style={{ color: "var(--text-3)" }}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</span>
         {deal.formulaName && <span><span style={{ color: "var(--text-3)" }}>สูตร </span>{displayText(deal.formulaName)}</span>}
       </div>
 
@@ -298,6 +301,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   const canEditSales = useCan("salesplan:edit");
   const canEditProjects = useCan("pm:edit");
   const canEdit = canEditSales && canEditProjects;
+  const directory = usePeopleDirectory(); // ชื่อ AE ปัจจุบันของแต่ละดีล
   const deals = useMemo(() => p.deals || [], [p.deals]);
   const [linkOpen, setLinkOpen] = useState(false);
   const [availableDeals, setAvailableDeals] = useState([]);
@@ -436,6 +440,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
               deal={d}
               seg={segments.get(d.id) || { done: 0, total: 0, current: null }}
               quotes={quotesByDeal.get(d.id) || []}
+              directory={directory}
               canReorder={canEdit && deals.length > 1}
               canMoveUp={index > 0}
               canMoveDown={index < deals.length - 1}

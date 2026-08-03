@@ -15,6 +15,8 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
@@ -322,6 +324,12 @@ export default function DealOverviewPage() {
   }, [data, nowMs]);
 
   const deal = data?.deal;
+  /* ชื่อเจ้าของดีลที่ควรขึ้นจอ — อ่านจาก `ownerId` เพราะ `deal.ownerName` เป็นสำเนา
+     ณ ตอนบันทึก ที่ไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ
+     ⚠️ ไม่แตะ `dealTimelineDocument` ด้านล่างโดยตั้งใจ — เอกสารที่พิมพ์ออกไปต้อง
+     เป็น snapshot ตามกติกาเดิม (ดู [[entity-updates-plan]]) */
+  const directory = usePeopleDirectory();
+  const ownerName = livePersonName(directory, deal?.ownerId, deal?.ownerName);
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
   const role = useRole();
@@ -486,7 +494,10 @@ export default function DealOverviewPage() {
       startDate: deal.startDate || new Date().toISOString().slice(0, 10),
       dueDate: deal.endDate || deal.expectedCloseDate || "",
       type: dealTypeOf(deal),
-      aeOwner: deal.ownerName || "",
+      // ชื่อ *ปัจจุบัน* + id — ส่งชื่อที่ค้างในแถวไปจะจับคู่บัญชีไม่ได้ แล้วโครงการ
+      // ใหม่เกิดมาพร้อม `aeOwnerId` ว่าง (สาเหตุที่ prod มี 11/14 ใบเป็นแบบนั้น)
+      aeOwner: ownerName,
+      aeOwnerId: deal.ownerId || null,
       metadata: { brand: deal.metadata?.brand || "" },
     });
     setPmModalOpen(true);
@@ -732,7 +743,7 @@ export default function DealOverviewPage() {
             badges={<>{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
             actions={headerRight}
             facts={[
-              { icon: FolderKanban, label: "ผู้ดูแล (AE)", value: deal.ownerName || "-" },
+              { icon: FolderKanban, label: "ผู้ดูแล (AE)", value: ownerName || "-" },
               { icon: ClipboardList, label: "ทีม", value: deal.team || "-" },
               { icon: Circle, label: "เดือน Forecast", value: deal.forecastMonth || "-" },
               { icon: Trophy, label: "ประเภท / โอกาส", value: `${dealTypeOf(deal)}${!alreadyWon && deal.stage !== "lost" ? ` · FC ${snapForecastLevel(deal.probability)}%` : ""}` },
@@ -778,7 +789,7 @@ export default function DealOverviewPage() {
               eyebrow="ลูกค้าและเจ้าของดีล"
               title={deal.customerName || deal.customer?.name || "ยังไม่ผูกลูกค้า"}
               subtitle={(dealBrand.en || dealBrand.th) ? `แบรนด์ ${dealBrand.en || dealBrand.th}` : "ยังไม่ระบุแบรนด์"}
-              badges={<>{deal.team && <span className="ui-badge">ทีม {deal.team}</span>}{deal.ownerName && <span className="ui-badge" style={{ color: "var(--accent)" }}>{deal.ownerName}</span>}</>}
+              badges={<>{deal.team && <span className="ui-badge">ทีม {deal.team}</span>}{ownerName && <span className="ui-badge" style={{ color: "var(--accent)" }}>{ownerName}</span>}</>}
               facts={[
                 { label: "ประเภทดีล", value: DEAL_TYPE_LABELS[dealTypeOf(deal)] || dealTypeOf(deal) },
                 { label: "Forecast", value: deal.forecastMonth || "-" },

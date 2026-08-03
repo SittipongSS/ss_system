@@ -52,3 +52,18 @@ test('owner matching: id ก่อน (ครอบดีลก่อน/หล�
   // id ไม่ตรง → ตัดสินด้วยชื่อ+ทีมตามเดิม (คนละคน ห้าม match)
   assert.equal(dealMatchesOwner(deal, { ownerId: 'other-id', ownerName: 'สมหญิง อื่น', team: 'KA' }), false);
 });
+
+/* 🔒 ทั้งสองฝั่งมี id แล้วไม่ตรง = คนละคน จบ — ห้ามให้ "ชื่อพ้อง" ดึงดีลข้ามคน
+   (เคสจริงที่ต้องกัน: สองบัญชีชื่อซ้ำในทีมเดียวกัน หรือคนใหม่ที่ตั้งชื่อไปชนชื่อ
+   เก่าที่ยังค้างอยู่ในแถวของคนที่เปลี่ยนชื่อไปแล้ว) */
+test('owner matching: id ครบทั้งสองฝั่งแต่ไม่ตรง = ไม่ match แม้ชื่อ+ทีมจะเหมือนกันเป๊ะ', () => {
+  const deal = { ownerId: 'ของจริง', ownerName: 'สมชาย ใจดี', team: 'KA' };
+  assert.equal(dealMatchesOwner(deal, { ownerId: 'คนละคน', ownerName: 'สมชาย ใจดี', team: 'KA' }), false);
+});
+
+// แถวเก่าที่ไม่มี ownerId เลย ยังต้องจับด้วยชื่อ+ทีมได้ (ยอดย้อนหลัง)
+test('owner matching: แถวที่ไม่มี ownerId ยังถอยไปใช้ชื่อ+ทีมได้ตามเดิม', () => {
+  const legacy = { ownerId: null, ownerName: 'สมชาย ใจดี', team: 'KA' };
+  assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA' }), true);
+  assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'ODM' }), false);
+});

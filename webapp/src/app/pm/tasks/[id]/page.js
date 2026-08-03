@@ -14,6 +14,8 @@ import { DIFFICULTY_LABELS } from "@/lib/pm/tasks";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { assignableUsersFor } from "@/lib/permissions";
 import { fmtDateNumeric, fmtDateTime } from "@/lib/format";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import styles from "./page.module.css";
 
 const STATUS_LABELS = { Pending: "รอดำเนินการ", "In Progress": "กำลังทำ", Completed: "เสร็จแล้ว" };
@@ -22,6 +24,7 @@ const STATUS_COLORS = { Pending: "var(--text-3)", "In Progress": "var(--accent)"
 export default function TaskDetailPage() {
   const { id } = useParams();
   const [task, setTask] = useState(null);
+  const directory = usePeopleDirectory(); // แปลง id → ชื่อปัจจุบันบนการ์ดบริบท
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
@@ -109,7 +112,7 @@ export default function TaskDetailPage() {
 
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
-          {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: task.deal.ownerName || "-" }]} />}
+          {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: livePersonName(directory, task.deal.ownerId, task.deal.ownerName) || "-" }]} />}
           {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/sa/requests/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "คำร้อง"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
         </DetailPageLayout>

@@ -258,7 +258,13 @@ export function createProjectLifecycle() {
 function isSuperuserRole(role) {
   return role === "admin" || role === "ae_supervisor";
 }
+/* ⭐ ตัวตนอยู่ที่ `aeOwnerId` (mig 0190) — เทียบ id ก่อนเสมอ ไม่งั้น "เปลี่ยนชื่อ
+   ตัวเอง = ไม่ใช่เจ้าของโครงการตัวเองอีกต่อไป"
+   ⚠️ ยังต้องเทียบชื่อต่อเป็นทางถอย เพราะใบเก่าบน prod ส่วนใหญ่ (11/14) `aeOwnerId`
+   ว่าง — ตัดทิ้งตอนนี้เท่ากับปิดปุ่มของเจ้าของตัวจริง */
 function isAeOwner(project, user) {
+  const myId = user?.id || project?.me?.id;
+  if (myId && project?.aeOwnerId) return project.aeOwnerId === myId;
   const me = user?.name || project?.me?.name;
   return !!me && project?.aeOwner === me;
 }

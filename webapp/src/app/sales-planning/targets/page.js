@@ -113,7 +113,9 @@ export default function SalesPlanningTargetsPage() {
       }
       const ghosts = [...ghostOwners].map(([id, name]) => {
         const still = users.find((u) => u.id === id);
-        const node = buildNode("ae", t, { id, name });
+        // ชื่อจากบัญชีจริงก่อน — `x.ownerName` ที่ค้างในแถวเป็นชื่อ ณ ตอนวางเป้า
+        // (ของจริงบน prod: 12 แถวยังเป็นนามสกุลเดิมของคนที่เปลี่ยนชื่อไปแล้ว)
+        const node = buildNode("ae", t, { id, name: still?.name || name });
         node.ghost = still ? `ย้ายไปทีม ${still.team || "-"} แล้ว` : "ออกจากระบบแล้ว";
         return node;
       });

@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
+import { personFullName } from "@/lib/ui/personName";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -23,8 +24,21 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
   // ล็อกช่องผู้รับผิดชอบตามตำแหน่งผู้สร้าง (มติผู้ใช้): AE/Senior→ผู้ดูแล, AC→ผู้ประสานงาน,
   // AE Supervisor→ผู้ตรวจสอบ; role อื่นเลือกได้. ล็อกเฉพาะตอนสร้างใหม่.
   const role = useRole();
-  const [myName, setMyName] = useState("");
-  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  const [myId, setMyId] = useState("");
+  const [fallbackName, setFallbackName] = useState("");
+  useEffect(() => {
+    try {
+      setMyId(localStorage.getItem("userId") || "");
+      setFallbackName(localStorage.getItem("userName") || "");
+    } catch { /* ssr */ }
+  }, []);
+  /* ช่องนี้เก็บ **ชื่อเต็ม** ลง DB — ห้ามใช้ `localStorage.userName` ตรง ๆ เพราะเป็น
+     ชื่อย่อ แล้ว `personIdByName` ข้างล่างจะจับคู่ไม่ได้ (ดูคอมเมนต์เดียวกันที่
+     ProjectFormModal) */
+  const myName = useMemo(
+    () => personFullName(users.find((u) => u.id === myId)) || fallbackName,
+    [users, myId, fallbackName],
+  );
   const lockPeopleField = (!editingId && myName)
     ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
       : role === "ac" ? "preparedBy"
@@ -80,7 +94,9 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           ...form,
           ...(lockPeopleField ? { [lockPeopleField]: myName } : {}), // บังคับช่องที่ล็อก = ผู้สร้าง
           // ตัวตนของผู้ดูแลเดินคู่ชื่อเสมอ (mig 0190) — ชื่อไว้พิมพ์เอกสาร id ไว้แจ้งเตือน
-          aeOwnerId: personIdByName(users, lockPeopleField === "aeOwner" ? myName : form.aeOwner),
+          // จับคู่ไม่ได้ (ใบเก่าที่เก็บชื่อย่อ) = คง id เดิมไว้ ห้ามล้างเป็น null
+          aeOwnerId: personIdByName(users, lockPeopleField === "aeOwner" ? myName : form.aeOwner)
+            ?? initialData?.aeOwnerId ?? null,
           customerName: customer?.name || null,
           metadata: { ...(initialData?.metadata || {}), brand: form.brand, containerOnly: true },
         }),

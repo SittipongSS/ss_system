@@ -5,6 +5,7 @@ import DateInput from "@/components/ui/DateInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
+import { personFullName } from "@/lib/ui/personName";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { productOptionDisplay } from "@/components/master/productOption";
@@ -32,8 +33,22 @@ export default function ProjectFormModal({
   // ล็อกช่องผู้รับผิดชอบตามตำแหน่งผู้สร้าง (มติผู้ใช้): AE/Senior→ผู้ดูแล, AC→ผู้ประสานงาน,
   // AE Supervisor→ผู้ตรวจสอบ; role อื่น (admin) เลือกได้ทุกช่อง. ล็อกเฉพาะตอนสร้างใหม่.
   const role = useRole();
-  const [myName, setMyName] = useState("");
-  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  const [myId, setMyId] = useState("");
+  const [fallbackName, setFallbackName] = useState("");
+  useEffect(() => {
+    try {
+      setMyId(localStorage.getItem("userId") || "");
+      setFallbackName(localStorage.getItem("userName") || "");
+    } catch { /* ssr */ }
+  }, []);
+  /* 🐞 ช่องพวกนี้เก็บ **ชื่อเต็ม** เป็นค่าจริงใน DB (PersonSelect by="name") — เดิมยัด
+     `localStorage.userName` ซึ่งเป็นชื่อ**ย่อ** ("Sittipong K.") ลงไปตรง ๆ ผลคือ
+     `personIdByName` ด้านล่างจับคู่ไม่ได้ → `aeOwnerId` ว่าง → แจ้งเตือน/ตัวตนพัง
+     (prod: 11 จาก 14 โครงการ). ยึด id แล้วอ่านชื่อเต็มจากรายชื่อจริงแทน */
+  const myName = useMemo(
+    () => personFullName(users.find((u) => u.id === myId)) || fallbackName,
+    [users, myId, fallbackName],
+  );
   const lockPeopleField = (!editingId && myName)
     ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
       : role === "ac" ? "preparedBy"
@@ -179,10 +194,14 @@ export default function ProjectFormModal({
     setSubmitting(true);
     const payload = { ...form };
     if (lockPeopleField) payload[lockPeopleField] = myName; // บังคับค่าช่องที่ล็อก = ผู้สร้าง
-    // ตัวตนของผู้ดูแลเดินคู่ชื่อเสมอ (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร (ต้องเป็น
-    // snapshot) · id ไว้แจ้งเตือน/เช็คสิทธิ์ · จับคู่ไม่ได้ = null ไม่ใช่เดา
-    payload.aeOwnerId = personIdByName(users, payload.aeOwner);
-    payload.acOwnerId = personIdByName(users, payload.acOwner);
+    /* ตัวตนของผู้ดูแลเดินคู่ชื่อเสมอ (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร (ต้องเป็น
+       snapshot) · id ไว้แจ้งเตือน/เช็คสิทธิ์ · จับคู่ไม่ได้ = null ไม่ใช่เดา
+       ⚠️ จับคู่ไม่ได้ **ห้ามล้าง id เดิมทิ้ง** — ใบเก่าที่ `aeOwner` เป็นชื่อย่อ
+       ("Threerapong P.") จะคืน null ทุกครั้ง แค่กดแก้เรื่องอื่นแล้วบันทึกก็ทำให้
+       ตัวตนที่เคยตั้งไว้หลุดหายไปเงียบ ๆ */
+    const keepId = (matched, current) => (matched ?? current ?? null);
+    payload.aeOwnerId = keepId(personIdByName(users, payload.aeOwner), initialData?.aeOwnerId);
+    payload.acOwnerId = keepId(personIdByName(users, payload.acOwner), initialData?.acOwnerId);
     if (form.customerId) payload.customerName = customers.find((c) => c.id === form.customerId)?.name || "";
     payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber, brand: form.brand, poNumber: form.poNumber };
     delete payload.quotationNumber;
