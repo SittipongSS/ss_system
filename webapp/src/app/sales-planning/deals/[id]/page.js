@@ -41,6 +41,7 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
+import styles from "./page.module.css";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -672,6 +673,35 @@ export default function DealOverviewPage() {
     },
   ];
 
+  /* รายละเอียดดีล (`notes`) = บล็อกปักหมุดหัวเธรด ไม่ใช่การ์ดแยก (มติผู้ใช้ 2026-08-03:
+     "แยกกันมันงง") · ก่อนหน้านี้ค่านี้ไม่เคยถูกแสดงที่ไหนเลย (#911)
+
+     ⚠️ ปักหมุด **ไม่ใช่** ยัดเป็นเหตุการณ์ในเธรด — เธรดเก็บเหตุการณ์ที่เกิดแล้วซึ่ง
+     ไม่เปลี่ยนอีก แต่ `notes` แก้ได้ตลอดผ่าน PATCH · บล็อกนี้อ่านจาก `deal.notes`
+     สด ๆ ทุกครั้ง แก้ที่ฟอร์มแล้วเปลี่ยนตามทันที ไม่ค้างเป็นข้อความเวอร์ชันเก่า
+     และไม่จมไปก้นเธรด (เธรดดีลเรียงใหม่ก่อน — ของที่ผูกเวลาสร้างดีลจะไปอยู่ล่างสุด)
+
+     โชว์แม้ยังไม่ได้กรอก — คนอ่านต้องแยกออกระหว่าง "ดีลนี้ไม่มีรายละเอียด" กับ
+     "มีแต่ระบบไม่โชว์" ซึ่งเป็นบั๊กที่เพิ่งแก้ไป */
+  const dealNotesPinned = deal ? (
+    <div className={styles.pinnedNotes}>
+      <div className={styles.pinnedHead}>
+        <FileText size={14} aria-hidden="true" />
+        <strong>รายละเอียดดีล</strong>
+        {canEdit && (
+          <button type="button" className={styles.pinnedEdit} onClick={openEditDeal}>
+            {deal.notes ? "แก้ไข" : "เพิ่มรายละเอียด"}
+          </button>
+        )}
+      </div>
+      <ReadableText
+        text={deal.notes || ""}
+        lines={5}
+        empty={<span className="muted">ยังไม่ได้ระบุรายละเอียดตอนสร้างดีล</span>}
+      />
+    </div>
+  ) : null;
+
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
@@ -768,26 +798,8 @@ export default function DealOverviewPage() {
             />
           </ContextGrid>}
 
-          {/* 🐞 ช่อง "รายละเอียด" ของฟอร์มดีล (`notes`) ถูกบันทึกตั้งแต่ตอนสร้าง (POST
-              /api/sales-planning/deals) และแก้ได้ผ่าน PATCH — แต่ **ไม่เคยถูกแสดงที่ไหนเลย**
-              ทั้งระบบ ที่เดียวที่อ่านค่านี้คือตอนเปิดฟอร์มแก้ไข คนกรอกจึงเห็นข้อความตัวเอง
-              หายไปเงียบ ๆ (มติผู้ใช้ 2026-08-03)
-
-              วางบนหน้ารายละเอียด ไม่ใช่ในเธรด — เธรดเก็บ *เหตุการณ์ที่เกิดขึ้นแล้ว* ซึ่ง
-              ไม่เปลี่ยนอีก ส่วนรายละเอียดดีลแก้ได้ตลอด ถ้ายัดลงเธรดจะกลายเป็น snapshot
-              ที่ค้างอยู่กับข้อความเวอร์ชันเก่า (ดู entity-updates: snapshot ≠ กระจก)
-
-              โชว์การ์ดแม้ยังไม่ได้กรอก — คนอ่านต้องแยกออกระหว่าง "ไม่มีรายละเอียด" กับ
-              "มีแต่ระบบไม่โชว์" ซึ่งเป็นบั๊กที่เพิ่งแก้ไปนี่เอง */}
-          {tab === "overview" && (
-            <DetailCard icon={FileText} eyebrow="รายละเอียดดีล" title="บันทึกจากผู้สร้างดีล">
-              <ReadableText
-                text={deal.notes || ""}
-                lines={6}
-                empty={<span className="muted">ยังไม่ได้ระบุรายละเอียด — เพิ่มได้ที่ปุ่ม “แก้ไขข้อมูลดีล” บนการ์ดจัดการ</span>}
-              />
-            </DetailCard>
-          )}
+          {/* การ์ด "รายละเอียดดีล" เดี่ยว ๆ ที่เคยอยู่ตรงนี้ (#911) ย้ายเข้าไปเป็นบล็อก
+              ปักหมุดหัวเธรดแล้ว (มติผู้ใช้ 2026-08-03: "แยกกันมันงง") — ดู dealNotesPinned */}
 
           {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
           <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของดีล" />
@@ -1203,6 +1215,7 @@ export default function DealOverviewPage() {
                 entityId={deal.id}
                 order="desc"
                 extraItems={extraItems}
+                pinned={dealNotesPinned}
                 placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
                 emptyText="ยังไม่มีความเคลื่อนไหว"
                 onPosted={load}
