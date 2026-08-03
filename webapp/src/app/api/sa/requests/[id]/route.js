@@ -6,7 +6,10 @@
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting, isSuperuser } from '@/lib/permissions';
+import { canViewCosting } from '@/lib/permissions';
+import {
+  canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
+} from '@/lib/forceDelete';
 import {
   acknowledgeRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   cancelRequestError, closeOutcomeError, closeRequestError, deleteRequestError,
@@ -248,13 +251,34 @@ export async function DELETE(request, { params }) {
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
   if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
-  const force = new URL(request.url).searchParams.get('force') === '1';
-  if (force) {
-    if (!isSuperuser(user?.role)) return Response.json({ error: 'ต้องเป็นผู้ดูแลระบบ' }, { status: 403 });
+  // ── บังคับลบ (break-glass ของผู้ดูแลระบบ) ──────────────────────────────
+  //
+  // 🔴 เดิมกั้นด้วย `isSuperuser` ซึ่งรวม `ae_supervisor` → หัวหน้าทีมขายลบคำร้องที่
+  // ส่งแล้ว (ของที่ guard ระดับ DB ตั้งใจกัน) ได้ · endpoint force ทุกตัวในระบบใช้
+  // `canForceDelete` = role admin เท่านั้น (ดูเหตุผลใน lib/forceDelete.js) — ที่นี่
+  // เป็นตัวเดียวที่หลุดมาตรฐาน
+  const force = isForceRequest(request);
+  const dryRun = isDryRun(request);
+  if (force || dryRun) {
+    if (!canForceDelete(user)) {
+      return Response.json({ error: 'บังคับลบต้องเป็นผู้ดูแลระบบ (admin)' }, { status: 403 });
+    }
+    // พรีวิวใช้เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ = สิ่งที่จะโดนลบเป๊ะ
+    if (dryRun) return Response.json(await requestForcePreview(supabase, before));
   } else {
     if (!canManageRequest(user, before)) return Response.json({ error: 'ไม่มีสิทธิ์ลบคำร้องนี้' }, { status: 403 });
     const err = deleteRequestError(before);
     if (err) return Response.json({ error: err }, { status: 409 });
+  }
+
+  try {
+    // ลูกที่ไม่มี FK จริง (ไฟล์แนบสองระดับ + งานที่สร้างจากคำร้อง + เธรดของงานนั้น)
+    // ต้องกวาด **ก่อน** ลบแถวแม่ · โยน error แล้วหยุด ไม่ลบต่อ ไม่งั้นคำร้องหายแต่
+    // ลูกค้างเป็นแถวกำพร้าที่ไม่มีทางเข้าถึง (รูเดิมของเส้นนี้ — ตอนลบดีลมี
+    // cleanupDealOrphans กวาดให้ แต่ลบคำร้องทีละใบไม่มีใครกวาด)
+    await cleanupRequestOrphans(supabase, id);
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
   }
 
   // guard ระดับ DB บล็อกการลบคำร้องที่ส่งแล้ว — admin ต้องผ่าน RPC ที่ตั้ง flag ให้
@@ -269,7 +293,10 @@ export async function DELETE(request, { params }) {
 
   await recordAudit({
     user, action: 'delete', entityType: 'dept_request', entityId: id, before,
-    summary: force ? `ลบคำร้อง ${before.docNo || id} (force)` : 'ลบร่างคำร้องที่ยังไม่ส่ง', request,
+    summary: force
+      ? `[admin force] ลบคำร้อง ${before.docNo || id} (สถานะ ${before.status})`
+      : 'ลบร่างคำร้องที่ยังไม่ส่ง',
+    request,
   });
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, forced: force });
 }

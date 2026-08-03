@@ -4,7 +4,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder,
-  scentForcePreview, formulaForcePreview,
+  scentForcePreview, formulaForcePreview, requestForcePreview,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -240,4 +240,33 @@ test('formulaForcePreview: เตือนว่าสินค้าจะก�
   const { cascade, notes } = await formulaForcePreview(supabase, { id: 'FML-1', status: 'active' });
   assert.deepEqual(cascade.map((c) => c.count), [2, 1]);
   assert.ok(notes.some((n) => n.includes('รอจัดระเบียบ')));
+});
+
+test('requestForcePreview: บอกของที่ลบพ่วง และย้ำว่าราคาที่ตอบแล้วไม่หาย', async () => {
+  const supabase = stubCount({
+    'dept_request_items:requestId': 3,
+    'entity_updates:entityId:extra': 7,   // .eq(entityId) แล้ว .eq(entityType)
+    'personal_tasks:inquiryId': 2,
+  });
+  const { cascade, notes, blocked } = await requestForcePreview(supabase, {
+    id: 'DR-1', docNo: 'RM-26080001', status: 'answered', dealId: 'D-1',
+  });
+  assert.equal(blocked, false);
+  const labels = cascade.map((c) => c.label).join(' | ');
+  assert.match(labels, /บรรทัดวัสดุ/);
+  assert.match(labels, /เธรดคำร้อง/);
+  assert.match(labels, /งานที่สร้างจากคำร้อง/);
+  // ⭐ ข้อสำคัญที่สุดของพรีวิวนี้: ผู้ดูแลระบบต้องไม่กลัวว่ากำลังลบประวัติราคาทิ้ง
+  // (ราคาอยู่ในทะเบียนวัสดุเป็น rev ของตัวเอง ไม่ได้อยู่ในคำร้อง)
+  assert.ok(notes.some((n) => /ราคาที่ตอบแล้ว.*ยังอยู่/.test(n)), 'ต้องบอกว่าราคาไม่หาย');
+  assert.ok(notes.some((n) => n.includes('RM-26080001')), 'ต้องอ้างเลขที่ที่ออกแล้ว');
+  assert.ok(notes.some((n) => /เธรดของดีล/.test(n)), 'ต้องบอกว่าบรรทัดในเธรดดีลไม่ถูกลบตาม');
+});
+
+test('requestForcePreview: ร่างเปล่าที่ยังไม่ออกเลข ไม่ต้องเตือนอะไรเลย', async () => {
+  const { cascade, notes } = await requestForcePreview(stubCount({}), {
+    id: 'DR-2', docNo: null, status: 'draft', dealId: null,
+  });
+  assert.deepEqual(cascade, [], 'ไม่มีลูก = ไม่มีรายการลบพ่วง');
+  assert.deepEqual(notes, [], 'ร่างเปล่า ๆ ไม่ต้องมี note');
 });

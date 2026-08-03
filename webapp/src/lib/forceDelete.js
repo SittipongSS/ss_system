@@ -13,6 +13,7 @@
 // ทุก preview เป็น pure-ish (query อย่างเดียว ไม่ลบ) เพื่อให้ ?dryRun=1 ใช้ซ้ำ
 // เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ.
 import { purgeUpdatesMany } from '@/lib/master/updates';
+import { purgeAttachments } from '@/lib/master/attachments';
 import { isWonStage } from '@/lib/salesPlanning';
 
 // อ่าน query flag จาก request URL.
@@ -295,6 +296,64 @@ export async function scentForcePreview(supabase, scent) {
     notes.push('ประวัติการส่งกลิ่นคือหลักฐานการคุยกับลูกค้า — ปกติควรใช้ “เก็บเข้ากรุ” แทนการลบ');
   }
   return { cascade, notes, blocked: false };
+}
+
+// ── คำร้องข้ามฝ่าย (mig 0173) ─────────────────────────────────────────
+// เส้นทาง force มีมาตั้งแต่ #779 แต่ **ไม่มีพรีวิวและไม่มีปุ่มบนหน้าจอ** — ผู้ดูแล
+// ระบบต้องยิง URL เอง · และของที่จะโดนลบพ่วงมีจริงหลายอย่างที่ไม่มี FK:
+//   dept_request_items / _tiers  → FK CASCADE (DB จัดการ)
+//   entity_updates (เธรด)         → polymorphic ไม่มี FK ต้องกวาดเอง
+//   attachments (หัว + รายบรรทัด) → polymorphic ไม่มี FK ต้องกวาดเอง + ลบไฟล์บน Drive
+//   personal_tasks.inquiryId      → ไม่มี FK · "สร้างงานจากคำร้อง" ค้างเป็นงานกำพร้า
+// (สามอย่างท้ายคือของที่ `cleanupDealOrphans` กวาดให้ตอนลบดีล แต่ตอนลบคำร้อง
+//  ทีละใบไม่มีใครกวาด — รูเดียวกันคนละทางเข้า)
+export async function requestForcePreview(supabase, request) {
+  const [items, updates, tasks] = await Promise.all([
+    countBy(supabase, 'dept_request_items', 'requestId', request.id),
+    countBy(supabase, 'entity_updates', 'entityId', request.id, (q) => q.eq('entityType', 'dept_request')),
+    countBy(supabase, 'personal_tasks', 'inquiryId', request.id),
+  ]);
+  const cascade = [
+    line('บรรทัดวัสดุ + ชั้นจำนวนที่ขอ (ลบพ่วง)', items),
+    line('ข้อความและเหตุการณ์ในเธรดคำร้อง (ลบพ่วง)', updates),
+    line('งานที่สร้างจากคำร้องนี้ (ลบพ่วง)', tasks),
+  ].filter((r) => r.count > 0);
+
+  const notes = [];
+  // ราคาที่ตอบแล้วอยู่ในทะเบียนวัสดุเป็น rev ของตัวเอง — **ไม่หายไปกับคำร้อง**
+  // ต้องบอกให้ชัด ไม่งั้นผู้ดูแลระบบจะกลัวว่ากำลังลบประวัติราคาทิ้ง
+  if (['answered', 'closed'].includes(request.status)) {
+    notes.push('ราคาที่ตอบแล้วอยู่ในทะเบียนวัสดุเป็นรุ่นของตัวเอง — ลบคำร้องแล้วราคายังอยู่ตามเดิม');
+  }
+  if (request.docNo) {
+    notes.push(`คำร้องที่ออกเลข ${request.docNo} แล้วถือเป็นหลักฐาน — ปกติควรใช้ “ยกเลิก” แทนการลบ`);
+  }
+  if (request.dealId) {
+    notes.push('บรรทัดที่เคยลงไว้ในเธรดของดีลจะไม่ถูกลบตาม (เป็นประวัติของดีล) — ลิงก์ในนั้นจะกดไม่เจอ');
+  }
+  return { cascade, notes, blocked: false };
+}
+
+// เก็บกวาดลูกของคำร้องที่ไม่มี FK จริง — เรียกก่อนลบแถวคำร้องเสมอ
+//
+// ⚠️ โยน error เมื่อกวาดไม่สำเร็จ: ปล่อยให้ลบคำร้องสำเร็จแต่ลูกค้างไว้ = แถวกำพร้า
+// ที่ไม่มีทางเข้าถึงและไม่มีใครตามลบให้ (กติกาเดียวกับ cleanupDealOrphans)
+export async function cleanupRequestOrphans(supabase, requestId) {
+  const { data: items, error: itemError } = await supabase
+    .from('dept_request_items').select('id').eq('requestId', requestId);
+  if (itemError) throw new Error(`อ่านบรรทัดของคำร้องไม่สำเร็จ: ${itemError.message}`);
+
+  // ไฟล์แนบอยู่สองระดับ: หัวคำร้อง + รายบรรทัด · ต้องลบไฟล์บน Drive ด้วย ไม่ใช่แค่แถว
+  await purgeAttachments('dept_request', requestId);
+  for (const item of items || []) {
+    await purgeAttachments('dept_request_item', item.id);
+  }
+
+  // งานที่สร้างจากคำร้องนี้ + เธรดของงานพวกนั้น
+  await purgeTaskThreads(supabase, { column: 'inquiryId', values: [requestId] });
+  const { error: taskError } = await supabase
+    .from('personal_tasks').delete().eq('inquiryId', requestId);
+  if (taskError) throw new Error(`ลบงานที่ผูกคำร้องไม่สำเร็จ: ${taskError.message}`);
 }
 
 export async function formulaForcePreview(supabase, formula) {
