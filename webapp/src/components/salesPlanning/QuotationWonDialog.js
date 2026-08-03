@@ -118,6 +118,8 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
         <p style={{ margin: 0, color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
           ยอดก่อน VAT <strong>{fmtMoney(wonAmount)}</strong> จะถูกบันทึกเป็นยอด Won (นับ AT ตามเดือนของวันที่เอกสาร)
           และใบเสนอราคาฉบับอื่นในดีลนี้จะถูก<strong>ปิดและล็อก</strong> แก้ไข/ลบไม่ได้
+          {/* ใบ 0 บาทปิด Won ได้ (มติ 2026-08-03) — ทวนให้เห็นก่อนกด เพราะยอดนี้ทับมูลค่าดีล */}
+          {wonAmount === 0 && <> · ใบนี้ยอดเป็น <strong>0 บาท</strong> ดีลจะมีมูลค่าปิดเป็น 0</>}
         </p>
 
         {error && (
