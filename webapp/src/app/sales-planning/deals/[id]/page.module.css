@@ -1,0 +1,36 @@
+/* บล็อกปักหมุดหัวเธรดดีล — "รายละเอียดดีล" ที่กรอกตอนสร้าง
+   อยู่ในเธรดแต่ไม่ใช่เหตุการณ์ในสาย จึงต้องดูต่างจากแถวข้อความชัดเจน:
+   มีพื้น + ขีดซ้าย บอกว่า "นี่คือคำอธิบายของใบนี้ ไม่ใช่สิ่งที่ใครเพิ่งพิมพ์" */
+.pinnedNotes {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.pinnedHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+/* ปุ่มไปแก้ที่ต้นทาง — ชิดขวาสุดของหัวบล็อก (กติกา "อ่านที่นี่ แก้ที่ต้นทาง") */
+.pinnedEdit {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-5);
+  cursor: pointer;
+}
+.pinnedEdit:hover {
+  text-decoration: underline;
+}

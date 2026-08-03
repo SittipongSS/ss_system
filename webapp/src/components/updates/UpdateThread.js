@@ -10,6 +10,7 @@
 //                        [{ id, at, label, color, body, href, linkLabel, threadKey }]
 //                        `threadKey` = เรื่องเดียวกันแม้มาจากคนละตาราง (เช่น
 //                        `task:<id>` ให้ความคืบหน้าของงานไปซ้อนใต้ "สร้างงาน")
+//   pinned               บล็อกปักหมุดหัวเธรด (คำอธิบายของใบนี้) — ไม่เข้าไปเรียงตามเวลา
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -44,6 +45,11 @@ export default function UpdateThread({
   entityType,
   entityId,
   extraItems = [],
+  /* บล็อกปักหมุดหัวเธรด — "คำอธิบายของใบนี้" ที่ต้องอ่านก่อนไล่ไทม์ไลน์
+     ต่างจาก `extraItems` ตรงที่ **ไม่มีเวลา ไม่เข้าไปเรียงในสาย** เพราะมันไม่ใช่
+     เหตุการณ์ที่เกิดขึ้นตอนใดตอนหนึ่ง แต่เป็นค่าปัจจุบันของใบที่แก้ได้ตลอด
+     (ถ้าเอาไปเรียงตามเวลา มันจะจมอยู่ก้นเธรดของดีลที่คุยกันมานาน) */
+  pinned = null,
   order = "asc",
   allowAttachments = true,
   placeholder = "พิมพ์อัปเดต...",
@@ -506,6 +512,8 @@ export default function UpdateThread({
 
   return (
     <>
+      {pinned}
+
       {canFilterSystem && (
         <div className={styles.toolbar}>
           <Button
