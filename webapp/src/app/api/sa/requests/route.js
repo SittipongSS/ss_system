@@ -14,8 +14,8 @@ import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
 import {
-  deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestKindLabel,
-  requestShapeError, requestStepKey,
+  deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
+  requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -62,12 +62,16 @@ export async function GET(request) {
 }
 
 // POST /api/sa/requests
-// { kind, dept, dealId, title, body?, urgent?, scentId?, formulaId?, productId?,
-//   productName?, formulaCode?, formulaName?, costingRequestId?, requestedDueDate?,
-//   items?: [{ kind, materialId?, label, spec?, componentId?, tiers: [qty…] }] }
+// { kind, dept, title, body?, urgent?, requestedDueDate?,
+//   dealId? | salesOrderId? | scentId? | formulaId? | productTypeId?,   ← ตามหัวข้อ
+//   productId?, formulaCode?, formulaName?, costingRequestId?,
+//   items?: [{ kind, materialId?, label, spec?, componentId?, tiers?: [qty…] }] }
 //
-// ⚠️ `dealId` + `title` บังคับทุกชนิด (มติ 2026-08-03) · `projectId` / `customerId` /
-// `customerName` **ไม่รับจาก client** — ดึงจากแถวดีลเสมอ · `note` เลิกใช้แล้ว
+// ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
+// lib/master/requestTypes.js) — ขอราคาไม่ผูกดีล · บรีฟกลิ่นผูก SO · Mock-up ผูก
+// โครงการ+ดีล+กลิ่น+หมวดสินค้า
+// ⚠️ `projectId` / `customerId` / `customerName` **ไม่รับจาก client** — derive จาก
+// ดีล (หรือจากกลิ่น/สูตรเมื่อหัวข้อไม่ผูกดีล) · `note` เลิกใช้แล้ว
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
@@ -95,7 +99,9 @@ export async function POST(request) {
 
   let items = [];
   if (requestHasItems(kind)) {
-    const normalized = normalizeRequestItems(body.items, { dept });
+    const normalized = normalizeRequestItems(body.items, {
+      dept, hasTiers: requestHasTiers(kind),
+    });
     if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
     items = normalized.items;
     // ชนิดวัสดุของบรรทัดต้องตรงกับชนิดคำร้อง — ปิดรอยที่เคยทำให้เปิดคำร้องจาก
@@ -112,31 +118,65 @@ export async function POST(request) {
 
   const requestId = `DR-${randomUUID()}`;
 
-  // ── ดีล + โครงการ + ลูกค้า มาจากแถวดีลจริง ไม่เชื่อ client ────────────────
+  // ── สิ่งที่คำร้องผูก: มาจากแถวจริงเสมอ ไม่เชื่อ client ───────────────────
   //
-  // ⭐ มติผู้ใช้ 2026-08-03: คำร้อง**ทุกชนิด**ต้องผูกโครงการและดีล (กลับมติ 5 เดิม
-  // ที่ยกเว้นชนิดขอราคาไว้) · ผลที่ผู้ใช้รับทราบแล้ว: ราคากลางที่ไม่ผูกดีลเปิดจาก
-  // คำร้องไม่ได้อีก และดีลที่ยังไม่ผูกโครงการเปิดคำร้องไม่ได้ (นับ prod 2026-08-03:
-  // 122 จาก 136 ดีลยังไม่ผูกโครงการ)
+  // ⭐ มติผู้ใช้ 2026-08-03 (รอบสอง) — แต่ละหัวข้อผูกไม่เหมือนกัน (ดู `needs` ใน
+  // lib/master/requestTypes.js) · `requestShapeError` ตรวจแล้วว่า "เลือกครบไหม"
+  // ตรงนี้ตรวจ "ของที่เลือกมีจริงและสัมพันธ์กันจริงไหม" ซึ่งต้องอ่าน DB
   //
-  // ⚠️ **ยังไม่ใส่ NOT NULL ที่ DB** — prod มีคำร้องเก่า 2 ใบที่ dealId ว่าง
-  // migration จะล้มทันที · บังคับที่ชั้นโค้ดก่อน แล้วค่อยออก migration เมื่อเคลียร์
-  // สองใบนั้นแล้ว (แพตเทิร์นเดียวกับ mig 0194 ที่รอเคลียร์แถว TEST)
-  const { data: dealRow, error: dealError } = await supabase
-    .from('sales_deals').select('id, projectId, customerId, customerName')
-    .eq('id', body.dealId).maybeSingle();
-  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-  if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
-  if (!dealRow.projectId) {
-    return Response.json({
-      error: 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้',
-    }, { status: 400 });
+  // ⭐ **บรีฟกลิ่นยึด SO เป็นหลัก** แล้ว derive ดีล/โครงการ/ลูกค้าจาก SO — ไม่ให้
+  // เลือกซ้ำ เพราะเลือกสองที่แล้วขัดกันเองได้ (SO ของดีล A แต่เลือกดีล B)
+  let salesOrderId = null;
+  let dealId = body.dealId || null;
+  if (requestNeedsRef(kind, 'salesOrder')) {
+    const { data: soRow, error: soError } = await supabase
+      .from('sales_orders').select('id, dealId').eq('id', body.salesOrderId).maybeSingle();
+    if (soError) return Response.json({ error: soError.message }, { status: 500 });
+    if (!soRow) return Response.json({ error: 'ไม่พบใบสั่งขายที่เลือก' }, { status: 400 });
+    salesOrderId = soRow.id;
+    dealId = soRow.dealId || null;
+    if (!dealId) {
+      return Response.json({
+        error: 'ใบสั่งขายนี้ไม่ได้ผูกดีล — เปิดบรีฟกลิ่นจากใบนี้ไม่ได้',
+      }, { status: 400 });
+    }
   }
-  const projectId = dealRow.projectId;
-  // ลูกค้ามาจากดีล ไม่ใช่จาก client: ดีลบังคับแล้ว ลูกค้าจึงมีคำตอบเดียวเสมอ ·
-  // ปล่อยให้ส่งมาเองคือเปิดช่องให้ราคาเข้าทะเบียนใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
-  const customerId = dealRow.customerId || null;
-  const customerName = dealRow.customerName || null;
+
+  // โครงการ/ลูกค้าเติมจากดีล **ถ้าหัวข้อนี้ผูกดีล** — หัวข้อขอราคาไม่ผูกดีลแล้ว
+  // (มติรอบสอง: กลิ่น/สูตรผูกลูกค้าอยู่แล้ว ใช้รอบไหนก็ได้ · วัสดุเป็นราคากลาง)
+  let projectId = null;
+  let customerId = null;
+  let customerName = null;
+  if (dealId) {
+    const { data: dealRow, error: dealError } = await supabase
+      .from('sales_deals').select('id, projectId, customerId, customerName')
+      .eq('id', dealId).maybeSingle();
+    if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
+    if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
+    // บังคับโครงการเฉพาะหัวข้อที่ประกาศว่าต้องมี — SO ที่ derive ดีลมาให้ก็ต้องผ่าน
+    // ด่านนี้ด้วย เพราะหมุดไทม์ไลน์ของบรีฟกลิ่นต้องมีโครงการจึงจะปักได้
+    if (!dealRow.projectId && requestNeedsRef(kind, 'project')) {
+      return Response.json({
+        error: 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้',
+      }, { status: 400 });
+    }
+    projectId = dealRow.projectId || null;
+    // ลูกค้ามาจากดีล ไม่ใช่จาก client — ปล่อยให้ส่งเองคือเปิดช่องให้ราคาเข้าทะเบียน
+    // ใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
+    customerId = dealRow.customerId || null;
+    customerName = dealRow.customerName || null;
+  }
+
+  // หัวข้อขอราคา F/FB ไม่ผูกดีล → ลูกค้ามาจาก **กลิ่น/สูตร** ที่อ้างถึงแทน
+  // (กลิ่นมี customerId NOT NULL เสมอ ตามมติ 9 — กลิ่นของลูกค้า A ใช้กับ B ไม่ได้)
+  if (!customerId && (body.scentId || body.formulaId)) {
+    const table = body.scentId ? 'scents' : 'formulas';
+    const refId = body.scentId || body.formulaId;
+    const { data: refRow } = await supabase
+      .from(table).select('customerId, customerName').eq('id', refId).maybeSingle();
+    customerId = refRow?.customerId || null;
+    customerName = refRow?.customerName || null;
+  }
 
   try {
     // 1) ชนิดขอราคา: ทุกรายการต้องมีวัสดุในทะเบียน — ของใหม่เข้าเป็นร่างรอ RD/PC รับ
@@ -164,8 +204,11 @@ export async function POST(request) {
       title: body.title ? String(body.title).trim().slice(0, 200) : null,
       body: body.body ? String(body.body).trim().slice(0, 4000) : null,
       urgent: !!body.urgent,
-      dealId: dealRow.id,
+      dealId,
       projectId,
+      salesOrderId,
+      // หมวดสินค้าที่จะขึ้นตัวอย่าง (Mock-up) — integer ไม่ใช่ text เหมือน id อื่น
+      productTypeId: body.productTypeId ? Number(body.productTypeId) : null,
       stepKey: requestStepKey(kind),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,

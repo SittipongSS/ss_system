@@ -22,8 +22,8 @@ import Textarea from "@/components/ui/Textarea";
 import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
 import {
-  REQUEST_DEPTS, kindsForDept, materialKindForRequest, requestHasItems, requestKindLabel,
-  requestKindMeta,
+  REQUEST_DEPTS, kindsForDept, materialKindForRequest, requestHasItems, requestHasTiers,
+  requestKindLabel, requestKindMeta, requestNeedsRef,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
 import { isScentUsable } from "@/lib/master/scents";
@@ -51,6 +51,8 @@ export const emptyAskItem = (kind = "PM") => ({
 export const emptyRequestForm = (over = {}) => ({
   projectId: "",
   dealId: "",
+  salesOrderId: "",   // บรีฟกลิ่น (ค่าบริการออกแบบกลิ่น)
+  productTypeId: "",  // ขอ Mock-up (หมวดสินค้าที่จะขึ้นตัวอย่าง)
   dept: "",
   kind: "",
   title: "",
@@ -79,8 +81,8 @@ function itemsForKind(kind, existing = []) {
 
 export default function RequestForm({
   value, onChange, materials = [], products = [],
-  // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ — โครงการ+ดีล (บังคับ) · กลิ่น (F) · สูตร (FB)
-  projects = [], deals = [], scents = [], formulas = [],
+  // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
+  projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
   mentionPeople = [],
@@ -90,12 +92,22 @@ export default function RequestForm({
   const kind = value.kind || "";
   const meta = requestKindMeta(kind) || {};
   const hasItems = requestHasItems(kind);
+  const hasTiers = requestHasTiers(kind);
   const dept = value.dept || "";
+
+  // ช่องที่ต้องกรอกมาจากทะเบียนหัวข้อที่เดียว — ห้ามเขียน `kind === "..."` ในฟอร์ม
+  // (ธงเพี้ยนจาก server ไม่ได้ เพราะอ่านตัวเดียวกัน)
+  const needsProject = requestNeedsRef(kind, "project");
+  const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
+  const needsScent = requestNeedsRef(kind, "scent");
+  const needsFormula = requestNeedsRef(kind, "formula");
+  const needsProductType = requestNeedsRef(kind, "productType");
 
   // ดีลที่เลือกได้ = ดีลของโครงการที่เลือกไว้เท่านั้น (ลำดับข้อ 1)
   const dealsOfProject = value.projectId
     ? deals.filter((d) => d.projectId === value.projectId)
     : [];
+  const selectedProductType = productTypes.find((t) => String(t.id) === String(value.productTypeId));
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
@@ -141,7 +153,11 @@ export default function RequestForm({
 
   return (
     <>
-      {/* ── 1) โครงการ → ดีล (บังคับทุกชนิด) ─────────────────────────────── */}
+      {/* ── 1) โครงการ → ดีล (เฉพาะหัวข้อที่ประกาศว่าต้องมี) ───────────────
+          ⭐ มติรอบสอง: ขอราคา F/FB/PM **ไม่ผูกดีล** เพราะกลิ่น/สูตรผูกลูกค้าอยู่แล้ว
+          และวัสดุเป็นราคากลางที่ใช้ข้ามงานได้ · บรีฟกลิ่นยึด SO แทน (ค่าบริการ)
+          → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
+      {needsProject && (
       <div className="form-grid">
         <div className="form-group">
           <span className={styles.fieldLabel}>โครงการ</span>
@@ -186,6 +202,36 @@ export default function RequestForm({
           )}
         </div>
       </div>
+      )}
+
+      {/* ── บรีฟกลิ่น: ยึดใบสั่งขาย (ค่าบริการออกแบบกลิ่น) ─────────────────
+          แม่แบบ SCENT ขั้น 6 "ออกแบบกลิ่น" ขึ้นกับขั้น 4 "ใบสั่งขายออกแบบกลิ่น"
+          → เลือก SO ที่เดียว ดีล/โครงการ/ลูกค้า server เติมจาก SO เอง ไม่ให้เลือกซ้ำ
+          แล้วขัดกันเอง (SO ของดีล A แต่เลือกดีล B) */}
+      {needsSalesOrder && (
+        <div className="form-group">
+          <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น (SO)</span>
+          <SearchableSelect
+            value={value.salesOrderId} disabled={disabled}
+            onChange={(v) => set({ salesOrderId: v })}
+            options={salesOrders.map((so) => ({
+              value: so.id,
+              label: `${so.orderNumber || so.id}${so.customerName ? ` — ${so.customerName}` : ""}`,
+              search: `${so.orderNumber || ""} ${so.customerName || ""} ${so.dealId || ""}`,
+            }))}
+            placeholder="เลือกใบสั่งขาย"
+            emptyText="ยังไม่มีใบสั่งขายในระบบ"
+            ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
+          />
+          {/* ⚠️ prod มี sales_orders = 0 ใบ (นับ 2026-08-03) — ต้องบอกทางออกตรงนี้
+              ไม่ใช่ปล่อยให้เจอ dropdown ว่างแล้วคิดว่าระบบพัง */}
+          <small className={styles.hint}>
+            {salesOrders.length
+              ? "ออกแบบกลิ่นมีค่าบริการ — ต้องมี SO ที่ครอบค่านั้นก่อน (แม่แบบ SCENT ขั้น 4 → 6)"
+              : "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"}
+          </small>
+        </div>
+      )}
 
       {/* ── 2) ฝ่าย → 3) หัวข้อ (หัวข้อถูกกรองด้วยฝ่าย) ───────────────────── */}
       <div className="form-grid">
@@ -218,6 +264,8 @@ export default function RequestForm({
                 scentId: "",
                 formulaId: "",
                 productId: "",
+                productTypeId: "",
+                salesOrderId: "",
                 formulaCode: "",
                 formulaName: "",
                 items: itemsForKind(next),
@@ -267,10 +315,12 @@ export default function RequestForm({
         </div>
       </div>
 
-      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F อ้างกลิ่น · FB อ้างสูตร ─────────────── */}
-      {meta.refs === "scent" && (
+      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ──────── */}
+      {needsScent && (
         <div className="form-group">
-          <span className={styles.fieldLabel}>กลิ่นที่ลูกค้าคอนเฟิร์ม</span>
+          <span className={styles.fieldLabel}>
+            {kind === "mockup" ? "กลิ่นที่ลูกค้ามีอยู่" : "กลิ่นที่ลูกค้าคอนเฟิร์ม"}
+          </span>
           <SearchableSelect
             value={value.scentId} disabled={disabled}
             onChange={(v) => set({ scentId: v })}
@@ -281,11 +331,41 @@ export default function RequestForm({
             }))}
             placeholder="เลือกกลิ่นจากทะเบียน"
             emptyText="ยังไม่มีกลิ่นที่รับเข้าทะเบียน"
-            ariaLabel="กลิ่นที่ขอราคา"
+            // ต้องตรงกับป้ายที่มองเห็น — Mock-up ไม่ได้ขอราคา มันอ้างกลิ่นที่ลูกค้ามี
+            ariaLabel={kind === "mockup" ? "กลิ่นที่อ้างอิงสำหรับ Mock-up" : "กลิ่นที่ขอราคา"}
           />
         </div>
       )}
-      {meta.refs === "formula" && (
+      {/* ประเภทสินค้าที่จะขึ้นตัวอย่าง — อ้างหมวดสินค้า ไม่ใช่ตัวสินค้า เพราะตอนขอ
+          Mock-up สินค้ายังไม่มีในระบบ · ธง isExcise/requiresFdaNotice ติดมากับหมวด
+          ทำให้ RD เห็นทันทีว่าตัวอย่างนี้เป็นสินค้าที่ต้องขึ้นทะเบียน/แจ้ง อย. หรือไม่ */}
+      {needsProductType && (
+        <div className="form-group">
+          <span className={styles.fieldLabel}>ประเภทสินค้าที่จะขึ้นตัวอย่าง</span>
+          <SearchableSelect
+            value={value.productTypeId} disabled={disabled}
+            onChange={(v) => set({ productTypeId: v })}
+            options={productTypes.filter((t) => t.isActive !== false).map((t) => ({
+              value: String(t.id),
+              label: `${t.nameTh || t.nameEn || t.typeCode}${t.nameTh && t.nameEn ? ` (${t.nameEn})` : ""}`,
+              search: `${t.nameTh || ""} ${t.nameEn || ""} ${t.typeCode || ""} ${t.mainCategoryName || ""}`,
+            }))}
+            placeholder="เลือกประเภทสินค้า"
+            emptyText="ยังไม่มีหมวดสินค้า"
+            ariaLabel="ประเภทสินค้าที่ขอ Mock-up"
+          />
+          {selectedProductType && (selectedProductType.isExcise || selectedProductType.requiresFdaNotice) && (
+            <small className={styles.hint}>
+              {[
+                selectedProductType.isExcise && "สินค้าประเภทนี้เสียภาษีสรรพสามิต",
+                selectedProductType.requiresFdaNotice && "ต้องแจ้ง อย.",
+              ].filter(Boolean).join(" · ")}
+            </small>
+          )}
+        </div>
+      )}
+
+      {needsFormula && (
         <div className="form-group">
           <span className={styles.fieldLabel}>สูตรที่ลูกค้าคอนเฟิร์ม</span>
           <SearchableSelect
@@ -368,40 +448,49 @@ export default function RequestForm({
                   onChange={(e) => patchItem(idx, { spec: e.target.value })}
                 />
 
-                <div className={styles.tierRow}>
-                  <span className={styles.tierLabel}>ขอราคาที่จำนวน:</span>
-                  {(item.tiers || []).map((qty) => (
-                    <button
-                      key={qty} type="button" className={`chip ${styles.tierChipOn}`} disabled={disabled}
-                      onClick={() => toggleTier(idx, qty)}
-                      aria-label={`เอาชั้น ${qty} ออก`}
-                    >
-                      {qty.toLocaleString("th-TH")} ✕
-                    </button>
-                  ))}
-                  {QTY_SHORTCUTS.filter((q) => !(item.tiers || []).includes(q)).map((q) => (
-                    <button
-                      key={q} type="button" className={`chip ${styles.tierChip}`} disabled={disabled}
-                      onClick={() => toggleTier(idx, q)}
-                    >
-                      +{q.toLocaleString("th-TH")}
-                    </button>
-                  ))}
-                  <input
-                    className={`premium-input ${styles.tierInput}`} type="number" min="1"
-                    disabled={disabled} placeholder="จำนวนอื่น"
-                    aria-label={`เพิ่มจำนวนที่ขอของรายการที่ ${idx + 1}`}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      addCustomTier(idx, e.currentTarget.value);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                </div>
-                <small className={styles.hint}>
-                  ปุ่มเป็นแค่ทางลัด — พิมพ์จำนวนเท่าไรก็ได้แล้วกด Enter · ไม่เลือกเลย = ขอราคาเดียว
-                </small>
+                {/* ชั้นจำนวน (MOQ) มีเฉพาะวัสดุ — มติผู้ใช้ 2026-08-03: ขอราคา F/FB
+                    ไม่มีขั้น MOQ (หัวน้ำหอม/เนื้อสารคิดราคาต่อกิโลเดียว ไม่ลดตามจำนวน)
+                    ขั้น MOQ มีเฉพาะวัสดุและราคาผลิต */}
+                {hasTiers ? (
+                  <>
+                    <div className={styles.tierRow}>
+                      <span className={styles.tierLabel}>ขอราคาที่จำนวน:</span>
+                      {(item.tiers || []).map((qty) => (
+                        <button
+                          key={qty} type="button" className={`chip ${styles.tierChipOn}`} disabled={disabled}
+                          onClick={() => toggleTier(idx, qty)}
+                          aria-label={`เอาชั้น ${qty} ออก`}
+                        >
+                          {qty.toLocaleString("th-TH")} ✕
+                        </button>
+                      ))}
+                      {QTY_SHORTCUTS.filter((q) => !(item.tiers || []).includes(q)).map((q) => (
+                        <button
+                          key={q} type="button" className={`chip ${styles.tierChip}`} disabled={disabled}
+                          onClick={() => toggleTier(idx, q)}
+                        >
+                          +{q.toLocaleString("th-TH")}
+                        </button>
+                      ))}
+                      <input
+                        className={`premium-input ${styles.tierInput}`} type="number" min="1"
+                        disabled={disabled} placeholder="จำนวนอื่น"
+                        aria-label={`เพิ่มจำนวนที่ขอของรายการที่ ${idx + 1}`}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          addCustomTier(idx, e.currentTarget.value);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </div>
+                    <small className={styles.hint}>
+                      ปุ่มเป็นแค่ทางลัด — พิมพ์จำนวนเท่าไรก็ได้แล้วกด Enter · ไม่เลือกเลย = ขอราคาเดียว
+                    </small>
+                  </>
+                ) : (
+                  <small className={styles.hint}>ราคาเดียว — หัวข้อนี้ไม่มีชั้นจำนวน</small>
+                )}
               </div>
             ))}
 

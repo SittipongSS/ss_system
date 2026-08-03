@@ -47,6 +47,8 @@ export default function RequestsPage() {
   const [products, setProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
+  const [salesOrders, setSalesOrders] = useState([]);
+  const [productTypes, setProductTypes] = useState([]);
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
   const [mentionPeople, setMentionPeople] = useState([]);
@@ -91,6 +93,10 @@ export default function RequestsPage() {
       .then((r) => r.json()).then((d) => setDeals(asArray(d))).catch(() => {});
     fetch("/api/pm/projects", { cache: "no-store" })
       .then((r) => r.json()).then((d) => setProjects(asArray(d))).catch(() => {});
+    // บรีฟกลิ่นยึด SO (ค่าบริการออกแบบกลิ่น) · Mock-up ยึดหมวดสินค้า
+    fetch("/api/sales-planning/sales-orders", { cache: "no-store" })
+      .then((r) => r.json()).then((d) => setSalesOrders(asArray(d))).catch(() => {});
+    cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     // รายชื่อกรองด้วยด่านของเธรดคำร้องมาจาก server แล้ว (ห้ามกรองเองที่ client —
     // @คนที่เปิดคำร้องไม่ได้ = เขาได้แจ้งเตือนที่กดแล้วเจอ 404)
     fetch("/api/sa/requests/mentionable", { cache: "no-store" })
@@ -145,7 +151,8 @@ export default function RequestsPage() {
         scope={queueDept ? "queue" : "mine"} dept={queueDept}
         rows={queueDept ? queues[queueDept] : visibleMine}
         materials={materials} products={products}
-        projects={projects} deals={deals} scents={scents} formulas={formulas}
+        projects={projects} deals={deals} salesOrders={salesOrders}
+        scents={scents} formulas={formulas} productTypes={productTypes}
         mentionPeople={mentionPeople}
         newRequestDefaults={newRequestDefaults}
         loading={loading} loadError={loadError} reload={reload}
