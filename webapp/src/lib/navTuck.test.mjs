@@ -61,3 +61,37 @@ test('อยู่นิ่ง ๆ ไม่เปลี่ยนสถานะ
   const b = nextNavTuck({ y: 500, lastY: 500, tucked: false });
   assert.equal(b.tucked, false);
 });
+
+test('🔴 วงจรป้อนกลับ: การหุบทำให้เบราว์เซอร์ขยับ scroll เอง แล้วถูกอ่านว่า "ผู้ใช้เลื่อนขึ้น"', () => {
+  /* อาการที่ผู้ใช้เจอ: "พอ scroll น้อยมันจะกระพริบ"
+     หุบ → header เตี้ยลง 44px → เอกสารเตี้ยลง → เบราว์เซอร์ขยับ scrollTop ชดเชย
+     (scroll anchoring หรือการ clamp ท้ายเอกสาร) → เกิด scroll event ที่ dy = −44
+     → ตัวจัดการอ่านว่าเลื่อนขึ้น → คลี่ → เอกสารสูงขึ้น → ขยับกลับ → หุบ → วนไม่จบ */
+  const ROW = 44;
+  let s = { tucked: false, lastY: 0 };
+  const flips = [];
+  let y = 0;
+  for (let i = 0; i < 6; i += 1) {
+    const before = s.tucked;
+    s = nextNavTuck({ y, lastY: s.lastY, tucked: s.tucked, settling: s.settling });
+    if (s.tucked !== before) {
+      flips.push(`${before}→${s.tucked} ที่ y=${y}`);
+      // เบราว์เซอร์ขยับ scroll ชดเชยความสูงที่เปลี่ยน แล้วยิง scroll event อีกครั้ง
+      y += s.tucked ? -ROW : ROW;
+    } else {
+      y += 80; // ผู้ใช้เลื่อนลงต่อ
+    }
+  }
+  assert.ok(flips.length <= 2,
+    `สลับสถานะ ${flips.length} ครั้งจากการเลื่อนลงทางเดียว = กระพริบ: ${flips.join(' · ')}`);
+});
+
+test('ผู้ใช้เลื่อนขึ้นจริงหลังการชดเชย ยังต้องคลี่ให้', () => {
+  // กันไม่ให้ตัวกัน "การขยับที่เราทำให้เกิดเอง" ไปกลืนเจตนาจริงของผู้ใช้
+  let s = nextNavTuck({ y: 300, lastY: 0, tucked: false });
+  assert.equal(s.tucked, true);
+  s = nextNavTuck({ y: 256, lastY: s.lastY, tucked: s.tucked, settling: s.settling }); // การชดเชย
+  assert.equal(s.tucked, true, 'การชดเชยของเบราว์เซอร์ต้องไม่ทำให้คลี่');
+  s = nextNavTuck({ y: 200, lastY: s.lastY, tucked: s.tucked, settling: s.settling }); // ผู้ใช้เลื่อนขึ้นจริง
+  assert.equal(s.tucked, false, 'ผู้ใช้เลื่อนขึ้นจริงต้องคลี่');
+});
