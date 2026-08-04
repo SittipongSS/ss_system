@@ -242,6 +242,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (line === undefined) return badRequest('สายธุรกิจต้องเป็น PRODUCT หรือ SERVICE');
     updates.line = line;
   }
+  // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน (กติกาเดียวกับ PATCH ดีล)
+  // 🐞 เดิมเขียนทับทั้งก้อนจากสิ่งที่ client ส่งมา ทำให้กุญแจที่ route อื่นเขียนไว้หลุดหาย
+  // เงียบ ๆ: `dealOrder` (PUT /deal-order — ลำดับ segment ของดีล + stepOrder ที่จัดตามนั้น),
+  // `salesDealId`/`salesDealTitle`/`source` (create-project). ฟอร์มฝั่งหน้าเว็บ spread ของเดิม
+  // มาให้ก็จริง แต่มันคือ snapshot ตอนเปิดฟอร์ม — จัดลำดับดีลระหว่างฟอร์มเปิดค้างแล้วกดบันทึก
+  // = ลำดับที่เพิ่งจัดถูกย้อนกลับ. ค่าไม่ใช่ object (null/'') ไม่รับ: ไม่มีเส้นทางล้างทั้งก้อน
+  if (updates.metadata !== undefined) {
+    if (!updates.metadata || typeof updates.metadata !== 'object' || Array.isArray(updates.metadata)) {
+      delete updates.metadata;
+    } else {
+      updates.metadata = { ...(project.metadata || {}), ...updates.metadata };
+    }
+  }
   if (
     updates.productMainCategory !== undefined &&
     (updates.productMainCategory || '') !== (project.productMainCategory || '')

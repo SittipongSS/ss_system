@@ -24,7 +24,11 @@ import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_C
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 
-const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", meeting: "นัดหมาย", qualify: "สร้างดีล", bounce: "ส่งกลับคิวคัดกรอง", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
+/* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
+   ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
+   ⚠️ `create_deal` คือค่าที่ POST /deals เขียนจริง ส่วน `qualify` เป็นค่าของเส้นทางเก่า
+   ที่เลิกใช้แล้ว — คงไว้เผื่อแถวเก่า แต่ของใหม่มาทาง create_deal ทั้งหมด */
+const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", bounce: "ส่งกลับคิวคัดกรอง", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
 const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", details: "" };
 
 export default function LeadDetailPage() {
@@ -43,10 +47,19 @@ export default function LeadDetailPage() {
   const team = useTeam();
   const canCreateDeals = canCreateDealFromLead(role);
   const [meId, setMeId] = useState(null);
-  const [users, setUsers] = useState([]);
-  // ใช้อ่าน "ชื่อปัจจุบัน" ของผู้รับผิดชอบเท่านั้น (คนละชุดกับ `users` ที่เป็น
-  // dropdown มอบหมาย ซึ่งยิง /api/users แบบ admin-only)
+  /* รายชื่อผู้ใช้สองหน้าที่ — ชุดเดียวกับหน้ารายการลีด (ห้ามแยกแหล่ง):
+     - `directory` (รวมคนที่ปิดบัญชีแล้ว) = อ่าน *ชื่อปัจจุบัน* ของผู้รับผิดชอบ
+     - `users` (เฉพาะคนที่ยังทำงาน) = dropdown มอบหมาย
+
+     🐞 เดิมหน้านี้ยิง `/api/users` เองซึ่งต้องมี `users:manage`/`users:view` =
+     **แอดมินเท่านั้น** → senior_ae/ac (คนที่มีหน้าที่กระจายลีดจริง ๆ) และ
+     ae_supervisor เจอ 403 เงียบ ๆ แล้วได้ `users = []` ⇒ ปุ่ม "มอบหมาย" โผล่
+     แต่ช่อง "ผู้รับผิดชอบ" (required) ไม่มีตัวเลือกสักตัว = ทางตัน มอบหมายจาก
+     หน้ารายละเอียดไม่ได้เลย ต้องถอยไปทำที่หน้ารายการ (ซึ่งใช้ hook นี้อยู่แล้ว)
+     ⚠️ ต้องกรอง disabled ออกด้วย — /api/users ไม่กรองให้ จึงเคยมอบลีดให้คนที่
+     ลาออกแล้วได้ ต่างจากหน้ารายการที่กรองมาตลอด */
   const directory = usePeopleDirectory();
+  const users = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   const [dealOpen, setDealOpen] = useState(false);
   const [dealOptions, setDealOptions] = useState({ customers: [], projects: [], categories: [] });
 
@@ -54,15 +67,6 @@ export default function LeadDetailPage() {
     fetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
       .then((me) => setMeId(me?.id || null)).catch(() => setMeId(null));
   }, []);
-
-  // รายชื่อสำหรับช่อง "ผู้รับผิดชอบ" ตอนมอบหมาย — โหลดเมื่อผู้ใช้มีสิทธิ์มอบหมายเท่านั้น
-  const needsAssignees = lead?.status === "screened";
-  useEffect(() => {
-    if (!needsAssignees) return;
-    fetch("/api/users").then((r) => (r.ok ? r.json() : null))
-      .then((rows) => setUsers(Array.isArray(rows) ? rows : rows?.items || []))
-      .catch(() => setUsers([]));
-  }, [needsAssignees]);
 
   const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
   const lifecycle = useMemo(

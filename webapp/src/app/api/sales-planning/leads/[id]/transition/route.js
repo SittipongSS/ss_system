@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead } from '@/lib/sales/leads';
+import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS, TEAM_LABELS } from '@/lib/permissions';
 import { sendChat, chatCard } from '@/lib/chat';
 
@@ -67,12 +68,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } else if (action === 'assign') {
     // supervisor/admin (superuser) กระจายได้ทุกทีม + senior_ae/ac เฉพาะทีมตัวเอง
     if (!(superuser || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือ Supervisor/แอดมิน');
-    if (!body.assigneeId || !body.assigneeName) return badRequest('ต้องเลือก AE ผู้รับผิดชอบ');
-    patch.assigneeId = body.assigneeId;
-    patch.assigneeName = body.assigneeName;
+    // ⚠️ ผู้รับผิดชอบต้องเป็นผู้ใช้จริง + role ที่ canWorkLead พาไป true ได้ —
+    // เดิมเขียน assigneeId/assigneeName จาก body ดิบ ๆ (ปลอมชื่อ / มอบให้คนที่ลาออก /
+    // มอบให้ role ที่ทำงานคิวลีดไม่ได้เลย → ลีดค้างถาวร). ดูเหตุผลเต็มใน leadAssignee.js
+    // ชื่อมาจาก server เสมอ ไม่รับ body.assigneeName อีก (สองความจริงในแถวเดียว)
+    let assignee;
+    try {
+      assignee = await validateLeadAssignee(supabase, body.assigneeId);
+    } catch (assigneeError) {
+      return fail(assigneeError.message, 500);
+    }
+    if (!assignee.ok) return badRequest(assignee.error);
+    patch.assigneeId = assignee.assigneeId;
+    patch.assigneeName = assignee.assigneeName;
     patch.assignedAt = now; // จุดเริ่ม SLA ติดต่อกลับ — มอบใหม่นับใหม่ (เจ้าของใหม่)
-    event.assigneeId = body.assigneeId;
-    event.assigneeName = body.assigneeName;
+    event.assigneeId = assignee.assigneeId;
+    event.assigneeName = assignee.assigneeName;
   } else if (action === 'contact') {
     if (!workScope) return forbidden('ติดต่อกลับได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     if (!body.reason?.trim()) return badRequest('ต้องระบุหมายเหตุการติดต่อ');

@@ -304,7 +304,11 @@ async function costingSegments(supabase, entityType, entityId) {
 const SALES_THREAD_FOLDER = {
   // โครงการเรียกกันด้วย "รหัส" (PJ-xxxx) เสมอ จึงให้ code มาก่อนชื่อ
   project: { folder: FOLDER.salesProjects, table: 'projects', labelKeys: ['code', 'name', 'title'] },
-  lead: { folder: FOLDER.salesLeads, table: 'sales_leads', labelKeys: ['name', 'companyName', 'title'] },
+  // 🐞 เคยตั้งเป็น ['name','companyName','title'] ซึ่ง **ไม่มีสักคอลัมน์** ใน
+  // sales_leads (mig 0091 ใช้ contactName/company) → docLabel หาไม่เจอแล้วตกไปใช้
+  // `String(row.id)` ⇒ โฟลเดอร์ไฟล์แนบของลีดทุกใบชื่อ "LEAD-xxxxxxxx" เปิด Drive
+  // มาแล้วหาไม่เจอว่าของใคร (สกรีนช็อตแชท/นามบัตรคือหลักฐานต้นทางของลีด)
+  lead: { folder: FOLDER.salesLeads, table: 'sales_leads', labelKeys: ['contactName', 'company'] },
   deal: { folder: FOLDER.salesDeals, table: 'sales_deals', labelKeys: ['docNo', 'title', 'name'] },
   quotation: { folder: FOLDER.salesQuotations, table: 'quotations', labelKeys: ['quotationNo', 'docNo'] },
   sales_order: { folder: FOLDER.salesOrders, table: 'sales_orders', labelKeys: ['orderNo', 'docNo'] },

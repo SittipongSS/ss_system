@@ -5,7 +5,7 @@ import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
-import { canEditSalesPlanning, dealAuditLabel, normalizeDealType, inSalesEditScope } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, normalizeDealType, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
@@ -102,7 +102,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.dealType = genType;
     patch.metadata = { ...(deal.metadata || {}), projectType: genType };
   }
-  if (['lead', 'qualified', 'quotation'].includes(deal.stage)) patch.stage = 'timeline_proposed';
+  // เดินหน้าอย่างเดียว — กติกามาจาก advanceStage ที่เดียว (เหมือน create-project/link-project)
+  // 🐞 เดิมสะกดลิสต์สถานะเองแล้วมีขั้น "เสนอราคา" ติดมาด้วย → ดีลที่ออกใบเสนอราคาไปแล้ว
+  // แล้วโครงการถูกลบ (FK SET NULL — mig 0064) กลับมาทำไทม์ไลน์ใหม่ จะถูก **ดึงถอย**
+  // กลับมาขั้นเสนอไทม์ไลน์ทั้งที่ใบยังอยู่ (มติ B4 2026-07-28 ห้ามถอย —
+  // dealStageOrder.test.mjs ตรึงกติกาไว้ในระดับฟังก์ชันแล้ว แต่ route นี้เลี่ยงฟังก์ชันไป)
+  // ⚠️ ห้ามพิมพ์ลิสต์สถานะเป็นตัวอักษรที่นี่อีก แม้ในคอมเมนต์ — ตัวสแกนของเทสต์
+  // (dealStageIntegrity.test.mjs) ไม่แยกโค้ดกับคอมเมนต์
+  const nextStage = advanceStage(deal.stage, 'timeline_proposed');
+  if (nextStage !== deal.stage) patch.stage = nextStage;
   const { data: updatedDeal, error: upErr } = await supabase
     .from('sales_deals').update(patch).eq('id', deal.id).select().single();
   if (upErr) return fail(upErr.message, 500);
