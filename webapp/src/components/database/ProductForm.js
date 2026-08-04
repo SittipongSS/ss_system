@@ -13,7 +13,7 @@
 import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { categoryInfo } from "@/lib/master/categoryOf";
+import { RETAIL_PRICE_MAIN_CATEGORY, categoryInfo, showsRetailPrice } from "@/lib/master/categoryOf";
 import { brandBoth } from "@/lib/master/brands";
 import {
   DEFAULT_SALE_UNIT,
@@ -104,6 +104,13 @@ export default function ProductForm({
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const money = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v));
 
+  // ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 · **แต่ถ้าสินค้าตัวนี้มีราคาค้างอยู่ ต้องโชว์เสมอ**
+  // ไม่ว่าหมวดไหน — ซ่อนช่องที่ยังมีค่า = ค่าติดอยู่ในฐานข้อมูลโดยไม่มีทางเห็นหรือลบ
+  // (ราคาขายปลีกเป็นฐานคิดภาษีสรรพสามิต ค่าค้างที่มองไม่เห็นจึงอันตรายกว่าช่องเกินมา)
+  const inRetailCategory = showsRetailPrice(form.fgCode);
+  const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
+  const showRetail = inRetailCategory || hasRetailValue;
+
   // สูตรที่เก็บเข้ากรุแล้วไม่ให้เลือกใหม่ แต่ตัวที่สินค้านี้ผูกอยู่ต้องคงอยู่ในลิสต์
   // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
   const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
@@ -134,14 +141,19 @@ export default function ProductForm({
             <input type="text" name="fgCode" value={form.fgCode} onChange={set("fgCode")} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
             <CategoryBox fgCode={form.fgCode} productTypes={productTypes} />
           </div>
-          <div className="form-group col-span-2">
-            <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
+          {/* ชื่อ TH/EN อยู่แถวเดียวกัน — เดิมกินคนละแถวเต็มทั้งที่ช่องสั้น และเงื่อนไข
+              "อย่างน้อย 1 ภาษา" ไปแปะใต้ช่อง EN ช่องเดียว คนที่กรอก TH แล้วข้ามจึงไม่เห็น
+              ตอนนี้ดาวอยู่ที่ป้ายทั้งสองช่อง + คำอธิบายกินเต็มแถวใต้ทั้งคู่ */}
+          <div className="form-group">
+            <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
             <input type="text" name="productDescription" value={form.productDescription} onChange={set("productDescription")} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
           </div>
-          <div className="form-group col-span-2">
-            <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
+          <div className="form-group">
+            <label>ชื่อสินค้า / รายละเอียด (อังกฤษ) <span className="text-[var(--red)]">*</span></label>
             <input type="text" name="productDescriptionEn" value={form.productDescriptionEn} onChange={set("productDescriptionEn")} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
-            <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
+          </div>
+          <div className="form-group col-span-2">
+            <span className="text-xs text-[var(--text-3)]">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) — ไม่ต้องครบทั้งสอง</span>
           </div>
           <div className="form-group">
             <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
@@ -186,10 +198,12 @@ export default function ProductForm({
         </div>
       </div>
 
-      {/* Section 2: formula (ข้อมูลฝ่าย RD — ไม่บังคับ: FG ที่ไม่มีสูตรก็มี) */}
+      {/* Section 2: สูตร + บรรจุภัณฑ์ + ราคาผลิต (มติผู้ใช้ 2026-08-05 — เดิมสูตรเป็น
+          section ของตัวเองที่มีช่องเดียว) · ราคาผลิตอยู่ที่นี่เพราะเป็นต้นทุนของสิ่งที่
+          บรรจุจริง คนละเรื่องกับราคาขายปลีกที่แยกไปข้างล่าง */}
       <div className="mb-[22px]">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสูตร (Formula)</h3>
+          <h3 className="font-semibold text-[var(--text)]">2. สูตรและบรรจุภัณฑ์ (Formula &amp; Packaging)</h3>
         </div>
         <div className="form-grid cols-2">
           {/* ⭐ เลือกจากทะเบียนสูตร ไม่ใช่พิมพ์เอง (PR-5) — เดิมเป็นสามช่องข้อความ
@@ -227,15 +241,6 @@ export default function ProductForm({
               </span>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Section 3: packaging & pricing */}
-      <div className="mb-[22px]">
-        <div className="border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
-        </div>
-        <div className="form-grid cols-2">
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <div className="flex gap-2">
@@ -276,12 +281,31 @@ export default function ProductForm({
               <MoneyInput name="costPrice" value={form.costPrice} onChange={(v) => onForm({ costPrice: v ?? "" })} className="w-full" />
             )}
           </div>
-          <div className="form-group">
-            <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-            <MoneyInput name="retailPriceIncVat" value={form.retailPriceIncVat ?? ""} onChange={(v) => onForm({ retailPriceIncVat: v ?? "" })} className="w-full" />
-          </div>
         </div>
       </div>
+
+      {/* Section 3: ราคาขายปลีก — เฉพาะกลุ่มหลัก 01 (มติผู้ใช้ 2026-08-05)
+          แยกจากราคาผลิตเพราะเป็นราคาคนละฝั่ง: ผลิต = ต้นทุนเรา · ขายปลีก = ราคาหน้าร้าน
+          ของลูกค้า ซึ่งเป็นฐานคิดภาษีสรรพสามิต */}
+      {showRetail && (
+        <div className="mb-[22px]">
+          <div className="border-b border-[var(--border)] pb-3 mb-5">
+            <h3 className="font-semibold text-[var(--text)]">3. ราคาขายปลีก (Retail Price)</h3>
+            {!inRetailCategory && (
+              <span className="text-[11px] text-[var(--amber)]">
+                หมวดนี้ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} แต่สินค้าตัวนี้มีราคาขายปลีกค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า
+              </span>
+            )}
+          </div>
+          <div className="form-grid cols-2">
+            <div className="form-group">
+              <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
+              <MoneyInput name="retailPriceIncVat" value={form.retailPriceIncVat ?? ""} onChange={(v) => onForm({ retailPriceIncVat: v ?? "" })} className="w-full" />
+              <span className="text-xs text-[var(--text-3)] mt-1">ราคาที่ลูกค้าตั้งขายหน้าร้าน — ระบบใช้เป็นฐานคิดภาษีสรรพสามิต</span>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

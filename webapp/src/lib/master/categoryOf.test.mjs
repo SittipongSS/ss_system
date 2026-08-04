@@ -2,7 +2,9 @@
 // ช่องติ๊กบน product_types ไม่ใช่รหัสหมวดตายตัว. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { categoryOf, categoryFlags, isExciseCategory, categoryInfo } from './categoryOf';
+import {
+  categoryOf, categoryFlags, isExciseCategory, categoryInfo, mainCategoryOf, showsRetailPrice,
+} from './categoryOf';
 
 const TYPES = [
   { mainCategoryCode: '01', typeCode: '002', nameTh: 'น้ำหอมฉีดผิวกาย', isExcise: true, requiresFdaNotice: false },
@@ -40,4 +42,20 @@ test('categoryInfo คืน typeInfo พร้อมธง — ใช้ต่�
   assert.equal(info.code, '02-001');
   assert.equal(info.typeInfo.requiresFdaNotice, true);
   assert.equal(info.typeInfo.isExcise, false);
+});
+
+// ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 (มติผู้ใช้ 2026-08-05) — เลขตายตัวจึงต้องมีเทสต์
+// ผูกไว้ ไม่งั้นวันที่ใครมาแก้ค่าคงที่จะไม่มีอะไรบอกว่ากระทบช่องไหนบนฟอร์ม
+test('ราคาขายปลีกโผล่เฉพาะ FG กลุ่มหลัก 01', () => {
+  assert.equal(showsRetailPrice('FG-ABC-01-002-0001'), true);
+  assert.equal(showsRetailPrice('FG-ABC-02-002-0001'), false);
+  assert.equal(showsRetailPrice('FG-ABC-11-002-0001'), false);
+});
+
+test('FG ที่ยังพิมพ์ไม่ครบ/ไม่มีหมวด ไม่ถือว่าอยู่กลุ่ม 01', () => {
+  assert.equal(showsRetailPrice(''), false);
+  assert.equal(showsRetailPrice('FG-ABC'), false);
+  assert.equal(showsRetailPrice(null), false);
+  assert.equal(mainCategoryOf('FG-ABC-01-002-0001'), '01');
+  assert.equal(mainCategoryOf('ไม่ใช่รหัส'), null);
 });

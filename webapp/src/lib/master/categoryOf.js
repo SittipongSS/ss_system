@@ -6,6 +6,23 @@ export function categoryOf(fgCode) {
   return m ? `${m[1]}-${m[2]}` : null;
 }
 
+// กลุ่มหลักของหมวด = 2 หลักแรกของรหัสหมวด 'XX-YYY' (XX = mainCategoryCode)
+export function mainCategoryOf(fgCode) {
+  const code = categoryOf(fgCode);
+  return code ? code.slice(0, 2) : null;
+}
+
+// ── ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 (มติผู้ใช้ 2026-08-05) ────────────────
+// ⚠️ นี่คือ "เลขหมวดตายตัว" ซึ่งเป็นสิ่งที่มติ 2026-07-20 ด้านล่างเพิ่งเลิกใช้กับ
+// ภาษี/อย. (ย้ายไปช่องติ๊กบนหมวดแทน) — ผู้ใช้เลือกทางนี้เองหลังเห็นสองทางเลือก
+// ผลที่ตามมาถ้าวันหนึ่งมีหมวดใหม่ที่ต้องกรอกราคาขายปลีก: **ต้องมาแก้โค้ดบรรทัดนี้**
+// ไม่ใช่ติ๊กเอาที่หน้าหมวดสินค้า · ถ้าถึงตอนนั้นให้ย้ายมาเป็นช่องติ๊กเหมือน isExcise
+export const RETAIL_PRICE_MAIN_CATEGORY = '01';
+
+export function showsRetailPrice(fgCode) {
+  return mainCategoryOf(fgCode) === RETAIL_PRICE_MAIN_CATEGORY;
+}
+
 // มติ 2026-07-20: ภาษีสรรพสามิต/จดแจ้ง อย. ยึด "ช่องติ๊กบนหมวดสินค้า"
 // (product_types.isExcise / requiresFdaNotice, mig 0131) — เลิก hardcode '01-002'.
 // ผู้เรียกต้องส่งรายการหมวด (productTypes rows) ที่โหลดมาแล้ว; ไม่รู้จักหมวด/ไม่ส่ง
