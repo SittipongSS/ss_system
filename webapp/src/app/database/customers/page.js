@@ -104,7 +104,7 @@ export default function CustomerDirectory() {
       customerType: formData.customerType || "company",
       taxId: formData.taxId,
       phone: formData.phone,
-      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0201) — address/shippingAddress/branchCode
+      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0202) — address/shippingAddress/branchCode
       // เป็นกระจกที่ server เขียนเองจากที่อยู่หลัก ไม่ให้ client ส่งสองทาง
       addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)

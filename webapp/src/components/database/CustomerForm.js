@@ -21,7 +21,7 @@ import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 
-// ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0201) ทั้งก้อน
+// ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0202) ทั้งก้อน
 // server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
 export const EMPTY_CUSTOMER = {
   arCode: "", name: "", customerType: "company", taxId: "",
@@ -38,7 +38,7 @@ export const customerToForm = (c) => ({
   customerType: c.customerType || "company",
   taxId: c.taxId || "",
   phone: c.phone || "",
-  // addresses[] (0201) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิมให้เห็นค่าเดิม
+  // addresses[] (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิมให้เห็นค่าเดิม
   addresses: customerAddresses(c),
   brands: normalizeBrands(c.brands),
   // contacts[] (0033) — ยุคเก่าเก็บเป็นช่องเดี่ยว contactPerson/contactPhone/email
@@ -125,7 +125,7 @@ export default function CustomerForm({
         </div>
       </div>
 
-      {/* Section 2 — ที่อยู่ (หลายรายการ, mig 0201) */}
+      {/* Section 2 — ที่อยู่ (หลายรายการ, mig 0202) */}
       <div className="mb-[22px]">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
           <h3 className="font-semibold text-[var(--text)]">2. ที่อยู่ (Addresses) <span className="text-[var(--red)]">*</span></h3>

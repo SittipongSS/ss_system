@@ -50,7 +50,7 @@ function NewQuotationInner() {
 
   const [customer, setCustomer] = useState(null); // snapshot preview (read-only)
   const [contactIndex, setContactIndex] = useState(0);
-  // ที่อยู่ที่ใบนี้จะใช้ (0201/0202) — ตั้งต้นเป็นที่อยู่หลักของลูกค้าตอนโหลด snapshot
+  // ที่อยู่ที่ใบนี้จะใช้ (0202/0203) — ตั้งต้นเป็นที่อยู่หลักของลูกค้าตอนโหลด snapshot
   const [billingAddressId, setBillingAddressId] = useState("");
   const [shippingAddressId, setShippingAddressId] = useState("");
   const [creating, setCreating] = useState(false);
@@ -252,7 +252,7 @@ function NewQuotationInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contactIndex,
-          // ที่อยู่ที่ใบนี้เลือก (0202) — server ตรวจซ้ำว่า id เป็นของลูกค้ารายนี้จริง
+          // ที่อยู่ที่ใบนี้เลือก (0203) — server ตรวจซ้ำว่า id เป็นของลูกค้ารายนี้จริง
           // และใช้ได้กับหน้าที่นั้น ไม่งั้นถอยไปที่อยู่หลัก
           billingAddressId: billingAddressId || null,
           shippingAddressId: shippingAddressId || null,
@@ -417,7 +417,7 @@ function NewQuotationInner() {
             <section className={styles.card}>
               <div className={styles.sectionHeading}><UserRound size={17} /><h2>ข้อมูลลูกค้าในเอกสาร</h2><span>Snapshot ณ วันที่สร้าง</span><div className="spacer" /><Link href={`/database/customers/${customerId}`} className="btn ghost sm" target="_blank"><ExternalLink size={13} /> แก้ที่ฐานข้อมูลลูกค้า</Link></div>
               <div className={styles.customerGrid}>
-                {/* ที่อยู่เลือกได้ (0201) — ลูกค้ารายเดียวมีได้หลายที่/หลายสาขา ตั้งต้นเป็น
+                {/* ที่อยู่เลือกได้ (0202) — ลูกค้ารายเดียวมีได้หลายที่/หลายสาขา ตั้งต้นเป็น
                     ที่อยู่หลัก · ตัวข้อความโชว์ไว้ใต้ช่องเพราะป้ายชื่อบอกไม่ได้ว่าที่ไหนจริง ๆ */}
                 <label className={styles.contactField}>ที่อยู่ออกบิล
                   {billingOptions.length

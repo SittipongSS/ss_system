@@ -105,7 +105,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
   // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
   // ⭐ "สดใหม่ของที่อยู่ **ตัวเดิม**" — ใบเดิมเลือกสาขา/คลังไหนไว้ ฉบับ Rev. ต้องอยู่
-  // ที่นั่น (0202) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
+  // ที่นั่น (0203) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
   const { data: cust } = quote.customerId
     ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId').eq('id', quote.customerId).maybeSingle()
     : { data: null };

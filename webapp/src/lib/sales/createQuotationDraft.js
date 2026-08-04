@@ -42,7 +42,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
     .select('taxId, addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
     .eq('id', deal.customerId)
     .maybeSingle();
-  // ที่อยู่ที่ใบนี้เลือก (0201/0202) — คนทำใบเลือกได้ว่าออกบิล/ส่งที่ไหน ไม่ส่งมา
+  // ที่อยู่ที่ใบนี้เลือก (0202/0203) — คนทำใบเลือกได้ว่าออกบิล/ส่งที่ไหน ไม่ส่งมา
   // = ที่อยู่หลักของลูกค้า (พฤติกรรมเดิมของทุกสายที่ไม่มีหน้าจอให้เลือก เช่น PO สหมิตร)
   const picked = pickDocumentAddresses(customer, body);
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];

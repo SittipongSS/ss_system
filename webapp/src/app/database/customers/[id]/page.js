@@ -178,7 +178,7 @@ export default function CustomerDetails() {
       teams: formData.teams,
       taxId: formData.taxId,
       phone: formData.phone,
-      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0201) — address/shippingAddress/branchCode
+      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0202) — address/shippingAddress/branchCode
       // เป็นกระจกที่ server เขียนเองจากที่อยู่หลัก ไม่ให้ client ส่งสองทาง
       addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
@@ -304,7 +304,7 @@ export default function CustomerDetails() {
 
   const teamsLabel = (customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-";
 
-  // ที่อยู่ (0201) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
+  // ที่อยู่ (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
   const addresses = customerAddresses(customer);
   const primaryBillingIndex = addresses.findIndex(isBillingAddress);
   const primaryShippingIndex = addresses.findIndex(isShippingAddress);
@@ -359,7 +359,7 @@ export default function CustomerDetails() {
               <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
               <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
               <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
-              {/* ที่อยู่หลายรายการ (0201) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
+              {/* ที่อยู่หลายรายการ (0202) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
               <div className="md:col-span-3">
                 <span className="text-[var(--text-3)] block mb-2 text-[11px]">ที่อยู่ ({addresses.length})</span>
                 {addresses.length === 0 ? (

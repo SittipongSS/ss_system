@@ -65,7 +65,7 @@ export default function QuotationEditorPage() {
   const [lines, setLines] = useState([]);
   const [form, setForm] = useState({
     quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0,
-    // ที่อยู่ที่ใบนี้เลือก (0202) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
+    // ที่อยู่ที่ใบนี้เลือก (0203) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
     billingAddressId: "", shippingAddressId: "",
   });
   // ทะเบียนลูกค้าสด — โหลดมาเพื่อ "ตัวเลือกที่อยู่" เท่านั้น ตัวเอกสารยังใช้ snapshot บนใบ
@@ -144,7 +144,7 @@ export default function QuotationEditorPage() {
       const data = res?.ok ? await res.json() : null;
       const next = data?.customer || data || null;
       setCustomer(next);
-      // ใบที่ออกก่อน 0202 ไม่มี id ที่อยู่ — เติมให้เท่ากับตัวที่ server จะเลือกให้อยู่ดี
+      // ใบที่ออกก่อน 0203 ไม่มี id ที่อยู่ — เติมให้เท่ากับตัวที่ server จะเลือกให้อยู่ดี
       // (ไม่ใช่การแก้ใบ จึงไม่ตั้ง dirty) ไม่งั้นช่องจะว่างทั้งที่ข้างล่างโชว์ที่อยู่อยู่
       setForm((f) => {
         if (f.billingAddressId && f.shippingAddressId) return f;
@@ -192,7 +192,7 @@ export default function QuotationEditorPage() {
     && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
 
-  // ตัวเลือกที่อยู่ (0201) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
+  // ตัวเลือกที่อยู่ (0202) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
   // ฝั่ง server (pickDocumentAddresses) จะได้ไม่โชว์คนละอย่างกับที่บันทึกจริง
   const addressBook = customerAddresses(customer);
   const billingOptions = addressBook.filter(isBillingAddress);
@@ -236,7 +236,7 @@ export default function QuotationEditorPage() {
     discountType: form.discountType || null,
     discountValue: form.discountValue || 0,
     vatRate: form.vatRate,
-    // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0202)
+    // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0203)
     billingAddressId: form.billingAddressId || null,
     shippingAddressId: form.shippingAddressId || null,
     paymentPlan: paymentPlanPayload(),

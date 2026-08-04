@@ -1,5 +1,5 @@
 "use client";
-// ที่อยู่ของลูกค้าหนึ่งราย — หลายรายการ (migration 0201). Controlled:
+// ที่อยู่ของลูกค้าหนึ่งราย — หลายรายการ (migration 0202). Controlled:
 // value = array, onChange(nextArray). แพตเทิร์นเดียวกับ ContactsEditor/BrandsEditor
 // แต่แถวสูงกว่า (ตัวที่อยู่เป็น textarea) จึงห่อเป็นการ์ดต่อแถว ไม่ใช่แถวเดียวยาว
 //
