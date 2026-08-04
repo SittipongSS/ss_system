@@ -27,9 +27,10 @@ import { fmtDate } from "@/lib/format";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
-  REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
+  REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
+import { requestItemStatusLabel } from "@/lib/requests/statuses";
 import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
@@ -46,7 +47,8 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
-const ITEM_TONE = { pending: "var(--text-3)", quoted: "var(--green)", no_quote: "var(--red)" };
+// mig 0202: สถานะบรรทัดเป็นกลางแล้ว (pending/done/declined) ไม่ผูกกับคำว่า "ราคา"
+const ITEM_TONE = { pending: "var(--text-3)", done: "var(--green)", declined: "var(--red)" };
 const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
 const qtyText = (v) => `${Number(v).toLocaleString("th-TH")} ขึ้นไป`;
 
@@ -415,8 +417,8 @@ export default function MaterialAskDetailPage() {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.priceStatus] }}>
-                {REQUEST_ITEM_STATUS_LABELS[item.priceStatus]}
+              <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.answerStatus] }}>
+                {requestItemStatusLabel(item.answerStatus, item.lineKind)}
               </span>
               {item.answeredByName && (
                 <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
@@ -426,9 +428,9 @@ export default function MaterialAskDetailPage() {
             </div>
           </div>
 
-          {item.priceStatus === "no_quote" && item.noQuoteReason && (
+          {item.answerStatus === "declined" && item.declineReason && (
             <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
-              <strong>ตอบไม่ได้: </strong><ReadableText text={item.noQuoteReason} lines={3} />
+              <strong>ตอบไม่ได้: </strong><ReadableText text={item.declineReason} lines={3} />
             </div>
           )}
 
@@ -442,7 +444,7 @@ export default function MaterialAskDetailPage() {
             />
           </div>
 
-          {canAnswer && item.priceStatus === "pending" && (
+          {canAnswer && item.answerStatus === "pending" && (
             <div className="action-bar" style={{ marginTop: 12 }}>
               <button type="button" className="btn" onClick={() => setNoQuote({ item, reason: "" })} disabled={saving}>
                 ตอบไม่ได้

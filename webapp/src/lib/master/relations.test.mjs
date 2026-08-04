@@ -123,7 +123,7 @@ test('route แปลง error เป็น 500 พร้อมข้อคว�
 test('loadPendingAskLinks อ้าง dept_request_items.requestId ตามชื่อจริง', () => {
   const costing = readFileSync(new URL('../costingAdmin.js', import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  assert.match(costing, /\.select\('id, requestId, componentId, priceStatus, label'\)/);
+  assert.match(costing, /\.select\('id, requestId, componentId, answerStatus, label'\)/);
   assert.match(costing, /\.in\('requestId', asks\.map/);
   assert.doesNotMatch(costing, /i\.askId/, 'ห้ามอ่าน field ที่ไม่มีในผลลัพธ์');
   assert.match(costing, /askId: i\.requestId/, 'สัญญาขาออกยังเป็น askId ตามที่หน้าใบขอราคาผลิตใช้');

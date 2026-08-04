@@ -236,6 +236,10 @@ export async function POST(request) {
       const itemRows = resolved.map((item) => ({
         id: `DRI-${randomUUID()}`,
         requestId,
+        // mig 0202: บรรทัดมีรูปร่าง — วันนี้ทุกบรรทัดยังเป็นวัสดุ (หัวข้อที่มีบรรทัด
+        // มีแต่ขอราคา) · รูปร่างอื่นเข้ามาใน P1b พร้อมหัวข้อพัฒนากลิ่น/ผลิตภัณฑ์/เอกสาร
+        // ⚠️ คอลัมน์เป็น NOT NULL และ default ถูกถอดทิ้งใน migration — ต้องส่งเสมอ
+        lineKind: 'material',
         sortOrder: item.sortOrder,
         kind: item.kind,
         materialId: item.materialId,
