@@ -34,7 +34,7 @@ test('หัวใบพิมพ์บรรทัดควบคุมเต�
   const html = buildGanttPrintHTML(PROJECT, null, PUBLISHED);
   assert.match(html, /FM-PD-05: Rev\. No\.00\. 08\/05\/2568/);
   assert.match(html, /PROJECT TIMELINE/);
-  assert.match(html, /--doc-accent: #1f3551;/);
+  assert.match(html, /--doc-accent:#1f3551;/);
 });
 
 test('มาตรฐานที่ตรึงไว้บนโครงการชนะมาตรฐานที่เผยแพร่อยู่ตอนนี้ (พิมพ์ซ้ำใบเก่า)', () => {
@@ -45,19 +45,19 @@ test('มาตรฐานที่ตรึงไว้บนโครงก�
   );
   assert.match(html, /FM-PD-05: Rev\. No\.01\. 15\/01\/2569/);
   assert.doesNotMatch(html, /Rev\. No\.09/);
-  assert.match(html, /--doc-accent: #1e6091;/);
+  assert.match(html, /--doc-accent:#1e6091;/);
 });
 
 test('โหลดมาตรฐานไม่ได้ต้องยังพิมพ์ได้ด้วยค่าสำรองของเอกสารชนิดนี้', () => {
   const html = buildGanttPrintHTML(PROJECT, null, null);
   assert.match(html, /FM-PD-05: Rev\. No\.00\. 08\/05\/2568/);
-  assert.match(html, /--doc-accent: #1f3551;/);
+  assert.match(html, /--doc-accent:#1f3551;/);
 });
 
 test('เลขที่เอกสารเดินตาม Rev ปัจจุบัน และรหัสโครงการยังอยู่บนหัวใบแยกบรรทัด', () => {
   const html = buildGanttPrintHTML(PROJECT, null, PUBLISHED);
   assert.match(html, /PT-26080007-2/);            // ออกไว้ -0 · โครงการอยู่ Rev 2
-  assert.match(html, /รหัสโครงการ PJ-26080012-2/);
+  assert.match(html, /<dt>รหัสโครงการ<\/dt><dd>PJ-26080012-2<\/dd>/);
 });
 
 test('ไทม์ไลน์ของดีลที่ยังไม่มีโครงการจริง — ไม่มีเลขที่เอกสาร โชว์รหัสต้นทางเหมือนเดิม', () => {
