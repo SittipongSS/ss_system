@@ -31,7 +31,7 @@ import {
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
 } from "@/lib/sales/leads";
-import { FORECAST_LEVELS, MonthPicker, thisMonth, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, thisMonth, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -43,8 +43,6 @@ import styles from "./page.module.css";
 
 /* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
    ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
-const SCOPE_LABELS = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
-
 const NO_TEAM = "__no_team__";
 /* เช่นเดียวกัน — ลีดที่ยังไม่ถูกมอบหมายมี assigneeId = null */
 const NO_ASSIGNEE = "__no_assignee__";
