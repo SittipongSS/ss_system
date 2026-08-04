@@ -1,128 +1,157 @@
-.standardSelector { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: var(--space-2); margin-bottom: var(--space-4); }
-.standardTab { min-height: 58px; padding: 9px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
-.standardTab:hover { background: var(--panel-2); border-color: var(--border-strong); }
-.standardTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.standardTab:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
-.standardTab span, .standardTab small { display: block; }
-.standardTab span { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
-.standardTab small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-4); }
-.standardTab.active { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
-.accentMark { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
+/* หน้านี้เคยยืม CSS ของหน้า "ข้อมูลบริษัท" (`import base from "../company/page.module.css"`)
+   แล้วคอมมิต b72701d8 ตัดส่วนประวัติเวอร์ชันของหน้าบริษัททิ้งพร้อมล้าง selector 20 ตัว
+   ที่หน้านี้ยังเรียกอยู่ → การ์ดเวอร์ชันโผล่ซ้อนใต้ตาราง ลิ้นชักไม่มีกริด ตารางล้นการ์ด
+   และ audit:ui จับไม่ได้เพราะสแกนแบบไฟล์ต่อไฟล์ ไม่ตาม import ข้ามโมดูล
+   → ตั้งแต่นี้หน้านี้ถือ stylesheet ของตัวเองทั้งหมด ไม่ยืมของหน้าอื่นอีก */
+
+/* ── แท็บชนิดเอกสาร (Tabs.js — .tabs-header/.tab-btn ของระบบ) ─────────────── */
+.docTabs { margin-bottom: var(--space-4); }
+.docTab { display: inline-flex; align-items: center; gap: var(--space-2); }
+.tabCode { padding: var(--space-0-5) var(--space-1-5); border-radius: var(--radius-full); color: var(--text-3); background: var(--panel-2); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
+.docTabActive .tabCode { color: var(--accent-ink); background: var(--accent-soft); }
+.draftDot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: var(--radius-full); background: var(--amber); }
+
+/* ── พรีวิวเอกสารจริง (เต็มความกว้าง อยู่บนสุด) ─────────────────────────────
+   เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์ ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
+   จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที · เต็มความกว้าง = เอกสารซูมใหญ่พออ่านออก */
+.previewPanel { margin-bottom: var(--space-4); padding: var(--space-3-5) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
+.previewHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
+/* เอกสารกว้างคงที่ 210mm แล้ว zoom "ย่อ" เมื่อกรอบแคบกว่า 820px เท่านั้น (ไม่ขยาย)
+   → เต็มความกว้างจึงได้เอกสารขนาด 1:1 อ่านออกจริง ไม่ใช่ใบจิ๋วที่ถูกย่อ
+   ความสูงผูกกับจอ: จอสูงพอเห็นเกือบเต็มหน้า A4 (1123px) จอเตี้ยก็ไม่กินทั้งหน้าจอ */
+.livePreview { width: 100%; height: clamp(420px, 76vh, 1180px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+.previewInDrawer { height: 320px; }
+
+/* ── แถบควบคุม: สรุปบรรทัดเดียว + ปุ่มทำงาน + รายละเอียดที่พับไว้ ─────────
+   เดิมส่วนนี้เป็นการ์ดค่ามาตรฐานเต็มใบคู่กับกล่องควบคุมเวอร์ชัน กางค้างตลอดเวลา
+   ทั้งที่ค่าทั้งชุดเป็นของที่เปิดดูนาน ๆ ครั้ง (พรีวิวด้านบนบอกผลลัพธ์ไปแล้ว) */
+.controlBar { margin-bottom: var(--space-4); overflow: hidden; }
+.controlHead { padding: var(--space-2-5) var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.detailsToggle { min-width: 260px; flex: 1; min-height: 40px; padding: var(--space-1-5) var(--space-2); border: 0; border-radius: var(--radius); display: flex; align-items: center; gap: var(--space-2-5); color: var(--text-2); background: none; text-align: left; cursor: pointer; transition: background var(--motion-fast) ease; }
+.detailsToggle:hover { background: var(--panel-2); }
+.detailsToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.detailsToggle > svg { flex-shrink: 0; color: var(--text-3); transition: transform var(--motion-fast) ease; }
+.detailsToggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.controlSummary { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.controlSummary strong { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.controlSummary small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-4); overflow-wrap: anywhere; }
+.controlActions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.details { padding: var(--space-4); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-3); }
+.detailsHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.english { color: var(--text-2); font-size: var(--fs-7); }
+.metaGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.metaGrid > div { min-width: 0; padding: var(--space-2-5); border-radius: var(--radius); background: var(--panel-2); }
+/* ต้องเป็นลูกตรง ๆ เท่านั้น — `.metaGrid span` แบบกว้าง ๆ จะกินสแปน `.mono` ที่ซ้อน
+   อยู่ใน <strong> ด้วย แล้วค่ากลายเป็นบล็อกสีเทาตัวเล็กขึ้นบรรทัดใหม่กลางประโยค */
+.metaGrid > div > span { display: block; color: var(--text-3); font-size: var(--fs-4); }
+.metaGrid > div > strong { display: block; margin-top: var(--space-0-5); color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
+.full { grid-column: 1 / -1; }
+
+.accentMark { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
 .swatch { width: 18px; height: 18px; flex: 0 0 18px; border: 1px solid color-mix(in srgb, var(--doc-accent) 45%, var(--border)); border-radius: var(--radius-full); background: var(--doc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--doc-accent) 12%, transparent); }
 /* ใช้ค่าสีจริงของเอกสารพิมพ์ (DOCUMENT_ACCENT_THEMES ใน quotationMasterDocument)
    ไม่ใช่ token ธีมของแอป — ตัวอย่างสีต้องตรงกับที่พิมพ์ออกมาจริง ไม่งั้นเลือกสีจาก
    หน้านี้แล้วเอกสารออกมาคนละเฉด · ค่าคงที่เพราะเอกสารพิมพ์เป็นไฟล์ self-contained */
 .terracotta { --doc-accent: var(--document-accent-terracotta); }
 .steel { --doc-accent: var(--document-accent-steel); }
+.amber { --doc-accent: var(--document-accent-amber); }
+.navy { --doc-accent: var(--document-accent-navy); }
 /* คีย์เก่าที่เลิกให้เลือกแล้ว — คงไว้ให้มาตรฐานเวอร์ชันเดิมในประวัติยังแสดงสีถูก */
 .teal { --doc-accent: var(--document-accent-teal); }
-.amber { --doc-accent: var(--document-accent-amber); }
 .green { --doc-accent: var(--document-accent-green); }
-.navy { --doc-accent: var(--document-accent-navy); }
-/* ค่าที่ตั้ง (ซ้าย) คู่กับตัวอย่างเอกสารจริง (ขวา) — เห็นผลของสิ่งที่กำลังแก้ทันที
-   แทนกล่อง CSS จำลองแบบเดิมที่โชว์คนละสัดส่วน/คนละสีกับใบที่พิมพ์ออกมา */
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: var(--space-4); align-items: start; }
-.previewPanel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3-5) var(--space-4); }
-.previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
-.previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); }
-.previewHeader p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
-/* เอกสารย่อตัวเองตามความกว้างที่ได้ (zoom ใน quotationMasterDocument) — ที่นี่แค่ให้พื้นที่ */
-.livePreview { width: 100%; height: 560px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
-.previewInDrawer { height: 420px; }
-.fieldHelp { margin-top: var(--space-1-5); color: var(--text-3); font-size: var(--fs-4); line-height: 1.55; }
-.numberExample { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-2-5); padding: var(--space-2-5) 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
+
+/* ── การ์ดที่มีหัวข้อ (ฟอร์มแก้ไข / ประวัติเวอร์ชัน) ───────────────────────── */
+.panel { overflow: hidden; }
+.panelHeader { padding: var(--space-3-5) var(--space-4-5); border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.panelHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
+.panelHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
+
+.historyTable td small { display: block; margin-top: var(--space-0-5); color: var(--text-3); }
+.historyTable td:nth-child(5) { min-width: 220px; max-width: 380px; }
+/* การ์ดคือมุมมองของจอแคบเท่านั้น — ถ้าไม่ปิดตรงนี้ รายการเวอร์ชันจะโผล่สองรอบ
+   (ตาราง + การ์ด) บนจอใหญ่ ซึ่งคือบั๊กที่หน้านี้เป็นอยู่ก่อนรื้อ */
+.historyCards { display: none; }
+
+/* ── โหมดแก้ไข (ฟอร์มในหน้า ไม่ใช่ลิ้นชัก) ──────────────────────────────────
+   ฟอร์มอยู่ในหน้าเพราะพรีวิวด้านบนต้องเห็นผลของสิ่งที่กำลังพิมพ์แบบสด ๆ —
+   ลิ้นชัก (กว้าง 480px) บังหน้าไว้ด้วยฉากหลังทึบ จึงต้องยัดพรีวิวจิ๋วเข้าไปในลิ้นชัก
+   แล้วเอกสาร A4 ถูกซูมจนอ่านไม่ออก · ฟอร์มยังเป็น DocumentStandardFields ชุดเดียว
+   ไม่ได้แตกเป็นสองชุดตามกฎ "แก้ไขต้องใช้ฟอร์มตัวเดียวกับตอนสร้าง" */
+.editPanel { margin-bottom: var(--space-4); }
+.form { padding: var(--space-4) var(--space-4-5) var(--space-4-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.note { padding: var(--space-2-5); border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-5); line-height: var(--lh-text); }
+.formSection { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
+.formSection:last-of-type { padding-bottom: 0; border-bottom: 0; }
+.formSection h4 { margin-bottom: var(--space-2-5); color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
+.formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2-5); }
+/* รหัสแบบฟอร์ม · Revision · วันที่มีผล = ค่าสั้นสามตัวที่อ่านคู่กันเสมอ วางแถวเดียว
+   (กริดสองคอลัมน์จะเหลือช่องว่างครึ่งแถวห้อยอยู่) */
+.formTriple { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2-5); }
+.form label { display: flex; flex-direction: column; gap: var(--space-1-5); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
+.form label b { color: var(--red); }
+
+/* ตัวเลือกสี Accent เป็นแผ่นสีจริง ไม่ใช่ dropdown ข้อความ — สีคือสิ่งที่กำลังเลือก
+   จึงต้องเห็นสีตอนเลือก ไม่ใช่เห็นหลังกดบันทึกแล้วไปดูที่พรีวิว */
+.accentPicker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.accentOption { min-height: 44px; padding: var(--space-2) var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: center; gap: var(--space-2); color: var(--text-2); background: var(--panel); text-align: left; font-size: var(--fs-5); font-weight: var(--fw-semibold); cursor: pointer; transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease; }
+.accentOption:hover { border-color: var(--border-strong); background: var(--panel-2); }
+.accentOption:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.accentOption[aria-pressed="true"] { color: var(--text); border-color: color-mix(in srgb, var(--doc-accent) 55%, var(--border)); background: color-mix(in srgb, var(--doc-accent) 8%, var(--panel)); }
+
+/* คำอธิบาย token เดิมเป็นย่อหน้ายาวบรรทัดเดียวที่ไม่มีใครอ่านจบ — แยกเป็นรายการ
+   token กับกฎที่ทำให้ "บันทึกไม่ผ่าน" ซึ่งเป็นคนละเรื่องกัน */
+.tokenLegend { margin-top: var(--space-2-5); display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-1-5) var(--space-2); }
+.tokenLegend > span { min-width: 0; display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-3); font-size: var(--fs-4); }
+.tokenLegend code { flex-shrink: 0; padding: 0 var(--space-1-5); border-radius: var(--radius); color: var(--accent-ink); background: var(--accent-soft); font-size: var(--fs-3); font-weight: var(--fw-bold); }
+.patternRules { margin-top: var(--space-2-5); padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-0-5); color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); list-style: disc; }
+.patternRules strong { color: var(--text-2); }
+.numberExample { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-2-5); padding: var(--space-2-5); border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }
 .numberExample span { font-size: var(--fs-4); font-weight: var(--fw-semibold); }
 .numberExample strong { color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
 
-/* ---------------------------------------------------------------------------
-   โครงหน้า "เอกสารควบคุม" — เคยยืมมาจาก ../company/page.module.css ผ่าน
-   `import base from …` จนถึง 2026-08-04
-
-   🪤 ทำไมถึงเลิกยืม: b72701d8 (25 ก.ค. 2026) ออกแบบหน้าข้อมูลบริษัทใหม่ ตัดส่วน
-   ประวัติเวอร์ชันของ *หน้านั้น* ทิ้ง แล้วลบ selector ที่เหลือค้างออก 20 ตัว —
-   ซึ่งหน้านี้ยังกินอยู่ทั้งชุด ผลคือการ์ดเวอร์ชันซ้อนใต้ตารางบนจอใหญ่
-   (`.historyCards { display: none }` หายไปด้วย) และ detail grid ในลิ้นชักไม่มีสไตล์
-   เจ้าของชีตไม่มีทางรู้ว่ามีหน้าอื่นแอบกินอยู่ ตัวตรวจก็ไม่เห็น (audit รายงาน 0 มาตลอด)
-
-   ตอนนี้มีกฎกันแล้วที่ scripts/uiCssModuleImports.mjs — ทั้งตัวอ้างที่ชี้ไปคลาสที่
-   ไม่มีจริง และการ import *.module.css ข้ามโฟลเดอร์ ⚠️ ของที่ต้องใช้ร่วมกันจริง ๆ
-   ให้ไปอยู่ globals.css หรือยกเป็นคอมโพเนนต์ใน components/ui/ ห้ามยืมชีตกันอีก
---------------------------------------------------------------------------- */
-.layout { display: flex; flex-direction: column; gap: var(--space-4); }
-.publishedPanel { padding: var(--space-4-5); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(260px, .9fr) minmax(220px, .75fr); gap: var(--space-4-5); }
-.identity { min-width: 0; }
-.identity h2 { margin-top: var(--space-1-5); color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
-.identity .english { margin-top: var(--space-0-5); color: var(--text-2); font-size: var(--fs-7); }
-.eyebrow { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
-.metaGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.metaGrid > div { min-width: 0; padding: var(--space-2-5) var(--space-3); border-radius: var(--radius); background: var(--panel-2); }
-.metaGrid span { display: block; color: var(--text-3); font-size: var(--fs-4); }
-.metaGrid strong { display: block; margin-top: var(--space-1); color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
+/* ── สถานะ / ข้อผิดพลาด ───────────────────────────────────────────────────── */
 .badge { min-height: 23px; padding: var(--space-0-5) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: var(--fs-3); font-weight: var(--fw-bold); }
-.published { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
-.draft { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 24%, transparent); }
-.archived { color: var(--text-3); background: var(--panel-3); border-color: var(--border); }
+.publishedBadge { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
+.draftBadge { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 24%, transparent); }
+.archivedBadge { color: var(--text-3); background: var(--panel-3); border-color: var(--border); }
 .errorPanel { min-height: 220px; padding: var(--space-5); display: grid; place-items: center; text-align: center; }
 .errorPanel svg { color: var(--red); }
 .errorPanel p { margin: var(--space-2) 0 var(--space-3); color: var(--text-2); }
-.full { grid-column: 1 / -1; }
 
-/* ประวัติเวอร์ชัน — ตาราง (จอใหญ่) สลับเป็นการ์ด (จอเล็ก) ที่ @800 */
-.historyPanel { overflow: hidden; }
-.panelHeader { padding: var(--space-4) var(--space-4-5); border-bottom: 1px solid var(--border); }
-.panelHeader h2 { color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
-.panelHeader p { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-6); }
-.historyTable { display: block; margin: 0 !important; border: 0 !important; border-radius: 0 !important; }
-.historyTable td small { display: block; margin-top: var(--space-0-5); color: var(--text-3); }
-.historyCards { display: none; }
-.card { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
-.cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2-5); }
-.cardHead strong { color: var(--text); }
-.card p, .card small { display: block; margin-top: var(--space-1-5); color: var(--text-3); }
-.card button { width: 100%; min-height: 40px; margin-top: var(--space-2-5); justify-content: center; }
-
-/* ลิ้นชักดูรายละเอียดเวอร์ชัน */
+/* ── ลิ้นชัก "ดูรายละเอียด" ของเวอร์ชันในประวัติ (อ่านอย่างเดียว) ─────────── */
 .drawerBody { display: flex; flex-direction: column; gap: var(--space-4); }
 .drawerSection { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
-.drawerSection h4 { margin-bottom: var(--space-2-5); color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
-.detailGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.drawerSection h4 { margin-bottom: var(--space-2-5); color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-bold); }
+.detailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2-5); }
 .detailGrid > div { min-width: 0; }
-.detailGrid span { display: block; color: var(--text-3); font-size: var(--fs-4); }
-.detailGrid strong { display: block; margin-top: var(--space-1); color: var(--text); font-size: var(--fs-7); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* ลูกตรง ๆ เท่านั้น (เหตุผลเดียวกับ .metaGrid) — ช่อง "สี Accent" มี AccentMark
+   ซ้อนอยู่ใน <strong> ถ้ากฎกินลึก แผ่นสีจะกลายเป็นบล็อกเทาตัวเล็กคนละบรรทัดกับชื่อสี */
+.detailGrid > div > span { display: block; color: var(--text-3); font-size: var(--fs-3); }
+.detailGrid > div > strong { display: block; margin-top: var(--space-0-5); color: var(--text); font-size: var(--fs-6); white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* ฟอร์มแก้ไขฉบับร่าง */
-.form { display: flex; flex-direction: column; gap: var(--space-4); }
-.formSection { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
-.formSection:last-child { padding-bottom: 0; border-bottom: 0; }
-.formSection h4 { margin-bottom: var(--space-2-5); color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
-.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.form label { display: flex; flex-direction: column; gap: var(--space-1-5); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
-.form label b { color: var(--red); }
-.form textarea { min-height: 88px; resize: vertical; }
-.note { padding: var(--space-2-5) var(--space-3); border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-5); line-height: var(--lh-text); }
-
-@media (max-width: 1200px) {
-  .workspace { grid-template-columns: minmax(0, 1fr); }
-  .previewPanel { position: static; }
-  .livePreview { height: 620px; }
+@media (max-width: 1000px) {
+  .accentPicker { grid-template-columns: 1fr; }
+  /* แถบแท็บเลื่อนแนวนอนได้แต่ไม่มีสกอร์ลบาร์ให้เห็น — ตัดรหัสแบบฟอร์มออกก่อน
+     เพื่อให้ชื่อเอกสารทั้ง 4 ยังอยู่ในจอเดียว (รหัสยังอยู่ในแถบควบคุมด้านล่าง) */
+  .tabCode { display: none; }
 }
 
-@media (max-width: 1050px) {
-  .publishedPanel { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 800px) {
-  .publishedPanel { grid-template-columns: 1fr; }
-  .historyTable { display: none; }
-  .historyCards { display: flex; flex-direction: column; gap: var(--space-2-5); padding: var(--space-3); }
+@media (max-width: 768px) {
+  .historyTableWrap { display: none; }
+  .historyCards { padding: 0 var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+  .historyCard { padding: var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); }
+  .cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+  .historyCard > small { display: block; margin-top: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); }
+  .historyCard > button { width: 100%; min-height: 40px; margin-top: var(--space-2); justify-content: center; }
 }
 
 @media (max-width: 560px) {
-  .standardSelector { grid-template-columns: 1fr; }
-  .standardTab { min-height: 48px; }
-  .numberExample { align-items: flex-start; flex-direction: column; }
-  .livePreview { height: 480px; }
-  .publishedPanel { padding: var(--space-3-5); }
-  .metaGrid, .detailGrid, .formGrid { grid-template-columns: 1fr; }
+  .metaGrid, .formGrid, .formTriple, .detailGrid { grid-template-columns: 1fr; }
   .full { grid-column: 1; }
+  .numberExample { align-items: flex-start; flex-direction: column; }
+  /* ปุ่มทำงานอยู่บรรทัดของตัวเองเต็มความกว้าง — จอแคบแถบสรุปกินทั้งบรรทัดไปแล้ว */
+  .controlActions { width: 100%; }
+  .controlActions > * { min-height: 40px; flex: 1; justify-content: center; }
 }
