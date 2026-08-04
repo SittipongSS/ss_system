@@ -19,11 +19,42 @@ const css = readFileSync(join(ROOT, 'src/components/salesPlanning/LeadDealModal.
 
 test('ใช้ Tabs กลางของระบบ ไม่ได้เขียน tab bar เอง', () => {
   assert.match(src, /import Tabs from "@\/components\/ui\/Tabs"/);
-  assert.match(src, /drafts\.length > 1 && \(\s*<Tabs/, 'ใบเดียวต้องไม่โผล่แท็บ');
+  assert.match(src, /drafts\.length > 1 \? \(\s*<Tabs/, 'ใบเดียวต้องไม่โผล่แท็บ');
 });
 
 test('ใบที่ไม่ได้เลือกถูกซ่อน ไม่ใช่เรียงต่อกันลงมา (ต้นเหตุที่ต้องเลื่อนจอ)', () => {
   assert.match(src, /hidden=\{drafts\.length > 1 && index !== active\}/);
+});
+
+/* 🐞 อาการที่ผู้ใช้เจอรอบแรก: กดแท็บแล้วไม่มีอะไรเปลี่ยน ฟอร์มเหมือนทับกัน
+   ต้นเหตุ: `.draft` มี `display: flex` ซึ่ง specificity สูงกว่า UA style
+   `[hidden] { display: none }` ⇒ attribute `hidden` ไม่มีผลเลย
+   ⚠️ กับดักนี้กัดทุกครั้งที่ element มี display ของตัวเองแล้วไปพึ่ง hidden */
+test('CSS ต้องกลบ display ของ .draft ตอน hidden ไม่งั้น attribute ไม่มีผล', () => {
+  assert.match(css, /\.draft\[hidden\]\s*\{[^}]*display:\s*none/,
+    '.draft ประกาศ display เอง ต้องมี .draft[hidden] { display: none } คู่เสมอ');
+  // ยืนยันว่าเงื่อนไขยังอยู่จริง — ถ้าวันหนึ่ง .draft เลิกใช้ flex ก็ยังไม่เสียหาย
+  assert.match(css, /\.draft\s*\{[^}]*display:\s*flex/);
+});
+
+test('แท็บกับปุ่มเพิ่มดีลอยู่แถวเดียวกัน เหนือฟอร์ม', () => {
+  const tabRowAt = src.indexOf('className={styles.tabRow}');
+  const formAt = src.indexOf('{drafts.map((draft, index) => (');
+  assert.ok(tabRowAt > 0 && tabRowAt < formAt, 'แถบหัวต้องมาก่อนฟอร์ม');
+  // ปุ่มเพิ่มต้องอยู่ในแถบหัว ไม่ใช่ลอยอยู่ใต้ฟอร์มเหมือนเดิม
+  const rowBlock = src.slice(tabRowAt, formAt);
+  assert.match(rowBlock, /onClick=\{addDraft\}/, 'ปุ่มเพิ่มดีลต้องอยู่ในแถบหัว');
+  assert.doesNotMatch(src, /styles\.add\b/, 'บล็อกปุ่มเพิ่มอันเดิมใต้ฟอร์มต้องไม่เหลือ');
+  assert.match(css, /\.tabRow\s*\{/);
+});
+
+/* updater ของ setState ต้องบริสุทธิ์ — React เรียกซ้ำได้ (StrictMode/concurrent)
+   เรียก setActive ข้างในจึงเป็นบั๊กที่จะโผล่แบบสุ่ม */
+test('addDraft ไม่ทำ side effect ใน updater ของ setDrafts', () => {
+  const block = src.slice(src.indexOf('const addDraft ='), src.indexOf('const remaining ='));
+  assert.doesNotMatch(block, /setDrafts\(\(prev\) => \{[\s\S]*setActive/,
+    'ห้ามเรียก setActive ข้างใน updater');
+  assert.match(block, /setActive\(drafts\.length\)/, 'ใบใหม่ต่อท้าย → index = จำนวนใบตอนนี้');
 });
 
 // ⭐ หัวใจของ PR: กดสร้างใหม่หลังพังกลางทาง ต้องไม่ได้ดีลซ้ำ
