@@ -8,7 +8,7 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BriefcaseBusiness, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -267,7 +267,7 @@ export default function LeadsPage() {
      ห้ามคิดเงื่อนไขซ้ำที่นี่ — ป้ายในแถวใช้ rowLabel (สั้นกว่า label บนการ์ด) */
   const dealActionFor = (lead) => {
     const action = leadDealAction({
-      lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: () => setDealModal(lead),
+      lead, user: viewer, canCreateDeals, icon: FolderKanban, onClick: () => setDealModal(lead),
     });
     return { ...action, label: action.rowLabel };
   };
