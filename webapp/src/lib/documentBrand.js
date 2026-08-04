@@ -42,6 +42,8 @@ export const DOCUMENT_FORMS = Object.freeze({
   }),
   projectTimeline: Object.freeze({
     code: 'FM-PD-05',
+    revision: '00',
+    effectiveDate: '08/05/2568',
     title: 'PROJECT TIMELINE',
   }),
 });

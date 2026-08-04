@@ -31,6 +31,7 @@ import {
 import { buildQuotationMasterPreview } from "@/lib/sales/quotationMasterTemplate";
 import { renderQuotationMasterDocumentHTML } from "@/lib/sales/quotationMasterDocument";
 import { buildBillPrintHTML } from "@/lib/tax/billPrint";
+import { buildGanttPrintHTML } from "@/lib/pm/ganttPrint";
 import base from "../company/page.module.css";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
@@ -74,11 +75,44 @@ function AccentMark({ accentKey, label = true }) {
   );
 }
 
+// โครงการตัวอย่างของพรีวิวเอกสารไทม์ไลน์ — วันที่ชุดเดียวกับตัวอย่างเลขที่ (20/07/2569)
+// timelineDocBase เว้นว่างไว้ตั้งใจ: พรีวิวโชว์เลขที่ "ตอนออก" (Rev 0) ตรงตามรูปแบบที่
+// กำลังแก้อยู่ ไม่ต้องประกอบเลข Rev ใหม่
+const timelinePreviewProject = (standard) => ({
+  id: "timeline-preview",
+  code: "PJ-26070001",
+  rev: 0,
+  timelineDocBase: "",
+  timelineDocNumber: numberingPatternExample(standard?.numberingPattern, "0") || "PT-26070001-0",
+  name: "น้ำหอม Eau de Parfum 50 ml",
+  productName: "น้ำหอม Eau de Parfum 50 ml",
+  customerName: "บริษัท ตัวอย่าง จำกัด",
+  aeOwner: "ตัวอย่าง ผู้ดูแล",
+  preparedBy: "ตัวอย่าง ผู้ประสานงาน",
+  aeSupervisor: "ตัวอย่าง ผู้ตรวจสอบ",
+  startDate: "2026-07-20",
+  dueDate: "2026-09-14",
+  categoryFallback: "น้ำหอม / Eau de Parfum",
+  metadata: { brand: "EXAMPLE", quotationNumber: "QT-26070001-0", poNumber: "PO-2607-001" },
+  projectProducts: [],
+  tasks: [
+    { id: "t1", phase: "เตรียมงาน", name: "ยืนยันบรีฟและกลิ่นตัวอย่าง", role: "AC", status: "Completed", startDate: "2026-07-20", finishDate: "2026-07-31" },
+    { id: "t2", phase: "เตรียมงาน", name: "อนุมัติสูตร", role: "RD", status: "Completed", startDate: "2026-08-01", finishDate: "2026-08-07", isMilestone: true },
+    { id: "t3", phase: "ผลิต", name: "สั่งวัสดุบรรจุ", role: "PC", status: "In Progress", startDate: "2026-08-08", finishDate: "2026-08-28" },
+    { id: "t4", phase: "ผลิต", name: "ผลิตและบรรจุ", role: "PD", status: "Pending", startDate: "2026-08-29", finishDate: "2026-09-14" },
+  ],
+});
+
 // พรีวิวเอกสารจริง — เรนเดอร์ด้วยเครื่องยนต์ตัวเดียวกับที่พิมพ์/ตรึง (ไม่ใช่กล่อง CSS
 // จำลองแบบเดิมที่โชว์คนละสีคนละสัดส่วนกับใบจริง) ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
 // จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที
 function LiveDocumentPreview({ documentKey, standard, className = "" }) {
   const html = useMemo(() => {
+    if (documentKey === "projectTimeline") {
+      // ส่งมาตรฐานเป็น activeStandard (ไม่ใช่ timelineStandardSnapshot บนตัวอย่าง)
+      // เพื่อให้ร่างที่กำลังแก้มีผลกับพรีวิวทันที
+      return buildGanttPrintHTML(timelinePreviewProject(standard), null, standard);
+    }
     if (documentKey === "exciseTaxNotice") {
       return buildBillPrintHTML({
         id: "TAX-PREVIEW",
@@ -353,7 +387,9 @@ export default function DocumentStandardsPage() {
                 <h2 id="live-preview-title">ตัวอย่างเอกสารจริง</h2>
                 <p>{draft ? `กำลังแสดงฉบับร่าง Version ${draft.versionNumber}` : `กำลังแสดงฉบับที่เผยแพร่ Version ${published.versionNumber}`} · เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์</p>
               </div>
-              {selectedKey !== "exciseTaxNotice" ? (
+              {/* หน้าเต็มจอใช้เครื่องยนต์ใบเสนอราคา จึงมีเฉพาะ QT/SO — ใบภาษีและ
+                  ไทม์ไลน์ดูจากพรีวิวในหน้านี้ (เรนเดอร์ด้วยเครื่องยนต์ของตัวเอง) */}
+              {selectedKey === "quotation" || selectedKey === "salesOrder" ? (
                 <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
                   <Expand size={14} /> เปิดเต็มจอ
                 </Link>

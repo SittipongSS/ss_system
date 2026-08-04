@@ -2,23 +2,25 @@ import { cachedFetchJson } from './apiCache';
 import { businessDate } from './businessDate';
 import { DOCUMENT_FORMS } from './documentBrand';
 
-export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice']);
+export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
   salesOrder: 'ใบสั่งขาย',
   exciseTaxNotice: 'ใบแจ้งชำระค่าภาษีสรรพสามิต',
+  projectTimeline: 'เอกสารไทม์ไลน์โครงการ',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
 // (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
 // ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber']);
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
   steel: 'Steel · ใบสั่งขาย',
   amber: 'Amber · ใบแจ้งชำระภาษี',
+  navy: 'Navy · เอกสารไทม์ไลน์โครงการ',
 });
 
 // สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
@@ -27,6 +29,7 @@ const DEFAULT_ACCENT_BY_KEY = Object.freeze({
   quotation: 'terracotta',
   salesOrder: 'steel',
   exciseTaxNotice: 'amber',
+  projectTimeline: 'navy',
 });
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
@@ -201,12 +204,15 @@ export async function getDocumentStandardsForPrint() {
 // ── รูปแบบเลขที่ → เลขเอกสารจริง ─────────────────────────────────────────────
 // ตัวจัดรูปแบบตัวกลางที่ใบเสนอราคา (JS) และตัวอย่างในหน้าตั้งค่าใช้ร่วมกัน
 // ⚠ ใบสั่งขายประกอบเลขใน SQL (create_sales_order_draft — mig 0155) เพราะตัวนับกับ
-//   การ INSERT ต้องอยู่ทรานแซกชันเดียวกัน · เพิ่ม/แก้ token ที่นี่ต้องแก้ที่นั่นคู่กันเสมอ
+//   การ INSERT ต้องอยู่ทรานแซกชันเดียวกัน · ใบแจ้งชำระภาษี (mig 0162) และเอกสาร
+//   ไทม์ไลน์โครงการ (mig 0198) ก็ประกอบใน trigger ด้วยเหตุผลเดียวกัน
+//   เพิ่ม/แก้ token ที่นี่ต้องแก้ที่นั่นคู่กันเสมอ
 
 export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
   quotation: 'QT-{YY}{MM}{RUNNING:4}-{REVISION}',
   salesOrder: 'SO-{YY}{MM}{RUNNING:4}-{REVISION}',
   exciseTaxNotice: 'ET-{YY}{MM}{RUNNING:4}-{REVISION}',
+  projectTimeline: 'PT-{YY}{MM}{RUNNING:4}-{REVISION}',
 });
 
 const REVISION_TOKEN = '{REVISION}';
@@ -244,6 +250,16 @@ export function documentNumberParts(pattern, { date = new Date(), running = 0 } 
 
 // ตัวคั่นก่อนเลข revision ของ "ใบต้นทางเอง" — ใบที่ออกด้วยรูปแบบเก่าต้องต่อ R ด้วย
 // ตัวคั่นของตัวเอง ไม่ใช่ของรูปแบบปัจจุบันที่อาจถูกเปลี่ยนไปแล้วหลังใบนั้นออก
+// เลขที่ของ "ฉบับที่กำลังพิมพ์" สำหรับเอกสารที่เดิน Rev อยู่บนแถวเดิม (เอกสารไทม์ไลน์
+// โครงการ — projects."currentRev" mig 0040/0198) ต่างจาก QT ที่ฉบับแก้ไขแตกแถวใหม่
+// พร้อมเลขใหม่ · ต่อเลข Rev ด้วยตัวคั่นของใบตัวเอง ไม่ใช่ของรูปแบบปัจจุบัน
+export function documentNumberWithRevision(baseNumber, issuedNumber, revision) {
+  const base = String(baseNumber || '').trim();
+  if (!base) return String(issuedNumber || '').trim();
+  const rev = Math.max(0, Math.trunc(Number(revision) || 0));
+  return `${base}${revisionSeparatorOf(issuedNumber, base)}${rev}`;
+}
+
 export function revisionSeparatorOf(fullNumber, baseNumber) {
   const full = String(fullNumber || '');
   const base = String(baseNumber || '');
