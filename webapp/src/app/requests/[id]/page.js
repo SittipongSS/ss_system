@@ -47,7 +47,7 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
-// mig 0202: สถานะบรรทัดเป็นกลางแล้ว (pending/done/declined) ไม่ผูกกับคำว่า "ราคา"
+// mig 0204: สถานะบรรทัดเป็นกลางแล้ว (pending/done/declined) ไม่ผูกกับคำว่า "ราคา"
 const ITEM_TONE = { pending: "var(--text-3)", done: "var(--green)", declined: "var(--red)" };
 const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
 const qtyText = (v) => `${Number(v).toLocaleString("th-TH")} ขึ้นไป`;
