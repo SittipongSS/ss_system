@@ -384,14 +384,13 @@ export default function LeadsPage() {
               ดูแล/ทีม intake แต่ขอบเขตเป็นของคนทำงานคิวทุกคน (senior_ae/ac/ae ไม่เห็น
               KPI แต่ต้องสลับขอบเขตได้) */}
           {scopes.length > 1 && (
-            <div className={styles.scopeBar}>
-              <Segmented
-                ariaLabel="ขอบเขตของคิวลีด"
-                value={activeScope}
-                onChange={setScope}
-                options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
-              />
-            </div>
+            <Segmented
+              ariaLabel="ขอบเขตของคิวลีด"
+              className="scope-toggle"
+              value={activeScope}
+              onChange={setScope}
+              options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+            />
           )}
 
           <SaMetricStrip aria-busy={loading}>
