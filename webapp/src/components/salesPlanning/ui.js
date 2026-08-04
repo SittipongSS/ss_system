@@ -67,6 +67,10 @@ export const TARGET_OWNER_ROLES = ["senior_ae", "ae"];
 // ลำดับทีมมาตรฐาน KA → ODM → SV (ใช้ทั้งคอลัมน์/แถวหน้าวางเป้า และการจัดกลุ่มภาพรวม)
 export const SALES_TEAMS = ["KA", "ODM", "SV"];
 
+/* ป้ายของตัวสลับขอบเขต — หน้าคิวลีดกับหน้าไปป์ไลน์ดีลใช้ชุดเดียวกัน
+   (ตัวเลือกที่แต่ละ role ได้มาจาก leadScopes/salesDealScopes ใน permissions.js) */
+export const SCOPE_LABELS = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
+
 // เงินในแดชบอร์ด/ตารางสรุปแผนขาย — ใช้รูปแบบย่อกลาง (฿x.xxM / ฿x.xxK).
 export const money = (value) => fmtMoneyCompact(value);
 

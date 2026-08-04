@@ -107,3 +107,33 @@ test('ทุก role ที่เปิดหน้าลีดได้ ต้�
     assert.ok(leadScopes(role).length >= 1, `${role} เปิดหน้าได้แต่ไม่มีขอบเขตให้เลือก`);
   }
 });
+
+/* ── ตัวสลับขอบเขตต้องทำงานเหมือนกันทั้งคิวลีดและไปป์ไลน์ดีล ────────────────
+   🐞 หน้าดีลเคยกรองแค่ตัวเลข KPI — ตารางข้างล่างไม่ขยับ ผู้ใช้กด "ของฉัน" แล้วเห็น
+   ตัวเลขเปลี่ยนแต่รายการเท่าเดิม อ่านไม่ออกว่าปุ่มทำอะไร (พบตอนตรวจ DL 2026-08-05)
+   และตั้งต้นที่ "ของฉัน" เสมอ ⇒ แอดมิน/หัวหน้าฝ่ายที่ไม่ได้เป็นเจ้าของดีลสักใบ
+   เปิดหน้ามาเจอ KPI เป็น 0 ทุกช่องทั้งที่ตารางมีดีลเต็ม */
+const dealsPage = () => readFileSync(join(ROOT, 'src/app/sales-planning/deals/page.js'), 'utf8');
+const leadsPage = () => readFileSync(join(ROOT, 'src/app/sales-planning/leads/page.js'), 'utf8');
+
+test('หน้าดีล: ขอบเขตกรองทั้ง KPI และตาราง ไม่ใช่ KPI อย่างเดียว', () => {
+  const src = dealsPage();
+  assert.match(src, /const kpiDeals = deals\.filter\(inScopeDeal\)/, 'KPI ต้องใช้ตัวกรองร่วม');
+  assert.match(src, /if \(!inScopeDeal\(deal\)\) return false;/, 'ตารางต้องใช้ตัวกรองร่วมด้วย');
+});
+
+test('ทั้งสองหน้าตั้งต้นที่ขอบเขตกว้างสุด', () => {
+  for (const [name, src] of [['ดีล', dealsPage()], ['ลีด', leadsPage()]]) {
+    assert.match(src, /Scopes\[[a-zA-Z]+Scopes\.length - 1\]|scopes\[scopes\.length - 1\]/,
+      `หน้า${name}: ค่าตั้งต้นต้องเป็นตัวสุดท้าย (กว้างสุด)`);
+  }
+});
+
+test('ทั้งสองหน้าใช้ Segmented ตัวกลาง + ป้ายชุดเดียวกัน', () => {
+  for (const [name, src] of [['ดีล', dealsPage()], ['ลีด', leadsPage()]]) {
+    assert.match(src, /import Segmented from "@\/components\/ui\/Segmented"/, `หน้า${name}`);
+    assert.match(src, /SCOPE_LABELS\[key\]/, `หน้า${name}: ต้องใช้ป้ายชุดกลาง`);
+    // ปุ่มดิบใน div.segmented = หนี้ rawButtonClass ของชั้นเก่า
+    assert.doesNotMatch(src, /className="segmented [a-z-]*"/, `หน้า${name}: ห้ามเขียน segmented เอง`);
+  }
+});

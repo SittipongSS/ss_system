@@ -16,7 +16,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -24,6 +24,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
+import Segmented from "@/components/ui/Segmented";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
@@ -65,7 +66,10 @@ export default function SalesPlanningPipelinePage() {
   const [sortDir, setSortDir] = useState("desc");
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
-  const [scope, setScope] = useState("mine");
+  /* ⚠️ ตั้งต้นที่ขอบเขต **กว้างสุด** ไม่ใช่ "ของฉัน" — เดิมตั้งต้นที่ตัวแรกของลิสต์
+     ซึ่งคือ mine เสมอ ⇒ แอดมิน/หัวหน้าฝ่ายที่ไม่ได้เป็นเจ้าของดีลสักใบ เปิดหน้ามาเจอ
+     KPI เป็น 0 ทุกช่องทั้งที่ตารางข้างล่างมีดีลเต็มไปหมด (null = ยังไม่ได้เลือกเอง) */
+  const [scope, setScope] = useState(null);
   const [meId, setMeId] = useState(null);
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
@@ -170,9 +174,22 @@ export default function SalesPlanningPipelinePage() {
     [directory],
   );
 
+  const allowedScopes = salesDealScopes(role);
+  const activeScope = scope && allowedScopes.includes(scope) ? scope : allowedScopes[allowedScopes.length - 1];
+
+  /* 🐞 ตัวสลับขอบเขตเคยกรองแค่ตัวเลข KPI — ตารางข้างล่างไม่ขยับเลย ผู้ใช้กด "ของฉัน"
+     แล้วเห็นตัวเลขเปลี่ยนแต่รายการเท่าเดิม อ่านไม่ออกว่าปุ่มทำอะไรกันแน่
+     ตอนนี้ทั้ง KPI และตารางใช้ตัวเดียวกัน (กติกาเดียวกับคิวลีด) */
+  const inScopeDeal = useCallback((deal) => {
+    if (activeScope === "mine") return !!me?.id && deal.ownerId === me.id;
+    if (activeScope === "team") return !!me?.team && deal.team === me.team;
+    return true;
+  }, [activeScope, me?.id, me?.team]);
+
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = deals.filter((deal) => {
+      if (!inScopeDeal(deal)) return false;
       if (reviewOnly && !deal.metadata?.needsReview) return false;
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
@@ -195,7 +212,7 @@ export default function SalesPlanningPipelinePage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
+  }, [deals, query, inScopeDeal, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
@@ -547,22 +564,11 @@ export default function SalesPlanningPipelinePage() {
     </>
   );
 
-    const allowedScopes = salesDealScopes(role);
-  const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
 
-  // Set default scope correctly on mount
-  useEffect(() => {
-    if (!allowedScopes.includes(scope)) {
-      setScope(allowedScopes[0] || "mine");
-    }
-  }, [allowedScopes, scope]);
 
   // Calculate KPIs
-  const kpiDeals = deals.filter(d => {
-    if (scope === "mine" && me?.id) return d.ownerId === me.id;
-    if (scope === "team" && me?.team) return d.team === me.team;
-    return true;
-  });
+  // ⭐ ขอบเขตเดียวกับที่ตารางใช้ (inScopeDeal) — เดิม KPI กับตารางแยกกันคนละตัวกรอง
+  const kpiDeals = deals.filter(inScopeDeal);
   const totalDeals = kpiDeals.length;
   const pipelineValue = kpiDeals
     .filter((d) => !["won", "lost", "in_project"].includes(d.stage))
@@ -591,13 +597,13 @@ export default function SalesPlanningPipelinePage() {
           {canSeeDealKpi(role) && (
             <>
               {allowedScopes.length > 1 && (
-                <div className="segmented deal-scope-toggle" style={{ marginBottom: "16px" }}>
-                  {allowedScopes.map((s) => (
-                    <button key={s} type="button" onClick={() => setScope(s)} className={scope === s ? "active" : ""}>
-                      {SCOPE_TH[s]}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  ariaLabel="ขอบเขตของไปป์ไลน์"
+                  className="deal-scope-toggle"
+                  value={activeScope}
+                  onChange={setScope}
+                  options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+                />
               )}
               
               <SaMetricStrip>
