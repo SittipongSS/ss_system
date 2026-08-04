@@ -1,0 +1,170 @@
+/* ตาราง "ดีลในโครงการ" (2026-08-05) — เดิมเป็นการ์ดต่อดีลที่เขียนสไตล์ inline ทั้งใบ
+   ของที่ต้องเทียบข้ามดีลอยู่บนแถว ของที่ดูทีละใบอยู่ในแถวขยาย */
+
+/* ── เซลล์บนแถว ─────────────────────────────────────────────────────── */
+.dealCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* ชื่อดีลยาวได้ไม่จำกัด แต่แถวต้องไม่สูงขึ้น — ตัดด้วย ellipsis ไม่ตัดขึ้นบรรทัดใหม่ */
+.dealTitle {
+  font-weight: var(--fw-bold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subLine {
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+/* บรรทัดล่างของคอลัมน์เงิน (FC · เดือน forecast / ปิดจริง) — เป็นคำอธิบายของตัวเลข
+   ข้างบน จึงต้องไม่หนาและไม่ใช้ฟอนต์ตัวเลขตาม .num ของตารางกลาง */
+.valueNote {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-normal);
+}
+
+.progressCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 120px;
+}
+
+/* แถบคืบหน้ากลาง (.progress ใน globals) กินพื้นที่ที่เหลือของเซลล์ — เป็นการวางผัง
+   ของเซลล์นี้ ไม่ใช่การแก้หน้าตาของ primitive */
+.progressCell :global(.progress) {
+  flex: 1;
+  min-width: 60px;
+}
+
+.progressCount {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.reorder {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* ── แถวขยาย ────────────────────────────────────────────────────────── */
+.expandPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  padding-block: var(--space-1) var(--space-2);
+}
+
+.expandInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 200px;
+  font-size: var(--fs-6);
+}
+
+.expandInfoIcon {
+  color: var(--text-3);
+  vertical-align: -2px;
+  margin-right: var(--space-1);
+}
+
+.openDeal {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
+.quoteList {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.quoteHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  font-weight: var(--fw-semibold);
+}
+
+.quoteRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-6);
+  min-width: 0;
+}
+
+.quoteNo {
+  white-space: nowrap;
+}
+
+.quoteAmount {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.quoteEmpty {
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}
+
+/* ── หัวตาราง / ท้ายตาราง ───────────────────────────────────────────── */
+.tableHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.tableHead h3 {
+  margin: 0;
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+}
+
+.mutedBadge {
+  color: var(--text-3);
+}
+
+.search {
+  width: 220px;
+}
+
+.footNote {
+  margin-top: var(--space-2);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
+
+.errorNote {
+  color: var(--red);
+  font-size: var(--fs-7);
+  margin-bottom: var(--space-2-5);
+}
+
+.noMatch {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-3);
+}
