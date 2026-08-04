@@ -88,6 +88,9 @@ export const UPDATE_KINDS = {
     doc_accept: { label: 'ลูกค้ารับใบ', color: 'var(--green)' },
     doc_revise: { label: 'ออก Rev.', color: 'var(--amber)' },
     doc_cancel: { label: 'ยกเลิกเอกสาร', color: 'var(--red)' },
+    // ผู้ยื่นเอาใบคืนเอง / กู้ร่างคืน — ไม่ใช่ปัญหาแบบเดียวกับ `doc_return` (ตีกลับ)
+    // จึงเป็นสีกลาง ไม่ใช่สีแดง (คำศัพท์ล็อกตามมติ: ดึงกลับ ≠ ตีกลับ)
+    doc_withdraw: { label: 'ดึงกลับ', color: 'var(--text-3)' },
     forecast: { label: 'ประมาณการ', color: 'var(--amber)' },
     task: { label: 'งานของดีล', color: 'var(--text-3)' },
   },
@@ -113,33 +116,12 @@ export const UPDATE_KINDS = {
     internal: { label: 'ประสานงานภายใน', color: 'var(--green)', authorable: true },
     next_step: { label: 'ขั้นถัดไป', color: 'var(--amber)', authorable: true, due: true },
   },
-  // ── ใบเสนอราคา / ใบสั่งขาย ───────────────────────────────────────────
-  // คำศัพท์ล็อกตามมติผู้ใช้: **ตีกลับ** (ผู้อนุมัติส่งคืน) · **ดึงกลับ** (ผู้ยื่น
-  // เอาคืนเอง) · **ออก Rev.** — ห้ามใช้ "ถอน/ถอด" · ป้ายต้องตรงกับปุ่มบนหน้าใบ
-  //
-  // ⚠️ ไม่มีชนิดที่ระบบเขียนบน `deal` ทั้งที่มี kind ชื่อเดียวกันบน entity อื่น —
-  // ชุด kind เป็นของแต่ละ entity โดยตั้งใจ (ดูหัวไฟล์) เทียบข้าม entity ไม่ได้
-  quotation: {
-    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
-    submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
-    approve: { label: 'อนุมัติ', color: 'var(--green)' },
-    returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
-    withdraw: { label: 'ดึงกลับมาแก้ไข', color: 'var(--text-3)' },
-    revise: { label: 'ออก Rev.', color: 'var(--amber)' },
-    accept: { label: 'ลูกค้ารับใบ', color: 'var(--green)' },
-    unaccept: { label: 'ย้อนการรับ', color: 'var(--amber)' },
-  },
-  sales_order: {
-    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
-    submit: { label: 'ยื่นขออนุมัติ', color: 'var(--blue)' },
-    approve: { label: 'อนุมัติ', color: 'var(--green)' },
-    returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
-    withdraw: { label: 'ดึงกลับมาแก้ไข', color: 'var(--text-3)' },
-    revoke: { label: 'ยกเลิกอนุมัติ', color: 'var(--red)' },
-    revise: { label: 'ออก Rev.', color: 'var(--amber)' },
-    cancel: { label: 'ยกเลิก', color: 'var(--red)' },
-    restore: { label: 'กู้คืนเป็นร่าง', color: 'var(--blue)' },
-  },
+  // ── ใบเสนอราคา / ใบสั่งขาย: **ไม่มีเธรดของตัวเอง** (มติผู้ใช้ 2026-08-04) ──
+  // เดิมมีชุด kind ของตัวเองและทุก action ลงสองที่ (เธรดของใบ + เงาบนดีล) แต่ตรวจ
+  // ของจริงแล้ว **ไม่มีใครพิมพ์ในเธรดของใบเลยสักข้อความ** (QT 21 เหตุการณ์ · SO 1 ·
+  // ข้อความคน 0) ขณะที่เงาบนดีลถูกอ่านจริงทั้งบนหน้าดีลและไหลต่อขึ้นหน้าโครงการ
+  // ⇒ เหลือที่เดียวคือเธรดดีล (ชนิด `doc_*` ข้างบน) · ดูรายละเอียดใน
+  // lib/sales/documentUpdates.js
   // ── master data: ลูกค้า / สินค้า ─────────────────────────────────────
   // ด่านอนุมัติชุดเดียวกัน (approvalStatus + rejectionReason + resetApprovalOnEdit)
   // จึงใช้ชุด kind เหมือนกันเป๊ะ — ป้ายต่างกันเมื่อไรคือสัญญาณว่ากฎเริ่มแตกเป็นสองชุด

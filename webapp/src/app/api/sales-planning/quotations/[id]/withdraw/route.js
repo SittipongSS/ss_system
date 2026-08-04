@@ -56,7 +56,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   await appendDocumentEvent(supabase, {
-    docType: 'quotation', doc: quote, action: 'withdraw', opts: { reason }, user, docId: id,
+    docType: 'quotation', doc: quote, action: 'withdraw', opts: { reason }, user,
   });
 
   await recordAudit({
