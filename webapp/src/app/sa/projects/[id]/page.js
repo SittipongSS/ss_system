@@ -317,6 +317,9 @@ export default function ProjectDetailPage() {
     const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
     openGanttPrintWindow({
       ...proj,
+      // Rev ที่ถ่ายก่อนมีดีลใน snapshot (ก่อน 2026-08-05) ไม่มี proj.deals — ถอยไปใช้
+      // ดีลปัจจุบันให้ ดีกว่าปล่อยช่อง "โครงการย่อย" ว่างบนเอกสารที่พิมพ์ซ้ำ
+      deals: proj.deals || p.deals || [],
       tasks: snapshot?.tasks || [],
       projectProducts: enrichProducts(snapshot?.projectProducts || []),
       categoryFallback: fallback,

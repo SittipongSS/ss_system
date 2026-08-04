@@ -13,6 +13,7 @@ import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGr
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { productIdentity } from '@/lib/master/productIdentity';
 import { entityCodeDisplay } from '@/lib/entityCode';
+import { dealTypeOf } from '@/lib/salesPlanning';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import {
   documentNumberWithRevision,
@@ -24,6 +25,7 @@ import {
 import {
   documentFooter,
   documentHeader,
+  documentRef,
   esc,
   partyGrid,
   renderDocumentHTML,
@@ -287,6 +289,11 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
     project.rev,
   );
   const formLine = `${form.code}: Rev. No.${form.revision}. ${form.effectiveDate}`;
+  // ดีลที่ผูกกับโครงการ — snapshot ของ Rev ที่ถ่ายไว้ก่อนมี field นี้จะไม่มีข้อมูล
+  // หน้าเรียกจึงถอยไปใช้ดีลปัจจุบันให้ (ดูหน้า sa/projects/[id])
+  const dealRefs = (project.deals || [])
+    .map((deal) => documentRef(dealTypeOf(deal), deal?.title))
+    .filter((ref) => ref !== '-');
 
   const header = documentHeader({
     // resolveCompanyBlock คืนคีย์ legalNameTh/legalNameEn ส่วนเปลือกรับ nameTh/nameEn
@@ -341,10 +348,15 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
         aeEmail ? { label: 'Email', value: aeEmail } : null,
       ],
     },
+    // เอกสารทุกชนิดต้องอ้างอิงโครงการและโครงการย่อย (ดีล) เสมอ — ไทม์ไลน์ครอบทั้ง
+    // โครงการซึ่งมีได้หลายดีล จึงลิสต์ทุกดีลที่ผูกอยู่ (มติผู้ใช้ 2026-08-05)
+    // `.partyGrid dd` เป็น pre-wrap อยู่แล้ว ขึ้นบรรทัดใหม่ต่อดีลได้โดยไม่ต้องใส่ markup
     reference: {
       heading: 'ข้อมูลอ้างอิง',
       headingEn: '/ REFERENCE',
       rows: [
+        { label: 'โครงการ', value: documentRef(displayCode, project.name) },
+        { label: 'โครงการย่อย', value: dealRefs.join('\n') },
         { label: 'ใบเสนอราคา', value: quotationLine },
         { label: 'รายการสินค้า (FG)', html: fgHtml },
       ],

@@ -108,11 +108,14 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
     secondaryLabel: 'กำหนดชำระ',
     secondaryValue: order.paymentDueDate ? fmtDate(order.paymentDueDate) : '-',
+    // โครงการมาก่อนดีลเสมอ และดีลเรียกว่า "โครงการย่อย" **เฉพาะบนเอกสาร** — ในแอปยัง
+    // เรียก "ดีล" เหมือนเดิม (มติผู้ใช้ 2026-08-04) · ต้องตรงกับใบเสนอราคาซึ่งเป็นใบ
+    // ต้นทางของ SO ไม่งั้นลูกค้าได้สองใบที่เรียกของอย่างเดียวกันคนละชื่อ คนละลำดับ
     referenceRows: [
       { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
       { label: 'สถานะเอกสาร', value: statusLabel },
-      { label: 'ดีล', value: order.deal?.title || '-' },
       { label: 'โครงการ', value: order.project?.name || '-' },
+      { label: 'โครงการย่อย', value: order.deal?.title || '-' },
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
