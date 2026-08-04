@@ -46,7 +46,9 @@ test("ยอดสุทธิบนใบแจ้งชำระที่พ�
   ];
   const expected = billedTaxTotals(items);
   const html = buildBillPrintHTML({ id: "TAX-1", items, customerName: "ลูกค้า" }, {});
-  const printed = html.match(/ยอดแจ้งชำระสุทธิ \(รวม VAT\)<\/span><span>([\d,.]+)</);
+  // แถวยอดสุทธิใช้โครง .grandTotal ของเปลือกเอกสารกลาง (span ป้าย + strong ตัวเลข + " บาท")
+  // ชุดเดียวกับใบเสนอราคา — ของเดิมเป็น <span><span> ที่ billPrint เขียนเอง
+  const printed = html.match(/ยอดแจ้งชำระสุทธิ \(รวม VAT\)<\/span><strong>([\d,.]+) บาท</);
   assert.ok(printed, "หาแถวยอดสุทธิบนเอกสารไม่เจอ");
   assert.equal(
     printed[1],
