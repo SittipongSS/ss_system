@@ -93,13 +93,24 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const existing = (code && findFormulaByCode(formulas, code))
       || formulas.find((f) => f.name.trim().replace(/\s+/g, ' ').toLowerCase() === name.toLowerCase()
         && (f.customerId || null) === (customerId || null));
+    // ⚠️ ลูกค้าส่งผ่าน `fallbackCustomer` ไม่ใช่ใน body — ตั้งแต่ 0207 ลูกค้าของสูตร
+    // มาจากกลิ่นเสมอ และ normalizeFormulaInput ทิ้งค่าที่ client ส่งมา · สูตรที่เกิด
+    // จากการจัดระเบียบไม่มีกลิ่น จึงเป็นทางเดียวที่ยังระบุลูกค้าตรง ๆ ได้
+    // (ไม่ส่ง = สินค้าของลูกค้ารายหนึ่งกลายเป็นสูตรฐานไร้ลูกค้าเงียบ ๆ)
     const formula = existing || await createFormula(supabase, {
       name,
       code: code || null,
       formulaDate,
-      customerId: customerId || null,
-      customerName: body.customerName ?? row.customerName,
-    }, user, { accepted: !!code });
+      // หมวดสินค้า: ครึ่งหนึ่งของตัวตนสูตร — จัดระเบียบเสร็จแล้วต้องมีตัวตนทันที
+      // ไม่ใช่โผล่มาเป็นแถวที่ไม่มีใครเทียบได้ว่าซ้ำกับของเดิมหรือเปล่า
+      categoryCode: String(body.categoryCode ?? '').trim() || null,
+    }, user, {
+      accepted: !!code,
+      fallbackCustomer: {
+        customerId: customerId || null,
+        customerName: body.customerName ?? row.customerName ?? null,
+      },
+    });
     await linkProductToRegistry(supabase, row.productId, { formulaId: formula.id });
     await recordAudit({
       user, action: existing ? 'update' : 'create', entityType: 'formula', entityId: formula.id,
