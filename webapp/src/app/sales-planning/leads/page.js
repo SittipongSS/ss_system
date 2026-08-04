@@ -260,13 +260,16 @@ export default function LeadsPage() {
     () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
     [users, canCreateDeals, team],
   );
-  /* "เปิดดีล" ไม่ใช่ขั้นในเส้นทางแล้ว (ดู leadDealAction) — ส่งเข้าเมนูแถวเป็นรายการ
-     ของตัวเอง โดยใช้ descriptor ตัวเดียวกับที่หน้ารายละเอียดใช้ ห้ามคิดเงื่อนไขซ้ำที่นี่ */
-  const dealItemFor = (lead) => {
+  /* "เปิดดีล" ไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction) — ในแถวจึงมี **ช่องของตัวเอง**
+     แยกจากปุ่มก้าวถัดไป (มติผู้ใช้ 2026-08-04) ไม่ใช่ซ่อนในเมนู "…" ซึ่งหาไม่เจอ
+     โดยเฉพาะขั้น "นัดประชุมแล้ว"/"เปิดลูกค้าแล้ว" ที่ไม่มีก้าวถัดไปเหลือแล้ว
+     งานที่ต้องทำจริงคือเปิดดีล · ใช้ descriptor ตัวเดียวกับหน้ารายละเอียด
+     ห้ามคิดเงื่อนไขซ้ำที่นี่ — ป้ายในแถวใช้ rowLabel (สั้นกว่า label บนการ์ด) */
+  const dealActionFor = (lead) => {
     const action = leadDealAction({
       lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: () => setDealModal(lead),
     });
-    return { ...action, label: action.rowLabel, tone: "primary" };
+    return { ...action, label: action.rowLabel };
   };
   // นโยบายเดียวกับ API (lib/sales/leads.js) — ปุ่มโชว์เฉพาะเมื่อ action จะสำเร็จจริง
   const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
@@ -413,7 +416,7 @@ export default function LeadsPage() {
                         user={viewer}
                         busy={!!busy}
                         recordLabel={lead.contactName}
-                        extraItems={[dealItemFor(lead)]}
+                        sideAction={dealActionFor(lead)}
                         onTransition={(actionId, values) => runTransition(lead, actionId, values)}
                         canEdit={canEditRow(lead)}
                         canDelete={canDeleteRow(lead)}

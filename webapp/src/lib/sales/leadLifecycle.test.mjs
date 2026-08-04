@@ -288,3 +288,37 @@ test("rowLabel ไม่ระบุ = ใช้ label เดิม ไม่ใ
     for (const e of rendered) assert.ok(e.rowLabel, `${e.id} ต้องมี rowLabel เสมอ (fallback เป็น label)`);
   }
 });
+
+/* ── ปุ่มเปิดดีลในแถวตาราง มีช่องของตัวเอง ────────────────────────────────
+   มติผู้ใช้ 2026-08-04: "เพิ่มช่องของตัวเอง แต่โชว์เฉพาะขั้นที่โชว์ได้"
+   ⇒ RecordActionMenu ต้องมี slot แยก (`sideAction`) ที่กินที่เท่ากันทุกแถวเพื่อให้
+   เมนู "…" ตรงแนวกัน แต่ตัวปุ่มโผล่เฉพาะแถวที่ `visible` */
+test("แถวตาราง: ปุ่มเปิดดีลอยู่คนละช่องกับปุ่มก้าวถัดไป", () => {
+  const menuSrc = readFileSync(path.join(process.cwd(), "src/components/ui/RecordActionMenu.js"), "utf8");
+  assert.match(menuSrc, /sideAction = null/, "ต้องรับ prop sideAction");
+  assert.match(menuSrc, /styles\.side\b/, "ต้องมีช่องของตัวเอง ไม่ใช่ยัดรวมช่องก้าวถัดไป");
+  assert.match(menuSrc, /sideAction\.visible !== false/, "ปุ่มโผล่เฉพาะขั้นที่โชว์ได้");
+
+  const css = readFileSync(path.join(process.cwd(), "src/components/ui/RecordActionMenu.module.css"), "utf8");
+  // กว้างเท่ากันทุกแถว (ใช้ตัวแปรเดียวกับช่องก้าวถัดไป) — ยุบเมื่อว่างแล้วคอลัมน์จะเยื้อง
+  assert.match(css, /\.side\s*\{[^}]*width:\s*var\(--record-step-w\)/, "ช่องต้องกว้างคงที่");
+
+  const listSrc = readFileSync(path.join(process.cwd(), "src/app/sales-planning/leads/page.js"), "utf8");
+  assert.match(listSrc, /sideAction=\{dealActionFor\(lead\)\}/, "หน้ารายการต้องส่งผ่านช่องนี้");
+  assert.doesNotMatch(listSrc, /extraItems=\{\[dealItemFor/, "ต้องไม่กลับไปซ่อนในเมนู");
+});
+
+test("แถวตาราง: ป้ายปุ่มเปิดดีลใช้ rowLabel ที่สั้นพอสำหรับช่องแคบ", () => {
+  for (const status of ["contacted", "meeting", "qualified"]) {
+    const action = dealFor(lead({ status, team: "A", assigneeId: "u-ae" }), AE_A);
+    assert.ok(action.rowLabel.length <= 14, `${status}: ป้าย "${action.rowLabel}" ยาวเกินช่อง`);
+  }
+});
+
+/* หน้ารายละเอียด: ปุ่มต้อง **ไม่** อยู่บนการ์ดคุมสถานะแล้ว — ย้ายไปการ์ดของดีล */
+test("หน้ารายละเอียด: ปุ่มเปิดดีลไม่อยู่บนการ์ดคุมสถานะ", () => {
+  const src = readFileSync(path.join(process.cwd(), "src/app/sales-planning/leads/[id]/page.js"), "utf8");
+  const actions = src.slice(src.indexOf("const recordActions = ["), src.indexOf("return <Workspace"));
+  assert.doesNotMatch(actions, /leadDealAction/, "recordActions (การ์ดคุมสถานะ) ต้องไม่มีปุ่มเปิดดีล");
+  assert.match(src, /title="ดีลจากลีดนี้"[\s\S]{0,400}actions=\{dealAction\.visible/, "ปุ่มต้องอยู่ในการ์ดดีล");
+});

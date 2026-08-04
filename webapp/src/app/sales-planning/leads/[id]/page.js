@@ -184,12 +184,17 @@ export default function LeadDetailPage() {
     setDealOpen(true);
   }
 
-  /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน
-     เปิดดีล = primary (งานจริงที่ลีดใบนี้มีอยู่) · แก้ไข = secondary · ลบ = danger */
+  /* เปิดดีล **ไม่อยู่บนการ์ดคุม flow** (มติผู้ใช้ 2026-08-04) — มันไม่ใช่การเดินสถานะ
+     ของลีด แต่เป็นการสร้าง entity คนละตัว และเปิดได้จากหลายขั้น (ติดต่อแล้ว / นัดประชุม
+     แล้ว / เปิดไปแล้วก็เพิ่มได้อีก) ปุ่มจึงไปอยู่ในการ์ด "ดีลจากลีดนี้" ซึ่งเป็นที่ของมัน
+     — อยู่ติดกับรายการดีลที่ออกไปแล้ว คนอ่านเห็นพร้อมกันว่ามีอะไรอยู่และจะเพิ่มได้ที่ไหน */
+  const dealAction = leadDealAction({
+    lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: openDealForm,
+  });
+
+  /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การจัดการตัวระเบียน"
+     แก้ไข = secondary (ทำได้ แต่ไม่ใช่ก้าวถัดไป) · ลบ = danger (ทำลาย) */
   const recordActions = [
-    leadDealAction({
-      lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: openDealForm,
-    }),
     {
       id: "edit",
       kind: "edit",
@@ -264,9 +269,37 @@ export default function LeadDetailPage() {
           </div>}
         </DetailCard>
 
-        {!!lead.relatedDeals?.length && <DetailCard icon={BriefcaseBusiness} eyebrow="Converted opportunities" title="ดีลที่สร้างจาก Lead" meta={`${lead.relatedDeals.length} ดีล`}><ContextGrid>
-          {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={BriefcaseBusiness} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
-        </ContextGrid></DetailCard>}
+        {/* ── ส่วนของ "ดีล" แยกขาดจากการ์ดคุม flow ─────────────────────────────
+            โผล่เมื่อมีดีลแล้ว **หรือ** เปิดดีลได้ — ไม่งั้นลีดที่ยังไม่มีดีลจะไม่มีที่ให้
+            ปุ่มยืน และคนต้องไปหาในการ์ดสถานะซึ่งเป็นคนละเรื่องกัน */}
+        {(!!lead.relatedDeals?.length || dealAction.visible) && (
+          <DetailCard
+            icon={BriefcaseBusiness}
+            eyebrow="Converted opportunities"
+            title="ดีลจากลีดนี้"
+            meta={lead.relatedDeals?.length ? `${lead.relatedDeals.length} ดีล` : "ยังไม่มีดีล"}
+            actions={dealAction.visible ? (
+              <Button
+                tone="primary"
+                icon={<BriefcaseBusiness size={14} aria-hidden="true" />}
+                onClick={openDealForm}
+                disabled={busy}
+              >
+                {dealAction.label}
+              </Button>
+            ) : null}
+          >
+            {lead.relatedDeals?.length ? (
+              <ContextGrid>
+                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={BriefcaseBusiness} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
+              </ContextGrid>
+            ) : (
+              <p className="empty">
+                ลีดนี้ยังไม่ได้เปิดดีล — กด “{dealAction.label}” เพื่อเริ่ม (เปิดได้หลายใบจากลีดเดียว)
+              </p>
+            )}
+          </DetailCard>
+        )}
 
         {/* เธรดกลาง (mig 0163) — เดิมการ์ดนี้เป็นไทม์ไลน์ **อ่านอย่างเดียว** ที่วาดเอง
             ทั้งที่ช่วงลีดคือช่วงที่ข้อมูลอยู่ในหัวคนมากที่สุด · เหตุการณ์ระบบยังมาจาก
