@@ -5,7 +5,7 @@
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
 import { derivedFromError, normalizeScentInput } from '@/lib/master/scents';
-import { normalizeFormulaInput } from '@/lib/master/formulas';
+import { derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -98,6 +98,11 @@ function translateScentConflict(error) {
     }
     if (msg.includes('scents_code_uk')) return new Error('รหัสกลิ่นนี้ถูกใช้ไปแล้ว');
     if (msg.includes('formulas_code_uk')) return new Error('รหัสสูตรนี้ถูกใช้ไปแล้ว');
+    // ⭐ ตัวตนใหม่ของสูตร (0207) — ชนแปลว่า "ของชิ้นนี้มีในทะเบียนแล้ว" ไม่ใช่
+    // "รหัสซ้ำ" · ข้อความต้องชี้ทางไปเปิดของเดิม ไม่ใช่ให้ไปเปลี่ยนรหัสหนี
+    if (msg.includes('formulas_identity_uk')) {
+      return new Error('หมวดสินค้านี้กับกลิ่นนี้มีสูตรอยู่แล้ว — เปิดสูตรเดิมแทนการสร้างซ้ำ');
+    }
   }
   return error;
 }
@@ -118,15 +123,43 @@ export async function findFormula(supabase, id) {
   return data || null;
 }
 
+// ⭐ **ลูกค้าของสูตรมาจากกลิ่นเสมอ ไม่ใช่จากฟอร์ม** (mig 0207)
+//
+// เดิมช่องลูกค้าอยู่ในฟอร์มและเว้นว่างได้ ⇒ สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B
+// ได้โดยไม่มีอะไรห้าม · ย้ายมาให้ server เติม ⇒ ความขัดแย้งเป็นไปไม่ได้เชิงโครงสร้าง
+// (แพตเทิร์นเดียวกับ productFormulaSnapshot — ค่าที่ derive ได้ ห้ามให้ client ส่ง)
+//
+// ไม่ผูกกลิ่น = สูตรฐาน ⇒ ไม่มีลูกค้า (คนละความหมายกับกลิ่น ซึ่งบังคับผูกลูกค้าเสมอ)
+async function customerFromScent(supabase, scentId) {
+  if (!scentId) return { customerId: null, customerName: null };
+  const scent = await findScent(supabase, scentId);
+  if (!scent) throw new Error('ไม่พบกลิ่นที่เลือกในทะเบียนกลิ่น');
+  return { customerId: scent.customerId, customerName: scent.customerName ?? null };
+}
+
+export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId, customerId, id }) {
+  if (!derivedFromFormulaId) return;
+  const parent = await findFormula(supabase, derivedFromFormulaId);
+  const error = derivedFromFormulaError(parent, { customerId, id });
+  if (error) throw new Error(error);
+}
+
 export async function createFormula(supabase, input, user, { accepted = false } = {}) {
   const { value, error } = normalizeFormulaInput(input);
   if (error) throw new Error(error);
   if (accepted && !value.code) throw new Error('ต้องระบุรหัสสูตร');
 
+  const customer = await customerFromScent(supabase, value.scentId);
+  await assertDerivedFromFormula(supabase, { ...value, ...customer });
+
   const nowIso = new Date().toISOString();
   const row = {
     id: genId('FML'),
     ...value,
+    ...customer,
+    // RD ที่สร้างเองเป็นเจ้าของสูตรโดยปริยาย (ตรงกับทะเบียนกลิ่น)
+    ownerId: accepted ? user?.id ?? null : null,
+    ownerName: accepted ? user?.name ?? null : null,
     status: accepted ? 'active' : 'draft',
     acceptedById: accepted ? user?.id ?? null : null,
     acceptedByName: accepted ? user?.name ?? null : null,
@@ -139,6 +172,15 @@ export async function createFormula(supabase, input, user, { accepted = false } 
   const { data, error: insertError } = await supabase.from('formulas').insert(row).select().single();
   if (insertError) throw translateScentConflict(insertError);
   return data;
+}
+
+// แก้สูตรจากฟอร์ม — ต่างจาก `updateFormula` ตรงที่ **derive ลูกค้าจากกลิ่นใหม่ทุกครั้ง**
+// และตรวจสายพันธุ์ให้ · `updateFormula` ดิบ ๆ ยังใช้ได้กับ patch ที่ไม่แตะกลิ่น
+// (เปลี่ยนสถานะ · รับเข้าทะเบียน) ซึ่งไม่ต้องคิดเรื่องลูกค้าเลย
+export async function editFormula(supabase, id, patch) {
+  const customer = await customerFromScent(supabase, patch.scentId);
+  await assertDerivedFromFormula(supabase, { ...patch, ...customer, id });
+  return updateFormula(supabase, id, { ...patch, ...customer });
 }
 
 export async function updateFormula(supabase, id, patch) {

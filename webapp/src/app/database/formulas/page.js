@@ -46,7 +46,9 @@ export default function FormulasPage() {
 
   const [formulas, setFormulas] = useState([]);
   const [scents, setScents] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  // 🗑 `customers` หายไปพร้อมช่องลูกค้าในฟอร์ม (0207) — ลูกค้าของสูตรมาจากกลิ่น
+  // ฝั่ง server แล้ว หน้านี้จึงไม่ต้องรู้จักรายชื่อลูกค้าเลย
+  const [categories, setCategories] = useState([]);
   const [unsorted, setUnsorted] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -86,8 +88,12 @@ export default function FormulasPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+  // หมวดสินค้าเป็นครึ่งหนึ่งของตัวตนสูตรแล้ว (0207) — ชุด master ที่แทบไม่เปลี่ยน
+  // จึงโหลดครั้งเดียวผ่านแคช ไม่ต้องดึงซ้ำทุกครั้งที่กดรีเฟรชทะเบียน
   useEffect(() => {
-    cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    cachedFetchJson("/api/master/product-types")
+      .then((d) => setCategories(Array.isArray(d) ? d : []))
+      .catch(() => {});
   }, []);
 
   // ไม่เจอกลิ่น = คืน null ให้คนเรียกแสดง "—" · **ห้ามถอยไปโชว์ id ดิบ**
@@ -128,12 +134,15 @@ export default function FormulasPage() {
 
   const submitForm = async () => {
     const v = form.value;
+    // ⚠️ **ไม่ส่ง customerId/customerName อีกแล้ว** — server เติมจากกลิ่นเสมอ (0207)
+    // ส่งไปก็ถูกทิ้ง แต่การส่งจะทำให้คนอ่านโค้ดเข้าใจผิดว่าฟอร์มยังคุมค่านั้นอยู่
     const payload = {
       name: v.name,
       formulaDate: v.formulaDate || null,
+      categoryCode: v.categoryCode || null,
       scentId: v.scentId || null,
-      customerId: v.customerId || null,
-      customerName: customers.find((c) => c.id === v.customerId)?.name || null,
+      customerTradeName: v.customerTradeName,
+      derivedFromFormulaId: v.derivedFromFormulaId || null,
       note: v.note,
     };
     if (form.mode === "create") {
@@ -430,7 +439,9 @@ export default function FormulasPage() {
         {form && (
           <>
             <FormulaForm
-              mode={form.mode} value={form.value} customers={customers} scents={scents}
+              mode={form.mode} value={form.value} scents={scents}
+              formulas={formulas} categories={categories}
+              editingId={form.formula?.id || null}
               canSetCode={registrar} disabled={saving}
               onChange={(value) => setForm({ ...form, value })}
             />
