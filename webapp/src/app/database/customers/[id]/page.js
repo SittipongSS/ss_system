@@ -25,6 +25,9 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import {
+  ADDRESS_USE_LABELS, addressLabel, customerAddresses, isBillingAddress, isShippingAddress,
+} from "@/lib/master/addresses";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
@@ -174,10 +177,10 @@ export default function CustomerDetails() {
       customerType: formData.customerType || "company",
       teams: formData.teams,
       taxId: formData.taxId,
-      branchCode: formData.branchCode || "00000",
       phone: formData.phone,
-      address: formData.address,
-      shippingAddress: formData.shippingAddress || null,
+      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0202) — address/shippingAddress/branchCode
+      // เป็นกระจกที่ server เขียนเองจากที่อยู่หลัก ไม่ให้ client ส่งสองทาง
+      addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
@@ -301,6 +304,11 @@ export default function CustomerDetails() {
 
   const teamsLabel = (customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-";
 
+  // ที่อยู่ (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
+  const addresses = customerAddresses(customer);
+  const primaryBillingIndex = addresses.findIndex(isBillingAddress);
+  const primaryShippingIndex = addresses.findIndex(isShippingAddress);
+
   return (
     <Workspace
       hideHeader
@@ -349,18 +357,28 @@ export default function CustomerDetails() {
               <Field label="ทีมดูแล" value={teamsLabel} />
               <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
               <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
-              <Field label="สาขา (Branch)" value={!customer.branchCode || customer.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขา ${customer.branchCode}`} />
               <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
               <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
+              {/* ที่อยู่หลายรายการ (0202) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
               <div className="md:col-span-3">
-                <span className="text-[var(--text-3)] block mb-1 text-[11px]">ที่อยู่ออกใบเอกสาร</span>
-                <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{customer.address}</p>
-              </div>
-              <div className="md:col-span-3">
-                <span className="text-[var(--text-3)] block mb-1 text-[11px]">ที่อยู่จัดส่ง</span>
-                <p className="font-medium text-[var(--text)] leading-relaxed text-sm">
-                  {customer.shippingAddress || <span className="text-[var(--text-3)] italic font-normal">ใช้ที่อยู่ออกเอกสาร</span>}
-                </p>
+                <span className="text-[var(--text-3)] block mb-2 text-[11px]">ที่อยู่ ({addresses.length})</span>
+                {addresses.length === 0 ? (
+                  <p className="text-[var(--text-3)] italic text-sm">ยังไม่มีที่อยู่</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {addresses.map((a, i) => (
+                      <div key={a.id} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          <span className="text-[11px] font-semibold text-[var(--text-2)]">{addressLabel(a)}</span>
+                          <span className="text-[10px] text-[var(--text-3)]">{ADDRESS_USE_LABELS[a.useFor]}</span>
+                          {i === primaryBillingIndex && <span className="status-pill">บิลหลัก</span>}
+                          {i === primaryShippingIndex && <span className="status-pill">จัดส่งหลัก</span>}
+                        </div>
+                        <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{a.address}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </DetailCard>

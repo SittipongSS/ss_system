@@ -57,6 +57,30 @@
   line-height: var(--lh-text);
 }
 
+/* ช่องเลือกที่อยู่ระหว่างแก้ร่าง — แทนที่ .infoBlock ตัวเดิมในกริดเดียวกัน
+   ป้ายใน dropdown เป็นชื่อเรียก/สาขา จึงต้องกางข้อความที่อยู่เต็มไว้ใต้ช่อง */
+.addressField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+}
+
+.addressField > * {
+  margin-top: var(--space-1-5);
+}
+
+.addressPreview {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-text);
+  white-space: pre-wrap;
+}
+
 .sectionHeading {
   display: flex;
   align-items: center;
