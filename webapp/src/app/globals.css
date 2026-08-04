@@ -1769,6 +1769,25 @@ h1, h2, h3, h4, h5, h6 {
 
 /* โทนสำเร็จรูป — ใช้ได้กับทั้งสามชื่อ (เดิม `.ui-badge.warning` / `.ui-badge.danger`
    ถูกเขียนไว้ในโค้ดแต่ **ไม่มี selector อยู่จริง** = ป้ายไม่มีโทนเงียบ ๆ) */
+/* ── ป้ายที่อยู่ใน "คอลัมน์" ของตาราง ────────────────────────────────────────
+   มติผู้ใช้ 2026-08-05: ป้ายในตารางต้องกวาดตาลงเป็นคอลัมน์ได้ ไม่ใช่กว้างตามความ
+   ยาวข้อความของแต่ละแถว ("IG" กับ "Typeform" เคยกว้างต่างกันเกือบเท่าตัว)
+
+   ⚠️ อยู่ใน globals ไม่ใช่ *.module.css เพราะมี 5 ตารางใช้ (คิวลีด · ไปป์ไลน์ดีล ·
+   ใบเสนอราคา · ใบสั่งขาย · โครงการ) และ audit:ui ห้ามยืม module.css ข้ามโฟลเดอร์
+   ⚠️ ความกว้างสั่งจาก **ผู้เรียก** ไม่ฝังใน helper ที่สร้างป้าย — ป้ายชุดเดียวกันถูก
+   ใช้บนการ์ด/หน้ารายละเอียดด้วย ตรงนั้นควรพอดีข้อความ ไม่ใช่ยืดเต็มคอลัมน์
+   ⚠️ ตั้งความกว้างตาม "ป้ายที่ยาวที่สุดของชุดนั้น" — ถ้าตั้งสั้นกว่า ใบสั้นจะเท่ากัน
+   แต่ใบยาวโผล่เกินออกมาใบเดียว (กับดักเดิมของคอลัมน์สถานะลีดที่ตั้งไว้ 90px) */
+.ui-badge-cell { min-width: var(--cell-badge-w, 90px); white-space: nowrap; }
+
+.ui-badge-w-stage { --cell-badge-w: 124px; }   /* ขั้นของดีล — "เสนอไทม์ไลน์" / "ปิดได้ (Won)" */
+.ui-badge-w-fc { --cell-badge-w: 74px; }       /* FC% — กันแถวที่ยังไม่มีค่าเยื้อง */
+.ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
+.ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ยกเลิกอนุมัติ" */
+.ui-badge-w-lead { --cell-badge-w: 150px; }    /* สถานะลีด — "รอกระจาย (ได้ทีมแล้ว)" */
+.ui-badge-w-channel { --cell-badge-w: 88px; }  /* ช่องทางที่รับลีด — "Typeform" */
+
 .ui-badge.success, .status-pill.success, .chip.success { color: var(--green); }
 .ui-badge.warning, .status-pill.warning, .chip.warning { color: var(--amber); }
 .ui-badge.danger, .status-pill.danger, .chip.danger { color: var(--red); }
@@ -3290,8 +3309,12 @@ button.empty-state { width: 100%; font: inherit; }
 .segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 var(--space-0-5); }
 
-.deal-scope-toggle { width: fit-content; padding: 3px; }
-.deal-scope-toggle > button { min-width: 72px; min-height: 34px; padding: 7px var(--space-4); font-size: var(--fs-7); }
+/* ตัวสลับขอบเขต "ของฉัน / ทีม / ทั้งหมด" — ใช้ร่วมกันทุกหน้าที่มีขอบเขต
+   (คิวลีด · ไปป์ไลน์ดีล · งาน PM) เดิมชื่อผูกกับหน้าดีล คิวลีดจึงไม่ได้ใส่ ปุ่มสอง
+   หน้าเลยคนละขนาดกันทั้งที่เป็นตัวควบคุมเดียวกัน (ผู้ใช้ทักท้วง 2026-08-05)
+   ⚠️ min-width ที่ปุ่มคือหัวใจ — ไม่มีมันแล้ว "ของฉัน" กับ "ทีม" กว้างไม่เท่ากัน */
+.scope-toggle { width: fit-content; padding: 3px; }
+.scope-toggle > button { min-width: 72px; min-height: 34px; padding: 7px var(--space-4); font-size: var(--fs-7); }
 .project-detail-actions {
   display: flex;
   align-items: center;

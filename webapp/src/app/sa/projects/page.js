@@ -7,7 +7,7 @@ import Select from "@/components/ui/Select";
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Split } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
@@ -20,7 +20,7 @@ import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from 
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { businessLineLabel, countUnsetBusinessLine, isBusinessLine } from "@/lib/master/businessLines";
+import { businessLineLabel, isBusinessLine } from "@/lib/master/businessLines";
 
 /* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
    ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
@@ -103,10 +103,6 @@ export default function ProjectsIndexPage() {
     return t;
   }, [filtered]);
 
-  // โครงการที่ยังไม่ระบุสายธุรกิจ — นับตามตัวกรองเดียวกับ KPI อื่นบนแถบนี้
-  // (ตัวเลขบนแถบเดียวกันต้องขยับพร้อมกัน ไม่งั้นคนอ่านว่าเป็นคนละชุดข้อมูล)
-  const unsetLineCount = useMemo(() => countUnsetBusinessLine(filtered), [filtered]);
-
   const taskProgress = (p) => {
     const tasks = p.tasks || [];
     if (!tasks.length) return "-";
@@ -152,17 +148,11 @@ export default function ProjectsIndexPage() {
           <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก Sale Order ที่อนุมัติแล้ว" tone="good" />
           <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
           <SaMetric icon={<ClipboardList />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
-          {/* ⭐ ตัวนับนี้คือสิ่งที่มาแทน "ค่าตั้งต้น" ของคอลัมน์ `line` (mig 0191)
-              `projects.type` มี default 'NPD' แล้วโครงการ 11 ใบบน prod เป็น NPD หมด
-              — คอลัมน์สายธุรกิจจึงไม่มี default และใช้ตัวนับเป็นตัวทวงแทน
-              ⚠️ ต้องโผล่แม้เป็น 0 ไม่งั้นวันที่มันโตขึ้นจะไม่มีใครสังเกตว่ามันเคยมี */}
-          <SaMetric
-            icon={<Split />}
-            label="ยังไม่ระบุสาย"
-            value={unsetLineCount}
-            note="ต้องเลือกก่อน ระบบจึงจะรู้ว่าโครงการนี้จบยังไง"
-            tone={unsetLineCount ? "warning" : undefined}
-          />
+          {/* ⚠️ เคยมีตัวนับ "ยังไม่ระบุสาย" อยู่ตรงนี้ — ถอดออก (มติผู้ใช้ 2026-08-05)
+              ฟอร์มสร้าง/แก้โครงการบังคับเลือกสายแล้ว ตัวนับจึงเป็น 0 ตลอด และ
+              แถบนี้เป็นแถบเงินล้วน · ตัวทวงยังอยู่ที่ป้ายในแถวตารางด้านล่าง
+              ⇒ ถ้าวันไหนสายกลับมาว่างได้อีก (เช่นนำเข้าข้อมูลตรงเข้า DB)
+                 ให้เอาตัวนับกลับมา อย่าปล่อยให้ NULL หายเงียบเหมือน `projects.type` */}
         </SaMetricStrip>
 
         <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
@@ -240,7 +230,7 @@ export default function ProjectsIndexPage() {
                                 className={styles.dealTypeChip}
                                 title={dealTypeTooltip(row)}
                               >
-                                {dealTypeBadge(row.type)}
+                                {dealTypeBadge(row.type, "ui-badge-cell ui-badge-w-deal-type")}
                                 {row.count > 1 && <span className={styles.dealTypeCount}>×{row.count}</span>}
                               </Link>
                             ))}

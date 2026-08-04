@@ -92,7 +92,8 @@ export default function ScentsPage() {
       if (!q) return true;
       // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
       // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
-      return [s.name, s.code, s.customerName, s.customerTradeName, s.note]
+      // รหัสตัวอย่างอยู่ในสายค้นด้วย — RD หาย้อนจากรหัสบนขวดที่ลูกค้าอ้างถึง
+      return [s.name, s.code, s.customerName, s.customerTradeName, s.sampleCode, s.note]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
   }, [scents, statusFilter, search]);
@@ -297,7 +298,17 @@ export default function ScentsPage() {
                 {pageRows.map((s) => {
                   return (
                     <tr key={s.id}>
-                      <td className="mono">{s.code || <span className={styles.muted}>—</span>}</td>
+                      <td className="mono">
+                        {s.code || <span className={styles.muted}>—</span>}
+                        {/* รหัสตัวอย่างที่ส่งออกไปจริง — *คนละรหัส* กับรหัสกลิ่นในทะเบียน
+                            คือสายที่โยงกลับไปหาขวดที่ลูกค้าถืออยู่ · ยกมาจากตารางรอบ
+                            ที่ถูกทิ้งใน 0206 (ของจริง 29 แถวมีครบทุกแถว)
+                            ⚠️ อ่านอย่างเดียว ไม่มีช่องกรอก — สายงานใหม่บันทึกการส่ง
+                            ผ่านคำร้อง ไม่ใช่ผ่านทะเบียน */}
+                        {s.sampleCode && (
+                          <div className={styles.sub}>ตัวอย่าง {s.sampleCode}</div>
+                        )}
+                      </td>
                       <td className={styles.name}>
                         {s.name}
                         {/* ⚠️ ชื่อของลูกค้าอยู่ **ใต้** ชื่อของเรา และมีคำนำหน้ากำกับ

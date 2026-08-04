@@ -612,7 +612,7 @@ export default function TasksPage() {
       {/* scope tabs */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
         {allowedScopes.length > 1 && (
-          <div className="segmented deal-scope-toggle">
+          <div className="segmented scope-toggle">
             {allowedScopes.map((s) => (
               <button key={s} onClick={() => { setScope(s); setAssigneeFilter([]); }} className={scope === s ? "active" : ""}>{role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s]}</button>
             ))}
@@ -620,7 +620,7 @@ export default function TasksPage() {
         )}
 
         {scope === "mine" && (
-          <div className="segmented deal-scope-toggle" aria-label="บทบาทของฉันในงาน">
+          <div className="segmented scope-toggle" aria-label="บทบาทของฉันในงาน">
             {Object.values(MINE_TASK_VIEWS).map((taskView) => (
               <button
                 key={taskView}
