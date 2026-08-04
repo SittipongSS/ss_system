@@ -19,7 +19,7 @@ import {
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
-import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
+import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { canViewCostingRequest } from '@/lib/costing';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
@@ -43,14 +43,21 @@ export const UPDATE_ENTITIES = {
   },
 
   // ── เคสขอราคาวัสดุ (mig 0158) ────────────────────────────────────────
-  // อ่าน = เห็นระบบขอราคา (ด่านเดียวกับ GET ของเคสเอง — ต้นทุนเป็นข้อมูลลับ
-  // แต่ในระบบเห็นกันทั้งวง) **ห้ามตั้งด่านใหม่ที่แคบกว่าหน้าจอ** ไม่งั้นเปิดเคสได้
-  // แต่เธรดว่างเปล่าโดยไม่มีอะไรบอกว่าเพราะอะไร
+  // อ่าน = **ด่านเดียวกับ GET ของคำร้องเอง เป๊ะ ๆ** — cap ของระบบ + ผูกกับแถว
+  // (ผู้ขอ · ฝ่ายที่ต้องตอบ · admin · ผู้สังเกตการณ์ทั้งระบบ)
+  //
+  // 🐞 เดิมเป็น `canViewCosting(user)` ล้วน ไม่ดูแถวเลย ⇒ ใครถือ costing:view ก็อ่าน
+  // เธรดของคำร้องใบไหนก็ได้ รวมถึงใบที่มีการพิมพ์ราคาคุยกันในนั้น · ตอนนั้น
+  // GET /[id] ก็ไม่ดูแถวเหมือนกัน ทั้งคู่จึง "สอดคล้องกัน" ในทางที่ผิด
+  //
+  // ⚠️ กฎ "ห้ามตั้งด่านเธรดแคบกว่าหน้าจอ" ยังอยู่ และยังถูกเคารพ — หน้าจอแคบลง
+  // พร้อมกันในคอมมิตก่อนหน้า (canReadRequestRow) ⇒ เปิดคำร้องได้เมื่อไร อ่านเธรด
+  // ได้เมื่อนั้นเสมอ ไม่มีเคสที่เปิดใบได้แต่เธรดว่างเปล่า
   dept_request: {
     table: 'dept_requests',
     attachments: true,   // "ขวดหน้าตาแบบนี้" — รูปคือหัวใจของการคุยเรื่องวัสดุ
     async canView(supabase, parent, user) {
-      return canViewCosting(user);
+      return canViewCosting(user) && canReadRequestRow(user, parent);
     },
     // โพสต์ = สองฝ่ายที่เกี่ยวกับเคสจริง (ผู้เปิดเคส ↔ ฝ่ายที่ต้องตอบ) และเฉพาะตอน
     // เคสยังเดินอยู่ — ปิด/ยกเลิกแล้วถือเป็นหลักฐาน กฎเดียวกับไฟล์แนบ

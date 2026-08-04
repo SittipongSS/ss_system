@@ -1,11 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canUser, canEditRecord } from '@/lib/permissions';
+import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import {
-  COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
+  COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
@@ -37,7 +37,9 @@ export async function DELETE(request, { params }) {
       .from(COSTING_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
     const allowed = parentRow
       ? await canAttachToCosting(supabase, att.entityType, parentRow, user)
-      : canViewCostingAttachment(user); // ระเบียนแม่ถูกลบไปแล้ว — เก็บกวาดไฟล์ค้างได้
+      // ระเบียนแม่ถูกลบไปแล้ว — ไม่มีแถวให้ตรวจสิทธิ์รายใบ เหลือด่านระบบล้วน
+      // (เจตนาเดิม: ให้เก็บกวาดไฟล์ที่ค้างอยู่ได้ ไม่ใช่ให้เปิดอ่านของใคร)
+      : canViewCosting(user);
     if (!allowed) return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
