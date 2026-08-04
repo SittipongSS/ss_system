@@ -6,6 +6,7 @@ import {
   QUOTATION_MASTER_TEMPLATE_VERSIONS,
   QUOTATION_PREVIEW_SCENARIOS,
   allocateInstallmentAmounts,
+  buildQuotationMasterModelFromQuote,
   buildQuotationMasterPreview,
   controlledFormLine,
   paginateQuotationMasterLines,
@@ -234,4 +235,64 @@ test('V4 px-calibrated: หน้าแรกอัดเต็มจริง �
       scenarioId,
     );
   }
+});
+
+// ── หัวเอกสาร: โครงการมาก่อน ดีลเรียก "โครงการย่อย" (มติผู้ใช้ 2026-08-04) ──────
+// ป้ายนี้ใช้ **เฉพาะบนเอกสาร** — ในแอปยังเรียกดีลเหมือนเดิม
+
+const QUOTE_WITH_PROJECT = {
+  id: 'QT-TEST',
+  quoteNumber: 'QT-26080001-0',
+  customerName: 'บริษัท ตัวอย่าง จำกัด',
+  createdByName: 'พนักงานขาย ตัวอย่าง',
+  lines: [],
+  deal: {
+    id: 'DL-1',
+    title: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
+    dealType: 'SCENT',
+    project: { id: 'PRJ-1', code: 'PJ-26070038', name: 'Signature Bloom' },
+  },
+};
+
+const refRow = (model, label) => model.referenceRows.find((row) => row.label === label)?.value;
+
+test('อ้างอิงบนใบเสนอราคา: โครงการขึ้นก่อนโครงการย่อย และประกอบเป็น "รหัส · ชื่อ"', () => {
+  const model = buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT);
+  const labels = model.referenceRows.map((row) => row.label);
+  assert.deepEqual(labels.slice(0, 2), ['โครงการ', 'โครงการย่อย']);
+  assert.equal(refRow(model, 'โครงการ'), 'PJ-26070038 · Signature Bloom');
+  assert.equal(refRow(model, 'โครงการย่อย'), 'SCENT · ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
+  // คำว่า "ดีล" ต้องไม่โผล่บนเอกสารอีก
+  assert.ok(!labels.includes('ดีล'));
+});
+
+test('ประกอบอ้างอิงจากข้อมูลเท่าที่มี ไม่ทิ้งตัวคั่นลอยและไม่เดาประเภทเอง', () => {
+  // ดีลยังไม่ผูกโครงการ
+  const noProject = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, project: null } });
+  assert.equal(refRow(noProject, 'โครงการ'), '-');
+  // โครงการยังไม่มีรหัส (ข้อมูลเก่า) → เหลือชื่ออย่างเดียว ไม่มี ' · ' นำหน้า
+  const noCode = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    deal: { ...QUOTE_WITH_PROJECT.deal, project: { name: 'Signature Bloom' } },
+  });
+  assert.equal(refRow(noCode, 'โครงการ'), 'Signature Bloom');
+  // ไม่มีดีลเลย
+  const noDeal = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: null });
+  assert.equal(refRow(noDeal, 'โครงการย่อย'), '-');
+  // snapshot เก่าที่มีแต่ชื่อดีล ไม่มีแถวดีล → ห้ามเดาประเภทเป็น NPD
+  const legacy = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: null, dealTitle: 'ดีลเก่า' });
+  assert.equal(refRow(legacy, 'โครงการย่อย'), 'ดีลเก่า');
+  // ดีลที่ยังไม่ตั้งประเภท → normalize เป็น NPD เหมือนที่หน้าจอแสดง
+  const noType = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    deal: { ...QUOTE_WITH_PROJECT.deal, dealType: null },
+  });
+  assert.equal(refRow(noType, 'โครงการย่อย'), 'NPD · ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
+});
+
+test('ผู้เรียกที่ส่ง referenceRows เองยังคุมได้เหมือนเดิม (ใบสั่งขาย)', () => {
+  const model = buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT, {
+    referenceRows: [{ label: 'อ้างอิง QT', value: 'QT-26080001-0' }],
+  });
+  assert.deepEqual(model.referenceRows.map((row) => row.label), ['อ้างอิง QT']);
 });

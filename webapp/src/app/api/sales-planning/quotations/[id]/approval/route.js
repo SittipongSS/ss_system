@@ -29,7 +29,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data: quote, error } = await supabase
     .from('quotations')
-    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, code, ownerId, ownerName, team, stage, customerName, projectId)')
+    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, code, dealType, ownerId, ownerName, team, stage, customerName, projectId, project:projects(id, code, name))')
     .eq('id', id)
     .maybeSingle();
   if (error) return fail(error.message, 500);

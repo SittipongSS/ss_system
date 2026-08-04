@@ -24,7 +24,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
-const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId)';
+const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
 
 async function loadQuote(supabase, id) {
   const { data, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
