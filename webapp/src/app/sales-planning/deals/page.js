@@ -5,13 +5,14 @@ import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
+import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
@@ -25,6 +26,9 @@ import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import Segmented from "@/components/ui/Segmented";
+import Button from "@/components/ui/Button";
+import ForecastMonthCell from "@/components/salesPlanning/ForecastMonthCell";
+import ForecastReviewBanner from "@/components/salesPlanning/ForecastReviewBanner";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
@@ -48,6 +52,9 @@ export default function SalesPlanningPipelinePage() {
   // ตัวกรองทั้งหมดอยู่ใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด. "รอเติมข้อมูล" เดิมมี state แต่ไม่มีปุ่มให้กด
   // (กรองไม่ได้จริง) — ย้ายมาเป็นหมวดหนึ่งในแผงนี้
+  /* ตัวกรอง "เดือน FC" (มติผู้ใช้ 2026-08-05) — ทางเดียวที่จะหาใบที่ต้องเลื่อนเจอ
+     โดยไม่ต้องเปิดทีละใบ · เกณฑ์มาจาก forecastDueState ตัวเดียวกับป้ายในแถว */
+  const [dueFilter, setDueFilter] = useState([]);
   const [stageFilter, setStageFilter] = useState([]);
   const [typeFilter, setTypeFilter] = useState([]); // ประเภทดีล SCENT/NPD/RE-ORDER
   const [reviewFilter, setReviewFilter] = useState([]);
@@ -69,6 +76,13 @@ export default function SalesPlanningPipelinePage() {
   /* ⚠️ ตั้งต้นที่ขอบเขต **กว้างสุด** ไม่ใช่ "ของฉัน" — เดิมตั้งต้นที่ตัวแรกของลิสต์
      ซึ่งคือ mine เสมอ ⇒ แอดมิน/หัวหน้าฝ่ายที่ไม่ได้เป็นเจ้าของดีลสักใบ เปิดหน้ามาเจอ
      KPI เป็น 0 ทุกช่องทั้งที่ตารางข้างล่างมีดีลเต็มไปหมด (null = ยังไม่ได้เลือกเอง) */
+  /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
+     ใช้ตัดสิน "FC เลยกำหนด" และนับถอยหลังก่อนขึ้นเดือนใหม่ */
+  const [today, setToday] = useState(null);
+  useEffect(() => { setToday(new Date().toISOString().slice(0, 10)); }, []);
+  const currentMonth = today ? today.slice(0, 7) : null;
+  const reviewWindow = forecastReviewWindow(today);
+
   const [scope, setScope] = useState(null);
   const [meId, setMeId] = useState(null);
   useEffect(() => {
@@ -190,6 +204,11 @@ export default function SalesPlanningPipelinePage() {
     const q = query.trim().toLowerCase();
     const result = deals.filter((deal) => {
       if (!inScopeDeal(deal)) return false;
+      if (dueFilter.length) {
+        const due = forecastDueState(deal, currentMonth);
+        const key = due.overdue ? "overdue" : (due.missing ? "missing" : "ontime");
+        if (!dueFilter.includes(key)) return false;
+      }
       if (reviewOnly && !deal.metadata?.needsReview) return false;
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
@@ -212,9 +231,20 @@ export default function SalesPlanningPipelinePage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [deals, query, inScopeDeal, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
+  }, [deals, query, inScopeDeal, dueFilter, currentMonth, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
+
+  /* นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบเตือนบอกว่า
+     "ของคุณค้างกี่ใบ" ไม่ใช่ยอดทั้งบริษัทที่เขาทำอะไรไม่ได้ */
+  const dueCounts = useMemo(() => {
+    const c = { overdue: 0, missing: 0, ontime: 0 };
+    for (const deal of deals.filter(inScopeDeal)) {
+      const due = forecastDueState(deal, currentMonth);
+      c[due.overdue ? "overdue" : (due.missing ? "missing" : "ontime")] += 1;
+    }
+    return c;
+  }, [deals, inScopeDeal, currentMonth]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
@@ -615,6 +645,17 @@ export default function SalesPlanningPipelinePage() {
             </>
           )}
 
+          {/* ⏳ 7 วันสุดท้ายของเดือน: เตือนให้เคลียร์เดือน FC ก่อนตัวเลขปิดงวด
+              (มติผู้ใช้ 2026-08-05) นับถอยหลังทุกวัน · โผล่เฉพาะเมื่อมีของค้างจริง
+              ปุ่มพาไปที่ตัวกรองเลย ไม่ใช่บอกเฉย ๆ แล้วให้ไปหาเอง */}
+          {reviewWindow.active && dueCounts.overdue > 0 && (
+            <ForecastReviewBanner
+              daysLeft={reviewWindow.daysLeft}
+              overdueCount={dueCounts.overdue}
+              onShowOverdue={() => setDueFilter(["overdue"])}
+            />
+          )}
+
           <SaSection icon={<FolderKanban size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
@@ -622,8 +663,8 @@ export default function SalesPlanningPipelinePage() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
             <FilterPopover
-              count={stageFilter.length + typeFilter.length + reviewFilter.length}
-              onClear={() => { setStageFilter([]); setTypeFilter([]); setReviewFilter([]); }}
+              count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length}
+              onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); }}
               groups={[
                 {
                   key: "stage", label: "สถานะ", icon: ClipboardList,
@@ -634,6 +675,15 @@ export default function SalesPlanningPipelinePage() {
                   key: "type", label: "ประเภทดีล", icon: FolderKanban,
                   options: DEAL_TYPES.map((t) => ({ value: t, label: DEAL_TYPE_LABELS[t] })),
                   selected: typeFilter, onChange: setTypeFilter,
+                },
+                {
+                  key: "due", label: "เดือน FC", icon: CalendarClock,
+                  options: [
+                    { value: "overdue", label: `เลยกำหนด — ต้องเลื่อนเดือน (${dueCounts.overdue})` },
+                    { value: "missing", label: `ยังไม่ระบุเดือน (${dueCounts.missing})` },
+                    { value: "ontime", label: `ตรงกำหนด (${dueCounts.ontime})` },
+                  ],
+                  selected: dueFilter, onChange: setDueFilter,
                 },
                 {
                   key: "review", label: "ข้อมูลดีล", icon: AlertTriangle,
@@ -663,6 +713,7 @@ export default function SalesPlanningPipelinePage() {
                   <th style={{ textAlign: "center" }}>FC%</th>
                   <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
+                  <th>เดือน FC</th>
                   <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
                   {/* 4 คอลัมน์เดิม (ไทม์ไลน์/ใบเสนอ/เอกสาร/ส่ง) ยุบเข้าเมนู "…" ในคอลัมน์นี้ */}
                   <th style={{ textAlign: "right" }}>จัดการ</th>
@@ -696,6 +747,14 @@ export default function SalesPlanningPipelinePage() {
                       {dealTypeBadge(dealTypeOf(deal))}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <ForecastMonthCell
+                        deal={deal}
+                        currentMonth={currentMonth}
+                        canEdit={deal.canEdit && !isClosedStage(deal.stage)}
+                        onSaved={load}
+                      />
+                    </td>
                     <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
                       {isWonStage(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
@@ -728,7 +787,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
