@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   DOCUMENT_ACCENT_KEYS,
+  DOCUMENT_STANDARD_KEYS,
   documentNumberParts,
+  documentNumberWithRevision,
   documentStandardFormLine,
   formatDocumentNumber,
   revisionSeparatorOf,
@@ -118,13 +120,42 @@ test('accent: ใช้ค่าที่ตั้งไว้ ส่วนค�
   assert.equal(resolveDocumentAccentKey({ accentKey: 'steel' }, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'terracotta' }, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'amber' }, 'exciseTaxNotice'), 'amber');
-  // teal/green/navy ถูกถอดจากตัวเลือกแล้ว — มาตรฐานเก่าที่ยังถือค่าเหล่านี้ต้องไม่พา
+  assert.equal(resolveDocumentAccentKey({ accentKey: 'navy' }, 'projectTimeline'), 'navy');
+  // teal/green ถูกถอดจากตัวเลือกแล้ว — มาตรฐานเก่าที่ยังถือค่าเหล่านี้ต้องไม่พา
   // เอกสารไปสีที่ไม่มีใครตั้งใจ
   assert.equal(resolveDocumentAccentKey({ accentKey: 'teal' }, 'salesOrder'), 'steel');
-  assert.equal(resolveDocumentAccentKey({ accentKey: 'navy' }, 'quotation'), 'terracotta');
+  assert.equal(resolveDocumentAccentKey({ accentKey: 'green' }, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey(null, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey(null, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey(null, 'exciseTaxNotice'), 'amber');
+  assert.equal(resolveDocumentAccentKey(null, 'projectTimeline'), 'navy');
+});
+
+test('เอกสารไทม์ไลน์โครงการเป็นเอกสารควบคุมเต็มรูปแบบเหมือนอีกสามใบ (mig 0198)', () => {
+  assert.ok(DOCUMENT_STANDARD_KEYS.includes('projectTimeline'));
+  // ทุกชนิดต้องมีค่าสำรองครบ ไม่งั้นโหลดมาตรฐานไม่ได้แล้วหัวใบจะพิมพ์ undefined
+  for (const key of DOCUMENT_STANDARD_KEYS) {
+    assert.ok(DEFAULT_NUMBERING_PATTERNS[key], `${key} ไม่มีรูปแบบเลขที่สำรอง`);
+    const form = resolveDocumentForm(null, key);
+    assert.ok(form.code && form.revision && form.effectiveDate, `${key} ค่าสำรองของฟอร์มไม่ครบ`);
+  }
+  assert.equal(resolveDocumentForm(null, 'projectTimeline').code, 'FM-PD-05');
+  assert.equal(documentStandardFormLine({ formCode: 'FM-PD-05', revision: '00', effectiveDate: '2025-05-08' }),
+    'FM-PD-05: Rev. No.00. 08/05/2568');
+});
+
+test('เอกสารที่เดิน Rev บนแถวเดิม: ต่อเลข Rev ปัจจุบันเข้ากับเลขฐานที่ออกไว้', () => {
+  // ออกไว้ PT-26080001-0 แล้วโครงการเดินถึง Rev 2 → เอกสารต้องเป็น -2
+  assert.equal(documentNumberWithRevision('PT-26080001', 'PT-26080001-0', 2), 'PT-26080001-2');
+  assert.equal(documentNumberWithRevision('PT-26080001', 'PT-26080001-0', 0), 'PT-26080001-0');
+  // ยังไม่ออก Rev (ฉบับร่าง/ไทม์ไลน์ของดีล) → นับเป็น 0 เหมือน entityCodeDisplay
+  assert.equal(documentNumberWithRevision('PT-26080001', 'PT-26080001-0', null), 'PT-26080001-0');
+  // ตัวคั่นมาจากใบตัวเอง ไม่ใช่รูปแบบปัจจุบัน
+  assert.equal(documentNumberWithRevision('PT-26080001', 'PT-26080001.0', 3), 'PT-26080001.3');
+  assert.equal(documentNumberWithRevision('PT-26080001', 'PT-260800010', 3), 'PT-260800013');
+  // โครงการเก่าที่ยังไม่มีเลขที่เอกสาร → ไม่มีอะไรให้พิมพ์ (หัวใบตกไปใช้รหัสโครงการ)
+  assert.equal(documentNumberWithRevision(null, null, 1), '');
+  assert.equal(documentNumberWithRevision('', 'PT-26080001-0', 1), 'PT-26080001-0');
 });
 
 test('ทุกสีที่เลือกได้ต้องมีธีมจริงในเครื่องยนต์เอกสาร (กันเลือกแล้วไม่มีผล)', () => {

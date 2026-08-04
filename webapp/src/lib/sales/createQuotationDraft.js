@@ -156,6 +156,19 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       .select()
       .single();
     updatedDeal = patchedDeal || deal;
+    // ⚠️ ทุกเส้นทางที่ขยับ stage ต้องลงประวัติ — ไม่ใช่แค่ audit log
+    // 🐞 เส้นนี้เคยเป็นเส้นเดียวที่ลืม (create-project / link-project / timeline /
+    // PATCH ดีล / accept RPC เขียนกันครบ) ผลคือขั้น "เสนอราคา" หายจากเส้นเรื่องของดีล
+    // และ `daysInStage` บนหน้าดีล (นับจาก stageHistory[0].changedAt) ไปนับจากการ
+    // เปลี่ยนสถานะ**ครั้งก่อน** = "อยู่ขั้นนี้มากี่วัน" ยาวเกินจริงเงียบ ๆ
+    await supabase.from('sales_deal_stage_history').insert({
+      id: genId('DSH'),
+      dealId: deal.id,
+      fromStage: deal.stage,
+      toStage: nextStage,
+      changedBy: user.id || null,
+      changedByName: user.name || null,
+    });
   }
 
   await recordAudit({

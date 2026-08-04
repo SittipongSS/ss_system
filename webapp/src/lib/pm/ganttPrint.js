@@ -8,8 +8,27 @@ import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGr
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { productIdentity } from '@/lib/master/productIdentity';
 import { entityCodeDisplay } from '@/lib/entityCode';
-import { DOCUMENT_FORMS, SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
+import {
+  documentNumberWithRevision,
+  getDocumentStandardsForPrint,
+  resolveDocumentAccentKey,
+  resolveDocumentForm,
+} from '@/lib/documentStandards';
+
+const TIMELINE_KEY = 'projectTimeline';
+
+// สี accent ของเอกสารควบคุม (มาตรฐาน mig 0198 ตั้งต้น navy) — ชุดเดียวกับ
+// DOCUMENT_ACCENT_THEMES ในเครื่องยนต์ใบเสนอราคา คัดเฉพาะคีย์ที่เลือกได้จริง
+// ⚠ ใช้กับ "กรอบเอกสาร" เท่านั้น (รหัสฟอร์ม/ชื่อเอกสาร/เส้นคั่น/หมุด milestone)
+//   ไม่แตะ STATUS_FILL ซึ่งเป็นสีตาม "สถานะงาน" ที่ต้องตรงกับบนจอ (ProjectDocumentView)
+const TIMELINE_ACCENTS = Object.freeze({
+  terracotta: '#ad5d43',
+  steel: '#1e6091',
+  amber: '#b45309',
+  navy: '#1f3551',
+});
 
 // วันที่: ใช้มาตรฐานการแสดงผลกลาง (§2). thai day-month-year = "25 ก.ค. 26",
 // คอลัมน์ Start/Finish ในตาราง = DD/MM/YY (พื้นที่แคบ).
@@ -76,8 +95,13 @@ export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, cont
   return pages.length > 0 ? pages : [[]];
 }
 
-export function buildGanttPrintHTML(project, company) {
+export function buildGanttPrintHTML(project, company, activeStandard = null) {
   const co = resolveCompanyBlock(company);
+  // มาตรฐานที่ตรึงไว้ตอนออกเลขที่เอกสาร (mig 0198) มาก่อนมาตรฐานที่เผยแพร่อยู่ตอนนี้
+  // เหมือนใบแจ้งชำระภาษี — ใบเก่าพิมพ์ซ้ำต้องได้รหัสฟอร์ม/Rev ชุดเดิมที่เคยออกไป
+  const standard = project.timelineStandardSnapshot || activeStandard;
+  const form = resolveDocumentForm(standard, TIMELINE_KEY);
+  const accent = TIMELINE_ACCENTS[resolveDocumentAccentKey(standard, TIMELINE_KEY)] || TIMELINE_ACCENTS.navy;
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
 
   const starts = tasks.map(t => new Date(t.startDate).getTime()).filter(t => !isNaN(t));
@@ -173,6 +197,13 @@ export function buildGanttPrintHTML(project, company) {
   const displayCode = project.code
     ? entityCodeDisplay(project.code, project.rev)
     : (project.docNumber || '-');
+  // เลขที่เอกสารควบคุม (PT-YYMMXXXX-R) แยกจากรหัสโครงการ (PJ-YYMMXXXX-R) — ใบไทม์ไลน์
+  // ของดีลที่ยังไม่มีโครงการจริงไม่มีเลขที่เอกสาร จึงโชว์เฉพาะรหัสต้นทางเหมือนเดิม
+  const timelineDocNumber = documentNumberWithRevision(
+    project.timelineDocBase,
+    project.timelineDocNumber,
+    project.rev,
+  );
   const documentHeader = `
     <div class="doc-top">
       <div class="brand">
@@ -187,9 +218,10 @@ export function buildGanttPrintHTML(project, company) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">${DOCUMENT_FORMS.projectTimeline.code}</div>
-        <div class="big">${DOCUMENT_FORMS.projectTimeline.title}</div>
-        <div class="sub">${esc(displayCode)}</div>
+        <div class="formno">${esc(form.code)}: Rev. No.${esc(form.revision)}. ${esc(form.effectiveDate)}</div>
+        <div class="big">${esc(form.title)}</div>
+        ${timelineDocNumber ? `<div class="sub docno">${esc(timelineDocNumber)}</div>` : ''}
+        <div class="sub">${timelineDocNumber ? 'รหัสโครงการ ' : ''}${esc(displayCode)}</div>
       </div>
     </div>`;
   const projectHeader = `
@@ -278,6 +310,8 @@ export function buildGanttPrintHTML(project, company) {
 <title>Project Timeline - ${esc(displayCode)}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* สี accent จากมาตรฐานเอกสารที่เผยแพร่/ตรึงไว้ (mig 0198) */
+  :root { --doc-accent: ${accent}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #ffffff; color: #21385e;
          font-family: ${PRINT_FONT_STACK};
@@ -298,7 +332,7 @@ export function buildGanttPrintHTML(project, company) {
   .approval-title { margin: 12px 0 4px; color: #21385e; font-size: 15px; font-weight: 700; }
 
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
-             border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px;
+             border-bottom: 2px solid var(--doc-accent); padding-bottom: 7px; margin-bottom: 7px;
              page-break-after: avoid; break-after: avoid; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
@@ -306,8 +340,9 @@ export function buildGanttPrintHTML(project, company) {
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
-  .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
+  .doc-title .big { font-size: 17px; font-weight: 800; color: var(--doc-accent); letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
+  .doc-title .docno { font-size: 11px; font-weight: 700; color: #21385e; letter-spacing: .5px; }
   .c-desc .note { font-size: 8px; color: #000; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
@@ -321,10 +356,10 @@ export function buildGanttPrintHTML(project, company) {
   .hrow .k { color: #000; min-width: 84px; flex-shrink: 0; }
   .hrow .v { font-weight: 600; color: #000; }
   .fg-list { display: flex; flex-direction: column; gap: 3px; }
-  .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid #c17a52; }
+  .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid var(--doc-accent); }
   .fg-item .fg-meta { color: #5f6774; font-size: 8.5px; font-weight: 600; }
   .fg-item .fg-name { font-weight: 600; font-size: 9.5px; color: #000; }
-  .fg-item .fg-cat { font-size: 8.5px; font-weight: 600; color: #c17a52; }
+  .fg-item .fg-cat { font-size: 8.5px; font-weight: 600; color: var(--doc-accent); }
   .fg-item .fg-qty { font-size: 8.5px; color: #000; }
   .fg-item.empty { border-left-style: dashed; border-color: #b8a07a; }
   .fg-item.empty .fg-note { font-size: 8.5px; color: #000; font-style: italic; }
@@ -348,7 +383,7 @@ export function buildGanttPrintHTML(project, company) {
   th.wkn { font-size: 5.5px; color: #000; font-weight: 600; letter-spacing: -0.3px; line-height: 1; padding: 1px 0; }
   thead th.wk[colspan] { font-size: 8px; }
   .dia { color: #21385e; font-size: 8px; }
-  .ms  { color: #c17a52; }
+  .ms  { color: var(--doc-accent); }
   /* หน้าพิมพ์: ห้ามฉีก "แถวเดียว" กลางหน้า แต่ "เฟส" ยาว ๆ ให้ไหลข้ามหน้าต่อได้
      (เดิม avoid ทั้ง tbody ทำให้ทั้งเฟสกระโดดข้ามหน้าเป็นก้อน เหลือช่องว่างท้ายหน้า
      + หัวตารางไปโผล่หน้าใหม่ = "header ตกลงข้างล่าง"). thead ซ้ำหัวตารางทุกหน้าอยู่แล้ว. */
@@ -433,8 +468,12 @@ export async function openGanttPrintWindow(project) {
   w.document.open();
   w.document.write(printPlaceholderHtml({ title: "Project Timeline", message: "กำลังเตรียมเอกสาร…" }));
   w.document.close();
-  const company = await getCompanyProfileForPrint();
-  const html = buildGanttPrintHTML(project, company);
+  // บริษัท + มาตรฐานเอกสาร ดึงคู่กันเสมอตอนสร้างเอกสารสด — ทั้งคู่มีค่าสำรองในตัวเอง
+  const [company, standards] = await Promise.all([
+    getCompanyProfileForPrint(),
+    getDocumentStandardsForPrint(),
+  ]);
+  const html = buildGanttPrintHTML(project, company, standards?.[TIMELINE_KEY] || null);
   w.document.open();
   w.document.write(html);
   w.document.close();

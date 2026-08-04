@@ -218,7 +218,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         });
       }
       // event ต่อดีล — บันทึกทุกครั้ง (แม้ลีด qualified อยู่แล้ว) เพื่อให้ conversion นับครบ
-      await supabase.from('lead_events').insert({
+      //
+      // 🐞 เส้นนี้ล้มเหลว **เงียบ** มาตลอด: CHECK ของ lead_events.kind (mig 0091) ไม่มี
+      // ค่า 'create_deal' อยู่ในชุด → insert ชน constraint ทุกครั้ง แล้ว error ถูกทิ้ง
+      // เพราะไม่ได้อ่าน (mig 0199 เปิดค่านี้ให้แล้ว). เจตนา "นับ conversion ครบ" จึงไม่
+      // เคยทำงานจริง และไม่มีอะไรบนหน้าจอบอกให้รู้
+      // ⚠️ ยังไม่ทำให้ทั้ง request ล้ม — ดีลถูกสร้าง+ลีดถูกปิดไปแล้วก่อนถึงบรรทัดนี้
+      // การตอบ 500 จะทำให้หน้าเว็บเข้าใจว่าเปิดดีลไม่สำเร็จทั้งที่สำเร็จ; แต่ต้อง log
+      // ไม่ใช่กลืน — ประวัติที่หายต้องมีร่องรอยให้ตามได้
+      const { error: leadEventError } = await supabase.from('lead_events').insert({
         id: genId('LEV'),
         leadId,
         kind: 'create_deal',
@@ -228,6 +236,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         createdByName: user.name || null,
         eventAt: now,
       });
+      if (leadEventError) {
+        console.error(`[deal-create] บันทึก lead_event create_deal ของลีด ${leadId} ไม่สำเร็จ:`, leadEventError.message);
+      }
     }
   }
 

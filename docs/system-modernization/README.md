@@ -110,5 +110,6 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0011 — Immutable issued document snapshot before print replacement](./decisions/0011-issued-document-snapshot.md)
 - [Decision 0012 — Settings lifecycle standard](./decisions/0012-settings-lifecycle-standard.md)
 - [Decision 0013 — แยกเทมเพลตเงื่อนไขการชำระออกจากงวดการชำระ](./decisions/0013-separate-payment-terms-and-installments.md)
+- [Decision 0014 — เอกสารไทม์ไลน์โครงการ (FM-PD-05) เป็นเอกสารควบคุม](./decisions/0014-controlled-project-timeline-document.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)

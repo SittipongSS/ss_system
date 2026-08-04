@@ -34,7 +34,8 @@
 - Revision เช่น `00`
 - Effective date แบบวันที่สากลในฐานข้อมูล
 - Controlled form line แสดงตรงตามมาตรฐาน `FM-SA-01: Rev. No.00. 08/05/2568` โดยรักษา `:`, `.`, `-` และช่องว่างตามรูปแบบ
-- Accent preset: Terracotta, Teal, Amber, Green หรือ Navy
+- Accent preset: เปิดเฉพาะสีที่มีเอกสารใช้จริง (มติ 2026-07-25) — ปัจจุบันคือ Terracotta (ใบเสนอราคา),
+  Steel (ใบสั่งขาย — mig 0154), Amber (ใบแจ้งชำระภาษี — mig 0162) และ Navy (เอกสารไทม์ไลน์โครงการ — mig 0198)
 - Numbering pattern แบบ guarded token เช่น `QT-{YY}{MM}{RUNNING:4}-{REVISION}`
 - Change note บังคับก่อน Publish
 
