@@ -25,7 +25,7 @@ const ADDITIVE_ORDER_COLS = [
   'taxPaidDate', 'taxInvoiceNumber', 'amountToCollect',
   'collectedConfirmedAt', 'collectedConfirmedBy', 'docsDeliveredAt', 'docsDeliveredBy',
   'customerAddress',
-  // mig 0207 — โครงการ/โครงการย่อยที่ตรึงลงใบเพื่อพิมพ์บนเอกสาร
+  // mig 0208 — โครงการ/โครงการย่อยที่ตรึงลงใบเพื่อพิมพ์บนเอกสาร
   'projectRef', 'dealRef',
 ];
 

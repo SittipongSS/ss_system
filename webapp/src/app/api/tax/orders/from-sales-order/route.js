@@ -47,7 +47,7 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
   // ทะเบียนลูกค้าอ่านรายตัวด้วย id (ไม่ผ่านลิสต์ที่กรองทีม) — ค่าที่ได้จะถูกตรึงลงใบยื่น
   // เพื่อให้เอกสารพิมพ์เหมือนกันทุกคนที่กด (mig 0167)
   const [{ data: deal }, { data: quotation }, { data: customer }] = await Promise.all([
-    // title/dealType ต้องมาด้วย — ใช้ตรึง "โครงการย่อย" ลงใบ (mig 0207) ไม่ใช่แค่เช็คสิทธิ์
+    // title/dealType ต้องมาด้วย — ใช้ตรึง "โครงการย่อย" ลงใบ (mig 0208) ไม่ใช่แค่เช็คสิทธิ์
     supabase.from("sales_deals").select("id, team, ownerId, ownerName, title, dealType").eq("id", salesOrder.dealId).maybeSingle(),
     supabase.from("quotations").select("id, quoteNumber, customerTaxId, billingAddress").eq("id", salesOrder.quotationId).maybeSingle(),
     salesOrder.customerId
@@ -245,7 +245,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
     quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
-    // ตรึงโครงการ/โครงการย่อยลงใบตั้งแต่ตอนสร้าง (mig 0207) — เหตุผลเดียวกับที่ตรึง
+    // ตรึงโครงการ/โครงการย่อยลงใบตั้งแต่ตอนสร้าง (mig 0208) — เหตุผลเดียวกับที่ตรึง
     // เลขผู้เสียภาษี/ที่อยู่ลูกค้า (mig 0167): ชื่อเปลี่ยนทีหลังต้องไม่ย้อนไปแก้ใบเก่า
     // เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-" (ขีดเป็นเรื่องของการแสดงผล ไม่ใช่ข้อมูล)
     projectRef: refOrNull(documentRef(salesOrder.project?.code, salesOrder.project?.name)),
