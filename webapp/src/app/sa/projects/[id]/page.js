@@ -884,8 +884,10 @@ export default function ProjectDetailPage() {
             <Link className="btn ghost sm" href={dealFilters.length === 1 ? `/sa/tasks?dealId=${dealFilters[0]}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
           </div>
           {shownPersonalTasks.length ? (
-            <div className="premium-glass-table table-responsive">
-              <TableScroll surface="embedded"><table className="premium-table">
+            /* ตารางกลางล้วน — คลาสเก่า `.premium-table` บังคับ nowrap ทุกเซลล์ ชื่องาน
+               กับหมายเหตุยาว ๆ จึงดันตารางกว้างเกินการ์ดแล้วคอลัมน์ท้ายถูกตัด */
+            <div>
+              <TableScroll surface="embedded"><table>
                 <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
                 <tbody>{shownPersonalTasks.map((task) => {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);

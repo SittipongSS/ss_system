@@ -130,9 +130,9 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
               <div className={styles.expandInfo}>
                 {/* ชื่อ AE อ่านจาก ownerId — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ */}
                 <div><span className={styles.mutedBadge}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</div>
-                <div>
+                <div className={styles.expandInfoLine}>
                   <PackageCheck size={13} aria-hidden="true" className={styles.expandInfoIcon} />
-                  {seg.current ? <>กำลังทำ: {seg.current}</> : <span className={styles.mutedBadge}>ไม่มีขั้นตอนที่กำลังทำ</span>}
+                  {seg.current ? <span>กำลังทำ: {seg.current}</span> : <span className={styles.mutedBadge}>ไม่มีขั้นตอนที่กำลังทำ</span>}
                 </div>
                 <Link prefetch={false} href={`/sa/deals/${deal.id}`} className={`btn ghost sm ${styles.openDeal}`}>
                   <ExternalLink size={13} aria-hidden="true" /> เปิดดีล
@@ -176,8 +176,12 @@ export function ProjectQuotationsCard({ project: p }) {
         <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
       </div>
       {quotes.length ? (
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="premium-table">
+        /* 🐞 เดิมห่อด้วย `.premium-glass-table.table-responsive` + `.premium-table` ซึ่งบังคับ
+           `white-space: nowrap !important` ทุกเซลล์ — ชื่อดีลไทยยาว ๆ จึงดันตารางกว้างเกิน
+           การ์ด แล้วคอลัมน์ "สถานะ/ยอดรวม" ถูกตัดหายไปหลังสกอลล์ (ผู้ใช้ส่งภาพมา 2026-08-05)
+           ตารางกลางปล่อยให้เซลล์ตัดบรรทัดตามปกติ คอลัมน์จึงอยู่ครบในความกว้างเท่าเดิม */
+        <div>
+          <TableScroll surface="embedded"><table>
             <thead><tr><th>เลขที่</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr></thead>
             <tbody>{quotes.map((quote) => {
               const deal = dealById.get(quote.dealId);
@@ -206,8 +210,8 @@ export function ProjectQuotationsCard({ project: p }) {
         <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
       </div>
       {salesOrders.length ? (
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="premium-table">
+        <div>
+          <TableScroll surface="embedded"><table>
             <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
             <tbody>{salesOrders.map((order) => {
               const deal = dealById.get(order.dealId);
