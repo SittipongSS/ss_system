@@ -5,6 +5,7 @@
 // เลขรันจาก DB, บรรทัด (rollback ถ้าพลาด), ดีล lead/qualified → quotation, audit.
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { resolveProbability } from '@/lib/sales/dealProbability';
 import { advanceStage, dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
@@ -152,9 +153,12 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const nextStage = advanceStage(deal.stage, 'quotation');
   let updatedDeal = deal;
   if (nextStage !== deal.stage) {
+    // 🐞 เส้นนี้เคยขยับแต่ `stage` ไม่แตะ `probability` — ดีลที่ออกใบเสนอราคาไปแล้ว
+    // จึงค้าง FC 20% ทั้งที่กติกาบอกว่าออกใบแล้ว = 50% (มติผู้ใช้ 2026-08-05)
+    const nextProbability = await resolveProbability(supabase, { ...deal, stage: nextStage });
     const { data: patchedDeal } = await supabase
       .from('sales_deals')
-      .update({ stage: nextStage, updatedAt: new Date().toISOString() })
+      .update({ stage: nextStage, probability: nextProbability, updatedAt: new Date().toISOString() })
       .eq('id', deal.id)
       .select()
       .single();

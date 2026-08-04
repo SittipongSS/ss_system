@@ -1,4 +1,4 @@
-// ── โมดัลสร้างดีลจากลีด: แท็บ + กดใหม่แล้วต้องไม่ได้ดีลซ้ำ ──────────────────
+// ── โมดัลสร้างดีล (ตัวกลาง): แท็บ + กดใหม่แล้วต้องไม่ได้ดีลซ้ำ ────────────────
 //
 // มติผู้ใช้ 2026-08-04: ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ ทำให้เลื่อนจอยาว
 // → เปลี่ยนเป็นแท็บ
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const src = readFileSync(join(ROOT, 'src/components/salesPlanning/LeadDealModal.js'), 'utf8');
-const css = readFileSync(join(ROOT, 'src/components/salesPlanning/LeadDealModal.module.css'), 'utf8');
+const src = readFileSync(join(ROOT, 'src/components/salesPlanning/DealCreateModal.js'), 'utf8');
+const css = readFileSync(join(ROOT, 'src/components/salesPlanning/DealCreateModal.module.css'), 'utf8');
 
 test('ใช้ Tabs กลางของระบบ ไม่ได้เขียน tab bar เอง', () => {
   assert.match(src, /import Tabs from "@\/components\/ui\/Tabs"/);
@@ -96,6 +96,42 @@ test('สถานะรายใบผูกกับ _key ไม่ใช่ i
 });
 
 test('_key เป็นของฝั่งจอ ห้ามหลุดไปกับ body ที่ยิง API', () => {
-  assert.match(src, /const \{ _key, \.\.\.payload \} = draft/);
-  assert.match(src, /JSON\.stringify\(\{\s*\.\.\.payload,/);
+  assert.match(src, /const \{ _key, \.\.\.rest \} = draft/);
+  assert.doesNotMatch(src, /JSON\.stringify\(\{[^}]*_key/, '_key ห้ามอยู่ใน body');
+});
+
+/* ── หนึ่งโมดัลสำหรับทุกที่ที่เปิดดีลได้ (มติผู้ใช้ 2026-08-05) ─────────────────
+   ก่อนหน้านี้หน้ารวมดีลมีโมดัล "เพิ่มดีล" ของตัวเองอีกชุด แล้วเพี้ยนจากฝั่งลีดจริง ๆ
+   ตามที่ AGENTS.md เตือน: ฝั่งลีดเป็นแท็บ/ฝั่งรวมดีลเรียงการ์ดยาว · ฝั่งลีดกันสร้างซ้ำ
+   ฝั่งรวมดีลไม่กัน · ฝั่งรวมดีลบังคับเลือกประเภทดีล ฝั่งลีดไม่บังคับ */
+test('ทุกหน้าที่สร้างดีลใช้โมดัลตัวเดียวกัน — ไม่มีฟอร์มสร้างชุดที่สอง', () => {
+  const PAGES = [
+    'src/app/sales-planning/deals/page.js',
+    'src/app/sales-planning/leads/page.js',
+    'src/app/sales-planning/leads/[id]/page.js',
+  ];
+  for (const rel of PAGES) {
+    const page = readFileSync(join(ROOT, rel), 'utf8');
+    assert.match(page, /<DealCreateModal/, `${rel} ต้องใช้โมดัลกลาง`);
+  }
+  // หน้ารวมดีลเหลือ DealFormFields ไว้แค่โมดัล "แก้ไข" — ถ้ามีลูปสร้างหลายใบกลับมา
+  // แปลว่ามีฟอร์มสร้างชุดที่สองอีกแล้ว
+  const deals = readFileSync(join(ROOT, 'src/app/sales-planning/deals/page.js'), 'utf8');
+  assert.doesNotMatch(deals, /createDeals/, 'หน้ารวมดีลต้องไม่มี state ของฟอร์มสร้างเองแล้ว');
+});
+
+test('เปิดจากหน้ารวมดีล (ไม่มีลีด) ต้องไม่ผูก metadata.leadId และไม่เด้งหน้า', () => {
+  assert.match(src, /lead\s*=\s*null/, 'lead เป็น optional');
+  assert.match(src, /lead\s*\n?\s*\?\s*\{ \.\.\.payload, metadata: \{ leadId: lead\.id/,
+    'ผูกลีดเฉพาะตอนมาจากลีด');
+  assert.match(src, /if \(lead\) router\.push\(/, 'เด้งไปหน้าดีลเฉพาะตอนมาจากลีด');
+});
+
+test('บังคับกรอกชื่อดีล + ประเภทดีล ก่อนยิง API (เดิมมีเฉพาะฝั่งหน้ารวมดีล)', () => {
+  assert.match(src, /if \(!draft\.title\?\.trim\(\)\) throw new Error/);
+  assert.match(src, /if \(!draft\.dealType\) \{/);
+});
+
+test('FC% ตอนสร้างเป็นโหมดอัตโนมัติ — ไม่ให้กรอกเอง', () => {
+  assert.match(src, /probabilityMode="auto"/);
 });

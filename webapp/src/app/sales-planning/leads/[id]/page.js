@@ -13,7 +13,7 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import Button from "@/components/ui/Button";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
+import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -320,7 +320,7 @@ export default function LeadDetailPage() {
 
         {/* ฟอร์มเดียวกับที่หน้ารายการลีดใช้ — ไม่ได้ก๊อปมา */}
         {dealOpen && (
-          <LeadDealModal
+          <DealCreateModal
             lead={lead}
             customers={dealOptions.customers}
             projects={dealOptions.projects}

@@ -1,6 +1,7 @@
 import { genId } from '@/lib/id';
 import { generateEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
+import { autoProbability } from '@/lib/sales/dealProbability';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   applyDealScope,
@@ -112,7 +113,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     stage,
     projectValue: toMoney(body.projectValue),
     wonValue: null,
-    probability: toProbability(body.probability, stage),
+    // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
+    // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
+    // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
+    // ดีลตอนสร้างยังไม่ผูกโครงการ (POST ไม่รับ projectId — ผูกทีหลังที่ link-project
+    // ซึ่งคิด FC ใหม่ให้) จึงไม่ต้องหาพี่น้อง SCENT ตรงนี้
+    probability: autoProbability({ stage, dealType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType) }),
     // เดือน FC อนุมานจากวันที่คาดปิดเสมอ (มติผู้ใช้ 2026-07-16 — ฟอร์มไม่มีช่องเดือนแล้ว
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),

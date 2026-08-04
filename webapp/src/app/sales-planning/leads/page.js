@@ -23,7 +23,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
-import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
+import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
@@ -621,9 +621,9 @@ export default function LeadsPage() {
       </Modal>
 
       {/* สร้างดีลจากลีด — ฟอร์มเดียวกับที่หน้ารายละเอียดใช้
-          mount ตอนเปิดเท่านั้น (ดูคำเตือนใน LeadDealModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
+          mount ตอนเปิดเท่านั้น (ดูคำเตือนใน DealCreateModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
       {dealModal && (
-        <LeadDealModal
+        <DealCreateModal
           key={dealModal.id}
           lead={dealModal}
           customers={customers}
