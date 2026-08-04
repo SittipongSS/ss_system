@@ -152,11 +152,11 @@ export default function ProductForm({
               ตอนนี้ดาวอยู่ที่ป้ายทั้งสองช่อง + คำอธิบายกินเต็มแถวใต้ทั้งคู่ */}
           <div className="form-group">
             <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="productDescription" value={form.productDescription} onChange={set("productDescription")} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+            <input type="text" name="productDescription" value={form.productDescription} onChange={set("productDescription")} placeholder="เช่น มิดไนท์บลูม" className="premium-input w-full" />
           </div>
           <div className="form-group">
             <label>ชื่อสินค้า / รายละเอียด (อังกฤษ) <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="productDescriptionEn" value={form.productDescriptionEn} onChange={set("productDescriptionEn")} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
+            <input type="text" name="productDescriptionEn" value={form.productDescriptionEn} onChange={set("productDescriptionEn")} placeholder="e.g. Midnight Bloom" className="premium-input w-full" />
           </div>
           <div className="form-group col-span-2">
             <span className="text-xs text-[var(--text-3)]">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) — ไม่ต้องครบทั้งสอง</span>
