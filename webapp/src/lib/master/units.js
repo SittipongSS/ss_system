@@ -38,6 +38,22 @@ export function unitOptions(list, current) {
   ];
 }
 
+// ── ประโยคสรุปบรรจุภัณฑ์ '1 ขวด = 50 ml · 1 ลัง = 12 ขวด' ────────────────
+// สองช่องนี้ชื่อคล้ายกันจนสลับกันได้ง่าย: "หน่วยขาย" คือหน่วยที่ **นับขาย** บน
+// ใบเสนอราคา/ใบสั่งขาย (ไปเป็น quotation_lines.unit) ส่วน "หน่วยปริมาตร" คือ
+// **ขนาดของหนึ่งหน่วยขาย** · คำอธิบายใต้ช่องช่วยได้ระดับหนึ่ง แต่ประโยคที่ประกอบ
+// จากค่าที่กรอกจริงบอกได้ตรงกว่า — กรอกสลับช่องเมื่อไหร่ ประโยคจะอ่านแล้วผิดทันที
+// ('1 ml = 50 ขวด') โดยไม่ต้องรอให้ไปโผล่ผิดบนเอกสารของลูกค้า
+export function packagingSummary({ volume, volumeUnit, saleUnit, piecesPerCase } = {}) {
+  const unit = String(saleUnit ?? '').trim() || DEFAULT_SALE_UNIT;
+  const parts = [];
+  const size = String(volume ?? '').trim();
+  if (size) parts.push(`1 ${unit} = ${size} ${String(volumeUnit ?? '').trim() || DEFAULT_VOLUME_UNIT}`);
+  const perCase = String(piecesPerCase ?? '').trim();
+  if (perCase) parts.push(`1 ลัง = ${perCase} ${unit}`);
+  return parts.join(' · ');
+}
+
 // '30 ml' — รวมการเติมหน่วยตั้งต้นที่เดิมเขียน `|| 'ml'` ซ้ำอยู่หลายหน้า
 export function formatVolume(product) {
   const volume = product?.volume;
