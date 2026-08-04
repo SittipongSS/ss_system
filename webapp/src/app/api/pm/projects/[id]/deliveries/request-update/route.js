@@ -96,7 +96,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         { label: 'ผู้ขอ', value: user?.name || '' },
         { label: 'รายการที่รออยู่', value: `${rows.length} รายการ` },
       ],
-      linkPath: `/sa/requests/${requestId}`,
+      linkPath: `/requests/${requestId}`,
       linkLabel: 'เปิดคำร้อง',
     }));
 

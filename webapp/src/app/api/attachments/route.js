@@ -52,7 +52,7 @@ export async function GET(request) {
     : isPersonalTask(entityType)
       ? await canViewPersonalTask(supabase, parent, user)
       : isCostingAttachment(entityType)
-        ? canViewCostingAttachment(user)
+        ? await canViewCostingAttachment(supabase, entityType, parent, user)
         : canViewRecord(user, RESOURCE[entityType], parent);
   if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });

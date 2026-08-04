@@ -81,9 +81,9 @@ export default function RdDashboardTab({ month }) {
             <div className={`${styles.avatar} ${item.authorDept === 'RD' ? styles.rd : styles.sa}`}>{item.authorDept || '?'}</div>
             <div className={styles.postBody}>
               <div className={styles.postMeta}><strong>{item.authorName || "ระบบ"}</strong><span>·</span><span>{fmtDateTime(item.createdAt)}</span>{item.editedAt && <span>· แก้ไขแล้ว</span>}</div>
-              <Link href={`/sa/requests/${item.inquiryId}`} className={styles.postTitle}>{item.inquiryCode ? `${item.inquiryCode} · ` : ""}{item.inquiryTitle}</Link>
+              <Link href={`/requests/${item.inquiryId}`} className={styles.postTitle}>{item.inquiryCode ? `${item.inquiryCode} · ` : ""}{item.inquiryTitle}</Link>
               <p className={item.kind === 'status' ? styles.statusText : ""}>{item.deletedAt ? "ข้อความถูกลบ" : (item.body || "อัปเดตกิจกรรม")}</p>
-              <div className={styles.postFooter}><RequestStatusBadge status={item.inquiryStatus} />{item.urgent && <span className={styles.urgent}>ด่วน</span>}{item.acknowledgedAt && <span className={styles.ack}>✓ รับทราบแล้ว</span>}<Link href={`/sa/requests/${item.inquiryId}`}>เปิดเธรด <ArrowUpRight size={12}/></Link></div>
+              <div className={styles.postFooter}><RequestStatusBadge status={item.inquiryStatus} />{item.urgent && <span className={styles.urgent}>ด่วน</span>}{item.acknowledgedAt && <span className={styles.ack}>✓ รับทราบแล้ว</span>}<Link href={`/requests/${item.inquiryId}`}>เปิดเธรด <ArrowUpRight size={12}/></Link></div>
             </div>
           </article>)}
           {feed.length > visible && <div className={styles.feedMore}>
@@ -95,8 +95,8 @@ export default function RdDashboardTab({ month }) {
       </main>
 
       <aside className={styles.aside}>
-        <section className={`${styles.card} ${styles.queueCard}`}><div className={styles.queueHead}><div className={styles.sectionTitle}><MessageCircleQuestion size={17}/><div><h3>คิวที่ต้องจัดการ</h3><span>{queue.length} เรื่องล่าสุด</span></div></div><Link href="/sa/requests">ดูทั้งหมด</Link></div>
-          <div className={styles.queueList}>{queue.map((q) => { const due = requestDueTone(q, todayISO); return <Link href={`/sa/requests/${q.id}`} key={q.id} className={styles.queueItem}>
+        <section className={`${styles.card} ${styles.queueCard}`}><div className={styles.queueHead}><div className={styles.sectionTitle}><MessageCircleQuestion size={17}/><div><h3>คิวที่ต้องจัดการ</h3><span>{queue.length} เรื่องล่าสุด</span></div></div><Link href="/requests">ดูทั้งหมด</Link></div>
+          <div className={styles.queueList}>{queue.map((q) => { const due = requestDueTone(q, todayISO); return <Link href={`/requests/${q.id}`} key={q.id} className={styles.queueItem}>
             <div><strong>{q.code || "RD"}</strong>{q.urgent && <span className={styles.dot}/>}</div><h4>{q.title}</h4><p>{q.assigneeName || "ยังไม่มีผู้รับ"}</p>{q.committedDueDate ? <small style={{ color: due?.color }}>จะตอบ {fmtDate(q.committedDueDate)} {due?.label}</small> : <small style={{ color: "var(--amber)" }}>รอรับเรื่อง</small>}
           </Link>; })}{!queue.length && <div className={styles.empty}>ไม่มีเรื่องค้าง 🎉</div>}</div>
         </section>

@@ -369,8 +369,8 @@ export default function TasksPage() {
         }
         // หัวเรื่องเป็น null ได้ในชนิดขอราคา (บรรทัดบอกเองว่าถามอะไร) → ถอยไปที่ body
         const sourceText = message?.body?.trim() || req.title?.trim() || req.body?.trim() || "งานจากคำร้องข้ามฝ่าย";
-        const returnToRaw = params.get("returnTo") || `/sa/requests/${inquiryId}`;
-        const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/sa/requests/${inquiryId}`;
+        const returnToRaw = params.get("returnTo") || `/requests/${inquiryId}`;
+        const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/requests/${inquiryId}`;
         setEditingId(null);
         setInquirySource({ inquiryId, messageId: message?.id || null, code: req.docNo || req.id, returnTo });
         setForm({
@@ -637,7 +637,7 @@ export default function TasksPage() {
 
       {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
       {inquiries.length > 0 && (
-        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/sa/requests" className="linklike">ดูทั้งหมด</Link></>}>
+        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/requests" className="linklike">ดูทั้งหมด</Link></>}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {inquiries.slice(0, 8).map((q) => {
               const due = requestDueTone(q, todayISO);
@@ -645,7 +645,7 @@ export default function TasksPage() {
                 <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-7)" }}>
                   <RequestStatusBadge status={q.status} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
-                  <Link href={`/sa/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
+                  <Link href={`/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}
                   </Link>
                   <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {q.requesterName || "-"}</span>

@@ -55,7 +55,7 @@ export default function RequestQueuePanel({
       setSaving(false);
     }
     // มีร่างค้างแล้ว = พาไปทำต่อที่หน้ารายละเอียด ไม่ให้ของที่พิมพ์หาย
-    if (id) router.push(`/sa/requests/${id}`);
+    if (id) router.push(`/requests/${id}`);
   };
 
   // ปุ่มส่งเปิดเมื่อกรอกครบ — ด่านเดียวกับข้อความที่ฟอร์มแสดง (requestFormBlocker)
@@ -108,7 +108,7 @@ export default function RequestQueuePanel({
                 return (
                   <tr
                     key={ask.id} className={styles.rowLink}
-                    onClick={() => router.push(`/sa/requests/${ask.id}`)}
+                    onClick={() => router.push(`/requests/${ask.id}`)}
                   >
                     <td className={styles.docCell}>
                       {ask.docNo || "ร่าง"}

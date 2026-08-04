@@ -34,6 +34,19 @@ test('holidays and chat-webhooks keep their open-page access after moving under 
   assert.equal(lockedOut({ role: 'viewer', extraCaps: [] }, '/settings/company', 'GET', false), true);
 });
 
+test('คำร้องย้าย /sa/requests → /requests แล้วยังเปิดได้เท่าเดิม (P0b)', () => {
+  // ⚠️ proxy เป็น allowlist แบบ default-deny — prefix ใหม่ที่ไม่ลงทะเบียนจะ 403 **เงียบ**
+  // build ผ่าน เทสต์อื่นผ่าน และทดสอบด้วย admin ก็ผ่าน เพราะ admin ข้ามด่านนี้ไปเลย
+  // ⇒ ต้องยึดด้วยเทสต์ที่ไล่ role จริงของคนที่ใช้หน้านี้ (ฝ่ายขายเปิด · RD/PC ตอบ)
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'staff', 'secretary']) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/requests', 'GET', false), false, `${role} /requests`);
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/requests/DR-1', 'GET', false), false, `${role} /requests/DR-1`);
+  }
+  // เส้นเก่ายังผ่าน proxy ได้ เพื่อให้ redirect ของ next.config ทำงาน — ถ้าโดนบล็อก
+  // ตั้งแต่ proxy ผู้ใช้ที่กด bookmark เก่าจะเจอ 403 แทนที่จะถูกพาไปหน้าใหม่
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/sa/requests', 'GET', false), false);
+});
+
 test('AE Supervisor can open document standards while other business roles cannot', () => {
   assert.equal(
     lockedOut({ role: 'ae_supervisor', extraCaps: [] }, '/settings/document-standards', 'GET', false),
