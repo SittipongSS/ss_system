@@ -1,22 +1,16 @@
-// ── เขียนเหตุการณ์เอกสารลงเธรด "ทั้งสองที่" ในครั้งเดียว ─────────────────
+// ── เขียนเหตุการณ์เอกสารลงเธรดของดีลแม่ ──────────────────────────────────
 //
-// ทุก action ของ QT/SO ต้องลง 2 ที่: เธรดของ **ใบ** (คนทำใบอ่าน) และเธรดของ
-// **ดีลแม่** (คนดูภาพรวมการขายอ่าน) — ถ้าปล่อยให้แต่ละ route เรียก `appendUpdate`
-// เองสองครั้ง จะมีจุดที่ลืมแน่นอน (มี 8 route ที่ยิงเหตุการณ์เอกสาร)
+// ทุก action ของ QT/SO ลงเธรด **ดีลแม่** ที่เดียว (ใบไม่มีเธรดของตัวเองแล้ว —
+// มติผู้ใช้ 2026-08-04 ดูเหตุผลใน lib/sales/documentUpdates.js) · ยังผ่านไฟล์นี้
+// แทนที่จะให้แต่ละ route เรียก `appendUpdate` เอง เพราะมี 8 route ที่ยิงเหตุการณ์
+// เอกสาร กระจายไป 8 จุดคือมีจุดที่ลืมแน่นอน
 //
 // ⚠️ ไม่ throw: ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จแล้ว เธรดพลาดต้องไม่ทำให้
 // action ที่สำเร็จไปแล้วตอบ error (กติกาเดียวกับ appendUpdate)
 import { appendUpdate } from '@/lib/master/updates';
-import {
-  dealDocumentUpdate, quotationActionUpdate, salesOrderActionUpdate,
-} from '@/lib/sales/documentUpdates';
+import { dealDocumentUpdate } from '@/lib/sales/documentUpdates';
 import { dealRequestUpdate } from '@/lib/sales/dealUpdates';
 import { askActionUpdate } from '@/lib/costingUpdates';
-
-const BUILDER = {
-  quotation: quotationActionUpdate,
-  sales_order: salesOrderActionUpdate,
-};
 
 /**
  * @param docType   'quotation' | 'sales_order'
@@ -24,23 +18,13 @@ const BUILDER = {
  * @param action    submit | approve | reject | withdraw | revise | accept |
  *                  unaccept | revoke | cancel | restore
  * @param opts      { reason, note, overrideReason, toRevisionNo }
- * @param docId     id ของใบที่จะลงเธรด — ระบุเองได้เมื่อเหตุการณ์ต้องลงใบ *เดิม*
- *                  (ออก Rev. สร้างใบใหม่คนละ id แต่ต้องเล่าบนใบเดิม)
+ * @param dealId    ระบุเองได้เมื่อแถวเอกสารที่ส่งมาไม่มี `dealId` ติดมาด้วย
  */
 export async function appendDocumentEvent(supabase, {
-  docType, doc, action, opts = {}, user = null, docId = null, dealId = null,
+  docType, doc, action, opts = {}, user = null, dealId = null,
 }) {
-  const build = BUILDER[docType];
-  if (!build || !doc) return;
+  if (!doc) return;
 
-  const onDoc = build(action, doc, opts);
-  if (onDoc) {
-    await appendUpdate(supabase, {
-      entityType: docType, entityId: docId || doc.id, ...onDoc, user,
-    });
-  }
-
-  // เงาบนดีลแม่ — คืน null เองสำหรับ action ที่ดีลไม่สนใจ (withdraw/restore)
   const onDeal = dealDocumentUpdate(docType, action, doc, opts);
   const deal = dealId || doc.dealId;
   if (onDeal && deal) {

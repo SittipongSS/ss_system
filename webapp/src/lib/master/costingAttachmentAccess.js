@@ -15,7 +15,7 @@
 //     ใน .../attachments/[id]/file         ทั้งที่ไฟล์อัปขึ้นไปแล้วจริง
 // costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น · ทั้งคู่โดนข้อ 4–5 จนถึง 2026-07-26
 import { canUser, canViewCosting } from '@/lib/permissions';
-import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
+import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 
 export const COSTING_ATTACHMENT_TABLE = {
   costing_item: 'costing_request_items',
@@ -29,9 +29,29 @@ export const COSTING_ATTACHMENT_TABLE = {
 
 export const isCostingAttachment = (entityType) => !!COSTING_ATTACHMENT_TABLE[entityType];
 
-// ดูไฟล์แนบ = เห็นระบบขอราคา (ต้นทุนเป็นข้อมูลลับ แต่ในระบบเห็นกันทั้งวง)
-export function canViewCostingAttachment(user) {
-  return canViewCosting(user);
+// ดูไฟล์แนบ — cap ของระบบ **บวกด่านรายแถวสำหรับคำร้อง**
+//
+// 🐞 เดิมเป็น `canViewCosting(user)` ล้วน ไม่รับ parent เลย ⇒ ใครก็ตามที่ถือ
+// costing:view เปิดดูรูป/สเปกของคำร้องใบไหนก็ได้ ทั้งที่ด่าน **แนบ/ลบ**
+// (canAttachToCosting) ผูกกับแถวมาตั้งแต่ต้น — อ่านกับเขียนคนละมาตรฐานกันเงียบ ๆ
+//
+// ใบขอราคาผลิต (costing_item) คงเดิม: คุมด้วย cap ของระบบอย่างเดียว ด่านรายใบ
+// อยู่ใน route ของใบเอง — เปลี่ยนตรงนี้จะไปกระทบระบบที่ไม่เกี่ยวกัน
+//
+// ⚠️ async แล้ว (บรรทัดคำร้องต้องโหลดหัวคำร้องมาตัดสิน) — ผู้เรียกทั้ง 3 จุดต้อง await
+export async function canViewCostingAttachment(supabase, entityType, parent, user) {
+  if (!canViewCosting(user)) return false;
+  if (entityType === 'costing_item') return true;
+  if (entityType === 'dept_request') return canReadRequestRow(user, parent);
+  if (entityType !== 'dept_request_item') return false;
+
+  // บรรทัดไม่รู้จักผู้ขอ/ฝ่าย — ต้องถามหัวคำร้อง (รูปเดียวกับ canAttachToCosting)
+  const requestId = parent?.requestId;
+  if (!requestId) return false;
+  const { data: req, error } = await supabase
+    .from('dept_requests').select('*').eq('id', requestId).maybeSingle();
+  if (error) throw error;
+  return canReadRequestRow(user, req);
 }
 
 // แนบ/ลบไฟล์:

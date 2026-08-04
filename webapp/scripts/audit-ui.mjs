@@ -11,6 +11,7 @@ import {
 } from "./uiLegacyBudget.mjs";
 import { DEAD_CLASSES } from "./uiDeadClasses.mjs";
 import { countOrphanCss } from "./uiOrphanCss.mjs";
+import { checkCssModuleImports } from "./uiCssModuleImports.mjs";
 
 const root = process.cwd();
 const srcRoot = path.join(root, "src");
@@ -506,6 +507,11 @@ const ORPHAN_GLOBALS_CAP = 0;
 const ORPHAN_MODULE_CAP = 0;
 const orphanCss = countOrphanCss(root, files);
 
+/* รูที่สองกฎข้างบนมองไม่เห็นทั้งคู่: `styles.foo` ที่ชี้ไปคลาสซึ่งไม่มีอยู่จริงในชีต
+   ที่ไฟล์นั้น import มา — ดูเหตุผลเต็ม + เหตุการณ์จริงใน scripts/uiCssModuleImports.mjs
+   ⚠️ ไม่มีเพดานให้รูด กฎนี้ต้องเป็น 0 เสมอ */
+const cssModuleImports = checkCssModuleImports(root, files);
+
 const deadClassViolations = [];
 for (const file of uiFiles) {
   const rel = relative(file);
@@ -669,6 +675,11 @@ const failures = [
   ...(orphanCss.modules.length < ORPHAN_MODULE_CAP
     ? [`CSS กำพร้าใน module ลดได้แล้ว: เหลือ ${orphanCss.modules.length} แต่ ORPHAN_MODULE_CAP ยังเขียน ${ORPHAN_MODULE_CAP} (รูดเพดานลง)`]
     : []),
+  ...cssModuleImports.unresolved.map((item) => `import สไตล์ชีตที่ไม่มีอยู่จริง: ${item}`),
+  ...cssModuleImports.missing.map((item) => `อ้างคลาสที่ไม่มีใน CSS module ที่ import มา: ${item}`),
+  ...cssModuleImports.crossDirectory.map(
+    (item) => `*.module.css ถูกยืมข้ามโฟลเดอร์ (ของใช้ร่วมไปอยู่ globals.css หรือ components/ui/): ${item}`,
+  ),
   ...wrapperClassViolations.map((item) => `คลาสกล่องครอบถูกใส่ที่ control โดยตรง: ${item}`),
   ...smoothedLineViolations.map((item) => `smoothed chart line bypasses chartTheme contract: ${item}`),
   ...nativeFeedbackViolations.map((item) => `native alert/confirm/prompt bypasses feedback foundation: ${item}`),
@@ -705,6 +716,10 @@ console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
 console.log(
   `CSS ที่ไม่มีใครเรียก: globals ${orphanCss.globals.length}/${ORPHAN_GLOBALS_CAP}` +
     ` · module ${orphanCss.modules.length}/${ORPHAN_MODULE_CAP} (เพดาน ขึ้นไม่ได้)`,
+);
+console.log(
+  `ตัวอ้าง styles.* ที่ไม่มีคลาสจริง: ${cssModuleImports.missing.length}` +
+    ` · module.css ที่ถูกยืมข้ามโฟลเดอร์: ${cssModuleImports.crossDirectory.length} (ต้องเป็น 0 ทั้งคู่)`,
 );
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);

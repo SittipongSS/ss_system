@@ -304,7 +304,7 @@ function TaskPost({ item }) {
 
 function DealPost({ item }) {
   return <article className={styles.post}>
-    <div className={`${styles.avatar} ${styles.sa}`}>SA</div>
+    <div className={styles.avatar}>SA</div>
     <div className={styles.postBody}>
       <div className={styles.postMeta}><strong>{item.createdByName || "ฝ่ายขาย"}</strong><span>·</span><span>{fmtDateTime(item.feedAt)}</span><span className={styles.typeLabel}>{ACTIVITY_KIND_LABEL[item.kind] || "ดีล"}</span></div>
       <Link href={`/sales-planning/deals/${item.dealId}`} className={styles.postTitle}>{item.dealCode ? `${item.dealCode} · ` : ""}{item.dealTitle || "ดีล"}</Link>

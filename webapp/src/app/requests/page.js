@@ -63,7 +63,7 @@ export default function RequestsPage() {
   const wanted = urlTab === "queue" ? defaultTab : urlTab;
   const tab = tabKeys.includes(wanted) ? wanted : defaultTab;
   const queueDept = tab.startsWith("queue-") ? tab.slice("queue-".length) : null;
-  const setTab = (next) => router.replace(`/sa/requests?tab=${next}`, { scroll: false });
+  const setTab = (next) => router.replace(`/requests?tab=${next}`, { scroll: false });
 
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");

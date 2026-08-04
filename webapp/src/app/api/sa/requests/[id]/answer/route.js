@@ -208,7 +208,7 @@ export async function PATCH(request, { params }) {
           { label: 'ผู้ตอบ', value: user?.name || '' },
           { label: 'ผู้ขอ', value: after.requestedByName || '' },
         ],
-        linkPath: `/sa/requests/${id}`,
+        linkPath: `/requests/${id}`,
         linkLabel: 'เปิดเคส',
       }));
     }
