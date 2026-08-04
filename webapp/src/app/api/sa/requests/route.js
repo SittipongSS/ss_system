@@ -63,7 +63,7 @@ export async function GET(request) {
 
 // POST /api/sa/requests
 // { kind, dept, title, body?, urgent?, requestedDueDate?,
-//   dealId? | salesOrderId? | scentId? | formulaId? | productTypeId?,   ← ตามหัวข้อ
+//   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
 //   items?: [{ kind, materialId?, label, spec?, componentId?, tiers?: [qty…] }] }
 //
@@ -207,8 +207,10 @@ export async function POST(request) {
       dealId,
       projectId,
       salesOrderId,
-      // หมวดสินค้าที่จะขึ้นตัวอย่าง (Mock-up) — integer ไม่ใช่ text เหมือน id อื่น
-      productTypeId: body.productTypeId ? Number(body.productTypeId) : null,
+      // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
+      // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
+      // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
+      // หมวดสินค้าย้ายไปอยู่ **รายแถว** (`dept_request_items.categoryCode` — 0204)
       stepKey: requestStepKey(kind),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,
