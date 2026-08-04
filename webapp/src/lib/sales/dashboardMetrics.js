@@ -42,6 +42,12 @@ export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals 
 }
 
 // เดือนที่นับยอด Won: เดือนที่ผู้ใช้เลือกตอนกด Won ก่อน แล้วค่อย fallback ตามลำดับ
+//
+// ⭐ มติผู้ใช้ 2026-08-05: ดีลที่ FC ไว้เดือนหนึ่งแต่ปิดได้อีกเดือน ให้ยอด **และ FC
+// ของมันเอง** ย้ายไปนับที่เดือนที่ปิด — ไม่ต้องค้างไว้ที่เดือน FC เดิม เพราะเส้นทาง
+// ทำงานจริงคือ SA/AE เลื่อนเดือน FC ของดีลตามความเป็นจริงอยู่แล้ว (แก้ "วันที่คาดปิด"
+// แล้ว forecastMonth ขยับตาม — PATCH /deals ยอมให้แก้ตราบที่ยังไม่ Won)
+// ⇒ เดือน FC กับเดือนที่ปิดจึงควรตรงกันโดยธรรมชาติ ไม่ต้องมีกลไกทบยอดข้ามเดือน
 export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
   || monthKey(d?.confirmedAt)
   || monthKey(d?.metadata?.poReceivedDate)
