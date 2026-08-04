@@ -4,7 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
-import { normalizeScentInput } from '@/lib/master/scents';
+import { derivedFromError, normalizeScentInput } from '@/lib/master/scents';
 import { normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
@@ -41,11 +41,23 @@ export async function countRequestItemsProducingScent(supabase, scentId) {
   return count || 0;
 }
 
+// ด่านสายพันธุ์ที่ต้องถาม DB — โยน Error เป็นภาษาไทยให้ route ตอบ 400 ตามเดิม
+//
+// ⚠️ อยู่ที่นี่ ไม่ใช่แค่กรองตัวเลือกบนจอ — ตัวเลือกที่กรองแล้วกันคนกดผิด
+// แต่ไม่กันคนยิง API ตรง · กลิ่นข้ามลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9)
+export async function assertDerivedFromScent(supabase, { derivedFromScentId, customerId, id }) {
+  if (!derivedFromScentId) return;
+  const parent = await findScent(supabase, derivedFromScentId);
+  const error = derivedFromError(parent, { customerId, id });
+  if (error) throw new Error(error);
+}
+
 export async function createScent(supabase, input, user, { accepted = false } = {}) {
   const { value, error } = normalizeScentInput(input);
   if (error) throw new Error(error);
   // รับเข้าทะเบียนตั้งแต่แรกได้เฉพาะตอน RD เป็นคนสร้าง และต้องมีรหัสมาด้วย
   if (accepted && !value.code) throw new Error('ต้องระบุรหัสกลิ่น');
+  await assertDerivedFromScent(supabase, value);
 
   const nowIso = new Date().toISOString();
   const row = {
