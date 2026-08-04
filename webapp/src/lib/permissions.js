@@ -1039,6 +1039,24 @@ export function canSeeDealKpi(role) {
     || isReadOnlyObserver(role);
 }
 
+/* ตัวสลับขอบเขตบนคิวลีด — "ของฉัน / ทีม / ทั้งหมด"
+   ⚠️ ตัวเลือกต้องไม่กว้างเกินกว่าที่ `applyLeadScope` ยอมให้เห็นจริง ไม่งั้นจะได้ปุ่ม
+   ที่กดแล้วผลลัพธ์เท่าเดิม (หรือแย่กว่า: ป้าย "ทั้งหมด" ที่ไม่ได้แปลว่าทั้งบริษัท):
+     superuser / marketing → เห็นทุกใบจริง ⇒ ให้ "ทั้งหมด" ได้
+     senior_ae / ac        → เห็นเฉพาะทีมตัวเอง ⇒ กว้างสุดคือ "ทีม"
+     ae                    → เห็นเฉพาะใบของตัวเอง ⇒ เหลือตัวเลือกเดียว (หน้าซ่อนปุ่มให้)
+     ผู้สังเกตการณ์         → ไม่มีลีดของตัวเองและไม่มีทีม ⇒ "ทั้งหมด" อย่างเดียว
+                             (กติกาเดียวกับ pmTaskScopes/salesDealScopes)
+   "ของฉัน" = ใบที่ถูกมอบให้เรา **หรือ** ใบที่เรากรอกเข้ามา — ตรงกับสาขา `ae` ของ
+   applyLeadScope เป๊ะ และทำให้ทีม Marketing ใช้ปุ่มนี้ดูยอดที่ตัวเองกรอกได้ */
+export function leadScopes(role) {
+  if (isReadOnlyObserver(role)) return ['all'];
+  if (isSuperuser(role) || role === 'marketing') return ['mine', 'all'];
+  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
+  if (role === 'ae') return ['mine'];
+  return [];
+}
+
 export function salesDealScopes(role) {
   // ผู้สังเกตการณ์ (viewer/executive) ไม่มีดีลของตัวเองและไม่มีทีม → 'all' อย่างเดียว
   // คือ scope เดียวที่มีความหมาย (แท็บ "ของฉัน"/"ทีม" จะขึ้น 0 เสมอ) — กติกาเดียวกับ

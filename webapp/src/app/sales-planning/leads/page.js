@@ -14,8 +14,9 @@ import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
+import Segmented from "@/components/ui/Segmented";
 import FilterPopover from "@/components/ui/FilterPopover";
-import { canSeeLeadKpi } from "@/lib/permissions";
+import { canSeeLeadKpi, leadScopes } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
@@ -42,6 +43,8 @@ import styles from "./page.module.css";
 
 /* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
    ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
+const SCOPE_LABELS = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
+
 const NO_TEAM = "__no_team__";
 /* เช่นเดียวกัน — ลีดที่ยังไม่ถูกมอบหมายมี assigneeId = null */
 const NO_ASSIGNEE = "__no_assignee__";
@@ -117,6 +120,14 @@ export default function LeadsPage() {
      ถอดออกเพราะมันไม่ใช่ *มิติของข้อมูล* แต่เป็นทางลัดที่ทับกับตัวกรองสถานะ
      (ซ่อนที่ปิดแล้ว = เลือกสถานะที่ยังเปิดอยู่) และการติ๊กไว้เงียบ ๆ ทำให้ผู้ใช้
      เห็นจำนวนลีดไม่ตรงกับที่มีจริงโดยไม่รู้ตัว · ตอนนี้ไม่ติ๊กอะไรไว้ = เห็นทุกใบ */
+  /* ขอบเขตที่กำลังดู — "ของฉัน / ทีม / ทั้งหมด" (มติผู้ใช้ 2026-08-05)
+     ⚠️ ตั้งต้นที่ตัว **กว้างสุด** ไม่ใช่ตัวแรก: วันนี้ทุกคนเห็นทุกใบที่ API คืนมา
+     ถ้าตั้งต้นเป็น "ของฉัน" คนที่เคยเห็นคิวทั้งทีมจะเปิดหน้ามาแล้วของหายไปเฉย ๆ
+     (หน้าดีลตั้งต้นที่ตัวแรกได้เพราะมันเป็นแบบนั้นมาแต่ต้น) */
+  const scopes = useMemo(() => leadScopes(role), [role]);
+  const [scope, setScope] = useState(null);
+  const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
+
   const [statusFilter, setStatusFilter] = useState([]);
   const [teamFilter, setTeamFilter] = useState([]);
   const [assigneeFilter, setAssigneeFilter] = useState([]);
@@ -190,6 +201,10 @@ export default function LeadsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = leads.filter((l) => {
+      // ขอบเขต: "ของฉัน" = ถูกมอบให้เรา หรือเรากรอกเข้ามา (ตรงกับสาขา ae ของ
+      // applyLeadScope) · "ทีม" = ทีมเดียวกับเรา · "ทั้งหมด" = ไม่กรอง
+      if (activeScope === "mine" && meId && !(l.assigneeId === meId || l.createdBy === meId)) return false;
+      if (activeScope === "team" && team && l.team !== team) return false;
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
       // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง
       // ไม่งั้นพอกรองทีม คิวกลางจะหายไปทั้งก้อนโดยไม่มีอะไรบอก
@@ -211,11 +226,11 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
+  }, [leads, query, activeScope, meId, team, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
+      resetKey: `${activeScope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
     });
 
   /* จำนวนต่อตัวเลือก — โชว์ท้ายป้ายในแผงกรอง ให้เห็นว่าติ๊กแล้วจะเหลือกี่ใบ
@@ -372,6 +387,16 @@ export default function LeadsPage() {
 
         <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล" actions={<span className="ui-badge">{filtered.length} ลีด</span>}>
           <div className="toolbar" style={{ marginBottom: 14, flexWrap: "wrap" }}>
+            {/* ขอบเขต — วางซ้ายสุดเพราะมันกว้างกว่าตัวกรองทุกตัว (จำกัด "ชุดข้อมูล"
+                ส่วน FilterPopover จำกัด "ภายในชุดนั้น") · เหลือตัวเลือกเดียวก็ไม่ต้องโชว์ */}
+            {scopes.length > 1 && (
+              <Segmented
+                ariaLabel="ขอบเขตของคิวลีด"
+                value={activeScope}
+                onChange={setScope}
+                options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+              />
+            )}
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
