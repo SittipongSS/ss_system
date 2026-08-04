@@ -219,7 +219,7 @@ export async function PATCH(request, { params }) {
           { label: 'ต้องการคำตอบภายใน', value: after.requestedDueDate || '' },
           { label: 'ความเร่งด่วน', value: after.urgent ? 'ด่วน' : '' },
         ],
-        linkPath: `/sa/requests/${id}`,
+        linkPath: `/requests/${id}`,
         linkLabel: 'เปิดคำร้อง',
       }));
     }
@@ -232,7 +232,7 @@ export async function PATCH(request, { params }) {
           { label: 'ผู้รับเรื่อง', value: after.acknowledgedByName || '' },
           { label: 'รับปากว่าจะตอบ', value: after.committedDueDate || '' },
         ],
-        linkPath: `/sa/requests/${id}`,
+        linkPath: `/requests/${id}`,
         linkLabel: 'เปิดคำร้อง',
       }));
     }

@@ -196,7 +196,7 @@ export default function DeliveriesPanel({
                       {/* ขอให้ PC อัปเดตไปแล้ว — ลิงก์ไปคำร้องเพื่อคุยต่อในเธรดที่นั่น
                           (แถวนี้จะไม่ถูกขอซ้ำจนกว่าจะเคลียร์) */}
                       {row.requestId && !row.arrivedAt && (
-                        <Link className={styles.asked} href={`/sa/requests/${row.requestId}`}>
+                        <Link className={styles.asked} href={`/requests/${row.requestId}`}>
                           ขออัปเดตแล้ว
                         </Link>
                       )}

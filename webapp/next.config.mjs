@@ -78,6 +78,12 @@ const nextConfig = {
       // ต้องไม่ตายกลางอากาศ (ตัวใบเก่าไม่มีข้อมูลบน prod จึงส่งไปหน้ารายการเคสพอ)
       { source: '/sa/materials/requests', destination: '/sa/materials/asks', permanent: false },
       { source: '/sa/materials/requests/:path*', destination: '/sa/materials/asks', permanent: false },
+      // คำร้องออกจาก /sa → /requests (P0b) — มันเป็นทะเบียนกลางที่ทุกฝ่ายยิงเข้ามาหา
+      // ไม่ใช่สมบัติของฝ่ายขาย · ที่เคยอยู่ใต้ /sa เป็นเศษกรอบจากสมัยที่ยังเป็น
+      // "ระบบขอราคาวัสดุของ SA" · Next คง query string ให้เอง ⇒ ?tab= และ ?dealId=
+      // ของลิงก์เก่าและ bookmark ยังทำงานครบ
+      { source: '/sa/requests', destination: '/requests', permanent: false },
+      { source: '/sa/requests/:path*', destination: '/requests/:path*', permanent: false },
     ];
   },
 };

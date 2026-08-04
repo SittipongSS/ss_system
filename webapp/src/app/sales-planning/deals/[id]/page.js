@@ -233,7 +233,7 @@ export default function DealOverviewPage() {
     // ⚠️ ทุกแถวต้องมี `body` — ป้ายกับลิงก์เปล่า ๆ บอกแค่ว่า "มีอะไรเกิดขึ้น" คนอ่าน
     // ต้องกดออกไปอีกหน้าทุกครั้งจึงจะรู้ว่าเกิดอะไร ทั้งที่ข้อความอยู่ในมือแล้ว
     const inqs = (data?.inquiries || []).flatMap((q) => {
-      const href = `/sa/requests/${q.id}`;
+      const href = `/requests/${q.id}`;
       const linkLabel = `${q.code ? `${q.code} · ` : ""}${q.title || "เรื่องสอบถาม"}`;
       const rows = [{
         id: `iq-${q.id}-created`, at: q.createdAt, label: q.urgent ? "สอบถาม RD (ด่วน)" : "คำร้อง",
@@ -915,7 +915,7 @@ export default function DealOverviewPage() {
           )}
 
           {(tab === "inquiries" || tab === "overview") && (
-            <RequestListCard requests={data.inquiries || []} openHref={`/sa/requests?dealId=${deal.id}`} />
+            <RequestListCard requests={data.inquiries || []} openHref={`/requests?dealId=${deal.id}`} />
           )}
 
           <div style={{
@@ -1216,7 +1216,7 @@ export default function DealOverviewPage() {
                     ทะเบียนที่ชนิดนั้นอ้าง (กลิ่น/สูตร/วัสดุ/ดีล) ครบก่อน จึงไม่ยก
                     โมดัลมาซ้อนบนหน้าดีลอีก */}
                 {canEdit && (
-                  <Link className="btn sm" href={`/sa/requests?dealId=${deal.id}`} title="เปิดคำร้องถึงฝ่ายอื่นในนามดีลนี้">
+                  <Link className="btn sm" href={`/requests?dealId=${deal.id}`} title="เปิดคำร้องถึงฝ่ายอื่นในนามดีลนี้">
                     <MessageSquare size={13} aria-hidden="true" /> เปิดคำร้อง
                   </Link>
                 )}
