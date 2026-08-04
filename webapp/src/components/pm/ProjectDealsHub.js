@@ -20,6 +20,7 @@ import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
+import styles from "./ProjectDealsHub.module.css";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -78,36 +79,37 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
         {canReorder && (
           <td>
             {/* ⚠️ ปิดตอนกำลังค้นหา ไม่ใช่ซ่อนคอลัมน์ — ซ่อนแล้วหัวตารางกับแถวจะเหลื่อมกัน */}
-            <span style={{ display: "inline-flex", gap: 2 }}>
+            <span className={styles.reorder}>
               <button type="button" className="btn-icon" onClick={onMoveUp} disabled={moving || filtering || !canMoveUp} aria-label={`เลื่อนดีล ${deal.title} ขึ้น`} title={filtering ? "ล้างคำค้นก่อนจึงจะจัดลำดับได้" : "เลื่อนดีลขึ้น"}><ArrowUp size={13} /></button>
               <button type="button" className="btn-icon" onClick={onMoveDown} disabled={moving || filtering || !canMoveDown} aria-label={`เลื่อนดีล ${deal.title} ลง`} title={filtering ? "ล้างคำค้นก่อนจึงจะจัดลำดับได้" : "เลื่อนดีลลง"}><ArrowDown size={13} /></button>
             </span>
           </td>
         )}
         <td>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <div className={styles.dealCell}>
             {dealTypeBadge(dealTypeOf(deal))}
-            <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: "var(--fw-bold)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <Link prefetch={false} href={`/sa/deals/${deal.id}`} className={`linklike ${styles.dealTitle}`}>
               {displayText(deal.title)}
             </Link>
           </div>
-          {deal.formulaName && <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>สูตร {displayText(deal.formulaName)}</div>}
+          {deal.formulaName && <div className={styles.subLine}>สูตร {displayText(deal.formulaName)}</div>}
         </td>
         <td>{stageBadge(deal.stage)}</td>
+        {/* สีตามผลของดีล = ข้อมูล ไม่ใช่สไตล์ (เขียว = ปิดได้จริง · แดง = แพ้) */}
         <td className="num mono tabular-nums" style={{ color: closed ? "var(--green)" : deal.stage === "lost" ? "var(--red)" : "inherit" }}>
           {fmtMoney(value)}
-          <div style={{ color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>{closed ? "ปิดจริง" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
+          <div className={styles.valueNote}>{closed ? "ปิดจริง" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
         </td>
-        <td className="num mono tabular-nums">{quotes.length || <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+        <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>-</span>}</td>
         <td>
           {seg.total ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 120 }}>
-              <div className="progress" style={{ flex: 1, minWidth: 60 }} role="progressbar" aria-valuenow={seg.done} aria-valuemax={seg.total} aria-label={`ไทม์ไลน์ ${deal.title}`}>
+            <div className={styles.progressCell}>
+              <div className="progress" role="progressbar" aria-valuenow={seg.done} aria-valuemax={seg.total} aria-label={`ไทม์ไลน์ ${deal.title}`}>
                 <span className={seg.done === seg.total ? "done" : undefined} style={{ width: `${pct}%` }} />
               </div>
-              <span className="mono tabular-nums" style={{ color: "var(--text-3)", whiteSpace: "nowrap", fontSize: "var(--fs-5)" }}>{seg.done}/{seg.total}</span>
+              <span className={`mono tabular-nums ${styles.progressCount}`}>{seg.done}/{seg.total}</span>
             </div>
-          ) : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ยังไม่มี segment</span>}
+          ) : <span className={styles.muted}>ยังไม่มี segment</span>}
         </td>
         <td>
           <button
@@ -123,31 +125,32 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={columnCount} style={{ background: "var(--panel-2, var(--panel))" }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 20, padding: "4px 2px 8px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 200, fontSize: "var(--fs-6)" }}>
+          <td colSpan={columnCount}>
+            <div className={styles.expandPanel}>
+              <div className={styles.expandInfo}>
                 {/* ชื่อ AE อ่านจาก ownerId — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ */}
-                <div><span style={{ color: "var(--text-3)" }}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</div>
+                <div><span className={styles.mutedBadge}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</div>
                 <div>
-                  <PackageCheck size={13} aria-hidden="true" style={{ color: "var(--text-3)", verticalAlign: "-2px", marginRight: 4 }} />
-                  {seg.current ? <>กำลังทำ: {seg.current}</> : <span style={{ color: "var(--text-3)" }}>ไม่มีขั้นตอนที่กำลังทำ</span>}
+                  <PackageCheck size={13} aria-hidden="true" className={styles.expandInfoIcon} />
+                  {seg.current ? <>กำลังทำ: {seg.current}</> : <span className={styles.mutedBadge}>ไม่มีขั้นตอนที่กำลังทำ</span>}
                 </div>
-                <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="btn ghost sm" style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                <Link prefetch={false} href={`/sa/deals/${deal.id}`} className={`btn ghost sm ${styles.openDeal}`}>
                   <ExternalLink size={13} aria-hidden="true" /> เปิดดีล
                 </Link>
               </div>
-              <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 5 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>
+              <div className={styles.quoteList}>
+                <div className={styles.quoteHead}>
                   <FileText size={13} aria-hidden="true" /> ใบเสนอราคาของดีลนี้
-                  <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length}</span>
+                  <span className={`ui-badge ${styles.mutedBadge}`}>{quotes.length}</span>
                 </div>
                 {quotes.length ? quotes.map((q) => (
-                  <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-6)", minWidth: 0 }}>
-                    <Link prefetch={false} href={`/sa/quotations/${q.id}`} className="linklike mono" style={{ whiteSpace: "nowrap" }}>{q.quoteNumber}</Link>
+                  <div key={q.id} className={styles.quoteRow}>
+                    <Link prefetch={false} href={`/sa/quotations/${q.id}`} className={`linklike mono ${styles.quoteNo}`}>{q.quoteNumber}</Link>
+                    {/* สีป้าย = สถานะของใบ (ข้อมูล) — ทะเบียนเดียวกับตารางในแท็บเอกสาร */}
                     <span className="ui-badge" style={{ color: QUOTE_STATUS[q.status]?.color || "var(--text-3)" }}>{QUOTE_STATUS[q.status]?.label || q.status}</span>
-                    <span className="mono tabular-nums" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{fmtMoney(q.totalAmount)}</span>
+                    <span className={`mono tabular-nums ${styles.quoteAmount}`}>{fmtMoney(q.totalAmount)}</span>
                   </div>
-                )) : <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
+                )) : <div className={styles.quoteEmpty}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
               </div>
             </div>
           </td>
@@ -450,27 +453,27 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
 
       {/* ตารางดีล — เทียบข้ามใบได้ในจอเดียว กดขยายดูรายละเอียดทีละใบ */}
       <div className="glass-panel" style={{ padding: "16px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <div className={styles.tableHead}>
           {/* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/dealIcon.test.mjs (เดิมอยู่บนการ์ด
               "ดีลในโครงการ" ของหน้าโครงการ ที่ถูกยุบมาเป็นตารางนี้) */}
           <FolderKanban size={17} aria-hidden="true" />
-          <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ดีลในโครงการ ({deals.length})</h3>
+          <h3>ดีลในโครงการ ({deals.length})</h3>
           {/* ชนิดของดีลที่โครงการนี้ผ่านมาแล้ว — เดิมเป็น hint ใต้ KPI ที่ถอดไป */}
           {(r?.byType || [])
             .filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0)
             .map((item) => (
-              <span key={item.type} className="ui-badge" style={{ color: "var(--text-3)" }}>
+              <span key={item.type} className={`ui-badge ${styles.mutedBadge}`}>
                 {DEAL_TYPE_LABELS[item.type] || item.type} {item.openCount + item.wonCount + item.lostCount}
               </span>
             ))}
           {central && (
-            <span className="ui-badge" style={{ color: "var(--text-3)" }} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
+            <span className={`ui-badge ${styles.mutedBadge}`} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
               งานกลาง {central.done}/{central.total}
             </span>
           )}
-          <div className="spacer" style={{ flex: 1 }} />
+          <div className="spacer" />
           {showSearch && (
-            <div className="search-glass" style={{ width: 220 }}>
+            <div className={`search-glass ${styles.search}`}>
               <Search size={15} color="var(--text-3)" aria-hidden="true" />
               <input value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
             </div>
@@ -481,14 +484,15 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
             </button>
           )}
         </div>
-        {reorderError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)", marginBottom: 10 }}>{reorderError}</div>}
+        {reorderError && <div className={styles.errorNote}>{reorderError}</div>}
         {deals.length ? (
           <>
-          <div className="premium-glass-table table-responsive">
-            <TableScroll surface="embedded"><table className="premium-table">
+            {/* ตารางกลางล้วน ๆ — ไม่มี `.premium-glass-table` / `.premium-table` ครอบ
+                (พื้น ขอบ padding แถว ฟอนต์ตัวเลข มาจาก Table.module.css หมดแล้ว) */}
+            <TableScroll surface="embedded"><table>
               <thead>
                 <tr>
-                  {canReorder && <th style={{ width: 68 }} aria-label="จัดลำดับ" />}
+                  {canReorder && <th aria-label="จัดลำดับ" />}
                   <th>ดีล</th>
                   <th>สถานะ</th>
                   <th className="num">มูลค่า</th>
@@ -523,12 +527,11 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
                   );
                 })}
                 {!shownDeals.length && (
-                  <tr><td colSpan={columnCount} style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>ไม่พบดีลที่ตรงกับ “{dealQuery}”</td></tr>
+                  <tr><td colSpan={columnCount} className={styles.noMatch}>ไม่พบดีลที่ตรงกับ “{dealQuery}”</td></tr>
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
-          <div style={{ marginTop: 8, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</div>
+            <div className={styles.footNote}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</div>
           </>
         ) : (
           <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
