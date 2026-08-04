@@ -7,8 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, MessagesSquare, Plus, UserRound } from "lucide-react";
-import UpdateThread from "@/components/updates/UpdateThread";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -829,23 +828,9 @@ export default function QuotationEditorPage() {
             />
           </section>
 
-          {/* เธรดกลาง (mig 0163) — QT บังคับกรอกเหตุผลหลายจุด (ดึงกลับ/ตีกลับ/ออก Rev./
-              ย้อนการรับ) แต่เหตุผลพวกนั้นลงคอลัมน์เดียวที่รอบถัดไปเขียนทับ + audit log
-              ที่เปิดได้เฉพาะ supervisor → คนทำใบรอบถัดไปไม่เคยได้อ่าน · เธรดทำให้
-              เหตุผลอยู่ครบทุกรอบบนหน้าใบ และเปิดให้คุยกันได้ระหว่างรออนุมัติ */}
-          <section className={styles.card}>
-            <div className={styles.sectionHeading}>
-              <MessagesSquare size={17} aria-hidden="true" />
-              <h2>ความเคลื่อนไหว</h2>
-            </div>
-            <UpdateThread
-              entityType="quotation"
-              entityId={quote.id}
-              order="desc"
-              placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอปรับเงื่อนไขชำระ..."
-              emptyText="ยังไม่มีความเคลื่อนไหว"
-            />
-          </section>
+          {/* ใบไม่มีเธรดของตัวเองแล้ว (มติผู้ใช้ 2026-08-04) — ความเคลื่อนไหวของใบ
+              ทุกอย่างไปอยู่ในเธรดของ **ดีลแม่** ที่เดียว (และไหลต่อขึ้นหน้าโครงการ)
+              เหตุผลเต็มใน lib/sales/documentUpdates.js */}
 
           </div>
 

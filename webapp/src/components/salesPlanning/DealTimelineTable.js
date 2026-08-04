@@ -79,7 +79,7 @@ function StepPin({ pin }) {
   return (
     <Link
       className="timeline-step-pin"
-      href={many ? `/sa/requests?dealId=${pin.first.dealId || ""}` : `/sa/requests/${pin.first.id}`}
+      href={many ? `/requests?dealId=${pin.first.dealId || ""}` : `/requests/${pin.first.id}`}
       title={`${requestKindLabel(pin.first.kind)}${pin.first.docNo ? ` · ${pin.first.docNo}` : ""}`
         + ` · ${pin.open ? `ค้าง ${pin.open} จาก ` : ""}${pin.total} เรื่องผูกกับขั้นนี้`}
     >

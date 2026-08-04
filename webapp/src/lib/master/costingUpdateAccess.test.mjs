@@ -22,15 +22,25 @@ const ask = (over = {}) => ({
   id: 'A1', status: 'pending', dept: 'PC', requestedById: 'U-AE', ...over,
 });
 
-test('คำร้อง: ผู้เปิดเคสกับฝ่ายที่ต้องตอบโพสต์ได้ · ฝ่ายอื่นอ่านได้แต่โพสต์ไม่ได้', async () => {
-  const a = ask();
+test('คำร้อง: อ่านเธรดได้เฉพาะคนที่เปิดใบนั้นได้ — ไม่ใช่ทุกคนที่ถือ costing:view', async () => {
+  // 🐞 กฎเดิม: `canView` เป็น `canViewCosting(user)` ล้วน **ไม่ดูแถวเลย** ⇒ ใครถือ cap
+  // ก็อ่านเธรดของคำร้องใบไหนก็ได้ รวมถึงใบที่มีการพิมพ์ราคาคุยกันในนั้น
+  // ตอนนี้ผูกกับแถวแล้ว และ **ตรงกับด่านของ GET /[id] เป๊ะ ๆ** ⇒ ไม่มีเคสที่เปิดใบได้
+  // แต่เธรดว่างเปล่า และไม่มีเคสที่อ่านเธรดของใบที่ตัวเองเปิดไม่ได้
+  const a = ask();   // ใบของฝ่าย PC เปิดโดย U-AE
   for (const u of [OWNER, PC, ADMIN]) {
     assert.equal(await canPostUpdate(db, 'dept_request', a, u), true, `${u.role}/${u.department} ควรโพสต์ได้`);
+    assert.equal(await canViewUpdates(db, 'dept_request', a, u), true, `${u.role}/${u.department} ควรอ่านได้`);
   }
-  // RD อยู่ในวงคนเห็นระบบขอราคา แต่เคสนี้เป็นงานฝ่าย PC — ตอบแทนกันไม่ได้
-  assert.equal(await canViewUpdates(db, 'dept_request', a, RD), true);
+  // ผู้สังเกตการณ์ทั้งระบบยังอ่านได้ทุกใบ — ข้อยกเว้นที่ตั้งใจ ไม่ให้ใครเสียสิทธิ์เดิม
+  assert.equal(await canViewUpdates(db, 'dept_request', a, EXEC), true);
+  assert.equal(await canPostUpdate(db, 'dept_request', a, EXEC), false);
+  // RD ถือ costing:view เหมือนกัน แต่ใบนี้เป็นงานฝ่าย PC — ไม่ใช่ทั้งผู้ขอและผู้ตอบ
+  // ⇒ **อ่านไม่ได้แล้ว** (เดิมอ่านได้) และยังโพสต์ไม่ได้เหมือนเดิม
+  assert.equal(await canViewUpdates(db, 'dept_request', a, RD), false);
   assert.equal(await canPostUpdate(db, 'dept_request', a, RD), false);
-  // เซลคนอื่นเห็นเคสได้ (ระบบขอราคาเห็นกันทั้งวง) แต่ไม่ใช่เคสของเขา
+  // เซลคนอื่น: ใบนี้ไม่ใช่ของเขา และเขาไม่ได้อยู่ฝ่ายปลายทาง
+  assert.equal(await canViewUpdates(db, 'dept_request', a, OTHER_SALES), false);
   assert.equal(await canPostUpdate(db, 'dept_request', a, OTHER_SALES), false);
 });
 

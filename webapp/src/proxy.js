@@ -177,7 +177,11 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // ⚠️ /go = เส้นทางกลาง "รหัสเอกสาร → หน้าจริง" ที่ลิงก์ในเธรดชี้มา — ไม่ลงทะเบียน
 // ที่นี่ = ทุกลิงก์รหัสเอกสารในข้อความพาไปหน้า 403 (บทเรียนจาก /api/company-profile)
 // ตัวมันเองไม่เปิดข้อมูลอะไรเพิ่ม: แปลงรหัสเป็น id แล้วส่งต่อ ด่านจริงอยู่หน้าปลายทาง
-const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go'];
+// ⚠️ default-deny: หน้าที่ไม่อยู่ในลิสต์นี้ = non-admin เจอ 403 เงียบ ๆ · prefix ใหม่
+// ต้องลงที่นี่พร้อมกับที่สร้าง route ไม่งั้นเทสต์ผ่าน build ผ่าน แต่ผู้ใช้จริงเข้าไม่ได้
+// (ทดสอบด้วย admin จะไม่เห็นบั๊กเลย — ต้อง smoke test ด้วยบัญชีของฝ่าย)
+// `/requests` = คำร้องข้ามฝ่าย ย้ายออกจาก /sa เมื่อ P0b (ทะเบียนกลางของทุกฝ่าย)
+const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/

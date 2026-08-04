@@ -112,7 +112,7 @@ export default function MaterialAskDetailPage() {
   // กลับไปแท็บที่คนคนนี้ใช้งานจริง — ผู้ตอบกลับเข้าคิวของฝ่ายที่คำร้องนี้ถามไป,
   // ผู้ขอกลับไปดูคำร้องของตัวเอง (ชื่อแท็บตรงกับที่ /sa/requests รับผ่าน ?tab=)
   const backTab = req?._mine === false ? `queue-${req.dept}` : "mine";
-  const back = { href: `/sa/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
+  const back = { href: `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !req) {
     return (
@@ -202,7 +202,7 @@ export default function MaterialAskDetailPage() {
           kind: "success",
           msg: result.forced ? "บังคับลบคำร้องแล้ว" : "ลบร่างคำร้องแล้ว",
         });
-        window.location.href = "/sa/requests?tab=mine";
+        window.location.href = "/requests?tab=mine";
       } catch (e) {
         setToast({ kind: "error", msg: e.message });
       } finally {

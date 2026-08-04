@@ -412,7 +412,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return fail(error.message, 500);
   }
-  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง (แพตเทิร์นเดียวกับ purgeAttachments)
+  // ใบไม่มีเธรดของตัวเองแล้ว (มติ 2026-08-04) แต่แถวเก่าก่อนหน้านั้นยังค้างในตาราง
+  // กลาง (polymorphic ไม่มี FK) — กวาดตอนลบใบต่อไป ไม่งั้นค้างเป็นขยะถาวร
   await purgeUpdates(supabase, 'quotation', id);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`

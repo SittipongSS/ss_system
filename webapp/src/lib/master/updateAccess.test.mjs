@@ -139,62 +139,14 @@ test('ลีด: ชุดชนิดต้องตรงกับดีลท
   }
 });
 
-// ── ใบเสนอราคา / ใบสั่งขาย ─────────────────────────────────────────────
-// scope ของสองใบนี้อยู่บน **ดีลแม่** ไม่ได้อยู่บนตัวใบ → stub ต้องคืนแถวดีล
-function docStub(deal, { error = null } = {}) {
-  const api = {
-    from: () => api,
-    select: () => api,
-    eq: () => api,
-    maybeSingle: async () => ({ data: deal, error }),
-  };
-  return api;
-}
-
-test('QT/SO: scope มาจากดีลแม่ — ใบของทีมอื่นต้องปิด แม้ role จะเห็นระบบขายได้', async () => {
-  const doc = { id: 'QT-1', dealId: 'DL-1' };
-  const deal = { id: 'DL-1', team: 'KA', ownerId: 'u-owner' };
-  const owner = { id: 'u-owner', role: 'ae', team: 'KA' };
-  const otherTeam = { id: 'u-x', role: 'ae', team: 'ODM' };
-
+// ── ใบเสนอราคา / ใบสั่งขาย: ไม่มีเธรดแล้ว (มติผู้ใช้ 2026-08-04) ────────
+// เหตุการณ์ของใบลงเธรดของดีลแม่ที่เดียว — ด่านที่คุมคือด่านของ 'deal' ข้างบน
+// ⚠️ ถ้าเห็นใครเติม quotation/sales_order กลับเข้าทะเบียน ต้องย้ายเนื้อความมาด้วย
+// ไม่งั้นเรื่องเดียวกันจะถูกเล่าสองที่แล้วไม่ตรงกัน (ดู lib/sales/documentUpdates.js)
+test('QT/SO ต้องไม่มีเธรดของตัวเอง — API ต้องตีกลับ entityType นี้ตั้งแต่ด่านแรก', () => {
   for (const type of ['quotation', 'sales_order']) {
-    assert.equal(await canViewUpdates(docStub(deal), type, doc, owner), true, type);
-    assert.equal(await canViewUpdates(docStub(deal), type, doc, otherTeam), false, type);
-    assert.equal(await canPostUpdate(docStub(deal), type, doc, owner), true, type);
-    assert.equal(await canPostUpdate(docStub(deal), type, doc, otherTeam), false, type);
-  }
-});
-
-test('QT/SO: ใบที่ไม่ผูกดีล = ไม่มีเจ้าของ ต้องปิดตาย ไม่ใช่เปิดให้ทุกคน', async () => {
-  const orphan = { id: 'QT-9', dealId: null };
-  const anyone = { id: 'u-1', role: 'ae', team: 'KA' };
-  const admin = { id: 'u-a', role: 'admin' };
-  for (const type of ['quotation', 'sales_order']) {
-    assert.equal(await canViewUpdates(docStub(null), type, orphan, anyone), false, type);
-    assert.equal(await canPostUpdate(docStub(null), type, orphan, anyone), false, type);
-    assert.equal(await canViewUpdates(docStub(null), type, orphan, admin), false, type);
-  }
-});
-
-test('QT/SO: อ่านดีลไม่สำเร็จต้อง throw ไม่ใช่กลายเป็น "ไม่มีสิทธิ์"', async () => {
-  const doc = { id: 'SO-1', dealId: 'DL-1' };
-  const stubbed = docStub(null, { error: { message: 'permission denied' } });
-  await assert.rejects(
-    () => canViewUpdates(stubbed, 'sales_order', doc, { id: 'u', role: 'admin' }),
-    /อ่านดีลของเอกสารไม่สำเร็จ/,
-  );
-});
-
-test('⭐ QT/SO: ใบที่ถูกตีกลับ/ยกเลิกยังโพสต์ได้ — เธรดไม่ปิดตามสถานะใบ', async () => {
-  const deal = { id: 'DL-1', team: 'KA', ownerId: 'u-owner' };
-  const owner = { id: 'u-owner', role: 'ae', team: 'KA' };
-  // ใบที่จบไปแล้วคือใบที่มีคำถามค้างมากที่สุด — ปิดเธรดตอนนั้นคือตัดบทตรงจุด
-  // ที่ต้องการที่สุด (สิ่งที่ล็อกคือ "แก้เนื้อใบ" ซึ่งเป็นคนละด่าน)
-  for (const status of ['rejected', 'cancelled', 'revised', 'approval_revoked']) {
-    assert.equal(
-      await canPostUpdate(docStub(deal), 'sales_order', { id: 'SO-1', dealId: 'DL-1', status }, owner),
-      true, status,
-    );
+    assert.equal(isUpdateEntity(type), false, `${type}: ยังอยู่ในทะเบียน`);
+    assert.equal(updateEntityConfig(type), null, type);
   }
 });
 

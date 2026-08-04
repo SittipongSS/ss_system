@@ -331,7 +331,7 @@ export default function CostingDetailPage() {
       setToast({ kind: "error", msg: error });
       setSaving(false);
     }
-    if (createdId) router.push(`/sa/requests/${createdId}`);
+    if (createdId) router.push(`/requests/${createdId}`);
   };
 
   // ดึงกลับ (B5): ยื่นไปแล้วแต่ผู้บริหารยังไม่ตัดสิน — เอากลับมาแก้เองได้

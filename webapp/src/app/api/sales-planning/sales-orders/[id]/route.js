@@ -213,7 +213,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // — action ที่ดีลไม่สนใจ (ดึงกลับ/กู้ร่าง) ตัวมันคืน null ให้เอง
   const logThread = async (act, opts = {}) => {
     await appendDocumentEvent(supabase, {
-      docType: 'sales_order', doc: before, action: act, opts, user, docId: id,
+      docType: 'sales_order', doc: before, action: act, opts, user,
       dealId: before.dealId || before.deal?.id || null,
     });
   };
@@ -684,7 +684,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return fail(error.message, 500);
   }
-  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง (แพตเทิร์นเดียวกับ purgeAttachments)
+  // ใบไม่มีเธรดของตัวเองแล้ว (มติ 2026-08-04) แต่แถวเก่าก่อนหน้านั้นยังค้างในตาราง
+  // กลาง (polymorphic ไม่มี FK) — กวาดตอนลบใบต่อไป ไม่งั้นค้างเป็นขยะถาวร
   await purgeUpdates(supabase, 'sales_order', id);
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,

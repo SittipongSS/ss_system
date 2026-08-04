@@ -14,7 +14,7 @@ import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 
 export default function RequestListCard({
-  requests = [], title = "คำร้องข้ามฝ่าย", openHref = "/sa/requests",
+  requests = [], title = "คำร้องข้ามฝ่าย", openHref = "/requests",
 }) {
   return (
     <section className={`glass-panel ${styles.listCard}`}>
@@ -41,7 +41,7 @@ export default function RequestListCard({
                 {requests.map((r) => (
                   <tr key={r.id} className="premium-row">
                     <td>
-                      <Link className={`linklike ${styles.listLink}`} href={`/sa/requests/${r.id}`}>
+                      <Link className={`linklike ${styles.listLink}`} href={`/requests/${r.id}`}>
                         {r.docNo || "ร่าง"}
                         {r.title ? ` · ${r.title}` : ""}
                       </Link>

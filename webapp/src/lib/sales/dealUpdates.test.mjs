@@ -61,11 +61,16 @@ test('งานที่ผูกดีล: สร้าง/เสร็จ/เ�
   assert.equal(dealTaskUpdate('done', null), null);
 });
 
-// ⚠️ ดีลสนใจเฉพาะจังหวะที่ "ทิศทางการขายเปลี่ยน" — การแก้ใบไปมาเป็นเรื่องของคนทำใบ
-test('เอกสาร → เธรดดีล: ดึงกลับ/กู้ร่าง ไม่ขึ้นดีล · ย้อนการรับ/ยกเลิกอนุมัติ ขึ้น', () => {
+// ⚠️ เดิมดึงกลับ/กู้ร่างไม่ขึ้นดีล (ถือเป็นการบ้านภายในของคนทำใบ) เพราะยังอ่านได้
+// ในเธรดของใบ — พอใบไม่มีเธรดแล้ว (มติ 2026-08-04) ไม่ส่งขึ้น = เหตุผลหายถาวร
+test('เอกสาร → เธรดดีล: ครบทุก action รวมดึงกลับ/กู้ร่าง · ย้อนการรับ/ยกเลิกอนุมัติ', () => {
   const quote = { id: 'QT-1', quoteNumber: 'QT-26070028-0' };
-  assert.equal(dealDocumentUpdate('quotation', 'withdraw', quote), null);
-  assert.equal(dealDocumentUpdate('sales_order', 'restore', { id: 'SO-1', orderNumber: 'SO-1' }), null);
+  const withdraw = dealDocumentUpdate('quotation', 'withdraw', quote, { reason: 'ราคายังไม่นิ่ง' });
+  assert.equal(withdraw.kind, 'doc_withdraw');
+  assert.match(withdraw.body, /ราคายังไม่นิ่ง/);
+  // ดึงกลับ ≠ ตีกลับ — ต้องคนละชนิด ไม่งั้นกวาดตาแล้วแยกไม่ออกว่าอันไหนคือปัญหา
+  assert.notEqual(withdraw.kind, dealDocumentUpdate('quotation', 'reject', quote).kind);
+  assert.match(dealDocumentUpdate('sales_order', 'restore', { id: 'SO-1', orderNumber: 'SO-1' }).body, /กู้คืนกลับเป็นร่าง/);
 
   const unaccept = dealDocumentUpdate('quotation', 'unaccept', quote, { reason: 'ลูกค้าขอยกเลิก' });
   assert.match(unaccept.body, /ดีลหลุดจาก Won/);

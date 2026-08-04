@@ -34,7 +34,7 @@ export async function GET(request, { params }) {
     : MGMT_ENTITIES.includes(att.entityType)
       ? canUser(user, 'mgmt:view')
       : isCostingAttachment(att.entityType)
-        ? canViewCostingAttachment(user)
+        ? await canViewCostingAttachment(getSupabaseAdmin(), att.entityType, parent, user)
         : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
   if (!parent || !allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });

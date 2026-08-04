@@ -19,26 +19,12 @@ import {
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
-import { canAnswerRequest, canManageRequest } from '@/lib/deptRequests';
+import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { canViewCostingRequest } from '@/lib/costing';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
 } from '@/lib/salesPlanning';
 import { isAuthorableKind } from '@/lib/master/updateTypes';
-
-// ดีลแม่ของใบเสนอราคา/ใบสั่งขาย — scope ของสองใบนี้อยู่บนดีล ไม่ได้อยู่บนตัวใบ
-//
-// ⚠️ คืน null = ใบลอยที่ไม่มีเจ้าของ ผู้เรียก**ต้องเช็ค null เอง**แล้วปิดตาย —
-// ส่ง null เข้า `inSalesViewScope` ตรง ๆ ไม่ได้ เพราะ role ที่ scope = 'all'
-// (supervisor/viewer/marketing) จะได้ true จากเรกคอร์ดว่างเปล่า = เธรดเปิดให้
-// คนที่ไม่มีทางรู้ว่าใบนี้ของใคร
-async function parentDeal(supabase, parent) {
-  if (!parent?.dealId) return null;
-  const { data, error } = await supabase
-    .from('sales_deals').select('id, team, ownerId').eq('id', parent.dealId).maybeSingle();
-  if (error) throw new Error(`อ่านดีลของเอกสารไม่สำเร็จ: ${error.message}`);
-  return data || null;
-}
 
 export const UPDATE_ENTITIES = {
   personal_task: {
@@ -57,14 +43,21 @@ export const UPDATE_ENTITIES = {
   },
 
   // ── เคสขอราคาวัสดุ (mig 0158) ────────────────────────────────────────
-  // อ่าน = เห็นระบบขอราคา (ด่านเดียวกับ GET ของเคสเอง — ต้นทุนเป็นข้อมูลลับ
-  // แต่ในระบบเห็นกันทั้งวง) **ห้ามตั้งด่านใหม่ที่แคบกว่าหน้าจอ** ไม่งั้นเปิดเคสได้
-  // แต่เธรดว่างเปล่าโดยไม่มีอะไรบอกว่าเพราะอะไร
+  // อ่าน = **ด่านเดียวกับ GET ของคำร้องเอง เป๊ะ ๆ** — cap ของระบบ + ผูกกับแถว
+  // (ผู้ขอ · ฝ่ายที่ต้องตอบ · admin · ผู้สังเกตการณ์ทั้งระบบ)
+  //
+  // 🐞 เดิมเป็น `canViewCosting(user)` ล้วน ไม่ดูแถวเลย ⇒ ใครถือ costing:view ก็อ่าน
+  // เธรดของคำร้องใบไหนก็ได้ รวมถึงใบที่มีการพิมพ์ราคาคุยกันในนั้น · ตอนนั้น
+  // GET /[id] ก็ไม่ดูแถวเหมือนกัน ทั้งคู่จึง "สอดคล้องกัน" ในทางที่ผิด
+  //
+  // ⚠️ กฎ "ห้ามตั้งด่านเธรดแคบกว่าหน้าจอ" ยังอยู่ และยังถูกเคารพ — หน้าจอแคบลง
+  // พร้อมกันในคอมมิตก่อนหน้า (canReadRequestRow) ⇒ เปิดคำร้องได้เมื่อไร อ่านเธรด
+  // ได้เมื่อนั้นเสมอ ไม่มีเคสที่เปิดใบได้แต่เธรดว่างเปล่า
   dept_request: {
     table: 'dept_requests',
     attachments: true,   // "ขวดหน้าตาแบบนี้" — รูปคือหัวใจของการคุยเรื่องวัสดุ
     async canView(supabase, parent, user) {
-      return canViewCosting(user);
+      return canViewCosting(user) && canReadRequestRow(user, parent);
     },
     // โพสต์ = สองฝ่ายที่เกี่ยวกับเคสจริง (ผู้เปิดเคส ↔ ฝ่ายที่ต้องตอบ) และเฉพาะตอน
     // เคสยังเดินอยู่ — ปิด/ยกเลิกแล้วถือเป็นหลักฐาน กฎเดียวกับไฟล์แนบ
@@ -158,53 +151,14 @@ export const UPDATE_ENTITIES = {
     recipients: (parent) => [parent?.assigneeId, parent?.createdBy],
   },
 
-  // ── ใบเสนอราคา / ใบสั่งขาย ───────────────────────────────────────────
-  // scope ของสองใบนี้ไม่ได้อยู่บนตัวใบ แต่อยู่บน**ดีลแม่** (ทั้ง GET ของทั้งคู่
-  // เช็ค `inSalesViewScope(user, X.deal)`) → ด่านต้อง query ดีลต่อ ซึ่งเป็นเหตุผล
-  // ที่ทะเบียนนี้บังคับให้ทุกด่านเป็น async รับ supabase มาตั้งแต่ต้น
+  // ── ใบเสนอราคา / ใบสั่งขาย: **ไม่มีเธรด** (มติผู้ใช้ 2026-08-04) ────────
+  // เคยมีทะเบียนของตัวเองที่ยืม scope จากดีลแม่ แต่ในเมื่อคนอ่านเป็นกลุ่มเดียวกับ
+  // ดีลเป๊ะ (ด่านเดียวกันบรรทัดต่อบรรทัด) และไม่มีใครพิมพ์ที่นั่นเลยสักข้อความ
+  // เหตุการณ์ของใบจึงลงเธรดดีลที่เดียว — ดู lib/sales/documentUpdates.js
   //
-  // ⚠️ เธรด **ไม่ปิดตามสถานะใบ** ต่างจากเคสขอราคา: ใบที่ถูกตีกลับ/ยกเลิก/ออก Rev.
-  // แทนแล้ว คือใบที่มีคำถามค้างมากที่สุด ปิดเธรดตอนนั้น = ตัดบทสนทนาตรงจุดที่
-  // ต้องการที่สุด · สิ่งที่ล็อกคือ "แก้เนื้อใบ" ซึ่งเป็นคนละด่าน
-  quotation: {
-    table: 'quotations',
-    attachments: true,
-    async canView(supabase, parent, user) {
-      if (!canViewSalesPlanning(user)) return false;
-      const deal = await parentDeal(supabase, parent);
-      return !!deal && inSalesViewScope(user, deal);
-    },
-    // ผู้อนุมัติ (= เจ้าของดีล / superuser) อยู่ใน inSalesEditScope อยู่แล้ว ไม่ต้อง
-    // แยกสาขาเพิ่ม — ต่างจากใบขอราคาผลิตที่ผู้อนุมัติเป็นผู้บริหารนอกสายดีล
-    async canPost(supabase, parent, user) {
-      if (!canEditSalesPlanning(user)) return false;
-      const deal = await parentDeal(supabase, parent);
-      return !!deal && inSalesEditScope(user, deal);
-    },
-    // ผู้จัดทำใบ + เจ้าของดีล (= ผู้อนุมัติ) · ดีลต้อง query ต่อ จึงเป็น async
-    async recipients(parent, supabase) {
-      const deal = await parentDeal(supabase, parent);
-      return [parent?.createdBy, deal?.ownerId];
-    },
-  },
-  sales_order: {
-    table: 'sales_orders',
-    attachments: true,
-    async canView(supabase, parent, user) {
-      if (!canViewSalesPlanning(user)) return false;
-      const deal = await parentDeal(supabase, parent);
-      return !!deal && inSalesViewScope(user, deal);
-    },
-    async canPost(supabase, parent, user) {
-      if (!canEditSalesPlanning(user)) return false;
-      const deal = await parentDeal(supabase, parent);
-      return !!deal && inSalesEditScope(user, deal);
-    },
-    async recipients(parent, supabase) {
-      const deal = await parentDeal(supabase, parent);
-      return [parent?.createdBy, deal?.ownerId];
-    },
-  },
+  // ⚠️ **ห้ามเติมกลับมาโดยไม่ย้ายเนื้อความ**: เหตุผลของ QT/SO (ดึงกลับ/ตีกลับ/
+  // ออก Rev./ยกเลิก) ตอนนี้อยู่บนเธรดดีลที่เดียว ถ้าเปิดเธรดของใบใหม่แล้วแยกกัน
+  // เขียน จะได้เรื่องเดียวกันสองที่ที่ไม่ตรงกัน
 
   // ── master data: ลูกค้า / สินค้า ─────────────────────────────────────
   // ⭐ ด่านยกมาจาก `canViewRecord`/`canEditRecord` ตรง ๆ — ทะเบียนกลางของสิทธิ์

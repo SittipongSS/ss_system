@@ -61,7 +61,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้
   // action ที่ DB บันทึกสำเร็จแล้วตอบ 500 (กติกาเดียวกับ askActionUpdate)
   await appendDocumentEvent(supabase, {
-    docType: 'quotation', doc: quote, action: 'submit', user, docId: id,
+    docType: 'quotation', doc: quote, action: 'submit', user,
   });
 
   await recordAudit({

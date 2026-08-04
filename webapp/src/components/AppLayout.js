@@ -243,7 +243,7 @@ export default function AppLayout({ children }) {
         // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
         // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
         // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/sa/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/requests') },
+        { href: '/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/requests') },
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
