@@ -11,10 +11,12 @@
 .docTabActive .tabCode { color: var(--accent-ink); background: var(--accent-soft); }
 .draftDot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: var(--radius-full); background: var(--amber); }
 
-/* ── พรีวิวเอกสารจริง (เต็มความกว้าง อยู่บนสุด) ─────────────────────────────
+/* ── พรีวิวเอกสารจริง ───────────────────────────────────────────────────────
    เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์ ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
-   จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที · เต็มความกว้าง = เอกสารซูมใหญ่พออ่านออก */
-.previewPanel { margin-bottom: var(--space-4); padding: var(--space-3-5) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+   จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที · การ์ดใบเดียวใช้ทั้งสองที่ (.previewHero
+   ตอนดูเฉย ๆ / .previewAside ตอนแก้) ต่างกันแค่ตำแหน่งกับความสูงกรอบ */
+.previewPanel { padding: var(--space-3-5) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.previewHero { margin-bottom: var(--space-4); }
 .previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
 .previewHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
@@ -23,6 +25,19 @@
    ความสูงผูกกับจอ: จอสูงพอเห็นเกือบเต็มหน้า A4 (1123px) จอเตี้ยก็ไม่กินทั้งหน้าจอ */
 .livePreview { width: 100%; height: clamp(420px, 76vh, 1180px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 .previewInDrawer { height: 320px; }
+
+/* ── โหมดแก้: ฟอร์มซ้าย · พรีวิวขวาแบบตรึง ─────────────────────────────────
+   เอกสารย่อเป็นขั้นบันได (quotationMasterDocument): ≤640px→74% · ≤580px→68%
+   สัดส่วน .93fr เลือกให้กรอบพรีวิวที่จอ 1440 ตกราว 620px = **ขั้น 74%** พอดี
+   (วัดจริงแล้ว .78fr ให้กรอบ 559px ซึ่งร่วงไปขั้น 60% อ่านตัวหนังสือในใบไม่ออก)
+   ฟอร์มยังเหลือ ~700px จึงวางช่อง 2 คอลัมน์กับแถวสามช่องได้ครบ */
+.editLayout { margin-bottom: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, .93fr); gap: var(--space-4); align-items: start; }
+.editPanel { min-width: 0; }
+/* ตรึงใต้แถบบนสองชั้น — ถ้าใช้ top:0 การ์ดจะมุดใต้ .topnav ที่ sticky อยู่ก่อนแล้ว
+   (จอแคบ --topnav-menu-h เป็น 0 เอง ค่านี้จึงถูกทุกขนาด) */
+.previewAside { position: sticky; top: calc(var(--topbar-h) + var(--topnav-menu-h) + var(--space-3)); }
+.previewAside .previewHeader h2 { font-size: var(--fs-8); }
+.previewInColumn { height: clamp(380px, calc(100vh - var(--topbar-h) - var(--topnav-menu-h) - 170px), 900px); }
 
 /* ── แถบควบคุม: สรุปบรรทัดเดียว + ปุ่มทำงาน + รายละเอียดที่พับไว้ ─────────
    เดิมส่วนนี้เป็นการ์ดค่ามาตรฐานเต็มใบคู่กับกล่องควบคุมเวอร์ชัน กางค้างตลอดเวลา
@@ -130,6 +145,14 @@
    ซ้อนอยู่ใน <strong> ถ้ากฎกินลึก แผ่นสีจะกลายเป็นบล็อกเทาตัวเล็กคนละบรรทัดกับชื่อสี */
 .detailGrid > div > span { display: block; color: var(--text-3); font-size: var(--fs-3); }
 .detailGrid > div > strong { display: block; margin-top: var(--space-0-5); color: var(--text); font-size: var(--fs-6); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* คอลัมน์ขวาจะแคบกว่า 360px แล้วเอกสารถูกย่อจนอ่านไม่ออก — เลิกแบ่งสองคอลัมน์
+   แล้ววางพรีวิวไว้บนฟอร์มแทน (เลิกตรึงด้วย ไม่งั้นมันจะกินจอทั้งใบ) */
+@media (max-width: 1200px) {
+  .editLayout { grid-template-columns: minmax(0, 1fr); }
+  .previewAside { position: static; order: -1; }
+  .previewInColumn { height: clamp(380px, 52vh, 700px); }
+}
 
 @media (max-width: 1000px) {
   .accentPicker { grid-template-columns: 1fr; }

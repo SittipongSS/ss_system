@@ -81,6 +81,9 @@ const sameForm = (a, b) => Object.keys(EMPTY_FORM).every((key) => String(a?.[key
 // การ์ดที่มีหัวข้อของหน้านี้ (ฟอร์มแก้ไข / ประวัติเวอร์ชัน) — ประกอบที่เดียวเพราะ
 // เป็นพื้นผิวเดียวกัน แค่คนละเนื้อหา
 const cardPanel = `glass-panel ${styles.panel}`;
+// การ์ดพรีวิว — ใบเดียวกันทั้งตอนเต็มความกว้าง (ดูเฉย ๆ) และตอนเป็นคอลัมน์ขวา (แก้อยู่)
+// ต่างกันแค่คลาสตัวปรับที่ต่อท้าย
+const previewCard = `glass-panel ${styles.previewPanel}`;
 
 function AccentMark({ accentKey, label = true, className = "" }) {
   return (
@@ -401,23 +404,27 @@ export default function DocumentStandardsPage() {
         <EmptyState icon={FileBadge2}>ยังไม่มีมาตรฐานเอกสารเวอร์ชันที่เผยแพร่</EmptyState>
       ) : (
         <>
-          {/* พรีวิวเอกสารจริงเต็มความกว้างอยู่บนสุด — เป็นผลลัพธ์ที่ทุกค่าบนหน้านี้ควบคุมอยู่ */}
-          <section className={`glass-panel ${styles.previewPanel}`} aria-labelledby="live-preview-title">
-            <header className={styles.previewHeader}>
-              <div>
-                <h2 id="live-preview-title">ตัวอย่างเอกสารจริง · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
-                <p>เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์ — สิ่งที่เห็นตรงนี้คือสิ่งที่ออกจากเครื่องพิมพ์</p>
-              </div>
-              {/* หน้าเต็มจอใช้เครื่องยนต์ใบเสนอราคา จึงมีเฉพาะ QT/SO — ใบภาษีและ
-                  ไทม์ไลน์ดูจากพรีวิวในหน้านี้ (เรนเดอร์ด้วยเครื่องยนต์ของตัวเอง) */}
-              {selectedKey === "quotation" || selectedKey === "salesOrder" ? (
-                <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
-                  <Expand size={14} /> เปิดเต็มจอ
-                </Link>
-              ) : null}
-            </header>
-            <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} />
-          </section>
+          {/* ตอนดูเฉย ๆ พรีวิวเต็มความกว้างอยู่บนสุด — เอกสารกว้าง 210mm คงที่และเครื่องยนต์
+              ไม่ขยายเกิน 100% เต็มความกว้างจึงได้ขนาด 1:1 ที่อ่านออกจริง
+              ตอนแก้ พรีวิวย้ายไปเป็นคอลัมน์ขวาที่ตรึงไว้ข้างฟอร์ม (ดูบล็อกโหมดแก้ด้านล่าง) */}
+          {!editing ? (
+            <section className={`${previewCard} ${styles.previewHero}`} aria-labelledby="live-preview-title">
+              <header className={styles.previewHeader}>
+                <div>
+                  <h2 id="live-preview-title">ตัวอย่างเอกสารจริง · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
+                  <p>เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์ — สิ่งที่เห็นตรงนี้คือสิ่งที่ออกจากเครื่องพิมพ์</p>
+                </div>
+                {/* หน้าเต็มจอใช้เครื่องยนต์ใบเสนอราคา จึงมีเฉพาะ QT/SO — ใบภาษีและ
+                    ไทม์ไลน์ดูจากพรีวิวในหน้านี้ (เรนเดอร์ด้วยเครื่องยนต์ของตัวเอง) */}
+                {selectedKey === "quotation" || selectedKey === "salesOrder" ? (
+                  <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
+                    <Expand size={14} /> เปิดเต็มจอ
+                  </Link>
+                ) : null}
+              </header>
+              <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} />
+            </section>
+          ) : null}
 
           {/* แถบควบคุมใต้พรีวิว — บรรทัดเดียวบอกว่ากำลังดูเวอร์ชันอะไร ส่วนค่าทั้งชุด
               พับไว้หลังปุ่ม (เดิมกางเป็นการ์ดเต็มตลอดเวลา ดันพรีวิวกับประวัติห่างกัน)
@@ -489,20 +496,36 @@ export default function DocumentStandardsPage() {
             ) : null}
           </section>
 
+          {/* โหมดแก้: ฟอร์มซ้าย · พรีวิวขวาแบบตรึง — เลื่อนฟอร์มลงไปแค่ไหนเอกสารก็ยังอยู่
+              ในสายตา จึงเห็นผลของช่องที่กำลังพิมพ์ทุกช่อง ไม่ใช่แค่ช่องบน ๆ */}
           {editing ? (
-            <form id="document-standard-form" className={`${cardPanel} ${styles.editPanel}`} onSubmit={saveDraft}>
-              <header className={styles.panelHeader}>
-                <div>
-                  <h2>แก้ไขฉบับร่าง Version {editRow.versionNumber} · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
-                  <p>ทุกช่องที่แก้จะเห็นผลบนตัวอย่างเอกสารด้านบนทันที — กด “บันทึก” ที่แถบด้านบน</p>
+            <div className={styles.editLayout}>
+              <form id="document-standard-form" className={`${cardPanel} ${styles.editPanel}`} onSubmit={saveDraft}>
+                <header className={styles.panelHeader}>
+                  <div>
+                    <h2>แก้ไขฉบับร่าง Version {editRow.versionNumber} · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
+                    <p>ทุกช่องที่แก้จะเห็นผลบนตัวอย่างเอกสารทันที — กด “บันทึก” ที่แถบด้านบน</p>
+                  </div>
+                  <StatusBadge status="draft" />
+                </header>
+                <div className={styles.form}>
+                  <p className={styles.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง — ค่าจะมีผลกับเอกสารที่ออกใหม่เมื่อกดเผยแพร่ ส่วนใบที่ออกไปแล้วคงรหัสแบบฟอร์มเดิม</p>
+                  <DocumentStandardFields form={form} setForm={setForm} />
                 </div>
-                <StatusBadge status="draft" />
-              </header>
-              <div className={styles.form}>
-                <p className={styles.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง — ค่าจะมีผลกับเอกสารที่ออกใหม่เมื่อกดเผยแพร่ ส่วนใบที่ออกไปแล้วคงรหัสแบบฟอร์มเดิม</p>
-                <DocumentStandardFields form={form} setForm={setForm} />
-              </div>
-            </form>
+              </form>
+
+              {/* ไม่มีปุ่ม "เปิดเต็มจอ" ตอนแก้โดยเจตนา — เป็นลิงก์ออกจากหน้า กดแล้วร่างที่
+                  ยังไม่บันทึกหายทั้งชุด */}
+              <aside className={`${previewCard} ${styles.previewAside}`} aria-labelledby="live-preview-title">
+                <header className={styles.previewHeader}>
+                  <div>
+                    <h2 id="live-preview-title">ตัวอย่างเอกสารจริง</h2>
+                    <p>ขยับตามที่พิมพ์อยู่ทันที · เครื่องยนต์เดียวกับที่พิมพ์</p>
+                  </div>
+                </header>
+                <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} className={styles.previewInColumn} />
+              </aside>
+            </div>
           ) : null}
 
           <section className={cardPanel} aria-labelledby="version-history-title">

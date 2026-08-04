@@ -8,25 +8,26 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
+import Segmented from "@/components/ui/Segmented";
 import FilterPopover from "@/components/ui/FilterPopover";
-import { canSeeLeadKpi } from "@/lib/permissions";
+import { canSeeLeadKpi, leadScopes } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { TEAM_LABELS } from "@/lib/permissions";
+import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
 import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
 } from "@/lib/sales/leads";
@@ -38,6 +39,15 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import Textarea from "@/components/ui/Textarea";
+import styles from "./page.module.css";
+
+/* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
+   ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
+const SCOPE_LABELS = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
+
+const NO_TEAM = "__no_team__";
+/* เช่นเดียวกัน — ลีดที่ยังไม่ถูกมอบหมายมี assigneeId = null */
+const NO_ASSIGNEE = "__no_assignee__";
 
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
@@ -45,10 +55,22 @@ const initialForm = {
   budget: "", details: "",
 };
 
+/* ป้ายสถานะ/ช่องทาง — ความกว้างและสีอยู่ใน page.module.css ทั้งหมด
+   (ของเดิมเป็น inline style อ่านสีจาก LEAD_STATUS_COLORS ทำให้ป้ายในคอลัมน์เดียวกัน
+   กว้างไม่เท่ากัน และหน้าเพจต้องรู้จักสีของทุกสถานะเอง) */
 function statusBadge(status) {
   return (
-    <span className="ui-badge" style={{ color: LEAD_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)", minWidth: 90, justifyContent: "center" }}>
+    <span className={["ui-badge", styles.cellBadge, styles.status, styles[status]].filter(Boolean).join(" ")}>
       {LEAD_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
+function channelBadge(channel) {
+  const group = channelGroupOf(channel);
+  return (
+    <span className={["ui-badge", styles.cellBadge, styles.channel, styles[group]].filter(Boolean).join(" ")}>
+      {LEAD_CHANNEL_LABELS[channel] || channel}
     </span>
   );
 }
@@ -93,10 +115,23 @@ export default function LeadsPage() {
   // multi-select, ว่าง = ทั้งหมด. "คิวงาน" (ซ่อนลีดที่ปิดแล้ว) เดิมเป็นค่าตั้งต้นของ
   // dropdown สถานะ — แยกเป็นหมวดของตัวเองและติ๊กไว้ตั้งแต่แรกเพื่อคงพฤติกรรมเดิม
   // (badge จะขึ้น 1 ให้เห็นว่ามีตัวกรองอยู่ ไม่ใช่ซ่อนเงียบ ๆ แบบเดิม)
+  /* มิติที่กรองได้ = สถานะ · ทีมเจ้าของงาน · ช่องทาง (มติผู้ใช้ 2026-08-05)
+     เดิมมีหมวด "คิวงาน" ที่ติ๊ก `openOnly` ไว้ตั้งแต่แรกเพื่อซ่อนลีดที่ปิดแล้ว —
+     ถอดออกเพราะมันไม่ใช่ *มิติของข้อมูล* แต่เป็นทางลัดที่ทับกับตัวกรองสถานะ
+     (ซ่อนที่ปิดแล้ว = เลือกสถานะที่ยังเปิดอยู่) และการติ๊กไว้เงียบ ๆ ทำให้ผู้ใช้
+     เห็นจำนวนลีดไม่ตรงกับที่มีจริงโดยไม่รู้ตัว · ตอนนี้ไม่ติ๊กอะไรไว้ = เห็นทุกใบ */
+  /* ขอบเขตที่กำลังดู — "ของฉัน / ทีม / ทั้งหมด" (มติผู้ใช้ 2026-08-05)
+     ⚠️ ตั้งต้นที่ตัว **กว้างสุด** ไม่ใช่ตัวแรก: วันนี้ทุกคนเห็นทุกใบที่ API คืนมา
+     ถ้าตั้งต้นเป็น "ของฉัน" คนที่เคยเห็นคิวทั้งทีมจะเปิดหน้ามาแล้วของหายไปเฉย ๆ
+     (หน้าดีลตั้งต้นที่ตัวแรกได้เพราะมันเป็นแบบนั้นมาแต่ต้น) */
+  const scopes = useMemo(() => leadScopes(role), [role]);
+  const [scope, setScope] = useState(null);
+  const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
+
   const [statusFilter, setStatusFilter] = useState([]);
+  const [teamFilter, setTeamFilter] = useState([]);
+  const [assigneeFilter, setAssigneeFilter] = useState([]);
   const [channelFilter, setChannelFilter] = useState([]);
-  const [queueFilter, setQueueFilter] = useState(["openOnly"]);
-  const openOnly = queueFilter.includes("openOnly");
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
 
@@ -166,10 +201,17 @@ export default function LeadsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = leads.filter((l) => {
-      // "คิวงาน" เป็นทางลัดของค่าตั้งต้น — ถ้าผู้ใช้เลือกสถานะเองแล้ว ให้สถานะชนะ
-      // ไม่งั้นติ๊ก "เปิดลูกค้า/ไม่ผ่าน" ทั้งที่คิวงานยังติดอยู่จะได้ผลลัพธ์ว่างเสมอ
-      if (openOnly && !statusFilter.length && ["qualified", "disqualified"].includes(l.status)) return false;
+      // ขอบเขต: "ของฉัน" = ถูกมอบให้เรา หรือเรากรอกเข้ามา (ตรงกับสาขา ae ของ
+      // applyLeadScope) · "ทีม" = ทีมเดียวกับเรา · "ทั้งหมด" = ไม่กรอง
+      if (activeScope === "mine" && meId && !(l.assigneeId === meId || l.createdBy === meId)) return false;
+      if (activeScope === "team" && team && l.team !== team) return false;
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
+      // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง
+      // ไม่งั้นพอกรองทีม คิวกลางจะหายไปทั้งก้อนโดยไม่มีอะไรบอก
+      if (teamFilter.length && !teamFilter.includes(l.team || NO_TEAM)) return false;
+      // แยกจากทีมโดยตั้งใจ: หัวหน้าทีมอยากดู "ทีมตัวเอง" กับ "ใบของ AE คนนี้"
+      // คนละคำถามกัน และลีดของทีมอาจยังไม่มีผู้รับผิดชอบ
+      if (assigneeFilter.length && !assigneeFilter.includes(l.assigneeId || NO_ASSIGNEE)) return false;
       if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
       // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
@@ -184,18 +226,43 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, statusFilter, channelFilter, openOnly, sortKey, sortDir, assigneeNameOf]);
+  }, [leads, query, activeScope, meId, team, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter.join()}|${channelFilter.join()}|${openOnly}|${sortKey}|${sortDir}`,
+      resetKey: `${activeScope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
     });
 
+  /* จำนวนต่อตัวเลือก — โชว์ท้ายป้ายในแผงกรอง ให้เห็นว่าติ๊กแล้วจะเหลือกี่ใบ
+     ก่อนกด (นับจากลีดทั้งหมดที่โหลดมา ไม่ใช่จากผลกรองปัจจุบัน) */
   const countBy = useMemo(() => {
-    const c = {};
-    for (const l of leads) c[l.status] = (c[l.status] || 0) + 1;
-    return c;
+    const status = {}; const team = {}; const assignee = {}; const channel = {};
+    for (const l of leads) {
+      status[l.status] = (status[l.status] || 0) + 1;
+      team[l.team || NO_TEAM] = (team[l.team || NO_TEAM] || 0) + 1;
+      assignee[l.assigneeId || NO_ASSIGNEE] = (assignee[l.assigneeId || NO_ASSIGNEE] || 0) + 1;
+      channel[l.channel] = (channel[l.channel] || 0) + 1;
+    }
+    return { status, team, assignee, channel };
   }, [leads]);
+
+  /* ตัวเลือก "ผู้รับผิดชอบ" มาจาก **คนที่ถือลีดอยู่จริง** ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ —
+     ทะเบียนผู้ใช้มีคนที่ไม่เคยแตะคิวลีดเลยเยอะ ถ้าเอามาทั้งหมดจะเลื่อนหาไม่เจอ
+     ชื่อใช้ตัวเดียวกับที่แสดงในแถว (assigneeNameOf → ชื่อปัจจุบัน ไม่ใช่ชื่อที่ค้างในแถว)
+     ไม่งั้นกรองด้วยชื่อที่เห็นในตารางแล้วหาไม่เจอ */
+  const assigneeOptions = useMemo(() => {
+    const byId = new Map();
+    for (const l of leads) {
+      if (!l.assigneeId) continue;
+      if (!byId.has(l.assigneeId)) byId.set(l.assigneeId, assigneeNameOf(l) || l.assigneeName || l.assigneeId);
+    }
+    const rows = [...byId.entries()]
+      .map(([id, name]) => ({ value: id, label: `${name} (${countBy.assignee[id] || 0})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, "th"));
+    const none = countBy.assignee[NO_ASSIGNEE] || 0;
+    // ใบที่ยังไม่มีเจ้าของ = คิวที่หัวหน้าทีมต้องกระจาย — ต้องกรองเจาะได้
+    return none ? [...rows, { value: NO_ASSIGNEE, label: `ยังไม่มอบหมาย (${none})` }] : rows;
+  }, [leads, countBy, assigneeNameOf]);
 
   const saveLead = async (e) => {
     e.preventDefault();
@@ -320,27 +387,46 @@ export default function LeadsPage() {
 
         <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล" actions={<span className="ui-badge">{filtered.length} ลีด</span>}>
           <div className="toolbar" style={{ marginBottom: 14, flexWrap: "wrap" }}>
+            {/* ขอบเขต — วางซ้ายสุดเพราะมันกว้างกว่าตัวกรองทุกตัว (จำกัด "ชุดข้อมูล"
+                ส่วน FilterPopover จำกัด "ภายในชุดนั้น") · เหลือตัวเลือกเดียวก็ไม่ต้องโชว์ */}
+            {scopes.length > 1 && (
+              <Segmented
+                ariaLabel="ขอบเขตของคิวลีด"
+                value={activeScope}
+                onChange={setScope}
+                options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+              />
+            )}
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
             <FilterPopover
-              count={statusFilter.length + channelFilter.length + queueFilter.length}
-              onClear={() => { setStatusFilter([]); setChannelFilter([]); setQueueFilter([]); }}
+              count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length}
+              onClear={() => { setStatusFilter([]); setTeamFilter([]); setAssigneeFilter([]); setChannelFilter([]); }}
               groups={[
                 {
-                  key: "queue", label: "คิวงาน", icon: Inbox,
-                  options: [{ value: "openOnly", label: "เฉพาะที่ยังไม่ปิด (ซ่อนเปิดลูกค้า/ไม่ผ่าน)" }],
-                  selected: queueFilter, onChange: setQueueFilter,
-                },
-                {
                   key: "status", label: "สถานะ", icon: Filter,
-                  options: LEAD_STATUSES.map((s) => ({ value: s, label: `${LEAD_STATUS_LABELS[s]} (${countBy[s] || 0})` })),
+                  options: LEAD_STATUSES.map((s) => ({ value: s, label: `${LEAD_STATUS_LABELS[s]} (${countBy.status[s] || 0})` })),
                   selected: statusFilter, onChange: setStatusFilter,
                 },
                 {
+                  key: "team", label: "ทีมเจ้าของงาน", icon: Users,
+                  options: [
+                    ...TEAMS.map((t) => ({ value: t, label: `${TEAM_LABELS[t] || t} (${countBy.team[t] || 0})` })),
+                    // คิวกลางที่ยังไม่ถูกคัดกรอง — ไม่ใช่ "ไม่มีข้อมูล" แต่เป็นสถานะจริงของงาน
+                    { value: NO_TEAM, label: `ยังไม่คัดกรอง (${countBy.team[NO_TEAM] || 0})` },
+                  ],
+                  selected: teamFilter, onChange: setTeamFilter,
+                },
+                {
+                  key: "assignee", label: "ผู้รับผิดชอบ", icon: UserRound,
+                  options: assigneeOptions,
+                  selected: assigneeFilter, onChange: setAssigneeFilter,
+                },
+                {
                   key: "channel", label: "ช่องทาง", icon: PhoneCall,
-                  options: LEAD_CHANNELS.map((c) => ({ value: c, label: LEAD_CHANNEL_LABELS[c] || c })),
+                  options: LEAD_CHANNELS.map((c) => ({ value: c, label: `${LEAD_CHANNEL_LABELS[c] || c} (${countBy.channel[c] || 0})` })),
                   selected: channelFilter, onChange: setChannelFilter,
                 },
               ]}
@@ -388,7 +474,7 @@ export default function LeadsPage() {
                         </span>
                       </Link>
                     </td>
-                    <td><span className="ui-badge" style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] || "var(--text-2)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
+                    <td>{channelBadge(lead.channel)}</td>
                     <td>
                       {SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest}
                       {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{lead.serviceDetail}</span>}

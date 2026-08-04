@@ -113,6 +113,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     exciseRegistrations.warning,
     sahamitPo.warning,
     taxFilings.warning,
+    // 🐞 สองบรรทัดนี้เคยตกหล่น — `safe()` จับ error ไว้ถูกต้องแล้ว แต่ผู้เรียกลืมเอา
+    // warning มาใส่ลิสต์ ⇒ query พังแล้วการ์ด "คำร้อง" กับ "ดีลอื่นในโครงการ" ว่างเปล่า
+    // **เงียบสนิท** เหมือนไม่มีข้อมูล (อาการเดียวกับที่หน้าโครงการโดนตอนตาราง
+    // `inquiries` ถูก DROP ใน mig 0174 แล้วไม่มีใครรู้อยู่หลายวัน)
+    // ⚠️ เพิ่ม safe() ใหม่เมื่อไร ต้องมาต่อบรรทัดที่นี่ด้วย — dealOverviewWarnings.test.mjs
+    // เทียบทุกตัวที่ใช้ `.data` ว่ามี `.warning` คู่กันครบไหม
+    inquiries.warning,
+    siblingDeals.warning,
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
