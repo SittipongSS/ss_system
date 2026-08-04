@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BriefcaseBusiness, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
+import { FolderKanban, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
@@ -189,7 +189,7 @@ export default function LeadDetailPage() {
      แล้ว / เปิดไปแล้วก็เพิ่มได้อีก) ปุ่มจึงไปอยู่ในการ์ด "ดีลจากลีดนี้" ซึ่งเป็นที่ของมัน
      — อยู่ติดกับรายการดีลที่ออกไปแล้ว คนอ่านเห็นพร้อมกันว่ามีอะไรอยู่และจะเพิ่มได้ที่ไหน */
   const dealAction = leadDealAction({
-    lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: openDealForm,
+    lead, user: viewer, canCreateDeals, icon: FolderKanban, onClick: openDealForm,
   });
 
   /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การจัดการตัวระเบียน"
@@ -274,14 +274,14 @@ export default function LeadDetailPage() {
             ปุ่มยืน และคนต้องไปหาในการ์ดสถานะซึ่งเป็นคนละเรื่องกัน */}
         {(!!lead.relatedDeals?.length || dealAction.visible) && (
           <DetailCard
-            icon={BriefcaseBusiness}
+            icon={FolderKanban}
             eyebrow="Converted opportunities"
             title="ดีลจากลีดนี้"
             meta={lead.relatedDeals?.length ? `${lead.relatedDeals.length} ดีล` : "ยังไม่มีดีล"}
             actions={dealAction.visible ? (
               <Button
                 tone="primary"
-                icon={<BriefcaseBusiness size={14} aria-hidden="true" />}
+                icon={<FolderKanban size={14} aria-hidden="true" />}
                 onClick={openDealForm}
                 disabled={busy}
               >
@@ -291,7 +291,7 @@ export default function LeadDetailPage() {
           >
             {lead.relatedDeals?.length ? (
               <ContextGrid>
-                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={BriefcaseBusiness} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
+                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={FolderKanban} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
               </ContextGrid>
             ) : (
               <p className="empty">
