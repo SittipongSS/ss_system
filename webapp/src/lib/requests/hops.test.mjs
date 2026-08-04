@@ -4,6 +4,7 @@
 // แทนที่จะได้ข้อความไทยที่บอกว่าต้องกรอกอะไรเพิ่ม
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   HOP_OWNER, ROW_HOPS, ROW_OUTCOMES,
   followUpRowFrom, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
@@ -77,8 +78,16 @@ test('บันทึกคำตอบลูกค้า — ด่านตร
     hopValuesError('outcome', { outcome: 'rejected', at: '2026-08-18', note: 'ไม่ชอบโทนไม้' }),
     null,
   );
-  // ขอแก้ไม่บังคับเหตุผลที่ด่านนี้ (แต่ฟอร์มบังคับ — คนละชั้นกัน)
-  assert.equal(hopValuesError('outcome', { outcome: 'revise', at: '2026-08-18' }), null);
+  // ขอแก้ก็บังคับ — ข้อความนี้กลายเป็นบรีฟของแถวใหม่ที่เกิดตามมา ปล่อยว่างแล้ว
+  // ฝ่ายปลายทางจะเห็นแถว "รอรับเรื่อง" โผล่มาโดยไม่รู้ว่าต้องแก้อะไร
+  assert.match(
+    hopValuesError('outcome', { outcome: 'revise', at: '2026-08-18' }),
+    /สิ่งที่ลูกค้าบอก/,
+  );
+  assert.equal(
+    hopValuesError('outcome', { outcome: 'revise', at: '2026-08-18', note: 'ขอไม้เพิ่ม' }),
+    null,
+  );
 });
 
 test('patch เขียนช่องถูกก้าว และเติมวันนี้ให้เมื่อไม่ได้ระบุ', () => {
@@ -164,4 +173,41 @@ test('ขอแก้ = แถวใหม่ที่ยกของที่�
   }
   assert.equal(next.answerStatus, 'pending');
   assert.equal(rowStage(next), 'awaiting_ack', 'แถวใหม่ต้องเริ่มที่รอรับเรื่อง');
+});
+
+// ── ด่านของ route ต้องเรียงถูกลำดับ และไม่หายไปเงียบ ─────────────────────
+//
+// ⚠️ ด่านสามชั้นของ PATCH .../items/[itemId] อยู่คนละไฟล์กับกฎที่นี่ และ **ลำดับ
+// สำคัญ**: ถ้า "ก้าวนี้เป็นของฝั่งไหน" มาก่อน "อ่านใบนี้ได้ไหม" คนนอกจะรู้ได้ว่า id
+// นี้มีอยู่จริงจากข้อความ error ที่ต่างกัน · เทสต์นี้อ่านซอร์สเพราะ handler แตะ DB
+// จึงรันตรง ๆ ไม่ได้ — มันจับ "ด่านถูกลบ/ถูกสลับที่" ซึ่งคือความพังที่เงียบที่สุด
+test('route ของก้าว: ด่านครบและเรียงถูกลำดับ', () => {
+  const src = readFileSync(
+    new URL('../../app/api/sa/requests/[id]/items/[itemId]/route.js', import.meta.url),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  const order = [
+    'canReadRequestRow',      // 1 อ่านใบนี้ได้ไหม
+    'REQUEST_OPEN_STATUSES',  // 2 ใบยังเปิดอยู่ไหม (ร่าง/ยกเลิก/ปิด เดินก้าวไม่ได้)
+    'HOP_OWNER',              // 3 ก้าวนี้เป็นของฝั่งเรารึเปล่า
+    'hopStageError',          // 4 แถวอยู่ขั้นที่เดินก้าวนี้ได้ไหม
+    'hopValuesError',         // 5 ค่าที่ส่งมาครบไหม
+  ].map((needle) => {
+    // lastIndexOf = จุดที่ **ใช้งาน** ไม่ใช่บรรทัด import ⇒ ด่านที่เหลือแต่ import
+    // (เผลอลบเงื่อนไขทิ้ง) จะร่วงลงมาอยู่หน้าด่านอื่นและเทสต์จับได้
+    const i = src.lastIndexOf(needle);
+    assert.notEqual(i, -1, `route ต้องยังเรียก ${needle}`);
+    return { needle, i };
+  });
+  for (let n = 1; n < order.length; n += 1) {
+    assert.ok(
+      order[n].i > order[n - 1].i,
+      `${order[n].needle} ต้องอยู่หลัง ${order[n - 1].needle}`,
+    );
+  }
+
+  // วันของก้าวต้องเป็นวันไทย — nowIso.slice(0, 10) ให้วัน UTC ซึ่งก่อน 07:00 น.
+  // ของไทยยังเป็นเมื่อวาน ⇒ ก้าวที่กดตอนเช้ามืดจะถูกบันทึกล่วงหน้าไปหนึ่งวัน
+  assert.match(src, /const today = businessDate\(\)/);
 });

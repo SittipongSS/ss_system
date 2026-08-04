@@ -97,9 +97,12 @@ export function hopValuesError(hop, values = {}) {
     // ⭐ จำนวนนี้ใช้กระทบยอดกับใบสั่งขาย — ไม่มีจำนวน = กระทบยอดไม่ได้
     if (!Number.isFinite(qty) || qty <= 0) return 'ต้องระบุจำนวนที่ลูกค้าคอนเฟิร์ม';
   }
-  // ไม่เอา = ปิดแถวถาวร ต้องบอกเหตุผล (constraint answer_evidence บังคับ
-  // declineReason เมื่อ answerStatus = 'declined')
-  if (outcome === 'rejected' && !String(values.note ?? '').trim()) {
+  // ⭐ "ไม่เอา" กับ "ขอแก้" บังคับเหตุผลทั้งคู่ แต่คนละเหตุผลกัน:
+  //   ไม่เอา — ปิดแถวถาวร ต้องมีหลักฐานว่าทำไม (constraint answer_evidence บังคับ
+  //     declineReason เมื่อ answerStatus = 'declined')
+  //   ขอแก้ — ข้อความนี้กลายเป็น **บรีฟของแถวใหม่ที่กำลังจะเกิด** ปล่อยว่างเมื่อไร
+  //     ฝ่ายปลายทางจะเห็นแถว "รอรับเรื่อง" โผล่มาโดยไม่รู้ว่าต้องแก้อะไร
+  if (['rejected', 'revise'].includes(outcome) && !String(values.note ?? '').trim()) {
     return 'ต้องระบุสิ่งที่ลูกค้าบอก';
   }
   if (String(values.note ?? '').length > 4000) return 'ข้อความยาวเกิน 4000 ตัวอักษร';

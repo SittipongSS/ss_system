@@ -17,8 +17,15 @@ import ReadableText from "@/components/ui/ReadableText";
 import {
   ROW_STAGE_LABELS, ROW_STAGE_TONES, rowLeadTimes, rowStage,
 } from "@/lib/requests/rowStage";
-import { HOP_OWNER, hopLabel } from "@/lib/requests/hops";
+import { HOP_OWNER, ROW_OUTCOMES, hopLabel } from "@/lib/requests/hops";
 import styles from "./RowStageRail.module.css";
+
+// คอนเฟิร์มเป็นทางหลัก · อีกสองทางเป็นเส้นขอบ — เห็นครบแต่ไม่แย่งน้ำหนักกัน
+const OUTCOME_BUTTON = {
+  confirmed: { tone: "primary", variant: "filled" },
+  revise: { tone: undefined, variant: "outline" },
+  rejected: { tone: "danger", variant: "outline" },
+};
 
 // ก้าวที่ต้องวาดบนราง เรียงตามเวลาจริง · `field` = ช่องที่บอกว่าก้าวนี้เกิดแล้ว
 const RAIL = [
@@ -95,16 +102,35 @@ export default function RowStageRail({
                   </div>
                 ) : isCurrent ? (
                   <div className={styles.action}>
-                    {isMine ? (
+                    {!isMine ? (
+                      // ⚠️ ป้ายรอ ไม่ใช่ปุ่มจาง — ปุ่มที่กดไม่ได้ไม่บอกว่าทำไม
+                      <span className={styles.waiting}>{WAITING[step.hop]}</span>
+                    ) : step.hop === "outcome" ? (
+                      // ⭐ สามทางออกวางเรียงให้เห็นพร้อมกัน ไม่ใช่ปุ่มเดียวแล้วไป
+                      // เลือกในโมดัล — คนกดรู้ตั้งแต่ยังไม่กดว่าทางเลือกมีเท่านี้
+                      // และ "ไม่เอา" ไม่ได้ซ่อนอยู่หลังปุ่มที่เขียนว่าบันทึก
+                      <div className={styles.choices}>
+                        {ROW_OUTCOMES.map((o) => (
+                          <Button
+                            key={o} size="sm" disabled={busy}
+                            tone={OUTCOME_BUTTON[o].tone}
+                            variant={OUTCOME_BUTTON[o].variant}
+                            onClick={() => onHop?.("outcome", o)}
+                          >
+                            {hopLabel("outcome", o)}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      // navy ไม่ใช่ terracotta — ก้าวพวกนี้คือ "ยืนยันสิ่งที่ทำอยู่"
+                      // ไม่ใช่ "เริ่มของใหม่" · และหนึ่งใบมีหลายแถว ⇒ accent รายแถว
+                      // จะได้ปุ่มเน้นเต็มหน้า (กฎ Button.js: accent หน้าละตัวเดียว)
                       <Button
-                        size="sm" tone="accent" disabled={busy}
+                        size="sm" tone="primary" disabled={busy}
                         onClick={() => onHop?.(step.hop)}
                       >
                         {hopLabel(step.hop)}
                       </Button>
-                    ) : (
-                      // ⚠️ ป้ายรอ ไม่ใช่ปุ่มจาง — ปุ่มที่กดไม่ได้ไม่บอกว่าทำไม
-                      <span className={styles.waiting}>{WAITING[step.hop]}</span>
                     )}
                   </div>
                 ) : (
@@ -125,22 +151,20 @@ export default function RowStageRail({
         })}
       </ol>
 
-      {/* ราคาเป็นขั้นสุดท้ายของสายนี้ ไม่ใช่คำร้องใบใหม่ — ปุ่มโผล่เฉพาะตอนที่
-          ลูกค้าคอนเฟิร์มแล้วเท่านั้น (ครึ่งที่มองเห็นได้ของด่าน canPriceRow) */}
+      {/* ราคาเป็นขั้นสุดท้ายของสายนี้ ไม่ใช่คำร้องใบใหม่ — แถบนี้คือครึ่งที่มองเห็นได้
+          ของด่าน canPriceRow และเป็นตาข่ายของกับดักข้อ 11: แถวที่คอนเฟิร์มแล้วแต่ยัง
+          ไม่ใส่ราคาต้องไม่เงียบ ไม่งั้นใบค้างถาวรโดยไม่มีใครเห็น
+          ⚠️ **ยังไม่มีปุ่ม** — ทางใส่ราคาวันนี้ (/answer) ตรวจสิทธิ์จาก `kind` ของวัสดุ
+          และเขียน rev ผูกกับ materialId ซึ่งแถวสายพัฒนายังไม่มีทั้งคู่ ⇒ ปุ่มที่กดแล้ว
+          403 แย่กว่าไม่มีปุ่ม · ขั้นนี้ต่อจริงพร้อมสายพัฒนากลิ่นครบวง */}
       {stage === "awaiting_price" && (
         <div className={styles.priceBar}>
           <span className={styles.priceText}>
             ลูกค้าคอนเฟิร์มแล้ว
             {row?.confirmedQty ? ` จำนวน ${Number(row.confirmedQty).toLocaleString("th-TH")}` : ""}
-            {" — เหลือขั้นใส่ราคา"}
+            {" — เหลือขั้นใส่ราคาโดยฝ่าย"}
+            {request?.dept ? ` ${request.dept}` : "ปลายทาง"}
           </span>
-          {canDept ? (
-            <Button size="sm" tone="accent" disabled={busy} onClick={() => onHop?.("price")}>
-              ใส่ราคา
-            </Button>
-          ) : (
-            <span className={styles.waiting}>รอฝ่ายปลายทางใส่ราคา</span>
-          )}
         </div>
       )}
     </div>
