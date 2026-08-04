@@ -1,7 +1,7 @@
 // ── สิทธิ์ต่อคำร้องหนึ่งใบ ─────────────────────────────────────────────────
 // ⚠️ ด่าน "เห็นเมนูคำร้องไหม" ยังผูกกับ canViewCosting อยู่ที่ route (R-1 ของ
 // docs/request-hub-rebuild-plan.md จะแยกออก) — ไฟล์นี้คุมแค่ "ใบนี้ใครแตะได้"
-import { isSuperuser } from '@/lib/permissions';
+import { isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 
 // ตอบ/รับเรื่อง = ฝ่ายเจ้าของคำร้อง (RD หรือ PC) + admin break-glass
@@ -22,4 +22,21 @@ export function canManageRequest(user, request) {
 // ใช้ตอนอ้างคำร้องจากที่อื่น เช่นปุ่ม "สร้างงานจากคำร้อง" ในระบบงานของฉัน
 export function canViewRequest(user, request) {
   return canManageRequest(user, request) || canAnswerRequest(user, request);
+}
+
+// อ่านคำร้อง "ใบนี้" ได้ไหม — ผูกกับแถว ไม่ใช่แค่ถือ cap
+//
+// 🐞 รูที่เปิดอยู่ก่อนหน้านี้: `GET /api/sa/requests` (รายการ) กรองแถวให้เห็นเฉพาะ
+// ของตัวเอง + คิวของฝ่ายตน แต่ `GET /api/sa/requests/[id]` กั้นด้วย `canViewCosting`
+// ล้วน ซึ่ง **ไม่ดูแถวเลย** ⇒ รายการซ่อนใบของคนอื่น แต่เปิดตรงด้วย id อ่านได้หมด
+// พร้อมบรรทัดและสเปกข้างใน · id ไม่ใช่ของเดายาก — มันหลุดออกไปทางลิงก์ในแจ้งเตือน
+// การ์ดแชท และ /go/DR-… เป็นปกติอยู่แล้ว
+//
+// ⚠️ เป็นด่าน **เพิ่ม** ไม่ใช่ด่านแทน — ยังต้องผ่าน canViewCosting ชั้นนอกก่อนเสมอ
+export function canReadRequestRow(user, request) {
+  if (canViewRequest(user, request)) return true;
+  // ผู้สังเกตการณ์ทั้งระบบอ่านได้ทุกใบตามเจตนาของ role — ข้อยกเว้นนี้มีไว้ไม่ให้ใคร
+  // เสียสิทธิ์ที่เคยมี ไม่ได้เปิดให้ใครใหม่ (viewer ไม่มี costing:view จึงไม่เคยผ่าน
+  // ด่านชั้นนอกอยู่แล้ว · ที่ได้ประโยชน์จริงคือ executive)
+  return isReadOnlyObserver(user?.role);
 }

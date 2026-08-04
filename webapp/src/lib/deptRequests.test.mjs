@@ -20,6 +20,7 @@ import {
   requestDueTone,
   requestNeedsOutcome,
   requestProgress,
+  canReadRequestRow,
   requestsByStepKey,
   stepPinSummary,
   requestSummaryText,
@@ -505,4 +506,26 @@ test('requestPayload: ไม่ส่งของที่ server ตัดส�
   const priced = requestPayload({ ...form, kind: 'price_f' });
   assert.equal(priced.items.length, 1);
   assert.equal(priced.items[0].kind, 'RM_F');
+});
+
+test('canReadRequestRow: เปิดตรงด้วย id ต้องดูแถว ไม่ใช่แค่ถือ cap (P0c′)', () => {
+  // 🐞 รูเดิม: GET /api/sa/requests กรองแถวให้เห็นเฉพาะของตัวเอง + คิวของฝ่ายตน
+  // แต่ GET /api/sa/requests/[id] กั้นด้วย canViewCosting ล้วน ⇒ รายการซ่อนใบของ
+  // คนอื่น แต่รู้ id เมื่อไรก็เปิดอ่านได้หมดพร้อมบรรทัดและสเปกข้างใน
+  const req = { dept: 'RD', requestedById: 'u-sa', status: 'pending' };
+
+  // ผู้เปิดคำร้องเอง
+  assert.equal(canReadRequestRow({ id: 'u-sa', role: 'ae' }, req), true);
+  // ฝ่ายที่ต้องตอบ
+  assert.equal(canReadRequestRow({ id: 'u-rd', role: 'rd', department: 'RD' }, req), true);
+  // admin break-glass
+  assert.equal(canReadRequestRow({ id: 'u-admin', role: 'admin' }, req), true);
+  // ผู้สังเกตการณ์ทั้งระบบ — ต้องไม่เสียสิทธิ์ที่เคยมี
+  assert.equal(canReadRequestRow({ id: 'u-ex', role: 'executive' }, req), true);
+
+  // ⭐ ของจริงที่ปิด: เซลคนอื่นที่ถือ costing:view เหมือนกัน แต่ไม่ใช่เจ้าของใบ
+  // และไม่ได้อยู่ฝ่ายที่ต้องตอบ
+  assert.equal(canReadRequestRow({ id: 'u-other', role: 'ae' }, req), false);
+  // ฝ่ายอื่นที่ไม่ใช่ปลายทางของใบนี้
+  assert.equal(canReadRequestRow({ id: 'u-pc', role: 'staff', department: 'PC' }, req), false);
 });

@@ -1,5 +1,6 @@
 // ── API คำร้องข้ามฝ่ายรายเรื่อง (mig 0173) ──────────────────────────────
-// GET    : รายละเอียด (canViewCosting)
+// GET    : รายละเอียด (canViewCosting + **ต้องเป็นใบของตัวเอง/ของฝ่ายตน** — ดู
+//          canReadRequestRow; เดิมด่านนี้ไม่ดูแถวเลย เปิดตรงด้วย id ได้ทุกใบ)
 // PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย + @mention)
 //          acknowledge (RD/PC รับเรื่อง + รับปากวันที่จะตอบ) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
@@ -12,8 +13,8 @@ import {
 } from '@/lib/forceDelete';
 import {
   acknowledgeRequestError, answerRequestError, canAnswerRequest, canManageRequest,
-  cancelRequestError, closeOutcomeError, closeRequestError, deleteRequestError,
-  generateRequestDocNo, submitRequestError,
+  canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
+  deleteRequestError, generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
 import { requestHasItems, requestKindLabel } from '@/lib/master/requestTypes';
 import { isScentRegistrar } from '@/lib/master/scents';
@@ -73,6 +74,14 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const row = await findRequest(getSupabaseAdmin(), id);
     if (!row) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+    // ด่านรายแถว — ให้ตรงกับที่ GET /api/sa/requests กรองไว้อยู่แล้ว ไม่งั้นรายการ
+    // ซ่อนใบของคนอื่น แต่เปิดตรงด้วย id อ่านได้หมด (id หลุดทางลิงก์แจ้งเตือน/ /go/)
+    if (!canReadRequestRow(user, row)) {
+      return Response.json(
+        { error: 'คำร้องนี้ไม่ใช่ของคุณ และไม่ได้ส่งถึงฝ่ายของคุณ' },
+        { status: 403 },
+      );
+    }
     // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
     // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ
     return Response.json(

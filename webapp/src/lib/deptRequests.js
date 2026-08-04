@@ -49,6 +49,7 @@ export {
   canAnswerRequest,
   canManageRequest,
   canViewRequest,
+  canReadRequestRow,
 } from '@/lib/requests/access';
 
 export {
