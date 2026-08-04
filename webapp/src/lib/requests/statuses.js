@@ -16,7 +16,7 @@ export const REQUEST_STATUS_LABELS = {
 
 // โทนของ pill = **ชื่อโทนของ `<StatusBadge>`** ไม่ใช่ค่าสี — หน้าจอจึงไม่ต้องรู้จัก
 // token สีเลย และเปลี่ยนดีไซน์ป้ายได้ที่ Badge.module.css ที่เดียวทั้งระบบ
-// (มาตรฐานเดียวกับ SCENT_STATUS_TONES / SCENT_FEEDBACK_TONES)
+// (มาตรฐานเดียวกับ SCENT_STATUS_TONES / FORMULA_STATUS_TONES)
 export const REQUEST_STATUS_TONES = {
   draft: 'neutral',
   pending: 'warning',

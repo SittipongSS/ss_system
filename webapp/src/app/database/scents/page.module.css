@@ -7,7 +7,6 @@
 
 .name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
-.comment { white-space: pre-wrap; }
 
 .rowActions {
   display: flex;
@@ -17,12 +16,5 @@
 }
 
 .actionsCol { width: 180px; }
-.revCol { width: 70px; }
 
 .hint { color: var(--text-3); }
-
-.effect {
-  margin: var(--space-1) 0 0;
-  color: var(--text-3);
-  font-size: var(--fs-5);
-}

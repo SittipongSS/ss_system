@@ -8,38 +8,37 @@ import { normalizeScentInput } from '@/lib/master/scents';
 import { normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
-// โหลดกลิ่นพร้อม Rev ทั้งหมดในก้อนเดียว (กัน N+1) — ชุดข้อมูลเล็ก การค้น/กรอง
-// ทำที่ client เหมือนหน้าทะเบียนวัสดุ
+//
+// ⭐ **กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต** (มติ: แก้แล้วได้กลิ่นตัวใหม่ที่มีรหัส
+// ชื่อ วันที่ ของตัวเอง ไม่ใช่ Rev. ของตัวเดิม) ⇒ ไม่มีตารางรอบให้ join อีกแล้ว
+// วันที่ส่งย้ายมาอยู่บนตัวกลิ่นเอง (`sentAt` — mig 0205 ยกมาจาก scent_revisions)
 export async function loadScents(supabase, { status = null, customerId = null } = {}) {
   let query = supabase.from('scents').select('*');
   if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
   if (customerId) query = query.eq('customerId', customerId);
-  const { data: scents, error } = await query.order('name', { ascending: true });
+  const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  if (!scents?.length) return [];
-
-  const { data: revisions, error: revError } = await supabase
-    .from('scent_revisions')
-    .select('*')
-    .in('scentId', scents.map((s) => s.id))
-    .order('revisionNo', { ascending: false });
-  if (revError) throw revError;
-
-  return scents.map((s) => ({
-    ...s,
-    revisions: (revisions || []).filter((r) => r.scentId === s.id),
-  }));
+  return data || [];
 }
 
 export async function findScent(supabase, id) {
   const { data, error } = await supabase.from('scents').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
-  if (!data) return null;
-  const { data: revisions, error: revError } = await supabase
-    .from('scent_revisions').select('*').eq('scentId', id)
-    .order('revisionNo', { ascending: false });
-  if (revError) throw revError;
-  return { ...data, revisions: revisions || [] };
+  return data || null;
+}
+
+// กลิ่นนี้ถูกคำร้องผลิตขึ้นมาแล้วหรือยัง — ด่านก่อนลบ
+//
+// ⚠️ ตาข่ายนี้มาแทน "มีประวัติการส่งแล้ว ลบไม่ได้" ของเดิม · `producedScentId`
+// เป็น FK แบบ SET NULL (0204) ⇒ ลบกลิ่นได้เงียบ ๆ แล้วคำร้องจะชี้ไปที่ว่าง
+// โดยไม่มีอะไรฟ้อง — สายพันธุ์ของงานขาดตรงนั้นและต่อกลับไม่ได้อีก
+export async function countRequestItemsProducingScent(supabase, scentId) {
+  const { count, error } = await supabase
+    .from('dept_request_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('producedScentId', scentId);
+  if (error) throw error;
+  return count || 0;
 }
 
 export async function createScent(supabase, input, user, { accepted = false } = {}) {
@@ -53,7 +52,6 @@ export async function createScent(supabase, input, user, { accepted = false } = 
     id: genId('SCT'),
     ...value,
     status: accepted ? 'developing' : 'draft',
-    currentRevisionNo: 0,
     // RD ที่สร้างเองเป็นเจ้าของกลิ่นโดยปริยาย — ฝ่ายขายเปิดร่างยังไม่มีเจ้าของ
     ownerId: value.ownerId || (accepted ? user?.id ?? null : null),
     ownerName: value.ownerName || (accepted ? user?.name ?? null : null),
@@ -90,53 +88,6 @@ function translateScentConflict(error) {
     if (msg.includes('formulas_code_uk')) return new Error('รหัสสูตรนี้ถูกใช้ไปแล้ว');
   }
   return error;
-}
-
-// ── Rev ของกลิ่น ─────────────────────────────────────────────────────────
-// เขียน Rev แล้วอัปเดตตัวนับบนหัวกลิ่นในจังหวะเดียวกันเสมอ (ตัวนับเป็นค่า derive
-// ที่เก็บไว้เพื่อไม่ต้อง join ตอนอ่านทะเบียน — ปล่อยให้ค้างคือ drift)
-export async function appendScentRevision(supabase, scent, value, user) {
-  const revisionNo = Number(scent.currentRevisionNo || 0) + 1;
-  const nowIso = new Date().toISOString();
-  const row = {
-    id: genId('SREV'),
-    scentId: scent.id,
-    revisionNo,
-    sampleCode: value.sampleCode,
-    sentAt: value.sentAt,
-    sentById: user?.id ?? null,
-    sentByName: user?.name ?? null,
-    feedbackStatus: 'pending',
-    note: value.note,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  };
-  const { data, error } = await supabase.from('scent_revisions').insert(row).select().single();
-  if (error) throw error;
-
-  await updateScent(supabase, scent.id, { currentRevisionNo: revisionNo });
-  return data;
-}
-
-export async function findScentRevision(supabase, id) {
-  const { data, error } = await supabase
-    .from('scent_revisions').select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data || null;
-}
-
-export async function recordScentFeedback(supabase, revisionId, patch, user) {
-  const { data, error } = await supabase
-    .from('scent_revisions')
-    .update({
-      ...patch,
-      feedbackById: user?.id ?? null,
-      feedbackByName: user?.name ?? null,
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('id', revisionId).select().single();
-  if (error) throw error;
-  return data;
 }
 
 // ── สูตร ─────────────────────────────────────────────────────────────────
