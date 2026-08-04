@@ -20,6 +20,7 @@ import {
   DEFAULT_VOLUME_UNIT,
   SALE_UNITS,
   VOLUME_UNITS,
+  packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
 import { fmtMoney } from "@/lib/format";
@@ -107,6 +108,11 @@ export default function ProductForm({
   // ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 · **แต่ถ้าสินค้าตัวนี้มีราคาค้างอยู่ ต้องโชว์เสมอ**
   // ไม่ว่าหมวดไหน — ซ่อนช่องที่ยังมีค่า = ค่าติดอยู่ในฐานข้อมูลโดยไม่มีทางเห็นหรือลบ
   // (ราคาขายปลีกเป็นฐานคิดภาษีสรรพสามิต ค่าค้างที่มองไม่เห็นจึงอันตรายกว่าช่องเกินมา)
+  // หน่วยขายที่กรอกอยู่ — ใช้พูดในคำอธิบายช่องอื่นให้เป็นภาษาของสินค้าตัวนี้จริง ๆ
+  // ("ขนาดของ 1 ขวด" ชัดกว่า "ขนาดของ 1 หน่วยขาย")
+  const saleUnitLabel = form.saleUnit || DEFAULT_SALE_UNIT;
+  const packaging = packagingSummary(form);
+
   const inRetailCategory = showsRetailPrice(form.fgCode);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
   const showRetail = inRetailCategory || hasRetailValue;
@@ -241,6 +247,19 @@ export default function ProductForm({
               </span>
             </div>
           )}
+          {/* ⚠️ สองช่องนี้สลับกันได้ง่ายเพราะชื่อคล้ายกัน — "หน่วยขาย" คือหน่วยที่นับขาย
+              บนเอกสาร (ไปเป็น quotation_lines.unit) ส่วน "หน่วยปริมาตร" คือขนาดของ
+              หนึ่งหน่วยขาย · ประโยคสรุปใต้กลุ่มนี้ประกอบจากค่าที่กรอกจริง กรอกสลับช่อง
+              เมื่อไหร่จะอ่านแล้วผิดทันที ('1 ml = 50 ขวด') */}
+          <div className="form-group">
+            <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
+            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
+              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+            <span className="text-xs text-[var(--text-3)] mt-1">หน่วยที่ <strong>นับขาย</strong> บนใบเสนอราคา/ใบสั่งขาย — ลูกค้าสั่ง 10 หมายถึง 10 หน่วยนี้</span>
+          </div>
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <div className="flex gap-2">
@@ -251,20 +270,21 @@ export default function ProductForm({
                 ))}
               </Select>
             </div>
+            <span className="text-xs text-[var(--text-3)] mt-1"><strong>ขนาดของ 1 {saleUnitLabel}</strong> — ไม่ใช่หน่วยที่ใช้นับขาย</span>
           </div>
           <div className="form-group">
-            <label>จำนวนชิ้นต่อลัง</label>
+            <label>จำนวนต่อลัง</label>
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
+            <span className="text-xs text-[var(--text-3)] mt-1">1 ลังมีกี่{saleUnitLabel} (เว้นว่างได้ถ้าไม่ได้ขายยกลัง)</span>
           </div>
-          <div className="form-group">
-            {/* หน่วยขาย = หน่วยที่แสดงบนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ) */}
-            <label>หน่วยขาย</label>
-            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
-              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
-          </div>
+          {packaging && (
+            <div className="form-group col-span-2">
+              <div className="text-xs rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2 text-[var(--text-2)]">
+                สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong>
+                <span className="text-[var(--text-3)]"> — อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง</span>
+              </div>
+            </div>
+          )}
           <div className="form-group">
             <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (
