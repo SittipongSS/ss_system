@@ -149,7 +149,9 @@ function signatures() {
       <section class="signatures" aria-label="ส่วนลงนาม">${box('ผู้จัดทำ', '/ PREPARED BY')}${box('ผู้รับเอกสาร / ลูกค้า', '/ RECEIVED BY')}</section>`;
 }
 
-export function buildBillPrintHTML(order, customer = {}, company, activeStandard = null) {
+// options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (กติกาเดียวกับ renderQuotationMasterDocumentHTML)
+// ใช้ตอนฝังเอกสารเป็นพรีวิวใน iframe ซึ่งปุ่มสั่งพิมพ์ไม่มีความหมาย
+export function buildBillPrintHTML(order, customer = {}, company, activeStandard = null, options = {}) {
   const co = resolveCompanyBlock(company);
   const standard = order.taxNoticeStandardSnapshot || activeStandard;
   const form = resolveDocumentForm(standard, NOTICE_KEY);
@@ -255,7 +257,7 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
     accentKey: resolveDocumentAccentKey(standard, NOTICE_KEY),
     variantClass: 'tax',
     extraCss: NOTICE_CSS,
-    toolbar: { label: `${titleTh} ${noticeNumber}`, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
+    toolbar: options.toolbar === false ? null : { label: `${titleTh} ${noticeNumber}`, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
     pages: documentPages,
   });
 }
