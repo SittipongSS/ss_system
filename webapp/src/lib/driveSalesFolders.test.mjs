@@ -66,9 +66,9 @@ function salesThreadFolders() {
   return out;
 }
 
-// รายการที่ยัง **พังอยู่** ณ รอบตรวจ LD — ตั้งใจไม่แก้ในรอบนี้ (ผู้ใช้ให้ไล่ทีละระบบ)
-// ⚠️ ratchet สองทาง: แก้เมื่อไรเทสต์จะแดงให้มาลบชื่อออกจากลิสต์ ไม่ให้ค้างเป็นข้อยกเว้นลอย
-const KNOWN_BROKEN = ['quotation', 'sales_order'];
+// ไม่มีข้อยกเว้นแล้ว — quotation/sales_order ถูกแก้ในรอบตรวจ DL (2026-08-05)
+// ตอนที่ไฟล์แนบบน prod ยังเป็น 0 ทุกชนิด จึงเปลี่ยนชื่อโฟลเดอร์ได้โดยไม่ทิ้งของเก่า
+const KNOWN_BROKEN = [];
 
 test('อ่าน SALES_THREAD_FOLDER + คอลัมน์จาก migration ได้จริง (กันเทสต์กลายเป็นเทสต์เปล่า)', () => {
   const folders = salesThreadFolders();
@@ -99,15 +99,26 @@ test('ลีดตั้งชื่อโฟลเดอร์ด้วยช�
   for (const key of lead.labelKeys) assert.ok(cols.has(key), `sales_leads ไม่มีคอลัมน์ ${key}`);
 });
 
-test('รายการที่ยกเว้นไว้ต้องยังพังอยู่จริง — แก้แล้วให้มาลบออกจากลิสต์', () => {
-  const folders = salesThreadFolders();
-  for (const type of KNOWN_BROKEN) {
-    const entry = folders[type];
-    assert.ok(entry, `${type} หายไปจาก SALES_THREAD_FOLDER — ปรับ KNOWN_BROKEN ด้วย`);
-    const cols = columnsOf(entry.table);
-    assert.equal(
-      entry.labelKeys.filter((key) => cols.has(key)).length, 0,
-      `${type} ถูกแก้แล้ว — ลบออกจาก KNOWN_BROKEN`,
-    );
+test('ไม่มีข้อยกเว้นค้างอยู่ — ทุก entity ผ่านด่านจริง', () => {
+  assert.deepEqual(KNOWN_BROKEN, [], 'มีข้อยกเว้นค้าง = ยังมีโฟลเดอร์ที่ตั้งชื่อด้วย id ดิบ');
+});
+
+/* ⭐ ทุก labelKey ต้องเป็นคอลัมน์จริง — ไม่ใช่แค่ "มีอย่างน้อยหนึ่งตัว"
+   คีย์ผีที่ปนอยู่ (เช่น `docNo` ที่ไม่มีในตารางไหนเลย) ไม่ทำให้พังวันนี้เพราะมีตัวสำรอง
+   แต่มันคือหลักฐานว่าไม่มีใครเคยเทียบกับ schema จริง */
+test('ทุก labelKey เป็นคอลัมน์จริง ไม่มีคีย์ผีปนมา', () => {
+  for (const [type, { table, labelKeys }] of Object.entries(salesThreadFolders())) {
+    const cols = columnsOf(table);
+    const ghosts = labelKeys.filter((key) => !cols.has(key));
+    assert.deepEqual(ghosts, [], `${type} → ${table}: คีย์ที่ไม่มีในตาราง ${ghosts.join(', ')}`);
   }
+});
+
+test('เอกสารที่คนเรียกด้วยเลขที่ ต้องตั้งชื่อโฟลเดอร์ด้วยเลขที่นั้น', () => {
+  const folders = salesThreadFolders();
+  assert.equal(folders.quotation.labelKeys[0], 'quoteNumber');
+  assert.equal(folders.sales_order.labelKeys[0], 'orderNumber');
+  // ดีล/โครงการเรียกกันด้วยรหัส (DL-… / PJ-…) จึงให้ code มาก่อนชื่อ
+  assert.equal(folders.deal.labelKeys[0], 'code');
+  assert.equal(folders.project.labelKeys[0], 'code');
 });

@@ -303,15 +303,24 @@ async function costingSegments(supabase, entityType, entityId) {
 // เป็นของบทสนทนา ไม่ใช่เอกสารประจำตัวลูกค้า) แค่จัดเข้าลิ้นชักของตัวเองให้หาเจอ
 const SALES_THREAD_FOLDER = {
   // โครงการเรียกกันด้วย "รหัส" (PJ-xxxx) เสมอ จึงให้ code มาก่อนชื่อ
-  project: { folder: FOLDER.salesProjects, table: 'projects', labelKeys: ['code', 'name', 'title'] },
+  project: { folder: FOLDER.salesProjects, table: 'projects', labelKeys: ['code', 'name'] },
   // 🐞 เคยตั้งเป็น ['name','companyName','title'] ซึ่ง **ไม่มีสักคอลัมน์** ใน
   // sales_leads (mig 0091 ใช้ contactName/company) → docLabel หาไม่เจอแล้วตกไปใช้
   // `String(row.id)` ⇒ โฟลเดอร์ไฟล์แนบของลีดทุกใบชื่อ "LEAD-xxxxxxxx" เปิด Drive
   // มาแล้วหาไม่เจอว่าของใคร (สกรีนช็อตแชท/นามบัตรคือหลักฐานต้นทางของลีด)
   lead: { folder: FOLDER.salesLeads, table: 'sales_leads', labelKeys: ['contactName', 'company'] },
-  deal: { folder: FOLDER.salesDeals, table: 'sales_deals', labelKeys: ['docNo', 'title', 'name'] },
-  quotation: { folder: FOLDER.salesQuotations, table: 'quotations', labelKeys: ['quotationNo', 'docNo'] },
-  sales_order: { folder: FOLDER.salesOrders, table: 'sales_orders', labelKeys: ['orderNo', 'docNo'] },
+  // ⚠️ **ชื่อคอลัมน์ต้องมีจริง** — `docLabel()` หาคีย์แรกที่มีค่า ถ้าไม่เจอสักตัวมันไม่
+  // error แต่ตกไปใช้ `String(row.id)` เงียบ ๆ (โฟลเดอร์ชื่อ "QT-…" กลายเป็น "QUO-a1b2…")
+  // ตัวตรวจ `check:columns` จับไม่ได้เพราะ query ตรงนี้เป็น `.select('*')` —
+  // ตัวที่จับคือ driveSalesFolders.test.mjs ซึ่งเทียบกับ CREATE TABLE/ALTER จริง
+  //
+  // ⏱️ แก้ชื่อคีย์ = โฟลเดอร์ **ใบใหม่** (ensureFolderPath จับคู่ด้วยชื่อ และสาย
+  // sales thread ไม่มี cachedId) ⇒ ถ้ามีไฟล์อยู่ก่อนแล้ว ของเก่าจะค้างคนละโฟลเดอร์
+  // ตรวจ prod 2026-08-05: ไฟล์แนบของ lead/deal/quotation/sales_order/project = **0 ทุกชนิด**
+  // จึงแก้ตอนนี้ได้ฟรี — หลังจากมีไฟล์แรกแล้วต้องย้ายโฟลเดอร์เอง
+  deal: { folder: FOLDER.salesDeals, table: 'sales_deals', labelKeys: ['code', 'title'] },
+  quotation: { folder: FOLDER.salesQuotations, table: 'quotations', labelKeys: ['quoteNumber'] },
+  sales_order: { folder: FOLDER.salesOrders, table: 'sales_orders', labelKeys: ['orderNumber'] },
 };
 
 export async function folderPathForEntity(entityType, entityId) {
