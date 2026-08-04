@@ -103,3 +103,32 @@ test('ต้องมีปุ่มบันทึก ไม่ auto-save', () 
   const route = readFileSync(join(ROOT, 'src/app/api/sales-planning/deals/[id]/route.js'), 'utf8');
   assert.match(route, /sales_deal_forecasts/, 'ยืนยันว่าการเซฟเขียนประวัติจริง');
 });
+
+/* ── ป้ายในคอลัมน์ต้องกว้างเท่ากันทั้งคอลัมน์ ──────────────────────────────
+   มติผู้ใช้ 2026-08-05 (ขอทั้งคิวลีดและไปป์ไลน์ดีล) — ป้ายที่กว้างตามความยาว
+   ข้อความทำให้กวาดตาลงคอลัมน์ไม่ได้
+   ⚠️ ความกว้างต้องมาจากฝั่ง**ผู้เรียก** ไม่ใช่ฝังใน helper: ป้ายชุดเดียวกันนี้ถูกใช้
+   บนการ์ด/หน้ารายละเอียดด้วย ซึ่งควรพอดีข้อความ ไม่ใช่ยืดเต็มคอลัมน์ */
+test('ป้ายในตารางดีลกว้างเท่ากันทั้งคอลัมน์', () => {
+  const src = readFileSync(join(ROOT, 'src/app/sales-planning/deals/page.js'), 'utf8');
+  // เทียบทีละบรรทัด — ตัวเรียกมีวงเล็บซ้อน (`dealTypeOf(deal)`) regex ข้ามไม่ได้
+  const lines = src.split('\n');
+  for (const [fn, cls] of [['stageBadge', 'stage'], ['forecastBadge', 'fc'], ['dealTypeBadge', 'dealType']]) {
+    const call = lines.find((l) => l.includes(`${fn}(`) && l.includes('styles.cellBadge'));
+    assert.ok(call, `${fn} ต้องส่งคลาสความกว้างเข้าไป`);
+    assert.ok(call.includes(`styles.${cls}`), `${fn} ต้องใช้ความกว้างของคอลัมน์ ${cls}`);
+  }
+  const css = readFileSync(join(ROOT, 'src/app/sales-planning/deals/page.module.css'), 'utf8');
+  assert.match(css, /\.cellBadge\s*\{[^}]*min-width:\s*var\(--cell-badge-w/);
+  for (const cls of ['stage', 'fc', 'dealType']) {
+    assert.match(css, new RegExp(`\\.${cls}\\s*\\{[^}]*--cell-badge-w`), `คอลัมน์ ${cls} ต้องกำหนดความกว้าง`);
+  }
+});
+
+test('helper ป้ายรับ className ได้ แต่ไม่ฝังความกว้างไว้เอง', () => {
+  const ui = readFileSync(join(ROOT, 'src/components/salesPlanning/ui.js'), 'utf8');
+  for (const fn of ['stageBadge', 'forecastBadge', 'dealTypeBadge']) {
+    assert.match(ui, new RegExp(`export function ${fn}\\([^)]*className = ""`), `${fn} ต้องรับ className`);
+  }
+  assert.doesNotMatch(ui, /min-width/, 'ห้ามฝังความกว้างใน helper — การ์ด/หน้ารายละเอียดใช้ตัวเดียวกัน');
+});

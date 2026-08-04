@@ -28,6 +28,7 @@ import SortControl from "@/components/ui/SortControl";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import ForecastMonthCell from "@/components/salesPlanning/ForecastMonthCell";
+import styles from "./page.module.css";
 import ForecastReviewBanner from "@/components/salesPlanning/ForecastReviewBanner";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
@@ -737,14 +738,14 @@ export default function SalesPlanningPipelinePage() {
                         </span>
                       </Link>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
+                    <td>{stageBadge(deal.stage, `${styles.cellBadge} ${styles.stage}`)}</td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {isClosedStage(deal.stage)
                         ? <span style={{ color: "var(--text-3)" }}>-</span>
-                        : forecastBadge(deal.probability)}
+                        : forecastBadge(deal.probability, `${styles.cellBadge} ${styles.fc}`)}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {dealTypeBadge(dealTypeOf(deal))}
+                      {dealTypeBadge(dealTypeOf(deal), `${styles.cellBadge} ${styles.dealType}`)}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
                     <td onClick={(event) => event.stopPropagation()}>
