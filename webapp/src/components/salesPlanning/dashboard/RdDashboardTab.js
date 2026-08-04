@@ -78,7 +78,7 @@ export default function RdDashboardTab({ month }) {
           </div></div>
           <div className={styles.feed}>
           {shownFeed.map((item) => item.feedType === "task" ? <TaskPost key={`task-${item.id}`} item={item} /> : <article key={`inquiry-${item.id}`} className={styles.post}>
-            <div className={`${styles.avatar} ${item.authorDept === 'RD' ? styles.rd : styles.sa}`}>{item.authorDept || '?'}</div>
+            <div className={`${styles.avatar} ${item.authorDept === 'RD' ? styles.rd : ""}`}>{item.authorDept || '?'}</div>
             <div className={styles.postBody}>
               <div className={styles.postMeta}><strong>{item.authorName || "ระบบ"}</strong><span>·</span><span>{fmtDateTime(item.createdAt)}</span>{item.editedAt && <span>· แก้ไขแล้ว</span>}</div>
               <Link href={`/requests/${item.inquiryId}`} className={styles.postTitle}>{item.inquiryCode ? `${item.inquiryCode} · ` : ""}{item.inquiryTitle}</Link>
