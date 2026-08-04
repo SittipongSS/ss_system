@@ -629,7 +629,7 @@ export default function SalesPlanningPipelinePage() {
               {allowedScopes.length > 1 && (
                 <Segmented
                   ariaLabel="ขอบเขตของไปป์ไลน์"
-                  className="deal-scope-toggle"
+                  className="scope-toggle"
                   value={activeScope}
                   onChange={setScope}
                   options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
