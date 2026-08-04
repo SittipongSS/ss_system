@@ -19,6 +19,7 @@ import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -197,6 +198,27 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.status = body.status;
   }
 
+  // ที่อยู่บนใบ (0202/0203) — ไม่ใช่การ "แก้ข้อมูลลูกค้า" (อันนั้นยังต้องไปที่ทะเบียน
+  // ลูกค้าเหมือนเดิม) แต่คือ "ใบนี้ใช้ที่อยู่ไหนของลูกค้า" ซึ่งเป็นข้อมูลของเอกสารเอง
+  // เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่นอนุมัติ — ด่านหัว PATCH คุมไว้แล้ว (not_submitted)
+  // ตัวข้อความอ่านสดจากทะเบียนตอนเลือก ไม่ใช่ให้ client ส่งข้อความมาเอง
+  const addressPicked = 'billingAddressId' in body || 'shippingAddressId' in body;
+  if (addressPicked) {
+    const { data: cust } = before.customerId
+      ? await supabase.from('customers')
+        .select('addresses, address, shippingAddress, branchCode')
+        .eq('id', before.customerId).maybeSingle()
+      : { data: null };
+    const picked = pickDocumentAddresses(cust, {
+      billingAddressId: 'billingAddressId' in body ? body.billingAddressId : before.billingAddressId,
+      shippingAddressId: 'shippingAddressId' in body ? body.shippingAddressId : before.shippingAddressId,
+    });
+    if (!picked.snapshot.billingAddress) {
+      return badRequest('ลูกค้ารายนี้ยังไม่มีที่อยู่สำหรับออกเอกสาร — เพิ่มที่ฐานข้อมูลลูกค้าก่อน');
+    }
+    Object.assign(patch, picked.snapshot);
+  }
+
   // บรรทัด + ส่วนลด + VAT → คิดยอดใหม่
   let newLines = null;
   const moneyChanged = 'lines' in body || 'discountType' in body || 'discountValue' in body || 'vatRate' in body;
@@ -234,8 +256,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // Editing document content after it was sent creates a new draft state.
+  // ที่อยู่บนใบนับเป็น "เนื้อหาเอกสาร" ด้วย — เปลี่ยนที่อยู่ = เอกสารคนละใบในสายตาลูกค้า
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
-    || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
+    || 'notes' in body || 'quoteDate' in body || 'validUntil' in body || addressPicked;
   // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
   // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
   // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว

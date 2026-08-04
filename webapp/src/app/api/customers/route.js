@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
+import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
@@ -87,6 +88,17 @@ export async function POST(request) {
     ? body.teams.filter((t) => TEAMS.includes(t))
     : (user?.team ? [user.team] : []);
 
+  // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง — ช่องเดี่ยวเดิมเป็นกระจกของที่อยู่หลัก
+  // ผู้เรียกที่ยังส่งแบบเก่า (address/shippingAddress) แปลงขึ้นลิสต์ให้
+  // สาขาไม่ได้อยู่ในที่อยู่ (มติผู้ใช้ 2026-08-05) จึงยังรับจาก body ตรง ๆ เหมือนเดิม
+  const addresses = normalizeAddresses(
+    body.addresses !== undefined ? body.addresses : addressesFromLegacy(body),
+  );
+  const mirror = legacyAddressMirror(addresses);
+  if (!mirror.address) {
+    return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
+  }
+
   const newCustomer = {
     // Collision-proof id. The old 'CUS-'+last-6-ms scheme repeated every ~16.7
     // min and the live DB has no unique on id — two customers could share one.
@@ -95,10 +107,12 @@ export async function POST(request) {
     name: body.name,
     taxId: body.taxId || null,
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
-    branchCode: body.branchCode || '00000', // '00000' = สำนักงานใหญ่ (migration 0032)
+    addresses,                                // ที่อยู่ทั้งหมด (migration 0202)
+    branchCode: body.branchCode || '00000',   // '00000' = สำนักงานใหญ่ (migration 0032)
+    // ── กระจกของที่อยู่หลัก (อย่าเขียนทับมือ) ────────────────────────────
     phone: body.phone || null,
-    address: body.address,                    // ที่อยู่ออกเอกสาร/บิล
-    shippingAddress: body.shippingAddress || null, // null = ใช้ที่อยู่ออกเอกสาร
+    address: mirror.address,                  // ที่อยู่ออกเอกสาร/บิล
+    shippingAddress: mirror.shippingAddress,  // null = ใช้ที่อยู่ออกเอกสาร
     brands: normalizeBrands(body.brands), // [{th,en}] (migration 0059)
     isActive: true, // ลูกค้าใหม่ใช้งานอยู่เสมอ (migration 0030)
     // แผนที่/เอกสารย้ายไปตาราง attachments (docType address_map) — ไม่เขียน mapFileUrl อีก.

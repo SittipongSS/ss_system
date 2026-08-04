@@ -7,7 +7,7 @@ import {
   ArrowLeft, GanttChart,
   ListTodo, Clock, Calendar,
   Edit2, Trash2,
-  BriefcaseBusiness, Building2,
+  FolderKanban, Building2,
   Printer, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
 } from "lucide-react";
@@ -662,7 +662,7 @@ export default function ProjectDetailPage() {
         />
         {(p.deals || []).slice(0, 3).map((deal) => <ContextCard
           key={deal.id}
-          icon={BriefcaseBusiness}
+          icon={FolderKanban}
           href={`/sales-planning/deals/${deal.id}`}
           eyebrow="ดีลในโครงการ"
           title={deal.title}
@@ -673,7 +673,7 @@ export default function ProjectDetailPage() {
             { label: "มูลค่า", value: Number(deal.wonValue ?? deal.projectValue ?? 0).toLocaleString("th-TH") },
           ]}
         />)}
-        {!(p.deals || []).length && <ContextCard icon={BriefcaseBusiness} eyebrow="ดีลในโครงการ" title="ยังไม่มีดีลที่เชื่อมอยู่" subtitle="เชื่อมดีลจากหน้าบริหารงานขายเพื่อรวมข้อมูลการขายและการส่งมอบ" />}
+        {!(p.deals || []).length && <ContextCard icon={FolderKanban} eyebrow="ดีลในโครงการ" title="ยังไม่มีดีลที่เชื่อมอยู่" subtitle="เชื่อมดีลจากหน้าบริหารงานขายเพื่อรวมข้อมูลการขายและการส่งมอบ" />}
       </ContextGrid></div>}
 
       <div style={{ marginTop: 20 }}>

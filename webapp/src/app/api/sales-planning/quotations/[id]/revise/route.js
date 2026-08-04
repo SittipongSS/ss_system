@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
+import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
@@ -103,9 +104,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
   // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
+  // ⭐ "สดใหม่ของที่อยู่ **ตัวเดิม**" — ใบเดิมเลือกสาขา/คลังไหนไว้ ฉบับ Rev. ต้องอยู่
+  // ที่นั่น (0203) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
   const { data: cust } = quote.customerId
-    ? await supabase.from('customers').select('address, shippingAddress, branchCode, taxId').eq('id', quote.customerId).maybeSingle()
+    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId').eq('id', quote.customerId).maybeSingle()
     : { data: null };
+  const revAddresses = pickDocumentAddresses(cust, quote);
   const { data: revised, error: insertErr } = await supabase
     .from('quotations')
     .insert({
@@ -121,9 +125,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       customerId: quote.customerId,
       customerName: quote.customerName,
       // snapshot: ที่อยู่ refresh สดจาก master; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม
-      billingAddress: cust?.address ?? quote.billingAddress ?? null,
-      shippingAddress: cust?.shippingAddress || cust?.address || quote.shippingAddress || null,
-      branchCode: cust?.branchCode ?? quote.branchCode ?? null,
+      billingAddress: revAddresses.snapshot.billingAddress ?? quote.billingAddress ?? null,
+      shippingAddress: revAddresses.snapshot.shippingAddress || quote.shippingAddress || null,
+      branchCode: revAddresses.snapshot.branchCode ?? quote.branchCode ?? null,
+      billingAddressId: revAddresses.snapshot.billingAddressId ?? quote.billingAddressId ?? null,
+      shippingAddressId: revAddresses.snapshot.shippingAddressId ?? quote.shippingAddressId ?? null,
       customerTaxId: cust?.taxId ?? quote.customerTaxId ?? null,
       contactName: quote.contactName,
       contactPhone: quote.contactPhone,

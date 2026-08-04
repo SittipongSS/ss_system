@@ -103,10 +103,10 @@ export default function CustomerDirectory() {
       name: formData.name,
       customerType: formData.customerType || "company",
       taxId: formData.taxId,
-      branchCode: formData.branchCode || "00000",
       phone: formData.phone,
-      address: formData.address,
-      shippingAddress: formData.shippingAddress || null,
+      // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0202) — address/shippingAddress/branchCode
+      // เป็นกระจกที่ server เขียนเองจากที่อยู่หลัก ไม่ให้ client ส่งสองทาง
+      addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
@@ -378,7 +378,9 @@ export default function CustomerDirectory() {
         open={showForm}
         onClose={() => setShowForm(false)}
         title="เพิ่มลูกค้าใหม่ (New Customer)"
-        size="md"
+        // lg = ขนาดมาตรฐานของโมดัลฟอร์มในระบบ (สินค้า/ดีล/ใบขอราคา) — md เดิมแคบไป
+        // ตั้งแต่ที่อยู่กลายเป็นการ์ดหลายใบ (0202)
+        size="lg"
       >
         <form onSubmit={handleSubmit}>
           {/* ฟอร์มเดียวกับโมดัลแก้ไข (หน้า [id]) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.

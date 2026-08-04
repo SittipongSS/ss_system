@@ -266,14 +266,14 @@ test('ชั้นจำนวนเรียงน้อย→มาก แล�
 
 // ── ความคืบหน้า/สถานะ ───────────────────────────────────────────────────
 test('ตอบครบทุกรายการ → answered เอง (ชนิดที่มีบรรทัด)', () => {
-  const items = [{ priceStatus: 'quoted' }, { priceStatus: 'no_quote' }];
+  const items = [{ answerStatus: 'done' }, { answerStatus: 'declined' }];
   assert.deepEqual(requestProgress(items), { done: 2, total: 2, complete: true });
   assert.equal(deriveRequestStatusAfterAnswer(items, 'acknowledged'), 'answered');
-  assert.equal(deriveRequestStatusAfterAnswer([{ priceStatus: 'pending' }], 'acknowledged'), 'acknowledged');
+  assert.equal(deriveRequestStatusAfterAnswer([{ answerStatus: 'pending' }], 'acknowledged'), 'acknowledged');
 });
 
 test('ยกเลิก/ปิดแล้ว สถานะไม่ถูก derive ทับ', () => {
-  const items = [{ priceStatus: 'quoted' }];
+  const items = [{ answerStatus: 'done' }];
   assert.equal(deriveRequestStatusAfterAnswer(items, 'cancelled'), 'cancelled');
   assert.equal(deriveRequestStatusAfterAnswer(items, 'closed'), 'closed');
 });
@@ -285,8 +285,8 @@ test('ชนิดที่ไม่มีบรรทัดส่งได้�
 });
 
 test('ปิดเรื่อง: ชนิดมีบรรทัดต้องตอบครบ · ชนิดไม่มีบรรทัดผู้ขอตัดสินเอง', () => {
-  assert.match(closeRequestError(req({ kind: 'price_pm' }), [{ priceStatus: 'pending' }]), /ยังไม่ได้ตอบ/);
-  assert.equal(closeRequestError(req({ kind: 'price_pm' }), [{ priceStatus: 'quoted' }]), null);
+  assert.match(closeRequestError(req({ kind: 'price_pm' }), [{ answerStatus: 'pending' }]), /ยังไม่ได้ตอบ/);
+  assert.equal(closeRequestError(req({ kind: 'price_pm' }), [{ answerStatus: 'done' }]), null);
   // สอบถามที่รับเรื่องแล้ว ผู้ขอปิดเองได้แม้ยังไม่ answered
   assert.equal(closeRequestError(req({ kind: 'info', status: 'acknowledged' }), []), null);
   // แต่ที่ยังไม่มีใครรับเลย ให้ยกเลิกแทน (ปิดทั้งที่ไม่มีใครแตะ = ซ่อนงานที่ไม่ได้ทำ)

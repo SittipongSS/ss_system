@@ -27,9 +27,13 @@ import { fmtDate } from "@/lib/format";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
-  REQUEST_ITEM_STATUS_LABELS, REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
+  REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
+import { requestItemStatusLabel } from "@/lib/requests/statuses";
+import { hopLabel, hopValuesError } from "@/lib/requests/hops";
+import RowStageRail from "@/components/requests/RowStageRail";
+import { businessDate } from "@/lib/businessDate";
 import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
@@ -46,9 +50,25 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
-const ITEM_TONE = { pending: "var(--text-3)", quoted: "var(--green)", no_quote: "var(--red)" };
+// mig 0204: สถานะบรรทัดเป็นกลางแล้ว (pending/done/declined) ไม่ผูกกับคำว่า "ราคา"
+const ITEM_TONE = { pending: "var(--text-3)", done: "var(--green)", declined: "var(--red)" };
 const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
 const qtyText = (v) => `${Number(v).toLocaleString("th-TH")} ขึ้นไป`;
+
+// ⭐ **แถววัสดุตอบในที่ · แถวสายพัฒนา/เอกสารเดินทาง** — วัสดุคือถามราคาแล้วตอบกลับ
+// จบในที่เดียว ไม่มีของให้ไปรับและไม่มีลูกค้าให้ส่งต่อ ⇒ รางห้าก้าวไม่มีความหมาย
+// และปุ่ม "รับเรื่อง" บนแถวราคาจะพาคนกดผิดขั้น (ของจริงคือ "ตอบราคา")
+const isFlowRow = (item) => !!item?.lineKind && item.lineKind !== "material";
+
+// ป้ายช่องวันที่ต้องพูดถึงก้าวนั้นตรง ๆ — "วันที่" เฉย ๆ ทำให้คนกรอกวันนี้ทุกครั้ง
+// ทั้งที่หลายก้าวถูกกดย้อนหลังเป็นปกติ (ของส่งไปเมื่อวาน เพิ่งมาบันทึกเช้านี้)
+const HOP_DATE_LABEL = {
+  ack: "วันที่รับเรื่อง",
+  ready: "วันที่ส่งของ",
+  pickup: "วันที่รับของ",
+  send: "วันที่ส่งให้ลูกค้า",
+  outcome: "วันที่ลูกค้าตอบ",
+};
 
 export default function MaterialAskDetailPage() {
   const { id } = useParams();
@@ -64,6 +84,8 @@ export default function MaterialAskDetailPage() {
   const [loadError, setLoadError] = useState("");
   const [answering, setAnswering] = useState(null); // { item, tiers }
   const [noQuote, setNoQuote] = useState(null);     // { item, reason }
+  // ก้าวของแถว — { item, hop, outcome, at, dueAt, confirmedQty, note }
+  const [hopDraft, setHopDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -136,6 +158,38 @@ export default function MaterialAskDetailPage() {
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
   const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
   const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;
+
+  // ── ก้าวของแถว ────────────────────────────────────────────────────────
+  // ⚠️ ตรวจด้วย `hopValuesError` ตัวเดียวกับที่ server ใช้ — ไม่เขียนเงื่อนไขซ้ำที่จอ
+  // ไม่งั้นสองชั้นจะเลื่อนออกจากกัน แล้วปุ่มที่กดได้จะได้ 400 กลับมา
+  const hopError = hopDraft ? hopValuesError(hopDraft.hop, hopDraft) : null;
+  const openHop = (item, hop, outcome = null) => setHopDraft({
+    item,
+    hop,
+    outcome,
+    // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน
+    at: businessDate(),
+    dueAt: "",
+    confirmedQty: "",
+    note: "",
+  });
+  const submitHop = async () => {
+    const { item, hop, outcome } = hopDraft;
+    const ok = await call(`/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        hop,
+        at: hopDraft.at,
+        ...(hop === "ack" ? { dueAt: hopDraft.dueAt || null } : {}),
+        ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
+        ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
+      }),
+    }, outcome === "revise"
+      // บอกผลข้างเคียงที่มองไม่เห็นตอนกด — แถวใหม่ถูกสร้างให้เอง
+      ? "บันทึกแล้ว · เปิดรายการใหม่สำหรับรอบแก้ให้แล้ว"
+      : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
+    if (ok) setHopDraft(null);
+  };
 
   const submitAnswer = async (payload, okMsg) => {
     const ok = await call("/answer", { method: "PATCH", body: JSON.stringify({ answers: [payload] }) }, okMsg);
@@ -400,7 +454,9 @@ export default function MaterialAskDetailPage() {
         </div>
       </div>
 
-      {(req.items || []).map((item) => (
+      {(req.items || []).map((item) => {
+        const flow = isFlowRow(item);
+        return (
         <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
@@ -408,27 +464,50 @@ export default function MaterialAskDetailPage() {
               {item.spec && (
                 <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
               )}
-              <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-                ขอราคาที่: {(item.tiers || []).length
-                  ? (item.tiers || []).map((t) => qtyText(t.qty)).join(" · ")
-                  : "ราคาเดียว (ไม่แบ่งชั้นจำนวน)"}
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.priceStatus] }}>
-                {REQUEST_ITEM_STATUS_LABELS[item.priceStatus]}
-              </span>
-              {item.answeredByName && (
-                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
-                  {item.answeredByName} · {fmtDate(item.answeredAt)}
+              {!flow && (
+                <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
+                  ขอราคาที่: {(item.tiers || []).length
+                    ? (item.tiers || []).map((t) => qtyText(t.qty)).join(" · ")
+                    : "ราคาเดียว (ไม่แบ่งชั้นจำนวน)"}
                 </div>
               )}
             </div>
+            {/* แถวสายเดินทางมีสถานะละเอียดกว่าป้ายเดียวอยู่แล้ว (อยู่บนหัวราง) —
+                โชว์ป้ายซ้ำจะได้สองแหล่งความจริงที่ขัดกันได้ */}
+            {!flow && (
+              <div style={{ textAlign: "right" }}>
+                <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.answerStatus] }}>
+                  {requestItemStatusLabel(item.answerStatus, item.lineKind)}
+                </span>
+                {item.answeredByName && (
+                  <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
+                    {item.answeredByName} · {fmtDate(item.answeredAt)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {item.priceStatus === "no_quote" && item.noQuoteReason && (
+          {/* รางห้าก้าวของแถวนี้ — ปุ่มของแต่ละก้าวอยู่ในช่องของก้าวนั้น ไม่ใช่แถบ
+              ปุ่มท้ายการ์ด ⇒ สายตาไปหยุดตรงที่ต้องกดพอดี */}
+          {flow && (
+            <div className={styles.rowRail}>
+              <RowStageRail
+                row={item}
+                request={req}
+                canDept={canAnswer}
+                canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
+                busy={saving}
+                onHop={(hop, outcome) => openHop(item, hop, outcome)}
+              />
+            </div>
+          )}
+
+          {/* แถวสายเดินทางที่ถูกปฏิเสธเก็บคำพูดลูกค้าไว้ที่ outcomeNote ซึ่งรางแสดง
+              ให้แล้ว — ตรงนี้จึงเหลือไว้สำหรับแถววัสดุที่ฝ่ายตอบว่าให้ราคาไม่ได้ */}
+          {!flow && item.answerStatus === "declined" && item.declineReason && (
             <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
-              <strong>ตอบไม่ได้: </strong><ReadableText text={item.noQuoteReason} lines={3} />
+              <strong>ตอบไม่ได้: </strong><ReadableText text={item.declineReason} lines={3} />
             </div>
           )}
 
@@ -442,7 +521,7 @@ export default function MaterialAskDetailPage() {
             />
           </div>
 
-          {canAnswer && item.priceStatus === "pending" && (
+          {!flow && canAnswer && item.answerStatus === "pending" && (
             <div className="action-bar" style={{ marginTop: 12 }}>
               <button type="button" className="btn" onClick={() => setNoQuote({ item, reason: "" })} disabled={saving}>
                 ตอบไม่ได้
@@ -461,7 +540,8 @@ export default function MaterialAskDetailPage() {
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {/* เธรดคุยกันในเคส (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
           ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของเคส
@@ -482,6 +562,86 @@ export default function MaterialAskDetailPage() {
       </DetailCard>
         </div>
       </DetailPageLayout>
+
+      {/* บันทึกก้าวของแถว — กล่องเดียวรับทั้งห้าก้าว ช่องสลับตามก้าวที่กด
+          ⭐ ห้ากล่องแยกจะได้ปุ่มยกเลิก/บันทึกและกติกาวันที่ห้าชุดที่ต้องคอยดูแลให้ตรงกัน
+          ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
+      <Modal
+        open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
+        title={hopDraft ? `${hopLabel(hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
+      >
+        {hopDraft && (
+          <>
+            <div className="form-group">
+              <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
+              {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
+                  (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
+              <input
+                id="hop-at" type="date" className="input-premium"
+                value={hopDraft.at} disabled={saving}
+                onChange={(e) => setHopDraft({ ...hopDraft, at: e.target.value })}
+              />
+            </div>
+
+            {hopDraft.hop === "ack" && (
+              <div className="form-group">
+                <label htmlFor="hop-due">รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)</label>
+                <input
+                  id="hop-due" type="date" className="input-premium"
+                  value={hopDraft.dueAt} disabled={saving}
+                  onChange={(e) => setHopDraft({ ...hopDraft, dueAt: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง
+                </p>
+              </div>
+            )}
+
+            {hopDraft.outcome === "confirmed" && (
+              <div className="form-group">
+                <label htmlFor="hop-qty">จำนวนที่ลูกค้าคอนเฟิร์ม</label>
+                <input
+                  id="hop-qty" type="number" min="0" step="any" className="input-premium"
+                  value={hopDraft.confirmedQty} disabled={saving}
+                  onChange={(e) => setHopDraft({ ...hopDraft, confirmedQty: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  ใช้กระทบยอดกับใบสั่งขาย — ไม่มีจำนวนก็เทียบไม่ได้ว่าส่งครบหรือยัง
+                </p>
+              </div>
+            )}
+
+            {hopDraft.hop === "outcome" && (
+              <div className="form-group">
+                <label htmlFor="hop-note">สิ่งที่ลูกค้าบอก</label>
+                <Textarea variant="data"
+                  id="hop-note" rows={3} maxLength={4000}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder={hopDraft.outcome === "revise"
+                    ? "เช่น ขอให้หวานลง เพิ่มโทนไม้ท้ายกลิ่น"
+                    : "คำพูดของลูกค้าตามที่ได้ยินมา"}
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                {hopDraft.outcome === "revise" && (
+                  <p className={styles.fieldHint}>
+                    บันทึกแล้วระบบจะ<strong>เปิดรายการใหม่</strong>สำหรับรอบแก้ให้เอง
+                    โดยยกสิ่งที่ขอมาทั้งชุด — ข้อความนี้คือบรีฟของรอบใหม่นั้น
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hopError && <p className={styles.fieldError}>{hopError}</p>}
+
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" onClick={() => setHopDraft(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="primary" disabled={saving || !!hopError} onClick={submitHop}>
+                บันทึก
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* ตอบราคา — ชั้นจำนวนตั้งต้นมาจากที่ผู้ขอระบุ แต่เพิ่ม/ลดได้ */}
       <Modal

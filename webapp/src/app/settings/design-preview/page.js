@@ -108,7 +108,7 @@ const BADGE_TONES = STATUS_TONES;
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
   { cls: "ui-badge", count: 144 },
-  { cls: "status-pill", count: 38 },
+  { cls: "status-pill", count: 42 },
   { cls: "chip", count: 20 },
 ];
 

@@ -76,8 +76,10 @@ export async function PATCH(request, { params }) {
       const { item } = answer;
       if (answer.noQuote) {
         const { error } = await supabase.from('dept_request_items').update({
-          priceStatus: 'no_quote',
-          noQuoteReason: answer.reason,
+          // mig 0204: answerStatus/declineReason — ชื่อกลางที่ใช้ได้ทุกรูปร่างบรรทัด
+          // ⚠️ อย่าสับกับ costing_item_components.priceStatus ข้างล่าง ซึ่งคงชื่อเดิม
+          answerStatus: 'declined',
+          declineReason: answer.reason,
           answeredRevisionId: null,
           answeredById: user?.id ?? null,
           answeredByName: user?.name ?? null,
@@ -126,9 +128,9 @@ export async function PATCH(request, { params }) {
       });
 
       const { error } = await supabase.from('dept_request_items').update({
-        priceStatus: 'quoted',
+        answerStatus: 'done',
         answeredRevisionId: revision.id,
-        noQuoteReason: null,
+        declineReason: null,
         answeredById: user?.id ?? null,
         answeredByName: user?.name ?? null,
         answeredAt: nowIso,

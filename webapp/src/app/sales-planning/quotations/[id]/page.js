@@ -10,6 +10,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
+import Select from "@/components/ui/Select";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -32,6 +33,9 @@ import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import {
+  addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
+} from "@/lib/master/addresses";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -59,7 +63,13 @@ export default function QuotationEditorPage() {
 
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
-  const [form, setForm] = useState({ quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
+  const [form, setForm] = useState({
+    quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0,
+    // ที่อยู่ที่ใบนี้เลือก (0203) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
+    billingAddressId: "", shippingAddressId: "",
+  });
+  // ทะเบียนลูกค้าสด — โหลดมาเพื่อ "ตัวเลือกที่อยู่" เท่านั้น ตัวเอกสารยังใช้ snapshot บนใบ
+  const [customer, setCustomer] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -100,6 +110,8 @@ export default function QuotationEditorPage() {
         discountType: q.discountType || "",
         discountValue: q.discountValue ?? "",
         vatRate: Number(q.vatRate || 0),
+        billingAddressId: q.billingAddressId || "",
+        shippingAddressId: q.shippingAddressId || "",
       });
       const pp = q.paymentPlan;
       setPayment({
@@ -120,6 +132,32 @@ export default function QuotationEditorPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  // ตัวเลือกที่อยู่ของลูกค้ารายนี้ — โหลดแยกจากใบเพราะใบเก็บแค่ snapshot (ข้อความ+id)
+  // โหลดไม่ได้ = ตกไปเป็นการ์ดอ่านอย่างเดียวแบบเดิม ไม่บล็อกทั้งหน้า
+  useEffect(() => {
+    const customerId = quote?.customerId;
+    if (!customerId) { setCustomer(null); return; }
+    let alive = true;
+    (async () => {
+      const res = await fetch(`/api/customers/${customerId}`).catch(() => null);
+      if (!alive) return;
+      const data = res?.ok ? await res.json() : null;
+      const next = data?.customer || data || null;
+      setCustomer(next);
+      // ใบที่ออกก่อน 0203 ไม่มี id ที่อยู่ — เติมให้เท่ากับตัวที่ server จะเลือกให้อยู่ดี
+      // (ไม่ใช่การแก้ใบ จึงไม่ตั้ง dirty) ไม่งั้นช่องจะว่างทั้งที่ข้างล่างโชว์ที่อยู่อยู่
+      setForm((f) => {
+        if (f.billingAddressId && f.shippingAddressId) return f;
+        const seed = pickDocumentAddresses(next, f);
+        return {
+          ...f,
+          billingAddressId: f.billingAddressId || seed.billing?.id || "",
+          shippingAddressId: f.shippingAddressId || seed.shipping?.id || "",
+        };
+      });
+    })();
+    return () => { alive = false; };
+  }, [quote?.customerId]);
   useEffect(() => {
     cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
@@ -153,6 +191,16 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
+
+  // ตัวเลือกที่อยู่ (0202) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
+  // ฝั่ง server (pickDocumentAddresses) จะได้ไม่โชว์คนละอย่างกับที่บันทึกจริง
+  const addressBook = customerAddresses(customer);
+  const billingOptions = addressBook.filter(isBillingAddress);
+  const shippingOptions = addressBook.filter(isShippingAddress);
+  const pickedAddresses = pickDocumentAddresses(customer, {
+    billingAddressId: form.billingAddressId,
+    shippingAddressId: form.shippingAddressId,
+  });
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,
@@ -188,6 +236,9 @@ export default function QuotationEditorPage() {
     discountType: form.discountType || null,
     discountValue: form.discountValue || 0,
     vatRate: form.vatRate,
+    // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0203)
+    billingAddressId: form.billingAddressId || null,
+    shippingAddressId: form.shippingAddressId || null,
     paymentPlan: paymentPlanPayload(),
     // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
     metadata: {
@@ -652,8 +703,10 @@ export default function QuotationEditorPage() {
             <span>ประเภทดีล: {dealType} · {DEAL_TYPE_LABELS[dealType]}</span>
           </SalesDetailOverview>
 
-          {/* ข้อมูลลูกค้าที่แช่แข็งบนใบ (Q3) — อ่านอย่างเดียว แก้ที่ฐานข้อมูลลูกค้า */}
-          {(quote.billingAddress || quote.contactName || quote.shippingAddress) && (
+          {/* ข้อมูลลูกค้าที่แช่แข็งบนใบ (Q3) — อ่านอย่างเดียว แก้ที่ฐานข้อมูลลูกค้า
+              ยกเว้น "ใช้ที่อยู่ไหน" ซึ่งเป็นข้อมูลของเอกสารเอง เลือกใหม่ได้ตราบใบยังเป็น
+              ร่างที่ยังไม่ยื่นอนุมัติ (editable) — เปลี่ยนแล้วต้องกดบันทึกเหมือนช่องอื่น */}
+          {(quote.billingAddress || quote.contactName || quote.shippingAddress || editable) && (
             <section className={`${styles.card} ${styles.customerCard}`}>
               <div className={styles.sectionHeading}>
                 <UserRound size={17} aria-hidden="true" />
@@ -666,10 +719,29 @@ export default function QuotationEditorPage() {
                 )}
               </div>
               <div className={styles.customerGrid}>
+                {/* สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่ — เลือกที่อยู่คนละที่ไม่ทำให้สาขาขยับ */}
                 <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · สาขา ${quote.branchCode}` : ""}</span></div>
                 <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</span></div>
-                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{quote.billingAddress || "-"}</span></div>
-                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || quote.billingAddress || "-"}</span></div>
+                {editable && billingOptions.length ? (
+                  <label className={styles.addressField}>ที่อยู่ออกบิล
+                    <Select value={form.billingAddressId} onChange={(e) => setF({ billingAddressId: e.target.value })} aria-label="เลือกที่อยู่ออกบิล">
+                      {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
+                    </Select>
+                    <span className={styles.addressPreview}>{pickedAddresses.snapshot.billingAddress || "-"}</span>
+                  </label>
+                ) : (
+                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{quote.billingAddress || "-"}</span></div>
+                )}
+                {editable && shippingOptions.length ? (
+                  <label className={styles.addressField}>ที่อยู่จัดส่ง
+                    <Select value={form.shippingAddressId} onChange={(e) => setF({ shippingAddressId: e.target.value })} aria-label="เลือกที่อยู่จัดส่ง">
+                      {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
+                    </Select>
+                    <span className={styles.addressPreview}>{pickedAddresses.snapshot.shippingAddress || "-"}</span>
+                  </label>
+                ) : (
+                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || quote.billingAddress || "-"}</span></div>
+                )}
               </div>
             </section>
           )}
