@@ -143,17 +143,25 @@ export const UPDATE_KINDS = {
   // ── master data: ลูกค้า / สินค้า ─────────────────────────────────────
   // ด่านอนุมัติชุดเดียวกัน (approvalStatus + rejectionReason + resetApprovalOnEdit)
   // จึงใช้ชุด kind เหมือนกันเป๊ะ — ป้ายต่างกันเมื่อไรคือสัญญาณว่ากฎเริ่มแตกเป็นสองชุด
+  //
+  // ⚠️ `override` (อนุมัติทั้งที่เอกสารบังคับไม่ครบ) เคยเขียนลงเธรดด้วยชื่อ `note`
+  // ซึ่ง **ไม่เคยประกาศไว้ที่นี่** ⇒ `updateKindMeta` ถอยไปใช้ meta ของ `comment`
+  // แล้วแถวนั้นขึ้นป้าย "ข้อความ" สี accent = หน้าตาเหมือนข้อความที่คนพิมพ์เอง
+  // ทั้งที่เป็นการข้ามด่านเอกสาร (แถวที่ควรสะดุดตาที่สุดในเธรด) และในกล่องแจ้งเตือน
+  // ก็ขึ้นว่า "ข้อความ · ลูกค้า X" เหมือนมีคนมาทัก — 25 แถวใน prod ก่อน mig 0200
   customer: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     approve: { label: 'อนุมัติ', color: 'var(--green)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
+    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)' },
   },
   product: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     approve: { label: 'อนุมัติ', color: 'var(--green)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
+    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)' },
   },
   // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
   excise_registration: {

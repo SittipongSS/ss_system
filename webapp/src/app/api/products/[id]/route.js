@@ -138,7 +138,7 @@ export async function PATCH(request, { params }) {
       await appendUpdate(supabase, {
         entityType: 'product',
         entityId: id,
-        kind: 'note',
+        kind: 'override',
         body: `อนุมัติโดยยกเว้นเอกสารบังคับ — เหตุผล: ${overrideReason}`,
         user,
       });

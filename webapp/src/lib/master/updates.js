@@ -1,7 +1,7 @@
 // ── เธรดอัปเดตของกลาง (mig 0163) — ชั้นเข้าถึงข้อมูล (server only) ────────
 // ตารางเดียวสำหรับทุก entity — ดูทะเบียนสิทธิ์ที่ lib/master/updateAccess.js
 import { randomUUID } from 'crypto';
-import { redactDeleted, sanitizeUpdateAttachments } from '@/lib/master/updateTypes';
+import { isKnownUpdateKind, redactDeleted, sanitizeUpdateAttachments } from '@/lib/master/updateTypes';
 import { loadUpdateParent } from '@/lib/master/updateAccess';
 import { notifyThreadUpdate, purgeNotificationsMany } from '@/lib/notifications';
 
@@ -37,6 +37,19 @@ export async function appendUpdate(supabase, {
   entityType, entityId, kind = 'comment', body = null, meta = {},
   attachments = [], user = null,
 }) {
+  // ── ยามกัน kind หลุดทะเบียน ────────────────────────────────────────────
+  // ⚠️ **เตือนอย่างเดียว ไม่ตีกลับ** — สัญญาของฟังก์ชันนี้คือห้ามทำ action หลักพัง
+  // (ดูหัวข้อข้างล่าง) ตีกลับ = แถวประวัติหายไปเลย ซึ่งแย่กว่าป้ายเพี้ยน
+  //
+  // kind ที่ไม่ได้ประกาศจะเงียบสนิทบนจอ: `updateKindMeta` ถอยไปใช้ meta ของชนิด
+  // ตั้งต้นที่คนพิมพ์ได้ ⇒ เหตุการณ์ระบบขึ้นป้าย "ข้อความ" เหมือนคนพิมพ์เอง แล้ว
+  // ยังหายไปตอนกดซ่อนเหตุการณ์ระบบอีก (เกิดจริงกับ customer/product kind='note'
+  // — 25 แถว อยู่มาโดยเทสต์ผ่านหมด ดู mig 0200)
+  if (!isKnownUpdateKind(entityType, kind)) {
+    console.error('[updates] kind ไม่อยู่ในทะเบียน', entityType, kind,
+      '— ป้ายจะเพี้ยนบนจอ ให้ประกาศใน UPDATE_KINDS ของ lib/master/updateTypes.js');
+  }
+
   const row = {
     id: `EUP-${randomUUID()}`,
     entityType,
