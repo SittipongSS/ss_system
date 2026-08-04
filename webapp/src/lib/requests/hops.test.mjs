@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   HOP_OWNER, ROW_HOPS, ROW_OUTCOMES,
-  hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
+  followUpRowFrom, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
 } from './hops.js';
 import { UPDATE_KINDS } from '@/lib/master/updateTypes';
 import { rowStage } from './rowStage.js';
@@ -128,4 +128,40 @@ test('ป้ายของก้าวอ่านรู้เรื่อง �
   assert.equal(hopLabel('ack'), 'รับเรื่อง');
   assert.equal(hopLabel('outcome', 'confirmed'), 'ลูกค้าคอนเฟิร์ม');
   assert.equal(hopLabel('outcome', 'rejected'), 'ลูกค้าไม่เอา');
+});
+
+test('ขอแก้ = แถวใหม่ที่ยกของที่ขอมาทั้งชุด แต่ล้างสิ่งที่เกิดขึ้นแล้วทิ้ง', () => {
+  // ⭐ มติ: แก้แล้วได้ "รายการใหม่" ไม่ใช่ Rev. ⇒ แถวใหม่ต้องเริ่มที่รอรับเรื่องอีกครั้ง
+  // (ฝ่ายปลายทางรับเรื่องแก้ใหม่ ถามกลับได้ก่อนรับปากวัน)
+  const old = {
+    id: 'DRI-1', requestId: 'DR-1', lineKind: 'product_dev', sortOrder: 2,
+    label: 'เนื้อเทียนซอย', spec: 'ฐานน้ำ', categoryCode: '01-002', scentId: 'SCT-9',
+    qty: 5, unit: 'ชิ้น', kind: null, materialId: null, componentId: null, docType: null,
+    // สิ่งที่เกิดขึ้นแล้ว — ต้องไม่ตามไปแถวใหม่
+    ackAt: '2026-08-02', readyAt: '2026-08-12', pickedUpAt: '2026-08-13',
+    sentAt: '2026-08-14', outcome: 'revise', outcomeAt: '2026-08-18',
+    answerStatus: 'pending', answeredRevisionId: 'MPR-1', confirmedQty: 3,
+  };
+  const next = followUpRowFrom(old, 9);
+
+  // ยกของที่ "ขอ" มาครบ
+  assert.equal(next.label, 'เนื้อเทียนซอย');
+  assert.equal(next.categoryCode, '01-002');
+  assert.equal(next.scentId, 'SCT-9');
+  assert.equal(next.qty, 5);
+  assert.equal(next.lineKind, 'product_dev');
+  assert.equal(next.sortOrder, 9);
+
+  // สายพันธุ์ — อ่านย้อนได้ว่าแก้มาจากตัวไหน
+  assert.equal(next.derivedFromItemId, 'DRI-1');
+
+  // ⚠️ สิ่งที่เกิดขึ้นแล้วต้องไม่ตามมา — ไม่งั้นแถวใหม่จะเกิดมาพร้อมสถานะ "จบแล้ว"
+  for (const field of [
+    'ackAt', 'readyAt', 'pickedUpAt', 'sentAt', 'outcome', 'outcomeAt',
+    'answeredRevisionId', 'confirmedQty', 'id',
+  ]) {
+    assert.equal(field in next, false, `${field} ต้องไม่ตามไปแถวใหม่`);
+  }
+  assert.equal(next.answerStatus, 'pending');
+  assert.equal(rowStage(next), 'awaiting_ack', 'แถวใหม่ต้องเริ่มที่รอรับเรื่อง');
 });

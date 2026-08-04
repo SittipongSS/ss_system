@@ -146,6 +146,39 @@ export const hopLabel = (hop, outcome) => (hop === 'outcome'
   ? (OUTCOME_LABELS[outcome] || 'บันทึกคำตอบลูกค้า')
   : { ack: 'รับเรื่อง', ready: 'ส่งของ', pickup: 'รับของ', send: 'ส่งให้ลูกค้า' }[hop] || hop);
 
+// ── แถวที่เกิดจากการแก้ ───────────────────────────────────────────────────
+//
+// ⭐ "ลูกค้าขอให้แก้" ไม่ใช่การวนซ้ำในแถวเดิม — มันได้ **ของชิ้นใหม่** (มติผู้ใช้:
+// แก้แล้วได้รายการใหม่ ไม่ใช่ Rev.) ⇒ เกิดแถวใหม่ที่ชี้กลับแถวเดิมเสมอ
+//
+// ⚠️ **เกิดเองตอนบันทึกว่าลูกค้าขอแก้ ไม่ใช่ปุ่มแยก** — มันเป็นผลลัพธ์ ไม่ใช่การ
+// กระทำ · ถ้าให้คนกดเอง จะมีช่วงที่คำร้องค้างโดยไม่มีใครเห็นว่ายังมีงานเหลือ
+//
+// คัดลอก "สิ่งที่ขอ" ไปทั้งหมด แต่ล้าง "สิ่งที่เกิดขึ้นแล้ว" ทิ้ง — แถวใหม่ต้องเริ่ม
+// ที่ขั้นรอรับเรื่องอีกครั้ง (ฝ่ายปลายทางรับเรื่องแก้ใหม่ ถามกลับได้ก่อนรับปากวัน)
+export function followUpRowFrom(row, sortOrder) {
+  return {
+    requestId: row.requestId,
+    lineKind: row.lineKind,
+    sortOrder,
+    // สิ่งที่ขอ — ยกมาทั้งชุด
+    kind: row.kind ?? null,
+    materialId: row.materialId ?? null,
+    label: row.label,
+    spec: row.spec ?? null,
+    componentId: row.componentId ?? null,
+    categoryCode: row.categoryCode ?? null,
+    scentId: row.scentId ?? null,
+    qty: row.qty ?? null,
+    unit: row.unit ?? null,
+    docType: row.docType ?? null,
+    // สายพันธุ์ — อ่านย้อนได้ว่าแก้มาจากตัวไหน
+    derivedFromItemId: row.id,
+    // สิ่งที่เกิดขึ้นแล้วต้องไม่ตามมา (ก้าว · ผลลัพธ์ · ราคา)
+    answerStatus: 'pending',
+  };
+}
+
 // kind ของเหตุการณ์ในเธรด — ต้องตรงกับที่ลงทะเบียนไว้ใน lib/master/updateTypes.js
 // ⚠️ kind ที่ไม่ได้ลงทะเบียนจะเงียบสนิทบนจอ (appendUpdate เตือนอย่างเดียว ไม่ตีกลับ)
 export const hopUpdateKind = (hop, outcome) => (hop === 'outcome'

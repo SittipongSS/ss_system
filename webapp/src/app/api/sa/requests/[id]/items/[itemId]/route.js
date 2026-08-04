@@ -11,6 +11,7 @@
 //   2 ก้าวนี้เป็นของฝั่งเรารึเปล่า (HOP_OWNER)
 //   3 แถวอยู่ขั้นที่เดินก้าวนี้ได้ไหม + ค่าที่ส่งมาครบไหม (hops.js)
 // สลับ 1 กับ 2 เมื่อไร คนนอกจะรู้ได้ว่า id นี้มีอยู่จริงจากข้อความ error ที่ต่างกัน
+import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewCosting } from '@/lib/permissions';
@@ -18,7 +19,7 @@ import {
   canAnswerRequest, canManageRequest, canReadRequestRow, deriveRequestStatusAfterAnswer,
 } from '@/lib/deptRequests';
 import {
-  HOP_OWNER, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
+  HOP_OWNER, followUpRowFrom, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
 } from '@/lib/requests/hops';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { appendUpdate } from '@/lib/master/updates';
@@ -76,6 +77,20 @@ export async function PATCH(request, { params }) {
     const patch = { ...hopPatch(hop, body, user, today), updatedAt: nowIso };
     const { error } = await supabase.from('dept_request_items').update(patch).eq('id', itemId);
     if (error) throw error;
+
+    // ── ลูกค้าขอให้แก้ = เกิดแถวใหม่เอง ─────────────────────────────────
+    // ⭐ ไม่ใช่ปุ่มแยก — มันเป็น **ผลลัพธ์** ของการบันทึกคำตอบ ไม่ใช่การกระทำ
+    // ถ้าให้คนกดเอง จะมีช่วงที่คำร้องค้างโดยไม่มีใครเห็นว่ายังมีงานเหลือ
+    if (hop === 'outcome' && body.outcome === 'revise') {
+      const nextOrder = Math.max(0, ...(before.items || []).map((i) => i.sortOrder || 0)) + 1;
+      const { error: nextError } = await supabase.from('dept_request_items').insert({
+        id: `DRI-${randomUUID()}`,
+        ...followUpRowFrom(row, nextOrder),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+      if (nextError) throw nextError;
+    }
 
     // ── ใบตามแถว ────────────────────────────────────────────────────────
     // รับเรื่องแถวแรก = รับเรื่องทั้งใบ (ใบที่ยังเป็น pending ต้องขยับตาม ไม่งั้น
