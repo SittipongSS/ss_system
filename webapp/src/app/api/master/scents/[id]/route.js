@@ -8,7 +8,7 @@ import {
   sendScentError,
 } from '@/lib/master/scents';
 import {
-  countRequestItemsProducingScent, findScent, updateScent,
+  assertDerivedFromScent, countRequestItemsProducingScent, findScent, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
@@ -53,6 +53,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!canEditScent(user, scent)) return forbidden('ไม่มีสิทธิ์แก้กลิ่นนี้');
       const { value, error } = normalizeScentInput({ ...scent, ...body });
       if (error) return badRequest(error);
+      // ⚠️ ส่ง id ไปด้วย — กันกลิ่นอ้างตัวเองเป็นต้นทาง (constraint ของ 0205 กันอยู่
+      // แล้ว แต่ที่นี่ได้ข้อความไทยแทน error ดิบของ Postgres)
+      await assertDerivedFromScent(supabase, { ...value, id });
       // รหัส/สถานะเปลี่ยนผ่าน action เฉพาะทางเท่านั้น — กันหน้าจอส่งมาเงียบ ๆ
       const { code, ...editable } = value;
       const data = await updateScent(supabase, id, editable);
