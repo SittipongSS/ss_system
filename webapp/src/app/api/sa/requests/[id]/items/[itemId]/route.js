@@ -11,16 +11,19 @@
 //   2 ก้าวนี้เป็นของฝั่งเรารึเปล่า (HOP_OWNER)
 //   3 แถวอยู่ขั้นที่เดินก้าวนี้ได้ไหม + ค่าที่ส่งมาครบไหม (hops.js)
 // สลับ 1 กับ 2 เมื่อไร คนนอกจะรู้ได้ว่า id นี้มีอยู่จริงจากข้อความ error ที่ต่างกัน
+import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewCosting } from '@/lib/permissions';
 import {
+  REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   canAnswerRequest, canManageRequest, canReadRequestRow, deriveRequestStatusAfterAnswer,
 } from '@/lib/deptRequests';
 import {
-  HOP_OWNER, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
+  HOP_OWNER, followUpRowFrom, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
 } from '@/lib/requests/hops';
 import { findRequest } from '@/lib/materialPricesAdmin';
+import { businessDate } from '@/lib/businessDate';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -43,6 +46,14 @@ export async function PATCH(request, { params }) {
 
   const row = (before.items || []).find((i) => i.id === itemId);
   if (!row) return Response.json({ error: 'ไม่พบรายการในคำร้องนี้' }, { status: 404 });
+
+  // ⚠️ ใบต้องเปิดอยู่ — hopStageError ดูแต่ขั้นของ *แถว* ซึ่งไม่รู้เรื่องใบเลย ⇒ แถวใน
+  // ใบร่าง (ยังไม่ส่ง) หรือใบที่ถูกยกเลิก/ปิดไปแล้ว จะเดินก้าวได้ทั้งที่ไม่ควร
+  if (!REQUEST_OPEN_STATUSES.includes(before.status)) {
+    return Response.json({
+      error: `คำร้องอยู่สถานะ "${REQUEST_STATUS_LABELS[before.status] || before.status}" — บันทึกขั้นตอนของรายการไม่ได้`,
+    }, { status: 409 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const hop = body.hop;
@@ -70,12 +81,29 @@ export async function PATCH(request, { params }) {
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
 
   const nowIso = new Date().toISOString();
-  const today = nowIso.slice(0, 10);
+  // ⚠️ วันของก้าวต้องเป็น **วันไทย** ไม่ใช่วัน UTC — ระหว่างเที่ยงคืนถึง 07:00 น.
+  // ของไทย UTC ยังเป็นเมื่อวาน ⇒ ก้าวที่กดตอนเช้ามืดจะถูกบันทึกล่วงหน้าไปหนึ่งวัน
+  // และเส้นวัด lead time จะติดลบทั้งแถว
+  const today = businessDate();
 
   try {
     const patch = { ...hopPatch(hop, body, user, today), updatedAt: nowIso };
     const { error } = await supabase.from('dept_request_items').update(patch).eq('id', itemId);
     if (error) throw error;
+
+    // ── ลูกค้าขอให้แก้ = เกิดแถวใหม่เอง ─────────────────────────────────
+    // ⭐ ไม่ใช่ปุ่มแยก — มันเป็น **ผลลัพธ์** ของการบันทึกคำตอบ ไม่ใช่การกระทำ
+    // ถ้าให้คนกดเอง จะมีช่วงที่คำร้องค้างโดยไม่มีใครเห็นว่ายังมีงานเหลือ
+    if (hop === 'outcome' && body.outcome === 'revise') {
+      const nextOrder = Math.max(0, ...(before.items || []).map((i) => i.sortOrder || 0)) + 1;
+      const { error: nextError } = await supabase.from('dept_request_items').insert({
+        id: `DRI-${randomUUID()}`,
+        ...followUpRowFrom(row, nextOrder),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+      if (nextError) throw nextError;
+    }
 
     // ── ใบตามแถว ────────────────────────────────────────────────────────
     // รับเรื่องแถวแรก = รับเรื่องทั้งใบ (ใบที่ยังเป็น pending ต้องขยับตาม ไม่งั้น
