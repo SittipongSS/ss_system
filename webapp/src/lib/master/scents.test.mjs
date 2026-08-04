@@ -7,7 +7,6 @@ import {
   archiveScentError,
   canEditScent,
   canProposeScent,
-  canRecordScentFeedback,
   canViewScents,
   deleteScentError,
   findScentByIdentity,
@@ -16,16 +15,8 @@ import {
   normalizeScentInput,
   scentIdentityKey,
   scentTransitionError,
+  sendScentError,
 } from './scents.js';
-import {
-  nextRevisionNo,
-  normalizeRevisionInput,
-  pendingRevision,
-  recordFeedbackError,
-  revisionSummary,
-  scentStatusAfterFeedback,
-  sendRevisionError,
-} from './scentRevisions.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
 const sale = { id: 'u-sale', role: 'ae', team: 'KA' };
@@ -35,7 +26,7 @@ const exec = { id: 'u-exec', role: 'executive' };
 
 const scent = (over = {}) => ({
   id: 'SCT-1', name: 'Forest night', customerId: 'CUS-1',
-  status: 'developing', currentRevisionNo: 0, createdById: 'u-sale', ...over,
+  status: 'developing', createdById: 'u-sale', ...over,
 });
 
 // ── ตัวตน ────────────────────────────────────────────────────────────────
@@ -86,8 +77,6 @@ test('viewer/executive อ่านได้แต่เสนอไม่ได
 });
 
 test('ฝ่ายขายบันทึก feedback ลูกค้าได้ (คนที่คุยกับลูกค้าคือฝ่ายขาย)', () => {
-  assert.equal(canRecordScentFeedback(sale), true);
-  assert.equal(canRecordScentFeedback(viewer), false);
 });
 
 test('ฝ่ายขายแก้ได้เฉพาะร่างของตัวเอง — เข้าทะเบียนแล้วเป็นงาน RD', () => {
@@ -104,9 +93,11 @@ test('รับเข้าทะเบียนต้องมีรหัส �
   assert.match(acceptScentError(scent({ status: 'active' }), { code: 'SC-01' }), /ไปแล้ว/);
 });
 
-test('ลบได้เฉพาะร่างที่ยังไม่มีประวัติการส่ง', () => {
+test('ลบได้เฉพาะร่างที่ยังไม่มีคำร้องอ้างถึง', () => {
   assert.equal(deleteScentError(scent({ status: 'draft' })), null);
-  assert.match(deleteScentError(scent({ status: 'draft' }), { revisionCount: 1 }), /ลบไม่ได้/);
+  // ⚠️ ตาข่ายนี้มาแทน revisionCount เดิม — producedScentId เป็น FK แบบ SET NULL
+  // ลบผ่านได้เงียบ ๆ แล้วคำร้องจะชี้ไปที่ว่างโดยไม่มีอะไรฟ้อง
+  assert.match(deleteScentError(scent({ status: 'draft' }), { linkedCount: 1 }), /ลบไม่ได้/);
   assert.match(deleteScentError(scent({ status: 'active' })), /เฉพาะร่าง/);
 });
 
@@ -127,50 +118,21 @@ test('ร่างยังอ้างในคำร้องขอราค�
   assert.deepEqual(SCENT_USABLE_STATUSES, ['developing', 'active']);
 });
 
-// ── Rev + feedback ───────────────────────────────────────────────────────
-test('เลข Rev ถัดไปนับจากตัวล่าสุด', () => {
-  assert.equal(nextRevisionNo([]), 1);
-  assert.equal(nextRevisionNo([{ revisionNo: 1 }, { revisionNo: 3 }]), 4);
-});
-
-test('ส่ง Rev ใหม่ทับตัวที่ยังรอผลไม่ได้', () => {
-  const revs = [{ revisionNo: 1, feedbackStatus: 'pending' }];
-  assert.equal(pendingRevision(revs)?.revisionNo, 1);
-  assert.match(sendRevisionError(scent(), revs), /ยังรอผลตอบรับ/);
-  assert.equal(sendRevisionError(scent(), [{ revisionNo: 1, feedbackStatus: 'approved' }]), null);
-});
-
-test('กลิ่นที่ยังเป็นร่างส่งไม่ได้ (RD ต้องรับก่อน)', () => {
-  assert.match(sendRevisionError(scent({ status: 'draft' }), []), /ร่าง/);
-  assert.match(sendRevisionError(scent({ status: 'archived' }), []), /เปิดใช้ก่อน/);
-});
-
-test('บันทึก feedback ต้องมีทั้งผลและวันที่', () => {
-  const rev = { id: 'SREV-1', revisionNo: 1, feedbackStatus: 'pending' };
-  assert.match(recordFeedbackError(rev, { status: 'pending', feedbackAt: '2026-07-28' }), /ต้องระบุผล/);
-  assert.match(recordFeedbackError(rev, { status: 'approved' }), /วันที่/);
-  assert.match(recordFeedbackError(rev, { status: 'approved', feedbackAt: '28/07/2026' }), /ไม่ถูกต้อง/);
-  assert.equal(recordFeedbackError(rev, { status: 'approved', feedbackAt: '2026-07-28' }), null);
-});
-
-test('feedback ขยับสถานะกลิ่นให้เอง — rejected ไม่แตะ (ระบบเดาแทนคนไม่ได้)', () => {
-  assert.equal(scentStatusAfterFeedback(scent({ status: 'developing' }), 'approved'), 'active');
-  assert.equal(scentStatusAfterFeedback(scent({ status: 'active' }), 'approved'), null);
-  assert.equal(scentStatusAfterFeedback(scent({ status: 'active' }), 'revise'), 'developing');
-  assert.equal(scentStatusAfterFeedback(scent({ status: 'developing' }), 'rejected'), null);
-  assert.equal(scentStatusAfterFeedback(scent({ status: 'archived' }), 'approved'), null);
-});
-
-test('สรุป Rev นับสดจากลูกเสมอ', () => {
-  const s = revisionSummary([
-    { revisionNo: 1, feedbackStatus: 'revise' },
-    { revisionNo: 2, feedbackStatus: 'pending' },
-  ]);
-  assert.deepEqual(s, { total: 2, latestNo: 2, latestStatus: 'pending', approved: false, waiting: true });
+// ── วันที่ส่งกลิ่น ────────────────────────────────────────────────────────
+//
+// ⭐ กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต ⇒ ไม่มีตารางรอบ ไม่มีเลข Rev ไม่มีด่าน
+// "ตัวก่อนหน้ายังรอผลอยู่" · เหลือแค่ช่องวันที่ช่องเดียวบนตัวกลิ่น
+test('กลิ่นที่ยังเป็นร่างบันทึกวันที่ส่งไม่ได้ (RD ต้องรับเข้าทะเบียนก่อน)', () => {
+  assert.match(sendScentError(scent({ status: 'draft' }), { sentAt: '2026-07-28' }), /ร่าง/);
+  assert.match(sendScentError(scent({ status: 'archived' }), { sentAt: '2026-07-28' }), /เปิดใช้ก่อน/);
 });
 
 test('วันที่ส่งกลิ่นบังคับและต้องเป็นรูปแบบ ISO', () => {
-  assert.match(normalizeRevisionInput({}).error, /วันที่ส่ง/);
-  assert.match(normalizeRevisionInput({ sentAt: '28-07-2026' }).error, /ไม่ถูกต้อง/);
-  assert.equal(normalizeRevisionInput({ sentAt: '2026-07-28' }).error, null);
+  assert.match(sendScentError(scent(), {}).toString(), /ต้องระบุวันที่ส่ง/);
+  assert.match(sendScentError(scent(), { sentAt: '28-07-2026' }), /ไม่ถูกต้อง/);
+  assert.equal(sendScentError(scent(), { sentAt: '2026-07-28' }), null);
+});
+
+test('บันทึกวันที่ส่งซ้ำได้ — คนกรอกผิดวันต้องแก้ได้ ไม่ใช่ลบกลิ่นทิ้งแล้วสร้างใหม่', () => {
+  assert.equal(sendScentError(scent({ sentAt: '2026-07-01' }), { sentAt: '2026-07-28' }), null);
 });

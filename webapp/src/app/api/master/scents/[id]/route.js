@@ -5,8 +5,11 @@ import { recordAudit } from '@/lib/audit';
 import {
   acceptScentError, archiveScentError, canEditScent, canViewScents,
   deleteScentError, isScentRegistrar, normalizeScentInput, scentTransitionError,
+  sendScentError,
 } from '@/lib/master/scents';
-import { findScent, updateScent } from '@/lib/master/scentFormulaAdmin';
+import {
+  countRequestItemsProducingScent, findScent, updateScent,
+} from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
 
@@ -28,6 +31,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 // PATCH /api/master/scents/[id]
 //   { action: 'edit',   ...ฟิลด์เดียวกับตอนสร้าง }
 //   { action: 'accept', code }            — RD รับร่างเข้าทะเบียน
+//   { action: 'sent',   sentAt }          — RD บันทึกวันที่ส่งกลิ่นให้ลูกค้า
 //   { action: 'status', status }          — developing ↔ active ↔ archived
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
@@ -77,6 +81,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       await recordAudit({
         user, action: 'update', entityType: 'scent', entityId: id,
         before: scent, after: data, request: req,
+      });
+      return ok(data);
+    }
+
+    // ⭐ วันที่ส่งกลิ่นให้ลูกค้า — ช่องเดียวบนตัวกลิ่น ไม่ใช่แถวในตารางรอบอีกแล้ว
+    // (กลิ่น 1 ตัวส่งครั้งเดียว · ลูกค้าให้แก้ ⇒ กลิ่นตัวใหม่ที่มีวันที่ของตัวเอง)
+    // แก้ทับได้โดยตั้งใจ — คนกรอกผิดวันแล้วต้องแก้ได้ ไม่ใช่ลบกลิ่นทิ้งแล้วสร้างใหม่
+    if (action === 'sent') {
+      if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่บันทึกวันที่ส่งกลิ่นได้');
+      const error = sendScentError(scent, body);
+      if (error) return badRequest(error);
+      const data = await updateScent(supabase, id, {
+        sentAt: String(body.sentAt).trim(),
+        sentById: user.id,
+        sentByName: user.name || null,
+      });
+      await recordAudit({
+        user, action: 'update', entityType: 'scent', entityId: id,
+        before: scent, after: data, request: req,
+        summary: `บันทึกวันที่ส่งกลิ่น ${scent.code || scent.name}`,
       });
       return ok(data);
     }
@@ -138,7 +162,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (!canEditScent(user, scent)) return forbidden('ไม่มีสิทธิ์ลบกลิ่นนี้');
 
-  const error = deleteScentError(scent, { revisionCount: (scent.revisions || []).length });
+  // นับสดตอนจะลบ ไม่ใช่พ่วงมากับ findScent — ทุกหน้าที่อ่านกลิ่นจะต้องจ่ายค่านับนั้น
+  // ทั้งที่ใช้จริงเฉพาะตอนลบ (เดิม findScent join Rev ทุกครั้งด้วยเหตุผลเดียวกันนี้)
+  const error = deleteScentError(scent, {
+    linkedCount: await countRequestItemsProducingScent(supabase, id),
+  });
   if (error) return badRequest(error);
 
   const { error: delError } = await supabase.from('scents').delete().eq('id', id);

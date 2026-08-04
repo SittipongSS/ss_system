@@ -632,7 +632,7 @@ export default function CustomerDetails() {
                         key={s.id}
                         onClick={() => router.push(`/database/scents?q=${encodeURIComponent(s.code || s.name)}`)}
                         title={s.name}
-                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.currentRevisionNo > 0 ? ` · Rev. ${s.currentRevisionNo}` : " · ยังไม่ส่ง"}`}
+                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}`}
                         right={(
                           <RegistryBadge
                             className="shrink-0"
