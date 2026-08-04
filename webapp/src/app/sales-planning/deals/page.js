@@ -737,14 +737,14 @@ export default function SalesPlanningPipelinePage() {
                         </span>
                       </Link>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
+                    <td>{stageBadge(deal.stage, "ui-badge-cell ui-badge-w-stage")}</td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {isClosedStage(deal.stage)
                         ? <span style={{ color: "var(--text-3)" }}>-</span>
-                        : forecastBadge(deal.probability)}
+                        : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {dealTypeBadge(dealTypeOf(deal))}
+                      {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
                     <td onClick={(event) => event.stopPropagation()}>
