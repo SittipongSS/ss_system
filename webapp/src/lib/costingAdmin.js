@@ -75,7 +75,7 @@ export async function loadPendingAskLinks(supabase, requestId) {
   // costingRequestId เลย (0 แถว 2026-07-29) แต่จะระเบิดทันทีที่เปิดเคสแรก
   const { data: items, error: itemError } = await supabase
     .from('dept_request_items')
-    // ⚠️ `answerStatus` (mig 0202) ไม่ใช่ `priceStatus` — ชื่อเดิมชนกับคอลัมน์ชื่อ
+    // ⚠️ `answerStatus` (mig 0204) ไม่ใช่ `priceStatus` — ชื่อเดิมชนกับคอลัมน์ชื่อ
     //    เดียวกันบน costing_item_components ซึ่ง **ยังใช้ชื่อเดิมอยู่** (ดูจุดที่เขียน
     //    priceStatus: 'pending' ในไฟล์นี้) ⇒ find-and-replace ทั้งไฟล์จะพังทันที
     .select('id, requestId, componentId, answerStatus, label')
