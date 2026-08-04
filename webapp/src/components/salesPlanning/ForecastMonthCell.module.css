@@ -1,0 +1,57 @@
+/* ช่อง "เดือน FC" ในตารางดีล — ปุ่มที่ดูเหมือนข้อความจนกว่าจะชี้
+   (ตารางมีปุ่มจริงอยู่แล้วท้ายแถว ถ้าช่องนี้ดูเป็นปุ่มเต็มตัวด้วยจะแย่งสายตากัน) */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.trigger:hover {
+  border-color: var(--border);
+  background: var(--panel-2);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* เลยกำหนด/ยังไม่ระบุ — ต้องกวาดตาลงคอลัมน์แล้วเห็นทันทีว่าใบไหนต้องเลื่อน */
+.overdue {
+  color: var(--amber);
+  font-weight: var(--fw-medium);
+}
+
+/* ตัวเลข "+N เดือน" ท้ายป้าย — ลดความเด่นด้วยโทเคนกลาง ไม่ใช่เลขดิบ
+   (ตัวตรวจ audit:ui นับความจางเลขดิบเป็นหนี้ชั้นเก่า) */
+.late {
+  font-size: var(--fs-5);
+  opacity: var(--op-muted);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 190px;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-text);
+  color: var(--red);
+}
