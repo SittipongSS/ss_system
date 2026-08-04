@@ -29,12 +29,28 @@ export default function SearchableSelect({
 
   const selected = options.find((option) => String(option.value) === String(value ?? ""));
   const selectedLabel = selected ? selected.label : allowFreeText ? value || "" : "";
-  const filtered = useMemo(() => {
+  // ⚠️ เพดานนี้เคยตัดที่ 100 **เงียบ ๆ** — ชุดที่ยาวกว่านั้น (หมวดสินค้า = 105 แถว
+  // บน prod) จะหายท้ายลิสต์โดยไม่มีอะไรบอก · ตอนนี้ตัดที่ 200 และ **บอกว่าตัด**
+  const { rows, hidden } = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("th");
-    return options
-      .filter((option) => !needle || String(option.search ?? option.label ?? "").toLocaleLowerCase("th").includes(needle))
-      .slice(0, 100);
+    const matched = options.filter((option) => (
+      // หัวกลุ่มไม่ถูกกรองด้วยคำค้น — มันเป็นป้ายบอกตำแหน่ง ไม่ใช่ตัวเลือก
+      // (หัวที่ไม่เหลือลูกจะถูกตัดทิ้งในขั้นถัดไป ไม่ใช่ปล่อยค้างเป็นหัวลอย)
+      option.group
+      || !needle
+      || String(option.search ?? option.label ?? "").toLocaleLowerCase("th").includes(needle)
+    ));
+    // ตัดหัวกลุ่มที่ไม่เหลือลูกแล้ว — หัวลอยคือคำโกหกว่ากลุ่มนั้นมีของให้เลือก
+    const pruned = matched.filter((option, i) => {
+      if (!option.group) return true;
+      const next = matched[i + 1];
+      return !!next && !next.group;
+    });
+    return { rows: pruned.slice(0, 200), hidden: Math.max(0, pruned.length - 200) };
   }, [options, search]);
+  const filtered = rows;
+  // Enter = เลือกตัวแรกที่ "เลือกได้จริง" ไม่ใช่หัวกลุ่ม
+  const firstSelectable = filtered.find((option) => !option.group);
 
   const placeMenu = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -106,7 +122,7 @@ export default function SearchableSelect({
                   if (allowFreeText) onChange?.(event.target.value);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && filtered.length) choose(filtered[0]);
+                  if (event.key === "Enter" && firstSelectable) choose(firstSelectable);
                   if (event.key === "Escape") setOpen(false);
                 }}
               />
@@ -114,6 +130,15 @@ export default function SearchableSelect({
           ) : null}
           <div className="ui-select-options">
             {filtered.length ? filtered.map((option) => {
+              // หัวกลุ่ม = ป้ายบอกตำแหน่ง ไม่ใช่ปุ่ม — ต้องไม่โฟกัสได้และไม่มี role="option"
+              // ไม่งั้นคนใช้คีย์บอร์ดจะเดินไปเจอ "ตัวเลือก" ที่กดแล้วไม่มีอะไรเกิดขึ้น
+              if (option.group) {
+                return (
+                  <div key={String(option.value)} className="ui-select-group" role="presentation">
+                    {option.label}
+                  </div>
+                );
+              }
               const isSelected = String(option.value) === String(value ?? "");
               return (
                 <button
@@ -135,6 +160,12 @@ export default function SearchableSelect({
                 {typeof emptyText === "function"
                   ? emptyText(search.trim())
                   : emptyText || (allowFreeText ? "ไม่พบรายการ — ใช้ข้อความที่พิมพ์ได้" : "ไม่พบรายการ")}
+              </div>
+            )}
+            {/* ⚠️ ตัดแล้วต้องบอก — ลิสต์ที่ถูกตัดเงียบ ๆ อ่านเหมือน "ไม่มีของชิ้นนั้น" */}
+            {hidden > 0 && (
+              <div className="ui-select-empty">
+                ยังมีอีก {hidden} รายการ — พิมพ์เพื่อค้นให้แคบลง
               </div>
             )}
           </div>
