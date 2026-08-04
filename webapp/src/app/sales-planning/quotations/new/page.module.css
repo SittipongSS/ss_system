@@ -42,6 +42,9 @@
 .sourceSelect { width: 100%; min-width: 0; }
 
 .customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-6); }
+/* ตัวที่อยู่ที่เลือกอยู่ — ป้ายใน dropdown เป็นชื่อเรียก/สาขา ซึ่งบอกไม่ได้ว่าที่ไหนจริง ๆ
+   จึงต้องกางข้อความเต็มไว้ใต้ช่อง (ชั้นพิมพ์เดียวกับ .infoBlock ที่มันมาแทน) */
+.addressPreview { color: var(--text-2); font-size: var(--fs-6); font-weight: var(--fw-normal); line-height: var(--lh-text); white-space: pre-wrap; }
 .infoBlock { display: flex; align-items: flex-start; gap: var(--space-2-5); min-width: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
 .infoBlock svg { flex: 0 0 auto; margin-top: var(--space-0-5); color: var(--accent-ink); }
 

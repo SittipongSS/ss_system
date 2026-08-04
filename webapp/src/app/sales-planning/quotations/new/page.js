@@ -7,7 +7,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Plus, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
@@ -23,6 +23,9 @@ import QuotationLineItems, { newManualLine, newProductLine } from "@/components/
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import {
+  addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
+} from "@/lib/master/addresses";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -47,6 +50,9 @@ function NewQuotationInner() {
 
   const [customer, setCustomer] = useState(null); // snapshot preview (read-only)
   const [contactIndex, setContactIndex] = useState(0);
+  // ที่อยู่ที่ใบนี้จะใช้ (0201/0202) — ตั้งต้นเป็นที่อยู่หลักของลูกค้าตอนโหลด snapshot
+  const [billingAddressId, setBillingAddressId] = useState("");
+  const [shippingAddressId, setShippingAddressId] = useState("");
   const [creating, setCreating] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [products, setProducts] = useState([]);
@@ -161,8 +167,13 @@ function NewQuotationInner() {
       const res = await fetch(`/api/customers/${customerId}`).catch(() => null);
       if (!alive) return;
       const data = res?.ok ? await res.json() : null;
-      setCustomer(data?.customer || data || null);
+      const next = data?.customer || data || null;
+      setCustomer(next);
       setContactIndex(0);
+      // ตั้งต้น = ที่อยู่หลักของลูกค้า (กติกาเดียวกับฝั่ง server ถ้าไม่ส่ง id มา)
+      const picked = pickDocumentAddresses(next, {});
+      setBillingAddressId(picked.billing?.id || "");
+      setShippingAddressId(picked.shipping?.id || "");
     })();
     return () => { alive = false; };
   }, [dealId, customerId]);
@@ -175,8 +186,14 @@ function NewQuotationInner() {
   }, [projectId, projectsById]);
 
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
-  const billingAddress = customer?.address || "";
-  const shippingAddress = customer?.shippingAddress || customer?.address || "";
+  // ตัวเลือกที่อยู่ของลูกค้ารายนี้ — แยกตามหน้าที่ (ที่อยู่ "จัดส่งอย่างเดียว" ต้องไม่
+  // โผล่ในช่องออกบิล และกลับกัน) · ลูกค้าที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม
+  const addressOptions = customerAddresses(customer);
+  const billingOptions = addressOptions.filter(isBillingAddress);
+  const shippingOptions = addressOptions.filter(isShippingAddress);
+  const pickedAddresses = pickDocumentAddresses(customer, { billingAddressId, shippingAddressId });
+  const billingAddress = pickedAddresses.snapshot.billingAddress || "";
+  const shippingAddress = pickedAddresses.snapshot.shippingAddress || "";
 
   // ค้นชื่อลูกค้าแล้วไม่เจอในลิสต์ = ตอบตรงนั้นว่าเพราะอะไร + ทางไปแก้ (มติผู้ใช้
   // 2026-07-26: คงการกรองไว้ แต่ห้ามตัน) — ก่อนหน้านี้ลูกค้าหายเงียบ ๆ ต้องมาสืบทีละเคส
@@ -235,6 +252,10 @@ function NewQuotationInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contactIndex,
+          // ที่อยู่ที่ใบนี้เลือก (0202) — server ตรวจซ้ำว่า id เป็นของลูกค้ารายนี้จริง
+          // และใช้ได้กับหน้าที่นั้น ไม่งั้นถอยไปที่อยู่หลัก
+          billingAddressId: billingAddressId || null,
+          shippingAddressId: shippingAddressId || null,
           status: "draft",
           lines: lines.map(({ _lineKind, _noteOpen, ...line }) => {
             // หมายเหตุรายบรรทัดเก็บใน metadata.note — ตัดช่องว่าง/คีย์เปล่าก่อนส่ง
@@ -271,7 +292,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
+  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
 
   if (!canEdit) {
     return (
@@ -396,9 +417,26 @@ function NewQuotationInner() {
             <section className={styles.card}>
               <div className={styles.sectionHeading}><UserRound size={17} /><h2>ข้อมูลลูกค้าในเอกสาร</h2><span>Snapshot ณ วันที่สร้าง</span><div className="spacer" /><Link href={`/database/customers/${customerId}`} className="btn ghost sm" target="_blank"><ExternalLink size={13} /> แก้ที่ฐานข้อมูลลูกค้า</Link></div>
               <div className={styles.customerGrid}>
-                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{billingAddress || "-"}</span></div>
-                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{shippingAddress || "-"}</span></div>
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{customer.branchCode || "00000"}</span></div>
+                {/* ที่อยู่เลือกได้ (0201) — ลูกค้ารายเดียวมีได้หลายที่/หลายสาขา ตั้งต้นเป็น
+                    ที่อยู่หลัก · ตัวข้อความโชว์ไว้ใต้ช่องเพราะป้ายชื่อบอกไม่ได้ว่าที่ไหนจริง ๆ */}
+                <label className={styles.contactField}>ที่อยู่ออกบิล
+                  {billingOptions.length
+                    ? <Select value={billingAddressId} onChange={(e) => setBillingAddressId(e.target.value)} aria-label="เลือกที่อยู่ออกบิล">
+                        {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
+                      </Select>
+                    : null}
+                  <span className={styles.addressPreview}>{billingAddress || "ลูกค้ารายนี้ยังไม่มีที่อยู่ — เพิ่มที่ฐานข้อมูลลูกค้า"}</span>
+                </label>
+                <label className={styles.contactField}>ที่อยู่จัดส่ง
+                  {shippingOptions.length
+                    ? <Select value={shippingAddressId} onChange={(e) => setShippingAddressId(e.target.value)} aria-label="เลือกที่อยู่จัดส่ง">
+                        {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
+                      </Select>
+                    : null}
+                  <span className={styles.addressPreview}>{shippingAddress || "-"}</span>
+                </label>
+                {/* สาขามาจากที่อยู่ออกบิลที่เลือก ไม่ใช่ค่าเดี่ยวของลูกค้าอีกแล้ว */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{pickedAddresses.snapshot.branchCode || "00000"}</span></div>
                 <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={customer.contactPerson || "-"} />}</label>
               </div>
             </section>

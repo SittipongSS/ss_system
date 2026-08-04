@@ -10,6 +10,7 @@ import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
+import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
 // ความผิดพลาดเชิงกติกา (ไม่ใช่บั๊ก) — route แปลงเป็น HTTP response ตาม status
@@ -38,9 +39,12 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // แก้ข้อมูลลูกค้าต้องไปแก้ที่ฐานข้อมูลลูกค้า). เลือก "คน" ผู้ติดต่อได้ผ่าน contactIndex.
   const { data: customer } = await supabase
     .from('customers')
-    .select('taxId, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
+    .select('taxId, addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
     .eq('id', deal.customerId)
     .maybeSingle();
+  // ที่อยู่ที่ใบนี้เลือก (0201/0202) — คนทำใบเลือกได้ว่าออกบิล/ส่งที่ไหน ไม่ส่งมา
+  // = ที่อยู่หลักของลูกค้า (พฤติกรรมเดิมของทุกสายที่ไม่มีหน้าจอให้เลือก เช่น PO สหมิตร)
+  const picked = pickDocumentAddresses(customer, body);
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const ci = Number.isInteger(body.contactIndex) ? body.contactIndex : 0;
   const contact = contacts[ci] || contacts[0] || {
@@ -84,9 +88,8 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       customerName: deal.customerName || null,
       // snapshot ลูกค้า (read-only ในใบ)
       customerTaxId: customer?.taxId || null,
-      billingAddress: customer?.address || null,
-      shippingAddress: customer?.shippingAddress || customer?.address || null,
-      branchCode: customer?.branchCode || null,
+      // ข้อความ = snapshot ณ วันออกใบ · id = ที่อยู่ตัวไหน (ฉบับ Rev. ใช้ดึงสดใหม่)
+      ...picked.snapshot,
       contactName: contact.name || null,
       contactPhone: contact.phone || null,
       contactEmail: contact.email || null,

@@ -2,10 +2,11 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser, redactProductMargin } from '@/lib/permissions';
 import {
-  changedFieldsAgainst, CUSTOMER_CONTACT_FIELDS, normalizeRejectionReason,
+  changedFieldsAgainst, CUSTOMER_ADDRESS_EXEMPT_FIELDS, CUSTOMER_CONTACT_FIELDS, normalizeRejectionReason,
   rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
+import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
@@ -286,6 +287,23 @@ export async function PATCH(request, { params }) {
   }
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
+  // ที่อยู่ (0201): ลิสต์คือแหล่งความจริง; ที่อยู่หลัก → กระจกลงช่องเดี่ยวเดิม.
+  // ผู้เรียกเก่าที่ยัง PATCH มาด้วย address/shippingAddress/branchCode ยังใช้ได้ —
+  // แปลงขึ้นลิสต์ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด
+  const legacyAddressEdit = ['address', 'shippingAddress', 'branchCode'].some((k) => body[k] !== undefined);
+  if (body.addresses !== undefined || legacyAddressEdit) {
+    const addresses = normalizeAddresses(
+      body.addresses !== undefined
+        ? body.addresses
+        : addressesFromLegacy({ ...customer, ...updates }),
+    );
+    const mirror = legacyAddressMirror(addresses);
+    if (!mirror.address) {
+      return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
+    }
+    updates.addresses = addresses;
+    Object.assign(updates, mirror);
+  }
   // teams[] (0037): assigning caretaker teams is a cross-team management action —
   // supervisor/admin only (others may edit the record but not re-scope it).
   if (body.teams !== undefined && isSuperuser(user?.role)) {
@@ -308,7 +326,7 @@ export async function PATCH(request, { params }) {
   const changedFields = changedFieldsAgainst(customer, updates, { ignore: ['updatedAt'] });
   const reapproval = resetApprovalOnEdit(customer, user, {
     changedFields,
-    exemptFields: CUSTOMER_CONTACT_FIELDS,
+    exemptFields: [...CUSTOMER_CONTACT_FIELDS, ...CUSTOMER_ADDRESS_EXEMPT_FIELDS],
   });
   if (reapproval) Object.assign(updates, reapproval);
 

@@ -11,18 +11,21 @@
 // ตอนสร้าง server ตั้งทีมให้จากคนสร้าง ส่วนการ "ย้ายทีมดูแล" เป็น cross-team
 // management action ที่ API เปิดให้เฉพาะ superuser (customers/[id] PATCH).
 import Select from "@/components/ui/Select";
+import AddressesEditor from "@/components/database/AddressesEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import PhoneInput from "@/components/ui/PhoneInput";
+import { customerAddresses } from "@/lib/master/addresses";
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import Textarea from "@/components/ui/Textarea";
 
+// ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0201) ทั้งก้อน
+// server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
 export const EMPTY_CUSTOMER = {
-  arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000",
-  phone: "", address: "", shippingAddress: "", brands: [], contacts: [], creditTerms: "",
+  arCode: "", name: "", customerType: "company", taxId: "",
+  phone: "", addresses: [], brands: [], contacts: [], creditTerms: "",
   teams: [],
 };
 
@@ -33,9 +36,10 @@ export const customerToForm = (c) => ({
   ...EMPTY_CUSTOMER,
   arCode: c.arCode || "", name: c.name || "",
   customerType: c.customerType || "company",
-  taxId: c.taxId || "", branchCode: c.branchCode || "00000",
-  phone: c.phone || "", address: c.address || "",
-  shippingAddress: c.shippingAddress || "",
+  taxId: c.taxId || "",
+  phone: c.phone || "",
+  // addresses[] (0201) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิมให้เห็นค่าเดิม
+  addresses: customerAddresses(c),
   brands: normalizeBrands(c.brands),
   // contacts[] (0033) — ยุคเก่าเก็บเป็นช่องเดี่ยว contactPerson/contactPhone/email
   contacts: Array.isArray(c.contacts) && c.contacts.length
@@ -110,21 +114,8 @@ export default function CustomerForm({
             <NationalIdInput name="taxId" value={form.taxId} onChange={(v) => onForm({ taxId: v })} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full" />
           </div>
           <div className="form-group">
-            <label>สาขา (Branch)</label>
-            <input type="text" name="branchCode" value={form.branchCode} onChange={set("branchCode")} placeholder="00000" className="premium-input w-full font-mono" />
-            <span className="text-[11px] text-[var(--text-3)] mt-1">00000 = สำนักงานใหญ่</span>
-          </div>
-          <div className="form-group col-span-2">
             <label>เบอร์โทรบริษัท</label>
             <PhoneInput name="phone" value={form.phone} onChange={(v) => onForm({ phone: v })} placeholder="เช่น 02-123-4567" className="w-full" />
-          </div>
-          <div className="form-group col-span-2">
-            <label>ที่อยู่ลูกค้า (ออกเอกสาร) <span className="text-[var(--red)]">*</span></label>
-            <Textarea name="address" value={form.address} onChange={set("address")} required rows={2} placeholder="ที่อยู่สำหรับออกเอกสาร..." className="w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
-          </div>
-          <div className="form-group col-span-2">
-            <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
-            <Textarea name="shippingAddress" value={form.shippingAddress} onChange={set("shippingAddress")} rows={2} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง" className="w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }} />
           </div>
           <div className="form-group col-span-2">
             <label>แบรนด์สินค้า</label>
@@ -134,19 +125,30 @@ export default function CustomerForm({
         </div>
       </div>
 
-      {/* Section 2 — ผู้ติดต่อ */}
+      {/* Section 2 — ที่อยู่ (หลายรายการ, mig 0201) */}
       <div className="mb-[22px]">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">2. ผู้ติดต่อ (Contacts)</h3>
+          <h3 className="font-semibold text-[var(--text)]">2. ที่อยู่ (Addresses) <span className="text-[var(--red)]">*</span></h3>
+          <span className="text-[11px] text-[var(--text-3)]">
+            ใส่ได้หลายที่ (สำนักงานใหญ่ · สาขา · คลัง) แล้วเลือกตอนออกใบเสนอราคา — รายการแรกที่ใช้งานนั้นได้คือค่าตั้งต้น เลื่อนลำดับได้ด้วยลูกศร
+          </span>
+        </div>
+        <AddressesEditor value={form.addresses} onChange={(addresses) => onForm({ addresses })} />
+      </div>
+
+      {/* Section 3 — ผู้ติดต่อ */}
+      <div className="mb-[22px]">
+        <div className="border-b border-[var(--border)] pb-3 mb-5">
+          <h3 className="font-semibold text-[var(--text)]">3. ผู้ติดต่อ (Contacts)</h3>
           <span className="text-[11px] text-[var(--text-3)]">เพิ่มได้หลายคน แยกตามแผนก (จัดซื้อ/การเงิน/เทคนิค) — คนแรกถือเป็นผู้ติดต่อหลัก</span>
         </div>
         <ContactsEditor value={form.contacts} onChange={(contacts) => onForm({ contacts })} />
       </div>
 
-      {/* Section 3 — ข้อมูลเพิ่มเติม */}
+      {/* Section 4 — ข้อมูลเพิ่มเติม */}
       <div className="mb-[22px]">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลเพิ่มเติม (Additional)</h3>
+          <h3 className="font-semibold text-[var(--text)]">4. ข้อมูลเพิ่มเติม (Additional)</h3>
         </div>
         <div className="form-grid cols-2">
           <div className="form-group col-span-2">
