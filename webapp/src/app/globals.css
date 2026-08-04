@@ -3309,8 +3309,12 @@ button.empty-state { width: 100%; font: inherit; }
 .segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 var(--space-0-5); }
 
-.deal-scope-toggle { width: fit-content; padding: 3px; }
-.deal-scope-toggle > button { min-width: 72px; min-height: 34px; padding: 7px var(--space-4); font-size: var(--fs-7); }
+/* ตัวสลับขอบเขต "ของฉัน / ทีม / ทั้งหมด" — ใช้ร่วมกันทุกหน้าที่มีขอบเขต
+   (คิวลีด · ไปป์ไลน์ดีล · งาน PM) เดิมชื่อผูกกับหน้าดีล คิวลีดจึงไม่ได้ใส่ ปุ่มสอง
+   หน้าเลยคนละขนาดกันทั้งที่เป็นตัวควบคุมเดียวกัน (ผู้ใช้ทักท้วง 2026-08-05)
+   ⚠️ min-width ที่ปุ่มคือหัวใจ — ไม่มีมันแล้ว "ของฉัน" กับ "ทีม" กว้างไม่เท่ากัน */
+.scope-toggle { width: fit-content; padding: 3px; }
+.scope-toggle > button { min-width: 72px; min-height: 34px; padding: 7px var(--space-4); font-size: var(--fs-7); }
 .project-detail-actions {
   display: flex;
   align-items: center;
