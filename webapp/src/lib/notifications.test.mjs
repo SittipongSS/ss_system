@@ -89,11 +89,9 @@ test('ผู้รับของแต่ละ entity มาจากช่อ
     await updateRecipients(supabase, 'lead', { assigneeId: 'u-a', createdBy: 'u-b' }),
     ['u-a', 'u-b'],
   );
-  // QT/SO ต้อง query ดีลต่อเพื่อหาผู้อนุมัติ (= เจ้าของดีล)
-  assert.deepEqual(
-    await updateRecipients(supabase, 'quotation', { dealId: 'DL-1', createdBy: 'u-maker' }),
-    ['u-maker', 'u-owner'],
-  );
+  // QT/SO ไม่มีเธรดของตัวเองแล้ว (มติผู้ใช้ 2026-08-04) — เหตุการณ์ของใบลงเธรดดีล
+  // ผู้รับจึงเป็นชุดของดีล ไม่ใช่ชุดของใบ
+  assert.deepEqual(await updateRecipients(supabase, 'quotation', { dealId: 'DL-1' }), []);
 });
 
 test('id ซ้ำ/ค่าว่างถูกกรองทิ้ง — คนเดียวต้องไม่ได้สองแถว', async () => {
@@ -119,7 +117,7 @@ test('ทุก entity ที่มีเธรดต้องกดจากก
 });
 
 test('หัวเรื่องใช้ชื่อ/เลขที่เอกสาร ไม่ใช่ id ดิบ ถ้ามีให้ใช้', () => {
-  assert.equal(entityTitle('quotation', { id: 'QT-1', quoteNumber: 'QT-2569-001' }), 'ใบเสนอราคา QT-2569-001');
+  assert.equal(entityTitle('deal', { id: 'DL-1', name: 'ดีลกลิ่นห้องน้ำ' }), 'ดีล ดีลกลิ่นห้องน้ำ');
   assert.equal(entityTitle('lead', { id: 'LD-1', contactName: 'คุณสมชาย' }), 'ลีด คุณสมชาย');
   assert.equal(entityTitle('personal_task', { id: 'T-1', title: 'ทำใบเสนอราคา' }), 'งาน ทำใบเสนอราคา');
   // ไม่มีอะไรให้ใช้จริง ๆ ค่อยถอยไป id (ทางสุดท้าย ไม่ใช่ทางแรก)

@@ -57,7 +57,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ⭐ แถวนี้คือหัวใจของ PR: `rejectionReason` ถูกล้างทิ้งตอนยื่นใหม่/กู้คืน
   // เหตุผลที่ตีกลับรอบก่อน ๆ จึงไม่เคยเหลือให้คนทำใบรอบถัดไปอ่าน
   await appendDocumentEvent(supabase, {
-    docType: 'quotation', doc: quote, action: 'reject', opts: { reason }, user, docId: id,
+    docType: 'quotation', doc: quote, action: 'reject', opts: { reason }, user,
   });
 
   await recordAudit({

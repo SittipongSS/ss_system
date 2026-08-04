@@ -1,17 +1,20 @@
-// ── เหตุการณ์ระบบในเธรดของใบเสนอราคา / ใบสั่งขาย (entity_updates, mig 0163) ──
+// ── เหตุการณ์ของใบเสนอราคา / ใบสั่งขาย → เธรดของ "ดีลแม่" ────────────────
 //
 // แพตเทิร์นเดียวกับ lib/costingUpdates.js: ไฟล์นี้ตอบแค่ "ควรบันทึกอะไรลงเธรด"
 // เป็นตรรกะล้วนที่เทสต์ได้ ส่วน I/O เป็นของ lib/master/updates.js
 //
-// ⭐ **เหตุผลที่ต้องมีเธรดที่นี่จริง ๆ** — QT/SO บังคับกรอกเหตุผลรวม 8 จุด
-// (ดึงกลับ · ตีกลับ · ออก Rev. · ย้อนการรับ · ยกเลิกอนุมัติ · ยกเลิก · override ของ admin)
-// แต่เหตุผลพวกนั้นถูกเก็บลง**คอลัมน์เดียวของใบ** ซึ่งรอบถัดไปเขียนทับทันที:
+// ⭐ **ใบไม่มีเธรดของตัวเองแล้ว** (มติผู้ใช้ 2026-08-04) — ของเดิมทุก action ลงสองที่
+// คือเธรดของใบและเงาบนดีล แต่ตรวจของจริงแล้วพบว่า **ไม่มีใครพิมพ์ในเธรดของใบเลย
+// สักข้อความ** (QT 21 เหตุการณ์ · SO 1 · ข้อความคน 0) ขณะที่เงาบนดีลถูกอ่านจริง
+// ทั้งบนหน้าดีลและไหลต่อขึ้นหน้าโครงการ ⇒ เหลือที่เดียวคือดีล
+//
+// 🔴 **ดังนั้นที่นี่คือที่เดียวที่เหตุผลของ QT/SO ถูกเก็บให้คนอ่าน** — เหตุผลทุกอัน
+// ที่ระบบบังคับกรอก (ดึงกลับ · ตีกลับ · ออก Rev. · ย้อนการรับ · ยกเลิกอนุมัติ ·
+// ยกเลิก · override ของ admin) ลงคอลัมน์เดียวของใบซึ่งรอบถัดไปเขียนทับทันที:
 //   · `rejectionReason` ถูกล้างตอน restore/submit ใหม่
 //   · `revisionReason` เก็บได้รอบเดียว — ใบที่ออก Rev. สามรอบเหลือเหตุผลรอบสุดท้าย
 //   · ที่เหลือลงแต่ audit log ซึ่งเปิดได้เฉพาะ supervisor และไม่มีลิงก์จากหน้าใบ
-// ⇒ คนที่ต้องอ่าน (คนทำใบรอบถัดไป) **ไม่เคยได้อ่านเลยสักครั้ง**
-// เขียนลงเธรดด้วยทำให้เหตุผลอยู่ครบทุกรอบ บนหน้าใบ · คอลัมน์เดิมยังอยู่เพราะ
-// หน้าจอใช้แสดง "รอบนี้ติดอะไร" ซึ่งเป็นคนละคำถามกับ "เคยติดอะไรมาบ้าง"
+// ตกหล่นที่นี่ = หายถาวร ไม่มีที่สำรองอีกแล้ว
 //
 // ⚠️ ทุกฟังก์ชันต้องทนของไม่ครบ (คืน null) — ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จ
 // แล้ว การโยน error ตรงนั้นจะทำให้ action ที่สำเร็จแล้วตอบ 500
@@ -23,97 +26,20 @@ const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 // ห้ามใช้คำว่า "ถอน/ถอด" ที่ไหนในไฟล์นี้
 const REASON_SUFFIX = (reason) => (clip(reason) ? ` — ${clip(reason)}` : ' — ไม่ระบุเหตุผล');
 
-// ── ใบเสนอราคา ───────────────────────────────────────────────────────────
-// ชุด kind ต้องตรงกับ UPDATE_KINDS.quotation ใน lib/master/updateTypes.js
-export function quotationActionUpdate(action, quote, { reason = null, note = null, toRevisionNo = null } = {}) {
-  if (!quote) return null;
-  const meta = { quoteNumber: quote.quoteNumber || null, revisionNo: quote.revisionNo ?? null };
-  if (action === 'submit') {
-    return { kind: 'submit', body: 'ยื่นขออนุมัติใบเสนอราคา', meta };
-  }
-  if (action === 'approve') {
-    // note ของผู้อนุมัติไม่บังคับ — มีก็เอาลงเธรด ไม่มีก็บอกแค่ว่าอนุมัติแล้ว
-    return {
-      kind: 'approve',
-      body: clip(note) ? `อนุมัติใบเสนอราคา — ${clip(note)}` : 'อนุมัติใบเสนอราคา',
-      meta,
-    };
-  }
-  if (action === 'reject') {
-    return { kind: 'returned', body: `ตีกลับให้แก้ไข${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'withdraw') {
-    return { kind: 'withdraw', body: `ดึงกลับมาแก้ไข${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'revise') {
-    // ⚠️ Rev. ใหม่เป็น **ใบคนละใบ** (id ใหม่) — เหตุการณ์นี้จึงต้องลงเธรดของ
-    // ใบเดิม ไม่ใช่ใบใหม่ ไม่งั้นใบเดิมจะจบห้วน ๆ โดยไม่บอกว่าไปต่อที่ไหน
-    const to = toRevisionNo == null ? '' : ` (Rev.${toRevisionNo})`;
-    return { kind: 'revise', body: `ออก Rev. ใหม่${to}${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'accept') {
-    return { kind: 'accept', body: 'ลูกค้ารับใบเสนอราคา', meta };
-  }
-  if (action === 'unaccept') {
-    return { kind: 'unaccept', body: `ย้อนการรับใบเสนอราคา${REASON_SUFFIX(reason)}`, meta };
-  }
-  return null;
-}
-
-// ── ใบสั่งขาย ────────────────────────────────────────────────────────────
-// ชุด kind ต้องตรงกับ UPDATE_KINDS.sales_order
-export function salesOrderActionUpdate(action, order, { reason = null, overrideReason = null, toRevisionNo = null } = {}) {
-  if (!order) return null;
-  const meta = { orderNumber: order.orderNumber || null, revisionNo: order.revisionNo ?? null };
-  if (action === 'submit') {
-    return { kind: 'submit', body: 'ยื่นขออนุมัติใบสั่งขาย', meta };
-  }
-  if (action === 'approve') {
-    // override = admin อนุมัติแทนทั้งที่ไม่ใช่ผู้อนุมัติตามสาย — ต้องเห็นชัดในเธรด
-    // ไม่ใช่ซ่อนอยู่ใน audit log ที่เปิดได้เฉพาะ supervisor
-    return {
-      kind: 'approve',
-      body: clip(overrideReason)
-        ? `อนุมัติใบสั่งขาย (แอดมินอนุมัติแทน) — ${clip(overrideReason)}`
-        : 'อนุมัติใบสั่งขาย',
-      meta: { ...meta, override: !!clip(overrideReason) },
-    };
-  }
-  if (action === 'reject') {
-    return { kind: 'returned', body: `ตีกลับให้แก้ไข${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'withdraw') {
-    return { kind: 'withdraw', body: `ดึงกลับมาแก้ไข${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'revoke') {
-    // ป้ายต้องตรงกับปุ่มบนหน้าใบ ซึ่งเขียนว่า "ยกเลิกอนุมัติ" (ไม่ใช่ "เพิกถอน")
-    return { kind: 'revoke', body: `ยกเลิกอนุมัติ — ยอดหลุดจาก Actual${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'revise') {
-    const to = toRevisionNo == null ? '' : ` (Rev.${toRevisionNo})`;
-    return { kind: 'revise', body: `ออก Rev. ใหม่${to}${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'cancel') {
-    return { kind: 'cancel', body: `ยกเลิกใบสั่งขาย${REASON_SUFFIX(reason)}`, meta };
-  }
-  if (action === 'restore') {
-    // กู้คืน = ล้าง rejectionReason/cancelReason ทิ้งทั้งชุด → **นี่คือจุดที่เหตุผล
-    // เดิมหายถาวร** ถ้าไม่มีเธรด · แถวนี้จึงสำคัญกว่าที่ดูเผิน ๆ
-    return { kind: 'restore', body: 'กู้คืนกลับเป็นร่าง', meta };
-  }
-  return null;
-}
-
-// ── เงาของเหตุการณ์เอกสารบน "เธรดของดีลแม่" ─────────────────────────────
+// ── ทุกเหตุการณ์ของใบ ลงเธรดของดีลแม่ ────────────────────────────────────
 //
-// ⭐ **จุดประสงค์ของเธรดดีลคือสมุดบันทึกความเคลื่อนไหวของดีล** (มติผู้ใช้) — แต่
+// ⭐ **จุดประสงค์ของเธรดดีลคือสมุดบันทึกความเคลื่อนไหวของดีล** (มติผู้ใช้) — และ
 // ความเคลื่อนไหวที่มีค่าที่สุดของดีล (ราคาที่เสนอไป · ลูกค้ารับหรือตีกลับ) เกิดบน
 // *ใบ* ทั้งหมด คนเปิดดีลย้อนหลังจึงไม่เห็นอะไรเลยนอกจากที่ AE พิมพ์เอง
 //
-// ⚠️ **ไม่ใช่ทุก action ที่ขึ้นดีล** — ดีลสนใจเฉพาะจังหวะที่ *ทิศทางการขายเปลี่ยน*:
-//   · `withdraw` (ผู้ยื่นดึงกลับเอง) และ `restore` (กู้ร่าง) = การบ้านภายในของคนทำใบ
-//     ดีลยังอยู่ที่เดิม → ไม่ส่งขึ้น ไม่งั้นเธรดดีลจะเต็มไปด้วยการแก้ใบไปมา
-//   · `unaccept` / `revoke` ส่งขึ้นเพราะ **ยอดหลุดจาก Actual / ดีลหลุด Won**
+// ⚠️ **ครบทุก action โดยเจตนา** — เดิม `withdraw`/`restore` ไม่ส่งขึ้นดีลเพราะถือว่า
+// เป็นการบ้านภายในของคนทำใบ (ดีลยังอยู่ที่เดิม) และเหตุผลของมันยังอ่านได้ในเธรด
+// ของใบ · พอใบไม่มีเธรดแล้ว การไม่ส่งขึ้น = **เหตุผลตอนดึงกลับหายถาวร** ซึ่งเป็น
+// ของที่กรอกจริง (3 ครั้งในเดือนแรก) ⇒ ส่งขึ้นทั้งคู่
+//
+// ⚠️ ทั้งสองตัวใช้ kind `doc_withdraw` ที่แยกจาก `doc_return` (ตีกลับ) เพราะสีของ
+// ชนิดคือสิ่งที่ช่วยกวาดตาแล้วรู้ว่า "อันไหนคือปัญหา" — ผู้ยื่นเอาใบคืนเองไม่ใช่
+// ปัญหาแบบเดียวกับผู้อนุมัติตีกลับ (คำศัพท์ล็อกตามมติ: ดึงกลับ ≠ ตีกลับ)
 //
 // เลขที่ใบอยู่ในเนื้อความเสมอ — `RichText` แปลงเป็นลิงก์ `/go/<รหัส>` ให้เอง
 const DEAL_MIRROR_KIND = {
@@ -125,6 +51,8 @@ const DEAL_MIRROR_KIND = {
   cancel: 'doc_cancel',
   revoke: 'doc_cancel',
   unaccept: 'doc_cancel',
+  withdraw: 'doc_withdraw',
+  restore: 'doc_withdraw',
 };
 const DOC_LABEL = { quotation: 'ใบเสนอราคา', sales_order: 'ใบสั่งขาย' };
 
@@ -135,27 +63,42 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
 
   const number = clip(doc.quoteNumber || doc.orderNumber) || '';
   const head = `${label}${number ? ` ${number}` : ''}`;
-  const { reason = null, overrideReason = null, toRevisionNo = null } = opts;
-  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept'].includes(action)
+  const { reason = null, note = null, overrideReason = null, toRevisionNo = null } = opts;
+  // ⚠️ `withdraw` อยู่ในชุดนี้ด้วย — เหตุผลตอนดึงกลับไม่มีที่เก็บอื่นแล้ว
+  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw'].includes(action)
     ? REASON_SUFFIX(reason)
     : '';
 
+  // หมายเหตุของผู้อนุมัติไม่บังคับกรอก — มีก็ต้องไม่ตกหล่น (เดิมอยู่แต่ในเธรดของใบ)
+  const approveNote = clip(overrideReason)
+    ? ` (แอดมินอนุมัติแทน) — ${clip(overrideReason)}`
+    : (clip(note) ? ` — ${clip(note)}` : '');
+
   const text = {
     submit: `ยื่นขออนุมัติ${head ? ` ${head}` : ''}`,
-    approve: clip(overrideReason)
-      ? `อนุมัติ ${head} (แอดมินอนุมัติแทน) — ${clip(overrideReason)}`
-      : `อนุมัติ ${head}`,
+    approve: `อนุมัติ ${head}${approveNote}`,
     reject: `${head} ถูกตีกลับให้แก้ไข`,
     accept: `ลูกค้ารับ ${head}`,
     revise: `${head} ออก Rev. ใหม่${toRevisionNo == null ? '' : ` (Rev.${toRevisionNo})`}`,
     cancel: `ยกเลิก ${head}`,
     revoke: `ยกเลิกอนุมัติ ${head} — ยอดหลุดจาก Actual`,
     unaccept: `ย้อนการรับ ${head} — ดีลหลุดจาก Won`,
+    withdraw: `${head} ถูกดึงกลับมาแก้ไข`,
+    // กู้คืน = ล้าง rejectionReason/cancelReason ทิ้งทั้งชุด → **จุดที่เหตุผลรอบก่อน
+    // หายถาวร** แถวนี้จึงเป็นรอยเดียวที่บอกว่าเคยมีของที่ถูกล้างไป
+    restore: `${head} ถูกกู้คืนกลับเป็นร่าง`,
   }[action];
 
   return {
     kind,
     body: `${text}${tail}`,
-    meta: { docType, docId: doc.id || null, docNumber: number || null, action },
+    meta: {
+      docType,
+      docId: doc.id || null,
+      docNumber: number || null,
+      action,
+      // ธงอ่านด้วยเครื่องได้ ไม่ต้อง parse ข้อความ (รายงาน "อนุมัติแบบ override" ในอนาคต)
+      ...(action === 'approve' ? { override: !!clip(overrideReason) } : {}),
+    },
   };
 }

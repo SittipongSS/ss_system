@@ -209,7 +209,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // โดยไม่บอกว่าไปต่อที่ไหน · เหตุผลที่ออก Rev. เดิมมีที่เดียวคือ audit log
   await appendDocumentEvent(supabase, {
     docType: 'quotation', doc: quote, action: 'revise',
-    opts: { reason: notes, toRevisionNo: nextRev }, user, docId: quote.id,
+    opts: { reason: notes, toRevisionNo: nextRev }, user,
   });
 
   await recordAudit({
