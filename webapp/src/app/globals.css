@@ -2819,6 +2819,15 @@ button.ui-kpi-card { cursor: pointer; }
   line-height: var(--lh-thai);
 }
 .ui-select-empty { padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+/* หัวกลุ่มในดรอปดาวน์ (เช่น หมวดหลักของหมวดสินค้า) — เป็นป้ายบอกตำแหน่ง ไม่ใช่
+   ตัวเลือก จึงไม่มี hover/selected และตัวหนังสือเล็กกว่าลูกในกลุ่มเสมอ */
+.ui-select-group {
+  padding: var(--space-2) var(--space-2-5) var(--space-1);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+}
+.ui-select-group:not(:first-child) { border-top: 1px solid var(--border); margin-top: var(--space-1); }
 .ui-select-search {
   margin-bottom: 5px;
   height: 34px;
@@ -3183,11 +3192,14 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-sort-label { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; color: var(--text-3); font-size: var(--fs-7); white-space: nowrap; }
 .ui-sort-direction { flex: 0 0 auto; }
 
+/* ⚠️ เหลือช่องเดียวแล้ว (เดิมเป็นสองคอลัมน์: หมวดหลัก | หมวดรอง) แต่ยังคง
+   `grid-column: 1 / -1` ไว้ — ฟอร์มดีลมี `pairRows` ที่จับคู่ช่องเป็นแถว ๆ โดยนับว่า
+   หมวดสินค้ากินเต็มแถว (ดูคอมเมนต์ใน DealFormFields.js) ถอด span เมื่อไร parity
+   ของทุกแถวหลังจากนี้จะพลิก แล้ววันที่เริ่ม/สิ้นสุดจะหลุดคนละบรรทัด */
 .ui-product-category-select {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3-5);
+  grid-template-columns: minmax(0, 1fr);
 }
 .form-grid.cols-2 > .ui-product-category-select,
 .pm-form-grid > .ui-product-category-select { grid-column: 1 / -1; }
@@ -3211,9 +3223,6 @@ button.empty-state { width: 100%; font: inherit; }
 .deal-field > input,
 .deal-field > textarea { width: 100%; }
 .required-mark { color: var(--red); }
-@media (max-width: 640px) {
-  .ui-product-category-select { grid-template-columns: 1fr; }
-}
 
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

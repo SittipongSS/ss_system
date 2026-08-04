@@ -742,7 +742,7 @@ export default function DesignPreviewPage() {
 
             <div className={styles.stack}>
               <span className={styles.caption}>
-                ProductCategorySelect — หมวดหลักกับหมวดย่อยเป็นคู่เดียวกัน เลือกหมวดหลักแล้วหมวดย่อยถึงจะเปิด
+                ProductCategorySelect — ช่องเดียว หมวดหลักเป็นหัวกลุ่มในลิสต์ ค้นได้ทั้งรหัส ไทย และอังกฤษ
               </span>
               <ProductCategorySelect
                 categories={DEMO_CATEGORIES}

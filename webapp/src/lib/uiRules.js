@@ -6,6 +6,9 @@ export const ENTITY_SELECT_RULES = Object.freeze({
   person: Object.freeze({ searchable: true }),
   product: Object.freeze({ searchable: true }),
   brand: Object.freeze({ searchable: false }),
+  // หมวดสินค้ายุบสองชั้นเป็นช่องเดียวแล้ว (ProductCategorySelect) — prod มี 105 หมวด
+  // ⇒ ค้นได้เสมอ · สองคีย์ล่างเป็นของเดิม เผื่อมีที่เรียกตรงหลงเหลือ
+  productCategory: Object.freeze({ searchable: true }),
   mainCategory: Object.freeze({ searchable: true }),
   subCategory: Object.freeze({ searchable: true }),
 });
