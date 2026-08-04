@@ -4,8 +4,12 @@
 // ไทม์ไลน์ ("ส่งกลิ่น ครั้งที่ 1") กับข้อความในทะเบียนวัสดุ — คนเลยไปกรอกชื่อกลิ่น
 // ลงช่อง "ชื่อสูตร" ของสินค้าแทน (เจอจริงบน prod 10 แถว) แล้วข้อมูลสองอย่างปนกัน
 //
-// กลิ่น 1 ตัวมีหลาย Rev = การส่งตัวอย่างให้ลูกค้าลองแต่ละครั้ง + ผลตอบรับ
-// (ดู scentRevisions.js — ไฟล์นี้ดูแลตัวกลิ่น)
+// ⭐ **กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต** — ลูกค้าให้แก้ ⇒ ได้กลิ่น *ตัวใหม่*
+// ที่มีรหัส ชื่อ วันที่ ของตัวเอง แล้วชี้กลับตัวเดิมด้วย `derivedFromScentId`
+// (มติ 2026-08-04) ⇒ ไม่มีตาราง Rev. อีกแล้ว · วันที่ส่งอยู่บนตัวกลิ่นเอง (`sentAt`)
+//
+// ทำไมสายพันธุ์ดีกว่า Rev.: Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ —
+// ลูกค้าให้แก้ทั้ง A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A
 import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const SCENT_STATUSES = ['draft', 'developing', 'active', 'archived'];
@@ -76,11 +80,10 @@ export function canProposeScent(user) {
   return isScentRegistrar(user) || canUser(user, 'products:edit');
 }
 
-// บันทึกผลตอบรับลูกค้า: **ฝ่ายขายด้วย** ไม่ใช่ RD คนเดียว — คนที่คุยกับลูกค้าจริง
-// คือฝ่ายขาย ถ้าให้เฉพาะ RD กรอก ข้อมูลจะมาถึงช้าหรือไม่มาเลย
-export function canRecordScentFeedback(user) {
-  return canProposeScent(user);
-}
+// 🗑 `canRecordScentFeedback` ถูกลบไปพร้อมตาราง Rev (0206) — ผลตอบรับของลูกค้า
+// ไม่ได้อยู่ที่ทะเบียนอีกแล้ว แต่อยู่บน **แถวคำร้อง** (`outcome` — mig 0204) ซึ่งมี
+// ด่านของตัวเองที่ `HOP_OWNER.outcome = 'requester'` (ฝ่ายขายเป็นคนบันทึก ตรงกับ
+// เจตนาเดิมทุกประการ — คนที่คุยกับลูกค้าจริงคือฝ่ายขาย)
 
 // แก้ตัวกลิ่น (ชื่อ/ลูกค้า/หมายเหตุ): ร่างของตัวเองแก้ได้ · รับเข้าทะเบียนแล้ว
 // เป็นงานของ RD (ชื่อกลิ่นถูกอ้างจากที่อื่นแล้ว เปลี่ยนมั่วไม่ได้)
@@ -91,11 +94,16 @@ export function canEditScent(user, scent) {
   return canProposeScent(user) && scent.createdById === user?.id;
 }
 
-// ลบได้เฉพาะร่างที่ยังไม่มี Rev — ของที่รับเข้าทะเบียนแล้วเป็นหลักฐาน
-export function deleteScentError(scent, { revisionCount = 0 } = {}) {
+// ลบได้เฉพาะร่างที่ยังไม่มีใครอ้าง — ของที่รับเข้าทะเบียนแล้วเป็นหลักฐาน
+//
+// ⚠️ `linkedCount` มาแทน `revisionCount` เดิม (ตารางรอบถูกยกเลิกไปพร้อมมติที่ว่า
+// แก้แล้วได้กลิ่นตัวใหม่) · ตัวที่ต้องกันตอนนี้คือ **คำร้องที่ผลิตกลิ่นตัวนี้ขึ้นมา**
+// เพราะ `producedScentId` เป็น FK แบบ SET NULL ⇒ ลบผ่านได้เงียบ ๆ แล้วคำร้อง
+// จะชี้ไปที่ว่าง สายพันธุ์ของงานขาดตรงนั้นและต่อกลับไม่ได้อีก
+export function deleteScentError(scent, { linkedCount = 0 } = {}) {
   if (!scent) return 'ไม่พบกลิ่น';
   if (scent.status !== 'draft') return 'ลบได้เฉพาะร่าง — กลิ่นที่รับเข้าทะเบียนแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
-  if (revisionCount > 0) return 'กลิ่นนี้มีประวัติการส่งแล้ว ลบไม่ได้';
+  if (linkedCount > 0) return 'กลิ่นนี้ถูกอ้างอยู่ในคำร้องแล้ว ลบไม่ได้';
   return null;
 }
 
@@ -104,6 +112,23 @@ export function acceptScentError(scent, { code } = {}) {
   if (!scent) return 'ไม่พบกลิ่น';
   if (scent.status !== 'draft') return 'กลิ่นนี้รับเข้าทะเบียนไปแล้ว';
   if (!String(code ?? '').trim()) return 'ต้องระบุรหัสกลิ่นตอนรับเข้าทะเบียน';
+  return null;
+}
+
+// บันทึกวันที่ส่งกลิ่นให้ลูกค้า — ร่างยังไม่ใช่ของจริง เก็บเข้ากรุแล้วก็ไม่ส่งแล้ว
+// ⚠️ ด่านนี้ยกกฎมาจาก `sendRevisionError` เดิมทั้งชุด **ยกเว้น** ข้อ "Rev ก่อนหน้า
+// ยังรอผลอยู่" ซึ่งหมดความหมายไปพร้อมตารางรอบ (กลิ่นตัวหนึ่งมีวันส่งได้วันเดียว)
+export function sendScentError(scent, { sentAt } = {}) {
+  if (!scent) return 'ไม่พบกลิ่น';
+  if (scent.status === 'draft') {
+    return 'กลิ่นนี้ยังเป็นร่าง — RD ต้องรับเข้าทะเบียนก่อนจึงจะบันทึกวันที่ส่งได้';
+  }
+  if (scent.status === 'archived') {
+    return `กลิ่นนี้อยู่ในสถานะ "${SCENT_STATUS_LABELS.archived}" — เปิดใช้ก่อนจึงจะส่งได้`;
+  }
+  const at = String(sentAt ?? '').trim();
+  if (!at) return 'ต้องระบุวันที่ส่งกลิ่น';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(at)) return 'วันที่ส่งกลิ่นไม่ถูกต้อง';
   return null;
 }
 
@@ -132,6 +157,25 @@ export function scentTransitionError(scent, next) {
   return null;
 }
 
+// ── สายพันธุ์: "กลิ่นตัวนี้แก้มาจากตัวไหน" ────────────────────────────────
+//
+// ⭐ มาแทน Rev. — Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ (ลูกค้าให้แก้ทั้ง
+// A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A)
+//
+// ⚠️ ด่านนี้ต้องอยู่ที่ **server** ไม่ใช่แค่กรองตัวเลือกบนจอ — ตัวเลือกที่กรองแล้ว
+// กันคนกดผิด แต่ไม่กันคนยิง API ตรง · กลิ่นข้ามลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9)
+// เท่ากับตัวตนของกลิ่นเอง ไม่ใช่แค่ความสะดวกของฟอร์ม
+//
+// `parent` = แถวกลิ่นต้นทางที่ route โหลดมาให้ (null = หาไม่เจอ)
+export function derivedFromError(parent, { customerId, id } = {}) {
+  if (!parent) return 'ไม่พบกลิ่นต้นทางที่อ้างถึง';
+  if (id && parent.id === id) return 'กลิ่นอ้างตัวเองเป็นต้นทางไม่ได้';
+  if (parent.customerId !== customerId) {
+    return 'กลิ่นต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้';
+  }
+  return null;
+}
+
 // ── ตรวจข้อมูลก่อนสร้าง/แก้ — คืน { value, error } ───────────────────────
 export function normalizeScentInput(body = {}) {
   const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
@@ -145,6 +189,15 @@ export function normalizeScentInput(body = {}) {
   const code = String(body.code ?? '').trim() || null;
   if (code && code.length > 100) return { value: null, error: 'รหัสกลิ่นยาวเกิน 100 ตัวอักษร' };
 
+  // ⭐ ชื่อที่ลูกค้าตั้งเอง — เป็นวิธีที่ลูกค้าโทรมาถามจริง ("ขอตัว Summer Breeze")
+  // ⚠️ **ห้ามแสดงแทนรหัส/ชื่อของเรา ต้องแสดงคู่กันเสมอ** — ปล่อยให้แทนกันเมื่อไร
+  // จะเข้าโรคเดิมที่ 0171 บันทึกไว้ (ของจริง: สินค้า 10 แถวเอาชื่อกลิ่นไปกรอก
+  // ช่องชื่อสูตร แล้วไม่มีใครกลับมาตรวจ)
+  const customerTradeName = String(body.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
+  if (customerTradeName.length > 200) {
+    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
+  }
+
   const note = String(body.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
 
@@ -153,6 +206,8 @@ export function normalizeScentInput(body = {}) {
       name,
       code,
       customerId,
+      customerTradeName: customerTradeName || null,
+      derivedFromScentId: String(body.derivedFromScentId ?? '').trim() || null,
       customerName: String(body.customerName ?? '').trim() || null,
       dealId: String(body.dealId ?? '').trim() || null,
       ownerId: String(body.ownerId ?? '').trim() || null,

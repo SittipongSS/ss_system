@@ -24,8 +24,10 @@ const seesTax = (user) => can(user?.role, 'history:view');
 
 const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 
-// ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึง Rev/โน้ตมาทั้งก้อน
-const SCENT_COLS = 'id, code, name, status, currentRevisionNo, customerId, createdAt';
+// ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึงโน้ตมาทั้งก้อน
+// `sentAt` = วันที่ส่งกลิ่นให้ลูกค้า อยู่บนตัวกลิ่นเองแล้ว (0205) — กลิ่นตัวหนึ่งถูกส่ง
+// ครั้งเดียวตลอดชีวิต จึงไม่มี "Rev ล่าสุด" ให้แสดงอีก
+const SCENT_COLS = 'id, code, name, status, sentAt, customerId, createdAt';
 const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId';
 
 // กลิ่น + สูตรของลูกค้า 1 ราย.

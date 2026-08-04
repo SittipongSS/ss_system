@@ -6,6 +6,7 @@ import {
   SALE_UNIT_MAX,
   VOLUME_UNITS,
   formatVolume,
+  packagingSummary,
   saleUnitOf,
   unitOptions,
 } from './units.js';
@@ -44,4 +45,25 @@ test('formatVolume: เติมหน่วยตั้งต้นเมื่
   assert.equal(formatVolume({ volume: 500, volumeUnit: 'g' }), '500 g');
   assert.equal(formatVolume({}), '-');
   assert.equal(formatVolume(null), '-');
+});
+
+// ประโยคสรุปบรรจุภัณฑ์ — ตัวช่วยแยก "หน่วยขาย" ออกจาก "หน่วยปริมาตร" บนฟอร์ม
+test('packagingSummary: ประกอบเป็นประโยคที่อ่านแล้วรู้ทันทีว่าช่องไหนคืออะไร', () => {
+  assert.equal(
+    packagingSummary({ volume: 50, volumeUnit: 'ml', saleUnit: 'ขวด', piecesPerCase: 12 }),
+    '1 ขวด = 50 ml · 1 ลัง = 12 ขวด',
+  );
+});
+
+test('packagingSummary: ไม่มีจำนวนต่อลัง ก็เหลือแค่ท่อนขนาด', () => {
+  assert.equal(packagingSummary({ volume: 30, volumeUnit: 'g', saleUnit: 'หลอด' }), '1 หลอด = 30 g');
+});
+
+test('packagingSummary: ยังไม่กรอกอะไรเลย = ไม่มีประโยค (ไม่โชว์กล่องเปล่า)', () => {
+  assert.equal(packagingSummary({}), '');
+  assert.equal(packagingSummary(), '');
+});
+
+test('packagingSummary: ไม่ระบุหน่วย ใช้ค่าตั้งต้นเดียวกับที่ระบบบันทึกจริง', () => {
+  assert.equal(packagingSummary({ volume: 50 }), '1 ชิ้น = 50 ml');
 });

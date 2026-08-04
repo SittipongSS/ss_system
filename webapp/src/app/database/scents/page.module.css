@@ -7,7 +7,16 @@
 
 .name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
-.comment { white-space: pre-wrap; }
+
+/* ชื่อที่ลูกค้าเรียก + เส้นสายพันธุ์ — อยู่ใต้ชื่อของเรา น้ำหนักเบากว่าเสมอ
+   ⚠️ ถ้าให้สองบรรทัดนี้เด่นเท่าชื่อจริง คนจะเริ่มอ้างชื่อลูกค้าเป็นชื่อทางการ */
+.sub,
+.lineage {
+  margin-top: var(--space-1);
+  font-weight: var(--fw-normal);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
 
 .rowActions {
   display: flex;
@@ -17,12 +26,5 @@
 }
 
 .actionsCol { width: 180px; }
-.revCol { width: 70px; }
 
 .hint { color: var(--text-3); }
-
-.effect {
-  margin: var(--space-1) 0 0;
-  color: var(--text-3);
-  font-size: var(--fs-5);
-}

@@ -20,7 +20,7 @@ test('tax report preview uses explicit landscape pages and keeps summary on the 
 
 test('excise bill preview splits item lines and renders totals once on the final page', () => {
   const lines = Array.from({ length: 20 }, (_, index) => ({ id: index + 1 }));
-  assert.equal(paginateBillLines(lines).length, 2);
+  assert.equal(paginateBillLines(lines).length, 3);
   const html = buildBillPrintHTML({
     id: 'BILL-1',
     items: lines.map((line) => ({
@@ -30,37 +30,50 @@ test('excise bill preview splits item lines and renders totals once on the final
       product: { fgCode: `FG-${line.id}`, productDescription: `สินค้า ${line.id}` },
     })),
   });
-  assert.equal((html.match(/class="sheet explicit-page"/g) || []).length, 2);
-  assert.match(html, /หน้า 2 \/ 2/);
+  assert.equal((html.match(/class="sheet explicit-page"/g) || []).length, 3);
+  assert.match(html, /หน้า 3 \/ 3/);
   assert.equal((html.match(/ยอดแจ้งชำระสุทธิ/g) || []).length, 1);
 });
 
 // C1 (2026-07-26): เดิมกันที่หน้าสุดท้ายไว้ก่อน เศษเลยไปกองหน้าแรก/หน้ากลาง —
 // 9 แถวได้ [1, 8] · 13 แถวได้ [5, 8] · 21 แถวได้ [12, 1, 8] (หน้ากลางบรรทัดเดียว)
-// 20 แถวเป็นเคสเดียวที่สวย ซึ่งบังเอิญเป็นเคสที่เทสต์เดิมใช้พอดี
+// จึงเปลี่ยนเป็นเติมจากหน้าแรกแล้วให้เศษตกหน้าสุดท้าย
+//
+// 2026-08-05: ความจุลดจาก 12/8 เป็น 9/11/7/6 ตอนใบภาษีย้ายมาใช้เปลือกเอกสารกลาง
+// (ชุดเดียวกับใบเสนอราคา) — แถวสูงขึ้นเป็น 3 บรรทัดต่อแถว วัดจริงได้ 17.5mm ของเดิม
+// 12 แถวจึงล้นกระดาษแล้วโดน overflow:hidden ตัดทิ้งเงียบ ๆ · หน้าแรกรับได้น้อยกว่า
+// หน้ากลางเพราะเสียที่ให้กล่องข้อมูลลูกค้า และหน้าที่ถือท้ายเอกสารรับได้น้อยที่สุด
+const BILL_FIRST = 9;
+const BILL_MIDDLE = 11;
+const BILL_LAST = 7;
+const BILL_SINGLE = 6;
+
 test('excise bill pages fill from the front — no orphan single-line page before the last', () => {
   const pageSizes = (count) => paginateBillLines(Array.from({ length: count }, (_, i) => i)).map((p) => p.length);
 
+  assert.deepEqual(pageSizes(7), [6, 1]);
   assert.deepEqual(pageSizes(9), [8, 1]);
-  assert.deepEqual(pageSizes(13), [12, 1]);
-  assert.deepEqual(pageSizes(20), [12, 8]);
-  assert.deepEqual(pageSizes(21), [12, 8, 1]);
-  assert.deepEqual(pageSizes(29), [12, 12, 5]);
+  assert.deepEqual(pageSizes(13), [9, 4]);
+  assert.deepEqual(pageSizes(20), [9, 10, 1]);
+  assert.deepEqual(pageSizes(21), [9, 11, 1]);
+  assert.deepEqual(pageSizes(29), [9, 11, 8, 1]);
 
-  // ≤ 8 แถวจบในหน้าเดียวพร้อมยอดรวม
-  for (const count of [1, 5, 8]) assert.deepEqual(pageSizes(count), [count]);
+  // ≤ 6 แถวจบในหน้าเดียวพร้อมยอดรวม + ลายเซ็น
+  for (const count of [1, 5, 6]) assert.deepEqual(pageSizes(count), [count]);
   assert.deepEqual(paginateBillLines([]), [[]]);
 
-  // ค่าคงที่ของเลย์เอาต์: หน้าที่ไม่ใช่หน้าสุดท้าย 8–12 แถว · หน้าสุดท้าย 1–8 แถว
-  // (หน้าสุดท้ายว่างเปล่า = ยอดรวมกับลายเซ็นลอยอยู่หน้าเดียว ห้ามเกิด)
-  for (let count = 9; count <= 120; count += 1) {
+  // ค่าคงที่ของเลย์เอาต์ — เกินเมื่อไรแถวจะถูกตัดทิ้งโดยไม่มีใครเห็น
+  // (หน้าสุดท้ายว่างเปล่า = ยอดรวมกับลายเซ็นลอยอยู่หน้าเดียว ห้ามเกิดเช่นกัน)
+  for (let count = 1; count <= 200; count += 1) {
     const sizes = pageSizes(count);
     const last = sizes[sizes.length - 1];
     assert.equal(sizes.reduce((a, b) => a + b, 0), count, `รวมแถวไม่ครบที่ ${count}`);
-    assert.ok(last >= 1 && last <= 8, `หน้าสุดท้ายของ ${count} แถวมี ${last} แถว`);
-    for (const size of sizes.slice(0, -1)) {
-      assert.ok(size >= 8 && size <= 12, `หน้ากลางของ ${count} แถวมี ${size} แถว`);
-    }
+    assert.ok(last >= 1, `หน้าสุดท้ายของ ${count} แถวว่างเปล่า`);
+    assert.ok(last <= (sizes.length === 1 ? BILL_SINGLE : BILL_LAST), `หน้าสุดท้ายของ ${count} แถวมี ${last} แถว`);
+    sizes.slice(0, -1).forEach((size, index) => {
+      const capacity = index === 0 ? BILL_FIRST : BILL_MIDDLE;
+      assert.ok(size <= capacity, `หน้า ${index + 1} ของ ${count} แถวมี ${size} > ${capacity}`);
+    });
   }
 });
 

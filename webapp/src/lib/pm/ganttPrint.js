@@ -95,7 +95,9 @@ export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, cont
   return pages.length > 0 ? pages : [[]];
 }
 
-export function buildGanttPrintHTML(project, company, activeStandard = null) {
+// options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (กติกาเดียวกับ renderQuotationMasterDocumentHTML)
+// ใช้ตอนฝังเอกสารเป็นพรีวิวใน iframe ซึ่งปุ่มสั่งพิมพ์ไม่มีความหมาย
+export function buildGanttPrintHTML(project, company, activeStandard = null, options = {}) {
   const co = resolveCompanyBlock(company);
   // มาตรฐานที่ตรึงไว้ตอนออกเลขที่เอกสาร (mig 0198) มาก่อนมาตรฐานที่เผยแพร่อยู่ตอนนี้
   // เหมือนใบแจ้งชำระภาษี — ใบเก่าพิมพ์ซ้ำต้องได้รหัสฟอร์ม/Rev ชุดเดิมที่เคยออกไป
@@ -447,10 +449,10 @@ export function buildGanttPrintHTML(project, company, activeStandard = null) {
 </style>
 </head>
 <body>
-  <div class="toolbar no-print">
+  ${options.toolbar === false ? '' : `<div class="toolbar no-print">
     <h1>เอกสาร Project Timeline — ${esc(displayCode)}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
-  </div>
+  </div>`}
 
   ${contentPages}
   ${approvalPage}

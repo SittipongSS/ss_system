@@ -1769,6 +1769,25 @@ h1, h2, h3, h4, h5, h6 {
 
 /* โทนสำเร็จรูป — ใช้ได้กับทั้งสามชื่อ (เดิม `.ui-badge.warning` / `.ui-badge.danger`
    ถูกเขียนไว้ในโค้ดแต่ **ไม่มี selector อยู่จริง** = ป้ายไม่มีโทนเงียบ ๆ) */
+/* ── ป้ายที่อยู่ใน "คอลัมน์" ของตาราง ────────────────────────────────────────
+   มติผู้ใช้ 2026-08-05: ป้ายในตารางต้องกวาดตาลงเป็นคอลัมน์ได้ ไม่ใช่กว้างตามความ
+   ยาวข้อความของแต่ละแถว ("IG" กับ "Typeform" เคยกว้างต่างกันเกือบเท่าตัว)
+
+   ⚠️ อยู่ใน globals ไม่ใช่ *.module.css เพราะมี 5 ตารางใช้ (คิวลีด · ไปป์ไลน์ดีล ·
+   ใบเสนอราคา · ใบสั่งขาย · โครงการ) และ audit:ui ห้ามยืม module.css ข้ามโฟลเดอร์
+   ⚠️ ความกว้างสั่งจาก **ผู้เรียก** ไม่ฝังใน helper ที่สร้างป้าย — ป้ายชุดเดียวกันถูก
+   ใช้บนการ์ด/หน้ารายละเอียดด้วย ตรงนั้นควรพอดีข้อความ ไม่ใช่ยืดเต็มคอลัมน์
+   ⚠️ ตั้งความกว้างตาม "ป้ายที่ยาวที่สุดของชุดนั้น" — ถ้าตั้งสั้นกว่า ใบสั้นจะเท่ากัน
+   แต่ใบยาวโผล่เกินออกมาใบเดียว (กับดักเดิมของคอลัมน์สถานะลีดที่ตั้งไว้ 90px) */
+.ui-badge-cell { min-width: var(--cell-badge-w, 90px); white-space: nowrap; }
+
+.ui-badge-w-stage { --cell-badge-w: 124px; }   /* ขั้นของดีล — "เสนอไทม์ไลน์" / "ปิดได้ (Won)" */
+.ui-badge-w-fc { --cell-badge-w: 74px; }       /* FC% — กันแถวที่ยังไม่มีค่าเยื้อง */
+.ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
+.ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ยกเลิกอนุมัติ" */
+.ui-badge-w-lead { --cell-badge-w: 150px; }    /* สถานะลีด — "รอกระจาย (ได้ทีมแล้ว)" */
+.ui-badge-w-channel { --cell-badge-w: 88px; }  /* ช่องทางที่รับลีด — "Typeform" */
+
 .ui-badge.success, .status-pill.success, .chip.success { color: var(--green); }
 .ui-badge.warning, .status-pill.warning, .chip.warning { color: var(--amber); }
 .ui-badge.danger, .status-pill.danger, .chip.danger { color: var(--red); }
@@ -2819,6 +2838,15 @@ button.ui-kpi-card { cursor: pointer; }
   line-height: var(--lh-thai);
 }
 .ui-select-empty { padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+/* หัวกลุ่มในดรอปดาวน์ (เช่น หมวดหลักของหมวดสินค้า) — เป็นป้ายบอกตำแหน่ง ไม่ใช่
+   ตัวเลือก จึงไม่มี hover/selected และตัวหนังสือเล็กกว่าลูกในกลุ่มเสมอ */
+.ui-select-group {
+  padding: var(--space-2) var(--space-2-5) var(--space-1);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+}
+.ui-select-group:not(:first-child) { border-top: 1px solid var(--border); margin-top: var(--space-1); }
 .ui-select-search {
   margin-bottom: 5px;
   height: 34px;
@@ -3183,11 +3211,14 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-sort-label { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; color: var(--text-3); font-size: var(--fs-7); white-space: nowrap; }
 .ui-sort-direction { flex: 0 0 auto; }
 
+/* ⚠️ เหลือช่องเดียวแล้ว (เดิมเป็นสองคอลัมน์: หมวดหลัก | หมวดรอง) แต่ยังคง
+   `grid-column: 1 / -1` ไว้ — ฟอร์มดีลมี `pairRows` ที่จับคู่ช่องเป็นแถว ๆ โดยนับว่า
+   หมวดสินค้ากินเต็มแถว (ดูคอมเมนต์ใน DealFormFields.js) ถอด span เมื่อไร parity
+   ของทุกแถวหลังจากนี้จะพลิก แล้ววันที่เริ่ม/สิ้นสุดจะหลุดคนละบรรทัด */
 .ui-product-category-select {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3-5);
+  grid-template-columns: minmax(0, 1fr);
 }
 .form-grid.cols-2 > .ui-product-category-select,
 .pm-form-grid > .ui-product-category-select { grid-column: 1 / -1; }
@@ -3211,9 +3242,6 @@ button.empty-state { width: 100%; font: inherit; }
 .deal-field > input,
 .deal-field > textarea { width: 100%; }
 .required-mark { color: var(--red); }
-@media (max-width: 640px) {
-  .ui-product-category-select { grid-template-columns: 1fr; }
-}
 
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

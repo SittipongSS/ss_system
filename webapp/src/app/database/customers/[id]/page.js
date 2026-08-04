@@ -632,7 +632,7 @@ export default function CustomerDetails() {
                         key={s.id}
                         onClick={() => router.push(`/database/scents?q=${encodeURIComponent(s.code || s.name)}`)}
                         title={s.name}
-                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.currentRevisionNo > 0 ? ` · Rev. ${s.currentRevisionNo}` : " · ยังไม่ส่ง"}`}
+                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}`}
                         right={(
                           <RegistryBadge
                             className="shrink-0"
@@ -687,8 +687,8 @@ export default function CustomerDetails() {
             docTypes={customerDocTypes(customer.customerType)}
             title="เอกสารของลูกค้า"
             note={customer.customerType === "individual"
-              ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
-              : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่บริษัท"}
+              ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, แผนที่ที่อยู่, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
+              : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่ที่อยู่"}
           />
 
           {/* เธรดกลาง (mig 0163) — ด่านอนุมัติ master data บังคับกรอกเหตุผลที่ตีกลับ

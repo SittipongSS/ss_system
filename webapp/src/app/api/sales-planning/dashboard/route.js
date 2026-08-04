@@ -217,8 +217,19 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
+  /* 🐞 เดิมตัดถัง null ทิ้ง ("ดีลไม่ระบุทีม") ⇒ ยอดรวมบริษัทกับผลรวมรายทีม **ไม่ตรงกัน**
+     โดยไม่มีอะไรบอก — ดีลไร้ทีมยังถูกนับใน totals แต่หายจากตารางทีม
+
+     เอื้อมถึงจริง: ฟอร์มสร้างดีลไม่มีช่องทีม ทีมมาจาก `user.team` ล้วน (POST /deals:
+     `team: body.team || user.team || null`) และแอดมิน/AE Supervisor **ไม่มีทีม** ⇒
+     ดีลที่คนสองตำแหน่งนี้เปิดจะไร้ทีมทันที (ตรวจ prod 2026-08-05: ยังเป็น 0 ใบ
+     เพราะดีลทั้ง 146 ใบถูกเปิดโดยคนที่มีทีม — กับดักยังไม่สปริง)
+
+     ⚠️ เป้า "SA รวม" ไม่เคยตกมาที่ถังนี้ — targets ที่ไม่มีทีมถูก `continue` ไปเข้า
+     saWideTarget ตั้งแต่ลูปด้านบน คอมเมนต์เดิมที่อ้างว่าถังนี้ปน "SA รวม" จึงไม่จริง
+     ถัง null มีแต่ **ดีล** ที่ไม่ระบุทีม การโชว์จึงปลอดภัยและทำให้ยอดกระทบกันครบ
+     (buildMatrix ฝั่งหน้าเว็บตั้งชื่อแถวว่า "ไม่ระบุทีม" รออยู่แล้ว) */
   const byTeam = Object.values(teamMap)
-    .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม
     .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
     .sort((a, b) => teamRank(a.team) - teamRank(b.team) || b.target - a.target);

@@ -11,11 +11,11 @@ import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { REGISTRATION_FILTERS, FILING_FILTERS } from "@/lib/excise/workflow";
 import { ATTACHMENT_TYPES } from "@/lib/master/attachmentTypes";
 
-// ประเภทเอกสารที่เลือกรวมใน ZIP ได้ — เอกสารทะเบียน + แผนที่บริษัท (เอกสารลูกค้า
+// ประเภทเอกสารที่เลือกรวมใน ZIP ได้ — เอกสารทะเบียน + แผนที่ที่อยู่ (เอกสารลูกค้า
 // ที่ผูกกับทะเบียน ไม่ใช่การ์ดของทะเบียนเอง จึงเติมเป็นตัวเลือกพิเศษท้ายลิสต์).
 const ZIP_DOC_TYPES = [
   ...ATTACHMENT_TYPES.registration,
-  { key: "address_map", label: "แผนที่บริษัท (เอกสารลูกค้า)" },
+  { key: "address_map", label: "แผนที่ที่อยู่ (เอกสารลูกค้า)" },
 ];
 const ZIP_ALL_KEYS = ZIP_DOC_TYPES.map((t) => t.key);
 

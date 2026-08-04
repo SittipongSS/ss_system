@@ -2,15 +2,18 @@
 // ── ทะเบียนกลิ่น (mig 0171) ────────────────────────────────────────────
 //
 // กลิ่นเป็น "ข้อมูลหลัก" เหมือนลูกค้า/สินค้า — มีตัวตนถาวร ไม่มีเลขที่เอกสาร
-// ฝ่ายขายเสนอเข้ามาเป็นร่าง → RD ใส่รหัสแล้วรับเข้าทะเบียน → ส่งตัวอย่างให้ลูกค้า
-// เป็น Rev แต่ละครั้ง แล้วบันทึกผลตอบรับกลับมา
+// ฝ่ายขายเสนอเข้ามาเป็นร่าง → RD ใส่รหัสแล้วรับเข้าทะเบียน → ส่งให้ลูกค้าลอง
+//
+// ⭐ **กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต** (มติ 2026-08-04) — ลูกค้าให้แก้ ⇒ ได้
+// กลิ่น *ตัวใหม่* ที่มีรหัส ชื่อ วันที่ ของตัวเอง แล้วชี้กลับตัวเดิม ⇒ ตาราง Rev.
+// และคอลัมน์ "ผลตอบรับ" ถูกยกเลิกทั้งชุด เพราะไม่มีข้อมูลให้แสดงอีกแล้ว
 //
 // ⚠️ ก่อนมีหน้านี้ คนกรอกชื่อกลิ่นลงช่อง "ชื่อสูตร" ของสินค้าเพราะไม่มีที่เก็บ
 // (เจอจริงบน prod 10 แถว) — ดูการ์ด "รอจัดระเบียบ" ที่หน้าทะเบียนสูตร
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore, History,
+  Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -32,13 +35,9 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
-import Textarea from "@/components/ui/Textarea";
 import {
   SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent, isScentRegistrar,
 } from "@/lib/master/scents";
-import {
-  SCENT_FEEDBACK_LABELS, SCENT_FEEDBACK_TONES, revisionSummary,
-} from "@/lib/master/scentRevisions";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -64,9 +63,7 @@ export default function ScentsPage() {
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code }
-  const [sending, setSending] = useState(null); // { scent, sentAt, sampleCode, note }
-  const [feedback, setFeedback] = useState(null); // { scent, revision, status, feedbackAt, text }
-  const [history, setHistory] = useState(null);
+  const [sending, setSending] = useState(null); // { scent, sentAt }
   const [confirm, setConfirm] = useState(null); // { kind, scent }
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -93,10 +90,19 @@ export default function ScentsPage() {
       if (statusFilter === "open" && s.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && s.status !== statusFilter) return false;
       if (!q) return true;
-      return [s.name, s.code, s.customerName, s.note]
+      // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
+      // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
+      // รหัสตัวอย่างอยู่ในสายค้นด้วย — RD หาย้อนจากรหัสบนขวดที่ลูกค้าอ้างถึง
+      return [s.name, s.code, s.customerName, s.customerTradeName, s.sampleCode, s.note]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
   }, [scents, statusFilter, search]);
+
+  // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
+  const scentLabelById = useMemo(
+    () => new Map(scents.map((s) => [s.id, s.code || s.name])),
+    [scents],
+  );
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(visible, { resetKey: `${search}|${statusFilter}` });
@@ -125,6 +131,8 @@ export default function ScentsPage() {
       name: v.name,
       customerId: v.customerId,
       customerName: customers.find((c) => c.id === v.customerId)?.name || null,
+      customerTradeName: v.customerTradeName,
+      derivedFromScentId: v.derivedFromScentId,
       note: v.note,
     };
     if (form.mode === "create") {
@@ -152,26 +160,11 @@ export default function ScentsPage() {
   };
 
   const submitSend = async () => {
-    const done = await call(`/api/master/scents/${sending.scent.id}/revisions`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sentAt: sending.sentAt, sampleCode: sending.sampleCode, note: sending.note,
-      }),
-    }, "บันทึกการส่งกลิ่นแล้ว");
+    const done = await call(`/api/master/scents/${sending.scent.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sent", sentAt: sending.sentAt }),
+    }, "บันทึกวันที่ส่งกลิ่นแล้ว");
     if (done) setSending(null);
-  };
-
-  const submitFeedback = async () => {
-    const done = await call(
-      `/api/master/scents/${feedback.scent.id}/revisions/${feedback.revision.id}`,
-      {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: feedback.status, feedbackAt: feedback.feedbackAt, feedback: feedback.text,
-        }),
-      }, "บันทึกผลตอบรับแล้ว",
-    );
-    if (done) setFeedback(null);
   };
 
   // ลบ: admin ที่โดนกฎธุรกิจบล็อกจะได้พรีวิวว่ากระทบอะไรบ้าง แล้วถามยืนยันบังคับลบต่อ
@@ -298,30 +291,46 @@ export default function ScentsPage() {
               <thead>
                 <tr>
                   <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th>
-                  <th>Rev ล่าสุด</th><th>ผลตอบรับ</th><th>สถานะ</th><th className={styles.actionsCol}></th>
+                  <th>วันที่ส่ง</th><th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((s) => {
-                  const sum = revisionSummary(s.revisions || []);
-                  const latest = (s.revisions || [])[0];
                   return (
                     <tr key={s.id}>
-                      <td className="mono">{s.code || <span className={styles.muted}>—</span>}</td>
-                      <td className={styles.name}>{s.name}</td>
-                      <td>{s.customerName || s.customerId}</td>
                       <td className="mono">
-                        {sum.latestNo
-                          ? <>Rev. {sum.latestNo} · {fmtDate(latest?.sentAt)}</>
-                          : <span className={styles.muted}>ยังไม่ส่ง</span>}
+                        {s.code || <span className={styles.muted}>—</span>}
+                        {/* รหัสตัวอย่างที่ส่งออกไปจริง — *คนละรหัส* กับรหัสกลิ่นในทะเบียน
+                            คือสายที่โยงกลับไปหาขวดที่ลูกค้าถืออยู่ · ยกมาจากตารางรอบ
+                            ที่ถูกทิ้งใน 0206 (ของจริง 29 แถวมีครบทุกแถว)
+                            ⚠️ อ่านอย่างเดียว ไม่มีช่องกรอก — สายงานใหม่บันทึกการส่ง
+                            ผ่านคำร้อง ไม่ใช่ผ่านทะเบียน */}
+                        {s.sampleCode && (
+                          <div className={styles.sub}>ตัวอย่าง {s.sampleCode}</div>
+                        )}
                       </td>
-                      <td>
-                        {sum.latestStatus ? (
-                          <StatusBadge
-                            tone={SCENT_FEEDBACK_TONES[sum.latestStatus]}
-                            label={SCENT_FEEDBACK_LABELS[sum.latestStatus]}
-                          />
-                        ) : <span className={styles.muted}>—</span>}
+                      <td className={styles.name}>
+                        {s.name}
+                        {/* ⚠️ ชื่อของลูกค้าอยู่ **ใต้** ชื่อของเรา และมีคำนำหน้ากำกับ
+                            เสมอ — ไม่ใช่แทนที่กัน · วางสลับหรือทิ้งคำนำหน้าเมื่อไร
+                            คนอ่านจะเริ่มอ้างชื่อลูกค้าเป็นชื่อทางการ ซึ่งเป็นโรคเดิม
+                            ที่ 0171 บันทึกไว้ */}
+                        {s.customerTradeName && (
+                          <div className={styles.sub}>ลูกค้าเรียก “{s.customerTradeName}”</div>
+                        )}
+                        {s.derivedFromScentId && (
+                          <div className={styles.lineage}>
+                            └─ แก้จาก {scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}
+                          </div>
+                        )}
+                      </td>
+                      <td>{s.customerName || s.customerId}</td>
+                      {/* กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันที่เดียว ไม่ใช่
+                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง */}
+                      <td className="mono">
+                        {s.sentAt
+                          ? fmtDate(s.sentAt)
+                          : <span className={styles.muted}>ยังไม่ส่ง</span>}
                       </td>
                       <td>
                         <StatusBadge
@@ -331,11 +340,6 @@ export default function ScentsPage() {
                       </td>
                       <td>
                         <div className={styles.rowActions}>
-                          {(s.revisions || []).length > 0 && (
-                            <Button size="sm" variant="quiet" title="ประวัติการส่ง"
-                              icon={<History size={14} aria-hidden="true" />}
-                              onClick={() => setHistory(s)} />
-                          )}
                           {registrar && s.status === "draft" && (
                             <Button size="sm" title="รับเข้าทะเบียน"
                               icon={<Check size={14} aria-hidden="true" />}
@@ -343,11 +347,16 @@ export default function ScentsPage() {
                               รับเข้าทะเบียน
                             </Button>
                           )}
+                          {/* ⭐ ปุ่มนี้ "ไม่หายไปกับตาราง Rev" — สิ่งที่ยกเลิกคือ *รอบ*
+                              ไม่ใช่ *การบันทึกว่าส่งไปแล้ว* · RD ใช้ของเดิมมา 29 ครั้ง
+                              บนของจริง ตัดทิ้งเมื่อไรคือถอดความสามารถออกจากมือคนใช้
+                              ตอนนี้เขียนลง `scents.sentAt` ช่องเดียว ซึ่งเป็นช่อง
+                              เดียวกับที่คำร้องจะเขียนตอนสายพัฒนากลิ่นครบวง */}
                           {registrar && (s.status === "developing" || s.status === "active") && (
-                            <Button size="sm" title="บันทึกการส่งกลิ่น"
+                            <Button size="sm" title="บันทึกวันที่ส่งกลิ่นให้ลูกค้า"
                               icon={<Send size={14} aria-hidden="true" />}
-                              onClick={() => setSending({ scent: s, sentAt: todayIso(), sampleCode: "", note: "" })}>
-                              ส่งกลิ่น
+                              onClick={() => setSending({ scent: s, sentAt: s.sentAt || todayIso() })}>
+                              {s.sentAt ? "แก้วันที่ส่ง" : "ส่งกลิ่น"}
                             </Button>
                           )}
                           {s._canEdit && (
@@ -401,6 +410,9 @@ export default function ScentsPage() {
           <>
             <ScentForm
               mode={form.mode} value={form.value} customers={customers}
+              // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
+              // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
+              scents={scents} editingId={form.scent?.id || null}
               canSetCode={registrar} disabled={saving}
               onChange={(value) => setForm({ ...form, value })}
             />
@@ -438,142 +450,30 @@ export default function ScentsPage() {
         )}
       </Modal>
 
-      {/* บันทึกการส่งกลิ่น = Rev ใหม่ */}
+      {/* วันที่ส่งกลิ่นให้ลูกค้า — ช่องเดียว ไม่ใช่ฟอร์มรอบ
+          ⚠️ รหัสตัวอย่างหายไปโดยตั้งใจ (มติผู้ใช้: ไม่ใช้แล้ว) · หมายเหตุก็ไม่มีที่นี่
+          เพราะที่คุยกันจริงคือเธรดของกลิ่น ไม่ใช่ช่องข้อความค้างในโมดัล */}
       <Modal
         open={!!sending} onClose={() => setSending(null)} size="sm" dismissible={!saving}
-        title={sending ? `บันทึกการส่งกลิ่น — ${sending.scent.name}` : ""}
+        title={sending ? `วันที่ส่งกลิ่น — ${sending.scent.name}` : ""}
       >
         {sending && (
           <>
-            <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor="send-date">วันที่ส่ง</label>
-                <DateInput
-                  id="send-date" value={sending.sentAt} disabled={saving}
-                  onChange={(v) => setSending({ ...sending, sentAt: v })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="send-sample">รหัสตัวอย่าง</label>
-                <input
-                  id="send-sample" className="premium-input" value={sending.sampleCode} disabled={saving}
-                  onChange={(e) => setSending({ ...sending, sampleCode: e.target.value })}
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <label htmlFor="send-note">หมายเหตุ</label>
-                <Textarea
-                  id="send-note" rows={2} value={sending.note} disabled={saving}
-                  onChange={(e) => setSending({ ...sending, note: e.target.value })}
-                />
-              </div>
+            <div className="form-group">
+              <label htmlFor="send-date">ส่งให้ลูกค้าวันไหน</label>
+              <DateInput
+                id="send-date" value={sending.sentAt} disabled={saving}
+                onChange={(v) => setSending({ ...sending, sentAt: v })}
+              />
+              <small className={styles.hint}>
+                กลิ่นตัวหนึ่งส่งครั้งเดียว — ลูกค้าขอให้แก้แล้วจะเป็นกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง
+              </small>
             </div>
             <div className="modal-actions">
               <Button onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitSend} disabled={saving}>
-                บันทึกเป็น Rev. {(sending.scent.currentRevisionNo || 0) + 1}
+              <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
+                บันทึก
               </Button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      {/* ประวัติการส่ง + บันทึกผลตอบรับ */}
-      <Modal
-        open={!!history} onClose={() => setHistory(null)} size="lg"
-        title={history ? `ประวัติการส่งกลิ่น — ${history.name}` : ""}
-      >
-        {history && (
-          <TableScroll>
-            <table>
-              <thead>
-                <tr>
-                  <th className={styles.revCol}>Rev</th><th>วันที่ส่ง</th><th>ตัวอย่าง</th>
-                  <th>ผลตอบรับ</th><th>วันที่ตอบ</th><th>ความเห็นลูกค้า</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(history.revisions || []).map((r) => (
-                  <tr key={r.id}>
-                    <td className="mono">Rev. {r.revisionNo}</td>
-                    <td className="mono">{fmtDate(r.sentAt)}</td>
-                    <td className="mono">{r.sampleCode || "—"}</td>
-                    <td>
-                      <StatusBadge
-                        tone={SCENT_FEEDBACK_TONES[r.feedbackStatus]}
-                        label={SCENT_FEEDBACK_LABELS[r.feedbackStatus]}
-                      />
-                    </td>
-                    <td className="mono">{r.feedbackAt ? fmtDate(r.feedbackAt) : "—"}</td>
-                    <td className={styles.comment}>{r.feedback || "—"}</td>
-                    <td>
-                      {r.feedbackStatus === "pending" && canPropose && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setHistory(null);
-                            setFeedback({
-                              scent: history, revision: r,
-                              status: "approved", feedbackAt: todayIso(), text: "",
-                            });
-                          }}
-                        >
-                          บันทึกผล
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        )}
-      </Modal>
-
-      {/* ผลตอบรับ — ฝ่ายขายกรอกได้ด้วย เพราะเป็นคนคุยกับลูกค้า */}
-      <Modal
-        open={!!feedback} onClose={() => setFeedback(null)} size="sm" dismissible={!saving}
-        title={feedback ? `ผลตอบรับ Rev. ${feedback.revision.revisionNo} — ${feedback.scent.name}` : ""}
-      >
-        {feedback && (
-          <>
-            <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor="fb-status">ผลตอบรับ</label>
-                <Select
-                  id="fb-status" value={feedback.status} disabled={saving}
-                  onChange={(e) => setFeedback({ ...feedback, status: e.target.value })}
-                  options={[
-                    { value: "approved", label: SCENT_FEEDBACK_LABELS.approved },
-                    { value: "revise", label: SCENT_FEEDBACK_LABELS.revise },
-                    { value: "rejected", label: SCENT_FEEDBACK_LABELS.rejected },
-                  ]}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="fb-date">วันที่ได้รับผล</label>
-                <DateInput
-                  id="fb-date" value={feedback.feedbackAt} disabled={saving}
-                  onChange={(v) => setFeedback({ ...feedback, feedbackAt: v })}
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <label htmlFor="fb-text">ความเห็นของลูกค้า</label>
-                <Textarea
-                  id="fb-text" rows={4} value={feedback.text} disabled={saving}
-                  placeholder="เช่น ขอให้ลดโทนไม้ลง เพิ่มความสดช่วงต้น"
-                  onChange={(e) => setFeedback({ ...feedback, text: e.target.value })}
-                />
-              </div>
-            </div>
-            <p className={styles.effect}>
-              {feedback.status === "approved" && "บันทึกแล้วกลิ่นนี้จะเปลี่ยนเป็น \"ใช้งานได้\" อัตโนมัติ"}
-              {feedback.status === "revise" && "บันทึกแล้วกลิ่นนี้จะกลับไปสถานะ \"กำลังพัฒนา\" เพื่อส่ง Rev ถัดไป"}
-              {feedback.status === "rejected" && "สถานะกลิ่นไม่เปลี่ยนเอง — เลือกเองว่าจะลองใหม่หรือเก็บเข้ากรุ"}
-            </p>
-            <div className="modal-actions">
-              <Button onClick={() => setFeedback(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitFeedback} disabled={saving}>บันทึกผล</Button>
             </div>
           </>
         )}

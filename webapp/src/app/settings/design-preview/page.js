@@ -107,7 +107,7 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 142 },
+  { cls: "ui-badge", count: 140 },
   { cls: "status-pill", count: 42 },
   { cls: "chip", count: 20 },
 ];
@@ -742,7 +742,7 @@ export default function DesignPreviewPage() {
 
             <div className={styles.stack}>
               <span className={styles.caption}>
-                ProductCategorySelect — หมวดหลักกับหมวดย่อยเป็นคู่เดียวกัน เลือกหมวดหลักแล้วหมวดย่อยถึงจะเปิด
+                ProductCategorySelect — ช่องเดียว หมวดหลักเป็นหัวกลุ่มในลิสต์ ค้นได้ทั้งรหัส ไทย และอังกฤษ
               </span>
               <ProductCategorySelect
                 categories={DEMO_CATEGORIES}
