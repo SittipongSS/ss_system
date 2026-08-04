@@ -247,19 +247,12 @@ export default function ProductForm({
               </span>
             </div>
           )}
-          {/* ⚠️ สองช่องนี้สลับกันได้ง่ายเพราะชื่อคล้ายกัน — "หน่วยขาย" คือหน่วยที่นับขาย
-              บนเอกสาร (ไปเป็น quotation_lines.unit) ส่วน "หน่วยปริมาตร" คือขนาดของ
-              หนึ่งหน่วยขาย · ประโยคสรุปใต้กลุ่มนี้ประกอบจากค่าที่กรอกจริง กรอกสลับช่อง
-              เมื่อไหร่จะอ่านแล้วผิดทันที ('1 ml = 50 ขวด') */}
-          <div className="form-group">
-            <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
-            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
-              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
-            <span className="text-xs text-[var(--text-3)] mt-1">หน่วยที่ <strong>นับขาย</strong> บนใบเสนอราคา/ใบสั่งขาย — ลูกค้าสั่ง 10 หมายถึง 10 หน่วยนี้</span>
-          </div>
+          {/* ⚠️ "หน่วยขาย" กับ "หน่วยปริมาตร" สลับกันได้ง่ายเพราะชื่อคล้ายกัน — ตัวแรกคือ
+              หน่วยที่นับขายบนเอกสาร (ไปเป็น quotation_lines.unit) ตัวหลังคือขนาดของหนึ่ง
+              หน่วยขาย · ลำดับช่องในบล็อกนี้ผู้ใช้เป็นคนกำหนด (มติ 2026-08-05):
+              ปริมาตร | จำนวนต่อลัง · ราคาผลิต | หน่วยขาย
+              ประโยคสรุปปิดท้ายประกอบจากค่าที่กรอกจริง กรอกสลับช่องเมื่อไหร่จะอ่านแล้ว
+              ผิดทันที ('1 ml = 50 ขวด') */}
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <div className="flex gap-2">
@@ -277,14 +270,6 @@ export default function ProductForm({
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
             <span className="text-xs text-[var(--text-3)] mt-1">1 ลังมีกี่{saleUnitLabel} (เว้นว่างได้ถ้าไม่ได้ขายยกลัง)</span>
           </div>
-          {packaging && (
-            <div className="form-group col-span-2">
-              <div className="text-xs rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2 text-[var(--text-2)]">
-                สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong>
-                <span className="text-[var(--text-3)]"> — อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง</span>
-              </div>
-            </div>
-          )}
           <div className="form-group">
             <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (
@@ -301,6 +286,23 @@ export default function ProductForm({
               <MoneyInput name="costPrice" value={form.costPrice} onChange={(v) => onForm({ costPrice: v ?? "" })} className="w-full" />
             )}
           </div>
+          <div className="form-group">
+            <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
+            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
+              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+            <span className="text-xs text-[var(--text-3)] mt-1">หน่วยที่ <strong>นับขาย</strong> บนใบเสนอราคา/ใบสั่งขาย — ลูกค้าสั่ง 10 หมายถึง 10 หน่วยนี้</span>
+          </div>
+          {packaging && (
+            <div className="form-group col-span-2">
+              <div className="text-xs rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2 text-[var(--text-2)]">
+                สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong>
+                <span className="text-[var(--text-3)]"> — อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
