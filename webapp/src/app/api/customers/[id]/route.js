@@ -288,9 +288,10 @@ export async function PATCH(request, { params }) {
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง; ที่อยู่หลัก → กระจกลงช่องเดี่ยวเดิม.
-  // ผู้เรียกเก่าที่ยัง PATCH มาด้วย address/shippingAddress/branchCode ยังใช้ได้ —
-  // แปลงขึ้นลิสต์ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด
-  const legacyAddressEdit = ['address', 'shippingAddress', 'branchCode'].some((k) => body[k] !== undefined);
+  // ผู้เรียกเก่าที่ยัง PATCH มาด้วย address/shippingAddress ยังใช้ได้ — แปลงขึ้นลิสต์
+  // ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด · branchCode ไม่อยู่ใน
+  // ลิสต์ (สาขาเป็นของลูกค้าทั้งราย) จึงไหลผ่าน loop ช่องปกติด้านบนเหมือนเดิม
+  const legacyAddressEdit = ['address', 'shippingAddress'].some((k) => body[k] !== undefined);
   if (body.addresses !== undefined || legacyAddressEdit) {
     const addresses = normalizeAddresses(
       body.addresses !== undefined

@@ -9,27 +9,29 @@ import {
   normalizeAddresses,
   pickDocumentAddresses,
   primaryShippingAddress,
+  toggleAddressUse,
 } from './addresses.js';
 
-// ลูกค้าที่มีสำนักงานใหญ่ (ออกบิล) + คลัง (จัดส่ง) + สาขา 2 (ใช้ได้ทั้งสองอย่าง)
+// ลูกค้าที่มีสำนักงานใหญ่ (ออกบิล) + คลัง (จัดส่ง) + สาขาระยอง (ใช้ได้ทั้งสองอย่าง)
 const CUSTOMER = {
+  branchCode: '00000',
   addresses: [
-    { id: 'ADR-hq', label: 'สำนักงานใหญ่', branchCode: '00000', address: '1 สีลม', useFor: 'billing' },
-    { id: 'ADR-wh', label: 'คลังบางนา', branchCode: '00000', address: '9 บางนา', useFor: 'shipping' },
-    { id: 'ADR-br2', label: 'สาขาระยอง', branchCode: '00002', address: '77 ระยอง', useFor: 'both' },
+    { id: 'ADR-hq', label: 'สำนักงานใหญ่', address: '1 สีลม', useFor: 'billing' },
+    { id: 'ADR-wh', label: 'คลังบางนา', address: '9 บางนา', useFor: 'shipping' },
+    { id: 'ADR-br2', label: 'สาขาระยอง', address: '77 ระยอง', useFor: 'both' },
   ],
 };
 
 test('แถวใหม่ได้ id เสมอ และแถวที่ไม่มีตัวที่อยู่ถูกตัดทิ้ง', () => {
   const rows = normalizeAddresses([
-    { label: ' คลังบางนา ', branchCode: ' 00002 ', address: ' 99/1 บางนา ', useFor: 'shipping' },
+    { label: ' คลังบางนา ', address: ' 99/1 บางนา ', useFor: 'shipping' },
     { label: 'ป้ายชื่อล้วน', address: '   ' }, // ไม่มีที่อยู่ = ไม่ใช่ที่อยู่
   ]);
   assert.equal(rows.length, 1);
   assert.match(rows[0].id, /^ADR-/);
   assert.deepEqual(
     { ...rows[0], id: undefined },
-    { id: undefined, label: 'คลังบางนา', branchCode: '00002', address: '99/1 บางนา', useFor: 'shipping' },
+    { id: undefined, label: 'คลังบางนา', address: '99/1 บางนา', useFor: 'shipping' },
   );
 });
 
@@ -44,9 +46,8 @@ test('useFor ที่ไม่รู้จักตกเป็น both — ท
 });
 
 test('ช่องเดี่ยวเดิมที่ไม่มีที่อยู่จัดส่ง → ที่อยู่เดียวใช้ได้ทั้งสองอย่าง', () => {
-  const rows = addressesFromLegacy({ address: '1 สีลม', branchCode: '00000' });
+  const rows = addressesFromLegacy({ address: '1 สีลม' });
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].label, 'สำนักงานใหญ่');
   assert.equal(rows[0].useFor, 'both');
 });
 
@@ -57,9 +58,8 @@ test('ที่อยู่จัดส่งที่ซ้ำกับที�
 });
 
 test('ที่อยู่จัดส่งที่ต่างกันแตกเป็นสองแถว และแยกหน้าที่กัน', () => {
-  const rows = addressesFromLegacy({ address: '1 สีลม', shippingAddress: '9 บางนา', branchCode: '00003' });
+  const rows = addressesFromLegacy({ address: '1 สีลม', shippingAddress: '9 บางนา' });
   assert.deepEqual(rows.map((r) => r.useFor), ['billing', 'shipping']);
-  assert.equal(rows[0].label, 'สาขา 00003');
 });
 
 test('ลูกค้าที่ยังไม่ backfill อ่านที่อยู่จากช่องเดี่ยวได้ ไม่ใช่ลิสต์ว่าง', () => {
@@ -78,13 +78,12 @@ test('ลิสต์ชนะช่องเดี่ยวเสมอเม�
 
 test('กระจกลงช่องเดี่ยว: ที่อยู่หลักคือรายการแรกที่ใช้งานนั้นได้', () => {
   const list = [
-    { id: 'A', address: 'คลัง', branchCode: '00009', useFor: 'shipping' },
-    { id: 'B', address: 'สำนักงานใหญ่', branchCode: '00000', useFor: 'billing' },
+    { id: 'A', address: 'คลัง', useFor: 'shipping' },
+    { id: 'B', address: 'สำนักงานใหญ่', useFor: 'billing' },
   ];
   assert.deepEqual(legacyAddressMirror(list), {
     address: 'สำนักงานใหญ่',
     shippingAddress: 'คลัง',
-    branchCode: '00000',
   });
   assert.equal(primaryShippingAddress(list).id, 'A');
 });
@@ -108,14 +107,14 @@ test('เอกสารที่ไม่ได้เลือกที่อ�
   assert.equal(snapshot.billingAddressId, 'ADR-hq');
 });
 
-test('เลือกสาขาแล้ว สาขาบนเอกสารต้องมาจากที่อยู่ที่เลือก ไม่ใช่ค่าเดี่ยวของลูกค้า', () => {
+test('เลือกที่อยู่คนละที่ไม่ทำให้สาขาขยับ — สาขาเป็นของลูกค้าทั้งราย', () => {
   const { snapshot } = pickDocumentAddresses(
-    { ...CUSTOMER, branchCode: '00000' },
+    { ...CUSTOMER, branchCode: '00009' },
     { billingAddressId: 'ADR-br2', shippingAddressId: 'ADR-br2' },
   );
   assert.equal(snapshot.billingAddress, '77 ระยอง');
   assert.equal(snapshot.shippingAddress, '77 ระยอง');
-  assert.equal(snapshot.branchCode, '00002');
+  assert.equal(snapshot.branchCode, '00009');
 });
 
 test('id ที่ใช้กับหน้าที่นั้นไม่ได้ ถูกปฏิเสธ แล้วถอยไปที่อยู่หลัก', () => {
@@ -134,7 +133,7 @@ test('ลูกค้าที่ยังไม่ backfill ยังออก�
   const { snapshot } = pickDocumentAddresses({ address: '1 สีลม', branchCode: '00007' }, {});
   assert.equal(snapshot.billingAddress, '1 สีลม');
   assert.equal(snapshot.shippingAddress, '1 สีลม');
-  assert.equal(snapshot.branchCode, '00007');
+  assert.equal(snapshot.branchCode, '00007');  // มาจากคอลัมน์ของลูกค้า ไม่ใช่ของที่อยู่
 });
 
 test('ที่อยู่ที่ derive จากช่องเดี่ยวได้ id คงที่ — ไม่งั้น dropdown เลือกไม่ติด', () => {
@@ -147,8 +146,21 @@ test('ที่อยู่ที่ derive จากช่องเดี่ย
   assert.equal(snapshot.billingAddress, '1 สีลม');
 });
 
-test('ป้ายที่อยู่ไม่ซ้ำคำว่าสำนักงานใหญ่สองรอบ', () => {
-  assert.equal(addressLabel({ label: 'สำนักงานใหญ่', branchCode: '00000' }), 'สำนักงานใหญ่');
-  assert.equal(addressLabel({ label: 'คลังบางนา', branchCode: '00002' }), 'คลังบางนา · สาขา 00002');
-  assert.equal(addressLabel({ label: '', branchCode: '00002' }), 'สาขา 00002');
+test('ไม่ตั้งชื่อเรียก ป้ายใน dropdown ใช้ตัวที่อยู่ย่อ — ไม่ใช่ช่องว่างที่เลือกไม่ถูก', () => {
+  assert.equal(addressLabel({ label: 'คลังบางนา', address: '9 บางนา' }), 'คลังบางนา');
+  assert.equal(addressLabel({ label: '', address: '99/1 หมู่ 2 ถนนบางนา' }), '99/1 หมู่ 2 ถนนบางนา');
+  assert.equal(addressLabel({ label: '', address: 'บรรทัดแรก\nบรรทัดสอง' }), 'บรรทัดแรก');
+  assert.equal(addressLabel({ label: '', address: '' }), 'ที่อยู่');
+});
+
+test('ปุ่มติ๊กสองปุ่ม ↔ useFor สามค่า', () => {
+  assert.equal(toggleAddressUse('both', 'shipping'), 'billing');
+  assert.equal(toggleAddressUse('both', 'billing'), 'shipping');
+  assert.equal(toggleAddressUse('billing', 'shipping'), 'both');
+  assert.equal(toggleAddressUse('shipping', 'billing'), 'both');
+});
+
+test('ติ๊กปุ่มสุดท้ายออกไม่ได้ — ที่อยู่ที่ใช้ทำอะไรไม่ได้เลยไม่ใช่ที่อยู่', () => {
+  assert.equal(toggleAddressUse('billing', 'billing'), 'billing');
+  assert.equal(toggleAddressUse('shipping', 'shipping'), 'shipping');
 });

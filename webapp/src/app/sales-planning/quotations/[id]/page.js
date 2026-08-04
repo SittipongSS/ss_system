@@ -719,11 +719,8 @@ export default function QuotationEditorPage() {
                 )}
               </div>
               <div className={styles.customerGrid}>
-                {/* สาขาเดินตามที่อยู่ออกบิลที่เลือกอยู่ — ระหว่างแก้ร่างต้องเห็นค่าที่กำลังจะบันทึก */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{(() => {
-                  const branch = editable ? pickedAddresses.snapshot.branchCode : quote.branchCode;
-                  return branch ? ` · สาขา ${branch}` : "";
-                })()}</span></div>
+                {/* สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่ — เลือกที่อยู่คนละที่ไม่ทำให้สาขาขยับ */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · สาขา ${quote.branchCode}` : ""}</span></div>
                 <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</span></div>
                 {editable && billingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่ออกบิล
