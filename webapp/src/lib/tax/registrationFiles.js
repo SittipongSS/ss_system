@@ -33,7 +33,7 @@ const uniqueName = (used, base) => {
 };
 
 // docTypes: จำกัดว่าจะรวมเอกสารประเภทไหนบ้าง (undefined/null = รวมทุกประเภท ตามเดิม).
-// 'address_map' เป็นคีย์พิเศษหมายถึงแผนที่บริษัทของลูกค้าเจ้าของทะเบียน.
+// 'address_map' เป็นคีย์พิเศษหมายถึงแผนที่ที่อยู่ของลูกค้าเจ้าของทะเบียน.
 export async function buildRegistrationFilesZip(filter = {}) {
   const { customerId, from, to, ids, docTypes } = filter;
   const supabase = getSupabaseAdmin();
@@ -59,7 +59,7 @@ export async function buildRegistrationFilesZip(filter = {}) {
     if (typeSet && !typeSet.has('address_map')) mapDocs = [];
     const items = [
       ...regDocs.map((a) => ({ a, prefix: '' })),
-      ...mapDocs.map((a) => ({ a, prefix: 'แผนที่บริษัท - ' })),
+      ...mapDocs.map((a) => ({ a, prefix: 'แผนที่ที่อยู่ - ' })),
     ];
     const used = new Set();
     for (const { a, prefix } of items) {

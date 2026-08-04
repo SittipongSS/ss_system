@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  docTypesFor, missingDocsMessage, overrideReasonError, MIN_OVERRIDE_REASON, requiredDocKeys,
+  attachmentTypeLabel, docTypesFor, missingDocsMessage, overrideReasonError,
+  MIN_OVERRIDE_REASON, requiredDocKeys,
 } from './attachmentTypes.js';
 
 test('ลูกค้านิติบุคคล/บุคคลธรรมดา ได้ชุดเอกสารบังคับคนละชุด', () => {
@@ -13,8 +14,17 @@ test('ลูกค้านิติบุคคล/บุคคลธรรม�
   assert.ok(company.includes('vat_pp20'));
   assert.ok(!individual.includes('company_certificate'), 'บุคคลธรรมดาต้องไม่ถูกขอหนังสือรับรองบริษัท');
   assert.ok(individual.includes('id_card'), 'บุคคลธรรมดาต้องมีสำเนาบัตรประชาชน');
-  // สัญญาออกแบบกลิ่นบังคับทั้งสองประเภท
-  assert.ok(company.includes('design_contract') && individual.includes('design_contract'));
+  // แผนที่ที่อยู่บังคับทั้งสองประเภท (มติผู้ใช้ 2026-08-05) — ฝั่งสรรพสามิตดึงแผนที่จาก
+  // ลูกค้าเจ้าของทะเบียน ไม่ได้แนบเองที่ทะเบียน ลูกค้าที่ไม่มีแผนที่จึงตันตั้งแต่ต้นทาง
+  assert.ok(company.includes('address_map') && individual.includes('address_map'));
+  // สัญญาออกแบบกลิ่นถอดออกจากชุดเอกสารลูกค้าแล้ว (มติผู้ใช้ 2026-08-05)
+  assert.ok(!company.includes('design_contract') && !individual.includes('design_contract'));
+});
+
+// ไฟล์ที่แนบไว้ตอนที่ยังมีชนิดนี้ ยังอยู่ในฐานข้อมูล — ป้ายต้องยังอ่านออก ไม่ใช่คีย์ดิบ
+test('ชนิดเอกสารที่เลิกใช้แล้ว ยังมีป้ายภาษาไทยให้ไฟล์เก่า', () => {
+  assert.match(attachmentTypeLabel('customer', 'design_contract'), /สัญญาออกแบบกลิ่น/);
+  assert.match(attachmentTypeLabel('customer', 'design_contract'), /เลิกใช้/);
 });
 
 test('ไม่ระบุประเภท = ใช้ชุดนิติบุคคล (ค่าตั้งต้นเดิมของระบบ)', () => {

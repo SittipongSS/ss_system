@@ -15,10 +15,10 @@ export const CUSTOMER_DOC_TYPES = {
     { key: "director_id_card", label: "สำเนาบัตรประชาชนกรรมการผู้มีอำนาจลงนาม", required: true },
     { key: "director_house_reg", label: "สำเนาทะเบียนบ้านกรรมการ (ถ้ามีการขอ)", required: false },
     { key: "power_of_attorney", label: "หนังสือมอบอำนาจ (กรณีผู้ดำเนินการไม่ใช่กรรมการ)", required: false },
-    { key: "address_map", label: "แผนที่บริษัท", required: true },
-    // กลิ่นที่ออกแบบเป็นกรรมสิทธิ์ร่วมกับลูกค้า → เซ็นสัญญาทุกครั้งที่ออกแบบกลิ่น
-    // (มีได้หลายฉบับต่อลูกค้า — การ์ดเดียวแนบได้หลายไฟล์).
-    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
+    // ป้ายกลาง "แผนที่ที่อยู่" ใช้คำเดียวกันทั้งสองประเภท — คีย์เดียวกัน (address_map)
+    // จึงมีป้ายได้ป้ายเดียวใน union ที่ระบบใช้ lookup ชื่อ (เดิมเขียน "แผนที่บริษัท"
+    // ซึ่งอ่านผิดทันทีเมื่อเจ้าของเป็นบุคคลธรรมดา)
+    { key: "address_map", label: "แผนที่ที่อยู่", required: true },
     // สัญญาจ้างผลิตผูกกับลูกค้า (ไม่ใช่สินค้า): ลูกค้า 1 ราย มีสัญญา 1 ฉบับที่ครอบ
     // หลายสินค้าได้ และแต่ละรอบอาจมีรายการสินค้าต่างกัน → การ์ดเดียวแนบได้หลายไฟล์.
     { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
@@ -28,7 +28,10 @@ export const CUSTOMER_DOC_TYPES = {
     { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
     { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
     { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
-    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
+    // แผนที่ที่อยู่บังคับกับบุคคลธรรมดาด้วย (มติผู้ใช้ 2026-08-05) — ฝั่งสรรพสามิต
+    // ดึงแผนที่จาก "ลูกค้าเจ้าของทะเบียน" (lib/tax/requirements.js) ไม่ได้แนบเองที่
+    // ทะเบียน ⇒ ลูกค้าบุคคลที่ไม่มีแผนที่ = ทะเบียนสรรพสามิตหาไฟล์ไม่เจอตั้งแต่ต้นทาง
+    { key: "address_map", label: "แผนที่ที่อยู่", required: true },
     { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
@@ -41,7 +44,7 @@ export function customerDocTypes(customerType) {
 
 // union ของทุกประเภทเอกสารลูกค้า (company ∪ individual) — derive อัตโนมัติจาก
 // CUSTOMER_DOC_TYPES เพื่อไม่ต้อง sync มือ (เพิ่มคีย์ที่เดียวพอ). dedupe ด้วย key
-// (design_contract/other มีทั้งสองประเภท) คงลำดับที่เจอครั้งแรก.
+// (address_map/other มีทั้งสองประเภท) คงลำดับที่เจอครั้งแรก.
 const customerDocTypesUnion = (() => {
   const seen = new Map();
   for (const list of Object.values(CUSTOMER_DOC_TYPES)) {
@@ -301,8 +304,19 @@ export function isPreviewableImage(item) {
   return ACCEPTED_IMAGE_EXT.includes(ext);
 }
 
-// ป้ายชื่อภาษาไทยของ docType หนึ่งๆ (fallback: คืนค่า key เดิมถ้าไม่รู้จัก).
+// ชนิดที่เลิกใช้แล้ว — **ไฟล์ที่แนบไว้ตอนนั้นยังอยู่ในฐานข้อมูลและยังต้องอ่านออก**
+// (AttachmentsPanel จับ docType ที่ไม่รู้จักลงการ์ด "เอกสารอื่นๆ" ให้อยู่แล้ว แต่ป้าย
+// บนไฟล์จะกลายเป็นคีย์ดิบ 'design_contract' ถ้าไม่มีที่ให้ lookup)
+//   design_contract — สัญญาออกแบบกลิ่น ถอดออกจากชุดเอกสารลูกค้า (มติผู้ใช้ 2026-08-05)
+export const LEGACY_DOC_LABELS = {
+  design_contract: "สัญญาออกแบบกลิ่น (เลิกใช้แล้ว)",
+};
+
+// ป้ายชื่อภาษาไทยของ docType หนึ่งๆ (fallback: ชนิดที่เลิกใช้ → key เดิมถ้าไม่รู้จัก).
 export function attachmentTypeLabel(entityType, docType) {
   const list = ATTACHMENT_TYPES[entityType] || [];
-  return list.find((t) => t.key === docType)?.label || docType || "เอกสารอื่นๆ";
+  return list.find((t) => t.key === docType)?.label
+    || LEGACY_DOC_LABELS[docType]
+    || docType
+    || "เอกสารอื่นๆ";
 }
