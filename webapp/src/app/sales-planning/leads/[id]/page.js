@@ -14,7 +14,7 @@ import Button from "@/components/ui/Button";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
-import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -70,8 +70,8 @@ export default function LeadDetailPage() {
 
   const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals }),
-    [users, canCreateDeals],
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
+    [users, canCreateDeals, team],
   );
 
   const load = useCallback(async () => {
@@ -168,11 +168,10 @@ export default function LeadDetailPage() {
   ) : null;
 
   /* เปิดดีล = สร้าง entity คนละตัว ต้องผ่านฟอร์มดีล (เลือกลูกค้า/มูลค่า/เดือน FC)
-     ไม่ใช่ย้ายสถานะเฉย ๆ — lifecycle ประกาศ transition ไว้เพื่อให้ "ขั้นถัดไป" ถูกต้อง
-     แล้วดักที่นี่ก่อนการ์ดจะเปิดกล่องยืนยัน (คืน true = จัดการเองแล้ว)
-     ตัวเลือกที่ประกอบฟอร์มโหลดตอนเปิดจริงเท่านั้น — คนส่วนใหญ่เข้าหน้านี้มาอ่าน ไม่ได้เปิดดีล */
-  function openDealForm(transition) {
-    if (transition.id !== "create_deal") return false;
+     ไม่ใช่ย้ายสถานะ — จึงไม่อยู่ใน lifecycle แล้ว แต่เป็น action เดี่ยวบนการ์ดเดียวกัน
+     (ดู leadDealAction: เปิดได้ตั้งแต่ติดต่อแล้ว/นัดประชุมแล้ว/เปิดดีลไปแล้วก็เพิ่มได้อีก)
+     ตัวเลือกที่ประกอบฟอร์มโหลดตอนกดจริงเท่านั้น — คนส่วนใหญ่เข้าหน้านี้มาอ่าน ไม่ได้เปิดดีล */
+  function openDealForm() {
     Promise.all([
       fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
       fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
@@ -183,12 +182,14 @@ export default function LeadDetailPage() {
       categories: Array.isArray(categoryRows) ? categoryRows : [],
     }));
     setDealOpen(true);
-    return true;
   }
 
   /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน
-     แก้ไข = secondary (ทำได้ แต่ไม่ใช่ก้าวถัดไป) · ลบ = danger (ทำลาย) */
+     เปิดดีล = primary (งานจริงที่ลีดใบนี้มีอยู่) · แก้ไข = secondary · ลบ = danger */
   const recordActions = [
+    leadDealAction({
+      lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: openDealForm,
+    }),
     {
       id: "edit",
       kind: "edit",
@@ -234,7 +235,6 @@ export default function LeadDetailPage() {
             record={lead}
             user={viewer}
             onTransition={runTransition}
-            onSelect={openDealForm}
             extraActions={recordActions}
             busy={busy}
           />

@@ -8,7 +8,7 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { BriefcaseBusiness, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -24,7 +24,7 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning"
 import { brandThList } from "@/lib/master/brands";
 import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
-import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
@@ -257,9 +257,17 @@ export default function LeadsPage() {
      rowActions() ของตัวเองที่คิดซ้ำจาก LEAD_TRANSITIONS + เช็ค role เอง แล้วเพี้ยนจาก
      หน้ารายละเอียดได้เงียบ ๆ (เจอจริง: contact บังคับเหตุผลที่นี่ แต่หน้าโน้นไม่บังคับ) */
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals }),
-    [users, canCreateDeals],
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
+    [users, canCreateDeals, team],
   );
+  /* "เปิดดีล" ไม่ใช่ขั้นในเส้นทางแล้ว (ดู leadDealAction) — ส่งเข้าเมนูแถวเป็นรายการ
+     ของตัวเอง โดยใช้ descriptor ตัวเดียวกับที่หน้ารายละเอียดใช้ ห้ามคิดเงื่อนไขซ้ำที่นี่ */
+  const dealItemFor = (lead) => {
+    const action = leadDealAction({
+      lead, user: viewer, canCreateDeals, icon: BriefcaseBusiness, onClick: () => setDealModal(lead),
+    });
+    return { ...action, label: action.rowLabel, tone: "primary" };
+  };
   // นโยบายเดียวกับ API (lib/sales/leads.js) — ปุ่มโชว์เฉพาะเมื่อ action จะสำเร็จจริง
   const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
   const canDeleteRow = (lead) => canDeleteLead({ role, id: meId, team }, lead);
@@ -405,11 +413,7 @@ export default function LeadsPage() {
                         user={viewer}
                         busy={!!busy}
                         recordLabel={lead.contactName}
-                        onSelect={(transition) => {
-                          if (transition.id !== "create_deal") return false;
-                          setDealModal(lead); // เปิดดีล = ไปฟอร์มดีล ไม่ใช่ย้ายสถานะ
-                          return true;
-                        }}
+                        extraItems={[dealItemFor(lead)]}
                         onTransition={(actionId, values) => runTransition(lead, actionId, values)}
                         canEdit={canEditRow(lead)}
                         canDelete={canDeleteRow(lead)}

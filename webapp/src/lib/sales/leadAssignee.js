@@ -37,9 +37,10 @@ async function findAuthUser(supabase, id) {
 
 /**
  * ตรวจว่า `assigneeId` มอบลีดใบนี้ให้ได้จริงไหม
+ * @param lead  ลีดปลายทาง — ใช้เทียบทีม (ไม่ส่งมา = ข้ามด่านทีม)
  * @returns {Promise<{ ok: true, assigneeId: string, assigneeName: string } | { ok: false, error: string }>}
  */
-export async function validateLeadAssignee(supabase, assigneeId) {
+export async function validateLeadAssignee(supabase, assigneeId, lead = null) {
   const id = String(assigneeId || '').trim();
   if (!id) return { ok: false, error: 'ต้องเลือก AE ผู้รับผิดชอบ' };
 
@@ -52,6 +53,17 @@ export async function validateLeadAssignee(supabase, assigneeId) {
   const role = user.app_metadata?.role || null;
   if (!LEAD_ASSIGNEE_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้รับผิดชอบลีดต้องเป็น AE / Senior AE / AC (ตำแหน่งอื่นทำงานคิวลีดไม่ได้)' };
+  }
+
+  // ── ทีม ────────────────────────────────────────────────────────────────
+  // ลีดถูกคัดกรองเข้าทีมแล้วก่อนถึงขั้นมอบหมาย คนที่รับต่อจึงต้องอยู่ทีมนั้น —
+  // ไม่ใช่แค่ความเป็นระเบียบ: `canWorkLead` ให้ senior_ae/ac ทำงานได้เฉพาะลีดของ
+  // ทีมตัวเอง ⇒ มอบข้ามทีมให้สองตำแหน่งนี้ = คนรับกดติดต่อ/นัดไม่ได้เลย ลีดค้าง
+  // ผู้ที่ไม่มีทีม (admin) ผ่านได้ — canWorkLead ให้ admin ทำได้ทุกใบ
+  // ต้องย้ายทีมจริง ๆ ให้ใช้ "ตีกลับ" แล้วคัดกรองใหม่ (เส้นทางที่มีร่องรอย)
+  const assigneeTeam = user.app_metadata?.team || null;
+  if (lead?.team && assigneeTeam && assigneeTeam !== lead.team) {
+    return { ok: false, error: `ผู้รับผิดชอบอยู่ทีม ${assigneeTeam} แต่ลีดนี้อยู่ทีม ${lead.team} — ถ้าต้องเปลี่ยนทีมให้ใช้ "ตีกลับ" แล้วคัดกรองใหม่` };
   }
 
   const name = leadAssigneeName(user);

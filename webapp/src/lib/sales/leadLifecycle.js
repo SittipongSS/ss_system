@@ -24,6 +24,7 @@ import {
   MEETING_MODE_LABELS,
   canWorkLead,
 } from "@/lib/sales/leads";
+import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
 
 /* action ที่ handler ตอบ badRequest ถ้าไม่มี `body.reason?.trim()`
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
@@ -80,11 +81,36 @@ const oversees = (user, lead) =>
 const allowedFrom = (action) =>
   Object.keys(LEAD_TRANSITIONS).filter((status) => LEAD_TRANSITIONS[status].includes(action));
 
+/* ── รายชื่อที่ควรโผล่ในช่อง "ผู้รับผิดชอบ" ────────────────────────────────
+   สองด่านซ้อนกัน — ทั้งคู่ต้องตรงกับ `validateLeadAssignee` ฝั่ง server เป๊ะ
+   (เห็นชื่อในดรอปดาวน์แล้วเลือกไม่ได้ = UX ที่แย่กว่าไม่เห็นชื่อนั้นเลย):
+
+   1. **ตำแหน่ง** — ต้องเป็น role ที่ `canWorkLead` พาไป true ได้ (ดู LEAD_ASSIGNEE_ROLES)
+      หน้าเรียกส่ง directory ทั้งก้อนมา ซึ่งมีทุก role ที่มอบหมายงานได้ รวม staff/rd/legal
+
+   2. **ทีม** — ลีดถูกคัดกรองเข้าทีมแล้วก่อนถึงขั้นมอบหมาย คนที่รับต่อจึงต้องอยู่ทีมนั้น
+      · Senior AE / AC มอบได้เฉพาะลีดของทีมตัวเอง (ด่าน `inTeam` ที่ handler) →
+        ดรอปดาวน์ต้องเหลือเฉพาะคนในทีมเดียวกับตัวเอง ไม่ใช่ทั้งบริษัท
+      · Admin ไม่มีทีม (`viewerTeam` ว่าง) = กำกับดูแลข้ามทีม → เห็นทุกคน
+      · คนที่ไม่มีทีม (admin) ติดมาด้วยเสมอ — `canWorkLead` ให้ admin ทำได้ทุกใบ
+   🐞 ก่อนหน้านี้ไม่กรองทีมเลย: Senior AE ทีม ODM เห็นชื่อ AE ของ KA/SV ทั้งหมด
+   แล้วมอบลีดข้ามทีมได้ ซึ่งคนรับจะทำงานต่อไม่ได้ถ้าเป็น senior_ae/ac (canWorkLead
+   เทียบทีม) — ลีดค้างโดยไม่มีใครรู้ */
+function assignableFor(users, viewerTeam) {
+  return users.filter((user) => {
+    if (!LEAD_ASSIGNEE_ROLES.includes(user?.role)) return false;
+    if (!viewerTeam) return true;          // admin/ผู้กำกับดูแล — ไม่ผูกทีม
+    return !user?.team || user.team === viewerTeam;
+  });
+}
+
 /**
  * @param users  รายชื่อสำหรับช่อง "ผู้รับผิดชอบ" ของ transition `assign`
  * @param canCreateDeals  ผู้ใช้เปิดดีลได้ไหม (สิทธิ์คนละตัวกับสิทธิ์ลีด)
+ * @param viewerTeam  ทีมของคนที่เปิดหน้าอยู่ — ใช้ตัดรายชื่อข้ามทีมออก (ดู assignableFor)
  */
-export function createLeadLifecycle({ users = [], canCreateDeals = false } = {}) {
+export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null } = {}) {
+  const assignableUsers = assignableFor(users, viewerTeam);
   return defineLifecycle({
     entity: "lead",
     noun: "ลีด",
@@ -128,7 +154,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
         to: "assigned",
         visible: (lead, user) => user?.role === "admin" || inTeamOf(user, lead),
         fields: [
-          { name: "assigneeId", label: "ผู้รับผิดชอบ", type: "person", required: true, users, by: "id" },
+          { name: "assigneeId", label: "ผู้รับผิดชอบ", type: "person", required: true, users: assignableUsers, by: "id" },
         ],
       },
       {
@@ -156,7 +182,10 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
         rowLabel: "นัดประชุม",
         rowTone: "teal",
         kind: "submit",
-        slot: "secondary",
+        /* ก้าวถัดไปตัวจริงของขั้น "ติดต่อแล้ว" — เดิมเป็น secondary เพราะ `create_deal`
+           ยึดช่อง primary ไว้ ทั้งที่การเปิดดีลไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction)
+           ผลคือคนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
+        slot: "primary",
         from: allowedFrom("meeting"),
         to: "meeting",
         visible: (lead, user) => canWorkLead(user, lead),
@@ -170,20 +199,6 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
           },
           { name: "eventAt", label: "เวลานัด", type: "datetime" },
         ],
-      },
-      {
-        /* เปิดดีล = สร้าง entity คนละตัว ไม่ใช่ย้ายสถานะเฉย ๆ — หน้าเรียกดักที่
-           onTransition แล้วพาไปฟอร์มดีลแทนการยิง /transition ตรง ๆ
-           ยังประกาศไว้ที่นี่เพราะทั้งการ์ดและแถวตารางต้องรู้ว่า "ขั้นถัดไปคืออันนี้" */
-        id: "create_deal",
-        label: "เปิดดีลจากลีดนี้",
-        rowLabel: "สร้างดีล",
-        rowTone: "green",
-        kind: "submit",
-        slot: "primary",
-        from: allowedFrom("create_deal"),
-        to: "qualified",
-        visible: (lead, user) => canCreateDeals && canWorkLead(user, lead) && lead?.status !== "qualified",
       },
       {
         id: "bounce",
@@ -223,6 +238,40 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false } = {})
 
 /* transition ที่ต้องส่งไป `POST /transition` (ที่เหลือหน้าจัดการเอง) */
 export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "contact", "meeting", "bounce", "disqualify"];
+
+/* ── "เปิดดีลจากลีดนี้" = action เดี่ยว ไม่ใช่ขั้นในเส้นทาง ────────────────────
+   มติผู้ใช้ 2026-08-04: **เปิดดีลได้ตั้งแต่ติดต่อแล้ว หรือจะรอนัดประชุมก่อนก็ได้**
+   มันจึงไม่ใช่ "ก้าวถัดไป" ของขั้นใดขั้นหนึ่ง — เดิมประกาศเป็น transition slot primary
+   ทำให้ปุ่มก้าวถัดไปที่ขั้น "ติดต่อแล้ว" กลายเป็น "สร้างดีล" แล้ว **นัดประชุม (ขั้นถัดไป
+   ตัวจริง) ถูกดันลงเมนู "…"** · แยกออกมาแล้วขั้นถัดไปกลับไปเป็นนัดประชุมตามเส้นทางจริง
+
+   ⭐ เปิดได้จากสถานะไหนบ้างยังยึด `LEAD_TRANSITIONS` ที่เดียวเหมือนเดิม (contacted /
+   meeting / qualified) — ไม่สะกดลิสต์ซ้ำ
+
+   🐞 เดิมมีเงื่อนไข `status !== 'qualified'` ปิดปุ่มทันทีที่เปิดดีลใบแรก ทั้งที่อีก 3 ที่
+   ในระบบรองรับ "ลีด 1 ใบหลายดีล" ไว้ครบ (LEAD_TRANSITIONS.qualified · POST /deals
+   ที่บันทึก event ทุกครั้งแม้ qualified แล้ว · คอมเมนต์ใน leads.js) ⇒ แตกดีลใบที่ 2
+   จากหน้าจอไม่ได้เลย · เอาออกแล้ว (มติผู้ใช้ 2026-08-04)
+
+   ⚠️ ตัวเดียวให้ทั้งหน้ารายการและหน้ารายละเอียดใช้ — ห้ามให้แต่ละหน้าคิดเงื่อนไขเอง
+   ผู้เรียกส่ง `icon`/`onClick` ของตัวเองมา (คนละที่วางปุ่มกัน) ส่วนกติกาว่า
+   "โผล่เมื่อไร ป้ายว่าอะไร" อยู่ที่นี่ */
+export const LEAD_DEAL_STATUSES = allowedFrom("create_deal");
+
+export function leadDealAction({ lead, user, canCreateDeals = false, icon, onClick } = {}) {
+  const eligible = LEAD_DEAL_STATUSES.includes(lead?.status);
+  return {
+    id: "create_deal",
+    // ลีดที่เปิดดีลไปแล้วต้องบอกให้ชัดว่านี่คือ "ใบเพิ่ม" ไม่ใช่กดซ้ำของเดิม
+    label: lead?.status === "qualified" ? "เปิดดีลเพิ่มจากลีดนี้" : "เปิดดีลจากลีดนี้",
+    rowLabel: lead?.status === "qualified" ? "เปิดดีลเพิ่ม" : "สร้างดีล",
+    kind: "submit",
+    slot: "primary",
+    icon,
+    visible: Boolean(eligible && canCreateDeals && canWorkLead(user, lead)),
+    onClick,
+  };
+}
 
 /**
  * แปลงค่าที่ผู้ใช้กรอกใน TransitionDialog → body ของ `POST /leads/[id]/transition`
