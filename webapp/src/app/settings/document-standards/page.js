@@ -130,7 +130,7 @@ function LiveDocumentPreview({ documentKey, standard, className = "" }) {
     if (documentKey === "projectTimeline") {
       // ส่งมาตรฐานเป็น activeStandard (ไม่ใช่ timelineStandardSnapshot บนตัวอย่าง)
       // เพื่อให้ร่างที่กำลังแก้มีผลกับพรีวิวทันที
-      return buildGanttPrintHTML(timelinePreviewProject(standard), null, standard);
+      return buildGanttPrintHTML(timelinePreviewProject(standard), null, standard, { toolbar: false });
     }
     if (documentKey === "exciseTaxNotice") {
       return buildBillPrintHTML({
@@ -159,7 +159,9 @@ function LiveDocumentPreview({ documentKey, standard, className = "" }) {
         name: "บริษัท ตัวอย่าง จำกัด",
         taxId: "0100000000001",
         address: "กรุงเทพมหานคร",
-      });
+        // company/activeStandard ปล่อยว่าง: มาตรฐานมากับ taxNoticeStandardSnapshot แล้ว
+        // และบล็อกบริษัทตกไปใช้ค่าที่เผยแพร่ · ส่ง toolbar:false เป็นตัวสุดท้าย
+      }, undefined, null, { toolbar: false });
     }
     const model = buildQuotationMasterPreview("standard", "approved", "v4", documentKey, { standard });
     return renderQuotationMasterDocumentHTML(model, { toolbar: false });
