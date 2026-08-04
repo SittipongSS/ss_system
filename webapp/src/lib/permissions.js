@@ -1029,12 +1029,22 @@ export function landingFor(role) {
 
 export function canSeeDealKpi(role) {
   // Sales ทุกตำแหน่งเห็น KPI ดีลได้ (มติผู้ใช้) — API scope per-role อยู่แล้ว
-  // (ae=own, senior_ae/ac=team, superuser/viewer=all) จึงไม่รั่วข้ามขอบเขต
-  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'ac' || role === 'viewer';
+  // (ae=own, senior_ae/ac=team, superuser/ผู้สังเกตการณ์=all) จึงไม่รั่วข้ามขอบเขต
+  //
+  // 🐞 เคยสะกด `role === 'viewer'` เอง ทั้งที่ isReadOnlyObserver เขียนเตือนไว้ชัดว่า
+  // "ทุกที่ที่เคยเทียบ role === 'viewer' ต้องเปลี่ยนมาใช้ตัวนี้" → `executive`
+  // (ผู้บริหาร) เห็น KPI ลีด / KPI งาน / KPI ฝ่าย RD ได้หมด **แต่ไม่เห็น KPI ดีล**
+  // ซึ่งเป็นตัวที่ตำแหน่งนี้ต้องดูที่สุด — หลุดเงียบเพราะเป็นการ "ขาด" ไม่ใช่ "เกิน"
+  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'ac'
+    || isReadOnlyObserver(role);
 }
 
 export function salesDealScopes(role) {
-  if (isSuperuser(role) || role === 'viewer') return ['mine', 'team', 'all'];
+  // ผู้สังเกตการณ์ (viewer/executive) ไม่มีดีลของตัวเองและไม่มีทีม → 'all' อย่างเดียว
+  // คือ scope เดียวที่มีความหมาย (แท็บ "ของฉัน"/"ทีม" จะขึ้น 0 เสมอ) — กติกาเดียวกับ
+  // pmTaskScopes ที่ตัดสินเรื่องนี้ไปแล้ว
+  if (isSuperuser(role)) return ['mine', 'team', 'all'];
+  if (isReadOnlyObserver(role)) return ['all'];
   // ac มี view scope ระดับทีมเหมือน senior_ae → ให้สลับดู KPI ระดับทีมได้
   if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
   return ['mine'];

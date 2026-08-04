@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
-import { slaHit, channelGroupOf, canViewLeads } from '@/lib/sales/leads';
+import { canSeeLeadKpi } from '@/lib/permissions';
+import { slaHit, channelGroupOf } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import { dateRangeOfYear, isYearValue } from '@/lib/datePeriods';
 
@@ -11,9 +12,18 @@ export const dynamic = 'force-dynamic';
 //   • SLA คัดกรอง ≤1 วันทำการ (Supervisor) · SLA ติดต่อกลับ ≤1 วันทำการ (AE)
 //   • conversion: ลีด → นัด → เปิดลูกค้า + ตีกลับ
 // ทุกตัวคำนวณจาก timestamp (วันทำการอิงตาราง holidays) — ไม่มีการกรอกมือ.
+// ⚠️ ด่านคือ `canSeeLeadKpi` **ไม่ใช่ `canViewLeads`** — ก้อนที่คืนไปมีข้อมูล
+// ประเมินผลรายบุคคล (`byAssignee` = SLA ติดต่อกลับรายคนทั้งฝ่าย · `byCreator` =
+// ยอดกรอกรายคนของทีม Marketing) ซึ่งหน้าจอ**ตั้งใจ**ซ่อนจาก AE/AC/Senior AE อยู่แล้ว
+// ทั้งลิงก์ "ดู KPI เต็ม" บนหน้าลีดและแท็บ "KPI ลีด" ใน /sa/dashboard
+//
+// 🐞 เดิมด่านนี้เป็น `canViewLeads` (salesplan:lead หรือ salesplan:view) = หลวมกว่า
+// หน้าจอมาก → ใครที่เปิดคิวลีดได้ก็ยิง URL ตรงอ่านตัวเลขของเพื่อนร่วมทีมได้หมด
+// (มติผู้ใช้ 2026-08-04: บีบ API ให้ตรง UI — ไม่มีหน้าจอไหนของ role ที่ถูกตัดเรียก
+// endpoint นี้เลย จึงไม่กระทบงานที่ทำอยู่จริง)
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!canViewLeads(user)) return forbidden();
+  if (!canSeeLeadKpi(user?.role)) return forbidden();
 
   const params = new URL(req.url).searchParams;
   const param = params.get('month');

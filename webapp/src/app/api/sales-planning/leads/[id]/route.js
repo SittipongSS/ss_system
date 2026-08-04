@@ -1,5 +1,6 @@
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { can } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead,
@@ -38,7 +39,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     events: events || [],
     relatedDeals: relatedDeals || [],
     canEdit: canEditLead(user, lead),
-    canDelete: canDeleteLead(user, lead),
+    // ⚠️ ต้องรวมด่าน "มีดีลผูกอยู่" ที่ DELETE บังคับด้วย ไม่งั้นปุ่มลบโผล่แล้วกดได้
+    // 409 เสมอ = error ที่ผู้ใช้เดาไม่ได้ (บทเรียนเดียวกับปุ่มลบดีลที่มีใบ accepted)
+    // ดีลที่ผูกอยู่โหลดมาแล้วข้างบน — ไม่ต้องยิงถามเพิ่ม
+    canDelete: canDeleteLead(user, lead) && !(relatedDeals || []).length,
   });
 });
 
@@ -105,11 +109,48 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden('ไม่มีสิทธิลบลีดนี้');
   }
 
+  // ⭐ ลีดที่แตกดีลไปแล้วลบไม่ได้ (มติผู้ใช้ 2026-08-04) — เดิมลบผ่านเงียบ ๆ แล้ว
+  // ทิ้งความเสียหายไว้สองอย่างที่ไม่มีอะไรบอก:
+  //   1. `sales_deals.leadId` เป็น ON DELETE SET NULL (mig 0093) → คอลัมน์ว่าง
+  //      แต่ `metadata.leadId` ที่ POST /deals เขียนคู่ไว้ยังค้าง = สองความจริงใน
+  //      แถวเดียว ซึ่งเป็นสิ่งที่ `sourceLeadIdOf` ออกแบบมาเพื่อกันโดยเฉพาะ
+  //   2. `lead_events` เป็น ON DELETE CASCADE (mig 0091) → ประวัติ conversion ของ
+  //      ดีลที่ **ยังอยู่** หายตามลีดไปทั้งชุด กู้ไม่ได้
+  // กติกาเดียวกับที่ลบโครงการที่ยังมีดีลผูกอยู่ไม่ได้ — ให้ไปจัดการดีลก่อน
+  const force = isForceRequest(req) && canForceDelete(user);
+  if (!force) {
+    const { count: dealCount, error: dealCountError } = await supabase
+      .from('sales_deals').select('id', { count: 'exact', head: true }).eq('leadId', id);
+    if (dealCountError) return fail(`ตรวจดีลที่ผูกลีดไม่สำเร็จ: ${dealCountError.message}`, 500);
+    if ((dealCount || 0) > 0) {
+      return conflict(
+        `ลีดนี้แตกเป็นดีลไปแล้ว ${dealCount} ดีล — ลบไม่ได้ เพราะประวัติการเปิดดีลจะหายไปจากดีลที่ยังอยู่`
+        + ' กรุณาลบดีลที่ผูกอยู่ทั้งหมดที่หน้า "บริหารงานขาย" ก่อน แล้วจึงลบลีดที่นี่ได้',
+      );
+    }
+  } else {
+    // บังคับลบ (แอดมิน): ล้าง pointer ที่ชี้ลีดใบนี้ใน metadata ของดีลก่อน ไม่งั้น
+    // คอลัมน์ถูก SET NULL แต่ metadata ยังชี้ลีดที่ไม่มีอยู่แล้ว (ปัญหาเดิมข้อ 1)
+    const { data: linked, error: linkedError } = await supabase
+      .from('sales_deals').select('id, metadata').eq('leadId', id);
+    if (linkedError) return fail(`อ่านดีลที่ผูกลีดไม่สำเร็จ: ${linkedError.message}`, 500);
+    for (const deal of linked || []) {
+      const { leadId: _dropped, ...rest } = deal.metadata || {};
+      const { error: cleanError } = await supabase
+        .from('sales_deals').update({ metadata: rest }).eq('id', deal.id);
+      if (cleanError) return fail(`ล้างการอ้างลีดในดีล ${deal.id} ไม่สำเร็จ: ${cleanError.message} — ยังไม่ได้ลบลีด`, 500);
+    }
+  }
+
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง ไม่งั้นข้อความค้างในตารางตลอดไป
   // (lead_events มี FK ของตัวเอง จึงหายไปพร้อมลีดอยู่แล้ว)
   await purgeUpdates(supabase, 'lead', id);
-  await recordAudit({ user, action: 'delete', entityType: 'sales_lead', entityId: id, before, summary: `ลบลีด ${before.contactName}`, request: req });
+  await recordAudit({
+    user, action: 'delete', entityType: 'sales_lead', entityId: id, before,
+    summary: `ลบลีด ${before.contactName}${force ? ' (บังคับลบทั้งที่มีดีลผูกอยู่ — สิทธิ์ผู้ดูแลระบบ)' : ''}`,
+    request: req,
+  });
   return ok({ ok: true });
 });

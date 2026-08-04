@@ -74,7 +74,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // ชื่อมาจาก server เสมอ ไม่รับ body.assigneeName อีก (สองความจริงในแถวเดียว)
     let assignee;
     try {
-      assignee = await validateLeadAssignee(supabase, body.assigneeId);
+      assignee = await validateLeadAssignee(supabase, body.assigneeId, lead);
     } catch (assigneeError) {
       return fail(assigneeError.message, 500);
     }

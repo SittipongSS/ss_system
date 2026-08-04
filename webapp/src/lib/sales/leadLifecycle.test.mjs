@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { buildLeadTransitionPayload, createLeadLifecycle, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
+import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
 import { validateTransitionValues } from "../recordLifecycle.js";
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
 
@@ -20,6 +20,17 @@ const SENIOR_A = { role: "senior_ae", id: "u-senior", team: "A" };
 const AE_A = { role: "ae", id: "u-ae", team: "A" };
 const idsFor = (record, user) => lifecycle.available(record, user).map((entry) => entry.id);
 
+/* "เปิดดีล" ถูกแยกออกจาก lifecycle แล้ว (มติผู้ใช้ 2026-08-04: เปิดได้ตั้งแต่ติดต่อ
+   หรือรอถึงนัดประชุมก็ได้ จึงไม่ใช่ "ก้าวถัดไป" ของขั้นไหน) — ปุ่มที่ผู้ใช้เห็นจริง
+   จึงเป็น transition ของ lifecycle **บวก** action เดี่ยวตัวนี้ ทุกเทสต์ที่ถามว่า
+   "ผู้ใช้กดอะไรได้บ้าง" ต้องนับรวมสองแหล่ง ไม่ใช่ดู lifecycle อย่างเดียว */
+const dealFor = (record, user, canCreateDeals = true) =>
+  leadDealAction({ lead: record, user, canCreateDeals });
+const affordancesFor = (record, user) => [
+  ...idsFor(record, user),
+  ...(dealFor(record, user).visible ? ["create_deal"] : []),
+];
+
 test("transition ที่ประกาศไว้ ต้องเป็น action ที่ API รู้จักทั้งหมด", () => {
   const apiActions = new Set(Object.values(LEAD_TRANSITIONS).flat());
   assert.deepEqual(ids.filter((id) => !apiActions.has(id)), [],
@@ -28,7 +39,9 @@ test("transition ที่ประกาศไว้ ต้องเป็น a
 
 test("ทุก action ที่ API ยอมรับ ต้องมีปุ่มให้กด ไม่ตกหล่น", () => {
   const apiActions = [...new Set(Object.values(LEAD_TRANSITIONS).flat())];
-  assert.deepEqual(apiActions.filter((action) => !ids.includes(action)), [],
+  // create_deal มีปุ่มของตัวเอง (leadDealAction) ไม่ได้อยู่ใน lifecycle.transitions
+  const uiIds = [...ids, "create_deal"];
+  assert.deepEqual(apiActions.filter((action) => !uiIds.includes(action)), [],
     "API ยอมให้ทำ แต่ไม่มีปุ่มบน UI — ผู้ใช้จะทำขั้นนี้ไม่ได้เลย");
 });
 
@@ -38,6 +51,8 @@ test("สถานะไหนทำอะไรได้ ตรงกับ LEA
     const fromHere = lifecycle.transitions
       .filter((transition) => transition.from === "*" || transition.from.includes(status))
       .map((transition) => transition.id);
+    // ปุ่มเปิดดีลอยู่นอก lifecycle — ขอบเขตสถานะของมันมาจาก LEAD_TRANSITIONS ชุดเดียวกัน
+    if (LEAD_DEAL_STATUSES.includes(status)) fromHere.push("create_deal");
     assert.deepEqual([...fromHere].sort(), [...actions].sort(),
       `สถานะ ${status}: UI ให้ ${fromHere.join(",") || "-"} แต่ API ให้ ${actions.join(",") || "-"}`);
   }
@@ -119,10 +134,50 @@ test("แถบเส้นทางของลีดที่ปิดแล�
 
 test("เปิดดีลต้องมีสิทธิ์สร้างดีลด้วย ไม่ใช่แค่สิทธิ์ลีด", () => {
   const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
-  const withoutDeals = createLeadLifecycle({ canCreateDeals: false });
-  assert.ok(lifecycle.available(contacted, AE_A).some((entry) => entry.id === "create_deal"));
-  assert.ok(!withoutDeals.available(contacted, AE_A).some((entry) => entry.id === "create_deal"),
-    "ไม่มีสิทธิ์เปิดดีล ต้องไม่เห็นปุ่มนี้");
+  assert.equal(dealFor(contacted, AE_A).visible, true);
+  assert.equal(dealFor(contacted, AE_A, false).visible, false, "ไม่มีสิทธิ์เปิดดีล ต้องไม่เห็นปุ่มนี้");
+});
+
+/* ⭐ มติผู้ใช้ 2026-08-04 — เปิดดีลได้ตั้งแต่ "ติดต่อแล้ว" หรือจะรอ "นัดประชุมแล้ว"
+   ก็ได้ และลีดที่เปิดดีลไปแล้วยัง **เปิดใบเพิ่มได้อีก** (ลีด 1 ใบหลายดีล ซึ่ง
+   POST /deals รองรับมาตลอด แต่ UI เคยปิดด้วย status !== 'qualified') */
+test("เปิดดีลได้ทั้งจากติดต่อแล้ว นัดประชุมแล้ว และลีดที่เปิดดีลไปแล้ว", () => {
+  for (const status of ["contacted", "meeting", "qualified"]) {
+    const record = lead({ status, team: "A", assigneeId: "u-ae" });
+    assert.equal(dealFor(record, AE_A).visible, true, `สถานะ ${status} ต้องเปิดดีลได้`);
+  }
+  assert.deepEqual([...LEAD_DEAL_STATUSES].sort(), ["contacted", "meeting", "qualified"]);
+});
+
+test("ขั้นที่ยังไม่ได้ติดต่อ ยังเปิดดีลไม่ได้", () => {
+  for (const status of ["new", "screened", "assigned", "disqualified"]) {
+    assert.equal(dealFor(lead({ status, team: "A", assigneeId: "u-ae" }), AE_A).visible, false, status);
+  }
+});
+
+test("ป้ายปุ่มบอกได้ว่ากำลังเปิดใบแรกหรือใบเพิ่ม", () => {
+  const first = dealFor(lead({ status: "contacted", team: "A", assigneeId: "u-ae" }), AE_A);
+  const more = dealFor(lead({ status: "qualified", team: "A", assigneeId: "u-ae" }), AE_A);
+  assert.match(first.label, /เปิดดีลจากลีดนี้/);
+  assert.match(more.label, /เพิ่ม/);
+});
+
+/* ก้าวถัดไปของขั้น "ติดต่อแล้ว" ต้องเป็น **นัดประชุม** ไม่ใช่เปิดดีล — เดิมเปิดดีล
+   ยึดช่อง primary ไว้ ทำให้คนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
+test("ก้าวถัดไปที่ขั้นติดต่อแล้ว คือนัดประชุม", () => {
+  const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
+  const primary = lifecycle.available(contacted, AE_A).filter((entry) => entry.slot === "primary");
+  assert.deepEqual(primary.map((entry) => entry.id), ["meeting"]);
+});
+
+/* ปุ่มเปิดดีลต้องผ่านด่านทีมเดียวกับ transition อื่น — ไม่ใช่ใครก็กดได้ */
+test("เปิดดีลได้เฉพาะทีมเจ้าของงาน", () => {
+  const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
+  assert.equal(dealFor(contacted, { role: "ae", id: "u-other", team: "A" }).visible, false,
+    "AE ที่ไม่ใช่ผู้รับมอบ ต้องไม่เห็นปุ่มเปิดดีล");
+  assert.equal(dealFor(contacted, { role: "senior_ae", id: "u-s", team: "B" }).visible, false,
+    "Senior ทีมอื่น ต้องไม่เห็นปุ่มเปิดดีล");
+  assert.equal(affordancesFor(contacted, SENIOR_A).includes("create_deal"), true);
 });
 
 /* create_deal สร้าง entity คนละตัว หน้าเรียกดักเอง — ต้องไม่หลุดไปยิง /transition */
