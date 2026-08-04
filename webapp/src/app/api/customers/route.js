@@ -89,7 +89,8 @@ export async function POST(request) {
     : (user?.team ? [user.team] : []);
 
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง — ช่องเดี่ยวเดิมเป็นกระจกของที่อยู่หลัก
-  // ผู้เรียกที่ยังส่งแบบเก่า (address/shippingAddress/branchCode) แปลงขึ้นลิสต์ให้
+  // ผู้เรียกที่ยังส่งแบบเก่า (address/shippingAddress) แปลงขึ้นลิสต์ให้
+  // สาขาไม่ได้อยู่ในที่อยู่ (มติผู้ใช้ 2026-08-05) จึงยังรับจาก body ตรง ๆ เหมือนเดิม
   const addresses = normalizeAddresses(
     body.addresses !== undefined ? body.addresses : addressesFromLegacy(body),
   );
@@ -107,8 +108,8 @@ export async function POST(request) {
     taxId: body.taxId || null,
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     addresses,                                // ที่อยู่ทั้งหมด (migration 0202)
+    branchCode: body.branchCode || '00000',   // '00000' = สำนักงานใหญ่ (migration 0032)
     // ── กระจกของที่อยู่หลัก (อย่าเขียนทับมือ) ────────────────────────────
-    branchCode: mirror.branchCode,            // '00000' = สำนักงานใหญ่ (migration 0032)
     phone: body.phone || null,
     address: mirror.address,                  // ที่อยู่ออกเอกสาร/บิล
     shippingAddress: mirror.shippingAddress,  // null = ใช้ที่อยู่ออกเอกสาร

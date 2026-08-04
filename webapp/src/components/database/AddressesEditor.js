@@ -7,29 +7,32 @@
 // จึงต้องมีปุ่มเลื่อนขึ้น/ลง ไม่งั้นจะเปลี่ยนที่อยู่หลักไม่ได้เลยนอกจากลบทิ้งแล้ว
 // เพิ่มใหม่ (ปัญหาที่ ContactsEditor มีอยู่)
 //
-// ใช้ primitive กลางล้วน (Button/Input/Select/Textarea) ไม่เขียนคลาส btn/
+// ใช้ primitive กลางล้วน (Button/Input/Textarea) ไม่เขียนคลาส btn/
 // premium-input เอง — ratchet ของ audit:ui กันไม่ให้ชั้นเก่างอกเพิ่ม
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import { genId } from "@/lib/id";
 import {
-  ADDRESS_USES,
-  ADDRESS_USE_LABELS,
-  HEAD_OFFICE_BRANCH,
   asAddressRow,
   isBillingAddress,
   isShippingAddress,
+  toggleAddressUse,
 } from "@/lib/master/addresses";
+
+// ปุ่มติ๊ก "ใช้ทำอะไร" (มติผู้ใช้) — ติ๊กได้ทั้งสอง แต่ปิดหมดไม่ได้ (ดู toggleAddressUse)
+const USES = [
+  { key: "billing", label: "ออกเอกสาร", on: isBillingAddress },
+  { key: "shipping", label: "จัดส่ง", on: isShippingAddress },
+];
 
 export default function AddressesEditor({ value = [], onChange }) {
   const rows = (Array.isArray(value) ? value : []).map(asAddressRow);
   const update = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const add = () => onChange([
     ...rows,
-    { id: genId("ADR"), label: "", branchCode: HEAD_OFFICE_BRANCH, address: "", useFor: "both" },
+    { id: genId("ADR"), label: "", address: "", useFor: "both" },
   ]);
   const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
   const move = (i, delta) => {
@@ -63,23 +66,25 @@ export default function AddressesEditor({ value = [], onChange }) {
               value={a.label}
               onChange={(e) => update(i, { label: e.target.value })}
             />
-            <Input
-              mono
-              className="text-xs w-[88px]"
-              placeholder="00000"
-              title="รหัสสาขาบนเอกสารภาษี — 00000 = สำนักงานใหญ่"
-              value={a.branchCode}
-              onChange={(e) => update(i, { branchCode: e.target.value })}
-            />
-            <Select
-              className="w-[178px]"
-              value={a.useFor}
-              onChange={(e) => update(i, { useFor: e.target.value })}
-            >
-              {ADDRESS_USES.map((use) => (
-                <option key={use} value={use}>{ADDRESS_USE_LABELS[use]}</option>
-              ))}
-            </Select>
+            <div className="flex gap-1.5 items-center">
+              {USES.map(({ key, label, on }) => {
+                const active = on(a);
+                return (
+                  <Button
+                    key={key}
+                    size="sm"
+                    tone={active ? "primary" : undefined}
+                    variant={active ? "filled" : "outline"}
+                    icon={active ? <Check size={13} /> : null}
+                    onClick={() => update(i, { useFor: toggleAddressUse(a.useFor, key) })}
+                    title={active ? `ที่อยู่นี้ใช้${label}` : `ติ๊กเพื่อใช้ที่อยู่นี้${label}`}
+                    aria-pressed={active}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
             <div className="flex gap-1 items-center ml-auto">
               {i === billingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่ออกเอกสาร">บิลหลัก</span>}
               {i === shippingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่จัดส่ง">จัดส่งหลัก</span>}

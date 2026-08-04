@@ -8,7 +8,7 @@ import { requestHasItems } from '@/lib/master/requestTypes';
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
 // "settled" = บรรทัดนั้นจบแล้ว ไม่ว่าจะจบแบบได้ของ (done) หรือจบแบบไม่ได้ (declined)
-// ⚠️ อ่าน `answerStatus` (mig 0202) ไม่ใช่ `priceStatus` — ชื่อเดิมพูดภาษาราคาล้วน
+// ⚠️ อ่าน `answerStatus` (mig 0204) ไม่ใช่ `priceStatus` — ชื่อเดิมพูดภาษาราคาล้วน
 //    ซึ่งใช้กับบรรทัดขอเอกสาร/พัฒนากลิ่นไม่ได้
 export function requestProgress(items = []) {
   const total = items.length;

@@ -435,8 +435,8 @@ function NewQuotationInner() {
                     : null}
                   <span className={styles.addressPreview}>{shippingAddress || "-"}</span>
                 </label>
-                {/* สาขามาจากที่อยู่ออกบิลที่เลือก ไม่ใช่ค่าเดี่ยวของลูกค้าอีกแล้ว */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{pickedAddresses.snapshot.branchCode || "00000"}</span></div>
+                {/* สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่แต่ละที่ (มติผู้ใช้ 2026-08-05) */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{customer.branchCode || "00000"}</span></div>
                 <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={customer.contactPerson || "-"} />}</label>
               </div>
             </section>

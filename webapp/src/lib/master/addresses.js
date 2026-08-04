@@ -4,11 +4,16 @@
 // จาก mig 0039) ซึ่งไม่มีใครใช้จริง — ของจริงคือบริษัทเดียวมีหลายที่อยู่/หลายสาขา
 // และใบเสนอราคาต้องเลือกได้ว่าออกบิลที่ไหน ส่งที่ไหน
 //
-// รูปเก็บ: customers.addresses = [{ id, label, branchCode, address, useFor }]
-//   useFor = 'both' | 'billing' | 'shipping' — เป็นค่าเดียว 3 ทาง ไม่ใช่ธงสองตัว
-//   อิสระ เพราะธงสองตัวมีสถานะ "ไม่ใช้ทำอะไรเลย" ที่บันทึกได้แต่ไม่มีความหมาย
+// รูปเก็บ: customers.addresses = [{ id, label, address, useFor }]
+//   useFor = 'both' | 'billing' | 'shipping' — เก็บเป็นค่าเดียว 3 ทาง (ไม่ใช่ธงสอง
+//   ตัวอิสระ) เพราะธงสองตัวมีสถานะ "ไม่ใช้ทำอะไรเลย" ที่บันทึกได้แต่ไม่มีความหมาย ·
+//   บนจอเป็นปุ่มติ๊กสองปุ่ม (มติผู้ใช้) แปลงกลับไปมาที่ toggleAddressUse ด้านล่าง
 //
-// คอลัมน์เดี่ยวเดิม address / shippingAddress / branchCode ยังอยู่ในฐานะ
+// ⛔ ที่อยู่ **ไม่มีเลขสาขา** (มติผู้ใช้ 2026-08-05) — เลขสาขาเป็นของลูกค้าทั้งราย
+//   (customers.branchCode) ไม่ใช่ของที่อยู่แต่ละที่ · แถวที่ backfill มาจาก mig 0202
+//   อาจมีคีย์ branchCode ค้างอยู่ ซึ่ง normalize ตัดทิ้งให้เองตอนบันทึกครั้งถัดไป
+//
+// คอลัมน์เดี่ยวเดิม address / shippingAddress ยังอยู่ในฐานะ
 // "กระจก" ของที่อยู่หลัก (แพตเทิร์นเดียวกับ contacts[] → contactPerson/
 // contactPhone/email) เพราะมีสายที่อ่านช่องเดี่ยวอยู่จริงและต้องไม่พัง:
 // snapshot ใบเสนอราคา/ใบสั่งขาย, ตารางลูกค้า, การค้นหา
@@ -25,8 +30,6 @@ export const ADDRESS_USE_LABELS = {
   billing: 'ออกเอกสารอย่างเดียว',
   shipping: 'จัดส่งอย่างเดียว',
 };
-
-export const HEAD_OFFICE_BRANCH = '00000';
 
 const text = (v) => (v == null ? '' : String(v));
 
@@ -45,17 +48,27 @@ export function isShippingAddress(a) {
   return addressUse(a) !== 'billing';
 }
 
+// ปุ่มติ๊กบนจอ ↔ useFor: ติ๊กครบสอง = 'both' · ติ๊กอันเดียว = อันนั้น · **ติ๊กไม่เหลือ
+// เลยไม่มีในข้อมูล** (ที่อยู่ที่ใช้ทำอะไรไม่ได้เลยก็ไม่ใช่ที่อยู่) — ปุ่มสุดท้ายจึงกด
+// ปิดไม่ลง คืนค่าเดิม แทนที่จะปล่อยให้บันทึกแถวที่ไม่มีความหมายแล้วไปงงทีหลัง
+export function toggleAddressUse(current, key) {
+  const on = { billing: isBillingAddress({ useFor: current }), shipping: isShippingAddress({ useFor: current }) };
+  const next = { ...on, [key]: !on[key] };
+  if (!next.billing && !next.shipping) return addressUse({ useFor: current });
+  if (next.billing && next.shipping) return 'both';
+  return next.billing ? 'billing' : 'shipping';
+}
+
 // แถวเดียว → รูปมาตรฐาน. ไม่ trim ระหว่างพิมพ์ (ดูเหตุผลใน BrandsEditor:
 // trim ทุก re-render = เคาะเว้นวรรคท้ายคำไม่ได้) — trim จริงทำตอน normalize
 // ก่อนบันทึกที่ API
 export function asAddressRow(raw) {
   if (typeof raw === 'string') {
-    return { id: '', label: '', branchCode: HEAD_OFFICE_BRANCH, address: raw, useFor: 'both' };
+    return { id: '', label: '', address: raw, useFor: 'both' };
   }
   return {
     id: text(raw?.id),
     label: text(raw?.label),
-    branchCode: text(raw?.branchCode) || HEAD_OFFICE_BRANCH,
     address: text(raw?.address),
     useFor: addressUse(raw),
   };
@@ -73,7 +86,6 @@ export function normalizeAddresses(arr) {
     out.push({
       id: row.id.trim() || genId('ADR'),
       label: row.label.trim(),
-      branchCode: row.branchCode.trim() || HEAD_OFFICE_BRANCH,
       address,
       useFor: row.useFor,
     });
@@ -96,22 +108,20 @@ export function customerAddresses(customer) {
 // ฝั่งหน้าจอเรียกซ้ำทุก render และ dropdown เก็บค่าเป็น id — id ที่ขยับทุก render
 // = เลือกที่อยู่แล้วช่องเด้งกลับว่างเอง และ id ที่ส่งไป server ก็จะไม่ตรงกับอะไรเลย
 export function addressesFromLegacy(customer) {
-  const branchCode = text(customer?.branchCode).trim() || HEAD_OFFICE_BRANCH;
   const billing = text(customer?.address).trim();
   const shipping = text(customer?.shippingAddress).trim();
   const rows = [];
   if (billing) {
     rows.push({
       id: 'ADR-legacy-billing',
-      label: branchCode === HEAD_OFFICE_BRANCH ? 'สำนักงานใหญ่' : `สาขา ${branchCode}`,
-      branchCode,
+      label: 'ที่อยู่ออกเอกสาร',
       address: billing,
       // shippingAddress ว่าง = "ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง" (กติกาเดิม)
       useFor: shipping && shipping !== billing ? 'billing' : 'both',
     });
   }
   if (shipping && shipping !== billing) {
-    rows.push({ id: 'ADR-legacy-shipping', label: 'ที่อยู่จัดส่ง', branchCode, address: shipping, useFor: 'shipping' });
+    rows.push({ id: 'ADR-legacy-shipping', label: 'ที่อยู่จัดส่ง', address: shipping, useFor: 'shipping' });
   }
   return rows;
 }
@@ -141,7 +151,6 @@ export function legacyAddressMirror(list) {
   return {
     address: billing?.address || null,
     shippingAddress: shipping && shipping.id !== billing?.id ? shipping.address : null,
-    branchCode: billing?.branchCode || HEAD_OFFICE_BRANCH,
   };
 }
 
@@ -163,19 +172,21 @@ export function pickDocumentAddresses(customer, { billingAddressId, shippingAddr
       billingAddress: billing?.address || null,
       // ว่าง = ใช้ที่อยู่ออกบิล (ความหมายเดิมของช่องนี้บนเอกสาร)
       shippingAddress: shipping?.address || billing?.address || null,
-      branchCode: billing?.branchCode || customer?.branchCode || null,
+      // สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่ — เลือกที่อยู่คนละที่ไม่เปลี่ยนสาขา
+      branchCode: customer?.branchCode || null,
       billingAddressId: billing?.id || null,
       shippingAddressId: shipping?.id || null,
     },
   };
 }
 
-// ป้ายสั้นสำหรับ dropdown/หัวการ์ด — "ชื่อเรียก · สาขา 00001"
+// ป้ายสั้นสำหรับ dropdown/หัวการ์ด — ไม่ตั้งชื่อเรียกก็ใช้ตัวที่อยู่ย่อ ๆ แทน
+// (ป้ายว่างใน dropdown = เลือกไม่ถูกว่าอันไหนคืออันไหน)
+const LABEL_FALLBACK_MAX = 40;
 export function addressLabel(a) {
   const row = asAddressRow(a);
   const name = row.label.trim();
-  const branch = row.branchCode.trim();
-  const branchText = !branch || branch === HEAD_OFFICE_BRANCH ? 'สำนักงานใหญ่' : `สาขา ${branch}`;
-  if (!name) return branchText;
-  return name === branchText ? name : `${name} · ${branchText}`;
+  if (name) return name;
+  const line = row.address.trim().split(/\r?\n/)[0] || '';
+  return line.length > LABEL_FALLBACK_MAX ? `${line.slice(0, LABEL_FALLBACK_MAX)}…` : (line || 'ที่อยู่');
 }
