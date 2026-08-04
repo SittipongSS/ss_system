@@ -14,9 +14,10 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
-function statusBadge(status) {
+function statusBadge(status, className = "") {
   const color = { draft: "var(--text-3)", pending_approval: "var(--amber)", approved: "var(--green)", rejected: "var(--red)", cancelled: "var(--red)" }[status] || "var(--text-3)";
-  return <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{STATUS[status] || status}</span>;
+  // ขอบ/พื้นมาจาก .ui-badge ที่ derive จาก currentColor อยู่แล้ว — ตั้ง color พอ
+  return <span className={["ui-badge", className].filter(Boolean).join(" ")} style={{ color }}>{STATUS[status] || status}</span>;
 }
 
 export default function SalesOrdersPage() {
@@ -117,7 +118,7 @@ export default function SalesOrdersPage() {
                     <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
                     <td>{row.customerName || "-"}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span></td>
                     <td><Link prefetch={false} href={`/sa/quotations/${row.quotationId}`} className="linklike mono">{row.quotation?.quoteNumber || "-"}</Link></td>
-                    <td>{fmtDate(row.orderDate)}</td><td className="num mono">{fmtMoney(row.status === "approved" ? row.actualAmount : 0)}</td><td>{statusBadge(row.status)}</td>
+                    <td>{fmtDate(row.orderDate)}</td><td className="num mono">{fmtMoney(row.status === "approved" ? row.actualAmount : 0)}</td><td>{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มี Sale Order — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}

@@ -117,9 +117,9 @@ export const QUOTE_STATUS_COLORS = {
   draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)",
   rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)", closed: "var(--text-3)",
 };
-export function quoteStatusBadge(status) {
+export function quoteStatusBadge(status, className = "") {
   return (
-    <span className="ui-badge" style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className={badgeClass(className)} style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)" }}>
       {status === "accepted" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
       {QUOTE_STATUS_LABELS[status] || status}
     </span>

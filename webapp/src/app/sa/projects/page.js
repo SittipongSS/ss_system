@@ -240,7 +240,7 @@ export default function ProjectsIndexPage() {
                                 className={styles.dealTypeChip}
                                 title={dealTypeTooltip(row)}
                               >
-                                {dealTypeBadge(row.type)}
+                                {dealTypeBadge(row.type, "ui-badge-cell ui-badge-w-deal-type")}
                                 {row.count > 1 && <span className={styles.dealTypeCount}>×{row.count}</span>}
                               </Link>
                             ))}
