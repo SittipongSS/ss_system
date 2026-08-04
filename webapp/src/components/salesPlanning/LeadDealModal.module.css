@@ -39,10 +39,24 @@
   background: var(--surface);
 }
 
-.add {
+/* แถบหัว: แท็บชิดซ้าย ปุ่มเพิ่มชิดขวา — อยู่เหนือฟอร์มเสมอ
+   แท็บบาร์ต้อง `min-width: 0` ไม่งั้นพอมีหลายใบมันจะดันปุ่มเพิ่มตกขอบ */
+.tabRow {
   display: flex;
-  justify-content: center;
-  padding: var(--space-2) 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.tabs {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+
+.addButton {
+  flex: none;
+  white-space: nowrap;
 }
 
 .error {
@@ -67,4 +81,12 @@
   font-size: var(--fs-7);
   line-height: var(--lh-text);
   color: var(--green);
+}
+
+/* 🐞 **ห้ามลบ** — `.draft` ประกาศ `display: flex` ซึ่งมี specificity สูงกว่า UA style
+   `[hidden] { display: none }` ⇒ attribute `hidden` ไม่มีผลเลย ใบที่ควรถูกซ่อนยัง
+   แสดงเรียงต่อกันทั้งหมด (อาการที่ผู้ใช้เจอ: กดแท็บแล้วไม่มีอะไรเปลี่ยน เหมือนฟอร์ม
+   ทับกัน) · กับดักเดียวกันนี้กัดทุกครั้งที่ element มี display ของตัวเองแล้วใช้ hidden */
+.draft[hidden] {
+  display: none;
 }

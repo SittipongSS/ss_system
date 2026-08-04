@@ -83,12 +83,13 @@ export default function LeadDealModal({
     setActive((current) => (current >= index && current > 0 ? current - 1 : current));
   };
 
+  /* ⚠️ อย่าเรียก setActive ข้างใน updater ของ setDrafts — updater ต้องบริสุทธิ์
+     (React เรียกซ้ำได้) · ใบใหม่ไปต่อท้ายเสมอ index ของมันจึงเท่ากับจำนวนใบตอนนี้ */
   const addDraft = () => {
-    setDrafts((prev) => {
-      nextKey.current += 1;
-      setActive(prev.length);
-      return [...prev, { ...nextDeal(lead), _key: nextKey.current }];
-    });
+    nextKey.current += 1;
+    const key = nextKey.current;
+    setActive(drafts.length);
+    setDrafts((prev) => [...prev, { ...nextDeal(lead), _key: key }]);
   };
 
   const remaining = drafts.filter((draft) => !done[draft._key]?.dealId).length;
@@ -161,32 +162,43 @@ export default function LeadDealModal({
           {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
         </div>
 
-        {/* ── แท็บแทนการเรียงลงมา (มติผู้ใช้ 2026-08-04) ─────────────────────
-            ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ = เลื่อนจอยาวมาก
+        {/* ── แถบหัว: แท็บ + ปุ่มเพิ่ม อยู่แถวเดียวกัน เหนือฟอร์ม ───────────────
+            (มติผู้ใช้ 2026-08-04) ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ = จอยาวมาก
             แท็บโผล่เมื่อมีมากกว่า 1 ใบ — ใบเดียวหน้าตาเหมือนเดิมทุกอย่าง
+
+            ⚠️ ปุ่ม "เพิ่มดีล" ต้องอยู่**แถวเดียวกับแท็บ** ไม่ใช่ใต้ฟอร์มแบบเดิม:
+            พอเป็นแท็บแล้วปุ่มที่อยู่ล่างสุดหลุดบริบท ต้องเลื่อนผ่านฟอร์มทั้งใบไปหา
+            และมองไม่ออกว่ามันเพิ่ม "แท็บ" ไม่ใช่เพิ่มช่องในใบที่เปิดอยู่
+
             ⚠️ แท็บซ่อนใบอื่นไว้ ป้ายจึงต้องบอกสถานะรายใบให้ครบโดยไม่ต้องกดเข้าไปดู:
             ✓ = สร้างแล้ว (รอบก่อน) · ! = ใบที่พัง — ไม่งั้น error รวมบรรทัดเดียว
             จะบอกไม่ได้ว่าใบไหน */}
-        {drafts.length > 1 && (
-          <Tabs
-            ariaLabel="ดีลที่จะสร้าง"
-            value={String(active)}
-            onChange={(key) => setActive(Number(key))}
-            tabs={drafts.map((draft, index) => {
-              const state = done[draft._key];
-              return {
-                key: String(index),
-                label: (
-                  <span className={styles.tabLabel}>
-                    {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
-                    {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
-                    {draft.dealType || `ดีล ${index + 1}`}
-                  </span>
-                ),
-              };
-            })}
-          />
-        )}
+        <div className={styles.tabRow}>
+          {drafts.length > 1 ? (
+            <Tabs
+              className={styles.tabs}
+              ariaLabel="ดีลที่จะสร้าง"
+              value={String(active)}
+              onChange={(key) => setActive(Number(key))}
+              tabs={drafts.map((draft, index) => {
+                const state = done[draft._key];
+                return {
+                  key: String(index),
+                  label: (
+                    <span className={styles.tabLabel}>
+                      {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
+                      {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
+                      {draft.dealType || `ดีล ${index + 1}`}
+                    </span>
+                  ),
+                };
+              })}
+            />
+          ) : <span />}
+          <Button variant="ghost" onClick={addDraft} className={styles.addButton}>
+            <Plus size={14} aria-hidden="true" /> เพิ่มดีล
+          </Button>
+        </div>
 
         {drafts.map((draft, index) => (
           <div
@@ -224,12 +236,6 @@ export default function LeadDealModal({
             </div>
           </div>
         ))}
-
-        <div className={styles.add}>
-          <Button variant="ghost" onClick={addDraft}>
-            <Plus size={14} aria-hidden="true" /> เพิ่มดีลอีกรายการ
-          </Button>
-        </div>
 
         {error ? <p className={styles.error}>{error}</p> : null}
 
