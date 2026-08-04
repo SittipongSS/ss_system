@@ -3,7 +3,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { recordAudit } from '@/lib/audit';
 import {
   acceptFormulaError, archiveFormulaError, canEditFormula, canViewFormulas,
-  deleteFormulaError, isFormulaRegistrar, normalizeFormulaInput,
+  deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
 } from '@/lib/master/formulas';
 import {
   countProductsUsingFormula, editFormula, findFormula, updateFormula,
@@ -79,10 +79,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (action === 'status') {
       if (!isFormulaRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่เปลี่ยนสถานะสูตรได้');
       const next = body.status;
-      if (!['active', 'archived'].includes(next)) return badRequest('สถานะไม่ถูกต้อง');
-      const error = next === 'archived' ? archiveFormulaError(formula) : null;
+      // ⚠️ ด่านเส้นทางย้ายไปอยู่ที่ `formulaTransitionError` แล้ว (0207) — เดิมเป็น
+      // allow-list สองค่าเขียนตรงนี้ ซึ่งกัน 'developing' ที่เพิ่งเปิดใช้ออกไปด้วย
+      // และเป็นกฎคนละชุดกับทะเบียนกลิ่นทั้งที่สองทะเบียนเดินคู่กันในสายงานเดียว
+      // เคส archive ตรวจก่อนเพื่อให้ได้ข้อความที่ตรงกว่า (แพตเทิร์นเดียวกับ scents)
+      const error = (next === 'archived' ? archiveFormulaError(formula) : null)
+        || formulaTransitionError(formula, next);
       if (error) return badRequest(error);
-      if (next === 'active' && formula.status === 'draft') {
+      if (formula.status === 'draft') {
         return badRequest('ร่างต้องรับเข้าทะเบียนพร้อมรหัสก่อน');
       }
       const data = await updateFormula(supabase, id, { status: next });

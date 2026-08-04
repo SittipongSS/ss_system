@@ -129,9 +129,15 @@ export async function findFormula(supabase, id) {
 // ได้โดยไม่มีอะไรห้าม · ย้ายมาให้ server เติม ⇒ ความขัดแย้งเป็นไปไม่ได้เชิงโครงสร้าง
 // (แพตเทิร์นเดียวกับ productFormulaSnapshot — ค่าที่ derive ได้ ห้ามให้ client ส่ง)
 //
-// ไม่ผูกกลิ่น = สูตรฐาน ⇒ ไม่มีลูกค้า (คนละความหมายกับกลิ่น ซึ่งบังคับผูกลูกค้าเสมอ)
+// 🐞 **คืน null เมื่อไม่มีกลิ่น ไม่ใช่คืนลูกค้าเปล่า** — เวอร์ชันแรกคืน
+// `{customerId: null}` ซึ่งไป **ล้างลูกค้าทิ้ง** ของสูตรที่ไม่ผูกกลิ่น · จุดที่พังจริง
+// คือ "จัดระเบียบ" (unsorted): สินค้าของลูกค้ารายหนึ่งถูกย้ายเป็นสูตร แล้วสูตรนั้น
+// กลายเป็นสูตรฐานไร้ลูกค้าเงียบ ๆ
+//
+// กฎที่ถูกคือ **"กลิ่นเป็นเจ้าของคำตอบเมื่อมีกลิ่น"** ไม่ใช่ "สูตรห้ามมีลูกค้า" —
+// สูตรฐานที่ไม่ผูกกลิ่นยังผูกลูกค้าได้ตามที่ผู้เรียกกำหนด (แต่ไม่ใช่จากฟอร์มทะเบียน)
 async function customerFromScent(supabase, scentId) {
-  if (!scentId) return { customerId: null, customerName: null };
+  if (!scentId) return null;
   const scent = await findScent(supabase, scentId);
   if (!scent) throw new Error('ไม่พบกลิ่นที่เลือกในทะเบียนกลิ่น');
   return { customerId: scent.customerId, customerName: scent.customerName ?? null };
@@ -144,12 +150,19 @@ export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId,
   if (error) throw new Error(error);
 }
 
-export async function createFormula(supabase, input, user, { accepted = false } = {}) {
+// `fallbackCustomer` ใช้ได้เฉพาะตอน **ไม่มีกลิ่น** — ทางเดียวที่ยังส่งมาคือ
+// "จัดระเบียบ" ซึ่งย้ายสินค้าของลูกค้ารายหนึ่งมาเป็นสูตรฐาน · ฟอร์มทะเบียนไม่ส่ง
+// ค่านี้เลย และห้ามส่ง (นั่นคือรูที่ 0207 ปิดไป)
+export async function createFormula(supabase, input, user, {
+  accepted = false, fallbackCustomer = null,
+} = {}) {
   const { value, error } = normalizeFormulaInput(input);
   if (error) throw new Error(error);
   if (accepted && !value.code) throw new Error('ต้องระบุรหัสสูตร');
 
-  const customer = await customerFromScent(supabase, value.scentId);
+  const customer = await customerFromScent(supabase, value.scentId)
+    || fallbackCustomer
+    || { customerId: null, customerName: null };
   await assertDerivedFromFormula(supabase, { ...value, ...customer });
 
   const nowIso = new Date().toISOString();
@@ -178,9 +191,11 @@ export async function createFormula(supabase, input, user, { accepted = false } 
 // และตรวจสายพันธุ์ให้ · `updateFormula` ดิบ ๆ ยังใช้ได้กับ patch ที่ไม่แตะกลิ่น
 // (เปลี่ยนสถานะ · รับเข้าทะเบียน) ซึ่งไม่ต้องคิดเรื่องลูกค้าเลย
 export async function editFormula(supabase, id, patch) {
+  // ⚠️ ไม่มีกลิ่น = **ไม่แตะลูกค้าเดิม** ไม่ใช่ล้างทิ้ง — สูตรฐานที่ผูกลูกค้าไว้จาก
+  // การจัดระเบียบ ต้องไม่กลายเป็นไร้ลูกค้าเพราะแค่มีคนเข้ามาแก้ชื่อ
   const customer = await customerFromScent(supabase, patch.scentId);
-  await assertDerivedFromFormula(supabase, { ...patch, ...customer, id });
-  return updateFormula(supabase, id, { ...patch, ...customer });
+  await assertDerivedFromFormula(supabase, { ...patch, ...(customer || {}), id });
+  return updateFormula(supabase, id, customer ? { ...patch, ...customer } : patch);
 }
 
 export async function updateFormula(supabase, id, patch) {
