@@ -2,6 +2,7 @@ import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { dealTypeOf } from '@/lib/salesPlanning';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   formatDocumentNumber,
@@ -105,7 +106,8 @@ const BASE_QUOTE = Object.freeze({
     contactPhone: '081-000-0000',
   },
   references: {
-    deal: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ · 2026',
+    // ตัวอย่างต้องมีรูปเดียวกับของจริง: ดีล = "ประเภท · ชื่อ" (บนเอกสารเรียกโครงการย่อย)
+    deal: 'SCENT · ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     project: 'PJ-26070038 · Signature Bloom',
     salesOwner: 'กานติมา ธาดาธารกิจ',
   },
@@ -647,8 +649,8 @@ export function buildQuotationMasterPreview(
     customer,
     references: { ...BASE_QUOTE.references },
     referenceRows: [
-      { label: 'ดีล', value: BASE_QUOTE.references.deal },
       { label: 'โครงการ', value: BASE_QUOTE.references.project },
+      { label: 'โครงการย่อย', value: BASE_QUOTE.references.deal },
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
     ],
     document: {
@@ -687,6 +689,33 @@ export function buildQuotationMasterPreview(
 // ใช้ pagination V4 ชุดเดียวกับ preview (paginateQuotationMasterLines mode:'fill' +
 // buildGroupedPages) แล้วป้อนให้ renderer เอกสาร (quotationMasterDocument.js) เพื่อให้
 // ใบพิมพ์จริง + ฉบับตรึง snapshot ใช้หน้าตา/การจัดหน้าแบบ V4 เดียวกับที่เห็นใน preview.
+// "รหัส · ชื่อ" — ตัวคั่นเดียวกับที่เอกสารใช้อยู่แล้ว (รหัส FG · แบรนด์ บนบรรทัดสินค้า)
+// ขาดฝั่งไหนก็เหลือเท่าที่มี ไม่ทิ้งตัวคั่นลอย
+const codeNameRef = (code, name) => [code, name]
+  .map((part) => String(part ?? '').trim())
+  .filter(Boolean)
+  .join(' · ') || '-';
+
+// โครงการผูกผ่านดีล (sales_deals.projectId → projects, FK mig 0064) — select ของ
+// route ที่สร้างเอกสารต้อง join project:projects(code, name) มาให้
+// 🐞 เดิมอ่าน quote.deal.project.name โดยไม่มี query ไหน join projects เข้ามาเลย
+//    ⇒ แถว "โครงการ" บนใบเสนอราคาพิมพ์ '-' มาตลอด
+export function quotationProjectRef(quote) {
+  const project = quote?.deal?.project || quote?.project || null;
+  if (!project) return quote?.projectName ? codeNameRef('', quote.projectName) : '-';
+  return codeNameRef(project.code, project.name);
+}
+
+// ดีล = "โครงการย่อย" บนเอกสาร · ประเภทใช้รหัสดิบ (SCENT/NPD/RE-ORDER) ให้ตรงกับที่
+// ทีมเรียกกันและที่เห็นบนหน้าจอ (มติผู้ใช้ 2026-08-04)
+export function quotationDealRef(quote) {
+  const deal = quote?.deal || null;
+  const title = String(deal?.title || quote?.dealTitle || '').trim();
+  if (!deal && !title) return '-';
+  // ไม่มีดีลจริงแต่มีชื่อค้างจาก snapshot เก่า → โชว์ชื่ออย่างเดียว ไม่เดาประเภท
+  return deal ? codeNameRef(dealTypeOf(deal), title) : codeNameRef('', title);
+}
+
 export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const form = options.form || DOCUMENT_FORMS.quotation;
   const lines = (Array.isArray(quote.lines) ? quote.lines : [])
@@ -798,10 +827,11 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     customer,
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
-      { label: 'ดีล', value: quote.deal?.title || quote.dealTitle || '-' },
-      // โครงการผูกผ่านดีล (deal.projectId) — API detail/approval แนบมาเป็น deal.project;
-      // quote.project/projectName ไม่มีใครตั้ง แต่คงไว้รองรับ snapshot/caller เก่า
-      { label: 'โครงการ', value: quote.deal?.project?.name || quote.project?.name || quote.projectName || '-' },
+      // โครงการมาก่อนดีลเสมอ และดีลเรียกว่า "โครงการย่อย" **เฉพาะบนเอกสาร** —
+      // ในแอปยังเรียก "ดีล" เหมือนเดิม (มติผู้ใช้ 2026-08-04) เพราะลูกค้าเห็นใบนี้
+      // แล้วมองว่าดีลคืองานย่อยใต้โครงการ ไม่ใช่คำศัพท์ฝ่ายขาย
+      { label: 'โครงการ', value: quotationProjectRef(quote) },
+      { label: 'โครงการย่อย', value: quotationDealRef(quote) },
       { label: 'ผู้เสนอราคา', value: salesOwner },
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
