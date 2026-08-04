@@ -8,7 +8,7 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -43,6 +43,8 @@ import styles from "./page.module.css";
 /* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
    ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
 const NO_TEAM = "__no_team__";
+/* เช่นเดียวกัน — ลีดที่ยังไม่ถูกมอบหมายมี assigneeId = null */
+const NO_ASSIGNEE = "__no_assignee__";
 
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
@@ -117,6 +119,7 @@ export default function LeadsPage() {
      เห็นจำนวนลีดไม่ตรงกับที่มีจริงโดยไม่รู้ตัว · ตอนนี้ไม่ติ๊กอะไรไว้ = เห็นทุกใบ */
   const [statusFilter, setStatusFilter] = useState([]);
   const [teamFilter, setTeamFilter] = useState([]);
+  const [assigneeFilter, setAssigneeFilter] = useState([]);
   const [channelFilter, setChannelFilter] = useState([]);
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
@@ -191,6 +194,9 @@ export default function LeadsPage() {
       // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง
       // ไม่งั้นพอกรองทีม คิวกลางจะหายไปทั้งก้อนโดยไม่มีอะไรบอก
       if (teamFilter.length && !teamFilter.includes(l.team || NO_TEAM)) return false;
+      // แยกจากทีมโดยตั้งใจ: หัวหน้าทีมอยากดู "ทีมตัวเอง" กับ "ใบของ AE คนนี้"
+      // คนละคำถามกัน และลีดของทีมอาจยังไม่มีผู้รับผิดชอบ
+      if (assigneeFilter.length && !assigneeFilter.includes(l.assigneeId || NO_ASSIGNEE)) return false;
       if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
       // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
@@ -205,24 +211,43 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, statusFilter, teamFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
+  }, [leads, query, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter.join()}|${teamFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
+      resetKey: `${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
     });
 
   /* จำนวนต่อตัวเลือก — โชว์ท้ายป้ายในแผงกรอง ให้เห็นว่าติ๊กแล้วจะเหลือกี่ใบ
      ก่อนกด (นับจากลีดทั้งหมดที่โหลดมา ไม่ใช่จากผลกรองปัจจุบัน) */
   const countBy = useMemo(() => {
-    const status = {}; const team = {}; const channel = {};
+    const status = {}; const team = {}; const assignee = {}; const channel = {};
     for (const l of leads) {
       status[l.status] = (status[l.status] || 0) + 1;
       team[l.team || NO_TEAM] = (team[l.team || NO_TEAM] || 0) + 1;
+      assignee[l.assigneeId || NO_ASSIGNEE] = (assignee[l.assigneeId || NO_ASSIGNEE] || 0) + 1;
       channel[l.channel] = (channel[l.channel] || 0) + 1;
     }
-    return { status, team, channel };
+    return { status, team, assignee, channel };
   }, [leads]);
+
+  /* ตัวเลือก "ผู้รับผิดชอบ" มาจาก **คนที่ถือลีดอยู่จริง** ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ —
+     ทะเบียนผู้ใช้มีคนที่ไม่เคยแตะคิวลีดเลยเยอะ ถ้าเอามาทั้งหมดจะเลื่อนหาไม่เจอ
+     ชื่อใช้ตัวเดียวกับที่แสดงในแถว (assigneeNameOf → ชื่อปัจจุบัน ไม่ใช่ชื่อที่ค้างในแถว)
+     ไม่งั้นกรองด้วยชื่อที่เห็นในตารางแล้วหาไม่เจอ */
+  const assigneeOptions = useMemo(() => {
+    const byId = new Map();
+    for (const l of leads) {
+      if (!l.assigneeId) continue;
+      if (!byId.has(l.assigneeId)) byId.set(l.assigneeId, assigneeNameOf(l) || l.assigneeName || l.assigneeId);
+    }
+    const rows = [...byId.entries()]
+      .map(([id, name]) => ({ value: id, label: `${name} (${countBy.assignee[id] || 0})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, "th"));
+    const none = countBy.assignee[NO_ASSIGNEE] || 0;
+    // ใบที่ยังไม่มีเจ้าของ = คิวที่หัวหน้าทีมต้องกระจาย — ต้องกรองเจาะได้
+    return none ? [...rows, { value: NO_ASSIGNEE, label: `ยังไม่มอบหมาย (${none})` }] : rows;
+  }, [leads, countBy, assigneeNameOf]);
 
   const saveLead = async (e) => {
     e.preventDefault();
@@ -352,8 +377,8 @@ export default function LeadsPage() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
             <FilterPopover
-              count={statusFilter.length + teamFilter.length + channelFilter.length}
-              onClear={() => { setStatusFilter([]); setTeamFilter([]); setChannelFilter([]); }}
+              count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length}
+              onClear={() => { setStatusFilter([]); setTeamFilter([]); setAssigneeFilter([]); setChannelFilter([]); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Filter,
@@ -368,6 +393,11 @@ export default function LeadsPage() {
                     { value: NO_TEAM, label: `ยังไม่คัดกรอง (${countBy.team[NO_TEAM] || 0})` },
                   ],
                   selected: teamFilter, onChange: setTeamFilter,
+                },
+                {
+                  key: "assignee", label: "ผู้รับผิดชอบ", icon: UserRound,
+                  options: assigneeOptions,
+                  selected: assigneeFilter, onChange: setAssigneeFilter,
                 },
                 {
                   key: "channel", label: "ช่องทาง", icon: PhoneCall,
