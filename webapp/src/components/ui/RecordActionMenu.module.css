@@ -29,6 +29,24 @@
   padding-inline: var(--space-1);
 }
 
+/* ช่อง action เดี่ยว (ไม่ใช่การเดินสถานะ) — กติกาความกว้างเดียวกับช่องก้าวถัดไป:
+   กว้างเท่ากันทุกแถว **รวมแถวที่ปุ่มไม่โผล่** ไม่งั้นเมนู "…" จะขยับตามแต่ละแถว
+   ปุ่มเป็น outline ไม่ใช่ทึบ — ตั้งใจให้ต่างจากปุ่มก้าวถัดไปด้วยสายตา ไม่ใช่แค่ตำแหน่ง
+   (ทึบ = "ขั้นถัดไปของ flow" · โปร่ง = "งานอีกเรื่องที่ทำได้ตรงนี้") */
+.side {
+  flex: none;
+  width: var(--record-step-w);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sideButton {
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+  padding-inline: var(--space-1);
+}
+
 /* สีปุ่มก้าวถัดไป — แมป ROW_TONES (lib/recordLifecycle.js) ไว้ที่เดียวทั้งระบบ
    หน้าเพจห้ามเขียน `--btn-bg` หรือ inline style เอง (ของเดิมก่อน #870 ทำแบบนั้น 7 จุด)
 

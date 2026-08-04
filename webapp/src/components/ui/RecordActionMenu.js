@@ -38,6 +38,16 @@ export default function RecordActionMenu({
      ใบเสนอราคา / โครงการที่ผูกไว้) จึงวางไว้บนสุด ก่อนกลุ่มจัดการตัวระเบียน
      รูป: { id, label, icon, href | onClick, tone, disabled, visible } */
   extraItems = [],
+  /* ⭐ ปุ่มเดี่ยวที่ **ไม่ใช่การเดินสถานะ** แต่สำคัญพอที่จะเห็นในแถวโดยไม่ต้องเปิดเมนู
+     — ช่องของตัวเอง แยกขาดจากปุ่มก้าวถัดไป (มติผู้ใช้ 2026-08-04: เปิดดีลจากลีด
+     ทำได้หลายขั้น จึงไม่ใช่ "ก้าวถัดไป" ของขั้นไหน แต่ซ่อนในเมนูก็หาไม่เจอ)
+
+     ⚠️ ช่องกินที่เท่ากันทุกแถว **รวมแถวที่ปุ่มไม่โผล่** — เหตุผลเดียวกับช่องก้าวถัดไป:
+     ถ้ายุบเมื่อว่าง เมนู "…" จะขยับซ้าย/ขวาตามแต่ละแถว อ่านเป็นคอลัมน์ไม่ได้
+     ส่งมาเป็น null/visible:false = ไม่มีช่องนี้เลยทั้งตาราง (หน้าที่ไม่ได้ใช้ไม่เสียที่)
+
+     รูป: { label, icon, tone, disabled, disabledReason, visible, onClick } */
+  sideAction = null,
   /* ข้อความอ้างอิงแถว เอาไปต่อท้าย aria-label ของปุ่ม "…" ให้โปรแกรมอ่านหน้าจอรู้ว่าแถวไหน */
   recordLabel = "",
   className = "",
@@ -120,6 +130,28 @@ export default function RecordActionMenu({
           />
         ) : null}
       </span>
+
+      {/* ช่องของ action เดี่ยว — มีก็ต่อเมื่อหน้านั้นส่ง sideAction มา (หน้าที่ไม่ใช้
+          ไม่เสียที่); ตัวปุ่มโผล่เฉพาะแถวที่ `visible` แต่ช่องยังกินที่เท่ากันทุกแถว
+          เพื่อให้เมนู "…" ตรงแนวกันตลอดคอลัมน์ */}
+      {sideAction ? (
+        <span className={styles.side}>
+          {sideAction.visible !== false ? (
+            <ActionButton
+              /* สี/ไอคอนตั้งต้นมาจาก `kind` ที่ ActionButtons ผูกไว้ที่เดียวเหมือนทุกปุ่ม
+                 (หน้าเพจส่ง icon เฉพาะตัวมาทับได้) — ห้ามทาสีเองในหน้าเพจ */
+              kind={sideAction.kind}
+              icon={sideAction.icon}
+              label={sideAction.label}
+              variant="outline"
+              className={styles.sideButton}
+              disabled={busy || sideAction.disabled}
+              title={sideAction.disabledReason || sideAction.label}
+              onClick={sideAction.onClick}
+            />
+          ) : null}
+        </span>
+      ) : null}
 
       <RowActionMenu
         items={items}

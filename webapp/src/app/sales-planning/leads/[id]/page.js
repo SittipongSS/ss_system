@@ -294,7 +294,7 @@ export default function LeadDetailPage() {
                 {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={BriefcaseBusiness} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
               </ContextGrid>
             ) : (
-              <p style={{ color: "var(--text-3)", margin: 0 }}>
+              <p className="empty">
                 ลีดนี้ยังไม่ได้เปิดดีล — กด “{dealAction.label}” เพื่อเริ่ม (เปิดได้หลายใบจากลีดเดียว)
               </p>
             )}
