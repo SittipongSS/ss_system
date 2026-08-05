@@ -35,6 +35,9 @@ import {
 import { requestItemStatusLabel } from "@/lib/requests/statuses";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
 import RowStageRail from "@/components/requests/RowStageRail";
+import ScentDeliveryFields, {
+  codeConflict, emptyDeliveryRow,
+} from "@/components/requests/ScentDeliveryFields";
 import { businessDate } from "@/lib/businessDate";
 import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
@@ -97,6 +100,11 @@ export default function MaterialAskDetailPage() {
   // ผลลัพธ์ตอนปิดบรีฟกลิ่น — { mode: 'link'|'create'|'none', scentId, scentName, code }
   const [outcome, setOutcome] = useState(null);
   const [scentOptions, setScentOptions] = useState([]);
+  // ส่งของ (พัฒนากลิ่น) — [{ name, code, sentAt, derivedFromScentId, spec }]
+  const [delivery, setDelivery] = useState(null);
+  // ⚠️ ทะเบียนกลิ่น **ทั้งก้อน** ไม่ใช่เฉพาะของลูกค้ารายนี้ — รหัสกลิ่นห้ามซ้ำทั้ง
+  // บริษัท (scents_code_uk เป็น unique ทั้งตาราง) ⇒ เตือนซ้ำต้องเทียบกับทุกแถว
+  const [allScents, setAllScents] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
@@ -119,6 +127,14 @@ export default function MaterialAskDetailPage() {
       .then((d) => setScentOptions(Array.isArray(d) ? d : []))
       .catch(() => setScentOptions([]));
   }, [req?.customerId, req?.kind]);
+
+  useEffect(() => {
+    if (req?.kind !== "scent_dev") { setAllScents([]); return; }
+    fetch("/api/master/scents", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setAllScents(Array.isArray(d) ? d : []))
+      .catch(() => setAllScents([]));
+  }, [req?.kind]);
 
   const call = useCallback(async (path, init, okMsg) => {
     setSaving(true);
@@ -194,6 +210,21 @@ export default function MaterialAskDetailPage() {
       : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
     if (ok) setHopDraft(null);
   };
+
+  // ปุ่มส่งปิดด้วยกติกาเดียวกับที่ช่องเตือน — ฟอร์มไม่คิดกฎเอง (บทเรียนเดิม:
+  // หน้าจอคำนวณเงื่อนไขเองแล้วเพี้ยนจาก server จนปุ่มกดได้แต่ได้ 400 กลับมา)
+  const deliveryBlocker = (() => {
+    if (!delivery) return null;
+    const codes = new Set(allScents.map((s) => String(s.code ?? "").trim().toLowerCase()).filter(Boolean));
+    for (let i = 0; i < delivery.length; i += 1) {
+      const row = delivery[i];
+      if (!String(row.name ?? "").trim()) return `รายการที่ ${i + 1}: ต้องระบุชื่อกลิ่น`;
+      if (!String(row.code ?? "").trim()) return `รายการที่ ${i + 1}: ต้องระบุรหัสกลิ่น`;
+      const clash = codeConflict(row.code, i, delivery, codes);
+      if (clash) return `รายการที่ ${i + 1}: ${clash}`;
+    }
+    return null;
+  })();
 
   const submitAnswer = async (payload, okMsg) => {
     const ok = await call("/answer", { method: "PATCH", body: JSON.stringify({ answers: [payload] }) }, okMsg);
@@ -308,6 +339,16 @@ export default function MaterialAskDetailPage() {
         icon: Check,
         onClick: () => call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว"),
       }
+      // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
+      // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
+      : canAnswer && req.kind === "scent_dev"
+        ? {
+          id: "deliver",
+          label: "ส่งกลิ่น",
+          kind: "submit",
+          icon: Send,
+          onClick: () => setDelivery([emptyDeliveryRow()]),
+        }
       // ชนิดที่ไม่มีบรรทัด: ผู้ตอบกด "ตอบแล้ว" ก่อน แล้วผู้ขอค่อยปิดเรื่อง
       // (ระบบนับคำตอบเองไม่ได้ — ไม่มีบรรทัดให้นับ)
       : canMarkAnswered
@@ -817,6 +858,41 @@ export default function MaterialAskDetailPage() {
                 ปิดเรื่อง
               </Button>
             </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ส่งกลิ่น — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว */}
+      <Modal
+        open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
+        title="ส่งกลิ่นให้ฝ่ายขาย"
+      >
+        {delivery && (
+          <>
+            <p className={styles.fieldHint}>
+              แต่ละรายการคือ <strong>1 direction</strong> — บันทึกแล้วกลิ่นเข้าทะเบียนทันที
+              พร้อมรหัสและวันที่ส่ง ไม่ต้องไปกรอกซ้ำที่หน้าทะเบียน
+            </p>
+            <ScentDeliveryFields
+              rows={delivery} onChange={setDelivery} scents={allScents}
+              customerId={req.customerId} disabled={saving}
+            />
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" onClick={() => setDelivery(null)} disabled={saving}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !!deliveryBlocker}
+                onClick={async () => {
+                  const done = await call("/items", {
+                    method: "POST", body: JSON.stringify({ rows: delivery }),
+                  }, `ส่งกลิ่น ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
+                  if (done) setDelivery(null);
+                }}
+              >
+                ส่งและเข้าทะเบียน
+              </Button>
+            </div>
+            {deliveryBlocker && <p className={styles.fieldError}>{deliveryBlocker}</p>}
           </>
         )}
       </Modal>
