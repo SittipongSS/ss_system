@@ -40,7 +40,7 @@ export const emptyPdr = () => ({
   shipTo: "", customerKind: "", targetDemographic: "", targetPsychographic: "",
   targetPainpoint: "", productKind: "", wantedAt: "", sellFrom: "",
   targetCost: "", targetPrice: "", moq: "", texture: "", color: "",
-  packSize: "", brandSample: "", specialRequirements: "",
+  packSize: "", brandSample: "", specialRequirements: "", projectValue: "",
 });
 
 // ช่องที่ระบบเติมให้ — เส้นประ อ่านอย่างเดียว (แพตเทิร์นเดียวกับ "เติมจาก SO")
@@ -89,7 +89,7 @@ function TickAndWrite({ label, value, onChange, disabled }) {
 
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
-  scentCount = null, customer = null, deal = null, requester = null, projectValue = null,
+  scentCount = null, customer = null, deal = null, requester = null,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const setBrief = (i, patch) => onBriefsChange(
@@ -125,7 +125,15 @@ export default function PdrForm({
         <div className="form-grid">
           <Derived label="ลูกค้า" value={customer} from="เติมจาก SO" />
           <Derived label="ดีล" value={deal} from="เติมจาก SO" />
-          <Derived label="มูลค่าโปรเจกต์" value={projectValue} from="เติมจากดีล" />
+          {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
+              โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
+              ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
+          <div className="form-group">
+            <label htmlFor="pdr-value">มูลค่าโปรเจกต์ทั้งหมด</label>
+            <Input id="pdr-value" value={value.projectValue || ""} disabled={disabled}
+              placeholder="ทั้งโครงการ ไม่ใช่แค่ค่าออกแบบกลิ่น"
+              onChange={(e) => set({ projectValue: e.target.value })} />
+          </div>
           <Derived
             label="จำนวนกลิ่นที่ต้องการพัฒนา"
             value={scentCount != null ? `${scentCount} กลิ่น` : ""}
