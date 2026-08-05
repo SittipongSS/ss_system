@@ -33,6 +33,8 @@ import {
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { requestItemStatusLabel } from "@/lib/requests/statuses";
+import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
 import RowStageRail from "@/components/requests/RowStageRail";
 import ScentDeliveryFields, {
@@ -224,6 +226,21 @@ export default function MaterialAskDetailPage() {
       if (clash) return `รายการที่ ${i + 1}: ${clash}`;
     }
     return null;
+  })();
+
+  // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
+  // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
+  const reconcile = soReconcile({ lines: req.salesOrderLines, items: req.items });
+
+  // ⭐ บอกปลายทางตอนกำลังจะพิมพ์ — "ใครกำลังถือขั้นนี้อยู่" เปลี่ยนว่าคนจะพิมพ์อะไร
+  // (มติผู้ใช้: ฝั่งที่ไม่ใช่ตาตัวเองต้องพิมพ์ได้ทันทีตรงนั้น ไม่ใช่ปุ่มที่เด้งไปที่อื่น)
+  // ⚠️ อ่านจากสถานะจริงของใบ ไม่ใช่เดาจาก role ของคนดู — ใบที่ยังไม่ส่งไม่มีใครรออยู่
+  const composeHint = (() => {
+    if (req.status === "draft") return "ยังไม่ได้ส่ง — ข้อความนี้จะยังไม่แจ้งเตือนใคร";
+    if (["closed", "cancelled"].includes(req.status)) return null;
+    return req._mine
+      ? `จะแจ้งเตือนถึงฝ่าย ${req.dept} ที่ถือเรื่องนี้อยู่`
+      : `จะแจ้งเตือนถึง ${req.requestedByName || "ผู้เปิดคำร้อง"}`;
   })();
 
   const submitAnswer = async (payload, okMsg) => {
@@ -519,6 +536,19 @@ export default function MaterialAskDetailPage() {
         </div>
       </div>
 
+      {/* ⭐ กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้)
+          ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก) และส่งขาดก็เกิดได้ · บล็อกเมื่อไร
+          คนจะเลี่ยงด้วยการ *ไม่บันทึกจำนวน* ซึ่งแย่กว่าตัวเลขที่ไม่ตรงมาก เพราะตอนนั้น
+          ระบบจะไม่รู้อะไรเลยแทนที่จะรู้ว่าไม่ตรง */}
+      {reconcile && (
+        <StatusNotice
+          tone={SO_RECONCILE_TONE[reconcile.state]}
+          className={styles.reconcile}
+        >
+          {soReconcileText(reconcile)}
+        </StatusNotice>
+      )}
+
       {(req.items || []).map((item) => {
         const flow = isFlowRow(item);
         return (
@@ -622,6 +652,7 @@ export default function MaterialAskDetailPage() {
           entityId={req.id}
           placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
+          composeHint={composeHint}
           onPosted={load}
         />
       </DetailCard>
