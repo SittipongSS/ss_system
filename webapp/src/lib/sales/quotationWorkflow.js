@@ -43,6 +43,17 @@ export function canRejectQuotationSubmission(quotation, { approver = false, user
     && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
 }
 
+/* ใบที่ยื่นแล้วรออนุมัติถูก "ล็อก" — แก้ไม่ได้และลบไม่ได้จนกว่าจะดึงกลับหรือถูกตีกลับ
+
+   ⚠️ ใบเสนอราคาแยกสองแกน: `status` (draft/sent/accepted…) กับ `approvalStatus`
+   (not_submitted/pending/approved) ใบที่รออนุมัติยังเป็น `status='draft'` อยู่ ด่านลบที่
+   ดูแค่ `status === 'draft'` จึงปล่อยให้ลบใบที่รอเจ้าของดีลอนุมัติอยู่ได้ — คนอนุมัติเปิด
+   เข้ามาแล้วเอกสารหายไปเฉย ๆ พร้อมคำขอที่ค้างอยู่ (ใบสั่งขายไม่มีปัญหานี้เพราะ
+   "รออนุมัติ" เป็น status ของมันเอง) */
+export function isQuotationAwaitingApproval(quotation) {
+  return quotation?.approvalStatus === 'pending';
+}
+
 // ใบที่เพิ่งถูกตีกลับ = ยังไม่ยื่น + มีเหตุผลค้างอยู่ (trigger ล้างให้เมื่อยื่นใหม่)
 export function quotationRejectionNotice(quotation) {
   if (!quotation || quotation.approvalStatus !== 'not_submitted') return null;

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canEditQuotationContent,
-  canReviseQuotation,
   canRejectQuotationSubmission,
+  canReviseQuotation,
   canWithdrawQuotationSubmission,
+  isQuotationAwaitingApproval,
   isQuotationSubmitter,
   isRevisableQuotationApprovalStatus,
   quotationRejectionNotice,
@@ -123,4 +124,15 @@ test('rejection notice shows only while the document is waiting to be resubmitte
   assert.equal(quotationRejectionNotice(null), null);
   // ไม่มีชื่อผู้ตีกลับก็ยังต้องอ่านรู้เรื่อง
   assert.equal(quotationRejectionNotice({ ...rejected, rejectedByName: '' }).byName, 'ผู้อนุมัติ');
+});
+
+/* ใบเสนอราคาแยกสองแกน: status กับ approvalStatus — ใบที่รออนุมัติยังเป็น status='draft'
+   ด่านลบที่ดูแค่ status จึงเคยปล่อยให้ลบใบที่รอเจ้าของดีลอนุมัติอยู่ได้ */
+test('ใบที่รออนุมัติถือว่าถูกล็อก แม้ status ยังเป็น draft', () => {
+  assert.equal(pending.status, 'draft'); // ยืนยันว่าสองแกนนี้แยกกันจริง
+  assert.equal(isQuotationAwaitingApproval(pending), true);
+  for (const approvalStatus of ['not_submitted', 'approved', 'not_required']) {
+    assert.equal(isQuotationAwaitingApproval({ ...pending, approvalStatus }), false);
+  }
+  assert.equal(isQuotationAwaitingApproval(null), false);
 });

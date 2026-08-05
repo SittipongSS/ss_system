@@ -6,6 +6,7 @@ import {
   quotationForcePreview, cleanupQuotationOrphans,
   exciseFilingBlockMessage, exciseFilingsOfQuotation,
 } from '@/lib/forceDelete';
+import { isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import {
@@ -370,6 +371,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (!force) {
+    // ใบที่ยื่นแล้วรออนุมัติ: `status` ยังเป็น 'draft' อยู่ ด่านล่างจึงปล่อยผ่าน — คนอนุมัติ
+    // เปิดเข้ามาแล้วเอกสารหายไปพร้อมคำขอที่ค้างอยู่ ต้องดึงกลับหรือให้ตีกลับก่อน
+    // (มติผู้ใช้ 2026-08-05) · ?force=1 ของผู้ดูแลระบบยังผ่านได้ตามเดิม
+    if (isQuotationAwaitingApproval(before)) {
+      return badRequest('ใบนี้กำลังรออนุมัติ — ลบไม่ได้: ผู้ยื่นให้ใช้ “ดึงกลับมาแก้ไข” หรือให้ผู้อนุมัติ “ตีกลับให้แก้ไข” ก่อน');
+    }
     if (before.status === 'accepted') {
       return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ” ที่หน้า SO; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
