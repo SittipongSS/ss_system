@@ -6,11 +6,14 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
-import { documentRef } from "@/lib/documents/documentShell";
 import { dealTypeOf } from "@/lib/salesPlanning";
 
-// documentRef คืน "-" เมื่อไม่มีอะไรเลย ซึ่งเป็นค่าสำหรับ "แสดงผล" — ลงคอลัมน์ต้องเป็น null
-const refOrNull = (value) => (value === '-' ? null : value);
+// ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
+// (dealTypeOf คืน "-" เมื่อดีลไม่มีประเภท)
+const refOrNull = (value) => {
+  const v = String(value ?? '').trim();
+  return v && v !== '-' ? v : null;
+};
 
 export const dynamic = "force-dynamic";
 
@@ -245,11 +248,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
     quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
-    // ตรึงโครงการ/โครงการย่อยลงใบตั้งแต่ตอนสร้าง (mig 0208) — เหตุผลเดียวกับที่ตรึง
-    // เลขผู้เสียภาษี/ที่อยู่ลูกค้า (mig 0167): ชื่อเปลี่ยนทีหลังต้องไม่ย้อนไปแก้ใบเก่า
+    // ตรึงโครงการลงใบตั้งแต่ตอนสร้าง (mig 0211) — เหตุผลเดียวกับที่ตรึงเลขผู้เสียภาษี/
+    // ที่อยู่ลูกค้า (mig 0167): ชื่อเปลี่ยนทีหลังต้องไม่ย้อนไปแก้ใบเก่า
+    // แยก 3 ค่าให้ตรงกับใบเสนอราคา/ใบสั่งขาย/ไทม์ไลน์ — เดิม (0208) ตรึงเป็นข้อความรวม
+    // "รหัส · ชื่อ" ซึ่งตัดกลับไม่ได้ปลอดภัยเมื่อชื่อมีจุดคั่นแบบเดียวกันเอง
     // เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-" (ขีดเป็นเรื่องของการแสดงผล ไม่ใช่ข้อมูล)
-    projectRef: refOrNull(documentRef(salesOrder.project?.code, salesOrder.project?.name)),
-    dealRef: refOrNull(documentRef(dealTypeOf(salesOrder.deal), salesOrder.deal?.title)),
+    projectCode: refOrNull(salesOrder.project?.code),
+    dealTitle: refOrNull(salesOrder.deal?.title),
+    dealType: refOrNull(dealTypeOf(salesOrder.deal)),
     deliveryDate: "-",
     remarks: `สร้างจาก ใบสั่งขาย ${salesOrder.orderNumber}`,
     assignee: user.name || salesOrder.createdByName || "Sales",

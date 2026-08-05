@@ -56,6 +56,26 @@ test("ยอดสุทธิบนใบแจ้งชำระที่พ�
   );
 });
 
+// เอกสารทุกชนิด (QT / SO / TAX / ไทม์ไลน์) ต้องเรียกโครงการด้วยคำและลำดับเดียวกัน
+// ไม่งั้นลูกค้าได้ชุดเอกสารที่อ้างอิงของอย่างเดียวกันคนละชื่อ (มติผู้ใช้ 2026-08-05)
+test("ใบแจ้งชำระอ้างอิงโครงการด้วยคำชุดเดียวกับใบเสนอราคา/ใบสั่งขาย", () => {
+  const html = buildBillPrintHTML({
+    id: "TAX-1", items: [], customerName: "ลูกค้า",
+    projectCode: "PJ-26070038", dealTitle: "ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026", dealType: "SCENT",
+    quotationRef: "QT-26070028-0", poReference: "SO-26070028-0",
+  }, {});
+  // ตัดจากหัวข้อภาษาอังกฤษ — คำไทยไปโผล่ใน aria-label ของ .partyGrid ก่อนถึงกล่องจริง
+  const ref = html.slice(html.indexOf("/ REFERENCE"));
+  const labels = [...ref.matchAll(/<dt>([^<]+)<\/dt>/g)].map((m) => m[1]);
+  assert.deepEqual(labels.slice(0, 3), ["เลขที่โครงการ", "โครงการ", "ประเภทโครงการ"]);
+  // คำเก่าที่เลิกใช้แล้วต้องไม่หลงเหลือ
+  assert.ok(!labels.includes("โครงการหลัก"));
+  assert.ok(!labels.includes("โครงการย่อย"));
+  // ค่าต้องมาจากค่าที่ตรึงบนใบ ไม่ใช่ข้อความรวม "รหัส · ชื่อ" แบบเดิม
+  assert.ok(ref.includes("PJ-26070038") && ref.includes("ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026"));
+  assert.ok(!ref.includes(" · "));
+});
+
 test("ทางสร้างใบยื่นทั้งสองทางตรึงยอดรวม VAT ลงใบ ไม่ใช่ยอดภาษีเปล่า", () => {
   const fromSo = read("../../app/api/tax/orders/from-sales-order/route.js");
   const manual = read("../../app/api/orders/route.js");
