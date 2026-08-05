@@ -1,4 +1,5 @@
 "use client";
+import { fmtDateTime } from "@/lib/format";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
@@ -31,13 +32,10 @@ const STATE_LABELS = {
   revoked: "ยกเลิกแล้ว",
 };
 
+/* ⚠️ locale "th-TH" ใช้ปฏิทินพุทธเป็นค่าตั้งต้น — ปีที่ออกมาจะเป็น พ.ศ. เงียบ ๆ
+   ทั้งระบบเป็น ค.ศ. (มติผู้ใช้ 2026-08-05) จึงใช้ fmtDateTime กลางแทน */
 function fmtDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Bangkok",
-  }).format(new Date(value));
+  return value ? fmtDateTime(value) : "—";
 }
 
 function fmtBytes(value) {

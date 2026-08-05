@@ -91,17 +91,24 @@ export function yearOptionsForMonth(
   return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }
 
-export function displayYear(year, calendar = "buddhist") {
+/* ⭐ มติผู้ใช้ 2026-08-05: **ปีเป็น ค.ศ. ทั้งระบบ**
+   ของเดิมแสดง พ.ศ. ตรงตัวเลือกงวดเดือน (MonthPicker) แต่ที่อื่นเป็น ค.ศ. หมด —
+   fmtDate/fmtDateTime เป็น ค.ศ. มาแต่ต้น และหน้าเป้าหมาย/แผนเป้าเขียน `ปี {y}` ดิบ ๆ
+   คนกด "ตั้งเป้าเดือนนี้" จากแดชบอร์ด (ปี 2569) มาถึงหน้าเป้าหมายเจอ "ปี 2026" ทันที
+   ⇒ ตัดพารามิเตอร์ `calendar` ทิ้ง ไม่เก็บไว้เป็นตัวเลือกที่ไม่มีใครใช้
+     (ตัวเลือกที่ค้างไว้คือช่องให้ระบบกลับไปมีสองมาตรฐานอีกรอบ)
+   ⚠️ ค่าที่ "เก็บ" ยังเป็น ค.ศ. เหมือนเดิมทุกที่ — การเปลี่ยนนี้แตะแค่ชั้นแสดงผล */
+export function displayYear(year) {
   const numericYear = Number(year);
   if (!Number.isFinite(numericYear)) return "";
-  return String(calendar === "buddhist" ? numericYear + 543 : numericYear);
+  return String(numericYear);
 }
 
-export function formatMonthLabel(value, { calendar = "buddhist", includeYear = true } = {}) {
+export function formatMonthLabel(value, { includeYear = true } = {}) {
   const parts = partsOf(value);
   if (!parts) return "";
   const month = MONTH_LABELS[parts.month - 1];
-  return includeYear ? `${month} ${displayYear(parts.year, calendar)}` : month;
+  return includeYear ? `${month} ${displayYear(parts.year)}` : month;
 }
 
 /* ── ช่วง "ทุกเดือนของปีหนึ่ง" ────────────────────────────────────────────

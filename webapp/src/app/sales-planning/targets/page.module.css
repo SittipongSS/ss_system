@@ -1,0 +1,170 @@
+/* ตารางวางเป้าหมาย — ผังคอลัมน์/แถว/ช่องแก้ตัวเลข
+   (เดิมเป็น inline style 33 จุดในหน้าเดียว ย้ายออกมาเป็นคลาส 2026-08-05)
+
+   ⚠️ คอลัมน์แช่แข็ง (ซ้ายสุด + ขวาสุด) มาจากชุด `.fz-*` ใน globals.css ที่หน้านี้ใช้ร่วม
+   กับตารางแช่แข็งอื่น — ที่นี่กำหนดแค่ *ความกว้าง/พื้น/ระยะ* ของหน้านี้เท่านั้น */
+
+.yearSelect { width: 110px; }
+
+.nameCell {
+  min-width: 210px;
+  text-align: left;
+  background: var(--bg);
+}
+
+/* ระดับชั้นของแถว (ฝ่าย → ทีม → รายคน) — เยื้องด้วย data-indent ไม่ใช่สไตล์ผูกในโค้ด */
+.nameCell[data-indent="0"] { padding-left: var(--space-2-5); }
+.nameCell[data-indent="1"] { padding-left: var(--space-6); }
+.nameCell[data-indent="2"] { padding-left: var(--space-9); }
+
+.monthCell {
+  min-width: 76px;
+  padding: var(--space-1) var(--space-1-5);
+}
+
+.totalCell {
+  min-width: 130px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg);
+}
+
+/* แถวรวมทั้งฝ่าย / แถวทีม — พื้นเข้มขึ้นตามลำดับชั้น (คอลัมน์แช่แข็งต้องทึบตามด้วย
+   ไม่งั้นแถวข้างหลังจะทะลุขึ้นมาตอนเลื่อนแนวนอน) */
+.rowSa { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.rowSa .nameCell,
+.rowSa .totalCell { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+
+.rowTeam { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.rowTeam .nameCell,
+.rowTeam .totalCell { background: color-mix(in srgb, var(--text) 5%, var(--bg)); }
+
+.nameInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.toggleBtn {
+  padding: var(--space-0-5);
+  min-width: 0;
+  height: auto;
+}
+
+.rowLabel { white-space: nowrap; font-weight: var(--fw-medium); }
+/* ⚠️ เดิม inline เป็น 800 ซึ่งไม่ใช่โทเคน (audit ตรวจเฉพาะไฟล์ CSS จึงไม่เคยฟ้อง)
+   — ใช้ --fw-bold ตามชุดน้ำหนักของระบบ */
+.rowLabelBold { font-weight: var(--fw-bold); }
+
+.subNote { font-size: var(--fs-3); color: var(--text-3); }
+.ghostNote { font-size: var(--fs-3); color: var(--amber); }
+
+.emptyTeam {
+  padding-left: var(--space-9);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.emptyTable { padding: var(--space-4-5); color: var(--text-3); }
+
+/* ── แถวรวมท้ายตาราง (ตรึงไว้สองแถว) ─────────────────────────────────
+   ความสูงคงที่เพราะสองแถวซ้อนกัน: แถวล่างตรึงที่ 0 แถวบนต้องรู้ความสูงของแถวล่าง */
+.footRow td {
+  height: 34px;
+  border-top: 1px solid var(--border);
+}
+
+.footTop td {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-top: 2px solid var(--border);
+  bottom: 34px;
+}
+
+.footBottom td {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+  bottom: 0;
+}
+
+.footRow { font-weight: var(--fw-bold); }
+.footRow .nameCell { padding-left: var(--space-2-5); }
+.footRow .monthCell { padding: 0 var(--space-1-5); }
+.footRow .totalCell { padding: 0 var(--space-2); }
+.footZero { color: var(--text-3); }
+
+/* ── ช่องตัวเลขที่กดแก้ได้ ───────────────────────────────────────────── */
+.numBtn {
+  width: 100%;
+  text-align: right;
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+  background: transparent;
+  border-radius: var(--radius);
+  padding: var(--space-0-5) var(--space-1);
+}
+
+.numBtnBold { font-weight: var(--fw-bold); color: var(--text); }
+
+/* ค้างไว้ยังไม่บันทึก — สีเดียวกับแถบยืนยันด้านล่างเพื่อให้อ่านออกว่าเป็นเรื่องเดียวกัน */
+.numBtnDirty {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+}
+
+.numInput {
+  width: 100%;
+  text-align: right;
+  padding: var(--space-1) var(--space-1-5);
+  font-weight: var(--fw-medium);
+}
+
+.numInputBold { font-weight: var(--fw-bold); }
+
+/* ── ข้อความสถานะ ───────────────────────────────────────────────────── */
+.gapNote {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.gapOver { color: var(--red); }
+.gapDone { color: var(--green); }
+.gapPending { color: var(--amber); }
+
+.errorBox {
+  padding: var(--space-3) var(--space-3-5);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.infoBox {
+  padding: var(--space-3) var(--space-3-5);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.readOnlyBox { padding: var(--space-4); color: var(--text-3); }
+
+.tableCard { padding: 0; overflow: hidden; }
+
+.hint { color: var(--text-3); font-size: var(--fs-5); }
+
+/* แถบยืนยันบันทึกท้ายจอ — ดันเนื้อหาขึ้นให้พ้นแถบตอนมีของค้าง */
+/* ระยะเผื่อ = ความสูงแถบยืนยัน (ปุ่มใหญ่ + ระยะขอบบนล่าง) ประกอบจากขั้นของโทเคน
+   ไม่ใช่ 90px ลอย ๆ — ระบบห้ามระยะห่างเลขดิบใน CSS (ดู audit:ui) */
+.pageWithBar { padding-bottom: calc(var(--space-9) * 2 + var(--space-2-5)); }
+
+.saveBar { border-color: var(--amber); }
+.saveBarLabel { font-weight: var(--fw-bold); }
+.saveBarActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+}
+
+.saveBtn {
+  font-size: var(--fs-10);
+  font-weight: var(--fw-bold);
+  padding: var(--space-3) var(--space-7);
+  min-width: 200px;
+}

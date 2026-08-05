@@ -14,7 +14,8 @@ const EXCISE_STATUS = source("../excise/StatusBadge.js");
 test("MonthPicker keeps an ISO value and provides range, calendar, and keyboard contracts", () => {
   assert.match(MONTH_PICKER, /min,/);
   assert.match(MONTH_PICKER, /max,/);
-  assert.match(MONTH_PICKER, /calendar = "buddhist"/);
+  // ปีเป็น ค.ศ. ทั้งระบบ (2026-08-05) — MonthPicker ไม่มีพารามิเตอร์ปฏิทินอีกแล้ว
+  assert.doesNotMatch(MONTH_PICKER, /buddhist/);
   assert.match(MONTH_PICKER, /event\.key !== "PageUp"/);
   assert.match(MONTH_PICKER, /currentShortcutLabel/);
   assert.match(MONTH_PICKER, /onAllMonths/);

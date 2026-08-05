@@ -747,7 +747,7 @@ export default function TasksPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "12px" }}>
             <button className="btn-icon" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อน"><ChevronLeft size={16} /></button>
-            <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
+            <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y}</div>
             <button className="btn-icon" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
           </div>
           <div className="glass-panel" style={{ padding: "10px" }}>

@@ -16,10 +16,10 @@ import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 const LEVELS = [["month", "รายเดือน", "MoM"], ["quarter", "รายไตรมาส", "QoQ"], ["year", "รายปี", "YoY"]];
 const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const fmtPeriod = (p, level) => {
-  if (level === "year") return `${Number(p) + 543}`;
-  if (level === "quarter") { const [y, q] = String(p).split("-"); return `${q}/${(Number(y) + 543).toString().slice(-2)}`; }
+  if (level === "year") return `${p}`;
+  if (level === "quarter") { const [y, q] = String(p).split("-"); return `${q}/${String(y).slice(-2)}`; }
   const [y, m] = String(p).split("-");
-  return `${TH_M[parseInt(m, 10) - 1] || m} ${(Number(y) + 543).toString().slice(-2)}`;
+  return `${TH_M[parseInt(m, 10) - 1] || m} ${String(y).slice(-2)}`;
 };
 
 export default function GrowthView({ pos, products, unit = "qty", years = [] }) {

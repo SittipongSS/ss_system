@@ -6,7 +6,7 @@ import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
-import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
+import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -89,7 +89,7 @@ export default function MgmtTasksPage() {
       headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
-            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
+            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
           </Select>
           {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
         </div>

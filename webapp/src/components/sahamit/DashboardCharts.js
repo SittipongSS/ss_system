@@ -14,7 +14,7 @@ const formatShortMonth = (ym) => {
   if (!ym) return "";
   const [y, m] = ym.split("-");
   const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-  return `${thMonths[parseInt(m, 10) - 1]} ${(parseInt(y, 10) + 543).toString().slice(-2)}`;
+  return `${thMonths[parseInt(m, 10) - 1]} ${String(y).slice(-2)}`;
 };
 
 // --- Charts Component ---

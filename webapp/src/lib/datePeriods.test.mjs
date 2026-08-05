@@ -43,11 +43,14 @@ test("min and max boundaries clamp values and filter year months", () => {
   ]);
 });
 
-test("display uses Buddhist years while stored values stay Gregorian", () => {
-  assert.equal(displayYear(2026), "2569");
-  assert.equal(displayYear(2026, "gregorian"), "2026");
-  assert.equal(formatMonthLabel("2026-07"), "ก.ค. 2569");
-  assert.equal(formatMonthLabel("2026-07", { calendar: "gregorian" }), "ก.ค. 2026");
+// ⭐ มติผู้ใช้ 2026-08-05: ปีเป็น ค.ศ. ทั้งระบบ — เดิมชั้นแสดงผลของงวดเดือนเป็น พ.ศ.
+// อยู่ที่เดียวขณะที่ fmtDate/fmtDateTime และหน้าเป้าหมายเป็น ค.ศ. (ดูหัวเรื่องที่ displayYear)
+test("ปีที่แสดงเป็น ค.ศ. ตรงกับค่าที่เก็บ ไม่มีการบวก 543 ที่ไหนอีก", () => {
+  assert.equal(displayYear(2026), "2026");
+  assert.equal(displayYear("2026"), "2026");
+  assert.equal(displayYear("ไม่ใช่ปี"), "");
+  assert.equal(formatMonthLabel("2026-07"), "ก.ค. 2026");
+  assert.equal(formatMonthLabel("2026-07", { includeYear: false }), "ก.ค.");
 });
 
 test("year options include selected outliers and respect explicit boundaries", () => {

@@ -23,7 +23,7 @@ const shortM = (ym) => {
   if (!ym) return "—";
   const TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
   const [y, m] = String(ym).split("-");
-  return `${TH[parseInt(m, 10) - 1] || m} ${(parseInt(y, 10) + 543).toString().slice(-2)}`;
+  return `${TH[parseInt(m, 10) - 1] || m} ${String(y).slice(-2)}`;
 };
 const StatusPill = ({ st }) => {
   const [label, color] = STATUS_META[st] || [st, "var(--text-3)"];

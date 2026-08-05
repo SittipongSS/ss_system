@@ -36,7 +36,6 @@ export default function MonthPicker({
   readOnly = false,
   pastYears = 3,
   futureYears = 3,
-  calendar = "buddhist",
   allMonths = false,
   onAllMonths,
   allMonthsLabel = "ทุกเดือน",
@@ -147,8 +146,8 @@ export default function MonthPicker({
   const availableInView = monthsForYear(String(viewYear), { min, max });
   // ต้องบอกปีเสมอตอนโหมดทุกเดือน — "ทุกเดือน" เฉย ๆ อ่านไม่ออกว่าปีไหน
   const triggerLabel = showingAllMonths
-    ? `${allMonthsLabel} ${displayYear(selected.slice(0, 4), calendar)}`
-    : formatMonthLabel(selected, { calendar });
+    ? `${allMonthsLabel} ${displayYear(selected.slice(0, 4))}`
+    : formatMonthLabel(selected);
 
   const panel = open && panelStyle ? (
     <span
@@ -167,7 +166,7 @@ export default function MonthPicker({
         >
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
-        <strong>{displayYear(viewYear, calendar)}</strong>
+        <strong>{displayYear(viewYear)}</strong>
         <button
           type="button"
           onClick={() => stepYear(1)}
@@ -179,7 +178,7 @@ export default function MonthPicker({
       </span>
       {showingAllMonths ? (
         <span className={styles.panelNote}>
-          กำลังดู <strong>{allMonthsLabel}</strong> ของปี {displayYear(viewYear, calendar)} —
+          กำลังดู <strong>{allMonthsLabel}</strong> ของปี {displayYear(viewYear)} —
           {" "}กดเดือนใดเดือนหนึ่งเพื่อดูเฉพาะเดือนนั้น
         </span>
       ) : null}
@@ -210,7 +209,7 @@ export default function MonthPicker({
       </span>
       {showCurrentShortcut && canUseToday ? (
         <span className={styles.panelFooter}>
-          <span>{formatMonthLabel(today, { calendar })}</span>
+          <span>{formatMonthLabel(today)}</span>
           <button
             type="button"
             disabled={selected === today && !(onAllMonths && allMonths)}

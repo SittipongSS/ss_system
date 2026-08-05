@@ -82,7 +82,7 @@ export default function MgmtTrashPage() {
         <>
           <Section title="รายการงาน" icon={ListTodo} entity="task" items={data.tasks} label={(it) => it.title} />
           <Section title="การประชุม" icon={Users} entity="meeting" items={data.meetings} label={(it) => it.title} />
-          <Section title="Rock & Improve" icon={Target} entity="rock" items={data.rocks} label={(it) => `${it.deptCode} · ปี ${Number(it.year) + 543}`} />
+          <Section title="Rock & Improve" icon={Target} entity="rock" items={data.rocks} label={(it) => `${it.deptCode} · ปี ${it.year}`} />
         </>
       )}
     </Workspace>

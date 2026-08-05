@@ -109,7 +109,7 @@ export default function ProductionBoardPage() {
   });
 
   const todayIso = toLocalISODate(new Date());
-  const rangeLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[days.length - 1].date.getDate()} ${days[days.length - 1].date.toLocaleDateString("th-TH", { month: "short", year: "numeric" })}`;
+  const rangeLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[days.length - 1].date.getDate()} ${days[days.length - 1].date.toLocaleDateString("th-TH", { month: "short" })} ${days[days.length - 1].date.getFullYear()}`;
 
   // จำนวนช่องที่จองเกินกำลัง — ตัวเลขที่ต้องเห็นก่อนเลื่อนดูทั้งบอร์ด
   const overloaded = useMemo(

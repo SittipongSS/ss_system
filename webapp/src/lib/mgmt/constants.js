@@ -39,9 +39,11 @@ export function statusCounts(tasks) {
   return out;
 }
 
-// ── ปี: DB เก็บ ค.ศ. (int) · แสดง พ.ศ. ─────────────────────────────────
-export const toBuddhistYear = (ce) => (ce == null ? null : Number(ce) + 543);
-export const toGregorianYear = (be) => (be == null ? null : Number(be) - 543);
+/* ── ปี: เก็บ ค.ศ. · แสดง ค.ศ. ────────────────────────────────────────
+   เคยมี toBuddhistYear/toGregorianYear คู่หนึ่งไว้แปลงตอนแสดงผล — ถอดออกพร้อมกับ
+   ที่ระบบเปลี่ยนเป็น **ปี ค.ศ. ทั้งระบบ** (มติผู้ใช้ 2026-08-05 ดู lib/datePeriods)
+   ⇒ ถ้าจะเอา พ.ศ. กลับมา ให้กลับมาที่ชั้นแสดงผลกลางที่เดียว อย่าเขียน +543
+     กระจายรายหน้าอีก (ของเดิมมี 15 จุดใน 8 ไฟล์) */
 // ปี ค.ศ. ของ date string ('YYYY-MM-DD') — null ถ้าไม่มีวันที่.
 export function yearOf(dateStr) {
   if (!dateStr) return null;
