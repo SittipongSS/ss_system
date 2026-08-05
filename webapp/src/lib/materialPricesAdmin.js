@@ -111,12 +111,17 @@ export async function ensureMaterial(supabase, input = {}) {
 
 // ── เคสขอราคาวัสดุ (mig 0158) ──────────────────────────────────────────
 // โหลดเคส + รายการ + ชั้นจำนวนที่ขอ เป็นก้อนเดียว (กัน N+1)
-export async function loadRequests(supabase, { id = null, dept = null, status = null, requestedById = null } = {}) {
+export async function loadRequests(supabase, {
+  id = null, dept = null, status = null, requestedById = null, team = null,
+} = {}) {
   let query = supabase.from('dept_requests').select('*');
   if (id) query = query.eq('id', id);
   if (dept) query = query.eq('dept', dept);
   if (status?.length) query = query.in('status', status);
   if (requestedById) query = query.eq('requestedById', requestedById);
+  // ⚠️ ขอบเขต "ทีม" กรองที่นี่ ไม่ใช่ที่จอ (กับดักข้อ 9) — กรองที่จอแปลว่าคำร้อง
+  // ของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จากแท็บ Network
+  if (team) query = query.eq('team', team);
   const { data: asks, error } = await query.order('createdAt', { ascending: false });
   if (error) throw error;
   if (!asks?.length) return [];
