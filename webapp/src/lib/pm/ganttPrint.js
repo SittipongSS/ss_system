@@ -355,7 +355,7 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       heading: 'ข้อมูลอ้างอิง',
       headingEn: '/ REFERENCE',
       rows: [
-        { label: 'โครงการ', value: documentRef(displayCode, project.name) },
+        { label: 'โครงการหลัก', value: documentRef(displayCode, project.name) },
         { label: 'โครงการย่อย', value: dealRefs.join('\n') },
         { label: 'ใบเสนอราคา', value: quotationLine },
         { label: 'รายการสินค้า (FG)', html: fgHtml },

@@ -568,8 +568,8 @@ function toSalesOrderPreviewModel(model, state, standard) {
     referenceRows: [
       { label: 'อ้างอิง QT', value: qtNumber },
       { label: 'สถานะเอกสาร', value: PREVIEW_STATUS_LABELS[state] || state },
-      { label: 'ดีล', value: model.references.deal },
-      { label: 'โครงการ', value: model.references.project },
+      { label: 'โครงการหลัก', value: model.references.project },
+      { label: 'โครงการย่อย', value: model.references.deal },
     ],
     signers: [
       { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.salesOwner },
@@ -650,7 +650,7 @@ export function buildQuotationMasterPreview(
     customer,
     references: { ...BASE_QUOTE.references },
     referenceRows: [
-      { label: 'โครงการ', value: BASE_QUOTE.references.project },
+      { label: 'โครงการหลัก', value: BASE_QUOTE.references.project },
       { label: 'โครงการย่อย', value: BASE_QUOTE.references.deal },
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
     ],
@@ -826,10 +826,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     customer,
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
-      // โครงการมาก่อนดีลเสมอ และดีลเรียกว่า "โครงการย่อย" **เฉพาะบนเอกสาร** —
-      // ในแอปยังเรียก "ดีล" เหมือนเดิม (มติผู้ใช้ 2026-08-04) เพราะลูกค้าเห็นใบนี้
-      // แล้วมองว่าดีลคืองานย่อยใต้โครงการ ไม่ใช่คำศัพท์ฝ่ายขาย
-      { label: 'โครงการ', value: quotationProjectRef(quote) },
+      // คู่ "โครงการหลัก / โครงการย่อย" ใช้ **เฉพาะบนเอกสาร** — ในแอปยังเรียก
+      // โครงการ/ดีล เหมือนเดิม (มติผู้ใช้ 2026-08-04, ปรับคำ 2026-08-05) เพราะลูกค้า
+      // เห็นใบนี้แล้วมองว่าดีลคืองานย่อยใต้โครงการ ไม่ใช่คำศัพท์ฝ่ายขาย
+      { label: 'โครงการหลัก', value: quotationProjectRef(quote) },
       { label: 'โครงการย่อย', value: quotationDealRef(quote) },
       { label: 'ผู้เสนอราคา', value: salesOwner },
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
