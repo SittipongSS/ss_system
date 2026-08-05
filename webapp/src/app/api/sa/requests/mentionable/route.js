@@ -18,7 +18,7 @@
 // บันทึกและไม่ได้แจ้งเตือน (ที่เสียคือ UX ไม่ใช่สิทธิ์)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting } from '@/lib/permissions';
+import { canViewRequests } from '@/lib/permissions';
 import { mentionableUsers } from '@/lib/master/mentions';
 import { REQUEST_DEPTS } from '@/lib/master/requestTypes';
 
@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   try {
     const user = await getCurrentUser();
-    if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
     const wanted = new URL(request.url).searchParams.get('dept');
     const depts = REQUEST_DEPTS.includes(wanted) ? [wanted] : REQUEST_DEPTS;

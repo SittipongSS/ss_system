@@ -303,6 +303,9 @@ const ROLE_CAPS = {
   rd: [
     'pm:view', 'products:view', 'customers:view', 'salesplan:view',
     'costing:view', 'costing:quote',
+    // ตอบคำร้องของฝ่ายตน — แยกจาก costing:quote แล้ว (R-1) แต่ให้ชุดเดิมเป๊ะ
+    // เพื่อไม่ให้ใครเสียสิทธิ์ตอนแยก · ฝ่ายที่ใช้จริงถูกแคบด้วย department อีกชั้น
+    'requests:answer',
   ],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
   // PM + the tasks assigned to them, and may READ the shared master data
@@ -319,6 +322,9 @@ const ROLE_CAPS = {
   //   ⚠️ ห้าม gate ด้วย can(role, 'production:edit') ล้วน ไม่งั้น WH/QC แก้ตารางผลิตได้
   staff: [
     'pm:view', 'products:view', 'customers:view', 'costing:view', 'costing:quote',
+    // ⭐ ถือกว้างระดับ role แล้ว **แคบด้วยฝ่าย** ที่ canAnswerRequestsFor เสมอ
+    // (รูปเดียวกับ costing:*) — PD/WH/QC ถือ cap แต่ไม่มีคำร้องฝ่ายไหนให้ตอบ
+    'requests:answer',
     'production:view', 'production:edit',
     'service:view', 'service:edit',
   ],
@@ -400,6 +406,42 @@ export function isReadOnlyObserver(role) {
 // ── ระบบขอราคาผลิต (Costing Request) ────────────────────────────────
 // ฝ่ายที่เป็น "แหล่งราคา" ของบรรทัดในใบ — ตรงกับ costing_item_components.sourceDept
 export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
+
+// ── ระบบคำร้องข้ามฝ่าย (R-1: แยกด่านคำร้องออกจากด่านราคา) ──────────────
+//
+// ⭐ **คนละลิสต์กับ COSTING_SOURCE_DEPARTMENTS โดยตั้งใจ** — "ฝ่ายที่รับคำร้อง"
+// กับ "ฝ่ายที่เป็นแหล่งราคา" บังเอิญเป็นชุดเดียวกันวันนี้เท่านั้น · ฝ่ายบัญชี (FN)
+// ที่กำลังจะเข้ามารับคำร้องเอกสารการเงิน **ไม่ใช่แหล่งราคา** ⇒ ยัดเข้าลิสต์ข้างบน
+// เพื่อให้ตอบคำร้องได้ = เปิดข้อมูลต้นทุนและราคาผลิตทั้งระบบให้ฝ่ายบัญชีไปด้วย
+// ซึ่งเป็นกับดักข้อ 1 ของแผน ("ปลดด่านคือปิดที่เนื้อ ไม่ใช่เปิดที่เมนู") เป๊ะ ๆ
+//
+// ⚠️ ต้องตรงกับ `REQUEST_DEPTS` ใน lib/master/requestTypes.js เสมอ — มีเทสต์คุม
+// (แยกลิสต์เพราะ permissions.js เป็นชั้นล่างสุด ห้าม import ทะเบียนหัวข้อกลับมา)
+export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC'];
+
+// รับคำร้องของฝ่ายนี้ได้ไหม — ใช้ทั้งตอนกรองคิวและตอนกดรับเรื่อง/ตอบ
+export function canAnswerRequestsFor(user, dept) {
+  if (!dept || !REQUEST_ANSWER_DEPARTMENTS.includes(dept)) return false;
+  if (isSuperuser(user?.role)) return true; // admin break-glass
+  if (!canUser(user, 'requests:answer')) return false;
+  return departmentOf(user) === dept;
+}
+
+// เห็นระบบคำร้องไหม — **ด่านชั้นนอกของทุก endpoint ใต้ /api/sa/requests**
+//
+// ⭐ ของเดิมคือ `canViewCosting` ล้วน ซึ่งผูกคำร้องไว้กับระบบขอราคาผลิตทั้งที่เป็น
+// คนละเรื่อง · เก็บ `canViewCosting` ไว้เป็นสาขาแรกเพื่อ **ไม่ให้ใครเสียสิทธิ์ที่เคยมี**
+// (ฝ่ายขายถือ costing:view อยู่แล้ว จึงเปิดคำร้องได้เหมือนเดิมทุกคน)
+//
+// ⚠️ คำตอบของ endpoint พวกนี้ **ไม่มีค่าราคาอยู่ในนั้น** — `loadRequests` ดึงแค่
+// dept_requests + items + tiers ซึ่งเก็บ "ขอราคาที่จำนวนเท่าไร" ไม่ใช่ตัวราคา
+// (ราคาอยู่ใน material_price_revisions ที่อ้างผ่าน answeredRevisionId เฉย ๆ)
+// ⇒ คนที่เข้ามาทางสาขาที่สองจึงไม่ได้เห็นต้นทุนอะไรเพิ่ม · เปลี่ยนตรงนี้เมื่อไร
+// (เช่นเผลอ join ราคาเข้ามาใน response) ต้องกลับมาตัดที่ API ก่อน
+export function canViewRequests(user) {
+  if (canViewCosting(user)) return true;
+  return canAnswerRequestsFor(user, departmentOf(user));
+}
 
 // เห็นใบขอราคาผลิต (รวมต้นทุนเต็มใบ). staff ถือ cap ระดับ role เพราะฝ่ายจัดซื้อ
 // (PC) ไม่มี role ของตัวเอง จึงต้องแคบด้วยฝ่ายตรงนี้ ไม่งั้น PD/WH/QC เห็นต้นทุนไปด้วย

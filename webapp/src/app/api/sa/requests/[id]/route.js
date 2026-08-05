@@ -1,5 +1,5 @@
 // ── API คำร้องข้ามฝ่ายรายเรื่อง (mig 0173) ──────────────────────────────
-// GET    : รายละเอียด (canViewCosting + **ต้องเป็นใบของตัวเอง/ของฝ่ายตน** — ดู
+// GET    : รายละเอียด (canViewRequests + **ต้องเป็นใบของตัวเอง/ของฝ่ายตน** — ดู
 //          canReadRequestRow; เดิมด่านนี้ไม่ดูแถวเลย เปิดตรงด้วย id ได้ทุกใบ)
 // PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย + @mention)
 //          acknowledge (RD/PC รับเรื่อง + รับปากวันที่จะตอบ) · answer (ชนิดที่ไม่มี
@@ -7,7 +7,7 @@
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting } from '@/lib/permissions';
+import { canViewRequests } from '@/lib/permissions';
 import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
@@ -71,7 +71,7 @@ async function resolveScentOutcome(supabase, request, outcome, user) {
 export async function GET(request, { params }) {
   try {
     const user = await getCurrentUser();
-    if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const { id } = await params;
     const row = await findRequest(getSupabaseAdmin(), id);
     if (!row) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
@@ -101,7 +101,7 @@ export async function PATCH(request, { params }) {
 
   const before = await findRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
   const action = body.action;
@@ -276,7 +276,7 @@ export async function DELETE(request, { params }) {
 
   const before = await findRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   // ── บังคับลบ (break-glass ของผู้ดูแลระบบ) ──────────────────────────────
   //

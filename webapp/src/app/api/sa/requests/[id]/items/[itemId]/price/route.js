@@ -14,7 +14,7 @@
 // กลิ่นด้วยคอลัมน์ `material_prices.scentId` (0171) ซึ่งประทับตรงนี้จังหวะเดียว
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting } from '@/lib/permissions';
+import { canViewRequests } from '@/lib/permissions';
 import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
@@ -30,7 +30,7 @@ export async function POST(request, { params }) {
   const user = await getCurrentUser();
   const { id, itemId } = await params;
 
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const before = await findRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
