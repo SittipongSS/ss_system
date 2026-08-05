@@ -49,7 +49,7 @@ function partyGrid(model) {
       address: model.customer.address,
       rows: [
         { label: 'เลขผู้เสียภาษี', value: model.customer.taxId },
-        model.customer.branch ? { label: 'สำนักงาน', value: model.customer.branch } : null,
+        // 'สำนักงาน' ของลูกค้าถูกตัดออก (มติผู้ใช้ 2026-08-05) — สาขาอยู่ในที่อยู่อยู่แล้ว
         { label: 'ที่อยู่จัดส่ง', value: model.customer.shippingAddress || model.customer.address },
         { label: 'ผู้ติดต่อ', value: contact },
       ],

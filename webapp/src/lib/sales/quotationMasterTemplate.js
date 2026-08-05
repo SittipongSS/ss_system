@@ -107,10 +107,14 @@ const BASE_QUOTE = Object.freeze({
     contactPhone: '081-000-0000',
   },
   references: {
-    // ตัวอย่างต้องมีรูปเดียวกับของจริง: ดีล = "ประเภท · ชื่อ" (บนเอกสารเรียกโครงการย่อย)
-    deal: 'SCENT · ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
-    project: 'PJ-26070038 · Signature Bloom',
+    // ตัวอย่างต้องมีรูปเดียวกับของจริง — เอกสารแยกรหัส/ชื่อ/ประเภท คนละแถว
+    projectCode: 'PJ-26070038',
+    projectName: 'Signature Bloom',
+    dealTitle: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
+    dealType: 'SCENT',
+    // ผู้เสนอราคา = AE เจ้าของดีล · ผู้จัดทำ = คนที่ทำใบและกดขอยื่น (คนละคนได้)
     salesOwner: 'กานติมา ธาดาธารกิจ',
+    preparedBy: 'ณัฐนันท์ ตัวอย่าง',
   },
   paymentMethod: 'โอนเงินเข้าบัญชีธนาคารของบริษัทตามรายละเอียดท้ายใบเสนอราคา',
   paymentTerms: 'มัดจำ 50% เมื่อยืนยันคำสั่งซื้อ และชำระส่วนที่เหลือก่อนส่งมอบสินค้า',
@@ -650,9 +654,12 @@ export function buildQuotationMasterPreview(
     customer,
     references: { ...BASE_QUOTE.references },
     referenceRows: [
-      { label: 'โครงการหลัก', value: BASE_QUOTE.references.project },
-      { label: 'โครงการย่อย', value: BASE_QUOTE.references.deal },
+      { label: 'เลขที่โครงการ', value: BASE_QUOTE.references.projectCode },
+      { label: 'โครงการหลัก', value: BASE_QUOTE.references.projectName },
+      { label: 'โครงการย่อย', value: BASE_QUOTE.references.dealTitle },
+      { label: 'ประเภทโครงการ', value: BASE_QUOTE.references.dealType },
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
+      { label: 'ผู้จัดทำ', value: BASE_QUOTE.references.preparedBy },
     ],
     document: {
       ...BASE_QUOTE.document,
@@ -675,8 +682,8 @@ export function buildQuotationMasterPreview(
     signature: state === 'approved' ? { ...BASE_QUOTE.signature } : null,
     signers: [
       state === 'approved'
-        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.salesOwner, signerRole: '' } }
-        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: BASE_QUOTE.references.salesOwner },
+        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.preparedBy, signerRole: '' } }
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: BASE_QUOTE.references.preparedBy },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
@@ -699,6 +706,17 @@ const codeNameRef = documentRef;
 // route ที่สร้างเอกสารต้อง join project:projects(code, name) มาให้
 // 🐞 เดิมอ่าน quote.deal.project.name โดยไม่มี query ไหน join projects เข้ามาเลย
 //    ⇒ แถว "โครงการ" บนใบเสนอราคาพิมพ์ '-' มาตลอด
+// เอกสารแยก รหัสโครงการ / ชื่อโครงการ / ชื่อดีล / ประเภทดีล คนละแถว (มติผู้ใช้ 2026-08-05)
+// — ของเดิมยุบเป็น "รหัส · ชื่อ" แถวเดียว อ่านง่ายบนจอแต่ค้นหา/กระทบยอดกับระบบอื่นยาก
+const projectOf = (quote) => quote?.deal?.project || quote?.project || null;
+export const quotationProjectCode = (quote) => String(projectOf(quote)?.code || '').trim() || '-';
+export const quotationProjectName = (quote) =>
+  String(projectOf(quote)?.name || quote?.projectName || '').trim() || '-';
+export const quotationDealTitle = (quote) =>
+  String(quote?.deal?.title || quote?.dealTitle || '').trim() || '-';
+// ไม่มีดีลจริง (snapshot เก่าที่เหลือแต่ชื่อ) → ห้ามเดาประเภทให้
+export const quotationDealType = (quote) => (quote?.deal ? dealTypeOf(quote.deal) || '-' : '-');
+
 export function quotationProjectRef(quote) {
   const project = quote?.deal?.project || quote?.project || null;
   if (!project) return quote?.projectName ? codeNameRef('', quote.projectName) : '-';
@@ -766,7 +784,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const paymentMethod = paymentPlan.paymentMethod || '-';
   const paymentTerms = quote.paymentTerms || '-';
   const remarks = quote.notes || '-';
-  const salesOwner = quote.createdByName || quote.metadata?.preparedBy || '-';
+  // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
+  // (มติผู้ใช้ 2026-08-05): ผู้เสนอราคา = AE เจ้าของดีล · ผู้จัดทำ = คนที่ทำใบและกดขอยื่น
+  const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || '-';
+  const preparedBy = quote.createdByName || quote.metadata?.preparedBy || '-';
 
   const firstCapacity = v4FirstCapacity(customer);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
@@ -829,29 +850,37 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // คู่ "โครงการหลัก / โครงการย่อย" ใช้ **เฉพาะบนเอกสาร** — ในแอปยังเรียก
       // โครงการ/ดีล เหมือนเดิม (มติผู้ใช้ 2026-08-04, ปรับคำ 2026-08-05) เพราะลูกค้า
       // เห็นใบนี้แล้วมองว่าดีลคืองานย่อยใต้โครงการ ไม่ใช่คำศัพท์ฝ่ายขาย
-      { label: 'โครงการหลัก', value: quotationProjectRef(quote) },
-      { label: 'โครงการย่อย', value: quotationDealRef(quote) },
+      { label: 'เลขที่โครงการ', value: quotationProjectCode(quote) },
+      { label: 'โครงการหลัก', value: quotationProjectName(quote) },
+      { label: 'โครงการย่อย', value: quotationDealTitle(quote) },
+      { label: 'ประเภทโครงการ', value: quotationDealType(quote) },
       { label: 'ผู้เสนอราคา', value: salesOwner },
+      { label: 'ผู้จัดทำ', value: preparedBy },
+      // เบอร์ของผู้จัดทำ (คนที่ลูกค้าโทรกลับหา) — วางต่อท้ายให้ติดกับชื่อ
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
     signers: options.signers || [
-      // ผู้เสนอราคา: ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนามของผู้เสนอราคา →
+      // ⚠️ ช่องนี้ถือ "หลักฐานการลงนามของคนที่กดขอยื่น" จึงต้องชื่อ **ผู้จัดทำ** ให้ตรงกับ
+      // นิยามใหม่ในบล็อกอ้างอิง — ถ้ายังเรียก "ผู้เสนอราคา" เอกสารใบเดียวจะมีคำนี้ชี้คนละคน
+      // สองที่ (บล็อกอ้างอิง = AE เจ้าของดีล · ช่องเซ็น = คนกดยื่น) · ใบสั่งขายเรียก
+      // "ผู้จัดทำ" อยู่แล้ว ย้ายมาแบบนี้จึงตรงกันทั้งสองใบ
+      // ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนาม →
       // โชว์วันที่ + Evidence เหมือนช่องผู้อนุมัติ (options.proposerEvidence);
       // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signBox ข้าม 2 บรรทัดนั้นให้เอง;
       // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
         ? {
-          label: 'ผู้เสนอราคา',
+          label: 'ผู้จัดทำ',
           role: 'พนักงานขาย',
           esignature: {
             imageDataUri: options.proposerSignatureImage,
-            signerName: options.proposerEvidence?.signerName || (salesOwner === '-' ? '' : salesOwner),
+            signerName: options.proposerEvidence?.signerName || (preparedBy === '-' ? '' : preparedBy),
             signerRole: '',
             signedAt: options.proposerEvidence?.signedAt ? fmtDate(options.proposerEvidence.signedAt) : '',
             evidenceId: options.proposerEvidence?.id || '',
           },
         }
-        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: preparedBy === '-' ? '' : preparedBy },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: signature },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
