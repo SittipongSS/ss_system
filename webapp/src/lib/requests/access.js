@@ -1,13 +1,15 @@
 // ── สิทธิ์ต่อคำร้องหนึ่งใบ ─────────────────────────────────────────────────
-// ⚠️ ด่าน "เห็นเมนูคำร้องไหม" ยังผูกกับ canViewCosting อยู่ที่ route (R-1 ของ
-// docs/request-hub-rebuild-plan.md จะแยกออก) — ไฟล์นี้คุมแค่ "ใบนี้ใครแตะได้"
-import { isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
-import { canQuoteMaterial } from '@/lib/materialPrices';
+// ⭐ **R-1 ปิดแล้ว** — ด่าน "เห็นเมนูคำร้องไหม" คือ `canViewRequests` ไม่ใช่
+// `canViewCosting` อีกต่อไป (ดู lib/permissions.js) · ไฟล์นี้คุม "ใบนี้ใครแตะได้"
+import { canAnswerRequestsFor, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
-// ตอบ/รับเรื่อง = ฝ่ายเจ้าของคำร้อง (RD หรือ PC) + admin break-glass
+// ตอบ/รับเรื่อง = ฝ่ายเจ้าของคำร้อง + admin break-glass
+//
+// ⚠️ เดิมวิ่งผ่าน `canQuoteMaterial` ซึ่งบังคับว่าผู้ตอบต้องอยู่ฝ่าย **แหล่งราคา**
+// (RD/PC) ⇒ ฝ่ายที่รับคำร้องแต่ไม่ได้ตอบราคา (บัญชี) เข้าไม่ได้เลยโดยโครงสร้าง
 export function canAnswerRequest(user, request) {
   if (!request) return false;
-  return canQuoteMaterial(user, request.dept);
+  return canAnswerRequestsFor(user, request.dept);
 }
 
 // จัดการคำร้อง (ส่ง/แก้ร่าง/ยกเลิก/ปิด) = ผู้ขอเอง + admin

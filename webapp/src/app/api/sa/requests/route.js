@@ -10,7 +10,9 @@
 import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
+import {
+  REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, canUser, canViewRequests, isSuperuser,
+} from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveScope, scopeFilter } from '@/lib/requests/scope';
@@ -28,7 +30,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   try {
     const user = await getCurrentUser();
-    if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const supabase = getSupabaseAdmin();
     const url = new URL(request.url);
     const statusParam = url.searchParams.get('status');
@@ -56,7 +58,8 @@ export async function GET(request) {
     // ⚠️ ผู้ใช้ทั่วไป: `scopeWhere` แคบกว่าหรือเท่ากับ "ของตัวเอง" เสมอ (resolveScope
     // ไม่มีทางคืน 'all' ให้คนที่ไม่ใช่ผู้ดูแล) ⇒ ใช้แทนที่ตัวกรองเดิมได้ตรง ๆ
     const mine = await loadRequests(supabase, { status, ...(scopeWhere || {}) });
-    const dept = ['RD', 'PC'].find((d) => canQuoteMaterial(user, d));
+    // ฝ่ายที่ผู้ใช้คนนี้รับคำร้องได้ — อ่านจากลิสต์กลาง ไม่สะกดเองในนี้
+    const dept = REQUEST_ANSWER_DEPARTMENTS.find((d) => canAnswerRequestsFor(user, d));
     if (!dept) return Response.json(decorate(mine), { headers: { 'Cache-Control': 'no-store' } });
 
     const queue = await loadRequests(supabase, { status, dept });
@@ -87,8 +90,12 @@ export async function GET(request) {
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
-  if (!canUser(user, 'costing:edit') && !canQuoteMaterial(user, 'RD') && !canQuoteMaterial(user, 'PC')) {
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  // เปิดคำร้องได้ = ฝ่ายขาย (costing:edit) หรือคนที่รับคำร้องของฝ่ายใดฝ่ายหนึ่งได้
+  // ⚠️ เดิมเช็ค `canQuoteMaterial` ฝั่ง RD/PC ตรง ๆ ⇒ ฝ่ายที่รับคำร้องแต่ไม่ตอบราคา
+  // จะเปิดคำร้องถามฝ่ายอื่นไม่ได้เลย ทั้งที่เป็นเรื่องคนละอย่างกับการตอบราคา
+  const answersSomeDept = REQUEST_ANSWER_DEPARTMENTS.some((d) => canAnswerRequestsFor(user, d));
+  if (!canUser(user, 'costing:edit') && !answersSomeDept) {
     return Response.json({ error: 'ไม่มีสิทธิ์เปิดคำร้อง' }, { status: 403 });
   }
 

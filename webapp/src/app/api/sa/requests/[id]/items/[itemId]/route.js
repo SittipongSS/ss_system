@@ -14,7 +14,7 @@
 import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting } from '@/lib/permissions';
+import { canViewRequests } from '@/lib/permissions';
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   canAnswerRequest, canManageRequest, canReadRequestRow, deriveRequestStatusAfterAnswer,
@@ -37,7 +37,7 @@ export async function PATCH(request, { params }) {
   const user = await getCurrentUser();
   const { id, itemId } = await params;
 
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const before = await findRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });

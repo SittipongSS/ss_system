@@ -306,7 +306,11 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // /api/sa ด้านล่างด้วยเหตุผลเดียวกับทะเบียนวัสดุ — RD/PC รับเรื่อง/ตอบได้ทั้งที่
   // ไม่มี costing:edit และไม่มีสิทธิ์แก้งานขายเลย
   if (path.startsWith('/api/sa/requests') || path.startsWith('/api/sa/materials')) {
-    return can(role, 'costing:edit') || can(role, 'costing:quote');
+    // ⭐ `requests:answer` เพิ่มเข้ามาตอนแยกด่านคำร้องออกจากด่านราคา (R-1) — วันนี้
+    // role ที่ถือมันถือ costing:quote อยู่แล้วทั้งคู่ ⇒ **ไม่มีใครได้สิทธิ์เพิ่ม** แต่
+    // ฝ่ายที่รับคำร้องโดยไม่ตอบราคา (บัญชี) จะผ่านชั้นนี้ได้โดยไม่ต้องแจก costing:*
+    // ⚠️ ชั้นนี้หยาบระดับ role · ฝ่ายจริงถูกแคบที่ handler ด้วย canAnswerRequestsFor
+    return can(role, 'costing:edit') || can(role, 'costing:quote') || can(role, 'requests:answer');
   }
   // ทะเบียนกลิ่น + ทะเบียนสูตร (mig 0171) — ข้อมูลหลักที่ **สองฝ่ายใช้เส้นเดียวกัน
   // คนละจุดประสงค์**: ฝ่ายขายเสนอเป็นร่าง (products:edit) · RD รับเข้าทะเบียน/ใส่รหัส/

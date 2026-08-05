@@ -10,7 +10,7 @@
 // ⚠️ ด่านจริงอยู่ที่นี่: ตรวจทั้งชุดให้ผ่านก่อนค่อยเขียน DB (กันเขียนครึ่ง ๆ กลาง ๆ)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewCosting } from '@/lib/permissions';
+import { canViewRequests } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeTiers } from '@/lib/materialPrices';
 import { answerRequestError, canAnswerRequest, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
 import { acceptMaterial, appendMaterialRevision, findRequest } from '@/lib/materialPricesAdmin';
@@ -33,7 +33,7 @@ export async function PATCH(request, { params }) {
 
   const before = await findRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
-  if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
   if (!canAnswerRequest(user, before)) {
     return Response.json({ error: `ตอบราคาได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
   }
