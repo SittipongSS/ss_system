@@ -5,6 +5,7 @@ import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permis
 import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
+import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
@@ -116,7 +117,7 @@ export async function POST(request) {
   const autoTaxable = (await categoryFlagsOf(categoryCode)).isExcise;
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
-  const isExciseTaxable = taxableOverride === null ? autoTaxable : taxableOverride;
+  const isExciseTaxable = resolveProductTaxable({ taxableOverride, autoTaxable });
 
   const retailPriceExVat = isExciseTaxable ? retailPriceIncVatNum / 1.07 : 0;
   const exciseTax = isExciseTaxable ? retailPriceExVat * 0.08 : 0;
