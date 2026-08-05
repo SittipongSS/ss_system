@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
+  bounceRequestError,
   answerRequestError,
   canAnswerRequest,
   canManageRequest,
@@ -38,6 +39,8 @@ import {
   requestDeptError,
   requestHasTiers,
   requestNeeds,
+  requestKindLabel,
+  legacyKindError,
   requestNeedsRef,
   requestDocScope,
   requestHasItems,
@@ -162,10 +165,16 @@ test('ฝ่ายที่เลือกต้องเข้ากับห�
 test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
   const rd = kindsForDept('RD');
   const pc = kindsForDept('PC');
-  assert.ok(rd.includes('scent_brief') && rd.includes('price_f') && rd.includes('mockup'));
+  assert.ok(rd.includes('scent_dev') && rd.includes('price_f') && rd.includes('mockup'));
   assert.ok(!rd.includes('price_pm') && !rd.includes('material_eta'));
   assert.ok(pc.includes('price_pm') && pc.includes('material_eta'));
-  assert.ok(!pc.includes('scent_brief'));
+  assert.ok(!pc.includes('scent_dev'));
+  // ⭐ หัวข้อที่เลิกใช้แล้วต้องหายจากลิสต์ "เปิดใบใหม่" ของทุกฝ่าย…
+  assert.ok(!rd.includes('scent_brief') && !pc.includes('scent_brief'));
+  // …แต่ป้ายชื่อต้องยังอ่านได้ ไม่งั้นใบเก่าบน prod จะโชว์ key ดิบบนหน้าจอ
+  assert.match(requestKindLabel('scent_brief'), /บรีฟ/);
+  assert.match(legacyKindError('scent_brief'), /เลิกใช้แล้ว/);
+  assert.equal(legacyKindError('scent_dev'), null);
   // หัวข้อที่ไม่ล็อกฝ่ายต้องอยู่ทั้งสองฝ่าย ไม่งั้นเลือกฝ่ายแล้วหาหัวข้อไม่เจอ
   for (const shared of ['info', 'document']) {
     assert.ok(rd.includes(shared) && pc.includes(shared), `${shared} ต้องเลือกได้ทั้งสองฝ่าย`);
@@ -530,4 +539,27 @@ test('canReadRequestRow: เปิดตรงด้วย id ต้องดู
   assert.equal(canReadRequestRow({ id: 'u-other', role: 'ae' }, req), false);
   // ฝ่ายอื่นที่ไม่ใช่ปลายทางของใบนี้
   assert.equal(canReadRequestRow({ id: 'u-pc', role: 'staff', department: 'PC' }, req), false);
+});
+
+
+// ── ตีกลับ (mig 0208) ────────────────────────────────────────────────────
+//
+// ⭐ `pending → draft` ไม่ใช่สถานะใหม่ — ร่างคือสถานะที่ผู้ขอแก้แล้วส่งซ้ำได้อยู่แล้ว
+// และ trigger ทำให้ `docNo` แก้ไม่ได้ ⇒ เลขที่ไม่เปลี่ยน (คำร้องใบเดิม ไม่ใช่ใบใหม่)
+test('ตีกลับได้เฉพาะใบที่ส่งแล้วแต่ยังไม่รับเรื่อง', () => {
+  const at = (status) => ({ id: 'DR-1', status, dept: 'RD' });
+  assert.equal(bounceRequestError(at('pending'), { reason: 'ยังไม่แนบไฟล์' }), null);
+  assert.match(bounceRequestError(at('draft'), { reason: 'x' }), /ยังไม่ถูกส่ง/);
+  // ⚠️ รับเรื่องแล้วห้ามตีกลับ — ฝ่ายรับงานไปแล้ว ของที่ขาดถามในเธรดได้
+  // ผลักใบกลับทั้งใบตอนนั้นคือทำให้ผู้ขอเสียบริบทที่คุยกันไปแล้ว
+  assert.match(bounceRequestError(at('acknowledged'), { reason: 'x' }), /ยังไม่รับเรื่อง/);
+  assert.match(bounceRequestError(at('answered'), { reason: 'x' }), /ยังไม่รับเรื่อง/);
+  assert.match(bounceRequestError(at('cancelled'), { reason: 'x' }), /ยังไม่รับเรื่อง/);
+});
+
+test('ตีกลับต้องบอกเหตุผลเสมอ — ไม่งั้นผู้ขอส่งใบเดิมกลับมาอีกรอบ', () => {
+  const pending = { id: 'DR-1', status: 'pending', dept: 'RD' };
+  assert.match(bounceRequestError(pending, {}), /ต้องบอกว่าต้องแก้อะไร/);
+  assert.match(bounceRequestError(pending, { reason: '   ' }), /ต้องบอกว่าต้องแก้อะไร/);
+  assert.match(bounceRequestError(pending, { reason: 'ก'.repeat(2001) }), /ยาวเกิน/);
 });

@@ -30,3 +30,15 @@
 .modalActions {
   margin-top: var(--space-4);
 }
+
+/* แบนเนอร์ "ถูกตีกลับ" บนใบร่าง — สีเหลืองไม่ใช่แดง เพราะเป็น "ต้องแก้แล้วส่งใหม่"
+   ไม่ใช่ "จบแล้ว" (แดงสงวนให้ยกเลิก) */
+.bounced {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--amber);
+  background: var(--panel-3);
+  font-size: var(--fs-7);
+  color: var(--text-2);
+}

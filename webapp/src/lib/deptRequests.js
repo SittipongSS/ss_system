@@ -39,6 +39,7 @@ export {
   deriveRequestStatusAfterAnswer,
   submitRequestError,
   acknowledgeRequestError,
+  bounceRequestError,
   answerRequestError,
   closeRequestError,
   cancelRequestError,
