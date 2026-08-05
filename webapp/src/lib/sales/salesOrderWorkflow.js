@@ -1,3 +1,6 @@
+// กติกาสถานะ/สิทธิ์ของใบสั่งขาย — ใช้ร่วมกันทั้งหน้าเว็บและ route (pure, ไม่แตะ DB)
+import { isSuperuser } from '@/lib/permissions';
+
 export const SALES_ORDER_STATUS_LABELS = {
   draft: 'ฉบับร่าง',
   pending_approval: 'รออนุมัติ',
@@ -10,6 +13,16 @@ export const SALES_ORDER_STATUS_LABELS = {
 
 export function isSalesOrderReviewer(role) {
   return role === 'ae_supervisor' || role === 'admin';
+}
+
+/* การยื่น = การลงนามช่อง "ฝ่ายขาย" บนใบ (mig 0153 ตรึงหลักฐานตอนยื่น) และช่องนั้นเป็น
+   ของ AE เจ้าของดีล — AC สร้างใบแทนได้ตามเดิม แต่ต้องส่งต่อให้เจ้าของดีลกดยื่นเอง
+   ไม่งั้นลายเซ็นในช่องจะเป็นของคนที่ไม่ได้รับผิดชอบดีล (มติผู้ใช้ 2026-08-05)
+   กติกาเดียวกับ canApproveQuotation ของใบเสนอราคา — ยึด ownerId ไม่ยึดชื่อ */
+export function canSubmitSalesOrder(user, deal) {
+  if (!user || !deal) return false;
+  if (isSuperuser(user?.role)) return true;
+  return !!user.id && user.id === deal.ownerId;
 }
 
 export function isSalesOrderSubmitter(order, userId) {

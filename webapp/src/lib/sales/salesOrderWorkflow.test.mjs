@@ -8,6 +8,7 @@ import {
   canIssueSalesOrderRevision,
   canRevokeSalesOrderApproval,
   canSalesOrderTransition,
+  canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   dealActualFromSalesOrders,
@@ -188,4 +189,20 @@ test('the revoked state is read-only and out of Actual', () => {
   assert.equal(canSalesOrderTransition('approval_revoked', 'submit'), false);
   // ยกเลิก SO ยังทำได้ — กันเอกสารค้างในสถานะกลางถ้าเปลี่ยนใจไม่ออก Rev.
   assert.equal(canSalesOrderTransition('approval_revoked', 'cancel'), true);
+});
+
+// การยื่น SO = การลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้
+// แต่ต้องส่งให้เจ้าของดีลกดยื่น (มติผู้ใช้ 2026-08-05)
+test('canSubmitSalesOrder: ยื่นได้เฉพาะ AE เจ้าของดีล (และ superuser)', () => {
+  const deal = { id: 'DL-1', ownerId: 'u-ae-owner' };
+  assert.equal(canSubmitSalesOrder({ id: 'u-ae-owner', role: 'ae' }, deal), true);
+  // AC ที่ช่วยสร้างใบให้ ยื่นเองไม่ได้ — ต้องส่งกลับให้เจ้าของดีล
+  assert.equal(canSubmitSalesOrder({ id: 'u-ac', role: 'ac' }, deal), false);
+  // AE คนอื่นในทีมเดียวกันก็ยื่นแทนไม่ได้
+  assert.equal(canSubmitSalesOrder({ id: 'u-ae-other', role: 'ae' }, deal), false);
+  assert.equal(canSubmitSalesOrder({ id: 'u-admin', role: 'admin' }, deal), true);
+  // ดีลไม่มีเจ้าของ / ไม่มีดีล = ยื่นไม่ได้ (ไม่มีใครรับผิดชอบช่องลงนาม)
+  assert.equal(canSubmitSalesOrder({ id: 'u-ae-owner', role: 'ae' }, { id: 'DL-2' }), false);
+  assert.equal(canSubmitSalesOrder({ id: 'u-ae-owner', role: 'ae' }, null), false);
+  assert.equal(canSubmitSalesOrder(null, deal), false);
 });

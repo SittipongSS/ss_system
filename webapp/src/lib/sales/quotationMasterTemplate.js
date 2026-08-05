@@ -583,11 +583,11 @@ function toSalesOrderPreviewModel(model, state, standard) {
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
     ],
     signers: [
-      // ⚠️ ช่องลงนามของ SO เป็นชุดของตัวเอง (มติผู้ใช้ 2026-07-18, ปรับ 2026-08-05:
-      // ผู้จัดทำ=AE เจ้าของดีล · ผู้อนุมัติ=ผู้จัดการฝ่ายขาย · ฝ่ายบัญชี) — ห้ามลอกคำของ
-      // ใบเสนอราคามาใส่ ต้องตรงกับ signers ที่ salesOrderPrint.js ส่งตอนพิมพ์จริง
-      { label: 'ผู้จัดทำ', role: 'ฝ่ายขาย', name: model.references.salesOwner },
-      { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
+      // ⚠️ ช่องลงนามของ SO เป็นชุดของตัวเอง — ป้ายช่องเป็นหน่วยงาน ไม่ใช่บทบาทในเอกสาร
+      // (มติผู้ใช้ 2026-08-05) ห้ามลอกคำของใบเสนอราคามาใส่
+      // ต้องตรงกับ signers ที่ salesOrderPrint.js ส่งตอนพิมพ์จริง
+      { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', name: model.references.salesOwner },
+      { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
       { label: 'ฝ่ายบัญชี', role: 'Scent & Sense' },
     ],
   };
