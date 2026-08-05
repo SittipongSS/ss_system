@@ -3,7 +3,6 @@ import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import { dealTypeOf } from '@/lib/salesPlanning';
-import { documentRef } from '@/lib/documents/documentShell';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   formatDocumentNumber,
@@ -712,7 +711,6 @@ export function buildQuotationMasterPreview(
 // "รหัส · ชื่อ" — ตัวคั่นเดียวกับที่เอกสารใช้อยู่แล้ว (รหัส FG · แบรนด์ บนบรรทัดสินค้า)
 // ขาดฝั่งไหนก็เหลือเท่าที่มี ไม่ทิ้งตัวคั่นลอย
 // รูปแบบ "รหัส · ชื่อ" ย้ายไปเปลือกเอกสารกลางแล้ว — ใบภาษีกับไทม์ไลน์ใช้ตัวเดียวกัน
-const codeNameRef = documentRef;
 
 // โครงการผูกผ่านดีล (sales_deals.projectId → projects, FK mig 0064) — select ของ
 // route ที่สร้างเอกสารต้อง join project:projects(code, name) มาให้

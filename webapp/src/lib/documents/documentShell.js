@@ -24,13 +24,6 @@ export const money = (v) => Number(v || 0).toLocaleString('th-TH', {
 });
 export const val = (v) => (v === null || v === undefined || v === '' ? '-' : esc(v));
 
-// "รหัส · ชื่อ" สำหรับช่องอ้างอิงบนเอกสาร (โครงการ / โครงการย่อย) — เอกสารทุกชนิด
-// ต้องเขียนเหมือนกัน ไม่งั้นลูกค้าได้ใบชุดเดียวกันที่อ้างอิงของอย่างเดียวกันคนละรูป
-export const documentRef = (code, name) => [code, name]
-  .map((part) => String(part ?? '').trim())
-  .filter(Boolean)
-  .join(' · ') || '-';
-
 // สี accent ต่อชนิดเอกสาร — ค่าเป็น hex เพราะเอกสารพิมพ์เป็นไฟล์ self-contained
 // ใช้ตัวแปรธีมของแอปไม่ได้ · --doc-accent คุมสีชื่อเอกสาร (h1) กับเส้นเน้น
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({
