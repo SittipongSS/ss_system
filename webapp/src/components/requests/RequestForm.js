@@ -124,6 +124,13 @@ export default function RequestForm({
   // ข้อความ "ยังกรอกไม่ครบ" อยู่ในเนื้อฟอร์มหรือไม่ — หน้าเต็มย้ายไปไว้ที่แถบปุ่ม
   // (ด่านตัวเดียวกัน `requestFormBlocker` คนละที่วาง ไม่ใช่คนละกฎ)
   showBlocker = true,
+  // ⭐ ถามฝ่าย/หัวข้อให้จบก่อน แล้วค่อยกางฟอร์มของหัวข้อนั้น (มติผู้ใช้ 2026-08-06)
+  // ช่องข้างล่างสลับหน้าตาไปทั้งชุดตามหัวข้อ — กางไว้ตั้งแต่ยังไม่เลือกจึงเป็นฟอร์มที่
+  // เปลี่ยนรูปใต้มือคนอ่าน · โมดัลที่ล็อกหัวข้อมาแล้วไม่ต้องผ่านขั้นนี้ (ค่าตั้งต้น true)
+  revealed = true,
+  // ปุ่มที่อยู่ติดช่องหัวข้อ — { label, onClick } · ผู้เรียกตัดสินว่าเป็น "แสดงฟอร์ม"
+  // หรือ "เปลี่ยนหัวข้อ" เพราะมันเป็นเรื่องของสองขั้นในหน้านั้น ไม่ใช่กฎของฟอร์ม
+  topicAction = null,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const items = value.items || [];
@@ -221,7 +228,7 @@ export default function RequestForm({
             <button
               key={d} type="button" role="radio" aria-checked={dept === d}
               className={styles.deptOption} data-on={dept === d ? "1" : undefined}
-              disabled={disabled || lockKind}
+              disabled={disabled || lockKind || revealed}
               onClick={() => {
                 // หัวข้อที่เลือกไว้อาจไม่ใช่ของฝ่ายใหม่ — ล้างเมื่อไม่เข้ากัน
                 const keep = kindsForDept(d).includes(kind) ? kind : "";
@@ -254,7 +261,7 @@ export default function RequestForm({
         <div className="form-group col-span-2">
           <label htmlFor="req-kind">ขอเรื่องอะไร</label>
           <Select
-            id="req-kind" value={kind} disabled={disabled || lockKind || !dept}
+            id="req-kind" value={kind} disabled={disabled || lockKind || !dept || revealed}
             onChange={(e) => {
               const next = e.target.value;
               // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้น
@@ -280,6 +287,27 @@ export default function RequestForm({
               })),
             ]}
           />
+          {topicAction && (
+            <div className={styles.topicAction}>
+              {/* ⭐ อยู่ติดช่องที่มันคุม ไม่ใช่ลอยอยู่แถบปุ่มล่างสุด — คนที่อยากเปลี่ยน
+                  หัวข้อจะมองที่ช่องหัวข้อก่อนเสมอ · และตอนกางฟอร์มแล้วช่องนี้ถูกล็อก
+                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง */}
+              <Button
+                variant="quiet" size="sm"
+                disabled={disabled || topicAction.disabled}
+                onClick={topicAction.onClick}
+              >
+                {topicAction.label}
+              </Button>
+            </div>
+          )}
+          {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
+              เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
+          {revealed && topicAction && (
+            <small className={styles.hint}>
+              ล็อกไว้ระหว่างกรอก — กด &ldquo;{topicAction.label}&rdquo; เพื่อแก้ (ฟอร์มที่กรอกไว้จะถูกล้าง)
+            </small>
+          )}
           {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
           {meta.dealType && (
             <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
@@ -287,6 +315,8 @@ export default function RequestForm({
         </div>
       </div>
 
+      {revealed && (
+      <>
       {/* ── 3) ของที่หัวข้อนั้นต้องอ้าง ────────────────────────────────────
           ⭐ **อยู่ใต้หัวข้อเสมอ** — ช่องพวกนี้โผล่/หายตามหัวข้อที่เพิ่งเลือก วางไว้
           เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
@@ -737,6 +767,8 @@ export default function RequestForm({
           **ห้ามเขียนเงื่อนไขใหม่ที่นั่น** ต้องเรียก `requestFormBlocker` ตัวเดียวกัน */}
       {showBlocker && shapeError && (
         <small className={styles.hint}>ยังกรอกไม่ครบ — {shapeError}</small>
+      )}
+      </>
       )}
     </>
   );

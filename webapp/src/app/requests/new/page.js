@@ -23,6 +23,7 @@ import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { createRequestDraft, requestFormBlocker } from "@/lib/master/requestCreate";
+import { requestKindLabel } from "@/lib/master/requestTypes";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -44,6 +45,10 @@ export default function NewRequestPage() {
   const returnTo = back && back.startsWith("/") && !back.startsWith("//") ? back : "/requests";
 
   const [form, setForm] = useState(() => emptyRequestForm(defaults));
+  // ⭐ สองขั้น: เลือกฝ่าย+หัวข้อให้จบ → กดแล้วค่อยกางฟอร์มของหัวข้อนั้น
+  // มาจากลิงก์ที่ระบุหัวข้อมาแล้ว (เช่นจากหน้าดีล) = ข้ามขั้นแรกไปเลย ไม่ต้องกดซ้ำ
+  // สิ่งที่ผู้ใช้เพิ่งเลือกไว้แล้ว
+  const [revealed, setRevealed] = useState(!!defaults.kind);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -110,18 +115,40 @@ export default function NewRequestPage() {
           deferAttachments
           // เหตุผลที่ยังบันทึกไม่ได้ย้ายไปอยู่ติดปุ่ม (ด่านตัวเดียวกัน คนละที่วาง)
           showBlocker={false}
+          revealed={revealed}
+          // ⭐ ปุ่มคุมหัวข้ออยู่ติดช่องหัวข้อ ไม่ใช่แถบปุ่มล่าง · สลับป้ายตามขั้น
+          // ⚠️ "เปลี่ยนหัวข้อ" **ล้างฟอร์มทิ้ง** เหลือแค่ฝ่าย/หัวข้อ — ค่าเดิมค้างอยู่คือ
+          // ของที่ถูกส่งไปกับคำร้องหัวข้อใหม่โดยไม่มีใครเห็น · และตอนกางฟอร์มแล้ว
+          // ดรอปดาวน์ถูกล็อก ⇒ **ทางเดียวที่เปลี่ยนได้คือกดปุ่มนี้** เปลี่ยนโดยไม่ตั้งใจไม่ได้
+          topicAction={revealed ? {
+            // บอกให้ครบว่าปลดล็อกอะไร — ปุ่มปลดทั้งฝ่ายและหัวข้อ ไม่ใช่หัวข้ออย่างเดียว
+            label: "เปลี่ยนฝ่าย/หัวข้อ",
+            onClick: () => {
+              setForm(emptyRequestForm({ ...defaults, dept: form.dept, kind: form.kind }));
+              setRevealed(false);
+            },
+          } : {
+            // ⭐ ป้ายบอก **สิ่งที่จะได้** ไม่ใช่สิ่งที่ปุ่มทำ — "แสดงฟอร์ม" ไม่ได้บอกว่า
+            // ฟอร์มอะไร · ใส่ชื่อหัวข้อลงไปเลยจะเห็นตั้งแต่ยังไม่กดว่ากำลังจะกรอกอะไร
+            label: form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม",
+            disabled: !form.kind,
+            onClick: () => setRevealed(true),
+          }}
         />
 
+        {/* ⚠️ แถบล่างเหลือเฉพาะปุ่มที่ทำอะไรกับ **ทั้งใบ** — ปุ่มคุมหัวข้อย้ายไปอยู่
+            ติดช่องหัวข้อแล้ว · ขั้นที่ยังไม่กางฟอร์มไม่มีปุ่มบันทึก เพราะยังไม่มีอะไร
+            ให้บันทึกนอกจากฝ่ายกับหัวข้อ */}
         <div className={`action-bar ${styles.actions}`}>
-          {/* ⚠️ ข้อความนี้มาจาก `requestFormBlocker` ตัวเดียวกับที่ปิดปุ่ม — ห้าม
-              เขียนเงื่อนไขเพิ่มตรงนี้ ปุ่มจางแบบไม่บอกเหตุผลคือบั๊กที่เพิ่งปิดไป */}
-          {blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
+          {revealed && blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
           <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
             ยกเลิก
           </Button>
-          <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
-            บันทึกร่าง
-          </Button>
+          {revealed && (
+            <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
+              บันทึกร่าง
+            </Button>
+          )}
         </div>
       </div>
 

@@ -232,3 +232,9 @@
   font-size: var(--fs-5);
   color: var(--text-2);
 }
+
+/* ปุ่มคุมหัวข้อ — ชิดขวาใต้ช่องหัวข้อ ให้อยู่ในสายตาเดียวกับสิ่งที่มันเปลี่ยน */
+.topicAction {
+  display: flex;
+  justify-content: flex-end;
+}
