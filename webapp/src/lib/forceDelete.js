@@ -300,19 +300,25 @@ export async function scentForcePreview(supabase, scent) {
   return { cascade, notes, blocked: false };
 }
 
-// ── ทะเบียนวัสดุ (mig 0143/0157) ───────────────────────────────────────
+// ── ทะเบียนวัสดุ (mig 0143/0157/0209) ──────────────────────────────────
 //
-// ต่างจากทะเบียนกลิ่น/สูตรตรงที่ **มี FK สองตัวเป็น RESTRICT** ซึ่ง break-glass
-// ข้ามไม่ได้ (เหมือนใบยื่นภาษีของ QT/SO):
+// สายสัมพันธ์ของวัสดุหนึ่งตัว:
 //   material_price_revisions.materialId   → CASCADE     (0143) ประวัติราคาหายตาม
-//   dept_request_items.materialId         → **RESTRICT** (0158) บล็อกการลบ
-//   costing_item_components.materialId    → **RESTRICT** (0159) บล็อกการลบ
+//   dept_request_items.materialId         → RESTRICT    (0158)
+//   costing_item_components.materialId    → RESTRICT    (0159)
 //   material_deliveries.materialId        → SET NULL    (0176) ของเข้ายังอยู่
+// + รุ่นราคา/ชั้นราคามี trigger ห้าม DELETE ทุกกรณี (0143/0157)
 //
-// ⚠️ **ไม่ลบบรรทัดของใบขอราคาผลิต/คำร้องให้อัตโนมัติ** — สองอย่างนั้นเป็นเอกสารของ
-// คนอื่น (ใบขอราคาผลิตคือกระดาษทำงานที่เซลกำลังคิดราคาอยู่ · บรรทัดคำร้องคือประวัติว่า
-// เคยถามอะไรไป) การลากลบตามวัสดุคือผลข้างเคียงที่เงียบเกินไป · เจตนาเดียวกับ
-// `exciseFilingBlockMessage`: บอกตั้งแต่พรีวิวว่าทำไม่ได้ แล้วชี้ทางไปจัดการต้นทางก่อน
+// ⭐ เดิมพรีวิวตอบ blocked:true ทันทีที่มีคนอ้าง (เจตนา "ไม่ลบเอกสารของคนอื่น") ผลคือ
+// ผู้ดูแลระบบไม่มีทางลบวัสดุตัวไหนได้เลย — วัสดุเกือบทุกตัวเกิดจากบรรทัดคำร้อง จึงมี
+// คนอ้างเสมอ · มติผู้ใช้ 2026-08-05: ต้องลบได้จริง → mig 0209 เปิดช่อง force ให้ทั้ง
+// trigger และ RESTRICT ทั้งสองตัว (ดู RPC force_delete_material_price) โดยแยกวิธี
+// ตามรูปร่างข้อมูล: ใบขอราคาผลิต **ปลดการเชื่อมโยง** (label/ราคาเป็น snapshot บนแถว
+// อยู่แล้ว) · บรรทัดคำร้อง **ลบทั้งบรรทัด** เพราะ constraint บังคับว่าบรรทัดชนิดวัสดุ
+// ต้องมี materialId เสมอ (0204) ปลดเป็น NULL ไม่ได้
+//
+// พรีวิวจึงต้องเขียนป้ายให้ตรงว่าอันไหน "ปลด" อันไหน "ลบ" — ผู้ดูแลระบบตัดสินใจจาก
+// ตรงนี้ที่เดียว และ ?dryRun=1 ใช้เส้นทางเดียวกับตอนลบจริง
 export async function materialForcePreview(supabase, material) {
   const [revisions, requestItems, costingLines, deliveries] = await Promise.all([
     countBy(supabase, 'material_price_revisions', 'materialId', material.id),
@@ -321,23 +327,10 @@ export async function materialForcePreview(supabase, material) {
     countBy(supabase, 'material_deliveries', 'materialId', material.id),
   ]);
 
-  // RESTRICT = ลบไม่ผ่านแม้ใช้สิทธิ์ผู้ดูแลระบบ → หยุดที่พรีวิว ไม่เสนอ confirm ที่ยังไงก็ล้ม
-  if (requestItems || costingLines) {
-    const where = [
-      requestItems && `บรรทัดในคำร้องขอราคา ${requestItems} รายการ`,
-      costingLines && `บรรทัดในใบขอราคาผลิต ${costingLines} รายการ`,
-    ].filter(Boolean).join(' · ');
-    return {
-      cascade: [],
-      notes: [`ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: ยังมี${where} อ้างวัสดุนี้อยู่`
-        + ' — ระบบจะไม่ลบเอกสารของคนอื่นตามให้อัตโนมัติ'
-        + ' กรุณาใช้ "เก็บเข้ากรุ" แทน (วัสดุหายจากตัวเลือกใหม่ แต่เอกสารเก่ายังอ่านได้)'],
-      blocked: true,
-    };
-  }
-
   const cascade = [
     line('ประวัติรุ่นราคาของวัสดุนี้ (ลบพ่วง กู้ไม่ได้)', revisions),
+    line('บรรทัดในคำร้องขอราคาที่อ้างวัสดุนี้ (ลบทั้งบรรทัด — ตัวคำร้องยังอยู่)', requestItems),
+    line('บรรทัดในใบขอราคาผลิตที่อ้างวัสดุนี้ (ปลดการเชื่อมโยง — ชื่อและราคาที่ตรึงไว้ยังอยู่)', costingLines),
     line('รายการของเข้าที่อ้างวัสดุนี้ (ปลดการเชื่อมโยง ของเข้ายังอยู่)', deliveries),
   ].filter((r) => r.count > 0);
 
@@ -345,10 +338,31 @@ export async function materialForcePreview(supabase, material) {
   if (revisions > 0) {
     notes.push('ประวัติราคาคือหลักฐานว่าเคยเสนอลูกค้าเท่าไร — ปกติควรใช้ “เก็บเข้ากรุ” แทนการลบ');
   }
+  // ที่ต้องเตือนแรงกว่าอย่างอื่น: บรรทัดคำร้องเป็นเอกสารของฝ่ายอื่นและหายถาวร
+  if (requestItems > 0) {
+    notes.push(`⚠️ บรรทัดในคำร้อง ${requestItems} รายการจะถูกลบทิ้งถาวร (พร้อมไฟล์แนบของบรรทัดนั้น)`
+      + ' — คำร้องจะไม่เหลือประวัติว่าเคยถามราคาวัสดุตัวนี้');
+  }
   if (material.status === 'active') {
     notes.push('วัสดุนี้ยังใช้งานอยู่ (active) ไม่ใช่ร่างที่เสนอมาแล้วไม่ได้ใช้');
   }
   return { cascade, notes, blocked: false };
+}
+
+// เก็บกวาดของที่ RPC ทำแทนไม่ได้ ก่อนเรียก force_delete_material_price:
+// ไฟล์แนบของบรรทัดคำร้องที่กำลังจะโดนลบ อยู่บน Drive (นอก DB) และ attachments เป็น
+// polymorphic ไม่มี FK — ไม่กวาดตรงนี้ = ไฟล์ค้างบน Drive โดยไม่มีทางเข้าถึงอีกเลย
+//
+// ⚠️ โยน error เมื่ออ่านบรรทัดไม่สำเร็จ — ผู้เรียกต้องหยุดก่อนลบ (กติกาเดียวกับ
+// cleanupDealOrphans/cleanupRequestOrphans)
+export async function cleanupMaterialOrphans(supabase, materialId) {
+  const { data: items, error } = await supabase
+    .from('dept_request_items').select('id').eq('materialId', materialId);
+  if (error) throw new Error(`อ่านบรรทัดคำร้องที่อ้างวัสดุนี้ไม่สำเร็จ: ${error.message}`);
+  for (const item of items || []) {
+    await purgeAttachments('dept_request_item', item.id);
+  }
+  return (items || []).length;
 }
 
 // ── คำร้องข้ามฝ่าย (mig 0173) ─────────────────────────────────────────
