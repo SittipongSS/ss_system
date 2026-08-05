@@ -152,7 +152,19 @@ export async function loadRequests(supabase, { id = null, dept = null, status = 
 
 export async function findRequest(supabase, id) {
   const [row] = await loadRequests(supabase, { id });
-  return row || null;
+  if (!row) return null;
+
+  // ⭐ บรรทัดของใบสั่งขายที่ผูก — ใช้กระทบยอด "สั่งเท่าไร ลูกค้าคอนเฟิร์มเท่าไร" (P3d)
+  // ดึงเฉพาะตอนเปิดใบเดียว ไม่ใช่ตอนโหลดคิวทั้งชุด — คิวไม่ได้ใช้ตัวเลขนี้ และการ
+  // join ทุกแถวจะแพงโดยไม่ได้อะไรกลับมา
+  //
+  // ⚠️ เอา `qty` อย่างเดียว — ที่เหลือเป็นข้อมูลของใบสั่งขายซึ่งหน้าคำร้องไม่ควรรู้
+  // (ยิ่งดึงมามาก ยิ่งมีของให้หลุดออกทาง response โดยไม่ตั้งใจ)
+  if (!row.salesOrderId) return { ...row, salesOrderLines: [] };
+  const { data: lines, error } = await supabase
+    .from('sales_order_lines').select('id, qty').eq('salesOrderId', row.salesOrderId);
+  if (error) throw error;
+  return { ...row, salesOrderLines: lines || [] };
 }
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา

@@ -54,6 +54,10 @@ export default function UpdateThread({
   allowAttachments = true,
   placeholder = "พิมพ์อัปเดต...",
   emptyText = "ยังไม่มีอัปเดต",
+  /* ⭐ บอกปลายทางตอนกำลังจะพิมพ์ ไม่ใช่หลังกดส่ง — "จะแจ้งเตือนถึงใคร" เป็นสิ่งที่
+     เปลี่ยนว่าคนจะพิมพ์อะไร · ผู้เรียกเป็นคนรู้ว่าใครกำลังถือขั้นนี้อยู่ เธรดกลาง
+     ไม่รู้เรื่องสายงานของแต่ละ entity */
+  composeHint = null,
   onPosted,
 }) {
   const [items, setItems] = useState([]);
@@ -620,6 +624,7 @@ export default function UpdateThread({
             </div>
           )}
           {err && <div className={styles.error} role="alert">{err}</div>}
+          {composeHint && <div className={styles.composeHint}>{composeHint}</div>}
           <div className={styles.composerBar}>
             {allowAttachments && (
               <>
