@@ -88,14 +88,8 @@ export function requestPayload(form, extra = {}) {
  * ผู้ใช้ไปหน้ารายละเอียดให้ทำต่อได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
  */
 export async function createAndSendRequest(form, extra = {}) {
-  const res = await fetch('/api/sa/requests', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestPayload(form, extra)),
-  });
-  const created = await res.json().catch(() => ({}));
-  if (!res.ok) return { id: null, error: created.error || 'เปิดคำร้องไม่สำเร็จ' };
-  const id = created.id;
+  const { id, error } = await createRequestDraft(form, extra);
+  if (error) return { id, error };
 
   for (const file of form.files || []) {
     const up = await uploadAttachment({
@@ -104,17 +98,44 @@ export async function createAndSendRequest(form, extra = {}) {
     if (!up.ok) return { id, error: `แนบ "${file.name}" ไม่สำเร็จ: ${up.error}` };
   }
 
+  return { id, ...(await submitRequest(id, { mentions: form.mentions })) };
+}
+
+/**
+ * ขั้นแรกอย่างเดียว: ค่าในฟอร์ม → **ร่าง** ที่ยังไม่กินเลขที่ — คืน { id, error }
+ *
+ * ⭐ หน้า `/requests/new` หยุดที่นี่ (ปุ่ม "บันทึกร่าง") แล้วพาไปหน้ารายละเอียด ซึ่ง
+ * เป็นที่เดียวที่ **แนบไฟล์ได้จริง** (`AttachmentsPanel` ต้องมี `entityId` ก่อน) และ
+ * เป็นที่ที่กดส่ง · แยกสองขั้นได้ขั้นทบทวนก่อนเลขที่ออก ซึ่งออกแล้วย้อนไม่ได้
+ *
+ * ⚠️ โมดัลในใบขอราคาผลิตยังเดินสามขั้นรวด (`createAndSendRequest`) — ที่นั่นไฟล์แนบ
+ * เก็บในฟอร์มมาก่อนแล้ว และไม่มีจอให้กลับไปกดส่ง
+ */
+export async function createRequestDraft(form, extra = {}) {
+  const res = await fetch('/api/sa/requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestPayload(form, extra)),
+  });
+  const created = await res.json().catch(() => ({}));
+  if (!res.ok) return { id: null, error: created.error || 'เปิดคำร้องไม่สำเร็จ' };
+  return { id: created.id, error: null };
+}
+
+// ส่งร่างที่มีอยู่แล้ว — ออกเลขที่ · ลงเธรด · แจ้งคนที่ถูก @ · คืน { error }
+// รับ mentions ได้ทั้ง [{id,name}] (จากฟอร์ม) และ [id] (จากหน้ารายละเอียด)
+export async function submitRequest(id, { mentions = [] } = {}) {
   const sent = await fetch(`/api/sa/requests/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'submit',
-      mentions: (form.mentions || []).map((m) => m.id),
+      mentions: (mentions || []).map((m) => (typeof m === 'string' ? m : m.id)),
     }),
   });
   if (!sent.ok) {
     const err = await sent.json().catch(() => ({}));
-    return { id, error: err.error || 'ส่งคำร้องไม่สำเร็จ' };
+    return { error: err.error || 'ส่งคำร้องไม่สำเร็จ' };
   }
-  return { id, error: null };
+  return { error: null };
 }
