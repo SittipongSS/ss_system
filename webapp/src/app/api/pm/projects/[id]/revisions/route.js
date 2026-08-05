@@ -75,7 +75,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (maxRowError) return fail(maxRowError.message, 500);
     revNo = maxRow?.revNo == null ? 0 : maxRow.revNo + 1;
   }
-  const snapshot = { project, tasks: tasks || [], projectProducts: links || [] };
+  // ดีลที่ผูกกับโครงการ ต้องอยู่ใน snapshot ด้วย — เอกสารไทม์ไลน์พิมพ์ "โครงการย่อย"
+  // จากตรงนี้ ถ้าอ่านสดตอนพิมพ์ Rev เก่าจะเปลี่ยนตามการผูก/ถอดดีลภายหลัง
+  const { data: snapshotDeals } = await supabase
+    .from('sales_deals')
+    .select('id, title, dealType')
+    .eq('projectId', project.id);
+  const snapshot = {
+    project: { ...project, deals: snapshotDeals || [] },
+    tasks: tasks || [],
+    projectProducts: links || [],
+  };
 
   const { data: rev, error } = await supabase
     .from('project_doc_revisions')

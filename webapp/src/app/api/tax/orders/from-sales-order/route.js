@@ -6,6 +6,11 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
+import { documentRef } from "@/lib/documents/documentShell";
+import { dealTypeOf } from "@/lib/salesPlanning";
+
+// documentRef คืน "-" เมื่อไม่มีอะไรเลย ซึ่งเป็นค่าสำหรับ "แสดงผล" — ลงคอลัมน์ต้องเป็น null
+const refOrNull = (value) => (value === '-' ? null : value);
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +47,8 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
   // ทะเบียนลูกค้าอ่านรายตัวด้วย id (ไม่ผ่านลิสต์ที่กรองทีม) — ค่าที่ได้จะถูกตรึงลงใบยื่น
   // เพื่อให้เอกสารพิมพ์เหมือนกันทุกคนที่กด (mig 0167)
   const [{ data: deal }, { data: quotation }, { data: customer }] = await Promise.all([
-    supabase.from("sales_deals").select("id, team, ownerId, ownerName").eq("id", salesOrder.dealId).maybeSingle(),
+    // title/dealType ต้องมาด้วย — ใช้ตรึง "โครงการย่อย" ลงใบ (mig 0208) ไม่ใช่แค่เช็คสิทธิ์
+    supabase.from("sales_deals").select("id, team, ownerId, ownerName, title, dealType").eq("id", salesOrder.dealId).maybeSingle(),
     supabase.from("quotations").select("id, quoteNumber, customerTaxId, billingAddress").eq("id", salesOrder.quotationId).maybeSingle(),
     salesOrder.customerId
       // team/teams ต้องอยู่ใน select ด้วย — ใช้ถอยหาทีมเจ้าภาพของใบยื่นเมื่อดีลแม่ไม่มีทีม
@@ -50,9 +56,14 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
       ? supabase.from("customers").select("id, taxId, address, team, teams").eq("id", salesOrder.customerId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  // โครงการผูกกับ SO ตรง ๆ (sales_orders.projectId, mig 0107)
+  const { data: project } = salesOrder.projectId
+    ? await supabase.from("projects").select("id, code, name").eq("id", salesOrder.projectId).maybeSingle()
+    : { data: null };
   return {
     ...salesOrder,
     deal: deal || null,
+    project: project || null,
     quotation: quotation || null,
     customer: customer || null,
   };
@@ -234,6 +245,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
     quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
+    // ตรึงโครงการ/โครงการย่อยลงใบตั้งแต่ตอนสร้าง (mig 0208) — เหตุผลเดียวกับที่ตรึง
+    // เลขผู้เสียภาษี/ที่อยู่ลูกค้า (mig 0167): ชื่อเปลี่ยนทีหลังต้องไม่ย้อนไปแก้ใบเก่า
+    // เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-" (ขีดเป็นเรื่องของการแสดงผล ไม่ใช่ข้อมูล)
+    projectRef: refOrNull(documentRef(salesOrder.project?.code, salesOrder.project?.name)),
+    dealRef: refOrNull(documentRef(dealTypeOf(salesOrder.deal), salesOrder.deal?.title)),
     deliveryDate: "-",
     remarks: `สร้างจาก Sale Order ${salesOrder.orderNumber}`,
     assignee: user.name || salesOrder.createdByName || "Sales",
