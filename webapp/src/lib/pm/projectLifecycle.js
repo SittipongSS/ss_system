@@ -176,7 +176,7 @@ export function createProjectLifecycle() {
           title: "ตีกลับคำขอปิดโครงการ",
           description: "โครงการจะกลับไปสถานะเปิดอยู่ ผู้ขอปิดจะเห็นเหตุผลนี้",
           label: "เหตุผลที่ตีกลับ",
-          placeholder: "เช่น ยังมี Sale Order ค้าง / ยังไม่ได้ยื่นภาษี",
+          placeholder: "เช่น ยังมีใบสั่งขายค้าง / ยังไม่ได้ยื่นภาษี",
         }),
       },
       {

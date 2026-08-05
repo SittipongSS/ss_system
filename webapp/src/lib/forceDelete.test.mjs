@@ -83,11 +83,11 @@ test('dealForcePreview: cascade เฉพาะลูกของดีล + โ
   assert.ok(notes.some((n) => n.includes('โครงการผลิต PJ-1') && n.includes('ยังอยู่')));
 });
 
-test('quotationForcePreview: โชว์ Sale Order ที่จะ cascade + note accepted', async () => {
+test('quotationForcePreview: โชว์ใบสั่งขายที่จะ cascade + note accepted', async () => {
   const supabase = stubCount({ 'sales_orders:quotationId': 1 });
   const { cascade, notes } = await quotationForcePreview(supabase, { id: 'Q1', status: 'accepted' });
   assert.equal(cascade.length, 1);
-  assert.ok(cascade[0].label.includes('Sale Order'));
+  assert.ok(cascade[0].label.includes('ใบสั่งขาย'));
   // ใบ accepted ได้ 2 note: เป็นแหล่งยอด Actual + ระบบจะถอยดีลออกจาก Won ให้ (mig 0168)
   assert.equal(notes.length, 2);
   assert.ok(notes.some((n) => n.includes('ถอยดีลออกจาก Won')));
@@ -189,11 +189,11 @@ test('ไม่มีใบยื่นภาษี = ไม่บล็อก (
 });
 
 test('exciseFilingBlockMessage: บอกเลขใบยื่นทุกใบ + ชี้หน้าไปจัดการ', () => {
-  const msg = exciseFilingBlockMessage([{ id: 'TAX-1', status: 'draft' }, { id: 'TAX-2' }], 'Sale Order');
+  const msg = exciseFilingBlockMessage([{ id: 'TAX-1', status: 'draft' }, { id: 'TAX-2' }], 'ใบสั่งขาย');
   assert.match(msg, /TAX-1 \(draft\)/);
   assert.match(msg, /TAX-2/);
   assert.match(msg, /ภาษี › การยื่นชำระ/);
-  assert.match(msg, /Sale Order/);
+  assert.match(msg, /ใบสั่งขาย/);
 });
 
 test('อ่านตาราง orders ไม่ได้ (ยังไม่รัน mig 0160) = ไม่บล็อก', async () => {

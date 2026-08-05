@@ -162,19 +162,19 @@ export default function QuotationsPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        {/* รอยต่อ Won → Sale Order: ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เดิมไม่มีอะไร
+        {/* รอยต่อ Won → ใบสั่งขาย: ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เดิมไม่มีอะไร
             บอกเลย ต้องมีคนจำไปกดเอง. ตัวเลขนับตามขอบเขตที่มองเห็นเหมือนตัวเลขอื่นในหน้านี้ */}
         {awaitingSalesOrderIds.size > 0 && (
           <StatusNotice
             tone="warning"
-            title={`ใบเสนอราคา Won ${awaitingSalesOrderIds.size} ใบยังไม่ได้ออก Sale Order`}
+            title={`ใบเสนอราคา Won ${awaitingSalesOrderIds.size} ใบยังไม่ได้ออก ใบสั่งขาย`}
             action={(
               <button type="button" className="linklike" onClick={() => setPendingSoOnly((on) => !on)}>
                 {pendingSoOnly ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}
               </button>
             )}
           >
-            ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เปิดใบแล้วกดสร้าง Sale Order เพื่อให้ยอดเข้าเป็น Actual
+            ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เปิดใบแล้วกดสร้างใบสั่งขายเพื่อให้ยอดเข้าเป็น Actual
           </StatusNotice>
         )}
 

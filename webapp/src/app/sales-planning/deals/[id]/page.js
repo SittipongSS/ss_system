@@ -1143,9 +1143,9 @@ export default function DealOverviewPage() {
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>Sale Order</h2>
+                <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ใบสั่งขาย</h2>
                 <div className="spacer" />
-                <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
+                <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู ใบสั่งขาย</Link>
               </div>
               <div className="premium-glass-table table-responsive">
                 <TableScroll surface="embedded"><table className="w-full text-sm">

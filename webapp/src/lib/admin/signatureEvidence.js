@@ -22,7 +22,7 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
     ['signature_evidence_standard_missing', 'มาตรฐานเอกสารที่เผยแพร่ไม่สมบูรณ์ กรุณาติดต่อผู้ดูแลระบบ', 409, 'document_standard_required', {}],
     ['signature_evidence_approval_stale', 'เอกสารถูกแก้ไขจากอีกหน้าต่าง กรุณาโหลดข้อมูลล่าสุดแล้วตรวจอีกครั้ง', 409, 'approval_stale', {}],
     ['signature_evidence_approval_state_invalid', 'สถานะอนุมัติเปลี่ยนแล้ว กรุณาโหลดข้อมูลล่าสุด', 409, 'approval_state_changed', {}],
-    ['signature_evidence_separation_required', 'อนุมัติ Sale Order ที่ตัวเองสร้างหรือยื่นไม่ได้', 403, 'separation_of_duty', {}],
+    ['signature_evidence_separation_required', 'อนุมัติ ใบสั่งขายที่ตัวเองสร้างหรือยื่นไม่ได้', 403, 'separation_of_duty', {}],
     ['signature_evidence_override_reason_required', 'Admin Override ต้องระบุเหตุผล 10–500 ตัวอักษร', 400, 'override_reason_required', {}],
     ['signature_evidence_override_not_applicable', 'ใช้ Admin Override ได้เฉพาะ SO ที่ตนเองสร้างหรือยื่น', 400, 'override_not_applicable', {}],
     ['signature_evidence_forbidden', 'ไม่มีสิทธิ์อนุมัติเอกสารนี้', 403, 'forbidden', {}],

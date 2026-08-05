@@ -412,10 +412,10 @@ export default function QuotationEditorPage() {
         body: JSON.stringify({ quotationId: quote.id }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "สร้าง Sale Order ไม่สำเร็จ");
+      if (!res.ok) throw new Error(data.error || "สร้างใบสั่งขายไม่สำเร็จ");
       router.push(`/sa/sales-orders/${data.id}`);
     } catch (err) {
-      setError(err.message || "สร้าง Sale Order ไม่สำเร็จ");
+      setError(err.message || "สร้างใบสั่งขายไม่สำเร็จ");
       setBusy("");
     }
   };
@@ -914,7 +914,7 @@ export default function QuotationEditorPage() {
               <RelatedDocumentCard
                 icon={ClipboardList}
                 eyebrow="DOWNSTREAM DOCUMENT"
-                title="Sale Order"
+                title="ใบสั่งขาย"
                 meta="เอกสารปลายทางจากใบเสนอราคานี้"
                 actions={<Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด SO</Link>}
               >
@@ -930,9 +930,9 @@ export default function QuotationEditorPage() {
               <RelatedDocumentCard
                 icon={ClipboardList}
                 eyebrow="DOWNSTREAM DOCUMENT"
-                title="Sale Order"
+                title="ใบสั่งขาย"
                 meta="ยังไม่ได้สร้างเอกสารปลายทาง"
-                actions={<button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง Sale Order"}</button>}
+                actions={<button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง ใบสั่งขาย"}</button>}
               >
                 <p style={{ color: "var(--text-2)", marginTop: 0 }}>สร้างร่าง SO จาก QT ใบนี้เพื่อตรวจสอบข้อมูลและยื่นให้ AE Supervisor อนุมัติ</p>
               </RelatedDocumentCard>
@@ -983,7 +983,7 @@ export default function QuotationEditorPage() {
         open={!!unacceptForm}
         title="ย้อนการรับใบเสนอราคา"
         description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็น “ส่งลูกค้าแล้ว” และดีลถอยออกจาก Won`}
-        detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมี Sale Order โดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
+        detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมีใบสั่งขายโดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
         label="เหตุผลที่ย้อนการรับ"
         value={unacceptForm?.reason || ""}
         onChange={(reason) => setUnacceptForm({ reason })}

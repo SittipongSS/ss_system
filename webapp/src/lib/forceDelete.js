@@ -76,7 +76,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
 
   const cascade = [
     line('ใบเสนอราคาที่รับแล้ว (Won) — แหล่งยอด Actual', accepted),
-    line('ใบสั่งขาย (Sale Order) — แหล่งยอด Actual', salesOrders),
+    line('ใบสั่งขาย — แหล่งยอด Actual', salesOrders),
     line('ใบเสนอราคาทั้งหมด', quotations),
     line('ขั้นตอนงานผลิต (task) ของดีลนี้', dealTasks),
     line('คำร้องข้ามฝ่ายที่ผูกดีล', inquiries),
@@ -208,7 +208,7 @@ export async function quotationForcePreview(supabase, quote) {
     };
   }
   const cascade = [
-    line('ใบสั่งขาย (Sale Order) ที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
+    line('ใบสั่งขายที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
   ].filter((r) => r.count > 0);
@@ -236,7 +236,7 @@ export async function salesOrderForcePreview(supabase, order) {
     exciseFilingsOfSalesOrder(supabase, order.id),
   ]);
   if (filings.length) {
-    return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'Sale Order')], blocked: true };
+    return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
   }
   const cascade = [
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),

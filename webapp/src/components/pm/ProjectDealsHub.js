@@ -177,10 +177,10 @@ export function ProjectQuotationsCard({ project: p }) {
     <section className="glass-panel" style={{ padding: "16px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <FileText size={18} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>Sale Order</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>ใบสั่งขาย</h2>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{salesOrders.length} ใบ</span>
         <div className="spacer" />
-        <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
+        <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู ใบสั่งขาย</Link>
       </div>
       {salesOrders.length ? (
         <div className="premium-glass-table table-responsive">
@@ -197,7 +197,7 @@ export function ProjectQuotationsCard({ project: p }) {
             })}</tbody>
           </table></TableScroll>
         </div>
-      ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มี Sale Order — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
+      ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มี ใบสั่งขาย — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
     </section>
     </div>
   );

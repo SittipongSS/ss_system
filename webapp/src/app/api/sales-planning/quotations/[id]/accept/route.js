@@ -147,7 +147,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       { label: 'ผู้ปิดการขาย', value: user.name || '' },
       { label: 'หลักฐาน', value: `${WON_DOC_TYPE_LABELS[evidence.docType] || evidence.docType} · ${evidence.docDate}` },
       // รอยต่อถัดไปเป็น manual — ถ้าไม่บอกตรงนี้ต้องรอการ์ดสรุปเช้าพรุ่งนี้ถึงจะมีอะไรทวง
-      { label: 'ขั้นถัดไป', value: 'เปิดใบเสนอราคาแล้วกดสร้าง Sale Order — ยอด Actual เข้าเมื่อ SO อนุมัติ' },
+      { label: 'ขั้นถัดไป', value: 'เปิดใบเสนอราคาแล้วกดสร้าง ใบสั่งขาย — ยอด Actual เข้าเมื่อ SO อนุมัติ' },
     ],
     linkPath: `/sa/deals/${deal.id}`,
     linkLabel: 'เปิดดีล',

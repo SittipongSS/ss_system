@@ -161,7 +161,7 @@ export default function DealFormFields({
     <label className="deal-field" key="fc">
       โอกาสที่จะปิดได้ (FC%)
       {alreadyWon ? (
-        <input className="premium-input" value="ปิดได้แล้ว (Won) — ยอดจริงมาจาก Sale Order" readOnly disabled />
+        <input className="premium-input" value="ปิดได้แล้ว (Won) — ยอดจริงมาจาก ใบสั่งขาย" readOnly disabled />
       ) : (
         <Select className="premium-select" value={snapForecastLevel(form.probability)} onChange={(e) => set("probability")(e.target.value)}>
           {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}

@@ -111,7 +111,7 @@ export default function SettingsPage() {
           href: "/settings/signature-coverage",
           icon: Signature,
           title: "ความพร้อมลายเซ็น",
-          desc: "ใครยังไม่มีลายเซ็นอิเล็กทรอนิกส์ทั้งที่ต้องอนุมัติใบเสนอราคา/Sale Order",
+          desc: "ใครยังไม่มีลายเซ็นอิเล็กทรอนิกส์ทั้งที่ต้องอนุมัติใบเสนอราคา/ใบสั่งขาย",
           show: canUsers,
         },
         {

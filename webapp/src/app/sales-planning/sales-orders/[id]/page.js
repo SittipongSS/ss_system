@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FolderKanban, Pencil, ShieldAlert,
+  Building2, CalendarDays, CircleDollarSign, ClipboardList,
+  ExternalLink, FileCheck2, FileText, FolderKanban, MapPin, Pencil, ShieldAlert,
   Factory, PackageCheck, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -139,7 +139,7 @@ export default function SalesOrderDetailPage() {
         error: filingData.error || "ตรวจสอบใบยื่นสรรพสามิตไม่สำเร็จ",
       });
     if (!res.ok) {
-      setError(data.error || "โหลด Sale Order ไม่สำเร็จ");
+      setError(data.error || "โหลดใบสั่งขายไม่สำเร็จ");
       setSaveState("error");
       return false;
     }
@@ -175,7 +175,7 @@ export default function SalesOrderDetailPage() {
       error: "",
     });
     setBusy("");
-    setToast({ kind: "success", msg: "สร้างใบยื่นสรรพสามิตจาก Sale Order เรียบร้อยแล้ว" });
+    setToast({ kind: "success", msg: "สร้างใบยื่นสรรพสามิตจากใบสั่งขายเรียบร้อยแล้ว" });
     return true;
   }
 
@@ -200,7 +200,7 @@ export default function SalesOrderDetailPage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy("");
-      setError(data.error || "อัปเดต Sale Order ไม่สำเร็จ");
+      setError(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ");
       setErrorActionUrl(data.accountUrl || "");
       if (action === "save") setSaveState("error");
       return false;
@@ -229,7 +229,7 @@ export default function SalesOrderDetailPage() {
 
   function openSubmitConfirm() {
     setConfirmState({
-      title: "ยื่นอนุมัติ Sale Order",
+      title: "ยื่นอนุมัติ ใบสั่งขาย",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
       detail: "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
       confirmLabel: "ยื่นอนุมัติ",
@@ -247,7 +247,7 @@ export default function SalesOrderDetailPage() {
   async function review(action) {
     if (action === "approve") {
       setConfirmState({
-        title: "อนุมัติ Sale Order",
+        title: "อนุมัติ ใบสั่งขาย",
         description: `ยืนยันอนุมัติใบสั่งขาย ${order.orderNumber} หรือไม่`,
         detail: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนับเข้าระบบทันที`,
         confirmLabel: "อนุมัติและนับ Actual",
@@ -317,14 +317,14 @@ export default function SalesOrderDetailPage() {
     setError("");
     const res = await fetch(url, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setBusy(""); setError(data.error || "ลบ Sale Order ไม่สำเร็จ"); return false; }
+    if (!res.ok) { setBusy(""); setError(data.error || "ลบใบสั่งขายไม่สำเร็จ"); return false; }
     router.push("/sa/sales-orders");
     return true;
   }
 
   function remove() {
     setConfirmState({
-      title: "ลบ Sale Order ฉบับร่าง",
+      title: "ลบใบสั่งขายฉบับร่าง",
       description: `ต้องการลบ ${order.orderNumber} ถาวรหรือไม่`,
       detail: "การลบไม่สามารถย้อนกลับได้",
       confirmLabel: "ลบฉบับร่าง",
@@ -345,7 +345,7 @@ export default function SalesOrderDetailPage() {
     const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
     const notes = (preview.notes || []).join("\n");
     setConfirmState({
-      title: "บังคับลบ Sale Order พร้อมหลักฐาน",
+      title: "บังคับลบใบสั่งขายพร้อมหลักฐาน",
       description: `ต้องการบังคับลบ ${order.orderNumber} ถาวรหรือไม่`,
       detail: <span style={{ whiteSpace: "pre-line" }}>สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{notes ? `\n\n${notes}` : ""}</span>,
       confirmLabel: "ยืนยันบังคับลบ",
@@ -407,7 +407,7 @@ export default function SalesOrderDetailPage() {
   );
 
   if (!order) {
-    return <Workspace icon={<ClipboardList size={22} />} title="Sale Order" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
+    return <Workspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
 
   const approved = order.status === "approved";
@@ -492,9 +492,12 @@ export default function SalesOrderDetailPage() {
           badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span>}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
+            // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
+            // (ที่นั่นมี "Actual ก่อน VAT" พร้อมสถานะ "ยังไม่นับ" อยู่แล้ว) — วันครบกำหนด
+            // เป็นสิ่งที่คนเปิดใบอยากรู้ทันทีมากกว่า
+            { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
             { icon: FileText, label: "อ้างอิง QT", value: order.quotation?.quoteNumber || "-" },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
-            { icon: BadgeCheck, label: "Actual ในระบบ", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
           ]}
         >
           <p className={styles.statusDescription}>{status.description}</p>
@@ -520,10 +523,10 @@ export default function SalesOrderDetailPage() {
         </ContextGrid>
 
         <DetailPageLayout
-          asideLabel="สรุปและจัดการ Sale Order"
+          asideLabel="สรุปและจัดการ ใบสั่งขาย"
           aside={<>
             <DocumentSummaryCard
-              title="ยอดสุทธิ Sale Order"
+              title="ยอดสุทธิ ใบสั่งขาย"
               total={fmtMoney(order.totalAmount)}
               status={status.label}
               statusColor={status.color}
@@ -555,7 +558,7 @@ export default function SalesOrderDetailPage() {
               evidence={(
                 <SignatureReadyNotice
                   active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
-                  docLabel="Sale Order นี้"
+                  docLabel="ใบสั่งขายนี้"
                 />
               )}
             />
@@ -570,6 +573,31 @@ export default function SalesOrderDetailPage() {
               </div>
             </DetailCard>
 
+            {/* ที่อยู่/ผู้ติดต่อบนใบสั่งขาย — **อ่านอย่างเดียวเสมอ** และมาจากใบเสนอราคา
+                ที่ใบนี้ออกมาจาก (กฎผู้ใช้ 2026-08-05: ใบสั่งขายห้ามเลือกที่อยู่เอง)
+                ตาราง sales_orders ไม่มีคอลัมน์ที่อยู่ด้วยซ้ำ — บังคับด้วยโครงสร้าง
+                ก่อนหน้านี้หน้านี้ไม่โชว์ที่อยู่เลย ทั้งที่ "ส่งไปที่ไหน" คือสิ่งที่ฝ่ายผลิต/
+                จัดส่งต้องใช้จากใบนี้ ต้องเด้งไปเปิดใบเสนอราคาเองทุกครั้ง */}
+            <DetailCard icon={MapPin} eyebrow="CUSTOMER SNAPSHOT" title="ข้อมูลลูกค้าในเอกสาร">
+              <dl className={styles.addressList}>
+                <div>
+                  <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · สาขา ${order.quotation.branchCode}` : ""}</dt>
+                  <dd>{order.quotation?.billingAddress || "-"}</dd>
+                </div>
+                <div>
+                  <dt>ที่อยู่จัดส่ง</dt>
+                  <dd>{order.quotation?.shippingAddress || order.quotation?.billingAddress || "-"}</dd>
+                </div>
+                <div>
+                  <dt>ผู้ติดต่อ</dt>
+                  <dd>{[order.quotation?.contactName, order.quotation?.contactPhone].filter(Boolean).join(" · ") || "-"}</dd>
+                </div>
+              </dl>
+              <p className={styles.snapshotNote}>
+                ตามใบเสนอราคา {order.quotation?.quoteNumber || "-"} — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)
+              </p>
+            </DetailCard>
+
             <DetailCard icon={ClipboardList} eyebrow="DOCUMENT INFO" title="ข้อมูลควบคุม">
               <dl className={styles.auditList}>
                 <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
@@ -577,7 +605,6 @@ export default function SalesOrderDetailPage() {
                 <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
                 {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span></dd></div>}
                 {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
-                <div><dt>กำหนดชำระ</dt><dd>{fmtDate(order.paymentDueDate)}</dd></div>
                 {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
               </dl>
             </DetailCard>
@@ -612,7 +639,7 @@ export default function SalesOrderDetailPage() {
                   ? "กำลังตรวจสอบเอกสารปลายทาง"
                   : filingState.eligible
                     ? `ยอดที่ต้องเรียกเก็บ ${fmtMoney(filingState.amountToCollect)} (รวม VAT 7%)`
-                    : "ยังไม่มีใบยื่นที่เชื่อมกับ Sale Order นี้"}
+                    : "ยังไม่มีใบยื่นที่เชื่อมกับ ใบสั่งขายนี้"}
               actions={filingState.filing ? (
                 <Link href={`/tax/filings/${filingState.filing.id}`} className="btn ghost sm">
                   <ExternalLink size={13} /> เปิดใบยื่น
@@ -642,12 +669,12 @@ export default function SalesOrderDetailPage() {
                   : filingState.filing
                     ? "ใบยื่นนี้สร้างและดูแลโดยโมดูลภาษี รายการและยอดภาษีถูก snapshot จาก SO ตอนสร้าง"
                     : order.status !== "approved"
-                      ? "สร้างได้หลัง Sale Order อนุมัติแล้ว"
+                      ? "สร้างได้หลังใบสั่งขายอนุมัติแล้ว"
                       : !filingState.eligible
-                        ? "Sale Order นี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น"
+                        ? "ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น"
                         : filingState.warnings.length
                           ? `${filingState.warnings.length} รายการควรตรวจทะเบียนสรรพสามิตเพิ่มเติม แต่ยังสร้างใบยื่นได้`
-                          : "พร้อมสร้างใบยื่นจากรายการสินค้าสรรพสามิตใน Sale Order"}
+                          : "พร้อมสร้างใบยื่นจากรายการสินค้าสรรพสามิตใน ใบสั่งขาย"}
             </RelatedDocumentCard>
           </>}
         >
@@ -780,7 +807,7 @@ export default function SalesOrderDetailPage() {
 
       <ReasonDialog
         open={!!workflowForm}
-        title={workflowForm?.action === "revoke" ? "ยกเลิกอนุมัติ Sale Order" : "ดึงกลับ Sale Order"}
+        title={workflowForm?.action === "revoke" ? "ยกเลิกอนุมัติ ใบสั่งขาย" : "ดึงกลับ ใบสั่งขาย"}
         description={workflowForm?.action === "revoke"
           ? `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`
           : `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
@@ -815,7 +842,7 @@ export default function SalesOrderDetailPage() {
       />
 
       {cancelForm && (
-        <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>
+        <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก ใบสั่งขาย" size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ color: "var(--text-2)", margin: 0 }}>หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก</p>
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>

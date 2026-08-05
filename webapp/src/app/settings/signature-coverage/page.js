@@ -117,7 +117,7 @@ export default function SignatureCoveragePage() {
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
-          <p>ใครยังเซ็นอนุมัติใบเสนอราคา / Sale Order ไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี</p>
+          <p>ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขายไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี</p>
         </div>
         {/* required = 0 ไม่ใช่ "พร้อม" (isGoLiveReady คืน false โดยเจตนา — ไม่มีใครใน cohort
             เลยแปลว่าข้อมูลผิดปกติ) แต่ก็ไม่ใช่ "ยังขาด 0 คน" ที่อ่านแล้วขัดกัน */}

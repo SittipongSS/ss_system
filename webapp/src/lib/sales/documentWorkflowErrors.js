@@ -9,21 +9,21 @@ const WORKFLOW_ERRORS = Object.freeze({
   quotation_reject_forbidden: ['ตีกลับได้เฉพาะผู้อนุมัติของใบเสนอราคานี้', 403],
   quotation_withdraw_state_invalid: ['ดึงกลับได้เฉพาะใบเสนอราคาที่กำลังรออนุมัติ', 409],
   quotation_withdraw_forbidden: ['ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง', 403],
-  sales_order_not_found: ['ไม่พบ Sale Order', 404],
-  sales_order_withdraw_state_invalid: ['ดึงกลับได้เฉพาะ Sale Order ที่กำลังรออนุมัติ', 409],
+  sales_order_not_found: ['ไม่พบ ใบสั่งขาย', 404],
+  sales_order_withdraw_state_invalid: ['ดึงกลับได้เฉพาะ ใบสั่งขายที่กำลังรออนุมัติ', 409],
   sales_order_withdraw_forbidden: ['ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง', 403],
   sales_order_revision_forbidden: ['ยกเลิกอนุมัติและออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin', 403],
-  sales_order_revoke_state_invalid: ['ยกเลิกอนุมัติได้เฉพาะ Sale Order ที่อนุมัติแล้ว', 409],
-  sales_order_revision_state_invalid: ['ออก Rev. ได้เฉพาะ Sale Order ที่ยกเลิกอนุมัติแล้ว — กด "ยกเลิกอนุมัติ" ก่อน', 409],
-  sales_order_revision_exists: ['Sale Order นี้มี Rev. ถัดไปแล้ว กรุณาโหลดใหม่', 409],
+  sales_order_revoke_state_invalid: ['ยกเลิกอนุมัติได้เฉพาะ ใบสั่งขายที่อนุมัติแล้ว', 409],
+  sales_order_revision_state_invalid: ['ออก Rev. ได้เฉพาะ ใบสั่งขายที่ยกเลิกอนุมัติแล้ว — กด "ยกเลิกอนุมัติ" ก่อน', 409],
+  sales_order_revision_exists: ['ใบสั่งขายนี้มี Rev. ถัดไปแล้ว กรุณาโหลดใหม่', 409],
   // ด่านนี้ย้ายไปอยู่ขั้น "ยกเลิกอนุมัติ" แล้ว (mig 0166) — ข้อความจึงต้องไม่พูดถึงแต่
   // ขั้นออก Rev. ไม่งั้นคนกดปุ่มแรกได้คำตอบของปุ่มที่สอง. บอกทางออกด้วย เพราะทั้งยกเลิก
   // อนุมัติและยกเลิก SO ถูกใบยื่นบล็อกเหมือนกัน = ถ้าไม่บอก ผู้ใช้จะวนหาปุ่มไม่เจอ
   sales_order_revision_filing_exists: [
-    'แก้ Sale Order ใบนี้ไม่ได้ เพราะมีใบยื่นชำระภาษีผูกอยู่ — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิกอนุมัติ/ออก Rev. ได้',
+    'แก้ใบสั่งขายใบนี้ไม่ได้ เพราะมีใบยื่นชำระภาษีผูกอยู่ — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิกอนุมัติ/ออก Rev. ได้',
     409,
   ],
-  sales_order_revision_lines_required: ['Sale Order ต้องมีอย่างน้อย 1 รายการก่อนออก Rev.', 409],
+  sales_order_revision_lines_required: ['ใบสั่งขายต้องมีอย่างน้อย 1 รายการก่อนออก Rev.', 409],
 });
 
 const UNKNOWN_MESSAGE = 'ดำเนินการกับเอกสารไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้แจ้งผู้ดูแลระบบ';

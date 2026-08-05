@@ -600,7 +600,7 @@ export default function DesignPreviewPage() {
               ดรอปดาวน์
               <Select value={docType} onChange={(event) => setDocType(event.target.value)}>
                 <option value="qt">ใบเสนอราคา</option>
-                <option value="so">Sale Order</option>
+                <option value="so">ใบสั่งขาย</option>
               </Select>
             </label>
             <label className={styles.field}>
