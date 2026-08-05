@@ -13,10 +13,11 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
-import { normalizeProductDevItems } from '@/lib/requests/lines';
+import { normalizeDocumentItems, normalizeProductDevItems } from '@/lib/requests/lines';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
-  legacyKindError, requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
+  legacyKindError, lineShapeForKind, requestKindLabel, requestNeedsRef, requestShapeError,
+  requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -106,9 +107,15 @@ export async function POST(request) {
   // ⭐ **บรรทัดมีสองรูปร่างแล้ว** — วัสดุ (ขอราคา) กับพัฒนาผลิตภัณฑ์ (หมวด × กลิ่น)
   // แยกด่านกันคนละตัว เพราะกฎคนละชุดสิ้นเชิง: วัสดุต้องมี materialId · พัฒนา
   // ผลิตภัณฑ์ต้องมีหมวดกับกลิ่น (constraint `dept_request_items_shape` ของ 0204)
-  const isProductDev = kind === 'product_dev';
+  const lineShape = lineShapeForKind(kind);
+  const isProductDev = lineShape === 'product_dev';
+  const isDocument = lineShape === 'document';
   if (isProductDev) {
     const normalized = normalizeProductDevItems(body.items);
+    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
+    items = normalized.items;
+  } else if (isDocument) {
+    const normalized = normalizeDocumentItems(body.items);
     if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
     items = normalized.items;
   } else if (requestHasItems(kind)) {
@@ -235,7 +242,9 @@ export async function POST(request) {
         });
       }
     }
-    for (const item of isProductDev ? [] : items) {
+    // บรรทัดเอกสารไม่มีของให้ resolve — ชนิดกับรายละเอียดครบตั้งแต่ normalize แล้ว
+    if (isDocument) resolved.push(...items);
+    for (const item of (isProductDev || isDocument) ? [] : items) {
       if (item.materialId) { resolved.push(item); continue; }
       const { material } = await ensureMaterial(supabase, {
         kind: item.kind,
@@ -289,7 +298,15 @@ export async function POST(request) {
 
     // 3) รายการ + ชั้นจำนวนที่ขอ (เฉพาะชนิดที่มีบรรทัด)
     if (resolved.length) {
-      const itemRows = resolved.map((item) => (isProductDev ? {
+      const itemRows = resolved.map((item) => (isDocument ? {
+        id: `DRI-${randomUUID()}`,
+        requestId,
+        lineKind: 'document',
+        sortOrder: item.sortOrder,
+        label: item.label,
+        spec: item.spec,
+        docType: item.docType,
+      } : isProductDev ? {
         id: `DRI-${randomUUID()}`,
         requestId,
         lineKind: 'product_dev',

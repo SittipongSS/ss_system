@@ -22,8 +22,10 @@ import Textarea from "@/components/ui/Textarea";
 import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
+import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
 import {
-  REQUEST_DEPTS, kindsForDept, materialKindForRequest, requestHasItems, requestHasTiers,
+  REQUEST_DEPTS, kindsForDept, lineShapeForKind, materialKindForRequest, requestHasItems,
+  requestHasTiers,
   requestKindLabel, requestKindMeta, requestNeedsRef,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
@@ -77,6 +79,7 @@ function itemsForKind(kind, existing = []) {
   // ⚠️ บรรทัดของพัฒนาผลิตภัณฑ์เป็นคนละรูปร่าง — สลับหัวข้อมาแล้วต้องเริ่มใหม่
   // ไม่ใช่ลากบรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
   if (kind === 'product_dev') return [emptyProductDevRow()];
+  if (kind === 'document') return [emptyDocumentRow()];
   const materialKind = materialKindForRequest(kind);
   if (!materialKind) return [];
   const rows = existing.length ? existing : [emptyAskItem(materialKind)];
@@ -96,6 +99,8 @@ export default function RequestForm({
   const kind = value.kind || "";
   const meta = requestKindMeta(kind) || {};
   const hasItems = requestHasItems(kind);
+  // รูปร่างบรรทัดมาจากทะเบียนหัวข้อที่เดียว — ฟอร์มไม่เช็ค `kind === "..."` เอง
+  const lineShape = lineShapeForKind(kind);
   const hasTiers = requestHasTiers(kind);
   const dept = value.dept || "";
 
@@ -406,7 +411,7 @@ export default function RequestForm({
           ⚠️ คนละตารางกับบรรทัดวัสดุโดยสิ้นเชิง — วัสดุเลือกจากทะเบียนวัสดุแล้วขอราคา
           ส่วนนี่คือ "หมวดไหน กลิ่นไหน" ซึ่งเป็นตัวตนของสูตรที่จะเกิด · ยัดสองอย่างนี้
           ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
-      {kind === "product_dev" && (
+      {lineShape === "product_dev" && (
         <div className="form-group">
           <span className={styles.fieldLabel}>รายการที่ขอ — 1 บรรทัด = หมวดสินค้า × กลิ่น</span>
           <ProductDevLines
@@ -420,8 +425,20 @@ export default function RequestForm({
         </div>
       )}
 
+      {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
+      {lineShape === "document" && (
+        <div className="form-group">
+          <span className={styles.fieldLabel}>เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด</span>
+          <DocumentLines
+            rows={items.length ? items : [emptyDocumentRow()]}
+            onChange={(rows) => set({ items: rows })}
+            disabled={disabled}
+          />
+        </div>
+      )}
+
       {/* ── หัวข้อขอราคา: บรรทัดวัสดุ + ชั้นจำนวน ─────────────────────────── */}
-      {hasItems && kind !== "product_dev" && (
+      {lineShape === "material" && (
         <>
           <div className="form-group">
             <span className={styles.fieldLabel}>สินค้าที่เกี่ยวข้อง (ถ้ามี)</span>

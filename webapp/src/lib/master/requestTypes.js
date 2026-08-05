@@ -70,7 +70,7 @@ export const REQUEST_KINDS = {
   // 1 แถว = หมวด × กลิ่น = สูตร 1 ตัวในทะเบียน (ตัวตนเดียวกับ formulas_identity_uk)
   product_dev: {
     label: 'พัฒนาผลิตภัณฑ์',
-    dept: 'RD', scope: 'MU', hasItems: true, hasTiers: false,
+    dept: 'RD', scope: 'MU', hasItems: true, hasTiers: false, lineShape: 'product_dev',
     // กลิ่นย้ายไปอยู่ **รายแถว** — ใบเดียวขอได้หลายกลิ่นหลายหมวด
     needs: ['project', 'deal'],
     stepKey: 'npd-15', dealType: 'NPD',
@@ -112,7 +112,9 @@ export const REQUEST_KINDS = {
   },
   document: {
     label: 'ขอเอกสาร',
-    dept: null, scope: 'RQ', hasItems: false,
+    // ⭐ มีบรรทัดแล้ว (P5) — 1 บรรทัด = 1 ชนิดเอกสาร · ขอหลายอย่างในใบเดียวได้
+    // และแต่ละอย่างเดินคนละจังหวะ (IFRA มาก่อน COA ได้) ⇒ สถานะอยู่ที่แถว
+    dept: null, scope: 'RQ', hasItems: true, hasTiers: false, lineShape: 'document',
     // ⏳ ผู้ใช้บอก "เก็บไว้ทีหลังก็ได้" — ของจริงคือ IFRA/COA/MSDS ของ **สินค้า**
     // และต้องอ้าง QT + ล็อตการผลิต · ยังไม่มีที่เก็บสองอย่างหลัง จึงคงกฎเดิมไว้ก่อน
     // (โครงการ+ดีล) แล้วออกแบบรอบถัดไป — ห้ามเดาโครงสร้างล่วงหน้า
@@ -231,6 +233,16 @@ export function deptForRequest(kind, { dept, items } = {}) {
 // ⚠️ กรอง `legacy` ออกที่นี่ที่เดียว — ฟอร์มเอาลิสต์จากฟังก์ชันนี้ทางเดียว ส่วน
 // `requestKindLabel` ยังรู้จักหัวข้อเก่าครบ ⇒ ใบที่เปิดไปแล้วยังมีป้ายชื่ออ่านได้
 // (ลบหัวข้อทิ้งเมื่อไร ใบเก่าบน prod จะกลายเป็นชื่อ key ดิบบนหน้าจอ)
+// รูปร่างของบรรทัดตามหัวข้อ — 'material' | 'product_dev' | 'document' | null
+//
+// ⚠️ ที่เดียวของระบบ · ก่อนหน้านี้ route กับฟอร์มเช็ค `kind === 'product_dev'` เอง
+// ซึ่งพอมีรูปร่างที่สามก็ต้องไล่แก้ทุกจุดที่เช็คแบบนั้น
+export function lineShapeForKind(kind) {
+  const meta = REQUEST_KINDS[kind];
+  if (!meta?.hasItems) return null;
+  return meta.lineShape || 'material';
+}
+
 export function kindsForDept(dept) {
   if (!REQUEST_DEPTS.includes(dept)) return [];
   return REQUEST_KIND_LIST.filter((k) => {
