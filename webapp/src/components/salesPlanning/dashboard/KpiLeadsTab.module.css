@@ -1,0 +1,36 @@
+/* แท็บ "KPI ลีด" ของแดชบอร์ดฝ่ายขาย — ผังของ funnel/ตาราง
+   (เดิมเป็น inline style ทั้งไฟล์ ย้ายออกมาเป็นคลาส 2026-08-05) */
+
+/* จำนวนลีดต่อขั้น — ช่องเล็กเพราะเป็นตัวเลขล้วน 8 ขั้น ต้องเห็นครบในแถวเดียวถ้าจอพอ */
+.funnelGrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+/* คุณภาพของ funnel (SLA / Conversion) — ช่องกว้างกว่าเพราะป้ายยาวและมีคำอธิบายใต้เลข */
+.qualityGrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: var(--space-3);
+}
+
+/* สองส่วนที่อ่านคู่กัน (ผู้กรอกลีด / ช่องทาง) — พับลงบนล่างเองเมื่อที่ไม่พอ */
+.splitSections {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.emptyCell {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-3);
+}
+
+.errorBox {
+  padding: var(--space-3) var(--space-3-5);
+  border-color: var(--red);
+  color: var(--red);
+}

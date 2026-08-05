@@ -3,9 +3,10 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
-import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
 import { fmtName, fmtPercent } from "@/lib/format";
+import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
 
@@ -38,19 +39,19 @@ export default function KpiLeadsTab({ month, teamFilter }) {
   return (
     <div className="flex flex-col gap-4">
       {error && (
-        <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
+        <div className={`glass-panel ${styles.errorBox}`} role="alert">{error}</div>
       )}
 
-      <SaMetricStrip aria-busy={loading}>
-        <SaMetric icon={<Inbox />} label="ลีดเข้า" value={f.total ?? "-"} note={`เดือน ${kpi?.month || month}`} />
-        <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้าง ${sla.screen?.pending ?? 0}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
-        <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้าง ${sla.contact?.pending ?? 0}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
-        <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
-      </SaMetricStrip>
+      {/* ⚠️ เคยมีแถบ KPI 4 การ์ด (ลีดเข้า · SLA คัดกรอง · SLA ติดต่อ · Conversion) อยู่ตรงนี้
+          — **ชุดเดียวกับที่หน้าคิวลีดแสดงอยู่แล้วเป๊ะ** คนกดลิงก์ "ดู KPI เต็ม" มาจึงต้อง
+          เลื่อนผ่านของที่เพิ่งเห็นก่อนถึงของใหม่ (มติผู้ใช้ 2026-08-05)
+          ตัวเลข SLA/Conversion ไม่ได้หายไปไหน — ย้ายลงมาอยู่ในส่วน Funnel ข้างล่างนี้
+          ซึ่งเป็นที่ที่มันอ่านคู่กับจำนวนลีดแต่ละขั้นได้พอดี
+          ⇒ อย่าเอาแถบซ้ำกลับมา ถ้าอยากให้หน้านี้มีพาดหัว ให้เป็นตัวเลขที่หน้าคิวลีด
+            *ไม่มี* เท่านั้น */}
 
-      {/* Funnel */}
-      <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle="ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น">
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+      <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle={`ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น · เดือน ${kpi?.month || month}`}>
+        <div className={styles.funnelGrid} aria-busy={loading}>
           {[["เข้า", f.total], ["คัดกรองแล้ว", f.screened], ["มอบหมายแล้ว", f.assigned], ["ติดต่อแล้ว", f.contacted], ["นัดประชุม", f.meeting], ["เปิดลูกค้า", f.qualified], ["ไม่ไปต่อ", f.disqualified], ["ตีกลับ", f.bounced]].map(([label, v]) => (
             <SaMetric
               key={label}
@@ -60,13 +61,19 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             />
           ))}
         </div>
+        {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
+            (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
+        <div className={styles.qualityGrid} aria-busy={loading}>
+          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้าง ${sla.screen?.pending ?? 0}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
+          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้าง ${sla.contact?.pending ?? 0}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
+          <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
+        </div>
       </SaSection>
 
-      <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+      <div className={styles.splitSections}>
         {/* Marketing: กรอกรายวัน */}
         <SaSection icon={<Inbox size={17} />} title="การกรอกลีด (Marketing KPI)" subtitle="ปริมาณลีดแยกตามผู้กรอก">
-          <div className="premium-glass-table table-responsive">
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+          <TableScroll surface="embedded"><table>
               <thead><tr><th>ผู้กรอก</th><th className="num">ลีด</th><th className="num">วันที่กรอก</th><th className="num">เฉลี่ย/วัน</th></tr></thead>
               <tbody>
                 {(kpi?.byCreator || []).map((c) => (
@@ -77,16 +84,14 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                     <td className="num mono">{c.perDay}</td>
                   </tr>
                 ))}
-                {!(kpi?.byCreator || []).length && <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีข้อมูล</td></tr>}
+                {!(kpi?.byCreator || []).length && <tr><td colSpan={4} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
               </tbody>
             </table></TableScroll>
-          </div>
         </SaSection>
 
         {/* ช่องทาง */}
         <SaSection icon={<CalendarClock size={17} />} title="แยกตามช่องทาง" subtitle="ผลลัพธ์ของลีดจากแต่ละช่องทาง">
-          <div className="premium-glass-table table-responsive">
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+          <TableScroll surface="embedded"><table>
               <thead><tr><th>ช่องทาง</th><th>กลุ่ม</th><th className="num">ลีด</th><th className="num">เปิดลูกค้า</th></tr></thead>
               <tbody>
                 {(kpi?.byChannel || []).map((c) => (
@@ -97,17 +102,15 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                     <td className="num mono">{c.qualified}</td>
                   </tr>
                 ))}
-                {!(kpi?.byChannel || []).length && <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีข้อมูล</td></tr>}
+                {!(kpi?.byChannel || []).length && <tr><td colSpan={4} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
               </tbody>
             </table></TableScroll>
-          </div>
         </SaSection>
       </div>
 
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
       <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="SLA และผลลัพธ์แยกตาม AE">
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="w-full text-sm">
+        <TableScroll surface="embedded"><table>
             <thead><tr><th>AE</th><th>ทีม</th><th className="num">รับมอบ</th><th className="num">ติดต่อแล้ว</th><th className="num">SLA ทัน</th><th className="num">นัด</th><th className="num">เปิดลูกค้า</th></tr></thead>
             <tbody>
               {(kpi?.byAssignee || []).map((a) => (
@@ -121,10 +124,9 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                   <td className="num mono">{a.qualified}</td>
                 </tr>
               ))}
-              {!(kpi?.byAssignee || []).length && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีข้อมูล</td></tr>}
+              {!(kpi?.byAssignee || []).length && <tr><td colSpan={7} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
             </tbody>
           </table></TableScroll>
-        </div>
       </SaSection>
     </div>
   );

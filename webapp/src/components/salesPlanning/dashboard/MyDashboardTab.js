@@ -10,7 +10,7 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 import { useCan } from "@/lib/roleContext";
 import StatusNotice from "@/components/ui/StatusNotice";
-import styles from "./RdDashboardTab.module.css";
+import styles from "./DashboardShell.module.css";
 
 const ACTIVITY_KIND_LABEL = {
   note: "บันทึก",
