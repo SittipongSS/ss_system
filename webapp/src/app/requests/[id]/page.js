@@ -36,6 +36,7 @@ import { requestItemStatusLabel } from "@/lib/requests/statuses";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
+import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import RowStageRail from "@/components/requests/RowStageRail";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
@@ -187,11 +188,23 @@ export default function MaterialAskDetailPage() {
   // ── ก้าวของแถว ────────────────────────────────────────────────────────
   // ⚠️ ตรวจด้วย `hopValuesError` ตัวเดียวกับที่ server ใช้ — ไม่เขียนเงื่อนไขซ้ำที่จอ
   // ไม่งั้นสองชั้นจะเลื่อนออกจากกัน แล้วปุ่มที่กดได้จะได้ 400 กลับมา
-  const hopError = hopDraft ? hopValuesError(hopDraft.hop, hopDraft) : null;
+  // ⚠️ สองด่านคนละชั้น — `hopValuesError` คุมค่าของก้าว · ของสูตรมีด่านของตัวเอง
+  // ที่ server ใช้ตัวเดียวกัน (normalizeFormulaDelivery) ⇒ ปุ่มกับ API ไม่เพี้ยนกัน
+  const hopError = hopDraft
+    ? (hopValuesError(hopDraft.hop, hopDraft)
+      || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
+        ? normalizeFormulaDelivery(hopDraft).error
+        : null))
+    : null;
   const openHop = (item, hop, outcome = null) => setHopDraft({
     item,
     hop,
     outcome,
+    // ⭐ ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียว (P4b)
+    // **ไม่ถามหมวดกับกลิ่นซ้ำ** — อยู่บนแถวแล้วและเป็นตัวตนของสูตรพอดี
+    formulaCode: "",
+    formulaName: "",
+    formulaDate: "",
     // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน
     at: businessDate(),
     dueAt: "",
@@ -206,6 +219,11 @@ export default function MaterialAskDetailPage() {
         hop,
         at: hopDraft.at,
         ...(hop === "ack" ? { dueAt: hopDraft.dueAt || null } : {}),
+        ...(hop === "ready" && item.lineKind === "product_dev" ? {
+          formulaName: hopDraft.formulaName,
+          formulaCode: hopDraft.formulaCode,
+          formulaDate: hopDraft.formulaDate || null,
+        } : {}),
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
         ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
@@ -683,6 +701,41 @@ export default function MaterialAskDetailPage() {
                 onChange={(e) => setHopDraft({ ...hopDraft, at: e.target.value })}
               />
             </div>
+
+            {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
+              <>
+                <p className={styles.fieldHint}>
+                  บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — หมวดกับกลิ่นยกมาจาก
+                  รายการนี้เอง ({hopDraft.item.label}) ไม่ต้องเลือกซ้ำ
+                </p>
+                <div className="form-group">
+                  <label htmlFor="hop-formula-name">ชื่อสูตร</label>
+                  <Input
+                    id="hop-formula-name" value={hopDraft.formulaName} disabled={saving}
+                    placeholder="ชื่อจริงที่ RD ตั้ง"
+                    onChange={(e) => setHopDraft({ ...hopDraft, formulaName: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="hop-formula-code">รหัสสูตร</label>
+                  <Input
+                    id="hop-formula-code" mono value={hopDraft.formulaCode} disabled={saving}
+                    placeholder="เช่น PF638010202-P1"
+                    onChange={(e) => setHopDraft({ ...hopDraft, formulaCode: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="hop-formula-date">
+                    วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
+                  </label>
+                  <input
+                    id="hop-formula-date" type="date" className="input-premium"
+                    value={hopDraft.formulaDate} disabled={saving}
+                    onChange={(e) => setHopDraft({ ...hopDraft, formulaDate: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
 
             {hopDraft.hop === "ack" && (
               <div className="form-group">

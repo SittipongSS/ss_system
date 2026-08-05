@@ -5,7 +5,9 @@
 // และมาตอนที่สายเกินจะแก้ทีละช่องแล้ว
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_DELIVERY_ROWS, deliveryItemRow, normalizeDeliveryRows } from './delivery.js';
+import {
+  MAX_DELIVERY_ROWS, deliveryItemRow, normalizeDeliveryRows, normalizeFormulaDelivery,
+} from './delivery.js';
 import { rowStage } from './rowStage.js';
 
 const ok = { name: 'Forest night A', code: 'SC-2601', sentAt: '2026-08-05' };
@@ -68,4 +70,26 @@ test('ใบที่ยังไม่เคยรับเรื่อง — 
   const row = deliveryItemRow(ok, { requestId: 'DR-1', sortOrder: 1, scentId: 'SCT-9', ackAt: null });
   assert.equal(row.ackAt, '2026-08-05');
   assert.equal(rowStage(row), 'ready');
+});
+
+// ── RD ส่งของของ "พัฒนาผลิตภัณฑ์" (P4b) ───────────────────────────────────
+//
+// ⭐ ต่างจากพัฒนากลิ่นตรงที่ **แถวมีอยู่แล้ว** — SA สร้างไว้ตอนเปิดใบ
+// ⇒ เป็นการขยายก้าว `ready` ไม่ใช่สร้างแถวใหม่
+test('ส่งสูตร: ชื่อกับรหัสบังคับ วันที่ไม่บังคับ', () => {
+  assert.match(normalizeFormulaDelivery({}).error, /ชื่อสูตร/);
+  assert.match(normalizeFormulaDelivery({ formulaName: 'Well sleep #2' }).error, /รหัสสูตร/);
+  const okDelivery = { formulaName: 'Well sleep #2', formulaCode: 'PF-1' };
+  assert.equal(normalizeFormulaDelivery(okDelivery).error, null);
+  assert.equal(normalizeFormulaDelivery(okDelivery).value.formulaDate, null);
+  assert.match(normalizeFormulaDelivery({ ...okDelivery, formulaDate: '05/08/2026' }).error, /วันที่/);
+});
+
+test('⚠️ ไม่รับหมวดกับกลิ่น — สองอย่างนั้นอยู่บนแถวและเป็นตัวตนของสูตรพอดี', () => {
+  // ถามซ้ำเมื่อไร ผู้ใช้จะกรอกให้ต่างจากที่ขอไว้ได้ แล้วสูตรที่เกิดจะไม่ตรงกับแถวที่สั่ง
+  const { value } = normalizeFormulaDelivery({
+    formulaName: 'A', formulaCode: 'PF-1', categoryCode: '99-999', scentId: 'SCT-อื่น',
+  });
+  assert.equal('categoryCode' in value, false);
+  assert.equal('scentId' in value, false);
 });
