@@ -298,7 +298,7 @@ export default function ScentsPage() {
                   return (
                     <tr key={s.id}>
                       {/* รหัสเดียวคือ `code` ของทะเบียน — "รหัสตัวอย่าง" (sampleCode)
-                          ถูกถอดทั้งชุดใน 0214 ตามมติผู้ใช้ว่าไม่ใช้แล้ว */}
+                          ถูกถอดทั้งชุดใน 0215 ตามมติผู้ใช้ว่าไม่ใช้แล้ว */}
                       <td className="mono">
                         {s.code || <span className={styles.muted}>—</span>}
                       </td>
