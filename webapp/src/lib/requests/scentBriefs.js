@@ -43,21 +43,27 @@ function normalizeChoices(raw, allowed, at, what) {
 /**
  * ตรวจและแปลงบรีฟรายกลิ่นที่ client ส่งมา — คืน { briefs, error }
  *
- * `expected` = จำนวนกลิ่นที่ใบสั่งขายบอก (qty ของบรรทัดออกแบบกลิ่น)
- * ⭐ **บังคับให้เท่ากันเสมอ** — จำนวนกลิ่นคือสิ่งที่ลูกค้าจ่ายแล้ว ไม่ใช่ของที่คนกรอก
- * ตัดสินเอง · ปล่อยให้ต่างกันเมื่อไร จะมีวันที่ SO ขาย 3 แต่ PDR ขอ 5 แล้วไม่มีอะไร
- * บอกว่าอันไหนถูก (โรคเดียวกับ "SO ชี้ดีลหนึ่ง แต่คนกรอกเลือกอีกดีลหนึ่ง")
+ * `scentCount` = จำนวนกลิ่นที่ใบสั่งขายบอก (qty ของบรรทัดออกแบบกลิ่น)
+ *
+ * ⭐ **เป็นเพดาน ไม่ใช่จำนวนที่ต้องเท่ากัน** — จำนวนกลิ่นที่ขายกับจำนวน*ทิศทาง*ที่ลูกค้า
+ * สั่งเป็นคนละเรื่อง · ลูกค้าซื้อ 3 กลิ่นแต่บอกมาแนวเดียว ("ทำแนวสดชื่นมา 3 ทาง") เป็น
+ * เรื่องปกติ ⇒ บรีฟก้อนเดียวแล้ว RD ส่ง 3 direction จากก้อนนั้น ซึ่งระบบรองรับอยู่แล้ว
+ * (1 บรีฟ : หลาย direction · มติผู้ใช้)
+ *
+ * ⚠️ แต่**เกินไม่ได้** — เขียนบรีฟ 5 ทางบนใบที่ขาย 3 กลิ่นแปลว่าอย่างน้อยสองทางจะไม่มี
+ * ใครทำ และไม่มีอะไรบอกว่าทางไหนถูกตัด
  */
-export function normalizeScentBriefs(input, { expected = null } = {}) {
+export function normalizeScentBriefs(input, { scentCount = null } = {}) {
   const rows = Array.isArray(input) ? input : [];
   if (!rows.length) return { briefs: [], error: 'ต้องมีบรีฟกลิ่นอย่างน้อย 1 ก้อน' };
   if (rows.length > MAX_SCENT_BRIEFS) {
     return { briefs: [], error: `บรีฟกลิ่นมากเกินไป (สูงสุด ${MAX_SCENT_BRIEFS} ก้อน)` };
   }
-  if (expected != null && rows.length !== expected) {
+  if (scentCount != null && rows.length > scentCount) {
     return {
       briefs: [],
-      error: `ใบสั่งขายระบุ ${expected} กลิ่น แต่ส่งบรีฟมา ${rows.length} ก้อน — ต้องเท่ากัน`,
+      error: `ใบสั่งขายระบุ ${scentCount} กลิ่น เขียนบรีฟได้ไม่เกิน ${scentCount} ก้อน `
+        + `(ส่งมา ${rows.length})`,
     };
   }
 

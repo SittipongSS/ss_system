@@ -4,7 +4,7 @@
 // เดียวตามกฎ AGENTS.md · ก่อนหน้านี้สองที่นั้นประกอบ payload กันเอง แล้วเพี้ยนหา
 // กันจริง: ฝั่งใบขอราคาผลิตคำนวณ `kind` ใหม่เองจนไม่ตรงกับที่ฟอร์มแสดง และไม่เคย
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
-import { requestHasItems, requestShapeError } from '@/lib/master/requestTypes';
+import { requestHasItems, requestHasPdr, requestShapeError } from '@/lib/master/requestTypes';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 
 /**
@@ -59,6 +59,13 @@ export function requestPayload(form, extra = {}) {
     productId: form.productId || null,
     formulaCode: form.formulaCode || null,
     formulaName: form.formulaName || null,
+    // บรีฟรายกลิ่น — ส่งเฉพาะหัวข้อที่ประกาศว่าใช้ PDR (mig 0213)
+    //
+    // ⚠️ **ยังไม่ส่ง `form.pdr`** — ช่องส่วนหัวของ PDR (ชื่อแบรนด์ · Mood & Tone ·
+    // Target Cost · MOQ ฯลฯ) **ยังไม่มีที่เก็บ** · 0213 สร้างแต่ตารางบรีฟรายกลิ่น
+    // ส่งไปตอนนี้ = ค่าหายเงียบระหว่างทาง ซึ่งแย่กว่าไม่ส่ง เพราะผู้ใช้เห็นว่ากรอกแล้ว
+    // → ต้องออก migration ให้ส่วนหัวก่อน (ดู PR ที่ต่อจากใบนี้)
+    ...(requestHasPdr(form.kind) ? { briefs: form.briefs || [] } : {}),
     // หัวข้อที่ไม่มีบรรทัดต้องไม่ส่ง items ไปเลย ไม่ใช่ส่ง [] — server ใช้หัวข้อเป็น
     // ตัวตัดสินอยู่แล้ว แต่ส่งของที่ไม่เกี่ยวไปด้วยทำให้ debug ยากขึ้นเปล่า ๆ
     ...(requestHasItems(form.kind) ? {
