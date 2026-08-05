@@ -238,3 +238,66 @@
   display: flex;
   justify-content: flex-end;
 }
+
+/* ── แบบฟอร์ม PDR — พับเป็นส่วน ๆ ────────────────────────────────────────
+   ~48 ช่อง กางหมดพร้อมกันคือหน้าที่เลื่อนไม่จบ · ใช้ <details> ของเบราว์เซอร์
+   เพื่อให้ Ctrl+F หาเจอในส่วนที่ปิดอยู่ ซึ่ง accordion ที่เขียนเองมักทำไม่ได้ */
+.pdr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: var(--panel-2);
+  padding: var(--space-3);
+}
+
+.pdrHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--fs-5);
+}
+
+.pdrCode {
+  font-size: var(--fs-6);
+  color: var(--text-3);
+  letter-spacing: var(--ls-label);
+}
+
+.pdrSection {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.pdrSummary {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.pdrSummary:hover { color: var(--accent-ink); }
+
+.pdrBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย */
+.briefCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-ink);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}

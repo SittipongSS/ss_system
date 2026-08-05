@@ -29,15 +29,18 @@ import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
+import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
   PLANNED_REQUEST_DEPTS,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, lineShapeForKind, materialKindForRequest, requestHasItems,
   requestHasTiers,
+  requestHasPdr,
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
+import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
@@ -89,6 +92,9 @@ export const emptyRequestForm = (over = {}) => ({
   formulaCode: "",
   formulaName: "",
   items: [],
+  // แบบฟอร์ม PDR + บรีฟรายกลิ่น — ใช้เฉพาะหัวข้อที่ประกาศ `hasPdr`
+  pdr: emptyPdr(),
+  briefs: [],
   files: [],       // File[] — อัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอก)
   mentions: [],    // [{ id, name }] ที่ผู้ใช้เลือกจากรายการ
   ...over,
@@ -175,6 +181,10 @@ export default function RequestForm({
   const selectedSo = salesOrders.find((so) => so.id === value.salesOrderId) || null;
   const soDeal = selectedSo ? deals.find((d) => d.id === selectedSo.dealId) || null : null;
   const stepLabel = requestStepLabel(kind);
+  const hasPdr = requestHasPdr(kind);
+  // ⭐ จำนวนกลิ่นมาจากใบสั่งขาย ไม่ใช่ช่องที่คนกรอก — ใบที่ผ่านด่านย่อมมีจำนวนเสมอ
+  // (ดู lib/requests/scentDesignOrders.js) · ผู้เรียกส่งบรรทัดของ SO มาให้
+  const scentCount = selectedSo ? scentCountForOrder(selectedSo.lines || []) : null;
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
@@ -379,7 +389,16 @@ export default function RequestForm({
               <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น *</span>
               <SearchableSelect
                 value={value.salesOrderId} disabled={disabled}
-                onChange={(v) => set({ salesOrderId: v })}
+                onChange={(v) => {
+                  // ⭐ บล็อกบรีฟงอกตามจำนวนกลิ่นที่ใบสั่งขายขาย — ไม่มีปุ่มเพิ่ม/ลบ
+                  // เพราะจำนวนคือสิ่งที่ลูกค้าจ่ายไปแล้ว · เปลี่ยน SO = เริ่มบรีฟใหม่
+                  const so = salesOrders.find((x) => x.id === v) || null;
+                  const count = so ? scentCountForOrder(so.lines || []) : null;
+                  set({
+                    salesOrderId: v,
+                    briefs: count ? Array.from({ length: count }, () => ({ label: "" })) : [],
+                  });
+                }}
                 options={salesOrders.map((so) => ({
                   value: so.id,
                   label: `${so.orderNumber || so.id}${so.customerName ? ` — ${so.customerName}` : ""}`,
@@ -421,6 +440,7 @@ export default function RequestForm({
             onChange={(e) => set({ title: e.target.value })}
           />
         </div>
+        {!hasPdr && (
         <div className="form-group col-span-2">
           <label htmlFor="req-body">{copy.bodyLabel}</label>
           <Textarea
@@ -436,7 +456,23 @@ export default function RequestForm({
             วาง URL หรือรหัสเอกสาร (เช่น QT-26080001) ลงไปได้ — ระบบทำเป็นลิงก์ให้เอง
           </small>
         </div>
+        )}
       </div>
+
+      {/* ⭐ หัวข้อที่ใช้แบบฟอร์ม PDR ใช้มันแทนช่องรายละเอียดธรรมดา — ธง `hasPdr`
+          มาจากทะเบียนหัวข้อ ไม่ใช่การเทียบชื่อหัวข้อในฟอร์ม (มี ratchet ห้ามไว้) */}
+      {hasPdr && (
+        <PdrForm
+          value={value.pdr || emptyPdr()}
+          onChange={(pdr) => set({ pdr })}
+          briefs={value.briefs || []}
+          onBriefsChange={(briefs) => set({ briefs })}
+          disabled={disabled}
+          scentCount={scentCount}
+          customer={selectedSo?.customerName || ""}
+          deal={soDeal ? `${soDeal.code || soDeal.id}` : ""}
+        />
+      )}
 
       {/* ⭐ อยู่ตรงที่ช่อง "แนบไฟล์" เคยอยู่ในสายตาผู้ใช้ — ต่อจากรายละเอียด ซึ่งเป็น
           จังหวะที่คนเพิ่งเขียนบรีฟเสร็จแล้วนึกถึงไฟล์อ้างอิงพอดี · ไปวางท้ายสุดเมื่อไร
