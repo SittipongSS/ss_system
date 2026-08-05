@@ -5,6 +5,7 @@
 // เคยเข้าได้ และไม่มีอะไรบนหน้าจอบอกว่าหายไป
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   REQUEST_ANSWER_DEPARTMENTS, ROLES, canAnswerRequestsFor, canViewCosting, canViewRequests,
 } from '../permissions.js';
@@ -68,4 +69,31 @@ test('ผู้ดูแลระบบยังเป็น break-glass ขอ�
   // (FN เปิดแล้วใน P7-FN2 · ฝ่ายโรงงานอื่นยังไม่มีคิวคำร้องของตัวเอง)
   assert.ok(!canAnswerRequest(admin, { dept: 'PD' }));
   assert.ok(!canAnswerRequest(admin, { dept: null }));
+});
+
+// ── หน้าจอต้องถามคำถามเดียวกับ API ──────────────────────────────────────
+test('🐞 ฝ่ายบัญชีต้องกดปุ่มบนรางได้จริง ไม่ใช่ผ่านแค่ API', () => {
+  // ⚠️ **บั๊กที่ปิดตรงนี้:** R-1 แก้ `canAnswerRequest` (ฝั่ง API) แต่หน้าจอสามจุด
+  // ยังถาม `canQuoteMaterial` อยู่ ⇒ FN ยิง API ผ่าน แต่บนจอเห็นแต่ป้าย "รอฝ่าย
+  // ปลายทางรับเรื่อง" และกดอะไรไม่ได้เลย · เขียวทั้ง CI เพราะไม่มีเทสต์ไหนถาม
+  // คำถามนี้ — เจอตอนไล่โค้ดสาย SA↔RD ไม่ใช่ตอนเทสต์
+  const fn = { id: 'U7', role: 'staff', department: 'FN' };
+  const request = { dept: 'FN', requestedById: 'someone-else' };
+
+  // `owner` ของหน้ารายละเอียด และ `isDept` ของ nextStepForRow ใช้ตัวนี้ตัวเดียวกัน
+  assert.ok(canAnswerRequestsFor(fn, request.dept));
+  assert.ok(canAnswerRequest(fn, request));
+});
+
+test('ratchet: ระบบคำร้องห้ามถาม "ตอบราคาได้ไหม" แทน "รับคำร้องได้ไหม"', () => {
+  const files = [
+    'src/lib/requests/rowStage.js',
+    'src/app/requests/page.js',
+    'src/app/requests/[id]/page.js',
+  ];
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    // อนุญาตในคอมเมนต์ (อธิบายของเดิม) แต่ห้ามเรียกจริง
+    assert.ok(!/canQuoteMaterial\(/.test(src), `${file}: ยังเรียก canQuoteMaterial อยู่`);
+  }
 });

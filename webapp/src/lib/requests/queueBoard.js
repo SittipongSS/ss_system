@@ -87,7 +87,7 @@ export const QUEUE_TABS = [
 
 // แถวของแต่ละแท็บ
 //
-// ⚠️ `myDepts` มาจากผู้เรียก (หน้าจอคำนวณจาก canQuoteMaterial) — ฟังก์ชันนี้ไม่
+// ⚠️ `myDepts` มาจากผู้เรียก (หน้าจอคำนวณจาก canAnswerRequestsFor) — ฟังก์ชันนี้ไม่
 // ตัดสินสิทธิ์เอง มันแค่จัดกลุ่มสิ่งที่ server ส่งมาแล้ว · ด่านจริงอยู่ที่ API
 export function queueTabRows(rows = [], { tab, myDepts = [] } = {}) {
   if (tab === 'mine') return rows.filter((r) => r._mine);
