@@ -264,6 +264,7 @@ test('อ้างอิงบนใบเสนอราคา: แยกรห
     'เลขที่โครงการ', 'โครงการ', 'ประเภทโครงการ', 'ผู้เสนอราคา',
   ]);
   assert.ok(!labels.includes('โครงการหลัก'));
+  // "ผู้จัดทำ" เป็นช่องเซ็น ไม่ใช่แถวอ้างอิง
   assert.ok(!labels.includes('ผู้จัดทำ'));
   assert.equal(refRow(model, 'เลขที่โครงการ'), 'PJ-26070038');
   assert.equal(refRow(model, 'โครงการ'), 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
@@ -274,36 +275,55 @@ test('อ้างอิงบนใบเสนอราคา: แยกรห
   assert.ok(!labels.includes('ดีล'));
 });
 
-// ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
-test('ผู้เสนอราคา = AE เจ้าของดีล และเป็นบทบาทฝ่ายขายเดียวบนเอกสาร', () => {
+// ⚠️ สองบทบาทนี้เคยถูกยุบเป็นค่าเดียวกันมาแล้ว 2 รอบ ทดสอบจึงตั้งชื่อคนละคนเสมอ:
+// "ผู้เสนอราคา" (บล็อกอ้างอิง) = AE เจ้าของดีล · "ผู้จัดทำ" (ช่องเซ็น) = คนที่ทำใบจริง
+test('ผู้เสนอราคาในอ้างอิง กับ ผู้จัดทำในช่องเซ็น ต้องแยกที่มากัน', () => {
   const model = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
-    createdByName: 'ผู้ช่วยที่กดยื่น',
+    createdByName: 'คนทำใบ',
     deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' },
   });
   assert.equal(refRow(model, 'ผู้เสนอราคา'), 'เอเจ้าของดีล');
-  // ชื่อคนกดยื่นต้องไม่โผล่บนเอกสารในฐานะบทบาทอีกต่อไป
-  assert.ok(!model.referenceRows.some((row) => row.value === 'ผู้ช่วยที่กดยื่น'));
-  // ช่องลงนามฝ่ายขายชื่อ "ผู้เสนอราคา" · ยังไม่เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น
-  assert.equal(model.signers[0].label, 'ผู้เสนอราคา');
-  assert.equal(model.signers[0].name, 'เอเจ้าของดีล');
+  // ชื่อคนทำใบเป็นของช่องเซ็น ห้ามหลุดไปอยู่ในบล็อกอ้างอิง
+  assert.ok(!model.referenceRows.some((row) => row.value === 'คนทำใบ'));
+  assert.equal(model.signers[0].label, 'ผู้จัดทำ');
+  assert.equal(model.signers[0].name, 'คนทำใบ');
   assert.equal(model.signers[1].label, 'ผู้อนุมัติเสนอราคา');
-  // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ (คนละบทบาท)
-  const noOwner = buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT);
-  assert.equal(refRow(noOwner, 'ผู้เสนอราคา'), '-');
-  assert.equal(noOwner.signers[0].name, '');
+  // ไม่มีคนทำใบ → เว้นว่าง ไม่ถอยไปใช้ชื่อ AE เจ้าของดีล (คนละบทบาท)
+  const noPreparer = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: null,
+    deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' },
+  });
+  assert.equal(noPreparer.signers[0].name, '');
+  // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ (ทิศทางกลับกัน)
+  assert.equal(refRow(buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, createdByName: 'คนทำใบ' }), 'ผู้เสนอราคา'), '-');
 });
 
-// ลายเซ็นต้องเป็นของคนที่เซ็นจริง ห้ามเอาชื่อ AE เจ้าของดีลไปแปะทับ
-test('มีหลักฐานการลงนาม → ช่องผู้เสนอราคาใช้ชื่อคนที่เซ็นจริง', () => {
+// ฉบับที่ตรึงแล้วเก็บชื่อผู้จัดทำไว้ใน metadata (issuedQuotationSnapshot) ไม่มี createdByName
+test('ไม่มี createdByName → ผู้จัดทำถอยไปใช้ metadata.preparedBy ของฉบับตรึง', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: null,
+    metadata: { ...QUOTE_WITH_PROJECT.metadata, preparedBy: 'คนทำใบฉบับตรึง' },
+  });
+  assert.equal(model.signers[0].name, 'คนทำใบฉบับตรึง');
+});
+
+// ลายเซ็นต้องเป็นของคนที่เซ็นจริง ห้ามเอาชื่อในระบบไปแปะทับ
+test('มีหลักฐานการลงนาม → ช่องผู้จัดทำใช้ชื่อคนที่เซ็นจริง', () => {
   const model = buildQuotationMasterModelFromQuote(
-    { ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' } },
+    {
+      ...QUOTE_WITH_PROJECT,
+      createdByName: 'คนทำใบ',
+      deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' },
+    },
     {
       proposerSignatureImage: 'data:image/png;base64,AAA',
       proposerEvidence: { id: 'EV-1', signerName: 'คนที่เซ็นจริง', signedAt: '2026-08-05' },
     },
   );
-  assert.equal(model.signers[0].label, 'ผู้เสนอราคา');
+  assert.equal(model.signers[0].label, 'ผู้จัดทำ');
   assert.equal(model.signers[0].esignature.signerName, 'คนที่เซ็นจริง');
 });
 

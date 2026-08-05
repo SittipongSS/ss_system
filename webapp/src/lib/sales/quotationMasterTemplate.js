@@ -112,8 +112,10 @@ const BASE_QUOTE = Object.freeze({
     projectName: 'Signature Bloom',
     dealTitle: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     dealType: 'SCENT',
-    // ผู้เสนอราคา = AE เจ้าของดีล (เอกสารไม่มีบทบาท "ผู้จัดทำ" แล้ว)
+    // ผู้เสนอราคา = AE เจ้าของดีล (บล็อกอ้างอิง) · ผู้จัดทำ = คนที่ลงมือทำใบ (ช่องเซ็น)
+    // ตัวอย่างตั้งเป็นคนละคนโดยตั้งใจ จะได้เห็นทันทีถ้าโค้ดเผลอเอาค่าหนึ่งไปใช้แทนอีกค่า
     salesOwner: 'กานติมา ธาดาธารกิจ',
+    preparedBy: 'ณัฐวุฒิ พงษ์ไพบูลย์',
   },
   paymentMethod: 'โอนเงินเข้าบัญชีธนาคารของบริษัทตามรายละเอียดท้ายใบเสนอราคา',
   paymentTerms: 'มัดจำ 50% เมื่อยืนยันคำสั่งซื้อ และชำระส่วนที่เหลือก่อนส่งมอบสินค้า',
@@ -582,7 +584,7 @@ function toSalesOrderPreviewModel(model, state, standard) {
       // ⚠️ ช่องลงนามของ SO เป็นชุดของตัวเอง (มติผู้ใช้ 2026-07-18: ผู้จัดทำ=AE ·
       // ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี) — ห้ามลอกคำของใบเสนอราคามาใส่
       // ต้องตรงกับ signers ที่ salesOrderPrint.js ส่งตอนพิมพ์จริง
-      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.salesOwner },
+      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.preparedBy },
       { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
       { label: 'ฝ่ายบัญชี', role: 'Scent & Sense' },
     ],
@@ -685,9 +687,11 @@ export function buildQuotationMasterPreview(
     installments,
     signature: state === 'approved' ? { ...BASE_QUOTE.signature } : null,
     signers: [
+      // ⚠️ ช่องแรกคือ "ผู้จัดทำ" ใช้ preparedBy ไม่ใช่ salesOwner — ต้องตรงกับ signers
+      // ที่ buildQuotationMasterModel สร้างตอนพิมพ์จริง
       state === 'approved'
-        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.salesOwner, signerRole: '' } }
-        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: BASE_QUOTE.references.salesOwner },
+        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.preparedBy, signerRole: '' } }
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: BASE_QUOTE.references.preparedBy },
       { label: 'ผู้อนุมัติเสนอราคา', role: 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
@@ -773,6 +777,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
   // (มติผู้ใช้ 2026-08-05): ผู้เสนอราคา = AE เจ้าของดีล — เอกสารไม่มีบทบาท "ผู้จัดทำ" แล้ว
   const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || '-';
+  // ผู้จัดทำ = คนที่กดสร้าง/แก้ใบ ตรึงไว้ตอนสร้างร่าง (createQuotationDraft + revise)
+  // metadata.preparedBy คือค่าที่ตรึงในฉบับ snapshot (issuedQuotationSnapshot ใช้คู่เดียวกัน)
+  const preparedBy = quote.createdByName || quote.metadata?.preparedBy || '';
 
   const firstCapacity = v4FirstCapacity(customer);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
@@ -832,9 +839,6 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     customer,
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
-      // คู่ "โครงการหลัก / โครงการย่อย" ใช้ **เฉพาะบนเอกสาร** — ในแอปยังเรียก
-      // โครงการ/ดีล เหมือนเดิม (มติผู้ใช้ 2026-08-04, ปรับคำ 2026-08-05) เพราะลูกค้า
-      // เห็นใบนี้แล้วมองว่าดีลคืองานย่อยใต้โครงการ ไม่ใช่คำศัพท์ฝ่ายขาย
       // "โครงการ" บนเอกสาร = ดีล (มติผู้ใช้ 2026-08-05) — ลูกค้ามองงานที่สั่งเป็นโครงการ
       // ของตัวเอง ไม่ได้แยกชั้นโครงการแม่/ดีลแบบที่ฝ่ายขายใช้ · เลขที่โครงการยังเป็นรหัส
       // PJ ของโครงการแม่ ซึ่งเป็นเลขที่ที่อ้างอิงกันจริงทั้งสองฝั่ง
@@ -845,28 +849,27 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
     signers: options.signers || [
-      // เอกสารเหลือบทบาทฝ่ายขายเดียวคือ "ผู้เสนอราคา" (มติผู้ใช้ 2026-08-05) — ตัดผู้จัดทำ
-      // ออกทั้งบล็อกอ้างอิงและช่องเซ็น จึงไม่มีคำซ้ำชี้คนละคนอีก
-      // ⚠️ ชื่อในช่อง: มีหลักฐานการลงนามเมื่อไร ใช้ชื่อ "คนที่เซ็นจริง" เสมอ
-      // (evidence.signerName) ห้ามเอาชื่อ AE เจ้าของดีลไปแปะทับลายเซ็นของคนอื่น ·
-      // ยังไม่เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น
+      // ช่องแรก = "ผู้จัดทำ" คนที่ลงมือทำใบนี้จริง (มติผู้ใช้ 2026-08-05) — คนละคนกับ
+      // "ผู้เสนอราคา" ในบล็อกอ้างอิงซึ่งเป็น AE เจ้าของดีลได้ ห้ามเอา salesOwner มาเป็น
+      // ค่าสำรองของช่องนี้ เพราะจะกลายเป็นชื่อคนที่ไม่ได้ทำใบไปยืนคู่ลายเซ็น
+      // ⚠️ มีหลักฐานการลงนามเมื่อไร ใช้ชื่อ "คนที่เซ็นจริง" (evidence.signerName) มาก่อน
       // ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนาม →
       // โชว์วันที่ + Evidence เหมือนช่องผู้อนุมัติ (options.proposerEvidence);
       // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signBox ข้าม 2 บรรทัดนั้นให้เอง;
       // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
         ? {
-          label: 'ผู้เสนอราคา',
+          label: 'ผู้จัดทำ',
           role: 'พนักงานขาย',
           esignature: {
             imageDataUri: options.proposerSignatureImage,
-            signerName: options.proposerEvidence?.signerName || (salesOwner === '-' ? '' : salesOwner),
+            signerName: options.proposerEvidence?.signerName || preparedBy,
             signerRole: '',
             signedAt: options.proposerEvidence?.signedAt ? fmtDate(options.proposerEvidence.signedAt) : '',
             evidenceId: options.proposerEvidence?.id || '',
           },
         }
-        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: preparedBy },
       { label: 'ผู้อนุมัติเสนอราคา', role: 'Authorized signature', esignature: signature },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
