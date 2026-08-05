@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canLinkTaskToDeal, taskDealScope } from './taskDealScope.js';
+import { canLinkTaskToDeal, requiresDealLink, taskDealScope } from './taskDealScope.js';
 
 test('task deal linking is limited to the user team', () => {
   const user = { role: 'ae', team: 'KA' };
@@ -13,6 +13,20 @@ test('task deal linking is limited to the user team', () => {
 test('users without a team cannot manually link a deal', () => {
   assert.equal(canLinkTaskToDeal({ role: 'rd', team: null }, { team: 'KA' }), false);
   assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'none', team: null });
+});
+
+test('sales staff must link every task to a deal', () => {
+  // ฝ่ายอนุมานจาก role ได้ด้วย — บัญชีส่วนใหญ่ไม่ได้ตั้ง department ไว้ตรง ๆ
+  assert.equal(requiresDealLink({ role: 'ae', team: 'KA' }), true);
+  assert.equal(requiresDealLink({ role: 'ac', team: 'ODM' }), true);
+  assert.equal(requiresDealLink({ role: 'ae_supervisor', department: 'SALES' }), true); // ค่าเก่าก่อนย่อโค้ด
+});
+
+test('departments without deals of their own are not forced to link', () => {
+  assert.equal(requiresDealLink({ role: 'rd', team: null }), false);
+  assert.equal(requiresDealLink({ role: 'staff', department: 'PC' }), false);
+  assert.equal(requiresDealLink({ role: 'admin' }), false);
+  assert.equal(requiresDealLink(null), false);
 });
 
 test('superusers retain cross-team administration access', () => {

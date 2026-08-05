@@ -4,7 +4,7 @@ import { recordAudit } from '@/lib/audit';
 import { can, canAssignTask, isReadOnlyObserver } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canViewRequest } from '@/lib/deptRequests';
-import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
+import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { appendUpdate } from '@/lib/master/updates';
 import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 
@@ -109,6 +109,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const { data: proj, error: projError } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
     if (projError) return fail(projError.message, 500);
     if (!proj) return badRequest('ไม่พบโครงการ');
+  }
+
+  // ฝ่ายขาย (SA) ต้องผูกดีลทุกงาน — ตัวเลือก "ไม่ผูก" ถูกถอดออกจากฟอร์มแล้ว
+  // ยกเว้นงานที่สร้างจากคำร้อง: ดีลมาจากคำร้องต้นทาง ซึ่งบางหัวข้อไม่ผูกดีล
+  // โดยเจตนา (เช่น ขอราคา F/FB) — คนสร้างงานเลือกเองไม่ได้ จึงบังคับไม่ได้
+  if (!dealId && !inquiryRecord && requiresDealLink(user)) {
+    return badRequest('งานของฝ่ายขายต้องผูกดีล — เลือกดีลก่อนบันทึก');
   }
 
   const status = body.status || 'Pending';
