@@ -3,6 +3,7 @@
 // (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
 import { fmtDate } from '@/lib/format';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
+import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
 import {
   getDocumentStandardsForPrint,
@@ -108,14 +109,19 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
     secondaryLabel: 'กำหนดชำระ',
     secondaryValue: order.paymentDueDate ? fmtDate(order.paymentDueDate) : '-',
-    // โครงการมาก่อนดีลเสมอ และดีลเรียกว่า "โครงการย่อย" **เฉพาะบนเอกสาร** — ในแอปยัง
-    // เรียก "ดีล" เหมือนเดิม (มติผู้ใช้ 2026-08-04) · ต้องตรงกับใบเสนอราคาซึ่งเป็นใบ
-    // ต้นทางของ SO ไม่งั้นลูกค้าได้สองใบที่เรียกของอย่างเดียวกันคนละชื่อ คนละลำดับ
+    // ชุดอ้างอิงต้องตรงกับใบเสนอราคาซึ่งเป็นใบต้นทางของ SO ไม่งั้นลูกค้าได้สองใบที่
+    // เรียกของอย่างเดียวกันคนละชื่อ คนละลำดับ (มติผู้ใช้ 2026-08-04, แยกช่อง 08-05)
+    // ผู้เสนอราคา = AE เจ้าของดีล · ผู้จัดทำ = คนที่ทำใบและกดขอยื่น — คนละบทบาท
+    // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ
     referenceRows: [
       { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
       { label: 'สถานะเอกสาร', value: statusLabel },
+      { label: 'เลขที่โครงการ', value: order.project?.code || '-' },
       { label: 'โครงการหลัก', value: order.project?.name || '-' },
       { label: 'โครงการย่อย', value: order.deal?.title || '-' },
+      { label: 'ประเภทโครงการ', value: (order.deal && dealTypeOf(order.deal)) || '-' },
+      { label: 'ผู้เสนอราคา', value: order.deal?.ownerName || '-' },
+      { label: 'ผู้จัดทำ', value: order.createdByName || '-' },
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [

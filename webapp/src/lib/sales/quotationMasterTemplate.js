@@ -569,11 +569,17 @@ function toSalesOrderPreviewModel(model, state, standard) {
       dateLabel: 'วันที่ SO',
       secondaryLabel: 'กำหนดชำระ',
     },
+    // ⚠️ ต้องตรงกับ referenceRows ที่ salesOrderPrint.js ส่งเข้ามาตอนพิมพ์จริง —
+    // นี่เป็นคนละเส้นทางกัน พรีวิวเคยหลุดไม่ตามใบจริงมาแล้วสองรอบ (คำเรียก + ลำดับ)
     referenceRows: [
       { label: 'อ้างอิง QT', value: qtNumber },
       { label: 'สถานะเอกสาร', value: PREVIEW_STATUS_LABELS[state] || state },
-      { label: 'โครงการหลัก', value: model.references.project },
-      { label: 'โครงการย่อย', value: model.references.deal },
+      { label: 'เลขที่โครงการ', value: BASE_QUOTE.references.projectCode },
+      { label: 'โครงการหลัก', value: BASE_QUOTE.references.projectName },
+      { label: 'โครงการย่อย', value: BASE_QUOTE.references.dealTitle },
+      { label: 'ประเภทโครงการ', value: BASE_QUOTE.references.dealType },
+      { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
+      { label: 'ผู้จัดทำ', value: BASE_QUOTE.references.preparedBy },
     ],
     signers: [
       { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.salesOwner },
