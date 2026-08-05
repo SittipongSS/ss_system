@@ -7,6 +7,11 @@ const materialEta = {
   dept: 'PC', scope: 'RQ', hasItems: false,
   needs: [],
   stepKey: 'npd-38',
+  form: {
+    titlePlaceholder: 'เช่น ขออัปเดตกำหนดของเข้าล็อตเดือนนี้',
+    bodyLabel: 'รายละเอียด',
+    bodyPlaceholder: 'ของกลุ่มไหน · ต้องใช้ผลิตวันไหน',
+  },
   hint: 'ขอให้ฝ่ายจัดซื้ออัปเดตกำหนดของเข้าทั้งชุด',
 };
 

@@ -15,6 +15,11 @@ const scentBrief = {
   dept: 'RD', scope: 'SB', hasItems: false,
   needs: ['salesOrder'],
   stepKey: 'scent-06', dealType: 'SCENT',
+  form: {
+    titlePlaceholder: 'เช่น บรีฟกลิ่นสำหรับ Reed Diffuser',
+    bodyLabel: 'บรีฟกลิ่น',
+    bodyPlaceholder: 'โทนกลิ่นที่ต้องการ · กลุ่มลูกค้า · ตัวอย่างอ้างอิง · ข้อจำกัด',
+  },
   hint: 'ต้องมีใบสั่งขายออกแบบกลิ่นก่อน (ค่าบริการ) — ปิดเรื่องแล้วกลิ่นเข้าทะเบียน',
 };
 
@@ -28,6 +33,12 @@ const mockup = {
   // หัวข้อ "พัฒนาผลิตภัณฑ์" แทน
   needs: ['project', 'deal', 'scent'],
   stepKey: 'npd-15', dealType: 'NPD',
+  form: {
+    titlePlaceholder: 'เช่น ขอ Mock-up ขวด 30 ml พร้อมฉลาก',
+    bodyLabel: 'รายละเอียด',
+    bodyPlaceholder: 'รูปแบบที่ต้องการ · ขนาด · ข้อจำกัด',
+    scentLabel: 'กลิ่นที่ลูกค้ามีอยู่',
+  },
   hint: 'ขอตัวอย่างจริงจาก RD — อ้างกลิ่นที่ลูกค้ามีและประเภทสินค้าที่จะขึ้น',
 };
 

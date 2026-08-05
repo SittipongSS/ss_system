@@ -97,10 +97,13 @@ export const emptyRequestForm = (over = {}) => ({
 // รายการที่ต้องมีเมื่อหัวข้อเป็นชนิดขอราคา — ชนิดวัสดุมาจากหัวข้อ ไม่ให้เลือกซ้ำ
 // (ไม่ export: ใช้เฉพาะในไฟล์นี้ · export ที่ไม่มีผู้เรียกคือโค้ดตายที่ lint ไม่จับ)
 function itemsForKind(kind, existing = []) {
-  // ⚠️ บรรทัดของพัฒนาผลิตภัณฑ์เป็นคนละรูปร่าง — สลับหัวข้อมาแล้วต้องเริ่มใหม่
-  // ไม่ใช่ลากบรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
-  if (kind === 'product_dev') return [emptyProductDevRow()];
-  if (kind === 'document' || kind === 'billing_doc') return [emptyDocumentRow()];
+  // ⚠️ บรรทัดแต่ละรูปร่างเป็นคนละโครง — สลับหัวข้อมาแล้วต้องเริ่มใหม่ ไม่ใช่ลาก
+  // บรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
+  // ⭐ ตัดสินจาก **รูปร่างบรรทัด** ไม่ใช่ชื่อหัวข้อ — ฝ่ายที่เพิ่มหัวข้อใหม่ที่ใช้รูปร่าง
+  // เดิมจะได้แถวเปล่าถูกชนิดทันที โดยไม่ต้องมาต่อชื่อหัวข้อไว้ในฟอร์ม
+  const shape = lineShapeForKind(kind);
+  if (shape === 'product_dev') return [emptyProductDevRow()];
+  if (shape === 'document' || shape === 'billing_doc') return [emptyDocumentRow()];
   const materialKind = materialKindForRequest(kind);
   if (!materialKind) return [];
   const rows = existing.length ? existing : [emptyAskItem(materialKind)];
@@ -126,6 +129,10 @@ export default function RequestForm({
   const items = value.items || [];
   const kind = value.kind || "";
   const meta = requestKindMeta(kind) || {};
+  // ⭐ ข้อความทุกช่องมาจาก **ทะเบียนหัวข้อ** ไม่ใช่ `kind === "..."` ในฟอร์ม
+  // (ของเดิมผูกกับหัวข้อเก่าที่เปิดใบใหม่ไม่ได้แล้ว หัวข้อที่ใช้จริงเลยไม่เคยได้ข้อความ
+  //  ของตัวเอง) · ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว จึงอ่านตรง ๆ ได้ไม่ต้อง fallback
+  const copy = meta.form || {};
   const hasItems = requestHasItems(kind);
   // รูปร่างบรรทัดมาจากทะเบียนหัวข้อที่เดียว — ฟอร์มไม่เช็ค `kind === "..."` เอง
   const lineShape = lineShapeForKind(kind);
@@ -376,25 +383,21 @@ export default function RequestForm({
       {/* ── 4) ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────────────────────── */}
       <div className="form-grid">
         <div className="form-group col-span-2">
-          <label htmlFor="req-title">ชื่อเรื่อง</label>
+          <label htmlFor="req-title">{copy.titleLabel}</label>
           <input
             id="req-title" className="premium-input" maxLength={200}
             value={value.title} disabled={disabled}
-            placeholder={kind === "scent_brief" ? "เช่น บรีฟกลิ่นสำหรับ Reed Diffuser"
-              : kind === "mockup" ? "เช่น ขอ Mock-up ขวด 30 ml พร้อมฉลาก"
-                : "สรุปสั้น ๆ ว่าขออะไร"}
+            placeholder={copy.titlePlaceholder}
             onChange={(e) => set({ title: e.target.value })}
           />
         </div>
         <div className="form-group col-span-2">
-          <label htmlFor="req-body">รายละเอียด</label>
+          <label htmlFor="req-body">{copy.bodyLabel}</label>
           <Textarea
             variant="data"
             id="req-body" rows={4} maxLength={4000}
             value={value.body} disabled={disabled}
-            placeholder={kind === "scent_brief"
-              ? "โทนกลิ่นที่ต้องการ · กลุ่มลูกค้า · ตัวอย่างอ้างอิง · ข้อจำกัด"
-              : "อธิบายสิ่งที่ต้องการให้ฝ่ายปลายทางทำ"}
+            placeholder={copy.bodyPlaceholder}
             onChange={(e) => set({ body: e.target.value })}
           />
           {/* วางลิงก์หรือรหัสเอกสารในรายละเอียดได้เลย — เธรดเรนเดอร์เป็นลิงก์ให้เอง
@@ -419,7 +422,7 @@ export default function RequestForm({
       {needsScent && (
         <div className="form-group">
           <span className={styles.fieldLabel}>
-            {kind === "mockup" ? "กลิ่นที่ลูกค้ามีอยู่" : "กลิ่นที่ลูกค้าคอนเฟิร์ม"}
+            {copy.scentLabel}
           </span>
           <SearchableSelect
             value={value.scentId} disabled={disabled}
@@ -432,7 +435,7 @@ export default function RequestForm({
             placeholder="เลือกกลิ่นจากทะเบียน"
             emptyText="ยังไม่มีกลิ่นที่รับเข้าทะเบียน"
             // ต้องตรงกับป้ายที่มองเห็น — Mock-up ไม่ได้ขอราคา มันอ้างกลิ่นที่ลูกค้ามี
-            ariaLabel={kind === "mockup" ? "กลิ่นที่อ้างอิงสำหรับ Mock-up" : "กลิ่นที่ขอราคา"}
+            ariaLabel={copy.scentLabel}
           />
         </div>
       )}
@@ -467,7 +470,7 @@ export default function RequestForm({
 
       {needsFormula && (
         <div className="form-group">
-          <span className={styles.fieldLabel}>สูตรที่ลูกค้าคอนเฟิร์ม</span>
+          <span className={styles.fieldLabel}>{copy.formulaLabel}</span>
           <SearchableSelect
             value={value.formulaId} disabled={disabled}
             onChange={(v) => {
@@ -496,7 +499,7 @@ export default function RequestForm({
           ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
       {lineShape === "product_dev" && (
         <div className="form-group">
-          <span className={styles.fieldLabel}>รายการที่ขอ — 1 บรรทัด = หมวดสินค้า × กลิ่น</span>
+          <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           <ProductDevLines
             rows={items.length ? items : [emptyProductDevRow()]}
             onChange={(rows) => set({ items: rows })}
@@ -511,11 +514,7 @@ export default function RequestForm({
       {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
       {(lineShape === "document" || lineShape === "billing_doc") && (
         <div className="form-group">
-          <span className={styles.fieldLabel}>
-            {lineShape === "billing_doc"
-              ? "เอกสารการเงินที่ขอ — 1 บรรทัด = 1 ใบ"
-              : "เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด"}
-          </span>
+          <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
               คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
           <DocumentLines
@@ -549,7 +548,7 @@ export default function RequestForm({
 
           <div className="form-group">
             <span className={styles.fieldLabel}>
-              รายการที่ขอราคา — {MATERIAL_KIND_LABELS[materialKindForRequest(kind)]}
+              {copy.itemsLabel} — {MATERIAL_KIND_LABELS[materialKindForRequest(kind)]}
             </span>
             {/* ชนิดวัสดุมาจากหัวข้อแล้ว จึงไม่มี Select ชนิดต่อบรรทัดอีก และไม่มีทาง
                 ปนฝ่ายกันได้โดยโครงสร้าง (เดิมเป็นกฎที่ผู้ใช้ต้องระวังเอง) */}
