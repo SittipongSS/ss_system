@@ -10,6 +10,8 @@ const scentDev = {
   dept: 'RD', scope: 'SB', hasItems: false,
   // SO เท่านั้น — โครงการ/ดีล/ลูกค้าเติมจาก SO เอง ไม่ให้เลือกซ้ำแล้วขัดกัน
   needs: ['salesOrder'],
+  // ⭐ หัวข้อนี้ใช้แบบฟอร์ม PDR (FM-RD-01) แทนช่องรายละเอียดธรรมดา
+  hasPdr: true,
   stepKey: 'scent-06', dealType: 'SCENT',
   form: {
     titlePlaceholder: 'เช่น บรีฟกลิ่นสำหรับ Reed Diffuser',

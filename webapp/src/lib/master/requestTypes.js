@@ -89,6 +89,11 @@ export function requestKindLabel(kind) {
   return REQUEST_KINDS[kind]?.label || kind || '—';
 }
 
+// หัวข้อนี้ใช้แบบฟอร์ม PDR ไหม — ฟอร์มอ่านธงจากทะเบียน ไม่เช็คชื่อหัวข้อเอง
+export function requestHasPdr(kind) {
+  return !!REQUEST_KINDS[kind]?.hasPdr;
+}
+
 export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }
