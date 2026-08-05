@@ -259,7 +259,9 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
   const customerName = project.customerName || project.customer || '';
   // ผู้ตรวจสอบ = aeSupervisor (field เดียวที่ฟอร์ม/หัวเอกสาร/ช่องลงชื่อใช้ร่วมกัน)
   // fallback reviewedBy ไว้รองรับข้อมูลเก่าที่เคยบันทึกผ่านช่องลงชื่อหน้า Gantt.
-  // ผู้จัดทำ = preparedBy, ผู้ดูแล = aeOwner.
+  // ผู้ประสานงาน (AC) = preparedBy, ผู้ดูแล (AE) = aeOwner — ช่องเซ็นเลิกใช้คำว่า
+  // "ผู้จัดทำ" แล้ว (มติผู้ใช้ 2026-08-05) เพราะใบสั่งขายใช้คำนั้นกับ AE เจ้าของดีล
+  // คนละบทบาทกับ AC ที่ประสานงานโครงการ · ชื่อ field ยังเป็น preparedBy ตามสคีมาเดิม
   const reviewerName = project.aeSupervisor || project.reviewedBy || '';
   const preparerName = project.preparedBy || '';
   // เบอร์มือถือ + อีเมล ของ AE ผู้ดูแล — ดึงจากข้อมูลผู้ใช้ (เติมมาจากหน้า page
@@ -384,12 +386,12 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
     </div>`;
-  // แถวบน 3 ช่อง (มติผู้ใช้ 2026-07-18): ผู้ดูแล (AE) / ผู้จัดทำ (AC) / ผู้ตรวจสอบ
+  // แถวบน 3 ช่อง (มติผู้ใช้ 2026-07-18, ปรับคำ 08-05): ผู้ดูแล (AE) / ผู้ประสานงาน (AC) / ผู้ตรวจสอบ
   const signatures = `
     <div class="sign-sec">
       <div class="sign-row three">
         ${signBox({ label: 'ผู้ดูแล', role: 'ACCOUNT EXECUTIVE', name: project.aeOwner || '' })}
-        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
+        ${signBox({ label: 'ผู้ประสานงาน', role: 'ACCOUNT COORDINATOR', name: preparerName })}
         ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
       </div>
       ${signDepts.length ? `<div class="sign-row three">${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}</div>` : ''}

@@ -25,8 +25,9 @@ export function dealTimelineDocument(deal = {}, overview = {}) {
     productName: deal.title || '',
     customerName: deal.customerName || deal.customer?.name || '',
     aeOwner: deal.ownerName || deal.metadata?.aeOwner || '',
-    // ผู้จัดทำ = AC เท่านั้น — ไม่ fallback เป็นเจ้าของดีล (AE) ที่ทำให้เอกสารระบุ
-    // AE เป็น "ผู้จัดทำ (AC)" ผิด. ว่างไว้ถ้ายังไม่ได้ระบุ AC.
+    // ช่อง "ผู้ประสานงาน (AC)" บนไทม์ไลน์ — ไม่ fallback เป็นเจ้าของดีล (AE) ที่ทำให้
+    // เอกสารระบุ AE เป็น AC ผิด. ว่างไว้ถ้ายังไม่ได้ระบุ AC.
+    // (ชื่อ field ยังเป็น preparedBy ตามสคีมาเดิม — คำบนเอกสารเปลี่ยน สคีมาไม่เปลี่ยน)
     preparedBy: deal.metadata?.preparedBy || '',
     aeSupervisor: deal.metadata?.aeSupervisor || '',
     startDate: deal.startDate || '',

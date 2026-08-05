@@ -60,6 +60,21 @@ test('เลขที่เอกสารเดินตาม Rev ปัจจ
   assert.match(html, /<dt>รหัสโครงการ<\/dt><dd>PJ-26080012-2<\/dd>/);
 });
 
+// ใบสั่งขายใช้คำว่า "ผู้จัดทำ" กับ AE เจ้าของดีล — ไทม์ไลน์จึงเลิกใช้คำเดียวกันกับ AC
+// ที่เป็นคนละบทบาท (มติผู้ใช้ 2026-08-05)
+test('ช่องเซ็นไทม์ไลน์เรียก AC ว่า "ผู้ประสานงาน" ไม่ใช่ "ผู้จัดทำ"', () => {
+  const html = buildGanttPrintHTML(
+    { ...PROJECT, aeOwner: 'เอผู้ดูแล', preparedBy: 'เอซีผู้ประสานงาน', aeSupervisor: 'หัวหน้า' },
+    [], {},
+  );
+  const signs = html.slice(html.indexOf('sign-sec'));
+  assert.match(signs, /ผู้ประสานงาน[\s\S]*?ACCOUNT COORDINATOR/);
+  assert.ok(!signs.includes('ผู้จัดทำ'));
+  // อีกสองช่องไม่กระทบ
+  assert.match(signs, /ผู้ดูแล[\s\S]*?ACCOUNT EXECUTIVE/);
+  assert.match(signs, /ผู้ตรวจสอบ[\s\S]*?AE SUPERVISOR/);
+});
+
 test('ไทม์ไลน์ของดีลที่ยังไม่มีโครงการจริง — ไม่มีเลขที่เอกสาร โชว์รหัสต้นทางเหมือนเดิม', () => {
   const html = buildGanttPrintHTML(
     { ...PROJECT, code: 'DL-26080003', rev: null, timelineDocBase: null, timelineDocNumber: null },

@@ -121,11 +121,16 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
       { label: 'ประเภทโครงการ', value: (order.deal && dealTypeOf(order.deal)) || '-' },
       { label: 'ผู้เสนอราคา', value: order.deal?.ownerName || '-' },
     ],
-    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
+    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18, ปรับ 2026-08-05):
+    // ผู้จัดทำ = AE เจ้าของดีล · ผู้อนุมัติ = ผู้จัดการฝ่ายขาย · ฝ่ายบัญชี
+    // ⚠️ ช่องผู้จัดทำยังไม่ได้เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น (ไม่ใช่ชื่อคนกดสร้างใบ
+    // อย่างที่เป็นมา) แต่ "เซ็นแล้ว" เมื่อไรใช้ชื่อคนที่เซ็นจริงจาก evidence เสมอ — ลายเซ็น
+    // ที่ระบบ stamp มาเป็นของผู้สร้างใบ เอาชื่อเจ้าของดีลไปแปะทับจะได้ชื่อคนหนึ่งคู่ลายมือ
+    // อีกคน (กติกาเดียวกับช่องผู้จัดทำในใบเสนอราคา)
     signers: [
       proposerEsignature
-        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: proposerEsignature }
-        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
+        ? { label: 'ผู้จัดทำ', role: 'ฝ่ายขาย', esignature: proposerEsignature }
+        : { label: 'ผู้จัดทำ', role: 'ฝ่ายขาย', name: order.deal?.ownerName || '' },
       approverEsignature
         ? { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', esignature: approverEsignature }
         : { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
