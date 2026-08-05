@@ -243,25 +243,27 @@ test('formulaForcePreview: เตือนว่าสินค้าจะก�
   assert.ok(notes.some((n) => n.includes('รอจัดระเบียบ')));
 });
 
-test('materialForcePreview: บรรทัดคำร้อง/ใบขอราคาผลิตเป็น RESTRICT → blocked ตั้งแต่พรีวิว', async () => {
-  // 🔴 FK สองตัวนี้เป็น ON DELETE RESTRICT (0158/0159) — break-glass ข้ามไม่ได้
-  // ถ้าพรีวิวไม่บอก ผู้ดูแลระบบจะกดยืนยันแล้วไปเจอ error ดิบจาก Postgres
-  // (โรคเดียวกับใบยื่นภาษีของ QT/SO ที่ exciseFilingBlockMessage แก้ไปแล้ว)
+test('materialForcePreview: มีคนอ้าง → ลบได้ (mig 0210) แต่ต้องแยก "ลบ" กับ "ปลด" ให้ชัด', async () => {
+  // ⭐ เดิมพรีวิวตอบ blocked ทันทีที่มีคนอ้าง → ผู้ดูแลระบบลบวัสดุไม่ได้เลยสักตัว
+  // (วัสดุเกือบทุกตัวเกิดจากบรรทัดคำร้อง จึงมีคนอ้างเสมอ) · 0210 เปิดช่อง force ให้
+  // ทั้ง trigger รุ่นราคาและ FK RESTRICT ทั้งสองตัวแล้ว
   const byRequest = await materialForcePreview(
     stubCount({ 'dept_request_items:materialId': 3, 'material_price_revisions:materialId': 5 }),
     { id: 'MAT-1', status: 'active' },
   );
-  assert.equal(byRequest.blocked, true);
-  assert.deepEqual(byRequest.cascade, [], 'blocked แล้วต้องไม่โชว์รายการลบพ่วงให้เข้าใจผิด');
-  assert.match(byRequest.notes[0], /บรรทัดในคำร้องขอราคา 3 รายการ/);
-  assert.match(byRequest.notes[0], /เก็บเข้ากรุ/, 'ต้องชี้ทางออก ไม่ใช่บอกแค่ว่าทำไม่ได้');
+  assert.equal(byRequest.blocked, false);
+  const requestLabels = byRequest.cascade.map((c) => c.label).join(' | ');
+  // บรรทัดคำร้องอยู่ต่อไม่ได้ถ้าไม่มีวัสดุ (constraint shape 0204) → ป้ายต้องบอกว่า "ลบ"
+  assert.match(requestLabels, /บรรทัดในคำร้อง.*ลบทั้งบรรทัด/);
+  assert.ok(byRequest.notes.some((n) => /ลบทิ้งถาวร/.test(n)), 'ต้องเตือนว่าเอกสารของฝ่ายอื่นหายถาวร');
 
   const byCosting = await materialForcePreview(
     stubCount({ 'costing_item_components:materialId': 2 }),
     { id: 'MAT-2', status: 'active' },
   );
-  assert.equal(byCosting.blocked, true);
-  assert.match(byCosting.notes[0], /บรรทัดในใบขอราคาผลิต 2 รายการ/);
+  assert.equal(byCosting.blocked, false);
+  // ใบขอราคาผลิต snapshot ชื่อ/ราคาไว้บนแถวแล้ว (0141) → แค่ปลดตัวชี้ บรรทัดยังอ่านได้
+  assert.match(byCosting.cascade.map((c) => c.label).join(' | '), /ใบขอราคาผลิต.*ปลดการเชื่อมโยง/);
 });
 
 test('materialForcePreview: ไม่มีใครอ้าง → ลบได้ ประวัติราคาหายพ่วง ของเข้าปลดการเชื่อมโยง', async () => {

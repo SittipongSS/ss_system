@@ -12,7 +12,7 @@ import { canQuoteMaterial, normalizeMaterialInput } from '@/lib/materialPrices';
 import { acceptMaterial, findMaterial, formulaSnapshotFor } from '@/lib/materialPricesAdmin';
 import { normalizePmType } from '@/lib/master/materialTypes';
 import {
-  canForceDelete, isDryRun, isForceRequest, materialForcePreview,
+  canForceDelete, cleanupMaterialOrphans, isDryRun, isForceRequest, materialForcePreview,
 } from '@/lib/forceDelete';
 import { recordAudit } from '@/lib/audit';
 
@@ -138,9 +138,10 @@ export async function DELETE(request, { params }) {
 
   // ── บังคับลบ (break-glass ของผู้ดูแลระบบ) ──────────────────────────────
   // ทะเบียนกลิ่น/สูตร/คำร้องมีเส้นนี้แล้ว (#779/#915) — ทะเบียนวัสดุเป็นตัวสุดท้าย
-  // ⚠️ FK สองตัวเป็น RESTRICT (บรรทัดคำร้อง 0158 · บรรทัดใบขอราคาผลิต 0159) ซึ่ง
-  // break-glass ข้ามไม่ได้ · `materialForcePreview` ตอบ blocked:true ให้ตั้งแต่พรีวิว
-  // เพื่อไม่ให้ไปพังกลางทางด้วย error ดิบจาก Postgres
+  // ⚠️ ทางนี้ลบผ่าน RPC เท่านั้น (mig 0210): รุ่นราคา/ชั้นราคามี trigger ห้าม DELETE
+  // ทุกกรณี (0143/0157) และบรรทัดคำร้อง/ใบขอราคาผลิตเป็น FK RESTRICT (0158/0159)
+  // — ลบตรง ๆ ล้มทุกครั้ง · RPC ตั้ง flag app.force_delete แล้วปลด/ลบให้ครบใน
+  // transaction เดียว
   const force = isForceRequest(request);
   const dryRun = isDryRun(request);
   if (force || dryRun) {
@@ -152,6 +153,14 @@ export async function DELETE(request, { params }) {
     if (preview.blocked) {
       return Response.json({ error: preview.notes[0] }, { status: 409 });
     }
+    try {
+      // ไฟล์แนบบน Drive อยู่นอก transaction — กวาดก่อน ถ้าพลาดให้หยุดตรงนี้
+      await cleanupMaterialOrphans(supabase, id);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+    const { error: rpcError } = await supabase.rpc('force_delete_material_price', { p_id: id });
+    if (rpcError) return Response.json({ error: rpcError.message }, { status: 500 });
   } else {
     if (!canQuoteMaterial(user, before.kind) && !canEditDraft(user, before)) {
       return Response.json({ error: 'ไม่มีสิทธิ์ลบวัสดุนี้' }, { status: 403 });
@@ -162,24 +171,32 @@ export async function DELETE(request, { params }) {
         error: 'วัสดุนี้มีประวัติราคาแล้ว ลบไม่ได้ — ใช้ "เก็บเข้ากรุ" แทน',
       }, { status: 409 });
     }
-    // ยังมีบรรทัดในใบขอราคาผลิตอ้างอยู่ = ลบแล้วใบจะชี้ไปที่ว่าง
-    const { count, error: refError } = await supabase
-      .from('costing_item_components')
-      .select('id', { count: 'exact', head: true })
-      .eq('materialId', id);
+    // ยังมีคนอ้างอยู่ = FK RESTRICT · ต้องเช็คให้ครบทั้งสองตาราง ไม่งั้นตกไปโดน
+    // error ดิบจาก Postgres (500) ซึ่งฝั่ง client ไม่นับเป็น "ถูกกฎธุรกิจบล็อก"
+    // จึงไม่เสนอทางบังคับลบให้ผู้ดูแลระบบเลย — นี่คือเหตุที่ปุ่มลบ "กดแล้วไม่มีอะไร
+    // เกิดขึ้นนอกจาก error" กับวัสดุที่เกิดจากบรรทัดคำร้อง (ซึ่งคือเกือบทุกตัว)
+    const refs = await Promise.all([
+      supabase.from('dept_request_items').select('id', { count: 'exact', head: true }).eq('materialId', id),
+      supabase.from('costing_item_components').select('id', { count: 'exact', head: true }).eq('materialId', id),
+    ]);
+    const refError = refs.find((r) => r.error)?.error;
     if (refError) return Response.json({ error: refError.message }, { status: 500 });
-    if (count) {
+    const [askCount, costingCount] = refs.map((r) => r.count || 0);
+    if (askCount || costingCount) {
+      const where = [
+        askCount && `คำร้องขอราคา ${askCount} บรรทัด`,
+        costingCount && `ใบขอราคาผลิต ${costingCount} บรรทัด`,
+      ].filter(Boolean).join(' · ');
       return Response.json({
-        error: `มีใบขอราคาผลิตอ้างวัสดุนี้อยู่ ${count} บรรทัด — ใช้ "เก็บเข้ากรุ" แทน`,
+        error: `มีเอกสารอ้างวัสดุนี้อยู่ (${where}) — ใช้ "เก็บเข้ากรุ" แทน`,
       }, { status: 409 });
     }
-  }
 
-  // ลูกทั้งหมดมี FK จริง (CASCADE ประวัติราคา / SET NULL ของเข้า) ตั้งแต่ migration
-  // และวัสดุไม่มีเธรดกับไฟล์แนบของตัวเอง (ไม่อยู่ใน updateAccess/attachmentTypes)
-  // → ลบตัวแม่พอ ไม่ต้องเก็บกวาดเพิ่ม
-  const { error } = await supabase.from('material_prices').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+    // มาถึงตรงนี้ = ร่างเปล่าที่ไม่มีใครอ้าง ลูกที่เหลือมี FK จริงทั้งหมด
+    // (SET NULL ของเข้า) และวัสดุไม่มีเธรด/ไฟล์แนบของตัวเอง → ลบตัวแม่พอ
+    const { error } = await supabase.from('material_prices').delete().eq('id', id);
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+  }
   await recordAudit({
     user, action: 'delete', entityType: 'material_price', entityId: id, before,
     summary: force
