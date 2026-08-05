@@ -54,6 +54,7 @@ export function accentStyle(accentKey) {
 const ROW_GAP = '\n          ';
 
 // หัวเอกสาร: บล็อกแบรนด์ (โลโก้ + บริษัท) | บล็อกตัวตนเอกสาร (รหัสฟอร์ม ชื่อ เลขที่ ฯลฯ)
+// formLine เว้นได้ — รายงานไม่ใช่เอกสารควบคุม ไม่มีรหัสแบบฟอร์ม/Revision ให้พิมพ์
 // rows = [{ label, value }] — แต่ละชนิดเอกสารส่งแถวของตัวเอง (ใบเสนอราคาใช้ เลขที่/
 // วันที่/ยืนราคาถึง · ใบภาษีใช้ เลขที่/วันที่เอกสาร/กำหนดส่งมอบ)
 export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows = [] }) {
@@ -70,7 +71,7 @@ export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows 
         </div>
       </div>
       <div class="identityBlock">
-        <div class="formLine">${val(formLine)}</div>
+        ${formLine ? `<div class="formLine">${val(formLine)}</div>` : ''}
         <h1>${val(titleTh)}</h1>
         <div class="englishTitle">${val(titleEn)}</div>
         <dl>

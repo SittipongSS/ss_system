@@ -1,47 +1,57 @@
 import { notifyToast } from "@/lib/feedback";
-import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
+import { fmtDate } from '@/lib/format';
+import {
+  documentFooter,
+  documentHeader,
+  esc,
+  money,
+  renderDocumentHTML,
+} from '@/lib/documents/documentShell';
+import { printPlaceholderHtml } from "@/lib/printTheme";
 
-// Print-ready A4 (landscape) document for an excise report (the uniform shape
-// from lib/tax/reports.js). Shares the visual language + logo of the billing
-// document (ISO style): IBM Plex Sans Thai (loaded via Google Fonts so the
-// about:blank print window renders the loopless font), navy + terracotta,
-// brand + doc-title header. `multiline` cells ("main\nsub") render as two lines.
-const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
+// รายงานสรรพสามิต (รูปแบบกลางจาก lib/tax/reports.js) — A4 แนวนอน
+//
+// 2026-08-05: เอกสารพิมพ์ตัวสุดท้ายที่ย้ายมาใช้เปลือกกลาง lib/documents/documentShell
+// ชุดเดียวกับใบเสนอราคา/ใบแจ้งชำระภาษี/ไทม์ไลน์ · ที่ได้เพิ่มจากหน้าตาที่ตรงกัน
+//   - ฟอนต์ฝัง base64 มาในไฟล์ แทนลิงก์ Google Fonts CDN (คอมเมนต์เดิมในไฟล์นี้เขียน
+//     ไว้เองว่าโหลดผ่าน CDN "เพื่อให้หน้าต่าง about:blank เรนเดอร์ฟอนต์ได้" — ซึ่งกลับกัน
+//     ฝังมาในไฟล์ต่างหากที่ไม่ต้องพึ่งเน็ตตอนสั่งพิมพ์)
+//   - ขั้นบันได zoom ตอนดูบนจอ · ท้ายกระดาษแบบเดียวกับเอกสารอื่น
+//
+// ⚠️ รายงาน "ไม่ใช่เอกสารควบคุม" — ไม่มีรหัสแบบฟอร์ม/Revision/ลายเซ็น/ลายน้ำ และไม่ผูก
+// กับมาตรฐานเอกสารในหน้าตั้งค่า จึงไม่ส่ง formLine เข้าเปลือก (หัวใบจะข้ามบรรทัดนั้นให้)
 
-const esc = (s) => String(s ?? "")
-  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const fmtMoney = (v) => (Number(v) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDate = (v) => {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return esc(v);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
-};
-// เวลาพิมพ์เอกสาร → DD/MM/YYYY HH:MM (ค.ศ.).
+// เวลาพิมพ์เอกสาร → DD/MM/YYYY HH:MM (ค.ศ.)
 const genAt = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-const cellText = (c, val) => {
-  if (c.money) return fmtMoney(val);
-  if (c.date) return fmtDate(val);
-  if (c.num) return (Number(val) || 0).toLocaleString("th-TH");
-  return esc(val ?? "-");
+const cellText = (c, value) => {
+  if (c.money) return money(value);
+  if (c.date) return value ? fmtDate(value) : '-';
+  if (c.num) return (Number(value) || 0).toLocaleString("th-TH");
+  return esc(value ?? "-");
 };
-const cellHtml = (c, val) => {
+const cellHtml = (c, value) => {
   if (c.multiline) {
-    const [main, ...rest] = String(val ?? "-").split("\n");
+    const [main, ...rest] = String(value ?? "-").split("\n");
     return `${esc(main)}${rest.map((l) => `<div class="sub">${esc(l)}</div>`).join("")}`;
   }
-  return cellText(c, val);
+  return cellText(c, value);
 };
 const align = (c) => (c.money || c.num ? "right" : "left");
 
-export function paginateReportRows(rows = [], rowsPerPage = 18) {
+/* 16 แถว/หน้า — วัดจากรายงานที่เรนเดอร์จริงด้วยเปลือกกลาง (A4 แนวนอน 297×210mm):
+   ตารางเริ่มที่ 57.1mm · หัวตาราง 5.9mm · ท้ายกระดาษเริ่มที่ 199.8mm = เหลือ 136.9mm
+   แถวสูง 7.8mm (คิดจากแถวที่มีคอลัมน์ multiline = 2 บรรทัด ซึ่งเป็นเคสที่รายงานจริงใช้)
+   → 17 แถวพอดี เว้นที่ให้แถวสรุปบนหน้าสุดท้ายอีกแถว = 16
+
+   ⚠️ ค่าเดิม 18 ตั้งไว้ตอนเลย์เอาต์เก่าที่แถวเตี้ยกว่า — พอย้ายมาเปลือกกลางแล้ววัดจริง
+   ได้แถว 10.8mm ตารางล้นท้ายกระดาษไป 60mm (ผมเดา 6.4mm ไว้ในรอบแรกแล้วผิด จึงต้อง
+   กระชับสไตล์แถวลงและวัดใหม่) */
+export function paginateReportRows(rows = [], rowsPerPage = 16) {
   if (!Array.isArray(rows) || rows.length === 0) return [[]];
   const pages = [];
   for (let index = 0; index < rows.length; index += rowsPerPage) {
@@ -50,14 +60,34 @@ export function paginateReportRows(rows = [], rowsPerPage = 18) {
   return pages;
 }
 
-export function buildReportPrintHTML(report, meta = {}, company) {
+// ตารางรายงานรับคอลัมน์อะไรก็ได้จากผู้เรียก จึงกำหนดความกว้างตายตัวแบบ .itemTable
+// ของใบเสนอราคาไม่ได้ — เอาเฉพาะ "หน้าตา" มา (หัวสีกรมท่า แถวสลับสี เส้นคั่นบาง)
+const REPORT_CSS = `
+  .report .sheetContent { padding-bottom: 0; }
+  .report .documentHeader { grid-template-columns: minmax(0, 1.4fr) minmax(70mm, .8fr); gap: 6mm; padding-bottom: 3mm; }
+  .report .identityBlock h1 { font-size: 15pt; }
+  .reportTable { width: 100%; margin-top: 4mm; border-collapse: collapse; }
+  .reportTable thead { display: table-header-group; }
+  /* รายงานเป็นตารางข้อมูลหนาแน่น ไม่ใช่เอกสารสำหรับอ่านทีละบรรทัด — คุมความสูงแถว
+     ให้ใกล้ของเดิม (แถว 2 บรรทัดต้องไม่เกิน ~7mm) ไม่งั้นจำนวนแถวต่อหน้าหายไปครึ่งหนึ่ง */
+  .reportTable th { padding: 1.1mm 1.2mm; color: #fff; background: var(--doc-navy); font-size: 7.4pt; font-weight: 600; }
+  .reportTable td { padding: .8mm 1.2mm; vertical-align: top; border-bottom: 1px solid var(--doc-line); font-size: 7.6pt; line-height: 1.25; }
+  .reportTable tbody tr:nth-child(even) td { background: var(--doc-neutral-subtle); }
+  .reportTable td .sub { color: var(--doc-muted); font-size: 6.2pt; line-height: 1.25; }
+  .reportTable .empty { padding: 8mm 1.5mm; color: var(--doc-muted); text-align: center; }
+  /* แถวสรุปใช้โทนเดียวกับ .grandTotal ของใบเสนอราคา */
+  .reportTable tr.sum td { color: var(--doc-navy); background: var(--doc-paper);
+    border-top: 1.8px solid var(--doc-navy); border-bottom: 1px solid var(--doc-navy);
+    font-size: 9.2pt; font-weight: 700; }`;
+
+export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
   const co = resolveCompanyBlock(company);
   const cols = report.columns || [];
   const head = cols.map((c) => `<th style="text-align:${align(c)}">${esc(c.label)}</th>`).join("");
   const bodyForRows = (rows) => rows.length
     ? rows.map((row) =>
-      `<tr>${cols.map((c) => `<td class="${c.multiline ? "ml" : ""}" style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
-    : `<tr><td colspan="${cols.length}" style="text-align:center;color:#837868;padding:14px">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`;
+      `<tr>${cols.map((c) => `<td style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
+    : `<tr><td class="empty" colspan="${cols.length}">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`;
 
   const s = report.summary;
   const summaryRow = s
@@ -65,81 +95,61 @@ export function buildReportPrintHTML(report, meta = {}, company) {
         if (i === 0) return `<td>${esc(s._label || "รวม")}</td>`;
         const v = s[c.key];
         if (v == null) return `<td></td>`;
-        return `<td style="text-align:${align(c)}">${typeof v === "number" ? (c.money ? fmtMoney(v) : (Number(v) || 0).toLocaleString("th-TH")) : esc(v)}</td>`;
+        return `<td style="text-align:${align(c)}">${typeof v === "number" ? (c.money ? money(v) : (Number(v) || 0).toLocaleString("th-TH")) : esc(v)}</td>`;
       }).join("")}</tr>`
     : "";
 
-  const filterLine = [
-    meta.from || meta.to ? `ช่วงวันที่: ${meta.from || "..."} – ${meta.to || "..."}` : "",
-    meta.customerName ? `ลูกค้า: ${esc(meta.customerName)}` : "",
-  ].filter(Boolean).join("  ·  ");
   const pages = paginateReportRows(report.rows || []);
   const printedAt = genAt();
-  const documentPages = pages.map((rows, pageIndex) => `
-  <main class="sheet explicit-page">
-    <div class="doc-top">
-      <div class="brand">
-        <div class="logo-wrap"><img src="${LOGO_URL}" alt="S&amp;S"/></div>
-        <div><h2>${esc(co.legalNameTh)}</h2></div>
-      </div>
-      <div class="doc-title">
-        <div class="big">REPORT</div>
-        <div class="sub">${esc(report.title)}</div>
-        ${filterLine ? `<div class="sub">${filterLine}</div>` : ""}
-      </div>
-    </div>
-    <table>
-      <thead><tr>${head}</tr></thead>
-      <tbody>${bodyForRows(rows)}${pageIndex === pages.length - 1 ? summaryRow : ""}</tbody>
-    </table>
-    <div class="gen">พิมพ์เมื่อ ${printedAt} · ${esc(co.legalNameTh)}</div>
-    <div class="page-number">หน้า ${pageIndex + 1} / ${pages.length}</div>
-  </main>`).join("");
+  const header = documentHeader({
+    // resolveCompanyBlock คืนคีย์ legalNameTh/legalNameEn ส่วนเปลือกรับ nameTh/nameEn
+    company: {
+      nameTh: co.legalNameTh,
+      nameEn: co.legalNameEn,
+      address: co.address,
+      taxId: co.taxId,
+      phone: co.phone,
+      line: co.line,
+      website: co.website,
+    },
+    titleTh: report.title,
+    titleEn: 'REPORT',
+    // เงื่อนไขที่กรองมาเป็น "ตัวตน" ของรายงานฉบับนี้ — รายงานชื่อเดียวกันคนละช่วงวันที่
+    // คือคนละใบ ต้องอ่านออกจากหัวใบว่าใบที่ถืออยู่กรองอะไรมา
+    rows: [
+      meta.from || meta.to ? { label: 'ช่วงวันที่', value: `${meta.from || '...'} – ${meta.to || '...'}` } : null,
+      meta.customerName ? { label: 'ลูกค้า', value: meta.customerName } : null,
+      { label: 'พิมพ์เมื่อ', value: printedAt },
+    ],
+  });
 
-  return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
-<title>${esc(report.title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #eef0f3; color: #21385e; font-family: ${PRINT_FONT_STACK}; font-size: 12px; }
-  .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
-  .toolbar h1 { font-size: 15px; font-weight: 600; }
-  .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
-  .sheet { width: 297mm; height: 210mm; overflow: hidden; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); position: relative; }
-  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
-  .page-number { position: absolute; right: 12mm; bottom: 7mm; color: #837868; font-size: 9px; }
-  .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 12px; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
-  .logo-wrap img { height: 46px; width: auto; max-width: 300px; display: block; }
-  .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
-  .doc-title .big { font-size: 16px; font-weight: 800; color: #c17a52; text-align: right; }
-  .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #cfc9bf; padding: 5px 7px; vertical-align: top; }
-  thead th { background: #e8e2d9; color: #21385e; font-size: 10px; font-weight: 700; }
-  td { font-size: 10.5px; }
-  td.ml { line-height: 1.3; }
-  td .sub { font-size: 8.5px; color: #837868; }
-  tr.sum td { font-weight: 700; background: #f0ebe0; border-top: 2px solid #c17a52; }
-  .gen { margin-top: 14px; font-size: 9px; color: #837868; text-align: right; }
-  @page { size: A4 landscape; margin: 10mm; }
-  @media print {
-    body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .no-print { display: none !important; }
-    .sheet { margin: 0; box-shadow: none; width: 277mm; height: 190mm; padding: 0; }
-    .page-number { right: 0; bottom: 0; }
-    thead { display: table-header-group; }
-  }
-</style></head><body>
-  <div class="toolbar no-print">
-    <h1>${esc(report.title)}</h1>
-    <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
-  </div>
-  ${documentPages}
-</body></html>`;
+  // `explicit-page` = หน้าที่ตัดเองล่วงหน้าด้วย paginateReportRows
+  const documentPages = pages.map((rows, pageIndex) => `
+    <article class="sheet explicit-page" aria-label="${esc(report.title)} หน้า ${pageIndex + 1}">
+      ${header}
+      <div class="sheetContent">
+        <table class="reportTable">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${bodyForRows(rows)}${pageIndex === pages.length - 1 ? summaryRow : ""}</tbody>
+        </table>
+      </div>
+      ${documentFooter({
+        left: co.legalNameTh,
+        center: `พิมพ์เมื่อ ${printedAt}`,
+        right: `หน้า ${pageIndex + 1} / ${pages.length}`,
+      })}
+    </article>`).join("");
+
+  return renderDocumentHTML({
+    title: report.title,
+    // รายงานไม่ผูกมาตรฐานเอกสาร จึงไม่มี accent ของตัวเอง — ใช้ navy ให้เป็นกลาง
+    accentKey: 'navy',
+    orientation: 'landscape',
+    variantClass: 'report',
+    extraCss: REPORT_CSS,
+    toolbar: options.toolbar === false ? null : { label: report.title, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
+    pages: documentPages,
+  });
 }
 
 export async function openReportPrintWindow(report, meta = {}) {
@@ -156,4 +166,3 @@ export async function openReportPrintWindow(report, meta = {}) {
   w.document.close();
   w.focus();
 }
-import { PRINT_FONT_STACK, printPlaceholderHtml } from "@/lib/printTheme";
