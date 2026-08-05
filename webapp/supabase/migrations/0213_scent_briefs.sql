@@ -67,6 +67,14 @@ ALTER TABLE public.scents
   FOREIGN KEY ("briefId") REFERENCES public.dept_request_scents(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS scents_brief_idx ON public.scents ("briefId");
 
+-- ── สิทธิ์ระดับตาราง — แพตเทิร์นเดียวกับ dept_requests (0158:158) ────────
+-- ⚠️ ทั้งแอปอ่าน/เขียนผ่าน service role (`getSupabaseAdmin`) ซึ่ง bypass RLS อยู่แล้ว
+-- ส่วน anon key ใช้แค่ทำ session cookie ไม่ได้แตะตารางธุรกิจ ⇒ เปิด RLS แบบไม่มี
+-- policy = ปิดประตูให้ anon สนิทโดยแอปไม่กระทบ · ตารางพี่น้องทำแบบนี้ทั้งหมด
+ALTER TABLE public.dept_request_scents ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.dept_request_scents FROM anon, authenticated;
+GRANT  ALL ON TABLE public.dept_request_scents TO service_role;
+
 NOTIFY pgrst, 'reload schema';
 
 -- ── ย้อนกลับ ────────────────────────────────────────────────────────────
