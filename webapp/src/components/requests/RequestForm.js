@@ -21,6 +21,7 @@ import MaterialPicker from "@/components/materials/MaterialPicker";
 import Textarea from "@/components/ui/Textarea";
 import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
+import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import {
   REQUEST_DEPTS, kindsForDept, materialKindForRequest, requestHasItems, requestHasTiers,
   requestKindLabel, requestKindMeta, requestNeedsRef,
@@ -73,6 +74,9 @@ export const emptyRequestForm = (over = {}) => ({
 // รายการที่ต้องมีเมื่อหัวข้อเป็นชนิดขอราคา — ชนิดวัสดุมาจากหัวข้อ ไม่ให้เลือกซ้ำ
 // (ไม่ export: ใช้เฉพาะในไฟล์นี้ · export ที่ไม่มีผู้เรียกคือโค้ดตายที่ lint ไม่จับ)
 function itemsForKind(kind, existing = []) {
+  // ⚠️ บรรทัดของพัฒนาผลิตภัณฑ์เป็นคนละรูปร่าง — สลับหัวข้อมาแล้วต้องเริ่มใหม่
+  // ไม่ใช่ลากบรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
+  if (kind === 'product_dev') return [emptyProductDevRow()];
   const materialKind = materialKindForRequest(kind);
   if (!materialKind) return [];
   const rows = existing.length ? existing : [emptyAskItem(materialKind)];
@@ -113,6 +117,9 @@ export default function RequestForm({
     ? deals.filter((d) => d.projectId === value.projectId)
     : [];
   const selectedProductType = productTypes.find((t) => String(t.id) === String(value.productTypeId));
+  // ⚠️ กลิ่นที่เลือกได้ต้องเป็นของลูกค้าเจ้าของดีลเท่านั้น (มติ 9) — ลูกค้ามาจากดีล
+  // ที่เลือกไว้ ไม่ใช่จากที่ผู้ใช้พิมพ์ (คำร้องไม่มีช่องลูกค้าให้เลือกเอง)
+  const selectedDeal = deals.find((d) => d.id === value.dealId) || null;
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
@@ -395,8 +402,26 @@ export default function RequestForm({
         </div>
       )}
 
+      {/* ── พัฒนาผลิตภัณฑ์: บรรทัด หมวด × กลิ่น ───────────────────────────
+          ⚠️ คนละตารางกับบรรทัดวัสดุโดยสิ้นเชิง — วัสดุเลือกจากทะเบียนวัสดุแล้วขอราคา
+          ส่วนนี่คือ "หมวดไหน กลิ่นไหน" ซึ่งเป็นตัวตนของสูตรที่จะเกิด · ยัดสองอย่างนี้
+          ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
+      {kind === "product_dev" && (
+        <div className="form-group">
+          <span className={styles.fieldLabel}>รายการที่ขอ — 1 บรรทัด = หมวดสินค้า × กลิ่น</span>
+          <ProductDevLines
+            rows={items.length ? items : [emptyProductDevRow()]}
+            onChange={(rows) => set({ items: rows })}
+            categories={productTypes}
+            scents={scents}
+            customerId={selectedDeal?.customerId || null}
+            disabled={disabled}
+          />
+        </div>
+      )}
+
       {/* ── หัวข้อขอราคา: บรรทัดวัสดุ + ชั้นจำนวน ─────────────────────────── */}
-      {hasItems && (
+      {hasItems && kind !== "product_dev" && (
         <>
           <div className="form-group">
             <span className={styles.fieldLabel}>สินค้าที่เกี่ยวข้อง (ถ้ามี)</span>

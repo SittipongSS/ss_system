@@ -84,3 +84,69 @@ export function normalizeRequestTiers(input) {
   tiers.sort((a, b) => a - b);
   return { tiers, error: null };
 }
+
+// ── บรรทัดของ "พัฒนาผลิตภัณฑ์" (P4) ──────────────────────────────────────
+//
+// ⭐ ต่างจากพัฒนากลิ่นตรงที่ **SA สร้างแถวตั้งแต่ตอนเปิด** — คนขอรู้อยู่แล้วว่าอยาก
+// ได้หมวดไหน กลิ่นไหน (ต่างจาก direction ของกลิ่นที่ไม่มีใครรู้ล่วงหน้าว่าจะได้กี่ตัว)
+//
+// ⚠️ **หมวดกับกลิ่นบังคับทั้งคู่** — ไม่ใช่แค่กติกาของฟอร์ม แต่เป็น constraint จริง
+// (`dept_request_items_shape` ของ 0204) และเป็น **ตัวตนของสูตรที่จะเกิด** ตาม
+// `formulas_identity_uk` ⇒ ขาดข้างใดข้างหนึ่ง = แถวที่ไม่มีทางกลายเป็นสูตรได้
+//
+// ⚠️ ไม่รับ `label` จาก client — เป็น snapshot ที่ derive จากทะเบียน ผู้เรียก (route)
+// เติมให้หลังอ่านชื่อหมวด/ชื่อกลิ่นมาแล้ว (แพตเทิร์นเดียวกับ productFormulaSnapshot)
+export function normalizeProductDevItems(input) {
+  const rows = Array.isArray(input) ? input : [];
+  if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
+  if (rows.length > MAX_REQUEST_ITEMS) {
+    return { items: [], error: `รายการในคำร้องเดียวมากเกินไป (สูงสุด ${MAX_REQUEST_ITEMS} รายการ)` };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (let i = 0; i < rows.length; i += 1) {
+    const raw = rows[i] || {};
+    const at = `รายการที่ ${i + 1}`;
+
+    const categoryCode = String(raw.categoryCode ?? '').trim();
+    if (!categoryCode) return { items: [], error: `${at}: ต้องเลือกหมวดสินค้า` };
+    if (!/^\d{2}-\d{3}$/.test(categoryCode)) {
+      return { items: [], error: `${at}: รหัสหมวดสินค้าไม่ถูกต้อง` };
+    }
+    const scentId = String(raw.scentId ?? '').trim();
+    if (!scentId) return { items: [], error: `${at}: ต้องเลือกกลิ่น` };
+
+    // ⚠️ หมวด × กลิ่น ซ้ำในใบเดียว = ขอของชิ้นเดียวกันสองรอบ · ปล่อยผ่านแล้ว RD
+    // จะสร้างสูตรตัวเดียวได้ แถวที่สองค้างตลอดกาลเพราะชนตัวตนของสูตร
+    const key = `${categoryCode}::${scentId}`;
+    if (seen.has(key)) return { items: [], error: `${at}: หมวดกับกลิ่นซ้ำกับรายการก่อนหน้า` };
+    seen.add(key);
+
+    const spec = String(raw.spec ?? '').trim();
+    if (spec.length > 2000) return { items: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
+
+    // จำนวนไม่บังคับ — ตอนขอตัวอย่างยังไม่รู้ยอดจริง (ยอดที่นับคือ confirmedQty
+    // ตอนลูกค้าตอบ ไม่ใช่ตอนขอ)
+    let qty = null;
+    if (raw.qty !== undefined && raw.qty !== null && String(raw.qty).trim() !== '') {
+      qty = Number(raw.qty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return { items: [], error: `${at}: จำนวนต้องเป็นตัวเลขมากกว่า 0` };
+      }
+    }
+    const unit = String(raw.unit ?? '').trim();
+    if (unit.length > 50) return { items: [], error: `${at}: หน่วยยาวเกิน 50 ตัวอักษร` };
+
+    items.push({
+      lineKind: 'product_dev',
+      categoryCode,
+      scentId,
+      spec: spec || null,
+      qty,
+      unit: unit || null,
+      sortOrder: i + 1,
+    });
+  }
+  return { items, error: null };
+}
