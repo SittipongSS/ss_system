@@ -12,11 +12,10 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
-import { normalizeRequestItems } from '@/lib/deptRequests';
-import { normalizeDocumentItems, normalizeProductDevItems } from '@/lib/requests/lines';
+import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
-  deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
+  deptForRequest, materialKindForRequest, requestDeptError, requestHasTiers,
   legacyKindError, lineShapeForKind, requestKindLabel, requestNeedsRef, requestShapeError,
   requestStepKey,
 } from '@/lib/master/requestTypes';
@@ -114,38 +113,24 @@ export async function POST(request) {
     if (deptError) return Response.json({ error: deptError }, { status: 400 });
   }
 
-  let items = [];
-  // ⭐ **บรรทัดมีสองรูปร่างแล้ว** — วัสดุ (ขอราคา) กับพัฒนาผลิตภัณฑ์ (หมวด × กลิ่น)
-  // แยกด่านกันคนละตัว เพราะกฎคนละชุดสิ้นเชิง: วัสดุต้องมี materialId · พัฒนา
-  // ผลิตภัณฑ์ต้องมีหมวดกับกลิ่น (constraint `dept_request_items_shape` ของ 0204)
+  // ⭐ **บรรทัดมีหลายรูปร่าง** (วัสดุ · พัฒนาผลิตภัณฑ์ · เอกสาร) กฎคนละชุดสิ้นเชิง —
+  // route ไม่ตัดสินเองว่ารูปร่างไหนตรวจยังไง แต่ถามทะเบียนรูปร่างบรรทัด ซึ่งอยู่ใน
+  // บ้านของฝ่ายที่เป็นเจ้าของรูปร่างนั้น (P7b) ⇒ เพิ่มรูปร่างใหม่ ไฟล์นี้ไม่ต้องแก้
   const lineShape = lineShapeForKind(kind);
+  const normalized = normalizeLinesFor(lineShape, body.items, {
+    dept,
+    hasTiers: requestHasTiers(kind),
+    materialKind: materialKindForRequest(kind),
+    kindLabel: requestKindLabel(kind),
+  });
+  if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
+  const items = normalized.items;
+  // ⚠️ ยังเหลือธงสองตัวสำหรับขั้น **เขียนลงตาราง** ข้างล่าง (แต่ละรูปร่างเก็บคนละ
+  // คอลัมน์) — P7b ย้ายเฉพาะ *ด่านตรวจ* เข้าโมดูล ส่วนตัวประกอบแถวยังอยู่ที่นี่
+  // เพราะมันแตะ supabase · ย้ายพร้อมกันในใบเดียวคือแตะ route กับด่านพร้อมกัน
+  // ซึ่งเป็นทางที่บั๊ก #973 เดินมา
   const isProductDev = lineShape === 'product_dev';
   const isDocument = lineShape === 'document';
-  if (isProductDev) {
-    const normalized = normalizeProductDevItems(body.items);
-    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
-    items = normalized.items;
-  } else if (isDocument) {
-    const normalized = normalizeDocumentItems(body.items);
-    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
-    items = normalized.items;
-  } else if (requestHasItems(kind)) {
-    const normalized = normalizeRequestItems(body.items, {
-      dept, hasTiers: requestHasTiers(kind),
-    });
-    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
-    items = normalized.items;
-    // ชนิดวัสดุของบรรทัดต้องตรงกับชนิดคำร้อง — ปิดรอยที่เคยทำให้เปิดคำร้องจาก
-    // บรรทัด RM_F ในใบขอราคาผลิตแล้วได้ `kind: price_pm` (หัวใบบอกบรรจุภัณฑ์
-    // แต่บรรทัดเป็นหัวน้ำหอม → เลขที่ออกผิด scope และช่องกลิ่นไม่เคยถูกถาม)
-    const want = materialKindForRequest(kind);
-    const off = items.find((i) => i.kind !== want);
-    if (off) {
-      return Response.json({
-        error: `"${requestKindLabel(kind)}" รับได้เฉพาะรายการชนิด ${want} — พบ ${off.kind}`,
-      }, { status: 400 });
-    }
-  }
 
   const requestId = `DR-${randomUUID()}`;
 

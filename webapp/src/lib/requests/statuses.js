@@ -3,6 +3,8 @@
 //
 // ⚠️ สถานะ/ป้าย **คงเดิมทุกตัวอักษร** จากเคสขอราคา (0158) — ผู้ใช้ที่ใช้อยู่ต้อง
 // ไม่รู้สึกว่าอะไรเปลี่ยนหลังรวมระบบ
+import { DEFAULT_LINE_SHAPE, lineShapeLabels } from '@/lib/requests/kinds/lineShapes';
+
 export const REQUEST_STATUSES = ['draft', 'pending', 'acknowledged', 'answered', 'closed', 'cancelled'];
 
 export const REQUEST_STATUS_LABELS = {
@@ -35,25 +37,17 @@ export const REQUEST_OPEN_STATUSES = ['pending', 'acknowledged'];
 // (วัสดุ · พัฒนากลิ่น · พัฒนาผลิตภัณฑ์ · เอกสาร) ชื่อที่ผูกกับราคาทำให้บรรทัดขอเอกสาร
 // ต้องแกล้งทำเป็น "ตอบราคาแล้ว" ⇒ เปลี่ยนเป็น pending/done/declined ที่เป็นกลาง
 //
-// ⚠️ **ป้ายต่างกันตามรูปร่างบรรทัด** — บรรทัดวัสดุยังอ่านว่า "ตอบราคาแล้ว" เหมือนเดิม
-// ทุกตัวอักษร (ผู้ใช้ที่ใช้อยู่ต้องไม่รู้สึกว่าอะไรเปลี่ยน) ส่วนรูปร่างอื่นพูดภาษาของ
-// งานตัวเอง — ใช้ requestItemStatusLabel() เมื่อรู้ lineKind
-const ITEM_STATUS_LABELS_BY_LINE_KIND = {
-  material:    { pending: 'รอราคา',   done: 'ตอบราคาแล้ว', declined: 'ตอบไม่ได้' },
-  scent_dev:   { pending: 'รอส่ง',    done: 'เสร็จแล้ว',   declined: 'ไม่ได้ใช้' },
-  product_dev: { pending: 'รอส่ง',    done: 'เสร็จแล้ว',   declined: 'ไม่ได้ใช้' },
-  document:    { pending: 'รอเอกสาร', done: 'ได้รับแล้ว',  declined: 'ให้ไม่ได้' },
-};
+// ⚠️ **ป้ายต่างกันตามรูปร่างบรรทัด** และ **ตัวป้ายไม่ได้อยู่ที่นี่แล้ว** — อยู่กับรูปร่าง
+// บรรทัดในบ้านของฝ่ายที่เป็นเจ้าของ (`lib/requests/kinds/*/lineShapes.js`) พร้อมตัวตรวจ
+// ของรูปร่างนั้น ⇒ เพิ่มรูปร่างใหม่แล้วลืมป้ายไม่ได้ ทะเบียนบังคับให้ครบทั้งสามสถานะ
 
 export const REQUEST_ITEM_STATUSES = ['pending', 'done', 'declined'];
 
 // คงชื่อเดิมไว้ให้ผู้เรียกที่ไม่รู้ lineKind — ค่าตั้งต้นคือภาษาของบรรทัดวัสดุ
-export const REQUEST_ITEM_STATUS_LABELS = ITEM_STATUS_LABELS_BY_LINE_KIND.material;
+export const REQUEST_ITEM_STATUS_LABELS = lineShapeLabels(DEFAULT_LINE_SHAPE);
 
-export function requestItemStatusLabel(status, lineKind = 'material') {
-  const table = ITEM_STATUS_LABELS_BY_LINE_KIND[lineKind]
-    || ITEM_STATUS_LABELS_BY_LINE_KIND.material;
-  return table[status] || status || '—';
+export function requestItemStatusLabel(status, lineKind = DEFAULT_LINE_SHAPE) {
+  return lineShapeLabels(lineKind)[status] || status || '—';
 }
 
 // โทนของป้ายบรรทัด — ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (มาตรฐานเดียวกับสถานะใบ)
