@@ -300,6 +300,48 @@ test('ผู้เสนอราคาในอ้างอิง กับ ผ
   assert.equal(refRow(buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, createdByName: 'คนทำใบ' }), 'ผู้เสนอราคา'), '-');
 });
 
+// เบอร์บนใบต่อท้ายแถว "ผู้เสนอราคา" แต่ค่าที่ตรึงไว้เป็นเบอร์ของคนทำใบ — ถ้าปล่อยให้โชว์
+// ตอนสองบทบาทเป็นคนละคน ลูกค้าจะโทรตามเบอร์นั้นแล้วไปเจอคนที่ไม่ใช่ชื่อที่อ่าน
+test('โทร: โชว์เฉพาะตอนคนทำใบเป็น AE เจ้าของดีลคนเดียวกัน', () => {
+  const base = { ...QUOTE_WITH_PROJECT, createdBy: 'U-AE', createdByPhone: '081-234-5678' };
+  const same = buildQuotationMasterModelFromQuote({
+    ...base,
+    deal: { ...base.deal, ownerId: 'U-AE', ownerName: 'เอเจ้าของดีล' },
+  });
+  assert.equal(refRow(same, 'โทร'), '081-234-5678');
+
+  // คนทำใบคนละคนกับเจ้าของดีล → ตัดแถวทิ้ง ไม่โชว์เบอร์ผิดคน
+  const other = buildQuotationMasterModelFromQuote({
+    ...base,
+    deal: { ...base.deal, ownerId: 'U-OTHER', ownerName: 'เอเจ้าของดีล' },
+  });
+  assert.equal(refRow(other, 'โทร'), undefined);
+  // แถวที่เหลือต้องไม่กระทบ
+  assert.equal(refRow(other, 'ผู้เสนอราคา'), 'เอเจ้าของดีล');
+});
+
+// ฉบับตรึง/ใบเก่าไม่มี id ครบ → เทียบชื่อแทน (สองค่ามาจาก snapshot ชุดเดียวกัน)
+test('โทร: ไม่มี id ให้เทียบ ก็ถอยไปเทียบชื่อผู้จัดทำกับผู้เสนอราคา', () => {
+  const meta = { preparedBy: 'คนเดียวกัน', salesOwner: 'คนเดียวกัน' };
+  const pinned = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: null,
+    createdByPhone: '081-234-5678',
+    deal: null,
+    metadata: meta,
+  });
+  assert.equal(refRow(pinned, 'โทร'), '081-234-5678');
+
+  const mismatched = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: null,
+    createdByPhone: '081-234-5678',
+    deal: null,
+    metadata: { ...meta, preparedBy: 'อีกคน' },
+  });
+  assert.equal(refRow(mismatched, 'โทร'), undefined);
+});
+
 // ฉบับที่ตรึงแล้วเก็บชื่อผู้จัดทำไว้ใน metadata (issuedQuotationSnapshot) ไม่มี createdByName
 test('ไม่มี createdByName → ผู้จัดทำถอยไปใช้ metadata.preparedBy ของฉบับตรึง', () => {
   const model = buildQuotationMasterModelFromQuote({

@@ -780,6 +780,11 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   // ผู้จัดทำ = คนที่กดสร้าง/แก้ใบ ตรึงไว้ตอนสร้างร่าง (createQuotationDraft + revise)
   // metadata.preparedBy คือค่าที่ตรึงในฉบับ snapshot (issuedQuotationSnapshot ใช้คู่เดียวกัน)
   const preparedBy = quote.createdByName || quote.metadata?.preparedBy || '';
+  // คนทำใบ = AE เจ้าของดีลหรือเปล่า — เทียบ id ก่อนเพราะชื่อซ้ำกันได้; ฉบับตรึง/ใบเก่าที่
+  // ไม่มี id ครบค่อยถอยไปเทียบชื่อ (สองค่านั้นมาจาก snapshot ชุดเดียวกัน จึงเทียบกันได้)
+  const preparerIsSalesOwner = quote.createdBy && quote.deal?.ownerId
+    ? quote.createdBy === quote.deal.ownerId
+    : Boolean(preparedBy) && preparedBy === salesOwner;
 
   const firstCapacity = v4FirstCapacity(customer);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
@@ -846,7 +851,14 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       { label: 'โครงการ', value: quotationDealTitle(quote) },
       { label: 'ประเภทโครงการ', value: quotationDealType(quote) },
       { label: 'ผู้เสนอราคา', value: salesOwner },
-      ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
+      // ⚠️ เบอร์ที่ตรึงไว้บนใบเป็นของ "คนทำใบ" (createQuotationDraft เก็บ user.phone) แต่แถว
+      // ที่มันต่อท้ายคือ "ผู้เสนอราคา" = AE เจ้าของดีล ซึ่งเป็นคนละคนได้ตั้งแต่แยกสองบทบาท
+      // (มติผู้ใช้ 2026-08-05) — โชว์เฉพาะตอนที่เป็นคนเดียวกันจริง ไม่งั้นลูกค้าอ่านชื่อ
+      // ผู้เสนอราคาแล้วโทรไปเจออีกคน. เราไม่ได้ตรึงเบอร์ของเจ้าของดีลไว้ คนละคน = ไม่มี
+      // เบอร์ให้แสดง ตัดแถวทิ้งดีกว่าโชว์เบอร์ผิดคน
+      ...(quote.createdByPhone && preparerIsSalesOwner
+        ? [{ label: 'โทร', value: quote.createdByPhone }]
+        : []),
     ],
     signers: options.signers || [
       // ช่องแรก = "ผู้จัดทำ" คนที่ลงมือทำใบนี้จริง (มติผู้ใช้ 2026-08-05) — คนละคนกับ
