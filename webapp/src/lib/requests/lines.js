@@ -2,6 +2,9 @@
 // วันนี้บรรทัดยังเป็น "วัสดุ" อย่างเดียว (MATERIAL_KINDS) · P1 จะขยายเป็นหลายรูปร่าง
 // (วัสดุ · พัฒนากลิ่น · พัฒนาผลิตภัณฑ์ · เอกสาร) ผ่านคอลัมน์ lineKind
 import { MATERIAL_KINDS, sourceDeptForMaterialKind } from '@/lib/materialPrices';
+import {
+  REQUEST_DOC_TYPE_VALUES, docTypeLabel, docTypeNeedsDetail,
+} from '@/lib/requests/docTypes';
 
 export const MAX_REQUEST_ITEMS = 40;
 export const MAX_REQUEST_TIERS = 12;
@@ -145,6 +148,57 @@ export function normalizeProductDevItems(input) {
       spec: spec || null,
       qty,
       unit: unit || null,
+      sortOrder: i + 1,
+    });
+  }
+  return { items, error: null };
+}
+
+// ── บรรทัดของ "ขอเอกสาร" (P5) ────────────────────────────────────────────
+//
+// ⭐ 1 บรรทัด = 1 ชนิดเอกสาร — ขอหลายอย่างในใบเดียวได้ และแต่ละอย่างเดินคนละจังหวะ
+// (IFRA มาก่อน COA ได้) ⇒ สถานะอยู่ที่แถว เหมือนทุกสายในระบบนี้
+//
+// ⚠️ **ไม่มีช่อง "ต้องใช้ภายใน" รายแถว** — `dueAt` ของ 0204 แปลว่า "ฝ่ายรับปากว่าจะ
+// ส่งวันไหน" ซึ่งเป็นคำสัญญาของ *ผู้ตอบ* · ยัดความหมาย "ผู้ขอต้องใช้ภายใน" ลงช่อง
+// เดียวกันเมื่อไร สองฝ่ายจะเขียนทับกันแล้วไม่มีใครรู้ว่าเลขที่เห็นเป็นของใคร
+// วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว (`requestedDueDate`) ใช้ตัวนั้นไปก่อน
+export function normalizeDocumentItems(input) {
+  const rows = Array.isArray(input) ? input : [];
+  if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
+  if (rows.length > MAX_REQUEST_ITEMS) {
+    return { items: [], error: `รายการในคำร้องเดียวมากเกินไป (สูงสุด ${MAX_REQUEST_ITEMS} รายการ)` };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (let i = 0; i < rows.length; i += 1) {
+    const raw = rows[i] || {};
+    const at = `รายการที่ ${i + 1}`;
+
+    const docType = String(raw.docType ?? '').trim();
+    if (!docType) return { items: [], error: `${at}: ต้องเลือกชนิดเอกสาร` };
+    if (!REQUEST_DOC_TYPE_VALUES.includes(docType)) {
+      return { items: [], error: `${at}: ชนิดเอกสารไม่ถูกต้อง` };
+    }
+
+    const spec = String(raw.spec ?? '').trim();
+    if (spec.length > 2000) return { items: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
+    if (docTypeNeedsDetail(docType) && !spec) {
+      return { items: [], error: `${at}: เลือก "อื่น ๆ" ต้องระบุว่าขอเอกสารอะไร` };
+    }
+
+    // ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
+    const key = `${docType}::${spec.toLowerCase()}`;
+    if (seen.has(key)) return { items: [], error: `${at}: ซ้ำกับรายการก่อนหน้า` };
+    seen.add(key);
+
+    items.push({
+      lineKind: 'document',
+      docType,
+      // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
+      label: docTypeLabel(docType),
+      spec: spec || null,
       sortOrder: i + 1,
     });
   }
