@@ -33,6 +33,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
 import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import UiStatusBadge from "@/components/ui/StatusBadge";
 import RequestListCard from "@/components/requests/RequestListCard";
@@ -1194,6 +1195,13 @@ export default function DealOverviewPage() {
           </div>
           )}
 
+              {/* ⭐ แท็บเอกสาร — รวมไฟล์ของดีลจาก 6 แหล่งไว้ที่เดียว (P5b)
+                  รวมถึง **ของที่ยังไม่มา** (บรรทัดขอเอกสารที่ยังไม่ส่ง) ซึ่งเป็น
+                  สิ่งเดียวที่ทำให้ตัวเลข "มาแล้ว N · รอ M" เป็นไปได้ */}
+              {/* พื้นผิวอยู่ในตัวแผงเอง ไม่ห่อ `glass-panel` ที่นี่ — คลาสพื้นผิวกลาง
+                  กับ inline style เป็นหนี้ชั้นเก่าที่ ratchet คุมยอดไว้ ของที่เพิ่ง
+                  เขียนไม่ควรไปเพิ่มยอดนั้น */}
+              {tab === "documents" && <EntityDocumentsPanel dealId={id} />}
             </div>
             {(tab === "activities" || tab === "overview") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>

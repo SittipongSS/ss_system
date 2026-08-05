@@ -1,0 +1,34 @@
+/* แท็บเอกสารของดีล — geometry ล้วน สีมาจากโทเคนกลางทั้งหมด */
+
+/* พื้นผิวของแผงอยู่ที่นี่ ไม่ใช่คลาสกลางที่หน้าเรียกห่อให้ — โทเคนล้วน */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: var(--panel);
+}
+
+.progress { font-size: var(--fs-5); color: var(--text-2); }
+.waiting { color: var(--amber); }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ของที่ยังไม่มา — ขอบซ้ายสีเหลืองบอกว่ายังต้องทำอะไรต่อ ไม่ใช่แค่จางลง
+   (ของจางอ่านเหมือน "ไม่สำคัญ" ทั้งที่มันคือของที่ค้างอยู่) */
+.row[data-awaiting] { border-left: 3px solid var(--amber); }
+
+.main { flex: 1; min-width: 0; }
+.title { font-size: var(--fs-7); }
+.meta { margin-top: var(--space-1); font-size: var(--fs-3); color: var(--text-3); }
