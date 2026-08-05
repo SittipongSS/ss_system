@@ -112,7 +112,8 @@ export default function FormulasPage() {
     return formulas.filter((f) => {
       if (statusFilter === "open" && f.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && f.status !== statusFilter) return false;
-      if (!q) return true;
+      // ⚠️ ตัวกรองชนิดต้องอยู่ **ก่อน** ทางลัด `if (!q) return true` — วางหลังเมื่อไร
+      // มันจะทำงานเฉพาะตอนมีคำค้น แล้วผู้ใช้จะเห็นตัวกรองที่กดแล้วไม่มีอะไรเกิดขึ้น
       if (kindFilter === "customer" && !f.customerId) return false;
       if (kindFilter === "base" && f.customerId) return false;
       if (!q) return true;
