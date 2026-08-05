@@ -358,8 +358,9 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       headingEn: '/ REFERENCE',
       rows: [
         { label: 'เลขที่โครงการ', value: displayCode },
-        { label: 'โครงการหลัก', value: project.name },
-        { label: 'โครงการย่อย', value: dealTitles.join('\n') },
+        // เอกสารเรียกดีลว่า "โครงการ" ตามชุดเดียวกับใบเสนอราคา/ใบสั่งขาย — ชื่อโครงการแม่
+        // ไม่ต้องซ้ำในบล็อกนี้ เพราะเป็นหัวข้อของกล่องซ้าย (ข้อมูลโครงการ) อยู่แล้ว
+        { label: 'โครงการ', value: dealTitles.join('\n') },
         { label: 'ประเภทโครงการ', value: dealTypes.join('\n') },
         { label: 'ใบเสนอราคา', value: quotationLine },
         { label: 'รายการสินค้า (FG)', html: fgHtml },

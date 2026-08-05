@@ -259,12 +259,14 @@ const refRow = (model, label) => model.referenceRows.find((row) => row.label ===
 test('อ้างอิงบนใบเสนอราคา: แยกรหัส/ชื่อ/ประเภท คนละแถว ตามลำดับที่ตกลงไว้', () => {
   const model = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' } });
   const labels = model.referenceRows.map((row) => row.label);
-  assert.deepEqual(labels.slice(0, 6), [
-    'เลขที่โครงการ', 'โครงการหลัก', 'โครงการย่อย', 'ประเภทโครงการ', 'ผู้เสนอราคา', 'ผู้จัดทำ',
+  // เอกสารเรียกดีลว่า "โครงการ" และไม่มีชื่อโครงการแม่/ผู้จัดทำแล้ว (มติผู้ใช้ 2026-08-05)
+  assert.deepEqual(labels.slice(0, 4), [
+    'เลขที่โครงการ', 'โครงการ', 'ประเภทโครงการ', 'ผู้เสนอราคา',
   ]);
+  assert.ok(!labels.includes('โครงการหลัก'));
+  assert.ok(!labels.includes('ผู้จัดทำ'));
   assert.equal(refRow(model, 'เลขที่โครงการ'), 'PJ-26070038');
-  assert.equal(refRow(model, 'โครงการหลัก'), 'Signature Bloom');
-  assert.equal(refRow(model, 'โครงการย่อย'), 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
+  assert.equal(refRow(model, 'โครงการ'), 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
   assert.equal(refRow(model, 'ประเภทโครงการ'), 'SCENT');
   // เอกสารต้องไม่ยุบ "รหัส · ชื่อ" ไว้แถวเดียวอีก
   assert.ok(!model.referenceRows.some((row) => String(row.value).includes(' · ')));
@@ -273,43 +275,55 @@ test('อ้างอิงบนใบเสนอราคา: แยกรห
 });
 
 // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
-test('ผู้เสนอราคา = AE เจ้าของดีล · ผู้จัดทำ = คนที่ทำใบและกดขอยื่น (คนละคนได้)', () => {
+test('ผู้เสนอราคา = AE เจ้าของดีล และเป็นบทบาทฝ่ายขายเดียวบนเอกสาร', () => {
   const model = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
     createdByName: 'ผู้ช่วยที่กดยื่น',
     deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' },
   });
   assert.equal(refRow(model, 'ผู้เสนอราคา'), 'เอเจ้าของดีล');
-  assert.equal(refRow(model, 'ผู้จัดทำ'), 'ผู้ช่วยที่กดยื่น');
-  // ช่องลงนามถือหลักฐานของคนที่กดยื่น จึงต้องชื่อ "ผู้จัดทำ" ให้ตรงกัน ไม่ใช่ผู้เสนอราคา
-  const signer = model.signers[0];
-  assert.equal(signer.label, 'ผู้จัดทำ');
-  assert.equal(signer.name, 'ผู้ช่วยที่กดยื่น');
-  // ดีลไม่มีเจ้าของ → ช่องผู้เสนอราคาเป็นขีด ไม่ถอยไปใช้ชื่อคนทำใบ (คนละบทบาท)
+  // ชื่อคนกดยื่นต้องไม่โผล่บนเอกสารในฐานะบทบาทอีกต่อไป
+  assert.ok(!model.referenceRows.some((row) => row.value === 'ผู้ช่วยที่กดยื่น'));
+  // ช่องลงนามฝ่ายขายชื่อ "ผู้เสนอราคา" · ยังไม่เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น
+  assert.equal(model.signers[0].label, 'ผู้เสนอราคา');
+  assert.equal(model.signers[0].name, 'เอเจ้าของดีล');
+  assert.equal(model.signers[1].label, 'ผู้อนุมัติเสนอราคา');
+  // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ (คนละบทบาท)
   const noOwner = buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT);
   assert.equal(refRow(noOwner, 'ผู้เสนอราคา'), '-');
-  assert.equal(refRow(noOwner, 'ผู้จัดทำ'), 'พนักงานขาย ตัวอย่าง');
+  assert.equal(noOwner.signers[0].name, '');
+});
+
+// ลายเซ็นต้องเป็นของคนที่เซ็นจริง ห้ามเอาชื่อ AE เจ้าของดีลไปแปะทับ
+test('มีหลักฐานการลงนาม → ช่องผู้เสนอราคาใช้ชื่อคนที่เซ็นจริง', () => {
+  const model = buildQuotationMasterModelFromQuote(
+    { ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, ownerName: 'เอเจ้าของดีล' } },
+    {
+      proposerSignatureImage: 'data:image/png;base64,AAA',
+      proposerEvidence: { id: 'EV-1', signerName: 'คนที่เซ็นจริง', signedAt: '2026-08-05' },
+    },
+  );
+  assert.equal(model.signers[0].label, 'ผู้เสนอราคา');
+  assert.equal(model.signers[0].esignature.signerName, 'คนที่เซ็นจริง');
 });
 
 test('ประกอบอ้างอิงจากข้อมูลเท่าที่มี ไม่เดาประเภทเอง', () => {
   // ดีลยังไม่ผูกโครงการ
   const noProject = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, project: null } });
   assert.equal(refRow(noProject, 'เลขที่โครงการ'), '-');
-  assert.equal(refRow(noProject, 'โครงการหลัก'), '-');
-  // โครงการยังไม่มีรหัส (ข้อมูลเก่า) → เหลือชื่ออย่างเดียว ช่องรหัสเป็นขีด
+  // โครงการยังไม่มีรหัส (ข้อมูลเก่า) → ช่องรหัสเป็นขีด
   const noCode = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
     deal: { ...QUOTE_WITH_PROJECT.deal, project: { name: 'Signature Bloom' } },
   });
   assert.equal(refRow(noCode, 'เลขที่โครงการ'), '-');
-  assert.equal(refRow(noCode, 'โครงการหลัก'), 'Signature Bloom');
   // ไม่มีดีลเลย
   const noDeal = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: null });
-  assert.equal(refRow(noDeal, 'โครงการย่อย'), '-');
+  assert.equal(refRow(noDeal, 'โครงการ'), '-');
   assert.equal(refRow(noDeal, 'ประเภทโครงการ'), '-');
   // snapshot เก่าที่มีแต่ชื่อดีล ไม่มีแถวดีล → ห้ามเดาประเภทเป็น NPD
   const legacy = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: null, dealTitle: 'ดีลเก่า' });
-  assert.equal(refRow(legacy, 'โครงการย่อย'), 'ดีลเก่า');
+  assert.equal(refRow(legacy, 'โครงการ'), 'ดีลเก่า');
   assert.equal(refRow(legacy, 'ประเภทโครงการ'), '-');
   // ดีลที่ยังไม่ตั้งประเภท → normalize เป็น NPD เหมือนที่หน้าจอแสดง
   const noType = buildQuotationMasterModelFromQuote({

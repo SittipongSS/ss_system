@@ -111,17 +111,15 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     secondaryValue: order.paymentDueDate ? fmtDate(order.paymentDueDate) : '-',
     // ชุดอ้างอิงต้องตรงกับใบเสนอราคาซึ่งเป็นใบต้นทางของ SO ไม่งั้นลูกค้าได้สองใบที่
     // เรียกของอย่างเดียวกันคนละชื่อ คนละลำดับ (มติผู้ใช้ 2026-08-04, แยกช่อง 08-05)
-    // ผู้เสนอราคา = AE เจ้าของดีล · ผู้จัดทำ = คนที่ทำใบและกดขอยื่น — คนละบทบาท
-    // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ
+    // "โครงการ" บนเอกสาร = ดีล · ผู้เสนอราคา = AE เจ้าของดีล (ไม่มีบทบาทผู้จัดทำแล้ว)
+    // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ เพราะคนละบทบาท
     referenceRows: [
       { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
       { label: 'สถานะเอกสาร', value: statusLabel },
       { label: 'เลขที่โครงการ', value: order.project?.code || '-' },
-      { label: 'โครงการหลัก', value: order.project?.name || '-' },
-      { label: 'โครงการย่อย', value: order.deal?.title || '-' },
+      { label: 'โครงการ', value: order.deal?.title || '-' },
       { label: 'ประเภทโครงการ', value: (order.deal && dealTypeOf(order.deal)) || '-' },
       { label: 'ผู้เสนอราคา', value: order.deal?.ownerName || '-' },
-      { label: 'ผู้จัดทำ', value: order.createdByName || '-' },
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
