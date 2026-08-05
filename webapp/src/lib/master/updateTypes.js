@@ -26,7 +26,7 @@ export const UPDATE_KINDS = {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     submit: { label: 'ส่งเคส', color: 'var(--blue)' },
     acknowledge: { label: 'รับเรื่อง', color: 'var(--blue)' },
-    // ตีกลับ = ผู้รับเรื่องส่งคืนผู้ยื่น (mig 0208) — สีเหลือง ไม่ใช่แดง เพราะเป็น
+    // ตีกลับ = ผู้รับเรื่องส่งคืนผู้ยื่น (mig 0209) — สีเหลือง ไม่ใช่แดง เพราะเป็น
     // "ต้องแก้แล้วส่งใหม่" ไม่ใช่ "จบแล้ว" (แดงสงวนให้ยกเลิก/ปฏิเสธถาวร)
     bounce: { label: 'ตีกลับให้แก้ไข', color: 'var(--amber)' },
     quoted: { label: 'ตอบราคา', color: 'var(--green)' },
