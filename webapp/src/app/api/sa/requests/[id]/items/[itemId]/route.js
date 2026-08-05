@@ -24,6 +24,9 @@ import {
 } from '@/lib/requests/hops';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
+import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
+import { findFormulaByIdentity } from '@/lib/master/formulas';
+import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -80,6 +83,18 @@ export async function PATCH(request, { params }) {
   const valueError = hopValuesError(hop, body);
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
 
+  // ── ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียวกัน (P4b) ──
+  //
+  // ⭐ ต่างจากพัฒนากลิ่นตรงที่ **แถวมีอยู่แล้ว** ⇒ เป็นการขยายก้าว `ready`
+  // ไม่ใช่สร้างแถวใหม่ · หมวดกับกลิ่นอยู่บนแถวแล้วและ **คือตัวตนของสูตรพอดี**
+  // จึงไม่ถามซ้ำ (ถามซ้ำ = เปิดทางให้กรอกต่างจากที่ขอไว้)
+  let formulaDelivery = null;
+  if (hop === 'ready' && row.lineKind === 'product_dev') {
+    const { value, error } = normalizeFormulaDelivery(body);
+    if (error) return Response.json({ error }, { status: 400 });
+    formulaDelivery = value;
+  }
+
   const nowIso = new Date().toISOString();
   // ⚠️ วันของก้าวต้องเป็น **วันไทย** ไม่ใช่วัน UTC — ระหว่างเที่ยงคืนถึง 07:00 น.
   // ของไทย UTC ยังเป็นเมื่อวาน ⇒ ก้าวที่กดตอนเช้ามืดจะถูกบันทึกล่วงหน้าไปหนึ่งวัน
@@ -88,6 +103,28 @@ export async function PATCH(request, { params }) {
 
   try {
     const patch = { ...hopPatch(hop, body, user, today), updatedAt: nowIso };
+
+    if (formulaDelivery) {
+      // ⚠️ **หมวด × กลิ่นคู่นี้อาจมีสูตรอยู่แล้ว** — เช่นรอบแก้ที่กลับมาที่ของเดิม
+      // ⇒ ผูกกับตัวเดิม ไม่ใช่ตีกลับให้ผู้ใช้ไปแก้เอง (ล้มแล้วแถวจะค้างตลอดกาล
+      // เพราะไม่มีทางผูกเข้าสูตรที่ชนอยู่ — บทเรียนเดียวกับ "จัดระเบียบ" ของ 0171)
+      const existing = findFormulaByIdentity(
+        await loadFormulas(supabase, { status: null }),
+        { categoryCode: row.categoryCode, scentId: row.scentId },
+      );
+      const formula = existing || await createFormula(supabase, {
+        name: formulaDelivery.name,
+        code: formulaDelivery.code,
+        formulaDate: formulaDelivery.formulaDate,
+        categoryCode: row.categoryCode,
+        scentId: row.scentId,
+        dealId: before.dealId || null,
+      }, user, { accepted: true });
+      patch.producedFormulaId = formula.id;
+      // ป้ายบนแถวเป็น snapshot ตอนขอ (หมวด · กลิ่น) — เติมรหัสสูตรที่ได้จริงต่อท้าย
+      // ให้อ่านออกจากในคำร้องว่าได้สูตรตัวไหน โดยไม่ต้องเปิดทะเบียน
+      patch.label = `${row.label} → ${formula.code || formula.name}`;
+    }
     const { error } = await supabase.from('dept_request_items').update(patch).eq('id', itemId);
     if (error) throw error;
 
