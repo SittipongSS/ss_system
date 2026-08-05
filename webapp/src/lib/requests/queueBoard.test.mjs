@@ -72,3 +72,52 @@ test('ทุกตัวเลขบนแถบมีป้ายและโ�
   assert.deepEqual(QUEUE_COUNT_META.map((m) => m.key).sort(), keys.sort());
   for (const m of QUEUE_COUNT_META) assert.ok(m.label && m.tone, m.key);
 });
+
+// ── แท็บ 3 ตัว + แถวคั่นกลุ่ม (P6c) ───────────────────────────────────────
+import { QUEUE_GROUPS, QUEUE_TABS, queueTabRows, requestGroupKey } from './queueBoard.js';
+
+test('⭐ แท็บไม่โตตามจำนวนฝ่าย — คงที่ 3 ตัว (R-4)', () => {
+  // ของเดิมเป็น "คิวฝ่าย RD · คิวฝ่าย PC · ที่ฉันเปิด" ⇒ กลายเป็นสี่แท็บทันทีที่
+  // ฝ่ายบัญชีเข้ามาใน P7 · คนที่อยู่หลายฝ่ายต้องไล่กดทีละแท็บเพื่อดูว่ามีงานอะไร
+  assert.deepEqual(QUEUE_TABS.map((t) => t.key), ['todo', 'mine', 'history']);
+});
+
+test('"รอฉันตอบ" = ตาของฝ่ายที่ฉันอยู่ หรือตาของฉันในฐานะผู้ขอ', () => {
+  const rows = [
+    req({ id: 'A', dept: 'RD', items: [waitDept] }),          // ตาฝ่าย RD
+    req({ id: 'B', dept: 'PC', items: [waitDept] }),          // ตาฝ่าย PC (ไม่ใช่ของฉัน)
+    req({ id: 'C', dept: 'RD', items: [waitRequester], _mine: true }), // ตาฉัน (ผู้ขอ)
+    req({ id: 'D', dept: 'RD', items: [waitRequester] }),     // ตาผู้ขอคนอื่น
+    req({ id: 'E', status: 'closed' }),
+  ];
+  const got = queueTabRows(rows, { tab: 'todo', myDepts: ['RD'] }).map((r) => r.id);
+  assert.deepEqual(got, ['A', 'C']);
+});
+
+test('⚠️ ใบร่างของตัวเองไม่โผล่ในสองแท็บ — ตัวเลขบนแท็บจะบวกเกินจริง', () => {
+  const rows = [req({ id: 'D1', status: 'draft', _mine: true })];
+  assert.deepEqual(queueTabRows(rows, { tab: 'todo', myDepts: ['RD'] }), []);
+  assert.deepEqual(queueTabRows(rows, { tab: 'mine' }).map((r) => r.id), ['D1']);
+});
+
+test('⚠️ ประวัติ = ใบที่จบแล้ว ไม่ใช่ "ทุกใบ"', () => {
+  // รวมใบที่ยังเปิดอยู่ด้วยจะซ้ำกับสองแท็บแรก แล้วไม่มีใครรู้ว่าต้องดูแท็บไหน
+  const rows = [
+    req({ id: 'X', status: 'closed' }),
+    req({ id: 'Y', status: 'cancelled' }),
+    req({ id: 'Z', items: [waitDept] }),
+  ];
+  assert.deepEqual(queueTabRows(rows, { tab: 'history' }).map((r) => r.id), ['X', 'Y']);
+});
+
+test('กลุ่มของแถวคั่น — ยังไม่รับ / เลยกำหนด / กำลังทำ / จบแล้ว', () => {
+  const t = { todayIso: '2026-08-05' };
+  assert.equal(requestGroupKey(req({ status: 'pending' }), t), 'unacked');
+  assert.equal(requestGroupKey(req({ committedDueDate: '2026-08-01' }), t), 'overdue');
+  assert.equal(requestGroupKey(req({ committedDueDate: '2026-12-31' }), t), 'open');
+  assert.equal(requestGroupKey(req({ status: 'closed' }), t), 'settled');
+  assert.equal(requestGroupKey(null, t), 'settled');
+  // ทุกกลุ่มที่คืนได้ต้องมีป้าย ไม่งั้นแถวคั่นจะโผล่เป็นคีย์ดิบ
+  const keys = QUEUE_GROUPS.map((g) => g.key);
+  for (const k of ['unacked', 'overdue', 'open', 'settled']) assert.ok(keys.includes(k), k);
+});

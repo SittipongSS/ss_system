@@ -71,3 +71,57 @@ export const QUEUE_COUNT_META = [
   // ⭐ ตัวนี้ไม่มีในระบบวันนี้ — มันคือตัวที่ทำให้ฝ่ายเลิกถูกนับงานที่ไม่ใช่ของตัวเอง
   { key: 'waitingRequester', label: 'รอฝ่ายขายทำต่อ', tone: 'neutral' },
 ];
+
+// ── แท็บ 3 ตัวคงที่ (P6c) ─────────────────────────────────────────────────
+//
+// ⭐ **ไม่โตตามจำนวนฝ่าย** (R-4 ของแผน) — ของเดิมเป็น "คิวฝ่าย RD · คิวฝ่าย PC ·
+// ที่ฉันเปิด" ซึ่งจะกลายเป็นสี่แท็บทันทีที่ฝ่ายบัญชี (FN) เข้ามาใน P7 และห้าแท็บ
+// เมื่อมีฝ่ายถัดไป · คนที่อยู่หลายฝ่ายจะต้องไล่กดทีละแท็บเพื่อดูว่ามีงานอะไรบ้าง
+//
+// ⇒ ถามคำถามเดียวแทน: **"ตอนนี้เป็นตาใคร"** ซึ่งไม่ขึ้นกับจำนวนฝ่ายเลย
+export const QUEUE_TABS = [
+  { key: 'todo', label: 'รอฉันตอบ' },
+  { key: 'mine', label: 'ที่ฉันเปิด' },
+  { key: 'history', label: 'ประวัติ' },
+];
+
+// แถวของแต่ละแท็บ
+//
+// ⚠️ `myDepts` มาจากผู้เรียก (หน้าจอคำนวณจาก canQuoteMaterial) — ฟังก์ชันนี้ไม่
+// ตัดสินสิทธิ์เอง มันแค่จัดกลุ่มสิ่งที่ server ส่งมาแล้ว · ด่านจริงอยู่ที่ API
+export function queueTabRows(rows = [], { tab, myDepts = [] } = {}) {
+  if (tab === 'mine') return rows.filter((r) => r._mine);
+  if (tab === 'history') {
+    // ⚠️ ประวัติ = **ใบที่จบแล้ว** ไม่ใช่ "ทุกใบ" — ถ้ารวมใบที่ยังเปิดอยู่ด้วย
+    // มันจะซ้ำกับสองแท็บแรกและไม่มีใครรู้ว่าต้องดูแท็บไหน
+    return rows.filter((r) => !requestNextStep(r));
+  }
+  // todo — ตาของฝ่ายที่ฉันอยู่ · ใบร่างของตัวเองไม่นับ (ยังไม่ได้ส่ง = ตาฉันเอง
+  // แต่มันอยู่แท็บ "ที่ฉันเปิด" แล้ว · โผล่สองที่จะทำให้ตัวเลขบนแท็บบวกกันเกินจริง)
+  return rows.filter((r) => {
+    if (r.status === 'draft') return false;
+    const next = requestNextStep(r);
+    if (!next) return false;
+    return next.owner === 'dept' ? myDepts.includes(r.dept) : !!r._mine;
+  });
+}
+
+// ── แถวคั่นกลุ่ม ─────────────────────────────────────────────────────────
+//
+// ⭐ ทำให้ลำดับที่ `compareRequestUrgency` จัดไว้ **มองเห็นได้** — ของเดิมเรียงถูก
+// แล้วแต่คนอ่านไม่รู้ว่าทำไมใบนี้อยู่บน เพราะไม่มีอะไรบอกว่าเส้นแบ่งอยู่ตรงไหน
+export const QUEUE_GROUPS = [
+  { key: 'unacked', label: 'ยังไม่มีใครรับเรื่อง' },
+  { key: 'overdue', label: 'เลยกำหนดที่รับปากไว้' },
+  { key: 'open', label: 'กำลังดำเนินการ' },
+  { key: 'settled', label: 'จบแล้ว' },
+];
+
+export function requestGroupKey(request, { todayIso = null } = {}) {
+  if (!request) return 'settled';
+  if (!REQUEST_OPEN_STATUSES.includes(request.status)) return 'settled';
+  if (request.status === 'pending') return 'unacked';
+  if (todayIso && request.committedDueDate
+    && String(request.committedDueDate) < String(todayIso)) return 'overdue';
+  return 'open';
+}
