@@ -67,11 +67,12 @@ test('PATCH ดีล: probability ถูก freeze หลัง Won เหม�
     new URL('../app/api/sales-planning/deals/[id]/route.js', import.meta.url),
     'utf8',
   );
-  assert.match(
-    route,
-    /if \(\('probability' in body \|\| 'stage' in body\) && !alreadyWon\)/,
-    'probability ต้องมี guard !alreadyWon',
-  );
+  /* ทางเข้าของ probability แตกเป็นสองสาขาแล้ว (ขั้นเปลี่ยน → กติกาคิดให้ · ไม่เปลี่ยน →
+     เลือกเองได้) — **ทั้งสองสาขา** ต้องติด !alreadyWon ไม่ใช่แค่สาขาเดียว */
+  assert.match(route, /if \(stageChanged && !alreadyWon\) \{/, 'สาขาขั้นเปลี่ยนต้องมี guard');
+  assert.match(route, /\} else if \('probability' in body && !alreadyWon\) \{/, 'สาขาเลือกเองต้องมี guard');
+  assert.doesNotMatch(route, /patch\.probability = (?!await resolveProbability|toProbability\(body\.probability, nextStage\))/,
+    'ห้ามมีทางเขียน probability ทางอื่นที่ไม่ผ่าน guard');
   assert.match(route, /if \('projectValue' in body && !alreadyWon\)/, 'ของเดิมต้องยังกันอยู่');
 });
 

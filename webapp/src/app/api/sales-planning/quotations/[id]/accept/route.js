@@ -1,5 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { cascadeNpdProbability } from '@/lib/sales/dealProbability';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope, isWonStage } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
@@ -108,6 +109,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const accepted = { ...(result?.quotation || {}), lines: quote.lines || [] };
   const updatedDeal = result?.deal;
 
+  // ⭐ SCENT ปิด Won แล้ว → NPD พี่น้องในโครงการเดียวกันขึ้นเป็น 80% (มติผู้ใช้ 2026-08-05)
+  // ลูกค้าจ่ายจริงกับโครงการนี้ไปแล้ว งานพัฒนาสินค้าที่ต่อยอดจึงไม่ใช่ 50% อีกต่อไป
+  // ⚠️ นอก RPC โดยตั้งใจ: กติกาอยู่ใน JS ที่เดียว (dealProbability.js) ถ้าย้ายลง SQL จะมี
+  // กติกาสองชุดที่ต้องแก้พร้อมกันตลอดไป · พลาดแล้วไม่ล้ม accept (ดีลปิดไปแล้วจริง)
+  let cascaded = [];
+  try {
+    cascaded = await cascadeNpdProbability(supabase, updatedDeal?.projectId || deal.projectId, { changedBy: user.id || null });
+  } catch (cascadeError) {
+    console.error('cascadeNpdProbability failed', cascadeError);
+  }
+
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   await appendDocumentEvent(supabase, {
     docType: 'quotation', doc: quote, action: 'accept', user,
@@ -134,6 +146,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `Won deal from quotation ${quote.quoteNumber} (ex VAT ${quotationWonAmount(quote)})`,
     request: req,
   });
+
+  // FC ที่ถูก cascade ต้องมีร่องรอย — ไม่งั้นเลขขยับเองโดยไม่มีใครอธิบายได้
+  for (const row of cascaded) {
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_deal',
+      entityId: row.id,
+      before: { probability: row.previousProbability },
+      after: { probability: row.probability },
+      summary: `FC ${row.previousProbability}% → ${row.probability}% (SCENT ในโครงการเดียวกันปิด Won จากใบ ${quote.quoteNumber})`,
+      request: req,
+    });
+  }
 
   // แจ้งทีมขาย: ดีลปิดได้ (Won) — จุดสำคัญสุดของวงจร เดิมเงียบ (ทาง QT accept ไม่ผ่าน
   // insertWinSideEffects เลยไม่มีการ์ด). ส่งหลังเขียน DB สำเร็จ, fire-and-forget

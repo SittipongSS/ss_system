@@ -169,3 +169,16 @@ export function canQuoteDeal(deal) {
 
 /** transition ที่ยิง `PATCH /deals/[id]` ตรง ๆ (ที่เหลือหน้าพาไปฟอร์มของมันเอง) */
 export const DEAL_PATCH_TRANSITIONS = ["lost"];
+
+/**
+ * ขั้นที่เลือกได้จากดรอปดาวน์ "สถานะ" ในแถวตาราง (มติผู้ใช้ 2026-08-05)
+ *
+ * ⚠️ ตัดขั้นที่มี **เส้นทางบังคับของตัวเอง** ออก ทั้งที่ PATCH ยอมรับบางตัว:
+ *   won / in_project — ทางเดียวคือรับใบเสนอราคา (PATCH ตอบ 400 ถ้าส่งมาตรง ๆ)
+ *   lost             — ต้องกรอกเหตุผล (ดู transition "lost" ข้างบน · reason: required)
+ *                      ใส่ไว้ในดรอปดาวน์เมื่อไร = ปิดดีลได้โดยไม่มีเหตุผล ⇒ UI หลวมกว่า
+ *                      กติกาของตัวเอง ปิดดีลใช้ "ไม่ไปต่อ" ในเมนูท้ายแถวเหมือนเดิม
+ */
+export const ROW_EDITABLE_STAGES = DEAL_STAGES.filter(
+  (stage) => !CLOSED_STAGES.includes(stage),
+);

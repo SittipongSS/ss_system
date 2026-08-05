@@ -1,7 +1,7 @@
 "use client";
 
 import { Trophy } from "lucide-react";
-import { DEAL_TYPE_LABELS, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/lib/sales/forecastLevels";
 import { fmtMoneyCompact } from "@/lib/format";
 import UiKpiCard from "@/components/ui/KpiCard";
@@ -26,7 +26,10 @@ export const initialDealForm = {
   categoryMainCode: "", // draft หมวดหลักระหว่างรอเลือกหมวดรองในฟอร์มกลาง
   brand: "",        // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
-  probability: "50",
+  // ผูกกับขั้นตั้งต้นข้างบน ไม่ใช่เลขลอย — ของเดิมเป็น "50" (= ออกใบเสนอราคาแล้ว)
+  // ทั้งที่ดีลใหม่ยังอยู่ขั้น 'lead' · ฝั่ง server คิดใหม่จากกติกาอยู่แล้ว ค่านี้มีไว้ให้
+  // ช่องในฟอร์มโชว์ค่าที่จะได้เท่านั้น
+  probability: String(DEFAULT_PROBABILITY_BY_STAGE.lead),
   // ไม่มี forecastMonth แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจาก expectedCloseDate ฝั่ง server
   expectedCloseDate: "",
   startDate: "",   // วันที่เริ่มดีล (mig 0095) — ใช้เป็น anchor gen ไทม์ไลน์

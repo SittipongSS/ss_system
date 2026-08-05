@@ -6,6 +6,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
 } from '@/lib/forceDelete';
+import { resolveProbability } from '@/lib/sales/dealProbability';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
@@ -99,8 +100,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // — ฟอร์มแก้ดีลส่ง probability ที่ผ่าน snapForecastLevel มาทั้งก้อนทุกครั้ง ถ้าไม่กันไว้
   // การเปิดดีล Won แล้วกดบันทึก (เช่น แก้หมายเหตุ) จะเขียนทับ 100 ด้วย 80 เงียบ ๆ
   // เดิมบั๊กนี้ไม่กัดเพราะ snap(100) = 100 ตอนที่ 100 ยังเป็นระดับที่เลือกได้
-  if (('probability' in body || 'stage' in body) && !alreadyWon) {
-    patch.probability = toProbability(body.probability ?? before.probability, nextStage);
+  // ⭐ ขั้นเปลี่ยน = FC ตามกติกาเสมอ (มติผู้ใช้ 2026-08-05) — ไม่ฟังค่าที่ client ส่งมา
+  // ฟอร์มแก้ดีลส่ง probability เดิมมาทั้งก้อนทุกครั้ง ถ้ายอมรับค่านั้น ดีลที่เพิ่งถูกดัน
+  // ไปขั้น "เสนอราคา" จะค้าง FC 20% ต่อไป ทั้งที่หลักฐานเปลี่ยนแล้ว
+  // เลือกเองยังได้อยู่ — แต่ต้องเป็นการบันทึกที่ **ไม่ได้ขยับขั้น** เท่านั้น
+  const stageChanged = 'stage' in body && nextStage !== before.stage;
+  if (stageChanged && !alreadyWon) {
+    patch.probability = await resolveProbability(supabase, { ...before, ...patch, stage: nextStage });
+  } else if ('probability' in body && !alreadyWon) {
+    patch.probability = toProbability(body.probability, nextStage);
   }
   // เดือนพยากรณ์ (FC): อนุมานจาก "วันที่คาดปิด" อย่างเดียว (มติผู้ใช้ 2026-07-16 —
   // ฟอร์มไม่มีช่องเดือนแล้ว ไม่รับค่า forecastMonth จาก client). ขยับได้เฉพาะก่อนปิด
