@@ -19,7 +19,13 @@ export function systemForPathname(pathname) {
   // (เส้นทางจึงไม่ได้อยู่ใต้ /pm ซึ่งเป็นของ project management ฝั่งขาย)
   if (pathname.startsWith('/production')) return 'production';
   if (pathname.startsWith('/service')) return 'service';
-  if (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) return 'salesplan';
+  // 🐞 `/requests` หลุดจากกฎนี้ตั้งแต่ P0b (ย้ายคำร้องออกจาก `/sa`) ⇒ ตกไปที่
+  // `return 'tax'` ท้ายฟังก์ชัน ⇒ **ทั้งโมดูลคำร้องขึ้นเมนูของระบบภาษีสรรพสามิต**
+  // และเมนู "คำร้อง" (ซึ่งอยู่ในกลุ่ม salesplan) กดเข้าไม่ได้จากเปลือกนั้นเลย
+  // ⚠️ build/เทสต์จับไม่ได้เพราะหน้าเรนเดอร์ปกติทุกอย่าง — ผิดแค่เปลือกที่ครอบมัน
+  // (บทเรียนเดียวกับที่แผน P0 เตือนเรื่องลิงก์ค้าง: href ตายไม่มีอะไรจับ)
+  if (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning')
+    || pathname.startsWith('/pm') || pathname.startsWith('/requests')) return 'salesplan';
   if (pathname.startsWith('/sahamit')) return 'sahamit';
   if (pathname.startsWith('/mgmt')) return 'mgmt';
   return 'tax';
