@@ -381,7 +381,7 @@ export default function LeadsPage() {
               คิวทุกคน (senior_ae/ac/ae ไม่เห็น KPI แต่ต้องสลับขอบเขตได้)
               ⇒ แถวนี้โผล่เมื่อมีอย่างน้อยหนึ่งอย่าง ไม่ใช่ผูกกับสิทธิ์ใดสิทธิ์หนึ่ง */}
           {(scopes.length > 1 || canSeeLeadKpi(role)) && (
-            <div className={styles.scopeRow}>
+            <div className="scope-row">
               {scopes.length > 1 && (
                 <Segmented
                   ariaLabel="ขอบเขตของคิวลีด"
@@ -392,7 +392,7 @@ export default function LeadsPage() {
                 />
               )}
               {canSeeLeadKpi(role) && (
-                <Link href="/sa/dashboard?tab=lead_kpi" className={`linklike ${styles.kpiLink}`}>ดู KPI เต็ม →</Link>
+                <Link href="/sa/dashboard?tab=lead_kpi" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>
               )}
             </div>
           )}
