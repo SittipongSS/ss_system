@@ -20,6 +20,8 @@ import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createAndSendRequest, requestFormBlocker } from "@/lib/master/requestCreate";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
+import { QUEUE_COUNT_META, queueCounts, requestNextStep } from "@/lib/requests/queueBoard";
+import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
@@ -30,6 +32,9 @@ export default function RequestQueuePanel({
   loading = false, loadError = "", reload, newRequestDefaults = null,
 }) {
   const router = useRouter();
+  // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
+  // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
+  const counts = queueCounts(rows, { todayIso: businessDate() });
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -90,6 +95,18 @@ export default function RequestQueuePanel({
         </EmptyState>
       ) : (
         <TableScroll>
+          {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
+              วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอ
+              ไปรับของ/ส่งลูกค้าอยู่ ⇒ ตัวเลขสูงกว่าความจริงตลอดเวลา และไม่มีใคร
+              เชื่อมันอีกเลย · แยกออกมาแล้วตัวเลขที่เหลือถึงจะเป็นงานของฝ่ายจริง ๆ */}
+          <div className={styles.counts}>
+            {QUEUE_COUNT_META.map((meta) => (
+              <span key={meta.key} className={styles.count} data-tone={meta.tone}>
+                {meta.label} <strong>{counts[meta.key]}</strong>
+              </span>
+            ))}
+          </div>
+
           <table className="premium-table">
             <thead>
               <tr>
@@ -98,6 +115,9 @@ export default function RequestQueuePanel({
                 <th>เรื่อง / ลูกค้า</th>
                 <th className={styles.colDept}>ถึงฝ่าย</th>
                 <th className={styles.colProgress}>ความคืบหน้า</th>
+                {/* ⭐ ก้าวถัดไป — มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้
+                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง */}
+                <th className={styles.colNext}>ก้าวถัดไป</th>
                 <th className={styles.colStatus}>สถานะ</th>
                 <th className={styles.colUpdated}>อัปเดต</th>
               </tr>
@@ -105,6 +125,7 @@ export default function RequestQueuePanel({
             <tbody>
               {rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
+                const next = requestNextStep(ask);
                 return (
                   <tr
                     key={ask.id} className={styles.rowLink}
@@ -129,6 +150,17 @@ export default function RequestQueuePanel({
                       )}
                     </td>
                     <td className={styles.smallCell}>{ask.dept}</td>
+                    {/* ⚠️ สามโทน: ตาคุณ / รออีกฝั่ง / จบแล้ว — **สีสงวนให้ความเร่งด่วน
+                        และเจ้าของก้าว** ไม่ใช่ให้ชนิดคำร้อง (ชนิดใช้ป้ายข้อความ) */}
+                    <td className={styles.smallCell}>
+                      {next
+                        ? (
+                          <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
+                            {next.label}
+                          </span>
+                        )
+                        : <span className={styles.muted}>—</span>}
+                    </td>
                     <td className={styles.smallCell}>
                       {p.total > 0
                         ? `${p.done}/${p.total} ตอบแล้ว`

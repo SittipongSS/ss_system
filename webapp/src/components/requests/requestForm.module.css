@@ -123,3 +123,33 @@
 .listTitle { margin: 0; font-size: var(--fs-10); font-weight: var(--fw-bold); }
 .listLink { font-weight: var(--fw-bold); }
 .listEmpty { padding: var(--space-3); color: var(--text-3); font-size: var(--fs-7); }
+
+/* แถบตัวเลข 4 ตัวเหนือคิว — โทนบอก "ต้องรีบแค่ไหน" ไม่ใช่บอกชนิดของงาน
+   ⚠️ สีสงวนให้ความเร่งด่วนและเจ้าของก้าว · ชนิดคำร้องใช้ป้ายข้อความ (มติในแผน) */
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.count {
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+.count strong { color: var(--text); }
+
+.count[data-tone="warning"] strong { color: var(--amber); }
+.count[data-tone="danger"] strong { color: var(--red); }
+.count[data-tone="info"] strong { color: var(--blue); }
+
+.colNext { width: 150px; }
+
+/* ก้าวถัดไป — สองโทน: ตาฝ่าย (น้ำเงิน) / รออีกฝั่ง (เทา)
+   ⚠️ ไม่ใช้ inline style เพราะ ratchet คุมยอดชั้นเก่าไว้ และของที่เพิ่งเขียน
+   ไม่ควรไปเพิ่มยอดนั้น */
+.nextStep { color: var(--text-3); }
+.nextStep[data-owner="dept"] { color: var(--blue); }
