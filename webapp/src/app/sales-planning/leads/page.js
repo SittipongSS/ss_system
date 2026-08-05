@@ -371,26 +371,30 @@ export default function LeadsPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        {canSeeLeadKpi(role) && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: "var(--fw-medium)", color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
-            </div>
-          )}
-          {/* ขอบเขตอยู่ใต้หัวหน้า เหนือแถบ KPI — ตำแหน่งเดียวกับหน้าไปป์ไลน์ดีล
-              (มติผู้ใช้ 2026-08-05) มันจำกัด "ชุดข้อมูลของทั้งหน้า" ทั้งตัวเลขและตาราง
-              จึงต้องอยู่เหนือทุกอย่าง ไม่ใช่ปนกับตัวกรองที่ทำงานภายในชุดนั้น
+          {/* ขอบเขต + ทางไป KPI เต็ม อยู่ใต้หัวหน้า เหนือแถบ KPI — ตำแหน่งเดียวกับ
+              หน้าไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-05) ขอบเขตจำกัด "ชุดข้อมูลของทั้งหน้า"
+              ทั้งตัวเลขและตาราง จึงต้องอยู่เหนือทุกอย่าง ไม่ใช่ปนกับตัวกรองที่ทำงาน
+              ภายในชุดนั้น · ลิงก์ KPI เต็มอยู่ลำดับเดียวกัน จึงอยู่แถวเดียวกัน
 
-              ⚠️ **ไม่ผูกกับ canSeeLeadKpi** ต่างจากหน้าดีล — KPI ลีดเปิดให้เฉพาะผู้กำกับ
-              ดูแล/ทีม intake แต่ขอบเขตเป็นของคนทำงานคิวทุกคน (senior_ae/ac/ae ไม่เห็น
-              KPI แต่ต้องสลับขอบเขตได้) */}
-          {scopes.length > 1 && (
-            <Segmented
-              ariaLabel="ขอบเขตของคิวลีด"
-              className="scope-toggle"
-              value={activeScope}
-              onChange={setScope}
-              options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
-            />
+              ⚠️ เงื่อนไขของสองตัวนี้ **คนละตัวโดยเจตนา** — ตัวสลับไม่ผูกกับ canSeeLeadKpi
+              เพราะ KPI ลีดเปิดให้เฉพาะผู้กำกับดูแล/ทีม intake แต่ขอบเขตเป็นของคนทำงาน
+              คิวทุกคน (senior_ae/ac/ae ไม่เห็น KPI แต่ต้องสลับขอบเขตได้)
+              ⇒ แถวนี้โผล่เมื่อมีอย่างน้อยหนึ่งอย่าง ไม่ใช่ผูกกับสิทธิ์ใดสิทธิ์หนึ่ง */}
+          {(scopes.length > 1 || canSeeLeadKpi(role)) && (
+            <div className={styles.scopeRow}>
+              {scopes.length > 1 && (
+                <Segmented
+                  ariaLabel="ขอบเขตของคิวลีด"
+                  className="scope-toggle"
+                  value={activeScope}
+                  onChange={setScope}
+                  options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+                />
+              )}
+              {canSeeLeadKpi(role) && (
+                <Link href="/sa/dashboard?tab=lead_kpi" className={`linklike ${styles.kpiLink}`}>ดู KPI เต็ม →</Link>
+              )}
+            </div>
           )}
 
           <SaMetricStrip aria-busy={loading}>
