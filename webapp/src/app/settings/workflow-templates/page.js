@@ -1,4 +1,5 @@
 "use client";
+import { fmtDateTime } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -45,8 +46,10 @@ const EMPTY_STEP = {
   categoryExclude: "",
 };
 
-const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
-const formatDate = (value) => value ? dateTime.format(new Date(value)) : "-";
+/* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
+   (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
+   fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
+const formatDate = (value) => (value ? fmtDateTime(value) : "-");
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
 const statusClass = (status) => status === "published" ? styles.published : status === "draft" ? styles.draft : styles.archived;
 

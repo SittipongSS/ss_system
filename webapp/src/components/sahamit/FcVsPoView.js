@@ -15,7 +15,7 @@ const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", 
 const shortMonth = (ym) => {
   if (!ym) return "";
   const [y, m] = String(ym).split("-");
-  return `${TH_M[parseInt(m, 10) - 1] || m} ${(parseInt(y, 10) + 543).toString().slice(-2)}`;
+  return `${TH_M[parseInt(m, 10) - 1] || m} ${String(y).slice(-2)}`;
 };
 
 export default function FcVsPoView({ rounds, pos, coverages = [], products, unit = "qty", years = [] }) {

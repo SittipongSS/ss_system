@@ -179,7 +179,7 @@ export default function ServiceSchedulePage() {
     setFormVisit(null);
   };
 
-  const weekLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[6].date.getDate()} ${days[6].date.toLocaleDateString("th-TH", { month: "short", year: "numeric" })}`;
+  const weekLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[6].date.getDate()} ${days[6].date.toLocaleDateString("th-TH", { month: "short" })} ${days[6].date.getFullYear()}`;
   const todayIso = toLocalISODate(new Date());
 
   const shiftWeek = (weeks) => setWeekStart((prev) => {

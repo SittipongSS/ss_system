@@ -6,7 +6,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import { toBuddhistYear } from "@/lib/mgmt/constants";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
@@ -135,7 +134,7 @@ export default function MgmtRocksPage() {
       headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
-            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
+            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
           </Select>
         </div>
       )}

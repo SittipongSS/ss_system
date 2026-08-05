@@ -6,7 +6,7 @@ import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle 
 import { useRole, useCan } from "@/lib/roleContext";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TASK_STATUS_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
+import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
 
 const nowYear = new Date().getFullYear();
@@ -65,7 +65,7 @@ export default function MgmtOverviewPage() {
       headerRight={(
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
-            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
+            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
           </Select>
           <div className="pill ok">{percent}% เสร็จ</div>
         </div>

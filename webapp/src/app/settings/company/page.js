@@ -1,4 +1,5 @@
 "use client";
+import { fmtDateTime } from "@/lib/format";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2 } from "lucide-react";
@@ -30,8 +31,10 @@ const EMPTY_FORM = {
   changeNote: "",
 };
 
-const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
-const formatDate = (value) => value ? dateTime.format(new Date(value)) : "-";
+/* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
+   (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
+   fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
+const formatDate = (value) => (value ? fmtDateTime(value) : "-");
 
 function StatusBadge({ status }) {
   const tone = status === "published" ? styles.published : status === "archived" ? styles.archived : styles.draft;

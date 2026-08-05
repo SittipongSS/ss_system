@@ -12,6 +12,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtNumber } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
+import styles from "./page.module.css";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYear = () => thisMonth().slice(0, 4);
@@ -192,14 +193,13 @@ export default function SalesPlanningTargetsPage() {
     return m;
   }, [baseTree]);
 
-  const canEditNode = useCallback(
-    (node) => {
-      if (!canTarget) return false;
-      if (node.level === "sa") return isSuper;
-      return isSuper;
-    },
-    [canTarget, isSuper],
-  );
+  /* สิทธิ์แก้เป้า = capability `salesplan:target` ล้วน ๆ
+     🐞 ของเดิมคืน `isSuper` (รายชื่อ role ที่หน้านี้เดาเอง) ซึ่งวันนี้บังเอิญตรงกับ cap
+     พอดีเพราะ cap นี้มีแค่ admin กับ ae_supervisor — วันไหนเปิดให้ senior_ae ผู้ใช้จะ
+     ได้ตารางที่ทุกช่องกดไม่ได้ **โดยไม่มีข้อความอธิบาย** (กล่องเตือนโผล่เฉพาะ !canTarget)
+     ⚠️ `isSuper` ยังใช้ต่อสำหรับ *ขอบเขตข้อมูล* (เห็นทุกทีม + แถว SA รวมทั้งฝ่าย)
+     ซึ่งเป็นคนละเรื่องกับสิทธิ์แก้ — อย่ายุบสองอย่างนี้กลับเป็นตัวเดียวกันอีก */
+  const canEditNode = useCallback(() => canTarget, [canTarget]);
 
   const labelOf = (node) =>
     node.level === "sa" ? "SA รวมทั้งฝ่าย" : node.level === "team" ? `ทีม ${TEAM_LABELS[node.team] || node.team}` : node.ownerName;
@@ -211,13 +211,34 @@ export default function SalesPlanningTargetsPage() {
     setDraft(String(current || ""));
   };
 
+  /* เดือนที่ตั้งไว้ "ไม่เท่ากัน" = มีของให้เสียตอนเกลี่ยทับ
+     ⚠️ เทียบด้วยส่วนต่าง max-min > 12 ไม่ใช่ "ค่าไม่ตรงกันเป๊ะ" — การเกลี่ยของระบบเอง
+     ทิ้งเศษไว้ที่เดือนสุดท้าย (annual - per*11) ต่างได้ไม่เกิน 11 บาท ถ้าเช็คแบบเป๊ะ
+     แถวที่เพิ่งเกลี่ยไปจะโดนถามซ้ำทุกครั้งทั้งที่ไม่มีอะไรให้เสีย
+     อ่านจากค่าที่บันทึกแล้วเท่านั้น (serverAmounts) ไม่รวม pending — ของที่ยังไม่บันทึก
+     ผู้ใช้เพิ่งพิมพ์เอง ไม่ต้องเตือนซ้ำ */
+  const hasUnevenMonths = (node) => {
+    const values = node.serverAmounts || [];
+    if (values.length !== 12) return false;
+    return Math.max(...values) - Math.min(...values) > 12;
+  };
+
   // Commit only stages the edit into `pending` (no API call). The big Save button
   // flushes everything at once. Enter triggers blur → single commit path.
-  const commit = (node, field) => {
+  const commit = async (node, field) => {
     const wasCancel = cancelRef.current;
     setEditing(null);
     if (wasCancel) return;
     const amount = Math.max(0, Number(draft) || 0);
+    /* ⚠️ กรอก "รวมทั้งปี" = เกลี่ยเท่ากัน 12 เดือน **ทับของเดิมทั้งแถว** — ถ้าแถวนี้เคย
+       ตั้งรายเดือนไม่เท่ากันไว้ (เดือนพีค/เดือนปิดโรงงาน) ค่านั้นจะหายทันที
+       ของเดิมทับเงียบ ๆ ไม่มีอะไรบอก (มติผู้ใช้ 2026-08-05: ให้เตือนก่อน)
+       เตือนเฉพาะตอนที่ "มีอะไรให้เสีย" จริง — เดือนที่ตั้งไว้ไม่เท่ากัน · ถ้าเท่ากันอยู่แล้ว
+       หรือยังว่าง การเกลี่ยไม่ได้ทำให้ข้อมูลไหนหาย จึงไม่ต้องถาม */
+    if (field === "total" && hasUnevenMonths(node)
+      && !(await confirmAction("แถวนี้ตั้งเป้ารายเดือนไม่เท่ากันไว้ — กรอกยอดทั้งปีจะเกลี่ยเท่ากันทับทั้ง 12 เดือน ยืนยันไหม?"))) {
+      return;
+    }
     setPending((p) => ({ ...p, [`${nodeKey(node)}|${field}`]: amount }));
   };
 
@@ -234,44 +255,39 @@ export default function SalesPlanningTargetsPage() {
     proceed();
   };
 
-  // Distribute a yearly amount evenly across a node's 12 months (last month takes
-  // the rounding remainder), upserted in one bulk call.
-  const distributeYear = async (node, annual) => {
+  // แถวเป้าของโหนดหนึ่ง ๆ ในรูปแบบที่ API รับ — ใช้ร่วมทั้งการเกลี่ยทั้งปีและแก้รายเดือน
+  const itemFor = (node, period, targetAmount) => ({
+    period,
+    periodType: "month",
+    team: node.team || null,
+    ownerId: node.ownerId || null,
+    ownerName: node.ownerName || null,
+    targetAmount,
+  });
+
+  // เกลี่ยยอดทั้งปีเท่ากัน 12 เดือน (เศษไปลงเดือนสุดท้าย) → 12 แถวของโหนดนั้น
+  const yearItems = (node, annual) => {
     const per = Math.floor(annual / 12);
-    const items = monthsForYear(year).map((m, i) => ({
-      period: m,
-      periodType: "month",
-      team: node.team || null,
-      ownerId: node.ownerId || null,
-      ownerName: node.ownerName || null,
-      targetAmount: i === 11 ? annual - per * 11 : per,
-    }));
-    const res = await fetch("/api/sales-planning/targets/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || "เฉลี่ยเป้าไม่สำเร็จ");
+    return monthsForYear(year).map((m, i) => itemFor(node, m, i === 11 ? annual - per * 11 : per));
   };
 
-  // ยิงผ่าน bulk (upsert ตาม period/team/ownerId) ไม่ตัดสินใจ POST/PATCH จาก snapshot
-  // เดิม — กันเคส "กรอกเป้าปี (สร้าง 12 แถวไปแล้ว) + แก้เดือนทับ" ยิง POST ซ้ำชน unique 409.
-  const saveMonth = async (node, mi, amount) => {
-    const res = await fetch("/api/sales-planning/targets/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: [{
-          period: `${year}-${String(mi + 1).padStart(2, "0")}`,
-          periodType: "month",
-          team: node.team || null,
-          ownerId: node.ownerId || null,
-          ownerName: node.ownerName || null,
-          targetAmount: amount,
-        }],
-      }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกเดือนไม่สำเร็จ");
+  /* ยิงผ่าน bulk (upsert ตาม period/team/ownerId) ไม่ตัดสินใจ POST/PATCH จาก snapshot
+     เดิม — กันเคส "กรอกเป้าปี (สร้าง 12 แถวไปแล้ว) + แก้เดือนทับ" ยิง POST ซ้ำชน unique 409.
+
+     ⚡ ส่งเป็นก้อนละ ≤24 แถว (เพดานของ API) — ของเดิมยิงทีละแถว แก้ 10 ช่อง = 10 คำขอ
+     เรียงกัน และถ้าพังกลางทางจะบันทึกไปแล้วบางส่วนโดยบอกแค่ error เดียว
+     ⚠️ ลำดับสำคัญ: ยอดทั้งปีต้องไปก่อนเสมอ เพราะมันเขียนทับทั้ง 12 เดือน — ถ้าปนก้อน
+     เดียวกับการแก้รายเดือนของโหนดเดียวกัน ค่าที่แก้ทีหลังจะถูกค่าเฉลี่ยทับ */
+  const BULK_LIMIT = 24;
+  const postItems = async (items) => {
+    for (let i = 0; i < items.length; i += BULK_LIMIT) {
+      const res = await fetch("/api/sales-planning/targets/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: items.slice(i, i + BULK_LIMIT) }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกเป้าไม่สำเร็จ");
+    }
   };
 
   // Flush all staged edits: yearly totals first (they redistribute 12 months),
@@ -283,17 +299,17 @@ export default function SalesPlanningTargetsPage() {
     setInfo("");
     try {
       const entries = Object.entries(pending);
-      const totals = entries.filter(([k]) => k.endsWith("|total"));
-      const months = entries.filter(([k]) => !k.endsWith("|total"));
-      for (const [k, amt] of totals) {
-        const node = nodeMap.get(k.split("|")[0]);
-        if (node) await distributeYear(node, amt);
-      }
-      for (const [k, amt] of months) {
-        const [nk, f] = k.split("|");
+      const totalItems = [];
+      const monthItems = [];
+      for (const [key, amount] of entries) {
+        const [nk, field] = key.split("|");
         const node = nodeMap.get(nk);
-        if (node) await saveMonth(node, Number(f.slice(1)), amt);
+        if (!node) continue;
+        if (field === "total") totalItems.push(...yearItems(node, amount));
+        else monthItems.push(itemFor(node, `${year}-${String(Number(field.slice(1)) + 1).padStart(2, "0")}`, amount));
       }
+      await postItems(totalItems);
+      await postItems(monthItems);
       const n = entries.length;
       setPending({});
       await load();
@@ -318,17 +334,16 @@ export default function SalesPlanningTargetsPage() {
           <Link href="/sa/targets/history" className="btn ghost" title="กรอกยอดขายจริงของช่วงที่ยังไม่ได้ใช้ระบบ (ปีก่อน ๆ และเดือนต้นปีนี้)">
             ยอดขายย้อนหลัง
           </Link>
-          <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: "var(--fw-bold)" }}>
+          <Link href="/sa/targets/plan" className={`btn btn-primary ${styles.saveBarLabel}`}>
             <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
           </Link>
         </>
       )}
       <Select
-        className="premium-select"
+        className={styles.yearSelect}
         value={year}
         onChange={(e) => { const y = e.target.value; guardPending(() => setYear(y)); }}
         aria-label="ปี"
-        style={{ width: 110 }}
       >
         {yearOptions.map((y) => <option key={y} value={y}>ปี {y}</option>)}
       </Select>
@@ -353,34 +368,33 @@ export default function SalesPlanningTargetsPage() {
   });
 
   const renderRow = (node, indent, extra = {}) => (
-    <tr key={nodeKey(node)} className="premium-row" style={{ background: extra.bg }}>
-      <td className="fz-c1" style={{ background: extra.stickyBg || "var(--bg)", paddingLeft: 10 + indent * 16, minWidth: 210 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <tr key={nodeKey(node)} className={`premium-row ${extra.rowClass || ""}`.trim()}>
+      <td className={`fz-c1 ${styles.nameCell}`} data-indent={indent}>
+        <div className={styles.nameInner}>
           {extra.collapsible && (
             <button
               type="button"
-              className="btn icon-only ghost"
+              className={`btn icon-only ghost ${styles.toggleBtn}`}
               onClick={extra.onToggle}
               aria-label={extra.collapsed ? "ขยายทีม" : "ย่อทีม"}
               aria-expanded={!extra.collapsed}
               title={extra.collapsed ? "ขยายทีม" : "ย่อทีม"}
-              style={{ padding: 2, minWidth: 0, height: "auto" }}
             >
               {extra.collapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
             </button>
           )}
-          <div style={{ fontWeight: extra.bold ? 800 : 500, whiteSpace: "nowrap" }}>{extra.label ?? labelOf(node)}</div>
+          <div className={`${styles.rowLabel} ${extra.bold ? styles.rowLabelBold : ""}`.trim()}>{extra.label ?? labelOf(node)}</div>
         </div>
         {extra.gap && <GapNote target={node.annual} allocated={node.allocated} allocLabel={extra.allocLabel} />}
-        {node.role === "senior_ae" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>หัวหน้าทีม</div>}
-        {node.ghost && <div style={{ fontSize: "var(--fs-3)", color: "var(--amber)" }}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
+        {node.role === "senior_ae" && <div className={styles.subNote}>หัวหน้าทีม</div>}
+        {node.ghost && <div className={styles.ghostNote}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
       </td>
       {node.monthAmounts.map((amt, i) => (
-        <td key={i} className="num" style={{ minWidth: 76, padding: "4px 6px" }}>
+        <td key={i} className={`num ${styles.monthCell}`}>
           <NumCell {...cellProps(node, `m${i}`, amt)} display={amt ? compact(amt) : "–"} />
         </td>
       ))}
-      <td className="fz-cr num" style={{ minWidth: 130, padding: "4px 8px", background: extra.stickyBg || "var(--bg)" }}>
+      <td className={`fz-cr num ${styles.totalCell}`}>
         <NumCell {...cellProps(node, "total", node.annual)} display={money(node.annual)} bold />
       </td>
     </tr>
@@ -393,27 +407,27 @@ export default function SalesPlanningTargetsPage() {
       subtitle="กรอกเป้าทั้งปีในคอลัมน์ขวาสุด ระบบเฉลี่ยลง 12 เดือนให้อัตโนมัติ แล้วกด “บันทึก” เพื่อยืนยัน"
       headerRight={headerRight}
     >
-      <div className="flex flex-col gap-4" style={{ paddingBottom: pendingCount ? 90 : 0 }}>
-        {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>}
-        {info && <div className="glass-panel" style={{ padding: "12px 14px", borderColor: "var(--green)", color: "var(--green)" }}>{info}</div>}
+      <div className={`flex flex-col gap-4 ${pendingCount ? styles.pageWithBar : ""}`.trim()}>
+        {error && <div className={`glass-panel ${styles.errorBox}`} role="alert">{error}</div>}
+        {info && <div className={`glass-panel ${styles.infoBox}`}>{info}</div>}
         {!canTarget && (
-          <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>
-            เฉพาะ AE Supervisor / admin ตั้งเป้าได้ — หน้านี้แสดงเป้าแบบอ่านอย่างเดียว
+          <div className={`glass-panel ${styles.readOnlyBox}`}>
+            บัญชีของคุณไม่มีสิทธิ์ตั้งเป้า — หน้านี้แสดงเป้าแบบอ่านอย่างเดียว
           </div>
         )}
 
-        <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }} aria-busy={loading}>
+        <div className={`glass-panel ${styles.tableCard}`} aria-busy={loading}>
           <div className="fz-box">
-            <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
+            <TableScroll surface="embedded" family="editable"><table className="fz-table">
               <thead>
                 <tr>
-                  <th className="fz-c1" style={{ background: "var(--bg)", textAlign: "left", minWidth: 210 }}>ทีม / รายบุคคล</th>
-                  {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 76 }}>{m}</th>)}
-                  <th className="fz-cr num" style={{ background: "var(--bg)", minWidth: 130 }}>รวมทั้งปี</th>
+                  <th className={`fz-c1 ${styles.nameCell}`}>ทีม / รายบุคคล</th>
+                  {MONTH_LABELS.map((m) => <th key={m} className={`num ${styles.monthCell}`}>{m}</th>)}
+                  <th className={`fz-cr num ${styles.totalCell}`}>รวมทั้งปี</th>
                 </tr>
               </thead>
               <tbody>
-                {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, allocLabel: "รวมเป้าทีม", stickyBg: "color-mix(in srgb, var(--accent) 10%, var(--bg))", bg: "color-mix(in srgb, var(--accent) 5%, transparent)" })}
+                {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, allocLabel: "รวมเป้าทีม", rowClass: styles.rowSa })}
                 {view.teams.map((t) => {
                   const isCollapsed = !!collapsed[t.team];
                   return (
@@ -422,71 +436,62 @@ export default function SalesPlanningTargetsPage() {
                         bold: true, gap: true, allocLabel: "รวมราย AE",
                         label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`,
                         collapsible: true, collapsed: isCollapsed, onToggle: () => toggleTeam(t.team),
-                        stickyBg: "color-mix(in srgb, var(--text) 5%, var(--bg))", bg: "color-mix(in srgb, var(--text) 3%, transparent)",
+                        rowClass: styles.rowTeam,
                       })}
                       {!isCollapsed && t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
                       {!isCollapsed && !t.members.length && (
-                        <tr><td colSpan={14} style={{ paddingLeft: 40, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ยังไม่มี AE ในทีมนี้</td></tr>
+                        <tr><td colSpan={14} className={styles.emptyTeam}>ยังไม่มี AE ในทีมนี้</td></tr>
                       )}
                     </FragmentRows>
                   );
                 })}
                 {!teamsToShow.length && (
-                  <tr><td colSpan={14} style={{ padding: 18, color: "var(--text-3)" }}>ไม่พบทีมที่คุณดูแล</td></tr>
+                  <tr><td colSpan={14} className={styles.emptyTable}>ไม่พบทีมที่คุณดูแล</td></tr>
                 )}
               </tbody>
               {teamsToShow.length > 0 && (
                 <tfoot>
-                  {(() => {
-                    const FOOT_H = 34; // fixed row height so the two stacked sticky rows line up
-                    const rows = [
-                      { label: "รวมเป้าทีมที่ตั้ง", months: grandMonths, total: grandTotal, accent: 12, top: true },
-                      { label: "รวมราย AE (ทุกทีม)", months: grandMemberMonths, total: grandMemberTotal, accent: 20, top: false },
-                    ];
-                    return rows.map((r, ri) => {
-                      const bg = `color-mix(in srgb, var(--accent) ${r.accent}%, var(--bg))`;
-                      const border = r.top ? "2px solid var(--border)" : "1px solid var(--border)";
-                      const bottom = (rows.length - 1 - ri) * FOOT_H;
-                      const cell = { background: bg, borderTop: border, height: FOOT_H, bottom };
-                      return (
-                        <tr key={r.label} style={{ fontWeight: "var(--fw-bold)" }}>
-                          <td className="fz-c1 fz-foot" style={{ ...cell, paddingLeft: 10, minWidth: 210 }}>{r.label}</td>
-                          {r.months.map((v, i) => (
-                            <td key={i} className="num mono tabular-nums fz-foot" style={{ ...cell, minWidth: 76, padding: "0 6px", color: v ? "var(--text)" : "var(--text-3)" }}>
-                              {v ? compact(v) : "–"}
-                            </td>
-                          ))}
-                          <td className="fz-cr num mono tabular-nums fz-foot" style={{ ...cell, minWidth: 130, padding: "0 8px" }}>
-                            {money(r.total)}
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
+                  {/* สองแถวรวมตรึงซ้อนกันท้ายตาราง — ความสูง/ระยะตรึง/พื้น อยู่ใน
+                      page.module.css (.footRow / .footTop / .footBottom) แถวบนต้องรู้
+                      ความสูงของแถวล่างจึงตรึงที่ 34px พอดี */}
+                  {[
+                    { label: "รวมเป้าทีมที่ตั้ง", months: grandMonths, total: grandTotal, cls: styles.footTop },
+                    { label: "รวมราย AE (ทุกทีม)", months: grandMemberMonths, total: grandMemberTotal, cls: styles.footBottom },
+                  ].map((r) => (
+                    <tr key={r.label} className={`${styles.footRow} ${r.cls}`}>
+                      <td className={`fz-c1 fz-foot ${styles.nameCell}`}>{r.label}</td>
+                      {r.months.map((v, i) => (
+                        <td key={i} className={`num mono tabular-nums fz-foot ${styles.monthCell} ${v ? "" : styles.footZero}`}>
+                          {v ? compact(v) : "–"}
+                        </td>
+                      ))}
+                      <td className={`fz-cr num mono tabular-nums fz-foot ${styles.totalCell}`}>
+                        {money(r.total)}
+                      </td>
+                    </tr>
+                  ))}
                 </tfoot>
               )}
             </table></TableScroll>
           </div>
         </div>
 
-        <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
+        <div className={styles.hint}>
           คลิกที่ตัวเลขเพื่อแก้ · Enter/Tab เพื่อยืนยันช่อง · Esc ยกเลิกช่อง · ช่องที่แก้จะไฮไลต์ไว้จนกด “บันทึก” · สถานะ “เหลือแบ่ง/เกิน” เป็นการเตือน ไม่บังคับให้ผลรวมเท่ากัน
         </div>
       </div>
 
       {/* Big confirm-save bar — appears only when there are unsaved edits. */}
       {canTarget && pendingCount > 0 && (
-        <div className="glass-panel form-action-bar is-page" role="region" aria-label="ยืนยันการบันทึก"
-          style={{ borderColor: "var(--amber)" }}>
-          <span style={{ fontWeight: "var(--fw-bold)" }}>
+        <div className={`glass-panel form-action-bar is-page ${styles.saveBar}`} role="region" aria-label="ยืนยันการบันทึก">
+          <span className={styles.saveBarLabel}>
             มีการแก้ไข {pendingCount} รายการ ที่ยังไม่บันทึก
           </span>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <div className={styles.saveBarActions}>
             <button type="button" className="btn" onClick={discard} disabled={saving}>
               <X size={16} aria-hidden="true" /> ยกเลิก
             </button>
-            <button type="button" className="btn btn-primary" onClick={saveAll} disabled={saving}
-              style={{ fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)", padding: "12px 28px", minWidth: 200 }}>
+            <button type="button" className={`btn btn-primary ${styles.saveBtn}`} onClick={saveAll} disabled={saving}>
               <Save size={18} aria-hidden="true" /> {saving ? "กำลังบันทึก..." : "บันทึกเป้าหมาย"}
             </button>
           </div>
@@ -505,8 +510,7 @@ function NumCell({ editing, canEdit, dirty, draft, setDraft, onStart, onCommit, 
     return (
       <MoneyInput
         autoFocus
-        className="mono"
-        style={{ width: "100%", textAlign: "right", padding: "4px 6px", fontWeight: bold ? 800 : 500 }}
+        className={`mono ${styles.numInput} ${bold ? styles.numInputBold : ""}`.trim()}
         value={draft}
         onChange={(value) => setDraft(value ?? "")}
         onFocus={(e) => e.target.select()}
@@ -521,20 +525,15 @@ function NumCell({ editing, canEdit, dirty, draft, setDraft, onStart, onCommit, 
   return (
     <button
       type="button"
-      className="linklike mono tabular-nums"
+      className={[
+        "linklike mono tabular-nums",
+        styles.numBtn,
+        bold ? styles.numBtnBold : "",
+        dirty ? styles.numBtnDirty : "",
+      ].filter(Boolean).join(" ")}
       disabled={!canEdit}
       onClick={onStart}
       title={canEdit ? "คลิกเพื่อแก้ไข" : undefined}
-      style={{
-        width: "100%",
-        textAlign: "right",
-        fontWeight: bold ? 800 : 500,
-        color: dirty ? "var(--amber)" : bold ? "var(--text)" : "var(--text-2)",
-        background: dirty ? "color-mix(in srgb, var(--amber) 16%, transparent)" : "transparent",
-        borderRadius: 6,
-        padding: "2px 4px",
-        outline: dirty ? "1px solid color-mix(in srgb, var(--amber) 45%, transparent)" : "none",
-      }}
     >
       {display}
     </button>
@@ -546,10 +545,10 @@ function GapNote({ target, allocated, allocLabel = "แบ่งแล้ว" })
   const remaining = target - allocated;
   const over = remaining < 0;
   const done = remaining === 0 && target > 0;
-  const color = over ? "var(--red)" : done ? "var(--green)" : "var(--amber)";
+  const tone = over ? styles.gapOver : done ? styles.gapDone : styles.gapPending;
   const text = target <= 0 ? "ยังไม่ตั้งเป้ารวม" : over ? `เกินเป้า ${money(-remaining)}` : done ? "ครบพอดี" : `เหลืออีก ${money(remaining)}`;
   return (
-    <div style={{ fontSize: "var(--fs-3)", color, fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>
+    <div className={`${styles.gapNote} ${tone}`}>
       {allocLabel} {money(allocated)} · {text}
     </div>
   );

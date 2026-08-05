@@ -9,7 +9,7 @@ import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
 import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
-import { fmtName } from "@/lib/format";
+import { fmtDateTime, fmtName } from "@/lib/format";
 import styles from "./page.module.css";
 
 const EMPTY_FORM = { firstName: "", lastName: "", phone: "" };
@@ -23,13 +23,10 @@ function initialsOf(profile) {
   return String(profile?.email || "U").slice(0, 2).toUpperCase();
 }
 
+/* ⚠️ locale "th-TH" ใช้ปฏิทินพุทธเป็นค่าตั้งต้น — ปีที่ออกมาจะเป็น พ.ศ. เงียบ ๆ
+   ทั้งระบบเป็น ค.ศ. (มติผู้ใช้ 2026-08-05) จึงใช้ fmtDateTime กลางแทน */
 function formatDateTime(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Bangkok",
-  }).format(new Date(value));
+  return value ? fmtDateTime(value) : "—";
 }
 
 export default function AccountPage() {
