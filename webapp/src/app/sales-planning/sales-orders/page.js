@@ -14,9 +14,10 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
-function statusBadge(status) {
+function statusBadge(status, className = "") {
   const color = { draft: "var(--text-3)", pending_approval: "var(--amber)", approved: "var(--green)", rejected: "var(--red)", cancelled: "var(--red)" }[status] || "var(--text-3)";
-  return <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{STATUS[status] || status}</span>;
+  // ขอบ/พื้นมาจาก .ui-badge ที่ derive จาก currentColor อยู่แล้ว — ตั้ง color พอ
+  return <span className={["ui-badge", className].filter(Boolean).join(" ")} style={{ color }}>{STATUS[status] || status}</span>;
 }
 
 export default function SalesOrdersPage() {
@@ -124,7 +125,7 @@ export default function SalesOrdersPage() {
                     <td className="num mono" style={row.status === "approved" ? undefined : { color: "var(--text-3)" }} title={row.status === "approved" ? undefined : "ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ"}>
                       {fmtMoney(row.actualAmount)}
                     </td>
-                    <td>{statusBadge(row.status)}</td>
+                    <td>{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}

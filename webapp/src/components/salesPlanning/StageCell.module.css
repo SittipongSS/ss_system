@@ -1,0 +1,41 @@
+/* ช่อง "สถานะ" ในตารางดีล — ปุ่มบาง ๆ ที่ครอบป้ายไว้
+   ป้ายเองมีสี/กรอบอยู่แล้ว ปุ่มจึงต้องไม่เติมกรอบซ้อนอีกชั้น (จะกลายเป็นสองกรอบ)
+   แค่ยกพื้นหลังตอนชี้ให้รู้ว่ากดได้ — แพตเทิร์นเดียวกับช่องเดือน FC ข้าง ๆ กัน */
+.trigger {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.trigger:hover {
+  filter: brightness(1.15);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 170px;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-text);
+  color: var(--red);
+}

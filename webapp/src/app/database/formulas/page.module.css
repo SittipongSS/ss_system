@@ -14,6 +14,16 @@
 .name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }
 
+/* ชื่อที่ลูกค้าเรียก + เส้นสายพันธุ์ — อยู่ใต้ชื่อของเรา น้ำหนักเบากว่าเสมอ
+   ⚠️ ถ้าให้สองบรรทัดนี้เด่นเท่าชื่อจริง คนจะเริ่มอ้างชื่อลูกค้าเป็นชื่อทางการ
+   (กฎเดียวกับทะเบียนกลิ่น) */
+.sub {
+  margin-top: var(--space-1);
+  font-weight: var(--fw-normal);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
+
 /* ⚠️ ใช้ flex + justify-content แทน text-align: right บน td — กฎ td ของตารางกลาง
    ตั้ง text-align: left ด้วย specificity (0,0,2,1) ซึ่งคลาสเดี่ยวสู้ไม่ได้ */
 .rowActions {

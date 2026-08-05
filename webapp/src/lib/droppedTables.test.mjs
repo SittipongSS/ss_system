@@ -51,3 +51,37 @@ test('ไม่มีโค้ดไหนยัง query ตารางที�
   }
   assert.deepEqual(offenders, [], `ยังอ่านตารางที่ถูกลบไปแล้ว:\n  ${offenders.join('\n  ')}`);
 });
+
+// ── คอลัมน์ที่ migration DROP ไปแล้ว ──────────────────────────────────────
+//
+// 🐞 ที่มา: mig 0204 DROP `dept_requests.productTypeId` แต่ `POST /api/sa/requests`
+// ยังใส่คีย์นั้นลง insert อยู่ ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST
+// ปฏิเสธทั้งก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (PGRST204) ไม่ใช่แค่เมินค่านั้นทิ้ง
+// · build ผ่าน · eslint ผ่าน · เทสต์ผ่าน — ชื่อคอลัมน์เป็นแค่คีย์ในอ็อบเจกต์
+//
+// ⚠️ ตรวจเฉพาะ **ทางเขียน/ทางอ่าน DB** (lib + api) ไม่รวม components — หน้าจอถือ
+// ชื่อเดียวกันไว้เป็นชื่อช่องในฟอร์มได้โดยไม่แตะ DB (เช่น RequestForm ที่เก็บ
+// productTypeId ไว้รอหัวข้อ "พัฒนาผลิตภัณฑ์" ซึ่งจะเขียนลง *รายแถว* แทน)
+const DROPPED_COLUMNS = {
+  productTypeId: '0204 — หมวดสินค้าย้ายไปรายแถว (dept_request_items.categoryCode)',
+};
+
+const DB_DIRS = ['lib', 'app/api'];
+
+test('ทางที่แตะ DB ต้องไม่อ้างคอลัมน์ที่ถูก DROP ไปแล้ว', () => {
+  const offenders = [];
+  for (const file of jsFiles(SRC)) {
+    const rel = path.relative(SRC, file);
+    if (!DB_DIRS.some((d) => rel.startsWith(d + path.sep))) continue;
+    if (/\.test\.mjs$/.test(rel)) continue;
+    // ตัดคอมเมนต์ทิ้งก่อน — บันทึกว่า "เคยมีคอลัมน์นี้" เป็นสิ่งที่ควรเขียนไว้
+    const src = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    for (const [column, note] of Object.entries(DROPPED_COLUMNS)) {
+      if (new RegExp(`\\b${column}\\b`).test(src)) {
+        offenders.push(`${rel} → ${column} (${note})`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `ยังอ้างคอลัมน์ที่ถูกลบไปแล้ว:\n  ${offenders.join('\n  ')}`);
+});

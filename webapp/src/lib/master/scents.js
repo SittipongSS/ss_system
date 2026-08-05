@@ -157,6 +157,25 @@ export function scentTransitionError(scent, next) {
   return null;
 }
 
+// ── สายพันธุ์: "กลิ่นตัวนี้แก้มาจากตัวไหน" ────────────────────────────────
+//
+// ⭐ มาแทน Rev. — Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ (ลูกค้าให้แก้ทั้ง
+// A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A)
+//
+// ⚠️ ด่านนี้ต้องอยู่ที่ **server** ไม่ใช่แค่กรองตัวเลือกบนจอ — ตัวเลือกที่กรองแล้ว
+// กันคนกดผิด แต่ไม่กันคนยิง API ตรง · กลิ่นข้ามลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9)
+// เท่ากับตัวตนของกลิ่นเอง ไม่ใช่แค่ความสะดวกของฟอร์ม
+//
+// `parent` = แถวกลิ่นต้นทางที่ route โหลดมาให้ (null = หาไม่เจอ)
+export function derivedFromError(parent, { customerId, id } = {}) {
+  if (!parent) return 'ไม่พบกลิ่นต้นทางที่อ้างถึง';
+  if (id && parent.id === id) return 'กลิ่นอ้างตัวเองเป็นต้นทางไม่ได้';
+  if (parent.customerId !== customerId) {
+    return 'กลิ่นต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้';
+  }
+  return null;
+}
+
 // ── ตรวจข้อมูลก่อนสร้าง/แก้ — คืน { value, error } ───────────────────────
 export function normalizeScentInput(body = {}) {
   const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
@@ -170,6 +189,15 @@ export function normalizeScentInput(body = {}) {
   const code = String(body.code ?? '').trim() || null;
   if (code && code.length > 100) return { value: null, error: 'รหัสกลิ่นยาวเกิน 100 ตัวอักษร' };
 
+  // ⭐ ชื่อที่ลูกค้าตั้งเอง — เป็นวิธีที่ลูกค้าโทรมาถามจริง ("ขอตัว Summer Breeze")
+  // ⚠️ **ห้ามแสดงแทนรหัส/ชื่อของเรา ต้องแสดงคู่กันเสมอ** — ปล่อยให้แทนกันเมื่อไร
+  // จะเข้าโรคเดิมที่ 0171 บันทึกไว้ (ของจริง: สินค้า 10 แถวเอาชื่อกลิ่นไปกรอก
+  // ช่องชื่อสูตร แล้วไม่มีใครกลับมาตรวจ)
+  const customerTradeName = String(body.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
+  if (customerTradeName.length > 200) {
+    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
+  }
+
   const note = String(body.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
 
@@ -178,6 +206,8 @@ export function normalizeScentInput(body = {}) {
       name,
       code,
       customerId,
+      customerTradeName: customerTradeName || null,
+      derivedFromScentId: String(body.derivedFromScentId ?? '').trim() || null,
       customerName: String(body.customerName ?? '').trim() || null,
       dealId: String(body.dealId ?? '').trim() || null,
       ownerId: String(body.ownerId ?? '').trim() || null,

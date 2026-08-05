@@ -15,7 +15,7 @@ import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
-  requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
+  legacyKindError, requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -63,7 +63,7 @@ export async function GET(request) {
 
 // POST /api/sa/requests
 // { kind, dept, title, body?, urgent?, requestedDueDate?,
-//   dealId? | salesOrderId? | scentId? | formulaId? | productTypeId?,   ← ตามหัวข้อ
+//   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
 //   items?: [{ kind, materialId?, label, spec?, componentId?, tiers?: [qty…] }] }
 //
@@ -82,6 +82,10 @@ export async function POST(request) {
 
   const body = await request.json().catch(() => ({}));
   const kind = body.kind;
+
+  // หัวข้อที่เลิกใช้แล้วเปิดใบใหม่ไม่ได้ — ฟอร์มกรองออกให้แล้ว แต่ยิงตรงยังได้
+  const retired = legacyKindError(kind);
+  if (retired) return Response.json({ error: retired }, { status: 400 });
 
   // ด่านตามชนิด — ที่เดียวของระบบ (หัวเรื่อง/ดีล/กลิ่น/สูตร/บรรทัด)
   const shapeError = requestShapeError(kind, body);
@@ -130,9 +134,16 @@ export async function POST(request) {
   let dealId = body.dealId || null;
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
-      .from('sales_orders').select('id, dealId').eq('id', body.salesOrderId).maybeSingle();
+      .from('sales_orders').select('id, dealId, status').eq('id', body.salesOrderId).maybeSingle();
     if (soError) return Response.json({ error: soError.message }, { status: 500 });
     if (!soRow) return Response.json({ error: 'ไม่พบใบสั่งขายที่เลือก' }, { status: 400 });
+    // ⭐ **ต้องอนุมัติแล้วเท่านั้น** (มติผู้ใช้) — ใบที่ยังรออนุมัติแปลว่าค่าบริการ
+    // ออกแบบกลิ่นยังไม่ถูกตกลง · เริ่มงาน RD ก่อนแล้วใบไม่ผ่าน = ทำฟรี
+    if (soRow.status !== 'approved') {
+      return Response.json({
+        error: 'ใบสั่งขายนี้ยังไม่อนุมัติ — เปิดคำร้องพัฒนากลิ่นได้เมื่อใบสั่งขายผ่านอนุมัติแล้ว',
+      }, { status: 400 });
+    }
     salesOrderId = soRow.id;
     dealId = soRow.dealId || null;
     if (!dealId) {
@@ -207,8 +218,10 @@ export async function POST(request) {
       dealId,
       projectId,
       salesOrderId,
-      // หมวดสินค้าที่จะขึ้นตัวอย่าง (Mock-up) — integer ไม่ใช่ text เหมือน id อื่น
-      productTypeId: body.productTypeId ? Number(body.productTypeId) : null,
+      // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
+      // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
+      // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
+      // หมวดสินค้าย้ายไปอยู่ **รายแถว** (`dept_request_items.categoryCode` — 0204)
       stepKey: requestStepKey(kind),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,

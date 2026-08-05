@@ -101,6 +101,11 @@ export default function RequestForm({
   const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
   const needsScent = requestNeedsRef(kind, "scent");
   const needsFormula = requestNeedsRef(kind, "formula");
+  // ⚠️ **หลับอยู่ตั้งแต่ 0204** — คอลัมน์ `dept_requests.productTypeId` ถูก DROP ทิ้ง
+  // `productType` จึงถูกถอดออกจาก REQUEST_NEEDS ⇒ ตัวนี้เป็น false เสมอ และช่อง
+  // ข้างล่างไม่เรนเดอร์ · **ตั้งใจไม่ลบโค้ดทิ้ง**: หมวดสินค้ากลับมาแน่ตอนหัวข้อ
+  // "พัฒนาผลิตภัณฑ์" มาแทน Mock-up แต่กลับมาเป็น **รายแถว**
+  // (`dept_request_items.categoryCode`) ผ่าน ProductCategorySelect ตัวกลาง
   const needsProductType = requestNeedsRef(kind, "productType");
 
   // ดีลที่เลือกได้ = ดีลของโครงการที่เลือกไว้เท่านั้น (ลำดับข้อ 1)

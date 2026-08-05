@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { resolveProbability } from '@/lib/sales/dealProbability';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, inPmProjectScope } from '@/lib/permissions';
@@ -112,6 +113,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)
   const nextStage = advanceStage(deal.stage, 'timeline_proposed');
   const adoptedCustomer = !deal.customerId;
+  // เพิ่งมีโครงการ = เพิ่งรู้ว่ามีพี่น้องใบไหนบ้าง — กติกา FC ของ NPD อ่านจากตรงนี้
+  // (NPD ที่ออกใบเสนอราคาแล้ว + โครงการมี SCENT ที่ Won → 80%)
+  const nextProbability = await resolveProbability(supabase, {
+    ...deal, stage: nextStage, projectId: project.id,
+  });
   const { data: updatedDeal, error: linkErr } = await supabase
     .from('sales_deals')
     .update({
@@ -119,6 +125,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       customerId: project.customerId,
       customerName: project.customerName || deal.customerName || null,
       stage: nextStage,
+      probability: nextProbability,
       updatedAt: now,
       metadata: { ...(deal.metadata || {}), linkedProjectCode: project.code, linkedProjectAt: now },
     })

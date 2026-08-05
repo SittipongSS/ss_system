@@ -149,7 +149,9 @@ function signatures() {
       <section class="signatures" aria-label="ส่วนลงนาม">${box('ผู้จัดทำ', '/ PREPARED BY')}${box('ผู้รับเอกสาร / ลูกค้า', '/ RECEIVED BY')}</section>`;
 }
 
-export function buildBillPrintHTML(order, customer = {}, company, activeStandard = null) {
+// options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (กติกาเดียวกับ renderQuotationMasterDocumentHTML)
+// ใช้ตอนฝังเอกสารเป็นพรีวิวใน iframe ซึ่งปุ่มสั่งพิมพ์ไม่มีความหมาย
+export function buildBillPrintHTML(order, customer = {}, company, activeStandard = null, options = {}) {
   const co = resolveCompanyBlock(company);
   const standard = order.taxNoticeStandardSnapshot || activeStandard;
   const form = resolveDocumentForm(standard, NOTICE_KEY);
@@ -217,7 +219,12 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
     reference: {
       heading: 'ข้อมูลอ้างอิง',
       headingEn: '/ REFERENCE',
+      // โครงการมาก่อนโครงการย่อยเสมอ และดีลเรียกว่า "โครงการย่อย" เฉพาะบนเอกสาร
+      // (มติผู้ใช้ 2026-08-04) — ต้องตรงกับใบเสนอราคา/ใบสั่งขาย ไม่งั้นลูกค้าได้ชุดเอกสาร
+      // ที่อ้างอิงของอย่างเดียวกันคนละชื่อ · ค่าตรึงอยู่บนใบตั้งแต่ตอนสร้าง (mig 0208)
       rows: [
+        { label: 'โครงการ', value: order.projectRef },
+        { label: 'โครงการย่อย', value: order.dealRef },
         { label: 'เลขที่ใบเสนอราคา', value: order.quotationRef },
         { label: 'เลขที่ใบสั่งซื้อ (PO)', value: order.poReference },
       ],
@@ -255,7 +262,7 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
     accentKey: resolveDocumentAccentKey(standard, NOTICE_KEY),
     variantClass: 'tax',
     extraCss: NOTICE_CSS,
-    toolbar: { label: `${titleTh} ${noticeNumber}`, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
+    toolbar: options.toolbar === false ? null : { label: `${titleTh} ${noticeNumber}`, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
     pages: documentPages,
   });
 }

@@ -12,7 +12,8 @@ import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
 import {
-  acknowledgeRequestError, answerRequestError, canAnswerRequest, canManageRequest,
+  acknowledgeRequestError,
+  bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
@@ -140,6 +141,22 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedAt = nowIso;
       if (due) patch.committedDueDate = due;
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'bounce') {
+      // ⭐ ตีกลับ = ผู้รับเรื่องส่งคืนผู้ยื่น ⇒ สิทธิ์เป็นของ **ฝ่ายปลายทาง** ไม่ใช่ผู้ขอ
+      // (ผู้ขอเอาใบคืนเองเรียก "ดึงกลับ" ซึ่งเป็นคนละเรื่องและยังไม่มีในรอบนี้)
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `ตีกลับได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = bounceRequestError(before, { reason: body.reason });
+      if (err) return Response.json({ error: err }, { status: 409 });
+      // ⚠️ **ไม่แตะ docNo** — trigger ห้ามแก้อยู่แล้ว และนั่นคือสิ่งที่ต้องการ:
+      // ใบเดิมกลับไปเป็นร่างพร้อมเลขที่เดิม ไม่ใช่ใบใหม่
+      patch.status = 'draft';
+      patch.bounceReason = String(body.reason).trim();
+      patch.bouncedAt = nowIso;
+      patch.bouncedById = user?.id ?? null;
+      patch.bouncedByName = user?.name ?? null;
+      summary = `ตีกลับ ${before.docNo || id}`;
     } else if (action === 'answer') {
       // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
       // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
@@ -214,7 +231,8 @@ export async function PATCH(request, { params }) {
       ? await sanitizeMentions(supabase, 'dept_request', after, body.mentions)
       : [];
     await appendRequestEvent(supabase, {
-      request: after, action, opts: { reason: patch.cancelReason }, user, mentions,
+      request: after, action,
+      opts: { reason: patch.cancelReason ?? patch.bounceReason }, user, mentions,
     });
 
     // แจ้งฝ่ายเจ้าของเมื่อมีคำร้องใหม่เข้าคิว (space rd/pc ตามฝ่าย)

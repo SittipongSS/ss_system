@@ -26,6 +26,7 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -46,7 +47,9 @@ export default function FormulasPage() {
 
   const [formulas, setFormulas] = useState([]);
   const [scents, setScents] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  // 🗑 `customers` หายไปพร้อมช่องลูกค้าในฟอร์ม (0207) — ลูกค้าของสูตรมาจากกลิ่น
+  // ฝั่ง server แล้ว หน้านี้จึงไม่ต้องรู้จักรายชื่อลูกค้าเลย
+  const [categories, setCategories] = useState([]);
   const [unsorted, setUnsorted] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -54,6 +57,10 @@ export default function FormulasPage() {
   const linkedQuery = useSearchParams().get("q") || "";
   const [search, setSearch] = useState(linkedQuery);
   const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
+  // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
+  // ทะเบียนมีหน้าละหลายสิบแถวและแถวคั่นจะกระจายข้ามหน้า
+  const [kindFilter, setKindFilter] = useState("");
 
   const [form, setForm] = useState(null);      // { mode, formula?, value }
   const [accept, setAccept] = useState(null);  // { formula, code }
@@ -86,8 +93,12 @@ export default function FormulasPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+  // หมวดสินค้าเป็นครึ่งหนึ่งของตัวตนสูตรแล้ว (0207) — ชุด master ที่แทบไม่เปลี่ยน
+  // จึงโหลดครั้งเดียวผ่านแคช ไม่ต้องดึงซ้ำทุกครั้งที่กดรีเฟรชทะเบียน
   useEffect(() => {
-    cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    cachedFetchJson("/api/master/product-types")
+      .then((d) => setCategories(Array.isArray(d) ? d : []))
+      .catch(() => {});
   }, []);
 
   // ไม่เจอกลิ่น = คืน null ให้คนเรียกแสดง "—" · **ห้ามถอยไปโชว์ id ดิบ**
@@ -101,14 +112,32 @@ export default function FormulasPage() {
     return formulas.filter((f) => {
       if (statusFilter === "open" && f.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && f.status !== statusFilter) return false;
+      // ⚠️ ตัวกรองชนิดต้องอยู่ **ก่อน** ทางลัด `if (!q) return true` — วางหลังเมื่อไร
+      // มันจะทำงานเฉพาะตอนมีคำค้น แล้วผู้ใช้จะเห็นตัวกรองที่กดแล้วไม่มีอะไรเกิดขึ้น
+      if (kindFilter === "customer" && !f.customerId) return false;
+      if (kindFilter === "base" && f.customerId) return false;
       if (!q) return true;
-      return [f.name, f.code, f.customerName, scentName(f.scentId)]
+      // ค้นด้วยชื่อที่ลูกค้าเรียกและรหัสหมวดได้ด้วย (เหมือนทะเบียนกลิ่น)
+      return [f.name, f.code, f.customerName, f.customerTradeName, f.categoryCode, scentName(f.scentId)]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [formulas, statusFilter, search, scentName]);
+  }, [formulas, statusFilter, kindFilter, search, scentName]);
+
+  // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
+  const formulaLabelById = useMemo(
+    () => new Map(formulas.map((f) => [f.id, f.code || f.name])),
+    [formulas],
+  );
+  const categoryLabel = useCallback((code) => {
+    if (!code) return null;
+    const row = categories.find((c) => `${c.mainCategoryCode}-${c.typeCode}` === code);
+    const name = row?.nameTh || row?.nameEn || "";
+    // ⚠️ หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปแสดงรหัส ห้ามบรรทัดว่าง
+    return name ? `${code} ${name}` : code;
+  }, [categories]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(visible, { resetKey: `${search}|${statusFilter}` });
+    usePagination(visible, { resetKey: `${search}|${statusFilter}|${kindFilter}` });
 
   // ── actions ──────────────────────────────────────────────────────────
   const call = async (url, options, okMsg) => {
@@ -128,12 +157,15 @@ export default function FormulasPage() {
 
   const submitForm = async () => {
     const v = form.value;
+    // ⚠️ **ไม่ส่ง customerId/customerName อีกแล้ว** — server เติมจากกลิ่นเสมอ (0207)
+    // ส่งไปก็ถูกทิ้ง แต่การส่งจะทำให้คนอ่านโค้ดเข้าใจผิดว่าฟอร์มยังคุมค่านั้นอยู่
     const payload = {
       name: v.name,
       formulaDate: v.formulaDate || null,
+      categoryCode: v.categoryCode || null,
       scentId: v.scentId || null,
-      customerId: v.customerId || null,
-      customerName: customers.find((c) => c.id === v.customerId)?.name || null,
+      customerTradeName: v.customerTradeName,
+      derivedFromFormulaId: v.derivedFromFormulaId || null,
       note: v.note,
     };
     if (form.mode === "create") {
@@ -169,6 +201,7 @@ export default function FormulasPage() {
           productId: sorting.row.productId,
           as: sorting.as,
           code: sorting.code || null,
+          categoryCode: sorting.categoryCode || null,
           formulaDate: sorting.as === "formula" ? (sorting.formulaDate || null) : null,
         }),
       });
@@ -286,7 +319,8 @@ export default function FormulasPage() {
                           <Button
                             size="sm"
                             onClick={() => setSorting({
-                              row: r, as: "scent", code: "", formulaDate: r.formulaDate || "",
+                              row: r, as: "scent", code: "", categoryCode: "",
+                              formulaDate: r.formulaDate || "",
                             })}
                           >
                             จัดระเบียบ
@@ -316,11 +350,21 @@ export default function FormulasPage() {
           options={[
             { value: "open", label: "ที่ใช้งานอยู่" },
             { value: "draft", label: "ร่าง — รอ RD รับ" },
+            { value: "developing", label: "กำลังพัฒนา" },
             { value: "active", label: "ใช้งานได้" },
             { value: "archived", label: "เลิกใช้" },
             { value: "", label: "ทุกสถานะ" },
           ]}
           aria-label="กรองสถานะสูตร"
+        />
+        <Select
+          value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}
+          options={[
+            { value: "", label: "ทุกชนิดสูตร" },
+            { value: "customer", label: "สูตรของลูกค้า" },
+            { value: "base", label: "สูตรฐาน" },
+          ]}
+          aria-label="กรองชนิดสูตร"
         />
         <span className="spacer" />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
@@ -344,7 +388,7 @@ export default function FormulasPage() {
             <table>
               <thead>
                 <tr>
-                  <th>รหัส</th><th>ชื่อสูตร</th><th>กลิ่นที่ใช้</th>
+                  <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
                   <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
@@ -352,7 +396,28 @@ export default function FormulasPage() {
                 {pageRows.map((f) => (
                   <tr key={f.id}>
                     <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
-                    <td className={styles.name}>{f.name}</td>
+                    <td className={styles.name}>
+                      {f.name}
+                      {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
+                          ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
+                      {f.customerTradeName && (
+                        <div className={styles.sub}>ลูกค้าเรียก “{f.customerTradeName}”</div>
+                      )}
+                      {f.derivedFromFormulaId && (
+                        <div className={styles.sub}>
+                          └─ แก้จาก {formulaLabelById.get(f.derivedFromFormulaId) || "สูตรที่ถูกลบไปแล้ว"}
+                        </div>
+                      )}
+                    </td>
+                    {/* ⭐ หมวด × กลิ่น = ตัวตนของสูตร — ผูกกลิ่นแล้วแต่ไม่มีหมวด
+                        แปลว่ายังไม่มีตัวตนที่เทียบซ้ำได้ ต้องเห็นว่าค้าง ไม่ใช่ขีดกลางเฉย ๆ */}
+                    <td>
+                      {f.categoryCode
+                        ? categoryLabel(f.categoryCode)
+                        : f.scentId
+                          ? <span className={styles.warn}>ยังไม่ระบุหมวด</span>
+                          : <span className={styles.muted}>—</span>}
+                    </td>
                     <td>
                       {f.scentId && scentName(f.scentId)
                         ? (
@@ -430,7 +495,9 @@ export default function FormulasPage() {
         {form && (
           <>
             <FormulaForm
-              mode={form.mode} value={form.value} customers={customers} scents={scents}
+              mode={form.mode} value={form.value} scents={scents}
+              formulas={formulas} categories={categories}
+              editingId={form.formula?.id || null}
               canSetCode={registrar} disabled={saving}
               onChange={(value) => setForm({ ...form, value })}
             />
@@ -500,6 +567,19 @@ export default function FormulasPage() {
                 />
                 <small className={styles.hint}>เว้นว่าง = เก็บเป็นร่างไว้ใส่รหัสทีหลัง</small>
               </div>
+              {/* ⭐ เข้าทะเบียนสูตรต้องเลือกหมวด — หมวด × กลิ่น คือตัวตนของสูตร (0207)
+                  ปล่อยว่างได้เมื่อไร สูตรที่เพิ่งจัดระเบียบเสร็จจะไม่มีตัวตนตั้งแต่
+                  วินาทีแรก แล้วก็ไม่มีใครกลับมาใส่ให้ — ซึ่งคือวิธีที่กอง
+                  "รอจัดระเบียบ" กองนี้เกิดขึ้นมาแต่แรก */}
+              {sorting.as === "formula" && (
+                <ProductCategorySelect
+                  categories={categories}
+                  value={sorting.categoryCode}
+                  disabled={saving}
+                  required
+                  onChange={(categoryCode) => setSorting({ ...sorting, categoryCode })}
+                />
+              )}
               {sorting.as === "formula" && (
                 <div className="form-group col-span-2">
                   <label htmlFor="sort-date">วันที่ของสูตร</label>
@@ -521,11 +601,18 @@ export default function FormulasPage() {
                 สินค้านี้ยังไม่มีลูกค้า — กลิ่นต้องมีลูกค้าเจ้าของเสมอ ต้องผูกลูกค้าที่หน้าสินค้าก่อน
               </p>
             )}
+            {sorting.as === "formula" && !sorting.categoryCode && (
+              <p className={styles.blocked}>
+                เลือกหมวดสินค้าก่อน — หมวดกับกลิ่นคือตัวตนของสูตร ไม่มีหมวดแล้วระบบเทียบไม่ได้ว่าซ้ำกับสูตรเดิมหรือเปล่า
+              </p>
+            )}
             <div className="modal-actions">
               <Button onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
               <Button
                 tone="accent" onClick={submitSorting}
-                disabled={saving || (sorting.as === "scent" && !sorting.row.customerId)}
+                disabled={saving
+                  || (sorting.as === "scent" && !sorting.row.customerId)
+                  || (sorting.as === "formula" && !sorting.categoryCode)}
               >
                 ย้ายเข้าทะเบียน
               </Button>

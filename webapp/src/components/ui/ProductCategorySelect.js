@@ -1,11 +1,20 @@
 "use client";
-
+// ── ตัวเลือกหมวดสินค้ากลาง — ช่องเดียว สองชั้นอยู่ข้างใน ────────────────────
+//
+// ⭐ เดิมเป็นดรอปดาวน์ **สองช่อง** วางคู่กัน (หมวดหลัก | หมวดรอง) ซึ่งใช้ได้ดีในฟอร์ม
+// แต่ลงเซลล์ตารางไม่ได้เลย — และตารางบรรทัด "พัฒนาผลิตภัณฑ์" ต้องเลือกหมวดในเซลล์
+// เดียว ⇒ ถ้าไม่ยุบตอนนี้ จะได้ตัวเลือกหมวดสองเวอร์ชันที่ต้องคอยดูแลให้ตรงกันตลอดไป
+//
+// ยุบแล้ว **ยังเป็นสองชั้นเหมือนเดิม** — หมวดหลักกลายเป็นหัวกลุ่มในลิสต์เดียว
+// และหายไปหนึ่งจังหวะที่เคยสะดุด: "เลือกหมวดหลักแล้วค้างรอเลือกหมวดรองอีกที"
+//
+// ⚠️ **สัญญาเดิมกับผู้เรียกไม่เปลี่ยนแม้แต่ข้อเดียว** — รับ value/mainValue/subValue
+// และคืน `onChange(code, { mainCode, typeCode, category })` เหมือนเดิมเป๊ะ ๆ
+// ผู้เรียก 3 จุด (DealFormFields · ProjectFormModal · SalesProjectCreateModal) เก็บ
+// mainCode/typeCode ลงช่องของตัวเองคนละแบบ — เปลี่ยนรูป meta เมื่อไรพังเงียบทั้งสามที่
 import { useMemo } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { isProductCategorySelectable } from "@/lib/master/productCategory";
-
-const mainName = (row) => row.mainCategoryName || row.mainCategoryNameTh || row.mainCategoryNameEn || "";
-const subName = (row) => row.nameTh || row.nameEn || "";
+import { findCategoryByCode, productCategoryOptions } from "@/lib/master/productCategoryOptions";
 
 export default function ProductCategorySelect({
   categories = [],
@@ -17,71 +26,46 @@ export default function ProductCategorySelect({
   onSubChange,
   disabled = false,
   required = false,
+  label = "หมวดสินค้า",
   className = "",
 }) {
   const [valueMain = "", valueSub = ""] = String(value || "").split("-");
   const mainCode = mainValue ?? valueMain;
   const typeCode = subValue ?? valueSub;
   const currentCode = value || (mainCode && typeCode ? `${mainCode}-${typeCode}` : "");
-  const selectableCategories = useMemo(
-    () => categories.filter((row) => isProductCategorySelectable(row, currentCode)),
+
+  const options = useMemo(
+    () => productCategoryOptions(categories, { currentCode }),
     [categories, currentCode],
   );
-  const mainOptions = useMemo(() => {
-    const rows = new Map();
-    for (const category of selectableCategories) {
-      if (!category.mainCategoryCode || rows.has(category.mainCategoryCode)) continue;
-      rows.set(category.mainCategoryCode, mainName(category));
-    }
-    return [...rows].sort(([a], [b]) => a.localeCompare(b)).map(([code, name]) => ({
-      value: code,
-      label: `${code} ${name}`.trim(),
-      search: `${code} ${name}`.trim(),
-    }));
-  }, [selectableCategories]);
-  const subOptions = useMemo(() => selectableCategories
-    .filter((row) => row.mainCategoryCode === mainCode && row.typeCode)
-    .sort((a, b) => String(a.typeCode).localeCompare(String(b.typeCode)))
-    .map((row) => ({
-      value: row.typeCode,
-      label: `${row.typeCode} ${subName(row)}${row.isActive === false ? " (พักใช้งาน)" : ""}`.trim(),
-      search: `${row.typeCode} ${subName(row)}`.trim(),
-    })), [selectableCategories, mainCode]);
 
-  const changeMain = (nextMain) => {
+  // ⚠️ ยังยิง onMainChange/onSubChange ให้ครบ — ผู้เรียกบางจุดผูกกับสองตัวนี้
+  // ไม่ใช่กับ meta (ProjectFormModal เก็บ mainCode/typeCode เป็นคนละ state)
+  const choose = (code) => {
+    const [nextMain = "", nextType = ""] = String(code || "").split("-");
+    const category = findCategoryByCode(categories, code);
     onMainChange?.(nextMain);
-    onChange?.("", { mainCode: nextMain, typeCode: "", category: null });
-  };
-  const changeSub = (nextType) => {
-    const category = selectableCategories.find((row) => row.mainCategoryCode === mainCode && row.typeCode === nextType) || null;
     onSubChange?.(nextType, category);
-    onChange?.(nextType ? `${mainCode}-${nextType}` : "", { mainCode, typeCode: nextType, category });
+    onChange?.(code || "", { mainCode: nextMain, typeCode: nextType, category });
   };
 
   return (
     <div className={`ui-product-category-select ${className}`.trim()}>
       <label>
-        <span>หมวดหลัก{required ? <span className="required-mark"> *</span> : null}</span>
+        <span>{label}{required ? <span className="required-mark"> *</span> : null}</span>
         <SearchableSelect
-          entity="mainCategory"
-          value={mainCode}
-          onChange={changeMain}
-          options={[{ value: "", label: "— ไม่ระบุ —" }, ...mainOptions]}
-          placeholder="ค้นหาหมวดหลัก..."
+          entity="productCategory"
+          value={currentCode}
+          onChange={choose}
+          options={[{ value: "", label: "— ไม่ระบุ —" }, ...options]}
+          placeholder="เลือกหมวดสินค้า"
+          searchPlaceholder="ค้นด้วยรหัส · ชื่อไทย · ชื่ออังกฤษ"
           disabled={disabled}
-          ariaLabel="หมวดหลัก"
-        />
-      </label>
-      <label>
-        <span>หมวดรอง{required ? <span className="required-mark"> *</span> : null}</span>
-        <SearchableSelect
-          entity="subCategory"
-          value={typeCode}
-          onChange={changeSub}
-          options={[{ value: "", label: mainCode ? "— เลือกหมวดรอง —" : "เลือกหมวดหลักก่อน" }, ...subOptions]}
-          placeholder={mainCode ? "ค้นหาหมวดรอง..." : "เลือกหมวดหลักก่อน"}
-          disabled={disabled || !mainCode}
-          ariaLabel="หมวดรอง"
+          ariaLabel={label}
+          // ⚠️ emptyText ต้องบอก **ทำไมว่างและใครแก้ได้** ไม่ใช่ "ไม่พบรายการ" เฉย ๆ
+          emptyText={(q) => (q
+            ? `ไม่พบหมวดที่ตรงกับ "${q}" — ค้นได้ทั้งรหัส ชื่อไทย และชื่ออังกฤษ`
+            : "ยังไม่มีหมวดสินค้าในระบบ — เพิ่มได้ที่ ตั้งค่า › หมวดสินค้า")}
         />
       </label>
     </div>

@@ -23,9 +23,10 @@ import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import Textarea from "@/components/ui/Textarea";
+import Input from "@/components/ui/Input";
 
 // จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17).
 // ปล่อยไหลแล้วคุมไม่ได้: จำนวนช่องเปลี่ยนตาม showProject และ ProductCategorySelect
@@ -52,6 +53,10 @@ export default function DealFormFields({
   categories = [],
   stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
+  /* "auto" = FC% มาจากกติกาฝั่ง server ล้วน ช่องเป็นตัวบอกค่าที่จะได้ (ตอน **สร้าง**)
+     "input" = เลือกเองได้ (ตอน **แก้** และไม่ได้ขยับขั้น — ถ้าขยับขั้น server คิดใหม่)
+     โหมดผ่าน props ตามกฎ "สร้าง/แก้ ใช้ฟอร์มเดียวกัน" ใน AGENTS.md */
+  probabilityMode = "input",
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
 
@@ -157,11 +162,23 @@ export default function DealFormFields({
   // จึงไม่โยนค่าเข้า Select ที่มีแค่ 20/50/80 — snapForecastLevel จะปัด 100 ลงมาเป็น 80
   // แล้วฟอร์มดีลที่ปิดได้แล้วจะโชว์ "80% · มี FC / ชำระค่า Scent Design" ซึ่งอ่านผิดความหมาย
   // (ช่องถูก disabled อยู่แล้วจึงไม่มีใครกดเปลี่ยนได้ แต่ค่าที่ตาเห็นยังผิด)
+  /* ตอนสร้าง FC% ไม่ใช่ของที่คนกรอก — server คิดจากขั้น + ประเภทดีล + โครงการเสมอ
+     (มติผู้ใช้ 2026-08-05) ช่องยังอยู่เพราะคนต้องเห็นว่าจะได้เลขอะไร แต่แก้ไม่ได้
+     🐞 ของเดิมเป็นดรอปดาวน์ที่ default "50" ⇒ ดีลใหม่ทุกใบเกิดมาที่ 50% (= ออกใบ
+     เสนอราคาแล้ว) ทั้งที่ยังอยู่ขั้น 'lead' */
+  const autoFc = DEFAULT_PROBABILITY_BY_STAGE[form.stage] ?? DEFAULT_PROBABILITY_BY_STAGE.lead;
   const fcField = (
     <label className="deal-field" key="fc">
       โอกาสที่จะปิดได้ (FC%)
       {alreadyWon ? (
-        <input className="premium-input" value="ปิดได้แล้ว (Won) — ยอดจริงมาจาก ใบสั่งขาย" readOnly disabled />
+        <Input value="ปิดได้แล้ว (Won) — ยอดจริงมาจากใบสั่งขาย" readOnly disabled />
+      ) : probabilityMode === "auto" ? (
+        <>
+          <Input value={`${autoFc}% — ตามสถานะที่เลือก`} readOnly disabled />
+          <small style={{ color: "var(--text-3)" }}>
+            ระบบปรับให้เองเมื่อสถานะเปลี่ยน (ออกใบเสนอราคา → 50%) · NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80%
+          </small>
+        </>
       ) : (
         <Select className="premium-select" value={snapForecastLevel(form.probability)} onChange={(e) => set("probability")(e.target.value)}>
           {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}

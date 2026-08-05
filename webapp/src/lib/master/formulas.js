@@ -8,10 +8,11 @@
 // เพราะของจริงบน prod มี 10 แถวที่มีแต่ชื่อไม่มีรหัส (ดูหัว migration 0171)
 import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
-export const FORMULA_STATUSES = ['draft', 'active', 'archived'];
+export const FORMULA_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
 export const FORMULA_STATUS_LABELS = {
   draft: 'ร่าง — รอ RD รับเข้าทะเบียน',
+  developing: 'กำลังพัฒนา',
   active: 'ใช้งานได้',
   archived: 'เลิกใช้',
 };
@@ -19,9 +20,34 @@ export const FORMULA_STATUS_LABELS = {
 // ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (เหมือน SCENT_STATUS_TONES)
 export const FORMULA_STATUS_TONES = {
   draft: 'neutral',
+  developing: 'info',
   active: 'success',
   archived: 'neutral',
 };
+
+// เปลี่ยนสถานะได้เฉพาะเส้นที่มีความหมาย — ชุดเดียวกับทะเบียนกลิ่น ยกเว้นแถวแรก
+// (สองทะเบียนนี้เดินคู่กันในสายงานเดียว ต่างกฎกันเมื่อไรคนใช้จะจำไม่ไหว)
+const ALLOWED_TRANSITIONS = {
+  // ⚠️ จุดเดียวที่ต่างจากกลิ่น: กลิ่นที่ RD รับเข้าทะเบียนไปเป็น `developing` ก่อน
+  // แต่ **สูตรที่รับพร้อมรหัสใช้งานได้ทันที** (พฤติกรรมเดิมตั้งแต่ 0171) · บังคับให้
+  // ผ่าน developing = สูตรที่เพิ่งรับเข้าทะเบียนจะอ้างในคำร้องขอราคา FB ไม่ได้จนกว่า
+  // จะมีคนมากดอีกที — เพิ่มขั้นให้คนใช้โดยไม่ได้แก้ปัญหาอะไร
+  // ทั้งสองทางเดินได้ **ผ่าน acceptFormula เท่านั้น** (action `status` ปฏิเสธร่างก่อน)
+  draft: ['developing', 'active'],
+  developing: ['active', 'archived'],
+  active: ['developing', 'archived'], // กลับไปพัฒนาต่อได้ (ลูกค้าขอปรับ)
+  archived: ['active'],
+};
+
+export function formulaTransitionError(formula, next) {
+  if (!formula) return 'ไม่พบสูตร';
+  if (!FORMULA_STATUSES.includes(next)) return 'สถานะไม่ถูกต้อง';
+  if (formula.status === next) return 'สถานะเดิมอยู่แล้ว';
+  if (!(ALLOWED_TRANSITIONS[formula.status] || []).includes(next)) {
+    return `เปลี่ยนจาก "${FORMULA_STATUS_LABELS[formula.status]}" เป็น "${FORMULA_STATUS_LABELS[next]}" ไม่ได้`;
+  }
+  return null;
+}
 
 // สถานะที่อ้างอิงในคำร้องขอราคา FB ได้
 export const FORMULA_USABLE_STATUSES = ['active'];
@@ -34,17 +60,41 @@ export function isFormulaUsable(formula) {
   return FORMULA_USABLE_STATUSES.includes(formula?.status);
 }
 
-// ── ตัวตนของสูตร = รหัส (ตัดช่องว่าง/ไม่สนตัวพิมพ์) ──────────────────────
-// ต้องตรงกับ formulas_code_uk เป๊ะ ๆ · ร่างที่ยังไม่มีรหัสไม่มีตัวตนที่เทียบได้
-// (index เป็น partial) จึงซ้ำกันได้ชั่วคราวจนกว่า RD จะใส่รหัสตอนรับเข้าทะเบียน
-export function formulaIdentityKey({ code } = {}) {
-  return String(code ?? '').trim().toLowerCase();
+// ── ตัวตนของสูตร = **หมวดสินค้า × กลิ่น** (mig 0207) ─────────────────────
+//
+// ⭐ เดิมตัวตนคือ "รหัส" อย่างเดียว ซึ่งเป็นรหัสที่ RD พิมพ์เอง ⇒ ระบบไม่มีทางรู้ว่า
+// สองสูตรหมายถึงของชิ้นเดียวกันหรือเปล่า · มติผู้ใช้: เทียนหอมกลิ่น A กับก้านไม้หอม
+// กลิ่น A เป็นคนละสูตร แต่เทียนหอมกลิ่น A สองแถวคือของซ้ำ
+//
+// ⚠️ ต้องตรงกับ index `formulas_identity_uk` เป๊ะ ๆ — ฝั่งแอปคิดต่างจาก DB เมื่อไร
+// จะยิง insert ไปชน constraint แล้วผู้ใช้เห็น error ดิบภาษาอังกฤษ
+//
+// ⚠️ **ไม่มี customerId ในคีย์** — `scents.customerId` เป็น NOT NULL (มติ 9: ไม่มี
+// กลิ่นกลาง) กลิ่นบอกลูกค้าอยู่แล้ว · ใส่ซ้ำ = แหล่งความจริงที่สองที่ drift ได้
+//
+// คืน null = "ยังไม่มีตัวตนที่เทียบได้" (สูตรฐานที่ไม่ผูกกลิ่น หรือร่างที่ยังไม่ใส่หมวด)
+// ⇒ ผู้เรียกต้องแยกกรณีนี้เอง ห้ามเอาไปเทียบเป็นสตริงว่างแล้วจับคู่กันหมด
+export function formulaIdentityKey({ categoryCode, scentId } = {}) {
+  const category = String(categoryCode ?? '').trim();
+  const scent = String(scentId ?? '').trim();
+  if (!category || !scent) return null;
+  return `${category}::${scent}`;
 }
 
-export function findFormulaByCode(formulas = [], code) {
-  const key = formulaIdentityKey({ code });
+export function findFormulaByIdentity(formulas = [], identity = {}) {
+  const key = formulaIdentityKey(identity);
   if (!key) return null;
-  return formulas.find((f) => formulaIdentityKey(f) === key) || null;
+  return formulas.find((f) => (
+    f.status !== 'archived' && formulaIdentityKey(f) === key
+  )) || null;
+}
+
+// รหัสสูตรยังห้ามซ้ำอยู่ (formulas_code_uk ไม่ถูกแตะใน 0207) — แต่มันเป็น
+// "เลขที่อ้างอิงของ RD" ไม่ใช่ตัวตนของสูตรอีกต่อไป
+export function findFormulaByCode(formulas = [], code) {
+  const key = String(code ?? '').trim().toLowerCase();
+  if (!key) return null;
+  return formulas.find((f) => String(f.code ?? '').trim().toLowerCase() === key) || null;
 }
 
 // ── สิทธิ์ (แพตเทิร์นเดียวกับทะเบียนกลิ่น — ดู scents.js) ─────────────────
@@ -114,18 +164,47 @@ export function normalizeFormulaInput(body = {}) {
   const note = String(body.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
 
+  const categoryCode = String(body.categoryCode ?? '').trim();
+  if (categoryCode && !/^\d{2}-\d{3}$/.test(categoryCode)) {
+    return { value: null, error: 'รหัสหมวดสินค้าไม่ถูกต้อง' };
+  }
+
+  const customerTradeName = String(body.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
+  if (customerTradeName.length > 200) {
+    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
+  }
+
   return {
     value: {
       name,
       code,
       formulaDate,
+      categoryCode: categoryCode || null,
       scentId: String(body.scentId ?? '').trim() || null,
-      customerId: String(body.customerId ?? '').trim() || null,
-      customerName: String(body.customerName ?? '').trim() || null,
+      customerTradeName: customerTradeName || null,
+      derivedFromFormulaId: String(body.derivedFromFormulaId ?? '').trim() || null,
+      dealId: String(body.dealId ?? '').trim() || null,
+      // ⚠️ **customerId/customerName ไม่รับจาก body อีกแล้ว** — server เติมจากกลิ่น
+      // (ดู scentFormulaAdmin.customerFromScent) · เดิมกรอกเองและเว้นว่างได้ ⇒ เปิดทาง
+      // ให้สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B โดยไม่มีอะไรห้าม
+      // แพตเทิร์นเดียวกับ productFormulaSnapshot: ค่าที่ derive ได้ ห้ามให้ client ส่ง
       note: note || null,
     },
     error: null,
   };
+}
+
+// ── สายพันธุ์ของสูตร — คู่ขนานกับ derivedFromError ของกลิ่น ───────────────
+// ⚠️ สูตรอ้างข้ามลูกค้าไม่ได้เหมือนกลิ่น แต่ตัดสินจาก **กลิ่น** ของทั้งสองฝั่ง
+// เพราะลูกค้าของสูตรเป็นค่าที่ derive มาจากกลิ่นอยู่แล้ว (ถามจากต้นทางเสมอ)
+export function derivedFromFormulaError(parent, { customerId, id } = {}) {
+  if (!parent) return 'ไม่พบสูตรต้นทางที่อ้างถึง';
+  if (id && parent.id === id) return 'สูตรอ้างตัวเองเป็นต้นทางไม่ได้';
+  // สูตรฐาน (ไม่ผูกลูกค้า) เป็นต้นทางของสูตรลูกค้าได้ — เป็นกรณีที่ผู้ใช้บอกว่ามีจริง
+  if (parent.customerId && customerId && parent.customerId !== customerId) {
+    return 'สูตรต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้';
+  }
+  return null;
 }
 
 // วันที่ที่ "สืบทอดมา" จากสินค้าเก่าอาจเสีย (prod มีจริง: '2202-08-06')

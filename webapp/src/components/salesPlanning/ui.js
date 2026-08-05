@@ -1,7 +1,7 @@
 "use client";
 
 import { Trophy } from "lucide-react";
-import { DEAL_TYPE_LABELS, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/lib/sales/forecastLevels";
 import { fmtMoneyCompact } from "@/lib/format";
 import UiKpiCard from "@/components/ui/KpiCard";
@@ -26,7 +26,10 @@ export const initialDealForm = {
   categoryMainCode: "", // draft หมวดหลักระหว่างรอเลือกหมวดรองในฟอร์มกลาง
   brand: "",        // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
-  probability: "50",
+  // ผูกกับขั้นตั้งต้นข้างบน ไม่ใช่เลขลอย — ของเดิมเป็น "50" (= ออกใบเสนอราคาแล้ว)
+  // ทั้งที่ดีลใหม่ยังอยู่ขั้น 'lead' · ฝั่ง server คิดใหม่จากกติกาอยู่แล้ว ค่านี้มีไว้ให้
+  // ช่องในฟอร์มโชว์ค่าที่จะได้เท่านั้น
+  probability: String(DEFAULT_PROBABILITY_BY_STAGE.lead),
   // ไม่มี forecastMonth แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจาก expectedCloseDate ฝั่ง server
   expectedCloseDate: "",
   startDate: "",   // วันที่เริ่มดีล (mig 0095) — ใช้เป็น anchor gen ไทม์ไลน์
@@ -37,10 +40,19 @@ export const initialDealForm = {
 // ป้ายประเภทดีล 3 ค่า — สีคงที่ทั้งระบบ: SCENT=amber (งานกลิ่น) · NPD=blue (พัฒนาสินค้า)
 // · RE-ORDER=teal (ผลิตซ้ำ). ใช้ทุกหน้า sales ให้อ่านประเภทได้ด้วยตาเดียว.
 export const DEAL_TYPE_COLORS = { SCENT: "var(--amber)", NPD: "var(--blue)", "RE-ORDER": "var(--teal)" };
-export function dealTypeBadge(type) {
+/* ป้ายทั้งสามตัวรับ `className` เพิ่มได้ — ตารางส่งคลาสของตัวเองมาคุม **ความกว้าง**
+   ให้ป้ายในคอลัมน์เดียวกันเท่ากันหมด (มติผู้ใช้ 2026-08-05: อ่านเป็นคอลัมน์ ไม่ใช่
+   ก้อนที่กว้างตามความยาวข้อความของแต่ละแถว)
+   ⚠️ ความกว้างต้องมาจากฝั่งผู้เรียก ไม่ใช่ฝังในนี้ — helper เดียวกันนี้ยังถูกใช้บน
+   การ์ด/หน้ารายละเอียดที่ป้ายควรพอดีข้อความ ไม่ใช่ยืดเต็มคอลัมน์
+   ⚠️ CSS module เอื้อมไปแก้ `.ui-badge` เองไม่ได้ (audit ห้าม cross-layer override)
+   การเปิดช่อง className จึงเป็นทางเดียวที่ตารางจะคุมได้ */
+const badgeClass = (extra) => ["ui-badge", extra].filter(Boolean).join(" ");
+
+export function dealTypeBadge(type, className = "") {
   const t = normalizeDealType(type);
   return (
-    <span className="ui-badge" style={{ color: DEAL_TYPE_COLORS[t], borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className={badgeClass(className)} style={{ color: DEAL_TYPE_COLORS[t] }}>
       {t}
     </span>
   );
@@ -50,11 +62,11 @@ export function dealTypeBadge(type) {
 // ฝั่ง server ใช้ร่วมได้ เพราะไม่มี JSX). re-export ไว้ให้หน้าเดิมที่ import จากที่นี่
 export { FORECAST_LEVELS, snapForecastLevel };
 
-export function forecastBadge(probability) {
+export function forecastBadge(probability, className = "") {
   const p = snapForecastLevel(probability);
   const color = { 20: "var(--text-3)", 50: "var(--amber)", 80: "var(--teal)" }[p] || "var(--text-3)";
   return (
-    <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className={badgeClass(className)} style={{ color }}>
       FC {p}%
     </span>
   );
@@ -79,7 +91,7 @@ export function coveragePct(won, target) {
   return Math.round((Number(won || 0) / Number(target)) * 100);
 }
 
-export function stageBadge(stage) {
+export function stageBadge(stage, className = "") {
   const color = {
     lead: "var(--text-3)",
     qualified: "var(--blue)",
@@ -92,7 +104,7 @@ export function stageBadge(stage) {
     lost: "var(--red)",
   }[stage] || "var(--text-3)";
   return (
-    <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className={badgeClass(className)} style={{ color }}>
       {stage === "won" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
       {STAGE_LABELS[stage] || stage}
     </span>
@@ -108,9 +120,9 @@ export const QUOTE_STATUS_COLORS = {
   draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)",
   rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)", closed: "var(--text-3)",
 };
-export function quoteStatusBadge(status) {
+export function quoteStatusBadge(status, className = "") {
   return (
-    <span className="ui-badge" style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className={badgeClass(className)} style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)" }}>
       {status === "accepted" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
       {QUOTE_STATUS_LABELS[status] || status}
     </span>

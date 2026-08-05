@@ -8,7 +8,7 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
   salesOrder: 'ใบสั่งขาย',
   exciseTaxNotice: 'ใบแจ้งชำระค่าภาษีสรรพสามิต',
-  projectTimeline: 'เอกสารไทม์ไลน์โครงการ',
+  projectTimeline: 'ไทม์ไลน์โครงการ',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
@@ -20,7 +20,7 @@ export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
   steel: 'Steel · ใบสั่งขาย',
   amber: 'Amber · ใบแจ้งชำระภาษี',
-  navy: 'Navy · เอกสารไทม์ไลน์โครงการ',
+  navy: 'Navy · ไทม์ไลน์โครงการ',
 });
 
 // สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า

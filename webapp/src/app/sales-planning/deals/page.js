@@ -24,10 +24,12 @@ import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
+import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import SortControl from "@/components/ui/SortControl";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import ForecastMonthCell from "@/components/salesPlanning/ForecastMonthCell";
+import StageCell from "@/components/salesPlanning/StageCell";
 import ForecastReviewBanner from "@/components/salesPlanning/ForecastReviewBanner";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
@@ -113,7 +115,7 @@ export default function SalesPlanningPipelinePage() {
 
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm });
-  const [createDeals, setCreateDeals] = useState(null); // array = โหมดเพิ่ม (หลายดีลได้), null = โหมดแก้ไข
+  const [createModal, setCreateModal] = useState(false); // โมดัลสร้างดีล (ตัวกลาง ใช้ร่วมกับฝั่งลีด)
   const [submitting, setSubmitting] = useState(false);
   const [quoteModal, setQuoteModal] = useState(false);
   const [quoteDeal, setQuoteDeal] = useState(null);
@@ -251,47 +253,9 @@ export default function SalesPlanningPipelinePage() {
       resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}`,
     });
 
-  const openNewDeal = () => {
-    setCreateDeals([{ ...initialDealForm }]);
-    setDealModal(true);
-  };
-  const addDealRow = () => setCreateDeals((prev) => [...(prev || []), { ...initialDealForm }]);
-  const removeDealRow = (i) => setCreateDeals((prev) => prev.filter((_, idx) => idx !== i));
-
-  const submitCreateDeals = async () => {
-    setSubmitting(true);
-    setError("");
-    try {
-      for (const d of (createDeals || [])) {
-        if (!d.title?.trim()) throw new Error("กรุณาระบุชื่อดีลให้ครบทุกรายการ");
-        // บังคับเลือกประเภทดีล — ตัวนี้เลือก template ไทม์ไลน์ ถ้าปล่อยว่างจะถูก default
-        // เป็น NPD เงียบ ๆ ที่ฝั่ง server (normalizeDealType) แล้วได้ template ผิดประเภท
-        if (!d.dealType) throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER) ให้ครบทุกรายการ${d.title ? ` — "${d.title}"` : ""}`);
-        const selectedCustomer = customers.find((c) => c.id === d.customerId);
-        const payload = { ...d, customerName: selectedCustomer?.name || d.customerName || null };
-        const res = await fetch("/api/sales-planning/deals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        const savedDeal = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(savedDeal.error || `สร้างดีล ${d.title} ไม่สำเร็จ`);
-        if (d.projectId && !d.lockedProjectId) {
-          const linkRes = await fetch(`/api/sales-planning/deals/${savedDeal.id}/link-project`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: d.projectId, startDate: d.startDate || undefined }),
-          });
-          if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || `สร้างดีล ${d.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
-        }
-      }
-      setDealModal(false);
-      setCreateDeals(null);
-      await load();
-    } catch (e2) {
-      setError(e2.message || "บันทึกดีลไม่สำเร็จ");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const openNewDeal = () => setCreateModal(true);
 
   const openEditDeal = (deal) => {
-    setCreateDeals(null);
     setDealForm({
       id: deal.id,
       title: deal.title || "",
@@ -626,16 +590,28 @@ export default function SalesPlanningPipelinePage() {
 
           {canSeeDealKpi(role) && (
             <>
-              {allowedScopes.length > 1 && (
-                <Segmented
-                  ariaLabel="ขอบเขตของไปป์ไลน์"
-                  className="deal-scope-toggle"
-                  value={activeScope}
-                  onChange={setScope}
-                  options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
-                />
-              )}
-              
+              {/* ขอบเขต (ซ้าย) + ทางไป KPI เต็ม (ขวา) แถวเดียวกัน — ชุดเดียวกับคิวลีด
+                  (มติผู้ใช้ 2026-08-05) คลาสอยู่ที่ globals.css ทั้งคู่ ห้ามแยกไปเขียนเอง
+                  ไม่งั้นสองหน้าจะเพี้ยนหากันเหมือนตอนที่ตัวสลับเคยเป็นคนละคลาส (#969)
+
+                  ⚠️ ทั้งก้อนอยู่ใน canSeeDealKpi อยู่แล้ว ต่างจากคิวลีดที่ตัวสลับเปิดให้
+                  คนทำงานคิวทุกคนแม้ไม่เห็น KPI — ที่นี่คนที่ไม่มีสิทธิ์ KPI ก็ไม่เห็น
+                  ไปป์ไลน์รวมอยู่แล้ว จึงไม่มีเคส "เห็นตัวสลับแต่ไม่เห็นแถบ" */}
+              <div className="scope-row">
+                {allowedScopes.length > 1 && (
+                  <Segmented
+                    ariaLabel="ขอบเขตของไปป์ไลน์"
+                    className="scope-toggle"
+                    value={activeScope}
+                    onChange={setScope}
+                    options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+                  />
+                )}
+                {/* ?tab=performance = "ผลงานขาย" ซึ่งเป็นที่อยู่ของ KPI ดีลฉบับเต็ม
+                    (แท็บ overview เดิมถูกยุบเข้าไปแล้ว — ดูหัวไฟล์ sa/dashboard) */}
+                <Link href="/sa/dashboard?tab=performance" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>
+              </div>
+
               <SaMetricStrip>
                 <SaMetric icon={<FolderKanban />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
@@ -737,14 +713,21 @@ export default function SalesPlanningPipelinePage() {
                         </span>
                       </Link>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <StageCell
+                        deal={deal}
+                        canEdit={!!deal.canEdit}
+                        className="ui-badge-cell ui-badge-w-stage"
+                        onSaved={load}
+                      />
+                    </td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {isClosedStage(deal.stage)
                         ? <span style={{ color: "var(--text-3)" }}>-</span>
-                        : forecastBadge(deal.probability)}
+                        : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {dealTypeBadge(dealTypeOf(deal))}
+                      {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
                     <td onClick={(event) => event.stopPropagation()}>
@@ -809,42 +792,22 @@ export default function SalesPlanningPipelinePage() {
         </SaSection>
       </div>
 
-      <Modal open={dealModal} onClose={() => setDealModal(false)} title={createDeals ? "เพิ่มดีล" : "แก้ไขดีล"} size="lg">
-        {createDeals ? (
-          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16, maxHeight: "75vh", overflowY: "auto" }} aria-busy={submitting}>
-            {createDeals.map((d, i) => (
-              <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, position: "relative", background: "var(--surface-50)" }}>
-                {createDeals.length > 1 && (
-                  <button type="button" onClick={() => removeDealRow(i)} className="btn-icon danger" style={{ position: "absolute", top: 12, right: 12, background: "var(--surface)" }} title="ลบรายการนี้">
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
-                )}
-                <div className="form-grid cols-2">
-                  <DealFormFields
-                    form={d}
-                    onPatch={(patch) => setCreateDeals((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}
-                    customers={customers}
-                    projects={projects}
-                    showProject
-                    categories={categories}
-                    stages={PIPELINE_STAGES.filter((st) => st !== "won")}
-                  />
-                </div>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <button type="button" className="btn ghost" onClick={addDealRow}>
-                <Plus size={14} aria-hidden="true" /> เพิ่มดีลอีกรายการ
-              </button>
-            </div>
-            <div className="form-action-bar">
-              <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary" onClick={submitCreateDeals} disabled={submitting}>
-                <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : `บันทึก ${createDeals.length} ดีล`}
-              </button>
-            </div>
-          </div>
-        ) : (
+      {/* สร้างดีล = โมดัลกลางตัวเดียวกับฝั่งลีด (มติผู้ใช้ 2026-08-05) — ได้แท็บแทนการ์ด
+          เรียงยาว และได้กันสร้างซ้ำตอนกดใหม่หลังพลาดกลางทางมาด้วย
+          ⚠️ mount ตอนเปิดเท่านั้น (ดูคำเตือนใน DealCreateModal) */}
+      {createModal && (
+        <DealCreateModal
+          customers={customers}
+          projects={projects}
+          categories={categories}
+          stages={PIPELINE_STAGES.filter((st) => st !== "won")}
+          onClose={() => setCreateModal(false)}
+          onCreated={() => { setCreateModal(false); load(); }}
+        />
+      )}
+
+      <Modal open={dealModal} onClose={() => setDealModal(false)} title="แก้ไขดีล" size="lg">
+        {(
           <form onSubmit={saveDeal} className="form-grid cols-2" aria-busy={submitting} style={{ padding: 18 }}>
             <DealFormFields
               form={dealForm}

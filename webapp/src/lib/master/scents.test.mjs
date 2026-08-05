@@ -16,6 +16,7 @@ import {
   scentIdentityKey,
   scentTransitionError,
   sendScentError,
+  derivedFromError,
 } from './scents.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -135,4 +136,37 @@ test('วันที่ส่งกลิ่นบังคับและต�
 
 test('บันทึกวันที่ส่งซ้ำได้ — คนกรอกผิดวันต้องแก้ได้ ไม่ใช่ลบกลิ่นทิ้งแล้วสร้างใหม่', () => {
   assert.equal(sendScentError(scent({ sentAt: '2026-07-01' }), { sentAt: '2026-07-28' }), null);
+});
+
+// ── ชื่อที่ลูกค้าเรียก + สายพันธุ์ ─────────────────────────────────────────
+test('ชื่อที่ลูกค้าเรียกเป็นของเสริม ไม่ใช่ของบังคับ และไม่แทนชื่อของเรา', () => {
+  // เว้นว่าง = null ไม่ใช่สตริงว่าง — ไม่งั้นทุกการนับต่อจากนี้ต้องระวัง '' vs NULL เอง
+  // (บทเรียนจาก 0171 ข้อ 6: prod มี 41 แถวที่เป็น '' แล้วหน้าจอโชว์เหมือนมีค่า)
+  const plain = normalizeScentInput({ name: 'Forest night', customerId: 'CUS-1' });
+  assert.equal(plain.error, null);
+  assert.equal(plain.value.customerTradeName, null);
+
+  const named = normalizeScentInput({
+    name: 'Forest night', customerId: 'CUS-1', customerTradeName: '  Summer   Breeze ',
+  });
+  assert.equal(named.value.customerTradeName, 'Summer Breeze', 'ตัดช่องว่างซ้ำเหมือนชื่อกลิ่น');
+  // ชื่อของเราต้องไม่ถูกแตะเลย — สองช่องนี้อยู่คู่กัน ไม่ใช่แทนกัน
+  assert.equal(named.value.name, 'Forest night');
+
+  assert.match(
+    normalizeScentInput({
+      name: 'x', customerId: 'CUS-1', customerTradeName: 'ก'.repeat(201),
+    }).error,
+    /ชื่อที่ลูกค้าเรียก/,
+  );
+});
+
+test('อ้างกลิ่นต้นทางข้ามลูกค้าไม่ได้ — ข้อห้ามระดับโมเดล ไม่ใช่แค่ตัวกรองบนจอ', () => {
+  const parent = { id: 'SCT-9', customerId: 'CUS-1' };
+  assert.equal(derivedFromError(parent, { customerId: 'CUS-1', id: 'SCT-1' }), null);
+  assert.match(derivedFromError(parent, { customerId: 'CUS-2', id: 'SCT-1' }), /คนละราย/);
+  // หาไม่เจอ ≠ ข้ามลูกค้า — ข้อความต้องต่างกัน เพราะทางแก้คนละทาง
+  assert.match(derivedFromError(null, { customerId: 'CUS-1' }), /ไม่พบกลิ่นต้นทาง/);
+  // วนลูปสั้นที่สุดที่เป็นไปได้ (constraint ของ 0205 กันอยู่ แต่ที่นี่ได้ข้อความไทย)
+  assert.match(derivedFromError(parent, { customerId: 'CUS-1', id: 'SCT-9' }), /อ้างตัวเอง/);
 });

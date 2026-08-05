@@ -25,7 +25,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
-const statusBadge = (s) => quoteStatusBadge(s);
+const statusBadge = (s, className) => quoteStatusBadge(s, className);
 
 export default function QuotationsPage() {
   const canEdit = useCan("salesplan:edit");
@@ -238,13 +238,13 @@ export default function QuotationsPage() {
                     <td>
                       {r.customerName || "-"}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        {r.deal && dealTypeBadge(dealTypeOf(r.deal))}
+                        {r.deal && dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type")}
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                     <td className="num mono">{fmtMoney(r.totalAmount)}</td>
-                    <td>{statusBadge(r.status)}</td>
+                    <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
                     <td className="num">
                       <div style={{ display: "inline-flex", gap: 2 }}>
                         <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}

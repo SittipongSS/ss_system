@@ -7,7 +7,6 @@ import {
   ArrowLeft, GanttChart,
   ListTodo, Clock, Calendar,
   Edit2, Trash2,
-  FolderKanban, Building2,
   Printer, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
 } from "lucide-react";
@@ -44,9 +43,9 @@ import RequestListCard from "@/components/requests/RequestListCard";
 import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
 import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { ContextCard, ContextGrid, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
-import { detailTabFromSearch } from "@/lib/salesDetailTabs";
+import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { PageShell as SaPageShell } from "@/components/ui/Workspace";
@@ -107,11 +106,17 @@ export default function ProjectDetailPage() {
   const [users, setUsers] = useState([]);
   // มุมมองสลับอัตโนมัติตามจอ: จอตั้ง → List, จอนอน → Table; Gantt (document) เลือกเองได้
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
-  // เมนูครอบ (มติผู้ใช้): เปิดมาเจอ "ภาพรวม" (ศูนย์รวมดีล) ก่อน — กดเข้าไทม์ไลน์อีกชั้น
-  // ถึงเห็นตารางขั้นตอน. sync กับ ?tab=timeline เพื่อให้ refresh/แชร์ลิงก์ค้างแท็บเดิม.
+  /* เมนูครอบ (มติผู้ใช้): เปิดมาเจอ "ภาพรวม" (ศูนย์รวมดีล) ก่อน — กดเข้าไทม์ไลน์อีกชั้น
+     ถึงเห็นตารางขั้นตอน. sync กับ ?tab=timeline เพื่อให้ refresh/แชร์ลิงก์ค้างแท็บเดิม.
+
+     ⭐ มติผู้ใช้ 2026-08-05: **แท็บต้องไม่ทับกัน** — ของเดิมทุกก้อนเขียนว่า
+     `{(tab === "overview" || tab === "xxx") && …}` ทำให้ "ภาพรวม" = ทุกแท็บต่อกันเป็นพรืด
+     แท็บอื่นจึงมีหน้าที่แค่ *ตัด* ของออก และคนอ่านเจอของชุดเดิมซ้ำสองรอบ
+     ⇒ ห้ามเติม `tab === "overview" ||` กลับเข้าไปในเงื่อนไขของแท็บใด ๆ อีก
+     ภาพรวม = สรุป (KPI เงิน + ตารางดีล + การ์ดไทม์ไลน์) เท่านั้น */
   const [tab, setTab] = useState("overview");
   useEffect(() => {
-    setTab(detailTabFromSearch(window.location.search));
+    setTab(detailTabFromSearch(window.location.search, { tabs: PROJECT_DETAIL_TABS, aliases: PROJECT_TAB_ALIASES }));
   }, []);
   const switchTab = (t) => {
     setTab(t);
@@ -125,8 +130,13 @@ export default function ProjectDetailPage() {
   /* state ของ table/list view รุ่นเก่าถูกลบแล้ว (showAddTask · taskForm · collapsedPhases ·
      editingTaskId · editForm · insertAfterId/BeforeId · tableStatusFilter · tableSort ·
      editTask · showEditTask · depPopover · dirty) — TimelineWorkspace ถือ state พวกนี้เอง */
-  const [timelineDealFilters, setTimelineDealFilters] = useState([]);
-  const [taskDealFilters, setTaskDealFilters] = useState([]);
+  /* ตัวกรอง "ดีลที่แสดง" ตัวเดียวของทั้งหน้า (มติผู้ใช้ 2026-08-05)
+     ⚠️ เดิมเป็น state สองตัว (timelineDealFilters / taskDealFilters) กับตัวเลือกสามที่
+     — เลือกที่หนึ่งอีกที่ไม่ตาม คนอ่านว่าเป็นข้อมูลคนละชุด · ตอนนี้ตัวเลือกอยู่บน
+     "ที่ที่มันมีผล" เท่านั้น: หัวแท็บไทม์ไลน์ กับ หัวตารางงาน
+     ⚠️ ผลข้างเคียงที่ตั้งใจ: กรองไว้ที่แท็บงานแล้วข้ามไปไทม์ไลน์ จะยังกรองอยู่ —
+     แถบหัวไทม์ไลน์บอกจำนวนขั้นที่แสดงไว้แล้ว และการเพิ่ม/เรียงขั้นตอนถูกล็อกตามเดิม */
+  const [dealFilters, setDealFilters] = useState([]);
   // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
@@ -317,6 +327,9 @@ export default function ProjectDetailPage() {
     const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
     openGanttPrintWindow({
       ...proj,
+      // Rev ที่ถ่ายก่อนมีดีลใน snapshot (ก่อน 2026-08-05) ไม่มี proj.deals — ถอยไปใช้
+      // ดีลปัจจุบันให้ ดีกว่าปล่อยช่อง "โครงการย่อย" ว่างบนเอกสารที่พิมพ์ซ้ำ
+      deals: proj.deals || p.deals || [],
       tasks: snapshot?.tasks || [],
       projectProducts: enrichProducts(snapshot?.projectProducts || []),
       categoryFallback: fallback,
@@ -383,8 +396,8 @@ export default function ProjectDetailPage() {
 
   const allTasks = useMemo(() => data?.tasks || [], [data?.tasks]);
   const tasks = useMemo(
-    () => filterTimelineTasks(allTasks, timelineDealFilters),
-    [allTasks, timelineDealFilters],
+    () => filterTimelineTasks(allTasks, dealFilters),
+    [allTasks, dealFilters],
   );
   // สรุปของเข้าแปะบน milestone "สั่งซื้อสารและบรรจุภัณฑ์ — กำหนดของเข้าทั้งหมด"
   // (npd-38 / re-order-11) เพื่อให้ขั้นนั้นมีของจริงข้างในแทนที่จะเป็นกล่องเปล่า 45 วัน
@@ -442,8 +455,8 @@ export default function ProjectDetailPage() {
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
-  const canReorderTimeline = canEdit && timelineDealFilters.length === 0;
-  const canAddTimelineTask = canEdit && timelineDealFilters.length <= 1;
+  const canReorderTimeline = canEdit && dealFilters.length === 0;
+  const canAddTimelineTask = canEdit && dealFilters.length <= 1;
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต (ติ๊ก isExcise) อย่างน้อยหนึ่งตัว —
   // ไม่งั้นไม่ต้องมีทะเบียนภาษี.
@@ -456,25 +469,38 @@ export default function ProjectDetailPage() {
   const pct = total ? Math.round((done / total) * 100) : 0;
   const isDone = pct === 100;
   const accent = isDone ? "var(--green)" : "var(--accent)";
-  const timelineFilterOptions = [
+  const projectPersonalTasks = p.personalTasks || [];
+  /* ตัวเลือกชุดเดียวของตัวกรอง — นับทั้ง "ขั้นตอน" (ไทม์ไลน์) และ "งาน" (/sa/tasks)
+     ในบรรทัดเดียว เพราะตัวกรองตัวเดียวกันคุมทั้งสองที่ · ตัวเลือก "งานกลางโครงการ"
+     หมายถึงของที่ไม่ผูกดีล — ฝั่งไทม์ไลน์คือ task.dealId ว่าง ฝั่งงานก็ว่างเหมือนกัน */
+  const dealFilterOptions = [
     ...(p.deals || []).map((deal) => ({
       value: deal.id,
-      label: `${deal.title} (${allTasks.filter((task) => task.dealId === deal.id).length} ขั้นตอน)`,
+      label: `${deal.title} (${allTasks.filter((task) => task.dealId === deal.id).length} ขั้นตอน · ${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
     })),
-    ...(allTasks.some((task) => !task.dealId) ? [{
+    ...(allTasks.some((task) => !task.dealId) || projectPersonalTasks.some((task) => !task.dealId) ? [{
       value: TIMELINE_CENTRAL,
-      label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน)`,
+      label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน · ${projectPersonalTasks.filter((task) => !task.dealId).length} งาน)`,
     }] : []),
   ];
-  const projectPersonalTasks = p.personalTasks || [];
-  const shownPersonalTasks = taskDealFilters.length
-    ? projectPersonalTasks.filter((task) => taskDealFilters.includes(task.dealId))
+  // 🐞 ของเดิมเทียบ `dealFilters.includes(task.dealId)` ตรง ๆ — พอตัวกรองรวมเป็นตัวเดียว
+  //    การเลือก "งานกลางโครงการ" จะไม่ตรงกับงานที่ dealId ว่างเลย แล้วตารางว่างเงียบ
+  const shownPersonalTasks = dealFilters.length
+    ? projectPersonalTasks.filter((task) => dealFilters.includes(task.dealId || TIMELINE_CENTRAL))
     : projectPersonalTasks;
-  const projectTaskFilterOptions = (p.deals || []).map((deal) => ({
-    value: deal.id,
-    label: `${deal.title} (${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
-  }));
   const completedPersonalTasks = shownPersonalTasks.filter((task) => task.status === "Completed").length;
+
+  /* ตัวเลขบนแท็บ — จำเป็นหลังจากภาพรวมไม่ได้กองของทุกแท็บไว้แล้ว: ถ้าไม่บอกจำนวน
+     คนจะไม่รู้ว่าแท็บไหนมีของ แล้วต้องไล่กดทีละแท็บ (ปัญหาที่การกองรวมเคยกลบไว้)
+     นับ "ของทั้งหมด" ไม่ใช่ของที่ผ่านตัวกรอง — ป้ายบนแท็บที่ยังไม่ได้เปิดต้องไม่ขยับ
+     ตามตัวกรองที่อยู่ในแท็บอื่น */
+  const tabCounts = {
+    documents: (p.quotations || []).length + (p.salesOrders || []).length,
+    tasks: projectPersonalTasks.length + (p.inquiries || []).length,
+  };
+  const projectTabs = PROJECT_DETAIL_TABS.map((entry) => (tabCounts[entry.key]
+    ? { ...entry, label: <>{entry.label} <span className="ui-badge" style={{ marginLeft: 4 }}>{tabCounts[entry.key]}</span></> }
+    : entry));
 
   /* ───────── การ์ด Record Control ─────────
      ของเดิมกระจายอยู่ 4 ที่: แถบไอคอนหัวหน้า (แก้ไข/ลบ) · การ์ดสถานะการปิดกลางหน้า ·
@@ -620,7 +646,11 @@ export default function ProjectDetailPage() {
         title={projectTitle}
         description={<>
           <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{entityCodeDisplay(p.code, p.currentRev)}</span>
-          <span>ลูกค้า: {p.customerName || "-"}</span>
+          {/* ลิงก์ลูกค้ามาอยู่ตรงนี้แทนการ์ด "ลูกค้าของโครงการ" ที่ถอดออก (มติ 2026-08-05)
+              — การ์ดใบนั้นพูดเรื่องเดียวกับบรรทัดนี้และแถบ facts ด้านล่างทั้งใบ */}
+          <span>ลูกค้า: {p.customerId
+            ? <Link href={`/database/customers/${p.customerId}`} className="linklike">{p.customerName || "-"}</Link>
+            : (p.customerName || "-")}</span>
           <span>แบรนด์: {projectBrand}</span>
           {p.productMainCategory ? <span>หมวดสินค้า: {`${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}`}</span> : null}
         </>}
@@ -629,7 +659,11 @@ export default function ProjectDetailPage() {
           {p.closeStatus === "pending_close" && <span className="ui-badge" style={{ color: "var(--amber)" }}>รออนุมัติปิด · {PROJECT_CLOSE_TYPE_LABELS[p.closeType] || ""}</span>}
           {p.closeStatus === "closed" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>ปิดแล้ว · {PROJECT_CLOSE_TYPE_LABELS[p.closeType] || ""}</span>}
         </>}
-        actions={!showTimeline ? <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")}><GanttChart size={14} /> เปิดไทม์ไลน์</button> : null}
+        /* ปุ่มนี้เคยโผล่ทุกแท็บที่ไม่ใช่ไทม์ไลน์ — ซ้ำกับปุ่มบนการ์ดไทม์ไลน์ของภาพรวม
+           ที่อยู่ห่างกันไม่ถึงหนึ่งจอ ⇒ ภาพรวมใช้ปุ่มบนการ์ด แท็บอื่นใช้ปุ่มนี้ */
+        actions={tab !== "overview" && tab !== "timeline"
+          ? <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")}><GanttChart size={14} /> เปิดไทม์ไลน์</button>
+          : null}
         facts={[
           { icon: Calendar, label: "วันเริ่ม", value: p.startDate || "-" },
           { icon: Clock, label: "วันสิ้นสุด", value: p.dueDate || "-" },
@@ -647,37 +681,14 @@ export default function ProjectDetailPage() {
           จริงของหน้านี้ ความกว้างจึงชนะความสม่ำเสมอ · ทุกปุ่มยังกดได้จากแท็บอื่นครบ */}
       <DetailPageLayout aside={showTimeline ? null : controlCard}>
 
-      {tab === "overview" && <div><ContextGrid>
-        <ContextCard
-          icon={Building2}
-          href={p.customerId ? `/database/customers/${p.customerId}` : undefined}
-          eyebrow="ลูกค้าของโครงการ"
-          title={p.customerName || "ยังไม่ผูกลูกค้า"}
-          subtitle={projectBrand ? `แบรนด์ ${projectBrand}` : "ยังไม่ระบุแบรนด์"}
-          badges={<>{p.team && <span className="ui-badge">ทีม {p.team}</span>}{p.aeOwner && <span className="ui-badge" style={{ color: "var(--accent)" }}>AE {p.aeOwner}</span>}</>}
-          facts={[
-            { label: "ประเภทโครงการ", value: p.type || "-" },
-            { label: "กำหนดเสร็จ", value: p.dueDate || "-" },
-          ]}
-        />
-        {(p.deals || []).slice(0, 3).map((deal) => <ContextCard
-          key={deal.id}
-          icon={FolderKanban}
-          href={`/sales-planning/deals/${deal.id}`}
-          eyebrow="ดีลในโครงการ"
-          title={deal.title}
-          subtitle={deal.formulaName || deal.dealType || "เปิดดูรายละเอียดดีล"}
-          badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}{deal.stage && <span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span>}</>}
-          facts={[
-            { label: "เดือน Forecast", value: deal.forecastMonth || "-" },
-            { label: "มูลค่า", value: Number(deal.wonValue ?? deal.projectValue ?? 0).toLocaleString("th-TH") },
-          ]}
-        />)}
-        {!(p.deals || []).length && <ContextCard icon={FolderKanban} eyebrow="ดีลในโครงการ" title="ยังไม่มีดีลที่เชื่อมอยู่" subtitle="เชื่อมดีลจากหน้าบริหารงานขายเพื่อรวมข้อมูลการขายและการส่งมอบ" />}
-      </ContextGrid></div>}
+      {/* ⚠️ ContextGrid ของแท็บภาพรวมถูกถอดออกทั้งแถว (มติผู้ใช้ 2026-08-05) —
+          การ์ด "ลูกค้าของโครงการ" พูดเรื่องเดียวกับ description + facts บนหัวหน้า
+          (ลูกค้า · แบรนด์ · ทีม/AE · กำหนดเสร็จ) ส่วนการ์ดดีล 3 ใบแรกคือ subset ของ
+          ตารางดีลที่อยู่ถัดลงไปไม่ถึงหนึ่งจอ และ "3 ใบแรก" ก็ไม่มีเกณฑ์ว่าทำไมสามใบนั้น
+          ⇒ ลิงก์ไปหน้าลูกค้ายังอยู่ที่คำว่า "ลูกค้า" บนหัวหน้า อย่าเอาการ์ดกลับมา */}
 
       <div style={{ marginTop: 20 }}>
-        <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+        <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" tabs={projectTabs} />
       </div>
 
       {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
@@ -688,13 +699,9 @@ export default function ProjectDetailPage() {
               <GanttChart size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ไทม์ไลน์</h2>
             </div>
+            {/* 🐞 เคยมีสาขา `!showTimeline ?` ที่นี่เป็นปุ่ม "เปิดไทม์ไลน์" — ตายมาตลอด
+                เพราะกล่องครอบทั้งกล่องเป็น display:none เมื่อไม่ได้อยู่แท็บไทม์ไลน์ */}
             <div className="project-detail-actions">
-              {!showTimeline ? (
-                <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
-                  <GanttChart size={14} /> เปิดไทม์ไลน์
-                </button>
-              ) : (
-              <>
               <div className="project-detail-action-row">
               <span
                 className="ui-badge"
@@ -743,8 +750,6 @@ export default function ProjectDetailPage() {
               </button>
               </div>
               <div className="project-detail-action-row"><ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} /></div>
-              </>
-              )}
             </div>
           </div>
         </div>
@@ -758,10 +763,10 @@ export default function ProjectDetailPage() {
               <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
             </div>
             <div style={{ marginLeft: "auto" }}>
-              <MultiSelectFilter label="ดีลที่แสดง" selected={timelineDealFilters} onChange={setTimelineDealFilters} options={timelineFilterOptions} />
+              <MultiSelectFilter label="ดีลที่แสดง" selected={dealFilters} onChange={setDealFilters} options={dealFilterOptions} />
             </div>
-            {timelineDealFilters.length > 0 && <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>}
-            {timelineDealFilters.length > 1 && <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
+            {dealFilters.length > 0 && <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>}
+            {dealFilters.length > 1 && <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
           </div>
         )}
 
@@ -773,7 +778,7 @@ export default function ProjectDetailPage() {
             canEdit={canEdit}
             canAdd={canAddTimelineTask}
             canReorder={canReorderTimeline}
-            dealId={singleSelectedDeal(timelineDealFilters)}
+            dealId={singleSelectedDeal(dealFilters)}
             projectId={p.id}
             view={view}
             onViewChange={setView}
@@ -813,11 +818,15 @@ export default function ProjectDetailPage() {
 
         </div>
 
-      {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
+      {/* ภาพรวม = สรุปเท่านั้น: KPI เงิน + ตารางดีล (ProjectDealsHub) + การ์ดไทม์ไลน์
+          ของแท็บอื่นไม่มาต่อท้ายอีกแล้ว — ดูเหตุผลที่ประกาศ state `tab` ด้านบน */}
       {tab === "overview" && (
         <>
           <ProjectDealsHub project={p} onChanged={load} />
-          {/* การ์ดเมนูไทม์ไลน์ — เลือกหลายดีลจากภาพรวม แล้วเปิดเข้าไปด้วย filter ชุดเดิม */}
+          {/* การ์ดเมนูไทม์ไลน์ — ทางเข้าแท็บไทม์ไลน์ + ความคืบหน้ารวม
+              ⚠️ นับจาก allTasks (ทั้งโครงการ) ไม่ใช่ `tasks` ที่ผ่านตัวกรอง — การ์ดนี้
+              ไม่มีตัวเลือกกรองอยู่ด้วยแล้ว ตัวเลขที่ขยับตาม state ที่มองไม่เห็นบนจอนี้
+              จะอ่านเป็น "โครงการมีแค่นี้" · ตัวเลขตามตัวกรองอยู่ในแท็บไทม์ไลน์ */}
           <div
             className="glass-panel"
             style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
@@ -829,15 +838,15 @@ export default function ProjectDetailPage() {
               <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)" }}>ไทม์ไลน์โครงการ</div>
               <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>
                 {(() => {
-                  const doing = tasks.filter((t) => t.status === "In Progress").map((t) => t.name);
-                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : (timelineDealFilters.length ? "ไม่มีขั้นตอนที่กำลังทำในดีลที่เลือก" : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว");
+                  const doing = allTasks.filter((t) => t.status === "In Progress").map((t) => t.name);
+                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว";
                 })()}
               </div>
             </div>
             <div style={{ flex: 1, minWidth: 140, display: "flex", alignItems: "center", gap: 10 }}>
               {(() => {
-                const total = tasks.length;
-                const done = tasks.filter((t) => t.status === "Completed").length;
+                const total = allTasks.length;
+                const done = allTasks.filter((t) => t.status === "Completed").length;
                 return (
                   <>
                     <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={done} aria-valuemax={total} aria-label="ความคืบหน้าไทม์ไลน์">
@@ -848,15 +857,10 @@ export default function ProjectDetailPage() {
                 );
               })()}
             </div>
+            {/* ตัวเลือก "ดีลที่แสดง" ของการ์ดนี้ถูกถอดออก (มติผู้ใช้ 2026-08-05) — ตัวกรอง
+                ตัวเดียวกันมีให้เลือกอยู่แล้วในแท็บไทม์ไลน์และหัวตารางงาน ซึ่งเป็นที่ที่
+                *เห็นผลทันที* · ตรงนี้กรองแล้วมีผลแค่ตัวเลขบนแถบเดียวกันนี้ */}
             <div className="project-timeline-card-actions">
-              {(p.deals || []).length > 0 && (
-                <MultiSelectFilter
-                  label="ดีลที่แสดง"
-                  selected={timelineDealFilters}
-                  onChange={setTimelineDealFilters}
-                  options={timelineFilterOptions}
-                />
-              )}
               <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
                 <GanttChart size={14} /> เปิดไทม์ไลน์
               </button>
@@ -865,11 +869,10 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      {(tab === "overview" || tab === "quotations") && <ProjectQuotationsCard project={p} />}
+      {/* เอกสาร = ใบเสนอราคา + Sale Order (การ์ดเดียวกัน วางคู่กันอยู่แล้ว) */}
+      {tab === "documents" && <ProjectQuotationsCard project={p} />}
 
-      {(tab === "overview" || tab === "inquiries") && <RequestListCard requests={p.inquiries || []} title="คำร้องข้ามฝ่ายของโครงการและดีล" />}
-
-      {(tab === "overview" || tab === "tasks") && (
+      {tab === "tasks" && (
         <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             <ListTodo size={18} />
@@ -879,13 +882,15 @@ export default function ProjectDetailPage() {
             </div>
             <span className="ui-badge" style={{ color: "var(--text-2)" }}>{completedPersonalTasks}/{shownPersonalTasks.length} เสร็จ</span>
             <div style={{ marginLeft: "auto" }}>
-              {projectTaskFilterOptions.length > 1 && <MultiSelectFilter label="ดีลที่แสดง" selected={taskDealFilters} onChange={setTaskDealFilters} options={projectTaskFilterOptions} />}
+              {dealFilterOptions.length > 1 && <MultiSelectFilter label="ดีลที่แสดง" selected={dealFilters} onChange={setDealFilters} options={dealFilterOptions} />}
             </div>
-            <Link className="btn ghost sm" href={taskDealFilters.length === 1 ? `/sa/tasks?dealId=${taskDealFilters[0]}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
+            <Link className="btn ghost sm" href={dealFilters.length === 1 ? `/sa/tasks?dealId=${dealFilters[0]}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
           </div>
           {shownPersonalTasks.length ? (
-            <div className="premium-glass-table table-responsive">
-              <TableScroll surface="embedded"><table className="premium-table">
+            /* ตารางกลางล้วน — คลาสเก่า `.premium-table` บังคับ nowrap ทุกเซลล์ ชื่องาน
+               กับหมายเหตุยาว ๆ จึงดันตารางกว้างเกินการ์ดแล้วคอลัมน์ท้ายถูกตัด */
+            <div>
+              <TableScroll surface="embedded"><table>
                 <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
                 <tbody>{shownPersonalTasks.map((task) => {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);
@@ -904,6 +909,10 @@ export default function ProjectDetailPage() {
         </section>
       )}
 
+      {/* คำร้องข้ามฝ่ายอยู่ท้ายแท็บ "งาน" ไม่ใช่แท็บของตัวเอง (มติผู้ใช้ 2026-08-05) —
+          ทั้งสองตอบคำถามเดียวกันว่า "ตอนนี้ค้างใครอยู่" และถูกเปิดพร้อมกันเสมอ */}
+      {tab === "tasks" && <RequestListCard requests={p.inquiries || []} title="คำร้องข้ามฝ่ายของโครงการและดีล" />}
+
       {/* แบนเนอร์แดง "ยกเลิกแล้ว" + ปุ่มกู้คืน ย้ายไปการ์ด Control แล้ว — ข้อความไปอยู่
           notices ส่วนปุ่มเป็น transition `restore_from_dropped` (สิทธิ์เดิม senior_ae ขึ้นไป)
           แถบปุ่มท้ายหน้า (ระงับ / ยกเลิก / ดึงกลับ) ก็ย้ายไปการ์ดเดียวกัน
@@ -914,8 +923,8 @@ export default function ProjectDetailPage() {
           ห่อด้วย `{false && …}` ไว้ตอนย้ายไป TimelineWorkspace — ลบทิ้งแล้ว
           ทั้งสามโหมดยังมีอยู่ ไปดูที่ TimelineWorkspace (รับ view/onViewChange ด้านบน) */}
 
-      {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
-      {(tab === "overview" || tab === "activities") && <ProjectActivityFeed project={p} onChanged={load} />}
+      {/* ฟีดความเคลื่อนไหวรวมทุกดีล — แท็บของตัวเอง (เดิมพ่วงท้ายภาพรวมด้วย) */}
+      {tab === "activities" && <ProjectActivityFeed project={p} onChanged={load} />}
 
       </DetailPageLayout>
 

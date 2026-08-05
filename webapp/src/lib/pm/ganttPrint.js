@@ -1,5 +1,10 @@
 import { notifyToast } from "@/lib/feedback";
-// Generates a print-ready A4 landscape ISO Timeline document (FM-SA form).
+// เอกสาร Project Timeline — A4 แนวนอน ประกอบจากเปลือกเอกสารกลาง
+// (lib/documents/documentShell) ชุดเดียวกับใบเสนอราคาและใบแจ้งชำระภาษี ต่างที่วางแนว
+//
+// 2026-08-05: เดิมไฟล์นี้ถือ CSS ของตัวเองทั้งชุด — คนละฟอนต์ (ลิงก์ Google Fonts CDN)
+// คนละหน่วย (px) คนละชุดสี (hex ตายตัว) และไม่มีขั้นบันได zoom · ตอนนี้เหลือเฉพาะ CSS
+// ของตารางแกนต์กับช่องลงชื่อ ซึ่งเป็นกริดนับพิกเซลจริง ๆ ที่เปลือกไม่มีให้
 // Ported from ss-cj. ss-team uses project.customerName (FK snapshot) for the
 // customer name; the rest of the fields are camelCase and match our schema.
 // Usage:  openGanttPrintWindow(project)  where project.tasks = its tasks.
@@ -8,34 +13,31 @@ import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGr
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { productIdentity } from '@/lib/master/productIdentity';
 import { entityCodeDisplay } from '@/lib/entityCode';
-import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { dealTypeOf } from '@/lib/salesPlanning';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import {
   documentNumberWithRevision,
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
   resolveDocumentForm,
+  resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
+import {
+  documentFooter,
+  documentHeader,
+  documentRef,
+  esc,
+  partyGrid,
+  renderDocumentHTML,
+  watermarkBlock,
+} from '@/lib/documents/documentShell';
 
 const TIMELINE_KEY = 'projectTimeline';
-
-// สี accent ของเอกสารควบคุม (มาตรฐาน mig 0198 ตั้งต้น navy) — ชุดเดียวกับ
-// DOCUMENT_ACCENT_THEMES ในเครื่องยนต์ใบเสนอราคา คัดเฉพาะคีย์ที่เลือกได้จริง
-// ⚠ ใช้กับ "กรอบเอกสาร" เท่านั้น (รหัสฟอร์ม/ชื่อเอกสาร/เส้นคั่น/หมุด milestone)
-//   ไม่แตะ STATUS_FILL ซึ่งเป็นสีตาม "สถานะงาน" ที่ต้องตรงกับบนจอ (ProjectDocumentView)
-const TIMELINE_ACCENTS = Object.freeze({
-  terracotta: '#ad5d43',
-  steel: '#1e6091',
-  amber: '#b45309',
-  navy: '#1f3551',
-});
 
 // วันที่: ใช้มาตรฐานการแสดงผลกลาง (§2). thai day-month-year = "25 ก.ค. 26",
 // คอลัมน์ Start/Finish ในตาราง = DD/MM/YY (พื้นที่แคบ).
 const fmtThai = (v) => (v ? fmtDayMonthYear(v, { locale: 'th' }) : '');
 const fmtShort = (v) => (v ? fmtDateNumeric(v, { short: true }) : '');
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // สีสถานะให้ตรงกับบนจอ/ทั้งแอป (statusFill ใน ProjectDocumentView): เสร็จ=เขียว,
 // กำลังทำ=accent, รอ=เทา. legend ด้านล่าง interpolate จากชุดนี้เพื่อไม่ให้เพี้ยนจากบาร์.
@@ -58,7 +60,14 @@ const signBox = ({ label, role, name }) => `
         </div>
       </div>`;
 
-export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, continuationCapacity = 22) {
+/* ความจุเป็น "หน่วย" = แถวป้ายเฟส 1 + จำนวนงานในเฟส
+   วัดจากเอกสารที่เรนเดอร์จริงหลังย้ายมาใช้เปลือกกลาง (A4 แนวนอน 297×210mm):
+     แถวสูง 5mm · หัวตาราง 8.1mm · ท้ายกระดาษเริ่มที่ 199.8mm
+     หน้าแรกตารางเริ่มที่ 105.7mm (เสียให้หัวเอกสาร 42mm + กล่องข้อมูล 50mm) → 17.2 แถว
+     หน้าถัดไปตารางเริ่มที่ ~53mm (ไม่มีกล่องข้อมูล) → 27.7 แถว
+   เผื่อไว้หน้าละหนึ่งแถวสำหรับชื่องานที่ยาวจนตัดสองบรรทัด (ค่าเดิม 14/22 ตั้งไว้ตอน
+   เลย์เอาต์เก่าที่หัวเอกสารสูงกว่านี้ ทำให้หน้าแรกเหลือที่ว่างท้ายหน้า ~25mm) */
+export function paginateTimelineGroups(groups = [], firstPageCapacity = 16, continuationCapacity = 26) {
   if (!Array.isArray(groups) || groups.length === 0) return [[]];
   const queue = groups.map((group) => ({ ...group, tasks: [...group.tasks] }));
   const pages = [];
@@ -95,13 +104,88 @@ export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, cont
   return pages.length > 0 ? pages : [[]];
 }
 
-export function buildGanttPrintHTML(project, company, activeStandard = null) {
+// CSS เฉพาะเอกสารไทม์ไลน์ — ตารางแกนต์ที่หนาแน่น (คอลัมน์สัปดาห์ 15px/แถว) กับช่อง
+// ลงชื่อแบบตีกรอบ ยังต้องคุมขนาดเป็น px เองเพราะเป็นกริดที่นับพิกเซล ไม่ใช่ข้อความไหล
+// แต่ "สี" ทุกจุดหยิบจากตัวแปรของเปลือกแล้ว (เดิมเป็น hex ตายตัวคนละชุดกับใบเสนอราคา)
+const TIMELINE_CSS = `
+  .timeline .sheet { padding: 8mm 9mm; }
+  .timeline .sheetContent { padding-bottom: 0; }
+  .timeline .approval-title { margin: 5mm 0 2mm; color: var(--doc-navy); font-size: 13pt; font-weight: 700; }
+  /* หัวเอกสารของแนวนอนเตี้ยกว่าแนวตั้ง — บล็อกตัวตนเอกสารไม่ต้องกว้าง 72mm */
+  .timeline .documentHeader { grid-template-columns: minmax(0, 1.6fr) minmax(58mm, .7fr); gap: 6mm; padding-bottom: 3mm; }
+  .timeline .identityBlock h1 { font-size: 15pt; }
+  .timeline .partyGrid { grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 3mm; }
+  .timeline .partyGrid > div { padding: 2.5mm 3mm; }
+  .timeline .partyGrid dl div { grid-template-columns: 30mm 1fr; }
+
+  /* รายการ FG ในกล่องข้อมูลอ้างอิง */
+  .fg-list { display: flex; flex-direction: column; gap: 1mm; }
+  .fg-item { display: flex; flex-direction: column; padding-left: 1.5mm; border-left: 1.5px solid var(--doc-accent); }
+  .fg-item .fg-meta { color: var(--doc-muted); font-size: 6.6pt; font-weight: 600; }
+  .fg-item .fg-name { color: var(--doc-text); font-size: 7.4pt; font-weight: 600; }
+  .fg-item .fg-cat { color: var(--doc-accent); font-size: 6.6pt; font-weight: 600; }
+  .fg-item .fg-qty { color: var(--doc-muted); font-size: 6.6pt; }
+  .fg-item.empty { border-left-style: dashed; border-left-color: var(--doc-line-strong); }
+  .fg-item.empty .fg-note { color: var(--doc-muted); font-size: 6.6pt; font-style: italic; }
+
+  /* ── ตารางแกนต์ ─────────────────────────────────────────────────────────── */
+  .ganttTable { width: 100%; margin-top: 3mm; border-collapse: collapse; table-layout: fixed; }
+  .ganttTable th, .ganttTable td { border: 1px solid var(--doc-line); overflow: hidden; }
+  .ganttTable thead { display: table-header-group; }
+  .ganttTable thead th { padding: 1mm .7mm; color: #fff; background: var(--doc-navy);
+    font-size: 7.2pt; font-weight: 600; line-height: 1.15; text-align: center; }
+  .ganttTable .c-no { color: var(--doc-navy); font-size: 6.8pt; text-align: center; }
+  .ganttTable .c-desc { color: var(--doc-text); font-size: 7.6pt; line-height: 1.25; text-align: left; word-break: break-word; }
+  .ganttTable .c-desc .note { margin-top: .3mm; color: var(--doc-muted); font-size: 6.4pt; font-style: italic; line-height: 1.2; white-space: pre-wrap; }
+  .ganttTable .c-team { color: var(--doc-navy); font-size: 6.8pt; font-weight: 700; text-align: center; }
+  .ganttTable .c-dur { color: var(--doc-text); font-size: 7.2pt; text-align: center; }
+  .ganttTable .c-date { color: var(--doc-text); font-size: 6.6pt; text-align: center; white-space: nowrap; }
+  .ganttTable td.c-no, .ganttTable td.c-desc, .ganttTable td.c-team,
+  .ganttTable td.c-dur, .ganttTable td.c-date { padding: .3mm 1mm; vertical-align: middle; }
+  .ganttTable .wk { height: 15px; padding: 0; text-align: center; }
+  .ganttTable .wkd { color: #fff; font-size: 5pt; font-weight: 700; line-height: 1; }
+  .ganttTable th.wkn { padding: .3mm 0; color: var(--doc-navy); background: var(--doc-neutral-soft);
+    font-size: 4.6pt; font-weight: 600; letter-spacing: -.3px; line-height: 1; }
+  .ganttTable thead th.wk[colspan] { font-size: 6.4pt; }
+  .ganttTable .dia { color: var(--doc-navy); font-size: 6.4pt; }
+  .ganttTable .ms { color: var(--doc-accent); }
+  /* ห้ามฉีก "แถวเดียว" กลางหน้า และไม่ให้เฟสโดนตัดกลางหน้า (มติผู้ใช้) —
+     thead ซ้ำหัวคอลัมน์ทุกหน้าอยู่แล้ว */
+  .ganttTable tbody tr { break-inside: avoid; page-break-inside: avoid; }
+  .ganttTable tbody.pg { break-inside: avoid; page-break-inside: avoid; }
+  .ganttTable .phase-row { break-after: avoid; page-break-after: avoid; }
+  .ganttTable .phase-row td { background: var(--doc-neutral-soft); }
+  .ganttTable .phase-row .c-no { font-weight: 700; }
+  .ganttTable .phase-label { padding: .5mm 2mm; color: var(--doc-navy); font-size: 7.6pt; font-weight: 700; text-align: left; }
+
+  /* ── ช่องลงชื่อแบบตีกรอบ (จำกัดพื้นที่เขียน — มติผู้ใช้) ───────────────── */
+  .sign-sec { margin-top: 4mm; display: flex; flex-direction: column; gap: 2mm; break-inside: avoid; page-break-inside: avoid; }
+  .sign-row { display: grid; gap: 2mm; }
+  .sign-row.three { grid-template-columns: repeat(3, 1fr); }
+  .sign-box { border: 1px solid var(--doc-line-strong); background: var(--doc-paper); overflow: hidden; }
+  .sb-head { padding: .8mm 1.5mm; border-bottom: 1px solid var(--doc-line); color: var(--doc-navy);
+    background: var(--doc-neutral-soft); font-size: 7.6pt; font-weight: 700; text-align: center; }
+  .sb-role { color: var(--doc-muted); font-size: 6.6pt; font-weight: 400; }
+  .sb-body { padding: 1mm 3.5mm 2mm; text-align: center; }
+  .sb-sig { position: relative; height: 12mm; border-bottom: 1px dotted var(--doc-line-strong); }
+  .sb-sig .sb-hint { position: absolute; bottom: .5mm; left: 0; color: var(--doc-muted); font-size: 6.6pt; }
+  .sb-name { min-height: 3.5mm; margin-top: 1mm; color: var(--doc-text); font-size: 7.6pt; font-weight: 600; }
+  .sb-name .sb-hint { color: var(--doc-muted); font-size: 6.6pt; font-weight: 400; }
+  .sb-date { margin-top: 1mm; color: var(--doc-muted); font-size: 7pt; }
+  .sb-date .dline { display: inline-block; min-width: 28mm; height: .9em; border-bottom: 1px dotted var(--doc-line-strong); vertical-align: middle; }
+
+  .legend { display: flex; gap: 3.5mm; margin-top: 3mm; flex-wrap: wrap; break-inside: avoid; }
+  .leg { display: flex; align-items: center; gap: 1mm; color: var(--doc-muted); font-size: 7.4pt; }
+  .sw { width: 3mm; height: 3mm; border-radius: 1px; }`;
+
+// options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (กติกาเดียวกับ renderQuotationMasterDocumentHTML)
+// ใช้ตอนฝังเอกสารเป็นพรีวิวใน iframe ซึ่งปุ่มสั่งพิมพ์ไม่มีความหมาย
+export function buildGanttPrintHTML(project, company, activeStandard = null, options = {}) {
   const co = resolveCompanyBlock(company);
   // มาตรฐานที่ตรึงไว้ตอนออกเลขที่เอกสาร (mig 0198) มาก่อนมาตรฐานที่เผยแพร่อยู่ตอนนี้
   // เหมือนใบแจ้งชำระภาษี — ใบเก่าพิมพ์ซ้ำต้องได้รหัสฟอร์ม/Rev ชุดเดิมที่เคยออกไป
   const standard = project.timelineStandardSnapshot || activeStandard;
   const form = resolveDocumentForm(standard, TIMELINE_KEY);
-  const accent = TIMELINE_ACCENTS[resolveDocumentAccentKey(standard, TIMELINE_KEY)] || TIMELINE_ACCENTS.navy;
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
 
   const starts = tasks.map(t => new Date(t.startDate).getTime()).filter(t => !isNaN(t));
@@ -187,8 +271,8 @@ export function buildGanttPrintHTML(project, company, activeStandard = null) {
   const quotationNo = project.metadata?.quotationNumber || '';
   const poNo = project.metadata?.poNumber || '';
   const quotationLine = quotationNo
-    ? `${esc(quotationNo)}${poNo ? ` (${esc(poNo)})` : ''}`
-    : (poNo ? `(${esc(poNo)})` : '');
+    ? `${quotationNo}${poNo ? ` (${poNo})` : ''}`
+    : (poNo ? `(${poNo})` : '');
   // ช่องลงชื่อผู้รับผิดชอบฝ่าย — ขึ้นครบทุกฝ่ายเสมอ (ไม่ว่ามีขั้นตอนฝ่ายนั้นในโครงการหรือไม่)
   const signDepts = ['PC', 'PD', 'RD'];
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
@@ -204,69 +288,89 @@ export function buildGanttPrintHTML(project, company, activeStandard = null) {
     project.timelineDocNumber,
     project.rev,
   );
-  const documentHeader = `
-    <div class="doc-top">
-      <div class="brand">
-        <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
-        <div>
-          <h2>${esc(co.legalNameTh)}</h2>
-          <div class="company-info">
-            <div>${esc(co.address)}</div>
-            <div>เลขประจำตัวผู้เสียภาษี ${esc(co.taxId)}</div>
-            <div>โทร. ${esc(co.phone)} · Line ${esc(co.line)} · ${esc(co.website)}</div>
-          </div>
-        </div>
-      </div>
-      <div class="doc-title">
-        <div class="formno">${esc(form.code)}: Rev. No.${esc(form.revision)}. ${esc(form.effectiveDate)}</div>
-        <div class="big">${esc(form.title)}</div>
-        ${timelineDocNumber ? `<div class="sub docno">${esc(timelineDocNumber)}</div>` : ''}
-        <div class="sub">${timelineDocNumber ? 'รหัสโครงการ ' : ''}${esc(displayCode)}</div>
-      </div>
-    </div>`;
-  const projectHeader = `
-    <div class="header-grid">
-      <div class="hcol left">
-        <div class="hrow"><span class="k">Customer Name</span><span class="v">${esc(customerName)}</span></div>
-        <div class="hrow"><span class="k">Brand</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
-        <div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(project.aeOwner || '')}</span></div>
-        <div class="hrow"><span class="k">ผู้ประสานงาน (AC)</span><span class="v">${esc(preparerName)}</span></div>
-        <div class="hrow"><span class="k">ผู้ตรวจสอบ</span><span class="v">${esc(reviewerName)}</span></div>
-        <div class="hrow"><span class="k">เบอร์มือถือ</span><span class="v">${esc(aeMobile)}</span></div>
-        <div class="hrow"><span class="k">Email</span><span class="v">${esc(aeEmail)}</span></div>
-      </div>
-      <div class="hcol">
-        <div class="hrow"><span class="k">Project Name</span><span class="v">${esc(productName)}</span></div>
-        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${quotationLine}</span></div>
-        <div class="hrow"><span class="k">วันที่</span><span class="v">${esc(fmtThai(project.startDate))}</span></div>
-        <div class="hrow" style="align-items: flex-start;">
-          <span class="k">รายการสินค้า (FG)</span>
-          <span class="v" style="font-weight: 400; flex: 1;">
-          ${(project.projectProducts || []).length > 0 ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
-            const prod = pp.product || {};
-            const cat = pp.categoryLabel || '';
-            const identity = productIdentity(prod, { fallback: 'ไม่มีชื่อสินค้า' });
-            return `<span class="fg-item">
-              ${identity.meta ? `<span class="fg-meta">${esc(identity.meta)}</span>` : ''}
-              <span class="fg-name">${esc(identity.detail || identity.text)}</span>
-              ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
-              <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
-            </span>`;
-          }).join('')}</span>` : (categoryFallback
-            ? `<span class="fg-list"><span class="fg-item empty"><span class="fg-name">${esc(categoryFallback)}</span><span class="fg-note">หมวดสินค้า (ยังไม่ผูก FG)</span></span></span>`
-            : `-`)}
-          </span>
-        </div>
-      </div>
-    </div>`;
+  const formLine = `${form.code}: Rev. No.${form.revision}. ${form.effectiveDate}`;
+  // ดีลที่ผูกกับโครงการ — snapshot ของ Rev ที่ถ่ายไว้ก่อนมี field นี้จะไม่มีข้อมูล
+  // หน้าเรียกจึงถอยไปใช้ดีลปัจจุบันให้ (ดูหน้า sa/projects/[id])
+  const dealRefs = (project.deals || [])
+    .map((deal) => documentRef(dealTypeOf(deal), deal?.title))
+    .filter((ref) => ref !== '-');
+
+  const header = documentHeader({
+    // resolveCompanyBlock คืนคีย์ legalNameTh/legalNameEn ส่วนเปลือกรับ nameTh/nameEn
+    company: {
+      nameTh: co.legalNameTh,
+      nameEn: co.legalNameEn,
+      address: co.address,
+      taxId: co.taxId,
+      phone: co.phone,
+      line: co.line,
+      website: co.website,
+    },
+    formLine,
+    // ชื่อไทยจากมาตรฐาน + ชื่ออังกฤษจากรหัสแบบฟอร์ม — ชุดเดียวกับใบเสนอราคา/ใบภาษี
+    // (เดิมหัวใบมีแต่ชื่ออังกฤษบรรทัดเดียว)
+    titleTh: resolveDocumentTitleTh(standard, TIMELINE_KEY),
+    titleEn: form.title,
+    rows: [
+      // ป้าย "รหัสโครงการ" ใช้เฉพาะตอนมีเลขที่เอกสารควบคุมคู่กัน เพราะมีสองเลขให้แยกแยะ
+      // ไทม์ไลน์ของดีลที่ยังไม่มีโครงการจริงมีเลขเดียว จึงเป็น "เลขที่" เฉย ๆ เหมือนเดิม
+      timelineDocNumber ? { label: 'เลขที่เอกสาร', value: timelineDocNumber } : null,
+      { label: timelineDocNumber ? 'รหัสโครงการ' : 'เลขที่', value: displayCode },
+      { label: 'วันที่', value: fmtThai(project.startDate) },
+    ],
+  });
+
+  // รายการ FG เป็นโครงหลายบรรทัดต่อชิ้น จึงส่งเป็น html เข้าไปในช่องแทนข้อความล้วน
+  const fgHtml = (project.projectProducts || []).length > 0
+    ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
+        const prod = pp.product || {};
+        const cat = pp.categoryLabel || '';
+        const identity = productIdentity(prod, { fallback: 'ไม่มีชื่อสินค้า' });
+        return `<span class="fg-item">${identity.meta ? `<span class="fg-meta">${esc(identity.meta)}</span>` : ''}<span class="fg-name">${esc(identity.detail || identity.text)}</span>${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}<span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span></span>`;
+      }).join('')}</span>`
+    : (categoryFallback
+      ? `<span class="fg-list"><span class="fg-item empty"><span class="fg-name">${esc(categoryFallback)}</span><span class="fg-note">หมวดสินค้า (ยังไม่ผูก FG)</span></span></span>`
+      : '-');
+
+  const party = partyGrid({
+    ariaLabel: 'ข้อมูลโครงการและข้อมูลอ้างอิง',
+    party: {
+      heading: 'ข้อมูลโครงการ',
+      headingEn: '/ PROJECT',
+      name: productName,
+      rows: [
+        { label: 'ลูกค้า', value: customerName },
+        { label: 'แบรนด์', value: project.metadata?.brand },
+        { label: 'ผู้ดูแล (AE)', value: project.aeOwner },
+        { label: 'ผู้ประสานงาน (AC)', value: preparerName },
+        { label: 'ผู้ตรวจสอบ', value: reviewerName },
+        aeMobile ? { label: 'เบอร์มือถือ', value: aeMobile } : null,
+        aeEmail ? { label: 'Email', value: aeEmail } : null,
+      ],
+    },
+    // เอกสารทุกชนิดต้องอ้างอิงโครงการและโครงการย่อย (ดีล) เสมอ — ไทม์ไลน์ครอบทั้ง
+    // โครงการซึ่งมีได้หลายดีล จึงลิสต์ทุกดีลที่ผูกอยู่ (มติผู้ใช้ 2026-08-05)
+    // `.partyGrid dd` เป็น pre-wrap อยู่แล้ว ขึ้นบรรทัดใหม่ต่อดีลได้โดยไม่ต้องใส่ markup
+    reference: {
+      heading: 'ข้อมูลอ้างอิง',
+      headingEn: '/ REFERENCE',
+      rows: [
+        { label: 'โครงการ', value: documentRef(displayCode, project.name) },
+        { label: 'โครงการย่อย', value: dealRefs.join('\n') },
+        { label: 'ใบเสนอราคา', value: quotationLine },
+        { label: 'รายการสินค้า (FG)', html: fgHtml },
+      ],
+    },
+  });
+
   const timelineTable = (pageGroups) => `
-    <table>
+    <table class="ganttTable">
       ${colgroup}
       <thead>
         <tr><th rowspan="2">no.</th><th rowspan="2">Work Description</th><th rowspan="2">Team</th><th rowspan="2">Duration<br/>(Day)</th><th rowspan="2">Start</th><th rowspan="2">Finish</th>${monthHeadCells || '<th rowspan="2">Timeline</th>'}</tr>
         <tr>${weekHeadCells}</tr>
       </thead>
-      ${bodyForGroups(pageGroups) || `<tbody><tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#837868">ยังไม่มีขั้นตอนในโครงการนี้</td></tr></tbody>`}
+      ${bodyForGroups(pageGroups) || `<tbody><tr><td colspan="${totalCols}" class="c-desc" style="text-align:center;padding:6mm">ยังไม่มีขั้นตอนในโครงการนี้</td></tr></tbody>`}
     </table>`;
   const legend = `
     <div class="legend">
@@ -285,177 +389,46 @@ export function buildGanttPrintHTML(project, company, activeStandard = null) {
       </div>
       ${signDepts.length ? `<div class="sign-row three">${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}</div>` : ''}
     </div>`;
+
+  const watermark = watermarkBlock(project.watermark);
   const pageCount = timelinePages.length + 1;
+  const foot = (pageNumber) => documentFooter({
+    left: co.legalNameTh,
+    center: formLine,
+    right: `หน้า ${pageNumber} / ${pageCount}`,
+  });
+  // `explicit-page` = หน้าที่ตัดเองล่วงหน้าด้วย paginateTimelineGroups
   const contentPages = timelinePages.map((pageGroups, pageIndex) => `
-  <main class="sheet explicit-page">
-    ${documentHeader}
-    ${pageIndex === 0 ? projectHeader : ''}
-    ${timelineTable(pageGroups)}
-    <div class="page-number">หน้า ${pageIndex + 1} / ${pageCount}</div>
-  </main>`).join('');
+    <article class="sheet explicit-page" aria-label="เอกสาร Project Timeline หน้า ${pageIndex + 1}">
+      ${watermark}
+      ${header}
+      <div class="sheetContent">
+        ${pageIndex === 0 ? party : ''}
+        ${timelineTable(pageGroups)}
+      </div>
+      ${foot(pageIndex + 1)}
+    </article>`).join('');
   const approvalPage = `
-  <main class="sheet explicit-page approval-page">
-    ${documentHeader}
-    <div class="approval-title">การรับรองเอกสาร Project Timeline</div>
-    ${legend}
-    ${signatures}
-    <div class="page-number">หน้า ${pageCount} / ${pageCount}</div>
-  </main>`;
+    <article class="sheet explicit-page approval-page" aria-label="หน้ารับรองเอกสาร">
+      ${watermark}
+      ${header}
+      <div class="sheetContent">
+        <div class="approval-title">การรับรองเอกสาร Project Timeline</div>
+        ${legend}
+        ${signatures}
+      </div>
+      ${foot(pageCount)}
+    </article>`;
 
-  return `<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project Timeline - ${esc(displayCode)}</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  /* สี accent จากมาตรฐานเอกสารที่เผยแพร่/ตรึงไว้ (mig 0198) */
-  :root { --doc-accent: ${accent}; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #ffffff; color: #21385e;
-         font-family: ${PRINT_FONT_STACK};
-         -webkit-font-smoothing: antialiased; font-size: 12px;
-         -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-
-  .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0;
-             display: flex; justify-content: space-between; align-items: center; }
-  .toolbar h1 { font-size: 16px; font-weight: 600; }
-  .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600;
-               padding: 8px 18px; border-radius: 8px; cursor: pointer; }
-  .btn-print:hover { background: #2e2620; }
-
-  .sheet { width: 297mm; height: 210mm; overflow: hidden; margin: 16px auto; background: #fff;
-           box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; position: relative; }
-  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
-  .page-number { position: absolute; right: 9mm; bottom: 5mm; color: #837868; font-size: 9px; }
-  .approval-title { margin: 12px 0 4px; color: #21385e; font-size: 15px; font-weight: 700; }
-
-  .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
-             border-bottom: 2px solid var(--doc-accent); padding-bottom: 7px; margin-bottom: 7px;
-             page-break-after: avoid; break-after: avoid; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
-  .logo-wrap img { height: 46px; width: auto; max-width: 300px; display: block; }
-  .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
-  .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
-  .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
-  .doc-title .big { font-size: 17px; font-weight: 800; color: var(--doc-accent); letter-spacing: 2px; text-align: right; white-space: nowrap; }
-  .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
-  .doc-title .docno { font-size: 11px; font-weight: 700; color: #21385e; letter-spacing: .5px; }
-  .c-desc .note { font-size: 8px; color: #000; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
-
-  .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
-                 border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px;
-                 page-break-inside: avoid; break-inside: avoid;
-                 page-break-after: avoid; break-after: avoid; }
-  .hcol { padding: 6px 12px; }
-  .hcol.left { border-right: 1px solid #dcd8d0; background: #f7f3ec; }
-  .hrow { display: flex; gap: 6px; font-size: 10px; line-height: 1.55; }
-  .hrow.spacer { height: 6px; }
-  .hrow .k { color: #000; min-width: 84px; flex-shrink: 0; }
-  .hrow .v { font-weight: 600; color: #000; }
-  .fg-list { display: flex; flex-direction: column; gap: 3px; }
-  .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid var(--doc-accent); }
-  .fg-item .fg-meta { color: #5f6774; font-size: 8.5px; font-weight: 600; }
-  .fg-item .fg-name { font-weight: 600; font-size: 9.5px; color: #000; }
-  .fg-item .fg-cat { font-size: 8.5px; font-weight: 600; color: var(--doc-accent); }
-  .fg-item .fg-qty { font-size: 8.5px; color: #000; }
-  .fg-item.empty { border-left-style: dashed; border-color: #b8a07a; }
-  .fg-item.empty .fg-note { font-size: 8.5px; color: #000; font-style: italic; }
-
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th, td { border: 1px solid #cfc9bf; overflow: hidden; }
-  /* ตารางชั้นนอกที่พาหัวเอกสาร (doc-top) ไปซ้ำทุกหน้า — ต้องล้าง border/padding
-     ที่กฎ th,td ด้านบนใส่ให้ และอนุญาตให้แถวเนื้อหาแตกข้ามหน้า (กฎ tbody tr
-     ด้านล่างสั่ง avoid ไว้สำหรับตารางงานชั้นใน) */
-  .page-table > thead > tr > td, .page-table > tbody > tr > td { border: none; padding: 0; overflow: visible; }
-  .page-table > tbody > tr, .page-table > tbody { page-break-inside: auto !important; break-inside: auto !important; }
-  thead th { background: #e8e2d9; color: #000; font-size: 9px; font-weight: 700; padding: 2px 2px; text-align: center; line-height: 1.15; }
-  .c-no   { text-align: center; font-size: 8.5px; color: #000; }
-  .c-desc { text-align: left;   font-size: 9.5px; line-height: 1.2; word-break: break-word; color: #000; }
-  .c-team { text-align: center; font-size: 8.5px; font-weight: 700; color: #000; }
-  .c-dur  { text-align: center; font-size: 9px; color: #000; }
-  .c-date { text-align: center; font-size: 8px; color: #000; white-space: nowrap; }
-  td.c-no, td.c-desc, td.c-team, td.c-dur, td.c-date { padding: 1px 3px; vertical-align: middle; }
-  .wk  { height: 15px; padding: 0; text-align: center; }
-  .wkd { font-size: 6px; font-weight: 700; color: #fff; line-height: 1; }
-  th.wkn { font-size: 5.5px; color: #000; font-weight: 600; letter-spacing: -0.3px; line-height: 1; padding: 1px 0; }
-  thead th.wk[colspan] { font-size: 8px; }
-  .dia { color: #21385e; font-size: 8px; }
-  .ms  { color: var(--doc-accent); }
-  /* หน้าพิมพ์: ห้ามฉีก "แถวเดียว" กลางหน้า แต่ "เฟส" ยาว ๆ ให้ไหลข้ามหน้าต่อได้
-     (เดิม avoid ทั้ง tbody ทำให้ทั้งเฟสกระโดดข้ามหน้าเป็นก้อน เหลือช่องว่างท้ายหน้า
-     + หัวตารางไปโผล่หน้าใหม่ = "header ตกลงข้างล่าง"). thead ซ้ำหัวตารางทุกหน้าอยู่แล้ว. */
-  tbody tr { page-break-inside: avoid; break-inside: avoid; }
-  /* ไม่ให้เฟสโดนตัดกลางหน้า: ทั้งเฟสอยู่ครบในหน้าเดียว ถ้าไม่พอท้ายหน้าให้ยกทั้ง
-     เฟสไปหน้าใหม่ (มติผู้ใช้). thead ซ้ำหัวคอลัมน์ทุกหน้าอยู่แล้ว. */
-  tbody.pg { break-inside: avoid; page-break-inside: avoid; }
-  .phase-row { page-break-after: avoid; break-after: avoid; } /* ป้ายเฟสไม่ค้างท้ายหน้าเดียว */
-  .phase-row td { background: #f0ebe0; }
-  .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; color: #000; }
-  td.c-no { font-weight: 700; }
-  .phase-row .c-no { color: #21385e; }
-
-  /* ช่องลงชื่อแบบตีกรอบ (มติผู้ใช้: จำกัดพื้นที่เขียน) — แถวบน 2 ช่อง
-     (ผู้จัดทำ/ผู้ตรวจสอบ) แถวล่าง 3 ช่อง (ฝ่าย PC/PD/RD) กว้างเท่ากันในแถว */
-  .sign-sec { margin-top: 16px; display: flex; flex-direction: column; gap: 8px;
-              page-break-inside: avoid; break-inside: avoid; }
-  .sign-row { display: grid; gap: 8px; }
-  .sign-row.two { grid-template-columns: repeat(2, 1fr); }
-  .sign-row.three { grid-template-columns: repeat(3, 1fr); }
-  .sign-box { border: 1px solid #b8b0a4; border-radius: 6px; overflow: hidden; background: #fff; }
-  .sb-head { background: #f0ebe0; border-bottom: 1px solid #dcd8d0; text-align: center;
-             padding: 3px 6px; font-size: 10px; font-weight: 700; color: #21385e; }
-  .sb-role { font-weight: 400; font-size: 8.5px; color: #837868; }
-  .sb-body { padding: 4px 14px 8px; text-align: center; }
-  .sb-sig { height: 46px; border-bottom: 1px dotted #6b7a90; position: relative; }
-  .sb-sig .sb-hint { position: absolute; left: 0; bottom: 2px; font-size: 8.5px; color: #837868; }
-  .sb-name { font-size: 10px; font-weight: 600; color: #000; margin-top: 4px; min-height: 14px; }
-  .sb-name .sb-hint { font-weight: 400; font-size: 8.5px; color: #837868; }
-  .sb-date { font-size: 9px; color: #837868; margin-top: 4px; }
-  .sb-date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 110px; height: 0.9em; vertical-align: middle; }
-
-  .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; page-break-inside: avoid; }
-  .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #3c577d; }
-  .sw { width: 11px; height: 11px; border-radius: 2px; }
-
-  @page {
-    size: A4 landscape; margin: 9mm 8mm 13mm;
-    @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
-  }
-  @media print {
-    body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .no-print { display: none !important; }
-    .sheet { margin: 0; box-shadow: none; width: 281mm; height: 188mm; padding: 0; }
-    .page-number { right: 0; bottom: 0; }
-    /* NB: อย่าใช้ position:fixed ทำ running header — Chromium (print) รองรับไม่ได้
-       มันดัน .doc-top ไปอยู่ล่างสุดหน้าแรก + เว้นบนโล่งทุกหน้า. ให้หัวเอกสารอยู่
-       in-flow บนสุดหน้าแรกตามปกติ. หัวคอลัมน์ตารางซ้ำทุกหน้าด้วย thead อยู่แล้ว. */
-    thead { display: table-header-group; }
-  }
-
-  /* มือถือ/จอแคบ: ให้เอกสารพอดีความกว้างจอ (ไม่ล้น/ฟอนต์ไม่เพี้ยน) + header เรียงเดียว */
-  @media screen and (max-width: 820px) {
-    .toolbar { max-width: 100%; padding: 12px 10px 0; }
-    .toolbar h1 { font-size: 14px; }
-    .sheet { width: 100%; min-width: 0; margin: 10px auto; padding: 5mm; }
-    .header-grid { grid-template-columns: 1fr; }
-    .hcol.left { border-right: none; border-bottom: 1px solid #dcd8d0; }
-    .sign-row.two, .sign-row.three { grid-template-columns: 1fr; }
-  }
-</style>
-</head>
-<body>
-  <div class="toolbar no-print">
-    <h1>เอกสาร Project Timeline — ${esc(displayCode)}</h1>
-    <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
-  </div>
-
-  ${contentPages}
-  ${approvalPage}
-</body>
-</html>`;
+  return renderDocumentHTML({
+    title: `${displayCode} — เอกสาร Project Timeline`,
+    accentKey: resolveDocumentAccentKey(standard, TIMELINE_KEY),
+    orientation: 'landscape',
+    variantClass: 'timeline',
+    extraCss: TIMELINE_CSS,
+    toolbar: options.toolbar === false ? null : { label: `เอกสาร Project Timeline — ${displayCode}`, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
+    pages: `${contentPages}${approvalPage}`,
+  });
 }
 
 export async function openGanttPrintWindow(project) {

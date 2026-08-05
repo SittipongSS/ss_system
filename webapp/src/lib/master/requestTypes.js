@@ -38,8 +38,24 @@ export const REQUEST_KINDS = {
     needs: ['project', 'deal'],
     hint: 'ถามอะไรก็ได้ที่ยังไม่มีหัวข้อเฉพาะ — ตอบกันในเธรด',
   },
+  // ⭐ **พัฒนากลิ่น** — หัวข้อหลักของสายงาน RD ตามโมเดลใหม่
+  // SA ส่งบรีฟ (ไม่มีตารางบรรทัด — ยังไม่มีใครรู้ว่าจะได้กี่ direction) → RD รับเรื่อง
+  // → RD ส่งของแล้ว **สร้างแถวเอง** ทีละ direction พร้อมกรอกรหัส/ชื่อ/วันที่ลงทะเบียน
+  // → SA รับของ → ส่งลูกค้า → ลูกค้าตอบ → ใส่ราคาในใบเดิม
+  scent_dev: {
+    label: 'พัฒนากลิ่น',
+    dept: 'RD', scope: 'SB', hasItems: false,
+    // SO เท่านั้น — โครงการ/ดีล/ลูกค้าเติมจาก SO เอง ไม่ให้เลือกซ้ำแล้วขัดกัน
+    needs: ['salesOrder'],
+    stepKey: 'scent-06', dealType: 'SCENT',
+    hint: 'ต้องมีใบสั่งขายที่อนุมัติแล้ว (ค่าบริการออกแบบกลิ่น) — RD ส่งกี่ direction ก็ได้ '
+      + 'แต่ละตัวเข้าทะเบียนกลิ่นทันทีที่ส่ง',
+  },
+  // 🗄 **หัวข้อเก่า** — `legacy` = อ่านของเดิมได้ครบ แต่เปิดใบใหม่ไม่ได้อีก
+  // ห้ามลบทิ้ง: prod มีคำร้องที่ใช้หัวข้อพวกนี้อยู่จริง ลบแล้วใบเก่าจะไม่มีป้ายชื่อ
   scent_brief: {
-    label: 'แจ้งบรีฟออกแบบกลิ่น',
+    label: 'แจ้งบรีฟออกแบบกลิ่น (เลิกใช้)',
+    legacy: true,
     dept: 'RD', scope: 'SB', hasItems: false,
     // SO เท่านั้น — โครงการกับดีลเติมจาก SO เอง ไม่ให้เลือกซ้ำแล้วขัดกัน
     needs: ['salesOrder'],
@@ -49,10 +65,10 @@ export const REQUEST_KINDS = {
   mockup: {
     label: 'ขอ Mock-up',
     dept: 'RD', scope: 'MU', hasItems: false,
-    // อ้างกลิ่นที่ลูกค้ามีอยู่ + ประเภทสินค้าที่จะขึ้นตัวอย่าง
-    // ⭐ ประเภทสินค้าอ้าง **หมวดสินค้า** (product_types) ไม่ใช่ `productId` เพราะ
-    // ตอนขอ mockup สินค้ายังไม่มีในระบบ — mockup มาก่อนสินค้า
-    needs: ['project', 'deal', 'scent', 'productType'],
+    // ⚠️ เคยบังคับ `productType` ด้วย — mig 0204 DROP `dept_requests.productTypeId`
+    // ทิ้งไปแล้ว ค่าที่กรอกจึงไม่มีที่เก็บ · บังคับกรอกของที่เก็บไม่ได้ = หลอกผู้ใช้
+    // หมวดสินค้ากลับมาเป็น **รายแถว** ตอนหัวข้อ "พัฒนาผลิตภัณฑ์" มาแทน mockup
+    needs: ['project', 'deal', 'scent'],
     stepKey: 'npd-15', dealType: 'NPD',
     hint: 'ขอตัวอย่างจริงจาก RD — อ้างกลิ่นที่ลูกค้ามีและประเภทสินค้าที่จะขึ้น',
   },
@@ -104,7 +120,6 @@ export const REQUEST_NEEDS = {
   salesOrder: { field: 'salesOrderId', error: 'ต้องเลือกใบสั่งขาย (SO) ที่ครอบค่าบริการออกแบบกลิ่น' },
   scent: { field: 'scentId', error: 'ต้องเลือกกลิ่นจากทะเบียน' },
   formula: { field: 'formulaId', error: 'ต้องเลือกสูตรจากทะเบียน' },
-  productType: { field: 'productTypeId', error: 'ต้องเลือกประเภทสินค้าที่จะขึ้นตัวอย่าง' },
 };
 
 export const REQUEST_KIND_LIST = Object.keys(REQUEST_KINDS);
@@ -193,12 +208,24 @@ export function deptForRequest(kind, { dept, items } = {}) {
 // ระบบอนุมานฝ่ายให้ · ตอนนี้ **เลือกฝ่ายก่อน แล้วหัวข้อถูกกรองตามฝ่าย** — คนเปิด
 // คำร้องคิดจาก "จะถามใคร" ก่อน "ถามเรื่องอะไร" เสมอ
 // ชนิดที่ dept = null (สอบถาม/ขอเอกสาร) ส่งถึงฝ่ายไหนก็ได้ จึงอยู่ในทุกฝ่าย
+// หัวข้อที่ "เปิดใบใหม่ได้" ของฝ่ายนี้
+//
+// ⚠️ กรอง `legacy` ออกที่นี่ที่เดียว — ฟอร์มเอาลิสต์จากฟังก์ชันนี้ทางเดียว ส่วน
+// `requestKindLabel` ยังรู้จักหัวข้อเก่าครบ ⇒ ใบที่เปิดไปแล้วยังมีป้ายชื่ออ่านได้
+// (ลบหัวข้อทิ้งเมื่อไร ใบเก่าบน prod จะกลายเป็นชื่อ key ดิบบนหน้าจอ)
 export function kindsForDept(dept) {
   if (!REQUEST_DEPTS.includes(dept)) return [];
   return REQUEST_KIND_LIST.filter((k) => {
+    if (REQUEST_KINDS[k].legacy) return false;
     const fixed = REQUEST_KINDS[k].dept;
     return !fixed || fixed === dept;
   });
+}
+
+// เปิดใบใหม่ด้วยหัวข้อนี้ได้ไหม — ด่านฝั่ง server (ฟอร์มกรองแล้ว แต่ยิงตรงยังได้)
+export function legacyKindError(kind) {
+  if (!REQUEST_KINDS[kind]?.legacy) return null;
+  return `"${requestKindLabel(kind)}" เลิกใช้แล้ว — เปิดใบใหม่ด้วยหัวข้อปัจจุบันแทน`;
 }
 
 // ฝ่ายที่ส่งมาต้องเข้ากับชนิด — คืนข้อความไทย หรือ null ถ้าผ่าน

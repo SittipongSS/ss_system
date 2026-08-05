@@ -90,10 +90,19 @@ export default function ScentsPage() {
       if (statusFilter === "open" && s.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && s.status !== statusFilter) return false;
       if (!q) return true;
-      return [s.name, s.code, s.customerName, s.note]
+      // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
+      // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
+      // รหัสตัวอย่างอยู่ในสายค้นด้วย — RD หาย้อนจากรหัสบนขวดที่ลูกค้าอ้างถึง
+      return [s.name, s.code, s.customerName, s.customerTradeName, s.sampleCode, s.note]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
   }, [scents, statusFilter, search]);
+
+  // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
+  const scentLabelById = useMemo(
+    () => new Map(scents.map((s) => [s.id, s.code || s.name])),
+    [scents],
+  );
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(visible, { resetKey: `${search}|${statusFilter}` });
@@ -122,6 +131,8 @@ export default function ScentsPage() {
       name: v.name,
       customerId: v.customerId,
       customerName: customers.find((c) => c.id === v.customerId)?.name || null,
+      customerTradeName: v.customerTradeName,
+      derivedFromScentId: v.derivedFromScentId,
       note: v.note,
     };
     if (form.mode === "create") {
@@ -287,8 +298,32 @@ export default function ScentsPage() {
                 {pageRows.map((s) => {
                   return (
                     <tr key={s.id}>
-                      <td className="mono">{s.code || <span className={styles.muted}>—</span>}</td>
-                      <td className={styles.name}>{s.name}</td>
+                      <td className="mono">
+                        {s.code || <span className={styles.muted}>—</span>}
+                        {/* รหัสตัวอย่างที่ส่งออกไปจริง — *คนละรหัส* กับรหัสกลิ่นในทะเบียน
+                            คือสายที่โยงกลับไปหาขวดที่ลูกค้าถืออยู่ · ยกมาจากตารางรอบ
+                            ที่ถูกทิ้งใน 0206 (ของจริง 29 แถวมีครบทุกแถว)
+                            ⚠️ อ่านอย่างเดียว ไม่มีช่องกรอก — สายงานใหม่บันทึกการส่ง
+                            ผ่านคำร้อง ไม่ใช่ผ่านทะเบียน */}
+                        {s.sampleCode && (
+                          <div className={styles.sub}>ตัวอย่าง {s.sampleCode}</div>
+                        )}
+                      </td>
+                      <td className={styles.name}>
+                        {s.name}
+                        {/* ⚠️ ชื่อของลูกค้าอยู่ **ใต้** ชื่อของเรา และมีคำนำหน้ากำกับ
+                            เสมอ — ไม่ใช่แทนที่กัน · วางสลับหรือทิ้งคำนำหน้าเมื่อไร
+                            คนอ่านจะเริ่มอ้างชื่อลูกค้าเป็นชื่อทางการ ซึ่งเป็นโรคเดิม
+                            ที่ 0171 บันทึกไว้ */}
+                        {s.customerTradeName && (
+                          <div className={styles.sub}>ลูกค้าเรียก “{s.customerTradeName}”</div>
+                        )}
+                        {s.derivedFromScentId && (
+                          <div className={styles.lineage}>
+                            └─ แก้จาก {scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}
+                          </div>
+                        )}
+                      </td>
                       <td>{s.customerName || s.customerId}</td>
                       {/* กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันที่เดียว ไม่ใช่
                           "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง */}
@@ -375,6 +410,9 @@ export default function ScentsPage() {
           <>
             <ScentForm
               mode={form.mode} value={form.value} customers={customers}
+              // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
+              // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
+              scents={scents} editingId={form.scent?.id || null}
               canSetCode={registrar} disabled={saving}
               onChange={(value) => setForm({ ...form, value })}
             />

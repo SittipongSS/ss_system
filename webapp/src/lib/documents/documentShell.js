@@ -24,6 +24,13 @@ export const money = (v) => Number(v || 0).toLocaleString('th-TH', {
 });
 export const val = (v) => (v === null || v === undefined || v === '' ? '-' : esc(v));
 
+// "รหัส · ชื่อ" สำหรับช่องอ้างอิงบนเอกสาร (โครงการ / โครงการย่อย) — เอกสารทุกชนิด
+// ต้องเขียนเหมือนกัน ไม่งั้นลูกค้าได้ใบชุดเดียวกันที่อ้างอิงของอย่างเดียวกันคนละรูป
+export const documentRef = (code, name) => [code, name]
+  .map((part) => String(part ?? '').trim())
+  .filter(Boolean)
+  .join(' · ') || '-';
+
 // สี accent ต่อชนิดเอกสาร — ค่าเป็น hex เพราะเอกสารพิมพ์เป็นไฟล์ self-contained
 // ใช้ตัวแปรธีมของแอปไม่ได้ · --doc-accent คุมสีชื่อเอกสาร (h1) กับเส้นเน้น
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({
@@ -47,6 +54,7 @@ export function accentStyle(accentKey) {
 const ROW_GAP = '\n          ';
 
 // หัวเอกสาร: บล็อกแบรนด์ (โลโก้ + บริษัท) | บล็อกตัวตนเอกสาร (รหัสฟอร์ม ชื่อ เลขที่ ฯลฯ)
+// formLine เว้นได้ — รายงานไม่ใช่เอกสารควบคุม ไม่มีรหัสแบบฟอร์ม/Revision ให้พิมพ์
 // rows = [{ label, value }] — แต่ละชนิดเอกสารส่งแถวของตัวเอง (ใบเสนอราคาใช้ เลขที่/
 // วันที่/ยืนราคาถึง · ใบภาษีใช้ เลขที่/วันที่เอกสาร/กำหนดส่งมอบ)
 export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows = [] }) {
@@ -63,7 +71,7 @@ export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows 
         </div>
       </div>
       <div class="identityBlock">
-        <div class="formLine">${val(formLine)}</div>
+        ${formLine ? `<div class="formLine">${val(formLine)}</div>` : ''}
         <h1>${val(titleTh)}</h1>
         <div class="englishTitle">${val(titleEn)}</div>
         <dl>
@@ -76,9 +84,12 @@ export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows 
 // กล่องข้อมูลสองช่อง: คู่สัญญา (ซ้าย) | ข้อมูลอ้างอิง (ขวา)
 // party.rows / reference.rows = [{ label, value }] · แถวที่เป็น falsy ถูกข้าม เพื่อให้
 // ผู้เรียกใส่เงื่อนไขในลิสต์ได้เลย (เช่น สาขาที่มีเฉพาะลูกค้านิติบุคคล)
+// แถวรับได้ทั้ง { label, value } (ข้อความ escape ให้) และ { label, html } สำหรับช่องที่
+// ต้องวางโครงเอง เช่น รายการ FG ของเอกสารไทม์ไลน์ — ผู้เรียกต้อง esc มาเองแล้ว
 export function partyGrid({ party = {}, reference = {}, ariaLabel } = {}) {
+  const cell = (r) => (r.html !== undefined ? r.html : val(r.value));
   const rowsHtml = (rows = []) => rows.filter(Boolean)
-    .map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join(ROW_GAP);
+    .map((r) => `<div><dt>${esc(r.label)}</dt><dd>${cell(r)}</dd></div>`).join(ROW_GAP);
   const heading = (block) => `<h2>${esc(block.heading)}${block.headingEn ? ` <span>${esc(block.headingEn)}</span>` : ''}</h2>`;
   return `
     <section class="partyGrid" aria-label="${esc(ariaLabel || [party.heading, reference.heading].filter(Boolean).join('และ'))}">
@@ -114,16 +125,36 @@ export function watermarkBlock(text) {
   return text ? `<div class="watermark">${esc(text)}</div>` : '';
 }
 
+// ขนาดกระดาษต่อการวางแนว — เอกสารพิมพ์เป็นไฟล์เดี่ยว จึงกำหนด @page ต่อไฟล์ได้ตรง ๆ
+// scale ใช้เลื่อนขั้นบันได zoom: กระดาษแนวนอนกว้างกว่า 297/210 เท่า จอจึงต้องเริ่มย่อ
+// ที่ความกว้างมากกว่าตามสัดส่วนเดียวกัน ไม่งั้นแนวนอนล้นจอก่อนที่ zoom จะทำงาน
+const PAPER = Object.freeze({
+  portrait: { width: '210mm', height: '297mm', page: 'A4 portrait', scale: 1 },
+  landscape: { width: '297mm', height: '210mm', page: 'A4 landscape', scale: 297 / 210 },
+});
+
+/* ขั้นบันได zoom ตอนดูบนจอ (มติผู้ใช้ 2026-07-26): จอแคบกว่ากระดาษให้ "ย่อทั้งแผ่น"
+   ไม่ใช่จัดหน้าใหม่ — สัดส่วน/การขึ้นหน้าจึงตรงกับที่พิมพ์จริง 100%
+   ใช้ขั้นบันไดแทนการคำนวณจาก vw เพราะ zoom ต้องการ "ตัวเลขไม่มีหน่วย" ซึ่ง
+   calc(100vw / n) ให้ค่าเป็นความยาว ไม่ใช่อัตราส่วน */
+const ZOOM_LADDER = Object.freeze([
+  [820, '.95'], [760, '.88'], [700, '.82'], [640, '.74'], [580, '.68'],
+  [520, '.60'], [460, '.54'], [400, '.46'], [350, '.40'],
+]);
+
 // CSS ของเปลือก — ย้ายมาจาก quotationMasterDocument.DOCUMENT_CSS แบบคำต่อคำ
 // (เทสต์ของใบเสนอราคาตรึงข้อความกฎบางข้อไว้ เช่น `.termsGrid p { font-size: 8.5pt; … }`
 // การแก้ถ้อยคำในนี้จึงเท่ากับแก้เอกสารจริง ต้องตั้งใจเสมอ)
-export const DOCUMENT_SHELL_CSS = `
+export function documentShellCss(orientation = 'portrait') {
+  const paper = PAPER[orientation] || PAPER.portrait;
+  const bp = (width) => Math.round(width * paper.scale);
+  return `
   * { box-sizing: border-box; }
   body { margin: 0; background: #eceff3; -webkit-font-smoothing: antialiased;
          -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
          font-family: ${PRINT_FONT_STACK}; }
   .toolbar { display: flex; justify-content: space-between; align-items: center;
-             width: 210mm; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
+             width: ${paper.width}; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
              font-family: ${PRINT_FONT_STACK}; }
   .toolbar h1 { font-size: 15px; font-weight: 600; color: #1f3551; }
   .btn-print { background: #1f3551; color: #fff; border: 0; font: inherit; font-weight: 600;
@@ -159,7 +190,7 @@ export const DOCUMENT_SHELL_CSS = `
   .grayscale { filter: grayscale(1); }
   .sheet {
     position: relative; display: flex; flex-direction: column;
-    width: 210mm; height: 297mm; min-height: 297mm; box-sizing: border-box;
+    width: ${paper.width}; height: ${paper.height}; min-height: ${paper.height}; box-sizing: border-box;
     padding: 11mm 12mm 10mm; overflow: hidden; background: var(--doc-paper);
     box-shadow: 0 8px 30px rgb(27 34 43 / 16%); break-after: page;
   }
@@ -264,34 +295,23 @@ export const DOCUMENT_SHELL_CSS = `
   .v4 .paymentContent { justify-content: flex-end; break-inside: avoid; }
   .v4 .signatures { margin-top: 3mm; }
 
-  @page { size: A4 portrait; margin: 0; }
-  /* จอแคบกว่ากระดาษ: "ย่อทั้งแผ่น" ไม่ใช่จัดหน้าใหม่ (มติผู้ใช้ 2026-07-26)
-     ของเดิมพอจอ < 900px จะเปลี่ยน .sheet เป็น width:100% + height:auto + คิดคอลัมน์
+  @page { size: ${paper.page}; margin: 0; }
+  /* ของเดิมพอจอ < 900px จะเปลี่ยน .sheet เป็น width:100% + height:auto + คิดคอลัมน์
      ตารางใหม่เป็น % → พรีวิวออกมาคนละสัดส่วนกับที่พิมพ์จริง ดูแล้วตัดสินใจไม่ได้
-     ตอนนี้ .sheet คงเป็น 210×297mm เสมอ แล้วใช้ zoom ย่อทั้งกล่องตามความกว้างจอ
-     (794px = 210mm ที่ 96dpi) — สัดส่วน/การขึ้นหน้าตรงกับที่พิมพ์จริง 100%
-     ใช้ขั้นบันไดแทนการคำนวณจาก vw เพราะ zoom ต้องการ "ตัวเลขไม่มีหน่วย" ซึ่ง
-     calc(100vw / n) ให้ค่าเป็นความยาว ไม่ใช่อัตราส่วน */
-  @media screen and (max-width: 900px) { .toolbar { width: 100%; } }
-  @media screen and (max-width: 820px) { .document { zoom: .95; } }
-  @media screen and (max-width: 760px) { .document { zoom: .88; } }
-  @media screen and (max-width: 700px) { .document { zoom: .82; } }
-  @media screen and (max-width: 640px) { .document { zoom: .74; } }
-  @media screen and (max-width: 580px) { .document { zoom: .68; } }
-  @media screen and (max-width: 520px) { .document { zoom: .60; } }
-  @media screen and (max-width: 460px) { .document { zoom: .54; } }
-  @media screen and (max-width: 400px) { .document { zoom: .46; } }
-  @media screen and (max-width: 350px) { .document { zoom: .40; } }
+     ตอนนี้ .sheet คงขนาดกระดาษเสมอ (794px = 210mm ที่ 96dpi) แล้วย่อด้วย zoom */
+  @media screen and (max-width: ${bp(900)}px) { .toolbar { width: 100%; } }
+${ZOOM_LADDER.map(([width, zoom]) => `  @media screen and (max-width: ${bp(width)}px) { .document { zoom: ${zoom}; } }`).join('\n')}
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
     .document { display: block; padding: 0; filter: none; }
     .grayscale { filter: grayscale(1); }
-    .sheet { width: 210mm; height: 297mm; min-height: 297mm; margin: 0; box-shadow: none;
+    .sheet { width: ${paper.width}; height: ${paper.height}; min-height: ${paper.height}; margin: 0; box-shadow: none;
       break-after: page; page-break-after: always; }
     .sheetContent { padding-bottom: 2vw; }
     .sheet:last-child { break-after: auto; page-break-after: auto; }
   }`;
+}
 
 // ประกอบเป็นไฟล์ HTML เอกสารเต็ม — ฝังฟอนต์ + CSS เปลือก + CSS เฉพาะชนิด (extraCss)
 // pages = HTML ของแผ่นกระดาษทั้งหมดที่ผู้เรียกประกอบมาแล้ว
@@ -300,6 +320,7 @@ export function renderDocumentHTML({
   accentKey,
   pages,
   grayscale = false,
+  orientation = 'portrait',
   variantClass = '',
   dataAttrs = '',
   extraCss = '',
@@ -316,7 +337,7 @@ export function renderDocumentHTML({
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <style>${DOCUMENT_FONT_FACE_CSS}</style>
-<style>${DOCUMENT_SHELL_CSS}${extraCss}</style>
+<style>${documentShellCss(orientation)}${extraCss}</style>
 </head>
 <body>
   ${toolbarHtml}

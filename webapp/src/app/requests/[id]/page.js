@@ -6,7 +6,9 @@
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2 } from "lucide-react";
+import {
+  ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+} from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
@@ -88,6 +90,8 @@ export default function MaterialAskDetailPage() {
   const [hopDraft, setHopDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
+  // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
+  const [bounceReason, setBounceReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   // ผลลัพธ์ตอนปิดบรีฟกลิ่น — { mode: 'link'|'create'|'none', scentId, scentName, code }
@@ -390,6 +394,16 @@ export default function MaterialAskDetailPage() {
                   visible: isAdmin || (req._mine && req.status === "draft"),
                 },
                 {
+                  // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
+                  // การทำลาย** — ใบยังอยู่ เลขที่เดิม ผู้ขอแก้แล้วส่งซ้ำได้
+                  id: "bounce",
+                  label: "ตีกลับให้แก้ไข",
+                  kind: "cancel",
+                  icon: Undo2,
+                  onClick: () => setBounceReason(" "),
+                  visible: owner && req.status === "pending",
+                },
+                {
                   id: "cancel",
                   label: "ยกเลิกคำร้อง",
                   kind: "cancel",
@@ -434,6 +448,16 @@ export default function MaterialAskDetailPage() {
         {/* `note` เลิกเขียนใหม่แล้ว — ยังแสดงของเก่าที่มีค่าอยู่ ไม่ซ่อนข้อมูลที่คน
             เคยพิมพ์ไว้ (คอลัมน์ยังไม่ถูก DROP) */}
         {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />}
+        {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
+            แต่ไม่ควรค้างบนจอ ไม่งั้นใบที่แก้แล้วยังดูเหมือนถูกตีกลับอยู่ */}
+        {req.status === "draft" && req.bounceReason && (
+          <div className={styles.bounced}>
+            <strong>ฝ่าย {req.dept} ตีกลับให้แก้ไข</strong>
+            {req.bouncedByName ? ` · ${req.bouncedByName}` : ""}
+            {req.bouncedAt ? ` · ${fmtDate(req.bouncedAt)}` : ""}
+            <ReadableText text={req.bounceReason} lines={6} />
+          </div>
+        )}
         {req.status === "cancelled" && req.cancelReason && (
           <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
@@ -795,6 +819,37 @@ export default function MaterialAskDetailPage() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ตีกลับ — เหตุผลบังคับ เพราะผู้ขอต้องรู้ว่าต้องแก้อะไรถึงจะส่งใหม่ได้ */}
+      <Modal
+        open={!!bounceReason} onClose={() => setBounceReason("")}
+        title="ตีกลับให้แก้ไข" size="sm" dismissible={!saving}
+      >
+        <p className={styles.fieldHint}>
+          คำร้องจะกลับไปเป็น <strong>ร่าง</strong> ของผู้ขอ โดย<strong>เลขที่ไม่เปลี่ยน</strong> —
+          แก้แล้วส่งกลับมาได้เลย ไม่ต้องเปิดใบใหม่
+        </p>
+        <div className="form-group">
+          <label htmlFor="ask-bounce">ต้องแก้อะไร</label>
+          <Textarea variant="data"
+            id="ask-bounce" rows={3} maxLength={2000}
+            value={bounceReason.trim() ? bounceReason : ""} disabled={saving}
+            placeholder="เช่น ยังไม่ได้แนบไฟล์อ้างอิง / ใบสั่งขายยังไม่อนุมัติ / ระบุปริมาณที่ต้องการด้วย"
+            onChange={(e) => setBounceReason(e.target.value || " ")}
+          />
+        </div>
+        <div className={`action-bar ${styles.modalActions}`}>
+          <Button variant="quiet" onClick={() => setBounceReason("")} disabled={saving}>ปิด</Button>
+          <Button
+            tone="primary" disabled={saving || !bounceReason.trim()}
+            onClick={() => call("", {
+              method: "PATCH", body: JSON.stringify({ action: "bounce", reason: bounceReason }),
+            }, "ตีกลับให้ผู้ขอแก้ไขแล้ว").then((ok) => { if (ok) setBounceReason(""); })}
+          >
+            ตีกลับ
+          </Button>
+        </div>
       </Modal>
 
       {/* ยกเลิกเคส */}

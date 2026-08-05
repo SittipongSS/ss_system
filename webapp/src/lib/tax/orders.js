@@ -25,6 +25,8 @@ const ADDITIVE_ORDER_COLS = [
   'taxPaidDate', 'taxInvoiceNumber', 'amountToCollect',
   'collectedConfirmedAt', 'collectedConfirmedBy', 'docsDeliveredAt', 'docsDeliveredBy',
   'customerAddress',
+  // mig 0208 — โครงการ/โครงการย่อยที่ตรึงลงใบเพื่อพิมพ์บนเอกสาร
+  'projectRef', 'dealRef',
 ];
 
 const isMissingColumnError = (error, cols) =>

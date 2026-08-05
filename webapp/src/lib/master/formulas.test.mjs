@@ -8,7 +8,11 @@ import {
   canProposeFormula,
   canViewFormulas,
   deleteFormulaError,
+  derivedFromFormulaError,
   findFormulaByCode,
+  findFormulaByIdentity,
+  formulaIdentityKey,
+  formulaTransitionError,
   isFormulaRegistrar,
   isFormulaUsable,
   normalizeFormulaInput,
@@ -25,14 +29,44 @@ const formula = (over = {}) => ({
   status: 'active', createdById: 'u-sale', ...over,
 });
 
-// ── ตัวตน ────────────────────────────────────────────────────────────────
-test('ตัวตนสูตร = รหัส (ไม่สนตัวพิมพ์/ช่องว่างหัวท้าย)', () => {
+// ── ตัวตน = หมวด × กลิ่น (mig 0207) ──────────────────────────────────────
+//
+// ⭐ เดิมตัวตนคือ "รหัส" ซึ่ง RD พิมพ์เอง ⇒ ระบบไม่มีทางรู้ว่าสองสูตรหมายถึงของ
+// ชิ้นเดียวกันหรือเปล่า · มติผู้ใช้: เทียนหอมกลิ่น A กับก้านไม้หอมกลิ่น A คนละสูตร
+// แต่เทียนหอมกลิ่น A สองแถวคือของซ้ำ
+test('ตัวตนสูตร = หมวด × กลิ่น — ต้องตรงกับ index formulas_identity_uk', () => {
+  assert.equal(formulaIdentityKey({ categoryCode: '01-002', scentId: 'SCT-9' }), '01-002::SCT-9');
+  // หมวดเดียวกันคนละกลิ่น = คนละสูตร · กลิ่นเดียวกันคนละหมวด = คนละสูตร
+  assert.notEqual(
+    formulaIdentityKey({ categoryCode: '01-002', scentId: 'SCT-9' }),
+    formulaIdentityKey({ categoryCode: '01-003', scentId: 'SCT-9' }),
+  );
+  assert.notEqual(
+    formulaIdentityKey({ categoryCode: '01-002', scentId: 'SCT-9' }),
+    formulaIdentityKey({ categoryCode: '01-002', scentId: 'SCT-8' }),
+  );
+});
+
+test('ขาดหมวดหรือขาดกลิ่น = ยังไม่มีตัวตน (คืน null ไม่ใช่สตริงว่าง)', () => {
+  // ⚠️ ถ้าคืน '' แล้วผู้เรียกเอาไปเทียบกัน สูตรฐานทุกตัวจะกลายเป็น "ของซ้ำ" หมด
+  assert.equal(formulaIdentityKey({ categoryCode: '01-002' }), null);
+  assert.equal(formulaIdentityKey({ scentId: 'SCT-9' }), null);
+  assert.equal(formulaIdentityKey({}), null);
+  assert.equal(findFormulaByIdentity([formula()], { scentId: 'SCT-9' }), null);
+});
+
+test('หาสูตรซ้ำ: ข้ามตัวที่เลิกใช้แล้ว — index ก็ยกเว้น archived เหมือนกัน', () => {
+  const rows = [
+    formula({ id: 'FML-old', status: 'archived', categoryCode: '01-002', scentId: 'SCT-9' }),
+    formula({ id: 'FML-now', status: 'active', categoryCode: '01-002', scentId: 'SCT-9' }),
+  ];
+  assert.equal(findFormulaByIdentity(rows, { categoryCode: '01-002', scentId: 'SCT-9' })?.id, 'FML-now');
+});
+
+test('รหัสสูตรยังห้ามซ้ำ แต่เป็นเลขที่อ้างอิง ไม่ใช่ตัวตน', () => {
   const rows = [formula()];
   assert.equal(findFormulaByCode(rows, ' pf638010202-p1 ')?.id, 'FML-1');
   assert.equal(findFormulaByCode(rows, 'อื่น'), null);
-});
-
-test('ร่างที่ยังไม่มีรหัสไม่มีตัวตนให้เทียบ (index เป็น partial)', () => {
   assert.equal(findFormulaByCode([formula({ code: null })], ''), null);
 });
 
@@ -53,9 +87,35 @@ test('รูปแบบวันที่ต้องเป็น ISO', () => {
   assert.match(normalizeFormulaInput({ name: 'A', formulaDate: '06/08/2025' }).error, /ไม่ถูกต้อง/);
 });
 
-test('สูตรมีลูกค้าได้หรือเป็นสูตรกลางก็ได้ (ต่างจากกลิ่นที่บังคับ)', () => {
-  assert.equal(normalizeFormulaInput({ name: 'A' }).value.customerId, null);
-  assert.equal(normalizeFormulaInput({ name: 'A', customerId: 'CUS-1' }).value.customerId, 'CUS-1');
+test('⭐ ลูกค้าไม่รับจากฟอร์มอีกแล้ว — server เติมจากกลิ่นเสมอ (0207)', () => {
+  // เดิมกรอกเองและเว้นว่างได้ ⇒ สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B ได้
+  // โดยไม่มีอะไรห้าม · ตอนนี้ค่าที่ส่งมาต้องถูกทิ้ง ไม่ใช่แค่ "ไม่แนะนำให้ส่ง"
+  const { value } = normalizeFormulaInput({ name: 'A', customerId: 'CUS-1', customerName: 'ก' });
+  assert.equal('customerId' in value, false, 'ห้ามให้ client กำหนดลูกค้าของสูตร');
+  assert.equal('customerName' in value, false);
+});
+
+test('หมวดสินค้าต้องเป็นรูป MM-TTT — ครึ่งหนึ่งของตัวตน จะรับค่ามั่วไม่ได้', () => {
+  assert.match(normalizeFormulaInput({ name: 'A', categoryCode: '1-2' }).error, /หมวดสินค้า/);
+  assert.equal(normalizeFormulaInput({ name: 'A', categoryCode: '01-002' }).value.categoryCode, '01-002');
+  assert.equal(normalizeFormulaInput({ name: 'A' }).value.categoryCode, null);
+});
+
+test('สถานะสูตรเดินเส้นเดียวกับกลิ่นทุกประการ (คนใช้จำสองกฎไม่ไหว)', () => {
+  assert.equal(formulaTransitionError(formula({ status: 'developing' }), 'active'), null);
+  assert.match(formulaTransitionError(formula({ status: 'active' }), 'draft'), /ไม่ได้/);
+  assert.match(formulaTransitionError(formula({ status: 'active' }), 'active'), /เดิมอยู่แล้ว/);
+  assert.equal(formulaTransitionError(formula({ status: 'archived' }), 'active'), null);
+});
+
+test('สูตรต้นทางข้ามลูกค้าไม่ได้ แต่สูตรฐานเป็นต้นทางของใครก็ได้', () => {
+  const parent = { id: 'FML-9', customerId: 'CUS-1' };
+  assert.equal(derivedFromFormulaError(parent, { customerId: 'CUS-1', id: 'FML-1' }), null);
+  assert.match(derivedFromFormulaError(parent, { customerId: 'CUS-2', id: 'FML-1' }), /คนละราย/);
+  // สูตรฐาน (ไม่ผูกลูกค้า) — ผู้ใช้ยืนยันว่ามีจริงแต่น้อย
+  assert.equal(derivedFromFormulaError({ id: 'FML-8', customerId: null }, { customerId: 'CUS-2' }), null);
+  assert.match(derivedFromFormulaError(null, { customerId: 'CUS-1' }), /ไม่พบสูตรต้นทาง/);
+  assert.match(derivedFromFormulaError(parent, { customerId: 'CUS-1', id: 'FML-9' }), /อ้างตัวเอง/);
 });
 
 // ── สิทธิ์ ───────────────────────────────────────────────────────────────
@@ -122,4 +182,23 @@ test('เก็บเฉพาะสินค้าที่มีชื่อ�
   assert.deepEqual(rows.map((r) => r.productId), ['p1']);
   assert.equal(rows[0].formulaName, 'Walk on beach 01');
   assert.equal(rows[0].productName, 'FG-1');
+});
+
+// ── สูตรฐานยังผูกลูกค้าได้ (🐞 regression ที่ 0207 เกือบทำหลุด) ──────────────
+//
+// กฎที่ถูกคือ **"กลิ่นเป็นเจ้าของคำตอบเมื่อมีกลิ่น"** ไม่ใช่ "สูตรห้ามมีลูกค้า"
+// เวอร์ชันแรกของ customerFromScent คืน { customerId: null } ตอนไม่มีกลิ่น ซึ่งไป
+// **ล้างลูกค้าทิ้ง** — จุดที่พังจริงคือ "จัดระเบียบ" (สินค้าของลูกค้ารายหนึ่งถูกย้าย
+// เป็นสูตร แล้วกลายเป็นสูตรฐานไร้ลูกค้าเงียบ ๆ)
+//
+// เทสต์นี้ล็อกที่ระดับ "ค่าที่ normalize คืน" — ตัวที่ derive จริงอยู่ใน
+// scentFormulaAdmin ซึ่งแตะ DB · สิ่งที่ต้องกันคือ **ห้ามมี customerId โผล่กลับมา
+// เป็นช่องที่ client กำหนดได้** ไม่ว่าจะทางไหน
+test('สูตรฐานไม่ได้แปลว่า "ห้ามมีลูกค้า" — แค่ลูกค้าไม่ได้มาจากฟอร์ม', () => {
+  const { value } = normalizeFormulaInput({ name: 'สูตรฐานเทียน', customerId: 'CUS-1' });
+  // ฟอร์มกำหนดไม่ได้…
+  assert.equal('customerId' in value, false);
+  // …แต่ตัวสูตรเองไม่ได้ถูกบังคับให้ไม่มีลูกค้า — ไม่มีกฎไหนที่นี่ปฏิเสธมัน
+  assert.equal(value.name, 'สูตรฐานเทียน');
+  assert.equal(value.scentId, null);
 });

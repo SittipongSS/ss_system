@@ -23,7 +23,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
-import LeadDealModal from "@/components/salesPlanning/LeadDealModal";
+import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
@@ -58,7 +58,7 @@ const initialForm = {
    กว้างไม่เท่ากัน และหน้าเพจต้องรู้จักสีของทุกสถานะเอง) */
 function statusBadge(status) {
   return (
-    <span className={["ui-badge", styles.cellBadge, styles.status, styles[status]].filter(Boolean).join(" ")}>
+    <span className={["ui-badge", "ui-badge-cell", "ui-badge-w-lead", styles[status]].filter(Boolean).join(" ")}>
       {LEAD_STATUS_LABELS[status] || status}
     </span>
   );
@@ -67,7 +67,7 @@ function statusBadge(status) {
 function channelBadge(channel) {
   const group = channelGroupOf(channel);
   return (
-    <span className={["ui-badge", styles.cellBadge, styles.channel, styles[group]].filter(Boolean).join(" ")}>
+    <span className={["ui-badge", "ui-badge-cell", "ui-badge-w-channel", styles[group]].filter(Boolean).join(" ")}>
       {LEAD_CHANNEL_LABELS[channel] || channel}
     </span>
   );
@@ -371,11 +371,32 @@ export default function LeadsPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        {canSeeLeadKpi(role) && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: "var(--fs-7)", fontWeight: "var(--fw-medium)", color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+          {/* ขอบเขต + ทางไป KPI เต็ม อยู่ใต้หัวหน้า เหนือแถบ KPI — ตำแหน่งเดียวกับ
+              หน้าไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-05) ขอบเขตจำกัด "ชุดข้อมูลของทั้งหน้า"
+              ทั้งตัวเลขและตาราง จึงต้องอยู่เหนือทุกอย่าง ไม่ใช่ปนกับตัวกรองที่ทำงาน
+              ภายในชุดนั้น · ลิงก์ KPI เต็มอยู่ลำดับเดียวกัน จึงอยู่แถวเดียวกัน
+
+              ⚠️ เงื่อนไขของสองตัวนี้ **คนละตัวโดยเจตนา** — ตัวสลับไม่ผูกกับ canSeeLeadKpi
+              เพราะ KPI ลีดเปิดให้เฉพาะผู้กำกับดูแล/ทีม intake แต่ขอบเขตเป็นของคนทำงาน
+              คิวทุกคน (senior_ae/ac/ae ไม่เห็น KPI แต่ต้องสลับขอบเขตได้)
+              ⇒ แถวนี้โผล่เมื่อมีอย่างน้อยหนึ่งอย่าง ไม่ใช่ผูกกับสิทธิ์ใดสิทธิ์หนึ่ง */}
+          {(scopes.length > 1 || canSeeLeadKpi(role)) && (
+            <div className="scope-row">
+              {scopes.length > 1 && (
+                <Segmented
+                  ariaLabel="ขอบเขตของคิวลีด"
+                  className="scope-toggle"
+                  value={activeScope}
+                  onChange={setScope}
+                  options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+                />
+              )}
+              {canSeeLeadKpi(role) && (
+                <Link href="/sa/dashboard?tab=lead_kpi" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>
+              )}
             </div>
           )}
+
           <SaMetricStrip aria-busy={loading}>
             <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
             <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้าง ${kpi?.sla?.screen?.pending ?? 0}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
@@ -385,16 +406,6 @@ export default function LeadsPage() {
 
         <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล" actions={<span className="ui-badge">{filtered.length} ลีด</span>}>
           <div className="toolbar" style={{ marginBottom: 14, flexWrap: "wrap" }}>
-            {/* ขอบเขต — วางซ้ายสุดเพราะมันกว้างกว่าตัวกรองทุกตัว (จำกัด "ชุดข้อมูล"
-                ส่วน FilterPopover จำกัด "ภายในชุดนั้น") · เหลือตัวเลือกเดียวก็ไม่ต้องโชว์ */}
-            {scopes.length > 1 && (
-              <Segmented
-                ariaLabel="ขอบเขตของคิวลีด"
-                value={activeScope}
-                onChange={setScope}
-                options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
-              />
-            )}
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
@@ -610,9 +621,9 @@ export default function LeadsPage() {
       </Modal>
 
       {/* สร้างดีลจากลีด — ฟอร์มเดียวกับที่หน้ารายละเอียดใช้
-          mount ตอนเปิดเท่านั้น (ดูคำเตือนใน LeadDealModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
+          mount ตอนเปิดเท่านั้น (ดูคำเตือนใน DealCreateModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
       {dealModal && (
-        <LeadDealModal
+        <DealCreateModal
           key={dealModal.id}
           lead={dealModal}
           customers={customers}

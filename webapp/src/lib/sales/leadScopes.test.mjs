@@ -137,3 +137,18 @@ test('ทั้งสองหน้าใช้ Segmented ตัวกลาง
     assert.doesNotMatch(src, /className="segmented [a-z-]*"/, `หน้า${name}: ห้ามเขียน segmented เอง`);
   }
 });
+
+/* 🐞 ผู้ใช้ทักษ 2026-08-05: ตัวสลับของคิวลีดปุ่มเล็กกว่าและกว้างไม่เท่ากันเมื่อเทียบกับ
+   หน้าดีล เพราะขนาดปุ่มอยู่ในคลาส `.deal-scope-toggle` ที่หน้าดีล/งาน PM ใส่ แต่คิวลีด
+   ไม่ได้ใส่ (คิวลีดไปครอบ div ของตัวเองแทน ทำให้เยื้องคนละแนวอีกด้วย)
+   คลาสถูกเปลี่ยนชื่อเป็น `.scope-toggle` เพราะไม่ใช่ของหน้าดีลคนเดียวแล้ว */
+test('ตัวสลับขอบเขตทุกหน้าใช้คลาสขนาดเดียวกัน', () => {
+  const globals = readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8');
+  assert.match(globals, /\.scope-toggle > button \{[^}]*min-width/, 'ต้องกำหนด min-width ที่ปุ่ม ไม่งั้นแต่ละป้ายกว้างไม่เท่ากัน');
+  assert.doesNotMatch(globals, /\.deal-scope-toggle/, 'ชื่อเดิมที่ผูกกับหน้าดีลต้องไม่เหลือ');
+  for (const rel of ['src/app/sales-planning/deals/page.js', 'src/app/sales-planning/leads/page.js', 'src/app/pm/tasks/page.js']) {
+    assert.match(readFileSync(join(ROOT, rel), 'utf8'), /scope-toggle/, `${rel} ต้องใช้คลาสเดียวกัน`);
+  }
+  // คิวลีดต้องไม่ครอบ div ของตัวเองอีก — เยื้องต้องมาจากคอนเทนเนอร์เดียวกับหน้าดีล
+  assert.doesNotMatch(leadsPage(), /styles\.scopeBar/, 'ห้ามมี wrapper เฉพาะหน้า');
+});

@@ -7,7 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -20,6 +20,7 @@ import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
+import styles from "./ProjectDealsHub.module.css";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -63,77 +64,99 @@ const displayText = (value, fallback = "-") => {
   return value.name || value.label || value.title || fallback;
 };
 
-// การ์ดดีล 1 ใบ = จิ๊กซอว์ 1 ชิ้น: หัวดีล + segment ไทม์ไลน์ + ใบเสนอราคาใต้ดีล
-function DealCard({ deal, seg, quotes, directory, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
+/* ดีล 1 ใบ = 1 แถว (มติผู้ใช้ 2026-08-05 — เดิมเป็นการ์ดสูงใบละ ~180px เรียงคอลัมน์เดียว
+   โครงการที่มี 10 ดีลจึงต้องสกอลล์ ~2,000px กว่าจะพ้นรายการดีล)
+   ⚠️ ของที่ "ต้องเทียบข้ามดีล" (ชนิด · สถานะ · มูลค่า · จำนวน QT · ความคืบหน้า) อยู่บนแถว
+   ของที่ "ดูทีละใบ" (ใบเสนอราคารายใบ · AE · เดือน forecast · ขั้นที่กำลังทำ) อยู่ในแถวขยาย
+   ⇒ เพิ่มคอลัมน์ใหม่ให้ถามก่อนว่ามันอยู่ฝั่งไหน อย่าให้แถวยาวจนเลขเงินไม่มีที่อยู่ */
+function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder, filtering, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown, columnCount }) {
   const closed = isWonStage(deal.stage);
   const value = closed ? (deal.wonValue ?? deal.projectValue) : deal.projectValue;
-  const shown = quotes.slice(0, 3);
+  const pct = seg.total ? Math.round((seg.done / seg.total) * 100) : 0;
   return (
-    <div className="glass-panel" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <>
+      <tr className="premium-row">
         {canReorder && (
-          <span style={{ display: "inline-flex", gap: 2 }}>
-            <button type="button" className="btn-icon" onClick={onMoveUp} disabled={moving || !canMoveUp} aria-label={`เลื่อนดีล ${deal.title} ขึ้น`} title="เลื่อนดีลขึ้น"><ArrowUp size={13} /></button>
-            <button type="button" className="btn-icon" onClick={onMoveDown} disabled={moving || !canMoveDown} aria-label={`เลื่อนดีล ${deal.title} ลง`} title="เลื่อนดีลลง"><ArrowDown size={13} /></button>
-          </span>
+          <td>
+            {/* ⚠️ ปิดตอนกำลังค้นหา ไม่ใช่ซ่อนคอลัมน์ — ซ่อนแล้วหัวตารางกับแถวจะเหลื่อมกัน */}
+            <span className={styles.reorder}>
+              <button type="button" className="btn-icon" onClick={onMoveUp} disabled={moving || filtering || !canMoveUp} aria-label={`เลื่อนดีล ${deal.title} ขึ้น`} title={filtering ? "ล้างคำค้นก่อนจึงจะจัดลำดับได้" : "เลื่อนดีลขึ้น"}><ArrowUp size={13} /></button>
+              <button type="button" className="btn-icon" onClick={onMoveDown} disabled={moving || filtering || !canMoveDown} aria-label={`เลื่อนดีล ${deal.title} ลง`} title={filtering ? "ล้างคำค้นก่อนจึงจะจัดลำดับได้" : "เลื่อนดีลลง"}><ArrowDown size={13} /></button>
+            </span>
+          </td>
         )}
-        {dealTypeBadge(dealTypeOf(deal))}
-        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-          {displayText(deal.title)}
-        </Link>
-        {stageBadge(deal.stage)}
-      </div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-        <span>
-          <span style={{ color: "var(--text-3)" }}>{closed ? "ปิดจริง " : "FC "}</span>
-          <strong className="mono tabular-nums" style={{ color: closed ? "var(--green)" : deal.stage === "lost" ? "var(--red)" : "inherit" }}>
-            {fmtMoneyCompact(value)}
-          </strong>
-          {!closed && deal.forecastMonth ? <span style={{ color: "var(--text-3)" }}> · {deal.forecastMonth}</span> : null}
-        </span>
-        {/* ชื่อ AE อ่านจาก ownerId — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ */}
-        <span><span style={{ color: "var(--text-3)" }}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</span>
-        {deal.formulaName && <span><span style={{ color: "var(--text-3)" }}>สูตร </span>{displayText(deal.formulaName)}</span>}
-      </div>
-
-      {/* segment ไทม์ไลน์ของดีลนี้ (งานใน Gantt ที่ tag dealId ตรงกัน) */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-6)" }}>
-        <PackageCheck size={14} aria-hidden="true" style={{ color: "var(--text-3)", flexShrink: 0 }} />
-        {seg.total ? (
-          <>
-            <div className="progress" style={{ flex: 1, minWidth: 60 }} role="progressbar" aria-valuenow={seg.done} aria-valuemax={seg.total} aria-label={`ไทม์ไลน์ ${deal.title}`}>
-              <span className={seg.done === seg.total ? "done" : undefined} style={{ width: `${Math.round((seg.done / seg.total) * 100)}%` }} />
-            </div>
-            <span className="mono tabular-nums" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>{seg.done}/{seg.total}</span>
-            {seg.current && <span style={{ color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>กำลังทำ: {seg.current}</span>}
-          </>
-        ) : (
-          <span style={{ color: "var(--text-3)" }}>ยังไม่มี segment ไทม์ไลน์ของดีลนี้</span>
-        )}
-      </div>
-
-      {/* ใบเสนอราคาใต้ดีล */}
-      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)" }}>
-          <FileText size={13} aria-hidden="true" /> ใบเสนอราคา
-          <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length}</span>
-        </div>
-        {shown.length ? shown.map((q) => (
-          <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-6)", minWidth: 0 }}>
-            <Link prefetch={false} href={`/sa/quotations/${q.id}`} className="linklike mono" style={{ whiteSpace: "nowrap" }}>{q.quoteNumber}</Link>
-            <span className="ui-badge" style={{ color: QUOTE_STATUS[q.status]?.color || "var(--text-3)" }}>{QUOTE_STATUS[q.status]?.label || q.status}</span>
-            <span className="mono tabular-nums" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{fmtMoney(q.totalAmount)}</span>
+        <td>
+          <div className={styles.dealCell}>
+            {dealTypeBadge(dealTypeOf(deal))}
+            <Link prefetch={false} href={`/sa/deals/${deal.id}`} className={`linklike ${styles.dealTitle}`}>
+              {displayText(deal.title)}
+            </Link>
           </div>
-        )) : <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
-        {quotes.length > shown.length && (
-          <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>+ อีก {quotes.length - shown.length} ใบ (ดูทั้งหมดที่หน้าดีล)</div>
-        )}
-      </div>
-
-      <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
-        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เปิดดีล</Link>
-      </div>
-    </div>
+          {deal.formulaName && <div className={styles.subLine}>สูตร {displayText(deal.formulaName)}</div>}
+        </td>
+        <td>{stageBadge(deal.stage)}</td>
+        {/* สีตามผลของดีล = ข้อมูล ไม่ใช่สไตล์ (เขียว = ปิดได้จริง · แดง = แพ้) */}
+        <td className="num mono tabular-nums" style={{ color: closed ? "var(--green)" : deal.stage === "lost" ? "var(--red)" : "inherit" }}>
+          {fmtMoney(value)}
+          <div className={styles.valueNote}>{closed ? "ปิดจริง" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
+        </td>
+        <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>-</span>}</td>
+        <td>
+          {seg.total ? (
+            <div className={styles.progressCell}>
+              <div className="progress" role="progressbar" aria-valuenow={seg.done} aria-valuemax={seg.total} aria-label={`ไทม์ไลน์ ${deal.title}`}>
+                <span className={seg.done === seg.total ? "done" : undefined} style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`mono tabular-nums ${styles.progressCount}`}>{seg.done}/{seg.total}</span>
+            </div>
+          ) : <span className={styles.muted}>ยังไม่มี segment</span>}
+        </td>
+        <td>
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            title={expanded ? "ย่อรายละเอียดดีล" : "ดูใบเสนอราคา / AE / ขั้นที่กำลังทำ"}
+          >
+            {expanded ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronRight size={13} aria-hidden="true" />} รายละเอียด
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={columnCount}>
+            <div className={styles.expandPanel}>
+              <div className={styles.expandInfo}>
+                {/* ชื่อ AE อ่านจาก ownerId — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ */}
+                <div><span className={styles.mutedBadge}>AE </span>{displayText(livePersonName(directory, deal.ownerId, deal.ownerName))}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</div>
+                <div className={styles.expandInfoLine}>
+                  <PackageCheck size={13} aria-hidden="true" className={styles.expandInfoIcon} />
+                  {seg.current ? <span>กำลังทำ: {seg.current}</span> : <span className={styles.mutedBadge}>ไม่มีขั้นตอนที่กำลังทำ</span>}
+                </div>
+                <Link prefetch={false} href={`/sa/deals/${deal.id}`} className={`btn ghost sm ${styles.openDeal}`}>
+                  <ExternalLink size={13} aria-hidden="true" /> เปิดดีล
+                </Link>
+              </div>
+              <div className={styles.quoteList}>
+                <div className={styles.quoteHead}>
+                  <FileText size={13} aria-hidden="true" /> ใบเสนอราคาของดีลนี้
+                  <span className={`ui-badge ${styles.mutedBadge}`}>{quotes.length}</span>
+                </div>
+                {quotes.length ? quotes.map((q) => (
+                  <div key={q.id} className={styles.quoteRow}>
+                    <Link prefetch={false} href={`/sa/quotations/${q.id}`} className={`linklike mono ${styles.quoteNo}`}>{q.quoteNumber}</Link>
+                    {/* สีป้าย = สถานะของใบ (ข้อมูล) — ทะเบียนเดียวกับตารางในแท็บเอกสาร */}
+                    <span className="ui-badge" style={{ color: QUOTE_STATUS[q.status]?.color || "var(--text-3)" }}>{QUOTE_STATUS[q.status]?.label || q.status}</span>
+                    <span className={`mono tabular-nums ${styles.quoteAmount}`}>{fmtMoney(q.totalAmount)}</span>
+                  </div>
+                )) : <div className={styles.quoteEmpty}>ยังไม่มี — สร้างได้ที่เมนูใบเสนอราคา</div>}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -153,8 +176,12 @@ export function ProjectQuotationsCard({ project: p }) {
         <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
       </div>
       {quotes.length ? (
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="premium-table">
+        /* 🐞 เดิมห่อด้วย `.premium-glass-table.table-responsive` + `.premium-table` ซึ่งบังคับ
+           `white-space: nowrap !important` ทุกเซลล์ — ชื่อดีลไทยยาว ๆ จึงดันตารางกว้างเกิน
+           การ์ด แล้วคอลัมน์ "สถานะ/ยอดรวม" ถูกตัดหายไปหลังสกอลล์ (ผู้ใช้ส่งภาพมา 2026-08-05)
+           ตารางกลางปล่อยให้เซลล์ตัดบรรทัดตามปกติ คอลัมน์จึงอยู่ครบในความกว้างเท่าเดิม */
+        <div>
+          <TableScroll surface="embedded"><table>
             <thead><tr><th>เลขที่</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr></thead>
             <tbody>{quotes.map((quote) => {
               const deal = dealById.get(quote.dealId);
@@ -183,8 +210,8 @@ export function ProjectQuotationsCard({ project: p }) {
         <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู ใบสั่งขาย</Link>
       </div>
       {salesOrders.length ? (
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="premium-table">
+        <div>
+          <TableScroll surface="embedded"><table>
             <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
             <tbody>{salesOrders.map((order) => {
               const deal = dealById.get(order.dealId);
@@ -311,6 +338,8 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   const [linkError, setLinkError] = useState("");
   const [reorderBusy, setReorderBusy] = useState(false);
   const [reorderError, setReorderError] = useState("");
+  const [expandedDeals, setExpandedDeals] = useState([]); // แถวที่กางรายละเอียดอยู่
+  const [dealQuery, setDealQuery] = useState("");
 
   useEffect(() => {
     if (!linkOpen) return;
@@ -399,14 +428,26 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   );
 
   const r = p.dealsRollup;
+  const canReorder = canEdit && deals.length > 1;
+  // คอลัมน์: [จัดลำดับ] ดีล · สถานะ · มูลค่า · QT · ไทม์ไลน์ · ปุ่มขยาย
+  const columnCount = canReorder ? 7 : 6;
+  /* ค้นหาโผล่เมื่อดีลเกิน 6 ใบ — ต่ำกว่านั้นตากวาดครบอยู่แล้ว ช่องค้นหาจะเป็นแค่ของรก
+     ⚠️ กรองแล้ว "จัดลำดับ" ต้องปิด: ปุ่มขึ้น/ลงสลับกับเพื่อนบ้าน **ในลิสต์เต็ม** ถ้ากรองอยู่
+     เพื่อนบ้านที่เห็นกับที่สลับจริงคนละใบ — ผู้ใช้จะเห็นดีลกระโดดข้ามใบที่ถูกซ่อน */
+  const showSearch = deals.length > 6;
+  const q = dealQuery.trim().toLowerCase();
+  const shownDeals = q
+    ? deals.filter((deal) => [deal.title, deal.formulaName, deal.dealType, deal.ownerName]
+      .some((field) => (field || "").toLowerCase().includes(q)))
+    : deals;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-      {/* KPI รวมระดับโครงการ — สูตรเดียวกับ projectRollup (FC Total / Actual / FC คงเหลือ) */}
+      {/* KPI รวมระดับโครงการ — สูตรเดียวกับ projectRollup (FC Total / Actual / FC คงเหลือ)
+          ⚠️ เงินล้วน: ตัวนับ "ดีลในโครงการ" ถูกถอดออก (มติผู้ใช้ 2026-08-05) เพราะบอก
+          เรื่องเดียวกับหัวตารางด้านล่าง "ดีลในโครงการ (N)" ที่อยู่ห่างกันไม่ถึงหนึ่งจอ */}
       {r && (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-          <Kpi label="ดีลในโครงการ" value={deals.length}
-            hint={(r.byType || []).filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0).map((item) => `${DEAL_TYPE_LABELS[item.type] || item.type} ${item.openCount + item.wonCount + item.lostCount}`).join(" · ") || null} />
           <Kpi label="FC Total" value={fmtMoneyCompact(r.fcTotal)} />
           <Kpi label="Actual" value={fmtMoneyCompact(r.actual)} color="var(--green)" />
           <Kpi label="FC คงเหลือ" value={fmtMoneyCompact(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
@@ -414,42 +455,88 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         </div>
       )}
 
-      {/* การ์ดดีล — จิ๊กซอว์แต่ละชิ้น */}
+      {/* ตารางดีล — เทียบข้ามใบได้ในจอเดียว กดขยายดูรายละเอียดทีละใบ */}
       <div className="glass-panel" style={{ padding: "16px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0, fontSize: "var(--fs-9)", fontWeight: "var(--fw-bold)" }}>ดีลในโครงการ ({deals.length})</h3>
+        <div className={styles.tableHead}>
+          {/* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/dealIcon.test.mjs (เดิมอยู่บนการ์ด
+              "ดีลในโครงการ" ของหน้าโครงการ ที่ถูกยุบมาเป็นตารางนี้) */}
+          <FolderKanban size={17} aria-hidden="true" />
+          <h3>ดีลในโครงการ ({deals.length})</h3>
+          {/* ชนิดของดีลที่โครงการนี้ผ่านมาแล้ว — เดิมเป็น hint ใต้ KPI ที่ถอดไป */}
+          {(r?.byType || [])
+            .filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0)
+            .map((item) => (
+              <span key={item.type} className={`ui-badge ${styles.mutedBadge}`}>
+                {DEAL_TYPE_LABELS[item.type] || item.type} {item.openCount + item.wonCount + item.lostCount}
+              </span>
+            ))}
           {central && (
-            <span className="ui-badge" style={{ color: "var(--text-3)" }} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
+            <span className={`ui-badge ${styles.mutedBadge}`} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
               งานกลาง {central.done}/{central.total}
             </span>
           )}
-          <div className="spacer" style={{ flex: 1 }} />
+          <div className="spacer" />
+          {showSearch && (
+            <div className={`search-glass ${styles.search}`}>
+              <Search size={15} color="var(--text-3)" aria-hidden="true" />
+              <input value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
+            </div>
+          )}
           {canEdit && (
             <button type="button" className="btn btn-primary sm" onClick={() => setLinkOpen(true)}>
               <Plus size={13} aria-hidden="true" /> ผูกดีล
             </button>
           )}
-          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</span>
         </div>
-        {reorderError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)", marginBottom: 10 }}>{reorderError}</div>}
+        {reorderError && <div className={styles.errorNote}>{reorderError}</div>}
         {deals.length ? (
-          <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-            {deals.map((d, index) => (
-            <DealCard
-              key={d.id}
-              deal={d}
-              seg={segments.get(d.id) || { done: 0, total: 0, current: null }}
-              quotes={quotesByDeal.get(d.id) || []}
-              directory={directory}
-              canReorder={canEdit && deals.length > 1}
-              canMoveUp={index > 0}
-              canMoveDown={index < deals.length - 1}
-              moving={reorderBusy}
-              onMoveUp={() => moveDeal(index, -1)}
-              onMoveDown={() => moveDeal(index, 1)}
-            />
-            ))}
-          </div>
+          <>
+            {/* ตารางกลางล้วน ๆ — ไม่มี `.premium-glass-table` / `.premium-table` ครอบ
+                (พื้น ขอบ padding แถว ฟอนต์ตัวเลข มาจาก Table.module.css หมดแล้ว) */}
+            <TableScroll surface="embedded"><table>
+              <thead>
+                <tr>
+                  {canReorder && <th aria-label="จัดลำดับ" />}
+                  <th>ดีล</th>
+                  <th>สถานะ</th>
+                  <th className="num">มูลค่า</th>
+                  <th className="num">QT</th>
+                  <th>ไทม์ไลน์</th>
+                  <th aria-label="รายละเอียด" />
+                </tr>
+              </thead>
+              <tbody>
+                {shownDeals.map((d) => {
+                  const index = deals.indexOf(d);
+                  return (
+                    <DealRow
+                      key={d.id}
+                      deal={d}
+                      seg={segments.get(d.id) || { done: 0, total: 0, current: null }}
+                      quotes={quotesByDeal.get(d.id) || []}
+                      directory={directory}
+                      expanded={expandedDeals.includes(d.id)}
+                      onToggle={() => setExpandedDeals((current) => (
+                        current.includes(d.id) ? current.filter((item) => item !== d.id) : [...current, d.id]
+                      ))}
+                      columnCount={columnCount}
+                      canReorder={canReorder}
+                      filtering={!!q}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < deals.length - 1}
+                      moving={reorderBusy}
+                      onMoveUp={() => moveDeal(index, -1)}
+                      onMoveDown={() => moveDeal(index, 1)}
+                    />
+                  );
+                })}
+                {!shownDeals.length && (
+                  <tr><td colSpan={columnCount} className={styles.noMatch}>ไม่พบดีลที่ตรงกับ “{dealQuery}”</td></tr>
+                )}
+              </tbody>
+            </table></TableScroll>
+            <div className={styles.footNote}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</div>
+          </>
         ) : (
           <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
             <PackageCheck size={28} aria-hidden="true" style={{ margin: "0 auto 8px" }} />

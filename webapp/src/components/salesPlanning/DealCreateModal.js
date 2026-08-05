@@ -1,5 +1,5 @@
 "use client";
-// "สร้างดีลจากลีด" — ฟอร์มเดียวที่ใช้ทั้งหน้ารายการลีดและหน้ารายละเอียดลีด
+// "สร้างดีล" — โมดัลเดียวของทุกที่ที่เปิดดีลได้ (คิวลีด · หน้ารายละเอียดลีด · หน้ารวมดีล)
 //
 // ทำไมต้องแยกออกมา: การเปิดดีลไม่ใช่การย้ายสถานะ (สร้าง entity คนละตัว ต้องเลือกลูกค้า/
 // มูลค่า/เดือน FC) lifecycle จึงประกาศ transition `create_deal` ไว้ให้ "ขั้นถัดไป" ถูกต้อง
@@ -10,8 +10,14 @@
 // `router.push('/sales-planning/deals?fromLead=…')` ซึ่ง **ไม่มีใครอ่าน `fromLead`** →
 // ปุ่ม "เปิดดีลจากลีดนี้" พาไปหน้ารวมดีลเปล่า ๆ ไม่มีฟอร์ม ไม่มีค่าที่ดึงมาจากลีด
 //
-// ⚠️ `metadata.leadId` คือเส้นเดียวที่ผูกดีลกลับไปหาลีด — หน้ารวมดีลสร้างดีลโดยไม่ส่ง
-// ค่านี้ (ตั้งใจ: สร้างจากศูนย์ ไม่ได้มาจากลีด) อย่าเอา submit ของสองที่มารวมกัน
+// 🐞 และหน้ารวมดีลเคยมีโมดัล "เพิ่มดีล" ของตัวเองอีกชุด (มติผู้ใช้ 2026-08-05 ให้ยุบรวม)
+// สองชุดนั้นเพี้ยนกันไปแล้วจริง ๆ ตามที่ AGENTS.md เตือน:
+//   · ฝั่งลีดเป็นแท็บ · ฝั่งรวมดีลเรียงการ์ดลงมาเรื่อย ๆ จนต้องเลื่อนยาว
+//   · ฝั่งลีดจำใบที่สร้างสำเร็จแล้ว กดซ้ำไม่ได้ดีลซ้ำ — **ฝั่งรวมดีลไม่มี** ถ้าใบที่ 2 พัง
+//     แล้วกดใหม่ ใบที่ 1 จะถูกสร้างซ้ำอีกใบโดยไม่มีอะไรเตือน
+//
+// ⚠️ `metadata.leadId` คือเส้นเดียวที่ผูกดีลกลับไปหาลีด — เปิดจากหน้ารวมดีล (`lead` = null)
+// จะไม่ส่งค่านี้โดยตั้งใจ: ดีลนั้นสร้างจากศูนย์ ไม่ได้มาจากลีด
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -23,37 +29,42 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { initialDealForm } from "@/components/salesPlanning/ui";
 import { DEAL_STAGES } from "@/lib/salesPlanning";
 import { TEAM_LABELS } from "@/lib/permissions";
-import styles from "./LeadDealModal.module.css";
+import styles from "./DealCreateModal.module.css";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
-   "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม */
-const firstDeal = (lead) => ({
+   "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
+   เปิดจากหน้ารวมดีล (ไม่มีลีด) = ใบเปล่าล้วน ทั้งใบแรกและใบถัดไป */
+const firstDeal = (lead) => (lead ? {
   ...initialDealForm,
   title: `${lead.company || lead.contactName} — SCENT`,
   customerId: lead.customerId || "",
   dealType: "SCENT",
   stage: "qualified",
   projectValue: lead.budget || "",
-});
+} : { ...initialDealForm });
 
-const nextDeal = (lead) => ({
+const nextDeal = (lead) => (lead ? {
   ...initialDealForm,
   title: `${lead.company || lead.contactName} — NPD`,
   customerId: lead.customerId || "",
   dealType: "NPD",
   stage: "qualified",
   projectValue: "",
-});
+} : { ...initialDealForm });
 
-/* ⚠️ **mount ตอนจะเปิดเท่านั้น** — `{open && <LeadDealModal … />}` ห้าม mount ค้างไว้
-   แล้วส่ง lead=null: ค่าตั้งต้นของ drafts อ่านจาก lead ตอน mount ครั้งแรกครั้งเดียว
-   ถ้า mount ตอนยังไม่มีลีด จะได้รายการว่างค้างตลอด (เจอจริงตอนทดสอบ: ปุ่มขึ้น "สร้าง 0 ดีล")
-   ตัว component เองเช็ค `lead` ซ้ำอีกชั้น แต่นั่นกัน crash ไม่ได้กันเคสนี้ */
-export default function LeadDealModal({
-  lead,
+/* ⚠️ **mount ตอนจะเปิดเท่านั้น** — `{open && <DealCreateModal … />}` ห้าม mount ค้างไว้:
+   ค่าตั้งต้นของ drafts อ่านจาก lead ตอน mount ครั้งแรกครั้งเดียว ถ้า mount ค้างไว้ตั้งแต่
+   ก่อนผู้ใช้เลือกลีด จะได้ร่างที่ไม่มีค่าจากลีดค้างตลอด
+   (สายลีดเคยเจอจริงตอนทดสอบ: ปุ่มขึ้น "สร้าง 0 ดีล")
+
+   @param lead  มาจากลีด = เติมค่าตั้งต้น + ผูก metadata.leadId + เด้งไปหน้าดีลหลังสร้าง
+                null = เปิดจากหน้ารวมดีล (ใบเปล่า ไม่ผูกลีด อยู่หน้าเดิม) */
+export default function DealCreateModal({
+  lead = null,
   customers = [],
   projects = [],
   categories = [],
+  stages,
   onClose,
   onCreated,
 }) {
@@ -61,7 +72,7 @@ export default function LeadDealModal({
   /* `_key` = ตัวตนถาวรของร่างแต่ละใบ — ห้ามใช้ index เป็นกุญแจของ `done` เพราะลบใบ
      กลางทางแล้ว index ของใบที่เหลือจะเลื่อน ⇒ สถานะ "สร้างแล้ว" ไปเกาะผิดใบ */
   const nextKey = useRef(2);
-  const [drafts, setDrafts] = useState(() => (lead ? [{ ...firstDeal(lead), _key: 1 }] : []));
+  const [drafts, setDrafts] = useState(() => [{ ...firstDeal(lead), _key: 1 }]);
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -72,8 +83,6 @@ export default function LeadDealModal({
      รอบถัดไปจะ "ผูกอย่างเดียว" ไม่สร้างดีลใหม่ */
   const [done, setDone] = useState({});
   const [failedKey, setFailedKey] = useState(null);
-
-  if (!lead) return null;
 
   const patch = (index, values) =>
     setDrafts((prev) => prev.map((draft, i) => (i === index ? { ...draft, ...values } : draft)));
@@ -102,17 +111,30 @@ export default function LeadDealModal({
     try {
       for (const draft of drafts) {
         current = draft;
+        if (!draft.title?.trim()) throw new Error("กรุณาระบุชื่อดีลให้ครบทุกใบ");
+        /* บังคับเลือกประเภทดีล — ตัวนี้เลือก template ไทม์ไลน์ ปล่อยว่างแล้วฝั่ง server
+           (normalizeDealType) จะ default เป็น NPD เงียบ ๆ แล้วได้ template ผิดประเภท
+           ⚠️ ด่านนี้เคยมีเฉพาะโมดัลของหน้ารวมดีล ฝั่งลีดไม่มี — อาการเพี้ยนของ
+           "ฟอร์มสองชุด" ที่ AGENTS.md เตือนไว้พอดี */
+        if (!draft.dealType) {
+          throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
-          const { _key, ...payload } = draft;
+          const { _key, ...rest } = draft;
+          const payload = {
+            ...rest,
+            customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
+          };
           const res = await fetch("/api/sales-planning/deals", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...payload,
-              metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel },
-            }),
+            body: JSON.stringify(
+              lead
+                ? { ...payload, metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel } }
+                : payload,
+            ),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || `สร้างดีล ${draft.title} ไม่สำเร็จ`);
@@ -142,7 +164,9 @@ export default function LeadDealModal({
       }
       const created = drafts.map((draft) => result[draft._key]?.deal).filter(Boolean);
       onCreated?.(created);
-      router.push(created.length === 1 ? `/sa/deals/${created[0].id}` : "/sa/deals");
+      // มาจากลีด = ผู้ใช้อยู่คนละหน้ากับดีล ต้องพาไปดูของที่เพิ่งสร้าง
+      // เปิดจากหน้ารวมดีลอยู่แล้ว = อยู่ที่เดิม (หน้าโหลดรายการใหม่ผ่าน onCreated)
+      if (lead) router.push(created.length === 1 ? `/sa/deals/${created[0].id}` : "/sa/deals");
     } catch (e) {
       // พาไปที่แท็บที่พัง — ไม่งั้นข้อความบอกว่าพังแต่คนหาไม่เจอว่าใบไหน
       const index = drafts.findIndex((draft) => draft._key === current?._key);
@@ -154,13 +178,15 @@ export default function LeadDealModal({
   };
 
   return (
-    <Modal open onClose={() => !busy && onClose?.()} title="สร้างดีลจากลีด" size="lg">
+    <Modal open onClose={() => !busy && onClose?.()} title={lead ? "สร้างดีลจากลีด" : "เพิ่มดีล"} size="lg">
       <div className={styles.body}>
-        <div className={styles.lead}>
-          ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
-          {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
-          {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
-        </div>
+        {lead ? (
+          <div className={styles.lead}>
+            ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
+            {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
+            {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
+          </div>
+        ) : null}
 
         {/* ── แถบหัว: แท็บ + ปุ่มเพิ่ม อยู่แถวเดียวกัน เหนือฟอร์ม ───────────────
             (มติผู้ใช้ 2026-08-04) ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ = จอยาวมาก
@@ -231,7 +257,8 @@ export default function LeadDealModal({
                 projects={projects}
                 showProject
                 categories={categories}
-                stages={DEAL_STAGES.filter((stage) => stage !== "won")}
+                stages={stages || DEAL_STAGES.filter((stage) => stage !== "won")}
+                probabilityMode="auto"
               />
             </div>
           </div>
