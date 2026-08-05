@@ -13,9 +13,11 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
+import { normalizeDocumentItems, normalizeProductDevItems } from '@/lib/requests/lines';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
-  legacyKindError, requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
+  legacyKindError, lineShapeForKind, requestKindLabel, requestNeedsRef, requestShapeError,
+  requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -102,7 +104,21 @@ export async function POST(request) {
   }
 
   let items = [];
-  if (requestHasItems(kind)) {
+  // ⭐ **บรรทัดมีสองรูปร่างแล้ว** — วัสดุ (ขอราคา) กับพัฒนาผลิตภัณฑ์ (หมวด × กลิ่น)
+  // แยกด่านกันคนละตัว เพราะกฎคนละชุดสิ้นเชิง: วัสดุต้องมี materialId · พัฒนา
+  // ผลิตภัณฑ์ต้องมีหมวดกับกลิ่น (constraint `dept_request_items_shape` ของ 0204)
+  const lineShape = lineShapeForKind(kind);
+  const isProductDev = lineShape === 'product_dev';
+  const isDocument = lineShape === 'document';
+  if (isProductDev) {
+    const normalized = normalizeProductDevItems(body.items);
+    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
+    items = normalized.items;
+  } else if (isDocument) {
+    const normalized = normalizeDocumentItems(body.items);
+    if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
+    items = normalized.items;
+  } else if (requestHasItems(kind)) {
     const normalized = normalizeRequestItems(body.items, {
       dept, hasTiers: requestHasTiers(kind),
     });
@@ -191,8 +207,44 @@ export async function POST(request) {
 
   try {
     // 1) ชนิดขอราคา: ทุกรายการต้องมีวัสดุในทะเบียน — ของใหม่เข้าเป็นร่างรอ RD/PC รับ
+    //
+    // ⚠️ พัฒนาผลิตภัณฑ์ไม่มีวัสดุ — ป้ายชื่อ (`label`) เป็น snapshot ที่ derive จาก
+    // **ทะเบียน** ไม่ใช่ค่าที่ client ส่งมา · แพตเทิร์นเดียวกับ productFormulaSnapshot
+    // ปล่อยให้พิมพ์เองเมื่อไร จะได้ป้ายที่ไม่ตรงกับหมวด/กลิ่นที่แถวชี้อยู่จริง
     const resolved = [];
-    for (const item of items) {
+    if (isProductDev) {
+      const scentIds = [...new Set(items.map((i) => i.scentId))];
+      const [{ data: scentRows, error: scentError }, { data: typeRows, error: typeError }] =
+        await Promise.all([
+          supabase.from('scents').select('id, code, name, customerId').in('id', scentIds),
+          supabase.from('product_types').select('mainCategoryCode, typeCode, nameTh, nameEn'),
+        ]);
+      if (scentError) throw scentError;
+      if (typeError) throw typeError;
+      const scentById = new Map((scentRows || []).map((r) => [r.id, r]));
+      const typeByCode = new Map((typeRows || [])
+        .map((r) => [`${r.mainCategoryCode}-${r.typeCode}`, r]));
+
+      for (const item of items) {
+        const scent = scentById.get(item.scentId);
+        if (!scent) throw new Error(`ไม่พบกลิ่นที่เลือกในรายการที่ ${item.sortOrder}`);
+        // ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) — ใบผูกดีลของลูกค้ารายหนึ่ง จะขอกลิ่นของ
+        // อีกรายไม่ได้ · ตรวจที่นี่ ไม่ใช่แค่กรองตัวเลือกบนจอ
+        if (customerId && scent.customerId !== customerId) {
+          throw new Error(`รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย`);
+        }
+        const type = typeByCode.get(item.categoryCode);
+        // หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปใช้รหัส ห้ามป้ายว่าง
+        const typeName = type?.nameTh || type?.nameEn || item.categoryCode;
+        resolved.push({
+          ...item,
+          label: `${typeName} · ${scent.code ? `${scent.code} ` : ''}${scent.name}`,
+        });
+      }
+    }
+    // บรรทัดเอกสารไม่มีของให้ resolve — ชนิดกับรายละเอียดครบตั้งแต่ normalize แล้ว
+    if (isDocument) resolved.push(...items);
+    for (const item of (isProductDev || isDocument) ? [] : items) {
       if (item.materialId) { resolved.push(item); continue; }
       const { material } = await ensureMaterial(supabase, {
         kind: item.kind,
@@ -246,7 +298,26 @@ export async function POST(request) {
 
     // 3) รายการ + ชั้นจำนวนที่ขอ (เฉพาะชนิดที่มีบรรทัด)
     if (resolved.length) {
-      const itemRows = resolved.map((item) => ({
+      const itemRows = resolved.map((item) => (isDocument ? {
+        id: `DRI-${randomUUID()}`,
+        requestId,
+        lineKind: 'document',
+        sortOrder: item.sortOrder,
+        label: item.label,
+        spec: item.spec,
+        docType: item.docType,
+      } : isProductDev ? {
+        id: `DRI-${randomUUID()}`,
+        requestId,
+        lineKind: 'product_dev',
+        sortOrder: item.sortOrder,
+        label: item.label,
+        spec: item.spec,
+        categoryCode: item.categoryCode,
+        scentId: item.scentId,
+        qty: item.qty,
+        unit: item.unit,
+      } : {
         id: `DRI-${randomUUID()}`,
         requestId,
         // mig 0204: บรรทัดมีรูปร่าง — วันนี้ทุกบรรทัดยังเป็นวัสดุ (หัวข้อที่มีบรรทัด
@@ -266,7 +337,7 @@ export async function POST(request) {
         throw itemError;
       }
 
-      const tierRows = resolved.flatMap((item, idx) => item.tiers.map((qty) => ({
+      const tierRows = resolved.flatMap((item, idx) => (item.tiers || []).map((qty) => ({
         id: `DRT-${randomUUID()}`,
         requestItemId: itemRows[idx].id,
         qty,

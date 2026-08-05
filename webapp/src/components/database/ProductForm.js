@@ -113,7 +113,7 @@ export default function ProductForm({
   const saleUnitLabel = form.saleUnit || DEFAULT_SALE_UNIT;
   const packaging = packagingSummary(form);
 
-  const inRetailCategory = showsRetailPrice(form.fgCode);
+  const inRetailCategory = showsRetailPrice(form.fgCode, productTypes);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
   const showRetail = inRetailCategory || hasRetailValue;
 
@@ -315,7 +315,7 @@ export default function ProductForm({
             <h3 className="font-semibold text-[var(--text)]">3. ราคาขายปลีก (Retail Price)</h3>
             {!inRetailCategory && (
               <span className="text-[11px] text-[var(--amber)]">
-                หมวดนี้ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} แต่สินค้าตัวนี้มีราคาขายปลีกค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า
+                หมวดนี้ไม่ได้ใช้ราคาขายปลีก (ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} และไม่ได้ติ๊กสรรพสามิต) แต่สินค้าตัวนี้มีราคาค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า
               </span>
             )}
           </div>

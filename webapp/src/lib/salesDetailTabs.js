@@ -11,6 +11,10 @@ export const SALES_DETAIL_TABS = [
   { key: "tasks", label: "งาน" },
   { key: "inquiries", label: "คำร้อง" },
   { key: "activities", label: "ความเคลื่อนไหว" },
+  // ⭐ เอกสารอยู่ **ท้ายสุด** (มติผู้ใช้) — รวมไฟล์ของดีลจาก 6 แหล่งไว้ที่เดียว
+  // ⚠️ ชุดของโครงการมี `documents` อยู่แล้วแต่ **คนละความหมาย** (ยุบใบเสนอราคา+SO
+  // มาไว้ด้วยกัน — มติ 2026-08-05) ⇒ ไม่แตะชุดนั้น ตามคำเตือนที่หัวไฟล์
+  { key: "documents", label: "เอกสาร" },
 ];
 
 export const PROJECT_DETAIL_TABS = [

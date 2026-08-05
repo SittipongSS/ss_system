@@ -54,7 +54,7 @@ export const REQUEST_KINDS = {
   // 🗄 **หัวข้อเก่า** — `legacy` = อ่านของเดิมได้ครบ แต่เปิดใบใหม่ไม่ได้อีก
   // ห้ามลบทิ้ง: prod มีคำร้องที่ใช้หัวข้อพวกนี้อยู่จริง ลบแล้วใบเก่าจะไม่มีป้ายชื่อ
   scent_brief: {
-    label: 'แจ้งบรีฟออกแบบกลิ่น (เลิกใช้)',
+    label: 'แจ้งบรีฟออกแบบกลิ่น',
     legacy: true,
     dept: 'RD', scope: 'SB', hasItems: false,
     // SO เท่านั้น — โครงการกับดีลเติมจาก SO เอง ไม่ให้เลือกซ้ำแล้วขัดกัน
@@ -62,8 +62,26 @@ export const REQUEST_KINDS = {
     stepKey: 'scent-06', dealType: 'SCENT',
     hint: 'ต้องมีใบสั่งขายออกแบบกลิ่นก่อน (ค่าบริการ) — ปิดเรื่องแล้วกลิ่นเข้าทะเบียน',
   },
+  // ⭐ **พัฒนาผลิตภัณฑ์** — ยุบ "ขอ Mock-up" กับ "บรีฟเนื้อสาร" เป็นหัวข้อเดียว
+  // (มติผู้ใช้: สองอย่างนี้คือเรื่องเดียวกัน และฟอร์มของ Mock-up ดีกว่า)
+  //
+  // ต่างจากพัฒนากลิ่นตรงที่ **SA สร้างแถวตั้งแต่ตอนเปิด** — คนขอรู้อยู่แล้วว่าอยากได้
+  // หมวดไหน กลิ่นไหน (ต่างจาก direction ของกลิ่นที่ไม่มีใครรู้ล่วงหน้าว่าจะได้กี่ตัว)
+  // 1 แถว = หมวด × กลิ่น = สูตร 1 ตัวในทะเบียน (ตัวตนเดียวกับ formulas_identity_uk)
+  product_dev: {
+    label: 'พัฒนาผลิตภัณฑ์',
+    dept: 'RD', scope: 'MU', hasItems: true, hasTiers: false, lineShape: 'product_dev',
+    // กลิ่นย้ายไปอยู่ **รายแถว** — ใบเดียวขอได้หลายกลิ่นหลายหมวด
+    needs: ['project', 'deal'],
+    stepKey: 'npd-15', dealType: 'NPD',
+    hint: 'ขอตัวอย่างจริงจาก RD — 1 บรรทัด = หมวดสินค้า × กลิ่น · ขอหลายรายการในใบเดียวได้',
+  },
   mockup: {
+    // ⚠️ ป้ายชื่อ **ไม่ต่อท้ายว่า "เลิกใช้"** — ป้ายนี้ไปโผล่บนใบเก่าที่เปิดไปแล้ว
+    // ซึ่งตัวใบไม่ได้เลิกใช้ มีแต่ *หัวข้อ* ที่เปิดใหม่ไม่ได้ · `legacy` เป็นธงสำหรับ
+    // กรองลิสต์ตอนเปิดใบ ไม่ใช่ข้อความบนเอกสาร
     label: 'ขอ Mock-up',
+    legacy: true,
     dept: 'RD', scope: 'MU', hasItems: false,
     // ⚠️ เคยบังคับ `productType` ด้วย — mig 0204 DROP `dept_requests.productTypeId`
     // ทิ้งไปแล้ว ค่าที่กรอกจึงไม่มีที่เก็บ · บังคับกรอกของที่เก็บไม่ได้ = หลอกผู้ใช้
@@ -94,7 +112,9 @@ export const REQUEST_KINDS = {
   },
   document: {
     label: 'ขอเอกสาร',
-    dept: null, scope: 'RQ', hasItems: false,
+    // ⭐ มีบรรทัดแล้ว (P5) — 1 บรรทัด = 1 ชนิดเอกสาร · ขอหลายอย่างในใบเดียวได้
+    // และแต่ละอย่างเดินคนละจังหวะ (IFRA มาก่อน COA ได้) ⇒ สถานะอยู่ที่แถว
+    dept: null, scope: 'RQ', hasItems: true, hasTiers: false, lineShape: 'document',
     // ⏳ ผู้ใช้บอก "เก็บไว้ทีหลังก็ได้" — ของจริงคือ IFRA/COA/MSDS ของ **สินค้า**
     // และต้องอ้าง QT + ล็อตการผลิต · ยังไม่มีที่เก็บสองอย่างหลัง จึงคงกฎเดิมไว้ก่อน
     // (โครงการ+ดีล) แล้วออกแบบรอบถัดไป — ห้ามเดาโครงสร้างล่วงหน้า
@@ -213,6 +233,16 @@ export function deptForRequest(kind, { dept, items } = {}) {
 // ⚠️ กรอง `legacy` ออกที่นี่ที่เดียว — ฟอร์มเอาลิสต์จากฟังก์ชันนี้ทางเดียว ส่วน
 // `requestKindLabel` ยังรู้จักหัวข้อเก่าครบ ⇒ ใบที่เปิดไปแล้วยังมีป้ายชื่ออ่านได้
 // (ลบหัวข้อทิ้งเมื่อไร ใบเก่าบน prod จะกลายเป็นชื่อ key ดิบบนหน้าจอ)
+// รูปร่างของบรรทัดตามหัวข้อ — 'material' | 'product_dev' | 'document' | null
+//
+// ⚠️ ที่เดียวของระบบ · ก่อนหน้านี้ route กับฟอร์มเช็ค `kind === 'product_dev'` เอง
+// ซึ่งพอมีรูปร่างที่สามก็ต้องไล่แก้ทุกจุดที่เช็คแบบนั้น
+export function lineShapeForKind(kind) {
+  const meta = REQUEST_KINDS[kind];
+  if (!meta?.hasItems) return null;
+  return meta.lineShape || 'material';
+}
+
 export function kindsForDept(dept) {
   if (!REQUEST_DEPTS.includes(dept)) return [];
   return REQUEST_KIND_LIST.filter((k) => {

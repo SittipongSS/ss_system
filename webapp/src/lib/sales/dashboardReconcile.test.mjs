@@ -30,9 +30,12 @@ test('byTeam ต้องไม่ทิ้งถังของดีลที�
    ถ้าวันหนึ่งฟอร์มมีช่องทีม/บังคับทีม เงื่อนไขจะเปลี่ยนและควรกลับมาทบทวนตรงนี้ */
 test('ทีมของดีลมาจาก user.team (ฟอร์มไม่มีช่องทีม) — ต้นเหตุที่ทำให้เกิดดีลไร้ทีม', () => {
   const post = readFileSync(join(ROOT, 'src/app/api/sales-planning/deals/route.js'), 'utf8');
-  assert.match(post, /team: body\.team \|\| user\.team \|\| null/);
+  /* 2026-08-05: มี "ผู้รับผิดชอบ (AE)" แล้ว ทีมจึงตามเจ้าของก่อน — แต่ปลายทางของ
+     ทอดยังเป็น user.team เหมือนเดิม (เจ้าของที่ไม่มีทีม/ไม่ได้เลือกเจ้าของ ต้องไม่ได้
+     ดีลไร้ทีม ซึ่งเป็นต้นเรื่องของเทสต์นี้) */
+  assert.match(post, /team: owner\?\.team \|\| body\.team \|\| user\.team \|\| null/);
   const form = readFileSync(join(ROOT, 'src/components/salesPlanning/DealFormFields.js'), 'utf8');
-  assert.doesNotMatch(form, /name="team"|label="ทีม"/, 'ฟอร์มยังไม่มีช่องทีม');
+  assert.doesNotMatch(form, /name="team"|label="ทีม"/, 'ฟอร์มยังไม่มีช่องทีมให้พิมพ์เอง');
 });
 
 // ── กติกาการรวมยอดที่หน้าเว็บกับ server ต้องใช้ชุดเดียวกัน ──────────────────

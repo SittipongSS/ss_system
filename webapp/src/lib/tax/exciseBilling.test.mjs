@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals, orderAmountToCollect,
-  exciseTaxLine, exciseTaxLineForRegistration, exciseTaxTotals, round2,
+  exciseTaxLine, exciseTaxLineForRegistration, exciseTaxTotals, resolveProductTaxable, round2,
 } from "./exciseBilling.js";
 import { buildBillPrintHTML } from "./billPrint.js";
 
@@ -154,4 +154,18 @@ test('ทุกทางที่สร้างบรรทัดภาษี�
     assert.doesNotMatch(code, /reg\.exciseTax|r\.exciseTax/, `${path} ห้ามอ่านอัตราจาก snapshot บนทะเบียน`);
     assert.doesNotMatch(code, /10 \/ 11/, `${path} ห้ามแตกยอดด้วยสัดส่วนคงที่`);
   }
+});
+
+// ── การยกเว้นรายตัวของฝ่ายกฎหมายต้องอยู่รอดการแก้สเปค ────────────────────
+test('ไม่มี override = ใช้ธงของหมวด', () => {
+  assert.equal(resolveProductTaxable({ taxableOverride: null, autoTaxable: true }), true);
+  assert.equal(resolveProductTaxable({ taxableOverride: undefined, autoTaxable: false }), false);
+  assert.equal(resolveProductTaxable(), false);
+});
+
+test('override ของฝ่ายกฎหมายชนะธงของหมวดทั้งสองทาง', () => {
+  // ยกเว้นสินค้าในหมวดที่ต้องเสียภาษี
+  assert.equal(resolveProductTaxable({ taxableOverride: false, autoTaxable: true }), false);
+  // บังคับให้เสียภาษีทั้งที่หมวดไม่ได้ติ๊ก
+  assert.equal(resolveProductTaxable({ taxableOverride: true, autoTaxable: false }), true);
 });

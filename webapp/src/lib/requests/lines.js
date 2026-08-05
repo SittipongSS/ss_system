@@ -2,6 +2,9 @@
 // วันนี้บรรทัดยังเป็น "วัสดุ" อย่างเดียว (MATERIAL_KINDS) · P1 จะขยายเป็นหลายรูปร่าง
 // (วัสดุ · พัฒนากลิ่น · พัฒนาผลิตภัณฑ์ · เอกสาร) ผ่านคอลัมน์ lineKind
 import { MATERIAL_KINDS, sourceDeptForMaterialKind } from '@/lib/materialPrices';
+import {
+  REQUEST_DOC_TYPE_VALUES, docTypeLabel, docTypeNeedsDetail,
+} from '@/lib/requests/docTypes';
 
 export const MAX_REQUEST_ITEMS = 40;
 export const MAX_REQUEST_TIERS = 12;
@@ -83,4 +86,121 @@ export function normalizeRequestTiers(input) {
   }
   tiers.sort((a, b) => a - b);
   return { tiers, error: null };
+}
+
+// ── บรรทัดของ "พัฒนาผลิตภัณฑ์" (P4) ──────────────────────────────────────
+//
+// ⭐ ต่างจากพัฒนากลิ่นตรงที่ **SA สร้างแถวตั้งแต่ตอนเปิด** — คนขอรู้อยู่แล้วว่าอยาก
+// ได้หมวดไหน กลิ่นไหน (ต่างจาก direction ของกลิ่นที่ไม่มีใครรู้ล่วงหน้าว่าจะได้กี่ตัว)
+//
+// ⚠️ **หมวดกับกลิ่นบังคับทั้งคู่** — ไม่ใช่แค่กติกาของฟอร์ม แต่เป็น constraint จริง
+// (`dept_request_items_shape` ของ 0204) และเป็น **ตัวตนของสูตรที่จะเกิด** ตาม
+// `formulas_identity_uk` ⇒ ขาดข้างใดข้างหนึ่ง = แถวที่ไม่มีทางกลายเป็นสูตรได้
+//
+// ⚠️ ไม่รับ `label` จาก client — เป็น snapshot ที่ derive จากทะเบียน ผู้เรียก (route)
+// เติมให้หลังอ่านชื่อหมวด/ชื่อกลิ่นมาแล้ว (แพตเทิร์นเดียวกับ productFormulaSnapshot)
+export function normalizeProductDevItems(input) {
+  const rows = Array.isArray(input) ? input : [];
+  if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
+  if (rows.length > MAX_REQUEST_ITEMS) {
+    return { items: [], error: `รายการในคำร้องเดียวมากเกินไป (สูงสุด ${MAX_REQUEST_ITEMS} รายการ)` };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (let i = 0; i < rows.length; i += 1) {
+    const raw = rows[i] || {};
+    const at = `รายการที่ ${i + 1}`;
+
+    const categoryCode = String(raw.categoryCode ?? '').trim();
+    if (!categoryCode) return { items: [], error: `${at}: ต้องเลือกหมวดสินค้า` };
+    if (!/^\d{2}-\d{3}$/.test(categoryCode)) {
+      return { items: [], error: `${at}: รหัสหมวดสินค้าไม่ถูกต้อง` };
+    }
+    const scentId = String(raw.scentId ?? '').trim();
+    if (!scentId) return { items: [], error: `${at}: ต้องเลือกกลิ่น` };
+
+    // ⚠️ หมวด × กลิ่น ซ้ำในใบเดียว = ขอของชิ้นเดียวกันสองรอบ · ปล่อยผ่านแล้ว RD
+    // จะสร้างสูตรตัวเดียวได้ แถวที่สองค้างตลอดกาลเพราะชนตัวตนของสูตร
+    const key = `${categoryCode}::${scentId}`;
+    if (seen.has(key)) return { items: [], error: `${at}: หมวดกับกลิ่นซ้ำกับรายการก่อนหน้า` };
+    seen.add(key);
+
+    const spec = String(raw.spec ?? '').trim();
+    if (spec.length > 2000) return { items: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
+
+    // จำนวนไม่บังคับ — ตอนขอตัวอย่างยังไม่รู้ยอดจริง (ยอดที่นับคือ confirmedQty
+    // ตอนลูกค้าตอบ ไม่ใช่ตอนขอ)
+    let qty = null;
+    if (raw.qty !== undefined && raw.qty !== null && String(raw.qty).trim() !== '') {
+      qty = Number(raw.qty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return { items: [], error: `${at}: จำนวนต้องเป็นตัวเลขมากกว่า 0` };
+      }
+    }
+    const unit = String(raw.unit ?? '').trim();
+    if (unit.length > 50) return { items: [], error: `${at}: หน่วยยาวเกิน 50 ตัวอักษร` };
+
+    items.push({
+      lineKind: 'product_dev',
+      categoryCode,
+      scentId,
+      spec: spec || null,
+      qty,
+      unit: unit || null,
+      sortOrder: i + 1,
+    });
+  }
+  return { items, error: null };
+}
+
+// ── บรรทัดของ "ขอเอกสาร" (P5) ────────────────────────────────────────────
+//
+// ⭐ 1 บรรทัด = 1 ชนิดเอกสาร — ขอหลายอย่างในใบเดียวได้ และแต่ละอย่างเดินคนละจังหวะ
+// (IFRA มาก่อน COA ได้) ⇒ สถานะอยู่ที่แถว เหมือนทุกสายในระบบนี้
+//
+// ⚠️ **ไม่มีช่อง "ต้องใช้ภายใน" รายแถว** — `dueAt` ของ 0204 แปลว่า "ฝ่ายรับปากว่าจะ
+// ส่งวันไหน" ซึ่งเป็นคำสัญญาของ *ผู้ตอบ* · ยัดความหมาย "ผู้ขอต้องใช้ภายใน" ลงช่อง
+// เดียวกันเมื่อไร สองฝ่ายจะเขียนทับกันแล้วไม่มีใครรู้ว่าเลขที่เห็นเป็นของใคร
+// วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว (`requestedDueDate`) ใช้ตัวนั้นไปก่อน
+export function normalizeDocumentItems(input) {
+  const rows = Array.isArray(input) ? input : [];
+  if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
+  if (rows.length > MAX_REQUEST_ITEMS) {
+    return { items: [], error: `รายการในคำร้องเดียวมากเกินไป (สูงสุด ${MAX_REQUEST_ITEMS} รายการ)` };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (let i = 0; i < rows.length; i += 1) {
+    const raw = rows[i] || {};
+    const at = `รายการที่ ${i + 1}`;
+
+    const docType = String(raw.docType ?? '').trim();
+    if (!docType) return { items: [], error: `${at}: ต้องเลือกชนิดเอกสาร` };
+    if (!REQUEST_DOC_TYPE_VALUES.includes(docType)) {
+      return { items: [], error: `${at}: ชนิดเอกสารไม่ถูกต้อง` };
+    }
+
+    const spec = String(raw.spec ?? '').trim();
+    if (spec.length > 2000) return { items: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
+    if (docTypeNeedsDetail(docType) && !spec) {
+      return { items: [], error: `${at}: เลือก "อื่น ๆ" ต้องระบุว่าขอเอกสารอะไร` };
+    }
+
+    // ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
+    const key = `${docType}::${spec.toLowerCase()}`;
+    if (seen.has(key)) return { items: [], error: `${at}: ซ้ำกับรายการก่อนหน้า` };
+    seen.add(key);
+
+    items.push({
+      lineKind: 'document',
+      docType,
+      // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
+      label: docTypeLabel(docType),
+      spec: spec || null,
+      sortOrder: i + 1,
+    });
+  }
+  return { items, error: null };
 }
