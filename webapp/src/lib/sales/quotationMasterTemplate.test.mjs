@@ -302,7 +302,7 @@ test('ผู้เสนอราคาในอ้างอิง กับ ผ
 
 // เบอร์บนใบต่อท้ายแถว "ผู้เสนอราคา" แต่ค่าที่ตรึงไว้เป็นเบอร์ของคนทำใบ — ถ้าปล่อยให้โชว์
 // ตอนสองบทบาทเป็นคนละคน ลูกค้าจะโทรตามเบอร์นั้นแล้วไปเจอคนที่ไม่ใช่ชื่อที่อ่าน
-test('โทร: โชว์เฉพาะตอนคนทำใบเป็น AE เจ้าของดีลคนเดียวกัน', () => {
+test('โทร (ใบก่อนเริ่มตรึง): ถอยไปใช้เบอร์คนทำใบเฉพาะตอนเป็นเจ้าของดีลเอง', () => {
   const base = { ...QUOTE_WITH_PROJECT, createdBy: 'U-AE', createdByPhone: '081-234-5678' };
   const same = buildQuotationMasterModelFromQuote({
     ...base,
@@ -318,6 +318,31 @@ test('โทร: โชว์เฉพาะตอนคนทำใบเป็
   assert.equal(refRow(other, 'โทร'), undefined);
   // แถวที่เหลือต้องไม่กระทบ
   assert.equal(refRow(other, 'ผู้เสนอราคา'), 'เอเจ้าของดีล');
+});
+
+// เบอร์เจ้าของดีลถูกตรึงลงใบตอนออกใบ (createQuotationDraft / revise) — ทางหลัก
+test('โทร: ใช้เบอร์เจ้าของดีลที่ตรึงไว้ ไม่ใช่เบอร์คนทำใบ', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdBy: 'U-AC',
+    createdByPhone: '02-000-0000', // เบอร์คนทำใบ ต้องไม่โผล่
+    metadata: { salesOwnerId: 'U-AE', salesOwnerPhone: '081-234-5678' },
+    deal: { ...QUOTE_WITH_PROJECT.deal, ownerId: 'U-AE', ownerName: 'เอเจ้าของดีล' },
+  });
+  assert.equal(refRow(model, 'โทร'), '081-234-5678');
+});
+
+// ชื่อผู้เสนอราคาอ่านสดจากดีล แต่เบอร์ถูกตรึง — เปลี่ยนเจ้าของดีลแล้วสองค่านี้จะไม่ตรงกัน
+test('โทร: เปลี่ยนเจ้าของดีลแล้ว เบอร์ที่ตรึงไว้ต้องไม่ถูกใช้ต่อ', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdBy: 'U-AC',
+    createdByPhone: '02-000-0000',
+    metadata: { salesOwnerId: 'U-AE-เก่า', salesOwnerPhone: '081-234-5678' },
+    deal: { ...QUOTE_WITH_PROJECT.deal, ownerId: 'U-AE-ใหม่', ownerName: 'เจ้าของดีลคนใหม่' },
+  });
+  assert.equal(refRow(model, 'ผู้เสนอราคา'), 'เจ้าของดีลคนใหม่');
+  assert.equal(refRow(model, 'โทร'), undefined);
 });
 
 // ฉบับตรึง/ใบเก่าไม่มี id ครบ → เทียบชื่อแทน (สองค่ามาจาก snapshot ชุดเดียวกัน)

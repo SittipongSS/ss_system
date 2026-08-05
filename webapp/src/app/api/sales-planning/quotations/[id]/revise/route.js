@@ -10,6 +10,7 @@ import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
+import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 
 export const dynamic = 'force-dynamic';
@@ -101,6 +102,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const revPick = await validateQuotationPeople(supabase, revPeople, { require: false });
   if (!revPick.ok) return badRequest(revPick.error);
 
+  // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
+  const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
+
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
   // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
@@ -154,6 +158,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise; ผู้รับผิดชอบ validate แล้ว
       metadata: {
         ...(quote.metadata || {}),
+        // เจ้าของดีลอาจเปลี่ยนไปตั้งแต่ Rev. ก่อน — อ่านเบอร์ใหม่ทุกครั้ง ไม่สืบทอด
+        salesOwnerId: ownerContact?.id || null,
+        salesOwnerPhone: ownerContact?.phone || null,
         ...revBody,
         aeOwner: revPick.people.aeOwner || null,
         preparedBy: revPick.people.preparedBy || null,

@@ -115,6 +115,7 @@ const BASE_QUOTE = Object.freeze({
     // ผู้เสนอราคา = AE เจ้าของดีล (บล็อกอ้างอิง) · ผู้จัดทำ = คนที่ลงมือทำใบ (ช่องเซ็น)
     // ตัวอย่างตั้งเป็นคนละคนโดยตั้งใจ จะได้เห็นทันทีถ้าโค้ดเผลอเอาค่าหนึ่งไปใช้แทนอีกค่า
     salesOwner: 'กานติมา ธาดาธารกิจ',
+    salesOwnerPhone: '081-234-5678', // เบอร์ผู้เสนอราคา = เบอร์เจ้าของดีล ไม่ใช่เบอร์คนทำใบ
     preparedBy: 'ณัฐวุฒิ พงษ์ไพบูลย์',
   },
   paymentMethod: 'โอนเงินเข้าบัญชีธนาคารของบริษัทตามรายละเอียดท้ายใบเสนอราคา',
@@ -578,6 +579,8 @@ function toSalesOrderPreviewModel(model, state, standard) {
       { label: 'เลขที่โครงการ', value: BASE_QUOTE.references.projectCode },
       { label: 'โครงการ', value: BASE_QUOTE.references.dealTitle },
       { label: 'ประเภทโครงการ', value: BASE_QUOTE.references.dealType },
+      // ⚠️ ใบสั่งขายจริงไม่มีแถว "โทร" (salesOrderPrint ไม่ได้ส่งมา) — อย่าเติมฝั่งพรีวิว
+      // ฝั่งเดียว จะเพี้ยนกับใบจริงทันที
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
     ],
     signers: [
@@ -666,6 +669,7 @@ export function buildQuotationMasterPreview(
       { label: 'โครงการ', value: BASE_QUOTE.references.dealTitle },
       { label: 'ประเภทโครงการ', value: BASE_QUOTE.references.dealType },
       { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
+      { label: 'โทร', value: BASE_QUOTE.references.salesOwnerPhone },
     ],
     document: {
       ...BASE_QUOTE.document,
@@ -785,6 +789,17 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const preparerIsSalesOwner = quote.createdBy && quote.deal?.ownerId
     ? quote.createdBy === quote.deal.ownerId
     : Boolean(preparedBy) && preparedBy === salesOwner;
+  /* เบอร์ที่โชว์คู่กับ "ผู้เสนอราคา" ต้องเป็นเบอร์ของเจ้าของดีล (= ผู้อนุมัติใบ)
+     1. เบอร์ที่ตรึงไว้ตอนออกใบ — ใช้ได้เมื่อ id ที่ตรึงคู่มายังตรงกับเจ้าของดีลปัจจุบัน
+        (ชื่อผู้เสนอราคาอ่านสดจากดีล เปลี่ยนมือแล้วชื่อขยับแต่เบอร์ที่ตรึงไว้ไม่ขยับ)
+     2. ใบที่ออกก่อนเริ่มตรึง — ถอยไปใช้เบอร์คนทำใบ เฉพาะตอนคนทำใบเป็นเจ้าของดีลเอง
+     3. นอกนั้นไม่มีเบอร์ให้แสดง ตัดแถวทิ้ง ดีกว่าให้ลูกค้าโทรไปเจอคนที่ไม่ใช่ชื่อบนใบ */
+  const pinnedOwnerPhone = quote.metadata?.salesOwnerPhone || '';
+  const pinnedOwnerId = quote.metadata?.salesOwnerId || '';
+  const dealOwnerId = quote.deal?.ownerId || '';
+  const salesOwnerPhone = pinnedOwnerPhone && (!pinnedOwnerId || !dealOwnerId || pinnedOwnerId === dealOwnerId)
+    ? pinnedOwnerPhone
+    : ((preparerIsSalesOwner && quote.createdByPhone) || '');
 
   const firstCapacity = v4FirstCapacity(customer);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
@@ -851,14 +866,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       { label: 'โครงการ', value: quotationDealTitle(quote) },
       { label: 'ประเภทโครงการ', value: quotationDealType(quote) },
       { label: 'ผู้เสนอราคา', value: salesOwner },
-      // ⚠️ เบอร์ที่ตรึงไว้บนใบเป็นของ "คนทำใบ" (createQuotationDraft เก็บ user.phone) แต่แถว
-      // ที่มันต่อท้ายคือ "ผู้เสนอราคา" = AE เจ้าของดีล ซึ่งเป็นคนละคนได้ตั้งแต่แยกสองบทบาท
-      // (มติผู้ใช้ 2026-08-05) — โชว์เฉพาะตอนที่เป็นคนเดียวกันจริง ไม่งั้นลูกค้าอ่านชื่อ
-      // ผู้เสนอราคาแล้วโทรไปเจออีกคน. เราไม่ได้ตรึงเบอร์ของเจ้าของดีลไว้ คนละคน = ไม่มี
-      // เบอร์ให้แสดง ตัดแถวทิ้งดีกว่าโชว์เบอร์ผิดคน
-      ...(quote.createdByPhone && preparerIsSalesOwner
-        ? [{ label: 'โทร', value: quote.createdByPhone }]
-        : []),
+      ...(salesOwnerPhone ? [{ label: 'โทร', value: salesOwnerPhone }] : []),
     ],
     signers: options.signers || [
       // ช่องแรก = "ผู้จัดทำ" คนที่ลงมือทำใบนี้จริง (มติผู้ใช้ 2026-08-05) — คนละคนกับ
