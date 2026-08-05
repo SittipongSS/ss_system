@@ -15,10 +15,13 @@ import {
 } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
+import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasTiers,
-  legacyKindError, lineShapeForKind, requestKindLabel, requestNeedsRef, requestShapeError,
+  legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
+  requestShapeError,
   requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
@@ -150,6 +153,7 @@ export async function POST(request) {
   // ⭐ **บรีฟกลิ่นยึด SO เป็นหลัก** แล้ว derive ดีล/โครงการ/ลูกค้าจาก SO — ไม่ให้
   // เลือกซ้ำ เพราะเลือกสองที่แล้วขัดกันเองได้ (SO ของดีล A แต่เลือกดีล B)
   let salesOrderId = null;
+  let scentCount = null;
   let dealId = body.dealId || null;
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
@@ -163,7 +167,26 @@ export async function POST(request) {
         error: 'ใบสั่งขายนี้ยังไม่อนุมัติ — เปิดคำร้องพัฒนากลิ่นได้เมื่อใบสั่งขายผ่านอนุมัติแล้ว',
       }, { status: 400 });
     }
+    // ⭐ ต้องเป็นใบที่ขาย **บริการออกแบบกลิ่น** จริง — ป้ายบนฟอร์มเขียนไว้แบบนั้น
+    // แต่ก่อนหน้านี้ไม่มีอะไรตรวจ ⇒ เปิดบรีฟบนใบขายสินค้าได้ (ใบเดียวบน prod ก็เป็น
+    // ใบขายสินค้า) · ดู lib/requests/scentDesignOrders.js
+    const { data: soLines, error: soLineError } = await supabase
+      .from('sales_order_lines').select('qty, fgCode, description').eq('salesOrderId', soRow.id);
+    if (soLineError) return Response.json({ error: soLineError.message }, { status: 500 });
+
+    // ⭐ 1 SO : 1 PDR ตายตัว (มติผู้ใช้) — อยากได้เพิ่มต้องออกใบสั่งขายใหม่
+    const { data: taken, error: takenError } = await supabase
+      .from('dept_requests').select('docNo, id')
+      .eq('salesOrderId', soRow.id).neq('status', 'cancelled').maybeSingle();
+    if (takenError) return Response.json({ error: takenError.message }, { status: 500 });
+
+    const gate = scentDesignOrderError({ ...soRow }, soLines || [], {
+      usedByRequestNo: taken ? (taken.docNo || taken.id) : null,
+    });
+    if (gate) return Response.json({ error: gate }, { status: 400 });
+
     salesOrderId = soRow.id;
+    scentCount = scentCountForOrder(soLines || []);
     dealId = soRow.dealId || null;
     if (!dealId) {
       return Response.json({
@@ -298,6 +321,33 @@ export async function POST(request) {
       // · คอลัมน์ยังอยู่เพื่ออ่านของเก่า (หน้ารายละเอียดยังแสดงถ้ามีค่า) ไม่ DROP
     });
     if (headError) throw headError;
+
+    // 2.5) บรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น (mig 0213)
+    //
+    // ⚠️ ตรวจ **หลัง** รู้จำนวนกลิ่นจากใบสั่งขายแล้ว เพราะด่านบังคับให้เท่ากัน ·
+    // ตารางแยกจาก dept_request_items โดยตั้งใจ (บรีฟไม่เดิน 5 ก้าว — ดู 0213)
+    if (requestHasPdr(kind)) {
+      const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, {
+        expected: scentCount,
+      });
+      if (briefError) return Response.json({ error: briefError }, { status: 400 });
+      const briefRows = briefs.map((b) => ({
+        id: `DRS-${randomUUID()}`,
+        requestId,
+        sortOrder: b.sortOrder,
+        label: b.label,
+        brief: b.brief,
+        researchTopic: b.researchTopic,
+        inspiration: b.inspiration,
+        likedNotes: b.likedNotes,
+        dislikedNotes: b.dislikedNotes,
+        scentotypes: b.scentotypes,
+        performance: b.performance,
+      }));
+      const { error: briefInsertError } = await supabase
+        .from('dept_request_scents').insert(briefRows);
+      if (briefInsertError) throw briefInsertError;
+    }
 
     // 3) รายการ + ชั้นจำนวนที่ขอ (เฉพาะชนิดที่มีบรรทัด)
     if (resolved.length) {
