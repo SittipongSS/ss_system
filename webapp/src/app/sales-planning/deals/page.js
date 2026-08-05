@@ -590,16 +590,28 @@ export default function SalesPlanningPipelinePage() {
 
           {canSeeDealKpi(role) && (
             <>
-              {allowedScopes.length > 1 && (
-                <Segmented
-                  ariaLabel="ขอบเขตของไปป์ไลน์"
-                  className="scope-toggle"
-                  value={activeScope}
-                  onChange={setScope}
-                  options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
-                />
-              )}
-              
+              {/* ขอบเขต (ซ้าย) + ทางไป KPI เต็ม (ขวา) แถวเดียวกัน — ชุดเดียวกับคิวลีด
+                  (มติผู้ใช้ 2026-08-05) คลาสอยู่ที่ globals.css ทั้งคู่ ห้ามแยกไปเขียนเอง
+                  ไม่งั้นสองหน้าจะเพี้ยนหากันเหมือนตอนที่ตัวสลับเคยเป็นคนละคลาส (#969)
+
+                  ⚠️ ทั้งก้อนอยู่ใน canSeeDealKpi อยู่แล้ว ต่างจากคิวลีดที่ตัวสลับเปิดให้
+                  คนทำงานคิวทุกคนแม้ไม่เห็น KPI — ที่นี่คนที่ไม่มีสิทธิ์ KPI ก็ไม่เห็น
+                  ไปป์ไลน์รวมอยู่แล้ว จึงไม่มีเคส "เห็นตัวสลับแต่ไม่เห็นแถบ" */}
+              <div className="scope-row">
+                {allowedScopes.length > 1 && (
+                  <Segmented
+                    ariaLabel="ขอบเขตของไปป์ไลน์"
+                    className="scope-toggle"
+                    value={activeScope}
+                    onChange={setScope}
+                    options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+                  />
+                )}
+                {/* ?tab=performance = "ผลงานขาย" ซึ่งเป็นที่อยู่ของ KPI ดีลฉบับเต็ม
+                    (แท็บ overview เดิมถูกยุบเข้าไปแล้ว — ดูหัวไฟล์ sa/dashboard) */}
+                <Link href="/sa/dashboard?tab=performance" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>
+              </div>
+
               <SaMetricStrip>
                 <SaMetric icon={<FolderKanban />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />

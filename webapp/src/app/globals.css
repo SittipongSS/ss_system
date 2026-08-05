@@ -3315,6 +3315,22 @@ button.empty-state { width: 100%; font: inherit; }
    ⚠️ min-width ที่ปุ่มคือหัวใจ — ไม่มีมันแล้ว "ของฉัน" กับ "ทีม" กว้างไม่เท่ากัน */
 .scope-toggle { width: fit-content; padding: 3px; }
 .scope-toggle > button { min-width: 72px; min-height: 34px; padding: 7px var(--space-4); font-size: var(--fs-7); }
+
+/* แถวเหนือแถบ KPI: ตัวสลับขอบเขต (ซ้าย) + ทางไป KPI เต็ม (ขวา) — ระดับเดียวกัน
+   จึงอยู่แถวเดียวกัน (มติผู้ใช้ 2026-08-05: เดิมเป็นสองแถวซ้อน กินความสูงสองเท่า
+   โดยไม่ได้บอกอะไรเพิ่ม) · ใช้ร่วมทั้งคิวลีดและไปป์ไลน์ดีล — อยู่ที่ globals เพราะ
+   ยืม *.module.css ข้ามโฟลเดอร์ไม่ได้ และสองหน้านี้ต้องหน้าตาเดียวกันเสมอ
+   ⚠️ ลิงก์ดันไปขวาด้วย margin-left ไม่ใช่ justify-content: space-between ที่แถว —
+   บางสิทธิ์เห็นเฉพาะลิงก์ (ไม่มีตัวสลับ) ถ้าใช้ space-between ลิงก์เดี่ยวจะไปเกาะซ้าย */
+.scope-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.kpi-full-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-7);
+  font-weight: var(--fw-medium);
+  color: var(--blue);
+}
 .project-detail-actions {
   display: flex;
   align-items: center;
