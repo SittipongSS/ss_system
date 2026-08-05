@@ -54,6 +54,17 @@ const customerDocTypesUnion = (() => {
 })();
 
 export const ATTACHMENT_TYPES = {
+  // ⭐ เอกสารของดีล (P5c) — PO · หลักฐานมัดจำ · บรีฟลูกค้า · อื่น ๆ
+  // ชุดนี้ตรงกับ `sales_deal_documents.kind` ที่ 0069 ใช้อยู่แล้ว ⇒ รายการ checklist
+  // กับไฟล์ที่แนบเข้ามาพูดภาษาเดียวกัน ไม่ใช่สองชุดที่ต้องแมปกันเอง
+  deal: [
+    { key: 'customer_brief', label: 'บรีฟจากลูกค้า' },
+    { key: 'quotation', label: 'ใบเสนอราคา (ไฟล์)' },
+    { key: 'deposit_proof', label: 'หลักฐานมัดจำ' },
+    { key: 'po', label: 'PO ลูกค้า' },
+    { key: 'tax_docs', label: 'เอกสารภาษี' },
+    { key: 'other', label: 'เอกสารอื่นๆ' },
+  ],
   // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท) — ใช้ validate ฝั่ง API
   // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
   // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.

@@ -32,3 +32,9 @@
 .main { flex: 1; min-width: 0; }
 .title { font-size: var(--fs-7); }
 .meta { margin-top: var(--space-1); font-size: var(--fs-3); color: var(--text-3); }
+
+/* ที่แนบไฟล์ — คั่นจากลิสต์ด้วยเส้น เพราะเป็นคนละเรื่อง (อ่านของที่มี vs เพิ่มของใหม่) */
+.upload {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}

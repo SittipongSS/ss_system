@@ -53,6 +53,9 @@ export const PARENT_TABLE = {
   // จริง รายการโชว์จริง แต่ proxy /file ตอบ 403 ทุกใบ (parent = null) = **แนบได้แต่
   // เปิดดูไม่ได้สักไฟล์** ซึ่งอ่านจากหน้าจอแล้วเหมือนไฟล์เสีย ไม่ใช่เหมือนสิทธิ์
   dept_request: 'dept_requests',
+  // ดีล (P5c) — ⚠️ บรรทัดนี้คือจุดที่ 5 ของเช็กลิสต์ ขาดไปแล้วจะ "แนบได้แต่เปิดดู
+  // ไม่ได้สักไฟล์" เหมือนที่หัวคำร้องเคยโดนมาแล้ว
+  deal: 'sales_deals',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
