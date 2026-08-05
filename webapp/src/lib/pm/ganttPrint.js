@@ -25,7 +25,6 @@ import {
 import {
   documentFooter,
   documentHeader,
-  documentRef,
   esc,
   partyGrid,
   renderDocumentHTML,
@@ -291,9 +290,12 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
   const formLine = `${form.code}: Rev. No.${form.revision}. ${form.effectiveDate}`;
   // ดีลที่ผูกกับโครงการ — snapshot ของ Rev ที่ถ่ายไว้ก่อนมี field นี้จะไม่มีข้อมูล
   // หน้าเรียกจึงถอยไปใช้ดีลปัจจุบันให้ (ดูหน้า sa/projects/[id])
-  const dealRefs = (project.deals || [])
-    .map((deal) => documentRef(dealTypeOf(deal), deal?.title))
-    .filter((ref) => ref !== '-');
+  // ⚠️ ชื่อกับประเภทแยกคนละแถวตามชุดอ้างอิงของใบเสนอราคา (มติผู้ใช้ 2026-08-05) —
+  // โครงการมีได้หลายดีล สองแถวนี้จึงเรียงบรรทัดให้ตรงกัน (ดีลตัวที่ n อยู่บรรทัดที่ n
+  // ทั้งสองแถว) · กรองด้วยเงื่อนไขเดียวกันทั้งคู่ ลำดับจึงตรงกันเสมอ
+  const linkedDeals = (project.deals || []).filter((deal) => String(deal?.title || '').trim());
+  const dealTitles = linkedDeals.map((deal) => String(deal.title).trim());
+  const dealTypes = linkedDeals.map((deal) => dealTypeOf(deal) || '-');
 
   const header = documentHeader({
     // resolveCompanyBlock คืนคีย์ legalNameTh/legalNameEn ส่วนเปลือกรับ nameTh/nameEn
@@ -355,8 +357,11 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       heading: 'ข้อมูลอ้างอิง',
       headingEn: '/ REFERENCE',
       rows: [
-        { label: 'โครงการหลัก', value: documentRef(displayCode, project.name) },
-        { label: 'โครงการย่อย', value: dealRefs.join('\n') },
+        { label: 'เลขที่โครงการ', value: displayCode },
+        // เอกสารเรียกดีลว่า "โครงการ" ตามชุดเดียวกับใบเสนอราคา/ใบสั่งขาย — ชื่อโครงการแม่
+        // ไม่ต้องซ้ำในบล็อกนี้ เพราะเป็นหัวข้อของกล่องซ้าย (ข้อมูลโครงการ) อยู่แล้ว
+        { label: 'โครงการ', value: dealTitles.join('\n') },
+        { label: 'ประเภทโครงการ', value: dealTypes.join('\n') },
         { label: 'ใบเสนอราคา', value: quotationLine },
         { label: 'รายการสินค้า (FG)', html: fgHtml },
       ],
