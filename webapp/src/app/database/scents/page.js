@@ -92,8 +92,7 @@ export default function ScentsPage() {
       if (!q) return true;
       // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
       // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
-      // รหัสตัวอย่างอยู่ในสายค้นด้วย — RD หาย้อนจากรหัสบนขวดที่ลูกค้าอ้างถึง
-      return [s.name, s.code, s.customerName, s.customerTradeName, s.sampleCode, s.note]
+      return [s.name, s.code, s.customerName, s.customerTradeName, s.note]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
   }, [scents, statusFilter, search]);
@@ -298,16 +297,10 @@ export default function ScentsPage() {
                 {pageRows.map((s) => {
                   return (
                     <tr key={s.id}>
+                      {/* รหัสเดียวคือ `code` ของทะเบียน — "รหัสตัวอย่าง" (sampleCode)
+                          ถูกถอดทั้งชุดใน 0214 ตามมติผู้ใช้ว่าไม่ใช้แล้ว */}
                       <td className="mono">
                         {s.code || <span className={styles.muted}>—</span>}
-                        {/* รหัสตัวอย่างที่ส่งออกไปจริง — *คนละรหัส* กับรหัสกลิ่นในทะเบียน
-                            คือสายที่โยงกลับไปหาขวดที่ลูกค้าถืออยู่ · ยกมาจากตารางรอบ
-                            ที่ถูกทิ้งใน 0206 (ของจริง 29 แถวมีครบทุกแถว)
-                            ⚠️ อ่านอย่างเดียว ไม่มีช่องกรอก — สายงานใหม่บันทึกการส่ง
-                            ผ่านคำร้อง ไม่ใช่ผ่านทะเบียน */}
-                        {s.sampleCode && (
-                          <div className={styles.sub}>ตัวอย่าง {s.sampleCode}</div>
-                        )}
                       </td>
                       <td className={styles.name}>
                         {s.name}
@@ -451,8 +444,8 @@ export default function ScentsPage() {
       </Modal>
 
       {/* วันที่ส่งกลิ่นให้ลูกค้า — ช่องเดียว ไม่ใช่ฟอร์มรอบ
-          ⚠️ รหัสตัวอย่างหายไปโดยตั้งใจ (มติผู้ใช้: ไม่ใช้แล้ว) · หมายเหตุก็ไม่มีที่นี่
-          เพราะที่คุยกันจริงคือเธรดของกลิ่น ไม่ใช่ช่องข้อความค้างในโมดัล */}
+          ⚠️ ไม่มีช่องหมายเหตุที่นี่ เพราะที่คุยกันจริงคือเธรดของกลิ่น
+          ไม่ใช่ช่องข้อความค้างในโมดัล */}
       <Modal
         open={!!sending} onClose={() => setSending(null)} size="sm" dismissible={!saving}
         title={sending ? `วันที่ส่งกลิ่น — ${sending.scent.name}` : ""}
