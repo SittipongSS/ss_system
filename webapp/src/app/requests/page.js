@@ -25,7 +25,7 @@ const TAB_BLURB = {
 };
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { canQuoteMaterial } from "@/lib/materialPrices";
+import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor } from "@/lib/permissions";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
@@ -49,7 +49,11 @@ export default function RequestsPage() {
   const me = useMemo(() => ({ role, department, team }), [role, department, team]);
   // filter ไม่ใช่ find — admin ตอบได้ทั้ง RD และ PC (isSuperuser ผ่านทุกฝ่าย)
   // ถ้าใช้ find คิวของ PC จะหายไปทั้งก้อนโดยไม่มีอะไรบอก
-  const myDepts = useMemo(() => ["RD", "PC"].filter((d) => canQuoteMaterial(me, d)), [me]);
+  // ⚠️ ห้ามสะกดรายชื่อฝ่ายที่นี่ — ฝ่ายที่สี่จะได้คิวว่างเปล่าโดยไม่มีใครรู้
+  const myDepts = useMemo(
+    () => REQUEST_ANSWER_DEPARTMENTS.filter((d) => canAnswerRequestsFor(me, d)),
+    [me],
+  );
 
   const [requests, setRequests] = useState([]);
   const [materials, setMaterials] = useState([]);

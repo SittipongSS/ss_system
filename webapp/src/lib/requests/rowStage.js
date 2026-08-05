@@ -10,7 +10,7 @@
 // ⚠️ ทุกอย่างที่นี่ **derive ตอนอ่าน ห้ามเก็บคอลัมน์** — เก็บเมื่อไรก็ drift เมื่อนั้น
 // ของจริงที่พิสูจน์แล้ว: `scents.currentRevisionNo` เก็บตัวนับไว้เพื่อไม่ต้อง join
 // สุดท้ายกลายเป็นคอลัมน์ตายที่ไม่มีใครอ่าน ต้องตามเก็บกวาดใน 0205
-import { canQuoteMaterial } from '@/lib/materialPrices';
+import { canAnswerRequestsFor } from '@/lib/permissions';
 import { canManageRequest } from '@/lib/requests/access';
 
 // ลำดับตามเวลาจริงของงาน — index ใช้เทียบว่า "ถึงขั้นนี้หรือยัง" ได้เลย
@@ -151,7 +151,10 @@ export function nextStepForRow(row, request, user) {
   const stage = rowStage(row);
   const next = NEXT_BY_STAGE[stage];
   if (!next) return null;
-  const isDept = canQuoteMaterial(user, request?.dept);
+  // ⚠️ ถามว่า "รับคำร้องของฝ่ายนี้ได้ไหม" **ไม่ใช่ "ตอบราคาได้ไหม"** — สองอย่างนี้
+  // แยกกันแล้วตั้งแต่ R-1 · ถามผิดคำถาม = ฝ่ายที่รับคำร้องแต่ไม่ตอบราคา (บัญชี)
+  // เห็นคิวของตัวเองเป็น "รออีกฝั่ง" ตลอดกาล ทั้งที่งานอยู่ในมือตัวเอง
+  const isDept = canAnswerRequestsFor(user, request?.dept);
   const isRequester = canManageRequest(user, request);
   return {
     stage,

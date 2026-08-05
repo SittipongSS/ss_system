@@ -26,7 +26,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
-import { canQuoteMaterial } from "@/lib/materialPrices";
+import { canAnswerRequestsFor } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -170,7 +170,9 @@ export default function MaterialAskDetailPage() {
     );
   }
 
-  const owner = canQuoteMaterial(me, req.dept);
+  // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
+  // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
+  const owner = canAnswerRequestsFor(me, req.dept);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
   // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
