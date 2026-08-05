@@ -6,12 +6,13 @@
 //
 // ⚠️ วางใน `components/salesPlanning/` **ไม่ใช่ dir ใหม่** — scripts/uiLegacyBudget.mjs
 // map dir → module ⇒ dir ใหม่จะได้งบชั้นเก่าของตัวเองที่ไม่มีใครดูแล
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FileText, ExternalLink } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DOCUMENT_SOURCES } from "@/lib/sales/entityDocuments";
 import { fmtDate } from "@/lib/format";
 import styles from "./entityDocuments.module.css";
@@ -21,7 +22,7 @@ export default function EntityDocumentsPanel({ dealId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!dealId) return;
     setLoading(true); setError("");
     fetch(`/api/sales-planning/documents/all?dealId=${encodeURIComponent(dealId)}`, { cache: "no-store" })
@@ -34,16 +35,21 @@ export default function EntityDocumentsPanel({ dealId }) {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [dealId]);
+  useEffect(() => { reload(); }, [reload]);
+
+  // แนบไฟล์แล้วต้องเห็นในลิสต์ทันที · ข้ามครั้งแรก (AttachmentsPanel ยิงตอน mount
+  // ด้วย) ไม่งั้นจะดึงซ้ำเปล่า ๆ ทุกครั้งที่เปิดแท็บ
+  const [seeded, setSeeded] = useState(false);
+  const onAttachmentsChange = useCallback(() => {
+    if (!seeded) { setSeeded(true); return; }
+    reload();
+  }, [seeded, reload]);
 
   if (loading) return <SkeletonRows rows={4} />;
   if (error) return <StatusNotice tone="error">{error}</StatusNotice>;
 
   const rows = data?.rows || [];
   const progress = data?.progress || { arrived: 0, waiting: 0 };
-
-  if (!rows.length) {
-    return <EmptyState icon={FileText}>ดีลนี้ยังไม่มีเอกสารและไม่มีรายการที่รออยู่</EmptyState>;
-  }
 
   return (
     <div className={styles.wrap}>
@@ -53,6 +59,10 @@ export default function EntityDocumentsPanel({ dealId }) {
         มาแล้ว <strong>{progress.arrived}</strong>
         {progress.waiting > 0 && <> · รอ <strong className={styles.waiting}>{progress.waiting}</strong></>}
       </div>
+
+      {!rows.length && (
+        <EmptyState icon={FileText}>ดีลนี้ยังไม่มีเอกสารและไม่มีรายการที่รออยู่</EmptyState>
+      )}
 
       <ul className={styles.list}>
         {rows.map((row) => (
@@ -80,6 +90,23 @@ export default function EntityDocumentsPanel({ dealId }) {
           </li>
         ))}
       </ul>
+
+      {/* ⭐ ที่แนบไฟล์เข้าดีลโดยตรง (P5c) — แหล่งที่ 1 ของแผงนี้
+          ⚠️ ต่อครบ 5 จุดแล้ว (ดู lib/sales/dealAttachmentAccess.js) · ขาดจุดไหนก็
+          หลุดเงียบจุดนั้น: ไฟล์ไม่ขึ้น · อัปไม่ได้ · ใครก็ลบได้ · พรีวิวไม่ขึ้น */}
+      <div className={styles.upload}>
+        <div className="toolbar-label">แนบเอกสารเข้าดีลนี้</div>
+        <AttachmentsPanel
+          entityType="deal"
+          entityId={dealId}
+          canEdit
+          inlineUpload
+          // ⚠️ `onItemsChange` คือ callback จริงของแผงนี้ (ไม่ใช่ onChanged) — แจ้ง
+          // รายการปัจจุบันทุกครั้งที่เปลี่ยน ⇒ ใช้เป็นสัญญาณให้ดึงยอดรวมใหม่
+          // ขาดไปแล้วคนจะกดแนบซ้ำเพราะลิสต์ด้านบนยังไม่ขยับ (นึกว่าไม่ติด)
+          onItemsChange={onAttachmentsChange}
+        />
+      </div>
     </div>
   );
 }

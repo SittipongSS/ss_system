@@ -407,6 +407,23 @@ export async function folderPathForEntity(entityType, entityId) {
     ];
   }
 
+  // ⭐ เอกสารของดีล → ใต้โฟลเดอร์ลูกค้าเจ้าของดีล ไม่ใช่โฟลเดอร์ "ดีล" แยกต่างหาก
+  // เอกสารพวกนี้ (PO · หลักฐานมัดจำ · บรีฟลูกค้า) เป็นของลูกค้ารายนั้นในสายตาคนทำงาน
+  // แยกออกมาเป็นชั้นของตัวเองเมื่อไร คนจะต้องจำว่าไฟล์ของลูกค้ารายนี้อยู่สองที่
+  if (type === 'deal') {
+    const { data: deal, error } = await supabase
+      .from('sales_deals').select('id, title, customerId').eq('id', entityId).maybeSingle();
+    if (error) throw error;
+    if (!deal) throw new Error('ไม่พบดีล');
+    const customer = await loadCustomer(supabase, deal.customerId);
+    if (!customer) throw new Error('ดีลนี้ยังไม่มีลูกค้าเจ้าของ');
+    return [
+      ...(await customerSegments(customer)),
+      { name: FOLDER.sales },
+      { name: `${safeName(deal.title, deal.id)} (${deal.id})` },
+    ];
+  }
+
   if (type === 'personal_task') {
     const { data, error } = await supabase
       .from('personal_tasks').select('id, title').eq('id', entityId).maybeSingle();

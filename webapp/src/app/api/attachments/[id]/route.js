@@ -8,6 +8,11 @@ import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
 
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import {
+  DEAL_ATTACHMENT_TABLE, canAttachToDeal, isDealAttachment,
+} from '@/lib/sales/dealAttachmentAccess';
+
 export const dynamic = 'force-dynamic';
 
 const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations', personal_task: 'personal_tasks' };
@@ -40,6 +45,17 @@ export async function DELETE(request, { params }) {
       // ระเบียนแม่ถูกลบไปแล้ว — ไม่มีแถวให้ตรวจสิทธิ์รายใบ เหลือด่านระบบล้วน
       // (เจตนาเดิม: ให้เก็บกวาดไฟล์ที่ค้างอยู่ได้ ไม่ใช่ให้เปิดอ่านของใคร)
       : canViewCosting(user);
+    if (!allowed) return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  // ⚠️ ดีล: ไม่มี parent ใน PARENT_TABLE เหมือนระบบขอราคา → ถ้าไม่ดักตรงนี้
+  // บล็อกสิทธิ์ข้างล่างจะถูกข้ามทั้งก้อน (`if (table)`) = **ใครก็ลบไฟล์แนบของดีลได้**
+  if (isDealAttachment(att.entityType)) {
+    const { data: deal } = await supabase
+      .from(DEAL_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
+    // ดีลถูกลบไปแล้ว — ไม่มีแถวให้ตรวจสิทธิ์รายใบ เหลือด่านระบบล้วน (เจตนาเดิม
+    // เหมือนระบบขอราคา: ให้เก็บกวาดไฟล์ที่ค้างได้ ไม่ใช่ให้เปิดอ่านของใคร)
+    const allowed = deal ? canAttachToDeal(deal, user) : canViewSalesPlanning(user);
     if (!allowed) return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
