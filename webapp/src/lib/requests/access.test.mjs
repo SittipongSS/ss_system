@@ -12,7 +12,7 @@ import { REQUEST_DEPTS } from '../master/requestTypes.js';
 import { canAnswerRequest } from './access.js';
 
 // ฝ่ายที่ role `staff` ครอบ — ต้องลองให้ครบ ไม่ใช่แค่ RD/PC ที่รู้ว่าผ่าน
-const STAFF_DEPARTMENTS = ['PC', 'PD', 'WH', 'RD', 'QC', 'TS'];
+const STAFF_DEPARTMENTS = ['PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
 
 test('ลิสต์ฝ่ายผู้รับคำร้องต้องตรงกับทะเบียนหัวข้อเสมอ', () => {
   // permissions.js เป็นชั้นล่างสุด จึงสะกดลิสต์เอง — เทสต์นี้คือสิ่งเดียวที่กันไม่ให้
@@ -40,6 +40,13 @@ test('ตอบคำร้องได้เฉพาะฝ่ายของ�
   assert.ok(!canAnswerRequest(pc, { dept: 'RD' }));
 
   // ⚠️ ฝ่ายโรงงานอื่นถือ cap เท่ากับ PC ทุกประการ — ที่กันไว้คือ **ฝ่าย** ไม่ใช่ cap
+  const fn = { id: 'U6', role: 'staff', department: 'FN' };
+  assert.ok(canAnswerRequest(fn, { dept: 'FN' }));
+  assert.ok(!canAnswerRequest(fn, { dept: 'RD' }));
+  // ⭐ บัญชีตอบคำร้องได้ **โดยไม่ผ่านด่านราคา** — นี่คือทั้งหมดที่ R-1 มีไว้เพื่อ
+  assert.ok(!canViewCosting(fn), 'ฝ่ายบัญชีต้องไม่เห็นข้อมูลต้นทุน');
+  assert.ok(canViewRequests(fn), 'ฝ่ายบัญชีต้องเข้าระบบคำร้องได้');
+
   for (const department of ['PD', 'WH', 'QC', 'TS']) {
     const staff = { id: 'U3', role: 'staff', department };
     for (const dept of REQUEST_ANSWER_DEPARTMENTS) {
@@ -58,6 +65,7 @@ test('ผู้ดูแลระบบยังเป็น break-glass ขอ�
   const admin = { id: 'U5', role: 'admin', department: 'AD' };
   for (const dept of REQUEST_ANSWER_DEPARTMENTS) assert.ok(canAnswerRequest(admin, { dept }));
   // ฝ่ายที่ยังไม่เปิดรับคำร้อง แม้เป็น admin ก็ต้องไม่ผ่าน — ไม่งั้นด่านนี้ไม่มีความหมาย
-  assert.ok(!canAnswerRequest(admin, { dept: 'FN' }));
+  // (FN เปิดแล้วใน P7-FN2 · ฝ่ายโรงงานอื่นยังไม่มีคิวคำร้องของตัวเอง)
+  assert.ok(!canAnswerRequest(admin, { dept: 'PD' }));
   assert.ok(!canAnswerRequest(admin, { dept: null }));
 });

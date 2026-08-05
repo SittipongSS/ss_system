@@ -13,9 +13,10 @@
 // คำนวณแล้วเข้ามา · import กลับไปจะได้วง `requestTypes → registry → …` ที่แก้ยาก
 import RD_LINE_SHAPES from './rd/lineShapes';
 import SHARED_LINE_SHAPES from './shared/lineShapes';
+import FN_LINE_SHAPES from './fn/lineShapes';
 
 const byKey = {};
-for (const shape of [...SHARED_LINE_SHAPES, ...RD_LINE_SHAPES]) {
+for (const shape of [...SHARED_LINE_SHAPES, ...RD_LINE_SHAPES, ...FN_LINE_SHAPES]) {
   if (!shape?.key) throw new Error('รูปร่างบรรทัด: ต้องมี key');
   if (byKey[shape.key]) throw new Error(`รูปร่างบรรทัด "${shape.key}": key ซ้ำ`);
   // ป้ายต้องครบทั้งสามสถานะ — ขาดตัวไหนแถวจะขึ้นเป็นค่าดิบ ('pending') บนหน้าจอ

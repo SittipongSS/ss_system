@@ -12,11 +12,12 @@
 // ของหัวข้อนั้น ๆ ไม่งั้นจะกลับไปเป็นตารางก้อนเดียวที่เพิ่งแยกออกมา
 import RD_KINDS from './rd/kinds';
 import PC_KINDS from './pc/kinds';
+import FN_KINDS from './fn/kinds';
 import SHARED_KINDS from './shared/kinds';
 
 // ลำดับ: ของกลางก่อน แล้วเรียงตามฝ่าย — ⚠️ **ลำดับนี้ไม่ใช่ลำดับที่ผู้ใช้เห็น**
 // ดรอปดาวน์จัดกลุ่มตามตระกูลเองที่ `kindsForDept` (ดู requestTypes.js)
-const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS];
+const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
 
 // ── ด่านตอนโหลด ────────────────────────────────────────────────────────
 //
@@ -26,9 +27,9 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS];
 //
 // ⚠️ ห้ามเปลี่ยนเป็น "ข้ามหัวข้อที่ผิดแล้วเดินต่อ" — หัวข้อที่หายไปเงียบ ๆ คือใบที่
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
-const VALID_DEPTS = ['RD', 'PC'];
+const VALID_DEPTS = ['RD', 'PC', 'FN'];
 const VALID_REFS = ['project', 'deal', 'salesOrder', 'scent', 'formula'];
-const VALID_LINE_SHAPES = ['material', 'product_dev', 'document'];
+const VALID_LINE_SHAPES = ['material', 'product_dev', 'document', 'billing_doc'];
 
 // export เพื่อให้เทสต์พิสูจน์ได้ว่าด่านนี้ **ยิงจริง** — ด่านที่ไม่มีใครเคยเห็นมันทำงาน
 // คือด่านที่อาจพังเงียบมานานแล้ว
@@ -71,5 +72,6 @@ export const REQUEST_KINDS = Object.freeze(byKey);
 export const KINDS_BY_OWNER = Object.freeze({
   RD: RD_KINDS.map((k) => k.key),
   PC: PC_KINDS.map((k) => k.key),
+  FN: FN_KINDS.map((k) => k.key),
   shared: SHARED_KINDS.map((k) => k.key),
 });

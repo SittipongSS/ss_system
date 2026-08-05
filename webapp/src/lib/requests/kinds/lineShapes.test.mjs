@@ -72,3 +72,31 @@ test('POST /api/sa/requests เลิกตัดสินรูปร่าง�
     assert.ok(!src.includes(gone), `route ต้องไม่เรียก ${gone} ตรง ๆ อีก`);
   }
 });
+
+test('บรรทัดเอกสารการเงินใช้ตัวตรวจตัวเดียวกับของ RD แต่คนละคำศัพท์', () => {
+  // ⚠️ ชุดคำศัพท์ต้อง **ไม่ปนกัน** — RD ขอ "ใบกำกับภาษี" ไม่ได้ และบัญชีขอ IFRA ไม่ได้
+  assert.match(normalizeLinesFor('billing_doc', [{ docType: 'ifra' }]).error, /ไม่ถูกต้อง/);
+  assert.match(normalizeLinesFor('document', [{ docType: 'tax_invoice' }]).error, /ไม่ถูกต้อง/);
+
+  const ok = normalizeLinesFor('billing_doc', [{ docType: 'tax_invoice' }]);
+  assert.equal(ok.error, null);
+  assert.equal(ok.items[0].lineKind, 'billing_doc');
+  assert.equal(ok.items[0].label, 'ใบกำกับภาษี');
+
+  // กฎที่เหมือนกันทุกข้อต้องยังทำงาน (ตัวตรวจตัวเดียวกันจริง ไม่ใช่ก๊อป)
+  assert.match(normalizeLinesFor('billing_doc', [{ docType: 'other' }]).error, /ระบุว่าขอเอกสารอะไร/);
+  assert.match(
+    normalizeLinesFor('billing_doc', [{ docType: 'invoice' }, { docType: 'invoice' }]).error,
+    /ซ้ำกับรายการก่อนหน้า/,
+  );
+});
+
+test('🔴 CHECK ที่ DB ต้องรู้จักทุกรูปร่างที่ทะเบียนยอมให้บันทึก', () => {
+  // ⚠️ **ด่านนี้มีเพราะเกือบพลาดจริง** — แผนบันทึกกำแพงไว้แค่ dept_requests.dept
+  // แต่ dept_request_items.lineKind ก็มี CHECK ของตัวเอง (0204) ⇒ ถ้าเพิ่มรูปร่างใน
+  // โค้ดแล้วลืม migration จะ **เปิดคำร้องได้แต่บันทึกบรรทัดไม่ได้** ซึ่งพังตอนกดส่ง
+  const sql = readFileSync('supabase/migrations/0212_request_dept_fn.sql', 'utf8');
+  for (const key of Object.keys(LINE_SHAPES)) {
+    assert.ok(sql.includes(`'${key}'`), `0212 ยังไม่รู้จักรูปร่าง "${key}"`);
+  }
+});

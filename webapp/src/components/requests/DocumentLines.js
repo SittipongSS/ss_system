@@ -11,18 +11,22 @@ import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
-import { REQUEST_DOC_TYPES, docTypeNeedsDetail } from "@/lib/requests/docTypes";
+import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
 import styles from "./scentDelivery.module.css";
 
 export const emptyDocumentRow = () => ({ docType: "", spec: "" });
 
-export default function DocumentLines({ rows, onChange, disabled = false }) {
+// ⭐ `vocabulary` ทำให้ตารางนี้ใช้ได้ทั้งเอกสารเทคนิคของ RD และเอกสารการเงินของ
+// ฝ่ายบัญชี — กฎของบรรทัดเหมือนกันทุกข้อ ต่างแค่ลิสต์ชนิด
+export default function DocumentLines({
+  rows, onChange, disabled = false, vocabulary = REQUEST_DOC_VOCABULARY,
+}) {
   const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
 
   return (
     <div className={styles.wrap}>
       {rows.map((row, i) => {
-        const needsDetail = docTypeNeedsDetail(row.docType);
+        const needsDetail = vocabulary.needsDetail(row.docType);
         return (
           <div key={i} className={styles.row}>
             <div className={styles.rowHead}>
@@ -45,7 +49,7 @@ export default function DocumentLines({ rows, onChange, disabled = false }) {
                   onChange={(e) => patch(i, { docType: e.target.value })}
                   options={[
                     { value: "", label: "— เลือกชนิดเอกสาร —" },
-                    ...REQUEST_DOC_TYPES.map((t) => ({ value: t.value, label: t.label })),
+                    ...vocabulary.types.map((t) => ({ value: t.value, label: t.label })),
                   ]}
                 />
               </div>
