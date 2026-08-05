@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, ListTodo, MessageCircleQuestion, RefreshCw, Users } from "lucide-react";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 import { fmtDate, fmtDateTime } from "@/lib/format";
-import styles from "./RdDashboardTab.module.css";
+import styles from "./DashboardShell.module.css";
 
 function monthRange(month) {
   if (!/^\d{4}-\d{2}$/.test(month || "")) return null;

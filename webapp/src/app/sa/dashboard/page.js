@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import { useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import { displayYear } from "@/lib/datePeriods";
+import Select from "@/components/ui/Select";
+import StatusNotice from "@/components/ui/StatusNotice";
+import styles from "./page.module.css";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
@@ -27,6 +31,22 @@ const DASHBOARD_TABS = [
   { key: "task_kpi", label: "KPI งาน" },
 ];
 
+/* ⭐ แต่ละแท็บกินช่วงเวลาคนละหน่วย — ตัวคุมบนหัวหน้าจึงต้องเปลี่ยนตามแท็บ
+   (มติผู้ใช้ 2026-08-05) ของเดิมโชว์ตัวเลือก "เดือน" ตัวเดียวทุกแท็บ ทั้งที่
+   - ผลงานขาย รับแค่ `year` (month.slice(0,4)) ⇒ เลือก ม.ค. กับ ธ.ค. ปีเดียวกัน
+     ตัวเลขไม่ขยับสักตัว
+   - KPI งาน ไม่รับอะไรเลย และถือตัวเลือกช่วงวัน from/to + ทีม ของตัวเองอยู่ข้างใน
+     ⇒ จอเดียวมีตัวคุมเวลาสองชุด ชุดบนไม่ทำอะไร
+   ⚠️ เพิ่มแท็บใหม่ต้องมาเติมที่นี่ด้วย ไม่งั้นจะได้ตัวเลือกเดือนที่อาจไม่มีผล
+   "none" = แท็บถือตัวคุมของตัวเอง หัวหน้าต้องไม่มีตัวคุมซ้อน */
+const TAB_PERIOD = {
+  my: "month",
+  rd_kpi: "month",
+  lead_kpi: "month",
+  performance: "year",
+  task_kpi: "none",
+};
+
 export default function SalesPlanningOverviewPage() {
   return (
     <React.Suspense fallback={<SkeletonRows rows={7} />}>
@@ -41,52 +61,97 @@ const normalizeTab = (t) => (t === "overview" ? "performance" : t);
 function DashboardContent() {
   const searchParams = useSearchParams();
   const role = useRole();
-  const canSeeKpi = canSeeTaskKpi(role);
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
+  /* ปีของแท็บผลงานขายเป็น state แยก ไม่ได้เฉือนมาจาก `month` — ของเดิมใช้
+     month.slice(0,4) ทำให้ตัวเลือกเดือนกลายเป็นตัวเลือกปีที่พาเดือนติดไปด้วย
+     แยกกันแล้ว สลับแท็บไปกลับจึงไม่ลากค่าของอีกฝั่งเปลี่ยนตาม */
+  const [year, setYear] = useState(() => currentMonth.slice(0, 4));
+  // 3 ปีย้อนหลัง–3 ปีข้างหน้า — ชุดเดียวกับหน้าเป้าหมาย (/sa/targets)
+  const yearOptions = useMemo(() => {
+    const base = Number(currentMonth.slice(0, 4));
+    return Array.from({ length: 7 }, (_, index) => String(base - 3 + index));
+  }, [currentMonth]);
   const [tab, setTab] = useState(normalizeTab(searchParams.get("tab")) || "my");
   useEffect(() => {
     const t = normalizeTab(searchParams.get("tab"));
     if (t) setTab(t);
   }, [searchParams]);
-  // role rd: "แดชบอร์ดของฉัน" ฝั่งขายไม่มีความหมาย (ไม่มีดีลของตัวเอง) —
-  // เด้งไปแท็บ RD เป็นค่าเริ่มต้น (ยังเปิดแท็บอื่นที่มีสิทธิ์ได้ตามปกติ)
-  useEffect(() => {
-    if (role === "rd" && tab === "my" && !searchParams.get("tab")) setTab("rd_kpi");
-  }, [role, tab, searchParams]);
-  const year = month.slice(0, 4);
+
+  /* 🔑 สิทธิ์ของแท็บตัดสิน **ที่เดียว** แล้วใช้ทั้งแถบแท็บและตัวเนื้อหา
+     ของเดิมเช็คสองที่ (filter ของแถบ + เงื่อนไขตอน render) แล้วไม่ตรงกัน:
+     - เปิด ?tab=rd_kpi โดยไม่มีสิทธิ์ → แท็บหายจากแถบ *และ* เนื้อหาไม่ render
+       ⇒ ได้หน้าว่างเปล่าโดยไม่มีอะไรบอกว่าเกิดอะไรขึ้น
+     - `lead_kpi` ลืมใส่เงื่อนไขตอน render ⇒ คนไม่มีสิทธิ์เปิดลิงก์ตรงได้เนื้อหาจริง
+       แล้วไปตกที่ API 403 เป็นกล่อง error แทน = พฤติกรรมสองแบบของเรื่องเดียวกัน */
+  const allowedTabs = DASHBOARD_TABS.filter((t) => {
+    if (t.key === "performance") return canSeeDealKpi(role); // ผลงานขาย = สิทธิ์เดิมของ KPI ดีล
+    if (t.key === "task_kpi") return canSeeTaskKpi(role);
+    if (t.key === "lead_kpi") return canSeeLeadKpi(role);
+    if (t.key === "rd_kpi") return canSeeRdKpi(role); // แดชบอร์ด/KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย
+    if (t.key === "my") return role !== "rd"; // rd ไม่มีดีลของตัวเอง — ใช้แท็บ RD แทน
+    return true;
+  });
+  // แท็บที่แสดงจริง = ตัวที่ขอมาถ้ามีสิทธิ์ ไม่งั้นถอยไปตัวแรกที่เปิดให้
+  // (role rd ที่เปิดหน้าเปล่า ๆ จึงตกมาที่ "แดชบอร์ด RD" เองโดยไม่ต้องมี effect เด้ง)
+  const activeTab = allowedTabs.some((t) => t.key === tab) ? tab : allowedTabs[0]?.key;
+  /* บอกเฉพาะตอนที่ผู้ใช้ **ขอแท็บนั้นมาเองทาง URL** — ไม่ใช่ตอนที่ค่าตั้งต้น "my"
+     ของ role rd ตกไปแท็บอื่น (นั่นคือพฤติกรรมปกติ ไม่ใช่การถูกปฏิเสธ) */
+  const deniedTab = normalizeTab(searchParams.get("tab")) === tab && tab !== activeTab
+    ? DASHBOARD_TABS.find((t) => t.key === tab)
+    : null;
+
+  const period = TAB_PERIOD[activeTab] || "none";
 
   return (
     <SaWorkspace
       icon={<LayoutDashboard size={22} />}
       title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
-      headerRight={<MonthPicker value={month} onChange={setMonth} />}
+      headerRight={
+        period === "month" ? <MonthPicker value={month} onChange={setMonth} />
+          : period === "year" ? (
+            <Select
+              className={styles.yearSelect}
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
+              aria-label="ปี"
+            >
+              {yearOptions.map((y) => <option key={y} value={y}>ปี {displayYear(y)}</option>)}
+            </Select>
+          ) : null
+      }
     >
       <div className="flex flex-col gap-4">
         <Tabs
           ariaLabel="มุมมองภาพรวม"
-          value={tab}
+          value={activeTab}
           onChange={setTab}
-          tabs={DASHBOARD_TABS.filter((t) => {
-            if (t.key === "performance" && !canSeeDealKpi(role)) return false; // ผลงานขาย = สิทธิ์เดิมของ KPI ดีล
-            if (t.key === "task_kpi" && !canSeeKpi) return false;
-            if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
-            if (t.key === "rd_kpi" && !canSeeRdKpi(role)) return false; // แดชบอร์ด/KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย
-            if (t.key === "my" && role === "rd") return false; // rd ไม่มีดีลของตัวเอง — ใช้แท็บ RD แทน
-            return true;
-          })}
+          tabs={allowedTabs}
         />
 
-        {tab === "my" && <MyDashboardTab month={month} />}
+        {deniedTab && activeTab && (
+          <StatusNotice tone="warning" title={`ไม่มีสิทธิ์เข้าถึงแท็บ “${deniedTab.label}”`}>
+            พาไปที่แท็บ “{allowedTabs.find((t) => t.key === activeTab)?.label}” แทน — ถ้าต้องใช้แท็บนั้น ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์
+          </StatusNotice>
+        )}
 
-        {tab === "rd_kpi" && canSeeRdKpi(role) && <RdDashboardTab month={month} />}
+        {!activeTab && (
+          <StatusNotice tone="warning" title="ไม่มีสิทธิ์เข้าถึงแดชบอร์ดนี้">
+            บัญชีของคุณยังไม่มีสิทธิ์ดูแดชบอร์ดฝ่ายขายสักแท็บ
+          </StatusNotice>
+        )}
 
-        {tab === "lead_kpi" && <KpiLeadsTab month={month} />}
+        {/* เงื่อนไขสิทธิ์ไม่ต้องเช็คซ้ำตรงนี้ — activeTab มาจาก allowedTabs อยู่แล้ว */}
+        {activeTab === "my" && <MyDashboardTab month={month} />}
 
-        {tab === "task_kpi" && canSeeKpi && <SalesKpiDashboard />}
+        {activeTab === "rd_kpi" && <RdDashboardTab month={month} />}
 
-        {tab === "performance" && canSeeDealKpi(role) && <PerformanceTab year={year} />}
+        {activeTab === "lead_kpi" && <KpiLeadsTab month={month} />}
+
+        {activeTab === "task_kpi" && <SalesKpiDashboard />}
+
+        {activeTab === "performance" && <PerformanceTab year={year} />}
       </div>
     </SaWorkspace>
   );

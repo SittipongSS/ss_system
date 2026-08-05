@@ -1,3 +1,10 @@
+/* โครงหน้าแดชบอร์ดสองคอลัมน์ (เนื้อหา + แถบข้าง) พร้อมการ์ด/ฟีด/คิว
+   ⚠️ **ใช้ร่วมกันสองแท็บ**: แดชบอร์ดของฉัน (MyDashboardTab) กับ แดชบอร์ด RD
+   (RdDashboardTab) — เดิมไฟล์นี้ชื่อ RdDashboardTab.module.css แล้วแท็บ "ของฉัน"
+   ไป import ข้ามมาใช้ทั้งไฟล์ ชื่อจึงโกหก: คนแก้สไตล์ของ RD ไม่มีทางรู้ว่ากำลัง
+   แก้แดชบอร์ดของฉันไปด้วย (เปลี่ยนชื่อ 2026-08-05)
+   ⇒ แก้คลาสในไฟล์นี้ ต้องเปิดดูทั้งสองแท็บ · สไตล์ที่เป็นของแท็บใดแท็บหนึ่งจริง ๆ
+     ให้แยกไปไฟล์ของตัวเอง อย่าเติมเข้ามาที่นี่ */
 .page { min-width: 0; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: var(--space-4-5); }
 .documentColumn { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
