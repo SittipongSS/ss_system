@@ -165,12 +165,15 @@ test('ฝ่ายที่เลือกต้องเข้ากับห�
 test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
   const rd = kindsForDept('RD');
   const pc = kindsForDept('PC');
-  assert.ok(rd.includes('scent_dev') && rd.includes('price_f') && rd.includes('mockup'));
+  assert.ok(rd.includes('scent_dev') && rd.includes('product_dev') && rd.includes('price_f'));
   assert.ok(!rd.includes('price_pm') && !rd.includes('material_eta'));
   assert.ok(pc.includes('price_pm') && pc.includes('material_eta'));
   assert.ok(!pc.includes('scent_dev'));
   // ⭐ หัวข้อที่เลิกใช้แล้วต้องหายจากลิสต์ "เปิดใบใหม่" ของทุกฝ่าย…
   assert.ok(!rd.includes('scent_brief') && !pc.includes('scent_brief'));
+  // Mock-up ถูกแทนด้วย "พัฒนาผลิตภัณฑ์" — หมวดกับกลิ่นย้ายไปอยู่รายแถวแล้ว
+  assert.ok(!rd.includes('mockup') && !pc.includes('mockup'));
+  assert.match(legacyKindError('mockup'), /เลิกใช้แล้ว/);
   // …แต่ป้ายชื่อต้องยังอ่านได้ ไม่งั้นใบเก่าบน prod จะโชว์ key ดิบบนหน้าจอ
   assert.match(requestKindLabel('scent_brief'), /บรีฟ/);
   assert.match(legacyKindError('scent_brief'), /เลิกใช้แล้ว/);
