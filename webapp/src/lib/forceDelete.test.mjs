@@ -243,9 +243,9 @@ test('formulaForcePreview: เตือนว่าสินค้าจะก�
   assert.ok(notes.some((n) => n.includes('รอจัดระเบียบ')));
 });
 
-test('materialForcePreview: มีคนอ้าง → ลบได้ (mig 0209) แต่ต้องแยก "ลบ" กับ "ปลด" ให้ชัด', async () => {
+test('materialForcePreview: มีคนอ้าง → ลบได้ (mig 0210) แต่ต้องแยก "ลบ" กับ "ปลด" ให้ชัด', async () => {
   // ⭐ เดิมพรีวิวตอบ blocked ทันทีที่มีคนอ้าง → ผู้ดูแลระบบลบวัสดุไม่ได้เลยสักตัว
-  // (วัสดุเกือบทุกตัวเกิดจากบรรทัดคำร้อง จึงมีคนอ้างเสมอ) · 0209 เปิดช่อง force ให้
+  // (วัสดุเกือบทุกตัวเกิดจากบรรทัดคำร้อง จึงมีคนอ้างเสมอ) · 0210 เปิดช่อง force ให้
   // ทั้ง trigger รุ่นราคาและ FK RESTRICT ทั้งสองตัวแล้ว
   const byRequest = await materialForcePreview(
     stubCount({ 'dept_request_items:materialId': 3, 'material_price_revisions:materialId': 5 }),
