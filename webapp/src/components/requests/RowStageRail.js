@@ -153,18 +153,23 @@ export default function RowStageRail({
 
       {/* ราคาเป็นขั้นสุดท้ายของสายนี้ ไม่ใช่คำร้องใบใหม่ — แถบนี้คือครึ่งที่มองเห็นได้
           ของด่าน canPriceRow และเป็นตาข่ายของกับดักข้อ 11: แถวที่คอนเฟิร์มแล้วแต่ยัง
-          ไม่ใส่ราคาต้องไม่เงียบ ไม่งั้นใบค้างถาวรโดยไม่มีใครเห็น
-          ⚠️ **ยังไม่มีปุ่ม** — ทางใส่ราคาวันนี้ (/answer) ตรวจสิทธิ์จาก `kind` ของวัสดุ
-          และเขียน rev ผูกกับ materialId ซึ่งแถวสายพัฒนายังไม่มีทั้งคู่ ⇒ ปุ่มที่กดแล้ว
-          403 แย่กว่าไม่มีปุ่ม · ขั้นนี้ต่อจริงพร้อมสายพัฒนากลิ่นครบวง */}
+          ไม่ใส่ราคาต้องไม่เงียบ ไม่งั้นใบค้างถาวรโดยไม่มีใครเห็น */}
       {stage === "awaiting_price" && (
         <div className={styles.priceBar}>
           <span className={styles.priceText}>
             ลูกค้าคอนเฟิร์มแล้ว
             {row?.confirmedQty ? ` จำนวน ${Number(row.confirmedQty).toLocaleString("th-TH")}` : ""}
-            {" — เหลือขั้นใส่ราคาโดยฝ่าย"}
-            {request?.dept ? ` ${request.dept}` : "ปลายทาง"}
+            {" — เหลือขั้นใส่ราคา"}
           </span>
+          {canDept ? (
+            <Button size="sm" tone="primary" disabled={busy} onClick={() => onHop?.("price")}>
+              ใส่ราคา
+            </Button>
+          ) : (
+            <span className={styles.waiting}>
+              รอฝ่าย{request?.dept ? ` ${request.dept}` : "ปลายทาง"}ใส่ราคา
+            </span>
+          )}
         </div>
       )}
     </div>

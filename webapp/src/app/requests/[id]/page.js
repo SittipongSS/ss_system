@@ -35,6 +35,7 @@ import {
 import { requestItemStatusLabel } from "@/lib/requests/statuses";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
 import RowStageRail from "@/components/requests/RowStageRail";
+import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
@@ -105,6 +106,8 @@ export default function MaterialAskDetailPage() {
   // ⚠️ ทะเบียนกลิ่น **ทั้งก้อน** ไม่ใช่เฉพาะของลูกค้ารายนี้ — รหัสกลิ่นห้ามซ้ำทั้ง
   // บริษัท (scents_code_uk เป็น unique ทั้งตาราง) ⇒ เตือนซ้ำต้องเทียบกับทุกแถว
   const [allScents, setAllScents] = useState([]);
+  // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
+  const [pricing, setPricing] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
@@ -563,7 +566,9 @@ export default function MaterialAskDetailPage() {
                 canDept={canAnswer}
                 canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
                 busy={saving}
-                onHop={(hop, outcome) => openHop(item, hop, outcome)}
+                onHop={(hop, outcome) => (hop === "price"
+                  ? setPricing({ item, price: "", validUntil: "", note: "" })
+                  : openHop(item, hop, outcome))}
               />
             </div>
           )}
@@ -856,6 +861,47 @@ export default function MaterialAskDetailPage() {
                 }}
               >
                 ปิดเรื่อง
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ใส่ราคา — ขั้นสุดท้ายของสายงาน อยู่ในใบเดิม ไม่ใช่คำร้องใบใหม่
+          ⚠️ ราคาเดียว ไม่มีชั้นจำนวน (มติผู้ใช้): หัวน้ำหอมคิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
+      <Modal
+        open={!!pricing} onClose={() => setPricing(null)} size="sm" dismissible={!saving}
+        title={pricing ? `ใส่ราคา — ${pricing.item.label}` : ""}
+      >
+        {pricing && (
+          <>
+            <div className="form-group">
+              <label htmlFor="row-price">ราคา (฿/กก.)</label>
+              <Input
+                id="row-price" type="number" min="0" step="any" mono
+                value={pricing.price} disabled={saving}
+                onChange={(e) => setPricing({ ...pricing, price: e.target.value })}
+              />
+              <p className={styles.fieldHint}>
+                ราคานี้เข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่นตัวนี้
+                {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}
+                {" — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ"}
+              </p>
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" onClick={() => setPricing(null)} disabled={saving}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !String(pricing.price ?? "").trim()}
+                onClick={async () => {
+                  const done = await call(`/items/${pricing.item.id}/price`, {
+                    method: "POST",
+                    body: JSON.stringify({ price: pricing.price, note: pricing.note || null }),
+                  }, "บันทึกราคาเข้าทะเบียนแล้ว");
+                  if (done) setPricing(null);
+                }}
+              >
+                บันทึกราคา
               </Button>
             </div>
           </>
