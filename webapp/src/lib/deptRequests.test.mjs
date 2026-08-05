@@ -89,12 +89,15 @@ test('สิ่งที่ต้องผูกต่างกันตาม�
   // ⭐ รอบแรกบังคับโครงการ+ดีลทุกหัวข้อเท่ากันหมด · รอบสองผู้ใช้แก้ให้ตรงงานจริง:
   //   ขอราคา = ไม่ผูกดีล (กลิ่น/สูตรผูกลูกค้าอยู่แล้ว · วัสดุเป็นราคากลาง)
   //   บรีฟกลิ่น = ผูก SO (ค่าบริการ — ยืนยันกับ SCENT_TEMPLATE ขั้น 4 → 6)
-  //   Mock-up = ผูกโครงการ+ดีล+กลิ่น+หมวดสินค้า
+  //   Mock-up = ผูกโครงการ+ดีล+กลิ่น
+  // ⚠️ เคยผูก "หมวดสินค้า" ด้วย — mig 0204 DROP `dept_requests.productTypeId` ทิ้ง
+  // ค่าที่กรอกจึงไม่มีที่เก็บ ⇒ ถอดออก (บังคับกรอกของที่เก็บไม่ได้ = หลอกผู้ใช้)
+  // หมวดสินค้ากลับมาเป็น **รายแถว** ตอนหัวข้อ "พัฒนาผลิตภัณฑ์" มาแทน Mock-up
   assert.deepEqual(requestNeeds('price_f'), ['scent']);
   assert.deepEqual(requestNeeds('price_fb'), ['formula']);
   assert.deepEqual(requestNeeds('price_pm'), []);
   assert.deepEqual(requestNeeds('scent_brief'), ['salesOrder']);
-  assert.deepEqual(requestNeeds('mockup'), ['project', 'deal', 'scent', 'productType']);
+  assert.deepEqual(requestNeeds('mockup'), ['project', 'deal', 'scent']);
   assert.deepEqual(requestNeeds('info'), ['project', 'deal']);
   // ⚠️ ขอราคาต้องไม่บังคับดีลอีกแล้ว — regression ที่สำคัญที่สุดของรอบนี้
   for (const kind of ['price_f', 'price_fb', 'price_pm']) {
@@ -113,10 +116,9 @@ test('ด่านตอนสร้าง: ขอราคาส่งได้
   // บรีฟกลิ่น: ไม่มี SO = ตก และข้อความต้องบอกเหตุผล (ค่าบริการ) ไม่ใช่แค่ "ต้องเลือก"
   assert.match(requestShapeError('scent_brief', { title: 'บรีฟ' }), /ใบสั่งขาย/);
   assert.equal(requestShapeError('scent_brief', { title: 'บรีฟ', salesOrderId: 'SO-1' }), null);
-  // Mock-up ต้องครบทั้งสี่ — ไล่ทีละข้อว่าข้อความตรงกับของที่ขาด
-  const mock = { title: 'ขอ Mock-up', projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1', productTypeId: '6' };
+  // Mock-up ต้องครบทั้งสาม — ไล่ทีละข้อว่าข้อความตรงกับของที่ขาด
+  const mock = { title: 'ขอ Mock-up', projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1' };
   assert.equal(requestShapeError('mockup', mock), null);
-  assert.match(requestShapeError('mockup', { ...mock, productTypeId: '' }), /ประเภทสินค้า/);
   assert.match(requestShapeError('mockup', { ...mock, scentId: '' }), /กลิ่น/);
   assert.match(requestShapeError('mockup', { ...mock, projectId: '' }), /โครงการ/);
 });
@@ -481,7 +483,7 @@ test('requestFormBlocker: ปุ่มส่งกับข้อความเ
   assert.equal(requestFormBlocker({ ...brief, salesOrderId: 'SO-1' }), null);
   const mock = {
     dept: 'RD', kind: 'mockup', title: 'ขอ Mock-up ขวด 30ml',
-    projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1', productTypeId: '6',
+    projectId: 'PRJ-1', dealId: 'D-1', scentId: 'SCT-1',
   };
   assert.equal(requestFormBlocker(mock), null);
   assert.match(requestFormBlocker({ ...mock, dealId: '' }), /ดีล/);

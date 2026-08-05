@@ -49,10 +49,10 @@ export const REQUEST_KINDS = {
   mockup: {
     label: 'ขอ Mock-up',
     dept: 'RD', scope: 'MU', hasItems: false,
-    // อ้างกลิ่นที่ลูกค้ามีอยู่ + ประเภทสินค้าที่จะขึ้นตัวอย่าง
-    // ⭐ ประเภทสินค้าอ้าง **หมวดสินค้า** (product_types) ไม่ใช่ `productId` เพราะ
-    // ตอนขอ mockup สินค้ายังไม่มีในระบบ — mockup มาก่อนสินค้า
-    needs: ['project', 'deal', 'scent', 'productType'],
+    // ⚠️ เคยบังคับ `productType` ด้วย — mig 0204 DROP `dept_requests.productTypeId`
+    // ทิ้งไปแล้ว ค่าที่กรอกจึงไม่มีที่เก็บ · บังคับกรอกของที่เก็บไม่ได้ = หลอกผู้ใช้
+    // หมวดสินค้ากลับมาเป็น **รายแถว** ตอนหัวข้อ "พัฒนาผลิตภัณฑ์" มาแทน mockup
+    needs: ['project', 'deal', 'scent'],
     stepKey: 'npd-15', dealType: 'NPD',
     hint: 'ขอตัวอย่างจริงจาก RD — อ้างกลิ่นที่ลูกค้ามีและประเภทสินค้าที่จะขึ้น',
   },
@@ -104,7 +104,6 @@ export const REQUEST_NEEDS = {
   salesOrder: { field: 'salesOrderId', error: 'ต้องเลือกใบสั่งขาย (SO) ที่ครอบค่าบริการออกแบบกลิ่น' },
   scent: { field: 'scentId', error: 'ต้องเลือกกลิ่นจากทะเบียน' },
   formula: { field: 'formulaId', error: 'ต้องเลือกสูตรจากทะเบียน' },
-  productType: { field: 'productTypeId', error: 'ต้องเลือกประเภทสินค้าที่จะขึ้นตัวอย่าง' },
 };
 
 export const REQUEST_KIND_LIST = Object.keys(REQUEST_KINDS);
