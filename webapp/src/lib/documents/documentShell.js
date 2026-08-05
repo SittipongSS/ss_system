@@ -24,6 +24,38 @@ export const money = (v) => Number(v || 0).toLocaleString('th-TH', {
 });
 export const val = (v) => (v === null || v === undefined || v === '' ? '-' : esc(v));
 
+/* ชื่อไฟล์เอกสาร = รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล (มติผู้ใช้ 2026-08-05) — เอกสารทุกชนิด
+   ใช้รูปเดียวกัน ไฟล์ที่ลูกค้า/ฝ่ายบัญชีได้รับจะได้เรียงและค้นหาได้เหมือนกันหมด
+
+   ใช้เป็น `<title>` ของหน้าเอกสารด้วย เพราะเบราว์เซอร์เอา document.title ไปตั้งเป็นชื่อ
+   ไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" — ตั้งที่ header อย่างเดียวไม่พอ ทางนั้นไม่ผ่าน API
+
+   ส่วนที่ว่างถูกข้ามไป (ใบที่ไม่ผูกดีล/ยังไม่มีลูกค้า) จะได้ไม่เหลือ "_" ลอย ๆ ท้ายชื่อ
+   และตัดอักขระที่ตั้งเป็นชื่อไฟล์ไม่ได้ทิ้ง
+
+   ⚠️ จำกัดความยาว "ต่อส่วน" อย่างเดียวไม่พอ — ระบบไฟล์ส่วนใหญ่จำกัด 255 ไบต์ แต่ภาษา
+   ไทยกินที่ 3 ไบต์/ตัว สามส่วนที่ยาวเต็มเพดานรวมกันทะลุ 255 ได้สบาย จึงตัดตามไบต์รวม
+   อีกชั้น และตัดทีละ "ตัวอักษร" ไม่ใช่ทีละไบต์ ไม่งั้นจะได้ตัวอักษรครึ่งตัวท้ายชื่อ */
+const FILE_NAME_PART_MAX = 60;
+// เผื่อที่ให้นามสกุลไฟล์ + ตัวเลขที่เบราว์เซอร์เติมเวลาชื่อชนกัน (" (1)")
+const FILE_NAME_BYTES_MAX = 180;
+const byteLength = (value) => new TextEncoder().encode(value).length;
+
+const filePart = (value) => String(value ?? '')
+  .replace(/[\\/:*?"<>|]/g, ' ')  // อักขระต้องห้ามของ Windows/POSIX
+  .replace(/[\s_]+/g, ' ')
+  .trim()
+  .slice(0, FILE_NAME_PART_MAX)
+  .trim();
+
+export function documentFileName(...parts) {
+  const joined = parts.map(filePart).filter((part) => part && part !== '-').join('_');
+  if (!joined) return 'document';
+  let out = joined;
+  while (byteLength(out) > FILE_NAME_BYTES_MAX) out = [...out].slice(0, -1).join('');
+  return out.replace(/[\s_]+$/, '') || 'document';
+}
+
 // สี accent ต่อชนิดเอกสาร — ค่าเป็น hex เพราะเอกสารพิมพ์เป็นไฟล์ self-contained
 // ใช้ตัวแปรธีมของแอปไม่ได้ · --doc-accent คุมสีชื่อเอกสาร (h1) กับเส้นเน้น
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({

@@ -23,6 +23,7 @@ import {
   resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
 import {
+  documentFileName,
   documentFooter,
   documentHeader,
   esc,
@@ -428,7 +429,14 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
     </article>`;
 
   return renderDocumentHTML({
-    title: `${displayCode} — เอกสาร Project Timeline`,
+    // title = ชื่อไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" (รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล)
+    // ไทม์ไลน์ครอบได้หลายดีล — ใบที่ครอบดีลเดียวได้ชื่อดีลนั้น หลายดีลใช้ชื่อโครงการแทน
+    // เพราะเอาชื่อดีลมาต่อกันทั้งหมดจะยาวจนใช้เป็นชื่อไฟล์ไม่ได้
+    title: documentFileName(
+      displayCode,
+      customerName,
+      dealTitles.length === 1 ? dealTitles[0] : (project.name || ''),
+    ),
     accentKey: resolveDocumentAccentKey(standard, TIMELINE_KEY),
     orientation: 'landscape',
     variantClass: 'timeline',
