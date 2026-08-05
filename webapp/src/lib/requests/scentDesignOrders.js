@@ -1,0 +1,85 @@
+// ── ใบสั่งขายที่เป็น "งานออกแบบกลิ่น" — ด่านล้วน ไม่แตะ DB ────────────────
+//
+// ⭐ **ด่านหน้าประตูของคำร้องพัฒนากลิ่น** (มติผู้ใช้ 2026-08-06) — ฟอร์มเขียนว่า
+// "ใบสั่งขายออกแบบกลิ่น" แต่ของเดิมให้เลือก SO ได้ทุกใบ รวมใบขายสินค้าที่ไม่เกี่ยว
+// กับการออกแบบกลิ่นเลย ⇒ ไฟล์นี้คือสิ่งที่ทำให้ป้ายกับของจริงตรงกัน
+//
+// ⚠️ **หมวด `03` ทั้งก้อนใช้ไม่ได้** — หมวดค่าออกแบบมี 5 รายการ (ซีด 0007) แต่
+// `03-003` ออกแบบบรรจุภัณฑ์ และ `03-004` ออกแบบ CI ไม่ใช่งานกลิ่น ⇒ ระบุเป็นชุด
+//
+// ⭐ **จำนวนกลิ่นมาจาก `qty` ของบรรทัดนี้** ⇒ ใบที่ผ่านด่านย่อมมีจำนวนกลิ่นเสมอ
+// โดยโครงสร้าง ไม่ต้องให้ใครมากรอกซ้ำแล้วขัดกับสิ่งที่ลูกค้าจ่ายไปแล้ว
+
+// 03-001 CERTIFIED CO-CREATION SCENT DESIGN · 03-002 SIGNATURE SCENT DESIGN
+// 03-005 SCENT DRESSING (ออกแบบกลิ่นเสริมกลิ่นแกน)
+export const SCENT_DESIGN_CATEGORIES = ['03-001', '03-002', '03-005'];
+
+const CATEGORY_RE = /(\d{2}-\d{3})$/;
+
+/**
+ * รหัสหมวดจากรหัสสินค้า — `FG-321-03-002` → `03-002` · คืน null เมื่ออ่านไม่ออก
+ *
+ * ⚠️ **ทางรอง ไม่ใช่ทางหลัก** — ทางหลักคือ `line.categoryCode` ที่ผู้เรียก resolve มา
+ * จาก `productId` → `products` · การจับคู่ด้วยข้อความเป็นโรคประจำถิ่นของ repo นี้
+ * (mig 0171 บันทึกไว้ว่ามีสินค้า 10 แถวที่เอาชื่อกลิ่นไปกรอกช่องชื่อสูตร) แต่บรรทัด
+ * ที่ไม่ผูก `productId` มีจริงบน prod ⇒ ไม่มีทางรองก็อ่านใบนั้นไม่ออกเลย
+ */
+export function categoryCodeFromProductCode(code) {
+  const found = CATEGORY_RE.exec(String(code ?? '').trim());
+  return found ? found[1] : null;
+}
+
+// รหัสหมวดของบรรทัด — ของที่ resolve มาแล้วชนะรหัสที่แกะจากข้อความเสมอ
+export function lineCategoryCode(line = {}) {
+  if (line.categoryCode) return String(line.categoryCode);
+  return categoryCodeFromProductCode(line.fgCode)
+    || categoryCodeFromProductCode(line.description);
+}
+
+export const isScentDesignLine = (line) =>
+  SCENT_DESIGN_CATEGORIES.includes(lineCategoryCode(line) || '');
+
+export const scentDesignLines = (lines = []) => lines.filter(isScentDesignLine);
+
+/**
+ * จำนวนกลิ่นที่ใบนี้ขาย — รวม `qty` ของทุกบรรทัดออกแบบกลิ่น · คืน null เมื่ออ่านไม่ได้
+ *
+ * ⚠️ ต้องเป็น **จำนวนเต็มบวก** — `qty` เป็น numeric ที่ PostgREST ส่งมาเป็นสตริง และ
+ * เศษทศนิยมแปลว่าใบนั้นขายอย่างอื่นที่ไม่ใช่ "จำนวนกลิ่น" ⇒ เดาต่อไม่ได้ ต้องคืน null
+ * ให้หน้าจอบอกผู้ใช้ ดีกว่าปัดเศษเงียบ ๆ แล้วได้บล็อกบรีฟผิดจำนวน
+ */
+export function scentCountForOrder(lines = []) {
+  const design = scentDesignLines(lines);
+  if (!design.length) return null;
+  let total = 0;
+  for (const line of design) {
+    const qty = Number(line.qty);
+    if (!Number.isInteger(qty) || qty <= 0) return null;
+    total += qty;
+  }
+  return total;
+}
+
+/**
+ * เปิดคำร้องพัฒนากลิ่นบนใบนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
+ *
+ * ⚠️ **ข้อความบอกทางออกเสมอ** — "เลือกใบอื่น" ไม่ช่วยคนที่มีใบเดียวในมือ
+ */
+export function scentDesignOrderError(order, lines = [], { usedByRequestNo = null } = {}) {
+  if (!order) return 'ต้องเลือกใบสั่งขาย';
+  // มติผู้ใช้: ต้องอนุมัติแล้ว ไม่ใช่แค่มีอยู่ — ออกแบบกลิ่นมีค่าบริการ
+  if (order.status !== 'approved') {
+    return 'ใบสั่งขายต้องอนุมัติแล้วก่อนจึงเปิดบรีฟกลิ่นได้';
+  }
+  if (!scentDesignLines(lines).length) {
+    return 'ใบสั่งขายนี้ไม่มีบรรทัดงานออกแบบกลิ่น — ต้องเป็นใบที่ขายบริการออกแบบกลิ่น';
+  }
+  // ⭐ 1 SO : 1 PDR ตายตัว (มติผู้ใช้) — อยากได้เพิ่มต้องออกใบสั่งขายใหม่
+  if (usedByRequestNo) {
+    return `ใบสั่งขายนี้เปิดคำร้องไปแล้ว (${usedByRequestNo}) — ขอเพิ่มต้องออกใบสั่งขายใหม่`;
+  }
+  if (scentCountForOrder(lines) == null) {
+    return 'อ่านจำนวนกลิ่นจากใบสั่งขายไม่ได้ — จำนวนต้องเป็นจำนวนเต็มบวก';
+  }
+  return null;
+}
