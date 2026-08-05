@@ -44,6 +44,10 @@ export default function NewRequestPage() {
   const returnTo = back && back.startsWith("/") && !back.startsWith("//") ? back : "/requests";
 
   const [form, setForm] = useState(() => emptyRequestForm(defaults));
+  // ⭐ สองขั้น: เลือกฝ่าย+หัวข้อให้จบ → กดแล้วค่อยกางฟอร์มของหัวข้อนั้น
+  // มาจากลิงก์ที่ระบุหัวข้อมาแล้ว (เช่นจากหน้าดีล) = ข้ามขั้นแรกไปเลย ไม่ต้องกดซ้ำ
+  // สิ่งที่ผู้ใช้เพิ่งเลือกไว้แล้ว
+  const [revealed, setRevealed] = useState(!!defaults.kind);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -110,19 +114,49 @@ export default function NewRequestPage() {
           deferAttachments
           // เหตุผลที่ยังบันทึกไม่ได้ย้ายไปอยู่ติดปุ่ม (ด่านตัวเดียวกัน คนละที่วาง)
           showBlocker={false}
+          revealed={revealed}
         />
 
-        <div className={`action-bar ${styles.actions}`}>
-          {/* ⚠️ ข้อความนี้มาจาก `requestFormBlocker` ตัวเดียวกับที่ปิดปุ่ม — ห้าม
-              เขียนเงื่อนไขเพิ่มตรงนี้ ปุ่มจางแบบไม่บอกเหตุผลคือบั๊กที่เพิ่งปิดไป */}
-          {blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
-          <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
-            ยกเลิก
-          </Button>
-          <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
-            บันทึกร่าง
-          </Button>
-        </div>
+        {/* ── ขั้นที่ 1: ยังไม่กางฟอร์ม ────────────────────────────────────
+            ปุ่มเดียวคือ "แสดงฟอร์ม" — ยังไม่มี "บันทึกร่าง" ให้กด เพราะยังไม่มีอะไร
+            ให้บันทึกนอกจากฝ่ายกับหัวข้อ · แสดงสองปุ่มพร้อมกันจะเป็นทางเลือกลวง */}
+        {!revealed ? (
+          <div className={`action-bar ${styles.actions}`}>
+            {!form.kind && (
+              <span className={styles.blocker}>เลือกฝ่ายและหัวข้อก่อน</span>
+            )}
+            <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
+              ยกเลิก
+            </Button>
+            <Button tone="accent" disabled={!form.kind} onClick={() => setRevealed(true)}>
+              แสดงฟอร์ม
+            </Button>
+          </div>
+        ) : (
+          <div className={`action-bar ${styles.actions}`}>
+            {/* ⚠️ ข้อความนี้มาจาก `requestFormBlocker` ตัวเดียวกับที่ปิดปุ่ม — ห้าม
+                เขียนเงื่อนไขเพิ่มตรงนี้ ปุ่มจางแบบไม่บอกเหตุผลคือบั๊กที่เพิ่งปิดไป */}
+            {blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
+            {/* ⭐ ทางกลับต้อง **ล้างฟอร์มทิ้ง** — เปลี่ยนหัวข้อแล้วช่องเดิมค้างอยู่คือ
+                ค่าที่ถูกส่งไปกับคำร้องหัวข้อใหม่โดยไม่มีใครเห็น · ผู้ใช้เห็นฟอร์มหาย
+                ทั้งชุดจึงรู้ว่าต้องกรอกใหม่ ไม่ใช่เดาว่าอะไรค้างอะไรไม่ค้าง */}
+            <Button
+              variant="quiet" disabled={saving}
+              onClick={() => {
+                setForm(emptyRequestForm({ ...defaults, dept: form.dept, kind: form.kind }));
+                setRevealed(false);
+              }}
+            >
+              เปลี่ยนหัวข้อ
+            </Button>
+            <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
+              ยกเลิก
+            </Button>
+            <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
+              บันทึกร่าง
+            </Button>
+          </div>
+        )}
       </div>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
