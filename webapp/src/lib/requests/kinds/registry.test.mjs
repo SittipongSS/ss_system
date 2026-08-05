@@ -4,6 +4,7 @@
 // หัวข้อย้ายบ้านได้ แต่ชุดหัวข้อ ฝ่ายเจ้าของ และธงของแต่ละตัวต้องเท่าเดิมเป๊ะ
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { KINDS_BY_OWNER, REQUEST_KINDS, assertKind } from './registry.js';
 import {
   REQUEST_DEPTS, REQUEST_KIND_LIST, kindsForDept, requestKindFamily,
@@ -109,4 +110,39 @@ test('ด่านทะเบียนตีกลับหัวข้อท�
 
 test('ด่านทะเบียนจับ key ซ้ำ — สองฝ่ายตั้งชื่อชนกันได้จริงเมื่อแยกโฟลเดอร์แล้ว', () => {
   assert.throws(() => assertKind(OK, new Set(['x'])));
+});
+
+// ── ข้อความบนฟอร์มเป็นของหัวข้อ ไม่ใช่ของตัวฟอร์ม ────────────────────────
+test('ทุกหัวข้อมีข้อความครบทุกช่อง — ไม่มีตัวไหนตกไปใช้ค่ากลางโดยไม่ตั้งใจ', () => {
+  const KEYS = ['titleLabel', 'titlePlaceholder', 'bodyLabel', 'bodyPlaceholder'];
+  for (const [kind, meta] of Object.entries(REQUEST_KINDS)) {
+    for (const key of KEYS) assert.ok(meta.form?.[key], `${kind}: ขาด form.${key}`);
+  }
+  // หัวข้อที่ยังเปิดใบใหม่ได้ต้องมี placeholder **ของตัวเอง** ไม่ใช่ค่ากลาง
+  // (บั๊กเดิม: ข้อความผูกกับ scent_brief/mockup ซึ่งเปิดใบใหม่ไม่ได้แล้ว ⇒ หัวข้อที่
+  //  ใช้จริงทุกตัวขึ้น "อธิบายสิ่งที่ต้องการให้ฝ่ายปลายทางทำ" เหมือนกันหมด)
+  // ข้อความกลางจริง ๆ ใน FORM_DEFAULTS — ไม่ใช่ของหัวข้อไหน
+  const GENERIC_BODY = 'อธิบายสิ่งที่ต้องการให้ฝ่ายปลายทางทำ';
+  for (const dept of REQUEST_DEPTS) {
+    for (const kind of kindsForDept(dept)) {
+      assert.notEqual(
+        REQUEST_KINDS[kind].form.titlePlaceholder, 'สรุปสั้น ๆ ว่าขออะไร',
+        `${kind}: ยังใช้ placeholder กลางของชื่อเรื่อง`,
+      );
+      assert.notEqual(
+        REQUEST_KINDS[kind].form.bodyPlaceholder, GENERIC_BODY,
+        `${kind}: ยังใช้ placeholder กลางของรายละเอียด`,
+      );
+    }
+  }
+});
+
+test('ฟอร์มไม่ตัดสินอะไรจากชื่อหัวข้อเองอีกแล้ว', () => {
+  // ⚠️ ratchet: `kind === '...'` ในฟอร์มคือทางที่บั๊กเดิมเข้ามา — หัวข้อใหม่ที่ไม่มีชื่อ
+  // อยู่ในเงื่อนไขจะตกไปใช้ค่ากลางโดยไม่มีอะไรเตือน · ทุกอย่างต้องอ่านจากทะเบียน
+  const src = readFileSync('src/components/requests/RequestForm.js', 'utf8');
+  const hits = src.split('\n')
+    .filter((line) => !line.trimStart().startsWith('//'))
+    .filter((line) => /\bkind === ["']/.test(line) && !/item\.kind/.test(line));
+  assert.deepEqual(hits, []);
 });

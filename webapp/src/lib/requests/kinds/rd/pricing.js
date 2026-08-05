@@ -10,6 +10,13 @@ const priceF = {
   label: 'ขอราคาหัวน้ำหอม (F)',
   dept: 'RD', scope: 'RM', hasItems: true, hasTiers: false,
   needs: ['scent'],
+  form: {
+    titlePlaceholder: 'เช่น ขอราคาหัวน้ำหอม SC-2608',
+    bodyLabel: 'รายละเอียด',
+    bodyPlaceholder: 'จำนวนที่จะสั่ง · กำหนดที่ต้องใช้ราคา',
+    itemsLabel: 'รายการที่ขอราคา',
+    scentLabel: 'กลิ่นที่ลูกค้าคอนเฟิร์ม',
+  },
   hint: 'อ้างกลิ่นที่ลูกค้าคอนเฟิร์มแล้ว — ราคาเดียว ไม่มีชั้นจำนวน',
 };
 
@@ -18,6 +25,12 @@ const priceFb = {
   label: 'ขอราคาเนื้อสาร (FB)',
   dept: 'RD', scope: 'RM', hasItems: true, hasTiers: false,
   needs: ['formula'],
+  form: {
+    titlePlaceholder: 'เช่น ขอราคาเนื้อสารเทียนหอม',
+    bodyLabel: 'รายละเอียด',
+    bodyPlaceholder: 'จำนวนที่จะสั่ง · กำหนดที่ต้องใช้ราคา',
+    itemsLabel: 'รายการที่ขอราคา',
+  },
   hint: 'อ้างสูตรที่ลูกค้าคอนเฟิร์มแล้ว — ราคาเดียว ไม่มีชั้นจำนวน',
 };
 
