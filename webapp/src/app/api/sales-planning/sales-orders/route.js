@@ -17,6 +17,28 @@ export const GET = withUser(async ({ user, supabase }) => {
     .order('createdAt', { ascending: false });
   if (error) return fail(error.message, 500);
 
+  // 🐞 **บรรทัดของใบต้องมาด้วย** — หน้าเปิดคำร้องพัฒนากลิ่นอ่าน `so.lines` เพื่อรู้ว่า
+  // ใบไหนเป็นงานออกแบบกลิ่น (หมวด 03-001/002/005) และขายกี่กลิ่น · ก่อนหน้านี้ API
+  // ไม่เคยส่งมา ⇒ `lines` เป็น undefined เสมอ ⇒ จำนวนกลิ่นไม่ขึ้นและบล็อกบรีฟไม่งอก
+  // สักก้อน = เลือกใบสั่งขายแล้วทำอะไรต่อไม่ได้เลย (ผู้ใช้เจอเองบนจอ)
+  //
+  // ⚠️ เอาเฉพาะช่องที่ผู้เรียกใช้จริง — ทั้งแถวมีราคาต่อหน่วยและส่วนลดซึ่งไม่เกี่ยวกับ
+  // คำร้อง ยิ่งดึงมามาก ยิ่งมีของให้หลุดออกทาง response โดยไม่ตั้งใจ
+  const orderIds = (orders || []).map((row) => row.id);
+  const { data: lines, error: lineError } = orderIds.length
+    ? await supabase.from('sales_order_lines')
+      .select('id, salesOrderId, qty, fgCode, description, sortOrder')
+      .in('salesOrderId', orderIds)
+      .order('sortOrder', { ascending: true })
+    : { data: [], error: null };
+  if (lineError) return fail(lineError.message, 500);
+  const linesByOrder = new Map();
+  for (const line of lines || []) {
+    const list = linesByOrder.get(line.salesOrderId) || [];
+    list.push(line);
+    linesByOrder.set(line.salesOrderId, list);
+  }
+
   const dealIds = [...new Set((orders || []).map((row) => row.dealId).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
@@ -32,7 +54,12 @@ export const GET = withUser(async ({ user, supabase }) => {
   const dealById = new Map((deals || []).map((row) => [row.id, row]));
   const quoteById = new Map((quotes || []).map((row) => [row.id, row]));
   const visible = (orders || [])
-    .map((row) => ({ ...row, deal: dealById.get(row.dealId) || null, quotation: quoteById.get(row.quotationId) || null }))
+    .map((row) => ({
+      ...row,
+      lines: linesByOrder.get(row.id) || [],
+      deal: dealById.get(row.dealId) || null,
+      quotation: quoteById.get(row.quotationId) || null,
+    }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 
   return ok(visible);
