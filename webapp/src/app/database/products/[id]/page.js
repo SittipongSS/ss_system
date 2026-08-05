@@ -22,7 +22,7 @@ import { fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
 import { statusMeta } from "@/lib/excise/workflow";
 import { apiCache } from "@/lib/apiCache";
@@ -210,6 +210,13 @@ export default function ProductDetails() {
   // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
   const catFlags = categoryFlags(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const isExciseCat = catFlags.isExcise;
+  // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
+  // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
+  const unit = product.saleUnit || DEFAULT_SALE_UNIT;
+  // ราคาขายปลีกใช้กติกาเดียวกับฟอร์ม (กลุ่ม 01 หรือหมวดที่ติ๊กสรรพสามิต) — เดิมหน้านี้
+  // ผูกกับ isExcise อย่างเดียว ⇒ ของที่กรอกไปตามกติกาฟอร์มจะหายจากจอ
+  const showRetailPrice = showsRetailPrice(product.fgCode, productTypes)
+    || product.retailPriceIncVat != null;
 
   // แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต — เฉพาะผู้เห็นระบบภาษี; helper คืน null เอง
   // เมื่อไม่เข้าข่าย (หมวดอื่น/พักใช้/ยกเว้นรายตัว/approved แล้ว — rail ขวาโชว์อยู่)
@@ -407,17 +414,28 @@ export default function ProductDetails() {
                 <span className="font-semibold text-[var(--text)] text-sm">{product.saleUnit || DEFAULT_SALE_UNIT}</span>
               </div>
               <div>
-                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
+                <span className="text-[var(--text-3)] block mb-1">จำนวนต่อลัง (Per Case)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ${unit}/ลัง` : "—"}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
               </div>
-              {isExciseCat && (
+              {showRetailPrice && (
                 <div>
-                  <span className="text-[var(--text-3)] block mb-1">ราคาขายปลีก (ฐานคำนวณสรรพสามิต)</span>
+                  <span className="text-[var(--text-3)] block mb-1">
+                    ราคาขายปลีก{isExciseCat ? " (ฐานคำนวณสรรพสามิต)" : ""}
+                  </span>
                   <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.retailPriceIncVat)}</span>
+                </div>
+              )}
+              {/* ราคาผลิตเคยโผล่เฉพาะการ์ดต้นทุนซึ่งขึ้นเฉพาะหมวดสรรพสามิต ⇒ สินค้าหมวด
+                  อื่นกรอกราคาผลิตได้แต่ไม่มีที่ไหนให้ดู ต้องเปิดโมดัลแก้ถึงจะรู้
+                  (การ์ดต้นทุน+กำไรยังเป็นของหมวดสรรพสามิตเหมือนเดิมตามมติ 2026-07-19) */}
+              {canSeeCost && (
+                <div>
+                  <span className="text-[var(--text-3)] block mb-1">ราคาผลิต (ต่อ{unit})</span>
+                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.costPrice)}</span>
                 </div>
               )}
             </div>
@@ -428,7 +446,7 @@ export default function ProductDetails() {
           {canSeeCost && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              {canSeeMargin ? "โครงสร้างต้นทุนโรงงานและกำไรต่อหน่วย (Cost & Profit Breakdown)" : "ราคาทุนโรงงานต่อหน่วย (Cost Price)"}
+              {canSeeMargin ? `โครงสร้างต้นทุนโรงงานและกำไรต่อ${unit} (Cost & Profit Breakdown)` : `ราคาทุนโรงงานต่อ${unit} (Cost Price)`}
             </h3>
             <div className={canSeeMargin ? "grid grid-cols-1 md:grid-cols-2 gap-6 text-xs" : "text-xs"}>
               <div className="space-y-3">
@@ -452,7 +470,7 @@ export default function ProductDetails() {
               </div>
               {canSeeMargin && (
                 <div className="flex flex-col justify-between bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)]">
-                  <span className="text-[var(--green)] font-semibold block text-[10px] uppercase tracking-wider">กำไรของโรงงานต่อชิ้น (Factory Profit)</span>
+                  <span className="text-[var(--green)] font-semibold block text-[10px] uppercase tracking-wider">กำไรของโรงงานต่อ{unit} (Factory Profit)</span>
                   <div className="text-2xl font-bold font-mono text-[var(--green)] mt-2">{fmtMoney(product.factoryProfit)}</div>
                 </div>
               )}
@@ -580,7 +598,7 @@ export default function ProductDetails() {
                   <span className="font-semibold text-[var(--text)] font-mono">{fmtMoney(product.localTax)}</span>
                 </div>
                 <div className="bg-[var(--red-soft)] p-4 rounded-xl border border-[var(--border)] mt-4">
-                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อชิ้น (Total Tax Rate)</span>
+                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (Total Tax Rate)</span>
                   <div className="text-2xl font-bold font-mono text-[var(--red)] mt-1">{fmtMoney((product.exciseTax || 0) + (product.localTax || 0))}</div>
                 </div>
               </div>

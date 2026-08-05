@@ -19,8 +19,15 @@ export function mainCategoryOf(fgCode) {
 // ไม่ใช่ติ๊กเอาที่หน้าหมวดสินค้า · ถ้าถึงตอนนั้นให้ย้ายมาเป็นช่องติ๊กเหมือน isExcise
 export const RETAIL_PRICE_MAIN_CATEGORY = '01';
 
-export function showsRetailPrice(fgCode) {
-  return mainCategoryOf(fgCode) === RETAIL_PRICE_MAIN_CATEGORY;
+// 🐞 **หมวดที่ต้องเสียภาษีต้องกรอกราคาขายปลีกได้เสมอ** ไม่ว่าจะอยู่กลุ่มไหน:
+// ภาษีสรรพสามิตคิดจากราคาขายปลีก (products route: retailPriceExVat × 8%) ⇒ หมวดที่
+// ติ๊ก isExcise แต่ไม่ได้อยู่กลุ่ม 01 จะไม่มีช่องให้กรอก ⇒ retailPriceIncVat = 0 ⇒
+// **exciseTax = 0 เงียบ ๆ ทั้งที่ต้องเสียภาษี** = ยื่นภาษีขาดโดยไม่มีอะไรฟ้อง
+// จึงเป็น "กลุ่ม 01 **หรือ** หมวดที่ติ๊กสรรพสามิต" ไม่ใช่กลุ่ม 01 อย่างเดียว
+// (ผู้เรียกที่ยังไม่มีรายการหมวด ส่งมาไม่ได้ก็ได้ — จะเหลือกติกากลุ่ม 01 เหมือนเดิม)
+export function showsRetailPrice(fgCode, productTypes = []) {
+  if (mainCategoryOf(fgCode) === RETAIL_PRICE_MAIN_CATEGORY) return true;
+  return isExciseCategory(categoryOf(fgCode), productTypes);
 }
 
 // มติ 2026-07-20: ภาษีสรรพสามิต/จดแจ้ง อย. ยึด "ช่องติ๊กบนหมวดสินค้า"

@@ -59,3 +59,16 @@ test('FG ที่ยังพิมพ์ไม่ครบ/ไม่มีห�
   assert.equal(mainCategoryOf('FG-ABC-01-002-0001'), '01');
   assert.equal(mainCategoryOf('ไม่ใช่รหัส'), null);
 });
+
+// 🐞 หมวดที่ต้องเสียภาษีต้องมีช่องราคาขายปลีกเสมอ — ภาษีคิดจากราคานี้ ถ้าไม่มีช่อง
+// ให้กรอก ค่าจะเป็น 0 แล้วภาษีกลายเป็น 0 เงียบ ๆ ทั้งที่ต้องเสีย
+test('หมวดที่ติ๊กสรรพสามิต มีช่องราคาขายปลีกเสมอ ต่อให้อยู่คนละกลุ่มกับ 01', () => {
+  const types = [{ mainCategoryCode: '07', typeCode: '004', isExcise: true }];
+  assert.equal(showsRetailPrice('FG-ABC-07-004-0001'), false, 'ไม่ส่งรายการหมวด = กติกากลุ่ม 01 เหมือนเดิม');
+  assert.equal(showsRetailPrice('FG-ABC-07-004-0001', types), true);
+});
+
+test('หมวดที่ไม่ติ๊กสรรพสามิตและไม่ใช่กลุ่ม 01 ยังไม่มีช่องราคาขายปลีก', () => {
+  const types = [{ mainCategoryCode: '07', typeCode: '004', isExcise: false }];
+  assert.equal(showsRetailPrice('FG-ABC-07-004-0001', types), false);
+});
