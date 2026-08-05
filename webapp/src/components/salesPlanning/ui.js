@@ -18,6 +18,7 @@ export const initialDealForm = {
   customerId: "",
   customerName: "",
   projectId: "",
+  ownerId: "",   // ผู้รับผิดชอบ (AE) — ว่าง = ผู้สร้างเป็นเจ้าของเอง (server เติมให้)
   stage: "lead",
   dealType: "",  // SCENT | NPD | RE-ORDER — บังคับเลือกตอนสร้าง (ห้าม default NPD เงียบ ๆ:
                  // เดิม default NPD ทำให้คนกดสร้างโดยไม่เลือก → ได้ template ผิดประเภท มติ 2026-07-21)

@@ -17,6 +17,7 @@ import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
@@ -69,6 +70,9 @@ export default function LeadDetailPage() {
   }, []);
 
   const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  /* ผู้รับผิดชอบ (AE) ของดีลที่จะเปิดจากลีดนี้ — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook
+     ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
+  const dealOwners = useDealOwners(meId);
   const lifecycle = useMemo(
     () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
     [users, canCreateDeals, team],
@@ -321,6 +325,8 @@ export default function LeadDetailPage() {
         {/* ฟอร์มเดียวกับที่หน้ารายการลีดใช้ — ไม่ได้ก๊อปมา */}
         {dealOpen && (
           <DealCreateModal
+          owners={dealOwners.owners}
+          defaultOwnerId={dealOwners.defaultOwnerId}
             lead={lead}
             customers={dealOptions.customers}
             projects={dealOptions.projects}

@@ -7,6 +7,7 @@ import {
   dealForcePreview, cleanupDealOrphans,
 } from '@/lib/forceDelete';
 import { resolveProbability } from '@/lib/sales/dealProbability';
+import { validateDealOwner } from '@/lib/sales/dealOwner';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
@@ -80,8 +81,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = {
     updatedAt: new Date().toISOString(),
   };
-  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'lostReason', 'notes', 'ownerId', 'ownerName', 'team']) {
+  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'lostReason', 'notes', 'team']) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key];
+  }
+  /* เปลี่ยนผู้รับผิดชอบ — ด่านเดียวกับตอนสร้าง (lib/sales/dealOwner.js)
+     🐞 ของเดิม ownerId/ownerName ไหลจาก body ตรงเข้า patch: ปลอมชื่อได้ และยกดีลให้
+     คนที่แตะดีลของตัวเองไม่ได้ก็ได้ (ด่าน inSalesEditScope ข้างล่างตรวจแค่ว่า **ผู้แก้**
+     ยังเห็นแถวหลังแก้อยู่ไหม ไม่ได้ตรวจว่าผู้รับเป็นใคร) */
+  if ('ownerId' in body) {
+    const checked = await validateDealOwner(supabase, body.ownerId, user);
+    if (!checked.ok) return badRequest(checked.error);
+    patch.ownerId = checked.ownerId;
+    patch.ownerName = checked.ownerName;
+    if (checked.team) patch.team = checked.team;
   }
   // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน เพราะกุญแจระบบที่ flow อื่น
   // เขียนไว้ (acceptedQuotationId/wonDocType/wonMonth จาก accept_quotation RPC,
