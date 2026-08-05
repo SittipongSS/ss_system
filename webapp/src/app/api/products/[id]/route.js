@@ -15,6 +15,7 @@ import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
 import { chatCard, sendChat } from '@/lib/chat';
+import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
@@ -242,10 +243,14 @@ export async function PATCH(request, { params }) {
     if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   }
 
-  // Taxability is intrinsic to the category's isExcise flag (mig 0131 — auto
-  // rule, not re-parsed from fgCode and no hardcoded category code). LG
-  // override now lives on the registration, not the master product.
-  const isExciseTaxable = (await categoryFlagsOf(updated.categoryCode)).isExcise;
+  // ธง "เสียภาษีไหม": ค่าตั้งต้นจากธง isExcise ของหมวด (mig 0131 — ไม่ parse จาก
+  // fgCode ซ้ำ ไม่มีรหัสหมวดตายตัว) แต่ **การยกเว้นรายตัวของฝ่ายกฎหมายที่ตรึงไว้บน
+  // สินค้า (taxableOverride) ต้องอยู่รอดการแก้สเปค** — กติกาเดียวกับตอนสร้าง
+  // (resolveProductTaxable) · เขียนค่า override ใหม่ทำที่ทะเบียนสรรพสามิต ไม่ใช่ที่นี่
+  const isExciseTaxable = resolveProductTaxable({
+    taxableOverride: updated.taxableOverride,
+    autoTaxable: (await categoryFlagsOf(updated.categoryCode)).isExcise,
+  });
   updated.isExciseTaxable = isExciseTaxable;
   updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
   updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;

@@ -29,6 +29,18 @@ export const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 //
 // กฎที่ยึด = กฎเดียวกับ billedTaxLine ข้างล่าง: **ปัดต่อหน่วยก่อน แล้วคูณจำนวน**
 // เพื่อให้เอกสารกระทบยอดด้วยมือได้ (ภาษี/ชิ้น × จำนวน = รวมภาษี พอดี)
+// ── ธง "เสียภาษีไหม" ของสินค้าหนึ่งตัว ────────────────────────────────────
+// ค่าตั้งต้นมาจากธง isExcise ของหมวด (mig 0131) แต่ **การยกเว้น/บังคับรายตัวของฝ่าย
+// กฎหมาย (taxableOverride) ชนะเสมอ และต้องอยู่รอดการแก้สเปคทุกครั้ง**
+//
+// 🐞 บั๊กจริง: products PATCH เคยคำนวณธงนี้ใหม่จากหมวดล้วนทุกครั้งที่บันทึก ⇒ แก้แค่
+// ชื่อสินค้า override ก็หาย แล้ว product.exciseTax กลับมาไม่ใช่ 0 ซึ่ง soFiling ใช้เป็น
+// **อัตราจริงตอนสร้างใบยื่นจากใบสั่งขาย** ⇒ เก็บภาษีจากสินค้าที่ถูกยกเว้นไปแล้ว
+// โดยไม่มีใครสั่ง และไม่มีอะไรฟ้อง
+export function resolveProductTaxable({ taxableOverride, autoTaxable } = {}) {
+  return typeof taxableOverride === 'boolean' ? taxableOverride : !!autoTaxable;
+}
+
 export function exciseTaxLine({ exciseRatePerUnit, localTaxRatePerUnit, quantity } = {}) {
   const qty = Number(quantity) || 0;
   const excisePerUnit = round2(exciseRatePerUnit);
