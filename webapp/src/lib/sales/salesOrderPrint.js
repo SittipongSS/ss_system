@@ -104,6 +104,9 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     documentTitleTh: resolveDocumentTitleTh(standard, 'salesOrder'),
     documentLabel: 'ใบสั่งขาย',
     accentKey: resolveDocumentAccentKey(standard, 'salesOrder'),
+    // printable ที่แมปให้เครื่องยนต์ V4 ไม่มี deal ติดไปด้วย จึงส่งชื่อดีลมาตรง ๆ
+    // สำหรับประกอบชื่อไฟล์ (รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล)
+    dealTitle: order.deal?.title || '',
     documentNumber: order.orderNumber,
     dateLabel: 'วันที่ SO',
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',

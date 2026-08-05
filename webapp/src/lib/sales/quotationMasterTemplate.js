@@ -662,6 +662,7 @@ export function buildQuotationMasterPreview(
     standard: previewStandard,
     company: { ...BASE_QUOTE.company },
     customer,
+    dealTitle: BASE_QUOTE.references.dealTitle,
     references: { ...BASE_QUOTE.references },
     referenceRows: [
       { label: 'เลขที่โครงการ', value: BASE_QUOTE.references.projectCode },
@@ -855,6 +856,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       secondaryValue: options.secondaryValue !== undefined ? options.secondaryValue : (quote.validUntil ? fmtDate(quote.validUntil) : '-'),
     },
     customer,
+    // ชื่อดีลไว้ประกอบชื่อไฟล์ตอนบันทึก PDF (รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล) — เก็บเป็น
+    // field ของตัวเอง ไม่ให้ฝั่งเรนเดอร์ต้องไปงมเอาจาก referenceRows ซึ่งเป็นข้อมูลสำหรับ
+    // "แสดงผล" และลำดับ/คำเปลี่ยนได้ตลอด
+    dealTitle: options.dealTitle !== undefined ? options.dealTitle : quotationDealTitle(quote),
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
       // "โครงการ" บนเอกสาร = ดีล (มติผู้ใช้ 2026-08-05) — ลูกค้ามองงานที่สั่งเป็นโครงการ

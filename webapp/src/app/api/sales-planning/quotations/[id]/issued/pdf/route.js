@@ -1,3 +1,4 @@
+import { documentFileName } from '@/lib/documents/documentShell';
 import { withUser, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import {
@@ -34,7 +35,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data: snapshots, error } = await supabase
     .from('issued_documents')
-    .select('id, documentNumber, issueSequence, contentFingerprint')
+    .select('id, documentNumber, issueSequence, contentFingerprint, resolvedPayload')
     .eq('documentType', 'quotation')
     .eq('documentId', id)
     .order('issueSequence', { ascending: false });
@@ -84,7 +85,15 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   const buffer = await downloadIssuedQuotationPdf(supabase, pdfRow);
   if (!buffer) return fail('อ่านไฟล์ PDF ที่เก็บไว้ไม่สำเร็จ', 502);
 
-  const fileName = `${target.documentNumber || id}.pdf`;
+  /* ชื่อไฟล์ = รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล (มติผู้ใช้ 2026-08-05) — อ่านจาก payload ที่
+     ตรึงไว้ ไม่ใช่ข้อมูลสดของใบ/ดีล: ฉบับที่ออกจริงต้องดาวน์โหลดซ้ำได้เหมือนเดิมทุกครั้ง
+     ลูกค้าเปลี่ยนชื่อหรือดีลถูกเปลี่ยนชื่อทีหลังต้องไม่ทำให้ไฟล์เดิมเปลี่ยนชื่อตาม */
+  const pinned = target.resolvedPayload || {};
+  const fileName = `${documentFileName(
+    target.documentNumber || id,
+    pinned.customer?.customerName,
+    pinned.context?.dealTitle,
+  )}.pdf`;
   return new Response(buffer, {
     status: 200,
     headers: {

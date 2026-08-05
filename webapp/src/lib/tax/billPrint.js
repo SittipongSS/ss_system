@@ -10,6 +10,7 @@ import {
 } from '@/lib/documentStandards';
 import { EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals } from '@/lib/tax/exciseBilling';
 import {
+  documentFileName,
   documentFooter,
   documentHeader,
   esc,
@@ -263,7 +264,9 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
   }).join('');
 
   return renderDocumentHTML({
-    title: `${noticeNumber} — ${titleTh}`,
+    // title = ชื่อไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" (รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล)
+    // ชื่อดีลใช้ค่าที่ตรึงบนใบ (mig 0211) ไม่ใช่ join สด — ชื่อไฟล์ของใบเก่าจะได้ไม่เปลี่ยน
+    title: documentFileName(noticeNumber, customer.name || order.customerName, order.dealTitle),
     accentKey: resolveDocumentAccentKey(standard, NOTICE_KEY),
     variantClass: 'tax',
     extraCss: NOTICE_CSS,

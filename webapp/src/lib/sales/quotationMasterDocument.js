@@ -8,6 +8,7 @@
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
 import {
   DOCUMENT_ACCENT_THEMES,
+  documentFileName,
   documentFooter as shellFooter,
   documentHeader as shellHeader,
   esc,
@@ -227,7 +228,9 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = model.document?.number || '';
   return renderDocumentHTML({
-    title: `${number} — ${documentLabel}`,
+    // title = ชื่อไฟล์ที่ต้องการ เพราะเบราว์เซอร์ใช้ document.title ตั้งชื่อไฟล์ตอน
+    // "พิมพ์ → บันทึกเป็น PDF" ซึ่งเป็นทางดาวน์โหลดหลักของเอกสารพวกนี้
+    title: documentFileName(number, model.customer?.name, model.dealTitle),
     accentKey: model.accentKey,
     grayscale: options.grayscale === true,
     variantClass: 'v4',
