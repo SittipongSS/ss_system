@@ -175,7 +175,10 @@ export default function QuotationEditorPage() {
   const canWithdrawSubmission = canWithdrawQuotationSubmission(quote, { userId: quote?.meId });
   // ตีกลับ = ผู้อนุมัติส่งใบกลับพร้อมเหตุผลที่ผู้จัดทำเห็น (mig 0164) — คู่ตรงข้ามของ
   // ดึงกลับซึ่งเป็นการกระทำของผู้ยื่นเอง
-  const canRejectSubmission = canRejectQuotationSubmission(quote, { approver: !!quote?.canApprove });
+  const canRejectSubmission = canRejectQuotationSubmission(quote, {
+    approver: !!quote?.canApprove,
+    userId: quote?.meId,
+  });
   const rejectionNotice = quotationRejectionNotice(quote);
   // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Rev.
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน

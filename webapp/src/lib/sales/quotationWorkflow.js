@@ -27,11 +27,18 @@ export function canWithdrawQuotationSubmission(quotation, { userId = '' } = {}) 
     && isQuotationSubmitter(quotation, userId);
 }
 
-// ตีกลับ = ผู้อนุมัติส่งใบกลับให้ผู้จัดทำแก้ (mig 0164) — คู่ตรงข้ามของดึงกลับที่เป็น
-// การกระทำของผู้ยื่นเอง. ผู้ยื่นตีกลับใบตัวเองไม่ได้ ต้องใช้ดึงกลับ
-export function canRejectQuotationSubmission(quotation, { approver = false } = {}) {
+/* ตีกลับ = ผู้อนุมัติส่งใบกลับให้ผู้จัดทำแก้ (mig 0164) — คู่ตรงข้ามของดึงกลับที่เป็น
+   การกระทำของผู้ยื่นเอง
+
+   ⚠️ ผู้ยื่นตีกลับใบตัวเองไม่ได้ ต้องใช้ดึงกลับ — เดิมเขียนกติกานี้ไว้แค่ในคอมเมนต์
+   แต่โค้ดไม่ได้บังคับ ผลคือเจ้าของดีลที่ยื่นใบของตัวเอง (ซึ่งเป็นทางปกติ เพราะ
+   canApproveQuotation ให้เจ้าของอนุมัติใบตัวเองได้) เห็นทั้ง "ดึงกลับมาแก้ไข" และ
+   "ตีกลับให้แก้ไข" อยู่ติดกันในแผงจัดการเอกสาร ทั้งที่จบที่เดิมคือกลับไปเป็นร่าง
+   ต่างกันแค่ตีกลับบังคับกรอกเหตุผลแล้วโชว์บนใบ — ส่งเหตุผลให้ตัวเองอ่านไม่มีความหมาย */
+export function canRejectQuotationSubmission(quotation, { approver = false, userId = '' } = {}) {
   return Boolean(quotation)
     && approver
+    && !isQuotationSubmitter(quotation, userId)
     && quotation.approvalStatus === 'pending'
     && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
 }

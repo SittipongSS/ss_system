@@ -36,8 +36,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
 
   const approver = canApproveQuotation(user, quote.deal);
-  if (!canRejectQuotationSubmission(quote, { approver })) {
-    return forbidden('ตีกลับได้เฉพาะผู้อนุมัติของใบเสนอราคาที่กำลังรออนุมัติ');
+  if (!canRejectQuotationSubmission(quote, { approver, userId: user.id })) {
+    return forbidden('ตีกลับได้เฉพาะผู้อนุมัติของใบเสนอราคาที่กำลังรออนุมัติ — ใบที่ยื่นเองให้ใช้ “ดึงกลับมาแก้ไข”');
   }
 
   const { data, error: rpcError } = await supabase.rpc('reject_quotation_submission_atomic', {
