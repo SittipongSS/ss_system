@@ -28,3 +28,27 @@ export function docTypeLabel(value) {
 export function docTypeNeedsDetail(value) {
   return value === 'other';
 }
+
+// ── โรงงานคำศัพท์เอกสาร — ให้ฝ่ายอื่นมีชุดของตัวเองโดยไม่ก๊อปตัวตรวจ ──────
+//
+// ⭐ ฝ่ายบัญชีขอ "ใบวางบิล/ใบแจ้งหนี้/ใบกำกับภาษี/ใบเสร็จ" ซึ่งเป็นคนละคำศัพท์กับ
+// IFRA/COA/MSDS ของ RD สิ้นเชิง — แต่ **กฎของบรรทัดเหมือนกันทุกข้อ** (ต้องเลือกชนิด ·
+// "อื่น ๆ" ต้องมีรายละเอียด · ซ้ำทั้งชนิดและรายละเอียดไม่ได้)
+//
+// ⚠️ เอาสองชุดมารวมลิสต์เดียวไม่ได้ — คำร้องขอเอกสารของ RD จะมีตัวเลือก
+// "ใบกำกับภาษี" โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้
+export function docVocabulary({ lineKind, types, detailValue = 'other' }) {
+  const byValue = new Map(types.map((t) => [t.value, t]));
+  return {
+    lineKind,
+    types,
+    values: types.map((t) => t.value),
+    // ⚠️ ชนิดที่ไม่รู้จักคืนค่าดิบ ไม่ใช่ค่าว่าง — ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก
+    label: (value) => byValue.get(value)?.label || String(value ?? '') || '—',
+    needsDetail: (value) => value === detailValue,
+  };
+}
+
+export const REQUEST_DOC_VOCABULARY = docVocabulary({
+  lineKind: 'document', types: REQUEST_DOC_TYPES,
+});

@@ -29,6 +29,7 @@ import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
+import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
   PLANNED_REQUEST_DEPTS,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
@@ -99,7 +100,7 @@ function itemsForKind(kind, existing = []) {
   // ⚠️ บรรทัดของพัฒนาผลิตภัณฑ์เป็นคนละรูปร่าง — สลับหัวข้อมาแล้วต้องเริ่มใหม่
   // ไม่ใช่ลากบรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
   if (kind === 'product_dev') return [emptyProductDevRow()];
-  if (kind === 'document') return [emptyDocumentRow()];
+  if (kind === 'document' || kind === 'billing_doc') return [emptyDocumentRow()];
   const materialKind = materialKindForRequest(kind);
   if (!materialKind) return [];
   const rows = existing.length ? existing : [emptyAskItem(materialKind)];
@@ -508,12 +509,19 @@ export default function RequestForm({
       )}
 
       {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
-      {lineShape === "document" && (
+      {(lineShape === "document" || lineShape === "billing_doc") && (
         <div className="form-group">
-          <span className={styles.fieldLabel}>เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด</span>
+          <span className={styles.fieldLabel}>
+            {lineShape === "billing_doc"
+              ? "เอกสารการเงินที่ขอ — 1 บรรทัด = 1 ใบ"
+              : "เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด"}
+          </span>
+          {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
+              คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
           <DocumentLines
             rows={items.length ? items : [emptyDocumentRow()]}
             onChange={(rows) => set({ items: rows })}
+            vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
             disabled={disabled}
           />
         </div>

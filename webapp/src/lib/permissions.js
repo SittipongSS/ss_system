@@ -80,18 +80,18 @@
 //   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
 //   EX = ฝ่ายบริหาร · PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
 //   TS = ฝ่ายเทคนิคบริการ (Technic Service) — ช่างที่เข้าไซต์ลูกค้าดูแลระบบกระจายกลิ่น
-export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC', 'TS'];
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
   AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', EX: 'EX', Viewer: 'Viewer',
-  PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC', TS: 'TS',
+  PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC', TS: 'TS', FN: 'FN',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
   AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', LG: 'ฝ่ายกฎหมาย',
   EX: 'ฝ่ายบริหาร', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
-  RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
+  RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ', FN: 'ฝ่ายบัญชีและการเงิน',
   TS: 'ฝ่ายเทคนิคบริการ',
 };
 
@@ -124,6 +124,10 @@ const DEPARTMENT_ROLES = {
   // (เห็นดีล/ใบเสนอราคา/มูลค่าทั้งทีม) ซึ่งไม่ใช่สิ่งที่ตั้งใจ.
   // ทีม SV (Services) ยังเป็นทีม**ขาย**ธุรกิจบริการเหมือนเดิม — TS คือฝ่ายที่รับงานต่อ.
   TS: ['staff'],
+  // FN = ฝ่ายบัญชีและการเงิน — รับคำร้องขอเอกสารการเงิน (P7)
+  // ⚠️ **ไม่ได้อยู่ใน COSTING_SOURCE_DEPARTMENTS โดยตั้งใจ** — บัญชีไม่ใช่แหล่งราคา
+  // จึงถือ costing:* ระดับ role (จาก staff) แต่ผ่านด่าน canViewCosting ไม่ได้เลย
+  FN: ['staff'],
 };
 
 // A role's home/default department — used to display legacy users whose
@@ -417,7 +421,7 @@ export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
 //
 // ⚠️ ต้องตรงกับ `REQUEST_DEPTS` ใน lib/master/requestTypes.js เสมอ — มีเทสต์คุม
 // (แยกลิสต์เพราะ permissions.js เป็นชั้นล่างสุด ห้าม import ทะเบียนหัวข้อกลับมา)
-export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC'];
+export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN'];
 
 // รับคำร้องของฝ่ายนี้ได้ไหม — ใช้ทั้งตอนกรองคิวและตอนกดรับเรื่อง/ตอบ
 export function canAnswerRequestsFor(user, dept) {

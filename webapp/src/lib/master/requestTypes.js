@@ -131,7 +131,7 @@ export function requestStepLabel(kind) {
 
 // ฝ่ายผู้ตอบของคำร้อง — ชนิดที่ผูกฝ่ายตายตัวใช้ค่านั้น, ชนิดที่ไม่ผูก (สอบถาม/
 // ขอเอกสาร) ให้ผู้ขอเลือกเอง แต่ต้องเป็น RD/PC เท่านั้น (CHECK ของตารางยังคุมอยู่)
-export const REQUEST_DEPTS = ['RD', 'PC'];
+export const REQUEST_DEPTS = ['RD', 'PC', 'FN'];
 
 export const REQUEST_DEPT_LABELS = {
   RD: { code: 'RD', name: 'วิจัยและพัฒนา' },
@@ -143,7 +143,7 @@ export const REQUEST_DEPT_LABELS = {
 // ตัวเลือกที่ไม่มีสิทธิ์ต้องเห็นว่ามีอยู่ ไม่งั้นคนจะไปหาที่อื่น) · **ห้ามย้ายเข้า
 // `REQUEST_DEPTS`** จนกว่า P7 จะผ่อน CHECK ของ `dept_requests.dept` — ย้ายก่อนแล้ว
 // ฟอร์มจะยอมให้ส่ง แล้วไปตายที่ constraint ด้วย error ดิบที่อ่านไม่รู้เรื่อง
-export const PLANNED_REQUEST_DEPTS = ['FN'];
+export const PLANNED_REQUEST_DEPTS = [];
 
 // หัวกลุ่มในดรอปดาวน์หัวข้อ — ตระกูลมาจาก `scope` ที่หัวข้อมีอยู่แล้ว ไม่ใช่ธงใหม่
 const KIND_FAMILY_LABEL = {

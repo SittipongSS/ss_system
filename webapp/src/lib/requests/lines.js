@@ -2,9 +2,7 @@
 // วันนี้บรรทัดยังเป็น "วัสดุ" อย่างเดียว (MATERIAL_KINDS) · P1 จะขยายเป็นหลายรูปร่าง
 // (วัสดุ · พัฒนากลิ่น · พัฒนาผลิตภัณฑ์ · เอกสาร) ผ่านคอลัมน์ lineKind
 import { MATERIAL_KINDS, sourceDeptForMaterialKind } from '@/lib/materialPrices';
-import {
-  REQUEST_DOC_TYPE_VALUES, docTypeLabel, docTypeNeedsDetail,
-} from '@/lib/requests/docTypes';
+import { REQUEST_DOC_VOCABULARY } from '@/lib/requests/docTypes';
 
 export const MAX_REQUEST_ITEMS = 40;
 export const MAX_REQUEST_TIERS = 12;
@@ -163,7 +161,10 @@ export function normalizeProductDevItems(input) {
 // ส่งวันไหน" ซึ่งเป็นคำสัญญาของ *ผู้ตอบ* · ยัดความหมาย "ผู้ขอต้องใช้ภายใน" ลงช่อง
 // เดียวกันเมื่อไร สองฝ่ายจะเขียนทับกันแล้วไม่มีใครรู้ว่าเลขที่เห็นเป็นของใคร
 // วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว (`requestedDueDate`) ใช้ตัวนั้นไปก่อน
-export function normalizeDocumentItems(input) {
+// ⭐ ตัวตรวจ **ตัวเดียว** ของบรรทัดชนิด "เอกสาร" ทุกคำศัพท์ — RD ขอ IFRA/COA/MSDS
+// ฝ่ายบัญชีขอใบวางบิล/ใบกำกับ · กฎเหมือนกันทุกข้อ ต่างแค่ลิสต์ชนิดกับ lineKind
+// ⇒ คำศัพท์เข้ามาทาง vocab ไม่ใช่ก๊อปฟังก์ชันไปแก้ลิสต์ (ก๊อปแล้วแก้กฎที่เดียวลืมอีกที่)
+export function normalizeDocLines(input, vocab) {
   const rows = Array.isArray(input) ? input : [];
   if (!rows.length) return { items: [], error: 'ต้องมีรายการอย่างน้อย 1 รายการ' };
   if (rows.length > MAX_REQUEST_ITEMS) {
@@ -178,13 +179,13 @@ export function normalizeDocumentItems(input) {
 
     const docType = String(raw.docType ?? '').trim();
     if (!docType) return { items: [], error: `${at}: ต้องเลือกชนิดเอกสาร` };
-    if (!REQUEST_DOC_TYPE_VALUES.includes(docType)) {
+    if (!vocab.values.includes(docType)) {
       return { items: [], error: `${at}: ชนิดเอกสารไม่ถูกต้อง` };
     }
 
     const spec = String(raw.spec ?? '').trim();
     if (spec.length > 2000) return { items: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
-    if (docTypeNeedsDetail(docType) && !spec) {
+    if (vocab.needsDetail(docType) && !spec) {
       return { items: [], error: `${at}: เลือก "อื่น ๆ" ต้องระบุว่าขอเอกสารอะไร` };
     }
 
@@ -194,13 +195,18 @@ export function normalizeDocumentItems(input) {
     seen.add(key);
 
     items.push({
-      lineKind: 'document',
+      lineKind: vocab.lineKind,
       docType,
       // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
-      label: docTypeLabel(docType),
+      label: vocab.label(docType),
       spec: spec || null,
       sortOrder: i + 1,
     });
   }
   return { items, error: null };
+}
+
+// ผู้เรียกเดิมไม่ต้องแก้ — ชุดคำศัพท์ของ RD คือค่าตั้งต้น
+export function normalizeDocumentItems(input) {
+  return normalizeDocLines(input, REQUEST_DOC_VOCABULARY);
 }

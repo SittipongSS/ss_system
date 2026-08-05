@@ -16,6 +16,7 @@ const EXPECTED = [
   'scent_dev', 'product_dev', 'price_f', 'price_fb',   // RD ที่ยังเปิดใบใหม่ได้
   'scent_brief', 'mockup',                             // RD เลิกใช้แล้ว
   'price_pm', 'material_eta',                          // PC
+  'billing_doc',                                       // FN
 ];
 
 test('ทะเบียนได้หัวข้อครบเท่าเดิม — แยกโฟลเดอร์แล้วต้องไม่มีตัวไหนหล่นหาย', () => {
@@ -97,7 +98,7 @@ test('ด่านทะเบียนตีกลับหัวข้อท�
     ['ไม่มี key', { ...OK, key: undefined }],
     ['ไม่มี label', { ...OK, label: undefined }],
     ['ไม่มี scope', { ...OK, scope: undefined }],
-    ['ฝ่ายที่ CHECK ไม่รับ', { ...OK, dept: 'FN' }],
+    ['ฝ่ายที่ CHECK ไม่รับ', { ...OK, dept: 'PD' }],
     ['needs ที่ไม่มีจริง', { ...OK, needs: ['ลูกค้า'] }],
     ['lineShape ที่ไม่รู้จัก', { ...OK, hasItems: true, lineShape: 'อะไรสักอย่าง' }],
     ['hasTiers โดยไม่มีบรรทัด', { ...OK, hasTiers: true }],
