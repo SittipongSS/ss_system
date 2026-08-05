@@ -103,12 +103,6 @@
 .muted { color: var(--text-3); }
 .smallCell { font-size: var(--fs-5); }
 .loadError { padding: var(--space-6); color: var(--red); }
-.formNote {
-  padding: var(--space-2-5) var(--space-3);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
-.formActions { margin-top: var(--space-4); }
 
 /* ความกว้างคอลัมน์ของตารางคิว — ยกออกจาก inline style ตามด่าน audit:ui */
 .colDoc { width: 140px; }
@@ -153,3 +147,13 @@
    ไม่ควรไปเพิ่มยอดนั้น */
 .nextStep { color: var(--text-3); }
 .nextStep[data-owner="dept"] { color: var(--blue); }
+
+/* แถวคั่นกลุ่มในคิว — พื้นจาง ตัวเล็ก · เป็นป้ายบอกตำแหน่ง ไม่ใช่แถวข้อมูล
+   ⚠️ ต้องอ่านออกว่าไม่ใช่ของที่กดได้ ไม่งั้นคนจะพยายามคลิกมัน */
+.groupRow td {
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+}

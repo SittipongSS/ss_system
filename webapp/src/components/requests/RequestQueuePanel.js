@@ -7,20 +7,19 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, RefreshCw, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
-import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { createAndSendRequest, requestFormBlocker } from "@/lib/master/requestCreate";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
-import { QUEUE_COUNT_META, queueCounts, requestNextStep } from "@/lib/requests/queueBoard";
+import {
+  QUEUE_COUNT_META, groupQueueRows, queueCounts, requestNextStep,
+} from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 
@@ -31,11 +30,20 @@ export default function RequestQueuePanel({
   productTypes = [], mentionPeople = [],
   loading = false, loadError = "", reload, newRequestDefaults = null,
 }) {
+  // ⭐ prefill ส่งผ่าน query — หน้าเต็มรับได้ตรง ๆ ต่างจากโมดัลที่ต้องส่ง props
+  // ผ่านทุกจุดที่เปิดมัน · `returnTo` พากลับมาที่คิวหลังกดยกเลิก
+  const newRequestQuery = (() => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(newRequestDefaults || {})) if (v) q.set(k, v);
+    q.set("returnTo", "/requests");
+    return `?${q.toString()}`;
+  })();
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
-  const counts = queueCounts(rows, { todayIso: businessDate() });
-  const [form, setForm] = useState(null);
+  const today = businessDate();
+  const counts = queueCounts(rows, { todayIso: today });
+  const groups = groupQueueRows(rows, { todayIso: today });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -51,22 +59,6 @@ export default function RequestQueuePanel({
   //   3 PATCH ส่ง → ออกเลขที่ + ลงเธรดคำร้อง/เธรดดีล + ยิงแจ้งเตือนคนที่ถูก @
   // ⚠️ ล้มกลางทางแล้ว **ไม่ rollback ร่างทิ้ง** — ของที่พิมพ์มายังอยู่ พาไปหน้า
   // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
-  const create = async () => {
-    setSaving(true);
-    const productName = products.find((p) => p.id === form.productId)?.name || null;
-    const { id, error } = await createAndSendRequest(form, { productName });
-    if (error) {
-      setToast({ kind: "error", msg: error });
-      setSaving(false);
-    }
-    // มีร่างค้างแล้ว = พาไปทำต่อที่หน้ารายละเอียด ไม่ให้ของที่พิมพ์หาย
-    if (id) router.push(`/requests/${id}`);
-  };
-
-  // ปุ่มส่งเปิดเมื่อกรอกครบ — ด่านเดียวกับข้อความที่ฟอร์มแสดง (requestFormBlocker)
-  // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล
-  const formReady = !requestFormBlocker(form);
-
   return (
     <>
       <div className="toolbar">
@@ -75,9 +67,13 @@ export default function RequestQueuePanel({
           <RefreshCw size={14} /> รีเฟรช
         </button>
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
+        {/* ⚠️ **เปลือกเดียว** — ฟอร์มย้ายไป /requests/new ทั้งก้อน · ครอบ RequestForm
+            ไว้สองที่จะได้แถบปุ่มกับข้อความ blocker สองชุดที่ต้องดูแลให้ตรงกัน
+            (โรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้)
+            หน้าเต็มคือเงื่อนไขของการแนบไฟล์ตอนเปิดคำร้อง ซึ่งโมดัลทำไม่ได้ */}
         <button
           type="button" className="btn btn-accent"
-          onClick={() => setForm(emptyRequestForm(newRequestDefaults || {}))}
+          onClick={() => router.push(`/requests/new${newRequestQuery}`)}
         >
           <Plus size={14} /> เปิดคำร้อง
         </button>
@@ -123,7 +119,16 @@ export default function RequestQueuePanel({
               </tr>
             </thead>
             <tbody>
-              {rows.map((ask) => {
+              {/* ⭐ แถวคั่นกลุ่ม — ทำให้ลำดับที่ compareRequestUrgency จัดไว้
+                  **มองเห็นได้** · เรียงถูกแล้วแต่คนอ่านไม่รู้ว่าเส้นแบ่งอยู่ตรงไหน
+                  ⚠️ จัดกลุ่มจริงที่ groupQueueRows ไม่ใช่แทรกเส้นตอนคีย์เปลี่ยน
+                  (ตัวเรียงไม่ได้เรียงตามลำดับกลุ่มเป๊ะ ๆ จะได้หัวข้อซ้ำกลางตาราง) */}
+              {groups.map((g) => (
+                <Fragment key={g.group}>
+                  <tr className={styles.groupRow}>
+                    <td colSpan={8}>{g.label} · {g.rows.length}</td>
+                  </tr>
+                  {g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
                 return (
@@ -175,38 +180,13 @@ export default function RequestQueuePanel({
                     <td className={styles.smallCell}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
                   </tr>
                 );
-              })}
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </TableScroll>
       )}
-
-      <Modal
-        open={!!form} onClose={() => setForm(null)} size="lg" dismissible={!saving}
-        title="เปิดคำร้องข้ามฝ่าย"
-      >
-        {form && (
-          <>
-            <RequestForm
-              value={form} onChange={setForm} disabled={saving}
-              materials={materials} products={products}
-              projects={projects} deals={deals} salesOrders={salesOrders}
-              scents={scents} formulas={formulas} productTypes={productTypes}
-              mentionPeople={mentionPeople}
-            />
-            <div className={`glass-panel ${styles.formNote}`}>
-              กดส่งแล้วระบบจะออกเลขที่ · แจ้งฝ่าย {form.dept || "ปลายทาง"} ·
-              และลงเรื่องนี้ในเธรดของดีลที่เลือกไว้ให้เอง
-            </div>
-            <div className={`action-bar ${styles.formActions}`}>
-              <button type="button" className="btn ghost" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={create} disabled={saving || !formReady}>
-                ส่งคำร้อง
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </>
