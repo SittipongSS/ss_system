@@ -66,9 +66,18 @@ export async function POST(request, { params }) {
   // รหัสที่มีอยู่แล้วทั้งทะเบียน — รหัสกลิ่นห้ามซ้ำทั้งบริษัท ไม่ใช่แค่ในลูกค้าเดียว
   // (scents_code_uk เป็น unique ทั้งตาราง)
   const registry = await loadScents(supabase, {});
+  // ⭐ บรีฟของใบนี้ — direction ต้องชี้กลับว่าตอบก้อนไหน (ชั้นกลาง · mig 0213)
+  // ⚠️ อ่านจากใบนี้ใบเดียว เพราะด่านตรวจว่า `briefId` อยู่ **ในคำร้องเดียวกัน**
+  // ไม่ใช่แค่ "มี id นี้ในระบบ" — ไม่งั้นยิงตรงแล้วผูกข้ามลูกค้าได้
+  const { data: briefRows, error: briefLoadError } = await supabase
+    .from('dept_request_scents').select('id, label').eq('requestId', id)
+    .order('sortOrder', { ascending: true });
+  if (briefLoadError) return Response.json({ error: briefLoadError.message }, { status: 500 });
+
   const { rows, error } = normalizeDeliveryRows(body.rows, {
     existingCodes: registry.map((s) => s.code).filter(Boolean),
     today: businessDate(),
+    briefs: briefRows || [],
   });
   if (error) return Response.json({ error }, { status: 400 });
 
@@ -87,6 +96,9 @@ export async function POST(request, { params }) {
       }, user, { accepted: true });
       // วันที่ส่งอยู่บนตัวกลิ่น (0205) — เขียนตอนสร้างเลย ไม่ต้องรอใครมากดซ้ำ
       await supabase.from('scents').update({
+        // ⭐ ทะเบียนย้อนกลับได้ว่ากลิ่นตัวนี้มาจากบรีฟไหน (ข้อที่ผู้ใช้ขอ · mig 0213)
+        // เก็บตรงบน scents ไม่ให้ต้อง join ผ่านแถว direction
+        briefId: row.briefId,
         sentAt: row.sentAt,
         sentById: user?.id ?? null,
         sentByName: user?.name ?? null,

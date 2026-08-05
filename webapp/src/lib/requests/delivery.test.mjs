@@ -93,3 +93,43 @@ test('⚠️ ไม่รับหมวดกับกลิ่น — สอ�
   assert.equal('categoryCode' in value, false);
   assert.equal('scentId' in value, false);
 });
+
+// ── ชั้นกลาง: direction ตอบบรีฟก้อนไหน (mig 0213) ──────────────────────
+test('⭐ มีบรีฟก้อนเดียว = เลือกให้เลย ไม่ต้องถาม', () => {
+  // ช่องที่มีตัวเลือกเดียวแต่ยังบังคับให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร
+  const { rows, error } = normalizeDeliveryRows(
+    [{ name: 'Amber Woods', code: 'SC-2611' }],
+    { briefs: [{ id: 'B1' }] },
+  );
+  assert.equal(error, null);
+  assert.equal(rows[0].briefId, 'B1');
+});
+
+test('หลายบรีฟต้องเลือกเอง · ตอบก้อนเดิมซ้ำได้ (1 บรีฟ : หลาย direction)', () => {
+  const briefs = [{ id: 'B1' }, { id: 'B2' }];
+  assert.match(
+    normalizeDeliveryRows([{ name: 'A', code: 'SC-1' }], { briefs }).error,
+    /ตอบบรีฟก้อนไหน/,
+  );
+  const two = normalizeDeliveryRows(
+    [{ name: 'A', code: 'SC-1', briefId: 'B1' }, { name: 'B', code: 'SC-2', briefId: 'B1' }],
+    { briefs },
+  );
+  assert.equal(two.error, null);
+  assert.deepEqual(two.rows.map((r) => r.briefId), ['B1', 'B1']);
+});
+
+test('⚠️ บรีฟของใบอื่นต้องไม่ผ่าน — ไม่งั้นยิงตรงแล้วผูกข้ามลูกค้าได้', () => {
+  assert.match(
+    normalizeDeliveryRows([{ name: 'A', code: 'SC-1', briefId: 'B9' }], {
+      briefs: [{ id: 'B1' }],
+    }).error,
+    /ไม่ได้อยู่ในคำร้องใบนี้/,
+  );
+});
+
+test('ใบเก่าที่ยังไม่มีบรีฟยังส่งได้ — briefs ว่างแปลว่าไม่บังคับ', () => {
+  const { rows, error } = normalizeDeliveryRows([{ name: 'A', code: 'SC-1' }], {});
+  assert.equal(error, null);
+  assert.equal(rows[0].briefId, null);
+});
