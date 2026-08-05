@@ -128,6 +128,9 @@ export default function RequestForm({
   // ช่องข้างล่างสลับหน้าตาไปทั้งชุดตามหัวข้อ — กางไว้ตั้งแต่ยังไม่เลือกจึงเป็นฟอร์มที่
   // เปลี่ยนรูปใต้มือคนอ่าน · โมดัลที่ล็อกหัวข้อมาแล้วไม่ต้องผ่านขั้นนี้ (ค่าตั้งต้น true)
   revealed = true,
+  // ปุ่มที่อยู่ติดช่องหัวข้อ — { label, onClick } · ผู้เรียกตัดสินว่าเป็น "แสดงฟอร์ม"
+  // หรือ "เปลี่ยนหัวข้อ" เพราะมันเป็นเรื่องของสองขั้นในหน้านั้น ไม่ใช่กฎของฟอร์ม
+  topicAction = null,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const items = value.items || [];
@@ -225,7 +228,7 @@ export default function RequestForm({
             <button
               key={d} type="button" role="radio" aria-checked={dept === d}
               className={styles.deptOption} data-on={dept === d ? "1" : undefined}
-              disabled={disabled || lockKind}
+              disabled={disabled || lockKind || revealed}
               onClick={() => {
                 // หัวข้อที่เลือกไว้อาจไม่ใช่ของฝ่ายใหม่ — ล้างเมื่อไม่เข้ากัน
                 const keep = kindsForDept(d).includes(kind) ? kind : "";
@@ -258,7 +261,7 @@ export default function RequestForm({
         <div className="form-group col-span-2">
           <label htmlFor="req-kind">ขอเรื่องอะไร</label>
           <Select
-            id="req-kind" value={kind} disabled={disabled || lockKind || !dept}
+            id="req-kind" value={kind} disabled={disabled || lockKind || !dept || revealed}
             onChange={(e) => {
               const next = e.target.value;
               // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้น
@@ -284,6 +287,20 @@ export default function RequestForm({
               })),
             ]}
           />
+          {topicAction && (
+            <div className={styles.topicAction}>
+              {/* ⭐ อยู่ติดช่องที่มันคุม ไม่ใช่ลอยอยู่แถบปุ่มล่างสุด — คนที่อยากเปลี่ยน
+                  หัวข้อจะมองที่ช่องหัวข้อก่อนเสมอ · และตอนกางฟอร์มแล้วช่องนี้ถูกล็อก
+                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง */}
+              <Button
+                variant="quiet" size="sm"
+                disabled={disabled || topicAction.disabled}
+                onClick={topicAction.onClick}
+              >
+                {topicAction.label}
+              </Button>
+            </div>
+          )}
           {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
           {meta.dealType && (
             <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
