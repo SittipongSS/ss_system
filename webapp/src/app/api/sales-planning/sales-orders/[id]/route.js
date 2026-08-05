@@ -3,18 +3,24 @@ import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import {
+  canEditSalesPlanning,
+  canViewSalesPlanning,
+  inSalesEditScope,
+  inSalesViewScope,
+} from '@/lib/salesPlanning';
 import {
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
   canRevokeSalesOrderApproval,
+  canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
+  cancelReasonLabel,
   isForeignKeyViolation,
   isSalesOrderReviewer,
-  salesOrderRevisionChainDeleteBlock,
   isValidCancelReasonCode,
-  cancelReasonLabel,
   isValidReversalTarget,
+  salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -366,6 +372,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'submit') {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('SO ใบนี้ยื่นอนุมัติไม่ได้');
+    // ช่อง "ฝ่ายขาย" บนใบเป็นของ AE เจ้าของดีล และการยื่น = การลงนามในช่องนั้น (mig 0153)
+    // AC สร้างใบแทนได้ตามเดิม แต่ต้องส่งให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05)
+    if (!canSubmitSalesOrder(user, before.deal)) {
+      return forbidden('ยื่นอนุมัติใบสั่งขายได้เฉพาะ AE เจ้าของดีล — ผู้ที่สร้างแทนให้ส่งต่อให้เจ้าของดีลกดยื่น');
+    }
     // ยอดก่อน VAT 0 บาทยื่นได้ (มติผู้ใช้ 2026-08-03) — ต่อจาก QT ที่ปิด Won ด้วยยอด 0 ได้
     // (mig 0196); ถ้าด่านนี้ยังบังคับ > 0 ใบที่ Won แล้วจะเดินต่อไม่ได้เลย
     if (!before.orderDate || !(before.lines?.length > 0)) {

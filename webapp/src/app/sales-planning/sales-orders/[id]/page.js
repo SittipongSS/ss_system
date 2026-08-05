@@ -30,6 +30,7 @@ import {
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
   canRevokeSalesOrderApproval,
+  canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   isCustomerCancelReason,
@@ -416,6 +417,9 @@ export default function SalesOrderDetailPage() {
   const canReviewThis = reviewer && !ownSalesOrder;
   const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
   const canEditDocument = canEdit && ["draft", "rejected"].includes(order.status);
+  // ยื่น = ลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้ แต่ต้องส่งต่อ
+  // ให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05) · server บังคับซ้ำที่ action submit
+  const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, order.deal);
   const editable = canEditDocument && editMode;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
@@ -442,7 +446,14 @@ export default function SalesOrderDetailPage() {
         onClick: save,
       }
     : canEditDocument
-      ? { id: "submit", kind: "submit", label: "ยื่นอนุมัติ", onClick: openSubmitConfirm }
+      ? {
+          id: "submit",
+          kind: "submit",
+          label: "ยื่นอนุมัติ",
+          disabled: !canSubmitThis,
+          disabledReason: canSubmitThis ? undefined : "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น",
+          onClick: openSubmitConfirm,
+        }
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
     // สถานะกลางหลังยกเลิกอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก

@@ -121,19 +121,20 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
       { label: 'ประเภทโครงการ', value: (order.deal && dealTypeOf(order.deal)) || '-' },
       { label: 'ผู้เสนอราคา', value: order.deal?.ownerName || '-' },
     ],
-    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18, ปรับ 2026-08-05):
-    // ผู้จัดทำ = AE เจ้าของดีล · ผู้อนุมัติ = ผู้จัดการฝ่ายขาย · ฝ่ายบัญชี
-    // ⚠️ ช่องผู้จัดทำยังไม่ได้เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น (ไม่ใช่ชื่อคนกดสร้างใบ
-    // อย่างที่เป็นมา) แต่ "เซ็นแล้ว" เมื่อไรใช้ชื่อคนที่เซ็นจริงจาก evidence เสมอ — ลายเซ็น
-    // ที่ระบบ stamp มาเป็นของผู้สร้างใบ เอาชื่อเจ้าของดีลไปแปะทับจะได้ชื่อคนหนึ่งคู่ลายมือ
-    // อีกคน (กติกาเดียวกับช่องผู้จัดทำในใบเสนอราคา)
+    // ช่องลงชื่อ SO — ป้ายช่องเป็น "หน่วยงาน" ไม่ใช่บทบาทในเอกสาร
+    // (มติผู้ใช้ 2026-08-05): ฝ่ายขาย / ผู้จัดการฝ่ายขาย / ฝ่ายบัญชี
+    // ฝ่ายขาย = AE เจ้าของดีล · AC สร้างใบแทนได้ แต่ต้องให้ AE เจ้าของดีลเป็นคนกดยื่น
+    // (บังคับที่ action submit ด้วย canSubmitSalesOrder) ลายเซ็นในช่องนี้จึงเป็นของ
+    // เจ้าของดีลเสมอ เพราะการยื่น = การลงนามในช่องนี้ (mig 0153)
+    // ⚠️ ถึงอย่างนั้น "เซ็นแล้ว" ก็ยังใช้ชื่อคนที่เซ็นจริงจาก evidence — ใบเก่าที่ยื่นก่อน
+    // มีด่านนี้อาจถูกยื่นโดยคนอื่น เอาชื่อเจ้าของดีลไปแปะทับจะได้ชื่อคนหนึ่งคู่ลายมืออีกคน
     signers: [
       proposerEsignature
-        ? { label: 'ผู้จัดทำ', role: 'ฝ่ายขาย', esignature: proposerEsignature }
-        : { label: 'ผู้จัดทำ', role: 'ฝ่ายขาย', name: order.deal?.ownerName || '' },
+        ? { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', esignature: proposerEsignature }
+        : { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', name: order.deal?.ownerName || '' },
       approverEsignature
-        ? { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', esignature: approverEsignature }
-        : { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
+        ? { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', esignature: approverEsignature }
+        : { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', name: order.approvedByName || '' },
       { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
     ],
     // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
