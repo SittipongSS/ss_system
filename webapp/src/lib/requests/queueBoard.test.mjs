@@ -121,3 +121,26 @@ test('กลุ่มของแถวคั่น — ยังไม่รั
   const keys = QUEUE_GROUPS.map((g) => g.key);
   for (const k of ['unacked', 'overdue', 'open', 'settled']) assert.ok(keys.includes(k), k);
 });
+
+test('⚠️ จัดกลุ่มจริง ไม่ใช่แทรกเส้นตอนคีย์เปลี่ยน — ไม่งั้นหัวข้อเดิมโผล่ซ้ำ', async () => {
+  const { groupQueueRows } = await import('./queueBoard.js');
+  // เรียงสลับกลุ่มมาโดยตั้งใจ (compareRequestUrgency ไม่ได้เรียงตามลำดับกลุ่มนี้เป๊ะ)
+  const rows = [
+    req({ id: 'A', status: 'pending' }),
+    req({ id: 'B', committedDueDate: '2026-12-31' }),
+    req({ id: 'C', status: 'pending' }),
+    req({ id: 'D', committedDueDate: '2026-08-01' }),
+  ];
+  const groups = groupQueueRows(rows, { todayIso: '2026-08-05' });
+  assert.deepEqual(groups.map((g) => g.group), ['unacked', 'overdue', 'open']);
+  assert.deepEqual(groups[0].rows.map((r) => r.id), ['A', 'C'], 'รวมกลุ่มเดียวกันไว้ด้วยกัน');
+  // ลำดับในกลุ่มต้องคงเดิม (ผู้เรียกเรียงมาแล้วด้วย compareRequestUrgency)
+  assert.deepEqual(groups[2].rows.map((r) => r.id), ['B']);
+});
+
+test('กลุ่มที่ว่างถูกตัดทิ้ง — หัวข้อลอยที่ไม่มีของข้างใต้อ่านเหมือนข้อมูลหาย', async () => {
+  const { groupQueueRows } = await import('./queueBoard.js');
+  const groups = groupQueueRows([req({ status: 'pending' })], { todayIso: '2026-08-05' });
+  assert.deepEqual(groups.map((g) => g.group), ['unacked']);
+  assert.deepEqual(groupQueueRows([], {}), []);
+});

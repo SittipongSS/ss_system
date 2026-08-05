@@ -1,0 +1,24 @@
+/* หน้าเปิดคำร้อง — พื้นผิวอยู่ในนี้ ไม่ใช่คลาสกลางที่ ratchet คุมยอดไว้ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: var(--panel);
+}
+
+/* บอกผลของการกดส่ง **ก่อนกด** — ออกเลขที่ · แจ้งฝ่าย · ลงเธรดของดีล
+   สามอย่างนี้ย้อนไม่ได้ (เลขที่ออกแล้วออกเลย) จึงต้องอ่านได้ก่อน ไม่ใช่รู้ทีหลัง */
+.note {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+
+.actions { margin: 0; }

@@ -125,3 +125,22 @@ export function requestGroupKey(request, { todayIso = null } = {}) {
     && String(request.committedDueDate) < String(todayIso)) return 'overdue';
   return 'open';
 }
+
+// ── จัดแถวเป็นกลุ่มพร้อมแถวคั่น (P6d) ────────────────────────────────────
+//
+// ⚠️ **จัดกลุ่มจริง ไม่ใช่แค่ดูว่าคีย์เปลี่ยนแล้วแทรกเส้น** — `compareRequestUrgency`
+// ไม่ได้เรียงตามลำดับกลุ่มนี้เป๊ะ ๆ (มันเรียงตามความเร่งซึ่งคิดจากหลายอย่าง)
+// ⇒ วิธี "เห็นคีย์เปลี่ยนแล้วแทรก" จะได้หัวข้อเดิมโผล่ซ้ำหลายรอบกลางตาราง
+//
+// คืน [{ group, label, rows }] — กลุ่มที่ว่างถูกตัดทิ้ง (หัวข้อลอยที่ไม่มีของ
+// ข้างใต้อ่านเหมือนข้อมูลหาย)
+export function groupQueueRows(rows = [], { todayIso = null } = {}) {
+  const byKey = new Map(QUEUE_GROUPS.map((g) => [g.key, []]));
+  for (const row of rows) {
+    const key = requestGroupKey(row, { todayIso });
+    (byKey.get(key) || byKey.get('open')).push(row);
+  }
+  return QUEUE_GROUPS
+    .map((g) => ({ group: g.key, label: g.label, rows: byKey.get(g.key) || [] }))
+    .filter((g) => g.rows.length);
+}
