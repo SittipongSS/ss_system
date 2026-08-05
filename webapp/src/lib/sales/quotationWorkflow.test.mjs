@@ -22,7 +22,7 @@ test('QT withdrawal belongs to the proposer alone — approvers use rejection', 
   assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-PROPOSER' }), true);
   // ผู้อนุมัติดึงกลับไม่ได้แล้ว (มติ 2026-07-26) — ส่งเอกสารกลับต้องผ่าน "ตีกลับ" ที่ทิ้งเหตุผลไว้
   assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-APPROVER', approver: true }), false);
-  assert.equal(canRejectQuotationSubmission(pending, { approver: true }), true);
+  assert.equal(canRejectQuotationSubmission(pending, { approver: true, userId: 'USR-APPROVER' }), true);
   assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-OTHER' }), false);
 });
 
@@ -83,10 +83,15 @@ test('grandfather QT (not_required) is revisable but never editable in place', (
 
 // ตีกลับ (mig 0164) — คู่ตรงข้ามของดึงกลับ: ต่างกันที่ "ใครทำ" และ "ทิ้งร่องรอยไหม"
 test('QT rejection belongs to the approver, withdrawal belongs to the proposer', () => {
-  assert.equal(canRejectQuotationSubmission(pending, { approver: true }), true);
-  assert.equal(canRejectQuotationSubmission(pending, { approver: false }), false);
-  // ผู้ยื่นตีกลับใบตัวเองไม่ได้ แม้เป็นเจ้าของคำขอ — ต้องใช้ดึงกลับ
+  assert.equal(canRejectQuotationSubmission(pending, { approver: true, userId: 'USR-APPROVER' }), true);
+  assert.equal(canRejectQuotationSubmission(pending, { approver: false, userId: 'USR-APPROVER' }), false);
   assert.equal(canRejectQuotationSubmission(pending, {}), false);
+
+  /* ⭐ เจ้าของดีลที่ยื่นใบของตัวเอง = เป็นทั้งผู้ยื่นและผู้อนุมัติ (canApproveQuotation
+     ให้เจ้าของอนุมัติใบตัวเองได้) — ต้องเหลือ "ดึงกลับ" ทางเดียว ไม่งั้นแผงจัดการเอกสาร
+     โชว์ "ดึงกลับมาแก้ไข" กับ "ตีกลับให้แก้ไข" ติดกันทั้งที่จบที่เดิม */
+  assert.equal(canRejectQuotationSubmission(pending, { approver: true, userId: 'USR-PROPOSER' }), false);
+  assert.equal(canWithdrawQuotationSubmission(pending, { userId: 'USR-PROPOSER' }), true);
 
   for (const approvalStatus of ['not_submitted', 'approved', 'not_required', 'rejected']) {
     assert.equal(canRejectQuotationSubmission({ ...pending, approvalStatus }, { approver: true }), false);
