@@ -23,6 +23,7 @@ import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { createRequestDraft, requestFormBlocker } from "@/lib/master/requestCreate";
+import { requestKindLabel } from "@/lib/master/requestTypes";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -120,13 +121,16 @@ export default function NewRequestPage() {
           // ของที่ถูกส่งไปกับคำร้องหัวข้อใหม่โดยไม่มีใครเห็น · และตอนกางฟอร์มแล้ว
           // ดรอปดาวน์ถูกล็อก ⇒ **ทางเดียวที่เปลี่ยนได้คือกดปุ่มนี้** เปลี่ยนโดยไม่ตั้งใจไม่ได้
           topicAction={revealed ? {
-            label: "เปลี่ยนหัวข้อ",
+            // บอกให้ครบว่าปลดล็อกอะไร — ปุ่มปลดทั้งฝ่ายและหัวข้อ ไม่ใช่หัวข้ออย่างเดียว
+            label: "เปลี่ยนฝ่าย/หัวข้อ",
             onClick: () => {
               setForm(emptyRequestForm({ ...defaults, dept: form.dept, kind: form.kind }));
               setRevealed(false);
             },
           } : {
-            label: "แสดงฟอร์ม",
+            // ⭐ ป้ายบอก **สิ่งที่จะได้** ไม่ใช่สิ่งที่ปุ่มทำ — "แสดงฟอร์ม" ไม่ได้บอกว่า
+            // ฟอร์มอะไร · ใส่ชื่อหัวข้อลงไปเลยจะเห็นตั้งแต่ยังไม่กดว่ากำลังจะกรอกอะไร
+            label: form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม",
             disabled: !form.kind,
             onClick: () => setRevealed(true),
           }}

@@ -301,6 +301,13 @@ export default function RequestForm({
               </Button>
             </div>
           )}
+          {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
+              เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
+          {revealed && topicAction && (
+            <small className={styles.hint}>
+              ล็อกไว้ระหว่างกรอก — กด &ldquo;{topicAction.label}&rdquo; เพื่อแก้ (ฟอร์มที่กรอกไว้จะถูกล้าง)
+            </small>
+          )}
           {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
           {meta.dealType && (
             <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
