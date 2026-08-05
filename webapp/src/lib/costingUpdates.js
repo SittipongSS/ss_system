@@ -36,6 +36,15 @@ export function askActionUpdate(action, ask, { reason = null } = {}) {
   if (action === 'answer') {
     return { kind: 'answer', body: `ฝ่าย ${dept} ตอบเรื่องนี้แล้ว`, meta: { dept } };
   }
+  // ⭐ ตีกลับต้องลงเธรด **พร้อมเหตุผล** — ผู้ขอเปิดใบมาเห็นว่ากลับเป็นร่างแล้ว
+  // แต่ถ้าไม่มีข้อความบอกว่าขาดอะไร เขาจะส่งใบเดิมกลับมาอีกรอบ
+  if (action === 'bounce') {
+    return {
+      kind: 'bounce',
+      body: `ฝ่าย ${dept} ตีกลับให้แก้ไข — ${clip(reason) || 'ไม่ระบุเหตุผล'}`,
+      meta: { dept },
+    };
+  }
   if (action === 'close') {
     return { kind: 'close', body: 'ปิดเคส', meta: {} };
   }

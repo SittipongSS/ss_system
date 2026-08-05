@@ -15,7 +15,7 @@ import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
-  requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
+  legacyKindError, requestKindLabel, requestNeedsRef, requestShapeError, requestStepKey,
 } from '@/lib/master/requestTypes';
 import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -83,6 +83,10 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const kind = body.kind;
 
+  // หัวข้อที่เลิกใช้แล้วเปิดใบใหม่ไม่ได้ — ฟอร์มกรองออกให้แล้ว แต่ยิงตรงยังได้
+  const retired = legacyKindError(kind);
+  if (retired) return Response.json({ error: retired }, { status: 400 });
+
   // ด่านตามชนิด — ที่เดียวของระบบ (หัวเรื่อง/ดีล/กลิ่น/สูตร/บรรทัด)
   const shapeError = requestShapeError(kind, body);
   if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
@@ -130,9 +134,16 @@ export async function POST(request) {
   let dealId = body.dealId || null;
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
-      .from('sales_orders').select('id, dealId').eq('id', body.salesOrderId).maybeSingle();
+      .from('sales_orders').select('id, dealId, status').eq('id', body.salesOrderId).maybeSingle();
     if (soError) return Response.json({ error: soError.message }, { status: 500 });
     if (!soRow) return Response.json({ error: 'ไม่พบใบสั่งขายที่เลือก' }, { status: 400 });
+    // ⭐ **ต้องอนุมัติแล้วเท่านั้น** (มติผู้ใช้) — ใบที่ยังรออนุมัติแปลว่าค่าบริการ
+    // ออกแบบกลิ่นยังไม่ถูกตกลง · เริ่มงาน RD ก่อนแล้วใบไม่ผ่าน = ทำฟรี
+    if (soRow.status !== 'approved') {
+      return Response.json({
+        error: 'ใบสั่งขายนี้ยังไม่อนุมัติ — เปิดคำร้องพัฒนากลิ่นได้เมื่อใบสั่งขายผ่านอนุมัติแล้ว',
+      }, { status: 400 });
+    }
     salesOrderId = soRow.id;
     dealId = soRow.dealId || null;
     if (!dealId) {
