@@ -9,6 +9,7 @@
 //
 // ⚠️ ครึ่งหนึ่งของฟอร์มกระดาษ **ระบบรู้อยู่แล้ว** (ลูกค้า · ดีล · ผู้ร้องขอ · มูลค่าโปรเจกต์
 // · จำนวนกลิ่น) ⇒ ขึ้นเป็นช่องเส้นประ ไม่ให้พิมพ์ซ้ำแล้วขัดกับของจริง
+import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
@@ -91,6 +92,12 @@ export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
   scentCount = null, customer = null, deal = null, requester = null,
 }) {
+  // ⭐ ลูกค้าซื้อหลายกลิ่นแต่บอกมาแนวเดียวเป็นเรื่องปกติ (มติผู้ใช้) — รวบเป็นก้อนเดียว
+  // แล้ว RD ส่งหลาย direction จากก้อนนั้น ซึ่งระบบรองรับอยู่แล้ว · จำนวนกลิ่นที่ขาย
+  // เป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน
+  const merged = scentCount != null && scentCount > 1 && briefs.length === 1;
+  const canMerge = scentCount != null && scentCount > 1;
+  const setCount = (n) => onBriefsChange(Array.from({ length: n }, () => ({ label: "" })));
   const set = (patch) => onChange({ ...value, ...patch });
   const setBrief = (i, patch) => onBriefsChange(
     briefs.map((b, j) => (i === j ? { ...b, ...patch } : b)),
@@ -191,16 +198,41 @@ export default function PdrForm({
 
       {/* ⭐ ชั้นกลางของโครงสามชั้น — จำนวนก้อนมาจากใบสั่งขาย ไม่มีปุ่มเพิ่ม/ลบ */}
       <Section
-        title={`บรีฟรายกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`}
+        title={`บรีฟกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`}
         open={briefs.length > 0}
-        note="จำนวนก้อนมาจากใบสั่งขาย — แต่ละกลิ่นมีบรีฟของตัวเอง กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก"
+        note="กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก"
       >
+        {canMerge && (
+          <div className={styles.topicAction}>
+            {/* ⚠️ สลับแล้วล้างที่กรอกไว้ — รวบ 3 ก้อนเป็น 1 คือทิ้งข้อความสองก้อน
+                จึงต้องบอกก่อนกด ไม่ใช่ให้รู้ตอนของหายไปแล้ว */}
+            <Button
+              variant="quiet" size="sm" disabled={disabled}
+              title="สลับแล้วบรีฟที่กรอกไว้จะถูกล้าง"
+              onClick={() => setCount(merged ? scentCount : 1)}
+            >
+              {merged ? `แยกบรีฟรายกลิ่น (${scentCount} ก้อน)` : "รวบเป็นบรีฟเดียว"}
+            </Button>
+          </div>
+        )}
+        {merged && (
+          <small className={styles.hint}>
+            บรีฟก้อนนี้ครอบทั้ง {scentCount} กลิ่น — RD ส่งได้หลาย direction จากก้อนเดียว
+          </small>
+        )}
+        {!merged && canMerge && (
+          <small className={styles.hint}>
+            ลูกค้าบอกมาแนวเดียวสำหรับทุกกลิ่น? กด &ldquo;รวบเป็นบรีฟเดียว&rdquo; จะได้ไม่ต้องพิมพ์ซ้ำ
+          </small>
+        )}
         {!briefs.length ? (
           <small className={styles.hint}>เลือกใบสั่งขายก่อน แล้วบล็อกบรีฟจะขึ้นตามจำนวนกลิ่นที่ขาย</small>
         ) : briefs.map((brief, i) => (
           <div key={i} className={styles.briefCard}>
             <div className="form-group">
-              <label htmlFor={`brief-label-${i}`}>กลิ่นที่ {i + 1} — ชื่อเรียก</label>
+              <label htmlFor={`brief-label-${i}`}>
+                {merged ? "ชื่อเรียกบรีฟ" : `กลิ่นที่ ${i + 1} — ชื่อเรียก`}
+              </label>
               <Input
                 id={`brief-label-${i}`} value={brief.label || ""} disabled={disabled}
                 placeholder="เช่น แนวสดชื่น"

@@ -14,13 +14,16 @@ test('ต้องมีอย่างน้อยหนึ่งก้อน �
   assert.match(normalizeScentBriefs(many).error, /มากเกินไป/);
 });
 
-test('⭐ จำนวนบรีฟต้องเท่ากับที่ใบสั่งขายระบุ', () => {
-  // จำนวนกลิ่นคือสิ่งที่ลูกค้าจ่ายแล้ว ไม่ใช่ของที่คนกรอกตัดสินเอง
+test('⭐ จำนวนกลิ่นที่ขายเป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน', () => {
   const three = [ok, { label: 'แนวอบอุ่น' }, { label: 'แนวหวาน' }];
-  assert.equal(normalizeScentBriefs(three, { expected: 3 }).error, null);
-  assert.match(normalizeScentBriefs(three, { expected: 5 }).error, /ระบุ 5 กลิ่น แต่ส่งบรีฟมา 3/);
-  assert.match(normalizeScentBriefs([ok], { expected: 3 }).error, /ระบุ 3 กลิ่น/);
-  // ไม่ส่ง expected มา = ไม่บังคับ (ใช้ตอนแก้ร่างที่ยังไม่ผูก SO)
+  assert.equal(normalizeScentBriefs(three, { scentCount: 3 }).error, null);
+  // ⭐ ซื้อ 3 กลิ่นแต่บอกมาแนวเดียว = บรีฟก้อนเดียว แล้ว RD ส่ง 3 direction จากก้อนนั้น
+  // (มติผู้ใช้ — เคสนี้พบบ่อย และระบบรองรับ 1 บรีฟ : หลาย direction อยู่แล้ว)
+  assert.equal(normalizeScentBriefs([ok], { scentCount: 3 }).error, null);
+  assert.equal(normalizeScentBriefs(three, { scentCount: 5 }).error, null);
+  // แต่เกินไม่ได้ — บรีฟที่เกินจำนวนที่ขายคือทางที่ไม่มีใครทำ
+  assert.match(normalizeScentBriefs(three, { scentCount: 2 }).error, /ไม่เกิน 2 ก้อน/);
+  // ไม่ส่ง scentCount มา = ไม่บังคับ (ใช้ตอนแก้ร่างที่ยังไม่ผูก SO)
   assert.equal(normalizeScentBriefs(three).error, null);
 });
 
