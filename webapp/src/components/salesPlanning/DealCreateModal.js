@@ -34,23 +34,25 @@ import styles from "./DealCreateModal.module.css";
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
    เปิดจากหน้ารวมดีล (ไม่มีลีด) = ใบเปล่าล้วน ทั้งใบแรกและใบถัดไป */
-const firstDeal = (lead) => (lead ? {
+const firstDeal = (lead, ownerId) => (lead ? {
   ...initialDealForm,
+  ownerId,
   title: `${lead.company || lead.contactName} — SCENT`,
   customerId: lead.customerId || "",
   dealType: "SCENT",
   stage: "qualified",
   projectValue: lead.budget || "",
-} : { ...initialDealForm });
+} : { ...initialDealForm, ownerId });
 
-const nextDeal = (lead) => (lead ? {
+const nextDeal = (lead, ownerId) => (lead ? {
   ...initialDealForm,
+  ownerId,
   title: `${lead.company || lead.contactName} — NPD`,
   customerId: lead.customerId || "",
   dealType: "NPD",
   stage: "qualified",
   projectValue: "",
-} : { ...initialDealForm });
+} : { ...initialDealForm, ownerId });
 
 /* ⚠️ **mount ตอนจะเปิดเท่านั้น** — `{open && <DealCreateModal … />}` ห้าม mount ค้างไว้:
    ค่าตั้งต้นของ drafts อ่านจาก lead ตอน mount ครั้งแรกครั้งเดียว ถ้า mount ค้างไว้ตั้งแต่
@@ -65,6 +67,9 @@ export default function DealCreateModal({
   projects = [],
   categories = [],
   stages,
+  /* ผู้รับผิดชอบ (AE) — ว่าง = ไม่โชว์ช่อง (ผู้ใช้ยกดีลให้คนอื่นไม่ได้) ดู useDealOwners */
+  owners = [],
+  defaultOwnerId = "",
   onClose,
   onCreated,
 }) {
@@ -72,7 +77,7 @@ export default function DealCreateModal({
   /* `_key` = ตัวตนถาวรของร่างแต่ละใบ — ห้ามใช้ index เป็นกุญแจของ `done` เพราะลบใบ
      กลางทางแล้ว index ของใบที่เหลือจะเลื่อน ⇒ สถานะ "สร้างแล้ว" ไปเกาะผิดใบ */
   const nextKey = useRef(2);
-  const [drafts, setDrafts] = useState(() => [{ ...firstDeal(lead), _key: 1 }]);
+  const [drafts, setDrafts] = useState(() => [{ ...firstDeal(lead, defaultOwnerId), _key: 1 }]);
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -98,7 +103,7 @@ export default function DealCreateModal({
     nextKey.current += 1;
     const key = nextKey.current;
     setActive(drafts.length);
-    setDrafts((prev) => [...prev, { ...nextDeal(lead), _key: key }]);
+    setDrafts((prev) => [...prev, { ...nextDeal(lead, defaultOwnerId), _key: key }]);
   };
 
   const remaining = drafts.filter((draft) => !done[draft._key]?.dealId).length;
@@ -118,6 +123,11 @@ export default function DealCreateModal({
            "ฟอร์มสองชุด" ที่ AGENTS.md เตือนไว้พอดี */
         if (!draft.dealType) {
           throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
+        /* ช่องผู้รับผิดชอบโผล่เมื่อไร = ผู้ใช้รายนี้มอบดีลให้คนอื่นได้ ⇒ ต้องระบุให้ครบ
+           (API ก็บังคับสำหรับ role ที่ไม่ได้ถือดีลเอง — ที่นี่บอกก่อนเสียเที่ยว) */
+        if (owners.length > 0 && !draft.ownerId) {
+          throw new Error(`กรุณาเลือกผู้รับผิดชอบ (AE) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
         }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
@@ -259,6 +269,7 @@ export default function DealCreateModal({
                 categories={categories}
                 stages={stages || DEAL_STAGES.filter((stage) => stage !== "won")}
                 probabilityMode="auto"
+                owners={owners}
               />
             </div>
           </div>

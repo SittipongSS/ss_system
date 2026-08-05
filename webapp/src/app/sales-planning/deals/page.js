@@ -16,10 +16,11 @@ import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue"
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
@@ -50,7 +51,9 @@ export default function SalesPlanningPipelinePage() {
   const role = useRole();
   const superuser = isSuperuser(role);
   // สร้างดีลได้เฉพาะ AE / Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
-  const canCreateDeals = superuser || role === "ae" || role === "senior_ae";
+  /* ⚠️ ใช้ตัวเดียวกับที่ API บังคับ ห้ามคำนวณเอง — ของเดิมเขียนรายชื่อ role ซ้ำไว้ที่นี่
+     แล้วตกรุ่นทันทีที่กติกาเปลี่ยน (AC ถูกเพิ่มเข้ามา 2026-08-05 แต่ปุ่มยังไม่โผล่) */
+  const canCreateDeals = canCreateDeal({ role });
   // ตัวกรองทั้งหมดอยู่ใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด. "รอเติมข้อมูล" เดิมมี state แต่ไม่มีปุ่มให้กด
   // (กรองไม่ได้จริง) — ย้ายมาเป็นหมวดหนึ่งในแผงนี้
@@ -94,6 +97,9 @@ export default function SalesPlanningPipelinePage() {
   const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
   /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ —
      ของเดิมหน้านี้เช็คเงื่อนไขเองในแต่ละปุ่ม แล้วหลวมกว่า API อยู่ 3 จุด */
+  /* ผู้รับผิดชอบ (AE) — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook ที่เดียว (3 หน้าใช้ร่วมกัน) */
+  const { owners, defaultOwnerId } = useDealOwners(meId);
+
   const dealLc = useMemo(() => createDealLifecycle(), []);
 
   const SORT_OPTIONS = [
@@ -276,6 +282,8 @@ export default function SalesPlanningPipelinePage() {
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
+      // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
+      ownerId: deal.ownerId || "",
     });
     setDealModal(true);
   };
@@ -789,6 +797,8 @@ export default function SalesPlanningPipelinePage() {
           projects={projects}
           categories={categories}
           stages={PIPELINE_STAGES.filter((st) => st !== "won")}
+          owners={owners}
+          defaultOwnerId={defaultOwnerId}
           onClose={() => setCreateModal(false)}
           onCreated={() => { setCreateModal(false); load(); }}
         />
@@ -806,6 +816,7 @@ export default function SalesPlanningPipelinePage() {
               categories={categories}
               stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
               alreadyWon={dealForm.stage === "won"}
+              owners={owners}
             />
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>

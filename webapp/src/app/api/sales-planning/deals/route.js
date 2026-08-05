@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { generateEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
+import { ownsDealsByDefault, validateDealOwner } from '@/lib/sales/dealOwner';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   applyDealScope,
@@ -72,13 +73,29 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   // สร้างดีลได้เฉพาะ AE/Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
-  if (!canCreateDeal(user)) return forbidden('เปิดดีลได้เฉพาะ AE / Senior AE');
+  if (!canCreateDeal(user)) return forbidden('เปิดดีลได้เฉพาะ AE / AC / Senior AE');
 
   const body = await req.json();
   if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
   const categoryCode = (body.categoryCode || '').trim() || null;
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return badRequest(categoryError);
+
+  /* ผู้รับผิดชอบ (AE) — AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ดีลต้องมีเจ้าของจริง
+     ⚠️ ห้ามเชื่อ body: `ownerName` เป็นสตริงอิสระที่ถูกเก็บเป็น snapshot แล้วโชว์บน
+     ตาราง/KPI และ `ownerId` มั่ว ๆ จะได้ดีลที่เจ้าของแตะไม่ได้ (ดู lib/sales/dealOwner.js)
+     ไม่ระบุ = ผู้สร้างเป็นเจ้าของเอง (พฤติกรรมเดิม) */
+  /* AC ต้องระบุ AE เสมอ — ถ้าปล่อยว่าง ดีลจะตกเป็นของ AC (ผู้ประสานงาน) เงียบ ๆ
+     แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย (ดู ownsDealsByDefault) */
+  if (!body.ownerId && !ownsDealsByDefault(user.role)) {
+    return badRequest('ต้องเลือกผู้รับผิดชอบ (AE) ของดีลนี้');
+  }
+  let owner = null;
+  if (body.ownerId) {
+    const checked = await validateDealOwner(supabase, body.ownerId, user);
+    if (!checked.ok) return badRequest(checked.error);
+    owner = checked;
+  }
 
   let customerName = body.customerName || null;
   if (body.customerId) {
@@ -126,9 +143,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     confirmedAt: null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
-    ownerId: body.ownerId || user.id || null,
-    ownerName: body.ownerName || user.name || null,
-    team: body.team || user.team || null,
+    ownerId: owner?.ownerId || user.id || null,
+    // ชื่อมาจาก server เสมอเมื่อมีการเลือกเจ้าของ — ไม่รับ body.ownerName อีก
+    ownerName: owner?.ownerName || user.name || null,
+    // ทีมตามเจ้าของ ไม่ใช่ตามคนกด — ไม่งั้นดีลที่ AC มอบให้ AE ทีมอื่นจะติดทีมของ AC
+    // (เจ้าของมองไม่เห็นดีลตัวเอง) · เจ้าของที่ไม่มีทีม (admin) ตกกลับไปใช้ทีมคนกด
+    team: owner?.team || body.team || user.team || null,
     // ประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER) = คอลัมน์จริง (mig 0088) — ค่าตรงกับ
     // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
     // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.

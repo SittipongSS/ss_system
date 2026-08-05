@@ -18,6 +18,7 @@ import Segmented from "@/components/ui/Segmented";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { canSeeLeadKpi, leadScopes } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
@@ -318,6 +319,9 @@ export default function LeadsPage() {
   };
 
   const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  /* ผู้รับผิดชอบ (AE) ของดีลที่จะเปิดจากลีดนี้ — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook
+     ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
+  const dealOwners = useDealOwners(meId);
   /* กติกา "ลีดใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับหน้ารายละเอียด — เดิมหน้านี้มี
      rowActions() ของตัวเองที่คิดซ้ำจาก LEAD_TRANSITIONS + เช็ค role เอง แล้วเพี้ยนจาก
      หน้ารายละเอียดได้เงียบ ๆ (เจอจริง: contact บังคับเหตุผลที่นี่ แต่หน้าโน้นไม่บังคับ) */
@@ -624,6 +628,8 @@ export default function LeadsPage() {
           mount ตอนเปิดเท่านั้น (ดูคำเตือนใน DealCreateModal) · key = รีเซ็ตฟอร์มเมื่อสลับลีด */}
       {dealModal && (
         <DealCreateModal
+          owners={dealOwners.owners}
+          defaultOwnerId={dealOwners.defaultOwnerId}
           key={dealModal.id}
           lead={dealModal}
           customers={customers}

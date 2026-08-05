@@ -57,6 +57,10 @@ export default function DealFormFields({
      "input" = เลือกเองได้ (ตอน **แก้** และไม่ได้ขยับขั้น — ถ้าขยับขั้น server คิดใหม่)
      โหมดผ่าน props ตามกฎ "สร้าง/แก้ ใช้ฟอร์มเดียวกัน" ใน AGENTS.md */
   probabilityMode = "input",
+  /* ผู้รับผิดชอบ (AE) — ส่งรายชื่อมาเมื่อไรช่องถึงจะโผล่ (มติผู้ใช้ 2026-08-05)
+     ⚠️ ผู้เรียกเป็นคนกรอง: เห็นเฉพาะทีมตัวเอง และไม่ส่งมาเลยถ้าผู้ใช้ยกดีลให้คนอื่น
+     ไม่ได้ (AE มี scope 'own') — ดู lib/sales/dealOwner.js · ด่านจริงอยู่ที่ API */
+  owners = [],
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
 
@@ -103,7 +107,7 @@ export default function DealFormFields({
             })),
         ]}
       />
-      {form.lockedProjectId && <small style={{ color: "var(--text-3)" }}>เชื่อมแล้ว หากต้องการเปลี่ยนโครงการให้จัดการจากหน้าโครงการ</small>}
+      {form.lockedProjectId && <small>เชื่อมแล้ว หากต้องการเปลี่ยนโครงการให้จัดการจากหน้าโครงการ</small>}
     </label>
   );
 
@@ -122,7 +126,7 @@ export default function DealFormFields({
         })()}
         placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"}
       />
-      <small style={{ color: "var(--text-3)" }}>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
+      <small>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
     </label>
   );
 
@@ -132,7 +136,7 @@ export default function DealFormFields({
   // (ไม่มี default NPD เงียบ ๆ อีก — มติ 2026-07-21).
   const dealTypeField = (
     <label className="deal-field" key="dealType">
-      ประเภทดีล <span style={{ color: "var(--red)" }}>*</span>
+      ประเภทดีล <span className="required-mark">*</span>
       <Select
         className="premium-select"
         value={form.dealType || ""}
@@ -175,7 +179,7 @@ export default function DealFormFields({
       ) : probabilityMode === "auto" ? (
         <>
           <Input value={`${autoFc}% — ตามสถานะที่เลือก`} readOnly disabled />
-          <small style={{ color: "var(--text-3)" }}>
+          <small>
             ระบบปรับให้เองเมื่อสถานะเปลี่ยน (ออกใบเสนอราคา → 50%) · NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80%
           </small>
         </>
@@ -184,6 +188,31 @@ export default function DealFormFields({
           {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </Select>
       )}
+    </label>
+  );
+
+  /* AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน — ถ้าไม่มีช่องนี้ ดีลจะตกเป็น
+     ของ AC เงียบ ๆ (server ใส่ `ownerId = user.id` ให้เมื่อไม่ระบุ) แล้วไม่มี AE คนไหน
+     เห็นมันในคิว "ของฉัน" เลย */
+  const ownerField = owners.length > 0 && (
+    <label className="deal-field" key="owner">
+      ผู้รับผิดชอบ (AE) <span className="required-mark">*</span>
+      <SearchableSelect
+        entity="person"
+        value={form.ownerId || ""}
+        onChange={(ownerId) => onPatch({ ownerId })}
+        disabled={alreadyWon}
+        placeholder="ค้นหาชื่อ AE..."
+        options={[
+          { value: "", label: "— เลือกผู้รับผิดชอบ —" },
+          ...owners.map((owner) => ({
+            value: owner.id,
+            label: owner.team ? `${owner.name} · ${owner.team}` : owner.name,
+            search: `${owner.name || ""} ${owner.team || ""}`,
+          })),
+        ]}
+      />
+      <small>เลือกได้เฉพาะคนในทีมของคุณ</small>
     </label>
   );
 
@@ -198,7 +227,7 @@ export default function DealFormFields({
     <label className="deal-field" key="closeDate">
       วันที่คาดการณ์ปิด{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
       <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
-      <small style={{ color: "var(--text-3)" }}>
+      <small>
         {form.expectedCloseDate
           ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
           : "ไม่ระบุ = เดือน FC ตกเป็นเดือนปัจจุบัน"}
@@ -227,9 +256,9 @@ export default function DealFormFields({
         <input className="premium-input" value={form.title} onChange={(e) => set("title")(e.target.value)} required />
       </label>
 
-      {/* ก่อนหมวดสินค้า: 6 ช่อง (มีโครงการ) หรือ 5 ช่อง (ไม่มี) — pairRows จัดคู่ให้
-          และดันช่องที่เหลือเดี่ยวให้เต็มแถว จึงไม่มีรูไม่ว่ากรณีไหน */}
-      {pairRows([customerField, projectField, brandField, dealTypeField, stageField, fcField])}
+      {/* ก่อนหมวดสินค้า: 5–7 ช่อง แล้วแต่ showProject / มีช่องผู้รับผิดชอบไหม —
+          pairRows จัดคู่ให้ และดันช่องที่เหลือเดี่ยวให้เต็มแถว จึงไม่มีรูไม่ว่ากรณีไหน */}
+      {pairRows([customerField, projectField, brandField, dealTypeField, stageField, fcField, ownerField])}
 
       {/* กินเต็มแถวเองอยู่แล้ว (grid-column: 1/-1 ใน globals.css) */}
       <ProductCategorySelect

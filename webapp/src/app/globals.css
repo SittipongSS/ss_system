@@ -3242,6 +3242,9 @@ button.empty-state { width: 100%; font: inherit; }
 .deal-field > input,
 .deal-field > textarea { width: 100%; }
 .required-mark { color: var(--red); }
+/* คำอธิบายใต้ช่องในฟอร์มดีล — เดิมเขียน `style={{ color: "var(--text-3)" }}` ซ้ำทุกจุด
+   ในไฟล์เดียว (เพดาน inlineStyle ของสายงานขายขึ้นไม่ได้ ดู scripts/uiLegacyBudget.mjs) */
+.deal-field > small { color: var(--text-3); }
 
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
