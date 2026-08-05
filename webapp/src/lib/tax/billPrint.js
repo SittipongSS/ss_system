@@ -223,7 +223,7 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
       // (มติผู้ใช้ 2026-08-04) — ต้องตรงกับใบเสนอราคา/ใบสั่งขาย ไม่งั้นลูกค้าได้ชุดเอกสาร
       // ที่อ้างอิงของอย่างเดียวกันคนละชื่อ · ค่าตรึงอยู่บนใบตั้งแต่ตอนสร้าง (mig 0208)
       rows: [
-        { label: 'โครงการ', value: order.projectRef },
+        { label: 'โครงการหลัก', value: order.projectRef },
         { label: 'โครงการย่อย', value: order.dealRef },
         { label: 'เลขที่ใบเสนอราคา', value: order.quotationRef },
         { label: 'เลขที่ใบสั่งซื้อ (PO)', value: order.poReference },

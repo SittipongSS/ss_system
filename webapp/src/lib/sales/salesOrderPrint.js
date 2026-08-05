@@ -114,7 +114,7 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     referenceRows: [
       { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
       { label: 'สถานะเอกสาร', value: statusLabel },
-      { label: 'โครงการ', value: order.project?.name || '-' },
+      { label: 'โครงการหลัก', value: order.project?.name || '-' },
       { label: 'โครงการย่อย', value: order.deal?.title || '-' },
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
