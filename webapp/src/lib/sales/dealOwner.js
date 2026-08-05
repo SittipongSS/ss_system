@@ -66,6 +66,28 @@ async function findAuthUser(supabase, id) {
 }
 
 /**
+ * เบอร์ติดต่อของเจ้าของดีล — ตรึงลงใบเสนอราคาตอนสร้าง/ออก Rev. เพื่อโชว์เป็นเบอร์
+ * "ผู้เสนอราคา" บนเอกสาร (เจ้าของดีล = ผู้เสนอราคา = ผู้อนุมัติใบ — มติผู้ใช้ 2026-08-05)
+ * `sales_deals` ไม่มีคอลัมน์เบอร์ ต้องถามจาก auth ตอนออกใบแล้วตรึงไว้
+ * ตรึง id คู่ไปด้วยเสมอ — เปลี่ยนเจ้าของดีลทีหลังแล้วชื่อบนใบจะขยับตาม (อ่านสดจากดีล)
+ * แต่เบอร์ที่ตรึงไว้ไม่ขยับ ฝั่งเอกสารจึงต้องเทียบ id ก่อนจะกล้าใช้เบอร์นั้น
+ * @returns {Promise<{ id: string, phone: string | null } | null>}
+ */
+export async function loadDealOwnerContact(supabase, ownerId) {
+  const id = String(ownerId || '').trim();
+  if (!id) return null;
+  // อ่านเบอร์ไม่ได้ = ไม่บล็อกการออกใบ (ใบไม่มีแถวโทรเท่านั้น)
+  let user = null;
+  try {
+    user = await findAuthUser(supabase, id);
+  } catch {
+    return null;
+  }
+  if (!user) return null;
+  return { id, phone: (user.user_metadata?.phone || '').trim() || null };
+}
+
+/**
  * ตรวจว่า `ownerId` เป็นเจ้าของดีลได้จริงไหม
  * @param actor  คนที่กดบันทึก — ใช้เทียบทีม (ผู้กำกับดูแลที่ไม่มีทีม = ข้ามด่านทีม)
  * @returns {Promise<{ ok: true, ownerId, ownerName, team } | { ok: false, error }>}

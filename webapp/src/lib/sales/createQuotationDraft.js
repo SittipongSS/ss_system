@@ -13,6 +13,7 @@ import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPl
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 
 // ความผิดพลาดเชิงกติกา (ไม่ใช่บั๊ก) — route แปลงเป็น HTTP response ตาม status
 export class QuotationDraftError extends Error {
@@ -31,6 +32,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   if (body.status === 'sent' && !lines.length) {
     throw new QuotationDraftError('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
   }
+
+  // เบอร์เจ้าของดีล ณ วันออกใบ — ตรึงลงใบ (sales_deals ไม่มีคอลัมน์เบอร์)
+  const ownerContact = await loadDealOwnerContact(supabase, deal?.ownerId);
 
   // งวดชำระ — validate ก่อน (client อาจส่งมาไม่ครบ 100%)
   const pv = validatePaymentPlan(body.paymentPlan);
@@ -120,6 +124,10 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
         aeOwner: peoplePick.people.aeOwner || null,
         preparedBy: peoplePick.people.preparedBy || null,
         aeSupervisor: peoplePick.people.aeSupervisor || null,
+        // เบอร์ "ผู้เสนอราคา" บนเอกสาร = เบอร์เจ้าของดีล (คนเดียวกับผู้อนุมัติใบ) —
+        // ตรึงคู่กับ id ไว้ เอกสารจะได้รู้ว่าเบอร์นี้ยังเป็นของเจ้าของดีลคนปัจจุบันไหม
+        salesOwnerId: ownerContact?.id || null,
+        salesOwnerPhone: ownerContact?.phone || null,
         paymentPresetVersionId: pinnedPresets.payment,
         remarksPresetVersionId: pinnedPresets.remarks,
       },
