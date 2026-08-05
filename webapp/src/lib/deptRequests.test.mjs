@@ -46,6 +46,11 @@ import {
   requestHasItems,
   requestShapeError,
   requestStepKey,
+  PLANNED_REQUEST_DEPTS,
+  REQUEST_DEPTS,
+  REQUEST_DEPT_LABELS,
+  requestKindFamily,
+  requestStepLabel,
 } from './master/requestTypes.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -565,4 +570,46 @@ test('ตีกลับต้องบอกเหตุผลเสมอ — 
   assert.match(bounceRequestError(pending, {}), /ต้องบอกว่าต้องแก้อะไร/);
   assert.match(bounceRequestError(pending, { reason: '   ' }), /ต้องบอกว่าต้องแก้อะไร/);
   assert.match(bounceRequestError(pending, { reason: 'ก'.repeat(2001) }), /ยาวเกิน/);
+});
+
+// ── ฟอร์มเปิดคำร้องรอบใหม่: ฝ่ายเป็นปุ่ม · หัวข้อมีหัวกลุ่ม · ช่องที่เติมให้ ──────
+
+test('ฝ่ายที่ยังไม่เปิดต้องอยู่นอก REQUEST_DEPTS — โผล่ในฟอร์มได้ แต่ส่งไม่ได้', () => {
+  // ⚠️ ด่านนี้มีไว้กันการ "เปิดที่เมนู" ก่อน "ปิดที่เนื้อ" — ย้าย FN เข้า
+  // REQUEST_DEPTS ก่อน P7 ผ่อน CHECK ของ dept_requests.dept เมื่อไร ฟอร์มจะยอมให้
+  // ส่งแล้วไปตายที่ constraint ด้วย error ดิบ
+  for (const dept of PLANNED_REQUEST_DEPTS) {
+    assert.ok(!REQUEST_DEPTS.includes(dept), `${dept} ยังส่งไม่ได้`);
+    assert.ok(REQUEST_DEPT_LABELS[dept], `${dept} ต้องมีป้ายชื่อให้แสดงแบบจาง`);
+    assert.equal(kindsForDept(dept).length, 0);
+    assert.ok(requestDeptError(dept));
+  }
+});
+
+test('ทุกฝ่ายที่ส่งได้ต้องมีป้ายชื่อ — ไม่งั้นปุ่มจะขึ้นเป็นรหัสดิบ', () => {
+  for (const dept of REQUEST_DEPTS) {
+    assert.ok(REQUEST_DEPT_LABELS[dept]?.code);
+    assert.ok(REQUEST_DEPT_LABELS[dept]?.name);
+  }
+});
+
+test('หัวข้อทุกตัวมีตระกูลไว้เป็นหัวกลุ่ม — ไม่มีตัวไหนตกไปเป็นกลุ่มเปล่า', () => {
+  for (const kind of REQUEST_KIND_LIST) {
+    const family = requestKindFamily(kind);
+    assert.equal(typeof family, 'string');
+    assert.ok(family.length > 0, `${kind} ต้องมีหัวกลุ่ม`);
+  }
+  // งานพัฒนากับขอราคาอยู่ฝ่าย RD ทั้งคู่ — ต้องแยกกลุ่มกันได้ ไม่งั้นหัวกลุ่มไร้ประโยชน์
+  assert.notEqual(requestKindFamily('scent_dev'), requestKindFamily('price_f'));
+});
+
+test('requestStepLabel อ่านชื่อขั้นจากแม่แบบ ไม่ใช่ข้อความที่ก๊อปมาเก็บ', () => {
+  // 'scent-06' → SCENT_TEMPLATE ขั้น 6 = "ออกแบบกลิ่น" · แก้ชื่อขั้นในแม่แบบแล้ว
+  // ป้ายในฟอร์มต้องเปลี่ยนตามเอง
+  assert.equal(requestStepLabel('scent_dev'), 'ออกแบบกลิ่น (SCENT 6)');
+  assert.equal(requestStepKey('product_dev'), 'npd-15');
+  assert.ok(requestStepLabel('product_dev')?.includes('(NPD 15)'));
+  // หัวข้อที่ไม่ปักหมุดขั้นไหนต้องคืน null — ห้ามเดาขั้นให้
+  assert.equal(requestStepLabel('info'), null);
+  assert.equal(requestStepLabel('ไม่มีหัวข้อนี้'), null);
 });

@@ -4,10 +4,11 @@
 // ⭐ **เหตุผลไม่ใช่ความกว้าง** (`Modal size="xl"` = 1040px มีอยู่แล้ว พอสำหรับตาราง)
 // แต่เป็นสองข้อนี้:
 //
-//   1 **แนบไฟล์ต้องมี URL ที่กลับมาได้** — `AttachmentsPanel` ต้องรู้ `entityId`
-//     ของใบก่อน ⇒ หน้าเต็ม: บันทึกร่างแล้วเดินต่อไปหน้ารายละเอียดซึ่งแนบได้ทันที ·
-//     โมดัล: ต้องปิดแล้วไปเปิดใบนั้นใหม่เอง = **ขั้นตอนขาด** (ของเดิมแนบไฟล์ตอน
-//     เปิดคำร้องไม่ได้เลยจริง ๆ)
+//   1 **ขั้นทบทวนก่อนเลขที่ออก** — หน้านี้จบที่ "บันทึกร่าง" แล้วส่งที่หน้ารายละเอียด
+//     ⇒ ได้จังหวะแนบไฟล์ (`AttachmentsPanel` ต้องมี `entityId` ก่อน) และตรวจของ
+//     ก่อนกดส่งซึ่งย้อนไม่ได้ · โมดัลเดินสามขั้นรวดในการกดครั้งเดียว จึงไม่มีจังหวะนั้น
+//     ⚠️ **ไม่ใช่ว่าโมดัลแนบไฟล์ไม่ได้** — `createAndSendRequest` อัปไฟล์ที่ค้างใน
+//     ฟอร์มให้หลังสร้างใบ · ที่ต่างคือ "ได้ดูก่อนส่งไหม" ไม่ใช่ "แนบได้ไหม"
 //   2 **prefill จากหน้าดีล** — `/requests/new?kind=product_dev&dealId=…`
 //     โมดัลต้องส่ง props ผ่านทุกจุดที่เปิดมัน = เพิ่มทางที่ต้องดูแล
 //
@@ -21,7 +22,7 @@ import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { createAndSendRequest, requestFormBlocker } from "@/lib/master/requestCreate";
+import { createRequestDraft, requestFormBlocker } from "@/lib/master/requestCreate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -76,25 +77,26 @@ export default function NewRequestPage() {
   // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล
   const blocker = requestFormBlocker(form);
 
-  const submit = async () => {
+  // ⭐ **บันทึกร่างอย่างเดียว ไม่ส่ง** — เลขที่ออกตอนกดส่งที่หน้ารายละเอียด
+  // สองขั้นนี้แยกกันเพราะการออกเลขที่ย้อนไม่ได้ (trigger ทำให้ `docNo` immutable)
+  // และเพราะไฟล์แนบต้องมีคำร้องให้เกาะก่อน ⇒ ร่างคือสิ่งที่ทำให้แนบไฟล์เป็นไปได้
+  const saveDraft = async () => {
     setSaving(true);
     const productName = products.find((p) => p.id === form.productId)?.name || null;
-    const { id, error } = await createAndSendRequest(form, { productName });
+    const { id, error } = await createRequestDraft(form, { productName });
     if (error) {
       setToast({ kind: "error", msg: error });
       setSaving(false);
       return;
     }
-    // ⭐ มีร่างค้างแล้ว = พาไปทำต่อที่หน้ารายละเอียด **ซึ่งแนบไฟล์ได้** — นี่คือ
-    // ขั้นตอนที่โมดัลทำไม่ได้ และเป็นเหตุผลที่หน้านี้มีอยู่
     if (id) router.push(`/requests/${id}`);
   };
 
   return (
     <Workspace
       icon={<ClipboardList size={22} />}
-      title="เปิดคำร้องข้ามฝ่าย"
-      subtitle="ส่งเรื่องถึงฝ่ายที่ต้องทำต่อ — บันทึกแล้วแนบไฟล์เพิ่มได้ที่หน้ารายละเอียด"
+      title="เปิดคำร้อง"
+      subtitle="คำร้องจะถูกสร้างเป็นร่างก่อน — เลขที่จะออกตอนกดส่ง"
       back={{ href: returnTo, label: "กลับ" }}
     >
       <div className={styles.form}>
@@ -104,19 +106,21 @@ export default function NewRequestPage() {
           projects={projects} deals={deals} salesOrders={salesOrders}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
+          // ไฟล์แนบและ @ อยู่ที่หน้ารายละเอียด — ที่เดียวที่ทั้งสองอย่างทำงานจริง
+          deferAttachments
+          // เหตุผลที่ยังบันทึกไม่ได้ย้ายไปอยู่ติดปุ่ม (ด่านตัวเดียวกัน คนละที่วาง)
+          showBlocker={false}
         />
 
-        <p className={styles.note}>
-          กดส่งแล้วระบบจะออกเลขที่ · แจ้งฝ่าย {form.dept || "ปลายทาง"} ·
-          และลงเรื่องนี้ในเธรดของดีลที่เลือกไว้ให้เอง
-        </p>
-
         <div className={`action-bar ${styles.actions}`}>
+          {/* ⚠️ ข้อความนี้มาจาก `requestFormBlocker` ตัวเดียวกับที่ปิดปุ่ม — ห้าม
+              เขียนเงื่อนไขเพิ่มตรงนี้ ปุ่มจางแบบไม่บอกเหตุผลคือบั๊กที่เพิ่งปิดไป */}
+          {blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
           <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
             ยกเลิก
           </Button>
-          <Button tone="accent" disabled={saving || !!blocker} onClick={submit}>
-            ส่งคำร้อง
+          <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
+            บันทึกร่าง
           </Button>
         </div>
       </div>

@@ -9,6 +9,7 @@
 // เดียวกัน · ไฟล์นี้คือจุดที่รวมมันเข้าด้วยกัน: ทุกชนิดเดินสถานะชุดเดียวกัน
 // ต่างกันแค่ "ถามอะไร ถึงฝ่ายไหน ผูกกับอะไร จบแล้วไปโผล่ที่ไหน"
 import { MATERIAL_KINDS, sourceDeptForMaterialKind } from '@/lib/materialPrices';
+import { templateFor } from '@/lib/pm/templates';
 
 // ── ธงต่อชนิด ────────────────────────────────────────────────────────────
 //   dept        ฝ่ายผู้ตอบที่ล็อกไว้ (null = ผู้ขอเลือกเองได้ทั้ง RD/PC)
@@ -205,12 +206,50 @@ export function requestStepKey(kind) {
   return REQUEST_KINDS[kind]?.stepKey || null;
 }
 
+// ป้ายขั้นในไทม์ไลน์ของหัวข้อ — "ออกแบบกลิ่น (SCENT 6)" · null เมื่อหัวข้อไม่ปักหมุด
+//
+// ⭐ **อ่านชื่อจากแม่แบบ ไม่ก๊อปมาเก็บ** — `stepKey` ('scent-06') เป็นของที่มีอยู่แล้ว
+// บนหัวข้อและบนแถวคำร้อง (ดู lib/requests/pins.js) · เขียนชื่อขั้นซ้ำไว้ที่นี่เมื่อไร
+// จะเป็นแหล่งความจริงที่สองที่ drift ได้ทันทีที่มีคนแก้ชื่อขั้นในแม่แบบ
+export function requestStepLabel(kind) {
+  const stepKey = requestStepKey(kind);
+  const parsed = /^(.+)-(\d+)$/.exec(stepKey || '');
+  if (!parsed) return null;
+  const type = parsed[1].toUpperCase();
+  const step = Number(parsed[2]);
+  const row = templateFor(type).find((t) => t.step === step);
+  return row ? `${row.name} (${type} ${step})` : null;
+}
+
 // ⚠️ `requestRefs` เดิมถูกถอด — ธง `refs: 'scent'|'formula'` เก็บได้ค่าเดียวและ
 // ไม่มีที่ให้ "โครงการ+ดีล+กลิ่น+ประเภทสินค้า" ของ Mock-up · ใช้ `requestNeeds()` แทน
 
 // ฝ่ายผู้ตอบของคำร้อง — ชนิดที่ผูกฝ่ายตายตัวใช้ค่านั้น, ชนิดที่ไม่ผูก (สอบถาม/
 // ขอเอกสาร) ให้ผู้ขอเลือกเอง แต่ต้องเป็น RD/PC เท่านั้น (CHECK ของตารางยังคุมอยู่)
 export const REQUEST_DEPTS = ['RD', 'PC'];
+
+export const REQUEST_DEPT_LABELS = {
+  RD: { code: 'RD', name: 'วิจัยและพัฒนา' },
+  PC: { code: 'PC', name: 'จัดซื้อ' },
+  FN: { code: 'FN', name: 'บัญชี' },
+};
+
+// ⚠️ ฝ่ายที่ **ยังเปิดไม่ได้** — โผล่ในฟอร์มแบบจางและกดไม่ได้ ไม่ใช่ซ่อน (มติผู้ใช้:
+// ตัวเลือกที่ไม่มีสิทธิ์ต้องเห็นว่ามีอยู่ ไม่งั้นคนจะไปหาที่อื่น) · **ห้ามย้ายเข้า
+// `REQUEST_DEPTS`** จนกว่า P7 จะผ่อน CHECK ของ `dept_requests.dept` — ย้ายก่อนแล้ว
+// ฟอร์มจะยอมให้ส่ง แล้วไปตายที่ constraint ด้วย error ดิบที่อ่านไม่รู้เรื่อง
+export const PLANNED_REQUEST_DEPTS = ['FN'];
+
+// หัวกลุ่มในดรอปดาวน์หัวข้อ — ตระกูลมาจาก `scope` ที่หัวข้อมีอยู่แล้ว ไม่ใช่ธงใหม่
+const KIND_FAMILY_LABEL = {
+  SB: 'งานพัฒนา', MU: 'งานพัฒนา',
+  RM: 'ขอราคา', PM: 'ขอราคา',
+  RQ: 'ทั่วไป',
+};
+
+export function requestKindFamily(kind) {
+  return KIND_FAMILY_LABEL[REQUEST_KINDS[kind]?.scope] || 'ทั่วไป';
+}
 
 export function deptForRequest(kind, { dept, items } = {}) {
   const fixed = REQUEST_KINDS[kind]?.dept;

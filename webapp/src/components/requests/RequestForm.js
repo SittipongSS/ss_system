@@ -1,17 +1,23 @@
 "use client";
 // ── ฟอร์มเปิดคำร้องข้ามฝ่าย ─────────────────────────────────────────────
 //
-// ⭐ **ลำดับคำถามคือของจริงที่ผู้ใช้สั่งไว้ (2026-08-03)** ห้ามสลับ:
-//     1 โครงการ → ดีล (บังคับ)   2 ฝ่าย   3 หัวข้อ   4 ชื่อเรื่อง + รายละเอียด
-//     5 วันที่ต้องการคำตอบ + ด่วน  6 แนบไฟล์ · กล่าวถึง
-// เหตุผลที่ลำดับนี้ไม่ใช่เรื่องความสวยงาม: คนเปิดคำร้องคิดจาก "งานไหน" → "ถามใคร"
-// → "ถามเรื่องอะไร" เสมอ · ของเดิมกลับหัว (เลือกหัวข้อก่อน แล้วระบบเดาฝ่ายจาก
-// ชนิดวัสดุ) ทำให้ฝ่ายผู้ตอบเป็นผลข้างเคียงที่ผู้ใช้มองไม่เห็นว่าตัวเองเลือกอะไรไป
+// ⭐ **ลำดับคำถามคือของจริงที่ผู้ใช้สั่งไว้ (แผนฉบับที่ 3, 2026-08-04)** ห้ามสลับ:
+//     1 ฝ่าย → 2 หัวข้อ → 3 ของที่หัวข้อนั้นต้องอ้าง → 4 ชื่อเรื่อง + รายละเอียด
+//     5 วันที่ต้องการคำตอบ + ด่วน
+// เหตุผลที่ลำดับนี้ไม่ใช่เรื่องความสวยงาม: คนเปิดคำร้องคิดจาก **"จะถามใคร"** ก่อน
+// "ถามเรื่องอะไร" เสมอ · ของเดิมกลับหัว (เลือกหัวข้อก่อน แล้วระบบเดาฝ่ายจากชนิดวัสดุ)
+// ทำให้ฝ่ายผู้ตอบเป็นผลข้างเคียงที่ผู้ใช้มองไม่เห็นว่าตัวเองเลือกอะไรไป
+//
+// ⚠️ ฝ่ายเป็น **ปุ่มเรียงกัน ไม่ใช่ดรอปดาวน์** — มีสามตัวและเป็นคำถามแรก · ดรอปดาวน์
+// ซ่อนจำนวนตัวเลือกไว้จนกว่าจะกด ทำให้คำถามแรกดูเหมือนช่องกรอกเปล่า ๆ · ฝ่ายที่ยัง
+// เปิดไม่ได้ (`PLANNED_REQUEST_DEPTS`) แสดงแบบจางและกดไม่ได้ ไม่ใช่ซ่อน
 //
 // ⚠️ ไม่มีช่อง "หมายเหตุ" แล้ว (มติเดียวกัน) — รายละเอียดช่องเดียวจบ
 //
-// ⚠️ ฟอร์มเดียวใช้ทั้งหน้าคำร้องและโมดัลในใบขอราคาผลิต (กฎ AGENTS.md) — ต่างกันแค่
-// `lockKind` (บริบทเป็นตัวกำหนดหัวข้อเอง) ไม่ใช่คนละไฟล์
+// ⚠️ ฟอร์มเดียวใช้ทั้งหน้าคำร้องและโมดัลในใบขอราคาผลิต (กฎ AGENTS.md) — ต่างกันที่ธง
+// ไม่ใช่คนละไฟล์: `lockKind` (บริบทกำหนดหัวข้อเอง) · `deferAttachments` (หน้าที่บันทึก
+// เป็นร่างก่อน แล้วไปแนบไฟล์/กด @ ที่หน้ารายละเอียด) · `showBlocker` (ใครวางข้อความ
+// "ยังกรอกไม่ครบ" — เนื้อฟอร์ม หรือแถบปุ่มของผู้เรียก)
 import { Plus, Trash2, Paperclip, X, AtSign } from "lucide-react";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -24,9 +30,11 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
 import {
-  REQUEST_DEPTS, kindsForDept, lineShapeForKind, materialKindForRequest, requestHasItems,
+  PLANNED_REQUEST_DEPTS,
+  REQUEST_DEPTS, REQUEST_DEPT_LABELS,
+  kindsForDept, lineShapeForKind, materialKindForRequest, requestHasItems,
   requestHasTiers,
-  requestKindLabel, requestKindMeta, requestNeedsRef,
+  requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
 import { isScentUsable } from "@/lib/master/scents";
@@ -35,9 +43,21 @@ import { MAX_MENTIONS } from "@/lib/master/mentions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import styles from "./requestForm.module.css";
 
-const DEPT_LABEL = { RD: "RD (วิจัยและพัฒนา)", PC: "จัดซื้อ (PC)" };
-
 const QTY_SHORTCUTS = [500, 1000, 3000, 5000, 10000];
+
+// ช่องที่ **ระบบเติมให้** — เส้นประ อ่านอย่างเดียว ไม่ใช่ดรอปดาวน์ที่จางลง
+// (แผนฉบับที่ 3) · ปล่อยให้เลือกซ้ำได้เมื่อไร จะมีวันที่ SO ชี้ดีลหนึ่งแต่คนกรอก
+// เลือกอีกดีลหนึ่ง แล้วไม่มีอะไรบอกว่าอันไหนถูก
+function DerivedField({ label, value, from }) {
+  return (
+    <div className="form-group">
+      <span className={styles.fieldLabel}>{label}</span>
+      <div className={styles.derived} data-empty={value ? undefined : "1"}>
+        {value || from}
+      </div>
+    </div>
+  );
+}
 
 export const emptyAskItem = (kind = "PM") => ({
   kind,
@@ -93,6 +113,13 @@ export default function RequestForm({
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
   mentionPeople = [],
+  // ผู้เรียกบันทึกเป็น "ร่าง" ก่อน แล้วให้แนบไฟล์/กล่าวถึงที่หน้ารายละเอียด —
+  // ⭐ ไฟล์ต้องมีคำร้องให้เกาะก่อน และ @ ยิงแจ้งเตือนตอน "กดส่ง" ไม่ใช่ตอนบันทึกร่าง
+  // ⇒ วางไว้ในฟอร์มนี้จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรขึ้นในจังหวะที่ผู้ใช้คาดว่าเกิด
+  deferAttachments = false,
+  // ข้อความ "ยังกรอกไม่ครบ" อยู่ในเนื้อฟอร์มหรือไม่ — หน้าเต็มย้ายไปไว้ที่แถบปุ่ม
+  // (ด่านตัวเดียวกัน `requestFormBlocker` คนละที่วาง ไม่ใช่คนละกฎ)
+  showBlocker = true,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const items = value.items || [];
@@ -125,6 +152,14 @@ export default function RequestForm({
   // ⚠️ กลิ่นที่เลือกได้ต้องเป็นของลูกค้าเจ้าของดีลเท่านั้น (มติ 9) — ลูกค้ามาจากดีล
   // ที่เลือกไว้ ไม่ใช่จากที่ผู้ใช้พิมพ์ (คำร้องไม่มีช่องลูกค้าให้เลือกเอง)
   const selectedDeal = deals.find((d) => d.id === value.dealId) || null;
+
+  // ── ของที่ "เติมจาก SO" — ลูกค้า · ดีล · ขั้นในไทม์ไลน์ ────────────────────
+  // ⚠️ ค่าที่โชว์ตรงนี้เป็น **ตัวอย่างของสิ่งที่ server จะเขียนจริง** ไม่ใช่ของที่ถูก
+  // ส่งไปกับ payload (`requestPayload` ไม่ส่ง projectId/customerId เลย) — โชว์เพื่อให้
+  // เห็นก่อนกดว่าใบนี้จะไปเกาะดีลไหน ไม่ใช่ให้แก้
+  const selectedSo = salesOrders.find((so) => so.id === value.salesOrderId) || null;
+  const soDeal = selectedSo ? deals.find((d) => d.id === selectedSo.dealId) || null : null;
+  const stepLabel = requestStepLabel(kind);
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
@@ -170,9 +205,83 @@ export default function RequestForm({
 
   return (
     <>
-      {/* ── 1) โครงการ → ดีล (เฉพาะหัวข้อที่ประกาศว่าต้องมี) ───────────────
-          ⭐ มติรอบสอง: ขอราคา F/FB/PM **ไม่ผูกดีล** เพราะกลิ่น/สูตรผูกลูกค้าอยู่แล้ว
-          และวัสดุเป็นราคากลางที่ใช้ข้ามงานได้ · บรีฟกลิ่นยึด SO แทน (ค่าบริการ)
+      {/* ── 1) ฝ่าย → 2) หัวข้อ (หัวข้อถูกกรองด้วยฝ่าย) ───────────────────── */}
+      <div className="form-group">
+        <span className={styles.fieldLabel} id="req-dept-label">ส่งถึงฝ่ายไหน</span>
+        <div className={styles.deptPicker} role="radiogroup" aria-labelledby="req-dept-label">
+          {REQUEST_DEPTS.map((d) => (
+            <button
+              key={d} type="button" role="radio" aria-checked={dept === d}
+              className={styles.deptOption} data-on={dept === d ? "1" : undefined}
+              disabled={disabled || lockKind}
+              onClick={() => {
+                // หัวข้อที่เลือกไว้อาจไม่ใช่ของฝ่ายใหม่ — ล้างเมื่อไม่เข้ากัน
+                const keep = kindsForDept(d).includes(kind) ? kind : "";
+                set({ dept: d, kind: keep, items: itemsForKind(keep, items) });
+              }}
+            >
+              <span className={styles.deptCode}>{REQUEST_DEPT_LABELS[d]?.code || d}</span>
+              <span className={styles.deptName}>{REQUEST_DEPT_LABELS[d]?.name || ""}</span>
+            </button>
+          ))}
+          {/* ฝ่ายที่ยังไม่เปิด — จางและกดไม่ได้ **ไม่ใช่ซ่อน** · ซ่อนเมื่อไร คนที่อยาก
+              ส่งเรื่องถึงบัญชีจะไปเปิดใบผิดหัวข้อแทน แล้วเราไม่มีทางรู้ว่ามีคนอยากได้ */}
+          {PLANNED_REQUEST_DEPTS.map((d) => (
+            <button
+              key={d} type="button" role="radio" aria-checked={false} disabled
+              className={styles.deptOption} title="ยังไม่เปิดใช้"
+            >
+              <span className={styles.deptCode}>{REQUEST_DEPT_LABELS[d]?.code || d}</span>
+              <span className={styles.deptName}>{REQUEST_DEPT_LABELS[d]?.name || ""}</span>
+            </button>
+          ))}
+        </div>
+        <small className={styles.hint}>
+          คนเปิดคำร้องคิดจาก &ldquo;จะถามใคร&rdquo; ก่อน &ldquo;ถามเรื่องอะไร&rdquo; เสมอ —
+          หัวข้อข้างล่างถูกกรองตามฝ่ายนี้
+        </small>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group col-span-2">
+          <label htmlFor="req-kind">ขอเรื่องอะไร</label>
+          <Select
+            id="req-kind" value={kind} disabled={disabled || lockKind || !dept}
+            onChange={(e) => {
+              const next = e.target.value;
+              // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้น
+              // ค่าเก่าค้างแล้วถูกส่งไปกับคำร้องหัวข้อใหม่
+              set({
+                kind: next,
+                scentId: "",
+                formulaId: "",
+                productId: "",
+                productTypeId: "",
+                salesOrderId: "",
+                formulaCode: "",
+                formulaName: "",
+                items: itemsForKind(next),
+              });
+            }}
+            options={[
+              { value: "", label: dept ? "เลือกหัวข้อ" : "เลือกฝ่ายก่อน" },
+              // หัวกลุ่ม (`group`) มาจากตระกูลของหัวข้อ — ฝ่าย RD มีทั้งงานพัฒนาและ
+              // ขอราคาปนกัน ลิสต์แบนทำให้สองเรื่องนี้ดูเท่ากันทั้งที่คนละจังหวะของงาน
+              ...kindsForDept(dept).map((k) => ({
+                value: k, label: requestKindLabel(k), group: requestKindFamily(k),
+              })),
+            ]}
+          />
+          {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
+          {meta.dealType && (
+            <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
+          )}
+        </div>
+      </div>
+
+      {/* ── 3) ของที่หัวข้อนั้นต้องอ้าง ────────────────────────────────────
+          ⭐ **อยู่ใต้หัวข้อเสมอ** — ช่องพวกนี้โผล่/หายตามหัวข้อที่เพิ่งเลือก วางไว้
+          เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
       {needsProject && (
       <div className="form-grid">
@@ -226,79 +335,42 @@ export default function RequestForm({
           → เลือก SO ที่เดียว ดีล/โครงการ/ลูกค้า server เติมจาก SO เอง ไม่ให้เลือกซ้ำ
           แล้วขัดกันเอง (SO ของดีล A แต่เลือกดีล B) */}
       {needsSalesOrder && (
-        <div className="form-group">
-          <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น (SO)</span>
-          <SearchableSelect
-            value={value.salesOrderId} disabled={disabled}
-            onChange={(v) => set({ salesOrderId: v })}
-            options={salesOrders.map((so) => ({
-              value: so.id,
-              label: `${so.orderNumber || so.id}${so.customerName ? ` — ${so.customerName}` : ""}`,
-              search: `${so.orderNumber || ""} ${so.customerName || ""} ${so.dealId || ""}`,
-            }))}
-            placeholder="เลือกใบสั่งขาย"
-            emptyText="ยังไม่มีใบสั่งขายในระบบ"
-            ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
-          />
+        <>
+          <div className="form-grid">
+            <div className="form-group">
+              <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น *</span>
+              <SearchableSelect
+                value={value.salesOrderId} disabled={disabled}
+                onChange={(v) => set({ salesOrderId: v })}
+                options={salesOrders.map((so) => ({
+                  value: so.id,
+                  label: `${so.orderNumber || so.id}${so.customerName ? ` — ${so.customerName}` : ""}`,
+                  search: `${so.orderNumber || ""} ${so.customerName || ""} ${so.dealId || ""}`,
+                }))}
+                placeholder="เลือกใบสั่งขาย"
+                emptyText="ยังไม่มีใบสั่งขายในระบบ"
+                ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
+              />
+            </div>
+            <DerivedField
+              label="ลูกค้า" from="เติมจาก SO"
+              value={selectedSo?.customerName || ""}
+            />
+            <DerivedField
+              label="ดีล" from="เติมจาก SO"
+              value={soDeal ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}` : ""}
+            />
+            <DerivedField label="ขั้นในไทม์ไลน์" from="—" value={stepLabel || ""} />
+          </div>
           {/* ⚠️ prod มี sales_orders = 0 ใบ (นับ 2026-08-03) — ต้องบอกทางออกตรงนี้
               ไม่ใช่ปล่อยให้เจอ dropdown ว่างแล้วคิดว่าระบบพัง */}
           <small className={styles.hint}>
             {salesOrders.length
-              ? "ออกแบบกลิ่นมีค่าบริการ — ต้องมี SO ที่ครอบค่านั้นก่อน (แม่แบบ SCENT ขั้น 4 → 6)"
+              ? "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง"
               : "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"}
           </small>
-        </div>
+        </>
       )}
-
-      {/* ── 2) ฝ่าย → 3) หัวข้อ (หัวข้อถูกกรองด้วยฝ่าย) ───────────────────── */}
-      <div className="form-grid">
-        <div className="form-group">
-          <label htmlFor="req-dept">ถามฝ่ายไหน</label>
-          <Select
-            id="req-dept" value={dept} disabled={disabled || lockKind}
-            onChange={(e) => {
-              const next = e.target.value;
-              // หัวข้อที่เลือกไว้อาจไม่ใช่ของฝ่ายใหม่ — ล้างเมื่อไม่เข้ากัน
-              const keep = kindsForDept(next).includes(kind) ? kind : "";
-              set({ dept: next, kind: keep, items: itemsForKind(keep, items) });
-            }}
-            options={[
-              { value: "", label: "เลือกฝ่าย" },
-              ...REQUEST_DEPTS.map((d) => ({ value: d, label: DEPT_LABEL[d] || d })),
-            ]}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="req-kind">ขอเรื่องอะไร</label>
-          <Select
-            id="req-kind" value={kind} disabled={disabled || lockKind || !dept}
-            onChange={(e) => {
-              const next = e.target.value;
-              // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้น
-              // ค่าเก่าค้างแล้วถูกส่งไปกับคำร้องหัวข้อใหม่
-              set({
-                kind: next,
-                scentId: "",
-                formulaId: "",
-                productId: "",
-                productTypeId: "",
-                salesOrderId: "",
-                formulaCode: "",
-                formulaName: "",
-                items: itemsForKind(next),
-              });
-            }}
-            options={[
-              { value: "", label: dept ? "เลือกหัวข้อ" : "เลือกฝ่ายก่อน" },
-              ...kindsForDept(dept).map((k) => ({ value: k, label: requestKindLabel(k) })),
-            ]}
-          />
-          {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
-          {meta.dealType && (
-            <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
-          )}
-        </div>
-      </div>
 
       {/* ── 4) ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────────────────────── */}
       <div className="form-grid">
@@ -331,6 +403,16 @@ export default function RequestForm({
           </small>
         </div>
       </div>
+
+      {/* ⭐ อยู่ตรงที่ช่อง "แนบไฟล์" เคยอยู่ในสายตาผู้ใช้ — ต่อจากรายละเอียด ซึ่งเป็น
+          จังหวะที่คนเพิ่งเขียนบรีฟเสร็จแล้วนึกถึงไฟล์อ้างอิงพอดี · ไปวางท้ายสุดเมื่อไร
+          จะกลายเป็นคำอธิบายที่มาช้ากว่าคำถามในหัว */}
+      {deferAttachments && (
+        <p className={styles.deferNote}>
+          <Paperclip size={14} aria-hidden="true" />
+          แนบไฟล์อ้างอิงได้หลังบันทึกร่าง — ไฟล์ต้องมีคำร้องให้เกาะก่อน
+        </p>
+      )}
 
       {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ──────── */}
       {needsScent && (
@@ -572,7 +654,12 @@ export default function RequestForm({
         </div>
       </div>
 
-      {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ───────────── */}
+      {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ─────────────
+          ⭐ หน้าที่บันทึกเป็น "ร่าง" ก่อน (`deferAttachments`) **ไม่มีสองช่องนี้** และ
+          บอกไปตรง ๆ ว่าทำไม: ไฟล์ต้องมีคำร้องให้เกาะก่อน (`AttachmentsPanel` ต้องมี
+          `entityId`) และ @ ยิงแจ้งเตือนตอนกดส่ง ไม่ใช่ตอนบันทึกร่าง ⇒ ถ้ายังโชว์ไว้
+          จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรขึ้นในจังหวะที่ผู้ใช้คาดว่าเกิด */}
+      {!deferAttachments && (
       <div className="form-grid">
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>แนบไฟล์</span>
@@ -634,11 +721,16 @@ export default function RequestForm({
           </small>
         </div>
       </div>
+      )}
 
       {/* บอกว่ายังขาดอะไรอยู่ตรงนี้ที่เดียว — ฟอร์มรู้กฎของตัวเองอยู่แล้ว (ด่าน
           ตัวเดียวกับที่ server ใช้) · ก่อนหน้านี้ปุ่มแค่จางลงเงียบ ๆ ผู้ใช้ต้องเดาว่า
-          ขาดช่องไหน · โทนเป็น hint ไม่ใช่แดง เพราะกรอกยังไม่จบไม่ใช่ความผิดพลาด */}
-      {shapeError && <small className={styles.hint}>ยังกรอกไม่ครบ — {shapeError}</small>}
+          ขาดช่องไหน · โทนเป็น hint ไม่ใช่แดง เพราะกรอกยังไม่จบไม่ใช่ความผิดพลาด
+          ⚠️ `showBlocker=false` = ผู้เรียกวางข้อความนี้เองที่แถบปุ่ม (ติดตากว่า) —
+          **ห้ามเขียนเงื่อนไขใหม่ที่นั่น** ต้องเรียก `requestFormBlocker` ตัวเดียวกัน */}
+      {showBlocker && shapeError && (
+        <small className={styles.hint}>ยังกรอกไม่ครบ — {shapeError}</small>
+      )}
     </>
   );
 }
