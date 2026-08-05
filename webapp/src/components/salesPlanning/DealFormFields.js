@@ -171,7 +171,7 @@ export default function DealFormFields({
     <label className="deal-field" key="fc">
       โอกาสที่จะปิดได้ (FC%)
       {alreadyWon ? (
-        <Input value="ปิดได้แล้ว (Won) — ยอดจริงมาจาก Sale Order" readOnly disabled />
+        <Input value="ปิดได้แล้ว (Won) — ยอดจริงมาจากใบสั่งขาย" readOnly disabled />
       ) : probabilityMode === "auto" ? (
         <>
           <Input value={`${autoFc}% — ตามสถานะที่เลือก`} readOnly disabled />

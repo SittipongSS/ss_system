@@ -38,13 +38,13 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     fetch("/api/tax/orders/from-sales-order?available=1")
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "โหลด Sale Order ไม่สำเร็จ");
+        if (!res.ok) throw new Error(data.error || "โหลดใบสั่งขายไม่สำเร็จ");
         if (!active) return;
         setSalesOrders(data.salesOrders || []);
         setSchemaReady(data.schemaReady !== false);
       })
       .catch((reason) => {
-        if (active) setError(reason.message || "โหลด Sale Order ไม่สำเร็จ");
+        if (active) setError(reason.message || "โหลดใบสั่งขายไม่สำเร็จ");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -119,10 +119,10 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={busy ? () => {} : onClose} title="สร้างใบยื่นชำระจาก Sale Order" size="md">
+    <Modal open={open} onClose={busy ? () => {} : onClose} title="สร้างใบยื่นชำระจาก ใบสั่งขาย" size="md">
       <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {error && <StatusNotice tone="error">{error}</StatusNotice>}
-        {!schemaReady && <StatusNotice tone="warning">ระบบเชื่อม Sale Order กับใบยื่นยังไม่พร้อมใช้งาน</StatusNotice>}
+        {!schemaReady && <StatusNotice tone="warning">ระบบเชื่อมใบสั่งขายกับใบยื่นยังไม่พร้อมใช้งาน</StatusNotice>}
 
         <label className="form-group">
           <span>ลูกค้า</span>
@@ -140,13 +140,13 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
         </label>
 
         <label className="form-group">
-          <span>Sale Order ที่อนุมัติแล้วและยังไม่มีใบยื่น</span>
+          <span>ใบสั่งขายที่อนุมัติแล้วและยังไม่มีใบยื่น</span>
           <Select
             value={salesOrderId}
             disabled={!customerId || !customerOrders.length}
             onChange={(event) => setSalesOrderId(event.target.value)}
           >
-            <option value="">{customerId && !customerOrders.length ? "ไม่มี Sale Order ที่รอยื่น" : "เลือก Sale Order"}</option>
+            <option value="">{customerId && !customerOrders.length ? "ไม่มี ใบสั่งขายที่รอยื่น" : "เลือก ใบสั่งขาย"}</option>
             {customerOrders.map((order) => (
               <option key={order.id} value={order.id}>
                 {order.orderNumber} · {fmtDate(order.orderDate)} · {fmtMoney(order.totalAmount)}
@@ -173,7 +173,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
 
         {resolution.error && <StatusNotice tone="error">{resolution.error}</StatusNotice>}
         {salesOrderId && !resolution.loading && !resolution.error && !resolution.eligible && (
-          <StatusNotice tone="warning">Sale Order นี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น</StatusNotice>
+          <StatusNotice tone="warning">ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น</StatusNotice>
         )}
         {resolution.eligible && resolution.warnings.length > 0 && (
           <StatusNotice tone="warning">

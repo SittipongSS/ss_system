@@ -32,7 +32,7 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
     .from('sales_orders')
     .select('id, quotationId, status, supersededById')
     .in('quotationId', quotations.map((quote) => quote.id));
-  raise('โหลด Sale Order ของใบเสนอราคาไม่สำเร็จ', orderError);
+  raise('โหลดใบสั่งขายของใบเสนอราคาไม่สำเร็จ', orderError);
 
   return quotesAwaitingSalesOrder({ quotations, salesOrders: salesOrders || [] })
     .sort((a, b) => String(a.acceptedAt || '').localeCompare(String(b.acceptedAt || '')))
@@ -49,7 +49,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
     .is('supersededById', null);
   if (dealIds) query = query.in('dealId', dealIds);
   const { data: approved, error } = await query;
-  raise('โหลด Sale Order ที่อนุมัติแล้วไม่สำเร็จ', error);
+  raise('โหลด ใบสั่งขายที่อนุมัติแล้วไม่สำเร็จ', error);
   if (!approved?.length) return [];
 
   const { data: filings, error: filingError } = await supabase
@@ -65,7 +65,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
     .from('sales_order_lines')
     .select('id, salesOrderId, productId, fgCode, description, qty')
     .in('salesOrderId', candidates.map((order) => order.id));
-  raise('โหลดรายการสินค้าใน Sale Order ไม่สำเร็จ', lineError);
+  raise('โหลดรายการสินค้าในใบสั่งขายไม่สำเร็จ', lineError);
 
   const productIds = [...new Set((lines || []).map((line) => line.productId).filter(Boolean))];
   const [productResult, typeResult, registrationResult] = await Promise.all([

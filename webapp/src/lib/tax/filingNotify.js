@@ -12,7 +12,7 @@ export function notifyFilingHandoff({ before, after, user }) {
     title: handoff.title,
     subtitle: `${after.id} · ${after.customerName || ''}`.trim(),
     rows: [
-      { label: 'Sale Order / อ้างอิง', value: after.poReference || after.quotationRef },
+      { label: 'ใบสั่งขาย / อ้างอิง', value: after.poReference || after.quotationRef },
       { label: 'ยอดที่เรียกเก็บ', value: after.amountToCollect ? `${fmtMoney(after.amountToCollect)} บาท` : null },
       { label: 'ค่าภาษีรวม', value: after.totalTax ? `${fmtMoney(after.totalTax)} บาท` : null },
       { label: 'เหตุผล', value: after.status === 'rejected' ? after.rejectionReason : null },

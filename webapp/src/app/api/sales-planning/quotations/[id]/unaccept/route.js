@@ -42,7 +42,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (rpcError) {
     const message = rpcError.message || '';
     if (message.includes('sales_order_exists')) {
-      return conflict('ใบนี้มี Sale Order ที่ยังไม่ยกเลิก — SO ที่อนุมัติแล้วให้ใช้ "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ" ที่หน้า SO; SO ร่าง/รออนุมัติให้ยกเลิก SO ก่อน');
+      return conflict('ใบนี้มี ใบสั่งขายที่ยังไม่ยกเลิก — SO ที่อนุมัติแล้วให้ใช้ "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ" ที่หน้า SO; SO ร่าง/รออนุมัติให้ยกเลิก SO ก่อน');
     }
     if (message.includes('quotation_not_accepted')) return badRequest('ใบเสนอราคานี้ไม่ได้อยู่ในสถานะรับแล้ว (Won)');
     if (message.includes('deal_not_won')) return badRequest('ดีลไม่ได้อยู่สถานะ Won แล้ว — กรุณาโหลดหน้าใหม่');

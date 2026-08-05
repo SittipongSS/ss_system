@@ -110,7 +110,7 @@ export default function FilingDetailPage() {
     ? 0
     : Math.max(ORDER.indexOf(o?.status), 0);
   const workflowSteps = workflowStepsFromIndex([
-    { id: "draft", label: "เตรียมใบยื่น", hint: "ตรวจรายการและยอดที่ดึงจาก Sale Order" },
+    { id: "draft", label: "เตรียมใบยื่น", hint: "ตรวจรายการและยอดที่ดึงจาก ใบสั่งขาย" },
     { id: "pending", label: "รอรับเงิน", hint: o?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "ฝ่ายขายตรวจยอดและหลักฐาน" },
     { id: "received", label: "รับเงินแล้ว", hint: "ฝ่ายกฎหมายเตรียมแบบยื่น" },
     { id: "filing", label: "กำลังยื่น", hint: "ยื่นกรมสรรพสามิต" },
@@ -212,11 +212,11 @@ export default function FilingDetailPage() {
                 ]}
               />
               <RelatedDocumentCard
-                title={o.salesOrderId ? "Sale Order ต้นทาง" : "เอกสารต้นทาง"}
+                title={o.salesOrderId ? "ใบสั่งขายต้นทาง" : "เอกสารต้นทาง"}
                 meta={o.poReference || o.quotationRef || "ข้อมูลลูกค้าและทะเบียนสินค้า"}
                 actions={o.salesOrderId ? (
                   <Link href={`/sa/sales-orders/${o.salesOrderId}`} className="btn ghost sm">
-                    <ExternalLink size={13} /> เปิด Sale Order
+                    <ExternalLink size={13} /> เปิด ใบสั่งขาย
                   </Link>
                 ) : o.customerId ? (
                   <Link href={`/database/customers/${o.customerId}`} className="btn ghost sm">
@@ -227,7 +227,7 @@ export default function FilingDetailPage() {
                 {o.salesOrderId
                   ? (
                     <>
-                      <div>รายการและอัตราภาษีถูก snapshot จาก Sale Order ตอนสร้างใบยื่น โมดูลภาษีเป็นเจ้าของข้อมูลใบยื่นนี้</div>
+                      <div>รายการและอัตราภาษีถูก snapshot จากใบสั่งขายตอนสร้างใบยื่น โมดูลภาษีเป็นเจ้าของข้อมูลใบยื่นนี้</div>
                       {unregisteredItemCount > 0 && (
                         <div style={{ marginTop: 8, color: "var(--amber)" }}>
                           มี {unregisteredItemCount} รายการที่ยังไม่มีทะเบียนสรรพสามิตอนุมัติ เป็นคำเตือนและไม่บล็อก workflow

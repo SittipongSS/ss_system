@@ -52,10 +52,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (quote.status !== 'accepted') return badRequest('สร้าง Sale Order ได้เฉพาะ QT ที่ Won แล้ว');
+  if (quote.status !== 'accepted') return badRequest('สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
   if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
   // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้
-  const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออก Sale Order ใบใหม่');
+  const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
   if (closedProject) return badRequest(closedProject);
 
   const orderId = genId('SOR');
@@ -67,7 +67,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   });
   if (error) {
     if (error.code === '23505' || error.message?.includes('already_exists')) {
-      return conflict('QT ใบนี้มี Sale Order แล้ว');
+      return conflict('ใบเสนอราคาใบนี้ออกใบสั่งขายไปแล้ว');
     }
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }

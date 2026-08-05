@@ -185,7 +185,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     try {
       return ok(await listAvailableSalesOrders(supabase, user, url.searchParams.get("customerId")?.trim()));
     } catch (error) {
-      return fail(`โหลด Sale Order ที่รอยื่นไม่สำเร็จ: ${error.message}`, 500);
+      return fail(`โหลด ใบสั่งขายที่รอยื่นไม่สำเร็จ: ${error.message}`, 500);
     }
   }
   if (!salesOrderId) return badRequest("กรุณาระบุ salesOrderId");
@@ -193,7 +193,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   let salesOrder;
   try {
     salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
-    if (!salesOrder) return notFound("ไม่พบ Sale Order");
+    if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
     if (!salesOrder.deal || !inSalesViewScope(user, salesOrder.deal)) return forbidden();
     const existing = await findExistingFiling(supabase, salesOrderId);
     if (!existing.schemaReady) {
@@ -212,22 +212,22 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!can(user.role, "sales:act")) return forbidden();
   const body = await req.json().catch(() => ({}));
   const salesOrderId = String(body.salesOrderId || "").trim();
-  if (!salesOrderId) return badRequest("กรุณาระบุ Sale Order");
+  if (!salesOrderId) return badRequest("กรุณาระบุ ใบสั่งขาย");
 
   let salesOrder;
   let resolved;
   try {
     salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
-    if (!salesOrder) return notFound("ไม่พบ Sale Order");
+    if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
     if (!salesOrder.deal || !inSalesEditScope(user, salesOrder.deal)) return forbidden();
-    if (salesOrder.status !== "approved") return badRequest("สร้างการยื่นชำระได้เมื่อ Sale Order อนุมัติแล้วเท่านั้น");
+    if (salesOrder.status !== "approved") return badRequest("สร้างการยื่นชำระได้เมื่อใบสั่งขายอนุมัติแล้วเท่านั้น");
 
     const existing = await findExistingFiling(supabase, salesOrderId);
     if (!existing.schemaReady) return fail("ฐานข้อมูลยังไม่มี Migration 0160 กรุณารัน migration ก่อน", 503);
-    if (existing.filing) return conflict(`Sale Order นี้มีใบยื่น ${existing.filing.id} แล้ว`);
+    if (existing.filing) return conflict(`ใบสั่งขายนี้มีใบยื่น ${existing.filing.id} แล้ว`);
 
     resolved = await resolveContext(supabase, salesOrder);
-    if (!resolved.eligible) return badRequest("Sale Order นี้ไม่มีสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น");
+    if (!resolved.eligible) return badRequest("ใบสั่งขายนี้ไม่มีสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น");
   } catch (error) {
     return fail(`เตรียมข้อมูลการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);
   }
@@ -251,7 +251,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectRef: refOrNull(documentRef(salesOrder.project?.code, salesOrder.project?.name)),
     dealRef: refOrNull(documentRef(dealTypeOf(salesOrder.deal), salesOrder.deal?.title)),
     deliveryDate: "-",
-    remarks: `สร้างจาก Sale Order ${salesOrder.orderNumber}`,
+    remarks: `สร้างจาก ใบสั่งขาย ${salesOrder.orderNumber}`,
     assignee: user.name || salesOrder.createdByName || "Sales",
     // ทีมเจ้าภาพของใบยื่น: ดีลแม่มาก่อน (แหล่งที่ตรงที่สุด) แล้วถอยมาที่ทีมที่ดูแลลูกค้า
     // เมื่อดีลไม่มีทีม/SO ไม่ผูกดีล — ใบที่ได้ team = null จะกลายเป็น "ของกลาง" ที่เห็นได้
@@ -284,7 +284,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { error: orderError } = await insertOrder(supabase, filing);
   if (orderError?.code === "23505") {
     const existing = await findExistingFiling(supabase, salesOrderId).catch(() => ({ filing: null }));
-    return conflict(existing.filing ? `Sale Order นี้มีใบยื่น ${existing.filing.id} แล้ว` : "Sale Order นี้มีใบยื่นแล้ว");
+    return conflict(existing.filing ? `ใบสั่งขายนี้มีใบยื่น ${existing.filing.id} แล้ว` : "ใบสั่งขายนี้มีใบยื่นแล้ว");
   }
   if (orderError) return fail(`สร้างใบยื่นไม่สำเร็จ: ${orderError.message}`, 500);
 

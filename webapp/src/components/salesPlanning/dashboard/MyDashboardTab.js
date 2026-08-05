@@ -155,7 +155,7 @@ export default function MyDashboardTab({ month }) {
             </div>
           </section>
 
-          {/* คิวรอยต่อเอกสาร: Won → Sale Order → ใบยื่นชำระภาษี. ก่อนหน้านี้สองจุดนี้เป็น
+          {/* คิวรอยต่อเอกสาร: Won → ใบสั่งขาย → ใบยื่นชำระภาษี. ก่อนหน้านี้สองจุดนี้เป็น
               manual ล้วน — ไม่มีคิว ไม่มีตัวเลข ต้องมีคนจำไปกดเอง. ตัวเลขนับเฉพาะดีลที่
               ฉันเป็นเจ้าของ (เหมือนทุกอย่างในแท็บนี้) ส่วนภาพรวมทั้งทีมดูที่หน้ารายการ */}
           {handoff.error && (
@@ -164,7 +164,7 @@ export default function MyDashboardTab({ month }) {
 
           <HandoffQueueCard
             icon={<FileText size={17} />}
-            title="Won รอออก Sale Order"
+            title="Won รอออก ใบสั่งขาย"
             hint="ใบเสนอราคาที่ปิดได้แล้วแต่ยังไม่มี SO"
             items={awaitingSalesOrder}
             allHref="/sa/quotations"

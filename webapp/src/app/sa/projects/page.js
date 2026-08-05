@@ -145,7 +145,7 @@ export default function ProjectsIndexPage() {
 
         <SaMetricStrip>
           <SaMetric icon={<BarChart3 />} label="FC Total" value={money(totals.fcTotal)} note="แผนทั้งหมดของโครงการที่แสดง" />
-          <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก Sale Order ที่อนุมัติแล้ว" tone="good" />
+          <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก ใบสั่งขายที่อนุมัติแล้ว" tone="good" />
           <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
           <SaMetric icon={<ClipboardList />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
           {/* ⚠️ เคยมีตัวนับ "ยังไม่ระบุสาย" อยู่ตรงนี้ — ถอดออก (มติผู้ใช้ 2026-08-05)

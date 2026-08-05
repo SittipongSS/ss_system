@@ -153,8 +153,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   let order;
   try { order = await loadOrder(supabase, id); }
-  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
-  if (!order) return notFound('ไม่พบ Sale Order');
+  catch (error) { return fail(`โหลดใบสั่งขายไม่สำเร็จ: ${error.message}`, 500); }
+  if (!order) return notFound('ไม่พบ ใบสั่งขาย');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
   // ข้อมูลลูกค้าบนเอกสารมาจาก snapshot ในใบเสนอราคาที่ผูก — ใบเก่าที่ snapshot ไม่ครบ
   // (ผู้ติดต่อ/เลขภาษี) เติมเฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้เอกสารแสดงครบ
@@ -194,8 +194,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   let before;
   try { before = await loadOrder(supabase, id); }
-  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
-  if (!before) return notFound('ไม่พบ Sale Order');
+  catch (error) { return fail(`โหลดใบสั่งขายไม่สำเร็จ: ${error.message}`, 500); }
+  if (!before) return notFound('ไม่พบ ใบสั่งขาย');
 
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '');
@@ -286,7 +286,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     });
     // แจ้งทีมขาย: Actual หายไปจากยอด ต้องไม่เงียบ
     sendChat('sales', chatCard({
-      title: '⚠️ ยกเลิกอนุมัติ Sale Order',
+      title: '⚠️ ยกเลิกอนุมัติ ใบสั่งขาย',
       subtitle: before.deal?.title || before.orderNumber,
       rows: [
         { label: 'เลขที่ SO', value: before.orderNumber },
@@ -304,7 +304,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'revise') {
     // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
     const closedProject = projectWriteBlockedError(before.project)
-      ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. Sale Order ไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
+      ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
       : null;
     if (closedProject) return badRequest(closedProject);
     if (!canIssueSalesOrderRevision(before, { reviewer })) {
@@ -358,7 +358,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       updatedAt: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
-    if (error) return fail(`บันทึก Sale Order ไม่สำเร็จ: ${error.message}`, 500);
+    if (error) return fail(`บันทึกใบสั่งขายไม่สำเร็จ: ${error.message}`, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `edit ${before.orderNumber}`, request: req });
     return ok(data);
@@ -394,7 +394,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ)`, request: req });
     // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
     sendChat('approvals', chatCard({
-      title: 'Sale Order รออนุมัติ',
+      title: 'ใบสั่งขายรออนุมัติ',
       subtitle: before.deal?.title || before.orderNumber,
       rows: [
         { label: 'เลขที่ SO', value: before.orderNumber },
@@ -409,7 +409,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'approve') {
-    if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่อนุมัติ Sale Order ได้');
+    if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่อนุมัติใบสั่งขายได้');
     if (before.status !== 'pending_approval') return badRequest('SO ใบนี้ไม่ได้รออนุมัติ');
     // แบ่งแยกหน้าที่ยังคงเป็นค่าเริ่มต้น; Admin ใช้ break-glass ได้เมื่อยังไม่มี
     // ผู้ตรวจสอบคนที่สอง โดยต้องระบุเหตุผลซึ่งถูกเก็บกับหลักฐานแบบ immutable.
@@ -471,7 +471,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
     sendChat('sales', chatCard({
-      title: '✅ Sale Order อนุมัติแล้ว',
+      title: '✅ ใบสั่งขายอนุมัติแล้ว',
       subtitle: before.deal?.title || before.orderNumber,
       rows: [
         { label: 'เลขที่ SO', value: before.orderNumber },
@@ -484,13 +484,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         { label: 'ขั้นถัดไป', value: 'ถ้าในใบมีสินค้าสรรพสามิต ให้สร้างใบยื่นชำระภาษีที่เมนูการยื่นชำระ' },
       ],
       linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'เปิด Sale Order',
+      linkLabel: 'เปิด ใบสั่งขาย',
     }));
     return ok(data);
   }
 
   if (action === 'reject') {
-    if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่ตีกลับ Sale Order ได้');
+    if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่ตีกลับใบสั่งขายได้');
     if (before.status !== 'pending_approval') return badRequest('SO ใบนี้ไม่ได้รออนุมัติ');
     const reason = String(body.reason || '').trim();
     if (!reason) return badRequest('กรุณาระบุเหตุผลที่ตีกลับ');
@@ -505,7 +505,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `reject ${before.orderNumber}: ${reason}`, request: req });
     // แจ้งทีมขาย: SO ถูกตีกลับ ให้ผู้ยื่นแก้แล้วยื่นใหม่
     sendChat('sales', chatCard({
-      title: '↩️ Sale Order ถูกตีกลับ',
+      title: '↩️ ใบสั่งขายถูกตีกลับ',
       subtitle: before.deal?.title || before.orderNumber,
       rows: [
         { label: 'เลขที่ SO', value: before.orderNumber },
@@ -514,7 +514,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         { label: 'ผู้ยื่น', value: before.submittedByName || '' },
       ],
       linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'แก้ไข Sale Order',
+      linkLabel: 'แก้ไข ใบสั่งขาย',
     }));
     return ok(data);
   }
@@ -535,7 +535,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       // บอกทางออกด้วย ไม่ใช่แค่บอกว่าไม่ได้ — ปุ่มอื่นทุกปุ่มที่แก้ใบนี้ก็ถูกใบยื่นบล็อก
       // เหมือนกัน (ยกเลิกอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
       return badRequest(
-        `ยกเลิก Sale Order ไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
+        `ยกเลิกใบสั่งขายไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
         + ' — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิก SO ได้',
       );
     }
@@ -543,9 +543,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.
     const reasonCode = String(body.reasonCode || '').trim();
     const note = String(body.reason || body.note || '').trim();
-    if (!isValidCancelReasonCode(reasonCode)) return badRequest('กรุณาเลือกเหตุผลที่ยกเลิก Sale Order');
+    if (!isValidCancelReasonCode(reasonCode)) return badRequest('กรุณาเลือกเหตุผลที่ยกเลิก ใบสั่งขาย');
     if (reasonCode === 'other' && !note) return badRequest('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ');
-    if (before.status === 'cancelled') return badRequest('Sale Order นี้ถูกยกเลิกแล้ว');
+    if (before.status === 'cancelled') return badRequest('ใบสั่งขายนี้ถูกยกเลิกแล้ว');
     if (before.status === 'pending_approval' && !reviewer) return forbidden('รายการที่รออนุมัติต้องให้ AE Supervisor ดำเนินการ');
     // ยกเลิก SO ที่อนุมัติแล้ว = ถอนยอด Actual ที่ผ่านการอนุมัติ → ต้องเป็นผู้ตรวจสอบ
     // เท่านั้น (มติผู้ใช้ 2026-07-16): สมมาตรกับตอนอนุมัติ ไม่ให้ AE ถอนฝ่ายเดียว
@@ -617,8 +617,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'restore') {
-    if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่คืนสถานะ Sale Order ได้');
-    if (before.status !== 'cancelled') return badRequest('Sale Order นี้ไม่ได้อยู่ในสถานะยกเลิก');
+    if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่คืนสถานะใบสั่งขายได้');
+    if (before.status !== 'cancelled') return badRequest('ใบสั่งขายนี้ไม่ได้อยู่ในสถานะยกเลิก');
     // คืนเป็น draft สะอาด: ล้างทั้งฟิลด์ยกเลิก/อนุมัติ และ submitted*/rejected* ที่ค้าง
     // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
     const patch = {
@@ -642,12 +642,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่ลบ Sale Order ได้');
+  if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่ลบใบสั่งขายได้');
   const { id } = await ctx.params;
   let before;
   try { before = await loadOrder(supabase, id); }
-  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
-  if (!before) return notFound('ไม่พบ Sale Order');
+  catch (error) { return fail(`โหลดใบสั่งขายไม่สำเร็จ: ${error.message}`, 500); }
+  if (!before) return notFound('ไม่พบ ใบสั่งขาย');
 
   // ?dryRun=1 = พรีวิวว่าจะทำลายอะไร (หลักฐาน/ฉบับตรึง) — ใช้เส้นทางเดียวกับตอนลบจริง
   if (isDryRun(req)) {
@@ -665,7 +665,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ตรงนี้จะไปพังที่ FK RESTRICT แล้วได้ข้อความกลาง ๆ ที่ชี้ทางผิด ("ใช้ยกเลิก SO แทน"
   // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
   const filings = await exciseFilingsOfSalesOrder(supabase, id);
-  if (filings.length) return fail(exciseFilingBlockMessage(filings, 'Sale Order'), 409);
+  if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบสั่งขาย'), 409);
   if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId

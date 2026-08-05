@@ -160,7 +160,7 @@ async function handoffDigest(supabase) {
     rows: [
       ...agedQuotes.slice(0, 4).map((quote) => ({
         label: `${quote.quoteNumber} · Won ${fmtShortDate(quote.acceptedAt)}`,
-        value: `${quote.customerName || 'ลูกค้า'} — ยังไม่ออก Sale Order (${waited(quote.acceptedAt)})`,
+        value: `${quote.customerName || 'ลูกค้า'} — ยังไม่ออก ใบสั่งขาย (${waited(quote.acceptedAt)})`,
       })),
       ...agedOrders.slice(0, 4).map((order) => ({
         label: `${order.orderNumber} · อนุมัติ ${fmtShortDate(order.approvedAt)}`,

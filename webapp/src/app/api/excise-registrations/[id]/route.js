@@ -105,7 +105,7 @@ export async function PATCH(request, { params }) {
           { label: 'สินค้า', value: data.productName || data.fgCode },
           { label: 'เหตุผล', value: reason },
           { label: 'ผู้ปลดอนุมัติ', value: user?.name },
-          { label: 'ผลที่ตามมา', value: 'Sale Order ที่ใช้สินค้านี้จะออกใบยื่นชำระภาษีไม่ได้จนกว่าจะขึ้นทะเบียนใหม่' },
+          { label: 'ผลที่ตามมา', value: 'ใบสั่งขายที่ใช้สินค้านี้จะออกใบยื่นชำระภาษีไม่ได้จนกว่าจะขึ้นทะเบียนใหม่' },
         ],
         linkPath: `/tax/registrations/${id}`,
         linkLabel: 'เปิดทะเบียน',
@@ -255,7 +255,7 @@ export async function PATCH(request, { params }) {
           {
             label: 'ขั้นถัดไป',
             value: approvedNow
-              ? 'ออกใบยื่นชำระภาษีจาก Sale Order ที่อนุมัติแล้วได้'
+              ? 'ออกใบยื่นชำระภาษีจาก ใบสั่งขายที่อนุมัติแล้วได้'
               : 'แก้ไขตามเหตุผลแล้วยื่นขึ้นทะเบียนอีกครั้ง',
           },
         ],

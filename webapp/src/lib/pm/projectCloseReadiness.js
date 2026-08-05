@@ -33,19 +33,19 @@ export function summarizeProjectCloseReadiness({
   const items = [
     {
       key: 'quotesAwaitingSalesOrder',
-      label: 'ใบเสนอราคา Won ที่ยังไม่ออก Sale Order',
+      label: 'ใบเสนอราคา Won ที่ยังไม่ออก ใบสั่งขาย',
       count: awaitingSalesOrder.length,
       refs: awaitingSalesOrder.map((row) => row.quoteNumber).filter(Boolean),
     },
     {
       key: 'salesOrdersInFlight',
-      label: 'Sale Order ที่ยังไม่ผ่านอนุมัติ',
+      label: 'ใบสั่งขายที่ยังไม่ผ่านอนุมัติ',
       count: salesOrders.filter(isInFlightSalesOrder).length,
       refs: salesOrders.filter(isInFlightSalesOrder).map((row) => row.orderNumber).filter(Boolean),
     },
     {
       key: 'salesOrdersAwaitingFiling',
-      label: 'Sale Order ที่ยังไม่ออกใบยื่นชำระภาษี',
+      label: 'ใบสั่งขายที่ยังไม่ออกใบยื่นชำระภาษี',
       count: awaitingFiling.length,
       refs: awaitingFiling.map((row) => row.orderNumber).filter(Boolean),
     },
