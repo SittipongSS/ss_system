@@ -5,7 +5,7 @@ import { recordAudit } from '@/lib/audit';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
-import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
+import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { autoTaskUpdates } from '@/lib/pm/taskUpdates';
 import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 import { appendUpdate, listUpdates, purgeUpdates } from '@/lib/master/updates';
@@ -175,6 +175,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('projectId' in updates || 'dealId' in updates) {
     let nextProjectId = 'projectId' in updates ? updates.projectId : task.projectId;
     const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
+    // ฝ่ายขาย (SA) ต้องผูกดีลทุกงาน — ปลดดีลออกไม่ได้ และงานเก่าที่ยังไม่ผูกต้อง
+    // เลือกดีลตอนแก้ครั้งถัดไป. เกณฑ์คือ**ฝ่ายของคนที่กดแก้** (แบบเดียวกับตอนสร้าง):
+    // ฝ่ายอื่น/admin ที่เข้ามาช่วยแก้ไม่ถูกบังคับ เพราะเขาไม่มีดีลของทีมให้เลือก.
+    // งานที่มาจากคำร้องยกเว้นเหมือนตอนสร้าง (บางหัวข้อไม่ผูกดีลโดยเจตนา)
+    if (!nextDealId && !task.inquiryId && requiresDealLink(user)) {
+      return badRequest('งานของฝ่ายขายต้องผูกดีล — เลือกดีลก่อนบันทึก');
+    }
     if (nextDealId) {
       const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
       if (dealError) return fail(dealError.message, 500);

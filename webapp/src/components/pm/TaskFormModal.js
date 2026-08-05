@@ -15,7 +15,8 @@ import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
-import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
+import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
+import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import Textarea from "@/components/ui/Textarea";
@@ -26,7 +27,7 @@ const NO_PROJECT = "__no_project__";
 
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
-  linkType: "none", projectId: "", dealId: "", assigneeId: "",
+  projectId: "", dealId: "", assigneeId: "",
   linkProjectId: "",   // ตัวกรองใน dropdown เท่านั้น — ไม่ได้ส่งขึ้น API
   category: "", important: false, urgent: false, difficulty: 2,
   status: "Pending",
@@ -52,7 +53,6 @@ export const taskToForm = (t, deals = []) => {
   return {
     title: t.title || "", note: t.note || "",
     startDate: t.startDate || "", dueDate: t.dueDate || "",
-    linkType: taskLinkType(t),
     projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
     linkProjectId: t.dealId ? (projectId || NO_PROJECT) : "",
     category: t.category || "", important: !!t.important, urgent: !!t.urgent,
@@ -117,6 +117,14 @@ export default function TaskFormModal({
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
+  // ฝ่ายขาย (SA) ต้องผูกดีลทุกงาน — กติกาเดียวกับ API (requiresDealLink).
+  // ยกเว้นงานที่สร้างจากคำร้อง: ดีลมาจากคำร้องต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา
+  // เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว จึงบังคับไม่ได้
+  const dealRequired = canManage && !inquirySource && requiresDealLink(me);
+  // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้ —
+  // ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) จะได้ไม่เห็นช่องที่ว่างเปล่าเสมอ
+  const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
+
   // ดีลแยกตามโครงการ — ถังพิเศษสำหรับดีลที่ยังไม่ผูกโครงการ
   const unlinkedDeals = deals.filter((d) => !d.projectId);
   const linkProjects = projects.filter((p) => deals.some((d) => d.projectId === p.id));
@@ -142,7 +150,7 @@ export default function TaskFormModal({
     e.preventDefault();
     setError("");
     if (canManage && !form.title.trim()) { setError("ต้องระบุชื่องาน"); return; }
-    if (canManage && form.linkType === "deal" && !form.dealId) { setError("กรุณาเลือกดีล"); return; }
+    if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกโครงการแล้วเลือกดีลก่อนบันทึก"); return; }
     if (needLateReason && !lateReason.trim()) { setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน"); return; }
 
     setSaving(true);
@@ -312,38 +320,35 @@ export default function TaskFormModal({
             </div>
           </div>
 
-          <div className="form-group">
-            <label>เชื่อมกับ</label>
-            <div className="segmented" style={{ marginBottom: "8px" }}>
-              {[["none", "ไม่ผูก"], ["deal", "ดีล"]].map(([k, lbl]) => (
-                <button type="button" key={k} disabled={!!inquirySource || !canManage} className={form.linkType === k ? "active" : ""} onClick={() => set({ linkType: k })}>{lbl}</button>
-              ))}
+          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05):
+              ฝ่ายขายต้องผูกดีลทุกงาน ส่วนฝ่ายอื่นใช้ "ปล่อยว่าง = ไม่ผูก" แทนปุ่ม */}
+          {showDealLink && (
+            <div className="form-group">
+              <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
+              {/* เลือกโครงการก่อน แล้วดีลกรองตามโครงการ (มติผู้ใช้ 2026-07-17) —
+                  ดีลที่ยังไม่ผูกโครงการมีจริงและผูกงานได้ จึงมีถังแยกไว้ให้ ไม่งั้น
+                  มันจะหายไปจาก dropdown ทั้งที่เดิมเลือกได้ */}
+              <div className="pm-form-grid gap-3">
+                <Select fullWidth disabled={!!inquirySource || !canManage} value={form.linkProjectId}
+                  onChange={(e) => set({ linkProjectId: e.target.value, dealId: "" })}>
+                  <option value="">— เลือกโครงการก่อน —</option>
+                  {linkProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}</option>)}
+                  {unlinkedDeals.length > 0 && <option value={NO_PROJECT}>— ดีลที่ยังไม่ผูกโครงการ ({unlinkedDeals.length}) —</option>}
+                </Select>
+                <Select fullWidth disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
+                  onChange={(e) => set({ dealId: e.target.value })}>
+                  <option value="">{form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}</option>
+                  {dealChoices.map((deal) => (
+                    <option key={deal.id} value={deal.id}>{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}</option>
+                  ))}
+                </Select>
+              </div>
+              {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
+              {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
+              {form.linkProjectId && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
+              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">งานของฝ่ายขายต้องผูกดีลทุกชิ้น</div>}
             </div>
-            {form.linkType === "deal" && (
-              <>
-                {/* เลือกโครงการก่อน แล้วดีลกรองตามโครงการ (มติผู้ใช้ 2026-07-17) —
-                    ดีลที่ยังไม่ผูกโครงการมีจริงและผูกงานได้ จึงมีถังแยกไว้ให้ ไม่งั้น
-                    มันจะหายไปจาก dropdown ทั้งที่เดิมเลือกได้ */}
-                <div className="pm-form-grid gap-3" style={{ marginBottom: 8 }}>
-                  <Select fullWidth disabled={!!inquirySource || !canManage} value={form.linkProjectId}
-                    onChange={(e) => set({ linkProjectId: e.target.value, dealId: "" })}>
-                    <option value="">— เลือกโครงการก่อน —</option>
-                    {linkProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}</option>)}
-                    {unlinkedDeals.length > 0 && <option value={NO_PROJECT}>— ดีลที่ยังไม่ผูกโครงการ ({unlinkedDeals.length}) —</option>}
-                  </Select>
-                  <Select fullWidth disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
-                    onChange={(e) => set({ dealId: e.target.value })}>
-                    <option value="">{form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}</option>
-                    {dealChoices.map((deal) => (
-                      <option key={deal.id} value={deal.id}>{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}</option>
-                    ))}
-                  </Select>
-                </div>
-                {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-                {form.linkProjectId && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
-              </>
-            )}
-          </div>
+          )}
 
           <div className="form-group">
             <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>

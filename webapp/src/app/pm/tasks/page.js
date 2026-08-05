@@ -378,7 +378,6 @@ export default function TasksPage() {
           title: `[${req.docNo || "คำร้อง"}] ${sourceText.slice(0, 120)}`,
           note: sourceText,
           dueDate: req.committedDueDate || req.requestedDueDate || "",
-          linkType: req.dealId ? "deal" : "none",
           dealId: req.dealId || "",
           category: "ประสานงานภายใน",
           important: !!req.urgent,
@@ -391,7 +390,7 @@ export default function TasksPage() {
     }
     setEditingId(null);
     setInquirySource(null);
-    setForm({ ...TASK_BLANK, linkType: "deal", dealId });
+    setForm({ ...TASK_BLANK, dealId });
    
     setShowModal(true);
   }, []);
