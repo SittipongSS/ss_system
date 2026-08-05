@@ -13,7 +13,10 @@ import { ClipboardList } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Tabs from "@/components/ui/Tabs";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
-import { useDepartment, useRole } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import Button from "@/components/ui/Button";
+import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
+import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { REQUEST_OPEN_STATUSES, compareRequestUrgency } from "@/lib/deptRequests";
@@ -37,7 +40,10 @@ export default function RequestsPage() {
   const searchParams = useSearchParams();
   const role = useRole();
   const department = useDepartment();
-  const me = useMemo(() => ({ role, department }), [role, department]);
+  const team = useTeam();
+  // ⚠️ `team` ต้องอยู่ในนี้ด้วย — `canUseScope` ตัดสิน "ทีม" จากมัน · ขาดไปแล้วปุ่ม
+  // "ทีม" จะจางตลอดกาลสำหรับทุกคน ทั้งที่ server ยอมให้ใช้
+  const me = useMemo(() => ({ role, department, team }), [role, department, team]);
   // filter ไม่ใช่ find — admin ตอบได้ทั้ง RD และ PC (isSuperuser ผ่านทุกฝ่าย)
   // ถ้าใช้ find คิวของ PC จะหายไปทั้งก้อนโดยไม่มีอะไรบอก
   const myDepts = useMemo(() => ["RD", "PC"].filter((d) => canQuoteMaterial(me, d)), [me]);
@@ -65,16 +71,25 @@ export default function RequestsPage() {
   const queueDept = tab.startsWith("queue-") ? tab.slice("queue-".length) : null;
   const setTab = (next) => router.replace(`/requests?tab=${next}`, { scroll: false });
 
+  // ⭐ ตัวสลับขอบเขต — **กรองที่ API ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
+  // กรองที่จอแปลว่าคำร้องของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จาก
+  // แท็บ Network โดยไม่ต้องมีความรู้อะไรเลย
+  const [scope, setScope] = useState("mine");
+  const [activeScope, setActiveScope] = useState("mine");
+
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch("/api/sa/requests", { cache: "no-store" });
+      const res = await fetch(`/api/sa/requests?scope=${scope}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);
+      // ⚠️ server เป็นคนตัดสินขอบเขตจริง (สิทธิ์ไม่พอ = ถอยลงมา ไม่ปฏิเสธ) ⇒ อ่าน
+      // ค่าที่ได้จริงกลับมาแสดง ไม่ใช่โชว์สิ่งที่ผู้ใช้ *ขอ* ซึ่งอาจไม่ใช่สิ่งที่ได้
+      setActiveScope(res.headers.get("X-Request-Scope") || scope);
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
-  }, []);
+  }, [scope]);
 
   useEffect(() => { reload(); }, [reload]);
   // ฟอร์มเปิดคำร้องอ้างของจากหลายทะเบียนตามหัวข้อ — โครงการ+ดีล (บังคับทุกหัวข้อ) ·
@@ -146,6 +161,30 @@ export default function RequestsPage() {
         ]}
         ariaLabel="มุมมองหน้าคำร้อง"
       />
+
+      {/* ⚠️ ตัวเลือกที่ไม่มีสิทธิ์ **จางและกดไม่ได้ ไม่ใช่ซ่อน** — ซ่อนแล้วคนจะไม่รู้
+          ว่ามีของที่ตัวเองเข้าไม่ถึงอยู่ และจะอ่านคิวสั้น ๆ ว่า "ไม่มีงาน" */}
+      {tab === "mine" && (
+        <div className="toolbar">
+          <span className="toolbar-label">ขอบเขต</span>
+          {REQUEST_SCOPES.map((s) => (
+            <Button
+              key={s} size="sm"
+              tone={activeScope === s ? "primary" : undefined}
+              disabled={!canUseScope(me, s)}
+              title={canUseScope(me, s) ? undefined : "ไม่มีสิทธิ์ดูขอบเขตนี้"}
+              onClick={() => setScope(s)}
+            >
+              {SCOPE_LABELS[s]}
+            </Button>
+          ))}
+          {activeScope !== scope && (
+            <span className="toolbar-label">
+              สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน
+            </span>
+          )}
+        </div>
+      )}
 
       <RequestQueuePanel
         scope={queueDept ? "queue" : "mine"} dept={queueDept}

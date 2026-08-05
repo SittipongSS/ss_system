@@ -14,6 +14,7 @@ import { canUser, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeRequestItems } from '@/lib/deptRequests';
 import { normalizeDocumentItems, normalizeProductDevItems } from '@/lib/requests/lines';
+import { resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasItems, requestHasTiers,
   legacyKindError, lineShapeForKind, requestKindLabel, requestNeedsRef, requestShapeError,
@@ -34,6 +35,10 @@ export async function GET(request) {
     const statusParam = url.searchParams.get('status');
     const status = statusParam ? statusParam.split(',').filter(Boolean) : null;
     const dealId = url.searchParams.get('dealId');
+    // ⭐ ขอบเขตที่ขอมา — **บังคับที่นี่ ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
+    // สิทธิ์ไม่พอให้ถอยลงมา ไม่ปฏิเสธ ⇒ ลิงก์ที่แชร์กันไว้ไม่พังในมือคนสิทธิ์น้อยกว่า
+    const scope = resolveScope(user, url.searchParams.get('scope'));
+    const scopeWhere = scopeFilter(user, scope);
 
     // _mine: ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย)
     // จึงติดธงมาจาก server ให้แท็บ "คำร้องของฉัน" แยกได้โดยไม่ต้องเดาจากชื่อ
@@ -44,10 +49,14 @@ export async function GET(request) {
     // ขอบเขตที่เห็น: admin ทั้งหมด · RD/PC คิวของฝ่ายตน + ของที่ตัวเองเปิด ·
     // ผู้ขอเฉพาะของตัวเอง (คำร้องเป็นงานปฏิบัติของคนเปิด ไม่ใช่ของทั้งทีม)
     if (isSuperuser(user?.role)) {
-      return Response.json(decorate(await loadRequests(supabase, { status })),
-        { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(
+        decorate(await loadRequests(supabase, { status, ...(scopeWhere || {}) })),
+        { headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': scope } },
+      );
     }
-    const mine = await loadRequests(supabase, { status, requestedById: user?.id || '—' });
+    // ⚠️ ผู้ใช้ทั่วไป: `scopeWhere` แคบกว่าหรือเท่ากับ "ของตัวเอง" เสมอ (resolveScope
+    // ไม่มีทางคืน 'all' ให้คนที่ไม่ใช่ผู้ดูแล) ⇒ ใช้แทนที่ตัวกรองเดิมได้ตรง ๆ
+    const mine = await loadRequests(supabase, { status, ...(scopeWhere || {}) });
     const dept = ['RD', 'PC'].find((d) => canQuoteMaterial(user, d));
     if (!dept) return Response.json(decorate(mine), { headers: { 'Cache-Control': 'no-store' } });
 
@@ -57,7 +66,9 @@ export async function GET(request) {
     const rows = [...byId.values()]
       .filter((r) => r.status !== 'draft' || r.requestedById === user?.id)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    return Response.json(decorate(rows), { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json(decorate(rows), {
+      headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': scope },
+    });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
