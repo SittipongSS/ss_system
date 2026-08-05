@@ -42,6 +42,7 @@ import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import {
   canRejectQuotationSubmission,
   canWithdrawQuotationSubmission,
+  isQuotationAwaitingApproval,
   isRevisableQuotationApprovalStatus,
   quotationRejectionNotice,
 } from "@/lib/sales/quotationWorkflow";
@@ -191,7 +192,11 @@ export default function QuotationEditorPage() {
   const canCloseWon = !!quote && canEditCap && !needsApproval
     && ["sent", "draft"].includes(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
-  const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
+  // ใบที่รออนุมัติลบไม่ได้ — ต้องดึงกลับหรือให้ผู้อนุมัติตีกลับก่อน (มติผู้ใช้ 2026-08-05)
+  // admin ยังเห็นปุ่มไว้ใช้ทาง break-glass (deleteWithForce) ที่ยืนยันซ้ำอีกชั้น
+  const canDeleteDocument = !!quote && (role === "admin" || (canEditCap
+    && !isQuotationAwaitingApproval(quote)
+    && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
 
