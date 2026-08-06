@@ -39,6 +39,9 @@
 .sourceGrid label, .documentMeta label, .contactField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .sourceGrid label > *, .documentMeta label > *, .contactField > * { margin-top: var(--space-1-5); }
 .customerSource { grid-column: 1 / -1; }
+/* ดีลยุบรวมโครงการไว้ในตัวเองแล้ว (DealPicker) — ช่องเดียวจึงกินเต็มแถวเหมือนลูกค้า
+   ไม่ใช่ครึ่งเดียวแบบตอนที่ยังมีช่องโครงการมาคู่กัน */
+.dealSource { grid-column: 1 / -1; }
 .sourceSelect { width: 100%; min-width: 0; }
 
 .customerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-6); }

@@ -51,6 +51,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import TwoPanePicker from "@/components/ui/TwoPanePicker";
 import PersonSelect from "@/components/ui/PersonSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -169,6 +170,19 @@ const DEMO_CUSTOMERS = [
 
 /* หมวดสินค้าตัวอย่าง — โครงเดียวกับแถวจริงจาก /api/product-types
    (mainCategoryCode + typeCode ประกอบเป็นรหัส "MM-TTT") */
+/* ตัวเลือกสองชั้นตัวอย่าง — โครงเดียวกับที่ DealPicker ป้อนให้ TwoPanePicker จริง
+   (กลุ่ม = โครงการ + ถัง "ทั้งหมด" · รายการ = ดีล) */
+const DEMO_PICKER_DEALS = [
+  { value: "d1", label: "Rinvala Sachet 500", meta: "บจก.รินวาลา · FC 2026-08", search: "rinvala sachet รินวาลา 2026-08" },
+  { value: "d2", label: "Rinvala Sachet 500", meta: "บจก.รินวาลา · FC 2026-11", search: "rinvala sachet รินวาลา 2026-11" },
+  { value: "d3", label: "Diffuser 100ml รอบ 2", meta: "สมชายโฮม · FC 2026-09", search: "diffuser สมชาย 2026-09" },
+];
+const DEMO_PICKER_GROUPS = [
+  { key: "all", label: "ดีลทั้งหมด", search: "ทั้งหมด", items: DEMO_PICKER_DEALS },
+  { key: "p1", label: "KA_Rinvala", meta: "PJ-26080012 · บจก.รินวาลา", search: "PJ-26080012 KA_Rinvala รินวาลา", items: DEMO_PICKER_DEALS.slice(0, 2) },
+  { key: "p2", label: "ODM_Somchai", meta: "PJ-26080033 · สมชายโฮม", search: "PJ-26080033 ODM_Somchai สมชาย", items: DEMO_PICKER_DEALS.slice(2) },
+];
+
 const DEMO_CATEGORIES = [
   { mainCategoryCode: "AR", mainCategoryName: "Air care", typeCode: "RD", nameTh: "ก้านไม้หอม" },
   { mainCategoryCode: "AR", mainCategoryName: "Air care", typeCode: "SPR", nameTh: "สเปรย์ปรับอากาศ" },
@@ -331,6 +345,7 @@ export default function DesignPreviewPage() {
   const [demoFreeText, setDemoFreeText] = useState("");
   const [demoPerson, setDemoPerson] = useState("u1");
   const [demoCategory, setDemoCategory] = useState("AR-RD");
+  const [demoTwoPane, setDemoTwoPane] = useState("");
   const [demoDirty, setDemoDirty] = useState(false);
   const [demoSaving, setDemoSaving] = useState(false);
   const [group, setGroup] = useState(GROUPS[0].key);
@@ -753,6 +768,36 @@ export default function DesignPreviewPage() {
                 {`customer="${demoCustomer}" · freeText="${demoFreeText}" · person="${demoPerson}" · category="${demoCategory}"`}
               </p>
             </div>
+          </div>
+        </Section>
+
+        <Section group="controls" active={group}
+          title="ตัวเลือกสองชั้น (TwoPanePicker)"
+          subtitle="ของที่มีกลุ่มตามธรรมชาติและรายการยาว — กลุ่มอยู่ซ้าย รายการอยู่ขวา ค้นได้ทั้งสองฝั่ง"
+        >
+          <div className={styles.stack}>
+            <div className={styles.field}>
+              <span className={styles.caption}>
+                เลือกดีล (DealPicker ห่อทับอีกที) — ถัง “ทั้งหมด” ไม่เคยถูกกรองทิ้งจากฝั่งซ้าย
+                เพราะเป็นทางออกของคนที่จำได้แค่ชื่อของชั้นล่าง
+              </span>
+              <TwoPanePicker
+                groups={DEMO_PICKER_GROUPS}
+                value={demoTwoPane}
+                onChange={setDemoTwoPane}
+                allGroupKey="all"
+                headLabel="เลือกดีล"
+                headMeta={`ทั้งหมด ${DEMO_PICKER_GROUPS[0].items.length} ดีล`}
+                groupSearchPlaceholder="ค้นหาโครงการ / ลูกค้า…"
+                itemSearchPlaceholder="ค้นหาดีล / ลูกค้า…"
+                placeholder="— เลือกดีล —"
+                ariaLabel="ตัวเลือกสองชั้นตัวอย่าง"
+              />
+            </div>
+            <p className={`${styles.caption} ${styles.mono}`}>{`value="${demoTwoPane}"`}</p>
+            <span className={styles.caption}>
+              ⚠️ อย่าใช้กับลิสต์สั้นหรือของชั้นเดียว — นั่นคืองานของ SearchableSelect
+            </span>
           </div>
         </Section>
 
