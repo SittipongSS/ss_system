@@ -301,3 +301,25 @@
   border-radius: var(--radius);
   background: var(--panel-2);
 }
+
+/* PDR แบบอ่าน — คู่ป้าย/ค่า อ่านเร็วกว่าย่อหน้า และช่องที่ไม่ได้กรอกถูกตัดทิ้ง
+   ไม่ใช่แสดงเป็นขีด (21 ช่องส่วนใหญ่ไม่บังคับ — แสดงครบจะกลบของที่กรอกจริง) */
+.pdrFacts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.pdrFact {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: var(--space-3);
+  font-size: var(--fs-5);
+}
+
+.pdrFact dt { color: var(--text-3); }
+.pdrFact dd { margin: 0; color: var(--text-1); }
+
+@media (max-width: 640px) {
+  .pdrFact { grid-template-columns: 1fr; gap: var(--space-1); }
+}
