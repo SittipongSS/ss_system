@@ -28,28 +28,19 @@
   color: var(--text-2);
 }
 
-/* บล็อกรายการวัสดุหนึ่งบรรทัดในฟอร์มขอราคา */
-.itemCard { padding: var(--space-3); margin-bottom: var(--space-2-5); }
-.itemHead { display: flex; gap: var(--space-2); align-items: flex-start; }
-.itemPicker { flex: 1; }
-.itemSpec { margin-top: var(--space-2); }
+/* ⚠️ บล็อกรายการวัสดุ (.itemCard/.itemHead/.itemPicker/.itemSpec) และแถวชั้นจำนวน
+   (.tierRow/.tierLabel/.tierInput) ถูกลบพร้อมบรรทัดวัสดุใน mig 0219 (ม-28) —
+   ลบจริงไม่ใช่ปล่อยค้าง เพราะ `npm run audit:ui` จับ CSS ที่ไม่มีใครเรียกอยู่แล้ว
 
-/* แถวชั้นจำนวนที่ขอ */
-.tierRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1-5);
-  margin-top: var(--space-2);
-  align-items: center;
-}
-.tierLabel { font-size: var(--fs-5); color: var(--text-2); }
+   ⚠️ **.tierChip / .tierChipOn อยู่ต่อ** — ชื่อมาจากชั้นจำนวน แต่ผู้ใช้จริงวันนี้คือ
+   ชิปตัวเลือกของ PDR (Scentotype · Performance · กลุ่มลูกค้า) ที่ PdrForm/PdrSummary
+   ⇒ ลบตามชื่อไปด้วยจะทำให้ชิปบนฟอร์ม PDR หายสไตล์ทั้งแผง */
 .tierChip { cursor: pointer; }
 .tierChipOn {
   cursor: pointer;
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
-.tierInput { width: 120px; }
 
 /* ── แนบไฟล์ + กล่าวถึง ในโมดัลเปิดคำร้อง ─────────────────────────── */
 /* ปุ่มเลือกไฟล์เป็น <label> ครอบ input[type=file] ที่ซ่อนไว้ — input ตัวจริงต้อง

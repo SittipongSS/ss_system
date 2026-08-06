@@ -8,15 +8,13 @@
 // สอบถาม RD (เธรดล้วน) กับ เคสขอราคาวัสดุ (มีบรรทัด/เลขที่/คิว) ทั้งที่เป็นเรื่อง
 // เดียวกัน · ไฟล์นี้คือจุดที่รวมมันเข้าด้วยกัน: ทุกชนิดเดินสถานะชุดเดียวกัน
 // ต่างกันแค่ "ถามอะไร ถึงฝ่ายไหน ผูกกับอะไร จบแล้วไปโผล่ที่ไหน"
-import { MATERIAL_KINDS, sourceDeptForMaterialKind } from '@/lib/materialPrices';
 import { templateFor } from '@/lib/pm/templates';
 import { REQUEST_KINDS } from '@/lib/requests/kinds/registry';
 
 // ── ธงต่อชนิด ────────────────────────────────────────────────────────────
 //   dept        ฝ่ายผู้ตอบที่ล็อกไว้ (null = ผู้ขอเลือกเองได้ทั้ง RD/PC)
 //   scope       scope เลขที่เอกสาร (ออกตอนกดส่ง ไม่ใช่ตอนสร้างร่าง)
-//   hasItems    มีบรรทัดรายการวัสดุ (ชนิดขอราคาเท่านั้น)
-//   hasTiers    บรรทัดมีชั้นจำนวน (MOQ) ให้ระบุไหม
+//   hasItems    มีบรรทัดรายการไหม (รูปร่างบรรทัดบอกด้วย lineShape)
 //   needs       ของที่ต้องอ้างถึงก่อนส่งได้ (ดู REQUEST_NEEDS ข้างล่าง)
 //   stepKey     ขั้นปลายทางในไทม์ไลน์ที่คำร้องนี้ปักหมุด (ดู lib/pm/templates.js)
 //   dealType    ชนิดดีลที่ใช้ชนิดคำร้องนี้ได้ (ใช้เตือน ไม่ได้บล็อก)
@@ -50,32 +48,10 @@ export const REQUEST_NEEDS = {
 
 export const REQUEST_KIND_LIST = Object.keys(REQUEST_KINDS);
 
-// ชนิดวัสดุ → ชนิดคำร้องขอราคาที่คู่กัน
-// ใช้ตอนเปิดคำร้องจาก "บรรทัดในใบขอราคาผลิต" ซึ่งบรรทัดเป็นตัวบอกอยู่แล้วว่ากำลัง
-// ถามอะไร — ผู้ใช้ไม่ควรต้องเลือกชนิดซ้ำ และเลือกผิดไม่ได้ด้วย
-export const REQUEST_KIND_BY_MATERIAL = {
-  RM_F: 'price_f',
-  RM_FB: 'price_fb',
-  PM: 'price_pm',
-};
-
-export function kindForMaterial(materialKind) {
-  return REQUEST_KIND_BY_MATERIAL[materialKind] || null;
-}
-
-// ทางกลับ: ชนิดคำร้อง → ชนิดวัสดุที่บรรทัดต้องเป็น
-//
-// ⭐ เดิมทิศทางเดียว (วัสดุ → คำร้อง) เพราะฟอร์มให้เลือกชนิดวัสดุก่อนแล้วอนุมานฝ่าย
-// ตอนนี้ฟอร์มเลือกฝ่าย → หัวข้อ ก่อนเสมอ (มติ 2026-08-03) ชนิดวัสดุจึงเป็นผลลัพธ์
-// ไม่ใช่ตัวตั้ง → ทุกบรรทัดในใบเดียวเป็นชนิดเดียวกันโดยโครงสร้าง ไม่ต้องมีกฎ
-// "ทุกรายการต้องเป็นฝ่ายเดียวกัน" ให้ผู้ใช้ทำผิดได้อีก
-export const MATERIAL_KIND_BY_REQUEST = Object.fromEntries(
-  Object.entries(REQUEST_KIND_BY_MATERIAL).map(([mk, rk]) => [rk, mk]),
-);
-
-export function materialKindForRequest(kind) {
-  return MATERIAL_KIND_BY_REQUEST[kind] || null;
-}
+// ⚠️ **แมป "ชนิดวัสดุ ↔ หัวข้อขอราคา" ถูกถอดทั้งบล็อกใน mig 0219** (มติ ม-28) —
+// `REQUEST_KIND_BY_MATERIAL` / `kindForMaterial` / `materialKindForRequest` มีอยู่
+// เพื่อเปิดคำร้องขอราคาจากบรรทัดในใบขอราคาผลิต ซึ่งเป็นสะพานเข้าหาหัวข้อที่ไม่มีแล้ว
+// ⇒ ปุ่ม "ขอราคา" บนหน้า /sa/costing ถูกถอดพร้อมกัน (ไม่ใช่ปล่อยให้กดแล้ว 400)
 
 export function isRequestKind(kind) {
   return Object.prototype.hasOwnProperty.call(REQUEST_KINDS, kind);
@@ -106,11 +82,6 @@ export function requestRequiresCommittedDue(kind) {
 
 export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
-}
-
-// ชั้นจำนวน (MOQ) — มีเฉพาะวัสดุ (PM) · ราคา F/FB เป็นราคาเดียว (มติผู้ใช้ 2026-08-03)
-export function requestHasTiers(kind) {
-  return !!REQUEST_KINDS[kind]?.hasTiers;
 }
 
 // ของที่หัวข้อนี้ต้องอ้างถึง — คืนรายชื่อคีย์ของ REQUEST_NEEDS
@@ -162,8 +133,7 @@ export const PLANNED_REQUEST_DEPTS = [];
 
 // หัวกลุ่มในดรอปดาวน์หัวข้อ — ตระกูลมาจาก `scope` ที่หัวข้อมีอยู่แล้ว ไม่ใช่ธงใหม่
 const KIND_FAMILY_LABEL = {
-  SB: 'งานพัฒนา', MU: 'งานพัฒนา',
-  RM: 'ขอราคา', PM: 'ขอราคา',
+  SB: 'งานพัฒนา', FD: 'งานพัฒนา', MU: 'งานพัฒนา',
   RQ: 'ทั่วไป',
 };
 
@@ -171,13 +141,12 @@ export function requestKindFamily(kind) {
   return KIND_FAMILY_LABEL[REQUEST_KINDS[kind]?.scope] || 'ทั่วไป';
 }
 
-export function deptForRequest(kind, { dept, items } = {}) {
+// ⚠️ เดิมมีสาขาที่อนุมานฝ่ายจาก **ชนิดวัสดุของบรรทัดแรก** สำหรับหัวข้อขอราคาที่ไม่ได้
+// ล็อกฝ่ายไว้ — หัวข้อพวกนั้นถูกถอดใน mig 0219 และหัวข้อที่เหลือทุกตัวที่มีบรรทัด
+// ล็อกฝ่ายไว้แล้ว ⇒ เหลือสองทาง: ฝ่ายจากทะเบียน หรือฝ่ายที่ผู้ขอเลือกเอง
+export function deptForRequest(kind, { dept } = {}) {
   const fixed = REQUEST_KINDS[kind]?.dept;
   if (fixed) return fixed;
-  // ชนิดขอราคาที่ไม่ได้ล็อกฝ่ายไว้: อนุมานจากชนิดวัสดุของรายการแรก (พฤติกรรมเดิม
-  // ของเคสขอราคา — ไม่ให้ client กำหนดเองแล้วส่งผิดฝ่าย)
-  const firstKind = items?.[0]?.kind;
-  if (MATERIAL_KINDS.includes(firstKind)) return sourceDeptForMaterialKind(firstKind);
   return REQUEST_DEPTS.includes(dept) ? dept : null;
 }
 
@@ -192,14 +161,18 @@ export function deptForRequest(kind, { dept, items } = {}) {
 // ⚠️ กรอง `legacy` ออกที่นี่ที่เดียว — ฟอร์มเอาลิสต์จากฟังก์ชันนี้ทางเดียว ส่วน
 // `requestKindLabel` ยังรู้จักหัวข้อเก่าครบ ⇒ ใบที่เปิดไปแล้วยังมีป้ายชื่ออ่านได้
 // (ลบหัวข้อทิ้งเมื่อไร ใบเก่าบน prod จะกลายเป็นชื่อ key ดิบบนหน้าจอ)
-// รูปร่างของบรรทัดตามหัวข้อ — 'material' | 'product_dev' | 'document' | null
+// รูปร่างของบรรทัดตามหัวข้อ — 'product_dev' | 'document' | 'billing_doc' | null
 //
 // ⚠️ ที่เดียวของระบบ · ก่อนหน้านี้ route กับฟอร์มเช็ค `kind === 'product_dev'` เอง
 // ซึ่งพอมีรูปร่างที่สามก็ต้องไล่แก้ทุกจุดที่เช็คแบบนั้น
+//
+// ⚠️ **ไม่มีค่าถอยหลังแล้ว** — เดิมหัวข้อที่มีบรรทัดแต่ไม่ประกาศ `lineShape` ตกไปเป็น
+// 'material' เงียบ ๆ · รูปร่างนั้นถูกถอดใน mig 0219 ⇒ ทะเบียนบังคับให้ประกาศเอง
+// (`registry.js` โยนตอนโหลดถ้า hasItems แล้วไม่มี lineShape)
 export function lineShapeForKind(kind) {
   const meta = REQUEST_KINDS[kind];
   if (!meta?.hasItems) return null;
-  return meta.lineShape || 'material';
+  return meta.lineShape || null;
 }
 
 export function kindsForDept(dept) {

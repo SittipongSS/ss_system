@@ -13,19 +13,18 @@ import { getCurrentUser } from '@/lib/authUser';
 import {
   REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, canUser, canViewRequests, isSuperuser,
 } from '@/lib/permissions';
-import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
-  deptForRequest, materialKindForRequest, requestDeptError, requestHasTiers,
+  deptForRequest, requestDeptError,
   legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
   requestShapeError,
   requestStepKey,
 } from '@/lib/master/requestTypes';
-import { ensureMaterial, findRequest, loadRequests } from '@/lib/materialPricesAdmin';
+import { findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -92,11 +91,11 @@ export async function GET(request) {
 // { kind, dept, title, body?, urgent?, requestedDueDate?,
 //   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
-//   items?: [{ kind, materialId?, label, spec?, componentId?, tiers?: [qty…] }] }
+//   items?: ตามรูปร่างบรรทัดของหัวข้อ (พัฒนาสูตร: หมวด×กลิ่น · เอกสาร: ชนิด+รายละเอียด) }
 //
 // ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
-// lib/master/requestTypes.js) — ขอราคาไม่ผูกดีล · บรีฟกลิ่นผูก SO · Mock-up ผูก
-// โครงการ+ดีล+กลิ่น+หมวดสินค้า
+// lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกโครงการ+ดีล
+// (หมวดกับกลิ่นอยู่รายแถว)
 // ⚠️ `projectId` / `customerId` / `customerName` **ไม่รับจาก client** — derive จาก
 // ดีล (หรือจากกลิ่น/สูตรเมื่อหัวข้อไม่ผูกดีล) · `note` เลิกใช้แล้ว
 export async function POST(request) {
@@ -123,7 +122,7 @@ export async function POST(request) {
   if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
 
   // ฝ่ายผู้ตอบ: ชนิดที่ล็อกไว้ใช้ค่านั้น · ชนิดที่ไม่ล็อกอนุมานจากรายการ/ที่ผู้ขอเลือก
-  const dept = deptForRequest(kind, { dept: body.dept, items: body.items });
+  const dept = deptForRequest(kind, { dept: body.dept });
   if (!dept) return Response.json({ error: 'ต้องระบุฝ่ายที่ต้องการให้ตอบ' }, { status: 400 });
   // ฟอร์มให้เลือกฝ่ายเองแล้ว (มติ 2026-08-03) — เลือกไม่เข้ากับชนิดต้องตีกลับ
   // ไม่ใช่เงียบ ๆ ส่งไปฝ่ายอื่นแล้วให้คนขอรอคำตอบจากฝ่ายที่ไม่เคยได้รับเรื่อง
@@ -132,14 +131,12 @@ export async function POST(request) {
     if (deptError) return Response.json({ error: deptError }, { status: 400 });
   }
 
-  // ⭐ **บรรทัดมีหลายรูปร่าง** (วัสดุ · พัฒนาผลิตภัณฑ์ · เอกสาร) กฎคนละชุดสิ้นเชิง —
+  // ⭐ **บรรทัดมีหลายรูปร่าง** (พัฒนาสูตร · เอกสาร · ใบวางบิล) กฎคนละชุดสิ้นเชิง —
   // route ไม่ตัดสินเองว่ารูปร่างไหนตรวจยังไง แต่ถามทะเบียนรูปร่างบรรทัด ซึ่งอยู่ใน
   // บ้านของฝ่ายที่เป็นเจ้าของรูปร่างนั้น (P7b) ⇒ เพิ่มรูปร่างใหม่ ไฟล์นี้ไม่ต้องแก้
   const lineShape = lineShapeForKind(kind);
   const normalized = normalizeLinesFor(lineShape, body.items, {
     dept,
-    hasTiers: requestHasTiers(kind),
-    materialKind: materialKindForRequest(kind),
     kindLabel: requestKindLabel(kind),
   });
   if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
@@ -149,7 +146,6 @@ export async function POST(request) {
   // เพราะมันแตะ supabase · ย้ายพร้อมกันในใบเดียวคือแตะ route กับด่านพร้อมกัน
   // ซึ่งเป็นทางที่บั๊ก #973 เดินมา
   const isProductDev = lineShape === 'product_dev';
-  const isDocument = lineShape === 'document';
 
   const requestId = `DR-${randomUUID()}`;
 
@@ -277,21 +273,11 @@ export async function POST(request) {
         });
       }
     }
-    // บรรทัดเอกสารไม่มีของให้ resolve — ชนิดกับรายละเอียดครบตั้งแต่ normalize แล้ว
-    if (isDocument) resolved.push(...items);
-    for (const item of (isProductDev || isDocument) ? [] : items) {
-      if (item.materialId) { resolved.push(item); continue; }
-      const { material } = await ensureMaterial(supabase, {
-        kind: item.kind,
-        label: item.label,
-        customerId,
-        customerName,
-        // ผู้ขอเสนอได้แต่ตัววัสดุ (ร่าง); ถ้าคนเปิดเป็น RD/PC ของฝ่ายนั้นเองก็รับเข้าเลย
-        status: canQuoteMaterial(user, item.kind) ? 'active' : 'draft',
-        user,
-      });
-      resolved.push({ ...item, materialId: material.id });
-    }
+    // บรรทัดรูปร่างอื่น (เอกสาร · ใบวางบิล) ไม่มีของให้ resolve — ครบตั้งแต่ normalize
+    //
+    // ⚠️ เดิมมีสาขาที่ **สร้างวัสดุร่างให้บรรทัดที่ยังไม่ผูกทะเบียน** (`ensureMaterial`)
+    // ซึ่งเป็นของบรรทัดวัสดุล้วน ๆ · ถอดพร้อมหัวข้อขอราคาใน mig 0219 (มติ ม-28)
+    if (!isProductDev) resolved.push(...items);
 
     // ⭐ ส่วนหัว PDR (mig 0214) — 21 ช่องที่ฟอร์มถามตั้งแต่ตอนเปิดใบ
     //
@@ -372,17 +358,11 @@ export async function POST(request) {
       if (briefInsertError) throw briefInsertError;
     }
 
-    // 3) รายการ + ชั้นจำนวนที่ขอ (เฉพาะชนิดที่มีบรรทัด)
+    // 3) รายการ (เฉพาะหัวข้อที่มีบรรทัด) — ชั้นจำนวนถูกถอดใน mig 0219
     if (resolved.length) {
-      const itemRows = resolved.map((item) => (isDocument ? {
-        id: `DRI-${randomUUID()}`,
-        requestId,
-        lineKind: 'document',
-        sortOrder: item.sortOrder,
-        label: item.label,
-        spec: item.spec,
-        docType: item.docType,
-      } : isProductDev ? {
+      // ⚠️ คอลัมน์ `lineKind` เป็น NOT NULL และไม่มี default (0204) — ต้องส่งเสมอ
+      // ⚠️ แต่ละรูปร่างเก็บคนละคอลัมน์ ⇒ ประกอบแถวตามรูปร่าง ไม่ใช่ก้อนเดียวรวม
+      const itemRows = resolved.map((item) => (isProductDev ? {
         id: `DRI-${randomUUID()}`,
         requestId,
         lineKind: 'product_dev',
@@ -396,16 +376,12 @@ export async function POST(request) {
       } : {
         id: `DRI-${randomUUID()}`,
         requestId,
-        // mig 0204: บรรทัดมีรูปร่าง — วันนี้ทุกบรรทัดยังเป็นวัสดุ (หัวข้อที่มีบรรทัด
-        // มีแต่ขอราคา) · รูปร่างอื่นเข้ามาใน P1b พร้อมหัวข้อพัฒนากลิ่น/ผลิตภัณฑ์/เอกสาร
-        // ⚠️ คอลัมน์เป็น NOT NULL และ default ถูกถอดทิ้งใน migration — ต้องส่งเสมอ
-        lineKind: 'material',
+        // เอกสารและใบวางบิลใช้โครงเดียวกัน ต่างที่ `lineKind` ซึ่ง normalize เติมมาแล้ว
+        lineKind: item.lineKind,
         sortOrder: item.sortOrder,
-        kind: item.kind,
-        materialId: item.materialId,
         label: item.label,
         spec: item.spec,
-        componentId: item.componentId,
+        docType: item.docType,
       }));
       const { error: itemError } = await supabase.from('dept_request_items').insert(itemRows);
       if (itemError) {
@@ -413,18 +389,6 @@ export async function POST(request) {
         throw itemError;
       }
 
-      const tierRows = resolved.flatMap((item, idx) => (item.tiers || []).map((qty) => ({
-        id: `DRT-${randomUUID()}`,
-        requestItemId: itemRows[idx].id,
-        qty,
-      })));
-      if (tierRows.length) {
-        const { error: tierError } = await supabase.from('dept_request_item_tiers').insert(tierRows);
-        if (tierError) {
-          await supabase.from('dept_requests').delete().eq('id', requestId);
-          throw tierError;
-        }
-      }
     }
 
     const created = await findRequest(supabase, requestId);

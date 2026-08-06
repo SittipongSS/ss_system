@@ -6,7 +6,7 @@
 //
 //   statuses.js  สถานะ 6 ขั้น · ป้าย · โทน
 //   docNo.js     เลขที่ (ออกตอนกดส่ง)
-//   lines.js     บรรทัด + ชั้นจำนวน
+//   lines.js     บรรทัด (ชั้นจำนวนถูกถอดใน mig 0219)
 //   stages.js    ด่านของแต่ละ action + ความคืบหน้า
 //   access.js    ใครแตะใบนี้ได้
 //   queue.js     ลำดับคิว · กำหนดวันตอบ · ป้ายสรุป
@@ -27,12 +27,7 @@ export {
 
 export { generateRequestDocNo } from '@/lib/requests/docNo';
 
-export {
-  MAX_REQUEST_ITEMS,
-  MAX_REQUEST_TIERS,
-  normalizeRequestItems,
-  normalizeRequestTiers,
-} from '@/lib/requests/lines';
+export { MAX_REQUEST_ITEMS } from '@/lib/requests/lines';
 
 export {
   requestProgress,

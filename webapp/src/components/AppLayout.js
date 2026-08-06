@@ -6,7 +6,7 @@ import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptT
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -242,8 +242,15 @@ export default function AppLayout({ children }) {
         // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอราคา F·FB·PM/
         // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
         // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
-        // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/requests') },
+        // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
+        // ของระบบขอราคาผลิตมาใช้ตั้งแต่ตอนที่มันยังเป็น "ระบบขอราคาวัสดุ" ⇒ ฝ่ายที่รับ
+        // คำร้องได้แต่ไม่มีสิทธิ์เห็นต้นทุน (บัญชี) เปิดเมนูไม่ได้เลย
+        // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
+        // (lib/requests/access.js) ไม่ใช่ที่เมนู · lib ทำเสร็จไปแล้ว เหลือแค่จุดนี้
+        // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
+        // (ถือ costing:view หรือเป็นฝ่ายที่ตอบคำร้องได้) จึงต้องประกาศ caps ให้ตรงกัน
+        // ไม่งั้นด่านชั้น cap จะแคบกว่าด่านจริงแล้วบัญชียังเปิดเมนูไม่ได้เหมือนเดิม
+        { href: '/requests', name: 'คำร้อง', icon: ClipboardList, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, match: (p) => p.startsWith('/requests') },
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],

@@ -134,25 +134,11 @@ export async function loadRequests(supabase, {
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
-  let tiers = [];
-  if (items?.length) {
-    const { data, error: tierError } = await supabase
-      .from('dept_request_item_tiers')
-      .select('*')
-      .in('requestItemId', items.map((i) => i.id))
-      .order('qty', { ascending: true });
-    if (tierError) throw tierError;
-    tiers = data || [];
-  }
-
-  const itemsWithTiers = (items || []).map((i) => ({
-    ...i,
-    tiers: tiers.filter((t) => t.requestItemId === i.id),
-  }));
-
+  // ⚠️ เดิมมีขั้นดึง `dept_request_item_tiers` มาแปะรายแถว — ตารางถูก DROP ใน
+  // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
   return asks.map((a) => ({
     ...a,
-    items: itemsWithTiers.filter((i) => i.requestId === a.id),
+    items: (items || []).filter((i) => i.requestId === a.id),
   }));
 }
 

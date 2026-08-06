@@ -1,8 +1,11 @@
 // ── บ้านของฝ่ายจัดซื้อ ──────────────────────────────────────────────────
 // ⚠️ ยังไม่ได้ทบทวนในรอบรื้อ RD — ที่ย้ายมาคือที่อยู่ ไม่ใช่กฎ
-import pricePm from './pricePm';
 import materialEta from './materialEta';
 
-const PC_KINDS = [pricePm, materialEta];
+// ⚠️ `price_pm` ถูกถอดพร้อมกับหัวข้อขอราคาของ RD ใน mig 0219 (มติ ม-28) — มันเป็น
+// หัวข้อเดียวในระบบที่มีชั้นจำนวน (`hasTiers`) ⇒ ตาราง `dept_request_item_tiers`
+// ถูก DROP ไปด้วย · **ฝั่ง PC ยังไม่ได้ทบทวนสายงานใหม่** ถ้าจัดซื้อต้องขอราคา
+// บรรจุภัณฑ์อีก ให้ออกแบบใหม่ทั้งหัวข้อ ไม่ใช่กู้ของเดิมกลับมา
+const PC_KINDS = [materialEta];
 
 export default PC_KINDS;

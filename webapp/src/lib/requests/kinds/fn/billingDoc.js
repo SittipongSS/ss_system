@@ -13,7 +13,7 @@
 const billingDoc = {
   key: 'billing_doc',
   label: 'ขอเอกสารการเงิน',
-  dept: 'FN', scope: 'RQ', hasItems: true, hasTiers: false, lineShape: 'billing_doc',
+  dept: 'FN', scope: 'RQ', hasItems: true, lineShape: 'billing_doc',
   // ⏳ ของจริงต้องอ้างใบสั่งขาย/งวดจ่ายด้วย แต่ `sales_orders` ยังไม่มีขั้นบัญชีเลย
   // (แผน §6 ตรวจแล้ว) ⇒ รอบนี้ผูกแค่โครงการ+ดีลตามหัวข้อขอเอกสารของ RD
   // **ห้ามเดาโครงสร้างงวดจ่ายล่วงหน้า** — ออกแบบพร้อมของจริงตอนมีที่เก็บ

@@ -6,10 +6,12 @@
 //
 // ⚠️ **ลำดับในลิสต์คือลำดับที่ผู้ใช้เห็นในดรอปดาวน์** (ภายในตระกูลเดียวกัน)
 import scentDev from './scentDev';
-import productDev from './productDev';
-import pricing from './pricing';
+import formulaDev from './formulaDev';
 import legacy from './legacy';
 
-const RD_KINDS = [scentDev, productDev, ...pricing, ...legacy];
+// ⚠️ `price_f` / `price_fb` ถูกถอดทั้งหัวข้อใน mig 0219 (มติ ม-28) — ราคากลายเป็น
+// **ขั้นสุดท้ายของสองหัวข้อข้างบน** ไม่ใช่คำร้องคนละใบ · ห้ามเพิ่มกลับโดยไม่ทบทวน
+// สายงานใหม่ทั้งเส้นก่อน ไม่งั้นจะได้สองทางที่ทำเรื่องเดียวกันอีกรอบ
+const RD_KINDS = [scentDev, formulaDev, ...legacy];
 
 export default RD_KINDS;
