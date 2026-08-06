@@ -73,6 +73,11 @@ test("entity selector rules are consistent across the system", () => {
   assert.equal(ENTITY_SELECT_RULES.brand.searchable, false);
   assert.equal(ENTITY_SELECT_RULES.mainCategory.searchable, true);
   assert.equal(ENTITY_SELECT_RULES.subCategory.searchable, true);
+  // โครงการ/ดีล ค้นได้เสมอ — ฟอร์มไหนเผลอส่ง searchable={false} มาก็ต้องไม่ชนะกฎนี้
+  assert.equal(ENTITY_SELECT_RULES.project.searchable, true);
+  assert.equal(ENTITY_SELECT_RULES.deal.searchable, true);
+  assert.equal(searchableForEntity("project", false), true);
+  assert.equal(searchableForEntity("deal", false), true);
   assert.equal(searchableForEntity("customer", false), true);
   assert.equal(searchableForEntity("brand", true), false);
   assert.equal(searchableForEntity("phase", true), true);

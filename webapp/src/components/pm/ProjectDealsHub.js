@@ -11,6 +11,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, 
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
@@ -551,10 +552,20 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         <div className="flex flex-col gap-4">
           <div className="form-group">
             <label>ดีลของ {p.customerName || "ลูกค้ารายนี้"} หรือดีลที่ยังไม่มีลูกค้า</label>
-            <Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}>
-              <option value="">— เลือกดีลที่ยังไม่ผูกโครงการ —</option>
-              {availableDeals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title} · {dealTypeOf(deal)} · {STAGE_LABELS[deal.stage] || deal.stage}{!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}</option>)}
-            </Select>
+            {/* ค้นได้ — ดีลที่ผูกได้มีหลายสิบใบ การไล่อ่านทีละบรรทัดหาชื่อที่จำได้ไม่ไหว
+                (ลิสต์ยังเป็น "ดีลที่ยังไม่ผูกโครงการ" เท่านั้น: ดีลผูกโครงการแล้วโดน API
+                 ตีกลับ 'ดีลนี้ผูกโครงการแล้ว' — เอามาโชว์ = ตัวเลือกที่กดแล้วพังเสมอ) */}
+            <SearchableSelect className="w-full" entity="deal" ariaLabel="ดีลที่จะผูกเข้าโครงการ"
+              value={dealId} onChange={setDealId}
+              options={availableDeals.map((deal) => ({
+                value: deal.id,
+                // FC = เดือนคาดการณ์ปิด — ตัวแยกดีลชื่อซ้ำ (มติผู้ใช้ 2026-08-06)
+                label: `${deal.title} · ${dealTypeOf(deal)} · ${STAGE_LABELS[deal.stage] || deal.stage} · FC ${deal.forecastMonth || "ไม่ระบุ"}${!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}`,
+                search: `${deal.code || ""} ${deal.title || ""} ${deal.customerName || ""} ${deal.forecastMonth || ""}`,
+              }))}
+              placeholder="— เลือกดีลที่ยังไม่ผูกโครงการ —"
+              searchPlaceholder="ค้นหาชื่อดีล…"
+              emptyText="ไม่พบดีลที่ตรงกับคำค้น" />
             {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้หรือดีลที่ยังไม่มีลูกค้า</div>}
             {availableDeals.some((deal) => !deal.customerId) && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เมื่อผูกดีลที่ยังไม่มีลูกค้า ระบบจะตั้งลูกค้าให้ตรงกับโครงการอัตโนมัติ</div>}
           </div>

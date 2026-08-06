@@ -5,6 +5,10 @@ export const ENTITY_SELECT_RULES = Object.freeze({
   // คน: ค้นได้เสมอ — ต้องพิมพ์นามสกุลหาได้ ไม่ใช่ไล่หาในรายชื่อยาว ๆ
   person: Object.freeze({ searchable: true }),
   product: Object.freeze({ searchable: true }),
+  // โครงการ/ดีล: ค้นได้เสมอ (มติผู้ใช้ 2026-08-06) — คนจำ "ชื่อดีล" ได้ แต่จำไม่ได้ว่า
+  // อยู่โครงการไหน · ลิสต์ยาวเป็นร้อยแถว การไล่ดูทีละบรรทัดจึงไม่ใช่ทางเลือกจริง
+  project: Object.freeze({ searchable: true }),
+  deal: Object.freeze({ searchable: true }),
   brand: Object.freeze({ searchable: false }),
   // หมวดสินค้ายุบสองชั้นเป็นช่องเดียวแล้ว (ProductCategorySelect) — prod มี 105 หมวด
   // ⇒ ค้นได้เสมอ · สองคีย์ล่างเป็นของเดิม เผื่อมีที่เรียกตรงหลงเหลือ

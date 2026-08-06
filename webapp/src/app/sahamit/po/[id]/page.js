@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
 import DateInput from "@/components/ui/DateInput";
@@ -739,12 +740,17 @@ export default function PoDetailPage() {
           ) : (
             <>
               <label style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>โครงการ</label>
-              <Select value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)}>
-                <option value="">— เลือกโครงการ —</option>
-                {linkProjects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}{p.type ? ` (${p.type})` : ""}</option>
-                ))}
-              </Select>
+              {/* ค้นได้ด้วยรหัส/ชื่อโครงการ (มติผู้ใช้ 2026-08-06) — โครงการสหมิตรสะสมทุกรอบ RE-ORDER */}
+              <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการที่จะเชื่อม PO"
+                value={linkProjectId} onChange={setLinkProjectId}
+                options={linkProjects.map((p) => ({
+                  value: p.id,
+                  label: `${p.code ? `${p.code} · ` : ""}${p.name}${p.type ? ` (${p.type})` : ""}`,
+                  search: `${p.code || ""} ${p.name || ""} ${p.type || ""}`,
+                }))}
+                placeholder="— เลือกโครงการ —"
+                searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
+                emptyText="ไม่พบโครงการที่ตรงกับคำค้น" />
               <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                 FG และจำนวนจาก PO นี้จะถูกเพิ่มเข้าโครงการที่เลือก แล้วเดินขั้นตอน &quot;ยืนยันดีล + ออกใบเสนอราคา&quot; ต่อได้
               </div>

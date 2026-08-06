@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -1294,12 +1295,17 @@ export default function DealOverviewPage() {
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
             โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
-            <Select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
-              <option value="">{linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}</option>
-              {linkProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.code || p.id} · {p.name}{p.type ? ` (${p.type})` : ""}</option>
-              ))}
-            </Select>
+            {/* ค้นได้ด้วยรหัส/ชื่อโครงการ — ลูกค้ารายใหญ่มีโครงการหลายสิบ (มติผู้ใช้ 2026-08-06) */}
+            <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการที่จะผูกดีล"
+              value={linkProjectId} onChange={setLinkProjectId} disabled={linkLoading}
+              options={linkProjects.map((p) => ({
+                value: p.id,
+                label: `${p.code || p.id} · ${p.name}${p.type ? ` (${p.type})` : ""}`,
+                search: `${p.code || ""} ${p.name || ""} ${p.type || ""}`,
+              }))}
+              placeholder={linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}
+              searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
+              emptyText="ไม่พบโครงการที่ตรงกับคำค้น" />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
             วันเริ่มงานช่วงนี้
