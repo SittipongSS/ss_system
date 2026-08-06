@@ -49,3 +49,29 @@
 
 /* บล็อก PDR แบบอ่าน — เว้นจากเธรดที่อยู่ถัดไป */
 .pdrBlock { margin-bottom: var(--space-4); }
+
+/* แถบสรุปของใบ — เปิดมาแล้วรู้สถานการณ์ทันทีโดยไม่ต้องไล่อ่านทีละแถว
+   ⚠️ ตัวเลขเป็นของ **ใบ** · รายละเอียดว่าแต่ละ direction ไปถึงไหนอยู่ที่รางของแถว */
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: var(--panel-2);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+
+.summaryBar strong {
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryBar [data-tone="warn"],
+.summaryBar [data-tone="warning"] { color: var(--amber-ink, var(--text-1)); }
+.summaryBar [data-tone="danger"] { color: var(--red); }
+.summaryBar [data-tone="success"] { color: var(--green); }
