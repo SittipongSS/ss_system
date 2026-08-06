@@ -2847,8 +2847,13 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text-3);
 }
 .ui-select-group:not(:first-child) { border-top: 1px solid var(--border); margin-top: var(--space-1); }
+/* ช่องค้นในแผงลอยทุกตัวของระบบ — SearchableSelect และ TwoPanePicker ใช้คลาสนี้ร่วมกัน
+   🐞 `flex: 0 0 auto` จำเป็น: เมื่อคลาสนี้เป็น flex item ในคอลัมน์ที่สูงคงที่
+   (แผงสองชั้น) flex-shrink ปริยาย = 1 จะบีบช่องค้นให้เตี้ยลงตอนรายการยาว แล้วสูง
+   กลับมาตอนพิมพ์กรองจนรายการสั้น = ช่องเปลี่ยนความสูงระหว่างพิมพ์ (ผู้ใช้ทัก 2026-08-06) */
 .ui-select-search {
   margin-bottom: 5px;
+  flex: 0 0 auto;
   height: 34px;
   padding: 0 9px;
   display: flex;

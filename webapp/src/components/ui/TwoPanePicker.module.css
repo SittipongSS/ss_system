@@ -1,0 +1,95 @@
+/* แผงตัวเลือกสองชั้นของระบบ (ดู TwoPanePicker.js)
+   ช่องค้นใช้คลาสกลาง `.ui-select-search` ใน globals.css — ช่องค้นในแผงลอยทุกตัว
+   ต้องหน้าตาเดียวกัน ที่นี่จึงไม่มีสไตล์ช่องค้นของตัวเอง */
+
+.panel {
+  z-index: var(--z-portal-menu);
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.headMeta { color: var(--text-3); font-weight: var(--fw-regular); }
+
+.panes { display: flex; min-height: 0; }
+
+/* ⚠️ ความสูง **คงที่** ไม่ยืดหดตามจำนวนแถวที่เหลือจากการค้น — แผงนี้กางขึ้นบนได้
+   (ยึดขอบล่างไว้กับช่อง) พอกรองแล้วรายการสั้นลง แผงจะหดแล้ว "กระโดด" ลงมา ของที่
+   ตาเล็งไว้เลื่อนหนีมือ แล้วคลิกถัดไปตกนอกแผง = แผงปิดและตัวอักษรไปลงช่องอื่น
+   (เจอกับตัวเองตอนลองบน prod 2026-08-06) */
+.pane {
+  display: flex;
+  height: min(320px, 46vh);
+  overflow-y: auto;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5);
+}
+
+.left { width: 44%; border-right: 1px solid var(--border); }
+.right { flex: 1; min-width: 0; }
+
+.row {
+  display: flex;
+  width: 100%;
+  /* 🐞 ห้ามบีบ — flex item ในคอลัมน์สูงคงที่มี flex-shrink ปริยาย = 1 เบราว์เซอร์จะ
+     บีบทุกแถว (และช่องค้น) ให้เตี้ยลงก่อนปล่อยให้ scroll ⇒ ความสูงเปลี่ยนไปมา
+     ระหว่าง "ก่อนพิมพ์ค้น" กับ "หลังพิมพ์" (ผู้ใช้ทัก 2026-08-06) */
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-7);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover { background: var(--panel-2); }
+.row.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+
+/* แถวสองบรรทัด (ชื่อ + คำอธิบายรอง) — ไอคอนต้องอยู่บรรทัดแรก ไม่ใช่กลางแถว */
+.stacked { align-items: flex-start; color: var(--text); }
+.rowIcon { flex: 0 0 auto; margin-top: var(--space-0-5); }
+.rowText { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--space-0-5); }
+.rowTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowMeta { color: var(--text-3); font-size: var(--fs-3); }
+.row.active .rowMeta { color: var(--accent-ink); }
+.rowLabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { flex: 0 0 auto; color: var(--text-3); font-size: var(--fs-3); }
+.row.active .count { color: var(--accent-ink); }
+
+.empty { flex: 0 0 auto; padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+
+.triggerValue { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
+.triggerChip {
+  flex: 0 0 auto;
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+}
+.triggerText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.placeholder { color: var(--text-3); }

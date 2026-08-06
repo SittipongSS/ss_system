@@ -9,6 +9,8 @@
 //   · "ดีลทั้งหมด"        — คนที่จำได้แค่ชื่อดีลต้องค้นข้ามโครงการได้ในคลิกเดียว
 //   · "ยังไม่ผูกโครงการ"  — ดีลกลุ่มนี้มีจริงและผูกงานได้ ถ้าไม่มีถังมันจะหายไปเฉย ๆ
 
+import { matchesQuery } from '@/lib/ui/pickerSearch';
+
 export const ALL_DEALS_BUCKET = '__all_deals__';
 export const NO_PROJECT_BUCKET = '__no_project__';
 
@@ -26,16 +28,9 @@ export const projectSearchText = (project) => [
   project?.code, project?.name, project?.customerName,
 ].filter(Boolean).join(' ');
 
-// คำค้นหลายคำ = ต้องเจอ **ทุกคำ** (ไม่ใช่ทั้งประโยคติดกัน) — คนพิมพ์ "rinvala 2026-08"
-// โดยคาดว่าจะได้ดีลรินวาลาของเดือนนั้น ไม่ใช่ผลลัพธ์ว่างเพราะสองคำนี้ไม่ติดกันในข้อความ
-const matches = (text, needle) => {
-  const hay = String(text || '').toLocaleLowerCase('th');
-  return String(needle || '')
-    .toLocaleLowerCase('th')
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((token) => hay.includes(token));
-};
+// กติกาค้นมาจากตัวกลางที่เดียว (lib/ui/pickerSearch) — ห้ามเขียนเงื่อนไขค้นซ้ำที่นี่
+// ไม่งั้น "ค้นได้" ของแต่ละตัวเลือกจะแปลว่าคนละอย่างกัน
+const matches = matchesQuery;
 
 /**
  * ถังฝั่งซ้าย: ดีลทั้งหมด → โครงการ (เรียงตามป้ายที่คนเห็น) → ยังไม่ผูกโครงการ
