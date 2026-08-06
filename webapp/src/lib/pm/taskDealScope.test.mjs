@@ -10,22 +10,26 @@ test('task deal linking is limited to the user team', () => {
   assert.deepEqual(taskDealScope(user), { kind: 'team', team: 'KA' });
 });
 
-test('users without a team cannot manually link a deal', () => {
-  assert.equal(canLinkTaskToDeal({ role: 'rd', team: null }, { team: 'KA' }), false);
-  assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'none', team: null });
+// มติผู้ใช้ 2026-08-06: ฝ่ายที่ไม่มีทีมเห็น "ดีลทั้งหมด" — เดิมเป็น 'none' ซึ่งแปลว่า
+// ไม่มีดีลให้เลือกเลย จึงบังคับผูกดีลกับเขาไม่ได้ (บังคับ = สร้างงานไม่ได้ทั้งฝ่าย)
+test('ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) เลือกดีลได้ทุกทีม', () => {
+  assert.equal(canLinkTaskToDeal({ role: 'rd', team: null }, { team: 'KA' }), true);
+  assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'all', team: null });
 });
 
-test('sales staff must link every task to a deal', () => {
-  // ฝ่ายอนุมานจาก role ได้ด้วย — บัญชีส่วนใหญ่ไม่ได้ตั้ง department ไว้ตรง ๆ
+test('ทุกงานต้องผูกดีล — ไม่ใช่เฉพาะฝ่ายขาย', () => {
   assert.equal(requiresDealLink({ role: 'ae', team: 'KA' }), true);
   assert.equal(requiresDealLink({ role: 'ac', team: 'ODM' }), true);
-  assert.equal(requiresDealLink({ role: 'ae_supervisor', department: 'SALES' }), true); // ค่าเก่าก่อนย่อโค้ด
+  assert.equal(requiresDealLink({ role: 'ae_supervisor', department: 'SALES' }), true);
+  assert.equal(requiresDealLink({ role: 'rd', team: null }), true);
+  assert.equal(requiresDealLink({ role: 'staff', department: 'PC' }), true);
 });
 
-test('departments without deals of their own are not forced to link', () => {
-  assert.equal(requiresDealLink({ role: 'rd', team: null }), false);
-  assert.equal(requiresDealLink({ role: 'staff', department: 'PC' }), false);
+test('ข้อยกเว้น: ผู้ดูแลระบบ/เลขานุการ เท่านั้น (ไม่ใช่ superuser ทั้งก้อน)', () => {
   assert.equal(requiresDealLink({ role: 'admin' }), false);
+  assert.equal(requiresDealLink({ role: 'secretary' }), false);
+  // ⚠️ ae_supervisor เป็น superuser แต่เป็นหัวหน้าฝ่ายขาย — ต้องผูกดีลเหมือนลูกทีม
+  assert.equal(requiresDealLink({ role: 'ae_supervisor', team: null }), true);
   assert.equal(requiresDealLink(null), false);
 });
 

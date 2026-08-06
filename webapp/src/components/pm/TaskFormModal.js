@@ -121,12 +121,12 @@ export default function TaskFormModal({
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
-  // ฝ่ายขาย (SA) ต้องผูกดีลทุกงาน — กติกาเดียวกับ API (requiresDealLink).
+  // ทุกงานต้องผูกดีล (มติผู้ใช้ 2026-08-06) — กติกาเดียวกับ API (requiresDealLink).
   // ยกเว้นงานที่สร้างจากคำร้อง: ดีลมาจากคำร้องต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา
-  // เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว จึงบังคับไม่ได้
+  // เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว จึงบังคับไม่ได้ — และ superuser
+  // (admin/เลขา) ที่งานดูแลระบบไม่ได้เกิดจากดีล
   const dealRequired = canManage && !inquirySource && requiresDealLink(me);
-  // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้ —
-  // ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) จะได้ไม่เห็นช่องที่ว่างเปล่าเสมอ
+  // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้
   const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
 
   // ดีลแยกตามโครงการ — บวกถัง "ดีลทั้งหมด" ที่รวมทั้งที่ผูกและไม่ผูกโครงการ
@@ -148,9 +148,11 @@ export default function TaskFormModal({
     })),
   ];
   const dealOptions = [
-    // ปล่อยว่าง = ไม่ผูกดีล — ฝ่ายที่ไม่บังคับผูกต้องถอนดีลออกได้ ไม่ใช่เลือกแล้วเลือกคืนไม่ได้
-    // (ใส่เฉพาะตอนเลือกโครงการแล้ว ไม่งั้นช่องที่ยังกดไม่ได้จะโชว์ "ไม่ผูกดีล" แทนคำสั่งว่าต้องเลือกโครงการก่อน)
-    ...(form.linkProjectId ? [{ value: "", label: "— ไม่ผูกดีล —", search: "" }] : []),
+    // ปล่อยว่าง = ไม่ผูกดีล — เหลือไว้เฉพาะคนที่ไม่ถูกบังคับ (superuser/งานจากคำร้อง)
+    // ให้ถอนดีลออกได้ · คนที่ถูกบังคับต้องไม่เห็นตัวเลือกที่เลือกแล้วโดน API ตีกลับ
+    // (และใส่เฉพาะตอนเลือกโครงการแล้ว ไม่งั้นช่องที่ยังกดไม่ได้จะโชว์ "ไม่ผูกดีล"
+    //  แทนคำสั่งว่าต้องเลือกโครงการก่อน)
+    ...(form.linkProjectId && !dealRequired ? [{ value: "", label: "— ไม่ผูกดีล —", search: "" }] : []),
     ...dealChoices.map((deal) => ({
       value: deal.id,
       // เดือนคาดการณ์ต่อท้ายเสมอ (มติผู้ใช้ 2026-08-06) — ชื่อดีลซ้ำกันได้จริง
@@ -350,8 +352,9 @@ export default function TaskFormModal({
             </div>
           </div>
 
-          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05):
-              ฝ่ายขายต้องผูกดีลทุกงาน ส่วนฝ่ายอื่นใช้ "ปล่อยว่าง = ไม่ผูก" แทนปุ่ม */}
+          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05) และ
+              ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย —
+              ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
           {showDealLink && (
             <div className="form-group">
               <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
@@ -395,7 +398,7 @@ export default function TaskFormModal({
               {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
               {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
               {form.linkProjectId && form.linkProjectId !== ALL_DEALS && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
-              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">งานของฝ่ายขายต้องผูกดีลทุกชิ้น</div>}
+              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ทุกงานต้องผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่</div>}
             </div>
           )}
 
