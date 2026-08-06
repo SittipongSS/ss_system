@@ -9,7 +9,10 @@ import {
   IMAGE_ACCEPT_ATTR,
   attachmentTypeLabel,
   attachmentFileHeaders,
+  customerDocTypes,
+  documentValidity,
   fileExt,
+  missingDocsMessage,
   isInlineSafeMime,
   isPreviewableImage,
   requiredDocKeys,
@@ -112,4 +115,50 @@ test('ระบบรู้จัก entity ไฟล์แนบของใบ
   assert.equal(attachmentTypeLabel('costing_item', 'spec'), 'สเปก / แบบบรรจุภัณฑ์');
   // docType ที่ไม่รู้จักคืนค่าเดิม ไม่ throw
   assert.equal(attachmentTypeLabel('costing_item', 'bogus'), 'bogus');
+});
+
+// ── อายุเอกสาร + Bookbank (2026-08-06) ──────────────────────────────────
+
+test('Bookbank อยู่ในชุดเอกสารทั้งนิติบุคคลและบุคคลธรรมดา และไม่บังคับ', () => {
+  for (const type of ['company', 'individual']) {
+    const card = customerDocTypes(type).find((t) => t.key === 'bank_book');
+    assert.ok(card, `${type} ต้องมีการ์ด Bookbank`);
+    assert.equal(card.required, false);
+  }
+  // ไม่บังคับ ⇒ ต้องไม่โผล่ในด่านอนุมัติ (ลูกค้าเป็นฝ่ายจ่ายเงินให้เรา
+  // เล่มบัญชีจำเป็นเฉพาะตอนคืนมัดจำ)
+  assert.ok(!requiredDocKeys('customer', customerDocTypes('company')).includes('bank_book'));
+  // ป้ายชื่อต้อง lookup ได้ ไม่ตกเป็นคีย์ดิบบนไฟล์ที่แนบแล้ว
+  assert.match(attachmentTypeLabel('customer', 'bank_book'), /Bookbank/);
+});
+
+test('หนังสือรับรองมีอายุ 6 เดือนนับจากวันที่ออก', () => {
+  const doc = (issuedDate) => ({ docType: 'company_certificate', metadata: { issuedDate } });
+  const v = documentValidity('customer', doc('2026-01-31'), '2026-06-01');
+  // 31 ม.ค. + 6 เดือน ต้องได้ 31 ก.ค. — และเดือนที่ไม่มีวันที่ 31 ต้องถอยมาสิ้นเดือน
+  assert.equal(v.expiresAt, '2026-07-31');
+  assert.equal(v.expired, false);
+  assert.equal(documentValidity('customer', doc('2025-08-31'), '2026-08-06').expiresAt, '2026-02-28');
+  assert.equal(documentValidity('customer', doc('2025-08-31'), '2026-08-06').expired, true);
+});
+
+test('เอกสารที่ยังไม่ได้กรอกวันที่ = "ไม่รู้" ไม่ใช่ "หมดอายุ"', () => {
+  // ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้ต้องไม่กลายเป็นของเสียข้ามคืน
+  const v = documentValidity('customer', { docType: 'company_certificate', metadata: {} }, '2026-08-06');
+  assert.equal(v.unknown, true);
+  assert.equal(v.expired, false);
+});
+
+test('เอกสารที่ไม่มีอายุกำกับคืน null — ผู้เรียกจะได้ไม่ต้องเดาเอง', () => {
+  assert.equal(documentValidity('customer', { docType: 'address_map', metadata: {} }, '2026-08-06'), null);
+  assert.equal(documentValidity('product', { docType: 'artwork', metadata: {} }, '2026-08-06'), null);
+});
+
+test('ข้อความตอนอนุมัติแยก "ยังไม่มี" ออกจาก "หมดอายุแล้ว"', () => {
+  const msg = missingDocsMessage([
+    { key: 'vat_pp20', label: 'ภ.พ.20', reason: 'absent' },
+    { key: 'company_certificate', label: 'หนังสือรับรอง', reason: 'expired', expiresAt: '2026-02-28' },
+  ], 'ลูกค้า ก. ');
+  assert.match(msg, /ขาด ภ\.พ\.20/);
+  assert.match(msg, /หมดอายุแล้ว หนังสือรับรอง \(ถึง 2026-02-28\)/);
 });

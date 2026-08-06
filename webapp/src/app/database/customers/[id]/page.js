@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
+import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
@@ -28,6 +28,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   ADDRESS_USE_LABELS, addressLabel, customerAddresses, isBillingAddress, isShippingAddress,
 } from "@/lib/master/addresses";
+import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
@@ -373,8 +374,29 @@ export default function CustomerDetails() {
                           <span className="text-[10px] text-[var(--text-3)]">{ADDRESS_USE_LABELS[a.useFor]}</span>
                           {i === primaryBillingIndex && <span className="status-pill">บิลหลัก</span>}
                           {i === primaryShippingIndex && <span className="status-pill">จัดส่งหลัก</span>}
+                          {/* สาขาโชว์เฉพาะที่อยู่ที่ใช้ออกเอกสาร — เลขนี้คือเลขที่จะไปอยู่
+                              บนใบกำกับภาษีของใบที่เลือกที่อยู่นี้ (มติ 2026-08-06) */}
+                          {isBillingAddress(a) && (
+                            <span className="text-[10px] text-[var(--text-3)] font-mono">{branchLabel(a.branchCode)}</span>
+                          )}
+                          {a.mapUrl && (
+                            <a
+                              href={a.mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] inline-flex items-center gap-1 text-[var(--accent)]"
+                            >
+                              <MapPin size={11} /> แผนที่
+                            </a>
+                          )}
                         </div>
                         <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{a.address}</p>
+                        {(a.contactName || a.contactPhone) && (
+                          <p className="text-[11px] text-[var(--text-3)] mt-1">
+                            ผู้รับของ: {a.contactName || "—"}
+                            {a.contactPhone ? ` · ${fmtPhone(a.contactPhone)}` : ""}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>

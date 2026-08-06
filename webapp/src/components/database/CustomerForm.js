@@ -130,7 +130,8 @@ export default function CustomerForm({
         <div className="border-b border-[var(--border)] pb-3 mb-5">
           <h3 className="font-semibold text-[var(--text)]">2. ที่อยู่ (Addresses) <span className="text-[var(--red)]">*</span></h3>
           <span className="text-[11px] text-[var(--text-3)]">
-            ใส่ได้หลายที่ (สำนักงานใหญ่ · สาขา · คลัง) แล้วเลือกตอนออกใบเสนอราคา — รายการแรกที่ใช้งานนั้นได้คือค่าตั้งต้น เลื่อนลำดับได้ด้วยลูกศร
+            ใส่ได้หลายที่ (สำนักงานใหญ่ · สาขา · คลัง) แล้วเลือกตอนออกใบเสนอราคา — รายการแรกที่ใช้งานนั้นได้คือค่าตั้งต้น เลื่อนลำดับได้ด้วยลูกศร ·
+            เลือกจังหวัด/อำเภอ/ตำบล แล้วระบบประกอบข้อความให้เอง · <b>เลขสาขา</b>ของที่อยู่ที่ใช้ออกเอกสารคือเลขที่จะไปอยู่บนใบกำกับภาษี
           </span>
         </div>
         <AddressesEditor value={form.addresses} onChange={(addresses) => onForm({ addresses })} />

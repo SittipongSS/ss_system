@@ -296,3 +296,16 @@ test('ผู้สังเกตการณ์อ่านอย่างเ�
     assert.equal(apiWriteAllowed('GET', '/api/attachments', role, []), true, `${role} อ่านได้`);
   }
 });
+
+test('ทะเบียนจังหวัด/อำเภอ/ตำบล อ่านได้ทุก role — ไม่งั้น dropdown ที่อยู่ว่างเปล่าเงียบ ๆ', () => {
+  // default-deny: prefix ใหม่ที่ลืมลง OPEN_READ_APIS จะทำให้ non-admin โดน 403
+  // แล้วช่องจังหวัดว่างโดยไม่มีข้อความบอกสาเหตุ (บทเรียนเดียวกับ /api/company-profile)
+  for (const role of ['ae', 'ac', 'rd', 'pc', 'staff']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/thai-address', 'GET', true), false, role);
+    // เข้าถึงจริงผ่าน /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อข้างบน
+    assert.equal(lockedOut(user, '/api/master/thai-address', 'GET', true), false, `master ${role}`);
+  }
+  // อ่านอย่างเดียว — ไม่มีทางเขียน (ข้อมูลมาจากไฟล์ในรีโป ไม่ใช่จากฐานข้อมูล)
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/api/thai-address', 'POST', true), true);
+});

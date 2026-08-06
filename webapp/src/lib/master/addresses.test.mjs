@@ -84,6 +84,9 @@ test('กระจกลงช่องเดี่ยว: ที่อยู่
   assert.deepEqual(legacyAddressMirror(list), {
     address: 'สำนักงานใหญ่',
     shippingAddress: 'คลัง',
+    // ไม่ระบุสาขาที่ที่อยู่ = สำนักงานใหญ่ · ต้องไม่เป็น null เพราะคอลัมน์นี้อยู่ใน
+    // unique (taxId, branchCode) — null ทำให้ unique หลุด
+    branchCode: '00000',
   });
   assert.equal(primaryShippingAddress(list).id, 'A');
 });
@@ -107,13 +110,28 @@ test('เอกสารที่ไม่ได้เลือกที่อ�
   assert.equal(snapshot.billingAddressId, 'ADR-hq');
 });
 
-test('เลือกที่อยู่คนละที่ไม่ทำให้สาขาขยับ — สาขาเป็นของลูกค้าทั้งราย', () => {
+test('ออกบิลให้สาขาไหน ได้เลขสาขานั้น — ไม่ใช่เลขของสำนักงานใหญ่ตลอดกาล', () => {
+  const { snapshot } = pickDocumentAddresses(
+    {
+      ...CUSTOMER,
+      branchCode: '00000',
+      addresses: [
+        ...CUSTOMER.addresses.filter((a) => a.id !== 'ADR-br2'),
+        { id: 'ADR-br2', label: 'สาขาระยอง', address: '77 ระยอง', branchCode: '00012', useFor: 'both' },
+      ],
+    },
+    { billingAddressId: 'ADR-br2', shippingAddressId: 'ADR-br2' },
+  );
+  assert.equal(snapshot.billingAddress, '77 ระยอง');
+  assert.equal(snapshot.branchCode, '00012');
+});
+
+test('ที่อยู่ที่ยังไม่ระบุสาขา → ถอยไปใช้เลขระดับลูกค้า (แถวก่อน backfill)', () => {
   const { snapshot } = pickDocumentAddresses(
     { ...CUSTOMER, branchCode: '00009' },
     { billingAddressId: 'ADR-br2', shippingAddressId: 'ADR-br2' },
   );
   assert.equal(snapshot.billingAddress, '77 ระยอง');
-  assert.equal(snapshot.shippingAddress, '77 ระยอง');
   assert.equal(snapshot.branchCode, '00009');
 });
 
@@ -163,4 +181,75 @@ test('ปุ่มติ๊กสองปุ่ม ↔ useFor สามค่�
 test('ติ๊กปุ่มสุดท้ายออกไม่ได้ — ที่อยู่ที่ใช้ทำอะไรไม่ได้เลยไม่ใช่ที่อยู่', () => {
   assert.equal(toggleAddressUse('billing', 'billing'), 'billing');
   assert.equal(toggleAddressUse('shipping', 'shipping'), 'shipping');
+});
+
+// ── ที่อยู่แบบมีโครงสร้าง + เลขสาขาต่อที่อยู่ (2026-08-06) ────────────────
+
+test('เลือกจังหวัด/อำเภอ/ตำบลครบ → ประกอบข้อความที่อยู่ให้เอง', () => {
+  const [row] = normalizeAddresses([{
+    label: 'คลังบางพลี',
+    line1: '99/1 หมู่ 5 ถนนบางนา-ตราด',
+    subdistrict: 'บางแก้ว', subdistrictCode: '110403',
+    district: 'บางพลี', districtCode: '1104',
+    province: 'สมุทรปราการ', provinceCode: '11',
+    postcode: '10540',
+    useFor: 'shipping',
+  }]);
+  assert.equal(row.address, '99/1 หมู่ 5 ถนนบางนา-ตราด ตำบลบางแก้ว อำเภอบางพลี จังหวัดสมุทรปราการ 10540');
+  assert.equal(row.provinceCode, '11');
+});
+
+test('กรุงเทพฯ ใช้ แขวง/เขต และไม่มีคำว่า "จังหวัด" นำหน้า', () => {
+  const [row] = normalizeAddresses([{
+    line1: '1 อาคารสีลม',
+    subdistrict: 'สีลม', district: 'บางรัก',
+    province: 'กรุงเทพมหานคร', provinceCode: '10',
+    postcode: '10500',
+  }]);
+  assert.equal(row.address, '1 อาคารสีลม แขวงสีลม เขตบางรัก กรุงเทพมหานคร 10500');
+});
+
+test('แถวยุคเก่าที่ยังไม่มีฟิลด์ย่อย: ข้อความเดิมอยู่ครบ และรูปแถวไม่งอกคีย์ใหม่', () => {
+  const [row] = normalizeAddresses([{ id: 'ADR-old', address: '1 สีลม กรุงเทพฯ 10500', useFor: 'both' }]);
+  // คีย์ต้องเท่าเดิมเป๊ะ ไม่งั้น changedFieldsAgainst จะเห็นเป็น "แก้ไข" แล้วลูกค้า
+  // ทุกรายตกไปรออนุมัติใหม่พร้อมกันเพียงเพราะเปิดฟอร์มแล้วกดบันทึก
+  assert.deepEqual(Object.keys(row).sort(), ['address', 'id', 'label', 'useFor']);
+  assert.equal(row.address, '1 สีลม กรุงเทพฯ 10500');
+});
+
+test('กด "พิมพ์ข้อความเอง" แล้วข้อความไม่ถูกประกอบทับ', () => {
+  const [row] = normalizeAddresses([{
+    address: 'ที่อยู่ตามที่ลูกค้าให้มา (ห้ามแก้)',
+    line1: '99/1', province: 'ชลบุรี', provinceCode: '20',
+    addressOverride: true,
+  }]);
+  assert.equal(row.address, 'ที่อยู่ตามที่ลูกค้าให้มา (ห้ามแก้)');
+  assert.equal(row.addressOverride, true);
+});
+
+test('เลขสาขาเติมศูนย์ให้เอง และรหัสไปรษณีย์ที่ไม่ครบ 5 หลักถูกทิ้ง', () => {
+  const [row] = normalizeAddresses([{ address: '1 สีลม', branchCode: '12', postcode: '105' }]);
+  assert.equal(row.branchCode, '00012');
+  assert.equal(row.postcode, undefined);
+});
+
+test('ลิงก์แผนที่รับเฉพาะ http(s) — javascript: ถูกทิ้ง (ช่องนี้ถูก render เป็นลิงก์จริง)', () => {
+  const [ok] = normalizeAddresses([{ address: '1 สีลม', mapUrl: 'https://maps.app.goo.gl/abc' }]);
+  assert.equal(ok.mapUrl, 'https://maps.app.goo.gl/abc');
+  const [bad] = normalizeAddresses([{ address: '1 สีลม', mapUrl: 'javascript:alert(1)' }]);
+  assert.equal(bad.mapUrl, undefined);
+});
+
+test('เลขสาขาของที่อยู่ออกบิลหลักคือค่าที่กระจกลง customers.branchCode', () => {
+  const mirror = legacyAddressMirror([
+    { id: 'A', address: 'คลัง', branchCode: '00007', useFor: 'shipping' },
+    { id: 'B', address: 'สาขาระยอง', branchCode: '00012', useFor: 'billing' },
+  ]);
+  assert.equal(mirror.branchCode, '00012');
+});
+
+test('ที่อยู่ที่ส่งมาเป็นสตริงเปล่ายังใช้ได้ (สายเก่าบางเส้นส่งแบบนี้)', () => {
+  const [row] = normalizeAddresses(['1 สีลม กรุงเทพฯ 10500']);
+  assert.equal(row.address, '1 สีลม กรุงเทพฯ 10500');
+  assert.equal(row.useFor, 'both');
 });

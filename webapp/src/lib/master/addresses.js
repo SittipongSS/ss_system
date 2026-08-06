@@ -4,14 +4,26 @@
 // จาก mig 0039) ซึ่งไม่มีใครใช้จริง — ของจริงคือบริษัทเดียวมีหลายที่อยู่/หลายสาขา
 // และใบเสนอราคาต้องเลือกได้ว่าออกบิลที่ไหน ส่งที่ไหน
 //
-// รูปเก็บ: customers.addresses = [{ id, label, address, useFor }]
+// รูปเก็บ: customers.addresses = [{ id, label, branchCode, line1, subdistrict,
+//   subdistrictCode, district, districtCode, province, provinceCode, postcode,
+//   mapUrl, contactName, contactPhone, address, addressOverride, useFor }]
+//   (คีย์ที่ยังว่างจะไม่ถูกเขียนลง jsonb เลย — ดู OPTIONAL_ROW_FIELDS)
+//
 //   useFor = 'both' | 'billing' | 'shipping' — เก็บเป็นค่าเดียว 3 ทาง (ไม่ใช่ธงสอง
 //   ตัวอิสระ) เพราะธงสองตัวมีสถานะ "ไม่ใช้ทำอะไรเลย" ที่บันทึกได้แต่ไม่มีความหมาย ·
 //   บนจอเป็นปุ่มติ๊กสองปุ่ม (มติผู้ใช้) แปลงกลับไปมาที่ toggleAddressUse ด้านล่าง
 //
-// ⛔ ที่อยู่ **ไม่มีเลขสาขา** (มติผู้ใช้ 2026-08-05) — เลขสาขาเป็นของลูกค้าทั้งราย
-//   (customers.branchCode) ไม่ใช่ของที่อยู่แต่ละที่ · แถวที่ backfill มาจาก mig 0202
-//   อาจมีคีย์ branchCode ค้างอยู่ ซึ่ง normalize ตัดทิ้งให้เองตอนบันทึกครั้งถัดไป
+// ── เลขสาขากลับมาอยู่ที่ "ที่อยู่" (มติผู้ใช้ 2026-08-06) ──────────────────
+// รอบก่อน (2026-08-05) ตัดสินว่าเลขสาขาเป็นของลูกค้าทั้งราย (customers.branchCode)
+// แล้วถอดออกจากที่อยู่ — ผลคือ **ไม่มีช่องกรอกเลขสาขาเหลืออยู่ในระบบเลย** (ฟอร์ม
+// ลูกค้าไม่มี, API รับแต่ไม่มีใครส่ง) ⇒ ลูกค้าทุกรายค้างที่ '00000' และใบกำกับภาษี
+// ทุกใบพิมพ์ "สำนักงานใหญ่" แม้ออกบิลให้สาขา ซึ่งใบกำกับภาษีเต็มรูปผิดทันที
+//
+// ของจริง: สาขาเป็นคุณสมบัติของ **สถานประกอบการ** (= ที่อยู่) ไม่ใช่ของนิติบุคคล —
+// บริษัทเดียวมี 00000 กับ 00012 พร้อมกันได้ ซึ่งเป็นเหตุผลเดียวกับที่ต้องเลือกที่อยู่
+// ตอนออกบิลตั้งแต่แรก · customers.branchCode คงไว้เป็น **กระจกของที่อยู่ออกบิลหลัก**
+// (แพตเทิร์นเดียวกับ address/shippingAddress) เพราะ unique (taxId, branchCode) และ
+// สายที่อ่านช่องเดี่ยว (customerSnapshotFallback) ยังใช้อยู่จริง
 //
 // คอลัมน์เดี่ยวเดิม address / shippingAddress ยังอยู่ในฐานะ
 // "กระจก" ของที่อยู่หลัก (แพตเทิร์นเดียวกับ contacts[] → contactPerson/
@@ -22,6 +34,10 @@
 // = ผู้ติดต่อหลัก) — ไม่มีธง isPrimary แยก เพราะสองธง (บิล/จัดส่ง) จะขัดกันเอง
 // ได้ และลำดับในลิสต์เป็นสิ่งที่ผู้ใช้เห็นและสลับได้ตรง ๆ อยู่แล้ว
 import { genId } from '@/lib/id';
+import {
+  ADDRESS_PART_FIELDS, composeThaiAddress, hasStructuredParts, HEAD_OFFICE_BRANCH,
+  normalizeBranchCode, normalizePostcode,
+} from '@/lib/master/thaiAddress';
 
 export const ADDRESS_USES = ['both', 'billing', 'shipping'];
 
@@ -59,20 +75,61 @@ export function toggleAddressUse(current, key) {
   return next.billing ? 'billing' : 'shipping';
 }
 
+// ลิงก์แผนที่: ต้องเป็น http(s) เท่านั้น — ช่องนี้ถูก render เป็น <a href> จริง
+// ปล่อย javascript:/data: ผ่าน = XSS ที่คนกรอกที่อยู่ลูกค้าฝังให้คนอื่นกดได้
+const MAP_URL_MAX = 500;
+export function normalizeMapUrl(value) {
+  const url = text(value).trim();
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) return '';
+  return url.slice(0, MAP_URL_MAX);
+}
+
 // แถวเดียว → รูปมาตรฐาน. ไม่ trim ระหว่างพิมพ์ (ดูเหตุผลใน BrandsEditor:
 // trim ทุก re-render = เคาะเว้นวรรคท้ายคำไม่ได้) — trim จริงทำตอน normalize
 // ก่อนบันทึกที่ API
 export function asAddressRow(raw) {
-  if (typeof raw === 'string') {
-    return { id: '', label: '', address: raw, useFor: 'both' };
-  }
-  return {
+  // ที่อยู่ที่ส่งมาเป็นสตริงเปล่า (สายเก่าบางเส้นยังทำอยู่) — วนกลับเข้าทางเดียวกัน
+  // ไม่ใช่คืนอ็อบเจกต์ที่ขาดคีย์ ไม่งั้น normalizeAddresses จะพังตอนอ่าน row.line1
+  if (typeof raw === 'string') return asAddressRow({ address: raw, useFor: 'both' });
+  const row = {
     id: text(raw?.id),
     label: text(raw?.label),
     address: text(raw?.address),
     useFor: addressUse(raw),
   };
+  // ฟิลด์ที่เพิ่มทีหลัง (สาขา · ที่อยู่แบบมีโครงสร้าง · แผนที่ · ผู้รับของ) — เก็บเป็น
+  // string เสมอเพื่อให้ input ฝั่งจอเป็น controlled ตลอด ไม่กระโดดเป็น uncontrolled
+  // ตอนเจอแถวยุคเก่าที่ไม่มีคีย์เหล่านี้
+  row.branchCode = text(raw?.branchCode);
+  for (const field of ADDRESS_PART_FIELDS) row[field] = text(raw?.[field]);
+  row.mapUrl = text(raw?.mapUrl);
+  row.contactName = text(raw?.contactName);
+  row.contactPhone = text(raw?.contactPhone);
+  row.addressOverride = raw?.addressOverride === true;
+  return row;
 }
+
+// ── ข้อความที่อยู่ของแถวหนึ่ง ────────────────────────────────────────────
+// เลือกจังหวัด/อำเภอ/ตำบลครบ → ประกอบข้อความให้เอง · ยังไม่ได้เลือก (แถวยุคเก่า)
+// หรือผู้ใช้กด "พิมพ์ข้อความเอง" → ใช้ข้อความที่พิมพ์ไว้ตามเดิม
+// ⚠️ ห้ามประกอบทับข้อความเดิมโดยที่ผู้ใช้ไม่ได้เลือกอะไร — แถวเก่า 90 กว่าราย
+// จะถูกเขียนข้อความใหม่พร้อมกันทั้งหมดในการบันทึกครั้งถัดไป
+export function addressText(row) {
+  const r = asAddressRow(row);
+  const typed = r.address.trim();
+  if (r.addressOverride || !hasStructuredParts(r)) return typed;
+  // 🐞 กับดักที่ต้องปิด: แถวยุคเก่ามีข้อความเต็มอยู่ใน address แต่ line1 ว่าง — ถ้า
+  // มีใครเผลอเลือกจังหวัดให้แถวนั้น ข้อความประกอบจะเหลือแค่ "จังหวัดชลบุรี 20000"
+  // แล้วบ้านเลขที่/ถนนของลูกค้าหายถาวรในการบันทึกครั้งเดียว
+  if (!r.line1.trim() && typed) return typed;
+  return composeThaiAddress(r) || typed;
+}
+
+// ฟิลด์ที่ "ว่าง = ไม่ต้องเก็บ" — ไม่เขียนคีย์เปล่าลง jsonb เพื่อให้แถวยุคเก่าที่ยัง
+// ไม่กรอกอะไรเพิ่ม มีรูปร่างเท่าเดิมเป๊ะ (diff ของ changedFieldsAgainst จึงไม่ขยับ
+// = เปิดฟอร์มแล้วกดบันทึกเฉย ๆ ไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่)
+const OPTIONAL_ROW_FIELDS = ['branchCode', ...ADDRESS_PART_FIELDS, 'mapUrl', 'contactName', 'contactPhone'];
 
 // ก่อนบันทึก: trim, ตัดแถวที่ไม่มีตัวที่อยู่ (ป้ายชื่อล้วนไม่ใช่ที่อยู่), เติม id
 // ให้แถวใหม่ — id ต้องนิ่งเพราะเอกสารฝั่งขายจะอ้างถึงที่อยู่ตัวนี้
@@ -81,14 +138,35 @@ export function normalizeAddresses(arr) {
   const out = [];
   for (const raw of arr) {
     const row = asAddressRow(raw);
-    const address = row.address.trim();
+    const address = addressText(row).trim();
     if (!address) continue;
-    out.push({
+    const next = {
       id: row.id.trim() || genId('ADR'),
       label: row.label.trim(),
       address,
       useFor: row.useFor,
-    });
+    };
+    const values = {
+      branchCode: normalizeBranchCode(row.branchCode),
+      line1: row.line1.trim(),
+      subdistrict: row.subdistrict.trim(),
+      subdistrictCode: row.subdistrictCode.trim(),
+      district: row.district.trim(),
+      districtCode: row.districtCode.trim(),
+      province: row.province.trim(),
+      provinceCode: row.provinceCode.trim(),
+      postcode: normalizePostcode(row.postcode),
+      mapUrl: normalizeMapUrl(row.mapUrl),
+      contactName: row.contactName.trim(),
+      contactPhone: row.contactPhone.trim(),
+    };
+    for (const field of OPTIONAL_ROW_FIELDS) {
+      if (values[field]) next[field] = values[field];
+    }
+    // เก็บธง "พิมพ์เอง" เฉพาะแถวที่มีฟิลด์ย่อยแล้วเท่านั้น — แถวยุคเก่าไม่ต้องมีธง
+    // เพราะไม่มีอะไรให้ประกอบอยู่แล้ว (ดู addressText)
+    if (row.addressOverride && hasStructuredParts(values)) next.addressOverride = true;
+    out.push(next);
   }
   return out;
 }
@@ -110,12 +188,16 @@ export function customerAddresses(customer) {
 export function addressesFromLegacy(customer) {
   const billing = text(customer?.address).trim();
   const shipping = text(customer?.shippingAddress).trim();
+  // เลขสาขาเดิมอยู่ที่ตัวลูกค้า — ติดไปกับ **ที่อยู่ออกบิล** เท่านั้น (ที่อยู่จัดส่ง/คลัง
+  // ไม่ใช่สถานประกอบการที่ออกใบกำกับภาษี จึงไม่ควรพกเลขสาขาไปด้วย)
+  const branchCode = normalizeBranchCode(customer?.branchCode);
   const rows = [];
   if (billing) {
     rows.push({
       id: 'ADR-legacy-billing',
       label: 'ที่อยู่ออกเอกสาร',
       address: billing,
+      branchCode,
       // shippingAddress ว่าง = "ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง" (กติกาเดิม)
       useFor: shipping && shipping !== billing ? 'billing' : 'both',
     });
@@ -145,12 +227,22 @@ export function primaryShippingAddress(list) {
 // ค่าที่ต้องเขียนลงคอลัมน์เดี่ยวเดิมให้ตรงกับลิสต์ (server เรียกก่อน insert/update)
 // shippingAddress = null เมื่อที่อยู่จัดส่งหลักคือที่อยู่ออกบิลตัวเดียวกัน —
 // ความหมายเดิมของ null คือ "ใช้ที่อยู่ออกเอกสาร" จึงคงไว้แบบนั้น
-export function legacyAddressMirror(list) {
+// fallbackBranchCode = เลขสาขาที่ลูกค้ารายนี้มีอยู่เดิม (customers.branchCode)
+// ⚠️ ต้องส่งมาเสมอตอน PATCH: ลูกค้าที่ตั้งเลขสาขาไว้ก่อนหน้านี้ยังไม่มีเลขบนตัว
+// ที่อยู่ (ยังไม่ backfill) — ถ้าไม่ถอยไปใช้ค่าเดิม การกดบันทึกฟอร์มครั้งเดียวจะ
+// รีเซ็ตสาขาเป็น '00000' เงียบ ๆ แล้วใบกำกับภาษีใบถัดไปผิดทันที
+export function legacyAddressMirror(list, { fallbackBranchCode } = {}) {
   const billing = primaryBillingAddress(list);
   const shipping = primaryShippingAddress(list);
   return {
     address: billing?.address || null,
     shippingAddress: shipping && shipping.id !== billing?.id ? shipping.address : null,
+    // สาขาของที่อยู่ออกบิลหลัก — ไม่มีระบุ = สำนักงานใหญ่ (ความหมายเดิมของ '00000')
+    // not null เสมอเพราะคอลัมน์นี้อยู่ใน unique (taxId, branchCode): ปล่อย null
+    // แล้ว unique จะหลุด (null ไม่ชนกับอะไรใน Postgres) = ลูกค้า taxId ซ้ำเข้าได้
+    branchCode: normalizeBranchCode(billing?.branchCode)
+      || normalizeBranchCode(fallbackBranchCode)
+      || HEAD_OFFICE_BRANCH,
   };
 }
 
@@ -172,8 +264,10 @@ export function pickDocumentAddresses(customer, { billingAddressId, shippingAddr
       billingAddress: billing?.address || null,
       // ว่าง = ใช้ที่อยู่ออกบิล (ความหมายเดิมของช่องนี้บนเอกสาร)
       shippingAddress: shipping?.address || billing?.address || null,
-      // สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่ — เลือกที่อยู่คนละที่ไม่เปลี่ยนสาขา
-      branchCode: customer?.branchCode || null,
+      // สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติ 2026-08-06) — ออกบิลให้สาขา
+      // ต้องได้เลขสาขานั้นบนใบกำกับภาษี ไม่ใช่เลขของสำนักงานใหญ่ตลอดกาล
+      // ที่อยู่ที่ยังไม่ระบุสาขา → ถอยไปใช้เลขระดับลูกค้า (แถวยุคเก่าก่อน backfill)
+      branchCode: normalizeBranchCode(billing?.branchCode) || customer?.branchCode || null,
       billingAddressId: billing?.id || null,
       shippingAddressId: shipping?.id || null,
     },

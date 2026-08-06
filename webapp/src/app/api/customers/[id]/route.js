@@ -289,8 +289,9 @@ export async function PATCH(request, { params }) {
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง; ที่อยู่หลัก → กระจกลงช่องเดี่ยวเดิม.
   // ผู้เรียกเก่าที่ยัง PATCH มาด้วย address/shippingAddress ยังใช้ได้ — แปลงขึ้นลิสต์
-  // ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด · branchCode ไม่อยู่ใน
-  // ลิสต์ (สาขาเป็นของลูกค้าทั้งราย) จึงไหลผ่าน loop ช่องปกติด้านบนเหมือนเดิม
+  // ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด
+  // branchCode (2026-08-06) เป็นกระจกของที่อยู่ออกบิลหลักแล้ว — ค่าที่ตั้งไว้เดิมบน
+  // ตัวลูกค้าเป็นค่าสำรองสำหรับแถวที่ยังไม่ได้ backfill สาขาลงที่อยู่
   const legacyAddressEdit = ['address', 'shippingAddress'].some((k) => body[k] !== undefined);
   if (body.addresses !== undefined || legacyAddressEdit) {
     const addresses = normalizeAddresses(
@@ -298,7 +299,9 @@ export async function PATCH(request, { params }) {
         ? body.addresses
         : addressesFromLegacy({ ...customer, ...updates }),
     );
-    const mirror = legacyAddressMirror(addresses);
+    const mirror = legacyAddressMirror(addresses, {
+      fallbackBranchCode: updates.branchCode ?? customer.branchCode,
+    });
     if (!mirror.address) {
       return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
     }

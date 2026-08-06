@@ -55,7 +55,7 @@ Requirement = เป็นของแต่ละโมดูล     → "actio
 
 | entityType | docType (required) | docType (optional) | เจ้าของ requirement |
 |---|---|---|---|
-| `customer` | company_certificate, vat_pp20, director_id_card, address_map, design_contract *(นิติบุคคล)* / id_card, design_contract *(บุคคล)* | director_house_reg, power_of_attorney, name_change, other | Database (master) — แต่ Tax อาจใช้เป็น requirement |
+| `customer` | company_certificate, vat_pp20, director_id_card, address_map *(นิติบุคคล)* / id_card, address_map *(บุคคล)* | director_house_reg, power_of_attorney, name_change, **bank_book**, manufacturing_contract, other | Database (master) — แต่ Tax อาจใช้เป็น requirement |
 | `product` | manufacturing_contract, artwork | other | Database (master) |
 | `registration` | label_artwork | approval_letter, other | **Tax** |
 | `order` | *(ไม่มี required ตายตัว)* | excise_proof, tax_receipt, tax_form, other | **Tax** (รายสเตปการชำระ) |
@@ -64,9 +64,20 @@ Requirement = เป็นของแต่ละโมดูล     → "actio
 - customer แยกตาม `customerType` ผ่าน `customerDocTypes(type)`; `ATTACHMENT_TYPES.customer` เป็น union ของทุกประเภท (derive อัตโนมัติ ไม่ sync มือ)
 - คงคีย์เดิมเสมอ (เช่น `address_map`) เพื่อไม่ให้ไฟล์ที่แนบไว้แล้วหลุด
 - `metadata` fields ต่อ entity ประกาศที่ `ATTACHMENT_META_FIELDS` (ตอนนี้มีเฉพาะ `order`)
+  - ⚠️ `ATTACHMENT_META_FIELDS[entity]` ที่ไม่ว่าง = `AttachmentsPanel` สลับเป็น **โหมดฟอร์มรายละเอียด** ทั้งก้อน (เสียการ์ดเช็คลิสต์เอกสารบังคับไป) — อย่าใช้ช่องนี้แค่เพราะอยากได้ฟิลด์เพิ่มหนึ่งช่องให้ entity ที่ใช้โหมดการ์ด
+
+### อายุเอกสาร (`DOC_VALIDITY_MONTHS`)
+เอกสารบางฉบับหมดอายุได้ — `company_certificate` ต้องออกไม่เกิน **6 เดือน** ซึ่งเดิมเขียนอยู่ในป้ายการ์ดแต่ไม่มีผลจริง (ไฟล์จากปีก่อนก็ติ๊กเขียวผ่าน)
+
+- วันที่ออกเอกสารเก็บที่ `attachments.metadata.issuedDate` (`ISSUED_DATE_FIELD`) — jsonb ไม่ต้อง migrate
+- `documentValidity(entityType, item, today)` → `{ months, issuedDate, expiresAt, expired, unknown }` · `null` เมื่อชนิดนั้นไม่มีอายุกำกับ
+- **ยังไม่กรอกวันที่ (`unknown`) ไม่นับว่าหมดอายุ** — ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้ต้องไม่กลายเป็นของเสียข้ามคืน · จอขึ้นป้าย "ยังไม่ระบุวันที่" ให้ไปเติมแทน
+- แนบหลายใบต่อการ์ดได้ → มีใบเดียวที่ยังไม่หมดอายุก็ถือว่าผ่าน
+- แก้วันที่ย้อนหลังผ่าน `PATCH /api/master/attachments/[id]` (แก้ได้เฉพาะ `metadata`, merge ไม่ทับทั้งก้อน, ใช้ด่านสิทธิ์ชุดเดียวกับ DELETE)
 
 ### Helpers (ใช้ทั้ง UI + server)
 - `requiredDocKeys(entityType, docTypes?)` → คีย์ที่ `required: true` (รับ override การ์ดได้ เช่น customer ตามประเภท)
+- `unsatisfiedRequiredDocs(entityType, docTypes, attachments, today)` → เอกสารบังคับที่ยังใช้ไม่ได้ `[{ key, label, reason, expiresAt }]` · `reason` = `absent` \| `expired` — **ตัวตัดสินกลางที่ทั้งจอและ server ใช้ร่วมกัน** (ฝั่ง server ห่อด้วย `missingRequiredDocs` ที่ไปดึงไฟล์มาให้)
 - `attachmentTypeLabel(entityType, docType)` → ป้ายไทย (fallback: คืน key)
 - `customerDocTypes(customerType)` → ชุดการ์ดของลูกค้าตามประเภท
 
