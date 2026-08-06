@@ -12,6 +12,7 @@ import {
   documentHeader, esc, renderDocumentHTML, val,
 } from '@/lib/documents/documentShell';
 import { scentPerformanceLabel, scentotypeLabel } from '@/lib/requests/kinds/rd/scentBriefTypes';
+import { PDR_SECTIONS, pdrSectionRows } from '@/lib/requests/pdrFields';
 
 // สถานะในระบบ → คำบนกระดาษ (มติผู้ใช้: ใช้สถานะของเราเป็นตัวจริง แล้วแปลตอนพิมพ์
 // ⇒ คนอ่านกระดาษเห็นคำที่คุ้น คนใช้ระบบเห็นขั้นที่ละเอียดกว่า ไม่มีใครต้องติ๊กเอง)
@@ -83,46 +84,32 @@ export function renderPdrDocument({ request = {}, briefs = [], company = {}, for
     .map(([label, list]) => `<span class="st${list.includes(request.status) ? ' on' : ''}">☐ ${esc(label)}</span>`)
     .join('');
 
-  const body = `
-    <section class="blk"><h3>ข้อมูลคำขอ</h3><table class="kv">${rows([
-    ['ผู้ร้องขอ AE', request.requestedByName],
-    ['ประเภทของคำขอ', request.pdrRequestType],
-    ['แผนก', 'การขายและบริการ'],
-  ])}</table></section>
+  // ⭐ หัวข้อ · ป้ายชื่อ · ลำดับ · การแปลง enum มาจาก `lib/requests/pdrFields.js`
+  // ที่เดียวกับฟอร์มและจอแสดง
+  //
+  // 🐞 เดิมที่นี่มีลิสต์ของตัวเอง ⇒ เพี้ยนจากอีกสองจอทั้งชื่อหัวข้อ ป้ายช่อง และลำดับ
+  // และที่หนักที่สุดคือ **ไม่แปลง enum** ⇒ กระดาษที่ส่งให้ลูกค้าพิมพ์ว่า
+  // `new_product` · `premium` · `existing` ตรง ๆ
+  //
+  // ⚠️ `includeEmpty` — ช่องว่างพิมพ์เป็นเส้นให้เขียนมือ ต่างจากบนจอที่ซ่อนทิ้ง
+  const section = (key, heading) => {
+    const found = PDR_SECTIONS.find((x) => x.key === key);
+    const pairs = pdrSectionRows(found, request, {
+      includeEmpty: true,
+      context: { briefs, scentCount: briefs.length || null },
+    });
+    return `<section class="blk"><h3>${esc(heading)}</h3><table class="kv">${rows(pairs)}</table></section>`;
+  };
 
-    <section class="blk"><h3>1. ข้อมูลลูกค้า</h3><table class="kv">${rows([
-    ['ชื่อบริษัท', request.customerName],
-    ['ชื่อแบรนด์', request.pdrCustomerBrand],
-    ['Mood & Tone', request.pdrMoodTone],
-    ['ทิศทางการเติบโตของแบรนด์', request.pdrBrandDirection],
-    ['ที่อยู่จัดส่ง (ตัวอย่าง)', request.pdrShipTo],
-    ['ประเภทลูกค้า', request.pdrCustomerKind],
-    ['มูลค่าโปรเจกต์ทั้งหมด', request.pdrProjectValue],
-    ['DemoGraphic', request.pdrTargetDemographic],
-    ['PsychoGraphic', request.pdrTargetPsychographic],
-    ['Painpoint', request.pdrTargetPainpoint],
-    ['ประเภทสินค้า', request.pdrProductKind],
-    ['จำนวนกลิ่นที่ต้องการพัฒนา', briefs.length ? `${briefs.length} บรีฟ` : ''],
-    ['วันที่ต้องการสินค้า', request.pdrWantedAt],
-    ['วันที่ต้องการจำหน่ายสินค้า', request.pdrSellFrom],
-  ])}</table></section>
+  const body = `
+    ${section('request', 'ข้อมูลคำขอ')}
+    ${section('customer', '1. ข้อมูลลูกค้า')}
 
     <h2 class="sec">2. Product Specifications</h2>
     ${briefs.length ? briefs.map((b, i) => briefBlock(b, i, briefs.length)).join('') : briefBlock({}, 0, 1)}
 
-    <section class="blk"><table class="kv">${rows([
-    ['Target Cost / Unit (ราคาต้นทุน/KG)', request.pdrTargetCost],
-    ['Target Price / Unit (ราคาขาย)', request.pdrTargetPrice],
-    ['MOQ ที่คาดหวัง', request.pdrMoq],
-    ['ลักษณะเนื้อผลิตภัณฑ์', request.pdrTexture],
-    ['สีเนื้อผลิตภัณฑ์', request.pdrColor],
-    ['ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', request.pdrPackSize],
-    ['ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', request.pdrBrandSample],
-  ])}</table></section>
-
-    <section class="blk"><h3>Regulatory &amp; Compliance Requirements</h3><table class="kv">${rows([
-    ['ข้อกำหนดเฉพาะอื่น ๆ', request.pdrSpecialRequirements],
-  ])}</table></section>
+    ${section('spec', 'ข้อกำหนดผลิตภัณฑ์')}
+    ${section('regulatory', 'Regulatory & Compliance Requirements')}
 
     <section class="blk"><h3>Final Review &amp; Approval</h3>
       <table class="sign">
