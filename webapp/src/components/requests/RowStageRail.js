@@ -18,6 +18,7 @@ import {
   ROW_STAGE_LABELS, ROW_STAGE_TONES, rowLeadTimes, rowStage,
 } from "@/lib/requests/rowStage";
 import { HOP_OWNER, ROW_OUTCOMES, hopLabel } from "@/lib/requests/hops";
+import { reworkHopError } from "@/lib/requests/rework";
 import styles from "./RowStageRail.module.css";
 
 // คอนเฟิร์มเป็นทางหลัก · อีกสองทางเป็นเส้นขอบ — เห็นครบแต่ไม่แย่งน้ำหนักกัน
@@ -102,7 +103,14 @@ export default function RowStageRail({
                   </div>
                 ) : isCurrent ? (
                   <div className={styles.action}>
-                    {!isMine ? (
+                    {reworkHopError(row, step.hop) ? (
+                      // ⚠️ ก้าวนี้มีอยู่บนรางเพื่อ *แสดงลำดับ* แต่เดินตรงนี้ไม่ได้ —
+                      // สายพัฒนากลิ่นส่งของผ่านโมดัลเพื่อให้กลิ่นเข้าทะเบียนพร้อมกัน
+                      // ⇒ บอกทางไปเลย ไม่ใช่ปุ่มที่กดแล้วได้ 409
+                      <span className={styles.waiting}>
+                        {isMine ? 'ใช้ปุ่ม "ส่งกลิ่น" ด้านบน — กลิ่นจะเข้าทะเบียนพร้อมกัน' : WAITING[step.hop]}
+                      </span>
+                    ) : !isMine ? (
                       // ⚠️ ป้ายรอ ไม่ใช่ปุ่มจาง — ปุ่มที่กดไม่ได้ไม่บอกว่าทำไม
                       <span className={styles.waiting}>{WAITING[step.hop]}</span>
                     ) : step.hop === "outcome" ? (

@@ -46,8 +46,9 @@ import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import RowStageRail from "@/components/requests/RowStageRail";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
-  codeConflict, emptyDeliveryRow,
+  codeConflict, emptyDeliveryRow, reworkDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
+import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
 import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
@@ -270,10 +271,14 @@ export default function MaterialAskDetailPage() {
     const codes = new Set(allScents.map((s) => String(s.code ?? "").trim().toLowerCase()).filter(Boolean));
     for (let i = 0; i < delivery.length; i += 1) {
       const row = delivery[i];
-      if (!String(row.name ?? "").trim()) return `รายการที่ ${i + 1}: ต้องระบุชื่อกลิ่น`;
-      if (!String(row.code ?? "").trim()) return `รายการที่ ${i + 1}: ต้องระบุรหัสกลิ่น`;
+      // ป้ายต้องตรงกับหัวการ์ดที่คนเห็น ไม่งั้นข้อความชี้ไปคนละใบกับที่ต้องแก้
+      const at = row.targetItemId
+        ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}`
+        : `รายการที่ ${i + 1}`;
+      if (!String(row.name ?? "").trim()) return `${at}: ต้องระบุชื่อกลิ่น`;
+      if (!String(row.code ?? "").trim()) return `${at}: ต้องระบุรหัสกลิ่น`;
       const clash = codeConflict(row.code, i, delivery, codes);
-      if (clash) return `รายการที่ ${i + 1}: ${clash}`;
+      if (clash) return `${at}: ${clash}`;
     }
     return null;
   })();
@@ -416,7 +421,12 @@ export default function MaterialAskDetailPage() {
           label: "ส่งกลิ่น",
           kind: "submit",
           icon: Send,
-          onClick: () => setDelivery([emptyDeliveryRow()]),
+          // ⭐ **รอบแก้ที่ค้างอยู่ขึ้นมาก่อนเสมอ** — ลูกค้าสั่งแก้ไว้แล้ว แถวรออยู่แล้ว
+          // RD ไม่ต้องไปจำเองว่าค้างอะไร และไม่มีทางสร้างแถวใหม่ทับของที่รออยู่
+          onClick: () => {
+            const waiting = reworkSlots(req.items || []).map(reworkDeliveryRow);
+            setDelivery(waiting.length ? waiting : [emptyDeliveryRow()]);
+          },
         }
       // ชนิดที่ไม่มีบรรทัด: ผู้ตอบกด "ตอบแล้ว" ก่อน แล้วผู้ขอค่อยปิดเรื่อง
       // (ระบบนับคำตอบเองไม่ได้ — ไม่มีบรรทัดให้นับ)
@@ -1204,6 +1214,8 @@ export default function MaterialAskDetailPage() {
             <p className={styles.fieldHint}>
               แต่ละรายการคือ <strong>1 direction</strong> — บันทึกแล้วกลิ่นเข้าทะเบียนทันที
               พร้อมรหัสและวันที่ส่ง ไม่ต้องไปกรอกซ้ำที่หน้าทะเบียน
+              {delivery.some((r) => r.targetItemId)
+                && " · รอบแก้ที่ลูกค้าสั่งไว้ขึ้นให้แล้ว — เติมชื่อกับรหัสของตัวใหม่ได้เลย"}
             </p>
             <ScentDeliveryFields
               rows={delivery} onChange={setDelivery} scents={allScents}

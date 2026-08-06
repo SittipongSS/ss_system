@@ -18,6 +18,18 @@ import styles from "./scentDelivery.module.css";
 
 export const emptyDeliveryRow = () => ({
   name: "", code: "", sentAt: businessDate(), derivedFromScentId: "", spec: "", briefId: "",
+  targetItemId: "",
+});
+
+// ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
+// (ค่าสองตัวนั้นถูก server เขียนทับด้วยของจริงอยู่ดี ดู lib/requests/rework.js)
+export const reworkDeliveryRow = (slot) => ({
+  ...emptyDeliveryRow(),
+  targetItemId: slot.targetItemId,
+  briefId: slot.briefId || "",
+  derivedFromScentId: slot.derivedFromScentId || "",
+  _sourceLabel: slot.sourceLabel || "",
+  _customerNote: slot.customerNote || "",
 });
 
 const norm = (v) => String(v ?? "").trim().toLowerCase();
@@ -58,8 +70,12 @@ export default function ScentDeliveryFields({
         return (
           <div key={i} className={styles.row}>
             <div className={styles.rowHead}>
-              <span className={styles.rowNo}>รายการที่ {i + 1}</span>
-              {rows.length > 1 && (
+              <span className={styles.rowNo}>
+                {row.targetItemId ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}` : `รายการที่ ${i + 1}`}
+              </span>
+              {/* ⚠️ แถวรอบแก้ลบไม่ได้ — มันคืองานที่ลูกค้าสั่งไว้ ไม่ใช่บรรทัดที่ RD
+                  เพิ่งเพิ่มเอง · ลบทิ้งได้เมื่อไรก็เท่ากับทิ้งงานเงียบ ๆ */}
+              {rows.length > 1 && !row.targetItemId && (
                 <Button
                   size="sm" variant="ghost" tone="danger" disabled={disabled}
                   title="ลบรายการนี้"
@@ -68,6 +84,13 @@ export default function ScentDeliveryFields({
                 />
               )}
             </div>
+
+            {/* คำพูดลูกค้าอยู่ตรงหัวช่องที่กำลังจะกรอก ไม่ใช่ให้ไถกลับไปอ่านบนราง */}
+            {row.targetItemId && row._customerNote && (
+              <p className={styles.customerNote}>
+                <strong>ลูกค้าบอกว่า:</strong> {row._customerNote}
+              </p>
+            )}
 
             <div className="form-grid">
               <div className="form-group">
@@ -94,7 +117,7 @@ export default function ScentDeliveryFields({
                   onChange={(v) => patch(i, { sentAt: v })}
                 />
               </div>
-              {askBrief && (
+              {askBrief && !row.targetItemId && (
                 <div className="form-group">
                   <label htmlFor={`d-brief-${i}`}>ตอบบรีฟก้อนไหน *</label>
                   <Select
@@ -111,6 +134,17 @@ export default function ScentDeliveryFields({
                   <span className={styles.hint}>เลือกก้อนเดิมซ้ำได้ ถ้าเสนอหลายทางจากบรีฟเดียว</span>
                 </div>
               )}
+              {row.targetItemId ? (
+                // ⭐ รอบแก้: แก้มาจากตัวไหน **ระบบรู้แล้ว** — แสดงเป็นข้อความ ไม่ใช่
+                // ช่องให้เลือก · คำตอบมีตัวเดียว ให้เลือกเมื่อไรก็ชี้ผิดตัวได้
+                <div className="form-group">
+                  <span className="toolbar-label">แก้มาจากกลิ่น</span>
+                  <p className={styles.locked}>
+                    {row._sourceLabel || "—"}
+                    <span className={styles.hint}> · ผูกให้อัตโนมัติ พร้อมบรีฟก้อนเดิม</span>
+                  </p>
+                </div>
+              ) : (
               <div className="form-group">
                 <label htmlFor={`d-from-${i}`}>
                   แก้มาจากกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
@@ -124,6 +158,7 @@ export default function ScentDeliveryFields({
                   emptyText="ลูกค้ารายนี้ยังไม่มีกลิ่นอื่นในทะเบียน"
                 />
               </div>
+              )}
               <div className="form-group col-span-2">
                 <label htmlFor={`d-spec-${i}`}>
                   รายละเอียด <span className={styles.hint}>(ไม่บังคับ)</span>
