@@ -15,8 +15,20 @@ test('ชื่อช่องในฟอร์มถูกแปลงเป�
 test('ไม่มีช่องไหนบังคับ — ใบเปล่ายังบันทึกได้', () => {
   const { columns, error } = normalizePdr({});
   assert.equal(error, null);
-  assert.equal(Object.values(columns).every((v) => v === null), true);
+  // ⚠️ ช่องติ๊กหลายตัวคืน `[]` ไม่ใช่ null — คอลัมน์เป็น NOT NULL DEFAULT '{}' (0217)
+  // ส่ง null ไปจะโดน constraint ตีกลับด้วย error ดิบจาก Postgres
+  for (const [column, v] of Object.entries(columns)) {
+    assert.equal(Array.isArray(v) ? v.length === 0 : v === null, true, column);
+  }
   assert.equal(normalizePdr(null).error, null);
+});
+
+test('ช่องติ๊กหลายตัว: ตัดค่าซ้ำ · กันจำนวนเกิน · ไม่ตรวจว่าอยู่ในชุดตัวเลือกไหม', () => {
+  const ok = normalizePdr({ documents: ['coa', 'coa', ' msds ', ''] });
+  assert.equal(ok.error, null);
+  assert.deepEqual(ok.columns.pdrDocuments, ['coa', 'msds']);
+  assert.deepEqual(normalizePdr({ packagingForms: 'ไม่ใช่ array' }).columns.pdrPackagingForms, []);
+  assert.match(normalizePdr({ documents: Array(21).fill(0).map((_, i) => `d${i}`) }).error, /ไม่เกิน 20/);
 });
 
 test('ตัวเลขติดลบหรืออ่านไม่ออกต้องตีกลับ ไม่ใช่กลืนเป็น null เงียบ ๆ', () => {

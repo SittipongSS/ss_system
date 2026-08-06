@@ -6,7 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PDR_COLUMNS, PDR_FIELDS, PDR_SECTIONS, pdrFieldText, pdrSectionRows,
+  PDR_COLUMNS, PDR_FIELDS, PDR_SECTIONS,
+  pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrSectionRows,
 } from './pdrFields.js';
 import { normalizePdr } from './pdr.js';
 import { renderPdrDocument } from './pdrDocument.js';
@@ -15,7 +16,7 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   // `normalizePdr` คือฝั่งเขียน · ทะเบียนคือฝั่งอ่าน ⇒ ต้องเป็นชุดเดียวกันเป๊ะ
   const { columns } = normalizePdr({});
   assert.deepEqual([...PDR_COLUMNS].sort(), Object.keys(columns).sort());
-  assert.equal(PDR_COLUMNS.length, 21);
+  assert.equal(PDR_COLUMNS.length, 29);
 });
 
 test('ทุกช่องมีป้ายชื่อ และ key ห้ามซ้ำ', () => {
@@ -104,4 +105,91 @@ test('เอกสารพิมพ์ป้ายไทยของ enum ไ�
   for (const label of ['New Product', 'ลูกค้าเก่า', 'PREMIUM']) {
     assert.ok(html.includes(label), `เอกสารต้องมี "${label}"`);
   }
+});
+
+// ── ช่องที่ขาดจากฟอร์มกระดาษ (mig 0217) ──────────────────────────────────
+//
+// ⚠️ ทั้งหมดนี้มาจากการไล่เทียบทะเบียนกับ PDF ของ FM-RD-01 Rev.02 ทีละข้อ
+test('ครบทุกข้อที่เคยขาดจากฟอร์มกระดาษ', () => {
+  const keys = PDR_FIELDS.map((f) => f.key);
+  for (const key of [
+    'coordinator',        // ผู้ร้องขอ AC
+    'department',         // แผนก — เคยมีบนเอกสารแล้วหล่นตอนรวมทะเบียน (#1055)
+    'prevProductCode',    // รหัสสินค้า/ลูกค้าก่อนหน้า
+    'sampleDue',          // วันที่คาดหวังกำหนดส่งตัวอย่างกลิ่น
+    'contactName', 'contactPhone',            // 1.1 · 1.2
+    'packagingForms', 'packagingArtwork',     // 2.8
+    'vpAttribute', 'vpBenefit', 'vpValue',    // 2.9
+    'documents', 'exportDocNote',             // Regulatory
+  ]) assert.ok(keys.includes(key), `ขาดช่อง ${key}`);
+});
+
+test('ช่องติ๊กหลายตัวแสดงเป็นป้ายไทยคั่นด้วย · · ว่างคืน null', () => {
+  const docs = PDR_FIELDS.find((f) => f.key === 'documents');
+  assert.equal(pdrFieldText(docs, { pdrDocuments: ['coa', 'halal'] }), 'COA · ฮาลาล (Halal)');
+  assert.equal(pdrFieldText(docs, { pdrDocuments: [] }), null);
+  assert.equal(pdrFieldText(docs, {}), null);
+});
+
+test('วันคาดหวังตัวอย่างอ่านจาก requestedDueDate เดิม ไม่ใช่คอลัมน์ใหม่', () => {
+  // ⚠️ เก็บซ้ำอีกช่องเมื่อไรก็ได้สองวันที่ขัดกันโดยไม่มีใครรู้ว่าอันไหนจริง
+  const f = PDR_FIELDS.find((x) => x.key === 'sampleDue');
+  assert.equal(f.column, undefined);
+  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20' }), '2026-08-20');
+  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20', urgent: true }), '2026-08-20 · ด่วน');
+  assert.equal(pdrFieldText(f, {}), null);
+});
+
+test('ช่องที่ขึ้นตามเงื่อนไข — ซ่อนบนฟอร์มเท่านั้น ไม่ลบค่า', () => {
+  const prev = PDR_FIELDS.find((f) => f.key === 'prevProductCode');
+  assert.equal(pdrFieldVisible(prev, { requestType: 'modification' }), true);
+  assert.equal(pdrFieldVisible(prev, { requestType: 'cost_reduction' }), true);
+  assert.equal(pdrFieldVisible(prev, { requestType: 'new_product' }), false);
+
+  const exp = PDR_FIELDS.find((f) => f.key === 'exportDocNote');
+  assert.equal(pdrFieldVisible(exp, { documents: ['export'] }), true);
+  assert.equal(pdrFieldVisible(exp, { documents: ['coa'] }), false);
+  assert.equal(pdrFieldVisible(exp, {}), false);
+
+  // ⚠️ จอแสดง/เอกสารไม่ผ่านด่านนี้ — ค่าที่ยังอยู่ต้องเห็นเสมอ ไม่งั้นข้อมูลหายจาก
+  // สายตาทั้งที่ยังอยู่ในฐานข้อมูล (เช่นเปลี่ยนประเภทคำขอทีหลัง)
+  const spec = PDR_SECTIONS.find((s) => s.key === 'request');
+  const rows = pdrSectionRows(spec, { pdrRequestType: 'new_product', pdrPrevProductCode: 'FG-001' });
+  assert.ok(rows.some(([, v]) => v === 'FG-001'));
+});
+
+test('⭐ ติ๊กว่ามีภาพประกอบแล้วต้องแนบจริง — บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ', () => {
+  const has = { packagingArtwork: 'has' };
+  // ตอนเปิดใบยังแนบไม่ได้ (ไฟล์ต้องมี id ของคำร้องก่อน) ⇒ ต้องไม่บล็อก
+  assert.equal(pdrArtworkError(has, { attachmentCount: 0 }), null);
+  assert.match(pdrArtworkError(has, { attachmentCount: 0, stage: 'submit' }), /ต้องแนบไฟล์ภาพ/);
+  assert.equal(pdrArtworkError(has, { attachmentCount: 1, stage: 'submit' }), null);
+  assert.equal(pdrArtworkError({ packagingArtwork: 'none' }, { stage: 'submit' }), null);
+  assert.equal(pdrArtworkError({}, { stage: 'submit' }), null);
+});
+
+test('ค่าที่ระบบเติมให้มาจากโครงการและทะเบียนลูกค้า', () => {
+  const ctx = pdrContext({
+    request: { requestedByName: 'คนกดปุ่ม', customerName: 'ลูกค้า ก' },
+    project: { aeOwner: 'ผู้ดูแล AE', acOwner: 'ผู้ประสานงาน AC' },
+    customer: { contacts: [{ name: 'คุณเอ', phone: '0812345678', line: '@aei' }] },
+    deal: { code: 'D-26080001' },
+    briefs: [{ id: 'B1' }],
+  });
+  assert.equal(ctx.requester, 'ผู้ดูแล AE');
+  assert.equal(ctx.coordinator, 'ผู้ประสานงาน AC');
+  assert.equal(ctx.contactName, 'คุณเอ');
+  assert.equal(ctx.contactPhone, '0812345678 · @aei');
+  assert.equal(ctx.deal, 'D-26080001');
+
+  // ⚠️ โครงการยังไม่ระบุ AE → ถอยไปใช้คนเปิดใบ (ช่องว่างบนเอกสารที่ต้องมีคน
+  // รับผิดชอบเสมอ แย่กว่าชื่อที่ใกล้ความจริงที่สุด) · AC ไม่มีทางถอย ปล่อยว่าง
+  const bare = pdrContext({ request: { requestedByName: 'คนกดปุ่ม' } });
+  assert.equal(bare.requester, 'คนกดปุ่ม');
+  assert.equal(bare.coordinator, null);
+
+  // ผู้ติดต่อรุ่นเก่าที่ยังไม่ย้ายไป contacts[] (0033) ต้องยังอ่านได้
+  const legacy = pdrContext({ customer: { contactPerson: 'คุณบี', contactPhone: '021234567' } });
+  assert.equal(legacy.contactName, 'คุณบี');
+  assert.equal(legacy.contactPhone, '021234567');
 });

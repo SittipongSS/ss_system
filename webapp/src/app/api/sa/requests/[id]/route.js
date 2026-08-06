@@ -15,6 +15,8 @@ import { randomUUID } from 'crypto';
 import { approveRequestError } from '@/lib/requests/approval';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
+import { pdrArtworkError } from '@/lib/requests/pdrFields';
+import { listAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError, rescheduleRequestError,
@@ -128,6 +130,17 @@ export async function PATCH(request, { params }) {
       }
       const err = submitRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });
+
+      // ⭐ ติ๊กว่า "มีภาพประกอบบรรจุภัณฑ์" แล้วต้องแนบจริง (มติผู้ใช้ · mig 0217)
+      //
+      // ⚠️ **บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ** — หน้า `/requests/new` แนบไฟล์ไม่ได้
+      // (ไฟล์ต้องมี id ของคำร้องให้เกาะก่อน) ⇒ บังคับตอนสร้างจะกลายเป็นกำแพงที่
+      // ผ่านไม่ได้เลย · จังหวะกดส่งคือจังหวะที่แนบได้แล้วและยังแก้ทัน
+      const artworkError = pdrArtworkError(
+        { packagingArtwork: before.pdrPackagingArtwork },
+        { attachmentCount: (await listAttachments('dept_request', id)).length, stage: 'submit' },
+      );
+      if (artworkError) return Response.json({ error: artworkError }, { status: 409 });
       // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
       patch.docNo = await generateRequestDocNo(supabase, before.kind, before.dept);
       patch.status = 'pending';

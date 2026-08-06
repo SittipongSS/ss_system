@@ -35,6 +35,31 @@ export const PDR_CUSTOMER_KINDS = [
   { value: 'existing', label: 'ลูกค้าเก่า' },
 ];
 
+// 2.8 รูปแบบบรรจุภัณฑ์ — เลือกได้หลายอย่าง
+export const PDR_PACKAGING_FORMS = [
+  { value: 'bottle', label: 'ขวด' },
+  { value: 'cap', label: 'ฝา' },
+  { value: 'box', label: 'กล่อง' },
+];
+
+// ⭐ มติผู้ใช้: **ติ๊กว่ามีภาพประกอบ = ต้องแนบภาพจริง** ⇒ ด่านบังคับอยู่ที่
+// `pdrArtworkError()` ท้ายไฟล์ · ปล่อยให้ติ๊กแล้วไม่แนบ = RD ตามหาภาพที่ไม่มีอยู่
+export const PDR_ARTWORK = [
+  { value: 'has', label: 'มีภาพประกอบ' },
+  { value: 'none', label: 'ไม่มีภาพประกอบ' },
+];
+
+// Regulatory & Compliance — มติผู้ใช้: ติ๊กได้ทั้ง 6 ตัว **แต่ไม่ติ๊กไว้ล่วงหน้า**
+// (กระดาษเขียนว่าสี่ตัวแรก "มีให้เป็นพื้นฐาน" แต่ยังมีช่องติ๊ก ⇒ ให้ AE ยืนยันเอง)
+export const PDR_DOCUMENTS = [
+  { value: 'coa', label: 'COA' },
+  { value: 'msds', label: 'MSDS' },
+  { value: 'ifra', label: 'IFRA' },
+  { value: 'fda', label: 'อย.' },
+  { value: 'halal', label: 'ฮาลาล (Halal)' },
+  { value: 'export', label: 'เอกสารส่งออก' },
+];
+
 const labelOf = (list, value) => list.find((o) => o.value === value)?.label || null;
 
 /**
@@ -55,10 +80,29 @@ export const PDR_SECTIONS = [
     title: 'ข้อมูลคำขอ',
     note: 'ผู้ร้องขอ วันที่ และแผนก ระบบเติมให้จากคนที่เปิดใบ',
     fields: [
-      { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้เปิดใบ' },
+      // ⭐ AE/AC มาจาก **ผู้ดูแล/ผู้ประสานงานของโครงการ** (mig 0190) ไม่ใช่คนกดปุ่ม
+      // (มติผู้ใช้: "คล้าย ๆ โครงการ ที่มีผู้ดูแล AE กับผู้ประสานงาน AC")
+      // ⚠️ ถอยไปใช้ชื่อคนเปิดใบเมื่อโครงการยังไม่ได้ระบุ — ช่องว่างบนเอกสารที่ต้อง
+      // มีชื่อคนรับผิดชอบเสมอ แย่กว่าชื่อที่ใกล้เคียงความจริงที่สุด
+      { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้ดูแลโครงการ' },
+      { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
+      { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },
       {
         key: 'requestType', column: 'pdrRequestType', label: 'ประเภทของคำขอ',
         type: 'select', options: PDR_REQUEST_TYPES,
+      },
+      // ⭐ สองประเภทบนกระดาษมีช่องกรอกต่อ (Product Modification → รหัสสินค้าก่อนหน้า ·
+      // Cost Reduction → รหัสลูกค้า/รหัสสินค้าก่อนหน้า) — ช่องเดียวรับทั้งสองแบบ
+      {
+        key: 'prevProductCode', column: 'pdrPrevProductCode', label: 'รหัสสินค้า/ลูกค้าก่อนหน้า',
+        hint: 'สำหรับ Product Modification และ Cost Reduction', type: 'text',
+        showFor: ['modification', 'cost_reduction'],
+      },
+      // ⚠️ **ไม่ใช่คอลัมน์ pdr*** — วันนี้คือ `requestedDueDate` ของกลไกคำร้องซึ่งมี
+      // อยู่ก่อนแล้ว · เก็บซ้ำอีกช่องเมื่อไรก็ได้สองวันที่ขัดกันโดยไม่มีใครรู้ว่าอันไหนจริง
+      {
+        key: 'sampleDue', label: 'วันที่คาดหวังกำหนดส่งตัวอย่างกลิ่น',
+        type: 'derived', derive: 'sampleDue', from: 'เติมจากช่อง "ต้องการคำตอบ"',
       },
     ],
   },
@@ -66,7 +110,11 @@ export const PDR_SECTIONS = [
     key: 'customer',
     title: 'ข้อมูลลูกค้า',
     fields: [
-      { key: 'customer', label: 'ลูกค้า', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
+      // ⭐ 1.1/1.2 มาจาก **ทะเบียนลูกค้า** (มติผู้ใช้) ไม่ใช่ช่องกรอกซ้ำ — พิมพ์ซ้ำ
+      // เมื่อไรก็ได้เบอร์สองชุดที่ขัดกัน และเบอร์ที่ RD โทรจะเป็นเบอร์ที่เก่ากว่า
+      { key: 'contactName', label: 'ชื่อผู้ติดต่อ', type: 'derived', derive: 'contactName', from: 'เติมจากทะเบียนลูกค้า' },
+      { key: 'contactPhone', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
+      { key: 'customer', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
       { key: 'deal', label: 'ดีล', type: 'derived', derive: 'deal', from: 'เติมจาก SO' },
       // ⚠️ **ไม่ derive จากดีล** — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
       // (ลูกค้าอาจจ่ายค่าออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน — ผู้ใช้ทักเอง)
@@ -123,6 +171,28 @@ export const PDR_SECTIONS = [
       },
       { key: 'color', column: 'pdrColor', label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
       { key: 'packSize', column: 'pdrPackSize', label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
+      // 2.8 รูปแบบบรรจุภัณฑ์
+      {
+        key: 'packagingForms', column: 'pdrPackagingForms', label: 'รูปแบบบรรจุภัณฑ์',
+        type: 'multi', options: PDR_PACKAGING_FORMS,
+      },
+      {
+        key: 'packagingArtwork', column: 'pdrPackagingArtwork', label: 'ภาพประกอบบรรจุภัณฑ์',
+        type: 'select', options: PDR_ARTWORK,
+      },
+      // 2.9 Value Proposition — **ของทั้งใบ ไม่ใช่รายกลิ่น** (มติผู้ใช้)
+      {
+        key: 'vpAttribute', column: 'pdrVpAttribute', label: 'Value Proposition — Attribute',
+        hint: 'คุณสมบัติของสินค้า', type: 'text', wide: true,
+      },
+      {
+        key: 'vpBenefit', column: 'pdrVpBenefit', label: 'Value Proposition — Benefit',
+        hint: 'ประโยชน์ที่ผู้ใช้ได้รับ', type: 'text', wide: true,
+      },
+      {
+        key: 'vpValue', column: 'pdrVpValue', label: 'Value Proposition — Value',
+        hint: 'คุณค่าที่แบรนด์ส่งมอบ', type: 'text', wide: true,
+      },
       { key: 'brandSample', column: 'pdrBrandSample', label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
     ],
   },
@@ -131,6 +201,15 @@ export const PDR_SECTIONS = [
     title: 'ข้อกำหนดด้านเอกสารและกฎระเบียบ',
     note: 'เอกสารที่ติ๊กจะยังไม่สร้างคำร้องขอเอกสาร — ฟอร์มระบุเองว่าได้รับหลังผลิตเป็นสินค้าแล้ว',
     fields: [
+      {
+        key: 'documents', column: 'pdrDocuments', label: 'เอกสารที่ลูกค้าต้องการ',
+        type: 'multi', options: PDR_DOCUMENTS,
+      },
+      {
+        key: 'exportDocNote', column: 'pdrExportDocNote', label: 'เอกสารส่งออก — ระบุ',
+        type: 'text', wide: true, showForDocument: 'export',
+        placeholder: 'ประเทศปลายทาง / ชนิดเอกสาร',
+      },
       {
         key: 'specialRequirements', column: 'pdrSpecialRequirements', label: 'ข้อกำหนดเฉพาะอื่น ๆ',
         type: 'textarea', wide: true,
@@ -157,23 +236,82 @@ const money = (v) => (v == null || v === '' ? null : Number(v).toLocaleString('t
  */
 export function pdrFieldText(field, request = {}, context = {}) {
   if (!field) return null;
+
   if (field.type === 'derived') {
     const { briefs = [] } = context;
-    if (field.derive === 'requester') return context.requester || request.requestedByName || null;
-    if (field.derive === 'customer') return context.customer || request.customerName || null;
-    if (field.derive === 'deal') return context.deal || null;
-    if (field.derive === 'scentCount') {
-      const n = context.scentCount ?? (briefs.length || null);
-      return n ? `${n} กลิ่น` : null;
+    switch (field.derive) {
+      // ⚠️ AE/AC เป็นของ **โครงการ** (mig 0190) ไม่ใช่คนกดปุ่ม — แต่ถอยไปใช้ชื่อคน
+      // เปิดใบเมื่อโครงการยังไม่ระบุ · ช่องว่างบนเอกสารที่ต้องมีคนรับผิดชอบเสมอ
+      // แย่กว่าชื่อที่ใกล้ความจริงที่สุด
+      case 'requester': return context.requester || request.requestedByName || null;
+      case 'coordinator': return context.coordinator || null;
+      case 'department': return 'การขายและบริการ';
+      case 'customer': return context.customer || request.customerName || null;
+      case 'deal': return context.deal || null;
+      case 'contactName': return context.contactName || null;
+      case 'contactPhone': return context.contactPhone || null;
+      // ⚠️ วันเดียวกับ `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ใหม่ ·
+      // "ด่วน" ต่อท้ายเพราะกระดาษสั่งให้ระบุคำนี้ตรง ๆ เมื่อเป็นงานด่วน
+      case 'sampleDue': {
+        const at = request.requestedDueDate || null;
+        if (!at && !request.urgent) return null;
+        return `${at || 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
+      }
+      case 'scentCount': {
+        const n = context.scentCount ?? (briefs.length || null);
+        return n ? `${n} กลิ่น` : null;
+      }
+      default: return null;
     }
-    return null;
   }
 
   const raw = request[field.column];
+
+  // ⚠️ ช่องติ๊กหลายตัวมาเป็น array — ว่างคือ "ยังไม่ได้เลือก" ไม่ใช่ค่าที่แสดงเป็น []
+  if (field.type === 'multi') {
+    const list = Array.isArray(raw) ? raw : [];
+    if (!list.length) return null;
+    return list.map((v) => labelOf(field.options || [], v) || String(v)).join(' · ');
+  }
+
   if (raw == null || String(raw).trim() === '') return null;
   if (field.type === 'select') return labelOf(field.options || [], raw) || String(raw);
   if (field.type === 'money') return money(raw);
   return String(raw).trim();
+}
+
+/**
+ * ช่องนี้ควรโผล่บนฟอร์มไหม — บางช่องขึ้นต่อเมื่อเลือกตัวเลือกบางตัวเท่านั้น
+ *
+ * ⭐ รหัสสินค้าก่อนหน้า ขึ้นเฉพาะ Product Modification / Cost Reduction
+ * ⭐ "เอกสารส่งออก — ระบุ" ขึ้นเฉพาะเมื่อติ๊ก "เอกสารส่งออก"
+ *
+ * ⚠️ **ซ่อนบนฟอร์มเท่านั้น ไม่ลบค่า** — ผู้ใช้สลับประเภทไปมาแล้วค่าที่พิมพ์ไว้ต้อง
+ * ไม่หาย · และจอแสดง/เอกสารยังโชว์ค่าที่มีอยู่เสมอ ไม่งั้นข้อมูลจะหายไปจากสายตา
+ * ทั้งที่ยังอยู่ในฐานข้อมูล
+ */
+export function pdrFieldVisible(field, values = {}) {
+  if (field?.showFor) return field.showFor.includes(values.requestType);
+  if (field?.showForDocument) {
+    const list = Array.isArray(values.documents) ? values.documents : [];
+    return list.includes(field.showForDocument);
+  }
+  return true;
+}
+
+/**
+ * ติ๊กว่ามีภาพประกอบแล้วต้องแนบจริง — คืนข้อความไทย หรือ null ถ้าผ่าน
+ *
+ * ⚠️ มติผู้ใช้ตอนไล่ฟอร์ม: "แยกแต่ถ้าบอกมี ต้องแนบภาพประกอบนะ" · ปล่อยให้ติ๊กแล้ว
+ * ไม่แนบ = RD ตามหาภาพที่ไม่มีอยู่จริง ซึ่งแย่กว่าติ๊กว่าไม่มีตั้งแต่แรก
+ *
+ * ⚠️ **ไม่บังคับตอนเปิดใบ** — หน้า `/requests/new` แนบไฟล์ไม่ได้ (ต้องมี id ก่อน)
+ * ⇒ ผู้เรียกส่ง `stage: 'submit'` ตอนกดส่งเท่านั้น ซึ่งเป็นจังหวะที่แนบได้แล้ว
+ */
+export function pdrArtworkError(values = {}, { attachmentCount = 0, stage = null } = {}) {
+  if (stage !== 'submit') return null;
+  if (values.packagingArtwork !== 'has') return null;
+  return attachmentCount > 0 ? null : 'ติ๊กว่ามีภาพประกอบบรรจุภัณฑ์แล้ว — ต้องแนบไฟล์ภาพก่อนส่ง';
 }
 
 /**
@@ -187,4 +325,34 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
   return (section?.fields || [])
     .map((f) => [f.label, pdrFieldText(f, request, context)])
     .filter(([, v]) => includeEmpty || (v != null && String(v).trim() !== ''));
+}
+
+/**
+ * ค่าที่ระบบเติมให้เอง — ประกอบจากแถวที่โหลดมาแล้ว คืน object ที่ส่งเป็น `context`
+ *
+ * ⭐ **ที่เดียวที่รู้ว่าค่าเติมเองมาจากตารางไหน** — จอแสดง เอกสาร และฟอร์มตอนเปิดใบ
+ * เรียกตัวนี้ทั้งหมด ⇒ "ผู้ร้องขอ AE บนเอกสาร" กับ "ผู้ร้องขอ AE บนจอ" เป็นคนเดียวกัน
+ * เสมอ ไม่ใช่เพราะบังเอิญเขียนเหมือนกัน
+ *
+ * ⚠️ AE/AC เป็นของ **โครงการ** (mig 0190) — ใช้ `aeOwner`/`acOwner` ซึ่งเป็น *ชื่อ*
+ * ไม่ใช่ `aeOwnerId` · ชื่อคือสิ่งที่ต้องพิมพ์ลงเอกสาร และเป็น snapshot ตามเจตนาเดิม
+ *
+ * ⚠️ ผู้ติดต่อเอาจาก `contacts[0]` ก่อน แล้วค่อยถอยไป `contactPerson/contactPhone`
+ * — 0033 ย้ายไป contacts[] แต่คอลัมน์เก่ายังมีค่าอยู่บนแถวที่ไม่เคยถูกแก้
+ */
+export function pdrContext({ request = {}, project = null, customer = null, deal = null, briefs = [] } = {}) {
+  const primary = (Array.isArray(customer?.contacts) ? customer.contacts[0] : null) || {};
+  const phone = primary.phone || customer?.contactPhone || null;
+  const line = primary.line || customer?.line || null;
+  return {
+    requester: project?.aeOwner || request.requestedByName || null,
+    coordinator: project?.acOwner || null,
+    customer: request.customerName || customer?.name || null,
+    deal: deal?.code || deal?.id || null,
+    contactName: primary.name || customer?.contactPerson || null,
+    // Phone / Line เป็นช่องเดียวบนกระดาษ — ต่อกันด้วย · เมื่อมีทั้งคู่
+    contactPhone: [phone, line].filter(Boolean).join(' · ') || null,
+    scentCount: briefs.length || null,
+    briefs,
+  };
 }
