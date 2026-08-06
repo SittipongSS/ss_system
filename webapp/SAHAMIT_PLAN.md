@@ -3,7 +3,11 @@
 > โมดูล Forecast / PO / Reconciliation + Material Tracking สำหรับลูกค้า **บจก. สหมิตรโปรดักส์ (AR-109)**
 > เข้าใช้ได้เฉพาะ **SA · ทีม Key Account (KA)**
 > ที่มา (ground truth): `D:\SS-CJ-ANG` (React 19 + Vite SPA) · ปลายทาง: `webapp/` (Next.js + Supabase)
-> สถานะ: ร่างแผน — ยังไม่ลงมือ
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-08-06
+>
+> เฟส 0–4 เสร็จแล้ว (ดู §5) · เฟส 5 ค้างบางส่วน — งานที่เหลือดู `SAHAMIT_REMAINING_PLAN.md`
+> §6 และ §7 คือ **มติที่ล็อกแล้ว** และ §7 build ลงโค้ดแล้ว 2026-07-19
+> (1 PO = 1 ดีลรวม · `src/lib/sales/createQuotationDraft.js`) — อ่านก่อนแตะสายสหมิตร
 
 ---
 

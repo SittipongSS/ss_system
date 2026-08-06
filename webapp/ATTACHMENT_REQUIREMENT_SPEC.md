@@ -41,7 +41,7 @@ Requirement = เป็นของแต่ละโมดูล     → "actio
 - ชนิดไฟล์: **PDF เท่านั้น** (`ACCEPTED_UPLOAD_MIME = ["application/pdf"]`)
 - บังคับจริงที่ server ไม่พึ่ง UI
 
-> **อนาคต ([`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md)):** ย้ายไป Google Drive เปลี่ยนเฉพาะ storage layer
+> **อนาคต ([`DRIVE_STORAGE_PLAN.md`](../docs/archive/DRIVE_STORAGE_PLAN.md)):** ย้ายไป Google Drive เปลี่ยนเฉพาะ storage layer
 > ส่วน registry + requirement engine คงเดิม (requirement engine อ่าน *row* ไม่ใช่ bytes) —
 > นี่คือเหตุผลที่แยก storage ออกมา
 

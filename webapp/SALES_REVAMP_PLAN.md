@@ -178,7 +178,7 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 
 โครงสร้างพร้อมแล้ว: [`lib/drive.js`](src/lib/drive.js) (Shared Drive + Workload Identity Federation)
 + [`/api/upload`](src/app/api/upload/route.js) สลับ backend ด้วย env `STORAGE_BACKEND=drive` (mig 0048,
-แผนเต็ม [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md))
+แผนเต็ม [`DRIVE_STORAGE_PLAN.md`](../docs/archive/DRIVE_STORAGE_PLAN.md))
 
 - **ไฟล์แนบใหม่ทุกตัวในแผนนี้** — หลักฐาน won (สลิป/PO), เอกสารเปิดลูกค้า, ไฟล์บนลีด —
   ต้องอัปโหลดผ่าน `/api/upload` เดิม (ห้ามยิง Supabase storage ตรง) → ไปลง Google Drive

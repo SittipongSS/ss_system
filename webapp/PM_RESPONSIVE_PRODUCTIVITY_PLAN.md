@@ -5,6 +5,11 @@
 (`webapp/PM_COMMAND_CENTER_PLAN.md`). เป้าหมายเดิมคงไว้: PM ทุกหน้ารายการมี responsive table/card
 มาตรฐานเดียว + ยกระดับ Extra Work/To-do/Updates เป็น productivity workflow
 
+> สถานะ: **รอดำเนินการ** — PR-A ถึง PR-J ยังไม่เริ่มสักตัว · ตรวจกับโค้ดเมื่อ 2026-08-06
+>
+> ⚠️ ตาราง ground truth ใน §0 ตรวจไว้เมื่อ 2026-06-30 · เลข migration ในเอกสาร (0049+)
+> **ล้าสมัยแล้ว** — ปัจจุบันถึง 0218 ต้องจองเลขใหม่ตอนลงมือ
+
 ---
 
 ## 0. ground truth ที่ต่างจากแพลน Codex (ต้องอ่านก่อน)
@@ -20,8 +25,9 @@
 กติกาบังคับของโปรเจกต์นี้:
 - **DDL รันมือบน Supabase SQL Editor** (service-role/PostgREST รัน DDL ไม่ได้ — ดูคอมเมนต์ 0019)
 - **เลข migration ถัดไป = 0049+** ระวังชนตอน merge (memory: deploy-workflow) → จองเลขตอนใกล้ merge
-- **single source of truth สถานะโครงการ**: `getComputedStatus` ย้ายไป `lib/pm/commandCenter.js` แล้ว
-  (ตาม PM_COMMAND_CENTER_PLAN) — หน้าใหม่ทุกหน้า import จากที่นั่น ห้ามนิยามซ้ำ
+- **single source of truth สถานะโครงการ**: แผนเดิมตั้งใจให้ `getComputedStatus` ย้ายไป
+  `lib/pm/commandCenter.js` (ตาม PM_COMMAND_CENTER_PLAN) — ⚠️ **ยังไม่ได้ทำ ไฟล์นั้นไม่มีอยู่จริง**
+  (ตรวจ 2026-08-06) ต้องทำ PM_COMMAND_CENTER_PLAN ก่อน ถึงจะ import จากที่นั่นได้
 - **Next.js ดัดแปลง** (AGENTS.md): อ่าน `node_modules/next/dist/docs/` ก่อนสร้าง route/API ใหม่
 - **shared UI มีอยู่แล้ว**: ใช้ `segmented`/`ViewSwitcher`/`glass-panel`/`premium-table`/`status-pill`/
   `progress`/`chip` (memory: shared-ui-layer) — อย่าสร้าง pattern ใหม่

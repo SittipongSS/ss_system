@@ -18,7 +18,7 @@
 | **BOUNDARY_MAP.md** (ไฟล์นี้) | contract กลางที่บังคับใช้จริง: สิทธิ์ · transaction · audit · action placement |
 | [`BOUNDARY_MAP_PLAN.md`](BOUNDARY_MAP_PLAN.md) | roadmap + สถานะแต่ละ Phase (0–6) |
 | [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md) | spec ไฟล์แนบ (storage) + requirement engine (per-module) |
-| [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md) | backend ไฟล์แนบบน Google Drive (ใช้งานจริงแล้ว) |
+| [`DRIVE_STORAGE_PLAN.md`](../docs/archive/DRIVE_STORAGE_PLAN.md) | backend ไฟล์แนบบน Google Drive (ใช้งานจริงแล้ว) |
 | [`MASTER_DATA_PLAN.md`](MASTER_DATA_PLAN.md) · [`PM_PLAN.md`](PM_PLAN.md) | แผนราย-โมดูล (Database / Project Management) |
 | [`SALES_PM_ROADMAP.md`](SALES_PM_ROADMAP.md) | สถาปัตยกรรม + roadmap สายชีวิต Sales→PM→Sahamit→Tax (โมเดล 2 ชั้น) |
 
@@ -180,7 +180,7 @@ PATCH order (แก้ line items) ใช้แนวเดียวกัน: h
 
 **การจัดการพื้นที่ (วินัยป้องกัน — ไม่ใช่วิกฤต):** log โตเรื่อยๆ ไม่มี auto-purge (ตั้งใจ).
 ความกดดันพื้นที่เดิมมาจาก Supabase Storage ยุคเก็บไฟล์แนบ — แก้แล้วโดยย้ายไป Google Drive
-([DRIVE_STORAGE_PLAN.md](DRIVE_STORAGE_PLAN.md)). baseline วัดจริง 2026-07-17: DB ทั้งหมด **23 MB**
+([DRIVE_STORAGE_PLAN.md](../docs/archive/DRIVE_STORAGE_PLAN.md)). baseline วัดจริง 2026-07-17: DB ทั้งหมด **23 MB**
 จากเพดาน free tier 500 MB (`audit_logs` ใหญ่สุดที่ 5.2 MB / 2,759 แถว). กฎประหยัดด้านล่างคงไว้ทั้งหมด
 เพื่อกันกลับไปจุดเดิม:
 - `before` เฉพาะ update/delete (create ไม่ต้องมี). `before`/`after` เก็บ record เต็มเพื่อกู้คืน manual ได้.
