@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
+  rescheduleRequestError,
   bounceRequestError,
   answerRequestError,
   canAnswerRequest,
@@ -627,4 +628,36 @@ test('⭐ พัฒนากลิ่นบังคับใส่วันก�
   for (const kind of ['price_pm', 'price_f', 'info', 'document', 'product_dev']) {
     assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
   }
+});
+
+// ── เลื่อนวันกำหนดส่ง ────────────────────────────────────────────────────
+test('⭐ เลื่อนวันกำหนดส่งได้หลังรับเรื่อง — แต่ต้องรับเรื่องก่อน', () => {
+  // มติผู้ใช้ 2026-08-06: RD ขอให้แก้วันได้ เผื่อตอนรับเรื่องเลือกไปก่อนแล้วเจอของจริง
+  const ack = { kind: 'scent_dev', status: 'acknowledged', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  assert.equal(rescheduleRequestError(ack, { committedDueDate: '2026-08-27' }), null);
+
+  // ⚠️ **ไม่ใช่ทางลัดของการรับเรื่อง** — ไม่งั้นจะผูกวันได้โดยข้ามด่านของ acknowledge
+  assert.match(
+    rescheduleRequestError({ kind: 'scent_dev', status: 'pending' }, { committedDueDate: '2026-08-27' }),
+    /ยังไม่ได้รับเรื่อง/,
+  );
+});
+
+test('เลื่อนวันต้องมีวันใหม่จริง และต้องไม่ใช่วันเดิม', () => {
+  const ack = { kind: 'scent_dev', status: 'acknowledged', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  // ⚠️ ล้างวันทิ้งไม่ได้ — "เลื่อน" ที่แปลว่าถอนคำสัญญาต้องไปยกเลิกใบ ไม่ใช่ล้างช่อง
+  assert.match(rescheduleRequestError(ack), /ระบุวันกำหนดส่งใหม่/);
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '   ' }), /ระบุวันกำหนดส่งใหม่/);
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '20/08/2026' }), /ระบุวันกำหนดส่งใหม่/);
+  // วันเดิม = ไม่มีอะไรเลื่อน · ปล่อยผ่านจะได้บรรทัดเธรด "20 → 20" ที่ไม่มีความหมาย
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '2026-08-20' }), /วันเดิม/);
+});
+
+test('ใบที่จบไปแล้วเลื่อนวันไม่ได้', () => {
+  const base = { kind: 'scent_dev', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  const next = { committedDueDate: '2026-08-27' };
+  assert.match(rescheduleRequestError({ ...base, status: 'closed' }, next), /ปิดไปแล้ว/);
+  assert.match(rescheduleRequestError({ ...base, status: 'cancelled' }, next), /ยกเลิกไปแล้ว/);
+  // ⚠️ `answered` ก็เลื่อนไม่ได้ — ตอบไปแล้วจะเลื่อนวันส่งย้อนหลังไม่ได้
+  assert.match(rescheduleRequestError({ ...base, status: 'answered' }, next), /ปิดไปแล้ว/);
 });

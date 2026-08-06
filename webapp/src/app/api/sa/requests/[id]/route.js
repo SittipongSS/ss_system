@@ -17,7 +17,7 @@ import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import {
-  acknowledgeRequestError,
+  acknowledgeRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, generateRequestDocNo, submitRequestError,
@@ -210,6 +210,29 @@ export async function PATCH(request, { params }) {
         }
       }
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
+    } else if (action === 'reschedule') {
+      // ⭐ **เลื่อนวันกำหนดส่ง** — RD เลือกวันตอนรับเรื่องแล้วเปลี่ยนใจได้ (มติผู้ใช้)
+      //
+      // ⚠️ **ไม่แก้เงียบ ๆ** — วันกำหนดส่งคือคำสัญญาที่ให้ฝ่ายขายไปแล้ว และเป็นตัวที่
+      // ใช้นับว่าเลยกำหนดหรือยัง ⇒ เลื่อนแล้วต้องเห็นในเธรดว่าเลื่อนจากวันไหนเป็น
+      // วันไหน ไม่งั้น "ไม่เคยเลยกำหนดสักใบ" จะกลายเป็นเรื่องจริงที่ไม่มีความหมาย
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `เลื่อนวันได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      // ด่านทั้งชุดอยู่ที่ lib/requests/stages.js — route ไม่คิดกฎเอง
+      const err = rescheduleRequestError(before, { committedDueDate: body.committedDueDate });
+      if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
+
+      const next = String(body.committedDueDate).trim();
+      patch.committedDueDate = next;
+      const reason = String(body.reason ?? '').trim();
+      if (reason.length > 500) {
+        return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
+      }
+      // ⚠️ เขียน **วันเดิม → วันใหม่** ลงเธรด ไม่ใช่แค่ "แก้วันแล้ว" — คนอ่านย้อนหลัง
+      // ต้องเห็นว่าเลื่อนไปกี่ครั้งและครั้งละกี่วัน โดยไม่ต้องไปขุด audit log
+      summary = `เลื่อนวันกำหนดส่ง ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
+        + (reason ? ` — ${reason}` : '');
     } else if (action === 'approve') {
       // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — RD รับเรื่องแล้ว แต่ลงมือไม่ได้จนกว่า
       // หัวหน้าจะยืนยัน · ด่านทั้งชุดอยู่ที่ lib/requests/approval.js ที่เดียว

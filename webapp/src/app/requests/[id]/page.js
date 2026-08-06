@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -109,6 +109,8 @@ export default function MaterialAskDetailPage() {
   // ⚠️ ปุ่มเดิมยิง `acknowledge` เปล่า ๆ ⇒ พอ server บังคับแล้วจะกดไม่ผ่านทุกครั้ง
   // ถ้าไม่มีช่องให้กรอก · ด่านกับหน้าจอต้องมาพร้อมกันเสมอ
   const [ackDue, setAckDue] = useState(null);
+  // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
+  const [reschedule, setReschedule] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -488,6 +490,23 @@ export default function MaterialAskDetailPage() {
               statusDescription="การดำเนินการระดับคำร้อง"
               workflowSteps={workflowSteps}
               primaryAction={primaryAction}
+              secondaryActions={[
+                {
+                  // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
+                  // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
+                  //
+                  // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
+                  // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
+                  id: "reschedule",
+                  label: "เลื่อนวันกำหนดส่ง",
+                  kind: "edit",
+                  icon: CalendarClock,
+                  onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
+                  // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
+                  // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
+                  visible: canAnswer && !!req.acknowledgedAt,
+                },
+              ]}
               dangerActions={[
                 {
                   id: "delete",
@@ -787,9 +806,6 @@ export default function MaterialAskDetailPage() {
         </div>
       </DetailPageLayout>
 
-      {/* บันทึกก้าวของแถว — กล่องเดียวรับทั้งห้าก้าว ช่องสลับตามก้าวที่กด
-          ⭐ ห้ากล่องแยกจะได้ปุ่มยกเลิก/บันทึกและกติกาวันที่ห้าชุดที่ต้องคอยดูแลให้ตรงกัน
-          ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
       {/* ⭐ รับเรื่อง + วันกำหนดส่ง — หัวข้อที่บังคับต้องมีช่องให้กรอกในจังหวะเดียวกัน
           ไม่ใช่ให้กดแล้วเจอ error แล้วไปหาว่าต้องกรอกที่ไหน */}
       <Modal
@@ -820,6 +836,57 @@ export default function MaterialAskDetailPage() {
         </div>
       </Modal>
 
+      {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
+          และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ลงเธรดว่าเลื่อนจากวันไหนเป็นวันไหน */}
+      <Modal
+        open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
+        title="เลื่อนวันกำหนดส่ง"
+      >
+        {reschedule && (
+          <>
+            <div className="form-group">
+              <label htmlFor="resch-due">วันกำหนดส่งใหม่</label>
+              <DateInput
+                id="resch-due" value={reschedule.date} disabled={saving}
+                onChange={(v) => setReschedule({ ...reschedule, date: v })}
+              />
+              <small className={styles.hint}>
+                เดิมรับปากไว้ {req.committedDueDate ? fmtDate(req.committedDueDate) : "—"}
+              </small>
+            </div>
+            <div className="form-group">
+              <label htmlFor="resch-why">เหตุผล (ไม่บังคับ)</label>
+              <Textarea
+                variant="data" id="resch-why" rows={2} maxLength={500}
+                value={reschedule.reason} disabled={saving}
+                placeholder="บอกฝ่ายขายว่าทำไมต้องเลื่อน — จะได้ไปคุยกับลูกค้าต่อได้"
+                onChange={(e) => setReschedule({ ...reschedule, reason: e.target.value })}
+              />
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setReschedule(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !reschedule.date || reschedule.date === req.committedDueDate}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    action: "reschedule",
+                    committedDueDate: reschedule.date,
+                    reason: reschedule.reason,
+                  }),
+                }, "เลื่อนวันแล้ว").then((ok) => { if (ok) setReschedule(null); })}
+              >
+                บันทึกวันใหม่
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* บันทึกก้าวของแถว — กล่องเดียวรับทั้งห้าก้าว ช่องสลับตามก้าวที่กด
+          ⭐ ห้ากล่องแยกจะได้ปุ่มยกเลิก/บันทึกและกติกาวันที่ห้าชุดที่ต้องคอยดูแลให้ตรงกัน
+          ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
       <Modal
         open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
         title={hopDraft ? `${hopLabel(hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
