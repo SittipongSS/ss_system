@@ -25,6 +25,7 @@ import {
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
+import { reworkHopError } from '@/lib/requests/rework';
 import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
@@ -76,6 +77,11 @@ export async function PATCH(request, { params }) {
         : 'ก้าวนี้เป็นของผู้เปิดคำร้อง',
     }, { status: 403 });
   }
+
+  // ⚠️ **สายพัฒนากลิ่นส่งของผ่านโมดัลเท่านั้น** — ปุ่มบนรางประทับแค่วัน ไม่สร้าง
+  // กลิ่นเข้าทะเบียน ⇒ แถวจะออกจากคิวรอเติมทั้งที่ยังไม่มีกลิ่นผูก แล้วค้างถาวร
+  const reworkError = reworkHopError(row, hop);
+  if (reworkError) return Response.json({ error: reworkError }, { status: 409 });
 
   // ── 3) ขั้นตอน + ค่าที่ส่งมา ────────────────────────────────────────────
   const stageError = hopStageError(row, hop);

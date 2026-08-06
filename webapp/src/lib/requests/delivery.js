@@ -9,6 +9,7 @@
 // `awaiting_ack` ที่จะทำให้ RD เห็นปุ่ม "รับเรื่อง" บนของที่เพิ่งส่งไปเอง
 import { businessDate } from '@/lib/businessDate';
 import { briefLinkError } from '@/lib/requests/scentBriefs';
+import { reworkSlotFrom, reworkTargetError } from '@/lib/requests/rework';
 
 export const MAX_DELIVERY_ROWS = 20;
 
@@ -20,7 +21,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // ⚠️ **เตือนรหัสซ้ำที่นี่ ไม่ปล่อยไปตายที่ DB** — unique violation จาก Postgres
 // เป็นภาษาอังกฤษอ่านไม่รู้เรื่อง และมาตอนกดส่งไปแล้วซึ่งสายเกินจะแก้ทีละช่อง
 export function normalizeDeliveryRows(input, {
-  existingCodes = [], today = null, briefs = [],
+  existingCodes = [], today = null, briefs = [], items = [],
 } = {}) {
   const raw = Array.isArray(input) ? input : [];
   if (!raw.length) return { rows: [], error: 'ต้องมีอย่างน้อย 1 รายการที่ส่ง' };
@@ -54,7 +55,20 @@ export function normalizeDeliveryRows(input, {
     //
     // ⚠️ **มีบรีฟก้อนเดียว = เลือกให้เลย ไม่ต้องถาม** (มติผู้ใช้ตอนทำปุ่มรวบบรีฟ) —
     // ช่องที่มีตัวเลือกเดียวแต่ยังบังคับให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร
+    // ⭐ **รอบแก้เติมลงแถวเดิม ไม่สร้างแถวใหม่** (#1049 บันทึกไว้ว่าเป็นทางตัน) —
+    // แถวที่ลูกค้าขอให้แก้รออยู่แล้ว ⇒ ส่งของลงไปในแถวนั้น ไม่งั้นได้สองแถวต่อ
+    // หนึ่งรอบแก้ แถวหนึ่งใช้ได้ อีกแถวค้างถาวรเพราะไม่มีกลิ่นผูก
+    const targetItemId = String(row.targetItemId ?? '').trim() || null;
+    const targetError = reworkTargetError(targetItemId, items);
+    if (targetError) return { rows: [], error: `${at}: ${targetError}` };
+    const slot = targetItemId
+      ? reworkSlotFrom((items || []).find((i) => i.id === targetItemId), items)
+      : null;
+
     let briefId = String(row.briefId ?? '').trim() || null;
+    // ⚠️ รอบแก้: บรีฟมาจากแถวที่รออยู่ **ไม่ใช่จากสิ่งที่ client ส่ง** — มันคือ
+    // direction อีกตัวของบรีฟก้อนเดิม ให้เลือกใหม่เมื่อไรก็ผูกข้ามก้อนได้
+    if (slot?.briefId) briefId = slot.briefId;
     if (briefs.length) {
       if (!briefId && briefs.length === 1) briefId = briefs[0].id;
       const linkError = briefLinkError(briefId, briefs);
@@ -77,6 +91,8 @@ export function normalizeDeliveryRows(input, {
     if (spec.length > 2000) return { rows: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
 
     rows.push({
+      // แถวที่จะเติมของลงไป — null = สร้างแถวใหม่ตามปกติ
+      targetItemId,
       briefId,
       name,
       code,
@@ -84,7 +100,10 @@ export function normalizeDeliveryRows(input, {
       spec: spec || null,
       // "เลขที่อ้างอิง" — กลิ่นตัวนี้แก้มาจากตัวไหน · ด่านข้ามลูกค้าอยู่ฝั่ง server
       // (assertDerivedFromScent) เพราะต้องอ่านแถวต้นทางมาเทียบ
-      derivedFromScentId: String(row.derivedFromScentId ?? '').trim() || null,
+      // ⚠️ รอบแก้บังคับให้ชี้กลับกลิ่นตัวเดิมเสมอ — เป็นค่าที่ระบบรู้อยู่แล้ว
+      // ไม่ใช่คำถาม · ปล่อยให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว
+      derivedFromScentId: slot?.derivedFromScentId
+        || String(row.derivedFromScentId ?? '').trim() || null,
     });
   }
   return { rows, error: null };

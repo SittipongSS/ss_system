@@ -84,6 +84,9 @@ export async function POST(request, { params }) {
     existingCodes: registry.map((s) => s.code).filter(Boolean),
     today: businessDate(),
     briefs: briefRows || [],
+    // ⭐ แถวรอบแก้ที่รออยู่ — ด่านตรวจว่า `targetItemId` ที่ส่งมาเติมได้จริง และ
+    // เป็นที่มาของบรีฟ/กลิ่นต้นทาง (ห้ามเชื่อค่าที่ client ส่งมาสองช่องนั้น)
+    items: before.items || [],
   });
   if (error) return Response.json({ error }, { status: 400 });
 
@@ -113,19 +116,37 @@ export async function POST(request, { params }) {
       created.push({ row, scent });
     }
 
-    // 2) แถวคำร้องทั้งชุดทีเดียว
+    // 2) แถวคำร้อง — **รอบแก้เติมลงแถวเดิม · ที่เหลือสร้างใหม่** (#1049)
+    //
+    // ⚠️ แถวรอบแก้ถูกสร้างรอไว้ตั้งแต่ตอนลูกค้ากด "ขอให้แก้" ⇒ สร้างใหม่ทับจะได้
+    // สองแถวต่อหนึ่งรอบแก้ แถวที่รออยู่จะค้างถาวรเพราะไม่มีกลิ่นผูก ⇒ ใส่ราคาไม่ได้
+    // ⇒ ใบปิดไม่ลง · `sortOrder` ของแถวเดิมไม่แตะ — ลำดับบนจอต้องไม่กระโดด
     const base = Math.max(0, ...(before.items || []).map((i) => i.sortOrder || 0));
     const ackAt = before.acknowledgedAt ? String(before.acknowledgedAt).slice(0, 10) : null;
-    const itemRows = created.map(({ row, scent }, i) => ({
-      id: `DRI-${randomUUID()}`,
-      ...deliveryItemRow(row, {
-        requestId: id, sortOrder: base + i + 1, scentId: scent.id, ackAt, user,
-      }),
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    }));
-    const { error: itemError } = await supabase.from('dept_request_items').insert(itemRows);
-    if (itemError) throw itemError;
+    let fresh = 0;
+    const inserts = [];
+    for (const { row, scent } of created) {
+      const values = deliveryItemRow(row, {
+        requestId: id,
+        sortOrder: row.targetItemId ? 0 : base + (fresh += 1),
+        scentId: scent.id,
+        ackAt,
+        user,
+      });
+      if (!row.targetItemId) {
+        inserts.push({ id: `DRI-${randomUUID()}`, ...values, createdAt: nowIso, updatedAt: nowIso });
+        continue;
+      }
+      // เติมลงแถวที่รออยู่ — ตัวตนของแถว (id · ลำดับ · สายพันธุ์) ต้องไม่ถูกเขียนทับ
+      const { requestId: _r, sortOrder: _s, lineKind: _k, ...fill } = values;
+      const { error: fillError } = await supabase.from('dept_request_items')
+        .update({ ...fill, updatedAt: nowIso }).eq('id', row.targetItemId);
+      if (fillError) throw fillError;
+    }
+    if (inserts.length) {
+      const { error: itemError } = await supabase.from('dept_request_items').insert(inserts);
+      if (itemError) throw itemError;
+    }
   } catch (e) {
     // ย้อนลบกลิ่นที่เพิ่งสร้าง — ของค้างในทะเบียนคือของที่คนอื่นจะเลือกไปใช้ต่อ
     for (const { scent } of created) {
