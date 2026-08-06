@@ -11,7 +11,11 @@ import { canViewRequests } from '@/lib/permissions';
 import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
+import { randomUUID } from 'crypto';
 import { approveRequestError } from '@/lib/requests/approval';
+import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
+import { normalizePdr } from '@/lib/requests/pdr';
+import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
@@ -89,7 +93,12 @@ export async function GET(request, { params }) {
     return Response.json(
       // ⚠️ `_canApprove` คำนวณที่ **server** เหมือน `_mine` — หน้าจอมีแค่ role/ฝ่าย
       // ไม่มี user.id ⇒ ตัดสินเองไม่ได้ · เคยพลาดมาแล้วตอนแยกด่านคำร้อง (#1016)
-      { ...row, _mine: canManageRequest(user, row), _canApprove: !approveRequestError(row, user) },
+      {
+        ...row,
+        _mine: canManageRequest(user, row),
+        _canApprove: !approveRequestError(row, user),
+        _canEditPdr: canEditPdr(user, row),
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {
@@ -144,6 +153,65 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedAt = nowIso;
       if (due) patch.committedDueDate = due;
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'pdr') {
+      // ⭐ แก้แบบฟอร์ม PDR — สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" (ดู lib/requests/pdrEdit.js)
+      const denied = editPdrError(before, user);
+      if (denied) return Response.json({ error: denied }, { status: 403 });
+
+      const { columns, error: pdrError } = normalizePdr(body.pdr);
+      if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
+      Object.assign(patch, columns);
+
+      // บรีฟรายกลิ่น — เขียนทับทั้งชุด (แก้ = ส่งมาใหม่ทั้งก้อน ไม่ใช่ patch รายช่อง)
+      //
+      // ⚠️ **ไม่ลบแล้วสร้างใหม่** ถ้ามี direction ชี้อยู่ — `dept_request_items.briefId`
+      // เป็น ON DELETE SET NULL ⇒ ลบบรีฟทิ้งแล้ว direction ที่ RD ส่งไปแล้วจะขาดจาก
+      // บรีฟที่มันตอบ · จึงอัปเดตทับตาม id เดิม และห้ามเปลี่ยนจำนวนหลังมีของส่งแล้ว
+      if (Array.isArray(body.briefs)) {
+        const { data: existing, error: loadError } = await supabase
+          .from('dept_request_scents').select('id').eq('requestId', id)
+          .order('sortOrder', { ascending: true });
+        if (loadError) throw loadError;
+
+        const delivered = (before.items || []).some((i) => i.briefId);
+        if (delivered && body.briefs.length !== (existing || []).length) {
+          return Response.json({
+            error: 'ส่งของไปแล้ว — เปลี่ยนจำนวนบรีฟไม่ได้ เพราะของที่ส่งไปผูกกับบรีฟเดิมอยู่',
+          }, { status: 409 });
+        }
+
+        const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, {});
+        if (briefError) return Response.json({ error: briefError }, { status: 400 });
+
+        for (let i = 0; i < briefs.length; i += 1) {
+          const row = briefs[i];
+          const target = (existing || [])[i];
+          const values = {
+            requestId: id,
+            sortOrder: row.sortOrder,
+            label: row.label,
+            brief: row.brief,
+            researchTopic: row.researchTopic,
+            inspiration: row.inspiration,
+            likedNotes: row.likedNotes,
+            dislikedNotes: row.dislikedNotes,
+            scentotypes: row.scentotypes,
+            performance: row.performance,
+            updatedAt: nowIso,
+          };
+          const { error: saveError } = target
+            ? await supabase.from('dept_request_scents').update(values).eq('id', target.id)
+            : await supabase.from('dept_request_scents').insert({ id: `DRS-${randomUUID()}`, ...values });
+          if (saveError) throw saveError;
+        }
+        // ก้อนที่เกินมาจากของเดิม (ลดจำนวนตอนยังไม่ส่งของ) — ลบทิ้ง
+        for (const extra of (existing || []).slice(briefs.length)) {
+          const { error: delError } = await supabase
+            .from('dept_request_scents').delete().eq('id', extra.id);
+          if (delError) throw delError;
+        }
+      }
+      summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
     } else if (action === 'approve') {
       // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — RD รับเรื่องแล้ว แต่ลงมือไม่ได้จนกว่า
       // หัวหน้าจะยืนยัน · ด่านทั้งชุดอยู่ที่ lib/requests/approval.js ที่เดียว
@@ -287,6 +355,7 @@ export async function PATCH(request, { params }) {
       ...after,
       _mine: canManageRequest(user, after),
       _canApprove: !approveRequestError(after, user),
+      _canEditPdr: canEditPdr(user, after),
     });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

@@ -31,6 +31,7 @@ import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approva
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import PdrSummary from "@/components/requests/PdrSummary";
+import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -99,6 +100,9 @@ export default function MaterialAskDetailPage() {
   const [noQuote, setNoQuote] = useState(null);     // { item, reason }
   // ก้าวของแถว — { item, hop, outcome, at, dueAt, confirmedQty, note }
   const [hopDraft, setHopDraft] = useState(null);
+  // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
+  // สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" — server เป็นคนตัดสิน (`_canEditPdr`)
+  const [pdrDraft, setPdrDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -675,7 +679,49 @@ export default function MaterialAskDetailPage() {
           🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
       {showPdr && (
         <div className={styles.pdrBlock}>
-          <PdrSummary request={req} briefs={req.briefs || []} />
+          {pdrDraft ? (
+            <>
+              <PdrForm
+                value={pdrDraft.pdr} onChange={(pdr) => setPdrDraft({ ...pdrDraft, pdr })}
+                briefs={pdrDraft.briefs}
+                onBriefsChange={(briefs) => setPdrDraft({ ...pdrDraft, briefs })}
+                disabled={saving}
+              />
+              <div className={`action-bar ${styles.modalActions}`}>
+                <Button variant="quiet" disabled={saving} onClick={() => setPdrDraft(null)}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  tone="primary" disabled={saving}
+                  onClick={() => call("", {
+                    method: "PATCH",
+                    body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+                  }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
+                >
+                  บันทึกแบบฟอร์ม
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <PdrSummary request={req} briefs={req.briefs || []} />
+              {/* ⚠️ ปุ่มโผล่ตาม `_canEditPdr` ที่ **server คำนวณ** — หน้าจอไม่มี user.id
+                  จึงตัดสินเองไม่ได้ (บทเรียนเดียวกับ `_canApprove`) */}
+              {req._canEditPdr && (
+                <div className={`action-bar ${styles.modalActions}`}>
+                  <Button
+                    variant="quiet" disabled={saving}
+                    onClick={() => setPdrDraft({
+                      pdr: pdrValuesFrom(req),
+                      briefs: (req.briefs || []).map((b) => ({ ...b })),
+                    })}
+                  >
+                    แก้แบบฟอร์ม PDR
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
