@@ -89,10 +89,31 @@ export default function AddressesEditor({ value = [], onChange }) {
   }, [rows.map((r) => r.districtCode).join(","), loadSubs]);
 
   const update = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const add = () => onChange([
-    ...rows,
-    { id: genId("ADR"), label: "", address: "", useFor: "both" },
-  ]);
+  // ── แถวใหม่ยังไม่ติ๊กอะไรให้ (มติผู้ใช้ 2026-08-06) ─────────────────────
+  // "ใช้ทำอะไร" เก็บได้ 3 ค่า (both/billing/shipping) — **ไม่มีค่าว่างในข้อมูล**
+  // เพราะที่อยู่ที่ใช้ทำอะไรไม่ได้เลยก็ไม่ใช่ที่อยู่ (ดู toggleAddressUse) · สถานะ
+  // "ยังไม่ได้เลือก" จึงอยู่ที่หน้าจอเท่านั้น: จำ id ของแถวที่เพิ่งกดเพิ่มและยังไม่
+  // แตะปุ่มไหนเลย แล้ววาดปุ่มเป็นยังไม่ติ๊ก
+  //
+  // ⭐ ทำแบบนี้แทนการใส่ค่าว่างลงข้อมูล เพราะ addressUse() ตีค่าที่ไม่รู้จักเป็น
+  // 'both' โดยตั้งใจ — ที่อยู่ที่บันทึกไว้แล้วต้องไม่หายจาก dropdown ทั้งสองฝั่ง
+  // เงียบ ๆ · ถ้าเปลี่ยนตรงนั้น แถวเก่าที่ข้อมูลไม่สมบูรณ์จะหลุดจากใบเสนอราคาทันที
+  const [untouched, setUntouched] = useState(() => new Set());
+  const isUntouched = (row) => untouched.has(row.id);
+  const markTouched = (id) => setUntouched((prev) => {
+    if (!prev.has(id)) return prev;
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+
+  const add = () => {
+    const id = genId("ADR");
+    setUntouched((prev) => new Set(prev).add(id));
+    // ค่าที่บันทึกจริงถ้าผู้ใช้ไม่แตะปุ่มเลย = 'both' (ค่าตั้งต้นเดิมของระบบ) —
+    // ไม่ติ๊กให้บนจอ แต่ก็ไม่บันทึกที่อยู่ที่ใช้ทำอะไรไม่ได้เลยลงฐานข้อมูล
+    onChange([...rows, { id, label: "", address: "", useFor: "both" }]);
+  };
   const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
   const move = (i, delta) => {
     const to = i + delta;
@@ -151,7 +172,9 @@ export default function AddressesEditor({ value = [], onChange }) {
 
   // แถวที่ยังไม่พิมพ์ที่อยู่ยังไม่นับเป็น "หลัก" — ไม่งั้นกดเพิ่มแถวเปล่าแล้ว
   // ป้าย "หลัก" กระโดดไปแถวว่างทันที
-  const filled = (r) => addressText(r).trim().length > 0;
+  // แถวที่ยังไม่ได้เลือก "ใช้ทำอะไร" ยังไม่นับเป็นหลักด้วย — ไม่งั้นป้าย "บิลหลัก"
+  // ไปเกาะแถวที่ผู้ใช้ยังไม่ได้บอกเลยว่าจะใช้ออกบิลไหม
+  const filled = (r) => addressText(r).trim().length > 0 && !isUntouched(r);
   const billingPrimary = rows.findIndex((r) => filled(r) && isBillingAddress(r));
   const shippingPrimary = rows.findIndex((r) => filled(r) && isShippingAddress(r));
 
@@ -180,8 +203,12 @@ export default function AddressesEditor({ value = [], onChange }) {
                 onChange={(e) => update(i, { label: e.target.value })}
               />
               <div className="flex gap-1.5 items-center">
-                {USES.map(({ key, label, on }) => {
-                  const active = on(a);
+                  {USES.map(({ key, label, on }) => {
+                  // แถวที่ยังไม่แตะ = วาดเป็นยังไม่ติ๊กทั้งคู่ และกดครั้งแรกได้
+                  // "อันนั้นอันเดียว" ไม่ใช่ toggle จากค่า both ที่ซ่อนอยู่ (ซึ่งจะ
+                  // กลายเป็นกดบิลแล้วได้จัดส่ง — ตรงข้ามกับที่เห็นบนจอ)
+                  const pending = isUntouched(a);
+                  const active = !pending && on(a);
                   return (
                     <Button
                       key={key}
@@ -189,7 +216,10 @@ export default function AddressesEditor({ value = [], onChange }) {
                       tone={active ? "primary" : undefined}
                       variant={active ? "filled" : "outline"}
                       icon={active ? <Check size={13} /> : null}
-                      onClick={() => update(i, { useFor: toggleAddressUse(a.useFor, key) })}
+                      onClick={() => {
+                        markTouched(a.id);
+                        update(i, { useFor: pending ? key : toggleAddressUse(a.useFor, key) });
+                      }}
                       title={active ? `ที่อยู่นี้ใช้${label}` : `ติ๊กเพื่อใช้ที่อยู่นี้${label}`}
                       aria-pressed={active}
                     >
@@ -315,7 +345,11 @@ export default function AddressesEditor({ value = [], onChange }) {
             {/* ข้อความที่จะพิมพ์ลงเอกสารจริง + ทางออกสำหรับที่อยู่ที่ไม่เข้าแม่แบบ */}
             <div className="flex flex-wrap items-start gap-2 justify-between">
               <div className="text-[11px] text-[var(--text-3)] min-w-0 flex-1">
-                {legacy ? (
+                {isUntouched(a) ? (
+                  // บอกตรง ๆ ว่าไม่เลือกแล้วจะได้อะไร — ไม่งั้นคนเพิ่มคลังแล้วลืมติ๊ก
+                  // จะได้ที่อยู่คลังโผล่ในช่อง "ออกบิล" ของใบเสนอราคาโดยไม่รู้ตัว
+                  <span>เลือกด้วยว่าที่อยู่นี้ใช้ทำอะไร — ไม่เลือก = ใช้ได้ทั้งออกเอกสารและจัดส่ง</span>
+                ) : legacy ? (
                   <span>ที่อยู่นี้ยังเป็นข้อความก้อนเดียว — กด “แยกที่อยู่อัตโนมัติ” แล้วตรวจก่อนบันทึก</span>
                 ) : (
                   <span className="break-words">บนเอกสารจะพิมพ์ว่า: <b className="text-[var(--text-2)]">{preview || "—"}</b></span>
