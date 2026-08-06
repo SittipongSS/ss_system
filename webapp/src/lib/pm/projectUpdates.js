@@ -28,9 +28,14 @@ const dealLabel = (deal) => {
 
 // ── ผูกดีลเข้าโครงการ ────────────────────────────────────────────────────
 // `how`: 'link' = เอาดีลที่มีอยู่มาผูก · 'create' = สร้างโครงการจากดีลใบนั้น
+//        'move' = ย้ายมาจากโครงการอื่น (พาไทม์ไลน์/งาน/ใบสั่งขายมาด้วยทั้งชุด —
+//                 คนอ่านเธรดต้องแยกออกจาก "ดีลใหม่เข้ามา" ไม่งั้นจะงงว่าของเก่า
+//                 ที่มีความคืบหน้าอยู่แล้วโผล่มาจากไหน)
+const LINK_VERBS = { create: 'สร้างโครงการจากดีล', move: 'ย้ายดีลเข้าโครงการ', link: 'ผูกดีลเข้าโครงการ' };
+
 export function dealLinkedUpdate(deal, { how = 'link' } = {}) {
   if (!deal) return null;
-  const verb = how === 'create' ? 'สร้างโครงการจากดีล' : 'ผูกดีลเข้าโครงการ';
+  const verb = LINK_VERBS[how] || LINK_VERBS.link;
   return {
     kind: 'deal_link',
     body: `${verb}: ${dealLabel(deal)}`,

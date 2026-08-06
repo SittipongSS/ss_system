@@ -3,6 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import Button from "@/components/ui/Button";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -458,6 +459,9 @@ export default function DealOverviewPage() {
   const [linkProjectId, setLinkProjectId] = useState("");
   const [linkStartDate, setLinkStartDate] = useState("");
   const [linkLoading, setLinkLoading] = useState(false);
+  // ดีลที่มีโครงการอยู่แล้ว = โมดัลตัวเดียวกันในโหมด "ย้าย" (มติผู้ใช้ 2026-08-06) —
+  // ผูกผิดใบแล้วเดิมแก้ไม่ได้เลย ต้องลบดีลทิ้งสร้างใหม่ ซึ่งพาไทม์ไลน์/ใบเสนอราคาหายไปด้วย
+  const movingProject = !!deal?.projectId;
   const openLinkProject = async () => {
     setLinkOpen(true);
     setLinkLoading(true);
@@ -467,7 +471,10 @@ export default function DealOverviewPage() {
     try {
       const res = await fetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
-      const mine = (Array.isArray(rows) ? rows : []).filter((p) => !deal.customerId || !p.customerId || p.customerId === deal.customerId);
+      const mine = (Array.isArray(rows) ? rows : []).filter((p) => (
+        (!deal.customerId || !p.customerId || p.customerId === deal.customerId)
+        && p.id !== deal.projectId   // โครงการที่ดีลอยู่แล้ว เลือกไปก็ตีกลับ
+      ));
       setLinkProjects(mine);
       if (mine.length === 1) setLinkProjectId(mine[0].id);
     } catch {
@@ -477,11 +484,21 @@ export default function DealOverviewPage() {
     }
   };
   const submitLinkProject = async () => {
-    if (!linkProjectId) { setError("เลือกโครงการที่จะผูกก่อน"); return; }
+    if (!linkProjectId) { setError(movingProject ? "เลือกโครงการปลายทางก่อน" : "เลือกโครงการที่จะผูกก่อน"); return; }
+    // ย้าย = โครงการเดิมเสียดีลไปพร้อมของทั้งชุด ต้องยืนยันก่อนเสมอ
+    if (movingProject && !(await confirmAction({
+      title: "ย้ายดีลข้ามโครงการ",
+      description: `ย้ายดีลนี้ออกจากโครงการ ${data?.project?.code || data?.project?.name || "เดิม"} ไปโครงการที่เลือก?`,
+      detail: "ไทม์ไลน์ งาน คำร้อง และใบสั่งขายจะย้ายตามไปทั้งชุด โดยไม่เลื่อนวัน — ยกเว้นรายการ FG ที่ต้องย้ายเองที่หน้าโครงการ",
+      confirmLabel: "ย้ายไปโครงการที่เลือก",
+    }))) return;
     const okDone = await runAction("link-project", `/api/sales-planning/deals/${id}/link-project`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: linkProjectId, startDate: linkStartDate || undefined }),
+      body: JSON.stringify({
+        projectId: linkProjectId,
+        ...(movingProject ? { move: true } : { startDate: linkStartDate || undefined }),
+      }),
     });
     if (okDone) setLinkOpen(false);
   };
@@ -973,6 +990,17 @@ export default function DealOverviewPage() {
             </div>
             {data.project ? (
               <>
+              {/* ผูกผิดโครงการเกิดขึ้นจริง — ทางแก้เดิมคือลบดีลทิ้งแล้วสร้างใหม่ ซึ่งพา
+                  ไทม์ไลน์/ใบเสนอราคา/คำร้องหายไปทั้งชุด (มติผู้ใช้ 2026-08-06) */}
+              {canEdit && deal?.stage !== "lost" && (
+                <div className="flex justify-end mb-2">
+                  <Button variant="quiet" size="sm" onClick={openLinkProject} disabled={!!actionBusy}
+                    icon={<PackageCheck size={14} aria-hidden="true" />}
+                    title="ย้ายดีลนี้ไปโครงการอื่นของลูกค้ารายเดียวกัน — ไทม์ไลน์และของที่ผูกดีลย้ายตามไปทั้งชุด">
+                    ย้ายไปโครงการอื่น
+                  </Button>
+                </div>
+              )}
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
                 <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
                 <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
@@ -1287,11 +1315,16 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
-      <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" size="sm">
+      {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment
+          ดีลที่มีโครงการแล้วใช้โมดัลตัวเดียวกันในโหมด "ย้าย" (ไม่ gen ใหม่ ไม่ตั้งวันใหม่) */}
+      <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title={movingProject ? "ย้ายไปโครงการอื่น" : "ผูกกับโครงการเดิม"} size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
-            ดีลนี้จะถูกผูกเข้าโครงการที่เลือก และต่อขั้นตอนตาม template ประเภท <strong>{DEAL_TYPE_LABELS[dealTypeOf(deal)]}</strong> เป็นช่วงใหม่ท้ายไทม์ไลน์
+            {movingProject ? (
+              <>ดีลนี้จะย้ายออกจากโครงการ <strong>{data?.project?.code || data?.project?.name || "เดิม"}</strong> ไปโครงการที่เลือก — ไทม์ไลน์ งาน คำร้อง และใบสั่งขายย้ายตามไปทั้งชุด <strong>วันของงานไม่ถูกเลื่อน</strong> ส่วนรายการ FG ไม่ย้ายตาม (ย้ายเองที่หน้าโครงการ)</>
+            ) : (
+              <>ดีลนี้จะถูกผูกเข้าโครงการที่เลือก และต่อขั้นตอนตาม template ประเภท <strong>{DEAL_TYPE_LABELS[dealTypeOf(deal)]}</strong> เป็นช่วงใหม่ท้ายไทม์ไลน์</>
+            )}
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
             โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
@@ -1307,14 +1340,17 @@ export default function DealOverviewPage() {
               searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
               emptyText="ไม่พบโครงการที่ตรงกับคำค้น" />
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-            วันเริ่มงานช่วงนี้
-            <DateInput value={linkStartDate} onChange={setLinkStartDate} />
-          </label>
+          {/* ย้ายแล้วไม่ตั้งวันใหม่ — ไทม์ไลน์เดิมมีวันจริง/ความคืบหน้าอยู่แล้ว */}
+          {!movingProject && (
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
+              วันเริ่มงานช่วงนี้
+              <DateInput value={linkStartDate} onChange={setLinkStartDate} />
+            </label>
+          )}
           <div className="form-action-bar">
             <button type="button" className="btn btn-secondary" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
-              {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
+              {actionBusy === "link-project" ? (movingProject ? "กำลังย้าย…" : "กำลังผูก…") : (movingProject ? "ย้ายไปโครงการนี้" : "ผูกเข้าโครงการ")}
             </button>
           </div>
         </div>
