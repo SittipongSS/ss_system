@@ -40,14 +40,18 @@
 .left { width: 44%; border-right: 1px solid var(--border); }
 .right { flex: 1; min-width: 0; }
 
+/* ⚠️ ขนาดต้องเท่า `.ui-select-search` ของระบบเป๊ะ (globals.css) — ช่องค้นในดรอปดาวน์
+   ทุกตัวคือของชิ้นเดียวกันในสายตาผู้ใช้ ของเดิมที่นี่เตี้ยกว่า 2px และตัวอักษรเล็กกว่า
+   หนึ่งขั้น จึงดูหดเล็กกว่าช่องค้นในดรอปดาวน์อื่นทั้งระบบ (ผู้ใช้ทัก 2026-08-06) */
 .search {
   display: flex;
   position: sticky;
   top: 0;
   align-items: center;
+  /* ระบบเก่าเขียน 7px ไว้ดิบ ๆ — ที่นี่ใช้ขั้น 8px แทน ตาแยกไม่ออกและไม่เพิ่มหนี้เลขดิบ */
   gap: var(--space-2);
-  height: 32px;
-  padding: 0 var(--space-2);
+  height: 34px;
+  padding: 0 var(--space-2-5);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   /* sticky = ลอยทับรายการที่เลื่อนผ่านใต้มัน → ต้องทึบแบบแผงลอย ไม่ใช่ --panel
@@ -56,16 +60,22 @@
   color: var(--text-3);
 }
 
+/* วงแหวนโฟกัสแบบเดียวกับช่องค้นของระบบ — ของเดิมไม่มีเลย กดแล้วไม่รู้ว่าเคอร์เซอร์อยู่ไหน */
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .search input {
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   border: 0;
+  outline: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: var(--fs-5);
+  font-size: var(--fs-7);
 }
-
-.search input:focus { outline: none; }
 
 .row {
   display: flex;
