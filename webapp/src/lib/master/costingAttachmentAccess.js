@@ -14,7 +14,7 @@
 //   5 attachments PARENT_TABLE + สาขา   → proxy /file ตอบ 403 = รูปพรีวิวไม่ขึ้น
 //     ใน .../attachments/[id]/file         ทั้งที่ไฟล์อัปขึ้นไปแล้วจริง
 // costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น · ทั้งคู่โดนข้อ 4–5 จนถึง 2026-07-26
-import { canUser, canViewCosting } from '@/lib/permissions';
+import { canUser, canViewCosting, canViewRequests } from '@/lib/permissions';
 import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 
 export const COSTING_ATTACHMENT_TABLE = {
@@ -40,8 +40,15 @@ export const isCostingAttachment = (entityType) => !!COSTING_ATTACHMENT_TABLE[en
 //
 // ⚠️ async แล้ว (บรรทัดคำร้องต้องโหลดหัวคำร้องมาตัดสิน) — ผู้เรียกทั้ง 3 จุดต้อง await
 export async function canViewCostingAttachment(supabase, entityType, parent, user) {
-  if (!canViewCosting(user)) return false;
-  if (entityType === 'costing_item') return true;
+  // ใบขอราคาผลิต = ระบบราคา · คำร้อง = ระบบคำร้อง — **คนละด่านชั้นนอกตั้งแต่ R-1**
+  if (entityType === 'costing_item') return canViewCosting(user);
+
+  // 🐞 เดิมด่านชั้นนอกของคำร้องเป็น `canViewCosting` ล้วน ซึ่งแคบ `staff` ไว้เฉพาะ
+  // ฝ่ายแหล่งราคา (RD/PC) ⇒ **ฝ่ายบัญชี (FN) รับคำร้องของตัวเองได้ แต่เปิดดูรูป/
+  // เอกสารที่แนบมากับใบนั้นไม่ได้สักไฟล์ และแนบกลับก็ไม่ได้** — เป็นกับดักเดิมของ R-1
+  // เป๊ะ ๆ (REQUEST_ANSWER_DEPARTMENTS มี FN ด้วย, COSTING_SOURCE_DEPARTMENTS ไม่มี)
+  // canViewRequests = canViewCosting ∪ ฝ่ายที่รับคำร้องของตัวเอง ⇒ ไม่มีใครเสียสิทธิ์เดิม
+  if (!canViewRequests(user)) return false;
   if (entityType === 'dept_request') return canReadRequestRow(user, parent);
   if (entityType !== 'dept_request_item') return false;
 
@@ -59,8 +66,11 @@ export async function canViewCostingAttachment(supabase, entityType, parent, use
 //   เคสขอราคาวัสดุ — ผู้เปิดเคส หรือฝ่ายที่ต้องตอบ และเฉพาะตอนเคสยังเดินอยู่
 //                    (ปิด/ยกเลิกแล้วถือเป็นหลักฐาน ไม่ให้แก้ของแนบย้อนหลัง)
 export async function canAttachToCosting(supabase, entityType, parent, user) {
-  if (!canViewCosting(user)) return false;
-  if (entityType === 'costing_item') return canUser(user, 'costing:edit');
+  if (entityType === 'costing_item') return canViewCosting(user) && canUser(user, 'costing:edit');
+
+  // ด่านชั้นนอกของคำร้องคือด่านคำร้อง ไม่ใช่ด่านราคา (เหตุผลเดียวกับ
+  // canViewCostingAttachment ข้างบน — อ่านกับเขียนต้องใช้มาตรฐานเดียวกัน)
+  if (!canViewRequests(user)) return false;
 
   // หัวคำร้อง = parent เป็นตัวคำร้องเอง ไม่ต้องไปโหลดแม่อีกชั้น
   if (entityType === 'dept_request') return canAttachToRequest(parent, user);

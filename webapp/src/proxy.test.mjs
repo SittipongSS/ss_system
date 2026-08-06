@@ -254,3 +254,45 @@ test('/api/tax/reports ไม่ถูกยุบเป็น alias — อ่�
     assert.equal(lockedOut({ role, extraCaps: [] }, '/api/tax/reports', 'POST', true), true, `${role} เขียนรายงานไม่ได้`);
   }
 });
+
+// ── ด่านไฟล์แนบต้องไม่ตัดฝ่ายที่ handler ให้สิทธิ์รายแถวไว้ ─────────────────
+//
+// 🐞 บั๊กจริง: ลิสต์ cap ของ `/api/attachments` มีแต่ของฝ่ายขาย/master data/mgmt
+// ⇒ **RD และ staff (PC/PD/WH/QC/TS) แนบไฟล์ไม่ได้เลยทั้งระบบ** · /api/upload
+// ปล่อยผ่าน (ตกท้าย apiWriteAllowed = ทุกคนที่ล็อกอิน) ไฟล์จึงขึ้น Drive จริงก่อน
+// แล้วมาตายตอนบันทึกแถว ⇒ ระบบลบไฟล์ทิ้งแล้วเด้งคำว่า "forbidden" ดิบ ๆ
+//
+// กระทบหนักสุดที่ "คำร้องข้ามฝ่าย" ซึ่งสร้างที่แนบไฟล์ขึ้นมาเพื่อฝ่ายเหล่านี้โดยเฉพาะ
+// (บรีฟกลิ่น/Mock-up ต้องมีรูปอ้างอิง) — ที่ผ่านมาเลยยังต้องส่งกันทาง LINE เหมือนเดิม
+test('⭐ RD/staff ต้องแนบและลบไฟล์แนบได้ — ด่านหยาบห้ามตัดคนที่มีสิทธิ์จริงรายแถว', () => {
+  for (const role of ['rd', 'staff']) {
+    assert.equal(apiWriteAllowed('POST', '/api/attachments', role, []), true, `${role} แนบไฟล์`);
+    assert.equal(apiWriteAllowed('DELETE', '/api/attachments/ATT-1', role, []), true, `${role} ลบไฟล์`);
+    // หน้าจอยิงผ่าน namespace /api/master ซึ่ง normalizePath ตัดเป็นชื่อเดียวกัน
+    assert.equal(apiWriteAllowed('POST', '/api/master/attachments', role, []), true, `${role} แนบผ่าน /api/master`);
+  }
+});
+
+// ผูกด่านไฟล์แนบเข้ากับด่านคำร้อง: ใครตอบคำร้อง/ตอบราคาได้ ย่อมต้องแนบรูปประกอบได้
+// — ไม่งั้นเพิ่ม role ผู้ตอบใหม่แล้วจะเสียความสามารถนี้ไปเงียบ ๆ อีกรอบ
+test('ทุก role ที่รับ/ตอบคำร้องได้ ต้องผ่านด่านไฟล์แนบด้วย', () => {
+  const answerers = ['rd', 'staff', 'ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin'];
+  for (const role of answerers) {
+    assert.equal(
+      apiWriteAllowed('POST', '/api/sa/requests/DR-1/items', role, []),
+      apiWriteAllowed('POST', '/api/attachments', role, []),
+      `${role}: ตอบคำร้องได้แต่แนบไฟล์ไม่ได้ (หรือกลับกัน) = คนละมาตรฐานกันเงียบ ๆ`,
+    );
+  }
+});
+
+// การเปิดทางให้ RD/staff ต้องไม่พลอยเปิดให้ผู้สังเกตการณ์ — costing:view เป็นของ
+// executive ด้วย จึงต้องใช้ costing:edit/quote เป็นเงื่อนไข ไม่ใช่ costing:view
+test('ผู้สังเกตการณ์อ่านอย่างเดียวยังแนบ/ลบไฟล์ไม่ได้', () => {
+  for (const role of ['viewer', 'executive', 'marketing']) {
+    assert.equal(apiWriteAllowed('POST', '/api/attachments', role, []), false, `${role} ต้องแนบไม่ได้`);
+    assert.equal(apiWriteAllowed('DELETE', '/api/attachments/ATT-1', role, []), false, `${role} ต้องลบไม่ได้`);
+    // อ่านยังได้ตามเดิม (ด่านนี้ปล่อย GET เสมอ — ตัวกั้นจริงอยู่ใน handler)
+    assert.equal(apiWriteAllowed('GET', '/api/attachments', role, []), true, `${role} อ่านได้`);
+  }
+});
