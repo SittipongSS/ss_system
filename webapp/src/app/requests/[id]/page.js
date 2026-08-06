@@ -361,7 +361,8 @@ export default function MaterialAskDetailPage() {
   const rowSummary = requestRowSummary(req.items || []);
   const awaitingPrice = (req.items || []).filter((i) => rowStage(i) === "awaiting_price").length;
   const middleStep = (() => {
-    if (needsApproval && !req.approvedAt) return { label: "รอหัวหน้ายืนยัน", hint: "ยังลงมือไม่ได้" };
+    // ⚠️ **ไม่พูดเรื่องยืนยันที่นี่** — ขั้น "รอหัวหน้ายืนยัน" เป็นขั้นแยกของตัวเองแล้ว
+    // (พูดทั้งสองที่ = ข้อความเดียวกันขึ้นสองบรรทัดติดกัน ซึ่งเป็นบั๊กที่ผู้ใช้เห็นจริง)
     if (!rowSummary.total) {
       return { label: `รอฝ่าย ${req.dept} ส่งของ`, hint: "รับเรื่องแล้ว ยังไม่มีของส่งมา" };
     }
@@ -375,15 +376,19 @@ export default function MaterialAskDetailPage() {
     return { label: hasItems ? "กำลังหาราคา" : "กำลังดำเนินการ", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" };
   })();
 
+  // ⚠️ ขั้นที่แทรกทำให้ลำดับเลื่อน — ต้องนับตามรางที่เรนเดอร์จริง ไม่ใช่ตามสถานะดิบ
+  // (ไม่งั้นจุดที่ไฮไลต์จะชี้ขั้นผิดไปหนึ่งช่องสำหรับหัวข้อที่มีประตูหัวหน้า)
+  const approvalOffset = needsApproval ? 1 : 0;
   const workflowIndex = req.status === "draft"
     ? 0
     : req.status === "pending"
       ? 1
+      // รับเรื่องแล้วแต่ยังไม่ยืนยัน = อยู่ที่ขั้นประตู · ยืนยันแล้วค่อยขยับไปขั้นทำงาน
       : req.status === "acknowledged"
-        ? 2
+        ? (needsApproval && !req.approvedAt ? 2 : 2 + approvalOffset)
         : req.status === "answered"
-          ? 3
-          : 4;
+          ? 3 + approvalOffset
+          : 4 + approvalOffset;
   // ขั้นตอนบนการ์ดควบคุมพูดภาษาของชนิดนั้น — ชนิดที่ไม่มีบรรทัดไม่ได้ "หาราคา"
   const workflowSteps = workflowStepsFromIndex([
     { id: "draft", label: "จัดทำคำร้อง", hint: hasItems ? "ระบุวัสดุและชั้นจำนวน" : "ระบุเรื่องที่ต้องการ" },
