@@ -15,7 +15,7 @@ test('ชื่อช่องในฟอร์มถูกแปลงเป�
 test('ไม่มีช่องไหนบังคับ — ใบเปล่ายังบันทึกได้', () => {
   const { columns, error } = normalizePdr({});
   assert.equal(error, null);
-  // ⚠️ ช่องติ๊กหลายตัวคืน `[]` ไม่ใช่ null — คอลัมน์เป็น NOT NULL DEFAULT '{}' (0217)
+  // ⚠️ ช่องติ๊กหลายตัวคืน `[]` ไม่ใช่ null — คอลัมน์เป็น NOT NULL DEFAULT '{}' (0218)
   // ส่ง null ไปจะโดน constraint ตีกลับด้วย error ดิบจาก Postgres
   for (const [column, v] of Object.entries(columns)) {
     assert.equal(Array.isArray(v) ? v.length === 0 : v === null, true, column);

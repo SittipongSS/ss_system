@@ -1,6 +1,6 @@
-// ── ส่วนหัวของแบบฟอร์ม PDR — ด่านล้วน ไม่แตะ DB (mig 0214 · 0217) ────────
+// ── ส่วนหัวของแบบฟอร์ม PDR — ด่านล้วน ไม่แตะ DB (mig 0214 · 0218) ────────
 //
-// ⚠️ ความยาวและช่วงตัวเลขต้อง **ไม่หลวมกว่า CHECK ของ 0214/0217** — หลวมกว่าเมื่อไร
+// ⚠️ ความยาวและช่วงตัวเลขต้อง **ไม่หลวมกว่า CHECK ของ 0214/0218** — หลวมกว่าเมื่อไร
 // ก็ได้ error ดิบจาก Postgres ที่ผู้ใช้อ่านไม่รู้เรื่อง แทนข้อความไทยที่บอกว่าต้องแก้ตรงไหน
 //
 // ⭐ **แผนที่ช่อง→คอลัมน์ derive จากทะเบียน** (`pdrFields.js`) ไม่ไล่เขียนมือ —
@@ -14,7 +14,7 @@ const TEXT_LIMITS = {
   pdrTargetPsychographic: 500, pdrTargetPainpoint: 500, pdrProductKind: 200,
   pdrMoq: 100, pdrTexture: 40, pdrColor: 200, pdrPackSize: 500,
   pdrBrandSample: 500, pdrSpecialRequirements: 2000,
-  // 0217
+  // 0218
   pdrPrevProductCode: 200, pdrPackagingArtwork: 40,
   pdrVpAttribute: 2000, pdrVpBenefit: 2000, pdrVpValue: 2000, pdrExportDocNote: 500,
 };
