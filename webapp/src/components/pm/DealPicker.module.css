@@ -55,6 +55,11 @@
   align-items: center;
   /* ระบบเก่าเขียน 7px ไว้ดิบ ๆ — ที่นี่ใช้ขั้น 8px แทน ตาแยกไม่ออกและไม่เพิ่มหนี้เลขดิบ */
   gap: var(--space-2);
+  /* 🐞 `height` อย่างเดียวไม่พอ: กล่องนี้เป็น flex item ในคอลัมน์ที่สูงคงที่ ค่า
+     flex-shrink ปริยาย = 1 ⇒ ตอนรายการยาว (ก่อนพิมพ์ค้น) มันถูก "บีบ" ให้เตี้ยลง
+     พอพิมพ์แล้วรายการสั้นลงถึงกลับมาสูง 34px = ช่องค้นเปลี่ยนความสูงระหว่างพิมพ์
+     (ผู้ใช้ทัก 2026-08-06) · `flex: 0 0 auto` = ห้ามบีบ ให้รายการเลื่อนแทน */
+  flex: 0 0 auto;
   height: 34px;
   padding: 0 var(--space-2-5);
   border: 1px solid var(--border);
@@ -85,6 +90,9 @@
 .row {
   display: flex;
   width: 100%;
+  /* เหตุผลเดียวกับ .search — แถวในคอลัมน์สูงคงที่ถูกบีบเตี้ยลงเมื่อรายการยาว
+     ทำให้ความสูงแถวไม่เท่ากันระหว่าง "ก่อนค้น" กับ "หลังค้น" */
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2-5);
@@ -113,7 +121,7 @@
 .dealMeta { color: var(--text-3); font-size: var(--fs-3); }
 .deal.active .dealMeta { color: var(--accent-ink); }
 
-.empty { padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+.empty { flex: 0 0 auto; padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
 
 .triggerValue { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
 .triggerChip {
