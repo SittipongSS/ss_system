@@ -172,6 +172,10 @@ export function followUpRowFrom(row, sortOrder) {
     componentId: row.componentId ?? null,
     categoryCode: row.categoryCode ?? null,
     scentId: row.scentId ?? null,
+    // ⭐ **บรีฟตามมาด้วย** (mig 0213) — รอบแก้คือ direction อีกตัวของบรีฟก้อนเดิม
+    // ไม่ใช่บรีฟก้อนใหม่ · ตกหล่นเมื่อไรก็ผิดข้อที่ผู้ใช้สั่งไว้ตรง ๆ ว่า "กลิ่นต้อง
+    // ย้อนกลับได้ว่ามาจากบรีฟไหน" — และรอบแก้คือรอบที่ต้องย้อนดูบรีฟมากที่สุด
+    briefId: row.briefId ?? null,
     qty: row.qty ?? null,
     unit: row.unit ?? null,
     docType: row.docType ?? null,
