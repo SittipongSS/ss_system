@@ -9,7 +9,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, RefreshCw, Plus } from "lucide-react";
+import { ClipboardList, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
@@ -28,6 +28,9 @@ export default function RequestQueuePanel({
   // ทะเบียน/รายการที่ฟอร์มอ้าง — โครงการ+ดีล (บังคับทุกชนิด) · กลิ่น (F) · สูตร (FB)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [],
   productTypes = [], mentionPeople = [],
+  // ⚠️ `reload` ยังรับไว้ — ผู้เรียกใช้หลังกดสร้าง/แก้เพื่อดึงใหม่ · ที่ถอดคือ
+  // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
+  // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
   loading = false, loadError = "", reload, newRequestDefaults = null,
 }) {
   // ⭐ prefill ส่งผ่าน query — หน้าเต็มรับได้ตรง ๆ ต่างจากโมดัลที่ต้องส่ง props
@@ -63,9 +66,6 @@ export default function RequestQueuePanel({
     <>
       <div className="toolbar">
         <span className="spacer" />
-        <button type="button" className="btn" onClick={reload} disabled={loading}>
-          <RefreshCw size={14} /> รีเฟรช
-        </button>
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
         {/* ⚠️ **เปลือกเดียว** — ฟอร์มย้ายไป /requests/new ทั้งก้อน · ครอบ RequestForm
             ไว้สองที่จะได้แถบปุ่มกับข้อความ blocker สองชุดที่ต้องดูแลให้ตรงกัน
@@ -79,6 +79,25 @@ export default function RequestQueuePanel({
         </button>
       </div>
 
+      {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
+          วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอไปรับของ/
+          ส่งลูกค้าอยู่ ⇒ ตัวเลขสูงกว่าความจริงตลอดเวลา และไม่มีใครเชื่อมันอีกเลย
+          แยกออกมาแล้วตัวเลขที่เหลือถึงจะเป็นงานของฝ่ายจริง ๆ
+
+          🐞 **เคยอยู่ข้างในสาขา "มีแถว"** ⇒ ลิสต์ว่างแล้วแถบหายทั้งแถว · **0 ก็เป็น
+          ข้อมูล** — "ยังไม่รับเรื่อง 0 · เลยกำหนด 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่
+          หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกระหว่าง "ไม่มีงานค้าง"
+          กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ) */}
+      {!loading && !loadError && (
+        <div className={styles.counts}>
+          {QUEUE_COUNT_META.map((meta) => (
+            <span key={meta.key} className={styles.count} data-tone={meta.tone}>
+              {meta.label} <strong>{counts[meta.key]}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <SkeletonRows rows={4} />
       ) : loadError ? (
@@ -91,18 +110,6 @@ export default function RequestQueuePanel({
         </EmptyState>
       ) : (
         <TableScroll>
-          {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
-              วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอ
-              ไปรับของ/ส่งลูกค้าอยู่ ⇒ ตัวเลขสูงกว่าความจริงตลอดเวลา และไม่มีใคร
-              เชื่อมันอีกเลย · แยกออกมาแล้วตัวเลขที่เหลือถึงจะเป็นงานของฝ่ายจริง ๆ */}
-          <div className={styles.counts}>
-            {QUEUE_COUNT_META.map((meta) => (
-              <span key={meta.key} className={styles.count} data-tone={meta.tone}>
-                {meta.label} <strong>{counts[meta.key]}</strong>
-              </span>
-            ))}
-          </div>
-
           <table className="premium-table">
             <thead>
               <tr>
