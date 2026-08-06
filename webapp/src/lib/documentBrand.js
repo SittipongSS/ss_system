@@ -46,6 +46,13 @@ export const DOCUMENT_FORMS = Object.freeze({
     effectiveDate: '08/05/2568',
     title: 'PROJECT TIMELINE',
   }),
+  // ⭐ แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ — ค่าจากกระดาษจริงที่ผู้ใช้ส่งมา (Rev.02 · 06/02/2569)
+  pdr: Object.freeze({
+    code: 'FM-RD-01',
+    revision: '02',
+    effectiveDate: '06/02/2569',
+    title: 'PRODUCT DEVELOPMENT REQUEST (PDR)',
+  }),
 });
 
 export const documentFormLine = (form) =>
