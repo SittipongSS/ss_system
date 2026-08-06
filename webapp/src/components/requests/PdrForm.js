@@ -16,7 +16,8 @@ import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import {
-  PDR_CUSTOMER_KINDS, PDR_FIELDS, PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES,
+  PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
+  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 
@@ -35,13 +36,39 @@ const label = (key) => (FIELD[key].hint
 
 const withBlank = (options) => [{ value: "", label: "— เลือก —" }, ...options];
 
-export const emptyPdr = () => ({
-  requestType: "", customerBrand: "", moodTone: "", brandDirection: "",
-  shipTo: "", customerKind: "", targetDemographic: "", targetPsychographic: "",
-  targetPainpoint: "", productKind: "", wantedAt: "", sellFrom: "",
-  targetCost: "", targetPrice: "", moq: "", texture: "", color: "",
-  packSize: "", brandSample: "", specialRequirements: "", projectValue: "",
-});
+// ⭐ derive จากทะเบียน — เพิ่มช่องในทะเบียนแล้วฟอร์มรู้เองว่าต้องมีคีย์นั้น
+// (เดิมไล่เขียนมือ ⇒ ช่องใหม่จะเป็น undefined แล้ว React ด่าเรื่อง uncontrolled input)
+export const emptyPdr = () => Object.fromEntries(
+  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, f.type === "multi" ? [] : ""]),
+);
+
+// ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
+// ⚠️ **ไม่ติ๊กไว้ล่วงหน้า** (มติผู้ใช้เรื่องหมวดเอกสาร) — ค่าเริ่มต้นที่ติ๊กไว้ให้
+// แปลว่าไม่มีใครตัดสินใจ แล้วเสียงลืมติ๊กของที่ควรมีจริงจะกลืนหายไปกับค่าเริ่มต้น
+function ChipPicker({ label, options, value, onChange, disabled, hint }) {
+  const list = Array.isArray(value) ? value : [];
+  const toggle = (v) => onChange(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  return (
+    <div className="form-group col-span-2">
+      <span className={styles.fieldLabel}>{label}</span>
+      <div className={styles.mentionPicker}>
+        {options.map((o) => {
+          const on = list.includes(o.value);
+          return (
+            <button
+              key={o.value} type="button" disabled={disabled} aria-pressed={on}
+              className={`chip ${on ? styles.tierChipOn : styles.tierChip}`}
+              onClick={() => toggle(o.value)}
+            >
+              {on ? "✓ " : ""}{o.label}
+            </button>
+          );
+        })}
+      </div>
+      {hint && <small className={styles.hint}>{hint}</small>}
+    </div>
+  );
+}
 
 // ช่องที่ระบบเติมให้ — เส้นประ อ่านอย่างเดียว (แพตเทิร์นเดียวกับ "เติมจาก SO")
 function Derived({ label, value, from }) {
@@ -90,6 +117,7 @@ function TickAndWrite({ label, value, onChange, disabled }) {
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
   scentCount = null, customer = null, deal = null, requester = null,
+  coordinator = null, contactName = null, contactPhone = null, sampleDue = null,
 }) {
   // ⭐ ลูกค้าซื้อหลายกลิ่นแต่บอกมาแนวเดียวเป็นเรื่องปกติ (มติผู้ใช้) — รวบเป็นก้อนเดียว
   // แล้ว RD ส่งหลาย direction จากก้อนนั้น ซึ่งระบบรองรับอยู่แล้ว · จำนวนกลิ่นที่ขาย
@@ -116,6 +144,11 @@ export default function PdrForm({
       <Section title={SECTION.request.title} open note={SECTION.request.note}>
         <div className="form-grid">
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
+          <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
+          <Derived label={label("department")} value="การขายและบริการ" from={FIELD.department.from} />
+          {/* ⚠️ วันเดียวกับช่อง "ต้องการคำตอบ" ของคำร้อง ไม่ใช่ช่องใหม่ — เก็บซ้ำ
+              เมื่อไรก็ได้สองวันที่ขัดกันโดยไม่มีใครรู้ว่าอันไหนจริง */}
+          <Derived label={label("sampleDue")} value={sampleDue} from={FIELD.sampleDue.from} />
           <div className="form-group">
             <label htmlFor="pdr-type">{label("requestType")}</label>
             <Select
@@ -124,11 +157,22 @@ export default function PdrForm({
               options={withBlank(PDR_REQUEST_TYPES)}
             />
           </div>
+          {/* ⭐ ขึ้นเฉพาะประเภทที่กระดาษมีช่องกรอกต่อ — ซ่อนเฉย ๆ ไม่ล้างค่า
+              (สลับประเภทไปมาแล้วของที่พิมพ์ไว้ต้องไม่หาย) */}
+          {pdrFieldVisible(FIELD.prevProductCode, value) && (
+            <div className="form-group">
+              <label htmlFor="pdr-prev">{label("prevProductCode")}</label>
+              <Input id="pdr-prev" mono value={value.prevProductCode || ""} disabled={disabled}
+                onChange={(e) => set({ prevProductCode: e.target.value })} />
+            </div>
+          )}
         </div>
       </Section>
 
       <Section title={SECTION.customer.title}>
         <div className="form-grid">
+          <Derived label={label("contactName")} value={contactName} from={FIELD.contactName.from} />
+          <Derived label={label("contactPhone")} value={contactPhone} from={FIELD.contactPhone.from} />
           <Derived label={label("customer")} value={customer} from={FIELD.customer.from} />
           <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
           {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
@@ -340,6 +384,29 @@ export default function PdrForm({
             <Input id="pdr-pack" value={value.packSize} disabled={disabled}
               onChange={(e) => set({ packSize: e.target.value })} />
           </div>
+          <ChipPicker
+            label={label("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
+            value={value.packagingForms} onChange={(v) => set({ packagingForms: v })}
+          />
+          <div className="form-group">
+            <label htmlFor="pdr-art">{label("packagingArtwork")}</label>
+            <Select id="pdr-art" value={value.packagingArtwork || ""} disabled={disabled}
+              onChange={(e) => set({ packagingArtwork: e.target.value })}
+              options={withBlank(PDR_ARTWORK)} />
+            {/* ⚠️ มติผู้ใช้: บอกว่ามี = ต้องแนบจริง · บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ
+                (หน้าเปิดคำร้องยังแนบไฟล์ไม่ได้ ต้องมี id ของใบก่อน) */}
+            {value.packagingArtwork === "has" && (
+              <small className={styles.hint}>ต้องแนบไฟล์ภาพก่อนกดส่ง</small>
+            )}
+          </div>
+          {/* 2.9 Value Proposition — ของทั้งใบ ไม่ใช่รายกลิ่น (มติผู้ใช้) */}
+          {["vpAttribute", "vpBenefit", "vpValue"].map((key) => (
+            <div key={key} className="form-group col-span-2">
+              <label htmlFor={`pdr-${key}`}>{label(key)}</label>
+              <Input id={`pdr-${key}`} value={value[key] || ""} disabled={disabled}
+                onChange={(e) => set({ [key]: e.target.value })} />
+            </div>
+          ))}
           <div className="form-group col-span-2">
             <label htmlFor="pdr-sample">{label("brandSample")}</label>
             <Input id="pdr-sample" value={value.brandSample} disabled={disabled}
@@ -349,6 +416,19 @@ export default function PdrForm({
       </Section>
 
       <Section title={SECTION.regulatory.title} note={SECTION.regulatory.note}>
+        <ChipPicker
+          label={label("documents")} options={PDR_DOCUMENTS} disabled={disabled}
+          value={value.documents} onChange={(v) => set({ documents: v })}
+          hint="COA · MSDS · IFRA · อย. มีให้เป็นพื้นฐานอยู่แล้ว — ติ๊กเพื่อยืนยันว่าใบนี้ต้องการ"
+        />
+        {pdrFieldVisible(FIELD.exportDocNote, value) && (
+          <div className="form-group col-span-2">
+            <label htmlFor="pdr-export">{label("exportDocNote")}</label>
+            <Input id="pdr-export" value={value.exportDocNote || ""} disabled={disabled}
+              placeholder={FIELD.exportDocNote.placeholder}
+              onChange={(e) => set({ exportDocNote: e.target.value })} />
+          </div>
+        )}
         <div className="form-group col-span-2">
           <label htmlFor="pdr-special">{label("specialRequirements")}</label>
           <Textarea
@@ -369,8 +449,12 @@ export default function PdrForm({
 // กับคอลัมน์ของกลไกคำร้อง ⇒ ต้องมีตัวแปลงทั้งสองทาง ไม่ใช่ทางเดียว
 export function pdrValuesFrom(row = {}) {
   return Object.fromEntries(
-    PDR_FIELDS
-      .filter((f) => f.column)
-      .map((f) => [f.key, row[f.column] == null ? "" : String(row[f.column])]),
+    PDR_FIELDS.filter((f) => f.column).map((f) => {
+      const raw = row[f.column];
+      // ช่องติ๊กหลายตัวต้องกลับมาเป็น array — ไม่งั้น `String([])` ได้ "" แล้วค่าที่
+      // ติ๊กไว้หายทั้งชุดตอนเปิดโหมดแก้
+      if (f.type === "multi") return [f.key, Array.isArray(raw) ? raw : []];
+      return [f.key, raw == null ? "" : String(raw)];
+    }),
   );
 }

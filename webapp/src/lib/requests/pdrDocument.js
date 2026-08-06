@@ -96,7 +96,9 @@ export function renderPdrDocument({ request = {}, briefs = [], company = {}, for
     const found = PDR_SECTIONS.find((x) => x.key === key);
     const pairs = pdrSectionRows(found, request, {
       includeEmpty: true,
-      context: { briefs, scentCount: briefs.length || null },
+      // ⚠️ ค่าที่ระบบเติมให้มาจาก server (`findRequest`) — เอกสารเป็นฟังก์ชัน
+      // บริสุทธิ์ โหลดเองไม่ได้ · ไม่มี context = ช่องพวกนั้นพิมพ์เป็นเส้นเปล่า
+      context: { ...(request.pdrContext || {}), briefs, scentCount: briefs.length || null },
     });
     return `<section class="blk"><h3>${esc(heading)}</h3><table class="kv">${rows(pairs)}</table></section>`;
   };

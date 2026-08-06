@@ -1,4 +1,5 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
+import { pdrContext } from '@/lib/requests/pdrFields';
 import { randomUUID } from 'crypto';
 import {
   materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
@@ -172,6 +173,29 @@ export async function findRequest(supabase, id) {
     .order('sortOrder', { ascending: true });
   if (briefError) throw briefError;
   const withBriefs = { ...row, briefs: briefs || [] };
+
+  // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)
+  //
+  // ⚠️ **ประกอบที่ server** ไม่ใช่ให้แต่ละจอไปโหลดเอง — จอแสดงกับเอกสารต้องได้ชื่อ
+  // ชุดเดียวกันเสมอ · และเอกสารเป็นฟังก์ชันบริสุทธิ์ที่โหลดอะไรเองไม่ได้อยู่แล้ว
+  // ⚠️ โหลดเฉพาะใบเดียวตอนเปิด ไม่ใช่ตอนโหลดคิวทั้งชุด (คิวไม่ได้ใช้ค่าพวกนี้)
+  const [project, customer, deal] = await Promise.all([
+    withBriefs.projectId
+      ? supabase.from('projects').select('id, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
+        .maybeSingle().then((r) => r.data)
+      : null,
+    withBriefs.customerId
+      ? supabase.from('customers').select('id, name, contacts, "contactPerson", "contactPhone"')
+        .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
+      : null,
+    withBriefs.dealId
+      ? supabase.from('sales_deals').select('id, code').eq('id', withBriefs.dealId)
+        .maybeSingle().then((r) => r.data)
+      : null,
+  ]);
+  withBriefs.pdrContext = pdrContext({
+    request: withBriefs, project, customer, deal, briefs: briefs || [],
+  });
 
   if (!withBriefs.salesOrderId) return { ...withBriefs, salesOrderLines: [] };
   const { data: lines, error } = await supabase

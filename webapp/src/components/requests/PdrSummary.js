@@ -88,7 +88,7 @@ export default function PdrSummary({ request, briefs = [] }) {
         <details key={section.key} className={styles.pdrSection}>
           <summary className={styles.pdrSummary}>{section.title}</summary>
           <div className={styles.pdrBody}>
-            <Facts rows={pdrSectionRows(section, request, { context: { briefs } })} />
+            <Facts rows={pdrSectionRows(section, request, { context: { ...(request.pdrContext || {}), briefs } })} />
           </div>
         </details>
       ))}
