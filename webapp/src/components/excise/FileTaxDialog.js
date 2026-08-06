@@ -5,6 +5,8 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { fmtMoney } from "@/lib/format";
 import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { describeResponseError } from "@/lib/fetchError";
+import { notifyToast } from "@/components/ui/Toast";
 
 // LG records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
@@ -49,7 +51,8 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
         fd.append("entityType", "order");
         fd.append("entityId", order.id);
         const up = await fetch("/api/upload", { method: "POST", body: fd });
-        if (!up.ok) throw new Error((await up.json().catch(() => ({})))?.error || "อัปโหลดไฟล์ไม่สำเร็จ");
+        // คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON — เก็บ status ไว้เป็นเบาะแส
+        if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
         const uploaded = await up.json();
         receiptUrl = uploaded.url;
         receiptDriveFileId = uploaded.driveFileId || null;
@@ -63,7 +66,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
         if (formRef.trim()) body.taxFormRef = formRef.trim();
       }
       const res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถบันทึกได้");
+      if (!res.ok) throw new Error(await describeResponseError(res, "ไม่สามารถบันทึกได้"));
       // 3) แนบไฟล์ใบเสร็จเข้าตาราง attachments (order/tax_receipt) — โผล่รวมใน
       //    AttachmentsPanel. best-effort: ปิดงานสำเร็จแล้ว ถ้าแนบพลาดแนบเองได้.
       if (receiptUrl) {
@@ -87,12 +90,18 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
               },
             }),
           });
-          // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
-          if (!sv.ok && receiptDriveFileId) {
-            fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: receiptDriveFileId }) }).catch(() => {});
+          if (!sv.ok) {
+            // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
+            if (receiptDriveFileId) {
+              fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: receiptDriveFileId }) }).catch(() => {});
+            }
+            throw new Error(await describeResponseError(sv, "แนบใบเสร็จเข้าออเดอร์ไม่สำเร็จ"));
           }
         } catch (attErr) {
+          // เดิมลง console อย่างเดียว = ผู้ใช้ปิดงานเสร็จแล้วเข้าใจว่าใบเสร็จแนบไปแล้ว
+          // ทั้งที่ไม่มีไฟล์อยู่จริง · ยังไม่ล้มทั้งงาน (ปิดงานสำเร็จไปแล้ว) แต่ต้องรู้ตัว
           console.error("attach receipt failed:", attErr);
+          notifyToast.error(`${attErr.message} — บันทึกการชำระแล้ว แนบใบเสร็จซ้ำได้ที่หน้ารายละเอียดออเดอร์`);
         }
       }
       onDone?.();

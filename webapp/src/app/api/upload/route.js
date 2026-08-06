@@ -137,7 +137,15 @@ export async function POST(request) {
     }
   } catch (error) {
     console.error('Upload error:', error);
-    return Response.json({ error: 'อัปโหลดไฟล์ไม่สำเร็จ' }, { status: 500 });
+    // ⚠️ ข้อความนี้ต้อง **ไม่ซ้ำ** กับค่าสำรองฝั่ง client ("อัปโหลดไฟล์ไม่สำเร็จ")
+    // เดิมซ้ำกันเป๊ะ ⇒ เห็นข้อความแล้วแยกไม่ออกว่า handler ตกที่ catch นี้ หรือคำขอ
+    // ไปไม่ถึง handler เลย (ถูกตัดที่ชั้นหน้าแอป) ซึ่งเป็นคนละปัญหาและแก้คนละทาง
+    // เคสที่ตกมาที่นี่บ่อยสุดคือ formData() อ่าน body ไม่ได้ — ต้องเห็นสาเหตุจริง
+    const detail = String(error?.message || '').slice(0, 200);
+    return Response.json(
+      { error: `เซิร์ฟเวอร์อ่านไฟล์ที่ส่งมาไม่ได้${detail ? ` — ${detail}` : ''}` },
+      { status: 500 },
+    );
   }
 }
 

@@ -1,3 +1,5 @@
+import { describeResponseError } from '@/lib/fetchError';
+
 // ── อัปไฟล์แนบ 1 ไฟล์: storage → แถว metadata ──────────────────────────
 //
 // ยกออกจาก `AttachmentsPanel.upload()` เพราะมีผู้เรียกที่สองแล้ว (โมดัลเปิดคำร้อง
@@ -19,10 +21,11 @@ export async function uploadAttachment({
 
   const up = await fetch('/api/upload', { method: 'POST', body: fd });
   if (!up.ok) {
-    // ข้อความจริงจาก server เท่านั้น — "อัปโหลดไม่สำเร็จ" ตายตัวทำให้ผู้ใช้ไม่รู้ว่า
+    // ข้อความจริงจาก server ก่อนเสมอ — "อัปโหลดไฟล์ไม่สำเร็จ" ตายตัวทำให้ผู้ใช้ไม่รู้ว่า
     // ติดชนิดไฟล์ ขนาด หรือท่อ Drive และคนดูแลระบบตามไม่ได้
-    const detail = await up.json().catch(() => ({}));
-    return { ok: false, error: detail.error || 'อัปโหลดไฟล์ไม่สำเร็จ' };
+    // ⚠️ คำขอที่ถูกตัดก่อนถึง handler (เช่นเพดานขนาดของชั้นโฮสติ้ง) ตอบกลับเป็น HTML
+    // ไม่ใช่ JSON — describeResponseError เก็บ status ไว้ให้แทนที่จะทิ้งไปเงียบ ๆ
+    return { ok: false, error: await describeResponseError(up, 'อัปโหลดไฟล์ไม่สำเร็จ') };
   }
   const { url, driveFileId } = await up.json();
 
@@ -49,8 +52,7 @@ export async function uploadAttachment({
         body: JSON.stringify({ driveFileId }),
       }).catch(() => {});
     }
-    const detail = await res.json().catch(() => ({}));
-    return { ok: false, error: detail.error || 'บันทึกเอกสารไม่สำเร็จ' };
+    return { ok: false, error: await describeResponseError(res, 'บันทึกเอกสารไม่สำเร็จ') };
   }
   return { ok: true, error: null };
 }

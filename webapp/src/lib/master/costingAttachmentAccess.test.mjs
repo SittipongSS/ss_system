@@ -6,7 +6,7 @@
 // รูป/สเปกของคำร้องใบไหนก็ได้ · สองมาตรฐานในเรื่องเดียวกันโดยไม่มีใครสังเกต
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canViewCostingAttachment } from './costingAttachmentAccess.js';
+import { canAttachToCosting, canViewCostingAttachment } from './costingAttachmentAccess.js';
 
 const OWNER = { id: 'U-AE', role: 'ae', department: 'SA' };
 const OTHER_SALES = { id: 'U-AE2', role: 'ae', department: 'SA' };
@@ -49,4 +49,45 @@ test('ใบขอราคาผลิตคงเดิม — คุมด้
     assert.equal(await canViewCostingAttachment(db, 'costing_item', { id: 'CRI-1' }, u), true, u.id);
   }
   assert.equal(await canViewCostingAttachment(db, 'costing_item', { id: 'CRI-1' }, MARKETING), false);
+});
+
+// ── ฝ่ายที่รับคำร้องได้ ต้องแตะไฟล์ของใบนั้นได้ด้วย ────────────────────────
+//
+// 🐞 ด่านชั้นนอกของไฟล์แนบคำร้องเคยเป็น `canViewCosting` ล้วน ซึ่งแคบ role `staff`
+// ไว้เฉพาะฝ่ายแหล่งราคา (COSTING_SOURCE_DEPARTMENTS = RD/PC) — แต่ฝ่ายที่รับคำร้อง
+// คือ REQUEST_ANSWER_DEPARTMENTS = RD/PC/**FN** ⇒ ฝ่ายบัญชีรับคำร้องเอกสารการเงิน
+// ของตัวเองได้ แต่ **เปิดดูไฟล์ที่แนบมากับใบนั้นไม่ได้สักไฟล์ และแนบกลับก็ไม่ได้**
+//
+// เป็นกับดักเดียวกับที่ R-1 เขียนเตือนไว้เอง ("ปลดด่านคือปิดที่เนื้อ ไม่ใช่เปิดที่เมนู"):
+// แยกด่านคำร้องออกจากด่านราคาแล้วที่ตัว endpoint แต่สายไฟล์แนบยังวิ่งผ่านด่านราคาอยู่
+const FN = { id: 'U-FN', role: 'staff', department: 'FN' };
+const FN_REQ = { id: 'DR-9', status: 'pending', dept: 'FN', requestedById: 'U-AE' };
+const fnDb = {
+  from: () => ({
+    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: FN_REQ, error: null }) }) }),
+  }),
+};
+
+test('⭐ ฝ่ายบัญชี (FN) อ่านและแนบไฟล์ในคำร้องของฝ่ายตัวเองได้', async () => {
+  assert.equal(await canViewCostingAttachment(fnDb, 'dept_request', FN_REQ, FN), true, 'อ่านหัวคำร้อง');
+  assert.equal(await canAttachToCosting(fnDb, 'dept_request', FN_REQ, FN), true, 'แนบเข้าหัวคำร้อง');
+  const line = { id: 'DRI-9', requestId: 'DR-9' };
+  assert.equal(await canViewCostingAttachment(fnDb, 'dept_request_item', line, FN), true, 'อ่านรายบรรทัด');
+  assert.equal(await canAttachToCosting(fnDb, 'dept_request_item', line, FN), true, 'แนบรายบรรทัด');
+});
+
+test('การเปิดทางให้ FN ต้องไม่ทำให้เห็นใบของฝ่ายอื่น หรือแตะระบบราคา', async () => {
+  // REQ (ฝ่าย PC) ไม่ใช่ของ FN — ด่านรายแถวยังตัดตามเดิม
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', REQ, FN), false, 'ใบของฝ่าย PC');
+  assert.equal(await canAttachToCosting(db, 'dept_request', REQ, FN), false, 'แนบใบของฝ่าย PC');
+  // ใบขอราคาผลิตยังผูกกับด่านราคาเหมือนเดิม — FN ไม่ใช่ฝ่ายแหล่งราคา
+  assert.equal(await canViewCostingAttachment(db, 'costing_item', {}, FN), false, 'ต้นทุนในใบขอราคา');
+  assert.equal(await canAttachToCosting(db, 'costing_item', {}, FN), false, 'แนบใบขอราคา');
+});
+
+test('คำร้องที่ปิด/ยกเลิกแล้วยังแนบไม่ได้ แม้เป็นฝ่ายเจ้าของ (หลักฐานห้ามแก้ย้อนหลัง)', async () => {
+  for (const status of ['closed', 'cancelled']) {
+    const closed = { ...FN_REQ, status };
+    assert.equal(await canAttachToCosting(fnDb, 'dept_request', closed, FN), false, status);
+  }
 });

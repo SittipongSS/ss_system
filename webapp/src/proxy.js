@@ -355,6 +355,18 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ANY supported parent entity passes here (customer/product = master editors;
   // order receipts = sales filing / legal tax approval). The route handler then
   // enforces the precise per-entity row scope (canEditRecord on the parent).
+  //
+  // 🐞 ลิสต์นี้เคยมีแต่ cap ของ "ฝ่ายขาย + master data + mgmt" ⇒ **RD และ staff
+  // (PC/PD/WH/QC/TS) แนบไฟล์ไม่ได้เลยทั้งระบบ** ทั้งที่ทะเบียนไฟล์แนบเปิดทางให้
+  // ครบทุกจุดแล้ว: /api/upload ผ่าน (ตกท้ายไฟล์นี้ = ทุกคนที่ล็อกอิน) ไฟล์ขึ้น Drive
+  // จริง แล้วมาตายตอนบันทึกแถวที่ด่านนี้ ⇒ ระบบลบไฟล์ทิ้ง แล้วเด้งคำว่า "forbidden"
+  // ดิบ ๆ · กระทบทุกที่ที่ฝ่ายเหล่านี้ต้องแนบ: รูป/สเปกในคำร้องข้ามฝ่าย (ซึ่งเป็น
+  // เหตุผลที่สร้างที่แนบไฟล์ตรงนั้นตั้งแต่แรก), ใบขอราคาผลิต, ไฟล์แนบงานของตัวเอง
+  //
+  // ⚠️ ด่านนี้หยาบระดับ role โดยเจตนา — proxy เห็นแค่ method+path ไม่รู้ว่าไฟล์จะไป
+  // เกาะ entity ไหน · **ตัวกั้นจริงคือ handler**: canAttachToCosting (ฝ่ายเจ้าของ
+  // คำร้อง + เคสต้องยังเปิดอยู่) · canAttachToPersonalTask · canAttachToDeal ·
+  // canEditRecord — ที่นี่จึงต้อง "กว้างพอให้ผ่าน" ไม่ใช่ "แคบจนตัดคนที่มีสิทธิ์จริง"
   if (path.startsWith('/api/attachments')) {
     return (
       can(role, 'customers:edit') ||
@@ -362,7 +374,18 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
       can(role, 'sales:act') ||
       can(role, 'legal:approve') ||
       can(role, 'pm:edit') ||
-      canUser(mgmtUser, 'mgmt:edit')
+      canUser(mgmtUser, 'mgmt:edit') ||
+      // ระบบขอราคา + คำร้องข้ามฝ่าย — ชุด cap เดียวกับด่าน /api/sa/requests ข้างบน
+      // (RD/PC รับเรื่องและตอบได้ทั้งที่ไม่มีสิทธิ์แก้งานขายเลย) · ใช้ costing:edit/
+      // quote ไม่ใช่ costing:view เพราะ view เป็นของผู้สังเกตการณ์ (executive) ด้วย
+      can(role, 'costing:edit') ||
+      can(role, 'costing:quote') ||
+      can(role, 'requests:answer') ||
+      // ไฟล์แนบ "งานของฉัน" (personal_task) — ฝ่ายที่ไม่ใช่ sales ถือแค่ pm:view
+      // แพตเทิร์นเดียวกับด่าน /api/pm ข้างบน: ผู้สังเกตการณ์อ่านอย่างเดียวไม่นับ
+      // (วันนี้ยังไม่เปิดให้ใครเพิ่มจากบรรทัดบน — มีไว้ไม่ให้สิทธิ์ของงานส่วนบุคคล
+      //  ไปผูกกับ cap ของระบบขอราคาโดยบังเอิญ)
+      (can(role, 'pm:view') && !isReadOnlyObserver(role))
     );
   }
   // เธรดอัปเดตของกลาง (mig 0163) — ปล่อยผ่านทุก role ที่ล็อกอินโดยตั้งใจ:
