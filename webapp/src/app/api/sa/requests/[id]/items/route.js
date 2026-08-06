@@ -18,6 +18,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
+import { deliveryApprovalError } from '@/lib/requests/approval';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
@@ -60,6 +61,11 @@ export async function POST(request, { params }) {
       error: 'คำร้องนี้ยังไม่รู้ว่าเป็นของลูกค้ารายไหน — กลิ่นต้องมีลูกค้าเจ้าของเสมอ',
     }, { status: 400 });
   }
+
+  // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — RD ลงมือไม่ได้จนกว่าจะยืนยัน
+  // ⚠️ บังคับที่ **server** ไม่ใช่แค่ปุ่มจางบนจอ · ปุ่มจางกันคนกดผิด ไม่ได้กันคนยิงตรง
+  const approvalError = deliveryApprovalError(before);
+  if (approvalError) return Response.json({ error: approvalError }, { status: 400 });
 
   const body = await request.json().catch(() => ({}));
 

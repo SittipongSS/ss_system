@@ -94,6 +94,11 @@ export function requestHasPdr(kind) {
   return !!REQUEST_KINDS[kind]?.hasPdr;
 }
 
+// หัวข้อนี้ต้องผ่านหัวหน้าสายงานขายก่อนฝ่ายปลายทางลงมือไหม (mig 0216)
+export function requestNeedsApprovalKind(kind) {
+  return !!REQUEST_KINDS[kind]?.needsSupervisorApproval;
+}
+
 export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }

@@ -51,6 +51,10 @@ export function assertKind(kind, seen = new Set()) {
     throw new Error(`${at}: lineShape "${kind.lineShape}" ไม่รู้จัก`);
   }
   if (kind.hasTiers && !kind.hasItems) throw new Error(`${at}: hasTiers ต้องมากับ hasItems`);
+  // ประตูหัวหน้าอยู่หลัง "รับเรื่อง" ⇒ หัวข้อที่ไม่มีฝ่ายปลายทางตายตัวใช้ไม่ได้
+  if (kind.needsSupervisorApproval && !kind.dept) {
+    throw new Error(`${at}: needsSupervisorApproval ต้องมากับ dept ที่ล็อกไว้`);
+  }
   // ⚠️ คีย์ที่พิมพ์ผิดจะถูกกลืนโดย spread แล้วช่องนั้นใช้ข้อความกลางเงียบ ๆ —
   // ซึ่งเป็นอาการเดียวกับบั๊กที่เพิ่งปิดไป จึงตีกลับตั้งแต่ตอนโหลด
   for (const key of Object.keys(kind.form || {})) {
