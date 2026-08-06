@@ -27,6 +27,7 @@ import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierF
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
+import { isAwaitingApproval } from "@/lib/requests/approval";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -173,6 +174,8 @@ export default function MaterialAskDetailPage() {
   // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
   // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
   const owner = canAnswerRequestsFor(me, req.dept);
+  // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
+  const awaitingApproval = isAwaitingApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
   // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
@@ -381,7 +384,19 @@ export default function MaterialAskDetailPage() {
       }
       // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
       // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
-      : canAnswer && req.kind === "scent_dev"
+      // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — วางก่อน "ส่งกลิ่น" เพราะระหว่างรอยืนยัน
+      // ปุ่มหลักของหน้าคือของหัวหน้า ไม่ใช่ของ RD · `_canApprove` มาจาก server
+      : req._canApprove
+        ? {
+          id: "approve",
+          label: "ยืนยันให้ RD ดำเนินการ",
+          kind: "approve",
+          icon: Check,
+          onClick: () => call("", {
+            method: "PATCH", body: JSON.stringify({ action: "approve" }),
+          }, "ยืนยันแล้ว"),
+        }
+      : canAnswer && req.kind === "scent_dev" && !awaitingApproval
         ? {
           id: "deliver",
           label: "ส่งกลิ่น",
