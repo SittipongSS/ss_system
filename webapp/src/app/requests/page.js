@@ -12,9 +12,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Tabs from "@/components/ui/Tabs";
+import Segmented from "@/components/ui/Segmented";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
-import Button from "@/components/ui/Button";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
 import { QUEUE_TABS, queueTabRows } from "@/lib/requests/queueBoard";
 
@@ -85,7 +85,12 @@ export default function RequestsPage() {
   // ⭐ ตัวสลับขอบเขต — **กรองที่ API ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
   // กรองที่จอแปลว่าคำร้องของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จาก
   // แท็บ Network โดยไม่ต้องมีความรู้อะไรเลย
-  const [scope, setScope] = useState("mine");
+  // 🐞 **ตั้งต้นที่ขอบเขตกว้างสุดที่สิทธิ์ยอม ไม่ใช่ "ของฉัน" ตายตัว** — ผู้ดูแลระบบ
+  // ที่ไม่ได้เปิดใบเองเห็นหน้าว่างเปล่าทั้งสามแท็บ · #1038 แก้ฝั่ง API ไว้แล้วแต่
+  // **หน้านี้ส่ง `?scope=mine` มาเสมอ** ⇒ ด่านฝั่ง API ไม่มีวันได้ทำงาน
+  const [scope, setScope] = useState(
+    () => REQUEST_SCOPES.filter((s) => canUseScope(me, s)).pop() || "mine",
+  );
   const [activeScope, setActiveScope] = useState("mine");
 
   const reload = useCallback(async () => {
@@ -163,6 +168,29 @@ export default function RequestsPage() {
         : tab === "history" ? TAB_BLURB.history
           : mineBlurb(dealParam)}
     >
+      {/* ⭐ ขอบเขตอยู่ **เหนือแท็บ** — มันคุมว่าข้อมูลชุดไหนถูกดึงมา ส่วนแท็บแบ่งชุด
+          นั้นอีกที ⇒ วางใต้แท็บทำให้อ่านเหมือนว่าใช้กับแท็บเดียว
+          ⚠️ ใช้ `Segmented` + คลาส `scope-toggle` ชุดเดียวกับคิวลีด/ดีล — ตัวสลับ
+          ขอบเขตหน้าตาต้องเหมือนกันทุกหน้า (PR #969 รวมไว้แล้ว อย่าเขียนใหม่)
+          ⚠️ ตัวเลือกที่ไม่มีสิทธิ์ **จางและกดไม่ได้ ไม่ใช่ซ่อน** — ซ่อนแล้วคนจะไม่รู้ว่า
+          มีของที่ตัวเองเข้าไม่ถึงอยู่ แล้วอ่านคิวสั้น ๆ ว่า "ไม่มีงาน" */}
+      <div className="scope-row">
+        <Segmented
+          ariaLabel="ขอบเขตของคิวคำร้อง"
+          className="scope-toggle"
+          value={activeScope}
+          onChange={setScope}
+          options={REQUEST_SCOPES.map((s) => ({
+            value: s, label: SCOPE_LABELS[s], disabled: !canUseScope(me, s),
+          }))}
+        />
+        {activeScope !== scope && (
+          <span className="toolbar-label">
+            สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน
+          </span>
+        )}
+      </div>
+
       <Tabs
         value={tab} onChange={setTab}
         tabs={QUEUE_TABS.map((t) => ({
@@ -173,30 +201,6 @@ export default function RequestsPage() {
         }))}
         ariaLabel="มุมมองหน้าคำร้อง"
       />
-
-      {/* ⚠️ ตัวเลือกที่ไม่มีสิทธิ์ **จางและกดไม่ได้ ไม่ใช่ซ่อน** — ซ่อนแล้วคนจะไม่รู้
-          ว่ามีของที่ตัวเองเข้าไม่ถึงอยู่ และจะอ่านคิวสั้น ๆ ว่า "ไม่มีงาน" */}
-      {tab === "history" && (
-        <div className="toolbar">
-          <span className="toolbar-label">ขอบเขต</span>
-          {REQUEST_SCOPES.map((s) => (
-            <Button
-              key={s} size="sm"
-              tone={activeScope === s ? "primary" : undefined}
-              disabled={!canUseScope(me, s)}
-              title={canUseScope(me, s) ? undefined : "ไม่มีสิทธิ์ดูขอบเขตนี้"}
-              onClick={() => setScope(s)}
-            >
-              {SCOPE_LABELS[s]}
-            </Button>
-          ))}
-          {activeScope !== scope && (
-            <span className="toolbar-label">
-              สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน
-            </span>
-          )}
-        </div>
-      )}
 
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
