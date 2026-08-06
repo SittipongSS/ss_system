@@ -29,6 +29,7 @@ import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
+import { scentBriefSummary } from "@/lib/requests/scentBriefs";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import PdrSummary from "@/components/requests/PdrSummary";
 import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
@@ -184,6 +185,13 @@ export default function MaterialAskDetailPage() {
   // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
   const awaitingApproval = isAwaitingApproval(req);
   const showPdr = requestHasPdr(req.kind);
+  // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
+  // โดยไม่ต้องไล่อ่านทีละแถว
+  //
+  // 🐞 `soReconcile` มีอยู่แล้วแต่ถูกขังใน `{hasItems && …}` ⇒ **ไม่เคยแสดงใน
+  // `scent_dev` ซึ่งเป็นหัวข้อที่มันถูกสร้างมาเพื่อ** (hasItems: false ตอนเปิด เพราะ
+  // RD สร้างแถวตอนส่ง) · `scentBriefSummary` ที่เขียนไว้ก็ยังไม่มีใครเรียกเลย
+  const briefSummary = scentBriefSummary(req.briefs || [], req.items || []);
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
@@ -677,6 +685,24 @@ export default function MaterialAskDetailPage() {
 
       {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย
           🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
+      {showPdr && (
+        <div className={styles.summaryBar}>
+          <span><strong>{briefSummary.briefs}</strong> บรีฟ</span>
+          {reconcile && <span><strong>{reconcile.ordered}</strong> กลิ่นตาม SO</span>}
+          <span><strong>{briefSummary.directions}</strong> direction ที่ส่งแล้ว</span>
+          {/* ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD
+              ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
+          {briefSummary.untouched > 0 && (
+            <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
+          )}
+          {/* กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้) · ส่งเกิน/ขาดเกิดได้จริง
+              และบล็อกเมื่อไร คนจะเลี่ยงด้วยการไม่บันทึก ซึ่งแย่กว่า */}
+          {reconcile && soReconcileText(reconcile) && (
+            <span data-tone={SO_RECONCILE_TONE[reconcile.state]}>{soReconcileText(reconcile)}</span>
+          )}
+        </div>
+      )}
+
       {showPdr && (
         <div className={styles.pdrBlock}>
           {pdrDraft ? (
