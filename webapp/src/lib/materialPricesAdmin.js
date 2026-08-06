@@ -165,11 +165,19 @@ export async function findRequest(supabase, id) {
   //
   // ⚠️ เอา `qty` อย่างเดียว — ที่เหลือเป็นข้อมูลของใบสั่งขายซึ่งหน้าคำร้องไม่ควรรู้
   // (ยิ่งดึงมามาก ยิ่งมีของให้หลุดออกทาง response โดยไม่ตั้งใจ)
-  if (!row.salesOrderId) return { ...row, salesOrderLines: [] };
+  // ⭐ บรีฟรายกลิ่น (mig 0213) — ชั้นกลางที่ direction ชี้กลับ · หน้ารายละเอียดใช้
+  // ทำตัวเลือก "ตอบบรีฟก้อนไหน" ตอน RD ส่งของ และโชว์ว่าใบนี้ขอกี่ทิศทาง
+  const { data: briefs, error: briefError } = await supabase
+    .from('dept_request_scents').select('*').eq('requestId', id)
+    .order('sortOrder', { ascending: true });
+  if (briefError) throw briefError;
+  const withBriefs = { ...row, briefs: briefs || [] };
+
+  if (!withBriefs.salesOrderId) return { ...withBriefs, salesOrderLines: [] };
   const { data: lines, error } = await supabase
-    .from('sales_order_lines').select('id, qty').eq('salesOrderId', row.salesOrderId);
+    .from('sales_order_lines').select('id, qty').eq('salesOrderId', withBriefs.salesOrderId);
   if (error) throw error;
-  return { ...row, salesOrderLines: lines || [] };
+  return { ...withBriefs, salesOrderLines: lines || [] };
 }
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา

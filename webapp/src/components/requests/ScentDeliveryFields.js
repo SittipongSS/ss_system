@@ -11,12 +11,13 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
+import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { businessDate } from "@/lib/businessDate";
 import styles from "./scentDelivery.module.css";
 
 export const emptyDeliveryRow = () => ({
-  name: "", code: "", sentAt: businessDate(), derivedFromScentId: "", spec: "",
+  name: "", code: "", sentAt: businessDate(), derivedFromScentId: "", spec: "", briefId: "",
 });
 
 const norm = (v) => String(v ?? "").trim().toLowerCase();
@@ -32,8 +33,11 @@ export function codeConflict(code, index, rows, registryCodes) {
 }
 
 export default function ScentDeliveryFields({
-  rows, onChange, scents = [], customerId = null, disabled = false,
+  rows, onChange, scents = [], customerId = null, disabled = false, briefs = [],
 }) {
+  // ⭐ **บรีฟก้อนเดียว = ไม่ต้องถาม** (มติผู้ใช้) — ช่องที่มีตัวเลือกเดียวแต่ยังบังคับ
+  // ให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร · server เลือกให้เองอยู่แล้ว
+  const askBrief = briefs.length > 1;
   const registryCodes = new Set(scents.map((s) => norm(s.code)).filter(Boolean));
   const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
 
@@ -90,6 +94,23 @@ export default function ScentDeliveryFields({
                   onChange={(v) => patch(i, { sentAt: v })}
                 />
               </div>
+              {askBrief && (
+                <div className="form-group">
+                  <label htmlFor={`d-brief-${i}`}>ตอบบรีฟก้อนไหน *</label>
+                  <Select
+                    id={`d-brief-${i}`} value={row.briefId || ""} disabled={disabled}
+                    onChange={(e) => patch(i, { briefId: e.target.value })}
+                    options={[
+                      { value: "", label: "— เลือกบรีฟ —" },
+                      ...briefs.map((b, n) => ({
+                        value: b.id, label: b.label || `กลิ่นที่ ${n + 1}`,
+                      })),
+                    ]}
+                  />
+                  {/* 1 บรีฟ : หลาย direction — เสนอสองทางจากบรีฟเดียวกันได้ */}
+                  <span className={styles.hint}>เลือกก้อนเดิมซ้ำได้ ถ้าเสนอหลายทางจากบรีฟเดียว</span>
+                </div>
+              )}
               <div className="form-group">
                 <label htmlFor={`d-from-${i}`}>
                   แก้มาจากกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>

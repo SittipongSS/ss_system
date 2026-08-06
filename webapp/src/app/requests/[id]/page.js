@@ -1008,6 +1008,7 @@ export default function MaterialAskDetailPage() {
             <ScentDeliveryFields
               rows={delivery} onChange={setDelivery} scents={allScents}
               customerId={req.customerId} disabled={saving}
+              briefs={req.briefs || []}
             />
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" onClick={() => setDelivery(null)} disabled={saving}>ยกเลิก</Button>
