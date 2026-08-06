@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_SCENT_BRIEFS, briefLinkError, normalizeScentBriefs, scentBriefSummary,
+  MAX_SCENT_BRIEFS, briefLinkError, normalizeScentBriefs,
 } from './scentBriefs.js';
 import { SCENTOTYPE_VALUES, SCENT_PERFORMANCE_VALUES } from './kinds/rd/scentBriefTypes.js';
 
@@ -70,11 +70,4 @@ test('direction ต้องชี้บรีฟที่อยู่ในใ�
   assert.match(briefLinkError('', mine), /ต้องเลือกว่ากลิ่นตัวนี้ตอบบรีฟก้อนไหน/);
   // ⚠️ ยิงตรงด้วย id ของใบอื่นต้องไม่ผ่าน — ไม่งั้นผูก direction ข้ามลูกค้าได้
   assert.match(briefLinkError('B9', mine), /ไม่ได้อยู่ในคำร้องใบนี้/);
-});
-
-test('สรุปหัวใบนับก้อนที่ยังไม่ได้ลงมือ ไม่ใช่ก้อนที่ยังไม่จบ', () => {
-  const briefs = [{ id: 'B1' }, { id: 'B2' }, { id: 'B3' }];
-  const items = [{ briefId: 'B1' }, { briefId: 'B1' }, { briefId: 'B2' }, { briefId: null }];
-  assert.deepEqual(scentBriefSummary(briefs, items), { briefs: 3, directions: 3, untouched: 1 });
-  assert.deepEqual(scentBriefSummary([], []), { briefs: 0, directions: 0, untouched: 0 });
 });

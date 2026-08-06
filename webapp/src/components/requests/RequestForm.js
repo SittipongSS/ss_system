@@ -30,6 +30,7 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
 import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
+import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
   PLANNED_REQUEST_DEPTS,
@@ -120,6 +121,7 @@ export default function RequestForm({
   value, onChange, materials = [], products = [],
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
+  customers = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
   mentionPeople = [],
@@ -185,6 +187,21 @@ export default function RequestForm({
   // ⭐ จำนวนกลิ่นมาจากใบสั่งขาย ไม่ใช่ช่องที่คนกรอก — ใบที่ผ่านด่านย่อมมีจำนวนเสมอ
   // (ดู lib/requests/scentDesignOrders.js) · ผู้เรียกส่งบรรทัดของ SO มาให้
   const scentCount = selectedSo ? scentCountForOrder(selectedSo.lines || []) : null;
+
+  // ⭐ ค่าที่ระบบเติมให้ในแบบฟอร์ม PDR — **ตัวเดียวกับที่ server ใช้** (`pdrContext`)
+  //
+  // 🐞 ก่อนหน้านี้หน้านี้ส่งแค่ `customer`/`deal` ⇒ ผู้ร้องขอ AC · ชื่อผู้ติดต่อ ·
+  // Phone/Line · วันที่คาดหวังตัวอย่าง ขึ้นเป็นเส้นประ "เติมจาก…" ค้างอยู่ทั้งที่
+  // เลือกใบสั่งขายแล้ว — ส่วนหน้ารายละเอียดกับเอกสารเติมครบ ⇒ จอเดียวกันคนละคำตอบ
+  const pdrDerived = pdrContext({
+    // ⚠️ `requestedDueDate`/`urgent` อยู่บนฟอร์ม ไม่ใช่บนแถวที่บันทึกแล้ว — ส่งเข้าไป
+    // ในรูปเดียวกับแถวคำร้อง เพื่อให้ตัวคำนวณเป็นตัวเดียวกันจริง ๆ ไม่ใช่แค่คล้ายกัน
+    request: { requestedDueDate: value.requestedDueDate, urgent: value.urgent, customerName: selectedSo?.customerName || null },
+    project: projects.find((p) => p.id === (soDeal?.projectId || value.projectId)) || null,
+    customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
+    deal: soDeal,
+    briefs: value.briefs || [],
+  });
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
@@ -469,8 +486,12 @@ export default function RequestForm({
           onBriefsChange={(briefs) => set({ briefs })}
           disabled={disabled}
           scentCount={scentCount}
-          customer={selectedSo?.customerName || ""}
-          deal={soDeal ? `${soDeal.code || soDeal.id}` : ""}
+          customer={pdrDerived.customer || ""}
+          deal={pdrDerived.deal || ""}
+          coordinator={pdrDerived.coordinator || ""}
+          contactName={pdrDerived.contactName || ""}
+          contactPhone={pdrDerived.contactPhone || ""}
+          sampleDue={pdrDerived.sampleDue || ""}
         />
       )}
 

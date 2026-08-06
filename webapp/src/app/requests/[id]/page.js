@@ -29,7 +29,8 @@ import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
-import { scentBriefSummary } from "@/lib/requests/scentBriefs";
+import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
+import BriefBoard from "@/components/requests/BriefBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import PdrSummary from "@/components/requests/PdrSummary";
 import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
@@ -198,8 +199,13 @@ export default function MaterialAskDetailPage() {
   //
   // 🐞 `soReconcile` มีอยู่แล้วแต่ถูกขังใน `{hasItems && …}` ⇒ **ไม่เคยแสดงใน
   // `scent_dev` ซึ่งเป็นหัวข้อที่มันถูกสร้างมาเพื่อ** (hasItems: false ตอนเปิด เพราะ
-  // RD สร้างแถวตอนส่ง) · `scentBriefSummary` ที่เขียนไว้ก็ยังไม่มีใครเรียกเลย
-  const briefSummary = scentBriefSummary(req.briefs || [], req.items || []);
+  // RD สร้างแถวตอนส่ง)
+  //
+  // ⭐ **ประกอบครั้งเดียว ใช้สองที่** — แถบตัวเลขกับตารางสรุปอ่านจาก `board` ก้อนเดียว
+  // ⇒ ขัดกันไม่ได้เชิงโครงสร้าง · เดิมแถบตัวเลขใช้ `scentBriefSummary` ซึ่งนับจาก
+  // `items` ที่มี briefId เท่านั้น ⇒ direction ที่ยังไม่ผูกบรีฟหายจากยอดรวมเงียบ ๆ
+  const board = briefBoard(req.briefs || [], req.items || []);
+  const briefSummary = briefBoardTotals(board);
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
@@ -719,6 +725,11 @@ export default function MaterialAskDetailPage() {
         );
       })}
 
+      {/* ⭐ ตารางสรุปทั้งใบ (ม็อกอัพ ส่วน 07) — วางใต้แถบตัวเลข เหนือ PDR เพราะเป็น
+          "สถานการณ์ตอนนี้" ส่วน PDR เป็น "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มของ
+          แต่ละก้าวอยู่บนรางในการ์ดของแถวนั้นที่เดียว */}
+      {showPdr && <BriefBoard groups={board} />}
+
       {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย
           🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
       {showPdr && (
@@ -730,6 +741,14 @@ export default function MaterialAskDetailPage() {
               ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
           {briefSummary.untouched > 0 && (
             <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
+          )}
+          {/* ⭐ สองขั้นที่ "ค้างโดยไม่มีใครเห็น" ได้ง่ายที่สุด — รอลูกค้าตอบคือรอข้างนอก
+              ส่วนรอใส่ราคาคือของที่จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้ (กับดักข้อ 11) */}
+          {briefSummary.waitingCustomer > 0 && (
+            <span><strong>{briefSummary.waitingCustomer}</strong> รอลูกค้าตอบ</span>
+          )}
+          {briefSummary.awaitingPrice > 0 && (
+            <span data-tone="warn"><strong>{briefSummary.awaitingPrice}</strong> รอใส่ราคา</span>
           )}
           {/* กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้) · ส่งเกิน/ขาดเกิดได้จริง
               และบล็อกเมื่อไร คนจะเลี่ยงด้วยการไม่บันทึก ซึ่งแย่กว่า */}
