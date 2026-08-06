@@ -364,3 +364,34 @@ export default function PdrForm({
     </div>
   );
 }
+
+// คอลัมน์ `pdr*` บนแถวคำร้อง → ค่าที่ฟอร์มใช้ — ทางกลับของ normalizePdr
+//
+// ⚠️ ชื่อช่องในฟอร์มสั้นเพราะอยู่ในบริบท PDR อยู่แล้ว · DB ต้อง prefix เพื่อไม่ให้ปน
+// กับคอลัมน์ของกลไกคำร้อง ⇒ ต้องมีตัวแปลงทั้งสองทาง ไม่ใช่ทางเดียว
+export function pdrValuesFrom(row = {}) {
+  const pick = (k) => (row[k] == null ? "" : String(row[k]));
+  return {
+    requestType: pick("pdrRequestType"),
+    customerBrand: pick("pdrCustomerBrand"),
+    moodTone: pick("pdrMoodTone"),
+    brandDirection: pick("pdrBrandDirection"),
+    shipTo: pick("pdrShipTo"),
+    customerKind: pick("pdrCustomerKind"),
+    projectValue: pick("pdrProjectValue"),
+    targetDemographic: pick("pdrTargetDemographic"),
+    targetPsychographic: pick("pdrTargetPsychographic"),
+    targetPainpoint: pick("pdrTargetPainpoint"),
+    productKind: pick("pdrProductKind"),
+    wantedAt: pick("pdrWantedAt"),
+    sellFrom: pick("pdrSellFrom"),
+    targetCost: pick("pdrTargetCost"),
+    targetPrice: pick("pdrTargetPrice"),
+    moq: pick("pdrMoq"),
+    texture: pick("pdrTexture"),
+    color: pick("pdrColor"),
+    packSize: pick("pdrPackSize"),
+    brandSample: pick("pdrBrandSample"),
+    specialRequirements: pick("pdrSpecialRequirements"),
+  };
+}
