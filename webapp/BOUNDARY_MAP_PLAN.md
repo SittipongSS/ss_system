@@ -21,7 +21,7 @@
 | 6 | Phase 5.4 unique customer + blueprint docs (opportunistic) | S–M | ต่ำ |
 
 **สลับลำดับเมื่อ:** ถ้า Supabase ใกล้เต็ม → ดัน Drive (#2,#3) ขึ้นอันดับ 1 ทันที
-รายละเอียด Drive: [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md) · contract attachment: [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md)
+รายละเอียด Drive: [`DRIVE_STORAGE_PLAN.md`](../docs/archive/DRIVE_STORAGE_PLAN.md) · contract attachment: [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md)
 
 ---
 
@@ -265,7 +265,7 @@ Phase 5.1–5.3 (เอกสาร)  ── ทำคู่ขนานได�
 Phase 6 (blueprint)     ── ปิดท้าย
 ```
 
-### Storage backend track (ขนานได้ — [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md))
+### Storage backend track (ขนานได้ — [`DRIVE_STORAGE_PLAN.md`](../docs/archive/DRIVE_STORAGE_PLAN.md))
 - ย้ายไฟล์แนบ Supabase → Google Drive เพื่อลดพื้นที่ Supabase — แตะแค่ชั้น **storage** จึงเป็น track อิสระ
 - coupling เดียวกับ roadmap = **Phase 2 (deletion)**: ทั้งคู่แตะ DELETE handler ของ attachments → ประสานกัน
 - requirement engine (Phase 1) **ไม่กระทบ** เพราะอ่าน attachment *row* ไม่ใช่ bytes

@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# SS System
 
-## Getting Started
+ระบบภายในของ Scent & Sense — งานขาย · จัดการโครงการ · ข้อมูลหลัก · ภาษีสรรพสามิต ·
+คำร้องข้ามฝ่าย · พยากรณ์ยอดสหมิตร · ธุรกิจบริการ รวมเป็น Next.js app เดียว
 
-First, run the development server:
+Next.js 16 · React 19 · Supabase · deploy บน Vercel
+
+## เริ่มงาน
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install && npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด http://localhost:3000
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## คำสั่งที่ใช้บ่อย
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| คำสั่ง | ทำอะไร |
+|---|---|
+| `npm test` | รันเทสต์ทั้งหมด (`src/**/*.test.mjs`) |
+| `npm run lint` | ESLint |
+| `npm run build` | build ตรวจก่อน deploy |
+| `npm run check:migrations` | ตรวจเลข migration ชนกันไหม — **รันก่อนเพิ่ม migration ใหม่เสมอ** |
+| `npm run check:columns` | ตรวจว่า `select()` อ้างคอลัมน์ที่มีจริง |
+| `npm run audit:ui` | ตรวจว่า UI ใช้ token/คลาสร่วมตามมาตรฐาน |
 
-## Learn More
+## ก่อนเขียนโค้ด
 
-To learn more about Next.js, take a look at the following resources:
+1. **[AGENTS.md](AGENTS.md)** — กฎบังคับของโปรเจกต์ (ฟอร์มสร้าง/แก้ต้องเป็น component เดียวกัน)
+2. **[docs/INDEX.md](../docs/INDEX.md)** — สารบัญเอกสารทั้งหมด มติที่เคาะแล้วอยู่ไฟล์ไหน งานไหนค้าง
+3. **[UI_DESIGN_SYSTEM.md](UI_DESIGN_SYSTEM.md)** — ก่อนแตะ UI
+4. **[DEPLOY.md](DEPLOY.md)** — Vercel + Supabase
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Migration ทุกไฟล์อยู่ที่ `supabase/migrations/` และ **ต้องรันมือบน Supabase SQL Editor**
+(service-role รัน DDL ไม่ได้)

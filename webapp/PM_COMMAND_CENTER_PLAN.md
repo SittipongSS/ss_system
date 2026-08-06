@@ -4,9 +4,14 @@
 และอุดช่องโหว่** ที่เจอจากการตรวจกับโค้ดจริงใน repo นี้ เป้าหมายเดิมคงไว้: เปลี่ยน `/pm` ให้เป็น
 "ศูนย์บัญชาการ" ที่เห็นงานเสี่ยง/ล่าช้า/ภาระงานทีม แล้วกดไปจัดการได้เร็ว
 
-> สถานะ ground truth (ตรวจ 2026-06-26): route `/pm` **ยังไม่มี** มีแค่ `/pm/projects` กับ `/pm/tasks`;
-> project-level computed status อยู่ที่ client `projects/page.js` เท่านั้น; `lib/pm/status.js` เป็น
-> task-level (Pending↔In Progress) ล้วน; API `select('id, projectId, name, status, finishDate, stepOrder')`
+> สถานะ: **รอดำเนินการ** — ยังไม่เริ่มสักสเต็ป · ตรวจกับโค้ดเมื่อ 2026-08-06
+>
+> ⚠️ ground truth เดิม (ตรวจ 2026-06-26) **เก่าแล้ว** — ตอนนั้นเขียนว่ามี `/pm/projects`
+> กับ `/pm/tasks`; ปัจจุบัน `/pm` เหลือแค่ `tasks` ส่วนหน้าโครงการย้ายไป `/sa/projects`
+> ถ้าจะรื้อฟื้นแผนนี้ **ต้องสำรวจ ground truth ใหม่ทั้งหมดก่อน** อย่าเชื่อเลข path
+> และชื่อไฟล์ในเอกสารนี้
+>
+> ที่ยังไม่มีจริงตามแผน: `lib/pm/commandCenter.js` · route `/pm` ตัวศูนย์บัญชาการ
 
 ---
 

@@ -59,8 +59,8 @@
 
 ## Alignment กับ Boundary Map (ตรวจกับโค้ดจริงแล้ว)
 
-แผนนี้เป็น **storage-layer track** — ดู roadmap รวม [`BOUNDARY_MAP_PLAN.md`](BOUNDARY_MAP_PLAN.md)
-และ contract attachment [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md)
+แผนนี้เป็น **storage-layer track** — ดู roadmap รวม [`BOUNDARY_MAP_PLAN.md`](../../webapp/BOUNDARY_MAP_PLAN.md)
+และ contract attachment [`ATTACHMENT_REQUIREMENT_SPEC.md`](../../webapp/ATTACHMENT_REQUIREMENT_SPEC.md)
 
 **สอดคล้อง (สถาปัตยกรรมรองรับอยู่แล้ว):**
 - แตะแค่ชั้น **Storage** — `ATTACHMENT_REQUIREMENT_SPEC §1` แยก storage ออกจาก requirement ไว้พอดี
