@@ -229,8 +229,10 @@ export default function AddressesEditor({ value = [], onChange }) {
                 })}
               </div>
               <div className="flex gap-1 items-center ml-auto">
-                {i === billingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่ออกเอกสาร">บิลหลัก</span>}
-                {i === shippingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่จัดส่ง">จัดส่งหลัก</span>}
+                {/* มีที่อยู่เดียว = เป็นหลักอยู่แล้วโดยปริยาย — ป้ายจึงไม่ได้บอกอะไร
+                    นอกจากซ้ำกับปุ่มติ๊กที่อยู่ข้าง ๆ (ผู้ใช้: "มีป้ายซ้ำซ้อน") */}
+                {rows.length > 1 && i === billingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่ออกเอกสาร">บิลหลัก</span>}
+                {rows.length > 1 && i === shippingPrimary && <span className="status-pill" title="ตั้งต้นของช่องที่อยู่จัดส่ง">จัดส่งหลัก</span>}
                 <Button iconOnly icon={<ChevronUp size={14} />} onClick={() => move(i, -1)} disabled={i === 0} title="เลื่อนขึ้น" aria-label="เลื่อนขึ้น" />
                 <Button iconOnly icon={<ChevronDown size={14} />} onClick={() => move(i, 1)} disabled={i === rows.length - 1} title="เลื่อนลง" aria-label="เลื่อนลง" />
                 <Button iconOnly tone="danger" variant="ghost" icon={<Trash2 size={14} />} onClick={() => remove(i)} title="ลบที่อยู่" aria-label="ลบที่อยู่" />
@@ -284,63 +286,62 @@ export default function AddressesEditor({ value = [], onChange }) {
                 <option value="">— {subdistrictPrefix(a.provinceCode)} —</option>
                 {subs.map((s) => <option key={s.code} value={s.code}>{s.th}</option>)}
               </Select>
+              {/* รหัสไปรษณีย์มาจากตำบลที่เลือก — อ่านอย่างเดียว (มติผู้ใช้ 2026-08-06)
+                  พิมพ์เองได้เมื่อไหร่ก็มีทางที่รหัสไม่ตรงกับตำบลบนเอกสารใบเดียวกัน
+                  ซึ่งไม่มีใครจับได้จนของไปส่งผิดที่ · ที่อยู่ยุคเก่าที่ยังไม่ได้เลือก
+                  ตำบลยังโชว์รหัสเดิมที่ backfill มาได้ตามปกติ */}
               <Input
                 className="text-xs"
-                inputMode="numeric"
-                maxLength={5}
+                readOnly
                 placeholder="รหัสไปรษณีย์"
                 value={a.postcode}
-                onChange={(e) => update(i, { postcode: e.target.value.replace(/\D/g, "").slice(0, 5) })}
+                aria-label="รหัสไปรษณีย์ (มาจากตำบลที่เลือก)"
+                title="มาจากตำบลที่เลือก — แก้ได้โดยเปลี่ยนตำบล"
               />
             </div>
 
-            {/* เลขสาขา — เฉพาะที่อยู่ที่ใช้ออกเอกสาร (ใบกำกับภาษีเต็มรูปต้องระบุสาขาผู้ซื้อ)
-                คลัง/จุดส่งของไม่ใช่สถานประกอบการที่ออกใบ จึงไม่ต้องมีเลขสาขา */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {isBillingAddress(a) && (
-                <div className="flex flex-col gap-1">
-                  {/* ⚠️ ห้ามกรอง e.target.value ให้เหลือแต่ตัวเลข: ของจริงมีลูกค้าที่เก็บ
-                      **ชื่อ** สาขาไว้ ('แจ้งวัฒนะ') — กรองทิ้งเมื่อไหร่ = แค่คลิกช่องนี้
-                      แล้วบันทึก สาขาก็กลายเป็นสำนักงานใหญ่บนใบกำกับภาษี */}
-                  <Input
-                    mono
-                    className="text-xs"
-                    maxLength={50}
-                    placeholder="เลขสาขา เช่น 00000"
-                    value={a.branchCode}
-                    invalid={!!a.branchCode && !isBranchCodeValid(a.branchCode)}
-                    onChange={(e) => update(i, { branchCode: e.target.value })}
-                  />
-                  <span className="text-[10px] text-[var(--text-3)]">
-                    {a.branchCode && !isBranchCodeValid(a.branchCode)
-                      ? "ใบกำกับภาษีต้องใช้เลขสาขา 5 หลัก — แก้เป็นตัวเลขเมื่อทราบ"
-                      : "ว่าง = สำนักงานใหญ่ (00000)"}
-                  </span>
-                </div>
-              )}
+            {/* ⚠️ ช่องชุดนี้ต้องอยู่ครบทุกช่องเสมอ ห้ามซ่อนตามปุ่มติ๊ก "ออกเอกสาร/จัดส่ง"
+                — เดิมซ่อน/โผล่ตามสถานะ ทำให้ช่องที่เหลือเลื่อนตำแหน่งทุกครั้งที่กดปุ่ม
+                (ผู้ใช้: "กดแล้วมันโดดไปโดดมา") · เลขสาขามีผลเฉพาะที่อยู่ที่ใช้ออกเอกสาร
+                และผู้รับของมีผลเฉพาะที่อยู่จัดส่ง ซึ่งบอกด้วย placeholder ก็พอ ไม่ต้อง
+                ย้ายของบนจอ */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* ⚠️ ห้ามกรอง e.target.value ให้เหลือแต่ตัวเลข: ของจริงมีลูกค้าที่เก็บ
+                  **ชื่อ** สาขาไว้ ('แจ้งวัฒนะ') — กรองทิ้งเมื่อไหร่ = แค่คลิกช่องนี้
+                  แล้วบันทึก สาขาก็กลายเป็นสำนักงานใหญ่บนใบกำกับภาษี */}
+              <Input
+                mono
+                className="text-xs"
+                maxLength={50}
+                placeholder="เลขสาขา (ว่าง = สำนักงานใหญ่)"
+                value={a.branchCode}
+                invalid={!!a.branchCode && !isBranchCodeValid(a.branchCode)}
+                onChange={(e) => update(i, { branchCode: e.target.value })}
+              />
               <Input
                 className="text-xs"
                 placeholder="ลิงก์แผนที่ (Google Maps)"
                 value={a.mapUrl}
                 onChange={(e) => update(i, { mapUrl: e.target.value })}
               />
-              {isShippingAddress(a) && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    className="text-xs"
-                    placeholder="ผู้รับของ"
-                    value={a.contactName}
-                    onChange={(e) => update(i, { contactName: e.target.value })}
-                  />
-                  <PhoneInput
-                    className="text-xs"
-                    placeholder="เบอร์ผู้รับ"
-                    value={a.contactPhone}
-                    onChange={(v) => update(i, { contactPhone: v })}
-                  />
-                </div>
-              )}
+              <Input
+                className="text-xs"
+                placeholder="ผู้รับของ"
+                value={a.contactName}
+                onChange={(e) => update(i, { contactName: e.target.value })}
+              />
+              <PhoneInput
+                className="text-xs"
+                placeholder="เบอร์ผู้รับ"
+                value={a.contactPhone}
+                onChange={(v) => update(i, { contactPhone: v })}
+              />
             </div>
+            {!!a.branchCode && !isBranchCodeValid(a.branchCode) && (
+              <span className="text-[10px] text-[var(--red)]">
+                ใบกำกับภาษีต้องใช้เลขสาขา 5 หลัก — แก้เป็นตัวเลขเมื่อทราบ
+              </span>
+            )}
 
             {/* ข้อความที่จะพิมพ์ลงเอกสารจริง + ทางออกสำหรับที่อยู่ที่ไม่เข้าแม่แบบ */}
             <div className="flex flex-wrap items-start gap-2 justify-between">
