@@ -2,18 +2,23 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestRequiresCommittedDue } from '@/lib/master/requestTypes';
+import { requestHasItems, requestRequiresCommittedDue } from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { requestHasItems } from '@/lib/master/requestTypes';
+import { isRowSettled } from '@/lib/requests/rowStage';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
-// "settled" = บรรทัดนั้นจบแล้ว ไม่ว่าจะจบแบบได้ของ (done) หรือจบแบบไม่ได้ (declined)
-// ⚠️ อ่าน `answerStatus` (mig 0204) ไม่ใช่ `priceStatus` — ชื่อเดิมพูดภาษาราคาล้วน
-//    ซึ่งใช้กับบรรทัดขอเอกสาร/พัฒนากลิ่นไม่ได้
+//
+// ⭐ **"จบ" ถามจาก `isRowSettled` ที่เดียว** ไม่ใช่อ่าน `answerStatus` เอง
+//
+// 🐞 ของจริงที่เดินวงแล้วเจอ: แถวที่ลูกค้า "ขอให้แก้" มี `rowStage = 'revised'` ซึ่ง
+// `isRowSettled` นับว่าจบแล้ว (งานย้ายไปแถวใหม่) แต่ `answerStatus` ของมันค้างที่
+// `pending` ตลอดไป — `hopPatch` จงใจไม่ปิดให้ ⇒ ตัวนับเก่าได้ `complete: false`
+// **ถาวร** ⇒ ใบไม่มีวันเป็น `answered` ⇒ **ปิดใบไม่ได้ตลอดชีวิต** ทั้งที่งานจบหมดแล้ว
+// ลูกค้าขอแก้แค่ครั้งเดียวก็ล็อกใบทิ้งได้ทันที
 export function requestProgress(items = []) {
   const total = items.length;
-  const done = items.filter((i) => i.answerStatus === 'done' || i.answerStatus === 'declined').length;
+  const done = items.filter(isRowSettled).length;
   return { done, total, complete: total > 0 && done === total };
 }
 
@@ -107,12 +112,21 @@ export function closeRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'closed') return 'คำร้องนี้ปิดแล้ว';
   if (request.status === 'cancelled') return 'คำร้องนี้ถูกยกเลิกไปแล้ว';
-  // ชนิดที่มีบรรทัดต้องตอบครบก่อน — ชนิดที่ไม่มีบรรทัด ผู้ขอเป็นคนตัดสินว่าพอแล้ว
-  // (แนวคิดเดียวกับระบบสอบถามเดิม: คนถามคือคนตัดสินว่าคำตอบใช้ได้จริง)
-  if (requestHasItems(request.kind) && !requestProgress(items).complete) {
-    return 'ยังมีรายการที่ยังไม่ได้ตอบ — ตอบให้ครบหรือกด "ตอบไม่ได้" ก่อน';
+
+  // ⭐ ถาม **ใบนี้มีแถวอยู่จริงไหม** ไม่ใช่ `requestHasItems(kind)`
+  //
+  // 🐞 ของจริงที่เดินวงแล้วเจอ: `requestHasItems` ตอบว่า "ชนิดนี้ให้ SA สร้างแถว
+  // ตั้งแต่ตอนเปิดใบไหม" ซึ่งพัฒนากลิ่นตอบ **ไม่** (แถวเกิดตอน RD ส่งของ) ⇒ ด่านนี้
+  // ถูกข้ามทั้งก้อน ⇒ ปิดใบพัฒนากลิ่นได้ตั้งแต่ RD ยังส่งกลิ่นไม่ครบ · กลิ่นที่ค้าง
+  // ระหว่างทางหายไปเงียบ ๆ ไม่มีใครเห็นว่ายังมีของที่ลูกค้ายังไม่ตอบ
+  //
+  // ⚠️ ชนิดที่ไม่มีแถวเลยจริง ๆ (สอบถาม/ขอเอกสาร) ยังเหมือนเดิม — ผู้ขอเป็นคน
+  // ตัดสินว่าพอแล้ว (แนวคิดเดิม: คนถามคือคนตัดสินว่าคำตอบใช้ได้จริง)
+  const rows = items || [];
+  if (rows.length && !requestProgress(rows).complete) {
+    return 'ยังมีรายการที่ยังเดินไม่จบ — ตอบให้ครบหรือกด "ตอบไม่ได้" ก่อน';
   }
-  if (!requestHasItems(request.kind) && request.status === 'pending') {
+  if (!rows.length && request.status === 'pending') {
     return 'ยังไม่มีใครรับเรื่องเลย — ยกเลิกแทนการปิด';
   }
   return null;
