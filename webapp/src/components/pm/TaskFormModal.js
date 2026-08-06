@@ -13,6 +13,7 @@ import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
@@ -22,9 +23,11 @@ import { describeResponseError } from "@/lib/fetchError";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import Textarea from "@/components/ui/Textarea";
 
-// ค่าโครงการใน dropdown ที่แปลว่า "ดีลที่ยังไม่ผูกโครงการ" (ดีลกลุ่มนี้มีจริงและ
-// ผูกงานได้ — ถ้าไม่มีถังนี้ การกรองตามโครงการจะทำให้มันหายไปเฉย ๆ)
-const NO_PROJECT = "__no_project__";
+// ค่าโครงการใน dropdown ที่แปลว่า "ดีลทั้งหมด" — ทั้งที่ผูกและไม่ผูกโครงการ
+// (มติผู้ใช้ 2026-08-06: เดิมถังนี้เป็น "ดีลที่ยังไม่ผูกโครงการ" อย่างเดียว คนที่จำ
+//  ชื่อดีลได้แต่ไม่รู้ว่ามันอยู่โครงการไหน จึงหาไม่เจอ — ถังรวมทำให้ค้นชื่อดีลตรง ๆ ได้
+//  และดีลที่ยังไม่ผูกโครงการก็ยังอยู่ในนี้เหมือนเดิม ไม่หายไปจากการกรองตามโครงการ)
+const ALL_DEALS = "__all_deals__";
 
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
@@ -55,7 +58,7 @@ export const taskToForm = (t, deals = []) => {
     title: t.title || "", note: t.note || "",
     startDate: t.startDate || "", dueDate: t.dueDate || "",
     projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
-    linkProjectId: t.dealId ? (projectId || NO_PROJECT) : "",
+    linkProjectId: t.dealId ? (projectId || ALL_DEALS) : "",
     category: t.category || "", important: !!t.important, urgent: !!t.urgent,
     difficulty: t.difficulty ?? 2, status: t.status || "Pending",
   };
@@ -105,7 +108,7 @@ export default function TaskFormModal({
     // linkProjectId — เติมให้จากดีลจริง ไม่งั้นดีลที่ preset จะหายจาก dropdown ที่กรอง
     if (seed.dealId && !seed.linkProjectId) {
       const d = deals.find((row) => row.id === seed.dealId);
-      seed.linkProjectId = d?.projectId || NO_PROJECT;
+      seed.linkProjectId = d?.projectId || ALL_DEALS;
     }
     setForm(seed);
     setLateReason("");
@@ -126,14 +129,40 @@ export default function TaskFormModal({
   // ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) จะได้ไม่เห็นช่องที่ว่างเปล่าเสมอ
   const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
 
-  // ดีลแยกตามโครงการ — ถังพิเศษสำหรับดีลที่ยังไม่ผูกโครงการ
-  const unlinkedDeals = deals.filter((d) => !d.projectId);
+  // ดีลแยกตามโครงการ — บวกถัง "ดีลทั้งหมด" ที่รวมทั้งที่ผูกและไม่ผูกโครงการ
   const linkProjects = projects.filter((p) => deals.some((d) => d.projectId === p.id));
-  const dealChoices = form.linkProjectId === NO_PROJECT
-    ? unlinkedDeals
+  const dealChoices = form.linkProjectId === ALL_DEALS
+    ? deals
     : form.linkProjectId
       ? deals.filter((d) => d.projectId === form.linkProjectId)
       : [];
+
+  // ค้นได้ทั้งสองช่อง (มติผู้ใช้ 2026-08-06) — รายการโครงการ/ดีลบน prod ยาวเกินกว่าจะไล่ดู
+  const projectOptions = [
+    { value: "", label: "— เลือกโครงการก่อน —", search: "" },
+    ...(deals.length ? [{ value: ALL_DEALS, label: `— ดีลทั้งหมด (${deals.length}) —`, search: "ดีลทั้งหมด all deals" }] : []),
+    ...linkProjects.map((p) => ({
+      value: p.id,
+      label: `${p.code ? `${p.code} · ` : ""}${p.name}`,
+      search: `${p.code || ""} ${p.name || ""} ${p.customerName || ""}`,
+    })),
+  ];
+  const dealOptions = [
+    // ปล่อยว่าง = ไม่ผูกดีล — ฝ่ายที่ไม่บังคับผูกต้องถอนดีลออกได้ ไม่ใช่เลือกแล้วเลือกคืนไม่ได้
+    // (ใส่เฉพาะตอนเลือกโครงการแล้ว ไม่งั้นช่องที่ยังกดไม่ได้จะโชว์ "ไม่ผูกดีล" แทนคำสั่งว่าต้องเลือกโครงการก่อน)
+    ...(form.linkProjectId ? [{ value: "", label: "— ไม่ผูกดีล —", search: "" }] : []),
+    ...dealChoices.map((deal) => ({
+      value: deal.id,
+      // เดือนคาดการณ์ต่อท้ายเสมอ (มติผู้ใช้ 2026-08-06) — ชื่อดีลซ้ำกันได้จริง
+      // (ลูกค้าเดิมสั่งซ้ำทุกไตรมาส) เดือน FC คือสิ่งเดียวที่แยกออกจากกันได้ในบรรทัดเดียว
+      label: `${deal.title}${deal.customerName ? ` — ${deal.customerName}` : ""} · FC ${deal.forecastMonth || "ไม่ระบุ"}`,
+      search: `${deal.code || ""} ${deal.title || ""} ${deal.customerName || ""} ${deal.forecastMonth || ""}`,
+    })),
+  ];
+
+  // ดีลที่เลือกอยู่ — ใช้บอกว่างานนี้จะไปโผล่ในโครงการไหน (หรือไม่โผล่เลย)
+  const pickedDeal = form.dealId ? deals.find((d) => d.id === form.dealId) : null;
+  const pickedProject = pickedDeal?.projectId ? projects.find((p) => p.id === pickedDeal.projectId) : null;
 
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
   const willComplete = editing && form.status === "Completed" && task.status !== "Completed";
@@ -327,26 +356,45 @@ export default function TaskFormModal({
             <div className="form-group">
               <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
               {/* เลือกโครงการก่อน แล้วดีลกรองตามโครงการ (มติผู้ใช้ 2026-07-17) —
-                  ดีลที่ยังไม่ผูกโครงการมีจริงและผูกงานได้ จึงมีถังแยกไว้ให้ ไม่งั้น
-                  มันจะหายไปจาก dropdown ทั้งที่เดิมเลือกได้ */}
+                  ถัง "ดีลทั้งหมด" ไว้ให้คนที่จำได้แค่ชื่อดีล: ค้นตรง ๆ ได้โดยไม่ต้องรู้
+                  ว่าดีลอยู่โครงการไหน และดีลที่ยังไม่ผูกโครงการก็อยู่ในถังนี้ */}
               <div className="pm-form-grid gap-3">
-                <Select fullWidth disabled={!!inquirySource || !canManage} value={form.linkProjectId}
-                  onChange={(e) => set({ linkProjectId: e.target.value, dealId: "" })}>
-                  <option value="">— เลือกโครงการก่อน —</option>
-                  {linkProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}</option>)}
-                  {unlinkedDeals.length > 0 && <option value={NO_PROJECT}>— ดีลที่ยังไม่ผูกโครงการ ({unlinkedDeals.length}) —</option>}
-                </Select>
-                <Select fullWidth disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
-                  onChange={(e) => set({ dealId: e.target.value })}>
-                  <option value="">{form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}</option>
-                  {dealChoices.map((deal) => (
-                    <option key={deal.id} value={deal.id}>{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}</option>
-                  ))}
-                </Select>
+                <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการของดีล"
+                  disabled={!!inquirySource || !canManage} value={form.linkProjectId}
+                  onChange={(v) => set({ linkProjectId: v, dealId: "" })}
+                  options={projectOptions}
+                  placeholder="— เลือกโครงการก่อน —"
+                  searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
+                  emptyText="ไม่พบโครงการที่มีดีลผูกงานได้" />
+                <SearchableSelect className="w-full" entity="deal" ariaLabel="ดีลที่ผูกกับงาน"
+                  disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
+                  onChange={(v) => {
+                    // เลือกดีลจากถัง "ดีลทั้งหมด" แล้วช่องโครงการต้องเด้งไปโชว์โครงการที่ดีลผูกอยู่
+                    // (มติผู้ใช้ 2026-08-06) — งานจะถูกบันทึกเข้าโครงการนั้นจริง (resolvePersonalTaskLink
+                    // mirror จากดีล) คนกรอกจึงต้องเห็นก่อนกดบันทึก ไม่ใช่รู้ทีหลังตอนงานไปโผล่
+                    // ⚠️ เด้งเฉพาะโครงการที่มีอยู่ในลิสต์ — โครงการนอกขอบเขตจะทำให้ช่องว่างเปล่า
+                    // และดีลที่เพิ่งเลือกหายจาก dropdown ทั้งที่ยังผูกอยู่
+                    const proj = deals.find((d) => d.id === v)?.projectId || "";
+                    const snap = proj && linkProjects.some((p) => p.id === proj);
+                    set({ dealId: v, ...(snap ? { linkProjectId: proj } : {}) });
+                  }}
+                  options={dealOptions}
+                  placeholder={form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}
+                  searchPlaceholder="ค้นหาชื่อดีล / ลูกค้า…"
+                  emptyText="ไม่พบดีลที่ตรงกับคำค้น" />
               </div>
+              {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
+                  ตั้งแต่ตอนกรอกว่างานจะไปโผล่ที่ไหน (หรือไม่โผล่ในโครงการไหนเลย) */}
+              {pickedDeal && (
+                <div className="text-[11px] text-[var(--text-3)] mt-1">
+                  {!pickedDeal.projectId
+                    ? "ดีลนี้ยังไม่ผูกโครงการ — งานจะอยู่กับดีลอย่างเดียว ยังไม่ขึ้นในหน้าโครงการ"
+                    : `งานนี้จะอยู่ในโครงการ ${pickedProject ? `${pickedProject.code ? `${pickedProject.code} · ` : ""}${pickedProject.name}` : "ที่ผูกกับดีลนี้"}`}
+                </div>
+              )}
               {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
               {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-              {form.linkProjectId && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
+              {form.linkProjectId && form.linkProjectId !== ALL_DEALS && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
               {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">งานของฝ่ายขายต้องผูกดีลทุกชิ้น</div>}
             </div>
           )}

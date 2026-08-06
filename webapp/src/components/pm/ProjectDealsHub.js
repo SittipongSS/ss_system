@@ -11,6 +11,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, 
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
@@ -19,7 +20,8 @@ import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
-import { isDealAvailableForProject } from "@/lib/sales/projectLink";
+import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import styles from "./ProjectDealsHub.module.css";
 
 const STAGE_COLORS = {
@@ -345,26 +347,50 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     if (!linkOpen) return;
     setDealId("");
     setLinkError("");
-    fetch("/api/sales-planning/deals")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => setAvailableDeals((rows || []).filter((deal) => (
-        isDealAvailableForProject(deal, { customerId: p.customerId })
-      ))))
+    // ดีลของลูกค้ารายนี้ + ชื่อโครงการที่แต่ละใบอยู่ตอนนี้ — ดีลที่อยู่โครงการอื่น
+    // "ย้ายมาได้" แล้ว (มติผู้ใช้ 2026-08-06) แต่ต้องบอกให้ชัดว่ากำลังดึงมาจากไหน
+    Promise.all([
+      fetch("/api/sales-planning/deals").then((res) => (res.ok ? res.json() : [])),
+      fetch("/api/pm/projects").then((res) => (res.ok ? res.json() : [])).catch(() => []),
+    ])
+      .then(([rows, projects]) => {
+        const byId = new Map((Array.isArray(projects) ? projects : []).map((row) => [row.id, row]));
+        setAvailableDeals((rows || [])
+          .filter((deal) => (
+            isDealAvailableForProject(deal, { customerId: p.customerId })
+            || isDealMovableToProject(deal, { id: p.id, customerId: p.customerId })
+          ))
+          .map((deal) => ({ ...deal, currentProject: deal.projectId ? byId.get(deal.projectId) || null : null })));
+      })
       .catch(() => setAvailableDeals([]));
-  }, [linkOpen, p.customerId]);
+  }, [linkOpen, p.id, p.customerId]);
+
+  // ดีลที่เลือกอยู่ในโมดัล = "ย้ายมา" หรือ "ผูกครั้งแรก" — คุมทั้งชื่อโมดัล ปุ่ม และช่องวันที่
+  const pickedDeal = dealId ? availableDeals.find((deal) => deal.id === dealId) : null;
+  const movingPicked = !!pickedDeal?.projectId;
 
   const linkDeal = async () => {
     if (!dealId) return setLinkError("กรุณาเลือกดีล");
+    const picked = availableDeals.find((deal) => deal.id === dealId);
+    const moving = !!picked?.projectId;
+    // ย้าย = โครงการต้นทางเสียดีลไปพร้อมไทม์ไลน์/งาน/ใบสั่งขายทั้งชุด — ต้องถามก่อน
+    // ไม่ใช่ผลข้างเคียงของการกด "ผูกเข้าโครงการ"
+    if (moving && !(await confirmAction({
+      title: "ย้ายดีลข้ามโครงการ",
+      description: `ย้ายดีล “${picked.title}” มาจากโครงการ ${picked.currentProject?.code || picked.currentProject?.name || "เดิม"}?`,
+      detail: "ไทม์ไลน์ งาน คำร้อง และใบสั่งขายของดีลจะย้ายตามมาทั้งชุด โดยไม่เลื่อนวัน — ยกเว้นรายการ FG ที่ต้องย้ายเองที่หน้าโครงการ",
+      confirmLabel: "ย้ายมาที่นี่",
+    }))) return;
     setLinking(true);
     setLinkError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${dealId}/link-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: p.id, startDate }),
+        body: JSON.stringify({ projectId: p.id, startDate, ...(moving ? { move: true } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "ผูกดีลไม่สำเร็จ");
+      if (!res.ok) throw new Error(data.error || (moving ? "ย้ายดีลไม่สำเร็จ" : "ผูกดีลไม่สำเร็จ"));
       setLinkOpen(false);
       await onChanged?.();
     } catch (error) {
@@ -547,20 +573,33 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         )}
       </div>
 
-      <Modal open={linkOpen} onClose={() => !linking && setLinkOpen(false)} title="ผูกดีลเข้าโครงการ" size="sm">
+      <Modal open={linkOpen} onClose={() => !linking && setLinkOpen(false)} title={movingPicked ? "ย้ายดีลเข้าโครงการ" : "ผูกดีลเข้าโครงการ"} size="sm">
         <div className="flex flex-col gap-4">
           <div className="form-group">
             <label>ดีลของ {p.customerName || "ลูกค้ารายนี้"} หรือดีลที่ยังไม่มีลูกค้า</label>
-            <Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}>
-              <option value="">— เลือกดีลที่ยังไม่ผูกโครงการ —</option>
-              {availableDeals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title} · {dealTypeOf(deal)} · {STAGE_LABELS[deal.stage] || deal.stage}{!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}</option>)}
-            </Select>
+            {/* ค้นได้ — ดีลที่ผูกได้มีหลายสิบใบ การไล่อ่านทีละบรรทัดหาชื่อที่จำได้ไม่ไหว
+                ดีลที่อยู่โครงการอื่นก็เลือกได้ = "ย้ายมา" (ป้ายบอกต้นทางกำกับไว้ทุกบรรทัด
+                และมีคำถามยืนยันก่อน — ไม่ใช่ผลข้างเคียงเงียบ ๆ ของการกดผูก) */}
+            <SearchableSelect className="w-full" entity="deal" ariaLabel="ดีลที่จะผูกเข้าโครงการ"
+              value={dealId} onChange={setDealId}
+              options={availableDeals.map((deal) => ({
+                value: deal.id,
+                // FC = เดือนคาดการณ์ปิด — ตัวแยกดีลชื่อซ้ำ (มติผู้ใช้ 2026-08-06)
+                label: `${deal.title} · ${dealTypeOf(deal)} · ${STAGE_LABELS[deal.stage] || deal.stage} · FC ${deal.forecastMonth || "ไม่ระบุ"}${!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}${deal.projectId ? ` · ⟵ ย้ายจาก ${deal.currentProject?.code || deal.currentProject?.name || "โครงการอื่น"}` : ""}`,
+                search: `${deal.code || ""} ${deal.title || ""} ${deal.customerName || ""} ${deal.forecastMonth || ""} ${deal.currentProject?.code || ""}`,
+              }))}
+              placeholder="— เลือกดีลที่จะผูก/ย้ายเข้าโครงการ —"
+              searchPlaceholder="ค้นหาชื่อดีล…"
+              emptyText="ไม่พบดีลที่ตรงกับคำค้น" />
             {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้หรือดีลที่ยังไม่มีลูกค้า</div>}
+            {availableDeals.some((deal) => deal.projectId) && <div className={styles.footNote}>ดีลที่ขึ้น “ย้ายจาก …” อยู่ในโครงการอื่น — เลือกแล้วจะย้ายมาที่นี่ทั้งชุด (ไทม์ไลน์ งาน คำร้อง ใบสั่งขาย) ยกเว้นรายการ FG</div>}
             {availableDeals.some((deal) => !deal.customerId) && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เมื่อผูกดีลที่ยังไม่มีลูกค้า ระบบจะตั้งลูกค้าให้ตรงกับโครงการอัตโนมัติ</div>}
           </div>
-          <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>
+          {/* ย้ายดีล = ไม่ตั้งวันใหม่: ไทม์ไลน์เดิมมีวันจริง/ความคืบหน้าอยู่แล้ว การ
+              re-anchor จะเลื่อนงานที่ทำค้างอยู่ทั้งชุด — ช่องนี้จึงมีเฉพาะตอนผูกครั้งแรก */}
+          {!movingPicked && <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>}
           {linkError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{linkError}</div>}
-          <div className="form-action-bar"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? "กำลังผูก..." : "ผูกเข้าโครงการ"}</button></div>
+          <div className="form-action-bar"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? (movingPicked ? "กำลังย้าย..." : "กำลังผูก...") : (movingPicked ? "ย้ายเข้าโครงการนี้" : "ผูกเข้าโครงการ")}</button></div>
         </div>
       </Modal>
     </div>

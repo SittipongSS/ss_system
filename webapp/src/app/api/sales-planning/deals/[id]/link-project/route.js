@@ -9,19 +9,29 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
+import { dealLinkedUpdate, dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { appendUpdate } from '@/lib/master/updates';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
+import {
+  mirrorCounts, moveDealMirrors, moveSegmentTasks,
+  nextStepOrder, planSegmentMove, rollbackSegmentTasks,
+} from '@/lib/sales/dealProjectMove';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
-// POST /api/sales-planning/deals/[id]/link-project { projectId, startDate? }
+// POST /api/sales-planning/deals/[id]/link-project { projectId, startDate?, move? }
 // เฟส B: ผูกดีลเข้า "โครงการเดิม" (หลายดีลต่อโครงการ) — คู่กับ create-project (สร้างใหม่).
 // ต่อ task ชุดตาม template ของประเภทดีลเป็น segment ใหม่ท้ายไทม์ไลน์ (anchor = วันเริ่ม
 // ของ segment, pin ด้วย startLocked). กติกา: ลูกค้าต้องตรงกัน (มติ #5 — ห้ามข้ามลูกค้า).
+//
+// `move: true` = **ย้ายดีลข้ามโครงการ** (มติผู้ใช้ 2026-08-06) — ดีลที่ผูกโครงการแล้ว
+// เดิมตีกลับ 409 ทุกกรณี ผูกผิดใบแล้วแก้ไม่ได้เลยนอกจากลบดีลทิ้ง. เส้นทางย้าย
+// **ไม่ gen ไทม์ไลน์ใหม่และไม่เลื่อนวัน** — segment เดิมย้ายทั้งชุดพร้อมสถานะ/วันจริง
+// และของที่ mirror โครงการจากดีล (งาน/คำร้อง/ใบสั่งขาย) ย้ายตาม (ดู lib/sales/dealProjectMove).
+// ธง move ต้องส่งมาโดยตั้งใจเท่านั้น: ผู้เรียกเก่า/การกดซ้ำยังได้ 409 เหมือนเดิม
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user) || !can(user.role, 'pm:edit')) return forbidden();
@@ -32,10 +42,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว ผูกโครงการไม่ได้');
-  if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));
   if (!body.projectId) return badRequest('ต้องระบุโครงการ (projectId)');
+  const movingFrom = deal.projectId ? String(deal.projectId) : '';
+  if (movingFrom && !body.move) return conflict('ดีลนี้ผูกโครงการแล้ว — ส่ง move: true ถ้าต้องการย้ายข้ามโครงการ');
 
   const project = await loadProject(supabase, body.projectId);
   if (!project) return notFound('ไม่พบโครงการ');
@@ -50,6 +61,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เพื่อป้องกันการเปลี่ยนเจ้าของข้อมูลเดิมโดยไม่ตั้งใจ
   if (!hasCompatibleProjectCustomer(deal, project)) {
     return badRequest('ดีลกับโครงการต้องเป็นลูกค้าเดียวกัน');
+  }
+  // โครงการต้นทางของการย้าย: ต้องอยู่ในขอบเขตของผู้ย้ายและยังไม่ปิดเหมือนกัน —
+  // ดีลหลุดออกไปคือโครงการต้นทาง "เปลี่ยนองค์ประกอบ" ไม่ต่างจากปลายทางที่รับเข้า
+  let fromProject = null;
+  if (movingFrom) {
+    if (movingFrom === project.id) return badRequest('ดีลอยู่ในโครงการนี้อยู่แล้ว');
+    fromProject = await loadProject(supabase, movingFrom);
+    if (!fromProject) return notFound('ไม่พบโครงการต้นทางของดีล');
+    if (!inPmProjectScope(user, fromProject)) return forbidden('โครงการต้นทางอยู่นอกขอบเขตทีมของคุณ');
+    const fromClosedMsg = projectWriteBlockedError(fromProject);
+    if (fromClosedMsg) return conflict(`โครงการต้นทาง ${fromProject.code || fromProject.id}: ${fromClosedMsg}`);
   }
 
   const now = new Date().toISOString();
@@ -67,7 +89,23 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .order('stepOrder', { ascending: true });
   let insertedTasks = [];
   let adopted = 0;
-  if ((floating || []).length) {
+  let movedSegment = [];   // ย้ายข้ามโครงการ: แถวที่ย้ายแล้ว (ไว้ถอนคืน)
+  if (fromProject) {
+    // ย้าย segment เดิมทั้งชุด — ไม่ gen ใหม่ ไม่เลื่อนวัน: สถานะ/วันจริง/ผู้รับผิดชอบ
+    // ที่ทำมาแล้วต้องติดไปกับดีล ไม่ใช่เริ่มนับหนึ่งที่โครงการปลายทาง
+    const { data: segment, error: segmentError } = await supabase
+      .from('project_tasks').select('*').eq('dealId', deal.id).eq('projectId', fromProject.id)
+      .order('stepOrder', { ascending: true });
+    if (segmentError) return fail(segmentError.message, 500);
+    try {
+      movedSegment = await moveSegmentTasks(
+        supabase,
+        planSegmentMove(segment || [], nextStepOrder(existing || []), project.id),
+      );
+    } catch (moveError) {
+      return fail(moveError.message, 500);
+    }
+  } else if ((floating || []).length) {
     const baseOrder = (existing || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
     for (let i = 0; i < floating.length; i++) {
       const t = floating[i];
@@ -110,7 +148,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     insertedTasks = taskRows || [];
   }
 
-  // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)
+  // ผูกดีล (guard projectId เดิม — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ/ย้าย)
   const nextStage = advanceStage(deal.stage, 'timeline_proposed');
   const adoptedCustomer = !deal.customerId;
   // เพิ่งมีโครงการ = เพิ่งรู้ว่ามีพี่น้องใบไหนบ้าง — กติกา FC ของ NPD อ่านจากตรงนี้
@@ -118,7 +156,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const nextProbability = await resolveProbability(supabase, {
     ...deal, stage: nextStage, projectId: project.id,
   });
-  const { data: updatedDeal, error: linkErr } = await supabase
+  const dealUpdate = supabase
     .from('sales_deals')
     .update({
       projectId: project.id,
@@ -127,20 +165,46 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       stage: nextStage,
       probability: nextProbability,
       updatedAt: now,
-      metadata: { ...(deal.metadata || {}), linkedProjectCode: project.code, linkedProjectAt: now },
+      metadata: {
+        ...(deal.metadata || {}),
+        linkedProjectCode: project.code,
+        linkedProjectAt: now,
+        // ร่องรอยการย้าย — ดีลที่เคยอยู่โครงการอื่นต้องตอบได้ว่า "เคยอยู่ที่ไหน เมื่อไหร่"
+        ...(fromProject ? { movedFromProjectId: fromProject.id, movedFromProjectCode: fromProject.code || null, movedProjectAt: now } : {}),
+      },
     })
-    .eq('id', deal.id)
-    .is('projectId', null)
-    .select()
-    .single();
+    .eq('id', deal.id);
+  // ย้าย = ต้องยังอยู่โครงการเดิม · ผูกครั้งแรก = ต้องยังไม่มีโครงการ
+  const { data: updatedDeal, error: linkErr } = await (fromProject
+    ? dealUpdate.eq('projectId', fromProject.id)
+    : dealUpdate.is('projectId', null)
+  ).select().single();
   if (linkErr) {
     if (insertedTasks.length) await supabase.from('project_tasks').delete().in('id', insertedTasks.map((t) => t.id));
     if (adopted) {
       await supabase.from('project_tasks').update({ projectId: null })
         .in('id', (floating || []).map((x) => x.id));
     }
-    if (linkErr.code === 'PGRST116') return conflict('ดีลนี้ผูกโครงการแล้ว');
+    if (movedSegment.length) await rollbackSegmentTasks(supabase, movedSegment);
+    if (linkErr.code === 'PGRST116') {
+      return conflict(fromProject ? 'ดีลถูกย้ายไปโครงการอื่นแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง' : 'ดีลนี้ผูกโครงการแล้ว');
+    }
     return fail(linkErr.message, 500);
+  }
+
+  // ของที่ mirror โครงการจากดีล (งาน/คำร้อง/ใบสั่งขาย) ต้องย้ายตาม ไม่งั้นค้างชี้
+  // โครงการเก่าแล้วโผล่ผิดที่ทั้งสองฝั่ง · พังกลางทาง = ถอนคืนทุกอย่างรวมถึงตัวดีล
+  let movedMirrors = [];
+  if (fromProject) {
+    try {
+      movedMirrors = await moveDealMirrors(supabase, { dealId: deal.id, toProjectId: project.id });
+    } catch (mirrorError) {
+      await supabase.from('sales_deals')
+        .update({ projectId: deal.projectId, metadata: deal.metadata || null, updatedAt: now })
+        .eq('id', deal.id);
+      await rollbackSegmentTasks(supabase, movedSegment);
+      return fail(mirrorError.message, 500);
+    }
   }
 
   if (deal.stage !== nextStage) {
@@ -158,9 +222,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // จะเริ่มไหลเข้าหน้าโครงการทันที ถ้าไม่มีบรรทัดบอกจะอ่านเหมือนโผล่มาเฉย ๆ
   await appendUpdate(supabase, {
     entityType: 'project', entityId: project.id,
-    ...dealLinkedUpdate(updatedDeal || deal, { how: 'link' }), user,
+    ...dealLinkedUpdate(updatedDeal || deal, { how: fromProject ? 'move' : 'link' }), user,
   });
+  // ...และโครงการต้นทางต้องรู้ว่าทำไมดีลใบนั้นหายไปทั้งชุด (ไทม์ไลน์ ใบสั่งขาย งาน
+  // หายพร้อมกันหมด) — เธรดที่ไม่บันทึกการย้ายคือเส้นเรื่องที่มีรู
+  if (fromProject) {
+    await appendUpdate(supabase, {
+      entityType: 'project', entityId: fromProject.id,
+      ...dealUnlinkedUpdate(updatedDeal || deal, { reason: `ย้ายไปโครงการ ${project.code || project.id}` }), user,
+    });
+  }
 
+  const movedCounts = mirrorCounts(movedMirrors);
   await recordAudit({
     user,
     action: 'update',
@@ -168,9 +241,21 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: deal.id,
     before: deal,
     after: updatedDeal,
-    summary: `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id}${adoptedCustomer ? ` และตั้งลูกค้าเป็น ${project.customerName || project.customerId}` : ''} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
+    summary: fromProject
+      ? `ย้ายดีล ${dealAuditLabel(deal)} จากโครงการ ${fromProject.code || fromProject.id} ไป ${project.code || project.id} (ไทม์ไลน์ ${movedSegment.length} ขั้นตอน${Object.entries(movedCounts).map(([table, count]) => `, ${table} ${count}`).join('')} · รายการ FG ไม่ย้ายตาม)`
+      : `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id}${adoptedCustomer ? ` และตั้งลูกค้าเป็น ${project.customerName || project.customerId}` : ''} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
     request: req,
   });
 
-  return ok({ deal: updatedDeal, project: { id: project.id, code: project.code, name: project.name }, appendedTasks: insertedTasks.length + adopted, adoptedTasks: adopted }, 201);
+  return ok({
+    deal: updatedDeal,
+    project: { id: project.id, code: project.code, name: project.name },
+    appendedTasks: insertedTasks.length + adopted,
+    adoptedTasks: adopted,
+    ...(fromProject ? {
+      movedFrom: { id: fromProject.id, code: fromProject.code, name: fromProject.name },
+      movedTasks: movedSegment.length,
+      movedMirrors: movedCounts,
+    } : {}),
+  }, fromProject ? 200 : 201);
 });

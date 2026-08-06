@@ -15,7 +15,8 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   let query = supabase
     .from('sales_deals')
-    .select('id, code, title, customerName, team, stage, projectId')
+    // forecastMonth = เดือนคาดการณ์ปิด — ตัวแยกดีลชื่อซ้ำใน dropdown (มติผู้ใช้ 2026-08-06)
+    .select('id, code, title, customerName, team, stage, projectId, forecastMonth')
     .order('updatedAt', { ascending: false });
   if (scope.kind === 'team') query = query.eq('team', scope.team);
 
