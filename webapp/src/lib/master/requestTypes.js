@@ -99,6 +99,11 @@ export function requestNeedsApprovalKind(kind) {
   return !!REQUEST_KINDS[kind]?.needsSupervisorApproval;
 }
 
+// หัวข้อนี้บังคับใส่วันกำหนดส่งตอนรับเรื่องไหม (มติผู้ใช้ 2026-08-06 · รายชนิด)
+export function requestRequiresCommittedDue(kind) {
+  return !!REQUEST_KINDS[kind]?.requiresCommittedDueDate;
+}
+
 export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }

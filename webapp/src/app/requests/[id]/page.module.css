@@ -75,3 +75,11 @@
 .summaryBar [data-tone="warning"] { color: var(--amber-ink, var(--text-1)); }
 .summaryBar [data-tone="danger"] { color: var(--red); }
 .summaryBar [data-tone="success"] { color: var(--green); }
+
+/* คำอธิบายใต้ช่องในโมดัล — โทน hint เดียวกับฟอร์มอื่นของโมดูล */
+.hint {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}

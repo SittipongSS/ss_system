@@ -613,3 +613,18 @@ test('requestStepLabel อ่านชื่อขั้นจากแม่แ
   assert.equal(requestStepLabel('info'), null);
   assert.equal(requestStepLabel('ไม่มีหัวข้อนี้'), null);
 });
+
+test('⭐ พัฒนากลิ่นบังคับใส่วันกำหนดส่งตอนรับเรื่อง — รายชนิด ไม่ใช่ทั้งระบบ', () => {
+  // มติผู้ใช้ 2026-08-06 · รับเรื่องโดยไม่ผูกวัน = รับปากว่า "จะทำ" โดยไม่บอกว่าเมื่อไร
+  // และเป็นวันที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า
+  const scent = { kind: 'scent_dev', status: 'pending' };
+  assert.match(acknowledgeRequestError(scent), /วันกำหนดส่ง/);
+  assert.match(acknowledgeRequestError(scent, { committedDueDate: '  ' }), /วันกำหนดส่ง/);
+  assert.equal(acknowledgeRequestError(scent, { committedDueDate: '2569-08-20' }), null);
+
+  // ⚠️ หัวข้อที่มีผู้ใช้จริงอยู่แล้ว (ขอราคา/สอบถาม) ต้องไม่ถูกบังคับ — บังคับทั้งระบบ
+  // จะเปลี่ยนขั้นตอนของคนที่ใช้อยู่โดยไม่ได้ตกลงกัน
+  for (const kind of ['price_pm', 'price_f', 'info', 'document', 'product_dev']) {
+    assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
+  }
+});
