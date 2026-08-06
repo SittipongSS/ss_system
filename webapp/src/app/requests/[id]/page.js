@@ -709,6 +709,14 @@ export default function MaterialAskDetailPage() {
                   จึงตัดสินเองไม่ได้ (บทเรียนเดียวกับ `_canApprove`) */}
               {req._canEditPdr && (
                 <div className={`action-bar ${styles.modalActions}`}>
+                  {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็น HTML
+                      เหมือน QT/SO ไม่ใช่ไฟล์ที่โหลดลงเครื่อง */}
+                  <Button
+                    variant="quiet"
+                    onClick={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
+                  >
+                    ดูฉบับที่ออกจริง
+                  </Button>
                   <Button
                     variant="quiet" disabled={saving}
                     onClick={() => setPdrDraft({

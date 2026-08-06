@@ -2,13 +2,16 @@ import { cachedFetchJson } from './apiCache';
 import { businessDate } from './businessDate';
 import { DOCUMENT_FORMS } from './documentBrand';
 
-export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline']);
+// ⭐ `pdr` = แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (FM-RD-01) — ตัวแรกที่ไม่ใช่เอกสารฝั่งขาย
+// แต่ใช้เปลือกเดียวกันเพราะมันคือกระดาษที่ลูกค้า/ฝ่ายผลิตอ่านเหมือนกัน
+export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline', 'pdr']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
   salesOrder: 'ใบสั่งขาย',
   exciseTaxNotice: 'ใบแจ้งชำระค่าภาษีสรรพสามิต',
   projectTimeline: 'ไทม์ไลน์โครงการ',
+  pdr: 'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
@@ -213,6 +216,10 @@ export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
   salesOrder: 'SO-{YY}{MM}{RUNNING:4}-{REVISION}',
   exciseTaxNotice: 'ET-{YY}{MM}{RUNNING:4}-{REVISION}',
   projectTimeline: 'PT-{YY}{MM}{RUNNING:4}-{REVISION}',
+  // ⚠️ **PDR ไม่ออกเลขของตัวเอง** — ช่อง "Document No." บนกระดาษเติมด้วยเลขที่คำร้อง
+  // (SB-…) ที่ออกไปแล้วตอนกดส่ง · รูปแบบนี้มีไว้ให้ครบตามที่ทะเบียนมาตรฐานเอกสาร
+  // บังคับเท่านั้น ไม่มีใครเรียกใช้ · ออกเลขซ้ำอีกชุดคือเลขที่สองที่ต้องคอยจับคู่กัน
+  pdr: 'PDR-{YY}{MM}{RUNNING:4}-{REVISION}',
 });
 
 const REVISION_TOKEN = '{REVISION}';
