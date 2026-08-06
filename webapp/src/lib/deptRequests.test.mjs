@@ -3,6 +3,7 @@
 //  เพราะผู้ใช้ที่ใช้อยู่ต้องไม่รู้สึกว่าอะไรเปลี่ยนหลังรวมระบบ)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
@@ -716,4 +717,34 @@ test('🐞 แถวรอบแก้ต้องพาบรีฟตามไ
   assert.equal(next.answerStatus, 'pending');
   assert.equal(next.ackAt, undefined);
   assert.equal(next.outcome, undefined);
+});
+
+// ── ส่วนหัว PDR ต้องเดินทางครบจากฟอร์มถึงคอลัมน์ ─────────────────────────
+//
+// 🐞 ของจริงที่ผู้ใช้เจอบนจอ: กรอกส่วนหัว PDR ครบ กดบันทึก แล้วหน้ารายละเอียดขึ้น
+// "ยังไม่ได้กรอกส่วนนี้" ทุกใบ — `requestPayload` ไม่เคยส่ง `form.pdr` เลย และ POST
+// ก็ไม่เคยอ่าน · คอมเมนต์เดิมเขียนไว้ว่า "รอ migration ส่วนหัวก่อน" ซึ่งคือ 0214
+// ที่ออกและรันไปแล้ว แต่ไม่มีใครกลับมาถอดคำว่า "ยังไม่ส่ง" ออก
+test('🐞 requestPayload ส่งส่วนหัว PDR ไปด้วย — ไม่งั้น 21 ช่องหายเงียบทุกใบ', () => {
+  const form = {
+    dept: 'RD', kind: 'scent_dev', title: 'พัฒนากลิ่น', body: 'x',
+    pdr: { customerBrand: 'แบรนด์ก', targetCost: '1200', moq: '50' },
+    briefs: [{ label: 'กลิ่นที่ 1', brief: 'โทนไม้' }],
+  };
+  const p = requestPayload(form);
+  assert.deepEqual(p.pdr, form.pdr);
+  assert.equal(p.briefs.length, 1);
+
+  // หัวข้อที่ไม่ได้ใช้ PDR ต้องไม่ส่งทั้งสองก้อน — ของที่ไม่มีความหมายไม่ควรถูกส่ง
+  const info = requestPayload({ ...form, kind: 'info' });
+  assert.equal('pdr' in info, false);
+  assert.equal('briefs' in info, false);
+});
+
+test('🐞 POST /api/sa/requests ต้องอ่าน body.pdr จริง — ratchet กันฟอร์มส่งแล้ว server ทิ้ง', () => {
+  // ⚠️ ด่านฝั่งจอส่งของถูกแล้วก็ไม่พอ ถ้าปลายทางไม่มีใครรับ — ค่าจะหายเงียบ
+  // ระหว่างทางเหมือนเดิมเป๊ะ · ตรวจที่ซอร์สเพราะ route แตะ DB จึงเรียกในเทสต์ไม่ได้
+  const src = readFileSync('src/app/api/sa/requests/route.js', 'utf8');
+  assert.match(src, /normalizePdr\(body\.pdr\)/, 'POST ต้องเรียก normalizePdr(body.pdr)');
+  assert.match(src, /\.\.\.pdrColumns,/, 'คอลัมน์ที่ได้ต้องถูกใส่ลง insert จริง');
 });
