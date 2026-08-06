@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
 import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { describeResponseError } from "@/lib/fetchError";
+import { notifyToast } from "@/components/ui/Toast";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
 // to 'received'. Exempt orders confirm without a receipt. PATCH unchanged.
@@ -35,18 +37,25 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           fd.append("entityType", "order");
           fd.append("entityId", order.id);
           const up = await fetch("/api/upload", { method: "POST", body: fd });
-          if (up.ok) {
-            const { url, driveFileId } = await up.json();
-            const sv = await fetch("/api/master/attachments", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
-            });
+          if (!up.ok) throw new Error(await describeResponseError(up, "แนบหลักฐานการชำระไม่สำเร็จ"));
+          const { url, driveFileId } = await up.json();
+          const sv = await fetch("/api/master/attachments", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
+          });
+          if (!sv.ok) {
             // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
-            if (!sv.ok && driveFileId) {
+            if (driveFileId) {
               fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId }) }).catch(() => {});
             }
+            throw new Error(await describeResponseError(sv, "บันทึกหลักฐานการชำระไม่สำเร็จ"));
           }
-        } catch { /* ออเดอร์ย้ายสถานะแล้ว แนบไฟล์เพิ่มทีหลังได้ */ }
+        } catch (attErr) {
+          // 🐞 เดิมเป็น `if (up.ok) {...} catch {}` เปล่า ๆ = ไฟล์ที่ผู้ใช้เลือกหายไป
+          // เงียบสนิท ไม่มีอะไรบอกสักคำ · ยังไม่ล้มทั้งงาน (ออเดอร์ย้ายสถานะไปแล้ว
+          // จริง ๆ) แต่ต้องบอกให้รู้ว่ายังไม่มีไฟล์ ไม่งั้นเข้าใจว่าแนบไปแล้ว
+          notifyToast.error(`${attErr.message} — สถานะออเดอร์บันทึกแล้ว แนบหลักฐานซ้ำได้ที่หน้ารายละเอียดออเดอร์`);
+        }
       }
       onDone?.();
       onClose();

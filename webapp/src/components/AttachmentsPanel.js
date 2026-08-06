@@ -18,6 +18,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDate } from "@/lib/format";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
+import { describeResponseError } from "@/lib/fetchError";
 import {
   FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
 } from "lucide-react";
@@ -96,9 +97,14 @@ export default function AttachmentsPanel({
         `/api/master/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
         { cache: "no-store" },
       );
+      // 🐞 เดิมเป็น `if (res.ok) setItems(...)` เฉย ๆ ⇒ 403/500 กลายเป็นการ์ดเปล่า
+      // ทุกใบ แยกไม่ออกจาก "ระเบียนนี้ยังไม่ได้แนบอะไร" · คนใช้เข้าใจว่าไฟล์หาย
+      // ทั้งที่จริงคือรายการโหลดไม่ได้
       if (res.ok) setItems(await res.json());
+      else notifyToast.error(await describeResponseError(res, "โหลดรายการเอกสารแนบไม่สำเร็จ"));
     } catch (err) {
       console.error(err);
+      notifyToast.error("โหลดรายการเอกสารแนบไม่สำเร็จ — เครือข่ายขัดข้อง");
     }
     setLoading(false);
   }, [entityType, entityId]);
@@ -224,7 +230,9 @@ export default function AttachmentsPanel({
     try {
       const res = await fetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) setItems((prev) => prev.filter((it) => it.id !== id));
-      else notifyToast.error((await res.json()).error || "ลบไม่สำเร็จ");
+      // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —
+      // สาเหตุจริงเลยหายไปกลายเป็น "เกิดข้อผิดพลาดในการลบ" ของ catch ข้างล่าง
+      else notifyToast.error(await describeResponseError(res, "ลบไม่สำเร็จ"));
     } catch {
       notifyToast.error("เกิดข้อผิดพลาดในการลบ");
     }

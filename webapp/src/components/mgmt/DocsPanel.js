@@ -4,6 +4,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FileText, FileSpreadsheet, File as FileIcon, Plus, Trash2, ExternalLink, Paperclip, Link2 } from "lucide-react";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { describeResponseError } from "@/lib/fetchError";
 
 // ไฟล์ & เอกสารของโมดูล "งานบริหาร" — 2 ประเภทในที่เดียว:
 //   • ไฟล์ static (PDF) → อัปขึ้น Drive, ดาวน์โหลดผ่าน proxy
@@ -41,7 +42,8 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
       fd.append("entityType", entityType);
       fd.append("entityId", entityId);
       const up = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!up.ok) { notifyToast.error("อัปโหลดไม่สำเร็จ"); return; }
+      // เดิมทิ้ง response ทั้งดุ้นแล้วโชว์ "อัปโหลดไม่สำเร็จ" ตายตัว = ตามต่อไม่ได้เลย
+      if (!up.ok) { notifyToast.error(await describeResponseError(up, "อัปโหลดไม่สำเร็จ")); return; }
       const { url, driveFileId } = await up.json();
       const res = await fetch("/api/master/attachments", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -50,7 +52,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
           fileName: f.name, mimeType: f.type || null, sizeBytes: f.size, metadata: { kind: "file" },
         }),
       });
-      if (res.ok) load(); else notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      if (res.ok) load(); else notifyToast.error(await describeResponseError(res, "บันทึกไม่สำเร็จ"));
     } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 

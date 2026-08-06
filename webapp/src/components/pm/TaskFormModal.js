@@ -18,6 +18,7 @@ import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
+import { describeResponseError } from "@/lib/fetchError";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import Textarea from "@/components/ui/Textarea";
 
@@ -67,9 +68,9 @@ async function uploadTaskAttachment(taskId, file) {
   fd.append("entityType", "personal_task");
   fd.append("entityId", taskId);
   const res = await fetch("/api/upload", { method: "POST", body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-  return data;
+  // ต้องเช็ก ok ก่อนอ่าน body: คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON
+  if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
+  return res.json();
 }
 
 export default function TaskFormModal({

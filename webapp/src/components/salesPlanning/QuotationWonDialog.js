@@ -10,6 +10,7 @@ import {
   WON_DOC_TYPES, isPaymentDocType, validateWonEvidence, MAX_WON_ATTACHMENTS,
 } from "@/lib/sales/quotationWonEvidence";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { describeResponseError } from "@/lib/fetchError";
 
 // ฟอร์มยืนยัน Won จากใบเสนอราคา (บังคับหลักฐาน — feedback ผู้ใช้ 2026-07-15):
 // แนบไฟล์ สลิป/PO/เอกสารยืนยันการสั่งซื้อ ≥1 + วันที่เอกสาร; ถ้าไม่ใช่เอกสาร
@@ -61,8 +62,9 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
     fd.append("entityId", quote.id);
     if (customerName) fd.append("customerName", customerName);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+    // ต้องเช็ก ok ก่อนอ่าน body: คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON
+    if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
+    const payload = await res.json();
     return {
       fileUrl: payload.url || null,
       driveFileId: payload.driveFileId || null,
@@ -91,8 +93,8 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ docType, docDate, paymentDueDate: dueDate || null, attachments }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "ปิด Won ไม่สำเร็จ");
+      if (!res.ok) throw new Error(await describeResponseError(res, "ปิด Won ไม่สำเร็จ"));
+      const data = await res.json();
       reset();
       await onDone?.(data);
     } catch (e) {

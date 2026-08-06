@@ -22,6 +22,7 @@ import DateInput from "@/components/ui/DateInput";
 import RichText from "@/components/ui/RichText";
 import Select from "@/components/ui/Select";
 import { fmtDateTime, fmtDayTime } from "@/lib/format";
+import { describeResponseError } from "@/lib/fetchError";
 import { DEPARTMENT_LABELS } from "@/lib/permissions";
 import {
   authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
@@ -270,10 +271,8 @@ export default function UpdateThread({
         fd.append("entityId", entityId);
         const up = await fetch("/api/upload", { method: "POST", body: fd });
         // ข้อความจริงจาก server (ชนิดไฟล์/ขนาด/ปัญหาที่ Drive) — ตายตัวแล้วผู้ใช้ตามต่อไม่ได้
-        if (!up.ok) {
-          const detail = await up.json().catch(() => ({}));
-          throw new Error(detail.error || "อัปโหลดไฟล์ไม่สำเร็จ");
-        }
+        // · คำขอที่ตายก่อนถึง handler ไม่มี JSON ให้อ่าน จึงต้องเหลือ status ไว้เป็นเบาะแส
+        if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
         const payload = await up.json();
         attachments.push({
           fileUrl: payload.url, driveFileId: payload.driveFileId || null,

@@ -12,6 +12,7 @@ import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import TimeInput from "@/components/ui/TimeInput";
 import SignaturePad from "./SignaturePad";
+import { describeResponseError } from "@/lib/fetchError";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
@@ -95,10 +96,11 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     body.append("entityType", "service_visit");
     body.append("entityId", visit.id);
     const res = await fetch("/api/upload", { method: "POST", body });
-    const data = await res.json().catch(() => null);
     // ⚠️ อย่ากลืน error ของ server เป็น "อัปโหลดไม่สำเร็จ" ลอย ๆ — ข้อความจริง
-    // บอกได้ว่าไฟล์ใหญ่เกิน/ชนิดไม่รองรับ/ท่อ Drive ตาย ซึ่งแก้คนละทาง
-    if (!res.ok) throw new Error(data?.error || "อัปโหลดไม่สำเร็จ");
+    // บอกได้ว่าไฟล์ใหญ่เกิน/ชนิดไม่รองรับ/ท่อ Drive ตาย ซึ่งแก้คนละทาง · และคำขอที่
+    // ตายก่อนถึง handler ไม่มี JSON ให้อ่านเลย จึงต้องเหลือ status ไว้เป็นเบาะแส
+    if (!res.ok) throw new Error(await describeResponseError(res, "อัปโหลดไม่สำเร็จ"));
+    const data = await res.json().catch(() => null);
     return data?.url || null;
   };
 
