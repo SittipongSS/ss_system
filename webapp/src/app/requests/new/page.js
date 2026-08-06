@@ -61,6 +61,8 @@ export default function NewRequestPage() {
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
   const [mentionPeople, setMentionPeople] = useState([]);
+  // ⭐ ทะเบียนลูกค้า — ฟอร์ม PDR เติม "ชื่อผู้ติดต่อ / Phone-Line" จากที่นี่ (มติผู้ใช้)
+  const [customers, setCustomers] = useState([]);
 
   useEffect(() => {
     const grab = (url, set) => fetch(url, { cache: "no-store" })
@@ -76,6 +78,7 @@ export default function NewRequestPage() {
     // @คนที่เปิดคำร้องไม่ได้ = เขาได้แจ้งเตือนที่กดแล้วเจอ 404)
     grab("/api/sa/requests/mentionable", setMentionPeople);
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
+    cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
   }, []);
 
   // ปุ่มส่งเปิดเมื่อกรอกครบ — **ด่านเดียวกับข้อความที่ฟอร์มแสดง**
@@ -108,7 +111,7 @@ export default function NewRequestPage() {
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
           materials={materials} products={products}
-          projects={projects} deals={deals} salesOrders={salesOrders}
+          projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
           // ไฟล์แนบและ @ อยู่ที่หน้ารายละเอียด — ที่เดียวที่ทั้งสองอย่างทำงานจริง

@@ -193,3 +193,28 @@ test('ค่าที่ระบบเติมให้มาจากโค�
   assert.equal(legacy.contactName, 'คุณบี');
   assert.equal(legacy.contactPhone, '021234567');
 });
+
+test('🐞 หน้าเปิดคำร้องกับหน้ารายละเอียดต้องได้ค่าเติมเองชุดเดียวกัน', () => {
+  // ก่อนหน้านี้หน้าเปิดคำร้องส่งแค่ customer/deal ⇒ AC · ผู้ติดต่อ · วันคาดหวัง
+  // ค้างเป็นเส้นประ "เติมจาก…" ทั้งที่เลือกใบสั่งขายแล้ว ส่วนอีกสองจอเติมครบ
+  const args = {
+    request: { requestedDueDate: '2026-08-20', urgent: true, customerName: 'ลูกค้า ก' },
+    project: { aeOwner: 'ผู้ดูแล AE', acOwner: 'ผู้ประสานงาน AC' },
+    customer: { contacts: [{ name: 'คุณเอ', phone: '0812345678' }] },
+    deal: { code: 'D-1' },
+    briefs: [{ id: 'B1' }],
+  };
+  const ctx = pdrContext(args);
+  assert.equal(ctx.sampleDue, '2026-08-20 · ด่วน');
+
+  // ค่าที่ context ให้มา ต้องเป็นค่าเดียวกับที่จอแสดง/เอกสารอ่านผ่าน pdrFieldText
+  for (const key of ['requester', 'coordinator', 'contactName', 'contactPhone', 'sampleDue']) {
+    const field = PDR_FIELDS.find((f) => f.key === key);
+    assert.equal(pdrFieldText(field, args.request, ctx), ctx[key], key);
+  }
+});
+
+test('ด่วนแต่ยังไม่ระบุวัน ต้องยังขึ้นให้เห็นว่าด่วน', () => {
+  assert.equal(pdrContext({ request: { urgent: true } }).sampleDue, 'ยังไม่ระบุวัน · ด่วน');
+  assert.equal(pdrContext({ request: {} }).sampleDue, null);
+});

@@ -1,0 +1,76 @@
+/* ตารางสรุปทั้งใบ — geometry ล้วน สีมาจากโทเคนกลางทั้งหมด */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* แถบตัวเลข — โทนบอกน้ำหนัก ไม่ใช่ตกแต่ง (warn = มีของค้างที่ต้องขยับ) */
+.counts {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: var(--fs-6);
+  color: var(--text-2);
+}
+
+.counts span[data-tone="warn"] { color: var(--amber); }
+.counts span[data-tone="ok"] { color: var(--green); }
+
+/* แถวคั่นกลุ่ม = หัวบรีฟ · ใช้ th scope=rowgroup ให้ screen reader อ่านออกว่าเป็นหัว */
+.groupRow th {
+  text-align: left;
+  background: var(--panel-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  color: var(--text-2);
+}
+
+/* บรีฟย่อขึ้นบรรทัดเดียวต่อท้ายหัวกลุ่ม — เห็นว่าขออะไรโดยไม่ต้องเลื่อนไปดู PDR */
+.groupBrief {
+  margin-left: var(--space-2);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+
+.name { font-weight: var(--fw-semibold); }
+
+.rework {
+  margin-left: var(--space-2);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+.qty {
+  margin-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.note {
+  margin-top: var(--space-1);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
+
+/* ⚠️ ข้อความ ไม่ใช่ขีด — "ยังไม่ถึงตาลูกค้า" กับ "ลูกค้าเงียบ" คนละเรื่อง */
+.pending,
+.untouched {
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
+
+.colName { width: 42%; }
+.colOutcome { width: 33%; }
+.colStage { width: 25%; }

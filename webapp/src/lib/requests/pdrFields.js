@@ -250,13 +250,8 @@ export function pdrFieldText(field, request = {}, context = {}) {
       case 'deal': return context.deal || null;
       case 'contactName': return context.contactName || null;
       case 'contactPhone': return context.contactPhone || null;
-      // ⚠️ วันเดียวกับ `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ใหม่ ·
-      // "ด่วน" ต่อท้ายเพราะกระดาษสั่งให้ระบุคำนี้ตรง ๆ เมื่อเป็นงานด่วน
-      case 'sampleDue': {
-        const at = request.requestedDueDate || null;
-        if (!at && !request.urgent) return null;
-        return `${at || 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
-      }
+      // ⚠️ วันเดียวกับ `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ใหม่
+      case 'sampleDue': return context.sampleDue ?? sampleDueText(request);
       case 'scentCount': {
         const n = context.scentCount ?? (briefs.length || null);
         return n ? `${n} กลิ่น` : null;
@@ -340,6 +335,16 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
  * ⚠️ ผู้ติดต่อเอาจาก `contacts[0]` ก่อน แล้วค่อยถอยไป `contactPerson/contactPhone`
  * — 0033 ย้ายไป contacts[] แต่คอลัมน์เก่ายังมีค่าอยู่บนแถวที่ไม่เคยถูกแก้
  */
+// วันที่คาดหวังตัวอย่าง — `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ของ PDR
+//
+// ⚠️ "ด่วน" ต่อท้ายเพราะกระดาษสั่งให้ระบุคำนี้ตรง ๆ เมื่อเป็นงานด่วน · ใบที่ติดธงด่วน
+// แต่ยังไม่ระบุวันต้องยังขึ้นให้เห็นว่าด่วน ไม่ใช่เงียบไปทั้งช่อง
+function sampleDueText(request = {}) {
+  const at = request.requestedDueDate || null;
+  if (!at && !request.urgent) return null;
+  return `${at || 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
+}
+
 export function pdrContext({ request = {}, project = null, customer = null, deal = null, briefs = [] } = {}) {
   const primary = (Array.isArray(customer?.contacts) ? customer.contacts[0] : null) || {};
   const phone = primary.phone || customer?.contactPhone || null;
@@ -352,6 +357,7 @@ export function pdrContext({ request = {}, project = null, customer = null, deal
     contactName: primary.name || customer?.contactPerson || null,
     // Phone / Line เป็นช่องเดียวบนกระดาษ — ต่อกันด้วย · เมื่อมีทั้งคู่
     contactPhone: [phone, line].filter(Boolean).join(' · ') || null,
+    sampleDue: sampleDueText(request),
     scentCount: briefs.length || null,
     briefs,
   };

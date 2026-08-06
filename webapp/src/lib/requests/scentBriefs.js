@@ -118,16 +118,3 @@ export function briefLinkError(briefId, briefsOfRequest = []) {
   }
   return null;
 }
-
-// สรุปสำหรับหัวใบ — "บรีฟ 3 · ส่งแล้ว 3 · ยังไม่ส่ง 1 ก้อน"
-//
-// ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD ถามตัวเอง
-// คือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" ไม่ใช่ "เหลืออะไรที่ยังไม่ปิด"
-export function scentBriefSummary(briefs = [], items = []) {
-  const answered = new Set(items.map((i) => i.briefId).filter(Boolean));
-  return {
-    briefs: briefs.length,
-    directions: items.filter((i) => i.briefId).length,
-    untouched: briefs.filter((b) => !answered.has(b.id)).length,
-  };
-}
