@@ -12,6 +12,9 @@ const scentDev = {
   needs: ['salesOrder'],
   // ⭐ หัวข้อนี้ใช้แบบฟอร์ม PDR (FM-RD-01) แทนช่องรายละเอียดธรรมดา
   hasPdr: true,
+  // ⭐ ต้องผ่านหัวหน้าสายงานขายก่อน RD ลงมือ (มติผู้ใช้ 2026-08-06) — ประตูอยู่หลัง
+  // RD รับเรื่อง เพราะหัวหน้าต้องเห็นวันกำหนดส่งจริงก่อนตัดสิน · หัวข้ออื่นไม่ต้องผ่าน
+  needsSupervisorApproval: true,
   stepKey: 'scent-06', dealType: 'SCENT',
   form: {
     titlePlaceholder: 'เช่น บรีฟกลิ่นสำหรับ Reed Diffuser',
