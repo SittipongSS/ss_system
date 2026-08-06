@@ -1,0 +1,113 @@
+/* ตัวเลือกดีลสองชั้น — แผงซ้าย=โครงการ ขวา=ดีล (ดู DealPicker.js)
+   สีและระยะทั้งหมดมาจากโทเคนกลาง ไม่มีค่าดิบ */
+
+.panel {
+  z-index: var(--z-portal-menu);
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.headMeta { color: var(--text-3); font-weight: var(--fw-regular); }
+
+.panes { display: flex; min-height: 0; }
+
+.pane {
+  display: flex;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5);
+}
+
+.left { width: 44%; border-right: 1px solid var(--border); }
+.right { flex: 1; min-width: 0; }
+
+.search {
+  display: flex;
+  position: sticky;
+  top: 0;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* sticky = ลอยทับรายการที่เลื่อนผ่านใต้มัน → ต้องทึบแบบแผงลอย ไม่ใช่ --panel
+     ที่โปร่ง 8% (ตัวอักษรของแถวข้างหลังจะลอดขึ้นมาปนกับคำค้น) */
+  background: var(--panel-float);
+  color: var(--text-3);
+}
+
+.search input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-5);
+}
+
+.search input:focus { outline: none; }
+
+.row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-7);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover { background: var(--panel-2); }
+.row.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+
+.rowLabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { flex: 0 0 auto; color: var(--text-3); font-size: var(--fs-3); }
+.row.active .count { color: var(--accent-ink); }
+
+.deal { align-items: flex-start; color: var(--text); }
+/* ไอคอนอยู่บรรทัดแรกเสมอ — แถวสองบรรทัดจะดันไอคอนไปกลางแถวถ้าไม่ตรึง */
+.rowIcon { flex: 0 0 auto; margin-top: var(--space-0-5); }
+.dealText { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--space-0-5); }
+.dealTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dealMeta { color: var(--text-3); font-size: var(--fs-3); }
+.deal.active .dealMeta { color: var(--accent-ink); }
+
+.empty { padding: var(--space-4) var(--space-2-5); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+
+.triggerValue { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
+.triggerChip {
+  flex: 0 0 auto;
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+}
+.triggerText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.placeholder { color: var(--text-3); }
