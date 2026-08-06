@@ -22,6 +22,7 @@ import { Plus, Trash2, Paperclip, X, AtSign } from "lucide-react";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import DealPicker from "@/components/pm/DealPicker";
 import DateInput from "@/components/ui/DateInput";
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import Textarea from "@/components/ui/Textarea";
@@ -167,10 +168,6 @@ export default function RequestForm({
   // (`dept_request_items.categoryCode`) ผ่าน ProductCategorySelect ตัวกลาง
   const needsProductType = requestNeedsRef(kind, "productType");
 
-  // ดีลที่เลือกได้ = ดีลของโครงการที่เลือกไว้เท่านั้น (ลำดับข้อ 1)
-  const dealsOfProject = value.projectId
-    ? deals.filter((d) => d.projectId === value.projectId)
-    : [];
   const selectedProductType = productTypes.find((t) => String(t.id) === String(value.productTypeId));
   // ⚠️ กลิ่นที่เลือกได้ต้องเป็นของลูกค้าเจ้าของดีลเท่านั้น (มติ 9) — ลูกค้ามาจากดีล
   // ที่เลือกไว้ ไม่ใช่จากที่ผู้ใช้พิมพ์ (คำร้องไม่มีช่องลูกค้าให้เลือกเอง)
@@ -349,49 +346,28 @@ export default function RequestForm({
           เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
       {needsProject && (
-      <div className="form-grid">
-        <div className="form-group">
-          <span className={styles.fieldLabel}>โครงการ</span>
-          <SearchableSelect
-            value={value.projectId} disabled={disabled}
-            onChange={(v) => set({
-              projectId: v,
-              // เปลี่ยนโครงการแล้วดีลเดิมไม่ใช่ของโครงการนี้อีก — ล้างทิ้ง ไม่ค้างไว้
-              // ให้ผ่านด่านฝั่ง client แล้วไปตายที่ server
-              dealId: "",
-            })}
-            options={projects.map((p) => ({
-              value: p.id,
-              label: `${p.code || p.id} — ${p.name || p.customerName || ""}`.trim(),
-              search: `${p.code || ""} ${p.name || ""} ${p.customerName || ""}`,
-            }))}
-            placeholder="เลือกโครงการ"
-            emptyText="ยังไม่มีโครงการ"
-            ariaLabel="โครงการของคำร้อง"
-          />
-        </div>
-        <div className="form-group">
-          <span className={styles.fieldLabel}>ดีล</span>
-          <SearchableSelect
-            value={value.dealId} disabled={disabled || !value.projectId}
-            onChange={(v) => set({ dealId: v })}
-            options={dealsOfProject.map((d) => ({
-              value: d.id,
-              label: `${d.code || d.id} — ${d.title || ""}`.trim(),
-              search: `${d.code || ""} ${d.title || ""} ${d.customerName || ""}`,
-            }))}
-            placeholder={value.projectId ? "เลือกดีล" : "เลือกโครงการก่อน"}
-            emptyText="โครงการนี้ยังไม่มีดีล"
-            ariaLabel="ดีลของคำร้อง"
-          />
-          {/* กรณีที่เกิดจริงบ่อยบน prod (2026-08-03: 122 จาก 136 ดีลยังไม่ผูก
-              โครงการ) — dropdown ว่างเปล่าโดยไม่บอกเหตุผล ผู้ใช้จะคิดว่าระบบพัง */}
-          {value.projectId && dealsOfProject.length === 0 && (
-            <small className={styles.hint}>
-              โครงการนี้ยังไม่มีดีลที่ผูกไว้ — ต้องผูกดีลกับโครงการก่อนจึงเปิดคำร้องได้
-            </small>
-          )}
-        </div>
+      <div className="form-group">
+        <span className={styles.fieldLabel}>ดีล</span>
+        {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
+            ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
+            อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ */}
+        <DealPicker
+          deals={deals}
+          projects={projects}
+          value={value.dealId}
+          disabled={disabled}
+          onChange={(dealId, deal) => set({ dealId, projectId: deal?.projectId || "" })}
+          placeholder="เลือกดีลของคำร้อง"
+          ariaLabel="ดีลของคำร้อง"
+        />
+        {/* กรณีที่เกิดจริงบ่อยบน prod (2026-08-03: 122 จาก 136 ดีลยังไม่ผูกโครงการ) —
+            คำร้องต้องมีโครงการ ดีลลอยจึงเปิดคำร้องไม่ได้ ต้องบอกตรงนี้ ไม่ใช่ให้ไป
+            ตายที่ server */}
+        {value.dealId && !value.projectId && (
+          <small className={styles.hint}>
+            ดีลนี้ยังไม่ผูกโครงการ — ต้องผูกดีลกับโครงการก่อนจึงเปิดคำร้องได้
+          </small>
+        )}
       </div>
       )}
 

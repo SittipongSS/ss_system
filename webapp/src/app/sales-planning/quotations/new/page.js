@@ -1,7 +1,8 @@
 "use client";
 
-// หน้าสร้างใบเสนอราคา (เต็มหน้า, ไม่มี modal — มติผู้ใช้ Q2): เลือกตามลำดับ
-// ลูกค้า → โครงการ → ดีล (บังคับสามขั้น) แล้วดึงข้อมูลลูกค้ามาแสดง "อ่านอย่างเดียว"
+// หน้าสร้างใบเสนอราคา (เต็มหน้า, ไม่มี modal — มติผู้ใช้ Q2): เลือกลูกค้า → ดีล
+// (โครงการมาจากดีลเอง ไม่ใช่ขั้นที่ต้องกรอก — มติผู้ใช้ 2026-08-06 ยุบเป็น DealPicker
+// ตัวกลางสองชั้น) แล้วดึงข้อมูลลูกค้ามาแสดง "อ่านอย่างเดียว"
 // (แก้ที่ฐานข้อมูลลูกค้าเท่านั้น) → กดสร้าง → ออกใบ (snapshot ฝั่ง server) → ไปหน้าแก้ไข
 // เพื่อเพิ่มรายการ/ส่วนลด/VAT/งวดชำระ. ใช้ component กลางเท่านั้น.
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -12,6 +13,7 @@ import Workspace from "@/components/ui/Workspace";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import DealPicker from "@/components/pm/DealPicker";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -118,25 +120,13 @@ function NewQuotationInner() {
     return [...seen].map(([value, label]) => ({ value, label, search: label }));
   }, [eligible]);
 
-  const projectOptions = useMemo(() => {
-    if (!customerId) return [];
-    const seen = new Map();
-    eligible.filter((d) => d.customerId === customerId).forEach((d) => {
-      if (!seen.has(d.projectId)) {
-        const p = projectsById[d.projectId];
-        const label = [p?.code, p?.name].filter(Boolean).join(" · ") || d.projectId;
-        seen.set(d.projectId, label);
-      }
-    });
-    return [...seen].map(([value, label]) => ({ value, label, search: label }));
-  }, [eligible, customerId, projectsById]);
-
-  const dealOptions = useMemo(() => {
-    if (!projectId) return [];
-    return eligible
-      .filter((d) => d.projectId === projectId)
-      .map((d) => ({ value: d.id, label: d.title, search: d.title }));
-  }, [eligible, projectId]);
+  // ดีลของลูกค้าที่เลือก + รายชื่อโครงการ — ป้อนให้ DealPicker (ตัวเลือกกลางสองชั้น)
+  // แทนคู่ช่อง "โครงการ → ดีล" เดิม
+  const dealsOfCustomer = useMemo(
+    () => (customerId ? eligible.filter((d) => d.customerId === customerId) : []),
+    [eligible, customerId],
+  );
+  const projectList = useMemo(() => Object.values(projectsById || {}), [projectsById]);
   const selectedProject = projectId ? projectsById[projectId] : null;
   const selectedDeal = useMemo(() => eligible.find((deal) => deal.id === dealId) || null, [eligible, dealId]);
   const selectedDealType = selectedDeal ? dealTypeOf(selectedDeal) : null;
@@ -220,7 +210,9 @@ function NewQuotationInner() {
   }, [customers, registryCustomers, deals]);
 
   const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
-  const onProject = (v) => { setProjectId(v); setDealId(""); setCustomer(null); };
+  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหลายที่
+  // ในหน้านี้อ่านมัน: ตั้งต้น AE/ผู้ตรวจสอบ, payload ตอนสร้างใบ)
+  const onDeal = (v, deal) => { setDealId(v); setProjectId(deal?.projectId || ""); };
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: discountType || null,
@@ -397,11 +389,23 @@ function NewQuotationInner() {
           />
 
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกตามลำดับ ลูกค้า → โครงการ → ดีล</span></div>
+            <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกลูกค้า แล้วเลือกดีล — โครงการมาจากดีลเอง</span></div>
             <div className={styles.sourceGrid}>
               <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} emptyText={customerEmptyText} /></label>
-              <label>โครงการ *<SearchableSelect className={styles.sourceSelect} entity="project" value={projectId} onChange={onProject} disabled={!customerId} ariaLabel="เลือกโครงการ" placeholder={!customerId ? "เลือกชื่อลูกค้าก่อน" : "ค้นหารหัสหรือชื่อโครงการ…"} options={projectOptions} /></label>
-              <label>ดีล *<SearchableSelect className={styles.sourceSelect} entity="deal" value={dealId} onChange={setDealId} disabled={!projectId} ariaLabel="เลือกดีล" placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} /></label>
+              {/* โครงการ+ดีล ยุบเป็นตัวเลือกกลางตัวเดียว (มติผู้ใช้ 2026-08-06) —
+                  โครงการเป็นหัวข้อฝั่งซ้ายในแผง ไม่ใช่ช่องที่ต้องเลือกก่อน · projectId
+                  ยังถูกเก็บเหมือนเดิม (ตั้งต้น AE/ผู้ตรวจสอบจากโครงการ) แค่มาจากดีล */}
+              <label className={styles.dealSource}>ดีล *
+                <DealPicker
+                  deals={dealsOfCustomer}
+                  projects={projectList}
+                  value={dealId}
+                  disabled={!customerId}
+                  onChange={onDeal}
+                  placeholder={!customerId ? "เลือกชื่อลูกค้าก่อน" : "— เลือกดีล —"}
+                  ariaLabel="เลือกดีลที่จะออกใบเสนอราคา"
+                />
+              </label>
             </div>
             {/* ลิสต์ลูกค้าที่นี่ไม่ใช่ทะเบียนลูกค้า แต่มาจากดีลที่ออกใบได้ — ไม่มีคำอธิบาย
                 แล้วคนหาไม่เจอจะคิดว่าระบบพัง (ทะเบียนมีลูกค้าเยอะกว่านี้มาก) */}
