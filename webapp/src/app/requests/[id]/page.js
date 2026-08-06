@@ -28,6 +28,8 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval } from "@/lib/requests/approval";
+import { requestHasPdr } from "@/lib/master/requestTypes";
+import PdrSummary from "@/components/requests/PdrSummary";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -176,6 +178,7 @@ export default function MaterialAskDetailPage() {
   const owner = canAnswerRequestsFor(me, req.dept);
   // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
   const awaitingApproval = isAwaitingApproval(req);
+  const showPdr = requestHasPdr(req.kind);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
   // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
@@ -677,6 +680,14 @@ export default function MaterialAskDetailPage() {
         </div>
         );
       })}
+
+      {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย
+          🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
+      {showPdr && (
+        <div className={styles.pdrBlock}>
+          <PdrSummary request={req} briefs={req.briefs || []} />
+        </div>
+      )}
 
       {/* เธรดคุยกันในเคส (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
           ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของเคส
