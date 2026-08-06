@@ -17,7 +17,7 @@ import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
-import { resolveScope, scopeFilter } from '@/lib/requests/scope';
+import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
   deptForRequest, materialKindForRequest, requestDeptError, requestHasTiers,
   legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
@@ -53,9 +53,17 @@ export async function GET(request) {
     // ขอบเขตที่เห็น: admin ทั้งหมด · RD/PC คิวของฝ่ายตน + ของที่ตัวเองเปิด ·
     // ผู้ขอเฉพาะของตัวเอง (คำร้องเป็นงานปฏิบัติของคนเปิด ไม่ใช่ของทั้งทีม)
     if (isSuperuser(user?.role)) {
+      // 🐞 **ผู้ดูแลระบบต้องเห็นทุกใบเมื่อไม่ได้ระบุขอบเขตมา** — ของเดิมเอา `scopeWhere`
+      // ที่ตั้งต้นเป็น "ของฉัน" มาใช้แล้วคืนทันที ⇒ admin ที่ไม่ได้เปิดใบเอง **เห็นหน้าคิว
+      // ว่างเปล่า ทั้งสามแท็บเป็น (0)** ทั้งที่มีคำร้องอยู่จริง (ผู้ใช้เจอเองบนจอ)
+      //
+      // ⚠️ ระบุ `?scope=` มาเมื่อไรก็ยังเคารพเหมือนเดิม — ตัวสลับขอบเขตบนจอยังทำงาน
+      // ที่แก้คือ **ค่าตั้งต้น** ไม่ใช่การปลดด่าน (admin เห็นได้ทุกใบอยู่แล้วโดยสิทธิ์)
+      const explicit = REQUEST_SCOPES.includes(url.searchParams.get('scope'));
+      const adminWhere = explicit ? (scopeWhere || {}) : {};
       return Response.json(
-        decorate(await loadRequests(supabase, { status, ...(scopeWhere || {}) })),
-        { headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': scope } },
+        decorate(await loadRequests(supabase, { status, ...adminWhere })),
+        { headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': explicit ? scope : 'all' } },
       );
     }
     // ⚠️ ผู้ใช้ทั่วไป: `scopeWhere` แคบกว่าหรือเท่ากับ "ของตัวเอง" เสมอ (resolveScope
