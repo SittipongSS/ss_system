@@ -198,7 +198,9 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
 // /api/company-profile = บล็อกบริษัทที่เผยแพร่ ซึ่งพิมพ์อยู่บนเอกสารถึงลูกค้าอยู่แล้ว
 // ทุกคนที่ล็อกอินจึงอ่านได้ (ไม่งั้นใบที่ AE พิมพ์จะตกไปใช้ constant สำรองเงียบ ๆ) —
 // ทางเขียนยังอยู่ที่ /api/organization-settings ซึ่ง gate ด้วย master:manage ตามเดิม
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile'];
+// /api/thai-address = ทะเบียนจังหวัด/อำเภอ/ตำบล ของกรมการปกครอง — ข้อมูลสาธารณะ
+// ไม่มีของใครอยู่ในนั้น และทุกคนที่กรอกที่อยู่ลูกค้า/ไซต์บริการต้องใช้ ⇒ อ่านได้หมด
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).

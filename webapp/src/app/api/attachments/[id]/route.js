@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
+import { ISSUED_DATE_FIELD } from '@/lib/master/attachmentTypes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import {
@@ -22,15 +23,12 @@ const isMgmt = (entityType) => entityType === 'mgmt_task' || entityType === 'mgm
 // ระบบขอราคา: ไม่มี parent ใน PARENT_TABLE เหมือนกัน → ถ้าไม่ดักตรงนี้ บล็อกสิทธิ์
 // ข้างล่างจะถูกข้ามทั้งก้อน (`if (table)`) แปลว่าใครก็ลบไฟล์แนบของใบ/เคสได้
 
-// DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
-export async function DELETE(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-
-  const att = await getAttachment(id);
-  if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
-
+// ── ด่านสิทธิ์ร่วมของทุก action ที่ "แก้ของที่แนบไว้แล้ว" ────────────────
+// ลบไฟล์กับแก้รายละเอียดไฟล์ (วันที่ออกเอกสาร) ต้องใช้สิทธิ์ชุดเดียวกันเสมอ —
+// แยกเป็นสองชุดเมื่อไหร่ ชุดหนึ่งจะหลุดกฎไปโดยไม่มีใครรู้ (บทเรียนเดียวกับกฎ
+// "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
+// คืน Response เมื่อไม่ผ่าน · คืน null เมื่อผ่าน
+async function guardAttachmentWrite(supabase, att, user, actionLabel) {
   // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
   if (isMgmt(att.entityType) && !canUser(user, 'mgmt:edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -80,9 +78,23 @@ export async function DELETE(request, { params }) {
     // Registration lock (stricter): can't remove docs from an APPROVED reg unless
     // LG — others must press "ขอแก้ไข" first.
     if (att.entityType === 'registration' && parent?.status === 'approved' && !can(user?.role, 'legal:approve')) {
-      return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่ายกฎหมายปลดอนุมัติก่อนจึงจะลบเอกสารได้' }, { status: 403 });
+      return Response.json({ error: `ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่ายกฎหมายปลดอนุมัติก่อนจึงจะ${actionLabel}ได้` }, { status: 403 });
     }
   }
+  return null;
+}
+
+// DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
+export async function DELETE(request, { params }) {
+  const { id } = await params;
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+
+  const att = await getAttachment(id);
+  if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+
+  const denied = await guardAttachmentWrite(supabase, att, user, 'ลบเอกสาร');
+  if (denied) return denied;
 
   const { error } = await supabase.from('attachments').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -96,4 +108,47 @@ export async function DELETE(request, { params }) {
   await deleteAttachmentFile(att);
 
   return Response.json({ success: true });
+}
+
+// PATCH /api/attachments/[id] — แก้ **รายละเอียด** ของไฟล์ที่แนบไว้แล้ว (metadata)
+// ไม่แตะตัวไฟล์/ชนิดเอกสาร/เจ้าของ — เปลี่ยนไฟล์ = ลบแล้วแนบใหม่ตามเดิม
+//
+// ที่ต้องมี: วันที่ออกเอกสาร (issuedDate) เป็นตัวตัดสินว่าหนังสือรับรองยังไม่เกิน
+// 6 เดือนไหม — ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้ต้องเติมวันที่ย้อนหลังได้ ไม่ใช่ต้องลบ
+// ทิ้งแล้วอัปใหม่เพียงเพื่อกรอกวันที่
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+
+  const att = await getAttachment(id);
+  if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+
+  const denied = await guardAttachmentWrite(supabase, att, user, 'แก้รายละเอียดเอกสาร');
+  if (denied) return denied;
+
+  const body = await request.json();
+  const { metadata } = body;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return Response.json({ error: 'metadata ไม่ถูกต้อง' }, { status: 400 });
+  }
+  // วันที่ต้องเป็น ISO 'YYYY-MM-DD' และเป็นวันที่มีอยู่จริง — ค่ามั่วจะทำให้การคำนวณ
+  // วันหมดอายุเงียบ ๆ ผิด แล้วเอกสารที่หมดอายุจริงกลับผ่านด่านอนุมัติไปได้
+  const issued = metadata[ISSUED_DATE_FIELD];
+  if (issued !== undefined && issued !== null && issued !== '') {
+    const text = String(issued);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00Z`))) {
+      return Response.json({ error: 'วันที่ออกเอกสารไม่ถูกต้อง' }, { status: 400 });
+    }
+  }
+
+  // merge ไม่ทับทั้งก้อน — ฝั่งจอส่งมาทีละช่อง (เช่นแก้เฉพาะวันที่) ไม่ควรลบแท็ค
+  // อื่นที่คนอื่นกรอกไว้ทิ้งไปด้วย
+  const merged = { ...(att.metadata || {}), ...metadata };
+  const { data, error } = await supabase
+    .from('attachments').update({ metadata: merged }).eq('id', id).select().single();
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // ไม่ทำให้ลูกค้า/สินค้าตกกลับรออนุมัติ — เหตุผลเดียวกับตอนแนบ/ลบไฟล์ (มติ 2026-07-27)
+  return Response.json(data);
 }

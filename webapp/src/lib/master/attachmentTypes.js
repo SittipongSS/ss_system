@@ -19,6 +19,10 @@ export const CUSTOMER_DOC_TYPES = {
     // จึงมีป้ายได้ป้ายเดียวใน union ที่ระบบใช้ lookup ชื่อ (เดิมเขียน "แผนที่บริษัท"
     // ซึ่งอ่านผิดทันทีเมื่อเจ้าของเป็นบุคคลธรรมดา)
     { key: "address_map", label: "แผนที่ที่อยู่", required: true },
+    // หน้าสมุดบัญชีธนาคาร — ไม่บังคับโดยเจตนา: ลูกค้าเป็นฝ่าย **จ่ายเงินให้เรา**
+    // เล่มบัญชีจึงจำเป็นเฉพาะตอนคืนมัดจำ/คืนเงิน ไม่ใช่ทุกราย · จะบังคับเมื่อไหร่
+    // แก้ required: true ที่บรรทัดนี้ที่เดียว (ด่านอนุมัติอ่านจากทะเบียนนี้)
+    { key: "bank_book", label: "สำเนาหน้าสมุดบัญชีธนาคาร (Bookbank)", required: false },
     // สัญญาจ้างผลิตผูกกับลูกค้า (ไม่ใช่สินค้า): ลูกค้า 1 ราย มีสัญญา 1 ฉบับที่ครอบ
     // หลายสินค้าได้ และแต่ละรอบอาจมีรายการสินค้าต่างกัน → การ์ดเดียวแนบได้หลายไฟล์.
     { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
@@ -32,10 +36,60 @@ export const CUSTOMER_DOC_TYPES = {
     // ดึงแผนที่จาก "ลูกค้าเจ้าของทะเบียน" (lib/tax/requirements.js) ไม่ได้แนบเองที่
     // ทะเบียน ⇒ ลูกค้าบุคคลที่ไม่มีแผนที่ = ทะเบียนสรรพสามิตหาไฟล์ไม่เจอตั้งแต่ต้นทาง
     { key: "address_map", label: "แผนที่ที่อยู่", required: true },
+    { key: "bank_book", label: "สำเนาหน้าสมุดบัญชีธนาคาร (Bookbank)", required: false },
     { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
 };
+
+// ── อายุเอกสาร ────────────────────────────────────────────────────────
+// เอกสารบางฉบับ "หมดอายุ" ได้ — หนังสือรับรองบริษัทที่คู่ค้าเรียกต้องออกไม่เกิน
+// 6 เดือน ซึ่งเขียนอยู่ในป้ายการ์ดมาตลอดแต่ **ไม่มีฟิลด์วันที่ให้กรอก** ⇒ ไฟล์ที่
+// แนบไว้ตั้งแต่ปีก่อนก็ยังนับว่า "มีแล้ว" ติ๊กเขียวสวยงาม ทั้งที่ใช้ยื่นไม่ได้แล้ว
+//
+// วันที่ออกเอกสารเก็บที่ attachments.metadata.issuedDate (jsonb — ไม่ต้อง migrate)
+export const DOC_VALIDITY_MONTHS = {
+  company_certificate: 6,
+};
+
+export const hasValidityPeriod = (entityType, docType) => entityType === 'customer'
+  && DOC_VALIDITY_MONTHS[docType] !== undefined;
+
+export const ISSUED_DATE_FIELD = 'issuedDate';
+
+// 'YYYY-MM-DD' + n เดือน → 'YYYY-MM-DD' · คำนวณบนปฏิทินตรง ๆ ไม่พึ่ง Date เพื่อให้
+// ผลไม่ขยับตาม timezone ของเครื่องที่รัน (server อยู่ UTC, คนใช้อยู่ +07)
+function addMonths(iso, months) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m) return '';
+  const year = Number(m[1]);
+  const monthIndex = Number(m[2]) - 1 + months;
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const targetMonth = ((monthIndex % 12) + 12) % 12;
+  // สิ้นเดือนของเดือนปลายทาง — 31 ส.ค. + 6 เดือน ต้องได้ 28/29 ก.พ. ไม่ใช่ 2/3 มี.ค.
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const day = Math.min(Number(m[3]), lastDay);
+  return `${String(targetYear).padStart(4, '0')}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// สถานะอายุของไฟล์หนึ่งใบ · คืน null เมื่อชนิดนั้นไม่มีอายุกำกับ
+//   { months, issuedDate, expiresAt, expired, unknown }
+//   unknown = true ⇒ ยังไม่ได้กรอกวันที่ออก (บอกไม่ได้ว่าหมดอายุหรือยัง)
+// today = 'YYYY-MM-DD' — ผู้เรียกส่งเข้ามาเสมอ เพื่อให้เทสต์ไม่ผูกกับวันที่รันจริง
+export function documentValidity(entityType, item, today) {
+  const months = hasValidityPeriod(entityType, item?.docType) ? DOC_VALIDITY_MONTHS[item.docType] : null;
+  if (months == null) return null;
+  const issuedDate = String(item?.metadata?.[ISSUED_DATE_FIELD] || '');
+  const expiresAt = addMonths(issuedDate, months);
+  return {
+    months,
+    issuedDate,
+    expiresAt,
+    unknown: !expiresAt,
+    expired: !!expiresAt && !!today && expiresAt < today,
+  };
+}
+
 
 // ชุดเอกสาร (การ์ด) สำหรับลูกค้าตามประเภท — default = นิติบุคคล.
 export function customerDocTypes(customerType) {
@@ -284,9 +338,44 @@ export function docTypesFor(entityType, record) {
   return ATTACHMENT_TYPES[entityType] || [];
 }
 
+// ── เอกสารบังคับที่ยัง "ใช้ไม่ได้" (ตัวตัดสินกลาง ไม่มี I/O) ──────────────
+// คืน [{ key, label, reason, expiresAt }] · reason 'absent' = ยังไม่แนบ ·
+// 'expired' = แนบแล้วแต่พ้นอายุ (เช่น หนังสือรับรองเกิน 6 เดือน)
+//
+// อยู่ที่ไฟล์นี้ไม่ใช่ attachmentRequirements.js เพราะที่นั่นต้องลาก supabase เข้ามา —
+// กติกาการตัดสินต้องเทสต์ได้และฝั่งจอต้องใช้ตัวเดียวกันได้ (ไม่งั้นการ์ดบนจอกับ
+// ด่านตอนกดอนุมัติจะตอบคนละอย่าง แล้วผู้ใช้เห็นติ๊กเขียวครบแต่กดอนุมัติไม่ผ่าน)
+//
+// แนบหลายใบต่อการ์ดได้ — ขอแค่ใบเดียวที่ยังไม่หมดอายุก็ถือว่าผ่าน
+// ยังไม่กรอกวันที่ (unknown) **ไม่นับว่าหมดอายุ** — ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้
+// ต้องไม่กลายเป็นของเสียข้ามคืน ฝั่งจอขึ้นป้ายเตือนให้ไปเติมวันที่แทน
+export function unsatisfiedRequiredDocs(entityType, docTypes, attachments, today) {
+  const required = requiredDocKeys(entityType, docTypes);
+  const list = docTypes && docTypes.length ? docTypes : (ATTACHMENT_TYPES[entityType] || []);
+  const out = [];
+  for (const key of required) {
+    const label = list.find((t) => t.key === key)?.label || key;
+    const files = (attachments || []).filter((a) => a.docType === key);
+    if (!files.length) { out.push({ key, label, reason: 'absent' }); continue; }
+    const validities = files.map((f) => documentValidity(entityType, f, today));
+    if (validities.some((v) => !v || v.unknown || !v.expired)) continue;
+    out.push({ key, label, reason: 'expired', expiresAt: validities.map((v) => v.expiresAt).sort().pop() });
+  }
+  return out;
+}
+
 // ข้อความบอกผู้ใช้ว่าขาดอะไร — ต้องอ่านแล้วรู้ทันทีว่าต้องไปทำอะไรต่อ
+// เอกสารที่ "มีแต่หมดอายุ" ต้องพูดคนละคำกับ "ยังไม่มี" ไม่งั้นคนอ่านจะไปหาไฟล์ที่
+// แนบอยู่แล้วแล้วงงว่าระบบมองไม่เห็น
 export function missingDocsMessage(missing, entityLabel = "ระเบียนนี้") {
-  return `${entityLabel}ยังไม่มีเอกสารบังคับครบ — ขาด ${missing.map((m) => m.label).join(" · ")} `
+  const absent = missing.filter((m) => m.reason !== "expired");
+  const expired = missing.filter((m) => m.reason === "expired");
+  const parts = [];
+  if (absent.length) parts.push(`ขาด ${absent.map((m) => m.label).join(" · ")}`);
+  if (expired.length) {
+    parts.push(`หมดอายุแล้ว ${expired.map((m) => `${m.label}${m.expiresAt ? ` (ถึง ${m.expiresAt})` : ""}`).join(" · ")}`);
+  }
+  return `${entityLabel}ยังไม่มีเอกสารบังคับครบ — ${parts.join(" และ ")} `
     + "(แนบได้ที่หัวข้อเอกสารในหน้ารายละเอียด)";
 }
 

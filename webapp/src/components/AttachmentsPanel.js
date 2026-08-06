@@ -2,6 +2,7 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
+import Input from "@/components/ui/Input";
 // เอกสารแนบหลายไฟล์แบบมีประเภท (migration 0028) — ใช้ซ้ำได้ทุก entity.
 // props:
 //   entityType  'customer' | 'product' | 'order'
@@ -27,11 +28,14 @@ import {
   ATTACHMENT_TYPES,
   ATTACHMENT_META_FIELDS,
   attachmentTypeLabel,
+  documentValidity,
   isPreviewableImage,
+  ISSUED_DATE_FIELD,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
   UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
+import { toLocalISODate } from "@/lib/pm/dateHelpers";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
@@ -238,6 +242,29 @@ export default function AttachmentsPanel({
     }
   };
 
+  // บันทึกวันที่ออกเอกสารทันทีที่เลือก (ไม่มีปุ่มบันทึกแยก — ช่องเดียวช่องเดิม)
+  // อัปเดต state ในมือก่อนเพื่อให้ป้าย "หมดอายุแล้ว/ใช้ได้ถึง" ขยับทันที แล้วถอย
+  // กลับถ้า server ปฏิเสธ — ไม่งั้นจอโชว์ค่าที่ไม่ได้ถูกบันทึกจริง
+  const saveIssuedDate = async (it, value) => {
+    const before = it.metadata || {};
+    const next = { ...before, [ISSUED_DATE_FIELD]: value };
+    setItems((prev) => prev.map((row) => (row.id === it.id ? { ...row, metadata: next } : row)));
+    try {
+      const res = await fetch(`/api/master/attachments/${it.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: { [ISSUED_DATE_FIELD]: value } }),
+      });
+      if (!res.ok) {
+        setItems((prev) => prev.map((row) => (row.id === it.id ? { ...row, metadata: before } : row)));
+        notifyToast.error(await describeResponseError(res, "บันทึกวันที่ออกเอกสารไม่สำเร็จ"));
+      }
+    } catch {
+      setItems((prev) => prev.map((row) => (row.id === it.id ? { ...row, metadata: before } : row)));
+      notifyToast.error("บันทึกวันที่ออกเอกสารไม่สำเร็จ — เครือข่ายขัดข้อง");
+    }
+  };
+
   // จัดกลุ่มไฟล์ตามประเภท (docType ที่ไม่รู้จัก → 'other')
   const knownKeys = new Set(types.map((t) => t.key));
   const byType = {};
@@ -256,6 +283,10 @@ export default function AttachmentsPanel({
     return 3;
   };
   const sortedTypes = [...types].sort((a, b) => typeRank(a) - typeRank(b));
+
+  // วันนี้ (ISO ตามเวลาเครื่องผู้ใช้) — ใช้ตัดสินว่าเอกสารพ้นอายุหรือยัง · คำนวณ
+  // ครั้งเดียวต่อ render เพื่อให้ทุกการ์ด/ทุกแถวตัดสินด้วยวันเดียวกัน
+  const today = toLocalISODate(new Date());
 
   // ไฟล์ Drive (private) เปิดผ่าน proxy ที่เช็กสิทธิ์ + stream; ไฟล์เก่าบน Supabase
   // (driveFileId ว่าง) ใช้ public URL ตรงเหมือนเดิม.
@@ -312,6 +343,39 @@ export default function AttachmentsPanel({
       )}
     </div>
   );
+
+  // ── วันที่ออกเอกสาร (เฉพาะชนิดที่มีอายุ เช่น หนังสือรับรอง 6 เดือน) ──────
+  // ⚠️ ต้องเป็นช่องแก้ได้ ไม่ใช่ถามแค่ตอนอัป: ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้ต้องเติม
+  // วันที่ย้อนหลังได้ ไม่งั้นต้องลบทิ้งแล้วอัปใหม่เพียงเพื่อกรอกวันที่หนึ่งช่อง
+  const IssuedDateRow = ({ it }) => {
+    const validity = documentValidity(entityType, it, today);
+    if (!validity) return null;
+    return (
+      <div className="flex items-center gap-2 flex-wrap pb-1 pl-[2px]">
+        <span className="text-[10px] text-[var(--text-3)] shrink-0">ออกเมื่อ</span>
+        {canEdit ? (
+          <Input
+            type="date"
+            className="text-[11px] w-[150px]"
+            value={validity.issuedDate}
+            onChange={(e) => saveIssuedDate(it, e.target.value)}
+            aria-label="วันที่ออกเอกสาร"
+          />
+        ) : (
+          <span className="text-[10px] text-[var(--text-2)]">{validity.issuedDate || "—"}</span>
+        )}
+        {validity.unknown ? (
+          <span className="status-pill warning text-[10px]" title={`เอกสารนี้ต้องออกไม่เกิน ${validity.months} เดือน — ยังไม่รู้ว่าหมดอายุหรือยัง`}>
+            ยังไม่ระบุวันที่
+          </span>
+        ) : validity.expired ? (
+          <span className="status-pill danger text-[10px]" title={`ใช้ได้ถึง ${validity.expiresAt}`}>หมดอายุแล้ว</span>
+        ) : (
+          <span className="text-[10px] text-[var(--text-3)]">ใช้ได้ถึง {validity.expiresAt}</span>
+        )}
+      </div>
+    );
+  };
 
   // ── ตารางภาพย่อ (โหมด inline) ────────────────────────────────────────
   // รูปแนบของ "รายการในเคส/สินค้าในใบ" คือของที่ RD/PC เปิดดูเพื่อตอบราคา — ภาพย่อ
@@ -628,19 +692,22 @@ export default function AttachmentsPanel({
             {sortedTypes.map((t) => {
               const files = byType[t.key] || [];
               const has = files.length > 0;
+              // แนบแล้วแต่ทุกใบพ้นอายุ = ยังใช้ยื่นไม่ได้ ⇒ ต้องไม่โชว์ติ๊กเขียว "มีแล้ว"
+              // (ด่านอนุมัติฝั่ง server คิดแบบเดียวกัน — ดู missingRequiredDocs)
+              const expired = has && files.every((f) => documentValidity(entityType, f, today)?.expired);
               const busy = uploadingType === t.key;
               return (
                 <div
                   key={t.key}
                   className="border rounded-lg p-3 flex flex-col"
-                  style={{ borderColor: has ? "var(--green)" : "var(--border)" }}
+                  style={{ borderColor: expired ? "var(--red)" : has ? "var(--green)" : "var(--border)" }}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {has ? (
+                      {has && !expired ? (
                         <CheckCircle2 size={16} className="text-[var(--green)] shrink-0" />
                       ) : (
-                        <Circle size={16} className="text-[var(--text-3)] shrink-0" />
+                        <Circle size={16} className={`shrink-0 ${expired ? "text-[var(--red)]" : "text-[var(--text-3)]"}`} />
                       )}
                       <span className="text-xs font-semibold text-[var(--text)] break-words leading-snug">{t.label}</span>
                     </div>
@@ -651,6 +718,8 @@ export default function AttachmentsPanel({
                           title="กำลังอัปโหลด…"
                           style={{ width: 11, height: 11, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
                         />
+                      ) : expired ? (
+                        <span className="status-pill danger text-[10px]">หมดอายุ</span>
                       ) : has ? (
                         <span className="status-pill success text-[10px]">มีแล้ว</span>
                       ) : t.required ? (
@@ -683,7 +752,12 @@ export default function AttachmentsPanel({
 
                   {has && (
                     <div className="divide-y divide-[var(--border)]">
-                      {files.map((it) => (<FileRow key={it.id} it={it} compact />))}
+                      {files.map((it) => (
+                        <div key={it.id}>
+                          <FileRow it={it} compact />
+                          <IssuedDateRow it={it} />
+                        </div>
+                      ))}
                     </div>
                   )}
 

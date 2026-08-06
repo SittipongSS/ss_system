@@ -8,16 +8,24 @@
 // เพื่อให้เทสต์และฝั่ง client ใช้ได้โดยไม่ต้องลาก supabase เข้ามา
 import 'server-only';
 import { listAttachments } from '@/lib/master/attachments';
-import { docTypesFor, requiredDocKeys } from '@/lib/master/attachmentTypes';
+import { docTypesFor, requiredDocKeys, unsatisfiedRequiredDocs } from '@/lib/master/attachmentTypes';
 
-// เอกสารบังคับที่ยังไม่ได้แนบ — คืน [{ key, label }] (ว่าง = ครบ)
-export async function missingRequiredDocs(entityType, entityId, record) {
+// เอกสารบังคับที่ยังใช้ไม่ได้ — คืน [{ key, label, reason, expiresAt }] (ว่าง = ครบ)
+//   reason 'absent'  = ยังไม่ได้แนบเลย
+//   reason 'expired' = แนบแล้วแต่พ้นอายุที่กำหนด (เช่น หนังสือรับรองเกิน 6 เดือน)
+//
+// ⭐ เอกสารหมดอายุต้องนับเป็น "ไม่ครบ" ไม่งั้นด่านนี้ไร้ความหมายกับเอกสารที่มีอายุ:
+// หนังสือรับรองปีที่แล้วก็ติ๊กเขียวผ่านฉลุย ทั้งที่ยื่นกับใครไม่ได้แล้ว · ทางยกเว้น
+// (เขียนเหตุผล) ยังใช้ได้เหมือนเดิม จึงไม่มีใครติดตายเพราะกฎนี้
+//
+// วันที่ที่ยังไม่กรอก (unknown) **ไม่นับว่าหมดอายุ** — ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้
+// ต้องไม่กลายเป็นของเสียข้ามคืน ฝั่งจอขึ้นป้ายเตือนให้ไปเติมวันที่แทน
+export async function missingRequiredDocs(entityType, entityId, record, { today } = {}) {
   const docTypes = docTypesFor(entityType, record);
   const required = requiredDocKeys(entityType, docTypes);
   if (!required.length) return [];
 
-  const attached = new Set((await listAttachments(entityType, entityId)).map((a) => a.docType));
-  return required
-    .filter((key) => !attached.has(key))
-    .map((key) => ({ key, label: docTypes.find((t) => t.key === key)?.label || key }));
+  const attachments = await listAttachments(entityType, entityId);
+  // กติกาการตัดสินอยู่ที่ attachmentTypes (ไม่มี I/O) — ไฟล์นี้เหลือหน้าที่ไปเอาข้อมูล
+  return unsatisfiedRequiredDocs(entityType, docTypes, attachments, today || new Date().toISOString().slice(0, 10));
 }

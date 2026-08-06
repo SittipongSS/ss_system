@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   attachmentTypeLabel, docTypesFor, missingDocsMessage, overrideReasonError,
-  MIN_OVERRIDE_REASON, requiredDocKeys,
+  MIN_OVERRIDE_REASON, requiredDocKeys, unsatisfiedRequiredDocs,
 } from './attachmentTypes.js';
 
 test('ลูกค้านิติบุคคล/บุคคลธรรมดา ได้ชุดเอกสารบังคับคนละชุด', () => {
@@ -54,4 +54,39 @@ test('ยกเว้นเอกสารต้องมีเหตุผล�
   assert.ok(overrideReasonError('          '), 'ช่องว่างล้วนต้องไม่ผ่าน');
   assert.equal(overrideReasonError('ลูกค้าเก่าจะส่งเอกสารตามภายในสัปดาห์นี้'), null);
   assert.equal(overrideReasonError('x'.repeat(MIN_OVERRIDE_REASON)), null);
+});
+
+// ── อายุเอกสาร: "มีแล้วแต่หมดอายุ" ต้องไม่ผ่านด่านอนุมัติ (2026-08-06) ──────
+
+const CERT = (issuedDate) => ({ docType: 'company_certificate', metadata: issuedDate ? { issuedDate } : {} });
+const COMPANY_DOCS = docTypesFor('customer', { customerType: 'company' });
+// เอกสารบังคับอื่นของนิติบุคคลที่ไม่มีอายุกำกับ — ใส่ให้ครบเพื่อให้เหลือตัวแปรเดียว
+const OTHERS = ['vat_pp20', 'director_id_card', 'address_map'].map((docType) => ({ docType, metadata: {} }));
+
+test('หนังสือรับรองที่เกิน 6 เดือน = ไม่ครบ ถึงจะแนบไฟล์ไว้แล้วก็ตาม', () => {
+  const out = unsatisfiedRequiredDocs('customer', COMPANY_DOCS, [CERT('2025-01-15'), ...OTHERS], '2026-08-06');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].key, 'company_certificate');
+  assert.equal(out[0].reason, 'expired');
+  assert.equal(out[0].expiresAt, '2025-07-15');
+});
+
+test('หนังสือรับรองที่ยังไม่เกิน 6 เดือน = ผ่าน', () => {
+  assert.deepEqual(unsatisfiedRequiredDocs('customer', COMPANY_DOCS, [CERT('2026-05-01'), ...OTHERS], '2026-08-06'), []);
+});
+
+test('แนบหลายใบ — มีใบที่ยังไม่หมดอายุใบเดียวก็ผ่าน', () => {
+  const files = [CERT('2024-01-01'), CERT('2026-06-01'), ...OTHERS];
+  assert.deepEqual(unsatisfiedRequiredDocs('customer', COMPANY_DOCS, files, '2026-08-06'), []);
+});
+
+test('ไฟล์เก่าที่ยังไม่ได้กรอกวันที่ ต้องไม่กลายเป็น "หมดอายุ" ข้ามคืน', () => {
+  // ของจริงบน prod มีหนังสือรับรองที่แนบไว้ก่อนฟีเจอร์นี้ — ถ้านับเป็นหมดอายุทันที
+  // ลูกค้ารายนั้นจะอนุมัติไม่ผ่านโดยที่ไม่มีใครเปลี่ยนอะไรเลย
+  assert.deepEqual(unsatisfiedRequiredDocs('customer', COMPANY_DOCS, [CERT(''), ...OTHERS], '2026-08-06'), []);
+});
+
+test('ยังไม่แนบเลย = absent (คนละเหตุกับหมดอายุ — ข้อความที่ผู้ใช้เห็นต่างกัน)', () => {
+  const out = unsatisfiedRequiredDocs('customer', COMPANY_DOCS, OTHERS, '2026-08-06');
+  assert.deepEqual(out.map((m) => [m.key, m.reason]), [['company_certificate', 'absent']]);
 });

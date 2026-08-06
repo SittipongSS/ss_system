@@ -90,11 +90,12 @@ export async function POST(request) {
 
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง — ช่องเดี่ยวเดิมเป็นกระจกของที่อยู่หลัก
   // ผู้เรียกที่ยังส่งแบบเก่า (address/shippingAddress) แปลงขึ้นลิสต์ให้
-  // สาขาไม่ได้อยู่ในที่อยู่ (มติผู้ใช้ 2026-08-05) จึงยังรับจาก body ตรง ๆ เหมือนเดิม
+  // สาขา (2026-08-06) อยู่บนที่อยู่ที่ใช้ออกเอกสาร — body.branchCode ของสายเก่า
+  // ยังใช้ได้ในฐานะค่าสำรองเมื่อที่อยู่ที่ส่งมาไม่ได้ระบุสาขา
   const addresses = normalizeAddresses(
     body.addresses !== undefined ? body.addresses : addressesFromLegacy(body),
   );
-  const mirror = legacyAddressMirror(addresses);
+  const mirror = legacyAddressMirror(addresses, { fallbackBranchCode: body.branchCode });
   if (!mirror.address) {
     return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
   }
@@ -108,8 +109,8 @@ export async function POST(request) {
     taxId: body.taxId || null,
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     addresses,                                // ที่อยู่ทั้งหมด (migration 0202)
-    branchCode: body.branchCode || '00000',   // '00000' = สำนักงานใหญ่ (migration 0032)
     // ── กระจกของที่อยู่หลัก (อย่าเขียนทับมือ) ────────────────────────────
+    branchCode: mirror.branchCode,            // สาขาของที่อยู่ออกบิลหลัก ('00000' = สนญ.)
     phone: body.phone || null,
     address: mirror.address,                  // ที่อยู่ออกเอกสาร/บิล
     shippingAddress: mirror.shippingAddress,  // null = ใช้ที่อยู่ออกเอกสาร
