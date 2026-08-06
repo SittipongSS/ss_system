@@ -28,7 +28,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
-import { requestRowSummary, rowStage } from "@/lib/requests/rowStage";
+import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import PdrSummary from "@/components/requests/PdrSummary";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -354,59 +354,11 @@ export default function MaterialAskDetailPage() {
     if (ok) setConfirm(null);
   };
 
-  // ── ขั้นกลางของรางใบ — สรุปจากแถวข้างใน ────────────────────────────────
-  //
-  // ⚠️ **"รอใส่ราคา" ต้องเห็นเป็นพิเศษ** — แถวที่ลูกค้าคอนเฟิร์มแล้วแต่ยังไม่มีราคา
-  // คือใบค้างถาวรถ้าไม่มีใครเห็น (กับดักข้อ 11 ของแผน)
-  const rowSummary = requestRowSummary(req.items || []);
-  const awaitingPrice = (req.items || []).filter((i) => rowStage(i) === "awaiting_price").length;
-  const middleStep = (() => {
-    // ⚠️ **ไม่พูดเรื่องยืนยันที่นี่** — ขั้น "รอหัวหน้ายืนยัน" เป็นขั้นแยกของตัวเองแล้ว
-    // (พูดทั้งสองที่ = ข้อความเดียวกันขึ้นสองบรรทัดติดกัน ซึ่งเป็นบั๊กที่ผู้ใช้เห็นจริง)
-    if (!rowSummary.total) {
-      return { label: `รอฝ่าย ${req.dept} ส่งของ`, hint: "รับเรื่องแล้ว ยังไม่มีของส่งมา" };
-    }
-    if (awaitingPrice) return { label: "รอใส่ราคา", hint: `${awaitingPrice} รายการที่คอนเฟิร์มแล้ว` };
-    if (rowSummary.waitingDept) {
-      return { label: `ฝ่าย ${req.dept} กำลังทำ`, hint: `เสร็จแล้ว ${rowSummary.settled}/${rowSummary.total}` };
-    }
-    if (rowSummary.waitingRequester) {
-      return { label: "รอฝ่ายขายทำต่อ", hint: `${rowSummary.waitingRequester} รายการ` };
-    }
-    return { label: hasItems ? "กำลังหาราคา" : "กำลังดำเนินการ", hint: "ฝ่ายเจ้าของรับเรื่องแล้ว" };
-  })();
+  // ⭐ ตรรกะการประกอบรางอยู่ที่ lib — เทสต์ครอบได้ (บั๊กป้ายซ้ำ/ไฮไลต์ผิดขั้นเกิดตอน
+  // มันฝังอยู่ใน JSX ซึ่ง CI มองไม่เห็น)
+  const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
+  const workflowSteps = workflowStepsFromIndex(railSteps, workflowIndex, req.status === "cancelled");
 
-  // ⚠️ ขั้นที่แทรกทำให้ลำดับเลื่อน — ต้องนับตามรางที่เรนเดอร์จริง ไม่ใช่ตามสถานะดิบ
-  // (ไม่งั้นจุดที่ไฮไลต์จะชี้ขั้นผิดไปหนึ่งช่องสำหรับหัวข้อที่มีประตูหัวหน้า)
-  const approvalOffset = needsApproval ? 1 : 0;
-  const workflowIndex = req.status === "draft"
-    ? 0
-    : req.status === "pending"
-      ? 1
-      // รับเรื่องแล้วแต่ยังไม่ยืนยัน = อยู่ที่ขั้นประตู · ยืนยันแล้วค่อยขยับไปขั้นทำงาน
-      : req.status === "acknowledged"
-        ? (needsApproval && !req.approvedAt ? 2 : 2 + approvalOffset)
-        : req.status === "answered"
-          ? 3 + approvalOffset
-          : 4 + approvalOffset;
-  // ขั้นตอนบนการ์ดควบคุมพูดภาษาของชนิดนั้น — ชนิดที่ไม่มีบรรทัดไม่ได้ "หาราคา"
-  const workflowSteps = workflowStepsFromIndex([
-    { id: "draft", label: "จัดทำคำร้อง", hint: hasItems ? "ระบุวัสดุและชั้นจำนวน" : "ระบุเรื่องที่ต้องการ" },
-    { id: "pending", label: "รอรับเรื่อง", hint: `ส่งถึงฝ่าย ${req.dept}` },
-    // ⭐ ประตูหัวหน้าสายงานขาย — แทรกเฉพาะหัวข้อที่ประกาศธงไว้ (mig 0216)
-    // ⚠️ ใส่ให้ทุกหัวข้อไม่ได้ — คนที่เปิด "สอบถามข้อมูล" จะเห็นขั้นที่ไม่มีวันเกิดขึ้น
-    ...(needsApproval ? [{
-      id: "approval",
-      label: req.approvedAt ? "หัวหน้ายืนยันแล้ว" : "รอหัวหน้ายืนยัน",
-      hint: req.approvedByName || "ก่อนฝ่ายปลายทางลงมือ",
-    }] : []),
-    // ⭐ **ขั้นกลาง derive จากแถวข้างใน** ไม่ใช่คำตายตัว — `กำลังดำเนินการ` ก้อนเดียว
-    // กลืนทั้ง ส่งของ · รับของ · ส่งลูกค้า · ลูกค้าตอบ · ราคา ไว้ในคำเดียว ⇒ เปิดใบมา
-    // แล้วไม่รู้ว่ารออะไรอยู่ (ผู้ใช้ทักมาเอง) · แถวบอกรายละเอียด ใบบอกว่า "รอใคร"
-    { id: "acknowledged", label: middleStep.label, hint: middleStep.hint },
-    { id: "answered", label: "ตอบแล้ว", hint: hasItems ? "บันทึกราคาเข้าทะเบียนวัสดุ" : "ผู้ตอบยืนยันว่าตอบครบ" },
-    { id: "closed", label: "ปิดเรื่อง", hint: "งานนี้สิ้นสุด" },
-  ], workflowIndex, req.status === "cancelled");
   const primaryAction = req._mine && req.status === "draft"
     ? {
       id: "submit",
