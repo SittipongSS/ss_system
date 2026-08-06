@@ -8,6 +8,7 @@
 // "ส่งของ" จบไปพร้อมกัน ⇒ แถวที่เกิดต้องอยู่ขั้น `ready` (รอ SA ไปรับ) ไม่ใช่
 // `awaiting_ack` ที่จะทำให้ RD เห็นปุ่ม "รับเรื่อง" บนของที่เพิ่งส่งไปเอง
 import { businessDate } from '@/lib/businessDate';
+import { briefLinkError } from '@/lib/requests/scentBriefs';
 
 export const MAX_DELIVERY_ROWS = 20;
 
@@ -18,7 +19,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // `existingCodes` = รหัสกลิ่นที่มีอยู่แล้วในทะเบียน (ผู้เรียกโหลดมาให้)
 // ⚠️ **เตือนรหัสซ้ำที่นี่ ไม่ปล่อยไปตายที่ DB** — unique violation จาก Postgres
 // เป็นภาษาอังกฤษอ่านไม่รู้เรื่อง และมาตอนกดส่งไปแล้วซึ่งสายเกินจะแก้ทีละช่อง
-export function normalizeDeliveryRows(input, { existingCodes = [], today = null } = {}) {
+export function normalizeDeliveryRows(input, {
+  existingCodes = [], today = null, briefs = [],
+} = {}) {
   const raw = Array.isArray(input) ? input : [];
   if (!raw.length) return { rows: [], error: 'ต้องมีอย่างน้อย 1 รายการที่ส่ง' };
   if (raw.length > MAX_DELIVERY_ROWS) {
@@ -46,6 +49,18 @@ export function normalizeDeliveryRows(input, { existingCodes = [], today = null 
     // ⭐ รหัสบังคับ — RD เป็นเจ้าของทะเบียน และนี่คือจังหวะที่กลิ่นเข้าทะเบียนจริง
     // ปล่อยว่างได้เมื่อไร จะได้กลิ่นร่างที่ไม่มีใครกลับมาใส่รหัสให้ (โรคเดียวกับ
     // กอง "รอจัดระเบียบ" ของทะเบียนสูตร)
+    // ⭐ **direction ตัวนี้ตอบบรีฟก้อนไหน** — ชั้นกลางของโครงสามชั้น (mig 0213)
+    // 1 บรีฟ : หลาย direction ⇒ ตอบก้อนเดิมซ้ำได้ ไม่ใช่ข้อมูลผิด
+    //
+    // ⚠️ **มีบรีฟก้อนเดียว = เลือกให้เลย ไม่ต้องถาม** (มติผู้ใช้ตอนทำปุ่มรวบบรีฟ) —
+    // ช่องที่มีตัวเลือกเดียวแต่ยังบังคับให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร
+    let briefId = String(row.briefId ?? '').trim() || null;
+    if (briefs.length) {
+      if (!briefId && briefs.length === 1) briefId = briefs[0].id;
+      const linkError = briefLinkError(briefId, briefs);
+      if (linkError) return { rows: [], error: `${at}: ${linkError}` };
+    }
+
     const code = String(row.code ?? '').trim();
     if (!code) return { rows: [], error: `${at}: ต้องระบุรหัสกลิ่น` };
     if (code.length > 100) return { rows: [], error: `${at}: รหัสกลิ่นยาวเกิน 100 ตัวอักษร` };
@@ -62,6 +77,7 @@ export function normalizeDeliveryRows(input, { existingCodes = [], today = null 
     if (spec.length > 2000) return { rows: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
 
     rows.push({
+      briefId,
       name,
       code,
       sentAt,
@@ -97,6 +113,8 @@ export function deliveryItemRow(row, {
     // ส่วนสายพัฒนากลิ่น กลิ่นคือ **ผลลัพธ์** ไม่ใช่ของที่อ้าง · ใส่ทั้งสองช่อง =
     // แหล่งความจริงสองที่ที่ drift ได้
     producedScentId: scentId,
+    // ชั้นกลาง — direction นี้ตอบบรีฟก้อนไหน (mig 0213)
+    briefId: row.briefId ?? null,
     answerStatus: 'pending',
     ackAt: ackAt || row.sentAt,
     ackById: by.id,
