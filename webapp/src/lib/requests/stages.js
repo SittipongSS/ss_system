@@ -2,6 +2,7 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
+import { requestRequiresCommittedDue } from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestHasItems } from '@/lib/master/requestTypes';
 
@@ -34,10 +35,17 @@ export function submitRequestError(request, items = []) {
   return null;
 }
 
-export function acknowledgeRequestError(request) {
+export function acknowledgeRequestError(request, { committedDueDate = null } = {}) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'draft') return 'คำร้องนี้ยังไม่ถูกส่ง';
   if (request.status !== 'pending') return 'คำร้องนี้รับเรื่องไปแล้ว';
+  // ⭐ **บังคับวันกำหนดส่งเฉพาะหัวข้อที่ประกาศธง** (มติผู้ใช้ 2026-08-06) — รับเรื่อง
+  // โดยไม่ผูกวันคือการรับปากว่า "จะทำ" โดยไม่บอกว่าเมื่อไร และเป็นวันที่ใช้นับว่า
+  // เลยกำหนดหรือยัง ⇒ ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า
+  // ⚠️ รายชนิด ไม่ใช่ทั้งระบบ — เคสขอราคาที่มีผู้ใช้จริงอยู่แล้วไม่เคยมีช่องนี้
+  if (requestRequiresCommittedDue(request.kind) && !String(committedDueDate ?? '').trim()) {
+    return 'ต้องระบุวันกำหนดส่งตอนรับเรื่อง';
+  }
   return null;
 }
 

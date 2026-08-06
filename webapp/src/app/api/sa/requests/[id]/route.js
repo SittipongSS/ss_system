@@ -137,12 +137,10 @@ export async function PATCH(request, { params }) {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `รับเรื่องได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
-      const err = acknowledgeRequestError(before);
+      // ⭐ บังคับวันกำหนดส่ง **รายชนิด** — ผู้ใช้ยืนยันแล้วสำหรับพัฒนากลิ่น
+      // (คอมเมนต์เดิมตรงนี้เขียนไว้ว่า "ถ้าจะบังคับควรบังคับรายชนิดทีหลัง" — ถึงตอนนั้นแล้ว)
+      const err = acknowledgeRequestError(before, { committedDueDate: body.committedDueDate });
       if (err) return Response.json({ error: err }, { status: 409 });
-      // "วันที่จะตอบ" ยกแนวคิดมาจากระบบสอบถามเดิมซึ่ง**บังคับ**กรอกตอนรับเรื่อง
-      // ⚠️ ที่นี่ไม่บังคับ เพราะเคสขอราคา (ของเดิมที่มีผู้ใช้จริงอยู่แล้ว) ไม่เคยมี
-      // ช่องนี้ — บังคับทันทีจะเปลี่ยนขั้นตอนของคนที่ใช้อยู่โดยไม่ได้ตกลงกัน
-      // ถ้าจะบังคับควรบังคับ "รายชนิด" ทีหลังเมื่อผู้ใช้ยืนยัน
       const due = String(body.committedDueDate ?? '').trim();
       if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
         return Response.json({ error: 'วันที่จะตอบไม่ถูกต้อง' }, { status: 400 });

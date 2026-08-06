@@ -30,7 +30,7 @@ import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { scentBriefSummary } from "@/lib/requests/scentBriefs";
-import { requestHasPdr } from "@/lib/master/requestTypes";
+import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import PdrSummary from "@/components/requests/PdrSummary";
 import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -48,6 +48,7 @@ import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
+import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
 import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
@@ -104,6 +105,10 @@ export default function MaterialAskDetailPage() {
   // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
   // สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" — server เป็นคนตัดสิน (`_canEditPdr`)
   const [pdrDraft, setPdrDraft] = useState(null);
+  // ⭐ วันกำหนดส่งตอนรับเรื่อง — บังคับเฉพาะหัวข้อที่ประกาศธง (มติผู้ใช้ 2026-08-06)
+  // ⚠️ ปุ่มเดิมยิง `acknowledge` เปล่า ๆ ⇒ พอ server บังคับแล้วจะกดไม่ผ่านทุกครั้ง
+  // ถ้าไม่มีช่องให้กรอก · ด่านกับหน้าจอต้องมาพร้อมกันเสมอ
+  const [ackDue, setAckDue] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -385,7 +390,9 @@ export default function MaterialAskDetailPage() {
         label: "รับเรื่อง",
         kind: "approve",
         icon: Check,
-        onClick: () => call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว"),
+        onClick: () => (requestRequiresCommittedDue(req.kind)
+          ? setAckDue(businessDate())
+          : call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว")),
       }
       // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
       // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
@@ -783,6 +790,36 @@ export default function MaterialAskDetailPage() {
       {/* บันทึกก้าวของแถว — กล่องเดียวรับทั้งห้าก้าว ช่องสลับตามก้าวที่กด
           ⭐ ห้ากล่องแยกจะได้ปุ่มยกเลิก/บันทึกและกติกาวันที่ห้าชุดที่ต้องคอยดูแลให้ตรงกัน
           ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
+      {/* ⭐ รับเรื่อง + วันกำหนดส่ง — หัวข้อที่บังคับต้องมีช่องให้กรอกในจังหวะเดียวกัน
+          ไม่ใช่ให้กดแล้วเจอ error แล้วไปหาว่าต้องกรอกที่ไหน */}
+      <Modal
+        open={ackDue !== null} onClose={() => setAckDue(null)} size="sm" dismissible={!saving}
+        title="รับเรื่อง — ระบุวันกำหนดส่ง"
+      >
+        <div className="form-group">
+          <label htmlFor="ack-due">วันกำหนดส่ง</label>
+          <DateInput id="ack-due" value={ackDue || ""} disabled={saving} onChange={setAckDue} />
+          {/* วันที่คาดหวังเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และเป็นตัวที่
+              ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
+          <small className={styles.hint}>
+            เป็นวันที่ฝ่ายคุณรับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
+            {req.requestedDueDate ? ` · ผู้ขอคาดหวังไว้ ${fmtDate(req.requestedDueDate)}` : ""}
+          </small>
+        </div>
+        <div className={`action-bar ${styles.modalActions}`}>
+          <Button variant="quiet" disabled={saving} onClick={() => setAckDue(null)}>ยกเลิก</Button>
+          <Button
+            tone="primary" disabled={saving || !ackDue}
+            onClick={() => call("", {
+              method: "PATCH",
+              body: JSON.stringify({ action: "acknowledge", committedDueDate: ackDue }),
+            }, "รับเรื่องแล้ว").then((ok) => { if (ok) setAckDue(null); })}
+          >
+            รับเรื่อง
+          </Button>
+        </div>
+      </Modal>
+
       <Modal
         open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
         title={hopDraft ? `${hopLabel(hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
