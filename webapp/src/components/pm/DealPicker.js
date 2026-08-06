@@ -156,18 +156,24 @@ export default function DealPicker({
                 <button
                   key={bucket.key}
                   type="button"
-                  className={`${styles.row} ${bucket.key === activeBucket?.key ? styles.active : ""}`.trim()}
+                  className={`${styles.row} ${styles.deal} ${bucket.key === activeBucket?.key ? styles.active : ""}`.trim()}
                   onClick={() => { setBucketKey(bucket.key); setDealQuery(""); }}
                 >
                   {bucket.key === ALL_DEALS_BUCKET
-                    ? <Layers size={14} aria-hidden="true" />
-                    : <FolderOpen size={14} aria-hidden="true" />}
-                  <span className={styles.rowLabel}>{bucket.label}</span>
+                    ? <Layers size={14} aria-hidden="true" className={styles.rowIcon} />
+                    : <FolderOpen size={14} aria-hidden="true" className={styles.rowIcon} />}
+                  <span className={styles.dealText}>
+                    <span className={styles.dealTitle}>{bucket.label}</span>
+                    {/* ชื่อลูกค้าเป็นบรรทัดรอง — โครงการชื่อคล้ายกันของคนละลูกค้ามีจริง
+                        และรหัส PJ- อย่างเดียวแยกไม่ออกด้วยตา */}
+                    {bucket.customerName ? <span className={styles.dealMeta}>{bucket.customerName}</span> : null}
+                  </span>
                   <span className={styles.count}>{bucket.deals.length}</span>
                 </button>
               ))}
               {shownBuckets.length === 1 && projectQuery.trim() ? (
-                <div className={styles.empty}>ไม่พบโครงการที่ตรงกับคำค้น</div>
+                // บอก **ทางออก** ไม่ใช่แค่ "ไม่พบ" — คนมักพิมพ์ชื่อดีลผิดช่อง
+                <div className={styles.empty}>ไม่พบโครงการที่ตรงกับคำค้น — ถ้ากำลังหาชื่อดีล ให้ค้นที่ช่องขวาในถัง “ดีลทั้งหมด”</div>
               ) : null}
             </div>
 
@@ -209,11 +215,19 @@ export default function DealPicker({
               {!shownDeals.length ? (
                 <div className={styles.empty}>
                   {dealQuery.trim()
-                    ? "ไม่พบดีลที่ตรงกับคำค้น"
+                    ? "ไม่พบดีลที่ตรงกับคำค้นในถังนี้"
                     : activeBucket?.key === NO_PROJECT_BUCKET
                       ? "ไม่มีดีลที่ยังไม่ผูกโครงการ"
                       : "โครงการนี้ยังไม่มีดีลที่ผูกงานได้"}
                 </div>
+              ) : null}
+              {/* ค้นในถังโครงการแล้วไม่เจอ = มักเป็นเพราะดีลอยู่คนละโครงการกับที่เดา
+                  — พาไปค้นต่อในถังรวมโดย **ไม่ต้องพิมพ์ใหม่** ไม่ใช่ปล่อยให้ตัน */}
+              {!shownDeals.length && dealQuery.trim() && activeBucket?.key !== ALL_DEALS_BUCKET ? (
+                <button type="button" className={styles.row} onClick={() => setBucketKey(ALL_DEALS_BUCKET)}>
+                  <Layers size={14} aria-hidden="true" className={styles.rowIcon} />
+                  <span className={styles.rowLabel}>ค้น “{dealQuery.trim()}” ในดีลทั้งหมด</span>
+                </button>
               ) : null}
             </div>
           </div>

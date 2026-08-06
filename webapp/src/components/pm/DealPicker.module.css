@@ -91,6 +91,8 @@
 .row.active .count { color: var(--accent-ink); }
 
 .deal { align-items: flex-start; color: var(--text); }
+/* ไอคอนอยู่บรรทัดแรกเสมอ — แถวสองบรรทัดจะดันไอคอนไปกลางแถวถ้าไม่ตรึง */
+.rowIcon { flex: 0 0 auto; margin-top: var(--space-0-5); }
 .dealText { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--space-0-5); }
 .dealTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dealMeta { color: var(--text-3); font-size: var(--fs-3); }

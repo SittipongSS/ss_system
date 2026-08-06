@@ -21,8 +21,21 @@ export const dealSearchText = (deal, projectLabel = '') => [
   deal?.code, deal?.title, deal?.customerName, deal?.forecastMonth, projectLabel,
 ].filter(Boolean).join(' ');
 
-const matches = (text, needle) => !needle
-  || String(text || '').toLocaleLowerCase('th').includes(needle.toLocaleLowerCase('th'));
+/** ข้อความที่ใช้ค้นโครงการ — รหัส ชื่อโครงการ **และชื่อลูกค้า** (มติผู้ใช้ 2026-08-06) */
+export const projectSearchText = (project) => [
+  project?.code, project?.name, project?.customerName,
+].filter(Boolean).join(' ');
+
+// คำค้นหลายคำ = ต้องเจอ **ทุกคำ** (ไม่ใช่ทั้งประโยคติดกัน) — คนพิมพ์ "rinvala 2026-08"
+// โดยคาดว่าจะได้ดีลรินวาลาของเดือนนั้น ไม่ใช่ผลลัพธ์ว่างเพราะสองคำนี้ไม่ติดกันในข้อความ
+const matches = (text, needle) => {
+  const hay = String(text || '').toLocaleLowerCase('th');
+  return String(needle || '')
+    .toLocaleLowerCase('th')
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((token) => hay.includes(token));
+};
 
 /**
  * ถังฝั่งซ้าย: ดีลทั้งหมด → โครงการ (เรียงตามป้ายที่คนเห็น) → ยังไม่ผูกโครงการ
@@ -44,7 +57,10 @@ export function buildDealBuckets(deals = [], projects = []) {
         key,
         // โครงการที่อยู่นอกรายการที่โหลดมา (ทีมอื่น) ยังต้องมีถังให้ดีลของมันอยู่
         label: projectLabelOf(project) || 'โครงการอื่น',
-        search: `${project?.code || ''} ${project?.name || ''} ${project?.customerName || ''}`,
+        // ชื่อลูกค้าโชว์เป็นบรรทัดรอง — โครงการชื่อคล้ายกันแยกออกได้ด้วยลูกค้า
+        // (ไม่มีในโครงการนอกลิสต์ → fallback เป็นลูกค้าของดีลใบแรกในถัง)
+        customerName: project?.customerName || rows.find((row) => row.customerName)?.customerName || '',
+        search: `${projectSearchText(project)} ${rows.map((row) => row.customerName).filter(Boolean).join(' ')}`,
         deals: rows,
       };
     })
