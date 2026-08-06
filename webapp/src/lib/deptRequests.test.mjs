@@ -3,9 +3,11 @@
 //  เพราะผู้ใช้ที่ใช้อยู่ต้องไม่รู้สึกว่าอะไรเปลี่ยนหลังรวมระบบ)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
+  rescheduleRequestError,
   bounceRequestError,
   answerRequestError,
   canAnswerRequest,
@@ -27,6 +29,7 @@ import {
   requestSummaryText,
   submitRequestError,
 } from './deptRequests.js';
+import { followUpRowFrom } from './requests/hops.js';
 import { MATERIAL_KINDS } from './materialPrices.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
@@ -303,8 +306,8 @@ test('ชนิดที่ไม่มีบรรทัดส่งได้�
   assert.match(submitRequestError(req({ kind: 'price_pm', status: 'draft' }), []), /อย่างน้อย 1 รายการ/);
 });
 
-test('ปิดเรื่อง: ชนิดมีบรรทัดต้องตอบครบ · ชนิดไม่มีบรรทัดผู้ขอตัดสินเอง', () => {
-  assert.match(closeRequestError(req({ kind: 'price_pm' }), [{ answerStatus: 'pending' }]), /ยังไม่ได้ตอบ/);
+test('ปิดเรื่อง: ใบที่มีแถวต้องจบครบ · ใบที่ไม่มีแถวผู้ขอตัดสินเอง', () => {
+  assert.match(closeRequestError(req({ kind: 'price_pm' }), [{ answerStatus: 'pending' }]), /ยังเดินไม่จบ/);
   assert.equal(closeRequestError(req({ kind: 'price_pm' }), [{ answerStatus: 'done' }]), null);
   // สอบถามที่รับเรื่องแล้ว ผู้ขอปิดเองได้แม้ยังไม่ answered
   assert.equal(closeRequestError(req({ kind: 'info', status: 'acknowledged' }), []), null);
@@ -627,4 +630,121 @@ test('⭐ พัฒนากลิ่นบังคับใส่วันก�
   for (const kind of ['price_pm', 'price_f', 'info', 'document', 'product_dev']) {
     assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
   }
+});
+
+// ── เลื่อนวันกำหนดส่ง ────────────────────────────────────────────────────
+test('⭐ เลื่อนวันกำหนดส่งได้หลังรับเรื่อง — แต่ต้องรับเรื่องก่อน', () => {
+  // มติผู้ใช้ 2026-08-06: RD ขอให้แก้วันได้ เผื่อตอนรับเรื่องเลือกไปก่อนแล้วเจอของจริง
+  const ack = { kind: 'scent_dev', status: 'acknowledged', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  assert.equal(rescheduleRequestError(ack, { committedDueDate: '2026-08-27' }), null);
+
+  // ⚠️ **ไม่ใช่ทางลัดของการรับเรื่อง** — ไม่งั้นจะผูกวันได้โดยข้ามด่านของ acknowledge
+  assert.match(
+    rescheduleRequestError({ kind: 'scent_dev', status: 'pending' }, { committedDueDate: '2026-08-27' }),
+    /ยังไม่ได้รับเรื่อง/,
+  );
+});
+
+test('เลื่อนวันต้องมีวันใหม่จริง และต้องไม่ใช่วันเดิม', () => {
+  const ack = { kind: 'scent_dev', status: 'acknowledged', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  // ⚠️ ล้างวันทิ้งไม่ได้ — "เลื่อน" ที่แปลว่าถอนคำสัญญาต้องไปยกเลิกใบ ไม่ใช่ล้างช่อง
+  assert.match(rescheduleRequestError(ack), /ระบุวันกำหนดส่งใหม่/);
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '   ' }), /ระบุวันกำหนดส่งใหม่/);
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '20/08/2026' }), /ระบุวันกำหนดส่งใหม่/);
+  // วันเดิม = ไม่มีอะไรเลื่อน · ปล่อยผ่านจะได้บรรทัดเธรด "20 → 20" ที่ไม่มีความหมาย
+  assert.match(rescheduleRequestError(ack, { committedDueDate: '2026-08-20' }), /วันเดิม/);
+});
+
+test('ใบที่จบไปแล้วเลื่อนวันไม่ได้', () => {
+  const base = { kind: 'scent_dev', acknowledgedAt: '2026-08-06T00:00:00Z', committedDueDate: '2026-08-20' };
+  const next = { committedDueDate: '2026-08-27' };
+  assert.match(rescheduleRequestError({ ...base, status: 'closed' }, next), /ปิดไปแล้ว/);
+  assert.match(rescheduleRequestError({ ...base, status: 'cancelled' }, next), /ยกเลิกไปแล้ว/);
+  // ⚠️ `answered` ก็เลื่อนไม่ได้ — ตอบไปแล้วจะเลื่อนวันส่งย้อนหลังไม่ได้
+  assert.match(rescheduleRequestError({ ...base, status: 'answered' }, next), /ปิดไปแล้ว/);
+});
+
+// ── เดินครึ่งหลังของวง: RD ส่งกลิ่น → SA รับของ → ส่งลูกค้า → ลูกค้าตอบ → ใส่ราคา ──
+//
+// ⚠️ สามเทสต์นี้เกิดจากการ **เดินวงจริง** ไม่ใช่เดาจากโค้ด — ทั้งสามข้อ CI เขียวมาตลอด
+// เพราะไม่มีใครเคยเดินถึงครึ่งหลัง
+const flowRow = (over = {}) => ({
+  id: 'DRI-1', requestId: 'DR-1', lineKind: 'scent_dev', label: 'A', briefId: 'BRF-1',
+  answerStatus: 'pending', ackAt: '2026-08-01', readyAt: '2026-08-01',
+  pickedUpAt: '2026-08-02', sentAt: '2026-08-03', ...over,
+});
+
+test('🐞 แถวที่ลูกค้าขอให้แก้ต้องนับว่าจบ — ไม่งั้นใบล็อกถาวรปิดไม่ได้', () => {
+  // `hopPatch` จงใจไม่ปิด answerStatus ของแถวรอบแก้ (งานย้ายไปแถวใหม่ ไม่ใช่แถวนี้
+  // ตอบเสร็จ) ⇒ ตัวนับที่อ่าน answerStatus ตรง ๆ จะได้ complete:false ตลอดกาล
+  const revised = flowRow({ outcome: 'revise', outcomeAt: '2026-08-05', outcomeNote: 'ขอหวานขึ้น' });
+  const priced = flowRow({ id: 'DRI-2', answerStatus: 'done' });
+  assert.equal(requestProgress([revised, priced]).complete, true);
+  assert.equal(deriveRequestStatusAfterAnswer([revised, priced], 'acknowledged'), 'answered');
+});
+
+test('🐞 แถวที่ยังเดินอยู่กลางทางต้องกันไม่ให้ปิดใบ — ทุกขั้น ไม่ใช่แค่ตอนยังไม่ตอบ', () => {
+  // ห้าขั้นกลางทางไม่มีขั้นไหนแตะ answerStatus เลย ⇒ ด่านที่อ่าน answerStatus อย่างเดียว
+  // มองไม่เห็นว่ายังมีของค้างอยู่ที่ลูกค้า
+  for (const mid of [
+    flowRow({ pickedUpAt: null, sentAt: null }),         // เสร็จแล้ว รอ SA ไปรับ
+    flowRow({ sentAt: null }),                            // รับของแล้ว รอส่งลูกค้า
+    flowRow(),                                            // ส่งลูกค้าแล้ว รอลูกค้าตอบ
+    flowRow({ outcome: 'confirmed', outcomeAt: '2026-08-05', confirmedQty: 25 }), // รอใส่ราคา
+  ]) {
+    assert.match(closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged' }), [mid]), /ยังเดินไม่จบ/);
+  }
+  // จบจริงแล้วค่อยปิดได้
+  assert.equal(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged' }), [flowRow({ answerStatus: 'done' })]),
+    null,
+  );
+});
+
+test('🐞 ด่านปิดใบต้องดู "ใบนี้มีแถวไหม" ไม่ใช่ "ชนิดนี้สร้างแถวตอนเปิดไหม"', () => {
+  // พัฒนากลิ่นมี hasItems:false (แถวเกิดตอน RD ส่งของ) ⇒ ด่านเดิมข้ามทั้งก้อน
+  const open = req({ kind: 'scent_dev', status: 'acknowledged' });
+  assert.match(closeRequestError(open, [flowRow()]), /ยังเดินไม่จบ/);
+  // ยังไม่มีใครส่งอะไรมาเลย = ไม่มีแถวให้ค้าง ⇒ ผู้ขอปิดเองได้ (พฤติกรรมเดิม)
+  assert.equal(closeRequestError(open, []), null);
+});
+
+test('🐞 แถวรอบแก้ต้องพาบรีฟตามไปด้วย — "กลิ่นย้อนกลับได้ว่ามาจากบรีฟไหน"', () => {
+  const next = followUpRowFrom(flowRow({ outcome: 'revise' }), 2);
+  assert.equal(next.briefId, 'BRF-1');
+  assert.equal(next.derivedFromItemId, 'DRI-1');
+  // ของที่เกิดขึ้นแล้วต้องไม่ตามไป — แถวใหม่เริ่มที่รอรับเรื่องอีกครั้ง
+  assert.equal(next.answerStatus, 'pending');
+  assert.equal(next.ackAt, undefined);
+  assert.equal(next.outcome, undefined);
+});
+
+// ── ส่วนหัว PDR ต้องเดินทางครบจากฟอร์มถึงคอลัมน์ ─────────────────────────
+//
+// 🐞 ของจริงที่ผู้ใช้เจอบนจอ: กรอกส่วนหัว PDR ครบ กดบันทึก แล้วหน้ารายละเอียดขึ้น
+// "ยังไม่ได้กรอกส่วนนี้" ทุกใบ — `requestPayload` ไม่เคยส่ง `form.pdr` เลย และ POST
+// ก็ไม่เคยอ่าน · คอมเมนต์เดิมเขียนไว้ว่า "รอ migration ส่วนหัวก่อน" ซึ่งคือ 0214
+// ที่ออกและรันไปแล้ว แต่ไม่มีใครกลับมาถอดคำว่า "ยังไม่ส่ง" ออก
+test('🐞 requestPayload ส่งส่วนหัว PDR ไปด้วย — ไม่งั้น 21 ช่องหายเงียบทุกใบ', () => {
+  const form = {
+    dept: 'RD', kind: 'scent_dev', title: 'พัฒนากลิ่น', body: 'x',
+    pdr: { customerBrand: 'แบรนด์ก', targetCost: '1200', moq: '50' },
+    briefs: [{ label: 'กลิ่นที่ 1', brief: 'โทนไม้' }],
+  };
+  const p = requestPayload(form);
+  assert.deepEqual(p.pdr, form.pdr);
+  assert.equal(p.briefs.length, 1);
+
+  // หัวข้อที่ไม่ได้ใช้ PDR ต้องไม่ส่งทั้งสองก้อน — ของที่ไม่มีความหมายไม่ควรถูกส่ง
+  const info = requestPayload({ ...form, kind: 'info' });
+  assert.equal('pdr' in info, false);
+  assert.equal('briefs' in info, false);
+});
+
+test('🐞 POST /api/sa/requests ต้องอ่าน body.pdr จริง — ratchet กันฟอร์มส่งแล้ว server ทิ้ง', () => {
+  // ⚠️ ด่านฝั่งจอส่งของถูกแล้วก็ไม่พอ ถ้าปลายทางไม่มีใครรับ — ค่าจะหายเงียบ
+  // ระหว่างทางเหมือนเดิมเป๊ะ · ตรวจที่ซอร์สเพราะ route แตะ DB จึงเรียกในเทสต์ไม่ได้
+  const src = readFileSync('src/app/api/sa/requests/route.js', 'utf8');
+  assert.match(src, /normalizePdr\(body\.pdr\)/, 'POST ต้องเรียก normalizePdr(body.pdr)');
+  assert.match(src, /\.\.\.pdrColumns,/, 'คอลัมน์ที่ได้ต้องถูกใส่ลง insert จริง');
 });

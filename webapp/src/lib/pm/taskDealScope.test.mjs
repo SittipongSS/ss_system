@@ -17,19 +17,13 @@ test('ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) เล�
   assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'all', team: null });
 });
 
-test('ทุกงานต้องผูกดีล — ไม่ใช่เฉพาะฝ่ายขาย', () => {
-  assert.equal(requiresDealLink({ role: 'ae', team: 'KA' }), true);
-  assert.equal(requiresDealLink({ role: 'ac', team: 'ODM' }), true);
-  assert.equal(requiresDealLink({ role: 'ae_supervisor', department: 'SALES' }), true);
-  assert.equal(requiresDealLink({ role: 'rd', team: null }), true);
-  assert.equal(requiresDealLink({ role: 'staff', department: 'PC' }), true);
-});
-
-test('ข้อยกเว้น: ผู้ดูแลระบบ/เลขานุการ เท่านั้น (ไม่ใช่ superuser ทั้งก้อน)', () => {
-  assert.equal(requiresDealLink({ role: 'admin' }), false);
-  assert.equal(requiresDealLink({ role: 'secretary' }), false);
-  // ⚠️ ae_supervisor เป็น superuser แต่เป็นหัวหน้าฝ่ายขาย — ต้องผูกดีลเหมือนลูกทีม
-  assert.equal(requiresDealLink({ role: 'ae_supervisor', team: null }), true);
+// ⭐ ไม่มีข้อยกเว้นตาม role — รอบแรกยกเว้น admin/เลขาไว้ แล้วกลายเป็นว่าบัญชีที่
+// สร้างงานมากที่สุดคือบัญชีเดียวที่กติกาบังคับไม่ถึง (ผู้ใช้เจอเองบนของจริง)
+test('ทุกงานต้องผูกดีล — ทุก role ไม่มีข้อยกเว้น', () => {
+  for (const role of ['ae', 'ac', 'ae_supervisor', 'senior_ae', 'rd', 'staff', 'marketing', 'admin', 'secretary']) {
+    assert.equal(requiresDealLink({ role }), true, `${role} ต้องถูกบังคับผูกดีล`);
+  }
+  // ไม่มีผู้ใช้ = ไม่มีอะไรให้บังคับ (ด่านสิทธิ์ที่ route จัดการก่อนหน้าอยู่แล้ว)
   assert.equal(requiresDealLink(null), false);
 });
 

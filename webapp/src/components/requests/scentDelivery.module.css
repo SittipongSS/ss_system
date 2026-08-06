@@ -35,3 +35,21 @@
   font-size: var(--fs-6);
   color: var(--red);
 }
+
+/* คำพูดลูกค้าในรอบแก้ — อยู่หัวช่องที่กำลังจะกรอก ไม่ใช่ให้ไถกลับไปอ่านบนราง */
+.customerNote {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border-left: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+  font-size: var(--fs-6);
+  color: var(--text-2);
+}
+
+/* ค่าที่ระบบผูกให้เอง — แสดงเป็นข้อความ ไม่ใช่ช่องจางที่ดูเหมือนกรอกได้แต่กรอกไม่ได้ */
+.locked {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-6);
+  color: var(--text-2);
+}

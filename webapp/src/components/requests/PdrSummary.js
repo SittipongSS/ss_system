@@ -5,51 +5,21 @@
 // เห็นแค่ชื่อเรื่อง ไม่เห็นบรีฟกลิ่น ไม่เห็น Scentotype ไม่เห็น Target Cost = ทำงานต่อ
 // ไม่ได้เลย · คนกรอกกรอกครั้งเดียว แต่คนอ่านอ่านทุกครั้งที่หยิบงาน
 //
-// ⭐ **บรีฟรายกลิ่นขึ้นก่อนและกางไว้** — เป็นสิ่งที่ RD ใช้มากที่สุด · ส่วนหัว PDR
-// (ข้อมูลลูกค้า/ราคาเป้าหมาย) พับไว้เพราะอ่านครั้งเดียวตอนเริ่ม
+// ⭐ **หัวข้อ ป้ายชื่อ และลำดับ อ่านจาก `lib/requests/pdrFields.js` ทั้งหมด** — จอนี้
+// ไม่มีลิสต์ของตัวเองอีกแล้ว · เดิมมีลิสต์แยก ⇒ ยุบสองหัวข้อเป็นหัวข้อเดียว สลับลำดับ
+// ตัดคำในวงเล็บทิ้ง และทำช่อง "ผู้ร้องขอ/ลูกค้า/จำนวนกลิ่น" หายไปเลย เทียบกับฟอร์ม
 //
 // ⚠️ ช่องที่ไม่ได้กรอก **ไม่แสดงเลย** ไม่ใช่แสดงเป็นขีด — ฟอร์มมี 21 ช่องและส่วนใหญ่
 // ไม่บังคับ ⇒ แสดงช่องว่างครบทุกช่องจะกลบของที่กรอกจริงจนหาไม่เจอ
+// (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
 import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { PDR_REQUEST_TYPES } from "@/components/requests/PdrForm";
+import { PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
 
-const TEXTURE = { standard: "STANDARD", premium: "PREMIUM" };
-const CUSTOMER_KIND = { new: "ลูกค้าใหม่", existing: "ลูกค้าเก่า" };
-const REQUEST_TYPE = Object.fromEntries(PDR_REQUEST_TYPES.map((t) => [t.value, t.label]));
-
-const money = (v) => (v == null || v === "" ? null : Number(v).toLocaleString("th-TH"));
-
-// [ป้าย, ค่า] — ค่าที่เป็น null/'' ถูกตัดทิ้งตอนเรนเดอร์
-const HEADER_FIELDS = (r) => [
-  ["ประเภทของคำขอ", REQUEST_TYPE[r.pdrRequestType] || r.pdrRequestType],
-  ["ชื่อแบรนด์", r.pdrCustomerBrand],
-  ["Mood & Tone", r.pdrMoodTone],
-  ["ทิศทางการเติบโตของแบรนด์", r.pdrBrandDirection],
-  ["ที่อยู่จัดส่งตัวอย่าง", r.pdrShipTo],
-  ["ประเภทลูกค้า", CUSTOMER_KIND[r.pdrCustomerKind] || r.pdrCustomerKind],
-  ["มูลค่าโปรเจกต์ทั้งหมด", money(r.pdrProjectValue)],
-  ["DemoGraphic", r.pdrTargetDemographic],
-  ["PsychoGraphic", r.pdrTargetPsychographic],
-  ["Painpoint", r.pdrTargetPainpoint],
-  ["ประเภทสินค้า", r.pdrProductKind],
-  ["วันที่ต้องการสินค้า", r.pdrWantedAt],
-  ["วันที่ต้องการจำหน่าย", r.pdrSellFrom],
-];
-
-const SPEC_FIELDS = (r) => [
-  ["Target Cost / KG", money(r.pdrTargetCost)],
-  ["Target Price / Unit", money(r.pdrTargetPrice)],
-  ["MOQ ที่คาดหวัง", r.pdrMoq],
-  ["ลักษณะเนื้อผลิตภัณฑ์", TEXTURE[r.pdrTexture] || r.pdrTexture],
-  ["สีเนื้อผลิตภัณฑ์", r.pdrColor],
-  ["ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น", r.pdrPackSize],
-  ["ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)", r.pdrBrandSample],
-  ["ข้อกำหนดเฉพาะอื่น ๆ", r.pdrSpecialRequirements],
-];
-
 function Facts({ rows }) {
+  // ⚠️ กรองที่นี่ด้วย — บล็อกบรีฟส่งคู่ดิบมาตรง ๆ (คนละทางกับ `pdrSectionRows`
+  // ที่กรองมาให้แล้ว) · กรองทางเดียวเมื่อไรอีกทางจะขึ้นแถวว่างเปล่า
   const filled = rows.filter(([, v]) => v != null && String(v).trim() !== "");
   if (!filled.length) return <small className={styles.hint}>ยังไม่ได้กรอกส่วนนี้</small>;
   return (
@@ -64,11 +34,21 @@ function Facts({ rows }) {
   );
 }
 
+// ⭐ ป้ายกำกับแถว chip — เดิมสองแถวขึ้นเปล่า ๆ ติดกัน อ่านไม่ออกว่าแถวไหนคืออะไร
+function Chips({ label, values, textOf }) {
+  if (!values?.length) return null;
+  return (
+    <div className={styles.pdrFact}>
+      <dt>{label}</dt>
+      <dd className={styles.mentionPicker}>
+        {values.map((v) => <span key={v} className={`chip ${styles.tierChip}`}>{textOf(v)}</span>)}
+      </dd>
+    </div>
+  );
+}
+
 export default function PdrSummary({ request, briefs = [] }) {
   if (!request) return null;
-  const header = HEADER_FIELDS(request);
-  const specs = SPEC_FIELDS(request);
-
   return (
     <div className={styles.pdr}>
       <div className={styles.pdrHead}>
@@ -94,36 +74,24 @@ export default function PdrSummary({ request, briefs = [] }) {
                 ["กลิ่นที่ End-user ไม่ชอบ", b.dislikedNotes],
                 ["ให้ทำวิจัยเรื่อง", b.researchTopic],
               ]} />
-              {!!(b.scentotypes || []).length && (
-                <div className={styles.mentionPicker}>
-                  {b.scentotypes.map((v) => (
-                    <span key={v} className={`chip ${styles.tierChip}`}>{scentotypeLabel(v)}</span>
-                  ))}
-                </div>
-              )}
-              {!!(b.performance || []).length && (
-                <div className={styles.mentionPicker}>
-                  {b.performance.map((v) => (
-                    <span key={v} className={`chip ${styles.tierChip}`}>
-                      {scentPerformanceLabel(v)}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <dl className={styles.pdrFacts}>
+                <Chips label="Scentotype" values={b.scentotypes} textOf={scentotypeLabel} />
+                <Chips label="Performance ของกลิ่น" values={b.performance} textOf={scentPerformanceLabel} />
+              </dl>
             </div>
           ))}
         </div>
       </details>
 
-      <details className={styles.pdrSection}>
-        <summary className={styles.pdrSummary}>ข้อมูลลูกค้าและคำขอ</summary>
-        <div className={styles.pdrBody}><Facts rows={header} /></div>
-      </details>
-
-      <details className={styles.pdrSection}>
-        <summary className={styles.pdrSummary}>ข้อกำหนดผลิตภัณฑ์</summary>
-        <div className={styles.pdrBody}><Facts rows={specs} /></div>
-      </details>
+      {/* หัวข้อทั้งหมดมาจากทะเบียนเดียวกับฟอร์ม — ชื่อ ลำดับ และป้ายช่องตรงกันเสมอ */}
+      {PDR_SECTIONS.map((section) => (
+        <details key={section.key} className={styles.pdrSection}>
+          <summary className={styles.pdrSummary}>{section.title}</summary>
+          <div className={styles.pdrBody}>
+            <Facts rows={pdrSectionRows(section, request, { context: { briefs } })} />
+          </div>
+        </details>
+      ))}
     </div>
   );
 }

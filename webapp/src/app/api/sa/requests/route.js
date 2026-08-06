@@ -16,6 +16,7 @@ import {
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
+import { normalizePdr } from '@/lib/requests/pdr';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
@@ -292,8 +293,22 @@ export async function POST(request) {
       resolved.push({ ...item, materialId: material.id });
     }
 
+    // ⭐ ส่วนหัว PDR (mig 0214) — 21 ช่องที่ฟอร์มถามตั้งแต่ตอนเปิดใบ
+    //
+    // ⚠️ **ตรวจก่อน insert เสมอ** — ตกลง DB ไปแล้วค่อยพังจะได้ใบร่างที่กินเลขไปแล้ว
+    // (ยังไม่กินจริงตรงนี้ แต่ได้ใบเปล่าค้างที่ผู้ใช้ต้องมาลบเอง)
+    // ⚠️ ปล่อยผ่านเฉพาะหัวข้อที่ประกาศธง — ส่ง `pdr` มากับหัวข้ออื่นคือของที่ไม่มี
+    // ความหมาย ไม่ควรเงียบ ๆ เขียนลงคอลัมน์
+    let pdrColumns = {};
+    if (requestHasPdr(kind)) {
+      const { columns, error: pdrError } = normalizePdr(body.pdr);
+      if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
+      pdrColumns = columns;
+    }
+
     // 2) หัวคำร้อง — stepKey มาจากชนิด ไม่ใช่จาก client (กันปักหมุดผิดขั้น)
     const { error: headError } = await supabase.from('dept_requests').insert({
+      ...pdrColumns,
       id: requestId,
       kind,
       dept,

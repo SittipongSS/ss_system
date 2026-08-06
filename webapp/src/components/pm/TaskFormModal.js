@@ -13,7 +13,7 @@ import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
+import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
@@ -23,16 +23,9 @@ import { describeResponseError } from "@/lib/fetchError";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import Textarea from "@/components/ui/Textarea";
 
-// ค่าโครงการใน dropdown ที่แปลว่า "ดีลทั้งหมด" — ทั้งที่ผูกและไม่ผูกโครงการ
-// (มติผู้ใช้ 2026-08-06: เดิมถังนี้เป็น "ดีลที่ยังไม่ผูกโครงการ" อย่างเดียว คนที่จำ
-//  ชื่อดีลได้แต่ไม่รู้ว่ามันอยู่โครงการไหน จึงหาไม่เจอ — ถังรวมทำให้ค้นชื่อดีลตรง ๆ ได้
-//  และดีลที่ยังไม่ผูกโครงการก็ยังอยู่ในนี้เหมือนเดิม ไม่หายไปจากการกรองตามโครงการ)
-const ALL_DEALS = "__all_deals__";
-
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
   projectId: "", dealId: "", assigneeId: "",
-  linkProjectId: "",   // ตัวกรองใน dropdown เท่านั้น — ไม่ได้ส่งขึ้น API
   category: "", important: false, urgent: false, difficulty: 2,
   status: "Pending",
 };
@@ -49,20 +42,15 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export const taskToForm = (t, deals = []) => {
-  // เปิดฟอร์มแก้แล้วช่องโครงการต้องตั้งไว้ให้ตรงกับดีลเดิม ไม่งั้นช่องดีลจะว่าง
-  // ทั้งที่งานผูกดีลอยู่ (dealId ที่ไม่อยู่ใน dealChoices)
-  const deal = t.dealId ? deals.find((d) => d.id === t.dealId) : null;
-  const projectId = t.projectId || deal?.projectId || "";
-  return {
-    title: t.title || "", note: t.note || "",
-    startDate: t.startDate || "", dueDate: t.dueDate || "",
-    projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
-    linkProjectId: t.dealId ? (projectId || ALL_DEALS) : "",
-    category: t.category || "", important: !!t.important, urgent: !!t.urgent,
-    difficulty: t.difficulty ?? 2, status: t.status || "Pending",
-  };
-};
+// ช่องเลือกดีลเป็นเมนูเดียว (มติผู้ใช้ 2026-08-06) — ไม่มีช่อง "โครงการ" ให้กรองก่อน
+// อีกแล้ว จึงไม่ต้องเดาว่าดีลเดิมของงานอยู่โครงการไหนเพื่อให้มันโผล่ใน dropdown
+export const taskToForm = (t) => ({
+  title: t.title || "", note: t.note || "",
+  startDate: t.startDate || "", dueDate: t.dueDate || "",
+  projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
+  category: t.category || "", important: !!t.important, urgent: !!t.urgent,
+  difficulty: t.difficulty ?? 2, status: t.status || "Pending",
+});
 
 async function uploadTaskAttachment(taskId, file) {
   const fd = new FormData();
@@ -103,67 +91,32 @@ export default function TaskFormModal({
   // ใหม่ทุก render จะทำให้ทับสิ่งที่พิมพ์ค้างไว้
   useEffect(() => {
     if (!open) return;
-    const seed = task ? taskToForm(task, deals) : { ...TASK_BLANK, ...(initialForm || {}) };
-    // caller อาจ preset dealId มา (สร้างงานจากหน้าดีล / จากเรื่องสอบถาม) โดยไม่รู้จัก
-    // linkProjectId — เติมให้จากดีลจริง ไม่งั้นดีลที่ preset จะหายจาก dropdown ที่กรอง
-    if (seed.dealId && !seed.linkProjectId) {
-      const d = deals.find((row) => row.id === seed.dealId);
-      seed.linkProjectId = d?.projectId || ALL_DEALS;
-    }
-    setForm(seed);
+    setForm(task ? taskToForm(task) : { ...TASK_BLANK, ...(initialForm || {}) });
     setLateReason("");
     setPendingFiles([]);
     setError("");
-    // deals อยู่ใน dep ด้วยเพราะ taskToForm ใช้หา projectId ของดีลเดิม — หน้า detail
-    // โหลดดีลทีหลัง (ตอนกดแก้ไข) ถ้าไม่ re-seed ช่องโครงการจะค้างว่าง
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task?.id, deals.length]);
+  }, [open, task?.id]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
-  // ทุกงานต้องผูกดีล (มติผู้ใช้ 2026-08-06) — กติกาเดียวกับ API (requiresDealLink).
-  // ยกเว้นงานที่สร้างจากคำร้อง: ดีลมาจากคำร้องต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา
-  // เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว จึงบังคับไม่ได้ — และ superuser
-  // (admin/เลขา) ที่งานดูแลระบบไม่ได้เกิดจากดีล
+  // ทุกงานต้องผูกดีล ทุก role ไม่มีข้อยกเว้น (มติผู้ใช้ 2026-08-06) — กติกาเดียวกับ
+  // API (requiresDealLink). ยกเว้นทางเดียวคืองานที่สร้างจากคำร้อง: ดีลมาจากคำร้อง
+  // ต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว
+  // ⚠️ `me` ต้องมาจริงเสมอ — `requiresDealLink(null)` = false แปลว่าหน้าไหนลืมส่ง me
+  //    ช่องดีลจะไม่ถูกบังคับเงียบ ๆ (API ยังกันให้อยู่ แต่ผู้ใช้จะเจอ error ตอนกดบันทึก)
   const dealRequired = canManage && !inquirySource && requiresDealLink(me);
   // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้
   const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
 
-  // ดีลแยกตามโครงการ — บวกถัง "ดีลทั้งหมด" ที่รวมทั้งที่ผูกและไม่ผูกโครงการ
-  const linkProjects = projects.filter((p) => deals.some((d) => d.projectId === p.id));
-  const dealChoices = form.linkProjectId === ALL_DEALS
-    ? deals
-    : form.linkProjectId
-      ? deals.filter((d) => d.projectId === form.linkProjectId)
-      : [];
-
-  // ค้นได้ทั้งสองช่อง (มติผู้ใช้ 2026-08-06) — รายการโครงการ/ดีลบน prod ยาวเกินกว่าจะไล่ดู
-  const projectOptions = [
-    { value: "", label: "— เลือกโครงการก่อน —", search: "" },
-    ...(deals.length ? [{ value: ALL_DEALS, label: `— ดีลทั้งหมด (${deals.length}) —`, search: "ดีลทั้งหมด all deals" }] : []),
-    ...linkProjects.map((p) => ({
-      value: p.id,
-      label: `${p.code ? `${p.code} · ` : ""}${p.name}`,
-      search: `${p.code || ""} ${p.name || ""} ${p.customerName || ""}`,
-    })),
-  ];
-  const dealOptions = [
-    // ปล่อยว่าง = ไม่ผูกดีล — เหลือไว้เฉพาะคนที่ไม่ถูกบังคับ (superuser/งานจากคำร้อง)
-    // ให้ถอนดีลออกได้ · คนที่ถูกบังคับต้องไม่เห็นตัวเลือกที่เลือกแล้วโดน API ตีกลับ
-    // (และใส่เฉพาะตอนเลือกโครงการแล้ว ไม่งั้นช่องที่ยังกดไม่ได้จะโชว์ "ไม่ผูกดีล"
-    //  แทนคำสั่งว่าต้องเลือกโครงการก่อน)
-    ...(form.linkProjectId && !dealRequired ? [{ value: "", label: "— ไม่ผูกดีล —", search: "" }] : []),
-    ...dealChoices.map((deal) => ({
-      value: deal.id,
-      // เดือนคาดการณ์ต่อท้ายเสมอ (มติผู้ใช้ 2026-08-06) — ชื่อดีลซ้ำกันได้จริง
-      // (ลูกค้าเดิมสั่งซ้ำทุกไตรมาส) เดือน FC คือสิ่งเดียวที่แยกออกจากกันได้ในบรรทัดเดียว
-      label: `${deal.title}${deal.customerName ? ` — ${deal.customerName}` : ""} · FC ${deal.forecastMonth || "ไม่ระบุ"}`,
-      search: `${deal.code || ""} ${deal.title || ""} ${deal.customerName || ""} ${deal.forecastMonth || ""}`,
-    })),
-  ];
+  // งานที่ผูกดีลนอกขอบเขตของคนที่เปิดฟอร์ม (ทีมอื่น) — ยัดดีลใบนั้นเข้าไปในลิสต์เอง
+  // ไม่งั้นช่องจะโชว์ "— เลือกดีล —" ทั้งที่งานผูกดีลอยู่ = อ่านว่ายังไม่ได้ผูก
+  const pickerDeals = form.dealId && !deals.some((d) => d.id === form.dealId)
+    ? [{ id: form.dealId, title: task?.deal?.title || "ดีลที่ผูกไว้", customerName: task?.deal?.customerName || "", projectId: task?.projectId || null }, ...deals]
+    : deals;
 
   // ดีลที่เลือกอยู่ — ใช้บอกว่างานนี้จะไปโผล่ในโครงการไหน (หรือไม่โผล่เลย)
-  const pickedDeal = form.dealId ? deals.find((d) => d.id === form.dealId) : null;
+  const pickedDeal = form.dealId ? pickerDeals.find((d) => d.id === form.dealId) : null;
   const pickedProject = pickedDeal?.projectId ? projects.find((p) => p.id === pickedDeal.projectId) : null;
 
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
@@ -358,34 +311,16 @@ export default function TaskFormModal({
           {showDealLink && (
             <div className="form-group">
               <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
-              {/* เลือกโครงการก่อน แล้วดีลกรองตามโครงการ (มติผู้ใช้ 2026-07-17) —
-                  ถัง "ดีลทั้งหมด" ไว้ให้คนที่จำได้แค่ชื่อดีล: ค้นตรง ๆ ได้โดยไม่ต้องรู้
-                  ว่าดีลอยู่โครงการไหน และดีลที่ยังไม่ผูกโครงการก็อยู่ในถังนี้ */}
-              <div className="pm-form-grid gap-3">
-                <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการของดีล"
-                  disabled={!!inquirySource || !canManage} value={form.linkProjectId}
-                  onChange={(v) => set({ linkProjectId: v, dealId: "" })}
-                  options={projectOptions}
-                  placeholder="— เลือกโครงการก่อน —"
-                  searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
-                  emptyText="ไม่พบโครงการที่มีดีลผูกงานได้" />
-                <SearchableSelect className="w-full" entity="deal" ariaLabel="ดีลที่ผูกกับงาน"
-                  disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
-                  onChange={(v) => {
-                    // เลือกดีลจากถัง "ดีลทั้งหมด" แล้วช่องโครงการต้องเด้งไปโชว์โครงการที่ดีลผูกอยู่
-                    // (มติผู้ใช้ 2026-08-06) — งานจะถูกบันทึกเข้าโครงการนั้นจริง (resolvePersonalTaskLink
-                    // mirror จากดีล) คนกรอกจึงต้องเห็นก่อนกดบันทึก ไม่ใช่รู้ทีหลังตอนงานไปโผล่
-                    // ⚠️ เด้งเฉพาะโครงการที่มีอยู่ในลิสต์ — โครงการนอกขอบเขตจะทำให้ช่องว่างเปล่า
-                    // และดีลที่เพิ่งเลือกหายจาก dropdown ทั้งที่ยังผูกอยู่
-                    const proj = deals.find((d) => d.id === v)?.projectId || "";
-                    const snap = proj && linkProjects.some((p) => p.id === proj);
-                    set({ dealId: v, ...(snap ? { linkProjectId: proj } : {}) });
-                  }}
-                  options={dealOptions}
-                  placeholder={form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}
-                  searchPlaceholder="ค้นหาชื่อดีล / ลูกค้า…"
-                  emptyText="ไม่พบดีลที่ตรงกับคำค้น" />
-              </div>
+              {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (โครงการ | ดีล) ค้นได้ทั้งสองฝั่ง
+                  โครงการไม่ใช่ช่องที่ต้องกรอก เพราะโครงการของงาน mirror จากดีลเสมอ */}
+              <DealPicker
+                deals={pickerDeals}
+                projects={projects}
+                value={form.dealId}
+                onChange={(v) => set({ dealId: v })}
+                disabled={!!inquirySource || !canManage}
+                clearable={!dealRequired}
+                ariaLabel="ดีลที่ผูกกับงาน" />
               {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
                   ตั้งแต่ตอนกรอกว่างานจะไปโผล่ที่ไหน (หรือไม่โผล่ในโครงการไหนเลย) */}
               {pickedDeal && (
@@ -397,7 +332,6 @@ export default function TaskFormModal({
               )}
               {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
               {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-              {form.linkProjectId && form.linkProjectId !== ALL_DEALS && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
               {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ทุกงานต้องผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่</div>}
             </div>
           )}

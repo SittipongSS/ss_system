@@ -15,26 +15,25 @@ import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
+import {
+  PDR_CUSTOMER_KINDS, PDR_FIELDS, PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES,
+} from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 
-export const PDR_REQUEST_TYPES = [
-  { value: "new_product", label: "New Product" },
-  { value: "modification", label: "Product Modification" },
-  { value: "rd_test", label: "R&D Test" },
-  { value: "cost_reduction", label: "Cost Reduction" },
-];
 
-const TEXTURE = [
-  { value: "", label: "— เลือก —" },
-  { value: "standard", label: "STANDARD" },
-  { value: "premium", label: "PREMIUM" },
-];
+// ⭐ **ป้ายชื่อและหัวข้อมาจากทะเบียนกลาง** (`lib/requests/pdrFields.js`) — ฟอร์มยัง
+// เป็นเจ้าของ *ชนิดช่องกรอก* และช่องเส้นประที่ระบบเติมให้ แต่ **ไม่เป็นเจ้าของคำ**
+// อีกต่อไป · เดิมทั้งสามจอเขียนคำเอง ⇒ ผู้ใช้ทักว่า "ฟอร์มกรอก ตอนโชว์ ตอนแก้
+// มันไม่เหมือนกันเลย" ซึ่งจริงทุกมิติ: ชื่อหัวข้อ ลำดับ และคำในวงเล็บ
+const FIELD = Object.fromEntries(PDR_FIELDS.map((f) => [f.key, f]));
+const SECTION = Object.fromEntries(PDR_SECTIONS.map((x) => [x.key, x]));
 
-const CUSTOMER_KIND = [
-  { value: "", label: "— เลือก —" },
-  { value: "new", label: "ลูกค้าใหม่" },
-  { value: "existing", label: "ลูกค้าเก่า" },
-];
+// ป้ายเต็มของฟอร์ม = ป้ายกลาง + คำขยายในวงเล็บ (จอแสดง/เอกสารไม่เอาวงเล็บ กินที่)
+const label = (key) => (FIELD[key].hint
+  ? `${FIELD[key].label} (${FIELD[key].hint})`
+  : FIELD[key].label);
+
+const withBlank = (options) => [{ value: "", label: "— เลือก —" }, ...options];
 
 export const emptyPdr = () => ({
   requestType: "", customerBrand: "", moodTone: "", brandDirection: "",
@@ -114,85 +113,85 @@ export default function PdrForm({
         <span className={styles.pdrCode}>FM-RD-01</span>
       </div>
 
-      <Section title="ข้อมูลคำขอ" open note="ผู้ร้องขอ วันที่ และแผนก ระบบเติมให้จากคนที่เปิดใบ">
+      <Section title={SECTION.request.title} open note={SECTION.request.note}>
         <div className="form-grid">
-          <Derived label="ผู้ร้องขอ (AE)" value={requester} from="เติมจากผู้เปิดใบ" />
+          <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <div className="form-group">
-            <label htmlFor="pdr-type">ประเภทของคำขอ</label>
+            <label htmlFor="pdr-type">{label("requestType")}</label>
             <Select
               id="pdr-type" value={value.requestType} disabled={disabled}
               onChange={(e) => set({ requestType: e.target.value })}
-              options={[{ value: "", label: "— เลือก —" }, ...PDR_REQUEST_TYPES]}
+              options={withBlank(PDR_REQUEST_TYPES)}
             />
           </div>
         </div>
       </Section>
 
-      <Section title="ข้อมูลลูกค้า">
+      <Section title={SECTION.customer.title}>
         <div className="form-grid">
-          <Derived label="ลูกค้า" value={customer} from="เติมจาก SO" />
-          <Derived label="ดีล" value={deal} from="เติมจาก SO" />
+          <Derived label={label("customer")} value={customer} from={FIELD.customer.from} />
+          <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
           {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
               โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
               ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
           <div className="form-group">
-            <label htmlFor="pdr-value">มูลค่าโปรเจกต์ทั้งหมด</label>
+            <label htmlFor="pdr-value">{label("projectValue")}</label>
             <Input id="pdr-value" value={value.projectValue || ""} disabled={disabled}
-              placeholder="ทั้งโครงการ ไม่ใช่แค่ค่าออกแบบกลิ่น"
+              placeholder={FIELD.projectValue.placeholder}
               onChange={(e) => set({ projectValue: e.target.value })} />
           </div>
           <Derived
-            label="จำนวนกลิ่นที่ต้องการพัฒนา"
+            label={label("scentCount")}
             value={scentCount != null ? `${scentCount} กลิ่น` : ""}
-            from="เติมจากใบสั่งขาย"
+            from={FIELD.scentCount.from}
           />
           <div className="form-group">
-            <label htmlFor="pdr-brand">ชื่อแบรนด์</label>
+            <label htmlFor="pdr-brand">{label("customerBrand")}</label>
             <Input id="pdr-brand" value={value.customerBrand} disabled={disabled}
               onChange={(e) => set({ customerBrand: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-mood">Mood &amp; Tone</label>
+            <label htmlFor="pdr-mood">{label("moodTone")}</label>
             <Input id="pdr-mood" value={value.moodTone} disabled={disabled}
               onChange={(e) => set({ moodTone: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-dir">ทิศทางการเติบโตของแบรนด์</label>
+            <label htmlFor="pdr-dir">{label("brandDirection")}</label>
             <Input id="pdr-dir" value={value.brandDirection} disabled={disabled}
               onChange={(e) => set({ brandDirection: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-ship">ที่อยู่จัดส่งตัวอย่าง</label>
+            <label htmlFor="pdr-ship">{label("shipTo")}</label>
             <Input id="pdr-ship" value={value.shipTo} disabled={disabled}
               onChange={(e) => set({ shipTo: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-ckind">ประเภทลูกค้า</label>
+            <label htmlFor="pdr-ckind">{label("customerKind")}</label>
             <Select id="pdr-ckind" value={value.customerKind} disabled={disabled}
-              onChange={(e) => set({ customerKind: e.target.value })} options={CUSTOMER_KIND} />
+              onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-pkind">ประเภทสินค้า</label>
+            <label htmlFor="pdr-pkind">{label("productKind")}</label>
             <Input id="pdr-pkind" value={value.productKind} disabled={disabled}
               onChange={(e) => set({ productKind: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-want">วันที่ต้องการสินค้า</label>
+            <label htmlFor="pdr-want">{label("wantedAt")}</label>
             <DateInput id="pdr-want" value={value.wantedAt} disabled={disabled}
               onChange={(v) => set({ wantedAt: v })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-sell">วันที่ต้องการจำหน่าย</label>
+            <label htmlFor="pdr-sell">{label("sellFrom")}</label>
             <DateInput id="pdr-sell" value={value.sellFrom} disabled={disabled}
               onChange={(v) => set({ sellFrom: v })} />
           </div>
         </div>
-        <span className={styles.fieldLabel}>กลุ่มลูกค้าเป้าหมาย — ติ๊กแล้วเขียนต่อ</span>
-        <TickAndWrite label="DemoGraphic (เพศ · อายุ · การศึกษา · รายได้)" disabled={disabled}
+        <span className={styles.fieldLabel}>{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
+        <TickAndWrite label={label("targetDemographic")} disabled={disabled}
           value={value.targetDemographic} onChange={(v) => set({ targetDemographic: v })} />
-        <TickAndWrite label="PsychoGraphic (ความสนใจ · ไลฟ์สไตล์)" disabled={disabled}
+        <TickAndWrite label={label("targetPsychographic")} disabled={disabled}
           value={value.targetPsychographic} onChange={(v) => set({ targetPsychographic: v })} />
-        <TickAndWrite label="Painpoint (ทำไมต้องทำแบรนด์นี้)" disabled={disabled}
+        <TickAndWrite label={label("targetPainpoint")} disabled={disabled}
           value={value.targetPainpoint} onChange={(v) => set({ targetPainpoint: v })} />
       </Section>
 
@@ -309,54 +308,53 @@ export default function PdrForm({
         ))}
       </Section>
 
-      <Section title="ข้อกำหนดผลิตภัณฑ์">
+      <Section title={SECTION.spec.title}>
         <div className="form-grid">
           <div className="form-group">
-            <label htmlFor="pdr-cost">Target Cost / KG (F/FB ไม่รวมบรรจุภัณฑ์)</label>
+            <label htmlFor="pdr-cost">{label("targetCost")}</label>
             <Input id="pdr-cost" value={value.targetCost} disabled={disabled}
               onChange={(e) => set({ targetCost: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-price">Target Price / Unit (ราคาขาย)</label>
+            <label htmlFor="pdr-price">{label("targetPrice")}</label>
             <Input id="pdr-price" value={value.targetPrice} disabled={disabled}
               onChange={(e) => set({ targetPrice: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-moq">MOQ ที่คาดหวัง</label>
+            <label htmlFor="pdr-moq">{label("moq")}</label>
             <Input id="pdr-moq" value={value.moq} disabled={disabled}
               onChange={(e) => set({ moq: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-tex">ลักษณะเนื้อผลิตภัณฑ์</label>
+            <label htmlFor="pdr-tex">{label("texture")}</label>
             <Select id="pdr-tex" value={value.texture} disabled={disabled}
-              onChange={(e) => set({ texture: e.target.value })} options={TEXTURE} />
+              onChange={(e) => set({ texture: e.target.value })} options={withBlank(PDR_TEXTURES)} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-color">สีเนื้อผลิตภัณฑ์</label>
+            <label htmlFor="pdr-color">{label("color")}</label>
             <Input id="pdr-color" value={value.color} disabled={disabled}
               onChange={(e) => set({ color: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-pack">ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น</label>
+            <label htmlFor="pdr-pack">{label("packSize")}</label>
             <Input id="pdr-pack" value={value.packSize} disabled={disabled}
               onChange={(e) => set({ packSize: e.target.value })} />
           </div>
           <div className="form-group col-span-2">
-            <label htmlFor="pdr-sample">ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)</label>
+            <label htmlFor="pdr-sample">{label("brandSample")}</label>
             <Input id="pdr-sample" value={value.brandSample} disabled={disabled}
               onChange={(e) => set({ brandSample: e.target.value })} />
           </div>
         </div>
       </Section>
 
-      <Section title="ข้อกำหนดด้านเอกสารและกฎระเบียบ"
-        note="เอกสารที่ติ๊กจะยังไม่สร้างคำร้องขอเอกสาร — ฟอร์มระบุเองว่าได้รับหลังผลิตเป็นสินค้าแล้ว">
+      <Section title={SECTION.regulatory.title} note={SECTION.regulatory.note}>
         <div className="form-group col-span-2">
-          <label htmlFor="pdr-special">ข้อกำหนดเฉพาะอื่น ๆ</label>
+          <label htmlFor="pdr-special">{label("specialRequirements")}</label>
           <Textarea
             variant="data" id="pdr-special" rows={2} maxLength={2000}
             value={value.specialRequirements} disabled={disabled}
-            placeholder="เช่น ห้ามใช้สารพาราเบน · Vegan · No Alcohol"
+            placeholder={FIELD.specialRequirements.placeholder}
             onChange={(e) => set({ specialRequirements: e.target.value })}
           />
         </div>
@@ -370,28 +368,9 @@ export default function PdrForm({
 // ⚠️ ชื่อช่องในฟอร์มสั้นเพราะอยู่ในบริบท PDR อยู่แล้ว · DB ต้อง prefix เพื่อไม่ให้ปน
 // กับคอลัมน์ของกลไกคำร้อง ⇒ ต้องมีตัวแปลงทั้งสองทาง ไม่ใช่ทางเดียว
 export function pdrValuesFrom(row = {}) {
-  const pick = (k) => (row[k] == null ? "" : String(row[k]));
-  return {
-    requestType: pick("pdrRequestType"),
-    customerBrand: pick("pdrCustomerBrand"),
-    moodTone: pick("pdrMoodTone"),
-    brandDirection: pick("pdrBrandDirection"),
-    shipTo: pick("pdrShipTo"),
-    customerKind: pick("pdrCustomerKind"),
-    projectValue: pick("pdrProjectValue"),
-    targetDemographic: pick("pdrTargetDemographic"),
-    targetPsychographic: pick("pdrTargetPsychographic"),
-    targetPainpoint: pick("pdrTargetPainpoint"),
-    productKind: pick("pdrProductKind"),
-    wantedAt: pick("pdrWantedAt"),
-    sellFrom: pick("pdrSellFrom"),
-    targetCost: pick("pdrTargetCost"),
-    targetPrice: pick("pdrTargetPrice"),
-    moq: pick("pdrMoq"),
-    texture: pick("pdrTexture"),
-    color: pick("pdrColor"),
-    packSize: pick("pdrPackSize"),
-    brandSample: pick("pdrBrandSample"),
-    specialRequirements: pick("pdrSpecialRequirements"),
-  };
+  return Object.fromEntries(
+    PDR_FIELDS
+      .filter((f) => f.column)
+      .map((f) => [f.key, row[f.column] == null ? "" : String(row[f.column])]),
+  );
 }
