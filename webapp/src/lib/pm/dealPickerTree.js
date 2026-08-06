@@ -57,6 +57,10 @@ export function buildDealBuckets(deals = [], projects = []) {
         key,
         // โครงการที่อยู่นอกรายการที่โหลดมา (ทีมอื่น) ยังต้องมีถังให้ดีลของมันอยู่
         label: projectLabelOf(project) || 'โครงการอื่น',
+        // แยก code/name ออกจาก label เพราะแผงซ้ายวางคนละบรรทัด: ชื่อโครงการได้เต็ม
+        // บรรทัด ส่วนรหัส (ยาวและหน้าตาคล้ายกันทุกใบ) ลงไปอยู่บรรทัดรองคู่กับลูกค้า
+        code: project?.code || '',
+        name: project?.name || '',
         // ชื่อลูกค้าโชว์เป็นบรรทัดรอง — โครงการชื่อคล้ายกันแยกออกได้ด้วยลูกค้า
         // (ไม่มีในโครงการนอกลิสต์ → fallback เป็นลูกค้าของดีลใบแรกในถัง)
         customerName: project?.customerName || rows.find((row) => row.customerName)?.customerName || '',

@@ -163,10 +163,13 @@ export default function DealPicker({
                     ? <Layers size={14} aria-hidden="true" className={styles.rowIcon} />
                     : <FolderOpen size={14} aria-hidden="true" className={styles.rowIcon} />}
                   <span className={styles.dealText}>
-                    <span className={styles.dealTitle}>{bucket.label}</span>
-                    {/* ชื่อลูกค้าเป็นบรรทัดรอง — โครงการชื่อคล้ายกันของคนละลูกค้ามีจริง
-                        และรหัส PJ- อย่างเดียวแยกไม่ออกด้วยตา */}
-                    {bucket.customerName ? <span className={styles.dealMeta}>{bucket.customerName}</span> : null}
+                    {/* ชื่อโครงการได้บรรทัดเต็ม — เดิมเอารหัสไว้หน้าชื่อ ชื่อจึงโดนตัด
+                        เหลือ "ODM_คุ…" ทุกใบ ทั้งที่รหัส PJ-2607xxxx หน้าตาคล้ายกันหมด
+                        แยกด้วยตาไม่ได้อยู่ดี (เห็นกับตาบน prod 2026-08-06) */}
+                    <span className={styles.dealTitle}>{bucket.name || bucket.label}</span>
+                    {bucket.code || bucket.customerName ? (
+                      <span className={styles.dealMeta}>{[bucket.code, bucket.customerName].filter(Boolean).join(" · ")}</span>
+                    ) : null}
                   </span>
                   <span className={styles.count}>{bucket.deals.length}</span>
                 </button>
