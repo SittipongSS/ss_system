@@ -121,4 +121,5 @@
 [nav-topbar-single-row.html](nav-topbar-single-row.html) · [service-system-ui-mockup.html](service-system-ui-mockup.html) ·
 [system-issue-ui-mockup.html](system-issue-ui-mockup.html) ·
 [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) ·
+[scent-dev-ui-revamp-proposal.html](scent-dev-ui-revamp-proposal.html) **(ข้อเสนอ · รอเคาะ)** ·
 [system-modernization/visual-directions/](system-modernization/visual-directions/)
