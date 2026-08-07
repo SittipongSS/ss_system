@@ -95,8 +95,10 @@ test('สถานะรายใบผูกกับ _key ไม่ใช่ i
   assert.doesNotMatch(src, /done\[index\]/, 'ห้ามผูกสถานะกับ index');
 });
 
-test('_key เป็นของฝั่งจอ ห้ามหลุดไปกับ body ที่ยิง API', () => {
-  assert.match(src, /const \{ _key, \.\.\.rest \} = draft/);
+// `lockedProjectId` เป็นธงของฟอร์ม (ล็อกช่องโครงการตอนเปิดจากหน้าโครงการ) ไม่ใช่คอลัมน์
+// ของดีล — ต้องถูกตัดออกที่จุดเดียวกับ `_key` ก่อนยิง API
+test('ธงฝั่งจอ (_key / lockedProjectId) ห้ามหลุดไปกับ body ที่ยิง API', () => {
+  assert.match(src, /const \{ _key, lockedProjectId, \.\.\.rest \} = draft/);
   assert.doesNotMatch(src, /JSON\.stringify\(\{[^}]*_key/, '_key ห้ามอยู่ใน body');
 });
 

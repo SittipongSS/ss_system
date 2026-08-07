@@ -4,10 +4,13 @@ import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import {
   CLOSED_STAGES,
+  CREATABLE_STAGES,
   DEAL_STAGES,
   DEFAULT_PROBABILITY_BY_STAGE,
+  PIPELINE_STAGES,
   WON_STAGES,
   advanceStage,
+  editableStages,
   isClosedStage,
   isOpenStage,
   isWonStage,
@@ -190,4 +193,36 @@ test('ไม่มีใครสะกด [won, in_project] เองนอก�
     if (error.status !== 1) throw error;
   }
   assert.equal(hits.trim(), '', `ต้องใช้ isWonStage/isClosedStage แทน:\n${hits}`);
+});
+
+// ── ขั้นที่ให้คนเลือกได้ในฟอร์ม/ตัวกรอง ────────────────────────────────────────
+// เดิม PIPELINE_STAGES ถูกประกาศซ้ำในหน้ารวมดีลกับหน้ารายละเอียดดีล และโมดัลสร้างดีล
+// สะกดเงื่อนไขของตัวเองอีกชุดที่ตัดแค่ won ⇒ in_project (ยุบเป็น won ตั้งแต่ mig 0082)
+// โผล่เป็นตัวเลือกเฉพาะทางที่เปิดฟอร์มจากลีด
+test('PIPELINE_STAGES / CREATABLE_STAGES / editableStages แบ่งขั้นที่เลือกได้ถูกต้อง', () => {
+  assert.ok(!PIPELINE_STAGES.includes('in_project'), 'in_project ห้ามเป็นตัวเลือกใหม่');
+  assert.ok(PIPELINE_STAGES.includes('won') && PIPELINE_STAGES.includes('lost'));
+  // ลำดับต้องตรงกับ DEAL_STAGES เสมอ — ดรอปดาวน์อ่านลำดับนี้เป็นเส้นเวลาของดีล
+  assert.deepEqual(PIPELINE_STAGES, DEAL_STAGES.filter((stage) => stage !== 'in_project'));
+  // สร้างดีลใหม่ยังปิดไม่ได้ — Won มาจากการรับใบเสนอราคา
+  assert.ok(!CREATABLE_STAGES.some(isWonStage));
+  assert.ok(CREATABLE_STAGES.includes('lost'), 'lost ยังเลือกได้ (ปิดแบบไม่สำเร็จ)');
+  // แก้ดีลที่ปิด Won แล้วต้องเห็นค่าปัจจุบันของตัวเองในดรอปดาวน์ ไม่งั้นช่องโชว์ขั้นผิด
+  assert.deepEqual(editableStages(false), CREATABLE_STAGES);
+  assert.deepEqual(editableStages(true), PIPELINE_STAGES);
+});
+
+// หน้าไหนประกาศลิสต์ขั้นเองอีก = ฟอร์มสร้าง/แก้เริ่มเพี้ยนหากันตามที่ AGENTS.md เตือน
+test('ไม่มีใครประกาศ PIPELINE_STAGES ของตัวเองนอก salesPlanning.js', () => {
+  const root = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  let hits = '';
+  try {
+    hits = execSync(
+      'git grep -n -E "(const|let) PIPELINE_STAGES" -- "*.js" ":!*salesPlanning.js"',
+      { cwd: root, encoding: 'utf8' },
+    );
+  } catch (error) {
+    if (error.status !== 1) throw error;
+  }
+  assert.equal(hits.trim(), '', `import จาก @/lib/salesPlanning แทน:\n${hits}`);
 });

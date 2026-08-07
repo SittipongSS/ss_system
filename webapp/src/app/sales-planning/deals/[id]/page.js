@@ -15,7 +15,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -24,6 +24,8 @@ import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { useRole, useTeam } from "@/lib/roleContext";
+import useDealOwners from "@/lib/sales/useDealOwners";
+import { createClient } from "@/lib/supabaseBrowser";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
@@ -65,9 +67,6 @@ const clipText = (value, max = 160) => {
   if (!text) return null;
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 };
-
-// สถานะที่เลือกได้ (won = ปิดสุดท้าย; ไม่มี in_project ให้เลือก แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
-const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
 // ป้ายประเภทอัปเดตย้ายไปทะเบียนกลางแล้ว (UPDATE_KINDS.deal ใน lib/master/updateTypes)
 // — ค่าเดิมยกไปทั้งชุด ป้าย/สีเหมือนเดิมทุกตัว
@@ -395,6 +394,15 @@ export default function DealOverviewPage() {
   // (ประวัติสถานะ + เรื่องสอบถาม RD) เข้าไปเรียงรวมผ่าน extraItems
 
   // โมดัลแก้ดีล + สร้าง PM
+  /* ผู้รับผิดชอบ (AE) — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook เดียวกับหน้ารวมดีล/ลีด
+     🐞 ก่อนหน้านี้หน้านี้ไม่ส่ง owners เข้า DealFormFields ⇒ ฟอร์ม "แก้ไขดีล" ของหน้านี้
+     ไม่มีช่อง AE ทั้งที่ฟอร์มสร้างและฟอร์มแก้ของหน้ารวมดีลมี — เปลี่ยนเจ้าของดีลจาก
+     หน้ารายละเอียดไม่ได้เลย (อาการ "ฟอร์มสองชุดเพี้ยนหากัน" ที่ AGENTS.md เตือน) */
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
+  }, []);
+  const { owners: dealOwners } = useDealOwners(meId);
   const [customers, setCustomers] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -548,6 +556,8 @@ export default function DealOverviewPage() {
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
+      // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
+      ownerId: deal.ownerId || "",
     });
     setDealModalOpen(true);
   };
@@ -1387,8 +1397,9 @@ export default function DealOverviewPage() {
               projects={projects}
               showProject
               categories={categories}
-              stages={PIPELINE_STAGES.filter((st) => st !== "won" || alreadyWon)}
+              stages={editableStages(alreadyWon)}
               alreadyWon={alreadyWon}
+              owners={dealOwners}
             />
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>

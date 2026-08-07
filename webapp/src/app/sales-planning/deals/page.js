@@ -16,7 +16,7 @@ import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue"
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
+import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -41,10 +41,6 @@ import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
-
-// สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
-// แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
-const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
@@ -808,7 +804,7 @@ export default function SalesPlanningPipelinePage() {
           customers={customers}
           projects={projects}
           categories={categories}
-          stages={PIPELINE_STAGES.filter((st) => st !== "won")}
+          stages={CREATABLE_STAGES}
           owners={owners}
           defaultOwnerId={defaultOwnerId}
           onClose={() => setCreateModal(false)}
@@ -826,7 +822,7 @@ export default function SalesPlanningPipelinePage() {
               projects={projects}
               showProject
               categories={categories}
-              stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
+              stages={editableStages(dealForm.stage === "won")}
               alreadyWon={dealForm.stage === "won"}
               owners={owners}
             />
