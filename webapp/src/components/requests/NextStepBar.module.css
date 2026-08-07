@@ -1,0 +1,28 @@
+/* ── ก้าวถัดไปท้ายเธรด (P3a) ────────────────────────────────────────────
+   ⚠️ วางติดกล่องพิมพ์โดยเจตนา — คนอ่านเธรดจากบนลงล่างแล้วเจอ "ต้องทำอะไรต่อ"
+   ตรงที่สายตาหยุดพอดี · แยกไปไว้บนสุดเมื่อไร คนจะกดก่อนอ่านว่าเกิดอะไรมา */
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  margin-top: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.label { display: flex; align-items: baseline; gap: var(--space-2); flex: 1; min-width: 12rem; }
+.stage { font-size: var(--fs-3); color: var(--text-3); }
+
+.actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* รออีกฝั่ง — ข้อความ ไม่ใช่ปุ่มจาง (ปุ่มที่กดไม่ได้ไม่บอกว่าทำไม) */
+.waiting { font-size: var(--fs-5); color: var(--text-3); }

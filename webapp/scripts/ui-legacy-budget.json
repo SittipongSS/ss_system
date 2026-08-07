@@ -45,8 +45,8 @@
     },
     "shared": {
       "legacyTable": 3,
-      "legacySurface": 21,
-      "inlineStyle": 201,
+      "legacySurface": 20,
+      "inlineStyle": 195,
       "rawButtonClass": 48,
       "rawInputClass": 15
     }

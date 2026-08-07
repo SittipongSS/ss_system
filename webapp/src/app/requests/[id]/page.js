@@ -41,8 +41,10 @@ import {
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
+import { ROW_STAGE_LABELS, ROW_STAGE_TONES, rowStage } from "@/lib/requests/rowStage";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
-import RowStageRail from "@/components/requests/RowStageRail";
+import NextStepBar from "@/components/requests/NextStepBar";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
@@ -619,34 +621,25 @@ export default function RequestDetailPage() {
         </StatusNotice>
       )}
 
+      {/* การ์ดรายแถว — เหลือ **ของที่เธรดเล่าแทนไม่ได้**: สเปกที่ขอ และไฟล์แนบของแถว
+          ⚠️ **รางแนวตั้งถูกถอดออกแล้ว** (ม-36 ก) — "ผ่านอะไรมาแล้ว" เล่าอยู่ในเธรด
+          ที่เดียว · ปุ่มของก้าวถัดไปย้ายไปท้ายเธรด (`NextStepBar`) */}
       {(req.items || []).map((item) => (
-        <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: "var(--fw-semibold)" }}>{item.label}</div>
-              {item.spec && (
-                <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
-              )}
+        <div key={item.id} className={styles.rowCard}>
+          <div className={styles.rowHead}>
+            <div className={styles.rowTitle}>
+              <strong>{item.label}</strong>
+              <StatusBadge
+                tone={ROW_STAGE_TONES[rowStage(item)] || "neutral"}
+                label={ROW_STAGE_LABELS[rowStage(item)] || "—"}
+              />
             </div>
           </div>
+          {item.spec && (
+            <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />
+          )}
 
-          {/* รางห้าก้าวของแถวนี้ — ปุ่มของแต่ละก้าวอยู่ในช่องของก้าวนั้น ไม่ใช่แถบ
-              ปุ่มท้ายการ์ด ⇒ สายตาไปหยุดตรงที่ต้องกดพอดี
-              ⚠️ สถานะของแถวอยู่บนหัวรางแล้ว — โชว์ป้ายซ้ำจะได้สองแหล่งความจริง */}
-          <div className={styles.rowRail}>
-            <RowStageRail
-              row={item}
-              request={req}
-              canDept={canAnswer}
-              canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
-              busy={saving}
-              onHop={(hop, outcome) => (hop === "price"
-                ? setPricing({ item, price: "", validUntil: "", note: "" })
-                : openHop(item, hop, outcome))}
-            />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
+          <div className={styles.rowAttach}>
             <div className="toolbar-label">รูป / สเปกแนบ</div>
             <AttachmentsPanel
               entityType="dept_request_item"
@@ -763,6 +756,16 @@ export default function RequestDetailPage() {
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
           composeHint={composeHint}
           onPosted={load}
+        />
+        {/* ⭐ ก้าวถัดไปอยู่ **ท้ายเธรด** ไม่ใช่บนรางรายแถว (ม-36 ก) — เธรดเป็นแกน
+            ของหน้า สถานะกับบทสนทนาอยู่สายเดียวกัน แล้วจบด้วย "ต้องทำอะไรต่อ" */}
+        <NextStepBar
+          rows={req.items || []}
+          canDept={canAnswer}
+          canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
+          busy={saving}
+          onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
+          onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
         />
       </DetailCard>
         </div>
