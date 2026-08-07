@@ -49,10 +49,17 @@ function DocumentAction({ action, slot, busy }) {
   return <ActionButton key={id} disabled={unavailable} onClick={onClick} {...common} />;
 }
 
-export function WorkflowRail({ steps = [], label = "เส้นทางเอกสาร" }) {
+/* `orientation="row"` — รางแนวนอนสำหรับการ์ดที่กว้างเต็มหน้า (หัวใบรายละเอียด)
+   ค่าตั้งต้นยังเป็นแนวตั้งเหมือนเดิม เพราะที่ใช้กันอยู่ทั้งหมดคือรางขวาที่แคบ
+   ⚠️ ไม่ใช่คนละคอมโพเนนต์ — ขั้น/สถานะ/ป้ายชุดเดียวกัน ต่างแค่ผัง ไม่งั้นรางสองชุด
+   จะเพี้ยนหากันเวลาเพิ่มสถานะใหม่ (โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้) */
+export function WorkflowRail({ steps = [], label = "เส้นทางเอกสาร", orientation = "column" }) {
   if (!steps.length) return null;
   return (
-    <div className={styles.workflowRail} aria-label={label}>
+    <div
+      className={`${styles.workflowRail} ${orientation === "row" ? styles.workflowRailRow : ""}`.trim()}
+      aria-label={label}
+    >
       {steps.map((step, index) => (
         <div key={step.id || `${step.label}-${index}`} className={`${styles.workflowStep} ${styles[step.state || "pending"]}`}>
           <span className={styles.stepMarker}>

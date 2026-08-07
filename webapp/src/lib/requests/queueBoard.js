@@ -44,22 +44,37 @@ export function requestNextStep(request) {
 //
 // ⚠️ **นับใบ ไม่ใช่นับแถว** — คิวแสดงรายใบ ตัวเลขที่นับแถวจะไม่ตรงกับจำนวนบรรทัด
 // ที่คนเห็นอยู่ตรงหน้า แล้วไม่มีใครรู้ว่าตัวไหนถูก
+/**
+ * ใบนี้เข้าเงื่อนไขของตัวเลขตัวไหน — **กติกาเดียวที่ทั้งตัวนับและตัวกรองใช้**
+ *
+ * ⭐ แยกออกมาเพราะตัวเลขบนแถบ **กดกรองได้แล้ว** — ถ้าปล่อยให้ตัวนับกับตัวกรองเขียน
+ * เงื่อนไขคนละชุด จะได้อาการ "กด «เลยกำหนด 2» แล้วขึ้นสามใบ" ซึ่งเป็นบั๊กที่หาไม่เจอ
+ * เพราะทั้งสองฝั่งดู "ถูก" ในตัวเอง · ตอนนี้ขัดกันไม่ได้เชิงโครงสร้าง
+ */
+export function matchesQueueCount(request, key, { todayIso = null } = {}) {
+  if (!REQUEST_OPEN_STATUSES.includes(request?.status)) return false;
+  const next = requestNextStep(request);
+
+  if (key === 'unacked') return request.status === 'pending';
+  // ⚠️ เลยกำหนดนับ **เฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มี
+  // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
+  // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
+  if (key === 'overdue') {
+    return !!todayIso && !!request.committedDueDate
+      && String(request.committedDueDate) < String(todayIso);
+  }
+  if (key === 'working') return next?.owner === 'dept' && request.status !== 'pending';
+  // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
+  if (key === 'waitingRequester') return next?.owner === 'requester';
+  return false;
+}
+
 export function queueCounts(rows = [], { todayIso = null } = {}) {
   const out = { unacked: 0, overdue: 0, working: 0, waitingRequester: 0 };
   for (const request of rows) {
-    if (!REQUEST_OPEN_STATUSES.includes(request?.status)) continue;
-    const next = requestNextStep(request);
-
-    if (request.status === 'pending') out.unacked += 1;
-    // ⚠️ เลยกำหนดนับ **เฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มี
-    // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
-    // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
-    if (todayIso && request.committedDueDate
-      && String(request.committedDueDate) < String(todayIso)) out.overdue += 1;
-
-    if (next?.owner === 'dept' && request.status !== 'pending') out.working += 1;
-    // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
-    if (next?.owner === 'requester') out.waitingRequester += 1;
+    for (const key of Object.keys(out)) {
+      if (matchesQueueCount(request, key, { todayIso })) out[key] += 1;
+    }
   }
   return out;
 }

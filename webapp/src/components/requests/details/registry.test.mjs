@@ -63,6 +63,11 @@ test('🔴 ปุ่มหลักอยู่ที่เดียวเสม
   // ให้ตรงกัน (โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้)
   const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(code, /const headerAction = threadStep \? null : primaryAction/);
-  assert.match(code, /primaryAction=\{headerAction\}/);
+  // ปุ่มบนหัวใบมาจาก `headerAction` ตัวเดียว ผ่านตัวรวมกติกา `visible` ของทุกโมดูล
+  // (เดิมส่งเป็น prop ให้ DocumentControlCard บนรางขวา — รางขวาถูกยุบไปแล้ว)
+  assert.match(code, /primaryAction: headerAction/);
   assert.match(code, /requestStep=\{threadStep\}/);
+  // ⚠️ ยังต้องมีที่เดียว — `headerAction` ห้ามโผล่ในสาขาอื่นนอกจากตัวรวมนี้
+  assert.equal((code.match(/headerAction/g) || []).length, 2,
+    'headerAction ต้องปรากฏแค่ ตอนนิยาม กับ ตอนส่งเข้าตัวรวม action เท่านั้น');
 });
