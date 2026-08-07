@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ แบบหน้าจอ "ฟอร์ม PDR" (FM-RD-01 Rev.02) — ฟอร์มกรอก + หน้าแสดงรายละเอียด
+     ต้นฉบับกระดาษ: docs/FM-RD-01-pdr-form-rev02.pdf
+     ทะเบียนช่องจริง: webapp/src/lib/requests/pdrFields.js (แหล่งเดียวของสามจอ)
+
+     กติกาสองข้อที่ผู้ใช้ย้ำ (2026-08-08):
+       1 ทุกข้อบนกระดาษต้องอยู่ครบ ตัดออกไม่ได้สักข้อ
+       2 ข้อที่ไม่ได้กรอกต้องแสดง N/A ทั้งหน้ารายละเอียดและหน้าเอกสาร (ม-53)
+
+     ⚠️ แบบอยู่ในรีโปโดยเจตนา (ม-33) — ห้ามย้ายกลับไปอยู่ในแชท -->
+<title>ฟอร์ม PDR — ฟอร์มกรอก และหน้าแสดงรายละเอียด</title>
+<style>
+  :root {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --r:10px;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  } }
+  :root[data-theme="dark"] {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai","Sarabun",system-ui,sans-serif;
+    font-size:15px; line-height:1.65;
+  }
+  .wrap { max-width:1120px; margin:0 auto; padding:40px 20px 90px; }
+  .eyebrow { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1 { font-size:clamp(28px,4.5vw,40px); line-height:1.2; margin:0 0 12px; text-wrap:balance; }
+  .lede { color:var(--ink-2); max-width:64ch; margin:0 0 8px; }
+  h2 { font-size:21px; margin:58px 0 6px; padding-top:22px; border-top:1px solid var(--line); }
+  h2 .num { font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--accent); margin-right:10px; }
+  h2 + .lede { margin-bottom:22px; }
+  h3 { font-size:16px; margin:26px 0 10px; }
+
+  .screen { background:var(--card); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; margin-bottom:18px; }
+  .screen > header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; background:var(--card-2); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .screen > header .path { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-3); }
+  .screen > .body { padding:16px; }
+
+  /* ── ฟอร์ม ── */
+  .fsec { border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:14px; background:var(--card); }
+  .fsec > h4 { margin:0; padding:11px 14px; font-size:14px; background:var(--card-2);
+    border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .fsec > h4 .paper { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--ink-3); font-weight:400; }
+  .fsec > .in { padding:14px; }
+  .fsec > .note-in { padding:0 14px 12px; font-size:12.5px; color:var(--ink-3); margin-top:-4px; }
+
+  .grid { display:grid; gap:12px; }
+  @media (min-width:660px) { .grid.c2 { grid-template-columns:1fr 1fr; } .grid.c3 { grid-template-columns:1fr 1fr 1fr; } }
+  .f { display:flex; flex-direction:column; gap:4px; }
+  .f.wide { grid-column:1 / -1; }
+  .f > label { font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .f > label .req { color:var(--stop); }
+  .f > label .hint { font-weight:400; color:var(--ink-3); }
+  .inp { border:1px solid var(--line-strong); border-radius:8px; padding:8px 11px;
+    background:var(--card); color:var(--ink-3); font-size:13.5px; min-height:36px; }
+  .inp.derived { border-style:dashed; background:var(--card-2); }
+  .inp.area { min-height:70px; }
+  .inp.sm { max-width:200px; }
+  .from { font-size:11.5px; color:var(--ink-3); }
+
+  .chips { display:flex; gap:7px; flex-wrap:wrap; }
+  .chip { font-size:12.5px; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--line-strong); background:var(--card); color:var(--ink-2); }
+  .chip.on { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .tickrow { display:grid; gap:8px; grid-template-columns:auto 1fr; align-items:center; }
+  .tick { font-size:12.5px; color:var(--ink-2); white-space:nowrap; }
+
+  .cond { border-left:3px solid var(--accent); padding-left:12px; margin-top:10px; }
+  .cond > .why { font-size:11.5px; color:var(--accent); margin-bottom:6px; font-weight:600; }
+
+  .briefblk { border:1px solid var(--line-strong); border-radius:10px; padding:13px; background:var(--card-2); }
+  .briefblk + .briefblk { margin-top:11px; }
+  .briefblk > .bh { display:flex; align-items:center; justify-content:space-between;
+    gap:8px; margin-bottom:11px; font-weight:700; font-size:13.5px; }
+
+  /* ── หน้าแสดง ── */
+  table.kv { width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.kv th { text-align:left; font-weight:600; color:var(--ink-2); width:38%;
+    padding:7px 10px 7px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.kv td { padding:7px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.kv tr:last-child th, table.kv tr:last-child td { border-bottom:0; }
+  .na { color:var(--ink-3); font-style:italic; opacity:.75; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th { text-align:left; font-weight:600; color:var(--ink-3); font-size:12px;
+    padding:7px 9px; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  table.t td { padding:7px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t tr:last-child td { border-bottom:0; }
+  .scroll { overflow-x:auto; }
+
+  .badge { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px;
+    border-radius:999px; border:1px solid transparent; white-space:nowrap; }
+  .badge.n { background:var(--card-3); color:var(--ink-2); border-color:var(--line-strong); }
+  .badge.i { background:var(--navy-soft); color:var(--navy); }
+  .badge.w { background:var(--warn-soft); color:var(--warn); }
+  .badge.g { background:var(--ok-soft); color:var(--ok); }
+  .badge.r { background:var(--stop-soft); color:var(--stop); }
+
+  .btn { display:inline-block; font-size:13px; font-weight:600; padding:7px 14px;
+    border-radius:8px; border:1px solid var(--line-strong); background:var(--card); color:var(--ink); }
+  .btn.accent { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.quiet { background:transparent; border-color:transparent; color:var(--ink-2); font-weight:500; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+
+  .note { border-left:3px solid var(--line-strong); padding:8px 0 8px 13px; margin:14px 0;
+    color:var(--ink-2); font-size:13.5px; }
+  .note.warn { border-left-color:var(--warn); }
+  .note.stop { border-left-color:var(--stop); }
+  .note.ok   { border-left-color:var(--ok); }
+  .note b { color:var(--ink); }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.9em;
+    background:var(--card-3); padding:1px 5px; border-radius:4px; }
+  ul.tight { margin:8px 0; padding-left:20px; }
+  ul.tight li { margin-bottom:5px; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--ink-2);
+    margin:18px 0 0; padding:12px 14px; background:var(--card-2);
+    border:1px solid var(--line); border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">SS-SYSTEM · แบบหน้าจอ</p>
+<h1>ฟอร์ม PDR — ฟอร์มกรอก และหน้าแสดงรายละเอียด</h1>
+<p class="lede">
+  ต้นฉบับคือกระดาษ <b>FM-RD-01 Rev.02</b> ที่ใช้อยู่จริง —
+  <b>ทุกข้อต้องอยู่ครบ ตัดออกไม่ได้สักข้อ</b> และ
+  <b>ข้อที่ไม่ได้กรอกต้องแสดง <span class="na">N/A</span></b>
+  ทั้งหน้ารายละเอียดและหน้าเอกสาร (ม-53)
+</p>
+<div class="legend">
+  <span><span class="badge g">มีแล้ว</span> ตรงกับโค้ดวันนี้</span>
+  <span><span class="badge w">ปรับ</span> มีแล้วแต่ต้องแก้</span>
+  <span><span class="badge r">ขาด</span> ยังไม่มีในโค้ด</span>
+  <span>· ช่อง<b>เส้นประ</b> = ระบบเติมให้ กรอกเองไม่ได้</span>
+</div>
+
+
+<h2><span class="num">00</span>กระดาษหนึ่งแผ่น → หกก้อนบนจอ</h2>
+<p class="lede">
+  ลำดับก้อนเรียงตามกระดาษเป๊ะ ๆ — คนที่เคยกรอกมือมาก่อนต้องหาช่องเจอที่เดิม ·
+  ทะเบียนช่องอยู่ที่ <code>lib/requests/pdrFields.js</code> ซึ่งเป็น
+  <b>แหล่งเดียวของทั้งสามจอ</b> (ฟอร์ม · รายละเอียด · กระดาษ)
+</p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:34px">#</th><th>ก้อนบนจอ</th><th>ข้อบนกระดาษ</th><th style="width:88px">จำนวนช่อง</th><th style="width:110px">สถานะ</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>ข้อมูลคำขอ</b></td><td>Request Information</td><td>7</td><td><span class="badge g">มีแล้ว</span></td></tr>
+      <tr><td>2</td><td><b>ข้อมูลลูกค้า</b></td><td>1.1 – 1.14</td><td>17</td><td><span class="badge g">มีแล้ว</span></td></tr>
+      <tr><td>3</td><td><b>บรีฟกลิ่น</b> (รายกลิ่น)</td><td>2.1 – 2.1.5</td><td>7 × จำนวนกลิ่น</td><td><span class="badge g">มีแล้ว</span></td></tr>
+      <tr><td>4</td><td><b>ข้อกำหนดผลิตภัณฑ์</b></td><td>2.2 – 2.10</td><td>12</td><td><span class="badge g">มีแล้ว</span></td></tr>
+      <tr><td>5</td><td><b>เอกสารและกฎระเบียบ</b></td><td>Regulatory &amp; Compliance</td><td>3</td><td><span class="badge g">มีแล้ว</span></td></tr>
+      <tr><td>6</td><td><b>ผู้เซ็นบนเอกสาร</b></td><td>Final Review &amp; Approval</td><td>5</td><td><span class="badge g">มีแล้ว</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note ok">
+  <b>สามช่องหัวกระดาษไม่ใช่ช่องกรอก</b> — <code>Document No.</code> เติมด้วยเลขที่คำร้อง
+  (PDR ไม่ออกเลขของตัวเอง) · <code>Reversion No.</code> + <code>Date Created</code>
+  มาจากมาตรฐานเอกสารของระบบ ⇒ อยู่บนหัวกระดาษอย่างเดียว ไม่ต้องมีบนฟอร์ม
+</div>
+
+
+<h2><span class="num">01</span>ฟอร์มกรอก — ก้อน 1 · ข้อมูลคำขอ</h2>
+
+<div class="screen">
+  <header><b>เปิดคำร้องพัฒนากลิ่น</b><span class="path">/requests/new</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>ข้อมูลคำขอ <span class="paper">Request Information</span></h4>
+      <p class="note-in">ผู้ร้องขอ วันที่ และแผนก ระบบเติมให้จากคนที่เปิดใบและโครงการ</p>
+      <div class="in">
+        <div class="grid c2">
+          <div class="f">
+            <label>วันที่ร้องขอ <span class="badge g">ส่งแล้ว 2026-08-08</span></label>
+            <div class="inp derived">08/08/2026</div>
+            <span class="from">= <b>วันที่ยื่นคำร้อง</b> (<code>submittedAt</code>) · ร่างที่ยังไม่ส่ง = N/A</span>
+          </div>
+          <div class="f">
+            <label>วันที่คาดหวังกำหนดส่งตัวอย่างกลิ่น</label>
+            <div class="inp derived">15/09/2026</div>
+            <span class="from">เติมจากช่อง “ต้องการคำตอบ” ของคำร้อง</span>
+          </div>
+          <div class="f">
+            <label>ผู้ร้องขอ (AE)</label>
+            <div class="inp derived">สมชาย กิตติชัย</div>
+            <span class="from">เติมจากผู้ดูแลโครงการ</span>
+          </div>
+          <div class="f">
+            <label>ผู้ร้องขอ (AC)</label>
+            <div class="inp derived">อารีย์ พงษ์ศักดิ์</div>
+            <span class="from">เติมจากผู้ประสานงานโครงการ</span>
+          </div>
+          <div class="f">
+            <label>แผนก</label>
+            <div class="inp derived">การขายและบริการ</div>
+          </div>
+          <div class="f">
+            <label>ประเภทของคำขอ <span class="req">*</span></label>
+            <div class="chips">
+              <span class="chip on">New Product</span>
+              <span class="chip">Product Modification</span>
+              <span class="chip">R&amp;D Test</span>
+              <span class="chip">Cost Reduction</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cond">
+          <div class="why">▸ ขึ้นเฉพาะเมื่อเลือก Product Modification หรือ Cost Reduction</div>
+          <div class="f">
+            <label>รหัสสินค้า/ลูกค้าก่อนหน้า <span class="hint">· กระดาษมีเส้นเขียนต่อหลังทั้งสองตัวเลือก</span></label>
+            <div class="inp">FG-118-01-004</div>
+          </div>
+        </div>
+
+        <div class="cond" style="border-left-color:var(--warn)">
+          <div class="why" style="color:var(--warn)">▸ ขึ้นเฉพาะเมื่อติ๊ก “งานด่วน” บนหัวคำร้อง</div>
+          <div class="f wide">
+            <label>เหตุผลที่เป็นงานด่วน <span class="req">*</span></label>
+            <div class="inp area">ลูกค้าต้องส่งงานประกวดสิ้นเดือน — เลื่อนไม่ได้</div>
+            <span class="from">กระดาษเขียนไว้เองว่า “พร้อมแจ้งเหตุผลว่าทำไมถึงเป็นงานด่วน”</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note warn">
+  <b>ติ๊กด่วนต้องกรอกเหตุผลเสมอ — บังคับที่ API</b> ไม่ใช่ CHECK ที่ DB ·
+  ข้อความไทยที่บอกว่าต้องกรอกอะไรเขียนที่ API ได้ · <b>ติ๊กด่วนได้ฟรีเมื่อไร
+  ทุกใบก็ด่วนภายในสองเดือน</b> แล้วธงนั้นเลิกมีความหมาย
+</div>
+
+
+<h2><span class="num">02</span>ก้อน 2 · ข้อมูลลูกค้า (1.1 – 1.14)</h2>
+
+<div class="screen">
+  <header><b>ข้อมูลลูกค้า</b><span class="path">17 ช่อง · 4 ช่องระบบเติมให้</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>ข้อมูลลูกค้า <span class="paper">1. Customer Information</span></h4>
+      <div class="in">
+        <div class="grid c2">
+          <div class="f"><label>1.1 ชื่อผู้ติดต่อ</label>
+            <div class="inp derived">คุณมานี ใจดี</div><span class="from">เติมจากทะเบียนลูกค้า</span></div>
+          <div class="f"><label>1.2 Phone / Line</label>
+            <div class="inp derived">081-234-5678 · @manee</div><span class="from">เติมจากทะเบียนลูกค้า</span></div>
+          <div class="f"><label>1.3 ชื่อบริษัท</label>
+            <div class="inp derived">บจก. ตัวอย่างจำกัด</div><span class="from">เติมจาก SO</span></div>
+          <div class="f"><label>ดีล</label>
+            <div class="inp derived">SCENT-0091</div><span class="from">เติมจาก SO</span></div>
+          <div class="f"><label>1.4 ชื่อแบรนด์</label><div class="inp">MANEE HOME</div></div>
+          <div class="f"><label>1.5 Mood &amp; Tone</label><div class="inp">อบอุ่น เรียบหรู แบบญี่ปุ่นร่วมสมัย</div></div>
+          <div class="f wide"><label>1.6 ทิศทางการเติบโตของแบรนด์</label>
+            <div class="inp">ขยายจากของชำร่วยไปสู่ไลน์ของใช้ในบ้านระดับพรีเมียม</div></div>
+          <div class="f wide"><label>1.7 ที่อยู่จัดส่ง (ตัวอย่าง)</label>
+            <div class="inp">99/1 ถ.สุขุมวิท คลองเตย กรุงเทพฯ 10110</div></div>
+          <div class="f"><label>1.8 ประเภทลูกค้า</label>
+            <div class="chips"><span class="chip on">ลูกค้าใหม่</span><span class="chip">ลูกค้าเก่า</span></div></div>
+          <div class="f"><label>1.9 มูลค่าโปรเจกต์ทั้งหมด</label>
+            <div class="inp sm">1,200,000</div>
+            <span class="from">ทั้งโครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นในใบนี้</span></div>
+        </div>
+
+        <h3 style="margin:18px 0 8px; font-size:13.5px">1.10 กลุ่มลูกค้าเป้าหมาย (Target) <span class="badge n">ติ๊กแล้วเขียนต่อ</span></h3>
+        <div class="grid">
+          <div class="tickrow">
+            <span class="tick">☑ DemoGraphic</span>
+            <div class="inp">หญิง 28–45 ปี · ปริญญาตรีขึ้นไป · รายได้ 50,000+</div>
+          </div>
+          <div class="tickrow">
+            <span class="tick">☑ PsychoGraphic</span>
+            <div class="inp">สนใจงานคราฟต์ ตกแต่งบ้าน ติดตามแบรนด์ญี่ปุ่น</div>
+          </div>
+          <div class="tickrow">
+            <span class="tick">☐ Painpoint</span>
+            <div class="inp" style="opacity:.5">ทำไมต้องทำแบรนด์นี้หรือสินค้านี้</div>
+          </div>
+        </div>
+
+        <div class="grid c2" style="margin-top:16px">
+          <div class="f wide"><label>1.11 ประเภทสินค้า
+            <span class="hint">· ถ้าลูกค้าผลิตเป็น Fragrance ให้ระบุด้วยว่านำไปใช้กับสินค้าประเภทอะไร</span></label>
+            <div class="inp">Reed Diffuser 100 ml</div></div>
+          <div class="f"><label>1.12 จำนวนกลิ่นที่ต้องการพัฒนา</label>
+            <div class="inp derived sm">3 กลิ่น</div>
+            <span class="from">เติมจาก qty ของบรรทัดออกแบบกลิ่นใน SO</span></div>
+          <div class="f"><label>1.13 วันที่ต้องการสินค้า</label><div class="inp sm">01/12/2026</div></div>
+          <div class="f"><label>1.14 วันที่ต้องการจำหน่ายสินค้า</label><div class="inp sm">15/12/2026</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>1.1 / 1.2 มาจากทะเบียนลูกค้า ไม่ใช่ช่องกรอกซ้ำ</b> — พิมพ์ซ้ำเมื่อไรก็ได้เบอร์สองชุด
+  ที่ขัดกัน และเบอร์ที่ RD โทรจะเป็นเบอร์ที่เก่ากว่า
+  <br><b>1.9 ไม่ derive จากดีล</b> — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
+  (ลูกค้าอาจจ่ายค่าออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน)
+</div>
+
+
+<h2><span class="num">03</span>ก้อน 3 · บรีฟกลิ่น — เลือกได้ 2 แบบ (2.1 – 2.1.5)</h2>
+<p class="lede">
+  <b>บรีฟรวม</b> = ก้อนเดียวใช้กับทุกกลิ่น (ลูกค้าบอกแนวเดียว "ทำแนวสดชื่นมา 3 ทาง") ·
+  <b>บรีฟรายกลิ่น</b> = แต่ละกลิ่นมีบรีฟของตัวเอง — <b>ผู้ใช้เลือกเอง</b> (มติผู้ใช้ 2026-08-08)
+</p>
+
+<div class="screen">
+  <header><b>เลือกแบบบรีฟ</b><span class="path">สลับได้ตลอดจนกว่าจะกดส่ง</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>แบบของบรีฟ <span class="paper">SO ใบนี้ขาย 3 กลิ่น</span></h4>
+      <div class="in">
+        <div class="chips" style="margin-bottom:10px">
+          <span class="chip on">บรีฟรวม — ก้อนเดียวใช้ทุกกลิ่น</span>
+          <span class="chip">บรีฟรายกลิ่น — 3 ก้อน</span>
+        </div>
+        <span class="from">
+          RD ส่งกี่ direction ก็ได้จากบรีฟที่มี — <b>1 บรีฟ : หลาย direction</b> ไม่ใช่ข้อมูลผิด
+        </span>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>บรีฟรวม <span class="paper">1 ก้อน · RD ส่งได้ถึง 3 direction</span></h4>
+      <div class="in">
+        <div class="briefblk">
+          <div class="bh"><span>บรีฟกลิ่น</span><span class="badge i">ใช้กับทั้ง 3 กลิ่น</span></div>
+          <div class="grid c2">
+            <div class="f wide"><label>2.1 บรีฟกลิ่น <span class="req">*</span></label>
+              <div class="inp area">แนวสดชื่น โทนซิตรัส-กรีน สำหรับพื้นที่ต้อนรับ —
+                ขอสามทางให้ลูกค้าเลือก ต่างกันที่ความหวานและความติดทน</div></div>
+            <div class="f"><label>2.1.2 ช่วงกลิ่นที่ชื่นชอบ</label><div class="inp">Citrus · Green · Aquatic</div></div>
+            <div class="f"><label>2.1.3 กลิ่นที่ End-user ไม่ชอบ</label><div class="inp">มัสก์หนัก</div></div>
+          </div>
+          <p class="from" style="margin-top:9px">ช่องชุดเดียวกับบรีฟรายกลิ่นทุกช่อง — ต่างแค่มีก้อนเดียว</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note stop">
+  <b>🐞 โหมดนี้เคยทำให้ "จำนวนกลิ่นที่ต้องการพัฒนา" (1.12) เพี้ยน</b> —
+  ค่านั้น derive จาก <code>briefs.length</code> ⇒ บรีฟรวมพิมพ์ลงกระดาษว่า
+  <b>1 กลิ่น</b> ทั้งที่ลูกค้าจ่ายค่าออกแบบมา 3
+  <br><span class="badge g">แก้แล้ว 2026-08-08</span> อ่านจาก
+  <b>qty ของบรรทัดออกแบบกลิ่นใน SO</b> เสมอ · ไม่มีบรรทัด SO = <b>N/A</b>
+  ไม่เดาจากจำนวนก้อน
+</div>
+
+<div class="screen">
+  <header><b>บรีฟรายกลิ่น</b><span class="path">3 บล็อก · 7 ช่องต่อบล็อก</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>2. Product Specifications <span class="paper">2.1 กลิ่นที่ต้องการ / บรีฟกลิ่น</span></h4>
+      <div class="in">
+
+        <div class="briefblk">
+          <div class="bh"><span>กลิ่นที่ 1</span><span class="badge n">1 / 3</span></div>
+          <div class="grid c2">
+            <div class="f wide"><label>ชื่อเรียกบล็อกนี้</label><div class="inp">โทนไม้ อุ่น</div></div>
+            <div class="f wide"><label>2.1 บรีฟกลิ่น <span class="req">*</span></label>
+              <div class="inp area">ซีดาร์เป็นแกน มีควันอ่อน ๆ ปิดท้ายด้วยวานิลลาบาง —
+                ใช้ในพื้นที่ต้อนรับของโรงแรม ต้องไม่หวานจนเลี่ยน</div></div>
+            <div class="f wide"><label>ให้ทำวิจัยเรื่อง <span class="hint">· กระดาษเขียนว่า “หากต้องการให้ทำวิจัย ระบุ___”</span></label>
+              <div class="inp">ความคงตัวของกลิ่นควันในเบสน้ำมัน</div></div>
+            <div class="f wide"><label>2.1.1 แรงบันดาลใจ <span class="hint">· Why แก่นของแบรนด์</span></label>
+              <div class="inp">บ้านไม้เก่าของคุณย่าในเชียงใหม่</div></div>
+            <div class="f"><label>2.1.2 ช่วงกลิ่นที่ชื่นชอบ</label><div class="inp">Woody · Smoky · Amber</div></div>
+            <div class="f"><label>2.1.3 กลิ่นที่ End-user ไม่ชอบ</label><div class="inp">ฟลอรัลจัด · มัสก์หนัก</div></div>
+          </div>
+
+          <h3 style="margin:16px 0 8px; font-size:13px">2.1.4 Scentotype <span class="badge n">ติ๊กหลายตัวได้ · ติ๊กแล้วเขียนต่อ</span></h3>
+          <div class="chips" style="margin-bottom:9px">
+            <span class="chip on">CHEERER</span><span class="chip">ADMIRER</span>
+            <span class="chip on">DISCOVERER</span><span class="chip">ENCHANTER</span><span class="chip">COUNSELOR</span>
+          </div>
+          <div class="grid">
+            <div class="tickrow"><span class="tick">CHEERER</span>
+              <div class="inp">อยากให้รู้สึกสว่างตอนเข้าล็อบบี้</div></div>
+            <div class="tickrow"><span class="tick">DISCOVERER</span>
+              <div class="inp">มีอะไรให้ค้นเจอทีหลัง ไม่จบใน 5 นาที</div></div>
+          </div>
+
+          <h3 style="margin:16px 0 8px; font-size:13px">2.1.5 Performance ของกลิ่น <span class="badge n">ติ๊กหลายตัวได้</span></h3>
+          <div class="chips">
+            <span class="chip on">กลิ่นติดทน (กลิ่นค้างผิว)</span>
+            <span class="chip">กลิ่นฟุ้งกระจาย</span>
+            <span class="chip on">กลิ่นค้างอากาศ</span>
+            <span class="chip">Impact แรก</span>
+          </div>
+        </div>
+
+        <div class="briefblk" style="opacity:.6">
+          <div class="bh"><span>กลิ่นที่ 2</span><span class="badge n">2 / 3</span></div>
+          <p style="margin:0; font-size:13px; color:var(--ink-3)">ช่องชุดเดียวกันทั้งบล็อก</p>
+        </div>
+        <div class="briefblk" style="opacity:.6">
+          <div class="bh"><span>กลิ่นที่ 3</span><span class="badge n">3 / 3</span></div>
+          <p style="margin:0; font-size:13px; color:var(--ink-3)">ช่องชุดเดียวกันทั้งบล็อก</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note warn">
+  <b>ข้อความหลัง Scentotype ผูกกับตัวที่ติ๊กจริง</b> — เก็บเป็น jsonb map
+  (<code>scentotypeNotes</code>) ไม่ใช่ 5 คอลัมน์ · เพิ่มตัวที่หกได้โดยไม่ต้องออก migration
+  · <b>ติ๊กออกแล้วข้อความหายตาม</b> ไม่ค้างเป็นข้อมูลผี
+</div>
+
+<div class="note ok">
+  <b>ฝั่งข้อมูลรองรับสองแบบอยู่แล้ว</b> — <code>normalizeScentBriefs</code> เขียนไว้เองว่า
+  จำนวนกลิ่นจาก SO เป็น <b>เพดาน ไม่ใช่จำนวนที่ต้องเท่ากัน</b> ⇒ ส่ง 1 ก้อนบนใบที่ขาย
+  3 กลิ่นผ่านมาตลอด · ที่ต้องแก้คือ <b>ฟอร์ม</b> ซึ่งวันนี้งอกบล็อกตายตัวเท่าจำนวนกลิ่น
+  <br>⚠️ <b>เกินไม่ได้เหมือนเดิม</b> — เขียนบรีฟ 5 ทางบนใบที่ขาย 3 กลิ่นแปลว่าอย่างน้อย
+  สองทางจะไม่มีใครทำ และไม่มีอะไรบอกว่าทางไหนถูกตัด
+  <br>⚠️ <b>สลับโหมดแล้วห้ามลบสิ่งที่พิมพ์ไปแล้ว</b> — รวม → รายกลิ่น ให้ก้อนแรกคงเนื้อเดิม
+  ที่เหลือว่าง · รายกลิ่น → รวม ต้องเตือนว่าจะเหลือก้อนไหน ไม่ใช่ทิ้งเงียบ
+</div>
+
+
+<h2><span class="num">04</span>ก้อน 4 · ข้อกำหนดผลิตภัณฑ์ (2.2 – 2.10)</h2>
+
+<div class="screen">
+  <header><b>ข้อกำหนดผลิตภัณฑ์</b><span class="path">12 ช่อง</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>ข้อกำหนดผลิตภัณฑ์ <span class="paper">2.2 – 2.10</span></h4>
+      <div class="in">
+        <div class="grid c2">
+          <div class="f"><label>2.2 Target Cost / KG <span class="hint">· F/FB ไม่รวมบรรจุภัณฑ์</span></label>
+            <div class="inp sm">2,800</div></div>
+          <div class="f"><label>2.3 Target Price / Unit <span class="hint">· ราคาขาย</span></label>
+            <div class="inp sm">890</div></div>
+          <div class="f"><label>2.4 MOQ ที่คาดหวัง</label><div class="inp sm">500 ชิ้น / กลิ่น</div></div>
+          <div class="f"><label>2.5 ลักษณะเนื้อผลิตภัณฑ์</label>
+            <div class="chips"><span class="chip">STANDARD</span><span class="chip on">PREMIUM</span></div></div>
+          <div class="f"><label>2.6 สีเนื้อผลิตภัณฑ์ <span class="hint">· ถ้ามี</span></label><div class="inp">ใสไม่มีสี</div></div>
+          <div class="f"><label>2.7 ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น</label><div class="inp">100 ml × 500</div></div>
+          <div class="f"><label>2.8 รูปแบบบรรจุภัณฑ์</label>
+            <div class="chips"><span class="chip on">ขวด</span><span class="chip on">ฝา</span><span class="chip">กล่อง</span></div></div>
+          <div class="f"><label>ภาพประกอบบรรจุภัณฑ์</label>
+            <div class="chips"><span class="chip on">มีภาพประกอบ</span><span class="chip">ไม่มีภาพประกอบ</span></div>
+            <span class="from" style="color:var(--warn)">ติ๊ก “มี” = ต้องแนบไฟล์ภาพก่อนกดส่ง</span></div>
+        </div>
+
+        <h3 style="margin:18px 0 8px; font-size:13.5px">2.9 Value Proposition <span class="badge n">ติ๊กแล้วเขียนต่อ · ของทั้งใบ ไม่ใช่รายกลิ่น</span></h3>
+        <div class="grid">
+          <div class="tickrow"><span class="tick">☑ Attribute</span>
+            <div class="inp">น้ำมันหอมระเหยธรรมชาติ 100% ไม่มีแอลกอฮอล์</div></div>
+          <div class="tickrow"><span class="tick">☑ Benefit</span>
+            <div class="inp">ผ่อนคลายโดยไม่ระคายทางเดินหายใจ</div></div>
+          <div class="tickrow"><span class="tick">☐ Value</span>
+            <div class="inp" style="opacity:.5">คุณค่าที่แบรนด์ส่งมอบ</div></div>
+        </div>
+
+        <div class="f wide" style="margin-top:16px">
+          <label>2.10 ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)</label>
+          <div class="inp">Aesop Beach Hut · Le Labo Santal 33</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">05</span>ก้อน 5 · เอกสารและกฎระเบียบ · ก้อน 6 · ผู้เซ็น</h2>
+
+<div class="screen">
+  <div class="body">
+    <div class="fsec">
+      <h4>ข้อกำหนดด้านเอกสารและกฎระเบียบ <span class="paper">Regulatory &amp; Compliance</span></h4>
+      <p class="note-in">เอกสารที่ติ๊กจะยังไม่สร้างคำร้องขอเอกสาร — ฟอร์มระบุเองว่าได้รับหลังผลิตเป็นสินค้าแล้ว</p>
+      <div class="in">
+        <div class="f"><label>เอกสารที่ลูกค้าต้องการ</label>
+          <div class="chips">
+            <span class="chip on">COA</span><span class="chip on">MSDS</span>
+            <span class="chip on">IFRA</span><span class="chip">อย.</span>
+            <span class="chip">ฮาลาล (Halal)</span><span class="chip on">เอกสารส่งออก</span>
+          </div>
+          <span class="from">กระดาษเขียนว่าสี่ตัวแรก “มีให้เป็นพื้นฐาน” — แต่ยังมีช่องติ๊ก
+            ⇒ ให้ AE ยืนยันเอง ไม่ติ๊กไว้ล่วงหน้า</span></div>
+
+        <div class="cond" style="margin-top:12px">
+          <div class="why">▸ ขึ้นเฉพาะเมื่อติ๊ก “เอกสารส่งออก”</div>
+          <div class="f wide"><label>เอกสารส่งออก — ระบุ</label>
+            <div class="inp">ญี่ปุ่น · Certificate of Origin</div></div>
+        </div>
+
+        <div class="f wide" style="margin-top:14px">
+          <label>ข้อกำหนดเฉพาะอื่น ๆ <span class="hint">· ระบุถ้ามี</span></label>
+          <div class="inp area">ห้ามใช้สารพาราเบน · Vegan · No Alcohol</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>ผู้เซ็นบนเอกสาร <span class="paper">Final Review &amp; Approval</span></h4>
+      <p class="note-in">ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้</p>
+      <div class="in">
+        <div class="grid c2">
+          <div class="f"><label>Account Executive</label>
+            <div class="inp derived">สมชาย กิตติชัย</div><span class="from">ระบบรู้ — คนเปิดใบ</span></div>
+          <div class="f"><label>Account Executive Supervisor</label>
+            <div class="inp derived">วิชัย ธนพล</div><span class="from">ระบบรู้ — คนยืนยันที่ประตูหัวหน้า</span></div>
+          <div class="f"><label>Sale &amp; Marketing Manager</label><div class="inp"></div></div>
+          <div class="f"><label>Perfumer</label><div class="inp">ปรียา สุขใจ</div></div>
+          <div class="f"><label>Product Development Chemist</label><div class="inp">ปกิตา เจริญวงษ์</div></div>
+          <div class="f"><label>Project Coordinator</label><div class="inp">ณิชา ลัคนาภิเศรษฐ์</div></div>
+          <div class="f"><label>Final Approval (RD Supervisor)</label><div class="inp">รุจิรา ตระกูลยิ่งเจริญ</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btns" style="justify-content:flex-end">
+      <span class="btn quiet">← เปลี่ยนหัวข้อ</span>
+      <span class="btn">บันทึกร่าง</span>
+      <span class="btn accent">ส่งคำร้อง</span>
+    </div>
+  </div>
+</div>
+
+<div class="note stop">
+  <b>ตารางลายเซ็นบนกระดาษมี 7 แถว — ระบบรู้จริงแค่ 2</b> (AE จากคนเปิดใบ ·
+  AE Sup จากประตูหัวหน้า) อีก 5 แถวจึงเป็น <b>ช่องพิมพ์ชื่อ</b> กรอกเองต่อใบ ·
+  เก็บเป็น <b>ชื่อ ไม่ใช่ id</b> โดยเจตนา — สามตำแหน่งนั้นยังไม่มีตัวตนในระบบ
+  และสิ่งที่กระดาษต้องการคือ <i>ใครเซ็นใบนี้ ณ วันนั้น</i>
+  <br>⚠️ ช่อง <b>ลายเซ็น</b> กับ <b>วันที่</b> บนกระดาษเว้นเป็นเส้นเสมอ —
+  พิมพ์ N/A ทับแล้วเซ็นมือไม่ได้
+</div>
+
+
+<h2><span class="num">06</span>หน้าแสดงรายละเอียด — ทุกช่อง ว่างขึ้น N/A</h2>
+<p class="lede">
+  ต่างจากฟอร์มตรงที่ <b>ไม่ซ่อนช่องว่าง</b> — RD เปิดอ่านแล้วต้องแยกออกว่า
+  <i>ไม่ได้ถาม</i> กับ <i>ถามแล้วไม่มีคำตอบ</i> ซึ่งทางแก้คนละทาง
+</p>
+
+<div class="screen">
+  <header><b>SB-2608-003 · แบบฟอร์ม PDR</b><span class="path">/requests/[id]</span></header>
+  <div class="body">
+    <div class="fsec">
+      <h4>ข้อมูลคำขอ</h4>
+      <div class="in">
+        <table class="kv">
+          <tr><th>วันที่ร้องขอ</th><td>08/08/2026 <span class="from">· วันที่ยื่นคำร้อง</span></td></tr>
+          <tr><th>ผู้ร้องขอ (AE)</th><td>สมชาย กิตติชัย</td></tr>
+          <tr><th>ผู้ร้องขอ (AC)</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>แผนก</th><td>การขายและบริการ</td></tr>
+          <tr><th>ประเภทของคำขอ</th><td>New Product</td></tr>
+          <tr><th>รหัสสินค้า/ลูกค้าก่อนหน้า</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>วันที่คาดหวังกำหนดส่งตัวอย่างกลิ่น</th><td>15/09/2026</td></tr>
+          <tr><th>เหตุผลที่เป็นงานด่วน</th><td><span class="na">N/A</span></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>1. ข้อมูลลูกค้า</h4>
+      <div class="in">
+        <table class="kv">
+          <tr><th>ชื่อผู้ติดต่อ</th><td>คุณมานี ใจดี</td></tr>
+          <tr><th>Phone / Line</th><td>081-234-5678 · @manee</td></tr>
+          <tr><th>ชื่อบริษัท</th><td>บจก. ตัวอย่างจำกัด</td></tr>
+          <tr><th>ดีล</th><td>SCENT-0091</td></tr>
+          <tr><th>มูลค่าโปรเจกต์ทั้งหมด</th><td>1,200,000</td></tr>
+          <tr><th>จำนวนกลิ่นที่ต้องการพัฒนา</th><td>3 กลิ่น</td></tr>
+          <tr><th>ชื่อแบรนด์</th><td>MANEE HOME</td></tr>
+          <tr><th>Mood &amp; Tone</th><td>อบอุ่น เรียบหรู แบบญี่ปุ่นร่วมสมัย</td></tr>
+          <tr><th>ทิศทางการเติบโตของแบรนด์</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>ที่อยู่จัดส่งตัวอย่าง</th><td>99/1 ถ.สุขุมวิท คลองเตย กรุงเทพฯ 10110</td></tr>
+          <tr><th>ประเภทลูกค้า</th><td>ลูกค้าใหม่</td></tr>
+          <tr><th>ประเภทสินค้า</th><td>Reed Diffuser 100 ml</td></tr>
+          <tr><th>วันที่ต้องการสินค้า</th><td>01/12/2026</td></tr>
+          <tr><th>วันที่ต้องการจำหน่าย</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>DemoGraphic</th><td>หญิง 28–45 ปี · ปริญญาตรีขึ้นไป · รายได้ 50,000+</td></tr>
+          <tr><th>PsychoGraphic</th><td>สนใจงานคราฟต์ ตกแต่งบ้าน ติดตามแบรนด์ญี่ปุ่น</td></tr>
+          <tr><th>Painpoint</th><td><span class="na">N/A</span></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>2. Product Specifications — กลิ่นที่ 1 · โทนไม้ อุ่น
+        <span class="paper">บรีฟรวม → หัวข้อเป็น “บรีฟกลิ่น (ใช้กับทั้ง 3 กลิ่น)” ก้อนเดียว</span></h4>
+      <div class="in">
+        <table class="kv">
+          <tr><th>บรีฟกลิ่น</th><td>ซีดาร์เป็นแกน มีควันอ่อน ๆ ปิดท้ายด้วยวานิลลาบาง</td></tr>
+          <tr><th>ให้ทำวิจัยเรื่อง</th><td>ความคงตัวของกลิ่นควันในเบสน้ำมัน</td></tr>
+          <tr><th>แรงบันดาลใจ</th><td>บ้านไม้เก่าของคุณย่าในเชียงใหม่</td></tr>
+          <tr><th>ช่วงกลิ่นที่ชื่นชอบ</th><td>Woody · Smoky · Amber</td></tr>
+          <tr><th>กลิ่นที่ End-user ไม่ชอบ</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>Scentotype</th><td>CHEERER — อยากให้รู้สึกสว่างตอนเข้าล็อบบี้ · DISCOVERER — มีอะไรให้ค้นเจอทีหลัง</td></tr>
+          <tr><th>Performance ของกลิ่น</th><td>กลิ่นติดทน (กลิ่นค้างผิว) · กลิ่นค้างอากาศ</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>ข้อกำหนดผลิตภัณฑ์</h4>
+      <div class="in">
+        <table class="kv">
+          <tr><th>Target Cost / KG</th><td>2,800</td></tr>
+          <tr><th>Target Price / Unit</th><td>890</td></tr>
+          <tr><th>MOQ ที่คาดหวัง</th><td>500 ชิ้น / กลิ่น</td></tr>
+          <tr><th>ลักษณะเนื้อผลิตภัณฑ์</th><td>PREMIUM</td></tr>
+          <tr><th>สีเนื้อผลิตภัณฑ์</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น</th><td>100 ml × 500</td></tr>
+          <tr><th>รูปแบบบรรจุภัณฑ์</th><td>ขวด · ฝา</td></tr>
+          <tr><th>ภาพประกอบบรรจุภัณฑ์</th><td>มีภาพประกอบ</td></tr>
+          <tr><th>Attribute</th><td>น้ำมันหอมระเหยธรรมชาติ 100% ไม่มีแอลกอฮอล์</td></tr>
+          <tr><th>Benefit</th><td>ผ่อนคลายโดยไม่ระคายทางเดินหายใจ</td></tr>
+          <tr><th>Value</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)</th><td>Aesop Beach Hut · Le Labo Santal 33</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h4>Regulatory &amp; Compliance · ผู้เซ็นบนเอกสาร</h4>
+      <div class="in">
+        <table class="kv">
+          <tr><th>เอกสารที่ลูกค้าต้องการ</th><td>COA · MSDS · IFRA · เอกสารส่งออก</td></tr>
+          <tr><th>เอกสารส่งออก — ระบุ</th><td>ญี่ปุ่น · Certificate of Origin</td></tr>
+          <tr><th>ข้อกำหนดเฉพาะอื่น ๆ</th><td>ห้ามใช้สารพาราเบน · Vegan · No Alcohol</td></tr>
+          <tr><th>Sale &amp; Marketing Manager</th><td><span class="na">N/A</span></td></tr>
+          <tr><th>Perfumer</th><td>ปรียา สุขใจ</td></tr>
+          <tr><th>Product Development Chemist</th><td>ปกิตา เจริญวงษ์</td></tr>
+          <tr><th>Project Coordinator</th><td>ณิชา ลัคนาภิเศรษฐ์</td></tr>
+          <tr><th>Final Approval (RD Supervisor)</th><td>รุจิรา ตระกูลยิ่งเจริญ</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="btns" style="justify-content:flex-end">
+      <span class="btn quiet">แก้ไข PDR</span>
+      <span class="btn">🖨 พิมพ์ PDR</span>
+    </div>
+  </div>
+</div>
+
+<div class="note ok">
+  <b>N/A ต้องอยู่ตำแหน่งเดียวกันกับกระดาษ</b> — จอกับเอกสารอ่านทะเบียนช่องชุดเดียวกัน
+  (<code>pdrSectionRows(..., { includeEmpty: true })</code>) ⇒ ช่องที่ขึ้น N/A บนจอ
+  จะขึ้น N/A ที่ช่องเดียวกันบนกระดาษเสมอ ไม่ใช่เพราะมีคนคอยไล่ดูให้ตรงกัน
+  <br>⚠️ <b>ยกเว้นช่องลายเซ็นกับวันที่บนกระดาษ</b> — เว้นเป็นเส้นไว้ให้เซ็นมือ
+</div>
+
+
+<h2><span class="num">07</span>กติกาที่ฟอร์มต้องบังคับ</h2>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:210px">กติกา</th><th>ทำไม</th><th style="width:96px">บังคับที่</th></tr></thead>
+    <tbody>
+      <tr><td><b>ติ๊กด่วน → ต้องกรอกเหตุผล</b></td>
+        <td>กระดาษเขียนไว้เอง · ติ๊กด่วนได้ฟรีเมื่อไร ทุกใบก็ด่วนภายในสองเดือน แล้วธงเลิกมีความหมาย</td>
+        <td><span class="badge i">API</span></td></tr>
+      <tr><td><b>ติ๊ก “มีภาพประกอบ” → ต้องแนบไฟล์</b></td>
+        <td>ปล่อยให้ติ๊กแล้วไม่แนบ = RD ตามหาภาพที่ไม่มีอยู่จริง ซึ่งแย่กว่าติ๊กว่าไม่มีตั้งแต่แรก</td>
+        <td><span class="badge i">ตอนกดส่ง</span></td></tr>
+      <tr><td><b>ติ๊ก “เอกสารส่งออก” → ช่องระบุโผล่</b></td>
+        <td>“เอกสารส่งออก” เฉย ๆ ตอบไม่ได้ว่าประเทศไหน ชนิดอะไร</td>
+        <td><span class="badge n">ฟอร์ม</span></td></tr>
+      <tr><td><b>Modification / Cost Reduction → ช่องรหัสก่อนหน้าโผล่</b></td>
+        <td>กระดาษมีเส้นเขียนต่อหลังทั้งสองตัวเลือก</td>
+        <td><span class="badge n">ฟอร์ม</span></td></tr>
+      <tr><td><b>ซ่อนแล้วห้ามลบค่า</b></td>
+        <td>ผู้ใช้สลับประเภทไปมาแล้วค่าที่พิมพ์ไว้ต้องไม่หาย · จอแสดง/เอกสารยังโชว์ค่าที่มีอยู่เสมอ</td>
+        <td><span class="badge n">ฟอร์ม</span></td></tr>
+      <tr><td><b>ติ๊ก Scentotype ออก → ข้อความหายตาม</b></td>
+        <td>เก็บเฉพาะตัวที่ติ๊กไว้จริง ไม่ค้างเป็นข้อมูลผีที่ไม่มีใครเห็นแต่ยังอยู่ใน DB</td>
+        <td><span class="badge i">API</span></td></tr>
+      <tr><td><b>บล็อกบรีฟห้ามเกิน qty ของ SO</b></td>
+        <td>เขียนบรีฟ 5 ทางบนใบที่ขาย 3 กลิ่น แปลว่าอย่างน้อยสองทางจะไม่มีใครทำ
+          และไม่มีอะไรบอกว่าทางไหนถูกตัด · <b>น้อยกว่าได้</b> (บรีฟรวม)</td>
+        <td><span class="badge i">ฟอร์ม + API</span></td></tr>
+      <tr><td><b>“จำนวนกลิ่นที่ต้องการพัฒนา” อ่านจาก SO เสมอ</b></td>
+        <td>ไม่ใช่จำนวนบล็อกบรีฟ — บรีฟรวมจะทำให้ 1.12 ขึ้นว่า 1 กลิ่นทั้งที่ลูกค้าจ่ายมา 3</td>
+        <td><span class="badge i">API</span></td></tr>
+      <tr><td><b>สลับโหมดบรีฟห้ามลบของที่พิมพ์แล้ว</b></td>
+        <td>รวม → รายกลิ่น: ก้อนแรกคงเนื้อเดิม ที่เหลือว่าง ·
+          รายกลิ่น → รวม: เตือนว่าจะเหลือก้อนไหน ไม่ใช่ทิ้งเงียบ</td>
+        <td><span class="badge n">ฟอร์ม</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+
+<h2><span class="num">08</span>ความครบถ้วนเทียบกระดาษ</h2>
+<p class="lede">ไล่ทีละข้อจากไฟล์ฟอร์มที่ใช้จริง — <b>ครบทุกข้อ เหลือหนึ่งจุดที่ต้องเติม</b></p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:230px">ข้อบนกระดาษ</th><th style="width:190px">ช่องในระบบ</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td>Document No. / Rev. / Date Created</td><td><span class="badge n">หัวเอกสาร</span></td>
+        <td>PDR ไม่ออกเลขของตัวเอง — ใช้เลขที่คำร้อง · Rev./วันที่มาจากมาตรฐานเอกสาร</td></tr>
+      <tr><td><b>วันที่ร้องขอ (Request Date)</b></td>
+        <td><code>requestedAt</code> <span class="badge g">แก้แล้ว</span></td>
+        <td><b>= วันที่ยื่นคำร้อง</b> (<code>submittedAt</code>) — เดิมหัวเอกสาร hardcode
+          <code>createdAt</code> ซึ่งคือ<b>วันที่สร้างร่าง</b> คนละวันเมื่อร่างค้างไว้หลายวัน ·
+          ร่างที่ยังไม่ส่ง = <span class="na">N/A</span></td></tr>
+      <tr><td>วันที่คาดหวังส่งตัวอย่าง · งานด่วน + เหตุผล</td><td><code>sampleDue</code> · <code>urgentReason</code></td>
+        <td>วันเดียวกับ “ต้องการคำตอบ” ของคำร้อง — ไม่เก็บซ้ำ</td></tr>
+      <tr><td>ผู้ร้องขอ AE / AC · แผนก</td><td><code>requester</code> · <code>coordinator</code> · <code>department</code></td>
+        <td>มาจากผู้ดูแล/ผู้ประสานงานโครงการ ถอยไปใช้ชื่อคนเปิดใบ</td></tr>
+      <tr><td>ประเภทของคำขอ (4 แบบ + เส้นเขียนต่อ)</td><td><code>requestType</code> · <code>prevProductCode</code></td><td>ช่องเดียวรับทั้ง Modification และ Cost Reduction</td></tr>
+      <tr><td>1.1 – 1.14 ทั้งหมด</td><td>17 ช่อง</td><td>1.10 แตกเป็น 3 ช่องติ๊กแล้วเขียนต่อ</td></tr>
+      <tr><td><b>2.1 บรีฟ — รวม / รายกลิ่น</b></td>
+        <td><code>switchBriefMode</code> <span class="badge g">แก้แล้ว</span></td>
+        <td>ปุ่มสลับมีอยู่ก่อนแล้วแต่<b>ล้างทุกก้อนทุกครั้ง</b> · ตอนนี้แยก 1 → N คงก้อนแรกไว้
+          และรวบ N → 1 ถามก่อนเมื่อมีก้อนที่กรอกไว้จะหาย</td></tr>
+      <tr><td>2.1 บรีฟ + “ให้ทำวิจัย ระบุ”</td><td><code>brief</code> · <code>researchTopic</code></td><td>ต่อบล็อกบรีฟ</td></tr>
+      <tr><td>2.1.1 – 2.1.3</td><td><code>inspiration</code> · <code>likedNotes</code> · <code>dislikedNotes</code></td><td>รายกลิ่น</td></tr>
+      <tr><td>2.1.4 Scentotype (5 ตัว + เส้นเขียนต่อ)</td><td><code>scentotypes</code> + <code>scentotypeNotes</code></td>
+        <td>jsonb map — เพิ่มตัวที่หกได้โดยไม่ต้องออก migration</td></tr>
+      <tr><td>2.1.5 Performance (4 ตัว)</td><td><code>performance</code></td><td>ติ๊กหลายตัวได้</td></tr>
+      <tr><td>2.2 – 2.10 ทั้งหมด</td><td>12 ช่อง</td><td>2.9 แตกเป็น 3 ช่องติ๊กแล้วเขียนต่อ</td></tr>
+      <tr><td>Regulatory (6 เอกสาร + ระบุ + อื่น ๆ)</td><td><code>documents</code> · <code>exportDocNote</code> · <code>specialRequirements</code></td>
+        <td>ไม่ติ๊กไว้ล่วงหน้าแม้กระดาษเขียนว่า “มีให้เป็นพื้นฐาน”</td></tr>
+      <tr><td>Final Review &amp; Approval (7 แถว)</td><td>2 ระบบรู้ + 5 ช่องพิมพ์ชื่อ</td><td>ช่องลายเซ็น/วันที่เว้นเป็นเส้นให้เซ็นมือ</td></tr>
+      <tr><td>Status: Open / In Progress / Sample Sent / Closed</td><td><span class="badge g">แปลงจากสถานะคำร้อง</span></td>
+        <td><code>pending</code> → Open · <code>acknowledged</code> → In Progress ·
+          <code>answered</code> → Sample Sent · <code>closed</code> → Closed</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note ok">
+  <b>สามจุดที่ค้าง — ส่งครบแล้ว 2026-08-08</b>
+  <ul class="tight" style="margin-bottom:0">
+    <li><b>1 · “วันที่ร้องขอ” เข้าทะเบียนแล้ว</b> เป็นช่อง <code>derived</code> อ่านจาก
+      <code>submittedAt</code> ⇒ โผล่พร้อมกันทั้งฟอร์ม หน้ารายละเอียด และกระดาษ ·
+      ถอด hardcode <code>createdAt</code> ที่หัวเอกสารออกแล้ว ไม่มีสองแหล่งอีก</li>
+    <li><b>2 · ปุ่มสลับโหมดบรีฟไม่ลบของที่พิมพ์แล้ว</b> — ปุ่มมีอยู่ก่อนแล้วแต่
+      <b>ล้างทุกก้อนทุกครั้ง</b> แม้แต่ตอนแยก 1 → N ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย ·
+      กติกาย้ายไป <code>switchBriefMode()</code> · รวบแล้วมีก้อนที่กรอกไว้จะหายจริง
+      ⇒ ถามก่อนด้วยโมดัลของบ้าน</li>
+    <li><b>3 · “จำนวนกลิ่นที่ต้องการพัฒนา” (1.12) อ่านจาก SO แล้ว</b> ·
+      ไม่มีบรรทัด SO = <b>N/A</b> ไม่เดาจากจำนวนก้อน — เดาแล้วผิดเงียบ
+      ซึ่งแย่กว่าช่องว่างที่บอกตรง ๆ ว่ายังไม่รู้</li>
+  </ul>
+</div>
+
+<div class="note stop">
+  <b>ratchet ที่กันสามจุดนี้ไว้</b> — จำนวนกลิ่นต้องมาจากใบสั่งขาย ·
+  วันที่ร้องขออ่านจาก <code>submittedAt</code> และร่างต้องได้ N/A ·
+  ปุ่มสลับโหมดต้องเรียก <code>switchBriefMode</code> และห้ามสร้างอาเรย์ใหม่ทับของเดิม ·
+  <code>briefHasContent</code> ต้องครอบทุกช่องที่กรอกได้ (ตกช่องไหน ช่องนั้นถูกทิ้งเงียบตอนรวบ)
+</div>
+
+<div class="note">
+  ที่เหลือของแบบนี้ <b>ตรงกับโค้ดแล้ว</b> — ฟอร์ม (<code>PdrForm.js</code>) ·
+  หน้ารายละเอียด (<code>PdrSummary.js</code> · N/A ครบ) · กระดาษ (<code>pdrDocument.js</code>)
+  ทั้งสามอ่านทะเบียนเดียวกัน และมี ratchet เทสต์ไล่ชื่อช่องทุกข้อไว้แล้ว
+</div>
+
+<div class="legend" style="margin-top:26px">
+  <span><b>เอกสารที่คู่กับแบบนี้</b></span>
+  <span>· <code>docs/FM-RD-01-pdr-form-rev02.pdf</code> — กระดาษต้นฉบับ</span>
+  <span>· <code>docs/scent-dev-system-ui-mockup.html</code> — flow ทั้งระบบ</span>
+  <span>· <code>docs/requests-rd-decision-log.md</code> — มติ ม-52 · ม-53</span>
+  <span>· <code>webapp/src/lib/requests/pdrFields.js</code> — ทะเบียนช่องจริง</span>
+</div>
+
+</div>
+</body></html>

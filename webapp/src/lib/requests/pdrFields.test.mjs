@@ -65,11 +65,38 @@ test('ตัวเลขจัดรูปแบบไทย · ช่องว�
 
 test('ช่องที่ระบบเติมให้อ่านจากแถวคำร้อง ไม่ใช่จากคอลัมน์ pdr*', () => {
   const req = { requestedByName: 'สมชาย', customerName: 'ลูกค้า ก' };
-  const ctx = { briefs: [{ id: 'B1' }, { id: 'B2' }] };
+  const ctx = { briefs: [{ id: 'B1' }, { id: 'B2' }], scentCount: 3 };
   const text = (key) => pdrFieldText(PDR_FIELDS.find((f) => f.key === key), req, ctx);
   assert.equal(text('requester'), 'สมชาย');
   assert.equal(text('customer'), 'ลูกค้า ก');
-  assert.equal(text('scentCount'), '2 กลิ่น');
+  assert.equal(text('scentCount'), '3 กลิ่น');
+});
+
+// ⭐ 🐞 ใบที่ AE รวบเป็นบรีฟเดียว (ลูกค้าบอกแนวเดียว "ทำแนวสดชื่นมา 3 ทาง") เคยพิมพ์
+// ลงกระดาษว่า "1 กลิ่น" ทั้งที่ลูกค้าจ่ายค่าออกแบบมา 3 — เพราะ scentCount ถอยไปใช้
+// `briefs.length` เมื่อผู้เรียกไม่ส่งมา · จำนวนที่ลูกค้าจ่ายต้องมาจากใบสั่งขายเสมอ
+test('⭐ จำนวนกลิ่น (1.12) มาจากใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ', () => {
+  const field = PDR_FIELDS.find((f) => f.key === 'scentCount');
+  const soLines = [{ fgCode: 'FG-321-03-002', qty: 3 }];
+  // บรีฟรวม: ก้อนเดียว แต่ใบสั่งขายขาย 3 กลิ่น
+  const merged = pdrContext({ briefs: [{ id: 'B1' }], salesOrderLines: soLines });
+  assert.equal(merged.scentCount, 3);
+  assert.equal(pdrFieldText(field, {}, merged), '3 กลิ่น');
+  // ไม่ส่งบรรทัด SO มา = ไม่รู้ ⇒ N/A · **ห้ามเดาจากจำนวนก้อน**
+  const blind = pdrContext({ briefs: [{ id: 'B1' }, { id: 'B2' }] });
+  assert.equal(blind.scentCount, null);
+  assert.equal(pdrFieldText(field, {}, blind), null);
+});
+
+// ⭐ วันที่ร้องขอ = วันที่ยื่น ไม่ใช่วันที่สร้างร่าง (มติผู้ใช้ 2026-08-08)
+test('⭐ วันที่ร้องขออ่านจาก submittedAt — ร่างที่ยังไม่ส่งขึ้น N/A', () => {
+  const field = PDR_FIELDS.find((f) => f.key === 'requestedAt');
+  assert.ok(field, 'ทะเบียนต้องมีช่อง "วันที่ร้องขอ" — เป็นข้อแรกของ Request Information');
+  // ร่างค้างไว้สามวันแล้วค่อยกดส่ง — ต้องได้วันที่ยื่น ไม่ใช่วันที่เริ่มพิมพ์
+  const sent = { createdAt: '2026-08-05T09:00:00Z', submittedAt: '2026-08-08T14:20:00Z' };
+  assert.equal(pdrFieldText(field, sent, pdrContext({ request: sent })), '2026-08-08');
+  const draft = { createdAt: '2026-08-05T09:00:00Z' };
+  assert.equal(pdrFieldText(field, draft, pdrContext({ request: draft })), null);
 });
 
 test('บนจอซ่อนช่องว่าง · บนเอกสารพิมพ์ครบทุกช่อง', () => {
@@ -91,6 +118,21 @@ test('⭐ ฟอร์ม · จอแสดง · เอกสาร อ่า�
   ]) {
     assert.match(readFileSync(file, 'utf8'), /from ['"]@\/lib\/requests\/pdrFields['"]/, file);
   }
+});
+
+// 🐞 ปุ่มสลับโหมดบรีฟเคยล้างทุกก้อนทุกครั้ง (`Array.from(... () => ({label:''}))`)
+// แม้แต่ตอนแยก 1 → N ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย · กติกาย้ายไป `switchBriefMode`
+// แล้ว — ถ้าวันไหนมีคนเขียนกลับเป็นสร้างอาเรย์ใหม่ตรง ๆ เทสต์นี้จะดับ
+test('⭐ ปุ่มสลับโหมดบรีฟเรียกกติกากลาง ไม่ใช่สร้างอาเรย์ใหม่ทับของเดิม', () => {
+  const src = readFileSync('src/components/requests/PdrForm.js', 'utf8');
+  assert.match(src, /switchBriefMode/, 'ต้องเรียก switchBriefMode จาก lib/requests/scentBriefs');
+  assert.match(src, /briefsDroppedByMerge/, 'ต้องถามก่อนรวบเมื่อมีก้อนที่กรอกไว้จะหาย');
+  assert.ok(!/onBriefsChange\(Array\.from/.test(src),
+    'ห้ามสร้างอาเรย์ใหม่ทับของเดิม — ของที่คนพิมพ์ไว้จะหายเงียบ');
+  // ⚠️ ถามด้วยโมดัลของบ้าน — ตัวห้าม native feedback อยู่ที่ `npm run audit:ui`
+  // ซึ่งกวาดทั้งรีโปอยู่แล้ว ไม่ต้องเช็คซ้ำที่นี่ (และเช็คซ้ำแบบอ่านซอร์สจะไป
+  // จับคำในคอมเมนต์ของตัวเองด้วย)
+  assert.match(src, /confirmAction/);
 });
 
 test('⭐ ไม่มีจอไหนเขียนป้ายของตัวเองซ้ำอีก', () => {

@@ -26,6 +26,50 @@ const LIMITS = {
 
 const TEXT_FIELDS = ['brief', 'researchTopic', 'inspiration', 'likedNotes', 'dislikedNotes'];
 
+/**
+ * ก้อนนี้มีอะไรที่คนพิมพ์ไว้แล้วไหม — ใช้ตอนสลับโหมดบรีฟ (รวม ↔ รายกลิ่น)
+ *
+ * ⭐ **`label` นับด้วย** — "แนวสดชื่น" ที่ AE ตั้งชื่อไว้คือของที่พิมพ์เอง เท่ากับบรีฟ
+ * ⚠️ ต้องครอบทุกช่องที่กรอกได้จริง รวม array (Scentotype/Performance) และข้อความ
+ * ต่อท้าย Scentotype — ตกช่องไหนไป ช่องนั้นจะถูกทิ้งเงียบตอนรวบบรีฟ
+ */
+export function briefHasContent(brief = {}) {
+  if (!brief) return false;
+  if (String(brief.label ?? '').trim()) return true;
+  for (const key of TEXT_FIELDS) {
+    if (String(brief[key] ?? '').trim()) return true;
+  }
+  if ((brief.scentotypes || []).length) return true;
+  if ((brief.performance || []).length) return true;
+  return Object.values(brief.scentotypeNotes || {}).some((v) => String(v ?? '').trim());
+}
+
+/**
+ * สลับโหมดบรีฟ — คืนชุดก้อนใหม่ **โดยไม่ทิ้งสิ่งที่พิมพ์ไปแล้วโดยไม่ตั้งใจ**
+ *
+ * 🐞 ของเดิม: ปุ่มสลับเรียก `Array.from({length:n}, () => ({label:''}))` ⇒ **ล้างทุกก้อน
+ * ทุกครั้ง** แม้แต่ตอนแยก 1 → 3 ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย · ป้ายบนปุ่มเขียนเตือนว่า
+ * "สลับแล้วบรีฟที่กรอกไว้จะถูกล้าง" ซึ่งบอกความจริง แต่ความจริงนั้นคือพฤติกรรมที่ผิด
+ *
+ * `merge: true`  → เหลือก้อนเดียว (ก้อนแรก) · ก้อน 2..N ที่มีเนื้อจะหาย ⇒ ผู้เรียก
+ *                  ต้องถามก่อน (ดู `briefsDroppedByMerge`)
+ * `merge: false` → คงก้อนแรกไว้ แล้วเติมก้อนว่างให้ครบ `scentCount`
+ */
+export function switchBriefMode(briefs = [], { merge, scentCount = 1 } = {}) {
+  const list = Array.isArray(briefs) ? briefs : [];
+  const first = list[0] || { label: '' };
+  if (merge) return [first];
+  const target = Math.max(1, Number(scentCount) || 1);
+  const next = list.slice(0, target);
+  while (next.length < target) next.push({ label: '' });
+  return next;
+}
+
+/** กี่ก้อนที่จะหายจริง ๆ ถ้ารวบตอนนี้ — 0 = รวบได้เลย ไม่ต้องถาม */
+export function briefsDroppedByMerge(briefs = []) {
+  return (Array.isArray(briefs) ? briefs : []).slice(1).filter(briefHasContent).length;
+}
+
 function normalizeChoices(raw, allowed, at, what) {
   if (raw == null) return { value: [], error: null };
   if (!Array.isArray(raw)) return { value: null, error: `${at}: ${what} ต้องเป็นรายการ` };

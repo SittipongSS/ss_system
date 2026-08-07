@@ -180,6 +180,9 @@ export default function RequestForm({
     customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
     deal: soDeal,
     briefs: value.briefs || [],
+    // ⚠️ จำนวนกลิ่นมาจากบรรทัดของใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ — ฟอร์มต้องโชว์เลข
+    // เดียวกับที่จะพิมพ์ลงกระดาษ ไม่งั้นคนกรอกเห็น 3 แต่เอกสารออกมา 1 (โหมดบรีฟรวม)
+    salesOrderLines: selectedSo?.lines || null,
   });
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
