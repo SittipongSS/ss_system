@@ -42,7 +42,14 @@ function briefBlock(brief, index, total) {
     ['แรงบันดาลใจ', brief.inspiration],
     ['ช่วงกลิ่นที่ชื่นชอบ', brief.likedNotes],
     ['กลิ่นที่ End-user ไม่ชอบ', brief.dislikedNotes],
-    ['Scentotype', chips(brief.scentotypes, scentotypeLabel)],
+    // ⭐ กระดาษมีเส้นให้เขียนต่อหลังทุกตัว (ข้อ 2.1.4) — พิมพ์ข้อความที่กรอกไว้
+    // ต่อท้ายชื่อ Scentotype ตัวนั้น ไม่ใช่ทิ้งไว้แค่ชื่อเปล่า (mig 0222)
+    ['Scentotype', (brief.scentotypes || [])
+      .map((t) => {
+        const note = (brief.scentotypeNotes || {})[t];
+        return note ? `${scentotypeLabel(t)} — ${note}` : scentotypeLabel(t);
+      })
+      .join(' · ')],
     ['Performance ของกลิ่น', chips(brief.performance, scentPerformanceLabel)],
   ])}</table>
   </section>`;

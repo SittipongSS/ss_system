@@ -263,6 +263,14 @@ export function requestShapeError(kind, body = {}) {
   }
 
   if (String(body.title ?? '').length > 200) return 'ชื่อเรื่องยาวเกิน 200 ตัวอักษร';
+  // ⭐ **ด่วนแล้วต้องบอกว่าทำไม** (mig 0222) — ฟอร์มกระดาษ FM-RD-01 เขียนไว้บนหัวว่า
+  // "หากเป็นงานด่วน กรุณาระบุคำว่าด่วน และวันที่ต้องการ **พร้อมแจ้งเหตุผล**"
+  // ⚠️ ติ๊กด่วนได้ฟรีเมื่อไร ทุกใบก็ด่วนภายในสองเดือน แล้วธงนั้นเลิกมีความหมาย
+  if (body.urgent) {
+    const reason = String(body.urgentReason ?? '').trim();
+    if (!reason) return 'งานด่วนต้องระบุเหตุผลว่าทำไมถึงด่วน';
+    if (reason.length > 500) return 'เหตุผลงานด่วนยาวเกิน 500 ตัวอักษร';
+  }
   if (String(body.body ?? '').length > 4000) return 'รายละเอียดยาวเกิน 4000 ตัวอักษร';
 
   const due = body.requestedDueDate;

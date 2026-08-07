@@ -72,6 +72,7 @@ export const emptyRequestForm = (over = {}) => ({
   title: "",
   body: "",
   urgent: false,
+  urgentReason: "",
   requestedDueDate: "",
   scentId: "",
   formulaId: "",
@@ -573,6 +574,20 @@ export default function RequestForm({
             <span className={styles.checkLabel}>งานด่วน</span>
           </label>
         </div>
+        {/* ⭐ **ด่วนแล้วต้องบอกว่าทำไม** (mig 0222) — ฟอร์มกระดาษ FM-RD-01 เขียนบนหัวว่า
+            "หากเป็นงานด่วน กรุณาระบุคำว่าด่วน และวันที่ต้องการ พร้อมแจ้งเหตุผล"
+            ⚠️ ติ๊กด่วนได้ฟรีเมื่อไร ทุกใบก็ด่วนภายในสองเดือน แล้วธงนั้นเลิกมีความหมาย */}
+        {value.urgent && (
+          <div className="form-group col-span-2">
+            <label htmlFor="req-urgent-why">เหตุผลที่เป็นงานด่วน *</label>
+            <Textarea
+              variant="data" id="req-urgent-why" rows={2} maxLength={500}
+              value={value.urgentReason || ""} disabled={disabled}
+              placeholder="เช่น ลูกค้าต้องใช้ในงานแสดงสินค้าวันที่ 20 · ล็อตผลิตปิดสิ้นเดือน"
+              onChange={(e) => set({ urgentReason: e.target.value })}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ─────────────

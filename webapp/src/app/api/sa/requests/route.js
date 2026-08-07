@@ -302,6 +302,7 @@ export async function POST(request) {
       title: body.title ? String(body.title).trim().slice(0, 200) : null,
       body: body.body ? String(body.body).trim().slice(0, 4000) : null,
       urgent: !!body.urgent,
+      urgentReason: body.urgent ? (body.urgentReason || null) : null,
       dealId,
       projectId,
       salesOrderId,
@@ -351,6 +352,8 @@ export async function POST(request) {
         likedNotes: b.likedNotes,
         dislikedNotes: b.dislikedNotes,
         scentotypes: b.scentotypes,
+        // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
+        scentotypeNotes: b.scentotypeNotes || {},
         performance: b.performance,
       }));
       const { error: briefInsertError } = await supabase

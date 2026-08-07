@@ -235,3 +235,41 @@ test('ด่วนแต่ยังไม่ระบุวัน ต้อง�
   assert.equal(pdrContext({ request: { urgent: true } }).sampleDue, 'ยังไม่ระบุวัน · ด่วน');
   assert.equal(pdrContext({ request: {} }).sampleDue, null);
 });
+
+// ── ครบตามฟอร์มกระดาษ FM-RD-01 Rev.02 (ผู้ใช้ส่งไฟล์มาเทียบ 2026-08-07) ────
+//
+// ⚠️ **ratchet ของ "ต้องมีคำถามทั้งหมด"** — ฟอร์มกระดาษเป็นสัญญากับคนที่กรอกอยู่
+// ทุกวัน · ช่องที่หายไปเงียบ ๆ แปลว่าเขากรอกลงกระดาษได้แต่พิมพ์จากระบบแล้วหาย
+test('ทุกข้อของฟอร์มกระดาษมีที่เก็บในทะเบียน', () => {
+  const keys = new Set(PDR_FIELDS.map((f) => f.key));
+  const required = [
+    // Request Information
+    'requester', 'coordinator', 'department', 'requestType', 'prevProductCode',
+    'sampleDue', 'urgentReason',
+    // 1. Customer Information (1.1–1.14)
+    'contactName', 'contactPhone', 'customer', 'customerBrand', 'moodTone',
+    'brandDirection', 'shipTo', 'customerKind', 'projectValue',
+    'targetDemographic', 'targetPsychographic', 'targetPainpoint',
+    'productKind', 'scentCount', 'wantedAt', 'sellFrom',
+    // 2. Product Specifications (2.2–2.10 · 2.1.x อยู่ที่บรีฟรายกลิ่น)
+    'targetCost', 'targetPrice', 'moq', 'texture', 'color', 'packSize',
+    'packagingForms', 'packagingArtwork', 'vpAttribute', 'vpBenefit', 'vpValue',
+    'brandSample',
+    // Regulatory & Compliance
+    'documents', 'exportDocNote', 'specialRequirements',
+    // Final Review & Approval
+    'signSalesManager', 'signPerfumer', 'signChemist', 'signCoordinator', 'signFinalApprover',
+  ];
+  const missing = required.filter((k) => !keys.has(k));
+  assert.deepEqual(missing, [], `ขาดคำถามจากฟอร์มกระดาษ: ${missing.join(', ')}`);
+});
+
+test('2.9 Value Proposition เป็น "ติ๊กแล้วเขียนต่อ" ตามกระดาษ ไม่ใช่ช่องเปล่า', () => {
+  // กระดาษมีช่องติ๊กหน้าทั้งสามคำ เหมือนข้อ 1.10 ⇒ ทำเป็นช่องข้อความเปล่าจะเสีย
+  // ข้อมูลว่า "ข้อไหนลูกค้าสนใจ" ตอนที่ยังไม่ได้เขียนรายละเอียด
+  for (const key of ['vpAttribute', 'vpBenefit', 'vpValue']) {
+    const f = PDR_FIELDS.find((x) => x.key === key);
+    assert.equal(f.type, 'tick', key);
+    assert.equal(f.group, 'Value Proposition', key);
+  }
+});

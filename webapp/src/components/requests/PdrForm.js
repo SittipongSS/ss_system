@@ -313,7 +313,10 @@ export default function PdrForm({
                   onChange={(e) => setBrief(i, { researchTopic: e.target.value })} />
               </div>
             </div>
-            {/* เลือกได้หลายอย่างทั้งคู่ (มติผู้ใช้) — chip ที่กดสลับได้ ไม่ใช่ดรอปดาวน์ */}
+            {/* เลือกได้หลายอย่างทั้งคู่ (มติผู้ใช้) — chip ที่กดสลับได้ ไม่ใช่ดรอปดาวน์
+                ⭐ **Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ** (ข้อ 2.1.4) ⇒ ติ๊ก
+                แล้วมีช่องข้อความโผล่ตามตัวที่ติ๊ก (mig 0222) · ไม่ติ๊ก = ไม่มีช่อง
+                ⚠️ ข้อความของตัวที่ถูกติ๊กออกจะถูกทิ้งตอนบันทึก (ดู scentBriefs.js) */}
             <div className="form-group">
               <span className={styles.fieldLabel}>Scentotype</span>
               <div className={styles.mentionPicker}>
@@ -330,6 +333,19 @@ export default function PdrForm({
                   );
                 })}
               </div>
+              {SCENTOTYPES.filter((t) => (brief.scentotypes || []).includes(t.value)).map((t) => (
+                <div key={t.value} className={styles.scentotypeNote}>
+                  <label htmlFor={`brief-${i}-st-${t.value}`}>{t.label}</label>
+                  <Input
+                    id={`brief-${i}-st-${t.value}`} disabled={disabled}
+                    value={(brief.scentotypeNotes || {})[t.value] || ""}
+                    placeholder="เขียนต่อได้ (เว้นว่างได้)"
+                    onChange={(e) => setBrief(i, {
+                      scentotypeNotes: { ...(brief.scentotypeNotes || {}), [t.value]: e.target.value },
+                    })}
+                  />
+                </div>
+              ))}
             </div>
             <div className="form-group">
               <span className={styles.fieldLabel}>Performance ของกลิ่น</span>
@@ -399,14 +415,19 @@ export default function PdrForm({
               <small className={styles.hint}>ต้องแนบไฟล์ภาพก่อนกดส่ง</small>
             )}
           </div>
-          {/* 2.9 Value Proposition — ของทั้งใบ ไม่ใช่รายกลิ่น (มติผู้ใช้) */}
-          {["vpAttribute", "vpBenefit", "vpValue"].map((key) => (
-            <div key={key} className="form-group col-span-2">
-              <label htmlFor={`pdr-${key}`}>{label(key)}</label>
-              <Input id={`pdr-${key}`} value={value[key] || ""} disabled={disabled}
-                onChange={(e) => set({ [key]: e.target.value })} />
-            </div>
-          ))}
+          {/* 2.9 Value Proposition — ของทั้งใบ ไม่ใช่รายกลิ่น (มติผู้ใช้)
+              ⚠️ **ติ๊กแล้วเขียนต่อ ไม่ใช่ช่องข้อความเปล่า** — กระดาษ FM-RD-01 มีช่องติ๊ก
+              หน้าทั้งสามคำ เหมือนข้อ 1.10 · ทำเป็นช่องเปล่าแล้วเสียข้อมูลว่า "ข้อไหน
+              ลูกค้าสนใจ" ตอนที่ยังไม่ได้เขียนรายละเอียด */}
+          <div className="form-group col-span-2">
+            <span className={styles.fieldLabel}>{FIELD.vpAttribute.group} — ติ๊กแล้วเขียนต่อ</span>
+            {["vpAttribute", "vpBenefit", "vpValue"].map((key) => (
+              <TickAndWrite
+                key={key} label={label(key)} disabled={disabled}
+                value={value[key]} onChange={(v) => set({ [key]: v })}
+              />
+            ))}
+          </div>
           <div className="form-group col-span-2">
             <label htmlFor="pdr-sample">{label("brandSample")}</label>
             <Input id="pdr-sample" value={value.brandSample} disabled={disabled}

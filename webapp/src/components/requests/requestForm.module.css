@@ -314,3 +314,14 @@
 @media (max-width: 640px) {
   .pdrFact { grid-template-columns: 1fr; gap: var(--space-1); }
 }
+
+/* ช่องเขียนต่อของ Scentotype รายตัว (mig 0222) — โผล่ตามตัวที่ติ๊ก
+   ⚠️ ป้ายอยู่ซ้ายช่องเพื่อให้อ่านเป็นคู่ "ตัวไหน — เขียนว่าอะไร" เหมือนบนกระดาษ */
+.scentotypeNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1-5);
+}
+.scentotypeNote label { min-width: 8rem; font-size: var(--fs-5); color: var(--text-2); }
+.scentotypeNote > :last-child { flex: 1; }

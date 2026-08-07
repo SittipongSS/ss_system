@@ -51,6 +51,7 @@ export function requestPayload(form, extra = {}) {
     title: form.title || null,
     body: form.body || null,
     urgent: !!form.urgent,
+    urgentReason: form.urgentReason || null,
     requestedDueDate: form.requestedDueDate || null,
     scentId: form.scentId || null,
     formulaId: form.formulaId || null,
