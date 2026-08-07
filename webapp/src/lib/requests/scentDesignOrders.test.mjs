@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   SCENT_DESIGN_CATEGORIES, categoryCodeFromProductCode, isScentDesignLine,
   lineCategoryCode, scentCountForOrder, scentDesignOrderError,
+  scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from './scentDesignOrders.js';
 
 const approved = { status: 'approved' };
@@ -68,4 +69,52 @@ test('ด่าน: ต้องอนุมัติแล้ว · ต้อ�
     scentDesignOrderError(approved, [{ qty: '2.5', categoryCode: '03-002' }]),
     /จำนวนเต็มบวก/,
   );
+});
+
+// ── ตัวเลือกบน dropdown ของฟอร์มเปิดคำร้อง ──────────────────────────────
+//
+// 🐞 ป้ายช่องเขียนว่า "ใบสั่งขายออกแบบกลิ่น" แต่ลิสต์เคยแสดง SO ทุกใบในขอบเขต
+// ⇒ เลือกใบขายสินค้าธรรมดาได้ กรอก PDR จนจบ แล้วโดนปฏิเสธตอนกดส่ง
+const SO = {
+  ok:      { id: 'A', status: 'approved', lines: [{ fgCode: 'FG-1-03-002', qty: 3 }] },
+  draft:   { id: 'B', status: 'draft', lines: [{ fgCode: 'FG-1-03-002', qty: 1 }] },
+  goods:   { id: 'C', status: 'approved', lines: [{ fgCode: 'FG-1-01-004', qty: 5 }] },
+  used:    { id: 'D', status: 'approved', lines: [{ fgCode: 'FG-1-03-001', qty: 2 }], scentRequest: { docNo: 'SB-1' } },
+};
+const ALL = [SO.ok, SO.draft, SO.goods, SO.used];
+
+test('⭐ ลิสต์เหลือเฉพาะใบที่เปิดบรีฟได้จริง — ด่านเดียวกับ server', () => {
+  assert.deepEqual(scentDesignOrderOptions(ALL).map((o) => o.id), ['A']);
+  assert.deepEqual(scentDesignOrderOptions([]).map((o) => o.id), []);
+});
+
+test('⭐ ค่าที่เลือกไว้แล้วต้องอยู่ในลิสต์เสมอ — ไม่งั้นหายเงียบจากช่อง', () => {
+  // ใบที่เพิ่งถูกคนอื่นเปิดคำร้องตัดหน้า หรือมาทางลิงก์ ?salesOrderId=
+  assert.deepEqual(scentDesignOrderOptions(ALL, { keepId: 'D' }).map((o) => o.id), ['A', 'D']);
+  // keepId ที่ไม่มีในลิสต์ไม่ทำให้อะไรงอกขึ้นมา
+  assert.deepEqual(scentDesignOrderOptions(ALL, { keepId: 'ไม่มีจริง' }).map((o) => o.id), ['A']);
+});
+
+test('⭐ นับเหตุผลที่ซ่อน — ใบหนึ่งนับข้อแรกที่ติดเท่านั้น', () => {
+  const skips = scentDesignOrderSkips(ALL);
+  assert.deepEqual(skips, { notApproved: 1, notScentDesign: 1, used: 1, total: 3 });
+  // ผลรวมรายเหตุผลต้องไม่เกินจำนวนใบที่ซ่อนจริง
+  assert.equal(skips.notApproved + skips.notScentDesign + skips.used, skips.total);
+  assert.deepEqual(scentDesignOrderSkips([SO.ok]), { notApproved: 0, notScentDesign: 0, used: 0, total: 0 });
+});
+
+test('ข้อความบอกว่าซ่อนอะไรไปเพราะอะไร — ไม่ซ่อนอะไรเลยคืนค่าว่าง', () => {
+  assert.equal(scentDesignOrderSkipHint(scentDesignOrderSkips([SO.ok])), '');
+  const hint = scentDesignOrderSkipHint(scentDesignOrderSkips(ALL));
+  assert.match(hint, /ซ่อนไว้ 3 ใบ/);
+  assert.match(hint, /ยังไม่อนุมัติ 1 ใบ/);
+  assert.match(hint, /ไม่ใช่งานออกแบบกลิ่น 1 ใบ/);
+  assert.match(hint, /เปิดคำร้องไปแล้ว 1 ใบ/);
+});
+
+test('⚠️ ใบร่างที่ยังไม่มีเลขที่ ต้องนับว่าใช้ไปแล้วเหมือนกัน', () => {
+  // guard 0219 ห้ามเปิดซ้อนโดยไม่สนว่าใบเดิมออกเลขที่หรือยัง ⇒ ลิสต์ต้องกันด้วย
+  const draftRequest = { id: 'E', status: 'approved', lines: [{ fgCode: 'FG-1-03-002', qty: 1 }], scentRequest: { id: 'REQ-9' } };
+  assert.deepEqual(scentDesignOrderOptions([draftRequest]).map((o) => o.id), []);
+  assert.equal(scentDesignOrderSkips([draftRequest]).used, 1);
 });
