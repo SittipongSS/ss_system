@@ -166,6 +166,7 @@ export default function RecordActionMenu({
       <TransitionDialog
         open={!!pending}
         transition={pending?.transition}
+        record={record}
         values={pending?.values || {}}
         onChange={(values) => setPending((current) => (current ? { ...current, values } : current))}
         onConfirm={run}

@@ -1,0 +1,1640 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบลีด — mockup ทุก flow ทุกฝ่าย</title>
+
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ (ชุดเดียวกับ system-issue-ui-mockup.html) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;--panel-float:#fffdf9;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--violet:#6f5e9f;--violet-soft:#eee9f6;--teal:#377275;--teal-soft:#e0f0f0;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);--shadow-lg:0 16px 44px rgba(31,25,18,.14);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--ctl-h:36px;--ctl-h-touch:44px;--topbar-h:52px;--topnav-menu-h:44px;
+--space-1:4px;--space-2:8px;--space-2-5:10px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;
+--lh-tight:1.45;--lh-normal:1.55;
+--motion-fast:120ms;--ease-out:cubic-bezier(.2,.8,.3,1);
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+--font-mono:ui-monospace,"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}
+
+.mock{font-family:var(--font-sans);font-size:var(--fs-14);line-height:var(--lh-normal);color:var(--text);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased}
+.mock *,.mock *::before,.mock *::after{box-sizing:border-box}
+.mock h1,.mock h2,.mock h3,.mock h4,.mock h5,.mock p,.mock ul,.mock ol{margin:0}
+.mock ul,.mock ol{padding:0;list-style:none}
+.mock :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius)}
+
+/* แถบบน */
+.topnav-sys{height:var(--topbar-h);background:var(--navy);color:var(--navy-fg);display:flex;align-items:center;gap:var(--space-4);padding:0 var(--space-5)}
+.brand-mark{font-size:var(--fs-14);font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+.brand-dot{width:22px;height:22px;border-radius:var(--radius);background:var(--accent);display:grid;place-items:center;font-size:var(--fs-12);color:var(--accent-fg)}
+.sys-switch{margin-inline-start:var(--space-4);display:flex;gap:var(--space-1);font-size:var(--fs-13);overflow-x:auto}
+.sys-switch span{padding:5px 12px;border-radius:var(--radius-full);color:rgba(255,255,255,.7);white-space:nowrap}
+.sys-switch span.is-current{background:rgba(255,255,255,.16);color:#fff;font-weight:600}
+.topnav-right{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-3)}
+.who{font-size:var(--fs-12);color:rgba(255,255,255,.78);white-space:nowrap}.who b{color:#fff;font-weight:600}
+.bell{position:relative;width:30px;height:30px;border-radius:var(--radius-full);border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;cursor:pointer;font-size:var(--fs-13);display:grid;place-items:center}
+.bell .dot{position:absolute;inset-block-start:-3px;inset-inline-end:-3px;min-width:16px;height:16px;padding:0 4px;border-radius:var(--radius-full);background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:700;display:grid;place-items:center}
+.theme-btn{height:30px;padding:0 12px;border-radius:var(--radius-full);border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.theme-btn:hover{background:rgba(255,255,255,.14)}
+.topnav-menu{height:var(--topnav-menu-h);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:var(--space-1);padding:0 var(--space-5);overflow-x:auto}
+.topnav-menu a{display:flex;align-items:center;padding:0 var(--space-3);font-size:var(--fs-13);color:var(--text-2);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+.topnav-menu a.is-current{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+.topnav-menu a.is-new{color:var(--teal)}
+.topnav-menu a.is-new::after{content:"ใหม่";margin-inline-start:5px;font-size:10px;background:var(--teal-soft);color:var(--teal);border-radius:var(--radius-full);padding:1px 6px;font-weight:700}
+
+/* แถบสารบัญ (ไม่ใช่ส่วนของแอป) */
+.deck{position:sticky;top:0;z-index:20;background:var(--panel-2);border-bottom:1px solid var(--border);padding:var(--space-3) var(--space-5);display:flex;gap:var(--space-4);align-items:center;flex-wrap:wrap}
+.deck-group{display:flex;align-items:center;gap:var(--space-2)}
+.deck-label{font-size:var(--fs-11);letter-spacing:.06em;font-weight:700;color:var(--text-3);white-space:nowrap}
+.deck-label.mk{color:var(--amber)}.deck-label.su{color:var(--blue)}.deck-label.se{color:var(--violet)}
+.deck-label.ae{color:var(--teal)}.deck-label.ov{color:var(--red)}.deck-label.nx{color:var(--accent-ink)}
+.seg{display:flex;gap:2px;padding:3px;background:var(--panel-3);border-radius:var(--radius-full);flex-wrap:wrap}
+.seg button{height:28px;padding:0 11px;border:0;border-radius:var(--radius-full);background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--text)}
+.seg button[aria-selected="true"]{background:var(--panel-float);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm)}
+
+.workspace{padding:var(--space-6) var(--space-5) var(--space-8);max-width:1180px;margin:0 auto}
+.ws-head{display:flex;align-items:flex-start;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap}
+.ws-icon{width:42px;height:42px;flex:none;border-radius:var(--radius-lg);background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:var(--fs-18)}
+.ws-title{font-size:var(--fs-22);font-weight:700;line-height:var(--lh-tight);text-wrap:balance}
+.ws-sub{font-size:var(--fs-13);color:var(--text-2);margin-top:2px}
+.ws-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+
+.btn{height:var(--ctl-h);padding:0 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel-float);color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);white-space:nowrap;transition:background var(--motion-fast) var(--ease-out),border-color var(--motion-fast) var(--ease-out)}
+.btn:hover{background:var(--panel-2);border-color:var(--text-3)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn-accent:hover{background:var(--accent-ink);border-color:var(--accent-ink)}
+.btn-danger{border-color:color-mix(in srgb,var(--red) 46%,transparent);color:var(--red)}
+.btn-danger:hover{background:var(--red-soft);border-color:var(--red)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:var(--panel-3);color:var(--text)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn-sm{height:30px;padding:0 11px;font-size:var(--fs-12)}
+.btn-touch{height:var(--ctl-h-touch);font-size:var(--fs-14)}
+.btn-block{width:100%}
+
+.chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:24px;max-width:100%;padding:3px var(--space-2-5);border:1px solid color-mix(in srgb,currentColor 24%,transparent);border-radius:var(--radius);background:color-mix(in srgb,currentColor 12%,transparent);color:var(--text-2);font-size:var(--fs-12);font-weight:600;line-height:var(--lh-tight);white-space:nowrap;vertical-align:middle}
+.chip.green{color:var(--green)}.chip.red{color:var(--red)}.chip.amber{color:var(--amber)}
+.chip.blue{color:var(--blue)}.chip.violet{color:var(--violet)}.chip.teal{color:var(--teal)}
+.chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.sm{min-height:20px;padding:1px 7px;font-size:var(--fs-11)}
+/* ── ป้ายที่อยู่ใน "คอลัมน์" ของตาราง (กติกาเดียวกับ .ui-badge-cell ใน globals.css) ──
+   ป้ายในตารางต้องกวาดตาลงเป็นคอลัมน์ได้ ไม่ใช่กว้างตามความยาวข้อความของแต่ละแถว
+   ("IG" กับ "Typeform" เคยกว้างต่างกันเกือบเท่าตัว) · ความกว้างตั้งตาม "ป้ายที่ยาวที่สุด
+   ของชุดนั้น" — ตั้งสั้นกว่าแล้วใบยาวจะโผล่เกินออกมาใบเดียว
+   ⚠️ ความกว้างสั่งจากผู้เรียก ไม่ฝังใน .chip เพราะป้ายชุดเดียวกันถูกใช้บนการ์ด/หน้า
+   รายละเอียดด้วย ตรงนั้นต้องพอดีข้อความ ไม่ใช่ยืดเต็มคอลัมน์ */
+.chip-cell{min-width:var(--cell-chip-w,90px);white-space:nowrap}
+.chip-w-lead{--cell-chip-w:150px}      /* สถานะลีด — "รอกระจาย (ได้ทีมแล้ว)" */
+.chip-w-channel{--cell-chip-w:88px}    /* ช่องทางที่รับลีด — "Typeform" */
+.chip-w-team{--cell-chip-w:104px}      /* ทีมเจ้าของงาน — "Key Account" */
+.chip-w-deal-type{--cell-chip-w:88px}  /* SCENT · NPD · RE-ORDER */
+.chip-w-clock{--cell-chip-w:118px}     /* นาฬิกา SLA — "เกิน SLA 1 วัน" */
+.chip-w-mode{--cell-chip-w:132px}      /* รูปแบบนัด — "ออกไปหาลูกค้า" */
+.chip-w-tail{--cell-chip-w:96px}       /* ป้ายท้ายแถวที่ยืนแทนปุ่ม — "DL-0412" (ลีดที่ล็อกแล้ว) */
+/* ช่องว่างของคอลัมน์ป้าย — ขีดต้องยืนที่เดียวกับป้าย ไม่ใช่ชิดซ้ายคนเดียว */
+.dash{display:inline-flex;align-items:center;justify-content:center;min-width:var(--cell-chip-w,90px);color:var(--text-3);opacity:.55}
+
+.section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);margin-bottom:var(--space-5);overflow:hidden}
+.section-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.section-head h3{font-size:var(--fs-16);font-weight:700;line-height:var(--lh-tight)}
+.section-head .sh-note{font-size:var(--fs-12);color:var(--text-3)}
+.section-head .sh-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+.section-body{padding:var(--space-5)}
+
+.callout{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-4);border-radius:var(--radius-lg);font-size:var(--fs-13);line-height:var(--lh-tight);border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);margin-bottom:var(--space-4)}
+.callout.amber{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 34%,transparent);color:var(--text)}
+.callout.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 34%,transparent);color:var(--text)}
+.callout.green{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 34%,transparent);color:var(--text)}
+.callout.blue{background:var(--blue-soft);border-color:color-mix(in srgb,var(--blue) 34%,transparent);color:var(--text)}
+.callout b{color:var(--text)}.callout .co-ic{flex:none;font-size:var(--fs-16);line-height:1.3}
+.callout:last-child{margin-bottom:0}
+.note{border-inline-start:3px solid var(--accent);background:var(--accent-soft);padding:var(--space-3) var(--space-4);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-12);line-height:var(--lh-tight);color:var(--text);margin-bottom:var(--space-5)}
+.note b{color:var(--accent-ink)}
+.note code,.mono{font-family:var(--font-mono);font-size:var(--fs-12)}
+.note.fix{border-inline-start-color:var(--teal);background:var(--teal-soft)}
+.note.fix b{color:var(--teal)}
+
+.metric-strip{display:grid;gap:var(--space-3);margin-bottom:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-sm)}
+.metric .m-label{font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)}
+.metric .m-value{font-size:var(--fs-22);font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;line-height:1.2}
+.metric .m-foot{font-size:var(--fs-11);color:var(--text-3);margin-top:3px}
+.metric.is-alert .m-value{color:var(--red)}.metric.is-warn .m-value{color:var(--amber)}.metric.is-good .m-value{color:var(--green)}
+
+.table-scroll{overflow-x:auto}
+table.premium{width:100%;border-collapse:collapse;font-size:var(--fs-13);font-variant-numeric:tabular-nums;min-width:820px}
+table.premium th{text-align:start;font-weight:600;font-size:var(--fs-12);color:var(--text-3);padding:10px var(--space-4);border-bottom:1px solid var(--border-strong);white-space:nowrap;background:var(--panel-2)}
+table.premium td{padding:11px var(--space-4);border-bottom:1px solid var(--border);vertical-align:top;line-height:var(--lh-tight)}
+table.premium tbody tr:last-child td{border-bottom:0}
+table.premium tbody tr:hover{background:var(--panel-2)}
+.t-strong{font-weight:600}
+.t-sub{font-size:var(--fs-12);color:var(--text-3);display:block;margin-top:2px}
+.t-code{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-2);white-space:nowrap}
+/* การจัดชิดต่อชนิดข้อมูล — สั่งที่ th กับ td พร้อมกันเสมอ ไม่งั้นหัวกับเนื้อเยื้องกัน */
+table.premium th.num,table.premium td.num{text-align:end}
+table.premium th.mid,table.premium td.mid{text-align:center}
+.t-act{text-align:end;white-space:nowrap}
+/* คอลัมน์ท้ายแถว — ชิดขวาและไม่กินความกว้างเกินเนื้อ ปุ่มจึงเรียงตรงขอบเดียวกันทุกแถว */
+table.premium th.act,table.premium td.act{text-align:end;white-space:nowrap;width:1%}
+/* ตารางที่คอลัมน์ท้ายเป็น "ก้าวถัดไป" (ปุ่มคนละคำทุกแถว) ต้องตรึงความกว้างปุ่มเพิ่ม
+   ไม่งั้น "📞 บันทึกการติดต่อ" กับ "📁 เปิดดีล" กว้างต่างกันจนขอบซ้ายของปุ่มเป็นฟันปลา
+   — opt-in ที่ตัวตาราง ไม่ใช่กฎรวม เพราะตารางอื่นปุ่มคำเดียวกันทุกแถวอยู่แล้ว */
+table.act-fixed td.act .btn:not(.ghost){min-width:172px}
+/* คอลัมน์ท้ายที่บางแถวเป็นปุ่ม บางแถวเป็นป้ายสถานะแทน — ทั้งสองต้องกินช่องเท่ากัน
+   ไม่งั้นแถวที่ทำอะไรไม่ได้แล้วจะดูเยื้องออกมาจากแถวที่ยังกดได้ */
+table.act-tail td.act .btn:not(.ghost),table.act-tail td.act .chip{min-width:var(--tail-w,96px)}
+/* เมนู "…" ท้ายแถวเป็นปุ่มสี่เหลี่ยมจัตุรัสตายตัว — ความกว้างจึงไม่ขึ้นกับ glyph
+   และแถวที่ไม่มีเมนูกันช่องเท่ากันได้ด้วยตัวเลขเดียว (ไม่ต้องวัดเอา) */
+td.act .btn.ghost{width:32px;padding:0;flex:none}
+.act-spacer{display:inline-block;width:32px;vertical-align:middle}
+
+/* ── ตารางสิทธิ์ ── */
+table.matrix{min-width:900px}
+table.matrix td{text-align:center;vertical-align:middle}
+/* คอลัมน์ชื่อตำแหน่งตรึงไว้ตอนเลื่อนแนวนอน — พื้นหลังต้อง **ทึบ** ไม่ใช่ var(--panel)
+   ซึ่งเป็น rgba โปร่ง 94% ⇒ เนื้อคอลัมน์ที่เลื่อนผ่านข้างหลังทะลุขึ้นมาซ้อนชื่อตำแหน่ง */
+table.matrix td:first-child,table.matrix th:first-child{text-align:start;position:sticky;inset-inline-start:0;background:var(--panel-float);z-index:1;box-shadow:1px 0 0 var(--border)}
+table.matrix th:first-child{background:var(--panel-2)}
+table.matrix tbody tr:hover td:first-child{background:var(--panel-2)}
+.yes{color:var(--green);font-weight:700}
+.no{color:var(--text-3);opacity:.5}
+.part{color:var(--amber);font-weight:700;font-size:var(--fs-12)}
+
+/* ── แถบเส้นทางสถานะ ── */
+.rail{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:var(--space-2)}
+.rail-step{flex:1;min-width:140px;position:relative;padding:var(--space-3) var(--space-4) var(--space-3) var(--space-5);background:var(--panel-2);border:1px solid var(--border);border-inline-end:0}
+.rail-step:first-child{border-start-start-radius:var(--radius-lg);border-end-start-radius:var(--radius-lg)}
+.rail-step:last-child{border-inline-end:1px solid var(--border);border-start-end-radius:var(--radius-lg);border-end-end-radius:var(--radius-lg)}
+.rail-step .rs-owner{font-size:var(--fs-11);font-weight:700;letter-spacing:.04em;margin-bottom:3px}
+.rail-step .rs-name{font-size:var(--fs-13);font-weight:600;line-height:var(--lh-tight)}
+.rail-step .rs-status{font-family:var(--font-mono);font-size:var(--fs-11);color:var(--text-3);margin-top:3px}
+.rail-step .rs-sla{font-size:var(--fs-11);color:var(--amber);margin-top:4px;font-weight:600}
+.rail-step.mk{background:var(--amber-soft)}.rail-step.mk .rs-owner{color:var(--amber)}
+.rail-step.su{background:var(--blue-soft)}.rail-step.su .rs-owner{color:var(--blue)}
+.rail-step.se{background:var(--violet-soft)}.rail-step.se .rs-owner{color:var(--violet)}
+.rail-step.ae{background:var(--teal-soft)}.rail-step.ae .rs-owner{color:var(--teal)}
+.rail-step.dl{background:var(--green-soft)}.rail-step.dl .rs-owner{color:var(--green)}
+.exits{display:flex;gap:var(--space-3);margin-top:var(--space-4);flex-wrap:wrap}
+.exit{flex:1;min-width:240px;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:var(--space-3) var(--space-4);font-size:var(--fs-12);color:var(--text-2);background:var(--panel-2)}
+.exit b{display:block;color:var(--text);font-size:var(--fs-13);margin-bottom:3px}
+
+/* ── การ์ดคุมสถานะ (RecordControlCard) ── */
+.ctrl{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:var(--space-5)}
+.ctrl-head{padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);background:var(--panel-2)}
+.ctrl-head .ch-eyebrow{font-size:var(--fs-11);letter-spacing:.06em;color:var(--text-3);text-transform:uppercase}
+.ctrl-head h3{font-size:var(--fs-16);font-weight:700;margin-top:2px}
+.ctrl-head p{font-size:var(--fs-12);color:var(--text-2);margin-top:5px;line-height:var(--lh-tight)}
+.ctrl-body{padding:var(--space-4) var(--space-5)}
+.steps{display:flex;gap:var(--space-1);margin-bottom:var(--space-4)}
+.steps li{flex:1;font-size:var(--fs-11);color:var(--text-3);text-align:center;padding-top:var(--space-2);border-top:3px solid var(--border);line-height:var(--lh-tight)}
+.steps li.done{color:var(--text-2);border-top-color:var(--green)}
+.steps li.now{color:var(--accent-ink);font-weight:700;border-top-color:var(--accent)}
+.ctrl-actions{display:grid;gap:var(--space-2)}
+.ctrl-sep{border:0;border-top:1px solid var(--border);margin:var(--space-4) 0}
+.ctrl-danger{display:flex;gap:var(--space-2);flex-wrap:wrap}
+
+/* ── ฟอร์ม ── */
+.field{margin-bottom:var(--space-4)}
+.field:last-child{margin-bottom:0}
+.field > label{display:block;font-size:var(--fs-12);font-weight:600;color:var(--text-2);margin-bottom:6px}
+.field .hint{font-size:var(--fs-11);color:var(--text-3);margin-top:5px;line-height:var(--lh-tight)}
+.field .opt{font-weight:400;color:var(--text-3)}
+.field .req{color:var(--red)}
+.input,.textarea,.select{width:100%;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-float);color:var(--text);font:inherit;font-size:var(--fs-13);padding:0 var(--space-3);height:var(--ctl-h)}
+.textarea{height:auto;min-height:92px;padding:var(--space-3);resize:vertical;line-height:var(--lh-normal)}
+.input::placeholder,.textarea::placeholder{color:var(--text-3)}
+.input:focus,.textarea:focus,.select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.grid2{display:grid;gap:var(--space-4);grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.wide{grid-column:1/-1}
+.seg-field{display:flex;gap:2px;padding:3px;background:var(--panel-3);border-radius:var(--radius);width:100%}
+.seg-field button{flex:1;height:30px;padding:0 var(--space-2);border:0;border-radius:5px;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-field button[aria-selected="true"]{background:var(--panel-float);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm)}
+
+/* ── ตัวเลือกคน (person picker) ── */
+.people{border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-float);overflow:hidden}
+.people-head{padding:6px var(--space-3);background:var(--panel-2);border-bottom:1px solid var(--border);font-size:var(--fs-11);color:var(--text-3);display:flex;align-items:center;gap:var(--space-2)}
+.person{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--border);cursor:pointer}
+.person:last-child{border-bottom:0}
+.person:hover{background:var(--panel-2)}
+.person[aria-selected="true"]{background:var(--accent-soft)}
+.person .p-name{flex:1;min-width:0;font-size:var(--fs-13);font-weight:600}
+.person .p-name span{display:block;font-weight:400;font-size:var(--fs-11);color:var(--text-3)}
+.person .p-load{font-size:var(--fs-11);color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* โมดัล */
+.scrim{background:rgba(20,17,13,.44);padding:var(--space-6) var(--space-4);display:grid;place-items:start center;min-height:520px}
+.modal{width:100%;max-width:560px;background:var(--panel-float);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden}
+.modal.lg{max-width:720px}
+.modal-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:var(--fs-16);font-weight:700;flex:1}
+.modal-head .mh-sub{display:block;font-size:var(--fs-11);font-weight:400;color:var(--text-3);margin-top:2px}
+.modal-body{padding:var(--space-5)}
+.modal-foot{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4) var(--space-5);border-top:1px solid var(--border);background:var(--panel-2)}
+.modal-foot .mf-note{font-size:var(--fs-11);color:var(--text-3);flex:1;line-height:var(--lh-tight)}
+
+/* แท็บ */
+.tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--border);margin-bottom:var(--space-5);overflow-x:auto}
+.tabs button{height:38px;padding:0 var(--space-4);border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-13);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tabs button[aria-selected="true"]{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs .cnt{min-width:19px;height:19px;padding:0 5px;border-radius:var(--radius-full);background:var(--panel-3);color:var(--text-3);font-size:var(--fs-11);font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.tabs button[aria-selected="true"] .cnt{background:var(--accent);color:var(--accent-fg)}
+
+/* รายละเอียด */
+.split{display:grid;gap:var(--space-5);grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);align-items:start}
+@media (max-width:900px){.split{grid-template-columns:1fr}}
+.overview{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);box-shadow:var(--shadow-sm);padding:var(--space-5);margin-bottom:var(--space-5)}
+.overview .ov-eyebrow{font-size:var(--fs-11);letter-spacing:.06em;color:var(--text-3);text-transform:uppercase}
+.overview h2{font-size:var(--fs-22);font-weight:700;line-height:var(--lh-tight);margin-top:3px}
+.overview .ov-desc{font-size:var(--fs-13);color:var(--text-2);margin-top:4px;display:flex;gap:var(--space-2);flex-wrap:wrap}
+.facts{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--border)}
+.fact .f-lab{font-size:var(--fs-11);color:var(--text-3)}
+.fact .f-val{font-size:var(--fs-13);font-weight:600;margin-top:2px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-4);font-size:var(--fs-13)}
+.kv dt{color:var(--text-3);font-size:var(--fs-12);white-space:nowrap}
+.kv dd{margin:0;color:var(--text);text-align:end;font-weight:600}
+.kv dd.dim{color:var(--text-3);font-weight:400}
+
+/* เธรด */
+.thread{display:grid;gap:var(--space-4)}
+.msg{display:flex;gap:var(--space-3);align-items:flex-start}
+.avatar{width:30px;height:30px;flex:none;border-radius:var(--radius-full);background:var(--panel-3);color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-12);font-weight:700}
+.avatar.sys{background:var(--blue-soft);color:var(--blue)}
+.avatar.mt{background:var(--teal-soft);color:var(--teal)}
+.msg-body{flex:1;min-width:0}
+.msg-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;margin-bottom:3px}
+.msg-head b{font-size:var(--fs-13)}
+.msg-head time{font-size:var(--fs-11);color:var(--text-3)}
+.msg-text{font-size:var(--fs-13);color:var(--text-2);line-height:var(--lh-normal);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3)}
+.msg.sysline .msg-text{background:transparent;border:0;border-inline-start:2px solid var(--border-strong);border-radius:0;padding:2px 0 2px var(--space-3);color:var(--text-3);font-size:var(--fs-12)}
+.msg.meet .msg-text{background:var(--teal-soft);border-color:color-mix(in srgb,var(--teal) 30%,transparent);color:var(--text)}
+.composer{margin-top:var(--space-4);border-top:1px solid var(--border);padding-top:var(--space-4)}
+
+/* ── ปฏิทิน ── */
+.cal-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-4);flex-wrap:wrap}
+.cal-title{font-size:var(--fs-18);font-weight:700}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal-dow{text-align:center;font-size:var(--fs-11);font-weight:600;color:var(--text-3);padding:4px 0}
+.cal-dow.we{color:var(--red)}
+.cal-cell{min-height:104px;border-radius:10px;padding:6px 7px;background:var(--panel);border:1px solid var(--border);display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.cal-cell.we{background:var(--panel-2)}
+.cal-cell.hol{background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent)}
+.cal-cell.today{border:2px solid var(--accent)}
+.cal-cell .cd{display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-12)}
+.cal-cell .cd .hn{font-size:10px;color:var(--red);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px}
+.ev{font-size:10px;border-radius:4px;padding:2px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:3px}
+.ev.lead{background:color-mix(in srgb,var(--teal) 18%,transparent);color:var(--teal)}
+.ev.deal{background:color-mix(in srgb,var(--violet) 18%,transparent);color:var(--violet)}
+.ev.task{background:var(--panel-3);color:var(--text-2)}
+.cal-legend{display:flex;gap:var(--space-4);margin-top:var(--space-4);font-size:var(--fs-12);color:var(--text-3);flex-wrap:wrap}
+.cal-legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;flex:none}
+
+/* มือถือ */
+.phone-row{display:grid;gap:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.phone{width:100%;max-width:340px;margin:0 auto;border:1px solid var(--border-strong);border-radius:22px;background:var(--bg);box-shadow:var(--shadow-lg);overflow:hidden}
+.phone-top{height:38px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 var(--space-4);font-size:var(--fs-12)}
+.phone-body{padding:var(--space-4);min-height:430px}
+.phone-cap{text-align:center;font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-3)}
+.lcard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);box-shadow:var(--shadow-sm)}
+.lcard .lc-top{display:flex;align-items:center;gap:var(--space-2);margin-bottom:5px;flex-wrap:wrap}
+.lcard .lc-title{font-size:var(--fs-13);font-weight:600;line-height:var(--lh-tight)}
+.lcard .lc-foot{display:flex;gap:var(--space-3);font-size:var(--fs-11);color:var(--text-3);margin-top:6px;flex-wrap:wrap}
+.lcard .lc-act{margin-top:var(--space-3);display:flex;gap:var(--space-2)}
+
+.empty{text-align:center;padding:var(--space-8) var(--space-4);color:var(--text-3)}
+.empty .e-ic{font-size:var(--fs-28);margin-bottom:var(--space-2)}
+.empty b{display:block;color:var(--text-2);font-size:var(--fs-14);margin-bottom:4px}
+.empty p{font-size:var(--fs-12);max-width:38ch;margin:0 auto var(--space-4)}
+
+.bars{display:grid;gap:var(--space-2)}
+.bar-row{display:grid;grid-template-columns:130px 1fr auto;gap:var(--space-3);align-items:center;font-size:var(--fs-12)}
+.bar{height:9px;border-radius:var(--radius-full);background:var(--panel-3);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:var(--radius-full);background:var(--accent)}
+.bar i.g{background:var(--green)}.bar i.b{background:var(--blue)}.bar i.t{background:var(--teal)}.bar i.r{background:var(--red)}
+
+.screen{display:none}.screen.is-active{display:block}
+.legend{font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-6);border-top:1px solid var(--border);padding-top:var(--space-4);line-height:var(--lh-normal)}
+.legend b{color:var(--text-2)}
+.legend li{margin-bottom:4px}
+</style>
+</head>
+<body class="mock">
+
+<!-- แถบบนของแอป -->
+<div class="topnav-sys">
+  <div class="brand-mark"><span class="brand-dot">S</span> SS SYSTEM</div>
+  <nav class="sys-switch" id="sys-switch">
+    <span data-sys="sales">บริหารงานขาย</span>
+    <span data-sys="master">ฐานข้อมูล</span>
+    <span data-sys="rd">วิจัยและพัฒนา</span>
+    <span data-sys="production">ผลิต</span>
+    <span data-sys="service">บริการ</span>
+  </nav>
+  <div class="topnav-right">
+    <button class="bell" title="แจ้งเตือน">🔔<span class="dot">4</span></button>
+    <span class="who" id="who-role">—</span>
+    <button class="theme-btn" id="theme-toggle">สลับธีม</button>
+  </div>
+</div>
+<nav class="topnav-menu" id="menu-row"></nav>
+
+<!-- สารบัญจอ (ไม่ใช่ส่วนของแอป) -->
+<div class="deck">
+  <div class="deck-group">
+    <span class="deck-label">ภาพรวม</span>
+    <div class="seg"><button data-s="s0" aria-selected="true">0 · เส้นทาง + สิทธิ์</button></div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label mk">Marketing</span>
+    <div class="seg">
+      <button data-s="s1">1 · คิวลีด</button>
+      <button data-s="s2">2 · รับลีดใหม่</button>
+    </div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label su">AE Supervisor</span>
+    <div class="seg">
+      <button data-s="s3">3 · คัดกรอง</button>
+      <button data-s="s4">4 · KPI ลีด</button>
+    </div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label se">Senior AE</span>
+    <div class="seg"><button data-s="s5">5 · กระจายให้ AE</button></div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label ae">AE</span>
+    <div class="seg">
+      <button data-s="s6">6 · คิวของฉัน</button>
+      <button data-s="s7">7 · รายละเอียด</button>
+      <button data-s="s8">8 · นัดประชุม</button>
+      <button data-s="s9">9 · เปิดดีล</button>
+    </div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label ov">กำกับดูแล</span>
+    <div class="seg"><button data-s="s10">10 · ตีกลับ / ปิดลีด</button></div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label nx">ต่อยอด</span>
+    <div class="seg">
+      <button data-s="s11">11 · ปฏิทินนัด</button>
+      <button data-s="s12">12 · มือถือ</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════ 0 · เส้นทาง + สิทธิ์ ═══════════ -->
+<section class="screen is-active" id="s0">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">🧭</span>
+    <div><div class="ws-title">ระบบลีด — ใครทำอะไร ตรงไหน</div>
+      <div class="ws-sub">ลีดใบเดียวเดินผ่าน 4 ฝ่าย · ทุกขั้นเก็บ timestamp เอง KPI/SLA จึงไม่ต้องกรอกมือ</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>เส้นทางหลัก</h3><span class="sh-note">สีของขั้น = ฝ่ายที่เป็นเจ้าของงานในขั้นนั้น</span></div>
+    <div class="section-body">
+      <div class="rail">
+        <div class="rail-step mk"><div class="rs-owner">MARKETING</div><div class="rs-name">รับลีดเข้าระบบ</div><div class="rs-status">new</div></div>
+        <div class="rail-step su"><div class="rs-owner">AE SUPERVISOR</div><div class="rs-name">คัดกรอง เลือกทีม</div><div class="rs-status">→ screened</div><div class="rs-sla">SLA 1 วันทำการ</div></div>
+        <div class="rail-step se"><div class="rs-owner">SENIOR AE / AC</div><div class="rs-name">กระจายให้ AE</div><div class="rs-status">→ assigned</div></div>
+        <div class="rail-step ae"><div class="rs-owner">AE ผู้รับมอบ</div><div class="rs-name">ติดต่อกลับ</div><div class="rs-status">→ contacted</div><div class="rs-sla">SLA 1 วันทำการ</div></div>
+        <div class="rail-step ae"><div class="rs-owner">AE ผู้รับมอบ</div><div class="rs-name">นัดประชุม</div><div class="rs-status">→ meeting</div></div>
+        <div class="rail-step dl"><div class="rs-owner">AE / SENIOR AE</div><div class="rs-name">เปิดดีล</div><div class="rs-status">→ qualified</div></div>
+      </div>
+
+      <div class="exits">
+        <div class="exit"><b>↩︎ ตีกลับ (bounce)</b> ทีมไม่ตรงกับที่ลูกค้าสนใจ — กลับไป <code class="mono">new</code> ล้างทีม/ผู้รับผิดชอบ/เวลาติดต่อของรอบก่อน แล้วคัดกรองใหม่ · ต้องระบุเหตุผล</div>
+        <div class="exit"><b>✕ ไม่ไปต่อ (disqualify)</b> ปิดลีดถาวร — งบไม่ถึง / ไม่ใช่กลุ่มเป้าหมาย / ติดต่อไม่ได้ · ต้องระบุเหตุผล เก็บลงประวัติ</div>
+        <div class="exit"><b>⧉ ลีด 1 ใบ → หลายดีล</b> เปิดดีลได้ตั้งแต่ <code class="mono">contacted</code> และเปิดเพิ่มได้อีกแม้ลีดเป็น <code class="mono">qualified</code> แล้ว</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>ใครทำอะไรได้</h3><span class="sh-note">✓ ทำได้ · ◐ ทำได้เฉพาะขอบเขตตัวเอง · — ไม่มีสิทธิ์</span></div>
+    <div class="table-scroll">
+      <table class="premium matrix">
+        <thead><tr>
+          <th>ตำแหน่ง</th><th>เห็นลีด</th><th>เพิ่ม</th><th>คัดกรอง</th><th>มอบหมาย</th>
+          <th>ติดต่อ</th><th>นัดประชุม</th><th>เปิดดีล</th><th>ตีกลับ/ปิด</th><th>แก้ไขข้อมูล</th><th>ลบ</th><th>KPI</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="t-strong">admin<span class="t-sub">ผู้ดูแลระบบ</span></td>
+            <td class="yes">ทุกใบ</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+            <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+            <td class="yes">✓ ทุกสถานะ</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td class="t-strong">ae_supervisor<span class="t-sub">หัวหน้าฝ่ายขาย</span></td>
+            <td class="yes">ทุกใบ</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓ ทุกทีม</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="yes">✓</td>
+            <td class="yes">✓ ก่อนเปิดดีล</td><td class="part">◐ ก่อนติดต่อ</td><td class="yes">✓</td></tr>
+          <tr><td class="t-strong">senior_ae<span class="t-sub">หัวหน้าทีม</span></td>
+            <td class="part">◐ ทีมตัวเอง</td><td class="no">—</td><td class="no">—</td><td class="part">◐ ทีมตัวเอง</td>
+            <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="part">◐ ทีมตัวเอง</td>
+            <td class="part">◐ ทีม · ก่อนเปิดดีล</td><td class="no">—</td><td class="no">—</td></tr>
+          <tr><td class="t-strong">ac<span class="t-sub">Account Coordinator · หลังบ้านทีม SA</span></td>
+            <td class="part">◐ ทีมตัวเอง</td><td class="no">—</td><td class="no">—</td><td class="part">◐ ทีมตัวเอง</td>
+            <td class="part">◐ ทีมตัวเอง</td><td class="part">◐ ทีมตัวเอง</td><td class="no">—</td><td class="part">◐ ทีมตัวเอง</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+          <tr><td class="t-strong">ae<span class="t-sub">Account Executive</span></td>
+            <td class="part">◐ ใบที่รับมอบ</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="part">◐ ใบตัวเอง</td><td class="part">◐ ใบตัวเอง</td><td class="yes">✓</td><td class="part">◐ ใบตัวเอง</td>
+            <td class="part">◐ ใบตัวเอง · ก่อนเปิดดีล</td><td class="no">—</td><td class="no">—</td></tr>
+          <tr><td class="t-strong">marketing<span class="t-sub">ทีม intake</span></td>
+            <td class="yes">ทุกใบ</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="part">◐ ใบตัวเอง · ก่อนเปิดดีล</td><td class="part">◐ ใบตัวเอง ที่ยัง new</td><td class="yes">✓</td></tr>
+          <tr><td class="t-strong">viewer / executive<span class="t-sub">ผู้สังเกตการณ์</span></td>
+            <td class="yes">ทุกใบ</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="no">—</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td class="t-strong">rd / legal / staff / secretary</td>
+            <td class="no">ไม่เห็นเลย</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+            <td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout amber"><span class="co-ic">⚠️</span><div><b>Senior AE / AC ไม่เห็นคิวกลาง</b> ลีดที่ยังไม่ถูกคัดกรองมี <code class="mono">team = null</code> ตัวกรองทีมจึงไม่คืนให้
+    — หัวหน้าทีมเห็นลีดครั้งแรกตอนที่มันถูกส่งเข้าทีมแล้วเท่านั้น เป็นพฤติกรรมที่ตั้งใจ (คิวกลางเป็นของ Supervisor)</div></div>
+
+  <div class="callout green"><span class="co-ic">📌</span><div><b>มติผู้ใช้ 2026-08-08 — สี่ข้อ</b>
+    <br><b>1. AC ไม่อยู่ในรายชื่อผู้รับผิดชอบ</b> AC เป็นหลังบ้านของทีม SA จึงไม่ใช่เจ้าของลีด —
+    เจ้าของงานมีได้แค่ AE · Senior AE · admin · AC ยังช่วยงานทีมได้ตามตาราง (กระจาย ติดต่อ นัด ปิดลีด) แต่ชื่อไม่ขึ้นในดรอปดาวน์มอบหมาย
+    <br><b>2. AE Supervisor มอบหมายได้</b> กระจายลีดได้ทุกทีม — ปิดช่องว่างเดิมที่ API เปิดไว้แต่ปุ่มไม่เคยโผล่
+    <br><b>3. ปลดล็อกการแก้ไขถึงก่อนเปิดดีล</b> เดิมล็อกทันทีที่ลีดเริ่มติดต่อ เหลือ admin คนเดียวที่แก้ได้ —
+    ตอนนี้ Marketing · AE Supervisor · Senior AE · AE แก้ได้จนถึงสถานะ “นัดประชุมแล้ว”
+    <b>พอเปิดดีลแล้วลีดล็อก</b> ข้อมูลที่เปลี่ยนหลังจากนั้นไปแก้ที่ดีลแทน (ลีดกลายเป็นบันทึกต้นทาง ไม่ใช่ที่ทำงาน)
+    <br><b>4. AC แก้ลีดไม่ได้</b> เหลือดูและเดินงาน — งานแก้ข้อมูลเป็นของคนที่รับผิดชอบใบนั้นกับ Marketing ที่กรอกเข้ามา</div></div>
+
+  <div class="callout"><span class="co-ic">🧭</span><div><b>ขอบเขต “ใบไหนบ้าง” ไม่เปลี่ยน</b> —
+    Marketing แก้ได้เฉพาะใบที่ตัวเองกรอก · Senior AE แก้ได้เฉพาะลีดของทีมตัวเอง · AE แก้ได้เฉพาะใบที่รับมอบหรือกรอกเอง ·
+    AE Supervisor และ admin แก้ได้ทุกใบ · <b>ที่ปลดคือเรื่องสถานะอย่างเดียว ไม่ใช่เรื่องขอบเขต</b></div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 1 · Marketing — คิวลีด ═══════════ -->
+<section class="screen" id="s1">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">📥</span>
+    <div><div class="ws-title">ลีด</div><div class="ws-sub">คิวรับลีดจากทุกช่องทาง · ทีม Marketing เห็นทุกใบเพื่อไม่กรอกซ้ำ</div></div>
+    <div class="ws-right">
+      <button class="btn btn-sm">🗓 สิงหาคม 2026</button>
+      <button class="btn btn-sm">⚙️ ตัวกรอง <span class="chip sm blue">2</span></button>
+      <button class="btn btn-accent">＋ รับลีดใหม่</button>
+    </div>
+  </div>
+
+  <div class="note"><b>ทำไม Marketing เห็นทุกใบ</b> — ทีม intake ต้องเห็นคิวรวมเพื่อตรวจว่ามีใครกรอกลูกค้ารายนี้ไปแล้วหรือยัง
+  แต่ลงมือได้เฉพาะ <b>ใบที่ตัวเองกรอก</b><br>
+  <b>แก้ไข</b> ได้จนถึงก่อนเปิดดีล (มติ 2026-08-08) — ลูกค้าโทรมาแก้เบอร์หรือเพิ่มงบหลังส่งเข้าทีมแล้วเป็นเรื่องปกติ
+  คนที่รับสายคือ MKT ไม่ใช่ AE · <b>ลบ</b> ยังได้เฉพาะใบที่ยังไม่ถูกคัดกรอง — ส่งเข้าทีมแล้วเป็นงานของฝ่ายขาย ลบทิ้งไม่ได้</div>
+
+  <div class="metric-strip">
+    <div class="metric"><div class="m-label">กรอกเดือนนี้</div><div class="m-value">128</div><div class="m-foot">เฉลี่ย 6.1 ใบ/วันทำการ</div></div>
+    <div class="metric is-warn"><div class="m-label">รอคัดกรอง</div><div class="m-value">7</div><div class="m-foot">คิวของ AE Supervisor</div></div>
+    <div class="metric is-good"><div class="m-label">เปิดดีลแล้ว</div><div class="m-value">31</div><div class="m-foot">conversion 24.2%</div></div>
+    <div class="metric"><div class="m-label">ช่องทางเด่น</div><div class="m-value">LINE</div><div class="m-foot">54 ใบ · 42%</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h3>คิวลีด</h3><span class="sh-note">128 ใบ</span>
+      <div class="sh-right">
+        <div class="seg"><button aria-selected="true">ทั้งหมด</button><button>ของฉัน</button></div>
+        <button class="btn btn-sm">🔎 ค้นหา</button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="premium act-tail">
+        <thead><tr><th>ลูกค้า / ผู้ติดต่อ</th><th>ช่องทาง</th><th>บริการที่สนใจ</th><th class="num">Budget</th><th class="mid">สถานะ</th><th>ทีม</th><th>ผู้รับผิดชอบ</th><th>รับเมื่อ</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="t-strong">คุณมนัสวี ทองอยู่</span><span class="t-sub">บจก. เดอะ ริเวอร์ เพลส</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">LINE</span></td><td>ระบบกระจายกลิ่น</td><td class="num">180,000</td>
+            <td class="mid"><span class="chip amber dot chip-cell chip-w-lead">รอคัดกรอง</span></td>
+            <td><span class="dash chip-w-team">—</span></td><td>—</td>
+            <td>8 ส.ค. 09:12</td>
+            <td class="act"><button class="btn btn-sm">แก้ไข</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณเจนจิรา สุขะ</span><span class="t-sub">โรงแรมบ้านสวนรีสอร์ท</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">Meta</span></td><td>Workshop</td><td class="num">—</td>
+            <td class="mid"><span class="chip blue dot chip-cell chip-w-lead">รอกระจาย</span></td>
+            <td><span class="chip sm chip-cell chip-w-team">Services</span></td><td>—</td>
+            <td>8 ส.ค. 08:40</td>
+            <td class="act"><button class="btn btn-sm">แก้ไข</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณอาทิตย์ ปิ่นแก้ว</span><span class="t-sub">บจก. สยาม เฟรช มาร์ท</span></td>
+            <td><span class="chip teal sm chip-cell chip-w-channel">เว็บไซต์</span></td><td>สินค้า — น้ำหอมปรับอากาศ 250ml</td><td class="num">75,000</td>
+            <td class="mid"><span class="chip violet dot chip-cell chip-w-lead">รอติดต่อกลับ</span></td>
+            <td><span class="chip sm chip-cell chip-w-team">Key Account</span></td><td>ปิยะพงษ์ ก.</td>
+            <td>7 ส.ค. 16:05</td>
+            <td class="act"><button class="btn btn-sm">แก้ไข</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณสุรีย์พร ชัยวัฒน์</span><span class="t-sub">บุคคลทั่วไป</span></td>
+            <td><span class="chip amber sm chip-cell chip-w-channel">โทรเข้า</span></td><td>อื่นๆ — สอบถามกลิ่นเฉพาะทาง</td><td class="num">—</td>
+            <td class="mid"><span class="chip teal dot chip-cell chip-w-lead">ติดต่อแล้ว</span></td>
+            <td><span class="chip sm chip-cell chip-w-team">New ODM</span></td><td>ธนกฤต ว.</td>
+            <td>6 ส.ค. 11:22</td>
+            <td class="act"><button class="btn btn-sm">แก้ไข</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณวรพล อินทรีย์</span><span class="t-sub">บจก. นอร์ทเทิร์น ฮอสพิทาลิตี้</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">Typeform</span></td><td>ระบบกระจายกลิ่น</td><td class="num">420,000</td>
+            <td class="mid"><span class="chip green dot chip-cell chip-w-lead">เปิดลูกค้าแล้ว</span></td>
+            <td><span class="chip sm chip-cell chip-w-team">Key Account</span></td><td>ปิยะพงษ์ ก.</td>
+            <td>2 ส.ค. 14:31</td>
+            <td class="act"><span class="chip sm green chip-cell chip-w-tail" title="เปิดดีลแล้ว — ลีดล็อก แก้ข้อมูลที่ดีลแทน">🔒 DL-0412</span> <span class="act-spacer"></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout"><span class="co-ic">🔔</span><div><b>ทันทีที่กดบันทึก</b> ระบบยิงการ์ดเข้าห้องแชท <code class="mono">leads</code>
+    — “📥 ลีดใหม่รอคัดกรอง · AE Supervisor คัดกรอง + เลือกทีม (ภายใน 1 วันทำการ)” พร้อมลิงก์ <code class="mono">/sa/leads</code> · นาฬิกา SLA เริ่มเดินจากวินาทีนั้น</div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 2 · Marketing — รับลีดใหม่ ═══════════ -->
+<section class="screen" id="s2">
+<div class="scrim">
+  <div class="modal lg">
+    <div class="modal-head"><h3>รับลีดใหม่<span class="mh-sub">ฟอร์มเดียวกับปุ่ม “แก้ไข” — ต่างกันแค่โหมด ไม่ใช่คนละไฟล์</span></h3><button class="btn ghost btn-sm">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>ช่องทางที่รับลีด <span class="req">*</span></label>
+        <div class="seg-field">
+          <button data-v="chatcone_line" aria-selected="true">LINE</button>
+          <button data-v="chatcone_meta">Meta</button>
+          <button data-v="chatcone_tiktok">TikTok</button>
+          <button data-v="chatcone_ig">IG</button>
+          <button data-v="typeform">Typeform</button>
+        </div>
+        <div class="seg-field" style="margin-top:6px">
+          <button data-v="phone">โทรเข้า</button>
+          <button data-v="walkin">Walk-in</button>
+          <button data-v="website">เว็บไซต์</button>
+        </div>
+        <div class="hint">กลุ่มช่องทาง (Online / Onsite / Website) ระบบ derive ให้เอง ไม่ต้องเลือกซ้ำ · เพิ่มช่องทางใหม่ต้องแก้ CHECK constraint ของตารางด้วย</div>
+      </div>
+
+      <div class="grid2">
+        <div class="field"><label>ชื่อลูกค้า / ผู้ติดต่อ <span class="req">*</span></label><input class="input" value="คุณมนัสวี ทองอยู่"></div>
+        <div class="field"><label>บริษัท <span class="opt">(ไม่บังคับ)</span></label><input class="input" value="บจก. เดอะ ริเวอร์ เพลส"></div>
+        <div class="field"><label>โทรศัพท์</label><input class="input" value="081-234-5678"></div>
+        <div class="field"><label>อีเมล</label><input class="input" value="manasawee@riverplace.co.th"></div>
+        <div class="field wide"><label>ช่องทางติดต่อเพิ่มเติม</label><input class="input" placeholder="เช่น LINE ID: @riverplace หรือ IG: riverplace.bkk"></div>
+
+        <div class="field"><label>บริการที่สนใจ <span class="req">*</span></label>
+          <select class="select"><option>ระบบกระจายกลิ่น</option><option>Workshop</option><option>สินค้า (ระบุ)</option><option>อื่นๆ (ระบุ)</option></select>
+        </div>
+        <div class="field"><label>งบประมาณ <span class="opt">(ไม่บังคับ)</span></label><input class="input" value="180,000"></div>
+        <div class="field wide"><label>รายละเอียดบริการ</label><input class="input" placeholder="เลือก “สินค้า” หรือ “อื่นๆ” แล้วช่องนี้บังคับกรอก">
+          <div class="hint">เฉพาะ “สินค้า (ระบุ)” และ “อื่นๆ (ระบุ)” เท่านั้นที่บังคับ — ระบบเด้งกลับถ้าเว้นว่าง</div>
+        </div>
+        <div class="field wide"><label>รายละเอียดเพิ่มเติม</label><textarea class="textarea" placeholder="ลูกค้าถามอะไร สนใจตรงไหน มีเงื่อนไขอะไร">ลูกค้ากำลังรีโนเวทล็อบบี้ 2 ชั้น ต้องการกลิ่นซิกเนเจอร์ของโรงแรม ขอให้ติดต่อกลับช่วงบ่าย</textarea></div>
+      </div>
+
+      <div class="callout blue" style="margin-top:var(--space-5)"><span class="co-ic">ℹ️</span><div>
+        ไม่มีช่อง “สถานะ” / “ทีม” / “ผู้รับผิดชอบ” ในฟอร์มสร้าง — ของใหม่เริ่มที่ <code class="mono">new</code> เสมอ
+        และทีม/ผู้รับผิดชอบเป็นผลของการคัดกรองกับการมอบหมาย ไม่ใช่สิ่งที่คนกรอกเลือกเอง</div></div>
+    </div>
+    <div class="modal-foot">
+      <span class="mf-note">บันทึกแล้วยังแก้ได้จนกว่าจะถูกคัดกรอง</span>
+      <button class="btn">ยกเลิก</button>
+      <button class="btn btn-accent">บันทึกลีด</button>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<!-- ═══════════ 3 · AE Supervisor — คัดกรอง ═══════════ -->
+<section class="screen" id="s3">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">🧭</span>
+    <div><div class="ws-title">ลีด — คิวคัดกรอง</div><div class="ws-sub">งานของหัวหน้าฝ่ายขาย: อ่านลีด เลือกทีมเจ้าของงาน ภายใน 1 วันทำการ</div></div>
+    <div class="ws-right">
+      <button class="btn btn-sm">📊 ดู KPI เต็ม</button>
+      <button class="btn btn-accent">＋ รับลีดใหม่</button>
+    </div>
+  </div>
+
+  <div class="note"><b>หัวหน้าฝ่ายขายกรอกลีดเองได้ด้วย</b> — รับลีดตรงจากลูกค้า/งานแสดงสินค้าโดยไม่ต้องฝาก Marketing กรอกแทน
+  (คนคัดกรองก็คือคนเดิม) · ฝ่ายขายที่เหลือยังเพิ่มไม่ได้ ลีดต้องเข้าคิวกลางก่อนเสมอ</div>
+
+  <div class="tabs">
+    <button aria-selected="true">รอคัดกรอง <span class="cnt">7</span></button>
+    <button>รอกระจาย <span class="cnt">4</span></button>
+    <button>กำลังทำงาน <span class="cnt">23</span></button>
+    <button>ปิดแล้ว <span class="cnt">94</span></button>
+  </div>
+
+  <div class="metric-strip">
+    <div class="metric is-alert"><div class="m-label">เกิน SLA คัดกรอง</div><div class="m-value">2</div><div class="m-foot">ค้างเกิน 1 วันทำการ</div></div>
+    <div class="metric is-good"><div class="m-label">SLA คัดกรองเดือนนี้</div><div class="m-value">94%</div><div class="m-foot">118 / 126 ใบ ทันเวลา</div></div>
+    <div class="metric"><div class="m-label">New ODM</div><div class="m-value">46</div><div class="m-foot">ลีดที่ส่งเข้าทีมเดือนนี้</div></div>
+    <div class="metric"><div class="m-label">Key Account</div><div class="m-value">51</div><div class="m-foot">ลีดที่ส่งเข้าทีมเดือนนี้</div></div>
+    <div class="metric"><div class="m-label">Services</div><div class="m-value">29</div><div class="m-foot">ลีดที่ส่งเข้าทีมเดือนนี้</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>รอคัดกรอง</h3><span class="sh-note">เรียงตามเวลาที่รับเข้า — ใบที่ค้างนานอยู่บนสุด</span></div>
+    <div class="table-scroll">
+      <table class="premium">
+        <thead><tr><th>ลูกค้า / ผู้ติดต่อ</th><th>ช่องทาง</th><th>บริการที่สนใจ</th><th class="num">Budget</th><th>ผู้กรอก</th><th class="mid">ค้างมา</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr style="background:color-mix(in srgb,var(--red) 7%,transparent)">
+            <td><span class="t-strong">คุณกิตติพงศ์ ธีรกุล</span><span class="t-sub">บจก. เมโทร ลิฟวิ่ง</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">TikTok</span></td><td>ระบบกระจายกลิ่น</td><td class="num">260,000</td><td>ณิชา ส.</td>
+            <td class="mid"><span class="chip red dot chip-cell chip-w-clock">2 วันทำการ</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">คัดกรอง</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr style="background:color-mix(in srgb,var(--red) 7%,transparent)">
+            <td><span class="t-strong">คุณอรวรรณ พฤกษ์</span><span class="t-sub">คลินิกเวชกรรมออร่า</span></td>
+            <td><span class="chip amber sm chip-cell chip-w-channel">Walk-in</span></td><td>สินค้า — เทียนหอม</td><td class="num">—</td><td>ณิชา ส.</td>
+            <td class="mid"><span class="chip red dot chip-cell chip-w-clock">2 วันทำการ</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">คัดกรอง</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณมนัสวี ทองอยู่</span><span class="t-sub">บจก. เดอะ ริเวอร์ เพลส</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">LINE</span></td><td>ระบบกระจายกลิ่น</td><td class="num">180,000</td><td>ณิชา ส.</td>
+            <td class="mid"><span class="chip amber dot chip-cell chip-w-clock">วันนี้</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">คัดกรอง</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณธีรเดช มั่นคง</span><span class="t-sub">บจก. บางกอก ออฟฟิศ พาร์ค</span></td>
+            <td><span class="chip teal sm chip-cell chip-w-channel">เว็บไซต์</span></td><td>อื่นๆ — สอบถามราคาโครงการ</td><td class="num">95,000</td><td>ระบบ (เว็บ)</td>
+            <td class="mid"><span class="chip amber dot chip-cell chip-w-clock">วันนี้</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">คัดกรอง</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>โมดัลคัดกรอง</h3><span class="sh-note">กดปุ่ม “คัดกรอง” จากแถวไหนก็เปิดตัวเดียวกัน — และเปิดจากหน้ารายละเอียดได้ด้วย</span></div>
+    <div class="section-body" style="background:var(--panel-2)">
+      <div class="modal" style="max-width:520px;margin:0 auto">
+        <div class="modal-head"><h3>คัดกรองและส่งทีม<span class="mh-sub">คุณมนัสวี ทองอยู่ · บจก. เดอะ ริเวอร์ เพลส</span></h3><button class="btn ghost btn-sm">✕</button></div>
+        <div class="modal-body">
+          <div class="callout blue"><span class="co-ic">📄</span><div>
+            <b>ระบบกระจายกลิ่น · งบ 180,000</b><br>
+            “ลูกค้ากำลังรีโนเวทล็อบบี้ 2 ชั้น ต้องการกลิ่นซิกเนเจอร์ของโรงแรม ขอให้ติดต่อกลับช่วงบ่าย”</div></div>
+          <div class="field">
+            <label>ทีมเจ้าของงาน <span class="req">*</span></label>
+            <div class="seg-field">
+              <button data-v="ODM">New ODM</button>
+              <button data-v="KA">Key Account</button>
+              <button data-v="SV" aria-selected="true">Services</button>
+            </div>
+            <div class="hint">เลือกผิดทีมยังแก้ได้ผ่าน “ตีกลับ” แล้วคัดกรองใหม่ — เส้นทางที่ทิ้งร่องรอยไว้ในประวัติ ไม่ใช่แก้เงียบ ๆ</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span class="mf-note">บันทึกแล้วแจ้ง Senior AE ของทีมทันที</span>
+          <button class="btn">ยกเลิก</button>
+          <button class="btn btn-accent">ส่งเข้าทีม</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout amber"><span class="co-ic">⏱</span><div><b>เวลาคัดกรองครั้งแรกไม่ถูกรีเซ็ต</b> — ถ้าลีดถูกตีกลับแล้วคัดกรองใหม่ <code class="mono">screenedAt</code> ยังเป็นเวลาของครั้งแรก
+    ตัวเลข SLA จึงไม่พองจากการทำงานซ้ำ</div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 4 · AE Supervisor — KPI ═══════════ -->
+<section class="screen" id="s4">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">📊</span>
+    <div><div class="ws-title">KPI ลีด</div><div class="ws-sub">คำนวณจาก timestamp ล้วน ๆ — ไม่มีช่องให้ใครกรอกตัวเลขเอง</div></div>
+    <div class="ws-right"><button class="btn btn-sm">🗓 สิงหาคม 2026</button><button class="btn btn-sm">ทุกทีม ▾</button></div>
+  </div>
+
+  <div class="callout red"><span class="co-ic">🔒</span><div><b>หน้านี้เห็นได้เฉพาะ admin · AE Supervisor · Marketing · ผู้บริหาร</b>
+    เพราะมีตัวเลขประเมินผลรายบุคคล (SLA ติดต่อกลับรายคน · ยอดกรอกรายคน) — AE / AC / Senior AE ไม่เห็น ทั้งบนหน้าจอและถ้ายิง URL ตรง</div></div>
+
+  <div class="metric-strip">
+    <div class="metric"><div class="m-label">ลีดเข้าเดือนนี้</div><div class="m-value">128</div></div>
+    <div class="metric is-good"><div class="m-label">SLA คัดกรอง</div><div class="m-value">94%</div><div class="m-foot">118/126 · ค้าง 7</div></div>
+    <div class="metric is-warn"><div class="m-label">SLA ติดต่อกลับ</div><div class="m-value">81%</div><div class="m-foot">76/94 · ค้าง 12</div></div>
+    <div class="metric is-good"><div class="m-label">เปิดดีล</div><div class="m-value">31</div><div class="m-foot">24.2% ของลีดเข้า</div></div>
+    <div class="metric is-alert"><div class="m-label">ตีกลับ</div><div class="m-value">9</div><div class="m-foot">คัดกรองผิดทีม 7%</div></div>
+  </div>
+
+  <div class="split">
+    <div>
+      <div class="section">
+        <div class="section-head"><h3>Funnel</h3><span class="sh-note">นับจากลีดที่รับเข้าในเดือนที่เลือก</span></div>
+        <div class="section-body">
+          <div class="bars">
+            <div class="bar-row"><span>รับเข้า</span><span class="bar"><i style="width:100%"></i></span><b>128</b></div>
+            <div class="bar-row"><span>คัดกรองแล้ว</span><span class="bar"><i class="b" style="width:95%"></i></span><b>121</b></div>
+            <div class="bar-row"><span>มอบหมายแล้ว</span><span class="bar"><i class="b" style="width:91%"></i></span><b>117</b></div>
+            <div class="bar-row"><span>ติดต่อแล้ว</span><span class="bar"><i class="t" style="width:73%"></i></span><b>94</b></div>
+            <div class="bar-row"><span>นัดประชุม</span><span class="bar"><i class="t" style="width:45%"></i></span><b>58</b></div>
+            <div class="bar-row"><span>เปิดดีล</span><span class="bar"><i class="g" style="width:24%"></i></span><b>31</b></div>
+            <div class="bar-row"><span>ไม่ไปต่อ</span><span class="bar"><i class="r" style="width:17%"></i></span><b>22</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h3>รายผู้รับผิดชอบ</h3><span class="sh-note">SLA ติดต่อกลับ · นัด · เปิดดีล</span></div>
+        <div class="table-scroll">
+          <table class="premium" style="min-width:640px">
+            <thead><tr><th>AE</th><th>ทีม</th><th class="num">รับมอบ</th><th class="num">ติดต่อแล้ว</th><th class="mid">SLA ทัน</th><th class="num">นัด</th><th class="num">เปิดดีล</th></tr></thead>
+            <tbody>
+              <tr><td class="t-strong">ปิยะพงษ์ กมลชัย</td><td><span class="chip sm chip-cell chip-w-team">Key Account</span></td><td class="num">34</td><td class="num">32</td><td class="mid"><span class="chip green sm chip-cell" style="--cell-chip-w:64px">91%</span></td><td class="num">21</td><td class="num">12</td></tr>
+              <tr><td class="t-strong">ธนกฤต วรรณศิลป์</td><td><span class="chip sm chip-cell chip-w-team">New ODM</span></td><td class="num">29</td><td class="num">25</td><td class="mid"><span class="chip amber sm chip-cell" style="--cell-chip-w:64px">76%</span></td><td class="num">16</td><td class="num">9</td></tr>
+              <tr><td class="t-strong">ศิริพร ทัศนีย์</td><td><span class="chip sm chip-cell chip-w-team">Services</span></td><td class="num">22</td><td class="num">21</td><td class="mid"><span class="chip green sm chip-cell" style="--cell-chip-w:64px">95%</span></td><td class="num">13</td><td class="num">7</td></tr>
+              <tr><td class="t-strong">อนุชา เรืองเดช</td><td><span class="chip sm chip-cell chip-w-team">New ODM</span></td><td class="num">18</td><td class="num">11</td><td class="mid"><span class="chip red sm chip-cell" style="--cell-chip-w:64px">55%</span></td><td class="num">6</td><td class="num">2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section">
+        <div class="section-head"><h3>ตามช่องทาง</h3></div>
+        <div class="section-body">
+          <div class="bars">
+            <div class="bar-row"><span><span class="chip blue sm chip-cell chip-w-channel">LINE</span></span><span class="bar"><i class="b" style="width:100%"></i></span><b>54</b></div>
+            <div class="bar-row"><span><span class="chip blue sm chip-cell chip-w-channel">Meta</span></span><span class="bar"><i class="b" style="width:52%"></i></span><b>28</b></div>
+            <div class="bar-row"><span><span class="chip teal sm chip-cell chip-w-channel">เว็บไซต์</span></span><span class="bar"><i class="t" style="width:39%"></i></span><b>21</b></div>
+            <div class="bar-row"><span><span class="chip blue sm chip-cell chip-w-channel">Typeform</span></span><span class="bar"><i class="b" style="width:24%"></i></span><b>13</b></div>
+            <div class="bar-row"><span><span class="chip amber sm chip-cell chip-w-channel">โทรเข้า</span></span><span class="bar"><i style="width:15%"></i></span><b>8</b></div>
+            <div class="bar-row"><span><span class="chip amber sm chip-cell chip-w-channel">Walk-in</span></span><span class="bar"><i style="width:7%"></i></span><b>4</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-head"><h3>ยอดกรอก — ทีม Marketing</h3></div>
+        <div class="table-scroll">
+          <table class="premium" style="min-width:0">
+            <thead><tr><th>ผู้กรอก</th><th class="num">ใบ</th><th class="num">วันทำงาน</th><th class="num">เฉลี่ย/วัน</th></tr></thead>
+            <tbody>
+              <tr><td class="t-strong">ณิชา สมบูรณ์</td><td class="num">81</td><td class="num">21</td><td class="num">3.9</td></tr>
+              <tr><td class="t-strong">ภัทรา ชูเกียรติ</td><td class="num">34</td><td class="num">19</td><td class="num">1.8</td></tr>
+              <tr><td class="t-strong">ระบบ (เว็บ/Typeform)</td><td class="num">13</td><td class="num">—</td><td class="num">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<!-- ═══════════ 5 · Senior AE — กระจายให้ AE ═══════════ -->
+<section class="screen" id="s5">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">👥</span>
+    <div><div class="ws-title">ลีด — ทีม Key Account</div><div class="ws-sub">หัวหน้าทีมเห็นเฉพาะลีดที่ถูกคัดกรองเข้าทีมตัวเองแล้ว</div></div>
+    <div class="ws-right"><div class="seg"><button>ของฉัน</button><button aria-selected="true">ทีม</button></div></div>
+  </div>
+
+  <div class="note"><b>หัวหน้าทีมมอบให้ตัวเองก็ได้</b> — ดรอปดาวน์ผู้รับผิดชอบมีชื่อ Senior AE / AC / AE ในทีมครบทุกคน
+  ไม่ใช่แค่ AE ลูกทีม เพราะบางลีดหัวหน้าลงมือเอง</div>
+
+  <div class="tabs">
+    <button aria-selected="true">รอกระจาย <span class="cnt">4</span></button>
+    <button>รอติดต่อกลับ <span class="cnt">6</span></button>
+    <button>กำลังทำงาน <span class="cnt">11</span></button>
+    <button>ปิดแล้ว <span class="cnt">38</span></button>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>รอกระจาย</h3><span class="sh-note">ส่งเข้าทีมแล้ว ยังไม่มีเจ้าของ</span></div>
+    <div class="table-scroll">
+      <table class="premium">
+        <thead><tr><th>ลูกค้า / ผู้ติดต่อ</th><th>ช่องทาง</th><th>บริการที่สนใจ</th><th class="num">Budget</th><th>ส่งเข้าทีมเมื่อ</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="t-strong">คุณเจนจิรา สุขะ</span><span class="t-sub">โรงแรมบ้านสวนรีสอร์ท</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">Meta</span></td><td>Workshop</td><td class="num">—</td><td>8 ส.ค. 09:30</td>
+            <td class="act"><button class="btn btn-sm btn-accent">มอบหมาย</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณกิตติพงศ์ ธีรกุล</span><span class="t-sub">บจก. เมโทร ลิฟวิ่ง</span></td>
+            <td><span class="chip blue sm chip-cell chip-w-channel">TikTok</span></td><td>ระบบกระจายกลิ่น</td><td class="num">260,000</td><td>8 ส.ค. 09:28</td>
+            <td class="act"><button class="btn btn-sm btn-accent">มอบหมาย</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>โมดัลมอบหมาย</h3><span class="sh-note">ตัวเดียวกับที่เปิดจากหน้ารายละเอียดลีด</span></div>
+    <div class="section-body" style="background:var(--panel-2)">
+      <div class="modal" style="max-width:520px;margin:0 auto">
+        <div class="modal-head"><h3>มอบหมายผู้รับผิดชอบ<span class="mh-sub">คุณกิตติพงศ์ ธีรกุล · บจก. เมโทร ลิฟวิ่ง</span></h3><button class="btn ghost btn-sm">✕</button></div>
+        <div class="modal-body">
+          <div class="field">
+            <label>ผู้รับผิดชอบ <span class="req">*</span></label>
+            <div class="people">
+              <div class="people-head">👥 ทีมของลีดนี้ · <b>Key Account</b> — แสดงเฉพาะ AE / Senior AE ในทีมนี้</div>
+              <div class="person" aria-selected="true"><span class="avatar">ปก</span><span class="p-name">ปิยะพงษ์ กมลชัย<span>AE · Key Account</span></span><span class="p-load">ถืออยู่ 7 ใบ</span></div>
+              <div class="person"><span class="avatar">ณด</span><span class="p-name">ณัฐดนัย พงศ์ไพศาล<span>AE · Key Account</span></span><span class="p-load">ถืออยู่ 5 ใบ</span></div>
+              <div class="person"><span class="avatar">วน</span><span class="p-name">วีรยุทธ นาคะ<span>Senior AE · Key Account (ตัวคุณเอง)</span></span><span class="p-load">ถืออยู่ 2 ใบ</span></div>
+            </div>
+            <div class="hint">ไม่มีชื่อ <b>AC</b> ในรายการ — AC เป็นหลังบ้านของทีม ไม่ใช่เจ้าของลีด (มติ 2026-08-08) ·
+              คนที่ปิดบัญชีแล้วก็ไม่อยู่ในรายการ เคยมอบให้คนที่ลาออกได้แล้วลีดค้างโดยไม่มีใครเห็นในคิวตัวเอง</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span class="mf-note">มอบแล้วนาฬิกา SLA ติดต่อกลับเริ่มนับใหม่</span>
+          <button class="btn">ยกเลิก</button>
+          <button class="btn btn-accent">มอบหมาย</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout green"><span class="co-ic">✅</span><div><b>ลงโค้ดแล้ว 2026-08-08 — สามข้อของจอนี้</b>
+    <br><b>1. กรองด้วยทีมของ “ลีด” ไม่ใช่ทีมของ “คนดู”</b> เดิม <b>admin กับ AE Supervisor ไม่มีทีม</b> จึงเห็นชื่อทุกคนทุกทีม
+    แล้วพอเลือกคนต่างทีมก็โดน server เด้งโดยไม่มีอะไรบอกล่วงหน้า — หัวตารางในภาพ (“ทีมของลีดนี้ · Key Account”) คือของจริงแล้ว
+    <br><b>2. ปุ่ม “มอบหมาย” โผล่ให้ AE Supervisor แล้ว</b> เงื่อนไขฝั่งหน้าจอเคยเป็น <code class="mono">admin || inTeamOf</code>
+    ซึ่งไม่ครอบตำแหน่งที่ไม่มีทีม ⇒ ปุ่มไม่เคยโผล่ทั้งที่ API เปิดให้มาตลอด
+    <br><b>3. AC ออกจากรายชื่อผู้รับผิดชอบแล้ว</b> ทั้งดรอปดาวน์และด่านตรวจฝั่ง server (แก้ข้างเดียวไม่พอ — ซ่อนชื่อได้แต่ยิง API ตรงยังมอบให้ AC ได้)</div></div>
+
+  <div class="callout"><span class="co-ic">🧹</span><div><b>ไม่มีข้อมูลเก่าให้ตามเก็บ</b> (ยืนยันโดยผู้ใช้ 2026-08-08) —
+    ถึงโค้ดเดิมจะยอมให้เลือก AC ได้ แต่ของจริงมอบให้ Senior AE กับ AE เท่านั้นมาตลอด
+    ⇒ ไม่มีลีดใบไหนค้างอยู่กับเจ้าของที่ระบบไม่รับแล้ว · การเปลี่ยนครั้งนี้จึงเป็นการเขียนกติกาที่ทีมใช้อยู่แล้วให้ระบบบังคับเอง
+    ไม่ใช่การเปลี่ยนวิธีทำงาน</div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 6 · AE — คิวของฉัน ═══════════ -->
+<section class="screen" id="s6">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">📇</span>
+    <div><div class="ws-title">ลีดของฉัน</div><div class="ws-sub">เห็นเฉพาะใบที่ถูกมอบหมายให้ตัวเอง — ไม่เห็นคิวกลาง ไม่เห็นของเพื่อนร่วมทีม</div></div>
+    <div class="ws-right"><button class="btn btn-sm">⚙️ ตัวกรอง</button><button class="btn btn-sm">↕ รับล่าสุด</button></div>
+  </div>
+
+  <div class="metric-strip">
+    <div class="metric is-alert"><div class="m-label">ต้องติดต่อวันนี้</div><div class="m-value">3</div><div class="m-foot">1 ใบเกิน SLA แล้ว</div></div>
+    <div class="metric"><div class="m-label">นัดสัปดาห์นี้</div><div class="m-value">4</div><div class="m-foot">ดูในปฏิทิน</div></div>
+    <div class="metric"><div class="m-label">ถืออยู่ทั้งหมด</div><div class="m-value">7</div></div>
+    <div class="metric is-good"><div class="m-label">เปิดดีลเดือนนี้</div><div class="m-value">12</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>คิวของฉัน</h3>
+      <div class="sh-right"><div class="seg"><button aria-selected="true">ที่ยังทำงานอยู่</button><button>ปิดแล้ว</button></div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="premium act-fixed">
+        <thead><tr><th>ลูกค้า / ผู้ติดต่อ</th><th class="mid">สถานะ</th><th>บริการที่สนใจ</th><th class="num">Budget</th><th>นาฬิกา</th><th class="act">ก้าวถัดไป</th></tr></thead>
+        <tbody>
+          <tr style="background:color-mix(in srgb,var(--red) 7%,transparent)">
+            <td><span class="t-strong">คุณอาทิตย์ ปิ่นแก้ว</span><span class="t-sub">บจก. สยาม เฟรช มาร์ท</span></td>
+            <td class="mid"><span class="chip violet dot chip-cell chip-w-lead">รอติดต่อกลับ</span></td><td>สินค้า — น้ำหอมปรับอากาศ</td><td class="num">75,000</td>
+            <td><span class="chip red dot chip-cell chip-w-clock">เกิน SLA 1 วัน</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">📞 บันทึกการติดต่อ</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณกิตติพงศ์ ธีรกุล</span><span class="t-sub">บจก. เมโทร ลิฟวิ่ง</span></td>
+            <td class="mid"><span class="chip violet dot chip-cell chip-w-lead">รอติดต่อกลับ</span></td><td>ระบบกระจายกลิ่น</td><td class="num">260,000</td>
+            <td><span class="chip amber dot chip-cell chip-w-clock">เหลือวันนี้</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">📞 บันทึกการติดต่อ</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณมนัสวี ทองอยู่</span><span class="t-sub">บจก. เดอะ ริเวอร์ เพลส</span></td>
+            <td class="mid"><span class="chip teal dot chip-cell chip-w-lead">ติดต่อแล้ว</span></td><td>ระบบกระจายกลิ่น</td><td class="num">180,000</td>
+            <td><span class="dash chip-w-clock" style="justify-content:flex-start">ติดต่อ 8 ส.ค. 14:20</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">🗓 นัดประชุม</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณวรพล อินทรีย์</span><span class="t-sub">บจก. นอร์ทเทิร์น ฮอสพิทาลิตี้</span></td>
+            <td class="mid"><span class="chip teal dot chip-cell chip-w-lead">นัดประชุมแล้ว</span></td><td>ระบบกระจายกลิ่น</td><td class="num">420,000</td>
+            <td><span class="chip teal sm chip-cell chip-w-clock">🚗 12 ส.ค. 10:00</span></td>
+            <td class="act"><button class="btn btn-sm btn-accent">📁 เปิดดีล</button> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+          <tr>
+            <td><span class="t-strong">คุณสุรีย์พร ชัยวัฒน์</span><span class="t-sub">บุคคลทั่วไป</span></td>
+            <td class="mid"><span class="chip green dot chip-cell chip-w-lead">เปิดลูกค้าแล้ว</span></td><td>อื่นๆ — กลิ่นเฉพาะทาง</td><td class="num">—</td>
+            <td><span class="dash chip-w-clock" style="justify-content:flex-start">ปิด 5 ส.ค.</span></td>
+            <td class="act"><span class="chip sm green chip-cell" style="--cell-chip-w:172px">DL-0409</span> <button class="btn btn-sm ghost">⋯</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout"><span class="co-ic">🎯</span><div><b>คอลัมน์ “ก้าวถัดไป” คือปุ่มเดียวที่ควรกด</b> — ปุ่มที่โผล่มาจากกติกาเดียวกับการ์ดคุมสถานะในหน้ารายละเอียด
+    ไม่ใช่ลอจิกคนละชุด · ส่วนที่ทำได้แต่ไม่ใช่ก้าวถัดไป (ตีกลับ / ปิดลีด / แก้ไข) อยู่ในเมนู <code class="mono">⋯</code></div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 7 · AE — รายละเอียดลีด ═══════════ -->
+<section class="screen" id="s7">
+<div class="workspace">
+  <div class="ws-head" style="margin-bottom:var(--space-4)">
+    <button class="btn btn-sm ghost">← กลับหน้าลีด</button>
+  </div>
+
+  <div class="overview">
+    <div class="ov-eyebrow">รายละเอียดลีด</div>
+    <h2>คุณมนัสวี ทองอยู่</h2>
+    <div class="ov-desc"><span>บจก. เดอะ ริเวอร์ เพลส</span><span>·</span><span>รับผ่าน LINE</span><span>·</span><span class="chip teal dot">ติดต่อแล้ว</span></div>
+    <div class="facts">
+      <div class="fact"><div class="f-lab">✨ บริการที่สนใจ</div><div class="f-val">ระบบกระจายกลิ่น</div></div>
+      <div class="fact"><div class="f-lab">💰 งบประมาณ</div><div class="f-val">180,000</div></div>
+      <div class="fact"><div class="f-lab">👥 ทีม</div><div class="f-val">Services</div></div>
+      <div class="fact"><div class="f-lab">👤 ผู้รับผิดชอบ</div><div class="f-val">ศิริพร ทัศนีย์</div></div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div>
+      <div class="section">
+        <div class="section-head"><h3>ข้อมูลผู้ติดต่อและความต้องการ</h3>
+          <div class="sh-right"><span class="sh-note">Lead information</span></div></div>
+        <div class="section-body">
+          <div class="grid2">
+            <div><div class="f-lab" style="font-size:var(--fs-11);color:var(--text-3)">ชื่อผู้ติดต่อ</div><div>คุณมนัสวี ทองอยู่</div></div>
+            <div><div class="f-lab" style="font-size:var(--fs-11);color:var(--text-3)">บริษัท</div><div>บจก. เดอะ ริเวอร์ เพลส</div></div>
+            <div><div class="f-lab" style="font-size:var(--fs-11);color:var(--text-3)">โทรศัพท์</div><div>081-234-5678</div></div>
+            <div><div class="f-lab" style="font-size:var(--fs-11);color:var(--text-3)">อีเมล</div><div>manasawee@riverplace.co.th</div></div>
+            <div class="wide"><div class="f-lab" style="font-size:var(--fs-11);color:var(--text-3)">รายละเอียดเพิ่มเติม</div>
+              <div>ลูกค้ากำลังรีโนเวทล็อบบี้ 2 ชั้น ต้องการกลิ่นซิกเนเจอร์ของโรงแรม ขอให้ติดต่อกลับช่วงบ่าย</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h3>ประวัติการดำเนินการ</h3><span class="sh-note">6 เหตุการณ์ระบบ + ข้อความในทีม</span></div>
+        <div class="section-body">
+          <div class="thread">
+            <div class="msg meet">
+              <span class="avatar mt">🗓</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>นัดหมาย</b><time>8 ส.ค. 15:02 · ศิริพร ทัศนีย์</time></div>
+                <div class="msg-text"><b>12 ส.ค. 2026 · 10:00 น.</b> — ออกไปหาลูกค้า (ที่โรงแรม ล็อบบี้ชั้น 1)</div>
+              </div>
+            </div>
+            <div class="msg">
+              <span class="avatar">ศท</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>ศิริพร ทัศนีย์</b><time>8 ส.ค. 14:25</time></div>
+                <div class="msg-text">คุยกับคุณมนัสวีแล้ว สนใจแบบท่อรวม ขอให้เข้าไปดูหน้างานก่อนเสนอราคา นัดวันจันทร์ 10 โมง</div>
+              </div>
+            </div>
+            <div class="msg sysline">
+              <span class="avatar sys">✓</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>ติดต่อลูกค้า</b><time>8 ส.ค. 14:20 · ศิริพร ทัศนีย์</time></div>
+                <div class="msg-text">โทรติด คุยได้ประมาณ 10 นาที · เวลาที่ติดต่อ 8 ส.ค. 14:15</div>
+              </div>
+            </div>
+            <div class="msg sysline">
+              <span class="avatar sys">→</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>มอบหมายผู้รับผิดชอบ</b><time>8 ส.ค. 09:35 · วีรยุทธ นาคะ</time></div>
+                <div class="msg-text">ศิริพร ทัศนีย์</div>
+              </div>
+            </div>
+            <div class="msg sysline">
+              <span class="avatar sys">🧭</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>คัดกรองและส่งทีม</b><time>8 ส.ค. 09:30 · ปรีชา อมรกุล</time></div>
+                <div class="msg-text">Services</div>
+              </div>
+            </div>
+            <div class="msg sysline">
+              <span class="avatar sys">📥</span>
+              <div class="msg-body">
+                <div class="msg-head"><b>รับลีดเข้าระบบ</b><time>8 ส.ค. 09:12 · ณิชา สมบูรณ์</time></div>
+                <div class="msg-text">ช่องทาง LINE</div>
+              </div>
+            </div>
+          </div>
+          <div class="composer">
+            <textarea class="textarea" style="min-height:64px" placeholder="พิมพ์อัปเดต เช่น โทรแล้วไม่รับ นัดโทรใหม่ศุกร์นี้..."></textarea>
+            <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2)"><button class="btn btn-sm btn-accent">ส่ง</button><button class="btn btn-sm ghost">📎 แนบไฟล์</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="ctrl">
+        <div class="ctrl-head">
+          <div class="ch-eyebrow">จุดจัดการลีด</div>
+          <h3>ติดต่อแล้ว</h3>
+          <p>ติดต่อลูกค้าแล้ว นัดประชุมหรือเปิดดีลต่อได้</p>
+        </div>
+        <div class="ctrl-body">
+          <ul class="steps">
+            <li class="done">คัดกรอง</li><li class="done">มอบหมาย</li><li class="now">ติดต่อ/นัดหมาย</li><li>เปิดดีล</li>
+          </ul>
+          <div class="ctrl-actions">
+            <button class="btn btn-accent btn-block">🗓 บันทึกนัดประชุม</button>
+            <button class="btn btn-block">✏️ แก้ไขข้อมูล</button>
+          </div>
+          <hr class="ctrl-sep">
+          <div class="ctrl-danger">
+            <button class="btn btn-sm">↩︎ ตีกลับคิวคัดกรอง</button>
+            <button class="btn btn-sm btn-danger">✕ ปิดลีด</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h3>ดีลจากลีดนี้</h3><span class="sh-note">ยังไม่มีดีล</span>
+          <div class="sh-right"><button class="btn btn-sm btn-accent">📁 เปิดดีลจากลีดนี้</button></div></div>
+        <div class="section-body">
+          <div class="empty" style="padding:var(--space-6) var(--space-4)">
+            <div class="e-ic">📁</div>
+            <b>ลีดนี้ยังไม่ได้เปิดดีล</b>
+            <p>กด “เปิดดีลจากลีดนี้” เพื่อเริ่ม — เปิดได้หลายใบจากลีดเดียว</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h3>สรุปลีด</h3></div>
+        <div class="section-body">
+          <dl class="kv">
+            <dt>สถานะ</dt><dd>ติดต่อแล้ว</dd>
+            <dt>กลุ่มช่องทาง</dt><dd style="color:var(--blue)">LINE</dd>
+            <dt>รับลีดโดย</dt><dd>ณิชา สมบูรณ์</dd>
+            <dt>วันที่รับ</dt><dd>8 ส.ค. 09:12</dd>
+            <dt>คัดกรองเมื่อ</dt><dd>8 ส.ค. 09:30</dd>
+            <dt>มอบหมายเมื่อ</dt><dd>8 ส.ค. 09:35</dd>
+            <dt>ติดต่อครั้งแรก</dt><dd>8 ส.ค. 14:15</dd>
+            <dt>นัดถัดไป</dt><dd style="color:var(--teal)">12 ส.ค. 10:00</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout green"><span class="co-ic">✅</span><div><b>ลงโค้ดแล้ว 2026-08-08 — ไทม์ไลน์โชว์เวลานัดกับรูปแบบนัด</b>
+    ระบบเก็บ <code class="mono">eventAt</code> และ <code class="mono">meetingMode</code> ลงตารางทุกครั้งมาตั้งแต่ต้น แต่ไม่มีใครอ่านออกมาแสดงเลย
+    — บนจอเห็นแค่คำว่า “นัดหมาย” กับ<b>เวลาที่กดบันทึก</b> ซึ่งไม่ใช่เวลาที่นัด
+    · ตอนนี้เหตุการณ์คัดกรองก็โชว์ทีมที่ส่งเข้าไปด้วย (เดิมบันทึกไว้แต่ไม่แสดง)</div></div>
+
+  <div class="callout green"><span class="co-ic">✅</span><div><b>ลงโค้ดแล้ว 2026-08-08 — ปุ่ม “แก้ไขข้อมูล” โผล่ที่สถานะนี้แล้ว</b>
+    เดิมลีดที่ “ติดต่อแล้ว” อยู่ในชุดสถานะที่ล็อกการแก้ไข ⇒ AE เจ้าของงานแก้เบอร์/งบที่ลูกค้าเพิ่งบอกมาไม่ได้ ต้องวานแอดมิน
+    · ชุดที่ล็อกเหลือแค่ <b>เปิดดีลแล้ว</b> กับ <b>ปิดลีดแล้ว</b></div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 8 · AE — นัดประชุม ═══════════ -->
+<section class="screen" id="s8">
+<div class="workspace">
+  <div class="note fix"><b>แก้แล้ว 2026-08-08</b> — เดิมพอลีดถึงสถานะ “นัดประชุมแล้ว” ระบบไม่ยอมให้บันทึกนัดครั้งที่ 2 และช่องเก็บเวลานัดมีช่องเดียว
+  ⇒ เลื่อนนัดหรือมีหลายนัดต่อลีดทำไม่ได้เลย
+  <br>ตอนนี้นัดกี่ครั้งก็ได้ · ช่อง <code class="mono">meetingAt</code> เปลี่ยนความหมายเป็น <b>“นัดถัดไปที่ยังไม่ถึง”</b>
+  ไม่ใช่ “นัดที่กดล่าสุด” — เพราะถ้าทับด้วยค่าล่าสุดเฉย ๆ คนที่มาบันทึกนัดที่<b>เพิ่งประชุมไปเมื่อวาน</b>ย้อนหลัง
+  จะทับนัดจริงในอนาคตทิ้ง แล้วลีดหลุดจากงานที่ต้องทำในแดชบอร์ดโดยไม่มีอะไรบอก
+  <br>⚠️ นับเฉพาะนัดหลัง “ตีกลับ” ครั้งล่าสุด — ตีกลับคือเริ่มรอบใหม่ นัดของเจ้าของคนเก่าต้องไม่ฟื้นกลับมา</div>
+
+  <div class="section">
+    <div class="section-head"><h3>โมดัลบันทึกนัดประชุม</h3><span class="sh-note">เปิดจากคิวหรือจากการ์ดคุมสถานะก็ได้ — ตัวเดียวกัน</span></div>
+    <div class="section-body" style="background:var(--panel-2)">
+      <div class="modal" style="max-width:520px;margin:0 auto">
+        <div class="modal-head"><h3>บันทึกนัดประชุม<span class="mh-sub">คุณมนัสวี ทองอยู่ · บจก. เดอะ ริเวอร์ เพลส</span></h3><button class="btn ghost btn-sm">✕</button></div>
+        <div class="modal-body">
+          <div class="field">
+            <label>รูปแบบนัด <span class="req">*</span></label>
+            <div class="seg-field">
+              <button data-v="onsite_customer_visit" aria-selected="true">ออกไปหาลูกค้า</button>
+              <button data-v="onsite_at_office">ลูกค้าเข้ามา</button>
+              <button data-v="online">Online</button>
+            </div>
+            <div class="hint">ใช้วัด KPI ด้วย — สัดส่วนนัดที่ต้องเดินทางบอกต้นทุนเวลาของทีม</div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>วันที่นัด <span class="req">*</span></label><input class="input" value="12 ส.ค. 2026"></div>
+            <div class="field"><label>เวลา <span class="req">*</span></label><input class="input" value="10:00"></div>
+          </div>
+          <div class="field"><label>สถานที่ / ลิงก์ประชุม <span class="opt">(ไม่บังคับ)</span></label><input class="input" value="โรงแรมบ้านสวนรีสอร์ท — ล็อบบี้ชั้น 1"></div>
+          <div class="field"><label>บันทึกย่อ <span class="opt">(ไม่บังคับ)</span></label><textarea class="textarea" style="min-height:64px" placeholder="ใครเข้าประชุมบ้าง เตรียมอะไรไป">พาช่างเข้าไปดูหน้างานด้วย เตรียมตัวอย่างกลิ่น 3 ตัว</textarea></div>
+        </div>
+        <div class="modal-foot">
+          <span class="mf-note">นัดจะขึ้นบนปฏิทินของคุณและของหัวหน้าทีมทันที</span>
+          <button class="btn">ยกเลิก</button>
+          <button class="btn btn-accent">บันทึกนัด</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>เมื่อมีนัดแล้ว — การ์ดคุมสถานะเปลี่ยนหน้าตา</h3>
+      <span class="sh-note">นัดครั้งที่ 2 / เลื่อนนัด ต้องอยู่ตรงนี้</span></div>
+    <div class="section-body">
+      <div class="split">
+        <div>
+          <div class="section" style="margin:0">
+            <div class="section-head"><h3>นัดของลีดนี้</h3><span class="sh-note">2 นัด</span></div>
+            <div class="table-scroll">
+              <table class="premium act-tail" style="min-width:0">
+                <thead><tr><th>เมื่อ</th><th>รูปแบบ</th><th>สถานที่</th><th>ผู้บันทึก</th><th class="act"></th></tr></thead>
+                <tbody>
+                  <tr><td class="t-strong">12 ส.ค. 10:00<span class="t-sub">อีก 4 วัน</span></td>
+                    <td><span class="chip teal sm chip-cell chip-w-mode">🚗 ออกไปหาลูกค้า</span></td><td>โรงแรม — ล็อบบี้ชั้น 1</td><td>ศิริพร ท.</td>
+                    <td class="act"><button class="btn btn-sm">เลื่อนนัด</button></td></tr>
+                  <tr><td>5 ส.ค. 14:00<span class="t-sub">ผ่านมาแล้ว</span></td>
+                    <td><span class="chip sm chip-cell chip-w-mode">💻 Online</span></td><td>Google Meet</td><td>ศิริพร ท.</td>
+                    <td class="act"><span class="chip sm green">ประชุมแล้ว</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="ctrl" style="margin:0">
+            <div class="ctrl-head">
+              <div class="ch-eyebrow">จุดจัดการลีด</div>
+              <h3>นัดประชุมแล้ว</h3>
+              <p>นัดถัดไป 12 ส.ค. 10:00 — ขั้นถัดไปคือเปิดดีล</p>
+            </div>
+            <div class="ctrl-body">
+              <ul class="steps"><li class="done">คัดกรอง</li><li class="done">มอบหมาย</li><li class="now">ติดต่อ/นัดหมาย</li><li>เปิดดีล</li></ul>
+              <div class="ctrl-actions">
+                <button class="btn btn-accent btn-block">🗓 นัดเพิ่ม / เลื่อนนัด</button>
+                <button class="btn btn-block">✏️ แก้ไขข้อมูล</button>
+              </div>
+              <hr class="ctrl-sep">
+              <div class="ctrl-danger">
+                <button class="btn btn-sm">↩︎ ตีกลับ</button>
+                <button class="btn btn-sm btn-danger">✕ ปิดลีด</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout green"><span class="co-ic">✅</span><div><b>ลงโค้ดแล้ว 2026-08-08</b> — สถานะ “นัดประชุมแล้ว” เปิดเพิ่มสองทาง:
+    <b>นัดเพิ่ม/เลื่อนนัด</b> (วนกลับตัวเอง สถานะไม่ขยับ) และ <b>ตีกลับ</b> (ทีมไม่ตรงบางทีเพิ่งรู้ตอนคุยกันจริง)
+    · ป้ายปุ่มเปลี่ยนคำเองตามสถานะ ลีดที่ยังไม่มีนัดอ่านว่า “บันทึกนัดประชุม”</div></div>
+
+  <div class="callout amber"><span class="co-ic">↩︎</span><div><b>“บันทึกการติดต่อเพิ่ม” ถูกตัดออกจากการ์ดนี้</b> —
+    ตอนลงโค้ดถึงเห็นว่า <code class="mono">contact</code> พาสถานะกลับไปเป็น “ติดต่อแล้ว” เสมอ (เป็นคู่ตายตัวในตารางปลายทาง)
+    ⇒ กดแล้ว<b>ลีดถอยหลังจากที่นัดไว้แล้ว</b> · บันทึกการคุยระหว่างรอประชุมใช้เธรดกลางด้านล่างของหน้ารายละเอียด
+    ซึ่งเปิดอยู่ทุกสถานะและมีที่ให้เล่ายาวกว่าอยู่แล้ว</div></div>
+
+  <div class="callout blue"><span class="co-ic">🗂</span><div><b>ตารางนัดด้านซ้ายไม่ได้สร้างแยก</b> — นัดทุกครั้งลงเป็นเหตุการณ์ในประวัติของลีด
+    ซึ่งตอนนี้โชว์เวลานัดกับรูปแบบนัดครบแล้ว (ข้อ 5) · สร้างตารางอีกใบจะเป็นรายการเดียวกันสองที่ที่ต้องคอยให้ตรงกัน
+    · การ์ดสรุปโชว์ <b>“นัดถัดไป”</b> ใบเดียว ส่วนใบที่เหลืออยู่ในประวัติ</div></div>
+</div>
+</section>
+
+
+<!-- ═══════════ 9 · AE — เปิดดีลจากลีด ═══════════ -->
+<section class="screen" id="s9">
+<div class="workspace">
+  <div class="note"><b>เปิดดีลไม่ใช่ “ขั้นถัดไป” ของลีด</b> — เป็นการสร้างของคนละชิ้น เปิดได้ตั้งแต่ติดต่อแล้ว หรือรอนัดประชุมก่อนก็ได้
+  และ<b>เปิดเพิ่มได้อีกแม้ลีดเป็น “เปิดลูกค้าแล้ว”</b> ปุ่มจึงอยู่ในการ์ด “ดีลจากลีดนี้” ติดกับรายการดีลที่ออกไปแล้ว ไม่ใช่ในการ์ดคุมสถานะ</div>
+
+  <div class="scrim" style="min-height:auto;border-radius:var(--radius-lg)">
+    <div class="modal lg">
+      <div class="modal-head"><h3>เปิดดีลจากลีดนี้<span class="mh-sub">ข้อมูลลูกค้าเติมมาจากลีดให้แล้ว — แก้ได้</span></h3><button class="btn ghost btn-sm">✕</button></div>
+      <div class="modal-body">
+        <div class="callout blue"><span class="co-ic">🔗</span><div><b>ต้นทาง: ลีด LEAD-2026-0873</b> — คุณมนัสวี ทองอยู่ · บจก. เดอะ ริเวอร์ เพลส · รับผ่าน LINE เมื่อ 8 ส.ค.
+          <br>บันทึกลงดีลเป็นแหล่งที่มา และประวัติ “สร้างดีลจากลีดนี้” จะขึ้นบนไทม์ไลน์ของลีด</div></div>
+        <div class="grid2">
+          <div class="field"><label>ชื่อดีล <span class="req">*</span></label><input class="input" value="ระบบกระจายกลิ่นล็อบบี้ — เดอะ ริเวอร์ เพลส"></div>
+          <div class="field"><label>ประเภทดีล <span class="req">*</span></label><select class="select"><option>SCENT</option><option>NPD</option><option>RE-ORDER</option></select></div>
+          <div class="field"><label>ลูกค้า <span class="req">*</span></label><select class="select"><option>บจก. เดอะ ริเวอร์ เพลส</option><option>＋ เปิดลูกค้าใหม่ในฐานข้อมูล</option></select>
+            <div class="hint">ยังไม่มีในทะเบียนลูกค้า ให้เปิดที่ฐานข้อมูลก่อน — ดีลผูกกับลูกค้าจริงเสมอ</div></div>
+          <div class="field"><label>โครงการ <span class="opt">(ไม่บังคับ)</span></label><select class="select"><option>— ไม่ผูกโครงการ —</option><option>PJ-0091 โรงแรมเครือริเวอร์</option></select>
+            <div class="hint">ผูกโครงการไว้ตั้งแต่ต้น เพื่อให้สอบถาม R&amp;D ในนามดีลนี้ได้</div></div>
+          <div class="field"><label>มูลค่าโครงการ</label><input class="input" value="180,000"></div>
+          <div class="field"><label>เดือน Forecast</label><input class="input" value="2026-09"></div>
+          <div class="field"><label>ความน่าจะเป็น</label><select class="select"><option>30% — กำลังคุย</option><option>50%</option><option>70%</option><option>90%</option></select></div>
+          <div class="field"><label>ผู้รับผิดชอบดีล</label><select class="select"><option>ศิริพร ทัศนีย์ (ตัวคุณเอง)</option><option>วีรยุทธ นาคะ · Senior AE</option></select>
+            <div class="hint">เลือกได้เฉพาะคนในทีมตัวเอง</div></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="mf-note">บันทึกแล้วลีดเปลี่ยนเป็น “เปิดลูกค้าแล้ว” · งานติดตามย้ายไปที่ดีล</span>
+        <button class="btn">ยกเลิก</button>
+        <button class="btn btn-accent">สร้างดีล</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top:var(--space-5)">
+    <div class="section-head"><h3>หลังเปิดดีลแล้ว — การ์ด “ดีลจากลีดนี้”</h3><span class="sh-note">2 ดีล</span>
+      <div class="sh-right"><button class="btn btn-sm btn-accent">📁 เปิดดีลเพิ่มจากลีดนี้</button></div></div>
+    <div class="section-body">
+      <div class="grid2">
+        <div class="lcard" style="margin:0">
+          <div class="lc-top"><span class="chip sm">SCENT</span><span class="chip sm blue">กำลังคุย</span></div>
+          <div class="lc-title">DL-0418 · ระบบกระจายกลิ่นล็อบบี้ — เดอะ ริเวอร์ เพลส</div>
+          <div class="lc-foot"><span>Forecast 2026-09</span><span>180,000</span></div>
+        </div>
+        <div class="lcard" style="margin:0">
+          <div class="lc-top"><span class="chip sm">RE-ORDER</span><span class="chip sm green">ปิดการขาย</span></div>
+          <div class="lc-title">DL-0431 · น้ำหอมเติมรายไตรมาส — เดอะ ริเวอร์ เพลส</div>
+          <div class="lc-foot"><span>Forecast 2026-10</span><span>64,000</span></div>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top:var(--space-4)"><span class="co-ic">⧉</span><div>
+        <b>ลีด 1 ใบ → หลายดีล เป็นเรื่องปกติ</b> ลูกค้ารายเดียวมักซื้อระบบก่อนแล้วค่อยเติมของ — ปุ่มจึงเปลี่ยนคำเป็น “เปิดดีล<b>เพิ่ม</b>” ไม่ใช่หายไป</div></div>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<!-- ═══════════ 10 · กำกับดูแล ═══════════ -->
+<section class="screen" id="s10">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">🛡</span>
+    <div><div class="ws-title">ปุ่มกำกับดูแล</div><div class="ws-sub">ตีกลับ / ปิดลีด — ทีมเจ้าของงาน + หัวหน้าฝ่ายขาย + แอดมิน · ทั้งคู่บังคับกรอกเหตุผล</div></div>
+  </div>
+
+  <div class="callout amber"><span class="co-ic">⚖️</span><div><b>สองระดับที่ต่างกัน</b> —
+    <b>ขั้นทำงาน</b> (ติดต่อ/นัด) เป็นของทีมเจ้าของงานเท่านั้น หัวหน้าฝ่ายขายไม่ลงไปทำแทน ·
+    <b>ขั้นกำกับดูแล</b> (ตีกลับ/ปิด) หัวหน้าฝ่ายขายเข้าได้ เพราะเป็นการตัดสินว่างานนี้ควรอยู่ที่ไหนต่อ ไม่ใช่การทำงานแทน</div></div>
+
+  <div class="split">
+    <div>
+      <div class="section">
+        <div class="section-head"><h3>ตีกลับคิวคัดกรอง</h3><span class="sh-note">ทีมไม่ตรงกับที่ลูกค้าสนใจ</span></div>
+        <div class="section-body" style="background:var(--panel-2)">
+          <div class="modal" style="max-width:100%">
+            <div class="modal-head"><h3>ตีกลับไปคิวคัดกรอง</h3></div>
+            <div class="modal-body">
+              <div class="callout red"><span class="co-ic">↩︎</span><div>ลีดจะกลับไปสถานะ <b>รอคัดกรอง</b> และ<b>ล้างทีม ผู้รับผิดชอบ และเวลาติดต่อของรอบก่อนทั้งหมด</b>
+                — เพื่อไม่ให้ SLA ของเจ้าของคนใหม่ถูกวัดจากเวลาของคนเก่า</div></div>
+              <div class="field">
+                <label>เหตุผลที่ตีกลับ <span class="req">*</span></label>
+                <textarea class="textarea" style="min-height:76px" placeholder="เช่น ทีมไม่ตรงกับบริการที่ลูกค้าสนใจ">ลูกค้าต้องการ Workshop ไม่ใช่ระบบกระจายกลิ่น — ควรเป็นทีม Services</textarea>
+                <div class="hint">เหตุผลจะขึ้นบนประวัติของลีดพร้อมชื่อคนกดและเวลา</div>
+              </div>
+            </div>
+            <div class="modal-foot"><span class="mf-note">กดแล้วลีดกลับเข้าคิวของ AE Supervisor</span>
+              <button class="btn">ยกเลิก</button><button class="btn btn-accent">ตีกลับ</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="section">
+        <div class="section-head"><h3>ปิดลีด — ไม่ไปต่อ</h3><span class="sh-note">ปิดถาวร</span></div>
+        <div class="section-body" style="background:var(--panel-2)">
+          <div class="modal" style="max-width:100%">
+            <div class="modal-head"><h3>ปิดลีดนี้</h3></div>
+            <div class="modal-body">
+              <div class="callout red"><span class="co-ic">✕</span><div>ลีดจะถูกปิดถาวร เหตุผลเก็บในประวัติ · ฝ่ายขายใช้ปุ่มนี้แทนการลบเสมอ
+                — ตัวเลข conversion ต้องเห็นว่าลีดที่ไม่ไปต่อหายไปเพราะอะไร</div></div>
+              <div class="field">
+                <label>เหตุผลที่ไม่ไปต่อ <span class="req">*</span></label>
+                <textarea class="textarea" style="min-height:76px" placeholder="เช่น งบไม่ถึง / ไม่ใช่กลุ่มเป้าหมาย / ติดต่อไม่ได้">ติดต่อกลับ 3 ครั้งไม่ได้รับสาย และส่ง LINE ไม่ตอบ 2 สัปดาห์</textarea>
+              </div>
+            </div>
+            <div class="modal-foot"><span class="mf-note">ลีดที่แตกดีลไปแล้วปิดได้ แต่ลบไม่ได้</span>
+              <button class="btn">ยกเลิก</button><button class="btn btn-danger">ปิดลีด</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h3>ลบลีด — เข้มกว่าแก้</h3><span class="sh-note">admin · หัวหน้าฝ่ายขาย · Marketing (ใบตัวเองที่ยัง new)</span></div>
+    <div class="section-body">
+      <div class="callout red"><span class="co-ic">🚫</span><div><b>ลีดที่แตกเป็นดีลไปแล้วลบไม่ได้</b>
+        — ประวัติการเปิดดีลจะหายไปจากดีลที่ยังอยู่ กู้ไม่ได้ · ระบบบอกจำนวนดีลที่ผูกอยู่และให้ไปจัดการดีลก่อน
+        <br><span class="mono" style="color:var(--text-3)">“ลีดนี้แตกเป็นดีลไปแล้ว 2 ดีล — ลบไม่ได้ เพราะประวัติการเปิดดีลจะหายไปจากดีลที่ยังอยู่”</span></div></div>
+      <div class="callout"><span class="co-ic">👁</span><div><b>ปุ่มลบไม่โผล่ถ้ากดแล้วต้องเด้ง</b> — เงื่อนไข “มีดีลผูกอยู่” ถูกคิดมาพร้อมสิทธิ์ตั้งแต่ตอนโหลดหน้า
+        ไม่ใช่โผล่ให้กดแล้วค่อยบอกว่าทำไม่ได้</div></div>
+      <div class="callout amber"><span class="co-ic">✂️</span><div><b>“แก้ไข” กับ “ลบ” เดินคนละกติกาตั้งแต่ 2026-08-08</b> —
+        แก้ไขปลดถึงก่อนเปิดดีล และเปิดให้ 4 ตำแหน่ง (MKT · AE Sup · Senior AE · AE) ·
+        <b>ลบยังเข้มเหมือนเดิม</b> เฉพาะ admin · AE Supervisor (ก่อนติดต่อ) · Marketing (ใบตัวเองที่ยัง <code class="mono">new</code>)
+        <br>เหตุผลที่ไม่ปลดพร้อมกัน: แก้ผิดยังตามแก้กลับได้จาก audit log แต่ลบแล้วประวัติหายถาวร — ฝ่ายขายจึงใช้ “ไม่ไปต่อ” แทนการลบเสมอ</div></div>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<!-- ═══════════ 11 · ปฏิทินนัด (ต่อยอด) ═══════════ -->
+<section class="screen" id="s11">
+<div class="workspace">
+  <div class="ws-head">
+    <span class="ws-icon">🗓</span>
+    <div><div class="ws-title">ปฏิทินนัด</div><div class="ws-sub">นัดจากลีด + นัดจากดีล + วันหยุด ในภาพเดียว — ขอบเขตเท่ากับที่เห็นในคิวลีดเป๊ะ</div></div>
+    <div class="ws-right">
+      <div class="seg"><button aria-selected="true">ของฉัน</button><button>ทีม</button><button>ทุกทีม</button></div>
+      <div class="seg"><button aria-selected="true">เดือน</button><button>สัปดาห์</button><button>รายการ</button></div>
+    </div>
+  </div>
+
+  <div class="callout green"><span class="co-ic">✅</span><div><b>สร้างแล้ว 2026-08-08 — <code class="mono">/sa/calendar</code></b>
+    อ่านจาก <code class="mono">lead_events</code> ที่ <code class="mono">kind='meeting'</code> โดยตรง (ไม่ใช่ <code class="mono">sales_leads.meetingAt</code> ซึ่งเก็บได้ใบละค่าเดียว)
+    ⇒ เห็นครบทุกนัด รวมนัดที่ผ่านไปแล้วและนัดที่ถูกเลื่อน · เมนู “ปฏิทินนัด” อยู่ถัดจาก “ลีด” ใช้สิทธิ์ตัวเดียวกัน</div></div>
+
+  <div class="callout amber"><span class="co-ic">✂️</span><div><b>ตัด “นัดจากดีล” ออกจากภาพนี้</b> —
+    ตอนลงมือถึงเช็กว่าช่องที่จะเก็บนัดของดีล (<code class="mono">entity_updates.meta.activityAt</code>) <b>ไม่มีโค้ดไหนเขียนลงไปเลย</b>
+    มีแต่ที่อ่าน เป็นเศษจากตอนยุบตาราง <code class="mono">sales_deal_activities</code> ⇒ ใส่ลงปฏิทินตอนนี้จะได้ช่องว่างเปล่าถาวรที่ไม่มีใครรู้ว่าทำไม
+    · อยากได้จริงต้องเปิดทางบันทึกนัดที่ฝั่งดีลก่อน ซึ่งเป็นงานคนละก้อน</div></div>
+
+  <div class="section">
+    <div class="section-body">
+      <div class="cal-bar">
+        <button class="btn btn-sm">‹</button>
+        <div class="cal-title">สิงหาคม 2026</div>
+        <div style="display:flex;gap:6px"><button class="btn btn-sm">วันนี้</button><button class="btn btn-sm">›</button></div>
+      </div>
+
+      <div class="cal-grid">
+        <div class="cal-dow we">อา.</div><div class="cal-dow">จ.</div><div class="cal-dow">อ.</div><div class="cal-dow">พ.</div><div class="cal-dow">พฤ.</div><div class="cal-dow">ศ.</div><div class="cal-dow we">ส.</div>
+
+        <div class="cal-cell we"><div class="cd"><span>2</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>3</span></div>
+          <div class="ev lead">🗓 10:00 นอร์ทเทิร์น</div></div>
+        <div class="cal-cell"><div class="cd"><span>4</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>5</span></div>
+          <div class="ev lead">💻 14:00 ริเวอร์ เพลส</div></div>
+        <div class="cal-cell"><div class="cd"><span>6</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>7</span></div>
+          <div class="ev lead">🚗 09:30 เมโทร ลิฟวิ่ง</div></div>
+        <div class="cal-cell we"><div class="cd"><span>8</span></div></div>
+
+        <div class="cal-cell we"><div class="cd"><span>9</span></div></div>
+        <div class="cal-cell today"><div class="cd"><span><b>10</b></span></div>
+          <div class="ev lead">🏢 11:00 สยาม เฟรช</div></div>
+        <div class="cal-cell"><div class="cd"><span>11</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>12</span></div>
+          <div class="ev lead">🚗 10:00 ริเวอร์ เพลส</div>
+          <div class="ev lead">💻 14:30 บางกอก ออฟฟิศ</div></div>
+        <div class="cal-cell hol"><div class="cd"><span>13</span><span class="hn">วันแม่ (ชดเชย)</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>14</span></div>
+          <div class="ev lead">🏢 13:00 คลินิกออร่า</div></div>
+        <div class="cal-cell we"><div class="cd"><span>15</span></div></div>
+
+        <div class="cal-cell we"><div class="cd"><span>16</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>17</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>18</span></div>
+          <div class="ev lead">💻 09:00 เดอะ ริเวอร์ (นัดที่ 2)</div></div>
+        <div class="cal-cell"><div class="cd"><span>19</span></div></div>
+        <div class="cal-cell"><div class="cd"><span>20</span></div>
+          <div class="ev lead">🚗 14:00 สยาม เฟรช</div></div>
+        <div class="cal-cell"><div class="cd"><span>21</span></div></div>
+        <div class="cal-cell we"><div class="cd"><span>22</span></div></div>
+      </div>
+
+      <div class="cal-legend">
+        <span><span class="sw" style="background:color-mix(in srgb,var(--teal) 30%,transparent)"></span> นัดที่ยังไม่ถึง</span>
+        <span><span class="sw" style="background:var(--panel-3)"></span> นัดที่ผ่านมาแล้ว</span>
+        <span><span class="sw" style="background:color-mix(in srgb,var(--red) 20%,transparent);border:1px solid color-mix(in srgb,var(--red) 35%,transparent)"></span> วันหยุด</span>
+        <span>🚗 ออกไปหาลูกค้า · 🏢 ลูกค้าเข้ามา · 💻 Online</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="callout blue"><span class="co-ic">🔒</span><div><b>ขอบเขตของปฏิทินต้องเท่ากับคิวลีดเป๊ะ</b> —
+      AE เห็นนัดของใบที่ตัวเองรับมอบ · Senior AE / AC เห็นทั้งทีม · หัวหน้าฝ่ายขาย/แอดมิน/ผู้บริหาร เห็นทุกทีม ·
+      ถ้าปฏิทินหลวมกว่าคิว มันจะกลายเป็นช่องอ่านชื่อลูกค้าข้ามทีมโดยไม่ตั้งใจ</div></div>
+    <div class="callout green"><span class="co-ic">✅</span><div><b>สองอย่างที่ต้องมีก่อน ทำเสร็จแล้ว 2026-08-08</b>
+      (1) นัดได้มากกว่าครั้งเดียวต่อลีด · (2) แหล่งความจริงของนัดคือ <code class="mono">lead_events</code>
+      ส่วนบนตัวลีดเหลือ “นัดถัดไป” ให้ KPI เดิมใช้ได้เหมือนเดิม
+      <br>⇒ ปฏิทินหน้านี้ดึงจาก <code class="mono">lead_events</code> ที่ <code class="mono">kind='meeting'</code> ได้ตรง ๆ แล้ว ไม่ต้องแก้โมเดลเพิ่ม</div></div>
+  </div>
+</div>
+</section>
+
+
+<!-- ═══════════ 12 · มือถือ ═══════════ -->
+<section class="screen" id="s12">
+<div class="workspace">
+  <div class="note"><b>AE ทำงานบนมือถือเป็นหลัก</b> — ติดต่อลูกค้าและบันทึกนัดเกิดนอกออฟฟิศ ปุ่มจึงต้องสูง 44px และก้าวถัดไปต้องอยู่บนการ์ดโดยไม่ต้องเข้าหน้ารายละเอียด</div>
+
+  <div class="phone-row">
+    <div>
+      <div class="phone">
+        <div class="phone-top"><span>9:41</span><span>ลีดของฉัน</span><span>▮▮▮</span></div>
+        <div class="phone-body">
+          <div class="metric-strip" style="grid-template-columns:1fr 1fr;margin-bottom:var(--space-4)">
+            <div class="metric is-alert" style="padding:var(--space-3)"><div class="m-label">ติดต่อวันนี้</div><div class="m-value">3</div></div>
+            <div class="metric" style="padding:var(--space-3)"><div class="m-label">นัดสัปดาห์นี้</div><div class="m-value">4</div></div>
+          </div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip violet sm dot">รอติดต่อกลับ</span><span class="chip red sm">เกิน SLA</span></div>
+            <div class="lc-title">คุณอาทิตย์ ปิ่นแก้ว</div>
+            <div class="lc-foot"><span>บจก. สยาม เฟรช มาร์ท</span><span>75,000</span></div>
+            <div class="lc-act"><button class="btn btn-touch btn-accent" style="flex:1">📞 บันทึกการติดต่อ</button><button class="btn btn-touch">⋯</button></div>
+          </div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip teal sm dot">ติดต่อแล้ว</span></div>
+            <div class="lc-title">คุณมนัสวี ทองอยู่</div>
+            <div class="lc-foot"><span>บจก. เดอะ ริเวอร์ เพลส</span><span>180,000</span></div>
+            <div class="lc-act"><button class="btn btn-touch btn-accent" style="flex:1">🗓 นัดประชุม</button><button class="btn btn-touch">⋯</button></div>
+          </div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip teal sm dot">นัดประชุมแล้ว</span></div>
+            <div class="lc-title">คุณวรพล อินทรีย์</div>
+            <div class="lc-foot"><span>🚗 12 ส.ค. 10:00</span><span>420,000</span></div>
+            <div class="lc-act"><button class="btn btn-touch btn-accent" style="flex:1">📁 เปิดดีล</button><button class="btn btn-touch">⋯</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-cap">คิวของฉัน — ก้าวถัดไปอยู่บนการ์ด ไม่ต้องเข้าหน้ารายละเอียด</div>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="phone-top"><span>9:41</span><span>บันทึกการติดต่อ</span><span>▮▮▮</span></div>
+        <div class="phone-body">
+          <div class="callout" style="padding:var(--space-3);font-size:var(--fs-12)"><span class="co-ic">📇</span><div><b>คุณอาทิตย์ ปิ่นแก้ว</b><br>081-456-7890 · บจก. สยาม เฟรช มาร์ท</div></div>
+          <div class="field"><label>หมายเหตุการติดต่อ <span class="req">*</span></label>
+            <textarea class="textarea" placeholder="คุยกับใคร ได้ข้อมูลอะไร นัดอะไรต่อ"></textarea>
+            <div class="hint">บังคับกรอก — เว้นว่างแล้วระบบเด้งกลับ</div></div>
+          <div class="field"><label>เวลาที่ติดต่อ</label><input class="input" value="10 ส.ค. 2026 · 09:38"><div class="hint">เว้นไว้ = ใช้เวลาที่กดบันทึก</div></div>
+          <button class="btn btn-touch btn-accent btn-block" style="margin-top:var(--space-4)">บันทึกการติดต่อ</button>
+          <button class="btn btn-touch btn-block ghost" style="margin-top:var(--space-2)">ยกเลิก</button>
+        </div>
+      </div>
+      <div class="phone-cap">บังคับหมายเหตุ — จอเล็กต้องบอกก่อนกด ไม่ใช่หลังโดนเด้ง</div>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="phone-top"><span>9:41</span><span>ปฏิทินนัด</span><span>▮▮▮</span></div>
+        <div class="phone-body">
+          <div style="font-size:var(--fs-13);font-weight:700;margin-bottom:var(--space-3)">สัปดาห์นี้ · 4 นัด</div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip teal sm">🚗 ออกไปหาลูกค้า</span></div>
+            <div class="lc-title">จ. 12 ส.ค. · 10:00</div>
+            <div class="lc-foot"><span>คุณมนัสวี — เดอะ ริเวอร์ เพลส</span></div>
+            <div class="lc-foot"><span>โรงแรมบ้านสวน ล็อบบี้ชั้น 1</span></div>
+          </div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip sm">💻 Online</span></div>
+            <div class="lc-title">จ. 12 ส.ค. · 14:30</div>
+            <div class="lc-foot"><span>คุณธีรเดช — บางกอก ออฟฟิศ พาร์ค</span></div>
+          </div>
+          <div class="lcard" style="opacity:.6">
+            <div class="lc-top"><span class="chip red sm">วันหยุด</span></div>
+            <div class="lc-title">อ. 13 ส.ค. · วันแม่ (ชดเชย)</div>
+          </div>
+          <div class="lcard">
+            <div class="lc-top"><span class="chip teal sm">🏢 ลูกค้าเข้ามา</span></div>
+            <div class="lc-title">พฤ. 14 ส.ค. · 13:00</div>
+            <div class="lc-foot"><span>คุณอรวรรณ — คลินิกออร่า</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-cap">มุมมองรายการคือค่าตั้งต้นบนมือถือ — ตารางเดือน 7 คอลัมน์อ่านไม่ออกบนจอเล็ก</div>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<div class="workspace" style="padding-top:0">
+  <div class="legend">
+    <b>อ่าน mockup นี้ยังไง</b>
+    <ul style="margin-top:var(--space-2)">
+      <li>• จอ <b>0–10</b> = ของที่มีอยู่จริงในระบบวันนี้ วาดตามพฤติกรรมจริงของโค้ด</li>
+      <li>• กล่องเขียว <b>“ลงโค้ดแล้ว”</b> = เคยเป็นช่องว่าง แก้ไปแล้วเมื่อ 2026-08-08 · กล่องเหลืองคือของที่ตัดออกพร้อมเหตุผล</li>
+      <li>• จอ <b>11</b> (ปฏิทินนัด) สร้างจริงแล้วที่ <code>/sa/calendar</code> — มุมมองเดือน + รายการ (มือถือเริ่มที่รายการ)</li>
+      <li>• ปุ่มในภาพกดไม่ได้ (ยกเว้นแถบเลือกจอด้านบนกับปุ่มสลับธีม) · เลื่อนจอด้วยลูกศรซ้าย/ขวาได้</li>
+      <li>• สีทั้งหมดมาจากโทเคนชุดเดียวกับแอปจริง — สลับธีมมืด/สว่างแล้วยังอ่านได้ทั้งคู่</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+  var MENUS={
+    sales:['แดชบอร์ด','ลีด','ดีล','โครงการ','ใบเสนอราคา','ใบสั่งขาย','ขอราคาผลิต','คำร้อง'],
+    salesCal:['แดชบอร์ด','ลีด',{n:'ปฏิทินนัด',k:'cal',isNew:true},'ดีล','โครงการ','ใบเสนอราคา','ใบสั่งขาย','คำร้อง'],
+    mkt:['ลีด']
+  };
+  var MAP={
+    s0:{sys:'sales',set:'sales',menu:null,role:'ภาพรวมทุกตำแหน่ง'},
+    s1:{sys:'sales',set:'mkt',menu:'ลีด',role:'MKT · marketing'},
+    s2:{sys:'sales',set:'mkt',menu:'ลีด',role:'MKT · marketing'},
+    s3:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · ae_supervisor'},
+    s4:{sys:'sales',set:'sales',menu:'แดชบอร์ด',role:'SA · ae_supervisor'},
+    s5:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · senior_ae · ทีม KA'},
+    s6:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · ae · ทีม SV'},
+    s7:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · ae · ทีม SV'},
+    s8:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · ae · ทีม SV'},
+    s9:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · ae · ทีม SV'},
+    s10:{sys:'sales',set:'sales',menu:'ลีด',role:'SA · senior_ae / ae_supervisor'},
+    s11:{sys:'sales',set:'salesCal',menu:'cal',role:'SA · ae · ทีม SV'},
+    s12:{sys:'sales',set:'salesCal',menu:'cal',role:'SA · ae · ทีม SV'}
+  };
+  var menuRow=document.getElementById('menu-row'),whoEl=document.getElementById('who-role');
+  var sysEls=document.querySelectorAll('#sys-switch [data-sys]');
+  var tabs=document.querySelectorAll('.deck [data-s]'),screens=document.querySelectorAll('.screen');
+  function show(id){
+    var cfg=MAP[id]; if(!cfg) return;
+    tabs.forEach(function(t){t.setAttribute('aria-selected',String(t.getAttribute('data-s')===id));});
+    screens.forEach(function(s){s.classList.toggle('is-active',s.id===id);});
+    sysEls.forEach(function(s){s.classList.toggle('is-current',s.getAttribute('data-sys')===cfg.sys);});
+    menuRow.textContent='';
+    (MENUS[cfg.set]||MENUS.sales).forEach(function(item){
+      var name=typeof item==='string'?item:item.n;
+      var key=typeof item==='string'?item:item.k;
+      var a=document.createElement('a'); a.href='#'; a.textContent=name;
+      var cls=[];
+      if(key===cfg.menu) cls.push('is-current');
+      if(typeof item==='object'&&item.isNew) cls.push('is-new');
+      if(cls.length) a.className=cls.join(' ');
+      a.addEventListener('click',function(e){e.preventDefault();});
+      menuRow.appendChild(a);
+    });
+    whoEl.textContent=cfg.role;
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-s'));window.scrollTo({top:0});});});
+  document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+    if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;
+    var ids=Array.prototype.map.call(tabs,function(t){return t.getAttribute('data-s');});
+    var cur=ids.indexOf(document.querySelector('.screen.is-active').id);
+    var next=e.key==='ArrowRight'?Math.min(cur+1,ids.length-1):Math.max(cur-1,0);
+    show(ids[next]);
+  });
+  ['.seg-field','.tabs','.people'].forEach(function(sel){
+    document.querySelectorAll(sel).forEach(function(g){
+      g.querySelectorAll(sel==='.people'?'.person':'button').forEach(function(b){
+        b.addEventListener('click',function(){
+          g.querySelectorAll(sel==='.people'?'.person':'button').forEach(function(x){x.setAttribute('aria-selected','false');});
+          b.setAttribute('aria-selected','true');
+        });
+      });
+    });
+  });
+  var root=document.documentElement;
+  document.getElementById('theme-toggle').addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme',dark?'light':'dark');
+  });
+  show('s0');
+})();
+</script>
+</body>
+</html>

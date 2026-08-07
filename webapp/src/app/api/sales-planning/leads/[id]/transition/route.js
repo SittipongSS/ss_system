@@ -2,12 +2,31 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, isSuperuser } from '@/lib/permissions';
-import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead } from '@/lib/sales/leads';
+import {
+  LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
+  meetingTimesSinceBounce, pickNextMeetingAt,
+} from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS, TEAM_LABELS } from '@/lib/permissions';
 import { sendChat, chatCard } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
+
+/* เวลานัดที่ควรค้างบน `sales_leads.meetingAt` หลังบันทึกนัดใบใหม่ —
+ * กติกาอยู่ที่ `meetingTimesSinceBounce` + `pickNextMeetingAt` ใน lib/sales/leads.js
+ * (route เหลือหน้าที่เดียวคือดึงประวัติมาส่งต่อ) */
+async function nextMeetingAt(supabase, leadId, addedAt, now) {
+  const { data, error } = await supabase
+    .from('lead_events')
+    .select('kind, eventAt, createdAt')
+    .eq('leadId', leadId)
+    .in('kind', ['meeting', 'bounce'])
+    .order('createdAt', { ascending: false });
+  // อ่านประวัติไม่ได้ = ถอยไปใช้นัดที่เพิ่งบันทึก (พฤติกรรมเดิมก่อนมติ) ไม่ล้มทั้งรายการ
+  if (error) console.error('[lead transition] อ่านประวัตินัดไม่สำเร็จ:', error.message);
+  const previous = error ? [] : meetingTimesSinceBounce(data || []);
+  return pickNextMeetingAt([...previous, addedAt].filter(Boolean), now) || addedAt || null;
+}
 
 // POST /api/sales-planning/leads/[id]/transition
 // { action: screen|assign|contact|meeting|qualify|disqualify|bounce,
@@ -93,9 +112,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } else if (action === 'meeting') {
     if (!workScope) return forbidden('บันทึกนัดประชุมได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     if (body.meetingMode && !MEETING_MODES.includes(body.meetingMode)) return badRequest('รูปแบบนัดไม่ถูกต้อง');
-    patch.meetingAt = body.eventAt || now;
+    const meetingAt = body.eventAt || now;
     event.meetingMode = body.meetingMode || null;
-    event.eventAt = body.eventAt || now;
+    event.eventAt = meetingAt;
+    // ลีดเดียวมีได้หลายนัดแล้ว — คอลัมน์เก็บ "นัดถัดไป" ไม่ใช่ "นัดที่กดล่าสุด"
+    patch.meetingAt = await nextMeetingAt(supabase, lead.id, meetingAt, now);
   } else if (action === 'create_deal') {
     // สร้างดีลจากลีดต้องผ่าน POST /api/sales-planning/deals (ทางเดียว) — ที่นั่นออกรหัส DL
     // แบบ atomic + บันทึก stage history + audit + กันสร้างซ้ำ. path นี้เดิมสร้างดีล

@@ -21,7 +21,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -30,6 +30,28 @@ import Textarea from "@/components/ui/Textarea";
    ⚠️ `create_deal` คือค่าที่ POST /deals เขียนจริง ส่วน `qualify` เป็นค่าของเส้นทางเก่า
    ที่เลิกใช้แล้ว — คงไว้เผื่อแถวเก่า แต่ของใหม่มาทาง create_deal ทั้งหมด */
 const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", bounce: "ส่งกลับคิวคัดกรอง", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
+
+/* เนื้อของเหตุการณ์ระบบบนไทม์ไลน์
+   🐞 ของเดิมโชว์แค่ `reason` กับ `assigneeName` ⇒ **เวลานัดและรูปแบบนัดที่ AE กรอกทุกครั้ง
+   ไม่เคยโผล่ที่ไหนเลย** ทั้งที่ `lead_events.eventAt` / `.meetingMode` ถูกเขียนลงตารางมา
+   ตั้งแต่ mig 0091 · บนจอเห็นแค่คำว่า "นัดหมาย" กับเวลาที่กดบันทึก ซึ่งไม่ใช่เวลาที่นัด
+   (ก่อนหน้านี้ที่เดียวที่เห็นเวลานัดคือการ์ดสรุป ซึ่งโชว์ได้ใบเดียว)
+
+   ⚠️ `eventAt` = เวลาที่เกิดเหตุการณ์จริง (เวลานัด / เวลาที่โทร) · `createdAt` = เวลาที่กด
+   บันทึก — ต่างกันได้เป็นวัน ไทม์ไลน์ **เรียง** ด้วย createdAt แต่ต้อง **เล่าเรื่อง** ด้วย eventAt */
+function eventDetail(event) {
+  const parts = [];
+  if (event.kind === "meeting") {
+    if (event.eventAt) parts.push(`นัด ${fmtDateTime(event.eventAt)}`);
+    if (event.meetingMode) parts.push(MEETING_MODE_LABELS[event.meetingMode] || event.meetingMode);
+  }
+  if (event.reason) parts.push(event.reason);
+  if (event.kind === "contact" && event.eventAt) parts.push(`ติดต่อเมื่อ ${fmtDateTime(event.eventAt)}`);
+  // ทีมกับผู้รับผิดชอบคือ "ผลของเหตุการณ์" ของ screen/assign — เดิมทีมหายไปทั้งที่บันทึกไว้
+  if (event.team) parts.push(TEAM_LABELS[event.team] || event.team);
+  if (event.assigneeName) parts.push(event.assigneeName);
+  return parts.join(" · ");
+}
 const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", details: "" };
 
 export default function LeadDetailPage() {
@@ -101,7 +123,7 @@ export default function LeadDetailPage() {
     label: EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด",
     color: "var(--text-3)",
     by: event.createdByName || null,
-    body: [event.reason, event.assigneeName].filter(Boolean).join(" · "),
+    body: eventDetail(event),
   })), [lead?.events]);
 
   async function save() {
@@ -347,6 +369,8 @@ function LeadSummary({ lead }) {
     <div className={styles.summaryRow}><span>คัดกรองเมื่อ</span><strong>{lead.screenedAt ? fmtDateTime(lead.screenedAt) : "-"}</strong></div>
     <div className={styles.summaryRow}><span>มอบหมายเมื่อ</span><strong>{lead.assignedAt ? fmtDateTime(lead.assignedAt) : "-"}</strong></div>
     <div className={styles.summaryRow}><span>ติดต่อครั้งแรก</span><strong>{lead.firstContactAt ? fmtDateTime(lead.firstContactAt) : "-"}</strong></div>
-    <div className={styles.summaryRow}><span>นัดหมาย</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : "-"}</strong></div>
+    {/* "นัดถัดไป" ไม่ใช่ "นัดล่าสุด" — ลีดหนึ่งใบมีได้หลายนัดแล้ว คอลัมน์เก็บนัดที่ยังไม่ถึง
+        (ดู nextMeetingAt ใน route ของ transition) · นัดทั้งหมดอยู่ในประวัติด้านซ้าย */}
+    <div className={styles.summaryRow}><span>นัดถัดไป</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : "-"}</strong></div>
   </DetailCard>;
 }

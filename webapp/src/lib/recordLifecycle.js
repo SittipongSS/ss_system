@@ -121,13 +121,14 @@ export function defineLifecycle({
       .map((transition) => {
         const verdict = transition.allow(record, user);
         const blocked = verdict !== true;
+        const label = resolveLabel(transition.label, record);
         return {
           id: transition.id,
-          label: transition.label,
+          label,
           /* ป้ายสำหรับ *แถวตาราง* — ที่นั่นมีความกว้างเท่าคอลัมน์เดียว ป้ายของการ์ด
              เขียนให้อ่านเป็นประโยคได้ ("มอบหมายผู้รับผิดชอบ") ยาวเกินจนแถวตกบรรทัด
              ไม่ระบุ = ใช้ label เดิม (สั้นอยู่แล้วก็ไม่ต้องเขียนซ้ำ) */
-          rowLabel: transition.rowLabel || transition.label,
+          rowLabel: resolveLabel(transition.rowLabel, record) || label,
           rowTone: transition.rowTone,
           kind: transition.kind,
           icon: transition.icon,
@@ -229,6 +230,33 @@ function normalizeField(field, entity, transitionId) {
     throw new Error(`defineLifecycle(${entity}): ${transitionId} — field ${field.name} type ไม่รองรับ (${FIELD_TYPES.join("|")})`);
   }
   return { required: false, ...field, type };
+}
+
+/**
+ * ตัวเลือกของ field ชนิด `person` — รับได้ทั้งอาร์เรย์ตายตัวและ **ฟังก์ชันของ record**
+ *
+ * ทำไมต้องรับฟังก์ชัน: lifecycle ถูกสร้างครั้งเดียวต่อหน้า (useMemo) แต่หน้ารายการมี
+ * หลายระเบียนในจอเดียว และบางชุดรายชื่อขึ้นกับ *ตัวระเบียน* ไม่ใช่ตัวคนที่เปิดหน้าอยู่ —
+ * ผู้รับผิดชอบลีดต้องอยู่ทีมเดียวกับ **ลีดใบนั้น** ส่วน admin/หัวหน้าฝ่ายไม่มีทีมของตัวเอง
+ * ถ้ากรองด้วยทีมของคนดู ทั้งสองตำแหน่งจะเห็นชื่อทุกคนทุกทีมแล้วเลือกไปโดน 400 จาก server
+ *
+ * ⚠️ เห็นชื่อในดรอปดาวน์แล้วเลือกไม่ได้ = แย่กว่าไม่เห็นชื่อนั้นเลย
+ */
+/**
+ * ป้ายของ transition — รับได้ทั้งสตริงและ **ฟังก์ชันของ record**
+ *
+ * บาง action เป็นปุ่มเดียวกันแต่คนละจังหวะ แล้วคำที่ถูกต้องคนละคำ — เช่นลีดที่ยังไม่มีนัด
+ * ปุ่มคือ "บันทึกนัดประชุม" ส่วนลีดที่นัดไว้แล้วปุ่มเดียวกันนั้นคือ "นัดเพิ่ม / เลื่อนนัด"
+ * ถ้าใช้คำเดียวตายตัว ผู้ใช้จะเดาไม่ออกว่ากดแล้วทับของเดิมหรือเพิ่มใบใหม่
+ * (แพตเทิร์นเดียวกับที่ `leadDealAction` ทำมือไว้ก่อนหน้านี้: "เปิดดีล" vs "เปิดดีลเพิ่ม")
+ */
+export function resolveLabel(label, record) {
+  return typeof label === "function" ? label(record) : label;
+}
+
+export function fieldUsers(field, record) {
+  const users = typeof field?.users === "function" ? field.users(record) : field?.users;
+  return Array.isArray(users) ? users : [];
 }
 
 /**

@@ -61,13 +61,14 @@ test('บัญชีที่ถูกระงับ (ลาออก) มอ�
 });
 
 test('role ที่ทำงานคิวลีดไม่ได้ → ปฏิเสธ ไม่ปล่อยให้ลีดค้างถาวร', async () => {
-  for (const role of ['legal', 'staff', 'rd', 'marketing', 'viewer', 'executive', 'secretary', 'ae_supervisor']) {
+  // ⭐ `ac` อยู่ในกองนี้ตั้งแต่มติ 2026-08-08 — หลังบ้านของทีม ไม่รับเป็นเจ้าของลีด
+  for (const role of ['legal', 'staff', 'rd', 'marketing', 'viewer', 'executive', 'secretary', 'ae_supervisor', 'ac']) {
     const result = await validateLeadAssignee(
       stub({ 'U-1': authUser({ app_metadata: { role, team: 'ODM' } }) }), 'U-1',
     );
     assert.equal(result.ok, false, `role ${role} ต้องถูกปฏิเสธ`);
   }
-  for (const role of ['ae', 'senior_ae', 'ac', 'admin']) {
+  for (const role of ['ae', 'senior_ae', 'admin']) {
     const result = await validateLeadAssignee(
       stub({ 'U-1': authUser({ app_metadata: { role, team: 'ODM' } }) }), 'U-1',
     );
@@ -85,12 +86,25 @@ test('ทุก role ที่อนุญาต ต้องมีทางท�
   }
 });
 
-test('role ที่ไม่อยู่ในลิสต์ ต้องทำงานลีดไม่ได้จริง (ลิสต์ไม่แคบเกินไป)', () => {
+/* ⭐ หัวใจข้อสอง: ลิสต์นี้ **แคบกว่า canWorkLead ได้ แต่ห้ามกว้างกว่า**
+     · กว้างกว่า = มอบให้คนที่กดอะไรไม่ได้ ⇒ ลีดค้างถาวร (เหตุผลที่ไฟล์นี้เกิดมา)
+     · แคบกว่า = ต้องมีมติกำกับเสมอ วันนี้มีรายเดียวคือ AC (มติ 2026-08-08)
+   ลิสต์ข้อยกเว้นตรึงไว้ที่นี่ เพื่อไม่ให้ใครถูกตัดออกเงียบ ๆ เพิ่มโดยไม่มีมติ */
+const NARROWED_BY_DECISION = ['ac'];
+
+test('ลิสต์แคบกว่า canWorkLead ได้เฉพาะรายที่มีมติกำกับ — ที่เหลือต้องทำงานลีดไม่ได้จริง', () => {
   const lead = { team: 'ODM', assigneeId: 'U-1' };
   for (const role of ['legal', 'staff', 'rd', 'marketing', 'viewer', 'ae_supervisor']) {
     assert.equal(
       canWorkLead({ role, id: 'U-1', team: 'ODM' }, lead), false,
       `${role} ทำงานลีดได้แต่ถูกกันออกจากลิสต์ผู้รับผิดชอบ`,
+    );
+  }
+  for (const role of NARROWED_BY_DECISION) {
+    assert.ok(!LEAD_ASSIGNEE_ROLES.includes(role), `${role} ต้องไม่อยู่ในลิสต์ผู้รับผิดชอบ`);
+    assert.equal(
+      canWorkLead({ role, id: 'U-1', team: 'ODM' }, lead), true,
+      `${role} ถูกตัดออกด้วย "มติ" — ถ้ามันทำงานลีดไม่ได้อยู่แล้ว มติข้อนี้ก็ไม่มีความหมาย`,
     );
   }
 });

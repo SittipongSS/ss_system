@@ -67,8 +67,18 @@ export const MEETING_MODE_LABELS = {
   online: 'Online',
 };
 
-// สถานะที่เริ่มติดต่อแล้ว — ข้อมูลลีดล็อกสำหรับทุก role ยกเว้น admin
-export const LEAD_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
+// ── สองชุด "สถานะที่ล็อก" ที่ห้ามใช้ปนกัน (มติผู้ใช้ 2026-08-08) ───────────────
+// เดิมเป็นชุดเดียวคุมทั้งแก้และลบ = ลีดถูกปิดการแก้ทันทีที่เริ่มติดต่อ เหลือ admin คนเดียว
+// ที่แก้ได้ ทั้งที่คนซึ่งรู้ข้อมูลใหม่คือ MKT ที่รับสายกับ AE ที่กำลังคุยกับลูกค้าอยู่
+//
+// แก้ไข → ล็อกตอน "เปิดดีลแล้ว/ปิดลีดแล้ว" เพราะจากจุดนั้นลีดกลายเป็น *บันทึกต้นทาง*
+//   งานย้ายไปอยู่ที่ดีล ข้อมูลที่เปลี่ยนหลังจากนั้นต้องแก้ที่ดีล ไม่ใช่ย้อนมาแก้ต้นทาง
+//   จนเอกสารสองใบเล่าเรื่องคนละอย่าง
+// ลบ   → คงเข้มเท่าเดิมทุกประการ: แก้ผิดยังตามกลับได้จาก audit log แต่ลบแล้ว
+//   `lead_events` หายตาม (ON DELETE CASCADE — mig 0091) กู้ไม่ได้
+//   ฝ่ายขายจึงใช้ "ไม่ไปต่อ" (disqualify) แทนการลบเสมอ
+export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
+export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 
 // ── ใครเห็นลีดแค่ไหน (เฟส C) ─────────────────────────────────────────────
 //   supervisor/admin/viewer/executive → ทุกใบ · marketing → ทุกใบ (ทีม intake
@@ -78,9 +88,11 @@ export const LEAD_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqu
 // ⚠️ senior_ae/ac **ไม่เห็นคิวกลาง (`new`)** — ลีดที่ยังไม่คัดกรองมี team = null
 // ซึ่ง `.eq('team', …)` ไม่คืนให้ (บรรทัดคอมเมนต์เดิมเขียนว่าเห็น "คิวกลาง (new)" ด้วย
 // ซึ่งไม่ตรงกับโค้ดมาตั้งแต่ต้น — แก้คำอธิบายให้ตรงของจริง 2026-08-04)
-// ผลข้างเคียงที่ยังเหลือ: `canEditLead` ยอมให้ senior_ae/ac แก้ลีดที่ยังไม่มีทีมได้
-// (`!lead.team`) ทั้งที่หา
-// ลีดใบนั้นไม่เจอในลิสต์ — เป็นสิทธิ์ที่ลอยอยู่ ไม่ใช่ทางที่ใช้งานจริง
+// `canEditLead` ยังยอมให้ senior_ae แก้ลีดที่ยังไม่มีทีม (`!lead.team`) อยู่ตามเดิม —
+// แต่ **ไปไม่ถึงแล้ว**: ทั้ง GET / PATCH / DELETE ผ่านด่าน `inLeadScope` ก่อนเสมอ
+// ซึ่งบังคับ `!!lead.team && lead.team === user.team` สำหรับ senior_ae/ac
+// (เดิม PATCH ไม่มีด่านนี้ ⇒ ยิง URL ตรงเข้าไปแก้ลีดในคิวกลางได้ · ปิดแล้ว 2026-08-08)
+// ปล่อยสาขานี้ไว้เพราะมันไม่ใช่นโยบายที่ผิด — ที่ผิดคือด่านมองเห็นที่ขาดไป
 //
 // เดิมสามตัวนี้อยู่ในไฟล์ API route แล้วไฟล์อื่นต้อง `import … from '../route'` —
 // ย้ายมาอยู่กับ canEditLead/canWorkLead ที่นี่เพราะทะเบียนเธรดกลาง (updateAccess)
@@ -132,19 +144,25 @@ export function canCreateDealFromLead(role) {
   return role === 'admin' || role === 'ae' || role === 'senior_ae';
 }
 
-// นโยบายแก้/ลบลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ):
-//   admin → ทุกใบทุกสถานะ · supervisor → ก่อนเริ่มติดต่อ
-//   marketing → เฉพาะใบที่ตัวเองกรอก และเฉพาะก่อนคัดกรอง (status = new) —
-//     มติผู้ใช้ 2026-07-20: คัดกรองแล้วถือว่าส่งมอบให้ฝ่ายขาย MKT ห้ามแก้/ลบ
-//   senior_ae/ac → ลีดของทีมตัวเอง (หรือยังไม่มีทีม) ก่อนเริ่มติดต่อ
-//   ae → ใบที่ถูกมอบหรือกรอกเอง ก่อนเริ่มติดต่อ
+// นโยบาย **แก้** ลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ)
+// ขอบเขต "ใบไหนบ้าง" ของแต่ละตำแหน่งไม่เปลี่ยนจากเดิม — ที่ปลดคือเรื่อง *สถานะ* อย่างเดียว
+//   admin          → ทุกใบทุกสถานะ
+//   ae_supervisor  → ทุกใบ ก่อนเปิดดีล
+//   marketing      → ใบที่ตัวเองกรอก ก่อนเปิดดีล
+//     ⭐ มติผู้ใช้ 2026-08-08 **กลับมติ 2026-07-20** (เดิม: คัดกรองแล้วห้ามแตะ) —
+//     ลูกค้าโทรมาแก้เบอร์/เพิ่มงบหลังส่งเข้าทีมแล้วเป็นเรื่องปกติ และคนที่รับสายคือ MKT
+//     ไม่ใช่ AE · ปิดทางแก้ = ข้อมูลผิดค้างอยู่ในระบบหรือไปโผล่ในช่องหมายเหตุแทน
+//   senior_ae      → ลีดของทีมตัวเอง (หรือยังไม่มีทีม) ก่อนเปิดดีล
+//   ae             → ใบที่ถูกมอบหรือกรอกเอง ก่อนเปิดดีล
+//   ac             → **ไม่ได้เลย** (มติ 2026-08-08) — AC เป็นหลังบ้านของทีม SA
+//     เดินงานให้ทีมได้ (ดู canWorkLead) แต่ไม่ใช่เจ้าของข้อมูลของใบไหน
 export function canEditLead(user, lead) {
   const role = user?.role;
   if (role === 'admin') return true;
-  if (LEAD_LOCKED_STATUSES.includes(lead.status)) return false;
+  if (LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return false;
   if (isSuperuser(role)) return true;
-  if (role === 'marketing') return lead.status === 'new' && !!user?.id && lead.createdBy === user.id;
-  if (role === 'senior_ae' || role === 'ac') return !lead.team || lead.team === user?.team;
+  if (role === 'marketing') return !!user?.id && lead.createdBy === user.id;
+  if (role === 'senior_ae') return !lead.team || lead.team === user?.team;
   if (role === 'ae') return (!!user?.id && (lead.assigneeId === user.id || lead.createdBy === user.id));
   return false;
 }
@@ -161,23 +179,37 @@ export function canWorkLead(user, lead) {
   return false;
 }
 
-// ลบ = เข้มกว่าแก้: เฉพาะ admin/supervisor/marketing (ฝ่ายขายใช้ "ไม่ไปต่อ" แทนการลบ)
+// ลบ = เข้มกว่าแก้ และ **ไม่ได้ปลดตามมติ 2026-08-08**: เฉพาะ admin/supervisor/marketing
+// (ฝ่ายขายใช้ "ไม่ไปต่อ" แทนการลบ) · MKT ยังลบได้เฉพาะใบตัวเองที่ยังไม่ถูกคัดกรอง —
+// ส่งเข้าทีมแล้วเป็นงานของฝ่ายขาย จะให้ต้นทางลบทิ้งกลางคันไม่ได้
 export function canDeleteLead(user, lead) {
   const role = user?.role;
   if (role === 'admin') return true;
-  if (LEAD_LOCKED_STATUSES.includes(lead.status)) return false;
+  if (LEAD_DELETE_LOCKED_STATUSES.includes(lead.status)) return false;
   if (isSuperuser(role)) return true;
   if (role === 'marketing') return lead.status === 'new' && !!user?.id && lead.createdBy === user.id;
   return false;
 }
 
 // transition ที่ทำได้จากแต่ละสถานะ (กติกา flow — role บังคับเพิ่มใน handler)
+//
+// ⭐ `meeting → meeting` = **นัดเพิ่ม / เลื่อนนัด** (มติผู้ใช้ 2026-08-08)
+// เดิมนัดได้ครั้งเดียวต่อลีด: ถึงสถานะ `meeting` แล้วเหลือทางเดียวคือเปิดดีลหรือปิดลีด
+// ⇒ เลื่อนนัดไม่ได้ นัดครั้งที่สองไม่ได้ ต้องให้แอดมินแก้ให้ · วนกลับตัวเองไม่ใช่การถอย
+// สถานะจึงไม่ขยับ (TRANSITION_TO_STATUS.meeting === 'meeting') แค่มีเหตุการณ์เพิ่มในประวัติ
+//
+// ⭐ `meeting → bounce` — ตีกลับได้ถึงขั้นนัดแล้ว: บางทีทีมไม่ตรงเพิ่งโผล่ตอนคุยกันจริง
+// ก่อนหน้านี้ตีกลับได้แค่ถึงขั้น `contacted` แล้วหน้าผาก็ปิดกลางทาง
+//
+// ⚠️ **ไม่เปิด `meeting → contact`** ทั้งที่ mockup เคยวาดปุ่มไว้ — `contact` แปลว่า
+// สถานะกลับไปเป็น `contacted` (ดู TRANSITION_TO_STATUS) = ลีดถอยหลังจากที่นัดแล้ว
+// บันทึกการคุยเพิ่มระหว่างรอประชุมใช้เธรดกลางซึ่งเปิดอยู่ทุกสถานะอยู่แล้ว
 export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
   assigned: ['contact', 'bounce', 'disqualify'],
   contacted: ['meeting', 'create_deal', 'bounce', 'disqualify'],
-  meeting: ['create_deal', 'disqualify'],
+  meeting: ['meeting', 'create_deal', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
   disqualified: [],
 };
@@ -209,6 +241,42 @@ export function sourceLeadIdOf(body = {}) {
     return { leadId: null, error: 'ระบุลีดต้นทางไม่ตรงกัน (leadId กับ metadata.leadId) — ต้องเป็นลีดใบเดียวกัน' };
   }
   return { leadId: direct || nested || null, error: null };
+}
+
+// ── เวลานัดที่ควรค้างอยู่บนคอลัมน์ `sales_leads.meetingAt` ────────────────────
+// ตั้งแต่เปิดให้ "นัดเพิ่ม / เลื่อนนัด" (มติ 2026-08-08) ลีดหนึ่งใบมีได้หลายนัด แต่คอลัมน์
+// มีช่องเดียว — ทับด้วยนัดที่กดล่าสุดเฉย ๆ ไม่ได้ เพราะคนที่มาบันทึกนัด "ที่เพิ่งประชุมไป
+// เมื่อวาน" ย้อนหลัง จะทับนัดจริงในอนาคตทิ้ง แล้วลีดหลุดจากงานที่ต้องทำใน my-dashboard
+// (ซึ่งอ่าน `meetingAt >= วันนี้`) โดยไม่มีอะไรบอก
+//
+// แยกเป็นฟังก์ชันบริสุทธิ์สองตัวเพราะกติกาอยู่ในไฟล์ route แล้วเทสต์เข้าไม่ถึง
+// (route เหลือหน้าที่เดียวคือ query แล้วส่งแถวมาให้)
+
+/** นัดของ "รอบปัจจุบัน" — events เรียงใหม่→เก่า แล้วตัดที่ bounce ตัวแรกที่เจอ
+ *  ⚠️ bounce = เริ่มรอบใหม่ (ล้างทีม/ผู้รับ/เวลาติดต่อ/เวลานัด) แต่ `lead_events` เก็บ
+ *  ประวัติไว้หมด ไม่ตัดที่ bounce = นัดของเจ้าของคนเก่าฟื้นกลับมาบนลีดของเจ้าของคนใหม่ */
+export function meetingTimesSinceBounce(events = []) {
+  const times = [];
+  for (const row of events) {
+    if (row?.kind === 'bounce') break;
+    if (row?.eventAt) times.push(row.eventAt);
+  }
+  return times;
+}
+
+/** นัดถัดไปที่ยังไม่ถึง — ไม่เหลือนัดในอนาคตแล้วก็ใช้นัดล่าสุดที่ผ่านมา
+ *  (KPI/funnel ถามแค่ "มีนัดไหม" จึงนับถูกทั้งสองทาง)
+ *  ⚠️ เทียบด้วย `Date.parse` ไม่ใช่เรียงสตริง — ค่าที่ client ส่งมาเป็น `…Z` ส่วนค่าที่อ่าน
+ *  จาก timestamptz เป็น `…+00:00` เรียงสตริงข้ามสองรูปแบบนี้ให้ผลผิด */
+export function pickNextMeetingAt(times = [], nowIso) {
+  const stamped = times
+    .map((iso) => ({ iso, ms: Date.parse(iso) }))
+    .filter((entry) => Number.isFinite(entry.ms))
+    .sort((a, b) => a.ms - b.ms);
+  if (!stamped.length) return null;
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(nowMs)) return stamped[stamped.length - 1].iso;
+  return (stamped.find((entry) => entry.ms >= nowMs) || stamped[stamped.length - 1]).iso;
 }
 
 // SLA "ภายใน 1 วันทำการ": จำนวนวันทำการที่ผ่านไประหว่าง 2 เวลา ≤ 1

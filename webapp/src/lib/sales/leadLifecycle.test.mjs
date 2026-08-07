@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
-import { validateTransitionValues } from "../recordLifecycle.js";
+import { fieldUsers, validateTransitionValues } from "../recordLifecycle.js";
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
@@ -76,12 +76,49 @@ test("คัดกรองเห็นเฉพาะผู้ดูแล ไ�
   assert.ok(!idsFor(lead(), AE_A).includes("screen"));
 });
 
-test("มอบหมายเห็นเฉพาะหัวหน้าทีมของทีมนั้น", () => {
+test("มอบหมาย: หัวหน้าทีมของทีมนั้น + ผู้กำกับดูแลข้ามทีม (มติ 2026-08-08)", () => {
   const screened = lead({ status: "screened", team: "A" });
   assert.ok(idsFor(screened, SENIOR_A).includes("assign"));
   assert.ok(idsFor(screened, ADMIN).includes("assign"));
+  /* ⭐ AE Supervisor กระจายลีดได้ทุกทีม — handler เปิดให้มาตลอด (`superuser || inTeam`)
+     แต่ฝั่ง UI เคยเป็น `admin || inTeamOf` ซึ่งไม่มีวันจริงสำหรับตำแหน่งที่ไม่มีทีม
+     ⇒ ปุ่มไม่เคยโผล่ · เทสต์นี้ตรึงให้สองฝั่งตรงกัน */
+  assert.ok(idsFor(screened, SUPERVISOR).includes("assign"),
+    "AE Supervisor ต้องเห็นปุ่มมอบหมาย ไม่งั้นทำได้ที่ API แต่กดไม่ได้ที่หน้าจอ");
   assert.ok(!idsFor(screened, { ...SENIOR_A, team: "B" }).includes("assign"),
     "หัวหน้าทีมอื่นไม่ควรมอบหมายลีดของทีม A");
+});
+
+/* ── ดรอปดาวน์ "ผู้รับผิดชอบ" — กรองด้วยทีมของ *ลีด* ไม่ใช่ทีมของคนดู ────────
+   🐞 ของเดิมกรองด้วย viewerTeam ⇒ admin กับ AE Supervisor (ไม่มีทีม) เห็นชื่อทุกคน
+   ทุกทีม แล้วพอเลือกคนต่างทีมก็โดน validateLeadAssignee เด้ง 400 โดยไม่มีอะไรบอกก่อน */
+test("ผู้รับผิดชอบ: เหลือเฉพาะคนในทีมของลีดใบนั้น แม้คนกดจะไม่มีทีม", () => {
+  const DIRECTORY = [
+    { id: "ae-a", role: "ae", team: "A" },
+    { id: "ae-b", role: "ae", team: "B" },
+    { id: "senior-a", role: "senior_ae", team: "A" },
+    { id: "ac-a", role: "ac", team: "A" },          // มติ 2026-08-08 — ต้องไม่โผล่
+    { id: "mkt", role: "marketing", team: null },   // ทำงานลีดไม่ได้ — ต้องไม่โผล่
+    { id: "root", role: "admin", team: null },      // ไม่มีทีม — ติดมาได้ทุกใบ
+  ];
+  const withUsers = createLeadLifecycle({ users: DIRECTORY, viewerTeam: null });
+  const field = withUsers.get("assign").fields.find((f) => f.name === "assigneeId");
+  const namesFor = (record) => fieldUsers(field, record).map((u) => u.id);
+
+  assert.deepEqual(namesFor(lead({ status: "screened", team: "A" })), ["ae-a", "senior-a", "root"]);
+  assert.deepEqual(namesFor(lead({ status: "screened", team: "B" })), ["ae-b", "root"]);
+  // ไม่รู้ทีมของลีด → ถอยไปใช้ทีมของคนดู (พฤติกรรมเดิม)
+  const teamViewer = createLeadLifecycle({ users: DIRECTORY, viewerTeam: "A" });
+  const teamField = teamViewer.get("assign").fields.find((f) => f.name === "assigneeId");
+  assert.deepEqual(fieldUsers(teamField, lead()).map((u) => u.id), ["ae-a", "senior-a", "root"]);
+});
+
+/* ตัวเลือกเป็น "ฟังก์ชันของ record" ไม่ใช่อาร์เรย์ตายตัว — lifecycle ถูกสร้างครั้งเดียว
+   ต่อหน้า แต่หน้ารายการมีลีดหลายทีมในจอเดียว ถ้าใครเผลอเปลี่ยนกลับเป็นอาร์เรย์
+   ทุกแถวจะได้รายชื่อชุดเดียวกันหมดเหมือนบั๊กเดิม */
+test("ช่องผู้รับผิดชอบต้องประกาศตัวเลือกเป็นฟังก์ชัน ไม่ใช่อาร์เรย์ตายตัว", () => {
+  const field = lifecycle.get("assign").fields.find((f) => f.name === "assigneeId");
+  assert.equal(typeof field.users, "function");
 });
 
 /* มติผู้ใช้ 2026-07-21 — supervisor จบงานที่คัดกรอง ไม่ลงไปทำขั้นทำงานแทนทีม */
@@ -321,4 +358,25 @@ test("หน้ารายละเอียด: ปุ่มเปิดดี
   const actions = src.slice(src.indexOf("const recordActions = ["), src.indexOf("return <Workspace"));
   assert.doesNotMatch(actions, /leadDealAction/, "recordActions (การ์ดคุมสถานะ) ต้องไม่มีปุ่มเปิดดีล");
   assert.match(src, /title="ดีลจากลีดนี้"[\s\S]{0,400}actions=\{dealAction\.visible/, "ปุ่มต้องอยู่ในการ์ดดีล");
+});
+
+/* ── นัดเพิ่ม / เลื่อนนัด (มติ 2026-08-08) ─────────────────────────────────── */
+
+test("สถานะ meeting: ปุ่มนัดยังอยู่ และเปลี่ยนคำเป็น \"นัดเพิ่ม / เลื่อนนัด\"", () => {
+  const booked = lead({ status: "meeting", team: "A", assigneeId: "u-ae" });
+  const fresh = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
+
+  const entryFor = (record) => lifecycle.available(record, AE_A).find((e) => e.id === "meeting");
+  assert.ok(entryFor(booked), "ลีดที่นัดแล้วต้องยังกดนัดเพิ่ม/เลื่อนนัดได้");
+  assert.equal(entryFor(booked).label, "นัดเพิ่ม / เลื่อนนัด");
+  assert.equal(entryFor(booked).rowLabel, "นัดเพิ่ม");
+  assert.equal(entryFor(fresh).label, "บันทึกนัดประชุม");
+  assert.equal(entryFor(fresh).rowLabel, "นัดประชุม");
+});
+
+test("สถานะ meeting: ตีกลับได้ · ปุ่มติดต่อต้องไม่โผล่ (ดึงสถานะถอย)", () => {
+  const booked = lead({ status: "meeting", team: "A", assigneeId: "u-ae" });
+  assert.ok(idsFor(booked, SENIOR_A).includes("bounce"), "ทีมไม่ตรงบางทีเพิ่งรู้ตอนคุยกันจริง");
+  assert.ok(!idsFor(booked, AE_A).includes("contact"),
+    "contact จะพาสถานะกลับไป contacted — บันทึกการคุยเพิ่มใช้เธรดกลางแทน");
 });

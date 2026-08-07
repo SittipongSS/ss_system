@@ -51,7 +51,7 @@ const STATUS_DESCRIPTION = {
   screened: "ได้ทีมแล้ว รอหัวหน้าทีมกระจายให้ผู้รับผิดชอบ",
   assigned: "มีผู้รับผิดชอบแล้ว รอติดต่อกลับ (SLA 1 วันทำการ)",
   contacted: "ติดต่อลูกค้าแล้ว นัดประชุมหรือเปิดดีลต่อได้",
-  meeting: "นัดประชุมแล้ว — ขั้นถัดไปคือเปิดดีล",
+  meeting: "นัดประชุมแล้ว — เปิดดีลต่อได้ · นัดเพิ่มหรือเลื่อนนัดได้อีกจากที่นี่",
   qualified: "เปิดดีลจากลีดนี้แล้ว งานย้ายไปติดตามที่ดีล",
   disqualified: "ปิดลีด ไม่ไปต่อ — เหตุผลอยู่ในประวัติ",
 };
@@ -85,32 +85,36 @@ const allowedFrom = (action) =>
    สองด่านซ้อนกัน — ทั้งคู่ต้องตรงกับ `validateLeadAssignee` ฝั่ง server เป๊ะ
    (เห็นชื่อในดรอปดาวน์แล้วเลือกไม่ได้ = UX ที่แย่กว่าไม่เห็นชื่อนั้นเลย):
 
-   1. **ตำแหน่ง** — ต้องเป็น role ที่ `canWorkLead` พาไป true ได้ (ดู LEAD_ASSIGNEE_ROLES)
+   1. **ตำแหน่ง** — ต้องอยู่ใน `LEAD_ASSIGNEE_ROLES` (admin / senior_ae / ae)
       หน้าเรียกส่ง directory ทั้งก้อนมา ซึ่งมีทุก role ที่มอบหมายงานได้ รวม staff/rd/legal
+      ⭐ AC ถูกตัดออกตามมติ 2026-08-08 — เหตุผลเต็มอยู่ที่ leadAssignee.js
 
    2. **ทีม** — ลีดถูกคัดกรองเข้าทีมแล้วก่อนถึงขั้นมอบหมาย คนที่รับต่อจึงต้องอยู่ทีมนั้น
-      · Senior AE / AC มอบได้เฉพาะลีดของทีมตัวเอง (ด่าน `inTeam` ที่ handler) →
-        ดรอปดาวน์ต้องเหลือเฉพาะคนในทีมเดียวกับตัวเอง ไม่ใช่ทั้งบริษัท
-      · Admin ไม่มีทีม (`viewerTeam` ว่าง) = กำกับดูแลข้ามทีม → เห็นทุกคน
+      ⭐ กรองด้วย **ทีมของลีดใบนั้น** ไม่ใช่ทีมของคนที่เปิดหน้าอยู่ (มติ 2026-08-08)
+      · Senior AE เห็นเฉพาะลีดของทีมตัวเอง ⇒ สองค่านี้ตรงกันอยู่แล้ว ไม่มีอะไรเปลี่ยน
+      · **admin กับ AE Supervisor ไม่มีทีม** (`viewerTeam` ว่าง) แต่มอบหมายได้ทุกทีม —
+        ของเดิมกรองด้วย viewerTeam จึงคืน "ทุกคนทุกทีม" ให้สองตำแหน่งนี้ แล้วพอเลือกคน
+        ต่างทีมก็โดน `validateLeadAssignee` เด้ง 400 โดยไม่มีอะไรบอกล่วงหน้า
       · คนที่ไม่มีทีม (admin) ติดมาด้วยเสมอ — `canWorkLead` ให้ admin ทำได้ทุกใบ
+      · ไม่รู้ทีมของลีด (ไม่ได้ส่ง record มา) → ถอยไปใช้ viewerTeam เหมือนเดิม
    🐞 ก่อนหน้านี้ไม่กรองทีมเลย: Senior AE ทีม ODM เห็นชื่อ AE ของ KA/SV ทั้งหมด
-   แล้วมอบลีดข้ามทีมได้ ซึ่งคนรับจะทำงานต่อไม่ได้ถ้าเป็น senior_ae/ac (canWorkLead
+   แล้วมอบลีดข้ามทีมได้ ซึ่งคนรับจะทำงานต่อไม่ได้ถ้าเป็น senior_ae (canWorkLead
    เทียบทีม) — ลีดค้างโดยไม่มีใครรู้ */
-function assignableFor(users, viewerTeam) {
+export function assignableFor(users, viewerTeam, leadTeam = null) {
+  const team = leadTeam || viewerTeam || null;
   return users.filter((user) => {
     if (!LEAD_ASSIGNEE_ROLES.includes(user?.role)) return false;
-    if (!viewerTeam) return true;          // admin/ผู้กำกับดูแล — ไม่ผูกทีม
-    return !user?.team || user.team === viewerTeam;
+    if (!team) return true;                // ไม่รู้ทีมทั้งสองทาง — ไม่ตัดใครออก
+    return !user?.team || user.team === team;
   });
 }
 
 /**
  * @param users  รายชื่อสำหรับช่อง "ผู้รับผิดชอบ" ของ transition `assign`
  * @param canCreateDeals  ผู้ใช้เปิดดีลได้ไหม (สิทธิ์คนละตัวกับสิทธิ์ลีด)
- * @param viewerTeam  ทีมของคนที่เปิดหน้าอยู่ — ใช้ตัดรายชื่อข้ามทีมออก (ดู assignableFor)
+ * @param viewerTeam  ทีมของคนที่เปิดหน้าอยู่ — ใช้เป็นค่าถอยเมื่อไม่รู้ทีมของลีด
  */
 export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null } = {}) {
-  const assignableUsers = assignableFor(users, viewerTeam);
   return defineLifecycle({
     entity: "lead",
     noun: "ลีด",
@@ -152,9 +156,22 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         slot: "primary",
         from: allowedFrom("assign"),
         to: "assigned",
-        visible: (lead, user) => user?.role === "admin" || inTeamOf(user, lead),
+        /* ⭐ มติผู้ใช้ 2026-08-08: **AE Supervisor กระจายลีดได้ทุกทีม**
+           เดิมเงื่อนไขเป็น `admin || inTeamOf` ซึ่งไม่ครอบ ae_supervisor (ตำแหน่งนี้ไม่มีทีม
+           `inTeamOf` จึงไม่มีวันจริง) ⇒ ปุ่มไม่เคยโผล่ ทั้งที่ handler เปิดให้มาตลอด
+           (`superuser || inTeam`) — ทางลัดที่ทำได้แต่ไม่มีใครเห็น · ตอนนี้ตรงกับ API แล้ว */
+        visible: (lead, user) => isSuperuser(user?.role) || inTeamOf(user, lead),
         fields: [
-          { name: "assigneeId", label: "ผู้รับผิดชอบ", type: "person", required: true, users: assignableUsers, by: "id" },
+          {
+            name: "assigneeId",
+            label: "ผู้รับผิดชอบ",
+            type: "person",
+            required: true,
+            /* ฟังก์ชันของลีด ไม่ใช่อาร์เรย์ตายตัว — lifecycle สร้างครั้งเดียวต่อหน้า
+               แต่หน้ารายการมีลีดหลายทีมในจอเดียว (ดู fieldUsers ใน recordLifecycle) */
+            users: (lead) => assignableFor(users, viewerTeam, lead?.team),
+            by: "id",
+          },
         ],
       },
       {
@@ -178,8 +195,10 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
       },
       {
         id: "meeting",
-        label: "บันทึกนัดประชุม",
-        rowLabel: "นัดประชุม",
+        /* ป้ายเปลี่ยนตามสถานะ — ลีดที่นัดไว้แล้วกดปุ่มนี้คือ "เพิ่ม/เลื่อน" ไม่ใช่กดซ้ำของเดิม
+           (กติกาเดียวกับ leadDealAction ที่เปลี่ยนเป็น "เปิดดีลเพิ่ม") */
+        label: (lead) => (lead?.status === "meeting" ? "นัดเพิ่ม / เลื่อนนัด" : "บันทึกนัดประชุม"),
+        rowLabel: (lead) => (lead?.status === "meeting" ? "นัดเพิ่ม" : "นัดประชุม"),
         rowTone: "teal",
         kind: "submit",
         /* ก้าวถัดไปตัวจริงของขั้น "ติดต่อแล้ว" — เดิมเป็น secondary เพราะ `create_deal`

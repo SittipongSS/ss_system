@@ -136,10 +136,12 @@ export const UPDATE_ENTITIES = {
       // แคบกว่าหน้าจอ ไม่งั้นเปิดลีดได้แต่เธรดว่างโดยไม่มีอะไรบอกว่าเพราะอะไร
       return canViewLeads(user) && inLeadScope(user, parent);
     },
-    // ⚠️ **ห้ามใช้ `canEditLead`** — มันปิดตายเมื่อลีดเข้า LEAD_LOCKED_STATUSES
-    // (contacted/meeting/qualified/disqualified) ซึ่งถูกสำหรับ "แก้ข้อมูลติดต่อ"
-    // แต่ผิดสนิทสำหรับเธรด เพราะนั่นคือช่วงที่มีเรื่องต้องเล่ามากที่สุด
+    // ⚠️ **ห้ามใช้ `canEditLead`** — มันปิดตายเมื่อลีดเข้า LEAD_EDIT_LOCKED_STATUSES
+    // (qualified/disqualified) ซึ่งถูกสำหรับ "แก้ข้อมูลติดต่อ" แต่ผิดสนิทสำหรับเธรด:
+    // ลีดที่แตกดีลไปแล้วยังมีเรื่องต้องเล่าต่อ และคนที่เล่าคือทีมเดิม
     // (กับดักเดียวกับ canEditCostingRequest ด้านล่าง)
+    // หมายเหตุ: ชุดที่ล็อกแคบลงตามมติ 2026-08-08 แล้ว แต่เหตุผลที่ห้ามยืมมาคุมเธรด
+    // ไม่เปลี่ยน — สิทธิ์ "แก้ตัวระเบียน" กับ "พูดในเธรด" เป็นคนละคำถามกัน
     async canPost(supabase, parent, user) {
       if (!canViewLeads(user) || !inLeadScope(user, parent)) return false;
       if (isReadOnlyObserver(user?.role)) return false;
