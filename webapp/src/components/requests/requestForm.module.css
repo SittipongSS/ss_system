@@ -28,28 +28,19 @@
   color: var(--text-2);
 }
 
-/* บล็อกรายการวัสดุหนึ่งบรรทัดในฟอร์มขอราคา */
-.itemCard { padding: var(--space-3); margin-bottom: var(--space-2-5); }
-.itemHead { display: flex; gap: var(--space-2); align-items: flex-start; }
-.itemPicker { flex: 1; }
-.itemSpec { margin-top: var(--space-2); }
+/* ⚠️ บล็อกรายการวัสดุ (.itemCard/.itemHead/.itemPicker/.itemSpec) และแถวชั้นจำนวน
+   (.tierRow/.tierLabel/.tierInput) ถูกลบพร้อมบรรทัดวัสดุใน mig 0219 (ม-28) —
+   ลบจริงไม่ใช่ปล่อยค้าง เพราะ `npm run audit:ui` จับ CSS ที่ไม่มีใครเรียกอยู่แล้ว
 
-/* แถวชั้นจำนวนที่ขอ */
-.tierRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1-5);
-  margin-top: var(--space-2);
-  align-items: center;
-}
-.tierLabel { font-size: var(--fs-5); color: var(--text-2); }
+   ⚠️ **.tierChip / .tierChipOn อยู่ต่อ** — ชื่อมาจากชั้นจำนวน แต่ผู้ใช้จริงวันนี้คือ
+   ชิปตัวเลือกของ PDR (Scentotype · Performance · กลุ่มลูกค้า) ที่ PdrForm/PdrSummary
+   ⇒ ลบตามชื่อไปด้วยจะทำให้ชิปบนฟอร์ม PDR หายสไตล์ทั้งแผง */
 .tierChip { cursor: pointer; }
 .tierChipOn {
   cursor: pointer;
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
-.tierInput { width: 120px; }
 
 /* ── แนบไฟล์ + กล่าวถึง ในโมดัลเปิดคำร้อง ─────────────────────────── */
 /* ปุ่มเลือกไฟล์เป็น <label> ครอบ input[type=file] ที่ซ่อนไว้ — input ตัวจริงต้อง
@@ -122,23 +113,100 @@
    ⚠️ สีสงวนให้ความเร่งด่วนและเจ้าของก้าว · ชนิดคำร้องใช้ป้ายข้อความ (มติในแผน) */
 .counts {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
-.count {
-  padding: var(--space-1) var(--space-2-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+/* ตัวเลขเป็นปุ่มกรอง — สี/ขอบ/ระยะมาจาก `.chip` ของกลางทั้งหมด ที่เหลือคือ
+   สิ่งที่ `.chip` ไม่มีเพราะมันไม่ใช่ปุ่ม: รีเซ็ต <button> กับสถานะ "กดค้างอยู่"
+   ⚠️ ตอนถูกกด **เข้มขึ้นด้วยพื้นของสีเดิม ไม่ใช่เปลี่ยนเป็นสีอื่น** — สีบอกความ
+   เร่งด่วน ถ้าสลับสีตอนเลือก ความหมายของสีจะหายไปทันที */
+.countChip {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.countChip strong { color: var(--text); }
+
+.countChip:hover { border-color: color-mix(in srgb, currentColor 45%, transparent); }
+
+.countChip:focus-visible,
+.clearFilter:focus-visible,
+.queueCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.countChip[aria-pressed="true"] {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* ปุ่มล้างตัวกรอง — เป็นลิงก์ในประโยค ไม่ใช่ปุ่มก้อน จึงไม่ใช้ .btn */
+.clearFilter {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── มุมมองการ์ดของคิว (จอตั้ง/จอแคบ) ────────────────────────────────────
+   ⚠️ ไม่มีแถบสีที่ขอบการ์ด — สถานะและความเร่งด่วนบอกด้วยป้ายข้อความชุดเดียว
+   กับที่ตารางใช้ · ขีดสีที่ขอบอ่านไม่ออกว่าหมายถึงอะไรถ้าไม่มีคำกำกับ */
+.queueCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cardGroupLabel {
+  margin-top: var(--space-2);
   font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
   color: var(--text-3);
 }
-.count strong { color: var(--text); }
 
-.count[data-tone="warning"] strong { color: var(--amber); }
-.count[data-tone="danger"] strong { color: var(--red); }
-.count[data-tone="info"] strong { color: var(--blue); }
+.cardGroupLabel:first-child { margin-top: 0; }
+
+.queueCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.queueCard:hover { border-color: var(--border-strong); background: var(--panel-2); }
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cardTitle { font-size: var(--fs-7); }
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
+
+.cardUpdated { font-size: var(--fs-3); color: var(--text-3); }
 
 .colNext { width: 150px; }
 
@@ -183,6 +251,21 @@
 }
 
 .deptOption:hover:not(:disabled) { border-color: var(--accent-ink); }
+
+/* ⚠️ ปุ่มเลือกฝ่ายเป็นคำถามแรกของฟอร์ม — คนที่ไล่ด้วย Tab ต้องเห็นว่าอยู่ตัวไหน
+   (เดิมมี hover กับ disabled ครบ แต่ไม่มีวงโฟกัสเลย = ใช้คีย์บอร์ดแล้วตาบอด) */
+.deptOption:focus-visible,
+.tierChip:focus-visible,
+.tierChipOn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* input[type=file] ตัวจริงซ่อนอยู่ใต้ <label> — โฟกัสลงที่ input วงจึงต้องวาดที่ label */
+.fileDrop:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .deptOption[data-on] {
   border-color: var(--accent-ink);
@@ -233,10 +316,14 @@
   color: var(--text-2);
 }
 
-/* ปุ่มคุมหัวข้อ — ชิดขวาใต้ช่องหัวข้อ ให้อยู่ในสายตาเดียวกับสิ่งที่มันเปลี่ยน */
+/* ปุ่มคุมหัวข้อ — ชิดขวาใต้ช่องหัวข้อ ให้อยู่ในสายตาเดียวกับสิ่งที่มันเปลี่ยน
+   ⚠️ เหตุผลที่กดไม่ได้อยู่ **แถวเดียวกับปุ่ม** ไม่ใช่บรรทัดใหม่ชิดซ้าย */
 .topicAction {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 /* ── แบบฟอร์ม PDR — พับเป็นส่วน ๆ ────────────────────────────────────────
@@ -323,3 +410,18 @@
 @media (max-width: 640px) {
   .pdrFact { grid-template-columns: 1fr; gap: var(--space-1); }
 }
+
+/* ช่องเขียนต่อของ Scentotype รายตัว (mig 0222) — โผล่ตามตัวที่ติ๊ก
+   ⚠️ ป้ายอยู่ซ้ายช่องเพื่อให้อ่านเป็นคู่ "ตัวไหน — เขียนว่าอะไร" เหมือนบนกระดาษ */
+.scentotypeNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1-5);
+}
+.scentotypeNote label { min-width: 8rem; font-size: var(--fs-5); color: var(--text-2); }
+.scentotypeNote > :last-child { flex: 1; }
+
+/* ช่องที่ไม่ได้กรอกบนจอสรุป PDR — ต้องอ่านออกว่า "ถามแล้วไม่มีคำตอบ" ไม่ใช่ช่องว่าง
+   ⚠️ ต้องตรงกับกระดาษ (pdrDocument.js พิมพ์ N/A ที่ช่องเดียวกัน) */
+.naValue { color: var(--text-3); font-style: italic; }

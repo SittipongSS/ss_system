@@ -1,7 +1,9 @@
 // แถบตัวเลข + ก้าวถัดไปของคิว (P6b)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { QUEUE_COUNT_META, queueCounts, requestNextStep } from './queueBoard.js';
+import {
+  QUEUE_COUNT_META, matchesQueueCount, queueCounts, requestNextStep,
+} from './queueBoard.js';
 
 const req = (over = {}) => ({ id: 'DR-1', status: 'acknowledged', dept: 'RD', items: [], ...over });
 // แถวที่รอฝ่ายส่งของ (รับเรื่องแล้ว ยังไม่ส่ง) · แถวที่รอผู้ขอไปรับ (ส่งแล้ว)
@@ -65,6 +67,32 @@ test('ใบที่ปิด/ยกเลิกแล้วไม่ถูก�
   const rows = [req({ status: 'closed' }), req({ status: 'cancelled' }), req({ status: 'draft' })];
   assert.deepEqual(queueCounts(rows, { todayIso: '2026-08-05' }),
     { unacked: 0, overdue: 0, working: 0, waitingRequester: 0 });
+});
+
+test('🔴 กดตัวเลขแล้วได้จำนวนใบเท่าตัวเลขนั้นเป๊ะ ๆ — ตัวนับกับตัวกรองใช้กติกาเดียวกัน', () => {
+  // ⭐ ตัวเลขบนแถบกดกรองได้แล้ว · ถ้าตัวนับกับตัวกรองเขียนเงื่อนไขคนละชุด จะได้
+  // อาการ "กด «เลยกำหนด 2» แล้วขึ้นสามใบ" ซึ่งหาไม่เจอเพราะทั้งสองฝั่งดูถูกในตัวเอง
+  const today = '2026-08-05';
+  const rows = [
+    req({ id: 'A', status: 'pending' }),
+    req({ id: 'B', committedDueDate: '2026-08-01', items: [waitDept] }),
+    req({ id: 'C', items: [waitDept] }),
+    req({ id: 'D', items: [done, done] }),
+    req({ id: 'E', status: 'closed' }),
+    req({ id: 'F', status: 'draft' }),
+  ];
+  const counts = queueCounts(rows, { todayIso: today });
+  for (const meta of QUEUE_COUNT_META) {
+    const filtered = rows.filter((r) => matchesQueueCount(r, meta.key, { todayIso: today }));
+    assert.equal(filtered.length, counts[meta.key], meta.key);
+  }
+  // กันเทสต์ที่ผ่านเพราะทุกตัวเป็น 0 — ต้องมีของจริงให้เทียบอย่างน้อยหนึ่งตัว
+  assert.ok(Object.values(counts).some((n) => n > 0));
+});
+
+test('คีย์ที่ไม่รู้จักไม่จับใบไหนเลย — ไม่ใช่จับทั้งหมด', () => {
+  // ตัวกรองที่ "จับทุกใบ" ตอนคีย์เพี้ยนจะดูเหมือนไม่ได้กรอง ⇒ บั๊กเงียบ
+  assert.equal(matchesQueueCount(req({ status: 'pending' }), 'ไม่มีคีย์นี้', {}), false);
 });
 
 test('ทุกตัวเลขบนแถบมีป้ายและโทน — ไม่มีตัวไหนโผล่เป็นคีย์ดิบ', () => {

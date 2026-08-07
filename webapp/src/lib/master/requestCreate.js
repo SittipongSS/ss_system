@@ -4,7 +4,9 @@
 // เดียวตามกฎ AGENTS.md · ก่อนหน้านี้สองที่นั้นประกอบ payload กันเอง แล้วเพี้ยนหา
 // กันจริง: ฝั่งใบขอราคาผลิตคำนวณ `kind` ใหม่เองจนไม่ตรงกับที่ฟอร์มแสดง และไม่เคย
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
-import { requestHasItems, requestHasPdr, requestShapeError } from '@/lib/master/requestTypes';
+import {
+  requestHasItems, requestHasPdr, requestNeedsRef, requestShapeError,
+} from '@/lib/master/requestTypes';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 
 /**
@@ -15,7 +17,7 @@ import { uploadAttachment } from '@/lib/master/attachmentUpload';
  * "ทุกรายการต้องมีวัสดุ" ต่อท้ายเอง → ปุ่มจางลง**โดยไม่มีข้อความบอกเหตุผล** ซึ่งเป็น
  * อาการเดียวกับที่เพิ่งแก้ไปในรอบนี้ แค่มาอีกทาง (ตรวจในเบราว์เซอร์แล้วเจอจริง)
  *
- * ⚠️ ด่านของ server คือ `requestShapeError` + `normalizeRequestItems` — ตัวนี้เป็น
+ * ⚠️ ด่านของ server คือ `requestShapeError` + `normalizeLinesFor` — ตัวนี้เป็น
  * ด่านฝั่งจอที่ **ครอบ** ของ server ไว้ ห้ามหลวมกว่า
  */
 export function requestFormBlocker(form) {
@@ -31,10 +33,17 @@ export function requestFormBlocker(form) {
   });
   if (shape) return shape;
 
-  if (requestHasItems(form.kind)) {
-    const incomplete = (form.items || [])
-      .some((it) => !it.material?.materialId && !(it.material?.label || '').trim());
-    if (incomplete) return 'ต้องเลือกวัสดุของทุกรายการ (หรือพิมพ์ชื่อวัสดุใหม่)';
+  // ⚠️ เดิมมีด่าน "ทุกรายการต้องเลือกวัสดุ" ต่อท้ายตรงนี้ — เป็นกฎของ**บรรทัดวัสดุ**
+  // ซึ่งถูกถอดใน mig 0219 (ม-28) · ปล่อยไว้แล้วจะบล็อกบรรทัดพัฒนาสูตร/เอกสารทุกแถว
+  // เพราะแถวพวกนั้นไม่มีช่อง `material` เลย ⇒ ปุ่มส่งจางถาวรโดยไม่มีทางแก้
+
+  // ⭐ **ดีลที่ยังไม่ผูกโครงการ — บอกให้ตรงว่าติดอะไร**
+  //
+  // ฟอร์มไม่มีช่อง "โครงการ" ให้เลือก (โครงการมาจากดีล มติ 2026-08-06) ⇒ ข้อความ
+  // "ต้องเลือกโครงการ" สั่งให้ผู้ใช้ทำสิ่งที่หน้าจอไม่มีให้ทำ · บน prod ตอนนับล่าสุด
+  // **122 จาก 136 ดีลยังไม่ผูกโครงการ** ⇒ นี่คือทางที่คนเดินเจอบ่อยที่สุด
+  if (requestNeedsRef(form.kind, 'project') && form.dealId && !form.projectId) {
+    return 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้';
   }
   return null;
 }
@@ -53,6 +62,7 @@ export function requestPayload(form, extra = {}) {
     title: form.title || null,
     body: form.body || null,
     urgent: !!form.urgent,
+    urgentReason: form.urgentReason || null,
     requestedDueDate: form.requestedDueDate || null,
     scentId: form.scentId || null,
     formulaId: form.formulaId || null,
@@ -69,16 +79,13 @@ export function requestPayload(form, extra = {}) {
     ...(requestHasPdr(form.kind) ? { pdr: form.pdr || {}, briefs: form.briefs || [] } : {}),
     // หัวข้อที่ไม่มีบรรทัดต้องไม่ส่ง items ไปเลย ไม่ใช่ส่ง [] — server ใช้หัวข้อเป็น
     // ตัวตัดสินอยู่แล้ว แต่ส่งของที่ไม่เกี่ยวไปด้วยทำให้ debug ยากขึ้นเปล่า ๆ
-    ...(requestHasItems(form.kind) ? {
-      items: (form.items || []).map((it) => ({
-        kind: it.kind,
-        materialId: it.material?.materialId || null,
-        label: it.material?.label || '',
-        spec: it.spec,
-        componentId: it.componentId || null,
-        tiers: it.tiers,
-      })),
-    } : {}),
+    // 🐞 **บั๊กที่ปิดตรงนี้** — เดิมแถวทุกรูปร่างถูก map เป็นโครงของ*บรรทัดวัสดุ*
+    // (kind · materialId · label · tiers) ⇒ `categoryCode`/`scentId` ของพัฒนาสูตร
+    // และ `docType` ของขอเอกสาร **ถูกทิ้งระหว่างทาง** แล้ว server ตอบ "ต้องเลือก
+    // หมวดสินค้า" ทั้งที่ผู้ใช้เลือกไปแล้ว ⇒ สองหัวข้อนั้นเปิดใบไม่ได้เลย
+    // ⇒ ส่งแถวตามที่ตัวแก้ไขบรรทัดของหัวข้อนั้นประกอบไว้ **ไม่ตีความใหม่ที่นี่**
+    // (ตัวตรวจจริงคือ `normalizeLinesFor` ฝั่ง server ซึ่งรู้จักทุกรูปร่างอยู่แล้ว)
+    ...(requestHasItems(form.kind) ? { items: form.items || [] } : {}),
     ...extra,
   };
 }

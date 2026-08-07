@@ -181,7 +181,7 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // ต้องลงที่นี่พร้อมกับที่สร้าง route ไม่งั้นเทสต์ผ่าน build ผ่าน แต่ผู้ใช้จริงเข้าไม่ได้
 // (ทดสอบด้วย admin จะไม่เห็นบั๊กเลย — ต้อง smoke test ด้วยบัญชีของฝ่าย)
 // `/requests` = คำร้องข้ามฝ่าย ย้ายออกจาก /sa เมื่อ P0b (ทะเบียนกลางของทุกฝ่าย)
-// `/support` = แจ้งปัญหาระบบ (mig 0219) — **ทุกคนที่ล็อกอินต้องเปิดได้ รวม viewer**
+// `/support` = แจ้งปัญหาระบบ (mig 0223) — **ทุกคนที่ล็อกอินต้องเปิดได้ รวม viewer**
 // คนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด · ด่านจริงคือ canReadIssueRow
 // (เห็นเฉพาะเรื่องของตัวเอง ยกเว้น admin) ซึ่ง proxy มองไม่เห็น
 const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
@@ -195,7 +195,7 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service'
 // /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อนี้ — ไม่ลงทะเบียนที่นี่ = non-admin
 // โดน 403 เงียบ ๆ ทั้งอ่านและเขียน (บทเรียนจาก /api/company-profile)
 const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/service', '/api/sa', '/api/customers', '/api/products', '/api/product-types', '/api/scents', '/api/formulas', '/api/attachments', '/api/updates', '/api/notifications', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards', '/api/commercial-presets',
-  // แจ้งปัญหาระบบ (mig 0219) — ทุก role เขียนได้: เปิดเรื่องของตัวเอง และกดยืนยัน/
+  // แจ้งปัญหาระบบ (mig 0223) — ทุก role เขียนได้: เปิดเรื่องของตัวเอง และกดยืนยัน/
   // ยังไม่หายบนเรื่องของตัวเอง · ด่านจริงคือตาราง ACTIONS ใน lib/issues/model.js
   // ซึ่งรู้ว่าใครทำอะไรได้ตอนไหน (proxy เห็นแค่ method+path)
   '/api/issues'];

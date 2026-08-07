@@ -52,14 +52,14 @@ test('normalize ถอยไปค่าตั้งต้นเมื่อไ�
   assert.equal(normalizeIssueImpact('blocked'), 'blocked');
 });
 
-// ค่าที่ประกาศต้องตรงกับ CHECK ของ migration 0219 เป๊ะ — หลุดกันเมื่อไร insert จะ
+// ค่าที่ประกาศต้องตรงกับ CHECK ของ migration 0223 เป๊ะ — หลุดกันเมื่อไร insert จะ
 // ล้มที่ DB โดยที่เทสต์ฝั่งโค้ดผ่านหมด
-test('ชุดค่าตรงกับ CHECK ของ mig 0219', async () => {
+test('ชุดค่าตรงกับ CHECK ของ mig 0223', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
   const here = dirname(fileURLToPath(import.meta.url));
-  const sql = readFileSync(join(here, '../../../supabase/migrations/0219_system_issues.sql'), 'utf8');
+  const sql = readFileSync(join(here, '../../../supabase/migrations/0223_system_issues.sql'), 'utf8');
 
   for (const status of ISSUE_STATUSES) assert.ok(sql.includes(`'${status}'`), `SQL ไม่มีสถานะ ${status}`);
   for (const kind of ISSUE_KINDS) assert.ok(sql.includes(`'${kind}'`), `SQL ไม่มีประเภท ${kind}`);

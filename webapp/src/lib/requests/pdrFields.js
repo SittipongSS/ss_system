@@ -104,6 +104,13 @@ export const PDR_SECTIONS = [
         key: 'sampleDue', label: 'วันที่คาดหวังกำหนดส่งตัวอย่างกลิ่น',
         type: 'derived', derive: 'sampleDue', from: 'เติมจากช่อง "ต้องการคำตอบ"',
       },
+      {
+        // ⭐ หัวฟอร์มกระดาษเขียนไว้ว่า "หากเป็นงานด่วน … พร้อมแจ้งเหตุผลว่าทำไม"
+        // ⇒ เป็น **คำถามในฟอร์ม** ไม่ใช่แค่ธงบนใบ · ช่องกรอกอยู่ที่ฟอร์มเปิดคำร้อง
+        // (ติ๊กด่วนแล้วช่องนี้โผล่) — ที่นี่เป็นฝั่งอ่านสำหรับจอสรุปกับกระดาษ
+        key: 'urgentReason', label: 'เหตุผลที่เป็นงานด่วน',
+        type: 'derived', derive: 'urgentReason', from: 'กรอกตอนเปิดคำร้อง (เฉพาะงานด่วน)',
+      },
     ],
   },
   {
@@ -182,16 +189,16 @@ export const PDR_SECTIONS = [
       },
       // 2.9 Value Proposition — **ของทั้งใบ ไม่ใช่รายกลิ่น** (มติผู้ใช้)
       {
-        key: 'vpAttribute', column: 'pdrVpAttribute', label: 'Value Proposition — Attribute',
-        hint: 'คุณสมบัติของสินค้า', type: 'text', wide: true,
+        key: 'vpAttribute', column: 'pdrVpAttribute', label: 'Attribute',
+        hint: 'คุณสมบัติของสินค้า', type: 'tick', group: 'Value Proposition', wide: true,
       },
       {
-        key: 'vpBenefit', column: 'pdrVpBenefit', label: 'Value Proposition — Benefit',
-        hint: 'ประโยชน์ที่ผู้ใช้ได้รับ', type: 'text', wide: true,
+        key: 'vpBenefit', column: 'pdrVpBenefit', label: 'Benefit',
+        hint: 'ประโยชน์ที่ผู้ใช้ได้รับ', type: 'tick', group: 'Value Proposition', wide: true,
       },
       {
-        key: 'vpValue', column: 'pdrVpValue', label: 'Value Proposition — Value',
-        hint: 'คุณค่าที่แบรนด์ส่งมอบ', type: 'text', wide: true,
+        key: 'vpValue', column: 'pdrVpValue', label: 'Value',
+        hint: 'คุณค่าที่แบรนด์ส่งมอบ', type: 'tick', group: 'Value Proposition', wide: true,
       },
       { key: 'brandSample', column: 'pdrBrandSample', label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
     ],
@@ -215,6 +222,26 @@ export const PDR_SECTIONS = [
         type: 'textarea', wide: true,
         placeholder: 'เช่น ห้ามใช้สารพาราเบน · Vegan · No Alcohol',
       },
+    ],
+  },
+  {
+    // ── ผู้เซ็นบนเอกสาร (ม-45 · mig 0221) ────────────────────────────────
+    //
+    // ⭐ **ชื่อบนกระดาษ ไม่ใช่ role ในระบบ** (มติผู้ใช้: "ตำแหน่งบนเอกสารก่อน
+    // ยังไม่ต้องเป็น role จริง") — ตารางลายเซ็นของ FM-RD-01 มี 7 แถว ระบบรู้จริง
+    // แค่ AE (คนเปิดใบ) กับ AE Supervisor (ประตูหัวหน้า) อีก 5 แถวพิมพ์เป็นเส้นว่าง
+    //
+    // ⚠️ **ไม่มีช่องไหนบังคับ และไม่บล็อกการปิดเรื่อง** — ใครยังไม่เซ็นก็เว้นไว้
+    // แล้วเซ็นมือบนกระดาษได้เหมือนเดิม
+    key: 'signers',
+    title: 'ผู้เซ็นบนเอกสาร',
+    note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
+    fields: [
+      { key: 'signSalesManager', column: 'pdrSignSalesManager', label: 'Sale & Marketing Manager', type: 'text' },
+      { key: 'signPerfumer', column: 'pdrSignPerfumer', label: 'Perfumer', type: 'text' },
+      { key: 'signChemist', column: 'pdrSignChemist', label: 'Product Development Chemist', type: 'text' },
+      { key: 'signCoordinator', column: 'pdrSignCoordinator', label: 'Project Coordinator', type: 'text' },
+      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', label: 'Final Approval (RD Supervisor)', type: 'text' },
     ],
   },
 ];
@@ -252,6 +279,9 @@ export function pdrFieldText(field, request = {}, context = {}) {
       case 'contactPhone': return context.contactPhone || null;
       // ⚠️ วันเดียวกับ `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ใหม่
       case 'sampleDue': return context.sampleDue ?? sampleDueText(request);
+      // ⚠️ ใบที่ไม่ได้ติ๊กด่วนต้องได้ค่าว่าง **ไม่ใช่ค่าที่ค้างจากตอนเคยติ๊ก** —
+      // API ล้างคอลัมน์ให้เมื่อถอดธงอยู่แล้ว ตรงนี้กันอีกชั้นสำหรับแถวเก่า
+      case 'urgentReason': return request.urgent ? (request.urgentReason || '') : '';
       case 'scentCount': {
         const n = context.scentCount ?? (briefs.length || null);
         return n ? `${n} กลิ่น` : null;

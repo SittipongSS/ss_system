@@ -244,7 +244,7 @@ test('mgmt caps are grantable per-user (whitelist)', () => {
   assert.deepEqual(sanitizeExtraCaps(['mgmt:view', 'mgmt:edit', 'users:manage']), ['mgmt:view', 'mgmt:edit']);
 });
 
-// ⚠️ `issues:report` (mig 0219) อยู่ใน UNIVERSAL_CAPS — ทุก role ถือเสมอโดยเจตนา
+// ⚠️ `issues:report` (mig 0223) อยู่ใน UNIVERSAL_CAPS — ทุก role ถือเสมอโดยเจตนา
 // จึงต้องอยู่ท้ายลิสต์ของทุกเคสที่เทียบ capsFor แบบเป๊ะ ๆ · ไม่ใช่การรั่วของสิทธิ์:
 // มันเปิดแค่ "แจ้งปัญหาระบบของตัวเอง" ซึ่งด่านจริง (canReadIssueRow) ยังคัดว่า
 // เห็นได้เฉพาะเรื่องที่ตัวเองแจ้ง

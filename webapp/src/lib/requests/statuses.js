@@ -3,7 +3,7 @@
 //
 // ⚠️ สถานะ/ป้าย **คงเดิมทุกตัวอักษร** จากเคสขอราคา (0158) — ผู้ใช้ที่ใช้อยู่ต้อง
 // ไม่รู้สึกว่าอะไรเปลี่ยนหลังรวมระบบ
-import { DEFAULT_LINE_SHAPE, lineShapeLabels } from '@/lib/requests/kinds/lineShapes';
+import { lineShapeLabels } from '@/lib/requests/kinds/lineShapes';
 
 export const REQUEST_STATUSES = ['draft', 'pending', 'acknowledged', 'answered', 'closed', 'cancelled'];
 
@@ -43,10 +43,10 @@ export const REQUEST_OPEN_STATUSES = ['pending', 'acknowledged'];
 
 export const REQUEST_ITEM_STATUSES = ['pending', 'done', 'declined'];
 
-// คงชื่อเดิมไว้ให้ผู้เรียกที่ไม่รู้ lineKind — ค่าตั้งต้นคือภาษาของบรรทัดวัสดุ
-export const REQUEST_ITEM_STATUS_LABELS = lineShapeLabels(DEFAULT_LINE_SHAPE);
+// คงชื่อเดิมไว้ให้ผู้เรียกที่ไม่รู้ lineKind — ได้ป้ายกลางจากทะเบียน
+export const REQUEST_ITEM_STATUS_LABELS = lineShapeLabels(null);
 
-export function requestItemStatusLabel(status, lineKind = DEFAULT_LINE_SHAPE) {
+export function requestItemStatusLabel(status, lineKind = null) {
   return lineShapeLabels(lineKind)[status] || status || '—';
 }
 

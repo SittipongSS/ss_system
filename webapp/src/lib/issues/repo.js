@@ -1,4 +1,4 @@
-// ── อ่าน/เขียนตาราง system_issues (mig 0219) ────────────────────────────
+// ── อ่าน/เขียนตาราง system_issues (mig 0223) ────────────────────────────
 // server-only (service-role) — ห้าม import ในฝั่ง client
 import { canReadIssueRow, isSystemAdmin } from '@/lib/issues/access';
 import { ISSUE_OPEN_STATUSES } from '@/lib/issues/statuses';

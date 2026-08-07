@@ -29,7 +29,9 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
 const VALID_DEPTS = ['RD', 'PC', 'FN'];
 const VALID_REFS = ['project', 'deal', 'salesOrder', 'scent', 'formula'];
-const VALID_LINE_SHAPES = ['material', 'product_dev', 'document', 'billing_doc'];
+// ⚠️ `material` ถูกถอดใน mig 0219 พร้อมหัวข้อขอราคา (มติ ม-28) — ห้ามเพิ่มกลับ
+// โดยไม่มีหัวข้อที่ใช้จริง รูปร่างที่ไม่มีหัวข้อไหนใช้คือโค้ดที่ไม่มีทางเดินถึง
+const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
 
 // export เพื่อให้เทสต์พิสูจน์ได้ว่าด่านนี้ **ยิงจริง** — ด่านที่ไม่มีใครเคยเห็นมันทำงาน
 // คือด่านที่อาจพังเงียบมานานแล้ว
@@ -50,7 +52,11 @@ export function assertKind(kind, seen = new Set()) {
   if (kind.lineShape && !VALID_LINE_SHAPES.includes(kind.lineShape)) {
     throw new Error(`${at}: lineShape "${kind.lineShape}" ไม่รู้จัก`);
   }
-  if (kind.hasTiers && !kind.hasItems) throw new Error(`${at}: hasTiers ต้องมากับ hasItems`);
+  // ⚠️ `hasTiers` ไม่มีอีกแล้ว — ตาราง `dept_request_item_tiers` ถูก DROP ใน 0219
+  // ตีกลับตั้งแต่ตอนโหลดถ้ามีใครประกาศมาอีก ไม่ใช่ปล่อยให้เป็นธงที่ไม่มีใครอ่าน
+  if ('hasTiers' in kind) {
+    throw new Error(`${at}: hasTiers ถูกถอดพร้อมชั้นจำนวนใน mig 0219 — เอาออก`);
+  }
   // ประตูหัวหน้าอยู่หลัง "รับเรื่อง" ⇒ หัวข้อที่ไม่มีฝ่ายปลายทางตายตัวใช้ไม่ได้
   if (kind.needsSupervisorApproval && !kind.dept) {
     throw new Error(`${at}: needsSupervisorApproval ต้องมากับ dept ที่ล็อกไว้`);
@@ -61,6 +67,14 @@ export function assertKind(kind, seen = new Set()) {
     if (!(key in FORM_DEFAULTS)) throw new Error(`${at}: form."${key}" ไม่ใช่คีย์ที่รู้จัก`);
   }
   if (kind.lineShape && !kind.hasItems) throw new Error(`${at}: lineShape ต้องมากับ hasItems`);
+  // ⭐ ทางกลับ: มีบรรทัดแล้วต้องบอกว่าบรรทัดหน้าตาแบบไหน — เดิมตกไปเป็น 'material'
+  // เงียบ ๆ ซึ่งเป็นรูปร่างที่ไม่มีอยู่แล้ว ⇒ ตกหล่นตอนนี้ = แถวที่ normalize ไม่ได้
+  if (kind.hasItems && !kind.lineShape) throw new Error(`${at}: hasItems ต้องมากับ lineShape`);
+  // ฝ่ายสร้างแถวเองตอนส่ง = หัวข้อนั้นต้อง **ไม่มีบรรทัดตอนเปิด** ไม่งั้นจะได้แถว
+  // สองชุด (ที่ผู้ขอกรอก กับที่ฝ่ายสร้าง) ที่ไม่มีใครรู้ว่าอันไหนคือของจริง
+  if (kind.deliversRows && kind.hasItems) {
+    throw new Error(`${at}: deliversRows ใช้กับหัวข้อที่มีบรรทัดตอนเปิดไม่ได้`);
+  }
 }
 
 // ข้อความบนฟอร์มที่ **ทุกหัวข้อต้องมีครบ** — เติมค่ากลางให้ตัวที่ไม่ได้ประกาศเอง

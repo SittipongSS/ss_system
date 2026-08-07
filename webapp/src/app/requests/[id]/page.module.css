@@ -9,11 +9,30 @@
   color: var(--text);
 }
 
+/* `note` ของเก่า — สีรอง เพราะไม่ใช่บรีฟหลักอีกแล้ว (เลิกเขียนใหม่ตั้งแต่ 2026-08-03) */
+.requestNote {
+  margin-top: var(--space-3);
+  font-size: var(--fs-7);
+  color: var(--text-2);
+}
+
+/* บรรทัดข้อเท็จจริงรองใต้เนื้อคำร้อง — ผู้รับเรื่อง/รหัสสูตร · ของที่ไม่ติดสี่ช่อง
+   บนแถบข้อเท็จจริง แต่เป็นหลักฐานว่ามีคนรับงานไปจริง ทิ้งไม่ได้ */
+.headMeta {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}
+
+/* เหตุผลที่ยกเลิก — แดง เพราะเป็นทางจบที่ย้อนไม่ได้ (ต่างจาก "ตีกลับ" ที่เป็นเหลือง) */
+.cancelledReason {
+  margin-top: var(--space-2);
+  font-size: var(--fs-7);
+  color: var(--red);
+}
+
 /* บล็อกไฟล์แนบระดับหัวคำร้อง */
 .attachBlock { margin-top: var(--space-3); }
-
-/* รางห้าก้าวของแถว — เว้นจากหัวแถวเท่ากับบล็อกไฟล์แนบ */
-.rowRail { margin-top: var(--space-3); }
 
 /* คำอธิบายใต้ช่องกรอกในโมดัลปิดบรีฟ */
 .fieldHint {
@@ -45,36 +64,11 @@
 
 /* แถบกระทบยอดกับใบสั่งขาย — อยู่เหนือรายการ ไม่ใช่ในหัวใบ เพราะมันพูดถึง
    "ผลรวมของแถวข้างล่าง" ไม่ใช่คุณสมบัติของใบ */
-.reconcile { margin-bottom: var(--space-3); }
 
 /* บล็อก PDR แบบอ่าน — เว้นจากเธรดที่อยู่ถัดไป */
-.pdrBlock { margin-bottom: var(--space-4); }
 
 /* แถบสรุปของใบ — เปิดมาแล้วรู้สถานการณ์ทันทีโดยไม่ต้องไล่อ่านทีละแถว
    ⚠️ ตัวเลขเป็นของ **ใบ** · รายละเอียดว่าแต่ละ direction ไปถึงไหนอยู่ที่รางของแถว */
-.summaryBar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  align-items: baseline;
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg, var(--radius));
-  background: var(--panel-2);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
-
-.summaryBar strong {
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-
-.summaryBar [data-tone="warn"],
-.summaryBar [data-tone="warning"] { color: var(--amber-ink, var(--text-1)); }
-.summaryBar [data-tone="danger"] { color: var(--red); }
-.summaryBar [data-tone="success"] { color: var(--green); }
 
 /* คำอธิบายใต้ช่องในโมดัล — โทน hint เดียวกับฟอร์มอื่นของโมดูล */
 .hint {
@@ -83,3 +77,7 @@
   font-size: var(--fs-6);
   color: var(--text-3);
 }
+
+/* ── การ์ดรายแถวหลังถอดราง (P3a · ม-36 ก) ──────────────────────────────
+   ⚠️ เหลือเฉพาะของที่เธรดเล่าแทนไม่ได้ — สเปกที่ขอ กับไฟล์แนบของแถวนั้น
+   ประวัติของก้าวอยู่ในเธรดที่เดียว ปุ่มอยู่ท้ายเธรดที่เดียว */

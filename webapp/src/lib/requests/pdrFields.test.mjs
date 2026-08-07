@@ -16,7 +16,24 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   // `normalizePdr` คือฝั่งเขียน · ทะเบียนคือฝั่งอ่าน ⇒ ต้องเป็นชุดเดียวกันเป๊ะ
   const { columns } = normalizePdr({});
   assert.deepEqual([...PDR_COLUMNS].sort(), Object.keys(columns).sort());
-  assert.equal(PDR_COLUMNS.length, 29);
+  // 29 ช่องของ 0214/0218 + 5 ชื่อผู้เซ็นของ 0221 (ม-45)
+  assert.equal(PDR_COLUMNS.length, 34);
+});
+
+test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {
+  // ⚠️ ตารางลายเซ็นในเอกสารอ่านป้ายจากทะเบียนนี้ ⇒ เปลี่ยนชื่อตำแหน่งที่นี่ที่เดียว
+  // แล้วฟอร์ม จอ และกระดาษเปลี่ยนพร้อมกัน (สะกดซ้ำเมื่อไรก็เพี้ยนกันเมื่อนั้น)
+  const signers = PDR_SECTIONS.find((s) => s.key === 'signers');
+  assert.ok(signers, 'ต้องมีหมวดผู้เซ็น');
+  assert.deepEqual(signers.fields.map((f) => f.label), [
+    'Sale & Marketing Manager',
+    'Perfumer',
+    'Product Development Chemist',
+    'Project Coordinator',
+    'Final Approval (RD Supervisor)',
+  ]);
+  // ⚠️ ทุกช่องต้องเว้นว่างได้ — ไม่มีใครถูกบังคับให้เซ็นในระบบ (ม-45)
+  for (const f of signers.fields) assert.equal(f.type, 'text');
 });
 
 test('ทุกช่องมีป้ายชื่อ และ key ห้ามซ้ำ', () => {
@@ -217,4 +234,42 @@ test('🐞 หน้าเปิดคำร้องกับหน้ารา
 test('ด่วนแต่ยังไม่ระบุวัน ต้องยังขึ้นให้เห็นว่าด่วน', () => {
   assert.equal(pdrContext({ request: { urgent: true } }).sampleDue, 'ยังไม่ระบุวัน · ด่วน');
   assert.equal(pdrContext({ request: {} }).sampleDue, null);
+});
+
+// ── ครบตามฟอร์มกระดาษ FM-RD-01 Rev.02 (ผู้ใช้ส่งไฟล์มาเทียบ 2026-08-07) ────
+//
+// ⚠️ **ratchet ของ "ต้องมีคำถามทั้งหมด"** — ฟอร์มกระดาษเป็นสัญญากับคนที่กรอกอยู่
+// ทุกวัน · ช่องที่หายไปเงียบ ๆ แปลว่าเขากรอกลงกระดาษได้แต่พิมพ์จากระบบแล้วหาย
+test('ทุกข้อของฟอร์มกระดาษมีที่เก็บในทะเบียน', () => {
+  const keys = new Set(PDR_FIELDS.map((f) => f.key));
+  const required = [
+    // Request Information
+    'requester', 'coordinator', 'department', 'requestType', 'prevProductCode',
+    'sampleDue', 'urgentReason',
+    // 1. Customer Information (1.1–1.14)
+    'contactName', 'contactPhone', 'customer', 'customerBrand', 'moodTone',
+    'brandDirection', 'shipTo', 'customerKind', 'projectValue',
+    'targetDemographic', 'targetPsychographic', 'targetPainpoint',
+    'productKind', 'scentCount', 'wantedAt', 'sellFrom',
+    // 2. Product Specifications (2.2–2.10 · 2.1.x อยู่ที่บรีฟรายกลิ่น)
+    'targetCost', 'targetPrice', 'moq', 'texture', 'color', 'packSize',
+    'packagingForms', 'packagingArtwork', 'vpAttribute', 'vpBenefit', 'vpValue',
+    'brandSample',
+    // Regulatory & Compliance
+    'documents', 'exportDocNote', 'specialRequirements',
+    // Final Review & Approval
+    'signSalesManager', 'signPerfumer', 'signChemist', 'signCoordinator', 'signFinalApprover',
+  ];
+  const missing = required.filter((k) => !keys.has(k));
+  assert.deepEqual(missing, [], `ขาดคำถามจากฟอร์มกระดาษ: ${missing.join(', ')}`);
+});
+
+test('2.9 Value Proposition เป็น "ติ๊กแล้วเขียนต่อ" ตามกระดาษ ไม่ใช่ช่องเปล่า', () => {
+  // กระดาษมีช่องติ๊กหน้าทั้งสามคำ เหมือนข้อ 1.10 ⇒ ทำเป็นช่องข้อความเปล่าจะเสีย
+  // ข้อมูลว่า "ข้อไหนลูกค้าสนใจ" ตอนที่ยังไม่ได้เขียนรายละเอียด
+  for (const key of ['vpAttribute', 'vpBenefit', 'vpValue']) {
+    const f = PDR_FIELDS.find((x) => x.key === key);
+    assert.equal(f.type, 'tick', key);
+    assert.equal(f.group, 'Value Proposition', key);
+  }
 });

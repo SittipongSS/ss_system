@@ -43,7 +43,10 @@
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
-| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD ที่ส่งไปแล้ว |
+| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · **ม-25…ม-46 รอบรื้อที่สอง (2026-08-07)** |
+| [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น"** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
+| [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร"** — P4 (ม-36) |
+| [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
 | [system-modernization/ux-ui-rulebook.md](system-modernization/ux-ui-rulebook.md) · [document-design-system.md](system-modernization/document-design-system.md) | มาตรฐานเอกสาร A4/PDF |
 
 **คู่มือผู้ใช้** (ไม่ใช่เอกสาร dev): [SALES_PLANNING_GUIDE.md](../webapp/SALES_PLANNING_GUIDE.md) · [EMPLOYEE_TURNOVER_GUIDE.md](../webapp/EMPLOYEE_TURNOVER_GUIDE.md)
@@ -58,7 +61,7 @@
 |---|---|---|
 | [costing-request-plan.md](costing-request-plan.md) | ⚠️ **mig 0159 ต้องรันก่อน deploy PR-3** | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
-| [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | โค้ดครบ 3 ก้อน · mig 0219 รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย + ตั้ง webhook ห้องแอดมิน | รอตรวจ |
+| [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | โค้ดครบ 3 ก้อน · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย + ตั้ง webhook ห้องแอดมิน | รอตรวจ |
 | [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | รื้อเมนูคำร้องเป็นศูนย์ประสานงาน SA | รอดำเนินการ |
 | [cross-department-requests-plan.md](cross-department-requests-plan.md) | มติครบ รอเริ่ม PR-1 (ใหญ่สุด 1,030 บรรทัด) | รอดำเนินการ |
 | [qt-so-tax-followup-plan.md](qt-so-tax-followup-plan.md) | 6 จุดขัดแผนจาก PR #739 + บั๊กที่ผู้ใช้เจอได้ | รอดำเนินการ |

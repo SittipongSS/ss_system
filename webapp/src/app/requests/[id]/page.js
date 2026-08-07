@@ -1,7 +1,7 @@
 "use client";
-// รายละเอียดเคสขอราคาวัสดุ (mig 0158)
+// รายละเอียดคำร้อง (mig 0158 → 0219)
 //
-// ผู้ขอ: ส่งเคส / ยกเลิก / ลบร่าง · เห็นสถานะทุกขั้นว่าใครรับเรื่องแล้ว
+// ผู้ขอ: ส่งคำร้อง / ยกเลิก / ลบร่าง · เห็นสถานะทุกขั้นว่าใครรับเรื่องแล้ว
 // RD/PC: รับเรื่อง → ตอบราคาราย "ชั้นจำนวน" ที่ผู้ขอระบุ หรือกด "ตอบไม่ได้" พร้อมเหตุผล
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,32 +19,31 @@ import RichText from "@/components/ui/RichText";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
-  DocumentControlCard, DocumentSummaryCard,
+  WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
+import { ActionButton } from "@/components/ui/ActionButtons";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
-import BriefBoard from "@/components/requests/BriefBoard";
+import { formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
+import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
-import PdrSummary from "@/components/requests/PdrSummary";
-import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
+import { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
-import { requestItemStatusLabel } from "@/lib/requests/statuses";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
-import StatusNotice from "@/components/ui/StatusNotice";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
-import RowStageRail from "@/components/requests/RowStageRail";
+import NextStepBar from "@/components/requests/NextStepBar";
+import { detailForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
@@ -52,12 +51,12 @@ import ScentDeliveryFields, {
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
-import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
 
 const STATUS_TONE = {
@@ -68,15 +67,20 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
-// mig 0204: สถานะบรรทัดเป็นกลางแล้ว (pending/done/declined) ไม่ผูกกับคำว่า "ราคา"
-const ITEM_TONE = { pending: "var(--text-3)", done: "var(--green)", declined: "var(--red)" };
-const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
-const qtyText = (v) => `${Number(v).toLocaleString("th-TH")} ขึ้นไป`;
+// ป้ายบอกว่า "ตอนนี้รออะไร" คู่กับปุ่มท้ายเธรดของหัวข้อที่ไม่มีแถว (P6)
+// ⚠️ ผูกกับ `primaryAction.id` ที่หน้านี้ประกอบเอง — เพิ่มก้าวใหม่แล้วลืมป้าย
+// จะได้คำว่า "รอดำเนินการ" กลาง ๆ ซึ่งไม่ผิด แต่ไม่ได้บอกอะไร
+const THREAD_STEP_HINT = {
+  submit: "ยังไม่ได้ส่ง — ส่งแล้วเลขที่จะออกและฝ่ายปลายทางจะเห็น",
+  acknowledge: "รอฝ่ายปลายทางรับเรื่อง",
+  approve: "รอหัวหน้าสายงานขายยืนยัน",
+  answer: "รับเรื่องแล้ว — ตอบในเธรดแล้วกดว่าตอบครบ",
+  close: "ตอบแล้ว — ผู้ขอกดปิดเมื่อพอใจกับคำตอบ",
+};
 
-// ⭐ **แถววัสดุตอบในที่ · แถวสายพัฒนา/เอกสารเดินทาง** — วัสดุคือถามราคาแล้วตอบกลับ
-// จบในที่เดียว ไม่มีของให้ไปรับและไม่มีลูกค้าให้ส่งต่อ ⇒ รางห้าก้าวไม่มีความหมาย
-// และปุ่ม "รับเรื่อง" บนแถวราคาจะพาคนกดผิดขั้น (ของจริงคือ "ตอบราคา")
-const isFlowRow = (item) => !!item?.lineKind && item.lineKind !== "material";
+// ⚠️ เดิมมี `isFlowRow` แยก **แถววัสดุ** (ตอบราคาจบในที่) ออกจากแถวที่เดินราง
+// ห้าก้าว · บรรทัดวัสดุถูกถอดใน mig 0219 (ม-28) ⇒ ทุกแถวที่เหลือเดินรางทั้งหมด
+// ไม่มีสาขาที่สองอีกแล้ว
 
 // ป้ายช่องวันที่ต้องพูดถึงก้าวนั้นตรง ๆ — "วันที่" เฉย ๆ ทำให้คนกรอกวันนี้ทุกครั้ง
 // ทั้งที่หลายก้าวถูกกดย้อนหลังเป็นปกติ (ของส่งไปเมื่อวาน เพิ่งมาบันทึกเช้านี้)
@@ -88,7 +92,7 @@ const HOP_DATE_LABEL = {
   outcome: "วันที่ลูกค้าตอบ",
 };
 
-export default function MaterialAskDetailPage() {
+export default function RequestDetailPage() {
   const { id } = useParams();
   const role = useRole();
   const department = useDepartment();
@@ -100,8 +104,6 @@ export default function MaterialAskDetailPage() {
   const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [answering, setAnswering] = useState(null); // { item, tiers }
-  const [noQuote, setNoQuote] = useState(null);     // { item, reason }
   // ก้าวของแถว — { item, hop, outcome, at, dueAt, confirmedQty, note }
   const [hopDraft, setHopDraft] = useState(null);
   // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
@@ -135,7 +137,7 @@ export default function MaterialAskDetailPage() {
     try {
       const res = await fetch(`/api/sa/requests/${id}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(d?.error || "โหลดเคสไม่สำเร็จ");
+      if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setReq(d);
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
@@ -183,7 +185,7 @@ export default function MaterialAskDetailPage() {
   if (loadError || !req) {
     return (
       <Workspace hideHeader back={back}>
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError || "ไม่พบเคส"}</div>
+        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError || "ไม่พบคำร้อง"}</div>
       </Workspace>
     );
   }
@@ -194,6 +196,8 @@ export default function MaterialAskDetailPage() {
   // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
   const awaitingApproval = isAwaitingApproval(req);
   const showPdr = requestHasPdr(req.kind);
+  // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
+  const KindDetail = detailForKind(req.kind);
   // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
   // โดยไม่ต้องไล่อ่านทีละแถว
   //
@@ -205,12 +209,18 @@ export default function MaterialAskDetailPage() {
   // ⇒ ขัดกันไม่ได้เชิงโครงสร้าง · เดิมแถบตัวเลขใช้ `scentBriefSummary` ซึ่งนับจาก
   // `items` ที่มี briefId เท่านั้น ⇒ direction ที่ยังไม่ผูกบรีฟหายจากยอดรวมเงียบ ๆ
   const board = briefBoard(req.briefs || [], req.items || []);
+  // ⚠️ ประกอบทั้งสองแบบไว้เสมอ แล้วให้ component ของหัวข้อเลือกใช้ — ประกอบใน
+  // เงื่อนไขเมื่อไร hook order จะเปลี่ยนตามหัวข้อ ซึ่ง React ห้าม
+  const formulaBoard = formulaDevBoard(req.items || []);
+  const formulaTotals = formulaDevTotals(formulaBoard);
+  const docBoard = documentBoard(req.items || []);
+  const docTotals = documentTotals(docBoard);
   const briefSummary = briefBoardTotals(board);
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
-  // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
-  // ชนิด) มี progress.complete = false เสมอเพราะ total = 0 · เดิมเงื่อนไขปิดเคสอ่านจาก
+  // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/พัฒนากลิ่น/ติดตามของเข้า
+  // ชนิด) มี progress.complete = false เสมอเพราะ total = 0 · เดิมเงื่อนไขปิดใบอ่านจาก
   // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
   // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
   const hasItems = requestHasItems(req.kind);
@@ -304,19 +314,14 @@ export default function MaterialAskDetailPage() {
       : `จะแจ้งเตือนถึง ${req.requestedByName || "ผู้เปิดคำร้อง"}`;
   })();
 
-  const submitAnswer = async (payload, okMsg) => {
-    const ok = await call("/answer", { method: "PATCH", body: JSON.stringify({ answers: [payload] }) }, okMsg);
-    if (ok) { setAnswering(null); setNoQuote(null); }
-  };
-
   const confirmCopy = () => {
     if (!confirm) return {};
     if (confirm.kind === "submit") {
       return {
-        title: "ส่งเคสขอราคา",
+        title: "ส่งคำร้อง",
         description: `${(req.items || []).length} รายการ → ฝ่าย ${req.dept}`,
-        detail: "ระบบจะออกเลขที่เคสและแจ้งฝ่ายเจ้าของทันที — หลังส่งแล้วลบเคสไม่ได้",
-        confirmLabel: "ส่งเคส",
+        detail: "ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้",
+        confirmLabel: "ส่งคำร้อง",
       };
     }
     if (confirm.kind === "answer") {
@@ -421,7 +426,7 @@ export default function MaterialAskDetailPage() {
             method: "PATCH", body: JSON.stringify({ action: "approve" }),
           }, "ยืนยันแล้ว"),
         }
-      : canAnswer && req.kind === "scent_dev" && !awaitingApproval
+      : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
         ? {
           id: "deliver",
           label: "ส่งกลิ่น",
@@ -457,129 +462,146 @@ export default function MaterialAskDetailPage() {
           }
           : null;
 
+  // ⭐ **หัวข้อที่ไม่มีแถวเอาปุ่มหลักไปไว้ท้ายเธรด** (P6) — ทั้งหน้าคือเธรด ปุ่มอยู่
+  // บนหัวใบอย่างเดียวแปลว่าอ่านจนจบแล้วต้องเงยหน้ากลับขึ้นไปหา ⇒ ขัดกับ ม-49
+  //
+  // ⚠️ **ที่เดียวเสมอ ไม่โชว์สองที่** — `primaryAction` ตัวเดียวกัน ย้ายที่วาง ไม่ใช่
+  // ก๊อป · โชว์ทั้งหัวใบและท้ายเธรดเมื่อไร ก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
+  // ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
+  const threadStep = !hasItems && primaryAction
+    ? { ...primaryAction, hint: THREAD_STEP_HINT[primaryAction.id] || "รอดำเนินการ" }
+    : null;
+  const headerAction = threadStep ? null : primaryAction;
+
+  // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
+  //
+  // ⭐ **หัวใบเดียว** — เดิมหน้านี้วาดสถานะซ้ำสี่ที่ (ป้ายบนหัวใบ · status-pill ใน
+  // การ์ด inline style · สถานะในการ์ดสรุป · สถานะในการ์ดจัดการ) และ "ฝ่ายผู้ตอบ"
+  // สามที่ ⇒ เปิดมาแล้วต้องกวาดตาสี่จุดเพื่อรู้เรื่องเดียว · ตอนนี้เหลือจุดเดียว
+  // ต่อหนึ่งข้อเท็จจริง และปุ่มทั้งหมดมาอยู่บนหัวใบที่คนเห็นก่อน
+  //
+  // ⚠️ ยังใช้ `normalizeDocumentControlActions` ตัวเดิม — กติกา `visible: false`
+  // อยู่ที่เดียวกับทุกโมดูล เปลี่ยนแค่ *ที่วาง* ไม่ใช่กติกา
+  const requestActions = normalizeDocumentControlActions({
+    primaryAction: headerAction,
+    secondaryActions: [
+      {
+        // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
+        // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
+        //
+        // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
+        // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
+        id: "reschedule",
+        label: "เลื่อนวันกำหนดส่ง",
+        kind: "edit",
+        icon: CalendarClock,
+        onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
+        // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
+        // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
+        visible: canAnswer && !!req.acknowledgedAt,
+      },
+    ],
+    dangerActions: [
+      {
+        id: "delete",
+        // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
+        // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
+        label: isAdmin && req.status !== "draft"
+          ? "ลบคำร้อง (ผู้ดูแลระบบ)"
+          : "ลบคำร้องร่าง",
+        kind: "delete",
+        icon: Trash2,
+        onClick: () => setConfirm({ kind: "delete" }),
+        visible: isAdmin || (req._mine && req.status === "draft"),
+      },
+      {
+        // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
+        // การทำลาย** — ใบยังอยู่ เลขที่เดิม ผู้ขอแก้แล้วส่งซ้ำได้
+        id: "bounce",
+        label: "ตีกลับให้แก้ไข",
+        kind: "cancel",
+        icon: Undo2,
+        onClick: () => setBounceReason(" "),
+        visible: owner && req.status === "pending",
+      },
+      {
+        id: "cancel",
+        label: "ยกเลิกคำร้อง",
+        kind: "cancel",
+        icon: Ban,
+        onClick: () => setCancelReason(" "),
+        visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
+      },
+    ],
+  });
+  const hasHeaderActions = !!requestActions.primaryAction
+    || requestActions.secondaryActions.length > 0
+    || requestActions.dangerActions.length > 0;
+
+  // ⚠️ สี่ช่องพอดี — `.quickFacts` เป็น grid 4 คอลัมน์ตายตัว ใส่ช่องที่ห้าแล้วแถวที่สอง
+  // จะเหลือช่องโหว่และเส้นคั่นวิ่งผิด · ของที่ไม่ติดสี่อันดับแรก (ผู้รับเรื่อง) เล่าใน
+  // รางก้าวและบรรทัดใต้เนื้อคำร้องแทน
+  const headerFacts = [
+    { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
+    { key: "requester", label: "ผู้ขอ", value: req.requestedByName || "—" },
+    ...(hasItems
+      ? [{ key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total} รายการ` }]
+      : [{ key: "customer", label: "ลูกค้า", value: req.customerName || "—" }]),
+    {
+      key: "due",
+      // วันที่คาดหวังเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง — แสดงตัวที่
+      // ผูกพันจริงก่อนเสมอ เพราะนั่นคือตัวที่คิวใช้นับว่าเลยกำหนดหรือยัง
+      label: req.committedDueDate ? "รับปากส่ง" : "ต้องการคำตอบ",
+      value: req.committedDueDate
+        ? fmtDate(req.committedDueDate)
+        : (req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—"),
+    },
+  ];
+
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
-          ทั้งที่รับคำร้อง 8 ชนิด · บรีฟกลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
-          อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก */}
+          ทั้งที่รับคำร้องหลายชนิด · พัฒนากลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
+          อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก
+          ⭐ **หัวใบเดียวจบ** — สถานะ · รางก้าว · ข้อเท็จจริง · เนื้อคำร้อง · ไฟล์แนบ ·
+          ปุ่ม เรียงตามลำดับที่คนอ่านจริง · ฝ่ายผู้ตอบขึ้นไปอยู่กับชนิดบน eyebrow
+          เพราะสองอย่างนี้คือ "ใบนี้คืออะไร ส่งไปไหน" ซึ่งอ่านคู่กันเสมอ */}
       <SalesDetailOverview
-        eyebrow={requestKindLabel(req.kind)}
+        eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
-        description={`${req.title || req.customerName || "ราคากลาง"} · ถึงฝ่าย ${req.dept} · ผู้ขอ ${req.requestedByName || "—"}`}
+        description={req.title || req.customerName || "ราคากลาง"}
         badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
-        facts={[
-          { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
-          { key: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-          ...(hasItems ? [
-            { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
-            { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
-          ] : [
-            { key: "customer", label: "ลูกค้า", value: req.customerName || "—" },
-            { key: "due", label: "ต้องการคำตอบ", value: req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—" },
-          ]),
-        ]}
-      />
-
-      <DetailPageLayout
-        asideLabel="สรุปและจัดการคำร้อง"
-        aside={(
+        actions={hasHeaderActions ? (
           <>
-            <DocumentSummaryCard
-              title="สรุปคำร้อง"
-              rows={hasItems ? [
-                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-                { id: "items", label: "รายการทั้งหมด", value: `${progress.total} รายการ` },
-                { id: "answered", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
-                { id: "pending", label: "รอคำตอบ", value: `${Math.max(progress.total - progress.done, 0)} รายการ` },
-              ] : [
-                { id: "kind", label: "ชนิดคำร้อง", value: requestKindLabel(req.kind) },
-                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-                { id: "acknowledged", label: "ผู้รับเรื่อง", value: req.acknowledgedByName || "ยังไม่มีผู้รับ" },
-                { id: "committed", label: "รับปากว่าจะตอบ", value: req.committedDueDate ? fmtDate(req.committedDueDate) : "—" },
-              ]}
-              status={REQUEST_STATUS_LABELS[req.status] || req.status}
-              statusColor={STATUS_TONE[req.status]}
-            />
-            <DocumentControlCard
-              status={REQUEST_STATUS_LABELS[req.status] || req.status}
-              statusColor={STATUS_TONE[req.status]}
-              statusDescription="การดำเนินการระดับคำร้อง"
-              workflowSteps={workflowSteps}
-              primaryAction={primaryAction}
-              secondaryActions={[
-                {
-                  // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
-                  // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
-                  //
-                  // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
-                  // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
-                  id: "reschedule",
-                  label: "เลื่อนวันกำหนดส่ง",
-                  kind: "edit",
-                  icon: CalendarClock,
-                  onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
-                  // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
-                  // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
-                  visible: canAnswer && !!req.acknowledgedAt,
-                },
-              ]}
-              dangerActions={[
-                {
-                  id: "delete",
-                  // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
-                  // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
-                  label: isAdmin && req.status !== "draft"
-                    ? "ลบคำร้อง (ผู้ดูแลระบบ)"
-                    : "ลบคำร้องร่าง",
-                  kind: "delete",
-                  icon: Trash2,
-                  onClick: () => setConfirm({ kind: "delete" }),
-                  visible: isAdmin || (req._mine && req.status === "draft"),
-                },
-                {
-                  // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
-                  // การทำลาย** — ใบยังอยู่ เลขที่เดิม ผู้ขอแก้แล้วส่งซ้ำได้
-                  id: "bounce",
-                  label: "ตีกลับให้แก้ไข",
-                  kind: "cancel",
-                  icon: Undo2,
-                  onClick: () => setBounceReason(" "),
-                  visible: owner && req.status === "pending",
-                },
-                {
-                  id: "cancel",
-                  label: "ยกเลิกคำร้อง",
-                  kind: "cancel",
-                  icon: Ban,
-                  onClick: () => setCancelReason(" "),
-                  visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
-                },
-              ]}
-              busy={saving}
-            />
+            {requestActions.secondaryActions.map((action) => (
+              <ActionButton
+                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
+                variant="outline" disabled={saving} onClick={action.onClick}
+              />
+            ))}
+            {requestActions.dangerActions.map((action) => (
+              <ActionButton
+                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
+                variant="outline" disabled={saving} onClick={action.onClick}
+              />
+            ))}
+            {requestActions.primaryAction ? (
+              <ActionButton
+                kind={requestActions.primaryAction.kind}
+                label={requestActions.primaryAction.label}
+                icon={requestActions.primaryAction.icon}
+                variant="filled" disabled={saving}
+                onClick={requestActions.primaryAction.onClick}
+              />
+            ) : null}
           </>
-        )}
+        ) : null}
+        facts={headerFacts}
       >
-        <div>
-          <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span className="status-pill" style={{ color: STATUS_TONE[req.status], borderColor: "currentColor" }}>
-            {REQUEST_STATUS_LABELS[req.status] || req.status}
-          </span>
-          {hasItems && (
-            <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
-              ตอบแล้ว {progress.done}/{progress.total} รายการ
-            </span>
-          )}
-          {req.acknowledgedByName && (
-            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-              รับเรื่องโดย {req.acknowledgedByName} · {fmtDate(req.acknowledgedAt)}
-            </span>
-          )}
-          {req.formulaCode && (
-            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
-          )}
-        </div>
+        {/* รางก้าว — เดิมซ่อนอยู่ในการ์ดขวาที่ต้องเลื่อนไปหา ทั้งที่มันคือคำตอบของ
+            คำถามแรกที่คนเปิดใบมาถาม ("ตอนนี้ถึงไหนแล้ว") */}
+        <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+
         {/* รายละเอียดคำร้อง — เดิมแสดงเฉพาะชนิดที่ไม่มีบรรทัด แต่ตอนนี้ทุกหัวข้อมี
             ชื่อเรื่อง+รายละเอียดบังคับ (มติ 2026-08-03) จึงต้องแสดงทุกใบ
             ⭐ RichText ไม่ใช่ ReadableText: ผู้ใช้วาง URL หรือรหัสเอกสารในรายละเอียด
@@ -590,7 +612,20 @@ export default function MaterialAskDetailPage() {
         )}
         {/* `note` เลิกเขียนใหม่แล้ว — ยังแสดงของเก่าที่มีค่าอยู่ ไม่ซ่อนข้อมูลที่คน
             เคยพิมพ์ไว้ (คอลัมน์ยังไม่ถูก DROP) */}
-        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />}
+        {req.note && <ReadableText text={req.note} lines={4} className={styles.requestNote} />}
+
+        {/* ของที่ไม่ติดสี่ช่องบนแถบข้อเท็จจริง แต่ทิ้งไม่ได้ — ผู้รับเรื่องคือหลักฐาน
+            ว่ามีคนรับงานไปจริง ไม่ใช่แค่สถานะเปลี่ยน */}
+        {(req.acknowledgedByName || req.formulaCode) && (
+          <p className={styles.headMeta}>
+            {req.acknowledgedByName
+              ? `รับเรื่องโดย ${req.acknowledgedByName} · ${fmtDate(req.acknowledgedAt)}`
+              : ""}
+            {req.acknowledgedByName && req.formulaCode ? " · " : ""}
+            {req.formulaCode ? `สูตร ${req.formulaCode}` : ""}
+          </p>
+        )}
+
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
             แต่ไม่ควรค้างบนจอ ไม่งั้นใบที่แก้แล้วยังดูเหมือนถูกตีกลับอยู่ */}
         {req.status === "draft" && req.bounceReason && (
@@ -602,13 +637,13 @@ export default function MaterialAskDetailPage() {
           </div>
         )}
         {req.status === "cancelled" && req.cancelReason && (
-          <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
+          <div className={styles.cancelledReason}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
           </div>
         )}
 
         {/* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะ
-            รายวัสดุ ซึ่งมีแต่ 3 ชนิดขอราคา → บรีฟกลิ่น/Mock-up ที่ต้องมีรูปอ้างอิง
+            รายบรรทัดของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิง
             มากที่สุดแนบไม่ได้เลย ต้องไปส่งกันทาง LINE) */}
         <div className={styles.attachBlock}>
           <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
@@ -619,203 +654,52 @@ export default function MaterialAskDetailPage() {
             inlineUpload
           />
         </div>
-      </div>
+      </SalesDetailOverview>
 
-      {/* ⭐ กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้)
-          ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก) และส่งขาดก็เกิดได้ · บล็อกเมื่อไร
-          คนจะเลี่ยงด้วยการ *ไม่บันทึกจำนวน* ซึ่งแย่กว่าตัวเลขที่ไม่ตรงมาก เพราะตอนนั้น
-          ระบบจะไม่รู้อะไรเลยแทนที่จะรู้ว่าไม่ตรง */}
-      {reconcile && (
-        <StatusNotice
-          tone={SO_RECONCILE_TONE[reconcile.state]}
-          className={styles.reconcile}
-        >
-          {soReconcileText(reconcile)}
-        </StatusNotice>
-      )}
+      {/* ⚠️ ไม่มีรางขวาแล้ว — การ์ด "สรุปคำร้อง" กับ "จัดการเอกสาร" พูดเรื่องเดียวกับ
+          หัวใบทุกบรรทัด (สถานะ · ฝ่ายผู้ตอบ · ความคืบหน้า) · ปุ่มกับรางก้าวย้ายขึ้นหัวใบ
+          แล้ว รางขวาจึงเหลือแต่ของซ้ำ ⇒ ยุบทิ้ง หน้าเหลือคอลัมน์เดียวเต็มความกว้าง */}
+      <DetailPageLayout>
+        <div>
 
-      {(req.items || []).map((item) => {
-        const flow = isFlowRow(item);
-        return (
-        <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: "var(--fw-semibold)" }}>{item.label}</div>
-              {item.spec && (
-                <ReadableText text={item.spec} lines={3} style={{ marginTop: 4, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />
-              )}
-              {!flow && (
-                <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-                  ขอราคาที่: {(item.tiers || []).length
-                    ? (item.tiers || []).map((t) => qtyText(t.qty)).join(" · ")
-                    : "ราคาเดียว (ไม่แบ่งชั้นจำนวน)"}
-                </div>
-              )}
-            </div>
-            {/* แถวสายเดินทางมีสถานะละเอียดกว่าป้ายเดียวอยู่แล้ว (อยู่บนหัวราง) —
-                โชว์ป้ายซ้ำจะได้สองแหล่งความจริงที่ขัดกันได้ */}
-            {!flow && (
-              <div style={{ textAlign: "right" }}>
-                <span className="ui-badge" style={{ background: "var(--panel-3)", color: ITEM_TONE[item.answerStatus] }}>
-                  {requestItemStatusLabel(item.answerStatus, item.lineKind)}
-                </span>
-                {item.answeredByName && (
-                  <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>
-                    {item.answeredByName} · {fmtDate(item.answeredAt)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+      {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":
+          หัวใบ · เธรด · โมดัลของแต่ละก้าว · ส่วนที่ต่างกันรายหัวข้อ (PDR · ตารางสรุป ·
+          กระทบยอด SO · การ์ดรายแถว) อยู่ในไฟล์ของหัวข้อนั้น
+          ⚠️ เพิ่มหัวข้อใหม่ **ห้ามมาแก้ไฟล์นี้** — ลงทะเบียนที่ `details/index.js` */}
+      {/* ⚠️ **ส่งของทุกหัวข้อไปให้ครบ แล้วให้ component ของหัวข้อหยิบตัวของตัวเอง**
+          — เลือกให้ที่นี่ต้องรู้ว่าหัวข้อไหนใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่
+          ของเปลือก (ม-34) · เคยเขียนเป็น `docBoard.length ? … : …` ซึ่งเดาจากข้อมูล
+          ⇒ ใบร่างที่ยังไม่มีแถวจะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ */}
+      <KindDetail
+        request={req}
+        canEditAttachments={(req._mine || owner)
+          && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        saving={saving}
+        board={board}
+        briefSummary={briefSummary}
+        formulaBoard={formulaBoard}
+        formulaTotals={formulaTotals}
+        docBoard={docBoard}
+        docTotals={docTotals}
+        reconcile={reconcile}
+        reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}
+        reconcileText={reconcile ? soReconcileText(reconcile) : null}
+        pdrDraft={pdrDraft}
+        onPdrDraftChange={setPdrDraft}
+        onPdrCancel={() => setPdrDraft(null)}
+        onPdrEdit={() => setPdrDraft({
+          pdr: pdrValuesFrom(req),
+          briefs: (req.briefs || []).map((b) => ({ ...b })),
+        })}
+        onPdrSave={() => call("", {
+          method: "PATCH",
+          body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+        }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
+        onOpenDocument={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
+      />
 
-          {/* รางห้าก้าวของแถวนี้ — ปุ่มของแต่ละก้าวอยู่ในช่องของก้าวนั้น ไม่ใช่แถบ
-              ปุ่มท้ายการ์ด ⇒ สายตาไปหยุดตรงที่ต้องกดพอดี */}
-          {flow && (
-            <div className={styles.rowRail}>
-              <RowStageRail
-                row={item}
-                request={req}
-                canDept={canAnswer}
-                canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
-                busy={saving}
-                onHop={(hop, outcome) => (hop === "price"
-                  ? setPricing({ item, price: "", validUntil: "", note: "" })
-                  : openHop(item, hop, outcome))}
-              />
-            </div>
-          )}
-
-          {/* แถวสายเดินทางที่ถูกปฏิเสธเก็บคำพูดลูกค้าไว้ที่ outcomeNote ซึ่งรางแสดง
-              ให้แล้ว — ตรงนี้จึงเหลือไว้สำหรับแถววัสดุที่ฝ่ายตอบว่าให้ราคาไม่ได้ */}
-          {!flow && item.answerStatus === "declined" && item.declineReason && (
-            <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
-              <strong>ตอบไม่ได้: </strong><ReadableText text={item.declineReason} lines={3} />
-            </div>
-          )}
-
-          <div style={{ marginTop: 12 }}>
-            <div className="toolbar-label">รูป / สเปกแนบ</div>
-            <AttachmentsPanel
-              entityType="dept_request_item"
-              entityId={item.id}
-              canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-              inlineUpload
-            />
-          </div>
-
-          {!flow && canAnswer && item.answerStatus === "pending" && (
-            <div className="action-bar" style={{ marginTop: 12 }}>
-              <button type="button" className="btn" onClick={() => setNoQuote({ item, reason: "" })} disabled={saving}>
-                ตอบไม่ได้
-              </button>
-              <button
-                type="button" className="btn btn-accent" disabled={saving}
-                onClick={() => setAnswering({
-                  item,
-                  tiers: (item.tiers || []).length
-                    ? item.tiers.map((t) => ({ qty: String(t.qty), price: "" }))
-                    : [emptyTierRow()],
-                })}
-              >
-                ตอบราคา
-              </button>
-            </div>
-          )}
-        </div>
-        );
-      })}
-
-      {/* ⭐ ตารางสรุปทั้งใบ (ม็อกอัพ ส่วน 07) — วางใต้แถบตัวเลข เหนือ PDR เพราะเป็น
-          "สถานการณ์ตอนนี้" ส่วน PDR เป็น "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มของ
-          แต่ละก้าวอยู่บนรางในการ์ดของแถวนั้นที่เดียว */}
-      {showPdr && <BriefBoard groups={board} />}
-
-      {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย
-          🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
-      {showPdr && (
-        <div className={styles.summaryBar}>
-          <span><strong>{briefSummary.briefs}</strong> บรีฟ</span>
-          {reconcile && <span><strong>{reconcile.ordered}</strong> กลิ่นตาม SO</span>}
-          <span><strong>{briefSummary.directions}</strong> direction ที่ส่งแล้ว</span>
-          {/* ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD
-              ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
-          {briefSummary.untouched > 0 && (
-            <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
-          )}
-          {/* ⭐ สองขั้นที่ "ค้างโดยไม่มีใครเห็น" ได้ง่ายที่สุด — รอลูกค้าตอบคือรอข้างนอก
-              ส่วนรอใส่ราคาคือของที่จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้ (กับดักข้อ 11) */}
-          {briefSummary.waitingCustomer > 0 && (
-            <span><strong>{briefSummary.waitingCustomer}</strong> รอลูกค้าตอบ</span>
-          )}
-          {briefSummary.awaitingPrice > 0 && (
-            <span data-tone="warn"><strong>{briefSummary.awaitingPrice}</strong> รอใส่ราคา</span>
-          )}
-          {/* กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้) · ส่งเกิน/ขาดเกิดได้จริง
-              และบล็อกเมื่อไร คนจะเลี่ยงด้วยการไม่บันทึก ซึ่งแย่กว่า */}
-          {reconcile && soReconcileText(reconcile) && (
-            <span data-tone={SO_RECONCILE_TONE[reconcile.state]}>{soReconcileText(reconcile)}</span>
-          )}
-        </div>
-      )}
-
-      {showPdr && (
-        <div className={styles.pdrBlock}>
-          {pdrDraft ? (
-            <>
-              <PdrForm
-                value={pdrDraft.pdr} onChange={(pdr) => setPdrDraft({ ...pdrDraft, pdr })}
-                briefs={pdrDraft.briefs}
-                onBriefsChange={(briefs) => setPdrDraft({ ...pdrDraft, briefs })}
-                disabled={saving}
-              />
-              <div className={`action-bar ${styles.modalActions}`}>
-                <Button variant="quiet" disabled={saving} onClick={() => setPdrDraft(null)}>
-                  ยกเลิก
-                </Button>
-                <Button
-                  tone="primary" disabled={saving}
-                  onClick={() => call("", {
-                    method: "PATCH",
-                    body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
-                  }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
-                >
-                  บันทึกแบบฟอร์ม
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <PdrSummary request={req} briefs={req.briefs || []} />
-              {/* ⚠️ ปุ่มโผล่ตาม `_canEditPdr` ที่ **server คำนวณ** — หน้าจอไม่มี user.id
-                  จึงตัดสินเองไม่ได้ (บทเรียนเดียวกับ `_canApprove`) */}
-              {req._canEditPdr && (
-                <div className={`action-bar ${styles.modalActions}`}>
-                  {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็น HTML
-                      เหมือน QT/SO ไม่ใช่ไฟล์ที่โหลดลงเครื่อง */}
-                  <Button
-                    variant="quiet"
-                    onClick={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
-                  >
-                    ดูฉบับที่ออกจริง
-                  </Button>
-                  <Button
-                    variant="quiet" disabled={saving}
-                    onClick={() => setPdrDraft({
-                      pdr: pdrValuesFrom(req),
-                      briefs: (req.briefs || []).map((b) => ({ ...b })),
-                    })}
-                  >
-                    แก้แบบฟอร์ม PDR
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* เธรดคุยกันในเคส (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
-          ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของเคส
+      {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
+          ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของใบ
           (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
       <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในคำร้องนี้">
         {/* 🐞 เคยส่งชื่อชุดก่อน mig 0173 (ชื่อเก่าของคำร้อง/บรรทัดคำร้อง) — เธรดเลย
@@ -830,6 +714,17 @@ export default function MaterialAskDetailPage() {
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
           composeHint={composeHint}
           onPosted={load}
+        />
+        {/* ⭐ ก้าวถัดไปอยู่ **ท้ายเธรด** ไม่ใช่บนรางรายแถว (ม-36 ก) — เธรดเป็นแกน
+            ของหน้า สถานะกับบทสนทนาอยู่สายเดียวกัน แล้วจบด้วย "ต้องทำอะไรต่อ" */}
+        <NextStepBar
+          rows={req.items || []}
+          canDept={canAnswer}
+          canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
+          busy={saving}
+          onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
+          onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
+          requestStep={threadStep}
         />
       </DetailCard>
         </div>
@@ -926,10 +821,9 @@ export default function MaterialAskDetailPage() {
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
                   (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
-              <input
-                id="hop-at" type="date" className="input-premium"
-                value={hopDraft.at} disabled={saving}
-                onChange={(e) => setHopDraft({ ...hopDraft, at: e.target.value })}
+              <DateInput
+                id="hop-at" value={hopDraft.at} disabled={saving}
+                onChange={(v) => setHopDraft({ ...hopDraft, at: v })}
               />
             </div>
 
@@ -959,10 +853,9 @@ export default function MaterialAskDetailPage() {
                   <label htmlFor="hop-formula-date">
                     วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
                   </label>
-                  <input
-                    id="hop-formula-date" type="date" className="input-premium"
-                    value={hopDraft.formulaDate} disabled={saving}
-                    onChange={(e) => setHopDraft({ ...hopDraft, formulaDate: e.target.value })}
+                  <DateInput
+                    id="hop-formula-date" value={hopDraft.formulaDate} disabled={saving}
+                    onChange={(v) => setHopDraft({ ...hopDraft, formulaDate: v })}
                   />
                 </div>
               </>
@@ -971,10 +864,9 @@ export default function MaterialAskDetailPage() {
             {hopDraft.hop === "ack" && (
               <div className="form-group">
                 <label htmlFor="hop-due">รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)</label>
-                <input
-                  id="hop-due" type="date" className="input-premium"
-                  value={hopDraft.dueAt} disabled={saving}
-                  onChange={(e) => setHopDraft({ ...hopDraft, dueAt: e.target.value })}
+                <DateInput
+                  id="hop-due" value={hopDraft.dueAt} disabled={saving}
+                  onChange={(v) => setHopDraft({ ...hopDraft, dueAt: v })}
                 />
                 <p className={styles.fieldHint}>
                   ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง
@@ -985,8 +877,8 @@ export default function MaterialAskDetailPage() {
             {hopDraft.outcome === "confirmed" && (
               <div className="form-group">
                 <label htmlFor="hop-qty">จำนวนที่ลูกค้าคอนเฟิร์ม</label>
-                <input
-                  id="hop-qty" type="number" min="0" step="any" className="input-premium"
+                <Input
+                  id="hop-qty" type="number" min="0" step="any"
                   value={hopDraft.confirmedQty} disabled={saving}
                   onChange={(e) => setHopDraft({ ...hopDraft, confirmedQty: e.target.value })}
                 />
@@ -1029,69 +921,6 @@ export default function MaterialAskDetailPage() {
       </Modal>
 
       {/* ตอบราคา — ชั้นจำนวนตั้งต้นมาจากที่ผู้ขอระบุ แต่เพิ่ม/ลดได้ */}
-      <Modal
-        open={!!answering} onClose={() => setAnswering(null)} size="md" dismissible={!saving}
-        title={answering ? `ตอบราคา — ${answering.item.label}` : ""}
-      >
-        {answering && (
-          <>
-            <PriceTierFields
-              value={answering.tiers} disabled={saving}
-              unitLabel={unitOf(answering.item.kind)}
-              onChange={(tiers) => setAnswering({ ...answering, tiers })}
-            />
-            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
-              ราคานี้จะเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของ <b>{answering.item.label}</b>
-              {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : " (ราคากลาง)"}
-            </div>
-            <div className="action-bar" style={{ marginTop: 16 }}>
-              <button type="button" className="btn ghost" onClick={() => setAnswering(null)} disabled={saving}>ยกเลิก</button>
-              <button
-                type="button" className="btn btn-accent"
-                disabled={saving || !answering.tiers.some((t) => String(t.price ?? "") !== "")}
-                onClick={() => submitAnswer(
-                  { itemId: answering.item.id, tiers: answering.tiers },
-                  "บันทึกราคาเข้าทะเบียนแล้ว",
-                )}
-              >
-                บันทึกราคา
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      {/* ตอบไม่ได้ — ต้องมีเหตุผล ไม่งั้นเคสค้าง open ตลอดไป */}
-      <Modal
-        open={!!noQuote} onClose={() => setNoQuote(null)} size="sm" dismissible={!saving}
-        title={noQuote ? `ตอบไม่ได้ — ${noQuote.item.label}` : ""}
-      >
-        {noQuote && (
-          <>
-            <div className="form-group">
-              <label htmlFor="ask-no-quote">เหตุผล</label>
-              <Textarea variant="data"
-                id="ask-no-quote" rows={3} maxLength={500}
-                value={noQuote.reason} disabled={saving}
-                placeholder="เช่น โรงงานไม่รับผลิตขนาดนี้ / เลิกผลิตแล้ว / ต้องขอสเปกเพิ่ม"
-                onChange={(e) => setNoQuote({ ...noQuote, reason: e.target.value })}
-              />
-            </div>
-            <div className="action-bar" style={{ marginTop: 16 }}>
-              <button type="button" className="btn ghost" onClick={() => setNoQuote(null)} disabled={saving}>ยกเลิก</button>
-              <button
-                type="button" className="btn btn-accent" disabled={saving || !noQuote.reason.trim()}
-                onClick={() => submitAnswer(
-                  { itemId: noQuote.item.id, noQuote: true, reason: noQuote.reason },
-                  "บันทึกว่าตอบไม่ได้แล้ว",
-                )}
-              >
-                บันทึก
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       {/* ปิดบรีฟกลิ่น — ต้องบอกว่าได้กลิ่นตัวไหน (มติ 3)
           ⚠️ ไม่เดาชื่อกลิ่นจากหัวเรื่องคำร้อง: หัวเรื่องเป็นข้อความบรีฟ ไม่ใช่ชื่อกลิ่น
@@ -1137,8 +966,8 @@ export default function MaterialAskDetailPage() {
               <>
                 <div className="form-group">
                   <label htmlFor="close-outcome-name">ชื่อกลิ่น</label>
-                  <input
-                    id="close-outcome-name" className="input-premium" maxLength={200}
+                  <Input
+                    id="close-outcome-name" maxLength={200}
                     value={outcome.scentName} disabled={saving}
                     placeholder="ชื่อกลิ่นจริงที่ RD ตั้ง ไม่ใช่หัวเรื่องบรีฟ"
                     onChange={(e) => setOutcome({ ...outcome, scentName: e.target.value })}
@@ -1148,8 +977,8 @@ export default function MaterialAskDetailPage() {
                 {isScentRegistrar(me) ? (
                   <div className="form-group">
                     <label htmlFor="close-outcome-code">รหัสกลิ่น (ใส่แล้วเข้าทะเบียนเลย)</label>
-                    <input
-                      id="close-outcome-code" className="input-premium mono" maxLength={100}
+                    <Input
+                      id="close-outcome-code" mono maxLength={100}
                       value={outcome.code} disabled={saving} placeholder="เช่น SC-2026-001"
                       onChange={(e) => setOutcome({ ...outcome, code: e.target.value })}
                     />
@@ -1292,8 +1121,8 @@ export default function MaterialAskDetailPage() {
         </div>
       </Modal>
 
-      {/* ยกเลิกเคส */}
-      <Modal open={!!cancelReason} onClose={() => setCancelReason("")} title="ยกเลิกเคสขอราคา" size="sm" dismissible={!saving}>
+      {/* ยกเลิกคำร้อง */}
+      <Modal open={!!cancelReason} onClose={() => setCancelReason("")} title="ยกเลิกคำร้อง" size="sm" dismissible={!saving}>
         <div className="form-group">
           <label htmlFor="ask-cancel">เหตุผลที่ยกเลิก</label>
           <Textarea variant="data"
@@ -1308,7 +1137,7 @@ export default function MaterialAskDetailPage() {
             type="button" className="btn btn-danger" disabled={saving || !cancelReason.trim()}
             onClick={() => call("", {
               method: "PATCH", body: JSON.stringify({ action: "cancel", cancelReason }),
-            }, "ยกเลิกเคสแล้ว").then((ok) => { if (ok) setCancelReason(""); })}
+            }, "ยกเลิกคำร้องแล้ว").then((ok) => { if (ok) setCancelReason(""); })}
           >
             ยกเลิกเคสนี้
           </button>

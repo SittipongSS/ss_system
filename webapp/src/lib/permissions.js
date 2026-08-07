@@ -338,7 +338,7 @@ const ROLE_CAPS = {
 const DEFAULT_CAPS = ['customers:view', 'products:view', 'history:view'];
 
 // ── cap ที่ทุกคนที่ล็อกอินถือเสมอ ไม่ผูกกับ role ─────────────────────────
-// ⭐ `issues:report` = แจ้งปัญหาระบบ (mig 0219) · **ทุก role รวม viewer/executive**
+// ⭐ `issues:report` = แจ้งปัญหาระบบ (mig 0223) · **ทุก role รวม viewer/executive**
 // เพราะคนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด — กันไว้แล้วปัญหาจะไม่ถูก
 // รายงานเลย (มติ Q2)
 //

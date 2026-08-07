@@ -7,31 +7,36 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import Toast from "@/components/ui/Toast";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, groupQueueRows, queueCounts, requestNextStep,
+  QUEUE_COUNT_META, groupQueueRows, matchesQueueCount, queueCounts, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
-  scope = "mine", dept = null, rows = [], materials = [], products = [],
-  // ทะเบียน/รายการที่ฟอร์มอ้าง — โครงการ+ดีล (บังคับทุกชนิด) · กลิ่น (F) · สูตร (FB)
-  projects = [], deals = [], salesOrders = [], scents = [], formulas = [],
-  productTypes = [], mentionPeople = [],
+  scope = "mine", dept = null, rows = [],
+  // 🐞 **เคยรับทะเบียน 9 ชุด (materials · products · projects · deals · salesOrders ·
+  // scents · formulas · productTypes · mentionPeople) แล้วไม่ได้ใช้สักตัว** — ตกค้าง
+  // จากตอนที่ฟอร์มเปิดคำร้องยังเป็นโมดัลอยู่ในพาเนลนี้ · หน้าแม่จึงยิง 8 endpoint
+  // ทุกครั้งที่เปิดคิว เพื่อส่งของที่ไม่มีใครอ่านต่อ ⇒ ถอดทั้งชุด
   // ⚠️ `reload` ยังรับไว้ — ผู้เรียกใช้หลังกดสร้าง/แก้เพื่อดึงใหม่ · ที่ถอดคือ
   // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
   // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
   loading = false, loadError = "", reload, newRequestDefaults = null,
+  // ⭐ คิวของฝ่าย (`/rd/requests`) เป็นที่ **ตอบ** ไม่ใช่ที่เปิดคำร้อง — ปุ่มเปิดอยู่ฝั่ง
+  // ผู้ขอที่ `/requests` ที่เดียว · โผล่สองที่แล้วต้องมี `returnTo` สองชุดที่ต้องดูแล
+  showNewRequest = true,
 }) {
   // ⭐ prefill ส่งผ่าน query — หน้าเต็มรับได้ตรง ๆ ต่างจากโมดัลที่ต้องส่ง props
   // ผ่านทุกจุดที่เปิดมัน · `returnTo` พากลับมาที่คิวหลังกดยกเลิก
@@ -46,9 +51,23 @@ export default function RequestQueuePanel({
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   const today = businessDate();
   const counts = queueCounts(rows, { todayIso: today });
-  const groups = groupQueueRows(rows, { todayIso: today });
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+
+  // ⭐ **ตัวเลขบนแถบกดกรองได้** — "เลยกำหนด 2" คือคำถามแรกที่หัวหน้าเปิดคิวมาถาม
+  // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
+  // ⚠️ กรองที่จอได้ **เพราะชุดข้อมูลนี้ผ่านด่านขอบเขตของ API มาแล้ว** — ต่างจาก
+  // ตัวสลับขอบเขตบนหน้าแม่ที่ต้องกรองฝั่ง server (กับดักข้อ 9 ของแผน)
+  const [countFilter, setCountFilter] = useState(null);
+  const visibleRows = useMemo(
+    () => (countFilter
+      ? rows.filter((r) => matchesQueueCount(r, countFilter, { todayIso: today }))
+      : rows),
+    [rows, countFilter, today],
+  );
+  const groups = groupQueueRows(visibleRows, { todayIso: today });
+
+  // ⭐ ตาราง 8 คอลัมน์บนจอตั้งเลื่อนซ้ายขวาอย่างเดียว — สลับเป็นการ์ดเหมือนอีก 9 หน้า
+  // ของระบบ · `useResponsiveView` เก็บ override ของผู้ใช้ไว้จนกว่าจะพลิกจอ
+  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -64,6 +83,7 @@ export default function RequestQueuePanel({
   // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
   return (
     <>
+      {showNewRequest && (
       <div className="toolbar">
         <span className="spacer" />
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
@@ -78,6 +98,7 @@ export default function RequestQueuePanel({
           <Plus size={14} /> เปิดคำร้อง
         </button>
       </div>
+      )}
 
       {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
           วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอไปรับของ/
@@ -90,11 +111,32 @@ export default function RequestQueuePanel({
           กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ) */}
       {!loading && !loadError && (
         <div className={styles.counts}>
-          {QUEUE_COUNT_META.map((meta) => (
-            <span key={meta.key} className={styles.count} data-tone={meta.tone}>
-              {meta.label} <strong>{counts[meta.key]}</strong>
+          {/* ⚠️ ใช้ `.chip` ของกลาง ไม่ใช่กล่องที่ประกาศสี/ขอบเอง — โทน
+              warning/danger/info ของ QUEUE_COUNT_META ตรงกับคลาสโทนของ .chip พอดี */}
+          {QUEUE_COUNT_META.map((meta) => {
+            const on = countFilter === meta.key;
+            return (
+              <button
+                key={meta.key} type="button" aria-pressed={on}
+                className={`chip ${meta.tone === "neutral" ? "" : meta.tone} ${styles.countChip}`.trim()}
+                // กดตัวเดิมซ้ำ = ล้างตัวกรอง — ไม่ต้องไปหาปุ่ม "ล้าง" ที่อื่น
+                onClick={() => setCountFilter(on ? null : meta.key)}
+              >
+                {meta.label} <strong>{counts[meta.key]}</strong>
+              </button>
+            );
+          })}
+          {countFilter && (
+            <span className="toolbar-label">
+              แสดงเฉพาะ &quot;{QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}&quot;
+              {" · "}
+              <button type="button" className={styles.clearFilter} onClick={() => setCountFilter(null)}>
+                ล้างตัวกรอง
+              </button>
             </span>
-          ))}
+          )}
+          <span className="spacer" />
+          <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง" />
         </div>
       )}
 
@@ -102,12 +144,71 @@ export default function RequestQueuePanel({
         <SkeletonRows rows={4} />
       ) : loadError ? (
         <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <EmptyState icon={ClipboardList}>
-          {scope === "queue"
-            ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
-            : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
+          {/* ⚠️ ว่างเพราะ "ไม่มีงาน" กับว่างเพราะ "ตัวกรองตัดหมด" ต้องอ่านคนละแบบ —
+              ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
+          {countFilter
+            ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
+            : scope === "queue"
+              ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
+              : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
         </EmptyState>
+      ) : view === "list" ? (
+        /* ── มุมมองการ์ด — จอตั้ง/จอแคบ ────────────────────────────────────
+           ⚠️ **ข้อมูลชุดเดียวกับตาราง จัดกลุ่มด้วย groupQueueRows ตัวเดียวกัน** —
+           การ์ดที่เลือกฟิลด์เองจะเพี้ยนจากตารางทันทีที่มีคนเพิ่มคอลัมน์
+           ⚠️ ไม่มีแถบสีขอบการ์ด — ความเร่งด่วนบอกด้วยป้ายข้อความเหมือนในตาราง */
+        <div className={styles.queueCards}>
+          {groups.map((g) => (
+            <Fragment key={g.group}>
+              <div className={styles.cardGroupLabel}>{g.label} · {g.rows.length}</div>
+              {g.rows.map((ask) => {
+                const p = requestProgress(ask.items || []);
+                const next = requestNextStep(ask);
+                return (
+                  <button
+                    key={ask.id} type="button" className={styles.queueCard}
+                    onClick={() => router.push(`/requests/${ask.id}`)}
+                  >
+                    <span className={styles.cardTop}>
+                      <span className={styles.docCell}>{ask.docNo || "ร่าง"}</span>
+                      <StatusBadge
+                        tone={REQUEST_STATUS_TONES[ask.status] || "neutral"}
+                        label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
+                      />
+                    </span>
+                    <span className={styles.cardTitle}>
+                      {ask.title || ask.customerName || "ราคากลาง"}
+                    </span>
+                    {ask.title && ask.customerName && (
+                      <span className={styles.subText}>{ask.customerName}</span>
+                    )}
+                    {ask.formulaCode && (
+                      <span className={styles.subText}>สูตร {ask.formulaCode}</span>
+                    )}
+                    <span className={styles.cardMeta}>
+                      <span className="ui-badge">{requestKindLabel(ask.kind)}</span>
+                      <span className="ui-badge">ถึงฝ่าย {ask.dept}</span>
+                      {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
+                      {next && (
+                        <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
+                          {next.label}
+                        </span>
+                      )}
+                      {p.total > 0 && (
+                        <span className="ui-badge">{p.done}/{p.total} ตอบแล้ว</span>
+                      )}
+                    </span>
+                    <span className={styles.cardUpdated}>
+                      อัปเดต {fmtDate(ask.updatedAt || ask.createdAt)}
+                    </span>
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
       ) : (
         <TableScroll>
           <table className="premium-table">
@@ -117,10 +218,13 @@ export default function RequestQueuePanel({
                 <th className={styles.colKind}>ชนิด</th>
                 <th>เรื่อง / ลูกค้า</th>
                 <th className={styles.colDept}>ถึงฝ่าย</th>
-                <th className={styles.colProgress}>ความคืบหน้า</th>
                 {/* ⭐ ก้าวถัดไป — มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้
-                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง */}
+                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง
+                    ⚠️ ลำดับหัวตารางต้องตรงกับลำดับ <td> ข้างล่างเป๊ะ ๆ — เคยสลับกัน
+                    อยู่สองคอลัมน์ ("ความคืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป และความ
+                    กว้างที่ตั้งไว้ก็ไปคุมผิดคอลัมน์) */}
                 <th className={styles.colNext}>ก้าวถัดไป</th>
+                <th className={styles.colProgress}>ความคืบหน้า</th>
                 <th className={styles.colStatus}>สถานะ</th>
                 <th className={styles.colUpdated}>อัปเดต</th>
               </tr>
@@ -195,7 +299,6 @@ export default function RequestQueuePanel({
         </TableScroll>
       )}
 
-      <Toast toast={toast} onClose={() => setToast(null)} />
     </>
   );
 }

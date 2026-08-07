@@ -207,6 +207,8 @@ export async function PATCH(request, { params }) {
             likedNotes: row.likedNotes,
             dislikedNotes: row.dislikedNotes,
             scentotypes: row.scentotypes,
+            // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
+            scentotypeNotes: row.scentotypeNotes || {},
             performance: row.performance,
             updatedAt: nowIso,
           };

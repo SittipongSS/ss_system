@@ -6,7 +6,7 @@ import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, Rec
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -47,7 +47,7 @@ export default function AppLayout({ children }) {
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
-  const [showReport, setShowReport] = useState(false); // โมดัลแจ้งปัญหาระบบ (mig 0219)
+  const [showReport, setShowReport] = useState(false); // โมดัลแจ้งปัญหาระบบ (mig 0223)
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
   useEffect(() => {
@@ -241,11 +241,18 @@ export default function AppLayout({ children }) {
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
-        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอราคา F·FB·PM/
+        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/
         // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
         // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
-        // cap เดียวกับขอราคาผลิต แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/requests', name: 'คำร้อง', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/requests') },
+        // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
+        // ของระบบขอราคาผลิตมาใช้ตั้งแต่ตอนที่มันยังเป็น "ระบบขอราคาวัสดุ" ⇒ ฝ่ายที่รับ
+        // คำร้องได้แต่ไม่มีสิทธิ์เห็นต้นทุน (บัญชี) เปิดเมนูไม่ได้เลย
+        // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
+        // (lib/requests/access.js) ไม่ใช่ที่เมนู · lib ทำเสร็จไปแล้ว เหลือแค่จุดนี้
+        // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
+        // (ถือ costing:view หรือเป็นฝ่ายที่ตอบคำร้องได้) จึงต้องประกาศ caps ให้ตรงกัน
+        // ไม่งั้นด่านชั้น cap จะแคบกว่าด่านจริงแล้วบัญชียังเปิดเมนูไม่ได้เหมือนเดิม
+        { href: '/requests', name: 'คำร้อง', icon: ClipboardList, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, match: (p) => p.startsWith('/requests') },
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
@@ -321,7 +328,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      // แจ้งปัญหาระบบ (mig 0219) — เมนูเดียว · cap `issues:report` อยู่ใน
+      // แจ้งปัญหาระบบ (mig 0223) — เมนูเดียว · cap `issues:report` อยู่ใน
       // UNIVERSAL_CAPS จึงผ่านให้ทุก role ที่ล็อกอิน (รวม viewer) โดยไม่ต้องไล่
       // เติม cap ทีละ role
       system: 'support',
@@ -551,7 +558,7 @@ export default function AppLayout({ children }) {
         onChanged={() => setMustChangePwd(false)}
       />
 
-      {/* แจ้งปัญหาระบบ (mig 0219) — mount ที่นี่เพราะเปิดได้จากทุกหน้าผ่านเมนูผู้ใช้
+      {/* แจ้งปัญหาระบบ (mig 0223) — mount ที่นี่เพราะเปิดได้จากทุกหน้าผ่านเมนูผู้ใช้
           ตัวเดียวกับที่ปุ่มในหน้า /support เรียก (component เดียว ไม่มีฟอร์มชุดที่สอง) */}
       <ReportIssueModal open={showReport} onClose={() => setShowReport(false)} />
     </div>

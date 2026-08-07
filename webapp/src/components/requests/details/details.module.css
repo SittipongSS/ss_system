@@ -1,0 +1,33 @@
+/* ── เนื้อของหน้ารายละเอียดรายหัวข้อ (P3b) ──────────────────────────────
+   ⚠️ ไฟล์เดียวสำหรับทุกหัวข้อโดยเจตนา — โครงการ์ดต้องเหมือนกันทุกหัวข้อ
+   สิ่งที่ต่างคือ *เนื้อ* ไม่ใช่กรอบ (มติเดิม R-3: "หน้าเดียว เนื้อสลับตามหัวข้อ") */
+.rowCard {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-2-5);
+  background: var(--panel);
+}
+.rowHead { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
+.rowTitle { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.rowSpec { margin-top: var(--space-1-5); font-size: var(--fs-7); color: var(--text-2); }
+.rowAttach { margin-top: var(--space-3); }
+
+/* แถบตัวเลขของพัฒนากลิ่น — บรีฟ/direction/รอลูกค้า/รอราคา */
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+.summaryBar strong { color: var(--text); }
+.summaryBar [data-tone="warn"] strong { color: var(--amber); }
+.summaryBar [data-tone="danger"] strong { color: var(--red); }
+
+.pdrBlock { margin-bottom: var(--space-3); }
+.pdrActions { margin-top: var(--space-3); }

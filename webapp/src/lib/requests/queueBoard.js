@@ -44,22 +44,37 @@ export function requestNextStep(request) {
 //
 // ⚠️ **นับใบ ไม่ใช่นับแถว** — คิวแสดงรายใบ ตัวเลขที่นับแถวจะไม่ตรงกับจำนวนบรรทัด
 // ที่คนเห็นอยู่ตรงหน้า แล้วไม่มีใครรู้ว่าตัวไหนถูก
+/**
+ * ใบนี้เข้าเงื่อนไขของตัวเลขตัวไหน — **กติกาเดียวที่ทั้งตัวนับและตัวกรองใช้**
+ *
+ * ⭐ แยกออกมาเพราะตัวเลขบนแถบ **กดกรองได้แล้ว** — ถ้าปล่อยให้ตัวนับกับตัวกรองเขียน
+ * เงื่อนไขคนละชุด จะได้อาการ "กด «เลยกำหนด 2» แล้วขึ้นสามใบ" ซึ่งเป็นบั๊กที่หาไม่เจอ
+ * เพราะทั้งสองฝั่งดู "ถูก" ในตัวเอง · ตอนนี้ขัดกันไม่ได้เชิงโครงสร้าง
+ */
+export function matchesQueueCount(request, key, { todayIso = null } = {}) {
+  if (!REQUEST_OPEN_STATUSES.includes(request?.status)) return false;
+  const next = requestNextStep(request);
+
+  if (key === 'unacked') return request.status === 'pending';
+  // ⚠️ เลยกำหนดนับ **เฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มี
+  // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
+  // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
+  if (key === 'overdue') {
+    return !!todayIso && !!request.committedDueDate
+      && String(request.committedDueDate) < String(todayIso);
+  }
+  if (key === 'working') return next?.owner === 'dept' && request.status !== 'pending';
+  // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
+  if (key === 'waitingRequester') return next?.owner === 'requester';
+  return false;
+}
+
 export function queueCounts(rows = [], { todayIso = null } = {}) {
   const out = { unacked: 0, overdue: 0, working: 0, waitingRequester: 0 };
   for (const request of rows) {
-    if (!REQUEST_OPEN_STATUSES.includes(request?.status)) continue;
-    const next = requestNextStep(request);
-
-    if (request.status === 'pending') out.unacked += 1;
-    // ⚠️ เลยกำหนดนับ **เฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มี
-    // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
-    // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
-    if (todayIso && request.committedDueDate
-      && String(request.committedDueDate) < String(todayIso)) out.overdue += 1;
-
-    if (next?.owner === 'dept' && request.status !== 'pending') out.working += 1;
-    // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
-    if (next?.owner === 'requester') out.waitingRequester += 1;
+    for (const key of Object.keys(out)) {
+      if (matchesQueueCount(request, key, { todayIso })) out[key] += 1;
+    }
   }
   return out;
 }
@@ -143,4 +158,44 @@ export function groupQueueRows(rows = [], { todayIso = null } = {}) {
   return QUEUE_GROUPS
     .map((g) => ({ group: g.key, label: g.label, rows: byKey.get(g.key) || [] }))
     .filter((g) => g.rows.length);
+}
+
+// ── คิวของ "ฝ่าย" (P2) — มุมมองในโมดูลของฝ่ายเอง ─────────────────────────
+//
+// ⭐ ต่างจาก `queueTabRows` ตรงที่ตัวนั้นตอบคำถามของ **คน** ("ตอนนี้เป็นตาใคร"
+// รวมทั้งใบที่ฉันเปิดถึงฝ่ายอื่น) ส่วนตัวนี้ตอบคำถามของ **ฝ่าย** ("งานของฝ่ายเรา
+// ค้างอยู่ตรงไหน") ⇒ กรองด้วย `dept` ก่อนเสมอ ไม่ดู `_mine` เลย
+//
+// ⚠️ ใบร่างไม่เข้าคิวฝ่ายไม่ว่ากรณีใด — ยังไม่ถูกส่ง = ยังไม่ใช่งานของใครนอกจากคนร่าง
+export const DEPT_QUEUE_TABS = [
+  { key: 'todo', label: 'รอฝ่ายตอบ' },
+  // ⭐ ตัวนี้คือ "รอฝ่ายขายทำต่อ" ของแถบตัวเลข — ยกขึ้นมาเป็นแท็บด้วยเพราะ RD ต้อง
+  // เปิดดูได้ว่าอะไรค้างอยู่ที่อีกฝั่ง (ของที่ส่งไปแล้วแต่ยังไม่มีใครมารับ)
+  { key: 'waiting', label: 'รอฝ่ายขายทำต่อ' },
+  { key: 'history', label: 'ประวัติ' },
+];
+
+export function deptQueueRows(rows = [], { dept, tab = 'todo' } = {}) {
+  const mine = rows.filter((r) => r?.dept === dept && r?.status !== 'draft');
+  if (tab === 'history') return mine.filter((r) => !requestNextStep(r));
+  const owner = tab === 'waiting' ? 'requester' : 'dept';
+  return mine.filter((r) => requestNextStep(r)?.owner === owner);
+}
+
+// ── ใกล้ถึงกำหนด (หน้าภาพรวมของฝ่าย) ─────────────────────────────────────
+//
+// ⚠️ **นับจากวันที่ฝ่าย "รับปาก" ไม่ใช่วันที่ผู้ขอ "อยากได้"** — `committedDueDate`
+// คือเส้นที่ใช้วัดว่าช้าหรือยัง (`requestedDueDate` เป็นความหวังของอีกฝั่ง)
+// ⇒ ใบที่ยังไม่รับเรื่องจะไม่มีวันนี้เลย และไม่ควรโผล่ที่นี่ — มันอยู่ในตัวเลข
+// "ยังไม่รับเรื่อง" ซึ่งเป็นคนละปัญหาคนละทางแก้
+export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
+  if (!todayIso) return [];
+  const limit = new Date(`${todayIso}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() + days);
+  const limitIso = limit.toISOString().slice(0, 10);
+  return rows
+    .filter((r) => r?.dept === dept && r?.status !== 'draft')
+    .filter((r) => requestNextStep(r)?.owner === 'dept')
+    .filter((r) => r.committedDueDate && String(r.committedDueDate) <= limitIso)
+    .sort((a, b) => String(a.committedDueDate).localeCompare(String(b.committedDueDate)));
 }

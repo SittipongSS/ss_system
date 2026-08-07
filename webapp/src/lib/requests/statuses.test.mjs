@@ -18,22 +18,22 @@ test('สถานะบรรทัดเป็นกลาง ไม่ผู�
   }
 });
 
-test('บรรทัดวัสดุต้องอ่านเหมือนเดิมทุกตัวอักษร — ผู้ใช้เดิมต้องไม่รู้สึกว่าอะไรเปลี่ยน', () => {
-  assert.equal(requestItemStatusLabel('pending', 'material'), 'รอราคา');
-  assert.equal(requestItemStatusLabel('done', 'material'), 'ตอบราคาแล้ว');
-  assert.equal(requestItemStatusLabel('declined', 'material'), 'ตอบไม่ได้');
-  // ค่าตั้งต้นเมื่อไม่รู้ lineKind = ภาษาของบรรทัดวัสดุ (ผู้เรียกเก่าไม่ต้องแก้)
+test('ไม่รู้รูปร่าง = ป้ายกลางที่ไม่โกหก ไม่ใช่ภาษาราคา (ม-28)', () => {
+  // ⚠️ เดิมค่าตั้งต้นคือภาษาของบรรทัดวัสดุ ("รอราคา") ซึ่งถูกถอดพร้อมหัวข้อขอราคา —
+  // แถวที่ไม่รู้รูปร่างอาจไม่เกี่ยวกับราคาเลย ป้ายจึงต้องเป็นคำกลาง
+  assert.equal(requestItemStatusLabel('pending'), 'รอตอบ');
   assert.equal(requestItemStatusLabel('done'), REQUEST_ITEM_STATUS_LABELS.done);
+  assert.equal(requestItemStatusLabel('declined'), 'ตอบไม่ได้');
 });
 
 test('รูปร่างอื่นพูดภาษาของงานตัวเอง ไม่ใช่ภาษาราคา', () => {
   assert.equal(requestItemStatusLabel('pending', 'document'), 'รอเอกสาร');
   assert.equal(requestItemStatusLabel('done', 'document'), 'ได้รับแล้ว');
   assert.equal(requestItemStatusLabel('pending', 'scent_dev'), 'รอส่ง');
-  // รูปร่างที่ยังไม่รู้จัก → ถอยไปภาษาวัสดุ ไม่ใช่คืนค่าว่าง
-  assert.equal(requestItemStatusLabel('done', 'ยังไม่มีชนิดนี้'), 'ตอบราคาแล้ว');
+  // รูปร่างที่ยังไม่รู้จัก → ถอยไปป้ายกลาง ไม่ใช่คืนค่าว่าง
+  assert.equal(requestItemStatusLabel('done', 'ยังไม่มีชนิดนี้'), 'ตอบแล้ว');
   // สถานะแปลก ๆ → คืนค่าดิบ ไม่ใช่ undefined (กันหน้าจอขึ้นช่องว่าง)
-  assert.equal(requestItemStatusLabel('เอ๋อ', 'material'), 'เอ๋อ');
+  assert.equal(requestItemStatusLabel('เอ๋อ', 'document'), 'เอ๋อ');
 });
 
 test('ฝั่งคำร้องต้องไม่เหลือ priceStatus/noQuoteReason — ชื่อชนกับ costing', () => {

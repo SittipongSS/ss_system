@@ -21,6 +21,8 @@ const DROPPED = {
   material_price_asks: '0173 — เปลี่ยนชื่อเป็น dept_requests',
   material_price_ask_items: '0173 — เปลี่ยนชื่อเป็น dept_request_items',
   material_price_ask_tiers: '0173 — เปลี่ยนชื่อเป็น dept_request_item_tiers',
+  dept_request_item_tiers: '0219 — ชั้นจำนวนถูกถอดพร้อมหัวข้อขอราคา (ม-28): '
+    + 'ราคาในโมเดลใหม่เป็นราคาเดียวที่ RD ใส่ในใบเดิมตอนลูกค้าคอนเฟิร์ม',
   personal_task_updates: '0184 — เธรดอยู่ที่ entity_updates (entityType=\'personal_task\')',
   sales_deal_activities: '0184 — ฟีดดีลอยู่ที่ entity_updates (entityType=\'deal\')',
   scent_revisions: '0206 — กลิ่น 1 ตัวส่งครั้งเดียว: วันที่ส่งอยู่ที่ scents.sentAt · '

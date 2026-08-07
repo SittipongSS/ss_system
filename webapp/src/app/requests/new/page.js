@@ -52,8 +52,6 @@ export default function NewRequestPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [materials, setMaterials] = useState([]);
-  const [products, setProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
@@ -67,8 +65,6 @@ export default function NewRequestPage() {
   useEffect(() => {
     const grab = (url, set) => fetch(url, { cache: "no-store" })
       .then((r) => r.json()).then((d) => set(asArray(d))).catch(() => {});
-    grab("/api/master/materials", setMaterials);
-    grab("/api/products", setProducts);
     grab("/api/pm/projects", setProjects);
     grab("/api/sales-planning/deals", setDeals);
     grab("/api/sales-planning/sales-orders", setSalesOrders);
@@ -88,16 +84,29 @@ export default function NewRequestPage() {
   // ⭐ **บันทึกร่างอย่างเดียว ไม่ส่ง** — เลขที่ออกตอนกดส่งที่หน้ารายละเอียด
   // สองขั้นนี้แยกกันเพราะการออกเลขที่ย้อนไม่ได้ (trigger ทำให้ `docNo` immutable)
   // และเพราะไฟล์แนบต้องมีคำร้องให้เกาะก่อน ⇒ ร่างคือสิ่งที่ทำให้แนบไฟล์เป็นไปได้
+  // 🐞 **บั๊กที่ผู้ใช้เจอ (2026-08-07): "กดบันทึกร่างไม่ได้ ปุ่มจาง ไม่มีข้อความบอก"**
+  //
+  // เดิมไม่มี try/catch — `createRequestDraft` โยนได้จริงเมื่อ `fetch` เอง reject
+  // (เน็ตหลุด · เซิร์ฟเวอร์ตอบ HTML แทน JSON · deploy กำลังสลับ) ⇒ `setSaving(false)`
+  // **ไม่เคยถูกเรียก** ⇒ ปุ่มค้างจางตลอดกาลโดยไม่มีอะไรบอกเหตุผล และผู้ใช้ไม่มีทาง
+  // รู้ว่าพลาดเพราะอะไร · หน้ารายละเอียดใช้แพตเทิร์นถูกอยู่แล้ว (`call()` มี finally)
+  // — หน้านี้เป็นที่เดียวที่หลุด
+  //
+  // ⚠️ **`finally` ไม่ใช่ตัวเลือก** — ทุกปุ่มที่ตั้ง `saving` ต้องมีทางคืนค่าเสมอ
+  // ไม่งั้นความผิดพลาดหนึ่งครั้งล็อกหน้าจอทิ้งจนกว่าจะรีเฟรช
   const saveDraft = async () => {
     setSaving(true);
-    const productName = products.find((p) => p.id === form.productId)?.name || null;
-    const { id, error } = await createRequestDraft(form, { productName });
-    if (error) {
-      setToast({ kind: "error", msg: error });
+    try {
+      const { id, error } = await createRequestDraft(form);
+      if (error) { setToast({ kind: "error", msg: error }); return; }
+      // ⚠️ ไม่คืน `saving` ตอนสำเร็จ — กำลังจะออกจากหน้านี้ ปลดปุ่มก่อนเปลี่ยนหน้า
+      // จะเปิดให้กดซ้ำแล้วได้ร่างสองใบ
+      if (id) router.push(`/requests/${id}`);
+    } catch (e) {
+      setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });
+    } finally {
       setSaving(false);
-      return;
     }
-    if (id) router.push(`/requests/${id}`);
   };
 
   return (
@@ -110,7 +119,6 @@ export default function NewRequestPage() {
       <div className={styles.form}>
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
-          materials={materials} products={products}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
@@ -134,7 +142,16 @@ export default function NewRequestPage() {
             // ⭐ ป้ายบอก **สิ่งที่จะได้** ไม่ใช่สิ่งที่ปุ่มทำ — "แสดงฟอร์ม" ไม่ได้บอกว่า
             // ฟอร์มอะไร · ใส่ชื่อหัวข้อลงไปเลยจะเห็นตั้งแต่ยังไม่กดว่ากำลังจะกรอกอะไร
             label: form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม",
+            // ⭐ **ปุ่มหลักของขั้นนี้** — ขั้นแรกยังไม่มีปุ่ม "บันทึกร่าง" (ยังไม่มีอะไร
+            // ให้บันทึกนอกจากฝ่ายกับหัวข้อ) ⇒ นี่คือปุ่มเดียวที่พาไปต่อได้ทั้งหน้า
+            // เดิมเป็น quiet ตัวเล็กลอยอยู่มุมขวา อ่านเหมือนข้อความจาง ไม่ใช่ปุ่ม
+            tone: "accent",
+            variant: "filled",
+            size: "md",
+            // ⚠️ **ปุ่มที่กดไม่ได้ต้องบอกเหตุผล** (กฎเดียวกับ `requestFormBlocker`) —
+            // จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง แล้วไปหาสาเหตุผิดที่
             disabled: !form.kind,
+            hint: form.kind ? null : "เลือกฝ่ายและหัวข้อก่อน",
             onClick: () => setRevealed(true),
           }}
         />

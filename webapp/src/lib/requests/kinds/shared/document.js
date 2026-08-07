@@ -4,7 +4,7 @@
 const documentKind = {
   key: 'document',
   label: 'ขอเอกสาร',
-  dept: null, scope: 'RQ', hasItems: true, hasTiers: false, lineShape: 'document',
+  dept: null, scope: 'RQ', hasItems: true, lineShape: 'document',
   // ⏳ ผู้ใช้บอก "เก็บไว้ทีหลังก็ได้" — ของจริงคือ IFRA/COA/MSDS ของ **สินค้า**
   // และต้องอ้าง QT + ล็อตการผลิต · ยังไม่มีที่เก็บสองอย่างหลัง จึงคงกฎเดิมไว้ก่อน
   // (โครงการ+ดีล) แล้วออกแบบรอบถัดไป — ห้ามเดาโครงสร้างล่วงหน้า

@@ -18,15 +18,13 @@
 // ไม่ใช่คนละไฟล์: `lockKind` (บริบทกำหนดหัวข้อเอง) · `deferAttachments` (หน้าที่บันทึก
 // เป็นร่างก่อน แล้วไปแนบไฟล์/กด @ ที่หน้ารายละเอียด) · `showBlocker` (ใครวางข้อความ
 // "ยังกรอกไม่ครบ" — เนื้อฟอร์ม หรือแถบปุ่มของผู้เรียก)
-import { Plus, Trash2, Paperclip, X, AtSign } from "lucide-react";
+import { Paperclip, X, AtSign } from "lucide-react";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import DateInput from "@/components/ui/DateInput";
-import MaterialPicker from "@/components/materials/MaterialPicker";
 import Textarea from "@/components/ui/Textarea";
-import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
@@ -36,8 +34,7 @@ import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes"
 import {
   PLANNED_REQUEST_DEPTS,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
-  kindsForDept, lineShapeForKind, materialKindForRequest, requestHasItems,
-  requestHasTiers,
+  kindsForDept, lineShapeForKind, requestHasItems,
   requestHasPdr,
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
@@ -49,7 +46,6 @@ import { MAX_MENTIONS } from "@/lib/master/mentions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import styles from "./requestForm.module.css";
 
-const QTY_SHORTCUTS = [500, 1000, 3000, 5000, 10000];
 
 // ช่องที่ **ระบบเติมให้** — เส้นประ อ่านอย่างเดียว ไม่ใช่ดรอปดาวน์ที่จางลง
 // (แผนฉบับที่ 3) · ปล่อยให้เลือกซ้ำได้เมื่อไร จะมีวันที่ SO ชี้ดีลหนึ่งแต่คนกรอก
@@ -65,28 +61,18 @@ function DerivedField({ label, value, from }) {
   );
 }
 
-export const emptyAskItem = (kind = "PM") => ({
-  kind,
-  material: { materialId: null, label: "", isNew: false },
-  spec: "",
-  tiers: [],
-  // ผูกกลับบรรทัดในใบขอราคาผลิต — ตั้งค่าเฉพาะตอนเปิดเคสจากในใบ (0159)
-  componentId: null,
-});
-
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
-// (ของเดิมตั้งต้นเป็น price_pm ทำให้โมดัลที่เปิดจากบรรทัด RM_F แสดงหัวข้อผิด
-// แล้วส่งไปตาย 400 ที่ปลายทาง เพราะช่องกลิ่นไม่ถูกถาม)
 export const emptyRequestForm = (over = {}) => ({
   projectId: "",
   dealId: "",
   salesOrderId: "",   // บรีฟกลิ่น (ค่าบริการออกแบบกลิ่น)
-  productTypeId: "",  // ขอ Mock-up (หมวดสินค้าที่จะขึ้นตัวอย่าง)
+  productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
   dept: "",
   kind: "",
   title: "",
   body: "",
   urgent: false,
+  urgentReason: "",
   requestedDueDate: "",
   scentId: "",
   formulaId: "",
@@ -102,7 +88,7 @@ export const emptyRequestForm = (over = {}) => ({
   ...over,
 });
 
-// รายการที่ต้องมีเมื่อหัวข้อเป็นชนิดขอราคา — ชนิดวัสดุมาจากหัวข้อ ไม่ให้เลือกซ้ำ
+// รายการตั้งต้นตามรูปร่างบรรทัดของหัวข้อ
 // (ไม่ export: ใช้เฉพาะในไฟล์นี้ · export ที่ไม่มีผู้เรียกคือโค้ดตายที่ lint ไม่จับ)
 function itemsForKind(kind, existing = []) {
   // ⚠️ บรรทัดแต่ละรูปร่างเป็นคนละโครง — สลับหัวข้อมาแล้วต้องเริ่มใหม่ ไม่ใช่ลาก
@@ -112,14 +98,11 @@ function itemsForKind(kind, existing = []) {
   const shape = lineShapeForKind(kind);
   if (shape === 'product_dev') return [emptyProductDevRow()];
   if (shape === 'document' || shape === 'billing_doc') return [emptyDocumentRow()];
-  const materialKind = materialKindForRequest(kind);
-  if (!materialKind) return [];
-  const rows = existing.length ? existing : [emptyAskItem(materialKind)];
-  return rows.map((it) => ({ ...it, kind: materialKind }));
+  return [];
 }
 
 export default function RequestForm({
-  value, onChange, materials = [], products = [],
+  value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
   customers = [],
@@ -152,7 +135,6 @@ export default function RequestForm({
   const hasItems = requestHasItems(kind);
   // รูปร่างบรรทัดมาจากทะเบียนหัวข้อที่เดียว — ฟอร์มไม่เช็ค `kind === "..."` เอง
   const lineShape = lineShapeForKind(kind);
-  const hasTiers = requestHasTiers(kind);
   const dept = value.dept || "";
 
   // ช่องที่ต้องกรอกมาจากทะเบียนหัวข้อที่เดียว — ห้ามเขียน `kind === "..."` ในฟอร์ม
@@ -203,26 +185,6 @@ export default function RequestForm({
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
   const shapeError = requestFormBlocker(value);
-
-  const patchItem = (idx, patch) => set({
-    items: items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
-  });
-  const addItem = () => set({ items: [...items, emptyAskItem(materialKindForRequest(kind))] });
-  const removeItem = (idx) => set({ items: items.filter((_, i) => i !== idx) });
-
-  const toggleTier = (idx, qty) => {
-    const tiers = items[idx].tiers || [];
-    patchItem(idx, {
-      tiers: tiers.includes(qty) ? tiers.filter((q) => q !== qty) : [...tiers, qty].sort((a, b) => a - b),
-    });
-  };
-  const addCustomTier = (idx, raw) => {
-    const qty = Number(raw);
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    const tiers = items[idx].tiers || [];
-    if (tiers.includes(qty)) return;
-    patchItem(idx, { tiers: [...tiers, qty].sort((a, b) => a - b) });
-  };
 
   const addFiles = (list) => {
     const picked = Array.from(list || []).filter((f) => f.size <= MAX_UPLOAD_BYTES);
@@ -313,11 +275,23 @@ export default function RequestForm({
           />
           {topicAction && (
             <div className={styles.topicAction}>
+              {/* ⚠️ **เหตุผลที่กดไม่ได้อยู่ติดปุ่ม** — เดิมข้อความไปโผล่ชิดซ้ายใต้ช่อง
+                  ห่างจากปุ่มที่ชิดขวาเกือบเต็มความกว้างการ์ด ⇒ อ่านไม่เป็นคู่กัน
+                  (กฎเดียวกับ `requestFormBlocker`: ปุ่มที่กดไม่ได้ต้องบอกเหตุผล) */}
+              {topicAction.disabled && topicAction.hint && (
+                <small className={styles.hint}>{topicAction.hint}</small>
+              )}
               {/* ⭐ อยู่ติดช่องที่มันคุม ไม่ใช่ลอยอยู่แถบปุ่มล่างสุด — คนที่อยากเปลี่ยน
                   หัวข้อจะมองที่ช่องหัวข้อก่อนเสมอ · และตอนกางฟอร์มแล้วช่องนี้ถูกล็อก
-                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง */}
+                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง
+                  ⚠️ **น้ำหนักของปุ่มมาจากผู้เรียก** — ขั้นแรก "กรอกฟอร์ม…" คือปุ่มเดียว
+                  ที่พาไปต่อได้ทั้งหน้า จึงต้องเป็นปุ่มหลัก · ส่วน "เปลี่ยนฝ่าย/หัวข้อ"
+                  เป็นการถอยกลับ จึงเบา · เดิมเป็น quiet ทั้งคู่ ⇒ ขั้นแรกทั้งหน้า
+                  ไม่มีปุ่มหลักสักตัว ปุ่มที่ต้องกดอ่านเหมือนข้อความจาง */}
               <Button
-                variant="quiet" size="sm"
+                tone={topicAction.tone}
+                variant={topicAction.variant || "quiet"}
+                size={topicAction.size || "sm"}
                 disabled={disabled || topicAction.disabled}
                 onClick={topicAction.onClick}
               >
@@ -589,116 +563,6 @@ export default function RequestForm({
         </div>
       )}
 
-      {/* ── หัวข้อขอราคา: บรรทัดวัสดุ + ชั้นจำนวน ─────────────────────────── */}
-      {lineShape === "material" && (
-        <>
-          <div className="form-group">
-            <span className={styles.fieldLabel}>สินค้าที่เกี่ยวข้อง (ถ้ามี)</span>
-            <SearchableSelect
-              value={value.productId} disabled={disabled} entity="product"
-              onChange={(v) => set({ productId: v })}
-              options={[
-                { value: "", label: "ไม่ระบุสินค้า" },
-                // ตัวตนสินค้าใช้ productIdentity ตัวเดียวทั้งระบบ (มาตรฐาน PR #730)
-                ...products.map((p) => {
-                  const identity = productIdentity(p);
-                  return { value: p.id, label: identity.text, search: identity.search };
-                }),
-              ]}
-              ariaLabel="สินค้าที่ขอราคา"
-            />
-          </div>
-
-          <div className="form-group">
-            <span className={styles.fieldLabel}>
-              {copy.itemsLabel} — {MATERIAL_KIND_LABELS[materialKindForRequest(kind)]}
-            </span>
-            {/* ชนิดวัสดุมาจากหัวข้อแล้ว จึงไม่มี Select ชนิดต่อบรรทัดอีก และไม่มีทาง
-                ปนฝ่ายกันได้โดยโครงสร้าง (เดิมเป็นกฎที่ผู้ใช้ต้องระวังเอง) */}
-            {items.map((item, idx) => (
-              <div key={idx} className={`glass-panel ${styles.itemCard}`}>
-                <div className={styles.itemHead}>
-                  <div className={styles.itemPicker}>
-                    <MaterialPicker
-                      materials={materials} kind={item.kind} customerId={null}
-                      value={item.material} disabled={disabled}
-                      ariaLabel={`วัสดุของรายการที่ ${idx + 1}`}
-                      onChange={(material) => patchItem(idx, { material })}
-                    />
-                  </div>
-                  {items.length > 1 && (
-                    <button
-                      type="button" className="btn-icon" disabled={disabled}
-                      onClick={() => removeItem(idx)} aria-label={`ลบรายการที่ ${idx + 1}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-
-                <Textarea
-                  variant="data"
-                  className={styles.itemSpec} rows={2} maxLength={2000}
-                  value={item.spec} disabled={disabled}
-                  aria-label={`สเปกของรายการที่ ${idx + 1}`}
-                  placeholder={item.kind === "PM"
-                    ? "สเปก เช่น ขวดขนาด 30 ml สีชา สกรีนที่ขวด 1 จุด 1 สี"
-                    : "รายละเอียดที่ต้องการ เช่น ความเข้มข้น / ปริมาณที่จะสั่ง"}
-                  onChange={(e) => patchItem(idx, { spec: e.target.value })}
-                />
-
-                {/* ชั้นจำนวน (MOQ) มีเฉพาะวัสดุ — มติผู้ใช้ 2026-08-03: ขอราคา F/FB
-                    ไม่มีขั้น MOQ (หัวน้ำหอม/เนื้อสารคิดราคาต่อกิโลเดียว ไม่ลดตามจำนวน)
-                    ขั้น MOQ มีเฉพาะวัสดุและราคาผลิต */}
-                {hasTiers ? (
-                  <>
-                    <div className={styles.tierRow}>
-                      <span className={styles.tierLabel}>ขอราคาที่จำนวน:</span>
-                      {(item.tiers || []).map((qty) => (
-                        <button
-                          key={qty} type="button" className={`chip ${styles.tierChipOn}`} disabled={disabled}
-                          onClick={() => toggleTier(idx, qty)}
-                          aria-label={`เอาชั้น ${qty} ออก`}
-                        >
-                          {qty.toLocaleString("th-TH")} ✕
-                        </button>
-                      ))}
-                      {QTY_SHORTCUTS.filter((q) => !(item.tiers || []).includes(q)).map((q) => (
-                        <button
-                          key={q} type="button" className={`chip ${styles.tierChip}`} disabled={disabled}
-                          onClick={() => toggleTier(idx, q)}
-                        >
-                          +{q.toLocaleString("th-TH")}
-                        </button>
-                      ))}
-                      <input
-                        className={`premium-input ${styles.tierInput}`} type="number" min="1"
-                        disabled={disabled} placeholder="จำนวนอื่น"
-                        aria-label={`เพิ่มจำนวนที่ขอของรายการที่ ${idx + 1}`}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter") return;
-                          e.preventDefault();
-                          addCustomTier(idx, e.currentTarget.value);
-                          e.currentTarget.value = "";
-                        }}
-                      />
-                    </div>
-                    <small className={styles.hint}>
-                      ปุ่มเป็นแค่ทางลัด — พิมพ์จำนวนเท่าไรก็ได้แล้วกด Enter · ไม่เลือกเลย = ขอราคาเดียว
-                    </small>
-                  </>
-                ) : (
-                  <small className={styles.hint}>ราคาเดียว — หัวข้อนี้ไม่มีชั้นจำนวน</small>
-                )}
-              </div>
-            ))}
-
-            <button type="button" className="btn sm" onClick={addItem} disabled={disabled}>
-              <Plus size={13} /> เพิ่มรายการ
-            </button>
-          </div>
-        </>
-      )}
 
       {/* ── 5) วันที่ต้องการคำตอบ + ด่วน ──────────────────────────────────── */}
       <div className="form-grid">
@@ -722,6 +586,20 @@ export default function RequestForm({
             <span className={styles.checkLabel}>งานด่วน</span>
           </label>
         </div>
+        {/* ⭐ **ด่วนแล้วต้องบอกว่าทำไม** (mig 0222) — ฟอร์มกระดาษ FM-RD-01 เขียนบนหัวว่า
+            "หากเป็นงานด่วน กรุณาระบุคำว่าด่วน และวันที่ต้องการ พร้อมแจ้งเหตุผล"
+            ⚠️ ติ๊กด่วนได้ฟรีเมื่อไร ทุกใบก็ด่วนภายในสองเดือน แล้วธงนั้นเลิกมีความหมาย */}
+        {value.urgent && (
+          <div className="form-group col-span-2">
+            <label htmlFor="req-urgent-why">เหตุผลที่เป็นงานด่วน *</label>
+            <Textarea
+              variant="data" id="req-urgent-why" rows={2} maxLength={500}
+              value={value.urgentReason || ""} disabled={disabled}
+              placeholder="เช่น ลูกค้าต้องใช้ในงานแสดงสินค้าวันที่ 20 · ล็อตผลิตปิดสิ้นเดือน"
+              onChange={(e) => set({ urgentReason: e.target.value })}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ─────────────

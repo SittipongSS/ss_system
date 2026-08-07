@@ -183,7 +183,7 @@ export const ATTACHMENT_TYPES = {
     { key: "spec", label: "สเปก / แบบงาน / บรีฟ", required: false },
     { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },
   ],
-  // ⚠️ **ไม่มี `system_issue` ที่นี่โดยเจตนา** (mig 0219) — ภาพหน้าจอของเรื่อง
+  // ⚠️ **ไม่มี `system_issue` ที่นี่โดยเจตนา** (mig 0223) — ภาพหน้าจอของเรื่อง
   // แจ้งปัญหาแนบผ่าน **เธรดอัปเดต** (`/api/updates` + `attachments` ของแถวอัปเดต)
   // ไม่ใช่ตาราง `attachments` · เหตุผล: ด่านหยาบของ `/api/attachments` ใน proxy
   // ไล่ตาม cap ของ role (customers:edit / products:edit / pm:edit / …) ซึ่ง

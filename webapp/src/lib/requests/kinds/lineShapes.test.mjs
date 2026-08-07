@@ -2,9 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {
-  DEFAULT_LINE_SHAPE, LINE_SHAPES, lineShapeLabels, normalizeLinesFor,
-} from './lineShapes.js';
+import { LINE_SHAPES, lineShapeLabels, normalizeLinesFor } from './lineShapes.js';
 import { REQUEST_ITEM_STATUSES, requestItemStatusLabel } from '../statuses.js';
 import { REQUEST_KINDS } from './registry.js';
 
@@ -16,20 +14,22 @@ test('ทุกรูปร่างมีป้ายครบทั้งส�
   }
 });
 
-test('ป้ายของบรรทัดวัสดุต้องเหมือนเดิมทุกตัวอักษร (ผู้ใช้เคสขอราคาต้องไม่รู้สึกว่าอะไรเปลี่ยน)', () => {
-  assert.deepEqual(lineShapeLabels('material'), {
-    pending: 'รอราคา', done: 'ตอบราคาแล้ว', declined: 'ตอบไม่ได้',
+test('รูปร่างที่ทะเบียนไม่รู้จักต้องได้ป้ายกลาง ไม่ใช่ค่าดิบ', () => {
+  // ⚠️ เดิมค่าตั้งต้นคือรูปร่าง `material` ซึ่งถูกถอดใน mig 0219 (มติ ม-28) —
+  // ป้ายสำรองต้องเป็น**คำกลางที่ไม่โกหก**: แถวที่ไม่รู้รูปร่างบอกว่า "รอตอบ" ยังจริง
+  // เสมอ ส่วน "รอราคา" อาจไม่เกี่ยวกับราคาเลย
+  assert.equal(LINE_SHAPES.material, undefined);
+  assert.deepEqual(lineShapeLabels('ยังไม่มีรูปร่างนี้'), {
+    pending: 'รอตอบ', done: 'ตอบแล้ว', declined: 'ตอบไม่ได้',
   });
-  // แถวเก่าบน prod ไม่มี `lineKind` → ต้องถอยมาที่บรรทัดวัสดุ ไม่ใช่ขึ้นค่าดิบ
-  assert.equal(DEFAULT_LINE_SHAPE, 'material');
-  assert.equal(requestItemStatusLabel('done'), 'ตอบราคาแล้ว');
-  assert.equal(requestItemStatusLabel('done', 'ยังไม่มีรูปร่างนี้'), 'ตอบราคาแล้ว');
+  assert.equal(requestItemStatusLabel('done'), 'ตอบแล้ว');
+  assert.equal(requestItemStatusLabel('done', 'ยังไม่มีรูปร่างนี้'), 'ตอบแล้ว');
 });
 
 test('ทุกหัวข้อที่มีบรรทัดต้องมีรูปร่างที่ทะเบียนรู้จัก และตรวจบรรทัดได้จริง', () => {
   for (const [kind, meta] of Object.entries(REQUEST_KINDS)) {
     if (!meta.hasItems) continue;
-    const shape = LINE_SHAPES[meta.lineShape || DEFAULT_LINE_SHAPE];
+    const shape = LINE_SHAPES[meta.lineShape];
     assert.ok(shape, `${kind}: ไม่มีรูปร่าง "${meta.lineShape}" ในทะเบียน`);
     // ⚠️ หัวข้อที่เปิดใบพร้อมบรรทัดได้ **ต้องมีตัวตรวจ** — ไม่มี = client ส่งอะไรมาก็
     // ลงตารางหมด · ต่างจาก `scent_dev` ที่แถวเกิดตอนส่ง ไม่ได้มาจากฟอร์ม
@@ -45,21 +45,11 @@ test('รูปร่างที่ไม่มีตัวตรวจต้�
   assert.deepEqual(normalizeLinesFor(null, undefined), { items: [], error: null });
 });
 
-test('ตัวตรวจของบรรทัดวัสดุยังบังคับว่าชนิดวัสดุต้องตรงกับหัวข้อ', () => {
-  // กฎนี้เคยอยู่ใน route — ย้ายมาอยู่กับรูปร่างบรรทัดแล้วต้องยังทำงานเหมือนเดิม
-  // ⚠️ ทั้งสองเคสเป็นบรรทัดของฝ่าย RD เหมือนกัน — ไม่งั้นจะไปติดด่าน "รายการต้อง
-  // เป็นของฝ่ายเดียวกับหัวคำร้อง" ที่อยู่ก่อนหน้า แล้วเทสต์จะผ่านด้วยเหตุผลผิด
-  const rows = [{ materialId: null, label: 'หัวน้ำหอม', kind: 'RM_FB', tiers: [] }];
-  const ok = normalizeLinesFor('material', rows, {
-    dept: 'RD', hasTiers: false, materialKind: 'RM_FB', kindLabel: 'ขอราคาเนื้อสาร (FB)',
-  });
-  assert.equal(ok.error, null);
-
-  const off = normalizeLinesFor('material', rows, {
-    dept: 'RD', hasTiers: false, materialKind: 'RM_F', kindLabel: 'ขอราคาหัวน้ำหอม (F)',
-  });
-  assert.match(off.error, /รับได้เฉพาะรายการชนิด RM_F/);
-  assert.deepEqual(off.items, []);
+test('บรรทัดวัสดุถูกถอดทั้งรูปร่าง — ยิงตรงมาต้องตีกลับ', () => {
+  // ⚠️ ratchet ของ ม-28: `material` เคยเป็นรูปร่างที่ทุกหัวข้อขอราคาใช้ · เพิ่มกลับ
+  // โดยไม่มีหัวข้อที่ใช้จริง = รูปร่างที่ไม่มีทางเดินถึง
+  assert.equal(LINE_SHAPES.material, undefined);
+  assert.match(normalizeLinesFor('material', [{ label: 'x', kind: 'RM_F' }]).error, /รับรายการรูปแบบ/);
 });
 
 test('POST /api/sa/requests เลิกตัดสินรูปร่างบรรทัดเอง — ต้องถามทะเบียน', () => {
@@ -68,7 +58,7 @@ test('POST /api/sa/requests เลิกตัดสินรูปร่าง�
   // เพราะแตะ supabase — ที่ห้ามคือการ **ตรวจ** ซ้ำ
   const src = readFileSync('src/app/api/sa/requests/route.js', 'utf8');
   assert.ok(src.includes('normalizeLinesFor('), 'route ต้องเรียกทะเบียนรูปร่างบรรทัด');
-  for (const gone of ['normalizeProductDevItems', 'normalizeDocumentItems', 'normalizeRequestItems']) {
+  for (const gone of ['normalizeProductDevItems', 'normalizeDocumentItems']) {
     assert.ok(!src.includes(gone), `route ต้องไม่เรียก ${gone} ตรง ๆ อีก`);
   }
 });

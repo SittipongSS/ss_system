@@ -24,7 +24,14 @@ const PAPER_STATUS = [
 ];
 
 const LINE = '<span class="fill"></span>';
-const cell = (v) => (v == null || String(v).trim() === '' ? LINE : esc(v));
+
+// ⭐ **ช่องที่ไม่ได้กรอก พิมพ์ว่า N/A** (มติผู้ใช้ 2026-08-07) — เดิมพิมพ์เป็นเส้นให้
+// เขียนมือ ซึ่งอ่านกำกวม: เส้นว่างแปลว่า "ยังไม่กรอก" หรือ "ไม่เกี่ยวกับใบนี้" ก็ได้
+// · N/A บอกชัดว่า **ระบบถามแล้วแต่ไม่มีคำตอบ** ⇒ RD อ่านแล้วรู้ทันทีว่าต้องไปถามต่อ
+// ⚠️ **ยกเว้นช่องลายเซ็นกับวันที่** — สองช่องนั้นเว้นไว้ให้เซ็นมือบนกระดาษเสมอ
+// พิมพ์ N/A ทับเมื่อไรก็เซ็นไม่ได้ (ยังใช้ `LINE` อยู่ ดูตารางลายเซ็นข้างล่าง)
+const NA = '<span class="na">N/A</span>';
+const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 
 const rows = (pairs) => pairs
   .map(([label, value]) => `<tr><th>${esc(label)}</th><td>${cell(value)}</td></tr>`)
@@ -42,25 +49,32 @@ function briefBlock(brief, index, total) {
     ['แรงบันดาลใจ', brief.inspiration],
     ['ช่วงกลิ่นที่ชื่นชอบ', brief.likedNotes],
     ['กลิ่นที่ End-user ไม่ชอบ', brief.dislikedNotes],
-    ['Scentotype', chips(brief.scentotypes, scentotypeLabel)],
+    // ⭐ กระดาษมีเส้นให้เขียนต่อหลังทุกตัว (ข้อ 2.1.4) — พิมพ์ข้อความที่กรอกไว้
+    // ต่อท้ายชื่อ Scentotype ตัวนั้น ไม่ใช่ทิ้งไว้แค่ชื่อเปล่า (mig 0222)
+    ['Scentotype', (brief.scentotypes || [])
+      .map((t) => {
+        const note = (brief.scentotypeNotes || {})[t];
+        return note ? `${scentotypeLabel(t)} — ${note}` : scentotypeLabel(t);
+      })
+      .join(' · ')],
     ['Performance ของกลิ่น', chips(brief.performance, scentPerformanceLabel)],
   ])}</table>
   </section>`;
 }
 
-// ตารางลายเซ็น 7 แถว — ชื่อ/วันที่เติมจากคนที่เซ็นในระบบแล้ว ที่เหลือเว้นให้เซ็นมือ
+// ตารางลายเซ็น 7 แถว — ชื่อเติมจากที่ระบบรู้ ที่เหลือกรอกในฟอร์ม PDR (mig 0221)
 //
-// ⚠️ ผูกกับ **ตำแหน่ง ไม่ใช่ชื่อคน** — สามชื่อที่พิมพ์ไว้ในกระดาษเดิมจะค้างทันทีที่
-// คนเปลี่ยนงาน · ระบบยังไม่มีตำแหน่ง Perfumer/PD Chemist/Project Coordinator
-// ⇒ รอบนี้เว้นให้เซ็นมือทั้งหมด ยกเว้นแถวที่ระบบรู้จริง
+// ⚠️ ผูกกับ **ตำแหน่ง ไม่ใช่ชื่อคนที่พิมพ์ไว้ในกระดาษ** — ชื่อที่ฝังในแม่แบบจะค้าง
+// ทันทีที่คนเปลี่ยนงาน · สองแถวแรกมาจากแถวคำร้อง (ระบบรู้ว่าใครเปิด ใครยืนยัน)
+// อีกห้าแถวเป็น **ชื่อบนกระดาษ** ที่กรอกเองต่อใบ ไม่ใช่ role ในระบบ (ม-45)
+//
+// ⚠️ ป้ายตำแหน่งของห้าแถวหลัง **อ่านจากทะเบียน `pdrFields.js`** ไม่สะกดซ้ำที่นี่ —
+// เปลี่ยนชื่อตำแหน่งแล้วต้องเปลี่ยนพร้อมกันทั้งฟอร์ม จอ และกระดาษ
+const SIGNER_SECTION = PDR_SECTIONS.find((s) => s.key === 'signers');
 const SIGN_ROWS = [
   ['Account Executive', 'requestedByName'],
   ['Account Executive Supervisor', 'approvedByName'],
-  ['Sale & Marketing Manager', null],
-  ['Perfumer', null],
-  ['Product Development Chemist', null],
-  ['Project Coordinator', null],
-  ['Final Approval (RD Supervisor)', null],
+  ...(SIGNER_SECTION?.fields || []).map((f) => [f.label, f.column]),
 ];
 
 export function renderPdrDocument({ request = {}, briefs = [], company = {}, form = {} } = {}) {
@@ -131,6 +145,7 @@ export function renderPdrDocument({ request = {}, briefs = [], company = {}, for
     pages: [`${header}${body}`],
     toolbar: { label: 'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)', button: 'พิมพ์เอกสาร' },
     extraCss: `
+      .na { color: #999; font-style: italic; }
       .sec { font-size: 12pt; margin: 10pt 0 4pt; }
       .blk { margin-bottom: 8pt; break-inside: avoid; }
       .blk h3 { font-size: 10.5pt; margin: 0 0 3pt; }
