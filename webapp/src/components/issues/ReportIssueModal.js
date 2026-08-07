@@ -18,6 +18,7 @@ import Textarea from "@/components/ui/Textarea";
 import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { notifyToast } from "@/lib/feedback";
+import { shortUserAgent } from "@/lib/issues/userAgent";
 import { describeResponseError } from "@/lib/fetchError";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import {
@@ -185,7 +186,7 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
             <b>ระบบจะแนบข้อมูลนี้ไปด้วยอัตโนมัติ</b>
             <dl>
               <dt>หน้า</dt><dd>{context.pageUrl}</dd>
-              <dt>เบราว์เซอร์</dt><dd>{context.userAgent}</dd>
+              <dt>เบราว์เซอร์</dt><dd title={context.userAgent}>{shortUserAgent(context.userAgent)}</dd>
               {errorStack && <><dt>ข้อผิดพลาด</dt><dd>แนบรายละเอียดทางเทคนิคของหน้าที่พังไปด้วย</dd></>}
             </dl>
           </div>

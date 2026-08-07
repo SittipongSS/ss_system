@@ -23,6 +23,7 @@ import { notifyToast } from "@/lib/feedback";
 import { describeResponseError } from "@/lib/fetchError";
 import { fmtDateTime } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
+import { shortUserAgent } from "@/lib/issues/userAgent";
 import { isSystemAdmin } from "@/lib/issues/access";
 import { AUTO_CLOSE_DAYS } from "@/lib/issues/model";
 import {
@@ -224,7 +225,7 @@ export default function IssueDetailPage() {
                   </dd>
                   <dt>ผู้รับผิดชอบ</dt><dd>{issue.assigneeName || <span className={styles.dim}>ยังไม่มีผู้รับ</span>}</dd>
                   {issue.pageUrl && <><dt>หน้าที่พบ</dt><dd className={styles.mono}>{issue.pageUrl}</dd></>}
-                  {issue.userAgent && <><dt>เบราว์เซอร์</dt><dd className={styles.dim}>{issue.userAgent}</dd></>}
+                  {issue.userAgent && <><dt>เบราว์เซอร์</dt><dd className={styles.dim} title={issue.userAgent}>{shortUserAgent(issue.userAgent)}</dd></>}
                   <dt>ผู้แจ้ง</dt>
                   <dd className={styles.dim}>
                     {[issue.reporterRole, issue.reporterDepartment, issue.reporterTeam].filter(Boolean).join(" · ") || "—"}
