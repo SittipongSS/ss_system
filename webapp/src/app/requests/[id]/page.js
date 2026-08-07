@@ -795,10 +795,9 @@ export default function RequestDetailPage() {
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
                   (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
-              <input
-                id="hop-at" type="date" className="input-premium"
-                value={hopDraft.at} disabled={saving}
-                onChange={(e) => setHopDraft({ ...hopDraft, at: e.target.value })}
+              <DateInput
+                id="hop-at" value={hopDraft.at} disabled={saving}
+                onChange={(v) => setHopDraft({ ...hopDraft, at: v })}
               />
             </div>
 
@@ -828,10 +827,9 @@ export default function RequestDetailPage() {
                   <label htmlFor="hop-formula-date">
                     วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
                   </label>
-                  <input
-                    id="hop-formula-date" type="date" className="input-premium"
-                    value={hopDraft.formulaDate} disabled={saving}
-                    onChange={(e) => setHopDraft({ ...hopDraft, formulaDate: e.target.value })}
+                  <DateInput
+                    id="hop-formula-date" value={hopDraft.formulaDate} disabled={saving}
+                    onChange={(v) => setHopDraft({ ...hopDraft, formulaDate: v })}
                   />
                 </div>
               </>
@@ -840,10 +838,9 @@ export default function RequestDetailPage() {
             {hopDraft.hop === "ack" && (
               <div className="form-group">
                 <label htmlFor="hop-due">รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)</label>
-                <input
-                  id="hop-due" type="date" className="input-premium"
-                  value={hopDraft.dueAt} disabled={saving}
-                  onChange={(e) => setHopDraft({ ...hopDraft, dueAt: e.target.value })}
+                <DateInput
+                  id="hop-due" value={hopDraft.dueAt} disabled={saving}
+                  onChange={(v) => setHopDraft({ ...hopDraft, dueAt: v })}
                 />
                 <p className={styles.fieldHint}>
                   ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง
@@ -854,8 +851,8 @@ export default function RequestDetailPage() {
             {hopDraft.outcome === "confirmed" && (
               <div className="form-group">
                 <label htmlFor="hop-qty">จำนวนที่ลูกค้าคอนเฟิร์ม</label>
-                <input
-                  id="hop-qty" type="number" min="0" step="any" className="input-premium"
+                <Input
+                  id="hop-qty" type="number" min="0" step="any"
                   value={hopDraft.confirmedQty} disabled={saving}
                   onChange={(e) => setHopDraft({ ...hopDraft, confirmedQty: e.target.value })}
                 />
@@ -943,8 +940,8 @@ export default function RequestDetailPage() {
               <>
                 <div className="form-group">
                   <label htmlFor="close-outcome-name">ชื่อกลิ่น</label>
-                  <input
-                    id="close-outcome-name" className="input-premium" maxLength={200}
+                  <Input
+                    id="close-outcome-name" maxLength={200}
                     value={outcome.scentName} disabled={saving}
                     placeholder="ชื่อกลิ่นจริงที่ RD ตั้ง ไม่ใช่หัวเรื่องบรีฟ"
                     onChange={(e) => setOutcome({ ...outcome, scentName: e.target.value })}
@@ -954,8 +951,8 @@ export default function RequestDetailPage() {
                 {isScentRegistrar(me) ? (
                   <div className="form-group">
                     <label htmlFor="close-outcome-code">รหัสกลิ่น (ใส่แล้วเข้าทะเบียนเลย)</label>
-                    <input
-                      id="close-outcome-code" className="input-premium mono" maxLength={100}
+                    <Input
+                      id="close-outcome-code" mono maxLength={100}
                       value={outcome.code} disabled={saving} placeholder="เช่น SC-2026-001"
                       onChange={(e) => setOutcome({ ...outcome, code: e.target.value })}
                     />
