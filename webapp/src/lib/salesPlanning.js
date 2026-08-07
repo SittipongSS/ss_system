@@ -35,6 +35,21 @@ export const isWonStage = (stage) => WON_STAGES.includes(stage);
 export const isClosedStage = (stage) => CLOSED_STAGES.includes(stage);
 export const isOpenStage = (stage) => !isClosedStage(stage);
 
+// ── ขั้นที่ "ให้คนเลือกได้" ในฟอร์ม/ตัวกรอง ────────────────────────────────────
+// in_project ถูกยุบเป็น won ตั้งแต่ mig 0082 — STAGE_LABELS ยังแปลไว้ให้อ่านแถวเก่าได้
+// แต่ห้ามโผล่เป็นตัวเลือกใหม่ · เดิมบรรทัดนี้ถูกประกาศซ้ำในหน้ารวมดีลกับหน้ารายละเอียด
+// ดีลคนละไฟล์ (ตรงกันโดยบังเอิญ) และโมดัลสร้างดีลก็สะกดเงื่อนไขของตัวเองอีกชุด
+export const PIPELINE_STAGES = DEAL_STAGES.filter((stage) => stage !== 'in_project');
+
+// ตอน **สร้าง** ดีลยังปิดไม่ได้ — Won มาจากการรับใบเสนอราคา ไม่ใช่การเลือกจากดรอปดาวน์
+export const CREATABLE_STAGES = PIPELINE_STAGES.filter((stage) => !isWonStage(stage));
+
+/**
+ * ขั้นที่เลือกได้ตอน **แก้** ดีล — ดีลที่ปิด Won แล้วต้องเห็นค่าปัจจุบันของตัวเอง
+ * ในดรอปดาวน์ ไม่งั้นช่องจะโชว์ขั้นผิด (ช่องถูก disabled ด้วย alreadyWon อยู่แล้ว)
+ */
+export const editableStages = (alreadyWon = false) => (alreadyWon ? PIPELINE_STAGES : CREATABLE_STAGES);
+
 export const STAGE_LABELS = {
   lead: 'ลีด',
   qualified: 'ผ่านคัดกรอง',
