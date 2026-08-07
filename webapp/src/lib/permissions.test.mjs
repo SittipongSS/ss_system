@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -648,4 +648,20 @@ test('canEditRecord (products): ยึดทีมของลูกค้าเ
   assert.equal(canEditRecord({ role: 'legal', id: 'l' }, 'products', product), true);
   // viewer แก้ไม่ได้แม้ teamless
   assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'KA' }, 'products', product, []), false);
+});
+
+test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่หัวหน้าฝ่ายขาย', () => {
+  // บ้านของฝ่าย ไม่ใช่ของ role (ม-48) — AE Sup ยังกดรับเรื่องแทนได้ แค่ไม่มีเมนู
+  assert.equal(canAccessRd({ role: 'rd', department: 'RD' }), true);
+  assert.equal(canAccessRd({ role: 'ae_supervisor' }), false);
+  assert.equal(canAccessRd({ role: 'ae', team: 'ODM' }), false);
+  assert.equal(canAccessRd({ role: 'viewer' }), false);
+  // ⚠️ admin ไม่ถือ requests:answer — ถ้าเช็คแต่ cap แอดมินจะเห็นการ์ดระบบแต่เมนูว่าง
+  assert.equal(can('admin', 'requests:answer'), false);
+  assert.equal(canAccessRd({ role: 'admin' }), true);
+  // staff ถือ requests:answer แต่ต้องอยู่ฝ่าย RD จริงเท่านั้น
+  assert.equal(can('staff', 'requests:answer'), true);
+  assert.equal(canAccessRd({ role: 'staff', department: 'RD' }), true);
+  assert.equal(canAccessRd({ role: 'staff', department: 'PC' }), false);
+  assert.equal(canAccessRd(null), false);
 });

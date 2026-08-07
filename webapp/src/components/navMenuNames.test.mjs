@@ -110,3 +110,41 @@ test('เมนูของแต่ละระบบอยู่ใต้เ�
   assert.ok(!SOURCE.includes("href: '/sa/my-visits'"));
   assert.ok(!SOURCE.includes("href: '/pm/my-visits'"));
 });
+
+// ── ทุกระบบต้องมีแถบเมนูของตัวเอง ────────────────────────────────────────
+//
+// 🐞 เกิดจริง: ระบบ "วิจัยและพัฒนา" มีการ์ดใน SYSTEM_CATALOG · มีหน้า `/rd` และ
+// `/rd/requests` · ผ่าน OPEN_PAGES ครบ — **แต่ไม่มีกลุ่มเมนูใน AppLayout**
+// ⇒ `menuItems = currentGroup?.items || []` ได้อาเรย์ว่าง ⇒ ฝ่าย RD สลับเข้าบ้าน
+// ตัวเองแล้วไปไหนต่อไม่ได้เลย · build ผ่าน เทสต์เขียว หน้าเรนเดอร์ปกติทุกอย่าง
+// ผิดแค่เปลือกที่ครอบมัน — ไม่มีอะไรจับได้จนกว่าจะมีคนเปิดดูของจริง
+test('⭐ ทุกระบบใน SYSTEM_CATALOG ต้องมีกลุ่มเมนูของตัวเอง — ไม่มีกลุ่ม = แถบเมนูว่าง', async () => {
+  const { SYSTEM_ORDER } = await import('../config/systems.js');
+  for (const key of SYSTEM_ORDER) {
+    assert.ok(SOURCE.includes(`system: '${key}'`),
+      `ระบบ "${key}" ไม่มีกลุ่มเมนูใน AppLayout.allGroups — ผู้ใช้เข้าระบบนี้แล้วแถบเมนูจะว่าง`);
+  }
+});
+
+test('⭐ คิวคำร้องสองระบบต้องใช้คนละชื่อ — คนละมุมของตารางเดียวกัน', () => {
+  // บริหารงานขาย "คำร้อง" = ใบที่ฉันเปิดส่งไปให้ฝ่ายอื่น
+  // วิจัยและพัฒนา "คิวคำร้อง" = ใบที่ส่งมาถึงฝ่ายฉัน
+  // ชื่อเดียวกันเมื่อไร คนที่ทำงานสองระบบจะเปิดผิดหน้าประจำ (โรคเดียวกับ
+  // "งานของฉัน" × "นัดของฉัน" ที่ชนกันมาแล้วจริงเมื่อ 2026-07-31)
+  const sales = menuNameFor('/requests');
+  const rd = menuNameFor('/rd/requests');
+  assert.notEqual(sales, rd);
+  assert.equal(sales, 'คำร้อง');
+  assert.equal(rd, 'คิวคำร้อง');
+});
+
+test('เมนูของระบบวิจัยและพัฒนาแคบด้วยฝ่าย และเปิดให้ admin ได้ด้วย', () => {
+  // ⚠️ admin ไม่ถือ `requests:answer` ⇒ ถ้า caps มีตัวเดียว เมนูจะถูกกรองทิ้งหมด
+  // แล้วกลุ่มถูกตัดออกทั้งก้อน = แถบว่างสำหรับ admin ทั้งที่เห็นการ์ดระบบ
+  const lines = SOURCE.split(/\r?\n/).filter((row) => /href: '\/rd(\/|')/.test(row));
+  assert.ok(lines.length >= 2, 'ควรเจอเมนูของระบบวิจัยและพัฒนาอย่างน้อย 2 รายการ');
+  for (const line of lines) {
+    assert.match(line, /visible: canAccessRd/, line.trim());
+    assert.match(line, /'users:manage'/, line.trim());
+  }
+});

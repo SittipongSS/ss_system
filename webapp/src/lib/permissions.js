@@ -626,6 +626,23 @@ export function canAccessMgmt(user) {
   return canUser(user, 'mgmt:view');
 }
 
+// โมดูล "วิจัยและพัฒนา" (/rd) — บ้านของฝ่าย RD (ม-29)
+//
+// ⚠️ **ขึ้นกับฝ่าย ไม่ใช่ role** (ม-48) — จงใจไม่ใช้ `canAnswerRequestsFor` ตรง ๆ
+// เพราะตัวนั้นให้ `isSuperuser` ผ่านหมด ซึ่งรวม **AE Supervisor** (break-glass ที่มี
+// ไว้ให้ตอบแทนได้ตอนฉุกเฉิน) ⇒ หัวหน้าฝ่ายขายจะได้โมดูล R&D ทั้งที่ไม่ใช่บ้านของเขา
+// สิทธิ์ไม่ได้แคบลง — เขายังกดรับเรื่องแทนได้เหมือนเดิม แค่ไม่มีเมนู
+//
+// ⚠️ **admin ไม่มี `requests:answer`** (ตรวจ 2026-08-08) จึงต้องแยกสาขาให้ชัด —
+// เช็คแต่ cap อย่างเดียวแล้ว admin จะเห็นการ์ดระบบแต่เมนูถูกกรองทิ้งจนเหลือศูนย์
+// ซึ่ง AppLayout ตีความว่า "ไม่มีกลุ่ม" แล้วแถบเมนูว่างเปล่า
+//
+// ⭐ **ตัวเดียวคุมทั้งการ์ดระบบและแถบเมนู** — แยกกันเมื่อไรก็เพี้ยนหากัน
+export function canAccessRd(user) {
+  if (user?.role === 'admin') return true;
+  return departmentOf(user) === 'RD' && canUser(user, 'requests:answer');
+}
+
 // ── Data scope ────────────────────────────────────────────────────────
 // 'all'  = every team's records
 // 'team' = only records belonging to the user's own team
