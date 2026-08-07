@@ -146,11 +146,13 @@ export default function SupportPage() {
         </>
       )}
 
+      {/* ⚠️ `action` ของ EmptyState รับ **object `{ label, onClick }`** ไม่ใช่ node —
+          ส่ง <Button> เข้าไปจะได้ปุ่มเปล่าที่กดไม่ได้ และไม่มี error ให้เห็นเลย */}
       {!error && !rows.length && (
         <EmptyState
           icon={Bug}
           dashed
-          action={!admin ? <Button tone="accent" onClick={() => setReporting(true)}>แจ้งเรื่องใหม่</Button> : undefined}
+          action={admin ? undefined : { label: "แจ้งเรื่องใหม่", onClick: () => setReporting(true) }}
         >
           {admin ? "ไม่มีเรื่องในถังนี้" : "ยังไม่มีเรื่องที่คุณแจ้งไว้ — เจอบั๊กหรือติดตรงไหน ส่งมาได้เลย"}
         </EmptyState>
