@@ -1,0 +1,254 @@
+"use client";
+
+// ── โมดัลแจ้งปัญหาระบบ (mig 0219) ────────────────────────────────────────
+//
+// ⭐ **บังคับกรอกช่องเดียว** คือรายละเอียด — ยิ่งช่องเยอะ คนยิ่งไม่แจ้ง (มติ Q13)
+// หัวข้อว่างได้ ระบบตัดจากบรรทัดแรกให้เอง (server ทำ ไม่ใช่ที่นี่ — กติกาเดียวกัน
+// สำหรับทุกทางที่เปิดเรื่อง รวมทางที่ยังไม่มีในวันนี้)
+//
+// ⚠️ **โมดัลตัวนี้คือทางเดียวที่เปิดเรื่องได้** — ทั้งเมนูผู้ใช้ ปุ่มในหน้า /support
+// และปุ่ม "แจ้งปัญหานี้" บนหน้าที่พัง (ก้อน 3) เรียกตัวเดียวกันหมด ห้ามเขียนฟอร์ม
+// แจ้งเรื่องชุดที่สอง (กฎของ repo: สร้าง/แก้ ใช้ component เดียว)
+import { useEffect, useRef, useState } from "react";
+import { Paperclip, X } from "lucide-react";
+import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import Textarea from "@/components/ui/Textarea";
+import Segmented from "@/components/ui/Segmented";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { notifyToast } from "@/lib/feedback";
+import { describeResponseError } from "@/lib/fetchError";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import {
+  ISSUE_IMPACTS, ISSUE_IMPACT_LABELS, ISSUE_KINDS, ISSUE_KIND_LABELS,
+  ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
+} from "@/lib/issues/statuses";
+import styles from "./ReportIssueModal.module.css";
+
+const KIND_OPTIONS = ISSUE_KINDS.map((value) => ({ value, label: ISSUE_KIND_LABELS[value] }));
+const IMPACT_OPTIONS = ISSUE_IMPACTS.map((value) => ({ value, label: ISSUE_IMPACT_LABELS[value] }));
+
+const MAX_FILES = 4;
+
+export default function ReportIssueModal({ open, onClose, onCreated, errorStack = null }) {
+  const [kind, setKind] = useState("bug");
+  const [impact, setImpact] = useState("workaround");
+  const [title, setTitle] = useState("");
+  const [detail, setDetail] = useState("");
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [context, setContext] = useState(null);
+  const [related, setRelated] = useState([]);
+  const detailRef = useRef(null);
+  const fileRef = useRef(null);
+
+  // เก็บบริบทตอน "เปิดโมดัล" ไม่ใช่ตอนกดส่ง — ผู้ใช้อาจเปิดโมดัลค้างไว้แล้วเปลี่ยน
+  // หน้าในแท็บอื่น · และไม่เก็บ console log / ไม่จับภาพหน้าจออัตโนมัติ (มติ Q6)
+  useEffect(() => {
+    if (!open) return;
+    setContext({
+      pageUrl: `${window.location.pathname}${window.location.search}`,
+      userAgent: navigator.userAgent,
+    });
+  }, [open]);
+
+  // เรื่องที่คนอื่นแจ้งจากหน้าเดียวกัน — โชว์แค่ **หัวข้อกับสถานะ** ไม่มีรายละเอียด
+  // ไม่มีไฟล์แนบ (มติ Q12: ผู้ใช้ทั่วไปเห็นเรื่องของคนอื่นไม่ได้ ที่ยอมให้เห็นคือ
+  // "มีคนแจ้งไปแล้ว" ซึ่งกันงานซ้ำโดยไม่เปิดเนื้อในของใคร)
+  useEffect(() => {
+    if (!open || !context?.pageUrl) return;
+    let alive = true;
+    fetch(`/api/issues?pageUrl=${encodeURIComponent(context.pageUrl)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => { if (alive) setRelated(d.items || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open, context?.pageUrl]);
+
+  const reset = () => {
+    setKind("bug"); setImpact("workaround"); setTitle(""); setDetail("");
+    setFiles([]); setErr(""); setRelated([]);
+  };
+
+  const close = () => { if (!busy) { reset(); onClose?.(); } };
+
+  const pickFiles = (list) => {
+    const next = [];
+    for (const file of Array.from(list || [])) {
+      if (files.length + next.length >= MAX_FILES) break;
+      if (file.size > MAX_UPLOAD_BYTES) { setErr(`ไฟล์ใหญ่เกิน ${MAX_UPLOAD_MB} MB`); continue; }
+      next.push(file);
+    }
+    if (next.length) setFiles((prev) => [...prev, ...next]);
+  };
+
+  const submit = async () => {
+    if (!detail.trim() || busy) return;
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/issues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, impact, title, detail, errorStack, ...context }),
+      });
+      if (!res.ok) throw new Error(await describeResponseError(res, "ส่งเรื่องไม่สำเร็จ"));
+      const issue = await res.json();
+
+      // ⚠️ **ไฟล์แนบพลาดต้องไม่ล้มเรื่อง** — เรื่องถูกบันทึกแล้ว คนที่กำลังแจ้งบั๊ก
+      // อยู่ต้องไม่เจอบั๊กซ้อนบั๊ก · แจ้งให้ไปแนบซ้ำในหน้ารายละเอียดแทน (มติ Q17)
+      if (files.length) {
+        try {
+          await attachToThread(issue.id, files);
+        } catch (e) {
+          notifyToast.warning(`ส่งเรื่อง ${issue.code} แล้ว แต่แนบไฟล์ไม่สำเร็จ — เปิดเรื่องแล้วแนบซ้ำได้: ${e.message}`);
+          reset(); onClose?.(); onCreated?.(issue);
+          return;
+        }
+      }
+
+      notifyToast.success(`ส่งเรื่องแล้ว · ${issue.code}`);
+      reset(); onClose?.(); onCreated?.(issue);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={close} title="แจ้งปัญหาระบบ" size="md" initialFocusRef={detailRef}>
+      <div className={styles.body}>
+        <div className={styles.field}>
+          <span className={styles.label}>ประเภท</span>
+          <Segmented options={KIND_OPTIONS} value={kind} onChange={setKind} ariaLabel="ประเภทเรื่อง" />
+        </div>
+
+        <div className={styles.field}>
+          <span className={styles.label}>กระทบงานยังไง</span>
+          <Segmented options={IMPACT_OPTIONS} value={impact} onChange={setImpact} ariaLabel="ผลกระทบต่อการทำงาน" />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="issue-title">
+            หัวข้อ <span className={styles.optional}>— ไม่บังคับ</span>
+          </label>
+          <Input
+            id="issue-title" value={title} maxLength={200}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="ว่างไว้ได้ ระบบจะตัดจากบรรทัดแรกของรายละเอียด"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="issue-detail">รายละเอียด</label>
+          <Textarea
+            id="issue-detail" ref={detailRef} value={detail} rows={5} maxLength={5000}
+            onChange={(e) => setDetail(e.target.value)}
+            placeholder="เกิดอะไรขึ้น · กดอะไรถึงเจอ · คาดว่าควรได้อะไร"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <span className={styles.label}>ไฟล์แนบ <span className={styles.optional}>— ไม่บังคับ</span></span>
+          <input
+            ref={fileRef} type="file" multiple hidden accept={UPLOAD_ACCEPT_ATTR}
+            onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
+          />
+          <Button variant="quiet" onClick={() => fileRef.current?.click()} disabled={files.length >= MAX_FILES}>
+            <Paperclip size={15} aria-hidden="true" /> เลือกไฟล์
+          </Button>
+          {!!files.length && (
+            <ul className={styles.files}>
+              {files.map((file, i) => (
+                <li key={`${file.name}-${i}`} className={styles.file}>
+                  <span className={styles.fileName}>{file.name}</span>
+                  <button
+                    type="button" className={styles.fileRemove} aria-label={`เอา ${file.name} ออก`}
+                    onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className={styles.hint}>
+            ไฟล์จะเก็บบน Google Drive ของบริษัท — ปิดข้อมูลลูกค้าที่ไม่เกี่ยวก่อนแนบ
+          </p>
+        </div>
+
+        {/* บอกให้รู้ว่าเก็บอะไรไปด้วย — ไม่ซ่อน (มติ Q6/Q13) */}
+        {context && (
+          <div className={styles.context}>
+            <b>ระบบจะแนบข้อมูลนี้ไปด้วยอัตโนมัติ</b>
+            <dl>
+              <dt>หน้า</dt><dd>{context.pageUrl}</dd>
+              <dt>เบราว์เซอร์</dt><dd>{context.userAgent}</dd>
+              {errorStack && <><dt>ข้อผิดพลาด</dt><dd>แนบรายละเอียดทางเทคนิคของหน้าที่พังไปด้วย</dd></>}
+            </dl>
+          </div>
+        )}
+
+        {!!related.length && (
+          <div className={styles.related}>
+            <b>มีคนแจ้งจากหน้านี้ไปแล้ว {related.length} เรื่อง</b>
+            <ul>
+              {related.map((item) => (
+                <li key={item.id}>
+                  <StatusBadge size="sm" dot tone={ISSUE_STATUS_TONES[item.status]} label={ISSUE_STATUS_LABELS[item.status]} />
+                  <span>{item.title || item.code}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {err && <p className={styles.error} role="alert">{err}</p>}
+      </div>
+
+      <div className={styles.footer}>
+        <span className={styles.footNote}>กรอกแค่รายละเอียดก็ส่งได้</span>
+        <Button variant="quiet" onClick={close} disabled={busy}>ยกเลิก</Button>
+        <Button tone="accent" onClick={submit} disabled={busy || !detail.trim()}>
+          {busy ? "กำลังส่ง…" : "ส่งเรื่อง"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── แนบไฟล์ผ่าน "เธรด" ไม่ใช่ตาราง attachments ──────────────────────────
+// ⚠️ ตั้งใจใช้เส้น `/api/updates` เพราะด่านหยาบของ `/api/attachments` ใน proxy
+// ไล่ตาม cap ของ role ซึ่ง `viewer` ไม่มีสักตัว — แต่ viewer ต้องแนบภาพหน้าจอได้
+// (มติ Q2) · เส้นเธรดได้สิทธิ์ที่ถูกต้องพอดีจาก `UPDATE_ENTITIES.system_issue`
+// และผลพลอยได้คือไฟล์ไปอยู่ในบทสนทนาที่คนคุยกันจริง ไม่ใช่แผงเอกสารแยกต่างหาก
+async function attachToThread(issueId, files) {
+  const attachments = [];
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("entityType", "system_issue");
+    fd.append("entityId", issueId);
+    const up = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
+    const payload = await up.json();
+    attachments.push({
+      fileUrl: payload.url,
+      driveFileId: payload.driveFileId || null,
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    });
+  }
+  const res = await fetch("/api/updates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      entityType: "system_issue", entityId: issueId,
+      kind: "comment", body: "แนบไฟล์ประกอบการแจ้ง", attachments,
+    }),
+  });
+  if (!res.ok) throw new Error(await describeResponseError(res, "บันทึกไฟล์แนบไม่สำเร็จ"));
+}

@@ -337,8 +337,21 @@ const ROLE_CAPS = {
 // Unknown role: read-only viewer (sees registries + history, no actions).
 const DEFAULT_CAPS = ['customers:view', 'products:view', 'history:view'];
 
+// ── cap ที่ทุกคนที่ล็อกอินถือเสมอ ไม่ผูกกับ role ─────────────────────────
+// ⭐ `issues:report` = แจ้งปัญหาระบบ (mig 0219) · **ทุก role รวม viewer/executive**
+// เพราะคนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด — กันไว้แล้วปัญหาจะไม่ถูก
+// รายงานเลย (มติ Q2)
+//
+// ⚠️ ประกาศที่นี่ที่เดียว **ห้ามไล่เติมลงทุกอาร์เรย์ของ ROLE_CAPS** — 12 role
+// ที่ต้องเติมให้ครบด้วยมือคือที่ที่จะตกหล่นหนึ่งตัวโดยไม่มีใครรู้ (บทเรียนเดียวกับ
+// ที่ทำให้ทะเบียนไฟล์แนบต้องรวมด่านไว้ที่เดียว)
+//
+// ⚠️ ใส่ได้เฉพาะ cap ที่ **ไม่เปิดข้อมูลของคนอื่น** — `issues:report` ผ่านเกณฑ์
+// เพราะด่านจริง (canReadIssueRow) ยังคัดว่าเห็นได้เฉพาะเรื่องของตัวเอง
+const UNIVERSAL_CAPS = ['issues:report'];
+
 export function capsFor(role) {
-  return ROLE_CAPS[role] || DEFAULT_CAPS;
+  return [...(ROLE_CAPS[role] || DEFAULT_CAPS), ...UNIVERSAL_CAPS];
 }
 
 export function can(role, cap) {

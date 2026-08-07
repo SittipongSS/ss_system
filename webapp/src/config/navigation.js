@@ -14,6 +14,13 @@ export function sortSystems(groups) {
 
 export function systemForPathname(pathname) {
   if (isSettingsPathname(pathname)) return 'settings';
+  // ⚠️ ต้องอยู่เหนือ `return 'tax'` ท้ายฟังก์ชัน — บทเรียนจาก `/requests` ที่หลุด
+  // กฎนี้ไปแล้วทั้งโมดูลไปโผล่ใต้เปลือกเมนูระบบภาษี โดยที่ build/เทสต์จับไม่ได้เลย
+  // เพราะหน้าเรนเดอร์ปกติทุกอย่าง ผิดแค่เปลือกที่ครอบมัน
+  //
+  // ⭐ แจ้งปัญหาระบบ **ไม่อยู่ใน `SETTINGS_PATHS`** โดยเจตนา — เปลือกตั้งค่า
+  // `viewer` เข้าไม่ได้ แต่ viewer คือคนที่ต้องแจ้งได้ (มติ Q2/Q14)
+  if (pathname === '/support' || pathname.startsWith('/support/')) return 'support';
   if (pathname.startsWith('/database')) return 'master';
   // ⚠️ ต้องอยู่ก่อนกฎ salesplan: โมดูลผลิตเป็นระบบของตัวเอง ไม่ใช่ของฝ่ายขาย
   // (เส้นทางจึงไม่ได้อยู่ใต้ /pm ซึ่งเป็นของ project management ฝั่งขาย)

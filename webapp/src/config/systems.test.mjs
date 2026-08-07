@@ -9,38 +9,41 @@ import {
 
 const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 
+// ⚠️ `support` (แจ้งปัญหาระบบ mig 0219) อยู่ท้ายลิสต์ของ **ทุก** เคสโดยเจตนา —
+// เป็นระบบเดียวที่ `isVisible: () => true` เพราะคนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์
+// น้อยที่สุด (มติ Q2) · ถ้าวันหนึ่งมันหายจากเคสไหน แปลว่ามีคนไปใส่เงื่อนไข cap ให้มัน
 test('system catalog keeps the agreed global order and role visibility', () => {
-  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']);
+  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']);
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'master']);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'master', 'support']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
-  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt']);
-  assert.deepEqual(keysFor({ role: 'legal', team: null, extraCaps: [] }), ['tax', 'master']);
+  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt', 'support']);
+  assert.deepEqual(keysFor({ role: 'legal', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
 });
 
 test('system visibility covers every supported role and sales team', () => {
   const cases = [
     ['admin', null, SYSTEM_ORDER],
-    ['secretary', null, ['master', 'mgmt']],
-    ['ae_supervisor', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
-    ['marketing', null, ['salesplan', 'master']],
-    ['legal', null, ['tax', 'master']],
-    ['rd', null, ['salesplan', 'master']],
+    ['secretary', null, ['master', 'mgmt', 'support']],
+    ['ae_supervisor', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
+    ['marketing', null, ['salesplan', 'master', 'support']],
+    ['legal', null, ['tax', 'master', 'support']],
+    ['rd', null, ['salesplan', 'master', 'support']],
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
-    ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']],
+    ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
     // staff ที่ไม่ระบุฝ่าย = ไม่ใช่ PC/PD → ไม่เห็นระบบผลิต (ดูเคส PC/PD ข้างล่าง)
-    ['staff', null, ['salesplan', 'master']],
-    ['senior_ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
-    ['senior_ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
-    ['senior_ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
-    ['ac', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
-    ['ac', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
-    ['ac', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
-    ['ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master']],
-    ['ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
-    ['ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master']],
+    ['staff', null, ['salesplan', 'master', 'support']],
+    ['senior_ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
+    ['senior_ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
+    ['senior_ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
+    ['ac', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
+    ['ac', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
+    ['ac', 'SV', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
+    ['ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
+    ['ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
+    ['ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
   ];
 
   for (const [role, team, expected] of cases) {
@@ -71,14 +74,14 @@ test('specialized users land on the one workspace they can use', () => {
   const marketing = { role: 'marketing', team: null, extraCaps: [] };
   const staff = { role: 'staff', team: null, extraCaps: [] };
 
-  assert.deepEqual(keysFor(marketing), ['salesplan', 'master']);
+  assert.deepEqual(keysFor(marketing), ['salesplan', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', marketing), '/sa/leads');
-  assert.deepEqual(keysFor(staff), ['salesplan', 'master']);
+  assert.deepEqual(keysFor(staff), ['salesplan', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', staff), '/sa/tasks');
 
   // ช่างฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
   const tech = { role: 'staff', team: null, department: 'TS', extraCaps: [] };
-  assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master']);
+  assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master', 'support']);
   assert.equal(systemLandingForUser('service', tech), '/service');
 });
 

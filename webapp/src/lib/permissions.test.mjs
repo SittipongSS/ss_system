@@ -244,8 +244,12 @@ test('mgmt caps are grantable per-user (whitelist)', () => {
   assert.deepEqual(sanitizeExtraCaps(['mgmt:view', 'mgmt:edit', 'users:manage']), ['mgmt:view', 'mgmt:edit']);
 });
 
+// ⚠️ `issues:report` (mig 0219) อยู่ใน UNIVERSAL_CAPS — ทุก role ถือเสมอโดยเจตนา
+// จึงต้องอยู่ท้ายลิสต์ของทุกเคสที่เทียบ capsFor แบบเป๊ะ ๆ · ไม่ใช่การรั่วของสิทธิ์:
+// มันเปิดแค่ "แจ้งปัญหาระบบของตัวเอง" ซึ่งด่านจริง (canReadIssueRow) ยังคัดว่า
+// เห็นได้เฉพาะเรื่องที่ตัวเองแจ้ง
 test('secretary holds the mgmt caps + read-only products (no tax/pm/master leak)', () => {
-  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit', 'products:view']);
+  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit', 'products:view', 'issues:report']);
   assert.equal(can('secretary', 'pm:view'), false);
   assert.equal(can('secretary', 'customers:view'), false);
   assert.equal(can('secretary', 'users:manage'), false);
@@ -257,7 +261,7 @@ test('secretary holds the mgmt caps + read-only products (no tax/pm/master leak)
 });
 
 test('marketing holds the lead cap + read-only products, nothing else', () => {
-  assert.deepEqual(capsFor('marketing'), ['salesplan:lead', 'products:view']);
+  assert.deepEqual(capsFor('marketing'), ['salesplan:lead', 'products:view', 'issues:report']);
   assert.equal(can('marketing', 'salesplan:view'), false);
   assert.equal(can('marketing', 'customers:view'), false);
   assert.equal(can('marketing', 'sales:view'), false);

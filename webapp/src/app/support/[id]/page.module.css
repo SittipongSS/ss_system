@@ -1,0 +1,231 @@
+.page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.error {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-7);
+}
+
+/* ── หัวเรื่อง ── */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.headMain {
+  flex: 1;
+  min-width: 220px;
+}
+
+.headMain h1 {
+  margin: var(--space-0-5) 0 0;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
+}
+
+.code {
+  color: var(--text-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-5);
+}
+
+.meta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.headBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── แถบ "แก้แล้ว รอยืนยัน" ── */
+.resolved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--green) 34%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--green-soft);
+}
+
+.resolved > div:first-child {
+  flex: 1;
+  min-width: 240px;
+}
+
+.resolved b {
+  font-size: var(--fs-7);
+}
+
+.resolved p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-tight);
+}
+
+.resolvedActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* แถบจัดการของผู้ดูแลระบบ */
+.adminBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.modalNote {
+  margin: 0 0 var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-tight);
+}
+
+.modalFoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.rejected {
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--red) 34%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--red-soft);
+}
+
+.rejected p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-normal);
+}
+
+/* ── สองคอลัมน์ ── */
+.split {
+  display: grid;
+  align-items: start;
+  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .split { grid-template-columns: 1fr; }
+}
+
+.thread,
+.card {
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.thread h2,
+.card h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+}
+
+.side {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.pinned {
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--accent-soft);
+}
+
+.pinned b {
+  font-size: var(--fs-4);
+  color: var(--accent-ink);
+}
+
+.pinned p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-normal);
+  white-space: pre-wrap;
+}
+
+.kv {
+  display: grid;
+  margin: 0;
+  gap: var(--space-2) var(--space-4);
+  grid-template-columns: auto minmax(0, 1fr);
+  font-size: var(--fs-7);
+}
+
+.kv dt {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+}
+
+.kv dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.dim { color: var(--text-3); }
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-5);
+}
+
+.related {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-5);
+}
+
+.related li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+}
+
+.related li span {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

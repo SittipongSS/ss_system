@@ -1,0 +1,101 @@
+/* ── รายการเรื่องแจ้งปัญหา ────────────────────────────────────────────────
+   จุดตัดจอ 768 มาจากชุดที่แนะนำใน globals.css (480 · 560 · 640 · 680 · 768 ·
+   900 · 1000 · 1200) — ห้ามคิดค่าใหม่ · ต่ำกว่านั้นตารางกลายเป็นการ์ด เพราะคิวนี้
+   เปิดจากมือถือบ่อย และตารางที่เลื่อนแนวนอนอ่านสถานะไม่ทัน */
+
+.error {
+  margin: 0 0 var(--space-4);
+  color: var(--red);
+  font-size: var(--fs-7);
+}
+
+.colStatus { width: 168px; }
+.colCode { width: 122px; }
+.colImpact { width: 132px; }
+.colOwner { width: 120px; }
+.colAge { width: 82px; }
+.colAct { width: 108px; }
+
+.code {
+  color: var(--text-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+}
+
+.title {
+  display: block;
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+}
+
+.title:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
+.sub {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dim { color: var(--text-3); }
+
+.age {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cards {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 768px) {
+  .tableWrap { display: none; }
+
+  .cards {
+    display: grid;
+    gap: var(--space-3);
+  }
+}
+
+.card {
+  display: grid;
+  gap: var(--space-1-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.cardTop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}

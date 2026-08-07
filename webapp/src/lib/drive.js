@@ -46,6 +46,8 @@ export const FOLDER = {
   sahamit: 'สหมิตร',
   // ธุรกิจบริการหน้าไซต์ (S-3) — รูปก่อน/หลัง + ลายเซ็นผู้รับงาน แยกเป็นโฟลเดอร์ต่อไซต์
   service: 'ธุรกิจบริการ',
+  // เรื่องแจ้งปัญหาระบบ (mig 0219) — ถังรวมแบ่งตามเดือน ไม่ผูกกับลูกค้าหรือฝ่ายไหน
+  systemIssues: 'แจ้งปัญหาระบบ',
   unsorted: '_รอจัดที่',
 };
 
@@ -454,6 +456,19 @@ export async function folderPathForEntity(entityType, entityId) {
     ];
   }
 
+  // ── เรื่องแจ้งปัญหาระบบ (mig 0219) ───────────────────────────────────
+  // ⚠️ **แบ่งตามเดือน ไม่ใช่ต่อใบ** — เรื่องหนึ่งใบมีไฟล์ 1–2 ไฟล์ ทำโฟลเดอร์ต่อใบ
+  // จะได้โฟลเดอร์เปล่าหลักพันภายในปีเดียว และ `ensureFolder` ต้องยิง Drive API
+  // เพิ่มทุกครั้งที่แนบ · ที่ทำให้ยังหาไฟล์เจอคือ **ชื่อไฟล์ขึ้นต้นด้วยเลขที่เรื่อง**
+  // (ดู FILE_PREFIX ใน uploadForEntity)
+  if (type === 'system_issue') {
+    const { data } = await supabase
+      .from('system_issues').select('createdAt').eq('id', entityId).maybeSingle();
+    // แถวหาย (ลบไปแล้ว / ยังไม่ commit) ⇒ ลงเดือนปัจจุบัน ไม่ใช่ตกถัง _รอจัดที่
+    const month = String(data?.createdAt || new Date().toISOString()).slice(0, 7);
+    return [{ name: FOLDER.systemIssues }, { name: month }];
+  }
+
   // ⚠️ entity ใหม่ที่ยังไม่ได้ต่อท่อ **ห้ามทำให้ปุ่มอัปโหลดพัง** — ของเดิม throw ที่นี่
   // แล้ว /api/upload ตอบ 500 ผู้ใช้จึงแนบไฟล์ไม่ได้เลยและไม่มีอะไรบอกว่าเพราะอะไร
   // (โดนมาแล้วสองรอบ: costing_item และ dept_request_item). ลง _รอจัดที่ + log แทน
@@ -502,12 +517,37 @@ export async function uploadFile(folderId, { buffer, name, mimeType }) {
 // ทางเข้าเดียวของการอัปไฟล์ตาม entity — resolve โฟลเดอร์ + อัป + กู้เคสโฟลเดอร์หาย.
 // ถ้าโฟลเดอร์ปลายทางถูกลบ/ย้ายระหว่างทาง (404) ให้ล้าง cache แล้วลองใหม่หนึ่งครั้ง
 // แทนที่จะเด้ง error ใส่ผู้ใช้ที่ไม่มีทางรู้ว่าเกิดอะไรขึ้น
+// ── entity ที่ไฟล์ต้องขึ้นต้นด้วยเลขที่เอกสาร ────────────────────────────
+// ใช้กับ entity ที่ **ไม่มีโฟลเดอร์ต่อใบ** เท่านั้น — ไฟล์ของหลายใบกองรวมกันใน
+// โฟลเดอร์เดียว ถ้าไม่มีเลขที่นำหน้า คนที่เปิด Drive ตรง ๆ จะแยกไม่ออกว่าภาพหน้าจอ
+// อันไหนของเรื่องไหน (แถว attachments รู้ แต่คนที่เปิด Drive ไม่ได้ผ่านแถวนั้น)
+// ⚠️ query เพิ่มหนึ่งครั้งต่อการอัป — ยอมรับได้เพราะการแนบไฟล์ไม่ใช่ hot path
+const FILE_PREFIX = {
+  system_issue: async (supabase, id) => (
+    await supabase.from('system_issues').select('code').eq('id', id).maybeSingle()
+  ).data?.code || null,
+};
+
+async function prefixedName(entityType, entityId, name) {
+  const fn = FILE_PREFIX[resolveEntityAlias(entityType)];
+  if (!fn || !entityId) return name;
+  try {
+    const prefix = await fn(getSupabaseAdmin(), entityId);
+    // ชื่อที่มีเลขที่นำหน้าอยู่แล้ว (อัปซ้ำ/ย้ายไฟล์) ต้องไม่ได้เลขที่ซ้อนสองชั้น
+    if (!prefix || String(name || '').startsWith(prefix)) return name;
+    return `${prefix} ${name || 'file'}`;
+  } catch {
+    return name; // หา code ไม่ได้ = ยังอัปได้ตามปกติ แค่ไม่มีเลขที่นำหน้า
+  }
+}
+
 export async function uploadForEntity({ entityType, entityId, buffer, name, mimeType }) {
+  const finalName = await prefixedName(entityType, entityId, name);
   const attempt = async () => {
     const folderId = (entityType && entityId)
       ? await resolveFolderForEntity(entityType, entityId)
       : await ensureUnsortedFolder();
-    return uploadFile(folderId, { buffer, name, mimeType });
+    return uploadFile(folderId, { buffer, name: finalName, mimeType });
   };
   try {
     return await attempt();

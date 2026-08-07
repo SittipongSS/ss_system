@@ -212,6 +212,23 @@ export const UPDATE_KINDS = {
     returned: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     revise: { label: 'ออก Rev.', color: 'var(--amber)' },
   },
+  // ── เรื่องแจ้งปัญหาระบบ (mig 0219) — เธรดสองฝ่าย: ผู้แจ้ง ↔ ผู้ดูแลระบบ ──
+  // ⚠️ ชื่อ kind **ตรงกับชื่อ action ใน `lib/issues/model.js` ทุกตัว** โดยเจตนา —
+  // route handler ส่ง `kind: action` ตรง ๆ ถ้าชื่อสองฝั่งหลุดกัน เหตุการณ์จะขึ้น
+  // ป้าย "ข้อความ" เหมือนคนพิมพ์เอง แล้วยังหายไปตอนกดซ่อนเหตุการณ์ระบบอีก
+  system_issue: {
+    comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
+    acknowledge: { label: 'รับเรื่อง', color: 'var(--blue)' },
+    assign: { label: 'มอบหมาย', color: 'var(--blue)' },
+    impact: { label: 'ปรับผลกระทบ', color: 'var(--amber)' },
+    resolve: { label: 'แจ้งว่าแก้แล้ว', color: 'var(--green)' },
+    confirm: { label: 'ผู้แจ้งยืนยันว่าหาย', color: 'var(--green)' },
+    // ดีดกลับ = เหลือง ไม่ใช่แดง — "ยังต้องแก้ต่อ" ไม่ใช่ "จบแล้ว"
+    // (กติกาสีเดียวกับ bounce ของคำร้อง)
+    reopen: { label: 'ยังไม่หาย', color: 'var(--amber)' },
+    reject: { label: 'ไม่ใช่บั๊ก / ไม่ทำ', color: 'var(--red)' },
+    auto_close: { label: 'ปิดอัตโนมัติ', color: 'var(--text-3)' },
+  },
 };
 
 // ชนิดตั้งต้นของ entity ที่ไม่ได้ประกาศอะไรเลย — ยังคงชื่อเดิมไว้เพราะเป็นค่าที่
