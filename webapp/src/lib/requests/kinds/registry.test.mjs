@@ -14,9 +14,8 @@ import {
 // ไม่ใช่หลุดไปเพราะ import พลาดแล้วไม่มีใครรู้ว่าหัวข้อหายไปหนึ่งตัว
 const EXPECTED = [
   'info', 'document',                                  // ไม่เป็นของฝ่ายไหน
-  'scent_dev', 'product_dev', 'price_f', 'price_fb',   // RD ที่ยังเปิดใบใหม่ได้
-  'scent_brief', 'mockup',                             // RD เลิกใช้แล้ว
-  'price_pm', 'material_eta',                          // PC
+  'scent_dev', 'formula_dev',                          // RD
+  'material_eta',                                      // PC
   'billing_doc',                                       // FN
 ];
 
@@ -52,8 +51,8 @@ test('หัวข้อของกลางอยู่ในลิสต์�
   }
   assert.ok(kindsForDept('RD').includes('scent_dev'));
   assert.ok(!kindsForDept('PC').includes('scent_dev'));
-  assert.ok(kindsForDept('PC').includes('price_pm'));
-  assert.ok(!kindsForDept('RD').includes('price_pm'));
+  assert.ok(kindsForDept('PC').includes('material_eta'));
+  assert.ok(!kindsForDept('RD').includes('material_eta'));
 });
 
 test('🐞 หัวกลุ่มห้ามโผล่ซ้ำ — ตระกูลต้องติดกันในลิสต์ที่คืนให้ดรอปดาวน์', () => {
@@ -72,16 +71,16 @@ test('🐞 หัวกลุ่มห้ามโผล่ซ้ำ — ตร�
   }
 });
 
-test('หัวข้อที่เลิกใช้ยังอ่านได้ แต่เปิดใบใหม่ไม่ได้', () => {
+test('หัวข้อที่ถูกถอดต้องหายจากทะเบียนทั้งตัว', () => {
+  // ⭐ `scent_brief` · `mockup` เคยติดธง `legacy` (อ่านได้ เปิดใบใหม่ไม่ได้) เพราะ
+  // ใบเก่าต้องมีป้ายชื่อ · เหตุผลนั้นหมดอายุเมื่อทั้งคู่เหลือ 0 แถวบน prod ⇒ ลบใน 0220
   for (const kind of ['scent_brief', 'mockup']) {
-    assert.ok(REQUEST_KINDS[kind]?.label, `${kind} ต้องยังมีป้ายชื่อให้ใบเก่า`);
-    for (const dept of REQUEST_DEPTS) assert.ok(!kindsForDept(dept).includes(kind));
+    assert.equal(REQUEST_KINDS[kind], undefined, `${kind} ต้องไม่อยู่ในทะเบียนแล้ว`);
   }
-  // ⚠️ ขอราคา F/FB **ยังไม่ใช่ legacy** — แผนสั่งตัด แต่ยังไม่ถอดจนกว่าทางใหม่จะ
-  // เดินจริงครบวง · ติดธงเมื่อไรต้องมาแก้เทสต์นี้ด้วยความตั้งใจ
-  for (const kind of ['price_f', 'price_fb']) {
-    assert.ok(!REQUEST_KINDS[kind].legacy, `${kind} ยังเปิดใบใหม่ได้`);
-    assert.ok(kindsForDept('RD').includes(kind));
+  // ⚠️ ขอราคา F/FB/PM **ถูกถอดทั้งหัวข้อ** ใน mig 0219 (ม-28) — ไม่ใช่ติดธง legacy
+  // แต่หายจากทะเบียนไปเลย เพราะราคากลายเป็นขั้นสุดท้ายของสองหัวข้อพัฒนา
+  for (const kind of ['price_f', 'price_fb', 'price_pm']) {
+    assert.equal(REQUEST_KINDS[kind], undefined, `${kind} ต้องไม่อยู่ในทะเบียนแล้ว`);
   }
 });
 

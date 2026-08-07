@@ -19,7 +19,7 @@ import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } f
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
 import { appendMaterialRevision, ensureMaterial, findRequest } from '@/lib/materialPricesAdmin';
-import { findScent } from '@/lib/master/scentFormulaAdmin';
+import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
@@ -53,44 +53,67 @@ export async function POST(request, { params }) {
       error: 'ใส่ราคาได้เมื่อลูกค้าคอนเฟิร์มรายการนี้แล้วเท่านั้น',
     }, { status: 409 });
   }
-  if (!row.producedScentId) {
+  // ── สายไหนได้ราคาชนิดอะไร (Q38 ก · มติผู้ใช้ 2026-08-07) ────────────────
+  //
+  // 🐞 **บั๊กที่ปิดตรงนี้** — เดิมบังคับ `producedScentId` อย่างเดียว แล้วสร้างวัสดุ
+  // `RM_F` จากชื่อกลิ่น · แถวของ **พัฒนาสูตร** ผูก `producedFormulaId` (ไม่มีกลิ่น
+  // ที่ผลิตขึ้นใหม่ — กลิ่นมีอยู่ก่อนแล้วบนแถว) ⇒ กดใส่ราคาแล้วได้ 400 ตลอดกาล
+  // ⇒ ลูกค้าคอนเฟิร์มแล้วแถวค้างที่ `awaiting_price` **ถาวร ปิดใบไม่ได้**
+  //
+  //   พัฒนากลิ่น → กลิ่นที่เพิ่งส่ง = หัวน้ำหอม `RM_F` ต่อกิโล
+  //   พัฒนาสูตร  → สูตรที่เพิ่งส่ง  = เนื้อสาร  `RM_FB` ต่อกิโล
+  //
+  // ⚠️ **ไม่ใช่ราคาต่อชิ้นของผลิตภัณฑ์** — ราคาสินค้าสำเร็จรูปต้องรวมบรรจุภัณฑ์
+  // และค่าผลิต ซึ่งเป็นงานของใบขอราคาผลิต ไม่ใช่ของ RD
+  const priced = row.producedFormulaId
+    ? { kind: 'RM_FB', stampColumn: 'formulaId', id: row.producedFormulaId }
+    : row.producedScentId
+      ? { kind: 'RM_F', stampColumn: 'scentId', id: row.producedScentId }
+      : null;
+  if (!priced) {
     return Response.json({
-      error: 'รายการนี้ยังไม่ผูกกลิ่นในทะเบียน — ใส่ราคาไม่ได้',
+      error: 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้',
     }, { status: 400 });
   }
 
   const body = await request.json().catch(() => ({}));
   // ⚠️ F/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — หัวน้ำหอมคิดราคาต่อกิโลเดียว
   // ไม่ลดตามจำนวน · รับ `price` ตัวเดียว ไม่ใช่ tiers
-  const { value: price, error: priceError } = normalizeQuotedPrice('RM_F', body.price);
+  const { value: price, error: priceError } = normalizeQuotedPrice(priced.kind, body.price);
   if (priceError) return Response.json({ error: priceError }, { status: 400 });
 
   const nowIso = new Date().toISOString();
   try {
-    const scent = await findScent(supabase, row.producedScentId);
-    if (!scent) return Response.json({ error: 'ไม่พบกลิ่นในทะเบียน' }, { status: 400 });
+    // ⚠️ ทะเบียนต้นทาง **คนละตาราง** แต่หน้าตาที่ต้องใช้เหมือนกัน (ชื่อ + ลูกค้า)
+    const source = priced.stampColumn === 'formulaId'
+      ? await findFormula(supabase, priced.id)
+      : await findScent(supabase, priced.id);
+    if (!source) {
+      return Response.json({ error: 'ไม่พบกลิ่นหรือสูตรในทะเบียน' }, { status: 400 });
+    }
 
-    // ตัวตนของวัสดุ = RM_F + ชื่อ + ลูกค้า · ถามซ้ำรอบสองจะเจอตัวเดิมแล้วต่อ rev
+    // ตัวตนของวัสดุ = ชนิด + ชื่อ + ลูกค้า · ถามซ้ำรอบสองจะเจอตัวเดิมแล้วต่อ rev
     // ไม่ใช่เกิดวัสดุตัวใหม่ (บั๊กที่ ensureMaterial ถูกเขียนขึ้นมาปิด)
     const { material } = await ensureMaterial(supabase, {
-      kind: 'RM_F',
-      label: scent.name,
-      customerId: scent.customerId,
-      customerName: scent.customerName,
+      kind: priced.kind,
+      label: source.name,
+      customerId: source.customerId,
+      customerName: source.customerName,
       user,
     });
 
-    // ประทับกลิ่นลงแถววัสดุ — **ไม่ทับของเดิม** เพราะวัสดุตัวหนึ่งอาจถูกถามซ้ำจาก
-    // หลายคำร้อง ถ้าใบหลังทับได้ ประวัติราคาจะชี้กลิ่นผิดตัวย้อนหลังทั้งชุด
-    if (!material.scentId) {
+    // ประทับกลิ่น/สูตรลงแถววัสดุ — **ไม่ทับของเดิม** เพราะวัสดุตัวหนึ่งอาจถูกถามซ้ำ
+    // จากหลายคำร้อง ถ้าใบหลังทับได้ ประวัติราคาจะชี้ตัวผิดย้อนหลังทั้งชุด
+    // ⚠️ `material_prices.formulaId` มีอยู่แล้วตั้งแต่ mig 0171 — รอใช้มาตลอด
+    if (!material[priced.stampColumn]) {
       const { error: stampError } = await supabase.from('material_prices')
-        .update({ scentId: scent.id, updatedAt: nowIso }).eq('id', material.id);
+        .update({ [priced.stampColumn]: source.id, updatedAt: nowIso }).eq('id', material.id);
       if (stampError) throw stampError;
     }
 
     const { revision } = await appendMaterialRevision(supabase, {
       materialId: material.id,
-      kind: 'RM_F',
+      kind: priced.kind,
       price,
       validUntil: body.validUntil || null,
       note: body.note || null,
@@ -122,14 +145,14 @@ export async function POST(request, { params }) {
       entityType: 'dept_request',
       entityId: id,
       kind: 'quoted',
-      body: `ใส่ราคา ${scent.code || scent.name} — ${price.toLocaleString('th-TH')} ฿/กก.`,
+      body: `ใส่ราคา ${source.code || source.name} — ${price.toLocaleString('th-TH')} ฿/กก.`,
       user,
     }).catch(() => {});
 
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: revision.id },
-      summary: `ใส่ราคา ${scent.code || scent.name} (${before.docNo || id})`,
+      summary: `ใส่ราคา ${source.code || source.name} (${before.docNo || id})`,
       request,
     });
 

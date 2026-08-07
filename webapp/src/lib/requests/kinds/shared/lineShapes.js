@@ -1,31 +1,11 @@
 // ── รูปร่างบรรทัดที่ไม่ได้เป็นของฝ่ายไหน ────────────────────────────────
-// `material` ใช้ทั้งขอราคา F/FB ของ RD และขอราคา PM ของ PC · `document` ใช้ได้ทุกฝ่าย
-import { normalizeDocumentItems, normalizeRequestItems } from '../../lines';
-
-const materialLine = {
-  key: 'material',
-  // ⚠️ ป้ายของบรรทัดวัสดุต้องเหมือนเดิม**ทุกตัวอักษร** — ผู้ใช้ที่ใช้เคสขอราคาอยู่
-  // ต้องไม่รู้สึกว่าอะไรเปลี่ยนหลังรวมระบบ (นี่คือค่าตั้งต้นของ requestItemStatusLabel)
-  labels: { pending: 'รอราคา', done: 'ตอบราคาแล้ว', declined: 'ตอบไม่ได้' },
-  normalize: (input, { dept, hasTiers, materialKind, kindLabel } = {}) => {
-    const normalized = normalizeRequestItems(input, { dept, hasTiers });
-    if (normalized.error) return normalized;
-    // ⭐ ชนิดวัสดุของบรรทัดต้องตรงกับชนิดคำร้อง — ปิดรอยที่เคยทำให้เปิดคำร้องจาก
-    // บรรทัด RM_F ในใบขอราคาผลิตแล้วได้ `kind: price_pm` (หัวใบบอกบรรจุภัณฑ์ แต่
-    // บรรทัดเป็นหัวน้ำหอม → เลขที่ออกผิด scope และช่องกลิ่นไม่เคยถูกถาม)
-    //
-    // ⚠️ กฎนี้เคยอยู่ใน route — ย้ายมาอยู่กับรูปร่างบรรทัดที่มันคุ้มครอง เพราะ
-    // route ไม่ควรรู้ว่าบรรทัดวัสดุมีกฎพิเศษที่บรรทัดรูปร่างอื่นไม่มี
-    const off = materialKind ? normalized.items.find((i) => i.kind !== materialKind) : null;
-    if (off) {
-      return {
-        items: [],
-        error: `"${kindLabel}" รับได้เฉพาะรายการชนิด ${materialKind} — พบ ${off.kind}`,
-      };
-    }
-    return normalized;
-  },
-};
+// `document` ใช้ได้ทุกฝ่าย — RD ขอ IFRA/COA/MSDS · บัญชีขอใบวางบิล/ใบกำกับ
+//
+// ⚠️ **รูปร่าง `material` ถูกถอดพร้อมหัวข้อขอราคาใน mig 0219** (มติ ม-28) — มันมี
+// อยู่เพื่อ `price_f`/`price_fb`/`price_pm` เท่านั้น · โมเดลใหม่ให้ RD ใส่ราคาลงใน
+// ใบเดิมที่ขั้นสุดท้าย ไม่มีบรรทัดวัสดุอีกแล้ว ⇒ ตัวตรวจ `normalizeRequestItems`
+// และ `normalizeRequestTiers` ถูกลบตามไปด้วย ไม่ใช่แค่เลิกเรียก
+import { normalizeDocumentItems } from '../../lines';
 
 const documentLine = {
   key: 'document',
@@ -33,6 +13,6 @@ const documentLine = {
   normalize: (input) => normalizeDocumentItems(input),
 };
 
-const SHARED_LINE_SHAPES = [materialLine, documentLine];
+const SHARED_LINE_SHAPES = [documentLine];
 
 export default SHARED_LINE_SHAPES;

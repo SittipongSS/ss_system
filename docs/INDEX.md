@@ -43,7 +43,10 @@
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
-| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD ที่ส่งไปแล้ว |
+| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · **ม-25…ม-46 รอบรื้อที่สอง (2026-08-07)** |
+| [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น"** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
+| [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร"** — P4 (ม-36) |
+| [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
 | [system-modernization/ux-ui-rulebook.md](system-modernization/ux-ui-rulebook.md) · [document-design-system.md](system-modernization/document-design-system.md) | มาตรฐานเอกสาร A4/PDF |
 
 **คู่มือผู้ใช้** (ไม่ใช่เอกสาร dev): [SALES_PLANNING_GUIDE.md](../webapp/SALES_PLANNING_GUIDE.md) · [EMPLOYEE_TURNOVER_GUIDE.md](../webapp/EMPLOYEE_TURNOVER_GUIDE.md)

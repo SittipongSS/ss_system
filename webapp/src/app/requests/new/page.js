@@ -52,8 +52,6 @@ export default function NewRequestPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [materials, setMaterials] = useState([]);
-  const [products, setProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
@@ -67,8 +65,6 @@ export default function NewRequestPage() {
   useEffect(() => {
     const grab = (url, set) => fetch(url, { cache: "no-store" })
       .then((r) => r.json()).then((d) => set(asArray(d))).catch(() => {});
-    grab("/api/master/materials", setMaterials);
-    grab("/api/products", setProducts);
     grab("/api/pm/projects", setProjects);
     grab("/api/sales-planning/deals", setDeals);
     grab("/api/sales-planning/sales-orders", setSalesOrders);
@@ -90,8 +86,10 @@ export default function NewRequestPage() {
   // และเพราะไฟล์แนบต้องมีคำร้องให้เกาะก่อน ⇒ ร่างคือสิ่งที่ทำให้แนบไฟล์เป็นไปได้
   const saveDraft = async () => {
     setSaving(true);
-    const productName = products.find((p) => p.id === form.productId)?.name || null;
-    const { id, error } = await createRequestDraft(form, { productName });
+    // ⚠️ เดิมส่ง `productName` ที่ค้นจากลิสต์สินค้า — ช่อง "สินค้าที่เกี่ยวข้อง" อยู่ใน
+    // บล็อกบรรทัดวัสดุซึ่งถูกถอดใน mig 0219 (ม-28) ⇒ `form.productId` ไม่มีทางถูกตั้ง
+    // อีกแล้ว · ดึงทะเบียนสินค้าและวัสดุมาทั้งชุดเพื่อค่าที่เป็น null เสมอคือโหลดเปล่า
+    const { id, error } = await createRequestDraft(form);
     if (error) {
       setToast({ kind: "error", msg: error });
       setSaving(false);
@@ -110,7 +108,6 @@ export default function NewRequestPage() {
       <div className={styles.form}>
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
-          materials={materials} products={products}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}

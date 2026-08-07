@@ -17,6 +17,9 @@ const TEXT_LIMITS = {
   // 0218
   pdrPrevProductCode: 200, pdrPackagingArtwork: 40,
   pdrVpAttribute: 2000, pdrVpBenefit: 2000, pdrVpValue: 2000, pdrExportDocNote: 500,
+  // 0221 — ชื่อผู้เซ็นบนกระดาษ (ม-45)
+  pdrSignSalesManager: 200, pdrSignPerfumer: 200, pdrSignChemist: 200,
+  pdrSignCoordinator: 200, pdrSignFinalApprover: 200,
 };
 
 // ช่องติ๊กหลายตัว — เก็บเป็น text[] ตามแพตเทิร์นของ dept_request_scents (0213)

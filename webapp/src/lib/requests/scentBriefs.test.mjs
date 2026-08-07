@@ -71,3 +71,23 @@ test('direction ต้องชี้บรีฟที่อยู่ในใ�
   // ⚠️ ยิงตรงด้วย id ของใบอื่นต้องไม่ผ่าน — ไม่งั้นผูก direction ข้ามลูกค้าได้
   assert.match(briefLinkError('B9', mine), /ไม่ได้อยู่ในคำร้องใบนี้/);
 });
+
+// ── 2.1.4 Scentotype มีเส้นให้เขียนต่อหลังทุกตัว (mig 0222) ───────────────
+test('เก็บข้อความต่อท้าย Scentotype เฉพาะตัวที่ติ๊กไว้', () => {
+  const { briefs, error } = normalizeScentBriefs([{
+    label: 'กลิ่นที่ 1',
+    scentotypes: ['cheerer', 'admirer'],
+    // ⚠️ ตัวที่ไม่ได้ติ๊กต้องถูกทิ้ง — ไม่งั้นเหลือข้อมูลผีที่ไม่มีใครเห็นบนจอ
+    scentotypeNotes: { cheerer: 'สดใส วัยรุ่น', discoverer: 'ไม่ได้ติ๊ก' },
+  }], { expected: 1 });
+  assert.equal(error, null);
+  assert.deepEqual(briefs[0].scentotypeNotes, { cheerer: 'สดใส วัยรุ่น' });
+});
+
+test('ติ๊กแล้วไม่เขียนต่อได้ — กระดาษก็เว้นเส้นไว้ได้', () => {
+  const { briefs, error } = normalizeScentBriefs([{
+    label: 'กลิ่นที่ 1', scentotypes: ['cheerer'], scentotypeNotes: { cheerer: '  ' },
+  }], { expected: 1 });
+  assert.equal(error, null);
+  assert.deepEqual(briefs[0].scentotypeNotes, {});
+});

@@ -18,18 +18,27 @@ import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
 
 function Facts({ rows }) {
-  // ⚠️ กรองที่นี่ด้วย — บล็อกบรีฟส่งคู่ดิบมาตรง ๆ (คนละทางกับ `pdrSectionRows`
-  // ที่กรองมาให้แล้ว) · กรองทางเดียวเมื่อไรอีกทางจะขึ้นแถวว่างเปล่า
-  const filled = rows.filter(([, v]) => v != null && String(v).trim() !== "");
-  if (!filled.length) return <small className={styles.hint}>ยังไม่ได้กรอกส่วนนี้</small>;
+  // ⭐ **แสดงทุกช่อง ช่องที่ไม่ได้กรอกขึ้นว่า N/A** (มติผู้ใช้ 2026-08-07)
+  //
+  // เดิมซ่อนช่องว่างทิ้ง ⇒ RD เปิดอ่านแล้วไม่มีทางรู้ว่า *ไม่ได้ถาม* หรือ *ถามแล้ว
+  // ไม่มีคำตอบ* — สองอย่างนี้ทางแก้คนละทาง (อย่างแรกคือบั๊ก อย่างหลังคือไปตามถาม)
+  // ⚠️ ต้องตรงกับกระดาษเสมอ — เอกสารพิมพ์ N/A ที่ช่องเดียวกันนี้ (pdrDocument.js)
+  if (!rows.length) return <small className={styles.hint}>ยังไม่ได้กรอกส่วนนี้</small>;
   return (
     <dl className={styles.pdrFacts}>
-      {filled.map(([label, value]) => (
-        <div key={label} className={styles.pdrFact}>
-          <dt>{label}</dt>
-          <dd><ReadableText text={String(value)} lines={4} /></dd>
-        </div>
-      ))}
+      {rows.map(([label, value]) => {
+        const text = value == null ? "" : String(value).trim();
+        return (
+          <div key={label} className={styles.pdrFact}>
+            <dt>{label}</dt>
+            <dd>
+              {text
+                ? <ReadableText text={text} lines={4} />
+                : <span className={styles.naValue}>N/A</span>}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }
@@ -67,12 +76,17 @@ export default function PdrSummary({ request, briefs = [] }) {
           ) : briefs.map((b, i) => (
             <div key={b.id || i} className={styles.briefCard}>
               <strong>{b.label || `กลิ่นที่ ${i + 1}`}</strong>
-              {b.brief && <ReadableText text={b.brief} lines={6} />}
+              {/* บรีฟเป็นช่องหลักของก้อนนี้ — ว่างก็ต้องเห็นว่าว่าง (N/A) ไม่ใช่หายไป */}
               <Facts rows={[
+                ["บรีฟกลิ่น", b.brief],
                 ["แรงบันดาลใจ", b.inspiration],
                 ["ช่วงกลิ่นที่ชื่นชอบ", b.likedNotes],
                 ["กลิ่นที่ End-user ไม่ชอบ", b.dislikedNotes],
                 ["ให้ทำวิจัยเรื่อง", b.researchTopic],
+                // ⭐ ข้อความต่อท้าย Scentotype รายตัว (ข้อ 2.1.4 บนกระดาษ · mig 0222)
+                ...(b.scentotypes || []).map((t) => [
+                  `Scentotype — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
+                ]),
               ]} />
               <dl className={styles.pdrFacts}>
                 <Chips label="Scentotype" values={b.scentotypes} textOf={scentotypeLabel} />
@@ -88,7 +102,12 @@ export default function PdrSummary({ request, briefs = [] }) {
         <details key={section.key} className={styles.pdrSection}>
           <summary className={styles.pdrSummary}>{section.title}</summary>
           <div className={styles.pdrBody}>
-            <Facts rows={pdrSectionRows(section, request, { context: { ...(request.pdrContext || {}), briefs } })} />
+            {/* ⚠️ `includeEmpty` — จอต้องแสดงช่องว่างเป็น N/A เหมือนกระดาษ
+                (มติผู้ใช้ 2026-08-07) ไม่ใช่ซ่อนทิ้งแล้วอ่านไม่ออกว่าถามหรือยัง */}
+            <Facts rows={pdrSectionRows(section, request, {
+              includeEmpty: true,
+              context: { ...(request.pdrContext || {}), briefs },
+            })} />
           </div>
         </details>
       ))}

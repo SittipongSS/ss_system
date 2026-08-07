@@ -6,7 +6,7 @@
 // เรื่องเดียวกัน · RD จึงต้องเฝ้าสองที่ และไม่มีที่ไหนบอกว่างานค้างทั้งหมดมีกี่ชิ้น
 //
 // หน้านี้คือคิวเดียวของทุกชนิดคำร้อง — ชนิดคุมด้วย lib/master/requestTypes.js
-// (สอบถาม · บรีฟกลิ่น · ขอ mockup · ขอราคา F/FB/PM · ขอเอกสาร · ติดตามของเข้า)
+// (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
@@ -24,14 +24,14 @@ const TAB_BLURB = {
   history: "เรื่องที่จบแล้ว — เลือกขอบเขตได้ตามสิทธิ์",
 };
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
-import { cachedFetchJson } from "@/lib/apiCache";
 import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor } from "@/lib/permissions";
+import { deptsInSharedQueue } from "@/lib/requests/modules";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
 
-const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่น — สอบถาม บรีฟกลิ่น ขอ Mock-up ขอราคา ขอเอกสาร ติดตามของเข้า";
+const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่น — พัฒนากลิ่น พัฒนาสูตร ขอเอกสาร สอบถามข้อมูล ติดตามของเข้า";
 // มาจากหน้าดีล (`?dealId=`) ต้องบอกว่ากำลังดูแค่ดีลนั้น ไม่ใช่ทั้งหมด — ไม่งั้น
 // "ไม่มีคำร้องของคุณ" อ่านเหมือนระบบว่าง ทั้งที่แค่กรองอยู่
 const mineBlurb = (deal) => (deal
@@ -50,21 +50,21 @@ export default function RequestsPage() {
   // filter ไม่ใช่ find — admin ตอบได้ทั้ง RD และ PC (isSuperuser ผ่านทุกฝ่าย)
   // ถ้าใช้ find คิวของ PC จะหายไปทั้งก้อนโดยไม่มีอะไรบอก
   // ⚠️ ห้ามสะกดรายชื่อฝ่ายที่นี่ — ฝ่ายที่สี่จะได้คิวว่างเปล่าโดยไม่มีใครรู้
+  // ⭐ **ตัดฝ่ายที่มีโมดูลของตัวเองออก** (ม-29) — งานของ RD อยู่ที่ `/rd/requests`
+  // ที่เดียว · ปล่อยให้โผล่ทั้งสองที่คือความผิดเดิมที่ `cross-department-requests-plan`
+  // ใช้ 20 PR แก้ (ฝ่ายต้องเฝ้าสองที่ แล้วไม่มีที่ไหนบอกว่างานค้างมีกี่ชิ้น)
+  // ⚠️ **ไม่ใช่ด่านสิทธิ์** — AE Supervisor ยังเห็นใบที่รอเขายืนยันในแท็บนี้เหมือนเดิม
+  // (ม-32) เพราะใบพวกนั้นเข้ามาทางสาขา `owner === 'requester'` ซึ่งไม่เกี่ยวกับฝ่าย
   const myDepts = useMemo(
-    () => REQUEST_ANSWER_DEPARTMENTS.filter((d) => canAnswerRequestsFor(me, d)),
+    () => deptsInSharedQueue(REQUEST_ANSWER_DEPARTMENTS.filter((d) => canAnswerRequestsFor(me, d))),
     [me],
   );
 
   const [requests, setRequests] = useState([]);
-  const [materials, setMaterials] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [projects, setProjects] = useState([]);
+  // ⚠️ เหลือ **ดีลอย่างเดียว** — ใช้เติมค่าตั้งต้นให้ปุ่ม "เปิดคำร้อง" ตอนมาจากหน้าดีล
+  // (`?dealId=`) · ทะเบียนที่เหลือเคยโหลดไว้ส่งให้ `RequestQueuePanel` ซึ่ง **ไม่เคย
+  // อ่านมันเลย** ⇒ 8 endpoint ต่อการเปิดคิวหนึ่งครั้ง โดยไม่มีอะไรบนจอเปลี่ยน
   const [deals, setDeals] = useState([]);
-  const [salesOrders, setSalesOrders] = useState([]);
-  const [productTypes, setProductTypes] = useState([]);
-  const [scents, setScents] = useState([]);
-  const [formulas, setFormulas] = useState([]);
-  const [mentionPeople, setMentionPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -108,30 +108,11 @@ export default function RequestsPage() {
   }, [scope]);
 
   useEffect(() => { reload(); }, [reload]);
-  // ฟอร์มเปิดคำร้องอ้างของจากหลายทะเบียนตามหัวข้อ — โครงการ+ดีล (บังคับทุกหัวข้อ) ·
-  // วัสดุ/สินค้า (ขอราคา) · กลิ่น (F) · สูตร (FB) · รายชื่อคนที่ @ ได้
-  // → โหลดไว้ให้ครบตั้งแต่เปิดหน้า
+  // ดีลใช้เติมค่าตั้งต้นของปุ่มเปิดคำร้องเมื่อมาจากหน้าดีล — ทะเบียนที่ฟอร์มต้องใช้
+  // จริงโหลดที่ `/requests/new` ซึ่งเป็นที่ที่ฟอร์มอยู่ ไม่ใช่ที่คิว
   useEffect(() => {
-    cachedFetchJson("/api/products").then((d) => setProducts(d || [])).catch(() => {});
-    const asArray = (d) => (Array.isArray(d) ? d : []);
-    fetch("/api/sa/materials", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setMaterials(asArray(d))).catch(() => {});
-    fetch("/api/master/scents?status=developing,active", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setScents(asArray(d))).catch(() => {});
-    fetch("/api/master/formulas?status=active", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setFormulas(asArray(d))).catch(() => {});
     fetch("/api/sales-planning/deals", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setDeals(asArray(d))).catch(() => {});
-    fetch("/api/pm/projects", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setProjects(asArray(d))).catch(() => {});
-    // บรีฟกลิ่นยึด SO (ค่าบริการออกแบบกลิ่น) · Mock-up ยึดหมวดสินค้า
-    fetch("/api/sales-planning/sales-orders", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setSalesOrders(asArray(d))).catch(() => {});
-    cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
-    // รายชื่อกรองด้วยด่านของเธรดคำร้องมาจาก server แล้ว (ห้ามกรองเองที่ client —
-    // @คนที่เปิดคำร้องไม่ได้ = เขาได้แจ้งเตือนที่กดแล้วเจอ 404)
-    fetch("/api/sa/requests/mentionable", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setMentionPeople(asArray(d))).catch(() => {});
+      .then((r) => r.json()).then((d) => setDeals(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   const mine = useMemo(() => requests.filter((r) => r._mine), [requests]);
@@ -205,10 +186,6 @@ export default function RequestsPage() {
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
         rows={tab === "mine" ? visibleMine : tabRows}
-        materials={materials} products={products}
-        projects={projects} deals={deals} salesOrders={salesOrders}
-        scents={scents} formulas={formulas} productTypes={productTypes}
-        mentionPeople={mentionPeople}
         newRequestDefaults={newRequestDefaults}
         loading={loading} loadError={loadError} reload={reload}
       />

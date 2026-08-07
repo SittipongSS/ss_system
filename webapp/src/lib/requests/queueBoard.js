@@ -144,3 +144,43 @@ export function groupQueueRows(rows = [], { todayIso = null } = {}) {
     .map((g) => ({ group: g.key, label: g.label, rows: byKey.get(g.key) || [] }))
     .filter((g) => g.rows.length);
 }
+
+// ── คิวของ "ฝ่าย" (P2) — มุมมองในโมดูลของฝ่ายเอง ─────────────────────────
+//
+// ⭐ ต่างจาก `queueTabRows` ตรงที่ตัวนั้นตอบคำถามของ **คน** ("ตอนนี้เป็นตาใคร"
+// รวมทั้งใบที่ฉันเปิดถึงฝ่ายอื่น) ส่วนตัวนี้ตอบคำถามของ **ฝ่าย** ("งานของฝ่ายเรา
+// ค้างอยู่ตรงไหน") ⇒ กรองด้วย `dept` ก่อนเสมอ ไม่ดู `_mine` เลย
+//
+// ⚠️ ใบร่างไม่เข้าคิวฝ่ายไม่ว่ากรณีใด — ยังไม่ถูกส่ง = ยังไม่ใช่งานของใครนอกจากคนร่าง
+export const DEPT_QUEUE_TABS = [
+  { key: 'todo', label: 'รอฝ่ายตอบ' },
+  // ⭐ ตัวนี้คือ "รอฝ่ายขายทำต่อ" ของแถบตัวเลข — ยกขึ้นมาเป็นแท็บด้วยเพราะ RD ต้อง
+  // เปิดดูได้ว่าอะไรค้างอยู่ที่อีกฝั่ง (ของที่ส่งไปแล้วแต่ยังไม่มีใครมารับ)
+  { key: 'waiting', label: 'รอฝ่ายขายทำต่อ' },
+  { key: 'history', label: 'ประวัติ' },
+];
+
+export function deptQueueRows(rows = [], { dept, tab = 'todo' } = {}) {
+  const mine = rows.filter((r) => r?.dept === dept && r?.status !== 'draft');
+  if (tab === 'history') return mine.filter((r) => !requestNextStep(r));
+  const owner = tab === 'waiting' ? 'requester' : 'dept';
+  return mine.filter((r) => requestNextStep(r)?.owner === owner);
+}
+
+// ── ใกล้ถึงกำหนด (หน้าภาพรวมของฝ่าย) ─────────────────────────────────────
+//
+// ⚠️ **นับจากวันที่ฝ่าย "รับปาก" ไม่ใช่วันที่ผู้ขอ "อยากได้"** — `committedDueDate`
+// คือเส้นที่ใช้วัดว่าช้าหรือยัง (`requestedDueDate` เป็นความหวังของอีกฝั่ง)
+// ⇒ ใบที่ยังไม่รับเรื่องจะไม่มีวันนี้เลย และไม่ควรโผล่ที่นี่ — มันอยู่ในตัวเลข
+// "ยังไม่รับเรื่อง" ซึ่งเป็นคนละปัญหาคนละทางแก้
+export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
+  if (!todayIso) return [];
+  const limit = new Date(`${todayIso}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() + days);
+  const limitIso = limit.toISOString().slice(0, 10);
+  return rows
+    .filter((r) => r?.dept === dept && r?.status !== 'draft')
+    .filter((r) => requestNextStep(r)?.owner === 'dept')
+    .filter((r) => r.committedDueDate && String(r.committedDueDate) <= limitIso)
+    .sort((a, b) => String(a.committedDueDate).localeCompare(String(b.committedDueDate)));
+}

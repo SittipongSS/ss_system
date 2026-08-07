@@ -21,7 +21,7 @@ export const MAX_SCENT_BRIEFS = 40;
 // ความยาวตาม CHECK ของ 0213 เป๊ะ
 const LIMITS = {
   label: 200, brief: 4000, researchTopic: 500,
-  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000,
+  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000, scentotypeNote: 500,
 };
 
 const TEXT_FIELDS = ['brief', 'researchTopic', 'inspiration', 'likedNotes', 'dislikedNotes'];
@@ -99,6 +99,22 @@ export function normalizeScentBriefs(input, { scentCount = null } = {}) {
     if (perf.error) return { briefs: [], error: perf.error };
     brief.scentotypes = types.value;
     brief.performance = perf.value;
+
+    // ⭐ **ข้อความต่อท้าย Scentotype รายตัว** (mig 0222) — กระดาษ FM-RD-01 ข้อ 2.1.4
+    // มีเส้นให้เขียนต่อหลังทุกตัว (`CHEERER ____`) · เก็บเฉพาะตัวที่ **ติ๊กไว้จริง**
+    // ⇒ ติ๊กออกแล้วข้อความหายตาม ไม่ค้างเป็นข้อมูลผีที่ไม่มีใครเห็นบนจอ
+    const notes = raw.scentotypeNotes && typeof raw.scentotypeNotes === 'object'
+      ? raw.scentotypeNotes : {};
+    const kept = {};
+    for (const type of brief.scentotypes) {
+      const text = String(notes[type] ?? '').trim();
+      if (!text) continue;
+      if (text.length > LIMITS.scentotypeNote) {
+        return { briefs: [], error: `${at}: ข้อความของ Scentotype ยาวเกิน ${LIMITS.scentotypeNote} ตัวอักษร` };
+      }
+      kept[type] = text;
+    }
+    brief.scentotypeNotes = kept;
 
     briefs.push(brief);
   }

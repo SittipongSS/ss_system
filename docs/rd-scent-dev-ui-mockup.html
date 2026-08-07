@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ แบบหน้าจอ "พัฒนากลิ่น" (scent_dev) — ต้นฉบับที่โค้ดต้องเทียบ
+     ยกมาจาก artifact 4966fb3f-de46-48d8-bb45-5d69f405c953 เมื่อ 2026-08-07
+     ⚠️ แบบอยู่ในรีโปโดยเจตนา — รอบก่อนแบบอยู่ในแชทแล้วหายไปกับ context
+        ⇒ ไม่มีใครเทียบได้ว่า "ตามแบบ" แปลว่าอะไร ห้ามย้ายกลับไปอยู่ในแชท -->
+<title>พัฒนากลิ่น — โครงหน้าจอ SA × RD</title>
+<style>
+  :root {
+    --ground: #F7F4EE;
+    --card: #FFFFFF;
+    --card-2: #F2EDE4;
+    --card-3: #E8E1D5;
+    --line: #DCD3C4;
+    --line-strong: #C3B8A4;
+    --ink: #23201C;
+    --ink-2: #5C554B;
+    --ink-3: #8A8074;
+    --accent: #B85A34;
+    --accent-soft: #F3E2D9;
+    --navy: #24344E;
+    --navy-soft: #DDE3EC;
+    --ok: #3F7A54;
+    --ok-soft: #DDEBE1;
+    --warn: #9A6B18;
+    --warn-soft: #F5E9CF;
+    --stop: #A33F35;
+    --stop-soft: #F4DFDC;
+    --r: 10px;
+    --shadow: 0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #17181B; --card: #202226; --card-2: #26282D; --card-3: #2E3036;
+      --line: #34373D; --line-strong: #4A4E56;
+      --ink: #EDE9E2; --ink-2: #B3ADA3; --ink-3: #857F76;
+      --accent: #DD8560; --accent-soft: #3A2A22;
+      --navy: #A8BBD8; --navy-soft: #232C3A;
+      --ok: #7DBB92; --ok-soft: #1F2E24;
+      --warn: #D4A64A; --warn-soft: #322A18;
+      --stop: #DF8B80; --stop-soft: #382320;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #17181B; --card: #202226; --card-2: #26282D; --card-3: #2E3036;
+    --line: #34373D; --line-strong: #4A4E56;
+    --ink: #EDE9E2; --ink-2: #B3ADA3; --ink-3: #857F76;
+    --accent: #DD8560; --accent-soft: #3A2A22;
+    --navy: #A8BBD8; --navy-soft: #232C3A;
+    --ok: #7DBB92; --ok-soft: #1F2E24;
+    --warn: #D4A64A; --warn-soft: #322A18;
+    --stop: #DF8B80; --stop-soft: #382320;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F4EE; --card: #FFFFFF; --card-2: #F2EDE4; --card-3: #E8E1D5;
+    --line: #DCD3C4; --line-strong: #C3B8A4;
+    --ink: #23201C; --ink-2: #5C554B; --ink-3: #8A8074;
+    --accent: #B85A34; --accent-soft: #F3E2D9;
+    --navy: #24344E; --navy-soft: #DDE3EC;
+    --ok: #3F7A54; --ok-soft: #DDEBE1;
+    --warn: #9A6B18; --warn-soft: #F5E9CF;
+    --stop: #A33F35; --stop-soft: #F4DFDC;
+    --shadow: 0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans Thai", "Noto Sans Thai", "Sarabun", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px;
+  }
+  h1 { font-size: clamp(28px, 4.5vw, 40px); line-height: 1.2; margin: 0 0 12px; text-wrap: balance; letter-spacing: -.01em; }
+  .lede { color: var(--ink-2); max-width: 62ch; margin: 0 0 8px; }
+
+  h2 {
+    font-size: 21px; margin: 56px 0 6px; padding-top: 22px;
+    border-top: 1px solid var(--line); text-wrap: balance;
+  }
+  h2 .num {
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+    color: var(--accent); margin-right: 10px;
+  }
+  h2 + .lede { margin-bottom: 22px; }
+
+  /* ── ป้ายฝั่ง ─────────────────────────────────────────── */
+  .who {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .who.sa { background: var(--navy-soft); color: var(--navy); border-color: color-mix(in srgb, var(--navy) 25%, transparent); }
+  .who.rd { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .who.cust { background: var(--card-3); color: var(--ink-2); border-color: var(--line-strong); }
+
+  /* ── การ์ดหน้าจอ ──────────────────────────────────────── */
+  .screens { display: grid; gap: 18px; }
+  @media (min-width: 900px) { .screens.two { grid-template-columns: 1fr 1fr; } }
+
+  .screen {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .screen > header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 11px 16px; background: var(--card-2); border-bottom: 1px solid var(--line);
+  }
+  .screen > header .path {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink-3);
+  }
+  .screen .body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+  .box {
+    border: 1px solid var(--line-strong); border-radius: var(--r);
+    padding: 9px 11px; background: var(--card); color: var(--ink); font-size: 14px;
+    min-height: 20px;
+  }
+  .box.ph { color: var(--ink-3); }
+  .box.derived { border-style: dashed; background: transparent; color: var(--ink-3); }
+  .box.area { min-height: 62px; }
+  .row2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
+
+  .seg { display: flex; gap: 8px; flex-wrap: wrap; }
+  .seg > span {
+    flex: 1 1 8rem; border: 1px solid var(--line-strong); border-radius: var(--r);
+    padding: 7px 11px; font-size: 13px; color: var(--ink-2); background: var(--card-2);
+  }
+  .seg > span.on { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+  .seg > span.off { opacity: .45; }
+
+  .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 4px; }
+  .btn { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 7px 14px; font-size: 13.5px; color: var(--ink-2); background: var(--card); }
+  /* ตัวอักษรบนปุ่มทึบยึดกับพื้นหน้ากระดาษ ไม่ใช่ขาวตายตัว — โหมดมืดพื้นปุ่มสว่างขึ้น */
+  .btn.fill { background: var(--accent); border-color: var(--accent); color: var(--ground); font-weight: 600; }
+  .btn.navy { background: var(--navy); border-color: var(--navy); color: var(--ground); font-weight: 600; }
+  .btn.quiet { background: transparent; border-color: transparent; }
+  .btn.stop { color: var(--stop); border-color: color-mix(in srgb, var(--stop) 45%, transparent); }
+
+  .note {
+    font-size: 12.5px; color: var(--ink-2); background: var(--card-2);
+    border-left: 3px solid var(--accent); border-radius: 0 var(--r) var(--r) 0;
+    padding: 9px 12px;
+  }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); color: var(--ink); }
+  .note.todo { border-left-color: var(--stop); background: var(--stop-soft); color: var(--ink); }
+
+  /* ── รางแนวตั้ง ───────────────────────────────────────── */
+  .rail { list-style: none; margin: 0; padding: 0; }
+  .rail li {
+    display: grid; grid-template-columns: 18px 1fr; gap: 12px;
+    padding-bottom: 14px; position: relative;
+  }
+  .rail li:not(:last-child)::before {
+    content: ""; position: absolute; left: 8px; top: 20px; bottom: 0;
+    width: 1px; background: var(--line-strong);
+  }
+  .dot { width: 17px; height: 17px; border-radius: 999px; border: 2px solid var(--line-strong); background: var(--card); margin-top: 2px; }
+  .dot.done { background: var(--ok); border-color: var(--ok); }
+  .dot.now { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .rail .t { font-weight: 600; font-size: 14px; }
+  .rail .m { font-size: 12.5px; color: var(--ink-3); }
+  .rail .act { margin-top: 6px; }
+  .waiting { font-size: 12.5px; color: var(--ink-3); font-style: italic; }
+
+  /* ── ตาราง ────────────────────────────────────────────── */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th, .tbl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl th { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .tbl td { font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+
+  .pill { display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .pill.wait { background: var(--card-3); color: var(--ink-2); }
+  .pill.go { background: var(--ok-soft); color: var(--ok); }
+  .pill.hold { background: var(--warn-soft); color: var(--warn); }
+  .pill.no { background: var(--stop-soft); color: var(--stop); }
+
+  .callout {
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--navy);
+    border-radius: var(--r); padding: 14px 16px; margin: 18px 0;
+  }
+  .callout h3 { margin: 0 0 6px; font-size: 15px; }
+  .callout p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .callout.open { border-left-color: var(--stop); }
+
+  ul.plain { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; }
+  ul.plain li { margin-bottom: 4px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .88em; background: var(--card-3); padding: 1px 5px; border-radius: 4px; }
+  strong { color: var(--ink); }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">พัฒนากลิ่น · scent_dev</p>
+  <h1>คำร้องใบเดียว เดินทั้งเส้น</h1>
+  <p class="lede">
+    โครงหน้าจอทั้งฝั่งฝ่ายขายและฝ่ายวิจัยฯ ตามมติที่สรุปกันไว้ — SA ส่งบรีฟ → RD รับเรื่องหรือตีกลับ →
+    RD ส่งกลิ่นแล้วกรอกทะเบียนในใบเลย → SA รับของ → ส่งลูกค้า → ลูกค้าตอบ → RD ใส่ราคาในใบเดิม
+  </p>
+  <p class="lede">
+    กติกาที่ทุกหน้าจอยึด: <strong>1 แถว = ของที่ต้องได้ 1 อย่าง · 1 แถวถูกส่ง 1 ครั้ง</strong> ·
+    สถานะอยู่ที่แถวไม่ใช่ที่ใบ · <strong>ลูกค้าขอแก้ = เกิดแถวใหม่</strong> ไม่ใช่แก้ทับตัวเดิม
+  </p>
+
+  <div class="callout">
+    <h3>โครงสามชั้น</h3>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>ชั้น</th><th>ใครสร้าง</th><th>เท่าไร</th><th>คืออะไร</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ใบสั่งขาย</strong></td><td>ฝ่ายขาย</td><td>1</td><td>ขอบเขตงานที่ลูกค้าจ่ายแล้ว · บอกจำนวนกลิ่น</td></tr>
+          <tr><td><strong>PDR / คำร้อง</strong></td><td>AE / AC</td><td>1 ต่อ SO</td><td>ข้อมูลลูกค้า · แบรนด์ · ราคาเป้าหมาย · เอกสาร · สายเซ็น</td></tr>
+          <tr><td><strong>กลิ่น</strong></td><td>AE ตอนเปิด</td><td>N ตาม SO</td><td><em>สิ่งที่ขอ</em> — แต่ละก้อนมีบรีฟของตัวเอง</td></tr>
+          <tr><td><strong>Direction</strong></td><td>RD ตอนส่ง</td><td>M ต่อกลิ่น</td><td><em>สิ่งที่ได้จริง</em> — รหัส ชื่อ วันที่ · เข้าทะเบียนทันที</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:10px">
+      <strong>1 SO : 1 PDR ตายตัว</strong> — อยากได้เพิ่มต้องออก SO ใหม่ · บังคับถึงระดับฐานข้อมูล
+      (unique บน SO เฉพาะใบที่ยังไม่ถูกยกเลิก) ⇒ เปิดซ้ำไม่ได้เชิงโครงสร้าง ไม่ใช่กฎที่คนต้องจำ
+    </p>
+    <p style="margin-top:8px">
+      <strong>ลูกค้าขอแก้ = Direction ตัวใหม่ใต้กลิ่นเดิม</strong> ⇒ สายพันธุ์ทั้งเส้นอยู่ในบรีฟก้อนเดียวกันตลอด
+      และย้อนดูได้ว่าบรีฟก้อนนั้นผ่านกี่รอบกว่าลูกค้าจะเอา
+    </p>
+  </div>
+
+  <div class="callout">
+    <h3>ใครแก้ PDR ได้ ขึ้นกับว่าใบเดินไปถึงไหนแล้ว</h3>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>ขั้นของใบ</th><th>ฝ่ายขาย</th><th>ฝ่ายวิจัยฯ</th></tr></thead>
+        <tbody>
+          <tr><td>ร่าง · ส่งแล้วยังไม่รับเรื่อง</td><td><span class="pill go">แก้ได้</span></td><td><span class="pill wait">อ่านอย่างเดียว</span></td></tr>
+          <tr><td>RD ตีกลับ → กลับเป็นร่าง</td><td><span class="pill go">แก้ได้อีกครั้ง</span></td><td><span class="pill wait">อ่านอย่างเดียว</span></td></tr>
+          <tr><td>RD รับเรื่องแล้ว</td><td><span class="pill wait">อ่านอย่างเดียว</span></td><td><span class="pill go">แก้ได้</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:10px">
+      ผูกกับ<strong>ขั้นของใบตรง ๆ ไม่มีธงใหม่</strong> · ทุกการแก้ลงเธรดว่าใครแก้ช่องไหนเมื่อไร —
+      ไม่งั้นอีกฝั่งจะไม่รู้ว่าของที่ตัวเองอ่านไปถูกเปลี่ยนแล้ว
+    </p>
+  </div>
+
+  <!-- ══ 1 ══ -->
+  <h2><span class="num">01</span>SA เปิดคำร้อง <span class="who sa">ฝ่ายขาย</span></h2>
+  <p class="lede">ใบสั่งขายที่อนุมัติแล้วเป็นตัวตั้ง — ลูกค้า ดีล และขั้นในไทม์ไลน์เติมจาก SO ไม่ให้เลือกซ้ำแล้วขัดกันเอง</p>
+
+  <div class="screens">
+    <div class="screen">
+      <header><strong>เปิดคำร้อง</strong><span class="path">/requests/new</span></header>
+      <div class="body">
+        <div class="field">
+          <label>ส่งถึงฝ่ายไหน</label>
+          <div class="seg"><span class="on">RD วิจัยและพัฒนา</span><span>PC จัดซื้อ</span><span>FN บัญชี</span></div>
+        </div>
+        <div class="field">
+          <label>ขอเรื่องอะไร</label>
+          <div class="box">พัฒนากลิ่น</div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>ใบสั่งขายออกแบบกลิ่น *</label><div class="box">SO-26080001-0 — บจก. ตัวอย่าง</div></div>
+          <div class="field"><label>ลูกค้า</label><div class="box derived">เติมจาก SO</div></div>
+          <div class="field"><label>ดีล</label><div class="box derived">เติมจาก SO</div></div>
+          <div class="field"><label>จำนวนกลิ่น</label><div class="box derived">3 — จากบรรทัด SIGNATURE SCENT DESIGN</div></div>
+        </div>
+        <div class="field">
+          <label>ชื่อเรื่อง</label>
+          <div class="box ph">เช่น บรีฟกลิ่นสำหรับ Reed Diffuser</div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>วันที่คาดหวัง</label><div class="box ph">วว/ดด/ปปปป</div></div>
+          <div class="field"><label>ความเร่งด่วน</label><div class="box">งานปกติ</div></div>
+        </div>
+        <div class="note">
+          <strong>ดรอปดาวน์แสดงเฉพาะใบที่มีบรรทัดออกแบบกลิ่น</strong> — หมวด
+          <code>03-001</code> Certified Co-Creation · <code>03-002</code> Signature Scent Design ·
+          <code>03-005</code> Scent Dressing · ไม่รวม <code>03-003</code> ออกแบบแพ็กเกจ และ
+          <code>03-004</code> ออกแบบ CI ซึ่งอยู่หมวดค่าออกแบบเหมือนกันแต่ไม่ใช่งานกลิ่น
+        </div>
+        <div class="note">
+          <strong>จำนวนกลิ่นมาจาก <code>qty</code> ของบรรทัดนั้น</strong> ⇒ ใบที่ผ่านด่านย่อมมีจำนวนกลิ่นเสมอ
+          โดยโครงสร้าง · ใบที่มี PDR แล้วจะหายจากลิสต์พร้อมลิงก์ไปใบเดิม
+        </div>
+        <div class="note">
+          งานด่วนต้องระบุ<strong>เหตุผล</strong>ด้วย ตามที่ฟอร์มเขียนไว้ — ไม่ใช่แค่ติ๊ก
+        </div>
+        <div class="note">แนบไฟล์อ้างอิงได้หลังบันทึกร่าง — ไฟล์ต้องมีคำร้องให้เกาะก่อน</div>
+        <div class="btns"><span class="btn quiet">ยกเลิก</span><span class="btn fill">บันทึกร่าง</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="lede" style="margin-top:26px">
+    บันทึกร่างแล้วไปกรอก <strong>PDR</strong> ต่อที่หน้ารายละเอียด — 34 ช่องใส่หน้าเดียวไม่ไหว และครึ่งหนึ่งระบบเติมให้อยู่แล้ว
+  </p>
+
+  <div class="screens">
+    <div class="screen">
+      <header><strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong><span class="path">FM-RD-01 Rev.02</span></header>
+      <div class="body">
+        <div class="note">
+          <strong>กรอกแล้ว 18 จาก 48 ช่อง</strong> · บรีฟกลิ่น 1 จาก 3 ก้อน — ไม่มีช่องบังคับ แต่ RD เห็นช่องว่างชัดตอนเปิดอ่าน
+          และตีกลับได้ทันทีถ้าไม่พอทำงาน
+        </div>
+
+        <div class="field"><label>Request Information</label></div>
+        <div class="row2">
+          <div class="field"><label>เลขที่เอกสาร</label><div class="box derived">SB-26080002</div></div>
+          <div class="field"><label>วันที่ร้องขอ</label><div class="box derived">05/08/2569</div></div>
+          <div class="field"><label>ผู้ร้องขอ AE</label><div class="box derived">เจ้าของดีล</div></div>
+          <div class="field"><label>ผู้ร้องขอ AC</label><div class="box ph">เลือกจากรายชื่อ</div></div>
+          <div class="field"><label>แผนก</label><div class="box derived">การขายและบริการ</div></div>
+          <div class="field"><label>ประเภทของคำขอ</label><div class="box">New Product</div></div>
+        </div>
+
+        <div class="field"><label>1 · Customer Information</label></div>
+        <div class="row2">
+          <div class="field"><label>ชื่อผู้ติดต่อ</label><div class="box derived">จากลูกค้าของ SO</div></div>
+          <div class="field"><label>Phone / Line</label><div class="box derived">จากลูกค้าของ SO</div></div>
+          <div class="field"><label>ชื่อบริษัท</label><div class="box derived">จากลูกค้าของ SO</div></div>
+          <div class="field"><label>มูลค่าโปรเจกต์ทั้งหมด</label><div class="box derived">จากมูลค่าดีล</div></div>
+          <div class="field"><label>ชื่อแบรนด์</label><div class="box ph">พิมพ์</div></div>
+          <div class="field"><label>Mood &amp; Tone</label><div class="box ph">พิมพ์</div></div>
+          <div class="field"><label>ประเภทลูกค้า</label><div class="box">ลูกค้าเก่า</div></div>
+          <div class="field"><label>วันที่ต้องการสินค้า</label><div class="box ph">วว/ดด/ปปปป</div></div>
+          <div class="field"><label>วันที่ต้องการจำหน่าย</label><div class="box ph">วว/ดด/ปปปป</div></div>
+          <div class="field"><label>ทิศทางการเติบโตของแบรนด์</label><div class="box ph">พิมพ์</div></div>
+          <div class="field"><label>ที่อยู่จัดส่ง (ตัวอย่าง)</label><div class="box derived">ที่อยู่ลูกค้า · แก้ได้</div></div>
+          <div class="field"><label>ประเภทสินค้า</label><div class="box">เทียนหอม · 01-002</div></div>
+        </div>
+        <div class="field">
+          <label>กลุ่มลูกค้าเป้าหมาย — ติ๊กแล้วเขียนต่อ</label>
+          <div class="box">☑ DemoGraphic — หญิง 25–40 รายได้ปานกลางขึ้นไป</div>
+          <div class="box">☑ PsychoGraphic — สนใจงานคราฟต์ ใช้ของแต่งบ้าน</div>
+          <div class="box ph">☐ Painpoint</div>
+        </div>
+        <div class="note">
+          ช่อง<span class="box derived" style="display:inline;padding:1px 7px;font-size:12px">เส้นประ</span>คือของที่ระบบเติมให้จากลูกค้า/ดีล/SO —
+          <strong>ครึ่งหนึ่งของฟอร์มกระดาษไม่ต้องพิมพ์ซ้ำอีกแล้ว</strong>
+        </div>
+        <div class="note warn">
+          <strong>“จำนวนกลิ่นที่ต้องการพัฒนา” ไม่ให้พิมพ์แล้ว</strong> — เติมจาก SO ·
+          ปล่อยให้พิมพ์เองเมื่อไร จะมีวันที่ SO ขาย 3 กลิ่นแต่ PDR ขอ 5 แล้วไม่มีอะไรบอกว่าอันไหนถูก
+        </div>
+
+        <div class="field"><label>2 · Product Specifications</label></div>
+        <div class="note">
+          <strong>2.1 เป็นบล็อกรายกลิ่น ทำซ้ำ 3 ก้อนตามจำนวนใน SO</strong> — ไม่มีปุ่มเพิ่ม/ลบ
+          เพราะจำนวนมาจากสิ่งที่ลูกค้าจ่ายแล้ว · ที่เหลือของ PDR กรอกครั้งเดียวทั้งใบ
+        </div>
+        <div class="screen" style="box-shadow:none">
+          <header><strong>กลิ่นที่ 1</strong><span class="path">บรีฟของตัวเอง</span></header>
+          <div class="body">
+            <div class="field"><label>2.1 บรีฟกลิ่น</label><div class="box">แนวสดชื่น เปิดด้วยซิตรัส จบด้วยไม้อ่อน</div></div>
+            <div class="row2">
+              <div class="field"><label>ให้ทำวิจัยเรื่อง</label><div class="box ph">เว้นว่างได้</div></div>
+              <div class="field"><label>2.1.1 แรงบันดาลใจ</label><div class="box ph">Why แก่นของแบรนด์</div></div>
+              <div class="field"><label>2.1.2 ช่วงกลิ่นที่ชื่นชอบ</label><div class="box ph">พิมพ์</div></div>
+              <div class="field"><label>2.1.3 กลิ่นที่ End-user ไม่ชอบ</label><div class="box ph">พิมพ์</div></div>
+              <div class="field"><label>2.1.4 Scentotype</label><div class="box">☑ CHEERER · ☑ DISCOVERER</div></div>
+              <div class="field"><label>2.1.5 Performance</label><div class="box">☑ กลิ่นฟุ้งกระจาย · ☑ Impact แรก</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="screen" style="box-shadow:none">
+          <header><strong>กลิ่นที่ 2</strong><span class="path">ยังไม่กรอก</span></header>
+          <div class="body"><div class="box ph">แนวอบอุ่น · แนวหวาน · … — กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก</div></div>
+        </div>
+        <div class="screen" style="box-shadow:none">
+          <header><strong>กลิ่นที่ 3</strong><span class="path">ยังไม่กรอก</span></header>
+          <div class="body"><div class="box ph">—</div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Scentotype</label><div class="box">CHEERER · DISCOVERER</div></div>
+          <div class="field"><label>Performance ของกลิ่น</label><div class="box">กลิ่นติดทน · Impact แรก</div></div>
+          <div class="field"><label>Target Cost / KG (F/FB ไม่รวม Packaging)</label><div class="box ph">0.00</div></div>
+          <div class="field"><label>Target Price / Unit</label><div class="box ph">0.00</div></div>
+          <div class="field"><label>MOQ ที่คาดหวัง</label><div class="box ph">—</div></div>
+          <div class="field"><label>ลักษณะเนื้อผลิตภัณฑ์</label><div class="box">PREMIUM</div></div>
+          <div class="field"><label>สีเนื้อผลิตภัณฑ์</label><div class="box ph">ถ้ามี</div></div>
+          <div class="field"><label>ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น</label><div class="box ph">ถ้ามี</div></div>
+          <div class="field"><label>ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)</label><div class="box ph">ถ้ามี</div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>รูปแบบบรรจุภัณฑ์</label><div class="box">☑ ขวด · ☑ ฝา · ☐ กล่อง</div></div>
+          <div class="field"><label>ภาพประกอบ</label><div class="box">มีภาพประกอบ</div></div>
+        </div>
+        <div class="note warn">
+          <strong>ติ๊ก “มีภาพประกอบ” = ต้องแนบไฟล์</strong> — บันทึกไม่ได้จนกว่าจะมีภาพจริง ·
+          แยกจากลิสต์ ขวด/ฝา/กล่อง เพราะเป็นคนละคำถาม (ไม่งั้นติ๊กทั้งมีและไม่มีพร้อมกันได้)
+        </div>
+        <div class="field">
+          <label>Value Proposition — ติ๊กแล้วเขียนต่อ</label>
+          <div class="box">☑ Benefit — ผ่อนคลาย ใช้ก่อนนอน</div>
+          <div class="box ph">☐ Attribute · ☐ Value</div>
+        </div>
+        <div class="note">
+          <strong>เลือกได้หลายอย่าง:</strong> Scentotype · Performance ของกลิ่น · รูปแบบบรรจุภัณฑ์ · เอกสาร Regulatory ทั้งสองกลุ่ม<br>
+          <strong>เลือกได้อย่างเดียว:</strong> ประเภทของคำขอ · ประเภทลูกค้า · ลักษณะเนื้อผลิตภัณฑ์ · ภาพประกอบ<br>
+          <strong>ติ๊กแล้วเขียนต่อ:</strong> กลุ่มลูกค้าเป้าหมาย · Value Proposition · Scentotype
+        </div>
+        <div class="note">
+          <strong>ประเภทสินค้า</strong> เลือกจากทะเบียนหมวดสินค้าของระบบ (ค้นได้ทั้งไทย/อังกฤษ) ไม่ใช่พิมพ์เอง ·
+          <strong>Scentotype</strong> และ <strong>Performance</strong> เป็นทะเบียนกลางที่แก้รายการได้เอง ไม่ฝังในโค้ด ·
+          <strong>Target Cost</strong> จะไปวางคู่กับราคาที่ RD ใส่ตอนจบ ให้เห็นว่า <em>ขอไว้เท่าไร ได้จริงเท่าไร</em>
+        </div>
+
+        <div class="field"><label>Regulatory &amp; Compliance</label></div>
+        <div class="row2">
+          <div class="field"><label>มีให้เป็นพื้นฐาน</label><div class="box">COA · MSDS · IFRA</div></div>
+          <div class="field"><label>เอกสารเพิ่มเติม</label><div class="box">ฮาลาล Halal</div></div>
+        </div>
+        <div class="field"><label>ข้อกำหนดเฉพาะอื่นๆ</label><div class="box ph">ห้ามใช้พาราเบน · Vegan · No Alcohol …</div></div>
+        <div class="note warn">
+          เอกสารที่ติ๊กตรงนี้ <strong>ยังไม่สร้างคำร้องขอเอกสาร</strong> — ฟอร์มเองเขียนไว้ว่าได้รับหลังผลิตเป็นสินค้าแล้ว ·
+          ระบบเก็บไว้ว่า “ลูกค้าจะขออะไร” แล้วไปเตือนตอนถึงขั้นผลิต ไม่งั้นได้ใบที่ค้างหลายเดือน
+        </div>
+
+        <div class="btns"><span class="btn">ออกเป็นเอกสาร</span><span class="btn fill">บันทึก PDR</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 2 ══ -->
+  <h2><span class="num">02</span>RD รับเรื่อง หรือ ตีกลับ <span class="who rd">วิจัยและพัฒนา</span></h2>
+  <p class="lede">ตีกลับคืนใบเป็นร่างให้ SA แก้แล้วส่งซ้ำ — <strong>เลขที่ไม่ออกใหม่</strong> เพราะออกครั้งเดียวตอนส่งครั้งแรก</p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>คิวของ RD</strong><span class="path">/rd/requests</span></header>
+      <div class="body">
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>เลขที่</th><th>เรื่อง</th><th>ก้าวถัดไป</th></tr></thead>
+            <tbody>
+              <tr><td>SB-26080002</td><td>บรีฟกลิ่น Reed Diffuser</td><td><span class="pill go">ตาคุณ · รับเรื่อง</span></td></tr>
+              <tr><td>SB-26080001</td><td>กลิ่นเทียนหอมชุดปีใหม่</td><td><span class="pill hold">เลยกำหนด 2 วัน</span></td></tr>
+              <tr><td>SB-26070014</td><td>กลิ่นสเปรย์ปรับอากาศ</td><td><span class="pill wait">รอฝ่ายขายส่งลูกค้า</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">แถบตัวเลข 4 ตัวอยู่หัวคิว: ยังไม่รับเรื่อง · เลยกำหนด · กำลังทำ · <strong>รอฝ่ายขายทำต่อ</strong></div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>รับเรื่อง</strong><span class="path">SB-26080002</span></header>
+      <div class="body">
+        <div class="field"><label>วันที่รับเรื่อง</label><div class="box">05/08/2569</div></div>
+        <div class="field">
+          <label>วันกำหนดส่ง</label>
+          <div class="box ph">วว/ดด/ปปปป</div>
+        </div>
+        <div class="note"><strong>วันที่คาดหวัง</strong>เป็นของผู้ขอ · <strong>วันกำหนดส่ง</strong>เป็นของ RD และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ</div>
+        <div class="btns">
+          <span class="btn stop">ตีกลับ — ข้อมูลไม่ครบ</span>
+          <span class="btn fill">รับเรื่อง</span>
+        </div>
+        <div class="note warn">ตีกลับต้องระบุเหตุผลเสมอ · ใบกลับไปเป็นร่างของ SA · <strong>เลขที่คงเดิม</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 3 ══ -->
+  <h2><span class="num">03</span>AE Sup ยืนยัน <span class="who sa">ฝ่ายขาย</span></h2>
+  <p class="lede">
+    ประตูเดียวที่<strong>บล็อกงานจริง</strong> · อยู่หลัง RD รับเรื่อง ไม่ใช่ก่อนส่ง — เพราะหัวหน้าต้องเห็น
+    <strong>วันกำหนดส่งจริงของ RD</strong> ก่อนตัดสิน ยืนยันก่อนรับเรื่องคือยืนยันบนข้อมูลที่ยังไม่มี
+  </p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>รอยืนยัน</strong><span class="path">คิวของ AE Supervisor</span></header>
+      <div class="body">
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>เลขที่</th><th>RD รับปากส่ง</th><th>ก้าวถัดไป</th></tr></thead>
+            <tbody>
+              <tr><td>SB-26080002</td><td>18/08/2569</td><td><span class="pill go">ตาคุณ · ยืนยัน</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="btns"><span class="btn stop">ไม่ยืนยัน — ส่งกลับให้แก้</span><span class="btn fill">ยืนยัน</span></div>
+        <div class="note warn">
+          ไม่ยืนยัน = คืนใบเป็นร่างพร้อมเหตุผล · <strong>เลขที่คงเดิม</strong> และ
+          <strong>ล้างการรับเรื่องทิ้ง</strong> ⇒ RD ต้องรับเรื่องใหม่หลัง AE แก้ ไม่งั้นจะได้ใบที่รับปากวันส่งไว้
+          กับบรีฟที่เปลี่ยนไปแล้ว
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>ฝั่ง RD ระหว่างรอ</strong><span class="path">SB-26080002</span></header>
+      <div class="body">
+        <ul class="rail">
+          <li><span class="dot done"></span><div><div class="t">รับเรื่อง</div><div class="m">05/08/2569 · สมชาย (RD)</div></div></li>
+          <li><span class="dot now"></span><div>
+            <div class="t">ส่งของ</div>
+            <div class="act"><span class="btn" style="opacity:.45">บันทึกการส่ง</span></div>
+            <div class="m">รอ ณัฐพล (AE Sup) ยืนยันก่อน</div>
+          </div></li>
+        </ul>
+        <div class="note">
+          ปุ่มจาง<strong>พร้อมบอกว่ารอใคร</strong> — ปุ่มที่กดไม่ได้โดยไม่บอกเหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง
+        </div>
+        <div class="note">
+          ประตูนี้<strong>มีเฉพาะพัฒนากลิ่น</strong> — สอบถามข้อมูล/ขอเอกสารไม่ต้องผ่านหัวหน้า ·
+          เป็นธงบนหัวข้อ ไม่ใช่กฎที่ยัดลงทุกใบ
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">04</span>RD ส่งกลิ่น — สร้างแถวเองทีละ direction <span class="who rd">วิจัยและพัฒนา</span></h2>
+  <p class="lede">
+    ตอนเปิดใบยังไม่มีใครรู้ว่าจะได้กี่ direction ⇒ <strong>ไม่มีตารางตอนเปิด</strong> · RD เป็นคนสร้างแถวตอนส่ง
+    และกรอกข้อมูลทะเบียนในใบเลย ไม่ต้องเปิดหน้าทะเบียนอีกจอ
+  </p>
+
+  <div class="screens">
+    <div class="screen">
+      <header><strong>ส่งกลิ่น</strong><span class="path">SB-26080002 · เข้าทะเบียนกลิ่นทันทีที่บันทึก</span></header>
+      <div class="body">
+        <div class="field"><label>วันที่ส่ง</label><div class="box">18/08/2569</div></div>
+        <div class="scroll">
+          <table class="tbl">
+            <thead>
+              <tr><th>ตอบบรีฟก้อนไหน *</th><th>รหัสกลิ่น *</th><th>ชื่อกลิ่น *</th><th>วันที่ของกลิ่น</th><th>ขนาดตัวอย่าง</th><th>แก้มาจาก</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>กลิ่นที่ 1 — แนวสดชื่น</td><td>SC-2611</td><td>Amber Woods</td><td>18/08/2569</td><td>30 ก.</td><td>—</td></tr>
+              <tr><td>กลิ่นที่ 1 — แนวสดชื่น</td><td>SC-2612</td><td>Clean Cotton</td><td>18/08/2569</td><td>30 ก.</td><td>—</td></tr>
+              <tr><td>กลิ่นที่ 2 — แนวอบอุ่น</td><td>SC-2613</td><td>Warm Amber</td><td>18/08/2569</td><td>30 ก.</td><td>—</td></tr>
+              <tr><td class="ph">+ เพิ่ม direction</td><td></td><td></td><td></td><td></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="field"><label>ข้อความถึงฝ่ายขาย</label><div class="box area ph">จุดที่อยากให้ลูกค้าลอง · ข้อควรระวังตอนทดสอบ</div></div>
+        <div class="note warn"><strong>รหัสซ้ำเตือนที่ช่องตอนพิมพ์</strong> ไม่ใช่ตอนกดส่ง — เทียบกับทั้งทะเบียน ไม่ใช่แค่ในใบนี้</div>
+        <div class="btns"><span class="btn quiet">ยกเลิก</span><span class="btn fill">บันทึกการส่ง</span></div>
+        <div class="note">บันทึกแล้วเกิด 3 direction ในคำร้อง <em>และ</em> 3 รายการในทะเบียนกลิ่นพร้อมกัน — ไม่ใช่สองงานแยกกัน</div>
+        <div class="note warn">
+          <strong>1 บรีฟส่งได้หลาย direction</strong> — RD เสนอสองทางจากบรีฟ “แนวสดชื่น” ได้ ·
+          หัวใบนับให้ว่า <em>บรีฟ 3 · ส่งแล้ว 3 · ยังไม่ส่ง 1 ก้อน</em>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 4 ══ -->
+  <h2><span class="num">05</span>SA รับของ → ส่งให้ลูกค้า <span class="who sa">ฝ่ายขาย</span></h2>
+  <p class="lede">สองก้าวแยกกัน เพราะช่วงที่กลิ่นค้างอยู่ที่ RD กับช่วงที่ค้างอยู่ที่ SA เป็นคนละปัญหา — รวมกันแล้ววัดไม่ได้ว่าช้าตรงไหน</p>
+
+  <div class="screens">
+    <div class="screen">
+      <header><strong>รายละเอียดคำร้อง</strong><span class="path">/requests/SB-26080002</span></header>
+      <div class="body">
+        <div class="field">
+          <label>SC-2611 · Amber Woods</label>
+          <ul class="rail">
+            <li><span class="dot done"></span><div><div class="t">รับเรื่อง</div><div class="m">05/08/2569 · สมชาย (RD)</div></div></li>
+            <li><span class="dot done"></span><div><div class="t">ส่งของ</div><div class="m">18/08/2569 · สมชาย (RD) · +13 วัน</div></div></li>
+            <li><span class="dot now"></span><div>
+              <div class="t">รับของ</div>
+              <div class="act"><span class="btn navy">บันทึกว่ารับของแล้ว</span></div>
+            </div></li>
+            <li><span class="dot"></span><div><div class="t">ส่งให้ลูกค้า</div><div class="m">—</div></div></li>
+            <li><span class="dot"></span><div><div class="t">ลูกค้าตอบ</div><div class="m">—</div></div></li>
+          </ul>
+        </div>
+        <div class="field">
+          <label>SC-2612 · Clean Cotton</label>
+          <ul class="rail">
+            <li><span class="dot done"></span><div><div class="t">ส่งของ</div><div class="m">18/08/2569</div></div></li>
+            <li><span class="dot now"></span><div><div class="t">รับของ</div><div class="m waiting">แต่ละแถวเดินคนละจังหวะได้ — สถานะอยู่ที่แถว ไม่ใช่ที่ใบ</div></div></li>
+          </ul>
+        </div>
+        <div class="field">
+          <label>เขียนถึงอีกฝั่ง</label>
+          <div class="box area ph">พิมพ์ตรงนี้ได้เลย…</div>
+          <div class="m" style="font-size:12.5px;color:var(--ink-3)">จะแจ้งเตือนถึงสมชาย (RD) ที่กำลังทำขั้นนี้</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 5 ══ -->
+  <h2><span class="num">06</span>ลูกค้าตอบ — สามทางออก <span class="who cust">ลูกค้า</span> <span class="who sa">SA เป็นคนบันทึก</span></h2>
+  <p class="lede">วางเรียงให้เห็นพร้อมกันตั้งแต่ยังไม่กด — “ไม่เอา” ไม่ควรซ่อนอยู่หลังปุ่มที่เขียนว่าบันทึก</p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>ลูกค้าคอนเฟิร์ม</strong><span class="path">SC-2611</span></header>
+      <div class="body">
+        <div class="row2">
+          <div class="field"><label>วันที่ลูกค้าตอบ</label><div class="box">02/09/2569</div></div>
+          <div class="field"><label>จำนวนที่คอนเฟิร์ม *</label><div class="box">120 กก.</div></div>
+        </div>
+        <div class="field"><label>ชื่อทางการค้าของลูกค้า</label><div class="box ph">ชื่อที่ลูกค้าตั้งเอง (ถ้ามี)</div></div>
+        <div class="note">ชื่อนี้<strong>แสดงคู่กับรหัส/ชื่อของเราเสมอ ห้ามแทนกัน</strong> — ลูกค้าโทรมาถามด้วยชื่อตัวเอง ระบบต้องค้นเจอทั้งสองทาง</div>
+        <div class="note warn">แถบกระทบยอด SO ขยับทันที: <strong>คอนเฟิร์มแล้ว 120 / SO 150 กก.</strong> — เตือน ไม่บล็อก</div>
+        <div class="btns"><span class="btn fill">บันทึก</span></div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>ลูกค้าขอให้แก้</strong><span class="path">SC-2612</span></header>
+      <div class="body">
+        <div class="field"><label>วันที่ลูกค้าตอบ</label><div class="box">02/09/2569</div></div>
+        <div class="field"><label>สิ่งที่ลูกค้าบอก *</label><div class="box area ph">อยากให้หวานขึ้น ลดโทนไม้ลง…</div></div>
+        <div class="note warn">
+          บันทึกแล้ว <strong>เกิดแถวใหม่ที่ชี้กลับ SC-2612</strong> และเริ่มที่ขั้น “รอ RD รับเรื่อง” อีกครั้ง ·
+          แถวเดิมปิดตัวเอง ไม่ถูกแก้ทับ
+        </div>
+        <div class="btns"><span class="btn stop">ปิดรายการนี้ (ลูกค้าไม่เอา)</span><span class="btn fill">บันทึกคำขอแก้</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <h3>รอบแก้เดินซ้ำเส้นเดิม ไม่ใช่กลไกที่สอง</h3>
+    <p>
+      แถวใหม่ที่เกิดจากการขอแก้ใช้รางห้าก้าวชุดเดียวกันทุกประการ — RD รับเรื่องอีกครั้ง (ถามกลับในกล่องพิมพ์ได้)
+      ใส่วันนัดส่งใหม่ แล้วส่งกลิ่นตัวใหม่ที่มีรหัส ชื่อ วันที่ ของตัวเอง เข้าทะเบียนเป็น
+      <strong>รายการใหม่ที่ชี้กลับตัวเดิม</strong> ⇒ สายพันธุ์แตกกิ่งได้ ไม่ใช่ Rev. ที่บังคับเป็นเส้นตรง
+    </p>
+    <ul class="plain">
+      <li>ทะเบียนกลิ่นแสดงเส้นสายพันธุ์ <code>└─ แก้จาก SC-2612</code></li>
+      <li>ลูกค้าให้แก้ทั้ง A และ C พร้อมกันแล้วเลือกตัวที่แตกจาก A ก็ยังเก็บได้ครบ</li>
+    </ul>
+  </div>
+
+  <!-- ══ 6 ══ -->
+  <h2><span class="num">07</span>RD ใส่ราคา — ในใบเดิม <span class="who rd">วิจัยและพัฒนา</span></h2>
+  <p class="lede">ไม่ต้องเปิดคำร้องขอราคาใบใหม่ · แถวที่คอนเฟิร์มแล้วแต่ยังไม่มีราคา จะขึ้นว่า <strong>“รอราคา”</strong> และโผล่ในคิวของ RD จนกว่าจะใส่</p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>ใส่ราคา</strong><span class="path">SC-2611 · Amber Woods</span></header>
+      <div class="body">
+        <div class="row2">
+          <div class="field"><label>Target Cost ที่ AE ขอไว้</label><div class="box derived">420.00 / กก.</div></div>
+          <div class="field"><label>ราคาต่อกิโลกรัม</label><div class="box ph">0.00</div></div>
+        </div>
+        <div class="note">ราคาเดียว <strong>ไม่มีชั้นจำนวน</strong> — หัวน้ำหอมคิดต่อกิโลตรง ๆ · ชั้น MOQ มีเฉพาะบรรจุภัณฑ์</div>
+        <div class="field"><label>หมายเหตุ</label><div class="box ph">เงื่อนไขที่อยากบอกฝ่ายขาย</div></div>
+        <div class="btns"><span class="btn fill">บันทึกราคา</span></div>
+        <div class="note">บันทึกแล้วเข้าทะเบียนวัสดุเป็นรุ่นราคาใหม่ · ทุกแถวจบ ⇒ ใบเปลี่ยนเป็น “ตอบแล้ว” เอง แล้วปิดเรื่องได้</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>สรุปทั้งใบ</strong><span class="path">SB-26080002</span></header>
+      <div class="body">
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>กลิ่น</th><th>ผลลัพธ์</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              <tr><td>SC-2611 Amber Woods</td><td>คอนเฟิร์ม 120 กก.</td><td><span class="pill hold">รอราคา</span></td></tr>
+              <tr><td>SC-2612 Clean Cotton</td><td>ขอให้แก้</td><td><span class="pill no">ปิดแล้ว — แทนด้วย SC-2620</span></td></tr>
+              <tr><td>SC-2620 Clean Cotton II</td><td>—</td><td><span class="pill wait">รอ RD รับเรื่อง</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          “คอนเฟิร์มแล้วแต่ยังไม่ใส่ราคา” คือใบที่ค้างถาวรถ้าไม่มีใครเห็น — จึงต้องเป็นสถานะที่หน้าจอเตือน
+          ไม่ใช่เรื่องที่คนต้องจำเอง
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">08</span>สายเซ็นและสถานะบนเอกสาร</h2>
+  <p class="lede">ฟอร์มมีช่องเซ็น 7 แถว แต่<strong>มีตัวเดียวที่บล็อกงาน</strong> — ที่เหลือเก็บระหว่างทำแล้วพิมพ์ลงเอกสาร</p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>Final Review &amp; Approval</strong><span class="path">7 ลายเซ็น</span></header>
+      <div class="body">
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>ผู้เซ็น</th><th>เก็บตอน</th><th>บล็อกงานไหม</th></tr></thead>
+            <tbody>
+              <tr><td>Account Executive</td><td>เปิดใบ</td><td><span class="pill wait">ไม่</span></td></tr>
+              <tr><td>AE Supervisor</td><td>หลัง RD รับเรื่อง</td><td><span class="pill no">บล็อก</span></td></tr>
+              <tr><td>Sale &amp; Marketing Manager</td><td>ระหว่างทาง</td><td><span class="pill wait">ไม่</span></td></tr>
+              <tr><td>Perfumer</td><td>ระหว่าง RD ทำ</td><td><span class="pill wait">ไม่</span></td></tr>
+              <tr><td>PD Chemist</td><td>ระหว่าง RD ทำ</td><td><span class="pill wait">ไม่</span></td></tr>
+              <tr><td>Project Coordinator</td><td>ระหว่าง RD ทำ</td><td><span class="pill wait">ไม่</span></td></tr>
+              <tr><td>Final Approval (RD Sup)</td><td>ก่อนปิดเรื่อง</td><td><span class="pill hold">ปิดไม่ได้</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          สามชื่อที่พิมพ์ไว้ในฟอร์มแล้ว (ปกิตา · ณิชา · รุจิรา) ผูกกับ <strong>ตำแหน่ง ไม่ใช่ชื่อคน</strong> —
+          ไม่งั้นคนเปลี่ยนงานแล้วฟอร์มค้าง
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>สถานะ</strong><span class="path">ในระบบ ↔ บนกระดาษ</span></header>
+      <div class="body">
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>สถานะในระบบ</th><th>พิมพ์ลงเอกสารว่า</th></tr></thead>
+            <tbody>
+              <tr><td>ส่งแล้ว — รอรับเรื่อง</td><td>Open</td></tr>
+              <tr><td>รับเรื่องแล้ว</td><td>In Progress</td></tr>
+              <tr><td>ส่งของแล้ว</td><td>Sample Sent</td></tr>
+              <tr><td>ปิดเรื่อง</td><td>Closed</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          ใช้สถานะของระบบเป็นตัวจริง แล้ว<strong>แปลเป็นคำของฟอร์มตอนพิมพ์</strong> ⇒ คนอ่านกระดาษเห็นคำที่คุ้น
+          คนใช้ระบบเห็นขั้นที่ละเอียดกว่า · ไม่มีใครต้องมาติ๊กสถานะเอง
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">09</span>ออกเป็นเอกสาร — เข้ามาตรฐานเอกสารของระบบ</h2>
+  <p class="lede">
+    PDR ไม่ได้พิมพ์ด้วยเปลือกของตัวเอง แต่ลงทะเบียนเป็น <strong>มาตรฐานเอกสารตัวที่ 5</strong>
+    ต่อจากใบเสนอราคา · ใบสั่งขาย · ใบแจ้งสรรพสามิต · ไทม์ไลน์โครงการ
+  </p>
+
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>ที่ระบบมีอยู่แล้วและใช้ต่อได้</strong><span class="path">lib/documentStandards.js</span></header>
+      <div class="body">
+        <div class="note">
+          ฟังก์ชัน <code>documentStandardFormLine()</code> คืนค่ารูปแบบ
+          <strong><code>FM-RD-01: Rev. No.02. 06/02/2569</code></strong> — <strong>ตรงกับหัว PDR ทุกตัวอักษร</strong>
+          ⇒ ไม่ต้องเขียนตัวประกอบหัวเอกสารใหม่เลย
+        </div>
+        <ul class="plain">
+          <li>รหัสแบบฟอร์ม · เลขรุ่น · วันที่มีผล — แก้ที่หน้าตั้งค่า ไม่ใช่ในโค้ด</li>
+          <li>โลโก้และหัวกระดาษจาก <code>printHeader</code> ชุดเดียวกับใบเสนอราคา</li>
+          <li>บล็อกลายเซ็นและรายงานความพร้อมลายเซ็นที่มีอยู่แล้ว</li>
+          <li>หน้าพรีวิวในตั้งค่ามาตรฐานเอกสาร — ดูก่อนประกาศใช้รุ่นใหม่ได้</li>
+        </ul>
+        <div class="note warn">
+          ที่ต้องเพิ่ม: <code>DOCUMENT_STANDARD_KEYS</code> เติม <code>'pdr'</code> เข้าไปเป็นตัวที่ 5
+          — วันนี้มี 4 ตัว
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <header><strong>PDR — เอกสารที่พิมพ์ออกมา</strong><span class="path">A4 · 3 หน้า</span></header>
+      <div class="body">
+        <div class="note">
+          <strong>หน้าตาตรงกับฟอร์มกระดาษเดิม</strong> — คนที่เคยใช้กระดาษเปิดมาแล้วต้องอ่านได้ทันที
+          ไม่ใช่เอกสารหน้าใหม่ที่ต้องเรียนรู้ซ้ำ
+        </div>
+        <ul class="plain">
+          <li>ช่องที่ระบบเติมให้ พิมพ์เป็นค่าจริง ไม่ใช่เส้นประ</li>
+          <li>ช่องที่เว้นว่างไว้ พิมพ์เป็นเส้นให้เขียนมือ — ใบที่กรอกไม่ครบยังใช้เป็นกระดาษได้</li>
+          <li>สถานะพิมพ์เป็นคำของฟอร์ม (Open / In Progress / Sample Sent / Closed)</li>
+          <li>ตารางลายเซ็น 7 แถว — ชื่อและวันที่เติมจากคนที่เซ็นในระบบแล้ว ที่เหลือเว้นให้เซ็นมือ</li>
+        </ul>
+        <div class="btns"><span class="btn">ดูฉบับที่ออกจริง</span><span class="btn fill">ออกเอกสาร</span></div>
+        <div class="note warn">
+          ฉบับที่ออกจริงเป็น <strong>HTML ไม่ใช่ PDF</strong> เหมือน QT/SO ⇒ ปุ่มต้องเขียนว่า
+          “ดูฉบับที่ออกจริง” ไม่ใช่ “ดาวน์โหลด”
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">10</span>ยังขวางการใช้จริง</h2>
+  <ul class="plain">
+    <li><strong>ช่องทางแจ้งเตือน</strong> — ไม่มี webhook ที่เปิดอยู่เลย ⇒ RD และ AE Sup ต้องเปิดจอเองถึงจะรู้ว่ามีของรอ</li>
+    <li><strong>ใบสั่งขายออกแบบกลิ่น</strong> — prod มี SO ที่อนุมัติแล้ว 1 ใบ และมีบรรทัด <code>03-002</code> จริง ⇒ <strong>เดินสายนี้ได้แล้ว</strong> (ก่อนหน้านี้ผมรายงานว่ามี 0 ใบ — ผิด)</li>
+    <li><strong>ตำแหน่งผู้เซ็น</strong> — ระบบยังไม่มี Perfumer / PD Chemist / Project Coordinator เป็นตำแหน่ง ต้องเพิ่มก่อนถึงจะผูกลายเซ็นได้</li>
+  </ul>
+
+</div>
+
+</body></html>

@@ -5,7 +5,7 @@
 // เพราะมันฝังอยู่ใน JSX · ย้ายมาเป็นฟังก์ชันบริสุทธิ์แล้วเทสต์ครอบได้ทั้งตระกูล
 //
 // ⚠️ **ใบบอกว่า "รอใคร" · แถวบอกว่า "แต่ละ direction ไปถึงไหน"** — ขั้น แก้ไข/คอนเฟิร์ม/
-// ราคา อยู่ที่รางของแถว (RowStageRail) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
+// ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestNeedsApproval } from '@/lib/requests/approval';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';

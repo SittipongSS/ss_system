@@ -30,12 +30,18 @@ for (const shape of [...SHARED_LINE_SHAPES, ...RD_LINE_SHAPES, ...FN_LINE_SHAPES
 
 export const LINE_SHAPES = Object.freeze(byKey);
 
-// รูปร่างตั้งต้นเมื่อไม่รู้ว่าแถวเป็นชนิดไหน — บรรทัดวัสดุคือของเดิมที่มีมาก่อน
-// รูปร่างอื่นทั้งหมด (แถวเก่าบน prod ไม่มี `lineKind`)
-export const DEFAULT_LINE_SHAPE = 'material';
+// ป้ายสำรองเมื่อไม่รู้ว่าแถวเป็นรูปร่างไหน
+//
+// ⚠️ เดิมค่าตั้งต้นคือรูปร่าง `material` ("รอราคา / ตอบราคาแล้ว / ตอบไม่ได้") ซึ่ง
+// ถูกถอดไปพร้อมหัวข้อขอราคาใน mig 0219 ⇒ ถ้ายังชี้ไปที่นั้น ทะเบียนจะ throw ตอน
+// โหลด · **ป้ายสำรองต้องเป็นคำกลางที่ไม่โกหก** — แถวที่ไม่รู้รูปร่างคือแถวเก่าหรือ
+// แถวที่ข้อมูลเพี้ยน บอกว่า "รอตอบ" ยังจริงเสมอ ส่วน "รอราคา" อาจไม่เกี่ยวกับราคาเลย
+const FALLBACK_LABELS = Object.freeze({
+  pending: 'รอตอบ', done: 'ตอบแล้ว', declined: 'ตอบไม่ได้',
+});
 
 export function lineShapeLabels(lineKind) {
-  return (LINE_SHAPES[lineKind] || LINE_SHAPES[DEFAULT_LINE_SHAPE]).labels;
+  return LINE_SHAPES[lineKind]?.labels || FALLBACK_LABELS;
 }
 
 /**
