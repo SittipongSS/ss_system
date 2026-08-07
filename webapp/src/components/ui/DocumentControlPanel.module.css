@@ -133,6 +133,52 @@
   border-bottom: 0;
 }
 
+/* ── รางแนวนอน — ใช้ตอนการ์ดกว้างเต็มหน้า ────────────────────────────────
+   ขั้นเรียงซ้ายไปขวาแบบที่คนอ่านลำดับเวลา · ไม่มี margin ติดลบเพราะไม่ได้อยู่ใน
+   การ์ดรางขวาที่ต้องกินขอบ · จอแคบกว่า 768px ตกกลับเป็นแนวตั้งเอง — บีบสี่ขั้น
+   ให้อยู่แถวเดียวบนมือถือแล้วป้ายจะถูกตัดจนอ่านไม่ออก */
+.workflowRailRow {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  margin: 0;
+  border-radius: var(--radius);
+}
+
+.workflowRailRow .workflowStep {
+  flex: 1 1 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+.workflowRailRow .workflowStep:last-child {
+  border-right: 0;
+}
+
+/* ⚠️ ป้ายขั้น **ตัดบรรทัดแทนตัดคำ** เมื่อเรียงแนวนอน — รางของคำร้องมีได้ถึง 6 ขั้น
+   บนจอ 1024px แล้วป้ายจะโดน ellipsis จนอ่านเป็น "รอฝ่าย RD ส่..." ซึ่งบอกไม่ได้ว่า
+   ส่งอะไร · แนวตั้งยังตัดคำเหมือนเดิมเพราะรางขวาแคบและมีที่ให้บรรทัดเดียวจริง ๆ */
+.workflowRailRow .stepCopy strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* จอแคบลงมาอีก — ตัดคำใบ้ทิ้งก่อน ป้ายสำคัญกว่า */
+@media (max-width: 1100px) {
+  .workflowRailRow .stepCopy small { display: none; }
+}
+
+@media (max-width: 768px) {
+  .workflowRailRow { flex-direction: column; }
+
+  .workflowRailRow .workflowStep {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workflowRailRow .workflowStep:last-child { border-bottom: 0; }
+}
+
 .stepMarker {
   display: grid;
   width: 27px;

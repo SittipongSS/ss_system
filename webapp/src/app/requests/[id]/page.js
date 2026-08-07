@@ -19,8 +19,9 @@ import RichText from "@/components/ui/RichText";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
-  DocumentControlCard, DocumentSummaryCard,
+  WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
+import { ActionButton } from "@/components/ui/ActionButtons";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -55,7 +56,7 @@ import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
-import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
 
 const STATUS_TONE = {
@@ -472,129 +473,135 @@ export default function RequestDetailPage() {
     : null;
   const headerAction = threadStep ? null : primaryAction;
 
+  // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
+  //
+  // ⭐ **หัวใบเดียว** — เดิมหน้านี้วาดสถานะซ้ำสี่ที่ (ป้ายบนหัวใบ · status-pill ใน
+  // การ์ด inline style · สถานะในการ์ดสรุป · สถานะในการ์ดจัดการ) และ "ฝ่ายผู้ตอบ"
+  // สามที่ ⇒ เปิดมาแล้วต้องกวาดตาสี่จุดเพื่อรู้เรื่องเดียว · ตอนนี้เหลือจุดเดียว
+  // ต่อหนึ่งข้อเท็จจริง และปุ่มทั้งหมดมาอยู่บนหัวใบที่คนเห็นก่อน
+  //
+  // ⚠️ ยังใช้ `normalizeDocumentControlActions` ตัวเดิม — กติกา `visible: false`
+  // อยู่ที่เดียวกับทุกโมดูล เปลี่ยนแค่ *ที่วาง* ไม่ใช่กติกา
+  const requestActions = normalizeDocumentControlActions({
+    primaryAction: headerAction,
+    secondaryActions: [
+      {
+        // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
+        // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
+        //
+        // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
+        // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
+        id: "reschedule",
+        label: "เลื่อนวันกำหนดส่ง",
+        kind: "edit",
+        icon: CalendarClock,
+        onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
+        // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
+        // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
+        visible: canAnswer && !!req.acknowledgedAt,
+      },
+    ],
+    dangerActions: [
+      {
+        id: "delete",
+        // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
+        // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
+        label: isAdmin && req.status !== "draft"
+          ? "ลบคำร้อง (ผู้ดูแลระบบ)"
+          : "ลบคำร้องร่าง",
+        kind: "delete",
+        icon: Trash2,
+        onClick: () => setConfirm({ kind: "delete" }),
+        visible: isAdmin || (req._mine && req.status === "draft"),
+      },
+      {
+        // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
+        // การทำลาย** — ใบยังอยู่ เลขที่เดิม ผู้ขอแก้แล้วส่งซ้ำได้
+        id: "bounce",
+        label: "ตีกลับให้แก้ไข",
+        kind: "cancel",
+        icon: Undo2,
+        onClick: () => setBounceReason(" "),
+        visible: owner && req.status === "pending",
+      },
+      {
+        id: "cancel",
+        label: "ยกเลิกคำร้อง",
+        kind: "cancel",
+        icon: Ban,
+        onClick: () => setCancelReason(" "),
+        visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
+      },
+    ],
+  });
+  const hasHeaderActions = !!requestActions.primaryAction
+    || requestActions.secondaryActions.length > 0
+    || requestActions.dangerActions.length > 0;
+
+  // ⚠️ สี่ช่องพอดี — `.quickFacts` เป็น grid 4 คอลัมน์ตายตัว ใส่ช่องที่ห้าแล้วแถวที่สอง
+  // จะเหลือช่องโหว่และเส้นคั่นวิ่งผิด · ของที่ไม่ติดสี่อันดับแรก (ผู้รับเรื่อง) เล่าใน
+  // รางก้าวและบรรทัดใต้เนื้อคำร้องแทน
+  const headerFacts = [
+    { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
+    { key: "requester", label: "ผู้ขอ", value: req.requestedByName || "—" },
+    ...(hasItems
+      ? [{ key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total} รายการ` }]
+      : [{ key: "customer", label: "ลูกค้า", value: req.customerName || "—" }]),
+    {
+      key: "due",
+      // วันที่คาดหวังเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง — แสดงตัวที่
+      // ผูกพันจริงก่อนเสมอ เพราะนั่นคือตัวที่คิวใช้นับว่าเลยกำหนดหรือยัง
+      label: req.committedDueDate ? "รับปากส่ง" : "ต้องการคำตอบ",
+      value: req.committedDueDate
+        ? fmtDate(req.committedDueDate)
+        : (req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—"),
+    },
+  ];
+
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
           ทั้งที่รับคำร้องหลายชนิด · พัฒนากลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
-          อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก */}
+          อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก
+          ⭐ **หัวใบเดียวจบ** — สถานะ · รางก้าว · ข้อเท็จจริง · เนื้อคำร้อง · ไฟล์แนบ ·
+          ปุ่ม เรียงตามลำดับที่คนอ่านจริง · ฝ่ายผู้ตอบขึ้นไปอยู่กับชนิดบน eyebrow
+          เพราะสองอย่างนี้คือ "ใบนี้คืออะไร ส่งไปไหน" ซึ่งอ่านคู่กันเสมอ */}
       <SalesDetailOverview
-        eyebrow={requestKindLabel(req.kind)}
+        eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
-        description={`${req.title || req.customerName || "ราคากลาง"} · ถึงฝ่าย ${req.dept} · ผู้ขอ ${req.requestedByName || "—"}`}
+        description={req.title || req.customerName || "ราคากลาง"}
         badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
-        facts={[
-          { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
-          { key: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-          ...(hasItems ? [
-            { key: "items", label: "รายการ", value: `${progress.total} รายการ` },
-            { key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
-          ] : [
-            { key: "customer", label: "ลูกค้า", value: req.customerName || "—" },
-            { key: "due", label: "ต้องการคำตอบ", value: req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—" },
-          ]),
-        ]}
-      />
-
-      <DetailPageLayout
-        asideLabel="สรุปและจัดการคำร้อง"
-        aside={(
+        actions={hasHeaderActions ? (
           <>
-            <DocumentSummaryCard
-              title="สรุปคำร้อง"
-              rows={hasItems ? [
-                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-                { id: "items", label: "รายการทั้งหมด", value: `${progress.total} รายการ` },
-                { id: "answered", label: "ตอบแล้ว", value: `${progress.done}/${progress.total}` },
-                { id: "pending", label: "รอคำตอบ", value: `${Math.max(progress.total - progress.done, 0)} รายการ` },
-              ] : [
-                { id: "kind", label: "ชนิดคำร้อง", value: requestKindLabel(req.kind) },
-                { id: "department", label: "ฝ่ายผู้ตอบ", value: req.dept },
-                { id: "acknowledged", label: "ผู้รับเรื่อง", value: req.acknowledgedByName || "ยังไม่มีผู้รับ" },
-                { id: "committed", label: "รับปากว่าจะตอบ", value: req.committedDueDate ? fmtDate(req.committedDueDate) : "—" },
-              ]}
-              status={REQUEST_STATUS_LABELS[req.status] || req.status}
-              statusColor={STATUS_TONE[req.status]}
-            />
-            <DocumentControlCard
-              status={REQUEST_STATUS_LABELS[req.status] || req.status}
-              statusColor={STATUS_TONE[req.status]}
-              statusDescription="การดำเนินการระดับคำร้อง"
-              workflowSteps={workflowSteps}
-              primaryAction={headerAction}
-              secondaryActions={[
-                {
-                  // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
-                  // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
-                  //
-                  // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
-                  // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
-                  id: "reschedule",
-                  label: "เลื่อนวันกำหนดส่ง",
-                  kind: "edit",
-                  icon: CalendarClock,
-                  onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
-                  // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
-                  // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
-                  visible: canAnswer && !!req.acknowledgedAt,
-                },
-              ]}
-              dangerActions={[
-                {
-                  id: "delete",
-                  // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
-                  // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
-                  label: isAdmin && req.status !== "draft"
-                    ? "ลบคำร้อง (ผู้ดูแลระบบ)"
-                    : "ลบคำร้องร่าง",
-                  kind: "delete",
-                  icon: Trash2,
-                  onClick: () => setConfirm({ kind: "delete" }),
-                  visible: isAdmin || (req._mine && req.status === "draft"),
-                },
-                {
-                  // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
-                  // การทำลาย** — ใบยังอยู่ เลขที่เดิม ผู้ขอแก้แล้วส่งซ้ำได้
-                  id: "bounce",
-                  label: "ตีกลับให้แก้ไข",
-                  kind: "cancel",
-                  icon: Undo2,
-                  onClick: () => setBounceReason(" "),
-                  visible: owner && req.status === "pending",
-                },
-                {
-                  id: "cancel",
-                  label: "ยกเลิกคำร้อง",
-                  kind: "cancel",
-                  icon: Ban,
-                  onClick: () => setCancelReason(" "),
-                  visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
-                },
-              ]}
-              busy={saving}
-            />
+            {requestActions.secondaryActions.map((action) => (
+              <ActionButton
+                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
+                variant="outline" disabled={saving} onClick={action.onClick}
+              />
+            ))}
+            {requestActions.dangerActions.map((action) => (
+              <ActionButton
+                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
+                variant="outline" disabled={saving} onClick={action.onClick}
+              />
+            ))}
+            {requestActions.primaryAction ? (
+              <ActionButton
+                kind={requestActions.primaryAction.kind}
+                label={requestActions.primaryAction.label}
+                icon={requestActions.primaryAction.icon}
+                variant="filled" disabled={saving}
+                onClick={requestActions.primaryAction.onClick}
+              />
+            ) : null}
           </>
-        )}
+        ) : null}
+        facts={headerFacts}
       >
-        <div>
-          <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span className="status-pill" style={{ color: STATUS_TONE[req.status], borderColor: "currentColor" }}>
-            {REQUEST_STATUS_LABELS[req.status] || req.status}
-          </span>
-          {hasItems && (
-            <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
-              ตอบแล้ว {progress.done}/{progress.total} รายการ
-            </span>
-          )}
-          {req.acknowledgedByName && (
-            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-              รับเรื่องโดย {req.acknowledgedByName} · {fmtDate(req.acknowledgedAt)}
-            </span>
-          )}
-          {req.formulaCode && (
-            <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>สูตร {req.formulaCode}</span>
-          )}
-        </div>
+        {/* รางก้าว — เดิมซ่อนอยู่ในการ์ดขวาที่ต้องเลื่อนไปหา ทั้งที่มันคือคำตอบของ
+            คำถามแรกที่คนเปิดใบมาถาม ("ตอนนี้ถึงไหนแล้ว") */}
+        <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+
         {/* รายละเอียดคำร้อง — เดิมแสดงเฉพาะชนิดที่ไม่มีบรรทัด แต่ตอนนี้ทุกหัวข้อมี
             ชื่อเรื่อง+รายละเอียดบังคับ (มติ 2026-08-03) จึงต้องแสดงทุกใบ
             ⭐ RichText ไม่ใช่ ReadableText: ผู้ใช้วาง URL หรือรหัสเอกสารในรายละเอียด
@@ -605,7 +612,20 @@ export default function RequestDetailPage() {
         )}
         {/* `note` เลิกเขียนใหม่แล้ว — ยังแสดงของเก่าที่มีค่าอยู่ ไม่ซ่อนข้อมูลที่คน
             เคยพิมพ์ไว้ (คอลัมน์ยังไม่ถูก DROP) */}
-        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: "var(--fs-7)", color: "var(--text-2)" }} />}
+        {req.note && <ReadableText text={req.note} lines={4} className={styles.requestNote} />}
+
+        {/* ของที่ไม่ติดสี่ช่องบนแถบข้อเท็จจริง แต่ทิ้งไม่ได้ — ผู้รับเรื่องคือหลักฐาน
+            ว่ามีคนรับงานไปจริง ไม่ใช่แค่สถานะเปลี่ยน */}
+        {(req.acknowledgedByName || req.formulaCode) && (
+          <p className={styles.headMeta}>
+            {req.acknowledgedByName
+              ? `รับเรื่องโดย ${req.acknowledgedByName} · ${fmtDate(req.acknowledgedAt)}`
+              : ""}
+            {req.acknowledgedByName && req.formulaCode ? " · " : ""}
+            {req.formulaCode ? `สูตร ${req.formulaCode}` : ""}
+          </p>
+        )}
+
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
             แต่ไม่ควรค้างบนจอ ไม่งั้นใบที่แก้แล้วยังดูเหมือนถูกตีกลับอยู่ */}
         {req.status === "draft" && req.bounceReason && (
@@ -617,7 +637,7 @@ export default function RequestDetailPage() {
           </div>
         )}
         {req.status === "cancelled" && req.cancelReason && (
-          <div style={{ marginTop: 8, fontSize: "var(--fs-7)", color: "var(--red)" }}>
+          <div className={styles.cancelledReason}>
             <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} />
           </div>
         )}
@@ -634,7 +654,13 @@ export default function RequestDetailPage() {
             inlineUpload
           />
         </div>
-      </div>
+      </SalesDetailOverview>
+
+      {/* ⚠️ ไม่มีรางขวาแล้ว — การ์ด "สรุปคำร้อง" กับ "จัดการเอกสาร" พูดเรื่องเดียวกับ
+          หัวใบทุกบรรทัด (สถานะ · ฝ่ายผู้ตอบ · ความคืบหน้า) · ปุ่มกับรางก้าวย้ายขึ้นหัวใบ
+          แล้ว รางขวาจึงเหลือแต่ของซ้ำ ⇒ ยุบทิ้ง หน้าเหลือคอลัมน์เดียวเต็มความกว้าง */}
+      <DetailPageLayout>
+        <div>
 
       {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":
           หัวใบ · เธรด · โมดัลของแต่ละก้าว · ส่วนที่ต่างกันรายหัวข้อ (PDR · ตารางสรุป ·

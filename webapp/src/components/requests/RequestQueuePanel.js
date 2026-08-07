@@ -7,17 +7,19 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, groupQueueRows, queueCounts, requestNextStep,
+  QUEUE_COUNT_META, groupQueueRows, matchesQueueCount, queueCounts, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
@@ -49,7 +51,23 @@ export default function RequestQueuePanel({
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   const today = businessDate();
   const counts = queueCounts(rows, { todayIso: today });
-  const groups = groupQueueRows(rows, { todayIso: today });
+
+  // ⭐ **ตัวเลขบนแถบกดกรองได้** — "เลยกำหนด 2" คือคำถามแรกที่หัวหน้าเปิดคิวมาถาม
+  // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
+  // ⚠️ กรองที่จอได้ **เพราะชุดข้อมูลนี้ผ่านด่านขอบเขตของ API มาแล้ว** — ต่างจาก
+  // ตัวสลับขอบเขตบนหน้าแม่ที่ต้องกรองฝั่ง server (กับดักข้อ 9 ของแผน)
+  const [countFilter, setCountFilter] = useState(null);
+  const visibleRows = useMemo(
+    () => (countFilter
+      ? rows.filter((r) => matchesQueueCount(r, countFilter, { todayIso: today }))
+      : rows),
+    [rows, countFilter, today],
+  );
+  const groups = groupQueueRows(visibleRows, { todayIso: today });
+
+  // ⭐ ตาราง 8 คอลัมน์บนจอตั้งเลื่อนซ้ายขวาอย่างเดียว — สลับเป็นการ์ดเหมือนอีก 9 หน้า
+  // ของระบบ · `useResponsiveView` เก็บ override ของผู้ใช้ไว้จนกว่าจะพลิกจอ
+  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -93,11 +111,32 @@ export default function RequestQueuePanel({
           กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ) */}
       {!loading && !loadError && (
         <div className={styles.counts}>
-          {QUEUE_COUNT_META.map((meta) => (
-            <span key={meta.key} className={styles.count} data-tone={meta.tone}>
-              {meta.label} <strong>{counts[meta.key]}</strong>
+          {/* ⚠️ ใช้ `.chip` ของกลาง ไม่ใช่กล่องที่ประกาศสี/ขอบเอง — โทน
+              warning/danger/info ของ QUEUE_COUNT_META ตรงกับคลาสโทนของ .chip พอดี */}
+          {QUEUE_COUNT_META.map((meta) => {
+            const on = countFilter === meta.key;
+            return (
+              <button
+                key={meta.key} type="button" aria-pressed={on}
+                className={`chip ${meta.tone === "neutral" ? "" : meta.tone} ${styles.countChip}`.trim()}
+                // กดตัวเดิมซ้ำ = ล้างตัวกรอง — ไม่ต้องไปหาปุ่ม "ล้าง" ที่อื่น
+                onClick={() => setCountFilter(on ? null : meta.key)}
+              >
+                {meta.label} <strong>{counts[meta.key]}</strong>
+              </button>
+            );
+          })}
+          {countFilter && (
+            <span className="toolbar-label">
+              แสดงเฉพาะ &quot;{QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}&quot;
+              {" · "}
+              <button type="button" className={styles.clearFilter} onClick={() => setCountFilter(null)}>
+                ล้างตัวกรอง
+              </button>
             </span>
-          ))}
+          )}
+          <span className="spacer" />
+          <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง" />
         </div>
       )}
 
@@ -105,12 +144,71 @@ export default function RequestQueuePanel({
         <SkeletonRows rows={4} />
       ) : loadError ? (
         <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <EmptyState icon={ClipboardList}>
-          {scope === "queue"
-            ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
-            : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
+          {/* ⚠️ ว่างเพราะ "ไม่มีงาน" กับว่างเพราะ "ตัวกรองตัดหมด" ต้องอ่านคนละแบบ —
+              ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
+          {countFilter
+            ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
+            : scope === "queue"
+              ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
+              : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
         </EmptyState>
+      ) : view === "list" ? (
+        /* ── มุมมองการ์ด — จอตั้ง/จอแคบ ────────────────────────────────────
+           ⚠️ **ข้อมูลชุดเดียวกับตาราง จัดกลุ่มด้วย groupQueueRows ตัวเดียวกัน** —
+           การ์ดที่เลือกฟิลด์เองจะเพี้ยนจากตารางทันทีที่มีคนเพิ่มคอลัมน์
+           ⚠️ ไม่มีแถบสีขอบการ์ด — ความเร่งด่วนบอกด้วยป้ายข้อความเหมือนในตาราง */
+        <div className={styles.queueCards}>
+          {groups.map((g) => (
+            <Fragment key={g.group}>
+              <div className={styles.cardGroupLabel}>{g.label} · {g.rows.length}</div>
+              {g.rows.map((ask) => {
+                const p = requestProgress(ask.items || []);
+                const next = requestNextStep(ask);
+                return (
+                  <button
+                    key={ask.id} type="button" className={styles.queueCard}
+                    onClick={() => router.push(`/requests/${ask.id}`)}
+                  >
+                    <span className={styles.cardTop}>
+                      <span className={styles.docCell}>{ask.docNo || "ร่าง"}</span>
+                      <StatusBadge
+                        tone={REQUEST_STATUS_TONES[ask.status] || "neutral"}
+                        label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
+                      />
+                    </span>
+                    <span className={styles.cardTitle}>
+                      {ask.title || ask.customerName || "ราคากลาง"}
+                    </span>
+                    {ask.title && ask.customerName && (
+                      <span className={styles.subText}>{ask.customerName}</span>
+                    )}
+                    {ask.formulaCode && (
+                      <span className={styles.subText}>สูตร {ask.formulaCode}</span>
+                    )}
+                    <span className={styles.cardMeta}>
+                      <span className="ui-badge">{requestKindLabel(ask.kind)}</span>
+                      <span className="ui-badge">ถึงฝ่าย {ask.dept}</span>
+                      {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
+                      {next && (
+                        <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
+                          {next.label}
+                        </span>
+                      )}
+                      {p.total > 0 && (
+                        <span className="ui-badge">{p.done}/{p.total} ตอบแล้ว</span>
+                      )}
+                    </span>
+                    <span className={styles.cardUpdated}>
+                      อัปเดต {fmtDate(ask.updatedAt || ask.createdAt)}
+                    </span>
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
       ) : (
         <TableScroll>
           <table className="premium-table">
@@ -120,10 +218,13 @@ export default function RequestQueuePanel({
                 <th className={styles.colKind}>ชนิด</th>
                 <th>เรื่อง / ลูกค้า</th>
                 <th className={styles.colDept}>ถึงฝ่าย</th>
-                <th className={styles.colProgress}>ความคืบหน้า</th>
                 {/* ⭐ ก้าวถัดไป — มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้
-                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง */}
+                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง
+                    ⚠️ ลำดับหัวตารางต้องตรงกับลำดับ <td> ข้างล่างเป๊ะ ๆ — เคยสลับกัน
+                    อยู่สองคอลัมน์ ("ความคืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป และความ
+                    กว้างที่ตั้งไว้ก็ไปคุมผิดคอลัมน์) */}
                 <th className={styles.colNext}>ก้าวถัดไป</th>
+                <th className={styles.colProgress}>ความคืบหน้า</th>
                 <th className={styles.colStatus}>สถานะ</th>
                 <th className={styles.colUpdated}>อัปเดต</th>
               </tr>
