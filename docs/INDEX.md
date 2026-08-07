@@ -61,7 +61,7 @@
 |---|---|---|
 | [costing-request-plan.md](costing-request-plan.md) | ⚠️ **mig 0159 ต้องรันก่อน deploy PR-3** | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
-| [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | โค้ดครบ 3 ก้อน · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย + ตั้ง webhook ห้องแอดมิน | รอตรวจ |
+| [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |
 | [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | รื้อเมนูคำร้องเป็นศูนย์ประสานงาน SA | รอดำเนินการ |
 | [cross-department-requests-plan.md](cross-department-requests-plan.md) | มติครบ รอเริ่ม PR-1 (ใหญ่สุด 1,030 บรรทัด) | รอดำเนินการ |
 | [qt-so-tax-followup-plan.md](qt-so-tax-followup-plan.md) | 6 จุดขัดแผนจาก PR #739 + บั๊กที่ผู้ใช้เจอได้ | รอดำเนินการ |
