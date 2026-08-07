@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_SCENT_BRIEFS, briefLinkError, normalizeScentBriefs,
+  MAX_SCENT_BRIEFS, briefHasContent, briefLinkError, briefsDroppedByMerge,
+  normalizeScentBriefs, switchBriefMode,
 } from './scentBriefs.js';
 import { SCENTOTYPE_VALUES, SCENT_PERFORMANCE_VALUES } from './kinds/rd/scentBriefTypes.js';
 
@@ -90,4 +91,45 @@ test('ติ๊กแล้วไม่เขียนต่อได้ — ก
   }], { expected: 1 });
   assert.equal(error, null);
   assert.deepEqual(briefs[0].scentotypeNotes, {});
+});
+
+// ── สลับโหมดบรีฟ: รวม ↔ รายกลิ่น (มติผู้ใช้ 2026-08-08) ──────────────────
+//
+// 🐞 ปุ่มสลับของเดิมเรียก `Array.from({length:n}, () => ({label:''}))` ⇒ **ล้างทุกก้อน
+// ทุกครั้ง** แม้แต่ตอนแยก 1 → 3 ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย
+test('⭐ แยกบรีฟรายกลิ่นต้องคงก้อนแรกไว้ แล้วเติมก้อนว่างให้ครบ', () => {
+  const typed = { label: 'แนวสดชื่น', brief: 'ซิตรัส-กรีน', scentotypes: ['cheerer'] };
+  const next = switchBriefMode([typed], { merge: false, scentCount: 3 });
+  assert.equal(next.length, 3);
+  assert.deepEqual(next[0], typed, 'ก้อนแรกต้องไม่ถูกแตะ');
+  assert.equal(briefHasContent(next[1]), false);
+  assert.equal(briefHasContent(next[2]), false);
+});
+
+test('รวบเป็นก้อนเดียวเหลือก้อนแรก · ไม่มีใบสั่งขายก็ไม่พัง', () => {
+  const list = [{ label: 'ก' }, { label: 'ข' }, { label: 'ค' }];
+  assert.deepEqual(switchBriefMode(list, { merge: true }), [{ label: 'ก' }]);
+  // ก้อนว่างล้วน → แยกแล้วยังได้ครบจำนวน
+  assert.equal(switchBriefMode([], { merge: false, scentCount: 2 }).length, 2);
+  // scentCount ที่อ่านไม่ได้ = อย่างน้อยหนึ่งก้อนเสมอ ไม่ใช่ศูนย์ก้อน
+  assert.equal(switchBriefMode([], { merge: false, scentCount: null }).length, 1);
+});
+
+test('⭐ นับเฉพาะก้อนที่กรอกไว้จริงว่าจะหาย — ก้อนว่างรวบได้เลย ไม่ต้องถาม', () => {
+  assert.equal(briefsDroppedByMerge([{ label: 'ก' }, { label: '' }, {}]), 0);
+  assert.equal(briefsDroppedByMerge([{ label: 'ก' }, { label: 'ข' }]), 1);
+  // ก้อนแรกไม่นับ — มันคือก้อนที่จะเหลืออยู่
+  assert.equal(briefsDroppedByMerge([{ brief: 'มีเนื้อ' }]), 0);
+});
+
+test('briefHasContent ครอบทุกช่องที่กรอกได้ — ตกช่องไหนช่องนั้นถูกทิ้งเงียบ', () => {
+  assert.equal(briefHasContent({}), false);
+  assert.equal(briefHasContent({ label: '  ' }), false);
+  assert.equal(briefHasContent({ label: 'แนวสดชื่น' }), true);
+  assert.equal(briefHasContent({ researchTopic: 'ความคงตัว' }), true);
+  assert.equal(briefHasContent({ dislikedNotes: 'มัสก์หนัก' }), true);
+  assert.equal(briefHasContent({ scentotypes: ['cheerer'] }), true);
+  assert.equal(briefHasContent({ performance: ['lasting'] }), true);
+  assert.equal(briefHasContent({ scentotypeNotes: { cheerer: 'สว่าง' } }), true);
+  assert.equal(briefHasContent({ scentotypes: [], scentotypeNotes: { cheerer: ' ' } }), false);
 });

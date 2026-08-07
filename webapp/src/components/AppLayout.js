@@ -6,7 +6,7 @@ import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, Rec
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessRd, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -255,6 +255,35 @@ export default function AppLayout({ children }) {
         { href: '/requests', name: 'คำร้อง', icon: ClipboardList, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, match: (p) => p.startsWith('/requests') },
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+      ],
+    },
+    {
+      // วิจัยและพัฒนา — บ้านของฝ่าย RD (ม-29) · ระบบแยกจากบริหารงานขาย
+      //
+      // 🐞 **กลุ่มนี้หายไปตั้งแต่ P2 ที่สร้างระบบขึ้นมา** — `SYSTEM_CATALOG` มีการ์ด
+      // แต่ `allGroups` ไม่มี `rd` ⇒ `menuItems` ว่าง ⇒ ฝ่าย RD สลับเข้าบ้านตัวเอง
+      // แล้ว **ไปไหนต่อไม่ได้จากเมนูเลย**: เข้าคิวได้ทางเดียวคือกดตัวเลขบนภาพรวม
+      // และเข้าไปแล้วกลับหน้าภาพรวมไม่ได้ · build/เทสต์จับไม่ได้เพราะทั้งสองหน้า
+      // เรนเดอร์ปกติทุกอย่าง ผิดแค่เปลือกที่ครอบมัน (อาการเดียวกับ `/requests`
+      // ที่เคยหลุดไปอยู่ใต้เมนูระบบภาษี) · เทสต์ "ทุกระบบต้องมีกลุ่มเมนูของตัวเอง"
+      // ใน navMenuNames.test.mjs กันไม่ให้ระบบตัวถัดไปซ้ำรอย
+      //
+      // ⚠️ **caps ต้องมี `users:manage` ด้วย** — admin ไม่ถือ `requests:answer`
+      // (ตรวจ 2026-08-08) ⇒ ใส่ cap เดียวแล้ว admin จะเห็นการ์ดระบบแต่เมนูถูกกรอง
+      // ทิ้งจนเหลือศูนย์ แล้ว `.filter((g) => g.items.length > 0)` ตัดทั้งกลุ่ม =
+      // แถบว่างเหมือนเดิม · ตัวแคบจริงคือ `visible: canAccessRd` ซึ่งเป็นด่าน
+      // **ตัวเดียวกับที่การ์ดระบบใช้** จึงเพี้ยนหากันไม่ได้
+      //
+      // ⚠️ ทะเบียนกลิ่น/สูตรไม่อยู่ในเมนูนี้ทั้งที่ RD เป็นคนเขียน — มันเป็นข้อมูล
+      // กลางที่อยู่ใต้ "ฐานข้อมูล" (ม-30) · ลิงก์ข้ามระบบจะสลับเปลือกทั้งแถบแล้ว
+      // ไฮไลต์ไม่ติด (match ไม่มีวันเป็นจริง) ⇒ ใช้ตัวสลับระบบตามทางปกติ
+      system: 'rd',
+      items: [
+        { href: '/rd', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p === '/rd' },
+        // ชื่อต้องไม่ซ้ำกับ "คำร้อง" ของระบบบริหารงานขาย — คนละมุมของตารางเดียวกัน:
+        // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
+        // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
+        { href: '/rd/requests', name: 'คิวคำร้อง', icon: ClipboardList, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') },
       ],
     },
     {

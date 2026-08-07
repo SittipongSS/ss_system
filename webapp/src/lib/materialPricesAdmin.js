@@ -179,15 +179,26 @@ export async function findRequest(supabase, id) {
         .maybeSingle().then((r) => r.data)
       : null,
   ]);
+  // ⚠️ **ต้องโหลดก่อน `pdrContext`** — ช่อง "จำนวนกลิ่นที่ต้องการพัฒนา" (PDR 1.12)
+  // อ่านจากบรรทัดออกแบบกลิ่นของใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ (มติผู้ใช้ 2026-08-08)
+  //
+  // ⚠️ `fgCode`/`description` ต้องมาด้วย — `lineCategoryCode()` ใช้แกะรหัสหมวดเมื่อ
+  // บรรทัดไม่ได้ผูก `productId` ซึ่งมีจริงบน prod · ดึงมาแค่ `id, qty` แล้วทุกใบจะนับ
+  // ได้ 0 เงียบ ๆ แล้วช่อง 1.12 ขึ้น N/A ทั้งที่ใบนั้นขายกลิ่นอยู่
+  let salesOrderLines = [];
+  if (withBriefs.salesOrderId) {
+    const { data: lines, error } = await supabase
+      .from('sales_order_lines').select('id, qty, "fgCode", description')
+      .eq('salesOrderId', withBriefs.salesOrderId);
+    if (error) throw error;
+    salesOrderLines = lines || [];
+  }
+
   withBriefs.pdrContext = pdrContext({
-    request: withBriefs, project, customer, deal, briefs: briefs || [],
+    request: withBriefs, project, customer, deal, briefs: briefs || [], salesOrderLines,
   });
 
-  if (!withBriefs.salesOrderId) return { ...withBriefs, salesOrderLines: [] };
-  const { data: lines, error } = await supabase
-    .from('sales_order_lines').select('id, qty').eq('salesOrderId', withBriefs.salesOrderId);
-  if (error) throw error;
-  return { ...withBriefs, salesOrderLines: lines || [] };
+  return { ...withBriefs, salesOrderLines };
 }
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา

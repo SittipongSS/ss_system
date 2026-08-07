@@ -39,7 +39,9 @@ import {
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
-import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
+import {
+  scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
+} from "@/lib/requests/scentDesignOrders";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
@@ -166,6 +168,13 @@ export default function RequestForm({
   // ⭐ จำนวนกลิ่นมาจากใบสั่งขาย ไม่ใช่ช่องที่คนกรอก — ใบที่ผ่านด่านย่อมมีจำนวนเสมอ
   // (ดู lib/requests/scentDesignOrders.js) · ผู้เรียกส่งบรรทัดของ SO มาให้
   const scentCount = selectedSo ? scentCountForOrder(selectedSo.lines || []) : null;
+  // ⭐ ลิสต์ต้องตรงกับป้าย "ใบสั่งขายออกแบบกลิ่น" — กรองด้วยด่านตัวเดียวกับ server
+  // (`scentDesignOrderError`) · ค่าที่เลือกไว้แล้วคงอยู่เสมอผ่าน `keepId`
+  // ⚠️ ไม่ใช้ `useMemo` — ไฟล์นี้เป็น component ไร้ hook ทั้งไฟล์โดยตั้งใจ (controlled
+  // ล้วน) และงานตรงนี้คือกรองอาเรย์ที่โหลดมาแล้วไม่กี่สิบแถว ไม่คุ้มกับ hook ตัวแรก
+  const soOptions = scentDesignOrderOptions(salesOrders, { keepId: value.salesOrderId || null });
+  // ตอบคำถาม "ทำไมใบของฉันไม่อยู่ในลิสต์" — สามเหตุผลนี้ทางแก้คนละทางกันหมด
+  const soSkips = scentDesignOrderSkips(salesOrders);
 
   // ⭐ ค่าที่ระบบเติมให้ในแบบฟอร์ม PDR — **ตัวเดียวกับที่ server ใช้** (`pdrContext`)
   //
@@ -180,6 +189,9 @@ export default function RequestForm({
     customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
     deal: soDeal,
     briefs: value.briefs || [],
+    // ⚠️ จำนวนกลิ่นมาจากบรรทัดของใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ — ฟอร์มต้องโชว์เลข
+    // เดียวกับที่จะพิมพ์ลงกระดาษ ไม่งั้นคนกรอกเห็น 3 แต่เอกสารออกมา 1 (โหมดบรีฟรวม)
+    salesOrderLines: selectedSo?.lines || null,
   });
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
@@ -366,13 +378,19 @@ export default function RequestForm({
                     briefs: count ? Array.from({ length: count }, () => ({ label: "" })) : [],
                   });
                 }}
-                options={salesOrders.map((so) => ({
+                options={soOptions.map((so) => ({
                   value: so.id,
                   label: `${so.orderNumber || so.id}${so.customerName ? ` — ${so.customerName}` : ""}`,
                   search: `${so.orderNumber || ""} ${so.customerName || ""} ${so.dealId || ""}`,
                 }))}
                 placeholder="เลือกใบสั่งขาย"
-                emptyText="ยังไม่มีใบสั่งขายในระบบ"
+                // ⭐ ค้นไม่เจอแล้วต้องรู้ว่า**ทำไม** — ลิสต์นี้กรองแล้ว คนที่พิมพ์เลขที่ใบ
+                // ของตัวเองมาแล้วไม่เจอจะคิดว่าระบบพัง ทั้งที่ใบนั้นยังไม่อนุมัติ
+                emptyText={(term) => {
+                  const hint = scentDesignOrderSkipHint(soSkips);
+                  if (term) return `ไม่พบ "${term}" ในใบที่เปิดบรีฟได้${hint ? ` · ${hint}` : ""}`;
+                  return hint || "ยังไม่มีใบสั่งขายในระบบ";
+                }}
                 ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
               />
             </div>
@@ -386,12 +404,18 @@ export default function RequestForm({
             />
             <DerivedField label="ขั้นในไทม์ไลน์" from="—" value={stepLabel || ""} />
           </div>
-          {/* ⚠️ prod มี sales_orders = 0 ใบ (นับ 2026-08-03) — ต้องบอกทางออกตรงนี้
-              ไม่ใช่ปล่อยให้เจอ dropdown ว่างแล้วคิดว่าระบบพัง */}
+          {/* ⚠️ prod เคยมี sales_orders = 0 ใบ — ต้องบอกทางออกตรงนี้ ไม่ใช่ปล่อยให้
+              เจอ dropdown ว่างแล้วคิดว่าระบบพัง
+              ⭐ ลิสต์กรองแล้ว ⇒ ต้องบอกด้วยว่า**ซ่อนอะไรไปเพราะอะไร** ตั้งแต่ยังไม่กด
+              เปิด dropdown — คนที่ถือใบในมืออยู่จะได้รู้ทันทีว่าต้องไปทำอะไรก่อน
+              ไม่ใช่ไปเจอตอนค้นแล้วไม่พบ */}
           <small className={styles.hint}>
-            {salesOrders.length
-              ? "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง"
-              : "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"}
+            {!salesOrders.length
+              ? "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"
+              : [
+                "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง",
+                scentDesignOrderSkipHint(soSkips),
+              ].filter(Boolean).join(" · ")}
           </small>
         </>
       )}

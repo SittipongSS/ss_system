@@ -87,9 +87,12 @@ export function renderPdrDocument({ request = {}, briefs = [], company = {}, for
     formLine,
     titleTh: 'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์',
     titleEn: 'Product Development Request (PDR) Form',
+    // ⚠️ **"วันที่ร้องขอ" ย้ายลงไปอยู่ในก้อน "ข้อมูลคำขอ" แล้ว** (มติผู้ใช้ 2026-08-08)
+    // — เดิม hardcode ที่นี่ด้วย `createdAt` ⇒ สองปัญหา: ฟอร์มกับหน้ารายละเอียดไม่มี
+    // ช่องนี้เลย และร่างที่ค้างไว้หลายวันจะพิมพ์วันที่สร้างร่างแทนวันที่ยื่นจริง
+    // ⇒ อยู่ในทะเบียน `pdrFields.js` ที่เดียว ทั้งสามจอจึงตอบวันเดียวกันเสมอ
     rows: [
       ['เลขที่เอกสาร', val(request.docNo)],
-      ['วันที่ร้องขอ', val((request.createdAt || '').slice(0, 10))],
       ['ลูกค้า', val(request.customerName)],
     ],
   });

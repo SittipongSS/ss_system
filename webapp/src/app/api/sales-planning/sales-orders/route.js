@@ -39,6 +39,25 @@ export const GET = withUser(async ({ user, supabase }) => {
     linesByOrder.set(line.salesOrderId, list);
   }
 
+  // ⭐ ใบไหนถูกเปิดคำร้องพัฒนากลิ่นไปแล้ว — ฟอร์มเปิดคำร้องใช้กรอง dropdown
+  // ให้ตรงกับป้าย "ใบสั่งขายออกแบบกลิ่น" · ไม่มีข้อมูลนี้ ผู้ใช้จะเลือกใบที่ใช้ไปแล้ว
+  // กรอก PDR จนจบ แล้วโดนปฏิเสธตอนกดส่ง
+  //
+  // ⚠️ **เงื่อนไขต้องตรงกับ `dept_requests_pdr_so_uk` (mig 0219) เป๊ะ ๆ** — เหมือนที่
+  // route ของ SO รายใบทำ · หลวมกว่านี้ = ใบที่ยกเลิกแล้วหายจากลิสต์ทั้งที่เปิดใหม่ได้
+  //
+  // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
+  // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ว่าง" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
+  // · คืนออกไปแค่ id/docNo/status เท่าที่ลิสต์ต้องใช้
+  const { data: scentRequests, error: scentRequestError } = orderIds.length
+    ? await supabase.from('dept_requests').select('id, docNo, status, "salesOrderId"')
+      .in('salesOrderId', orderIds).eq('kind', 'scent_dev').neq('status', 'cancelled')
+    : { data: [], error: null };
+  if (scentRequestError) return fail(scentRequestError.message, 500);
+  const scentRequestByOrder = new Map(
+    (scentRequests || []).map((row) => [row.salesOrderId, row]),
+  );
+
   const dealIds = [...new Set((orders || []).map((row) => row.dealId).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
@@ -59,6 +78,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
       quotation: quoteById.get(row.quotationId) || null,
+      scentRequest: scentRequestByOrder.get(row.id) || null,
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 

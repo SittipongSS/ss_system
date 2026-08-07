@@ -18,6 +18,10 @@
 // ⇒ ไฟล์นี้ประกาศครั้งเดียว ทั้งสามจออ่านจากที่นี่ · เพิ่ม/แก้ช่องต้องมาที่นี่ที่เดียว
 // และเพี้ยนกันอีกไม่ได้เชิงโครงสร้าง ไม่ใช่เพราะมีคนคอยไล่ดูให้ตรงกัน
 
+// ⚠️ ตัวนับเดียวกับที่ด่านหน้าประตูของหัวข้อใช้ — "จำนวนกลิ่นที่ขาย" ต้องเป็นเลข
+// เดียวกันทั้งตอนกันไม่ให้เปิดใบผิด และตอนพิมพ์ลงกระดาษ
+import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
+
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
   { value: 'modification', label: 'Product Modification' },
@@ -84,6 +88,15 @@ export const PDR_SECTIONS = [
       // (มติผู้ใช้: "คล้าย ๆ โครงการ ที่มีผู้ดูแล AE กับผู้ประสานงาน AC")
       // ⚠️ ถอยไปใช้ชื่อคนเปิดใบเมื่อโครงการยังไม่ได้ระบุ — ช่องว่างบนเอกสารที่ต้อง
       // มีชื่อคนรับผิดชอบเสมอ แย่กว่าชื่อที่ใกล้เคียงความจริงที่สุด
+      // ⭐ **วันที่ร้องขอ = วันที่ยื่นคำร้อง** (มติผู้ใช้ 2026-08-08) ไม่ใช่วันที่สร้างร่าง
+      //
+      // 🐞 เดิมบรรทัดนี้ hardcode อยู่ที่หัวเอกสาร (`pdrDocument.js`) ด้วย `createdAt`
+      // ⇒ สองปัญหาพร้อมกัน: (1) ฟอร์มกับหน้ารายละเอียด **ไม่มีช่องนี้เลย** ทั้งที่
+      // เป็นข้อแรกของ Request Information บนกระดาษ · (2) ร่างที่ค้างไว้สามวันแล้วค่อย
+      // กดส่ง จะพิมพ์วันที่สร้างร่างลงกระดาษ ซึ่งไม่ใช่วันที่ยื่นจริง
+      //
+      // ⚠️ ร่างที่ยังไม่ส่ง = ยังไม่มีวันยื่น ⇒ N/A ตามกติกา ไม่ใช่ถอยไปใช้ createdAt
+      { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'วันที่ยื่นคำร้อง' },
       { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้ดูแลโครงการ' },
       { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
       { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },
@@ -270,6 +283,8 @@ export function pdrFieldText(field, request = {}, context = {}) {
       // ⚠️ AE/AC เป็นของ **โครงการ** (mig 0190) ไม่ใช่คนกดปุ่ม — แต่ถอยไปใช้ชื่อคน
       // เปิดใบเมื่อโครงการยังไม่ระบุ · ช่องว่างบนเอกสารที่ต้องมีคนรับผิดชอบเสมอ
       // แย่กว่าชื่อที่ใกล้ความจริงที่สุด
+      // ⚠️ อ่านจาก `submittedAt` ที่เดียว — ร่างยังไม่ส่ง = ยังไม่มีวันยื่น ⇒ N/A
+      case 'requestedAt': return context.requestedAt ?? requestedAtText(request);
       case 'requester': return context.requester || request.requestedByName || null;
       case 'coordinator': return context.coordinator || null;
       case 'department': return 'การขายและบริการ';
@@ -282,8 +297,17 @@ export function pdrFieldText(field, request = {}, context = {}) {
       // ⚠️ ใบที่ไม่ได้ติ๊กด่วนต้องได้ค่าว่าง **ไม่ใช่ค่าที่ค้างจากตอนเคยติ๊ก** —
       // API ล้างคอลัมน์ให้เมื่อถอดธงอยู่แล้ว ตรงนี้กันอีกชั้นสำหรับแถวเก่า
       case 'urgentReason': return request.urgent ? (request.urgentReason || '') : '';
+      // ⚠️ **จำนวนกลิ่นมาจากใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ** (มติผู้ใช้ 2026-08-08)
+      //
+      // 🐞 เดิมถอยไปใช้ `briefs.length` เมื่อผู้เรียกไม่ส่งมา ⇒ ใบที่ AE **รวบเป็น
+      // บรีฟเดียว** (ลูกค้าบอกแนวเดียว "ทำแนวสดชื่นมา 3 ทาง" — โหมดที่ฟอร์มเปิดให้ทำ
+      // อยู่แล้ว) จะพิมพ์ลงกระดาษว่า **1 กลิ่น** ทั้งที่ลูกค้าจ่ายค่าออกแบบมา 3
+      // ⇒ จำนวนที่ลูกค้าจ่ายไปแล้วต้องมาจาก qty ของบรรทัดออกแบบกลิ่นเสมอ
+      //
+      // ⚠️ ไม่มีค่าจากผู้เรียก = ไม่รู้ ⇒ N/A · **ห้ามเดาจากจำนวนก้อน** เพราะเดาแล้ว
+      // ผิดเงียบ ซึ่งแย่กว่าช่องว่างที่บอกตรง ๆ ว่ายังไม่รู้
       case 'scentCount': {
-        const n = context.scentCount ?? (briefs.length || null);
+        const n = context.scentCount ?? null;
         return n ? `${n} กลิ่น` : null;
       }
       default: return null;
@@ -369,17 +393,31 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
 //
 // ⚠️ "ด่วน" ต่อท้ายเพราะกระดาษสั่งให้ระบุคำนี้ตรง ๆ เมื่อเป็นงานด่วน · ใบที่ติดธงด่วน
 // แต่ยังไม่ระบุวันต้องยังขึ้นให้เห็นว่าด่วน ไม่ใช่เงียบไปทั้งช่อง
+// วันที่ยื่นคำร้อง — ตัดเหลือ YYYY-MM-DD (คอลัมน์เป็น timestamptz)
+//
+// ⚠️ **ไม่ถอยไปใช้ `createdAt`** — สองวันนี้ต่างกันจริงเมื่อร่างค้างไว้ก่อนกดส่ง
+// และกระดาษถามหา "วันที่ร้องขอ" ซึ่งคือวันที่เรื่องออกจากมือผู้ขอ ไม่ใช่วันที่เริ่มพิมพ์
+function requestedAtText(request = {}) {
+  const at = request.submittedAt || null;
+  return at ? String(at).slice(0, 10) : null;
+}
+
 function sampleDueText(request = {}) {
   const at = request.requestedDueDate || null;
   if (!at && !request.urgent) return null;
   return `${at || 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
 }
 
-export function pdrContext({ request = {}, project = null, customer = null, deal = null, briefs = [] } = {}) {
+// ⚠️ `salesOrderLines` = บรรทัดของใบสั่งขายที่ผูกอยู่ — ใช้หา **จำนวนกลิ่นที่ขาย**
+// ไม่ใช่จำนวนก้อนบรีฟ (ดูเหตุผลที่ `case 'scentCount'`) · ไม่ส่งมา = ช่องนั้นขึ้น N/A
+export function pdrContext({
+  request = {}, project = null, customer = null, deal = null, briefs = [], salesOrderLines = null,
+} = {}) {
   const primary = (Array.isArray(customer?.contacts) ? customer.contacts[0] : null) || {};
   const phone = primary.phone || customer?.contactPhone || null;
   const line = primary.line || customer?.line || null;
   return {
+    requestedAt: requestedAtText(request),
     requester: project?.aeOwner || request.requestedByName || null,
     coordinator: project?.acOwner || null,
     customer: request.customerName || customer?.name || null,
@@ -388,7 +426,7 @@ export function pdrContext({ request = {}, project = null, customer = null, deal
     // Phone / Line เป็นช่องเดียวบนกระดาษ — ต่อกันด้วย · เมื่อมีทั้งคู่
     contactPhone: [phone, line].filter(Boolean).join(' · ') || null,
     sampleDue: sampleDueText(request),
-    scentCount: briefs.length || null,
+    scentCount: salesOrderLines ? scentCountForOrder(salesOrderLines) : null,
     briefs,
   };
 }

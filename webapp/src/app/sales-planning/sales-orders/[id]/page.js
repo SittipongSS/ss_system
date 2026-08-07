@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FolderKanban, MapPin, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileText, FlaskConical, FolderKanban, MapPin, Pencil, ShieldAlert,
   Factory, PackageCheck, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -49,6 +49,7 @@ import styles from "./page.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Button from "@/components/ui/Button";
 import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
+import { scentCountForOrder, scentDesignLines, scentDesignOrderError } from "@/lib/requests/scentDesignOrders";
 import { productionReadiness } from "@/lib/pm/deliveries";
 import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -81,6 +82,9 @@ export default function SalesOrderDetailPage() {
   const router = useRouter();
   const canEdit = useCan("salesplan:edit");
   const canCreateFiling = useCan("sales:act");
+  // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
+  // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
+  const canOpenRequest = useCan("costing:edit");
   const role = useRole();
   const reviewer = ["admin", "ae_supervisor"].includes(role);
   const [order, setOrder] = useState(null);
@@ -407,6 +411,31 @@ export default function SalesOrderDetailPage() {
     [production],
   );
 
+  // ── บรีฟกลิ่นของใบนี้ ────────────────────────────────────────────────
+  // ⭐ งานเริ่มที่ SO ไม่ใช่ที่หน้าคำร้อง — คนที่เพิ่งอนุมัติใบเสร็จควรกดต่อได้เลย
+  // ไม่ต้องจำเลขที่แล้วไปไล่หาใน dropdown ของหน้าเปิดคำร้อง
+  //
+  // ⚠️ **ด่านเดียวกับ server** (`scentDesignOrderError`) — ปุ่มกับ API จึงขัดกันไม่ได้
+  // ⚠️ ไม่มี `order` = ยังโหลดไม่เสร็จ ไม่ใช่ "เปิดไม่ได้" — memo นี้อยู่เหนือ early
+  //    return ตามกฎ hooks จึงต้องกันเองด้วย `order?.` ทุกจุด
+  const scentBrief = useMemo(() => {
+    if (!order) return null;
+    const lines = order.lines || [];
+    const blocked = scentDesignOrderError(order, lines, {
+      usedByRequestNo: order.scentRequest?.docNo || (order.scentRequest ? order.scentRequest.id : null),
+    });
+    return {
+      blocked,
+      existing: order.scentRequest || null,
+      // ⚠️ **การ์ดโชว์เมื่อมีบรรทัดออกแบบกลิ่น ไม่ใช่เมื่อนับจำนวนได้** — ใบที่มี
+      // บรรทัดแต่ `qty` อ่านไม่ออก (ทศนิยม/ศูนย์) คือเคสที่ต้องบอกผู้ใช้มากที่สุด
+      // ผูกการ์ดกับตัวนับแล้วใบนั้นจะเงียบหายไปทั้งที่เป็นใบที่ต้องแก้
+      hasDesignLines: scentDesignLines(lines).length > 0,
+      // จำนวนกลิ่นที่ใบนี้ขาย — โชว์ให้เห็นว่าบรีฟจะงอกกี่ก้อนก่อนกดเข้าไป
+      count: scentCountForOrder(lines),
+    };
+  }, [order]);
+
   if (!order) {
     return <Workspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
@@ -689,6 +718,48 @@ export default function SalesOrderDetailPage() {
             </RelatedDocumentCard>
           </>}
         >
+          {/* ⭐ บรีฟกลิ่นของใบนี้ — วางเป็นการ์ดแรกโดยตั้งใจ: สำหรับใบที่ขายบริการ
+              ออกแบบกลิ่น นี่คือ **ก้าวถัดไปทันทีหลังอนุมัติ** ยังไม่ใช่เรื่องของเข้า/ผลิต
+              ⚠️ ซ่อนทั้งการ์ดเมื่อใบนี้ไม่ใช่งานออกแบบกลิ่นเลย — ใบขายสินค้าธรรมดา
+              ไม่ควรเห็นการ์ดที่บอกว่า "เปิดไม่ได้" ทุกใบตลอดไป (นั่นคือ noise ไม่ใช่ข้อมูล)
+              ⚠️ ส่วนใบที่ **ใช่** งานออกแบบกลิ่นแต่ยังกดไม่ได้ ต้องขึ้นเหตุผลเป็นข้อความ
+              ไม่ใช่ปุ่มจาง — ปุ่มจางไม่บอกว่าต้องทำอะไรต่อ (กฎเดียวกับหน้าเปิดคำร้อง) */}
+          {canOpenRequest && scentBrief?.hasDesignLines && (
+            <DetailCard
+              icon={FlaskConical}
+              eyebrow="SCENT BRIEF"
+              title="บรีฟกลิ่นของใบนี้"
+              meta={scentBrief.count != null ? `${scentBrief.count} กลิ่น` : undefined}
+              actions={scentBrief.existing
+                ? (
+                  <Button
+                    as={Link} href={`/requests/${scentBrief.existing.id}`}
+                    variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
+                  >
+                    เปิดคำร้อง
+                  </Button>
+                )
+                : !scentBrief.blocked
+                  ? (
+                    <Button
+                      as={Link}
+                      href={`/requests/new?kind=scent_dev&salesOrderId=${encodeURIComponent(order.id)}&returnTo=${encodeURIComponent(`/sa/sales-orders/${order.id}`)}`}
+                      tone="accent" size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
+                    >
+                      เปิดคำร้องพัฒนากลิ่น
+                    </Button>
+                  )
+                  : undefined}
+            >
+              <StatusNotice tone={scentBrief.existing ? "info" : scentBrief.blocked ? "warning" : "success"}>
+                {scentBrief.existing
+                  ? `เปิดคำร้องไปแล้ว ${scentBrief.existing.docNo || scentBrief.existing.id} — 1 ใบสั่งขาย เปิดได้ใบเดียว ขอเพิ่มต้องออกใบสั่งขายใหม่`
+                  : scentBrief.blocked
+                    || `ใบนี้ขายบริการออกแบบกลิ่น ${scentBrief.count} กลิ่น — เปิดคำร้องส่งบรีฟให้ฝ่าย R&D ได้เลย`}
+              </StatusNotice>
+            </DetailCard>
+          )}
+
           {/* ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — มติผู้ใช้ 2026-07-29:
               "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต"
               คำถามที่การ์ดนี้ต้องตอบคือ **ใบนี้เริ่มผลิตได้เมื่อไหร่** ไม่ใช่แค่

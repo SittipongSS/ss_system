@@ -7,6 +7,9 @@
 //                   และลูกค้าล็อก (ตัวตนของกลิ่นผูกกับลูกค้า — มติ 9)
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
+import DateInput from "@/components/ui/DateInput";
+import { NEW_SCENT_STATUSES, SCENT_STATUS_LABELS } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -17,6 +20,10 @@ export const emptyScentForm = () => ({
   customerTradeName: "",
   derivedFromScentId: "",
   note: "",
+  // กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่เกิดไปแล้วในอดีต ไม่มีค่าตั้งต้นให้เดา
+  producedAt: "",
+  sentAt: "",
+  status: "developing",
 });
 
 export function scentToForm(scent) {
@@ -27,6 +34,11 @@ export function scentToForm(scent) {
     customerTradeName: scent.customerTradeName || "",
     derivedFromScentId: scent.derivedFromScentId || "",
     note: scent.note || "",
+    // ⚠️ โหมดแก้ไม่มีช่องพวกนี้ (วันที่/สถานะแก้ผ่าน action ของตัวเอง) — ส่งค่าเดิม
+    // กลับไปเพื่อไม่ให้ payload ของฟอร์มขาดช่องแล้ว server ตีความว่าถูกล้าง
+    producedAt: scent.producedAt || "",
+    sentAt: scent.sentAt || "",
+    status: scent.status || "developing",
   };
 }
 
@@ -88,6 +100,47 @@ export default function ScentForm({
             ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = เก็บเป็นร่างไว้ก่อน
           </small>
         </div>
+      )}
+
+      {/* ── กลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08) ────────
+          ⭐ ทางเพิ่มตรงมีไว้ลงของเก่า ⇒ วันผลิต/วันส่ง/สถานะ เกิดไปแล้วในอดีต
+          · ไม่มีช่องพวกนี้ตอนสร้าง = ต้องบันทึกแล้วกดปุ่มซ้ำอีกรอบ และช่อง
+            "วันที่ผลิต" จะว่างถาวรเพราะไม่มีทางเขียนเลยนอกจากผ่านคำร้อง
+          ⚠️ ขึ้นเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
+            จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ */}
+      {canSetCode && mode === "create" && (
+        <>
+          <div className="form-group">
+            <label htmlFor="scent-produced">
+              วันที่ผลิตกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
+            </label>
+            <DateInput
+              id="scent-produced" value={value.producedAt} disabled={disabled}
+              onChange={(v) => set({ producedAt: v })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="scent-sent">
+              วันที่ส่งลูกค้า <span className={styles.hint}>(ไม่บังคับ)</span>
+            </label>
+            <DateInput
+              id="scent-sent" value={value.sentAt} disabled={disabled}
+              onChange={(v) => set({ sentAt: v })}
+            />
+          </div>
+          <div className="form-group col-span-2">
+            <label htmlFor="scent-status">สถานะเริ่มต้น</label>
+            <Select
+              id="scent-status" value={value.status} disabled={disabled}
+              onChange={(e) => set({ status: e.target.value })}
+              options={NEW_SCENT_STATUSES.map((s) => ({ value: s, label: SCENT_STATUS_LABELS[s] }))}
+            />
+            <small className={styles.hint}>
+              กลิ่นเก่าที่ลูกค้าอนุมัติไปแล้วเลือก &ldquo;{SCENT_STATUS_LABELS.active}&rdquo; ได้เลย
+              ไม่ต้องมากดเปลี่ยนทีหลัง
+            </small>
+          </div>
+        </>
       )}
 
       {/* ⭐ ชื่อที่ลูกค้าตั้งเอง — เป็นวิธีที่ลูกค้าโทรมาถามจริง

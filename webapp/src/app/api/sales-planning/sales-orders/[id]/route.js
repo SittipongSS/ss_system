@@ -60,7 +60,7 @@ async function loadOrder(supabase, id) {
   if (error) throw error;
   if (!order) return null;
 
-  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }] = await Promise.all([
+  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
@@ -68,6 +68,20 @@ async function loadOrder(supabase, id) {
       ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
+    // ⭐ คำร้องพัฒนากลิ่นที่เปิดจากใบนี้ — หน้า SO ใช้ตัดสินว่าโชว์ปุ่ม "เปิดคำร้อง"
+    // หรือลิงก์ไปใบที่เปิดไว้แล้ว
+    //
+    // ⚠️ **เงื่อนไขต้องตรงกับ `dept_requests_pdr_so_uk` (mig 0219) เป๊ะ ๆ** —
+    // `kind = 'scent_dev'` + `status <> 'cancelled'` · หลวมกว่านี้ = ปุ่มหายทั้งที่
+    // ใบเก่าถูกยกเลิกไปแล้วและเปิดใหม่ได้ · แคบกว่านี้ = กดแล้วชน unique violation
+    // ที่ DB ซึ่งเด้ง error ดิบภาษาอังกฤษหลังกรอก PDR จนจบแล้ว
+    //
+    // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
+    // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ไม่มีใบ" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
+    // แล้วปุ่มจะโชว์ให้กดจนไปตายที่ DB · ที่คืนออกไปมีแค่ เลขที่/สถานะ/id
+    supabase.from('dept_requests').select('id, docNo, status')
+      .eq('salesOrderId', id).eq('kind', 'scent_dev').neq('status', 'cancelled')
+      .maybeSingle(),
   ]);
   if (signatureEvidenceError) throw signatureEvidenceError;
   const { data: revisionHistory, error: revisionHistoryError } = await supabase
@@ -83,6 +97,7 @@ async function loadOrder(supabase, id) {
     project: project || null,
     revisionHistory: revisionHistory || [],
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
+    scentRequest: scentRequest || null,
   };
 }
 

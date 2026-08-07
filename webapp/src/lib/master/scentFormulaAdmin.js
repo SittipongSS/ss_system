@@ -4,7 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
-import { derivedFromError, normalizeScentInput } from '@/lib/master/scents';
+import { derivedFromError, newScentStatus, normalizeScentInput } from '@/lib/master/scents';
 import { derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
@@ -18,7 +18,44 @@ export async function loadScents(supabase, { status = null, customerId = null } 
   if (customerId) query = query.eq('customerId', customerId);
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return attachScentSource(supabase, data || []);
+}
+
+// ── ที่มาของกลิ่นแต่ละตัว ────────────────────────────────────────────────
+//
+// ⭐ ทะเบียนกลิ่นเป็นข้อมูลกลางที่ **ข้อมูลส่วนใหญ่มาจากสายพัฒนากลิ่น** ส่วนที่เพิ่ม
+// ตรงจากทะเบียนคือกลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08)
+// ⇒ เปิดทะเบียนมาต้องแยกออกทันทีว่าตัวไหนผ่านสายงานจริง ตัวไหนคนพิมพ์เข้ามาเอง
+//
+// 🐞 `briefId` · `dealId` เก็บครบมาตั้งแต่ mig 0213 **แต่ไม่เคยขึ้นบนจอเลย**
+//
+// ⚠️ สองฮอป: `scents.briefId` → `dept_request_scents.requestId` → `dept_requests.docNo`
+// · ข้ามฮอปแรกไม่ได้เพราะกลิ่นไม่ได้ผูกคำร้องตรง ๆ (บรีฟเป็นชั้นกลางของโครงสามชั้น)
+//
+// ⚠️ ไม่ยิงอะไรเลยเมื่อไม่มีแถวไหนมี `briefId` — ตัวเลือกกลิ่นในฟอร์มต่าง ๆ เรียก
+// `loadScents` ด้วย และไม่ควรจ่ายค่า query เพิ่มถ้าทะเบียนยังไม่เคยมีของจากสายงาน
+async function attachScentSource(supabase, rows) {
+  const briefIds = [...new Set(rows.map((s) => s.briefId).filter(Boolean))];
+  if (!briefIds.length) return rows.map((s) => ({ ...s, sourceRequest: null }));
+
+  const { data: briefs, error: briefError } = await supabase
+    .from('dept_request_scents').select('id, "requestId"').in('id', briefIds);
+  if (briefError) throw briefError;
+  const requestIdByBrief = new Map((briefs || []).map((b) => [b.id, b.requestId]));
+
+  const requestIds = [...new Set([...requestIdByBrief.values()].filter(Boolean))];
+  const { data: requests, error: requestError } = requestIds.length
+    ? await supabase.from('dept_requests').select('id, "docNo"').in('id', requestIds)
+    : { data: [], error: null };
+  if (requestError) throw requestError;
+  const requestById = new Map((requests || []).map((r) => [r.id, r]));
+
+  return rows.map((s) => {
+    // ⚠️ `briefId` มีแต่ตามกลับไม่เจอ = คำร้องถูกลบไปแล้ว — ยังต้องนับว่า "มาจาก
+    // คำร้อง" อยู่ดี · ตกเป็น "เพิ่มเอง" เมื่อไรคือโกหกเรื่องที่มาของข้อมูล
+    const request = requestById.get(requestIdByBrief.get(s.briefId)) || null;
+    return { ...s, sourceRequest: request ? { id: request.id, docNo: request.docNo || null } : null };
+  });
 }
 
 export async function findScent(supabase, id) {
@@ -63,13 +100,24 @@ export async function createScent(supabase, input, user, { accepted = false } = 
   const row = {
     id: genId('SCT'),
     ...value,
-    status: accepted ? 'developing' : 'draft',
+    // ⭐ **เลือกสถานะได้ตอนสร้าง** (มติผู้ใช้ 2026-08-08) — ทางเพิ่มตรงมีไว้ลงกลิ่นเดิม
+    // ที่ลูกค้าอนุมัติไปแล้ว ⇒ ควรเป็น `active` ตั้งแต่แรก ไม่ใช่บังคับ `developing`
+    // แล้วให้ RD กดเปลี่ยนอีกรอบทุกใบ
+    // ⚠️ `newScentStatus` จำกัดไว้เฉพาะสองสถานะที่ "ของจริงแล้ว" และเฉพาะตอน RD
+    // เป็นคนสร้าง — ฝ่ายขายยังได้ `draft` เสมอ (ใส่รหัส = รับเข้าทะเบียน เป็นอำนาจ RD)
+    status: newScentStatus(input.status, accepted),
     // RD ที่สร้างเองเป็นเจ้าของกลิ่นโดยปริยาย — ฝ่ายขายเปิดร่างยังไม่มีเจ้าของ
     ownerId: value.ownerId || (accepted ? user?.id ?? null : null),
     ownerName: value.ownerName || (accepted ? user?.name ?? null : null),
     acceptedById: accepted ? user?.id ?? null : null,
     acceptedByName: accepted ? user?.name ?? null : null,
     acceptedAt: accepted ? nowIso : null,
+    // ⚠️ กรอกวันผลิตมาเอง = คนกรอกคือคนบันทึก · เว้นว่างแล้วช่องคนบันทึกต้องว่างตาม
+    // ไม่ใช่ติดชื่อไว้บนวันที่ที่ไม่มีอยู่
+    producedById: value.producedAt ? user?.id ?? null : null,
+    producedByName: value.producedAt ? user?.name ?? null : null,
+    sentById: value.sentAt ? user?.id ?? null : null,
+    sentByName: value.sentAt ? user?.name ?? null : null,
     createdById: user?.id ?? null,
     createdByName: user?.name ?? null,
     createdAt: nowIso,

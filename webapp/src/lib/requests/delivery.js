@@ -84,8 +84,19 @@ export function normalizeDeliveryRows(input, {
     seenCode.add(codeKey);
     seenName.add(nameKey);
 
-    const sentAt = String(row.sentAt ?? '').trim() || today || businessDate();
-    if (!ISO_DATE.test(sentAt)) return { rows: [], error: `${at}: วันที่ส่งไม่ถูกต้อง` };
+    // ⭐ **วันพร้อมส่ง ≠ วันผลิต** (มติผู้ใช้ 2026-08-08 · ม-66) — กลิ่นตัวหนึ่งอาจ
+    // ผลิตเสร็จวันที่ 1 แต่รอตัวอื่นในชุดเดียวกันจนพร้อมส่งพร้อมกันวันที่ 8
+    // · วันพร้อมส่งอยู่บน **แถวคำร้อง** (`readyAt`) · วันผลิตอยู่บน **ตัวกลิ่น**
+    //   (`scents.producedAt`) เพราะเป็นข้อเท็จจริงของกลิ่น ไม่ใช่ของงานส่ง
+    // 🐞 เดิมมีช่องเดียวชื่อ `sentAt` ที่ถูกเขียนลงทั้งสองที่ ⇒ ป้ายบนทะเบียนเขียนว่า
+    //    "วันที่ส่งกลิ่นให้ลูกค้า" แต่ค่าที่ได้คือวันที่ RD ส่งมอบให้ฝ่ายขาย
+    const readyAt = String(row.readyAt ?? '').trim() || today || businessDate();
+    if (!ISO_DATE.test(readyAt)) return { rows: [], error: `${at}: วันที่พร้อมส่งไม่ถูกต้อง` };
+
+    // ⚠️ ไม่กรอก = ถือว่าผลิตเสร็จวันเดียวกับที่ส่งมอบ — บังคับกรอกทั้งสองช่องทุกแถว
+    // แล้วคนที่ผลิตกับส่งวันเดียวกันจริง ๆ (ซึ่งเป็นเคสส่วนใหญ่) ต้องพิมพ์ซ้ำเปล่า ๆ
+    const producedAt = String(row.producedAt ?? '').trim() || readyAt;
+    if (!ISO_DATE.test(producedAt)) return { rows: [], error: `${at}: วันที่ผลิตกลิ่นไม่ถูกต้อง` };
 
     const spec = String(row.spec ?? '').trim();
     if (spec.length > 2000) return { rows: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
@@ -96,7 +107,8 @@ export function normalizeDeliveryRows(input, {
       briefId,
       name,
       code,
-      sentAt,
+      readyAt,
+      producedAt,
       spec: spec || null,
       // "เลขที่อ้างอิง" — กลิ่นตัวนี้แก้มาจากตัวไหน · ด่านข้ามลูกค้าอยู่ฝั่ง server
       // (assertDerivedFromScent) เพราะต้องอ่านแถวต้นทางมาเทียบ
@@ -135,10 +147,12 @@ export function deliveryItemRow(row, {
     // ชั้นกลาง — direction นี้ตอบบรีฟก้อนไหน (mig 0213)
     briefId: row.briefId ?? null,
     answerStatus: 'pending',
-    ackAt: ackAt || row.sentAt,
+    ackAt: ackAt || row.readyAt,
     ackById: by.id,
     ackByName: by.name,
-    readyAt: row.sentAt,
+    // ⚠️ **วันพร้อมส่ง ไม่ใช่วันผลิต** — วันผลิตไปอยู่บนตัวกลิ่น (`scents.producedAt`)
+    // ⇒ แถวคำร้องวัด lead time ของ *งานส่ง* ส่วนทะเบียนตอบว่ากลิ่นเกิดเมื่อไร
+    readyAt: row.readyAt,
     readyById: by.id,
     readyByName: by.name,
   };

@@ -11,6 +11,7 @@
 // ⚠️ ก่อนมีหน้านี้ คนกรอกชื่อกลิ่นลงช่อง "ชื่อสูตร" ของสินค้าเพราะไม่มีที่เก็บ
 // (เจอจริงบน prod 10 แถว) — ดูการ์ด "รอจัดระเบียบ" ที่หน้าทะเบียนสูตร
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
@@ -36,7 +37,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
-  SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent, isScentRegistrar,
+  SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
+  isScentRegistrar, matchesScentSource, scentSourceLabel,
 } from "@/lib/master/scents";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -60,6 +62,9 @@ export default function ScentsPage() {
   const linkedQuery = useSearchParams().get("q") || "";
   const [search, setSearch] = useState(linkedQuery);
   const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
+  // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
+  const [sourceFilter, setSourceFilter] = useState("");
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code }
@@ -89,13 +94,15 @@ export default function ScentsPage() {
     return scents.filter((s) => {
       if (statusFilter === "open" && s.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && s.status !== statusFilter) return false;
+      if (!matchesScentSource(s, sourceFilter)) return false;
       if (!q) return true;
       // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
       // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
-      return [s.name, s.code, s.customerName, s.customerTradeName, s.note]
+      // ⭐ เลขที่คำร้องด้วย — RD ถือใบอยู่ในมือแล้วอยากรู้ว่าใบนั้นออกกลิ่นอะไรมาบ้าง
+      return [s.name, s.code, s.customerName, s.customerTradeName, s.note, s.sourceRequest?.docNo]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [scents, statusFilter, search]);
+  }, [scents, statusFilter, sourceFilter, search]);
 
   // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
   const scentLabelById = useMemo(
@@ -104,7 +111,9 @@ export default function ScentsPage() {
   );
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(visible, { resetKey: `${search}|${statusFilter}` });
+    // ⚠️ ตัวกรองทุกตัวต้องอยู่ใน resetKey — ตกตัวไหนไป เปลี่ยนตัวกรองนั้นแล้วยังค้าง
+    // อยู่หน้าเดิมซึ่งอาจไม่มีแถวเหลือแล้ว ⇒ ตารางว่างทั้งที่ผลลัพธ์มีจริง
+    usePagination(visible, { resetKey: `${search}|${statusFilter}|${sourceFilter}` });
 
   const draftCount = useMemo(() => scents.filter((s) => s.status === "draft").length, [scents]);
 
@@ -136,6 +145,14 @@ export default function ScentsPage() {
     };
     if (form.mode === "create") {
       if (registrar && v.code.trim()) payload.code = v.code.trim();
+      // ⭐ กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่/สถานะเกิดไปแล้วในอดีต (ม-75)
+      // ⚠️ ส่งเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
+      // จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ (server บังคับซ้ำที่ `newScentStatus`)
+      if (registrar && v.code.trim()) {
+        if (v.producedAt) payload.producedAt = v.producedAt;
+        if (v.sentAt) payload.sentAt = v.sentAt;
+        payload.status = v.status;
+      }
       const done = await call("/api/master/scents", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -267,6 +284,14 @@ export default function ScentsPage() {
           ]}
           aria-label="กรองสถานะกลิ่น"
         />
+        {/* ⭐ ที่มา — ข้อมูลส่วนใหญ่มาจากสายพัฒนากลิ่น ส่วนที่เพิ่มตรงคือกลิ่นเดิม
+            ที่เคยออกแบบไว้ก่อนมีระบบ · สองอย่างนี้เชื่อถือได้ไม่เท่ากันเวลาอ้างอิง
+            (ตัวที่ผ่านสายงานมีบรีฟ ดีล และคำร้องให้ตามกลับ) */}
+        <Select
+          value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
+          options={[{ value: "", label: "ทุกที่มา" }, ...SCENT_SOURCES]}
+          aria-label="กรองที่มาของกลิ่น"
+        />
         <span className="spacer" />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
@@ -289,8 +314,9 @@ export default function ScentsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th>
-                  <th>วันที่ส่ง</th><th>สถานะ</th><th className={styles.actionsCol}></th>
+                  <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th><th>ที่มา</th>
+                  <th>วันที่ผลิต</th><th>ส่งลูกค้า</th>
+                  <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
@@ -318,8 +344,34 @@ export default function ScentsPage() {
                         )}
                       </td>
                       <td>{s.customerName || s.customerId}</td>
-                      {/* กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันที่เดียว ไม่ใช่
-                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง */}
+                      {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
+                          ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง
+                          ⚠️ ลิงก์ไปคำร้องเฉพาะตอนตามกลับได้จริง — คำร้องที่ถูกลบไปแล้ว
+                          ยังต้องบอกว่า "มาจากคำร้อง" อยู่ดี แค่กดต่อไม่ได้ */}
+                      <td>
+                        {(() => {
+                          const src = scentSourceLabel(s);
+                          if (src.requestId) {
+                            return (
+                              <Link href={`/requests/${src.requestId}`} className="rich-link">
+                                {src.label}
+                              </Link>
+                            );
+                          }
+                          return <span className={src.kind === "manual" ? styles.muted : undefined}>{src.label}</span>;
+                        })()}
+                      </td>
+                      {/* ⭐ **สองวันแยกขาด** (ม-66 · mig 0224) — วันผลิตคือวันที่ RD ทำกลิ่น
+                          ตัวนี้เสร็จ · วันส่งคือวันที่ลูกค้าได้รับ · เดิมเป็นช่องเดียวที่ถูก
+                          เขียนตอน RD ส่งมอบให้ฝ่ายขาย ⇒ ป้ายบอกว่าส่งลูกค้าแล้ว
+                          ตั้งแต่ของยังไม่ออกจากออฟฟิศ
+                          ⚠️ กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันละช่อง ไม่ใช่
+                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันของตัวเอง */}
+                      <td className="mono">
+                        {s.producedAt
+                          ? fmtDate(s.producedAt)
+                          : <span className={styles.muted}>—</span>}
+                      </td>
                       <td className="mono">
                         {s.sentAt
                           ? fmtDate(s.sentAt)

@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessSahamit, canViewProduction, canUser, canViewService, departmentOf } from '@/lib/permissions';
+import { canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -27,14 +27,11 @@ export const SYSTEM_CATALOG = [
     label: 'วิจัยและพัฒนา',
     description: 'คิวคำร้องที่รอฝ่าย R&D ตอบ — พัฒนากลิ่น พัฒนาสูตร และงานที่เลยกำหนด',
     icon: FlaskConical,
-    // ⚠️ **ไม่ใช้ `canAnswerRequestsFor` ตรง ๆ** ทั้งที่เป็นด่านของการกดรับเรื่อง —
-    // ตัวนั้นให้ `isSuperuser` ผ่านหมด ซึ่งรวม **AE Supervisor** (break-glass ที่มี
-    // ไว้ให้ตอบแทนได้ตอนฉุกเฉิน) ⇒ หัวหน้าฝ่ายขายจะได้การ์ดระบบ R&D ขึ้นหน้าแรก
-    // ทั้งที่ไม่ใช่บ้านของเขา · **ระบบขึ้นกับฝ่าย ไม่ใช่ role** (กฎเดียวกับที่ระบบ
-    // ผลิต/ธุรกิจบริการยึด) ⇒ ผ่านเมื่ออยู่ฝ่าย RD จริง หรือเป็น admin
-    // ⭐ สิทธิ์ไม่ได้แคบลง — AE Sup ยังกดรับเรื่องแทนได้เหมือนเดิม แค่ไม่มีเมนู
-    isVisible: (user) => user?.role === 'admin'
-      || (departmentOf(user) === 'RD' && canUser(user, 'requests:answer')),
+    // ⭐ ด่านอยู่ที่ `canAccessRd` ตัวเดียว — **แถบเมนูใน AppLayout ใช้ตัวเดียวกัน**
+    // (เหตุผลว่าทำไมไม่ใช้ `canAnswerRequestsFor` และทำไม admin ต้องแยกสาขา
+    //  อยู่ในคอมเมนต์ของฟังก์ชันนั้น) · แยกสองที่เมื่อไรก็ได้การ์ดที่กดแล้วไปเจอ
+    //  เมนูว่าง ซึ่งเป็นบั๊กที่โมดูลนี้เพิ่งเป็นมา
+    isVisible: (user) => canAccessRd(user),
     landing: () => '/rd',
   },
   {

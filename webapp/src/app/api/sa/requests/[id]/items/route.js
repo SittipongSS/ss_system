@@ -103,14 +103,18 @@ export async function POST(request, { params }) {
         dealId: before.dealId || null,
         derivedFromScentId: row.derivedFromScentId,
       }, user, { accepted: true });
-      // วันที่ส่งอยู่บนตัวกลิ่น (0205) — เขียนตอนสร้างเลย ไม่ต้องรอใครมากดซ้ำ
+      // ⭐ **วันผลิตอยู่บนตัวกลิ่น · วันส่งลูกค้ายังไม่เกิด** (มติผู้ใช้ 2026-08-08 ·
+      // ม-66 · mig 0224) — ตอนนี้ของเพิ่งออกจากมือ RD มาถึงฝ่ายขาย ยังไม่ถึงลูกค้า
+      // 🐞 เดิมเขียน `sentAt` ตรงนี้ด้วยวันเดียวกับ `readyAt` ⇒ ทะเบียนบอกว่าส่ง
+      // ลูกค้าแล้วตั้งแต่วันที่ RD ส่งมอบ ซึ่งเร็วกว่าความจริงเสมอ
+      // ⇒ `scents.sentAt` เขียนตอน SA กดก้าว "ส่งให้ลูกค้า" แทน (items/[itemId])
       await supabase.from('scents').update({
         // ⭐ ทะเบียนย้อนกลับได้ว่ากลิ่นตัวนี้มาจากบรีฟไหน (ข้อที่ผู้ใช้ขอ · mig 0213)
         // เก็บตรงบน scents ไม่ให้ต้อง join ผ่านแถว direction
         briefId: row.briefId,
-        sentAt: row.sentAt,
-        sentById: user?.id ?? null,
-        sentByName: user?.name ?? null,
+        producedAt: row.producedAt,
+        producedById: user?.id ?? null,
+        producedByName: user?.name ?? null,
         updatedAt: nowIso,
       }).eq('id', scent.id);
       created.push({ row, scent });

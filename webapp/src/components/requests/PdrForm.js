@@ -14,7 +14,9 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
+import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
   PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
   PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible,
@@ -124,7 +126,25 @@ export default function PdrForm({
   // เป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน
   const merged = scentCount != null && scentCount > 1 && briefs.length === 1;
   const canMerge = scentCount != null && scentCount > 1;
-  const setCount = (n) => onBriefsChange(Array.from({ length: n }, () => ({ label: "" })));
+  // ⚠️ **สลับโหมดต้องไม่ทิ้งของที่พิมพ์ไปแล้ว** (มติผู้ใช้ 2026-08-08) — ของเดิมล้าง
+  // ทุกก้อนทุกครั้ง แม้แต่ตอนแยก 1 → N ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย
+  // · รวบแล้วก้อนที่มีเนื้อจะหายจริง ⇒ **ถามก่อน** ด้วยโมดัลของบ้าน ไม่ใช่ `confirm()`
+  //   ของเบราว์เซอร์ (ratchet ห้าม native feedback)
+  const switchMode = async (merge) => {
+    if (merge) {
+      const dropped = briefsDroppedByMerge(briefs);
+      if (dropped) {
+        const ok = await confirmAction({
+          title: "รวบเป็นบรีฟเดียว",
+          description: `บรีฟอีก ${dropped} ก้อนที่กรอกไว้จะถูกลบ เหลือเฉพาะก้อนแรก — ยืนยันไหม`,
+          confirmLabel: "รวบเป็นก้อนเดียว",
+          tone: "danger",
+        });
+        if (!ok) return;
+      }
+    }
+    onBriefsChange(switchBriefMode(briefs, { merge, scentCount }));
+  };
   const set = (patch) => onChange({ ...value, ...patch });
   const setBrief = (i, patch) => onBriefsChange(
     briefs.map((b, j) => (i === j ? { ...b, ...patch } : b)),
@@ -247,12 +267,14 @@ export default function PdrForm({
       >
         {canMerge && (
           <div className={styles.topicAction}>
-            {/* ⚠️ สลับแล้วล้างที่กรอกไว้ — รวบ 3 ก้อนเป็น 1 คือทิ้งข้อความสองก้อน
-                จึงต้องบอกก่อนกด ไม่ใช่ให้รู้ตอนของหายไปแล้ว */}
+            {/* ⭐ แยก 1 → N ไม่ถามอะไร — ก้อนแรกอยู่ที่เดิม ที่เพิ่มมาเป็นก้อนว่าง
+                ⚠️ รวบ N → 1 ถามก่อนเฉพาะตอนที่มีก้อนที่กรอกไว้จริงจะหาย */}
             <Button
               variant="quiet" size="sm" disabled={disabled}
-              title="สลับแล้วบรีฟที่กรอกไว้จะถูกล้าง"
-              onClick={() => setCount(merged ? scentCount : 1)}
+              title={merged
+                ? "ก้อนที่กรอกไว้อยู่ที่เดิม ที่เพิ่มมาเป็นก้อนว่าง"
+                : "บรีฟก้อนที่ 2 เป็นต้นไปจะถูกลบ (ถามก่อน)"}
+              onClick={() => switchMode(!merged)}
             >
               {merged ? `แยกบรีฟรายกลิ่น (${scentCount} ก้อน)` : "รวบเป็นบรีฟเดียว"}
             </Button>
