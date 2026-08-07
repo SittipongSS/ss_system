@@ -18,11 +18,11 @@ import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { validateTransitionValues } from "@/lib/recordLifecycle";
+import { fieldUsers, resolveLabel, validateTransitionValues } from "@/lib/recordLifecycle";
 import styles from "./TransitionDialog.module.css";
 import Textarea from "@/components/ui/Textarea";
 
-function TransitionField({ field, value, onChange, disabled }) {
+function TransitionField({ field, record, value, onChange, disabled }) {
   const common = { disabled, "aria-label": field.label || field.name };
   if (field.type === "select") {
     return (
@@ -39,7 +39,8 @@ function TransitionField({ field, value, onChange, disabled }) {
   if (field.type === "person") {
     return (
       <PersonSelect
-        users={field.users || []}
+        /* รายชื่อบางชุดขึ้นกับตัวระเบียน ไม่ใช่ตัวคนที่เปิดหน้า — ดู fieldUsers() */
+        users={fieldUsers(field, record)}
         value={value ?? ""}
         by={field.by || "id"}
         disabled={disabled}
@@ -76,6 +77,9 @@ function TransitionField({ field, value, onChange, disabled }) {
 export default function TransitionDialog({
   open,
   transition,
+  /* ตัวระเบียนที่กำลังทำรายการ — จำเป็นเฉพาะตอน field ประกาศตัวเลือกเป็นฟังก์ชัน
+     (ดู fieldUsers) · ไม่ส่งมาก็ยังทำงานได้กับ field ที่ตัวเลือกตายตัว */
+  record = null,
   values = {},
   onChange,
   onConfirm,
@@ -84,7 +88,10 @@ export default function TransitionDialog({
 }) {
   if (!open || !transition) return null;
 
-  const { reason, reasonPolicy, fields, confirm, label } = transition;
+  const { reason, reasonPolicy, fields, confirm } = transition;
+  // ป้ายบางตัวเป็นฟังก์ชันของ record (ดู resolveLabel) — หัวกล่องกับปุ่มยืนยันต้องได้คำ
+  // เดียวกับปุ่มที่ผู้ใช้เพิ่งกด ไม่งั้นกดปุ่ม "นัดเพิ่ม" แล้วกล่องขึ้นหัวว่า "บันทึกนัดประชุม"
+  const label = resolveLabel(transition.label, record);
   const title = confirm?.title || reasonPolicy.title || label;
   const description = confirm?.message || reasonPolicy.description || "";
   const setValue = (name, next) => onChange?.({ ...values, [name]: next });
@@ -154,6 +161,7 @@ export default function TransitionDialog({
             <span>{field.label || field.name}{field.required ? " *" : ""}</span>
             <TransitionField
               field={field}
+              record={record}
               value={values[field.name]}
               onChange={(next) => setValue(field.name, next)}
               disabled={busy}

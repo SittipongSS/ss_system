@@ -105,7 +105,7 @@ test('ลีด: อ่านได้ตาม scope เดียวกับ�
 
 test('⭐ ลีด: ติดต่อแล้วยังโพสต์ได้ — เธรดต้องไม่ตายพร้อมกับสิทธิ์แก้ข้อมูล', async () => {
   const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
-  // canEditLead ปิดตายทุกสถานะใน LEAD_LOCKED_STATUSES — ถ้าใครเผลอเอามาคุมเธรด
+  // canEditLead ปิดตายที่ LEAD_EDIT_LOCKED_STATUSES — ถ้าใครเผลอเอามาคุมเธรด
   // เคสพวกนี้จะ false ทั้งแถบ ทั้งที่เป็นช่วงที่มีเรื่องต้องเล่ามากที่สุด
   for (const status of ['contacted', 'meeting', 'qualified', 'disqualified']) {
     assert.equal(

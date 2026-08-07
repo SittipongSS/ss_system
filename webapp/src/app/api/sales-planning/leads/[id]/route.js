@@ -4,7 +4,7 @@ import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { can } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead,
-  canDeleteLead, LEAD_LOCKED_STATUSES, canViewLeads, inLeadScope,
+  canDeleteLead, LEAD_DELETE_LOCKED_STATUSES, LEAD_EDIT_LOCKED_STATUSES, canViewLeads, inLeadScope,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { purgeUpdates } from '@/lib/master/updates';
@@ -53,9 +53,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
+  /* ⭐ ประตูบานเดียวกับ GET — "เห็นลีดใบนี้ไหม" เป็นเงื่อนไข *ก่อน* "แก้ได้ไหม"
+     🐞 เดิม GET มีด่านนี้แต่ PATCH ไม่มี ⇒ senior_ae ยิง URL ตรงเข้าไปแก้ลีดใน
+     คิวกลาง (`new` · team ว่าง) ได้ ทั้งที่หาใบนั้นไม่เจอในลิสต์ของตัวเอง —
+     `canEditLead` สาขา senior ยอมให้ `!lead.team` ผ่านมาตั้งแต่ต้น (สิทธิ์ที่ลอยอยู่)
+     ปิดที่นี่แทนการรื้อ canEditLead เพราะขอบเขตแถวของนโยบายไม่ได้ผิด — ที่ขาดคือ
+     ด่านมองเห็น ซึ่งเป็นคนละคำถามและมีคำตอบอยู่แล้วที่ `inLeadScope` */
+  if (!inLeadScope(user, before)) return forbidden();
   if (!canEditLead(user, before)) {
-    if (user.role === 'marketing' && before.createdBy === user.id && before.status !== 'new') {
-      return forbidden('ลีดที่คัดกรองแล้วอยู่ในความดูแลของฝ่ายขาย — ทีม Marketing แก้ไข/ลบไม่ได้');
+    /* แยก "ล็อกเพราะสถานะ" ออกจาก "ไม่มีสิทธิ์ในใบนี้" — ผู้ใช้ต้องรู้ว่าติดอะไร
+       เช็คด้วยการรันนโยบายตัวเดิมซ้ำบนสถานะที่ยังไม่ล็อก แทนที่จะสะกดเงื่อนไข
+       ความเป็นเจ้าของซ้ำที่นี่ (ซึ่งจะดริฟต์ออกจาก canEditLead ทันทีที่กติกาขยับ)
+       ⚠️ ต้องผ่านด่านความเป็นเจ้าของก่อนถึงจะบอกได้ว่า "ลีดล็อกแล้ว" — ไม่งั้นคนนอก
+       ยิง URL ตรงแล้วรู้จากข้อความว่าลีดใบนั้นเปิดดีลไปแล้ว */
+    if (LEAD_EDIT_LOCKED_STATUSES.includes(before.status)
+      && canEditLead(user, { ...before, status: 'assigned' })) {
+      return forbidden('ลีดใบนี้เปิดดีล/ปิดไปแล้ว จึงแก้ที่ลีดไม่ได้ — ข้อมูลที่เปลี่ยนหลังเปิดดีลให้แก้ที่ดีลแทน');
     }
     return forbidden();
   }
@@ -98,9 +111,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
+  // ด่านมองเห็นเหมือน GET/PATCH — วันนี้ `canDeleteLead` แคบพอจนด่านนี้ไม่ตัดใครเพิ่ม
+  // (admin/supervisor เห็นทุกใบ · marketing เห็นทุกใบแต่ลบได้เฉพาะใบตัวเอง)
+  // ใส่ไว้เพื่อไม่ให้เส้นเขียนสามเส้นมีด่านไม่เท่ากันอีก — ต้นเหตุของรูที่ PATCH
+  if (!inLeadScope(user, before)) return forbidden();
 
   if (!canDeleteLead(user, before)) {
-    if (role !== 'admin' && LEAD_LOCKED_STATUSES.includes(before.status)) {
+    if (role !== 'admin' && LEAD_DELETE_LOCKED_STATUSES.includes(before.status)) {
       return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
     }
     if (role === 'marketing' && before.createdBy === user.id) {

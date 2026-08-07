@@ -6,7 +6,9 @@ import { readFileSync } from 'node:fs';
 import {
   LEAD_CHANNELS, channelGroupOf, LEAD_TRANSITIONS, TRANSITION_TO_STATUS,
   slaBusinessDays, slaHit, SERVICE_DETAIL_REQUIRED,
-  canEditLead, canDeleteLead, canWorkLead, canCreateLead, LEAD_LOCKED_STATUSES,
+  canEditLead, canDeleteLead, canWorkLead, canCreateLead,
+  LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
+  meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope,
   sourceLeadIdOf,
 } from './leads';
 
@@ -56,40 +58,67 @@ test('service detail บังคับเฉพาะ product/other', () => {
   assert.equal(LEAD_CHANNELS.length, 8);
 });
 
-test('MKT แก้/ลบได้เฉพาะใบตัวเอง "ก่อนคัดกรอง" — คัดกรองแล้วส่งมอบฝ่ายขาย (มติ 2026-07-20)', () => {
+/* ⭐ มติผู้ใช้ 2026-08-08 กลับมติ 2026-07-20 — MKT แก้ใบตัวเองได้จนถึงก่อนเปิดดีล
+   เหตุผล: ลูกค้าโทรมาแก้เบอร์/เพิ่มงบหลังส่งเข้าทีมแล้ว และคนที่รับสายคือ MKT ไม่ใช่ AE
+   ⚠️ "ลบ" ไม่ได้ปลดตาม — ยังได้เฉพาะใบที่ยังไม่ถูกคัดกรอง */
+test('MKT แก้ใบตัวเองได้ถึงก่อนเปิดดีล แต่ลบได้เฉพาะก่อนคัดกรอง (มติ 2026-08-08)', () => {
   const mkt = { role: 'marketing', id: 'mk1' };
   const own = (status) => ({ status, createdBy: 'mk1', team: null, assigneeId: null });
-  // ก่อนคัดกรอง (new) — แก้/ลบของตัวเองได้
-  assert.equal(canEditLead(mkt, own('new')), true);
+
+  for (const status of ['new', 'screened', 'assigned', 'contacted', 'meeting']) {
+    assert.equal(canEditLead(mkt, own(status)), true, `edit ${status} ต้องได้`);
+  }
+  // เปิดดีล/ปิดลีดแล้ว — ลีดกลายเป็นบันทึกต้นทาง งานย้ายไปที่ดีล
+  for (const status of LEAD_EDIT_LOCKED_STATUSES) {
+    assert.equal(canEditLead(mkt, own(status)), false, `edit ${status} ต้องล็อก`);
+  }
+  // ลบ — เฉพาะใบตัวเองที่ยังไม่ถูกคัดกรอง (นโยบายเดิม ไม่ปลดตาม)
   assert.equal(canDeleteLead(mkt, own('new')), true);
-  // คัดกรองแล้ว/มอบหมายแล้ว — ห้ามทั้งแก้และลบ แม้เป็นใบที่ตัวเองกรอก
-  for (const status of ['screened', 'assigned', ...LEAD_LOCKED_STATUSES]) {
-    assert.equal(canEditLead(mkt, own(status)), false, `edit ${status}`);
+  for (const status of ['screened', 'assigned', ...LEAD_DELETE_LOCKED_STATUSES]) {
     assert.equal(canDeleteLead(mkt, own(status)), false, `delete ${status}`);
   }
-  // ใบของคนอื่น — แตะไม่ได้แม้ยัง new
+  // ใบของคนอื่น — แตะไม่ได้แม้ยัง new (ขอบเขตแถวไม่เปลี่ยน)
   assert.equal(canEditLead(mkt, { status: 'new', createdBy: 'mk2' }), false);
   assert.equal(canDeleteLead(mkt, { status: 'new', createdBy: 'mk2' }), false);
 });
 
-test('นโยบายแก้/ลบของ role อื่นคงเดิม: admin ทุกสถานะ, supervisor ก่อนติดต่อ, ทีมขายตาม scope', () => {
+test('แก้ลีด: ปลดถึงก่อนเปิดดีล · ขอบเขตแถวคงเดิม · ลบยังเข้มเท่าเดิม (มติ 2026-08-08)', () => {
   const lead = (status, extra = {}) => ({ status, createdBy: 'mk1', team: 'KA', assigneeId: null, ...extra });
-  // admin — ทุกใบทุกสถานะ
+  // admin — ทุกใบทุกสถานะ รวมที่ล็อกแล้ว
   assert.equal(canEditLead({ role: 'admin', id: 'a1' }, lead('qualified')), true);
   assert.equal(canDeleteLead({ role: 'admin', id: 'a1' }, lead('qualified')), true);
-  // supervisor — ก่อนเริ่มติดต่อ
+
+  // supervisor — แก้ได้ทุกใบถึงก่อนเปิดดีล แต่ "ลบ" ยังหยุดที่ก่อนติดต่อเหมือนเดิม
   const sup = { role: 'ae_supervisor', id: 's1' };
   assert.equal(canEditLead(sup, lead('screened')), true);
+  assert.equal(canEditLead(sup, lead('contacted')), true, 'ติดต่อแล้วยังแก้ได้ (มติใหม่)');
+  assert.equal(canEditLead(sup, lead('meeting')), true);
+  assert.equal(canEditLead(sup, lead('qualified')), false, 'เปิดดีลแล้วต้องล็อก');
   assert.equal(canDeleteLead(sup, lead('assigned')), true);
-  assert.equal(canEditLead(sup, lead('contacted')), false);
+  assert.equal(canDeleteLead(sup, lead('contacted')), false, 'ลบไม่ได้ปลดตามการแก้');
+
   // senior_ae — เฉพาะทีมตัวเอง (หรือยังไม่มีทีม) และลบไม่ได้
-  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'KA' }, lead('screened')), true);
-  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'ODM' }, lead('screened')), false);
+  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'KA' }, lead('contacted')), true);
+  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'ODM' }, lead('contacted')), false);
   assert.equal(canDeleteLead({ role: 'senior_ae', id: 'se1', team: 'KA' }, lead('screened')), false);
+
   // ae — เฉพาะใบที่ถูกมอบหรือกรอกเอง และลบไม่ได้
-  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae1' })), true);
-  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae2' })), false);
+  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('meeting', { assigneeId: 'ae1' })), true);
+  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('meeting', { assigneeId: 'ae2' })), false);
   assert.equal(canDeleteLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae1' })), false);
+});
+
+/* ⭐ AC = หลังบ้านของทีม SA — เดินงานให้ทีมได้ แต่ไม่ใช่เจ้าของข้อมูลใบไหน
+   (มติ 2026-08-08 · คู่กับการตัด AC ออกจาก LEAD_ASSIGNEE_ROLES) */
+test('AC แก้/ลบลีดไม่ได้เลย แม้เป็นลีดของทีมตัวเอง — แต่ยังเดินงานได้', () => {
+  const ac = { role: 'ac', id: 'ac1', team: 'KA' };
+  for (const status of ['new', 'screened', 'assigned', 'contacted', 'meeting', 'qualified']) {
+    const row = { status, team: 'KA', createdBy: 'ac1', assigneeId: 'ac1' };
+    assert.equal(canEditLead(ac, row), false, `AC ต้องแก้ ${status} ไม่ได้`);
+    assert.equal(canDeleteLead(ac, row), false, `AC ต้องลบ ${status} ไม่ได้`);
+  }
+  // แต่ยังเป็นกำลังของทีม — ติดต่อ/นัด/ปิด ทำได้ตามเดิม
+  assert.equal(canWorkLead(ac, { status: 'assigned', team: 'KA', assigneeId: 'ae9' }), true);
 });
 
 test('supervisor จบงานที่คัดกรอง: ขั้นทำงาน (ติดต่อ/นัด/สร้างดีล) เป็นของทีมเจ้าของงาน (มติ 2026-07-21)', () => {
@@ -186,4 +215,89 @@ test('POST /deals: ด่านลีดผูกกับ row.leadId ตัว�
     /leadId: body\.leadId/,
     'ห้ามอ่าน body.leadId ตรง ๆ ลงคอลัมน์อีก ต้องผ่าน sourceLeadIdOf',
   );
+});
+
+/* ── นัดหลายครั้งต่อลีด (มติ 2026-08-08) ────────────────────────────────────
+   เดิมนัดได้ครั้งเดียว: ถึงสถานะ `meeting` แล้วเหลือแค่เปิดดีล/ปิดลีด ⇒ เลื่อนนัดไม่ได้
+   ตอนนี้วนกลับตัวเองได้ และตีกลับได้ถึงขั้นนัดแล้ว (ทีมไม่ตรงบางทีเพิ่งโผล่ตอนคุยกันจริง) */
+test('สถานะ meeting: นัดเพิ่ม/เลื่อนนัดได้ · ตีกลับได้ · แต่ห้ามถอยกลับไป contacted', () => {
+  assert.ok(LEAD_TRANSITIONS.meeting.includes('meeting'), 'ต้องนัดเพิ่ม/เลื่อนนัดได้');
+  assert.ok(LEAD_TRANSITIONS.meeting.includes('bounce'), 'ตีกลับได้ถึงขั้นนัดแล้ว');
+  assert.ok(LEAD_TRANSITIONS.meeting.includes('create_deal'));
+  assert.ok(LEAD_TRANSITIONS.meeting.includes('disqualify'));
+  // `contact` พาสถานะกลับไป contacted = ลีดถอยหลังจากที่นัดแล้ว — คุยเพิ่มใช้เธรดกลาง
+  assert.ok(!LEAD_TRANSITIONS.meeting.includes('contact'),
+    'contact จาก meeting จะดึงสถานะถอย (TRANSITION_TO_STATUS.contact === "contacted")');
+  // วนกลับตัวเองต้องไม่ขยับสถานะ
+  assert.equal(TRANSITION_TO_STATUS.meeting, 'meeting');
+});
+
+test('นัดของรอบปัจจุบัน: ตัดที่ bounce ตัวแรก — นัดของเจ้าของคนเก่าต้องไม่ฟื้น', () => {
+  // เรียงใหม่ → เก่า เหมือนที่ route query มา
+  const events = [
+    { kind: 'meeting', eventAt: '2026-08-20T03:00:00+00:00' },
+    { kind: 'meeting', eventAt: '2026-08-18T03:00:00+00:00' },
+    { kind: 'bounce', eventAt: null },
+    { kind: 'meeting', eventAt: '2026-07-01T03:00:00+00:00' }, // รอบก่อน — ต้องไม่ติดมา
+  ];
+  assert.deepEqual(meetingTimesSinceBounce(events), [
+    '2026-08-20T03:00:00+00:00',
+    '2026-08-18T03:00:00+00:00',
+  ]);
+  assert.deepEqual(meetingTimesSinceBounce([{ kind: 'bounce' }, { kind: 'meeting', eventAt: 'x' }]), []);
+  assert.deepEqual(meetingTimesSinceBounce([]), []);
+});
+
+test('meetingAt = นัดถัดไปที่ยังไม่ถึง · ไม่เหลือในอนาคตจึงใช้นัดล่าสุดที่ผ่านมา', () => {
+  const now = '2026-08-10T00:00:00.000Z';
+  const past = '2026-08-05T07:00:00+00:00';
+  const soon = '2026-08-12T03:00:00.000Z';
+  const later = '2026-08-20T03:00:00+00:00';
+
+  // ⚠️ เคสที่ทำให้ต้องมีฟังก์ชันนี้: บันทึกนัดที่ผ่านมาแล้วย้อนหลัง ห้ามทับนัดจริงในอนาคต
+  assert.equal(pickNextMeetingAt([soon, past], now), soon);
+  assert.equal(pickNextMeetingAt([later, soon], now), soon, 'ต้องได้นัดที่ใกล้ที่สุด');
+  // ประชุมครบแล้ว — เหลือนัดล่าสุดที่ผ่านมา (funnel ยังนับว่า "มีนัด" ถูก)
+  assert.equal(pickNextMeetingAt([past, '2026-08-01T03:00:00.000Z'], now), past);
+  // ตรงเวลาพอดี = ยังนับว่ายังไม่ถึง
+  assert.equal(pickNextMeetingAt([past, now], now), now);
+  assert.equal(pickNextMeetingAt([], now), null);
+  assert.equal(pickNextMeetingAt(['ไม่ใช่วันที่'], now), null);
+  // 🐞 เรียงสตริงข้ามสองรูปแบบ (…Z กับ …+00:00) ให้ผลผิด — ต้องเทียบด้วยเวลาจริง
+  assert.equal(pickNextMeetingAt(['2026-08-12T03:00:00+00:00', '2026-08-11T03:00:00.000Z'], now),
+    '2026-08-11T03:00:00.000Z');
+});
+
+test('route ของ transition ต้องคำนวณ meetingAt ผ่านกติกากลาง ไม่ทับด้วยค่าที่กดล่าสุด', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/[id]/transition/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(routeSource, /patch\.meetingAt = await nextMeetingAt\(/);
+  assert.match(routeSource, /pickNextMeetingAt\(/);
+  assert.doesNotMatch(routeSource, /patch\.meetingAt = body\.eventAt \|\| now/,
+    'ทับตรง ๆ = นัดที่บันทึกย้อนหลังจะกลบนัดจริงในอนาคต');
+});
+
+/* ── ด่านมองเห็นต้องเท่ากันทั้งสามเส้นเขียน (ปิดรู 2026-08-08) ────────────────
+   🐞 GET มี `inLeadScope` แต่ PATCH ไม่มี ⇒ senior_ae ยิง URL ตรงเข้าไปแก้ลีดใน
+   คิวกลาง (`new` · team ว่าง) ได้ ทั้งที่หาใบนั้นไม่เจอในลิสต์ตัวเอง */
+test('inLeadScope: senior_ae/ac เห็นเฉพาะลีดที่คัดกรองเข้าทีมตัวเองแล้ว ไม่ใช่คิวกลาง', () => {
+  const senior = { role: 'senior_ae', id: 'se1', team: 'KA' };
+  assert.equal(inLeadScope(senior, { status: 'screened', team: 'KA' }), true);
+  assert.equal(inLeadScope(senior, { status: 'screened', team: 'ODM' }), false);
+  assert.equal(inLeadScope(senior, { status: 'new', team: null }), false, 'คิวกลางไม่ใช่ของหัวหน้าทีม');
+  // ตรงกันข้ามกับ canEditLead ที่ยังยอม `!lead.team` — ด่านมองเห็นคือตัวที่กันจริง
+  assert.equal(canEditLead(senior, { status: 'new', team: null }), true,
+    'นโยบายแก้ยังยอม — แต่ route ต้องไม่ปล่อยให้ไปถึง');
+});
+
+test('GET/PATCH/DELETE ของลีด ต้องผ่าน inLeadScope ทั้งสามเส้น', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/[id]/route.js', import.meta.url),
+    'utf8',
+  );
+  const guards = routeSource.match(/if \(!inLeadScope\(user, (?:lead|before)\)\) return forbidden\(\);/g) || [];
+  assert.equal(guards.length, 3,
+    'เส้นเขียนที่ไม่มีด่านมองเห็น = ยิง URL ตรงข้ามขอบเขตได้ (ต้นเหตุของรูที่ PATCH)');
 });
