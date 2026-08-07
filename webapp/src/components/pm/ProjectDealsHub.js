@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -538,12 +539,10 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
               จึงเป็นปุ่มหลัก) · "ผูกดีล" = ดึงใบที่มีอยู่แล้วเข้ามา/ย้ายข้ามโครงการ */}
           {canEdit && (
             <>
-              <button type="button" className="btn sm" onClick={() => setLinkOpen(true)}>
-                ผูกดีลที่มีอยู่
-              </button>
-              <button type="button" className="btn btn-primary sm" onClick={() => setCreateOpen(true)}>
-                <Plus size={13} aria-hidden="true" /> เพิ่มดีล
-              </button>
+              <Button size="sm" onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
+              <Button tone="primary" size="sm" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
+                เพิ่มดีล
+              </Button>
             </>
           )}
         </div>
@@ -603,8 +602,8 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
             <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>สร้างดีลใบใหม่ หรือผูกดีลของลูกค้ารายนี้ที่มีอยู่แล้ว เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
             {canEdit && (
               <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}><Plus size={14} /> เพิ่มดีล</button>
-                <button type="button" className="btn" onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</button>
+                <Button tone="primary" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>เพิ่มดีล</Button>
+                <Button onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
               </div>
             )}
           </div>
