@@ -1471,16 +1471,18 @@ COMMIT;</pre>
           คอลัมน์ "ที่มา" (ลิงก์ไปใบคำร้อง) + ตัวกรอง + ค้นด้วยเลขที่คำร้องได้ · §12</td>
         <td><code>app/database/scents/page.js</code><br><code>lib/master/scents.js</code></td>
         <td><span class="badge g">เสร็จ</span></td></tr>
-      <tr><td><b>5</b></td>
-        <td><b>วันเดียวทำสามหน้าที่</b> — <code>delivery.js:141</code> เขียนค่าเดียวลงทั้ง
-          <code>items.readyAt</code> และ <code>scents.sentAt</code> ⇒ ป้ายกับค่าไม่ตรงกัน ·
-          ต้องแยกเป็น <code>producedAt</code> · §14</td>
-        <td><code>lib/requests/delivery.js:141</code><br><code>mig 0224</code></td>
-        <td><span class="badge w">กลาง</span></td></tr>
-      <tr><td><b>6</b></td>
-        <td><b>ฟอร์มเพิ่มกลิ่นเก่าไม่มีช่องวันที่ผลิต / วันที่ส่ง / สถานะ</b> —
-          ต้องบันทึกแล้วกดปุ่มซ้ำอีกรอบ · <i>สิทธิ์คงเดิม เปิดให้ฝ่ายขายเสนอร่างได้</i> · §12</td>
-        <td><code>lib/master/scentFormulaAdmin.js:66</code></td><td><span class="badge w">กลาง</span></td></tr>
+      <tr style="opacity:.6"><td><b>5</b></td>
+        <td><s><b>วันเดียวทำสามหน้าที่</b></s> — <span class="badge g">แก้แล้ว 2026-08-08</span>
+          <code>mig 0224</code> เพิ่ม <code>scents.producedAt</code> · วันส่งลูกค้า mirror
+          ขึ้นทะเบียนตอน SA กดก้าว "ส่งให้ลูกค้า" · §14</td>
+        <td><code>mig 0224</code><br><code>lib/requests/delivery.js</code></td>
+        <td><span class="badge g">เสร็จ</span></td></tr>
+      <tr style="opacity:.6"><td><b>6</b></td>
+        <td><s><b>ฟอร์มเพิ่มกลิ่นเก่าไม่มีช่องวันที่ผลิต / วันที่ส่ง / สถานะ</b></s> —
+          <span class="badge g">แก้แล้ว 2026-08-08</span> ครบทั้งสามช่อง ·
+          <i>สิทธิ์คงเดิม เปิดให้ฝ่ายขายเสนอร่างได้</i> · §12</td>
+        <td><code>ScentForm.js</code><br><code>lib/master/scents.js</code></td>
+        <td><span class="badge g">เสร็จ</span></td></tr>
       <tr><td><b>7</b></td>
         <td><b>แผงควบคุมยังไม่ได้ใช้ 2 ชิ้น</b> — <code>DocumentReadinessList</code> ("ยังขาดอะไร")
           และ <code>RelatedDocumentCard</code> (SO · ดีล · QT · โครงการ กดต่อได้) · §13</td>
