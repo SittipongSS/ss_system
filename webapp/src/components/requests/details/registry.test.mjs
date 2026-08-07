@@ -56,3 +56,13 @@ test('🔴 เปลือกส่งก้อนของทุกหัวข
     assert.ok(PAGE.includes(prop), `เปลือกต้องส่ง ${prop}`);
   }
 });
+
+test('🔴 ปุ่มหลักอยู่ที่เดียวเสมอ — หัวใบ หรือ ท้ายเธรด ไม่ใช่ทั้งสองที่ (P6)', () => {
+  // ⚠️ หัวข้อที่ไม่มีแถว (สอบถามข้อมูล) ทั้งหน้าคือเธรด ⇒ ปุ่มย้ายไปท้ายเธรด
+  // แต่ต้อง **ย้าย ไม่ใช่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแล
+  // ให้ตรงกัน (โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้)
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(code, /const headerAction = threadStep \? null : primaryAction/);
+  assert.match(code, /primaryAction=\{headerAction\}/);
+  assert.match(code, /requestStep=\{threadStep\}/);
+});

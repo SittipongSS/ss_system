@@ -66,6 +66,17 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
+// ป้ายบอกว่า "ตอนนี้รออะไร" คู่กับปุ่มท้ายเธรดของหัวข้อที่ไม่มีแถว (P6)
+// ⚠️ ผูกกับ `primaryAction.id` ที่หน้านี้ประกอบเอง — เพิ่มก้าวใหม่แล้วลืมป้าย
+// จะได้คำว่า "รอดำเนินการ" กลาง ๆ ซึ่งไม่ผิด แต่ไม่ได้บอกอะไร
+const THREAD_STEP_HINT = {
+  submit: "ยังไม่ได้ส่ง — ส่งแล้วเลขที่จะออกและฝ่ายปลายทางจะเห็น",
+  acknowledge: "รอฝ่ายปลายทางรับเรื่อง",
+  approve: "รอหัวหน้าสายงานขายยืนยัน",
+  answer: "รับเรื่องแล้ว — ตอบในเธรดแล้วกดว่าตอบครบ",
+  close: "ตอบแล้ว — ผู้ขอกดปิดเมื่อพอใจกับคำตอบ",
+};
+
 // ⚠️ เดิมมี `isFlowRow` แยก **แถววัสดุ** (ตอบราคาจบในที่) ออกจากแถวที่เดินราง
 // ห้าก้าว · บรรทัดวัสดุถูกถอดใน mig 0219 (ม-28) ⇒ ทุกแถวที่เหลือเดินรางทั้งหมด
 // ไม่มีสาขาที่สองอีกแล้ว
@@ -450,6 +461,17 @@ export default function RequestDetailPage() {
           }
           : null;
 
+  // ⭐ **หัวข้อที่ไม่มีแถวเอาปุ่มหลักไปไว้ท้ายเธรด** (P6) — ทั้งหน้าคือเธรด ปุ่มอยู่
+  // บนหัวใบอย่างเดียวแปลว่าอ่านจนจบแล้วต้องเงยหน้ากลับขึ้นไปหา ⇒ ขัดกับ ม-49
+  //
+  // ⚠️ **ที่เดียวเสมอ ไม่โชว์สองที่** — `primaryAction` ตัวเดียวกัน ย้ายที่วาง ไม่ใช่
+  // ก๊อป · โชว์ทั้งหัวใบและท้ายเธรดเมื่อไร ก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
+  // ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
+  const threadStep = !hasItems && primaryAction
+    ? { ...primaryAction, hint: THREAD_STEP_HINT[primaryAction.id] || "รอดำเนินการ" }
+    : null;
+  const headerAction = threadStep ? null : primaryAction;
+
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
@@ -498,7 +520,7 @@ export default function RequestDetailPage() {
               statusColor={STATUS_TONE[req.status]}
               statusDescription="การดำเนินการระดับคำร้อง"
               workflowSteps={workflowSteps}
-              primaryAction={primaryAction}
+              primaryAction={headerAction}
               secondaryActions={[
                 {
                   // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
@@ -676,6 +698,7 @@ export default function RequestDetailPage() {
           busy={saving}
           onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
           onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
+          requestStep={threadStep}
         />
       </DetailCard>
         </div>

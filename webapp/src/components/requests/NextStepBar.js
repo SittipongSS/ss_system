@@ -44,11 +44,35 @@ const WAITING_TEXT = { dept: "รอฝ่ายปลายทาง", requeste
 export default function NextStepBar({
   rows = [], canDept = false, canRequester = false, busy = false,
   onHop, onPrice,
+  // ⭐ **ก้าวของ "ใบ" สำหรับหัวข้อที่ไม่มีแถว** (P6 · สอบถามข้อมูล) — หัวข้อพวกนี้
+  // ทั้งหน้าคือเธรด · ปุ่มอยู่บนหัวใบอย่างเดียวแปลว่าคนอ่านเธรดจนจบแล้วต้องเงยหน้า
+  // กลับขึ้นไปหาปุ่ม ⇒ ขัดกับ ม-49 ที่ให้เธรดเป็นแกน
+  //
+  // ⚠️ **รับ object เดียวกับที่หัวใบใช้** ไม่ประกอบเอง — สองที่ประกอบเองเมื่อไรก็
+  // เพี้ยนกันเมื่อนั้น · หน้าแม่เป็นคนตัดสินว่าจะโชว์ที่ไหน (ดู `primaryAction`)
+  requestStep = null,
 }) {
   const pending = rows
     .map((row) => ({ row, stage: rowStage(row) }))
     .map(({ row, stage }) => ({ row, stage, hop: HOP_AT_STAGE[stage] }))
     .filter((r) => r.hop);
+
+  // ใบที่ไม่มีแถว (สอบถามข้อมูล) — ก้าวถัดไปเป็นของทั้งใบ ไม่ใช่ของแถวไหน
+  if (!pending.length && requestStep) {
+    return (
+      <div className={styles.bar}>
+        <div className="toolbar-label">ก้าวถัดไป</div>
+        <div className={styles.row}>
+          <div className={styles.label}><strong>{requestStep.hint}</strong></div>
+          <div className={styles.actions}>
+            <Button tone="primary" disabled={busy} onClick={requestStep.onClick}>
+              {requestStep.label}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!pending.length) return null;
 
