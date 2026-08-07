@@ -208,9 +208,12 @@ test('ปิดเรื่อง: ใบที่มีแถวต้องจ
 });
 
 test('รับเรื่องได้ครั้งเดียว และต้องส่งก่อน', () => {
-  assert.match(acknowledgeRequestError(req({ status: 'draft' })), /ยังไม่ถูกส่ง/);
-  assert.equal(acknowledgeRequestError(req({ status: 'pending' })), null);
-  assert.match(acknowledgeRequestError(req({ status: 'acknowledged' })), /รับเรื่องไปแล้ว/);
+  // ⚠️ ใบตัวอย่างกลางเป็น `formula_dev` ซึ่งบังคับวันกำหนดส่ง (Q39) ⇒ ส่งวันมาด้วย
+  // ไม่งั้นเทสต์นี้จะวัดด่านวันที่แทนที่จะวัดด่านสถานะ
+  const due = { committedDueDate: '2569-08-20' };
+  assert.match(acknowledgeRequestError(req({ status: 'draft' }), due), /ยังไม่ถูกส่ง/);
+  assert.equal(acknowledgeRequestError(req({ status: 'pending' }), due), null);
+  assert.match(acknowledgeRequestError(req({ status: 'acknowledged' }), due), /รับเรื่องไปแล้ว/);
 });
 
 test('ตอบได้เฉพาะคำร้องที่ยังเดินอยู่', () => {
@@ -516,7 +519,7 @@ test('requestStepLabel อ่านชื่อขั้นจากแม่แ
   assert.equal(requestStepLabel('ไม่มีหัวข้อนี้'), null);
 });
 
-test('⭐ พัฒนากลิ่นบังคับใส่วันกำหนดส่งตอนรับเรื่อง — รายชนิด ไม่ใช่ทั้งระบบ', () => {
+test('⭐ สายที่มีของให้ส่งบังคับใส่วันกำหนดส่งตอนรับเรื่อง — รายชนิด ไม่ใช่ทั้งระบบ', () => {
   // มติผู้ใช้ 2026-08-06 · รับเรื่องโดยไม่ผูกวัน = รับปากว่า "จะทำ" โดยไม่บอกว่าเมื่อไร
   // และเป็นวันที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า
   const scent = { kind: 'scent_dev', status: 'pending' };
@@ -526,7 +529,12 @@ test('⭐ พัฒนากลิ่นบังคับใส่วันก�
 
   // ⚠️ หัวข้อที่มีผู้ใช้จริงอยู่แล้ว (ขอราคา/สอบถาม) ต้องไม่ถูกบังคับ — บังคับทั้งระบบ
   // จะเปลี่ยนขั้นตอนของคนที่ใช้อยู่โดยไม่ได้ตกลงกัน
-  for (const kind of ['info', 'document', 'formula_dev', 'material_eta']) {
+  // ⭐ พัฒนาสูตรบังคับด้วย (Q39 · 2026-08-07) — เหตุผลคือแถบ "เลยกำหนด" บนภาพรวม
+  // นับจาก `committedDueDate` เท่านั้น ⇒ ใบที่ไม่มีวันไม่มีทางขึ้นเป็นงานช้า
+  assert.match(acknowledgeRequestError({ kind: 'formula_dev', status: 'pending' }), /วันกำหนดส่ง/);
+  // ⚠️ หัวข้อที่จบในเธรด (สอบถาม/ขอเอกสาร/ติดตามของเข้า) ไม่ถูกบังคับ — ไม่มีของ
+  // ให้ส่ง จึงไม่มีวันส่งให้รับปาก
+  for (const kind of ['info', 'document', 'material_eta']) {
     assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
   }
 });

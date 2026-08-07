@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ แบบหน้าจอ "พัฒนากลิ่น" (scent_dev) — ต้นฉบับที่โค้ดต้องเทียบ
+     ยกมาจาก เขียนใหม่สำหรับ P4 เมื่อ 2026-08-07 (ม-36: ทำแบบตอนใกล้ลงมือ ทีละหัวข้อ)
+     ⚠️ แบบอยู่ในรีโปโดยเจตนา — รอบก่อนแบบอยู่ในแชทแล้วหายไปกับ context
+        ⇒ ไม่มีใครเทียบได้ว่า "ตามแบบ" แปลว่าอะไร ห้ามย้ายกลับไปอยู่ในแชท -->
+<title>พัฒนาสูตร — โครงหน้าจอ SA × RD</title>
+<style>
+  :root {
+    --ground: #F7F4EE;
+    --card: #FFFFFF;
+    --card-2: #F2EDE4;
+    --card-3: #E8E1D5;
+    --line: #DCD3C4;
+    --line-strong: #C3B8A4;
+    --ink: #23201C;
+    --ink-2: #5C554B;
+    --ink-3: #8A8074;
+    --accent: #B85A34;
+    --accent-soft: #F3E2D9;
+    --navy: #24344E;
+    --navy-soft: #DDE3EC;
+    --ok: #3F7A54;
+    --ok-soft: #DDEBE1;
+    --warn: #9A6B18;
+    --warn-soft: #F5E9CF;
+    --stop: #A33F35;
+    --stop-soft: #F4DFDC;
+    --r: 10px;
+    --shadow: 0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #17181B; --card: #202226; --card-2: #26282D; --card-3: #2E3036;
+      --line: #34373D; --line-strong: #4A4E56;
+      --ink: #EDE9E2; --ink-2: #B3ADA3; --ink-3: #857F76;
+      --accent: #DD8560; --accent-soft: #3A2A22;
+      --navy: #A8BBD8; --navy-soft: #232C3A;
+      --ok: #7DBB92; --ok-soft: #1F2E24;
+      --warn: #D4A64A; --warn-soft: #322A18;
+      --stop: #DF8B80; --stop-soft: #382320;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #17181B; --card: #202226; --card-2: #26282D; --card-3: #2E3036;
+    --line: #34373D; --line-strong: #4A4E56;
+    --ink: #EDE9E2; --ink-2: #B3ADA3; --ink-3: #857F76;
+    --accent: #DD8560; --accent-soft: #3A2A22;
+    --navy: #A8BBD8; --navy-soft: #232C3A;
+    --ok: #7DBB92; --ok-soft: #1F2E24;
+    --warn: #D4A64A; --warn-soft: #322A18;
+    --stop: #DF8B80; --stop-soft: #382320;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F4EE; --card: #FFFFFF; --card-2: #F2EDE4; --card-3: #E8E1D5;
+    --line: #DCD3C4; --line-strong: #C3B8A4;
+    --ink: #23201C; --ink-2: #5C554B; --ink-3: #8A8074;
+    --accent: #B85A34; --accent-soft: #F3E2D9;
+    --navy: #24344E; --navy-soft: #DDE3EC;
+    --ok: #3F7A54; --ok-soft: #DDEBE1;
+    --warn: #9A6B18; --warn-soft: #F5E9CF;
+    --stop: #A33F35; --stop-soft: #F4DFDC;
+    --shadow: 0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans Thai", "Noto Sans Thai", "Sarabun", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px;
+  }
+  h1 { font-size: clamp(28px, 4.5vw, 40px); line-height: 1.2; margin: 0 0 12px; text-wrap: balance; letter-spacing: -.01em; }
+  .lede { color: var(--ink-2); max-width: 62ch; margin: 0 0 8px; }
+
+  h2 {
+    font-size: 21px; margin: 56px 0 6px; padding-top: 22px;
+    border-top: 1px solid var(--line); text-wrap: balance;
+  }
+  h2 .num {
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+    color: var(--accent); margin-right: 10px;
+  }
+  h2 + .lede { margin-bottom: 22px; }
+
+  /* ── ป้ายฝั่ง ─────────────────────────────────────────── */
+  .who {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .who.sa { background: var(--navy-soft); color: var(--navy); border-color: color-mix(in srgb, var(--navy) 25%, transparent); }
+  .who.rd { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .who.cust { background: var(--card-3); color: var(--ink-2); border-color: var(--line-strong); }
+
+  /* ── การ์ดหน้าจอ ──────────────────────────────────────── */
+  .screens { display: grid; gap: 18px; }
+  @media (min-width: 900px) { .screens.two { grid-template-columns: 1fr 1fr; } }
+
+  .screen {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .screen > header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 11px 16px; background: var(--card-2); border-bottom: 1px solid var(--line);
+  }
+  .screen > header .path {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink-3);
+  }
+  .screen .body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+  .box {
+    border: 1px solid var(--line-strong); border-radius: var(--r);
+    padding: 9px 11px; background: var(--card); color: var(--ink); font-size: 14px;
+    min-height: 20px;
+  }
+  .box.ph { color: var(--ink-3); }
+  .box.derived { border-style: dashed; background: transparent; color: var(--ink-3); }
+  .box.area { min-height: 62px; }
+  .row2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
+
+  .seg { display: flex; gap: 8px; flex-wrap: wrap; }
+  .seg > span {
+    flex: 1 1 8rem; border: 1px solid var(--line-strong); border-radius: var(--r);
+    padding: 7px 11px; font-size: 13px; color: var(--ink-2); background: var(--card-2);
+  }
+  .seg > span.on { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+  .seg > span.off { opacity: .45; }
+
+  .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 4px; }
+  .btn { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 7px 14px; font-size: 13.5px; color: var(--ink-2); background: var(--card); }
+  /* ตัวอักษรบนปุ่มทึบยึดกับพื้นหน้ากระดาษ ไม่ใช่ขาวตายตัว — โหมดมืดพื้นปุ่มสว่างขึ้น */
+  .btn.fill { background: var(--accent); border-color: var(--accent); color: var(--ground); font-weight: 600; }
+  .btn.navy { background: var(--navy); border-color: var(--navy); color: var(--ground); font-weight: 600; }
+  .btn.quiet { background: transparent; border-color: transparent; }
+  .btn.stop { color: var(--stop); border-color: color-mix(in srgb, var(--stop) 45%, transparent); }
+
+  .note {
+    font-size: 12.5px; color: var(--ink-2); background: var(--card-2);
+    border-left: 3px solid var(--accent); border-radius: 0 var(--r) var(--r) 0;
+    padding: 9px 12px;
+  }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); color: var(--ink); }
+  .note.todo { border-left-color: var(--stop); background: var(--stop-soft); color: var(--ink); }
+
+  /* ── รางแนวตั้ง ───────────────────────────────────────── */
+  .rail { list-style: none; margin: 0; padding: 0; }
+  .rail li {
+    display: grid; grid-template-columns: 18px 1fr; gap: 12px;
+    padding-bottom: 14px; position: relative;
+  }
+  .rail li:not(:last-child)::before {
+    content: ""; position: absolute; left: 8px; top: 20px; bottom: 0;
+    width: 1px; background: var(--line-strong);
+  }
+  .dot { width: 17px; height: 17px; border-radius: 999px; border: 2px solid var(--line-strong); background: var(--card); margin-top: 2px; }
+  .dot.done { background: var(--ok); border-color: var(--ok); }
+  .dot.now { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .rail .t { font-weight: 600; font-size: 14px; }
+  .rail .m { font-size: 12.5px; color: var(--ink-3); }
+  .rail .act { margin-top: 6px; }
+  .waiting { font-size: 12.5px; color: var(--ink-3); font-style: italic; }
+
+  /* ── ตาราง ────────────────────────────────────────────── */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th, .tbl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl th { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .tbl td { font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+
+  .pill { display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .pill.wait { background: var(--card-3); color: var(--ink-2); }
+  .pill.go { background: var(--ok-soft); color: var(--ok); }
+  .pill.hold { background: var(--warn-soft); color: var(--warn); }
+  .pill.no { background: var(--stop-soft); color: var(--stop); }
+
+  .callout {
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--navy);
+    border-radius: var(--r); padding: 14px 16px; margin: 18px 0;
+  }
+  .callout h3 { margin: 0 0 6px; font-size: 15px; }
+  .callout p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .callout.open { border-left-color: var(--stop); }
+
+  ul.plain { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; }
+  ul.plain li { margin-bottom: 4px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .88em; background: var(--card-3); padding: 1px 5px; border-radius: 4px; }
+  strong { color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">พัฒนาสูตร · formula_dev</p>
+  <h1>ขอตัวอย่างจากกลิ่นที่มีอยู่แล้ว</h1>
+  <p class="lede">
+    ต่างจากพัฒนากลิ่นตรงที่ <strong>ผู้ขอรู้อยู่แล้วว่าอยากได้อะไร</strong> — หมวดสินค้าไหน กลิ่นไหน
+    ⇒ ตารางบรรทัดมีตั้งแต่ตอนเปิดใบ · RD ไม่ต้องเดาว่าจะได้กี่ตัว
+  </p>
+  <p class="lede">
+    กติกา: <strong>1 แถว = หมวดสินค้า × กลิ่น = สูตร 1 ตัวในทะเบียน</strong> ·
+    สถานะอยู่ที่แถว · เธรดเป็นแกนของหน้า สถานะรวมอยู่ในเธรด (ม-49)
+  </p>
+
+  <div class="callout">
+    <h3>ต่างจากพัฒนากลิ่นตรงไหน</h3>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th></th><th>พัฒนากลิ่น</th><th>พัฒนาสูตร</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ต้องมีใบสั่งขาย</strong></td><td>ต้อง <code>approved</code></td><td><strong>ไม่ต้อง</strong> — โครงการ + ดีล พอ</td></tr>
+          <tr><td><strong>แบบฟอร์ม PDR</strong></td><td>มี (FM-RD-01)</td><td><strong>ไม่มี</strong> — บรีฟรายแถว</td></tr>
+          <tr><td><strong>ประตูหัวหน้า</strong></td><td>AE Sup ยืนยันก่อน RD ลงมือ</td><td><strong>ไม่มี</strong></td></tr>
+          <tr><td><strong>แถวเกิดตอนไหน</strong></td><td>RD สร้างตอนส่ง</td><td><strong>SA สร้างตอนเปิด</strong></td></tr>
+          <tr><td><strong>ปลายทาง</strong></td><td>ทะเบียนกลิ่น</td><td><strong>ทะเบียนสูตร</strong></td></tr>
+          <tr><td><strong>กระทบยอด SO</strong></td><td>มี</td><td>ไม่มี (ไม่มี SO ให้เทียบ)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:10px">
+      <strong>ม-40</strong> — บังคับ SO ที่อนุมัติแล้วจะทำให้เปิดใบไม่ได้เลยในเคสที่พบบ่อยที่สุด
+      (ลูกค้ายังไม่ซื้อ อยากลองของก่อน)
+    </p>
+  </div>
+
+  <h2><span class="num">01</span>SA เปิดคำร้อง <span class="who sa">ฝ่ายขาย</span></h2>
+  <div class="screens">
+    <div class="screen">
+      <header><strong>เปิดคำร้อง</strong><span class="path">/requests/new</span></header>
+      <div class="body">
+        <div class="field"><label>ส่งถึงฝ่ายไหน</label>
+          <div class="seg"><span class="on">RD วิจัยและพัฒนา</span><span>PC จัดซื้อ</span><span>FN บัญชี</span></div></div>
+        <div class="field"><label>ขอเรื่องอะไร</label><div class="box">พัฒนาสูตร</div></div>
+        <div class="row2">
+          <div class="field"><label>โครงการ *</label><div class="box">PRJ-2608 — เทียนหอมชุดปีใหม่</div></div>
+          <div class="field"><label>ดีล *</label><div class="box">D-26080012</div></div>
+          <div class="field"><label>ลูกค้า</label><div class="box derived">เติมจากดีล</div></div>
+          <div class="field"><label>วันที่คาดหวัง</label><div class="box ph">วว/ดด/ปปปป</div></div>
+        </div>
+        <div class="field"><label>ชื่อเรื่อง *</label><div class="box ph">เช่น ขอตัวอย่างเทียนหอม 3 กลิ่น</div></div>
+        <div class="field"><label>บรีฟผลิตภัณฑ์</label><div class="box area ph">รูปแบบที่ต้องการ · ขนาด/ปริมาณ · ข้อจำกัดของเนื้อสาร</div></div>
+
+        <div class="field"><label>รายการที่ขอ — 1 บรรทัด = หมวดสินค้า × กลิ่น</label></div>
+        <div class="scroll">
+          <table class="tbl">
+            <thead><tr><th>หมวดสินค้า *</th><th>กลิ่น *</th><th>รายละเอียด</th><th>จำนวน</th><th>หน่วย</th></tr></thead>
+            <tbody>
+              <tr><td>เทียนหอม · 01-002</td><td>SC-2611 Amber Woods</td><td>ขนาด 200 ก.</td><td>3</td><td>ชิ้น</td></tr>
+              <tr><td>ก้านไม้หอม · 01-005</td><td>SC-2611 Amber Woods</td><td>ขวด 100 ml</td><td>2</td><td>ชิ้น</td></tr>
+              <tr><td class="ph">+ เพิ่มรายการ</td><td></td><td></td><td></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note"><strong>หมวด × กลิ่น ซ้ำในใบเดียวไม่ได้</strong> — มันคือตัวตนของสูตรที่จะเกิด
+          (<code>formulas_identity_uk</code>) ⇒ ซ้ำแล้ว RD สร้างได้ตัวเดียว แถวที่สองค้างตลอดกาล</div>
+        <div class="note"><strong>กลิ่นข้ามลูกค้าไม่ได้</strong> — ใบผูกดีลของลูกค้ารายหนึ่ง จะขอกลิ่นของอีกรายไม่ได้ (ตรวจที่ server)</div>
+        <div class="note">จำนวนไม่บังคับ — ตอนขอตัวอย่างยังไม่รู้ยอดจริง ยอดที่นับคือตอนลูกค้าคอนเฟิร์ม</div>
+        <div class="btns"><span class="btn quiet">ยกเลิก</span><span class="btn fill">บันทึกร่าง</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">02</span>RD รับเรื่อง หรือ ตีกลับ <span class="who rd">วิจัยและพัฒนา</span></h2>
+  <p class="lede">เหมือนพัฒนากลิ่นทุกอย่าง <strong>ยกเว้นไม่มีประตูหัวหน้า</strong> — รับเรื่องแล้วลงมือได้เลย</p>
+  <div class="screens two">
+    <div class="screen">
+      <header><strong>คิวของ RD</strong><span class="path">/rd/requests</span></header>
+      <div class="body">
+        <div class="scroll"><table class="tbl">
+          <thead><tr><th>เลขที่</th><th>ชนิด</th><th>ก้าวถัดไป</th></tr></thead>
+          <tbody>
+            <tr><td>FD-26080003</td><td>พัฒนาสูตร</td><td><span class="pill go">ตาคุณ · รับเรื่อง</span></td></tr>
+            <tr><td>SB-26080002</td><td>พัฒนากลิ่น</td><td><span class="pill hold">เลยกำหนด 2 วัน</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="note">คิวเดียวกันทุกหัวข้อของฝ่าย — ชนิดสื่อด้วยป้าย ไม่ใช่สี</div>
+      </div>
+    </div>
+    <div class="screen">
+      <header><strong>รับเรื่อง</strong><span class="path">FD-26080003</span></header>
+      <div class="body">
+        <div class="field"><label>วันกำหนดส่ง</label><div class="box ph">วว/ดด/ปปปป</div></div>
+        <div class="note"><strong>ไม่บังคับ</strong> ต่างจากพัฒนากลิ่น — สายนี้สั้นกว่าและไม่มีคนรอปลายทางเป็นทอด</div>
+        <div class="btns"><span class="btn stop">ตีกลับ — ข้อมูลไม่ครบ</span><span class="btn fill">รับเรื่อง</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">03</span>RD ส่งสูตร — เข้าทะเบียนทันที <span class="who rd">วิจัยและพัฒนา</span></h2>
+  <p class="lede">
+    ส่ง <strong>รายแถว</strong> ไม่ใช่ทั้งใบ — แถวเทียนหอมเสร็จก่อนก้านไม้หอมได้ · กรอกทะเบียนในคำร้องเลย
+    ไม่ต้องเปิดหน้าทะเบียนอีกจอ
+  </p>
+  <div class="screens">
+    <div class="screen">
+      <header><strong>ส่งสูตร</strong><span class="path">แถว: เทียนหอม × SC-2611 · เข้าทะเบียนสูตรทันทีที่บันทึก</span></header>
+      <div class="body">
+        <div class="row2">
+          <div class="field"><label>วันที่ส่ง *</label><div class="box">18/08/2569</div></div>
+          <div class="field"><label>รหัสสูตร *</label><div class="box">PF638010202-P1</div></div>
+          <div class="field"><label>ชื่อสูตร *</label><div class="box">Amber Woods — เทียนหอม</div></div>
+          <div class="field"><label>วันที่ของสูตร</label><div class="box">18/08/2569</div></div>
+        </div>
+        <div class="field"><label>ข้อความถึงฝ่ายขาย</label><div class="box area ph">จุดที่อยากให้ลูกค้าลอง · ข้อควรระวังตอนทดสอบ</div></div>
+        <div class="note warn"><strong>รหัสซ้ำเตือนที่ช่องตอนพิมพ์</strong> ไม่ใช่ตอนกดส่ง — เทียบกับทั้งทะเบียน</div>
+        <div class="note"><strong>หมวดกับกลิ่นไม่ถามซ้ำ</strong> — อยู่บนแถวแล้วและเป็นตัวตนของสูตรพอดี</div>
+        <div class="btns"><span class="btn quiet">ยกเลิก</span><span class="btn fill">บันทึกการส่ง</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">04</span>SA รับของ → ส่งลูกค้า → ลูกค้าตอบ <span class="who sa">ฝ่ายขาย</span></h2>
+  <p class="lede">รางห้าก้าวชุดเดียวกับพัฒนากลิ่น · ปุ่มอยู่ท้ายเธรด (ม-49) — ไม่มีอะไรต่างเลย</p>
+  <div class="screens">
+    <div class="screen">
+      <header><strong>ท้ายเธรด</strong><span class="path">/requests/FD-26080003</span></header>
+      <div class="body">
+        <div class="field"><label>ก้าวถัดไป</label>
+          <div class="box">เทียนหอม × SC-2611 · <em>เสร็จแล้ว รอไปรับ</em> → <span class="btn navy">รับของ</span></div>
+          <div class="box">ก้านไม้หอม × SC-2611 · <em>กำลังทำ</em> → <span class="waiting">รอฝ่ายปลายทาง</span></div>
+        </div>
+        <div class="note"><strong>ลูกค้าขอให้แก้ = แถวใหม่ใต้หมวด×กลิ่นเดิม</strong> ⇒ ได้สูตรตัวใหม่ที่ชี้กลับตัวเดิม (<code>derivedFromFormulaId</code>)</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">05</span>🔴 ขั้นราคา — ช่องว่างที่ต้องตัดสินก่อนเขียนโค้ด</h2>
+  <div class="callout open">
+    <h3>แถวของพัฒนาสูตรใส่ราคาไม่ได้เลยในวันนี้</h3>
+    <p>
+      ขั้น "ใส่ราคา" ที่สร้างไว้สำหรับพัฒนากลิ่น บังคับว่าแถวต้องมี <code>producedScentId</code>
+      แล้วสร้างวัสดุชนิด <code>RM_F</code> (หัวน้ำหอม) จากชื่อกลิ่น · แถวของพัฒนาสูตรผูก
+      <code>producedFormulaId</code> ⇒ กดแล้วได้ <em>"รายการนี้ยังไม่ผูกกลิ่นในทะเบียน — ใส่ราคาไม่ได้"</em>
+      ตลอดกาล ⇒ <strong>ลูกค้าคอนเฟิร์มแล้วใบค้างถาวร ปิดไม่ได้</strong>
+    </p>
+    <ul class="plain">
+      <li>ยังไม่มีใครเจอเพราะ <strong>ยังไม่มีใครเดินสายนี้จริงสักรอบ</strong></li>
+      <li><code>material_prices.formulaId</code> มีอยู่แล้ว (mig 0171) — ที่ขาดคือกฎว่าราคานี้คือราคาอะไร</li>
+    </ul>
+  </div>
+
+  <h2><span class="num">06</span>ที่ยังต้องตัดสิน</h2>
+  <ul class="plain">
+    <li><strong>ราคาของพัฒนาสูตรคือราคาอะไร</strong> — เนื้อสาร (FB) ต่อกิโล? หรือราคาต่อชิ้นของผลิตภัณฑ์ที่จะขึ้น?</li>
+    <li><strong>สายนี้มีขั้นราคาไหม</strong> — หรือจบที่ลูกค้าคอนเฟิร์มแล้วไปต่อที่ใบเสนอราคา</li>
+    <li><strong>วันกำหนดส่งบังคับตอนรับเรื่องไหม</strong> — พัฒนากลิ่นบังคับ (ม-ม 2026-08-06) สายนี้ยังไม่ได้ตัดสิน</li>
+  </ul>
+</div>

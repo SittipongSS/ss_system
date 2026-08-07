@@ -45,6 +45,7 @@
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
 | [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · **ม-25…ม-46 รอบรื้อที่สอง (2026-08-07)** |
 | [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น"** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
+| [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร"** — P4 (ม-36) |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
 | [system-modernization/ux-ui-rulebook.md](system-modernization/ux-ui-rulebook.md) · [document-design-system.md](system-modernization/document-design-system.md) | มาตรฐานเอกสาร A4/PDF |
 

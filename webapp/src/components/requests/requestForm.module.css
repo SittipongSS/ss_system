@@ -325,3 +325,7 @@
 }
 .scentotypeNote label { min-width: 8rem; font-size: var(--fs-5); color: var(--text-2); }
 .scentotypeNote > :last-child { flex: 1; }
+
+/* ช่องที่ไม่ได้กรอกบนจอสรุป PDR — ต้องอ่านออกว่า "ถามแล้วไม่มีคำตอบ" ไม่ใช่ช่องว่าง
+   ⚠️ ต้องตรงกับกระดาษ (pdrDocument.js พิมพ์ N/A ที่ช่องเดียวกัน) */
+.naValue { color: var(--text-3); font-style: italic; }

@@ -24,7 +24,14 @@ const PAPER_STATUS = [
 ];
 
 const LINE = '<span class="fill"></span>';
-const cell = (v) => (v == null || String(v).trim() === '' ? LINE : esc(v));
+
+// ⭐ **ช่องที่ไม่ได้กรอก พิมพ์ว่า N/A** (มติผู้ใช้ 2026-08-07) — เดิมพิมพ์เป็นเส้นให้
+// เขียนมือ ซึ่งอ่านกำกวม: เส้นว่างแปลว่า "ยังไม่กรอก" หรือ "ไม่เกี่ยวกับใบนี้" ก็ได้
+// · N/A บอกชัดว่า **ระบบถามแล้วแต่ไม่มีคำตอบ** ⇒ RD อ่านแล้วรู้ทันทีว่าต้องไปถามต่อ
+// ⚠️ **ยกเว้นช่องลายเซ็นกับวันที่** — สองช่องนั้นเว้นไว้ให้เซ็นมือบนกระดาษเสมอ
+// พิมพ์ N/A ทับเมื่อไรก็เซ็นไม่ได้ (ยังใช้ `LINE` อยู่ ดูตารางลายเซ็นข้างล่าง)
+const NA = '<span class="na">N/A</span>';
+const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 
 const rows = (pairs) => pairs
   .map(([label, value]) => `<tr><th>${esc(label)}</th><td>${cell(value)}</td></tr>`)
@@ -138,6 +145,7 @@ export function renderPdrDocument({ request = {}, briefs = [], company = {}, for
     pages: [`${header}${body}`],
     toolbar: { label: 'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)', button: 'พิมพ์เอกสาร' },
     extraCss: `
+      .na { color: #999; font-style: italic; }
       .sec { font-size: 12pt; margin: 10pt 0 4pt; }
       .blk { margin-bottom: 8pt; break-inside: avoid; }
       .blk h3 { font-size: 10.5pt; margin: 0 0 3pt; }
