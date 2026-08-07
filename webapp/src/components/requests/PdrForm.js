@@ -439,6 +439,25 @@ export default function PdrForm({
           />
         </div>
       </Section>
+
+      {/* ── ผู้เซ็นบนเอกสาร (ม-45 · mig 0221) ─────────────────────────────
+          ⭐ **ชื่อบนกระดาษ ไม่ใช่ role ในระบบ** — ระบบยังไม่มีตำแหน่ง Perfumer /
+          PD Chemist / Project Coordinator · กรอกชื่อไว้เพื่อให้พิมพ์ลงตารางลายเซ็น
+          แทนที่จะเป็นเส้นว่างทุกใบ
+          ⚠️ ช่องวนจากทะเบียนโดยตั้งใจ — ป้ายตำแหน่งต้องตรงกับที่กระดาษพิมพ์เป๊ะ
+          ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
+      <Section title={SECTION.signers.title} note={SECTION.signers.note}>
+        {SECTION.signers.fields.map((f) => (
+          <div className="form-group" key={f.key}>
+            <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
+            <Input
+              id={`pdr-${f.key}`} value={value[f.key] || ""} disabled={disabled}
+              placeholder="ชื่อผู้เซ็น (เว้นว่างได้)"
+              onChange={(e) => set({ [f.key]: e.target.value })}
+            />
+          </div>
+        ))}
+      </Section>
     </div>
   );
 }

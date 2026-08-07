@@ -217,6 +217,26 @@ export const PDR_SECTIONS = [
       },
     ],
   },
+  {
+    // ── ผู้เซ็นบนเอกสาร (ม-45 · mig 0221) ────────────────────────────────
+    //
+    // ⭐ **ชื่อบนกระดาษ ไม่ใช่ role ในระบบ** (มติผู้ใช้: "ตำแหน่งบนเอกสารก่อน
+    // ยังไม่ต้องเป็น role จริง") — ตารางลายเซ็นของ FM-RD-01 มี 7 แถว ระบบรู้จริง
+    // แค่ AE (คนเปิดใบ) กับ AE Supervisor (ประตูหัวหน้า) อีก 5 แถวพิมพ์เป็นเส้นว่าง
+    //
+    // ⚠️ **ไม่มีช่องไหนบังคับ และไม่บล็อกการปิดเรื่อง** — ใครยังไม่เซ็นก็เว้นไว้
+    // แล้วเซ็นมือบนกระดาษได้เหมือนเดิม
+    key: 'signers',
+    title: 'ผู้เซ็นบนเอกสาร',
+    note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
+    fields: [
+      { key: 'signSalesManager', column: 'pdrSignSalesManager', label: 'Sale & Marketing Manager', type: 'text' },
+      { key: 'signPerfumer', column: 'pdrSignPerfumer', label: 'Perfumer', type: 'text' },
+      { key: 'signChemist', column: 'pdrSignChemist', label: 'Product Development Chemist', type: 'text' },
+      { key: 'signCoordinator', column: 'pdrSignCoordinator', label: 'Project Coordinator', type: 'text' },
+      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', label: 'Final Approval (RD Supervisor)', type: 'text' },
+    ],
+  },
 ];
 
 // ทุกช่องที่มีคอลัมน์จริง — ใช้ตรวจว่าไม่มีคอลัมน์ไหนหลุดจากจอ

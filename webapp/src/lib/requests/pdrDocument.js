@@ -48,19 +48,19 @@ function briefBlock(brief, index, total) {
   </section>`;
 }
 
-// ตารางลายเซ็น 7 แถว — ชื่อ/วันที่เติมจากคนที่เซ็นในระบบแล้ว ที่เหลือเว้นให้เซ็นมือ
+// ตารางลายเซ็น 7 แถว — ชื่อเติมจากที่ระบบรู้ ที่เหลือกรอกในฟอร์ม PDR (mig 0221)
 //
-// ⚠️ ผูกกับ **ตำแหน่ง ไม่ใช่ชื่อคน** — สามชื่อที่พิมพ์ไว้ในกระดาษเดิมจะค้างทันทีที่
-// คนเปลี่ยนงาน · ระบบยังไม่มีตำแหน่ง Perfumer/PD Chemist/Project Coordinator
-// ⇒ รอบนี้เว้นให้เซ็นมือทั้งหมด ยกเว้นแถวที่ระบบรู้จริง
+// ⚠️ ผูกกับ **ตำแหน่ง ไม่ใช่ชื่อคนที่พิมพ์ไว้ในกระดาษ** — ชื่อที่ฝังในแม่แบบจะค้าง
+// ทันทีที่คนเปลี่ยนงาน · สองแถวแรกมาจากแถวคำร้อง (ระบบรู้ว่าใครเปิด ใครยืนยัน)
+// อีกห้าแถวเป็น **ชื่อบนกระดาษ** ที่กรอกเองต่อใบ ไม่ใช่ role ในระบบ (ม-45)
+//
+// ⚠️ ป้ายตำแหน่งของห้าแถวหลัง **อ่านจากทะเบียน `pdrFields.js`** ไม่สะกดซ้ำที่นี่ —
+// เปลี่ยนชื่อตำแหน่งแล้วต้องเปลี่ยนพร้อมกันทั้งฟอร์ม จอ และกระดาษ
+const SIGNER_SECTION = PDR_SECTIONS.find((s) => s.key === 'signers');
 const SIGN_ROWS = [
   ['Account Executive', 'requestedByName'],
   ['Account Executive Supervisor', 'approvedByName'],
-  ['Sale & Marketing Manager', null],
-  ['Perfumer', null],
-  ['Product Development Chemist', null],
-  ['Project Coordinator', null],
-  ['Final Approval (RD Supervisor)', null],
+  ...(SIGNER_SECTION?.fields || []).map((f) => [f.label, f.column]),
 ];
 
 export function renderPdrDocument({ request = {}, briefs = [], company = {}, form = {} } = {}) {

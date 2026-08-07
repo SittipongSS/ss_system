@@ -16,7 +16,24 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   // `normalizePdr` คือฝั่งเขียน · ทะเบียนคือฝั่งอ่าน ⇒ ต้องเป็นชุดเดียวกันเป๊ะ
   const { columns } = normalizePdr({});
   assert.deepEqual([...PDR_COLUMNS].sort(), Object.keys(columns).sort());
-  assert.equal(PDR_COLUMNS.length, 29);
+  // 29 ช่องของ 0214/0218 + 5 ชื่อผู้เซ็นของ 0221 (ม-45)
+  assert.equal(PDR_COLUMNS.length, 34);
+});
+
+test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {
+  // ⚠️ ตารางลายเซ็นในเอกสารอ่านป้ายจากทะเบียนนี้ ⇒ เปลี่ยนชื่อตำแหน่งที่นี่ที่เดียว
+  // แล้วฟอร์ม จอ และกระดาษเปลี่ยนพร้อมกัน (สะกดซ้ำเมื่อไรก็เพี้ยนกันเมื่อนั้น)
+  const signers = PDR_SECTIONS.find((s) => s.key === 'signers');
+  assert.ok(signers, 'ต้องมีหมวดผู้เซ็น');
+  assert.deepEqual(signers.fields.map((f) => f.label), [
+    'Sale & Marketing Manager',
+    'Perfumer',
+    'Product Development Chemist',
+    'Project Coordinator',
+    'Final Approval (RD Supervisor)',
+  ]);
+  // ⚠️ ทุกช่องต้องเว้นว่างได้ — ไม่มีใครถูกบังคับให้เซ็นในระบบ (ม-45)
+  for (const f of signers.fields) assert.equal(f.type, 'text');
 });
 
 test('ทุกช่องมีป้ายชื่อ และ key ห้ามซ้ำ', () => {
