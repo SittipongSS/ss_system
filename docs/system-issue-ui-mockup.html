@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบแจ้งปัญหาระบบ — mockup</title>
+
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ (ชุดเดียวกับ service-system-ui-mockup.html) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;--panel-float:#fffdf9;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--violet:#6f5e9f;--violet-soft:#eee9f6;--teal:#377275;--teal-soft:#e0f0f0;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);--shadow-lg:0 16px 44px rgba(31,25,18,.14);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--ctl-h:36px;--ctl-h-touch:44px;--topbar-h:52px;--topnav-menu-h:44px;
+--space-1:4px;--space-2:8px;--space-2-5:10px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;
+--lh-tight:1.45;--lh-normal:1.55;
+--motion-fast:120ms;--ease-out:cubic-bezier(.2,.8,.3,1);
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+--font-mono:ui-monospace,"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;--panel-float:#1a213a;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 16px 44px rgba(0,0,0,.42);}
+
+.mock{font-family:var(--font-sans);font-size:var(--fs-14);line-height:var(--lh-normal);color:var(--text);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased}
+.mock *,.mock *::before,.mock *::after{box-sizing:border-box}
+.mock h1,.mock h2,.mock h3,.mock h4,.mock h5,.mock p,.mock ul,.mock ol{margin:0}
+.mock ul,.mock ol{padding:0;list-style:none}
+.mock :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius)}
+
+/* แถบบน */
+.topnav-sys{height:var(--topbar-h);background:var(--navy);color:var(--navy-fg);display:flex;align-items:center;gap:var(--space-4);padding:0 var(--space-5)}
+.brand-mark{font-size:var(--fs-14);font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+.brand-dot{width:22px;height:22px;border-radius:var(--radius);background:var(--accent);display:grid;place-items:center;font-size:var(--fs-12);color:var(--accent-fg)}
+.sys-switch{margin-inline-start:var(--space-4);display:flex;gap:var(--space-1);font-size:var(--fs-13);overflow-x:auto}
+.sys-switch span{padding:5px 12px;border-radius:var(--radius-full);color:rgba(255,255,255,.7);white-space:nowrap}
+.sys-switch span.is-current{background:rgba(255,255,255,.16);color:#fff;font-weight:600}
+.topnav-right{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-3)}
+.who{font-size:var(--fs-12);color:rgba(255,255,255,.78);white-space:nowrap}.who b{color:#fff;font-weight:600}
+.bell{position:relative;width:30px;height:30px;border-radius:var(--radius-full);border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;cursor:pointer;font-size:var(--fs-13);display:grid;place-items:center}
+.bell .dot{position:absolute;inset-block-start:-3px;inset-inline-end:-3px;min-width:16px;height:16px;padding:0 4px;border-radius:var(--radius-full);background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:700;display:grid;place-items:center}
+.theme-btn{height:30px;padding:0 12px;border-radius:var(--radius-full);border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.theme-btn:hover{background:rgba(255,255,255,.14)}
+.topnav-menu{height:var(--topnav-menu-h);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:stretch;gap:var(--space-1);padding:0 var(--space-5);overflow-x:auto}
+.topnav-menu a{display:flex;align-items:center;padding:0 var(--space-3);font-size:var(--fs-13);color:var(--text-2);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+.topnav-menu a.is-current{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+
+/* แถบสารบัญ (ไม่ใช่ส่วนของแอป) */
+.deck{position:sticky;top:0;z-index:20;background:var(--panel-2);border-bottom:1px solid var(--border);padding:var(--space-3) var(--space-5);display:flex;gap:var(--space-4);align-items:center;flex-wrap:wrap}
+.deck-group{display:flex;align-items:center;gap:var(--space-2)}
+.deck-label{font-size:var(--fs-11);letter-spacing:.06em;font-weight:700;color:var(--text-3);white-space:nowrap}
+.deck-label.u{color:var(--accent-ink)}.deck-label.a{color:var(--blue)}.deck-label.x{color:var(--teal)}
+.seg{display:flex;gap:2px;padding:3px;background:var(--panel-3);border-radius:var(--radius-full);flex-wrap:wrap}
+.seg button{height:28px;padding:0 11px;border:0;border-radius:var(--radius-full);background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--text)}
+.seg button[aria-selected="true"]{background:var(--panel-float);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm)}
+
+.workspace{padding:var(--space-6) var(--space-5) var(--space-8);max-width:1180px;margin:0 auto}
+.ws-head{display:flex;align-items:flex-start;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap}
+.ws-icon{width:42px;height:42px;flex:none;border-radius:var(--radius-lg);background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:var(--fs-18)}
+.ws-title{font-size:var(--fs-22);font-weight:700;line-height:var(--lh-tight);text-wrap:balance}
+.ws-sub{font-size:var(--fs-13);color:var(--text-2);margin-top:2px}
+.ws-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+
+.btn{height:var(--ctl-h);padding:0 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel-float);color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);white-space:nowrap;transition:background var(--motion-fast) var(--ease-out),border-color var(--motion-fast) var(--ease-out)}
+.btn:hover{background:var(--panel-2);border-color:var(--text-3)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn-accent:hover{background:var(--accent-ink);border-color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:var(--panel-3);color:var(--text)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn-sm{height:30px;padding:0 11px;font-size:var(--fs-12)}
+.btn-touch{height:var(--ctl-h-touch);font-size:var(--fs-14)}
+.btn-block{width:100%}
+
+.chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:24px;max-width:100%;padding:3px var(--space-2-5);border:1px solid color-mix(in srgb,currentColor 24%,transparent);border-radius:var(--radius);background:color-mix(in srgb,currentColor 12%,transparent);color:var(--text-2);font-size:var(--fs-12);font-weight:600;line-height:var(--lh-tight);white-space:nowrap;vertical-align:middle}
+.chip.green{color:var(--green)}.chip.red{color:var(--red)}.chip.amber{color:var(--amber)}
+.chip.blue{color:var(--blue)}.chip.violet{color:var(--violet)}.chip.teal{color:var(--teal)}
+.chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.sm{min-height:20px;padding:1px 7px;font-size:var(--fs-11)}
+
+.section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);margin-bottom:var(--space-5);overflow:hidden}
+.section-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.section-head h3{font-size:var(--fs-16);font-weight:700;line-height:var(--lh-tight)}
+.section-head .sh-note{font-size:var(--fs-12);color:var(--text-3)}
+.section-head .sh-right{margin-inline-start:auto;display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+.section-body{padding:var(--space-5)}
+
+.callout{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-4);border-radius:var(--radius-lg);font-size:var(--fs-13);line-height:var(--lh-tight);border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);margin-bottom:var(--space-4)}
+.callout.amber{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 34%,transparent);color:var(--text)}
+.callout.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 34%,transparent);color:var(--text)}
+.callout.green{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 34%,transparent);color:var(--text)}
+.callout b{color:var(--text)}.callout .co-ic{flex:none;font-size:var(--fs-16);line-height:1.3}
+.callout:last-child{margin-bottom:0}
+.note{border-inline-start:3px solid var(--accent);background:var(--accent-soft);padding:var(--space-3) var(--space-4);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-12);line-height:var(--lh-tight);color:var(--text);margin-bottom:var(--space-5)}
+.note b{color:var(--accent-ink)}
+.note code,.mono{font-family:var(--font-mono);font-size:var(--fs-12)}
+
+.metric-strip{display:grid;gap:var(--space-3);margin-bottom:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-sm)}
+.metric .m-label{font-size:var(--fs-12);color:var(--text-3);line-height:var(--lh-tight)}
+.metric .m-value{font-size:var(--fs-22);font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;line-height:1.2}
+.metric .m-foot{font-size:var(--fs-11);color:var(--text-3);margin-top:3px}
+.metric.is-alert .m-value{color:var(--red)}.metric.is-warn .m-value{color:var(--amber)}.metric.is-good .m-value{color:var(--green)}
+
+.table-scroll{overflow-x:auto}
+table.premium{width:100%;border-collapse:collapse;font-size:var(--fs-13);font-variant-numeric:tabular-nums;min-width:820px}
+table.premium th{text-align:start;font-weight:600;font-size:var(--fs-12);color:var(--text-3);padding:10px var(--space-4);border-bottom:1px solid var(--border-strong);white-space:nowrap;background:var(--panel-2)}
+table.premium td{padding:11px var(--space-4);border-bottom:1px solid var(--border);vertical-align:top;line-height:var(--lh-tight)}
+table.premium tbody tr:last-child td{border-bottom:0}
+table.premium tbody tr:hover{background:var(--panel-2)}
+.t-strong{font-weight:600}
+.t-sub{font-size:var(--fs-12);color:var(--text-3);display:block;margin-top:2px}
+.t-code{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-2);white-space:nowrap}
+
+/* ── ฟอร์ม ── */
+.field{margin-bottom:var(--space-4)}
+.field:last-child{margin-bottom:0}
+.field > label{display:block;font-size:var(--fs-12);font-weight:600;color:var(--text-2);margin-bottom:6px}
+.field .hint{font-size:var(--fs-11);color:var(--text-3);margin-top:5px;line-height:var(--lh-tight)}
+.field .opt{font-weight:400;color:var(--text-3)}
+.input,.textarea{width:100%;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-float);color:var(--text);font:inherit;font-size:var(--fs-13);padding:0 var(--space-3);height:var(--ctl-h)}
+.textarea{height:auto;min-height:112px;padding:var(--space-3);resize:vertical;line-height:var(--lh-normal)}
+.input::placeholder,.textarea::placeholder{color:var(--text-3)}
+.input:focus,.textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.seg-field{display:flex;gap:2px;padding:3px;background:var(--panel-3);border-radius:var(--radius);width:100%}
+.seg-field button{flex:1;height:30px;padding:0 var(--space-2);border:0;border-radius:5px;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-field button[aria-selected="true"]{background:var(--panel-float);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm)}
+.seg-field.impact button[aria-selected="true"][data-v="blocked"]{color:var(--red)}
+.seg-field.impact button[aria-selected="true"][data-v="workaround"]{color:var(--amber)}
+
+/* ไฟล์แนบ */
+.drop{border:1px dashed var(--border-strong);border-radius:var(--radius-lg);background:var(--panel-2);padding:var(--space-4);text-align:center;font-size:var(--fs-12);color:var(--text-2)}
+.drop b{display:block;font-size:var(--fs-13);color:var(--text);margin-bottom:3px}
+.files{display:grid;gap:var(--space-2);margin-top:var(--space-3)}
+.file{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-float);font-size:var(--fs-12)}
+.file .f-ic{width:26px;height:26px;flex:none;border-radius:5px;background:var(--violet-soft);color:var(--violet);display:grid;place-items:center}
+.file .f-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)}
+.file .f-size{color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* แถบบริบทอัตโนมัติ */
+.ctxbar{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);padding:var(--space-3);font-size:var(--fs-11);color:var(--text-3);line-height:var(--lh-tight)}
+.ctxbar b{display:block;color:var(--text-2);font-size:var(--fs-12);margin-bottom:5px}
+.ctxbar dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--space-3);margin:0}
+.ctxbar dt{color:var(--text-3)}
+.ctxbar dd{margin:0;color:var(--text-2);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* เรื่องซ้ำจากหน้าเดียวกัน */
+.dupes{border:1px solid color-mix(in srgb,var(--blue) 30%,transparent);background:var(--blue-soft);border-radius:var(--radius);padding:var(--space-3);font-size:var(--fs-12)}
+.dupes > b{display:block;color:var(--text);margin-bottom:var(--space-2);font-size:var(--fs-12)}
+.dupes a{display:flex;align-items:center;gap:var(--space-2);padding:5px 0;color:var(--text-2);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--blue) 18%,transparent)}
+.dupes a:last-child{border-bottom:0}
+.dupes a span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dupes a:hover span{text-decoration:underline}
+
+/* โมดัล */
+.scrim{background:rgba(20,17,13,.44);padding:var(--space-6) var(--space-4);display:grid;place-items:start center;min-height:520px}
+.modal{width:100%;max-width:560px;background:var(--panel-float);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden}
+.modal-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:var(--fs-16);font-weight:700;flex:1}
+.modal-body{padding:var(--space-5);max-height:none}
+.modal-foot{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4) var(--space-5);border-top:1px solid var(--border);background:var(--panel-2)}
+.modal-foot .mf-note{font-size:var(--fs-11);color:var(--text-3);flex:1;line-height:var(--lh-tight)}
+
+/* เมนูผู้ใช้ */
+.acctwrap{display:flex;justify-content:flex-end;padding:0 var(--space-5)}
+.acctmenu{width:250px;margin-top:6px;background:var(--panel-float);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;font-size:var(--fs-13)}
+.acctmenu .am-who{padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border);background:var(--panel-2)}
+.acctmenu .am-who b{display:block;font-size:var(--fs-13)}
+.acctmenu .am-who span{font-size:var(--fs-11);color:var(--text-3)}
+.acctmenu a{display:flex;align-items:center;gap:var(--space-3);padding:9px var(--space-4);color:var(--text-2);text-decoration:none}
+.acctmenu a:hover{background:var(--panel-2);color:var(--text)}
+.acctmenu a.is-new{color:var(--accent-ink);font-weight:600}
+.acctmenu hr{border:0;border-top:1px solid var(--border);margin:0}
+
+/* แท็บ */
+.tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--border);margin-bottom:var(--space-5);overflow-x:auto}
+.tabs button{height:38px;padding:0 var(--space-4);border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-13);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tabs button[aria-selected="true"]{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs .cnt{min-width:19px;height:19px;padding:0 5px;border-radius:var(--radius-full);background:var(--panel-3);color:var(--text-3);font-size:var(--fs-11);font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.tabs button[aria-selected="true"] .cnt{background:var(--accent);color:var(--accent-fg)}
+
+/* รายละเอียดเรื่อง */
+.split{display:grid;gap:var(--space-5);grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);align-items:start}
+@media (max-width:900px){.split{grid-template-columns:1fr}}
+.detail-head{display:flex;gap:var(--space-4);align-items:flex-start;flex-wrap:wrap;margin-bottom:var(--space-4)}
+.detail-head .dh-main{flex:1;min-width:220px}
+.detail-head .dh-code{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-3)}
+.detail-head h2{font-size:var(--fs-18);font-weight:700;line-height:var(--lh-tight);margin-top:2px;text-wrap:balance}
+.detail-head .dh-meta{font-size:var(--fs-12);color:var(--text-3);margin-top:5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-4);font-size:var(--fs-13)}
+.kv dt{color:var(--text-3);font-size:var(--fs-12);white-space:nowrap}
+.kv dd{margin:0;color:var(--text)}
+.kv dd.dim{color:var(--text-3)}
+
+/* เธรด */
+.thread{display:grid;gap:var(--space-4)}
+.msg{display:flex;gap:var(--space-3);align-items:flex-start}
+.avatar{width:30px;height:30px;flex:none;border-radius:var(--radius-full);background:var(--panel-3);color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-12);font-weight:700}
+.avatar.admin{background:var(--blue-soft);color:var(--blue)}
+.msg-body{flex:1;min-width:0}
+.msg-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;margin-bottom:3px}
+.msg-head b{font-size:var(--fs-13)}
+.msg-head time{font-size:var(--fs-11);color:var(--text-3)}
+.msg-text{font-size:var(--fs-13);color:var(--text-2);line-height:var(--lh-normal);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3)}
+.msg.sys .msg-text{background:transparent;border:0;border-inline-start:2px solid var(--border-strong);border-radius:0;padding:2px 0 2px var(--space-3);color:var(--text-3);font-size:var(--fs-12)}
+.composer{margin-top:var(--space-4);border-top:1px solid var(--border);padding-top:var(--space-4)}
+
+/* มือถือ */
+.phone-row{display:grid;gap:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.phone{width:100%;max-width:340px;margin:0 auto;border:1px solid var(--border-strong);border-radius:22px;background:var(--bg);box-shadow:var(--shadow-lg);overflow:hidden}
+.phone-top{height:38px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 var(--space-4);font-size:var(--fs-12)}
+.phone-body{padding:var(--space-4);min-height:420px}
+.phone-cap{text-align:center;font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-3)}
+.icard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);box-shadow:var(--shadow-sm)}
+.icard .ic-top{display:flex;align-items:center;gap:var(--space-2);margin-bottom:5px;flex-wrap:wrap}
+.icard .ic-title{font-size:var(--fs-13);font-weight:600;line-height:var(--lh-tight)}
+.icard .ic-foot{display:flex;gap:var(--space-3);font-size:var(--fs-11);color:var(--text-3);margin-top:6px;flex-wrap:wrap}
+
+/* หน้าพัง */
+.crash{max-width:520px;margin:0 auto;text-align:center;padding:var(--space-8) var(--space-4)}
+.crash .c-ic{width:56px;height:56px;margin:0 auto var(--space-4);border-radius:var(--radius-lg);background:var(--red-soft);color:var(--red);display:grid;place-items:center;font-size:var(--fs-22)}
+.crash h2{font-size:var(--fs-18);font-weight:700;margin-bottom:var(--space-2)}
+.crash p{font-size:var(--fs-13);color:var(--text-2);margin-bottom:var(--space-5);line-height:var(--lh-normal)}
+.crash .c-btns{display:flex;gap:var(--space-2);justify-content:center;flex-wrap:wrap}
+.stack{margin-top:var(--space-5);text-align:start;font-family:var(--font-mono);font-size:var(--fs-11);color:var(--text-3);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3);white-space:pre-wrap;line-height:1.6}
+
+.empty{text-align:center;padding:var(--space-8) var(--space-4);color:var(--text-3)}
+.empty .e-ic{font-size:var(--fs-28);margin-bottom:var(--space-2)}
+.empty b{display:block;color:var(--text-2);font-size:var(--fs-14);margin-bottom:4px}
+.empty p{font-size:var(--fs-12);max-width:34ch;margin:0 auto var(--space-4)}
+
+.screen{display:none}.screen.is-active{display:block}
+.legend{font-size:var(--fs-12);color:var(--text-3);margin-top:var(--space-6);border-top:1px solid var(--border);padding-top:var(--space-4);line-height:var(--lh-normal)}
+.legend b{color:var(--text-2)}
+</style>
+</head>
+
+<body class="mock">
+
+<!-- แถบบนของแอป -->
+<div class="topnav-sys">
+  <div class="brand-mark"><span class="brand-dot">S</span> SS SYSTEM</div>
+  <nav class="sys-switch" id="sys-switch">
+    <span data-sys="sales">งานขาย</span>
+    <span data-sys="master">ฐานข้อมูล</span>
+    <span data-sys="tax">ภาษี</span>
+    <span data-sys="production">ผลิต</span>
+    <span data-sys="service">บริการ</span>
+    <span data-sys="support">แจ้งปัญหา</span>
+  </nav>
+  <div class="topnav-right">
+    <button class="bell" title="แจ้งเตือน">🔔<span class="dot">3</span></button>
+    <span class="who" id="who-role">—</span>
+    <button class="theme-btn" id="theme-toggle">สลับธีม</button>
+  </div>
+</div>
+<nav class="topnav-menu" id="menu-row"></nav>
+
+<!-- สารบัญจอ (ไม่ใช่ส่วนของแอป) -->
+<div class="deck">
+  <div class="deck-group">
+    <span class="deck-label u">ผู้ใช้</span>
+    <div class="seg">
+      <button data-s="s0" aria-selected="true">1 · เปิดจากเมนู</button>
+      <button data-s="s1">2 · โมดัลแจ้งเรื่อง</button>
+      <button data-s="s2">3 · เรื่องของฉัน</button>
+      <button data-s="s3">4 · รอยืนยัน</button>
+    </div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label a">แอดมิน</span>
+    <div class="seg">
+      <button data-s="s4">5 · คิว</button>
+      <button data-s="s5">6 · รายละเอียด</button>
+    </div>
+  </div>
+  <div class="deck-group">
+    <span class="deck-label x">อื่น ๆ</span>
+    <div class="seg">
+      <button data-s="s6">7 · มือถือ</button>
+      <button data-s="s7">8 · หน้าพัง</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────── 1 · เปิดจากเมนูผู้ใช้ ───────────── -->
+<section class="screen is-active" id="s0">
+  <div class="acctwrap"><div class="acctmenu">
+    <div class="am-who"><b>สมชาย พ.</b><span>AE · ทีม ODM</span></div>
+    <a href="#">👤 บัญชีของฉัน</a>
+    <a href="#">🔑 เปลี่ยนรหัสผ่าน</a>
+    <hr>
+    <a href="#" class="is-new">🐞 แจ้งปัญหาระบบ</a>
+    <a href="#">📋 เรื่องที่ฉันแจ้ง</a>
+    <hr>
+    <a href="#">🚪 ออกจากระบบ</a>
+  </div></div>
+
+  <div class="workspace">
+    <div class="note"><b>Q5 · ช่องทางเดียว ไม่มีปุ่มลอย</b> — โมดัลเปิดจาก <code>AccountMenu</code> ซึ่งมีอยู่ทุกหน้าอยู่แล้ว
+    จึงแจ้งได้จากหน้าที่พังโดยไม่ต้องเปลี่ยนหน้า · ปุ่มลอยถูกตัดออกเพราะทับ UI บนมือถือ</div>
+    <div class="callout"><span class="co-ic">👥</span><div><b>ทุกคนที่ล็อกอินเห็นสองรายการนี้</b> รวม <code>viewer</code> และผู้สังเกตการณ์แบบอ่านอย่างเดียว (Q2)
+    — คนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด</div></div>
+  </div>
+</section>
+
+<!-- ───────────── 2 · โมดัลแจ้งเรื่อง ───────────── -->
+<section class="screen" id="s1">
+  <div class="scrim">
+    <div class="modal">
+      <div class="modal-head"><h3>แจ้งปัญหาระบบ</h3><button class="btn ghost btn-sm">✕</button></div>
+      <div class="modal-body">
+
+        <div class="field">
+          <label>ประเภท</label>
+          <div class="seg-field">
+            <button data-v="bug" aria-selected="true">🐞 บั๊ก</button>
+            <button data-v="request">✨ ขอปรับ/ขอเพิ่ม</button>
+            <button data-v="question">❓ ถามวิธีใช้</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>กระทบงานยังไง</label>
+          <div class="seg-field impact">
+            <button data-v="blocked">ทำงานต่อไม่ได้</button>
+            <button data-v="workaround" aria-selected="true">ติด แต่มีทางเลี่ยง</button>
+            <button data-v="minor">เรื่องเล็ก</button>
+          </div>
+          <div class="hint">ถามว่า “งานหยุดไหม” ไม่ใช่ “ด่วนแค่ไหน” — ถามความด่วนจะได้ “ด่วนมาก” ทุกใบ (Q9)</div>
+        </div>
+
+        <div class="field">
+          <label>หัวข้อ <span class="opt">— ไม่บังคับ</span></label>
+          <input class="input" placeholder="ว่างไว้ได้ ระบบจะตัดจากบรรทัดแรกของรายละเอียด">
+        </div>
+
+        <div class="field">
+          <label>รายละเอียด</label>
+          <textarea class="textarea" placeholder="เกิดอะไรขึ้น · กดอะไรถึงเจอ · คาดว่าควรได้อะไร">กดปุ่ม “บันทึกดีล” แล้วหมุนค้าง ไม่มีอะไรขึ้นเลย
+ลองใหม่ 3 รอบ ได้เหมือนเดิม ตอนนี้ยังบันทึกดีลของลูกค้ารายนี้ไม่ได้</textarea>
+        </div>
+
+        <div class="field">
+          <label>ไฟล์แนบ <span class="opt">— ไม่บังคับ</span></label>
+          <div class="drop"><b>ลากไฟล์มาวาง หรือกดเพื่อเลือก</b>รูปหรือเอกสาร ไม่เกิน 10 MB ต่อไฟล์</div>
+          <div class="files">
+            <div class="file"><span class="f-ic">🖼</span><span class="f-name">หน้าจอตอนกดบันทึก.png</span><span class="f-size">412 KB</span><button class="btn ghost btn-sm">ลบ</button></div>
+          </div>
+          <div class="hint">ไฟล์จะเก็บบน Google Drive ของบริษัท — ปิดข้อมูลลูกค้าที่ไม่เกี่ยวก่อนแนบ</div>
+        </div>
+
+        <div class="field">
+          <div class="ctxbar">
+            <b>ระบบจะแนบข้อมูลนี้ไปด้วยอัตโนมัติ</b>
+            <dl>
+              <dt>หน้า</dt><dd>/sa/deals/DL-26080042</dd>
+              <dt>เบราว์เซอร์</dt><dd>Chrome 141 · macOS</dd>
+              <dt>ผู้แจ้ง</dt><dd>สมชาย พ. · ae · SA · ODM</dd>
+            </dl>
+          </div>
+          <div class="hint">ไม่เก็บ console log และไม่จับภาพหน้าจออัตโนมัติ (Q6)</div>
+        </div>
+
+        <div class="dupes">
+          <b>มีคนแจ้งจากหน้านี้ไปแล้ว 2 เรื่อง</b>
+          <a href="#"><span class="chip amber sm dot">รอรับเรื่อง</span><span>บันทึกดีลแล้วหมุนค้าง</span></a>
+          <a href="#"><span class="chip blue sm dot">กำลังแก้</span><span>ยอดรวมในดีลไม่ตรงกับใบเสนอราคา</span></a>
+        </div>
+
+      </div>
+      <div class="modal-foot">
+        <span class="mf-note">บังคับกรอกช่องเดียว — ยิ่งช่องเยอะ คนยิ่งไม่แจ้ง</span>
+        <button class="btn ghost">ยกเลิก</button>
+        <button class="btn btn-accent">ส่งเรื่อง</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <div class="note"><b>Q13 · filled action ตัวเดียวต่อบริบท</b> — “ส่งเรื่อง” เป็น <code>tone="accent"</code> ตัวเดียว
+    “ยกเลิก” เป็น <code>Button</code> เปล่า ตามกฎ <code>UI_DESIGN_SYSTEM.md</code></div>
+    <div class="callout"><span class="co-ic">🔁</span><div><b>รายการเรื่องซ้ำ (Q12)</b> โชว์แค่ <b>หัวข้อกับสถานะ</b> ของ 3 เรื่องล่าสุดที่มาจาก URL เดียวกัน
+    — ไม่มีรายละเอียด ไม่มีไฟล์แนบ เพราะผู้ใช้ทั่วไปเห็นได้เฉพาะเรื่องของตัวเอง</div></div>
+    <div class="callout amber"><span class="co-ic">⚠️</span><div><b>ลำดับตอนกดส่ง (Q17)</b> สร้างแถวก่อน (<code>POST /api/issues</code> → ได้ <code>id</code> + <code>code</code>)
+    แล้วค่อยอัปไฟล์ด้วย id จริง · <b>ถ้าอัปไฟล์พลาด ห้าม rollback เรื่อง</b> — ขึ้น toast ให้ไปแนบซ้ำในหน้ารายละเอียดแทน</div></div>
+  </div>
+</section>
+
+<!-- ───────────── 3 · /support · เรื่องของฉัน ───────────── -->
+<section class="screen" id="s2">
+  <div class="workspace">
+    <div class="ws-head">
+      <div class="ws-icon">🐞</div>
+      <div>
+        <div class="ws-title">แจ้งปัญหาระบบ</div>
+        <div class="ws-sub">เรื่องที่คุณแจ้งไว้ และสถานะการแก้</div>
+      </div>
+      <div class="ws-right"><button class="btn btn-accent">+ แจ้งเรื่องใหม่</button></div>
+    </div>
+
+    <div class="tabs">
+      <button aria-selected="true">เรื่องของฉัน <span class="cnt">4</span></button>
+    </div>
+
+    <div class="section">
+      <div class="table-scroll">
+        <table class="premium">
+          <thead><tr>
+            <th style="width:132px">สถานะ</th><th style="width:118px">เลขที่</th><th>เรื่อง</th>
+            <th style="width:120px">ผลกระทบ</th><th style="width:104px">ผู้รับผิดชอบ</th><th style="width:76px">อายุ</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="chip green dot">แก้แล้ว — รอยืนยัน</span></td>
+              <td class="t-code">IS-26080014</td>
+              <td><span class="t-strong">บันทึกดีลแล้วหมุนค้าง</span><span class="t-sub">/sa/deals/DL-26080042</span></td>
+              <td><span class="chip red sm">ทำงานต่อไม่ได้</span></td>
+              <td>ปิยะ ก.</td><td>2 วัน</td>
+            </tr>
+            <tr>
+              <td><span class="chip blue dot">รับเรื่องแล้ว — กำลังแก้</span></td>
+              <td class="t-code">IS-26080009</td>
+              <td><span class="t-strong">ยอดรวมในดีลไม่ตรงกับใบเสนอราคา</span><span class="t-sub">/sa/deals/DL-26070118</span></td>
+              <td><span class="chip amber sm">ติด มีทางเลี่ยง</span></td>
+              <td>ปิยะ ก.</td><td>5 วัน</td>
+            </tr>
+            <tr>
+              <td><span class="chip amber dot">แจ้งแล้ว — รอรับเรื่อง</span></td>
+              <td class="t-code">IS-26080013</td>
+              <td><span class="t-strong">อยากให้กรองคิวตามทีมได้</span><span class="t-sub">✨ ขอปรับ/ขอเพิ่ม · /pm/tasks</span></td>
+              <td><span class="chip sm">เรื่องเล็ก</span></td>
+              <td class="t-sub" style="margin:0">—</td><td>1 วัน</td>
+            </tr>
+            <tr>
+              <td><span class="chip dot">ปิดเรื่อง</span></td>
+              <td class="t-code">IS-26070071</td>
+              <td><span class="t-strong">พิมพ์ใบเสนอราคาแล้วฟอนต์เพี้ยน</span><span class="t-sub">ยืนยันแล้วว่าหาย · 24 ก.ค. 2026</span></td>
+              <td><span class="chip amber sm">ติด มีทางเลี่ยง</span></td>
+              <td>ปิยะ ก.</td><td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="note"><b>Q14 · <code>/support</code> อยู่นอก <code>SETTINGS_PATHS</code></b> — ถ้ายัดเข้าไปกับ <code>/settings</code> <code>/users</code> <code>/audit</code>
+    แล้ว <code>viewer</code> จะเข้าไม่ได้ ทั้งที่ต้องแจ้งได้ · และต้องแก้ <code>systemForPathname</code> ให้รู้จัก <code>/support</code>
+    ไม่งั้นตกไปที่ <code>return 'tax'</code> แล้วทั้งโมดูลไปโผล่ใต้เปลือกเมนูระบบภาษี — บั๊กเดียวกับที่เคยเกิดกับ <code>/requests</code></div>
+    <div class="callout"><span class="co-ic">👁</span><div><b>ผู้ใช้ทั่วไปเห็นแท็บเดียว</b> (Q12/Q14) — หน้าเดียวกันกับที่แอดมินเปิด ต่างกันแค่ scope ของ query
+    ไม่แยกหน้าแอดมิน ตามกฎ repo ที่ห้ามมีสองชุดของสิ่งเดียวกัน</div></div>
+  </div>
+</section>
+
+<!-- ───────────── 4 · รายละเอียด — มุมผู้แจ้ง (รอยืนยัน) ───────────── -->
+<section class="screen" id="s3">
+  <div class="workspace">
+    <div class="section">
+      <div class="section-body">
+        <div class="detail-head">
+          <div class="dh-main">
+            <div class="dh-code">IS-26080014</div>
+            <h2>บันทึกดีลแล้วหมุนค้าง</h2>
+            <div class="dh-meta">แจ้งโดย สมชาย พ. · 5 ส.ค. 2026 09:14</div>
+          </div>
+          <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
+            <span class="chip red">ทำงานต่อไม่ได้</span>
+            <span class="chip green dot">แก้แล้ว — รอยืนยัน</span>
+          </div>
+        </div>
+
+        <div class="callout green"><span class="co-ic">✅</span><div>
+          <b>ปิยะ ก. แจ้งว่าแก้แล้วเมื่อ 6 ส.ค. 2026 16:02</b><br>
+          ช่วยลองใช้งานอีกครั้งแล้วยืนยันด้วยว่าหายจริงไหม — ถ้าไม่ตอบภายใน <b>7 วัน</b> ระบบจะปิดเรื่องให้เอง
+          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);flex-wrap:wrap">
+            <button class="btn btn-accent">ยืนยันว่าหายแล้ว</button>
+            <button class="btn">ยังไม่หาย</button>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head"><h3>ความคืบหน้า</h3><span class="sh-note">เธรดกลาง — ชุดเดียวกับคำร้อง/งาน/โครงการ</span></div>
+        <div class="section-body">
+          <div class="thread">
+            <div class="msg"><div class="avatar">สม</div><div class="msg-body">
+              <div class="msg-head"><b>สมชาย พ.</b><time>5 ส.ค. 09:14</time></div>
+              <div class="msg-text">กดปุ่ม “บันทึกดีล” แล้วหมุนค้าง ไม่มีอะไรขึ้นเลย ลองใหม่ 3 รอบ ได้เหมือนเดิม</div>
+            </div></div>
+            <div class="msg sys"><div class="avatar">⚙</div><div class="msg-body"><div class="msg-text">ปิยะ ก. รับเรื่อง · 5 ส.ค. 10:40</div></div></div>
+            <div class="msg"><div class="avatar admin">ปิ</div><div class="msg-body">
+              <div class="msg-head"><b>ปิยะ ก.</b><span class="chip blue sm">แอดมิน</span><time>5 ส.ค. 11:20</time></div>
+              <div class="msg-text">เจอแล้วครับ ดีลที่มีสินค้าเกิน 40 บรรทัดจะ timeout ตอนบันทึก กำลังแก้</div>
+            </div></div>
+            <div class="msg sys"><div class="avatar">⚙</div><div class="msg-body"><div class="msg-text">เปลี่ยนสถานะเป็น “แก้แล้ว — รอยืนยัน” · 6 ส.ค. 16:02</div></div></div>
+          </div>
+          <div class="composer">
+            <textarea class="textarea" style="min-height:74px" placeholder="พิมพ์ตอบกลับ…"></textarea>
+            <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);align-items:center">
+              <button class="btn ghost btn-sm">📎 แนบไฟล์</button>
+              <span style="flex:1"></span>
+              <button class="btn btn-accent btn-sm">ส่ง</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section">
+          <div class="section-head"><h3>ข้อมูลเรื่อง</h3></div>
+          <div class="section-body"><dl class="kv">
+            <dt>ประเภท</dt><dd>🐞 บั๊ก</dd>
+            <dt>ผลกระทบ</dt><dd>ทำงานต่อไม่ได้</dd>
+            <dt>ผู้รับผิดชอบ</dt><dd>ปิยะ ก.</dd>
+            <dt>หน้าที่พัง</dt><dd class="mono">/sa/deals/DL-26080042</dd>
+            <dt>เบราว์เซอร์</dt><dd class="dim">Chrome 141 · macOS</dd>
+            <dt>ผู้แจ้ง</dt><dd class="dim">ae · SA · ODM</dd>
+          </dl></div>
+        </div>
+        <div class="section" style="margin-bottom:0">
+          <div class="section-head"><h3>ไฟล์แนบ</h3><span class="sh-right"><button class="btn btn-sm">+ แนบ</button></span></div>
+          <div class="section-body"><div class="files" style="margin-top:0">
+            <div class="file"><span class="f-ic">🖼</span><span class="f-name">หน้าจอตอนกดบันทึก.png</span><span class="f-size">412 KB</span></div>
+          </div>
+          <div class="hint" style="font-size:var(--fs-11);color:var(--text-3);margin-top:var(--space-3)">เก็บที่ Drive · แจ้งปัญหาระบบ / 2026-08</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note"><b>Q8 · ปิดสองฝ่าย + ปิดอัตโนมัติ</b> — แอดมินปิดฝ่ายเดียวไม่ได้ เพราะบั๊กที่แก้ไม่ครบจะหายเข้ากลีบเมฆ
+    แต่ถ้าไม่มีการปิดอัตโนมัติ คิวจะบวมค้างเพราะไม่มีใครกลับมากดยืนยัน · นับ 7 วันจาก <code>resolvedAt</code> ไม่ใช่ <code>createdAt</code></div>
+  </div>
+</section>
+
+<!-- ───────────── 5 · คิวแอดมิน ───────────── -->
+<section class="screen" id="s4">
+  <div class="workspace">
+    <div class="ws-head">
+      <div class="ws-icon">🐞</div>
+      <div>
+        <div class="ws-title">แจ้งปัญหาระบบ</div>
+        <div class="ws-sub">คิวเรื่องที่ผู้ใช้แจ้งเข้ามาทั้งระบบ</div>
+      </div>
+      <div class="ws-right"><button class="btn btn-accent">+ แจ้งเรื่องใหม่</button></div>
+    </div>
+
+    <div class="metric-strip">
+      <div class="metric is-alert"><div class="m-label">ทำงานต่อไม่ได้</div><div class="m-value">2</div><div class="m-foot">ยังไม่มีใครรับ 1</div></div>
+      <div class="metric is-warn"><div class="m-label">รอรับเรื่อง</div><div class="m-value">5</div><div class="m-foot">เก่าสุด 3 วัน</div></div>
+      <div class="metric"><div class="m-label">กำลังแก้</div><div class="m-value">8</div><div class="m-foot">ของฉัน 3</div></div>
+      <div class="metric is-good"><div class="m-label">รอผู้แจ้งยืนยัน</div><div class="m-value">4</div><div class="m-foot">ปิดเองใน 7 วัน</div></div>
+    </div>
+
+    <div class="tabs">
+      <button aria-selected="true">รอรับเรื่อง <span class="cnt">5</span></button>
+      <button>กำลังแก้ <span class="cnt">8</span></button>
+      <button>รอยืนยัน <span class="cnt">4</span></button>
+      <button>ทั้งหมด</button>
+      <button>เรื่องของฉัน</button>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h3>รอรับเรื่อง</h3><span class="sh-note">เรียงตามผลกระทบ แล้วตามเวลาที่แจ้ง</span>
+        <span class="sh-right">
+          <button class="btn btn-sm">ประเภท: ทั้งหมด ▾</button>
+          <button class="btn btn-sm">ผลกระทบ: ทั้งหมด ▾</button>
+        </span>
+      </div>
+      <div class="table-scroll">
+        <table class="premium">
+          <thead><tr>
+            <th style="width:126px">ผลกระทบ</th><th style="width:118px">เลขที่</th><th>เรื่อง</th>
+            <th style="width:130px">ผู้แจ้ง</th><th style="width:70px">อายุ</th><th style="width:104px"></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="chip red dot">ทำงานต่อไม่ได้</span></td>
+              <td class="t-code">IS-26080021</td>
+              <td><span class="t-strong">อัปโหลดไฟล์แนบลูกค้าไม่ขึ้นเลย</span><span class="t-sub">🐞 บั๊ก · /database/customers/CU-0442</span></td>
+              <td>วิภา ส.<span class="t-sub">secretary · AD</span></td>
+              <td>4 ชม.</td>
+              <td><button class="btn btn-sm btn-accent">รับเรื่อง</button></td>
+            </tr>
+            <tr>
+              <td><span class="chip amber dot">ติด มีทางเลี่ยง</span></td>
+              <td class="t-code">IS-26080019</td>
+              <td><span class="t-strong">ตารางคิวผลิตเลื่อนแนวนอนบนมือถือไม่ได้</span><span class="t-sub">🐞 บั๊ก · /production/board</span></td>
+              <td>ธนา ร.<span class="t-sub">staff · PC</span></td>
+              <td>1 วัน</td>
+              <td><button class="btn btn-sm btn-accent">รับเรื่อง</button></td>
+            </tr>
+            <tr>
+              <td><span class="chip amber dot">ติด มีทางเลี่ยง</span></td>
+              <td class="t-code">IS-26080017</td>
+              <td><span class="t-strong">ค้นหาลูกค้าด้วยเลขผู้เสียภาษีไม่เจอ</span><span class="t-sub">🐞 บั๊ก · /database/customers</span></td>
+              <td>นภา จ.<span class="t-sub">ac · SA · KA</span></td>
+              <td>1 วัน</td>
+              <td><button class="btn btn-sm btn-accent">รับเรื่อง</button></td>
+            </tr>
+            <tr>
+              <td><span class="chip sm">เรื่องเล็ก</span></td>
+              <td class="t-code">IS-26080013</td>
+              <td><span class="t-strong">อยากให้กรองคิวตามทีมได้</span><span class="t-sub">✨ ขอปรับ/ขอเพิ่ม · /pm/tasks</span></td>
+              <td>สมชาย พ.<span class="t-sub">ae · SA · ODM</span></td>
+              <td>1 วัน</td>
+              <td><button class="btn btn-sm btn-accent">รับเรื่อง</button></td>
+            </tr>
+            <tr>
+              <td><span class="chip sm">เรื่องเล็ก</span></td>
+              <td class="t-code">IS-26080008</td>
+              <td><span class="t-strong">ปุ่มพิมพ์อยู่ตรงไหน หาไม่เจอ</span><span class="t-sub">❓ ถามวิธีใช้ · /tax/filings</span></td>
+              <td>อรุณ ท.<span class="t-sub">viewer · EX</span></td>
+              <td>3 วัน</td>
+              <td><button class="btn btn-sm btn-accent">รับเรื่อง</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="note"><b>Q18 · “รับเรื่อง” คือปุ่มเดียวจบ</b> — self-assign + ขยับเป็น <code>acknowledged</code> พร้อมกัน
+    เพราะแอดมินมีหลายคน ถ้าไม่มีเจ้าภาพ ทุกคนจะคิดว่าอีกคนทำ · <code>CHECK</code> ที่ชั้น DB บังคับว่าสถานะ <code>acknowledged</code>/<code>resolved</code> ต้องมี <code>assigneeId</code></div>
+    <div class="callout"><span class="co-ic">🔔</span><div><b>ตัวนับอยู่ที่กระดิ่งเดิมตัวเดียว (Q20)</b> — ไม่เพิ่ม badge ใหม่บน top bar ไม่งั้นมีตัวนับสองตัวที่ไม่ตรงกัน
+    · เรื่องใหม่เข้าคิวยิงเข้า <b>Chat webhook ห้องแอดมิน</b> ไม่ใช่ notification รายคน เพราะยังไม่รู้ว่าใครรับ (Q11)</div></div>
+  </div>
+</section>
+
+<!-- ───────────── 6 · รายละเอียด — มุมแอดมิน ───────────── -->
+<section class="screen" id="s5">
+  <div class="workspace">
+    <div class="section">
+      <div class="section-body">
+        <div class="detail-head">
+          <div class="dh-main">
+            <div class="dh-code">IS-26080021</div>
+            <h2>อัปโหลดไฟล์แนบลูกค้าไม่ขึ้นเลย</h2>
+            <div class="dh-meta">แจ้งโดย วิภา ส. (secretary · AD) · วันนี้ 08:52</div>
+          </div>
+          <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
+            <span class="chip red">ทำงานต่อไม่ได้</span>
+            <span class="chip amber dot">แจ้งแล้ว — รอรับเรื่อง</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+          <button class="btn btn-accent">รับเรื่อง</button>
+          <button class="btn">มอบหมายให้… ▾</button>
+          <button class="btn">เปลี่ยนผลกระทบ ▾</button>
+          <span style="flex:1"></span>
+          <button class="btn">ไม่ใช่บั๊ก / ไม่ทำ</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head"><h3>ความคืบหน้า</h3></div>
+        <div class="section-body">
+          <div class="thread">
+            <div class="msg"><div class="avatar">วิ</div><div class="msg-body">
+              <div class="msg-head"><b>วิภา ส.</b><time>วันนี้ 08:52</time></div>
+              <div class="msg-text">กดปุ่มแนบไฟล์แล้วขึ้นว่า “อัปโหลดขึ้น Google Drive ไม่สำเร็จ” ทุกไฟล์ ทั้ง PDF และรูป
+              ตอนนี้เปิดงานลูกค้ารายใหม่ไม่ได้เลยเพราะต้องแนบหนังสือรับรอง</div>
+            </div></div>
+          </div>
+          <div class="composer">
+            <textarea class="textarea" style="min-height:74px" placeholder="พิมพ์ตอบกลับ…"></textarea>
+            <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);align-items:center">
+              <button class="btn ghost btn-sm">📎 แนบไฟล์</button>
+              <span style="flex:1"></span>
+              <button class="btn btn-accent btn-sm">ส่ง</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section">
+          <div class="section-head"><h3>บริบทที่ระบบเก็บให้</h3></div>
+          <div class="section-body"><dl class="kv">
+            <dt>หน้า</dt><dd class="mono">/database/customers/CU-0442</dd>
+            <dt>เบราว์เซอร์</dt><dd class="dim">Safari 18 · iPadOS</dd>
+            <dt>role</dt><dd class="dim">secretary</dd>
+            <dt>ฝ่าย/ทีม</dt><dd class="dim">AD · —</dd>
+            <dt>เวลา</dt><dd class="dim">7 ส.ค. 2026 08:52</dd>
+          </dl></div>
+        </div>
+        <div class="section" style="margin-bottom:0">
+          <div class="section-head"><h3>เรื่องอื่นจากหน้าเดียวกัน</h3></div>
+          <div class="section-body"><div class="dupes" style="background:transparent;border:0;padding:0">
+            <a href="#"><span class="chip blue sm dot">กำลังแก้</span><span>แนบไฟล์แล้วรูปพรีวิวไม่ขึ้น</span></a>
+            <a href="#"><span class="chip sm dot">ปิดเรื่อง</span><span>ลบไฟล์แนบแล้วยังค้างในรายการ</span></a>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note"><b>“ไม่ใช่บั๊ก / ไม่ทำ” ต้องใส่เหตุผลเสมอ</b> — บังคับทั้งที่ชั้น API และ <code>CHECK</code> ของ DB
+    (<code>system_issues_reject_needs_reason</code>) เพราะ “ไม่ทำ” เฉย ๆ ทำให้ผู้แจ้งไม่รู้ว่าควรทำอะไรต่อ · ใช้ <code>ReasonDialog</code> ที่มีอยู่</div>
+  </div>
+</section>
+
+<!-- ───────────── 7 · มือถือ ───────────── -->
+<section class="screen" id="s6">
+  <div class="workspace">
+    <div class="note"><b>Q20 · จุดตัดจอ 768</b> จากชุดที่แนะนำใน <code>globals.css</code> (480 · 560 · 640 · 680 · 768 · 900 · 1000 · 1200) — ห้ามคิดค่าใหม่
+    · ต่ำกว่านั้นตารางกลายเป็นการ์ด ปุ่มหลักใช้ <code>--ctl-h-touch</code> 44px</div>
+
+    <div class="phone-row">
+      <div>
+        <div class="phone">
+          <div class="phone-top"><span>9:41</span><span>🔔 3</span></div>
+          <div class="phone-body">
+            <div style="font-size:var(--fs-18);font-weight:700;margin-bottom:var(--space-1)">แจ้งปัญหาระบบ</div>
+            <div style="font-size:var(--fs-12);color:var(--text-3);margin-bottom:var(--space-4)">เรื่องของฉัน</div>
+
+            <div class="icard">
+              <div class="ic-top"><span class="chip green sm dot">รอยืนยัน</span><span class="chip red sm">ทำงานต่อไม่ได้</span></div>
+              <div class="ic-title">บันทึกดีลแล้วหมุนค้าง</div>
+              <div class="ic-foot"><span>IS-26080014</span><span>ปิยะ ก.</span><span>2 วัน</span></div>
+            </div>
+            <div class="icard">
+              <div class="ic-top"><span class="chip blue sm dot">กำลังแก้</span><span class="chip amber sm">มีทางเลี่ยง</span></div>
+              <div class="ic-title">ยอดรวมในดีลไม่ตรงกับใบเสนอราคา</div>
+              <div class="ic-foot"><span>IS-26080009</span><span>ปิยะ ก.</span><span>5 วัน</span></div>
+            </div>
+            <div class="icard">
+              <div class="ic-top"><span class="chip amber sm dot">รอรับเรื่อง</span><span class="chip sm">เรื่องเล็ก</span></div>
+              <div class="ic-title">อยากให้กรองคิวตามทีมได้</div>
+              <div class="ic-foot"><span>IS-26080013</span><span>ยังไม่มีผู้รับ</span><span>1 วัน</span></div>
+            </div>
+
+            <button class="btn btn-accent btn-touch btn-block" style="margin-top:var(--space-4)">+ แจ้งเรื่องใหม่</button>
+          </div>
+        </div>
+        <div class="phone-cap">รายการเป็นการ์ด — สถานะกับผลกระทบอยู่บรรทัดบนสุด</div>
+      </div>
+
+      <div>
+        <div class="phone">
+          <div class="phone-top"><span>9:41</span><span>🔔 3</span></div>
+          <div class="phone-body" style="padding:0">
+            <div style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--space-3)">
+              <button class="btn ghost btn-sm">✕</button><b style="font-size:var(--fs-14)">แจ้งปัญหาระบบ</b>
+            </div>
+            <div style="padding:var(--space-4)">
+              <div class="field">
+                <label>ประเภท</label>
+                <div class="seg-field"><button aria-selected="true">🐞 บั๊ก</button><button>✨ ขอปรับ</button><button>❓ ถาม</button></div>
+              </div>
+              <div class="field">
+                <label>กระทบงานยังไง</label>
+                <div class="seg-field impact"><button data-v="blocked" aria-selected="true">ทำต่อไม่ได้</button><button data-v="workaround">มีทางเลี่ยง</button><button>เรื่องเล็ก</button></div>
+              </div>
+              <div class="field">
+                <label>รายละเอียด</label>
+                <textarea class="textarea" style="min-height:90px" placeholder="เกิดอะไรขึ้น · กดอะไรถึงเจอ"></textarea>
+              </div>
+              <div class="field">
+                <div class="drop" style="padding:var(--space-3)"><b>📎 แนบภาพหน้าจอ</b>ไม่เกิน 10 MB ต่อไฟล์</div>
+              </div>
+              <div class="ctxbar"><b>แนบให้อัตโนมัติ</b>
+                <dl><dt>หน้า</dt><dd>/production/board</dd><dt>เครื่อง</dt><dd>Safari · iPhone</dd></dl>
+              </div>
+              <button class="btn btn-accent btn-touch btn-block" style="margin-top:var(--space-4)">ส่งเรื่อง</button>
+            </div>
+          </div>
+        </div>
+        <div class="phone-cap">โมดัลเต็มจอบนมือถือ · ปุ่มส่งสูง 44px</div>
+      </div>
+    </div>
+
+    <div class="workspace" style="padding-inline:0">
+      <div class="callout"><span class="co-ic">📱</span><div><b>หัวข้อหายไปบนมือถือ</b> — ช่องหัวข้อไม่บังคับอยู่แล้ว (Q13)
+      จอแคบจึงตัดออกและให้ระบบตัดจากบรรทัดแรกของรายละเอียดแทน เหลือช่องที่ต้องกรอกจริง ๆ ช่องเดียว</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 8 · หน้าพัง ───────────── -->
+<section class="screen" id="s7">
+  <div class="workspace">
+    <div class="section">
+      <div class="section-body">
+        <div class="crash">
+          <div class="c-ic">⚠️</div>
+          <h2>หน้านี้ทำงานต่อไม่ได้</h2>
+          <p>เกิดข้อผิดพลาดที่เราไม่ได้เตรียมไว้ ข้อมูลที่บันทึกไปแล้วยังอยู่ครบ<br>ช่วยส่งเรื่องให้แอดมินดูหน่อยได้ไหม</p>
+          <div class="c-btns">
+            <button class="btn btn-accent">🐞 แจ้งปัญหานี้</button>
+            <button class="btn">โหลดหน้าใหม่</button>
+            <button class="btn ghost">กลับหน้าแรก</button>
+          </div>
+          <div class="stack">TypeError: Cannot read properties of null (reading 'lines')
+    at QuotationTotals (quotation/Totals.js:64:22)
+    at renderWithHooks (react-dom.js:11121:18)
+    …</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note"><b>Q21 · คนกดเอง ไม่ส่งอัตโนมัติ</b> — error เดียวกันเด้งซ้ำจะได้เรื่องซ้ำใบละสิบ
+    และ stack อาจมีข้อมูลใน state ติดไปโดยไม่มีใครดูก่อน · กดปุ่มแล้วโมดัลเปิดพร้อมกรอก stack ลง <code>errorStack</code> ให้แล้ว
+    ผู้ใช้แค่เติมว่า “กดอะไรถึงเจอ”</div>
+
+    <div class="callout amber"><span class="co-ic">🔒</span><div><b>stack ไม่ใช่ของสาธารณะ</b> — เก็บในคอลัมน์ของเรื่องซึ่งเห็นได้เฉพาะผู้แจ้งกับแอดมิน (Q12)
+    ไม่โชว์ในรายการ ไม่เข้าไปในเธรด</div></div>
+  </div>
+
+  <div class="workspace">
+    <div class="legend">
+      <b>อ่านคู่กับ</b> <code>docs/system-issue-reporting-plan.md</code> — มติ 28 ข้อฉบับเต็ม ·
+      โทเคนสี/ระยะ/ตัวอักษรในไฟล์นี้ยกจาก <code>webapp/src/app/globals.css</code> ตรง ๆ ไม่มีค่าดิบที่คิดขึ้นเอง ·
+      ป้ายสถานะทั้งหมดใช้ <b>ชื่อโทน</b> ของ <code>StatusBadge</code> (amber/blue/green/neutral) ไม่ใช่ค่าสี
+      <br><b>ลูกศรซ้าย-ขวา</b> เลื่อนจอได้
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  var MENUS={
+    sales:['ภาพรวม','ลีด','ดีล','ใบเสนอราคา','โครงการ','คำร้อง'],
+    support:[{n:'แจ้งปัญหาระบบ',k:'support'}]
+  };
+  var MAP={
+    s0:{sys:'sales',menu:null,role:'SA · AE'},
+    s1:{sys:'sales',menu:null,role:'SA · AE'},
+    s2:{sys:'support',menu:'support',role:'SA · AE'},
+    s3:{sys:'support',menu:'support',role:'SA · AE'},
+    s4:{sys:'support',menu:'support',role:'AD · admin'},
+    s5:{sys:'support',menu:'support',role:'AD · admin'},
+    s6:{sys:'support',menu:'support',role:'PC · staff'},
+    s7:{sys:'sales',menu:null,role:'SA · AE'}
+  };
+  var menuRow=document.getElementById('menu-row'),whoEl=document.getElementById('who-role');
+  var sysEls=document.querySelectorAll('#sys-switch [data-sys]');
+  var tabs=document.querySelectorAll('.deck [data-s]'),screens=document.querySelectorAll('.screen');
+  function show(id){
+    var cfg=MAP[id]; if(!cfg) return;
+    tabs.forEach(function(t){t.setAttribute('aria-selected',String(t.getAttribute('data-s')===id));});
+    screens.forEach(function(s){s.classList.toggle('is-active',s.id===id);});
+    sysEls.forEach(function(s){s.classList.toggle('is-current',s.getAttribute('data-sys')===cfg.sys);});
+    menuRow.textContent='';
+    (MENUS[cfg.sys]||MENUS.sales).forEach(function(item){
+      var name=typeof item==='string'?item:item.n, key=typeof item==='string'?null:item.k;
+      var a=document.createElement('a'); a.href='#'; a.textContent=name;
+      if(key&&key===cfg.menu) a.className='is-current';
+      a.addEventListener('click',function(e){e.preventDefault();});
+      menuRow.appendChild(a);
+    });
+    whoEl.textContent=cfg.role;
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-s'));window.scrollTo({top:0});});});
+  document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+    if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;
+    var ids=Array.prototype.map.call(tabs,function(t){return t.getAttribute('data-s');});
+    var cur=ids.indexOf(document.querySelector('.screen.is-active').id);
+    var next=e.key==='ArrowRight'?Math.min(cur+1,ids.length-1):Math.max(cur-1,0);
+    show(ids[next]);
+  });
+  document.querySelectorAll('.seg-field').forEach(function(g){
+    g.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click',function(){
+        g.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-selected','false');});
+        b.setAttribute('aria-selected','true');
+      });
+    });
+  });
+  document.querySelectorAll('.tabs').forEach(function(g){
+    g.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click',function(){
+        g.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-selected','false');});
+        b.setAttribute('aria-selected','true');
+      });
+    });
+  });
+  var root=document.documentElement;
+  document.getElementById('theme-toggle').addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme',dark?'light':'dark');
+  });
+  show('s0');
+})();
+</script>
+</body>
+</html>

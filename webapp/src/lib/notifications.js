@@ -36,6 +36,7 @@ const HREF = {
   // นัดเข้าบริการยังไม่มีหน้ารายละเอียดรายใบ — ส่งไปที่ **ตาราง** ซึ่งเป็นที่ที่เปิด
   // นัดนั้นได้จริง (คลิกชิปแล้วโมดัลเปิดพร้อมเธรด)
   service_visit: () => '/service/schedule',
+  system_issue: (id) => `/support/${id}`,
 };
 
 // ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
@@ -53,6 +54,7 @@ const ENTITY_LABEL = {
   excise_order: 'ใบยื่นชำระภาษี',
   sahamit_po: 'PO สหมิตร',
   service_visit: 'นัดเข้าบริการ',
+  system_issue: 'เรื่องแจ้งปัญหา',
 };
 
 export function entityTitle(entityType, parent) {

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wrench } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wrench } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -14,6 +14,7 @@ import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -46,6 +47,7 @@ export default function AppLayout({ children }) {
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
+  const [showReport, setShowReport] = useState(false); // โมดัลแจ้งปัญหาระบบ (mig 0223)
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
   useEffect(() => {
@@ -325,6 +327,15 @@ export default function AppLayout({ children }) {
         { href: '/sahamit/material', name: 'ของเข้า (สหมิตร)', shortName: 'ของเข้า', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
       ],
     },
+    {
+      // แจ้งปัญหาระบบ (mig 0223) — เมนูเดียว · cap `issues:report` อยู่ใน
+      // UNIVERSAL_CAPS จึงผ่านให้ทุก role ที่ล็อกอิน (รวม viewer) โดยไม่ต้องไล่
+      // เติม cap ทีละ role
+      system: 'support',
+      items: [
+        { href: '/support', name: 'เรื่องแจ้งปัญหา', shortName: 'แจ้งปัญหา', icon: LifeBuoy, cap: 'issues:report', match: (p) => p.startsWith('/support') },
+      ],
+    },
   ];
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
@@ -439,6 +450,7 @@ export default function AppLayout({ children }) {
               canChangePassword={SUPABASE_CONFIGURED}
               onToggleTheme={toggleTheme}
               onChangePassword={() => setShowPwd(true)}
+              onReportIssue={() => setShowReport(true)}
               onLogout={handleLogout}
             />
           </div>
@@ -529,6 +541,10 @@ export default function AppLayout({ children }) {
             <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
+            {/* คู่กับ AccountMenu — แผ่นเมนูมือถือต้องมีทุกอย่างที่เมนูผู้ใช้มี
+                ไม่งั้นคนที่ใช้มือถืออย่างเดียวจะไม่มีทางแจ้งปัญหาเลย */}
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setShowReport(true); }}><Bug size={18} /><span>แจ้งปัญหาระบบ</span></button>
+            <Link href="/support" onClick={() => setMobileMoreOpen(false)}><LifeBuoy size={18} /><span>เรื่องที่ฉันแจ้ง</span></Link>
             <button type="button" className="danger" onClick={handleLogout}><LogOut size={18} /><span>ออกจากระบบ</span></button>
           </section>
         </div>
@@ -541,6 +557,10 @@ export default function AppLayout({ children }) {
         onClose={() => setShowPwd(false)}
         onChanged={() => setMustChangePwd(false)}
       />
+
+      {/* แจ้งปัญหาระบบ (mig 0223) — mount ที่นี่เพราะเปิดได้จากทุกหน้าผ่านเมนูผู้ใช้
+          ตัวเดียวกับที่ปุ่มในหน้า /support เรียก (component เดียว ไม่มีฟอร์มชุดที่สอง) */}
+      <ReportIssueModal open={showReport} onClose={() => setShowReport(false)} />
     </div>
   );
 }

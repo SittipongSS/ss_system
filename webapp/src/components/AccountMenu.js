@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, KeyRound, LogOut, Moon, Sun, UserRound } from "lucide-react";
+import { Bug, ChevronDown, KeyRound, LifeBuoy, LogOut, Moon, Sun, UserRound } from "lucide-react";
 
 export default function AccountMenu({
   userName,
@@ -13,6 +13,7 @@ export default function AccountMenu({
   canChangePassword = true,
   onToggleTheme,
   onChangePassword,
+  onReportIssue,
   onLogout,
 }) {
   const [open, setOpen] = useState(false);
@@ -78,6 +79,18 @@ export default function AccountMenu({
               <span>เปลี่ยนรหัสผ่าน</span>
             </button>
           )}
+          {/* แจ้งปัญหาระบบ (mig 0223) — อยู่ในเมนูนี้เพราะมันมีอยู่ **ทุกหน้า**
+              ผู้ใช้จึงแจ้งได้จากหน้าที่พังโดยไม่ต้องเปลี่ยนหน้า (มติ Q5)
+              ⚠️ ไม่ทำปุ่มลอย — ทับ UI บนมือถือ */}
+          <div className="account-menu-divider" role="separator" />
+          <button type="button" role="menuitem" className="account-menu-item" onClick={act(onReportIssue)}>
+            <Bug size={17} aria-hidden="true" />
+            <span>แจ้งปัญหาระบบ</span>
+          </button>
+          <Link href="/support" role="menuitem" className="account-menu-item" onClick={() => setOpen(false)}>
+            <LifeBuoy size={17} aria-hidden="true" />
+            <span>เรื่องที่ฉันแจ้ง</span>
+          </Link>
           <div className="account-menu-divider" role="separator" />
           <button type="button" role="menuitem" className="account-menu-item danger" onClick={act(onLogout)}>
             <LogOut size={17} aria-hidden="true" />

@@ -1,0 +1,171 @@
+.body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+}
+
+.optional {
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-tight);
+}
+
+.files {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  font-size: var(--fs-5);
+}
+
+.fileName {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileRemove {
+  display: grid;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  place-items: center;
+}
+
+.fileRemove:hover {
+  color: var(--red);
+}
+
+/* แถบบริบทอัตโนมัติ — จาง ๆ อ่านอย่างเดียว แต่ **ไม่ซ่อน**: ผู้ใช้ต้องรู้ว่าระบบ
+   เก็บอะไรไปด้วยก่อนกดส่ง (มติ Q6) */
+.context {
+  display: grid;
+  gap: var(--space-1-5);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-tight);
+}
+
+.context b {
+  font-size: var(--fs-4);
+  color: var(--text-2);
+}
+
+.context dl {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1) var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.context dt {
+  color: var(--text-3);
+}
+
+.context dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* เรื่องที่คนอื่นแจ้งจากหน้าเดียวกัน — หัวข้อ + สถานะ เท่านั้น */
+.related {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--blue-soft);
+  font-size: var(--fs-5);
+}
+
+.related b {
+  font-size: var(--fs-5);
+  color: var(--text);
+}
+
+.related ul {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.related li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+}
+
+.related li span {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-5);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.footNote {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-tight);
+}

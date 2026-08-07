@@ -20,6 +20,7 @@ import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
+import { canPostIssueUpdate, canReadIssueRow } from '@/lib/issues/access';
 import { canViewCostingRequest } from '@/lib/costing';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
@@ -292,6 +293,26 @@ export const UPDATE_ENTITIES = {
     // (มติ 14) · webhook แจ้ง "ใบใหม่รออนุมัติ" อยู่แล้ว และเมื่อเขาตอบครั้งแรก
     // จะเข้าเงื่อนไข "คนเคยโพสต์" เอง
     recipients: (parent) => [parent?.requestedById],
+  },
+
+  // ── เรื่องแจ้งปัญหาระบบ (mig 0223) ───────────────────────────────────
+  // อ่าน/โพสต์ = **ฟังก์ชันเดียวกับที่ API ของเรื่องใช้เป๊ะ** (`canReadIssueRow` /
+  // `canPostIssueUpdate`) ไม่เขียนเงื่อนไขซ้ำที่นี่ — กฎ "ห้ามตั้งด่านเธรดแคบกว่า
+  // หน้าจอ" จึงเป็นจริงโดยโครงสร้าง ไม่ใช่โดยความตั้งใจของคนแก้โค้ดรอบหน้า
+  // (เทสต์ issueAccess.test.mjs เทียบสองทางนี้ตรง ๆ)
+  system_issue: {
+    table: 'system_issues',
+    attachments: true,   // ภาพหน้าจอคือหลักฐานหลักของเรื่องแจ้งบั๊ก
+    async canView(supabase, parent, user) {
+      return canReadIssueRow(user, parent);
+    },
+    // ปิด/ปฏิเสธแล้วถือเป็นหลักฐาน — กติกาเดียวกับ dept_request
+    async canPost(supabase, parent, user) {
+      return canPostIssueUpdate(user, parent);
+    },
+    // ⚠️ **ไม่ใส่แอดมินทุกคน** (มติ 14) — งาน "เรื่องใหม่เข้าคิว" เป็นของ Chat
+    // webhook ห้องผู้ดูแลระบบ · แอดมินที่กดรับเรื่องจะกลายเป็น assigneeId เอง
+    recipients: (parent) => [parent?.reportedById, parent?.assigneeId],
   },
 };
 

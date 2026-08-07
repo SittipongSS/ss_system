@@ -1,4 +1,4 @@
-import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LineChart, Scale, Wrench } from 'lucide-react';
+import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wrench } from 'lucide-react';
 import { canAccessMgmt, canAccessSahamit, canViewProduction, canUser, canViewService, departmentOf } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
@@ -107,6 +107,19 @@ export const SYSTEM_CATALOG = [
     icon: Briefcase,
     isVisible: (user) => canAccessMgmt(user),
     landing: () => '/mgmt',
+  },
+  {
+    // แจ้งปัญหาระบบ (mig 0223) — ระบบเดียวที่ **ทุกคนที่ล็อกอินเห็น** ไม่มีเงื่อนไข
+    // cap · อยู่ท้ายสุดเพราะไม่ใช่ระบบงานประจำวันของใคร แต่ต้องหาเจอตอนที่ต้องใช้
+    //
+    // ⚠️ ไม่เอาไปไว้ใต้ "ตั้งค่า" ทั้งที่ดูเข้าพวก — เปลือกตั้งค่า `viewer` เข้าไม่ได้
+    // แต่ viewer คือกลุ่มที่เจอบั๊กบ่อยที่สุดและต้องแจ้งได้ (มติ Q2/Q14)
+    key: 'support',
+    label: 'แจ้งปัญหาระบบ',
+    description: 'ส่งบั๊ก ปัญหาการใช้งาน หรือคำขอปรับระบบถึงผู้ดูแล แล้วติดตามสถานะได้',
+    icon: LifeBuoy,
+    isVisible: () => true,
+    landing: () => '/support',
   },
 ];
 

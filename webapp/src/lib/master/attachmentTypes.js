@@ -183,6 +183,14 @@ export const ATTACHMENT_TYPES = {
     { key: "spec", label: "สเปก / แบบงาน / บรีฟ", required: false },
     { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },
   ],
+  // ⚠️ **ไม่มี `system_issue` ที่นี่โดยเจตนา** (mig 0223) — ภาพหน้าจอของเรื่อง
+  // แจ้งปัญหาแนบผ่าน **เธรดอัปเดต** (`/api/updates` + `attachments` ของแถวอัปเดต)
+  // ไม่ใช่ตาราง `attachments` · เหตุผล: ด่านหยาบของ `/api/attachments` ใน proxy
+  // ไล่ตาม cap ของ role (customers:edit / products:edit / pm:edit / …) ซึ่ง
+  // **`viewer` ไม่มีสักตัว** — แต่ viewer ต้องแนบภาพหน้าจอได้ตามมติ Q2
+  // จะเปิดทางนั้นต้องผ่อนด่าน `/api/attachments` ให้ทุกคนที่ล็อกอิน = ผ่อนให้ทุก
+  // entity ไม่ใช่เฉพาะเรื่องแจ้งปัญหา (proxy เห็นแค่ method+path ไม่เห็น entityType
+  // ที่อยู่ใน body) · ทางเธรดได้สิทธิ์ที่ถูกต้องพอดีอยู่แล้วจาก `UPDATE_ENTITIES`
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).
