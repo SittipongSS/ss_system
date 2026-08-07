@@ -217,3 +217,44 @@ export function normalizeScentInput(body = {}) {
     error: null,
   };
 }
+
+// ── ที่มาของกลิ่น ────────────────────────────────────────────────────────
+//
+// ⭐ มติผู้ใช้ 2026-08-08: *"ทะเบียนกลิ่นเป็นข้อมูลกลางที่ข้อมูลจะมาจากทาง flow
+// พัฒนากลิ่นเป็นหลัก · การเพิ่มจากระบบทะเบียนโดยตรงจะเป็นกลิ่นเดิมที่เคยออกแบบแล้ว"*
+// ⇒ เปิดทะเบียนมาต้องแยกออกทันทีว่าตัวไหนเป็นตัวไหน
+//
+// ⚠️ **ตัดสินจาก `briefId` ไม่ใช่ `dealId`** — ดีลกรอกเองได้ตอนเพิ่มตรง (POST รับ
+// `dealId`) ส่วนบรีฟเกิดได้ทางเดียวคือตอน RD กดส่งในคำร้อง
+export const SCENT_SOURCES = [
+  { value: 'request', label: 'มาจากคำร้อง' },
+  { value: 'manual', label: 'เพิ่มเข้าทะเบียนเอง' },
+];
+
+export function scentSourceKind(scent) {
+  return scent?.briefId ? 'request' : 'manual';
+}
+
+/**
+ * ป้ายที่มาแบบพร้อมแสดง — `{ kind, label, requestId }`
+ *
+ * ⚠️ `briefId` มีแต่ตามกลับไม่เจอคำร้อง = คำร้องถูกลบไปแล้ว · ยังเป็น "มาจากคำร้อง"
+ * อยู่ดี แค่กดต่อไม่ได้ — ตกเป็น "เพิ่มเอง" เมื่อไรคือโกหกเรื่องที่มาของข้อมูล
+ */
+export function scentSourceLabel(scent) {
+  const kind = scentSourceKind(scent);
+  if (kind === 'manual') return { kind, label: 'เพิ่มเข้าทะเบียนเอง', requestId: null };
+  const request = scent?.sourceRequest || null;
+  if (!request) return { kind, label: 'มาจากคำร้อง (ถูกลบแล้ว)', requestId: null };
+  return {
+    kind,
+    label: `คำร้อง ${request.docNo || request.id}`,
+    requestId: request.id || null,
+  };
+}
+
+// ตัวกรอง "ที่มา" บนทะเบียน — '' = ทั้งหมด
+export function matchesScentSource(scent, filter) {
+  if (!filter) return true;
+  return scentSourceKind(scent) === filter;
+}

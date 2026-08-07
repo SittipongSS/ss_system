@@ -17,6 +17,7 @@ import {
   scentTransitionError,
   sendScentError,
   derivedFromError,
+  SCENT_SOURCES, matchesScentSource, scentSourceKind, scentSourceLabel,
 } from './scents.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -169,4 +170,43 @@ test('อ้างกลิ่นต้นทางข้ามลูกค้�
   assert.match(derivedFromError(null, { customerId: 'CUS-1' }), /ไม่พบกลิ่นต้นทาง/);
   // วนลูปสั้นที่สุดที่เป็นไปได้ (constraint ของ 0205 กันอยู่ แต่ที่นี่ได้ข้อความไทย)
   assert.match(derivedFromError(parent, { customerId: 'CUS-1', id: 'SCT-9' }), /อ้างตัวเอง/);
+});
+
+// ── ที่มาของกลิ่น (มติผู้ใช้ 2026-08-08) ────────────────────────────────
+//
+// ทะเบียนเป็นของกลางที่ข้อมูลส่วนใหญ่มาจากสายพัฒนากลิ่น · ที่เพิ่มตรงคือกลิ่นเดิม
+// ที่เคยออกแบบไว้ก่อนมีระบบ ⇒ เปิดทะเบียนมาต้องแยกออกทันทีว่าตัวไหนเป็นตัวไหน
+const fromRequest = { briefId: 'B1', sourceRequest: { id: 'REQ-1', docNo: 'SB-2608-001' } };
+
+test('⭐ ตัดสินที่มาจาก briefId ไม่ใช่ dealId — ดีลกรอกเองได้ตอนเพิ่มตรง', () => {
+  assert.equal(scentSourceKind(fromRequest), 'request');
+  assert.equal(scentSourceKind({ briefId: 'B1' }), 'request');
+  assert.equal(scentSourceKind({}), 'manual');
+  // ⚠️ ดีลอย่างเดียวไม่พอ — POST /api/master/scents รับ dealId จากคนเพิ่มเองได้
+  assert.equal(scentSourceKind({ dealId: 'D-1' }), 'manual');
+  assert.equal(scentSourceKind(null), 'manual');
+});
+
+test('ป้ายที่มา — มีคำร้องให้ตามกลับ กับไม่มี คนละข้อความ', () => {
+  assert.deepEqual(scentSourceLabel(fromRequest),
+    { kind: 'request', label: 'คำร้อง SB-2608-001', requestId: 'REQ-1' });
+  // ⚠️ คำร้องถูกลบไปแล้ว ยังเป็น "มาจากคำร้อง" อยู่ดี — ตกเป็น "เพิ่มเอง" เมื่อไร
+  // คือโกหกเรื่องที่มาของข้อมูล
+  const orphan = scentSourceLabel({ briefId: 'B1' });
+  assert.equal(orphan.kind, 'request');
+  assert.equal(orphan.requestId, null);
+  assert.match(orphan.label, /ถูกลบแล้ว/);
+  assert.equal(scentSourceLabel({}).label, 'เพิ่มเข้าทะเบียนเอง');
+  // ใบร่างที่ยังไม่มีเลขที่ — ถอยไปใช้ id ไม่ใช่โชว์ช่องว่าง
+  assert.match(scentSourceLabel({ briefId: 'B1', sourceRequest: { id: 'REQ-9' } }).label, /REQ-9/);
+});
+
+test('ตัวกรองที่มา — ค่าว่างคือทั้งหมด', () => {
+  assert.equal(matchesScentSource(fromRequest, ''), true);
+  assert.equal(matchesScentSource({}, ''), true);
+  assert.equal(matchesScentSource(fromRequest, 'request'), true);
+  assert.equal(matchesScentSource(fromRequest, 'manual'), false);
+  assert.equal(matchesScentSource({}, 'manual'), true);
+  // ตัวเลือกบนจอต้องครบทั้งสองแบบ ไม่งั้นกรองแล้วมีของหายไปโดยไม่มีตัวเลือกให้กลับมา
+  assert.deepEqual(SCENT_SOURCES.map((o) => o.value).sort(), ['manual', 'request']);
 });

@@ -18,7 +18,44 @@ export async function loadScents(supabase, { status = null, customerId = null } 
   if (customerId) query = query.eq('customerId', customerId);
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return attachScentSource(supabase, data || []);
+}
+
+// ── ที่มาของกลิ่นแต่ละตัว ────────────────────────────────────────────────
+//
+// ⭐ ทะเบียนกลิ่นเป็นข้อมูลกลางที่ **ข้อมูลส่วนใหญ่มาจากสายพัฒนากลิ่น** ส่วนที่เพิ่ม
+// ตรงจากทะเบียนคือกลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08)
+// ⇒ เปิดทะเบียนมาต้องแยกออกทันทีว่าตัวไหนผ่านสายงานจริง ตัวไหนคนพิมพ์เข้ามาเอง
+//
+// 🐞 `briefId` · `dealId` เก็บครบมาตั้งแต่ mig 0213 **แต่ไม่เคยขึ้นบนจอเลย**
+//
+// ⚠️ สองฮอป: `scents.briefId` → `dept_request_scents.requestId` → `dept_requests.docNo`
+// · ข้ามฮอปแรกไม่ได้เพราะกลิ่นไม่ได้ผูกคำร้องตรง ๆ (บรีฟเป็นชั้นกลางของโครงสามชั้น)
+//
+// ⚠️ ไม่ยิงอะไรเลยเมื่อไม่มีแถวไหนมี `briefId` — ตัวเลือกกลิ่นในฟอร์มต่าง ๆ เรียก
+// `loadScents` ด้วย และไม่ควรจ่ายค่า query เพิ่มถ้าทะเบียนยังไม่เคยมีของจากสายงาน
+async function attachScentSource(supabase, rows) {
+  const briefIds = [...new Set(rows.map((s) => s.briefId).filter(Boolean))];
+  if (!briefIds.length) return rows.map((s) => ({ ...s, sourceRequest: null }));
+
+  const { data: briefs, error: briefError } = await supabase
+    .from('dept_request_scents').select('id, "requestId"').in('id', briefIds);
+  if (briefError) throw briefError;
+  const requestIdByBrief = new Map((briefs || []).map((b) => [b.id, b.requestId]));
+
+  const requestIds = [...new Set([...requestIdByBrief.values()].filter(Boolean))];
+  const { data: requests, error: requestError } = requestIds.length
+    ? await supabase.from('dept_requests').select('id, "docNo"').in('id', requestIds)
+    : { data: [], error: null };
+  if (requestError) throw requestError;
+  const requestById = new Map((requests || []).map((r) => [r.id, r]));
+
+  return rows.map((s) => {
+    // ⚠️ `briefId` มีแต่ตามกลับไม่เจอ = คำร้องถูกลบไปแล้ว — ยังต้องนับว่า "มาจาก
+    // คำร้อง" อยู่ดี · ตกเป็น "เพิ่มเอง" เมื่อไรคือโกหกเรื่องที่มาของข้อมูล
+    const request = requestById.get(requestIdByBrief.get(s.briefId)) || null;
+    return { ...s, sourceRequest: request ? { id: request.id, docNo: request.docNo || null } : null };
+  });
 }
 
 export async function findScent(supabase, id) {
