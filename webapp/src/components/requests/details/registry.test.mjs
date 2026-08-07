@@ -29,3 +29,11 @@ test('ทะเบียนแยกจาก lib/requests/kinds โดยตั
   assert.ok(!/from ['"]react['"]/.test(kinds));
   assert.ok(!/components\//.test(kinds), 'ทะเบียนหัวข้อต้องไม่ import component');
 });
+
+test('พัฒนาสูตรมีจอของตัวเอง ไม่ตกไปใช้ตัวกลาง (P4 · ม-34)', () => {
+  // ⚠️ ตกไปใช้ `SharedRequestDetail` เมื่อไร = ได้แค่การ์ดรายแถว **ไม่มีตารางสรุป
+  // และไม่มีแถบตัวเลข** ⇒ "รอใส่ราคา" กับ "รอลูกค้าตอบ" หายไปจากจอ ซึ่งเป็นสองขั้น
+  // ที่ค้างโดยไม่มีใครเห็นได้ง่ายที่สุด
+  assert.match(SRC, /formula_dev: FormulaDevDetail/);
+  assert.match(SRC, /scent_dev: ScentDevDetail/);
+});

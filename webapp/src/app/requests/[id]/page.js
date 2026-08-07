@@ -29,6 +29,7 @@ import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
+import { formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -195,6 +196,10 @@ export default function RequestDetailPage() {
   // ⇒ ขัดกันไม่ได้เชิงโครงสร้าง · เดิมแถบตัวเลขใช้ `scentBriefSummary` ซึ่งนับจาก
   // `items` ที่มี briefId เท่านั้น ⇒ direction ที่ยังไม่ผูกบรีฟหายจากยอดรวมเงียบ ๆ
   const board = briefBoard(req.briefs || [], req.items || []);
+  // ⚠️ ประกอบทั้งสองแบบไว้เสมอ แล้วให้ component ของหัวข้อเลือกใช้ — ประกอบใน
+  // เงื่อนไขเมื่อไร hook order จะเปลี่ยนตามหัวข้อ ซึ่ง React ห้าม
+  const formulaBoard = formulaDevBoard(req.items || []);
+  const formulaTotals = formulaDevTotals(formulaBoard);
   const briefSummary = briefBoardTotals(board);
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
@@ -615,7 +620,8 @@ export default function RequestDetailPage() {
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         saving={saving}
-        board={board}
+        board={showPdr ? board : formulaBoard}
+        totals={formulaTotals}
         briefSummary={briefSummary}
         reconcile={reconcile}
         reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}

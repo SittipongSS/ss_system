@@ -9,11 +9,13 @@
 // จะลาก React เข้า server bundle ทั้งสาย
 //
 // ⚠️ เพิ่มหัวข้อใหม่ **ไม่ต้องแก้หน้า `/requests/[id]`** — ลงทะเบียนที่นี่พอ
+import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SharedRequestDetail from './SharedRequestDetail';
 
 const BY_KIND = {
   scent_dev: ScentDevDetail,
+  formula_dev: FormulaDevDetail,
 };
 
 // หัวข้อที่ยังไม่มีจอของตัวเองใช้ตัวกลาง — **ถอยได้ ไม่โยน** เพราะใบเก่าของหัวข้อ
@@ -22,4 +24,4 @@ export function detailForKind(kind) {
   return BY_KIND[kind] || SharedRequestDetail;
 }
 
-export { ScentDevDetail, SharedRequestDetail };
+export { FormulaDevDetail, ScentDevDetail, SharedRequestDetail };
