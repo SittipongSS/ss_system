@@ -4,7 +4,9 @@
 // เดียวตามกฎ AGENTS.md · ก่อนหน้านี้สองที่นั้นประกอบ payload กันเอง แล้วเพี้ยนหา
 // กันจริง: ฝั่งใบขอราคาผลิตคำนวณ `kind` ใหม่เองจนไม่ตรงกับที่ฟอร์มแสดง และไม่เคย
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
-import { requestHasItems, requestHasPdr, requestShapeError } from '@/lib/master/requestTypes';
+import {
+  requestHasItems, requestHasPdr, requestNeedsRef, requestShapeError,
+} from '@/lib/master/requestTypes';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 
 /**
@@ -34,6 +36,15 @@ export function requestFormBlocker(form) {
   // ⚠️ เดิมมีด่าน "ทุกรายการต้องเลือกวัสดุ" ต่อท้ายตรงนี้ — เป็นกฎของ**บรรทัดวัสดุ**
   // ซึ่งถูกถอดใน mig 0219 (ม-28) · ปล่อยไว้แล้วจะบล็อกบรรทัดพัฒนาสูตร/เอกสารทุกแถว
   // เพราะแถวพวกนั้นไม่มีช่อง `material` เลย ⇒ ปุ่มส่งจางถาวรโดยไม่มีทางแก้
+
+  // ⭐ **ดีลที่ยังไม่ผูกโครงการ — บอกให้ตรงว่าติดอะไร**
+  //
+  // ฟอร์มไม่มีช่อง "โครงการ" ให้เลือก (โครงการมาจากดีล มติ 2026-08-06) ⇒ ข้อความ
+  // "ต้องเลือกโครงการ" สั่งให้ผู้ใช้ทำสิ่งที่หน้าจอไม่มีให้ทำ · บน prod ตอนนับล่าสุด
+  // **122 จาก 136 ดีลยังไม่ผูกโครงการ** ⇒ นี่คือทางที่คนเดินเจอบ่อยที่สุด
+  if (requestNeedsRef(form.kind, 'project') && form.dealId && !form.projectId) {
+    return 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้';
+  }
   return null;
 }
 

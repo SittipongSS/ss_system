@@ -37,3 +37,22 @@ test('พัฒนาสูตรมีจอของตัวเอง ไม�
   assert.match(SRC, /formula_dev: FormulaDevDetail/);
   assert.match(SRC, /scent_dev: ScentDevDetail/);
 });
+
+test('ขอเอกสารมีจอของตัวเอง และใช้ร่วมกับใบวางบิลของบัญชี (P5)', () => {
+  // ⭐ คำศัพท์ต่างกัน (IFRA/COA/MSDS vs ใบวางบิล/ใบกำกับ) แต่กฎของบรรทัดเหมือนกัน
+  // ทุกข้อ ⇒ จอเดียวกัน · แยกจอเมื่อไรก็ได้สองก้อนที่เพี้ยนกันภายในสามเดือน
+  assert.match(SRC, /document: DocumentDetail/);
+  assert.match(SRC, /billing_doc: DocumentDetail/);
+});
+
+test('🔴 เปลือกส่งก้อนของทุกหัวข้อไปให้ครบ — ห้ามเดาจากข้อมูลว่าใบนี้เป็นหัวข้อไหน', () => {
+  // 🐞 เคยเขียนเป็น `docBoard.length ? docBoard : formulaBoard` ⇒ **ใบร่างที่ยังไม่มี
+  // แถว** จะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ · เลือกให้ที่เปลือกต้องรู้ว่าหัวข้อไหน
+  // ใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่ของเปลือก (ม-34)
+  // ⚠️ เทียบเฉพาะโค้ด — ข้อความในคอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/docBoard\.length \?/.test(code), 'ห้ามเลือกก้อนจากความยาว array');
+  for (const prop of ['formulaBoard=', 'formulaTotals=', 'docBoard=', 'docTotals=']) {
+    assert.ok(PAGE.includes(prop), `เปลือกต้องส่ง ${prop}`);
+  }
+});

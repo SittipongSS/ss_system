@@ -14,7 +14,11 @@ import FormulaDevBoard from "@/components/requests/FormulaDevBoard";
 import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
-export default function FormulaDevDetail({ request, board, totals, canEditAttachments }) {
+// ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
+// ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
+export default function FormulaDevDetail({
+  request, formulaBoard: board = [], formulaTotals: totals, canEditAttachments,
+}) {
   return (
     <>
       <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />

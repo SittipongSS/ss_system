@@ -9,6 +9,7 @@
 // จะลาก React เข้า server bundle ทั้งสาย
 //
 // ⚠️ เพิ่มหัวข้อใหม่ **ไม่ต้องแก้หน้า `/requests/[id]`** — ลงทะเบียนที่นี่พอ
+import DocumentDetail from './DocumentDetail';
 import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SharedRequestDetail from './SharedRequestDetail';
@@ -16,6 +17,10 @@ import SharedRequestDetail from './SharedRequestDetail';
 const BY_KIND = {
   scent_dev: ScentDevDetail,
   formula_dev: FormulaDevDetail,
+  // ⭐ ของกลางสองฝ่าย — คำศัพท์ต่างกัน (IFRA/COA/MSDS vs ใบวางบิล/ใบกำกับ) แต่กฎ
+  // ของบรรทัดเหมือนกันทุกข้อ ⇒ จอเดียวกัน (ดู docVocabulary)
+  document: DocumentDetail,
+  billing_doc: DocumentDetail,
 };
 
 // หัวข้อที่ยังไม่มีจอของตัวเองใช้ตัวกลาง — **ถอยได้ ไม่โยน** เพราะใบเก่าของหัวข้อ
@@ -24,4 +29,4 @@ export function detailForKind(kind) {
   return BY_KIND[kind] || SharedRequestDetail;
 }
 
-export { FormulaDevDetail, ScentDevDetail, SharedRequestDetail };
+export { DocumentDetail, FormulaDevDetail, ScentDevDetail, SharedRequestDetail };

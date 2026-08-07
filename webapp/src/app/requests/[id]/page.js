@@ -30,6 +30,7 @@ import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approva
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
+import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -200,6 +201,8 @@ export default function RequestDetailPage() {
   // เงื่อนไขเมื่อไร hook order จะเปลี่ยนตามหัวข้อ ซึ่ง React ห้าม
   const formulaBoard = formulaDevBoard(req.items || []);
   const formulaTotals = formulaDevTotals(formulaBoard);
+  const docBoard = documentBoard(req.items || []);
+  const docTotals = documentTotals(docBoard);
   const briefSummary = briefBoardTotals(board);
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
@@ -615,14 +618,21 @@ export default function RequestDetailPage() {
           หัวใบ · เธรด · โมดัลของแต่ละก้าว · ส่วนที่ต่างกันรายหัวข้อ (PDR · ตารางสรุป ·
           กระทบยอด SO · การ์ดรายแถว) อยู่ในไฟล์ของหัวข้อนั้น
           ⚠️ เพิ่มหัวข้อใหม่ **ห้ามมาแก้ไฟล์นี้** — ลงทะเบียนที่ `details/index.js` */}
+      {/* ⚠️ **ส่งของทุกหัวข้อไปให้ครบ แล้วให้ component ของหัวข้อหยิบตัวของตัวเอง**
+          — เลือกให้ที่นี่ต้องรู้ว่าหัวข้อไหนใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่
+          ของเปลือก (ม-34) · เคยเขียนเป็น `docBoard.length ? … : …` ซึ่งเดาจากข้อมูล
+          ⇒ ใบร่างที่ยังไม่มีแถวจะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ */}
       <KindDetail
         request={req}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         saving={saving}
-        board={showPdr ? board : formulaBoard}
-        totals={formulaTotals}
+        board={board}
         briefSummary={briefSummary}
+        formulaBoard={formulaBoard}
+        formulaTotals={formulaTotals}
+        docBoard={docBoard}
+        docTotals={docTotals}
         reconcile={reconcile}
         reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}
         reconcileText={reconcile ? soReconcileText(reconcile) : null}

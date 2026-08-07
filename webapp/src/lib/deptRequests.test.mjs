@@ -108,7 +108,10 @@ test('ด่านตอนสร้าง: พัฒนากลิ่นส่
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   };
   assert.equal(requestShapeError('formula_dev', dev), null);
-  assert.match(requestShapeError('formula_dev', { ...dev, projectId: '' }), /โครงการ/);
+  // ⚠️ **โครงการมาจากดีล** — ไม่มี projectId แต่มีดีลถือว่าผ่านด่านนี้ แล้วไปตกที่
+  // handler ถ้าดีลนั้นไม่ผูกโครงการจริง (ข้อความละเอียดกว่า) · ตกที่นี่เมื่อไม่มีทั้งคู่
+  assert.equal(requestShapeError('formula_dev', { ...dev, projectId: '' }), null);
+  assert.match(requestShapeError('formula_dev', { ...dev, projectId: '', dealId: '' }), /โครงการ/);
 });
 
 test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมหัวข้อที่มีบรรทัด', () => {
@@ -654,4 +657,37 @@ test('🐞 POST /api/sa/requests ต้องอ่าน body.pdr จริง 
   const src = readFileSync('src/app/api/sa/requests/route.js', 'utf8');
   assert.match(src, /normalizePdr\(body\.pdr\)/, 'POST ต้องเรียก normalizePdr(body.pdr)');
   assert.match(src, /\.\.\.pdrColumns,/, 'คอลัมน์ที่ได้ต้องถูกใส่ลง insert จริง');
+});
+
+// ── 🐞 หัวข้อที่ผูกโครงการเปิดใบไม่ได้เลย (ผู้ใช้เจอเอง 2026-08-07) ───────
+//
+// ผู้ใช้รายงาน: *"เหมือนมีบั๊กในการเลือกโครงการ เลือกแล้ว บอกว่าไม่เลือก"*
+// ต้นเหตุ: `requestPayload` จงใจไม่ส่ง `projectId` (server ดึงจากแถวดีลเสมอ) แต่
+// `requestShapeError` เช็ค `body.projectId` ตรง ๆ ⇒ ตกทุกครั้งที่ POST
+test('🐞 โครงการเป็นของที่ server เติมจากดีล — ด่านต้องถามดีล ไม่ใช่ถามโครงการ', () => {
+  const payload = requestPayload({
+    kind: 'formula_dev', dept: 'RD', title: 'ขอตัวอย่าง',
+    projectId: 'PRJ-1', dealId: 'D-1',
+    items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
+  });
+  // payload ไม่มี projectId โดยเจตนา — แต่ต้องผ่านด่าน เพราะดีลมาแล้ว
+  assert.equal('projectId' in payload, false);
+  assert.equal(requestShapeError('formula_dev', payload), null);
+  // ไม่มีทั้งคู่ = ตกเหมือนเดิม
+  assert.match(
+    requestShapeError('formula_dev', { ...payload, dealId: null }),
+    /โครงการ/,
+  );
+});
+
+test('ฟอร์มบอกให้ตรงว่าติดอะไร — ไม่สั่งให้เลือกช่องที่ไม่มีอยู่บนจอ', () => {
+  // ⚠️ ฟอร์มไม่มีช่อง "โครงการ" (โครงการมาจากดีล) ⇒ "ต้องเลือกโครงการ" คือคำสั่งที่
+  // ทำตามไม่ได้ · prod มี 122/136 ดีลที่ยังไม่ผูกโครงการ ⇒ เจอบ่อยที่สุด
+  const form = {
+    kind: 'formula_dev', dept: 'RD', title: 'ขอตัวอย่าง',
+    dealId: 'D-1', projectId: '',
+    items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
+  };
+  assert.match(requestFormBlocker(form), /ดีลนี้ยังไม่ผูกโครงการ/);
+  assert.equal(requestFormBlocker({ ...form, projectId: 'PRJ-1' }), null);
 });
