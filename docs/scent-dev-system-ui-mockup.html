@@ -1466,9 +1466,11 @@ COMMIT;</pre>
         <td><b>dropdown SO ไม่กรอง</b> — ป้ายเขียน "ใบสั่งขายออกแบบกลิ่น" แต่แสดงทุกใบ
           แล้วไปตายที่ server ตอนกดส่ง · §03</td>
         <td><code>components/requests/RequestForm.js:369</code></td><td><span class="badge g">เล็ก</span></td></tr>
-      <tr><td><b>4</b></td>
-        <td><b>ทะเบียนกลิ่นไม่แสดงที่มา</b> — เก็บ <code>briefId</code>/<code>dealId</code> ครบแล้วแต่ไม่ขึ้นจอ · §12</td>
-        <td><code>app/database/scents/page.js:292</code></td><td><span class="badge w">กลาง</span></td></tr>
+      <tr style="opacity:.6"><td><b>4</b></td>
+        <td><s><b>ทะเบียนกลิ่นไม่แสดงที่มา</b></s> — <span class="badge g">แก้แล้ว 2026-08-08</span>
+          คอลัมน์ "ที่มา" (ลิงก์ไปใบคำร้อง) + ตัวกรอง + ค้นด้วยเลขที่คำร้องได้ · §12</td>
+        <td><code>app/database/scents/page.js</code><br><code>lib/master/scents.js</code></td>
+        <td><span class="badge g">เสร็จ</span></td></tr>
       <tr><td><b>5</b></td>
         <td><b>วันเดียวทำสามหน้าที่</b> — <code>delivery.js:141</code> เขียนค่าเดียวลงทั้ง
           <code>items.readyAt</code> และ <code>scents.sentAt</code> ⇒ ป้ายกับค่าไม่ตรงกัน ·
