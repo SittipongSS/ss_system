@@ -275,22 +275,29 @@ export default function RequestForm({
           />
           {topicAction && (
             <div className={styles.topicAction}>
+              {/* ⚠️ **เหตุผลที่กดไม่ได้อยู่ติดปุ่ม** — เดิมข้อความไปโผล่ชิดซ้ายใต้ช่อง
+                  ห่างจากปุ่มที่ชิดขวาเกือบเต็มความกว้างการ์ด ⇒ อ่านไม่เป็นคู่กัน
+                  (กฎเดียวกับ `requestFormBlocker`: ปุ่มที่กดไม่ได้ต้องบอกเหตุผล) */}
+              {topicAction.disabled && topicAction.hint && (
+                <small className={styles.hint}>{topicAction.hint}</small>
+              )}
               {/* ⭐ อยู่ติดช่องที่มันคุม ไม่ใช่ลอยอยู่แถบปุ่มล่างสุด — คนที่อยากเปลี่ยน
                   หัวข้อจะมองที่ช่องหัวข้อก่อนเสมอ · และตอนกางฟอร์มแล้วช่องนี้ถูกล็อก
-                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง */}
+                  ปุ่มจึงเป็น **ทางเดียว** ที่เปลี่ยนได้ ไม่ใช่ทางที่สอง
+                  ⚠️ **น้ำหนักของปุ่มมาจากผู้เรียก** — ขั้นแรก "กรอกฟอร์ม…" คือปุ่มเดียว
+                  ที่พาไปต่อได้ทั้งหน้า จึงต้องเป็นปุ่มหลัก · ส่วน "เปลี่ยนฝ่าย/หัวข้อ"
+                  เป็นการถอยกลับ จึงเบา · เดิมเป็น quiet ทั้งคู่ ⇒ ขั้นแรกทั้งหน้า
+                  ไม่มีปุ่มหลักสักตัว ปุ่มที่ต้องกดอ่านเหมือนข้อความจาง */}
               <Button
-                variant="quiet" size="sm"
+                tone={topicAction.tone}
+                variant={topicAction.variant || "quiet"}
+                size={topicAction.size || "sm"}
                 disabled={disabled || topicAction.disabled}
                 onClick={topicAction.onClick}
               >
                 {topicAction.label}
               </Button>
             </div>
-          )}
-          {/* ⚠️ **ปุ่มที่กดไม่ได้ต้องบอกเหตุผล** — จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่า
-              ระบบพัง แล้วไปหาสาเหตุผิดที่ (กฎเดียวกับ `requestFormBlocker`) */}
-          {topicAction?.disabled && topicAction.hint && (
-            <small className={styles.hint}>{topicAction.hint}</small>
           )}
           {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
               เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
