@@ -184,7 +184,12 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // `/support` = แจ้งปัญหาระบบ (mig 0223) — **ทุกคนที่ล็อกอินต้องเปิดได้ รวม viewer**
 // คนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด · ด่านจริงคือ canReadIssueRow
 // (เห็นเฉพาะเรื่องของตัวเอง ยกเว้น admin) ซึ่ง proxy มองไม่เห็น
-const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
+// 🐞 `/rd` (โมดูลวิจัยและพัฒนา · ม-29) ตกลิสต์นี้ตอน merge ⇒ **ฝ่าย RD เห็นการ์ด
+// และเมนู "วิจัยและพัฒนา" แต่กดแล้วถูกเด้งกลับ /home** เข้าไม่ได้เลยสักคน · admin
+// ไม่เจอบั๊กเพราะผ่านตั้งแต่บรรทัดแรกของ lockedOut · ผู้ใช้แจ้งเข้ามาเองผ่านระบบ
+// แจ้งปัญหา ("เข้าหน้าวิจัยและพัฒนาไม่ได้") — เทสต์ข้อ "ทุก landing ต้องอยู่ใน
+// OPEN_PAGES" ใน proxy.test.mjs กันไม่ให้โมดูลตัวถัดไปซ้ำรอย
+const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/rd', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/

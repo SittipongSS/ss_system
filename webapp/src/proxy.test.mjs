@@ -309,3 +309,34 @@ test('ทะเบียนจังหวัด/อำเภอ/ตำบล �
   // อ่านอย่างเดียว — ไม่มีทางเขียน (ข้อมูลมาจากไฟล์ในรีโป ไม่ใช่จากฐานข้อมูล)
   assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/api/thai-address', 'POST', true), true);
 });
+
+// ⭐ **ตัวกันโมดูลใหม่ตกลิสต์** — เทสต์ตัวนี้เกิดจากบั๊กจริงที่ผู้ใช้แจ้งเข้ามาเอง
+// ผ่านระบบแจ้งปัญหา ("เข้าหน้าวิจัยและพัฒนาไม่ได้"): `/rd` ถูกสร้างพร้อมการ์ดใน
+// SYSTEM_CATALOG และเมนูใน AppLayout ครบ แต่ตกจาก OPEN_PAGES ⇒ ฝ่าย RD เห็นเมนู
+// แล้วกดเข้าไม่ได้เลยสักคน · admin ไม่มีทางเจอเพราะผ่านตั้งแต่บรรทัดแรกของ lockedOut
+// และ build/เทสต์เดิมก็ไม่มีอะไรจับ
+//
+// ต่อจากนี้ ระบบใหม่ที่ลืมลง OPEN_PAGES จะทำให้เทสต์นี้แดงทันทีตั้งแต่ก่อน merge
+test('ทุกระบบใน SYSTEM_CATALOG ต้องเปิดหน้า landing ของตัวเองได้ (default-deny)', async () => {
+  const { SYSTEM_CATALOG } = await import('./config/systems.js');
+  // role ที่ **ไม่ใช่ admin** — admin ผ่านทุกอย่างจึงพิสูจน์อะไรไม่ได้
+  const user = { role: 'rd', extraCaps: [] };
+
+  for (const system of SYSTEM_CATALOG) {
+    const landing = system.landing(user);
+    assert.ok(landing, `${system.key} ไม่มี landing`);
+    assert.equal(
+      lockedOut(user, landing, 'GET', false),
+      false,
+      `${system.key}: ${landing} ไม่อยู่ใน OPEN_PAGES — คนที่เห็นการ์ดจะกดเข้าไม่ได้`,
+    );
+  }
+});
+
+test('ฝ่าย R&D เปิดโมดูลของตัวเองได้ทั้งหน้าภาพรวมและหน้าลูก', () => {
+  for (const role of ['rd', 'ae', 'staff', 'viewer']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/rd', 'GET', false), false, `${role} /rd`);
+    assert.equal(lockedOut(user, '/rd/requests', 'GET', false), false, `${role} /rd/requests`);
+  }
+});
