@@ -24,6 +24,7 @@ import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { createRequestDraft, requestFormBlocker } from "@/lib/master/requestCreate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
+import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -34,10 +35,15 @@ export default function NewRequestPage() {
   const searchParams = useSearchParams();
 
   // prefill จากลิงก์ — มาจากหน้าดีลไหนก็เติมดีลนั้นให้ ไม่ต้องเลือกซ้ำ
+  // ⭐ `salesOrderId` มาจากการ์ด "บรีฟกลิ่นของใบนี้" บนหน้า SO — งานพัฒนากลิ่นเริ่มที่
+  // ใบสั่งขาย คนที่เพิ่งอนุมัติเสร็จจึงกดต่อได้เลย ไม่ต้องจำเลขที่มาไล่หาใน dropdown
+  // ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — `scentDesignOrderError` ที่ POST ยังตรวจ
+  // ครบทุกข้อ (อนุมัติแล้ว · มีบรรทัดออกแบบกลิ่น · ยังไม่เคยเปิดใบ) เหมือนตอนเลือกเอง
   const defaults = useMemo(() => ({
     kind: searchParams.get("kind") || "",
     dealId: searchParams.get("dealId") || "",
     projectId: searchParams.get("projectId") || "",
+    salesOrderId: searchParams.get("salesOrderId") || "",
   }), [searchParams]);
   // ⚠️ กลับไปที่เดิมหลังบันทึก — แพตเทิร์นเดียวกับ pm/tasks · ค่าที่ไม่ใช่เส้นทาง
   // ภายในถูกทิ้ง (open redirect จากโดเมนของเราเองคือของจริงที่เคยหลุดมาแล้ว)
@@ -76,6 +82,25 @@ export default function NewRequestPage() {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
   }, []);
+
+  // ⭐ บล็อกบรีฟของใบที่ prefill มา — ตอนเลือก SO เองในฟอร์ม `onChange` เป็นคนงอก
+  // บล็อกให้ตามจำนวนกลิ่นที่ใบนั้นขาย (ม-38) · มาทางลิงก์ `?salesOrderId=` ไม่มีใครกด
+  // ⇒ ต้องงอกที่นี่แทน **หลังรายการ SO โหลดเสร็จ** (ตอน mount ยังไม่รู้ว่าใบนั้นขายกี่กลิ่น)
+  //
+  // 🐞 ไม่ทำ = ฟอร์มเปิดมาพร้อมใบสั่งขายที่เลือกไว้แล้วแต่ **ไม่มีบล็อกบรีฟสักก้อน**
+  // ⇒ กรอกต่อไม่ได้เลย และไม่มีอะไรบอกว่าทำไม (ทางเดียวคือสลับ SO ไปกลับให้ onChange ยิง)
+  //
+  // ⚠️ เงื่อนไข `!form.briefs.length` กันไม่ให้ลบสิ่งที่ผู้ใช้พิมพ์ไปแล้วตอน re-render
+  useEffect(() => {
+    if (!form.salesOrderId || form.briefs?.length) return;
+    const so = salesOrders.find((row) => row.id === form.salesOrderId);
+    if (!so) return; // ยังโหลดไม่ถึง หรือใบนั้นอยู่นอกขอบเขตของผู้ใช้
+    const count = scentCountForOrder(so.lines || []);
+    if (!count) return; // ใบไม่ใช่งานออกแบบกลิ่น — ด่านฝั่ง server เป็นคนบอกเหตุผล
+    setForm((prev) => (prev.briefs?.length
+      ? prev
+      : { ...prev, briefs: Array.from({ length: count }, () => ({ label: "" })) }));
+  }, [salesOrders, form.salesOrderId, form.briefs]);
 
   // ปุ่มส่งเปิดเมื่อกรอกครบ — **ด่านเดียวกับข้อความที่ฟอร์มแสดง**
   // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล

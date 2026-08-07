@@ -337,9 +337,9 @@
   ไม่ต้องจำเลขที่แล้วไปไล่หาใน dropdown
 </p>
 
-<div class="screen proposed">
+<div class="screen">
   <header>
-    <span><b>ใบสั่งขาย</b> — บล็อกงานที่ทำต่อได้ <span class="who new">เสนอใหม่</span></span>
+    <span><b>ใบสั่งขาย</b> — การ์ด "บรีฟกลิ่นของใบนี้" <span class="badge g">ส่งแล้ว 2026-08-08</span></span>
     <span class="path">/sa/sales-orders/[id]</span>
   </header>
   <div class="body">
@@ -366,25 +366,44 @@
       </div>
     </div>
 
-    <div class="card" style="border-color:color-mix(in srgb,var(--warn) 45%,var(--line))">
+    <div class="card">
       <div class="rowhead" style="margin-bottom:6px">
-        <div class="title" style="font-size:14.5px">งานที่ทำต่อได้</div>
-        <span class="who new">เสนอใหม่</span>
+        <div class="title" style="font-size:14.5px">🧪 บรีฟกลิ่นของใบนี้</div>
+        <span class="badge n">3 กลิ่น</span>
       </div>
       <p class="sub" style="margin:0 0 11px">
-        ใบนี้มีบรรทัดออกแบบกลิ่น 3 กลิ่น และยังไม่เคยเปิดคำร้องพัฒนากลิ่น
+        ใบนี้ขายบริการออกแบบกลิ่น 3 กลิ่น — เปิดคำร้องส่งบรีฟให้ฝ่าย R&amp;D ได้เลย
       </p>
       <div class="btns">
-        <span class="btn accent">🧪 เปิดคำร้องพัฒนากลิ่น</span>
-        <span class="btn quiet">ดูไทม์ไลน์โครงการ</span>
+        <span class="btn accent">เปิดคำร้องพัฒนากลิ่น</span>
       </div>
     </div>
 
+    <div class="note">
+      <b>การ์ดอยู่บนสุดของคอลัมน์</b> — สำหรับใบที่ขายบริการออกแบบกลิ่น นี่คือก้าวถัดไป
+      ทันทีหลังอนุมัติ ยังไม่ใช่เรื่องของเข้า/แผนผลิต ·
+      <b>ซ่อนทั้งการ์ดเมื่อใบไม่ใช่งานออกแบบกลิ่น</b> — ใบขายสินค้าธรรมดาไม่ควรเห็นการ์ด
+      ที่บอกว่า "เปิดไม่ได้" ตลอดไป นั่นคือ noise ไม่ใช่ข้อมูล
+    </div>
+
     <div class="note warn">
-      <b>ปุ่มนี้ต้องหายไปเองใน 3 กรณี</b> — ใบยังไม่ <code>approved</code> ·
-      ไม่มีบรรทัดหมวด <code>03-001 / 03-002 / 03-005</code> ·
-      หรือมีคำร้องที่ยังไม่ยกเลิกบน SO ใบนี้แล้ว (กติกา <code>1 SO : 1 PDR</code> · ม-37)
-      <br>ถ้าเปิดไม่ได้ ให้ขึ้นเป็น <b>ข้อความบอกเหตุผล</b> แทนปุ่มจาง — ปุ่มจางไม่บอกว่าต้องทำอะไรต่อ
+      <b>สามสถานะที่การ์ดต้องพูดต่างกัน</b> — ตัดสินด้วย <code>scentDesignOrderError()</code>
+      <b>ตัวเดียวกับที่ API ใช้</b> ปุ่มกับ server จึงขัดกันไม่ได้
+      <ul class="tight" style="margin-bottom:0">
+        <li><b>เปิดได้</b> — ปุ่ม accent พาไป
+          <code>/requests/new?kind=scent_dev&amp;salesOrderId=…&amp;returnTo=…</code></li>
+        <li><b>เปิดไปแล้ว</b> — ขึ้นเลขที่ใบ + ปุ่มเงียบ "เปิดคำร้อง" พาไปใบนั้น
+          (<code>1 SO : 1 PDR</code> · ม-37)</li>
+        <li><b>ยังเปิดไม่ได้</b> — ใบยังไม่ <code>approved</code> หรืออ่านจำนวนกลิ่นไม่ออก
+          ⇒ <b>ขึ้นเหตุผลเป็นข้อความ ไม่มีปุ่มจาง</b> ปุ่มจางไม่บอกว่าต้องทำอะไรต่อ</li>
+      </ul>
+    </div>
+
+    <div class="note stop">
+      <b>ใบที่เปิดไปแล้วต้องถามด้วย service-role</b> — ทะเบียนคำร้องมีขอบเขตของตัวเอง
+      (ผู้ขอเห็นเฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ไม่มีใบ" ทั้งที่เพื่อนร่วมทีม
+      เปิดไปแล้ว แล้วปุ่มจะโชว์ให้กดจนไปตายที่ unique index ของ DB ·
+      คืนออกไปแค่ <code>id / docNo / status</code>
     </div>
   </div>
 </div>
@@ -1437,9 +1456,12 @@ COMMIT;</pre>
           ใช้ร่วมกับการ์ดระบบ · ratchet เทสต์ "ทุกระบบต้องมีกลุ่มเมนู" กันซ้ำรอย · §07</td>
         <td><code>components/AppLayout.js</code><br><code>lib/permissions.js</code></td>
         <td><span class="badge g">เสร็จ</span></td></tr>
-      <tr><td><b>2</b></td>
-        <td><b>SO ที่อนุมัติแล้วไม่มีทางเปิดคำร้องต่อ</b> — งานเริ่มที่ SO แต่ปุ่มอยู่คนละหน้า · §02</td>
-        <td><code>app/sales-planning/sales-orders/[id]/page.js</code></td><td><span class="badge g">เล็ก</span></td></tr>
+      <tr style="opacity:.6"><td><b>2</b></td>
+        <td><s><b>SO ที่อนุมัติแล้วไม่มีทางเปิดคำร้องต่อ</b></s> — <span class="badge g">แก้แล้ว 2026-08-08</span>
+          การ์ด "บรีฟกลิ่นของใบนี้" + prefill <code>?salesOrderId=</code> +
+          บล็อกบรีฟงอกเองหลังรายการ SO โหลดเสร็จ · §02</td>
+        <td><code>sales-orders/[id]/page.js</code><br><code>requests/new/page.js</code></td>
+        <td><span class="badge g">เสร็จ</span></td></tr>
       <tr><td><b>3</b></td>
         <td><b>dropdown SO ไม่กรอง</b> — ป้ายเขียน "ใบสั่งขายออกแบบกลิ่น" แต่แสดงทุกใบ
           แล้วไปตายที่ server ตอนกดส่ง · §03</td>
