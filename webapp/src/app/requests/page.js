@@ -6,7 +6,7 @@
 // เรื่องเดียวกัน · RD จึงต้องเฝ้าสองที่ และไม่มีที่ไหนบอกว่างานค้างทั้งหมดมีกี่ชิ้น
 //
 // หน้านี้คือคิวเดียวของทุกชนิดคำร้อง — ชนิดคุมด้วย lib/master/requestTypes.js
-// (สอบถาม · บรีฟกลิ่น · ขอ mockup · ขอราคา F/FB/PM · ขอเอกสาร · ติดตามของเข้า)
+// (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
@@ -31,7 +31,7 @@ import { compareRequestUrgency } from "@/lib/deptRequests";
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
 
-const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่น — สอบถาม บรีฟกลิ่น ขอ Mock-up ขอราคา ขอเอกสาร ติดตามของเข้า";
+const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่น — พัฒนากลิ่น พัฒนาสูตร ขอเอกสาร สอบถามข้อมูล ติดตามของเข้า";
 // มาจากหน้าดีล (`?dealId=`) ต้องบอกว่ากำลังดูแค่ดีลนั้น ไม่ใช่ทั้งหมด — ไม่งั้น
 // "ไม่มีคำร้องของคุณ" อ่านเหมือนระบบว่าง ทั้งที่แค่กรองอยู่
 const mineBlurb = (deal) => (deal
@@ -124,7 +124,7 @@ export default function RequestsPage() {
       .then((r) => r.json()).then((d) => setDeals(asArray(d))).catch(() => {});
     fetch("/api/pm/projects", { cache: "no-store" })
       .then((r) => r.json()).then((d) => setProjects(asArray(d))).catch(() => {});
-    // บรีฟกลิ่นยึด SO (ค่าบริการออกแบบกลิ่น) · Mock-up ยึดหมวดสินค้า
+    // พัฒนากลิ่นยึด SO (ค่าบริการออกแบบกลิ่น) · พัฒนาสูตรยึดหมวดสินค้ารายแถว
     fetch("/api/sales-planning/sales-orders", { cache: "no-store" })
       .then((r) => r.json()).then((d) => setSalesOrders(asArray(d))).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});

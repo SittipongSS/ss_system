@@ -8,7 +8,13 @@
 export const REQUEST_OUTCOMES = ['link', 'create', 'none'];
 
 // หัวข้อที่ต้องระบุผลลัพธ์ตอนปิดเรื่อง → ทะเบียนปลายทาง
-export const OUTCOME_REGISTRY_BY_KIND = { scent_brief: 'scent' };
+// ⚠️ **ว่างโดยตั้งใจ** — สมาชิกตัวเดียวคือ `scent_brief` ซึ่งถูกลบใน mig 0220
+// (0 แถวบน prod) · ในโมเดลใหม่กลิ่นเข้าทะเบียน **ตอน RD กดส่ง** ไม่ใช่ตอนปิดเรื่อง
+// (`producedScentId` — แบบหน้าจอ §04) ⇒ ไม่มีหัวข้อไหนต้องถามผลลัพธ์ตอนปิดอีก
+//
+// ⭐ กลไกอยู่ต่อ **ในฐานะตาข่าย** ตามที่แผนบันทึกไว้ — หัวข้อใหม่ที่ผลลัพธ์ต้อง
+// ตกผลึกตอนปิดเรื่องจริง ๆ มาลงทะเบียนที่นี่ได้เลยโดยไม่ต้องรื้อด่าน
+export const OUTCOME_REGISTRY_BY_KIND = {};
 
 export function requestNeedsOutcome(kind) {
   return !!OUTCOME_REGISTRY_BY_KIND[kind];

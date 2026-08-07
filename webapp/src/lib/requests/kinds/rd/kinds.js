@@ -7,11 +7,13 @@
 // ⚠️ **ลำดับในลิสต์คือลำดับที่ผู้ใช้เห็นในดรอปดาวน์** (ภายในตระกูลเดียวกัน)
 import scentDev from './scentDev';
 import formulaDev from './formulaDev';
-import legacy from './legacy';
 
 // ⚠️ `price_f` / `price_fb` ถูกถอดทั้งหัวข้อใน mig 0219 (มติ ม-28) — ราคากลายเป็น
 // **ขั้นสุดท้ายของสองหัวข้อข้างบน** ไม่ใช่คำร้องคนละใบ · ห้ามเพิ่มกลับโดยไม่ทบทวน
 // สายงานใหม่ทั้งเส้นก่อน ไม่งั้นจะได้สองทางที่ทำเรื่องเดียวกันอีกรอบ
-const RD_KINDS = [scentDev, formulaDev, ...legacy];
+// ⚠️ `scent_brief` / `mockup` (หัวข้อเก่าที่ติดธง `legacy`) ถูกลบทั้งไฟล์ใน mig 0220 —
+// เก็บไว้เพื่อให้ **ใบเก่าบน prod ยังมีป้ายชื่ออ่านได้** แต่นับบน prod แล้วทั้งคู่มี
+// 0 แถว (dept_requests = 1 แถว `scent_dev`) ⇒ ไม่มีใบไหนต้องอ่านป้ายนั้นอีก
+const RD_KINDS = [scentDev, formulaDev];
 
 export default RD_KINDS;

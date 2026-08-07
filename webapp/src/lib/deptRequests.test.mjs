@@ -28,6 +28,7 @@ import {
   submitRequestError,
 } from './deptRequests.js';
 import { followUpRowFrom } from './requests/hops.js';
+import { OUTCOME_REGISTRY_BY_KIND } from './requests/outcomes.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
   REQUEST_KIND_LIST,
@@ -62,12 +63,10 @@ const req = (over = {}) => ({
 
 // ── ชนิดคำร้อง ───────────────────────────────────────────────────────────
 test('เลขที่: พัฒนากลิ่น SB- · พัฒนาสูตร FD- · ที่เหลือรวม RQ-', () => {
-  // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (mig 0219 · ม-28) · `MU` เหลือไว้ให้ใบเก่า
-  // ของหัวข้อ mockup อ่านได้ — scope ของหัวข้อที่ใช้จริงคือ `FD` แล้ว (ม-26)
+  // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
+  // หัวข้อเก่าของ RD (0220) ⇒ เหลือสาม scope ที่มีหัวข้อจริงใช้อยู่
   assert.equal(requestDocScope('scent_dev'), 'SB');
   assert.equal(requestDocScope('formula_dev'), 'FD');
-  assert.equal(requestDocScope('scent_brief'), 'SB');
-  assert.equal(requestDocScope('mockup'), 'MU');
   assert.equal(requestDocScope('info'), 'RQ');
   assert.equal(requestDocScope('document'), 'RQ');
   assert.equal(requestDocScope('material_eta'), 'RQ');
@@ -143,13 +142,12 @@ test('หัวข้อถูกกรองด้วยฝ่าย — ฟอ
   }
   assert.ok(!pc.includes('scent_dev'));
   // ⭐ หัวข้อที่เลิกใช้แล้วต้องหายจากลิสต์ "เปิดใบใหม่" ของทุกฝ่าย…
-  assert.ok(!rd.includes('scent_brief') && !pc.includes('scent_brief'));
-  // Mock-up ถูกแทนด้วย "พัฒนาสูตร" — หมวดกับกลิ่นย้ายไปอยู่รายแถวแล้ว
-  assert.ok(!rd.includes('mockup') && !pc.includes('mockup'));
-  assert.match(legacyKindError('mockup'), /เลิกใช้แล้ว/);
-  // …แต่ป้ายชื่อต้องยังอ่านได้ ไม่งั้นใบเก่าบน prod จะโชว์ key ดิบบนหน้าจอ
-  assert.match(requestKindLabel('scent_brief'), /บรีฟ/);
-  assert.match(legacyKindError('scent_brief'), /เลิกใช้แล้ว/);
+  // ⭐ `scent_brief` · `mockup` ถูกลบทั้งหัวข้อใน 0220 — เหตุผลที่เคยเก็บไว้คือ
+  // "ใบเก่าต้องมีป้ายชื่ออ่านได้" ซึ่งหมดอายุแล้วเพราะทั้งคู่มี 0 แถวบน prod
+  for (const gone of ['scent_brief', 'mockup']) {
+    assert.equal(isRequestKind(gone), false, `${gone} ต้องหายจากทะเบียน`);
+  }
+  // ⭐ กลไก `legacy` ยังอยู่ให้หัวข้อที่จะเลิกใช้ในอนาคต — แค่ไม่มีสมาชิกวันนี้
   assert.equal(legacyKindError('scent_dev'), null);
   // หัวข้อที่ไม่ล็อกฝ่ายต้องอยู่ทั้งสองฝ่าย ไม่งั้นเลือกฝ่ายแล้วหาหัวข้อไม่เจอ
   for (const shared of ['info', 'document']) {
@@ -159,8 +157,8 @@ test('หัวข้อถูกกรองด้วยฝ่าย — ฟอ
 });
 
 test('หมุดไทม์ไลน์ตรงกับขั้นจริงใน lib/pm/templates.js (มติ 3 + 6)', () => {
-  assert.equal(requestStepKey('scent_brief'), 'scent-06');   // ออกแบบกลิ่น
-  assert.equal(requestStepKey('mockup'), 'npd-15');          // ขึ้น Mock-up
+  assert.equal(requestStepKey('scent_dev'), 'scent-06');     // ออกแบบกลิ่น
+  assert.equal(requestStepKey('formula_dev'), 'npd-15');     // ขึ้นตัวอย่าง
   assert.equal(requestStepKey('material_eta'), 'npd-38');    // กำหนดของเข้า
   assert.equal(requestStepKey('info'), null);
 });
@@ -267,12 +265,12 @@ test('ป้ายกำหนดตอบ: ยังไม่รับ / เล
 test('ป้ายสรุปหนึ่งบรรทัด: ใช้หัวเรื่องถ้ามี ไม่มีก็บอกจำนวนรายการ', () => {
   assert.equal(requestSummaryText(req({ kind: 'info', title: 'ขอสเปกขวด' })), 'สอบถามข้อมูล · ขอสเปกขวด');
   assert.equal(requestSummaryText(req({ kind: 'formula_dev' }), [{}, {}]), 'พัฒนาสูตร · 2 รายการ');
-  assert.equal(requestSummaryText(req({ kind: 'mockup' })), 'ขอ Mock-up');
+  assert.equal(requestSummaryText(req({ kind: 'scent_dev' })), 'พัฒนากลิ่น');
 });
 
 // ── หมุดไทม์ไลน์ ─────────────────────────────────────────────────────────
 const pinReq = (over = {}) => ({
-  id: 'DR-1', kind: 'mockup', status: 'pending', stepKey: 'npd-15',
+  id: 'DR-1', kind: 'formula_dev', status: 'pending', stepKey: 'npd-15',
   projectId: 'PRJ-1', dealId: 'D-1', createdAt: '2026-07-01T00:00:00Z', ...over,
 });
 
@@ -325,47 +323,48 @@ test('สรุปหมุด: นับรวม/นับค้าง แล�
   assert.equal(stepPinSummary(byStep, null), null);
 });
 
-// ── ผลลัพธ์ตอนปิดบรีฟกลิ่น ────────────────────────────────────────────────
-const brief = (over = {}) => ({
-  id: 'DR-9', kind: 'scent_brief', status: 'answered',
-  customerId: 'CUS-1', customerName: 'ลูกค้า A', dealId: 'D-1', scentId: null, ...over,
-});
-
-test('ชนิดที่ไม่มีผลลัพธ์ ปิดได้เลยไม่ต้องถามอะไร', () => {
-  for (const kind of ['info', 'mockup', 'document', 'material_eta', 'formula_dev']) {
+// ── ผลลัพธ์ตอนปิดเรื่อง ───────────────────────────────────────────────────
+//
+// ⭐ **ทะเบียนผลลัพธ์ว่างแล้ว** — สมาชิกตัวเดียวคือ `scent_brief` ที่ถูกลบใน 0220 ·
+// ในโมเดลใหม่กลิ่นเข้าทะเบียนตอน RD กดส่ง ไม่ใช่ตอนปิดเรื่อง ⇒ ไม่มีหัวข้อไหน
+// ต้องถามผลลัพธ์ตอนปิด · กลไกอยู่ต่อในฐานะตาข่ายสำหรับหัวข้อในอนาคต
+test('ทุกหัวข้อวันนี้ปิดได้เลยไม่ต้องถามผลลัพธ์', () => {
+  for (const kind of REQUEST_KIND_LIST) {
     assert.equal(requestNeedsOutcome(kind), false, kind);
     assert.equal(closeOutcomeError({ kind }, undefined), null, kind);
   }
 });
 
-test('บรีฟกลิ่นต้องระบุผลลัพธ์ก่อนปิด — ปิดเงียบ ๆ ไม่ได้', () => {
-  assert.equal(requestNeedsOutcome('scent_brief'), true);
-  assert.equal(closeOutcomeError(brief(), undefined), 'ต้องระบุว่าบรีฟนี้ได้กลิ่นตัวไหน');
-  assert.equal(closeOutcomeError(brief(), { mode: 'อะไรก็ไม่รู้' }), 'ต้องระบุว่าบรีฟนี้ได้กลิ่นตัวไหน');
+// ⭐ **กฎข้างในตาข่ายยังต้องถูกทดสอบ ทั้งที่ไม่มีหัวข้อไหนเรียกมันวันนี้** — ถ้าปล่อย
+// ให้ไม่มีเทสต์เลย วันที่มีหัวข้อใหม่มาลงทะเบียน กฎพวกนี้จะไม่เคยถูกรันมาก่อนเลย
+// ⇒ ลงทะเบียนหัวข้อสมมุติชั่วคราวเพื่อเปิดด่าน แล้วถอนออกท้ายบล็อก
+const outcomeKind = '__test_outcome';
+const brief = (over = {}) => ({
+  id: 'DR-9', kind: outcomeKind, status: 'answered',
+  customerId: 'CUS-1', customerName: 'ลูกค้า A', dealId: 'D-1', scentId: null, ...over,
 });
 
-test('บรีฟที่ผูกกลิ่นไว้แล้วไม่ต้องถามซ้ำ', () => {
+test('กฎของผลลัพธ์ตอนปิดเรื่อง (ตาข่ายที่ยังไม่มีหัวข้อไหนใช้)', (t) => {
+  OUTCOME_REGISTRY_BY_KIND[outcomeKind] = 'scent';
+  t.after(() => { delete OUTCOME_REGISTRY_BY_KIND[outcomeKind]; });
+
+  // ผูกกลิ่นไว้แล้วไม่ต้องถามซ้ำ
   assert.equal(closeOutcomeError(brief({ scentId: 'SCT-1' }), undefined), null);
-});
-
-test('"ไม่ได้กลิ่น" เป็นคำตอบที่ถูกต้อง — บรีฟที่ลูกค้าไม่เอาต้องปิดได้', () => {
+  // ไม่ระบุอะไรเลย = ตก
+  assert.equal(closeOutcomeError(brief(), undefined), 'ต้องระบุว่าบรีฟนี้ได้กลิ่นตัวไหน');
+  // "ไม่ได้กลิ่น" เป็นคำตอบที่ถูกต้อง — ของที่ลูกค้าไม่เอาต้องปิดได้
   assert.equal(closeOutcomeError(brief(), { mode: 'none' }), null);
-});
-
-test('ผูกกลิ่นเดิมต้องเลือกตัวจริง · สร้างใหม่ต้องมีชื่อ', () => {
+  // ผูกกลิ่นเดิมต้องเลือกตัวจริง · สร้างใหม่ต้องมีชื่อ
   assert.equal(closeOutcomeError(brief(), { mode: 'link' }), 'ต้องเลือกกลิ่นจากทะเบียน');
   assert.equal(closeOutcomeError(brief(), { mode: 'link', scentId: 'SCT-1' }), null);
   assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: '  ' }), 'ต้องระบุชื่อกลิ่นที่จะเพิ่มเข้าทะเบียน');
   assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: 'Well sleep' }), null);
   assert.equal(closeOutcomeError(brief(), { mode: 'create', scentName: 'x'.repeat(201) }), 'ชื่อกลิ่นยาวเกิน 200 ตัวอักษร');
-});
-
-test('กลิ่นผูกลูกค้าเสมอ (มติ 9) — บรีฟที่ไม่มีลูกค้าสร้างกลิ่นใหม่ไม่ได้', () => {
+  // กลิ่นผูกลูกค้าเสมอ (มติ 9) — ใบที่ไม่มีลูกค้าสร้างกลิ่นใหม่ไม่ได้
   assert.equal(
     closeOutcomeError(brief({ customerId: null }), { mode: 'create', scentName: 'Well sleep' }),
     'คำร้องนี้ไม่มีลูกค้า จึงเพิ่มกลิ่นเข้าทะเบียนไม่ได้',
   );
-  // แต่ผูกกับกลิ่นที่มีอยู่แล้ว/ไม่ได้กลิ่น ยังปิดได้ (ด่านข้ามลูกค้าอยู่ฝั่ง server)
   assert.equal(closeOutcomeError(brief({ customerId: null }), { mode: 'none' }), null);
 });
 

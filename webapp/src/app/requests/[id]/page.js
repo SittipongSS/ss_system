@@ -199,7 +199,7 @@ export default function RequestDetailPage() {
   const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
-  // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอเอกสาร/ติดตามของเข้า = 5 ใน 8
+  // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/พัฒนากลิ่น/ติดตามของเข้า
   // ชนิด) มี progress.complete = false เสมอเพราะ total = 0 · เดิมเงื่อนไขปิดใบอ่านจาก
   // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
   // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
@@ -445,7 +445,7 @@ export default function RequestDetailPage() {
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
-          ทั้งที่รับคำร้อง 8 ชนิด · บรีฟกลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
+          ทั้งที่รับคำร้องหลายชนิด · พัฒนากลิ่นที่ขึ้นว่า "รายการ 0 · ตอบแล้ว 0/0"
           อ่านแล้วเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ไม่มีบรรทัดตั้งแต่แรก */}
       <SalesDetailOverview
         eyebrow={requestKindLabel(req.kind)}
@@ -593,7 +593,7 @@ export default function RequestDetailPage() {
         )}
 
         {/* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะ
-            รายวัสดุ ซึ่งมีแต่ 3 ชนิดขอราคา → บรีฟกลิ่น/Mock-up ที่ต้องมีรูปอ้างอิง
+            รายบรรทัดของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิง
             มากที่สุดแนบไม่ได้เลย ต้องไปส่งกันทาง LINE) */}
         <div className={styles.attachBlock}>
           <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>

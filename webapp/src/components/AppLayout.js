@@ -239,7 +239,7 @@ export default function AppLayout({ children }) {
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
-        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/บรีฟกลิ่น/ขอ mockup/ขอราคา F·FB·PM/
+        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/
         // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
         // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
         // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน

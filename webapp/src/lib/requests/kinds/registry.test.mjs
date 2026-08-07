@@ -14,8 +14,7 @@ import {
 // ไม่ใช่หลุดไปเพราะ import พลาดแล้วไม่มีใครรู้ว่าหัวข้อหายไปหนึ่งตัว
 const EXPECTED = [
   'info', 'document',                                  // ไม่เป็นของฝ่ายไหน
-  'scent_dev', 'formula_dev',                          // RD ที่ยังเปิดใบใหม่ได้
-  'scent_brief', 'mockup',                             // RD เลิกใช้แล้ว
+  'scent_dev', 'formula_dev',                          // RD
   'material_eta',                                      // PC
   'billing_doc',                                       // FN
 ];
@@ -72,10 +71,11 @@ test('🐞 หัวกลุ่มห้ามโผล่ซ้ำ — ตร�
   }
 });
 
-test('หัวข้อที่เลิกใช้ยังอ่านได้ แต่เปิดใบใหม่ไม่ได้', () => {
+test('หัวข้อที่ถูกถอดต้องหายจากทะเบียนทั้งตัว', () => {
+  // ⭐ `scent_brief` · `mockup` เคยติดธง `legacy` (อ่านได้ เปิดใบใหม่ไม่ได้) เพราะ
+  // ใบเก่าต้องมีป้ายชื่อ · เหตุผลนั้นหมดอายุเมื่อทั้งคู่เหลือ 0 แถวบน prod ⇒ ลบใน 0220
   for (const kind of ['scent_brief', 'mockup']) {
-    assert.ok(REQUEST_KINDS[kind]?.label, `${kind} ต้องยังมีป้ายชื่อให้ใบเก่า`);
-    for (const dept of REQUEST_DEPTS) assert.ok(!kindsForDept(dept).includes(kind));
+    assert.equal(REQUEST_KINDS[kind], undefined, `${kind} ต้องไม่อยู่ในทะเบียนแล้ว`);
   }
   // ⚠️ ขอราคา F/FB/PM **ถูกถอดทั้งหัวข้อ** ใน mig 0219 (ม-28) — ไม่ใช่ติดธง legacy
   // แต่หายจากทะเบียนไปเลย เพราะราคากลายเป็นขั้นสุดท้ายของสองหัวข้อพัฒนา

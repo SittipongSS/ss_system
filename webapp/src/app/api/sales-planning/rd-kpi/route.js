@@ -70,7 +70,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // ── คำร้องที่ส่งถึงฝ่ายนี้ (ทั้งหมด — ปริมาณต่อฝ่ายต่ำ กรองช่วงเวลาในลูป) ──
   // ⚠️ ตั้งแต่ 0173 นับ **ทุกชนิดคำร้อง** ไม่ใช่เฉพาะ "สอบถาม" เดิม — บรีฟกลิ่น/
-  // mockup/ขอราคา F,FB ก็เป็นงานที่ RD ต้องรับเรื่องและตอบเหมือนกัน
+  // พัฒนาสูตรก็เป็นงานที่ RD ต้องรับเรื่องและตอบเหมือนกัน
   const { data: inquiries, error: inqError } = await supabase
     .from('dept_requests').select('*').eq('dept', DEPT).order('createdAt', { ascending: false });
   if (inqError) return fail(inqError.message, 500);
