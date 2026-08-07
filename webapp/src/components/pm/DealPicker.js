@@ -19,7 +19,9 @@ export default function DealPicker({
   deals = [],
   projects = [],
   value = "",
-  onChange,                  // (dealId, deal) => void — ผู้เรียกที่เก็บ projectId เองอ่านจาก deal ได้
+  // (dealId, deal, item) => void — `deal` คือแถวดีลตัวจริงจาก `deals` (ผู้เรียกที่เก็บ
+  // projectId เองอ่านจากมันได้) · `item` คือตัวบรรยายรายการของแผง ปกติไม่ต้องใช้
+  onChange,
   disabled = false,
   // เลือก "ไม่ผูกดีล" ได้ไหม — ปิดไว้เมื่อกติกาบังคับผูก (ตัวเลือกที่กดแล้วโดน API
   // ตีกลับไม่ควรมีอยู่ตั้งแต่แรก)
@@ -55,11 +57,26 @@ export default function DealPicker({
     })),
   }));
 
+  /* 🐞 **ส่ง `onChange` ตรง ๆ ไม่ได้** — `TwoPanePicker` คืน `(value, item)` โดย
+     `item` คือ **ตัวบรรยายรายการของแผง** (ค่า/ป้าย/บรรทัดรอง/คำค้น) ไม่ใช่แถวดีล
+     ⇒ ผู้เรียกที่อ่าน `deal.projectId` ตามสัญญาข้างบนได้ `undefined` เสมอ
+
+     ผลจริงที่ผู้ใช้เจอ: เลือกดีลที่ **ผูกโครงการอยู่แล้ว** แล้วฟอร์มยังขึ้นว่า
+     "ดีลนี้ยังไม่ผูกโครงการ" ⇒ หัวข้อที่บังคับผูกโครงการ (สอบถามข้อมูล · ขอเอกสาร ·
+     พัฒนาสูตร) **เปิดคำร้องไม่ได้เลยสักใบ** · หน้าใบเสนอราคาใหม่ก็ได้ `projectId` ว่าง
+     เหมือนกัน — เป็นอาการเดียวกับบั๊กที่ปิดไปแล้วรอบ P5 แค่กลับมาทางตัวเลือกกลาง
+     ที่เพิ่งยกออกมา (มติ 2026-08-06)
+
+     ⇒ แปลงกลับเป็น "ดีลตัวจริง" ที่นี่ ที่เดียว — ผู้เรียกทุกที่ได้สัญญาเดิมคืน */
+  const emitChange = (dealId, item) => {
+    onChange?.(dealId, dealId ? deals.find((d) => d.id === dealId) || null : null, item);
+  };
+
   return (
     <TwoPanePicker
       groups={groups}
       value={value}
-      onChange={onChange}
+      onChange={emitChange}
       disabled={disabled}
       clearable={clearable}
       clearLabel={clearLabel}
