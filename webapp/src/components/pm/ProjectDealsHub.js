@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -22,6 +23,10 @@ import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
+import useDealOwners from "@/lib/sales/useDealOwners";
+import { createClient } from "@/lib/supabaseBrowser";
+import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./ProjectDealsHub.module.css";
 
 const STAGE_COLORS = {
@@ -343,6 +348,28 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   const [expandedDeals, setExpandedDeals] = useState([]); // แถวที่กางรายละเอียดอยู่
   const [dealQuery, setDealQuery] = useState("");
 
+  /* ── "เพิ่มดีล" จากหน้าโครงการ ────────────────────────────────────────────
+     ใช้ **โมดัลสร้างดีลตัวกลางตัวเดียวกัน** (DealCreateModal) ไม่ใช่ฟอร์มชุดที่สาม —
+     กฎ "สร้าง/แก้ ใช้ฟอร์มเดียวกัน" ใน AGENTS.md · ต่างกันแค่ค่าตั้งต้นผ่าน `defaults`
+     (ลูกค้า + โครงการนี้ ล็อกไว้) แล้วโมดัลจะเรียก link-project ให้เองหลังสร้าง
+     ⇒ ได้ segment ไทม์ไลน์เหมือนกดปุ่ม "ผูกดีล" ทุกประการ */
+  const [createOpen, setCreateOpen] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  /* id ของคนที่ล็อกอิน — โหลดตั้งแต่ mount ไม่ใช่ตอนกดปุ่ม: `defaultOwnerId` ถูกอ่าน
+     ครั้งเดียวตอนโมดัล mount ถ้ามาช้าช่อง AE จะว่างทั้งที่เป็นช่องบังคับ */
+  const [meId, setMeId] = useState(null);
+  const { owners, defaultOwnerId } = useDealOwners(meId);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
+  }, []);
+  // รายชื่อสำหรับดรอปดาวน์ในฟอร์ม — โหลดตอนจะเปิดฟอร์มเท่านั้น (หน้าโครงการส่วนใหญ่ไม่ได้เปิด)
+  useEffect(() => {
+    if (!createOpen) return;
+    fetch("/api/master/customers").then((res) => (res.ok ? res.json() : [])).then((rows) => setCustomers(rows || [])).catch(() => {});
+    cachedFetchJson("/api/product-types").then((rows) => setCategories(rows || [])).catch(() => {});
+  }, [createOpen]);
+
   useEffect(() => {
     if (!linkOpen) return;
     setDealId("");
@@ -508,10 +535,15 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
               <input value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
             </div>
           )}
+          {/* สองทางเข้าคนละความหมาย: "เพิ่มดีล" = สร้างใบใหม่ในโครงการนี้ (งานที่ทำบ่อยกว่า
+              จึงเป็นปุ่มหลัก) · "ผูกดีล" = ดึงใบที่มีอยู่แล้วเข้ามา/ย้ายข้ามโครงการ */}
           {canEdit && (
-            <button type="button" className="btn btn-primary sm" onClick={() => setLinkOpen(true)}>
-              <Plus size={13} aria-hidden="true" /> ผูกดีล
-            </button>
+            <>
+              <Button size="sm" onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
+              <Button tone="primary" size="sm" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
+                เพิ่มดีล
+              </Button>
+            </>
           )}
         </div>
         {reorderError && <div className={styles.errorNote}>{reorderError}</div>}
@@ -567,11 +599,37 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
             <PackageCheck size={28} aria-hidden="true" style={{ margin: "0 auto 8px" }} />
             <div style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>ยังไม่มีดีลในโครงการ</div>
-            <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>ผูกดีลของลูกค้ารายนี้เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
-            {canEdit && <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setLinkOpen(true)}><Plus size={14} /> ผูกดีลแรก</button>}
+            <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>สร้างดีลใบใหม่ หรือผูกดีลของลูกค้ารายนี้ที่มีอยู่แล้ว เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
+            {canEdit && (
+              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                <Button tone="primary" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>เพิ่มดีล</Button>
+                <Button onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* ⚠️ mount ตอนเปิดเท่านั้น — ค่าตั้งต้นของร่างอ่านครั้งเดียวตอน mount (ดูคำเตือนใน
+          DealCreateModal) · โครงการล็อกไว้ที่ใบนี้: ดีลที่สร้างจากหน้านี้ต้องกลับเข้าโครงการนี้ */}
+      {createOpen && (
+        <DealCreateModal
+          customers={customers}
+          projects={[{ id: p.id, code: p.code, name: p.name, customerId: p.customerId }]}
+          categories={categories}
+          owners={owners}
+          defaultOwnerId={defaultOwnerId}
+          defaults={{
+            customerId: p.customerId || "",
+            customerName: p.customerName || "",
+            projectId: p.id,
+            lockedProjectId: p.id,
+            startDate: localToday(),
+          }}
+          onClose={() => setCreateOpen(false)}
+          onCreated={async () => { setCreateOpen(false); await onChanged?.(); }}
+        />
+      )}
 
       <Modal open={linkOpen} onClose={() => !linking && setLinkOpen(false)} title={movingPicked ? "ย้ายดีลเข้าโครงการ" : "ผูกดีลเข้าโครงการ"} size="sm">
         <div className="flex flex-col gap-4">

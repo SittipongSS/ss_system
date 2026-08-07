@@ -27,14 +27,16 @@ import Button from "@/components/ui/Button";
 import Tabs from "@/components/ui/Tabs";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { initialDealForm } from "@/components/salesPlanning/ui";
-import { DEAL_STAGES } from "@/lib/salesPlanning";
+import { CREATABLE_STAGES } from "@/lib/salesPlanning";
 import { TEAM_LABELS } from "@/lib/permissions";
 import styles from "./DealCreateModal.module.css";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
    เปิดจากหน้ารวมดีล (ไม่มีลีด) = ใบเปล่าล้วน ทั้งใบแรกและใบถัดไป */
-const firstDeal = (lead, ownerId) => (lead ? {
+/* `defaults` = ค่าที่ "ที่ทางที่กดเปิดฟอร์ม" รู้อยู่แล้ว (เช่น เปิดจากหน้าโครงการ =
+   รู้ทั้งลูกค้าและโครงการ) — ทับท้ายสุดเสมอ ทั้งใบแรกและใบถัดไป */
+const firstDeal = (lead, ownerId, defaults) => (lead ? {
   ...initialDealForm,
   ownerId,
   title: `${lead.company || lead.contactName} — SCENT`,
@@ -42,9 +44,10 @@ const firstDeal = (lead, ownerId) => (lead ? {
   dealType: "SCENT",
   stage: "qualified",
   projectValue: lead.budget || "",
-} : { ...initialDealForm, ownerId });
+  ...defaults,
+} : { ...initialDealForm, ownerId, ...defaults });
 
-const nextDeal = (lead, ownerId) => (lead ? {
+const nextDeal = (lead, ownerId, defaults) => (lead ? {
   ...initialDealForm,
   ownerId,
   title: `${lead.company || lead.contactName} — NPD`,
@@ -52,7 +55,8 @@ const nextDeal = (lead, ownerId) => (lead ? {
   dealType: "NPD",
   stage: "qualified",
   projectValue: "",
-} : { ...initialDealForm, ownerId });
+  ...defaults,
+} : { ...initialDealForm, ownerId, ...defaults });
 
 /* ⚠️ **mount ตอนจะเปิดเท่านั้น** — `{open && <DealCreateModal … />}` ห้าม mount ค้างไว้:
    ค่าตั้งต้นของ drafts อ่านจาก lead ตอน mount ครั้งแรกครั้งเดียว ถ้า mount ค้างไว้ตั้งแต่
@@ -70,6 +74,10 @@ export default function DealCreateModal({
   /* ผู้รับผิดชอบ (AE) — ว่าง = ไม่โชว์ช่อง (ผู้ใช้ยกดีลให้คนอื่นไม่ได้) ดู useDealOwners */
   owners = [],
   defaultOwnerId = "",
+  /* ค่าตั้งต้นเพิ่มเติมของทุกใบ — ใช้ตอนเปิดฟอร์มจากบริบทที่รู้ค่าอยู่แล้ว เช่น หน้า
+     โครงการส่ง { customerId, projectId, lockedProjectId } มาเพื่อให้ดีลใหม่ผูกกลับ
+     เข้าโครงการนั้นเสมอ (อ่านตอน mount ครั้งเดียว เหมือน lead) */
+  defaults = null,
   onClose,
   onCreated,
 }) {
@@ -77,7 +85,7 @@ export default function DealCreateModal({
   /* `_key` = ตัวตนถาวรของร่างแต่ละใบ — ห้ามใช้ index เป็นกุญแจของ `done` เพราะลบใบ
      กลางทางแล้ว index ของใบที่เหลือจะเลื่อน ⇒ สถานะ "สร้างแล้ว" ไปเกาะผิดใบ */
   const nextKey = useRef(2);
-  const [drafts, setDrafts] = useState(() => [{ ...firstDeal(lead, defaultOwnerId), _key: 1 }]);
+  const [drafts, setDrafts] = useState(() => [{ ...firstDeal(lead, defaultOwnerId, defaults), _key: 1 }]);
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -103,7 +111,7 @@ export default function DealCreateModal({
     nextKey.current += 1;
     const key = nextKey.current;
     setActive(drafts.length);
-    setDrafts((prev) => [...prev, { ...nextDeal(lead, defaultOwnerId), _key: key }]);
+    setDrafts((prev) => [...prev, { ...nextDeal(lead, defaultOwnerId, defaults), _key: key }]);
   };
 
   const remaining = drafts.filter((draft) => !done[draft._key]?.dealId).length;
@@ -132,7 +140,8 @@ export default function DealCreateModal({
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
-          const { _key, ...rest } = draft;
+          // `lockedProjectId` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — อย่าส่งเข้า API
+          const { _key, lockedProjectId, ...rest } = draft;
           const payload = {
             ...rest,
             customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
@@ -267,7 +276,10 @@ export default function DealCreateModal({
                 projects={projects}
                 showProject
                 categories={categories}
-                stages={stages || DEAL_STAGES.filter((stage) => stage !== "won")}
+                /* ค่าตั้งต้น = ทะเบียนกลาง CREATABLE_STAGES — เดิมเป็น DEAL_STAGES ที่ตัดแค่
+                   won ทำให้ in_project (ยุบเป็น won ตั้งแต่ mig 0082) โผล่เป็นตัวเลือก
+                   เฉพาะฝั่งลีดที่ไม่ส่ง stages มา */
+                stages={stages || CREATABLE_STAGES}
                 probabilityMode="auto"
                 owners={owners}
               />
