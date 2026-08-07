@@ -10,6 +10,7 @@ import {
   rescheduleRequestError,
   bounceRequestError,
   answerRequestError,
+  markAnsweredError,
   canAnswerRequest,
   canManageRequest,
   cancelRequestError,
@@ -710,4 +711,28 @@ test('🔴 ทุกปุ่มที่ตั้ง saving ต้องคื�
       `${file}: setSaving(true) ${setsSaving} จุด แต่มี finally คืนค่าแค่ ${finallys}`,
     );
   }
+});
+
+// ── 🐞 ใบพัฒนากลิ่นขึ้น "ตอบแล้ว" ทั้งที่ยังไม่ส่ง direction สักตัว ────────
+//
+// เจอบนของจริงตอนเดินมือ (2026-08-07): รางบนจอขัดกันเอง — ขั้น "รอฝ่าย RD ส่งของ"
+// ติ๊กเขียวผ่านไปแล้ว ทั้งที่คำอธิบายของขั้นนั้นเขียนว่า "รับเรื่องแล้ว ยังไม่มีของส่งมา"
+test('🔴 หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง ห้ามกด "ตอบแล้ว" ข้ามการส่ง', () => {
+  const scent = { kind: 'scent_dev', status: 'acknowledged', items: [] };
+  assert.match(markAnsweredError(scent), /ยังไม่ได้ส่งของสักรายการ/);
+
+  // ส่งแล้ว → ให้ **แถว** เป็นตัวบอกว่าตอบครบ (deriveRequestStatusAfterAnswer)
+  // ไม่ใช่ให้คนกดข้าม
+  assert.match(
+    markAnsweredError({ ...scent, items: [{ answerStatus: 'pending' }] }),
+    /รายบรรทัด/,
+  );
+
+  // หัวข้อที่ไม่มีทางได้บรรทัดเลย (สอบถามข้อมูล) — กดเองได้ตามเดิม เพราะระบบ
+  // ไม่มีอะไรให้นับ
+  assert.equal(markAnsweredError({ kind: 'info', status: 'acknowledged' }), null);
+  assert.match(markAnsweredError({ kind: 'info', status: 'closed' }), /ปิดไปแล้ว/);
+
+  // หัวข้อที่มีบรรทัดตั้งแต่เปิด — ตอบรายบรรทัดเสมอ
+  assert.match(markAnsweredError({ kind: 'formula_dev', status: 'acknowledged' }), /รายบรรทัด/);
 });

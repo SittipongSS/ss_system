@@ -20,7 +20,7 @@ import { listAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError, rescheduleRequestError,
-  bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
+  bounceRequestError, answerRequestError, markAnsweredError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
@@ -282,15 +282,13 @@ export async function PATCH(request, { params }) {
       patch.bouncedByName = user?.name ?? null;
       summary = `ตีกลับ ${before.docNo || id}`;
     } else if (action === 'answer') {
-      // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
-      // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
-      if (requestHasItems(before.kind)) {
-        return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด' }, { status: 400 });
-      }
+      // ชนิดที่ไม่มีบรรทัดและ**ไม่มีทางได้บรรทัด**: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง
+      // ผู้ตอบกดเองว่าตอบแล้ว · หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง (พัฒนากลิ่น) ให้แถว
+      // เป็นตัวบอก ⇒ ด่านกลางที่ `markAnsweredError` ตัวเดียวกับที่จอใช้
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `ตอบได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
-      const err = answerRequestError(before);
+      const err = markAnsweredError(before);
       if (err) return Response.json({ error: err }, { status: 409 });
       patch.status = 'answered';
       patch.answeredAt = nowIso;

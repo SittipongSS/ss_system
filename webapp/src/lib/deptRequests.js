@@ -37,6 +37,7 @@ export {
   rescheduleRequestError,
   bounceRequestError,
   answerRequestError,
+  markAnsweredError,
   closeRequestError,
   cancelRequestError,
   deleteRequestError,

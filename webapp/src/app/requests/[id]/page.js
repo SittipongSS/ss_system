@@ -36,7 +36,8 @@ import { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
-  answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
+  answerRequestError, closeOutcomeError, closeRequestError, markAnsweredError,
+  requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
@@ -225,7 +226,10 @@ export default function RequestDetailPage() {
   const hasItems = requestHasItems(req.kind);
   const canClose = !closeRequestError(req, req.items || []) && (req._mine || owner);
   // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
-  const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
+  // ⚠️ **ด่านเดียวกับ API** (`markAnsweredError`) — ถามว่า "หัวข้อนี้มีทางได้บรรทัดไหม"
+  // ไม่ใช่ "ตอนนี้มีบรรทัดหรือยัง" · พัฒนากลิ่นมี `hasItems: false` แต่ได้แถวตอนส่ง
+  // ⇒ เดิมถูกจัดเป็นหัวข้อไม่มีบรรทัดแล้วกดตอบแล้วได้ทั้งที่ยังไม่ส่งอะไรเลย
+  const canMarkAnswered = owner && !markAnsweredError(req);
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
   const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
   const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;

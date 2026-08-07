@@ -2,7 +2,9 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestHasItems, requestRequiresCommittedDue } from '@/lib/master/requestTypes';
+import {
+  requestDeliversRows, requestHasItems, requestRequiresCommittedDue,
+} from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 
@@ -31,6 +33,30 @@ export function deriveRequestStatusAfterAnswer(items = [], currentStatus = 'ackn
 }
 
 // ── ด่านของแต่ละ action ──────────────────────────────────────────────────
+// ── กด "ตอบแล้ว" เองได้ไหม (ด่านกลาง — จอกับ API ใช้ตัวเดียวกัน) ─────────
+//
+// 🐞 **บั๊กที่ผู้ใช้เจอบนของจริง (2026-08-07)** — ใบพัฒนากลิ่นขึ้นสถานะ "ตอบแล้ว"
+// ทั้งที่ **ยังไม่มี direction ส่งมาสักตัว** · รางบนจอขัดกันเอง: ขั้น "รอฝ่าย RD ส่งของ"
+// ติ๊กเขียวผ่านไปแล้ว ทั้งที่คำอธิบายของขั้นนั้นเขียนว่า *"รับเรื่องแล้ว ยังไม่มีของส่งมา"*
+//
+// ต้นเหตุ: ด่านเดิมถามแค่ `hasItems` — พัฒนากลิ่นมี `hasItems: false` (แถวเกิดตอน
+// RD ส่ง ไม่ใช่ตอนเปิด) ⇒ ถูกจัดเป็น "หัวข้อที่ไม่มีบรรทัด" แล้วให้กดตอบแล้วได้เลย
+// ⇒ ปิดใบได้ทั้งที่ยังไม่ได้ส่งอะไรให้ลูกค้าเลย
+//
+// ⭐ กติกาที่ถูกคือ **"หัวข้อนี้มีทางได้บรรทัดไหม"** ไม่ใช่ "ตอนนี้มีบรรทัดหรือยัง" —
+// หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง (`deliversRows`) ต้องให้ **แถว** เป็นตัวบอกว่าตอบครบ
+// (`deriveRequestStatusAfterAnswer`) ไม่ใช่ให้คนกดข้าม
+export function markAnsweredError(request) {
+  if (!request) return 'ไม่พบคำร้อง';
+  if (requestHasItems(request.kind)) return 'ชนิดนี้ตอบเป็นรายบรรทัด';
+  if (requestDeliversRows(request.kind)) {
+    return (request.items || []).length
+      ? 'ชนิดนี้ตอบเป็นรายบรรทัด'
+      : 'ยังไม่ได้ส่งของสักรายการ — ส่งก่อนจึงจะปิดว่าตอบแล้วได้';
+  }
+  return answerRequestError(request);
+}
+
 export function submitRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status !== 'draft') return 'คำร้องนี้ส่งไปแล้ว';
