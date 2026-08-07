@@ -29,22 +29,18 @@ import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
-import BriefBoard from "@/components/requests/BriefBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
-import PdrSummary from "@/components/requests/PdrSummary";
-import PdrForm, { pdrValuesFrom } from "@/components/requests/PdrForm";
+import { pdrValuesFrom } from "@/components/requests/PdrForm";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
-import StatusNotice from "@/components/ui/StatusNotice";
 import { hopLabel, hopValuesError } from "@/lib/requests/hops";
-import { ROW_STAGE_LABELS, ROW_STAGE_TONES, rowStage } from "@/lib/requests/rowStage";
-import StatusBadge from "@/components/ui/StatusBadge";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
+import { detailForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
@@ -52,7 +48,7 @@ import ScentDeliveryFields, {
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -186,6 +182,8 @@ export default function RequestDetailPage() {
   // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
   const awaitingApproval = isAwaitingApproval(req);
   const showPdr = requestHasPdr(req.kind);
+  // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
+  const KindDetail = detailForKind(req.kind);
   // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
   // โดยไม่ต้องไล่อ่านทีละแถว
   //
@@ -408,7 +406,7 @@ export default function RequestDetailPage() {
             method: "PATCH", body: JSON.stringify({ action: "approve" }),
           }, "ยืนยันแล้ว"),
         }
-      : canAnswer && req.kind === "scent_dev" && !awaitingApproval
+      : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
         ? {
           id: "deliver",
           label: "ส่งกลิ่น",
@@ -608,137 +606,33 @@ export default function RequestDetailPage() {
         </div>
       </div>
 
-      {/* ⭐ กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้)
-          ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก) และส่งขาดก็เกิดได้ · บล็อกเมื่อไร
-          คนจะเลี่ยงด้วยการ *ไม่บันทึกจำนวน* ซึ่งแย่กว่าตัวเลขที่ไม่ตรงมาก เพราะตอนนั้น
-          ระบบจะไม่รู้อะไรเลยแทนที่จะรู้ว่าไม่ตรง */}
-      {reconcile && (
-        <StatusNotice
-          tone={SO_RECONCILE_TONE[reconcile.state]}
-          className={styles.reconcile}
-        >
-          {soReconcileText(reconcile)}
-        </StatusNotice>
-      )}
-
-      {/* การ์ดรายแถว — เหลือ **ของที่เธรดเล่าแทนไม่ได้**: สเปกที่ขอ และไฟล์แนบของแถว
-          ⚠️ **รางแนวตั้งถูกถอดออกแล้ว** (ม-36 ก) — "ผ่านอะไรมาแล้ว" เล่าอยู่ในเธรด
-          ที่เดียว · ปุ่มของก้าวถัดไปย้ายไปท้ายเธรด (`NextStepBar`) */}
-      {(req.items || []).map((item) => (
-        <div key={item.id} className={styles.rowCard}>
-          <div className={styles.rowHead}>
-            <div className={styles.rowTitle}>
-              <strong>{item.label}</strong>
-              <StatusBadge
-                tone={ROW_STAGE_TONES[rowStage(item)] || "neutral"}
-                label={ROW_STAGE_LABELS[rowStage(item)] || "—"}
-              />
-            </div>
-          </div>
-          {item.spec && (
-            <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />
-          )}
-
-          <div className={styles.rowAttach}>
-            <div className="toolbar-label">รูป / สเปกแนบ</div>
-            <AttachmentsPanel
-              entityType="dept_request_item"
-              entityId={item.id}
-              canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-              inlineUpload
-            />
-          </div>
-        </div>
-      ))}
-
-      {/* ⭐ ตารางสรุปทั้งใบ (ม็อกอัพ ส่วน 07) — วางใต้แถบตัวเลข เหนือ PDR เพราะเป็น
-          "สถานการณ์ตอนนี้" ส่วน PDR เป็น "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มของ
-          แต่ละก้าวอยู่บนรางในการ์ดของแถวนั้นที่เดียว */}
-      {showPdr && <BriefBoard groups={board} />}
-
-      {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย
-          🔴 ก่อนหน้านี้ไม่มีบล็อกนี้เลย ⇒ เปิดคำร้องขึ้นมาเห็นแค่ชื่อเรื่อง */}
-      {showPdr && (
-        <div className={styles.summaryBar}>
-          <span><strong>{briefSummary.briefs}</strong> บรีฟ</span>
-          {reconcile && <span><strong>{reconcile.ordered}</strong> กลิ่นตาม SO</span>}
-          <span><strong>{briefSummary.directions}</strong> direction ที่ส่งแล้ว</span>
-          {/* ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD
-              ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
-          {briefSummary.untouched > 0 && (
-            <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
-          )}
-          {/* ⭐ สองขั้นที่ "ค้างโดยไม่มีใครเห็น" ได้ง่ายที่สุด — รอลูกค้าตอบคือรอข้างนอก
-              ส่วนรอใส่ราคาคือของที่จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้ (กับดักข้อ 11) */}
-          {briefSummary.waitingCustomer > 0 && (
-            <span><strong>{briefSummary.waitingCustomer}</strong> รอลูกค้าตอบ</span>
-          )}
-          {briefSummary.awaitingPrice > 0 && (
-            <span data-tone="warn"><strong>{briefSummary.awaitingPrice}</strong> รอใส่ราคา</span>
-          )}
-          {/* กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้) · ส่งเกิน/ขาดเกิดได้จริง
-              และบล็อกเมื่อไร คนจะเลี่ยงด้วยการไม่บันทึก ซึ่งแย่กว่า */}
-          {reconcile && soReconcileText(reconcile) && (
-            <span data-tone={SO_RECONCILE_TONE[reconcile.state]}>{soReconcileText(reconcile)}</span>
-          )}
-        </div>
-      )}
-
-      {showPdr && (
-        <div className={styles.pdrBlock}>
-          {pdrDraft ? (
-            <>
-              <PdrForm
-                value={pdrDraft.pdr} onChange={(pdr) => setPdrDraft({ ...pdrDraft, pdr })}
-                briefs={pdrDraft.briefs}
-                onBriefsChange={(briefs) => setPdrDraft({ ...pdrDraft, briefs })}
-                disabled={saving}
-              />
-              <div className={`action-bar ${styles.modalActions}`}>
-                <Button variant="quiet" disabled={saving} onClick={() => setPdrDraft(null)}>
-                  ยกเลิก
-                </Button>
-                <Button
-                  tone="primary" disabled={saving}
-                  onClick={() => call("", {
-                    method: "PATCH",
-                    body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
-                  }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
-                >
-                  บันทึกแบบฟอร์ม
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <PdrSummary request={req} briefs={req.briefs || []} />
-              {/* ⚠️ ปุ่มโผล่ตาม `_canEditPdr` ที่ **server คำนวณ** — หน้าจอไม่มี user.id
-                  จึงตัดสินเองไม่ได้ (บทเรียนเดียวกับ `_canApprove`) */}
-              {req._canEditPdr && (
-                <div className={`action-bar ${styles.modalActions}`}>
-                  {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็น HTML
-                      เหมือน QT/SO ไม่ใช่ไฟล์ที่โหลดลงเครื่อง */}
-                  <Button
-                    variant="quiet"
-                    onClick={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
-                  >
-                    ดูฉบับที่ออกจริง
-                  </Button>
-                  <Button
-                    variant="quiet" disabled={saving}
-                    onClick={() => setPdrDraft({
-                      pdr: pdrValuesFrom(req),
-                      briefs: (req.briefs || []).map((b) => ({ ...b })),
-                    })}
-                  >
-                    แก้แบบฟอร์ม PDR
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":
+          หัวใบ · เธรด · โมดัลของแต่ละก้าว · ส่วนที่ต่างกันรายหัวข้อ (PDR · ตารางสรุป ·
+          กระทบยอด SO · การ์ดรายแถว) อยู่ในไฟล์ของหัวข้อนั้น
+          ⚠️ เพิ่มหัวข้อใหม่ **ห้ามมาแก้ไฟล์นี้** — ลงทะเบียนที่ `details/index.js` */}
+      <KindDetail
+        request={req}
+        canEditAttachments={(req._mine || owner)
+          && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        saving={saving}
+        board={board}
+        briefSummary={briefSummary}
+        reconcile={reconcile}
+        reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}
+        reconcileText={reconcile ? soReconcileText(reconcile) : null}
+        pdrDraft={pdrDraft}
+        onPdrDraftChange={setPdrDraft}
+        onPdrCancel={() => setPdrDraft(null)}
+        onPdrEdit={() => setPdrDraft({
+          pdr: pdrValuesFrom(req),
+          briefs: (req.briefs || []).map((b) => ({ ...b })),
+        })}
+        onPdrSave={() => call("", {
+          method: "PATCH",
+          body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+        }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
+        onOpenDocument={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
+      />
 
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
           ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของใบ

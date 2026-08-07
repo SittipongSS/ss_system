@@ -80,6 +80,11 @@ export function requestRequiresCommittedDue(kind) {
   return !!REQUEST_KINDS[kind]?.requiresCommittedDueDate;
 }
 
+// ฝ่ายปลายทางสร้างแถวเองตอนส่งของไหม (พัฒนากลิ่น — แบบหน้าจอ §04)
+export function requestDeliversRows(kind) {
+  return !!REQUEST_KINDS[kind]?.deliversRows;
+}
+
 export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }
