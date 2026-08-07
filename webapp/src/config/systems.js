@@ -1,5 +1,5 @@
-import { Briefcase, CircleDollarSign, Database, Factory, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessSahamit, canViewProduction, canUser, canViewService } from '@/lib/permissions';
+import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LineChart, Scale, Wrench } from 'lucide-react';
+import { canAccessMgmt, canAccessSahamit, canViewProduction, canUser, canViewService, departmentOf } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -15,6 +15,27 @@ export const SYSTEM_CATALOG = [
       if (canUser(user, 'salesplan:lead')) return '/sa/leads';
       return '/sa/tasks';
     },
+  },
+  {
+    // วิจัยและพัฒนา — บ้านของฝ่าย RD (มติ ม-29 · 2026-08-07)
+    // > "SA ในโมดูลบริหารงานขาย ส่วน RD ก็ใช้โมดูลวิจัยและพัฒนาเลย"
+    //
+    // ⚠️ **ทะเบียนกลิ่น/สูตรไม่ได้ย้ายมาที่นี่** (มติ ม-30) — ผู้ใช้ยืนยันเองว่า
+    // *"มันก็เป็นฐานข้อมูลกลางนะ แค่มาจาก RD"* ⇒ อยู่ใต้ "ฐานข้อมูล" ต่อ · RD เขียน
+    // ฝ่ายอื่นอ่าน · โมดูลนี้เก็บ **งานของฝ่าย** ไม่ใช่ข้อมูลหลักที่ฝ่ายนี้ผลิต
+    key: 'rd',
+    label: 'วิจัยและพัฒนา',
+    description: 'คิวคำร้องที่รอฝ่าย R&D ตอบ — พัฒนากลิ่น พัฒนาสูตร และงานที่เลยกำหนด',
+    icon: FlaskConical,
+    // ⚠️ **ไม่ใช้ `canAnswerRequestsFor` ตรง ๆ** ทั้งที่เป็นด่านของการกดรับเรื่อง —
+    // ตัวนั้นให้ `isSuperuser` ผ่านหมด ซึ่งรวม **AE Supervisor** (break-glass ที่มี
+    // ไว้ให้ตอบแทนได้ตอนฉุกเฉิน) ⇒ หัวหน้าฝ่ายขายจะได้การ์ดระบบ R&D ขึ้นหน้าแรก
+    // ทั้งที่ไม่ใช่บ้านของเขา · **ระบบขึ้นกับฝ่าย ไม่ใช่ role** (กฎเดียวกับที่ระบบ
+    // ผลิต/ธุรกิจบริการยึด) ⇒ ผ่านเมื่ออยู่ฝ่าย RD จริง หรือเป็น admin
+    // ⭐ สิทธิ์ไม่ได้แคบลง — AE Sup ยังกดรับเรื่องแทนได้เหมือนเดิม แค่ไม่มีเมนู
+    isVisible: (user) => user?.role === 'admin'
+      || (departmentOf(user) === 'RD' && canUser(user, 'requests:answer')),
+    landing: () => '/rd',
   },
   {
     // วางแผนผลิต — แยกจาก "บริหารงานขาย" โดยเจตนา (มติผู้ใช้ 2026-07-30):

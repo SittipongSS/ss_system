@@ -10,7 +10,7 @@ import {
 const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 
 test('system catalog keeps the agreed global order and role visibility', () => {
-  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']);
+  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'rd', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']);
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
   assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'master']);
   assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']);
@@ -26,7 +26,8 @@ test('system visibility covers every supported role and sales team', () => {
     ['ae_supervisor', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master']],
     ['marketing', null, ['salesplan', 'master']],
     ['legal', null, ['tax', 'master']],
-    ['rd', null, ['salesplan', 'master']],
+    // ⭐ ฝ่าย R&D ได้บ้านของตัวเองแล้ว (ม-29) — การ์ดขึ้นจาก **ฝ่าย** ไม่ใช่ role
+    ['rd', null, ['salesplan', 'rd', 'master']],
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
     ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt']],

@@ -56,3 +56,12 @@ test('เส้นทางที่ไม่ได้ประกาศไว�
   assert.equal(systemForPathname('/'), 'tax');
   assert.equal(systemForPathname('/excise-registrations'), 'tax');
 });
+
+test('โมดูลของฝ่ายเป็นระบบของตัวเอง — /rd ต้องไม่ตกไปอยู่เปลือกของฝ่ายขาย', () => {
+  // 🐞 บทเรียนเดิม: `/requests` เคยหลุดจากทุกกฎแล้วตกไปที่ `return 'tax'` ⇒ ทั้งโมดูล
+  // ขึ้นเมนูของระบบสรรพสามิต · หน้าเรนเดอร์ปกติทุกอย่าง ผิดแค่เปลือกที่ครอบมัน
+  assert.equal(systemForPathname('/rd'), 'rd');
+  assert.equal(systemForPathname('/rd/requests'), 'rd');
+  // ⚠️ ตัวใบยังอยู่ใต้บริหารงานขาย (ม-31 ใบเดียวจอเดียว) — เปิดจากคิวไหนก็เป็นใบเดียวกัน
+  assert.equal(systemForPathname('/requests/DR-1'), 'salesplan');
+});

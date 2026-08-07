@@ -7,12 +7,11 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import Toast from "@/components/ui/Toast";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -24,14 +23,18 @@ import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
-  scope = "mine", dept = null, rows = [], materials = [], products = [],
-  // ทะเบียน/รายการที่ฟอร์มอ้าง — โครงการ+ดีล (บังคับทุกชนิด) · กลิ่น (F) · สูตร (FB)
-  projects = [], deals = [], salesOrders = [], scents = [], formulas = [],
-  productTypes = [], mentionPeople = [],
+  scope = "mine", dept = null, rows = [],
+  // 🐞 **เคยรับทะเบียน 9 ชุด (materials · products · projects · deals · salesOrders ·
+  // scents · formulas · productTypes · mentionPeople) แล้วไม่ได้ใช้สักตัว** — ตกค้าง
+  // จากตอนที่ฟอร์มเปิดคำร้องยังเป็นโมดัลอยู่ในพาเนลนี้ · หน้าแม่จึงยิง 8 endpoint
+  // ทุกครั้งที่เปิดคิว เพื่อส่งของที่ไม่มีใครอ่านต่อ ⇒ ถอดทั้งชุด
   // ⚠️ `reload` ยังรับไว้ — ผู้เรียกใช้หลังกดสร้าง/แก้เพื่อดึงใหม่ · ที่ถอดคือ
   // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
   // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
   loading = false, loadError = "", reload, newRequestDefaults = null,
+  // ⭐ คิวของฝ่าย (`/rd/requests`) เป็นที่ **ตอบ** ไม่ใช่ที่เปิดคำร้อง — ปุ่มเปิดอยู่ฝั่ง
+  // ผู้ขอที่ `/requests` ที่เดียว · โผล่สองที่แล้วต้องมี `returnTo` สองชุดที่ต้องดูแล
+  showNewRequest = true,
 }) {
   // ⭐ prefill ส่งผ่าน query — หน้าเต็มรับได้ตรง ๆ ต่างจากโมดัลที่ต้องส่ง props
   // ผ่านทุกจุดที่เปิดมัน · `returnTo` พากลับมาที่คิวหลังกดยกเลิก
@@ -47,8 +50,6 @@ export default function RequestQueuePanel({
   const today = businessDate();
   const counts = queueCounts(rows, { todayIso: today });
   const groups = groupQueueRows(rows, { todayIso: today });
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -64,6 +65,7 @@ export default function RequestQueuePanel({
   // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
   return (
     <>
+      {showNewRequest && (
       <div className="toolbar">
         <span className="spacer" />
         {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
@@ -78,6 +80,7 @@ export default function RequestQueuePanel({
           <Plus size={14} /> เปิดคำร้อง
         </button>
       </div>
+      )}
 
       {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
           วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอไปรับของ/
@@ -195,7 +198,6 @@ export default function RequestQueuePanel({
         </TableScroll>
       )}
 
-      <Toast toast={toast} onClose={() => setToast(null)} />
     </>
   );
 }
