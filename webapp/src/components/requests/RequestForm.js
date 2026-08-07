@@ -287,6 +287,11 @@ export default function RequestForm({
               </Button>
             </div>
           )}
+          {/* ⚠️ **ปุ่มที่กดไม่ได้ต้องบอกเหตุผล** — จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่า
+              ระบบพัง แล้วไปหาสาเหตุผิดที่ (กฎเดียวกับ `requestFormBlocker`) */}
+          {topicAction?.disabled && topicAction.hint && (
+            <small className={styles.hint}>{topicAction.hint}</small>
+          )}
           {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
               เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
           {revealed && topicAction && (

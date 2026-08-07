@@ -691,3 +691,23 @@ test('ฟอร์มบอกให้ตรงว่าติดอะไร �
   assert.match(requestFormBlocker(form), /ดีลนี้ยังไม่ผูกโครงการ/);
   assert.equal(requestFormBlocker({ ...form, projectId: 'PRJ-1' }), null);
 });
+
+// ── 🐞 ปุ่มค้างจางเมื่อ fetch โยน (ผู้ใช้เจอเอง 2026-08-07) ──────────────
+//
+// *"บันทึกร่าง ปุ่มจาง ไม่มีข้อความบอก"* — `saveDraft` ไม่มี try/catch ⇒ ถ้า
+// `createRequestDraft` โยน (เน็ตหลุด · เซิร์ฟเวอร์ตอบ HTML แทน JSON · deploy กำลัง
+// สลับ) `setSaving(false)` ไม่เคยถูกเรียก ⇒ **ปุ่มค้างจางตลอดกาลโดยไม่มีเหตุผล**
+test('🔴 ทุกปุ่มที่ตั้ง saving ต้องคืนค่าเสมอ — finally ไม่ใช่ตัวเลือก', () => {
+  for (const file of [
+    'src/app/requests/new/page.js',
+    'src/app/requests/[id]/page.js',
+  ]) {
+    const src = readFileSync(file, 'utf8');
+    const setsSaving = (src.match(/setSaving\(true\)/g) || []).length;
+    const finallys = (src.match(/finally \{\s*setSaving\(false\)/g) || []).length;
+    assert.ok(
+      finallys >= setsSaving,
+      `${file}: setSaving(true) ${setsSaving} จุด แต่มี finally คืนค่าแค่ ${finallys}`,
+    );
+  }
+});
