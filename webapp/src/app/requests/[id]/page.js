@@ -878,7 +878,7 @@ export default function RequestDetailPage() {
               <div className="form-group">
                 <label htmlFor="hop-qty">จำนวนที่ลูกค้าคอนเฟิร์ม</label>
                 <Input
-                  id="hop-qty" type="number" min="0" step="any" mono
+                  id="hop-qty" type="number" min="0" step="any"
                   value={hopDraft.confirmedQty} disabled={saving}
                   onChange={(e) => setHopDraft({ ...hopDraft, confirmedQty: e.target.value })}
                 />
