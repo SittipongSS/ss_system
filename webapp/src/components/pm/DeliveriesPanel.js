@@ -15,6 +15,7 @@ import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
+import Input from "@/components/ui/Input";
 import Modal from "@/components/Modal";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -277,31 +278,31 @@ export default function DeliveriesPanel({
           </div>
           <div className="form-group">
             <label htmlFor="mdl-label">ชื่อวัสดุ</label>
-            <input
-              id="mdl-label" className="input-premium" maxLength={200} value={form.label}
+            <Input
+              id="mdl-label" maxLength={200} value={form.label}
               placeholder="เช่น ขวดแก้ว 200ml ฝาไม้"
               onChange={(e) => setForm({ ...form, label: e.target.value })}
             />
           </div>
           <div className="form-group">
             <label htmlFor="mdl-qty">จำนวน (ว่าง = ยังไม่รู้ยอด)</label>
-            <input
-              id="mdl-qty" className="input-premium mono" inputMode="decimal" value={form.qty}
+            <Input
+              id="mdl-qty" mono inputMode="decimal" value={form.qty}
               onChange={(e) => setForm({ ...form, qty: e.target.value })}
             />
           </div>
           <div className="form-group">
             <label htmlFor="mdl-unit">หน่วย</label>
-            <input
-              id="mdl-unit" className="input-premium" maxLength={30} value={form.unit}
+            <Input
+              id="mdl-unit" maxLength={30} value={form.unit}
               placeholder="ชิ้น / กก."
               onChange={(e) => setForm({ ...form, unit: e.target.value })}
             />
           </div>
           <div className="form-group">
             <label htmlFor="mdl-po">เลข PR / PO</label>
-            <input
-              id="mdl-po" className="input-premium mono" maxLength={100} value={form.poRef}
+            <Input
+              id="mdl-po" mono maxLength={100} value={form.poRef}
               onChange={(e) => setForm({ ...form, poRef: e.target.value })}
             />
           </div>
