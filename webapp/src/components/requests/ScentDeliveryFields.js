@@ -16,9 +16,13 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { businessDate } from "@/lib/businessDate";
 import styles from "./scentDelivery.module.css";
 
+// ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
+//   · `producedAt` = RD ผลิตกลิ่นตัวนี้เสร็จวันไหน → ไปอยู่บน **ตัวกลิ่น** ในทะเบียน
+//   · `readyAt`    = พร้อมส่งมอบให้ฝ่ายขายวันไหน  → ไปอยู่บน **แถวคำร้อง**
+// กลิ่นตัวหนึ่งอาจผลิตเสร็จวันที่ 1 แต่รอตัวอื่นในชุดจนพร้อมส่งพร้อมกันวันที่ 8
 export const emptyDeliveryRow = () => ({
-  name: "", code: "", sentAt: businessDate(), derivedFromScentId: "", spec: "", briefId: "",
-  targetItemId: "",
+  name: "", code: "", producedAt: businessDate(), readyAt: businessDate(),
+  derivedFromScentId: "", spec: "", briefId: "", targetItemId: "",
 });
 
 // ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
@@ -110,11 +114,21 @@ export default function ScentDeliveryFields({
                 />
                 {conflict && <p className={styles.error}>{conflict}</p>}
               </div>
+              {/* ⭐ วันผลิตมาก่อนวันพร้อมส่งบนจอ — เรียงตามลำดับเวลาจริงของงาน
+                  ⚠️ ทั้งคู่ไม่บังคับ: ไม่กรอกวันผลิต = ถือว่าผลิตเสร็จวันเดียวกับที่
+                  ส่งมอบ ซึ่งเป็นเคสส่วนใหญ่ · บังคับทั้งสองช่องแล้วคนต้องพิมพ์ซ้ำเปล่า ๆ */}
               <div className="form-group">
-                <label htmlFor={`d-sent-${i}`}>วันที่ส่ง</label>
+                <label htmlFor={`d-produced-${i}`}>วันที่ผลิตกลิ่น</label>
                 <DateInput
-                  id={`d-sent-${i}`} value={row.sentAt} disabled={disabled}
-                  onChange={(v) => patch(i, { sentAt: v })}
+                  id={`d-produced-${i}`} value={row.producedAt} disabled={disabled}
+                  onChange={(v) => patch(i, { producedAt: v })}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor={`d-ready-${i}`}>วันที่พร้อมส่ง</label>
+                <DateInput
+                  id={`d-ready-${i}`} value={row.readyAt} disabled={disabled}
+                  onChange={(v) => patch(i, { readyAt: v })}
                 />
               </div>
               {askBrief && !row.targetItemId && (

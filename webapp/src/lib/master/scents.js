@@ -201,12 +201,33 @@ export function normalizeScentInput(body = {}) {
   const note = String(body.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
 
+  // ── วันที่ของกลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง (มติผู้ใช้ 2026-08-08) ────────
+  //
+  // ⭐ ทางเพิ่มตรงมีไว้ลง **กลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ** ⇒ วันผลิตกับวันส่ง
+  // ของมันเกิดไปแล้วในอดีต · ไม่มีช่องให้กรอกตอนสร้าง = ต้องบันทึกแล้วกดปุ่มซ้ำ
+  // อีกรอบ และช่อง "วันที่ผลิต" จะว่างถาวรเพราะไม่มีทางเขียนเลยนอกจากผ่านคำร้อง
+  //
+  // ⚠️ ไม่บังคับทั้งคู่ — กลิ่นเก่าบางตัวไม่มีใครจำวันได้แล้ว · ว่างแล้วขึ้น N/A
+  // ตรงไปตรงมา ดีกว่าบังคับให้เดาวันแล้วได้ข้อมูลที่ดูน่าเชื่อถือแต่ผิด
+  const dateField = (raw, label) => {
+    const at = String(raw ?? '').trim();
+    if (!at) return { value: null, error: null };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(at)) return { value: null, error: `${label}ไม่ถูกต้อง` };
+    return { value: at, error: null };
+  };
+  const produced = dateField(body.producedAt, 'วันที่ผลิตกลิ่น');
+  if (produced.error) return { value: null, error: produced.error };
+  const sent = dateField(body.sentAt, 'วันที่ส่งลูกค้า');
+  if (sent.error) return { value: null, error: sent.error };
+
   return {
     value: {
       name,
       code,
       customerId,
       customerTradeName: customerTradeName || null,
+      producedAt: produced.value,
+      sentAt: sent.value,
       derivedFromScentId: String(body.derivedFromScentId ?? '').trim() || null,
       customerName: String(body.customerName ?? '').trim() || null,
       dealId: String(body.dealId ?? '').trim() || null,
@@ -257,4 +278,23 @@ export function scentSourceLabel(scent) {
 export function matchesScentSource(scent, filter) {
   if (!filter) return true;
   return scentSourceKind(scent) === filter;
+}
+
+// ── สถานะตอนสร้างกลิ่นใหม่ ───────────────────────────────────────────────
+//
+// ⭐ มติผู้ใช้ 2026-08-08: ทางเพิ่มตรงจากทะเบียนมีไว้ลง **กลิ่นเดิมที่ลูกค้าอนุมัติ
+// ไปแล้ว** ⇒ ควรลงเป็น `active` ได้ตั้งแต่แรก ไม่ใช่บังคับ `developing` แล้วให้ RD
+// กดเปลี่ยนอีกรอบทุกใบ
+//
+// ⚠️ **เลือกได้แค่สองสถานะที่ "เป็นของจริงแล้ว"** —
+//   · `draft`    เป็นของทางเสนอร่าง (ฝ่ายขาย) ไม่ใช่ของที่เลือกเอง
+//   · `archived` เป็น action แยก (เก็บเข้ากรุ) ไม่ใช่สถานะเริ่มต้นของอะไร
+// ⚠️ ฝ่ายขายที่เสนอร่างได้ `draft` เสมอไม่ว่าจะส่งอะไรมา — "ใส่รหัส = รับเข้าทะเบียน"
+// เป็นอำนาจของ RD (ดู isScentRegistrar) ปล่อยให้เลือกสถานะเองเมื่อไรก็ข้ามด่านนั้น
+export const NEW_SCENT_STATUSES = ['developing', 'active'];
+
+export function newScentStatus(requested, accepted = false) {
+  if (!accepted) return 'draft';
+  const value = String(requested ?? '').trim();
+  return NEW_SCENT_STATUSES.includes(value) ? value : 'developing';
 }

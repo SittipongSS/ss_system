@@ -4,7 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
-import { derivedFromError, normalizeScentInput } from '@/lib/master/scents';
+import { derivedFromError, newScentStatus, normalizeScentInput } from '@/lib/master/scents';
 import { derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
@@ -100,13 +100,24 @@ export async function createScent(supabase, input, user, { accepted = false } = 
   const row = {
     id: genId('SCT'),
     ...value,
-    status: accepted ? 'developing' : 'draft',
+    // ⭐ **เลือกสถานะได้ตอนสร้าง** (มติผู้ใช้ 2026-08-08) — ทางเพิ่มตรงมีไว้ลงกลิ่นเดิม
+    // ที่ลูกค้าอนุมัติไปแล้ว ⇒ ควรเป็น `active` ตั้งแต่แรก ไม่ใช่บังคับ `developing`
+    // แล้วให้ RD กดเปลี่ยนอีกรอบทุกใบ
+    // ⚠️ `newScentStatus` จำกัดไว้เฉพาะสองสถานะที่ "ของจริงแล้ว" และเฉพาะตอน RD
+    // เป็นคนสร้าง — ฝ่ายขายยังได้ `draft` เสมอ (ใส่รหัส = รับเข้าทะเบียน เป็นอำนาจ RD)
+    status: newScentStatus(input.status, accepted),
     // RD ที่สร้างเองเป็นเจ้าของกลิ่นโดยปริยาย — ฝ่ายขายเปิดร่างยังไม่มีเจ้าของ
     ownerId: value.ownerId || (accepted ? user?.id ?? null : null),
     ownerName: value.ownerName || (accepted ? user?.name ?? null : null),
     acceptedById: accepted ? user?.id ?? null : null,
     acceptedByName: accepted ? user?.name ?? null : null,
     acceptedAt: accepted ? nowIso : null,
+    // ⚠️ กรอกวันผลิตมาเอง = คนกรอกคือคนบันทึก · เว้นว่างแล้วช่องคนบันทึกต้องว่างตาม
+    // ไม่ใช่ติดชื่อไว้บนวันที่ที่ไม่มีอยู่
+    producedById: value.producedAt ? user?.id ?? null : null,
+    producedByName: value.producedAt ? user?.name ?? null : null,
+    sentById: value.sentAt ? user?.id ?? null : null,
+    sentByName: value.sentAt ? user?.name ?? null : null,
     createdById: user?.id ?? null,
     createdByName: user?.name ?? null,
     createdAt: nowIso,

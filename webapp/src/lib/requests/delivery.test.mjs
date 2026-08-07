@@ -10,7 +10,7 @@ import {
 } from './delivery.js';
 import { rowStage } from './rowStage.js';
 
-const ok = { name: 'Forest night A', code: 'SC-2601', sentAt: '2026-08-05' };
+const ok = { name: 'Forest night A', code: 'SC-2601', readyAt: '2026-08-05' };
 
 test('ส่งของต้องมีอย่างน้อยหนึ่งรายการ และไม่เกินเพดาน', () => {
   assert.match(normalizeDeliveryRows([]).error, /อย่างน้อย 1 รายการ/);
@@ -42,10 +42,23 @@ test('ชื่อซ้ำในชุดเดียวก็ไม่ได�
   );
 });
 
-test('วันที่ส่งเว้นว่างได้ = วันนี้ · ใส่มาแล้วต้องเป็น ISO', () => {
+test('วันที่พร้อมส่งเว้นว่างได้ = วันนี้ · ใส่มาแล้วต้องเป็น ISO', () => {
   assert.equal(normalizeDeliveryRows([{ name: 'A', code: 'SC-1' }], { today: '2026-08-05' })
-    .rows[0].sentAt, '2026-08-05');
-  assert.match(normalizeDeliveryRows([{ ...ok, sentAt: '05/08/2026' }]).error, /วันที่ส่ง/);
+    .rows[0].readyAt, '2026-08-05');
+  assert.match(normalizeDeliveryRows([{ ...ok, readyAt: '05/08/2026' }]).error, /วันที่พร้อมส่ง/);
+});
+
+// ⭐ **วันผลิต ≠ วันพร้อมส่ง** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224) — กลิ่นตัวหนึ่ง
+// ผลิตเสร็จวันที่ 1 แต่รอตัวอื่นในชุดจนพร้อมส่งพร้อมกันวันที่ 8 เป็นเรื่องปกติ
+// 🐞 เดิมมีช่องเดียวที่ถูกเขียนลงทั้ง `items.readyAt` และ `scents.sentAt` ⇒ ป้ายบน
+// ทะเบียนเขียนว่า "ส่งลูกค้า" แต่ค่าที่ได้คือวันที่ RD ส่งมอบให้ฝ่ายขาย
+test('⭐ วันผลิตแยกจากวันพร้อมส่ง — ไม่กรอก = วันเดียวกับที่ส่งมอบ', () => {
+  const split = normalizeDeliveryRows([{ ...ok, producedAt: '2026-08-01' }]).rows[0];
+  assert.equal(split.producedAt, '2026-08-01');
+  assert.equal(split.readyAt, '2026-08-05');
+  // ไม่กรอกวันผลิต = ผลิตเสร็จวันเดียวกับที่ส่งมอบ (เคสส่วนใหญ่) ไม่ใช่บังคับพิมพ์ซ้ำ
+  assert.equal(normalizeDeliveryRows([ok]).rows[0].producedAt, '2026-08-05');
+  assert.match(normalizeDeliveryRows([{ ...ok, producedAt: '01/08/2026' }]).error, /วันที่ผลิตกลิ่น/);
 });
 
 test('⭐ แถวที่เกิดต้องอยู่ขั้น "ส่งแล้ว รอไปรับ" ไม่ใช่ "รอรับเรื่อง"', () => {

@@ -18,6 +18,7 @@ import {
   sendScentError,
   derivedFromError,
   SCENT_SOURCES, matchesScentSource, scentSourceKind, scentSourceLabel,
+  NEW_SCENT_STATUSES, newScentStatus,
 } from './scents.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -209,4 +210,39 @@ test('ตัวกรองที่มา — ค่าว่างคือท
   assert.equal(matchesScentSource({}, 'manual'), true);
   // ตัวเลือกบนจอต้องครบทั้งสองแบบ ไม่งั้นกรองแล้วมีของหายไปโดยไม่มีตัวเลือกให้กลับมา
   assert.deepEqual(SCENT_SOURCES.map((o) => o.value).sort(), ['manual', 'request']);
+});
+
+// ── กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง (มติผู้ใช้ 2026-08-08 · ม-75) ────────
+const base = { name: 'Ocean Breeze', customerId: 'CUS-1' };
+
+test('⭐ วันผลิต/วันส่งของกลิ่นเก่า — ไม่บังคับ แต่ใส่มาแล้วต้องเป็น ISO', () => {
+  const { value } = normalizeScentInput({ ...base, producedAt: '2024-03-12', sentAt: '2024-03-20' });
+  assert.equal(value.producedAt, '2024-03-12');
+  assert.equal(value.sentAt, '2024-03-20');
+  // ⚠️ ไม่บังคับ — กลิ่นเก่าบางตัวไม่มีใครจำวันได้แล้ว · ว่างแล้วขึ้น N/A ตรงไปตรงมา
+  // ดีกว่าบังคับให้เดาวันแล้วได้ข้อมูลที่ดูน่าเชื่อถือแต่ผิด
+  const blank = normalizeScentInput(base);
+  assert.equal(blank.error, null);
+  assert.equal(blank.value.producedAt, null);
+  assert.equal(blank.value.sentAt, null);
+  assert.match(normalizeScentInput({ ...base, producedAt: '12/03/2024' }).error, /วันที่ผลิตกลิ่น/);
+  assert.match(normalizeScentInput({ ...base, sentAt: '20/03/2024' }).error, /วันที่ส่งลูกค้า/);
+});
+
+test('⭐ เลือกสถานะตอนสร้างได้เฉพาะสองตัวที่ "เป็นของจริงแล้ว"', () => {
+  // กลิ่นเก่าที่ลูกค้าอนุมัติไปแล้ว = active ตั้งแต่แรก ไม่ต้องกดเปลี่ยนอีกรอบ
+  assert.equal(newScentStatus('active', true), 'active');
+  assert.equal(newScentStatus('developing', true), 'developing');
+  // ⚠️ draft เป็นของทางเสนอร่าง · archived เป็น action แยก — เลือกเองไม่ได้ทั้งคู่
+  assert.equal(newScentStatus('draft', true), 'developing');
+  assert.equal(newScentStatus('archived', true), 'developing');
+  assert.equal(newScentStatus('', true), 'developing');
+  assert.deepEqual(NEW_SCENT_STATUSES, ['developing', 'active']);
+});
+
+test('⭐ ฝ่ายขายที่เสนอร่างได้ draft เสมอ ไม่ว่าจะส่งอะไรมา', () => {
+  // "ใส่รหัส = รับเข้าทะเบียน" เป็นอำนาจของ RD — ปล่อยให้เลือกสถานะเองก็ข้ามด่านนั้น
+  assert.equal(newScentStatus('active', false), 'draft');
+  assert.equal(newScentStatus('developing', false), 'draft');
+  assert.equal(newScentStatus(undefined, false), 'draft');
 });

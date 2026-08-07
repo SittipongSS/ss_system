@@ -145,6 +145,14 @@ export default function ScentsPage() {
     };
     if (form.mode === "create") {
       if (registrar && v.code.trim()) payload.code = v.code.trim();
+      // ⭐ กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่/สถานะเกิดไปแล้วในอดีต (ม-75)
+      // ⚠️ ส่งเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
+      // จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ (server บังคับซ้ำที่ `newScentStatus`)
+      if (registrar && v.code.trim()) {
+        if (v.producedAt) payload.producedAt = v.producedAt;
+        if (v.sentAt) payload.sentAt = v.sentAt;
+        payload.status = v.status;
+      }
       const done = await call("/api/master/scents", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -307,7 +315,8 @@ export default function ScentsPage() {
               <thead>
                 <tr>
                   <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th><th>ที่มา</th>
-                  <th>วันที่ส่ง</th><th>สถานะ</th><th className={styles.actionsCol}></th>
+                  <th>วันที่ผลิต</th><th>ส่งลูกค้า</th>
+                  <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
@@ -352,8 +361,17 @@ export default function ScentsPage() {
                           return <span className={src.kind === "manual" ? styles.muted : undefined}>{src.label}</span>;
                         })()}
                       </td>
-                      {/* กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันที่เดียว ไม่ใช่
-                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง */}
+                      {/* ⭐ **สองวันแยกขาด** (ม-66 · mig 0224) — วันผลิตคือวันที่ RD ทำกลิ่น
+                          ตัวนี้เสร็จ · วันส่งคือวันที่ลูกค้าได้รับ · เดิมเป็นช่องเดียวที่ถูก
+                          เขียนตอน RD ส่งมอบให้ฝ่ายขาย ⇒ ป้ายบอกว่าส่งลูกค้าแล้ว
+                          ตั้งแต่ของยังไม่ออกจากออฟฟิศ
+                          ⚠️ กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันละช่อง ไม่ใช่
+                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันของตัวเอง */}
+                      <td className="mono">
+                        {s.producedAt
+                          ? fmtDate(s.producedAt)
+                          : <span className={styles.muted}>—</span>}
+                      </td>
                       <td className="mono">
                         {s.sentAt
                           ? fmtDate(s.sentAt)
