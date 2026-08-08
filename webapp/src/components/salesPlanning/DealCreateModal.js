@@ -71,9 +71,11 @@ export default function DealCreateModal({
   projects = [],
   categories = [],
   stages,
-  /* ผู้รับผิดชอบ (AE) — ว่าง = ไม่โชว์ช่อง (ผู้ใช้ยกดีลให้คนอื่นไม่ได้) ดู useDealOwners */
+  /* ผู้รับผิดชอบ (AE) — ดู useDealOwners: owners = รายชื่อให้เลือก (ac/sup/admin)
+     · lockedOwner = ae/senior_ae ล็อกชื่อตัวเอง (มติ 2026-08-08) */
   owners = [],
   defaultOwnerId = "",
+  lockedOwner = null,
   /* ค่าตั้งต้นเพิ่มเติมของทุกใบ — ใช้ตอนเปิดฟอร์มจากบริบทที่รู้ค่าอยู่แล้ว เช่น หน้า
      โครงการส่ง { customerId, projectId, lockedProjectId } มาเพื่อให้ดีลใหม่ผูกกลับ
      เข้าโครงการนั้นเสมอ (อ่านตอน mount ครั้งเดียว เหมือน lead) */
@@ -137,22 +139,42 @@ export default function DealCreateModal({
         if (owners.length > 0 && !draft.ownerId) {
           throw new Error(`กรุณาเลือกผู้รับผิดชอบ (AE) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
         }
+        /* ช่องบังคับ (มติผู้ใช้ 2026-08-08): ทุกช่องยกเว้น ลูกค้า/แบรนด์/โครงการ/
+           หมวดสินค้า/รายละเอียด — ด่านฝั่งจอบอกก่อนเสียเที่ยว รวมทุกช่องที่ขาด
+           ในข้อความเดียว ไม่ให้กดแล้วเจอทีละช่อง */
+        // ดีลเก่าที่สร้างเป็น Won: ช่องเดียวกันเปลี่ยนป้ายเป็นของจริง (มูลค่าที่ปิด/
+        // วันที่ปิด) — ข้อความ error ต้องเรียกชื่อเดียวกับที่ตาเห็นบนฟอร์ม
+        const legacyWon = draft.legacy && draft.stage === "won";
+        const missing = [
+          // สถานะไม่มี default แล้ว (มติ 2026-08-08 "สถานะต้องบังคับเลือก") — ต้องจิ้มเอง
+          [!draft.stage, "สถานะ"],
+          [!String(draft.projectValue ?? "").trim(), legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์"],
+          [!draft.expectedCloseDate, legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"],
+          [!draft.startDate, "วันที่เริ่ม"],
+          [!draft.endDate, "วันที่สิ้นสุด"],
+        ].filter(([absent]) => absent).map(([, name]) => name);
+        if (missing.length) {
+          throw new Error(`กรุณากรอก ${missing.join(" · ")} ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
-          // `lockedProjectId` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — อย่าส่งเข้า API
-          const { _key, lockedProjectId, ...rest } = draft;
+          // `_key`/`lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล —
+          // legacy ไปกับ metadata (ธงดีลเก่าจากระบบเดิม เปิดทางสร้างที่ Won ฝั่ง server)
+          const { _key, lockedProjectId, legacy, ...rest } = draft;
           const payload = {
             ...rest,
             customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
+          };
+          const metadata = {
+            ...(lead ? { leadId: lead.id, source: "lead", leadChannel: lead.channel } : {}),
+            ...(legacy ? { legacy: true } : {}),
           };
           const res = await fetch("/api/sales-planning/deals", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
-              lead
-                ? { ...payload, metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel } }
-                : payload,
+              Object.keys(metadata).length ? { ...payload, metadata } : payload,
             ),
           });
           const data = await res.json().catch(() => ({}));
@@ -196,72 +218,86 @@ export default function DealCreateModal({
     }
   };
 
+  /* ── แถบเครื่องมือใต้หัว (โซน toolbar ของ Modal — ไม่เลื่อนตามฟอร์ม) ─────
+     (มติผู้ใช้ 2026-08-04) ปุ่ม "เพิ่มดีล" ต้องอยู่แถวเดียวกับแท็บ ไม่ใช่ใต้ฟอร์ม:
+     ปุ่มล่างสุดหลุดบริบท และมองไม่ออกว่ามันเพิ่ม "แท็บ" ไม่ใช่ช่องในใบที่เปิดอยู่
+
+     ⚠️ แท็บซ่อนใบอื่นไว้ ป้ายจึงต้องบอกสถานะรายใบโดยไม่ต้องกดเข้าไปดู:
+     ✓ = สร้างแล้ว (รอบก่อน) · ! = ใบที่พัง — ไม่งั้น error รวมบรรทัดเดียว
+     จะบอกไม่ได้ว่าใบไหน · ปุ่มลบย้ายมาอยู่แถบนี้ (ลบใบที่เปิดอยู่) แทนปุ่มลอย
+     มุมการ์ดแบบเดิม — การ์ดร่างถูกยุบทิ้งแล้วตามโครงสามชั้น */
+  const toolbar = (
+    <>
+      {drafts.length > 1 ? (
+        <Tabs
+          className={styles.tabs}
+          ariaLabel="ดีลที่จะสร้าง"
+          value={String(active)}
+          onChange={(key) => setActive(Number(key))}
+          tabs={drafts.map((draft, index) => {
+            const state = done[draft._key];
+            return {
+              key: String(index),
+              label: (
+                <span className={styles.tabLabel}>
+                  {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
+                  {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
+                  {draft.dealType || `ดีล ${index + 1}`}
+                </span>
+              ),
+            };
+          })}
+        />
+      ) : (
+        <span className={styles.spacer} aria-hidden="true" />
+      )}
+      {drafts.length > 1 && (
+        <Button variant="ghost" size="sm" onClick={() => removeAt(active)}>
+          <Trash2 size={13} aria-hidden="true" /> ลบใบนี้
+        </Button>
+      )}
+      <Button variant="ghost" size="sm" onClick={addDraft} className={styles.addButton}>
+        <Plus size={14} aria-hidden="true" /> เพิ่มดีล
+      </Button>
+    </>
+  );
+
   return (
-    <Modal open onClose={() => !busy && onClose?.()} title={lead ? "สร้างดีลจากลีด" : "เพิ่มดีล"} size="lg">
-      <div className={styles.body}>
-        {lead ? (
-          <div className={styles.lead}>
-            ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
-            {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
-            {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
-          </div>
-        ) : null}
-
-        {/* ── แถบหัว: แท็บ + ปุ่มเพิ่ม อยู่แถวเดียวกัน เหนือฟอร์ม ───────────────
-            (มติผู้ใช้ 2026-08-04) ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ = จอยาวมาก
-            แท็บโผล่เมื่อมีมากกว่า 1 ใบ — ใบเดียวหน้าตาเหมือนเดิมทุกอย่าง
-
-            ⚠️ ปุ่ม "เพิ่มดีล" ต้องอยู่**แถวเดียวกับแท็บ** ไม่ใช่ใต้ฟอร์มแบบเดิม:
-            พอเป็นแท็บแล้วปุ่มที่อยู่ล่างสุดหลุดบริบท ต้องเลื่อนผ่านฟอร์มทั้งใบไปหา
-            และมองไม่ออกว่ามันเพิ่ม "แท็บ" ไม่ใช่เพิ่มช่องในใบที่เปิดอยู่
-
-            ⚠️ แท็บซ่อนใบอื่นไว้ ป้ายจึงต้องบอกสถานะรายใบให้ครบโดยไม่ต้องกดเข้าไปดู:
-            ✓ = สร้างแล้ว (รอบก่อน) · ! = ใบที่พัง — ไม่งั้น error รวมบรรทัดเดียว
-            จะบอกไม่ได้ว่าใบไหน */}
-        <div className={styles.tabRow}>
+    <Modal
+      open
+      onClose={() => !busy && onClose?.()}
+      title={lead ? "สร้างดีลจากลีด" : "เพิ่มดีล"}
+      /* บริบทลีดอยู่ในหัวที่นิ่ง — ไม่จมไปกับฟอร์มตอนเลื่อน */
+      subtitle={lead ? (
+        <>
+          ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
+          {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
+          {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
+        </>
+      ) : null}
+      size="lg"
+      toolbar={toolbar}
+      footer={(
+        <>
           {drafts.length > 1 ? (
-            <Tabs
-              className={styles.tabs}
-              ariaLabel="ดีลที่จะสร้าง"
-              value={String(active)}
-              onChange={(key) => setActive(Number(key))}
-              tabs={drafts.map((draft, index) => {
-                const state = done[draft._key];
-                return {
-                  key: String(index),
-                  label: (
-                    <span className={styles.tabLabel}>
-                      {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
-                      {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
-                      {draft.dealType || `ดีล ${index + 1}`}
-                    </span>
-                  ),
-                };
-              })}
-            />
-          ) : <span />}
-          <Button variant="ghost" onClick={addDraft} className={styles.addButton}>
-            <Plus size={14} aria-hidden="true" /> เพิ่มดีล
+            <span className="drawer-footer-note">
+              {drafts.length} ใบ · {drafts.map((draft) => draft.dealType || "?").join(" + ")}
+            </span>
+          ) : null}
+          <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
+          <Button onClick={submit} disabled={busy || !remaining}>
+            {busy ? "กำลังสร้าง…" : `สร้าง ${remaining} ดีล`}
           </Button>
-        </div>
-
+        </>
+      )}
+    >
+      <div className={styles.body}>
         {drafts.map((draft, index) => (
           <div
             key={draft._key}
             className={styles.draft}
             hidden={drafts.length > 1 && index !== active}
           >
-            {drafts.length > 1 && (
-              <button
-                type="button"
-                className={`btn-icon danger ${styles.remove}`}
-                title="ลบรายการนี้"
-                aria-label={`ลบดีลรายการที่ ${index + 1}`}
-                onClick={() => removeAt(index)}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            )}
             {/* ใบที่สร้างสำเร็จไปแล้วในรอบก่อน — บอกให้ชัดว่าแก้ตรงนี้ไม่มีผลอีกแล้ว */}
             {done[draft._key]?.dealId ? (
               <p className={styles.created}>
@@ -282,19 +318,13 @@ export default function DealCreateModal({
                 stages={stages || CREATABLE_STAGES}
                 probabilityMode="auto"
                 owners={owners}
+                lockedOwner={lockedOwner}
               />
             </div>
           </div>
         ))}
 
         {error ? <p className={styles.error}>{error}</p> : null}
-
-        <div className="form-action-bar">
-          <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button onClick={submit} disabled={busy || !remaining}>
-            {busy ? "กำลังสร้าง…" : `สร้าง ${remaining} ดีล`}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

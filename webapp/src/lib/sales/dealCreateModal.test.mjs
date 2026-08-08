@@ -37,15 +37,19 @@ test('CSS ต้องกลบ display ของ .draft ตอน hidden ไม
   assert.match(css, /\.draft\s*\{[^}]*display:\s*flex/);
 });
 
-test('แท็บกับปุ่มเพิ่มดีลอยู่แถวเดียวกัน เหนือฟอร์ม', () => {
-  const tabRowAt = src.indexOf('className={styles.tabRow}');
-  const formAt = src.indexOf('{drafts.map((draft, index) => (');
-  assert.ok(tabRowAt > 0 && tabRowAt < formAt, 'แถบหัวต้องมาก่อนฟอร์ม');
-  // ปุ่มเพิ่มต้องอยู่ในแถบหัว ไม่ใช่ลอยอยู่ใต้ฟอร์มเหมือนเดิม
-  const rowBlock = src.slice(tabRowAt, formAt);
-  assert.match(rowBlock, /onClick=\{addDraft\}/, 'ปุ่มเพิ่มดีลต้องอยู่ในแถบหัว');
+/* มติ 2026-08-08 (โครงสามชั้น — artifact 83d209ac): แถบแท็บ+ปุ่มเพิ่มย้ายจาก
+   แถวแรกของฟอร์มไปเป็น **โซน toolbar ของ Modal** — เจตนาเดิมของมติ 2026-08-04
+   ยังครบ (แท็บกับปุ่มเพิ่มอยู่ด้วยกัน เหนือฟอร์ม มองออกว่าเพิ่ม "แท็บ")
+   และได้เพิ่ม: แถบนี้นิ่ง ไม่เลื่อนหายไปกับฟอร์ม */
+test('แท็บกับปุ่มเพิ่มดีลอยู่ด้วยกันบนแถบเครื่องมือของโมดัล', () => {
+  const toolbarAt = src.indexOf('const toolbar = (');
+  assert.ok(toolbarAt > 0, 'ต้องประกอบแถบเครื่องมือก่อน return');
+  const toolbarBlock = src.slice(toolbarAt, src.indexOf('return ('));
+  assert.match(toolbarBlock, /onClick=\{addDraft\}/, 'ปุ่มเพิ่มดีลต้องอยู่ในแถบเครื่องมือ');
+  assert.match(toolbarBlock, /<Tabs/, 'แท็บอยู่แถบเดียวกับปุ่มเพิ่ม');
+  assert.match(src, /toolbar=\{toolbar\}/,
+    'ต้องส่งเข้าโซน toolbar ของ Modal — อยู่เหนือฟอร์มและไม่เลื่อนตามเนื้อหา');
   assert.doesNotMatch(src, /styles\.add\b/, 'บล็อกปุ่มเพิ่มอันเดิมใต้ฟอร์มต้องไม่เหลือ');
-  assert.match(css, /\.tabRow\s*\{/);
 });
 
 /* updater ของ setState ต้องบริสุทธิ์ — React เรียกซ้ำได้ (StrictMode/concurrent)
@@ -95,10 +99,10 @@ test('สถานะรายใบผูกกับ _key ไม่ใช่ i
   assert.doesNotMatch(src, /done\[index\]/, 'ห้ามผูกสถานะกับ index');
 });
 
-// `lockedProjectId` เป็นธงของฟอร์ม (ล็อกช่องโครงการตอนเปิดจากหน้าโครงการ) ไม่ใช่คอลัมน์
-// ของดีล — ต้องถูกตัดออกที่จุดเดียวกับ `_key` ก่อนยิง API
-test('ธงฝั่งจอ (_key / lockedProjectId) ห้ามหลุดไปกับ body ที่ยิง API', () => {
-  assert.match(src, /const \{ _key, lockedProjectId, \.\.\.rest \} = draft/);
+// `lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — ต้องถูกตัดออก
+// ที่จุดเดียวกับ `_key` ก่อนยิง API (legacy เดินทางต่อใน metadata เท่านั้น)
+test('ธงฝั่งจอ (_key / lockedProjectId / legacy) ห้ามหลุดไปกับ body ที่ยิง API', () => {
+  assert.match(src, /const \{ _key, lockedProjectId, legacy, \.\.\.rest \} = draft/);
   assert.doesNotMatch(src, /JSON\.stringify\(\{[^}]*_key/, '_key ห้ามอยู่ใน body');
 });
 
@@ -124,8 +128,11 @@ test('ทุกหน้าที่สร้างดีลใช้โมด�
 
 test('เปิดจากหน้ารวมดีล (ไม่มีลีด) ต้องไม่ผูก metadata.leadId และไม่เด้งหน้า', () => {
   assert.match(src, /lead\s*=\s*null/, 'lead เป็น optional');
-  assert.match(src, /lead\s*\n?\s*\?\s*\{ \.\.\.payload, metadata: \{ leadId: lead\.id/,
+  // metadata ประกอบแบบมีเงื่อนไข: leadId เฉพาะตอนมาจากลีด · legacy เฉพาะดีลเก่า
+  assert.match(src, /\.\.\.\(lead \? \{ leadId: lead\.id, source: "lead", leadChannel: lead\.channel \} : \{\}\)/,
     'ผูกลีดเฉพาะตอนมาจากลีด');
+  assert.match(src, /\.\.\.\(legacy \? \{ legacy: true \} : \{\}\)/,
+    'ธงดีลเก่าไปกับ metadata เฉพาะตอนเปิดสวิตช์');
   assert.match(src, /if \(lead\) router\.push\(/, 'เด้งไปหน้าดีลเฉพาะตอนมาจากลีด');
 });
 

@@ -18,6 +18,10 @@
 
 compatibility alias เฉพาะโมดูลถูกถอดแล้ว ทุก route ใช้ primitive กลางโดยตรง การแก้ `Workspace` หรือ token กลางจึงมีผลกับฝ่ายขาย ภาษี ฐานข้อมูล งานบริหาร Sahamit และหน้าตั้งค่าพร้อมกัน
 
+**ออกแบบฟอร์ม → อ่าน [docs/form-design-rules.md](../docs/form-design-rules.md) ก่อน** —
+เอกสารนี้คุมสัญญาของชั้นกลาง (token/คลาส/primitive) ส่วนวิธี *เลือกใช้* (ลำดับคำถาม ·
+การกรอก · ช่องแบบไหนใช้คอนโทรลอะไร) อยู่ในไฟล์นั้น
+
 ## Page contract
 
 1. เริ่มหน้าด้วย `Workspace` และส่ง `icon`, `title`, `subtitle`, `headerRight`, `toolbar` หรือ `rail` ผ่าน props

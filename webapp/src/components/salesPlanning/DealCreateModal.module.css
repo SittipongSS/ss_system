@@ -1,57 +1,25 @@
-/* ฟอร์มสร้างดีลจากลีด — เดิมเป็น inline style ทั้งก้อนในหน้ารายการ */
+/* ฟอร์มสร้างดีล — โครงสามชั้นของ Modal เป็นคนถือระยะ/สกอลล์/แถบปุ่มแล้ว
+   (มติผู้ใช้ 2026-08-08 — artifact 83d209ac) ไฟล์นี้เหลือเฉพาะของเฉพาะฟอร์ม:
+   จังหวะห่างในเนื้อหา · แท็บบนแถบเครื่องมือ · ข้อความสถานะ
+   ⚠️ ห้ามตั้ง max-height/overflow ที่นี่อีก — สกอลล์เป็นของ .drawer-body
+   ชั้นเดียว ของเดิม (body 75vh ซ้อน drawer 90vh) คือสกอลล์สองชั้นที่รื้อทิ้งไป */
 
 .body {
-  padding: var(--space-4) var(--space-4-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  max-height: 75vh;
-  overflow-y: auto;
+  gap: var(--space-3-5);
 }
 
-.lead {
-  font-size: var(--fs-7);
-  line-height: var(--lh-text);
-  color: var(--text-3);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-
-.lead strong {
-  color: var(--text);
-}
-
-.draft {
-  position: relative;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  background: var(--surface-50);
-}
-
-.remove {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  background: var(--surface);
-}
-
-/* แถบหัว: แท็บชิดซ้าย ปุ่มเพิ่มชิดขวา — อยู่เหนือฟอร์มเสมอ
-   แท็บบาร์ต้อง `min-width: 0` ไม่งั้นพอมีหลายใบมันจะดันปุ่มเพิ่มตกขอบ */
-.tabRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
+/* แถบเครื่องมือ: แท็บชิดซ้าย ปุ่มลบ/เพิ่มชิดขวา
+   แท็บบาร์ต้อง `min-width: 0` ไม่งั้นพอมีหลายใบมันจะดันปุ่มตกขอบ */
 .tabs {
   min-width: 0;
   flex: 1 1 auto;
   overflow-x: auto;
+}
+
+.spacer {
+  flex: 1 1 auto;
 }
 
 .addButton {
@@ -86,7 +54,15 @@
 /* 🐞 **ห้ามลบ** — `.draft` ประกาศ `display: flex` ซึ่งมี specificity สูงกว่า UA style
    `[hidden] { display: none }` ⇒ attribute `hidden` ไม่มีผลเลย ใบที่ควรถูกซ่อนยัง
    แสดงเรียงต่อกันทั้งหมด (อาการที่ผู้ใช้เจอ: กดแท็บแล้วไม่มีอะไรเปลี่ยน เหมือนฟอร์ม
-   ทับกัน) · กับดักเดียวกันนี้กัดทุกครั้งที่ element มี display ของตัวเองแล้วใช้ hidden */
+   ทับกัน) · กับดักเดียวกันนี้กัดทุกครั้งที่ element มี display ของตัวเองแล้วใช้ hidden
+   ⚠️ การ์ดกรอบ/พื้น/padding ของ .draft ถูกยุบทิ้งตามโครงสามชั้น — ฟอร์มวางบน
+   แผงโมดัลตรง ๆ ไม่มี "การ์ดลอยในการ์ด" อีก */
+.draft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 .draft[hidden] {
   display: none;
 }

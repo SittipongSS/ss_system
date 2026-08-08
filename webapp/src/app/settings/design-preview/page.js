@@ -10,7 +10,7 @@
 
    หน้านี้ห้ามผูกกับข้อมูลจริงหรือ API ใด ๆ — ต้องเปิดได้เสมอแม้ระบบหลังบ้านล่ม */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Palette,
   Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
@@ -319,6 +319,33 @@ function Section({ group, active, ...props }) {
   return <WorkspaceSection {...props} />;
 }
 
+/* สวิตช์ดีไซน์ v2 "โต๊ะช่าง" (docs/design-v2-plan.md) — เก็บใน localStorage.ds
+   แล้วให้ theme-init ใน layout.js ติด attribute ก่อน paint ทุกหน้า
+   อยู่บนหน้านี้หน้าเดียวโดยเจตนา: คนที่ต้องเห็น v2 ระหว่างพัฒนาคือคนที่เปิด
+   หน้าต้นแบบอยู่แล้ว ผู้ใช้ทั่วไปไม่มีทางสลับโดยบังเอิญ */
+function DesignV2Toggle() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    setOn(document.documentElement.getAttribute("data-ds") === "v2");
+  }, []);
+  const flip = () => {
+    const next = !on;
+    setOn(next);
+    if (next) {
+      localStorage.ds = "v2";
+      document.documentElement.setAttribute("data-ds", "v2");
+    } else {
+      localStorage.removeItem("ds");
+      document.documentElement.removeAttribute("data-ds");
+    }
+  };
+  return (
+    <Button size="sm" variant={on ? undefined : "quiet"} tone={on ? "accent" : undefined} onClick={flip}>
+      ดีไซน์ v2 (โต๊ะช่าง): {on ? "เปิด" : "ปิด"}
+    </Button>
+  );
+}
+
 export default function DesignPreviewPage() {
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("list");
@@ -367,6 +394,7 @@ export default function DesignPreviewPage() {
       title="ต้นแบบดีไซน์ระบบ"
       subtitle="primitive กลางของระบบ แยกเป็น 5 กลุ่มตามหน้าที่ — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
       back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      headerRight={<DesignV2Toggle />}
       toolbar={(
         <Tabs
           ariaLabel="กลุ่มของต้นแบบ"

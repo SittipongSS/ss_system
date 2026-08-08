@@ -19,9 +19,14 @@
 import { ROLES } from '@/lib/permissions';
 import { salesPlanningEditScope } from '@/lib/salesPlanning';
 
-/* role ที่เป็นเจ้าของดีลได้ = role ที่มี edit scope กับดีล (ไม่ใช่ 'none')
-   คำนวณจากของจริง ไม่พิมพ์รายชื่อทิ้งไว้ — เพิ่ม/แก้ scope เมื่อไร ลิสต์นี้ขยับตามเอง */
+/* role ที่มี edit scope กับดีล (ไม่ใช่ 'none') — คำนวณจากของจริง ไม่พิมพ์รายชื่อทิ้งไว้ */
 export const DEAL_OWNER_ROLES = ROLES.filter((role) => salesPlanningEditScope(role) !== 'none');
+
+/* role ที่ "ถือดีลได้" (มติผู้ใช้ 2026-08-08: ดีลเป็นหน้าที่ความรับผิดชอบของ
+   AE / Senior AE เท่านั้น) — แคบกว่า DEAL_OWNER_ROLES โดยเจตนา: ac/ae_supervisor/
+   admin แก้ดีลได้แต่**ถือ**ไม่ได้ ดีลที่ตกไปอยู่กับผู้ประสาน/ผู้กำกับจะไม่มี AE
+   คนไหนเห็นในคิว "ของฉัน" · ทั้งรายชื่อในดรอปดาวน์และด่าน validate ใช้ตัวนี้ */
+export const DEAL_HOLDER_ROLES = ['ae', 'senior_ae'];
 
 /* role ที่ "มอบดีลให้คนอื่นได้" — ต้องมองเห็นทั้งทีมขึ้นไป
    AE มี scope 'own' ⇒ ยกดีลให้คนอื่นไม่ได้อยู่แล้ว (inSalesEditScope จะตีกลับ)
@@ -30,12 +35,14 @@ export function canAssignDealOwner(role) {
   return ['team', 'all'].includes(salesPlanningEditScope(role));
 }
 
-/* ตำแหน่งที่ "ถือดีลเองเป็นปกติ" — ใช้ตั้งค่าตั้งต้นของช่องผู้รับผิดชอบเท่านั้น
-   AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน (เหตุผลทั้งหมดที่ต้องมีช่องนี้ตั้งแต่แรก) ⇒
-   AC ต้องเลือกชื่อ AE เองทุกครั้ง ไม่มีค่าตั้งต้นเป็นตัวเอง ส่วน Senior AE / admin
-   ที่เปิดดีลของตัวเองเป็นปกติยังได้ชื่อตัวเองมาให้เลย */
-export function ownsDealsByDefault(role) {
-  return role !== 'ac' && DEAL_OWNER_ROLES.includes(role);
+/* ตำแหน่งที่ดีล "เป็นหน้าที่ของตัวเองเสมอ" (มติผู้ใช้ 2026-08-08) — ฟอร์มสร้างล็อก
+   ช่องผู้รับผิดชอบเป็นตัวเอง ไม่ต้องเลือก: ae / senior_ae คือคนถือดีลตัวจริง
+   ส่วน ac / ae_supervisor / admin เป็นผู้ประสาน/กำกับ **ต้องเลือกชื่อ AE ทุกครั้ง**
+   ไม่มีค่าตั้งต้นเป็นตัวเอง (แทน ownsDealsByDefault เดิมที่ให้ senior/admin ได้
+   default ตัวเอง — admin ไม่ใช่เจ้าของดีล ดีลที่ตกเป็นของ admin เงียบ ๆ ไม่มี AE
+   คนไหนเห็นในคิว "ของฉัน" เหมือนกรณี AC ทุกประการ) */
+export function ownerLockedToSelf(role) {
+  return role === 'ae' || role === 'senior_ae';
 }
 
 /**
@@ -45,7 +52,9 @@ export function ownsDealsByDefault(role) {
  */
 export function assignableOwners(users = [], viewerTeam = null) {
   return users.filter((user) => {
-    if (!DEAL_OWNER_ROLES.includes(user?.role)) return false;
+    // มติ 2026-08-08 ("ผู้รับผิดชอบกรองชื่อสิ"): รายชื่อเหลือเฉพาะคนถือดีลได้จริง
+    // — ae/senior_ae · admin/AC ที่เคยโผล่ในลิสต์หายไปตามมติ
+    if (!DEAL_HOLDER_ROLES.includes(user?.role)) return false;
     if (user?.disabled) return false;
     if (!viewerTeam) return true;
     return !user?.team || user.team === viewerTeam;
@@ -103,8 +112,8 @@ export async function validateDealOwner(supabase, ownerId, actor = null) {
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้รับผิดชอบคนอื่น' };
 
   const role = user.app_metadata?.role || null;
-  if (!DEAL_OWNER_ROLES.includes(role)) {
-    return { ok: false, error: 'ผู้รับผิดชอบดีลต้องเป็น AE / AC / Senior AE (ตำแหน่งอื่นแก้ดีลของตัวเองไม่ได้)' };
+  if (!DEAL_HOLDER_ROLES.includes(role)) {
+    return { ok: false, error: 'ผู้รับผิดชอบดีลต้องเป็น AE / Senior AE — ดีลเป็นหน้าที่ของสองตำแหน่งนี้ (มติ 2026-08-08)' };
   }
 
   /* ── ทีม ────────────────────────────────────────────────────────────────

@@ -135,9 +135,13 @@ export function salesOrderActual(order) {
 }
 
 // sales_deals.wonValue is only a compatibility cache. Treat it as Actual only
-// when the database marked the value as derived from approved Sale Orders.
+// when the database marked the value as derived from approved Sale Orders —
+// หรือเป็น 'legacy': ดีลเก่าจากระบบเดิมที่กรอก "มูลค่าที่ปิด" ตรงตอนย้ายระบบ
+// (มติผู้ใช้ 2026-08-08) · เมื่อมี SO จริงมาผูกภายหลัง trigger ฝั่ง DB (0107/0108)
+// จะทับ wonValue + actualSource เป็น 'sale_order' เอง — ยอดสดชนะยอดย้าย ไม่นับซ้ำ
 export function dealActualFromSalesOrders(deal) {
-  if (deal?.metadata?.actualSource !== 'sale_order') return 0;
+  const source = deal?.metadata?.actualSource;
+  if (source !== 'sale_order' && source !== 'legacy') return 0;
   return Math.max(0, Number(deal?.wonValue) || 0);
 }
 

@@ -156,6 +156,27 @@
   padding-block: var(--space-1-5);
 }
 
+/* v2 โต๊ะช่าง: จังหวะแถวแน่นขึ้น (pilot 2026-08-08 · docs/design-v2-plan.md)
+   ไม่ลงถึง 34px ของ mock ตรง ๆ — ภาษาไทยมีสระบน-ล่างซ้อนสองชั้น
+   (คำเตือนกรรมการรอบคัดทิศทาง) จึงหยุดที่ 42/44/36 แล้วค่อยเคาะกับตาจริง */
+:global([data-ds="v2"]) .scroll[data-family] :global(th) {
+  height: 36px;
+}
+:global([data-ds="v2"]) .scroll[data-family="list"] :global(td) {
+  height: 42px;
+  padding-block: var(--space-1-5);
+}
+/* 44 ไม่ใช่ 40 และ padding แค่ 2px — ต้องเหลือที่ให้ MoneyInput (--ctl-h 36px
+   + border แถว 1px) ยืนได้โดยแถว**ไม่กระตุก**ตอนคลิกเริ่มแก้ในกริด
+   (วัดจริงบน /sales-planning/targets: 40px+padding 8 ทำแถวโต 42 → 45 ทุกคลิก
+   · 44+padding 8 ยังเหลือกระตุก 1px จาก border · v1 ที่ 48 รอดเพราะมี slack
+   แบบเดียวกับค่านี้) */
+:global([data-ds="v2"]) .scroll[data-family="editable"] :global(td),
+:global([data-ds="v2"]) .scroll[data-family="matrix"] :global(td) {
+  height: 44px;
+  padding-block: var(--space-0-5);
+}
+
 .scroll[data-family="matrix"] :global(th:first-child),
 .scroll[data-family="matrix"] :global(td:first-child) {
   position: sticky;

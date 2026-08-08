@@ -90,6 +90,16 @@
   --violet: #6f5e9f;
   --violet-soft: #eee9f6;
 
+  /* สีชุดข้อมูลของกราฟ (series) — แยกจากสีสถานะ/ปุ่มโดยเจตนา: กราฟหยิบผ่าน
+     CHART_SERIES ใน lib/chartTheme.js เท่านั้น ไม่หยิบชื่อสีสถานะตรง ๆ
+     (บทเรียนรอบตรวจ 2026-08-08: palette กระจาย 8 ชุด "Forecast" คนละสีคนละหน้า)
+     ค่า v1 ชี้กลับไปสีเดิมที่หน้าจอใช้อยู่ = หน้าตา v1 ไม่ขยับ · v2 ทับเป็นชุดที่ผ่าน
+     ตัวตรวจ CVD (คู่ orange↔green เหลือ WARN ตามธรรมชาติ — relief คือ legend
+     + ป้ายค่าบนแท่ง ซึ่งกราฟฝั่งขายมีครบ) */
+  --chart-plan: var(--blue);
+  --chart-forecast: var(--amber);
+  --chart-actual: var(--green);
+
   /* Controlled-document accents must match the self-contained print engine. */
   --document-accent-terracotta: #ad5d43;
   --document-accent-steel: #1e6091;
@@ -503,6 +513,225 @@ body {
     radial-gradient(at 0% 100%, rgba(236, 138, 85, 0.08) 0px, transparent 50%);
 }
 
+/* ── Design v2 "โต๊ะช่าง" — ชั้นทดลองคู่ขนาน (มติผู้ใช้ 2026-08-08) ──────────
+   เปิดด้วย data-ds="v2" บน <html> (สวิตช์ที่ /settings/design-preview เก็บใน
+   localStorage.ds) ผู้ใช้ทั่วไปไม่เห็นจนกว่าจะสลับเป็นค่าเริ่มต้นใน Phase 4
+   แผนเต็ม: docs/design-v2-plan.md · ค่าจาก mock ที่เคาะ (artifact 52191a1d)
+
+   กติกาของ block นี้: **นิยามทับชื่อโทเคนเดิมเท่านั้น ห้ามตั้งชื่อโทเคนใหม่**
+   — ชื่อใหม่ที่ยังไม่มีคนอ้างตกเทสต์ tokenUsage และการทับชื่อเดิมคือกลไกที่ทำให้
+   ทั้ง 88 route สลับพร้อมกันโดยไม่แตะไฟล์อื่น
+
+   ภาษา v2: พื้นทึบ 100% ไม่มีพื้นกระจก ไม่มี gradient เงาเหลือเฉพาะแผงลอย
+   เส้น 1px เป็นตัวแบ่งชั้นหลัก · v2 มีโหมดเดียว (มืด) — ธีมสว่างเป็นการตัดสินใจ
+   ค้างของ Phase 1 จึงทับทั้ง :root และ [data-theme="dark"] (block นี้อยู่หลังสุด) */
+[data-ds="v2"] {
+  /* "โต๊ะช่างทึบ" (มติรอบห้า 2026-08-08 — สุดท้าย): กลับถ่านอมน้ำเงิน +
+     gradient · รอบสี่ (ถ่านอมน้ำตาล) ทำ "สีโทน navy ของบริษัทหายไป"
+     สะพานเชื่อมกับธีมสว่างอุ่น = accent ส้ม + ภาษาแสงโคมชุดเดียวกัน
+     ไม่ใช่การย้อมพื้นให้อุ่นตาม · ระดับคอนทราสต์ = ชุดที่ยกไว้ (วัดครบแล้ว
+     ต่ำสุด text-3 บน hover 4.71 — เกินแถบ 4.6) */
+  --bg: #0f1319;
+  --panel: #1a1f29;
+  --panel-2: #232b38;
+  --panel-3: #2a3342;
+  --panel-float: #1e2531;
+  --panel-solid: #1a1f29;
+  --border: #303948;
+  --border-strong: #444f63;
+  --glass-shadow: none;
+  --glass-shadow-up: none;
+
+  --text: #edf1f7;     /* 14.57:1 บนพื้นการ์ด */
+  --text-2: #a2acbb;   /* 7.20:1 บนการ์ด · 6.21 บน hover */
+  --text-3: #8b95a5;   /* 5.46:1 บนการ์ด · 4.71 บน hover (แถบ 4.6) */
+
+  --accent: #d97b4f;
+  --accent-soft: rgba(217, 123, 79, 0.14);
+  --accent-fg: #0f1319;
+  /* แยกจาก --accent: ตอนเป็น "ตัวอักษร" บนพื้น accent-soft ค่า #d97b4f ได้แค่
+     4.45:1 — ink สว่างขึ้นถึง 5.02 ส่วนพื้นปุ่ม/แถบยังใช้ --accent เดิม */
+  --accent-ink: #df8760;
+  --origin-edited: #7ea8dd;
+
+  /* topbar ธีมมืด = ดำ (มติผู้ใช้ 2026-08-08 หลังเห็น navy จริงบนจอ:
+     "กดดำเลยก็ได้") — navy แบรนด์ยังอยู่ที่ธีมสว่างและ navy-ink ของปุ่ม
+     ส่วน row-tone ที่ mix กับ --navy จะเข้มลงตาม = เข้าชุดพื้นดำพอดี */
+  --navy: #0a0d12;
+  --navy-ink: #9db4d4;
+
+  --green: #57ab7c;
+  --green-soft: rgba(87, 171, 124, 0.15);
+  /* วัดจริง 2026-08-08: #d96b5f บนพื้น soft ได้ 4.03:1 — ยกสี+ลดพื้นจนได้ 4.83 */
+  --red: #e07f74;
+  --red-soft: rgba(224, 127, 116, 0.13);
+  --amber: #d9a13f;
+  --amber-soft: rgba(217, 161, 63, 0.15);
+  --blue: #7ea8dd;
+  --blue-soft: rgba(126, 168, 221, 0.15);
+  --teal: #4fae9e;
+  --teal-soft: rgba(79, 174, 158, 0.15);
+  /* วัดจริง 2026-08-08: 4.58 เฉียดแถบ 4.6 ของระบบ — ขยับเป็น 4.92 */
+  --violet: #a495db;
+  --violet-soft: rgba(164, 149, 219, 0.14);
+
+  /* สีชุดข้อมูล v2 มืด — ผ่าน validator ครบทุกข้อบนพื้นการ์ด #1a1f29 (ไม่มี WARN)
+     ⚠️ ความหมายผูกกับข้อความบนจอ: หน้าผลงานขายเขียนไว้ว่า "เขียว = Actual"
+     — actual ต้องอยู่ตระกูลเขียวเสมอ · forecast ย้ายไป plum เพราะ amber ชน
+     ทั้ง orange (ΔE 8.9) และ green (protan 7.4) ไม่มีทางผ่านในสามตัว */
+  /* forecast = ทองแบรนด์ทึบ (มติผู้ใช้ 2026-08-08: plum หลุดโทน → ทอง+ลายเฉียง
+     → เอาลายออก) ⚠️ trade-off ที่รับรู้แล้ว: ทอง↔เขียว protan ΔE ~7 ต่ำกว่า
+     เกณฑ์ CVD — relief ที่เหลือคือ legend + ตำแหน่งแท่งในกลุ่มที่คงที่
+     (Target|Forecast|Actual เรียงเดิมทุกกลุ่ม) อย่าลบสองอย่างนี้ออก */
+  --chart-plan: #4a85d6;
+  --chart-forecast: #bd8628;
+  --chart-actual: #37884f;
+
+  /* ⚠️ ไม่ทับ --radius-* ใน Phase 0 — เทสต์ radiusScale อ่านขั้นจากประกาศตัวสุดท้าย
+     ทั้งไฟล์ การทับที่นี่จะเปลี่ยนนิยาม "ตรงขั้นเป๊ะ" ของฝั่ง v1 ไปด้วย (เจอจริง:
+     ตั้ง --radius:6px แล้ว border-radius:6px ดิบ 2 จุดเดิมตกเทสต์ทันที)
+     มุมของ v2 (การ์ด 8px = --radius เดิมพอดี) เก็บไปเคาะตอน pilot */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --row-tone-blue: color-mix(in srgb, var(--blue) 55%, var(--navy));
+  --row-tone-violet: color-mix(in srgb, var(--violet) 55%, var(--navy));
+  --row-tone-teal: color-mix(in srgb, var(--teal) 55%, var(--navy));
+  --row-tone-green: color-mix(in srgb, var(--green) 55%, var(--navy));
+  --row-tone-amber: color-mix(in srgb, var(--amber) 55%, var(--navy));
+  --row-tone-red: color-mix(in srgb, var(--red) 55%, var(--navy));
+}
+
+/* v2: แสงประดับมีทั้งสองธีมแต่**คนละชุด** (มติสุดท้าย 2026-08-08 รอบสาม:
+   สว่าง = ชุดส้มอุ่นของฐาน · มืด = ชุด "แสงโคมโต๊ะช่าง" ของตัวเอง — ผู้ใช้ลอง
+   ชุดของสว่างบนมืดแล้ว "ไม่เข้ากับมืด" และลองแบนสนิทแล้วก็ไม่เอา)
+   สูตรชุดมืด: จางกว่าชุด v1 ราวครึ่งหนึ่ง (accent 3–6% vs 10–42%) + เงาลึก
+   มุมล่างให้ความรู้สึกโคมส่องจากบน ไม่ใช่แสงฟุ้งทั้งจอ
+   · blur ดับถาวรทั้งสองธีม: พื้น --panel ของ v2 ทึบ 100% blur มองไม่เห็นแต่กิน GPU */
+[data-ds="v2"] .glass-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* ฉากหลังโมดัลก็เข้ากติกาเดียวกัน — v2 ไม่มี blur ทั้งระบบ (ฝั่ง v1 ยังคงเดิม) */
+[data-ds="v2"] .overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-ds="v2"][data-theme="dark"] body {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(217, 123, 79, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(217, 123, 79, 0.03) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(8, 10, 14, 0.4) 0px, transparent 55%),
+    radial-gradient(at 0% 100%, rgba(126, 168, 221, 0.03) 0px, transparent 50%);
+}
+[data-ds="v2"][data-theme="dark"] .topnav-system {
+  background:
+    radial-gradient(circle at 28% -80%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
+    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
+}
+[data-ds="v2"][data-theme="dark"] .premium-header,
+[data-ds="v2"][data-theme="dark"] .home-hub-hero {
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 6%, transparent), transparent 42%),
+    var(--panel);
+}
+[data-ds="v2"][data-theme="dark"] .login-page {
+  background:
+    radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 38%),
+    var(--bg);
+}
+[data-ds="v2"][data-theme="dark"] .home-hub {
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 34%),
+    var(--bg);
+}
+
+/* v2: จังหวะแน่นของโต๊ะช่าง (pilot /sa/dashboard 2026-08-08) — ทุกค่าหยิบจาก
+   ขั้น --space-* เท่านั้น (เพดาน raw spacing ชนอยู่ · audit จับ)
+   เป้าจาก mock: แถวตาราง ~34px (เดิม ~41px) · หัวเพจ/section/metric ลดหนึ่งขั้น */
+[data-ds="v2"] .premium-table th {
+  padding: var(--space-2) var(--space-2-5);
+}
+[data-ds="v2"] .premium-table td {
+  padding: var(--space-1-5) var(--space-2-5);
+}
+[data-ds="v2"] .ui-section-header {
+  padding: var(--space-3) var(--space-3-5);
+}
+[data-ds="v2"] .ui-section-body {
+  padding: var(--space-3) var(--space-3-5);
+}
+[data-ds="v2"] .ui-metric {
+  padding: var(--space-2-5) var(--space-3-5);
+}
+[data-ds="v2"] .premium-header {
+  padding: var(--space-4) var(--space-4-5);
+  margin-bottom: var(--space-3-5);
+}
+
+/* v2 ธีมสว่าง "โต๊ะช่างกลางวัน" (มติผู้ใช้ 2026-08-08 ขอธีมสว่างคู่กัน)
+   โครงเดียวกับ v2 มืด: เทาเย็นแบน เส้น 1px เงา = none ยกเว้นแผงลอย
+   topbar ยังเข้ม (เอกลักษณ์โต๊ะช่าง) · สีสถานะ/accent ยกชุดที่วัด AA แล้ว
+   ของธีมสว่าง v1 มาใช้ตรง ๆ (ค่าพวกนั้นวัดกับพื้นการ์ดใกล้ขาวเหมือนกัน)
+   ต้องอยู่**หลัง** block v2 หลัก และ specificity สูงกว่า จึงชนะเมื่อ
+   data-theme="light" + data-ds="v2" พร้อมกัน */
+[data-ds="v2"][data-theme="light"] {
+  /* โทนอุ่น (มติแก้ 2026-08-08: เวอร์ชันเทาเย็นแรก "cool ไป") — เทาอมทราย
+     ไม่กลับไปครีม #efe9dd ของ v1 · ตัวเลขทุกคู่วัดใหม่บนพื้นชุดนี้แล้ว */
+  --bg: #f0ede8;
+  --panel: #fbfaf8;
+  --panel-2: #f2efeb;
+  --panel-3: #eae6e0;
+  --panel-float: #ffffff;
+  --panel-solid: #fbfaf8;
+  --border: #d9d3ca;
+  --border-strong: #bfb8ac;
+  --glass-shadow: none;
+  --glass-shadow-up: none;
+
+  --text: #1e1b16;
+  --text-2: #5c574e;   /* 6.87:1 บนพื้นการ์ด */
+  --text-3: #6e6a60;   /* 5.17:1 บนพื้นการ์ด */
+
+  --accent: #c9794d;
+  --accent-soft: rgba(201, 121, 77, 0.13);
+  --accent-fg: #fff;
+  --accent-ink: #9c5228;   /* 5.51:1 บนพื้นการ์ดอุ่น */
+  --origin-edited: #2e4a73;
+
+  --navy: #211e1a;   /* topbar เข้มอมอุ่น — เอกลักษณ์โต๊ะช่างบนธีมสว่าง */
+  --navy-ink: #243b63;
+
+  --green: #357558;
+  --green-soft: #e2f1e9;
+  --red: #a74747;
+  --red-soft: #f7e4e2;
+  --amber: #926024;
+  --amber-soft: #f8eddc;
+  --blue: #466990;
+  --blue-soft: #e3ebf5;
+  --teal: #377275;
+  --teal-soft: #e0f0f0;
+  --violet: #6f5e9f;
+  --violet-soft: #eee9f6;
+
+  /* สีชุดข้อมูล v2 สว่าง — ความหมายเดียวกับธีมมืด: actual = เขียวเสมอ ·
+     forecast = ทองแบรนด์ + ลายเฉียงเป็น relief (ดูคอมเมนต์ block มืด) */
+  --chart-plan: #2e6fbf;
+  --chart-forecast: #a8701c;
+  --chart-actual: #1b7a40;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-float: 0 12px 32px rgba(23, 29, 41, 0.16);
+}
+
+/* แสงประดับของ v2 สว่าง: ไม่ต้องมีกฎเอง — พื้นอุ่นแล้ว แสงส้มอุ่นของ body
+   ฐาน (v1) เข้ากันพอดี ปล่อยตกลงไปใช้ของเดิม */
+
 button, select, input, textarea {
   font-family: inherit;
   font-size: inherit;
@@ -731,11 +960,15 @@ button, select, input, textarea {
 /* แถบปุ่มท้ายโมดัลลอยทับเนื้อหาที่เลื่อนอยู่ข้างใต้ → ต้องใช้พื้นทึบ 100%
    (--panel เป็นพื้นกระจกโปร่ง 6% ที่ต้องมาคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
    แล้วช่องกรอกที่เลื่อนผ่านจะทะลุขึ้นมาปนกับปุ่ม ผู้ใช้ส่งภาพมา 2026-07-27) */
+/* ⚠️ ชั้นเข้ากันได้ของโมดัลที่ยังไม่ย้ายไปใช้ prop `footer` — แถบลอยเหนือ
+   เนื้อหาที่เลื่อนใน .drawer-body · เลขติดลบต้องเท่ากับ padding ของ .drawer-body
+   (เดิม −24px เท่ากับ padding ของ .drawer ที่ตายไปแล้ว) · โมดัลที่ย้ายแล้วใช้
+   .drawer-footer ซึ่งเป็นโซนจริง ไม่ต้องพึ่งกฎนี้ */
 .drawer .form-action-bar {
   position: sticky;
-  bottom: -24px;
+  bottom: calc(-1 * var(--space-4-5));
   z-index: 5;
-  margin-bottom: -24px;
+  margin-bottom: calc(-1 * var(--space-4-5));
   padding-bottom: var(--space-4-5);
   background: var(--panel-float);
 }
@@ -789,7 +1022,6 @@ button, select, input, textarea {
   .form-action-bar { gap: var(--space-2); flex-wrap: wrap; }
   .form-action-bar .btn { min-width: 0; min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { flex-basis: 100%; margin-right: 0; }
-  .drawer .form-action-bar { bottom: -18px; margin-bottom: -18px; }
   .confirm-dialog-actions .btn { min-height: var(--ctl-h-touch); flex: 1; }
 }
 
@@ -2185,21 +2417,25 @@ h1, h2, h3, h4, h5, h6 {
   animation: fadeIn var(--motion-standard) forwards;
 }
 
-/* Centered modal dialog (replaces the old right-side drawer).
-   Default size = sm; add .lg for wide content like the reconciliation panel. */
+/* Centered modal dialog — โครงสามชั้น "หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่ง"
+   (มติผู้ใช้ 2026-08-08 เลือกจาก mock 3 โครง — artifact 83d209ac)
+   ⚠️ ตัวกล่องห้ามมี padding/scroll เอง — ระยะเป็นของโซน (.drawer-header /
+   .drawer-body / .drawer-footer) และ scroll อยู่ที่ .drawer-body **ชั้นเดียว**
+   ของเดิม drawer เลื่อนทั้งใบ (หัวเรื่องหายตอนเลื่อน) ซ้อนกับ body ของผู้เรียก
+   ที่ตั้ง max-height เอง = สกอลล์สองชั้น · Default size = sm; .md/.lg/.xl ตามเดิม */
 .drawer {
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
+  border-radius: var(--radius-md);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-float);
   animation: modalIn var(--motion-standard) forwards var(--ease-out);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .drawer.xl { max-width: 1040px; }
@@ -2237,12 +2473,69 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drawer-header {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-5);
+  gap: var(--space-3);
   border-bottom: 1px solid var(--border);
-  padding-bottom: var(--space-3-5);
+  padding: var(--space-3) var(--space-4-5);
+}
+
+.drawer-title {
+  font-size: var(--fs-9);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* บรรทัดบริบทใต้ชื่อ (เช่น "ลีด: …" ของฟอร์มสร้างดีล) — อยู่ในหัวที่นิ่ง
+   ไม่จมไปกับเนื้อหาที่เลื่อน */
+.drawer-subtitle {
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+  margin-top: var(--space-0-5);
+}
+
+/* แถบเครื่องมือใต้หัว (แท็บหลายใบ + ปุ่มเพิ่ม/ลบ) — เป็นโซนของโครง
+   ไม่ใช่แถวแรกของฟอร์ม จึงไม่เลื่อนตามเนื้อหา */
+.drawer-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-4-5);
+  border-bottom: 1px solid var(--border);
+}
+
+/* โซนเนื้อหา — ชั้นเดียวที่เลื่อนได้ในโมดัล */
+.drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4-5);
+}
+
+/* แถบปุ่มท้าย — โซนจริงของโครง แทน sticky hack ที่ผูกเลขติดลบกับ padding แม่
+   พื้นทึบ 100% (--panel-float) กันช่องกรอกที่เลื่อนอยู่ข้างใต้ทะลุขึ้นมาปน */
+.drawer-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4-5);
+  border-top: 1px solid var(--border);
+  background: var(--panel-float);
+}
+
+.drawer-footer .btn { min-width: 96px; justify-content: center; }
+
+/* ข้อความฝั่งซ้ายของแถบปุ่ม (สรุปจำนวน/สถานะ) — ดันปุ่มไปชิดขวา */
+.drawer-footer-note {
+  margin-right: auto;
+  font-size: var(--fs-5);
+  color: var(--text-3);
 }
 
 .drawer-close {
@@ -2946,7 +3239,6 @@ button.ui-kpi-card { cursor: pointer; }
 /* Give modals breathing room on tiny screens (default overlay padding is 24px). */
 @media (max-width: 480px) {
   .overlay { padding: var(--space-3) var(--space-3) calc(var(--mobile-nav-h, 0px) + var(--space-3) + env(safe-area-inset-bottom)); }
-  .drawer { padding: var(--space-4-5); }
 }
 
 /* Corporate Buttons */
@@ -3260,6 +3552,200 @@ button.empty-state { width: 100%; font: inherit; }
 /* คำอธิบายใต้ช่องในฟอร์มดีล — เดิมเขียน `style={{ color: "var(--text-3)" }}` ซ้ำทุกจุด
    ในไฟล์เดียว (เพดาน inlineStyle ของสายงานขายขึ้นไม่ได้ ดู scripts/uiLegacyBudget.mjs) */
 .deal-field > small { color: var(--text-3); }
+/* 🐞 ป้ายกับดอกจัน: .deal-field เป็น flex คอลัมน์ — text node กับ <span> ที่วาง
+   หลวม ๆ จะแตกเป็นคนละ flex item แล้วดอกจัน/คำขยายตกไปอยู่คนละบรรทัด (ผู้ใช้
+   ส่งภาพมา 2026-08-08: "ประเภทดีล" กับ * คนละบรรทัด) ⇒ ห่อป้ายทั้งก้อนด้วย
+   span เดียวเสมอ */
+.deal-field-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.deal-field-label .soft { color: var(--text-3); font-weight: var(--fw-normal); }
+/* แถวป้ายที่มีคอนโทรลชิดขวา (เช่น สวิตช์ดีลเก่าที่แถวสถานะ) */
+.deal-field-label.split { justify-content: space-between; gap: var(--space-2); }
+
+/* สวิตช์เล็กของฟอร์ม — ธง/โหมดพิเศษ (กติกาคอนโทรล v2: ธง = สวิตช์ ไม่ใช่ checkbox
+   ลอย ๆ) · ตัวแรกที่ใช้: "ดีลเก่าจากระบบเดิม" (มติผู้ใช้ 2026-08-08 เปิดถาวรทุกคน) */
+.ui-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ui-switch i {
+  width: 26px;
+  height: 15px;
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  position: relative;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.ui-switch i::after {
+  content: "";
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--panel);
+  top: 1px;
+  left: 1px;
+  transition: left var(--motion-fast);
+}
+.ui-switch[data-on] { color: var(--accent-ink); font-weight: var(--fw-semibold); }
+.ui-switch[data-on] i { background: var(--accent); border-color: var(--accent); }
+.ui-switch[data-on] i::after { left: 12px; background: var(--accent-fg); }
+.ui-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ช่องที่ระบบเติมให้ในฟอร์มดีล — เส้นประ อ่านอย่างเดียว (ภาษาเดียวกับช่อง
+   "เติมจาก SO" ของฟอร์มคำร้อง): ผู้รับผิดชอบที่ล็อกเป็นตัวเองของ ae/senior_ae
+   (มติผู้ใช้ 2026-08-08 — ดีลเป็นหน้าที่ของ AE/Senior AE) · ทำเป็นดรอปดาวน์
+   ที่จางลงเมื่อไร จะดูเหมือนช่องที่เปิดให้แก้ได้ในสถานะอื่น ซึ่งไม่มีวันเป็นจริง */
+.deal-derived {
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-7);
+  color: var(--text);
+}
+
+/* ── คอนโทรลเลือกแบบเห็นครบ (กติกาคอนโทรล v2 — มติผู้ใช้ 2026-08-08) ──────
+   "ไม่จำเป็นต้องใช้ dropdown ทุกอย่าง … อยากให้ผู้ใช้ใช้ง่ายกว่า"
+   ชุดตายตัว 2–4 = แผ่นเลือก (OptionTiles) · ลำดับขั้น 4–6 = แถบขั้น (StageSteps)
+   · รายการไดนามิกสั้น ≤6 = ชิป (ChoiceChips) · รายการยาว/ชื่อยาว = SearchableSelect
+   เดิม · ญาติร่วมภาษา: ปุ่มเลือกฝ่ายใน requestForm (.deptOption) และชิป PDR
+   (.tierChip) — ตอน wave ค่อยย้ายมาใช้ชุดนี้ */
+.option-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+}
+.option-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-3) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.option-tile:hover:not(:disabled) { border-color: var(--accent-ink); }
+.option-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.option-tile-sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+/* โทนต่อตัวเลือก — ชุดสีเดียวกับ badge ประเภทดีล (DEAL_TYPE_COLORS) */
+.option-tile[data-tone="amber"] .option-tile-title { color: var(--amber); }
+.option-tile[data-tone="blue"] .option-tile-title { color: var(--blue); }
+.option-tile[data-tone="teal"] .option-tile-title { color: var(--teal); }
+.option-tile[data-on] { border-color: var(--accent-ink); background: var(--accent-soft); }
+.option-tile[data-on] .option-tile-sub { color: var(--text-2); }
+.option-tile[data-on][data-tone="amber"] { border-color: var(--amber); background: var(--amber-soft); }
+.option-tile[data-on][data-tone="blue"] { border-color: var(--blue); background: var(--blue-soft); }
+.option-tile[data-on][data-tone="teal"] { border-color: var(--teal); background: var(--teal-soft); }
+
+/* แถบขั้น — ตัวเลือกที่เป็นลำดับ เห็นทุกขั้นพร้อมผลของมัน (เช่น FC% ใต้ชื่อขั้น)
+   ขั้นปลาย (Won/Lost) คั่นด้วยเส้นหนาผ่าน data-cut — โผล่เฉพาะโหมดดีลเก่า */
+.stage-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
+}
+.stage-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1-5) var(--space-1);
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  min-width: 0;
+  transition: background var(--motion-fast);
+}
+.stage-step:first-child { border-left: 0; }
+.stage-step[data-cut] { border-left: 2px solid var(--border-strong); }
+.stage-step:hover:not(:disabled):not([data-on]) { background: var(--panel-2); }
+.stage-step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stage-step:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.stage-step-label { font-size: var(--fs-4); line-height: var(--lh-thai); }
+.stage-step-sub { font-size: var(--fs-2); color: var(--text-3); line-height: var(--lh-thai); font-variant-numeric: tabular-nums; }
+.stage-step[data-on] { background: var(--accent); color: var(--accent-fg); }
+.stage-step[data-on] .stage-step-sub { color: var(--accent-fg); opacity: var(--op-muted); }
+.stage-step[data-tone="win"] .stage-step-label { color: var(--green); }
+.stage-step[data-tone="lose"] .stage-step-label { color: var(--red); }
+.stage-step[data-on][data-tone="win"] { background: var(--green); }
+.stage-step[data-on][data-tone="win"] .stage-step-label { color: var(--accent-fg); }
+.stage-step[data-on][data-tone="lose"] { background: var(--red); }
+.stage-step[data-on][data-tone="lose"] .stage-step-label { color: var(--accent-fg); }
+/* จอแคบ: พับเป็นตาราง 3 คอลัมน์ — แถบเดียวยาว ๆ จะบีบป้ายไทยจนอ่านไม่ออก */
+@media (max-width: 560px) {
+  .stage-steps { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
+  .stage-step { border-left: 0; border-top: 1px solid var(--border); }
+  .stage-step:nth-child(-n+3) { border-top: 0; }
+  .stage-step[data-cut] { border-left: 0; }
+}
+
+/* ชิปเลือกหนึ่ง — รายการไดนามิกสั้น (แบรนด์ของลูกค้า ฯลฯ) · data-ghost =
+   ตัวเลือก "ไม่ระบุ" เส้นประ */
+.choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  padding: var(--space-0-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
+}
+.choice-chip:hover:not(:disabled) { border-color: var(--accent-ink); }
+.choice-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.choice-chip:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.choice-chip[data-on] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+.choice-chip[data-ghost] { border-style: dashed; color: var(--text-3); }
+.choice-chip[data-ghost][data-on] { border-style: solid; color: var(--accent-ink); }
+
+/* ชิปลัดใต้ช่องวันที่ (สิ้นเดือนนี้ / +30 วัน / สิ้นไตรมาส) — ปุ่มตั้งค่า ไม่ใช่สถานะ */
+.date-presets { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.date-presets .choice-chip { min-height: 24px; padding: 0 var(--space-2); font-size: var(--fs-4); }
 
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -3897,14 +4383,15 @@ button.empty-state { width: 100%; font: inherit; }
     margin-bottom: var(--space-0-5);
   }
 
-  /* Optimize drawer padding for small mobile displays */
-  .drawer {
-    padding: var(--space-4) !important;
+  /* จอเล็ก: บีบโซนเนื้อหาของโมดัลลงหนึ่งขั้น — หัว/ท้ายเป็นโซนของโครงแล้ว
+     ไม่ต้อง override margin ด้วย !important อีก · เลขติดลบของแถบปุ่มแบบเก่า
+     ต้องตามลงมาเท่ากับ padding ใหม่ ไม่งั้นแถบลอยเกยขอบ 2px */
+  .drawer-body {
+    padding: var(--space-4);
   }
-
-  .drawer-header {
-    margin-bottom: var(--space-4) !important;
-    padding-bottom: var(--space-2-5) !important;
+  .drawer .form-action-bar {
+    bottom: calc(-1 * var(--space-4));
+    margin-bottom: calc(-1 * var(--space-4));
   }
 
   /* Optimize Product column width on mobile */

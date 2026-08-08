@@ -26,6 +26,19 @@ export const CHART_COLORS = Object.freeze({
   comparison: "var(--text-3)",
 });
 
+/* สีชุดข้อมูล (series) — ทางเดียวที่กราฟหยิบสีแท่ง/เส้นของ "ข้อมูล" ได้
+   ห้ามเขียน var(--blue)/var(--green)/var(--amber) ตรง ๆ ในกราฟอีก:
+   โทเคน --chart-* ประกาศใน globals.css และถูกธีม v2 ทับเป็นชุดที่ผ่าน
+   ตัวตรวจ CVD ทั้งสองธีม (ที่มา: รอบตรวจ 2026-08-08 เจอ palette กระจาย
+   8 ชุด — "Forecast" เป็นคนละสีในแต่ละหน้า)
+   ความหมาย: plan = เป้า/แผน (Target/FC) · forecast = คาดการณ์ ·
+   actual = ของจริงที่เกิดแล้ว (ยอดจริง/PO ที่ได้รับ) */
+export const CHART_SERIES = Object.freeze({
+  plan: "var(--chart-plan)",
+  forecast: "var(--chart-forecast)",
+  actual: "var(--chart-actual)",
+});
+
 export const CHART_GRID_PROPS = Object.freeze({
   stroke: "var(--border)",
   strokeDasharray: "3 3",

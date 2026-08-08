@@ -678,6 +678,7 @@ export default function LeadsPage() {
         <DealCreateModal
           owners={dealOwners.owners}
           defaultOwnerId={dealOwners.defaultOwnerId}
+          lockedOwner={dealOwners.lockedOwner}
           key={dealModal.id}
           lead={dealModal}
           customers={customers}

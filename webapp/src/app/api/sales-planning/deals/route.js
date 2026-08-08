@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { generateEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
-import { ownsDealsByDefault, validateDealOwner } from '@/lib/sales/dealOwner';
+import { ownerLockedToSelf, validateDealOwner } from '@/lib/sales/dealOwner';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   applyDealScope,
@@ -81,13 +81,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return badRequest(categoryError);
 
-  /* ผู้รับผิดชอบ (AE) — AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ดีลต้องมีเจ้าของจริง
+  /* ผู้รับผิดชอบ (AE) — ดีลเป็นหน้าที่ของ ae/senior_ae (มติผู้ใช้ 2026-08-08)
      ⚠️ ห้ามเชื่อ body: `ownerName` เป็นสตริงอิสระที่ถูกเก็บเป็น snapshot แล้วโชว์บน
      ตาราง/KPI และ `ownerId` มั่ว ๆ จะได้ดีลที่เจ้าของแตะไม่ได้ (ดู lib/sales/dealOwner.js)
-     ไม่ระบุ = ผู้สร้างเป็นเจ้าของเอง (พฤติกรรมเดิม) */
-  /* AC ต้องระบุ AE เสมอ — ถ้าปล่อยว่าง ดีลจะตกเป็นของ AC (ผู้ประสานงาน) เงียบ ๆ
-     แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย (ดู ownsDealsByDefault) */
-  if (!body.ownerId && !ownsDealsByDefault(user.role)) {
+     ae/senior_ae ไม่ระบุ = ตัวเองเป็นเจ้าของ (ฟอร์มล็อกชื่อตัวเองอยู่แล้ว)
+     ส่วน ac / ae_supervisor / admin ปล่อยว่างไม่ได้ — ดีลจะตกเป็นของผู้ประสาน/
+     ผู้กำกับเงียบ ๆ แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย */
+  if (!body.ownerId && !ownerLockedToSelf(user.role)) {
     return badRequest('ต้องเลือกผู้รับผิดชอบ (AE) ของดีลนี้');
   }
   let owner = null;
@@ -118,7 +118,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
   if (stage === 'in_project') stage = 'won';
   // ปิด Won ตอนสร้างดีลต้องผ่านเงื่อนไขเดียวกับ win-flow: มัดจำ + มูลค่าปิดจริง>0 (M5)
-  if (stage === 'won') return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา');
+  // ⚠️ ยกเว้น **ดีลเก่าจากระบบเดิม** (มติผู้ใช้ 2026-08-08 — สวิตช์เปิดถาวรทุกคน):
+  // ช่วงย้ายระบบมีดีลที่ Won ไปแล้วในระบบเก่าและต้องมาติดตามงานต่อ — ติดธง
+  // `metadata.legacy` แล้วสร้างที่ Won ได้เลย · wonValue/confirmedAt คงเป็น null
+  // (ยอดจริงมาจากใบสั่งขายที่จะผูกภายหลัง ตามมติ Won = Actual เดิม — ไม่ปั้นตัวเลข)
+  if (stage === 'won' && !body.metadata?.legacy) {
+    return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
+  }
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
   const dealCode = await generateEntityCode(supabase, 'DL');
   const row = {
@@ -129,7 +135,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: body.title.trim(),
     stage,
     projectValue: toMoney(body.projectValue),
-    wonValue: null,
+    // ดีลเก่าที่สร้างเป็น Won (ผ่านธง legacy เท่านั้น — ด่านข้างบน): ฟอร์มส่งช่อง
+    // "มูลค่าที่ปิด" มาในคีย์ projectValue เดิม → เข้า wonValue เป็นยอดจริงทันที
+    // (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่านค่านี้)
+    wonValue: stage === 'won' ? toMoney(body.projectValue) : null,
     // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
     // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
     // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
@@ -140,7 +149,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
     expectedCloseDate: body.expectedCloseDate || null,
-    confirmedAt: null,
+    // ดีลเก่า Won: ช่อง "วันที่ปิด" (ส่งมาในคีย์ expectedCloseDate) = วันที่ปิดจริง
+    // ในระบบเดิม → ลง confirmedAt ให้ wonMonthOf นับยอดเข้าเดือนนั้นย้อนหลังได้
+    confirmedAt: stage === 'won' ? (body.expectedCloseDate || null) : null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
     ownerId: owner?.ownerId || user.id || null,
@@ -164,6 +175,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       ...(body.metadata || {}),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
+      // ⚠️ ห้าม client กำหนด actualSource เอง (อยู่หลัง spread จึงทับค่าที่แอบส่งมาเสมอ)
+      // — เขียนได้ทางเดียวที่นี่: ดีลเก่าที่สร้างเป็น Won = 'legacy' (ยอด "มูลค่าที่ปิด"
+      // ใน wonValue นับเป็น Actual ได้ · dealActualFromSalesOrders อ่านสองแหล่งนี้เท่านั้น)
+      // สาย SO จริงเป็นของ trigger DB (0107/0108) ฝั่ง UPDATE — undefined = คีย์หายไปเอง
+      actualSource: stage === 'won' ? 'legacy' : undefined,
       // สะท้อนคอลัมน์เสมอ กันไม่ให้เกิดสองความจริงในแถวเดียว (ผู้อ่านใหม่ต้องใช้คอลัมน์)
       ...(sourceLeadId ? { leadId: sourceLeadId } : {}),
     },

@@ -359,7 +359,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   /* id ของคนที่ล็อกอิน — โหลดตั้งแต่ mount ไม่ใช่ตอนกดปุ่ม: `defaultOwnerId` ถูกอ่าน
      ครั้งเดียวตอนโมดัล mount ถ้ามาช้าช่อง AE จะว่างทั้งที่เป็นช่องบังคับ */
   const [meId, setMeId] = useState(null);
-  const { owners, defaultOwnerId } = useDealOwners(meId);
+  const { owners, defaultOwnerId, lockedOwner } = useDealOwners(meId);
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
   }, []);
@@ -619,6 +619,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           categories={categories}
           owners={owners}
           defaultOwnerId={defaultOwnerId}
+          lockedOwner={lockedOwner}
           defaults={{
             customerId: p.customerId || "",
             customerName: p.customerName || "",

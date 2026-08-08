@@ -39,6 +39,7 @@
 | [webapp/AGENTS.md](../webapp/AGENTS.md) | **กฎบังคับของโปรเจกต์** — ฟอร์มสร้าง/แก้ต้องเป็น component เดียวกัน |
 | [module-ownership-rule.md](module-ownership-rule.md) | **กฎฝ่าย × ระบบ** — SA อยู่บริหารงานขาย · RD อยู่วิจัยและพัฒนา · ฐานข้อมูลเป็นของกลาง · ก่อนเพิ่มหน้า/เมนูใหม่ทุกครั้ง |
 | [webapp/UI_DESIGN_SYSTEM.md](../webapp/UI_DESIGN_SYSTEM.md) | ก่อนแตะ UI ทุกครั้ง — token/คลาสร่วม + รายการที่เคยไหลกลับ (หลังตรวจใหญ่ PR #807–839) |
+| [form-design-rules.md](form-design-rules.md) | **ก่อนออกแบบฟอร์มใหม่ทุกครั้ง** — ลำดับคำถาม · การกรอก · ตารางเลือกคอนโทรล (dropdown/แผ่น/แถบขั้น/ชิป/แผงสองชั้น) + กับดักที่เจ็บมาแล้ว |
 | [webapp/BOUNDARY_MAP.md](../webapp/BOUNDARY_MAP.md) | พิมพ์เขียวสถาปัตยกรรม — entity ไหนเป็นของใคร |
 | [webapp/MASTER_DATA_PLAN.md](../webapp/MASTER_DATA_PLAN.md) §2 §3 | ก่อนแตะ `src/lib/master/` — มติที่ล็อก + กฎทอง 3 ข้อ (ตรวจแล้วยังตรงทุกข้อ) |
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |

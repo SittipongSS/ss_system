@@ -19,7 +19,12 @@ export const initialDealForm = {
   customerName: "",
   projectId: "",
   ownerId: "",   // ผู้รับผิดชอบ (AE) — ว่าง = ผู้สร้างเป็นเจ้าของเอง (server เติมให้)
-  stage: "lead",
+  // ⚠️ ไม่มี default (มติผู้ใช้ 2026-08-08: "สถานะต้องบังคับเลือก") — เดิมเป็น "lead"
+  // เงียบ ๆ ทำให้ดีลใหม่เกิดที่ลีดทั้งที่คนสร้างไม่เคยตัดสินใจ · จากลีดจริงยังได้
+  // "qualified" จาก firstDeal/nextDeal เหมือนเดิม (นั่นคือการตัดสินใจของ flow)
+  stage: "",
+  // ดีลเก่าจากระบบเดิม — เปิดขั้นปลาย Won/Lost ตอนสร้าง (metadata.legacy)
+  legacy: false,
   dealType: "",  // SCENT | NPD | RE-ORDER — บังคับเลือกตอนสร้าง (ห้าม default NPD เงียบ ๆ:
                  // เดิม default NPD ทำให้คนกดสร้างโดยไม่เลือก → ได้ template ผิดประเภท มติ 2026-07-21)
   formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)
