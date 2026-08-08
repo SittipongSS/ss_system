@@ -5,6 +5,8 @@ import { chatCard, sendChatNow } from '@/lib/chat';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { holidaySet } from '@/lib/master/holidays';
 import { agedAtLeast, businessDaysWaiting } from '@/lib/sales/handoffQueue';
+import { leadDigestRows, summarizeLeadQueue } from '@/lib/sales/leadDigest';
+import { loadUserDirectory } from '@/lib/usersRepo';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
@@ -56,25 +58,36 @@ async function leadsDigest(supabase) {
   // ลีดค้างในสถานะที่ "รอคนทำ" + มี SLA ผูก: รอคัดกรอง (Supervisor) · รอกระจาย (Senior) ·
   // รอติดต่อกลับ (AE). ภาพรวมทั้งฝ่าย (เหมือน approvalsDigest) — การทำงานรายใบยัง scope
   // ที่หน้า /sa/leads. ไม่มีลีดค้าง = ไม่ส่งการ์ด (ไม่สแปม space).
+  //
+  // ⭐ 2026-08-08: เพิ่ม **ใครถืออยู่** กับ **ค้างมากี่วันทำการ** — ของเดิมบอกแค่จำนวนรวม
+  // ("รอติดต่อกลับ 29") ซึ่งอ่านแล้วไม่รู้ว่าต้องไปตามใคร · ตรวจข้อมูลจริงวันเดียวกันพบว่า
+  // ใน 29 ใบนั้นมี 14 ใบค้างข้ามเดือน ใบที่นานสุด 10 วันทำการ ทั้งที่ SLA คือ 1 วันทำการ
+  // การ์ดที่บอกแค่ตัวเลขรวมจึงถูกอ่านผ่านทุกเช้าโดยไม่มีใครเห็นว่ามันแย่ขนาดไหน
+  // ⚠️ **จำนวนไม่เปลี่ยนสูตร** — ยังนับลีดค้างทุกใบเหมือนเดิม ที่เพิ่มคือรายละเอียดข้างหลัง
   const { data } = await supabase
     .from('sales_leads')
-    .select('status')
+    .select('status, team, assigneeId, assigneeName, createdAt, screenedAt, assignedAt')
     .in('status', ['new', 'screened', 'assigned']);
   const rows = data || [];
   if (!rows.length) return null;
 
-  const count = (s) => rows.filter((r) => r.status === s).length;
-  const nNew = count('new');
-  const nScreened = count('screened');
-  const nAssigned = count('assigned');
+  const [holidays, directory] = await Promise.all([
+    holidaySet().catch(() => new Set()),
+    // ชื่อปัจจุบันจากบัญชีจริง — สำเนาชื่อในแถวเป็นชื่อย่อ/ชื่อเก่าอยู่หลายใบบน prod
+    // (ปัญหาเดียวกับที่แก้ในตาราง KPI) · อ่านทะเบียนล่มก็ยังส่งการ์ดได้ แค่ถอยไปชื่อในแถว
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const summary = summarizeLeadQueue(rows, {
+    asOf: new Date().toISOString(),
+    holidays,
+    nameOf: (id) => directory.get(id)?.name || null,
+  });
+
+  const worst = Math.max(summary.screen.oldest, summary.spread.oldest, summary.contact.oldest);
   return chatCard({
     title: '📋 ลีดค้างคิวเช้านี้',
-    subtitle: `รวม ${rows.length} รายการ (SLA 1 วันทำการ)`,
-    rows: [
-      nNew ? { label: `รอคัดกรอง (${nNew})`, value: 'AE Supervisor คัดกรอง + เลือกทีม' } : null,
-      nScreened ? { label: `รอกระจาย (${nScreened})`, value: 'Senior AE มอบให้ AE' } : null,
-      nAssigned ? { label: `รอติดต่อกลับ (${nAssigned})`, value: 'AE ติดต่อลูกค้ากลับ' } : null,
-    ].filter(Boolean),
+    subtitle: `รวม ${summary.total} รายการ · SLA 1 วันทำการ${worst ? ` · ค้างนานสุด ${worst} วันทำการ` : ''}`,
+    rows: leadDigestRows(summary),
     linkPath: '/sa/leads',
     linkLabel: 'เปิดคิวลีด',
   });
