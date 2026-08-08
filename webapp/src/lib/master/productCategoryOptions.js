@@ -76,7 +76,7 @@ export function productCategoryOptions(categories = [], { currentCode = '' } = {
   return out;
 }
 
-// แถวหมวดจากรหัส "MM-TTT" — ผู้เรียกต้องได้แถวเต็มกลับไป (ProjectFormModal เอา
+// แถวหมวดจากรหัส "MM-TTT" — ผู้เรียกต้องได้แถวเต็มกลับไป (ฟอร์มโครงการเอา
 // nameTh/nameEn ไปเก็บเป็น snapshot ของโครงการ)
 export function findCategoryByCode(categories = [], code = '') {
   if (!code) return null;

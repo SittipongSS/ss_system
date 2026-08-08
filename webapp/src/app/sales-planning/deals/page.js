@@ -9,7 +9,6 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, Che
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
@@ -66,7 +65,6 @@ export default function SalesPlanningPipelinePage() {
   const [customers, setCustomers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -132,9 +130,6 @@ export default function SalesPlanningPipelinePage() {
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
   const [shippingDealId, setShippingDealId] = useState(null);
-  const [pmModalOpen, setPmModalOpen] = useState(false);
-  const [pmDeal, setPmDeal] = useState(null);
-  const [pmInitial, setPmInitial] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,10 +173,10 @@ export default function SalesPlanningPipelinePage() {
     load();
   }, [load]);
 
-  // ข้อมูลสำหรับโมดัลสร้างโครงการ PM (หมวดสินค้า + FG) — โหลดครั้งเดียว
+  // หมวดสินค้าให้ฟอร์มดีล (สร้าง/แก้) — โหลดครั้งเดียว
+  // (โมดัลสร้างโครงการเคยอยู่หน้านี้แบบไม่มีปุ่มเรียก — ถอดทิ้งแล้ว ตัวจริงอยู่หน้าดีลรายใบ)
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
   /* ชื่อเจ้าของดีลที่ควรขึ้นจอ — `ownerName` ในแถวเป็นสำเนา ณ ตอนบันทึก ซึ่งไม่ขยับ
@@ -377,32 +372,6 @@ export default function SalesPlanningPipelinePage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบสลิป/PO/เอกสารยืนยันสั่งซื้อ + วันที่เอกสาร)
   const acceptQuotation = (quote) => setWonQuote(quote);
-
-  // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
-  const openCreatePM = (deal) => {
-    setPmDeal(deal);
-    setPmInitial({
-      name: deal.title || "",
-      customerId: deal.customerId || "",
-      // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
-      startDate: deal.startDate || new Date().toISOString().slice(0, 10),
-      dueDate: deal.endDate || deal.expectedCloseDate || "",
-      type: dealTypeOf(deal),
-      // ชื่อ *ปัจจุบัน* + id ของเจ้าของดีล — ถ้าส่งชื่อที่ค้างในแถวไป ตัวจับคู่ใน
-      // ฟอร์มจะหาบัญชีไม่เจอแล้วโครงการใหม่เกิดมาพร้อม `aeOwnerId` ว่างตั้งแต่วันแรก
-      aeOwner: ownerNameOf(deal),
-      aeOwnerId: deal.ownerId || null,
-      metadata: { brand: deal.metadata?.brand || "" },
-    });
-    setPmModalOpen(true);
-  };
-
-  const handlePmSuccess = async (data) => {
-    setPmModalOpen(false);
-    setPmDeal(null);
-    if (data?.productWarning) setError(data.productWarning);
-    await load();
-  };
 
   // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
@@ -1025,20 +994,6 @@ export default function SalesPlanningPipelinePage() {
         </div>
       </Modal>
 
-      {pmDeal && (
-        <ProjectFormModal
-          open={pmModalOpen}
-          onClose={() => setPmModalOpen(false)}
-          editingId={null}
-          initialData={pmInitial}
-          onSuccess={handlePmSuccess}
-          customers={customers}
-          categories={categories}
-          allProducts={allProducts}
-          createEndpoint={`/api/sales-planning/deals/${pmDeal.id}/create-project`}
-          createLabel="จัดการโครงการ"
-        />
-      )}
     </SaWorkspace>
   );
 }
