@@ -11,42 +11,32 @@
 //
 // ⚠️ การ์ดรายแถวใช้ `RequestRows` ของกลาง **ห้ามโคลน** (ม-34)
 import FormulaDevBoard from "@/components/requests/FormulaDevBoard";
+import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
-import styles from "./details.module.css";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
 export default function FormulaDevDetail({
-  request, formulaBoard: board = [], formulaTotals: totals, canEditAttachments,
+  request, formulaBoard: board = [], canEditAttachments,
+  rowStep,
 }) {
+  // ปุ่มก้าวติดแถวในตาราง (ม-94 — มติเดียวกับสายเอกสาร: "ก้าวถัดไปในรายการ")
+  // แถวของ board ชี้กลับ item ดิบด้วย id — RowStepActions ต้องอ่านช่องก้าวจริง
+  const itemsById = new Map((request.items || []).map((it) => [it.id, it]));
+  const renderStep = rowStep
+    ? (boardRow) => {
+      const item = itemsById.get(boardRow.id);
+      return item ? <RowStepActions row={item} {...rowStep} /> : null;
+    }
+    : null;
   return (
     <>
       <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
 
-      <FormulaDevBoard rows={board} />
+      <FormulaDevBoard rows={board} renderStep={renderStep} />
 
-      {/* แถบตัวเลข — ชุดเดียวกับที่ตารางข้างบนแสดง (นับที่ lib ก้อนเดียว)
-          ⚠️ **สองขั้นที่ค้างโดยไม่มีใครเห็นได้ง่ายที่สุด** คือ "รอลูกค้าตอบ" (รอข้างนอก)
-          กับ "รอใส่ราคา" (จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้) ⇒ ต้องขึ้นเป็นตัวเลข
-          ไม่ใช่ให้คนไล่นับจากตารางเอง */}
-      {totals.asked > 0 && (
-        <div className={styles.summaryBar}>
-          <span><strong>{totals.asked}</strong> รายการที่ขอ</span>
-          <span><strong>{totals.delivered}</strong> ได้สูตรแล้ว</span>
-          {totals.pending > 0 && (
-            <span data-tone="warn"><strong>{totals.pending}</strong> ยังไม่ได้ส่ง</span>
-          )}
-          {totals.waitingCustomer > 0 && (
-            <span><strong>{totals.waitingCustomer}</strong> รอลูกค้าตอบ</span>
-          )}
-          {totals.awaitingPrice > 0 && (
-            <span data-tone="warn"><strong>{totals.awaitingPrice}</strong> รอใส่ราคา</span>
-          )}
-          {totals.revised > 0 && (
-            <span><strong>{totals.revised}</strong> ลูกค้าขอให้แก้</span>
-          )}
-        </div>
-      )}
+      {/* ⚠️ แถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 — FormulaPanel) — โครง
+          หัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำที่นี่อีก */}
     </>
   );
 }
