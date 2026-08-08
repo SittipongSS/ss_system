@@ -7,8 +7,8 @@
 // แย่กว่าไม่มีกราฟ · เติมเมื่อมีของจริงพอ (Q34: "โครงหน้าเผื่อไว้")
 //
 // ⚠️ ใช้ primitive กลางทั้งหน้า (`QueueCountStrip` · `RequestQueuePanel` ·
-// `WorkspaceSection` · `Button`) — ห้ามเขียน `glass-panel` / `premium-table` /
-// คลาส `btn` ดิบ · `npm run audit:ui` มี ratchet คุมยอดชั้นเก่าไว้
+// `WorkspaceSection` · `Button`) — ห้ามเขียนคลาสดิบของชั้นเก่าเอง
+// (`npm run audit:ui` มี ratchet คุมยอดชั้นเก่าไว้)
 //
 // ⭐ **หน้านี้ไม่มีตารางของตัวเองแล้ว** (มติผู้ใช้ 2026-08-08) — เดิมเขียนตาราง 6
 // คอลัมน์ไว้เอง ส่วนคิวเปลี่ยนเป็น 4 คอลัมน์ไปแล้ว ⇒ สองหน้าที่ห่างกันคลิกเดียว
@@ -18,11 +18,13 @@ import { useRouter } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { businessDate } from "@/lib/businessDate";
 import {
   dueSoonRows, queueCounts, requestNextStep, startHereRequest,
 } from "@/lib/requests/queueBoard";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
+import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import StartHereCard from "@/components/requests/StartHereCard";
 
@@ -30,6 +32,7 @@ const DEPT = "RD";
 
 export default function RdOverviewPage() {
   const router = useRouter();
+  const board = useQueueBoard();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -97,6 +100,7 @@ export default function RdOverviewPage() {
       {!loading && !loadError && (
         <QueueCountStrip
           counts={counts}
+          note="กดเพื่อเปิดคิวที่กรองไว้"
           ariaLabel="งานค้างของฝ่าย — กดเพื่อเปิดคิว"
           onSelect={(key) => router.push(key === "waitingRequester"
             ? "/rd/requests?tab=waiting"
@@ -114,11 +118,23 @@ export default function RdOverviewPage() {
       <WorkspaceSection
         title="ใกล้ถึงกำหนด และที่เลยกำหนดแล้ว"
         subtitle="นับจากวันที่ฝ่ายรับปากไว้ตอนรับเรื่อง (7 วันข้างหน้า) — ใบที่ยังไม่รับเรื่องอยู่ในคิว"
-        actions={<Button onClick={() => router.push("/rd/requests")}>เปิดคิวทั้งหมด</Button>}
+        /* ⚠️ ตัวสลับมุมมองอยู่คู่กับตารางที่มันคุม — หน้านี้มีตารางเดียวและอยู่ในหัวข้อนี้
+           ต่างจากหน้าคิวที่ตารางเป็นเนื้อของทั้งหน้า ตัวสลับจึงขึ้นไปอยู่หัวการ์ดได้ */
+        actions={(
+          <div className="flex gap-3 items-center flex-wrap">
+            <ViewSwitcher
+              value={board.view} onChange={board.setView}
+              modes={["table", "list"]} ariaLabel="มุมมองรายการใกล้ถึงกำหนด"
+            />
+            <Button onClick={() => router.push("/rd/requests")}>เปิดคิวทั้งหมด</Button>
+          </div>
+        )}
       >
+        {/* ⚠️ `sectionTitle={null}` — พาเนลอยู่ในการ์ด "ใกล้ถึงกำหนด…" อยู่แล้ว
+            ห่อซ้ำอีกชั้นจะได้การ์ดซ้อนการ์ด */}
         <RequestQueuePanel
-          scope="queue" dept={DEPT} rows={dueSoon}
-          showCounts={false} showNewRequest={false}
+          scope="queue" dept={DEPT} rows={dueSoon} board={board}
+          sectionTitle={null}
           emptyText="ไม่มีงานที่ใกล้ถึงกำหนดใน 7 วัน — ของที่ยังไม่รับเรื่องดูได้ที่คิว"
           loading={loading} loadError={loadError} reload={reload}
         />
