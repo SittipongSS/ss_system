@@ -579,9 +579,10 @@ body {
      ⚠️ ความหมายผูกกับข้อความบนจอ: หน้าผลงานขายเขียนไว้ว่า "เขียว = Actual"
      — actual ต้องอยู่ตระกูลเขียวเสมอ · forecast ย้ายไป plum เพราะ amber ชน
      ทั้ง orange (ΔE 8.9) และ green (protan 7.4) ไม่มีทางผ่านในสามตัว */
-  /* forecast กลับเป็นทองแบรนด์ (มติผู้ใช้ 2026-08-08 — plum หลุดโทน ทอง/ส้ม
-     คือของแบรนด์) · ทอง↔เขียวยังชนตาบอดสีโดยเนื้อสี จึงต้องมี relief เชิงรูปทรง:
-     แท่ง forecast ใน PerformanceCharts ตีลายเฉียง (pattern) อ่านออกโดยไม่พึ่งสี */
+  /* forecast = ทองแบรนด์ทึบ (มติผู้ใช้ 2026-08-08: plum หลุดโทน → ทอง+ลายเฉียง
+     → เอาลายออก) ⚠️ trade-off ที่รับรู้แล้ว: ทอง↔เขียว protan ΔE ~7 ต่ำกว่า
+     เกณฑ์ CVD — relief ที่เหลือคือ legend + ตำแหน่งแท่งในกลุ่มที่คงที่
+     (Target|Forecast|Actual เรียงเดิมทุกกลุ่ม) อย่าลบสองอย่างนี้ออก */
   --chart-plan: #4a85d6;
   --chart-forecast: #bd8628;
   --chart-actual: #37884f;
@@ -612,11 +613,6 @@ body {
 [data-ds="v2"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-/* แท่ง Forecast ใช้ลายเฉียง (pattern นิยามใน PerformanceCharts.js) เฉพาะ v2 —
-   relief เชิงรูปทรงของคู่ทอง↔เขียวที่เนื้อสีไม่พอสำหรับตาบอดสี · v1 แท่งทึบเหมือนเดิม */
-[data-ds="v2"] rect.fc-bar {
-  fill: url(#fc-hatch);
 }
 [data-ds="v2"][data-theme="dark"] body {
   background-image:
