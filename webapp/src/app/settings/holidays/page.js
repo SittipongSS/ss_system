@@ -17,6 +17,7 @@ import HolidayImportModal from "@/components/master/HolidayImportModal";
 import { useCan } from "@/lib/roleContext";
 import { primeCache } from "@/lib/apiCache";
 import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCoverage";
+import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -169,15 +170,6 @@ export default function HolidaysPage() {
     else setAddForm({ date: iso, name: "", lockDate: true });
   };
 
-  const cells = useMemo(() => {
-    const startPad = new Date(cursor.y, cursor.m, 1).getDay();
-    const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
-    const arr = Array.from({ length: startPad }, () => null);
-    for (let day = 1; day <= daysInMonth; day += 1) arr.push(day);
-    while (arr.length % 7 !== 0) arr.push(null);
-    return arr;
-  }, [cursor]);
-
   const monthHolidayCount = useMemo(
     () => holidays.filter((holiday) => holiday.date.startsWith(`${cursor.y}-${pad(cursor.m + 1)}`)).length,
     [holidays, cursor],
@@ -254,47 +246,24 @@ export default function HolidaysPage() {
             </div>
           </div>
 
-          <div className={styles.weekHead} aria-hidden="true">
-            {WEEKDAYS_TH.map((day, index) => (
-              <span key={day} className={index === 0 || index === 6 ? styles.weekend : undefined}>{day}</span>
-            ))}
-          </div>
-
-          <div className={styles.dayGrid}>
-            {cells.map((day, index) => {
-              if (day === null) return <div key={`blank-${index}`} className={styles.dayBlank} />;
-              const iso = toISO(cursor.y, cursor.m, day);
-              const dow = new Date(cursor.y, cursor.m, day).getDay();
-              const isWeekend = dow === 0 || dow === 6;
-              const isHoliday = holidayMap.has(iso);
-              const holidayName = holidayMap.get(iso);
-              const isToday = iso === todayISO;
-              // เสาร์–อาทิตย์หยุดอยู่แล้ว ไม่ต้องเพิ่ม/ลบ — ปุ่ม disabled ไม่กินตำแหน่ง tab
-              const clickable = canManage && !isWeekend;
+          <MonthGrid
+            year={cursor.y}
+            month={cursor.m}
+            todayISO={todayISO}
+            holidayOf={(iso) => holidayMap.get(iso) ?? (holidayMap.has(iso) ? "วันหยุด" : undefined)}
+            onDayClick={onDayClick}
+            /* เสาร์–อาทิตย์หยุดอยู่แล้ว ไม่ต้องเพิ่ม/ลบ — disabled ไม่กินตำแหน่ง tab */
+            dayDisabled={({ isWeekend }) => !canManage || isWeekend}
+            dayLabel={({ iso, isWeekend, isHoliday, holidayName, isToday }) => {
               const state = isHoliday ? `วันหยุด: ${holidayName || "ไม่ระบุชื่อ"}` : isWeekend ? "วันหยุดสุดสัปดาห์" : "วันทำการ";
-              const action = !clickable ? "" : isHoliday ? " · กดเพื่อลบวันหยุด" : " · กดเพื่อเพิ่มวันหยุด";
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  disabled={!clickable}
-                  onClick={() => onDayClick(iso)}
-                  aria-label={`${fmtLong(iso)}${isToday ? " (วันนี้)" : ""} · ${state}${action}`}
-                  title={isHoliday ? (holidayName || "วันหยุด") : isWeekend ? "วันหยุดสุดสัปดาห์" : clickable ? "คลิกเพื่อเพิ่มวันหยุด" : ""}
-                  className={[
-                    styles.day,
-                    isHoliday && styles.holidayDay,
-                    isWeekend && !isHoliday && styles.weekendDay,
-                    isToday && styles.today,
-                  ].filter(Boolean).join(" ")}
-                >
-                  <strong>{day}</strong>
-                  {isHoliday && <small>{holidayName || "วันหยุด"}</small>}
-                  {isWeekend && !isHoliday && <small>หยุด</small>}
-                </button>
-              );
-            })}
-          </div>
+              const action = !canManage || isWeekend ? "" : isHoliday ? " · กดเพื่อลบวันหยุด" : " · กดเพื่อเพิ่มวันหยุด";
+              return `${fmtLong(iso)}${isToday ? " (วันนี้)" : ""} · ${state}${action}`;
+            }}
+          >
+            {({ isWeekend, isHoliday }) => (
+              isWeekend && !isHoliday ? <small className={styles.weekendNote}>หยุด</small> : null
+            )}
+          </MonthGrid>
 
           <div className={styles.legend}>
             <span><i className={styles.legendHoliday} /> วันหยุดนักขัตฤกษ์/บริษัท</span>

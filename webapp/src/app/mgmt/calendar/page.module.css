@@ -1,0 +1,62 @@
+/* หน้าปฏิทินงานบริหาร — เหลือเฉพาะ "ของที่อยู่ในช่อง" กับแถบหัว/คำอธิบายสี
+   โครงกริดกับสถานะช่องเป็นของ components/ui/MonthGrid (pattern กลาง มติ 2026-08-08) */
+.card { padding: var(--space-4) var(--space-5); }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+.month { font-size: var(--fs-10); font-weight: var(--fw-bold); }
+.barActions { display: flex; gap: var(--space-1-5); }
+
+/* ชิปในช่องวัน — ประชุม/งาน ใช้โครงเดียวกัน ต่างที่สีตามความหมาย */
+.dayChip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  overflow: hidden;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-2);
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.dayChip:hover { background: var(--panel-3); }
+.dayChipMeeting {
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  color: var(--blue);
+}
+.dayChipMeeting:hover { background: color-mix(in srgb, var(--blue) 26%, transparent); }
+.dayChipUrgent {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+.dayChipUrgent:hover { background: color-mix(in srgb, var(--red) 24%, transparent); }
+.dayChip svg { flex: 0 0 auto; }
+
+.legend {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-3-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  flex-wrap: wrap;
+}
+.legend > span { display: inline-flex; align-items: center; gap: var(--space-1-5); }
+.legendMeeting { color: var(--blue); }
+.legendHoliday {
+  width: 12px;
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}

@@ -40,48 +40,9 @@
 }
 
 /* ── ตารางเดือน ───────────────────────────────────────────────────────── */
-.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1-5); }
-.dow {
-  text-align: center;
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  color: var(--text-3);
-  padding: var(--space-1) 0;
-}
-.dowWeekend { color: var(--red); }
-
-.cell {
-  min-height: 104px;
-  border-radius: var(--radius);
-  padding: var(--space-1-5);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-  overflow: hidden;
-}
-.cellPad { background: transparent; border-color: transparent; }
-.cellWeekend { background: var(--panel-2); }
-.cellHoliday {
-  background: color-mix(in srgb, var(--red) 12%, transparent);
-  border-color: color-mix(in srgb, var(--red) 35%, transparent);
-}
-.cellToday { border: 2px solid var(--accent); }
-
-.cellHead { display: flex; justify-content: space-between; align-items: center; gap: var(--space-1); }
-.dayNum { font-size: var(--fs-5); color: var(--text); }
-.dayNumToday { font-weight: var(--fw-bold); color: var(--accent-ink); }
-.dayNumMuted { color: var(--text-3); }
-.holidayName {
-  font-size: var(--fs-1);
-  color: var(--red);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 64px;
-}
-
+/* โครงกริด/สถานะช่อง/เลขวัน/ชื่อวันหยุด ย้ายไป components/ui/MonthGrid แล้ว
+   (pattern กลางแบบ A · มติ 2026-08-08) เหลือที่นี่เฉพาะ "ชิปนัด" ซึ่งเป็นของ
+   หน้านี้จริง ๆ */
 /* ── นัดหนึ่งใบ ────────────────────────────────────────────────────────── */
 .event {
   display: block;

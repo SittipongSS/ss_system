@@ -1,0 +1,108 @@
+/* กริดปฏิทินรายเดือนกลาง — แบบ A "ตารางร่วมเส้น" (มติผู้ใช้ 2026-08-08
+   เลือกจาก mock 3 แบบ · artifact 42c896ea)
+
+   ปฏิทินเป็น **ตาราง** ไม่ใช่กองการ์ด: ช่องแชร์เส้นแบ่ง 1px กัน ไม่มีช่องไฟ
+   มุมโค้งอยู่ที่กรอบนอกชั้นเดียว — ตรงกับภาษาโต๊ะช่างและกับตารางข้อมูลทุกตัว
+   ในระบบ (ก่อนหน้านี้ปฏิทิน 3 หน้าเขียนกริดเองคนละจังหวะ: สูงช่าง 74-104px ·
+   มุม 8-10px · ช่องไฟ 6px)
+
+   ⚠️ ห้ามใส่ gap ที่ .grid — เส้นแบ่งมาจาก border ของช่อง ถ้ามี gap
+   เส้นจะกลายเป็นสองเส้นคู่ */
+.shell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.dow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.dow > span {
+  padding: var(--space-1-5) var(--space-2);
+  border-right: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-align: center;
+}
+.dow > span:last-child { border-right: 0; }
+.dowWeekend { color: var(--red); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+/* ช่องวัน — เป็น div หรือ button ก็ได้ (หน้าวันหยุดกดทุกช่อง)
+   จังหวะแนวตั้ง 76px คือค่าที่เคาะไว้: เห็นเดือนเต็ม 6 สัปดาห์บนจอ 13 นิ้ว */
+.cell {
+  min-height: 76px;
+  padding: var(--space-1) var(--space-1-5);
+  border-right: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  overflow: hidden;
+}
+.grid > .cell:nth-child(7n) { border-right: 0; }
+/* แถวแรก 7 ช่องไม่ต้องมีเส้นบน — หัวตารางมีเส้นล่างของตัวเองแล้ว */
+.grid > .cell:nth-child(-n + 7) { border-top: 0; }
+
+button.cell { cursor: pointer; }
+button.cell:disabled { cursor: default; }
+button.cell:not(:disabled):hover { background: var(--panel-2); }
+
+.pad { background: var(--panel-2); }
+.weekend { background: var(--panel-2); }
+.holiday { background: color-mix(in srgb, var(--red) 12%, transparent); }
+/* วันนี้ใช้ inset shadow ไม่ใช่ border — border จะดันเส้นกริดให้ขยับ 1px */
+.today { box-shadow: inset 0 0 0 2px var(--accent); }
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.num {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-family: var(--font-numeric);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.numMuted { color: var(--text-3); }
+.numHoliday { color: var(--red); }
+.numToday {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--red);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .cell { min-height: 60px; padding: var(--space-0-5) var(--space-1); }
+  .dow > span { padding: var(--space-1) var(--space-0-5); }
+}

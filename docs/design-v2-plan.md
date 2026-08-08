@@ -187,7 +187,19 @@ production/board · targets/history · sahamit forecast+reconcile · Gantt
 - **ปฏิทิน 4 หน้า** — mgmt/calendar · sa/calendar · service/schedule (กริดช่าง×วัน
   มีมติ "จงใจไม่ทำรายชั่วโมง" ในไฟล์) · settings/holidays → ทำ pattern
   ปฏิทินกลางครั้งเดียวใช้ 4 ที่
-  · **เสนอ 3 แบบให้เลือกแล้ว (2026-08-08) `รอเลือก`** —
+  · **เคาะแล้ว: แบบ A (มติผู้ใช้ 2026-08-08) — ลงเป็น primitive แล้ว** `เสร็จสมบูรณ์`
+  `components/ui/MonthGrid.js` + `.module.css` ถือโครงกริด/สถานะช่อง/เลขวัน/
+  ชื่อวันหยุดที่เดียว (ช่อง 76px · เส้นร่วม 1px · มุมที่กรอบนอกชั้นเดียว ·
+  วันนี้ใช้ inset ring ไม่ใช่ border เพราะ border ดันเส้นกริดขยับ 1px) ·
+  ย้ายแล้ว 3 หน้า: mgmt/calendar (เดิม inline ทั้งก้อน) · sa/calendar
+  (มุมมองเดือน) · settings/holidays (ช่องยังเป็น `<button>` จริง ส่ง
+  onDayClick/dayDisabled/dayLabel เข้าไป) · ลบ CSS กำพร้าที่เกิดจากการย้าย 18 กฎ
+  · **ratchet mgmt inlineStyle รูดลง 206 → 184** · ตัวตรวจใหม่
+  `monthGridSingleSource.test.mjs` กันหน้าใหม่เขียนกริดเดือนเอง (จับจาก
+  repeat(7,…) + getDay ของวันที่ 1 ในไฟล์เดียวกัน — ตารางช่าง×วันไม่เข้าเงื่อนไข)
+  · service/schedule ไม่ย้าย: เป็นกริด **ช่าง×วัน** ไม่ใช่เดือน และมีจังหวะ
+  เส้นร่วมแบบเดียวกันอยู่แล้ว
+  · เอกสารตัวเลือกเดิม (สำหรับย้อนดูเหตุผล) —
   artifact `42c896ea-c3cb-40d3-9740-065206756acb` (ข้อมูลจริงชุดเดียวกัน
   โทเคน v2 จริงทั้งสองธีม): **A ตารางร่วมเส้น** 76px/มุม 0/ไฟ 0 —
   ตรงภาษาโต๊ะช่างสุด มีที่ service/schedule แล้ว · **B การ์ดวัน** 96px/8px/6px —
