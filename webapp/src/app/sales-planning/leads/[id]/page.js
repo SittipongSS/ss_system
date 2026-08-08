@@ -349,6 +349,7 @@ export default function LeadDetailPage() {
           <DealCreateModal
           owners={dealOwners.owners}
           defaultOwnerId={dealOwners.defaultOwnerId}
+          lockedOwner={dealOwners.lockedOwner}
             lead={lead}
             customers={dealOptions.customers}
             projects={dealOptions.projects}

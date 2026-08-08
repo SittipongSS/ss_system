@@ -94,7 +94,7 @@ export default function SalesPlanningPipelinePage() {
   /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ —
      ของเดิมหน้านี้เช็คเงื่อนไขเองในแต่ละปุ่ม แล้วหลวมกว่า API อยู่ 3 จุด */
   /* ผู้รับผิดชอบ (AE) — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook ที่เดียว (3 หน้าใช้ร่วมกัน) */
-  const { owners, defaultOwnerId } = useDealOwners(meId);
+  const { owners, defaultOwnerId, lockedOwner } = useDealOwners(meId);
 
   const dealLc = useMemo(() => createDealLifecycle(), []);
 
@@ -807,6 +807,7 @@ export default function SalesPlanningPipelinePage() {
           stages={CREATABLE_STAGES}
           owners={owners}
           defaultOwnerId={defaultOwnerId}
+          lockedOwner={lockedOwner}
           onClose={() => setCreateModal(false)}
           onCreated={() => { setCreateModal(false); load(); }}
         />

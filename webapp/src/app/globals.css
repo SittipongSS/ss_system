@@ -3564,6 +3564,21 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .deal-field-label .soft { color: var(--text-3); font-weight: var(--fw-normal); }
 
+/* ช่องที่ระบบเติมให้ในฟอร์มดีล — เส้นประ อ่านอย่างเดียว (ภาษาเดียวกับช่อง
+   "เติมจาก SO" ของฟอร์มคำร้อง): ผู้รับผิดชอบที่ล็อกเป็นตัวเองของ ae/senior_ae
+   (มติผู้ใช้ 2026-08-08 — ดีลเป็นหน้าที่ของ AE/Senior AE) · ทำเป็นดรอปดาวน์
+   ที่จางลงเมื่อไร จะดูเหมือนช่องที่เปิดให้แก้ได้ในสถานะอื่น ซึ่งไม่มีวันเป็นจริง */
+.deal-derived {
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-7);
+  color: var(--text);
+}
+
 /* ── คอนโทรลเลือกแบบเห็นครบ (กติกาคอนโทรล v2 — มติผู้ใช้ 2026-08-08) ──────
    "ไม่จำเป็นต้องใช้ dropdown ทุกอย่าง … อยากให้ผู้ใช้ใช้ง่ายกว่า"
    ชุดตายตัว 2–4 = แผ่นเลือก (OptionTiles) · ลำดับขั้น 4–6 = แถบขั้น (StageSteps)

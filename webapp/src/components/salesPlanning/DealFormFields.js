@@ -8,11 +8,13 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 // ชุดช่องกรอกดีลมาตรฐาน — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล / โมดัลหน้าดีล /
 // ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากัน (กฎ AGENTS.md)
 //
-// ลำดับ+คอนโทรล (มติผู้ใช้ 2026-08-08 — artifact 83d209ac แทนมติ #283 เดิม):
-//   ชื่อดีล (เต็ม) → ลูกค้า|แบรนด์ (ชิปติดหลังลูกค้า เพราะแบรนด์ขึ้นกับลูกค้า)
-//   → โครงการ|ผู้รับผิดชอบ → ประเภทดีล (แผ่นเลือก เต็มแถว)
-//   → สถานะ (แถบขั้น เต็มแถว — FC% โชว์ใต้ทุกขั้น **ยุบช่อง FC แยกทิ้ง**)
-//   → หมวดสินค้า (เต็ม) → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
+// ลำดับ+คอนโทรล (มติผู้ใช้ 2026-08-08 รอบสอง — artifact 83d209ac แทนมติ #283):
+//   ประเภทดีล (แผ่นเลือก บนสุด — ตัวเลือกแรกที่กำหนดทุกอย่างถัดไป) → ชื่อดีล
+//   → ลูกค้า → แบรนด์ (เต็มแถว — ชิปต้องการที่กว้าง · ติดหลังลูกค้าเพราะขึ้นต่อกัน)
+//   → โครงการ → หมวดสินค้า → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
+//   → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
+//   → ผู้รับผิดชอบ (AE) **ล่างสุด บังคับเสมอ**: ae/senior_ae = ล็อกชื่อตัวเอง
+//     (ดีลเป็นหน้าที่ของ AE/Senior AE) · ac/ae_supervisor/admin = ต้องเลือก
 //
 // กติกาคอนโทรล: ชุดตายตัวเล็ก = เห็นครบแล้วจิ้ม (แผ่น/แถบขั้น/ชิป) ·
 // รายการยาว/ชื่อยาว = SearchableSelect (ลูกค้า · โครงการ · หมวด · AE — มติผู้ใช้:
@@ -74,10 +76,14 @@ export default function DealFormFields({
      "input" = เลือกเองได้ (ตอน **แก้** และไม่ได้ขยับขั้น) — เป็นชิปสามระดับ
      โหมดผ่าน props ตามกฎ "สร้าง/แก้ ใช้ฟอร์มเดียวกัน" ใน AGENTS.md */
   probabilityMode = "input",
-  /* ผู้รับผิดชอบ (AE) — ส่งรายชื่อมาเมื่อไรช่องถึงจะโผล่ (มติผู้ใช้ 2026-08-05)
-     ⚠️ ผู้เรียกเป็นคนกรอง: เห็นเฉพาะทีมตัวเอง และไม่ส่งมาเลยถ้าผู้ใช้ยกดีลให้คนอื่น
-     ไม่ได้ (AE มี scope 'own') — ดู lib/sales/dealOwner.js · ด่านจริงอยู่ที่ API */
+  /* ผู้รับผิดชอบ (AE) — ส่งรายชื่อมาเมื่อไรช่องเลือกถึงจะโผล่ (มติผู้ใช้ 2026-08-05)
+     ⚠️ ผู้เรียกเป็นคนกรอง: เห็นเฉพาะทีมตัวเอง — ดู lib/sales/dealOwner.js
+     · ด่านจริงอยู่ที่ API */
   owners = [],
+  /* { id, name, team } = ดีลเป็นหน้าที่ของผู้ใช้เอง (ae/senior_ae — มติ 2026-08-08):
+     ช่องโชว์ชื่อล็อกไว้แบบอ่านอย่างเดียว ชนะ owners · ฟอร์มแก้ไม่ส่งค่านี้มา
+     (senior แก้ดีลของทีมยังต้องเปลี่ยนเจ้าของได้) */
+  lockedOwner = null,
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
 
@@ -177,29 +183,41 @@ export default function DealFormFields({
     </label>
   );
 
-  /* AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน — ถ้าไม่มีช่องนี้ ดีลจะตกเป็น
-     ของ AC เงียบ ๆ แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย
-     เป็นช่องค้นหา ไม่ใช่ชิป (มติผู้ใช้ 2026-08-08: ชื่อยาว และอาจโชว์หลายคน) */
-  const ownerField = owners.length > 0 && (
-    <label className="deal-field" key="owner">
+  /* ดีลเป็นหน้าที่ความรับผิดชอบของ AE / Senior AE (มติผู้ใช้ 2026-08-08) —
+     ae/senior_ae เปิดใบ = ล็อกชื่อตัวเอง ไม่มีอะไรให้เลือก · ac/ae_supervisor/admin
+     เป็นผู้ประสาน/กำกับ ต้องเลือกชื่อคนถือดีลจริงเสมอ ไม่งั้นดีลตกเป็นของคนที่
+     ไม่มี AE คนไหนเห็นในคิว "ของฉัน" · เป็นช่องค้นหา ไม่ใช่ชิป (ชื่อยาว คนเยอะ) */
+  const ownerField = (lockedOwner || owners.length > 0) && (
+    <div className="deal-field" key="owner">
       <span className="deal-field-label">ผู้รับผิดชอบ (AE) <span className="required-mark">*</span></span>
-      <SearchableSelect
-        entity="person"
-        value={form.ownerId || ""}
-        onChange={(ownerId) => onPatch({ ownerId })}
-        disabled={alreadyWon}
-        placeholder="ค้นหาชื่อ AE..."
-        options={[
-          { value: "", label: "— เลือกผู้รับผิดชอบ —" },
-          ...owners.map((owner) => ({
-            value: owner.id,
-            label: owner.team ? `${owner.name} · ${owner.team}` : owner.name,
-            search: `${owner.name || ""} ${owner.team || ""}`,
-          })),
-        ]}
-      />
-      <small>เลือกได้เฉพาะคนในทีมของคุณ</small>
-    </label>
+      {lockedOwner ? (
+        <>
+          <div className="deal-derived">
+            {lockedOwner.name}{lockedOwner.team ? ` · ทีม ${lockedOwner.team}` : ""}
+          </div>
+          <small>ดีลเป็นหน้าที่ของ AE / Senior AE — ใบนี้อยู่ในความรับผิดชอบของคุณ</small>
+        </>
+      ) : (
+        <>
+          <SearchableSelect
+            entity="person"
+            value={form.ownerId || ""}
+            onChange={(ownerId) => onPatch({ ownerId })}
+            disabled={alreadyWon}
+            placeholder="ค้นหาชื่อ AE..."
+            options={[
+              { value: "", label: "— เลือกผู้รับผิดชอบ —" },
+              ...owners.map((owner) => ({
+                value: owner.id,
+                label: owner.team ? `${owner.name} · ${owner.team}` : owner.name,
+                search: `${owner.name || ""} ${owner.team || ""}`,
+              })),
+            ]}
+          />
+          <small>ดีลเป็นหน้าที่ของ AE / Senior AE — เลือกได้เฉพาะคนในทีมของคุณ</small>
+        </>
+      )}
+    </div>
   );
 
   // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ — 3 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ
@@ -331,14 +349,14 @@ export default function DealFormFields({
 
   return (
     <>
-      {pairRows([titleField])}
-      {pairRows([customerField, brandField])}
-      {pairRows([projectField, ownerField])}
       {pairRows([dealTypeField])}
-      {pairRows([stageField])}
-      {pairRows([fcField])}
+      {pairRows([titleField])}
+      {pairRows([customerField])}
+      {pairRows([brandField])}
+      {pairRows([projectField])}
 
-      {/* กินเต็มแถวเองอยู่แล้ว (grid-column: 1/-1 ใน globals.css) */}
+      {/* หมวดสินค้ามาก่อนสถานะ (มติผู้ใช้ 2026-08-08 รอบสอง) —
+          กินเต็มแถวเองอยู่แล้ว (grid-column: 1/-1 ใน globals.css) */}
       <ProductCategorySelect
         categories={categories}
         value={form.categoryCode || ""}
@@ -346,9 +364,12 @@ export default function DealFormFields({
         onChange={(categoryCode, meta) => onPatch({ categoryCode, categoryMainCode: meta.mainCode })}
       />
 
+      {pairRows([stageField])}
+      {pairRows([fcField])}
       {pairRows([valueField, closeDateField])}
       {pairRows([startField, endField])}
       {pairRows([notesField])}
+      {pairRows([ownerField])}
     </>
   );
 }

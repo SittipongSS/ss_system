@@ -71,9 +71,11 @@ export default function DealCreateModal({
   projects = [],
   categories = [],
   stages,
-  /* ผู้รับผิดชอบ (AE) — ว่าง = ไม่โชว์ช่อง (ผู้ใช้ยกดีลให้คนอื่นไม่ได้) ดู useDealOwners */
+  /* ผู้รับผิดชอบ (AE) — ดู useDealOwners: owners = รายชื่อให้เลือก (ac/sup/admin)
+     · lockedOwner = ae/senior_ae ล็อกชื่อตัวเอง (มติ 2026-08-08) */
   owners = [],
   defaultOwnerId = "",
+  lockedOwner = null,
   /* ค่าตั้งต้นเพิ่มเติมของทุกใบ — ใช้ตอนเปิดฟอร์มจากบริบทที่รู้ค่าอยู่แล้ว เช่น หน้า
      โครงการส่ง { customerId, projectId, lockedProjectId } มาเพื่อให้ดีลใหม่ผูกกลับ
      เข้าโครงการนั้นเสมอ (อ่านตอน mount ครั้งเดียว เหมือน lead) */
@@ -296,6 +298,7 @@ export default function DealCreateModal({
                 stages={stages || CREATABLE_STAGES}
                 probabilityMode="auto"
                 owners={owners}
+                lockedOwner={lockedOwner}
               />
             </div>
           </div>

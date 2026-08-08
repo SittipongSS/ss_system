@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { ROLES } from '../permissions.js';
 import { canCreateDeal, salesPlanningEditScope } from '../salesPlanning.js';
 import {
-  DEAL_OWNER_ROLES, assignableOwners, canAssignDealOwner, ownsDealsByDefault,
+  DEAL_OWNER_ROLES, assignableOwners, canAssignDealOwner, ownerLockedToSelf,
 } from './dealOwner.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -82,12 +82,16 @@ test('ผู้กำกับดูแลที่ไม่มีทีม เ�
   assert.ok(ids.includes('U-AE-ODM') && ids.includes('U-AE-KA'));
 });
 
-/* AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน — ถ้าค่าตั้งต้นเป็นตัวเอง ฟีเจอร์นี้ก็ไร้ความหมาย
-   (กดผ่านแล้วดีลตกเป็นของ AC เหมือนเดิม) */
-test('AC ไม่มีค่าตั้งต้นเป็นตัวเอง — ต้องเลือกชื่อ AE ทุกครั้ง', () => {
-  assert.ok(!ownsDealsByDefault('ac'));
-  assert.ok(ownsDealsByDefault('ae'));
-  assert.ok(ownsDealsByDefault('senior_ae'));
+/* มติผู้ใช้ 2026-08-08: ดีลเป็นหน้าที่ของ AE / Senior AE — สองตำแหน่งนี้ล็อกชื่อ
+   ตัวเองตอนสร้าง ส่วนผู้ประสาน/กำกับ (ac / ae_supervisor / admin) ต้องเลือกชื่อ
+   คนถือดีลจริงทุกครั้ง — default ตัวเองของ senior/admin แบบเดิมถูกยกเลิก:
+   ดีลที่ตกเป็นของ admin เงียบ ๆ ไม่มี AE คนไหนเห็นในคิว "ของฉัน" */
+test('ae/senior_ae ล็อกชื่อตัวเอง — ac/ae_supervisor/admin ต้องเลือกเสมอ', () => {
+  assert.ok(ownerLockedToSelf('ae'));
+  assert.ok(ownerLockedToSelf('senior_ae'));
+  for (const role of ['ac', 'ae_supervisor', 'admin', 'secretary']) {
+    assert.ok(!ownerLockedToSelf(role), role);
+  }
 });
 
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
@@ -95,8 +99,8 @@ test('POST/PATCH ตรวจ ownerId ที่ server ไม่รับชื�
   const post = read('src/app/api/sales-planning/deals/route.js');
   assert.match(post, /validateDealOwner\(supabase, body\.ownerId, user\)/);
   assert.doesNotMatch(post, /ownerName: body\.ownerName/, 'ชื่อต้องมาจาก server');
-  assert.match(post, /if \(!body\.ownerId && !ownsDealsByDefault\(user\.role\)\)/,
-    'AC ต้องระบุ AE — ปล่อยว่างแล้วดีลตกเป็นของ AC เงียบ ๆ');
+  assert.match(post, /if \(!body\.ownerId && !ownerLockedToSelf\(user\.role\)\)/,
+    'ac/ae_supervisor/admin ต้องระบุ AE — ปล่อยว่างแล้วดีลตกเป็นของผู้ประสาน/ผู้กำกับเงียบ ๆ');
 
   const patch = read('src/app/api/sales-planning/deals/[id]/route.js');
   assert.match(patch, /if \('ownerId' in body\) \{[\s\S]*validateDealOwner/);

@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { generateEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
-import { ownsDealsByDefault, validateDealOwner } from '@/lib/sales/dealOwner';
+import { ownerLockedToSelf, validateDealOwner } from '@/lib/sales/dealOwner';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   applyDealScope,
@@ -81,13 +81,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return badRequest(categoryError);
 
-  /* ผู้รับผิดชอบ (AE) — AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ดีลต้องมีเจ้าของจริง
+  /* ผู้รับผิดชอบ (AE) — ดีลเป็นหน้าที่ของ ae/senior_ae (มติผู้ใช้ 2026-08-08)
      ⚠️ ห้ามเชื่อ body: `ownerName` เป็นสตริงอิสระที่ถูกเก็บเป็น snapshot แล้วโชว์บน
      ตาราง/KPI และ `ownerId` มั่ว ๆ จะได้ดีลที่เจ้าของแตะไม่ได้ (ดู lib/sales/dealOwner.js)
-     ไม่ระบุ = ผู้สร้างเป็นเจ้าของเอง (พฤติกรรมเดิม) */
-  /* AC ต้องระบุ AE เสมอ — ถ้าปล่อยว่าง ดีลจะตกเป็นของ AC (ผู้ประสานงาน) เงียบ ๆ
-     แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย (ดู ownsDealsByDefault) */
-  if (!body.ownerId && !ownsDealsByDefault(user.role)) {
+     ae/senior_ae ไม่ระบุ = ตัวเองเป็นเจ้าของ (ฟอร์มล็อกชื่อตัวเองอยู่แล้ว)
+     ส่วน ac / ae_supervisor / admin ปล่อยว่างไม่ได้ — ดีลจะตกเป็นของผู้ประสาน/
+     ผู้กำกับเงียบ ๆ แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย */
+  if (!body.ownerId && !ownerLockedToSelf(user.role)) {
     return badRequest('ต้องเลือกผู้รับผิดชอบ (AE) ของดีลนี้');
   }
   let owner = null;

@@ -30,12 +30,14 @@ export function canAssignDealOwner(role) {
   return ['team', 'all'].includes(salesPlanningEditScope(role));
 }
 
-/* ตำแหน่งที่ "ถือดีลเองเป็นปกติ" — ใช้ตั้งค่าตั้งต้นของช่องผู้รับผิดชอบเท่านั้น
-   AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน (เหตุผลทั้งหมดที่ต้องมีช่องนี้ตั้งแต่แรก) ⇒
-   AC ต้องเลือกชื่อ AE เองทุกครั้ง ไม่มีค่าตั้งต้นเป็นตัวเอง ส่วน Senior AE / admin
-   ที่เปิดดีลของตัวเองเป็นปกติยังได้ชื่อตัวเองมาให้เลย */
-export function ownsDealsByDefault(role) {
-  return role !== 'ac' && DEAL_OWNER_ROLES.includes(role);
+/* ตำแหน่งที่ดีล "เป็นหน้าที่ของตัวเองเสมอ" (มติผู้ใช้ 2026-08-08) — ฟอร์มสร้างล็อก
+   ช่องผู้รับผิดชอบเป็นตัวเอง ไม่ต้องเลือก: ae / senior_ae คือคนถือดีลตัวจริง
+   ส่วน ac / ae_supervisor / admin เป็นผู้ประสาน/กำกับ **ต้องเลือกชื่อ AE ทุกครั้ง**
+   ไม่มีค่าตั้งต้นเป็นตัวเอง (แทน ownsDealsByDefault เดิมที่ให้ senior/admin ได้
+   default ตัวเอง — admin ไม่ใช่เจ้าของดีล ดีลที่ตกเป็นของ admin เงียบ ๆ ไม่มี AE
+   คนไหนเห็นในคิว "ของฉัน" เหมือนกรณี AC ทุกประการ) */
+export function ownerLockedToSelf(role) {
+  return role === 'ae' || role === 'senior_ae';
 }
 
 /**

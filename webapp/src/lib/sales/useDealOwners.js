@@ -9,12 +9,15 @@
 import { useMemo } from "react";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { useRole, useTeam } from "@/lib/roleContext";
-import { assignableOwners, canAssignDealOwner, ownsDealsByDefault } from "@/lib/sales/dealOwner";
+import { assignableOwners, canAssignDealOwner, ownerLockedToSelf } from "@/lib/sales/dealOwner";
 
 /**
- * @param meId  ผู้ใช้ปัจจุบัน — ใช้ตั้งค่าตั้งต้นของช่อง
- * @returns { owners, defaultOwnerId }
- *   owners ว่าง = ไม่ต้องโชว์ช่องนี้ (AE ยกดีลให้คนอื่นไม่ได้อยู่แล้ว)
+ * @param meId  ผู้ใช้ปัจจุบัน — ใช้ตั้งค่าตั้งต้น/ล็อกของช่อง
+ * @returns { owners, defaultOwnerId, lockedOwner }
+ *   lockedOwner = { id, name, team } เมื่อดีลเป็นหน้าที่ของผู้ใช้เอง (ae/senior_ae —
+ *   มติผู้ใช้ 2026-08-08) ⇒ ฟอร์ม **สร้าง** โชว์ชื่อล็อกไว้ ไม่มีดรอปดาวน์
+ *   · owners ยังคืนให้ role ที่มองเห็นทีม (senior_ae) ใช้ตอน **แก้** ดีลของทีม
+ *   · ac / ae_supervisor / admin: owners เต็ม แต่ไม่มีค่าตั้งต้น — ต้องเลือกเอง
  */
 export default function useDealOwners(meId = null) {
   const directory = usePeopleDirectory();
@@ -22,9 +25,15 @@ export default function useDealOwners(meId = null) {
   const team = useTeam();
 
   return useMemo(() => {
-    if (!canAssignDealOwner(role)) return { owners: [], defaultOwnerId: "" };
+    const self = directory.find((person) => person.id === meId) || null;
+    const lockedOwner = ownerLockedToSelf(role) && self
+      ? { id: self.id, name: self.name, team: self.team || null }
+      : null;
+    if (!canAssignDealOwner(role)) {
+      // ae: ยกดีลให้คนอื่นไม่ได้อยู่แล้ว — มีแค่ชื่อตัวเองที่ล็อกไว้
+      return { owners: [], defaultOwnerId: lockedOwner ? meId : "", lockedOwner };
+    }
     const owners = assignableOwners(directory, team);
-    const canDefaultToSelf = ownsDealsByDefault(role) && owners.some((o) => o.id === meId);
-    return { owners, defaultOwnerId: canDefaultToSelf ? meId : "" };
+    return { owners, defaultOwnerId: lockedOwner ? meId : "", lockedOwner };
   }, [directory, role, team, meId]);
 }
