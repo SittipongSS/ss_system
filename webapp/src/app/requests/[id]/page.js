@@ -904,10 +904,10 @@ export default function RequestDetailPage() {
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
       <NextStepBar
-        // ⭐ ย้าย ไม่ก๊อป (มติผู้ใช้ 2026-08-09): โครง panel ปุ่มก้าวของแถวเอกสาร
-        // อยู่ในตาราง "เอกสารที่ขอ" แล้ว — แถบท้ายเธรดต้องเงียบสำหรับแถวพวกนั้น
+        // ⭐ ย้าย ไม่ก๊อป (มติผู้ใช้ 2026-08-09): โครง panel ปุ่มก้าวรายแถวอยู่ใน
+        // ตารางของหัวข้อ (เอกสารที่ขอ · สรุปทั้งใบ) — แถบท้ายเธรดเงียบทั้งใบ
         // (สองที่เมื่อไรก็เพี้ยนกันเมื่อนั้น) · หัวข้อโครงเดิมไม่กระทบ
-        rows={(req.items || []).filter((it) => !(usePanel && isDocLineKind(it.lineKind)))}
+        rows={usePanel ? [] : (req.items || [])}
         canDept={canAnswer}
         canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
         busy={saving}

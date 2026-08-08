@@ -11,6 +11,7 @@
 // ⚠️ เพิ่มหัวข้อใหม่ **ไม่ต้องแก้หน้า `/requests/[id]`** — ลงทะเบียนที่นี่พอ
 import DocumentDetail from './DocumentDetail';
 import DocumentPanel from './DocumentPanel';
+import FormulaPanel from './FormulaPanel';
 import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SharedRequestDetail from './SharedRequestDetail';
@@ -31,6 +32,7 @@ const BY_KIND = {
 const PANEL_BY_KIND = {
   document: DocumentPanel,
   billing_doc: DocumentPanel,
+  formula_dev: FormulaPanel,
 };
 
 // หัวข้อที่ยังไม่มีจอของตัวเองใช้ตัวกลาง — **ถอยได้ ไม่โยน** เพราะใบเก่าของหัวข้อ
