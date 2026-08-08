@@ -278,104 +278,11 @@ export default function TaskFormModal({
             </div>
           )}
 
-          <div className="form-group">
-            <label>รายละเอียด</label>
-            <Textarea value={form.note} onChange={(e) => set({ note: e.target.value })} disabled={!canManage} className="w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
-            {editing ? (
-              <AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={canManage} inlineUpload />
-            ) : (
-              <div className="mt-1 flex flex-col items-end">
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={saving}
-                  className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50">
-                  <Paperclip size={13} /><span>แนบไฟล์</span>
-                </button>
-                <input ref={fileRef} type="file" accept={UPLOAD_ACCEPT_ATTR} multiple onChange={selectFiles} className="hidden" />
-                {pendingFiles.length > 0 && (
-                  <div className="mt-1 w-full divide-y divide-[var(--border)]">
-                    {pendingFiles.map((file) => {
-                      const key = `${file.name}:${file.size}:${file.lastModified}`;
-                      return (
-                        <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs">
-                          <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-2)]">
-                            <FileText size={14} className="shrink-0" />
-                            <span className="truncate">{file.name}</span>
-                            <span className="shrink-0 text-[10px] text-[var(--text-3)]">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
-                          </span>
-                          <button type="button" className="btn-icon danger shrink-0" title="นำออก"
-                            aria-label={`นำ ${file.name} ออกจากรายการแนบ`}
-                            onClick={() => setPendingFiles((cur) => cur.filter((i) => `${i.name}:${i.size}:${i.lastModified}` !== key))}>
-                            <X size={13} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="pm-form-grid gap-3">
-            <div className="form-group">
-              <label>วันเริ่ม</label>
-              <DateInput value={form.startDate} onChange={(v) => set({ startDate: v })} disabled={!canManage} className="w-full" />
-            </div>
-            <div className="form-group">
-              <label>กำหนดเสร็จ</label>
-              <DateInput value={form.dueDate} onChange={(v) => set({ dueDate: v })} disabled={!canManage} className="w-full" />
-            </div>
-          </div>
-
-          {/* หมวดหมู่เป็นดรอปดาวน์ (มติผู้ใช้ 2026-08-08 — ลองชิปแล้วเลือกกลับ)
-              ⚠️ ไม่ขัดกติกา "ชุดเล็กเห็นครบ": หมวดหมู่เป็น *ป้ายจัดกลุ่ม* ที่ไม่ตัดสินใจ
-              อะไรต่อในฟอร์ม (ต่างจากสถานะ/ความยากที่มีผลกับงาน) ⇒ ให้ฟอร์มสั้นสำคัญกว่า
-              — เหตุผลเดียวกับที่ตัวกรองบนแถบเครื่องมือหน้าดีลเลือกดรอปดาวน์ */}
-          <div className="form-group">
-            <label><Tag size={12} className="inline align-[-1px]" /> หมวดหมู่</label>
-            <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
-              <option value="">— ไม่ระบุ —</option>
-              {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
-          </div>
-
-          {/* ระดับความยาก 3 ตัวตายตัว ⇒ แผ่นเลือก · ธง สำคัญ/ด่วน = สวิตช์
-              (เดิมเป็นปุ่ม .btn ที่ติดสีเมื่อเปิด — ยืมภาษาปุ่มมาใช้บอกสถานะ
-              ทำให้อ่านเหมือนปุ่มสั่งงาน ไม่ใช่ค่าที่ค้างอยู่บนฟอร์ม) */}
-          <div className="pm-form-grid gap-3">
-            {/* ความยากเป็น "ระดับที่ไล่ขึ้น" ⇒ แถบขั้นแบบเดียวกับสถานะ/FC% ของดีล
-                (มติผู้ใช้ 2026-08-08) — ตัวเลขใต้ป้ายคือค่าที่เก็บจริงในคอลัมน์
-                `difficulty` (1–3) ไม่ใช่เลขที่คิดขึ้นมาเพื่อความสวย */}
-            <div className="form-group">
-              <label>ระดับความยาก</label>
-              <StageSteps
-                value={String(form.difficulty)}
-                onChange={(v) => set({ difficulty: Number(v) })}
-                disabled={!canManage}
-                ariaLabel="ระดับความยาก"
-                steps={DIFFICULTY_OPTIONS.map((d) => ({
-                  value: String(d),
-                  label: DIFFICULTY_LABELS[d],
-                  sub: `ระดับ ${d}`,
-                }))}
-              />
-            </div>
-            <div className="form-group">
-              <label>ธงของงาน</label>
-              <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
-                <button type="button" className="ui-switch" disabled={!canManage}
-                  data-on={form.important ? "1" : undefined} aria-pressed={form.important}
-                  onClick={() => set({ important: !form.important })}>
-                  <i aria-hidden="true" /><Star size={13} /> สำคัญ
-                </button>
-                <button type="button" className="ui-switch" disabled={!canManage}
-                  data-on={form.urgent ? "1" : undefined} aria-pressed={form.urgent}
-                  onClick={() => set({ urgent: !form.urgent })}>
-                  <i aria-hidden="true" /><Flame size={13} /> ด่วน
-                </button>
-              </div>
-            </div>
-          </div>
-
+          {/* ── ลำดับของฟอร์ม (docs/form-design-rules.md §1) ──────────────────
+              ชื่องาน (อะไร) → สถานะ (ตอนนี้ถึงไหน) → ผูกดีล (งานนี้ของใคร/ไปโผล่ที่ไหน
+              — ช่องบังคับ จึงห้ามซ่อนท้ายฟอร์มให้คนกรอกจนจบแล้วค่อยเจอด่าน) →
+              วันที่ → ลักษณะงาน (หมวด/ธง/ความยาก) → รายละเอียด → มอบหมายให้ (ท้ายสุด
+              ตามกติกา "ความรับผิดชอบอยู่ท้าย" เหมือนช่อง AE ของฟอร์มดีล) */}
           {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05) และ
               ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย —
               ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
@@ -419,6 +326,93 @@ export default function TaskFormModal({
             </div>
           )}
 
+          <div className="pm-form-grid gap-3">
+            <div className="form-group">
+              <label>วันเริ่ม</label>
+              <DateInput value={form.startDate} onChange={(v) => set({ startDate: v })} disabled={!canManage} className="w-full" />
+            </div>
+            <div className="form-group">
+              <label>กำหนดเสร็จ</label>
+              <DateInput value={form.dueDate} onChange={(v) => set({ dueDate: v })} disabled={!canManage} className="w-full" />
+            </div>
+          </div>
+
+          <div className="pm-form-grid gap-3">
+            <div className="form-group">
+              <label><Tag size={12} className="inline align-[-1px]" /> หมวดหมู่</label>
+              <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
+                <option value="">— ไม่ระบุ —</option>
+                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <div className="form-group">
+              <label>ธงของงาน</label>
+              <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.important ? "1" : undefined} aria-pressed={form.important}
+                  onClick={() => set({ important: !form.important })}>
+                  <i aria-hidden="true" /><Star size={13} /> สำคัญ
+                </button>
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.urgent ? "1" : undefined} aria-pressed={form.urgent}
+                  onClick={() => set({ urgent: !form.urgent })}>
+                  <i aria-hidden="true" /><Flame size={13} /> ด่วน
+                </button>
+              </div>
+            </div>
+          </div>
+
+            <div className="form-group">
+              <label>ระดับความยาก</label>
+              <StageSteps
+                value={String(form.difficulty)}
+                onChange={(v) => set({ difficulty: Number(v) })}
+                disabled={!canManage}
+                ariaLabel="ระดับความยาก"
+                steps={DIFFICULTY_OPTIONS.map((d) => ({
+                  value: String(d),
+                  label: DIFFICULTY_LABELS[d],
+                  sub: `ระดับ ${d}`,
+                }))}
+              />
+            </div>
+
+          <div className="form-group">
+            <label>รายละเอียด</label>
+            <Textarea value={form.note} onChange={(e) => set({ note: e.target.value })} disabled={!canManage} className="w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
+            {editing ? (
+              <AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={canManage} inlineUpload />
+            ) : (
+              <div className="mt-1 flex flex-col items-end">
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={saving}
+                  className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50">
+                  <Paperclip size={13} /><span>แนบไฟล์</span>
+                </button>
+                <input ref={fileRef} type="file" accept={UPLOAD_ACCEPT_ATTR} multiple onChange={selectFiles} className="hidden" />
+                {pendingFiles.length > 0 && (
+                  <div className="mt-1 w-full divide-y divide-[var(--border)]">
+                    {pendingFiles.map((file) => {
+                      const key = `${file.name}:${file.size}:${file.lastModified}`;
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs">
+                          <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-2)]">
+                            <FileText size={14} className="shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="shrink-0 text-[10px] text-[var(--text-3)]">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                          </span>
+                          <button type="button" className="btn-icon danger shrink-0" title="นำออก"
+                            aria-label={`นำ ${file.name} ออกจากรายการแนบ`}
+                            onClick={() => setPendingFiles((cur) => cur.filter((i) => `${i.name}:${i.size}:${i.lastModified}` !== key))}>
+                            <X size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="form-group">
             <label><UserPlus size={12} className="inline align-[-1px]" /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
             <PersonSelect
