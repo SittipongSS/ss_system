@@ -25,6 +25,7 @@ import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
+import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
@@ -196,6 +197,25 @@ export default function LeadsPage() {
     (lead) => livePersonName(directory, lead?.assigneeId, lead?.assigneeName),
     [directory],
   );
+
+  /* วันหยุด — ใช้นับ "ค้างกี่วันทำการ" บนการ์ดสรุป (เส้นเดียวกับที่ SLA ใช้ฝั่ง server)
+     โหลดพลาด = Set ว่าง ⇒ นับเสาร์อาทิตย์ถูกอยู่ แต่วันหยุดนักขัตฤกษ์จะถูกนับเป็นวันทำการ
+     (ตัวเลขพองนิดหน่อย ดีกว่าการ์ดหายทั้งใบ) */
+  const [holidays, setHolidays] = useState(() => new Set());
+  useEffect(() => {
+    cachedFetchJson("/api/holidays")
+      .then((rows) => setHolidays(new Set((Array.isArray(rows) ? rows : []).map((h) => h.date))))
+      .catch(() => {});
+  }, []);
+
+  /* ลีดในขอบเขตที่กำลังดู **ก่อน** ตัวกรองค้นหา/สถานะ/ช่องทาง
+     การ์ดสรุปตอบคำถาม "ของใครค้างอยู่" ซึ่งต้องนิ่งไม่ว่าจะพิมพ์ค้นหาอะไรอยู่ —
+     ตัวกรองมีไว้ *หาใบ* ไม่ใช่เปลี่ยนภาพรวม (และการ์ดเองเป็นตัวสั่งตัวกรอง) */
+  const scopedLeads = useMemo(() => leads.filter((l) => {
+    if (activeScope === "mine" && meId) return l.assigneeId === meId || l.createdBy === meId;
+    if (activeScope === "team" && team) return l.team === team;
+    return true;
+  }), [leads, activeScope, meId, team]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -419,6 +439,20 @@ export default function LeadsPage() {
             <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
             <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${periodNote} · ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
           </SaMetricStrip>
+
+        {/* การ์ด "ค้างคิว" — อะไรค้าง ค้างกี่วันทำการ ใครถือ
+            ต่างจากแถบ KPI ด้านบนตรงที่**ไม่ผูกกับเดือน**: ของค้างคือของค้าง ไม่ว่าจะ
+            เข้ามาเดือนไหน · กดชื่อขั้น/ชื่อคนแล้วกรองตารางให้เลย จะได้ลงมือต่อได้ทันที
+            ⚠️ ตัวเลขมาจาก summarizeLeadQueue ตัวเดียวกับการ์ดสรุปเช้าเข้าแชท */}
+        <LeadQueueSummary
+          leads={scopedLeads}
+          directory={directory}
+          holidays={holidays}
+          scopeLabel={scopes.length > 1 ? SCOPE_LABELS[activeScope] : null}
+          showOwners={activeScope !== "mine"}
+          onPickStatus={(status) => setStatusFilter([status])}
+          onPickOwner={(assigneeId) => setAssigneeFilter([assigneeId])}
+        />
 
         {/* ⚠️ subtitle ต้องบอกให้ชัดว่าตารางนี้ไม่ได้ผูกกับตัวเลือกเดือนด้านบน — ไม่งั้น
             "ลีดเข้า 128 · เดือน 2026-08" กับ "743 ลีด" บนจอเดียวกันจะอ่านเป็นความขัดแย้ง */}

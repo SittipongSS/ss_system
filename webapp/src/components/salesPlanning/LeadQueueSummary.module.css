@@ -1,0 +1,105 @@
+/* การ์ด "ค้างคิว" บนหน้าลีด
+   ⚠️ ไม่มี inline style / คลาสปุ่มดิบสักจุด — เพดานชั้นสไตล์เก่าของโมดูลบริหารงานขาย
+   เต็มทุกช่องแล้ว (scripts/ui-legacy-budget.json) ขึ้นอีกไม่ได้
+   ⚠️ ระยะห่าง/ความมน/ความจาง ใช้โทเคนล้วน — ทั้งสามมีเพดานหนี้ที่แตะขอบแล้ว */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.title { font-size: var(--fs-7); font-weight: var(--fw-bold); }
+.scope {
+  font-size: var(--fs-4);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2-5);
+}
+.sla { margin-inline-start: auto; font-size: var(--fs-3); color: var(--text-3); }
+
+.rows { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-block-start: 1px solid var(--border);
+}
+.row:first-child { border-block-start: 0; }
+/* เลย SLA แล้ว — แถบซ้ายบางกว่าการทำพื้นทั้งแถว ซึ่งจะกลบข้อความที่ต้องอ่าน */
+.rowLate { box-shadow: inset 3px 0 0 var(--red); padding-inline-start: var(--space-3); }
+
+/* ชื่อขั้น = ปุ่มกรองตาราง (กดแล้วเหลือเฉพาะสถานะนั้น) */
+.stage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  cursor: pointer;
+  text-align: start;
+}
+.stage:hover { color: var(--accent-ink); }
+.count {
+  min-width: 26px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--panel-3);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--fs-4);
+}
+
+.detail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--fs-4);
+  color: var(--text-2);
+  min-width: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  padding: var(--space-0-5) var(--space-2);
+  font: inherit;
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+.pillAction { cursor: pointer; }
+.pillAction:hover { border-color: var(--border-strong); color: var(--text); background: var(--panel-3); }
+.pillLate { border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); }
+
+.age { font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }
+.ageLate { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* ใช้จุดตัดที่ระบบมีอยู่แล้ว — เพิ่มค่าใหม่ทำให้ชั้น breakpoint แตกเป็นเศษ (audit:ui มีเพดาน) */
+@media (max-width: 768px) {
+  .row { grid-template-columns: 1fr; gap: var(--space-1); }
+  .sla { margin-inline-start: 0; width: 100%; }
+}
