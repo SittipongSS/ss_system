@@ -7,14 +7,14 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList, Search } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import ViewSwitcher from "@/components/ui/ViewSwitcher";
-import QueueCountStrip from "./QueueCountStrip";
-import { useResponsiveView } from "@/lib/useResponsiveView";
+import Button from "@/components/ui/Button";
+import { WorkspaceSection } from "@/components/ui/Workspace";
+import { matchesQueueSearch } from "@/lib/requests/useQueueBoard";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
@@ -36,47 +36,36 @@ export default function RequestQueuePanel({
   // ⚠️ `reload` ยังรับไว้ — ผู้เรียกใช้หลังกดสร้าง/แก้เพื่อดึงใหม่ · ที่ถอดคือ
   // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
   // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
-  loading = false, loadError = "", reload, newRequestDefaults = null,
-  // ⭐ ภาพรวมฝ่ายมีแถบตัวเลขของตัวเองอยู่ข้างบน (นับ **ทั้งฝ่าย** ไม่ใช่แค่แถวที่โชว์
-  // อยู่ในตารางนี้) ⇒ ปิดของในพาเนลไม่ให้ซ้ำสองแถบที่นับคนละชุดแต่ป้ายเหมือนกันเป๊ะ
-  showCounts = true,
+  loading = false, loadError = "", reload,
+  // ⭐ **สถานะมาจากหน้าแม่** (`useQueueBoard`) — ต้นแบบหน้างานของฉันวางตัวสลับมุมมอง
+  // ไว้ในหัวการ์ด ซึ่งอยู่คนละชั้นกับพาเนลนี้ ⇒ พาเนลถือ state เองไม่ได้
+  board,
   // ⚠️ ข้อความตอนว่างต้องพูดถึง **ชุดแถวที่ผู้เรียกส่งมา** — ภาพรวมฝ่ายส่งเฉพาะใบที่
   // ใกล้ถึงกำหนด 7 วัน ⇒ "ไม่มีคำร้องรอฝ่าย … ตอบ" ที่เป็นค่าตั้งต้นจะโกหก
   emptyText = null,
-  // ⭐ คิวของฝ่าย (`/rd/requests`) เป็นที่ **ตอบ** ไม่ใช่ที่เปิดคำร้อง — ปุ่มเปิดอยู่ฝั่ง
-  // ผู้ขอที่ `/requests` ที่เดียว · โผล่สองที่แล้วต้องมี `returnTo` สองชุดที่ต้องดูแล
-  showNewRequest = true,
+  // ⭐ ห่อด้วยการ์ดที่มีหัวข้อ + จำนวน ตามต้นแบบ · ส่ง null เมื่อผู้เรียกห่อเองอยู่แล้ว
+  // (ภาพรวมฝ่ายวางพาเนลนี้ไว้ในหัวข้อ "ใกล้ถึงกำหนด…" ⇒ ซ้อนการ์ดสองชั้นไม่ได้)
+  sectionTitle = "รายการคำร้อง",
+  sectionSubtitle = "ค้นหา กรอง และสลับมุมมองเพื่อติดตามเรื่อง",
+  unit = "เรื่อง",
 }) {
-  // ⭐ prefill ส่งผ่าน query — หน้าเต็มรับได้ตรง ๆ ต่างจากโมดัลที่ต้องส่ง props
-  // ผ่านทุกจุดที่เปิดมัน · `returnTo` พากลับมาที่คิวหลังกดยกเลิก
-  const newRequestQuery = (() => {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(newRequestDefaults || {})) if (v) q.set(k, v);
-    q.set("returnTo", "/requests");
-    return `?${q.toString()}`;
-  })();
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   const today = businessDate();
-  const counts = queueCounts(rows, { todayIso: today });
+  const { view, countFilter, setCountFilter, search, setSearch } = board;
 
   // ⭐ **ตัวเลขบนแถบกดกรองได้** — "เลยกำหนด 2" คือคำถามแรกที่หัวหน้าเปิดคิวมาถาม
   // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
   // ⚠️ กรองที่จอได้ **เพราะชุดข้อมูลนี้ผ่านด่านขอบเขตของ API มาแล้ว** — ต่างจาก
   // ตัวสลับขอบเขตบนหน้าแม่ที่ต้องกรองฝั่ง server (กับดักข้อ 9 ของแผน)
-  const [countFilter, setCountFilter] = useState(null);
   const visibleRows = useMemo(
-    () => (countFilter
-      ? rows.filter((r) => matchesQueueCount(r, countFilter, { todayIso: today }))
-      : rows),
-    [rows, countFilter, today],
+    () => rows
+      .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
+      .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabel })),
+    [rows, countFilter, search, today],
   );
   const groups = groupQueueRows(visibleRows, { todayIso: today });
-
-  // ⭐ ตาราง 8 คอลัมน์บนจอตั้งเลื่อนซ้ายขวาอย่างเดียว — สลับเป็นการ์ดเหมือนอีก 9 หน้า
-  // ของระบบ · `useResponsiveView` เก็บ override ของผู้ใช้ไว้จนกว่าจะพลิกจอ
-  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -90,67 +79,27 @@ export default function RequestQueuePanel({
   //   3 PATCH ส่ง → ออกเลขที่ + ลงเธรดคำร้อง/เธรดดีล + ยิงแจ้งเตือนคนที่ถูก @
   // ⚠️ ล้มกลางทางแล้ว **ไม่ rollback ร่างทิ้ง** — ของที่พิมพ์มายังอยู่ พาไปหน้า
   // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
-  return (
+  const body = (
     <>
-      {showNewRequest && (
+      {/* ── แถบเครื่องมือ — ค้นหา + ตัวกรองที่ใช้อยู่ (ต้นแบบหน้างานของฉัน) ──
+          ⭐ **ค้นหาเป็นของใหม่** (มติผู้ใช้ 2026-08-08) — คิวไม่เคยมีช่องค้นหาเลย
+          ทั้งที่พอมีเรื่องเกิน 20 ใบ การหา "ใบของลูกค้า A" ต้องกวาดตาเอง
+          ⚠️ ค้นจากสิ่งที่ตาเห็นในตารางเท่านั้น (`matchesQueueSearch`) */}
       <div className="toolbar">
-        <span className="spacer" />
-        {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
-        {/* ⚠️ **เปลือกเดียว** — ฟอร์มย้ายไป /requests/new ทั้งก้อน · ครอบ RequestForm
-            ไว้สองที่จะได้แถบปุ่มกับข้อความ blocker สองชุดที่ต้องดูแลให้ตรงกัน
-            (โรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้)
-            หน้าเต็มคือเงื่อนไขของการแนบไฟล์ตอนเปิดคำร้อง ซึ่งโมดัลทำไม่ได้ */}
-        <button
-          type="button" className="btn btn-accent"
-          onClick={() => router.push(`/requests/new${newRequestQuery}`)}
-        >
-          <Plus size={14} /> เปิดคำร้อง
-        </button>
+        <div className={`search-glass ${styles.searchBox}`}>
+          <Search size={18} color="var(--text-3)" />
+          <input
+            type="text" value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า…"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {countFilter && (
+          /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบหน้างานของฉันใช้ทรงเดียวกัน */
+          <Button size="sm" onClick={() => setCountFilter(null)}>
+            กรอง: {QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label} ×
+          </Button>
+        )}
       </div>
-      )}
-
-      {/* ⭐ แถบตัวเลข 4 ตัว — ตัวที่ 4 "รอฝ่ายขายทำต่อ" คือของใหม่ทั้งหมดของหน้านี้
-          วันนี้คิวนับทุกใบที่ยัง open เป็นงานค้างของฝ่าย ทั้งที่ครึ่งหนึ่งรอผู้ขอไปรับของ/
-          ส่งลูกค้าอยู่ ⇒ ตัวเลขสูงกว่าความจริงตลอดเวลา และไม่มีใครเชื่อมันอีกเลย
-          แยกออกมาแล้วตัวเลขที่เหลือถึงจะเป็นงานของฝ่ายจริง ๆ
-
-          🐞 **เคยอยู่ข้างในสาขา "มีแถว"** ⇒ ลิสต์ว่างแล้วแถบหายทั้งแถว · **0 ก็เป็น
-          ข้อมูล** — "ยังไม่รับเรื่อง 0 · เลยกำหนด 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่
-          หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกระหว่าง "ไม่มีงานค้าง"
-          กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ)
-
-          ⭐ **หน้าตาเดียวกับภาพรวมฝ่าย** (มติผู้ใช้ 2026-08-08) — เดิมที่นี่เป็นป้ายเล็ก
-          (คลาส chip ของกลาง) ส่วน `/rd` เป็น `MetricStrip` กล่องใหญ่ ทั้งที่ตัวเลขชุดเดียวกัน
-          และห่างกันคลิกเดียว ⇒ ย้ายมาใช้ `QueueCountStrip` ตัวเดียวกันทั้งสองหน้า */}
-      {!loading && !loadError && (
-        <>
-          {showCounts && (
-            <QueueCountStrip
-              counts={counts}
-              filter activeKey={countFilter}
-              ariaLabel="ตัวเลขสรุปคิวคำร้อง — กดเพื่อกรอง"
-              // กดตัวเดิมซ้ำ = ล้างตัวกรอง — ไม่ต้องไปหาปุ่ม "ล้าง" ที่อื่น
-              onSelect={(key, on) => setCountFilter(on ? null : key)}
-            />
-          )}
-          {/* ⚠️ ตัวสลับมุมมองอยู่นอกเงื่อนไขของแถบตัวเลข — หน้าที่ปิดแถบ (ภาพรวมฝ่าย
-              ซึ่งมีแถบของตัวเองอยู่ข้างบนแล้ว) ยังต้องสลับตาราง/การ์ดบนจอแคบได้ */}
-          <div className={styles.counts}>
-            {countFilter && (
-              /* 🪤 `.spacer` ดันขวาได้เฉพาะใน `.toolbar` (globals: `.toolbar > .spacer`)
-                 — แถวนี้ไม่ใช่ toolbar ⇒ เคยใส่ไว้แล้วไม่มีผล · ดันด้วย margin ที่นี่แทน */
-              <span className={`toolbar-label ${styles.filterNote}`}>
-                แสดงเฉพาะ &quot;{QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}&quot;
-                {" · "}
-                <button type="button" className={styles.clearFilter} onClick={() => setCountFilter(null)}>
-                  ล้างตัวกรอง
-                </button>
-              </span>
-            )}
-            <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง" />
-          </div>
-        </>
-      )}
 
       {loading ? (
         <SkeletonRows rows={4} />
@@ -343,7 +292,21 @@ export default function RequestQueuePanel({
           </table>
         </TableScroll>
       )}
-
     </>
+  );
+
+  // ⭐ ห่อด้วยการ์ดหัวข้อ + ป้ายจำนวน ตามต้นแบบหน้างานของฉัน (มติผู้ใช้ 2026-08-08)
+  // ⚠️ ป้ายนับ **แถวที่เห็นจริงหลังกรอง** ไม่ใช่จำนวนที่โหลดมา — ไม่งั้นกรองแล้ว
+  // ตัวเลขบนหัวการ์ดจะขัดกับจำนวนแถวข้างล่างทันที
+  if (!sectionTitle) return body;
+  return (
+    <WorkspaceSection
+      icon={<ClipboardList size={17} />}
+      title={sectionTitle}
+      subtitle={sectionSubtitle}
+      actions={<span className="ui-badge">{visibleRows.length} {unit}</span>}
+    >
+      {body}
+    </WorkspaceSection>
   );
 }

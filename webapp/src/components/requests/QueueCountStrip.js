@@ -10,10 +10,21 @@
 // ⇒ ยกมาไว้ที่เดียว · **หน้าตาเดียวกันเสมอ ต่างกันได้แค่ว่ากดแล้วเกิดอะไร**
 // (มติผู้ใช้: ใช้ MetricStrip ทั้งสองหน้า)
 //
-// ⚠️ **ไม่มีโน้ตใต้ตัวเลข** — ของเดิมเขียนประโยคเดียวกันสี่รอบ ซึ่งไม่ได้บอกอะไรที่
-// ตัวเลขไม่ได้บอก · ปุ่มบอกว่ากดได้ด้วย hover + cursor อยู่แล้ว
+// ⭐ **ไอคอน + โน้ตตามต้นแบบหน้างานของฉัน** (มติผู้ใช้ 2026-08-08) — `Metric` ของ
+// กลางรองรับทั้งคู่อยู่แล้ว · โน้ตบอกว่า *กดแล้วเกิดอะไร* ซึ่งต่างกันตามหน้า จึงรับ
+// มาจากผู้เรียก ไม่ตั้งเอง · ตอนกดค้างอยู่เปลี่ยนเป็น "กำลังใช้ตัวกรองนี้"
+import { AlarmClock, Clock, Hourglass, Inbox } from "lucide-react";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
 import { QUEUE_COUNT_META } from "@/lib/requests/queueBoard";
+
+// ⚠️ ไอคอนเป็นเรื่องของ **จอ** ไม่ใช่ของทะเบียน — ทะเบียนกลาง (`QUEUE_COUNT_META`)
+// ถูกอ่านจากฝั่ง server ด้วย ยัด component ลงไปที่นั่นแล้วมันจะพังตอน import
+const ICONS = {
+  unacked: Inbox,
+  overdue: AlarmClock,
+  working: Clock,
+  waitingRequester: Hourglass,
+};
 
 export default function QueueCountStrip({
   counts = {},
@@ -22,18 +33,22 @@ export default function QueueCountStrip({
   activeKey = null,
   filter = false,
   onSelect,
+  note = null,
   ariaLabel = "ตัวเลขสรุปคิวคำร้อง",
 }) {
   return (
     <MetricStrip aria-label={ariaLabel}>
       {QUEUE_COUNT_META.map((meta) => {
         const on = filter && activeKey === meta.key;
+        const Icon = ICONS[meta.key];
         return (
           <Metric
             key={meta.key}
             as="button" type="button"
+            icon={Icon ? <Icon /> : null}
             label={meta.label}
             value={counts[meta.key] ?? 0}
+            note={on ? "กำลังใช้ตัวกรองนี้" : note}
             // ⚠️ ส่งโทนของทะเบียนตรง ๆ — `neutral` ไม่มีคลาสของตัวเองโดยตั้งใจ
             // (ตัวเลขสีปกติ) ส่วน `info` มีแล้วใน globals ⇒ ไม่ต้องแปลงทิ้งอีก
             tone={meta.tone === "neutral" ? undefined : meta.tone}

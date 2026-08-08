@@ -48,6 +48,7 @@
 | [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล เปิดมาเจออะไร กดต่อไปไหน |
 | [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" รายก้าว** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
 | [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล + ตารางเทียบว่าต่างจากพัฒนากลิ่นตรงไหน |
+| [document-request-system-ui-mockup.html](document-request-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "ขอเอกสาร" ระดับทั้งระบบ** — §07 ชี้ว่าสายของหัวข้อนี้เดินไม่ครบ (แถวเอกสารไม่มีทางไปถึง "ได้รับแล้ว") |
 | [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" รายก้าว** — P4 (ม-36) · §05/§06 เป็นคำถามค้างที่ตัดสินไปแล้ว ดูใบระดับทั้งระบบแทน |
 | [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) | ⭐ **แบบหน้าจอ "ระบบลีด" ครบทุกฝ่าย** — MKT รับลีด → Sup คัดกรอง → Senior กระจาย → AE ติดต่อ/นัด/เปิดดีล + ตารางสิทธิ์ + ข้อเสนอปฏิทินนัด |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
@@ -119,6 +120,7 @@
 
 [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) ·
 [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) ·
+[document-request-system-ui-mockup.html](document-request-system-ui-mockup.html) ·
 [pdr-form-ui-mockup.html](pdr-form-ui-mockup.html) ·
 [nav-topbar-single-row.html](nav-topbar-single-row.html) · [service-system-ui-mockup.html](service-system-ui-mockup.html) ·
 [system-issue-ui-mockup.html](system-issue-ui-mockup.html) ·
