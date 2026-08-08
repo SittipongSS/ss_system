@@ -1,15 +1,17 @@
 <!doctype html>
 <html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- ⭐ แบบหน้าจอ "ขอเอกสาร" ระดับ **ทั้งระบบของแต่ละฝ่าย** (มติผู้ใช้ 2026-08-08)
-     ใบที่สามของชุด — ต่อจาก scent-dev-system-ui-mockup.html และ
-     formula-dev-system-ui-mockup.html
+<!-- ⭐ แบบหน้าจอ "ขอเอกสาร" ทุกขั้นตอน SA × RD (มติผู้ใช้ 2026-08-08)
+     เขียนใหม่ทั้งใบหลัง ม-83…ม-88 ส่งครบ — ทุกจอตรงกับโค้ดที่ merge แล้วจริง
+     (ฉบับก่อนหน้าของไฟล์นี้วาดตอนสายยังเดินไม่ครบ · ดูประวัติ git ถ้าต้องการ)
 
-     ⚠️ §07 ไม่ใช่ข้อสังเกตจากการอ่านจอ — ไล่โค้ดแล้วพบว่าสายของหัวข้อนี้เดินไม่ครบ
-     (แถวเอกสารไม่มีทางไปถึง "ได้รับแล้ว") · อ่านข้อนั้นก่อนตัดสินใจทำอะไรกับหัวข้อนี้
+     8 ขั้น: SA เปิดคำร้อง → กรอกฟอร์ม (ดีล→ลูกค้า/โครงการ · QT/SO/FG · รายการเอกสาร ·
+     วันคาดหวัง · แนบไฟล์) → ส่ง (RQ-…) → RD รับเรื่อง+วันกำหนดส่ง → ถามตอบ 2 ฝ่าย →
+     RD แนบไฟล์+ส่งรายแถว / ให้ไม่ได้+เหตุผล → ไฟล์ไหลเข้าแท็บเอกสารดีล+โครงการ →
+     SA กดรับ → ปิดเรื่อง
 
      ⚠️ แบบอยู่ในรีโปโดยเจตนา (ม-33) — ห้ามย้ายกลับไปอยู่ในแชท -->
-<title>ขอเอกสาร — ทั้งระบบของผู้ขอและฝ่ายที่ถือของ</title>
+<title>ขอเอกสาร — ทุกขั้นตอนของ SA และ RD</title>
 <style>
   :root {
     --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
@@ -244,119 +246,130 @@
 <div class="wrap">
 
 <p class="eyebrow">SS-SYSTEM · แบบหน้าจอ</p>
-<h1>ขอเอกสาร — ทั้งระบบของผู้ขอและฝ่ายที่ถือของ</h1>
+<h1>ขอเอกสาร — ทุกขั้นตอนของ SA และ RD</h1>
 <p class="lede">
-  หัวข้อนี้ต่างจากสองหัวข้อพัฒนาตรงที่ <b>ไม่ผูกกับฝ่ายใดฝ่ายหนึ่ง</b> — ผู้ขอเลือกเองว่า
-  จะถามฝ่ายไหน · ฝ่ายขายทำงานที่ <b>บริหารงานขาย</b> · ฝ่ายที่ถือของทำงานที่โมดูลของตัวเอง ·
-  ไฟล์ที่ได้ไปโผล่ที่ <b>เอกสารของดีล</b>
+  วาดตาม flow ที่ตัดสินแล้ว (ม-83 … ม-88) และ<b>ตรงกับโค้ดที่ส่งไปแล้วจริงทุกจอ</b> —
+  SA ยื่นจากบริหารงานขาย · RD ตอบจากวิจัยและพัฒนา · ไฟล์ที่ได้ไหลเข้า
+  <b>แท็บเอกสารของดีลและโครงการ</b>เอง
 </p>
 <div class="legend">
   <span><span class="who sa">SA</span> ผู้ขอ (บริหารงานขาย)</span>
-  <span><span class="who rd">ฝ่าย</span> ฝ่ายที่ถือของ — RD · จัดซื้อ · บัญชี</span>
-  <span><span class="who db">DB</span> ไฟล์แนบ + เอกสารของดีล</span>
-  <span><span class="who new">เสนอใหม่</span> ยังไม่มีในโค้ดวันนี้</span>
+  <span><span class="who rd">RD</span> ผู้ตอบ (วิจัยและพัฒนา)</span>
+  <span><span class="who db">DOC</span> แท็บเอกสาร (ดีล · โครงการ)</span>
 </div>
 
-<div class="note stop">
-  <b>อ่านข้อนี้ก่อน</b> — §07 คือใจความของใบนี้ · ไล่โค้ดวันที่ 2026-08-08 แล้วพบว่า
-  <b>สายของหัวข้อนี้เดินไม่ครบ</b>: แถวเอกสาร <b>ไม่มีทางไปถึง "ได้รับแล้ว"</b> เลยสักทาง
-  ⇒ แถบ "มาแล้ว X · ให้ไม่ได้ Z" ที่หน้าใบโชว์อยู่ นับได้ <b>0 เสมอ</b> · ส่วนที่เหลือของ
-  ใบนี้วาดตามของที่มีจริง แล้ว §07 กับ §08 เสนอทางปิด
+<div class="note ok">
+  <b>flow ตามมติผู้ใช้ 2026-08-08 (ม-88)</b> — <i>"SA ยื่นคำร้อง เลือกขอเอกสาร ใส่ข้อมูล
+  ลูกค้า/โครงการ ดีล/ใส่รายละเอียดที่เกี่ยวข้อง QT SO FG (ถ้ามี)/ใส่รายการเอกสาร IFRA COA
+  MSDS อื่นๆ/ใส่รายละเอียดเพิ่มเติม → RD รับเรื่อง ใส่วันกำหนดส่ง … ถามตอบกันได้ 2 ฝ่าย →
+  RD แนบเอกสาร (เอกสารไปสู่แท็บเอกสารในโครงการ ดีลนั้นด้วย) → SA กดรับ"</i>
 </div>
 
 
-<h2><span class="num">00</span>แผนที่ — ใครทำอะไร ที่ระบบไหน</h2>
-<p class="lede">
-  สายสั้นที่สุดในสี่หัวข้อ · ไม่มีลูกค้าอยู่ในสาย (เอกสารเป็นของภายในที่เอาไปให้ลูกค้าต่อ)
-</p>
+<h2><span class="num">00</span>แผนที่ — 8 ขั้น ใครทำอะไร ที่ไหน</h2>
 
 <div class="flowmap">
   <div class="lane sa">
-    <h4><span class="who sa">SA</span> ผู้ขอ</h4>
+    <h4><span class="who sa">SA</span> บริหารงานขาย</h4>
     <ol>
-      <li>ดีลที่ผูกโครงการแล้ว (ไม่ต้องมีใบสั่งขาย)</li>
-      <li>เปิดคำร้อง <b>ขอเอกสาร</b> · <b>เลือกฝ่ายที่จะถามเอง</b></li>
-      <li>กรอกบรรทัด — <b>1 บรรทัด = 1 ชนิดเอกสาร</b></li>
-      <li>กดส่ง → ออกเลขที่ <code>RQ-…</code></li>
-      <li>รอ · ถามตอบในเธรดได้</li>
-      <li>ได้ไฟล์ครบ → <b>ปิดเรื่อง</b></li>
+      <li><b>① เปิดคำร้อง</b> — หัวข้อ "ขอเอกสาร" (ฝ่าย RD ถูกเลือกให้เอง · ม-87)</li>
+      <li><b>② กรอกฟอร์ม</b> — ดีล → ลูกค้า/โครงการเติมเอง · QT/SO/FG (ถ้ามี) · รายการเอกสาร · วันคาดหวัง (บังคับ) · แนบไฟล์ได้เลย</li>
+      <li><b>③ บันทึกร่าง → ส่ง</b> — เลขที่ <code>RQ-…</code> ออกตอนส่ง</li>
+      <li><b>⑤ ถามตอบ</b> ในเธรดได้ตลอด</li>
+      <li><b>⑧ กดรับ "ได้รับแล้ว"</b> — ยืนยันว่าไฟล์ใช้ได้จริง → ปิดเรื่อง</li>
     </ol>
   </div>
   <div class="lane rd">
-    <h4><span class="who rd">ฝ่าย</span> ฝ่ายที่ถือของ</h4>
+    <h4><span class="who rd">RD</span> วิจัยและพัฒนา</h4>
     <ol>
-      <li>เห็นใบในคิวของฝ่ายตัวเอง</li>
-      <li><b>รับเรื่อง</b> (+ รับปากวันส่ง — หัวข้อนี้ <b>ไม่บังคับ</b>)</li>
-      <li>ข้อมูลไม่พอ → <b>ตีกลับให้แก้ไข</b></li>
-      <li><b>แนบไฟล์ที่การ์ดของแถวนั้น</b></li>
-      <li><b>ส่งของ</b> รายแถว = บอกว่าเอกสารใบนั้นมาแล้ว</li>
-      <li>ให้ไม่ได้ → ต้องบอกเหตุผล <span class="who new">เสนอใหม่</span></li>
+      <li><b>④ รับเรื่อง + วันกำหนดส่ง</b> (บังคับ · ม-83) — ข้อมูลไม่ครบ → ตีกลับ</li>
+      <li><b>⑤ ถามตอบ</b> ในเธรดได้ตลอด</li>
+      <li><b>⑥ แนบไฟล์ที่แถว → กดส่งเอกสาร</b> รายแถว</li>
+      <li>ให้ไม่ได้ → กด <b>"ให้ไม่ได้"</b> + เหตุผล (ติดแถวให้ SA เห็น)</li>
     </ol>
   </div>
   <div class="lane db">
-    <h4><span class="who db">DB</span> ปลายทางของไฟล์</h4>
+    <h4><span class="who db">DOC</span> ปลายทางของไฟล์</h4>
     <ol>
-      <li><b>ไฟล์แนบของแถว</b> (<code>dept_request_item</code>) — ที่เก็บจริง</li>
-      <li><b>เอกสารของดีล</b> รวมไฟล์จากทุกแหล่งไว้ที่เดียว</li>
-      <li>บรรทัดที่ยังไม่ส่ง = <b>"ของที่ยังไม่มา"</b> บนหน้าดีล</li>
-      <li>ไม่มีทะเบียนของตัวเอง — ต่างจากพัฒนากลิ่น/สูตร</li>
+      <li><b>⑦ ไฟล์ไหลเอง</b> เข้าแท็บเอกสารของ<b>ดีล</b> — แหล่ง "เอกสารจากคำร้อง"</li>
+      <li>และแท็บเอกสารของ<b>โครงการ</b> (รวมทุกดีลข้างใน)</li>
+      <li>แถวที่ยังไม่ส่ง = "รอเอกสาร" นับเป็นของที่ยังไม่มา</li>
     </ol>
   </div>
 </div>
 
-<div class="note warn">
-  <b>ฝ่ายไม่ได้ล็อกไว้ (<code>dept: null</code>)</b> — หัวข้อนี้โผล่ในลิสต์ของ<b>ทุกฝ่าย</b>
-  จึงไม่ได้เป็นของฝ่ายไหน และไม่อยู่ในโฟลเดอร์ของฝ่ายใดฝ่ายหนึ่งในโค้ด
-  (<code>lib/requests/kinds/shared/</code>) · RD ให้ IFRA/COA/MSDS · บัญชีมีหัวข้อของตัวเอง
-  แยกไว้ต่างหาก (ดู §07)
+<div class="rail">
+  <div class="st done">① เปิดคำร้อง</div>
+  <div class="st done">② กรอกฟอร์ม</div>
+  <div class="st done">③ ส่ง (RQ-…)</div>
+  <div class="st done">④ RD รับเรื่อง</div>
+  <div class="st done">⑤ ถามตอบ</div>
+  <div class="st now">⑥ RD ส่งเอกสาร</div>
+  <div class="st">⑦ เข้าแท็บเอกสาร</div>
+  <div class="st">⑧ SA กดรับ</div>
 </div>
 
 
-<h2><span class="num">01</span><span class="who sa">SA</span> ฟอร์มเปิดคำร้อง — เลือกฝ่ายก่อน แล้วค่อยเลือกหัวข้อ</h2>
+<h2><span class="num">01</span><span class="who sa">SA</span> ขั้น ① — เปิดคำร้อง</h2>
+<p class="lede">
+  เข้าได้สองทาง: ปุ่ม "เปิดคำร้อง" บนหัวการ์ดคิว หรือทางลัดจากหน้าดีล ·
+  ขั้นแรกเลือกแค่ <b>หัวข้อ</b> — ฝ่ายถูกเลือกให้เองเพราะเปิดใช้จริงอยู่ฝ่ายเดียว (ม-87)
+</p>
 
 <div class="screens">
   <div class="screen">
-    <header><b>ฟอร์มเปิดคำร้อง</b><span class="path">/requests/new</span></header>
+    <header><b>เลือกฝ่าย + หัวข้อ</b><span class="path">/requests/new</span></header>
     <div class="body">
       <div class="card">
-        <div class="grid2">
-          <div class="field">
-            <label>ฝ่ายที่ต้องการให้ตอบ <b>(บังคับ)</b></label>
-            <div class="inp block">วิจัยและพัฒนา (RD)</div>
-          </div>
-          <div class="field">
-            <label>หัวข้อ</label>
-            <div class="inp block">ทั่วไป › ขอเอกสาร</div>
-          </div>
+        <div class="field"><label>ส่งถึงฝ่ายไหน</label></div>
+        <div class="grid3">
+          <div class="inp block" style="border-color:var(--accent);color:var(--ink)"><b>RD</b><br>วิจัยและพัฒนา ✓</div>
+          <div class="inp block" style="opacity:.45"><b>PC</b><br>จัดซื้อ (ยังไม่เปิดใช้)</div>
+          <div class="inp block" style="opacity:.45"><b>FN</b><br>บัญชี (ยังไม่เปิดใช้)</div>
         </div>
-        <div class="note">
-          หัวข้อนี้ไม่ล็อกฝ่าย ⇒ เลือกฝ่ายไหนก็ได้ที่รับคำร้อง · ตัวเลือกที่ยังเปิดไม่ได้
-          <b>จางและกดไม่ได้ ไม่ใช่ซ่อน</b> — ซ่อนแล้วคนจะไม่รู้ว่ามีของที่ตัวเองเข้าไม่ถึงอยู่
+        <div class="field" style="margin-top:12px">
+          <label>ขอเรื่องอะไร</label>
+          <div class="inp block">ทั่วไป › <b>ขอเอกสาร</b></div>
+        </div>
+        <div class="sub">ตัวเลือกอื่นของ RD: สอบถามข้อมูล · พัฒนากลิ่น · พัฒนาสูตร</div>
+        <div class="btns" style="margin-top:12px;justify-content:flex-end">
+          <span class="btn accent">กรอกฟอร์มขอเอกสาร</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">02</span><span class="who sa">SA</span> ขั้น ② — กรอกฟอร์ม</h2>
+<p class="lede">
+  ลำดับบนจอตรงตามที่พูด: <b>ดีล → ลูกค้า → โครงการ → QT/SO/FG (ถ้ามี) →
+  รายการเอกสาร → รายละเอียด → วันคาดหวัง → แนบไฟล์</b>
+</p>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>ฟอร์มขอเอกสาร (เต็ม)</b><span class="path">/requests/new?kind=document</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="field">
+          <label>ดีล <b>(บังคับ)</b></label>
+          <div class="inp block">DL-2604-018 · เทียนหอมคอลเลกชันใหม่ — ค้นด้วยชื่อลูกค้าได้</div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>ลูกค้า</label><div class="inp block derived">บริษัท เดอ ลูมิแยร์ จำกัด (เติมจากดีล)</div></div>
+          <div class="field"><label>โครงการ</label><div class="inp block derived">PJ-0142 — คอลเลกชันปลายปี (เติมจากดีล)</div></div>
         </div>
 
+        <div class="note ok" style="margin:12px 0">
+          <b>อ้างอิงที่เกี่ยวข้อง (ถ้ามี · ม-88)</b> — เลือกจากระบบจริง ไม่ใช่พิมพ์เลขที่
+          ลงช่องรายละเอียดแล้วค้นย้อนไม่ได้ · <b>ว่างได้ทุกช่อง</b> · QT/SO กรองตามดีลที่เลือก
+        </div>
         <div class="grid2">
-          <div class="field">
-            <label>ดีลที่เกี่ยวข้อง <b>(บังคับ)</b></label>
-            <div class="inp block">DL-2604-018 · เทียนหอมคอลเลกชันใหม่</div>
-          </div>
-          <div class="field">
-            <label>โครงการ</label>
-            <div class="inp block derived">PJ-0142 (ดึงจากดีล)</div>
-          </div>
+          <div class="field"><label>ใบเสนอราคา (QT) <span class="sub">(ถ้ามี)</span></label><div class="inp block">QT-26080029-0</div></div>
+          <div class="field"><label>ใบสั่งขาย (SO) <span class="sub">(ถ้ามี)</span></label><div class="inp block">— ไม่อ้าง —</div></div>
         </div>
-
-        <div class="field">
-          <label>ชื่อเรื่อง <b>(บังคับ)</b></label>
-          <div class="inp block">สรุปสั้น ๆ ว่าขอเอกสารอะไร</div>
-        </div>
-        <div class="field">
-          <label>รายละเอียดเพิ่มเติม</label>
-          <div class="inp block area">ลูกค้ารายไหน · เอาไปใช้ทำอะไร · มีกำหนดจากฝั่งลูกค้าไหม</div>
-        </div>
-        <div class="field">
-          <label>วันที่อยากได้คำตอบ <b>(บังคับ)</b></label>
-          <div class="inp block">20/09/2026</div>
-        </div>
+        <div class="field"><label>สินค้า (FG) <span class="sub">(ถ้ามี)</span></label><div class="inp block">FG-0231 · เทียนหอมแก้ว 180g Amber Woods</div></div>
       </div>
 
       <div class="card">
@@ -364,168 +377,203 @@
           <div class="title">เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด</div>
           <span class="btn">+ เพิ่มรายการ</span>
         </div>
-
         <div class="card" style="background:var(--card-2)">
-          <div class="sub" style="margin-bottom:8px">รายการที่ 1</div>
-          <div class="field">
-            <label>ชนิดเอกสาร <b>(บังคับ)</b></label>
-            <div class="inp block">IFRA Certificate</div>
-          </div>
-          <div class="field">
-            <label>รายละเอียด <span class="sub">(ไม่บังคับ)</span></label>
-            <div class="inp block area">เช่น ของล็อตไหน / ภาษาอะไร / ต้องมีลายเซ็นไหม</div>
+          <div class="grid2">
+            <div class="field"><label>ชนิดเอกสาร</label><div class="inp block">IFRA Certificate</div></div>
+            <div class="field"><label>รายละเอียด <span class="sub">(ไม่บังคับ)</span></label><div class="inp block">ฉบับภาษาอังกฤษ</div></div>
           </div>
         </div>
-
         <div class="card" style="background:var(--card-2)">
-          <div class="sub" style="margin-bottom:8px">รายการที่ 2</div>
-          <div class="field">
-            <label>ชนิดเอกสาร</label>
-            <div class="inp block">อื่น ๆ — ระบุในรายละเอียด</div>
-          </div>
-          <div class="field">
-            <label>รายละเอียด <b>(บังคับเพราะเลือก "อื่น ๆ")</b></label>
-            <div class="inp block area">ขอเอกสารอะไร — ต้องระบุเพราะเลือก "อื่น ๆ" ไว้</div>
+          <div class="grid2">
+            <div class="field"><label>ชนิดเอกสาร</label><div class="inp block">COA — Certificate of Analysis</div></div>
+            <div class="field"><label>รายละเอียด</label><div class="inp block">ล็อต 2609-A</div></div>
           </div>
         </div>
+        <div class="card" style="background:var(--card-2)">
+          <div class="grid2">
+            <div class="field"><label>ชนิดเอกสาร</label><div class="inp block">อื่น ๆ — ระบุในรายละเอียด</div></div>
+            <div class="field"><label>รายละเอียด <b>(บังคับเพราะเลือก "อื่น ๆ")</b></label><div class="inp block">Allergen declaration</div></div>
+          </div>
+        </div>
+        <div class="sub">ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (COA สองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน</div>
+      </div>
 
+      <div class="card">
+        <div class="field"><label>รายละเอียดเพิ่มเติม</label>
+          <div class="inp block area">ลูกค้าใช้ยื่นห้าง Central — ต้องการก่อนสิ้นเดือน · ติดต่อคุณเมย์ ฝ่ายจัดซื้อลูกค้า</div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>อยากได้คำตอบภายใน <b>(บังคับ · ม-83)</b></label><div class="inp block">20/09/2026</div></div>
+          <div class="field"><label>ความเร่งด่วน</label><div class="inp block">☐ ด่วน (ติ๊กแล้วต้องบอกเหตุผล)</div></div>
+        </div>
+        <div class="field"><label>แนบไฟล์ <span class="sub">(แนบได้ตั้งแต่หน้านี้ · ม-84)</span></label>
+          <div class="inp block">📎 spec-ของลูกค้า.pdf · เลือกไฟล์ (สูงสุด 10 MB ต่อไฟล์)</div>
+        </div>
         <div class="btns" style="margin-top:12px">
           <span class="btn quiet">ยกเลิก</span>
-          <span class="btn accent">ส่งคำร้อง</span>
+          <span class="btn accent">บันทึกร่าง</span>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="note">
-  <b>ชนิดที่ขอได้มีสี่ตัว</b> — <code>IFRA Certificate</code> · <code>COA</code> ·
-  <code>MSDS / SDS</code> · <code>อื่น ๆ</code>
-  <br>
-  <b>"อื่น ๆ" ต้องมีรายละเอียดเสมอ</b> — ไม่มีทางออกนี้แล้วคนจะเลือกชนิดที่ใกล้เคียงที่สุด
-  แล้วอธิบายในช่องรายละเอียด ซึ่งทำให้ตัวเลข "ขอ IFRA กี่ครั้ง" ผิดโดยไม่มีใครรู้
-  <br>
-  <b>ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน</b> (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
-</div>
-<div class="note warn">
-  <b>ไม่มีช่อง "ต้องใช้ภายใน" รายแถวโดยตั้งใจ</b> — <code>dueAt</code> ของแถวเป็นคำสัญญา
-  ของ <b>ผู้ตอบ</b> ("รับปากว่าจะส่งวันไหน") ยัดความหมายของผู้ขอลงช่องเดียวกันแล้วสองฝ่าย
-  จะเขียนทับกัน · วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว
-</div>
 
-
-<h2><span class="num">02</span><span class="who sa">SA</span> ใบคำร้อง — ตัวเลขขึ้นก่อนตาราง</h2>
+<h2><span class="num">03</span><span class="who sa">SA</span> ขั้น ③ — ทบทวนร่าง → ส่ง</h2>
 <p class="lede">
-  คำถามของหัวข้อนี้ต่างจากสองหัวข้อพัฒนา — พัฒนากลิ่น/สูตรถามว่า <i>"ของออกมาหรือยัง"</i>
-  ส่วนขอเอกสารถามว่า <b>"ได้ไฟล์แล้วกี่ชิ้น ยังขาดอะไร"</b> ⇒ แถบตัวเลขจึงอยู่<b>บนสุด</b>
+  บันทึกร่างแล้วพามาหน้ารายละเอียด — <b>ขั้นทบทวนก่อนเลขที่ออก</b> (เลขที่ออกแล้วย้อนไม่ได้) ·
+  ไฟล์ที่แนบไว้อัปให้อัตโนมัติ · กด @ ได้ที่นี่ (แจ้งเตือนยิงตอนส่ง)
 </p>
 
 <div class="screens">
   <div class="screen">
-    <header><b>ใบคำร้อง · ขอเอกสาร</b><span class="path">/requests/RQ-2609-021</span></header>
+    <header><b>ร่าง — ก่อนส่ง</b><span class="path">/requests/DR-…</span></header>
     <div class="body">
-      <div class="canvas">
-        <div class="card">
-          <div class="rowhead">
-            <div>
-              <div class="sub" style="color:var(--accent);font-weight:600">ขอเอกสาร · ถึงฝ่าย RD</div>
-              <div class="title" style="font-size:20px">RQ-2609-021</div>
-              <div class="sub">ขอ IFRA + COA ของเทียนหอม 2 กลิ่น</div>
-            </div>
-            <div class="btns">
-              <span class="badge i">กำลังดำเนินการ</span>
-              <span class="btn quiet">⋯</span>
-            </div>
+      <div class="card">
+        <div class="rowhead">
+          <div>
+            <div class="sub" style="color:var(--accent);font-weight:600">ขอเอกสาร · ถึงฝ่าย RD</div>
+            <div class="title" style="font-size:19px">ขอเอกสาร (ร่าง)</div>
+            <div class="sub">ขอ IFRA + COA + Allergen ของเทียนหอม Amber Woods</div>
           </div>
+          <div class="btns"><span class="badge n">ร่าง</span><span class="btn quiet">⋯</span></div>
+        </div>
+        <div class="rail">
+          <div class="st now">1 จัดทำคำร้อง</div>
+          <div class="st">2 รอรับเรื่อง</div>
+          <div class="st">3 รอฝ่าย RD ส่งของ</div>
+          <div class="st">4 ตอบแล้ว</div>
+          <div class="st">5 ปิดเรื่อง</div>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <span class="badge n">อ้างอิง: QT-26080029-0 · FG-0231</span>
+          <span class="badge n">📎 spec-ของลูกค้า.pdf</span>
+        </div>
+      </div>
+      <div class="nextbar">
+        <div class="lbl"><b>ยังไม่ได้ส่ง</b> — ส่งแล้วเลขที่จะออกและฝ่ายปลายทางจะเห็น</div>
+        <div class="btns"><span class="btn accent">ส่งคำร้อง</span></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-          <div class="scroll">
-            <table class="t">
-              <tbody>
-                <tr>
-                  <td><div class="sub">วันที่สร้าง</div><b>10/09/2026</b></td>
-                  <td><div class="sub">ผู้ขอ</div><b>สมชาย (AE)</b></td>
-                  <td><div class="sub">ตอบแล้ว</div><b>1/3 รายการ</b></td>
-                  <td><div class="sub">รับปากส่ง</div><b>18/09/2026</b></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
 
-          <div class="rail">
-            <div class="st done">1 จัดทำคำร้อง</div>
-            <div class="st done">2 รอรับเรื่อง</div>
-            <div class="st now">3 รอฝ่าย RD ส่งของ</div>
-            <div class="st">4 ตอบแล้ว</div>
-            <div class="st">5 ปิดเรื่อง</div>
+<h2><span class="num">04</span><span class="who rd">RD</span> ขั้น ④ — รับเรื่อง + วันกำหนดส่ง</h2>
+<p class="lede">
+  RD เห็นใบใน<b>คิวของฝ่าย</b> (`/rd/requests`) — การ์ด "เริ่มที่นี่" ชี้ใบที่ควรทำก่อน
+</p>
+
+<div class="screens two">
+  <div class="screen">
+    <header><b>คิวฝ่าย → เปิดใบ → รับเรื่อง</b><span class="path">hop: ack</span></header>
+    <div class="body">
+      <div class="modal">
+        <header>รับเรื่อง — ระบุวันกำหนดส่ง</header>
+        <div class="body">
+          <div class="field"><label>วันกำหนดส่ง <b>(บังคับ · ม-83)</b></label><div class="inp block">18/09/2026</div></div>
+          <div class="sub">เป็นวันที่ฝ่ายคุณรับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง · ผู้ขอคาดหวังไว้ 20/09/2026</div>
+        </div>
+        <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">รับเรื่อง</span></footer>
+      </div>
+      <div class="note" style="margin-bottom:0">
+        รับเรื่องแล้ว SA เห็นวันทันที · เลื่อนได้ทีหลังผ่านเมนู <code>⋯</code>
+        "เลื่อนวันกำหนดส่ง" พร้อมเหตุผล (ลงเธรดให้เห็นว่าเลื่อนจากวันไหนเป็นวันไหน)
+      </div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <header><b>ข้อมูลไม่ครบ → ตีกลับ</b><span class="path">action: bounce</span></header>
+    <div class="body">
+      <div class="modal">
+        <header>ตีกลับให้แก้ไข — RQ-2609-021</header>
+        <div class="body">
+          <div class="field"><label>ต้องแก้อะไร <b>(บังคับ)</b></label>
+            <div class="inp block area">ไม่ได้บอกว่า COA ต้องการของล็อตไหน — ระบุเลขล็อตด้วย</div>
           </div>
         </div>
+        <footer><span class="btn quiet">ยกเลิก</span><span class="btn danger">ตีกลับ</span></footer>
+      </div>
+      <div class="note warn" style="margin-bottom:0">
+        ใบกลับเป็น<b>ร่าง เลขที่เดิม</b> — SA แก้แล้วส่งซ้ำได้ · ตีกลับได้เฉพาะใบที่ยังไม่รับเรื่อง
+        (รับแล้วให้ถามในเธรดแทน)
+      </div>
+    </div>
+  </div>
+</div>
 
-        <div class="card">
-          <div class="btns" style="margin-bottom:0">
-            <span class="badge g"><b>1</b> มาแล้ว</span>
-            <span class="badge w"><b>2</b> รอเอกสาร</span>
-            <span class="badge n">จากที่ขอ <b>3</b> รายการ</span>
-          </div>
+
+<h2><span class="num">05</span>ขั้น ⑤ — ถามตอบกัน 2 ฝ่าย</h2>
+<p class="lede">
+  เธรดเดียวไล่ตามเวลา — เหตุการณ์ของระบบกับข้อความคนพิมพ์อยู่สายเดียวกัน (ม-49) ·
+  แนบรูป/ไฟล์ในข้อความได้ · @ ชื่อแล้วแจ้งเตือนเด้งหาคนนั้น
+</p>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>เธรดในใบ</b><span class="path">/requests/RQ-2609-021</span></header>
+    <div class="body">
+      <div class="thread">
+        <div class="ev sys"><span class="dot"></span><div class="bx">
+          <div class="meta">10/09 · ระบบ</div><div class="msg">ส่งคำร้อง — ออกเลขที่ RQ-2609-021 ถึงฝ่าย RD</div></div></div>
+        <div class="ev rd"><span class="dot"></span><div class="bx">
+          <div class="meta">11/09 · ระบบ</div><div class="msg">รับเรื่องแล้ว — รับปากส่ง 18/09/2026</div></div></div>
+        <div class="ev rd"><span class="dot"></span><div class="bx">
+          <div class="meta">11/09 · RD · ปาริชาต</div><div class="msg">IFRA ฉบับภาษาอังกฤษมีอยู่แล้ว ส่งได้เลย · COA ล็อต 2609-A ขอเวลาตรวจแล็บ 3 วัน</div></div></div>
+        <div class="ev"><span class="dot"></span><div class="bx">
+          <div class="meta">11/09 · SA · สมชาย</div><div class="msg">ได้ครับ ลูกค้ารอ IFRA ก่อนได้ — @ปาริชาต ส่งทีละใบได้เลย</div></div></div>
+      </div>
+      <div class="composer">ถามสเปก / แจ้งข้อมูลเพิ่ม / วางรูปจากคลิปบอร์ดได้…</div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">06</span><span class="who rd">RD</span> ขั้น ⑥ — แนบไฟล์ → ส่งเอกสาร (รายแถว)</h2>
+<p class="lede">
+  ไฟล์จริงเกาะที่<b>การ์ดของแถว</b> · โมดัล "ส่งของ" ประทับแค่วัน — แถวไหนเสร็จก่อนส่งก่อน
+  (IFRA มาก่อน COA ได้) · ให้ไม่ได้ = ทางจบที่สองพร้อมเหตุผล
+</p>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>การ์ดรายแถว — มุม RD</b><span class="path">/requests/RQ-2609-021</span></header>
+    <div class="body">
+      <div class="card" style="background:var(--card-2)">
+        <div class="rowhead" style="margin-bottom:4px">
+          <b>IFRA Certificate</b>
+          <span class="badge i">กำลังทำ</span>
         </div>
-
-        <div class="card">
-          <div class="title" style="margin-bottom:8px">เอกสารที่ขอ</div>
-          <div class="scroll">
-            <table class="t">
-              <thead><tr><th>ชนิดเอกสาร</th><th>สถานะ</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td>COA — Certificate of Analysis
-                    <div class="sub">ล็อต 2609-A · ขอฉบับภาษาอังกฤษ</div></td>
-                  <td><span class="badge w">รอรับเรื่อง</span></td>
-                </tr>
-                <tr>
-                  <td>MSDS / SDS
-                    <div class="sub">ของเนื้อสารเทียน</div></td>
-                  <td><span class="badge i">กำลังทำ</span></td>
-                </tr>
-                <tr>
-                  <td>IFRA Certificate</td>
-                  <td><span class="badge i">รอไปรับ</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <div class="sub">ฉบับภาษาอังกฤษ</div>
+        <div class="sub" style="margin-top:8px">รูป / สเปกแนบ</div>
+        <div class="btns"><span class="badge g">📎 IFRA-AmberWoods-EN.pdf</span><span class="btn quiet">📎 แนบไฟล์</span></div>
+      </div>
+      <div class="nextbar">
+        <div class="lbl"><b>IFRA Certificate</b> — กำลังทำ</div>
+        <div class="btns">
+          <span class="btn" style="background:var(--navy);border-color:var(--navy);color:#fff">ส่งของ</span>
+          <span class="btn danger">ให้ไม่ได้</span>
         </div>
-
-        <div class="card">
-          <div class="title" style="margin-bottom:10px">รายการที่ขอ — ไฟล์เกาะที่นี่</div>
-
-          <div class="card" style="background:var(--card-2)">
-            <div class="rowhead" style="margin-bottom:4px">
-              <b>IFRA Certificate</b>
-              <span class="badge i">รอไปรับ</span>
-            </div>
-            <div class="sub" style="margin-bottom:8px">รูป / สเปกแนบ</div>
-            <div class="btns">
-              <span class="badge n">IFRA-2609-A.pdf</span>
-              <span class="btn quiet">📎 แนบไฟล์</span>
-            </div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="modal">
+          <header>ส่งของ — IFRA Certificate</header>
+          <div class="body">
+            <div class="field"><label>วันที่ส่งของ</label><div class="inp block">12/09/2026</div></div>
+            <div class="sub">ไฟล์แนบไว้ที่การ์ดแถวแล้ว — โมดัลนี้ประทับแค่วัน</div>
           </div>
-
-          <div class="card" style="background:var(--card-2)">
-            <div class="rowhead" style="margin-bottom:4px">
-              <b>MSDS / SDS</b>
-              <span class="badge i">กำลังทำ</span>
-            </div>
-            <div class="sub">ของเนื้อสารเทียน</div>
-            <div class="sub" style="margin-top:8px">ยังไม่มีไฟล์แนบ</div>
-          </div>
+          <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
         </div>
-
-        <div class="nextbar">
-          <div class="lbl">
-            <div style="font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">ก้าวถัดไป</div>
-            <b>IFRA Certificate</b> — รอไปรับ
+        <div class="modal">
+          <header>ให้ไม่ได้ — Allergen declaration</header>
+          <div class="body">
+            <div class="field"><label>เหตุผลที่ให้ไม่ได้ <b>(บังคับ)</b></label>
+              <div class="inp block area">เอกสารนี้ต้องขอจากซัพพลายเออร์หัวน้ำหอมโดยตรง — บริษัทออกแทนไม่ได้</div>
+            </div>
+            <div class="sub">ผู้ขอเห็นเหตุผลนี้ติดแถวในใบ — รายการจบแบบ "ให้ไม่ได้"</div>
           </div>
-          <div class="btns">
-            <span class="btn" style="background:var(--navy);border-color:var(--navy);color:#fff">รับของ</span>
-          </div>
+          <footer><span class="btn quiet">ยกเลิก</span><span class="btn danger">บันทึก</span></footer>
         </div>
       </div>
     </div>
@@ -533,300 +581,169 @@
 </div>
 
 <div class="note ok">
-  <b>ทำไมต้องมีบรรทัด ทั้งที่ไฟล์แนบก็มีอยู่แล้ว</b> — แถบ "มาแล้ว X · รอ Y"
-  <b>เป็นไปไม่ได้ถ้าไม่รู้จักของที่ยังไม่มา</b> · นับจากไฟล์แนบอย่างเดียวจะได้ 100% เสมอ
-  เพราะของที่ยังไม่มาไม่มีตัวตน · นี่คือเหตุผลที่บรรทัดขอเอกสารมีอยู่ตั้งแต่แรก
-</div>
-<div class="note warn">
-  <b>"ได้รับแล้ว" กับ "ให้ไม่ได้" จบเหมือนกันแต่คนละความหมาย</b> — รวมกันเมื่อไร
-  ใบที่ฝ่ายตอบว่าให้ไม่ได้ทั้งใบจะอ่านเหมือนได้เอกสารครบ ⇒ แยกเป็นคนละตัวเลขเสมอ
+  <b>สายของแถวเอกสาร (ม-85)</b> — สั้นกว่าสายพัฒนา: ไม่มีส่งลูกค้า ไม่มีราคา
+  <div class="rail" style="margin-top:10px">
+    <div class="st done">รอรับเรื่อง</div>
+    <div class="st done">กำลังทำ</div>
+    <div class="st now">ส่งเอกสารแล้ว</div>
+    <div class="st">จบ · ได้รับแล้ว</div>
+    <div class="st">จบ · ให้ไม่ได้</div>
+  </div>
+  ก้าวของสายพัฒนา (รับของ → ส่งลูกค้า → ใส่ราคา) <b>ถูกตัดตั้งแต่ต้นทาง</b> —
+  ยิงมาก็โดนตีกลับ "แถวเอกสารไม่มีก้าวของสายพัฒนา"
 </div>
 
 
-<h2><span class="num">03</span><span class="who rd">ฝ่าย</span> ฝั่งผู้ตอบ — แนบไฟล์ที่แถว แล้วบอกว่าส่งแล้ว</h2>
+<h2><span class="num">07</span><span class="who db">DOC</span> ขั้น ⑦ — ไฟล์ไหลเข้าแท็บเอกสารเอง</h2>
+<p class="lede">
+  RD กดส่งแล้ว ไฟล์บนแถวโผล่เป็นแหล่ง <b>"เอกสารจากคำร้อง"</b> บนแท็บเอกสารของดีล
+  และแท็บเอกสารของโครงการ (รวมทุกดีลข้างใน) — <b>ไม่ต้องมีใครไปแนบซ้ำ</b>
+</p>
 
 <div class="screens two">
   <div class="screen">
-    <header><b>รับเรื่อง</b><span class="path">hop: ack</span></header>
-    <div class="body">
-      <div class="modal">
-        <header>รับเรื่อง — RQ-2609-021</header>
-        <div class="body">
-          <div class="field"><label>วันที่รับเรื่อง</label><div class="inp block">11/09/2026</div></div>
-          <div class="field">
-            <label>รับปากว่าจะส่งวันไหน <b>(บังคับ)</b></label>
-            <div class="inp block">18/09/2026</div>
-          </div>
-        </div>
-        <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
-      </div>
-      <div class="note ok" style="margin-bottom:0">
-        <b>วันบังคับแล้ว — ทุกหัวข้อ</b> (มติผู้ใช้ 2026-08-08 ยกระดับจากรายชนิดของ
-        ม-55): <i>"วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับใส่เสมอ ทุกคำร้อง"</i>
-      </div>
-    </div>
-  </div>
-
-  <div class="screen">
-    <header><b>ส่งของ = บอกว่าเอกสารใบนั้นมาแล้ว</b><span class="path">hop: ready</span></header>
-    <div class="body">
-      <div class="modal">
-        <header>ส่งของ — IFRA Certificate</header>
-        <div class="body">
-          <div class="field"><label>วันที่ส่งของ</label><div class="inp block">15/09/2026</div></div>
-        </div>
-        <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
-      </div>
-      <div class="note" style="margin-bottom:0">
-        <b>ไฟล์ไม่ได้อยู่ในโมดัลนี้</b> — แนบที่การ์ดของแถวโดยตรง (ลากวาง หรือวางรูปจาก
-        คลิปบอร์ดได้) · โมดัลนี้ประทับแค่ <b>วัน</b> ว่าส่งเมื่อไร
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="screens">
-  <div class="screen proposed">
-    <header><b>ปิดแถว — สองทางจบ</b><span class="path"></span></header>
-    <div class="body">
-      <div class="grid2">
-        <div class="modal">
-          <header>ได้รับแล้ว — IFRA Certificate</header>
-          <div class="body">
-            <div class="field"><label>วันที่ได้รับ</label><div class="inp block">16/09/2026</div></div>
-            <div class="sub">ผู้ขอเป็นคนกด — ยืนยันว่าไฟล์ที่ได้ใช้ได้จริง</div>
-          </div>
-          <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
-        </div>
-        <div class="modal">
-          <header>ให้ไม่ได้ — MSDS / SDS</header>
-          <div class="body">
-            <div class="field"><label>วันที่ตอบ</label><div class="inp block">16/09/2026</div></div>
-            <div class="field">
-              <label>เหตุผล <b>(บังคับ)</b></label>
-              <div class="inp block area">เช่น เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอจากเขาโดยตรง</div>
-            </div>
-          </div>
-          <footer><span class="btn quiet">ยกเลิก</span><span class="btn danger">บันทึก</span></footer>
-        </div>
-      </div>
-      <div class="note ok" style="margin-bottom:0">
-        <b>ส่งแล้ว (ม-85)</b> — receive/refuse เดินได้จริง พิสูจน์ครบวงบน dev server
-      </div>
-    </div>
-  </div>
-</div>
-
-
-<h2><span class="num">04</span><span class="who db">DB</span> ปลายทาง — เอกสารของดีล</h2>
-<p class="lede">
-  หัวข้อนี้ไม่มีทะเบียนของตัวเอง (ต่างจากพัฒนากลิ่น→ทะเบียนกลิ่น · พัฒนาสูตร→ทะเบียนสูตร)
-  — ไฟล์ไปรวมที่ <b>เอกสารของดีล</b> ซึ่งกวาดมาจากทุกแหล่ง
-</p>
-
-<div class="screens">
-  <div class="screen">
-    <header><b>เอกสารทั้งหมดของดีล</b><span class="path">/sales-planning/deals/[id]</span></header>
+    <header><b>แท็บเอกสารของดีล</b><span class="path">/sales-planning/deals/[id] → เอกสาร</span></header>
     <div class="body">
       <div class="card">
         <div class="rowhead">
           <div class="title">เอกสารของดีลนี้</div>
-          <span class="sub">รวมจาก 6 แหล่ง</span>
+          <div><span class="badge g">มาแล้ว 2</span> <span class="badge w">รอ 1</span></div>
         </div>
         <div class="scroll">
           <table class="t">
-            <thead><tr><th>เอกสาร</th><th>มาจากไหน</th><th>สถานะ</th></tr></thead>
+            <thead><tr><th>เอกสาร</th><th>แหล่ง</th><th></th></tr></thead>
             <tbody>
               <tr>
-                <td>IFRA-2609-A.pdf</td>
-                <td>บรรทัดขอเอกสาร · RQ-2609-021</td>
-                <td><span class="badge g">มีไฟล์แล้ว</span></td>
+                <td>COA — Certificate of Analysis <div class="sub">ล็อต 2609-A</div></td>
+                <td><span class="badge w">รอเอกสาร</span></td>
+                <td><span class="btn quiet">ดูคำร้อง</span></td>
               </tr>
               <tr>
-                <td>COA — Certificate of Analysis <span class="sub">(ล็อต 2609-A)</span></td>
-                <td>บรรทัดขอเอกสาร · RQ-2609-021</td>
-                <td><span class="badge w">ยังไม่มา</span></td>
+                <td><b>IFRA Certificate</b> <div class="sub">IFRA-AmberWoods-EN.pdf · RQ-2609-021</div></td>
+                <td><span class="badge g">เอกสารจากคำร้อง</span></td>
+                <td><span class="btn quiet">เปิดดู</span></td>
               </tr>
               <tr>
-                <td>QT-2608-014.pdf</td>
-                <td>ใบเสนอราคาที่ออกจากระบบ</td>
-                <td><span class="badge g">มีไฟล์แล้ว</span></td>
-              </tr>
-              <tr>
-                <td>สัญญาที่ลูกค้าเซ็น</td>
-                <td>ไฟล์แนบในเธรดของดีล</td>
-                <td><span class="badge g">มีไฟล์แล้ว</span></td>
+                <td>QT-26080029-0</td>
+                <td>ฉบับที่ออกจริง</td>
+                <td><span class="btn quiet">เปิดดู</span></td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+      <div class="note" style="margin-bottom:0">
+        ชื่อแถว = <b>ชนิดเอกสาร</b> (คนหาด้วยคำว่า "IFRA" ไม่ใช่ชื่อไฟล์ที่ RD ตั้ง) ·
+        ชื่อไฟล์ + เลขที่ใบอยู่บรรทัดรอง
+      </div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <header><b>แท็บเอกสารของโครงการ</b><span class="path">/sa/projects/[id] → เอกสาร</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="rowhead">
+          <div class="title">ไฟล์เอกสารของโครงการ</div>
+          <div class="sub">รวมจากทุกดีลในโครงการ</div>
+        </div>
+        <div class="scroll">
+          <table class="t">
+            <tbody>
+              <tr>
+                <td><b>IFRA Certificate</b> <div class="sub">IFRA-AmberWoods-EN.pdf · RQ-2609-021 · เทียนหอมคอลเลกชันใหม่</div></td>
+                <td><span class="badge g">เอกสารจากคำร้อง</span></td>
+              </tr>
+              <tr>
+                <td>COA — Certificate of Analysis <div class="sub">ล็อต 2609-A · เทียนหอมคอลเลกชันใหม่</div></td>
+                <td><span class="badge w">รอเอกสาร</span></td>
+              </tr>
+              <tr>
+                <td>PO ลูกค้า.pdf <div class="sub">สเปรย์ห้อง โรงแรม B</div></td>
+                <td>ไฟล์แนบของดีล</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="note" style="margin-bottom:0">
+        บรรทัดรองบอกว่าแถวไหนมาจาก<b>ดีลไหน</b> — โครงการมีหลายดีล แถวลอย ๆ อ่านไม่ออกว่าของใคร ·
+        โหมดนี้ไม่มีกล่องแนบ (ไฟล์แนบเข้าดีลรายใบ)
+      </div>
     </div>
   </div>
 </div>
 
-<div class="note stop">
-  <b>🐞 สองที่นิยาม "มาแล้ว" คนละแบบ</b> (ยืนยันกับโค้ด 2026-08-08)
-  <br>
-  · <b>ในใบคำร้อง</b> — "มาแล้ว" = <code>answerStatus === 'done'</code>
-  <br>
-  · <b>บนหน้าดีล</b> — "ยังไม่มา" = <code>!readyAt</code> (ยังไม่กดส่งของ)
-  <br>
-  ⇒ แถวที่ฝ่ายกด "ส่งของ" แล้ว <b>หน้าดีลบอกว่ามาแล้ว แต่ในใบคำร้องยังนับเป็น
-  "รอเอกสาร" ตลอดไป</b> · สองจอตอบคำถามเดียวกันคนละคำตอบ
-</div>
 
+<h2><span class="num">08</span><span class="who sa">SA</span> ขั้น ⑧ — กดรับ → ปิดเรื่อง</h2>
 
-<h2><span class="num">05</span>ของกลางสองฝ่าย — <code>document</code> กับ <code>billing_doc</code></h2>
-<p class="lede">
-  ม-56: คนละชุดคำศัพท์ <b>แต่กฎของบรรทัดเหมือนกันทุกข้อ</b> ⇒ จอเดียวรับทั้งคู่
-</p>
-
-<div class="scroll">
-  <table class="t">
-    <thead><tr><th></th><th>ขอเอกสาร (ทุกฝ่าย)</th><th>ขอเอกสารการเงิน (บัญชี)</th></tr></thead>
-    <tbody>
-      <tr><td><b>คีย์</b></td><td><code>document</code></td><td><code>billing_doc</code></td></tr>
-      <tr><td><b>ฝ่ายผู้ตอบ</b></td><td><b>ผู้ขอเลือกเอง</b> (RD · จัดซื้อ · บัญชี)</td><td>ล็อกที่ <b>บัญชี</b></td></tr>
-      <tr><td><b>ชนิดที่ขอได้</b></td><td>IFRA · COA · MSDS · อื่น ๆ</td><td>ใบวางบิล · ใบแจ้งหนี้ · ใบกำกับภาษี · ใบเสร็จ</td></tr>
-      <tr><td><b>เลขที่</b></td><td colspan="2" style="text-align:center"><code>RQ-…</code> ร่วมกัน — แยก scope ทีหลังได้โดยไม่กระทบใบเก่า</td></tr>
-      <tr><td><b>จอรายละเอียด</b></td><td colspan="2" style="text-align:center"><code>DocumentDetail</code> ตัวเดียว (ม-56)</td></tr>
-      <tr><td><b>กฎของบรรทัด</b></td><td colspan="2" style="text-align:center">ต้องเลือกชนิด · "อื่น ๆ" ต้องมีรายละเอียด · ซ้ำทั้งชนิดและรายละเอียดไม่ได้</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<div class="note">
-  <b>เอาสองชุดมารวมลิสต์เดียวไม่ได้</b> — คำร้องขอเอกสารของ RD จะมีตัวเลือก
-  "ใบกำกับภาษี" โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้ ⇒ แยกเป็น <b>คำศัพท์</b>
-  คนละชุด แต่ใช้ <b>ตัวตรวจ</b> ตัวเดียวกัน (<code>docVocabulary</code>)
-</div>
-
-
-<h2><span class="num">06</span>ต่างจากพัฒนากลิ่น / พัฒนาสูตร ตรงไหน</h2>
-
-<div class="scroll">
-  <table class="t">
-    <thead><tr><th></th><th>พัฒนากลิ่น</th><th>พัฒนาสูตร</th><th>ขอเอกสาร</th></tr></thead>
-    <tbody>
-      <tr><td><b>เลขที่</b></td><td><code>SB-…</code></td><td><code>FD-…</code></td><td><code>RQ-…</code></td></tr>
-      <tr><td><b>ฝ่ายผู้ตอบ</b></td><td>ล็อก RD</td><td>ล็อก RD</td><td><b>ผู้ขอเลือกเอง</b></td></tr>
-      <tr><td><b>ต้องอ้างถึง</b></td><td>โครงการ + ดีล + <b>SO</b></td><td>โครงการ + ดีล</td><td>โครงการ + ดีล</td></tr>
-      <tr><td><b>1 แถว = อะไร</b></td><td>1 direction = กลิ่น 1 ตัว</td><td>หมวด × กลิ่น = สูตร 1 ตัว</td><td><b>1 ชนิดเอกสาร</b></td></tr>
-      <tr><td><b>ใครสร้างแถว</b></td><td>RD ตอนส่งของ</td><td>SA ตอนเปิดใบ</td><td>SA ตอนเปิดใบ</td></tr>
-      <tr><td><b>มีลูกค้าในสาย</b></td><td>มี (ส่งลูกค้า → คำตอบ)</td><td>มี</td><td><b>ไม่มี</b></td></tr>
-      <tr><td><b>ขั้นราคา</b></td><td><code>RM_F</code> ต่อกิโล</td><td><code>RM_FB</code> ต่อกิโล</td><td><b>ไม่มี</b></td></tr>
-      <tr><td><b>ปลายทางในฐานข้อมูล</b></td><td>ทะเบียนกลิ่น</td><td>ทะเบียนสูตร</td><td><b>ไฟล์แนบ + เอกสารของดีล</b></td></tr>
-      <tr><td><b>บังคับวันกำหนดส่ง</b></td><td>บังคับ</td><td>บังคับ</td><td><b>ไม่บังคับ</b></td></tr>
-      <tr><td><b>คำถามหลักของจอ</b></td><td colspan="2" style="text-align:center">"ของออกมาหรือยัง"</td><td><b>"ได้ไฟล์กี่ชิ้น ยังขาดอะไร"</b></td></tr>
-    </tbody>
-  </table>
-</div>
-
-
-<h2><span class="num">07</span>✅ สายของหัวข้อนี้เดินไม่ครบ — ตัดสินและแก้แล้ว (ม-85)</h2>
-<p class="lede">
-  ไล่โค้ดวันที่ 2026-08-08 · ทั้งสามข้อยืนยันจากไฟล์จริง ไม่ใช่ข้อสังเกตจากการอ่านจอ
-</p>
-
-<h3>ก · แถวเอกสารไม่มีทางไปถึง "ได้รับแล้ว" เลยสักทาง</h3>
-<div class="note stop">
-  <code>documentBoard</code> นิยาม <code>received = stage === 'done'</code> ซึ่งต้องการ
-  <code>answerStatus === 'done'</code> · ไล่ทั้งรีโปแล้ว <b>มีที่เดียวที่เขียนค่านี้</b>:
-  <code>…/items/[itemId]/price/route.js</code> ซึ่งเป็นขั้นราคาของสายพัฒนา
-  <br>
-  เช่นเดียวกัน <code>refused = stage === 'declined'</code> เขียนได้ทางเดียวคือ
-  <code>outcome: 'rejected'</code> = <b>"ลูกค้าไม่เอา"</b> ซึ่งไม่ใช่ความหมายของ "ฝ่ายให้ไม่ได้"
-  <br>
-  ⇒ <b>แถบ "มาแล้ว X · ให้ไม่ได้ Z" นับได้ 0 เสมอ</b> · ตัวเลขเดียวที่ขยับคือ "รอเอกสาร"
-  ซึ่งเท่ากับจำนวนแถวทั้งหมดตลอดไป
-</div>
-
-<h3>ข · แถบก้าวถัดไปเสนอก้าวของสายพัฒนาให้แถวเอกสาร</h3>
-<div class="note stop">
-  <code>HOP_AT_STAGE</code> แปลงขั้น→ก้าว <b>โดยไม่ดู <code>lineKind</code></b> ⇒ แถวเอกสาร
-  ได้ปุ่มชุดเดียวกับกลิ่น/สูตร:
-  <br>
-  <code>รับเรื่อง → ส่งของ → <b>รับของ → ส่งให้ลูกค้า → บันทึกคำตอบลูกค้า → ใส่ราคา</b></code>
-  <br>
-  สี่ก้าวท้ายไม่มีความหมายกับเอกสาร (ไม่มีลูกค้าในสาย ไม่มีราคา) และก้าวสุดท้ายจะ
-  <b>ตอบ 400</b> — <i>"รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน"</i>
-  <br>
-  ⇒ ใครเดินตามปุ่มไปจนสุด แถวจะ<b>ค้างที่ "รอใส่ราคา" ถาวร ปิดใบไม่ได้</b> —
-  <b>บั๊กรูปแบบเดียวกับที่พัฒนาสูตรเคยเจอ</b> ก่อนแก้ที่ ม-54
-</div>
-
-<h3>ค · สองที่นิยาม "มาแล้ว" คนละแบบ</h3>
-<div class="note stop">
-  ในใบคำร้องใช้ <code>answerStatus</code> · บนหน้าดีลใช้ <code>readyAt</code>
-  (ดู §04) ⇒ จอเดียวกันเรื่องเดียวกัน ตอบคนละคำตอบ
-</div>
-
-<div class="note ok">
-  <b>ทางที่แบบนี้เสนอ — ตัด 4 ก้าวท้ายออกสำหรับแถวเอกสาร แล้วให้สายจบที่ 3 ก้าว</b>
-  <div class="rail" style="margin-top:10px">
-    <div class="st done">1 รอรับเรื่อง</div>
-    <div class="st done">2 กำลังทำ</div>
-    <div class="st now">3 ส่งเอกสารแล้ว</div>
-    <div class="st">จบ · ได้รับแล้ว</div>
-    <div class="st">จบ · ให้ไม่ได้</div>
+<div class="screens">
+  <div class="screen">
+    <header><b>ใบคำร้อง — มุม SA หลัง RD ส่งครบ</b><span class="path">/requests/RQ-2609-021</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="btns" style="margin-bottom:10px">
+          <span class="badge g"><b>1</b> มาแล้ว</span>
+          <span class="badge w"><b>1</b> รอเอกสาร</span>
+          <span class="badge r"><b>1</b> ให้ไม่ได้</span>
+          <span class="badge n">จากที่ขอ <b>3</b> รายการ</span>
+        </div>
+        <div class="scroll">
+          <table class="t">
+            <thead><tr><th>ชนิดเอกสาร</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              <tr><td>IFRA Certificate</td><td><span class="badge i">ส่งเอกสารแล้ว</span></td></tr>
+              <tr><td>COA — Certificate of Analysis <div class="sub">ล็อต 2609-A</div></td><td><span class="badge i">กำลังทำ</span></td></tr>
+              <tr><td>Allergen declaration <div class="sub">เหตุผล: ต้องขอจากซัพพลายเออร์โดยตรง</div></td><td><span class="badge r">ให้ไม่ได้</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="nextbar">
+        <div class="lbl"><b>IFRA Certificate</b> — ส่งเอกสารแล้ว</div>
+        <div class="btns">
+          <span class="btn" style="background:var(--navy);border-color:var(--navy);color:#fff">ได้รับแล้ว</span>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="modal">
+          <header>ได้รับแล้ว — IFRA Certificate</header>
+          <div class="body">
+            <div class="field"><label>วันที่ได้รับเอกสาร</label><div class="inp block">13/09/2026</div></div>
+            <div class="sub">ผู้ขอเป็นคนกด — ยืนยันว่าไฟล์ที่ได้ใช้ได้จริง (คนถามคือคนตัดสิน)</div>
+          </div>
+          <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
+        </div>
+        <div class="note ok" style="margin-bottom:0">
+          ทุกแถวจบ (ได้รับแล้ว / ให้ไม่ได้) ⇒ ใบเป็น <b>ตอบแล้ว</b> เอง
+          → ปุ่มสุดท้ายของ SA คือ <b>ปิดเรื่อง</b> · แถบตัวเลขบนใบนับได้จริง
+          เพราะสายเดินถึงจบแล้ว (ม-85 — เดิม "มาแล้ว" เป็น 0 ตลอดกาล)
+        </div>
+      </div>
+    </div>
   </div>
-  <ul class="tight">
-    <li><b>ฝ่าย</b> แนบไฟล์ที่แถว → กด <b>ส่งของ</b> (มีอยู่แล้ว)</li>
-    <li><b>ผู้ขอ</b> กด <b>ได้รับแล้ว</b> ⇒ เขียน <code>answerStatus = 'done'</code>
-      — ปุ่มนี้แทน "รับของ" ที่มีอยู่แล้ว ไม่ใช่ก้าวใหม่ แค่เปลี่ยนว่ามันเขียนช่องไหน</li>
-    <li><b>ฝ่าย</b> กด <b>ให้ไม่ได้</b> + เหตุผล ⇒ <code>answerStatus = 'declined'</code>
-      + <code>declineReason</code> (constraint <code>answer_evidence</code> บังคับคู่นี้อยู่แล้ว)</li>
-    <li>หน้าดีลเปลี่ยนไปอ่าน <b>เกณฑ์เดียวกับใบคำร้อง</b> ⇒ ข้อ ค หายไปเอง</li>
-  </ul>
-  ⚠️ <b>ไม่เพิ่มตารางหรือ endpoint ใหม่</b> — ใช้ <code>hopPatch</code> เดิม เพิ่มสาขา
-  ตาม <code>lineKind</code> ที่เดียว ซึ่งเป็นที่ที่กติกาของก้าวอยู่แล้ว
 </div>
 
 
-<h2><span class="num">08</span>ช่องว่างที่แบบนี้เสนอให้ปิด</h2>
+<h2><span class="num">09</span>กติกาที่คุมสายนี้ทั้งเส้น</h2>
 
 <div class="scroll">
   <table class="t">
-    <thead><tr><th style="width:34px">#</th><th>ช่องว่าง</th><th>อาการที่ผู้ใช้เจอ</th><th>เสนอ</th></tr></thead>
+    <thead><tr><th>มติ</th><th>กติกา</th></tr></thead>
     <tbody>
-      <tr>
-        <td>1</td>
-        <td><b>ไม่มีปุ่ม "ได้รับแล้ว" / "ให้ไม่ได้"</b></td>
-        <td>แถบตัวเลขบนสุดของใบ — ซึ่งเป็นเหตุผลทั้งหมดที่หัวข้อนี้มีบรรทัด — โชว์ <b>มาแล้ว 0</b> ตลอดไป</td>
-        <td>สองก้าวจบตาม §07 · เขียน <code>answerStatus</code> ผ่าน <code>hopPatch</code> เดิม</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td><b>ก้าวของสายพัฒนาโผล่ในแถวเอกสาร</b></td>
-        <td>เดินตามปุ่มไปจนสุดแล้ว <b>ค้างที่ "รอใส่ราคา" ถาวร ปิดใบไม่ได้</b> · ก้าวสุดท้ายตอบ 400</td>
-        <td><code>HOP_AT_STAGE</code> แยกตาม <code>lineKind</code> — เอกสารจบที่ 3 ก้าว</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td><b>"มาแล้ว" นิยามคนละแบบสองที่</b></td>
-        <td>หน้าดีลบอกว่ามาแล้ว ในใบคำร้องยังบอกว่ารอ — ทั้งคู่ "ถูก" ในตัวเอง</td>
-        <td>ให้ <code>documents/all</code> อ่านเกณฑ์เดียวกับ <code>documentBoard</code></td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td><b>ไม่บังคับวันกำหนดส่ง</b></td>
-        <td>ใบขอเอกสารที่ดองไว้ <b>ไม่มีวันขึ้นเป็น "เลยกำหนด"</b> บนภาพรวมของฝ่าย ไม่ว่าจะนานแค่ไหน</td>
-        <td><b>ตัดสินแล้ว (ม-83)</b> — บังคับทั้งวันคาดหวังและวันกำหนดส่ง ทุกหัวข้อ</td>
-      </tr>
-      <tr>
-        <td>5</td>
-        <td><b>ยังอ้างใบเสนอราคา / ล็อตการผลิตไม่ได้</b></td>
-        <td>ของจริง IFRA/COA ผูกกับ <b>ล็อต</b> — ตอนนี้พิมพ์ลงช่องรายละเอียดเป็นข้อความเปล่า</td>
-        <td><b>ยังไม่ทำ โดยตั้งใจ</b> — ไม่มีที่เก็บทั้งสองอย่าง · ห้ามเดาโครงสร้างล่วงหน้า</td>
-      </tr>
+      <tr><td><b>ม-83</b></td><td>วันคาดหวัง (SA ตอนยื่น) และวันกำหนดส่ง (RD ตอนรับเรื่อง) <b>บังคับทุกคำร้อง</b> — "เลยกำหนด" นับจากวันที่ RD รับปาก</td></tr>
+      <tr><td><b>ม-84</b></td><td>แนบไฟล์ได้ตั้งแต่หน้าสร้าง — ระบบอัปให้หลังบันทึกร่าง</td></tr>
+      <tr><td><b>ม-85</b></td><td>สายแถวเอกสารจบสองทาง: <b>ได้รับแล้ว</b> (SA กด) / <b>ให้ไม่ได้</b>+เหตุผล (RD กด) · ก้าวสายพัฒนาถูกตัด</td></tr>
+      <tr><td><b>ม-86</b></td><td>เลือกดีลแล้ว ลูกค้า+โครงการโชว์กลับทันที — derive เงียบ ๆ ไม่ได้</td></tr>
+      <tr><td><b>ม-87</b></td><td>ขอเอกสารล็อกฝ่ายที่ <b>RD</b> — ไม่มีขั้นเลือกฝ่ายให้กดทิ้ง · PC/FN ปิดเก็บ (จาง ไม่ซ่อน)</td></tr>
+      <tr><td><b>ม-88</b></td><td>อ้าง QT/SO/FG ได้ (ถ้ามี · ตรวจว่าอยู่ดีลเดียวกัน) · ไฟล์ที่ RD ส่งไหลเข้าแท็บเอกสารของดีล+โครงการเอง</td></tr>
     </tbody>
   </table>
 </div>
 
 <div class="note">
-  ข้อ 5 เป็นมติเดิมที่ยังไม่เปลี่ยน — ผู้ใช้บอกไว้ว่า <i>"เก็บไว้ทีหลังก็ได้"</i> ·
-  เพิ่มชนิดเอกสารที่ผู้ใช้ไม่ได้พูดถึงเองตอนนี้ = เดาแทนเขา
+  <b>ขอบเขต</b> — เอกสารของ<b>โครงการ/ดีล</b>เท่านั้น · เอกสารทะเบียนลูกค้า (หนังสือรับรอง ·
+  ภ.พ.20) และของสินค้า (Artwork) อยู่คนละสาย — แนบตรงที่ทะเบียนนั้น ไม่ได้ขอผ่านคำร้อง
 </div>
 
 </div>
