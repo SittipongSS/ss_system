@@ -15,7 +15,7 @@
 // แล้วโครงการทั้ง 11 ใบบน prod เป็น NPD หมด) · แผ่นเลือกตรงเจตนานี้กว่าดรอปดาวน์:
 // ยังไม่กด = ไม่มีแผ่นไหนติดสี ไม่มีค่าแอบเลือกให้ · ตัวบังคับจริงอยู่ที่ฟอร์มและ API
 import OptionTiles from "@/components/ui/OptionTiles";
-import { BUSINESS_LINES, BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
+import { BUSINESS_LINES, BUSINESS_LINE_HINTS, BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 
 export default function BusinessLineSelect({
   value = "",
@@ -34,6 +34,9 @@ export default function BusinessLineSelect({
         options={BUSINESS_LINES.map((line) => ({
           value: line,
           label: BUSINESS_LINE_LABELS[line] || line,
+          // บรรทัดรองแบบเดียวกับแผ่นประเภทดีล (มติผู้ใช้ 2026-08-08: แผ่นเลือก
+          // ทุกที่ต้องหน้าตาภาษาเดียวกัน) — ใจความ "งานนี้จบยังไง" จาก mig 0191
+          description: BUSINESS_LINE_HINTS[line],
         }))}
       />
     </div>
