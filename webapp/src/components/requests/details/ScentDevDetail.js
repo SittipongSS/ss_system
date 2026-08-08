@@ -13,11 +13,12 @@ import Button from "@/components/ui/Button";
 import BriefBoard from "@/components/requests/BriefBoard";
 import PdrForm from "@/components/requests/PdrForm";
 import PdrSummary from "@/components/requests/PdrSummary";
+import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
-  request, board, canEditAttachments, saving,
+  request, board, canEditAttachments, saving, rowStep,
   pdrDraft, onPdrDraftChange, onPdrEdit, onPdrSave, onPdrCancel, onOpenDocument,
 }) {
   return (
@@ -32,7 +33,14 @@ export default function ScentDevDetail({
 
       {/* ⭐ ตารางสรุปทั้งใบ (แบบหน้าจอ §07) — "สถานการณ์ตอนนี้" ส่วน PDR คือ
           "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มอยู่ท้ายเธรดที่เดียว (ม-49) */}
-      <BriefBoard groups={board} />
+      {/* ปุ่มก้าวติดแถว direction (ม-94) — แถวของ board ชี้กลับ item ดิบด้วย id */}
+      <BriefBoard
+        groups={board}
+        renderStep={rowStep ? (d) => {
+          const item = (request.items || []).find((it) => it.id === d.id);
+          return item ? <RowStepActions row={item} {...rowStep} /> : null;
+        } : null}
+      />
 
 
       {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย */}
