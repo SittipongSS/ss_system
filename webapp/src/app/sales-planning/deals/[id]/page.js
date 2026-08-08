@@ -14,7 +14,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -207,11 +207,10 @@ export default function DealOverviewPage() {
     load();
   }, [load]);
 
-  // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ PM — โหลดครั้งเดียว
+  // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ — โหลดครั้งเดียว
   useEffect(() => {
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
@@ -404,7 +403,6 @@ export default function DealOverviewPage() {
   }, []);
   const { owners: dealOwners } = useDealOwners(meId);
   const [customers, setCustomers] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const dealBrand = useMemo(() => {
     const value = String(deal?.metadata?.brand || deal?.brand || "").trim();
@@ -520,7 +518,9 @@ export default function DealOverviewPage() {
       // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
       startDate: deal.startDate || new Date().toISOString().slice(0, 10),
       dueDate: deal.endDate || deal.expectedCloseDate || "",
-      type: dealTypeOf(deal),
+      // ⚠️ ไม่ส่ง `type` แล้ว (มติ 2026-08-08: โครงการ = ภาชนะ ไม่มีช่องประเภทงาน) —
+      // endpoint create-project ใช้ประเภทของดีลก่อตั้งเอง (fallback `deal.dealType`)
+      // แม่แบบไทม์ไลน์จึงตรงประเภทดีลเสมอ เลือกผิดไม่ได้อีก
       // ชื่อ *ปัจจุบัน* + id — ส่งชื่อที่ค้างในแถวไปจะจับคู่บัญชีไม่ได้ แล้วโครงการ
       // ใหม่เกิดมาพร้อม `aeOwnerId` ว่าง (สาเหตุที่ prod มี 11/14 ใบเป็นแบบนั้น)
       aeOwner: ownerName,
@@ -795,10 +795,15 @@ export default function DealOverviewPage() {
             </div>
           </SalesDetailOverview>
 
-          {/* จุดจัดการเดียวของดีล — อยู่แถบขวาตลอดทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
+          {/* จุดจัดการเดียวของดีล — แถบขวาทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
               เดินหน้า (เชื่อม/สร้างโครงการ) · จัดการตัวระเบียน (แก้ไข/ลบ) · ปิดดีล
-              แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม */}
-          <DetailPageLayout aside={
+              แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม
+
+              ⚠️ **ยกเว้นแท็บไทม์ไลน์ — ซ่อนการ์ด** (มติผู้ใช้ 2026-08-08 ตามหน้าโครงการ
+              มติ 2026-08-02): ตารางไทม์ไลน์คือพื้นที่ทำงานจริงและอยากได้ ~1250px
+              การ์ดกิน 348px แล้วเหลือไม่พอจนต้องสกอลล์แนวนอน — ความกว้างชนะ
+              ความสม่ำเสมอ ทุกปุ่มบนการ์ดยังกดได้จากแท็บอื่นครบ */}
+          <DetailPageLayout aside={tab === "timeline" ? null : (
             <RecordControlCard
               lifecycle={controlLc}
               record={deal}
@@ -808,7 +813,7 @@ export default function DealOverviewPage() {
               extraActions={recordActions}
               busy={!!actionBusy}
             />
-          }>
+          )}>
           <div className="flex flex-col gap-5">
 
           {tab === "overview" && <ContextGrid>
@@ -1431,7 +1436,9 @@ export default function DealOverviewPage() {
         )}
       </Modal>
 
-      <ProjectFormModal
+      {/* ฟอร์มภาชนะตัวเดียวกับหน้า /sa/projects (มติ 2026-08-08 — ฟอร์มเดียวสองทางเรียก)
+          ดีลใบนี้เป็นดีลก่อตั้ง: แม่แบบไทม์ไลน์มาจากประเภทของมันเองที่ endpoint */}
+      <SalesProjectCreateModal
         open={pmModalOpen}
         onClose={() => setPmModalOpen(false)}
         editingId={null}
@@ -1439,9 +1446,9 @@ export default function DealOverviewPage() {
         onSuccess={handlePmSuccess}
         customers={customers}
         categories={categories}
-        allProducts={allProducts}
         createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
-        createLabel="จัดการโครงการ"
+        createLabel="สร้างโครงการจากดีลนี้"
+        subtitle={deal ? `ดีลก่อตั้ง: ${deal.code || deal.id} · ${deal.title || ""} · ${dealTypeOf(deal)} — ดีลถัดไปของงานเดียวกันผูกเข้าโครงการนี้ได้` : null}
       />
 
     </Workspace>

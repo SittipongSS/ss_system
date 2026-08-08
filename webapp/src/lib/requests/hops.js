@@ -12,22 +12,49 @@
 // (คอนเฟิร์มต้องมีจำนวน · ตอบแล้วต้องมีวันที่ · ไม่เอาต้องมีเหตุผล) ถ้าปล่อยให้ไป
 // ตายที่ DB ผู้ใช้จะได้ error ดิบภาษาอังกฤษที่อ่านไม่รู้เรื่อง
 import { ROW_STAGES, ROW_STAGE_LABELS, rowStage } from '@/lib/requests/rowStage';
+import { isDocLineKind } from '@/lib/requests/docTypes';
 
-export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome'];
+// ⭐ สองก้าวท้ายเป็นของสายเอกสารเท่านั้น (ม-85) — สายนั้นไม่มีลูกค้า/ราคา จึงจบด้วย
+//   receive  ผู้ขอยืนยันว่าได้ไฟล์ที่ใช้ได้จริง (answerStatus = done)
+//   refuse   ฝ่ายปฏิเสธ พร้อมเหตุผลบังคับ (answerStatus = declined)
+export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse'];
 
 // ก้าวไหนเป็นของฝั่งไหน — 'dept' = ฝ่ายที่ต้องตอบ · 'requester' = ผู้ขอ
 export const HOP_OWNER = {
   ack: 'dept', ready: 'dept', pickup: 'requester', send: 'requester', outcome: 'requester',
+  receive: 'requester', refuse: 'dept',
 };
 
-// ขั้นที่แถวต้องอยู่ **ก่อน** จะเดินก้าวนี้ได้
+// ขั้นที่แถวต้องอยู่ **ก่อน** จะเดินก้าวนี้ได้ (array = ได้หลายขั้น)
 const HOP_FROM_STAGE = {
   ack: 'awaiting_ack',
   ready: 'developing',
   pickup: 'ready',
   send: 'picked_up',
   outcome: 'sent',
+  // ⚠️ receive รับได้จากขั้นค้างเก่าด้วย (picked_up/sent) — แถวเอกสารที่เคยหลงเดิน
+  // สายพัฒนาไปแล้วต้องมีทางจบ ไม่ใช่ติดถาวรเพราะเราแก้กติกา
+  receive: ['ready', 'picked_up', 'sent'],
+  // ปฏิเสธ = คำตอบของฝ่ายระหว่างที่งานยังอยู่ในมือ — รับเรื่องแล้วแต่ยังไม่ส่ง ·
+  // ส่งแล้ว (ready) คือมีของแล้ว ไม่มีเหตุให้ปฏิเสธอีก
+  refuse: 'developing',
 };
+
+// ก้าวนี้ใช้กับรูปร่างบรรทัดนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
+//
+// 🐞 **ด่านที่ปิดบั๊ก "ค้างที่รอใส่ราคาถาวร"**: เดิมแถวเอกสารเดินก้าวของสายพัฒนาได้
+// ครบชุด (รับของ → ส่งให้ลูกค้า → บันทึกคำตอบ) แล้วไปตายที่ขั้นราคาเพราะไม่มีกลิ่น/
+// สูตรให้ผูก ⇒ ปิดใบไม่ได้ตลอดกาล · ตัดตั้งแต่ก้าวแรกที่ผิดสาย ไม่ใช่ปล่อยไปตายปลายทาง
+function hopLineKindError(row, hop) {
+  const doc = isDocLineKind(row?.lineKind);
+  if (doc && ['pickup', 'send', 'outcome'].includes(hop)) {
+    return 'แถวเอกสารไม่มีก้าวของสายพัฒนา — ผู้ขอกด "ได้รับแล้ว" เมื่อไฟล์ใช้ได้จริง';
+  }
+  if (!doc && ['receive', 'refuse'].includes(hop)) {
+    return 'ก้าวนี้ใช้กับแถวขอเอกสารเท่านั้น';
+  }
+  return null;
+}
 
 export const ROW_OUTCOMES = ['confirmed', 'revise', 'rejected'];
 
@@ -54,12 +81,15 @@ const ROW_STAGE_TEXT = ROW_STAGE_LABELS;
 export function hopStageError(row, hop) {
   if (!row) return 'ไม่พบรายการ';
   if (!ROW_HOPS.includes(hop)) return 'ก้าวไม่ถูกต้อง';
+  const kindError = hopLineKindError(row, hop);
+  if (kindError) return kindError;
   const stage = rowStage(row);
   const want = HOP_FROM_STAGE[hop];
-  if (stage === want) return null;
+  const wanted = Array.isArray(want) ? want : [want];
+  if (wanted.includes(stage)) return null;
 
   // เดินไปแล้ว vs ยังไม่ถึง — บอกให้ต่างกัน เพราะทางแก้คนละทาง
-  const passed = ROW_STAGES.indexOf(stage) > ROW_STAGES.indexOf(want);
+  const passed = ROW_STAGES.indexOf(stage) > ROW_STAGES.indexOf(wanted[0]);
   return passed
     ? `รายการนี้ผ่านขั้นนี้ไปแล้ว (ตอนนี้อยู่ขั้น "${ROW_STAGE_TEXT[stage]}")`
     : `ยังไม่ถึงขั้นนี้ — ตอนนี้อยู่ขั้น "${ROW_STAGE_TEXT[stage]}"`;
@@ -76,10 +106,23 @@ export function hopValuesError(hop, values = {}) {
     return null;
   }
 
-  // ก้าวที่บันทึกว่า "เกิดขึ้นเมื่อไร" ต้องมีวันที่เสมอ — เส้นวัด lead time
-  // ทั้งหมดอิงวันพวกนี้ ปล่อยให้ว่างแล้วตัวเลขจะหายไปทั้งแถวโดยไม่มีอะไรฟ้อง
-  if (['ready', 'pickup', 'send'].includes(hop)) {
+  // ⭐ ก้าวส่ง (ready) ไม่ถามวันแล้ว (ม-92: "ไม่จำเป็นต้องใส่วันที่ ใช้ stamp
+  // วันเวลา") — ว่าง = hopPatch ประทับวันไทยของวันที่กดให้เอง · เส้น lead time
+  // ยังครบเพราะช่องวันไม่เคยว่างจริง แค่ย้ายจากมือคนไปเป็นตราประทับ
+  if (hop === 'ready') return null;
+  // ⚠️ ก้าวฝั่งผู้ขอ (pickup/send/receive) ยังถาม — พวกนั้นบันทึกเหตุการณ์นอกระบบ
+  // (ของถึงมือลูกค้าเมื่อไร) ที่มักเกิดก่อนวันกดบันทึก
+  if (['pickup', 'send', 'receive'].includes(hop)) {
     return at ? null : 'ต้องระบุวันที่';
+  }
+
+  // ปฏิเสธ — เหตุผลคือหลักฐาน (constraint answer_evidence บังคับคู่ declined+เหตุผล)
+  // ไม่มีช่องวันของตัวเอง: เวลาอยู่บนเหตุการณ์ในเธรดแล้ว
+  if (hop === 'refuse') {
+    const reason = String(values.note ?? '').trim();
+    if (!reason) return 'ต้องบอกเหตุผลที่ปฏิเสธ';
+    if (reason.length > 2000) return 'เหตุผลยาวเกิน 2000 ตัวอักษร';
+    return null;
   }
 
   // outcome — ข้อบังคับมาจาก constraint ของ 0202 โดยตรง
@@ -121,6 +164,26 @@ export function hopPatch(hop, values = {}, user = null, today = null) {
   if (hop === 'pickup') return { pickedUpAt: at, pickedUpById: by.id, pickedUpByName: by.name };
   if (hop === 'send') return { sentAt: at, sentById: by.id, sentByName: by.name };
 
+  // ── สองก้าวจบของสายเอกสาร (ม-85) ─────────────────────────────────────
+  // ⭐ ได้รับแล้ว = ผู้ขอยืนยันว่าไฟล์ใช้ได้จริง — คนถามคือคนตัดสินว่าคำตอบใช้ได้
+  //   (แนวคิดเดียวกับปุ่มปิดเรื่อง) · วันเก็บที่ pickedUpAt — "วันได้รับ" ตรงตัว
+  //   และผ่าน CHECK hop_chain (pickedUpAt ต้องมี readyAt ซึ่งมีแล้วเพราะฝ่ายส่งก่อน)
+  if (hop === 'receive') {
+    return {
+      pickedUpAt: at, pickedUpById: by.id, pickedUpByName: by.name,
+      answerStatus: 'done',
+    };
+  }
+  // ⭐ ปฏิเสธ = ฝ่ายจบแถวแบบไม่ได้ของ — declineReason บังคับโดย constraint
+  //   answer_evidence · ไม่แตะช่องก้าว (แถวหยุดที่ขั้นที่มันอยู่ แล้ว rowStage อ่าน
+  //   answerStatus ชนะเสมอ)
+  if (hop === 'refuse') {
+    return {
+      answerStatus: 'declined',
+      declineReason: String(values.note ?? '').trim(),
+    };
+  }
+
   const note = String(values.note ?? '').trim() || null;
   const patch = {
     outcome: values.outcome,
@@ -142,7 +205,19 @@ export function hopPatch(hop, values = {}, user = null, today = null) {
 
 export const hopLabel = (hop, outcome) => (hop === 'outcome'
   ? (OUTCOME_LABELS[outcome] || 'บันทึกคำตอบลูกค้า')
-  : { ack: 'รับเรื่อง', ready: 'ส่งของ', pickup: 'รับของ', send: 'ส่งให้ลูกค้า' }[hop] || hop);
+  : {
+    ack: 'รับเรื่อง', ready: 'ส่งของ', pickup: 'รับของ', send: 'ส่งให้ลูกค้า',
+    receive: 'ได้รับแล้ว', refuse: 'ปฏิเสธ',
+  }[hop] || hop);
+
+// ป้ายก้าวที่รู้จักสายของแถว (ม-89: "เปลี่ยนคำว่า ส่งของ เป็น ส่งเอกสาร") —
+// สายเอกสารเรียก "ส่งเอกสาร" · สายพัฒนายังเรียก "ส่งของ" เหมือนเดิม
+// ⚠️ ผู้เรียกที่มี `row` ในมือใช้ตัวนี้เสมอ — `hopLabel` เปล่าเหลือไว้ให้จุดที่
+// ไม่รู้จักแถว (เช่น ratchet เทสต์ป้ายกลาง)
+export const hopLabelFor = (row, hop, outcome) => {
+  if (isDocLineKind(row?.lineKind) && hop === 'ready') return 'ส่งเอกสาร';
+  return hopLabel(hop, outcome);
+};
 
 // ── แถวที่เกิดจากการแก้ ───────────────────────────────────────────────────
 //
@@ -185,4 +260,7 @@ export function followUpRowFrom(row, sortOrder) {
 // ⚠️ kind ที่ไม่ได้ลงทะเบียนจะเงียบสนิทบนจอ (appendUpdate เตือนอย่างเดียว ไม่ตีกลับ)
 export const hopUpdateKind = (hop, outcome) => (hop === 'outcome'
   ? (ROW_OUTCOMES.includes(outcome) ? outcome : 'comment')
-  : { ack: 'acknowledge', ready: 'ready', pickup: 'pickup', send: 'sent' }[hop] || 'comment');
+  : {
+    ack: 'acknowledge', ready: 'ready', pickup: 'pickup', send: 'sent',
+    receive: 'received', refuse: 'refused',
+  }[hop] || 'comment');

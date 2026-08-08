@@ -3,13 +3,12 @@ import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ClipboardList, ExternalLink, FileText, FolderKanban, Layers, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
@@ -26,7 +25,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
-import SortControl from "@/components/ui/SortControl";
+import MenuSelect from "@/components/ui/MenuSelect";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import ForecastMonthCell from "@/components/salesPlanning/ForecastMonthCell";
@@ -41,6 +40,10 @@ import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
+
+/* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
+   (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
+const dealValue = (deal) => Number((isWonStage(deal.stage) ? deal.wonValue ?? deal.projectValue : deal.projectValue) || 0);
 
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
@@ -66,12 +69,15 @@ export default function SalesPlanningPipelinePage() {
   const [customers, setCustomers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
+  /* จัดกลุ่มรายการดีล (มติผู้ใช้ 2026-08-08) — ดูภาพรวมเป็นก้อนต่อลูกค้า/โครงการ/แบรนด์/AE
+     แล้วกดย่อ-ขยายทีละกลุ่มได้ · ตัวเลือกน้อยจึงเป็น Segmented ไม่ใช่ dropdown (มาตรฐานระบบ) */
+  const [groupBy, setGroupBy] = useState("none");
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
   /* ⚠️ ตั้งต้นที่ขอบเขต **กว้างสุด** ไม่ใช่ "ของฉัน" — เดิมตั้งต้นที่ตัวแรกของลิสต์
@@ -105,6 +111,14 @@ export default function SalesPlanningPipelinePage() {
     { key: "amount", label: "มูลค่า" },
   ];
 
+  const GROUP_OPTIONS = [
+    { value: "none", label: "ไม่จัดกลุ่ม" },
+    { value: "customer", label: "ลูกค้า" },
+    { value: "project", label: "โครงการ" },
+    { value: "brand", label: "แบรนด์" },
+    { value: "owner", label: "AE" },
+  ];
+
   // ทิศตั้งต้นต่อคีย์: ตัวหนังสือ/สถานะอ่าน ก→ฮ (asc), วันที่/มูลค่าเอาใหม่/มากก่อน (desc)
   const defaultDir = (key) => (key === "name" || key === "status" ? "asc" : "desc");
   const handleSort = (key) => {
@@ -132,9 +146,6 @@ export default function SalesPlanningPipelinePage() {
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
   const [shippingDealId, setShippingDealId] = useState(null);
-  const [pmModalOpen, setPmModalOpen] = useState(false);
-  const [pmDeal, setPmDeal] = useState(null);
-  const [pmInitial, setPmInitial] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,10 +189,10 @@ export default function SalesPlanningPipelinePage() {
     load();
   }, [load]);
 
-  // ข้อมูลสำหรับโมดัลสร้างโครงการ PM (หมวดสินค้า + FG) — โหลดครั้งเดียว
+  // หมวดสินค้าให้ฟอร์มดีล (สร้าง/แก้) — โหลดครั้งเดียว
+  // (โมดัลสร้างโครงการเคยอยู่หน้านี้แบบไม่มีปุ่มเรียก — ถอดทิ้งแล้ว ตัวจริงอยู่หน้าดีลรายใบ)
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
   /* ชื่อเจ้าของดีลที่ควรขึ้นจอ — `ownerName` ในแถวเป็นสำเนา ณ ตอนบันทึก ซึ่งไม่ขยับ
@@ -237,6 +248,52 @@ export default function SalesPlanningPipelinePage() {
     });
   }, [deals, query, inScopeDeal, dueFilter, currentMonth, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
 
+  /* จับกลุ่มจากรายการที่กรอง+เรียงแล้ว (ลำดับในกลุ่ม = ลำดับที่ผู้ใช้เลือกเรียงไว้)
+     · กุญแจกลุ่มใช้ id ก่อน (กันชื่อซ้ำ) — แบรนด์เป็นข้อความอิสระจึง normalize ตัวพิมพ์
+     · กลุ่ม "ไม่ระบุ" ไปท้ายเสมอ · เรียงกลุ่ม: เรียงตามชื่อเมื่อผู้ใช้เรียงตามชื่อดีล
+       นอกนั้นเอามูลค่ารวมมากก่อน (คนขายอยากเห็นก้อนใหญ่ก่อน) */
+  const groupedDeals = useMemo(() => {
+    if (groupBy === "none") return null;
+    const map = new Map();
+    for (const deal of filteredDeals) {
+      let key; let label;
+      if (groupBy === "customer") {
+        key = deal.customerId || (deal.customerName || "").trim().toLocaleLowerCase("th-TH") || "__none";
+        label = deal.customerName || "ไม่ระบุลูกค้า";
+      } else if (groupBy === "project") {
+        key = deal.projectId || "__none";
+        label = deal.projectId
+          ? (projects.find((p) => p.id === deal.projectId)?.name || deal.title || "โครงการ")
+          : "ไม่ผูกโครงการ";
+      } else if (groupBy === "brand") {
+        const raw = String(deal.metadata?.brand || "").trim();
+        key = raw ? raw.toLocaleLowerCase("th-TH") : "__none";
+        label = raw
+          ? brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, raw)
+          : "ไม่ระบุแบรนด์";
+      } else {
+        key = deal.ownerId || deal.team || "__none";
+        label = ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "ไม่ระบุผู้ดูแล");
+      }
+      const group = map.get(key) || { key, label, deals: [], total: 0, missing: key === "__none" };
+      group.deals.push(deal);
+      group.total += dealValue(deal);
+      map.set(key, group);
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.missing !== b.missing) return a.missing ? 1 : -1;
+      if (sortKey === "name") return a.label.localeCompare(b.label, "th");
+      return (b.total - a.total) || a.label.localeCompare(b.label, "th");
+    });
+  }, [groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey]);
+
+  const allCollapsed = !!groupedDeals?.length && groupedDeals.every((g) => collapsedGroups.has(g.key));
+  const toggleGroup = (key) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
   /* นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบเตือนบอกว่า
@@ -252,7 +309,7 @@ export default function SalesPlanningPipelinePage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}`,
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}|${groupBy}`,
     });
 
   const openNewDeal = () => setCreateModal(true);
@@ -377,32 +434,6 @@ export default function SalesPlanningPipelinePage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบสลิป/PO/เอกสารยืนยันสั่งซื้อ + วันที่เอกสาร)
   const acceptQuotation = (quote) => setWonQuote(quote);
-
-  // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
-  const openCreatePM = (deal) => {
-    setPmDeal(deal);
-    setPmInitial({
-      name: deal.title || "",
-      customerId: deal.customerId || "",
-      // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
-      startDate: deal.startDate || new Date().toISOString().slice(0, 10),
-      dueDate: deal.endDate || deal.expectedCloseDate || "",
-      type: dealTypeOf(deal),
-      // ชื่อ *ปัจจุบัน* + id ของเจ้าของดีล — ถ้าส่งชื่อที่ค้างในแถวไป ตัวจับคู่ใน
-      // ฟอร์มจะหาบัญชีไม่เจอแล้วโครงการใหม่เกิดมาพร้อม `aeOwnerId` ว่างตั้งแต่วันแรก
-      aeOwner: ownerNameOf(deal),
-      aeOwnerId: deal.ownerId || null,
-      metadata: { brand: deal.metadata?.brand || "" },
-    });
-    setPmModalOpen(true);
-  };
-
-  const handlePmSuccess = async (data) => {
-    setPmModalOpen(false);
-    setPmDeal(null);
-    if (data?.productWarning) setError(data.productWarning);
-    await load();
-  };
 
   // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
@@ -550,6 +581,103 @@ export default function SalesPlanningPipelinePage() {
   const money = (value) => fmtMoney(value);
   const pctFmt = (value) => (value == null ? "–" : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
 
+  /* แถวดีลหนึ่งแถว — ใช้ร่วมกันทั้งโหมดตารางปกติ (แบ่งหน้า) และโหมดจัดกลุ่ม
+     ต้องเป็นตัวเดียวกันเสมอ ไม่งั้นสองโหมดจะเพี้ยนหากันแบบเดียวกับฟอร์มสร้าง/แก้ */
+  const dealRow = (deal) => (
+    <DetailRow key={deal.id} href={`/sa/deals/${deal.id}`} className="premium-row">
+      <td>
+        {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
+            ของ /sa/deals/[id] เป็นพันครั้ง/วัน (แถวละ 3 ลิงก์ × ทุกแถวที่เห็น) */}
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
+          <strong>
+            {deal.title}
+            {deal.forecastDrift?.hasDrift && (
+              <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
+            )}
+          </strong>
+          <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
+            {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
+          </span>
+        </Link>
+      </td>
+      <td onClick={(event) => event.stopPropagation()}>
+        <StageCell
+          deal={deal}
+          canEdit={!!deal.canEdit}
+          className="ui-badge-cell ui-badge-w-stage"
+          onSaved={load}
+        />
+      </td>
+      <td className="step-cell">
+        {/* ขั้นตอนปัจจุบันตามไทม์ไลน์ (มติผู้ใช้ 2026-08-08): บรรทัดบน = เลข n/รวม
+            บรรทัดล่าง = ชื่อขั้นตอน · คลิกไปแท็บไทม์ไลน์ของดีลตรง ๆ
+            สไตล์อยู่ที่ .step-cell-* ใน globals.css — ห้ามกลับมาเขียน inline (เพดาน audit) */}
+        {deal.timelineStep ? (
+          <Link
+            prefetch={false}
+            href={`/sa/deals/${deal.id}?tab=timeline`}
+            className={`linklike step-cell-link${deal.timelineStep.current ? "" : " step-cell-done"}`}
+            title="เปิดไทม์ไลน์ดีล"
+          >
+            <span className="mono step-cell-num">
+              {deal.timelineStep.current || deal.timelineStep.total}/{deal.timelineStep.total}
+            </span>
+            <span className="step-cell-name">
+              {deal.timelineStep.current ? deal.timelineStep.name : "เสร็จครบทุกขั้น"}
+            </span>
+          </Link>
+        ) : (
+          <span className="step-cell-empty">-</span>
+        )}
+      </td>
+      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+        {isClosedStage(deal.stage)
+          ? <span style={{ color: "var(--text-3)" }}>-</span>
+          : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
+      </td>
+      <td style={{ textAlign: "center" }}>
+        {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
+      <td onClick={(event) => event.stopPropagation()}>
+        <ForecastMonthCell
+          deal={deal}
+          currentMonth={currentMonth}
+          canEdit={deal.canEdit && !isClosedStage(deal.stage)}
+          onSaved={load}
+        />
+      </td>
+      <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
+        {fmtMoney(dealValue(deal))}
+      </td>
+      <td className="num" onClick={(event) => event.stopPropagation()}>
+        {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" รวมที่เหลือ (มติผู้ใช้ 2026-08-01)
+            ของเดิมกระจาย 8 ปุ่มใน 5 คอลัมน์ · กติกาว่าปุ่มไหนโผล่มาจาก
+            dealLifecycle ตัวเดียวกับที่หน้ารายละเอียดจะใช้ */}
+        <RecordActionMenu
+          lifecycle={dealLc}
+          record={deal}
+          user={viewer}
+          busy={shippingDealId === deal.id}
+          recordLabel={deal.title}
+          onSelect={(transition) => {
+            /* ทั้งผูกและสร้างโครงการลงมือที่ฟอร์มแก้ไขดีล (ต้องเลือกโครงการ)
+               ไม่ใช่ยิง /transition — ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ */
+            if (!["link_project", "create_project"].includes(transition.id)) return false;
+            openEditDeal(deal);
+            return true;
+          }}
+          onTransition={(actionId, values) => runDealTransition(deal, actionId, values)}
+          canEdit={!!deal.canEdit}
+          canDelete={canDeleteDeal(deal, { role, superuser })}
+          onEdit={() => openEditDeal(deal)}
+          onDelete={() => deleteDeal(deal)}
+          extraItems={rowLinks(deal)}
+        />
+      </td>
+    </DetailRow>
+  );
+
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
@@ -673,14 +801,46 @@ export default function SalesPlanningPipelinePage() {
               ]}
             />
 
+            {/* จัดกลุ่ม/เรียง = ปุ่มทรงเดียวกับตัวกรอง ชื่อ+ไอคอนอยู่ในปุ่ม (มติผู้ใช้
+                2026-08-08 — ลดพื้นที่ ไม่มีป้ายนอกปุ่ม) · ปุ่มไอคอนข้าง ๆ ไม่มีคำอธิบาย
+                เหลือ tooltip: ย่อ/ขยายทุกกลุ่ม กับ ทิศทางเรียง */}
+            <MenuSelect
+              icon={Layers}
+              label="จัดกลุ่ม"
+              title="จัดกลุ่มรายการดีล"
+              value={groupBy}
+              onChange={(value) => { setGroupBy(value); setCollapsedGroups(new Set()); }}
+              options={GROUP_OPTIONS}
+              isActive={(value) => value !== "none"}
+            />
+            {!!groupedDeals?.length && (
+              <Button
+                iconOnly
+                onClick={() => setCollapsedGroups(allCollapsed ? new Set() : new Set(groupedDeals.map((g) => g.key)))}
+                title={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
+                aria-label={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
+                icon={allCollapsed ? <ChevronsUpDown size={15} /> : <ChevronsDownUp size={15} />}
+              />
+            )}
+
             <div className="spacer" />
-            <SortControl
+            <MenuSelect
+              icon={ArrowUpDown}
+              label="เรียง"
+              title="เรียงลำดับ"
               value={sortKey}
-              onChange={(event) => { setSortKey(event.target.value); setSortDir(defaultDir(event.target.value)); }}
-              options={SORT_OPTIONS}
-              direction={sortDir}
-              onDirectionChange={setSortDir}
-              selectStyle={{ width: 120 }}
+              onChange={(key) => { setSortKey(key); setSortDir(defaultDir(key)); }}
+              options={SORT_OPTIONS.map((option) => ({ value: option.key, label: option.label }))}
+              showValue
+              isActive={(key) => key !== "created"}
+            />
+            <Button
+              iconOnly
+              className="ui-sort-direction"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
+              aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
+              icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
             />
           </div>
 
@@ -690,6 +850,7 @@ export default function SalesPlanningPipelinePage() {
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
                   <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
+                  <th>ขั้นตอน</th>
                   <th style={{ textAlign: "center" }}>FC%</th>
                   <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
@@ -700,81 +861,29 @@ export default function SalesPlanningPipelinePage() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((deal) => (
-                  <DetailRow key={deal.id} href={`/sa/deals/${deal.id}`} className="premium-row">
-                    <td>
-                      {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
-                          ของ /sa/deals/[id] เป็นพันครั้ง/วัน (แถวละ 3 ลิงก์ × ทุกแถวที่เห็น) */}
-                      <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
-                        <strong>
-                          {deal.title}
-                          {deal.forecastDrift?.hasDrift && (
-                            <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
-                          )}
-                        </strong>
-                        <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                          {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
-                        </span>
-                      </Link>
-                    </td>
-                    <td onClick={(event) => event.stopPropagation()}>
-                      <StageCell
-                        deal={deal}
-                        canEdit={!!deal.canEdit}
-                        className="ui-badge-cell ui-badge-w-stage"
-                        onSaved={load}
-                      />
-                    </td>
-                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      {isClosedStage(deal.stage)
-                        ? <span style={{ color: "var(--text-3)" }}>-</span>
-                        : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
-                    </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
-                    <td onClick={(event) => event.stopPropagation()}>
-                      <ForecastMonthCell
-                        deal={deal}
-                        currentMonth={currentMonth}
-                        canEdit={deal.canEdit && !isClosedStage(deal.stage)}
-                        onSaved={load}
-                      />
-                    </td>
-                    <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
-                      {isWonStage(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
-                    </td>
-                    <td className="num" onClick={(event) => event.stopPropagation()}>
-                      {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" รวมที่เหลือ (มติผู้ใช้ 2026-08-01)
-                          ของเดิมกระจาย 8 ปุ่มใน 5 คอลัมน์ · กติกาว่าปุ่มไหนโผล่มาจาก
-                          dealLifecycle ตัวเดียวกับที่หน้ารายละเอียดจะใช้ */}
-                      <RecordActionMenu
-                        lifecycle={dealLc}
-                        record={deal}
-                        user={viewer}
-                        busy={shippingDealId === deal.id}
-                        recordLabel={deal.title}
-                        onSelect={(transition) => {
-                          /* ทั้งผูกและสร้างโครงการลงมือที่ฟอร์มแก้ไขดีล (ต้องเลือกโครงการ)
-                             ไม่ใช่ยิง /transition — ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ */
-                          if (!["link_project", "create_project"].includes(transition.id)) return false;
-                          openEditDeal(deal);
-                          return true;
-                        }}
-                        onTransition={(actionId, values) => runDealTransition(deal, actionId, values)}
-                        canEdit={!!deal.canEdit}
-                        canDelete={canDeleteDeal(deal, { role, superuser })}
-                        onEdit={() => openEditDeal(deal)}
-                        onDelete={() => deleteDeal(deal)}
-                        extraItems={rowLinks(deal)}
-                      />
-                    </td>
-                  </DetailRow>
-                ))}
+                {/* โหมดจัดกลุ่ม: หัวกลุ่มเป็นแถวเต็มความกว้าง กดที่แถบเพื่อย่อ/ขยาย
+                    แถวดีลข้างในเป็น dealRow ตัวเดียวกับโหมดปกติ — ห้ามก๊อปแยกสองสำเนา */}
+                {groupedDeals ? groupedDeals.map((group) => {
+                  const collapsed = collapsedGroups.has(group.key);
+                  return (
+                    <Fragment key={group.key}>
+                      <tr className="group-row">
+                        <td colSpan={9}>
+                          <button type="button" onClick={() => toggleGroup(group.key)} aria-expanded={!collapsed}>
+                            {collapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+                            <strong>{group.label}</strong>
+                            <span className="ui-badge">{group.deals.length} ดีล</span>
+                            <span className="group-total mono" title="มูลค่ารวมของกลุ่ม (Won ใช้ยอดปิดจริง)">{fmtMoney(group.total)}</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {!collapsed && group.deals.map(dealRow)}
+                    </Fragment>
+                  );
+                }) : pageRows.map(dealRow)}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
@@ -783,7 +892,9 @@ export default function SalesPlanningPipelinePage() {
             </table></TableScroll>
           </div>
 
-          {filteredDeals.length > 0 && (
+          {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มกลางคันแล้วยอดหัวกลุ่ม
+              ไม่ตรงกับแถวที่เห็น · ใช้ย่อ/ขยายกลุ่มคุมความยาวแทน */}
+          {filteredDeals.length > 0 && !groupedDeals && (
             <Pager
               page={page}
               pageCount={pageCount}
@@ -809,7 +920,13 @@ export default function SalesPlanningPipelinePage() {
           defaultOwnerId={defaultOwnerId}
           lockedOwner={lockedOwner}
           onClose={() => setCreateModal(false)}
-          onCreated={() => { setCreateModal(false); load(); }}
+          onCreated={(created) => {
+            setCreateModal(false);
+            // ดีลเกิดแต่ไทม์ไลน์ไม่เกิด (template ไม่พร้อม) — บอกทันที ไม่ปล่อยเงียบ
+            const warnings = (created || []).map((d) => d?.timelineWarning).filter(Boolean);
+            if (warnings.length) setError(warnings.join(" · "));
+            load();
+          }}
         />
       )}
 
@@ -1025,20 +1142,6 @@ export default function SalesPlanningPipelinePage() {
         </div>
       </Modal>
 
-      {pmDeal && (
-        <ProjectFormModal
-          open={pmModalOpen}
-          onClose={() => setPmModalOpen(false)}
-          editingId={null}
-          initialData={pmInitial}
-          onSuccess={handlePmSuccess}
-          customers={customers}
-          categories={categories}
-          allProducts={allProducts}
-          createEndpoint={`/api/sales-planning/deals/${pmDeal.id}/create-project`}
-          createLabel="จัดการโครงการ"
-        />
-      )}
     </SaWorkspace>
   );
 }

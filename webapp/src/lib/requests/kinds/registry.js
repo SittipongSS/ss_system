@@ -29,6 +29,8 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
 const VALID_DEPTS = ['RD', 'PC', 'FN'];
 const VALID_REFS = ['project', 'deal', 'salesOrder', 'scent', 'formula'];
+// อ้างอิงเพิ่มแบบไม่บังคับ (ม-88) — คนละชุดกับ needs: ของพวกนี้ **ว่างได้เสมอ**
+const VALID_OPTIONAL_REFS = ['quotation', 'salesOrder', 'product'];
 // ⚠️ `material` ถูกถอดใน mig 0219 พร้อมหัวข้อขอราคา (มติ ม-28) — ห้ามเพิ่มกลับ
 // โดยไม่มีหัวข้อที่ใช้จริง รูปร่างที่ไม่มีหัวข้อไหนใช้คือโค้ดที่ไม่มีทางเดินถึง
 const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
@@ -46,6 +48,11 @@ export function assertKind(kind, seen = new Set()) {
   }
   for (const ref of kind.needs || []) {
     if (!VALID_REFS.includes(ref)) throw new Error(`${at}: needs "${ref}" ไม่มีใน REQUEST_NEEDS`);
+  }
+  for (const ref of kind.optionalRefs || []) {
+    if (!VALID_OPTIONAL_REFS.includes(ref)) {
+      throw new Error(`${at}: optionalRefs "${ref}" ไม่รู้จัก`);
+    }
   }
   // หัวข้อที่มีบรรทัดต้องบอกด้วยว่าบรรทัดหน้าตาแบบไหน — ไม่บอก = ตกไปเป็น
   // 'material' เงียบ ๆ แล้วผู้ใช้เจอตารางวัสดุในหัวข้อที่ไม่เกี่ยวกับวัสดุ

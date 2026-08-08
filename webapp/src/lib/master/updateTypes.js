@@ -35,12 +35,17 @@ export const UPDATE_KINDS = {
     // ⚠️ ต้องลงทะเบียนที่นี่ ไม่งั้น `updateKindMeta` ถอยไปใช้ meta ของชนิดอื่น
     // แล้วเหตุการณ์จะ **เงียบสนิทบนจอ** ทั้งที่แถวถูกบันทึกจริง (ดูยามใน appendUpdate
     // ซึ่งเตือนอย่างเดียว ไม่ตีกลับ — แถวประวัติหายไปเลยแย่กว่าป้ายเพี้ยน)
-    ready: { label: 'ส่งของแล้ว', color: 'var(--blue)' },
+    // "ส่งมอบแล้ว" = คำกลางของสามสาย (กลิ่น·สูตร·เอกสาร — ม-89) · เนื้อเหตุการณ์
+    // บอกคำเฉพาะสายอยู่แล้ว ("ส่งเอกสาร — IFRA …" มาจาก hopLabelFor)
+    ready: { label: 'ส่งมอบแล้ว', color: 'var(--blue)' },
     pickup: { label: 'รับของแล้ว', color: 'var(--blue)' },
     sent: { label: 'ส่งให้ลูกค้าแล้ว', color: 'var(--blue)' },
     confirmed: { label: 'ลูกค้าคอนเฟิร์ม', color: 'var(--green)' },
     revise: { label: 'ลูกค้าขอให้แก้', color: 'var(--amber)' },
     rejected: { label: 'ลูกค้าไม่เอา', color: 'var(--red)' },
+    // ── สองก้าวจบของสายเอกสาร (ม-85) ────────────────────────────────
+    received: { label: 'ได้รับเอกสารแล้ว', color: 'var(--green)' },
+    refused: { label: 'ปฏิเสธเอกสาร', color: 'var(--red)' },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)' },
   },

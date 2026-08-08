@@ -46,11 +46,14 @@ test('เดินข้ามขั้นไม่ได้ และข้อ�
   assert.match(hopStageError(at('sent'), 'บิน'), /ก้าวไม่ถูกต้อง/);
 });
 
-test('ก้าวที่บันทึกเวลาต้องมีวันที่ — ไม่งั้นตัวเลข lead time หายทั้งแถวโดยไม่มีอะไรฟ้อง', () => {
-  for (const hop of ['ready', 'pickup', 'send']) {
+test('ก้าวฝั่งผู้ขอที่บันทึกเหตุการณ์นอกระบบยังบังคับวันที่ — ก้าวส่งใช้ตราประทับ (ม-92)', () => {
+  for (const hop of ['pickup', 'send', 'receive']) {
     assert.match(hopValuesError(hop, {}), /ต้องระบุวันที่/, hop);
     assert.equal(hopValuesError(hop, { at: '2026-08-12' }), null, hop);
   }
+  // ⭐ ก้าวส่ง (ready) ว่างได้ — hopPatch ประทับวันไทยของวันที่กดให้เอง (ม-92:
+  // "ไม่จำเป็นต้องใส่วันที่ ใช้ stamp วันเวลา") · ใส่มาก็ยังต้องถูกรูปแบบ
+  assert.equal(hopValuesError('ready', {}), null);
   assert.match(hopValuesError('ready', { at: '12/08/2026' }), /วันที่ไม่ถูกต้อง/);
   // รับเรื่องไม่บังคับวันที่ (ค่าตั้งต้น = วันนี้) แต่ถ้าใส่วันนัดส่งต้องถูกรูปแบบ
   assert.equal(hopValuesError('ack', {}), null);
@@ -210,4 +213,85 @@ test('route ของก้าว: ด่านครบและเรียง
   // วันของก้าวต้องเป็นวันไทย — nowIso.slice(0, 10) ให้วัน UTC ซึ่งก่อน 07:00 น.
   // ของไทยยังเป็นเมื่อวาน ⇒ ก้าวที่กดตอนเช้ามืดจะถูกบันทึกล่วงหน้าไปหนึ่งวัน
   assert.match(src, /const today = businessDate\(\)/);
+});
+
+// ── สายของแถวเอกสาร — สองก้าวจบ receive/refuse (ม-85) ─────────────────────
+//
+// 🐞 บั๊กที่ชุดนี้ล็อก: เดิมแถวเอกสารเดินก้าวของสายพัฒนาได้ครบชุด แล้วไปตายที่
+// ขั้นราคา (400 "ยังไม่ผูกกลิ่นหรือสูตร") ⇒ ค้างที่ "รอใส่ราคา" ถาวร ปิดใบไม่ได้
+const docAt = (stage) => {
+  const r = { id: 'DRI-D1', lineKind: 'document', answerStatus: 'pending' };
+  if (stage === 'awaiting_ack') return r;
+  r.ackAt = '2026-08-02';
+  if (stage === 'developing') return r;
+  r.readyAt = '2026-08-03';
+  return r; // ready
+};
+
+test('⭐ แถวเอกสารเดินได้แค่ ack → ready → receive — ก้าวสายพัฒนาถูกตัดตั้งแต่ต้น', () => {
+  assert.equal(hopStageError(docAt('awaiting_ack'), 'ack'), null);
+  assert.equal(hopStageError(docAt('developing'), 'ready'), null);
+  assert.equal(hopStageError(docAt('ready'), 'receive'), null);
+  // ก้าวของสายพัฒนา — โดนด่าน lineKind ก่อนถึงด่านขั้น
+  for (const hop of ['pickup', 'send', 'outcome']) {
+    assert.match(hopStageError(docAt('ready'), hop), /สายพัฒนา/, hop);
+  }
+  // ฝั่งกลับกัน: แถวพัฒนาใช้ก้าวเอกสารไม่ได้
+  assert.match(hopStageError(at('ready'), 'receive'), /ขอเอกสาร/);
+  assert.match(hopStageError(at('developing'), 'refuse'), /ขอเอกสาร/);
+});
+
+test('receive: เขียน answerStatus=done + วันได้รับลง pickedUpAt — แถวจบจริง', () => {
+  const patch = hopPatch('receive', { at: '2026-08-05' }, { id: 'U1', name: 'สมชาย' });
+  assert.equal(patch.answerStatus, 'done');
+  assert.equal(patch.pickedUpAt, '2026-08-05');
+  assert.equal(patch.pickedUpByName, 'สมชาย');
+  // แถวหลัง patch ต้องอ่านเป็น done — แถบ "มาแล้ว" ถึงจะนับได้จริง (เดิมนับ 0 เสมอ)
+  assert.equal(rowStage({ ...docAt('ready'), ...patch }), 'done');
+  // ⚠️ CHECK hop_chain: pickedUpAt ต้องมี readyAt — receive เดินได้เฉพาะหลัง ready
+  assert.match(hopValuesError('receive', {}), /วันที่/);
+});
+
+test('refuse: บังคับเหตุผล · เขียน declined+declineReason · จากขั้นกำลังทำเท่านั้น', () => {
+  assert.equal(hopStageError(docAt('developing'), 'refuse'), null);
+  assert.match(hopStageError(docAt('ready'), 'refuse'), /ผ่านขั้นนี้ไปแล้ว/);
+  // เหตุผลคือหลักฐาน — constraint answer_evidence บังคับคู่ declined+declineReason
+  assert.match(hopValuesError('refuse', {}), /เหตุผล/);
+  assert.match(hopValuesError('refuse', { note: '   ' }), /เหตุผล/);
+  assert.equal(hopValuesError('refuse', { note: 'ต้องขอจากซัพพลายเออร์' }), null);
+  const patch = hopPatch('refuse', { note: 'ต้องขอจากซัพพลายเออร์' }, { id: 'U1', name: 'ปาริชาต' });
+  assert.equal(patch.answerStatus, 'declined');
+  assert.equal(patch.declineReason, 'ต้องขอจากซัพพลายเออร์');
+  assert.equal(rowStage({ ...docAt('developing'), ...patch }), 'declined');
+});
+
+test('แถวเอกสารเก่าที่หลงเดินสายพัฒนาไปแล้ว ยังจบด้วย receive ได้ — ไม่ติดถาวร', () => {
+  const stray = { ...docAt('ready'), pickedUpAt: '2026-08-04' };            // picked_up
+  assert.equal(hopStageError(stray, 'receive'), null);
+  const sent = { ...stray, sentAt: '2026-08-05' };                          // sent
+  assert.equal(hopStageError(sent, 'receive'), null);
+});
+
+test('receive/refuse ลงทะเบียนเป็นเหตุการณ์ในเธรดแล้ว — ไม่เงียบบนจอ', async () => {
+  const registered = UPDATE_KINDS.dept_request;
+  assert.ok(registered[hopUpdateKind('receive')], 'received ยังไม่ลงทะเบียน');
+  assert.ok(registered[hopUpdateKind('refuse')], 'refused ยังไม่ลงทะเบียน');
+  assert.equal(hopLabel('receive'), 'ได้รับแล้ว');
+  assert.equal(hopLabel('refuse'), 'ปฏิเสธ');
+  // ⭐ ม-89: สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" — สายพัฒนายัง "ส่งของ"
+  const { hopLabelFor } = await import('./hops.js');
+  assert.equal(hopLabelFor({ lineKind: 'document' }, 'ready'), 'ส่งเอกสาร');
+  assert.equal(hopLabelFor({ lineKind: 'billing_doc' }, 'ready'), 'ส่งเอกสาร');
+  assert.equal(hopLabelFor({ lineKind: 'scent_dev' }, 'ready'), 'ส่งของ');
+});
+
+test('🔴 route: ส่งเอกสารต้องเช็คไฟล์แนบก่อน — และปิดเรื่องเป็นของผู้ขอเท่านั้น (ม-89)', () => {
+  const itemSrc = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/route.js', 'utf8');
+  // ด่านไฟล์: มติ "การส่งเอกสาร RD ต้องแนบไฟล์เอกสารด้วย" — ส่งโดยไม่มีไฟล์ =
+  // บอกว่าส่งแล้วทั้งที่ไม่มีอะไรให้รับ
+  assert.ok(/isDocLineKind\(row\.lineKind\)/.test(itemSrc), 'ต้องแยกสายเอกสาร');
+  assert.ok(itemSrc.includes('ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง'), 'ต้องมีด่านไฟล์');
+  // ปิดสองฝ่าย: ฝ่ายจบงานผ่านรายการ (ส่ง/ปฏิเสธ) แล้วผู้ขอเป็นคนกดปิด
+  const headSrc = readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8');
+  assert.ok(headSrc.includes('ปิดเรื่องได้เฉพาะฝ่ายผู้ขอ'), 'route ปิดต้องเหลือผู้ขอ');
 });

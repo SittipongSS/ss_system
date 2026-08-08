@@ -60,6 +60,9 @@ export default function NewRequestPage() {
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
+  // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — QT กรองตามดีลบนจอ · FG ค้นทั้งทะเบียน
+  const [quotations, setQuotations] = useState([]);
+  const [products, setProducts] = useState([]);
   const [productTypes, setProductTypes] = useState([]);
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
@@ -73,6 +76,8 @@ export default function NewRequestPage() {
     grab("/api/pm/projects", setProjects);
     grab("/api/sales-planning/deals", setDeals);
     grab("/api/sales-planning/sales-orders", setSalesOrders);
+    grab("/api/sales-planning/quotations", setQuotations);
+    grab("/api/products", setProducts);
     grab("/api/master/scents", setScents);
     grab("/api/master/formulas", setFormulas);
     // รายชื่อกรองด้วยด่านของเธรดคำร้องมาจาก server แล้ว (ห้ามกรองเองที่ client —
@@ -150,6 +155,7 @@ export default function NewRequestPage() {
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
+          quotations={quotations} products={products}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
           // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว

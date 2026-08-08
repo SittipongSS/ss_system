@@ -9,10 +9,12 @@ import {
   Edit2, Trash2,
   Printer, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
+  FileText,
 } from "lucide-react";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import ProjectDealsHub, { ProjectActivityFeed, ProjectQuotationsCard } from "@/components/pm/ProjectDealsHub";
+import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
@@ -48,7 +50,7 @@ import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { PageShell as SaPageShell } from "@/components/ui/Workspace";
+import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
 
 // ความยาวเหตุผล 10–500 ย้ายไปอยู่ที่ recordLifecycle (ค่าเริ่มต้นของ reasonPolicy)
@@ -366,12 +368,12 @@ export default function ProjectDetailPage() {
      updateProductQty · deriveCategoryFromProducts · confirmExciseFlip · addingProduct)
      ทางเข้าเดียวของมันคือปุ่มใน fgUI ซึ่งไม่เคยขึ้นจอ (ดูคอมเมนต์ที่ fgUI)
 
-     🔴 หมายเหตุที่ต้องรู้: หน้านี้ตอนนี้ "ไม่มี UI ผูก FG" เลย — โมดัลแก้โครงการของหน้านี้
-     คือ SalesProjectCreateModal ซึ่งคุมแค่ productMainCategory/SubCategory ไม่ได้ส่ง
-     projectProducts (ตัว onSuccess ยังเช็ค productWarning ไว้ แต่จะไม่มีทางเด้ง)
-     ตัวที่มีช่องผูก FG จริงคือ ProjectFormModal (ใช้ที่หน้าดีล /sales-planning/deals)
-     ซึ่งถือกติกา "FG เป็นใหญ่ หมวดสรรพสามิตชนะ" (บั๊ก B / mig 0131) กับคำเตือนตอนพลิก
-     สถานะสรรพสามิตไว้ครบในตัวเอง — ไม่ใช่ของที่หายไปกับการลบครั้งนี้ มันขาดมาก่อนแล้ว */
+     มติ 2026-08-08 (artifact 23dc1d94): **ฟอร์มโครงการไม่มีช่อง FG โดยเจตนา** —
+     โครงการเป็นภาชนะรวมดีล ฟอร์มถามเฉพาะเรื่องภาชนะ · ProjectFormModal (ฟอร์มยุค 1:1
+     ที่เคยมีช่อง FG) ถูกลบทั้งไฟล์แล้ว ทุกทางเรียกใช้ SalesProjectCreateModal ตัวเดียว
+     (ตัว onSuccess ยังเช็ค productWarning ไว้ แต่จะไม่มีทางเด้ง — ฟอร์มไม่ส่ง
+     projectProducts) · ถ้าวันหนึ่งต้องมี UI ผูก FG ให้ทำเป็นการ์ดบนหน้ารายละเอียดนี้
+     ไม่ใช่ยัดกลับเข้าฟอร์มสร้าง/แก้ */
 
   /* ระงับ / ยกเลิก / ดึงกลับ (สองแบบ — คนละสิทธิ์กันโดยเจตนา) ย้ายไปประกาศที่
      lib/pm/projectLifecycle.js แล้ว ทั้งกล่องยืนยันและช่องกรอกเหตุผล ที่นี่เหลือ
@@ -617,7 +619,8 @@ export default function ProjectDetailPage() {
   /* fgUI (ลิสต์ FG + ช่องสั่งซื้อ/ผลิต + ปุ่มเพิ่ม-ลบสินค้า) ถูกลบแล้ว — ที่เดียวที่รับมันไปคือ
      <ProjectDocumentView fgUI={fgUI}> ในบล็อกที่ตายแล้ว และ ProjectDocumentView เองก็ไม่มี
      prop ชื่อ fgUI มารับ (กลืนทิ้งเงียบ ๆ) → JSX ก้อนนี้ไม่เคยขึ้นจอเลย
-     ผูก/ถอด FG ของโครงการทำที่ SalesProjectCreateModal (ปุ่มแก้ไขบนการ์ด Control) */
+     ⚠️ ฟอร์มโครงการไม่มีช่อง FG (มติ 2026-08-08 — โครงการ = ภาชนะ) · UI ผูก FG
+     ถ้าจะกลับมา ให้เป็นการ์ดบนหน้านี้ ไม่ใช่ในโมดัลสร้าง/แก้ */
 
   return (
     <SaPageShell>
@@ -869,8 +872,23 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      {/* เอกสาร = ใบเสนอราคา + Sale Order (การ์ดเดียวกัน วางคู่กันอยู่แล้ว) */}
-      {tab === "documents" && <ProjectQuotationsCard project={p} />}
+      {/* เอกสาร = ใบเสนอราคา + Sale Order (การ์ดเดิม) + **ไฟล์รวมของทุกดีล** (ม-88)
+          — "RD แนบเอกสาร → เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" · แผงเดียวกับ
+          แท็บเอกสารบนหน้าดีล แค่โหมดโครงการรวมทุกดีลและบอกว่าแถวไหนของดีลไหน */}
+      {tab === "documents" && (
+        <>
+          <ProjectQuotationsCard project={p} />
+          {/* ใช้ WorkspaceSection ของกลาง — inline style คือชั้นเก่าที่ ratchet
+              audit:ui ห้ามเพิ่ม (เพดานลงได้อย่างเดียว) */}
+          <SaSection
+            icon={<FileText size={17} />}
+            title="ไฟล์เอกสารของโครงการ"
+            subtitle="รวมจากทุกดีลในโครงการ — ไฟล์จากคำร้อง · ไฟล์แนบ · ฉบับที่ออกจริง · ของที่ยังรอ"
+          >
+            <EntityDocumentsPanel projectId={p.id} />
+          </SaSection>
+        </>
+      )}
 
       {tab === "tasks" && (
         <section className="glass-panel" style={{ padding: "16px 20px" }}>

@@ -17,6 +17,7 @@ import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
+import { requestOptionalRefs } from '@/lib/master/requestTypes';
 import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
 import {
   deptForRequest, requestDeptError,
@@ -225,6 +226,63 @@ export async function POST(request) {
     customerName = dealRow.customerName || null;
   }
 
+  // ── อ้างอิงเพิ่มแบบไม่บังคับ: QT · SO · FG (ม-88) ───────────────────────
+  //
+  // ⭐ มติผู้ใช้ 2026-08-08: "ใส่รายละเอียดที่เกี่ยวข้อง QT SO FG **(ถ้ามี)**" —
+  // ว่างได้เสมอ · ส่งมาเมื่อไรตรวจสองข้อ: **ของมีจริง** และ **อยู่ดีลเดียวกัน**
+  // (QT/SO ผูกดีล — อ้างข้ามดีลคือความขัดแย้งแบบเดียวกับที่บรีฟกลิ่นกันไว้)
+  //
+  // ⚠️ ไม่ใช่ด่านธุรกิจเต็มชุดของบรีฟกลิ่น (อนุมัติแล้ว · 1SO:1PDR) — ที่นี่แค่
+  // "แนบป้ายอ้างอิงให้ตามกลับได้" ไม่ได้เปิดสิทธิ์อะไรจากใบที่อ้าง
+  let quotationId = null;
+  let optionalSalesOrderId = null;
+  let refProduct = null;
+  const optionalRefs = requestOptionalRefs(kind);
+  if (optionalRefs.includes('quotation') && body.quotationId) {
+    const { data: qt, error: qtError } = await supabase
+      .from('quotations').select('id, "dealId"').eq('id', body.quotationId).maybeSingle();
+    if (qtError) return Response.json({ error: qtError.message }, { status: 500 });
+    if (!qt) return Response.json({ error: 'ไม่พบใบเสนอราคาที่อ้างถึง' }, { status: 400 });
+    if (dealId && qt.dealId && qt.dealId !== dealId) {
+      return Response.json({ error: 'ใบเสนอราคาที่อ้างไม่ใช่ของดีลนี้' }, { status: 400 });
+    }
+    quotationId = qt.id;
+  }
+  if (optionalRefs.includes('salesOrder') && !requestNeedsRef(kind, 'salesOrder') && body.salesOrderId) {
+    const { data: so, error: soRefError } = await supabase
+      .from('sales_orders').select('id, "dealId"').eq('id', body.salesOrderId).maybeSingle();
+    if (soRefError) return Response.json({ error: soRefError.message }, { status: 500 });
+    if (!so) return Response.json({ error: 'ไม่พบใบสั่งขายที่อ้างถึง' }, { status: 400 });
+    if (dealId && so.dealId && so.dealId !== dealId) {
+      return Response.json({ error: 'ใบสั่งขายที่อ้างไม่ใช่ของดีลนี้' }, { status: 400 });
+    }
+    optionalSalesOrderId = so.id;
+  }
+  if (optionalRefs.includes('product')) {
+    // ⭐ FG **หลายรายการ** (ม-89) — ตรวจทุกตัวว่ามีจริง แล้วเก็บ snapshot
+    // [{ id, label }] เอง (ชื่อจากแถวจริง ไม่รับจาก client — ทะเบียนเปลี่ยนชื่อ
+    // ทีหลัง ใบเก่ายังอ่านออกว่าตอนนั้นอ้างอะไร) · FG ไม่ผูกดีล จึงไม่เทียบดีล
+    const wanted = [...new Set((Array.isArray(body.productIds) ? body.productIds : [])
+      .concat(body.productId ? [body.productId] : []).filter(Boolean))];
+    if (wanted.length > 20) {
+      return Response.json({ error: 'อ้างสินค้า (FG) ได้ไม่เกิน 20 รายการ' }, { status: 400 });
+    }
+    if (wanted.length) {
+      const { data: fgs, error: fgError } = await supabase
+        .from('products').select('id, "fgCode", "productDescription"').in('id', wanted);
+      if (fgError) return Response.json({ error: fgError.message }, { status: 500 });
+      const byId = new Map((fgs || []).map((f) => [f.id, f]));
+      const missing = wanted.filter((id) => !byId.has(id));
+      if (missing.length) {
+        return Response.json({ error: 'ไม่พบสินค้า (FG) ที่อ้างถึงบางรายการ' }, { status: 400 });
+      }
+      refProduct = wanted.map((id) => {
+        const fg = byId.get(id);
+        return { id, label: [fg.fgCode, fg.productDescription].filter(Boolean).join(' · ') || id };
+      });
+    }
+  }
+
   // หัวข้อขอราคา F/FB ไม่ผูกดีล → ลูกค้ามาจาก **กลิ่น/สูตร** ที่อ้างถึงแทน
   // (กลิ่นมี customerId NOT NULL เสมอ ตามมติ 9 — กลิ่นของลูกค้า A ใช้กับ B ไม่ได้)
   if (!customerId && (body.scentId || body.formulaId)) {
@@ -305,7 +363,12 @@ export async function POST(request) {
       urgentReason: body.urgent ? (body.urgentReason || null) : null,
       dealId,
       projectId,
-      salesOrderId,
+      // SO ของบรีฟกลิ่น (บังคับ+ด่านเต็ม) หรือ SO อ้างอิงของขอเอกสาร (ม-88) — ช่องเดียวกัน
+      salesOrderId: salesOrderId || optionalSalesOrderId,
+      // ⚠️ ใส่คีย์เฉพาะเมื่ออ้างจริง — PostgREST ปฏิเสธ **ทั้งก้อน** เมื่อ body มี
+      // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
+      // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้
+      ...(quotationId ? { quotationId } : {}),
       // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
       // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
       // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
@@ -315,8 +378,11 @@ export async function POST(request) {
       formulaId: body.formulaId || null,
       customerId,
       customerName,
-      productId: body.productId || null,
-      productName: body.productName || null,
+      // FG อ้างอิง (ม-88/ม-89) — snapshot อยู่ใน productRefs · คู่เดิม (productId/
+      // productName) เก็บตัวแรกไว้ให้จอเก่าที่ยังอ่านช่องเดี่ยว
+      ...(refProduct?.length ? { productRefs: refProduct } : {}),
+      productId: refProduct?.[0]?.id || null,
+      productName: refProduct?.[0]?.label || null,
       formulaCode: body.formulaCode || null,
       formulaName: body.formulaName || null,
       formulaDate: body.formulaDate || null,

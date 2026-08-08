@@ -20,8 +20,10 @@ import {
   canAnswerRequest, canManageRequest, canReadRequestRow, deriveRequestStatusAfterAnswer,
 } from '@/lib/deptRequests';
 import {
-  HOP_OWNER, followUpRowFrom, hopLabel, hopPatch, hopStageError, hopUpdateKind, hopValuesError,
+  HOP_OWNER, followUpRowFrom, hopLabel, hopLabelFor, hopPatch, hopStageError, hopUpdateKind,
+  hopValuesError,
 } from '@/lib/requests/hops';
+import { isDocLineKind } from '@/lib/requests/docTypes';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
@@ -99,6 +101,24 @@ export async function PATCH(request, { params }) {
     const { value, error } = normalizeFormulaDelivery(body);
     if (error) return Response.json({ error }, { status: 400 });
     formulaDelivery = value;
+  }
+
+  // ── ส่งเอกสารต้องมีไฟล์แนบบนแถวก่อน (ม-89) ─────────────────────────────
+  //
+  // ⭐ มติผู้ใช้: "การส่งเอกสาร RD ต้องแนบไฟล์เอกสารด้วย หลายไฟล์ได้" — ก้าวส่ง
+  // ของสายเอกสารที่ไม่มีไฟล์คือการบอกว่า "ส่งแล้ว" ทั้งที่ไม่มีอะไรให้รับ ⇒ SA กด
+  // "ได้รับแล้ว" ไม่ได้จริง และแท็บเอกสารของดีลจะขึ้นแถวที่เปิดแล้วว่างเปล่า
+  // · หลายไฟล์ได้อยู่แล้ว (AttachmentsPanel ไม่จำกัดจำนวน) — ด่านนี้ขอแค่ ≥ 1
+  if (hop === 'ready' && isDocLineKind(row.lineKind)) {
+    const { count, error: fileError } = await supabase
+      .from('attachments').select('id', { count: 'exact', head: true })
+      .eq('entityType', 'dept_request_item').eq('entityId', row.id);
+    if (fileError) return Response.json({ error: fileError.message }, { status: 500 });
+    if (!count) {
+      return Response.json({
+        error: 'ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง — แนบได้หลายไฟล์ในหน้าต่างส่งเอกสาร',
+      }, { status: 400 });
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -191,7 +211,7 @@ export async function PATCH(request, { params }) {
 
     // ── ร่องรอย ─────────────────────────────────────────────────────────
     // ⚠️ ลงเธรดของ **ใบ** ไม่ใช่ของแถว — เธรดมีชุดเดียวต่อคำร้อง (ไม่มีเธรดซ้อนรายขั้น)
-    const label = hopLabel(hop, body.outcome);
+    const label = hopLabelFor(row, hop, body.outcome);
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
