@@ -33,8 +33,10 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
+import Link from "next/link";
 import {
-  FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula, isFormulaRegistrar,
+  FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
+  formulaSourceLabel, isFormulaRegistrar, matchesFormulaSource,
 } from "@/lib/master/formulas";
 
 export default function FormulasPage() {
@@ -56,6 +58,8 @@ export default function FormulasPage() {
   // ?q= = ลิงก์เข้ามาจากที่อื่น — ดูหมายเหตุเดียวกันในหน้าทะเบียนกลิ่น
   const linkedQuery = useSearchParams().get("q") || "";
   const [search, setSearch] = useState(linkedQuery);
+  // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
+  const [sourceFilter, setSourceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
   // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
   // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
@@ -110,6 +114,7 @@ export default function FormulasPage() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return formulas.filter((f) => {
+      if (!matchesFormulaSource(f, sourceFilter)) return false;
       if (statusFilter === "open" && f.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && f.status !== statusFilter) return false;
       // ⚠️ ตัวกรองชนิดต้องอยู่ **ก่อน** ทางลัด `if (!q) return true` — วางหลังเมื่อไร
@@ -121,7 +126,7 @@ export default function FormulasPage() {
       return [f.name, f.code, f.customerName, f.customerTradeName, f.categoryCode, scentName(f.scentId)]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [formulas, statusFilter, kindFilter, search, scentName]);
+  }, [formulas, statusFilter, kindFilter, sourceFilter, search, scentName]);
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
@@ -137,7 +142,7 @@ export default function FormulasPage() {
   }, [categories]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(visible, { resetKey: `${search}|${statusFilter}|${kindFilter}` });
+    usePagination(visible, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}` });
 
   // ── actions ──────────────────────────────────────────────────────────
   const call = async (url, options, okMsg) => {
@@ -366,6 +371,13 @@ export default function FormulasPage() {
           ]}
           aria-label="กรองชนิดสูตร"
         />
+        {/* ⭐ ที่มา — กติกาเดียวกับทะเบียนกลิ่น (ม-74) · ข้อมูลส่วนใหญ่ควรมาจากสาย
+            พัฒนาสูตร ส่วนที่เพิ่มตรงคือสูตรเดิมที่เคยทำไว้ก่อนมีระบบ */}
+        <Select
+          value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
+          options={[{ value: "", label: "ทุกที่มา" }, ...FORMULA_SOURCES]}
+          aria-label="กรองที่มาของสูตร"
+        />
         <span className="spacer" />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
@@ -389,6 +401,7 @@ export default function FormulasPage() {
               <thead>
                 <tr>
                   <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
+                  <th className={styles.colSource}>ที่มา</th>
                   <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
@@ -427,6 +440,29 @@ export default function FormulasPage() {
                           </span>
                         )
                         : <span className={styles.muted}>—</span>}
+                    </td>
+                    {/* ⭐ ที่มา — กติกาเดียวกับทะเบียนกลิ่น (ม-74) · หลักฐานตามจาก
+                        `dept_request_items.producedFormulaId` ไม่ใช่จาก `dealId`
+                        (ฟอร์มเพิ่มสูตรเองก็กรอกดีลได้)
+                        ⚠️ ลิงก์ไปคำร้องเฉพาะตอนตามกลับได้จริง */}
+                    <td>
+                      {(() => {
+                        const src = formulaSourceLabel(f);
+                        return src.requestId ? (
+                          <Link
+                            href={`/requests/${src.requestId}`}
+                            className="ui-badge ui-badge-cell ui-badge-w-source rich-link"
+                          >
+                            {src.label}
+                          </Link>
+                        ) : (
+                          <span
+                            className={`ui-badge ui-badge-cell ui-badge-w-source ${styles.muted}`}
+                          >
+                            {src.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="mono">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
                     <td>

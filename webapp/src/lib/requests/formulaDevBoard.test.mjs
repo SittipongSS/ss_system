@@ -37,3 +37,32 @@ test('ขั้นกับป้ายมาจาก rowStage ที่เด�
   assert.equal(r.stageLabel, 'รอใส่ราคา');
   assert.equal(formulaDevTotals([r]).awaitingPrice, 1);
 });
+
+// ── รวบส่งของหลายแถว (ช่องว่างข้อ 3 ของแบบ) ─────────────────────────────
+test('bulkReadyRows — เอาเฉพาะแถวพัฒนาสูตรที่รับเรื่องแล้วแต่ยังไม่ส่ง', async () => {
+  const { bulkReadyRows } = await import('./formulaDevBoard.js');
+  const rows = bulkReadyRows([
+    { id: 'A', lineKind: 'product_dev', ackAt: '2026-08-01' },                          // developing ✓
+    { id: 'B', lineKind: 'product_dev' },                                               // awaiting_ack — รอบแก้ที่ยังไม่รับ
+    { id: 'C', lineKind: 'product_dev', ackAt: '2026-08-01', readyAt: '2026-08-02' },   // ส่งแล้ว
+    { id: 'D', lineKind: 'document', ackAt: '2026-08-01' },                             // คนละหัวข้อ
+    { id: 'E', lineKind: 'product_dev', ackAt: '2026-08-01', answerStatus: 'done' },    // จบแล้ว
+  ]);
+  assert.deepEqual(rows.map((r) => r.id), ['A']);
+  assert.deepEqual(bulkReadyRows([]), []);
+  assert.deepEqual(bulkReadyRows(null), []);
+});
+
+test('แถวที่ผ่านขั้นราคา — ราคาโผล่บนตารางสรุป (ช่องว่างข้อ 5)', async () => {
+  const { formulaDevBoard } = await import('./formulaDevBoard.js');
+  const [row] = formulaDevBoard([{
+    id: 'A', lineKind: 'product_dev', label: 'เทียน · Amber', ackAt: 'x',
+    producedFormulaId: 'F1',
+    pricedResult: { kind: 'RM_FB', price: 1850, perUnit: 'กก.', validUntil: '2026-12-31' },
+  }]);
+  assert.equal(row.priced.price, 1850);
+  assert.equal(row.priced.perUnit, 'กก.');
+  // แถวที่ยังไม่ถึงขั้นราคา = null ไม่ใช่ undefined (จอเช็ค ?. ได้เสมอ)
+  const [bare] = formulaDevBoard([{ id: 'B', lineKind: 'product_dev', label: 'x' }]);
+  assert.equal(bare.priced, null);
+});

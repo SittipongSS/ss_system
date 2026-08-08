@@ -34,6 +34,9 @@ export function formulaDevBoard(items = []) {
         unit: item.unit || null,
         // ⭐ สูตรที่เกิดจากแถวนี้ — ว่าง = RD ยังไม่ส่ง
         formulaId: item.producedFormulaId || null,
+        // ⭐ ราคาที่ออกจากแถวนี้ (ช่องว่างข้อ 5) — `findRequest` เติมจาก rev ที่
+        // `answeredRevisionId` ชี้ · null = ยังไม่ถึงขั้นราคา
+        priced: item.pricedResult || null,
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
         outcome: item.outcome || null,
@@ -68,4 +71,17 @@ export function formulaDevTotals(rows = []) {
     rejected: rows.filter((r) => r.outcome === 'rejected').length,
     done: rows.filter((r) => r.stage === 'done').length,
   };
+}
+
+// ── แถวที่พร้อมส่งพร้อมกัน (ช่องว่างข้อ 3 ของแบบ) ────────────────────────
+//
+// 🐞 ใบที่ขอ 5 รายการและทำเสร็จพร้อมกัน RD ต้องเปิดโมดัลห้ารอบ กรอกวันเดิมห้าครั้ง
+// ⇒ โมดัลรวบ: วันที่ส่งกรอกครั้งเดียว ชื่อ/รหัสสูตรกรอกรายแถว
+//
+// ⚠️ เอาเฉพาะแถวขั้น `developing` — แถวที่ยังไม่รับเรื่อง (รอบแก้ที่เพิ่งเกิด) ยังส่ง
+// ไม่ได้ (`hopStageError` จะตีกลับ) และแถวที่ส่งแล้วไม่ต้องส่งซ้ำ
+export function bulkReadyRows(items = []) {
+  return (items || []).filter(
+    (i) => i?.lineKind === 'product_dev' && rowStage(i) === 'developing',
+  );
 }

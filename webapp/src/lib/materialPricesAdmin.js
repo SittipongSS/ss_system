@@ -198,7 +198,65 @@ export async function findRequest(supabase, id) {
     request: withBriefs, project, customer, deal, briefs: briefs || [], salesOrderLines,
   });
 
-  return { ...withBriefs, salesOrderLines };
+  const items = await attachRowPrice(supabase, withBriefs.items || []);
+
+  return { ...withBriefs, items, salesOrderLines };
+}
+
+// ── ราคาที่ออกจากแถวนี้ — ให้ใบคำร้องแสดงย้อนกลับได้ ──────────────────────
+//
+// 🐞 **ช่องว่างข้อ 5 ของแบบพัฒนาสูตร**: RD ใส่ราคาเสร็จ แถวขึ้นว่า "เสร็จ" แต่
+// **ในใบไม่มีตัวเลขให้เห็นเลย** — rev ไปอยู่ในทะเบียนวัสดุอย่างเดียว ⇒ คนที่เปิดใบมา
+// อ่านย้อนหลังไม่รู้ว่าตกลงราคาเท่าไร ต้องไปเปิดทะเบียนแล้วเดาว่าแถวไหนของใคร
+//
+// ⚠️ **ตามจาก `answeredRevisionId` บนแถว** — ขั้นราคาประทับไว้แล้วตอนบันทึกสำเร็จ
+// (price/route.js) ซึ่งชี้ rev ที่ถูกต้องตรง ๆ · ตามจากชื่อวัสดุจะได้ราคาของรอบอื่น
+// ที่ใช้วัสดุเดียวกันปนมา
+//
+// ⚠️ อ่านอย่างเดียว ไม่ใช่แหล่งความจริงใหม่ — ทะเบียนวัสดุยังเป็นเจ้าของราคาเหมือนเดิม
+async function attachRowPrice(supabase, items) {
+  const revisionIds = [...new Set(items.map((i) => i.answeredRevisionId).filter(Boolean))];
+  if (!revisionIds.length) return items;
+
+  const { data: revisions, error } = await supabase
+    .from('material_price_revisions')
+    .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName"')
+    .in('id', revisionIds);
+  if (error) throw error;
+
+  // ราคาอยู่ที่ชั้น (0157) — F/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
+  const { data: tiers, error: tierError } = await supabase
+    .from('material_price_revision_tiers')
+    .select('"revisionId", qty, "pricePerKg", "pricePerUnit"')
+    .in('revisionId', revisionIds);
+  if (tierError) throw tierError;
+
+  const { data: materials, error: matError } = await supabase
+    .from('material_prices').select('id, kind, label')
+    .in('id', [...new Set((revisions || []).map((r) => r.materialId).filter(Boolean))]);
+  if (matError) throw matError;
+  const materialById = new Map((materials || []).map((m) => [m.id, m]));
+
+  const byRevision = new Map((revisions || []).map((rev) => {
+    const material = materialById.get(rev.materialId) || null;
+    const tier = (tiers || []).find((t) => t.revisionId === rev.id) || null;
+    return [rev.id, {
+      kind: material?.kind || null,
+      materialLabel: material?.label || null,
+      price: tier ? Number(tier.pricePerKg ?? tier.pricePerUnit) : null,
+      // หน่วยตามชั้นที่มีจริง ไม่เดาจากชนิด — per_piece ของ PM ก็ผ่านทางนี้ได้
+      perUnit: tier ? (tier.pricePerKg != null ? 'กก.' : 'ชิ้น') : null,
+      validUntil: rev.validUntil || null,
+      note: rev.note || null,
+      quotedAt: rev.quotedAt || null,
+      quotedByName: rev.quotedByName || null,
+    }];
+  }));
+
+  return items.map((i) => ({
+    ...i,
+    pricedResult: byRevision.get(i.answeredRevisionId) || null,
+  }));
 }
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา
