@@ -111,11 +111,19 @@ route จึงสลับพร้อมกันโดยไม่แตะ�
 - [x] **รายชื่อผู้รับผิดชอบกรองเหลือ ae/senior_ae** (มติเดียวกัน): `DEAL_HOLDER_ROLES`
   คุมทั้งดรอปดาวน์และ validateDealOwner — admin/AC หายจากลิสต์ (แก้ดีลได้แต่ถือไม่ได้)
 
-## Phase 2 — รันทั้งระบบเป็น wave `รอดำเนินการ`
+## Phase 2 — รันทั้งระบบเป็น wave `กำลังดำเนินการ`
 
 ลำดับตาม priority องค์กร (2026-07-26): sales ที่เหลือ (16) → sahamit (11) →
 database (10) → tax (6) → mgmt+pm (8) → settings/users/audit/account (15) →
 rd/service/production/support/กลาง (ที่เหลือ)
+
+**Wave 1 (sales) — สแกนความถูกต้อง v2 เสร็จ 2026-08-08:** ไล่ 15 หน้า
+(เว้นปฏิทิน → Phase 3) ด้วย probe อัตโนมัติ 4 อาการ (ปุ่มติดสีพื้น topbar ·
+blur ค้าง · ริบบิ้นไล่ navy · ล้นแนวนอน) ทั้งสองธีม — **ศูนย์ทุกหน้า**
+การแก้ 5 จุดจากรอบ pilot ครอบทั้งโมดูลโดยไม่ต้องแก้เพิ่ม
+· **ค้างของ wave 1: ลบชั้นเก่า + รูด ratchet** (sales: legacyTable 46 ·
+legacySurface 77 · inline 999 · rawBtn 184 · rawInput 69) — งานเชิงกลยาว
+แยกทำเป็นรอบต่อไฟล์/ต่อ metric ได้ ไม่บล็อกการสลับ v2
 
 ต่อ wave: แปลงหน้า + **ลบชั้นเก่าทันที** (`glass-panel`/`premium-*`/inline style
 — ratchet รูดลง งานวัดด้วยบรรทัดที่ลบ) + screenshot ก่อน/หลังส่งให้ผู้ใช้ดูรวดเดียว
