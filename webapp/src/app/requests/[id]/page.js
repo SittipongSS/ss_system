@@ -1023,6 +1023,27 @@ export default function RequestDetailPage() {
               </div>
             )}
 
+            {/* ⭐ ส่งเอกสาร (ม-89) — **แนบไฟล์ได้ในโมดัลนี้เลย ไม่ต้องแนบก่อนกด**
+                ของเดิมที่แนบอยู่ที่การ์ดแถวกลางหน้า ส่วนปุ่มส่งอยู่ท้ายเธรด ⇒ คนกด
+                ก่อนแนบจะเจอ error หลังกรอกวันไปแล้ว · แผงนี้เป็น AttachmentsPanel
+                ตัวเดียวกับบนการ์ดแถว (อัปทันทีที่เลือก · หลายไฟล์ได้) — แนบจากที่ไหน
+                ก็เห็นตรงกัน · ด่านฝั่ง server (ไฟล์ ≥ 1) ยังเป็น backstop เหมือนเดิม */}
+            {hopDraft.hop === "ready" && isDocLineKind(hopDraft.item.lineKind) && (
+              <div className="form-group">
+                <label>ไฟล์เอกสารที่จะส่ง (แนบได้หลายไฟล์)</label>
+                <AttachmentsPanel
+                  entityType="dept_request_item"
+                  entityId={hopDraft.item.id}
+                  canEdit={!saving}
+                  inlineUpload
+                />
+                <p className={styles.fieldHint}>
+                  ต้องมีอย่างน้อย 1 ไฟล์ก่อนกดบันทึก — ไฟล์ที่แนบแล้วจากการ์ดรายการ
+                  ก็นับ และโผล่ในแท็บเอกสารของดีล/โครงการหลังส่ง
+                </p>
+              </div>
+            )}
+
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
               <>
                 <p className={styles.fieldHint}>
