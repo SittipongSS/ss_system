@@ -142,11 +142,14 @@ export default function DealCreateModal({
         /* ช่องบังคับ (มติผู้ใช้ 2026-08-08): ทุกช่องยกเว้น ลูกค้า/แบรนด์/โครงการ/
            หมวดสินค้า/รายละเอียด — ด่านฝั่งจอบอกก่อนเสียเที่ยว รวมทุกช่องที่ขาด
            ในข้อความเดียว ไม่ให้กดแล้วเจอทีละช่อง */
+        // ดีลเก่าที่สร้างเป็น Won: ช่องเดียวกันเปลี่ยนป้ายเป็นของจริง (มูลค่าที่ปิด/
+        // วันที่ปิด) — ข้อความ error ต้องเรียกชื่อเดียวกับที่ตาเห็นบนฟอร์ม
+        const legacyWon = draft.legacy && draft.stage === "won";
         const missing = [
           // สถานะไม่มี default แล้ว (มติ 2026-08-08 "สถานะต้องบังคับเลือก") — ต้องจิ้มเอง
           [!draft.stage, "สถานะ"],
-          [!String(draft.projectValue ?? "").trim(), "มูลค่าคาดการณ์"],
-          [!draft.expectedCloseDate, "วันที่คาดการณ์ปิด"],
+          [!String(draft.projectValue ?? "").trim(), legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์"],
+          [!draft.expectedCloseDate, legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"],
           [!draft.startDate, "วันที่เริ่ม"],
           [!draft.endDate, "วันที่สิ้นสุด"],
         ].filter(([absent]) => absent).map(([, name]) => name);

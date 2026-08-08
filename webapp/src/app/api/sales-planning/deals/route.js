@@ -135,7 +135,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: body.title.trim(),
     stage,
     projectValue: toMoney(body.projectValue),
-    wonValue: null,
+    // ดีลเก่าที่สร้างเป็น Won (ผ่านธง legacy เท่านั้น — ด่านข้างบน): ฟอร์มส่งช่อง
+    // "มูลค่าที่ปิด" มาในคีย์ projectValue เดิม → เข้า wonValue เป็นยอดจริงทันที
+    // (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่านค่านี้)
+    wonValue: stage === 'won' ? toMoney(body.projectValue) : null,
     // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
     // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
     // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
@@ -146,7 +149,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
     expectedCloseDate: body.expectedCloseDate || null,
-    confirmedAt: null,
+    // ดีลเก่า Won: ช่อง "วันที่ปิด" (ส่งมาในคีย์ expectedCloseDate) = วันที่ปิดจริง
+    // ในระบบเดิม → ลง confirmedAt ให้ wonMonthOf นับยอดเข้าเดือนนั้นย้อนหลังได้
+    confirmedAt: stage === 'won' ? (body.expectedCloseDate || null) : null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
     ownerId: owner?.ownerId || user.id || null,
@@ -170,6 +175,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       ...(body.metadata || {}),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
+      // ⚠️ ห้าม client กำหนด actualSource เอง (อยู่หลัง spread จึงทับค่าที่แอบส่งมาเสมอ)
+      // — เขียนได้ทางเดียวที่นี่: ดีลเก่าที่สร้างเป็น Won = 'legacy' (ยอด "มูลค่าที่ปิด"
+      // ใน wonValue นับเป็น Actual ได้ · dealActualFromSalesOrders อ่านสองแหล่งนี้เท่านั้น)
+      // สาย SO จริงเป็นของ trigger DB (0107/0108) ฝั่ง UPDATE — undefined = คีย์หายไปเอง
+      actualSource: stage === 'won' ? 'legacy' : undefined,
       // สะท้อนคอลัมน์เสมอ กันไม่ให้เกิดสองความจริงในแถวเดียว (ผู้อ่านใหม่ต้องใช้คอลัมน์)
       ...(sourceLeadId ? { leadId: sourceLeadId } : {}),
     },

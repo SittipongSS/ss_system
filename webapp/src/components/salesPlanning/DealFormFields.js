@@ -303,18 +303,31 @@ export default function DealFormFields({
     </div>
   );
 
+  /* ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-08-08 รอบสี่): ไม่ถาม "คาดการณ์" —
+     ช่องเดียวกันเปลี่ยนความหมายเป็นของจริงจากระบบเดิม: มูลค่าที่ปิด (→ wonValue
+     = ยอด Won ทันที) และวันที่ปิด (→ confirmedAt = เดือนที่ยอดตกย้อนหลัง)
+     คีย์ในฟอร์มคงเดิม (projectValue/expectedCloseDate) — server เป็นคน map */
+  const legacyWon = legacyOn && form.stage === "won";
   const valueField = (
     <label className="deal-field" key="value">
-      <span className="deal-field-label">มูลค่าคาดการณ์ <span className="required-mark">*</span>{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
+      <span className="deal-field-label">
+        {legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์"} <span className="required-mark">*</span>
+        {alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}
+      </span>
       <MoneyInput value={form.projectValue} disabled={alreadyWon} onChange={(value) => set("projectValue")(value ?? "")} />
+      {legacyWon && <small>ยอดปิดจริงจากระบบเดิม — เข้าเป็นยอด Won (Actual) ทันที · ถ้ามีใบสั่งขายมาผูกภายหลัง ยอดจากใบจริงจะแทนที่</small>}
     </label>
   );
 
   const closeDateField = (
     <label className="deal-field" key="closeDate">
-      <span className="deal-field-label">วันที่คาดการณ์ปิด <span className="required-mark">*</span>{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
+      <span className="deal-field-label">
+        {legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"} <span className="required-mark">*</span>
+        {alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}
+      </span>
       <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
-      {!alreadyWon && (
+      {/* ชิปลัดเป็นวันอนาคต — ดีลเก่าปิดไปแล้ว วันที่เป็นอดีต ไม่โชว์ */}
+      {!alreadyWon && !legacyWon && (
         <span className="date-presets">
           {CLOSE_DATE_PRESETS.map((preset) => (
             <button
@@ -329,9 +342,11 @@ export default function DealFormFields({
         </span>
       )}
       <small>
-        {form.expectedCloseDate
-          ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
-          : "เดือน FC มาจากวันที่คาดปิด — ช่องนี้บังคับกรอก"}
+        {legacyWon
+          ? `วันที่ปิดจริงในระบบเดิม (ย้อนหลังได้) — ยอด Won เข้าเดือน ${monthKey(form.expectedCloseDate) || "ของวันที่นี้"}`
+          : form.expectedCloseDate
+            ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
+            : "เดือน FC มาจากวันที่คาดปิด — ช่องนี้บังคับกรอก"}
       </small>
     </label>
   );
