@@ -32,6 +32,7 @@ import { activeProductTypeError } from '@/lib/master/productTypes';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
+import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,10 +190,38 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!data) return conflict('ดีลถูกแก้ไขพร้อมกัน (สถานะเปลี่ยนระหว่างบันทึก) — รีเฟรชหน้าแล้วลองใหม่');
 
+  /* ประเภทดีล/หมวดสินค้าเปลี่ยน = template ของไทม์ไลน์เปลี่ยน → gen ชุดขั้นตอนใหม่
+     ให้เอง (มติผู้ใช้ 2026-08-08 "แก้ดีลแล้วไทม์ไลน์อัปเดตตาม") เงื่อนไขปลอดภัย:
+     - เฉพาะไทม์ไลน์ลอย (ผูกโครงการแล้วจัดการฝั่ง PM ตามกติกาเดิม)
+     - เฉพาะเมื่อยังไม่เริ่มทำสักขั้น (ทุก task ยัง Pending) — เริ่มแล้วห้ามทิ้งงานคน
+     - gen ชุดใหม่ไม่ได้ (template ว่าง/ไม่ตรงหมวด) = คงชุดเดิมไว้ ไม่ลบทิ้งก่อน */
+  let regenerated = false;
+  const typeChanged = 'dealType' in patch && (patch.dealType || null) !== (before.dealType || null);
+  const categoryChanged = 'categoryCode' in patch && (patch.categoryCode || null) !== (before.categoryCode || null);
+  if ((typeChanged || categoryChanged) && !data.projectId) {
+    const { data: floating } = await supabase
+      .from('project_tasks').select('id, status')
+      .eq('dealId', id).is('projectId', null);
+    if (floating?.length && floating.every((t) => t.status === 'Pending')) {
+      try {
+        const { rows: freshRows } = await buildDealTimelineRows(supabase, data);
+        if (freshRows.length) {
+          const { error: dropError } = await supabase
+            .from('project_tasks').delete().eq('dealId', id).is('projectId', null);
+          if (!dropError) {
+            const { error: insError } = await supabase.from('project_tasks').insert(freshRows);
+            regenerated = !insError;
+          }
+        }
+      } catch { /* template ของประเภทใหม่ยังไม่พร้อม — คงไทม์ไลน์เดิมไว้ */ }
+    }
+  }
+
   // วันที่เริ่มดีลเปลี่ยน → เลื่อนไทม์ไลน์ลอยของดีลตาม (sync แบบเดียวกับฝั่งโครงการ
   // ที่ PATCH startDate แล้ว recalculateGraph ทุกขั้นตอน). เฉพาะดีลที่ยังไม่ผูกโครงการ —
   // ผูกแล้ว segment อยู่ใต้ anchor ของโครงการ จัดการที่หน้าโครงการตามกติกาเดิม.
-  if ('startDate' in body && (data.startDate || null) !== (before.startDate || null) && !data.projectId) {
+  // (regen ข้างบนใช้ startDate ใหม่เป็น anchor แล้ว — ไม่ต้องเลื่อนซ้ำ)
+  if (!regenerated && 'startDate' in body && (data.startDate || null) !== (before.startDate || null) && !data.projectId) {
     const { data: floating } = await supabase
       .from('project_tasks').select('*')
       .eq('dealId', id).is('projectId', null)

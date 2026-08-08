@@ -20,6 +20,7 @@ import {
   toProbability,
 } from '@/lib/salesPlanning';
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
+import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTimelineGen';
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
@@ -62,10 +63,30 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // team's pipeline but may only act on its own deals).
   const editor = canEditSalesPlanning(user);
   const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
-  const rows = (data || []).filter((d) => inSalesViewScope(user, d)).map((d) => ({
+  const visible = (data || []).filter((d) => inSalesViewScope(user, d));
+
+  /* ขั้นตอนปัจจุบันตามไทม์ไลน์ต่อดีล (คอลัมน์ "ขั้นตอน" — มติผู้ใช้ 2026-08-08)
+     ดึง task ของทุกดีลที่เห็นในคำขอเดียวแล้วสรุปฝั่ง server — task ที่ถูกรับเลี้ยง
+     เข้าโครงการแล้วยังถือ dealId เดิม (DL1) จึงตามด้วย dealId ได้ทั้งสองกรณี
+     เลือกเฉพาะคอลัมน์ที่ใช้สรุป: ทั้งลิสต์คือหลักพันแถว อย่า select '*' */
+  const stepMap = new Map();
+  if (visible.length) {
+    const { data: taskRows } = await supabase
+      .from('project_tasks')
+      .select('dealId, name, status, stepOrder')
+      .in('dealId', visible.map((d) => d.id))
+      .order('stepOrder', { ascending: true });
+    for (const task of taskRows || []) {
+      if (!stepMap.has(task.dealId)) stepMap.set(task.dealId, []);
+      stepMap.get(task.dealId).push(task);
+    }
+  }
+
+  const rows = visible.map((d) => ({
     ...d,
     canEdit: editor && inSalesEditScope(user, d),
     forecastDrift: driftMap.get(d.id) || null,
+    timelineStep: summarizeTimelineStep(stepMap.get(d.id)),
   }));
   return ok(rows);
 });
@@ -213,6 +234,29 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { data, error } = await supabase.from('sales_deals').insert(row).select(selectDeal).single();
   if (error) return fail(error.message, 500);
 
+  /* ไทม์ไลน์เกิดพร้อมดีลเสมอ ไม่ต้องกดสร้างเอง (มติผู้ใช้ 2026-08-08) — ฟอร์มสร้าง
+     มีครบทุกอย่างที่ template ใช้แล้ว (ประเภทดีล/หมวดสินค้า/วันที่เริ่ม/เจ้าของ)
+     · ไม่ขยับ stage เป็นเสนอไทม์ไลน์ — นั่นคือความหมายของ "การกดเสนอ" ที่ผู้ใช้ทำเอง
+       (ปุ่มเดิมที่หน้าดีลยังอยู่สำหรับดีลเก่า/สร้างใหม่หลังลบ)
+     · gen ไม่ได้ (template ไม่เผยแพร่/หมวดไม่ตรงสักขั้น) = ดีลต้องสร้างสำเร็จอยู่ดี
+       ตอบ timelineWarning ให้ UI เตือน ไม่ใช่ล้มทั้งคำขอ */
+  let timelineWarning = null;
+  if (stage !== 'lost') {
+    try {
+      const { rows: timelineRows, genType } = await buildDealTimelineRows(supabase, data);
+      if (!timelineRows.length) {
+        timelineWarning = categoryCode
+          ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ดีลนี้ยังไม่มีไทม์ไลน์`
+          : `Workflow Template ${genType} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ดีลนี้ยังไม่มีไทม์ไลน์`;
+      } else {
+        const { error: timelineError } = await supabase.from('project_tasks').insert(timelineRows);
+        if (timelineError) timelineWarning = `สร้างไทม์ไลน์ไม่สำเร็จ: ${timelineError.message}`;
+      }
+    } catch (timelineErr) {
+      timelineWarning = `สร้างไทม์ไลน์ไม่สำเร็จ: ${timelineErr.message}`;
+    }
+  }
+
   await supabase.from('sales_deal_stage_history').insert({
     id: genId('DSH'),
     dealId: data.id,
@@ -284,5 +328,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
   }
 
-  return ok(data, 201);
+  // timelineWarning: ดีลสร้างสำเร็จแต่ไทม์ไลน์ไม่เกิด — โมดัลใช้แจ้งต่อ (ไม่ใช่ error)
+  return ok(timelineWarning ? { ...data, timelineWarning } : data, 201);
 });
