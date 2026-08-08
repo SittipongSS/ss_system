@@ -69,6 +69,15 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
   return (
     <div style={{ width: "100%", overflowX: "auto" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="กราฟเทียบ Target Forecast Actual" style={{ display: "block", minWidth: Math.max(420, groups * 46) }} onMouseLeave={onLeave}>
+        {/* ลายเฉียงของแท่ง Forecast — relief เชิงรูปทรงสำหรับตาบอดสี เพราะทองแบรนด์
+           กับเขียว Actual แยกด้วยเนื้อสีอย่างเดียวไม่ผ่าน (ΔE protan 4-7) ·
+           เปิดใช้เฉพาะ v2 ผ่านกฎ [data-ds="v2"] .fc-bar ใน globals.css — v1 ไม่ขยับ */}
+        <defs>
+          <pattern id="fc-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill={CHART_SERIES.forecast} />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--panel)" strokeWidth="2.2" />
+          </pattern>
+        </defs>
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i === 0 ? "0" : "3 3"} />
@@ -85,6 +94,7 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
                 return (
                   <rect
                     key={s.key}
+                    className={s.key === "forecast" ? "fc-bar" : undefined}
                     x={gx + si * barW}
                     y={y(v)}
                     width={barW - 2}
