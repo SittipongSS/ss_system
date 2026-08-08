@@ -99,10 +99,10 @@ test('สถานะรายใบผูกกับ _key ไม่ใช่ i
   assert.doesNotMatch(src, /done\[index\]/, 'ห้ามผูกสถานะกับ index');
 });
 
-// `lockedProjectId` เป็นธงของฟอร์ม (ล็อกช่องโครงการตอนเปิดจากหน้าโครงการ) ไม่ใช่คอลัมน์
-// ของดีล — ต้องถูกตัดออกที่จุดเดียวกับ `_key` ก่อนยิง API
-test('ธงฝั่งจอ (_key / lockedProjectId) ห้ามหลุดไปกับ body ที่ยิง API', () => {
-  assert.match(src, /const \{ _key, lockedProjectId, \.\.\.rest \} = draft/);
+// `lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — ต้องถูกตัดออก
+// ที่จุดเดียวกับ `_key` ก่อนยิง API (legacy เดินทางต่อใน metadata เท่านั้น)
+test('ธงฝั่งจอ (_key / lockedProjectId / legacy) ห้ามหลุดไปกับ body ที่ยิง API', () => {
+  assert.match(src, /const \{ _key, lockedProjectId, legacy, \.\.\.rest \} = draft/);
   assert.doesNotMatch(src, /JSON\.stringify\(\{[^}]*_key/, '_key ห้ามอยู่ใน body');
 });
 
@@ -128,8 +128,11 @@ test('ทุกหน้าที่สร้างดีลใช้โมด�
 
 test('เปิดจากหน้ารวมดีล (ไม่มีลีด) ต้องไม่ผูก metadata.leadId และไม่เด้งหน้า', () => {
   assert.match(src, /lead\s*=\s*null/, 'lead เป็น optional');
-  assert.match(src, /lead\s*\n?\s*\?\s*\{ \.\.\.payload, metadata: \{ leadId: lead\.id/,
+  // metadata ประกอบแบบมีเงื่อนไข: leadId เฉพาะตอนมาจากลีด · legacy เฉพาะดีลเก่า
+  assert.match(src, /\.\.\.\(lead \? \{ leadId: lead\.id, source: "lead", leadChannel: lead\.channel \} : \{\}\)/,
     'ผูกลีดเฉพาะตอนมาจากลีด');
+  assert.match(src, /\.\.\.\(legacy \? \{ legacy: true \} : \{\}\)/,
+    'ธงดีลเก่าไปกับ metadata เฉพาะตอนเปิดสวิตช์');
   assert.match(src, /if \(lead\) router\.push\(/, 'เด้งไปหน้าดีลเฉพาะตอนมาจากลีด');
 });
 

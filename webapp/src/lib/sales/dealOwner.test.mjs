@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { ROLES } from '../permissions.js';
 import { canCreateDeal, salesPlanningEditScope } from '../salesPlanning.js';
 import {
-  DEAL_OWNER_ROLES, assignableOwners, canAssignDealOwner, ownerLockedToSelf,
+  DEAL_HOLDER_ROLES, DEAL_OWNER_ROLES, assignableOwners, canAssignDealOwner, ownerLockedToSelf,
 } from './dealOwner.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -33,14 +33,18 @@ test('role ที่แก้ดีลไม่ได้ ก็เปิดด�
   }
 });
 
-// ⭐ หัวใจ: เจ้าของต้องเป็นคนที่ inSalesEditScope ยอมให้แก้ดีลใบนั้นได้
-test('รายชื่อเจ้าของดีล = role ที่มี edit scope กับดีล ไม่ใช่ลิสต์ที่พิมพ์ทิ้งไว้', () => {
+// ⭐ สองชั้น: DEAL_OWNER_ROLES = ใครแก้ดีลได้ (จาก edit scope) · DEAL_HOLDER_ROLES =
+// ใคร**ถือ**ดีลได้ (มติผู้ใช้ 2026-08-08: ดีลเป็นหน้าที่ของ AE / Senior AE เท่านั้น
+// — "ผู้รับผิดชอบกรองชื่อสิ") · คนถือต้องแก้ของตัวเองได้เสมอ
+test('คนถือดีล = AE / Senior AE เท่านั้น และต้องอยู่ในกลุ่มที่แก้ดีลได้', () => {
   assert.deepEqual(DEAL_OWNER_ROLES, ROLES.filter((r) => salesPlanningEditScope(r) !== 'none'));
-  for (const role of ['ae', 'ac', 'senior_ae', 'admin']) {
-    assert.ok(DEAL_OWNER_ROLES.includes(role), role);
+  assert.deepEqual(DEAL_HOLDER_ROLES, ['ae', 'senior_ae']);
+  for (const role of DEAL_HOLDER_ROLES) {
+    assert.ok(DEAL_OWNER_ROLES.includes(role), `${role} ต้องแก้ดีลของตัวเองได้`);
   }
-  for (const role of ROLES.filter((r) => salesPlanningEditScope(r) === 'none')) {
-    assert.ok(!DEAL_OWNER_ROLES.includes(role), `${role} ถือดีลไม่ได้`);
+  // ผู้ประสาน/ผู้กำกับแก้ได้แต่ถือไม่ได้ — รายชื่อในดรอปดาวน์ต้องไม่มี
+  for (const role of ['ac', 'ae_supervisor', 'admin']) {
+    assert.ok(!DEAL_HOLDER_ROLES.includes(role), `${role} ถือดีลไม่ได้`);
   }
 });
 
@@ -64,11 +68,13 @@ const DIRECTORY = [
   { id: 'U-OLD', name: 'เอฟ', role: 'ae', team: 'ODM', disabled: true },
 ];
 
-test('AC ทีม ODM เห็นเฉพาะคนในทีมตัวเอง (+ คนที่ไม่มีทีม)', () => {
+test('AC ทีม ODM เห็นเฉพาะ AE/Senior AE ในทีมตัวเอง', () => {
   const ids = assignableOwners(DIRECTORY, 'ODM').map((u) => u.id);
   assert.ok(ids.includes('U-AE-ODM'));
   assert.ok(!ids.includes('U-AE-KA'), 'ห้ามเห็น AE ทีมอื่น');
-  assert.ok(ids.includes('U-ADMIN'), 'คนที่ไม่มีทีม (ผู้กำกับดูแล) ติดมาด้วยเสมอ');
+  // มติ 2026-08-08 ("ผู้รับผิดชอบกรองชื่อสิ"): admin ถือดีลไม่ได้แล้ว —
+  // ของเดิมคนไม่มีทีมติดมาเสมอ ทำให้ Admin โผล่ในลิสต์ทั้งที่ไม่ใช่ AE
+  assert.ok(!ids.includes('U-ADMIN'), 'admin ไม่ใช่คนถือดีล ต้องไม่อยู่ในรายชื่อ');
 });
 
 test('ตำแหน่งที่ถือดีลไม่ได้ และบัญชีที่ปิดแล้ว ต้องไม่อยู่ในรายชื่อ', () => {

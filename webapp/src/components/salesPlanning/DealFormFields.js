@@ -253,12 +253,35 @@ export default function DealFormFields({
     return `${DEFAULT_PROBABILITY_BY_STAGE[stage] ?? DEFAULT_PROBABILITY_BY_STAGE.lead}%`;
   };
   const isEndStage = (stage) => stage === "won" || stage === "in_project" || stage === "lost";
+  /* สวิตช์ "ดีลเก่าจากระบบเดิม" (มติผู้ใช้ 2026-08-08 — เปิดถาวรทุกคน): เปิดแล้ว
+     แถบขั้นงอก Won เพิ่ม (Lost อยู่ใน CREATABLE_STAGES อยู่แล้ว) — ใส่ดีลย้ายระบบ
+     ได้ตรงสถานะจริง · ปิดสวิตช์ทั้งที่เลือก Won ค้าง = ล้างสถานะให้เลือกใหม่
+     โผล่เฉพาะตอนสร้าง (auto) — ฟอร์มแก้เปลี่ยนสถานะผ่าน transition อยู่แล้ว */
+  const legacyOn = probabilityMode === "auto" && !alreadyWon && !!form.legacy;
+  const stepStages = legacyOn
+    ? [...stages.filter((stage) => stage !== "lost"), "won", ...(stages.includes("lost") ? ["lost"] : [])]
+    : stages;
   const stageField = (
     <div className="deal-field" key="stage">
-      <span className="deal-field-label">
-        สถานะ
+      <span className="deal-field-label split">
+        <span className="deal-field-label">
+          สถานะ <span className="required-mark">*</span>
+          {probabilityMode === "auto" && !alreadyWon && (
+            <span className="soft">· FC% ผูกตามขั้น — ระบบปรับให้เองเมื่อสถานะเปลี่ยน</span>
+          )}
+        </span>
         {probabilityMode === "auto" && !alreadyWon && (
-          <span className="soft">· FC% ผูกตามขั้น — ระบบปรับให้เองเมื่อสถานะเปลี่ยน</span>
+          <button
+            type="button"
+            className="ui-switch"
+            data-on={form.legacy ? "1" : undefined}
+            aria-pressed={!!form.legacy}
+            onClick={() => onPatch(form.legacy
+              ? { legacy: false, ...(form.stage === "won" ? { stage: "" } : {}) }
+              : { legacy: true })}
+          >
+            <i aria-hidden="true" />ดีลเก่าจากระบบเดิม
+          </button>
         )}
       </span>
       <StageSteps
@@ -266,19 +289,23 @@ export default function DealFormFields({
         onChange={set("stage")}
         disabled={alreadyWon}
         ariaLabel="สถานะดีล"
-        steps={stages.map((stage, index) => ({
+        steps={stepStages.map((stage, index) => ({
           value: stage,
           label: STAGE_LABELS[stage],
           sub: stageSub(stage),
           tone: stage === "lost" ? "lose" : isEndStage(stage) ? "win" : undefined,
           // เส้นคั่นหนาหน้าขั้นปลายตัวแรก — แยก pipeline ออกจากจุดจบ
-          cut: isEndStage(stage) && index > 0 && !isEndStage(stages[index - 1]),
+          cut: isEndStage(stage) && index > 0 && !isEndStage(stepStages[index - 1]),
         }))}
       />
       {alreadyWon ? (
         <small>ปิดได้แล้ว (Won) — ยอดจริงมาจากใบสั่งขาย</small>
       ) : probabilityMode === "auto" ? (
-        <small>NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ</small>
+        <small>
+          {legacyOn
+            ? "ดีลเก่าเลือกขั้นปลายได้ตอนสร้าง — Won เก่าคิดเป็นยอดจริง (Actual) เมื่อผูกใบสั่งขาย ไม่เข้า FC"
+            : "NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ"}
+        </small>
       ) : null}
     </div>
   );

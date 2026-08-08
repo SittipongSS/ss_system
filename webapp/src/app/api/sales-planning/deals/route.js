@@ -118,7 +118,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
   if (stage === 'in_project') stage = 'won';
   // ปิด Won ตอนสร้างดีลต้องผ่านเงื่อนไขเดียวกับ win-flow: มัดจำ + มูลค่าปิดจริง>0 (M5)
-  if (stage === 'won') return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา');
+  // ⚠️ ยกเว้น **ดีลเก่าจากระบบเดิม** (มติผู้ใช้ 2026-08-08 — สวิตช์เปิดถาวรทุกคน):
+  // ช่วงย้ายระบบมีดีลที่ Won ไปแล้วในระบบเก่าและต้องมาติดตามงานต่อ — ติดธง
+  // `metadata.legacy` แล้วสร้างที่ Won ได้เลย · wonValue/confirmedAt คงเป็น null
+  // (ยอดจริงมาจากใบสั่งขายที่จะผูกภายหลัง ตามมติ Won = Actual เดิม — ไม่ปั้นตัวเลข)
+  if (stage === 'won' && !body.metadata?.legacy) {
+    return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
+  }
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
   const dealCode = await generateEntityCode(supabase, 'DL');
   const row = {

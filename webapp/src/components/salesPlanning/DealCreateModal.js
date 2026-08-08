@@ -143,6 +143,8 @@ export default function DealCreateModal({
            หมวดสินค้า/รายละเอียด — ด่านฝั่งจอบอกก่อนเสียเที่ยว รวมทุกช่องที่ขาด
            ในข้อความเดียว ไม่ให้กดแล้วเจอทีละช่อง */
         const missing = [
+          // สถานะไม่มี default แล้ว (มติ 2026-08-08 "สถานะต้องบังคับเลือก") — ต้องจิ้มเอง
+          [!draft.stage, "สถานะ"],
           [!String(draft.projectValue ?? "").trim(), "มูลค่าคาดการณ์"],
           [!draft.expectedCloseDate, "วันที่คาดการณ์ปิด"],
           [!draft.startDate, "วันที่เริ่ม"],
@@ -154,19 +156,22 @@ export default function DealCreateModal({
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
-          // `lockedProjectId` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — อย่าส่งเข้า API
-          const { _key, lockedProjectId, ...rest } = draft;
+          // `_key`/`lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล —
+          // legacy ไปกับ metadata (ธงดีลเก่าจากระบบเดิม เปิดทางสร้างที่ Won ฝั่ง server)
+          const { _key, lockedProjectId, legacy, ...rest } = draft;
           const payload = {
             ...rest,
             customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
+          };
+          const metadata = {
+            ...(lead ? { leadId: lead.id, source: "lead", leadChannel: lead.channel } : {}),
+            ...(legacy ? { legacy: true } : {}),
           };
           const res = await fetch("/api/sales-planning/deals", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
-              lead
-                ? { ...payload, metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel } }
-                : payload,
+              Object.keys(metadata).length ? { ...payload, metadata } : payload,
             ),
           });
           const data = await res.json().catch(() => ({}));
