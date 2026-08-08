@@ -187,6 +187,14 @@ production/board · targets/history · sahamit forecast+reconcile · Gantt
 - **ปฏิทิน 4 หน้า** — mgmt/calendar · sa/calendar · service/schedule (กริดช่าง×วัน
   มีมติ "จงใจไม่ทำรายชั่วโมง" ในไฟล์) · settings/holidays → ทำ pattern
   ปฏิทินกลางครั้งเดียวใช้ 4 ที่
+  · **เสนอ 3 แบบให้เลือกแล้ว (2026-08-08) `รอเลือก`** —
+  artifact `42c896ea-c3cb-40d3-9740-065206756acb` (ข้อมูลจริงชุดเดียวกัน
+  โทเคน v2 จริงทั้งสองธีม): **A ตารางร่วมเส้น** 76px/มุม 0/ไฟ 0 —
+  ตรงภาษาโต๊ะช่างสุด มีที่ service/schedule แล้ว · **B การ์ดวัน** 96px/8px/6px —
+  3 ใน 4 หน้าใช้อยู่ แต่ service/schedule ใช้ไม่ได้ ต้องยกเว้น ·
+  **C เส้นร่วม + แถบเต็มช่อง** 84px — อ่านจากรูปทรง แต่เป็นของใหม่ล้วน
+  ⇒ **แนะนำ A** (ตรงทิศทาง · ครอบ 4 หน้ารวมตารางช่าง×วัน · การแก้ 3 หน้าเป็น
+  การ*ลบ*ช่องไฟ/มุม ไม่ใช่เขียนใหม่)
 - **matrix ที่เหลือ** — sahamit/forecast · reconcile · targets/history ·
   production/board (กติกา "เตือนเกินกำลังแต่ไม่บล็อก" ต้องคงไว้)
 - **Gantt** `pm/ProjectDocumentView` (860 บรรทัด) — drag + คณิตพิกเซล
