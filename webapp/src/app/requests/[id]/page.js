@@ -771,6 +771,7 @@ export default function RequestDetailPage() {
           · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
             การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
       <DetailPageLayout
+        className={usePanel ? styles.panelLayout : ""}
         asideLabel="จัดการคำร้อง"
         aside={usePanel ? (
           <>

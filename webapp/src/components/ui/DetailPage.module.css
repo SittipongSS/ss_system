@@ -177,6 +177,9 @@
     position: static;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* การ์ดสูงตามเนื้อตัวเอง — ค่า stretch เดิมยืดการ์ดเตี้ย (เช่นการ์ดบริบท
+       โครงการ/ดีล) ให้สูงเท่าการ์ด control ข้าง ๆ กลายเป็นกล่องเปล่ายาวทั้งแถบ */
+    align-items: start;
   }
 }
 @media (max-width: 680px) {
