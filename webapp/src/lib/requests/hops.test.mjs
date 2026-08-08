@@ -46,11 +46,14 @@ test('เดินข้ามขั้นไม่ได้ และข้อ�
   assert.match(hopStageError(at('sent'), 'บิน'), /ก้าวไม่ถูกต้อง/);
 });
 
-test('ก้าวที่บันทึกเวลาต้องมีวันที่ — ไม่งั้นตัวเลข lead time หายทั้งแถวโดยไม่มีอะไรฟ้อง', () => {
-  for (const hop of ['ready', 'pickup', 'send']) {
+test('ก้าวฝั่งผู้ขอที่บันทึกเหตุการณ์นอกระบบยังบังคับวันที่ — ก้าวส่งใช้ตราประทับ (ม-92)', () => {
+  for (const hop of ['pickup', 'send', 'receive']) {
     assert.match(hopValuesError(hop, {}), /ต้องระบุวันที่/, hop);
     assert.equal(hopValuesError(hop, { at: '2026-08-12' }), null, hop);
   }
+  // ⭐ ก้าวส่ง (ready) ว่างได้ — hopPatch ประทับวันไทยของวันที่กดให้เอง (ม-92:
+  // "ไม่จำเป็นต้องใส่วันที่ ใช้ stamp วันเวลา") · ใส่มาก็ยังต้องถูกรูปแบบ
+  assert.equal(hopValuesError('ready', {}), null);
   assert.match(hopValuesError('ready', { at: '12/08/2026' }), /วันที่ไม่ถูกต้อง/);
   // รับเรื่องไม่บังคับวันที่ (ค่าตั้งต้น = วันนี้) แต่ถ้าใส่วันนัดส่งต้องถูกรูปแบบ
   assert.equal(hopValuesError('ack', {}), null);

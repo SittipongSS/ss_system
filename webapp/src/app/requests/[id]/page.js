@@ -87,20 +87,15 @@ const THREAD_STEP_HINT = {
 
 // ป้ายช่องวันที่ต้องพูดถึงก้าวนั้นตรง ๆ — "วันที่" เฉย ๆ ทำให้คนกรอกวันนี้ทุกครั้ง
 // ทั้งที่หลายก้าวถูกกดย้อนหลังเป็นปกติ (ของส่งไปเมื่อวาน เพิ่งมาบันทึกเช้านี้)
+// ⚠️ ก้าวส่ง (ready) ไม่มีช่องวันแล้ว (ม-92) — ระบบประทับวันที่กดให้เอง
 const HOP_DATE_LABEL = {
   ack: "วันที่รับเรื่อง",
-  ready: "วันที่ส่งของ",
   pickup: "วันที่รับของ",
   send: "วันที่ส่งให้ลูกค้า",
   outcome: "วันที่ลูกค้าตอบ",
   receive: "วันที่ได้รับเอกสาร",
   // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
-
-// สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" (ม-89) — ป้ายวันในโมดัลต้องพูดคำเดียวกัน
-const hopDateLabel = (draft) => (draft.hop === "ready" && isDocLineKind(draft.item.lineKind)
-  ? "วันที่ส่งเอกสาร"
-  : HOP_DATE_LABEL[draft.hop]);
 
 export default function RequestDetailPage() {
   const { id } = useParams();
@@ -278,7 +273,8 @@ export default function RequestDetailPage() {
       method: "PATCH",
       body: JSON.stringify({
         hop,
-        at: hopDraft.at,
+        // ก้าวส่งไม่ส่งวัน (ม-92) — server ประทับวันไทยของวันที่กดให้เอง
+        ...(hop === "ready" ? {} : { at: hopDraft.at }),
         ...(hop === "ack" ? { dueAt: hopDraft.dueAt || null } : {}),
         ...(hop === "ready" && item.lineKind === "product_dev" ? {
           formulaName: hopDraft.formulaName,
@@ -319,7 +315,8 @@ export default function RequestDetailPage() {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              hop: "ready", at: bulkReady.at,
+              // ไม่ส่งวัน (ม-92) — server ประทับวันไทยของวันที่กดให้ทุกแถว
+              hop: "ready",
               formulaName: row.formulaName,
               formulaCode: row.formulaCode,
               formulaDate: row.formulaDate || null,
@@ -557,7 +554,6 @@ export default function RequestDetailPage() {
         icon: Send,
         visible: canAnswer && bulkReadyRows(req.items || []).length >= 2,
         onClick: () => setBulkReady({
-          at: businessDate(),
           rows: bulkReadyRows(req.items || []).map((item) => ({
             item, formulaName: "", formulaCode: "", formulaDate: "",
           })),
@@ -926,13 +922,7 @@ export default function RequestDetailPage() {
       >
         {bulkReady && (
           <>
-            <div className="form-group">
-              <label htmlFor="bulk-ready-at">วันที่ส่งของ (ทุกรายการ)</label>
-              <DateInput
-                id="bulk-ready-at" value={bulkReady.at} disabled={saving}
-                onChange={(v) => setBulkReady({ ...bulkReady, at: v })}
-              />
-            </div>
+            {/* ไม่มีช่องวันส่ง (ม-92) — ระบบประทับวันที่กดให้ทุกแถว */}
             {bulkReady.rows.map((row, i) => (
               <div key={row.item.id} className={styles.bulkRow}>
                 <div className="toolbar-label">{row.item.label}</div>
@@ -1007,11 +997,12 @@ export default function RequestDetailPage() {
       >
         {hopDraft && (
           <>
-            {hopDraft.hop !== "refuse" && (
+            {/* ⭐ ก้าวส่ง (ready) ไม่มีช่องวัน (ม-92) — ระบบประทับวันที่กดให้เอง
+                ก้าวอื่นยังถาม: แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมา
+                บันทึกเป็นเรื่องปกติ (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
+            {!["refuse", "ready"].includes(hopDraft.hop) && (
             <div className="form-group">
-              <label htmlFor="hop-at">{hopDateLabel(hopDraft)}</label>
-              {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
-                  (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
+              <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               <DateInput
                 id="hop-at" value={hopDraft.at} disabled={saving}
                 onChange={(v) => setHopDraft({ ...hopDraft, at: v })}

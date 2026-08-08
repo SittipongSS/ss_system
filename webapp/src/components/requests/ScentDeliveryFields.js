@@ -22,12 +22,14 @@ import styles from "./scentDelivery.module.css";
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
 //   · `producedAt` = RD ผลิตกลิ่นตัวนี้เสร็จวันไหน → ไปอยู่บน **ตัวกลิ่น** ในทะเบียน
 //   · `readyAt`    = พร้อมส่งมอบให้ฝ่ายขายวันไหน  → ไปอยู่บน **แถวคำร้อง**
-// กลิ่นตัวหนึ่งอาจผลิตเสร็จวันที่ 1 แต่รอตัวอื่นในชุดจนพร้อมส่งพร้อมกันวันที่ 8
+// ⚠️ `readyAt` **ไม่ถามในฟอร์มแล้ว** (ม-92: วันส่งใช้ตราประทับวันที่กด — server
+// เติมวันไทยเองเมื่อว่าง) · `producedAt` ยังถาม เพราะเป็นข้อเท็จจริงของตัวกลิ่น
+// ที่มักเกิดก่อนวันกดส่ง ไม่ใช่วันของการส่ง
 // `_files` = File[] ค้างในฟอร์ม (ม-91) — แถวสายกลิ่นเกิดตอนกดส่ง จึงยังไม่มี
 // entityId ให้อัป ⇒ อัปหลังแถวเกิด (แพตเทิร์นเดียวกับหน้าสร้างคำร้อง · ม-84)
 // ⚠️ ขีดล่างนำหน้า = ของฟอร์มล้วน ห้ามส่งเข้า payload (ดูตอน submit ใน page.js)
 export const emptyDeliveryRow = () => ({
-  name: "", code: "", producedAt: businessDate(), readyAt: businessDate(),
+  name: "", code: "", producedAt: businessDate(),
   derivedFromScentId: "", spec: "", briefId: "", targetItemId: "", _files: [],
 });
 
@@ -120,21 +122,14 @@ export default function ScentDeliveryFields({
                 />
                 {conflict && <p className={styles.error}>{conflict}</p>}
               </div>
-              {/* ⭐ วันผลิตมาก่อนวันพร้อมส่งบนจอ — เรียงตามลำดับเวลาจริงของงาน
-                  ⚠️ ทั้งคู่ไม่บังคับ: ไม่กรอกวันผลิต = ถือว่าผลิตเสร็จวันเดียวกับที่
-                  ส่งมอบ ซึ่งเป็นเคสส่วนใหญ่ · บังคับทั้งสองช่องแล้วคนต้องพิมพ์ซ้ำเปล่า ๆ */}
+              {/* ⭐ เหลือวันเดียวบนจอ: วันผลิต (ข้อเท็จจริงของตัวกลิ่น มักเกิดก่อน
+                  วันกด) — วันส่งไม่ถามแล้ว ระบบประทับวันที่กดให้เอง (ม-92)
+                  ⚠️ ไม่บังคับ: ไม่กรอก = ถือว่าผลิตเสร็จวันเดียวกับที่ส่งมอบ */}
               <div className="form-group">
                 <label htmlFor={`d-produced-${i}`}>วันที่ผลิตกลิ่น</label>
                 <DateInput
                   id={`d-produced-${i}`} value={row.producedAt} disabled={disabled}
                   onChange={(v) => patch(i, { producedAt: v })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`d-ready-${i}`}>วันที่พร้อมส่ง</label>
-                <DateInput
-                  id={`d-ready-${i}`} value={row.readyAt} disabled={disabled}
-                  onChange={(v) => patch(i, { readyAt: v })}
                 />
               </div>
               {askBrief && !row.targetItemId && (
