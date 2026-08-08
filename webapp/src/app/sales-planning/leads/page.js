@@ -346,6 +346,16 @@ export default function LeadsPage() {
 
   const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : "-");
 
+  /* ตัวเลือกเดือนคุม **แถบตัวเลขด้านบนเท่านั้น** ไม่ได้กรองตารางข้างล่าง
+     🐞 มันอยู่หัวหน้าข้างปุ่ม "รับลีดใหม่" จึงอ่านเป็นตัวกรองทั้งหน้า แล้วคนเห็น
+     "ลีดเข้า 128 · เดือน 2026-08" อยู่เหนือตารางที่ลิสต์ลีดทั้งหมดตลอดกาล
+     = ตัวเลขสองชุดบนจอเดียวกันที่ไม่มีทางตรงกัน (ตรวจเจอ 2026-08-08)
+
+     ⚠️ **ไม่กรองตารางตามเดือน** โดยเจตนา — คิวงานต้องโชว์ทุกใบที่ยังไม่ปิดไม่ว่าจะ
+     เข้ามาเดือนไหน ตัดด้วยเดือนแล้วลีดที่ค้างข้ามเดือน (ใบที่ต้องทวงที่สุด) จะหายจากคิว
+     ⇒ แก้ด้วยการเขียนขอบเขตของแต่ละส่วนให้ชัด ไม่ใช่ย้ายพฤติกรรมของตาราง */
+  const periodNote = allMonths ? `ทั้งปี ${yearOfMonth(month) || ""}`.trim() : `เดือน ${month}`;
+
   if (!canLead && !canView) {
     return (
       <SaWorkspace icon={<Inbox size={22} />} title="ลีด">
@@ -402,13 +412,17 @@ export default function LeadsPage() {
           )}
 
           <SaMetricStrip aria-busy={loading}>
-            <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
-            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้าง ${kpi?.sla?.screen?.pending ?? 0}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้าง ${kpi?.sla?.contact?.pending ?? 0}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
+            <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
+            {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
+                ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ */}
+            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
+            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
+            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${periodNote} · ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
           </SaMetricStrip>
 
-        <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล" actions={<span className="ui-badge">{filtered.length} ลีด</span>}>
+        {/* ⚠️ subtitle ต้องบอกให้ชัดว่าตารางนี้ไม่ได้ผูกกับตัวเลือกเดือนด้านบน — ไม่งั้น
+            "ลีดเข้า 128 · เดือน 2026-08" กับ "743 ลีด" บนจอเดียวกันจะอ่านเป็นความขัดแย้ง */}
+        <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล — แสดงทุกเดือน ไม่ผูกกับตัวเลือกเดือนด้านบน" actions={<span className="ui-badge">{filtered.length} ลีด · ทุกเดือน</span>}>
           <div className="toolbar" style={{ marginBottom: 14, flexWrap: "wrap" }}>
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />

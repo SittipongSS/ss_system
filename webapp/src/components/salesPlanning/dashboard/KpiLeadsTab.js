@@ -76,8 +76,10 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
         <div className={styles.qualityGrid} aria-busy={loading}>
-          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้าง ${sla.screen?.pending ?? 0}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
-          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้าง ${sla.contact?.pending ?? 0}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
+          {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
+              โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
+          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างตอนนี้ ${sla.screen?.pending ?? "-"}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
+          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างตอนนี้ ${sla.contact?.pending ?? "-"}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
           <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
         </div>
       </SaSection>
