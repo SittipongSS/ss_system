@@ -9,7 +9,7 @@ import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import DateInput from "@/components/ui/DateInput";
 import { fmtPercent } from "@/lib/format";
-import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { CHART_LINE_TYPE, CHART_SERIES } from "@/lib/chartTheme";
 
 import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 
@@ -141,8 +141,8 @@ export default function SalesKpiDashboard() {
                     />
                     <Legend wrapperStyle={{ fontSize: "var(--fs-5)" }} />
                     <Bar yAxisId="left" dataKey="total" name="งานทั้งหมด" fill="var(--text-3)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                    <Bar yAxisId="left" dataKey="completed" name="งานที่เสร็จ" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                    <Line yAxisId="right" type={CHART_LINE_TYPE} dataKey="score" name="คะแนนรวม" stroke="var(--amber)" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                    <Bar yAxisId="left" dataKey="completed" name="งานที่เสร็จ" fill={CHART_SERIES.plan} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    <Line yAxisId="right" type={CHART_LINE_TYPE} dataKey="score" name="คะแนนรวม" stroke={CHART_SERIES.forecast} strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                   </ComposedChart>
                 </ResponsiveContainer></ChartCanvas>
               </div>
@@ -182,7 +182,7 @@ export default function SalesKpiDashboard() {
                       cursor={{ fill: "color-mix(in srgb, var(--green) 5%, transparent)" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "var(--fs-5)" }} />
-                    <Bar dataKey="score" name="คะแนนรวม" fill="var(--green)" radius={[0, 4, 4, 0]} maxBarSize={20} />
+                    <Bar dataKey="score" name="คะแนนรวม" fill={CHART_SERIES.actual} radius={[0, 4, 4, 0]} maxBarSize={20} />
                   </BarChart>
                 </ResponsiveContainer></ChartCanvas>
               </div>

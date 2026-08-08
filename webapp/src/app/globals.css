@@ -90,6 +90,16 @@
   --violet: #6f5e9f;
   --violet-soft: #eee9f6;
 
+  /* สีชุดข้อมูลของกราฟ (series) — แยกจากสีสถานะ/ปุ่มโดยเจตนา: กราฟหยิบผ่าน
+     CHART_SERIES ใน lib/chartTheme.js เท่านั้น ไม่หยิบชื่อสีสถานะตรง ๆ
+     (บทเรียนรอบตรวจ 2026-08-08: palette กระจาย 8 ชุด "Forecast" คนละสีคนละหน้า)
+     ค่า v1 ชี้กลับไปสีเดิมที่หน้าจอใช้อยู่ = หน้าตา v1 ไม่ขยับ · v2 ทับเป็นชุดที่ผ่าน
+     ตัวตรวจ CVD (คู่ orange↔green เหลือ WARN ตามธรรมชาติ — relief คือ legend
+     + ป้ายค่าบนแท่ง ซึ่งกราฟฝั่งขายมีครบ) */
+  --chart-plan: var(--blue);
+  --chart-forecast: var(--amber);
+  --chart-actual: var(--green);
+
   /* Controlled-document accents must match the self-contained print engine. */
   --document-accent-terracotta: #ad5d43;
   --document-accent-steel: #1e6091;
@@ -565,6 +575,14 @@ body {
   --violet: #a495db;
   --violet-soft: rgba(164, 149, 219, 0.14);
 
+  /* สีชุดข้อมูล v2 มืด — ผ่าน validator ครบทุกข้อบนพื้นการ์ด #1a1f29 (ไม่มี WARN)
+     ⚠️ ความหมายผูกกับข้อความบนจอ: หน้าผลงานขายเขียนไว้ว่า "เขียว = Actual"
+     — actual ต้องอยู่ตระกูลเขียวเสมอ · forecast ย้ายไป plum เพราะ amber ชน
+     ทั้ง orange (ΔE 8.9) และ green (protan 7.4) ไม่มีทางผ่านในสามตัว */
+  --chart-plan: #4a85d6;
+  --chart-forecast: #c9679b;
+  --chart-actual: #37884f;
+
   /* ⚠️ ไม่ทับ --radius-* ใน Phase 0 — เทสต์ radiusScale อ่านขั้นจากประกาศตัวสุดท้าย
      ทั้งไฟล์ การทับที่นี่จะเปลี่ยนนิยาม "ตรงขั้นเป๊ะ" ของฝั่ง v1 ไปด้วย (เจอจริง:
      ตั้ง --radius:6px แล้ว border-radius:6px ดิบ 2 จุดเดิมตกเทสต์ทันที)
@@ -689,6 +707,12 @@ body {
   --teal-soft: #e0f0f0;
   --violet: #6f5e9f;
   --violet-soft: #eee9f6;
+
+  /* สีชุดข้อมูล v2 สว่าง — ผ่าน validator ครบทุกข้อบนพื้นการ์ด #fbfaf8 (ไม่มี WARN)
+     ความหมายเดียวกับธีมมืด: actual = เขียวเสมอ · forecast = plum */
+  --chart-plan: #2e6fbf;
+  --chart-forecast: #b25389;
+  --chart-actual: #1b7a40;
 
   --shadow-sm: none;
   --shadow-md: none;

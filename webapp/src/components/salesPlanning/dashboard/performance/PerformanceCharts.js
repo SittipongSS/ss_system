@@ -7,15 +7,16 @@ import { yoySeries, cumulativeSeries } from "@/lib/sales/performanceMath";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { SeriesLegend } from "./shared";
 import ChartCard from "@/components/ui/ChartCard";
+import { CHART_SERIES } from "@/lib/chartTheme";
 
 // กราฟของแท็บผลงานขาย — SVG เขียนเอง (แอปไม่มี chart library, แพตเทิร์นเดียวกับ
 // DashboardCharts เดิม): เทียบ Target/Forecast/Actual + เส้นประ Actual ปีก่อน,
 // การเติบโต YoY รายเดือน, และยอดสะสม.
 
 const SERIES = [
-  { key: "target", label: "Target", color: "var(--blue)" },
-  { key: "forecast", label: "Forecast", color: "var(--amber)" },
-  { key: "actual", label: "Actual", color: "var(--green)" },
+  { key: "target", label: "Target", color: CHART_SERIES.plan },
+  { key: "forecast", label: "Forecast", color: CHART_SERIES.forecast },
+  { key: "actual", label: "Actual", color: CHART_SERIES.actual },
 ];
 
 const QUARTER_LABELS = ["Q1", "Q2", "Q3", "Q4"];
