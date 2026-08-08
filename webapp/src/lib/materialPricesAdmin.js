@@ -167,7 +167,8 @@ export async function findRequest(supabase, id) {
   // ⚠️ โหลดเฉพาะใบเดียวตอนเปิด ไม่ใช่ตอนโหลดคิวทั้งชุด (คิวไม่ได้ใช้ค่าพวกนี้)
   const [project, customer, deal] = await Promise.all([
     withBriefs.projectId
-      ? supabase.from('projects').select('id, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
+      // name/code เพิ่มมาเพื่อการ์ดบริบทบน panel (ม-94) — โหลดใบเดียวตอนเปิดอยู่แล้ว
+      ? supabase.from('projects').select('id, code, name, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
         .maybeSingle().then((r) => r.data)
       : null,
     withBriefs.customerId
@@ -175,7 +176,7 @@ export async function findRequest(supabase, id) {
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
-      ? supabase.from('sales_deals').select('id, code').eq('id', withBriefs.dealId)
+      ? supabase.from('sales_deals').select('id, code, title').eq('id', withBriefs.dealId)
         .maybeSingle().then((r) => r.data)
       : null,
   ]);
@@ -213,7 +214,13 @@ export async function findRequest(supabase, id) {
       : null,
   ]);
 
-  return { ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder };
+  // การ์ดบริบทบน panel (ม-94) — โครงการ/ดีลที่ใบนี้เกาะอยู่ พร้อมป้ายชื่อจริง
+  // (จอทำลิงก์เอง — id อย่างเดียวกดไปได้แต่บอกไม่ได้ว่าคือใบไหน)
+  return {
+    ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder,
+    refProject: project ? { id: project.id, code: project.code, name: project.name } : null,
+    refDeal: deal,
+  };
 }
 
 // ── ราคาที่ออกจากแถวนี้ — ให้ใบคำร้องแสดงย้อนกลับได้ ──────────────────────

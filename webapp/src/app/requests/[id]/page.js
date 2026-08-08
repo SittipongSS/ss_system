@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FolderKanban, Handshake, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -16,10 +16,10 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
-import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
-  WorkflowRail,
+  DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
 import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
@@ -54,7 +54,7 @@ import ScentDeliveryFields, {
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import { requestDeliversRows, requestHasItems, requestKindLabel, requestUsesControlPanel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -526,10 +526,14 @@ export default function RequestDetailPage() {
   // ⚠️ **ที่เดียวเสมอ ไม่โชว์สองที่** — `primaryAction` ตัวเดียวกัน ย้ายที่วาง ไม่ใช่
   // ก๊อป · โชว์ทั้งหัวใบและท้ายเธรดเมื่อไร ก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
   // ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
-  const threadStep = !hasItems && primaryAction
+  // ⭐ โครง Control Panel (มติผู้ใช้ 2026-08-09) — หัวข้อที่เปิดธง ปุ่มระดับใบ
+  // **ทั้งชุด**อยู่การ์ดขวาที่เดียว: ไม่มีปุ่มบนหัวใบ และไม่มีแถบท้ายเธรด
+  // (ยังคงกติกา "ที่เดียวเสมอ" — แค่ที่นั้นเปลี่ยนเป็น panel)
+  const usePanel = requestUsesControlPanel(req.kind);
+  const threadStep = !usePanel && !hasItems && primaryAction
     ? { ...primaryAction, hint: THREAD_STEP_HINT[primaryAction.id] || "รอดำเนินการ" }
     : null;
-  const headerAction = threadStep ? null : primaryAction;
+  const headerAction = (threadStep || usePanel) ? null : primaryAction;
 
   // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
   //
@@ -541,7 +545,8 @@ export default function RequestDetailPage() {
   // ⚠️ ยังใช้ `normalizeDocumentControlActions` ตัวเดิม — กติกา `visible: false`
   // อยู่ที่เดียวกับทุกโมดูล เปลี่ยนแค่ *ที่วาง* ไม่ใช่กติกา
   const requestActions = normalizeDocumentControlActions({
-    primaryAction: headerAction,
+    // โครง panel: ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรด — เข้า normalize ตรงเพื่อไปโผล่ที่การ์ดขวา
+    primaryAction: usePanel ? primaryAction : headerAction,
     secondaryActions: [
       {
         // ⭐ **รวบส่งของหลายแถว** (ช่องว่างข้อ 3 ของแบบพัฒนาสูตร) — ใบที่ขอ 5 รายการ
@@ -608,9 +613,10 @@ export default function RequestDetailPage() {
       },
     ],
   });
-  const hasHeaderActions = !!requestActions.primaryAction
+  // โครง panel: หัวใบไม่มีปุ่มเลย — ทุกปุ่มระดับใบอยู่การ์ดขวาที่เดียว
+  const hasHeaderActions = !usePanel && (!!requestActions.primaryAction
     || requestActions.secondaryActions.length > 0
-    || requestActions.dangerActions.length > 0;
+    || requestActions.dangerActions.length > 0);
 
   // รายการในเมนู "…" ของหัวใบ — secondary + danger ชุดเดิมทั้งหมด
   // ⚠️ ลำดับ: เดินหน้ารอง → เส้นคั่น → อันตราย (แพตเทิร์นเดียวกับ RecordActionMenu)
@@ -673,7 +679,10 @@ export default function RequestDetailPage() {
         eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
         description={req.title || req.customerName || "ราคากลาง"}
-        badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
+        badges={usePanel
+          // โครง panel: สถานะอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรก)
+          ? null
+          : <SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
         actions={hasHeaderActions ? (
           <>
             {requestActions.primaryAction ? (
@@ -696,9 +705,11 @@ export default function RequestDetailPage() {
         ) : null}
         facts={headerFacts}
       >
-        {/* รางก้าว — เดิมซ่อนอยู่ในการ์ดขวาที่ต้องเลื่อนไปหา ทั้งที่มันคือคำตอบของ
-            คำถามแรกที่คนเปิดใบมาถาม ("ตอนนี้ถึงไหนแล้ว") */}
-        <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+        {/* รางก้าว — โครงเดิมวางแนวนอนบนหัวใบ · โครง panel ย้ายไปการ์ดขวาแนวตั้ง
+            (WorkflowRail ตัวเดียวกัน ต่างแค่ orientation — ห้ามมีสองชุด) */}
+        {!usePanel && (
+          <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+        )}
 
         {/* รายละเอียดคำร้อง — เดิมแสดงเฉพาะชนิดที่ไม่มีบรรทัด แต่ตอนนี้ทุกหัวข้อมี
             ชื่อเรื่อง+รายละเอียดบังคับ (มติ 2026-08-03) จึงต้องแสดงทุกใบ
@@ -754,10 +765,52 @@ export default function RequestDetailPage() {
         </div>
       </SalesDetailOverview>
 
-      {/* ⚠️ ไม่มีรางขวาแล้ว — การ์ด "สรุปคำร้อง" กับ "จัดการเอกสาร" พูดเรื่องเดียวกับ
-          หัวใบทุกบรรทัด (สถานะ · ฝ่ายผู้ตอบ · ความคืบหน้า) · ปุ่มกับรางก้าวย้ายขึ้นหัวใบ
-          แล้ว รางขวาจึงเหลือแต่ของซ้ำ ⇒ ยุบทิ้ง หน้าเหลือคอลัมน์เดียวเต็มความกว้าง */}
-      <DetailPageLayout>
+      {/* ⭐ โครงสองแบบ (มติผู้ใช้ 2026-08-09 — รีดีไซน์ทีละหัวข้อ):
+          · หัวข้อธง `detailControlPanel` — การ์ดขวา DOCUMENT CONTROL ถือ สถานะ+ราง
+            แนวตั้ง+ปุ่มระดับใบ **ที่เดียว** (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป)
+          · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
+            การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
+      <DetailPageLayout
+        className={usePanel ? styles.panelLayout : ""}
+        asideLabel="จัดการคำร้อง"
+        aside={usePanel ? (
+          <>
+            <DocumentControlCard
+              title="จัดการคำร้อง"
+              status={REQUEST_STATUS_LABELS[req.status] || req.status}
+              statusColor={STATUS_TONE[req.status]}
+              workflowSteps={workflowSteps}
+              primaryAction={requestActions.primaryAction}
+              secondaryActions={requestActions.secondaryActions}
+              dangerActions={requestActions.dangerActions}
+              busy={saving}
+            />
+            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
+                (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
+                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
+            {req.refProject && (
+              <ContextCard
+                href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
+                icon={FolderKanban}
+                eyebrow="โครงการ"
+                title={req.refProject.name || req.refProject.code || req.refProject.id}
+                subtitle={req.refProject.code || undefined}
+              />
+            )}
+            {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
+                /sales-planning/deals โดน redirect หนึ่งเด้ง */}
+            {req.refDeal && (
+              <ContextCard
+                href={`/sa/deals/${req.refDeal.id}`}
+                icon={Handshake}
+                eyebrow="ดีล"
+                title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
+                subtitle={req.customerName || undefined}
+              />
+            )}
+          </>
+        ) : null}
+      >
         <div>
 
       {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":

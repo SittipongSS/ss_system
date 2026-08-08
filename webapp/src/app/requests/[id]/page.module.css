@@ -91,3 +91,8 @@
 }
 
 .error { margin: var(--space-1) 0 0; color: var(--red); font-size: var(--fs-5); }
+
+/* ── โครง Control Panel (ม-94) ──────────────────────────────────────────
+   หัวใบกับแถวการ์ดข้างล่าง (เธรด | การ์ด control) ต้องมีจังหวะหายใจ —
+   ค่าตั้งต้นของ layout ไม่มี margin ของตัวเอง การ์ดขวาเลยแนบหัวใบ 0px */
+.panelLayout { margin-top: var(--space-4-5); }

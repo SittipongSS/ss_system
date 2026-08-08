@@ -67,17 +67,21 @@ test('🔴 สายเอกสารแนบไฟล์ทางเดีย
     'DocumentDetail ต้องไม่รับสิทธิ์แนบจากเปลือก — สิทธิ์อยู่ที่โมดัลส่งเอกสารคนเดียว');
 });
 
-test('🔴 ปุ่มหลักอยู่ที่เดียวเสมอ — หัวใบ หรือ ท้ายเธรด ไม่ใช่ทั้งสองที่ (P6)', () => {
-  // ⚠️ หัวข้อที่ไม่มีแถว (สอบถามข้อมูล) ทั้งหน้าคือเธรด ⇒ ปุ่มย้ายไปท้ายเธรด
-  // แต่ต้อง **ย้าย ไม่ใช่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแล
+test('🔴 ปุ่มหลักอยู่ที่เดียวเสมอ — หัวใบ · ท้ายเธรด · หรือการ์ด panel ไม่ใช่สองที่ (P6)', () => {
+  // ⚠️ สามโครง หนึ่งที่เสมอ: หัวข้อธง `detailControlPanel` = ปุ่มทั้งชุดอยู่การ์ดขวา
+  // (หัวใบ+ท้ายเธรดต้องเงียบ) · หัวข้อไม่มีแถว = ท้ายเธรด · ที่เหลือ = หัวใบ
+  // ต้อง **ย้าย ไม่ใช่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแล
   // ให้ตรงกัน (โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้)
   const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(code, /const headerAction = threadStep \? null : primaryAction/);
-  // ปุ่มบนหัวใบมาจาก `headerAction` ตัวเดียว ผ่านตัวรวมกติกา `visible` ของทุกโมดูล
-  // (เดิมส่งเป็น prop ให้ DocumentControlCard บนรางขวา — รางขวาถูกยุบไปแล้ว)
-  assert.match(code, /primaryAction: headerAction/);
+  // โครง panel ปิดทางท้ายเธรดและหัวใบตั้งแต่ต้นทาง — ไม่ใช่ไปซ่อนตอน render
+  assert.match(code, /const threadStep = !usePanel && !hasItems && primaryAction/);
+  assert.match(code, /const headerAction = \(threadStep \|\| usePanel\) \? null : primaryAction/);
+  // ตัวรวมกติกา `visible` ตัวเดียว — panel ได้ปุ่มหลักตรง ส่วนโครงเดิมได้ผ่าน headerAction
+  assert.match(code, /primaryAction: usePanel \? primaryAction : headerAction/);
   assert.match(code, /requestStep=\{threadStep\}/);
   // ⚠️ ยังต้องมีที่เดียว — `headerAction` ห้ามโผล่ในสาขาอื่นนอกจากตัวรวมนี้
   assert.equal((code.match(/headerAction/g) || []).length, 2,
     'headerAction ต้องปรากฏแค่ ตอนนิยาม กับ ตอนส่งเข้าตัวรวม action เท่านั้น');
+  // หัวใบเงียบทั้งแผงเมื่อเป็นโครง panel (ปุ่ม+เมนู … คุมด้วยธงเดียวกัน)
+  assert.match(code, /const hasHeaderActions = !usePanel &&/);
 });
