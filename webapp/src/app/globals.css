@@ -575,6 +575,32 @@ body {
   background-image: none;
 }
 
+/* v2: ภาษาพื้นผิวแบน — ฆ่า gradient ประดับ / blur / การ์ดลอย ของภาษา v1 ทั้งระบบ
+   นี่คือชั้น "เปลี่ยนภาษาภาพ" ตามแผน ไม่ใช่บริบทเขียนทับ variant (กติกา #816
+   ห้ามบริบทแก้รูปทรงของ component — ชั้นนี้คือนิยามภาษาใหม่ของทั้งระบบ มีมติรองรับ)
+   จุดที่เป็นกลไกจริงไม่แตะ: shimmer ของ skeleton และ
+   linear-gradient(var(--panel-2), var(--panel-2)) ที่เป็นเทคนิคทาสีทึบ ไม่ใช่ไล่สี */
+[data-ds="v2"] .glass-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-ds="v2"] .premium-header,
+[data-ds="v2"] .home-hub-hero {
+  background: var(--panel);
+}
+[data-ds="v2"] .topnav-system {
+  background: var(--navy);
+}
+[data-ds="v2"] .login-page,
+[data-ds="v2"] .home-hub {
+  background: var(--bg);
+}
+/* การ์ดใน v2 ไม่ลอย — hover บอกด้วยสีขอบพอ (เงา/transform เป็นภาษาเก่า) */
+[data-ds="v2"] .hover-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 button, select, input, textarea {
   font-family: inherit;
   font-size: inherit;

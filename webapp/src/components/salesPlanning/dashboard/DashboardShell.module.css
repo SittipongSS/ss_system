@@ -11,6 +11,8 @@
 .card { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
 
 .overviewCard { overflow: hidden; background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%), var(--panel); }
+/* v2 โต๊ะช่าง: พื้นเรียบ ไม่มี gradient ประดับ (docs/design-v2-plan.md) */
+:global([data-ds="v2"]) .overviewCard { background: var(--panel); }
 .overviewHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5); padding: var(--space-5) 22px var(--space-4-5); }
 .overviewEyebrowRow { display: flex; align-items: center; gap: var(--space-2) var(--space-3-5); margin-bottom: 7px; flex-wrap: wrap; }
 .eyebrow { color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
@@ -61,6 +63,7 @@
 .ack { color: var(--green); }
 .important { color: var(--amber); font-weight: var(--fw-bold); }
 .taskPost { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent); }
+:global([data-ds="v2"]) .taskPost { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .taskAvatar { border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-ink); }
 .typeLabel, .taskStatus { padding: var(--space-0-5) var(--space-1-5); border-radius: var(--radius-full); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); font-size: var(--fs-2); font-weight: var(--fw-bold); }
 .taskStatus.completed { background: color-mix(in srgb, var(--green) 11%, transparent); color: var(--green); }
