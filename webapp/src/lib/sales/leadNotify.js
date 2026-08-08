@@ -84,6 +84,79 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
   return { userIds: recipients, title, body };
 }
 
+/* ── ทวงประจำวัน: ลีดที่เลย SLA แล้ว เข้ากล่องของ "คนที่ต้องลงมือ" ──────────
+   ทำไมต้องมีทั้งที่มีแจ้งเตือนตอนส่งมอบแล้ว: ตัวนั้นเด้ง **ครั้งเดียวตอนกดปุ่ม**
+   ของที่ถูกดองต่อหลังจากนั้นเงียบสนิท — ซึ่งคือเคสที่เจอจริง (14 ใบค้างข้ามเดือน
+   ใบที่นานสุด 10 วันทำการ) · ตัวนี้ทวงซ้ำทุกเช้าจนกว่าจะเคลียร์
+
+   ⚠️ **หนึ่งคน = หนึ่งแจ้งเตือนต่อวัน** ไม่ใช่หนึ่งใบต่อหนึ่งแจ้งเตือน — คนที่ดอง 6 ใบ
+   จะได้ 6 เด้งทุกเช้า แล้วเลิกอ่านกล่องภายในสัปดาห์เดียว (กติกาเดียวกับที่ mig 0185
+   เตือนเรื่อง "ห้ามใช้ทุกคนในฝ่ายเป็นผู้รับ")
+
+   ⚠️ SLA คือ "ภายใน 1 วันทำการ" ⇒ เลยกำหนดคือ **มากกว่า 1** ไม่ใช่ตั้งแต่ 1
+   (ตรงกับเกณฑ์ที่การ์ด LeadQueueSummary ใช้ทาสีแดง) */
+export const OVERDUE_AFTER_BUSINESS_DAYS = 1;
+
+const SINCE_OF = {
+  new: (l) => l.createdAt,
+  screened: (l) => l.screenedAt || l.createdAt,
+  assigned: (l) => l.assignedAt || l.createdAt,
+};
+
+const preview = (leads) => {
+  const names = leads.slice(0, 3).map((l) => l.contactName).filter(Boolean);
+  const rest = leads.length - names.length;
+  return names.join(' · ') + (rest > 0 ? ` และอีก ${rest}` : '');
+};
+
+/**
+ * รายการแจ้งเตือน "ลีดค้างเกิน SLA" ของวันนี้ — ฟังก์ชันบริสุทธิ์
+ *
+ * @param ageOf  (lead) → จำนวนวันทำการที่ค้าง (ผู้เรียกส่งมาเพื่อไม่ต้องผูกกับตาราง holidays)
+ * @param dayKey วันของวันนี้ (YYYY-MM-DD ตามเวลาไทย) — ใช้เป็นกุญแจกันยิงซ้ำในวันเดียวกัน
+ * @returns [{ userIds, entityId, title, body, dedupeKey }]
+ */
+export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}) {
+  const late = (lead) => ageOf(lead) > OVERDUE_AFTER_BUSINESS_DAYS;
+  const rows = (leads || []).filter((l) => SINCE_OF[l?.status] && late(l));
+  if (!rows.length) return [];
+
+  const screeners = (() => {
+    const found = usersWhere(directory, (u) => SCREENERS.includes(u.role));
+    return found.length ? found : usersWhere(directory, (u) => SCREENER_FALLBACK.includes(u.role));
+  })();
+
+  /* จัดกลุ่มตาม "ใครต้องลงมือ" ไม่ใช่ตามสถานะ — คนหนึ่งคนอาจค้างทั้งลีดที่รอกระจาย
+     ของทีมตัวเอง และลีดที่ตัวเองรับมอบ ⇒ ควรได้เด้งเดียวที่รวมทุกอย่าง */
+  const buckets = new Map(); // ownerKey → { userIds, leads[] }
+  const push = (key, userIds, lead) => {
+    if (!userIds.length) return;
+    if (!buckets.has(key)) buckets.set(key, { userIds, leads: [] });
+    buckets.get(key).leads.push(lead);
+  };
+  for (const lead of rows) {
+    if (lead.status === 'new') push('screeners', screeners, lead);
+    else if (lead.status === 'screened') {
+      push(`team:${lead.team}`, usersWhere(directory, (u) => SPREADERS.includes(u.role) && u.team === lead.team), lead);
+    } else if (lead.assigneeId) push(`ae:${lead.assigneeId}`, [lead.assigneeId], lead);
+  }
+
+  return [...buckets.entries()].map(([key, bucket]) => {
+    const sorted = [...bucket.leads].sort((a, b) => ageOf(b) - ageOf(a));
+    const worst = ageOf(sorted[0]);
+    const stage = key === 'screeners' ? 'รอคัดกรอง' : key.startsWith('team:') ? 'รอกระจาย' : 'รอติดต่อกลับ';
+    return {
+      userIds: bucket.userIds,
+      // ผูกกับใบที่ค้างนานสุด เพื่อให้ลบลีดใบนั้นแล้วแจ้งเตือนถูกกวาดตาม (purgeUpdates)
+      entityId: sorted[0].id,
+      title: `${stage}เกิน SLA ${sorted.length} ใบ · ค้างนานสุด ${worst} วันทำการ`,
+      body: preview(sorted),
+      // กัน cron รันซ้ำ/แอดมินกดทดสอบซ้ำในวันเดียวกัน ไม่ให้เด้งซ้ำ
+      dedupeKey: `DIGEST-lead-overdue-${dayKey}-${key}`,
+    };
+  });
+}
+
 /**
  * ยิงแจ้งเตือนแบบ fire-and-forget — ท่าเดียวกับ `sendChat` (lib/chat.js)
  * ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จแล้ว จึงห้ามเพิ่ม latency และห้าม throw
