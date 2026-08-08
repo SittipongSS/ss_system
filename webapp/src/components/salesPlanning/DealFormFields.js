@@ -10,7 +10,8 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 //
 // ลำดับ+คอนโทรล (มติผู้ใช้ 2026-08-08 รอบสอง — artifact 83d209ac แทนมติ #283):
 //   ประเภทดีล (แผ่นเลือก บนสุด — ตัวเลือกแรกที่กำหนดทุกอย่างถัดไป) → ชื่อดีล
-//   → ลูกค้า → แบรนด์ (เต็มแถว — ชิปต้องการที่กว้าง · ติดหลังลูกค้าเพราะขึ้นต่อกัน)
+//   → ลูกค้า | แบรนด์ (ดรอปดาวน์คู่กันซ้าย-ขวา ขนาดเท่ากัน — มติ 2026-08-08 รอบสี่:
+//     กลับจากชิปเป็นดรอปดาวน์)
 //   → โครงการ → หมวดสินค้า → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
 //   → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
 //   → ผู้รับผิดชอบ (AE) **ล่างสุด บังคับเสมอ**: ae/senior_ae = ล็อกชื่อตัวเอง
@@ -36,9 +37,6 @@ import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/u
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
 // (SCENT=amber · NPD=blue · RE-ORDER=teal) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
 const DEAL_TYPE_TONES = { SCENT: "amber", NPD: "blue", "RE-ORDER": "teal" };
-
-// แบรนด์โชว์เป็นชิปได้ถึงกี่ตัว — เกินนี้ถอยเป็นช่องค้นหา (กติกาคอนโทรล v2)
-const BRAND_CHIP_LIMIT = 6;
 
 // จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17)
 // แถวที่เหลือช่องเดียว (จำนวนคี่/ช่องถูกซ่อน) กินเต็มแถวแทนการทิ้งรูไว้ข้าง ๆ
@@ -119,44 +117,25 @@ export default function DealFormFields({
     </label>
   );
 
-  /* แบรนด์อยู่ติดหลังลูกค้า (มติผู้ใช้ 2026-08-08) เพราะรายการขึ้นกับลูกค้าที่เพิ่ง
-     เลือก — ปกติมี 1–3 ตัวจึงเป็นชิปเห็นครบ · เกิน BRAND_CHIP_LIMIT ถอยเป็นช่องค้นหา */
-  const brandOptions = (() => {
-    const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
-    if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
-    return options;
-  })();
+  /* แบรนด์คู่กับลูกค้าแถวเดียวกัน ซ้าย-ขวาเท่ากัน (มติผู้ใช้ 2026-08-08 รอบสี่ —
+     กลับจากชิปเป็นดรอปดาวน์) · รายการขึ้นกับลูกค้าที่เพิ่งเลือก */
   const brandField = (
-    <div className="deal-field" key="brand">
-      <span className="deal-field-label">แบรนด์ <span className="soft">· ของลูกค้ารายนี้</span></span>
-      {!form.customerId ? (
-        <ChoiceChips
-          value=""
-          options={[{ value: "", label: "เลือกลูกค้าก่อน", ghost: true, disabled: true }]}
-          disabled
-          ariaLabel="แบรนด์"
-        />
-      ) : brandOptions.length > BRAND_CHIP_LIMIT ? (
-        <SearchableSelect
-          entity="brand"
-          value={form.brand || ""}
-          onChange={set("brand")}
-          options={[{ value: "", label: "— ไม่ระบุแบรนด์ —" }, ...brandOptions]}
-          placeholder="เลือกแบรนด์..."
-        />
-      ) : (
-        <ChoiceChips
-          value={form.brand || ""}
-          onChange={set("brand")}
-          options={[
-            ...brandOptions,
-            { value: "", label: "ไม่ระบุ", ghost: true },
-          ]}
-          ariaLabel="แบรนด์"
-        />
-      )}
+    <label className="deal-field" key="brand">
+      <span className="deal-field-label">แบรนด์</span>
+      <SearchableSelect
+        entity="brand"
+        value={form.brand || ""}
+        onChange={set("brand")}
+        disabled={!form.customerId}
+        options={(() => {
+          const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
+          if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
+          return [{ value: "", label: form.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน" }, ...options];
+        })()}
+        placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"}
+      />
       <small>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
-    </div>
+    </label>
   );
 
   // เชื่อมโครงการต้องเลือกลูกค้าก่อน (มติผู้ใช้ 2026-07-18) — ตัวเลือกจึงเหลือเฉพาะ
@@ -382,8 +361,7 @@ export default function DealFormFields({
     <>
       {pairRows([dealTypeField])}
       {pairRows([titleField])}
-      {pairRows([customerField])}
-      {pairRows([brandField])}
+      {pairRows([customerField, brandField])}
       {pairRows([projectField])}
 
       {/* หมวดสินค้ามาก่อนสถานะ (มติผู้ใช้ 2026-08-08 รอบสอง) —
