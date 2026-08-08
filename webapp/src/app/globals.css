@@ -570,35 +570,73 @@ body {
   --row-tone-red: color-mix(in srgb, var(--red) 55%, var(--navy));
 }
 
-/* v2: พื้นเรียบ — gradient ประดับของทั้งสองธีมดับ */
-[data-ds="v2"] body {
-  background-image: none;
-}
-
-/* v2: ภาษาพื้นผิวแบน — ฆ่า gradient ประดับ / blur / การ์ดลอย ของภาษา v1 ทั้งระบบ
-   นี่คือชั้น "เปลี่ยนภาษาภาพ" ตามแผน ไม่ใช่บริบทเขียนทับ variant (กติกา #816
-   ห้ามบริบทแก้รูปทรงของ component — ชั้นนี้คือนิยามภาษาใหม่ของทั้งระบบ มีมติรองรับ)
-   จุดที่เป็นกลไกจริงไม่แตะ: shimmer ของ skeleton และ
-   linear-gradient(var(--panel-2), var(--panel-2)) ที่เป็นเทคนิคทาสีทึบ ไม่ใช่ไล่สี */
+/* v2: gradient ประดับ **คงไว้** (มติแก้ 2026-08-08 — เดิมทิศทางโต๊ะช่างตัดทิ้ง
+   ผู้ใช้ขอคืน) — กฎ gradient ทุกตัวเป็น token-driven อยู่แล้ว จึงเรนเดอร์ด้วย
+   สี v2 เองโดยไม่ต้องมีกฎพิเศษ · ที่ดับถาวรมีอย่างเดียวคือ blur: พื้น --panel
+   ของ v2 ทึบ 100% blur จึงมองไม่เห็นแต่กิน GPU ฟรี */
 [data-ds="v2"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-[data-ds="v2"] .premium-header,
-[data-ds="v2"] .home-hub-hero {
-  background: var(--panel);
+
+/* v2 ธีมสว่าง "โต๊ะช่างกลางวัน" (มติผู้ใช้ 2026-08-08 ขอธีมสว่างคู่กัน)
+   โครงเดียวกับ v2 มืด: เทาเย็นแบน เส้น 1px เงา = none ยกเว้นแผงลอย
+   topbar ยังเข้ม (เอกลักษณ์โต๊ะช่าง) · สีสถานะ/accent ยกชุดที่วัด AA แล้ว
+   ของธีมสว่าง v1 มาใช้ตรง ๆ (ค่าพวกนั้นวัดกับพื้นการ์ดใกล้ขาวเหมือนกัน)
+   ต้องอยู่**หลัง** block v2 หลัก และ specificity สูงกว่า จึงชนะเมื่อ
+   data-theme="light" + data-ds="v2" พร้อมกัน */
+[data-ds="v2"][data-theme="light"] {
+  --bg: #edeff2;
+  --panel: #fafbfc;
+  --panel-2: #eff1f5;
+  --panel-3: #e7eaef;
+  --panel-float: #ffffff;
+  --panel-solid: #fafbfc;
+  --border: #d5dae2;
+  --border-strong: #bac2ce;
+  --glass-shadow: none;
+  --glass-shadow-up: none;
+
+  --text: #171d29;
+  --text-2: #596170;
+  --text-3: #6c7382;
+
+  --accent: #c9794d;
+  --accent-soft: rgba(201, 121, 77, 0.13);
+  --accent-fg: #fff;
+  --accent-ink: #9c5228;
+  --origin-edited: #2e4a73;
+
+  --navy: #1f2835;
+  --navy-ink: #243b63;
+
+  --green: #357558;
+  --green-soft: #e2f1e9;
+  --red: #a74747;
+  --red-soft: #f7e4e2;
+  --amber: #926024;
+  --amber-soft: #f8eddc;
+  --blue: #466990;
+  --blue-soft: #e3ebf5;
+  --teal: #377275;
+  --teal-soft: #e0f0f0;
+  --violet: #6f5e9f;
+  --violet-soft: #eee9f6;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-float: 0 12px 32px rgba(23, 29, 41, 0.16);
 }
-[data-ds="v2"] .topnav-system {
-  background: var(--navy);
-}
-[data-ds="v2"] .login-page,
-[data-ds="v2"] .home-hub {
-  background: var(--bg);
-}
-/* การ์ดใน v2 ไม่ลอย — hover บอกด้วยสีขอบพอ (เงา/transform เป็นภาษาเก่า) */
-[data-ds="v2"] .hover-card:hover {
-  transform: none;
-  box-shadow: none;
+
+/* แสงประดับของ v2 สว่าง — โทนเย็นให้เข้ากับพื้นเทาเย็น (ของ v1 สว่างเป็นส้มอุ่น
+   บนพื้นครีม เอามาวางบนเทาเย็นแล้วเพี้ยน) จางระดับเดียวกับของเดิม */
+[data-ds="v2"][data-theme="light"] body {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(70, 105, 144, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(201, 121, 77, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(31, 40, 53, 0.04) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(70, 105, 144, 0.04) 0px, transparent 50%);
 }
 
 button, select, input, textarea {
