@@ -118,8 +118,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         .select('id, requestId, docType, spec, answerStatus, readyAt, createdAt')
         .in('requestId', openRequestIds).eq('lineKind', 'document');
       raise('อ่านบรรทัดขอเอกสารไม่สำเร็จ', itemError);
-      // ยังไม่ได้ส่ง = ยังไม่มา · ส่งแล้วถือว่าไฟล์อยู่ในแหล่งอื่นแล้ว
-      awaitingRequestItems = (items || []).filter((i) => !i.readyAt);
+      // ⭐ เกณฑ์เดียวกับแถบตัวเลขในใบคำร้อง (ม-85): "ยังไม่มา" = แถวยังเดินอยู่
+      // (`answerStatus` ยังไม่ done/declined) — ไม่ใช่ `!readyAt`
+      // 🐞 เดิมสองที่นิยามคนละแบบ: ฝ่ายกดส่งของแล้ว หน้าดีลบอกว่ามาแล้ว แต่ในใบ
+      // ยังนับเป็น "รอเอกสาร" — จอเดียวกันเรื่องเดียวกัน ตอบคนละคำตอบ
+      // · declined ไม่นับเป็น "รอ" — จบแล้วแบบไม่ได้ของ ค้างเป็นรายการรอตลอดกาล
+      // คือสิ่งที่ทำให้ตัวเลขบนหน้าดีลไม่มีใครเชื่อ
+      awaitingRequestItems = (items || [])
+        .filter((i) => !['done', 'declined'].includes(i.answerStatus));
     }
 
     const rows = buildEntityDocuments({

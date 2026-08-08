@@ -91,6 +91,8 @@ const HOP_DATE_LABEL = {
   pickup: "วันที่รับของ",
   send: "วันที่ส่งให้ลูกค้า",
   outcome: "วันที่ลูกค้าตอบ",
+  receive: "วันที่ได้รับเอกสาร",
+  // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
 
 export default function RequestDetailPage() {
@@ -984,6 +986,7 @@ export default function RequestDetailPage() {
       >
         {hopDraft && (
           <>
+            {hopDraft.hop !== "refuse" && (
             <div className="form-group">
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
@@ -993,6 +996,24 @@ export default function RequestDetailPage() {
                 onChange={(v) => setHopDraft({ ...hopDraft, at: v })}
               />
             </div>
+            )}
+
+            {/* ⭐ ให้ไม่ได้ (สายเอกสาร · ม-85) — เหตุผลคือหลักฐาน แสดงติดแถวในตาราง
+                สรุปเสมอ (constraint answer_evidence บังคับคู่ declined+เหตุผล) */}
+            {hopDraft.hop === "refuse" && (
+              <div className="form-group">
+                <label htmlFor="hop-refuse-why">เหตุผลที่ให้ไม่ได้</label>
+                <Textarea variant="data"
+                  id="hop-refuse-why" rows={3} maxLength={2000}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder="เช่น เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอเอกสารจากเขาโดยตรง"
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  ผู้ขอเห็นเหตุผลนี้ติดแถวเอกสารในใบ — รายการจะจบแบบ &quot;ให้ไม่ได้&quot;
+                </p>
+              </div>
+            )}
 
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
               <>

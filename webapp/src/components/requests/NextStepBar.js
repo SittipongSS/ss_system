@@ -15,6 +15,7 @@
 import Button from "@/components/ui/Button";
 import { ROW_STAGE_LABELS, rowStage } from "@/lib/requests/rowStage";
 import { HOP_OWNER, ROW_OUTCOMES, hopLabel } from "@/lib/requests/hops";
+import { isDocLineKind } from "@/lib/requests/docTypes";
 import styles from "./NextStepBar.module.css";
 
 // ขั้นของแถว → ก้าวที่เดินได้จากขั้นนั้น
@@ -29,6 +30,22 @@ const HOP_AT_STAGE = {
   sent: "outcome",
   awaiting_price: "price",
 };
+
+// ⭐ สายเอกสารสั้นกว่า (ม-85) — จบที่ผู้ขอกด "ได้รับแล้ว" · ไม่มีส่งลูกค้า/ราคา
+// 🐞 เดิมใช้ตารางบนกับทุกแถว ⇒ แถวเอกสารถูกพาเดินถึง "ใส่ราคา" แล้วตอบ 400
+// ค้างที่ "รอใส่ราคา" ถาวร ปิดใบไม่ได้
+// ⚠️ picked_up/sent = แถวเก่าที่เคยหลงเดินสายพัฒนา — ให้จบทาง receive ได้เหมือนกัน
+const HOP_AT_STAGE_DOC = {
+  awaiting_ack: "ack",
+  developing: "ready",
+  ready: "receive",
+  picked_up: "receive",
+  sent: "receive",
+};
+
+const hopAtStage = (row, stage) => (isDocLineKind(row?.lineKind)
+  ? HOP_AT_STAGE_DOC[stage]
+  : HOP_AT_STAGE[stage]);
 
 const OWNER_OF = { ...HOP_OWNER, price: "dept" };
 
@@ -54,7 +71,7 @@ export default function NextStepBar({
 }) {
   const pending = rows
     .map((row) => ({ row, stage: rowStage(row) }))
-    .map(({ row, stage }) => ({ row, stage, hop: HOP_AT_STAGE[stage] }))
+    .map(({ row, stage }) => ({ row, stage, hop: hopAtStage(row, stage) }))
     .filter((r) => r.hop);
 
   // ใบที่ไม่มีแถว (สอบถามข้อมูล) — ก้าวถัดไปเป็นของทั้งใบ ไม่ใช่ของแถวไหน
@@ -114,6 +131,17 @@ export default function NextStepBar({
                 >
                   {hop === "price" ? "ใส่ราคา" : hopLabel(hop)}
                 </Button>
+                {/* ⭐ สายเอกสารมีทางจบที่สองของฝ่าย: "ให้ไม่ได้" + เหตุผล (ม-85) —
+                    วางคู่ปุ่มส่งเพราะเป็นคำตอบของจังหวะเดียวกัน (งานอยู่ในมือฝ่าย)
+                    · เส้นขอบแดง ไม่ใช่ปุ่มทึบ — ทางรองที่ต้องเห็น ไม่ใช่ทางหลัก */}
+                {hop === "ready" && isDocLineKind(row.lineKind) && (
+                  <Button
+                    tone="danger" variant="outline" disabled={busy}
+                    onClick={() => onHop?.(row, "refuse")}
+                  >
+                    {hopLabel("refuse")}
+                  </Button>
+                )}
               </div>
             )}
           </div>
