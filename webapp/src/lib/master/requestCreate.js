@@ -106,14 +106,30 @@ export async function createAndSendRequest(form, extra = {}) {
   const { id, error } = await createRequestDraft(form, extra);
   if (error) return { id, error };
 
-  for (const file of form.files || []) {
+  const uploadError = await uploadDraftFiles(id, form.files);
+  if (uploadError) return { id, error: uploadError };
+
+  return { id, ...(await submitRequest(id, { mentions: form.mentions })) };
+}
+
+/**
+ * อัปไฟล์ที่ค้างในฟอร์มให้คำร้องที่เพิ่งได้ id — คืนข้อความ error หรือ null
+ *
+ * ⭐ หน้า `/requests/new` เรียกหลัง `createRequestDraft` (มติผู้ใช้ 2026-08-08:
+ * แนบได้ตั้งแต่หน้าสร้าง ไม่ต้องรอไปหน้ารายละเอียด) — ไฟล์เก็บใน `form.files`
+ * ระหว่างกรอก แล้วอัปทีเดียวตรงนี้เพราะ endpoint ต้องมี entityId ก่อน
+ *
+ * ⚠️ **ล้มกลางทางไม่ rollback ร่าง** — ไฟล์ที่อัปไปแล้วอยู่ครบ ผู้เรียกพาไปหน้า
+ * รายละเอียดให้แนบตัวที่เหลือต่อได้ (กติกาเดียวกับสามสเต็ปของปุ่มส่ง)
+ */
+export async function uploadDraftFiles(id, files = []) {
+  for (const file of files || []) {
     const up = await uploadAttachment({
       entityType: 'dept_request', entityId: id, file, docType: 'other',
     });
-    if (!up.ok) return { id, error: `แนบ "${file.name}" ไม่สำเร็จ: ${up.error}` };
+    if (!up.ok) return `แนบ "${file.name}" ไม่สำเร็จ: ${up.error}`;
   }
-
-  return { id, ...(await submitRequest(id, { mentions: form.mentions })) };
+  return null;
 }
 
 /**
