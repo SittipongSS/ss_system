@@ -11,11 +11,14 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
-import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
+import StageSteps from "@/components/ui/StageSteps";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
+import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
@@ -131,8 +134,10 @@ export default function TaskFormModal({
     setPendingFiles((cur) => [...cur, ...picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)]);
   };
 
+  // เรียกได้ทั้งจาก onSubmit ของฟอร์ม (กด Enter) และจากปุ่มในแถบท้ายโมดัล
+  // ซึ่งอยู่นอก <form> — ปุ่มนั้นส่ง event ที่ไม่มี preventDefault ก็ยังทำงานได้
   const submit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     setError("");
     if (canManage && !form.title.trim()) { setError("ต้องระบุชื่องาน"); return; }
     if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกโครงการแล้วเลือกดีลก่อนบันทึก"); return; }
@@ -197,17 +202,32 @@ export default function TaskFormModal({
   const cannotAssign = !!me && !assignableUsers.some((u) => u.id !== me.id);
 
   return (
-    <Modal open={open} onClose={() => !saving && onClose?.()} title={editing ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
+    <Modal
+      open={open}
+      onClose={() => !saving && onClose?.()}
+      title={editing ? "แก้ไขงาน" : "เพิ่มงาน"}
+      /* บริบทต้นทางอยู่ในหัวที่นิ่ง ไม่จมไปกับฟอร์มตอนเลื่อน (โครงสามชั้น)
+         เดิมเป็นการ์ด glass-panel ในเนื้อหา — ภาษากระจกถูกตัดไปแล้วใน v2 */
+      subtitle={inquirySource ? (
+        <>
+          สร้างจากคำร้อง <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
+          {" — ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ"}
+        </>
+      ) : null}
+      size="md"
+      footer={(
+        <>
+          <Button variant="quiet" onClick={onClose} disabled={saving}>ยกเลิก</Button>
+          <Button tone="primary" onClick={submit} disabled={saving}>
+            {saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}
+          </Button>
+        </>
+      )}
+    >
       <form onSubmit={submit}>
         <div className="grid gap-[14px]">
-          {inquirySource && (
-            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-              สร้างจากคำร้อง <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
-              <div style={{ marginTop: 3, color: "var(--text-3)" }}>ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ</div>
-            </div>
-          )}
           {editing && !canManage && (
-            <div className="ui-badge" style={{ color: "var(--text-3)" }}>แก้ได้เฉพาะสถานะ — ช่องอื่นเป็นของผู้ดูแลงาน</div>
+            <div className="ui-badge text-[var(--text-3)]">แก้ได้เฉพาะสถานะ — ช่องอื่นเป็นของผู้ดูแลงาน</div>
           )}
 
           <div className="form-group">
@@ -215,18 +235,31 @@ export default function TaskFormModal({
             <input value={form.title} onChange={(e) => set({ title: e.target.value })} required={canManage} disabled={!canManage} className="premium-input w-full" placeholder="เช่น โทรตามลูกค้า, เตรียมเอกสาร" />
           </div>
 
+          {/* สถานะ = 3 ขั้นมีลำดับ ⇒ แถบขั้น ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล
+              docs/form-design-rules.md §3) · ตัวเลขใต้ขั้นคือ % ที่ระบบคิดให้จาก
+              สถานะ (`taskProgressPct` — ตัวเดียวกับที่ไปโผล่บนความคืบหน้าโครงการ)
+              ⇒ เห็นผลของการเลือกก่อนกด แบบเดียวกับ FC% ใต้ขั้นของดีล */}
           {editing && (
             <div className="form-group">
               <label>สถานะ</label>
-              <Select fullWidth value={form.status} disabled={!canChangeStatus} onChange={(e) => set({ status: e.target.value })}>
-                {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
+              <StageSteps
+                value={form.status}
+                onChange={(status) => set({ status })}
+                disabled={!canChangeStatus}
+                ariaLabel="สถานะงาน"
+                steps={STATUS_OPTIONS.map(([value, label]) => ({
+                  value,
+                  label,
+                  sub: `${taskProgressPct(value)}%`,
+                  tone: value === "Completed" ? "win" : undefined,
+                }))}
+              />
             </div>
           )}
 
           {needLateReason && (
             <div className="form-group">
-              <label style={{ color: "var(--amber)" }}>สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
+              <label className="text-[var(--amber)]">สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
               <Textarea className="w-full" rows={2} value={lateReason} autoFocus
                 onChange={(e) => setLateReason(e.target.value)}
                 placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." />
@@ -281,27 +314,50 @@ export default function TaskFormModal({
             </div>
           </div>
 
-          <div className="pm-form-grid gap-3">
-            <div className="form-group">
-              <label><Tag size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> หมวดหมู่</label>
-              <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
-                <option value="">— ไม่ระบุ —</option>
-                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </div>
-            <div className="form-group">
-              <label>ระดับความยาก</label>
-              <Select fullWidth value={String(form.difficulty)} disabled={!canManage} onChange={(e) => set({ difficulty: Number(e.target.value) })}>
-                {DIFFICULTY_OPTIONS.map((d) => <option key={d} value={d}>{DIFFICULTY_LABELS[d]}</option>)}
-              </Select>
-            </div>
+          {/* หมวดหมู่ 6 ตัวตายตัว ⇒ ชิปเห็นครบ (เดิมเป็นดรอปดาวน์ที่ต้องกดเปิดถึงจะรู้
+              ว่ามีหมวดอะไรบ้าง) · "ไม่ระบุ" เป็นชิปเส้นประ = สถานะที่เลือกได้จริง */}
+          <div className="form-group">
+            <label><Tag size={12} className="inline align-[-1px]" /> หมวดหมู่</label>
+            <ChoiceChips
+              value={form.category || ""}
+              onChange={(category) => set({ category })}
+              disabled={!canManage}
+              ariaLabel="หมวดหมู่งาน"
+              options={[
+                ...TASK_CATEGORIES.map((c) => ({ value: c, label: c })),
+                { value: "", label: "ไม่ระบุ", ghost: true },
+              ]}
+            />
           </div>
 
-          <div className="form-group">
-            <label>ความสำคัญ</label>
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button type="button" disabled={!canManage} onClick={() => set({ important: !form.important })} className={`btn sm${form.important ? " btn-primary" : ""}`}><Star size={14} /> สำคัญ</button>
-              <button type="button" disabled={!canManage} onClick={() => set({ urgent: !form.urgent })} className={`btn sm${form.urgent ? " btn-primary" : ""}`}><Flame size={14} /> ด่วน</button>
+          {/* ระดับความยาก 3 ตัวตายตัว ⇒ แผ่นเลือก · ธง สำคัญ/ด่วน = สวิตช์
+              (เดิมเป็นปุ่ม .btn ที่ติดสีเมื่อเปิด — ยืมภาษาปุ่มมาใช้บอกสถานะ
+              ทำให้อ่านเหมือนปุ่มสั่งงาน ไม่ใช่ค่าที่ค้างอยู่บนฟอร์ม) */}
+          <div className="pm-form-grid gap-3">
+            <div className="form-group">
+              <label>ระดับความยาก</label>
+              <OptionTiles
+                value={String(form.difficulty)}
+                onChange={(v) => set({ difficulty: Number(v) })}
+                disabled={!canManage}
+                ariaLabel="ระดับความยาก"
+                options={DIFFICULTY_OPTIONS.map((d) => ({ value: String(d), label: DIFFICULTY_LABELS[d] }))}
+              />
+            </div>
+            <div className="form-group">
+              <label>ธงของงาน</label>
+              <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.important ? "1" : undefined} aria-pressed={form.important}
+                  onClick={() => set({ important: !form.important })}>
+                  <i aria-hidden="true" /><Star size={13} /> สำคัญ
+                </button>
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.urgent ? "1" : undefined} aria-pressed={form.urgent}
+                  onClick={() => set({ urgent: !form.urgent })}>
+                  <i aria-hidden="true" /><Flame size={13} /> ด่วน
+                </button>
+              </div>
             </div>
           </div>
 
@@ -337,7 +393,7 @@ export default function TaskFormModal({
           )}
 
           <div className="form-group">
-            <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
+            <label><UserPlus size={12} className="inline align-[-1px]" /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
             <PersonSelect
               users={assignableUsers.filter((u) => u.id !== me?.id)}
               value={form.assigneeId}
@@ -354,10 +410,6 @@ export default function TaskFormModal({
 
         {error && <div className="text-xs text-[var(--red)] bg-[var(--red-soft)] rounded p-2 mt-3" role="alert">{error}</div>}
 
-        <div className="form-action-bar">
-          <button type="button" onClick={onClose} className="btn" disabled={saving}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn-primary">{saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}</button>
-        </div>
       </form>
     </Modal>
   );
