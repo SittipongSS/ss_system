@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ แบบหน้าจอ "เอกสารทั้งระบบ" (มติผู้ใช้ 2026-08-08: "อยากเห็น mockup UI ของ
+     ขอเอกสาร ที่เกี่ยวข้องกับ เอกสารทั้งหมด ทุกฝ่าย ทุกส่วน")
+
+     ต่างจาก document-request-system-ui-mockup.html ที่วาดหัวข้อ "ขอเอกสาร" ใบเดียว —
+     ใบนี้ถอยออกมามองทั้งระบบ: เอกสารทุกชนิดเข้ามาได้ 3 ทาง (ระบบออกให้ · ขอจากฝ่าย ·
+     แนบเข้ามา) แต่ละทางคนละจอ คนละกฎ คนละที่เก็บ
+
+     ⚠️ ทุกชื่อชนิด/ตัวเลขไล่จากโค้ดจริง 2026-08-08 ไม่ใช่จากความจำ
+     ⚠️ แบบอยู่ในรีโปโดยเจตนา (ม-33) — ห้ามย้ายกลับไปอยู่ในแชท -->
+<title>เอกสารของโครงการ/ดีล — ขอจาก R&D ได้จากไหน ไปโผล่ที่ไหน</title>
+<style>
+  :root {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --r:10px;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  } }
+  :root[data-theme="dark"] {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai","Sarabun",system-ui,sans-serif;
+    font-size:15px; line-height:1.65;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 20px 90px; }
+
+  .eyebrow { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1 { font-size:clamp(28px,4.5vw,40px); line-height:1.2; margin:0 0 12px;
+    text-wrap:balance; letter-spacing:-.01em; }
+  .lede { color:var(--ink-2); max-width:64ch; margin:0 0 8px; }
+  h2 { font-size:21px; margin:60px 0 6px; padding-top:22px;
+    border-top:1px solid var(--line); text-wrap:balance; }
+  h2 .num { font-family:ui-monospace,Menlo,monospace; font-size:13px;
+    color:var(--accent); margin-right:10px; }
+  h2 + .lede { margin-bottom:22px; }
+  h3 { font-size:16px; margin:28px 0 10px; }
+
+  /* ── ป้ายฝั่ง ── */
+  .who { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    letter-spacing:.04em; padding:3px 9px; border-radius:999px; border:1px solid transparent; }
+  .who.sa   { background:var(--navy-soft);   color:var(--navy);   border-color:color-mix(in srgb,var(--navy) 25%,transparent); }
+  .who.rd   { background:var(--accent-soft);  color:var(--accent); border-color:color-mix(in srgb,var(--accent) 30%,transparent); }
+  .who.db   { background:var(--ok-soft);      color:var(--ok);     border-color:color-mix(in srgb,var(--ok) 30%,transparent); }
+  .who.cust { background:var(--card-3);       color:var(--ink-2);  border-color:var(--line-strong); }
+  .who.new  { background:var(--warn-soft);    color:var(--warn);   border-color:color-mix(in srgb,var(--warn) 35%,transparent); }
+
+  /* ── การ์ดหน้าจอ ── */
+  .screens { display:grid; gap:18px; }
+  @media (min-width:900px) { .screens.two { grid-template-columns:1fr 1fr; } }
+  .screen { background:var(--card); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; }
+  .screen.proposed { border-color:color-mix(in srgb,var(--warn) 45%,var(--line)); }
+  .screen > header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; background:var(--card-2); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .screen > header .path { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-3); }
+  .screen > .body { padding:16px; }
+
+  /* ── เปลือกแอปจำลอง ── */
+  .app { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card); }
+  /* แถบบนใช้พื้น navy เสมอทั้งสองธีม — ตัวอักษรจึงตรึงเป็นสีอ่อนไว้ ไม่ผูกกับ --ink
+     (โหมดมืด --navy เป็นสีฟ้าอ่อน ⇒ ต้องกลับเป็นตัวอักษรเข้มแทน) */
+  .topbar { display:flex; align-items:center; gap:10px; padding:9px 14px;
+    background:var(--navy); color:#F7F4EE; font-size:13px; flex-wrap:wrap; }
+  @media (prefers-color-scheme:dark) { .topbar { color:#17181B; } }
+  :root[data-theme="dark"] .topbar { color:#17181B; }
+  :root[data-theme="light"] .topbar { color:#F7F4EE; }
+  .topbar .brand { font-weight:700; letter-spacing:.02em; }
+  .topbar .sys { display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.14);
+    padding:4px 11px; border-radius:999px; font-weight:600; }
+  .topbar .spacer { flex:1; }
+  .topbar .userchip { background:rgba(255,255,255,.12); padding:3px 10px; border-radius:999px; font-size:12px; }
+  .menurow { display:flex; gap:2px; padding:0 10px; background:var(--card-2);
+    border-bottom:1px solid var(--line); overflow-x:auto; }
+  .menurow a { display:inline-block; padding:10px 13px; font-size:13.5px; color:var(--ink-2);
+    text-decoration:none; border-bottom:2px solid transparent; white-space:nowrap; }
+  .menurow a.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .menurow.empty { padding:14px; color:var(--stop); font-size:13px; font-style:italic; }
+  .canvas { padding:16px; background:var(--ground); }
+
+  /* ── บล็อกทั่วไป ── */
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px; }
+  .card + .card { margin-top:12px; }
+  .rowhead { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    flex-wrap:wrap; margin-bottom:10px; }
+  .title { font-weight:700; font-size:16px; }
+  .sub { color:var(--ink-3); font-size:13px; }
+  .grid2 { display:grid; gap:12px; }
+  @media (min-width:640px) { .grid2 { grid-template-columns:1fr 1fr; } }
+  .grid3 { display:grid; gap:12px; }
+  @media (min-width:700px) { .grid3 { grid-template-columns:repeat(3,1fr); } }
+
+  .badge { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px;
+    border-radius:999px; border:1px solid transparent; }
+  .badge.n { background:var(--card-3); color:var(--ink-2); border-color:var(--line-strong); }
+  .badge.i { background:var(--navy-soft); color:var(--navy); }
+  .badge.w { background:var(--warn-soft); color:var(--warn); }
+  .badge.g { background:var(--ok-soft); color:var(--ok); }
+  .badge.r { background:var(--stop-soft); color:var(--stop); }
+
+  .btn { display:inline-block; font-size:13px; font-weight:600; padding:7px 14px;
+    border-radius:8px; border:1px solid var(--line-strong); background:var(--card);
+    color:var(--ink); }
+  .btn.accent { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.quiet { background:transparent; border-color:transparent; color:var(--ink-2); font-weight:500; }
+  .btn.danger { background:transparent; border-color:color-mix(in srgb,var(--stop) 45%,transparent); color:var(--stop); }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+
+  .field { margin-bottom:11px; }
+  .field label { display:block; font-size:12.5px; font-weight:600; color:var(--ink-2); margin-bottom:4px; }
+  .inp { border:1px solid var(--line-strong); border-radius:8px; padding:8px 11px;
+    background:var(--card); color:var(--ink-3); font-size:13.5px; }
+  .inp.derived { border-style:dashed; background:var(--card-2); }
+  .inp.block { display:block; }
+  .inp.area { min-height:62px; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th { text-align:left; font-weight:600; color:var(--ink-3); font-size:12px;
+    padding:7px 9px; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  table.t td { padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t tr:last-child td { border-bottom:0; }
+  .scroll { overflow-x:auto; }
+
+  .metrics { display:grid; gap:10px; grid-template-columns:repeat(2,1fr); }
+  @media (min-width:700px) { .metrics { grid-template-columns:repeat(4,1fr); } }
+  .metric { background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+    padding:12px 13px; }
+  .metric .n { font-size:26px; font-weight:700; line-height:1.15; }
+  .metric .k { font-size:12.5px; color:var(--ink-3); }
+  .metric.hot .n { color:var(--stop); }
+  .metric.warm .n { color:var(--warn); }
+
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:12px; flex-wrap:wrap; }
+  .tabs span { padding:8px 13px; font-size:13.5px; color:var(--ink-2);
+    border-bottom:2px solid transparent; }
+  .tabs span.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+
+  /* ── ราง ── */
+  .rail { display:flex; gap:0; flex-wrap:wrap; align-items:stretch; margin:4px 0 2px; }
+  .rail .st { flex:1 1 96px; min-width:96px; padding:8px 6px 7px; text-align:center;
+    border-top:3px solid var(--line); font-size:11.5px; color:var(--ink-3); line-height:1.35; }
+  .rail .st.done { border-top-color:var(--ok); color:var(--ink-2); }
+  .rail .st.now  { border-top-color:var(--accent); color:var(--accent); font-weight:700; }
+
+  /* ── เธรด ── */
+  .thread { display:grid; gap:10px; }
+  .ev { display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start; }
+  .ev .dot { width:9px; height:9px; border-radius:50%; background:var(--line-strong); margin-top:7px; }
+  .ev.sys .dot { background:var(--navy); }
+  .ev.rd  .dot { background:var(--accent); }
+  .ev.ok  .dot { background:var(--ok); }
+  .ev .bx { background:var(--card-2); border:1px solid var(--line); border-radius:9px; padding:9px 11px; }
+  .ev .meta { font-size:11.5px; color:var(--ink-3); margin-bottom:2px; }
+  .ev .msg { font-size:13.5px; }
+  .composer { margin-top:12px; border:1px solid var(--line-strong); border-radius:10px;
+    padding:10px 12px; background:var(--card-2); color:var(--ink-3); font-size:13.5px; }
+
+  .nextbar { margin-top:12px; border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));
+    background:var(--accent-soft); border-radius:10px; padding:11px 13px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .nextbar .lbl { font-size:13px; color:var(--ink-2); }
+  .nextbar .lbl b { color:var(--ink); }
+
+  /* ── โมดัล ── */
+  .modal { max-width:460px; border:1px solid var(--line-strong); border-radius:12px;
+    background:var(--card); box-shadow:var(--shadow); overflow:hidden; }
+  .modal > header { padding:11px 14px; border-bottom:1px solid var(--line);
+    background:var(--card-2); font-weight:700; font-size:14.5px; }
+  .modal > .body { padding:14px; }
+  .modal > footer { padding:11px 14px; border-top:1px solid var(--line);
+    display:flex; justify-content:flex-end; gap:8px; background:var(--card-2); }
+
+  /* ── หมายเหตุ ── */
+  .note { border-left:3px solid var(--line-strong); padding:8px 0 8px 13px;
+    margin:14px 0; color:var(--ink-2); font-size:13.5px; }
+  .note.warn { border-left-color:var(--warn); }
+  .note.stop { border-left-color:var(--stop); }
+  .note.ok   { border-left-color:var(--ok); }
+  .note b { color:var(--ink); }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.9em;
+    background:var(--card-3); padding:1px 5px; border-radius:4px; }
+
+  ul.tight { margin:8px 0; padding-left:20px; }
+  ul.tight li { margin-bottom:5px; }
+
+  .flowmap { display:grid; gap:12px; }
+  @media (min-width:820px) { .flowmap { grid-template-columns:1fr 1fr 1fr; } }
+  .lane { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card); }
+  .lane > h4 { margin:0; padding:10px 13px; font-size:13.5px; background:var(--card-2);
+    border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; }
+  .lane > ol { margin:0; padding:12px 12px 12px 30px; font-size:13.5px; }
+  .lane > ol li { margin-bottom:7px; }
+  .lane.sa > h4 { background:var(--navy-soft); color:var(--navy); }
+  .lane.rd > h4 { background:var(--accent-soft); color:var(--accent); }
+  .lane.db > h4 { background:var(--ok-soft); color:var(--ok); }
+
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--ink-2);
+    margin:18px 0 0; padding:12px 14px; background:var(--card-2);
+    border:1px solid var(--line); border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">SS-SYSTEM · แบบหน้าจอ</p>
+<h1>เอกสารของโครงการ/ดีล — ขอจาก R&amp;D ได้จากไหน ไปโผล่ที่ไหน</h1>
+<p class="lede">
+  <b>ขอบเขตของใบนี้</b> — เอกสารที่ผูกกับ <b>โครงการ/ดีล</b> เท่านั้น และผู้ตอบคือ
+  <b>ฝ่าย R&amp;D</b> ฝ่ายเดียว (มติผู้ใช้ 2026-08-08) · เอกสารทะเบียนลูกค้า
+  (หนังสือรับรอง · ภ.พ.20) และของสินค้า (Artwork) <b>ไม่อยู่ในสายนี้</b> —
+  มันแนบตรงที่ทะเบียนนั้น ไม่ได้ขอผ่านคำร้อง
+</p>
+<div class="legend">
+  <span><span class="who sa">SA</span> ผู้ขอ (บริหารงานขาย)</span>
+  <span><span class="who rd">RD</span> ผู้ตอบ (วิจัยและพัฒนา)</span>
+  <span><span class="who new">เสนอใหม่</span> ยังไม่มีในโค้ดวันนี้</span>
+</div>
+
+<div class="note stop">
+  <b>PC (จัดซื้อ) กับ FN (บัญชี) ปิดเก็บไว้ก่อน</b> — ยังไม่ได้ทบทวนสายงานของสองฝ่ายนี้
+  · ในฟอร์มยังเห็นปุ่มฝ่ายทั้งสองแบบ<b>จางและกดไม่ได้</b> (ไม่ซ่อน — คนที่อยากส่งเรื่อง
+  ถึงบัญชีจะได้รู้ว่ามีอยู่ แค่ยังไม่เปิด) · หัวข้อของสองฝ่ายติดธง <code>legacy</code>
+  ไม่ได้ลบทิ้ง ⇒ เปิดคืนได้ด้วยการลบธงบรรทัดเดียว
+</div>
+
+<div class="note">
+  ทุกตัวเลขและทุกชื่อชนิดในใบนี้ <b>ไล่จากโค้ดวันที่ 2026-08-08</b> —
+  เอกสารที่ระบบออกให้ 6 ฉบับ · ชนิดที่ขอจาก R&amp;D ได้ 4 ชนิด · แหล่งรวมของดีล 6 แหล่ง
+</div>
+
+
+<h2><span class="num">00</span>สามทางที่เอกสารเข้าระบบ</h2>
+<p class="lede">
+  ทุกไฟล์ในบริษัทเข้ามาทางใดทางหนึ่งใน 3 ทางนี้ — <b>คนละจอ คนละกฎ คนละที่เก็บ</b>
+</p>
+
+<div class="flowmap">
+  <div class="lane sa">
+    <h4>① ระบบออกให้เอง</h4>
+    <ol>
+      <li>ใบเสนอราคา · ใบสั่งขาย</li>
+      <li>ใบแจ้งชำระภาษี · รายงานภาษี</li>
+      <li>ฟอร์ม PDR (FM-RD-01)</li>
+      <li>ไทม์ไลน์โครงการ (Gantt)</li>
+      <li><b>ไม่มีใครอัปโหลด</b> — ระบบสร้าง HTML ตอนกดพิมพ์</li>
+    </ol>
+  </div>
+  <div class="lane rd">
+    <h4>② ขอจาก R&amp;D (คำร้อง)</h4>
+    <ol>
+      <li><b>ขอเอกสาร</b> → IFRA · COA · MSDS · อื่น ๆ</li>
+      <li>ล็อกฝ่ายที่ <b>R&amp;D</b> — ไม่มีขั้นเลือกฝ่าย (ม-87)</li>
+      <li>1 บรรทัด = 1 ชนิด · สถานะอยู่ที่แถว</li>
+      <li>ไฟล์จริงเกาะที่ <b>การ์ดของแถว</b></li>
+      <li>จบด้วย <b>ได้รับแล้ว</b> หรือ <b>ให้ไม่ได้</b> (ม-85)</li>
+    </ol>
+  </div>
+  <div class="lane db">
+    <h4>③ แนบเข้ามาตรง</h4>
+    <ol>
+      <li><b>ดีล</b> — บรีฟลูกค้า · ใบเสนอราคา (ไฟล์) · หลักฐานมัดจำ · PO ลูกค้า · เอกสารภาษี</li>
+      <li><b>หัวคำร้อง</b> — รูปอ้างอิง · สเปก/แบบงาน/บรีฟ (แนบได้ตั้งแต่หน้าสร้าง · ม-84)</li>
+      <li><b>แถวคำร้อง</b> — ที่ที่ไฟล์เอกสารจริงเกาะอยู่</li>
+      <li><b>ไม่รวมทะเบียนลูกค้า/สินค้า</b> — คนละสาย ดู §05</li>
+    </ol>
+  </div>
+</div>
+
+<div class="note warn">
+  <b>ทางที่ 2 คือทางเดียวที่ "ของที่ยังไม่มา" มีตัวตน</b> — อีกสองทางรู้จักแต่ไฟล์ที่มีแล้ว
+  ⇒ ตัวเลข "ครบ/ไม่ครบ" ของทั้งระบบเป็นไปได้ก็เพราะบรรทัดขอเอกสาร (เหตุผลที่มันมี
+  บรรทัดตั้งแต่แรก · ม-56)
+</div>
+
+
+<h2><span class="num">01</span>ตารางเต็ม — เอกสารในสายโครงการ/ดีล</h2>
+
+<h3>① ระบบออกให้เอง — 6 ฉบับ</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th>เอกสาร</th><th>ฝ่ายที่ออก</th><th>ออกจากจอไหน</th><th>รูปแบบ</th></tr></thead>
+    <tbody>
+      <tr><td><b>ใบเสนอราคา</b> (QT)</td><td><span class="who sa">SA</span></td><td>ใบเสนอราคา → ออกฉบับจริง</td><td>HTML A4 · <b>ไม่ใช่ PDF</b></td></tr>
+      <tr><td><b>ใบสั่งขาย</b> (SO)</td><td><span class="who sa">SA</span></td><td>ใบสั่งขาย → พิมพ์</td><td>HTML A4</td></tr>
+      <tr><td><b>ใบแจ้งชำระภาษีสรรพสามิต</b></td><td><span class="who db">FN</span> / ภาษี</td><td>ภาษีสรรพสามิต → ใบยื่นชำระ</td><td>HTML A4 หลายหน้า</td></tr>
+      <tr><td><b>รายงานภาษี</b></td><td>ภาษี</td><td>ภาษีสรรพสามิต → รายงาน</td><td>HTML A4 · 16 แถว/หน้า</td></tr>
+      <tr><td><b>ฟอร์ม PDR</b> (FM-RD-01)</td><td><span class="who rd">RD</span></td><td>ใบคำร้องพัฒนากลิ่น → พิมพ์ PDR</td><td>HTML A4 · 42 ข้อ · N/A ทุกช่องว่าง</td></tr>
+      <tr><td><b>ไทม์ไลน์โครงการ</b></td><td><span class="who sa">SA</span></td><td>โครงการ → พิมพ์ไทม์ไลน์</td><td>HTML แนวนอน</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="note">
+  ทั้ง 6 ฉบับใช้ <b>เปลือกเอกสารชุดเดียวกัน</b> (<code>documentShell</code>) — โครง A4 ·
+  หัวเอกสาร · ฟอนต์ · ลายน้ำ · ขั้นบันได zoom · ชื่อไฟล์ตอนบันทึก PDF
+  <br>
+  ⚠️ <b>ห้ามเขียนป้ายปุ่มว่า "ดาวน์โหลด"</b> — ฉบับที่ออกจริงเป็น HTML ผู้ใช้จะรอไฟล์
+  ที่ไม่มีวันมา · ป้ายที่ถูกคือ <b>"เปิดดู"</b> แล้วสั่งพิมพ์เป็น PDF เอง
+</div>
+
+<h3>② ขอจาก R&amp;D — หัวข้อเดียว</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th>หัวข้อ</th><th>ถึงฝ่าย</th><th>ชนิดที่ขอได้</th><th>เลขที่</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>ขอเอกสาร</b> <code>document</code></td>
+        <td><b>ล็อกที่ <span class="who rd">R&amp;D</span></b> (ม-87)</td>
+        <td>IFRA Certificate · COA · MSDS/SDS · อื่น ๆ</td>
+        <td><code>RQ-…</code></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<div class="note ok">
+  <b>ล็อกฝ่ายแล้ว — ไม่มีขั้น "เลือกฝ่าย" ให้กดทิ้งอีก</b> (มติผู้ใช้ 2026-08-08:
+  <i>"การขอเอกสาร มันเป็นคำร้องไป RD นิ จะมีฝ่ายทำไม"</i>)
+  <br>
+  เดิม <code>document</code> เป็น <code>dept: null</code> (ผู้ขอเลือกฝ่ายเอง) ⇒ ส่งถึง
+  จัดซื้อ/บัญชีได้ ทั้งที่ชนิดที่เลือกได้เป็น IFRA/COA/MSDS ของ RD ทั้งชุด — ฝ่ายอื่น
+  ออกให้ไม่ได้สักอย่าง · ตอนนี้ล็อก <code>dept: 'RD'</code> และย้ายไฟล์ไปอยู่บ้าน RD
+  <br>
+  ⚠️ <b>ขอเอกสารการเงินของบัญชี</b> (<code>billing_doc</code>) ยังอยู่ในโค้ดครบ
+  แต่ <b>ปิดเก็บไว้ก่อน</b> — เปิดคืนได้ทันทีเมื่อทบทวนสายงานบัญชีแล้ว
+</div>
+
+<h3>③ แนบเข้ามาตรง — 3 ที่ในสายนี้</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th>แนบที่</th><th>ชนิดเอกสารในชุดนั้น</th><th>ใครแนบ</th></tr></thead>
+    <tbody>
+      <tr><td><b>ดีล</b></td><td>บรีฟจากลูกค้า · ใบเสนอราคา (ไฟล์) · หลักฐานมัดจำ · PO ลูกค้า · เอกสารภาษี · อื่น ๆ</td><td><span class="who sa">SA</span></td></tr>
+      <tr><td><b>หัวคำร้อง</b></td><td>รูปอ้างอิง / ตัวอย่าง · สเปก / แบบงาน / บรีฟ · อื่น ๆ</td><td>ผู้ขอ (ตั้งแต่หน้าสร้าง · ม-84)</td></tr>
+      <tr><td><b>แถวคำร้อง</b></td><td>รูปตัวอย่าง · สเปก / แบบงาน · อื่น ๆ</td><td><span class="who rd">RD</span> — ที่ที่ไฟล์เอกสารจริงเกาะ</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="note warn">
+  <b>ที่แนบอื่นในระบบไม่อยู่ในสายนี้</b> — ทะเบียนลูกค้า (หนังสือรับรอง · ภ.พ.20 ·
+  บัตร ปชช.) · สินค้า (Artwork) · ทะเบียนสรรพสามิต · ออเดอร์ภาษี · งานบริหาร
+  ⇒ ของพวกนั้นแนบตรงที่ทะเบียนของมัน <b>ไม่ได้ขอผ่านคำร้อง</b> และไม่ผูกกับดีล
+
+<h2><span class="num">02</span><span class="who rd">RD</span> ขอเอกสารเทคนิค — IFRA · COA · MSDS</h2>
+
+<div class="screens two">
+  <div class="screen">
+    <header><b>ฟอร์มเปิดคำร้อง</b><span class="path">/requests/new?kind=document</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="grid2">
+          <div class="field"><label>ส่งถึงฝ่ายไหน</label><div class="inp block">วิจัยและพัฒนา (RD)</div></div>
+          <div class="field"><label>ขอเรื่องอะไร</label><div class="inp block">ทั่วไป › ขอเอกสาร</div></div>
+        </div>
+        <div class="field"><label>ดีล <b>(บังคับ)</b></label><div class="inp block">DL-2604-018 · เทียนหอมคอลเลกชันใหม่</div></div>
+        <div class="grid2">
+          <div class="field"><label>ลูกค้า</label><div class="inp block derived">บริษัท เดอ ลูมิแยร์ จำกัด</div></div>
+          <div class="field"><label>โครงการ</label><div class="inp block derived">PJ-0142 — คอลเลกชันปลายปี</div></div>
+        </div>
+        <div class="field"><label>ชนิดเอกสาร <b>(บังคับ)</b></label><div class="inp block">COA — Certificate of Analysis</div></div>
+        <div class="field"><label>รายละเอียด</label><div class="inp block area">ล็อต 2609-A · ขอฉบับภาษาอังกฤษ</div></div>
+        <div class="field"><label>อยากได้คำตอบภายใน <b>(บังคับ · ม-83)</b></label><div class="inp block">20/09/2026</div></div>
+        <div class="field"><label>แนบไฟล์ <span class="sub">(ม-84)</span></label><div class="inp block">เลือกไฟล์ (สูงสุด 10 MB ต่อไฟล์)</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <header><b>สายของแถว</b><span class="path">ม-85</span></header>
+    <div class="body">
+      <div class="rail">
+        <div class="st done">รอรับเรื่อง</div>
+        <div class="st done">กำลังทำ</div>
+        <div class="st now">ส่งเอกสารแล้ว</div>
+        <div class="st">ได้รับแล้ว</div>
+      </div>
+      <div class="note ok" style="margin-top:14px">
+        <b>จบสองทาง</b> — ผู้ขอกด <b>ได้รับแล้ว</b> (ยืนยันว่าไฟล์ใช้ได้จริง) ·
+        ฝ่ายกด <b>ให้ไม่ได้</b> + เหตุผล (เหตุผลติดแถวให้ผู้ขอเห็น ไม่ต้องไปหาในเธรด)
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="btns" style="margin-bottom:0">
+          <span class="badge g"><b>1</b> มาแล้ว</span>
+          <span class="badge w"><b>2</b> รอเอกสาร</span>
+          <span class="badge r"><b>1</b> ให้ไม่ได้</span>
+          <span class="badge n">จากที่ขอ <b>4</b> รายการ</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">03</span>ขอเอกสารการเงิน (บัญชี) — <b>ปิดเก็บไว้</b> แต่ของยังอยู่ครบ</h2>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>ฟอร์มเปิดคำร้อง · หัวข้อของบัญชี</b><span class="path">kind=billing_doc</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="grid2">
+          <div class="field"><label>ส่งถึงฝ่ายไหน</label><div class="inp block">บัญชี (FN) — ล็อกไว้</div></div>
+          <div class="field"><label>ขอเรื่องอะไร</label><div class="inp block">ทั่วไป › ขอเอกสารการเงิน</div></div>
+        </div>
+        <div class="field"><label>รายละเอียดการวางบิล</label><div class="inp block area">งวดที่เท่าไร · จำนวนเงิน · กำหนดที่ลูกค้าต้องการ · ส่งถึงใคร</div></div>
+        <div class="rowhead" style="margin-top:14px"><div class="title">เอกสารการเงินที่ขอ — 1 บรรทัด = 1 ใบ</div><span class="btn">+ เพิ่มรายการ</span></div>
+        <div class="card" style="background:var(--card-2)">
+          <div class="field"><label>ชนิดเอกสาร</label><div class="inp block">ใบวางบิล</div></div>
+          <div class="field"><label>รายละเอียด</label><div class="inp block area">งวดที่ 1 · 50% ก่อนผลิต</div></div>
+        </div>
+        <div class="card" style="background:var(--card-2)">
+          <div class="field"><label>ชนิดเอกสาร</label><div class="inp block">ใบกำกับภาษี</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note ok">
+  <b>ม-56 · จอเดียวใช้ทั้งสองฝ่าย</b> — <code>DocumentDetail</code> · <code>DocumentLines</code> ·
+  <code>documentBoard</code> ตัวเดียวกันทั้งหมด · <b>ต่างกันแค่ทะเบียนคำศัพท์</b>
+  (<code>docVocabulary</code>) ที่ผู้เรียกส่งเข้าไป
+  <br>
+  ⚠️ <b>เอามารวมลิสต์เดียวไม่ได้</b> — คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี"
+  โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้
+</div>
+
+
+<h2><span class="num">04</span>PC · FN — ปิดเก็บไว้ก่อน</h2>
+<p class="lede">
+  มติผู้ใช้ 2026-08-08: <i>"PC กับ FN ปิดเก็บไปก่อน ยังไม่ได้ทำตอนนี้ ตอนนี้สนใจแค่ RD"</i>
+</p>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>แถวเลือกฝ่ายบนฟอร์ม</b><span class="path">/requests/new</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="field"><label>ส่งถึงฝ่ายไหน</label></div>
+        <div class="grid3">
+          <div class="inp block" style="border-color:var(--accent);color:var(--ink)"><b>RD</b><br>วิจัยและพัฒนา</div>
+          <div class="inp block" style="opacity:.45"><b>PC</b><br>จัดซื้อ</div>
+          <div class="inp block" style="opacity:.45"><b>FN</b><br>บัญชี</div>
+        </div>
+        <div class="sub" style="margin-top:8px">RD ถูกเลือกให้เลย — เหลือฝ่ายเดียวที่เปิดใช้</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>จางและกดไม่ได้ ไม่ใช่ซ่อน</b> — ซ่อนเมื่อไร คนที่อยากส่งเรื่องถึงบัญชีจะไปเปิดใบ
+  ผิดหัวข้อแทน แล้วเราไม่มีทางรู้ว่ามีคนอยากได้
+  <br>
+  <b>RD ถูกเลือกให้ตั้งแต่เปิดฟอร์ม</b> — เหลือฝ่ายเดียวที่เปิดใช้ ขั้น "เลือกฝ่าย"
+  จึงไม่ได้ตัดสินใจอะไร · เปิดฝ่ายที่สองเมื่อไร ช่องจะกลับไปว่างเองโดยอัตโนมัติ
+</div>
+<div class="note ok">
+  <b>ปิดยังไงให้เปิดคืนง่าย</b> — ไม่ลบอะไรทิ้งสักบรรทัด:
+  <ul class="tight">
+    <li><code>REQUEST_DEPTS</code> เหลือ <code>['RD']</code> · <code>PLANNED_REQUEST_DEPTS</code> รับ <code>['PC','FN']</code></li>
+    <li>หัวข้อของสองฝ่าย (<code>material_eta</code> · <code>billing_doc</code>) ติดธง <code>legacy</code> —
+      ตัดออกจากลิสต์เปิดใบใหม่ แต่ <b>ป้ายชื่อยังอ่านได้</b> ถ้ามีใบเก่า</li>
+    <li>CHECK ของ <code>dept_requests.dept</code> ยังรับทั้งสามค่า ⇒ <b>ไม่ต้องแตะ migration</b></li>
+    <li>ทะเบียนคำศัพท์เอกสารการเงินและจอของมันยังอยู่ครบ</li>
+  </ul>
+</div>
+
+
+<h2><span class="num">05</span>สายที่ <b>ไม่</b> อยู่ในใบนี้ — เอกสารทะเบียน</h2>
+<p class="lede">
+  มติผู้ใช้ 2026-08-08: <i>"อันนี้จะเป็นเอกสารที่เกี่ยวข้องกับโครงการ ดีลเท่านั้น
+  ไม่เกี่ยวกับฐานข้อมูลลูกค้า หรือสินค้า"</i> — บันทึกไว้ให้ชัดว่าอะไรอยู่คนละสาย
+</p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th>เอกสาร</th><th>อยู่ที่ไหน</th><th>ทำไมไม่ใช่สายคำร้อง</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>หนังสือรับรองบริษัท · ภ.พ.20 · บัตร ปชช. กรรมการ · หนังสือมอบอำนาจ · Bookbank</td>
+        <td>ทะเบียน<b>ลูกค้า</b></td>
+        <td>เป็นของ<b>ลูกค้า</b>ไม่ใช่ของงาน — ใช้ซ้ำทุกดีล · ขอจากลูกค้าโดยตรง ไม่ได้ขอจากฝ่ายในบริษัท</td>
+      </tr>
+      <tr>
+        <td>Artwork สินค้า</td>
+        <td>ทะเบียน<b>สินค้า</b></td>
+        <td>ผูกกับตัวสินค้า ไม่ใช่กับดีลใดดีลหนึ่ง</td>
+      </tr>
+      <tr>
+        <td>ฉลาก/Artwork ที่ยื่น · ใบอนุมัติขึ้นทะเบียน</td>
+        <td>ทะเบียน<b>สรรพสามิต</b></td>
+        <td>สายของโมดูลภาษี มีขั้นตอนอนุมัติของตัวเอง</td>
+      </tr>
+      <tr>
+        <td>หลักฐานการชำระ · ใบเสร็จกรมสรรพสามิต · แบบ ภส.</td>
+        <td><b>ออเดอร์</b>ภาษี</td>
+        <td>ผูกกับรอบการชำระ ไม่ใช่กับดีล</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note warn">
+  <b>ข้อสังเกตที่ฝากไว้ (ไม่ใช่ของรอบนี้)</b> — เอกสารลูกค้าบางฉบับ<b>หมดอายุได้</b>
+  · วันนี้ระบบรู้จักอายุ <b>ชนิดเดียว</b> (หนังสือรับรองบริษัท 6 เดือน) และดูได้ทีละราย
+  ⇒ ไม่มีใครรู้ว่าทั้งบริษัทมีเอกสารหมดอายุกี่ใบ จนกว่าจะถึงวันที่ต้องใช้แล้วใช้ไม่ได้
+  · <b>เป็นเรื่องของทะเบียนลูกค้า ไม่ใช่ของสายคำร้อง</b> — ยกไปคุยรอบของมันเอง
+</div>
+
+
+<h2><span class="num">06</span>ปลายทางรวม — แผงเอกสารของดีล 6 แหล่ง</h2>
+<p class="lede">
+  จอเดียวที่ตอบคำถาม <i>"เอกสารของดีลนี้มีอะไรบ้าง"</i> ได้ครบ — เดิมต้องเปิด 4–5 จอแล้วจำเอาเอง
+</p>
+
+<div class="screens">
+  <div class="screen">
+    <header><b>แท็บเอกสารของดีล</b><span class="path">/sales-planning/deals/[id] → เอกสาร</span></header>
+    <div class="body">
+      <div class="card">
+        <div class="rowhead">
+          <div class="title">เอกสารของดีลนี้</div>
+          <div><span class="badge g">มาแล้ว 6</span> <span class="badge w">รอ 3</span></div>
+        </div>
+        <div class="scroll">
+          <table class="t">
+            <thead><tr><th>เอกสาร</th><th>มาจากแหล่งไหน</th><th>กดแล้วได้อะไร</th></tr></thead>
+            <tbody>
+              <tr><td>COA — Certificate of Analysis <span class="sub">(ล็อต 2609-A)</span></td><td><span class="badge w">รอเอกสาร</span></td><td>ดูคำร้อง</td></tr>
+              <tr><td>MSDS / SDS</td><td><span class="badge w">รอเอกสาร</span></td><td>ดูคำร้อง</td></tr>
+              <tr><td>PO ลูกค้า.pdf</td><td>ไฟล์แนบของดีล</td><td>เปิดดู</td></tr>
+              <tr><td>สัญญาที่ลูกค้าเซ็น.pdf</td><td>แนบในความเคลื่อนไหว</td><td>เปิดดู</td></tr>
+              <tr><td>QT-2608-014</td><td>ฉบับที่ออกจริง</td><td>เปิดดู</td></tr>
+              <tr><td>หลักฐานมัดจำ.jpg</td><td>หลักฐานปิดการขาย</td><td>เปิดดู</td></tr>
+              <tr><td>บรีฟจากลูกค้า</td><td>รายการเอกสารของดีล</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="note" style="margin-bottom:0">
+        <b>"รอเอกสาร" ขึ้นบนสุดเสมอ</b> — เป็นของที่ต้องทำอะไรต่อ · เรียงกลับกันเมื่อไร
+        คนต้องเลื่อนผ่านของที่เสร็จแล้วเพื่อไปหาของที่ค้าง
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note ok">
+  <b>เกณฑ์ "ยังไม่มา" ตรงกับใบคำร้องแล้ว (ม-85)</b> — แถวที่ยังเดินอยู่
+  (<code>answerStatus</code> ยังไม่ done/declined) · ก่อนหน้านี้หน้าดีลใช้
+  <code>!readyAt</code> ⇒ ฝ่ายกดส่งของแล้วสองจอตอบคนละคำตอบ
+</div>
+
+<div class="note warn">
+  <b>แผงนี้มีเฉพาะ "ของดีล"</b> — เอกสารของ <b>ลูกค้า</b> (หนังสือรับรอง · ภ.พ.20) ·
+  ของ <b>สินค้า</b> (Artwork) · ของ <b>ทะเบียนสรรพสามิต</b> อยู่คนละจอ และไม่มีที่ไหน
+  รวมให้เห็นพร้อมกัน ⇒ §07 ข้อ 2
+</div>
+
+
+<h2><span class="num">07</span>ช่องว่างที่เหลือในสายนี้</h2>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:34px">#</th><th>ช่องว่าง</th><th>อาการที่ผู้ใช้เจอ</th><th>เสนอ</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><b>ยังอ้างใบเสนอราคา / ล็อตการผลิตไม่ได้</b></td>
+        <td>ของจริง IFRA/COA ผูกกับ <b>ล็อต</b> — ตอนนี้พิมพ์ลงช่องรายละเอียดเป็นข้อความเปล่า ค้นย้อนไม่ได้</td>
+        <td><b>ยังไม่ทำ โดยตั้งใจ</b> — ไม่มีที่เก็บทั้งสองอย่าง · ห้ามเดาโครงสร้างล่วงหน้า</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><b>ชนิดเอกสารมี 3 ตัว + "อื่น ๆ"</b></td>
+        <td>ของที่ขอบ่อยแต่ไม่อยู่ในลิสต์ต้องไปกอง "อื่น ๆ" ⇒ ตัวเลข "ขอ IFRA กี่ครั้ง" ผิดเงียบ ๆ</td>
+        <td>ถาม R&amp;D ว่าจริง ๆ ฝ่ายขายขออะไรบ้าง แล้วเติมทะเบียน — <b>เติมทะเบียนอย่างเดียว ไม่แตะโครง</b></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><b>แผงรวมมีเฉพาะ "ของดีล"</b></td>
+        <td>เปิดหน้าโครงการแล้วไม่เห็นภาพรวมเอกสารของทั้งโครงการ ต้องไล่เปิดทีละดีล</td>
+        <td>ยกแผงเดียวกันไปหน้าโครงการ โดยรวมของทุกดีลในโครงการนั้น</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  ทั้งสามข้อ<b>ไม่มีข้อไหนต้องแตะโครงสร้าง</b> — ข้อ 1 รอที่เก็บ · ข้อ 2 เติมทะเบียน ·
+  ข้อ 3 ยืมแผงที่มีอยู่แล้วไปวางอีกที่
+</div>
+
+</div>
+</body></html>

@@ -127,26 +127,30 @@ test('ด่านตอนสร้าง: ชื่อเรื่องบั
 
 test('ฝ่ายที่เลือกต้องเข้ากับหัวข้อ — ไม่ override เงียบ ๆ', () => {
   assert.equal(requestDeptError('scent_dev', 'RD'), null);
-  assert.match(requestDeptError('scent_dev', 'PC'), /ฝ่าย RD/);
-  assert.match(requestDeptError('material_eta', 'RD'), /ฝ่าย PC/);
-  // หัวข้อที่ไม่ล็อกฝ่ายส่งถึงใครก็ได้ แต่ต้องเลือก
+  // ⭐ ขอเอกสารล็อกที่ RD แล้ว (มติผู้ใช้ 2026-08-08) — เดิมส่งถึงฝ่ายไหนก็ได้
+  assert.equal(requestDeptError('document', 'RD'), null);
+  // ⚠️ ฝ่ายที่ปิดเก็บไว้ก่อน (PC/FN) ตกที่ด่านแรก — "ต้องระบุฝ่าย" ไม่ใช่ "เป็นงานของ
+  // ฝ่าย RD" เพราะมันไม่ใช่ฝ่ายที่เปิดใบได้เลย ไม่ใช่แค่ฝ่ายผิด
+  assert.match(requestDeptError('scent_dev', 'PC'), /ต้องระบุฝ่าย/);
+  assert.match(requestDeptError('document', 'FN'), /ต้องระบุฝ่าย/);
+  // หัวข้อที่ไม่ล็อกฝ่ายยังต้องเลือกฝ่ายเสมอ
   assert.equal(requestDeptError('info', 'RD'), null);
-  assert.equal(requestDeptError('info', 'PC'), null);
   assert.match(requestDeptError('info', ''), /ต้องระบุฝ่าย/);
   assert.match(requestDeptError('info', 'PD'), /ต้องระบุฝ่าย/);
 });
 
 test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
   const rd = kindsForDept('RD');
+  // ⚠️ PC/FN ปิดเก็บไว้ก่อน (มติผู้ใช้ 2026-08-08) ⇒ ลิสต์ว่างทั้งคู่
   const pc = kindsForDept('PC');
   assert.ok(rd.includes('scent_dev') && rd.includes('formula_dev'));
   assert.ok(!rd.includes('material_eta'));
-  assert.ok(pc.includes('material_eta'));
+  assert.deepEqual(pc, []);
   // ⚠️ ม-28: หัวข้อขอราคาไม่มีอยู่ในทะเบียนอีกแล้ว ไม่ใช่แค่ซ่อนจากลิสต์
   for (const gone of ['price_f', 'price_fb', 'price_pm']) {
     assert.equal(isRequestKind(gone), false, `${gone} ต้องหายจากทะเบียนทั้งตัว`);
   }
-  assert.ok(!pc.includes('scent_dev'));
+
   // ⭐ หัวข้อที่เลิกใช้แล้วต้องหายจากลิสต์ "เปิดใบใหม่" ของทุกฝ่าย…
   // ⭐ `scent_brief` · `mockup` ถูกลบทั้งหัวข้อใน 0220 — เหตุผลที่เคยเก็บไว้คือ
   // "ใบเก่าต้องมีป้ายชื่ออ่านได้" ซึ่งหมดอายุแล้วเพราะทั้งคู่มี 0 แถวบน prod
@@ -155,9 +159,9 @@ test('หัวข้อถูกกรองด้วยฝ่าย — ฟอ
   }
   // ⭐ กลไก `legacy` ยังอยู่ให้หัวข้อที่จะเลิกใช้ในอนาคต — แค่ไม่มีสมาชิกวันนี้
   assert.equal(legacyKindError('scent_dev'), null);
-  // หัวข้อที่ไม่ล็อกฝ่ายต้องอยู่ทั้งสองฝ่าย ไม่งั้นเลือกฝ่ายแล้วหาหัวข้อไม่เจอ
-  for (const shared of ['info', 'document']) {
-    assert.ok(rd.includes(shared) && pc.includes(shared), `${shared} ต้องเลือกได้ทั้งสองฝ่าย`);
+  // หัวข้อที่ RD ต้องมีครบ — `document` ล็อกมาที่ RD แล้ว (ม-87)
+  for (const kind of ['info', 'document']) {
+    assert.ok(rd.includes(kind), `${kind} ต้องอยู่ในลิสต์ของ RD`);
   }
   assert.deepEqual(kindsForDept('PD'), []);
 });

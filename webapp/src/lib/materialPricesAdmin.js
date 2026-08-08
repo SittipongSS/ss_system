@@ -200,7 +200,20 @@ export async function findRequest(supabase, id) {
 
   const items = await attachRowPrice(supabase, withBriefs.items || []);
 
-  return { ...withBriefs, items, salesOrderLines };
+  // ── ป้ายอ้างอิง QT/SO (ม-88) — จอโชว์ **เลขที่** ไม่ใช่ id ────────────────
+  // โหลดเฉพาะตอนเปิดใบเดียว · ตามกลับไม่เจอ (ใบถูกลบ) = คืน null แล้วจอบอกตรง ๆ
+  const [refQuotation, refSalesOrder] = await Promise.all([
+    withBriefs.quotationId
+      ? supabase.from('quotations').select('id, "quoteNumber"')
+        .eq('id', withBriefs.quotationId).maybeSingle().then((r) => r.data)
+      : null,
+    withBriefs.salesOrderId
+      ? supabase.from('sales_orders').select('id, "orderNumber"')
+        .eq('id', withBriefs.salesOrderId).maybeSingle().then((r) => r.data)
+      : null,
+  ]);
+
+  return { ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder };
 }
 
 // ── ราคาที่ออกจากแถวนี้ — ให้ใบคำร้องแสดงย้อนกลับได้ ──────────────────────

@@ -44,15 +44,19 @@ test('ทะเบียนแช่แข็ง — เขียนทับต
   assert.ok(Object.isFrozen(REQUEST_KINDS));
 });
 
-test('หัวข้อของกลางอยู่ในลิสต์ของทุกฝ่าย · หัวข้อที่ล็อกฝ่ายอยู่ฝ่ายเดียว', () => {
+test('หัวข้อของกลางอยู่ในลิสต์ของทุกฝ่ายที่เปิดใช้ · หัวข้อที่ล็อกฝ่ายอยู่ฝ่ายเดียว', () => {
   for (const dept of REQUEST_DEPTS) {
     const list = kindsForDept(dept);
     for (const kind of KINDS_BY_OWNER.shared) assert.ok(list.includes(kind), `${dept} ต้องมี ${kind}`);
   }
   assert.ok(kindsForDept('RD').includes('scent_dev'));
-  assert.ok(!kindsForDept('PC').includes('scent_dev'));
-  assert.ok(kindsForDept('PC').includes('material_eta'));
+  // ⚠️ **ขอเอกสารล็อกที่ RD แล้ว** (มติผู้ใช้ 2026-08-08) — เดิมเป็นของกลาง
+  assert.ok(kindsForDept('RD').includes('document'));
   assert.ok(!kindsForDept('RD').includes('material_eta'));
+  // ฝ่ายที่ปิดเก็บไว้ก่อนต้องไม่มีหัวข้อให้เปิดใบใหม่เลย — ไม่ใช่มีแต่กดแล้วตกที่ server
+  for (const parked of ['PC', 'FN']) {
+    assert.deepEqual(kindsForDept(parked), [], `${parked} ปิดอยู่ ต้องไม่มีหัวข้อ`);
+  }
 });
 
 test('🐞 หัวกลุ่มห้ามโผล่ซ้ำ — ตระกูลต้องติดกันในลิสต์ที่คืนให้ดรอปดาวน์', () => {

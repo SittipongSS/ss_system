@@ -12,6 +12,7 @@
 // สุดท้ายกลายเป็นคอลัมน์ตายที่ไม่มีใครอ่าน ต้องตามเก็บกวาดใน 0205
 import { canAnswerRequestsFor } from '@/lib/permissions';
 import { canManageRequest } from '@/lib/requests/access';
+import { isDocLineKind } from '@/lib/requests/docTypes';
 
 // ลำดับตามเวลาจริงของงาน — index ใช้เทียบว่า "ถึงขั้นนี้หรือยัง" ได้เลย
 export const ROW_STAGES = [
@@ -152,11 +153,39 @@ const NEXT_BY_STAGE = {
   declined:       null,
 };
 
+// ── สายของแถวเอกสาร — สั้นกว่าสายพัฒนา (ม-85) ─────────────────────────────
+//
+// 🐞 **บั๊กที่ตารางนี้ปิด**: เดิมแถวเอกสารใช้ตารางเดียวกับสายพัฒนา ⇒ ได้ปุ่ม
+// รับของ → ส่งให้ลูกค้า → บันทึกคำตอบ → ใส่ราคา ทั้งที่หัวข้อนี้ **ไม่มีลูกค้าในสาย
+// และไม่มีขั้นราคา** · ก้าวสุดท้ายตอบ 400 ("ยังไม่ผูกกลิ่นหรือสูตร") ⇒ แถวค้างที่
+// "รอใส่ราคา" ถาวร ปิดใบไม่ได้ — รูปแบบเดียวกับบั๊กของพัฒนาสูตรก่อน ม-54
+//
+// สายจริง: รอรับเรื่อง → กำลังทำ → ส่งเอกสารแล้ว → จบด้วย **ได้รับแล้ว** (ผู้ขอกด
+// ยืนยันว่าไฟล์ใช้ได้จริง) หรือ **ให้ไม่ได้** (ฝ่ายกด พร้อมเหตุผล — ดู hops.js)
+const NEXT_BY_STAGE_DOC = {
+  awaiting_ack: { owner: 'dept',      label: 'รับเรื่อง' },
+  developing:   { owner: 'dept',      label: 'ส่งเอกสาร' },
+  ready:        { owner: 'requester', label: 'ได้รับแล้ว' },
+  // สี่ขั้นของสายพัฒนาไม่มีวันเกิดกับแถวเอกสารเมื่อเดินทางใหม่ — เผื่อของเก่าที่เคย
+  // หลงเดินไปแล้ว (picked_up/sent) ให้จบทางผู้ขอยืนยันรับ ไม่ใช่พาไปใส่ราคา
+  picked_up:    { owner: 'requester', label: 'ได้รับแล้ว' },
+  sent:         { owner: 'requester', label: 'ได้รับแล้ว' },
+  awaiting_price: null,
+  revised:      null,
+  done:         null,
+  declined:     null,
+};
+
+// ตารางก้าวของแถวนี้ — เลือกตามรูปร่างบรรทัด (ที่เดียว ห้ามให้จออื่นเลือกเอง)
+export function nextByStageFor(row) {
+  return isDocLineKind(row?.lineKind) ? NEXT_BY_STAGE_DOC : NEXT_BY_STAGE;
+}
+
 // คืน { stage, owner, label, isMine } หรือ null ถ้าแถวนี้จบแล้ว
 // `request` ต้องมาด้วยเพราะ "ใครคือฝ่ายที่ต้องตอบ" อยู่บนหัวใบ ไม่ใช่บนแถว
 export function nextStepForRow(row, request, user) {
   const stage = rowStage(row);
-  const next = NEXT_BY_STAGE[stage];
+  const next = nextByStageFor(row)[stage];
   if (!next) return null;
   // ⚠️ ถามว่า "รับคำร้องของฝ่ายนี้ได้ไหม" **ไม่ใช่ "ตอบราคาได้ไหม"** — สองอย่างนี้
   // แยกกันแล้วตั้งแต่ R-1 · ถามผิดคำถาม = ฝ่ายที่รับคำร้องแต่ไม่ตอบราคา (บัญชี)
@@ -179,7 +208,7 @@ export function requestRowSummary(items = []) {
   for (const row of items) {
     const stage = rowStage(row);
     if (SETTLED.has(stage)) { out.settled += 1; continue; }
-    const next = NEXT_BY_STAGE[stage];
+    const next = nextByStageFor(row)[stage];
     if (next?.owner === 'dept') out.waitingDept += 1;
     else if (next?.owner === 'requester') out.waitingRequester += 1;
   }
