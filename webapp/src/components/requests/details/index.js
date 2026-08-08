@@ -12,6 +12,7 @@
 import DocumentDetail from './DocumentDetail';
 import DocumentPanel from './DocumentPanel';
 import FormulaPanel from './FormulaPanel';
+import ScentPanel from './ScentPanel';
 import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SharedRequestDetail from './SharedRequestDetail';
@@ -33,6 +34,7 @@ const PANEL_BY_KIND = {
   document: DocumentPanel,
   billing_doc: DocumentPanel,
   formula_dev: FormulaPanel,
+  scent_dev: ScentPanel,
 };
 
 // หัวข้อที่ยังไม่มีจอของตัวเองใช้ตัวกลาง — **ถอยได้ ไม่โยน** เพราะใบเก่าของหัวข้อ
