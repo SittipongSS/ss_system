@@ -9,10 +9,12 @@ import {
   Edit2, Trash2,
   Printer, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
+  FileText,
 } from "lucide-react";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import ProjectDealsHub, { ProjectActivityFeed, ProjectQuotationsCard } from "@/components/pm/ProjectDealsHub";
+import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
@@ -48,7 +50,7 @@ import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { PageShell as SaPageShell } from "@/components/ui/Workspace";
+import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
 
 // ความยาวเหตุผล 10–500 ย้ายไปอยู่ที่ recordLifecycle (ค่าเริ่มต้นของ reasonPolicy)
@@ -869,8 +871,23 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      {/* เอกสาร = ใบเสนอราคา + Sale Order (การ์ดเดียวกัน วางคู่กันอยู่แล้ว) */}
-      {tab === "documents" && <ProjectQuotationsCard project={p} />}
+      {/* เอกสาร = ใบเสนอราคา + Sale Order (การ์ดเดิม) + **ไฟล์รวมของทุกดีล** (ม-88)
+          — "RD แนบเอกสาร → เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" · แผงเดียวกับ
+          แท็บเอกสารบนหน้าดีล แค่โหมดโครงการรวมทุกดีลและบอกว่าแถวไหนของดีลไหน */}
+      {tab === "documents" && (
+        <>
+          <ProjectQuotationsCard project={p} />
+          {/* ใช้ WorkspaceSection ของกลาง — inline style คือชั้นเก่าที่ ratchet
+              audit:ui ห้ามเพิ่ม (เพดานลงได้อย่างเดียว) */}
+          <SaSection
+            icon={<FileText size={17} />}
+            title="ไฟล์เอกสารของโครงการ"
+            subtitle="รวมจากทุกดีลในโครงการ — ไฟล์จากคำร้อง · ไฟล์แนบ · ฉบับที่ออกจริง · ของที่ยังรอ"
+          >
+            <EntityDocumentsPanel projectId={p.id} />
+          </SaSection>
+        </>
+      )}
 
       {tab === "tasks" && (
         <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>

@@ -96,6 +96,12 @@ export function requestRequiresCommittedDue() {
 }
 
 // ฝ่ายปลายทางสร้างแถวเองตอนส่งของไหม (พัฒนากลิ่น — แบบหน้าจอ §04)
+// อ้างอิงเพิ่มที่หัวข้อนี้รับได้ (ไม่บังคับ) — 'quotation' | 'salesOrder' | 'product'
+// (ม-88 · ต่างจาก `needs` ตรงที่ว่างได้ และด่านตรวจแค่ของมีจริง+ดีลตรงกัน)
+export function requestOptionalRefs(kind) {
+  return REQUEST_KINDS[kind]?.optionalRefs || [];
+}
+
 export function requestDeliversRows(kind) {
   return !!REQUEST_KINDS[kind]?.deliversRows;
 }

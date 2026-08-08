@@ -59,6 +59,8 @@ export function requestPayload(form, extra = {}) {
     // ของที่ผูก — ส่งไปเท่าที่มี server ตรวจตามหัวข้อเอง (ดู `needs`)
     dealId: form.dealId || null,
     salesOrderId: form.salesOrderId || null,
+    // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — ว่างได้ · server ตรวจว่าเป็นของดีลเดียวกัน
+    quotationId: form.quotationId || null,
     title: form.title || null,
     body: form.body || null,
     urgent: !!form.urgent,

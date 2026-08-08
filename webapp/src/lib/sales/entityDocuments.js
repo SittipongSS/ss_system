@@ -13,11 +13,15 @@ import { docTypeLabel } from '@/lib/requests/docTypes';
 
 export const DOCUMENT_SOURCES = {
   awaiting: { label: 'รอเอกสาร', order: 0 },
-  attachment: { label: 'ไฟล์แนบของดีล', order: 1 },
-  thread: { label: 'แนบในความเคลื่อนไหว', order: 2 },
-  issued: { label: 'ฉบับที่ออกจริง', order: 3 },
-  won: { label: 'หลักฐานปิดการขาย', order: 4 },
-  checklist: { label: 'รายการเอกสารของดีล', order: 5 },
+  // ⭐ แหล่งที่ 7 (ม-88): ไฟล์ที่ฝ่ายปลายทางแนบบนแถวคำร้องแล้วส่งมา — เดิมพอแถว
+  // เดินพ้น "รอ" ไฟล์กลับ **หายจากแท็บนี้ทั้งใบ** (ไปกองอยู่ในใบคำร้องที่เดียว)
+  // ⇒ "RD แนบเอกสาร → เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" ตามมติผู้ใช้
+  requestFile: { label: 'เอกสารจากคำร้อง', order: 1 },
+  attachment: { label: 'ไฟล์แนบของดีล', order: 2 },
+  thread: { label: 'แนบในความเคลื่อนไหว', order: 3 },
+  issued: { label: 'ฉบับที่ออกจริง', order: 4 },
+  won: { label: 'หลักฐานปิดการขาย', order: 5 },
+  checklist: { label: 'รายการเอกสารของดีล', order: 6 },
 };
 
 const SOURCE_ORDER = Object.fromEntries(
@@ -35,8 +39,22 @@ export function buildEntityDocuments({
   wonAttachments = [],
   checklist = [],
   awaitingRequestItems = [],
+  requestItemFiles = [],
 } = {}) {
   const rows = [];
+
+  // ไฟล์จริงที่ฝ่ายแนบบนแถวคำร้อง (ม-88) — title คือชื่อชนิดเอกสารของแถว ไม่ใช่
+  // ชื่อไฟล์ (คนหาด้วยคำว่า "COA" ไม่ใช่ชื่อไฟล์ที่ RD ตั้ง) · ชื่อไฟล์อยู่บรรทัดรอง
+  for (const f of requestItemFiles) {
+    rows.push({
+      id: `reqfile:${f.id}`,
+      source: 'requestFile',
+      title: f.docType ? docTypeLabel(f.docType) : (f.fileName || 'เอกสารจากคำร้อง'),
+      note: [f.fileName, f.requestDocNo].filter(Boolean).join(' · ') || null,
+      href: `/api/attachments/${f.id}/file`,
+      at: f.createdAt || null,
+    });
+  }
 
   for (const item of awaitingRequestItems) {
     rows.push({

@@ -34,7 +34,7 @@ import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
-  PLANNED_REQUEST_DEPTS,
+  PLANNED_REQUEST_DEPTS, requestOptionalRefs,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, lineShapeForKind, requestHasItems,
   requestHasPdr,
@@ -77,7 +77,8 @@ const onlyDept = () => (REQUEST_DEPTS.length === 1 ? REQUEST_DEPTS[0] : "");
 export const emptyRequestForm = (over = {}) => ({
   projectId: "",
   dealId: "",
-  salesOrderId: "",   // บรีฟกลิ่น (ค่าบริการออกแบบกลิ่น)
+  salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
+  quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
   dept: onlyDept(),
   kind: "",
@@ -117,7 +118,7 @@ export default function RequestForm({
   value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
-  customers = [],
+  customers = [], quotations = [], products = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
   mentionPeople = [],
@@ -156,6 +157,8 @@ export default function RequestForm({
   // (ธงเพี้ยนจาก server ไม่ได้ เพราะอ่านตัวเดียวกัน)
   const needsProject = requestNeedsRef(kind, "project");
   const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
+  // อ้างอิงเพิ่มไม่บังคับ (ม-88) — QT/SO/FG ของหัวข้อขอเอกสาร
+  const optionalRefs = requestOptionalRefs(kind);
   const needsScent = requestNeedsRef(kind, "scent");
   const needsFormula = requestNeedsRef(kind, "formula");
   // ⚠️ **หลับอยู่ตั้งแต่ 0204** — คอลัมน์ `dept_requests.productTypeId` ถูก DROP ทิ้ง
@@ -284,6 +287,7 @@ export default function RequestForm({
                 productId: "",
                 productTypeId: "",
                 salesOrderId: "",
+                quotationId: "",
                 formulaCode: "",
                 formulaName: "",
                 items: itemsForKind(next),
@@ -389,6 +393,79 @@ export default function RequestForm({
           })()}
         />
       </div>
+
+      {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────
+          ⭐ มติผู้ใช้ 2026-08-08: เอกสารอย่าง COA/IFRA มักผูกกับใบเสนอราคา ใบสั่งขาย
+          หรือสินค้า (FG) ตัวใดตัวหนึ่ง — ให้อ้างจากระบบจริง ไม่ใช่พิมพ์เลขที่ลงช่อง
+          รายละเอียดแล้วค้นย้อนไม่ได้
+          ⚠️ **ว่างได้ทุกช่อง** — ด่านที่ server ตรวจแค่ "ของมีจริง + อยู่ดีลเดียวกัน"
+          ⚠️ QT/SO **กรองตามดีลที่เลือก** — อ้างข้ามดีลคือความขัดแย้งที่ต้องกันตั้งแต่จอ */}
+      {optionalRefs.length > 0 && (
+        <div className="form-grid">
+          {optionalRefs.includes("quotation") && (
+            <div className="form-group">
+              <span className={styles.fieldLabel}>
+                ใบเสนอราคา (QT) <span className={styles.hint}>(ถ้ามี)</span>
+              </span>
+              <SearchableSelect
+                value={value.quotationId} disabled={disabled || !value.dealId}
+                onChange={(v) => set({ quotationId: v })}
+                options={quotations
+                  .filter((q) => q.dealId === value.dealId)
+                  .map((q) => ({
+                    value: q.id,
+                    label: q.quoteNumber || q.id,
+                    search: `${q.quoteNumber || ""} ${q.customerName || ""}`,
+                  }))}
+                placeholder={value.dealId ? "— ไม่อ้าง —" : "เลือกดีลก่อน"}
+                emptyText="ดีลนี้ยังไม่มีใบเสนอราคา"
+                ariaLabel="ใบเสนอราคาที่อ้างถึง"
+              />
+            </div>
+          )}
+          {optionalRefs.includes("salesOrder") && !needsSalesOrder && (
+            <div className="form-group">
+              <span className={styles.fieldLabel}>
+                ใบสั่งขาย (SO) <span className={styles.hint}>(ถ้ามี)</span>
+              </span>
+              <SearchableSelect
+                value={value.salesOrderId} disabled={disabled || !value.dealId}
+                onChange={(v) => set({ salesOrderId: v })}
+                options={salesOrders
+                  .filter((so) => so.dealId === value.dealId)
+                  .map((so) => ({
+                    value: so.id,
+                    label: so.orderNumber || so.id,
+                    search: `${so.orderNumber || ""} ${so.customerName || ""}`,
+                  }))}
+                placeholder={value.dealId ? "— ไม่อ้าง —" : "เลือกดีลก่อน"}
+                emptyText="ดีลนี้ยังไม่มีใบสั่งขาย"
+                ariaLabel="ใบสั่งขายที่อ้างถึง"
+              />
+            </div>
+          )}
+          {optionalRefs.includes("product") && (
+            <div className="form-group col-span-2">
+              <span className={styles.fieldLabel}>
+                สินค้า (FG) <span className={styles.hint}>(ถ้ามี)</span>
+              </span>
+              {/* FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
+              <SearchableSelect
+                value={value.productId} disabled={disabled}
+                onChange={(v) => set({ productId: v })}
+                options={products.map((fg) => ({
+                  value: fg.id,
+                  label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+                  search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
+                }))}
+                placeholder="— ไม่อ้าง —"
+                emptyText="ยังไม่มีสินค้าในทะเบียน"
+                ariaLabel="สินค้า (FG) ที่อ้างถึง"
+              />
+            </div>
+          )}
+        </div>
+      )}
       </>
       )}
 

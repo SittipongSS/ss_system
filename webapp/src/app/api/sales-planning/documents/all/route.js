@@ -20,19 +20,10 @@ function raise(label, error) {
   if (error) throw new Error(`${label}: ${error.message}`);
 }
 
-export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!user) return unauthorized();
-  if (!canViewSalesPlanning(user)) return forbidden();
-
-  const dealId = new URL(req.url).searchParams.get('dealId');
-  if (!dealId) return badRequest('dealId is required');
-
-  try {
-    const { data: deal, error: dealError } = await supabase
-      .from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-    raise('อ่านดีลไม่สำเร็จ', dealError);
-    if (!deal) return notFound('ไม่พบดีล');
-    if (!inSalesViewScope(user, deal)) return forbidden();
+// เก็บเอกสารทุกแหล่งของดีลเดียว — คืน "วัตถุดิบ" ให้ buildEntityDocuments
+// ⭐ แยกออกมาเพื่อให้ **หน้าโครงการเรียกวนได้** (ม-88: "เอกสารไปสู่แท็บเอกสารใน
+// โครงการ ดีลนั้นด้วย") — โครงการ = รวมของทุกดีลข้างใน ไม่ใช่แหล่งใหม่
+async function collectDealDocuments(supabase, dealId) {
 
     // 1) ไฟล์แนบที่ผูกกับดีลตรง ๆ
     // ⚠️ วันนี้ยังไม่มีทางแนบไฟล์เข้าดีลโดยตรง (`deal` ยังไม่อยู่ใน ATTACHMENT_TYPES —
@@ -45,7 +36,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
     // 2) ไฟล์ที่แนบมากับข้อความในความเคลื่อนไหว — **ไฟล์ของดีลวันนี้อยู่ที่นี่จริง ๆ**
     const { data: updates, error: updError } = await supabase
-      .from('entity_updates').select('id, attachments, createdAt, userName')
+      // 🐞 คอลัมน์จริงชื่อ `authorName` — เดิมเขียน `userName` ⇒ แท็บเอกสารของดีล
+      // **ตอบ 500 ทั้งแท็บ** ทุกดีลที่มีความเคลื่อนไหว (เจอตอนเดินวง ม-88)
+      .from('entity_updates').select('id, attachments, createdAt, "authorName"')
       .eq('entityType', 'deal').eq('entityId', dealId)
       .not('attachments', 'is', null);
     raise('อ่านไฟล์ในความเคลื่อนไหวไม่สำเร็จ', updError);
@@ -54,16 +47,19 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         id: `${u.id}:${i}`,
         fileName: a?.fileName || a?.name || null,
         fileUrl: a?.fileUrl || a?.url || null,
-        byName: u.userName || null,
+        byName: u.authorName || null,
         createdAt: u.createdAt,
       }))
     ));
 
     // 3–4) ใบเสนอราคา / ใบสั่งขาย → ฉบับที่ออกจริง + หลักฐานปิดการขาย
+    // 🐞 เลขที่เอกสารของสองตารางนี้ชื่อ `quoteNumber`/`orderNumber` — เดิมเขียน
+    // `docNo` ทั้งคู่ ⇒ แท็บเอกสารของดีล **ตอบ 500 ทุกดีลที่มี QT** มาตั้งแต่ P5b
+    // (เจอตอนเดินวง ม-88 — จอนี้ไม่เคยถูกเปิดกับดีลจริงเลย)
     const [{ data: quotations, error: qtError }, { data: salesOrders, error: soError }] =
       await Promise.all([
-        supabase.from('quotations').select('id, docNo, wonAttachments, createdAt').eq('dealId', dealId),
-        supabase.from('sales_orders').select('id, docNo, createdAt').eq('dealId', dealId),
+        supabase.from('quotations').select('id, "quoteNumber", "wonAttachments", "createdAt"').eq('dealId', dealId),
+        supabase.from('sales_orders').select('id, "orderNumber", "createdAt"').eq('dealId', dealId),
       ]);
     raise('อ่านใบเสนอราคาไม่สำเร็จ', qtError);
     raise('อ่านใบสั่งขายไม่สำเร็จ', soError);
@@ -75,7 +71,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       // ⚠️ `issued_documents` ไม่มี dealId — ต้อง join ผ่าน id ของ QT/SO
       const { data: rows, error: issuedError } = await supabase
         .from('issued_documents')
-        .select('id, quotationId, salesOrderId, docNo, issuedAt, createdAt')
+        .select('id, "quotationId", "salesOrderId", "documentNumber", "issuedAt", "createdAt"')
         .or([
           qtIds.length ? `quotationId.in.(${qtIds.join(',')})` : null,
           soIds.length ? `salesOrderId.in.(${soIds.join(',')})` : null,
@@ -83,7 +79,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       raise('อ่านฉบับที่ออกจริงไม่สำเร็จ', issuedError);
       issued = (rows || []).map((d) => ({
         ...d,
-        title: d.docNo || 'ฉบับที่ออกจริง',
+        title: d.documentNumber || 'ฉบับที่ออกจริง',
         // ⚠️ ฉบับที่ออกจริงเป็น **HTML ไม่ใช่ PDF** — ป้ายบนปุ่มห้ามเขียน "ดาวน์โหลด"
         href: `/api/issued-documents/${d.id}`,
       }));
@@ -94,7 +90,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         id: `${q.id}:${i}`,
         fileName: a?.fileName || a?.name || null,
         fileUrl: a?.fileUrl || a?.url || null,
-        docNo: q.docNo || null,
+        docNo: q.quoteNumber || null,
         createdAt: q.createdAt,
       }))
     ));
@@ -107,11 +103,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
     // 6) ⭐ บรรทัดขอเอกสารที่ยังไม่ได้รับ — แหล่งเดียวที่บอก "ของที่ยังไม่มา"
     const { data: requests, error: reqError } = await supabase
-      .from('dept_requests').select('id, status').eq('dealId', dealId);
+      .from('dept_requests').select('id, status, "docNo"').eq('dealId', dealId);
     raise('อ่านคำร้องของดีลไม่สำเร็จ', reqError);
     const openRequestIds = (requests || [])
       .filter((r) => !['cancelled'].includes(r.status)).map((r) => r.id);
     let awaitingRequestItems = [];
+    let requestItemFiles = [];
     if (openRequestIds.length) {
       const { data: items, error: itemError } = await supabase
         .from('dept_request_items')
@@ -126,16 +123,82 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       // คือสิ่งที่ทำให้ตัวเลขบนหน้าดีลไม่มีใครเชื่อ
       awaitingRequestItems = (items || [])
         .filter((i) => !['done', 'declined'].includes(i.answerStatus));
+
+      // ⭐ 6.5) ไฟล์ที่ฝ่ายแนบบนแถวคำร้องแล้วส่งมา (ม-88) — "RD แนบเอกสาร →
+      // เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" · เอาเฉพาะแถวที่ **ส่งแล้ว**
+      // (readyAt) — ไฟล์บนแถวที่ยังทำอยู่เป็นของระหว่างทาง ยังไม่ใช่เอกสารที่ได้
+      const sentItems = (items || []).filter((i) => i.readyAt);
+      if (sentItems.length) {
+        const requestById = new Map((requests || []).map((r) => [r.id, r]));
+        const { data: files, error: fileError } = await supabase
+          .from('attachments')
+          .select('id, "entityId", "fileName", "createdAt"')
+          .eq('entityType', 'dept_request_item')
+          .in('entityId', sentItems.map((i) => i.id));
+        raise('อ่านไฟล์ของแถวคำร้องไม่สำเร็จ', fileError);
+        const itemById = new Map(sentItems.map((i) => [i.id, i]));
+        requestItemFiles = (files || []).map((f) => {
+          const item = itemById.get(f.entityId);
+          return {
+            id: f.id,
+            fileName: f.fileName || null,
+            docType: item?.docType || null,
+            requestDocNo: requestById.get(item?.requestId)?.docNo || null,
+            createdAt: f.createdAt || null,
+          };
+        });
+      }
     }
 
-    const rows = buildEntityDocuments({
+    return {
       attachments: attachments || [],
       threadAttachments,
       issued,
       wonAttachments,
       checklist: checklist || [],
+      requestItemFiles,
       awaitingRequestItems,
-    });
+    };
+}
+
+export const GET = withUser(async ({ user, supabase, req }) => {
+  if (!user) return unauthorized();
+  if (!canViewSalesPlanning(user)) return forbidden();
+
+  const url = new URL(req.url);
+  const dealId = url.searchParams.get('dealId');
+  const projectId = url.searchParams.get('projectId');
+  if (!dealId && !projectId) return badRequest('dealId or projectId is required');
+
+  try {
+    // ── โหมดดีลเดียว (แท็บเอกสารบนหน้าดีล) ────────────────────────────────
+    if (dealId) {
+      const { data: deal, error: dealError } = await supabase
+        .from('sales_deals').select('*').eq('id', dealId).maybeSingle();
+      raise('อ่านดีลไม่สำเร็จ', dealError);
+      if (!deal) return notFound('ไม่พบดีล');
+      if (!inSalesViewScope(user, deal)) return forbidden();
+      const rows = buildEntityDocuments(await collectDealDocuments(supabase, dealId));
+      return ok({ rows, progress: entityDocumentProgress(rows) });
+    }
+
+    // ── โหมดโครงการ (ม-88) — รวมของทุกดีลในโครงการ ─────────────────────────
+    // ⚠️ กรองดีลด้วยขอบเขตการเห็นรายใบ (ไม่ใช่เช็คแค่โครงการ) — คนที่เห็นดีลได้
+    // บางใบต้องได้เอกสารเฉพาะใบที่ตัวเองเห็น ไม่ใช่ทั้งโครงการ
+    const { data: deals, error: dealsError } = await supabase
+      .from('sales_deals').select('*').eq('projectId', projectId);
+    raise('อ่านดีลของโครงการไม่สำเร็จ', dealsError);
+    const visible = (deals || []).filter((deal) => inSalesViewScope(user, deal));
+    const collected = await Promise.all(
+      visible.map((deal) => collectDealDocuments(supabase, deal.id).then((raw) => ({ deal, raw }))),
+    );
+    const rows = collected.flatMap(({ deal, raw }) => buildEntityDocuments(raw)
+      // บอกด้วยว่าแถวนี้มาจากดีลไหน — โครงการมีหลายดีล แถวลอย ๆ อ่านไม่ออกว่าของใคร
+      .map((row) => ({
+        ...row,
+        id: `${deal.id}:${row.id}`,
+        note: [row.note, deal.title].filter(Boolean).join(' · '),
+      })));
     return ok({ rows, progress: entityDocumentProgress(rows) });
   } catch (e) {
     return fail(e.message, 500);
