@@ -18,13 +18,68 @@
   color: var(--text-3);
 }
 
+/* ⭐ สถานะกับปุ่มอยู่เซลล์เดียวกันโดยตั้งใจ (มติผู้ใช้ 2026-08-08) — สำหรับแถวใน
+   ทะเบียน "อยู่สถานะไหน" กับ "ทำอะไรได้" เป็นคำถามเดียวกัน: ปุ่มหลักถูกกำหนดโดย
+   สถานะตรง ๆ (ร่าง → รับเข้าทะเบียน) · แยกเป็นสองคอลัมน์คือถามซ้ำ
+   ⚠️ ปุ่มไม่เกิน 1 + เมนู "…" — ของเดิมเรียงได้ถึง 5 ปุ่ม (~345px) บีบคอลัมน์อื่น
+   จนอ่านไม่ออก (เหตุผลเดียวกับที่ RowActionMenu ถูกสร้างขึ้นเมื่อ 2026-08-01) */
 .rowActions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
-.actionsCol { width: 180px; }
+/* ความกว้างคอลัมน์ — เหลือ 5 คอลัมน์ (เดิม 8) หลังยุบรหัส+ชื่อ และวันผลิต+วันส่ง
+   เข้าเซลล์ละก้อน · ดู docs/scent-dev-ui-revamp-proposal.html §02 */
+.colCustomer { width: 190px; }
+.colSource { width: 158px; }
+.colDates { width: 132px; }
+.colStatus { width: 150px; }
+
+/* ── มุมมองการ์ด (จอตั้ง/จอแคบ) ──────────────────────────────────────────
+   ⚠️ อ่านชุดข้อมูลเดียวกับตาราง — การ์ดที่เลือกฟิลด์เองจะเพี้ยนจากตารางทันทีที่มี
+   คนเพิ่มคอลัมน์ (กฎเดียวกับคิวคำร้อง · ม-61)
+   ⚠️ ไม่มีแถบสีที่ขอบการ์ด (ม-59) — สถานะบอกด้วยป้ายข้อความชุดเดียวกับตาราง */
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
 
 .hint { color: var(--text-3); }
+
+/* ป้ายสถานะ + เมนู "…" บรรทัดเดียวกัน — วางซ้อนกันทำให้แถวสูงขึ้นเกือบเท่าตัวทุกแถว
+   ทั้งที่แถวส่วนใหญ่ไม่มีปุ่มหลัก (วัดบนจอจริง 2026-08-08) */
+.statusCell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}

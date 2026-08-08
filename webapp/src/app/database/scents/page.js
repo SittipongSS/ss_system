@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
+import RowActionMenu from "@/components/ui/RowActionMenu";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
@@ -116,6 +119,63 @@ export default function ScentsPage() {
     usePagination(visible, { resetKey: `${search}|${statusFilter}|${sourceFilter}` });
 
   const draftCount = useMemo(() => scents.filter((s) => s.status === "draft").length, [scents]);
+
+  // ⭐ มุมมองการ์ดบนจอแคบ — เหมือนอีก 10 จอของระบบ · ตาราง 5 คอลัมน์ยังกว้างเกิน
+  // จอมือถือ และการ์ดอ่านชุดข้อมูลเดียวกับตาราง (กฎเดียวกับคิวคำร้อง · ม-61)
+  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
+
+  // ── ปุ่มท้ายแถว: ปุ่มหลัก 1 ปุ่ม + เมนู "…" ────────────────────────────
+  //
+  // 🐞 ของเดิมเรียงได้ถึง **5 ปุ่ม** ต่อแถว (รับเข้าทะเบียน · ส่งกลิ่น · แก้ไข ·
+  // เก็บเข้ากรุ/เปิดใช้ · ลบ) กินความกว้างจนคอลัมน์อื่นถูกบีบ — โรคเดียวกับที่
+  // `RowActionMenu` ถูกสร้างขึ้นมาแก้เมื่อ 2026-08-01 แต่ทะเบียนกลิ่นไม่เคยรับมาใช้
+  //
+  // ⚠️ **เงื่อนไขทุกข้อยกมาเท่าเดิม ไม่หลวมขึ้นสักข้อ** — ที่เปลี่ยนคือ *ที่วาง*
+  // ไม่ใช่ *ใครกดได้* · ด่านจริงยังอยู่ที่ handler ทุกเส้นเหมือนเดิม
+  const rowMenu = (s) => [
+    // ⭐ ปุ่มนี้ "ไม่หายไปกับตาราง Rev" — สิ่งที่ยกเลิกคือ *รอบ* ไม่ใช่ *การบันทึกว่า
+    // ส่งไปแล้ว* · RD ใช้ของเดิมมา 29 ครั้งบนของจริง
+    {
+      id: "send",
+      label: s.sentAt ? "แก้วันที่ส่งลูกค้า" : "บันทึกวันที่ส่งลูกค้า",
+      icon: Send,
+      visible: registrar && (s.status === "developing" || s.status === "active"),
+      onClick: () => setSending({ scent: s, sentAt: s.sentAt || todayIso() }),
+    },
+    {
+      id: "edit",
+      label: "แก้ไขข้อมูล",
+      icon: Pencil,
+      separatorBefore: true,
+      visible: !!s._canEdit,
+      onClick: () => setForm({ mode: "edit", scent: s, value: scentToForm(s) }),
+    },
+    {
+      id: "archive",
+      label: "เก็บเข้ากรุ",
+      icon: Archive,
+      visible: registrar && s.status !== "draft" && s.status !== "archived",
+      onClick: () => setConfirm({ kind: "archive", scent: s }),
+    },
+    {
+      id: "restore",
+      label: "เปิดใช้อีกครั้ง",
+      icon: ArchiveRestore,
+      visible: registrar && s.status === "archived",
+      onClick: () => setConfirm({ kind: "restore", scent: s }),
+    },
+    // ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
+    // ที่ยังไม่มีประวัติการส่ง
+    {
+      id: "delete",
+      label: s.status === "draft" ? "ลบร่างนี้" : "ลบกลิ่น (ผู้ดูแลระบบ)",
+      icon: Trash2,
+      tone: "danger",
+      separatorBefore: true,
+      visible: isAdmin || (s._canEdit && s.status === "draft" && (s.revisions || []).length === 0),
+      onClick: () => setConfirm({ kind: "delete", scent: s }),
+    },
+  ];
 
   // ── actions ──────────────────────────────────────────────────────────
   const call = async (url, options, okMsg) => {
@@ -293,6 +353,7 @@ export default function ScentsPage() {
           aria-label="กรองที่มาของกลิ่น"
         />
         <span className="spacer" />
+        <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองทะเบียนกลิ่น" />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
         </Button>
@@ -310,36 +371,104 @@ export default function ScentsPage() {
         </EmptyState>
       ) : (
         <>
-          <TableScroll>
+          {view === "list" ? (
+            /* ── มุมมองการ์ด — จอตั้ง/จอแคบ ────────────────────────────────
+               ⚠️ ฟิลด์ชุดเดียวกับตาราง ลำดับเดียวกัน — คนที่สลับมุมมองไม่ต้อง
+               เรียนรู้สองแบบ · การ์ดที่เลือกฟิลด์เองจะเพี้ยนทันทีที่เพิ่มคอลัมน์ */
+            <div className={styles.cards}>
+              {pageRows.map((s) => {
+                const src = scentSourceLabel(s);
+                return (
+                  <div key={s.id} className={styles.card}>
+                    <div className={styles.cardTop}>
+                      <StatusBadge
+                        tone={SCENT_STATUS_TONES[s.status]}
+                        label={SCENT_STATUS_LABELS[s.status]}
+                      />
+                      <RowActionMenu label={`การจัดการของ ${s.code || s.name}`} items={rowMenu(s)} />
+                    </div>
+                    <div className={styles.name}>
+                      {s.code ? <span className="mono">{s.code}</span> : null}
+                      {s.code ? " · " : null}
+                      {s.name}
+                    </div>
+                    <div className={styles.sub}>
+                      {[
+                        s.customerName || s.customerId,
+                        s.customerTradeName ? `ลูกค้าเรียก “${s.customerTradeName}”` : null,
+                        s.derivedFromScentId
+                          ? `แก้จาก ${scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}`
+                          : null,
+                      ].filter(Boolean).join(" · ")}
+                    </div>
+                    <div className={styles.cardMeta}>
+                      {src.requestId
+                        ? (
+                          <Link href={`/requests/${src.requestId}`} className="ui-badge rich-link">
+                            {src.label}
+                          </Link>
+                        )
+                        : <span className="ui-badge">{src.label}</span>}
+                      <span className="ui-badge">
+                        {s.producedAt ? `ผลิต ${fmtDate(s.producedAt)}` : "ยังไม่ระบุวันผลิต"}
+                      </span>
+                      <span className="ui-badge">
+                        {s.sentAt ? `ส่ง ${fmtDate(s.sentAt)}` : "ยังไม่ส่ง"}
+                      </span>
+                    </div>
+                    {registrar && s.status === "draft" && (
+                      <div className={styles.rowActions}>
+                        <Button size="sm" title="รับเข้าทะเบียน"
+                          icon={<Check size={14} aria-hidden="true" />}
+                          onClick={() => setAccept({ scent: s, code: "" })}>
+                          รับเข้าทะเบียน
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+          <TableScroll cells="stacked">
             <table>
               <thead>
                 <tr>
-                  <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th><th>ที่มา</th>
-                  <th>วันที่ผลิต</th><th>ส่งลูกค้า</th>
-                  <th>สถานะ</th><th className={styles.actionsCol}></th>
+                  {/* ⭐ **5 คอลัมน์ ไม่ใช่ 8** (มติผู้ใช้ 2026-08-08) — ยุบของที่คนอ่าน
+                      เป็นก้อนเดียวกันอยู่แล้ว: รหัส+ชื่อ (คนพูดว่า "SC-0413" หรือ
+                      "Citrus Dawn" ไม่เคยแยกกัน) · วันผลิต+วันส่ง (อ่านคู่กันเสมอ)
+                      ⚠️ หัวชิดขวาตามเนื้อข้างล่าง (กฎ 4 · UI_DESIGN_SYSTEM.md) */}
+                  <th>กลิ่น</th>
+                  <th className={styles.colCustomer}>ลูกค้า</th>
+                  <th className={styles.colSource}>ที่มา</th>
+                  <th className={`${styles.colDates} num`}>วันที่</th>
+                  <th className={styles.colStatus}>สถานะ</th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((s) => {
+                  const src = scentSourceLabel(s);
                   return (
                     <tr key={s.id}>
-                      {/* รหัสเดียวคือ `code` ของทะเบียน — "รหัสตัวอย่าง" (sampleCode)
-                          ถูกถอดทั้งชุดใน 0215 ตามมติผู้ใช้ว่าไม่ใช้แล้ว */}
-                      <td className="mono">
-                        {s.code || <span className={styles.muted}>—</span>}
-                      </td>
-                      <td className={styles.name}>
-                        {s.name}
-                        {/* ⚠️ ชื่อของลูกค้าอยู่ **ใต้** ชื่อของเรา และมีคำนำหน้ากำกับ
-                            เสมอ — ไม่ใช่แทนที่กัน · วางสลับหรือทิ้งคำนำหน้าเมื่อไร
-                            คนอ่านจะเริ่มอ้างชื่อลูกค้าเป็นชื่อทางการ ซึ่งเป็นโรคเดิม
-                            ที่ 0171 บันทึกไว้ */}
-                        {s.customerTradeName && (
-                          <div className={styles.sub}>ลูกค้าเรียก “{s.customerTradeName}”</div>
-                        )}
-                        {s.derivedFromScentId && (
-                          <div className={styles.lineage}>
-                            └─ แก้จาก {scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}
+                      {/* ⭐ รหัส + ชื่อ บรรทัดเดียว — คนเรียกกลิ่นด้วยรหัสหรือชื่อ
+                          ไม่เคยแยกกัน · ชื่อลูกค้าเรียกกับสายพันธุ์เป็นบรรทัดรอง
+                          ⚠️ ชื่อของลูกค้าอยู่ **ใต้** ชื่อของเรา และมีคำนำหน้ากำกับเสมอ
+                          — ไม่ใช่แทนที่กัน · ทิ้งคำนำหน้าเมื่อไรคนจะเริ่มอ้างชื่อลูกค้า
+                          เป็นชื่อทางการ ซึ่งเป็นโรคเดิมที่ 0171 บันทึกไว้ */}
+                      <td>
+                        <div className={styles.name}>
+                          {s.code ? <span className="mono">{s.code}</span> : null}
+                          {s.code ? " · " : null}
+                          {s.name}
+                        </div>
+                        {(s.customerTradeName || s.derivedFromScentId) && (
+                          <div className={styles.sub}>
+                            {[
+                              s.customerTradeName ? `ลูกค้าเรียก “${s.customerTradeName}”` : null,
+                              s.derivedFromScentId
+                                ? `แก้จาก ${scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}`
+                                : null,
+                            ].filter(Boolean).join(" · ")}
                           </div>
                         )}
                       </td>
@@ -349,89 +478,64 @@ export default function ScentsPage() {
                           ⚠️ ลิงก์ไปคำร้องเฉพาะตอนตามกลับได้จริง — คำร้องที่ถูกลบไปแล้ว
                           ยังต้องบอกว่า "มาจากคำร้อง" อยู่ดี แค่กดต่อไม่ได้ */}
                       <td>
-                        {(() => {
-                          const src = scentSourceLabel(s);
-                          if (src.requestId) {
-                            return (
-                              <Link href={`/requests/${src.requestId}`} className="rich-link">
-                                {src.label}
-                              </Link>
-                            );
-                          }
-                          return <span className={src.kind === "manual" ? styles.muted : undefined}>{src.label}</span>;
-                        })()}
+                        {src.requestId
+                          ? (
+                            <Link
+                              href={`/requests/${src.requestId}`}
+                              className="ui-badge ui-badge-cell ui-badge-w-source rich-link"
+                            >
+                              {src.label}
+                            </Link>
+                          )
+                          : (
+                            <span
+                              className={`ui-badge ui-badge-cell ui-badge-w-source ${src.kind === "manual" ? styles.muted : ""}`.trim()}
+                            >
+                              {src.label}
+                            </span>
+                          )}
                       </td>
-                      {/* ⭐ **สองวันแยกขาด** (ม-66 · mig 0224) — วันผลิตคือวันที่ RD ทำกลิ่น
-                          ตัวนี้เสร็จ · วันส่งคือวันที่ลูกค้าได้รับ · เดิมเป็นช่องเดียวที่ถูก
-                          เขียนตอน RD ส่งมอบให้ฝ่ายขาย ⇒ ป้ายบอกว่าส่งลูกค้าแล้ว
-                          ตั้งแต่ของยังไม่ออกจากออฟฟิศ
-                          ⚠️ กลิ่นตัวหนึ่งถูกส่งครั้งเดียวตลอดชีวิต ⇒ วันละช่อง ไม่ใช่
-                          "Rev ล่าสุด" · ลูกค้าให้แก้ ⇒ เกิดกลิ่นตัวใหม่ที่มีวันของตัวเอง */}
-                      <td className="mono">
-                        {s.producedAt
-                          ? fmtDate(s.producedAt)
-                          : <span className={styles.muted}>—</span>}
+                      {/* ⭐ **สองวันในเซลล์เดียว** (ม-66 · mig 0224) — วันผลิตคือวันที่ RD
+                          ทำกลิ่นเสร็จ · วันส่งคือวันที่ลูกค้าได้รับ · คนอ่านคู่กันเสมอ
+                          ⚠️ `.num` ให้ชิดขวา + tabular-nums ⇒ หลักวันตรงกันทุกแถว
+                          เทียบข้ามแถวได้ (กฎ 3 · UI_DESIGN_SYSTEM.md) */}
+                      <td className="num">
+                        <div>
+                          {s.producedAt
+                            ? fmtDate(s.producedAt)
+                            : <span className={styles.muted}>—</span>}
+                        </div>
+                        <div className={styles.sub}>
+                          {s.sentAt
+                            ? `ส่ง ${fmtDate(s.sentAt)}`
+                            : "ยังไม่ส่ง"}
+                        </div>
                       </td>
-                      <td className="mono">
-                        {s.sentAt
-                          ? fmtDate(s.sentAt)
-                          : <span className={styles.muted}>ยังไม่ส่ง</span>}
-                      </td>
+                      {/* ⭐ สถานะกับปุ่มอยู่เซลล์เดียวกัน — ปุ่มหลักถูกกำหนดโดยสถานะตรง ๆ
+                          (ร่าง → รับเข้าทะเบียน) แยกสองคอลัมน์คือถามซ้ำ
+                          ⚠️ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น
+                          เส้นตรงลงมา (กฎ 1) */}
                       <td>
-                        <StatusBadge
-                          tone={SCENT_STATUS_TONES[s.status]}
-                          label={SCENT_STATUS_LABELS[s.status]}
-                        />
-                      </td>
-                      <td>
-                        <div className={styles.rowActions}>
-                          {registrar && s.status === "draft" && (
+                        {/* ⚠️ ป้ายกับเมนูอยู่ **บรรทัดเดียวกัน** — วางซ้อนกันทำให้แถวสูงขึ้น
+                            เกือบเท่าตัวทุกแถว ทั้งที่แถวส่วนใหญ่ไม่มีปุ่มหลัก (เห็นตอน
+                            เปิดจอจริง 2026-08-08) · ปุ่มหลักถึงจะขึ้นบรรทัดที่สอง */}
+                        <div className={styles.statusCell}>
+                          <StatusBadge
+                            className="ui-badge-cell ui-badge-w-registry"
+                            tone={SCENT_STATUS_TONES[s.status]}
+                            label={SCENT_STATUS_LABELS[s.status]}
+                          />
+                          <RowActionMenu label={`การจัดการของ ${s.code || s.name}`} items={rowMenu(s)} />
+                        </div>
+                        {registrar && s.status === "draft" && (
+                          <div className={styles.rowActions}>
                             <Button size="sm" title="รับเข้าทะเบียน"
                               icon={<Check size={14} aria-hidden="true" />}
                               onClick={() => setAccept({ scent: s, code: "" })}>
                               รับเข้าทะเบียน
                             </Button>
-                          )}
-                          {/* ⭐ ปุ่มนี้ "ไม่หายไปกับตาราง Rev" — สิ่งที่ยกเลิกคือ *รอบ*
-                              ไม่ใช่ *การบันทึกว่าส่งไปแล้ว* · RD ใช้ของเดิมมา 29 ครั้ง
-                              บนของจริง ตัดทิ้งเมื่อไรคือถอดความสามารถออกจากมือคนใช้
-                              ตอนนี้เขียนลง `scents.sentAt` ช่องเดียว ซึ่งเป็นช่อง
-                              เดียวกับที่คำร้องจะเขียนตอนสายพัฒนากลิ่นครบวง */}
-                          {registrar && (s.status === "developing" || s.status === "active") && (
-                            <Button size="sm" title="บันทึกวันที่ส่งกลิ่นให้ลูกค้า"
-                              icon={<Send size={14} aria-hidden="true" />}
-                              onClick={() => setSending({ scent: s, sentAt: s.sentAt || todayIso() })}>
-                              {s.sentAt ? "แก้วันที่ส่ง" : "ส่งกลิ่น"}
-                            </Button>
-                          )}
-                          {s._canEdit && (
-                            <Button size="sm" variant="quiet" title="แก้ไข"
-                              icon={<Pencil size={14} aria-hidden="true" />}
-                              onClick={() => setForm({ mode: "edit", scent: s, value: scentToForm(s) })} />
-                          )}
-                          {registrar && s.status !== "draft" && s.status !== "archived" && (
-                            <Button size="sm" variant="quiet" title="เก็บเข้ากรุ"
-                              icon={<Archive size={14} aria-hidden="true" />}
-                              onClick={() => setConfirm({ kind: "archive", scent: s })} />
-                          )}
-                          {registrar && s.status === "archived" && (
-                            <Button size="sm" variant="quiet" title="เปิดใช้อีกครั้ง"
-                              icon={<ArchiveRestore size={14} aria-hidden="true" />}
-                              onClick={() => setConfirm({ kind: "restore", scent: s })} />
-                          )}
-                          {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะ
-                              ร่างของตัวเองที่ยังไม่มีประวัติการส่ง
-                              ⚠️ variant="ghost" (= action-ghost) ไม่ใช่ "quiet" เพราะสีแดง
-                              ผูกกับ .btn.action-ghost.btn-danger เท่านั้น */}
-                          {(isAdmin || (s._canEdit && s.status === "draft" && (s.revisions || []).length === 0)) && (
-                            <Button
-                              size="sm" variant="ghost" tone="danger"
-                              title={s.status === "draft" ? "ลบร่าง" : "ลบกลิ่น (ผู้ดูแลระบบ)"}
-                              icon={<Trash2 size={14} aria-hidden="true" />}
-                              onClick={() => setConfirm({ kind: "delete", scent: s })}
-                            />
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -439,6 +543,7 @@ export default function ScentsPage() {
               </tbody>
             </table>
           </TableScroll>
+          )}
           <Pager
             page={page} pageCount={pageCount} total={total} onPage={setPage}
             pageSize={pageSize} onPageSize={setPageSize}
