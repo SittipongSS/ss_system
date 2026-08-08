@@ -202,3 +202,21 @@ test('สูตรฐานไม่ได้แปลว่า "ห้ามม
   assert.equal(value.name, 'สูตรฐานเทียน');
   assert.equal(value.scentId, null);
 });
+
+// ── ที่มาของสูตร (กติกาเดียวกับ ม-74 ของทะเบียนกลิ่น) ────────────────────
+test('ที่มาตัดสินจาก sourceRequest ไม่ใช่ dealId — ฟอร์มเพิ่มเองก็กรอกดีลได้', async () => {
+  const { formulaSourceKind, formulaSourceLabel, matchesFormulaSource, FORMULA_SOURCES } = await import('./formulas.js');
+  // เพิ่มเองแต่ผูกดีล — ยังเป็น manual (บทเรียน ม-74)
+  assert.equal(formulaSourceKind({ dealId: 'D1' }), 'manual');
+  assert.equal(formulaSourceKind({ sourceRequest: { id: 'R1', docNo: 'FD-2608-004' } }), 'request');
+  assert.deepEqual(
+    formulaSourceLabel({ sourceRequest: { id: 'R1', docNo: 'FD-2608-004' } }),
+    { kind: 'request', label: 'คำร้อง FD-2608-004', requestId: 'R1' },
+  );
+  assert.deepEqual(formulaSourceLabel({}), { kind: 'manual', label: 'เพิ่มเอง', requestId: null });
+  // ตัวกรองกับป้ายพูดชุดเดียวกัน
+  assert.ok(matchesFormulaSource({}, ''));
+  assert.ok(matchesFormulaSource({}, 'manual'));
+  assert.ok(!matchesFormulaSource({}, 'request'));
+  assert.deepEqual(FORMULA_SOURCES.map((s) => s.value), ['request', 'manual']);
+});

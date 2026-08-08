@@ -15,6 +15,12 @@ import styles from "./requestForm.module.css";
 
 export default function RequestListCard({
   requests = [], title = "คำร้องข้ามฝ่าย", openHref = "/requests",
+  // ⭐ ทางลัดเปิดคำร้อง **หัวข้อที่รู้อยู่แล้ว** จากหน้าที่การ์ดนี้อยู่ (มติผู้ใช้
+  // 2026-08-08 · ช่องว่างข้อ 1 ของแบบพัฒนาสูตร) — ลิงก์เดิมพาไป *คิว* แล้วผู้ใช้ต้อง
+  // กด "เปิดคำร้อง" อีกที เลือกฝ่าย เลือกหัวข้อ เลือกดีลซ้ำทั้งที่ยืนอยู่บนดีลนั้นแล้ว
+  // ⚠️ ยังเป็น **ทางเข้า ไม่ใช่ที่สร้าง** — ลิงก์ไป /requests/new เหมือนเดิม
+  // ไม่ยกฟอร์มมาซ้อนบนหน้าดีล (เหตุผลเดียวกับที่เขียนไว้หัวไฟล์)
+  quickActions = null,
 }) {
   return (
     <section className={`glass-panel ${styles.listCard}`}>
@@ -23,6 +29,7 @@ export default function RequestListCard({
         <h2 className={styles.listTitle}>{title}</h2>
         <span className="ui-badge">{requests.length} เรื่อง</span>
         <div className="spacer" />
+        {quickActions}
         <Link className="btn sm" href={openHref}>
           <ExternalLink size={13} aria-hidden="true" /> เปิดหน้าคำร้อง
         </Link>

@@ -591,7 +591,9 @@ export default function RequestForm({
       {/* ── 5) วันที่ต้องการคำตอบ + ด่วน ──────────────────────────────────── */}
       <div className="form-grid">
         <div className="form-group">
-          <label htmlFor="req-due">อยากได้คำตอบภายใน</label>
+          {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
+              ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
+          <label htmlFor="req-due">อยากได้คำตอบภายใน (บังคับ)</label>
           <DateInput
             id="req-due" value={value.requestedDueDate} disabled={disabled}
             onChange={(v) => set({ requestedDueDate: v })}

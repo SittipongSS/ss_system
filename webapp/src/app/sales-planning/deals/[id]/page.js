@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -944,7 +944,27 @@ export default function DealOverviewPage() {
           )}
 
           {(tab === "inquiries" || tab === "overview") && (
-            <RequestListCard requests={data.inquiries || []} openHref={`/requests?dealId=${deal.id}`} />
+            <RequestListCard
+              requests={data.inquiries || []}
+              openHref={`/requests?dealId=${deal.id}`}
+              /* ⭐ **ทางลัดพัฒนาสูตร** (มติผู้ใช้ 2026-08-08 · ช่องว่างข้อ 1 ของแบบ) —
+                 คู่ขนานกับการ์ด "บรีฟกลิ่นของใบนี้" บนหน้าใบสั่งขาย · ต่างกันที่
+                 พัฒนาสูตรเริ่มที่ **ดีล** ไม่ใช่ SO (ม-40)
+                 ⚠️ ไม่มีโครงการ = เปิดไม่ได้ (`REQUEST_NEEDS.project` derive จากดีล) ⇒
+                 บอกเหตุผลเป็นข้อความ ไม่ใช่ปุ่มจางที่กดไม่ได้แล้วไม่บอกว่าทำไม
+                 ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — ด่านตอน POST ยังตรวจครบเหมือนเดิม */
+              quickActions={canEdit && (deal.projectId ? (
+                <Button
+                  as={Link} size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
+                  href={`/requests/new?kind=formula_dev&dealId=${encodeURIComponent(deal.id)}&projectId=${encodeURIComponent(deal.projectId)}&returnTo=${encodeURIComponent(`/sales-planning/deals/${deal.id}`)}`}
+                  title="ขอตัวอย่างจาก R&D ในนามดีลนี้ — 1 บรรทัด = หมวดสินค้า × กลิ่น"
+                >
+                  ขอตัวอย่าง (พัฒนาสูตร)
+                </Button>
+              ) : (
+                <span className="toolbar-label">ผูกโครงการก่อนถึงจะเปิดคำร้องได้</span>
+              ))}
+            />
           )}
 
           <div style={{

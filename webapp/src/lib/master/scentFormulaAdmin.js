@@ -162,7 +162,49 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
   if (customerId) query = query.eq('customerId', customerId);
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return attachFormulaSource(supabase, data || []);
+}
+
+// ── ที่มาของสูตรแต่ละตัว ─────────────────────────────────────────────────
+//
+// ⭐ กติกาเดียวกับ ม-74 ของทะเบียนกลิ่น — เปิดทะเบียนมาต้องแยกออกทันทีว่าตัวไหน
+// ผ่านสายพัฒนาสูตรจริง ตัวไหนคนพิมพ์เข้ามาเอง (ช่องว่างข้อ 2 ของแบบพัฒนาสูตร)
+//
+// ⚠️ **หลักฐานอยู่ที่แถวคำร้อง ไม่ใช่บนตัวสูตร** — ต่างจากกลิ่นที่มี `briefId` ติดตัว
+// · ตารางสูตรไม่มีคอลัมน์ที่ชี้กลับคำร้องเลย (ตรวจ 2026-08-08: id · code · name ·
+// formulaDate · scentId · customerId · … · dealId) ⇒ ตามจาก
+// `dept_request_items.producedFormulaId` แทน · ผลที่ตามมาที่ต้องรู้:
+// **ลบคำร้องทิ้งแล้วสูตรจะกลายเป็น "เพิ่มเอง"** เพราะหลักฐานหายไปพร้อมแถว
+//
+// ⚠️ **ห้ามตัดสินจาก `dealId`** — ฟอร์มเพิ่มสูตรเองก็กรอกดีลได้ (บทเรียนเดียวกับ ม-74)
+//
+// ⚠️ ไม่ยิงอะไรเลยเมื่อทะเบียนว่าง — ตัวเลือกสูตรในฟอร์มต่าง ๆ เรียก `loadFormulas`
+// ด้วย และไม่ควรจ่ายค่า query เพิ่มโดยไม่จำเป็น
+async function attachFormulaSource(supabase, rows) {
+  if (!rows.length) return rows;
+  const ids = rows.map((f) => f.id).filter(Boolean);
+  if (!ids.length) return rows.map((f) => ({ ...f, sourceRequest: null }));
+
+  const { data: items, error: itemError } = await supabase
+    .from('dept_request_items')
+    .select('"requestId", "producedFormulaId"')
+    .in('producedFormulaId', ids);
+  if (itemError) throw itemError;
+
+  const requestIdByFormula = new Map(
+    (items || []).filter((i) => i.producedFormulaId).map((i) => [i.producedFormulaId, i.requestId]),
+  );
+  const requestIds = [...new Set([...requestIdByFormula.values()].filter(Boolean))];
+  const { data: requests, error: requestError } = requestIds.length
+    ? await supabase.from('dept_requests').select('id, "docNo"').in('id', requestIds)
+    : { data: [], error: null };
+  if (requestError) throw requestError;
+  const requestById = new Map((requests || []).map((r) => [r.id, r]));
+
+  return rows.map((f) => {
+    const request = requestById.get(requestIdByFormula.get(f.id)) || null;
+    return { ...f, sourceRequest: request ? { id: request.id, docNo: request.docNo || null } : null };
+  });
 }
 
 export async function findFormula(supabase, id) {
