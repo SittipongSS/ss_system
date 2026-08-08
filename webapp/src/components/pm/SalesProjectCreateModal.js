@@ -210,7 +210,9 @@ export default function SalesProjectCreateModal({
             <label>วันที่สิ้นสุด <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
             <DateInput value={form.dueDate} onChange={(dueDate) => setForm((f) => ({ ...f, dueDate }))} className="w-full" />
           </div>
-          <div className="form-group col-span-2">
+          {/* ทีมงาน 3 ช่องบรรทัดเดียว (มติผู้ใช้ 2026-08-08) — จอแคบพับเป็นคอลัมน์เดียว */}
+          <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-[18px]">
+          <div className="form-group">
             <label>ผู้ดูแลโครงการ (AE / Senior AE){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
             <PersonSelect by="name" users={ownerUsers} value={currentOwner} disabled={lockPeopleField === "aeOwner"} ariaLabel="ผู้ดูแลโครงการ (AE / Senior AE)" onChange={(aeOwner) => setForm((f) => ({ ...f, aeOwner }))} />
           </div>
@@ -221,6 +223,7 @@ export default function SalesProjectCreateModal({
           <div className="form-group">
             <label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
             <PersonSelect by="name" users={users.filter((u) => u.role === "ae_supervisor")} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} />
+          </div>
           </div>
         </div>
         {error && <p className="text-[13px] text-[var(--red)] mt-3">{error}</p>}
