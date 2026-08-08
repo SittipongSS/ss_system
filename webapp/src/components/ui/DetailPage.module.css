@@ -194,3 +194,11 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* v2 โต๊ะช่าง: คอลัมน์ .main มี gap 16px ของตัวเอง — margin ของบล็อกเก่า
+   (kpi-grid mb 20 / tabs-header mb 18) มาทบเป็น 34-40px (วัดจริงบน
+   deal/projects detail 2026-08-08) · v1 คงเดิม */
+:global([data-ds="v2"]) .main :global(.kpi-grid),
+:global([data-ds="v2"]) .main :global(.tabs-header) {
+  margin-bottom: 0;
+}

@@ -11,6 +11,11 @@
   padding: var(--space-4) var(--space-5);
   margin-bottom: var(--space-5);
 }
+/* v2: container นอก (flex gap-4 = 16px) เป็นเจ้าของจังหวะ — margin ข้างบน
+   มาทบเป็นช่อง 36px (วัดจริงหน้าลีด 2026-08-08) · v1 คงเดิม */
+:global([data-ds="v2"]) .card {
+  margin-bottom: 0;
+}
 
 .head {
   display: flex;

@@ -829,7 +829,7 @@ export default function ProjectDetailPage() {
               จะอ่านเป็น "โครงการมีแค่นี้" · ตัวเลขตามตัวกรองอยู่ในแท็บไทม์ไลน์ */}
           <div
             className="glass-panel"
-            style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
+            style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
           >
             <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
               <GanttChart size={18} />
@@ -873,7 +873,7 @@ export default function ProjectDetailPage() {
       {tab === "documents" && <ProjectQuotationsCard project={p} />}
 
       {tab === "tasks" && (
-        <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
+        <section className="glass-panel" style={{ padding: "16px 20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             <ListTodo size={18} />
             <div>
