@@ -12,8 +12,8 @@
 //
 // ⚠️ **สัญญาเดิมกับผู้เรียกไม่เปลี่ยนแม้แต่ข้อเดียว** — รับ value/mainValue/subValue
 // และคืน `onChange(code, { mainCode, typeCode, category })` เหมือนเดิมเป๊ะ ๆ
-// ผู้เรียก 3 จุด (DealFormFields · ProjectFormModal · SalesProjectCreateModal) เก็บ
-// mainCode/typeCode ลงช่องของตัวเองคนละแบบ — เปลี่ยนรูป meta เมื่อไรพังเงียบทั้งสามที่
+// ผู้เรียก (DealFormFields · SalesProjectCreateModal · ProjectDevLines ในอนาคต) เก็บ
+// mainCode/typeCode ลงช่องของตัวเองคนละแบบ — เปลี่ยนรูป meta เมื่อไรพังเงียบทุกที่
 import { useMemo } from "react";
 import TwoPanePicker from "@/components/ui/TwoPanePicker";
 import { isProductCategorySelectable, productCategoryCode } from "@/lib/master/productCategory";
@@ -88,8 +88,8 @@ export default function ProductCategorySelect({
     return out;
   }, [categories, currentCode]);
 
-  // ⚠️ ยังยิง onMainChange/onSubChange ให้ครบ — ผู้เรียกบางจุดผูกกับสองตัวนี้
-  // ไม่ใช่กับ meta (ProjectFormModal เก็บ mainCode/typeCode เป็นคนละ state)
+  // ⚠️ ยังยิง onMainChange/onSubChange ให้ครบ — สัญญาสาธารณะของ component นี้
+  // (ผู้เรียกในอดีตผูกกับสองตัวนี้แทน meta — คงไว้กันผู้เรียกใหม่พังเงียบ)
   const choose = (code) => {
     const [nextMain = "", nextType = ""] = String(code || "").split("-");
     const category = findCategoryByCode(categories, code);

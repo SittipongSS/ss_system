@@ -2,48 +2,43 @@
 
 // ── ช่องเลือกสายธุรกิจของโครงการ (mig 0191) ──────────────────────────────
 //
-// ⚠️ **ยกเป็น component เดียว** เพราะโครงการมีฟอร์มสร้าง/แก้อยู่ **สองตัว**:
-//   · SalesProjectCreateModal  — หน้า /sa/projects (เส้นทางหลัก)
-//   · ProjectFormModal          — หน้าดีล /sales-planning/deals
-// ทั้งคู่เขียนลง `projects` ตารางเดียวกัน · ถ้าปล่อยให้แต่ละฟอร์มเขียน
-// <option> เอง ตัวเลือกจะเพี้ยนหากันแน่นอน (กฎใน AGENTS.md)
+// ⚠️ **ยกเป็น component เดียว** เพราะทุกฟอร์มโครงการเขียนลง `projects.line`
+// ตารางเดียวกัน · ปล่อยให้แต่ละฟอร์มวาดตัวเลือกเองเมื่อไร มันจะเพี้ยนหากัน
+// (กฎใน AGENTS.md)
+//
+// เป็น **แผ่นเลือก (OptionTiles)** ไม่ใช่ดรอปดาวน์ — ตัวเลือกตายตัว 2 ตัว
+// ตามกติกาคอนโทรล (docs/form-design-rules.md §3: ชุดเล็กต้องเห็นครบแล้วจิ้ม)
+// ป้ายสั้นตามมติ 2026-08-02: ไม่ใส่คำอธิบายในตัวเลือก — ความหมายอยู่ในเอกสาร
 //
 // ⭐ ค่าว่าง = "ยังไม่ระบุ" เป็นสถานะที่ถูกต้อง ไม่ใช่ข้อผิดพลาด — คอลัมน์นี้
 // ไม่มี default โดยเจตนา (ดูหัว mig 0191: `projects.type` มี default 'NPD'
-// แล้วโครงการทั้ง 11 ใบบน prod เป็น NPD หมด) · ตัวนับบนหน้ารวมโครงการเป็น
-// ตัวทวงแทน ไม่ใช่การเดาค่าให้
-import Select from "@/components/ui/Select";
-import { BUSINESS_LINES, BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
+// แล้วโครงการทั้ง 11 ใบบน prod เป็น NPD หมด) · แผ่นเลือกตรงเจตนานี้กว่าดรอปดาวน์:
+// ยังไม่กด = ไม่มีแผ่นไหนติดสี ไม่มีค่าแอบเลือกให้ · ตัวบังคับจริงอยู่ที่ฟอร์มและ API
+import OptionTiles from "@/components/ui/OptionTiles";
+import { BUSINESS_LINES, BUSINESS_LINE_HINTS, BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 
 export default function BusinessLineSelect({
   value = "",
   onChange,
   disabled = false,
-  // ⚠️ required เปลี่ยนแค่ *คำ* ของตัวเลือกว่าง — ตัวบังคับจริงอยู่ที่ฟอร์มและ API
-  // ปล่อยให้ "ยังไม่ระบุ" เป็นตัวเลือกที่กดได้อยู่ ไม่งั้นโครงการเก่าที่ line ว่าง
-  // จะเปิดฟอร์มมาแล้วเห็นค่าที่ไม่ใช่ของจริงถูกเลือกไว้ให้เงียบ ๆ
-  required = false,
   className = "",
   ariaLabel = "สายธุรกิจ",
 }) {
   return (
-    <Select
-      fullWidth
-      name="line"
-      value={value || ""}
-      onChange={(e) => onChange?.(e.target.value)}
-      disabled={disabled}
-      className={className}
-      aria-label={ariaLabel}
-    >
-      {/* ⚠️ ตัวเลือกแรกไม่ใช่ค่าตั้งต้นที่ "ปลอดภัย" — มันคือสถานะที่ต้องมีคนมาเลือก */}
-      <option value="">{required ? "— เลือกสายธุรกิจ —" : "— ยังไม่ระบุ —"}</option>
-      {/* 🪤 ข้อความต้องเป็น **สตริงเดียว** — ลูกหลายตัวใน <option> React จะ join
-          ด้วยคอมม่า ได้ "สินค้า, (,Products,)" บน DOM จริง (เจอมาแล้วใน #893
-          ตอนวัดในเบราว์เซอร์) · eslint กับ test ไม่จับ เห็นตอนเปิดหน้าเท่านั้น */}
-      {BUSINESS_LINES.map((line) => (
-        <option key={line} value={line}>{BUSINESS_LINE_LABELS[line]}</option>
-      ))}
-    </Select>
+    <div className={className || undefined}>
+      <OptionTiles
+        value={value || ""}
+        onChange={(line) => onChange?.(line)}
+        disabled={disabled}
+        ariaLabel={ariaLabel}
+        options={BUSINESS_LINES.map((line) => ({
+          value: line,
+          label: BUSINESS_LINE_LABELS[line] || line,
+          // บรรทัดรองแบบเดียวกับแผ่นประเภทดีล (มติผู้ใช้ 2026-08-08: แผ่นเลือก
+          // ทุกที่ต้องหน้าตาภาษาเดียวกัน) — ใจความ "งานนี้จบยังไง" จาก mig 0191
+          description: BUSINESS_LINE_HINTS[line],
+        }))}
+      />
+    </div>
   );
 }
