@@ -3536,7 +3536,15 @@ button.empty-state { width: 100%; font: inherit; }
 .form-grid.cols-2 > label .date-input-wrap,
 .form-grid.cols-2 > label > input,
 .form-grid.cols-2 > label > textarea { width: 100%; }
+/* ช่องกรอกหนึ่งช่องในฟอร์ม (ป้ายบน + คอนโทรลล่าง) — `.form-field` คือชื่อกลาง
+   ส่วน `.deal-field` เป็นชื่อเดิมที่ฟอร์มดีลใช้อยู่ **นิยามเดียวกันบล็อกเดียว**
+   (กติกา "หนึ่ง pattern มีทรงเดียว" — ฟอร์มลีดเป็นผู้เรียกรายที่สอง ถ้าประกาศ
+   ชุดใหม่ของตัวเองเมื่อไร สองฟอร์มจะไหลออกจากกันแบบที่เคยเจอมาแล้ว)
+   ⚠️ ห้ามเพิ่มกฎให้ชื่อใดชื่อหนึ่งแยก — ต้องแก้ที่บล็อกนี้เท่านั้น */
+.form-field,
 .deal-field { display: flex; flex-direction: column; gap: var(--space-1-5); min-width: 0; }
+/* ช่องที่กินเต็มความกว้างของ grid แม่ (ใช้กับ .form-grid.cols-2 / pm-form-grid) */
+.form-field.span-2 { grid-column: 1 / -1; }
 /* แถวคู่ของฟอร์มดีล — กินเต็มความกว้างของ grid แม่ แล้วแบ่งซ้าย-ขวาเอง เพื่อให้คู่ที่
    ตั้งใจให้อยู่ด้วยกัน (เช่น วันที่เริ่ม/สิ้นสุด) ไม่หลุดคนละบรรทัดเวลาจำนวนช่องเปลี่ยน.
    [data-single] = แถวที่เหลือช่องเดียว (จำนวนคี่) ให้กินเต็มแถว ไม่ทิ้งรูข้าง ๆ.
@@ -3544,6 +3552,10 @@ button.empty-state { width: 100%; font: inherit; }
 .deal-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4-5); min-width: 0; }
 .deal-row[data-single] { grid-template-columns: 1fr; }
 @media (max-width: 560px) { .deal-row { grid-template-columns: 1fr; } }
+.form-field .ui-select,
+.form-field .date-input-wrap,
+.form-field > input,
+.form-field > textarea,
 .deal-field .ui-select,
 .deal-field .date-input-wrap,
 .deal-field > input,
@@ -3556,15 +3568,40 @@ button.empty-state { width: 100%; font: inherit; }
    หลวม ๆ จะแตกเป็นคนละ flex item แล้วดอกจัน/คำขยายตกไปอยู่คนละบรรทัด (ผู้ใช้
    ส่งภาพมา 2026-08-08: "ประเภทดีล" กับ * คนละบรรทัด) ⇒ ห่อป้ายทั้งก้อนด้วย
    span เดียวเสมอ */
+.form-field-label,
 .deal-field-label {
   display: flex;
   align-items: baseline;
   gap: var(--space-1);
   min-width: 0;
 }
+.form-field > small,
+.form-field-label .soft,
 .deal-field-label .soft { color: var(--text-3); font-weight: var(--fw-normal); }
 /* แถวป้ายที่มีคอนโทรลชิดขวา (เช่น สวิตช์ดีลเก่าที่แถวสถานะ) */
+.form-field-label.split,
 .deal-field-label.split { justify-content: space-between; gap: var(--space-2); }
+
+/* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
+   หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
+   ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */
+.lead-channel-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.lead-channel-groups.is-compact { grid-template-columns: 1fr; }
+.lead-channel-group { display: flex; flex-direction: column; gap: var(--space-1-5); min-width: 0; }
+.lead-channel-group-name {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.lead-channel-group[data-group="online"] .lead-channel-group-name { color: var(--blue); }
+.lead-channel-group[data-group="onsite"] .lead-channel-group-name { color: var(--amber); }
+.lead-channel-group[data-group="website"] .lead-channel-group-name { color: var(--teal); }
 
 /* สวิตช์เล็กของฟอร์ม — ธง/โหมดพิเศษ (กติกาคอนโทรล v2: ธง = สวิตช์ ไม่ใช่ checkbox
    ลอย ๆ) · ตัวแรกที่ใช้: "ดีลเก่าจากระบบเดิม" (มติผู้ใช้ 2026-08-08 เปิดถาวรทุกคน) */

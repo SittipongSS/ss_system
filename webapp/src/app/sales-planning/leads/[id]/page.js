@@ -24,6 +24,7 @@ import { TEAM_LABELS } from "@/lib/permissions";
 import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
 
 /* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
@@ -127,6 +128,8 @@ export default function LeadDetailPage() {
   })), [lead?.events]);
 
   async function save() {
+    const blocked = leadFormBlocker(form);
+    if (blocked) { setError(blocked); return; }
     setBusy(true); setError("");
     try {
       const payload = Object.fromEntries(Object.keys(blank).map((key) => [key, form[key]]));
@@ -273,17 +276,13 @@ export default function LeadDetailPage() {
         </>}>
 
         <DetailCard icon={Contact} eyebrow="Lead information" title="ข้อมูลผู้ติดต่อและความต้องการ">
-          {editing ? <div className={styles.grid}>
-            <div className={styles.field}><label>ชื่อลูกค้า / ผู้ติดต่อ *</label><input value={form.contactName} onChange={change("contactName")} /></div>
-            <div className={styles.field}><label>บริษัท</label><input value={form.company || ""} onChange={change("company")} /></div>
-            <div className={styles.field}><label>โทรศัพท์</label><input value={form.phone || ""} onChange={change("phone")} /></div>
-            <div className={styles.field}><label>อีเมล</label><input type="email" value={form.email || ""} onChange={change("email")} /></div>
-            <div className={styles.field}><label>ช่องทางติดต่อเพิ่มเติม</label><input value={form.contactChannel || ""} onChange={change("contactChannel")} /></div>
-            <div className={styles.field}><label>แหล่งที่มา</label><Select value={form.channel} onChange={change("channel")}>{LEAD_CHANNELS.map((v) => <option key={v} value={v}>{LEAD_CHANNEL_LABELS[v]}</option>)}</Select></div>
-            <div className={styles.field}><label>บริการที่สนใจ</label><Select value={form.serviceInterest} onChange={change("serviceInterest")}>{SERVICE_INTERESTS.map((v) => <option key={v} value={v}>{SERVICE_INTEREST_LABELS[v]}</option>)}</Select></div>
-            <div className={styles.field}><label>งบประมาณ</label><MoneyInput value={form.budget} onChange={change("budget")} /></div>
-            <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียดบริการ</label><input value={form.serviceDetail || ""} onChange={change("serviceDetail")} /></div>
-            <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียดเพิ่มเติม</label><Textarea value={form.details || ""} onChange={change("details")} /></div>
+          {/* ⚠️ ชุดช่องกรอกเป็น component เดียวกับโมดัลรับลีด (LeadFormFields) —
+              เดิมหน้านี้เขียนช่องของตัวเองแล้วเพี้ยนจากโมดัลจริง: แหล่งที่มาเป็น
+              ดรอปดาวน์แบน · ป้ายคนละคำ 5 ช่อง · **ด่าน SERVICE_DETAIL_REQUIRED หาย**
+              (แก้จากที่นี่แล้วปล่อยรายละเอียดบริการว่างได้) · **PhoneInput หาย**
+              (เบอร์ไม่ถูกจัดรูป) — โรคเดียวกับที่ AGENTS.md ยกตัวอย่างไว้ */}
+          {editing ? <div className="form-grid cols-2">
+            <LeadFormFields form={form} onPatch={(patch) => setForm((v) => ({ ...v, ...patch }))} disabled={busy} compact />
           </div> : <div className={styles.grid}>
             {info("ชื่อผู้ติดต่อ", <><Contact size={14} /> {lead.contactName}</>)}
             {info("บริษัท", <><Building2 size={14} /> {lead.company || "-"}</>)}

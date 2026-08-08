@@ -11,6 +11,7 @@ import Link from "next/link";
 import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import MoneyInput from "@/components/ui/MoneyInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
@@ -25,6 +26,7 @@ import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
+import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
 import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
@@ -283,8 +285,13 @@ export default function LeadsPage() {
     return none ? [...rows, { value: NO_ASSIGNEE, label: `ยังไม่มอบหมาย (${none})` }] : rows;
   }, [leads, countBy, assigneeNameOf]);
 
+  // ด่านเดียวกับที่ปุ่มใช้ — ห้ามเขียนเงื่อนไขเพิ่มที่ปุ่ม (ปุ่มจางแบบไม่บอกเหตุผล)
+  const leadBlocker = formOpen ? leadFormBlocker(form) : "";
+
   const saveLead = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
+    const blocked = leadFormBlocker(form);
+    if (blocked) { setError(blocked); return; }
     setBusy("save");
     setError("");
     try {
@@ -593,82 +600,25 @@ export default function LeadsPage() {
         </SaSection>
       </div>
 
-      {/* ฟอร์มรับ/แก้ลีด */}
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="xl">
-        <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"} style={{ padding: 18 }}>
-          
-          <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ fontSize: "var(--fs-7)", color: "var(--text)", marginBottom: 8, fontWeight: "var(--fw-semibold)" }}>ช่องทางที่รับลีด</h4>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: "var(--fs-7)" }}>
-              {/* คอลัมน์ต่อกลุ่ม derive จาก enum กลาง — เพิ่ม channel ใหม่ที่ lib/sales/leads.js ที่เดียว */}
-              {Object.entries(CHANNEL_GROUP_LABELS).map(([group, groupLabel]) => (
-                <div key={group} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <strong style={{ color: "var(--text-3)" }}>{groupLabel}</strong>
-                  {LEAD_CHANNELS.filter((c) => channelGroupOf(c) === group).map(c => (
-                    <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                      <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
-                      {LEAD_CHANNEL_LABELS[c]}
-                    </label>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
-          
-          <label>
-            {CUSTOMER_NAME_LABEL} *
-            <input className="premium-input" value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} required />
-          </label>
-          <label>
-            บริษัท/แบรนด์
-            <input className="premium-input" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-          </label>
-          
-          <div style={{ display: "flex", gap: 8 }}>
-            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-              อีเมล
-              <input type="email" className="premium-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </label>
-            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-              ช่องทางอื่น
-              <input className="premium-input" value={form.contactChannel} onChange={(e) => setForm({ ...form, contactChannel: e.target.value })} placeholder="LINE ID ฯลฯ" />
-            </label>
-          </div>
-          <label>
-            เบอร์โทร
-            <PhoneInput value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
-          </label>
-
-          <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
-          
-          <label>
-            ประเภทบริการที่สนใจ *
-            <Select className="premium-select" value={form.serviceInterest} onChange={(e) => setForm({ ...form, serviceInterest: e.target.value })}>
-              {SERVICE_INTERESTS.map((s) => <option key={s} value={s}>{SERVICE_INTEREST_LABELS[s]}</option>)}
-            </Select>
-          </label>
-          <label>
-            Budget (บาท)
-            <MoneyInput value={form.budget} onChange={(value) => setForm({ ...form, budget: value ?? "" })} />
-          </label>
-          {SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? (
-            <label style={{ gridColumn: "1 / -1" }}>
-              รายละเอียดบริการ *
-              <input className="premium-input" value={form.serviceDetail} onChange={(e) => setForm({ ...form, serviceDetail: e.target.value })} required placeholder={form.serviceInterest === "product" ? "ระบุสินค้าที่สนใจ" : "ระบุ"} />
-            </label>
-          ) : null}
-          
-          <label style={{ gridColumn: "1 / -1" }}>
-            รายละเอียดเพิ่มเติม
-            <Textarea rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
-          </label>
-          
-          <div className="form-action-bar">
-            <button type="button" className="btn btn-secondary" onClick={() => setFormOpen(false)}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
-          </div>
+      {/* ฟอร์มรับ/แก้ลีด — ชุดช่องกรอกเป็น component เดียวกับฟอร์มแก้บนหน้ารายละเอียด
+          (LeadFormFields) ตามกฎ AGENTS.md · ด่านบังคับก็ตัวเดียวกัน (leadFormBlocker) */}
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"}
+        size="xl"
+        footer={(
+          <>
+            {leadBlocker && <span className="drawer-footer-note">⚠ {leadBlocker}</span>}
+            <Button variant="quiet" onClick={() => setFormOpen(false)} disabled={busy === "save"}>ยกเลิก</Button>
+            <Button tone="primary" onClick={saveLead} disabled={busy === "save" || !!leadBlocker}>
+              <Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}
+            </Button>
+          </>
+        )}
+      >
+        <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"}>
+          <LeadFormFields form={form} onPatch={(patch) => setForm((f) => ({ ...f, ...patch }))} disabled={busy === "save"} />
         </form>
       </Modal>
 
