@@ -614,6 +614,29 @@ body {
     var(--bg);
 }
 
+/* v2: จังหวะแน่นของโต๊ะช่าง (pilot /sa/dashboard 2026-08-08) — ทุกค่าหยิบจาก
+   ขั้น --space-* เท่านั้น (เพดาน raw spacing ชนอยู่ · audit จับ)
+   เป้าจาก mock: แถวตาราง ~34px (เดิม ~41px) · หัวเพจ/section/metric ลดหนึ่งขั้น */
+[data-ds="v2"] .premium-table th {
+  padding: var(--space-2) var(--space-2-5);
+}
+[data-ds="v2"] .premium-table td {
+  padding: var(--space-1-5) var(--space-2-5);
+}
+[data-ds="v2"] .ui-section-header {
+  padding: var(--space-3) var(--space-3-5);
+}
+[data-ds="v2"] .ui-section-body {
+  padding: var(--space-3) var(--space-3-5);
+}
+[data-ds="v2"] .ui-metric {
+  padding: var(--space-2-5) var(--space-3-5);
+}
+[data-ds="v2"] .premium-header {
+  padding: var(--space-4) var(--space-4-5);
+  margin-bottom: var(--space-3-5);
+}
+
 /* v2 ธีมสว่าง "โต๊ะช่างกลางวัน" (มติผู้ใช้ 2026-08-08 ขอธีมสว่างคู่กัน)
    โครงเดียวกับ v2 มืด: เทาเย็นแบน เส้น 1px เงา = none ยกเว้นแผงลอย
    topbar ยังเข้ม (เอกลักษณ์โต๊ะช่าง) · สีสถานะ/accent ยกชุดที่วัด AA แล้ว
