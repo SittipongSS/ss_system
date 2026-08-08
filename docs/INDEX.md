@@ -51,6 +51,7 @@
 | [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล + ตารางเทียบว่าต่างจากพัฒนากลิ่นตรงไหน |
 | [all-documents-system-ui-mockup.html](all-documents-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "เอกสารของโครงการ/ดีล"** — 3 ทางที่เอกสารเข้าสายนี้ · ขอจาก R&D อย่างเดียว (ม-87) · §05 บันทึกว่าอะไรอยู่นอกสาย |
 | [document-request-system-ui-mockup.html](document-request-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "ขอเอกสาร" ทุกขั้นตอน SA × RD** — 8 ขั้นตาม ม-88 · ตรงกับโค้ดที่ส่งแล้วทุกจอ (เขียนใหม่หลัง ม-83…ม-88) |
+| [info-inquiry-system-ui-mockup.html](info-inquiry-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "สอบถามข้อมูล" ทุกขั้นตอน SA × RD** — หัวข้อสุดท้ายของชุดคำร้อง · ไม่มีรายการ ทั้งใบคือเธรด · ตรงกับโค้ดที่ merge แล้ว (ม-83/84/86/87/89/92) |
 | [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" รายก้าว** — P4 (ม-36) · §05/§06 เป็นคำถามค้างที่ตัดสินไปแล้ว ดูใบระดับทั้งระบบแทน |
 | [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) | ⭐ **แบบหน้าจอ "ระบบลีด" ครบทุกฝ่าย** — MKT รับลีด → Sup คัดกรอง → Senior กระจาย → AE ติดต่อ/นัด/เปิดดีล + ตารางสิทธิ์ + ข้อเสนอปฏิทินนัด |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
