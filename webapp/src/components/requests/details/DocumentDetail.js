@@ -8,14 +8,19 @@
 // ⚠️ **ของกลาง ใช้ได้ทั้ง RD และบัญชี** — ชุดคำศัพท์ต่างกัน (IFRA/COA/MSDS vs
 // ใบวางบิล/ใบกำกับ) แต่กฎของบรรทัดเหมือนกันทุกข้อ ⇒ component เดียว
 //
-// ⚠️ ไฟล์จริงแนบที่การ์ดรายแถว (`RequestRows`) — ที่นี่เป็นสรุป ไม่ใช่ที่เก็บไฟล์
+// ⚠️ **ไฟล์เอกสารแนบที่โมดัล "ส่งเอกสาร" ทางเดียว** (ม-90: "flow การส่งเอกสาร
+// ต้องเป็นแบบเดียว กันการสับสน") — การ์ดรายแถวที่นี่จึงเป็นที่ *ดู/โหลด* ไฟล์
+// อย่างเดียว ต่างจากสายพัฒนาที่ผู้ขอแนบรูปอ้างอิงบนการ์ดได้ เพราะไฟล์ของสายนี้
+// คือ *ของที่ฝ่ายส่ง* ไม่ใช่ *ของประกอบที่ผู้ขอแปะ*
 import DocumentBoard from "@/components/requests/DocumentBoard";
 import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
+// (เปลือกส่ง `canEditAttachments` มาให้เหมือนทุกหัวข้อ แต่หัวข้อนี้จงใจไม่รับ —
+// สิทธิ์แนบของสายเอกสารถูกโมดัลส่งเอกสารถืออยู่คนเดียว)
 export default function DocumentDetail({
-  request, docBoard: board = [], docTotals: totals, canEditAttachments,
+  request, docBoard: board = [], docTotals: totals,
 }) {
   // อ้างอิงเพิ่มของใบ (ม-88) — โชว์เฉพาะตัวที่อ้างจริง · ตามกลับไม่เจอ = ใบถูกลบ
   const refs = [
@@ -73,9 +78,9 @@ export default function DocumentDetail({
           {totals.waiting > 0 && (
             <span data-tone="warn"><strong>{totals.waiting}</strong> รอเอกสาร</span>
           )}
-          {/* ⚠️ "ให้ไม่ได้" แยกจาก "มาแล้ว" เสมอ — จบเหมือนกันแต่คนละความหมาย */}
+          {/* ⚠️ "ปฏิเสธ" (คำตาม ม-89) แยกจาก "มาแล้ว" เสมอ — จบเหมือนกันแต่คนละความหมาย */}
           {totals.refused > 0 && (
-            <span data-tone="danger"><strong>{totals.refused}</strong> ให้ไม่ได้</span>
+            <span data-tone="danger"><strong>{totals.refused}</strong> ปฏิเสธ</span>
           )}
           <span>จากที่ขอ <strong>{totals.asked}</strong> รายการ</span>
         </div>
@@ -83,8 +88,14 @@ export default function DocumentDetail({
 
       <DocumentBoard rows={board} />
 
-      {/* การ์ดรายแถว — ที่ที่ไฟล์จริงเกาะอยู่ (ของกลาง ห้ามโคลน · ม-34) */}
-      <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
+      {/* การ์ดรายแถว (ของกลาง ห้ามโคลน · ม-34) — โหมดดูอย่างเดียว: แนบ/ลบทำใน
+          โมดัลส่งเอกสารที่เดียว (ม-90) ที่นี่เหลือหน้าที่เปิดดู/ดาวน์โหลดไฟล์ที่ส่งแล้ว */}
+      <RequestRows
+        rows={request.items || []}
+        canEditAttachments={false}
+        attachLabel="ไฟล์เอกสารของรายการนี้"
+        attachHint={'ฝ่ายแนบไฟล์ตอนกด "ส่งเอกสาร" ที่แถบก้าวถัดไป — แนบที่นั่นที่เดียว'}
+      />
     </>
   );
 }

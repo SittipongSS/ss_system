@@ -116,7 +116,7 @@ export async function PATCH(request, { params }) {
     if (fileError) return Response.json({ error: fileError.message }, { status: 500 });
     if (!count) {
       return Response.json({
-        error: 'ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง — แนบได้หลายไฟล์ที่การ์ดของรายการ',
+        error: 'ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง — แนบได้หลายไฟล์ในหน้าต่างส่งเอกสาร',
       }, { status: 400 });
     }
   }
