@@ -25,6 +25,7 @@ import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
@@ -971,6 +972,18 @@ export default function RequestDetailPage() {
                       })}
                     />
                   </div>
+                  {/* ไฟล์ประกอบ (ม-91) — แถวมีอยู่แล้ว อัปตรงเข้าแถวนั้นทันที */}
+                  <div className="form-group col-span-2">
+                    <span className="toolbar-label">
+                      ไฟล์ประกอบ <span className={styles.fieldHint}>(ไม่บังคับ)</span>
+                    </span>
+                    <AttachmentsPanel
+                      entityType="dept_request_item"
+                      entityId={row.item.id}
+                      canEdit={!saving}
+                      inlineUpload
+                    />
+                  </div>
                 </div>
               </div>
             ))}
@@ -1072,6 +1085,20 @@ export default function RequestDetailPage() {
                   <DateInput
                     id="hop-formula-date" value={hopDraft.formulaDate} disabled={saving}
                     onChange={(v) => setHopDraft({ ...hopDraft, formulaDate: v })}
+                  />
+                </div>
+                {/* ไฟล์ประกอบ (ม-91) — สามสายกดส่งแล้วจบในโมดัลเดียวเหมือนกัน ·
+                    ไม่บังคับ: ตัวงานคือสูตรที่เข้าทะเบียน ไฟล์เป็นของแถม (ต่างจาก
+                    สายเอกสารที่ไฟล์คือตัวงาน จึงบังคับ ≥ 1) · แถวมีอยู่แล้ว อัปตรง */}
+                <div className="form-group">
+                  <span className="toolbar-label">
+                    ไฟล์ประกอบ <span className={styles.fieldHint}>(ไม่บังคับ · แนบได้หลายไฟล์)</span>
+                  </span>
+                  <AttachmentsPanel
+                    entityType="dept_request_item"
+                    entityId={hopDraft.item.id}
+                    canEdit={!saving}
+                    inlineUpload
                   />
                 </div>
               </>
@@ -1292,10 +1319,46 @@ export default function RequestDetailPage() {
                 tone="primary"
                 disabled={saving || !!deliveryBlocker}
                 onClick={async () => {
+                  // ⚠️ คีย์ขีดล่าง (_files ฯลฯ) เป็นของฟอร์มล้วน — File serialize
+                  // เป็น {} เปล่า ๆ ส่งไปมีแต่ทางให้ server งง
+                  const prevIds = new Set((req.items || []).map((x) => x.id));
+                  const rows = delivery.map(
+                    ({ _files, _sourceLabel, _customerNote, ...r }) => r,
+                  );
                   const done = await call("/items", {
-                    method: "POST", body: JSON.stringify({ rows: delivery }),
+                    method: "POST", body: JSON.stringify({ rows }),
                   }, `ส่งกลิ่น ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
-                  if (done) setDelivery(null);
+                  if (!done) return;
+                  setDelivery(null);
+                  // ⭐ ไฟล์ประกอบ (ม-91) — แถวเพิ่งเกิดตอนส่ง จึงอัปได้ตอนนี้เท่านั้น
+                  // จับคู่: แถวใหม่เรียง sortOrder ตามลำดับ direction ที่กรอก ·
+                  // รอบแก้เติมแถวเดิม (targetItemId รู้อยู่แล้ว)
+                  // ⚠️ อัปพังไม่ย้อนอะไร — กลิ่น/แถวบันทึกแล้ว การ์ดรายการยังแนบ
+                  // ต่อได้ (สายพัฒนาแนบบนการ์ดได้ตาม ม-90)
+                  if (!delivery.some((r) => (r._files || []).length)) return;
+                  const after = await fetch(`/api/sa/requests/${id}`)
+                    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+                  const freshRows = ((after && after.items) || [])
+                    .filter((x) => !prevIds.has(x.id))
+                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+                  let fi = 0;
+                  const failed = [];
+                  for (const row of delivery) {
+                    const targetId = row.targetItemId
+                      ? row.targetItemId : freshRows[fi++]?.id;
+                    for (const f of row._files || []) {
+                      if (!targetId) { failed.push(f.name); continue; }
+                      const up = await uploadAttachment({
+                        entityType: "dept_request_item", entityId: targetId,
+                        file: f, docType: "other",
+                      });
+                      if (!up.ok) failed.push(f.name);
+                    }
+                  }
+                  if (failed.length) {
+                    setToast({ kind: "error", msg: `กลิ่นเข้าทะเบียนแล้ว แต่แนบไฟล์ไม่สำเร็จ ${failed.length} ไฟล์ (${failed.join(", ")}) — แนบใหม่ได้ที่การ์ดรายการ` });
+                  }
+                  await load();
                 }}
               >
                 ส่งและเข้าทะเบียน

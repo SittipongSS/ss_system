@@ -6,7 +6,7 @@
 //
 // ⚠️ **รหัสซ้ำเตือนที่ช่อง ไม่ใช่ตอนกดส่ง** — ปล่อยไปตายที่ DB จะได้ error 23505
 // ภาษาอังกฤษ และมาตอนที่คนกรอกไปหมดแล้วซึ่งสายเกินจะไล่แก้ทีละช่อง
-import { Plus, Trash2 } from "lucide-react";
+import { Paperclip, Plus, Trash2, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
@@ -14,15 +14,21 @@ import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { businessDate } from "@/lib/businessDate";
+import {
+  MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
+} from "@/lib/master/attachmentTypes";
 import styles from "./scentDelivery.module.css";
 
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
 //   · `producedAt` = RD ผลิตกลิ่นตัวนี้เสร็จวันไหน → ไปอยู่บน **ตัวกลิ่น** ในทะเบียน
 //   · `readyAt`    = พร้อมส่งมอบให้ฝ่ายขายวันไหน  → ไปอยู่บน **แถวคำร้อง**
 // กลิ่นตัวหนึ่งอาจผลิตเสร็จวันที่ 1 แต่รอตัวอื่นในชุดจนพร้อมส่งพร้อมกันวันที่ 8
+// `_files` = File[] ค้างในฟอร์ม (ม-91) — แถวสายกลิ่นเกิดตอนกดส่ง จึงยังไม่มี
+// entityId ให้อัป ⇒ อัปหลังแถวเกิด (แพตเทิร์นเดียวกับหน้าสร้างคำร้อง · ม-84)
+// ⚠️ ขีดล่างนำหน้า = ของฟอร์มล้วน ห้ามส่งเข้า payload (ดูตอน submit ใน page.js)
 export const emptyDeliveryRow = () => ({
   name: "", code: "", producedAt: businessDate(), readyAt: businessDate(),
-  derivedFromScentId: "", spec: "", briefId: "", targetItemId: "",
+  derivedFromScentId: "", spec: "", briefId: "", targetItemId: "", _files: [],
 });
 
 // ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
@@ -182,6 +188,41 @@ export default function ScentDeliveryFields({
                   placeholder="ทิศทางกลิ่น / สิ่งที่ต่างจากตัวก่อนหน้า"
                   onChange={(e) => patch(i, { spec: e.target.value })}
                 />
+              </div>
+              {/* ไฟล์ประกอบของ direction นี้ (ม-91) — ไม่บังคับ: ตัวงานคือกลิ่นที่
+                  เข้าทะเบียน ไฟล์เป็นของแถม ต่างจากสายเอกสารที่ไฟล์คือตัวงาน */}
+              <div className="form-group col-span-2">
+                <span className="toolbar-label">
+                  ไฟล์ประกอบ <span className={styles.hint}>(ไม่บังคับ · อัปให้หลังส่ง)</span>
+                </span>
+                <label className={styles.fileDrop}>
+                  <Paperclip size={14} aria-hidden="true" />
+                  <span>เลือกไฟล์ (สูงสุด {MAX_UPLOAD_MB} MB ต่อไฟล์)</span>
+                  <input
+                    type="file" multiple accept={UPLOAD_ACCEPT_ATTR} disabled={disabled}
+                    className={styles.fileInput}
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || [])
+                        .filter((f) => f.size <= MAX_UPLOAD_BYTES);
+                      if (picked.length) patch(i, { _files: [...(row._files || []), ...picked] });
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {!!(row._files || []).length && (
+                  <ul className={styles.fileList}>
+                    {(row._files || []).map((f, fi) => (
+                      <li key={`${f.name}-${fi}`} className={styles.fileRow}>
+                        <span className={styles.fileName}>{f.name}</span>
+                        <Button
+                          iconOnly icon={<X size={13} />} disabled={disabled}
+                          onClick={() => patch(i, { _files: (row._files || []).filter((_, j) => j !== fi) })}
+                          aria-label={`เอา ${f.name} ออก`}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>
