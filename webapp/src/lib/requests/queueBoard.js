@@ -23,21 +23,28 @@ export function requestNextStep(request) {
 
   const items = request.items || [];
   // ใบที่ยังไม่มีบรรทัด (สอบถาม/พัฒนากลิ่นก่อน RD ส่งของ) — คอขวดอยู่ที่ฝ่ายเสมอ
+  //
+  // ⭐ "รอฝ่ายเริ่ม" ≠ "รอฝ่ายทำต่อ" — ตัวแรกคือรับเรื่องแล้วแต่ยังไม่มีของสักชิ้น
+  // ตัวหลังคือส่งมาบ้างแล้วแต่ยังไม่ครบ · สองอย่างนี้ผู้ขอทำอะไรต่างกัน (ตัวแรกรอเฉย ๆ
+  // ตัวหลังมีของให้ไปรับ) จึงยุบเป็นคำเดียวไม่ได้
   if (!items.length) {
     return request.status === 'pending'
       ? { owner: 'dept', label: 'รอรับเรื่อง' }
-      : { owner: 'dept', label: 'รอฝ่ายดำเนินการ' };
+      : { owner: 'dept', label: 'รอฝ่ายเริ่ม' };
   }
 
+  // ⚠️ **ไม่ต่อจำนวนท้ายป้าย** (มติผู้ใช้ 2026-08-08) — คิวมีคอลัมน์ "คืบหน้า" ที่บอก
+  // `2 / 3` อยู่แล้ว ⇒ ป้ายพูดซ้ำและกินไป 50px (135px → 84px) · ป้ายตอบว่า "ใครค้าง"
+  // คอลัมน์ตัวเลขตอบว่า "ค้างเท่าไร" — คนละคำถาม อย่ายัดไว้ที่เดียวกัน
   const summary = requestRowSummary(items);
   if (summary.waitingDept > 0) {
-    return { owner: 'dept', label: `รอฝ่ายทำต่อ ${summary.waitingDept} รายการ` };
+    return { owner: 'dept', label: 'รอฝ่ายทำต่อ' };
   }
   if (summary.waitingRequester > 0) {
-    return { owner: 'requester', label: `รอผู้ขอทำต่อ ${summary.waitingRequester} รายการ` };
+    return { owner: 'requester', label: 'รอผู้ขอทำต่อ' };
   }
   // ทุกแถวจบแล้วแต่ใบยังไม่ปิด — คนที่ต้องกดปิดคือผู้ขอ
-  return { owner: 'requester', label: 'ครบแล้ว รอปิดเรื่อง' };
+  return { owner: 'requester', label: 'รอปิดเรื่อง' };
 }
 
 // ── แถบตัวเลข 4 ตัว ──────────────────────────────────────────────────────

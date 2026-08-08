@@ -40,7 +40,7 @@ test('เดินข้ามขั้นไม่ได้ และข้อ�
 
   const late = hopStageError(at('sent'), 'ack');
   assert.match(late, /ผ่านขั้นนี้ไปแล้ว/);
-  assert.match(late, /ส่งให้ลูกค้าแล้ว/);
+  assert.match(late, /ส่งลูกค้าแล้ว/);
 
   assert.match(hopStageError(null, 'ack'), /ไม่พบรายการ/);
   assert.match(hopStageError(at('sent'), 'บิน'), /ก้าวไม่ถูกต้อง/);
