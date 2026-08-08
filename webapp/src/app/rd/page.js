@@ -6,33 +6,27 @@
 // ⚠️ **ยังไม่มีสถิติ/กราฟโดยตั้งใจ** — ทั้งระบบมีคำร้องหลักหน่วย กราฟที่มีจุดเดียว
 // แย่กว่าไม่มีกราฟ · เติมเมื่อมีของจริงพอ (Q34: "โครงหน้าเผื่อไว้")
 //
-// ⚠️ ใช้ primitive กลางทั้งหน้า (`MetricStrip` · `TableShell` · `Button`) — ห้ามเขียน
-// `glass-panel` / `premium-table` / คลาส `btn` ดิบ · `npm run audit:ui` มี ratchet
-// คุมยอดชั้นเก่าไว้ และของที่เพิ่งเขียนไม่ควรไปเพิ่มยอดนั้น
+// ⚠️ ใช้ primitive กลางทั้งหน้า (`QueueCountStrip` · `RequestQueuePanel` ·
+// `WorkspaceSection` · `Button`) — ห้ามเขียน `glass-panel` / `premium-table` /
+// คลาส `btn` ดิบ · `npm run audit:ui` มี ratchet คุมยอดชั้นเก่าไว้
+//
+// ⭐ **หน้านี้ไม่มีตารางของตัวเองแล้ว** (มติผู้ใช้ 2026-08-08) — เดิมเขียนตาราง 6
+// คอลัมน์ไว้เอง ส่วนคิวเปลี่ยนเป็น 4 คอลัมน์ไปแล้ว ⇒ สองหน้าที่ห่างกันคลิกเดียว
+// กลายเป็นคนละดีไซน์ · ทั้งแถบตัวเลขและตารางใช้ของชุดเดียวกับ `/rd/requests` แล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlarmClock, FlaskConical } from "lucide-react";
-import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
-import SkeletonRows from "@/components/ui/Skeleton";
-import EmptyState from "@/components/ui/EmptyState";
-import StatusBadge from "@/components/ui/StatusBadge";
+import { FlaskConical } from "lucide-react";
+import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
-import { TableShell } from "@/components/ui/Table";
-import { fmtDate } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
-import { requestKindLabel } from "@/lib/master/requestTypes";
-import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, dueSoonRows, queueCounts, requestNextStep, startHereRequest,
+  dueSoonRows, queueCounts, requestNextStep, startHereRequest,
 } from "@/lib/requests/queueBoard";
+import QueueCountStrip from "@/components/requests/QueueCountStrip";
+import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import StartHereCard from "@/components/requests/StartHereCard";
-import styles from "./page.module.css";
 
 const DEPT = "RD";
-
-// โทนของแถบตัวเลขใช้คำของ `Metric` (good/warning/danger) — ทะเบียนกลางพูดคำของ
-// `StatusBadge` ⇒ แปลที่นี่ที่เดียว ไม่แก้ทะเบียนให้กระทบหน้าคิวที่ใช้คำเดิมอยู่
-const METRIC_TONE = { warning: "warning", danger: "danger", info: undefined, neutral: undefined };
 
 export default function RdOverviewPage() {
   const router = useRouter();
@@ -83,6 +77,11 @@ export default function RdOverviewPage() {
       title="ภาพรวมฝ่ายวิจัยและพัฒนา"
       subtitle="งานที่ค้างอยู่กับฝ่าย และของที่ใกล้ถึงกำหนดที่รับปากไว้"
     >
+      {/* ⚠️ ระยะห่างระหว่างก้อนมาจาก `flex flex-col gap-4` แบบเดียวกับหน้าอื่นที่ใช้
+          `MetricStrip` + `WorkspaceSection` (ใบสั่งขาย · โครงการ · ดีล) — ทั้ง
+          `.ui-metric-strip` และ `.ui-section` ไม่มี margin ของตัวเอง ⇒ ไม่มีตัวห่อ
+          แล้วขอบสองกล่องจะชนกันเป็นเส้นคู่ */}
+      <div className="flex flex-col gap-4">
       {/* ⭐ **การ์ด "เริ่มที่นี่" มาก่อนตัวเลข** (มติผู้ใช้ 2026-08-08) — แถบตัวเลขตอบว่า
           *มีอะไรค้างบ้าง* ซึ่งเป็นคำถามของหัวหน้า · คนที่เปิดหน้ามาทำงานถามว่า
           *เริ่มที่ใบไหน* ⇒ คำตอบนั้นต้องอยู่บนสุด */}
@@ -90,81 +89,41 @@ export default function RdOverviewPage() {
         <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอฝ่ายตอบอยู่ตอนนี้" />
       )}
 
-      {/* แถบตัวเลข 4 ตัว — ชุดเดียวกับหัวคิว (`QUEUE_COUNT_META`) ไม่ประกาศใหม่
+      {/* แถบตัวเลข 4 ตัว — **component เดียวกับในคิว** (`QueueCountStrip`)
           ⚠️ **0 ก็เป็นข้อมูล** — "ยังไม่รับเรื่อง 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่
-          หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
+          หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกจาก "ยังโหลดไม่เสร็จ"
+          ⚠️ ที่นี่ **นับทั้งฝ่าย** และกดแล้ว **ไปคิวที่แท็บที่ถูก** — ต่างจากในคิวที่นับ
+          เฉพาะแท็บปัจจุบันและกดแล้วกรองในที่ · หน้าตาเดียวกัน พฤติกรรมตามหน้าที่ของหน้า */}
       {!loading && !loadError && (
-        <MetricStrip>
-          {QUEUE_COUNT_META.map((meta) => (
-            <Metric
-              key={meta.key}
-              as="button" type="button"
-              label={meta.label}
-              value={counts[meta.key]}
-              tone={METRIC_TONE[meta.tone]}
-              note="กดเพื่อเปิดคิวที่กรองไว้แล้ว"
-              onClick={() => router.push(meta.key === "waitingRequester"
-                ? "/rd/requests?tab=waiting"
-                : "/rd/requests?tab=todo")}
-            />
-          ))}
-        </MetricStrip>
+        <QueueCountStrip
+          counts={counts}
+          ariaLabel="งานค้างของฝ่าย — กดเพื่อเปิดคิว"
+          onSelect={(key) => router.push(key === "waitingRequester"
+            ? "/rd/requests?tab=waiting"
+            : "/rd/requests?tab=todo")}
+        />
       )}
 
-      <TableShell
+      {/* ⭐ **ตารางเดียวกับคิว** (มติผู้ใช้ 2026-08-08) — เดิมหน้านี้เขียนตารางของตัวเอง
+          6 คอลัมน์ (เลขที่ · ชนิด · เรื่อง/ลูกค้า · กำหนดส่ง · ก้าวถัดไป · สถานะ) ส่วนคิว
+          เปลี่ยนเป็น 4 คอลัมน์ไปแล้ว ⇒ สองหน้าที่ห่างกันคลิกเดียวเป็นคนละดีไซน์
+          (ผู้ใช้ทักเอง) · ใช้ `RequestQueuePanel` ตัวเดียวกันแล้วมันตามกันเองตลอดไป
+          ⚠️ ปิดแถบตัวเลขในพาเนล — หน้านี้มีแถบของตัวเองข้างบนที่นับ **ทั้งฝ่าย**
+          ส่วนของพาเนลจะนับเฉพาะแถวใกล้ถึงกำหนด ⇒ สองแถบป้ายเหมือนกันแต่คนละตัวเลข
+          ⚠️ ปิดปุ่มเปิดคำร้อง — คิวของฝ่ายเป็นที่ **ตอบ** ไม่ใช่ที่เปิด */}
+      <WorkspaceSection
         title="ใกล้ถึงกำหนด และที่เลยกำหนดแล้ว"
-        description="นับจากวันที่ฝ่ายรับปากไว้ตอนรับเรื่อง (7 วันข้างหน้า) — ใบที่ยังไม่รับเรื่องอยู่ในคิว"
+        subtitle="นับจากวันที่ฝ่ายรับปากไว้ตอนรับเรื่อง (7 วันข้างหน้า) — ใบที่ยังไม่รับเรื่องอยู่ในคิว"
         actions={<Button onClick={() => router.push("/rd/requests")}>เปิดคิวทั้งหมด</Button>}
       >
-        {loading ? (
-          <SkeletonRows rows={4} />
-        ) : loadError ? (
-          <div className={styles.loadError}>{loadError}</div>
-        ) : dueSoon.length === 0 ? (
-          <EmptyState icon={AlarmClock}>
-            ไม่มีงานที่ใกล้ถึงกำหนดใน 7 วัน — ของที่ยังไม่รับเรื่องดูได้ที่คิว
-          </EmptyState>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>เลขที่</th>
-                <th>ชนิด</th>
-                <th>เรื่อง / ลูกค้า</th>
-                <th>กำหนดส่งที่รับปาก</th>
-                <th>ก้าวถัดไป</th>
-                <th>สถานะ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dueSoon.map((r) => {
-                const late = String(r.committedDueDate) < String(today);
-                return (
-                  <tr
-                    key={r.id} className={styles.rowLink}
-                    onClick={() => router.push(`/requests/${r.id}`)}
-                  >
-                    <td>{r.docNo || "ร่าง"}</td>
-                    <td>{requestKindLabel(r.kind)}</td>
-                    <td>{r.title || r.customerName || "—"}</td>
-                    <td className={styles.dueCell} data-late={late ? "1" : undefined}>
-                      {fmtDate(r.committedDueDate)}
-                      {late && <span className={styles.lateTag}>เลยกำหนด</span>}
-                    </td>
-                    <td>{requestNextStep(r)?.label || "—"}</td>
-                    <td>
-                      <StatusBadge
-                        tone={REQUEST_STATUS_TONES[r.status] || "neutral"}
-                        label={REQUEST_STATUS_LABELS[r.status] || r.status}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </TableShell>
+        <RequestQueuePanel
+          scope="queue" dept={DEPT} rows={dueSoon}
+          showCounts={false} showNewRequest={false}
+          emptyText="ไม่มีงานที่ใกล้ถึงกำหนดใน 7 วัน — ของที่ยังไม่รับเรื่องดูได้ที่คิว"
+          loading={loading} loadError={loadError} reload={reload}
+        />
+      </WorkspaceSection>
+      </div>
     </Workspace>
   );
 }

@@ -64,7 +64,9 @@ export default function RdRequestsPage() {
   return (
     <Workspace
       icon={<FlaskConical size={22} />}
-      title="คิวคำร้องของฝ่าย R&D"
+      /* ⚠️ ชื่อฝ่ายสะกดแบบเดียวกับหน้าภาพรวม ("ฝ่ายวิจัยและพัฒนา") — เดิมหน้านี้เขียน
+         "R&D" ส่วนภาพรวมเขียนไทย และข้อความว่างพูด "ฝ่าย RD" ⇒ ฝ่ายเดียวสามชื่อ */
+      title="คิวคำร้องฝ่ายวิจัยและพัฒนา"
       subtitle={TAB_BLURB[tab]}
     >
       <Tabs
