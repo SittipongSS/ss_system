@@ -5,17 +5,19 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Legend
 } from "recharts";
 import { fmtMoney } from "@/lib/format";
-import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { CHART_LINE_TYPE, CHART_SERIES } from "@/lib/chartTheme";
 import { ChartCanvas, ChartEmptyState, ChartTooltip } from "@/components/ui/ChartCard";
 
 // Colors mapped to our design system
+/* สีสถานะล้วน — accent ถูกถอด (สีปุ่ม ห้ามเป็นสีข้อมูล): "ส่งเอกสารแล้ว" ใช้ teal
+   ส่วนเส้นยอดภาษีใช้ CHART_SERIES.actual (เงินที่เกิดจริง = เขียว ตามความหมายกลาง) */
 const COLORS = {
   success: "var(--green)",
   warning: "var(--amber)",
   danger: "var(--red)",
   info: "var(--blue)",
   neutral: "var(--text-3)",
-  accent: "var(--accent)",
+  delivered: "var(--teal)",
 };
 
 export function RegsDonutChart({ regs = [] }) {
@@ -66,7 +68,7 @@ export function OrdersComposedChart({ orders = [] }) {
       received: { name: "รอยื่น", count: 0, tax: 0, color: COLORS.warning },
       filing: { name: "กำลังยื่น", count: 0, tax: 0, color: COLORS.info },
       complete: { name: "ชำระแล้ว", count: 0, tax: 0, color: COLORS.success },
-      delivered: { name: "ส่งเอกสารแล้ว", count: 0, tax: 0, color: COLORS.accent },
+      delivered: { name: "ส่งเอกสารแล้ว", count: 0, tax: 0, color: COLORS.delivered },
     };
 
     orders.forEach(o => {
@@ -136,9 +138,9 @@ export function OrdersComposedChart({ orders = [] }) {
           type={CHART_LINE_TYPE}
           dataKey="tax" 
           name="TaxAmount" 
-          stroke={COLORS.accent} 
-          strokeWidth={3} 
-          dot={{ r: 4, fill: COLORS.accent, strokeWidth: 2, stroke: "var(--panel)" }}
+          stroke={CHART_SERIES.actual}
+          strokeWidth={3}
+          dot={{ r: 4, fill: CHART_SERIES.actual, strokeWidth: 2, stroke: "var(--panel)" }}
           activeDot={{ r: 6 }}
         />
       </ComposedChart>
