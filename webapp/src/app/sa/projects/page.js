@@ -20,7 +20,7 @@ import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from 
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { businessLineLabel, isBusinessLine } from "@/lib/master/businessLines";
+import { businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
 
 /* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
    ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
@@ -203,7 +203,10 @@ export default function ProjectsIndexPage() {
                           </span>
                           {/* ⚠️ ป้ายนี้คือตัวทวงที่ตัวกรองพัดหายไม่ได้ — ต่างจากตัวนับบนแถบ KPI
                               ที่ขยับตามตัวกรอง · โครงการที่ยังไม่ระบุสายต้องสะดุดตาตรงที่มันอยู่ */}
-                          <span className={`ui-badge ${styles.lineBadge}${isBusinessLine(p.line) ? "" : ` ${styles.lineBadgeUnset}`}`}>
+                          <span
+                            className={`ui-badge ${styles.lineBadge}${isBusinessLine(p.line) ? "" : ` ${styles.lineBadgeUnset}`}`}
+                            data-tone={businessLineTone(p.line) || undefined}
+                          >
                             {businessLineLabel(p.line)}
                           </span>
                         </Link>
