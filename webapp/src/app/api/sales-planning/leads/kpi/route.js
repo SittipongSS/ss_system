@@ -1,11 +1,26 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, channelGroupOf } from '@/lib/sales/leads';
+import { slaHit, channelGroupOf, chunkLeadIds } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
-import { dateRangeOfYear, isYearValue } from '@/lib/datePeriods';
+import {
+  businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
+} from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
+
+/** จำนวนลีดที่ค้างอยู่ในสถานะหนึ่ง **ตอนนี้** (ไม่ผูกกับเดือนที่เลือก)
+ *  นับไม่ได้คืน `null` ไม่ใช่ 0 — หน้าจอจะได้โชว์ "-" แทนที่จะบอกว่า "ไม่มีค้าง" */
+async function countLeadsByStatus(supabase, status, team) {
+  let query = supabase.from('sales_leads').select('id', { count: 'exact', head: true }).eq('status', status);
+  if (team && team !== 'all') query = query.eq('team', team);
+  const { count, error } = await query;
+  if (error) {
+    console.error(`[lead kpi] นับลีดค้างสถานะ ${status} ไม่สำเร็จ:`, error.message);
+    return null;
+  }
+  return count || 0;
+}
 
 // GET /api/sales-planning/leads/kpi?month=YYYY-MM — KPI ลีด (เฟส C v1):
 //   • จำนวนกรอกรายวัน/รายเดือน ต่อคน (Marketing KPI) + ต่อช่องทาง
@@ -27,7 +42,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const params = new URL(req.url).searchParams;
   const param = params.get('month');
-  const month = param === 'all' ? 'all' : (monthKey(param) || monthKey(new Date().toISOString()));
+  // ค่าถอย = เดือนปัจจุบัน **ตามเวลาไทย** — ถ้าใช้ UTC ช่วงตีหนึ่งถึงเจ็ดโมงของวันที่ 1
+  // จะได้เดือนก่อนหน้า (หน้าจอส่ง month มาเสมอ ตัวนี้เป็นตาข่ายรับ)
+  const month = param === 'all' ? 'all' : (monthKey(param) || businessMonthKey(new Date().toISOString()));
   // year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บน MonthPicker)
   // month=all ยังรับไว้เพื่อความเข้ากันได้ แต่หน้าจอไม่ส่งมาแล้ว
   const year = isYearValue(params.get('year')) ? params.get('year') : null;
@@ -37,13 +54,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // ลีดของเดือนที่เลือก (ตามวันที่รับเข้า) — KPI เป็นภาพรวมทั้งฝ่าย (นโยบายเดียวกับ
   // dashboard ขาย: ภาพรวมโปร่งใส; การทำงานรายใบยัง scope ที่หน้า /sa/leads)
+  //
+  // ⚠️ ขอบเดือน/ปีต้องเป็น **ต้นวันตามเวลาไทย** ไม่ใช่สตริงวันเปล่า ๆ ซึ่ง Postgres
+  // อ่านเป็น 00:00 UTC = 07:00 กรุงเทพ ⇒ ลีดที่เข้ามาตอนดึกตกไปนับเป็นเดือนก่อน
+  // (ดูเหตุผลเต็มที่ lib/datePeriods.js · แก้ 2026-08-08)
   let query = supabase.from('sales_leads').select('*');
-  if (year) {
-    const range = dateRangeOfYear(year);
-    query = query.gte('createdAt', range.from).lt('createdAt', range.until);
-  } else if (month !== 'all') {
-    query = query.gte('createdAt', `${month}-01`).lt('createdAt', nextMonthStart(month));
-  }
+  const range = year ? dateRangeOfBusinessYear(year)
+    : month !== 'all' ? dateRangeOfBusinessMonth(month)
+      : null;
+  if (range) query = query.gte('createdAt', range.from).lt('createdAt', range.until);
   if (team && team !== 'all') query = query.eq('team', team);
   const { data: leads, error } = await query;
   if (error) return fail(error.message, 500);
@@ -54,7 +73,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const byDay = {};
   const byChannel = {};
   for (const l of rows) {
-    const day = String(l.createdAt).slice(0, 10);
+    // วันไทย ไม่ใช่ `slice(0, 10)` (= วัน UTC) — ไม่งั้นลีดที่กรอกหลังห้าโมงเย็นตกไปวันก่อน
+    const day = businessDayKey(l.createdAt);
     byDay[day] = (byDay[day] || 0) + 1;
     const ck = l.createdBy || 'unknown';
     if (!byCreator[ck]) byCreator[ck] = { createdBy: l.createdBy, name: l.createdByName || 'ไม่ระบุ', count: 0, days: new Set() };
@@ -69,10 +89,21 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // SLA (นับเฉพาะใบที่ถึงขั้นนั้นแล้ว): hit = ≤1 วันทำการ
   const screenChecked = rows.filter((l) => l.screenedAt);
   const screenHits = screenChecked.filter((l) => slaHit(l.createdAt, l.screenedAt, holidays) === true);
-  const screenPending = rows.filter((l) => l.status === 'new');
   const contactChecked = rows.filter((l) => l.assignedAt && l.firstContactAt);
   const contactHits = contactChecked.filter((l) => slaHit(l.assignedAt, l.firstContactAt, holidays) === true);
-  const contactPending = rows.filter((l) => l.status === 'assigned');
+
+  /* "ค้าง" = **ค้างอยู่ ณ ตอนนี้** ไม่ใช่ "ลีดของเดือนที่เลือกที่ยังค้าง"
+     🐞 เดิมกรองจาก `rows` ซึ่งถูกตัดด้วยเดือนไปแล้ว ⇒ ลีดที่ค้างข้ามเดือนมา — ซึ่งเป็น
+     ใบที่ค้างจริงที่สุดและควรถูกทวงที่สุด — **ไม่โผล่เลย** · คนอ่านตัวเลขข้าง SLA
+     ตีความว่า "ตอนนี้เหลือกี่ใบ" อยู่แล้ว (ตรวจเจอ 2026-08-08)
+
+     ⚠️ คิวคัดกรองเป็น **คิวกลาง ไม่มีทีม** (`new` มี team = null เสมอ) ⇒ ไม่ใส่ตัวกรองทีม
+     ไม่งั้นพอเลือกทีมแล้วจะได้ 0 ทุกครั้งทั้งที่คิวกลางมีของค้างอยู่
+     ส่วน "รอติดต่อกลับ" มอบเข้าทีมแล้ว จึงกรองทีมตามที่ผู้ใช้เลือก */
+  const [screenPending, contactPending] = await Promise.all([
+    countLeadsByStatus(supabase, 'new', null),
+    countLeadsByStatus(supabase, 'assigned', team),
+  ]);
 
   // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI)
   const byAssignee = {};
@@ -91,13 +122,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // ตีกลับ (ทีมผิด) — นับจาก events ของลีดเดือนนี้
-  const leadIds = rows.map((l) => l.id);
+  //
+  // 🐞 เดิมยัด id ทั้งเดือนลง `.in()` ครั้งเดียวและ **ไม่อ่าน error** ⇒ พอลีดเยอะจน
+  // query string ยาวเกินลิมิต query ล้ม แล้ว `count` เป็น undefined → `|| 0` กลบเป็น 0
+  // ผลคือตัวเลข "ตีกลับ" โชว์ 0 ทั้งที่มีจริง และยิ่งบริษัทโตยิ่งพังแน่ขึ้น (ตรวจ 2026-08-08)
+  //
+  // ⚠️ ล้มแล้วต้องคืน `null` ไม่ใช่ 0 — 0 เป็นคำตอบที่ดูปกติจนไม่มีใครสงสัย
+  // ส่วน null ทำให้หน้าจอโชว์ "-" (ดู KpiLeadsTab) = บอกว่า "ไม่รู้" ไม่ใช่ "ไม่มี"
   let bounceCount = 0;
-  if (leadIds.length) {
-    const { count } = await supabase
+  for (const chunk of chunkLeadIds(rows.map((l) => l.id))) {
+    const { count, error: bounceError } = await supabase
       .from('lead_events').select('id', { count: 'exact', head: true })
-      .eq('kind', 'bounce').in('leadId', leadIds);
-    bounceCount = count || 0;
+      .eq('kind', 'bounce').in('leadId', chunk);
+    if (bounceError) {
+      console.error('[lead kpi] นับจำนวนตีกลับไม่สำเร็จ:', bounceError.message);
+      bounceCount = null;
+      break;
+    }
+    bounceCount += count || 0;
   }
 
   const funnel = {
@@ -115,8 +157,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     month,
     funnel,
     sla: {
-      screen: { checked: screenChecked.length, hit: screenHits.length, pending: screenPending.length },
-      contact: { checked: contactChecked.length, hit: contactHits.length, pending: contactPending.length },
+      screen: { checked: screenChecked.length, hit: screenHits.length, pending: screenPending },
+      contact: { checked: contactChecked.length, hit: contactHits.length, pending: contactPending },
     },
     byCreator: Object.values(byCreator)
       .map((c) => ({ ...c, days: c.days.size, perDay: c.days.size ? +(c.count / c.days.size).toFixed(1) : 0 }))
@@ -127,7 +169,3 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   });
 });
 
-function nextMonthStart(month) {
-  const [y, m] = month.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
-}

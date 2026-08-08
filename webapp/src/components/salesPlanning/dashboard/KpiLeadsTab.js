@@ -5,12 +5,21 @@ import { useCallback, useEffect, useState } from "react";
 import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
 import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
+import { TEAM_LABELS } from "@/lib/permissions";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { livePersonName } from "@/lib/ui/personName";
 import { fmtName, fmtPercent } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
 
 export default function KpiLeadsTab({ month, teamFilter }) {
+  /* ชื่อคน — อ่านจาก id ไม่ใช่สำเนาชื่อที่ค้างอยู่ในแถว (ท่าเดียวกับหน้าคิวลีด)
+     🐞 ตารางสองใบนี้เคยโชว์ `assigneeName` / `createdByName` ตรง ๆ ซึ่งเป็น snapshot
+     ตอนที่บันทึก — prod มี 64 แถวที่เป็นชื่อย่อ/ชื่อเก่าที่ไม่ตรงบัญชีใครเลย ⇒ ตาราง
+     ประเมินผลรายคนขึ้นชื่อที่หาตัวคนไม่เจอ ขณะที่หน้าคิวลีดข้าง ๆ ขึ้นชื่อปัจจุบัน
+     ⚠️ ต้องรวมคนที่ปิดบัญชีแล้วด้วย — KPI ย้อนหลังมีคนที่ลาออกไปแล้วเสมอ */
+  const directory = usePeopleDirectory();
   const [kpi, setKpi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,7 +65,10 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             <SaMetric
               key={label}
               label={label}
-              value={v ?? 0}
+              /* `?? "-"` ไม่ใช่ `?? 0` — null แปลว่า "นับไม่ได้" (ดู bounceCount ใน route)
+                 ส่วน 0 จริง ๆ ยังโชว์ 0 ตามปกติเพราะ ?? จับแค่ null/undefined
+                 การกลบ "ไม่รู้" ให้เป็น 0 คือคำตอบที่ดูปกติจนไม่มีใครสงสัย */
+              value={v ?? "-"}
               note="จำนวนลีด"
             />
           ))}
@@ -64,8 +76,10 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
         <div className={styles.qualityGrid} aria-busy={loading}>
-          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้าง ${sla.screen?.pending ?? 0}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
-          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้าง ${sla.contact?.pending ?? 0}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
+          {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
+              โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
+          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างตอนนี้ ${sla.screen?.pending ?? "-"}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
+          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างตอนนี้ ${sla.contact?.pending ?? "-"}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
           <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
         </div>
       </SaSection>
@@ -78,7 +92,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
               <tbody>
                 {(kpi?.byCreator || []).map((c) => (
                   <tr key={c.createdBy || c.name} className="premium-row">
-                    <td>{c.name}</td>
+                    <td>{livePersonName(directory, c.createdBy, c.name) || c.name}</td>
                     <td className="num mono">{c.count}</td>
                     <td className="num mono">{c.days}</td>
                     <td className="num mono">{c.perDay}</td>
@@ -115,8 +129,9 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             <tbody>
               {(kpi?.byAssignee || []).map((a) => (
                 <tr key={a.assigneeId} className="premium-row">
-                  <td>{fmtName({ name: a.name })}</td>
-                  <td>{a.team || "-"}</td>
+                  <td>{livePersonName(directory, a.assigneeId, a.name) || fmtName({ name: a.name })}</td>
+                  {/* ป้ายทีมเต็ม ("Key Account") ไม่ใช่รหัสดิบ ("KA") — ที่อื่นในระบบใช้ TEAM_LABELS หมด */}
+                  <td>{TEAM_LABELS[a.team] || a.team || "-"}</td>
                   <td className="num mono">{a.assigned}</td>
                   <td className="num mono">{a.contacted}</td>
                   <td className="num mono">{pct(a.slaHit, a.contacted)}</td>

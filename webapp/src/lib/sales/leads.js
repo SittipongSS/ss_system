@@ -279,6 +279,20 @@ export function pickNextMeetingAt(times = [], nowIso) {
   return (stamped.find((entry) => entry.ms >= nowMs) || stamped[stamped.length - 1]).iso;
 }
 
+/* จำนวน id ต่อหนึ่ง `.in()` — PostgREST ยัดลิสต์ลง **query string** ทั้งก้อน
+   id ของลีดยาว ~19 ตัวอักษร ⇒ 500 ใบ ≈ 10KB · ทั้งปี ≈ 30KB ซึ่งเกินลิมิตความยาว URL
+   ของ PostgREST/reverse proxy · 200 ใบ ≈ 4KB ปลอดภัยและตรงกับที่ backfill-projects ใช้ */
+export const LEAD_ID_CHUNK = 200;
+
+/** ซอย id เป็นก้อนเท่า ๆ กันสำหรับ `.in()` — คืน [] ถ้าไม่มี id (ผู้เรียกจะได้ไม่ต้องยิง query) */
+export function chunkLeadIds(ids = [], size = LEAD_ID_CHUNK) {
+  const clean = (ids || []).filter(Boolean);
+  const step = Number(size) > 0 ? Math.floor(Number(size)) : LEAD_ID_CHUNK;
+  const out = [];
+  for (let i = 0; i < clean.length; i += step) out.push(clean.slice(i, i + step));
+  return out;
+}
+
 // SLA "ภายใน 1 วันทำการ": จำนวนวันทำการที่ผ่านไประหว่าง 2 เวลา ≤ 1
 // (เกิดวันเดียวกัน = 0; ข้าม 1 วันทำการ = 1 → ยังทัน; ข้ามเสาร์-อาทิตย์/วันหยุดไม่นับ)
 export function slaBusinessDays(fromIso, toIso, holidays) {

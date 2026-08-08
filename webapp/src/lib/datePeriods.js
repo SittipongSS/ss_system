@@ -136,3 +136,61 @@ export function dateRangeOfYear(year) {
   if (!isYearValue(year)) return null;
   return { from: `${year}-01-01`, until: `${Number(year) + 1}-01-01` };
 }
+
+/* ── เขตเวลาของธุรกิจ ─────────────────────────────────────────────────────
+   🐞 ตรวจตัวเลขลีด 2026-08-08: คอลัมน์ timestamptz เก็บเป็น UTC และเวลาเทียบขอบเดือน
+   ด้วยสตริงเปล่า ๆ (`gte('createdAt', '2026-08-01')`) Postgres อ่านเป็น **00:00 UTC
+   = 07:00 กรุงเทพ** ⇒ ลีดที่เข้ามาช่วง 00:00–07:00 ตามเวลาไทย **ตกไปนับเป็นเดือนก่อน**
+   และ `String(createdAt).slice(0, 10)` ที่ใช้ทำกราฟรายวันก็ได้ "วันแบบ UTC" เลื่อนไป
+   วันก่อนหน้าด้วยเหตุผลเดียวกัน · ช่องทางรับลีดคือ LINE/Meta/TikTok/IG/เว็บไซต์/Typeform
+   ซึ่งลีดดึกมีจริงทุกวัน — ไม่มี error อะไรฟ้อง ตัวเลขแค่ผิดเงียบ ๆ
+
+   ทุกคนที่ใช้ระบบนี้อยู่ไทย และป้ายวัน/เดือนบนจอเป็นเวลาไทยทั้งหมด "วันทำการ" จึงต้อง
+   หมายถึงวันตามเวลาไทยเสมอ · ไทยไม่มี DST และเป็น UTC+7 มาตั้งแต่ พ.ศ. 2463
+   ⇒ offset คงที่ตัวเดียวพอ ไม่ต้องพึ่ง ICU (ซึ่งอาจไม่ครบใน runtime บางตัว) */
+export const BUSINESS_TZ = 'Asia/Bangkok';
+export const BUSINESS_UTC_OFFSET = '+07:00';
+const BUSINESS_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** ต้นวันตามเวลาไทย ในรูปที่ Postgres อ่านขอบได้ถูก ("2026-08-01" → "2026-08-01T00:00:00+07:00") */
+export function businessDayStart(date) {
+  return `${date}T00:00:00${BUSINESS_UTC_OFFSET}`;
+}
+
+/**
+ * วันของ timestamp **ตามเวลาไทย** (YYYY-MM-DD)
+ * ⚠️ ไม่ใช่ `String(iso).slice(0, 10)` ซึ่งเป็นวันแบบ UTC — ต่างกันทุกครั้งที่เหตุการณ์
+ * เกิดหลังห้าโมงเย็นเวลาไทย (17:00 +07 = 10:00Z ยังวันเดียวกัน · 00:30 +07 = 17:30Z เมื่อวาน)
+ */
+export function businessDayKey(value) {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + BUSINESS_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** งวดเดือน (YYYY-MM) ของ timestamp ตามเวลาไทย */
+export function businessMonthKey(value) {
+  const day = businessDayKey(value);
+  return day ? day.slice(0, 7) : null;
+}
+
+/** ขอบเขตของงวดเดือนแบบครึ่งเปิด [from, until) — นับตามวันไทย ไม่ใช่ UTC */
+export function dateRangeOfBusinessMonth(month) {
+  if (!isMonthValue(month)) return null;
+  const [year, m] = String(month).split('-').map(Number);
+  const nextYear = m === 12 ? year + 1 : year;
+  const nextMonth = m === 12 ? 1 : m + 1;
+  return {
+    from: businessDayStart(`${month}-01`),
+    until: businessDayStart(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01`),
+  };
+}
+
+/** ขอบเขตของทั้งปีแบบครึ่งเปิด [from, until) — นับตามวันไทย ไม่ใช่ UTC */
+export function dateRangeOfBusinessYear(year) {
+  if (!isYearValue(year)) return null;
+  return {
+    from: businessDayStart(`${year}-01-01`),
+    until: businessDayStart(`${Number(year) + 1}-01-01`),
+  };
+}
