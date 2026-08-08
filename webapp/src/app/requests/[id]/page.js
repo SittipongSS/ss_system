@@ -284,6 +284,9 @@ export default function RequestDetailPage() {
           formulaDate: hopDraft.formulaDate || null,
         } : {}),
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
+        // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
+        // "ต้องบอกเหตุผลที่ปฏิเสธ" ทั้งที่กรอกแล้ว (เจอตอนกดจริงจากตาราง ม-94)
+        ...(hop === "refuse" ? { note: hopDraft.note } : {}),
         ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
     }, outcome === "revise"
@@ -836,10 +839,19 @@ export default function RequestDetailPage() {
           — เลือกให้ที่นี่ต้องรู้ว่าหัวข้อไหนใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่
           ของเปลือก (ม-34) · เคยเขียนเป็น `docBoard.length ? … : …` ซึ่งเดาจากข้อมูล
           ⇒ ใบร่างที่ยังไม่มีแถวจะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ */}
+      {/* `rowStep` = ปุ่มก้าวติดแถวในตาราง (มติผู้ใช้ 2026-08-09) — ชุด callback
+          เดียวกับแถบท้ายเธรดเป๊ะ · ส่งเฉพาะโครง panel: โครงเดิมยังใช้แถบท้ายเธรด */}
       <KindDetail
         request={req}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        rowStep={usePanel ? {
+          canDept: canAnswer,
+          canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
+          busy: saving,
+          onHop: (row, hop, outcome) => openHop(row, hop, outcome),
+          onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
+        } : null}
         saving={saving}
         board={board}
         briefSummary={briefSummary}
@@ -892,7 +904,10 @@ export default function RequestDetailPage() {
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
       <NextStepBar
-        rows={req.items || []}
+        // ⭐ ย้าย ไม่ก๊อป (มติผู้ใช้ 2026-08-09): โครง panel ปุ่มก้าวของแถวเอกสาร
+        // อยู่ในตาราง "เอกสารที่ขอ" แล้ว — แถบท้ายเธรดต้องเงียบสำหรับแถวพวกนั้น
+        // (สองที่เมื่อไรก็เพี้ยนกันเมื่อนั้น) · หัวข้อโครงเดิมไม่กระทบ
+        rows={(req.items || []).filter((it) => !(usePanel && isDocLineKind(it.lineKind)))}
         canDept={canAnswer}
         canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
         busy={saving}

@@ -13,6 +13,7 @@
 // อย่างเดียว ต่างจากสายพัฒนาที่ผู้ขอแนบรูปอ้างอิงบนการ์ดได้ เพราะไฟล์ของสายนี้
 // คือ *ของที่ฝ่ายส่ง* ไม่ใช่ *ของประกอบที่ผู้ขอแปะ*
 import DocumentBoard from "@/components/requests/DocumentBoard";
+import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
@@ -20,13 +21,23 @@ import RequestRows from "./RequestRows";
 // สิทธิ์แนบของสายเอกสารถูกโมดัลส่งเอกสารถืออยู่คนเดียว)
 export default function DocumentDetail({
   request, docBoard: board = [],
+  rowStep,
 }) {
+  // ปุ่มก้าวติดแถว (มติผู้ใช้ 2026-08-09) — แถวของ board ชี้กลับ item ดิบด้วย id
+  // (RowStepActions ต้องอ่าน lineKind/ช่องก้าวจริง ไม่ใช่แถวสรุป)
+  const itemsById = new Map((request.items || []).map((it) => [it.id, it]));
+  const renderStep = rowStep
+    ? (boardRow) => {
+      const item = itemsById.get(boardRow.id);
+      return item ? <RowStepActions row={item} {...rowStep} /> : null;
+    }
+    : null;
   return (
     <>
       {/* ⚠️ แถบอ้างอิง QT/SO/FG กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
           DocumentPanel) — โครงหัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำ
           ที่นี่อีก (บทเรียนรางขวารุ่นแรก: ของซ้ำสองที่คือเหตุที่มันถูกยุบ) */}
-      <DocumentBoard rows={board} />
+      <DocumentBoard rows={board} renderStep={renderStep} />
 
       {/* การ์ดรายแถว (ของกลาง ห้ามโคลน · ม-34) — โหมดดูอย่างเดียว: แนบ/ลบทำใน
           โมดัลส่งเอกสารที่เดียว (ม-90) ที่นี่เหลือหน้าที่เปิดดู/ดาวน์โหลดไฟล์ที่ส่งแล้ว */}

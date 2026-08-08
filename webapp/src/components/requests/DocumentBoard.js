@@ -4,7 +4,10 @@
 // ⭐ **ของกลางสองฝ่าย** — RD ขอ IFRA/COA/MSDS · บัญชีขอใบวางบิล/ใบกำกับ · คนละชุด
 // คำศัพท์ แต่กฎของบรรทัดเหมือนกันทุกข้อ ⇒ ตารางเดียว
 //
-// ⭐ **ตารางนี้ไม่มีปุ่ม** — ปุ่มของแต่ละก้าวอยู่ท้ายเธรดที่เดียว (NextStepBar · ม-49)
+// ⭐ **ก้าวถัดไปอยู่ติดแถว** (มติผู้ใช้ 2026-08-09: "ก้าวถัดไปก็อยากในรายการ
+// เอกสารเลย") — คอลัมน์ที่สามรับปุ่มผ่าน `renderStep` จากหัวข้อ (RowStepActions
+// ก้อนเดียวกับแถบท้ายเธรด — **ย้าย ไม่ก๊อป**: ใบที่ตารางนี้มีปุ่ม แถบท้ายเธรด
+// ของแถวพวกนี้ต้องเงียบ ดูเปลือก /requests/[id])
 //
 // ⚠️ การนับอยู่ที่ `lib/requests/documentBoard.js` ทั้งหมด ไม่ประกอบใน JSX
 import { TableScroll } from "@/components/ui/Table";
@@ -12,18 +15,19 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./briefBoard.module.css";
 
-export default function DocumentBoard({ rows = [] }) {
+export default function DocumentBoard({ rows = [], renderStep = null }) {
   if (!rows.length) return null;
 
   return (
     <section className={styles.wrap} aria-label="สรุปเอกสารที่ขอ">
       <div className={styles.head}><strong>เอกสารที่ขอ</strong></div>
-      <TableScroll surface="embedded" minWidth={560}>
+      <TableScroll surface="embedded" minWidth={renderStep ? 680 : 560}>
         <table>
           <thead>
             <tr>
               <th className={styles.colName}>ชนิดเอกสาร</th>
               <th className={styles.colStage}>สถานะ</th>
+              {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
           <tbody>
@@ -38,6 +42,7 @@ export default function DocumentBoard({ rows = [] }) {
                   )}
                 </td>
                 <td><StatusBadge tone={r.stageTone} label={r.stageLabel} /></td>
+                {renderStep && <td className={styles.stepCell}>{renderStep(r)}</td>}
               </tr>
             ))}
           </tbody>
