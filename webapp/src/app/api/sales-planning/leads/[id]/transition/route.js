@@ -9,6 +9,8 @@ import {
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS, TEAM_LABELS } from '@/lib/permissions';
 import { sendChat, chatCard } from '@/lib/chat';
+import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
+import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,6 +155,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `ลีด ${lead.contactName}: ${lead.status} → ${data.status} (${action}${event.reason ? ` — ${event.reason}` : ''})`,
     request: req,
   });
+
+  /* กล่องแจ้งเตือนรายคน — แจ้ง **คนที่ต้องลงมือต่อ** ไม่ใช่ทั้งห้อง
+     ครอบ 3 จังหวะ: คัดกรองเข้าทีม (→ Senior AE/AC ของทีม) · มอบหมาย (→ AE ผู้รับ) ·
+     ตีกลับ (→ ผู้คัดกรอง + คนที่เพิ่งถูกดึงลีดออกจากมือ)
+     ⚠️ `bounce` ล้าง assigneeId ไปแล้วใน patch — ผู้รับเดิมต้องอ่านจาก `lead` (ก่อนแก้)
+     โหลดทะเบียนผู้ใช้เฉพาะจังหวะที่ต้องใช้ ไม่ใช่ทุก transition (contact/meeting ไม่ส่งมอบใคร) */
+  if (['screen', 'assign', 'bounce'].includes(action)) {
+    notifyLeadHandoff(supabase, {
+      action,
+      lead: data,
+      directory: await loadUserDirectory(supabase).catch(() => new Map()),
+      actor: user,
+      previousAssigneeId: lead.assigneeId,
+      reason: body.reason?.trim() || null,
+    });
+  }
 
   // จุดส่งมอบ 2–3/3: แจ้งคนรับช่วงถัดไปให้เริ่มนับ SLA (fire-and-forget หลังเขียน DB).
   // แจ้งเฉพาะ "จุดส่งมอบงานระหว่างคน" — screen (→ Senior ทีม) และ assign (→ AE ผู้รับ).

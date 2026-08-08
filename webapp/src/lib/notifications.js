@@ -154,6 +154,49 @@ export async function notifyThreadUpdate(supabase, { entityType, entityId, paren
   }
 }
 
+/**
+ * แจ้งเตือนที่ **ไม่ได้มาจากเธรด** — ผู้เรียกระบุผู้รับเอง
+ *
+ * ใช้กับ "จุดส่งมอบงาน" ที่ไม่มีข้อความในเธรดให้เกาะ เช่นลีดถูกคัดกรองเข้าทีม
+ * หรือถูกมอบให้ AE คนหนึ่ง — คนที่ต้องทำต่อคือคนที่ระบบเพิ่งเลือก ไม่ใช่คนที่เคย
+ * คุยในเธรด (`recipientsForUpdate` จึงตอบคำถามนี้ไม่ได้)
+ *
+ * ⚠️ `updateId` เป็น null ตามความหมายที่ประกาศไว้ใน mig 0185 ("ไม่ได้มาจากเธรด")
+ * ⇒ **ไม่มี dedupe ที่ระดับ DB** (Postgres ถือว่า NULL ไม่ซ้ำกับ NULL) ซึ่งถูกแล้ว:
+ * มอบลีดสองครั้ง = สองเหตุการณ์จริง ควรเด้งสองครั้ง
+ *
+ * ⚠️ กติกาเดียวกับทั้งไฟล์: กลืน error เอง ห้าม throw กลับไปหาผู้เรียก — ผู้เรียก
+ * อยู่หลังจุดที่ข้อมูลถูกบันทึกสำเร็จแล้ว แจ้งเตือนพลาดต้องไม่ทำให้งานที่สำเร็จตอบ error
+ */
+export async function notifyUsers(supabase, { userIds = [], entityType, entityId, kind = 'handoff', title, body, actorName } = {}) {
+  try {
+    const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+    if (!ids.length || !entityType || !entityId || !title) return { sent: 0 };
+    const rows = ids.map((userId) => ({
+      id: `NTF-${randomUUID()}`,
+      userId,
+      entityType,
+      entityId: String(entityId),
+      updateId: null,
+      kind,
+      title: String(title).slice(0, 200),
+      body: body ? String(body).slice(0, 500) : null,
+      href: notificationHref(entityType, entityId),
+      actorName: actorName || null,
+      createdAt: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('notifications').insert(rows);
+    if (error) {
+      console.error('[notifications] notifyUsers failed', entityType, entityId, error.message);
+      return { sent: 0, error: error.message };
+    }
+    return { sent: rows.length };
+  } catch (e) {
+    console.error('[notifications] notifyUsers threw', entityType, entityId, e.message);
+    return { sent: 0, error: e.message };
+  }
+}
+
 // ── อ่าน ─────────────────────────────────────────────────────────────────
 export async function listNotifications(supabase, userId, { limit = NOTIFICATION_LIST_LIMIT } = {}) {
   const { data, error } = await supabase

@@ -7,6 +7,8 @@ import {
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { sendChat, chatCard } from '@/lib/chat';
+import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
+import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +81,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     user, action: 'create', entityType: 'sales_lead', entityId: data.id, after: data,
     summary: `รับลีด ${data.contactName}${data.company ? ` (${data.company})` : ''} · ${data.channel}`,
     request: req,
+  });
+
+  /* จุดส่งมอบ 1/3 — เข้ากล่องแจ้งเตือนของ **คนที่ต้องคัดกรอง** ไม่ใช่ห้องรวม
+     ⚠️ ต้องมีคู่กับ sendChat ข้างล่าง ไม่ใช่แทนกัน: webhook = ประกาศให้ฝ่าย ·
+     notifications = งานของคุณคนเดียว (mig 0185) · และถ้าองค์กรยังไม่เปิด webhook
+     ทางนี้คือทางเดียวที่คนได้รู้ว่ามีลีดเข้ามา (ดูเหตุผลเต็มใน leadNotify.js) */
+  notifyLeadHandoff(supabase, {
+    action: 'create',
+    lead: data,
+    directory: await loadUserDirectory(supabase).catch(() => new Map()),
+    actor: user,
   });
 
   // จุดส่งมอบ 1/3: ลีดใหม่เข้าคิว → แจ้งผู้คัดกรอง (Supervisor) ให้เริ่มนับ SLA 1 วันทำการ.
