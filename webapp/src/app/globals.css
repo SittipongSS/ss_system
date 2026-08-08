@@ -809,7 +809,14 @@ button, select, input, textarea {
   min-height: calc(100vh / var(--ui-scale));
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  /* 🪤 ต้องเป็น `clip` ห้ามกลับไปเป็น `hidden` — `overflow-x: hidden` บังคับให้
+     overflow-y กลายเป็น auto ตามสเปก ทำให้กล่องนี้เป็น scroll container ทั้งที่
+     ไม่เคยเลื่อนเอง (วัด 2026-08-08: scrollHeight === clientHeight) ผลคือ
+     `position: sticky` ของลูกทุกตัวไปยึดกับกล่องที่นิ่งสนิท = ไม่ยึดอะไรเลย
+     (แถบก้าวถัดไปใน `NextStepBar` ตายเพราะข้อนี้ คำนวณ position: sticky ติด
+     แต่ไถหน้าจอแล้วแถบหลุดออกนอกจอ) · `clip` ตัดแนวนอนเหมือนเดิมทุกอย่าง
+     แต่ไม่สร้าง scroll container จึงปล่อยให้ลูกยึดกับหน้าต่างได้ */
+  overflow-x: clip;
 }
 
 .page {

@@ -21,7 +21,8 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import {
   WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
-import { ActionButton } from "@/components/ui/ActionButtons";
+import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -538,6 +539,27 @@ export default function RequestDetailPage() {
     || requestActions.secondaryActions.length > 0
     || requestActions.dangerActions.length > 0;
 
+  // รายการในเมนู "…" ของหัวใบ — secondary + danger ชุดเดิมทั้งหมด
+  // ⚠️ ลำดับ: เดินหน้ารอง → เส้นคั่น → อันตราย (แพตเทิร์นเดียวกับ RecordActionMenu)
+  //    สี/ไอคอนมาจาก `kindMeta` ตัวเดียวกับที่ปุ่มใช้ ไม่ใช่ทาเองตามกลุ่ม
+  const headerMenuItems = [
+    ...requestActions.secondaryActions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      icon: action.icon || kindMeta(action.kind)?.Icon,
+      tone: kindMeta(action.kind)?.tone || "neutral",
+      onClick: action.onClick,
+    })),
+    ...requestActions.dangerActions.map((action, index) => ({
+      id: action.id || `danger-${index}`,
+      label: action.label,
+      icon: action.icon || kindMeta(action.kind)?.Icon,
+      tone: kindMeta(action.kind)?.tone || "danger",
+      separatorBefore: index === 0 && requestActions.secondaryActions.length > 0,
+      onClick: action.onClick,
+    })),
+  ];
+
   // ⚠️ สี่ช่องพอดี — `.quickFacts` เป็น grid 4 คอลัมน์ตายตัว ใส่ช่องที่ห้าแล้วแถวที่สอง
   // จะเหลือช่องโหว่และเส้นคั่นวิ่งผิด · ของที่ไม่ติดสี่อันดับแรก (ผู้รับเรื่อง) เล่าใน
   // รางก้าวและบรรทัดใต้เนื้อคำร้องแทน
@@ -566,6 +588,14 @@ export default function RequestDetailPage() {
           ⭐ **หัวใบเดียวจบ** — สถานะ · รางก้าว · ข้อเท็จจริง · เนื้อคำร้อง · ไฟล์แนบ ·
           ปุ่ม เรียงตามลำดับที่คนอ่านจริง · ฝ่ายผู้ตอบขึ้นไปอยู่กับชนิดบน eyebrow
           เพราะสองอย่างนี้คือ "ใบนี้คืออะไร ส่งไปไหน" ซึ่งอ่านคู่กันเสมอ */}
+      {/* ⭐ **ปุ่มหลัก 1 ปุ่ม + เมนู "…"** ที่ `actions` (มติผู้ใช้ 2026-08-08) — ของเดิม
+          เรียงปุ่มเส้นขอบได้ถึง 4 ปุ่ม (เลื่อนวัน · ลบ · ตีกลับ · ยกเลิก) ต่อท้ายด้วย
+          ปุ่มหลัก ⇒ หัวใบเป็นแถวปุ่มยาวที่อ่านไม่ออกว่าอันไหนคือสิ่งที่ต้องทำ
+          ⚠️ **กติกาปุ่มไม่เปลี่ยน** — ยังผ่าน `normalizeDocumentControlActions` ตัวเดิม
+          (`visible: false` ตัดออกให้แล้ว) · ที่เปลี่ยนคือที่วางเท่านั้น
+          ⚠️ ไอคอน/สีของรายการมาจาก `kindMeta` ชุดเดียวกับปุ่ม ⇒ เมนูกับปุ่มพูดเรื่อง
+          เดียวกันเสมอ (บทเรียนจาก RecordActionMenu: เมนูทา "ตีกลับ" เป็นแดง แต่การ์ด
+          โชว์เทา ทั้งที่เป็น action เดียวกัน) */}
       <SalesDetailOverview
         eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
@@ -573,18 +603,6 @@ export default function RequestDetailPage() {
         badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
         actions={hasHeaderActions ? (
           <>
-            {requestActions.secondaryActions.map((action) => (
-              <ActionButton
-                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
-                variant="outline" disabled={saving} onClick={action.onClick}
-              />
-            ))}
-            {requestActions.dangerActions.map((action) => (
-              <ActionButton
-                key={action.id} kind={action.kind} label={action.label} icon={action.icon}
-                variant="outline" disabled={saving} onClick={action.onClick}
-              />
-            ))}
             {requestActions.primaryAction ? (
               <ActionButton
                 kind={requestActions.primaryAction.kind}
@@ -594,6 +612,13 @@ export default function RequestDetailPage() {
                 onClick={requestActions.primaryAction.onClick}
               />
             ) : null}
+            {headerMenuItems.length > 0 && (
+              <RowActionMenu
+                label={`การจัดการของ ${req.docNo || "คำร้อง"}`}
+                items={headerMenuItems}
+                busy={saving}
+              />
+            )}
           </>
         ) : null}
         facts={headerFacts}
@@ -715,18 +740,25 @@ export default function RequestDetailPage() {
           composeHint={composeHint}
           onPosted={load}
         />
-        {/* ⭐ ก้าวถัดไปอยู่ **ท้ายเธรด** ไม่ใช่บนรางรายแถว (ม-36 ก) — เธรดเป็นแกน
-            ของหน้า สถานะกับบทสนทนาอยู่สายเดียวกัน แล้วจบด้วย "ต้องทำอะไรต่อ" */}
-        <NextStepBar
-          rows={req.items || []}
-          canDept={canAnswer}
-          canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
-          busy={saving}
-          onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
-          onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
-          requestStep={threadStep}
-        />
       </DetailCard>
+
+      {/* ⭐ ก้าวถัดไปอยู่ **ท้ายเธรด** ไม่ใช่บนรางรายแถว (ม-36 ก) — เธรดเป็นแกน
+          ของหน้า สถานะกับบทสนทนาอยู่สายเดียวกัน แล้วจบด้วย "ต้องทำอะไรต่อ"
+          ⭐ **ปักหมุดล่างจอ** (มติผู้ใช้ 2026-08-08 · อาการ "ไม่รู้ว่าต้องทำอะไรต่อ") —
+          ใบที่คุยกันมา 20 ข้อความต้องเลื่อนผ่านทั้งเธรดกว่าจะเจอปุ่ม
+          ⚠️ **ปักหมุด ไม่ใช่ย้าย** — ปุ่มยังอยู่ที่เดียวตามที่ ม-49/ม-57 บังคับ
+          เปลี่ยนแค่ว่ามันติดจออยู่ตลอดระหว่างเลื่อนอ่าน
+          ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
+          ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
+      <NextStepBar
+        rows={req.items || []}
+        canDept={canAnswer}
+        canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
+        busy={saving}
+        onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
+        onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
+        requestStep={threadStep}
+      />
         </div>
       </DetailPageLayout>
 

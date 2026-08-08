@@ -161,6 +161,13 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 - 🪤 **`grep "\bชื่อคลาส\b"` นับเกิน** — `\b` แมตช์คลาสที่มีขีดนำหน้าด้วย ใช้
   `(?<![\w-])…(?![\w-])` แบบเดียวกับ ratchet
 - ⚠️ **`var(--x, ค่าเก่า)` ตายทันทีที่ `--x` ถูกประกาศ** — `.ui-select.compact` ไม่เคยทำงานเลย
+- 🪤 **`overflow-x: hidden` ฆ่า `position: sticky` ของลูกทุกตัว** — ตามสเปก แกนหนึ่งเป็น
+  `hidden` บังคับอีกแกนที่เป็น `visible` ให้กลายเป็น `auto` กล่องนั้นจึงเป็น scroll
+  container ทั้งที่ไม่เคยเลื่อนเอง แล้วลูกที่ sticky ไปยึดกับกล่องที่นิ่งสนิท
+  **`getComputedStyle` ตอบว่า `sticky` ครบทุกค่า** (position · bottom · z-index) จึงดู
+  เหมือนทำงาน — ต้องวัด `getBoundingClientRect()` **ตอนเลื่อนจริง** ถึงจะเห็นว่าหลุดจอ
+  ⇒ ใช้ `overflow-x: clip` แทน (ตัดแนวนอนเหมือนกัน แต่ไม่สร้าง scroll container)
+  · `.main-content` โดนข้อนี้เต็ม ๆ · ล็อกไว้ที่ `stickyScrollport.test.mjs`
 
 ## วิธีวัดว่า "หน้าตาไม่ขยับ" จริงไหม
 
