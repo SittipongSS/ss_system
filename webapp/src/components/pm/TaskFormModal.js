@@ -11,11 +11,13 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
+import StageSteps from "@/components/ui/StageSteps";
 import Select from "@/components/ui/Select";
 import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
+import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
@@ -82,6 +84,14 @@ export default function TaskFormModal({
   const editing = !!task;
   const [form, setForm] = useState(TASK_BLANK);
   const [lateReason, setLateReason] = useState("");
+  /* ⭐ "ไม่ผูกดีล" — ทางออกที่ **ต้องกดเอง** (มติผู้ใช้ 2026-08-08 ผ่อนมติ 2026-08-06)
+     ค่าตั้งต้นคือ *ผูกดีล* เสมอ (false) เพราะเหตุผลเดิมยังจริง: งานที่ไม่ผูกดีล
+     หน้าดีล/หน้าโครงการมองไม่เห็น และ KPI รายดีลนับไม่ครบ — แต่เดิมบังคับ 100%
+     ทำให้งานที่ไม่ได้เกิดจากดีลจริง ๆ (งานดูแลระบบ/งานภายใน) ต้องยัดดีลมั่ว ๆ
+     ⇒ เปิดทางออกไว้แต่ให้เห็นชัดว่าเลือกเอง ไม่ใช่ลืมเลือก
+     งานเก่าที่ไม่มีดีล (ก่อนกติกา 2026-08-06) เปิดมาแล้วสวิตช์ติดเอง — ไม่งั้น
+     แค่แก้ชื่องานก็โดนด่านตีกลับ */
+  const [noDealLink, setNoDealLink] = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -92,6 +102,7 @@ export default function TaskFormModal({
   useEffect(() => {
     if (!open) return;
     setForm(task ? taskToForm(task) : { ...TASK_BLANK, ...(initialForm || {}) });
+    setNoDealLink(!!task && !task.dealId && !task.inquiryId);
     setLateReason("");
     setPendingFiles([]);
     setError("");
@@ -105,7 +116,7 @@ export default function TaskFormModal({
   // ต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว
   // ⚠️ `me` ต้องมาจริงเสมอ — `requiresDealLink(null)` = false แปลว่าหน้าไหนลืมส่ง me
   //    ช่องดีลจะไม่ถูกบังคับเงียบ ๆ (API ยังกันให้อยู่ แต่ผู้ใช้จะเจอ error ตอนกดบันทึก)
-  const dealRequired = canManage && !inquirySource && requiresDealLink(me);
+  const dealRequired = canManage && !inquirySource && !noDealLink && requiresDealLink(me);
   // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้
   const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
 
@@ -131,8 +142,10 @@ export default function TaskFormModal({
     setPendingFiles((cur) => [...cur, ...picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)]);
   };
 
+  // เรียกได้ทั้งจาก onSubmit ของฟอร์ม (กด Enter) และจากปุ่มในแถบท้ายโมดัล
+  // ซึ่งอยู่นอก <form> — ปุ่มนั้นส่ง event ที่ไม่มี preventDefault ก็ยังทำงานได้
   const submit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     setError("");
     if (canManage && !form.title.trim()) { setError("ต้องระบุชื่องาน"); return; }
     if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกโครงการแล้วเลือกดีลก่อนบันทึก"); return; }
@@ -149,7 +162,11 @@ export default function TaskFormModal({
         payload = {
           title: form.title, note: form.note,
           startDate: form.startDate || null, dueDate: form.dueDate || null,
-          projectId, dealId,
+          projectId: noDealLink ? null : projectId,
+          dealId: noDealLink ? null : dealId,
+          // ธง "ตั้งใจไม่ผูกดีล" — ด่านฝั่ง server ปล่อยผ่านเฉพาะเมื่อมีธงนี้
+          // (ค่าตั้งต้นยังเป็น "ผูก" เสมอ — ดูคอมเมนต์ที่ state)
+          ...(noDealLink ? { noDealLink: true } : {}),
           assigneeId: form.assigneeId || null,
           category: form.category || null,
           important: !!form.important, urgent: !!form.urgent,
@@ -197,17 +214,32 @@ export default function TaskFormModal({
   const cannotAssign = !!me && !assignableUsers.some((u) => u.id !== me.id);
 
   return (
-    <Modal open={open} onClose={() => !saving && onClose?.()} title={editing ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
+    <Modal
+      open={open}
+      onClose={() => !saving && onClose?.()}
+      title={editing ? "แก้ไขงาน" : "เพิ่มงาน"}
+      /* บริบทต้นทางอยู่ในหัวที่นิ่ง ไม่จมไปกับฟอร์มตอนเลื่อน (โครงสามชั้น)
+         เดิมเป็นการ์ด glass-panel ในเนื้อหา — ภาษากระจกถูกตัดไปแล้วใน v2 */
+      subtitle={inquirySource ? (
+        <>
+          สร้างจากคำร้อง <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
+          {" — ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ"}
+        </>
+      ) : null}
+      size="md"
+      footer={(
+        <>
+          <Button variant="quiet" onClick={onClose} disabled={saving}>ยกเลิก</Button>
+          <Button tone="primary" onClick={submit} disabled={saving}>
+            {saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}
+          </Button>
+        </>
+      )}
+    >
       <form onSubmit={submit}>
         <div className="grid gap-[14px]">
-          {inquirySource && (
-            <div className="glass-panel" style={{ padding: "10px 12px", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-              สร้างจากคำร้อง <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
-              <div style={{ marginTop: 3, color: "var(--text-3)" }}>ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ</div>
-            </div>
-          )}
           {editing && !canManage && (
-            <div className="ui-badge" style={{ color: "var(--text-3)" }}>แก้ได้เฉพาะสถานะ — ช่องอื่นเป็นของผู้ดูแลงาน</div>
+            <div className="ui-badge text-[var(--text-3)]">แก้ได้เฉพาะสถานะ — ช่องอื่นเป็นของผู้ดูแลงาน</div>
           )}
 
           <div className="form-group">
@@ -215,23 +247,135 @@ export default function TaskFormModal({
             <input value={form.title} onChange={(e) => set({ title: e.target.value })} required={canManage} disabled={!canManage} className="premium-input w-full" placeholder="เช่น โทรตามลูกค้า, เตรียมเอกสาร" />
           </div>
 
+          {/* สถานะ = 3 ขั้นมีลำดับ ⇒ แถบขั้น ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล
+              docs/form-design-rules.md §3) · ตัวเลขใต้ขั้นคือ % ที่ระบบคิดให้จาก
+              สถานะ (`taskProgressPct` — ตัวเดียวกับที่ไปโผล่บนความคืบหน้าโครงการ)
+              ⇒ เห็นผลของการเลือกก่อนกด แบบเดียวกับ FC% ใต้ขั้นของดีล */}
           {editing && (
             <div className="form-group">
               <label>สถานะ</label>
-              <Select fullWidth value={form.status} disabled={!canChangeStatus} onChange={(e) => set({ status: e.target.value })}>
-                {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
+              <StageSteps
+                value={form.status}
+                onChange={(status) => set({ status })}
+                disabled={!canChangeStatus}
+                ariaLabel="สถานะงาน"
+                steps={STATUS_OPTIONS.map(([value, label]) => ({
+                  value,
+                  label,
+                  sub: `${taskProgressPct(value)}%`,
+                  tone: value === "Completed" ? "win" : undefined,
+                }))}
+              />
             </div>
           )}
 
           {needLateReason && (
             <div className="form-group">
-              <label style={{ color: "var(--amber)" }}>สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
+              <label className="text-[var(--amber)]">สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
               <Textarea className="w-full" rows={2} value={lateReason} autoFocus
                 onChange={(e) => setLateReason(e.target.value)}
                 placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." />
             </div>
           )}
+
+          {/* ── ลำดับของฟอร์ม (docs/form-design-rules.md §1) ──────────────────
+              ชื่องาน (อะไร) → สถานะ (ตอนนี้ถึงไหน) → ผูกดีล (งานนี้ของใคร/ไปโผล่ที่ไหน
+              — ช่องบังคับ จึงห้ามซ่อนท้ายฟอร์มให้คนกรอกจนจบแล้วค่อยเจอด่าน) →
+              วันที่ → ลักษณะงาน (หมวด/ธง/ความยาก) → รายละเอียด → มอบหมายให้ (ท้ายสุด
+              ตามกติกา "ความรับผิดชอบอยู่ท้าย" เหมือนช่อง AE ของฟอร์มดีล) */}
+          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05) และ
+              ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย —
+              ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
+          {showDealLink && (
+            <div className="form-group">
+              <label className="flex items-center justify-between gap-2">
+                <span>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</span>
+                {/* ทางออกที่ต้องกดเอง — ค่าตั้งต้นคือผูกดีล (สวิตช์ปิด) */}
+                {canManage && !inquirySource && (
+                  <button type="button" className="ui-switch" data-on={noDealLink ? "1" : undefined}
+                    aria-pressed={noDealLink}
+                    onClick={() => { setNoDealLink((on) => !on); if (!noDealLink) set({ dealId: "" }); }}>
+                    <i aria-hidden="true" />ไม่ผูกดีล
+                  </button>
+                )}
+              </label>
+              {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (โครงการ | ดีล) ค้นได้ทั้งสองฝั่ง
+                  โครงการไม่ใช่ช่องที่ต้องกรอก เพราะโครงการของงาน mirror จากดีลเสมอ */}
+              <DealPicker
+                deals={pickerDeals}
+                projects={projects}
+                value={form.dealId}
+                onChange={(v) => set({ dealId: v })}
+                disabled={!!inquirySource || !canManage || noDealLink}
+                clearable={!dealRequired}
+                ariaLabel="ดีลที่ผูกกับงาน" />
+              {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
+                  ตั้งแต่ตอนกรอกว่างานจะไปโผล่ที่ไหน (หรือไม่โผล่ในโครงการไหนเลย) */}
+              {pickedDeal && (
+                <div className="text-[11px] text-[var(--text-3)] mt-1">
+                  {!pickedDeal.projectId
+                    ? "ดีลนี้ยังไม่ผูกโครงการ — งานจะอยู่กับดีลอย่างเดียว ยังไม่ขึ้นในหน้าโครงการ"
+                    : `งานนี้จะอยู่ในโครงการ ${pickedProject ? `${pickedProject.code ? `${pickedProject.code} · ` : ""}${pickedProject.name}` : "ที่ผูกกับดีลนี้"}`}
+                </div>
+              )}
+              {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
+              {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
+              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ค่าตั้งต้นคือผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่ และ KPI รายดีลนับไม่ครบ</div>}
+              {/* เลือก "ไม่ผูกดีล" เอง = ต้องรู้ว่าแลกอะไรไป — เตือนตรงจุดที่เพิ่งกด */}
+              {noDealLink && <div className="text-[11px] text-[var(--amber)] mt-1">งานนี้จะไม่โผล่ในหน้าดีลและหน้าโครงการ และไม่ถูกนับใน KPI รายดีล</div>}
+            </div>
+          )}
+
+          <div className="pm-form-grid gap-3">
+            <div className="form-group">
+              <label>วันเริ่ม</label>
+              <DateInput value={form.startDate} onChange={(v) => set({ startDate: v })} disabled={!canManage} className="w-full" />
+            </div>
+            <div className="form-group">
+              <label>กำหนดเสร็จ</label>
+              <DateInput value={form.dueDate} onChange={(v) => set({ dueDate: v })} disabled={!canManage} className="w-full" />
+            </div>
+          </div>
+
+          <div className="pm-form-grid gap-3">
+            <div className="form-group">
+              <label><Tag size={12} className="inline align-[-1px]" /> หมวดหมู่</label>
+              <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
+                <option value="">— ไม่ระบุ —</option>
+                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <div className="form-group">
+              <label>ธงของงาน</label>
+              <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.important ? "1" : undefined} aria-pressed={form.important}
+                  onClick={() => set({ important: !form.important })}>
+                  <i aria-hidden="true" /><Star size={13} /> สำคัญ
+                </button>
+                <button type="button" className="ui-switch" disabled={!canManage}
+                  data-on={form.urgent ? "1" : undefined} aria-pressed={form.urgent}
+                  onClick={() => set({ urgent: !form.urgent })}>
+                  <i aria-hidden="true" /><Flame size={13} /> ด่วน
+                </button>
+              </div>
+            </div>
+          </div>
+
+            <div className="form-group">
+              <label>ระดับความยาก</label>
+              <StageSteps
+                value={String(form.difficulty)}
+                onChange={(v) => set({ difficulty: Number(v) })}
+                disabled={!canManage}
+                ariaLabel="ระดับความยาก"
+                steps={DIFFICULTY_OPTIONS.map((d) => ({
+                  value: String(d),
+                  label: DIFFICULTY_LABELS[d],
+                  sub: `ระดับ ${d}`,
+                }))}
+              />
+            </div>
 
           <div className="form-group">
             <label>รายละเอียด</label>
@@ -269,75 +413,8 @@ export default function TaskFormModal({
               </div>
             )}
           </div>
-
-          <div className="pm-form-grid gap-3">
-            <div className="form-group">
-              <label>วันเริ่ม</label>
-              <DateInput value={form.startDate} onChange={(v) => set({ startDate: v })} disabled={!canManage} className="w-full" />
-            </div>
-            <div className="form-group">
-              <label>กำหนดเสร็จ</label>
-              <DateInput value={form.dueDate} onChange={(v) => set({ dueDate: v })} disabled={!canManage} className="w-full" />
-            </div>
-          </div>
-
-          <div className="pm-form-grid gap-3">
-            <div className="form-group">
-              <label><Tag size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> หมวดหมู่</label>
-              <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
-                <option value="">— ไม่ระบุ —</option>
-                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </div>
-            <div className="form-group">
-              <label>ระดับความยาก</label>
-              <Select fullWidth value={String(form.difficulty)} disabled={!canManage} onChange={(e) => set({ difficulty: Number(e.target.value) })}>
-                {DIFFICULTY_OPTIONS.map((d) => <option key={d} value={d}>{DIFFICULTY_LABELS[d]}</option>)}
-              </Select>
-            </div>
-          </div>
-
           <div className="form-group">
-            <label>ความสำคัญ</label>
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button type="button" disabled={!canManage} onClick={() => set({ important: !form.important })} className={`btn sm${form.important ? " btn-primary" : ""}`}><Star size={14} /> สำคัญ</button>
-              <button type="button" disabled={!canManage} onClick={() => set({ urgent: !form.urgent })} className={`btn sm${form.urgent ? " btn-primary" : ""}`}><Flame size={14} /> ด่วน</button>
-            </div>
-          </div>
-
-          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05) และ
-              ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย —
-              ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
-          {showDealLink && (
-            <div className="form-group">
-              <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
-              {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (โครงการ | ดีล) ค้นได้ทั้งสองฝั่ง
-                  โครงการไม่ใช่ช่องที่ต้องกรอก เพราะโครงการของงาน mirror จากดีลเสมอ */}
-              <DealPicker
-                deals={pickerDeals}
-                projects={projects}
-                value={form.dealId}
-                onChange={(v) => set({ dealId: v })}
-                disabled={!!inquirySource || !canManage}
-                clearable={!dealRequired}
-                ariaLabel="ดีลที่ผูกกับงาน" />
-              {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
-                  ตั้งแต่ตอนกรอกว่างานจะไปโผล่ที่ไหน (หรือไม่โผล่ในโครงการไหนเลย) */}
-              {pickedDeal && (
-                <div className="text-[11px] text-[var(--text-3)] mt-1">
-                  {!pickedDeal.projectId
-                    ? "ดีลนี้ยังไม่ผูกโครงการ — งานจะอยู่กับดีลอย่างเดียว ยังไม่ขึ้นในหน้าโครงการ"
-                    : `งานนี้จะอยู่ในโครงการ ${pickedProject ? `${pickedProject.code ? `${pickedProject.code} · ` : ""}${pickedProject.name}` : "ที่ผูกกับดีลนี้"}`}
-                </div>
-              )}
-              {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
-              {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ทุกงานต้องผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่</div>}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
+            <label><UserPlus size={12} className="inline align-[-1px]" /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
             <PersonSelect
               users={assignableUsers.filter((u) => u.id !== me?.id)}
               value={form.assigneeId}
@@ -354,10 +431,6 @@ export default function TaskFormModal({
 
         {error && <div className="text-xs text-[var(--red)] bg-[var(--red-soft)] rounded p-2 mt-3" role="alert">{error}</div>}
 
-        <div className="form-action-bar">
-          <button type="button" onClick={onClose} className="btn" disabled={saving}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn-primary">{saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}</button>
-        </div>
       </form>
     </Modal>
   );

@@ -3600,6 +3600,7 @@ button.empty-state { width: 100%; font: inherit; }
   left: 1px;
   transition: left var(--motion-fast);
 }
+.ui-switch:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .ui-switch[data-on] { color: var(--accent-ink); font-weight: var(--fw-semibold); }
 .ui-switch[data-on] i { background: var(--accent); border-color: var(--accent); }
 .ui-switch[data-on] i::after { left: 12px; background: var(--accent-fg); }
