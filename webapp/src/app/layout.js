@@ -44,6 +44,10 @@ export default function RootLayout({ children }) {
                 document.documentElement.classList.remove('dark');
                 document.documentElement.setAttribute('data-theme', 'light');
               }
+              // Design v2 "โต๊ะช่าง" — ชั้นทดลองคู่ขนาน สลับที่ /settings/design-preview
+              if (localStorage.ds === 'v2') {
+                document.documentElement.setAttribute('data-ds', 'v2');
+              }
             } catch (_) {}
           `,
         }} />
