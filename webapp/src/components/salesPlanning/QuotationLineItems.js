@@ -165,7 +165,9 @@ export default function QuotationLineItems({
   return (
     <>
       <div className="premium-glass-table table-responsive">
-        <TableScroll surface="embedded" family="editable"><table className={`w-full text-sm ${styles.linesTable}`}>
+        {/* cells="stacked": เซลล์รายการซ้อนหลายบรรทัด (SKU+ชื่อ+หมายเหตุ / ช่อง+หน่วย)
+            — ค่าตั้งต้น middle ทำคอนโทรลแต่ละคอลัมน์ลอยคนละระดับ (กฎ 5) */}
+        <TableScroll surface="embedded" family="editable" cells="stacked"><table className={`w-full text-sm ${styles.linesTable}`}>
           <thead>
             <tr>
               <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
