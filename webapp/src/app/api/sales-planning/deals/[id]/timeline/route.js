@@ -1,14 +1,11 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can } from '@/lib/permissions';
-import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
-import { setHolidays } from '@/lib/pm/dateHelpers';
-import { holidaySet } from '@/lib/master/holidays';
-import { applyAutoStatuses } from '@/lib/pm/status';
-import { advanceStage, canEditSalesPlanning, dealAuditLabel, normalizeDealType, inSalesEditScope } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
-import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
-import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { activeProductTypeError } from '@/lib/master/productTypes';
+import { WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,40 +43,31 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if ((existing || 0) > 0) return conflict('ดีลนี้มีไทม์ไลน์แล้ว — ลบก่อนถ้าต้องการสร้างใหม่');
 
   const body = await req.json().catch(() => ({}));
-  // ประเภทดีล = ตัวเลือก template. caller (โมดัลยืนยันก่อนสร้าง) ส่ง type มาให้ยืนยัน/
-  // สลับได้ → ถ้าต่างจากที่เก็บ อัปเดต deal.dealType ให้ตรงไปเลย (กัน "ดึงผิดประเภท"
-  // เพราะ dealType เก่าค้างผิด — มติ 2026-07-21). ไม่ส่ง = ใช้ประเภทที่ดีลเก็บไว้เดิม.
-  const genType = normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType);
-  const categoryCode = (body.categoryCode ?? deal.categoryCode ?? '').trim() || null;
   // ตรวจ "หมวดพักใช้" เฉพาะตอน caller เปลี่ยนหมวด (ส่ง categoryCode ใหม่ที่ต่างจากเดิม)
   // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างไทม์ไลน์ต่อได้ (กติกาเดียวกับ deal PATCH:
   // historic deals may retain a category that was later deactivated).
   const categoryChanged = body.categoryCode != null
     && String(body.categoryCode).trim() !== (deal.categoryCode || '');
   if (categoryChanged) {
-    const categoryError = await activeProductTypeError(categoryCode);
+    const categoryError = await activeProductTypeError((body.categoryCode || '').trim() || null);
     if (categoryError) return badRequest(categoryError);
   }
-  // anchor: body > วันที่เริ่มของดีล (mig 0095) > วันนี้
-  const startDate = body.startDate || deal.startDate || todayStr();
   const now = new Date().toISOString();
 
-  setHolidays([...(await holidaySet())]);
-  let templateOptions;
+  // ประเภทดีล = ตัวเลือก template. caller (โมดัลยืนยันก่อนสร้าง) ส่ง type มาให้ยืนยัน/
+  // สลับได้ → ถ้าต่างจากที่เก็บ อัปเดต deal.dealType ให้ตรงไปเลย (กัน "ดึงผิดประเภท"
+  // เพราะ dealType เก่าค้างผิด — มติ 2026-07-21). ไม่ส่ง = ใช้ประเภทที่ดีลเก็บไว้เดิม.
+  // ลำดับ template→ธงหมวด→build อยู่ใน buildDealTimelineRows ที่เดียว (ใช้ร่วมกับ
+  // auto-gen ตอนสร้างดีล และ regen ตอนแก้ประเภท/หมวด)
+  let built;
   try {
-    templateOptions = await loadWorkflowTemplateForGeneration(supabase, genType);
+    built = await buildDealTimelineRows(supabase, deal, {
+      type: body.type, categoryCode: body.categoryCode, startDate: body.startDate,
+    });
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
-  // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ต้องส่งธงของหมวดดีล
-  templateOptions.categoryFlags = await categoryFlagsOf(categoryCode);
-  const rows = applyAutoStatuses(buildProjectTasks(
-    // เทียบ field โครงการ: type = ประเภทดีล (ที่ยืนยัน), productMainCategory = หมวดบนดีล
-    { type: genType, productMainCategory: categoryCode || '', startDate, aeOwner: deal.ownerName || '' },
-    null,          // projectId ว่าง = ไทม์ไลน์ลอยของดีล
-    deal.id,
-    templateOptions,
-  ));
+  const { rows, genType, categoryCode } = built;
   // 0 แถว = template หลังกรองหมวดสินค้าไม่เหลือขั้นตอนเลย (หมวดของดีลไม่ตรง step ไหน
   // หรือ published template ของประเภทนี้ว่าง). เดิม insert([]) แล้วตอบ 201 เงียบ ๆ →
   // หน้าโหลดใหม่เจอ 0 task โชว์ปุ่มเดิม = ผู้ใช้เห็นว่า "กดแล้วไม่ขึ้นอะไร". ปฏิเสธพร้อมบอกสาเหตุ
