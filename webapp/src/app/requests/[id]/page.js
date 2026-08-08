@@ -25,6 +25,7 @@ import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
@@ -41,7 +42,8 @@ import {
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
-import { hopLabel, hopValuesError } from "@/lib/requests/hops";
+import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
+import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
 import { detailForKind } from "@/components/requests/details";
@@ -91,7 +93,14 @@ const HOP_DATE_LABEL = {
   pickup: "วันที่รับของ",
   send: "วันที่ส่งให้ลูกค้า",
   outcome: "วันที่ลูกค้าตอบ",
+  receive: "วันที่ได้รับเอกสาร",
+  // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
+
+// สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" (ม-89) — ป้ายวันในโมดัลต้องพูดคำเดียวกัน
+const hopDateLabel = (draft) => (draft.hop === "ready" && isDocLineKind(draft.item.lineKind)
+  ? "วันที่ส่งเอกสาร"
+  : HOP_DATE_LABEL[draft.hop]);
 
 export default function RequestDetailPage() {
   const { id } = useParams();
@@ -228,7 +237,9 @@ export default function RequestDetailPage() {
   // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
   // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
   const hasItems = requestHasItems(req.kind);
-  const canClose = !closeRequestError(req, req.items || []) && (req._mine || owner);
+  // ⭐ ปิดสองฝ่าย (ม-89) — ปุ่มปิดเป็นของ **ผู้ขอ** เท่านั้น · ฝ่ายปลายทางจบงาน
+  // ของตัวผ่านรายการ (ส่งเอกสาร/ปฏิเสธ) ไปแล้ว การปิดคือผู้ขอยืนยันรับงานทั้งใบ
+  const canClose = !closeRequestError(req, req.items || []) && req._mine;
   // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
   const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
@@ -961,6 +972,18 @@ export default function RequestDetailPage() {
                       })}
                     />
                   </div>
+                  {/* ไฟล์ประกอบ (ม-91) — แถวมีอยู่แล้ว อัปตรงเข้าแถวนั้นทันที */}
+                  <div className="form-group col-span-2">
+                    <span className="toolbar-label">
+                      ไฟล์ประกอบ <span className={styles.fieldHint}>(ไม่บังคับ)</span>
+                    </span>
+                    <AttachmentsPanel
+                      entityType="dept_request_item"
+                      entityId={row.item.id}
+                      canEdit={!saving}
+                      inlineUpload
+                    />
+                  </div>
                 </div>
               </div>
             ))}
@@ -980,12 +1003,13 @@ export default function RequestDetailPage() {
           ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
       <Modal
         open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
-        title={hopDraft ? `${hopLabel(hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
+        title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
       >
         {hopDraft && (
           <>
+            {hopDraft.hop !== "refuse" && (
             <div className="form-group">
-              <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
+              <label htmlFor="hop-at">{hopDateLabel(hopDraft)}</label>
               {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
                   (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
               <DateInput
@@ -993,6 +1017,44 @@ export default function RequestDetailPage() {
                 onChange={(v) => setHopDraft({ ...hopDraft, at: v })}
               />
             </div>
+            )}
+
+            {/* ⭐ ปฏิเสธ (สายเอกสาร · ม-85 · คำตาม ม-89) — เหตุผลบังคับ คือหลักฐาน
+                แสดงติดแถวในตารางสรุปเสมอ (constraint answer_evidence บังคับคู่นี้) */}
+            {hopDraft.hop === "refuse" && (
+              <div className="form-group">
+                <label htmlFor="hop-refuse-why">เหตุผลที่ปฏิเสธ</label>
+                <Textarea variant="data"
+                  id="hop-refuse-why" rows={3} maxLength={2000}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder="เช่น เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอเอกสารจากเขาโดยตรง"
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  ผู้ขอเห็นเหตุผลนี้ติดแถวเอกสารในใบ — รายการจะจบแบบ &quot;ปฏิเสธ&quot;
+                </p>
+              </div>
+            )}
+
+            {/* ⭐ ส่งเอกสาร (ม-89 · ม-90) — **โมดัลนี้คือที่แนบไฟล์ที่เดียวของสาย
+                เอกสาร** เดิมแนบได้ทั้งการ์ดแถวและที่นี่ ผู้ใช้ชี้ว่าสองทาง = สับสน
+                ("flow การส่งเอกสาร ต้องเป็นแบบเดียว") ⇒ การ์ดแถวเหลือดูอย่างเดียว
+                (DocumentDetail) · ด่านฝั่ง server (ไฟล์ ≥ 1) ยังเป็น backstop */}
+            {hopDraft.hop === "ready" && isDocLineKind(hopDraft.item.lineKind) && (
+              <div className="form-group">
+                <label>ไฟล์เอกสารที่จะส่ง (แนบได้หลายไฟล์)</label>
+                <AttachmentsPanel
+                  entityType="dept_request_item"
+                  entityId={hopDraft.item.id}
+                  canEdit={!saving}
+                  inlineUpload
+                />
+                <p className={styles.fieldHint}>
+                  ต้องมีอย่างน้อย 1 ไฟล์ก่อนกดบันทึก — หลังส่ง ไฟล์โผล่ที่การ์ดรายการ
+                  และแท็บเอกสารของดีล/โครงการ
+                </p>
+              </div>
+            )}
 
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
               <>
@@ -1023,6 +1085,20 @@ export default function RequestDetailPage() {
                   <DateInput
                     id="hop-formula-date" value={hopDraft.formulaDate} disabled={saving}
                     onChange={(v) => setHopDraft({ ...hopDraft, formulaDate: v })}
+                  />
+                </div>
+                {/* ไฟล์ประกอบ (ม-91) — สามสายกดส่งแล้วจบในโมดัลเดียวเหมือนกัน ·
+                    ไม่บังคับ: ตัวงานคือสูตรที่เข้าทะเบียน ไฟล์เป็นของแถม (ต่างจาก
+                    สายเอกสารที่ไฟล์คือตัวงาน จึงบังคับ ≥ 1) · แถวมีอยู่แล้ว อัปตรง */}
+                <div className="form-group">
+                  <span className="toolbar-label">
+                    ไฟล์ประกอบ <span className={styles.fieldHint}>(ไม่บังคับ · แนบได้หลายไฟล์)</span>
+                  </span>
+                  <AttachmentsPanel
+                    entityType="dept_request_item"
+                    entityId={hopDraft.item.id}
+                    canEdit={!saving}
+                    inlineUpload
                   />
                 </div>
               </>
@@ -1243,10 +1319,46 @@ export default function RequestDetailPage() {
                 tone="primary"
                 disabled={saving || !!deliveryBlocker}
                 onClick={async () => {
+                  // ⚠️ คีย์ขีดล่าง (_files ฯลฯ) เป็นของฟอร์มล้วน — File serialize
+                  // เป็น {} เปล่า ๆ ส่งไปมีแต่ทางให้ server งง
+                  const prevIds = new Set((req.items || []).map((x) => x.id));
+                  const rows = delivery.map(
+                    ({ _files, _sourceLabel, _customerNote, ...r }) => r,
+                  );
                   const done = await call("/items", {
-                    method: "POST", body: JSON.stringify({ rows: delivery }),
+                    method: "POST", body: JSON.stringify({ rows }),
                   }, `ส่งกลิ่น ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
-                  if (done) setDelivery(null);
+                  if (!done) return;
+                  setDelivery(null);
+                  // ⭐ ไฟล์ประกอบ (ม-91) — แถวเพิ่งเกิดตอนส่ง จึงอัปได้ตอนนี้เท่านั้น
+                  // จับคู่: แถวใหม่เรียง sortOrder ตามลำดับ direction ที่กรอก ·
+                  // รอบแก้เติมแถวเดิม (targetItemId รู้อยู่แล้ว)
+                  // ⚠️ อัปพังไม่ย้อนอะไร — กลิ่น/แถวบันทึกแล้ว การ์ดรายการยังแนบ
+                  // ต่อได้ (สายพัฒนาแนบบนการ์ดได้ตาม ม-90)
+                  if (!delivery.some((r) => (r._files || []).length)) return;
+                  const after = await fetch(`/api/sa/requests/${id}`)
+                    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+                  const freshRows = ((after && after.items) || [])
+                    .filter((x) => !prevIds.has(x.id))
+                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+                  let fi = 0;
+                  const failed = [];
+                  for (const row of delivery) {
+                    const targetId = row.targetItemId
+                      ? row.targetItemId : freshRows[fi++]?.id;
+                    for (const f of row._files || []) {
+                      if (!targetId) { failed.push(f.name); continue; }
+                      const up = await uploadAttachment({
+                        entityType: "dept_request_item", entityId: targetId,
+                        file: f, docType: "other",
+                      });
+                      if (!up.ok) failed.push(f.name);
+                    }
+                  }
+                  if (failed.length) {
+                    setToast({ kind: "error", msg: `กลิ่นเข้าทะเบียนแล้ว แต่แนบไฟล์ไม่สำเร็จ ${failed.length} ไฟล์ (${failed.join(", ")}) — แนบใหม่ได้ที่การ์ดรายการ` });
+                  }
+                  await load();
                 }}
               >
                 ส่งและเข้าทะเบียน

@@ -296,8 +296,14 @@ export async function PATCH(request, { params }) {
       patch.answeredAt = nowIso;
       summary = `ตอบคำร้อง ${before.docNo || id}`;
     } else if (action === 'close') {
-      if (!canManageRequest(user, before) && !canAnswerRequest(user, before)) {
-        return Response.json({ error: 'ไม่มีสิทธิ์ปิดเรื่องนี้' }, { status: 403 });
+      // ⭐ **ปิดสองฝ่าย** (มติผู้ใช้ 2026-08-08 · ม-89): แถวทุกแถวจบด้วยมือของ
+      // สองฝ่ายอยู่แล้ว (ฝ่ายส่ง → ผู้ขอกดรับ · หรือฝ่ายปฏิเสธพร้อมเหตุผล) แล้ว
+      // **ผู้ขอเป็นคนกดปิด** — ฝ่ายปลายทางลากปิดเองไม่ได้ ไม่งั้นการปิดเป็นการ
+      // ตัดสินฝ่ายเดียวทั้งที่ผู้ขอยังไม่ได้ยืนยันว่าของที่ได้ใช้ได้จริง
+      if (!canManageRequest(user, before)) {
+        return Response.json({
+          error: 'ปิดเรื่องได้เฉพาะฝ่ายผู้ขอ — ฝ่ายปลายทางจบงานผ่านรายการ (ส่ง/ปฏิเสธ) แล้วผู้ขอเป็นคนปิด',
+        }, { status: 403 });
       }
       const err = closeRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });

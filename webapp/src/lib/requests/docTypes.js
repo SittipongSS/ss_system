@@ -52,3 +52,17 @@ export function docVocabulary({ lineKind, types, detailValue = 'other' }) {
 export const REQUEST_DOC_VOCABULARY = docVocabulary({
   lineKind: 'document', types: REQUEST_DOC_TYPES,
 });
+
+// ── รูปร่างบรรทัดที่เป็น "เอกสาร" — ที่เดียวของระบบ ──────────────────────
+//
+// ⭐ RD ขอ IFRA/COA/MSDS (`document`) · บัญชีขอใบวางบิล/ใบกำกับ (`billing_doc`) —
+// คนละชุดคำศัพท์ กฎเดียวกัน · สายของแถวพวกนี้ **สั้นกว่าสายพัฒนา** (ม-85):
+// ไม่มีลูกค้าอยู่ในสาย ไม่มีขั้นราคา ⇒ จบที่ "ได้รับแล้ว" หรือ "ให้ไม่ได้"
+//
+// ⚠️ เดิมประกาศซ้ำอยู่ใน `documentBoard.js` (`DOC_SHAPES`) — ยกมาที่นี่ตอนที่
+// `hops.js`/`rowStage.js` ต้องรู้จักด้วย · สามที่ประกาศเองเมื่อไรก็เพี้ยนกันเมื่อนั้น
+export const DOC_LINE_KINDS = ['document', 'billing_doc'];
+
+export function isDocLineKind(lineKind) {
+  return DOC_LINE_KINDS.includes(lineKind);
+}
