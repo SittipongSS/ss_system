@@ -161,14 +161,21 @@ export async function notifyThreadUpdate(supabase, { entityType, entityId, paren
  * หรือถูกมอบให้ AE คนหนึ่ง — คนที่ต้องทำต่อคือคนที่ระบบเพิ่งเลือก ไม่ใช่คนที่เคย
  * คุยในเธรด (`recipientsForUpdate` จึงตอบคำถามนี้ไม่ได้)
  *
- * ⚠️ `updateId` เป็น null ตามความหมายที่ประกาศไว้ใน mig 0185 ("ไม่ได้มาจากเธรด")
- * ⇒ **ไม่มี dedupe ที่ระดับ DB** (Postgres ถือว่า NULL ไม่ซ้ำกับ NULL) ซึ่งถูกแล้ว:
- * มอบลีดสองครั้ง = สองเหตุการณ์จริง ควรเด้งสองครั้ง
+ * ⚠️ ไม่ใส่ `dedupeKey` = **ไม่มี dedupe ที่ระดับ DB** (Postgres ถือว่า NULL ไม่ซ้ำกับ
+ * NULL) ซึ่งถูกแล้วสำหรับจุดส่งมอบ: มอบลีดสองครั้ง = สองเหตุการณ์จริง ควรเด้งสองครั้ง
  *
  * ⚠️ กติกาเดียวกับทั้งไฟล์: กลืน error เอง ห้าม throw กลับไปหาผู้เรียก — ผู้เรียก
  * อยู่หลังจุดที่ข้อมูลถูกบันทึกสำเร็จแล้ว แจ้งเตือนพลาดต้องไม่ทำให้งานที่สำเร็จตอบ error
+ *
+ * @param dedupeKey  กันซ้ำผ่าน unique index (userId, updateId) — ใส่เมื่อ "เหตุการณ์เดียวกัน
+ *   อาจถูกยิงซ้ำ" เช่นสรุปประจำวันที่ cron รันแล้วแอดมินกดทดสอบซ้ำในวันเดียวกัน
+ *   ⚠️ คอลัมน์ `updateId` ถูกออกแบบให้ชี้แถวใน entity_updates แต่ **ไม่มี FK** และถูกใช้
+ *   เพื่อ dedupe อย่างเดียว (ตรวจแล้ว: ไม่มีที่ไหนอ่านค่านี้ไปทำอย่างอื่น) — ค่าสังเคราะห์
+ *   จึงใส่ได้ ขอแค่ตั้งชื่อให้ไม่ชนกับ id จริงของ entity_updates (ขึ้นต้นด้วย `DIGEST-`)
+ * @param href  ทับลิงก์ปลายทาง — ใช้เมื่อแจ้งเตือนสรุปหลายใบ แล้วที่ที่ควรพาไปคือ *คิว*
+ *   ไม่ใช่ใบใดใบหนึ่ง
  */
-export async function notifyUsers(supabase, { userIds = [], entityType, entityId, kind = 'handoff', title, body, actorName } = {}) {
+export async function notifyUsers(supabase, { userIds = [], entityType, entityId, kind = 'handoff', title, body, actorName, dedupeKey = null, href } = {}) {
   try {
     const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
     if (!ids.length || !entityType || !entityId || !title) return { sent: 0 };
@@ -177,15 +184,19 @@ export async function notifyUsers(supabase, { userIds = [], entityType, entityId
       userId,
       entityType,
       entityId: String(entityId),
-      updateId: null,
+      updateId: dedupeKey || null,
       kind,
       title: String(title).slice(0, 200),
       body: body ? String(body).slice(0, 500) : null,
-      href: notificationHref(entityType, entityId),
+      href: href || notificationHref(entityType, entityId),
       actorName: actorName || null,
       createdAt: new Date().toISOString(),
     }));
-    const { error } = await supabase.from('notifications').insert(rows);
+    /* มี dedupeKey = ยิงซ้ำได้โดยไม่เกิดแถวซ้ำ · ไม่มีก็ insert ตรง ๆ เพราะ
+       upsert บน (userId, NULL) ไม่กันอะไรอยู่แล้ว (NULL ไม่ซ้ำกับ NULL) */
+    const { error } = dedupeKey
+      ? await supabase.from('notifications').upsert(rows, { onConflict: 'userId,updateId', ignoreDuplicates: true })
+      : await supabase.from('notifications').insert(rows);
     if (error) {
       console.error('[notifications] notifyUsers failed', entityType, entityId, error.message);
       return { sent: 0, error: error.message };
