@@ -1,0 +1,88 @@
+/* ── การ์ด "เริ่มที่นี่" ─────────────────────────────────────────────────
+   ⚠️ ทุกค่าเป็นโทเคน — ห้ามใส่สีดิบ (โหมดมืดชี้ตัวแปรชุดเดิมไปสีอื่น)
+   ⚠️ **ไม่มีแถบสีที่ขอบการ์ด** (ม-59) — ความเร่งด่วนบอกด้วยป้ายข้อความ */
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* ⭐ ยกขึ้นหนึ่งชั้นจากพื้นหน้า (--bg → --panel-2) ตามบันไดพื้นผิว — เด่นด้วย
+     ระดับพื้นผิว ไม่ใช่ด้วยสีที่ดังกว่าของอื่น */
+  background: var(--panel-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.body { flex: 1; min-width: 0; }
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+/* ก้าวถัดไปเป็นบรรทัดใหญ่ — มันคือคำตอบของ "ต้องทำอะไร" ที่คนเปิดหน้ามาถาม */
+.step {
+  margin-top: var(--space-2);
+  font-size: var(--fs-section-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+/* ใบไหน — บรรทัดรอง ชุดคำเดียวกับคอลัมน์ "คำร้อง" ในคิว */
+.doc {
+  margin-top: var(--space-1);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.docSub {
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.overdue { color: var(--red); }
+
+.rest { color: var(--text-3); font-size: var(--fs-3); }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+/* ไม่มีอะไรค้าง = ข้อความบรรทัดเดียว ไม่ใช่การ์ดเปล่าที่กินพื้นที่เท่าเดิม */
+.clear {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text-2);
+}
+
+/* 🪤 จอแคบ: ปุ่มลงมาอยู่ใต้ข้อความและกว้างเต็ม — ปุ่มแคบ ๆ ชิดขวาบนมือถือคือ
+   เป้ากดที่พลาดง่ายที่สุดในหน้า */
+@media (max-width: 640px) {
+  .card { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+  .actions { flex-direction: row; }
+  .actions > * { flex: 1; }
+}

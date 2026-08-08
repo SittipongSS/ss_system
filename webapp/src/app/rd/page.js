@@ -23,8 +23,9 @@ import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, dueSoonRows, queueCounts, requestNextStep,
+  QUEUE_COUNT_META, dueSoonRows, queueCounts, requestNextStep, startHereRequest,
 } from "@/lib/requests/queueBoard";
+import StartHereCard from "@/components/requests/StartHereCard";
 import styles from "./page.module.css";
 
 const DEPT = "RD";
@@ -62,6 +63,15 @@ export default function RdOverviewPage() {
     [requests],
   );
   const counts = queueCounts(deptRows, { todayIso: today });
+  // ⚠️ **เฉพาะใบที่รอฝ่ายอยู่** — `deptRows` มีใบที่ฝ่ายทำเสร็จแล้วรอฝ่ายขายไปรับ
+  // ปนอยู่ด้วย · ชี้ใบพวกนั้นเป็น "เริ่มที่นี่" คือสั่งให้คน RD ไปทำงานที่ไม่ใช่ของตัวเอง
+  const startHere = useMemo(
+    () => startHereRequest(
+      deptRows.filter((r) => requestNextStep(r)?.owner === "dept"),
+      { todayIso: today },
+    ),
+    [deptRows, today],
+  );
   const dueSoon = useMemo(
     () => dueSoonRows(requests, { dept: DEPT, todayIso: today, days: 7 }),
     [requests, today],
@@ -73,6 +83,13 @@ export default function RdOverviewPage() {
       title="ภาพรวมฝ่ายวิจัยและพัฒนา"
       subtitle="งานที่ค้างอยู่กับฝ่าย และของที่ใกล้ถึงกำหนดที่รับปากไว้"
     >
+      {/* ⭐ **การ์ด "เริ่มที่นี่" มาก่อนตัวเลข** (มติผู้ใช้ 2026-08-08) — แถบตัวเลขตอบว่า
+          *มีอะไรค้างบ้าง* ซึ่งเป็นคำถามของหัวหน้า · คนที่เปิดหน้ามาทำงานถามว่า
+          *เริ่มที่ใบไหน* ⇒ คำตอบนั้นต้องอยู่บนสุด */}
+      {!loading && !loadError && (
+        <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอฝ่ายตอบอยู่ตอนนี้" />
+      )}
+
       {/* แถบตัวเลข 4 ตัว — ชุดเดียวกับหัวคิว (`QUEUE_COUNT_META`) ไม่ประกาศใหม่
           ⚠️ **0 ก็เป็นข้อมูล** — "ยังไม่รับเรื่อง 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่
           หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
