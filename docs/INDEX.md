@@ -44,10 +44,11 @@
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
-| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · **ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR (2026-08-08)** |
+| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR · **ม-76…ม-79 รอบรื้อ 4 อาการ (2026-08-08)** |
 | [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล เปิดมาเจออะไร กดต่อไปไหน |
 | [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" รายก้าว** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
-| [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร"** — P4 (ม-36) |
+| [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล + ตารางเทียบว่าต่างจากพัฒนากลิ่นตรงไหน |
+| [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" รายก้าว** — P4 (ม-36) · §05/§06 เป็นคำถามค้างที่ตัดสินไปแล้ว ดูใบระดับทั้งระบบแทน |
 | [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) | ⭐ **แบบหน้าจอ "ระบบลีด" ครบทุกฝ่าย** — MKT รับลีด → Sup คัดกรอง → Senior กระจาย → AE ติดต่อ/นัด/เปิดดีล + ตารางสิทธิ์ + ข้อเสนอปฏิทินนัด |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
 | [pdr-form-ui-mockup.html](pdr-form-ui-mockup.html) | ⭐ **แบบหน้าจอฟอร์ม PDR** — ฟอร์มกรอก + หน้ารายละเอียด (N/A ทุกช่องว่าง) + ตารางความครบถ้วนเทียบกระดาษทีละข้อ |
@@ -117,6 +118,7 @@
 ## 6. แบบหน้าจอ
 
 [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) ·
+[formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) ·
 [pdr-form-ui-mockup.html](pdr-form-ui-mockup.html) ·
 [nav-topbar-single-row.html](nav-topbar-single-row.html) · [service-system-ui-mockup.html](service-system-ui-mockup.html) ·
 [system-issue-ui-mockup.html](system-issue-ui-mockup.html) ·
