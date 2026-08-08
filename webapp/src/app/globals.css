@@ -575,27 +575,43 @@ body {
   --row-tone-red: color-mix(in srgb, var(--red) 55%, var(--navy));
 }
 
-/* v2: แสงประดับเป็นเรื่องของ**ธีมสว่างเท่านั้น** (มติสุดท้าย 2026-08-08:
-   มืด = แบนตาม mock โต๊ะช่างเดิม · สว่าง = อุ่น+มีแสง) — เส้นทางมติ:
-   mock ตัด gradient → ผู้ใช้ขอคืนทั้งสองธีม → เห็นของจริงแล้วเลือกคืนเฉพาะสว่าง
+/* v2: แสงประดับมีทั้งสองธีมแต่**คนละชุด** (มติสุดท้าย 2026-08-08 รอบสาม:
+   สว่าง = ชุดส้มอุ่นของฐาน · มืด = ชุด "แสงโคมโต๊ะช่าง" ของตัวเอง — ผู้ใช้ลอง
+   ชุดของสว่างบนมืดแล้ว "ไม่เข้ากับมืด" และลองแบนสนิทแล้วก็ไม่เอา)
+   สูตรชุดมืด: จางกว่าชุด v1 ราวครึ่งหนึ่ง (accent 3–6% vs 10–42%) + เงาลึก
+   มุมล่างให้ความรู้สึกโคมส่องจากบน ไม่ใช่แสงฟุ้งทั้งจอ
    · blur ดับถาวรทั้งสองธีม: พื้น --panel ของ v2 ทึบ 100% blur มองไม่เห็นแต่กิน GPU */
 [data-ds="v2"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 [data-ds="v2"][data-theme="dark"] body {
-  background-image: none;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(217, 123, 79, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(217, 123, 79, 0.03) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(8, 10, 14, 0.4) 0px, transparent 55%),
+    radial-gradient(at 0% 100%, rgba(126, 168, 221, 0.03) 0px, transparent 50%);
+}
+[data-ds="v2"][data-theme="dark"] .topnav-system {
+  background:
+    radial-gradient(circle at 28% -80%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
+    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
 }
 [data-ds="v2"][data-theme="dark"] .premium-header,
 [data-ds="v2"][data-theme="dark"] .home-hub-hero {
-  background: var(--panel);
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 6%, transparent), transparent 42%),
+    var(--panel);
 }
-[data-ds="v2"][data-theme="dark"] .topnav-system {
-  background: var(--navy);
+[data-ds="v2"][data-theme="dark"] .login-page {
+  background:
+    radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 38%),
+    var(--bg);
 }
-[data-ds="v2"][data-theme="dark"] .login-page,
 [data-ds="v2"][data-theme="dark"] .home-hub {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 34%),
+    var(--bg);
 }
 
 /* v2 ธีมสว่าง "โต๊ะช่างกลางวัน" (มติผู้ใช้ 2026-08-08 ขอธีมสว่างคู่กัน)
