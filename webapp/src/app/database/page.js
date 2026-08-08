@@ -14,13 +14,15 @@ import { useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
-import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
-const COLORS = ['var(--accent)', 'var(--blue)', 'var(--green)', 'var(--amber)', 'var(--violet)'];
+/* ชุดจำแนกประเภทกลาง (ดู chartTheme.js) — เดิมเป็นลิสต์เฉพาะหน้าเริ่มด้วย accent
+   ซึ่งชนสีปุ่ม · ลำดับ segment ของ v1 ขยับตามชุดกลางโดยเจตนา */
+const COLORS = CHART_CATEGORICAL;
 
 export default function DatabaseOverview() {
   const router = useRouter();
@@ -198,13 +200,15 @@ export default function DatabaseOverview() {
               <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
+                    {/* คู่ series ผ่านชุดกลาง: สินค้า = cat-2 (v1 = accent เดิมเป๊ะ) ·
+                        ลูกค้า = cat-1 (v1 = blue เดิมเป๊ะ) — v2 ได้คู่ ส้ม/น้ำเงิน ที่วัดแล้ว */}
                     <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_CATEGORICAL[1]} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={CHART_CATEGORICAL[1]} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="colorCust" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--blue)" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_CATEGORICAL[0]} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={CHART_CATEGORICAL[0]} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -212,8 +216,8 @@ export default function DatabaseOverview() {
                   <YAxis tick={{ fontSize: "var(--fs-3)", fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: "var(--fs-5)" }} />
                   <Legend wrapperStyle={{ fontSize: "var(--fs-5)", color: 'var(--text-2)' }} iconType="circle" />
-                  <Area type={CHART_LINE_TYPE} dataKey="สินค้า" stroke="var(--accent)" strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
-                  <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke="var(--blue)" strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
+                  <Area type={CHART_LINE_TYPE} dataKey="สินค้า" stroke={CHART_CATEGORICAL[1]} strokeWidth={2} fillOpacity={1} fill="url(#colorProd)" />
+                  <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke={CHART_CATEGORICAL[0]} strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
                 </AreaChart>
               </ResponsiveContainer></ChartCanvas>
             </div>
