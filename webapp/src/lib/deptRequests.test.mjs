@@ -102,9 +102,12 @@ test('สิ่งที่ต้องผูกต่างกันตาม�
 test('ด่านตอนสร้าง: พัฒนากลิ่นส่งไม่ได้ถ้าไม่มี SO · พัฒนาสูตรขอแค่โครงการ+ดีล', () => {
   // ไม่มี SO = ตก และข้อความต้องบอกเหตุผล (ค่าบริการ) ไม่ใช่แค่ "ต้องเลือก"
   assert.match(requestShapeError('scent_dev', { title: 'บรีฟ' }), /ใบสั่งขาย/);
-  assert.equal(requestShapeError('scent_dev', { title: 'บรีฟ', salesOrderId: 'SO-1' }), null);
+  assert.equal(requestShapeError('scent_dev', {
+    title: 'บรีฟ', salesOrderId: 'SO-1', requestedDueDate: '2569-08-20',
+  }), null);
   const dev = {
     title: 'ขอตัวอย่างเทียนหอม', projectId: 'PRJ-1', dealId: 'D-1',
+    requestedDueDate: '2569-08-20',
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   };
   assert.equal(requestShapeError('formula_dev', dev), null);
@@ -167,11 +170,13 @@ test('หมุดไทม์ไลน์ตรงกับขั้นจร�
 });
 
 test('ด่านตอนสร้าง: หัวข้อที่มีบรรทัดต้องมีรายการ', () => {
-  const doc = { projectId: 'P1', dealId: 'D1', title: 'ขอ COA' };
+  const doc = {
+    projectId: 'P1', dealId: 'D1', title: 'ขอ COA', requestedDueDate: '2569-08-20',
+  };
   assert.match(requestShapeError('document', doc), /อย่างน้อย 1 รายการ/);
   assert.equal(requestShapeError('document', { ...doc, items: [{ docType: 'coa' }] }), null);
   assert.equal(requestShapeError('info', {
-    projectId: 'P1', dealId: 'D1', title: 'ขอสเปกขวด',
+    projectId: 'P1', dealId: 'D1', title: 'ขอสเปกขวด', requestedDueDate: '2569-08-20',
   }), null);
 });
 
@@ -197,7 +202,11 @@ test('ยกเลิก/ปิดแล้ว สถานะไม่ถูก
 
 // ── ด่าน action ──────────────────────────────────────────────────────────
 test('ชนิดที่ไม่มีบรรทัดส่งได้โดยไม่ต้องมีรายการ', () => {
-  assert.equal(submitRequestError(req({ kind: 'info', status: 'draft' }), []), null);
+  assert.equal(submitRequestError(
+    req({ kind: 'info', status: 'draft', requestedDueDate: '2569-08-20' }), [],
+  ), null);
+  // ⭐ ร่างเก่าที่ไม่มีวันคาดหวัง (เกิดก่อนมติ 2026-08-08) ต้องไม่หลุดตอนกดส่ง
+  assert.match(submitRequestError(req({ kind: 'info', status: 'draft' }), []), /วันที่คาดหวัง/);
   assert.match(submitRequestError(req({ kind: 'formula_dev', status: 'draft' }), []), /อย่างน้อย 1 รายการ/);
 });
 
@@ -378,7 +387,7 @@ test('กฎของผลลัพธ์ตอนปิดเรื่อง (
 test('requestFormBlocker: ปุ่มส่งกับข้อความเหตุผลใช้ตัวเดียวกัน', () => {
   const base = {
     dept: 'RD', kind: 'formula_dev', title: 'ขอตัวอย่างเทียนหอม',
-    projectId: 'PRJ-1', dealId: 'D-1',
+    projectId: 'PRJ-1', dealId: 'D-1', requestedDueDate: '2569-08-20',
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   };
   assert.equal(requestFormBlocker(base), null);
@@ -390,9 +399,13 @@ test('requestFormBlocker: ปุ่มส่งกับข้อความเ
   assert.equal(requestFormBlocker(null), 'ยังไม่มีข้อมูล');
 
   // หัวข้อที่ผูกของ ต้องได้ข้อความของ "ของที่ขาด" ตัวนั้น ไม่ใช่ข้อความรวม ๆ
-  const brief = { dept: 'RD', kind: 'scent_dev', title: 'บรีฟกลิ่นชุดใหม่' };
+  const brief = {
+    dept: 'RD', kind: 'scent_dev', title: 'บรีฟกลิ่นชุดใหม่', requestedDueDate: '2569-08-20',
+  };
   assert.match(requestFormBlocker(brief), /ใบสั่งขาย/);
   assert.equal(requestFormBlocker({ ...brief, salesOrderId: 'SO-1' }), null);
+  // ⭐ วันที่คาดหวังบังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08)
+  assert.match(requestFormBlocker({ ...base, requestedDueDate: '' }), /วันที่คาดหวัง/);
   assert.match(requestFormBlocker({ ...base, dealId: '' }), /ดีล/);
 });
 
@@ -522,23 +535,15 @@ test('requestStepLabel อ่านชื่อขั้นจากแม่แ
   assert.equal(requestStepLabel('ไม่มีหัวข้อนี้'), null);
 });
 
-test('⭐ สายที่มีของให้ส่งบังคับใส่วันกำหนดส่งตอนรับเรื่อง — รายชนิด ไม่ใช่ทั้งระบบ', () => {
-  // มติผู้ใช้ 2026-08-06 · รับเรื่องโดยไม่ผูกวัน = รับปากว่า "จะทำ" โดยไม่บอกว่าเมื่อไร
-  // และเป็นวันที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า
-  const scent = { kind: 'scent_dev', status: 'pending' };
-  assert.match(acknowledgeRequestError(scent), /วันกำหนดส่ง/);
-  assert.match(acknowledgeRequestError(scent, { committedDueDate: '  ' }), /วันกำหนดส่ง/);
-  assert.equal(acknowledgeRequestError(scent, { committedDueDate: '2569-08-20' }), null);
-
-  // ⚠️ หัวข้อที่มีผู้ใช้จริงอยู่แล้ว (ขอราคา/สอบถาม) ต้องไม่ถูกบังคับ — บังคับทั้งระบบ
-  // จะเปลี่ยนขั้นตอนของคนที่ใช้อยู่โดยไม่ได้ตกลงกัน
-  // ⭐ พัฒนาสูตรบังคับด้วย (Q39 · 2026-08-07) — เหตุผลคือแถบ "เลยกำหนด" บนภาพรวม
-  // นับจาก `committedDueDate` เท่านั้น ⇒ ใบที่ไม่มีวันไม่มีทางขึ้นเป็นงานช้า
-  assert.match(acknowledgeRequestError({ kind: 'formula_dev', status: 'pending' }), /วันกำหนดส่ง/);
-  // ⚠️ หัวข้อที่จบในเธรด (สอบถาม/ขอเอกสาร/ติดตามของเข้า) ไม่ถูกบังคับ — ไม่มีของ
-  // ให้ส่ง จึงไม่มีวันส่งให้รับปาก
-  for (const kind of ['info', 'document', 'material_eta']) {
-    assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
+test('⭐ วันกำหนดส่งตอนรับเรื่องบังคับทุกหัวข้อ — มติผู้ใช้ 2026-08-08', () => {
+  // ยกระดับจากรายชนิดของ 2026-08-06: "วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับ
+  // ใส่เสมอ ทุกคำร้อง" · เหตุผลเดิมยิ่งจริงขึ้น — แถบ "เลยกำหนด" นับจาก
+  // `committedDueDate` เท่านั้น ⇒ หัวข้อที่ไม่บังคับหายไปจากตัวเลขงานค้างถาวร
+  for (const kind of ['scent_dev', 'formula_dev', 'info', 'document', 'material_eta']) {
+    const ask = { kind, status: 'pending' };
+    assert.match(acknowledgeRequestError(ask), /วันกำหนดส่ง/, kind);
+    assert.match(acknowledgeRequestError(ask, { committedDueDate: '  ' }), /วันกำหนดส่ง/, kind);
+    assert.equal(acknowledgeRequestError(ask, { committedDueDate: '2569-08-20' }), null, kind);
   }
 });
 
@@ -667,7 +672,7 @@ test('🐞 POST /api/sa/requests ต้องอ่าน body.pdr จริง 
 test('🐞 โครงการเป็นของที่ server เติมจากดีล — ด่านต้องถามดีล ไม่ใช่ถามโครงการ', () => {
   const payload = requestPayload({
     kind: 'formula_dev', dept: 'RD', title: 'ขอตัวอย่าง',
-    projectId: 'PRJ-1', dealId: 'D-1',
+    projectId: 'PRJ-1', dealId: 'D-1', requestedDueDate: '2569-08-20',
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   });
   // payload ไม่มี projectId โดยเจตนา — แต่ต้องผ่านด่าน เพราะดีลมาแล้ว
@@ -685,7 +690,7 @@ test('ฟอร์มบอกให้ตรงว่าติดอะไร �
   // ทำตามไม่ได้ · prod มี 122/136 ดีลที่ยังไม่ผูกโครงการ ⇒ เจอบ่อยที่สุด
   const form = {
     kind: 'formula_dev', dept: 'RD', title: 'ขอตัวอย่าง',
-    dealId: 'D-1', projectId: '',
+    dealId: 'D-1', projectId: '', requestedDueDate: '2569-08-20',
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   };
   assert.match(requestFormBlocker(form), /ดีลนี้ยังไม่ผูกโครงการ/);

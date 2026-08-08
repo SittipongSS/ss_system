@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   addMonths,
+  businessDayKey,
+  businessMonthKey,
+  dateRangeOfBusinessMonth,
+  dateRangeOfBusinessYear,
   clampMonth,
   compareMonths,
   currentMonth,
@@ -66,4 +71,48 @@ test("year options include selected outliers and respect explicit boundaries", (
     yearOptionsForMonth("2026-04", { min: "2025-11", max: "2027-02" }),
     [2025, 2026, 2027],
   );
+});
+
+/* 🐞 ตรวจตัวเลขลีด 2026-08-08: ขอบเดือนเทียบด้วยสตริงวันเปล่า ๆ Postgres อ่านเป็น
+   00:00 UTC = 07:00 กรุงเทพ ⇒ ลีดที่เข้ามาตอนดึกตกไปนับเป็นเดือนก่อนโดยไม่มีอะไรฟ้อง */
+test('businessDayKey: วันตามเวลาไทย ไม่ใช่วัน UTC', () => {
+  // 00:30 น. วันที่ 1 ส.ค. ตามเวลาไทย = 2026-07-31T17:30Z — slice(0,10) จะได้ 07-31 (ผิด)
+  assert.equal(businessDayKey('2026-07-31T17:30:00.000Z'), '2026-08-01');
+  // 23:30 น. วันที่ 31 ก.ค. ตามเวลาไทย = 16:30Z วันเดียวกัน
+  assert.equal(businessDayKey('2026-07-31T16:30:00.000Z'), '2026-07-31');
+  // เที่ยงวันไทย = 05:00Z วันเดียวกัน — ตรงกันทั้งสองแบบ
+  assert.equal(businessDayKey('2026-08-12T05:00:00.000Z'), '2026-08-12');
+  assert.equal(businessDayKey('ไม่ใช่วันที่'), null);
+  assert.equal(businessDayKey(null), null);
+  assert.equal(businessMonthKey('2026-07-31T17:30:00.000Z'), '2026-08');
+});
+
+test('ขอบเดือน/ปี = ต้นวันตามเวลาไทย ครึ่งเปิด [from, until)', () => {
+  assert.deepEqual(dateRangeOfBusinessMonth('2026-08'), {
+    from: '2026-08-01T00:00:00+07:00',
+    until: '2026-09-01T00:00:00+07:00',
+  });
+  // ข้ามปีต้องได้เดือน 1 ของปีถัดไป ไม่ใช่เดือน 13
+  assert.deepEqual(dateRangeOfBusinessMonth('2026-12'), {
+    from: '2026-12-01T00:00:00+07:00',
+    until: '2027-01-01T00:00:00+07:00',
+  });
+  assert.deepEqual(dateRangeOfBusinessYear('2026'), {
+    from: '2026-01-01T00:00:00+07:00',
+    until: '2027-01-01T00:00:00+07:00',
+  });
+  assert.equal(dateRangeOfBusinessMonth('2026-13'), null);
+  assert.equal(dateRangeOfBusinessYear('26'), null);
+});
+
+test('route KPI ต้องเทียบขอบด้วยเวลาไทย และทำกราฟรายวันด้วยวันไทย', () => {
+  const src = readFileSync(new URL('../app/api/sales-planning/leads/kpi/route.js', import.meta.url), 'utf8');
+  assert.match(src, /dateRangeOfBusinessMonth\(month\)/);
+  assert.match(src, /dateRangeOfBusinessYear\(year\)/);
+  assert.match(src, /businessDayKey\(l\.createdAt\)/);
+  assert.doesNotMatch(src, /String\(l\.createdAt\)\.slice\(0, 10\)/, 'slice = วัน UTC เลื่อนไปวันก่อน');
+  // "ค้าง" ต้องนับตอนนี้ ไม่ใช่กรองจากลีดของเดือนที่เลือก
+  assert.match(src, /countLeadsByStatus\(supabase, 'new', null\)/);
+  assert.match(src, /countLeadsByStatus\(supabase, 'assigned', team\)/);
+  assert.doesNotMatch(src, /rows\.filter\(\(l\) => l\.status === 'new'\)/);
 });

@@ -239,3 +239,39 @@ export function unsortedFormulaRows(products = []) {
       formulaDate: p.formulaDate || null,
     }));
 }
+
+// ── ที่มาของสูตร ─────────────────────────────────────────────────────────
+//
+// ⭐ กติกาเดียวกับทะเบียนกลิ่น (ม-74) — ทะเบียนสูตรก็เป็นข้อมูลกลางที่ของส่วนใหญ่
+// ควรมาจากสายพัฒนาสูตร ส่วนที่เพิ่มตรงคือสูตรเดิมที่เคยทำไว้ก่อนมีระบบ
+//
+// ⚠️ **ตัดสินจาก `sourceRequest` ที่ชั้น admin เติมให้ ไม่ใช่จาก `dealId`** — ฟอร์ม
+// เพิ่มสูตรเองก็กรอกดีลได้ · ดู `attachFormulaSource` ว่าตามหลักฐานจากไหน
+// ⚠️ ป้ายในตัวกรองต้องสะกดตรงกับป้ายในตาราง — คนกรอง "เพิ่มเอง" แล้วต้องเห็นแถวที่
+// ป้ายเขียนว่า "เพิ่มเอง" ไม่ใช่คำอื่นที่แปลว่าอย่างเดียวกัน
+export const FORMULA_SOURCES = [
+  { value: 'request', label: 'มาจากคำร้อง' },
+  { value: 'manual', label: 'เพิ่มเอง' },
+];
+
+export function formulaSourceKind(formula) {
+  return formula?.sourceRequest ? 'request' : 'manual';
+}
+
+/** ป้ายที่มาแบบพร้อมแสดง — `{ kind, label, requestId }` */
+export function formulaSourceLabel(formula) {
+  const kind = formulaSourceKind(formula);
+  if (kind === 'manual') return { kind, label: 'เพิ่มเอง', requestId: null };
+  const request = formula.sourceRequest;
+  return {
+    kind,
+    label: `คำร้อง ${request.docNo || request.id}`,
+    requestId: request.id || null,
+  };
+}
+
+// ตัวกรอง "ที่มา" บนทะเบียน — '' = ทั้งหมด
+export function matchesFormulaSource(formula, filter) {
+  if (!filter) return true;
+  return formulaSourceKind(formula) === filter;
+}

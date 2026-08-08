@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ ข้อเสนอรื้อดีไซน์ 4 จอของสายพัฒนากลิ่น (โจทย์ผู้ใช้ 2026-08-08)
+     อาการที่ผู้ใช้ระบุ: แน่นเกินอ่านยาก · ไม่รู้ว่าต้องทำอะไรต่อ · ดูเก่า · จอมือถือใช้ยาก
+
+     ⚠️ ยังเป็น **ข้อเสนอ** ยังไม่ลงมือ — รอเคาะก่อน
+     ⚠️ ทุกค่าต้องมาจากโทเคนใน globals.css (UI_DESIGN_SYSTEM.md) และ audit:ui
+        มี ratchet ที่ขึ้นไม่ได้ ⇒ ข้อเสนอนี้ **ไม่มีสี/ขนาด/ระยะใหม่สักค่า**
+        สิ่งที่เปลี่ยนคือ *อะไรอยู่ตรงไหน* และ *อะไรควรหายไป* -->
+<title>รื้อดีไซน์ 4 จอสายพัฒนากลิ่น — ข้อเสนอ</title>
+<style>
+  :root {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --r:10px;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  } }
+  :root[data-theme="dark"] {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai","Sarabun",system-ui,sans-serif;
+    font-size:15px; line-height:1.65; }
+  .wrap { max-width:1160px; margin:0 auto; padding:40px 20px 90px; }
+  .eyebrow { font-family:ui-monospace,Menlo,monospace; font-size:12px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1 { font-size:clamp(28px,4.5vw,40px); line-height:1.2; margin:0 0 12px; text-wrap:balance; }
+  .lede { color:var(--ink-2); max-width:64ch; margin:0 0 8px; }
+  h2 { font-size:21px; margin:58px 0 6px; padding-top:22px; border-top:1px solid var(--line); }
+  h2 .num { font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--accent); margin-right:10px; }
+  h2 + .lede { margin-bottom:22px; }
+  h3 { font-size:15.5px; margin:24px 0 9px; }
+
+  .screen { background:var(--card); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; margin-bottom:16px; }
+  .screen > header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; background:var(--card-2); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .screen > header .path { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-3); }
+  .screen > .body { padding:16px; }
+  .screen.now { border-color:color-mix(in srgb,var(--stop) 35%,var(--line)); }
+  .screen.next { border-color:color-mix(in srgb,var(--ok) 40%,var(--line)); }
+  .pair { display:grid; gap:16px; }
+  @media (min-width:980px) { .pair { grid-template-columns:1fr 1fr; } }
+
+  table.t { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.t th { text-align:left; font-weight:600; color:var(--ink-3); font-size:11.5px;
+    padding:6px 8px; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  table.t td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t tr:last-child td { border-bottom:0; }
+  .scroll { overflow-x:auto; }
+  .two { font-size:11.5px; color:var(--ink-3); margin-top:2px; }
+
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 7px;
+    border-radius:999px; border:1px solid transparent; white-space:nowrap; }
+  .badge.n { background:var(--card-3); color:var(--ink-2); border-color:var(--line-strong); }
+  .badge.i { background:var(--navy-soft); color:var(--navy); }
+  .badge.w { background:var(--warn-soft); color:var(--warn); }
+  .badge.g { background:var(--ok-soft); color:var(--ok); }
+  .badge.r { background:var(--stop-soft); color:var(--stop); }
+
+  .btn { display:inline-block; font-size:12.5px; font-weight:600; padding:6px 12px;
+    border-radius:8px; border:1px solid var(--line-strong); background:var(--card); color:var(--ink); }
+  .btn.accent { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.quiet { background:transparent; border-color:transparent; color:var(--ink-2); font-weight:500; }
+  .btn.sm { padding:3px 9px; font-size:11.5px; }
+  .btns { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+  .note { border-left:3px solid var(--line-strong); padding:8px 0 8px 13px; margin:14px 0;
+    color:var(--ink-2); font-size:13.5px; }
+  .note.warn { border-left-color:var(--warn); }
+  .note.stop { border-left-color:var(--stop); }
+  .note.ok   { border-left-color:var(--ok); }
+  .note b { color:var(--ink); }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.9em;
+    background:var(--card-3); padding:1px 5px; border-radius:4px; }
+  ul.tight { margin:8px 0; padding-left:20px; }
+  ul.tight li { margin-bottom:5px; }
+
+  .sym { display:grid; gap:11px; }
+  @media (min-width:820px) { .sym { grid-template-columns:repeat(2,1fr); } }
+  .symcard { border:1px solid var(--line); border-radius:11px; padding:12px 14px; background:var(--card); }
+  .symcard > h4 { margin:0 0 6px; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .symcard p { margin:0; font-size:13.5px; color:var(--ink-2); }
+
+  .stack { border:1px solid var(--line-strong); border-radius:9px; overflow:hidden; }
+  .stack > div { padding:8px 11px; font-size:12.5px; border-bottom:1px solid var(--line); }
+  .stack > div:last-child { border-bottom:0; }
+  .stack .hd { background:var(--card-2); font-weight:600; font-size:12px; color:var(--ink-3); }
+  .sticky { background:var(--accent-soft); border-top:2px solid var(--accent); font-weight:600; color:var(--accent); }
+
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--ink-2);
+    margin:18px 0 0; padding:12px 14px; background:var(--card-2);
+    border:1px solid var(--line); border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">SS-SYSTEM · ข้อเสนอรื้อดีไซน์</p>
+<h1>4 จอของสายพัฒนากลิ่น</h1>
+<p class="lede">
+  โจทย์จากผู้ใช้ 2026-08-08 — <b>แน่นเกินอ่านยาก · ไม่รู้ว่าต้องทำอะไรต่อ · ดูเก่า ·
+  จอมือถือใช้ยาก</b> ครบทั้งสี่อาการ บนทั้งสี่จอ
+</p>
+<div class="legend">
+  <span><span class="badge r">วันนี้</span> ของจริงตอนนี้</span>
+  <span><span class="badge g">เสนอ</span> ที่อยากให้เป็น</span>
+  <span>· <b>ไม่มีสี/ขนาด/ระยะใหม่สักค่า</b> — เปลี่ยนแค่ว่าอะไรอยู่ตรงไหน และอะไรควรหายไป</span>
+</div>
+
+
+<h2><span class="num">00</span>วินิจฉัย — สี่อาการมาจากสาเหตุเดียวกัน</h2>
+<p class="lede">
+  ไล่ดูของจริงทั้งสี่จอแล้ว อาการทั้งสี่ข้อ<b>เป็นผลของนิสัยเดียว</b>:
+  ทุกอย่างถูกวางเป็น<b>คอลัมน์ที่มีน้ำหนักเท่ากันหมด</b> ⇒ ไม่มีอะไรเด่น
+  ⇒ ตาต้องกวาดทั้งแถวทุกครั้ง ⇒ แคบลงก็ยิ่งพัง
+</p>
+
+<div class="sym">
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 1</span> แน่นเกิน อ่านยาก</h4>
+    <p>คิว <b>9 คอลัมน์</b> · ทะเบียนกลิ่น <b>8 คอลัมน์ + ปุ่มท้ายแถวได้ถึง 5 ปุ่ม</b> ·
+      ใบคำร้องเป็นสกรอลล์ยาวที่มีทุกอย่างต่อกัน</p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 2</span> ไม่รู้ว่าต้องทำอะไรต่อ</h4>
+    <p>"ก้าวถัดไป" เป็น<b>คอลัมน์ที่ 6 จาก 9</b> ในคิว · บนใบคำร้อง แถบก้าวถัดไป
+      อยู่<b>ท้ายเธรด</b> ซึ่งต้องเลื่อนผ่านทั้งประวัติกว่าจะเจอ</p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 3</span> ดูเก่า</h4>
+    <p>ทุกเซลล์เป็นข้อความขนาดเดียวกัน ไม่มีลำดับความสำคัญ ⇒ ตารางอ่านเหมือน
+      สเปรดชีต ไม่ใช่หน้าจอที่ออกแบบมา</p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 4</span> จอมือถือใช้ยาก</h4>
+    <p>ตาราง 8–9 คอลัมน์เลื่อนซ้ายขวาอย่างเดียว · <code>useResponsiveView</code>
+      มีใช้อยู่ <b>10 จอ</b> แต่ทะเบียนกลิ่นกับภาพรวม <b>ยังไม่ใช้</b></p>
+  </div>
+</div>
+
+<div class="note ok">
+  <b>ยาตัวเดียวแก้ได้สามอาการ</b> — <b>ยุบคอลัมน์ที่คนอ่านเป็นก้อนเดียวกันอยู่แล้ว
+  ให้อยู่ในเซลล์เดียวสองบรรทัด</b> · คอลัมน์น้อยลง = แต่ละคอลัมน์กว้างขึ้น =
+  ตัวหลักเด่นขึ้นและตัวรองเบาลงได้จริง = มือถือพับเป็นการ์ดได้โดยไม่เสียอะไร
+</div>
+
+
+<h2><span class="num">01</span>คิวคำร้อง — <code>/requests</code> · <code>/rd/requests</code></h2>
+<p class="lede">สองจอใช้ <code>RequestQueuePanel</code> ตัวเดียวกัน ⇒ แก้ที่เดียวได้ทั้งคู่</p>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">9 คอลัมน์</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr>
+            <th>เลขที่</th><th>ชนิด</th><th>เรื่อง / ลูกค้า</th><th>ถึงฝ่าย</th>
+            <th>ก้าวถัดไป</th><th>ความคืบหน้า</th><th>สถานะ</th><th>อัปเดต</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>SB-2608-003</td><td>พัฒนากลิ่น</td><td>บรีฟ Reed · ตัวอย่างจำกัด</td>
+              <td>RD</td><td>รับของ</td><td>2/3</td><td>รับเรื่องแล้ว</td><td>2 ชม.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        แถวเดียวมี <b>8 ก้อนข้อความน้ำหนักเท่ากัน</b> — ตาไม่รู้จะเริ่มที่ไหน ·
+        "ก้าวถัดไป" ซึ่งเป็นเหตุผลที่คนเปิดคิว อยู่กลางตาราง
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">5 คอลัมน์</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr>
+            <th style="width:132px">ต้องทำอะไร</th><th>คำร้อง</th>
+            <th style="width:96px">กำหนดส่ง</th><th style="width:88px">คืบหน้า</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="badge w">รับของ</span><div class="two">ของคุณ</div></td>
+              <td><b>บรีฟ Reed Diffuser</b>
+                <div class="two">SB-2608-003 · พัฒนากลิ่น · ตัวอย่างจำกัด → RD</div></td>
+              <td>12/09<div class="two">อีก 2 วัน</div></td>
+              <td>2 / 3<div class="two">direction</div></td>
+              <td><span class="btn sm">⋯</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge n">รอฝ่าย RD</span><div class="two">ไม่ใช่ของคุณ</div></td>
+              <td><b>บรีฟกลิ่นสปา</b>
+                <div class="two">SB-2608-001 · พัฒนากลิ่น · เอบีซี → RD</div></td>
+              <td style="color:var(--stop)"><b>02/09</b><div class="two">เลย 6 วัน</div></td>
+              <td>0 / 2</td>
+              <td><span class="btn sm">⋯</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        <b>คอลัมน์แรกคือคำตอบของคำถามแรก</b> — "ฉันต้องทำอะไร" · แถวที่ไม่ใช่ของเรา
+        ป้ายเป็นสีกลาง กวาดตาข้ามได้ทันที
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>ยุบอะไรเข้าอะไร</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:200px">เดิม</th><th style="width:150px">ใหม่</th><th>เหตุผล</th></tr></thead>
+    <tbody>
+      <tr><td>เลขที่ + ชนิด + เรื่อง/ลูกค้า + ถึงฝ่าย</td><td><b>คำร้อง</b> (2 บรรทัด)</td>
+        <td>สี่อย่างนี้คือ "ใบนี้คือใบอะไร" คนอ่านเป็นก้อนเดียวอยู่แล้ว ·
+          เรื่องเป็นตัวหลัก ที่เหลือเป็นบรรทัดรอง</td></tr>
+      <tr><td>ก้าวถัดไป + สถานะ</td><td><b>ต้องทำอะไร</b></td>
+        <td>สถานะของใบ (<code>รับเรื่องแล้ว</code>) ตอบคำถามเดียวกับก้าวถัดไป
+          แต่พูดในมุมระบบ · เก็บมุมของผู้ใช้ไว้มุมเดียว</td></tr>
+      <tr><td>กำหนดส่ง (เพิ่มใหม่)</td><td><b>กำหนดส่ง</b></td>
+        <td>วันนี้ต้องเข้าใบถึงจะเห็น ทั้งที่ "เลยกำหนดไหม" คือคำถามที่สองของหัวหน้า</td></tr>
+      <tr><td>อัปเดต</td><td><span class="badge n">ตัดทิ้ง</span></td>
+        <td>"2 ชม." ไม่เคยเปลี่ยนการตัดสินใจของใคร — เรียงตามอัปเดตอยู่แล้วโดยปริยาย</td></tr>
+      <tr><td>ปุ่มท้ายแถว</td><td><b>⋯</b></td>
+        <td><code>RecordActionMenu</code> ที่มีอยู่แล้ว (ใช้กับลีด/ดีล/โครงการ ตั้งแต่ 2026-08-01)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note warn">
+  ⚠️ <b>ตัวนับบนแถบกับตัวกรองต้องยังใช้กติกาเดียวกัน</b> (<code>matchesQueueCount</code> · ม-60)
+  — รื้อคอลัมน์ไม่ได้แปลว่ารื้อตัวนับ · มีเทสต์เทียบจำนวนต่อคีย์อยู่แล้ว ห้ามให้ดับ
+</div>
+
+
+<h2><span class="num">02</span>ทะเบียนกลิ่น — <code>/database/scents</code></h2>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">8 คอลัมน์ · ปุ่มแถวถึง 5 ปุ่ม</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr>
+            <th>รหัส</th><th>ชื่อกลิ่น</th><th>ลูกค้า</th><th>ที่มา</th>
+            <th>วันที่ผลิต</th><th>ส่งลูกค้า</th><th>สถานะ</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>SC-0413</td>
+              <td>Citrus Dawn<div class="two">ลูกค้าเรียก “Signature Citrus”</div>
+                <div class="two">└─ แก้จาก SC-0388</div></td>
+              <td>ตัวอย่างจำกัด</td><td>คำร้อง SB-2608-003</td>
+              <td>07/09</td><td>12/09</td><td>ใช้งานได้</td>
+              <td><div class="btns">
+                <span class="btn sm">ส่งกลิ่น</span><span class="btn sm">✎</span>
+                <span class="btn sm">เก็บเข้ากรุ</span><span class="btn sm">🗑</span>
+              </div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        แถวหนึ่งกว้างเกินจอโน้ตบุ๊ก · <b>ไม่มีมุมมองการ์ดบนมือถือ</b> ทั้งที่ระบบมี
+        <code>useResponsiveView</code> ใช้อยู่ 10 จอ
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">5 คอลัมน์ · ปุ่มหลัก 1 + ⋯</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr>
+            <th>กลิ่น</th><th style="width:150px">ลูกค้า</th>
+            <th style="width:120px">ที่มา</th><th style="width:118px">วันที่</th>
+            <th style="width:126px">สถานะ</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><b>SC-0413 · Citrus Dawn</b>
+                <div class="two">ลูกค้าเรียก “Signature Citrus” · แก้จาก SC-0388</div></td>
+              <td>ตัวอย่างจำกัด</td>
+              <td><span class="badge i">SB-2608-003</span></td>
+              <td>ผลิต 07/09<div class="two">ส่ง 12/09</div></td>
+              <td><span class="badge g">ใช้งานได้</span>
+                <div class="btns" style="margin-top:4px"><span class="btn sm">⋯</span></div></td>
+            </tr>
+            <tr>
+              <td><b>SC-0102 · Ocean Breeze (2024)</b>
+                <div class="two">ลูกค้าเรียก “Fresh Air”</div></td>
+              <td>เดลต้า จำกัด</td>
+              <td><span class="badge n">เพิ่มเอง</span></td>
+              <td>ผลิต 12/03/24<div class="two">ส่ง 20/03/24</div></td>
+              <td><span class="badge g">ใช้งานได้</span>
+                <div class="btns" style="margin-top:4px"><span class="btn sm">⋯</span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        รหัสกับชื่อรวมเป็นบรรทัดเดียว (คนพูดว่า "SC-0413" หรือ "Citrus Dawn" ไม่เคย
+        แยกกัน) · สองวันซ้อนกันในเซลล์เดียวเพราะอ่านคู่กันเสมอ
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>ปุ่มท้ายแถว — จาก 5 เหลือ 1 + เมนู</h3>
+<div class="note">
+  <code>RecordActionMenu</code> มีอยู่แล้วและคอมเมนต์ในไฟล์เขียนเหตุผลไว้ตรงกับปัญหานี้เป๊ะ:
+  <br><i>"เอากลับมาเรียงเป็นปุ่มทั้งหมด (ของเดิม 3 ปุ่ม + 2 ไอคอน ≈ 345px) ก็บีบคอลัมน์อื่น
+  จนอ่านไม่ออก — เมนู … ได้ทั้งสองอย่าง"</i>
+  <br>⇒ ทะเบียนกลิ่นแค่<b>ยังไม่เคยรับมาใช้</b> · ปุ่มหลักตามสถานะ (ร่าง → "รับเข้าทะเบียน" ·
+  เข้าทะเบียนแล้ว → ไม่มีปุ่มหลัก) ที่เหลือเข้าเมนู
+</div>
+
+<h3>มือถือ — การ์ดแทนตาราง</h3>
+<div class="screen next">
+  <header><span class="badge g">เสนอ</span><span class="path">&lt; 768px</span></header>
+  <div class="body">
+    <div class="stack" style="max-width:340px">
+      <div class="hd">SC-0413 · Citrus Dawn</div>
+      <div>ตัวอย่างจำกัด · ลูกค้าเรียก “Signature Citrus”</div>
+      <div>ผลิต 07/09 · ส่งลูกค้า 12/09</div>
+      <div><span class="badge i">SB-2608-003</span> <span class="badge g">ใช้งานได้</span></div>
+      <div class="btns"><span class="btn sm">⋯ จัดการ</span></div>
+    </div>
+    <p class="two" style="margin-top:10px">
+      ใช้ <code>useResponsiveView</code> ตัวเดียวกับอีก 10 จอ · การ์ดกับตารางอ่านจากชุดข้อมูล
+      เดียวกัน ⇒ เพิ่มคอลัมน์แล้วสองมุมมองไม่เพี้ยนหากัน (กติกาเดียวกับ ม-61)
+    </p>
+  </div>
+</div>
+
+
+<h2><span class="num">03</span>ใบคำร้อง — <code>/requests/[id]</code></h2>
+<p class="lede">
+  จอที่ยาวที่สุดในสาย (1,159 บรรทัด · 8 โมดัล) และเป็นจอที่ทั้ง SA และ RD เปิดทุกวัน
+</p>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">สกรอลล์เดียวยาว</span></header>
+    <div class="body">
+      <div class="stack">
+        <div class="hd">หัวใบ — เลขที่ · สถานะ · ปุ่มรอง · ปุ่มอันตราย</div>
+        <div>รางก้าว 8 ขั้น</div>
+        <div>ข้อเท็จจริง 4 ช่อง</div>
+        <div>บล็อกของหัวข้อ (PDR ย่อ · ตาราง direction · กระทบยอด SO)</div>
+        <div>ไฟล์แนบ</div>
+        <div>เธรด — ยาวตามอายุของใบ</div>
+        <div class="sticky">แถบก้าวถัดไป ← อยู่ล่างสุด</div>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        ปุ่มที่ต้องกดอยู่<b>ท้ายสุดของหน้า</b> — ใบที่คุยกันมา 20 ข้อความต้องเลื่อนผ่าน
+        ทั้งหมดกว่าจะถึง · เปิดมาแล้วไม่รู้ว่าต้องทำอะไรต่อ
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">แถบก้าวถัดไปปักหมุด</span></header>
+    <div class="body">
+      <div class="stack">
+        <div class="hd">หัวใบ — เลขที่ · สถานะ · ⋯ (ปุ่มรอง+อันตรายยุบเข้าเมนู)</div>
+        <div>รางก้าว 8 ขั้น</div>
+        <div>ข้อเท็จจริง 4 ช่อง</div>
+        <div>บล็อกของหัวข้อ · <b>PDR พับไว้ กดกาง</b></div>
+        <div>ไฟล์แนบ</div>
+        <div>เธรด</div>
+        <div class="sticky">แถบก้าวถัดไป — <b>ปักหมุดล่างจอ เห็นตลอด</b></div>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        <b>ปักหมุด ไม่ใช่ย้าย</b> — ปุ่มยังอยู่ที่เดียวตามที่ ม-49 กับ ratchet ของ ม-57
+        บังคับไว้ · เปลี่ยนแค่ว่ามัน<b>ติดจออยู่ตลอด</b>ระหว่างเลื่อนอ่านเธรด
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note warn">
+  <b>PDR พับไว้เป็นค่าตั้งต้น</b> — 42 ช่องที่ขึ้น N/A ครบทุกช่องตามมติ ม-53 ทำให้บล็อกนี้
+  ยาวที่สุดในหน้า และ <b>RD อ่านครั้งเดียวตอนรับเรื่อง</b> ไม่ใช่ทุกครั้งที่เปิดใบ
+  <br>⚠️ พับ <b>ไม่ใช่ซ่อน</b> — หัวบล็อกยังบอกว่ากรอกครบกี่ข้อ และ<b>หน้าเอกสารกับหน้าพิมพ์
+  ไม่แตะ</b> (N/A ครบเหมือนเดิมทุกช่อง)
+</div>
+
+
+<h2><span class="num">04</span>ภาพรวม — <code>/rd</code> · <code>/sa/dashboard</code></h2>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">/rd</span></header>
+    <div class="body">
+      <div class="stack">
+        <div class="hd">ตัวเลข 4 ตัว (กดแล้วเข้าคิวที่กรองแล้ว ✓)</div>
+        <div>ตาราง "ใกล้ถึงกำหนด และที่เลยกำหนดแล้ว" — 6 คอลัมน์</div>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        ตัวเลขบอกว่า<b>มีกี่ใบ</b> แต่ไม่บอกว่า<b>ควรเริ่มที่ใบไหน</b> ·
+        ตารางเดียวที่เหลือก็เป็นรายการเรียงตามวัน ไม่ได้จัดลำดับความสำคัญให้
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">/rd</span></header>
+    <div class="body">
+      <div class="stack">
+        <div class="hd">ตัวเลข 4 ตัว (คงเดิม)</div>
+        <div class="sticky">⚡ <b>เริ่มที่นี่</b> — ใบที่เลยกำหนดนานที่สุด 3 ใบ พร้อมปุ่มก้าวถัดไปในการ์ด</div>
+        <div>ตาราง "ใกล้ถึงกำหนด" — ยุบเหลือ 4 คอลัมน์ ทรงเดียวกับคิว</div>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        การ์ด "เริ่มที่นี่" ตอบคำถามที่คนเปิดหน้าแรกมาถามจริง — <b>ไม่ใช่ "มีงานกี่ชิ้น"
+        แต่เป็น "เช้านี้เริ่มที่ไหน"</b> · กดปุ่มในการ์ดได้เลยไม่ต้องเข้าใบ
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">05</span>เลย์เอาต์ · ขนาดป้าย · การ align</h2>
+<p class="lede">
+  โจทย์เพิ่มจากผู้ใช้ — <b>ป้ายกลุ่มเดียวกันควรขนาดเท่ากัน ไม่ใช่เล็กบ้างใหญ่บ้าง</b> ·
+  ไล่ของจริงแล้ว <b>ระบบมีกลไกครบอยู่แล้ว แต่สี่จอนี้ไม่เคยรับมาใช้เลยสักตัว</b>
+</p>
+
+<h3>ของที่มีอยู่แล้ว แต่ไม่ได้ใช้</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:200px">กลไก</th><th style="width:150px">ใครใช้อยู่</th><th>4 จอนี้</th></tr></thead>
+    <tbody>
+      <tr><td><code>.ui-badge-cell</code> + <code>--cell-badge-w</code><div class="two">ป้ายในคอลัมน์เดียวกันกว้างเท่ากัน</div></td>
+        <td>ลีด · ดีล · ใบเสนอราคา · โครงการ</td>
+        <td><span class="badge r">ไม่ใช้เลย</span> — ป้ายกว้างตามข้อความ ⇒ ขอบขวาเยื้องกันทุกแถว</td></tr>
+      <tr><td><code>.premium-table .num</code><div class="two">ชิดขวา + tabular-nums</div></td>
+        <td>ตารางฝั่งขาย</td>
+        <td><span class="badge r">ไม่ใช้เลย</span> — วันที่ใช้ <code>.mono</code> ซึ่งให้แค่ตัวเลขความกว้างเท่ากัน ไม่ได้จัดชิด</td></tr>
+      <tr><td><code>StatusBadge size="sm"</code></td>
+        <td>12 จุดทั้งระบบ</td>
+        <td><span class="badge w">ปนกัน</span> — บางที่ <code>sm</code> บางที่ค่าตั้งต้น <code>md</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note ok">
+  <b>ป้ายทั้งระบบทรงเดียวกันอยู่แล้ว</b> — <code>.ui-badge</code> · <code>.status-pill</code> ·
+  <code>.chip</code> · <code>Badge.module.css</code> ใช้ <code>min-height: 24px</code> ·
+  padding · <code>--fs-label</code> ชุดเดียวกัน และ<b>มีเทสต์ล็อกไว้ว่าต้องตรงกัน</b>
+  <br>⇒ ความต่างที่ตาเห็นไม่ได้มาจาก "คนละระบบป้าย" แต่มาจาก <b>2 อย่าง</b>:
+  <b>ความกว้างวิ่งตามข้อความ</b> · และ <b><code>size="sm"</code> ที่ใช้ปนกัน</b>
+</div>
+
+<h3>กฎที่เสนอ — 5 ข้อ</h3>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:34px">#</th><th style="width:230px">กฎ</th><th>ทำไม</th></tr></thead>
+    <tbody>
+      <tr><td><b>1</b></td>
+        <td><b>ป้ายในคอลัมน์เดียวกัน = กว้างเท่ากัน</b><div class="two"><code>.ui-badge-cell</code> + ตั้ง <code>--cell-badge-w</code> ต่อคอลัมน์</div></td>
+        <td>ขอบป้ายเรียงเป็นเส้นตรงลงมา ⇒ ตากวาดคอลัมน์ได้เป็นแนว ไม่ใช่เต้นตามความยาวคำ ·
+          กว้างเท่าไรวัดจากคำที่ยาวที่สุดในชุด แล้วตั้งเป็นชื่อของตัวเอง</td></tr>
+      <tr><td><b>2</b></td>
+        <td><b>ป้ายในตารางเป็นขนาดเดียว</b><div class="two">ตัดใช้ <code>size="sm"</code> ในตารางออก</div></td>
+        <td><code>sm</code> สงวนไว้สำหรับป้ายที่<b>แทรกอยู่ในบรรทัดข้อความ</b> หรือในการ์ดเล็ก
+          เท่านั้น · ในตารางป้ายคือข้อมูลหลักของคอลัมน์ ไม่ใช่ของประกอบ</td></tr>
+      <tr><td><b>3</b></td>
+        <td><b>ข้อความชิดซ้าย · ตัวเลขและวันที่ชิดขวา</b><div class="two">วันที่ใช้ <code>.num</code> ไม่ใช่ <code>.mono</code> เปล่า ๆ</div></td>
+        <td>วันที่คือของที่คน<b>เทียบกันข้ามแถว</b> ("ใบไหนเลยกำหนดนานสุด") ⇒ หลักต้องตรงกัน ·
+          <code>.mono</code> ให้ความกว้างตัวเลขเท่ากันแต่ไม่ได้จัดชิด</td></tr>
+      <tr><td><b>4</b></td>
+        <td><b>หัวตารางชิดตามเนื้อข้างล่าง</b></td>
+        <td>คอลัมน์ที่เนื้อชิดขวาแต่หัวชิดซ้าย = สองเส้นที่ไม่ตรงกันในคอลัมน์เดียว
+          ซึ่งเป็นอาการ "ดูไม่เรียบร้อย" ที่หาสาเหตุไม่เจอ</td></tr>
+      <tr><td><b>5</b></td>
+        <td><b>เซลล์สองบรรทัดชิดบน</b><div class="two"><code>vertical-align: top</code> ทั้งแถว</div></td>
+        <td>แถวที่มีเซลล์สองบรรทัดปนเซลล์บรรทัดเดียว ถ้าจัดกึ่งกลางแนวตั้ง
+          บรรทัดแรกของแต่ละเซลล์จะไม่อยู่ระดับเดียวกัน ⇒ อ่านข้ามคอลัมน์ไม่เป็นแนว</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>ชุดความกว้างป้ายที่ต้องตั้งใหม่</h3>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:190px">ชื่อ</th><th style="width:110px">คอลัมน์</th><th>คำที่ยาวที่สุดในชุด</th></tr></thead>
+    <tbody>
+      <tr><td><code>--ui-badge-w-nextstep</code></td><td>ต้องทำอะไร (คิว)</td>
+        <td>“บันทึกคำตอบลูกค้า” · “รอฝ่ายขายทำต่อ”</td></tr>
+      <tr><td><code>--ui-badge-w-scent-status</code></td><td>สถานะ (ทะเบียนกลิ่น)</td>
+        <td>“ร่าง — รอ RD รับเข้าทะเบียน”</td></tr>
+      <tr><td><code>--ui-badge-w-source</code></td><td>ที่มา (ทะเบียนกลิ่น)</td>
+        <td>“มาจากคำร้อง (ถูกลบแล้ว)”</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note warn">
+  <b>ความกว้างต้องวัดจากของจริง ไม่ใช่เดา</b> — ไฟล์ <code>globals.css</code> เขียนค่าที่มีอยู่
+  ไว้พร้อมคำที่ใช้วัด (<code>--ui-badge-w-stage: 124px</code> ← “เสนอไทม์ไลน์” / “ปิดได้ (Won)”) ·
+  ของใหม่ต้องทำเหมือนกัน: เปิดหน้าจริง วัด แล้วเขียนคำที่วัดไว้ในคอมเมนต์
+  <br>⚠️ <b>ป้ายที่ยาวเกินกว่าที่ตั้งไว้จะดันคอลัมน์</b> ไม่ใช่ตัดคำ — ตั้งแคบไปแล้วจะเจอ
+  ตอนมีสถานะใหม่ ไม่ใช่ตอนนี้
+</div>
+
+<h3>ตัวอย่าง — คอลัมน์ "ต้องทำอะไร" ก่อน/หลัง</h3>
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">กว้างตามข้อความ</span></header>
+    <div class="body">
+      <div style="display:grid; gap:6px">
+        <span class="badge w" style="width:fit-content">รับของ</span>
+        <span class="badge n" style="width:fit-content">รอฝ่ายขายทำต่อ</span>
+        <span class="badge w" style="width:fit-content">ใส่ราคา</span>
+        <span class="badge n" style="width:fit-content">บันทึกคำตอบลูกค้า</span>
+      </div>
+      <p class="two" style="margin-top:9px">ขอบขวาเยื้องกันทุกแถว — ตาไม่มีเส้นให้เกาะ</p>
+    </div>
+  </div>
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path"><code>--ui-badge-w-nextstep</code></span></header>
+    <div class="body">
+      <div style="display:grid; gap:6px">
+        <span class="badge w" style="display:inline-flex; justify-content:center; min-width:148px">รับของ</span>
+        <span class="badge n" style="display:inline-flex; justify-content:center; min-width:148px">รอฝ่ายขายทำต่อ</span>
+        <span class="badge w" style="display:inline-flex; justify-content:center; min-width:148px">ใส่ราคา</span>
+        <span class="badge n" style="display:inline-flex; justify-content:center; min-width:148px">บันทึกคำตอบลูกค้า</span>
+      </div>
+      <p class="two" style="margin-top:9px">ขอบทั้งสองข้างเป็นเส้นตรง — กวาดตาลงมาได้ทั้งคอลัมน์</p>
+    </div>
+  </div>
+</div>
+
+<div class="note stop">
+  <b>ข้อนี้ไม่ได้แค่ทำให้เรียบร้อย — มันแก้อาการ "ดูเก่า" โดยตรง</b>
+  <br>สิ่งที่ทำให้ตารางอ่านเหมือนสเปรดชีตคือ<b>ไม่มีเส้นแนวตั้งที่ตาเกาะได้</b> ·
+  พอป้ายกว้างเท่ากันและตัวเลขชิดขวา จะเกิดเส้นแนวตั้ง 3–4 เส้นในตารางเองโดยไม่ต้องวาดเส้นจริง
+</div>
+
+
+<h2><span class="num">06</span>กฎที่ห้ามแตะระหว่างรื้อ</h2>
+<p class="lede">ทั้งหมดมี ratchet หรือเทสต์คุมอยู่ — ดับเมื่อไรแปลว่ารื้อเกินขอบเขต</p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:230px">กฎ</th><th>ที่มา</th></tr></thead>
+    <tbody>
+      <tr><td><b>ปุ่มหลักอยู่ที่เดียว</b> — หัวใบ <i>หรือ</i> ท้ายเธรด ไม่ใช่ทั้งสองที่</td>
+        <td>ม-57 · ratchet ใน `registry.test.mjs`</td></tr>
+      <tr><td><b>ห้ามใช้แถบสีที่ขอบการ์ดบอกความเร่งด่วน/สถานะ</b></td>
+        <td>ม-59 — <i>"ระดับ 2 แต่ไม่เอาแถบสี เคยบอกไปแล้วนิ"</i></td></tr>
+      <tr><td><b>ตัวนับกับตัวกรองใช้กติกาเดียว</b></td>
+        <td>ม-60 · `matchesQueueCount` + เทสต์เทียบจำนวนต่อคีย์</td></tr>
+      <tr><td><b>การ์ดกับตารางอ่านชุดข้อมูลเดียวกัน</b></td>
+        <td>ม-61 · `groupQueueRows`</td></tr>
+      <tr><td><b>ทุกค่ามาจากโทเคน</b> — สี · ขนาดตัวอักษร · z-index · จังหวะ · ระยะห่าง</td>
+        <td>`UI_DESIGN_SYSTEM.md` ชั้นกลาง 7 ชั้น · `audit:ui`</td></tr>
+      <tr><td><b>ปุ่มมาจาก `Button`/`ActionButton` เท่านั้น</b> · หนึ่งบริบทมี accent ตัวเดียว</td>
+        <td>Page contract ข้อ 4</td></tr>
+      <tr><td><b>ตารางครอบด้วย `TableScroll`</b> · Recharts ครอบด้วย `ChartCanvas`</td>
+        <td>Page contract ข้อ 4–5</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note stop">
+  <b>ข้อที่ต้องระวังที่สุด — ม-59</b> ข้อเสนอนี้ใช้ <b>ป้ายข้อความ</b> (`StatusBadge`)
+  บอกสถานะและความเร่งด่วนทั้งหมด · การ์ด "เริ่มที่นี่" ใน §04 <b>ห้ามมีแถบสีที่ขอบ</b>
+  — เด่นด้วยตำแหน่ง (บนสุด) และหัวข้อ ไม่ใช่ด้วยสีพาด
+</div>
+
+
+<h2><span class="num">07</span>ลำดับที่เสนอให้ทำ</h2>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:34px">#</th><th>งาน</th><th style="width:130px">แตะอะไร</th><th style="width:96px">ขนาด</th></tr></thead>
+    <tbody>
+      <tr><td><b>0</b></td>
+        <td><b>ตั้งชุดความกว้างป้าย + กฎ align</b> (§05) — วัดของจริงแล้วประกาศ
+          <code>--ui-badge-w-*</code> สามตัว · ทำก่อนเพราะข้อ 1–2 ต้องใช้ทันที
+          และเป็นงานที่แตะ <code>globals.css</code> ที่เดียว</td>
+        <td><code>globals.css</code></td><td><span class="badge g">เล็ก</span></td></tr>
+      <tr><td>1</td><td><b>คิว 9 → 5 คอลัมน์</b> + ปุ่มแถวเป็น ⋯ + ป้ายกว้างเท่ากัน —
+        ได้ทั้งสองจอพร้อมกันเพราะใช้ panel เดียวกัน · เห็นผลเร็วที่สุดต่อบรรทัดที่แก้</td>
+        <td><code>RequestQueuePanel</code></td><td><span class="badge w">กลาง</span></td></tr>
+      <tr><td>2</td><td><b>ทะเบียนกลิ่น 8 → 5</b> + <code>RecordActionMenu</code> +
+        การ์ดบนมือถือ + ป้ายกว้างเท่ากัน</td>
+        <td><code>database/scents</code></td><td><span class="badge w">กลาง</span></td></tr>
+      <tr><td>3</td><td><b>แถบก้าวถัดไปปักหมุด</b> + ยุบปุ่มหัวใบเข้าเมนู + PDR พับ</td>
+        <td><code>requests/[id]</code></td><td><span class="badge w">กลาง</span></td></tr>
+      <tr><td>4</td><td><b>การ์ด "เริ่มที่นี่"</b> บน <code>/rd</code> แล้วยกไป <code>/sa</code></td>
+        <td><code>rd/page.js</code></td><td><span class="badge g">เล็ก</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  <b>ทำทีละข้อ commit ละข้อ</b> — รื้อสี่จอในคอมมิตเดียวแล้วถ้าอะไรดูไม่ดี
+  จะแยกไม่ออกว่าเพราะข้อไหน · และแต่ละข้อเดินมือดูได้จบในตัว
+</div>
+
+<div class="legend" style="margin-top:26px">
+  <span><b>เอกสารที่คู่กับใบนี้</b></span>
+  <span>· <code>webapp/UI_DESIGN_SYSTEM.md</code> — โทเคนและ page contract</span>
+  <span>· <code>docs/scent-dev-system-ui-mockup.html</code> — โครงและ flow</span>
+  <span>· <code>docs/requests-rd-decision-log.md</code> — ม-49 · ม-57 · ม-59 · ม-60 · ม-61</span>
+  <span>· <code>/settings/design-preview</code> — primitive ทุกตัวในหน้าเดียว</span>
+</div>
+
+</div>
+</body></html>

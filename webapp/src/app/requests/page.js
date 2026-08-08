@@ -9,14 +9,17 @@
 // (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import Tabs from "@/components/ui/Tabs";
 import Segmented from "@/components/ui/Segmented";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import Button from "@/components/ui/Button";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
+import QueueCountStrip from "@/components/requests/QueueCountStrip";
+import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
-import { QUEUE_TABS, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
+import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
 import StartHereCard from "@/components/requests/StartHereCard";
 import { businessDate } from "@/lib/businessDate";
 
@@ -62,6 +65,8 @@ export default function RequestsPage() {
     [me],
   );
 
+  // สถานะร่วมของหัวการ์ดกับตาราง (ตัวสลับมุมมอง · ตัวกรองตัวเลข · ค้นหา)
+  const board = useQueueBoard();
   const [requests, setRequests] = useState([]);
   // ⚠️ เหลือ **ดีลอย่างเดียว** — ใช้เติมค่าตั้งต้นให้ปุ่ม "เปิดคำร้อง" ตอนมาจากหน้าดีล
   // (`?dealId=`) · ทะเบียนที่เหลือเคยโหลดไว้ส่งให้ `RequestQueuePanel` ซึ่ง **ไม่เคย
@@ -158,6 +163,17 @@ export default function RequestsPage() {
     [mine, dealIdParam],
   );
 
+  // prefill ปุ่มเปิดคำร้อง — `returnTo` พากลับมาที่คิวหลังกดยกเลิก
+  const newRequestQuery = (() => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(newRequestDefaults || {})) if (v) q.set(k, v);
+    q.set("returnTo", "/requests");
+    return `?${q.toString()}`;
+  })();
+
+  const rows = tab === "mine" ? visibleMine : tabRows;
+  const counts = queueCounts(rows, { todayIso: today });
+
   return (
     <Workspace
       icon={<ClipboardList size={22} />}
@@ -165,13 +181,35 @@ export default function RequestsPage() {
       subtitle={tab === "todo" ? TAB_BLURB.todo
         : tab === "history" ? TAB_BLURB.history
           : mineBlurb(dealParam)}
+      /* ⭐ **ตัวสลับมุมมอง + ปุ่มหลักอยู่ในหัวการ์ด** ตามต้นแบบหน้างานของฉัน
+         (มติผู้ใช้ 2026-08-08) — ของเดิมปุ่ม "เปิดคำร้อง" ลอยอยู่กลางหน้าใต้แท็บ
+         และตัวสลับมุมมองลอยเดี่ยวใต้แถบตัวเลข ⇒ ของสองชิ้นที่เป็น "เครื่องมือของ
+         ทั้งหน้า" กระจายอยู่สามระดับความสูง
+         ⚠️ **เปลือกเดียว** — ฟอร์มอยู่ที่ /requests/new ทั้งก้อน (ห้ามครอบ
+         RequestForm ไว้สองที่ · โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้) */
+      headerRight={(
+        <div className="flex gap-3 items-center flex-wrap">
+          <ViewSwitcher
+            value={board.view} onChange={board.setView}
+            modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
+          />
+          <Button
+            tone="accent" icon={<Plus size={16} />}
+            onClick={() => router.push(`/requests/new${newRequestQuery}`)}
+          >
+            เปิดคำร้อง
+          </Button>
+        </div>
+      )}
     >
-      {/* ⭐ ขอบเขตอยู่ **เหนือแท็บ** — มันคุมว่าข้อมูลชุดไหนถูกดึงมา ส่วนแท็บแบ่งชุด
-          นั้นอีกที ⇒ วางใต้แท็บทำให้อ่านเหมือนว่าใช้กับแท็บเดียว
-          ⚠️ ใช้ `Segmented` + คลาส `scope-toggle` ชุดเดียวกับคิวลีด/ดีล — ตัวสลับ
-          ขอบเขตหน้าตาต้องเหมือนกันทุกหน้า (PR #969 รวมไว้แล้ว อย่าเขียนใหม่)
-          ⚠️ ตัวเลือกที่ไม่มีสิทธิ์ **จางและกดไม่ได้ ไม่ใช่ซ่อน** — ซ่อนแล้วคนจะไม่รู้ว่า
-          มีของที่ตัวเองเข้าไม่ถึงอยู่ แล้วอ่านคิวสั้น ๆ ว่า "ไม่มีงาน" */}
+      <div className="flex flex-col gap-4">
+
+      {/* ⭐ **ตัวเลือกทุกชั้นอยู่แถวเดียวกันและทรงเดียวกัน** ตามต้นแบบ —
+          ของเดิมขอบเขตเป็น pill ส่วนแท็บ 3 ตัวเป็นขีดเส้นใต้ ⇒ ตัวเลือกสองชั้น
+          วาดคนละภาษาทั้งที่ทำหน้าที่เดียวกัน (คัดชุดข้อมูลให้แคบลง)
+          ⚠️ ขอบเขตอยู่ **ก่อน** แท็บเสมอ — มันคุมว่าข้อมูลชุดไหนถูกดึงมา ส่วนแท็บ
+          แบ่งชุดนั้นอีกที · สลับที่กันแล้วอ่านเหมือนแท็บคุมขอบเขต
+          ⚠️ ตัวเลือกที่ไม่มีสิทธิ์ **จางและกดไม่ได้ ไม่ใช่ซ่อน** */}
       <div className="scope-row">
         <Segmented
           ariaLabel="ขอบเขตของคิวคำร้อง"
@@ -182,6 +220,18 @@ export default function RequestsPage() {
             value: s, label: SCOPE_LABELS[s], disabled: !canUseScope(me, s),
           }))}
         />
+        <Segmented
+          ariaLabel="มุมมองหน้าคำร้อง"
+          className="scope-toggle"
+          value={tab}
+          onChange={setTab}
+          options={QUEUE_TABS.map((t) => ({
+            value: t.key,
+            // นับจากชุดเดียวกับที่แท็บนั้นจะแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
+            // ขัดกันไม่ได้ (เดิมนับคนละที่กัน)
+            label: `${t.label} (${queueTabRows(requests, { tab: t.key, myDepts }).length})`,
+          }))}
+        />
         {activeScope !== scope && (
           <span className="toolbar-label">
             สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน
@@ -189,29 +239,29 @@ export default function RequestsPage() {
         )}
       </div>
 
-      {/* ⭐ **อยู่เหนือแท็บ** — มันเป็นคำตอบของทั้งหน้า ไม่ใช่ของแท็บใดแท็บหนึ่ง
-          (เหตุผลเดียวกับที่ตัวสลับขอบเขตอยู่เหนือแท็บ) */}
+      {/* ⭐ **อยู่ใต้แถวตัวกรอง** — มันเป็นคำตอบของทั้งหน้า ไม่ใช่ของแท็บใดแท็บหนึ่ง
+          🪤 เคยแทรกอยู่ **ระหว่าง** ขอบเขตกับแท็บ ⇒ ผ่ากลุ่มตัวเลือกขาดสองท่อน */}
       {!loading && !loadError && tab !== "history" && (
         <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอคุณอยู่ตอนนี้" />
       )}
 
-      <Tabs
-        value={tab} onChange={setTab}
-        tabs={QUEUE_TABS.map((t) => ({
-          key: t.key,
-          // นับจากชุดเดียวกับที่แท็บนั้นจะแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
-          // ขัดกันไม่ได้ (เดิมนับคนละที่กัน)
-          label: `${t.label} (${queueTabRows(requests, { tab: t.key, myDepts }).length})`,
-        }))}
-        ariaLabel="มุมมองหน้าคำร้อง"
-      />
+      {/* แถบตัวเลข — component เดียวกับภาพรวมฝ่าย · ที่นี่กดแล้ว **กรองในที่** */}
+      {!loading && !loadError && (
+        <QueueCountStrip
+          counts={counts}
+          filter activeKey={board.countFilter}
+          note="กดเพื่อกรองรายการ"
+          ariaLabel="ตัวเลขสรุปคิวคำร้อง — กดเพื่อกรอง"
+          onSelect={(key, on) => board.setCountFilter(on ? null : key)}
+        />
+      )}
 
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
-        rows={tab === "mine" ? visibleMine : tabRows}
-        newRequestDefaults={newRequestDefaults}
+        rows={rows} board={board}
         loading={loading} loadError={loadError} reload={reload}
       />
+      </div>
     </Workspace>
   );
 }

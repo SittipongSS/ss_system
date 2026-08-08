@@ -8,12 +8,15 @@
 //
 // ⚠️ การนับอยู่ที่ `lib/requests/formulaDevBoard.js` ทั้งหมด — ประกอบ array ของแถว
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
+import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
+import { fmtDate } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 
 const qty = (n) => Number(n).toLocaleString("th-TH");
+const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
 export default function FormulaDevBoard({ rows = [] }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง
@@ -43,10 +46,26 @@ export default function FormulaDevBoard({ rows = [] }) {
                   </div>
                   {r.spec && <ReadableText text={r.spec} lines={2} className={styles.note} />}
                   <div className={styles.note}>
-                    {/* ⚠️ ยังไม่มีสูตร = RD ยังไม่ส่ง — บอกตรง ๆ ดีกว่าเว้นว่างให้เดา */}
-                    {r.formulaId ? "เข้าทะเบียนสูตรแล้ว" : "ยังไม่มีสูตรออกมาจากแถวนี้"}
+                    {/* ⚠️ ยังไม่มีสูตร = RD ยังไม่ส่ง — บอกตรง ๆ ดีกว่าเว้นว่างให้เดา
+                        ⭐ มีสูตรแล้วเป็น **ลิงก์ไปทะเบียนที่กรองไว้** (ช่องว่างข้อ 4) —
+                        เดิมเป็นข้อความเปล่า ต้องไปเปิดทะเบียนแล้วค้นเอง */}
+                    {r.formulaId
+                      ? (
+                        <Link className="linklike" href={`/database/formulas?q=${encodeURIComponent(r.name.split(" → ").pop() || "")}`}>
+                          เข้าทะเบียนสูตรแล้ว — เปิดดู
+                        </Link>
+                      )
+                      : "ยังไม่มีสูตรออกมาจากแถวนี้"}
                     {r.qty != null && ` · ขอ ${qty(r.qty)}${r.unit ? ` ${r.unit}` : ""}`}
                   </div>
+                  {/* ⭐ ราคาที่ตกลงแล้ว (ช่องว่างข้อ 5) — เดิม RD ใส่ราคาเสร็จ แถวขึ้น
+                      "เสร็จ" แต่ในใบไม่มีตัวเลขให้เห็น ต้องไปเดาเอาในทะเบียนวัสดุ */}
+                  {r.priced?.price != null && (
+                    <div className={styles.note}>
+                      ราคาเนื้อสาร <strong className="num">{money(r.priced.price)}</strong> บาท/{r.priced.perUnit || "กก."}
+                      {r.priced.validUntil ? ` · ยืนราคาถึง ${fmtDate(r.priced.validUntil)}` : ""}
+                    </div>
+                  )}
                 </td>
                 <td>
                   {r.outcomeLabel

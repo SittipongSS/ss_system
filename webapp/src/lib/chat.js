@@ -64,14 +64,41 @@ async function webhookUrlFor(spaceKey) {
   return envName ? process.env[envName] || null : null;
 }
 
+/**
+ * โดเมนที่ปุ่มบนการ์ดต้องพากลับเข้าระบบ
+ *
+ * 🐞 เดิมอ่านจาก `APP_BASE_URL` (หรือ `NEXT_PUBLIC_BASE_URL`) อย่างเดียว ซึ่งเป็นค่าที่
+ * **คนต้องตั้งเอง** ⇒ พลาดได้สองแบบและเงียบทั้งคู่:
+ *   · ลืมตั้ง → ปุ่มหายไปเฉย ๆ ไม่มีใครสังเกต
+ *   · เผลอเอาค่าจากเครื่อง (`http://localhost:3000`) ไปใส่บน Vercel → ทั้งทีมกดปุ่ม
+ *     แล้วเปิดไม่ได้ โดยการ์ดยังส่งสำเร็จทุกครั้ง
+ *
+ * Vercel ใส่ `VERCEL_PROJECT_PRODUCTION_URL` (โดเมน production ตัวจริง ไม่มี protocol)
+ * ให้เองทุก deployment ⇒ ใช้เป็นตัวสำรอง แล้วเรื่อง "ตั้งค่าผิดแล้วเงียบ" หมดไป
+ *
+ * ⚠️ ค่าที่ตั้งเองชี้ localhost **ขณะรันบน Vercel** = ผิดแน่นอน (ไม่มีทางถูกได้) —
+ * ข้ามไปใช้โดเมนจริงแทน และ log ไว้ให้ตามเจอ ไม่ใช่เชื่อค่าที่ตั้งมาผิด
+ */
+export function resolveAppBaseUrl(env = process.env) {
+  const onVercel = !!env.VERCEL;
+  const configured = env.APP_BASE_URL || env.NEXT_PUBLIC_BASE_URL || '';
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(configured);
+  if (configured && !(onVercel && isLocal)) return configured.replace(/\/+$/, '');
+  if (configured && onVercel && isLocal) {
+    console.warn('[chat] APP_BASE_URL ชี้ localhost ขณะรันบน Vercel — ใช้โดเมน production แทน');
+  }
+  const fallback = env.VERCEL_PROJECT_PRODUCTION_URL;
+  return fallback ? `https://${String(fallback).replace(/^https?:\/\//, '').replace(/\/+$/, '')}` : '';
+}
+
 // การ์ดรูปแบบเดียวทั้งระบบ: หัวข้อ + รายการ label/value + ปุ่มลิงก์กลับเข้าระบบ
 // rows ที่ value ว่างถูกตัดทิ้ง — caller ใส่มาได้เลยไม่ต้องเช็คเอง
-// ปุ่มลิงก์ต้องมี APP_BASE_URL (เช่น https://ss-system.vercel.app) ไม่มีก็ตัดปุ่มทิ้ง
+// ไม่มีโดเมนให้ใช้เลย (นอก Vercel และไม่ได้ตั้งค่า) = ตัดปุ่มทิ้ง ดีกว่าปุ่มที่กดแล้วพัง
 export function chatCard({ title, subtitle, rows = [], linkPath, linkLabel = 'เปิดดูในระบบ' }) {
   const widgets = rows
     .filter((r) => r && r.value !== null && r.value !== undefined && r.value !== '')
     .map((r) => ({ decoratedText: { topLabel: r.label, text: String(r.value), wrapText: true } }));
-  const base = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+  const base = resolveAppBaseUrl();
   if (linkPath && base) {
     widgets.push({
       buttonList: { buttons: [{ text: linkLabel, onClick: { openLink: { url: `${base}${linkPath}` } } }] },

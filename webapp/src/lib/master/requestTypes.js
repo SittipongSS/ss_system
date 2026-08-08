@@ -84,9 +84,15 @@ export function requestNeedsApprovalKind(kind) {
   return !!REQUEST_KINDS[kind]?.needsSupervisorApproval;
 }
 
-// หัวข้อนี้บังคับใส่วันกำหนดส่งตอนรับเรื่องไหม (มติผู้ใช้ 2026-08-06 · รายชนิด)
-export function requestRequiresCommittedDue(kind) {
-  return !!REQUEST_KINDS[kind]?.requiresCommittedDueDate;
+// วันกำหนดส่งตอนรับเรื่อง — **บังคับทุกหัวข้อ** (มติผู้ใช้ 2026-08-08 ยกระดับจาก
+// รายชนิดของ 2026-08-06: "วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับใส่เสมอ
+// ทุกคำร้อง") · เหตุผลเดิมยิ่งจริงขึ้น: แถบ "เลยกำหนด" นับจาก `committedDueDate`
+// เท่านั้น ⇒ หัวข้อที่ไม่บังคับคือหัวข้อที่หายไปจากตัวเลขงานค้างของฝ่ายถาวร
+//
+// ⚠️ คงรูปฟังก์ชันไว้ (ผู้เรียก 3 จุดไม่ต้องแก้) — ธง `requiresCommittedDueDate`
+// รายชนิดถูกถอดออกจากทะเบียนแล้ว อย่าประกาศกลับมา มันไม่มีผลอีกแล้ว
+export function requestRequiresCommittedDue() {
+  return true;
 }
 
 // ฝ่ายปลายทางสร้างแถวเองตอนส่งของไหม (พัฒนากลิ่น — แบบหน้าจอ §04)
@@ -288,7 +294,12 @@ export function requestShapeError(kind, body = {}) {
   }
   if (String(body.body ?? '').length > 4000) return 'รายละเอียดยาวเกิน 4000 ตัวอักษร';
 
-  const due = body.requestedDueDate;
-  if (due && !/^\d{4}-\d{2}-\d{2}$/.test(String(due))) return 'วันที่ที่ต้องการคำตอบไม่ถูกต้อง';
+  // ⭐ **วันที่คาดหวังบังคับทุกหัวข้อ** (มติผู้ใช้ 2026-08-08: "วันที่คาดหวังกับ
+  // วันที่กำหนดส่ง อยากให้บังคับใส่เสมอ ทุกคำร้อง") — คู่กับวันกำหนดส่งตอนรับเรื่อง
+  // (`requestRequiresCommittedDue`) · ใบที่ไม่มีวันคาดหวัง ฝ่ายปลายทางไม่มีข้อมูล
+  // เลยว่างานนี้รีบแค่ไหนตอนตัดสินใจรับปากวัน
+  const due = String(body.requestedDueDate ?? '').trim();
+  if (!due) return 'ต้องระบุวันที่คาดหวังว่าจะได้รับ';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return 'วันที่ที่ต้องการคำตอบไม่ถูกต้อง';
   return null;
 }

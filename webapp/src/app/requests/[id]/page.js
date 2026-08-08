@@ -31,7 +31,7 @@ import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
-import { formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
+import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/components/requests/PdrForm";
@@ -127,6 +127,9 @@ export default function RequestDetailPage() {
   const [scentOptions, setScentOptions] = useState([]);
   // ส่งของ (พัฒนากลิ่น) — [{ name, code, sentAt, derivedFromScentId, spec }]
   const [delivery, setDelivery] = useState(null);
+  // ⭐ โมดัลรวบส่งของของพัฒนาสูตร (ช่องว่างข้อ 3) — { at, rows: [{item, formulaName,
+  // formulaCode, formulaDate, error}] } · วันที่กรอกครั้งเดียว สูตรกรอกรายแถว
+  const [bulkReady, setBulkReady] = useState(null);
   // ⚠️ ทะเบียนกลิ่น **ทั้งก้อน** ไม่ใช่เฉพาะของลูกค้ารายนี้ — รหัสกลิ่นห้ามซ้ำทั้ง
   // บริษัท (scents_code_uk เป็น unique ทั้งตาราง) ⇒ เตือนซ้ำต้องเทียบกับทุกแถว
   const [allScents, setAllScents] = useState([]);
@@ -279,6 +282,52 @@ export default function RequestDetailPage() {
       ? "บันทึกแล้ว · เปิดรายการใหม่สำหรับรอบแก้ให้แล้ว"
       : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
     if (ok) setHopDraft(null);
+  };
+
+  // ── รวบส่งของหลายแถว (พัฒนาสูตร) ────────────────────────────────────────
+  // ⚠️ แต่ละแถวเป็น **อิสระต่อกันจริง** (สูตรคนละตัว คนละ identity) ⇒ ยิงทีละแถว
+  // แล้วรายงานรายแถวได้ ไม่ต้องมี endpoint รวบใหม่ · แถวที่สำเร็จแล้วหลุดจากโมดัล
+  // แถวที่พังค้างไว้พร้อมข้อความ — กดส่งซ้ำได้โดยไม่ยิงซ้ำของที่สำเร็จไปแล้ว
+  const bulkReadyBlocker = (() => {
+    if (!bulkReady) return null;
+    for (let i = 0; i < bulkReady.rows.length; i += 1) {
+      const row = bulkReady.rows[i];
+      const bad = normalizeFormulaDelivery(row).error;
+      if (bad) return `${row.item.label}: ${bad}`;
+    }
+    return hopValuesError("ready", { at: bulkReady.at });
+  })();
+  const submitBulkReady = async () => {
+    setSaving(true);
+    const failed = [];
+    let sent = 0;
+    try {
+      for (const row of bulkReady.rows) {
+        try {
+          const res = await fetch(`/api/sa/requests/${id}/items/${row.item.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              hop: "ready", at: bulkReady.at,
+              formulaName: row.formulaName,
+              formulaCode: row.formulaCode,
+              formulaDate: row.formulaDate || null,
+            }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(d.error || "ส่งไม่สำเร็จ");
+          sent += 1;
+        } catch (e) { failed.push({ ...row, error: e.message }); }
+      }
+    } finally { setSaving(false); }
+    await load();
+    if (failed.length) {
+      setBulkReady({ ...bulkReady, rows: failed });
+      setToast({ kind: "error", msg: `ส่งแล้ว ${sent} รายการ · ติด ${failed.length} รายการ — แก้แล้วกดส่งซ้ำได้` });
+    } else {
+      setBulkReady(null);
+      setToast({ kind: "success", msg: `ส่งของ ${sent} รายการ — สูตรเข้าทะเบียนแล้ว` });
+    }
   };
 
   // ปุ่มส่งปิดด้วยกติกาเดียวกับที่ช่องเตือน — ฟอร์มไม่คิดกฎเอง (บทเรียนเดิม:
@@ -486,6 +535,23 @@ export default function RequestDetailPage() {
   const requestActions = normalizeDocumentControlActions({
     primaryAction: headerAction,
     secondaryActions: [
+      {
+        // ⭐ **รวบส่งของหลายแถว** (ช่องว่างข้อ 3 ของแบบพัฒนาสูตร) — ใบที่ขอ 5 รายการ
+        // และเสร็จพร้อมกัน ไม่ต้องเปิดโมดัลห้ารอบกรอกวันเดิมห้าครั้ง
+        // ⚠️ โผล่เมื่อมีแถวพร้อมส่ง ≥ 2 — แถวเดียวใช้ปุ่มรายแถวท้ายเธรดตามเดิม
+        // (สองทางเข้าเดินเข้ากติกาเดียวกันที่ server · ไม่มีด่านของตัวเอง)
+        id: "bulk-ready",
+        label: "ส่งของหลายรายการ",
+        kind: "submit",
+        icon: Send,
+        visible: canAnswer && bulkReadyRows(req.items || []).length >= 2,
+        onClick: () => setBulkReady({
+          at: businessDate(),
+          rows: bulkReadyRows(req.items || []).map((item) => ({
+            item, formulaName: "", formulaCode: "", formulaDate: "",
+          })),
+        }),
+      },
       {
         // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
         // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
@@ -834,6 +900,75 @@ export default function RequestDetailPage() {
                 }, "เลื่อนวันแล้ว").then((ok) => { if (ok) setReschedule(null); })}
               >
                 บันทึกวันใหม่
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* รวบส่งของหลายแถว (พัฒนาสูตร · ช่องว่างข้อ 3) — วันที่ครั้งเดียว สูตรรายแถว
+          ⚠️ ด่านต่อแถวใช้ `normalizeFormulaDelivery` ตัวเดียวกับ server และกับโมดัล
+          รายแถว ⇒ สามทางเข้าตรวจเหมือนกันเป๊ะ */}
+      <Modal
+        open={!!bulkReady} onClose={() => setBulkReady(null)} size="lg" dismissible={!saving}
+        title={bulkReady ? `ส่งของ ${bulkReady.rows.length} รายการ — สูตรเข้าทะเบียนทันที` : ""}
+      >
+        {bulkReady && (
+          <>
+            <div className="form-group">
+              <label htmlFor="bulk-ready-at">วันที่ส่งของ (ทุกรายการ)</label>
+              <DateInput
+                id="bulk-ready-at" value={bulkReady.at} disabled={saving}
+                onChange={(v) => setBulkReady({ ...bulkReady, at: v })}
+              />
+            </div>
+            {bulkReady.rows.map((row, i) => (
+              <div key={row.item.id} className={styles.bulkRow}>
+                <div className="toolbar-label">{row.item.label}</div>
+                {row.error && <p className={styles.error}>{row.error}</p>}
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label htmlFor={`bulk-name-${i}`}>ชื่อสูตร</label>
+                    <Input
+                      id={`bulk-name-${i}`} value={row.formulaName} disabled={saving}
+                      placeholder="ชื่อจริงที่ RD ตั้ง"
+                      onChange={(e) => setBulkReady({
+                        ...bulkReady,
+                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaName: e.target.value } : r)),
+                      })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor={`bulk-code-${i}`}>รหัสสูตร</label>
+                    <Input
+                      id={`bulk-code-${i}`} mono value={row.formulaCode} disabled={saving}
+                      placeholder="เช่น PF638010202-P1"
+                      onChange={(e) => setBulkReady({
+                        ...bulkReady,
+                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaCode: e.target.value } : r)),
+                      })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor={`bulk-date-${i}`}>
+                      วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
+                    </label>
+                    <DateInput
+                      id={`bulk-date-${i}`} value={row.formulaDate} disabled={saving}
+                      onChange={(v) => setBulkReady({
+                        ...bulkReady,
+                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaDate: v } : r)),
+                      })}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            {bulkReadyBlocker && <p className={styles.fieldHint}>{bulkReadyBlocker}</p>}
+            <div className="form-actions-buttons">
+              <Button variant="quiet" disabled={saving} onClick={() => setBulkReady(null)}>ยกเลิก</Button>
+              <Button tone="accent" disabled={saving || !!bulkReadyBlocker} onClick={submitBulkReady}>
+                {saving ? "กำลังส่ง…" : `ส่งของ ${bulkReady.rows.length} รายการ`}
               </Button>
             </div>
           </>

@@ -21,11 +21,8 @@ const formulaDev = {
   key: 'formula_dev',
   label: 'พัฒนาสูตร',
   dept: 'RD', scope: 'FD', hasItems: true, lineShape: 'product_dev',
-  // ⭐ **บังคับวันกำหนดส่งตอนรับเรื่อง** (มติผู้ใช้ 2026-08-07 · Q39) — เหตุผลไม่ใช่
-  // ความยาวของสาย แต่เป็นเรื่องตัวเลข: แถบ "เลยกำหนด" บนภาพรวม `/rd` นับจาก
-  // `committedDueDate` เท่านั้น ⇒ ใบที่ไม่มีวัน **ไม่มีวันขึ้นเป็นงานช้า** ไม่ว่าจะ
-  // ดองนานแค่ไหน · หัวข้อที่ไม่บังคับคือหัวข้อที่หายไปจากตัวเลขงานค้างของฝ่าย
-  requiresCommittedDueDate: true,
+  // ⚠️ ธง `requiresCommittedDueDate` เคยอยู่ตรงนี้ — ถอดออกเมื่อวันกำหนดส่งกลายเป็น
+  // กติกาทั้งระบบ (มติผู้ใช้ 2026-08-08 · `requestRequiresCommittedDue` คืน true เสมอ)
   // กลิ่นอยู่ **รายแถว** — ใบเดียวขอได้หลายกลิ่นหลายหมวด
   needs: ['project', 'deal'],
   stepKey: 'npd-15', dealType: 'NPD',

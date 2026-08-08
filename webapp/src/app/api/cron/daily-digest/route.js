@@ -5,6 +5,11 @@ import { chatCard, sendChatNow } from '@/lib/chat';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { holidaySet } from '@/lib/master/holidays';
 import { agedAtLeast, businessDaysWaiting } from '@/lib/sales/handoffQueue';
+import { leadDigestRows, summarizeLeadQueue } from '@/lib/sales/leadDigest';
+import { overdueLeadNotices } from '@/lib/sales/leadNotify';
+import { notifyUsers } from '@/lib/notifications';
+import { businessDayKey } from '@/lib/datePeriods';
+import { loadUserDirectory } from '@/lib/usersRepo';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
@@ -52,29 +57,83 @@ async function approvalsDigest(supabase) {
   });
 }
 
+/* ทวงลีดที่เลย SLA เข้ากล่องแจ้งเตือนรายคน — หนึ่งคนได้เด้งเดียวต่อวัน
+   กติกา "ใครค้างอะไร" อยู่ที่ `overdueLeadNotices` (lib/sales/leadNotify.js) ที่นี่แค่
+   ดึงข้อมูลกับยิง · ยิงซ้ำวันเดียวกันไม่เกิดแถวซ้ำ (dedupeKey ต่อคนต่อวัน) */
+async function notifyOverdueLeads(supabase) {
+  const { data, error } = await supabase
+    .from('sales_leads')
+    .select('id, contactName, status, team, assigneeId, createdAt, screenedAt, assignedAt')
+    .in('status', ['new', 'screened', 'assigned']);
+  if (error) return { sent: 0, error: error.message };
+  if (!data?.length) return { sent: 0, reason: 'ไม่มีลีดค้าง' };
+
+  const [holidays, directory] = await Promise.all([
+    holidaySet().catch(() => new Set()),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const now = new Date().toISOString();
+  const sinceOf = { new: (l) => l.createdAt, screened: (l) => l.screenedAt || l.createdAt, assigned: (l) => l.assignedAt || l.createdAt };
+  const notices = overdueLeadNotices(data, {
+    directory,
+    ageOf: (lead) => businessDaysWaiting(sinceOf[lead.status]?.(lead), now, holidays),
+    dayKey: businessDayKey(now),
+  });
+  if (!notices.length) return { sent: 0, reason: 'ไม่มีลีดเลย SLA' };
+
+  let sent = 0;
+  for (const notice of notices) {
+    const result = await notifyUsers(supabase, {
+      userIds: notice.userIds,
+      entityType: 'lead',
+      entityId: notice.entityId,
+      kind: 'lead_overdue',
+      title: notice.title,
+      body: notice.body,
+      dedupeKey: notice.dedupeKey,
+      // สรุปหลายใบ → พาไปที่ *คิว* ไม่ใช่ใบใดใบหนึ่ง (การ์ด "ค้างคิว" อยู่บนหน้านั้นแล้ว)
+      href: '/sa/leads',
+      actorName: 'สรุปประจำวัน',
+    });
+    sent += result.sent || 0;
+  }
+  return { sent, notices: notices.length };
+}
+
 async function leadsDigest(supabase) {
   // ลีดค้างในสถานะที่ "รอคนทำ" + มี SLA ผูก: รอคัดกรอง (Supervisor) · รอกระจาย (Senior) ·
   // รอติดต่อกลับ (AE). ภาพรวมทั้งฝ่าย (เหมือน approvalsDigest) — การทำงานรายใบยัง scope
   // ที่หน้า /sa/leads. ไม่มีลีดค้าง = ไม่ส่งการ์ด (ไม่สแปม space).
+  //
+  // ⭐ 2026-08-08: เพิ่ม **ใครถืออยู่** กับ **ค้างมากี่วันทำการ** — ของเดิมบอกแค่จำนวนรวม
+  // ("รอติดต่อกลับ 29") ซึ่งอ่านแล้วไม่รู้ว่าต้องไปตามใคร · ตรวจข้อมูลจริงวันเดียวกันพบว่า
+  // ใน 29 ใบนั้นมี 14 ใบค้างข้ามเดือน ใบที่นานสุด 10 วันทำการ ทั้งที่ SLA คือ 1 วันทำการ
+  // การ์ดที่บอกแค่ตัวเลขรวมจึงถูกอ่านผ่านทุกเช้าโดยไม่มีใครเห็นว่ามันแย่ขนาดไหน
+  // ⚠️ **จำนวนไม่เปลี่ยนสูตร** — ยังนับลีดค้างทุกใบเหมือนเดิม ที่เพิ่มคือรายละเอียดข้างหลัง
   const { data } = await supabase
     .from('sales_leads')
-    .select('status')
+    .select('status, team, assigneeId, assigneeName, createdAt, screenedAt, assignedAt')
     .in('status', ['new', 'screened', 'assigned']);
   const rows = data || [];
   if (!rows.length) return null;
 
-  const count = (s) => rows.filter((r) => r.status === s).length;
-  const nNew = count('new');
-  const nScreened = count('screened');
-  const nAssigned = count('assigned');
+  const [holidays, directory] = await Promise.all([
+    holidaySet().catch(() => new Set()),
+    // ชื่อปัจจุบันจากบัญชีจริง — สำเนาชื่อในแถวเป็นชื่อย่อ/ชื่อเก่าอยู่หลายใบบน prod
+    // (ปัญหาเดียวกับที่แก้ในตาราง KPI) · อ่านทะเบียนล่มก็ยังส่งการ์ดได้ แค่ถอยไปชื่อในแถว
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const summary = summarizeLeadQueue(rows, {
+    asOf: new Date().toISOString(),
+    holidays,
+    nameOf: (id) => directory.get(id)?.name || null,
+  });
+
+  const worst = Math.max(summary.screen.oldest, summary.spread.oldest, summary.contact.oldest);
   return chatCard({
     title: '📋 ลีดค้างคิวเช้านี้',
-    subtitle: `รวม ${rows.length} รายการ (SLA 1 วันทำการ)`,
-    rows: [
-      nNew ? { label: `รอคัดกรอง (${nNew})`, value: 'AE Supervisor คัดกรอง + เลือกทีม' } : null,
-      nScreened ? { label: `รอกระจาย (${nScreened})`, value: 'Senior AE มอบให้ AE' } : null,
-      nAssigned ? { label: `รอติดต่อกลับ (${nAssigned})`, value: 'AE ติดต่อลูกค้ากลับ' } : null,
-    ].filter(Boolean),
+    subtitle: `รวม ${summary.total} รายการ · SLA 1 วันทำการ${worst ? ` · ค้างนานสุด ${worst} วันทำการ` : ''}`,
+    rows: leadDigestRows(summary),
     linkPath: '/sa/leads',
     linkLabel: 'เปิดคิวลีด',
   });
@@ -185,6 +244,16 @@ export async function GET(request) {
 
   const supabase = getSupabaseAdmin();
   const results = {};
+
+  /* ทวงลีดค้างเข้ากล่องแจ้งเตือน **รายคน** — แยกจากการ์ด Chat ด้านล่างโดยตั้งใจ
+     การ์ดเข้าห้องรวมและต้องเปิด webhook ก่อน (องค์กรนี้ยังไม่ได้เปิดสักช่อง)
+     ส่วนตัวนี้ถึงตัวคนที่ต้องลงมือเสมอ ไม่ต้องตั้งค่าอะไร
+     ⚠️ วางไว้ก่อน jobs และ try/catch แยก — การ์ดพังต้องไม่ทำให้การทวงหาย และกลับกัน */
+  try {
+    results.leadOverdue = await notifyOverdueLeads(supabase);
+  } catch (e) {
+    results.leadOverdue = { sent: 0, error: e?.message || String(e) };
+  }
 
   // การ์ดไหนพัง (query/ส่งไม่สำเร็จ) ไม่ต้องล้มทั้ง digest — เก็บ error รายการ์ดไว้ในผลลัพธ์
   const jobs = [

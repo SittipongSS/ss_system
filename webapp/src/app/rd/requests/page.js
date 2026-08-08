@@ -14,9 +14,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import Tabs from "@/components/ui/Tabs";
+import Segmented from "@/components/ui/Segmented";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
-import { DEPT_QUEUE_TABS, deptQueueRows } from "@/lib/requests/queueBoard";
+import QueueCountStrip from "@/components/requests/QueueCountStrip";
+import { useQueueBoard } from "@/lib/requests/useQueueBoard";
+import { businessDate } from "@/lib/businessDate";
+import { DEPT_QUEUE_TABS, deptQueueRows, queueCounts } from "@/lib/requests/queueBoard";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 
 const DEPT = "RD";
@@ -30,6 +34,7 @@ const TAB_BLURB = {
 export default function RdRequestsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const board = useQueueBoard();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -61,28 +66,58 @@ export default function RdRequestsPage() {
     [requests, tab],
   );
 
+  const counts = queueCounts(rows, { todayIso: businessDate() });
+
   return (
     <Workspace
       icon={<FlaskConical size={22} />}
-      title="คิวคำร้องของฝ่าย R&D"
+      /* ⚠️ ชื่อฝ่ายสะกดแบบเดียวกับหน้าภาพรวม ("ฝ่ายวิจัยและพัฒนา") — เดิมหน้านี้เขียน
+         "R&D" ส่วนภาพรวมเขียนไทย และข้อความว่างพูด "ฝ่าย RD" ⇒ ฝ่ายเดียวสามชื่อ */
+      title="คิวคำร้องฝ่ายวิจัยและพัฒนา"
       subtitle={TAB_BLURB[tab]}
+      /* ⭐ ตัวสลับมุมมองอยู่ในหัวการ์ดตามต้นแบบหน้างานของฉัน
+         ⚠️ **ไม่มีปุ่ม "เปิดคำร้อง"** — คิวของฝ่ายเป็นที่ *ตอบ* ไม่ใช่ที่เปิด (ม-29) */
+      headerRight={(
+        <ViewSwitcher
+          value={board.view} onChange={board.setView}
+          modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
+        />
+      )}
     >
-      <Tabs
-        value={tab} onChange={setTab}
-        tabs={DEPT_QUEUE_TABS.map((t) => ({
-          key: t.key,
-          // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
-          // ขัดกันไม่ได้
-          label: `${t.label} (${deptQueueRows(requests, { dept: DEPT, tab: t.key }).length})`,
-        }))}
-        ariaLabel="มุมมองคิวของฝ่าย R&D"
-      />
+      <div className="flex flex-col gap-4">
+
+      {/* ⭐ แท็บเป็น pill ทรงเดียวกับตัวเลือกทุกหน้าในระบบ — เดิมเป็นขีดเส้นใต้
+          ซึ่งเป็นคนละภาษากับ segmented ที่หน้าอื่นใช้ (มติผู้ใช้ 2026-08-08) */}
+      <div className="scope-row">
+        <Segmented
+          ariaLabel="มุมมองคิวของฝ่ายวิจัยและพัฒนา"
+          className="scope-toggle"
+          value={tab}
+          onChange={setTab}
+          options={DEPT_QUEUE_TABS.map((t) => ({
+            value: t.key,
+            // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
+            // ขัดกันไม่ได้
+            label: `${t.label} (${deptQueueRows(requests, { dept: DEPT, tab: t.key }).length})`,
+          }))}
+        />
+      </div>
+
+      {!loading && !loadError && (
+        <QueueCountStrip
+          counts={counts}
+          filter activeKey={board.countFilter}
+          note="กดเพื่อกรองรายการ"
+          ariaLabel="ตัวเลขสรุปคิวของฝ่าย — กดเพื่อกรอง"
+          onSelect={(key, on) => board.setCountFilter(on ? null : key)}
+        />
+      )}
 
       <RequestQueuePanel
-        scope="queue" dept={DEPT} rows={rows}
-        showNewRequest={false}
+        scope="queue" dept={DEPT} rows={rows} board={board}
         loading={loading} loadError={loadError} reload={reload}
       />
+      </div>
     </Workspace>
   );
 }

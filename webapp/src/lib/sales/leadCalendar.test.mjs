@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { CALENDAR_MAX_DAYS, calendarRange, toCalendarEntries } from './leadCalendar.js';
+import { CALENDAR_MAX_DAYS, calendarRange, isInLocalMonth, toCalendarEntries } from './leadCalendar.js';
 
 test('calendarRange: ถ่างขอบด้านละ 1 วัน — นัดตีหนึ่งต้องไม่หายไปจากเดือนที่กำลังดู', () => {
   const range = calendarRange('2026-08-01', '2026-08-31');
@@ -63,4 +63,26 @@ test('route ปฏิทินต้องใช้ applyLeadScope ตัวเ�
   // ตรวจเฉพาะ "โค้ดที่ query" ไม่ใช่ทั้งไฟล์ — คอมเมนต์อธิบายเหตุผลก็เอ่ยชื่อคอลัมน์นี้
   assert.doesNotMatch(routeSource, /\.select\([^)]*meetingAt/,
     'ห้ามอ่านจาก sales_leads.meetingAt — คอลัมน์นั้นเก็บได้ใบละ "นัดถัดไป" ค่าเดียว');
+});
+
+/* 🐞 บั๊กที่เจอตอนตรวจตัวเลข 2026-08-08: server ถ่างขอบ ±1 วันมาให้ (calendarRange)
+   แต่หน้าจอไม่ได้ตัดทิ้ง ⇒ ป้าย "N นัด" กับมุมมองรายการกินนัดของเดือนข้างเคียงมาด้วย
+   ขณะที่ตารางเดือนไม่โชว์ (วาดเฉพาะช่องของเดือนนี้) = สองมุมมองพูดคนละเลข */
+test('isInLocalMonth: ตัดวันที่ถ่างเผื่อขอบทิ้ง — วัดด้วยเวลาท้องถิ่นไม่ใช่ UTC', () => {
+  const AUG = 7; // getMonth: 0 = มกราคม
+  // เที่ยงวันกลางเดือน — อยู่ในเดือนแน่นอนทุก timezone
+  assert.equal(isInLocalMonth('2026-08-12T05:00:00.000Z', 2026, AUG), true);
+  // ขอบที่ server ถ่างมา: 31 ก.ค. กับ 1–2 ก.ย. ต้องไม่ถูกนับเป็นเดือนสิงหาคม
+  assert.equal(isInLocalMonth('2026-07-31T05:00:00.000Z', 2026, AUG), false);
+  assert.equal(isInLocalMonth('2026-09-01T05:00:00.000Z', 2026, AUG), false);
+  // เดือนเดียวกันแต่คนละปี
+  assert.equal(isInLocalMonth('2025-08-12T05:00:00.000Z', 2026, AUG), false);
+  // ค่าเสีย → ไม่นับ (ดีกว่าโผล่ผิดช่อง)
+  assert.equal(isInLocalMonth('ไม่ใช่วันที่', 2026, AUG), false);
+  assert.equal(isInLocalMonth(null, 2026, AUG), false);
+});
+
+test('หน้าปฏิทินต้องกรองด้วย isInLocalMonth ก่อนนับ — ไม่งั้นป้ายจำนวนกับตารางไม่ตรงกัน', () => {
+  const pageSource = readFileSync(new URL('../../app/sa/calendar/page.js', import.meta.url), 'utf8');
+  assert.match(pageSource, /isInLocalMonth\(entry\.at, cursor\.y, cursor\.m\)/);
 });

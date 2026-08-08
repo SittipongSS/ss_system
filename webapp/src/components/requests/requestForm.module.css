@@ -111,50 +111,17 @@
 .listLink { font-weight: var(--fw-bold); }
 .listEmpty { padding: var(--space-3); color: var(--text-3); font-size: var(--fs-7); }
 
-/* แถบตัวเลข 4 ตัวเหนือคิว — โทนบอก "ต้องรีบแค่ไหน" ไม่ใช่บอกชนิดของงาน
-   ⚠️ สีสงวนให้ความเร่งด่วนและเจ้าของก้าว · ชนิดคำร้องใช้ป้ายข้อความ (มติในแผน) */
-.counts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
+/* 🗑️ `.counts` · `.filterNote` · `.clearFilter` · `.countChip` ถูกถอดทั้งชุด —
+   แถบตัวเลขย้ายไป `QueueCountStrip` (MetricStrip) · ตัวสลับมุมมองขึ้นไปอยู่หัวการ์ด ·
+   ตัวกรองที่ใช้อยู่กลายเป็นปุ่มในแถบเครื่องมือ ตามต้นแบบหน้างานของฉัน
+   (มติผู้ใช้ 2026-08-08) */
 
-/* ตัวเลขเป็นปุ่มกรอง — สี/ขอบ/ระยะมาจาก `.chip` ของกลางทั้งหมด ที่เหลือคือ
-   สิ่งที่ `.chip` ไม่มีเพราะมันไม่ใช่ปุ่ม: รีเซ็ต <button> กับสถานะ "กดค้างอยู่"
-   ⚠️ ตอนถูกกด **เข้มขึ้นด้วยพื้นของสีเดิม ไม่ใช่เปลี่ยนเป็นสีอื่น** — สีบอกความ
-   เร่งด่วน ถ้าสลับสีตอนเลือก ความหมายของสีจะหายไปทันที */
-.countChip {
-  font-family: inherit;
-  cursor: pointer;
-}
+/* ช่องค้นหาในแถบเครื่องมือ — กว้างคงที่ ไม่ยืดกินทั้งแถว */
+.searchBox { width: 260px; max-width: 100%; }
 
-.countChip strong { color: var(--text); }
-
-.countChip:hover { border-color: color-mix(in srgb, currentColor 45%, transparent); }
-
-.countChip:focus-visible,
-.clearFilter:focus-visible,
 .queueCard:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.countChip[aria-pressed="true"] {
-  border-color: currentColor;
-  background: color-mix(in srgb, currentColor 22%, transparent);
-}
-
-/* ปุ่มล้างตัวกรอง — เป็นลิงก์ในประโยค ไม่ใช่ปุ่มก้อน จึงไม่ใช้ .btn */
-.clearFilter {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--accent-ink);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* ── มุมมองการ์ดของคิว (จอตั้ง/จอแคบ) ────────────────────────────────────
@@ -299,21 +266,7 @@
 
 .derived[data-empty] { color: var(--text-3); }
 
-/* บอกว่าไฟล์แนบไปทำที่ไหน **พร้อมเหตุผล** — ช่องที่หายไปโดยไม่บอกอะไรเลย
-   อ่านเหมือนของที่ระบบทำไม่ได้ ไม่ใช่ของที่อยู่ขั้นถัดไป */
-.deferNote {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-ink);
-  border-radius: var(--radius);
-  background: var(--panel-3);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
+/* 🗑️ `.deferNote` ถูกถอด — ช่องแนบไฟล์กลับมาอยู่ในฟอร์มสร้างแล้ว (มติ 2026-08-08) */
 
 /* ปุ่มคุมหัวข้อ — ชิดขวาใต้ช่องหัวข้อ ให้อยู่ในสายตาเดียวกับสิ่งที่มันเปลี่ยน
    ⚠️ เหตุผลที่กดไม่ได้อยู่ **แถวเดียวกับปุ่ม** ไม่ใช่บรรทัดใหม่ชิดซ้าย */

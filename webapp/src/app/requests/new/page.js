@@ -5,10 +5,9 @@
 // แต่เป็นสองข้อนี้:
 //
 //   1 **ขั้นทบทวนก่อนเลขที่ออก** — หน้านี้จบที่ "บันทึกร่าง" แล้วส่งที่หน้ารายละเอียด
-//     ⇒ ได้จังหวะแนบไฟล์ (`AttachmentsPanel` ต้องมี `entityId` ก่อน) และตรวจของ
-//     ก่อนกดส่งซึ่งย้อนไม่ได้ · โมดัลเดินสามขั้นรวดในการกดครั้งเดียว จึงไม่มีจังหวะนั้น
-//     ⚠️ **ไม่ใช่ว่าโมดัลแนบไฟล์ไม่ได้** — `createAndSendRequest` อัปไฟล์ที่ค้างใน
-//     ฟอร์มให้หลังสร้างใบ · ที่ต่างคือ "ได้ดูก่อนส่งไหม" ไม่ใช่ "แนบได้ไหม"
+//     ⇒ ได้ตรวจของก่อนกดส่งซึ่งย้อนไม่ได้ · โมดัลเดินสามขั้นรวดจึงไม่มีจังหวะนั้น
+//     ⭐ ไฟล์แนบได้ตั้งแต่ฟอร์มนี้แล้ว (มติผู้ใช้ 2026-08-08) — เก็บใน `form.files`
+//     แล้ว `saveDraft` อัปให้หลังได้ id · หน้ารายละเอียดยังแนบเพิ่ม/ลบได้เหมือนเดิม
 //   2 **prefill จากหน้าดีล** — `/requests/new?kind=product_dev&dealId=…`
 //     โมดัลต้องส่ง props ผ่านทุกจุดที่เปิดมัน = เพิ่มทางที่ต้องดูแล
 //
@@ -22,7 +21,7 @@ import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { createRequestDraft, requestFormBlocker } from "@/lib/master/requestCreate";
+import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/master/requestCreate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -108,7 +107,7 @@ export default function NewRequestPage() {
 
   // ⭐ **บันทึกร่างอย่างเดียว ไม่ส่ง** — เลขที่ออกตอนกดส่งที่หน้ารายละเอียด
   // สองขั้นนี้แยกกันเพราะการออกเลขที่ย้อนไม่ได้ (trigger ทำให้ `docNo` immutable)
-  // และเพราะไฟล์แนบต้องมีคำร้องให้เกาะก่อน ⇒ ร่างคือสิ่งที่ทำให้แนบไฟล์เป็นไปได้
+  // (ไฟล์ที่แนบในฟอร์มถูกอัปเป็นขั้นสองหลังได้ id — ดู `uploadDraftFiles`)
   // 🐞 **บั๊กที่ผู้ใช้เจอ (2026-08-07): "กดบันทึกร่างไม่ได้ ปุ่มจาง ไม่มีข้อความบอก"**
   //
   // เดิมไม่มี try/catch — `createRequestDraft` โยนได้จริงเมื่อ `fetch` เอง reject
@@ -124,9 +123,15 @@ export default function NewRequestPage() {
     try {
       const { id, error } = await createRequestDraft(form);
       if (error) { setToast({ kind: "error", msg: error }); return; }
-      // ⚠️ ไม่คืน `saving` ตอนสำเร็จ — กำลังจะออกจากหน้านี้ ปลดปุ่มก่อนเปลี่ยนหน้า
-      // จะเปิดให้กดซ้ำแล้วได้ร่างสองใบ
-      if (id) router.push(`/requests/${id}`);
+      // ⭐ อัปไฟล์ที่แนบไว้ในฟอร์ม (มติผู้ใช้ 2026-08-08: แนบได้ตั้งแต่หน้าสร้าง) —
+      // ต้องมี id ก่อนถึงอัปได้ จึงมาหลัง create เสมอ
+      // ⚠️ อัปพลาด **ไม่ rollback ร่าง** — ของที่อัปแล้วอยู่ครบ พาไปหน้ารายละเอียด
+      // พร้อมบอกว่าไฟล์ไหนไม่เข้า ให้แนบต่อที่นั่น (แถวไฟล์แนบมีอยู่แล้ว)
+      if (id) {
+        const uploadError = await uploadDraftFiles(id, form.files);
+        if (uploadError) setToast({ kind: "error", msg: `${uploadError} — แนบซ้ำได้ที่หน้ารายละเอียด` });
+        router.push(`/requests/${id}`);
+      }
     } catch (e) {
       setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });
     } finally {
@@ -147,8 +152,9 @@ export default function NewRequestPage() {
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
-          // ไฟล์แนบและ @ อยู่ที่หน้ารายละเอียด — ที่เดียวที่ทั้งสองอย่างทำงานจริง
-          deferAttachments
+          // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว
+          // — saveDraft อัปให้หลังได้ id (มติผู้ใช้ 2026-08-08)
+          deferMentions
           // เหตุผลที่ยังบันทึกไม่ได้ย้ายไปอยู่ติดปุ่ม (ด่านตัวเดียวกัน คนละที่วาง)
           showBlocker={false}
           revealed={revealed}

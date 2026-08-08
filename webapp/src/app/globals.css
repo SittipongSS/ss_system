@@ -4793,6 +4793,10 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .ui-metric.is-good strong,
 .ui-metric.is-success strong { color: var(--green); }
 .ui-metric.is-warning strong { color: var(--amber); }
+/* 🪤 `info` ขาดไปจากชุดนี้ ทั้งที่ทะเบียนตัวเลขของคิว (`QUEUE_COUNT_META`) ใช้อยู่ —
+   หน้าที่เรียกจึงต้องแปลงโทนทิ้งเองก่อนส่งเข้ามา แล้ว "กำลังดำเนินการ" กลายเป็น
+   ชิปฟ้าในคิวแต่ไม่มีสีบนภาพรวม · ป้ายเดียวกันสองสีคือสิ่งที่ผู้ใช้ทักเอง */
+.ui-metric.is-info strong { color: var(--blue); }
 
 @media (max-width: 900px) {
   .premium-header { align-items: stretch; flex-direction: column; gap: var(--space-3-5); }
