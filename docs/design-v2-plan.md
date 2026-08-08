@@ -111,7 +111,7 @@ route จึงสลับพร้อมกันโดยไม่แตะ�
 - [x] **รายชื่อผู้รับผิดชอบกรองเหลือ ae/senior_ae** (มติเดียวกัน): `DEAL_HOLDER_ROLES`
   คุมทั้งดรอปดาวน์และ validateDealOwner — admin/AC หายจากลิสต์ (แก้ดีลได้แต่ถือไม่ได้)
 
-## Phase 2 — รันทั้งระบบเป็น wave `กำลังดำเนินการ`
+## Phase 2 — รันทั้งระบบเป็น wave `รอตรวจ` (7/7 wave)
 
 ลำดับตาม priority องค์กร (2026-07-26): sales ที่เหลือ (16) → sahamit (11) →
 database (10) → tax (6) → mgmt+pm (8) → settings/users/audit/account (15) →
@@ -147,9 +147,23 @@ actual) ⇒ **accent = สีปุ่ม/จุดกดล้วนทั้�
 · บั๊กเก่านอกขอบเขต: โดนัท /tax ไม่วาด sector ทั้งที่มีข้อมูล (เท่ากันทั้ง
 v1/v2 — แยกเป็นงานต่างหากแล้ว)
 
-ต่อ wave: แปลงหน้า + **ลบชั้นเก่าทันที** (`glass-panel`/`premium-*`/inline style
-— ratchet รูดลง งานวัดด้วยบรรทัดที่ลบ) + screenshot ก่อน/หลังส่งให้ผู้ใช้ดูรวดเดียว
-ท้าย wave ไม่ต้องนั่งดูทุกหน้า
+**Wave 5 (mgmt+pm) เสร็จ 2026-08-08:** probe 8 หน้า (ภาพรวม/ประชุม/งาน/rocks/
+ถังขยะ · pm งาน+รายละเอียด · เว้นปฏิทิน→Phase 3) — เจอจุดเดียว: แถบสลับ
+ขอบเขตใน pm/tasks ตั้ง inline mb 18 ทบ gap-4 เป็น 34px → ลบ (inline −1) ·
+ตรวจทั้ง scope ว่างและ scope ที่มีการ์ดจริง 51 ใบ
+
+**Wave 6 (settings/users/audit/account) เสร็จ 2026-08-08:** probe hub ตั้งค่า ·
+users · audit · account · company · document-standards · signature-coverage ·
+cost-templates — **ศูนย์ทุกตัวชี้วัด ไม่ต้องแก้อะไร**
+
+**Wave 7 (โมดูลใหม่ + ส่วนกลาง) เสร็จ 2026-08-08:** service · production · rd ·
+support · /home — ศูนย์ทุกตัว · /home มีจังหวะ 24px สม่ำเสมอทั้งสามช่อง มาจาก
+`row-gap` ของ `.home-hub-shell` (ไม่ใช่ margin ทบ) = จังหวะ launchpad ที่
+ตั้งใจให้โปร่งกว่าหน้าทำงาน — **ไม่แก้**
+
+⇒ **Phase 2 ครบ 7/7 wave** เหลืองานเชิงกล: ลบชั้นเก่า + รูด ratchet
+(`glass-panel`/`premium-*`/inline style — วัดด้วยบรรทัดที่ลบ) แยกทำต่อไฟล์
+ไม่บล็อกการสลับ v2
 
 ## Phase 3 — ของที่ pattern ปกติไม่ครอบ `รอดำเนินการ`
 
