@@ -16,7 +16,9 @@ import Segmented from "@/components/ui/Segmented";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
-import { QUEUE_TABS, queueTabRows } from "@/lib/requests/queueBoard";
+import { QUEUE_TABS, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
+import StartHereCard from "@/components/requests/StartHereCard";
+import { businessDate } from "@/lib/businessDate";
 
 // คำโปรยของแต่ละแท็บ — บอกว่ากำลังดูอะไรอยู่ ไม่ใช่ชื่อแท็บซ้ำอีกรอบ
 const TAB_BLURB = {
@@ -124,6 +126,21 @@ export default function RequestsPage() {
     [requests, tab, myDepts],
   );
 
+  // ── การ์ด "เริ่มที่นี่" ────────────────────────────────────────────────
+  //
+  // ⭐ ชี้จากแท็บ **"รอฉันตอบ" เสมอ ไม่ใช่แท็บที่กำลังเปิดอยู่** — คำถาม "เริ่มที่ใบไหน"
+  // มีคำตอบเดียวต่อคน · เปลี่ยนตามแท็บเมื่อไรมันจะกลายเป็น "ใบบนสุดของสิ่งที่เห็น"
+  // ซึ่งซ้ำกับแถวแรกของตารางที่อยู่ข้างใต้อยู่แล้ว
+  // ⚠️ ประวัติไม่มีอะไรให้ทำ ⇒ ซ่อนการ์ดทั้งใบในแท็บนั้น (ต่างจาก "ว่าง" ซึ่งต้องบอก)
+  const today = businessDate();
+  const startHere = useMemo(
+    () => startHereRequest(
+      queueTabRows(requests, { tab: "todo", myDepts }),
+      { todayIso: today },
+    ),
+    [requests, myDepts, today],
+  );
+
   // 🐞 `?dealId=` เคยเป็นพารามิเตอร์ตาย: หน้าดีลลิงก์มาพร้อมดีล แต่หน้านี้อ่านแค่
   // `tab` — กดมาแล้วได้คิวทั้งก้อน ไม่ได้กรองและไม่ได้เติมดีลให้ฟอร์ม
   // ตอนนี้ดีลบังคับทุกหัวข้อแล้ว การเติมล่วงหน้าจึงมีค่ากว่าเดิม: มาจากหน้าดีลไหน
@@ -171,6 +188,12 @@ export default function RequestsPage() {
           </span>
         )}
       </div>
+
+      {/* ⭐ **อยู่เหนือแท็บ** — มันเป็นคำตอบของทั้งหน้า ไม่ใช่ของแท็บใดแท็บหนึ่ง
+          (เหตุผลเดียวกับที่ตัวสลับขอบเขตอยู่เหนือแท็บ) */}
+      {!loading && !loadError && tab !== "history" && (
+        <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอคุณอยู่ตอนนี้" />
+      )}
 
       <Tabs
         value={tab} onChange={setTab}

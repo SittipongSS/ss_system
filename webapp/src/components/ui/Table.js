@@ -14,6 +14,13 @@ export function TableScroll({
   children,
   family = "list",
   surface = "auto",
+  // ⭐ `cells="stacked"` = ตารางที่เซลล์ซ้อนสองบรรทัด ⇒ ชิดบนทั้งแถว
+  // (กฎ 5 · UI_DESIGN_SYSTEM.md §ป้ายในตาราง) — ค่าตั้งต้น `middle` ถูกสำหรับ
+  // แถวบรรทัดเดียว แต่พอมีเซลล์สองบรรทัดปนบรรทัดเดียว บรรทัดแรกของแต่ละเซลล์
+  // จะไม่อยู่ระดับเดียวกัน ⇒ อ่านข้ามคอลัมน์ไม่เป็นแนว
+  // ⚠️ เป็น prop ของ **ตาราง** ไม่ใช่คลาสที่หน้าเขียนเอง — กฎอยู่ที่ Table.module.css
+  // ที่เดียว ไม่งั้นแต่ละหน้าต้องสู้ specificity กับ `.scroll[data-family] td` เอง
+  cells = "default",
   minWidth,
   className = "",
   ...props
@@ -23,6 +30,7 @@ export function TableScroll({
       className={`${styles.scroll} ${className}`.trim()}
       data-family={family}
       data-surface={surface}
+      data-cells={cells}
       style={minWidth ? { "--table-min-width": `${minWidth}px` } : undefined}
       {...props}
     >

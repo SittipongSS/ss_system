@@ -26,12 +26,16 @@ export const ROW_STAGES = [
   'declined',       // จบแบบไม่ได้ของ (ลูกค้าไม่เอา / ตอบไม่ได้)
 ];
 
+// ⭐ **ป้ายบอกสภาพตอนนี้ ไม่ใช่ขั้นที่ผ่านมาแล้ว** (มติผู้ใช้ 2026-08-08) —
+// "เสร็จแล้ว รอไปรับ" มี "เสร็จแล้ว" ซึ่งคือขั้น `developing` ที่ผ่านไปแล้ว ·
+// ตัดออกเหลือ "รอไปรับ" ⇒ ชุดนี้ยาวสุด 88px (เดิม 106px) ช่วง 46–88
+// วัดจริงบน dev server · ดู UI_DESIGN_SYSTEM.md §ป้ายในตาราง
 export const ROW_STAGE_LABELS = {
   awaiting_ack: 'รอรับเรื่อง',
   developing: 'กำลังทำ',
-  ready: 'เสร็จแล้ว รอไปรับ',
+  ready: 'รอไปรับ',
   picked_up: 'รับของแล้ว',
-  sent: 'ส่งให้ลูกค้าแล้ว',
+  sent: 'ส่งลูกค้าแล้ว',
   revised: 'ลูกค้าขอให้แก้',
   awaiting_price: 'รอใส่ราคา',
   done: 'เสร็จ',
@@ -138,7 +142,10 @@ const NEXT_BY_STAGE = {
   developing:     { owner: 'dept',      label: 'ส่งของ' },
   ready:          { owner: 'requester', label: 'รับของ' },
   picked_up:      { owner: 'requester', label: 'ส่งให้ลูกค้า' },
-  sent:           { owner: 'requester', label: 'บันทึกคำตอบลูกค้า' },
+  // ⚠️ "บันทึกคำตอบ" ไม่ใช่ "บันทึกคำตอบลูกค้า" — ปุ่มนี้เคยเป็นตัวเดียวในชุดที่
+  // **ยาวกว่าป้ายสถานะของขั้นเดียวกัน** (114 vs 94) ซึ่งอ่านผิดจังหวะ · "ลูกค้า"
+  // อยู่ในป้ายของขั้นก่อนหน้า ("ส่งลูกค้าแล้ว") อยู่แล้ว
+  sent:           { owner: 'requester', label: 'บันทึกคำตอบ' },
   awaiting_price: { owner: 'dept',      label: 'ใส่ราคา' },
   revised:        null,
   done:           null,

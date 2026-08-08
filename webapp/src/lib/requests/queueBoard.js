@@ -8,6 +8,9 @@
 // ⇒ คิวกับหน้ารายละเอียดขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestRowSummary } from '@/lib/requests/rowStage';
+// ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
+// re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
+import { compareRequestUrgency } from '@/lib/requests/queue';
 
 // ── ก้าวถัดไปของ "ทั้งใบ" ────────────────────────────────────────────────
 //
@@ -23,21 +26,28 @@ export function requestNextStep(request) {
 
   const items = request.items || [];
   // ใบที่ยังไม่มีบรรทัด (สอบถาม/พัฒนากลิ่นก่อน RD ส่งของ) — คอขวดอยู่ที่ฝ่ายเสมอ
+  //
+  // ⭐ "รอฝ่ายเริ่ม" ≠ "รอฝ่ายทำต่อ" — ตัวแรกคือรับเรื่องแล้วแต่ยังไม่มีของสักชิ้น
+  // ตัวหลังคือส่งมาบ้างแล้วแต่ยังไม่ครบ · สองอย่างนี้ผู้ขอทำอะไรต่างกัน (ตัวแรกรอเฉย ๆ
+  // ตัวหลังมีของให้ไปรับ) จึงยุบเป็นคำเดียวไม่ได้
   if (!items.length) {
     return request.status === 'pending'
       ? { owner: 'dept', label: 'รอรับเรื่อง' }
-      : { owner: 'dept', label: 'รอฝ่ายดำเนินการ' };
+      : { owner: 'dept', label: 'รอฝ่ายเริ่ม' };
   }
 
+  // ⚠️ **ไม่ต่อจำนวนท้ายป้าย** (มติผู้ใช้ 2026-08-08) — คิวมีคอลัมน์ "คืบหน้า" ที่บอก
+  // `2 / 3` อยู่แล้ว ⇒ ป้ายพูดซ้ำและกินไป 50px (135px → 84px) · ป้ายตอบว่า "ใครค้าง"
+  // คอลัมน์ตัวเลขตอบว่า "ค้างเท่าไร" — คนละคำถาม อย่ายัดไว้ที่เดียวกัน
   const summary = requestRowSummary(items);
   if (summary.waitingDept > 0) {
-    return { owner: 'dept', label: `รอฝ่ายทำต่อ ${summary.waitingDept} รายการ` };
+    return { owner: 'dept', label: 'รอฝ่ายทำต่อ' };
   }
   if (summary.waitingRequester > 0) {
-    return { owner: 'requester', label: `รอผู้ขอทำต่อ ${summary.waitingRequester} รายการ` };
+    return { owner: 'requester', label: 'รอผู้ขอทำต่อ' };
   }
   // ทุกแถวจบแล้วแต่ใบยังไม่ปิด — คนที่ต้องกดปิดคือผู้ขอ
-  return { owner: 'requester', label: 'ครบแล้ว รอปิดเรื่อง' };
+  return { owner: 'requester', label: 'รอปิดเรื่อง' };
 }
 
 // ── แถบตัวเลข 4 ตัว ──────────────────────────────────────────────────────
@@ -160,6 +170,43 @@ export function groupQueueRows(rows = [], { todayIso = null } = {}) {
     .filter((g) => g.rows.length);
 }
 
+// ── "เริ่มที่นี่" — ใบเดียวที่ควรทำก่อน ──────────────────────────────────
+//
+// ⭐ อาการ *"ไม่รู้ว่าต้องทำอะไรต่อ"* (มติผู้ใช้ 2026-08-08) — จอภาพรวมกับคิวตอบ
+// ได้ว่า **มีอะไรค้างบ้าง** แต่ไม่มีที่ไหนตอบว่า **เริ่มที่ใบไหน** · คนเปิดมาเจอ
+// ตัวเลข 4 ตัวกับตารางแล้วต้องตัดสินใจเองทุกเช้าว่าอันไหนก่อน
+//
+// ⚠️ **ไม่มีกติกาความเร่งชุดใหม่** — เรียงด้วย `compareRequestUrgency` แล้วหยิบ
+// กลุ่มแรกจาก `groupQueueRows` ตัวเดียวกับที่คิวใช้ ⇒ ใบที่การ์ดชี้ต้องเป็นใบบนสุด
+// ของคิวเสมอ · ประกาศเกณฑ์ของตัวเองเมื่อไรจะได้อาการ "การ์ดบอกใบ A แต่คิวเรียงใบ B
+// ไว้บนสุด" ซึ่งอ่านแล้วไม่รู้จะเชื่ออันไหน
+//
+// ⚠️ ผู้เรียกต้องกรองมาแล้วว่าเป็น **งานของคนนี้/ฝ่ายนี้** — ฟังก์ชันนี้ไม่ตัดสินสิทธิ์
+// และไม่รู้ว่าใครเปิดหน้าอยู่ (กติกาเดียวกับ `queueTabRows`)
+//
+// คืน { request, group, groupLabel, next, due, remaining } หรือ null เมื่อไม่มีอะไรค้าง
+export function startHereRequest(rows = [], { todayIso = null } = {}) {
+  const open = rows.filter((r) => requestNextStep(r));
+  if (!open.length) return null;
+  const groups = groupQueueRows(
+    open.slice().sort(compareRequestUrgency),
+    { todayIso },
+  ).filter((g) => g.group !== 'settled');
+  const top = groups[0];
+  if (!top) return null;
+  const request = top.rows[0];
+  return {
+    request,
+    group: top.group,
+    groupLabel: top.label,
+    next: requestNextStep(request),
+    due: requestDueText(request, { todayIso }),
+    // ⚠️ **นับที่เหลือ ไม่ใช่นับทั้งหมด** — การ์ดชี้ใบหนึ่งไปแล้ว เลขที่ต่อท้ายจึงต้อง
+    // ตอบว่า "หลังใบนี้ยังเหลืออีกเท่าไร" ไม่ใช่พูดซ้ำจำนวนที่แถบตัวเลขบอกอยู่แล้ว
+    remaining: open.length - 1,
+  };
+}
+
 // ── คิวของ "ฝ่าย" (P2) — มุมมองในโมดูลของฝ่ายเอง ─────────────────────────
 //
 // ⭐ ต่างจาก `queueTabRows` ตรงที่ตัวนั้นตอบคำถามของ **คน** ("ตอนนี้เป็นตาใคร"
@@ -198,4 +245,29 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
     .filter((r) => requestNextStep(r)?.owner === 'dept')
     .filter((r) => r.committedDueDate && String(r.committedDueDate) <= limitIso)
     .sort((a, b) => String(a.committedDueDate).localeCompare(String(b.committedDueDate)));
+}
+
+// ── กำหนดส่งที่ฝ่ายรับปากไว้ — ข้อความพร้อมแสดง ────────────────────────────
+//
+// ⭐ **คอลัมน์ใหม่ในคิว** (มติผู้ใช้ 2026-08-08) — เดิมต้องเข้าใบถึงจะเห็น ทั้งที่
+// "เลยกำหนดไหม" คือคำถามที่สองของหัวหน้าถัดจาก "ต้องทำอะไร"
+//
+// ⚠️ **นับเฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มีกำหนดให้เลย
+// (กติกาเดียวกับตัวนับ `overdue` ที่ `matchesQueueCount` ใช้ ⇒ คอลัมน์กับตัวเลข
+// บนแถบพูดตรงกันเสมอ)
+//
+// คืน { date, note, overdue } หรือ null เมื่อยังไม่มีกำหนด
+export function requestDueText(request, { todayIso = null } = {}) {
+  const due = request?.committedDueDate ? String(request.committedDueDate) : null;
+  if (!due) return null;
+  if (!todayIso) return { date: due, note: null, overdue: false };
+
+  // ⚠️ ต่างกันเป็น "วัน" ไม่ใช่ชั่วโมง — ทั้งสองค่าเป็น YYYY-MM-DD ของวันไทย
+  // (businessDate) · ใช้ Date.parse กับ T00:00:00Z ทั้งคู่จึงไม่มีปัญหาเขตเวลา
+  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return { date: due, note: null, overdue: false };
+  const days = Math.round(ms / 86400000);
+  if (days < 0) return { date: due, note: `เลย ${-days} วัน`, overdue: true };
+  if (days === 0) return { date: due, note: 'วันนี้', overdue: false };
+  return { date: due, note: `อีก ${days} วัน`, overdue: false };
 }

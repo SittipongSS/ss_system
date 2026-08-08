@@ -196,8 +196,8 @@ test('ป้ายที่มา — มีคำร้องให้ตาม
   const orphan = scentSourceLabel({ briefId: 'B1' });
   assert.equal(orphan.kind, 'request');
   assert.equal(orphan.requestId, null);
-  assert.match(orphan.label, /ถูกลบแล้ว/);
-  assert.equal(scentSourceLabel({}).label, 'เพิ่มเข้าทะเบียนเอง');
+  assert.match(orphan.label, /ถูกลบ/);
+  assert.equal(scentSourceLabel({}).label, 'เพิ่มเอง');
   // ใบร่างที่ยังไม่มีเลขที่ — ถอยไปใช้ id ไม่ใช่โชว์ช่องว่าง
   assert.match(scentSourceLabel({ briefId: 'B1', sourceRequest: { id: 'REQ-9' } }).label, /REQ-9/);
 });

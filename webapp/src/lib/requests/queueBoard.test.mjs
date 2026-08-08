@@ -172,3 +172,49 @@ test('กลุ่มที่ว่างถูกตัดทิ้ง — ห
   assert.deepEqual(groups.map((g) => g.group), ['unacked']);
   assert.deepEqual(groupQueueRows([], {}), []);
 });
+
+// ── "เริ่มที่นี่" ─────────────────────────────────────────────────────────
+test('⭐ เริ่มที่นี่ต้องเป็นใบบนสุดของคิวเสมอ — ไม่ใช่เกณฑ์ความเร่งชุดใหม่', async () => {
+  const { startHereRequest, groupQueueRows } = await import('./queueBoard.js');
+  const { compareRequestUrgency } = await import('./queue.js');
+  const t = { todayIso: '2026-08-05' };
+  const rows = [
+    req({ id: 'B', committedDueDate: '2026-12-31', acknowledgedAt: '2026-08-01', items: [waitDept] }),
+    req({ id: 'D', committedDueDate: '2026-08-01', acknowledgedAt: '2026-08-01', items: [waitDept] }),
+    req({ id: 'A', status: 'pending', submittedAt: '2026-08-02' }),
+  ];
+  const pick = startHereRequest(rows, t);
+  // ใบที่ยังไม่มีใครรับมาก่อนเสมอ (กลุ่มแรกของ groupQueueRows)
+  assert.equal(pick.request.id, 'A');
+  assert.equal(pick.group, 'unacked');
+  // 🪤 ห้ามหลุดเป็นเกณฑ์ของตัวเอง — ต้องตรงกับแถวแรกที่คิวเรียงไว้เป๊ะ
+  const firstInQueue = groupQueueRows(rows.slice().sort(compareRequestUrgency), t)[0].rows[0];
+  assert.equal(pick.request.id, firstInQueue.id);
+});
+
+test('เริ่มที่นี่ — ก้าวถัดไปกับกำหนดส่งมาจากตัวเดียวกับคิว · นับ "ที่เหลือ" ไม่ใช่ทั้งหมด', async () => {
+  const { startHereRequest, requestDueText } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-05' };
+  const rows = [
+    req({ id: 'A', acknowledgedAt: '2026-08-01', committedDueDate: '2026-08-01', items: [waitDept] }),
+    req({ id: 'B', acknowledgedAt: '2026-08-01', committedDueDate: '2026-08-20', items: [waitDept] }),
+  ];
+  const pick = startHereRequest(rows, t);
+  assert.equal(pick.request.id, 'A');
+  assert.deepEqual(pick.next, requestNextStep(pick.request));
+  assert.deepEqual(pick.due, requestDueText(pick.request, t));
+  assert.equal(pick.due.overdue, true);
+  assert.equal(pick.remaining, 1, 'ชี้ไปแล้วหนึ่งใบ เหลืออีกหนึ่ง — ไม่ใช่ 2');
+});
+
+test('เริ่มที่นี่ — ใบที่จบแล้วไม่นับ และไม่มีอะไรค้าง = null', async () => {
+  const { startHereRequest } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-05' };
+  assert.equal(startHereRequest([], t), null);
+  assert.equal(startHereRequest([req({ status: 'closed' }), req({ status: 'cancelled' })], t), null);
+  // ⚠️ ใบที่ทุกแถวจบแล้วแต่ยังไม่ปิด **ยังต้องนับ** — มันรอผู้ขอกดปิด
+  const pick = startHereRequest([req({ id: 'Z', acknowledgedAt: '2026-08-01', items: [done] })], t);
+  assert.equal(pick.request.id, 'Z');
+  assert.equal(pick.next.label, 'รอปิดเรื่อง');
+  assert.equal(pick.remaining, 0);
+});

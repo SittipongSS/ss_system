@@ -14,8 +14,13 @@ import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const SCENT_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
+// ⭐ **"รอเข้าทะเบียน" ไม่ใช่ "ร่าง — รอ RD รับเข้าทะเบียน"** (มติผู้ใช้ 2026-08-08) —
+// "ร่าง" ซ้ำกับโทน neutral ของป้ายอยู่แล้ว · "RD" ตัดได้เพราะทะเบียนกลิ่นมี RD เป็น
+// เจ้าของอยู่แล้ว (isScentRegistrar) ⇒ 156px → 89px · ชุดนี้เคยมีตัวเดียวยาวเป็น
+// **สองเท่า** ของตัวถัดไป (156 vs 81) ตอนนี้ช่วง 50–89
+// วัดจริงบน dev server · ดู UI_DESIGN_SYSTEM.md §ป้ายในตาราง
 export const SCENT_STATUS_LABELS = {
-  draft: 'ร่าง — รอ RD รับเข้าทะเบียน',
+  draft: 'รอเข้าทะเบียน',
   developing: 'กำลังพัฒนา',
   active: 'ใช้งานได้',
   archived: 'เลิกใช้',
@@ -247,9 +252,11 @@ export function normalizeScentInput(body = {}) {
 //
 // ⚠️ **ตัดสินจาก `briefId` ไม่ใช่ `dealId`** — ดีลกรอกเองได้ตอนเพิ่มตรง (POST รับ
 // `dealId`) ส่วนบรีฟเกิดได้ทางเดียวคือตอน RD กดส่งในคำร้อง
+// ⚠️ ป้ายในตัวกรองต้องสะกดตรงกับป้ายในตาราง (`scentSourceLabel`) — คนกรอง "เพิ่มเอง"
+// แล้วต้องเห็นแถวที่ป้ายเขียนว่า "เพิ่มเอง" ไม่ใช่คำอื่นที่แปลว่าอย่างเดียวกัน
 export const SCENT_SOURCES = [
   { value: 'request', label: 'มาจากคำร้อง' },
-  { value: 'manual', label: 'เพิ่มเข้าทะเบียนเอง' },
+  { value: 'manual', label: 'เพิ่มเอง' },
 ];
 
 export function scentSourceKind(scent) {
@@ -264,9 +271,11 @@ export function scentSourceKind(scent) {
  */
 export function scentSourceLabel(scent) {
   const kind = scentSourceKind(scent);
-  if (kind === 'manual') return { kind, label: 'เพิ่มเข้าทะเบียนเอง', requestId: null };
+  if (kind === 'manual') return { kind, label: 'เพิ่มเอง', requestId: null };
   const request = scent?.sourceRequest || null;
-  if (!request) return { kind, label: 'มาจากคำร้อง (ถูกลบแล้ว)', requestId: null };
+  // ⚠️ "คำร้องถูกลบ" ไม่ใช่ "มาจากคำร้อง (ถูกลบแล้ว)" — เคสหายากที่เคยดันคอลัมน์
+  // กว้างกว่าเลขที่คำร้องซึ่งเป็นเคสปกติ (146px vs 130px)
+  if (!request) return { kind, label: 'คำร้องถูกลบ', requestId: null };
   return {
     kind,
     label: `คำร้อง ${request.docNo || request.id}`,

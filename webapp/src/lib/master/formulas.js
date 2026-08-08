@@ -10,8 +10,11 @@ import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const FORMULA_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
+// ⚠️ **ต้องสะกดตรงกับ `SCENT_STATUS_LABELS` ทุกตัว** — ทะเบียนกลิ่นกับทะเบียนสูตรเป็น
+// สองจอที่ RD สลับไปมาทั้งวัน · คำต่างกันเมื่อไรคนจะคิดว่าสถานะคนละความหมาย
+// (ย่อ "ร่าง — รอ RD รับเข้าทะเบียน" เหลือ "รอเข้าทะเบียน" พร้อมกันทั้งคู่ 2026-08-08)
 export const FORMULA_STATUS_LABELS = {
-  draft: 'ร่าง — รอ RD รับเข้าทะเบียน',
+  draft: 'รอเข้าทะเบียน',
   developing: 'กำลังพัฒนา',
   active: 'ใช้งานได้',
   archived: 'เลิกใช้',

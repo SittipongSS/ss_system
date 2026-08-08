@@ -55,7 +55,7 @@ test('ผลลัพธ์และสถานะแปลเป็นป้�
   // ยังไม่ถึงตาลูกค้า = ยังไม่มีผลลัพธ์ ไม่ใช่ผลลัพธ์ว่าง
   const [g2] = briefBoard(briefs, [dir()]);
   assert.equal(g2.directions[0].outcomeLabel, null);
-  assert.equal(g2.directions[0].stageLabel, 'เสร็จแล้ว รอไปรับ');
+  assert.equal(g2.directions[0].stageLabel, 'รอไปรับ');
 });
 
 test('รอบแก้ต้องอ่านออกจากตาราง ไม่ต้องเปิดการ์ดดู', () => {
