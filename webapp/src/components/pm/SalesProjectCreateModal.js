@@ -24,6 +24,7 @@ import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
 import { personFullName } from "@/lib/ui/personName";
 import { brandSelectOptions } from "@/lib/master/brands";
+import { categoryFlags } from "@/lib/master/categoryOf";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useRole } from "@/lib/roleContext";
@@ -102,6 +103,12 @@ export default function SalesProjectCreateModal({
     if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
     return unique;
   }, [customers, form.customerId, form.brand]);
+
+  // ธงภาษี/อย. ของหมวดที่เลือก — อ่านจากทะเบียนหมวดที่โหลดมาแล้ว (mig 0131)
+  const categoryFlagsOf = useMemo(
+    () => categoryFlags(form.productMainCategory, categories),
+    [form.productMainCategory, categories],
+  );
 
   /* ผู้ดูแลโครงการ = AE / Senior AE (มติผู้ใช้ 2026-08-08) — supervisor ไม่ใช่คนถือ
      โครงการ (มีช่องผู้ตรวจสอบของตัวเอง) · โครงการเก่าที่ผู้ดูแลเป็น role อื่นอยู่แล้ว
@@ -195,13 +202,29 @@ export default function SalesProjectCreateModal({
             <label>แบรนด์</label>
             <SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า" />
           </div>
-          <ProductCategorySelect
-            categories={categories}
-            value={form.productMainCategory}
-            mainValue={form.mainCode}
-            subValue={form.typeCode}
-            onChange={(productMainCategory, meta) => setForm((f) => ({ ...f, mainCode: meta.mainCode, typeCode: meta.typeCode, productMainCategory, productSubCategory: meta.category?.nameTh || meta.category?.nameEn || "" }))}
-          />
+          <div className="form-group col-span-2">
+            <ProductCategorySelect
+              categories={categories}
+              value={form.productMainCategory}
+              mainValue={form.mainCode}
+              subValue={form.typeCode}
+              onChange={(productMainCategory, meta) => setForm((f) => ({ ...f, mainCode: meta.mainCode, typeCode: meta.typeCode, productMainCategory, productSubCategory: meta.category?.nameTh || meta.category?.nameEn || "" }))}
+            />
+            {/* ⭐ ธงของหมวดที่เลือก — **มีผลกับไทม์ไลน์จริง**: หมวดสรรพสามิตทำให้
+                แม่แบบงอกขั้นขึ้นทะเบียน (mig 0131 · token flag:excise) ⇒ ต้องเห็น
+                ตอนเลือก ไม่ใช่ไปเซอร์ไพรส์ตอนโครงการเกิด · เหลือง = "มีขั้นตอนเพิ่ม"
+                (ข้อมูลนี้เคยมีในฟอร์มยุคเก่าแล้วหายไปตอนยุบฟอร์ม — เอากลับมา) */}
+            {(categoryFlagsOf.isExcise || categoryFlagsOf.requiresFdaNotice) && (
+              <div className="flex flex-wrap gap-[6px] mt-[6px]">
+                {categoryFlagsOf.isExcise && (
+                  <span className="ui-badge text-[var(--amber)]">เสียภาษีสรรพสามิต — ไทม์ไลน์จะมีขั้นขึ้นทะเบียน</span>
+                )}
+                {categoryFlagsOf.requiresFdaNotice && (
+                  <span className="ui-badge text-[var(--amber)]">ต้องแจ้ง อย.</span>
+                )}
+              </div>
+            )}
+          </div>
           <div className="form-group">
             <label>วันที่เริ่มโครงการ <span className="required-mark">*</span></label>
             <DateInput value={form.startDate} onChange={(startDate) => setForm((f) => ({ ...f, startDate }))} className="w-full" />
