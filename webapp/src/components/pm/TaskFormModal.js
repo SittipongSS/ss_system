@@ -13,9 +13,8 @@ import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
-import OptionTiles from "@/components/ui/OptionTiles";
 import StageSteps from "@/components/ui/StageSteps";
-import ChoiceChips from "@/components/ui/ChoiceChips";
+import Select from "@/components/ui/Select";
 import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct } from "@/lib/pm/tasks";
@@ -85,6 +84,14 @@ export default function TaskFormModal({
   const editing = !!task;
   const [form, setForm] = useState(TASK_BLANK);
   const [lateReason, setLateReason] = useState("");
+  /* ⭐ "ไม่ผูกดีล" — ทางออกที่ **ต้องกดเอง** (มติผู้ใช้ 2026-08-08 ผ่อนมติ 2026-08-06)
+     ค่าตั้งต้นคือ *ผูกดีล* เสมอ (false) เพราะเหตุผลเดิมยังจริง: งานที่ไม่ผูกดีล
+     หน้าดีล/หน้าโครงการมองไม่เห็น และ KPI รายดีลนับไม่ครบ — แต่เดิมบังคับ 100%
+     ทำให้งานที่ไม่ได้เกิดจากดีลจริง ๆ (งานดูแลระบบ/งานภายใน) ต้องยัดดีลมั่ว ๆ
+     ⇒ เปิดทางออกไว้แต่ให้เห็นชัดว่าเลือกเอง ไม่ใช่ลืมเลือก
+     งานเก่าที่ไม่มีดีล (ก่อนกติกา 2026-08-06) เปิดมาแล้วสวิตช์ติดเอง — ไม่งั้น
+     แค่แก้ชื่องานก็โดนด่านตีกลับ */
+  const [noDealLink, setNoDealLink] = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -95,6 +102,7 @@ export default function TaskFormModal({
   useEffect(() => {
     if (!open) return;
     setForm(task ? taskToForm(task) : { ...TASK_BLANK, ...(initialForm || {}) });
+    setNoDealLink(!!task && !task.dealId && !task.inquiryId);
     setLateReason("");
     setPendingFiles([]);
     setError("");
@@ -108,7 +116,7 @@ export default function TaskFormModal({
   // ต้นทาง (บางหัวข้อไม่ผูกดีลโดยเจตนา เช่น ขอราคา F/FB) ผู้ใช้เลือกเองไม่ได้อยู่แล้ว
   // ⚠️ `me` ต้องมาจริงเสมอ — `requiresDealLink(null)` = false แปลว่าหน้าไหนลืมส่ง me
   //    ช่องดีลจะไม่ถูกบังคับเงียบ ๆ (API ยังกันให้อยู่ แต่ผู้ใช้จะเจอ error ตอนกดบันทึก)
-  const dealRequired = canManage && !inquirySource && requiresDealLink(me);
+  const dealRequired = canManage && !inquirySource && !noDealLink && requiresDealLink(me);
   // ช่องดีลซ่อนได้เมื่อไม่บังคับ ไม่มีดีลให้เลือก และงานนี้ยังไม่ได้ผูกอะไรไว้
   const showDealLink = dealRequired || deals.length > 0 || !!form.dealId;
 
@@ -154,7 +162,11 @@ export default function TaskFormModal({
         payload = {
           title: form.title, note: form.note,
           startDate: form.startDate || null, dueDate: form.dueDate || null,
-          projectId, dealId,
+          projectId: noDealLink ? null : projectId,
+          dealId: noDealLink ? null : dealId,
+          // ธง "ตั้งใจไม่ผูกดีล" — ด่านฝั่ง server ปล่อยผ่านเฉพาะเมื่อมีธงนี้
+          // (ค่าตั้งต้นยังเป็น "ผูก" เสมอ — ดูคอมเมนต์ที่ state)
+          ...(noDealLink ? { noDealLink: true } : {}),
           assigneeId: form.assigneeId || null,
           category: form.category || null,
           important: !!form.important, urgent: !!form.urgent,
@@ -314,34 +326,37 @@ export default function TaskFormModal({
             </div>
           </div>
 
-          {/* หมวดหมู่ 6 ตัวตายตัว ⇒ ชิปเห็นครบ (เดิมเป็นดรอปดาวน์ที่ต้องกดเปิดถึงจะรู้
-              ว่ามีหมวดอะไรบ้าง) · "ไม่ระบุ" เป็นชิปเส้นประ = สถานะที่เลือกได้จริง */}
+          {/* หมวดหมู่เป็นดรอปดาวน์ (มติผู้ใช้ 2026-08-08 — ลองชิปแล้วเลือกกลับ)
+              ⚠️ ไม่ขัดกติกา "ชุดเล็กเห็นครบ": หมวดหมู่เป็น *ป้ายจัดกลุ่ม* ที่ไม่ตัดสินใจ
+              อะไรต่อในฟอร์ม (ต่างจากสถานะ/ความยากที่มีผลกับงาน) ⇒ ให้ฟอร์มสั้นสำคัญกว่า
+              — เหตุผลเดียวกับที่ตัวกรองบนแถบเครื่องมือหน้าดีลเลือกดรอปดาวน์ */}
           <div className="form-group">
             <label><Tag size={12} className="inline align-[-1px]" /> หมวดหมู่</label>
-            <ChoiceChips
-              value={form.category || ""}
-              onChange={(category) => set({ category })}
-              disabled={!canManage}
-              ariaLabel="หมวดหมู่งาน"
-              options={[
-                ...TASK_CATEGORIES.map((c) => ({ value: c, label: c })),
-                { value: "", label: "ไม่ระบุ", ghost: true },
-              ]}
-            />
+            <Select fullWidth value={form.category} disabled={!canManage} onChange={(e) => set({ category: e.target.value })}>
+              <option value="">— ไม่ระบุ —</option>
+              {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
           </div>
 
           {/* ระดับความยาก 3 ตัวตายตัว ⇒ แผ่นเลือก · ธง สำคัญ/ด่วน = สวิตช์
               (เดิมเป็นปุ่ม .btn ที่ติดสีเมื่อเปิด — ยืมภาษาปุ่มมาใช้บอกสถานะ
               ทำให้อ่านเหมือนปุ่มสั่งงาน ไม่ใช่ค่าที่ค้างอยู่บนฟอร์ม) */}
           <div className="pm-form-grid gap-3">
+            {/* ความยากเป็น "ระดับที่ไล่ขึ้น" ⇒ แถบขั้นแบบเดียวกับสถานะ/FC% ของดีล
+                (มติผู้ใช้ 2026-08-08) — ตัวเลขใต้ป้ายคือค่าที่เก็บจริงในคอลัมน์
+                `difficulty` (1–3) ไม่ใช่เลขที่คิดขึ้นมาเพื่อความสวย */}
             <div className="form-group">
               <label>ระดับความยาก</label>
-              <OptionTiles
+              <StageSteps
                 value={String(form.difficulty)}
                 onChange={(v) => set({ difficulty: Number(v) })}
                 disabled={!canManage}
                 ariaLabel="ระดับความยาก"
-                options={DIFFICULTY_OPTIONS.map((d) => ({ value: String(d), label: DIFFICULTY_LABELS[d] }))}
+                steps={DIFFICULTY_OPTIONS.map((d) => ({
+                  value: String(d),
+                  label: DIFFICULTY_LABELS[d],
+                  sub: `ระดับ ${d}`,
+                }))}
               />
             </div>
             <div className="form-group">
@@ -366,7 +381,17 @@ export default function TaskFormModal({
               ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
           {showDealLink && (
             <div className="form-group">
-              <label>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</label>
+              <label className="flex items-center justify-between gap-2">
+                <span>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</span>
+                {/* ทางออกที่ต้องกดเอง — ค่าตั้งต้นคือผูกดีล (สวิตช์ปิด) */}
+                {canManage && !inquirySource && (
+                  <button type="button" className="ui-switch" data-on={noDealLink ? "1" : undefined}
+                    aria-pressed={noDealLink}
+                    onClick={() => { setNoDealLink((on) => !on); if (!noDealLink) set({ dealId: "" }); }}>
+                    <i aria-hidden="true" />ไม่ผูกดีล
+                  </button>
+                )}
+              </label>
               {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (โครงการ | ดีล) ค้นได้ทั้งสองฝั่ง
                   โครงการไม่ใช่ช่องที่ต้องกรอก เพราะโครงการของงาน mirror จากดีลเสมอ */}
               <DealPicker
@@ -374,7 +399,7 @@ export default function TaskFormModal({
                 projects={projects}
                 value={form.dealId}
                 onChange={(v) => set({ dealId: v })}
-                disabled={!!inquirySource || !canManage}
+                disabled={!!inquirySource || !canManage || noDealLink}
                 clearable={!dealRequired}
                 ariaLabel="ดีลที่ผูกกับงาน" />
               {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
@@ -388,7 +413,9 @@ export default function TaskFormModal({
               )}
               {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
               {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ทุกงานต้องผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่</div>}
+              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ค่าตั้งต้นคือผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่ และ KPI รายดีลนับไม่ครบ</div>}
+              {/* เลือก "ไม่ผูกดีล" เอง = ต้องรู้ว่าแลกอะไรไป — เตือนตรงจุดที่เพิ่งกด */}
+              {noDealLink && <div className="text-[11px] text-[var(--amber)] mt-1">งานนี้จะไม่โผล่ในหน้าดีลและหน้าโครงการ และไม่ถูกนับใน KPI รายดีล</div>}
             </div>
           )}
 
