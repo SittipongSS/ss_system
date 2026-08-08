@@ -795,10 +795,15 @@ export default function DealOverviewPage() {
             </div>
           </SalesDetailOverview>
 
-          {/* จุดจัดการเดียวของดีล — อยู่แถบขวาตลอดทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
+          {/* จุดจัดการเดียวของดีล — แถบขวาทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
               เดินหน้า (เชื่อม/สร้างโครงการ) · จัดการตัวระเบียน (แก้ไข/ลบ) · ปิดดีล
-              แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม */}
-          <DetailPageLayout aside={
+              แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม
+
+              ⚠️ **ยกเว้นแท็บไทม์ไลน์ — ซ่อนการ์ด** (มติผู้ใช้ 2026-08-08 ตามหน้าโครงการ
+              มติ 2026-08-02): ตารางไทม์ไลน์คือพื้นที่ทำงานจริงและอยากได้ ~1250px
+              การ์ดกิน 348px แล้วเหลือไม่พอจนต้องสกอลล์แนวนอน — ความกว้างชนะ
+              ความสม่ำเสมอ ทุกปุ่มบนการ์ดยังกดได้จากแท็บอื่นครบ */}
+          <DetailPageLayout aside={tab === "timeline" ? null : (
             <RecordControlCard
               lifecycle={controlLc}
               record={deal}
@@ -808,7 +813,7 @@ export default function DealOverviewPage() {
               extraActions={recordActions}
               busy={!!actionBusy}
             />
-          }>
+          )}>
           <div className="flex flex-col gap-5">
 
           {tab === "overview" && <ContextGrid>
