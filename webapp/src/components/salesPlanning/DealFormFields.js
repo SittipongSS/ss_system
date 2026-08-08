@@ -16,6 +16,10 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 //   → ผู้รับผิดชอบ (AE) **ล่างสุด บังคับเสมอ**: ae/senior_ae = ล็อกชื่อตัวเอง
 //     (ดีลเป็นหน้าที่ของ AE/Senior AE) · ac/ae_supervisor/admin = ต้องเลือก
 //
+// ช่องบังคับ (มติผู้ใช้ 2026-08-08 รอบสาม): **ทุกช่อง ยกเว้น** ลูกค้า · แบรนด์ ·
+// โครงการ · หมวดสินค้า · รายละเอียด — ด่านจริงอยู่ที่ submit ของ DealCreateModal
+// (แพตเทิร์นเดียวกับชื่อดีล/ประเภทดีลที่บังคับฝั่งจอ)
+//
 // กติกาคอนโทรล: ชุดตายตัวเล็ก = เห็นครบแล้วจิ้ม (แผ่น/แถบขั้น/ชิป) ·
 // รายการยาว/ชื่อยาว = SearchableSelect (ลูกค้า · โครงการ · หมวด · AE — มติผู้ใช้:
 // AE ชื่อยาวและอาจหลายคน จึง **ไม่ใช่ชิป**) · แบรนด์เกิน 6 ตัวถอยเป็นช่องค้นหาเอง
@@ -89,7 +93,7 @@ export default function DealFormFields({
 
   const titleField = (
     <label className="deal-field" key="title">
-      <span className="deal-field-label">ชื่อดีล</span>
+      <span className="deal-field-label">ชื่อดีล <span className="required-mark">*</span></span>
       <input className="premium-input" value={form.title} onChange={(e) => set("title")(e.target.value)} required />
     </label>
   );
@@ -295,14 +299,14 @@ export default function DealFormFields({
 
   const valueField = (
     <label className="deal-field" key="value">
-      <span className="deal-field-label">มูลค่าคาดการณ์{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
+      <span className="deal-field-label">มูลค่าคาดการณ์ <span className="required-mark">*</span>{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
       <MoneyInput value={form.projectValue} disabled={alreadyWon} onChange={(value) => set("projectValue")(value ?? "")} />
     </label>
   );
 
   const closeDateField = (
     <label className="deal-field" key="closeDate">
-      <span className="deal-field-label">วันที่คาดการณ์ปิด{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
+      <span className="deal-field-label">วันที่คาดการณ์ปิด <span className="required-mark">*</span>{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
       <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
       {!alreadyWon && (
         <span className="date-presets">
@@ -321,21 +325,21 @@ export default function DealFormFields({
       <small>
         {form.expectedCloseDate
           ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
-          : "ไม่ระบุ = เดือน FC ตกเป็นเดือนปัจจุบัน"}
+          : "เดือน FC มาจากวันที่คาดปิด — ช่องนี้บังคับกรอก"}
       </small>
     </label>
   );
 
   const startField = (
     <label className="deal-field" key="start">
-      <span className="deal-field-label">วันที่เริ่ม</span>
+      <span className="deal-field-label">วันที่เริ่ม <span className="required-mark">*</span></span>
       <DateInput value={form.startDate || ""} onChange={set("startDate")} />
     </label>
   );
 
   const endField = (
     <label className="deal-field" key="end">
-      <span className="deal-field-label">วันที่สิ้นสุด</span>
+      <span className="deal-field-label">วันที่สิ้นสุด <span className="required-mark">*</span></span>
       <DateInput value={form.endDate || ""} onChange={set("endDate")} />
     </label>
   );

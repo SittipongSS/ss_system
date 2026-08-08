@@ -139,6 +139,18 @@ export default function DealCreateModal({
         if (owners.length > 0 && !draft.ownerId) {
           throw new Error(`กรุณาเลือกผู้รับผิดชอบ (AE) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
         }
+        /* ช่องบังคับ (มติผู้ใช้ 2026-08-08): ทุกช่องยกเว้น ลูกค้า/แบรนด์/โครงการ/
+           หมวดสินค้า/รายละเอียด — ด่านฝั่งจอบอกก่อนเสียเที่ยว รวมทุกช่องที่ขาด
+           ในข้อความเดียว ไม่ให้กดแล้วเจอทีละช่อง */
+        const missing = [
+          [!String(draft.projectValue ?? "").trim(), "มูลค่าคาดการณ์"],
+          [!draft.expectedCloseDate, "วันที่คาดการณ์ปิด"],
+          [!draft.startDate, "วันที่เริ่ม"],
+          [!draft.endDate, "วันที่สิ้นสุด"],
+        ].filter(([absent]) => absent).map(([, name]) => name);
+        if (missing.length) {
+          throw new Error(`กรุณากรอก ${missing.join(" · ")} ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
