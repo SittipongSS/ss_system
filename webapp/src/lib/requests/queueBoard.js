@@ -206,3 +206,28 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
     .filter((r) => r.committedDueDate && String(r.committedDueDate) <= limitIso)
     .sort((a, b) => String(a.committedDueDate).localeCompare(String(b.committedDueDate)));
 }
+
+// ── กำหนดส่งที่ฝ่ายรับปากไว้ — ข้อความพร้อมแสดง ────────────────────────────
+//
+// ⭐ **คอลัมน์ใหม่ในคิว** (มติผู้ใช้ 2026-08-08) — เดิมต้องเข้าใบถึงจะเห็น ทั้งที่
+// "เลยกำหนดไหม" คือคำถามที่สองของหัวหน้าถัดจาก "ต้องทำอะไร"
+//
+// ⚠️ **นับเฉพาะใบที่รับปากวันไว้แล้ว** — ใบที่ยังไม่รับเรื่องไม่มีกำหนดให้เลย
+// (กติกาเดียวกับตัวนับ `overdue` ที่ `matchesQueueCount` ใช้ ⇒ คอลัมน์กับตัวเลข
+// บนแถบพูดตรงกันเสมอ)
+//
+// คืน { date, note, overdue } หรือ null เมื่อยังไม่มีกำหนด
+export function requestDueText(request, { todayIso = null } = {}) {
+  const due = request?.committedDueDate ? String(request.committedDueDate) : null;
+  if (!due) return null;
+  if (!todayIso) return { date: due, note: null, overdue: false };
+
+  // ⚠️ ต่างกันเป็น "วัน" ไม่ใช่ชั่วโมง — ทั้งสองค่าเป็น YYYY-MM-DD ของวันไทย
+  // (businessDate) · ใช้ Date.parse กับ T00:00:00Z ทั้งคู่จึงไม่มีปัญหาเขตเวลา
+  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return { date: due, note: null, overdue: false };
+  const days = Math.round(ms / 86400000);
+  if (days < 0) return { date: due, note: `เลย ${-days} วัน`, overdue: true };
+  if (days === 0) return { date: due, note: 'วันนี้', overdue: false };
+  return { date: due, note: `อีก ${days} วัน`, overdue: false };
+}

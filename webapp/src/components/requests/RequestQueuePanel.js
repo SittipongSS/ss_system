@@ -16,10 +16,10 @@ import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
-import StatusBadge from "@/components/ui/StatusBadge";
-import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestProgress } from "@/lib/deptRequests";
+import { requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, groupQueueRows, matchesQueueCount, queueCounts, requestNextStep,
+  QUEUE_COUNT_META, groupQueueRows, matchesQueueCount, queueCounts,
+  requestDueText, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { requestKindLabel } from "@/lib/master/requestTypes";
@@ -166,42 +166,46 @@ export default function RequestQueuePanel({
               {g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
+                const due = requestDueText(ask, { todayIso: today });
                 return (
                   <button
                     key={ask.id} type="button" className={styles.queueCard}
                     onClick={() => router.push(`/requests/${ask.id}`)}
                   >
+                    {/* ⭐ ก้าวถัดไปขึ้นก่อน — เหมือนคอลัมน์แรกของตาราง · การ์ดกับตาราง
+                        ต้องตอบคำถามเดียวกันด้วยลำดับเดียวกัน ไม่งั้นคนที่สลับมุมมอง
+                        ต้องเรียนรู้สองแบบ */}
                     <span className={styles.cardTop}>
-                      <span className={styles.docCell}>{ask.docNo || "ร่าง"}</span>
-                      <StatusBadge
-                        tone={REQUEST_STATUS_TONES[ask.status] || "neutral"}
-                        label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
-                      />
+                      {next
+                        ? (
+                          <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
+                            {next.label}
+                          </span>
+                        )
+                        : <span className={styles.muted}>จบแล้ว</span>}
+                      {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
                     </span>
                     <span className={styles.cardTitle}>
                       {ask.title || ask.customerName || "ราคากลาง"}
                     </span>
-                    {ask.title && ask.customerName && (
-                      <span className={styles.subText}>{ask.customerName}</span>
-                    )}
-                    {ask.formulaCode && (
-                      <span className={styles.subText}>สูตร {ask.formulaCode}</span>
-                    )}
+                    <span className={styles.subText}>
+                      {[
+                        ask.docNo || "ร่าง",
+                        requestKindLabel(ask.kind),
+                        ask.title && ask.customerName ? ask.customerName : null,
+                        ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                      ].filter(Boolean).join(" · ")}
+                      {` → ${ask.dept}`}
+                    </span>
                     <span className={styles.cardMeta}>
-                      <span className="ui-badge">{requestKindLabel(ask.kind)}</span>
-                      <span className="ui-badge">ถึงฝ่าย {ask.dept}</span>
-                      {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
-                      {next && (
-                        <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
-                          {next.label}
+                      {due && (
+                        <span className={`ui-badge ${due.overdue ? styles.overdue : ""}`.trim()}>
+                          กำหนด {fmtDate(due.date)}{due.note ? ` · ${due.note}` : ""}
                         </span>
                       )}
                       {p.total > 0 && (
-                        <span className="ui-badge">{p.done}/{p.total} ตอบแล้ว</span>
+                        <span className="ui-badge">{p.done} / {p.total} รายการ</span>
                       )}
-                    </span>
-                    <span className={styles.cardUpdated}>
-                      อัปเดต {fmtDate(ask.updatedAt || ask.createdAt)}
                     </span>
                   </button>
                 );
@@ -210,23 +214,26 @@ export default function RequestQueuePanel({
           ))}
         </div>
       ) : (
-        <TableScroll>
+        <TableScroll cells="stacked">
+          {/* ⭐ **4 คอลัมน์ ไม่ใช่ 8** (มติผู้ใช้ 2026-08-08) — ของเดิมวางทุกอย่างเป็น
+              คอลัมน์ที่มีน้ำหนักเท่ากันหมด ⇒ ตาไม่รู้จะเริ่มที่ไหน และ "ก้าวถัดไป"
+              ซึ่งเป็นเหตุผลที่คนเปิดคิว อยู่คอลัมน์ที่ 5 จาก 8
+              ⇒ ยุบของที่คนอ่านเป็นก้อนเดียวกันอยู่แล้วเข้าเซลล์เดียวสองบรรทัด
+              (เลขที่ + ชนิด + เรื่อง/ลูกค้า + ถึงฝ่าย = "ใบนี้คือใบอะไร") */}
           <table className="premium-table">
             <thead>
               <tr>
-                <th className={styles.colDoc}>เลขที่</th>
-                <th className={styles.colKind}>ชนิด</th>
-                <th>เรื่อง / ลูกค้า</th>
-                <th className={styles.colDept}>ถึงฝ่าย</th>
-                {/* ⭐ ก้าวถัดไป — มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้
-                    ⇒ ตัวเลขข้างบนกับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง
+                {/* ⭐ คอลัมน์แรกคือคำตอบของคำถามแรก — "ฉันต้องทำอะไร"
+                    มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้ ⇒ ตัวเลขข้างบน
+                    กับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง
                     ⚠️ ลำดับหัวตารางต้องตรงกับลำดับ <td> ข้างล่างเป๊ะ ๆ — เคยสลับกัน
-                    อยู่สองคอลัมน์ ("ความคืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป และความ
-                    กว้างที่ตั้งไว้ก็ไปคุมผิดคอลัมน์) */}
-                <th className={styles.colNext}>ก้าวถัดไป</th>
-                <th className={styles.colProgress}>ความคืบหน้า</th>
-                <th className={styles.colStatus}>สถานะ</th>
-                <th className={styles.colUpdated}>อัปเดต</th>
+                    อยู่สองคอลัมน์ ("ความคืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป) */}
+                <th className={styles.colNext}>ต้องทำอะไร</th>
+                <th>คำร้อง</th>
+                {/* ⚠️ หัวชิดขวาตามเนื้อข้างล่าง (กฎ 4 · UI_DESIGN_SYSTEM.md) — หัวชิดซ้าย
+                    แต่เนื้อชิดขวา = สองเส้นที่ไม่ตรงกันในคอลัมน์เดียว */}
+                <th className={`${styles.colDue} num`}>กำหนดส่ง</th>
+                <th className={`${styles.colProgress} num`}>คืบหน้า</th>
               </tr>
             </thead>
             <tbody>
@@ -237,58 +244,83 @@ export default function RequestQueuePanel({
               {groups.map((g) => (
                 <Fragment key={g.group}>
                   <tr className={styles.groupRow}>
-                    <td colSpan={8}>{g.label} · {g.rows.length}</td>
+                    <td colSpan={4}>{g.label} · {g.rows.length}</td>
                   </tr>
                   {g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
+                const due = requestDueText(ask, { todayIso: today });
                 return (
                   <tr
                     key={ask.id} className={styles.rowLink}
                     onClick={() => router.push(`/requests/${ask.id}`)}
                   >
-                    <td className={styles.docCell}>
-                      {ask.docNo || "ร่าง"}
-                      {ask.urgent && (
-                        <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
-                      )}
-                    </td>
-                    <td className={styles.kindCell}>{requestKindLabel(ask.kind)}</td>
+                    {/* ⚠️ สองโทน: ตาฝ่าย / รออีกฝั่ง — **สีสงวนให้เจ้าของก้าว**
+                        ไม่ใช่ให้ชนิดคำร้อง (ชนิดอยู่บรรทัดรองของคอลัมน์ถัดไป)
+                        ⭐ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น
+                        เส้นตรงลงมา ตากวาดคอลัมน์ได้เป็นแนว (กฎ 1 · UI_DESIGN_SYSTEM.md) */}
                     <td>
-                      {/* ชนิดที่ไม่มีบรรทัดสื่อความด้วยหัวเรื่อง — ชนิดขอราคาสื่อด้วยลูกค้า/สูตร */}
-                      <div>{ask.title || ask.customerName
-                        || <span className={styles.muted}>ราคากลาง</span>}</div>
-                      {ask.title && ask.customerName && (
-                        <div className={styles.subText}>{ask.customerName}</div>
-                      )}
-                      {ask.formulaCode && (
-                        <div className={styles.subText}>สูตร {ask.formulaCode}</div>
-                      )}
-                    </td>
-                    <td className={styles.smallCell}>{ask.dept}</td>
-                    {/* ⚠️ สามโทน: ตาคุณ / รออีกฝั่ง / จบแล้ว — **สีสงวนให้ความเร่งด่วน
-                        และเจ้าของก้าว** ไม่ใช่ให้ชนิดคำร้อง (ชนิดใช้ป้ายข้อความ) */}
-                    <td className={styles.smallCell}>
                       {next
                         ? (
-                          <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
+                          <span
+                            className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
+                            data-owner={next.owner}
+                          >
                             {next.label}
                           </span>
                         )
                         : <span className={styles.muted}>—</span>}
                     </td>
-                    <td className={styles.smallCell}>
-                      {p.total > 0
-                        ? `${p.done}/${p.total} ตอบแล้ว`
+                    {/* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่าย
+                        เป็นบรรทัดรอง · สี่อย่างนี้คนอ่านเป็นก้อนเดียวอยู่แล้ว
+                        ⚠️ ชนิดที่ไม่มีบรรทัดสื่อความด้วยหัวเรื่อง — ชนิดขอราคาสื่อด้วยลูกค้า */}
+                    <td>
+                      <div className={styles.docCell}>
+                        {ask.title || ask.customerName
+                          || <span className={styles.muted}>ราคากลาง</span>}
+                        {ask.urgent && (
+                          <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
+                        )}
+                      </div>
+                      <div className={styles.subText}>
+                        {[
+                          ask.docNo || "ร่าง",
+                          requestKindLabel(ask.kind),
+                          ask.title && ask.customerName ? ask.customerName : null,
+                          ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                        ].filter(Boolean).join(" · ")}
+                        {` → ${ask.dept}`}
+                      </div>
+                    </td>
+                    {/* ⭐ กำหนดส่งเคยต้องเข้าใบถึงจะเห็น ทั้งที่ "เลยกำหนดไหม" คือ
+                        คำถามที่สองของหัวหน้า · `.num` ให้ชิดขวา + tabular-nums
+                        ⇒ หลักวันตรงกันทุกแถว เทียบข้ามแถวได้ (กฎ 3) */}
+                    <td className="num">
+                      {due
+                        ? (
+                          <>
+                            <div className={due.overdue ? styles.overdue : undefined}>
+                              {fmtDate(due.date)}
+                            </div>
+                            {due.note && (
+                              <div className={`${styles.subText} ${due.overdue ? styles.overdue : ""}`.trim()}>
+                                {due.note}
+                              </div>
+                            )}
+                          </>
+                        )
                         : <span className={styles.muted}>—</span>}
                     </td>
-                    <td>
-                      <StatusBadge
-                        tone={REQUEST_STATUS_TONES[ask.status] || "neutral"}
-                        label={REQUEST_STATUS_LABELS[ask.status] || ask.status}
-                      />
+                    <td className="num">
+                      {p.total > 0
+                        ? (
+                          <>
+                            <div>{p.done} / {p.total}</div>
+                            <div className={styles.subText}>รายการ</div>
+                          </>
+                        )
+                        : <span className={styles.muted}>—</span>}
                     </td>
-                    <td className={styles.smallCell}>{fmtDate(ask.updatedAt || ask.createdAt)}</td>
                   </tr>
                 );
                   })}

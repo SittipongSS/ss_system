@@ -89,19 +89,21 @@
 .rowLink { cursor: pointer; }
 .docCell { font-weight: var(--fw-medium); }
 .urgentTag { color: var(--red); margin-left: var(--space-1-5); }
+/* ⚠️ ผู้ใช้จริงคือ RequestListCard (การ์ดคำร้องบนหน้าดีล/โครงการ) ไม่ใช่ตารางคิว —
+   ตารางคิวเลิกมีคอลัมน์ "ชนิด" แล้ว (ยุบเข้าบรรทัดรองของคอลัมน์คำร้อง) */
 .kindCell { font-size: var(--fs-6); }
 .subText { font-size: var(--fs-3); color: var(--text-3); }
 .muted { color: var(--text-3); }
 .smallCell { font-size: var(--fs-5); }
 .loadError { padding: var(--space-6); color: var(--red); }
 
-/* ความกว้างคอลัมน์ของตารางคิว — ยกออกจาก inline style ตามด่าน audit:ui */
-.colDoc { width: 140px; }
-.colKind { width: 170px; }
-.colDept { width: 90px; }
-.colProgress { width: 120px; }
-.colStatus { width: 190px; }
-.colUpdated { width: 110px; }
+/* ความกว้างคอลัมน์ของตารางคิว — ยกออกจาก inline style ตามด่าน audit:ui
+   ⭐ เหลือ 4 คอลัมน์ (เดิม 8) หลังยุบของที่คนอ่านเป็นก้อนเดียวกันเข้าเซลล์เดียว
+   — มติผู้ใช้ 2026-08-08 · ดู docs/scent-dev-ui-revamp-proposal.html §01 */
+.colNext { width: 132px; }
+.colDue { width: 116px; }
+.colProgress { width: 104px; }
+
 
 /* ── การ์ด "คำร้องที่ผูกกับรายการนี้" (หน้าดีล/โครงการ) ─────────────── */
 .listCard { padding: var(--space-4); }
@@ -206,9 +208,6 @@
   margin-top: var(--space-1);
 }
 
-.cardUpdated { font-size: var(--fs-3); color: var(--text-3); }
-
-.colNext { width: 150px; }
 
 /* ก้าวถัดไป — สองโทน: ตาฝ่าย (น้ำเงิน) / รออีกฝั่ง (เทา)
    ⚠️ ไม่ใช้ inline style เพราะ ratchet คุมยอดชั้นเก่าไว้ และของที่เพิ่งเขียน
@@ -425,3 +424,7 @@
 /* ช่องที่ไม่ได้กรอกบนจอสรุป PDR — ต้องอ่านออกว่า "ถามแล้วไม่มีคำตอบ" ไม่ใช่ช่องว่าง
    ⚠️ ต้องตรงกับกระดาษ (pdrDocument.js พิมพ์ N/A ที่ช่องเดียวกัน) */
 .naValue { color: var(--text-3); font-style: italic; }
+
+/* เลยกำหนดแล้ว — สีบอกความเร่งด่วน ไม่ใช่ตกแต่ง
+   ⚠️ ไม่มีแถบสีที่ขอบแถว/การ์ด (ม-59) — ใช้สีตัวอักษรบนวันที่ที่เลยแล้วเท่านั้น */
+.overdue { color: var(--red); }

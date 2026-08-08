@@ -109,6 +109,14 @@
   vertical-align: middle;
 }
 
+/* ⭐ ตารางที่เซลล์ซ้อนสองบรรทัด — ชิดบนทั้งแถว (กฎ 5 · UI_DESIGN_SYSTEM.md)
+   ⚠️ ต้องอยู่ **หลัง** กฎ `vertical-align: middle` ข้างบนและมี specificity เท่ากัน
+   (0,0,2,1) — ลำดับในไฟล์เดียวกันเป็นตัวตัดสิน · เขียนที่หน้าเรียกไม่ได้เพราะ
+   `.stackedRows td` = (0,0,1,1) แพ้กฎกลางเสมอ (พิสูจน์ในเบราว์เซอร์ 2026-08-08) */
+.scroll[data-cells="stacked"] :global(td) {
+  vertical-align: top;
+}
+
 .scroll[data-family] :global(tbody tr:last-child td) {
   border-bottom: none;
 }
