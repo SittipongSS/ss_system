@@ -3673,6 +3673,11 @@ button.empty-state { width: 100%; font: inherit; }
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  /* แผ่นที่ไม่มีคำกำกับเคยสูง ~35px — ต่ำกว่า touch target มือถือ (≥40px)
+     และเตี้ยกว่าแผ่นมีคำกำกับในกริดเดียวกันจนดูฟันหลอ · จัดกลางแนวตั้งให้
+     ป้ายเดี่ยวไม่ลอยติดขอบบนเมื่อแผ่นถูกดึงสูงตามแถว */
+  justify-content: center;
+  min-height: 44px;
   gap: var(--space-0-5);
   padding: var(--space-1-5) var(--space-3) var(--space-2);
   border: 1px solid var(--border);

@@ -119,7 +119,8 @@ export default function LeadFormFields({
         </label>
       )}
 
-      <label className="form-field">
+      {/* เต็มแถว (มติผู้ใช้ 2026-08-09) — เดิมครึ่งแถวแล้วเป็นช่องกำพร้าข้างที่ว่าง */}
+      <label className="form-field span-2">
         <span className="form-field-label">งบประมาณ <span className="soft">(บาท)</span></span>
         <MoneyInput value={form.budget} disabled={disabled} onChange={(value) => set("budget")(value ?? "")} />
       </label>
