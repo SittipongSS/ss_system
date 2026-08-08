@@ -591,30 +591,30 @@ body {
    ต้องอยู่**หลัง** block v2 หลัก และ specificity สูงกว่า จึงชนะเมื่อ
    data-theme="light" + data-ds="v2" พร้อมกัน */
 [data-ds="v2"][data-theme="light"] {
-  --bg: #edeff2;
-  --panel: #fafbfc;
-  --panel-2: #eff1f5;
-  --panel-3: #e7eaef;
+  /* โทนอุ่น (มติแก้ 2026-08-08: เวอร์ชันเทาเย็นแรก "cool ไป") — เทาอมทราย
+     ไม่กลับไปครีม #efe9dd ของ v1 · ตัวเลขทุกคู่วัดใหม่บนพื้นชุดนี้แล้ว */
+  --bg: #f0ede8;
+  --panel: #fbfaf8;
+  --panel-2: #f2efeb;
+  --panel-3: #eae6e0;
   --panel-float: #ffffff;
-  --panel-solid: #fafbfc;
-  --border: #d5dae2;
-  --border-strong: #bac2ce;
+  --panel-solid: #fbfaf8;
+  --border: #d9d3ca;
+  --border-strong: #bfb8ac;
   --glass-shadow: none;
   --glass-shadow-up: none;
 
-  --text: #171d29;
-  --text-2: #596170;
-  /* ค่า v1 (#6c7382) วัดบนพื้นการ์ด v2 สว่างได้ 4.59 — เฉียดใต้แถบ 4.6 ของระบบ
-     เข้มขึ้นหนึ่งขั้นให้เกินแถบ (พื้นการ์ด v2 ต่างจาก v1 เล็กน้อย) */
-  --text-3: #667080;
+  --text: #1e1b16;
+  --text-2: #5c574e;   /* 6.87:1 บนพื้นการ์ด */
+  --text-3: #6e6a60;   /* 5.17:1 บนพื้นการ์ด */
 
   --accent: #c9794d;
   --accent-soft: rgba(201, 121, 77, 0.13);
   --accent-fg: #fff;
-  --accent-ink: #9c5228;
+  --accent-ink: #9c5228;   /* 5.51:1 บนพื้นการ์ดอุ่น */
   --origin-edited: #2e4a73;
 
-  --navy: #1f2835;
+  --navy: #211e1a;   /* topbar เข้มอมอุ่น — เอกลักษณ์โต๊ะช่างบนธีมสว่าง */
   --navy-ink: #243b63;
 
   --green: #357558;
@@ -636,15 +636,8 @@ body {
   --shadow-float: 0 12px 32px rgba(23, 29, 41, 0.16);
 }
 
-/* แสงประดับของ v2 สว่าง — โทนเย็นให้เข้ากับพื้นเทาเย็น (ของ v1 สว่างเป็นส้มอุ่น
-   บนพื้นครีม เอามาวางบนเทาเย็นแล้วเพี้ยน) จางระดับเดียวกับของเดิม */
-[data-ds="v2"][data-theme="light"] body {
-  background-image:
-    radial-gradient(at 0% 0%, rgba(70, 105, 144, 0.05) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(201, 121, 77, 0.05) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(31, 40, 53, 0.04) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(70, 105, 144, 0.04) 0px, transparent 50%);
-}
+/* แสงประดับของ v2 สว่าง: ไม่ต้องมีกฎเอง — พื้นอุ่นแล้ว แสงส้มอุ่นของ body
+   ฐาน (v1) เข้ากันพอดี ปล่อยตกลงไปใช้ของเดิม */
 
 button, select, input, textarea {
   font-family: inherit;
