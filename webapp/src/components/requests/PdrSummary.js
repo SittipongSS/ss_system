@@ -56,7 +56,8 @@ function Chips({ label, values, textOf }) {
   );
 }
 
-export default function PdrSummary({ request, briefs = [] }) {
+export default function PdrSummary({ request, briefs = [], sections = null }) {
+  const list = sections || PDR_SECTIONS;
   if (!request) return null;
   return (
     <div className={styles.pdr}>
@@ -98,8 +99,8 @@ export default function PdrSummary({ request, briefs = [] }) {
       </details>
 
       {/* หัวข้อทั้งหมดมาจากทะเบียนเดียวกับฟอร์ม — ชื่อ ลำดับ และป้ายช่องตรงกันเสมอ */}
-      {PDR_SECTIONS.map((section) => (
-        <details key={section.key} className={styles.pdrSection}>
+      {list.map((section) => (
+        <details key={section.key} className={styles.pdrSection} open={list.length === 1 || undefined}>
           <summary className={styles.pdrSummary}>{section.title}</summary>
           <div className={styles.pdrBody}>
             {/* ⚠️ `includeEmpty` — จอต้องแสดงช่องว่างเป็น N/A เหมือนกระดาษ
