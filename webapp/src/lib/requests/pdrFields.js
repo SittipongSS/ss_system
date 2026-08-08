@@ -370,6 +370,14 @@ export function pdrArtworkError(values = {}, { attachmentCount = 0, stage = null
  * · ค่าเริ่มต้นตัดช่องว่างทิ้ง สำหรับบนจอ (21 ช่องส่วนใหญ่ไม่บังคับ ⇒ แสดงครบ
  *   จะกลบของที่กรอกจริงจนหาไม่เจอ)
  */
+// ความครบของหมวด — นับช่องที่มีค่าจริง (ตัวเลขชุดเดียวที่แถบหมวดสองชั้น ·
+// การ์ด panel · เช็คลิสต์พร้อมส่ง ใช้ร่วมกัน — ม-94 ทาง ก ฉบับด้านข้าง)
+export function pdrSectionProgress(section, request = {}, context = {}) {
+  const rows = pdrSectionRows(section, request, { includeEmpty: true, context });
+  const filled = pdrSectionRows(section, request, { includeEmpty: false, context });
+  return { filled: filled.length, total: rows.length };
+}
+
 export function pdrSectionRows(section, request = {}, { includeEmpty = false, context = {} } = {}) {
   return (section?.fields || [])
     .map((f) => [f.label, pdrFieldText(f, request, context)])
