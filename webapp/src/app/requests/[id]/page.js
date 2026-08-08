@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FolderKanban, Handshake, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -16,7 +16,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
-import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
@@ -773,16 +773,41 @@ export default function RequestDetailPage() {
       <DetailPageLayout
         asideLabel="จัดการคำร้อง"
         aside={usePanel ? (
-          <DocumentControlCard
-            title="จัดการคำร้อง"
-            status={REQUEST_STATUS_LABELS[req.status] || req.status}
-            statusColor={STATUS_TONE[req.status]}
-            workflowSteps={workflowSteps}
-            primaryAction={requestActions.primaryAction}
-            secondaryActions={requestActions.secondaryActions}
-            dangerActions={requestActions.dangerActions}
-            busy={saving}
-          />
+          <>
+            <DocumentControlCard
+              title="จัดการคำร้อง"
+              status={REQUEST_STATUS_LABELS[req.status] || req.status}
+              statusColor={STATUS_TONE[req.status]}
+              workflowSteps={workflowSteps}
+              primaryAction={requestActions.primaryAction}
+              secondaryActions={requestActions.secondaryActions}
+              dangerActions={requestActions.dangerActions}
+              busy={saving}
+            />
+            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
+                (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
+                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
+            {req.refProject && (
+              <ContextCard
+                href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
+                icon={FolderKanban}
+                eyebrow="โครงการ"
+                title={req.refProject.name || req.refProject.code || req.refProject.id}
+                subtitle={req.refProject.code || undefined}
+              />
+            )}
+            {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
+                /sales-planning/deals โดน redirect หนึ่งเด้ง */}
+            {req.refDeal && (
+              <ContextCard
+                href={`/sa/deals/${req.refDeal.id}`}
+                icon={Handshake}
+                eyebrow="ดีล"
+                title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
+                subtitle={req.customerName || undefined}
+              />
+            )}
+          </>
         ) : null}
       >
         <div>
