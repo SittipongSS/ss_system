@@ -10,7 +10,6 @@
 //   2 **โครงสามชั้น** — บรีฟรายกลิ่น (AE เขียนตอนเปิด) → direction (RD สร้างตอนส่ง)
 //   3 **กระทบยอดกับใบสั่งขาย** — คอนเฟิร์มแล้วกี่ กก. เทียบกับที่ขายไป
 import Button from "@/components/ui/Button";
-import StatusNotice from "@/components/ui/StatusNotice";
 import BriefBoard from "@/components/requests/BriefBoard";
 import PdrForm from "@/components/requests/PdrForm";
 import PdrSummary from "@/components/requests/PdrSummary";
@@ -18,8 +17,7 @@ import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
-  request, board, briefSummary, reconcile, reconcileTone, reconcileText,
-  canEditAttachments, saving,
+  request, board, canEditAttachments, saving,
   pdrDraft, onPdrDraftChange, onPdrEdit, onPdrSave, onPdrCancel, onOpenDocument,
 }) {
   return (
@@ -28,37 +26,14 @@ export default function ScentDevDetail({
           ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก) และส่งขาดก็เกิดได้ · บล็อกเมื่อไร
           คนจะเลี่ยงด้วยการ *ไม่บันทึกจำนวน* ซึ่งแย่กว่าตัวเลขที่ไม่ตรงมาก เพราะตอนนั้น
           ระบบจะไม่รู้อะไรเลยแทนที่จะรู้ว่าไม่ตรง */}
-      {reconcile && reconcileText && (
-        <StatusNotice tone={reconcileTone}>{reconcileText}</StatusNotice>
-      )}
-
+      {/* ⚠️ ป้ายกระทบยอด SO กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
+          ScentPanel) — ห้ามวาดซ้ำที่นี่อีก */}
       <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
 
       {/* ⭐ ตารางสรุปทั้งใบ (แบบหน้าจอ §07) — "สถานการณ์ตอนนี้" ส่วน PDR คือ
           "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มอยู่ท้ายเธรดที่เดียว (ม-49) */}
       <BriefBoard groups={board} />
 
-      <div className={styles.summaryBar}>
-        <span><strong>{briefSummary.briefs}</strong> บรีฟ</span>
-        {reconcile && <span><strong>{reconcile.ordered}</strong> กลิ่นตาม SO</span>}
-        <span><strong>{briefSummary.directions}</strong> direction ที่ส่งแล้ว</span>
-        {/* ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD
-            ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
-        {briefSummary.untouched > 0 && (
-          <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
-        )}
-        {/* ⭐ สองขั้นที่ "ค้างโดยไม่มีใครเห็น" ได้ง่ายที่สุด — รอลูกค้าตอบคือรอข้างนอก
-            ส่วนรอใส่ราคาคือของที่จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้ */}
-        {briefSummary.waitingCustomer > 0 && (
-          <span><strong>{briefSummary.waitingCustomer}</strong> รอลูกค้าตอบ</span>
-        )}
-        {briefSummary.awaitingPrice > 0 && (
-          <span data-tone="warn"><strong>{briefSummary.awaitingPrice}</strong> รอใส่ราคา</span>
-        )}
-        {reconcile && reconcileText && (
-          <span data-tone={reconcileTone}>{reconcileText}</span>
-        )}
-      </div>
 
       {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย */}
       <div className={styles.pdrBlock}>

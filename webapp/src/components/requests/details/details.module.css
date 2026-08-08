@@ -19,21 +19,6 @@
 .panelRef { margin: 0 0 var(--space-1-5); font-size: var(--fs-5); }
 .panelRefLabel { color: var(--text-3); }
 
-/* แถบตัวเลขของพัฒนากลิ่น — บรีฟ/direction/รอลูกค้า/รอราคา */
-.summaryBar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding: var(--space-2-5) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
-.summaryBar strong { color: var(--text); }
-.summaryBar [data-tone="warn"] strong { color: var(--amber); }
-.summaryBar [data-tone="danger"] strong { color: var(--red); }
 
 .pdrBlock { margin-bottom: var(--space-3); }
 .pdrActions { margin-top: var(--space-3); }
