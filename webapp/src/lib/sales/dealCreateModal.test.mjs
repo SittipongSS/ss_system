@@ -37,15 +37,19 @@ test('CSS ต้องกลบ display ของ .draft ตอน hidden ไม
   assert.match(css, /\.draft\s*\{[^}]*display:\s*flex/);
 });
 
-test('แท็บกับปุ่มเพิ่มดีลอยู่แถวเดียวกัน เหนือฟอร์ม', () => {
-  const tabRowAt = src.indexOf('className={styles.tabRow}');
-  const formAt = src.indexOf('{drafts.map((draft, index) => (');
-  assert.ok(tabRowAt > 0 && tabRowAt < formAt, 'แถบหัวต้องมาก่อนฟอร์ม');
-  // ปุ่มเพิ่มต้องอยู่ในแถบหัว ไม่ใช่ลอยอยู่ใต้ฟอร์มเหมือนเดิม
-  const rowBlock = src.slice(tabRowAt, formAt);
-  assert.match(rowBlock, /onClick=\{addDraft\}/, 'ปุ่มเพิ่มดีลต้องอยู่ในแถบหัว');
+/* มติ 2026-08-08 (โครงสามชั้น — artifact 83d209ac): แถบแท็บ+ปุ่มเพิ่มย้ายจาก
+   แถวแรกของฟอร์มไปเป็น **โซน toolbar ของ Modal** — เจตนาเดิมของมติ 2026-08-04
+   ยังครบ (แท็บกับปุ่มเพิ่มอยู่ด้วยกัน เหนือฟอร์ม มองออกว่าเพิ่ม "แท็บ")
+   และได้เพิ่ม: แถบนี้นิ่ง ไม่เลื่อนหายไปกับฟอร์ม */
+test('แท็บกับปุ่มเพิ่มดีลอยู่ด้วยกันบนแถบเครื่องมือของโมดัล', () => {
+  const toolbarAt = src.indexOf('const toolbar = (');
+  assert.ok(toolbarAt > 0, 'ต้องประกอบแถบเครื่องมือก่อน return');
+  const toolbarBlock = src.slice(toolbarAt, src.indexOf('return ('));
+  assert.match(toolbarBlock, /onClick=\{addDraft\}/, 'ปุ่มเพิ่มดีลต้องอยู่ในแถบเครื่องมือ');
+  assert.match(toolbarBlock, /<Tabs/, 'แท็บอยู่แถบเดียวกับปุ่มเพิ่ม');
+  assert.match(src, /toolbar=\{toolbar\}/,
+    'ต้องส่งเข้าโซน toolbar ของ Modal — อยู่เหนือฟอร์มและไม่เลื่อนตามเนื้อหา');
   assert.doesNotMatch(src, /styles\.add\b/, 'บล็อกปุ่มเพิ่มอันเดิมใต้ฟอร์มต้องไม่เหลือ');
-  assert.match(css, /\.tabRow\s*\{/);
 });
 
 /* updater ของ setState ต้องบริสุทธิ์ — React เรียกซ้ำได้ (StrictMode/concurrent)

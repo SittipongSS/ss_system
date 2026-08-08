@@ -27,10 +27,20 @@ const FOCUSABLE_SELECTOR = [
 // (drawer) instead of a centered dialog — for detail/inspector surfaces where a
 // tall, scrollable side panel reads better than a centered box. Default (unset)
 // keeps the centered-modal behavior; existing callers are unaffected.
+//
+// โครงสามชั้น (มติผู้ใช้ 2026-08-08 — artifact 83d209ac): หัวนิ่ง · เนื้อเลื่อน ·
+// ปุ่มนิ่ง — children ถูกห่อใน `.drawer-body` (ชั้นเดียวที่ scroll) เสมอ
+// · `subtitle` = บรรทัดบริบทใต้ชื่อ (อยู่ในหัวที่นิ่ง ไม่จมไปกับเนื้อหา)
+// · `toolbar` = แถบใต้หัว (แท็บหลายใบ ฯลฯ) — ของโครง ไม่ใช่แถวแรกของฟอร์ม
+// · `footer` = แถบปุ่มท้ายเป็นโซนจริง แทน sticky hack `.form-action-bar`
+//   ผู้เรียกที่ยังไม่ย้ายมาใช้ `footer` ยังทำงานได้ผ่านชั้นเข้ากันได้ใน globals
 export default function Modal({
   open,
   onClose,
   title,
+  subtitle,
+  toolbar,
+  footer,
   children,
   size = "md",
   side,
@@ -126,14 +136,19 @@ export default function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="drawer-header">
-          <h3 id={titleId} style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>{title}</h3>
+          <div>
+            <h3 id={titleId} className="drawer-title">{title}</h3>
+            {subtitle ? <div className="drawer-subtitle">{subtitle}</div> : null}
+          </div>
           {dismissible && (
             <button type="button" className="drawer-close" onClick={onClose} aria-label="ปิด">
               <X size={16} />
             </button>
           )}
         </div>
-        {children}
+        {toolbar ? <div className="drawer-toolbar">{toolbar}</div> : null}
+        <div className="drawer-body">{children}</div>
+        {footer ? <div className="drawer-footer">{footer}</div> : null}
       </div>
     </div>
   ), document.body);

@@ -614,6 +614,11 @@ body {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
+/* ฉากหลังโมดัลก็เข้ากติกาเดียวกัน — v2 ไม่มี blur ทั้งระบบ (ฝั่ง v1 ยังคงเดิม) */
+[data-ds="v2"] .overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 [data-ds="v2"][data-theme="dark"] body {
   background-image:
     radial-gradient(at 0% 0%, rgba(217, 123, 79, 0.05) 0px, transparent 50%),
@@ -955,11 +960,15 @@ button, select, input, textarea {
 /* แถบปุ่มท้ายโมดัลลอยทับเนื้อหาที่เลื่อนอยู่ข้างใต้ → ต้องใช้พื้นทึบ 100%
    (--panel เป็นพื้นกระจกโปร่ง 6% ที่ต้องมาคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
    แล้วช่องกรอกที่เลื่อนผ่านจะทะลุขึ้นมาปนกับปุ่ม ผู้ใช้ส่งภาพมา 2026-07-27) */
+/* ⚠️ ชั้นเข้ากันได้ของโมดัลที่ยังไม่ย้ายไปใช้ prop `footer` — แถบลอยเหนือ
+   เนื้อหาที่เลื่อนใน .drawer-body · เลขติดลบต้องเท่ากับ padding ของ .drawer-body
+   (เดิม −24px เท่ากับ padding ของ .drawer ที่ตายไปแล้ว) · โมดัลที่ย้ายแล้วใช้
+   .drawer-footer ซึ่งเป็นโซนจริง ไม่ต้องพึ่งกฎนี้ */
 .drawer .form-action-bar {
   position: sticky;
-  bottom: -24px;
+  bottom: calc(-1 * var(--space-4-5));
   z-index: 5;
-  margin-bottom: -24px;
+  margin-bottom: calc(-1 * var(--space-4-5));
   padding-bottom: var(--space-4-5);
   background: var(--panel-float);
 }
@@ -1013,7 +1022,6 @@ button, select, input, textarea {
   .form-action-bar { gap: var(--space-2); flex-wrap: wrap; }
   .form-action-bar .btn { min-width: 0; min-height: var(--ctl-h-touch); flex: 1; }
   .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { flex-basis: 100%; margin-right: 0; }
-  .drawer .form-action-bar { bottom: -18px; margin-bottom: -18px; }
   .confirm-dialog-actions .btn { min-height: var(--ctl-h-touch); flex: 1; }
 }
 
@@ -2409,21 +2417,25 @@ h1, h2, h3, h4, h5, h6 {
   animation: fadeIn var(--motion-standard) forwards;
 }
 
-/* Centered modal dialog (replaces the old right-side drawer).
-   Default size = sm; add .lg for wide content like the reconciliation panel. */
+/* Centered modal dialog — โครงสามชั้น "หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่ง"
+   (มติผู้ใช้ 2026-08-08 เลือกจาก mock 3 โครง — artifact 83d209ac)
+   ⚠️ ตัวกล่องห้ามมี padding/scroll เอง — ระยะเป็นของโซน (.drawer-header /
+   .drawer-body / .drawer-footer) และ scroll อยู่ที่ .drawer-body **ชั้นเดียว**
+   ของเดิม drawer เลื่อนทั้งใบ (หัวเรื่องหายตอนเลื่อน) ซ้อนกับ body ของผู้เรียก
+   ที่ตั้ง max-height เอง = สกอลล์สองชั้น · Default size = sm; .md/.lg/.xl ตามเดิม */
 .drawer {
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
+  border-radius: var(--radius-md);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-float);
   animation: modalIn var(--motion-standard) forwards var(--ease-out);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .drawer.xl { max-width: 1040px; }
@@ -2461,12 +2473,69 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drawer-header {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-5);
+  gap: var(--space-3);
   border-bottom: 1px solid var(--border);
-  padding-bottom: var(--space-3-5);
+  padding: var(--space-3) var(--space-4-5);
+}
+
+.drawer-title {
+  font-size: var(--fs-9);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* บรรทัดบริบทใต้ชื่อ (เช่น "ลีด: …" ของฟอร์มสร้างดีล) — อยู่ในหัวที่นิ่ง
+   ไม่จมไปกับเนื้อหาที่เลื่อน */
+.drawer-subtitle {
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+  margin-top: var(--space-0-5);
+}
+
+/* แถบเครื่องมือใต้หัว (แท็บหลายใบ + ปุ่มเพิ่ม/ลบ) — เป็นโซนของโครง
+   ไม่ใช่แถวแรกของฟอร์ม จึงไม่เลื่อนตามเนื้อหา */
+.drawer-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-4-5);
+  border-bottom: 1px solid var(--border);
+}
+
+/* โซนเนื้อหา — ชั้นเดียวที่เลื่อนได้ในโมดัล */
+.drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4-5);
+}
+
+/* แถบปุ่มท้าย — โซนจริงของโครง แทน sticky hack ที่ผูกเลขติดลบกับ padding แม่
+   พื้นทึบ 100% (--panel-float) กันช่องกรอกที่เลื่อนอยู่ข้างใต้ทะลุขึ้นมาปน */
+.drawer-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4-5);
+  border-top: 1px solid var(--border);
+  background: var(--panel-float);
+}
+
+.drawer-footer .btn { min-width: 96px; justify-content: center; }
+
+/* ข้อความฝั่งซ้ายของแถบปุ่ม (สรุปจำนวน/สถานะ) — ดันปุ่มไปชิดขวา */
+.drawer-footer-note {
+  margin-right: auto;
+  font-size: var(--fs-5);
+  color: var(--text-3);
 }
 
 .drawer-close {
@@ -3170,7 +3239,6 @@ button.ui-kpi-card { cursor: pointer; }
 /* Give modals breathing room on tiny screens (default overlay padding is 24px). */
 @media (max-width: 480px) {
   .overlay { padding: var(--space-3) var(--space-3) calc(var(--mobile-nav-h, 0px) + var(--space-3) + env(safe-area-inset-bottom)); }
-  .drawer { padding: var(--space-4-5); }
 }
 
 /* Corporate Buttons */
@@ -3484,6 +3552,144 @@ button.empty-state { width: 100%; font: inherit; }
 /* คำอธิบายใต้ช่องในฟอร์มดีล — เดิมเขียน `style={{ color: "var(--text-3)" }}` ซ้ำทุกจุด
    ในไฟล์เดียว (เพดาน inlineStyle ของสายงานขายขึ้นไม่ได้ ดู scripts/uiLegacyBudget.mjs) */
 .deal-field > small { color: var(--text-3); }
+/* 🐞 ป้ายกับดอกจัน: .deal-field เป็น flex คอลัมน์ — text node กับ <span> ที่วาง
+   หลวม ๆ จะแตกเป็นคนละ flex item แล้วดอกจัน/คำขยายตกไปอยู่คนละบรรทัด (ผู้ใช้
+   ส่งภาพมา 2026-08-08: "ประเภทดีล" กับ * คนละบรรทัด) ⇒ ห่อป้ายทั้งก้อนด้วย
+   span เดียวเสมอ */
+.deal-field-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.deal-field-label .soft { color: var(--text-3); font-weight: var(--fw-normal); }
+
+/* ── คอนโทรลเลือกแบบเห็นครบ (กติกาคอนโทรล v2 — มติผู้ใช้ 2026-08-08) ──────
+   "ไม่จำเป็นต้องใช้ dropdown ทุกอย่าง … อยากให้ผู้ใช้ใช้ง่ายกว่า"
+   ชุดตายตัว 2–4 = แผ่นเลือก (OptionTiles) · ลำดับขั้น 4–6 = แถบขั้น (StageSteps)
+   · รายการไดนามิกสั้น ≤6 = ชิป (ChoiceChips) · รายการยาว/ชื่อยาว = SearchableSelect
+   เดิม · ญาติร่วมภาษา: ปุ่มเลือกฝ่ายใน requestForm (.deptOption) และชิป PDR
+   (.tierChip) — ตอน wave ค่อยย้ายมาใช้ชุดนี้ */
+.option-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+}
+.option-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-3) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.option-tile:hover:not(:disabled) { border-color: var(--accent-ink); }
+.option-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.option-tile-sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+/* โทนต่อตัวเลือก — ชุดสีเดียวกับ badge ประเภทดีล (DEAL_TYPE_COLORS) */
+.option-tile[data-tone="amber"] .option-tile-title { color: var(--amber); }
+.option-tile[data-tone="blue"] .option-tile-title { color: var(--blue); }
+.option-tile[data-tone="teal"] .option-tile-title { color: var(--teal); }
+.option-tile[data-on] { border-color: var(--accent-ink); background: var(--accent-soft); }
+.option-tile[data-on] .option-tile-sub { color: var(--text-2); }
+.option-tile[data-on][data-tone="amber"] { border-color: var(--amber); background: var(--amber-soft); }
+.option-tile[data-on][data-tone="blue"] { border-color: var(--blue); background: var(--blue-soft); }
+.option-tile[data-on][data-tone="teal"] { border-color: var(--teal); background: var(--teal-soft); }
+
+/* แถบขั้น — ตัวเลือกที่เป็นลำดับ เห็นทุกขั้นพร้อมผลของมัน (เช่น FC% ใต้ชื่อขั้น)
+   ขั้นปลาย (Won/Lost) คั่นด้วยเส้นหนาผ่าน data-cut — โผล่เฉพาะโหมดดีลเก่า */
+.stage-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
+}
+.stage-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1-5) var(--space-1);
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  min-width: 0;
+  transition: background var(--motion-fast);
+}
+.stage-step:first-child { border-left: 0; }
+.stage-step[data-cut] { border-left: 2px solid var(--border-strong); }
+.stage-step:hover:not(:disabled):not([data-on]) { background: var(--panel-2); }
+.stage-step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stage-step:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.stage-step-label { font-size: var(--fs-4); line-height: var(--lh-thai); }
+.stage-step-sub { font-size: var(--fs-2); color: var(--text-3); line-height: var(--lh-thai); font-variant-numeric: tabular-nums; }
+.stage-step[data-on] { background: var(--accent); color: var(--accent-fg); }
+.stage-step[data-on] .stage-step-sub { color: var(--accent-fg); opacity: var(--op-muted); }
+.stage-step[data-tone="win"] .stage-step-label { color: var(--green); }
+.stage-step[data-tone="lose"] .stage-step-label { color: var(--red); }
+.stage-step[data-on][data-tone="win"] { background: var(--green); }
+.stage-step[data-on][data-tone="win"] .stage-step-label { color: var(--accent-fg); }
+.stage-step[data-on][data-tone="lose"] { background: var(--red); }
+.stage-step[data-on][data-tone="lose"] .stage-step-label { color: var(--accent-fg); }
+/* จอแคบ: พับเป็นตาราง 3 คอลัมน์ — แถบเดียวยาว ๆ จะบีบป้ายไทยจนอ่านไม่ออก */
+@media (max-width: 560px) {
+  .stage-steps { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
+  .stage-step { border-left: 0; border-top: 1px solid var(--border); }
+  .stage-step:nth-child(-n+3) { border-top: 0; }
+  .stage-step[data-cut] { border-left: 0; }
+}
+
+/* ชิปเลือกหนึ่ง — รายการไดนามิกสั้น (แบรนด์ของลูกค้า ฯลฯ) · data-ghost =
+   ตัวเลือก "ไม่ระบุ" เส้นประ */
+.choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  padding: var(--space-0-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
+}
+.choice-chip:hover:not(:disabled) { border-color: var(--accent-ink); }
+.choice-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.choice-chip:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.choice-chip[data-on] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+.choice-chip[data-ghost] { border-style: dashed; color: var(--text-3); }
+.choice-chip[data-ghost][data-on] { border-style: solid; color: var(--accent-ink); }
+
+/* ชิปลัดใต้ช่องวันที่ (สิ้นเดือนนี้ / +30 วัน / สิ้นไตรมาส) — ปุ่มตั้งค่า ไม่ใช่สถานะ */
+.date-presets { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.date-presets .choice-chip { min-height: 24px; padding: 0 var(--space-2); font-size: var(--fs-4); }
 
 .detail-row { cursor: pointer; }
 .detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -4121,14 +4327,15 @@ button.empty-state { width: 100%; font: inherit; }
     margin-bottom: var(--space-0-5);
   }
 
-  /* Optimize drawer padding for small mobile displays */
-  .drawer {
-    padding: var(--space-4) !important;
+  /* จอเล็ก: บีบโซนเนื้อหาของโมดัลลงหนึ่งขั้น — หัว/ท้ายเป็นโซนของโครงแล้ว
+     ไม่ต้อง override margin ด้วย !important อีก · เลขติดลบของแถบปุ่มแบบเก่า
+     ต้องตามลงมาเท่ากับ padding ใหม่ ไม่งั้นแถบลอยเกยขอบ 2px */
+  .drawer-body {
+    padding: var(--space-4);
   }
-
-  .drawer-header {
-    margin-bottom: var(--space-4) !important;
-    padding-bottom: var(--space-2-5) !important;
+  .drawer .form-action-bar {
+    bottom: calc(-1 * var(--space-4));
+    margin-bottom: calc(-1 * var(--space-4));
   }
 
   /* Optimize Product column width on mobile */

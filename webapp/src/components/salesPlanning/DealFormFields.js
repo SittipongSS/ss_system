@@ -1,38 +1,41 @@
 "use client";
-import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import OptionTiles from "@/components/ui/OptionTiles";
+import StageSteps from "@/components/ui/StageSteps";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 
-// ชุดช่องกรอกดีลมาตรฐาน (layout ตามมติ #283) — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล /
-// โมดัลหน้าดีล / ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากันอีก
-// แถว: ชื่อดีล (เต็ม) → ลูกค้า|โครงการ → แบรนด์|ประเภท → สถานะ|FC% →
-// หมวดสินค้า (เต็ม) → มูลค่าคาดการณ์|วันที่คาดปิด → วันที่เริ่ม|วันที่สิ้นสุด →
-// รายละเอียด (เต็ม)
-// ไม่มีช่อง "เดือนคาดการณ์" แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจากวันที่คาดปิด
-// ฝั่ง server เสมอ ฟอร์มโชว์เดือนที่จะได้เป็น hint ใต้ช่องวันที่
-// ใช้ใน .form-grid (2 คอลัมน์) หรือ grid ใดๆ — ตัวเองไม่สร้าง form/grid ครอบ
+// ชุดช่องกรอกดีลมาตรฐาน — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล / โมดัลหน้าดีล /
+// ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากัน (กฎ AGENTS.md)
 //
-// ไม่มี prop `extra` แล้ว (มติผู้ใช้ 2026-07-17): เดิมหน้ารายละเอียดดีลใช้ยัด
-// checkbox "ได้รับมัดจำแล้ว" เข้ามาที่เดียว ฟอร์มแก้ดีลเลยหน้าตาไม่ตรงกับหน้ารวม
-// (คอลัมน์ depositPaid ที่ checkbox นั้นเขียน ถูกปลดระวางแล้วที่ mig 0175 — ไม่มีใครอ่าน
-//  ค่ามันเลยตั้งแต่ accept_quotation_atomic ถูกเขียนใหม่ที่ 0101/0102)
-// — ผิดกฎ "แก้ = ฟอร์มเดียวกับสร้าง" (ดู AGENTS.md). ช่องเฉพาะจุดแบบนี้คือรูรั่ว
-// ของกฎ เปิดไว้เมื่อไรฟอร์มก็เพี้ยนกันเมื่อนั้น — ถ้าต้องมีช่องต่างจริง ใช้ props
-// แบบโหมด (เช่น alreadyWon) ไม่ใช่ช่องเสียบอิสระ
+// ลำดับ+คอนโทรล (มติผู้ใช้ 2026-08-08 — artifact 83d209ac แทนมติ #283 เดิม):
+//   ชื่อดีล (เต็ม) → ลูกค้า|แบรนด์ (ชิปติดหลังลูกค้า เพราะแบรนด์ขึ้นกับลูกค้า)
+//   → โครงการ|ผู้รับผิดชอบ → ประเภทดีล (แผ่นเลือก เต็มแถว)
+//   → สถานะ (แถบขั้น เต็มแถว — FC% โชว์ใต้ทุกขั้น **ยุบช่อง FC แยกทิ้ง**)
+//   → หมวดสินค้า (เต็ม) → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
+//
+// กติกาคอนโทรล: ชุดตายตัวเล็ก = เห็นครบแล้วจิ้ม (แผ่น/แถบขั้น/ชิป) ·
+// รายการยาว/ชื่อยาว = SearchableSelect (ลูกค้า · โครงการ · หมวด · AE — มติผู้ใช้:
+// AE ชื่อยาวและอาจหลายคน จึง **ไม่ใช่ชิป**) · แบรนด์เกิน 6 ตัวถอยเป็นช่องค้นหาเอง
+//
+// ไม่มี prop `extra` (มติ 2026-07-17) — ช่องเสียบอิสระคือรูรั่วของกฎฟอร์มเดียว
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import Textarea from "@/components/ui/Textarea";
-import Input from "@/components/ui/Input";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
+import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 
-// จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17).
-// ปล่อยไหลแล้วคุมไม่ได้: จำนวนช่องเปลี่ยนตาม showProject และ ProductCategorySelect
-// กินเต็มแถว (grid-column: 1/-1) — พอ parity พลิก คู่ก็เลื่อนทั้งแถบ ผลคือวันที่เริ่ม/
-// สิ้นสุดหลุดคนละบรรทัด และมีรูโหว่ข้างสถานะ.
-// แถวที่เหลือช่องเดียว (จำนวนคี่) กินเต็มแถวแทนการทิ้งรูไว้ข้าง ๆ
+// โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
+// (SCENT=amber · NPD=blue · RE-ORDER=teal) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
+const DEAL_TYPE_TONES = { SCENT: "amber", NPD: "blue", "RE-ORDER": "teal" };
+
+// แบรนด์โชว์เป็นชิปได้ถึงกี่ตัว — เกินนี้ถอยเป็นช่องค้นหา (กติกาคอนโทรล v2)
+const BRAND_CHIP_LIMIT = 6;
+
+// จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17)
+// แถวที่เหลือช่องเดียว (จำนวนคี่/ช่องถูกซ่อน) กินเต็มแถวแทนการทิ้งรูไว้ข้าง ๆ
 function pairRows(fields) {
   const items = fields.filter(Boolean);
   const out = [];
@@ -44,6 +47,20 @@ function pairRows(fields) {
   ));
 }
 
+// yyyy-mm-dd จาก Date — รูปเดียวกับที่ DateInput/monthKey อ่าน
+const isoDate = (d) => {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// ชิปลัดของวันที่คาดปิด — ตัวนี้คือตัวกำหนดเดือน FC จึงคุ้มที่จะลงเดือนได้
+// โดยไม่ต้องเปิดปฏิทิน (สิ้นเดือน/สิ้นไตรมาสคือคำตอบจริงของทีมขายส่วนใหญ่)
+const CLOSE_DATE_PRESETS = [
+  { label: "สิ้นเดือนนี้", date: () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0); } },
+  { label: "+30 วัน", date: () => { const d = new Date(); d.setDate(d.getDate() + 30); return d; } },
+  { label: "สิ้นไตรมาส", date: () => { const d = new Date(); const q = Math.floor(d.getMonth() / 3); return new Date(d.getFullYear(), q * 3 + 3, 0); } },
+];
+
 export default function DealFormFields({
   form,
   onPatch,               // (patchObject) => void
@@ -51,10 +68,10 @@ export default function DealFormFields({
   projects = [],
   showProject = false,
   categories = [],
-  stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง)
+  stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง · ตอนแก้ใบ Won ส่งชุดที่มี won มา)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
-  /* "auto" = FC% มาจากกติกาฝั่ง server ล้วน ช่องเป็นตัวบอกค่าที่จะได้ (ตอน **สร้าง**)
-     "input" = เลือกเองได้ (ตอน **แก้** และไม่ได้ขยับขั้น — ถ้าขยับขั้น server คิดใหม่)
+  /* "auto" = FC% มาจากกติกาฝั่ง server ล้วน — แถบขั้นโชว์ % ใต้ทุกขั้นแทนช่องแยก
+     "input" = เลือกเองได้ (ตอน **แก้** และไม่ได้ขยับขั้น) — เป็นชิปสามระดับ
      โหมดผ่าน props ตามกฎ "สร้าง/แก้ ใช้ฟอร์มเดียวกัน" ใน AGENTS.md */
   probabilityMode = "input",
   /* ผู้รับผิดชอบ (AE) — ส่งรายชื่อมาเมื่อไรช่องถึงจะโผล่ (มติผู้ใช้ 2026-08-05)
@@ -64,9 +81,16 @@ export default function DealFormFields({
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
 
+  const titleField = (
+    <label className="deal-field" key="title">
+      <span className="deal-field-label">ชื่อดีล</span>
+      <input className="premium-input" value={form.title} onChange={(e) => set("title")(e.target.value)} required />
+    </label>
+  );
+
   const customerField = (
     <label className="deal-field" key="customer">
-      {CUSTOMER_NAME_LABEL} (ไม่บังคับตอนแรก)
+      <span className="deal-field-label">{CUSTOMER_NAME_LABEL} <span className="soft">(ไม่บังคับตอนแรก)</span></span>
       <SearchableSelect
         entity="customer"
         value={form.customerId || ""}
@@ -85,11 +109,51 @@ export default function DealFormFields({
     </label>
   );
 
+  /* แบรนด์อยู่ติดหลังลูกค้า (มติผู้ใช้ 2026-08-08) เพราะรายการขึ้นกับลูกค้าที่เพิ่ง
+     เลือก — ปกติมี 1–3 ตัวจึงเป็นชิปเห็นครบ · เกิน BRAND_CHIP_LIMIT ถอยเป็นช่องค้นหา */
+  const brandOptions = (() => {
+    const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
+    if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
+    return options;
+  })();
+  const brandField = (
+    <div className="deal-field" key="brand">
+      <span className="deal-field-label">แบรนด์ <span className="soft">· ของลูกค้ารายนี้</span></span>
+      {!form.customerId ? (
+        <ChoiceChips
+          value=""
+          options={[{ value: "", label: "เลือกลูกค้าก่อน", ghost: true, disabled: true }]}
+          disabled
+          ariaLabel="แบรนด์"
+        />
+      ) : brandOptions.length > BRAND_CHIP_LIMIT ? (
+        <SearchableSelect
+          entity="brand"
+          value={form.brand || ""}
+          onChange={set("brand")}
+          options={[{ value: "", label: "— ไม่ระบุแบรนด์ —" }, ...brandOptions]}
+          placeholder="เลือกแบรนด์..."
+        />
+      ) : (
+        <ChoiceChips
+          value={form.brand || ""}
+          onChange={set("brand")}
+          options={[
+            ...brandOptions,
+            { value: "", label: "ไม่ระบุ", ghost: true },
+          ]}
+          ariaLabel="แบรนด์"
+        />
+      )}
+      <small>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
+    </div>
+  );
+
   // เชื่อมโครงการต้องเลือกลูกค้าก่อน (มติผู้ใช้ 2026-07-18) — ตัวเลือกจึงเหลือเฉพาะ
-  // โครงการของลูกค้านั้น (+ โครงการที่ยังไม่ผูกลูกค้า) ไม่ต้องเดาลูกค้าย้อนจากโครงการอีก
+  // โครงการของลูกค้านั้น (+ โครงการที่ยังไม่ผูกลูกค้า)
   const projectField = showProject && (
     <label className="deal-field" key="project">
-      โครงการ
+      <span className="deal-field-label">โครงการ</span>
       <SearchableSelect
         entity="project"
         value={form.projectId || ""}
@@ -108,97 +172,17 @@ export default function DealFormFields({
         ]}
       />
       {/* ล็อกได้ 2 กรณี: ดีลเชื่อมโครงการไปแล้ว (แก้) · เปิดฟอร์มจากหน้าโครงการนั้นเอง (สร้าง)
-          ⇒ ข้อความต้องกลาง ๆ ใช้ได้ทั้งสองทาง ไม่ใช่ "เชื่อมแล้ว…" ที่อ่านผิดตอนสร้างใบใหม่ */}
+          ⇒ ข้อความต้องกลาง ๆ ใช้ได้ทั้งสองทาง */}
       {form.lockedProjectId && <small>โครงการถูกกำหนดไว้แล้ว — เปลี่ยน/ย้ายโครงการทำที่หน้าโครงการ</small>}
     </label>
   );
 
-  const brandField = (
-    <label className="deal-field" key="brand">
-      แบรนด์
-      <SearchableSelect
-        entity="brand"
-        value={form.brand || ""}
-        onChange={set("brand")}
-        disabled={!form.customerId}
-        options={(() => {
-          const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
-          if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
-          return [{ value: "", label: form.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน" }, ...options];
-        })()}
-        placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"}
-      />
-      <small>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
-    </label>
-  );
-
-  // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ → ต้องเลือกให้ถูก. ใส่สีตัวอักษรตามชุดสี
-  // มาตรฐาน (DEAL_TYPE_COLORS: SCENT=amber, NPD=blue, RE-ORDER=teal) เหมือน badge
-  // ในหน้ารายการ เพื่อให้อ่านประเภทได้ด้วยตาเดียว + placeholder บังคับเลือกตอนสร้าง
-  // (ไม่มี default NPD เงียบ ๆ อีก — มติ 2026-07-21).
-  const dealTypeField = (
-    <label className="deal-field" key="dealType">
-      ประเภทดีล <span className="required-mark">*</span>
-      <Select
-        className="premium-select"
-        value={form.dealType || ""}
-        onChange={(e) => set("dealType")(e.target.value)}
-        style={{ color: form.dealType ? DEAL_TYPE_COLORS[form.dealType] : "var(--text-3)", fontWeight: form.dealType ? 600 : 400 }}
-      >
-        <option value="" disabled style={{ color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>— เลือกประเภทดีล —</option>
-        {DEAL_TYPES.map((t) => (
-          <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: "var(--fw-semibold)" }}>
-            {t} · {DEAL_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </Select>
-    </label>
-  );
-
-  const stageField = (
-    <label className="deal-field" key="stage">
-      สถานะ
-      <Select className="premium-select" value={form.stage} disabled={alreadyWon} onChange={(e) => set("stage")(e.target.value)}>
-        {stages.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-      </Select>
-    </label>
-  );
-
-  // ปิด Won แล้ว = 100% ซึ่งเป็น "ยอดจริง (Actual)" ไม่ใช่ FC อีกต่อไป (มติผู้ใช้ 2026-07-29)
-  // จึงไม่โยนค่าเข้า Select ที่มีแค่ 20/50/80 — snapForecastLevel จะปัด 100 ลงมาเป็น 80
-  // แล้วฟอร์มดีลที่ปิดได้แล้วจะโชว์ "80% · มี FC / ชำระค่า Scent Design" ซึ่งอ่านผิดความหมาย
-  // (ช่องถูก disabled อยู่แล้วจึงไม่มีใครกดเปลี่ยนได้ แต่ค่าที่ตาเห็นยังผิด)
-  /* ตอนสร้าง FC% ไม่ใช่ของที่คนกรอก — server คิดจากขั้น + ประเภทดีล + โครงการเสมอ
-     (มติผู้ใช้ 2026-08-05) ช่องยังอยู่เพราะคนต้องเห็นว่าจะได้เลขอะไร แต่แก้ไม่ได้
-     🐞 ของเดิมเป็นดรอปดาวน์ที่ default "50" ⇒ ดีลใหม่ทุกใบเกิดมาที่ 50% (= ออกใบ
-     เสนอราคาแล้ว) ทั้งที่ยังอยู่ขั้น 'lead' */
-  const autoFc = DEFAULT_PROBABILITY_BY_STAGE[form.stage] ?? DEFAULT_PROBABILITY_BY_STAGE.lead;
-  const fcField = (
-    <label className="deal-field" key="fc">
-      โอกาสที่จะปิดได้ (FC%)
-      {alreadyWon ? (
-        <Input value="ปิดได้แล้ว (Won) — ยอดจริงมาจากใบสั่งขาย" readOnly disabled />
-      ) : probabilityMode === "auto" ? (
-        <>
-          <Input value={`${autoFc}% — ตามสถานะที่เลือก`} readOnly disabled />
-          <small>
-            ระบบปรับให้เองเมื่อสถานะเปลี่ยน (ออกใบเสนอราคา → 50%) · NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80%
-          </small>
-        </>
-      ) : (
-        <Select className="premium-select" value={snapForecastLevel(form.probability)} onChange={(e) => set("probability")(e.target.value)}>
-          {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-        </Select>
-      )}
-    </label>
-  );
-
   /* AC เปิดดีลได้แล้วแต่เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน — ถ้าไม่มีช่องนี้ ดีลจะตกเป็น
-     ของ AC เงียบ ๆ (server ใส่ `ownerId = user.id` ให้เมื่อไม่ระบุ) แล้วไม่มี AE คนไหน
-     เห็นมันในคิว "ของฉัน" เลย */
+     ของ AC เงียบ ๆ แล้วไม่มี AE คนไหนเห็นมันในคิว "ของฉัน" เลย
+     เป็นช่องค้นหา ไม่ใช่ชิป (มติผู้ใช้ 2026-08-08: ชื่อยาว และอาจโชว์หลายคน) */
   const ownerField = owners.length > 0 && (
     <label className="deal-field" key="owner">
-      ผู้รับผิดชอบ (AE) <span className="required-mark">*</span>
+      <span className="deal-field-label">ผู้รับผิดชอบ (AE) <span className="required-mark">*</span></span>
       <SearchableSelect
         entity="person"
         value={form.ownerId || ""}
@@ -218,17 +202,104 @@ export default function DealFormFields({
     </label>
   );
 
+  // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ — 3 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ
+  // ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2) · ไม่มี default เงียบ ๆ (มติ 2026-07-21)
+  const dealTypeField = (
+    <div className="deal-field" key="dealType">
+      <span className="deal-field-label">ประเภทดีล <span className="required-mark">*</span></span>
+      <OptionTiles
+        value={form.dealType || ""}
+        onChange={set("dealType")}
+        options={DEAL_TYPES.map((t) => ({
+          value: t,
+          label: t,
+          description: DEAL_TYPE_LABELS[t],
+          tone: DEAL_TYPE_TONES[t],
+        }))}
+        ariaLabel="ประเภทดีล"
+      />
+    </div>
+  );
+
+  /* สถานะ + FC% ยุบเป็นแถบขั้นเดียว (มติผู้ใช้ 2026-08-08) — % ของทุกขั้นโชว์
+     ใต้ชื่อขั้น คนเห็นผลก่อนกด · ช่อง FC แยกเหลือเฉพาะโหมดแก้ (input) ข้างล่าง
+     ⚠️ ขั้น won/lost โผล่เฉพาะเมื่อ caller ส่งมาใน `stages` (เช่น ใบที่ปิดแล้ว
+     ต้องเห็นค่าตัวเอง — editableStages) — ฟอร์มไม่แอบเติมเอง */
+  const stageSub = (stage) => {
+    if (stage === "won" || stage === "in_project") return "Actual";
+    if (stage === "lost") return "0%";
+    return `${DEFAULT_PROBABILITY_BY_STAGE[stage] ?? DEFAULT_PROBABILITY_BY_STAGE.lead}%`;
+  };
+  const isEndStage = (stage) => stage === "won" || stage === "in_project" || stage === "lost";
+  const stageField = (
+    <div className="deal-field" key="stage">
+      <span className="deal-field-label">
+        สถานะ
+        {probabilityMode === "auto" && !alreadyWon && (
+          <span className="soft">· FC% ผูกตามขั้น — ระบบปรับให้เองเมื่อสถานะเปลี่ยน</span>
+        )}
+      </span>
+      <StageSteps
+        value={form.stage}
+        onChange={set("stage")}
+        disabled={alreadyWon}
+        ariaLabel="สถานะดีล"
+        steps={stages.map((stage, index) => ({
+          value: stage,
+          label: STAGE_LABELS[stage],
+          sub: stageSub(stage),
+          tone: stage === "lost" ? "lose" : isEndStage(stage) ? "win" : undefined,
+          // เส้นคั่นหนาหน้าขั้นปลายตัวแรก — แยก pipeline ออกจากจุดจบ
+          cut: isEndStage(stage) && index > 0 && !isEndStage(stages[index - 1]),
+        }))}
+      />
+      {alreadyWon ? (
+        <small>ปิดได้แล้ว (Won) — ยอดจริงมาจากใบสั่งขาย</small>
+      ) : probabilityMode === "auto" ? (
+        <small>NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ</small>
+      ) : null}
+    </div>
+  );
+
+  /* โหมดแก้ (input): FC% สามระดับเป็นชิปเห็นครบ — เดิมเป็นดรอปดาวน์ที่ default 50
+     จนดีลใหม่ทุกใบเกิดที่ "ออกใบเสนอราคาแล้ว" ทั้งที่ยังเป็นลีด */
+  const fcField = probabilityMode === "input" && !alreadyWon && (
+    <div className="deal-field" key="fc">
+      <span className="deal-field-label">โอกาสที่จะปิดได้ (FC%)</span>
+      <ChoiceChips
+        value={String(snapForecastLevel(form.probability))}
+        onChange={set("probability")}
+        options={FORECAST_LEVELS.map((level) => ({ value: String(level.value), label: level.label }))}
+        ariaLabel="โอกาสที่จะปิดได้ (FC%)"
+      />
+    </div>
+  );
+
   const valueField = (
     <label className="deal-field" key="value">
-      มูลค่าคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
+      <span className="deal-field-label">มูลค่าคาดการณ์{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
       <MoneyInput value={form.projectValue} disabled={alreadyWon} onChange={(value) => set("projectValue")(value ?? "")} />
     </label>
   );
 
   const closeDateField = (
     <label className="deal-field" key="closeDate">
-      วันที่คาดการณ์ปิด{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
+      <span className="deal-field-label">วันที่คาดการณ์ปิด{alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}</span>
       <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
+      {!alreadyWon && (
+        <span className="date-presets">
+          {CLOSE_DATE_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              className="choice-chip"
+              onClick={() => set("expectedCloseDate")(isoDate(preset.date()))}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </span>
+      )}
       <small>
         {form.expectedCloseDate
           ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
@@ -239,28 +310,33 @@ export default function DealFormFields({
 
   const startField = (
     <label className="deal-field" key="start">
-      วันที่เริ่ม
+      <span className="deal-field-label">วันที่เริ่ม</span>
       <DateInput value={form.startDate || ""} onChange={set("startDate")} />
     </label>
   );
 
   const endField = (
     <label className="deal-field" key="end">
-      วันที่สิ้นสุด
+      <span className="deal-field-label">วันที่สิ้นสุด</span>
       <DateInput value={form.endDate || ""} onChange={set("endDate")} />
+    </label>
+  );
+
+  const notesField = (
+    <label className="deal-field" key="notes">
+      <span className="deal-field-label">รายละเอียด</span>
+      <Textarea rows={3} value={form.notes || ""} onChange={(e) => set("notes")(e.target.value)} />
     </label>
   );
 
   return (
     <>
-      <label className="deal-field" style={{ gridColumn: "1 / -1" }}>
-        ชื่อดีล
-        <input className="premium-input" value={form.title} onChange={(e) => set("title")(e.target.value)} required />
-      </label>
-
-      {/* ก่อนหมวดสินค้า: 5–7 ช่อง แล้วแต่ showProject / มีช่องผู้รับผิดชอบไหม —
-          pairRows จัดคู่ให้ และดันช่องที่เหลือเดี่ยวให้เต็มแถว จึงไม่มีรูไม่ว่ากรณีไหน */}
-      {pairRows([customerField, projectField, brandField, dealTypeField, stageField, fcField, ownerField])}
+      {pairRows([titleField])}
+      {pairRows([customerField, brandField])}
+      {pairRows([projectField, ownerField])}
+      {pairRows([dealTypeField])}
+      {pairRows([stageField])}
+      {pairRows([fcField])}
 
       {/* กินเต็มแถวเองอยู่แล้ว (grid-column: 1/-1 ใน globals.css) */}
       <ProductCategorySelect
@@ -270,13 +346,9 @@ export default function DealFormFields({
         onChange={(categoryCode, meta) => onPatch({ categoryCode, categoryMainCode: meta.mainCode })}
       />
 
-      {/* หลังหมวดสินค้า: 4 ช่องคงที่ → วันที่เริ่ม/สิ้นสุดอยู่คู่กันเสมอ ไม่ขึ้นกับ showProject */}
-      {pairRows([valueField, closeDateField, startField, endField])}
-
-      <label className="deal-field" style={{ gridColumn: "1 / -1" }}>
-        รายละเอียด
-        <Textarea rows={3} value={form.notes || ""} onChange={(e) => set("notes")(e.target.value)} />
-      </label>
+      {pairRows([valueField, closeDateField])}
+      {pairRows([startField, endField])}
+      {pairRows([notesField])}
     </>
   );
 }

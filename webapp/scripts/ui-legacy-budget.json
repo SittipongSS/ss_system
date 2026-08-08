@@ -4,9 +4,9 @@
     "sales": {
       "legacyTable": 46,
       "legacySurface": 77,
-      "inlineStyle": 999,
-      "rawButtonClass": 184,
-      "rawInputClass": 69
+      "inlineStyle": 994,
+      "rawButtonClass": 183,
+      "rawInputClass": 66
     },
     "sahamit": {
       "legacyTable": 21,
@@ -46,7 +46,7 @@
     "shared": {
       "legacyTable": 3,
       "legacySurface": 19,
-      "inlineStyle": 187,
+      "inlineStyle": 186,
       "rawButtonClass": 48,
       "rawInputClass": 15
     }

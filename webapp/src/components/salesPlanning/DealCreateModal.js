@@ -196,72 +196,86 @@ export default function DealCreateModal({
     }
   };
 
+  /* ── แถบเครื่องมือใต้หัว (โซน toolbar ของ Modal — ไม่เลื่อนตามฟอร์ม) ─────
+     (มติผู้ใช้ 2026-08-04) ปุ่ม "เพิ่มดีล" ต้องอยู่แถวเดียวกับแท็บ ไม่ใช่ใต้ฟอร์ม:
+     ปุ่มล่างสุดหลุดบริบท และมองไม่ออกว่ามันเพิ่ม "แท็บ" ไม่ใช่ช่องในใบที่เปิดอยู่
+
+     ⚠️ แท็บซ่อนใบอื่นไว้ ป้ายจึงต้องบอกสถานะรายใบโดยไม่ต้องกดเข้าไปดู:
+     ✓ = สร้างแล้ว (รอบก่อน) · ! = ใบที่พัง — ไม่งั้น error รวมบรรทัดเดียว
+     จะบอกไม่ได้ว่าใบไหน · ปุ่มลบย้ายมาอยู่แถบนี้ (ลบใบที่เปิดอยู่) แทนปุ่มลอย
+     มุมการ์ดแบบเดิม — การ์ดร่างถูกยุบทิ้งแล้วตามโครงสามชั้น */
+  const toolbar = (
+    <>
+      {drafts.length > 1 ? (
+        <Tabs
+          className={styles.tabs}
+          ariaLabel="ดีลที่จะสร้าง"
+          value={String(active)}
+          onChange={(key) => setActive(Number(key))}
+          tabs={drafts.map((draft, index) => {
+            const state = done[draft._key];
+            return {
+              key: String(index),
+              label: (
+                <span className={styles.tabLabel}>
+                  {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
+                  {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
+                  {draft.dealType || `ดีล ${index + 1}`}
+                </span>
+              ),
+            };
+          })}
+        />
+      ) : (
+        <span className={styles.spacer} aria-hidden="true" />
+      )}
+      {drafts.length > 1 && (
+        <Button variant="ghost" size="sm" onClick={() => removeAt(active)}>
+          <Trash2 size={13} aria-hidden="true" /> ลบใบนี้
+        </Button>
+      )}
+      <Button variant="ghost" size="sm" onClick={addDraft} className={styles.addButton}>
+        <Plus size={14} aria-hidden="true" /> เพิ่มดีล
+      </Button>
+    </>
+  );
+
   return (
-    <Modal open onClose={() => !busy && onClose?.()} title={lead ? "สร้างดีลจากลีด" : "เพิ่มดีล"} size="lg">
-      <div className={styles.body}>
-        {lead ? (
-          <div className={styles.lead}>
-            ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
-            {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
-            {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
-          </div>
-        ) : null}
-
-        {/* ── แถบหัว: แท็บ + ปุ่มเพิ่ม อยู่แถวเดียวกัน เหนือฟอร์ม ───────────────
-            (มติผู้ใช้ 2026-08-04) ฟอร์มดีลมี 12 ช่อง เรียง 2 ใบลงมาตรง ๆ = จอยาวมาก
-            แท็บโผล่เมื่อมีมากกว่า 1 ใบ — ใบเดียวหน้าตาเหมือนเดิมทุกอย่าง
-
-            ⚠️ ปุ่ม "เพิ่มดีล" ต้องอยู่**แถวเดียวกับแท็บ** ไม่ใช่ใต้ฟอร์มแบบเดิม:
-            พอเป็นแท็บแล้วปุ่มที่อยู่ล่างสุดหลุดบริบท ต้องเลื่อนผ่านฟอร์มทั้งใบไปหา
-            และมองไม่ออกว่ามันเพิ่ม "แท็บ" ไม่ใช่เพิ่มช่องในใบที่เปิดอยู่
-
-            ⚠️ แท็บซ่อนใบอื่นไว้ ป้ายจึงต้องบอกสถานะรายใบให้ครบโดยไม่ต้องกดเข้าไปดู:
-            ✓ = สร้างแล้ว (รอบก่อน) · ! = ใบที่พัง — ไม่งั้น error รวมบรรทัดเดียว
-            จะบอกไม่ได้ว่าใบไหน */}
-        <div className={styles.tabRow}>
+    <Modal
+      open
+      onClose={() => !busy && onClose?.()}
+      title={lead ? "สร้างดีลจากลีด" : "เพิ่มดีล"}
+      /* บริบทลีดอยู่ในหัวที่นิ่ง — ไม่จมไปกับฟอร์มตอนเลื่อน */
+      subtitle={lead ? (
+        <>
+          ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
+          {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
+          {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
+        </>
+      ) : null}
+      size="lg"
+      toolbar={toolbar}
+      footer={(
+        <>
           {drafts.length > 1 ? (
-            <Tabs
-              className={styles.tabs}
-              ariaLabel="ดีลที่จะสร้าง"
-              value={String(active)}
-              onChange={(key) => setActive(Number(key))}
-              tabs={drafts.map((draft, index) => {
-                const state = done[draft._key];
-                return {
-                  key: String(index),
-                  label: (
-                    <span className={styles.tabLabel}>
-                      {state?.dealId ? <Check size={13} aria-hidden="true" /> : null}
-                      {failedKey === draft._key ? <CircleAlert size={13} aria-hidden="true" /> : null}
-                      {draft.dealType || `ดีล ${index + 1}`}
-                    </span>
-                  ),
-                };
-              })}
-            />
-          ) : <span />}
-          <Button variant="ghost" onClick={addDraft} className={styles.addButton}>
-            <Plus size={14} aria-hidden="true" /> เพิ่มดีล
+            <span className="drawer-footer-note">
+              {drafts.length} ใบ · {drafts.map((draft) => draft.dealType || "?").join(" + ")}
+            </span>
+          ) : null}
+          <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
+          <Button onClick={submit} disabled={busy || !remaining}>
+            {busy ? "กำลังสร้าง…" : `สร้าง ${remaining} ดีล`}
           </Button>
-        </div>
-
+        </>
+      )}
+    >
+      <div className={styles.body}>
         {drafts.map((draft, index) => (
           <div
             key={draft._key}
             className={styles.draft}
             hidden={drafts.length > 1 && index !== active}
           >
-            {drafts.length > 1 && (
-              <button
-                type="button"
-                className={`btn-icon danger ${styles.remove}`}
-                title="ลบรายการนี้"
-                aria-label={`ลบดีลรายการที่ ${index + 1}`}
-                onClick={() => removeAt(index)}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            )}
             {/* ใบที่สร้างสำเร็จไปแล้วในรอบก่อน — บอกให้ชัดว่าแก้ตรงนี้ไม่มีผลอีกแล้ว */}
             {done[draft._key]?.dealId ? (
               <p className={styles.created}>
@@ -288,13 +302,6 @@ export default function DealCreateModal({
         ))}
 
         {error ? <p className={styles.error}>{error}</p> : null}
-
-        <div className="form-action-bar">
-          <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button onClick={submit} disabled={busy || !remaining}>
-            {busy ? "กำลังสร้าง…" : `สร้าง ${remaining} ดีล`}
-          </Button>
-        </div>
       </div>
     </Modal>
   );
