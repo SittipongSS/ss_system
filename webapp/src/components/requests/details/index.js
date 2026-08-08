@@ -10,6 +10,7 @@
 //
 // ⚠️ เพิ่มหัวข้อใหม่ **ไม่ต้องแก้หน้า `/requests/[id]`** — ลงทะเบียนที่นี่พอ
 import DocumentDetail from './DocumentDetail';
+import DocumentPanel from './DocumentPanel';
 import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SharedRequestDetail from './SharedRequestDetail';
@@ -23,10 +24,23 @@ const BY_KIND = {
   billing_doc: DocumentDetail,
 };
 
+// ── การ์ด panel รายหัวข้อ (ม-94) — ใต้การ์ด control กลางบนรางขวา ──────────
+// หัวข้อที่ไม่มีของตัวเอง = ไม่มีการ์ดเพิ่ม (การ์ด control กลาง + การ์ดบริบท
+// โครงการ/ดีล มาจากเปลือกอยู่แล้ว) · ลงทะเบียนคู่กับ BY_KIND — ที่เดียวกัน
+// เพื่อไม่ให้มีทะเบียนที่สามงอกมา drift
+const PANEL_BY_KIND = {
+  document: DocumentPanel,
+  billing_doc: DocumentPanel,
+};
+
 // หัวข้อที่ยังไม่มีจอของตัวเองใช้ตัวกลาง — **ถอยได้ ไม่โยน** เพราะใบเก่าของหัวข้อ
 // ที่ถูกถอดไปแล้วต้องยังเปิดอ่านได้ (ถอยไปเป็นเธรดล้วนดีกว่าจอขาว)
 export function detailForKind(kind) {
   return BY_KIND[kind] || SharedRequestDetail;
+}
+
+export function panelForKind(kind) {
+  return PANEL_BY_KIND[kind] || null;
 }
 
 export { DocumentDetail, FormulaDevDetail, ScentDevDetail, SharedRequestDetail };

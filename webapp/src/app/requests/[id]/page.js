@@ -46,7 +46,7 @@ import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
-import { detailForKind } from "@/components/requests/details";
+import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
@@ -206,6 +206,8 @@ export default function RequestDetailPage() {
   const showPdr = requestHasPdr(req.kind);
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
+  // การ์ด panel รายหัวข้อ (ม-94) — null = มีแค่การ์ด control กลาง + การ์ดบริบท
+  const KindPanel = panelForKind(req.kind);
   // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
   // โดยไม่ต้องไล่อ่านทีละแถว
   //
@@ -806,6 +808,19 @@ export default function RequestDetailPage() {
                 eyebrow="ดีล"
                 title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
                 subtitle={req.customerName || undefined}
+              />
+            )}
+            {/* การ์ดรายหัวข้อ — ส่งก้อนชุดเดียวกับ KindDetail แล้วให้หัวข้อหยิบ
+                ของตัวเอง (แพตเทิร์น ม-34 เดียวกับเนื้อกลางหน้า) */}
+            {KindPanel && (
+              <KindPanel
+                request={req}
+                docBoard={docBoard}
+                docTotals={docTotals}
+                formulaBoard={formulaBoard}
+                formulaTotals={formulaTotals}
+                board={board}
+                briefSummary={briefSummary}
               />
             )}
           </>
