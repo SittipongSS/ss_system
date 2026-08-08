@@ -8,6 +8,7 @@
 // ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestNeedsApproval } from '@/lib/requests/approval';
+import { requestDeliversRows } from '@/lib/master/requestTypes';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
 
 // ขั้นกลาง — สรุปจากแถวข้างใน ไม่ใช่คำตายตัว
@@ -20,7 +21,12 @@ function middleStep(request, hasItems) {
   const awaitingPrice = items.filter((i) => rowStage(i) === 'awaiting_price').length;
 
   if (!summary.total) {
-    return { label: `รอฝ่าย ${request.dept} ส่งของ`, hint: 'รับเรื่องแล้ว ยังไม่มีของส่งมา' };
+    // ⭐ ไม่มีแถวแปลว่าอะไร ขึ้นกับหัวข้อ (มติผู้ใช้ 2026-08-09): หัวข้อที่ฝ่ายสร้าง
+    // แถวเองตอนส่ง (พัฒนากลิ่น) คือรอ **ของ** จริง ๆ · หัวข้อไม่มีแถวเลย
+    // (สอบถามข้อมูล) ของไม่มีอยู่ในสาย — คำที่ถูกคือรอ **คำตอบ**
+    return requestDeliversRows(request.kind)
+      ? { label: `รอฝ่าย ${request.dept} ส่งของ`, hint: 'รับเรื่องแล้ว ยังไม่มีของส่งมา' }
+      : { label: `รอฝ่าย ${request.dept} ตอบ`, hint: 'รับเรื่องแล้ว — ตอบกันในเธรด' };
   }
   // ⭐ **"รอใส่ราคา" ต้องเห็นเป็นพิเศษ** — แถวที่คอนเฟิร์มแล้วแต่ยังไม่มีราคาคือใบค้าง
   // ถาวรถ้าไม่มีใครเห็น (กับดักข้อ 11 ของแผน)

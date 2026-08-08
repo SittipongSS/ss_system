@@ -17,15 +17,20 @@ import { DOCUMENT_SOURCES } from "@/lib/sales/entityDocuments";
 import { fmtDate } from "@/lib/format";
 import styles from "./entityDocuments.module.css";
 
-export default function EntityDocumentsPanel({ dealId }) {
+// รับ `dealId` (แท็บบนหน้าดีล) หรือ `projectId` (แท็บบนหน้าโครงการ · ม-88) —
+// โหมดโครงการรวมของทุกดีลข้างใน และบรรทัดรองบอกว่าแถวไหนมาจากดีลไหน
+export default function EntityDocumentsPanel({ dealId, projectId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const reload = useCallback(() => {
-    if (!dealId) return;
+    if (!dealId && !projectId) return;
     setLoading(true); setError("");
-    fetch(`/api/sales-planning/documents/all?dealId=${encodeURIComponent(dealId)}`, { cache: "no-store" })
+    const query = dealId
+      ? `dealId=${encodeURIComponent(dealId)}`
+      : `projectId=${encodeURIComponent(projectId)}`;
+    fetch(`/api/sales-planning/documents/all?${query}`, { cache: "no-store" })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (!r.ok) throw new Error(d?.error || "โหลดเอกสารไม่สำเร็จ");
@@ -34,7 +39,7 @@ export default function EntityDocumentsPanel({ dealId }) {
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [dealId]);
+  }, [dealId, projectId]);
   useEffect(() => { reload(); }, [reload]);
 
   // แนบไฟล์แล้วต้องเห็นในลิสต์ทันที · ข้ามครั้งแรก (AttachmentsPanel ยิงตอน mount
@@ -61,7 +66,9 @@ export default function EntityDocumentsPanel({ dealId }) {
       </div>
 
       {!rows.length && (
-        <EmptyState icon={FileText}>ดีลนี้ยังไม่มีเอกสารและไม่มีรายการที่รออยู่</EmptyState>
+        <EmptyState icon={FileText}>
+          {dealId ? "ดีลนี้" : "โครงการนี้"}ยังไม่มีเอกสารและไม่มีรายการที่รออยู่
+        </EmptyState>
       )}
 
       <ul className={styles.list}>
@@ -93,7 +100,10 @@ export default function EntityDocumentsPanel({ dealId }) {
 
       {/* ⭐ ที่แนบไฟล์เข้าดีลโดยตรง (P5c) — แหล่งที่ 1 ของแผงนี้
           ⚠️ ต่อครบ 5 จุดแล้ว (ดู lib/sales/dealAttachmentAccess.js) · ขาดจุดไหนก็
-          หลุดเงียบจุดนั้น: ไฟล์ไม่ขึ้น · อัปไม่ได้ · ใครก็ลบได้ · พรีวิวไม่ขึ้น */}
+          หลุดเงียบจุดนั้น: ไฟล์ไม่ขึ้น · อัปไม่ได้ · ใครก็ลบได้ · พรีวิวไม่ขึ้น
+          ⚠️ โหมดโครงการ (ม-88) ไม่มีกล่องนี้ — ไฟล์แนบเข้า **ดีล** รายใบ
+          โครงการเป็นแค่ที่รวม แนบตรงนี้จะไม่รู้ว่าเข้าดีลไหน */}
+      {dealId && (
       <div className={styles.upload}>
         <div className="toolbar-label">แนบเอกสารเข้าดีลนี้</div>
         <AttachmentsPanel
@@ -107,6 +117,7 @@ export default function EntityDocumentsPanel({ dealId }) {
           onItemsChange={onAttachmentsChange}
         />
       </div>
+      )}
     </div>
   );
 }

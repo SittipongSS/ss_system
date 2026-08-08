@@ -10,15 +10,21 @@
 //
 // ⚠️ นับจาก `rowStage.js` ที่เดียวเหมือนทุกหัวข้อ ⇒ ขัดกับคิวและปุ่มท้ายเธรดไม่ได้
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, isRowSettled, rowStage } from '@/lib/requests/rowStage';
-import { docTypeLabel } from '@/lib/requests/docTypes';
+import { DOC_LINE_KINDS, docTypeLabel } from '@/lib/requests/docTypes';
 
-// รูปร่างบรรทัดที่เป็น "เอกสาร" — RD ขอ IFRA/COA/MSDS · บัญชีขอใบวางบิล/ใบกำกับ
-// (คนละคำศัพท์ กฎเดียวกัน — ดู docVocabulary)
-const DOC_SHAPES = ['document', 'billing_doc'];
+// ⭐ ป้ายขั้นฉบับสายเอกสาร (ม-85) — ชุดกลาง (`ROW_STAGE_LABELS`) เล่าสายพัฒนา
+// ("รอไปรับ" · "เสร็จ" · "ไม่ได้ใช้") ซึ่งอ่านผิดความหมายกับเอกสาร:
+// ready คือฝ่าย **ส่งเอกสารแล้ว** · done คือ **ได้รับแล้ว** · declined คือ **ปฏิเสธ**
+// เขียนทับเฉพาะสามตัวนี้ ตัวอื่นใช้ชุดกลางเหมือนเดิม
+const DOC_STAGE_LABELS = {
+  ready: 'ส่งเอกสารแล้ว',
+  done: 'ได้รับแล้ว',
+  declined: 'ปฏิเสธ',
+};
 
 export function documentBoard(items = []) {
   return (items || [])
-    .filter((i) => DOC_SHAPES.includes(i?.lineKind))
+    .filter((i) => DOC_LINE_KINDS.includes(i?.lineKind))
     .map((item) => {
       const stage = rowStage(item);
       return {
@@ -29,11 +35,11 @@ export function documentBoard(items = []) {
         name: item.docType ? docTypeLabel(item.docType) : (item.label || '—'),
         spec: item.spec || null,
         stage,
-        stageLabel: ROW_STAGE_LABELS[stage] || stage,
+        stageLabel: DOC_STAGE_LABELS[stage] || ROW_STAGE_LABELS[stage] || stage,
         stageTone: ROW_STAGE_TONES[stage] || 'neutral',
-        // ⭐ "ได้รับแล้ว" = แถวจบแบบได้ของ · "ให้ไม่ได้" = จบแบบไม่ได้ของ
-        // สองอย่างนี้ **จบเหมือนกันแต่คนละความหมาย** — รวมกันเมื่อไร ใบที่ฝ่ายตอบว่า
-        // ให้ไม่ได้ทั้งใบจะอ่านเหมือนได้ครบ
+        // ⭐ "ได้รับแล้ว" = แถวจบแบบได้ของ · "ปฏิเสธ" = จบแบบไม่ได้ของ
+        // สองอย่างนี้ **จบเหมือนกันแต่คนละความหมาย** — รวมกันเมื่อไร ใบที่ฝ่าย
+        // ปฏิเสธทั้งใบจะอ่านเหมือนได้ครบ
         received: stage === 'done',
         refused: stage === 'declined',
         settled: isRowSettled(item),

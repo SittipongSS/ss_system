@@ -34,7 +34,7 @@ import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
-  PLANNED_REQUEST_DEPTS,
+  PLANNED_REQUEST_DEPTS, requestOptionalRefs,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, lineShapeForKind, requestHasItems,
   requestHasPdr,
@@ -66,12 +66,22 @@ function DerivedField({ label, value, from }) {
 }
 
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
+//
+// ⭐ **ฝ่ายเลือกให้เลยเมื่อเปิดใช้จริงอยู่ฝ่ายเดียว** (มติผู้ใช้ 2026-08-08:
+// *"การขอเอกสาร มันเป็นคำร้องไป RD นิ จะมีฝ่ายทำไม"*) — ตอนนี้ `REQUEST_DEPTS`
+// เหลือ RD ตัวเดียว ⇒ ขั้น "เลือกฝ่าย" ไม่ได้ตัดสินใจอะไร แค่คลิกทิ้งเปล่า ๆ
+// ⚠️ **ไม่ได้ซ่อนแถวฝ่าย** — จัดซื้อ/บัญชียังโชว์แบบจางเพื่อบอกว่า "มีอยู่ แต่ยัง
+// ไม่เปิด" · เปิดฝ่ายที่สองเมื่อไร บรรทัดนี้จะกลับไปเป็นค่าว่างเองโดยอัตโนมัติ
+const onlyDept = () => (REQUEST_DEPTS.length === 1 ? REQUEST_DEPTS[0] : "");
+
 export const emptyRequestForm = (over = {}) => ({
   projectId: "",
   dealId: "",
-  salesOrderId: "",   // บรีฟกลิ่น (ค่าบริการออกแบบกลิ่น)
+  salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
+  quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
+  productIds: [],     // FG หลายรายการ (ไม่บังคับ · ม-89)
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
-  dept: "",
+  dept: onlyDept(),
   kind: "",
   title: "",
   body: "",
@@ -109,7 +119,7 @@ export default function RequestForm({
   value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
-  customers = [],
+  customers = [], quotations = [], products = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
   mentionPeople = [],
@@ -148,6 +158,8 @@ export default function RequestForm({
   // (ธงเพี้ยนจาก server ไม่ได้ เพราะอ่านตัวเดียวกัน)
   const needsProject = requestNeedsRef(kind, "project");
   const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
+  // อ้างอิงเพิ่มไม่บังคับ (ม-88) — QT/SO/FG ของหัวข้อขอเอกสาร
+  const optionalRefs = requestOptionalRefs(kind);
   const needsScent = requestNeedsRef(kind, "scent");
   const needsFormula = requestNeedsRef(kind, "formula");
   // ⚠️ **หลับอยู่ตั้งแต่ 0204** — คอลัมน์ `dept_requests.productTypeId` ถูก DROP ทิ้ง
@@ -276,6 +288,8 @@ export default function RequestForm({
                 productId: "",
                 productTypeId: "",
                 salesOrderId: "",
+                quotationId: "",
+                productIds: [],
                 formulaCode: "",
                 formulaName: "",
                 items: itemsForKind(next),
@@ -337,11 +351,14 @@ export default function RequestForm({
           เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
       {needsProject && (
+      <>
       <div className="form-group">
         <span className={styles.fieldLabel}>ดีล</span>
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
             ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
-            อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ */}
+            อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ
+            ⚠️ ในแผงค้นด้วย **ชื่อลูกค้า** ได้ (`dealSearchText` รวม customerName) —
+            คนที่คิดจากลูกค้าก่อนพิมพ์ชื่อลูกค้าลงช่องค้นได้เลย ไม่ต้องมีช่องแยก */}
         <DealPicker
           deals={deals}
           projects={projects}
@@ -360,6 +377,127 @@ export default function RequestForm({
           </small>
         )}
       </div>
+      {/* ⭐ **ลูกค้ากับโครงการโชว์กลับเสมอ** (มติผู้ใช้ 2026-08-08: "ต้องเลือกลูกค้า
+          โครงการ ดีล และเลือกขอเอกสาร") — สองค่านี้ derive จากดีลมาตลอดแต่เดิม
+          **หายเงียบ**: เลือกดีลแล้วไม่มีอะไรบอกว่าใบนี้จะเกาะลูกค้า/โครงการไหน
+          ต่างจากบล็อกบรีฟกลิ่นที่โชว์ของที่เติมจาก SO ครบ · เป็นตัวอย่างของสิ่งที่
+          server จะเขียนจริง ไม่ใช่ช่องให้แก้ (`requestPayload` ไม่ส่งสองค่านี้เลย) */}
+      <div className="form-grid">
+        <DerivedField
+          label="ลูกค้า" from="เติมจากดีลที่เลือก"
+          value={selectedDeal?.customerName || ""}
+        />
+        <DerivedField
+          label="โครงการ" from="เติมจากดีลที่เลือก"
+          value={(() => {
+            const project = projects.find((p) => p.id === selectedDeal?.projectId);
+            return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
+          })()}
+        />
+      </div>
+
+      {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────
+          ⭐ มติผู้ใช้ 2026-08-08: เอกสารอย่าง COA/IFRA มักผูกกับใบเสนอราคา ใบสั่งขาย
+          หรือสินค้า (FG) ตัวใดตัวหนึ่ง — ให้อ้างจากระบบจริง ไม่ใช่พิมพ์เลขที่ลงช่อง
+          รายละเอียดแล้วค้นย้อนไม่ได้
+          ⚠️ **ว่างได้ทุกช่อง** — ด่านที่ server ตรวจแค่ "ของมีจริง + อยู่ดีลเดียวกัน"
+          ⚠️ QT/SO **กรองตามดีลที่เลือก** — อ้างข้ามดีลคือความขัดแย้งที่ต้องกันตั้งแต่จอ */}
+      {optionalRefs.length > 0 && (
+        <div className="form-grid">
+          {optionalRefs.includes("quotation") && (
+            <div className="form-group">
+              <span className={styles.fieldLabel}>
+                ใบเสนอราคา (QT) <span className={styles.hint}>(ถ้ามี)</span>
+              </span>
+              <SearchableSelect
+                value={value.quotationId} disabled={disabled || !value.dealId}
+                onChange={(v) => set({ quotationId: v })}
+                options={quotations
+                  .filter((q) => q.dealId === value.dealId)
+                  .map((q) => ({
+                    value: q.id,
+                    label: q.quoteNumber || q.id,
+                    search: `${q.quoteNumber || ""} ${q.customerName || ""}`,
+                  }))}
+                placeholder={value.dealId ? "— ไม่อ้าง —" : "เลือกดีลก่อน"}
+                emptyText="ดีลนี้ยังไม่มีใบเสนอราคา"
+                ariaLabel="ใบเสนอราคาที่อ้างถึง"
+              />
+            </div>
+          )}
+          {optionalRefs.includes("salesOrder") && !needsSalesOrder && (
+            <div className="form-group">
+              <span className={styles.fieldLabel}>
+                ใบสั่งขาย (SO) <span className={styles.hint}>(ถ้ามี)</span>
+              </span>
+              <SearchableSelect
+                value={value.salesOrderId} disabled={disabled || !value.dealId}
+                onChange={(v) => set({ salesOrderId: v })}
+                options={salesOrders
+                  .filter((so) => so.dealId === value.dealId)
+                  .map((so) => ({
+                    value: so.id,
+                    label: so.orderNumber || so.id,
+                    search: `${so.orderNumber || ""} ${so.customerName || ""}`,
+                  }))}
+                placeholder={value.dealId ? "— ไม่อ้าง —" : "เลือกดีลก่อน"}
+                emptyText="ดีลนี้ยังไม่มีใบสั่งขาย"
+                ariaLabel="ใบสั่งขายที่อ้างถึง"
+              />
+            </div>
+          )}
+          {optionalRefs.includes("product") && (
+            <div className="form-group col-span-2">
+              <span className={styles.fieldLabel}>
+                สินค้า (FG) <span className={styles.hint}>(ถ้ามี · เพิ่มได้หลายรายการ)</span>
+              </span>
+              {/* ⭐ หลายรายการ (ม-89) — เลือกทีละตัวจากดรอปดาวน์ ตัวที่เลือกแล้วขึ้น
+                  เป็นป้ายถอดได้ข้างล่าง (แพตเทิร์นเดียวกับรายการไฟล์แนบ)
+                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
+              <SearchableSelect
+                value="" disabled={disabled}
+                onChange={(v) => {
+                  if (!v || (value.productIds || []).includes(v)) return;
+                  set({ productIds: [...(value.productIds || []), v] });
+                }}
+                options={products
+                  .filter((fg) => !(value.productIds || []).includes(fg.id))
+                  .map((fg) => ({
+                    value: fg.id,
+                    label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+                    search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
+                  }))}
+                placeholder="— เลือกเพื่อเพิ่ม —"
+                emptyText="ยังไม่มีสินค้าในทะเบียน"
+                ariaLabel="เพิ่มสินค้า (FG) ที่อ้างถึง"
+              />
+              {!!(value.productIds || []).length && (
+                <ul className={styles.fileList}>
+                  {(value.productIds || []).map((fgId) => {
+                    const fg = products.find((x) => x.id === fgId);
+                    const label = fg
+                      ? [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ")
+                      : fgId;
+                    return (
+                      <li key={fgId} className={styles.fileRow}>
+                        <span className={styles.fileName}>{label}</span>
+                        <Button
+                          iconOnly icon={<X size={13} />} disabled={disabled}
+                          onClick={() => set({
+                            productIds: (value.productIds || []).filter((x) => x !== fgId),
+                          })}
+                          aria-label={`เอา ${label} ออก`}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      </>
       )}
 
       {/* ── บรีฟกลิ่น: ยึดใบสั่งขาย (ค่าบริการออกแบบกลิ่น) ─────────────────
