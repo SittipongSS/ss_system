@@ -13,6 +13,7 @@ import { ClipboardList, Plus } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import QueueCountStrip from "./QueueCountStrip";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
@@ -22,7 +23,9 @@ import {
   requestDueText, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
-import { requestKindLabel } from "@/lib/master/requestTypes";
+// ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
+// ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
+import { REQUEST_DEPT_LABELS, requestKindLabel } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [],
@@ -34,6 +37,12 @@ export default function RequestQueuePanel({
   // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
   // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
   loading = false, loadError = "", reload, newRequestDefaults = null,
+  // ⭐ ภาพรวมฝ่ายมีแถบตัวเลขของตัวเองอยู่ข้างบน (นับ **ทั้งฝ่าย** ไม่ใช่แค่แถวที่โชว์
+  // อยู่ในตารางนี้) ⇒ ปิดของในพาเนลไม่ให้ซ้ำสองแถบที่นับคนละชุดแต่ป้ายเหมือนกันเป๊ะ
+  showCounts = true,
+  // ⚠️ ข้อความตอนว่างต้องพูดถึง **ชุดแถวที่ผู้เรียกส่งมา** — ภาพรวมฝ่ายส่งเฉพาะใบที่
+  // ใกล้ถึงกำหนด 7 วัน ⇒ "ไม่มีคำร้องรอฝ่าย … ตอบ" ที่เป็นค่าตั้งต้นจะโกหก
+  emptyText = null,
   // ⭐ คิวของฝ่าย (`/rd/requests`) เป็นที่ **ตอบ** ไม่ใช่ที่เปิดคำร้อง — ปุ่มเปิดอยู่ฝั่ง
   // ผู้ขอที่ `/requests` ที่เดียว · โผล่สองที่แล้วต้องมี `returnTo` สองชุดที่ต้องดูแล
   showNewRequest = true,
@@ -108,36 +117,39 @@ export default function RequestQueuePanel({
           🐞 **เคยอยู่ข้างในสาขา "มีแถว"** ⇒ ลิสต์ว่างแล้วแถบหายทั้งแถว · **0 ก็เป็น
           ข้อมูล** — "ยังไม่รับเรื่อง 0 · เลยกำหนด 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่
           หัวหน้าเปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกระหว่าง "ไม่มีงานค้าง"
-          กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ) */}
+          กับ "หน้ายังโหลดไม่เสร็จ" (ผู้ใช้เจอเองบนจอ)
+
+          ⭐ **หน้าตาเดียวกับภาพรวมฝ่าย** (มติผู้ใช้ 2026-08-08) — เดิมที่นี่เป็นป้ายเล็ก
+          (คลาส chip ของกลาง) ส่วน `/rd` เป็น `MetricStrip` กล่องใหญ่ ทั้งที่ตัวเลขชุดเดียวกัน
+          และห่างกันคลิกเดียว ⇒ ย้ายมาใช้ `QueueCountStrip` ตัวเดียวกันทั้งสองหน้า */}
       {!loading && !loadError && (
-        <div className={styles.counts}>
-          {/* ⚠️ ใช้ `.chip` ของกลาง ไม่ใช่กล่องที่ประกาศสี/ขอบเอง — โทน
-              warning/danger/info ของ QUEUE_COUNT_META ตรงกับคลาสโทนของ .chip พอดี */}
-          {QUEUE_COUNT_META.map((meta) => {
-            const on = countFilter === meta.key;
-            return (
-              <button
-                key={meta.key} type="button" aria-pressed={on}
-                className={`chip ${meta.tone === "neutral" ? "" : meta.tone} ${styles.countChip}`.trim()}
-                // กดตัวเดิมซ้ำ = ล้างตัวกรอง — ไม่ต้องไปหาปุ่ม "ล้าง" ที่อื่น
-                onClick={() => setCountFilter(on ? null : meta.key)}
-              >
-                {meta.label} <strong>{counts[meta.key]}</strong>
-              </button>
-            );
-          })}
-          {countFilter && (
-            <span className="toolbar-label">
-              แสดงเฉพาะ &quot;{QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}&quot;
-              {" · "}
-              <button type="button" className={styles.clearFilter} onClick={() => setCountFilter(null)}>
-                ล้างตัวกรอง
-              </button>
-            </span>
+        <>
+          {showCounts && (
+            <QueueCountStrip
+              counts={counts}
+              filter activeKey={countFilter}
+              ariaLabel="ตัวเลขสรุปคิวคำร้อง — กดเพื่อกรอง"
+              // กดตัวเดิมซ้ำ = ล้างตัวกรอง — ไม่ต้องไปหาปุ่ม "ล้าง" ที่อื่น
+              onSelect={(key, on) => setCountFilter(on ? null : key)}
+            />
           )}
-          <span className="spacer" />
-          <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง" />
-        </div>
+          {/* ⚠️ ตัวสลับมุมมองอยู่นอกเงื่อนไขของแถบตัวเลข — หน้าที่ปิดแถบ (ภาพรวมฝ่าย
+              ซึ่งมีแถบของตัวเองอยู่ข้างบนแล้ว) ยังต้องสลับตาราง/การ์ดบนจอแคบได้ */}
+          <div className={styles.counts}>
+            {countFilter && (
+              /* 🪤 `.spacer` ดันขวาได้เฉพาะใน `.toolbar` (globals: `.toolbar > .spacer`)
+                 — แถวนี้ไม่ใช่ toolbar ⇒ เคยใส่ไว้แล้วไม่มีผล · ดันด้วย margin ที่นี่แทน */
+              <span className={`toolbar-label ${styles.filterNote}`}>
+                แสดงเฉพาะ &quot;{QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}&quot;
+                {" · "}
+                <button type="button" className={styles.clearFilter} onClick={() => setCountFilter(null)}>
+                  ล้างตัวกรอง
+                </button>
+              </span>
+            )}
+            <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง" />
+          </div>
+        </>
       )}
 
       {loading ? (
@@ -150,9 +162,10 @@ export default function RequestQueuePanel({
               ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
           {countFilter
             ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
-            : scope === "queue"
-              ? `ไม่มีคำร้องรอฝ่าย ${dept || "คุณ"} ตอบ`
-              : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม"}
+            : emptyText
+              || (scope === "queue"
+                ? `ไม่มีคำร้องรอ${REQUEST_DEPT_LABELS[dept] ? `ฝ่าย${REQUEST_DEPT_LABELS[dept].name}` : "ฝ่ายคุณ"}ตอบ`
+                : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม")}
         </EmptyState>
       ) : view === "list" ? (
         /* ── มุมมองการ์ด — จอตั้ง/จอแคบ ────────────────────────────────────
