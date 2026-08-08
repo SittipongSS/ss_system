@@ -575,13 +575,27 @@ body {
   --row-tone-red: color-mix(in srgb, var(--red) 55%, var(--navy));
 }
 
-/* v2: gradient ประดับ **คงไว้** (มติแก้ 2026-08-08 — เดิมทิศทางโต๊ะช่างตัดทิ้ง
-   ผู้ใช้ขอคืน) — กฎ gradient ทุกตัวเป็น token-driven อยู่แล้ว จึงเรนเดอร์ด้วย
-   สี v2 เองโดยไม่ต้องมีกฎพิเศษ · ที่ดับถาวรมีอย่างเดียวคือ blur: พื้น --panel
-   ของ v2 ทึบ 100% blur จึงมองไม่เห็นแต่กิน GPU ฟรี */
+/* v2: แสงประดับเป็นเรื่องของ**ธีมสว่างเท่านั้น** (มติสุดท้าย 2026-08-08:
+   มืด = แบนตาม mock โต๊ะช่างเดิม · สว่าง = อุ่น+มีแสง) — เส้นทางมติ:
+   mock ตัด gradient → ผู้ใช้ขอคืนทั้งสองธีม → เห็นของจริงแล้วเลือกคืนเฉพาะสว่าง
+   · blur ดับถาวรทั้งสองธีม: พื้น --panel ของ v2 ทึบ 100% blur มองไม่เห็นแต่กิน GPU */
 [data-ds="v2"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+[data-ds="v2"][data-theme="dark"] body {
+  background-image: none;
+}
+[data-ds="v2"][data-theme="dark"] .premium-header,
+[data-ds="v2"][data-theme="dark"] .home-hub-hero {
+  background: var(--panel);
+}
+[data-ds="v2"][data-theme="dark"] .topnav-system {
+  background: var(--navy);
+}
+[data-ds="v2"][data-theme="dark"] .login-page,
+[data-ds="v2"][data-theme="dark"] .home-hub {
+  background: var(--bg);
 }
 
 /* v2 ธีมสว่าง "โต๊ะช่างกลางวัน" (มติผู้ใช้ 2026-08-08 ขอธีมสว่างคู่กัน)
