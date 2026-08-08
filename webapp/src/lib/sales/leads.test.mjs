@@ -8,7 +8,7 @@ import {
   slaBusinessDays, slaHit, SERVICE_DETAIL_REQUIRED,
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
-  meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope,
+  meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
   sourceLeadIdOf,
 } from './leads';
 
@@ -300,4 +300,45 @@ test('GET/PATCH/DELETE ของลีด ต้องผ่าน inLeadScope �
   const guards = routeSource.match(/if \(!inLeadScope\(user, (?:lead|before)\)\) return forbidden\(\);/g) || [];
   assert.equal(guards.length, 3,
     'เส้นเขียนที่ไม่มีด่านมองเห็น = ยิง URL ตรงข้ามขอบเขตได้ (ต้นเหตุของรูที่ PATCH)');
+});
+
+/* 🐞 ตรวจตัวเลข 2026-08-08: KPI ยัด id ลีดทั้งเดือนลง `.in()` ครั้งเดียวและไม่อ่าน error
+   ⇒ พอ query string ยาวเกินลิมิต query ล้ม แล้ว `count || 0` กลบเป็น 0 เงียบ ๆ
+   ตัวเลข "ตีกลับ" จึงโชว์ 0 ทั้งที่มีจริง — ยิ่งลีดเยอะยิ่งพังแน่ขึ้น */
+test('chunkLeadIds: ซอยเป็นก้อนละ 200 · ทิ้งค่าว่าง · ไม่มี id = ไม่ต้องยิง query', () => {
+  const ids = Array.from({ length: 450 }, (_, i) => `LEAD-${i}`);
+  const chunks = chunkLeadIds(ids);
+  assert.deepEqual(chunks.map((c) => c.length), [200, 200, 50]);
+  assert.equal(chunks.flat().length, 450, 'ห้ามมี id ตกหล่น');
+  assert.deepEqual(chunks.flat(), ids, 'ลำดับต้องคงเดิม');
+
+  assert.deepEqual(chunkLeadIds([]), [], 'ไม่มี id → ไม่มีก้อน (ผู้เรียกข้าม query ได้เลย)');
+  assert.deepEqual(chunkLeadIds(), []);
+  assert.deepEqual(chunkLeadIds([null, 'LEAD-1', undefined, '']), [['LEAD-1']]);
+  assert.deepEqual(chunkLeadIds(['a', 'b', 'c'], 2), [['a', 'b'], ['c']]);
+  // ขนาดพังต้องถอยไปค่าตั้งต้น ไม่ใช่วนไม่รู้จบ
+  assert.deepEqual(chunkLeadIds(['a', 'b'], 0), [['a', 'b']]);
+});
+
+test('route KPI: ต้องซอย .in() และคืน null เมื่อนับไม่ได้ — ห้ามกลบเป็น 0', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(routeSource, /for \(const chunk of chunkLeadIds\(/);
+  assert.match(routeSource, /bounceCount = null;/, 'นับไม่ได้ต้องเป็น null ให้หน้าจอโชว์ "-"');
+  assert.doesNotMatch(routeSource, /bounceCount = count \|\| 0;/,
+    'กลบ error เป็น 0 = คำตอบที่ดูปกติจนไม่มีใครสงสัย');
+});
+
+test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null และยังโชว์ 0 จริงตามปกติ', () => {
+  const tabSource = readFileSync(
+    new URL('../../components/salesPlanning/dashboard/KpiLeadsTab.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(tabSource, /value=\{v \?\? "-"\}/);
+  // ชื่อคนต้องอ่านจาก id ไม่ใช่สำเนาชื่อในแถว (prod มีชื่อย่อ/ชื่อเก่าค้างอยู่)
+  assert.match(tabSource, /livePersonName\(directory, a\.assigneeId, a\.name\)/);
+  assert.match(tabSource, /livePersonName\(directory, c\.createdBy, c\.name\)/);
+  assert.match(tabSource, /TEAM_LABELS\[a\.team\]/, 'คอลัมน์ทีมต้องเป็นป้ายเต็ม ไม่ใช่รหัสดิบ');
 });

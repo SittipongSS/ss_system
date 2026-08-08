@@ -19,6 +19,7 @@ import Segmented from "@/components/ui/Segmented";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { leadScopes, TEAM_LABELS } from "@/lib/permissions";
 import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
+import { isInLocalMonth } from "@/lib/sales/leadCalendar";
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
@@ -99,10 +100,12 @@ export default function SalesCalendarPage() {
   const scopes = useMemo(() => leadScopes(role), [role]);
   const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
   const visible = useMemo(() => entries.filter((entry) => {
+    // ตัดวันที่ server ถ่างเผื่อขอบมาให้ก่อน — ดู isInLocalMonth ว่าทำไมต้องตัดที่นี่
+    if (!isInLocalMonth(entry.at, cursor.y, cursor.m)) return false;
     if (activeScope === "mine") return !!meId && entry.assigneeId === meId;
     if (activeScope === "team") return !!team && entry.team === team;
     return true;
-  }), [entries, activeScope, meId, team]);
+  }), [entries, activeScope, meId, team, cursor]);
 
   const holidayByDay = useMemo(() => {
     const map = new Map();

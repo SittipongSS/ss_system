@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, channelGroupOf } from '@/lib/sales/leads';
+import { slaHit, channelGroupOf, chunkLeadIds } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import { dateRangeOfYear, isYearValue } from '@/lib/datePeriods';
 
@@ -91,13 +91,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // ตีกลับ (ทีมผิด) — นับจาก events ของลีดเดือนนี้
-  const leadIds = rows.map((l) => l.id);
+  //
+  // 🐞 เดิมยัด id ทั้งเดือนลง `.in()` ครั้งเดียวและ **ไม่อ่าน error** ⇒ พอลีดเยอะจน
+  // query string ยาวเกินลิมิต query ล้ม แล้ว `count` เป็น undefined → `|| 0` กลบเป็น 0
+  // ผลคือตัวเลข "ตีกลับ" โชว์ 0 ทั้งที่มีจริง และยิ่งบริษัทโตยิ่งพังแน่ขึ้น (ตรวจ 2026-08-08)
+  //
+  // ⚠️ ล้มแล้วต้องคืน `null` ไม่ใช่ 0 — 0 เป็นคำตอบที่ดูปกติจนไม่มีใครสงสัย
+  // ส่วน null ทำให้หน้าจอโชว์ "-" (ดู KpiLeadsTab) = บอกว่า "ไม่รู้" ไม่ใช่ "ไม่มี"
   let bounceCount = 0;
-  if (leadIds.length) {
-    const { count } = await supabase
+  for (const chunk of chunkLeadIds(rows.map((l) => l.id))) {
+    const { count, error: bounceError } = await supabase
       .from('lead_events').select('id', { count: 'exact', head: true })
-      .eq('kind', 'bounce').in('leadId', leadIds);
-    bounceCount = count || 0;
+      .eq('kind', 'bounce').in('leadId', chunk);
+    if (bounceError) {
+      console.error('[lead kpi] นับจำนวนตีกลับไม่สำเร็จ:', bounceError.message);
+      bounceCount = null;
+      break;
+    }
+    bounceCount += count || 0;
   }
 
   const funnel = {
