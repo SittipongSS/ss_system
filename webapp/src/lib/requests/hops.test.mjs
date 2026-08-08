@@ -269,10 +269,26 @@ test('แถวเอกสารเก่าที่หลงเดินส�
   assert.equal(hopStageError(sent, 'receive'), null);
 });
 
-test('receive/refuse ลงทะเบียนเป็นเหตุการณ์ในเธรดแล้ว — ไม่เงียบบนจอ', () => {
+test('receive/refuse ลงทะเบียนเป็นเหตุการณ์ในเธรดแล้ว — ไม่เงียบบนจอ', async () => {
   const registered = UPDATE_KINDS.dept_request;
   assert.ok(registered[hopUpdateKind('receive')], 'received ยังไม่ลงทะเบียน');
   assert.ok(registered[hopUpdateKind('refuse')], 'refused ยังไม่ลงทะเบียน');
   assert.equal(hopLabel('receive'), 'ได้รับแล้ว');
-  assert.equal(hopLabel('refuse'), 'ให้ไม่ได้');
+  assert.equal(hopLabel('refuse'), 'ปฏิเสธ');
+  // ⭐ ม-89: สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" — สายพัฒนายัง "ส่งของ"
+  const { hopLabelFor } = await import('./hops.js');
+  assert.equal(hopLabelFor({ lineKind: 'document' }, 'ready'), 'ส่งเอกสาร');
+  assert.equal(hopLabelFor({ lineKind: 'billing_doc' }, 'ready'), 'ส่งเอกสาร');
+  assert.equal(hopLabelFor({ lineKind: 'scent_dev' }, 'ready'), 'ส่งของ');
+});
+
+test('🔴 route: ส่งเอกสารต้องเช็คไฟล์แนบก่อน — และปิดเรื่องเป็นของผู้ขอเท่านั้น (ม-89)', () => {
+  const itemSrc = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/route.js', 'utf8');
+  // ด่านไฟล์: มติ "การส่งเอกสาร RD ต้องแนบไฟล์เอกสารด้วย" — ส่งโดยไม่มีไฟล์ =
+  // บอกว่าส่งแล้วทั้งที่ไม่มีอะไรให้รับ
+  assert.ok(/isDocLineKind\(row\.lineKind\)/.test(itemSrc), 'ต้องแยกสายเอกสาร');
+  assert.ok(itemSrc.includes('ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง'), 'ต้องมีด่านไฟล์');
+  // ปิดสองฝ่าย: ฝ่ายจบงานผ่านรายการ (ส่ง/ปฏิเสธ) แล้วผู้ขอเป็นคนกดปิด
+  const headSrc = readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8');
+  assert.ok(headSrc.includes('ปิดเรื่องได้เฉพาะฝ่ายผู้ขอ'), 'route ปิดต้องเหลือผู้ขอ');
 });

@@ -41,7 +41,8 @@ import {
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
-import { hopLabel, hopValuesError } from "@/lib/requests/hops";
+import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
+import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
 import { detailForKind } from "@/components/requests/details";
@@ -94,6 +95,11 @@ const HOP_DATE_LABEL = {
   receive: "วันที่ได้รับเอกสาร",
   // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
+
+// สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" (ม-89) — ป้ายวันในโมดัลต้องพูดคำเดียวกัน
+const hopDateLabel = (draft) => (draft.hop === "ready" && isDocLineKind(draft.item.lineKind)
+  ? "วันที่ส่งเอกสาร"
+  : HOP_DATE_LABEL[draft.hop]);
 
 export default function RequestDetailPage() {
   const { id } = useParams();
@@ -230,7 +236,9 @@ export default function RequestDetailPage() {
   // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
   // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
   const hasItems = requestHasItems(req.kind);
-  const canClose = !closeRequestError(req, req.items || []) && (req._mine || owner);
+  // ⭐ ปิดสองฝ่าย (ม-89) — ปุ่มปิดเป็นของ **ผู้ขอ** เท่านั้น · ฝ่ายปลายทางจบงาน
+  // ของตัวผ่านรายการ (ส่งเอกสาร/ปฏิเสธ) ไปแล้ว การปิดคือผู้ขอยืนยันรับงานทั้งใบ
+  const canClose = !closeRequestError(req, req.items || []) && req._mine;
   // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
   const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
@@ -982,13 +990,13 @@ export default function RequestDetailPage() {
           ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
       <Modal
         open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
-        title={hopDraft ? `${hopLabel(hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
+        title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
       >
         {hopDraft && (
           <>
             {hopDraft.hop !== "refuse" && (
             <div className="form-group">
-              <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
+              <label htmlFor="hop-at">{hopDateLabel(hopDraft)}</label>
               {/* แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมาบันทึกเป็นเรื่องปกติ
                   (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
               <DateInput
@@ -998,11 +1006,11 @@ export default function RequestDetailPage() {
             </div>
             )}
 
-            {/* ⭐ ให้ไม่ได้ (สายเอกสาร · ม-85) — เหตุผลคือหลักฐาน แสดงติดแถวในตาราง
-                สรุปเสมอ (constraint answer_evidence บังคับคู่ declined+เหตุผล) */}
+            {/* ⭐ ปฏิเสธ (สายเอกสาร · ม-85 · คำตาม ม-89) — เหตุผลบังคับ คือหลักฐาน
+                แสดงติดแถวในตารางสรุปเสมอ (constraint answer_evidence บังคับคู่นี้) */}
             {hopDraft.hop === "refuse" && (
               <div className="form-group">
-                <label htmlFor="hop-refuse-why">เหตุผลที่ให้ไม่ได้</label>
+                <label htmlFor="hop-refuse-why">เหตุผลที่ปฏิเสธ</label>
                 <Textarea variant="data"
                   id="hop-refuse-why" rows={3} maxLength={2000}
                   value={hopDraft.note} disabled={saving}
@@ -1010,7 +1018,7 @@ export default function RequestDetailPage() {
                   onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
                 />
                 <p className={styles.fieldHint}>
-                  ผู้ขอเห็นเหตุผลนี้ติดแถวเอกสารในใบ — รายการจะจบแบบ &quot;ให้ไม่ได้&quot;
+                  ผู้ขอเห็นเหตุผลนี้ติดแถวเอกสารในใบ — รายการจะจบแบบ &quot;ปฏิเสธ&quot;
                 </p>
               </div>
             )}

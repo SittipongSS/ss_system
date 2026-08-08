@@ -258,14 +258,29 @@ export async function POST(request) {
     }
     optionalSalesOrderId = so.id;
   }
-  if (optionalRefs.includes('product') && body.productId) {
-    // FG ไม่ผูกดีล — ตรวจแค่มีจริง · ชื่อ derive จากแถวจริง ไม่รับจาก client
-    const { data: fg, error: fgError } = await supabase
-      .from('products').select('id, "fgCode", "productDescription"')
-      .eq('id', body.productId).maybeSingle();
-    if (fgError) return Response.json({ error: fgError.message }, { status: 500 });
-    if (!fg) return Response.json({ error: 'ไม่พบสินค้า (FG) ที่อ้างถึง' }, { status: 400 });
-    refProduct = fg;
+  if (optionalRefs.includes('product')) {
+    // ⭐ FG **หลายรายการ** (ม-89) — ตรวจทุกตัวว่ามีจริง แล้วเก็บ snapshot
+    // [{ id, label }] เอง (ชื่อจากแถวจริง ไม่รับจาก client — ทะเบียนเปลี่ยนชื่อ
+    // ทีหลัง ใบเก่ายังอ่านออกว่าตอนนั้นอ้างอะไร) · FG ไม่ผูกดีล จึงไม่เทียบดีล
+    const wanted = [...new Set((Array.isArray(body.productIds) ? body.productIds : [])
+      .concat(body.productId ? [body.productId] : []).filter(Boolean))];
+    if (wanted.length > 20) {
+      return Response.json({ error: 'อ้างสินค้า (FG) ได้ไม่เกิน 20 รายการ' }, { status: 400 });
+    }
+    if (wanted.length) {
+      const { data: fgs, error: fgError } = await supabase
+        .from('products').select('id, "fgCode", "productDescription"').in('id', wanted);
+      if (fgError) return Response.json({ error: fgError.message }, { status: 500 });
+      const byId = new Map((fgs || []).map((f) => [f.id, f]));
+      const missing = wanted.filter((id) => !byId.has(id));
+      if (missing.length) {
+        return Response.json({ error: 'ไม่พบสินค้า (FG) ที่อ้างถึงบางรายการ' }, { status: 400 });
+      }
+      refProduct = wanted.map((id) => {
+        const fg = byId.get(id);
+        return { id, label: [fg.fgCode, fg.productDescription].filter(Boolean).join(' · ') || id };
+      });
+    }
   }
 
   // หัวข้อขอราคา F/FB ไม่ผูกดีล → ลูกค้ามาจาก **กลิ่น/สูตร** ที่อ้างถึงแทน
@@ -363,11 +378,11 @@ export async function POST(request) {
       formulaId: body.formulaId || null,
       customerId,
       customerName,
-      // FG อ้างอิง (ม-88) — ชื่อมาจากแถวจริง ไม่ใช่จาก client
-      productId: refProduct?.id || body.productId || null,
-      productName: refProduct
-        ? [refProduct.fgCode, refProduct.productDescription].filter(Boolean).join(' · ')
-        : (body.productName || null),
+      // FG อ้างอิง (ม-88/ม-89) — snapshot อยู่ใน productRefs · คู่เดิม (productId/
+      // productName) เก็บตัวแรกไว้ให้จอเก่าที่ยังอ่านช่องเดี่ยว
+      ...(refProduct?.length ? { productRefs: refProduct } : {}),
+      productId: refProduct?.[0]?.id || null,
+      productName: refProduct?.[0]?.label || null,
       formulaCode: body.formulaCode || null,
       formulaName: body.formulaName || null,
       formulaDate: body.formulaDate || null,

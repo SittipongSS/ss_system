@@ -16,7 +16,7 @@ import { isDocLineKind } from '@/lib/requests/docTypes';
 
 // ⭐ สองก้าวท้ายเป็นของสายเอกสารเท่านั้น (ม-85) — สายนั้นไม่มีลูกค้า/ราคา จึงจบด้วย
 //   receive  ผู้ขอยืนยันว่าได้ไฟล์ที่ใช้ได้จริง (answerStatus = done)
-//   refuse   ฝ่ายตอบว่าให้ไม่ได้ พร้อมเหตุผล (answerStatus = declined)
+//   refuse   ฝ่ายปฏิเสธ พร้อมเหตุผลบังคับ (answerStatus = declined)
 export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse'];
 
 // ก้าวไหนเป็นของฝั่งไหน — 'dept' = ฝ่ายที่ต้องตอบ · 'requester' = ผู้ขอ
@@ -35,7 +35,7 @@ const HOP_FROM_STAGE = {
   // ⚠️ receive รับได้จากขั้นค้างเก่าด้วย (picked_up/sent) — แถวเอกสารที่เคยหลงเดิน
   // สายพัฒนาไปแล้วต้องมีทางจบ ไม่ใช่ติดถาวรเพราะเราแก้กติกา
   receive: ['ready', 'picked_up', 'sent'],
-  // ให้ไม่ได้ = คำตอบของฝ่ายระหว่างที่งานยังอยู่ในมือ — รับเรื่องแล้วแต่ยังไม่ส่ง ·
+  // ปฏิเสธ = คำตอบของฝ่ายระหว่างที่งานยังอยู่ในมือ — รับเรื่องแล้วแต่ยังไม่ส่ง ·
   // ส่งแล้ว (ready) คือมีของแล้ว ไม่มีเหตุให้ปฏิเสธอีก
   refuse: 'developing',
 };
@@ -112,11 +112,11 @@ export function hopValuesError(hop, values = {}) {
     return at ? null : 'ต้องระบุวันที่';
   }
 
-  // ให้ไม่ได้ — เหตุผลคือหลักฐาน (constraint answer_evidence บังคับคู่ declined+เหตุผล)
+  // ปฏิเสธ — เหตุผลคือหลักฐาน (constraint answer_evidence บังคับคู่ declined+เหตุผล)
   // ไม่มีช่องวันของตัวเอง: เวลาอยู่บนเหตุการณ์ในเธรดแล้ว
   if (hop === 'refuse') {
     const reason = String(values.note ?? '').trim();
-    if (!reason) return 'ต้องบอกเหตุผลว่าทำไมให้ไม่ได้';
+    if (!reason) return 'ต้องบอกเหตุผลที่ปฏิเสธ';
     if (reason.length > 2000) return 'เหตุผลยาวเกิน 2000 ตัวอักษร';
     return null;
   }
@@ -170,7 +170,7 @@ export function hopPatch(hop, values = {}, user = null, today = null) {
       answerStatus: 'done',
     };
   }
-  // ⭐ ให้ไม่ได้ = ฝ่ายจบแถวแบบไม่ได้ของ — declineReason บังคับโดย constraint
+  // ⭐ ปฏิเสธ = ฝ่ายจบแถวแบบไม่ได้ของ — declineReason บังคับโดย constraint
   //   answer_evidence · ไม่แตะช่องก้าว (แถวหยุดที่ขั้นที่มันอยู่ แล้ว rowStage อ่าน
   //   answerStatus ชนะเสมอ)
   if (hop === 'refuse') {
@@ -203,8 +203,17 @@ export const hopLabel = (hop, outcome) => (hop === 'outcome'
   ? (OUTCOME_LABELS[outcome] || 'บันทึกคำตอบลูกค้า')
   : {
     ack: 'รับเรื่อง', ready: 'ส่งของ', pickup: 'รับของ', send: 'ส่งให้ลูกค้า',
-    receive: 'ได้รับแล้ว', refuse: 'ให้ไม่ได้',
+    receive: 'ได้รับแล้ว', refuse: 'ปฏิเสธ',
   }[hop] || hop);
+
+// ป้ายก้าวที่รู้จักสายของแถว (ม-89: "เปลี่ยนคำว่า ส่งของ เป็น ส่งเอกสาร") —
+// สายเอกสารเรียก "ส่งเอกสาร" · สายพัฒนายังเรียก "ส่งของ" เหมือนเดิม
+// ⚠️ ผู้เรียกที่มี `row` ในมือใช้ตัวนี้เสมอ — `hopLabel` เปล่าเหลือไว้ให้จุดที่
+// ไม่รู้จักแถว (เช่น ratchet เทสต์ป้ายกลาง)
+export const hopLabelFor = (row, hop, outcome) => {
+  if (isDocLineKind(row?.lineKind) && hop === 'ready') return 'ส่งเอกสาร';
+  return hopLabel(hop, outcome);
+};
 
 // ── แถวที่เกิดจากการแก้ ───────────────────────────────────────────────────
 //

@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════════════
---  0225: คำร้องอ้างใบเสนอราคา (QT) ได้ — ม-88
+--  0225: คำร้องอ้างใบเสนอราคา (QT) + สินค้า (FG) หลายรายการ — ม-88 · ม-89
 --
 --  มติผู้ใช้ 2026-08-08 (flow ขอเอกสารฉบับเต็ม):
 --    "SA ยื่นคำร้อง เลือกขอเอกสาร ใส่ข้อมูล ลูกค้า/โครงการ ดีล/
@@ -26,3 +26,14 @@ COMMENT ON COLUMN public.dept_requests."quotationId"
 DROP INDEX IF EXISTS dept_requests_quotation_idx;
 CREATE INDEX dept_requests_quotation_idx
   ON public.dept_requests ("quotationId") WHERE "quotationId" IS NOT NULL;
+
+-- ── FG หลายรายการ (ม-89: "FG เพิ่มได้หลายรายการ") ──────────────────────
+-- เก็บเป็น snapshot [{ id, label }] — แพตเทิร์นเดียวกับ label ของแถวคำร้อง:
+-- ทะเบียนเปลี่ยนชื่อทีหลัง ใบเก่ายังอ่านออกว่าตอนนั้นอ้างอะไร
+-- ⚠️ `productId`/`productName` เดิมคงไว้ (สายอื่นใช้อยู่) — สายขอเอกสารอ่าน/เขียน
+-- `productRefs` เป็นแหล่งเดียว
+ALTER TABLE public.dept_requests
+  ADD COLUMN IF NOT EXISTS "productRefs" jsonb;
+
+COMMENT ON COLUMN public.dept_requests."productRefs"
+  IS 'สินค้า (FG) ที่คำร้องอ้างถึง — [{ id, label }] · ม-89';

@@ -43,7 +43,7 @@ export const UPDATE_KINDS = {
     rejected: { label: 'ลูกค้าไม่เอา', color: 'var(--red)' },
     // ── สองก้าวจบของสายเอกสาร (ม-85) ────────────────────────────────
     received: { label: 'ได้รับเอกสารแล้ว', color: 'var(--green)' },
-    refused: { label: 'ให้เอกสารไม่ได้', color: 'var(--red)' },
+    refused: { label: 'ปฏิเสธเอกสาร', color: 'var(--red)' },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)' },
   },

@@ -9,7 +9,7 @@ import { normalizeDocumentItems } from '../../lines';
 
 const documentLine = {
   key: 'document',
-  labels: { pending: 'รอเอกสาร', done: 'ได้รับแล้ว', declined: 'ให้ไม่ได้' },
+  labels: { pending: 'รอเอกสาร', done: 'ได้รับแล้ว', declined: 'ปฏิเสธ' },
   normalize: (input) => normalizeDocumentItems(input),
 };
 

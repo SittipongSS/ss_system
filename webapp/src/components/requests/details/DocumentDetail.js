@@ -31,12 +31,21 @@ export default function DocumentDetail({
       value: request.refSalesOrder?.orderNumber || "ใบสั่งขายถูกลบไปแล้ว",
       href: request.refSalesOrder ? `/sales-planning/sales-orders/${request.salesOrderId}` : null,
     },
-    request.productId && {
-      key: "fg",
-      label: "สินค้า (FG)",
-      value: request.productName || request.productId,
-      href: null,
-    },
+    // FG หลายรายการ (ม-89) — snapshot จาก productRefs · ใบเก่าที่มีแต่ช่องเดี่ยว
+    // ยังอ่านได้จาก productId/productName
+    ...(Array.isArray(request.productRefs) && request.productRefs.length
+      ? request.productRefs.map((fg, i) => ({
+        key: `fg-${fg.id || i}`,
+        label: i === 0 ? "สินค้า (FG)" : "",
+        value: fg.label || fg.id,
+        href: null,
+      }))
+      : (request.productId ? [{
+        key: "fg",
+        label: "สินค้า (FG)",
+        value: request.productName || request.productId,
+        href: null,
+      }] : [])),
   ].filter(Boolean);
 
   return (

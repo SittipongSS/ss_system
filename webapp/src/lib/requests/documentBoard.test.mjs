@@ -60,6 +60,6 @@ test('ป้ายขั้นฉบับเอกสาร — ready/done/decl
   const label = (row) => documentBoard([{ id: 'X', docType: 'coa', ...row }])[0].stageLabel;
   assert.equal(label({ lineKind: 'document', ackAt: 'x', readyAt: 'y' }), 'ส่งเอกสารแล้ว'); // เดิม "รอไปรับ"
   assert.equal(label({ lineKind: 'document', answerStatus: 'done' }), 'ได้รับแล้ว');        // เดิม "เสร็จ"
-  assert.equal(label({ lineKind: 'document', answerStatus: 'declined', declineReason: 'r' }), 'ให้ไม่ได้'); // เดิม "ไม่ได้ใช้"
+  assert.equal(label({ lineKind: 'document', answerStatus: 'declined', declineReason: 'r' }), 'ปฏิเสธ'); // เดิม "ไม่ได้ใช้"
   assert.equal(label({ lineKind: 'document', ackAt: 'x' }), 'กำลังทำ');                     // ชุดกลางตามเดิม
 });

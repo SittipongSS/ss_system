@@ -61,6 +61,8 @@ export function requestPayload(form, extra = {}) {
     salesOrderId: form.salesOrderId || null,
     // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — ว่างได้ · server ตรวจว่าเป็นของดีลเดียวกัน
     quotationId: form.quotationId || null,
+    // FG หลายรายการ (ม-89) — server ตรวจทุกตัวว่ามีจริง แล้วเก็บ snapshot เอง
+    productIds: (form.productIds || []).filter(Boolean),
     title: form.title || null,
     body: form.body || null,
     urgent: !!form.urgent,

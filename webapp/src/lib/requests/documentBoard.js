@@ -14,12 +14,12 @@ import { DOC_LINE_KINDS, docTypeLabel } from '@/lib/requests/docTypes';
 
 // ⭐ ป้ายขั้นฉบับสายเอกสาร (ม-85) — ชุดกลาง (`ROW_STAGE_LABELS`) เล่าสายพัฒนา
 // ("รอไปรับ" · "เสร็จ" · "ไม่ได้ใช้") ซึ่งอ่านผิดความหมายกับเอกสาร:
-// ready คือฝ่าย **ส่งเอกสารแล้ว** · done คือ **ได้รับแล้ว** · declined คือ **ให้ไม่ได้**
+// ready คือฝ่าย **ส่งเอกสารแล้ว** · done คือ **ได้รับแล้ว** · declined คือ **ปฏิเสธ**
 // เขียนทับเฉพาะสามตัวนี้ ตัวอื่นใช้ชุดกลางเหมือนเดิม
 const DOC_STAGE_LABELS = {
   ready: 'ส่งเอกสารแล้ว',
   done: 'ได้รับแล้ว',
-  declined: 'ให้ไม่ได้',
+  declined: 'ปฏิเสธ',
 };
 
 export function documentBoard(items = []) {
@@ -37,9 +37,9 @@ export function documentBoard(items = []) {
         stage,
         stageLabel: DOC_STAGE_LABELS[stage] || ROW_STAGE_LABELS[stage] || stage,
         stageTone: ROW_STAGE_TONES[stage] || 'neutral',
-        // ⭐ "ได้รับแล้ว" = แถวจบแบบได้ของ · "ให้ไม่ได้" = จบแบบไม่ได้ของ
-        // สองอย่างนี้ **จบเหมือนกันแต่คนละความหมาย** — รวมกันเมื่อไร ใบที่ฝ่ายตอบว่า
-        // ให้ไม่ได้ทั้งใบจะอ่านเหมือนได้ครบ
+        // ⭐ "ได้รับแล้ว" = แถวจบแบบได้ของ · "ปฏิเสธ" = จบแบบไม่ได้ของ
+        // สองอย่างนี้ **จบเหมือนกันแต่คนละความหมาย** — รวมกันเมื่อไร ใบที่ฝ่าย
+        // ปฏิเสธทั้งใบจะอ่านเหมือนได้ครบ
         received: stage === 'done',
         refused: stage === 'declined',
         settled: isRowSettled(item),

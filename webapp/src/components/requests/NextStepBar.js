@@ -14,7 +14,7 @@
 // ใช้ ⇒ ปุ่มที่นี่กับคอลัมน์ "ก้าวถัดไป" บนคิวขัดกันไม่ได้เชิงโครงสร้าง
 import Button from "@/components/ui/Button";
 import { ROW_STAGE_LABELS, rowStage } from "@/lib/requests/rowStage";
-import { HOP_OWNER, ROW_OUTCOMES, hopLabel } from "@/lib/requests/hops";
+import { HOP_OWNER, ROW_OUTCOMES, hopLabel, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import styles from "./NextStepBar.module.css";
 
@@ -129,17 +129,17 @@ export default function NextStepBar({
                   tone="primary" disabled={busy}
                   onClick={() => (hop === "price" ? onPrice?.(row) : onHop?.(row, hop))}
                 >
-                  {hop === "price" ? "ใส่ราคา" : hopLabel(hop)}
+                  {hop === "price" ? "ใส่ราคา" : hopLabelFor(row, hop)}
                 </Button>
-                {/* ⭐ สายเอกสารมีทางจบที่สองของฝ่าย: "ให้ไม่ได้" + เหตุผล (ม-85) —
-                    วางคู่ปุ่มส่งเพราะเป็นคำตอบของจังหวะเดียวกัน (งานอยู่ในมือฝ่าย)
+                {/* ⭐ สายเอกสารมีทางจบที่สองของฝ่าย: "ปฏิเสธ" + เหตุผลบังคับ (ม-85 ·
+                    คำตาม ม-89) — วางคู่ปุ่มส่งเพราะเป็นคำตอบของจังหวะเดียวกัน
                     · เส้นขอบแดง ไม่ใช่ปุ่มทึบ — ทางรองที่ต้องเห็น ไม่ใช่ทางหลัก */}
                 {hop === "ready" && isDocLineKind(row.lineKind) && (
                   <Button
                     tone="danger" variant="outline" disabled={busy}
                     onClick={() => onHop?.(row, "refuse")}
                   >
-                    {hopLabel("refuse")}
+                    {hopLabelFor(row, "refuse")}
                   </Button>
                 )}
               </div>

@@ -79,6 +79,7 @@ export const emptyRequestForm = (over = {}) => ({
   dealId: "",
   salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
   quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
+  productIds: [],     // FG หลายรายการ (ไม่บังคับ · ม-89)
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
   dept: onlyDept(),
   kind: "",
@@ -288,6 +289,7 @@ export default function RequestForm({
                 productTypeId: "",
                 salesOrderId: "",
                 quotationId: "",
+                productIds: [],
                 formulaCode: "",
                 formulaName: "",
                 items: itemsForKind(next),
@@ -447,21 +449,50 @@ export default function RequestForm({
           {optionalRefs.includes("product") && (
             <div className="form-group col-span-2">
               <span className={styles.fieldLabel}>
-                สินค้า (FG) <span className={styles.hint}>(ถ้ามี)</span>
+                สินค้า (FG) <span className={styles.hint}>(ถ้ามี · เพิ่มได้หลายรายการ)</span>
               </span>
-              {/* FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
+              {/* ⭐ หลายรายการ (ม-89) — เลือกทีละตัวจากดรอปดาวน์ ตัวที่เลือกแล้วขึ้น
+                  เป็นป้ายถอดได้ข้างล่าง (แพตเทิร์นเดียวกับรายการไฟล์แนบ)
+                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
               <SearchableSelect
-                value={value.productId} disabled={disabled}
-                onChange={(v) => set({ productId: v })}
-                options={products.map((fg) => ({
-                  value: fg.id,
-                  label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
-                  search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
-                }))}
-                placeholder="— ไม่อ้าง —"
+                value="" disabled={disabled}
+                onChange={(v) => {
+                  if (!v || (value.productIds || []).includes(v)) return;
+                  set({ productIds: [...(value.productIds || []), v] });
+                }}
+                options={products
+                  .filter((fg) => !(value.productIds || []).includes(fg.id))
+                  .map((fg) => ({
+                    value: fg.id,
+                    label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+                    search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
+                  }))}
+                placeholder="— เลือกเพื่อเพิ่ม —"
                 emptyText="ยังไม่มีสินค้าในทะเบียน"
-                ariaLabel="สินค้า (FG) ที่อ้างถึง"
+                ariaLabel="เพิ่มสินค้า (FG) ที่อ้างถึง"
               />
+              {!!(value.productIds || []).length && (
+                <ul className={styles.fileList}>
+                  {(value.productIds || []).map((fgId) => {
+                    const fg = products.find((x) => x.id === fgId);
+                    const label = fg
+                      ? [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ")
+                      : fgId;
+                    return (
+                      <li key={fgId} className={styles.fileRow}>
+                        <span className={styles.fileName}>{label}</span>
+                        <Button
+                          iconOnly icon={<X size={13} />} disabled={disabled}
+                          onClick={() => set({
+                            productIds: (value.productIds || []).filter((x) => x !== fgId),
+                          })}
+                          aria-label={`เอา ${label} ออก`}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           )}
         </div>

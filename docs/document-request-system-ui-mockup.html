@@ -7,7 +7,7 @@
 
      8 ขั้น: SA เปิดคำร้อง → กรอกฟอร์ม (ดีล→ลูกค้า/โครงการ · QT/SO/FG · รายการเอกสาร ·
      วันคาดหวัง · แนบไฟล์) → ส่ง (RQ-…) → RD รับเรื่อง+วันกำหนดส่ง → ถามตอบ 2 ฝ่าย →
-     RD แนบไฟล์+ส่งรายแถว / ให้ไม่ได้+เหตุผล → ไฟล์ไหลเข้าแท็บเอกสารดีล+โครงการ →
+     RD แนบไฟล์+ส่งรายแถว / ปฏิเสธ+เหตุผล → ไฟล์ไหลเข้าแท็บเอกสารดีล+โครงการ →
      SA กดรับ → ปิดเรื่อง
 
      ⚠️ แบบอยู่ในรีโปโดยเจตนา (ม-33) — ห้ามย้ายกลับไปอยู่ในแชท -->
@@ -285,7 +285,7 @@
       <li><b>④ รับเรื่อง + วันกำหนดส่ง</b> (บังคับ · ม-83) — ข้อมูลไม่ครบ → ตีกลับ</li>
       <li><b>⑤ ถามตอบ</b> ในเธรดได้ตลอด</li>
       <li><b>⑥ แนบไฟล์ที่แถว → กดส่งเอกสาร</b> รายแถว</li>
-      <li>ให้ไม่ได้ → กด <b>"ให้ไม่ได้"</b> + เหตุผล (ติดแถวให้ SA เห็น)</li>
+      <li>ปฏิเสธ → กด <b>"ปฏิเสธ"</b> + เหตุผล (ติดแถวให้ SA เห็น)</li>
     </ol>
   </div>
   <div class="lane db">
@@ -369,7 +369,13 @@
           <div class="field"><label>ใบเสนอราคา (QT) <span class="sub">(ถ้ามี)</span></label><div class="inp block">QT-26080029-0</div></div>
           <div class="field"><label>ใบสั่งขาย (SO) <span class="sub">(ถ้ามี)</span></label><div class="inp block">— ไม่อ้าง —</div></div>
         </div>
-        <div class="field"><label>สินค้า (FG) <span class="sub">(ถ้ามี)</span></label><div class="inp block">FG-0231 · เทียนหอมแก้ว 180g Amber Woods</div></div>
+        <div class="field"><label>สินค้า (FG) <span class="sub">(ถ้ามี · เพิ่มได้หลายรายการ · ม-89)</span></label>
+          <div class="inp block">— เลือกเพื่อเพิ่ม —</div>
+          <div class="btns" style="margin-top:6px">
+            <span class="badge n">FG-0231 · เทียนหอมแก้ว 180g Amber Woods ✕</span>
+            <span class="badge n">FG-0232 · เทียนหอมแก้ว 180g Fig &amp; Cedar ✕</span>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -533,7 +539,7 @@
 <h2><span class="num">06</span><span class="who rd">RD</span> ขั้น ⑥ — แนบไฟล์ → ส่งเอกสาร (รายแถว)</h2>
 <p class="lede">
   ไฟล์จริงเกาะที่<b>การ์ดของแถว</b> · โมดัล "ส่งของ" ประทับแค่วัน — แถวไหนเสร็จก่อนส่งก่อน
-  (IFRA มาก่อน COA ได้) · ให้ไม่ได้ = ทางจบที่สองพร้อมเหตุผล
+  (IFRA มาก่อน COA ได้) · ปฏิเสธ = ทางจบที่สองพร้อมเหตุผล
 </p>
 
 <div class="screens">
@@ -552,26 +558,26 @@
       <div class="nextbar">
         <div class="lbl"><b>IFRA Certificate</b> — กำลังทำ</div>
         <div class="btns">
-          <span class="btn" style="background:var(--navy);border-color:var(--navy);color:#fff">ส่งของ</span>
-          <span class="btn danger">ให้ไม่ได้</span>
+          <span class="btn" style="background:var(--navy);border-color:var(--navy);color:#fff">ส่งเอกสาร</span>
+          <span class="btn danger">ปฏิเสธ</span>
         </div>
       </div>
       <div class="grid2" style="margin-top:12px">
         <div class="modal">
-          <header>ส่งของ — IFRA Certificate</header>
+          <header>ส่งเอกสาร — IFRA Certificate</header>
           <div class="body">
-            <div class="field"><label>วันที่ส่งของ</label><div class="inp block">12/09/2026</div></div>
-            <div class="sub">ไฟล์แนบไว้ที่การ์ดแถวแล้ว — โมดัลนี้ประทับแค่วัน</div>
+            <div class="field"><label>วันที่ส่งเอกสาร</label><div class="inp block">12/09/2026</div></div>
+            <div class="sub">ไฟล์แนบไว้ที่การ์ดแถวแล้ว (หลายไฟล์ได้) — โมดัลนี้ประทับแค่วัน · <b>ไม่มีไฟล์ = ส่งไม่ได้</b> (ม-89)</div>
           </div>
           <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
         </div>
         <div class="modal">
-          <header>ให้ไม่ได้ — Allergen declaration</header>
+          <header>ปฏิเสธ — Allergen declaration</header>
           <div class="body">
-            <div class="field"><label>เหตุผลที่ให้ไม่ได้ <b>(บังคับ)</b></label>
+            <div class="field"><label>เหตุผลที่ปฏิเสธ <b>(บังคับ)</b></label>
               <div class="inp block area">เอกสารนี้ต้องขอจากซัพพลายเออร์หัวน้ำหอมโดยตรง — บริษัทออกแทนไม่ได้</div>
             </div>
-            <div class="sub">ผู้ขอเห็นเหตุผลนี้ติดแถวในใบ — รายการจบแบบ "ให้ไม่ได้"</div>
+            <div class="sub">ผู้ขอเห็นเหตุผลนี้ติดแถวในใบ — รายการจบแบบ "ปฏิเสธ"</div>
           </div>
           <footer><span class="btn quiet">ยกเลิก</span><span class="btn danger">บันทึก</span></footer>
         </div>
@@ -587,7 +593,7 @@
     <div class="st done">กำลังทำ</div>
     <div class="st now">ส่งเอกสารแล้ว</div>
     <div class="st">จบ · ได้รับแล้ว</div>
-    <div class="st">จบ · ให้ไม่ได้</div>
+    <div class="st">จบ · ปฏิเสธ</div>
   </div>
   ก้าวของสายพัฒนา (รับของ → ส่งลูกค้า → ใส่ราคา) <b>ถูกตัดตั้งแต่ต้นทาง</b> —
   ยิงมาก็โดนตีกลับ "แถวเอกสารไม่มีก้าวของสายพัฒนา"
@@ -685,7 +691,7 @@
         <div class="btns" style="margin-bottom:10px">
           <span class="badge g"><b>1</b> มาแล้ว</span>
           <span class="badge w"><b>1</b> รอเอกสาร</span>
-          <span class="badge r"><b>1</b> ให้ไม่ได้</span>
+          <span class="badge r"><b>1</b> ปฏิเสธ</span>
           <span class="badge n">จากที่ขอ <b>3</b> รายการ</span>
         </div>
         <div class="scroll">
@@ -694,7 +700,7 @@
             <tbody>
               <tr><td>IFRA Certificate</td><td><span class="badge i">ส่งเอกสารแล้ว</span></td></tr>
               <tr><td>COA — Certificate of Analysis <div class="sub">ล็อต 2609-A</div></td><td><span class="badge i">กำลังทำ</span></td></tr>
-              <tr><td>Allergen declaration <div class="sub">เหตุผล: ต้องขอจากซัพพลายเออร์โดยตรง</div></td><td><span class="badge r">ให้ไม่ได้</span></td></tr>
+              <tr><td>Allergen declaration <div class="sub">เหตุผล: ต้องขอจากซัพพลายเออร์โดยตรง</div></td><td><span class="badge r">ปฏิเสธ</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -715,9 +721,10 @@
           <footer><span class="btn quiet">ยกเลิก</span><span class="btn accent">บันทึก</span></footer>
         </div>
         <div class="note ok" style="margin-bottom:0">
-          ทุกแถวจบ (ได้รับแล้ว / ให้ไม่ได้) ⇒ ใบเป็น <b>ตอบแล้ว</b> เอง
-          → ปุ่มสุดท้ายของ SA คือ <b>ปิดเรื่อง</b> · แถบตัวเลขบนใบนับได้จริง
-          เพราะสายเดินถึงจบแล้ว (ม-85 — เดิม "มาแล้ว" เป็น 0 ตลอดกาล)
+          ทุกแถวจบ (ได้รับแล้ว / ปฏิเสธ) ⇒ ใบเป็น <b>ตอบแล้ว</b> เอง
+          → ปุ่มสุดท้ายของ SA คือ <b>ปิดเรื่อง</b>
+          <br><b>กฎปิดสองฝ่าย (ม-89)</b> — ฝ่ายจบงานผ่านรายการ (ส่งเอกสาร/ปฏิเสธ)
+          แล้ว<b>ผู้ขอเป็นคนกดปิด</b> · RD ลากปิดเองไม่ได้
         </div>
       </div>
     </div>
@@ -733,10 +740,11 @@
     <tbody>
       <tr><td><b>ม-83</b></td><td>วันคาดหวัง (SA ตอนยื่น) และวันกำหนดส่ง (RD ตอนรับเรื่อง) <b>บังคับทุกคำร้อง</b> — "เลยกำหนด" นับจากวันที่ RD รับปาก</td></tr>
       <tr><td><b>ม-84</b></td><td>แนบไฟล์ได้ตั้งแต่หน้าสร้าง — ระบบอัปให้หลังบันทึกร่าง</td></tr>
-      <tr><td><b>ม-85</b></td><td>สายแถวเอกสารจบสองทาง: <b>ได้รับแล้ว</b> (SA กด) / <b>ให้ไม่ได้</b>+เหตุผล (RD กด) · ก้าวสายพัฒนาถูกตัด</td></tr>
+      <tr><td><b>ม-85</b></td><td>สายแถวเอกสารจบสองทาง: <b>ได้รับแล้ว</b> (SA กด) / <b>ปฏิเสธ</b>+เหตุผล (RD กด) · ก้าวสายพัฒนาถูกตัด</td></tr>
       <tr><td><b>ม-86</b></td><td>เลือกดีลแล้ว ลูกค้า+โครงการโชว์กลับทันที — derive เงียบ ๆ ไม่ได้</td></tr>
       <tr><td><b>ม-87</b></td><td>ขอเอกสารล็อกฝ่ายที่ <b>RD</b> — ไม่มีขั้นเลือกฝ่ายให้กดทิ้ง · PC/FN ปิดเก็บ (จาง ไม่ซ่อน)</td></tr>
       <tr><td><b>ม-88</b></td><td>อ้าง QT/SO/FG ได้ (ถ้ามี · ตรวจว่าอยู่ดีลเดียวกัน) · ไฟล์ที่ RD ส่งไหลเข้าแท็บเอกสารของดีล+โครงการเอง</td></tr>
+      <tr><td><b>ม-89</b></td><td>FG เพิ่มได้หลายรายการ · ก้าวส่งของสายเอกสารเรียก <b>"ส่งเอกสาร"</b> · ส่งต้องมีไฟล์แนบ ≥ 1 (หลายไฟล์ได้) · <b>"ปฏิเสธ"</b> + เหตุผลบังคับ · <b>ปิดสองฝ่าย</b>: ฝ่ายจบงานผ่านรายการ ผู้ขอเป็นคนกดปิด</td></tr>
     </tbody>
   </table>
 </div>
