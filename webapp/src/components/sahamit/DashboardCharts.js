@@ -7,6 +7,7 @@ import {
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { poRollupStatus } from "@/lib/sahamit/po";
 import ChartCard, { ChartCanvas, ChartEmptyState, ChartTooltip } from "@/components/ui/ChartCard";
+import { CHART_SERIES } from "@/lib/chartTheme";
 
 // --- Formatter Helpers ---
 const formatNumber = (num) => Number(num || 0).toLocaleString("th-TH");
@@ -84,8 +85,10 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
                   cursor={{ fill: "var(--panel-2)", opacity: 0.5 }}
                 />
                 <Legend wrapperStyle={{ fontSize: "var(--fs-7)", paddingTop: "10px" }} />
-                <Bar dataKey="Forecast" name="ยอด Forecast" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                {/* FC = แผน (น้ำเงิน) · PO ที่ได้รับ = ของจริงเกิดแล้ว (เขียว ตาม
+                    ความหมายกลาง actual ทั้งระบบ — เดิมส้ม accent ชนสีปุ่ม) */}
+                <Bar dataKey="Forecast" name="ยอด Forecast" fill={CHART_SERIES.plan} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill={CHART_SERIES.actual} radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer></ChartCanvas>
           ) : (

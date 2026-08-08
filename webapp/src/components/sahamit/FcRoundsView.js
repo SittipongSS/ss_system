@@ -6,13 +6,15 @@ import {
 } from "recharts";
 import { fcEvolution, roundTotals, unitMultiplier } from "@/lib/sahamit/dashboard";
 import { fmtNumber, fmtMoneyCompact, fmtDate } from "@/lib/format";
-import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 
 // แท็บ "FC แต่ละรอบ" — วิวัฒนาการ FC (เส้นละรอบ) + ยอดรวมต่อรอบ + %เปลี่ยนรอบต่อรอบ.
 // รับ rounds ที่กรองสินค้าแล้ว (fg-filtered) + products (สำหรับราคา) + unit + years.
 // ต่อจาก pure helpers ใน lib/sahamit/dashboard — ไม่มีตรรกะจับคู่ในนี้.
 
-const ROUND_COLORS = ["var(--blue)", "var(--accent)", "var(--green)", "var(--violet)", "var(--amber)", "var(--teal)", "var(--red)", "var(--text-3)"];
+/* หกตัวแรกมาจากชุดกลาง (ลำดับผ่านตัวตรวจ CVD — ดู chartTheme.js) · หางสองตัว
+   ของเดิมคงไว้สำหรับรอบ 7-8 ซึ่งแทบไม่เกิดจริง */
+const ROUND_COLORS = [...CHART_CATEGORICAL, "var(--red)", "var(--text-3)"];
 const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const shortMonth = (ym) => {
   if (!ym) return "";

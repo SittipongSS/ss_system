@@ -99,6 +99,16 @@
   --chart-plan: var(--blue);
   --chart-forecast: var(--amber);
   --chart-actual: var(--green);
+  /* ชุดสีจำแนกประเภท (categorical เช่น เส้น "รอบ FC") — หยิบผ่าน
+     CHART_CATEGORICAL เท่านั้น · ค่า v1 = หกตัวแรกของ ROUND_COLORS เดิมเป๊ะ
+     v2 ทับด้วยลำดับที่วัดแล้ว (คู่ติดกันทุกคู่ผ่าน CVD 4 ตัวแรก · ตัว 5-6
+     ยอมรับ WARN — relief คือ legend + ป้ายรอบ) · เกิน 6 วนซ้ำที่ผู้เรียก */
+  --chart-cat-1: var(--blue);
+  --chart-cat-2: var(--accent);
+  --chart-cat-3: var(--green);
+  --chart-cat-4: var(--violet);
+  --chart-cat-5: var(--amber);
+  --chart-cat-6: var(--teal);
 
   /* Controlled-document accents must match the self-contained print engine. */
   --document-accent-terracotta: #ad5d43;
@@ -590,6 +600,14 @@ body {
   --chart-plan: #4a85d6;
   --chart-forecast: #bd8628;
   --chart-actual: #37884f;
+  /* categorical มืด: 4 ตัวแรกผ่าน validator ทุกข้อ (ลำดับสำคัญ — ส้มกับเขียว
+     ห้ามติดกัน) · 5-6 WARN-accept */
+  --chart-cat-1: #4a85d6;
+  --chart-cat-2: #c57f2e;
+  --chart-cat-3: #c9679b;
+  --chart-cat-4: #37884f;
+  --chart-cat-5: #a495db;
+  --chart-cat-6: #bd8628;
 
   /* ⚠️ ไม่ทับ --radius-* ใน Phase 0 — เทสต์ radiusScale อ่านขั้นจากประกาศตัวสุดท้าย
      ทั้งไฟล์ การทับที่นี่จะเปลี่ยนนิยาม "ตรงขั้นเป๊ะ" ของฝั่ง v1 ไปด้วย (เจอจริง:
@@ -734,6 +752,13 @@ body {
   --chart-plan: #2e6fbf;
   --chart-forecast: #a8701c;
   --chart-actual: #1b7a40;
+  /* categorical สว่าง: กติกาเดียวกับธีมมืด */
+  --chart-cat-1: #2e6fbf;
+  --chart-cat-2: #d9730d;
+  --chart-cat-3: #b25389;
+  --chart-cat-4: #1b7a40;
+  --chart-cat-5: #6f5e9f;
+  --chart-cat-6: #a8701c;
 
   --shadow-sm: none;
   --shadow-md: none;

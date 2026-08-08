@@ -39,6 +39,19 @@ export const CHART_SERIES = Object.freeze({
   actual: "var(--chart-actual)",
 });
 
+/* ชุดสีจำแนกประเภท (เส้น "รอบ FC" ฯลฯ) — ลำดับสำคัญ: จัดให้คู่ติดกันผ่าน
+   ตัวตรวจ CVD (4 ตัวแรกผ่านทุกข้อ · 5-6 ยอมรับ WARN โดยมี legend เป็น relief)
+   เกิน 6 ค่าให้วนซ้ำที่ผู้เรียก (i % length) — อย่าเติมสีที่ 7 เพิ่มโดยไม่ผ่าน
+   validator ทั้งสองธีมก่อน */
+export const CHART_CATEGORICAL = Object.freeze([
+  "var(--chart-cat-1)",
+  "var(--chart-cat-2)",
+  "var(--chart-cat-3)",
+  "var(--chart-cat-4)",
+  "var(--chart-cat-5)",
+  "var(--chart-cat-6)",
+]);
+
 export const CHART_GRID_PROPS = Object.freeze({
   stroke: "var(--border)",
   strokeDasharray: "3 3",
