@@ -266,21 +266,7 @@
 
 .derived[data-empty] { color: var(--text-3); }
 
-/* บอกว่าไฟล์แนบไปทำที่ไหน **พร้อมเหตุผล** — ช่องที่หายไปโดยไม่บอกอะไรเลย
-   อ่านเหมือนของที่ระบบทำไม่ได้ ไม่ใช่ของที่อยู่ขั้นถัดไป */
-.deferNote {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-ink);
-  border-radius: var(--radius);
-  background: var(--panel-3);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
+/* 🗑️ `.deferNote` ถูกถอด — ช่องแนบไฟล์กลับมาอยู่ในฟอร์มสร้างแล้ว (มติ 2026-08-08) */
 
 /* ปุ่มคุมหัวข้อ — ชิดขวาใต้ช่องหัวข้อ ให้อยู่ในสายตาเดียวกับสิ่งที่มันเปลี่ยน
    ⚠️ เหตุผลที่กดไม่ได้อยู่ **แถวเดียวกับปุ่ม** ไม่ใช่บรรทัดใหม่ชิดซ้าย */
