@@ -609,7 +609,9 @@ export default function TasksPage() {
       <div className="flex flex-col gap-4">
 
       {/* scope tabs */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+      {/* ไม่มี marginBottom — คอลัมน์นอกเป็น flex gap-4 (16px) เจ้าของจังหวะ
+          margin ที่นี่จะทบเป็น 34px (วัดจริง 2026-08-08) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {allowedScopes.length > 1 && (
           <div className="segmented scope-toggle">
             {allowedScopes.map((s) => (
