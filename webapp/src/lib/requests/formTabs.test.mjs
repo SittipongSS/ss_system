@@ -16,7 +16,8 @@ test('ไม่มีแท็บไหนขาด ⟺ ด่านส่งผ
   const forms = [
     base,
     { ...base, kind: 'document', items: [{ docType: 'coa' }] },
-    { ...base, kind: 'formula_dev', items: [{ categoryId: 1 }] },
+    // ⚠️ แถวต้องผ่านตัวตรวจจริง (หมวดตรงรูปแบบ + มีกลิ่น) — แถวเปล่าไม่นับแล้ว
+    { ...base, kind: 'formula_dev', items: [{ categoryCode: '01-001', scentId: 'SC-1' }] },
     { ...base, kind: 'scent_dev', salesOrderId: 'SO-1' },
   ];
   for (const form of forms) {
@@ -75,4 +76,27 @@ test('เกจช่องไม่บังคับของ PDR นับร
   assert.equal(subject.optional.filled, 3);
   // ⚠️ ช่องบังคับของแท็บนี้คือ "ชื่อเรื่อง" ของคำร้อง — แบบฟอร์ม PDR ไม่มีช่องบังคับเลย
   assert.equal(subject.required.total, 1);
+});
+
+/* ⭐ กด "เพิ่มรายการ" เฉย ๆ แล้วไม่เลือกอะไร **ต้องยังส่งไม่ได้** (มติผู้ใช้
+   2026-08-09) — ก่อนหน้านี้ `items.length > 0` ผ่าน แล้วไปตายที่ server */
+test('แถวเปล่าไม่นับว่ามีรายการ — ทั้งเกจและด่านส่งต้องยังตีกลับ', () => {
+  for (const [kind, emptyRow] of [['document', { docType: '', spec: '' }], ['formula_dev', { categoryCode: '', scentId: '' }]]) {
+    const form = { ...base, kind, items: [emptyRow] };
+    assert.equal(missingRequiredByTab(form).length, 1, `${kind}: เกจต้องบอกว่ายังขาดรายการ`);
+    assert.notEqual(requestFormBlocker(form), null, `${kind}: ด่านส่งต้องตีกลับ`);
+  }
+});
+
+/* ⭐ ติ๊ก "มีภาพประกอบ" แล้วต้องแนบไฟล์ตั้งแต่ตอนบันทึกร่าง (มติผู้ใช้ 2026-08-09) —
+   เดิมด่านนี้ยิงเฉพาะตอนกดส่งซึ่งเป็นคนละหน้า */
+test('มีภาพประกอบแต่ยังไม่แนบไฟล์ = ยังบันทึกไม่ได้', () => {
+  const scent = { ...base, kind: 'scent_dev', salesOrderId: 'SO-1' };
+  const ticked = { ...scent, pdr: { packagingArtwork: 'has' } };
+  assert.deepEqual(missingRequiredByTab(ticked).map((m) => m.label), ['ไฟล์ภาพประกอบบรรจุภัณฑ์']);
+  assert.notEqual(requestFormBlocker(ticked), null);
+
+  // แนบแล้วผ่าน · ไม่ได้ติ๊กก็ไม่ถาม
+  assert.equal(missingRequiredByTab({ ...ticked, files: [{ name: 'art.png' }] }).length, 0);
+  assert.equal(missingRequiredByTab({ ...scent, pdr: { packagingArtwork: 'none' } }).length, 0);
 });

@@ -13,9 +13,10 @@
 // `requestShapeError`/`requestFormBlocker` ที่ server ใช้ · เทสต์ผูกไว้ว่า
 // "ไม่มีแท็บไหนขาด ⟺ requestFormBlocker ผ่าน" ถ้าใครเพิ่มกฎข้างเดียวเทสต์จะแตก
 import {
-  requestHasItems, requestHasPdr, requestNeedsRef,
+  lineShapeForKind, requestHasItems, requestHasPdr, requestNeedsRef,
 } from '@/lib/master/requestTypes';
-import { PDR_SECTIONS, pdrFormProgress } from '@/lib/requests/pdrFields';
+import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { PDR_SECTIONS, pdrArtworkError, pdrFormProgress } from '@/lib/requests/pdrFields';
 
 /* ⚠️ **ทุกหัวข้อใช้แท็บ ไม่มีข้อยกเว้นสำหรับหัวข้อเล็ก** (มติผู้ใช้ 2026-08-09)
    วัดแล้ว: สอบถามข้อมูล 8 ช่อง (3/2/3 ต่อแท็บ) ความสูงหน้าเท่ากันทุกแท็บที่ 934px
@@ -69,8 +70,12 @@ export function requiredChecks(form = {}) {
     // ── แท็บ "เรื่องที่ขอ" ──────────────────────────────────────────────
     { tab: 'subject', label: 'ชื่อเรื่อง', applies: true, ok: filled(form.title) },
     {
-      tab: 'subject', label: 'รายการอย่างน้อย 1 รายการ',
-      applies: requestHasItems(kind), ok: (form.items || []).length > 0,
+      // ⚠️ **แถวเปล่าไม่นับ** — ใช้ตัวตรวจรายแถวตัวเดียวกับ server/ด่านส่ง
+      // (`normalizeLinesFor`) ไม่ใช่นับความยาวอาเรย์ · กด "เพิ่มรายการ" เฉย ๆ
+      // แล้วไม่เลือกอะไรต้องยังขึ้นว่าขาดอยู่
+      tab: 'subject', label: 'รายการที่กรอกครบอย่างน้อย 1 รายการ',
+      applies: requestHasItems(kind),
+      ok: !normalizeLinesFor(lineShapeForKind(kind), form.items).error,
     },
     // ── แท็บ "กำหนดและไฟล์" ─────────────────────────────────────────────
     {
@@ -80,6 +85,13 @@ export function requiredChecks(form = {}) {
     {
       tab: 'due', label: 'เหตุผลที่เป็นงานด่วน',
       applies: !!form.urgent, ok: filled(form.urgentReason),
+    },
+    {
+      // ติ๊กว่ามีภาพประกอบแล้วต้องแนบจริง — ไฟล์อยู่แท็บ "กำหนดและไฟล์"
+      // ⚠️ ใช้ `pdrArtworkError` ตัวเดียวกับด่านส่ง/server ไม่ใช่เขียนเงื่อนไขใหม่
+      tab: 'due', label: 'ไฟล์ภาพประกอบบรรจุภัณฑ์',
+      applies: requestHasPdr(kind) && (form.pdr || {}).packagingArtwork === 'has',
+      ok: !pdrArtworkError(form.pdr || {}, { attachmentCount: (form.files || []).length, stage: 'submit' }),
     },
   ].filter((c) => c.applies);
 }
