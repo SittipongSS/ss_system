@@ -35,8 +35,8 @@ import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import DocumentLines from "@/components/requests/DocumentLines";
-import PdrForm, { emptyPdr, pdrRailSections } from "@/components/requests/PdrForm";
-import { pdrContext } from "@/lib/requests/pdrFields";
+import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
+import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
   PLANNED_REQUEST_DEPTS, requestOptionalRefs,
@@ -222,6 +222,8 @@ export default function RequestForm({
     // ⚠️ จำนวนกลิ่นมาจากบรรทัดของใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ — ฟอร์มต้องโชว์เลข
     // เดียวกับที่จะพิมพ์ลงกระดาษ ไม่งั้นคนกรอกเห็น 3 แต่เอกสารออกมา 1 (โหมดบรีฟรวม)
     salesOrderLines: selectedSo?.lines || null,
+    // ทะเบียนหมวด — ตัวเดียวกับที่ตัวเลือกใช้ ⇒ พรีวิว/จอสรุป/กระดาษ อ่านชื่อชุดเดียวกัน
+    categories: productTypes,
   });
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
@@ -884,6 +886,7 @@ export default function RequestForm({
               บันทึกเสร็จเท่านั้น = อาการที่ผู้ใช้ทักมา 2026-08-09) */}
           <PdrForm
             section={activeRail}
+            categories={productTypes}
             value={value.pdr || emptyPdr()}
             onChange={(pdr) => set({ pdr })}
             briefs={value.briefs || []}

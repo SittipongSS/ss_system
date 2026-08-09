@@ -9,12 +9,10 @@
 // ⚠️ วันที่ของกลิ่น = `createdAt` (วันที่เข้าทะเบียน) — บอกว่ากลิ่นนี้เก่าแค่ไหน
 // ซึ่งเป็นสิ่งที่ใช้แยกกลิ่นชื่อคล้ายกันของลูกค้าเดียวกัน
 import { fmtDate } from '@/lib/format';
+import { categoryRow } from '@/lib/master/categoryOf';
 
-/** หาแถวหมวดจากรหัสที่บรรทัดเก็บไว้ — ทะเบียนใช้ `typeCode` ส่วนของเก่าบางแถวเก็บ id */
-function findCategory(categories, code) {
-  if (!code) return null;
-  return categories.find((c) => c.typeCode === code || String(c.id) === String(code)) || null;
-}
+// 🐞 เดิมเทียบด้วย `typeCode` เดี่ยว ๆ ⇒ ไม่เคยเจอเลย เพราะรหัสที่เก็บคือ `MM-TTT`
+// (ตัวกลางอยู่ที่ lib/master/categoryOf.js ที่เดียวแล้ว)
 
 /**
  * ข้อความของแถว — `{ main, sub }`
@@ -25,10 +23,10 @@ function findCategory(categories, code) {
  * ของที่ต่างกันได้ทั้งที่หมวด×กลิ่นเหมือนกัน จึงต้องเห็นตอนแถวยุบ · ว่างได้ทั้งคู่
  */
 export function productDevRowText(row = {}, index = 0, { categories = [], scents = [] } = {}) {
-  const category = findCategory(categories, row.categoryCode);
+  const category = categoryRow(row.categoryCode, categories);
   const scent = scents.find((s) => s.id === row.scentId) || null;
   const categoryText = category
-    ? [category.typeCode, category.nameTh || category.nameEn].filter(Boolean).join(' ')
+    ? [row.categoryCode, category.nameTh || category.nameEn].filter(Boolean).join(' ')
     : '';
   const scentText = scent ? [scent.code, scent.name].filter(Boolean).join(' ') : '';
   const main = [categoryText, scentText].filter(Boolean).join(' × ');

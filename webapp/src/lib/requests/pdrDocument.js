@@ -347,7 +347,7 @@ export function renderPdrDocument({
     if (!section) return;
     const heading = PAPER_HEADINGS[key] || section.title;
     items.push({ type: 'heading', section: key, html: `<h3>${esc(heading)}</h3>`, cost: COST.heading });
-    for (const group of pdrSectionGroups(section)) {
+    for (const group of pdrSectionGroups(section, request, context)) {
       const { tr, cost } = groupRow(group, request, context);
       if (tr) items.push({ type: 'row', section: key, heading, tr, cost });
     }
@@ -369,7 +369,7 @@ export function renderPdrDocument({
     });
   }
   const specSection = PDR_SECTIONS.find((s) => s.key === 'spec');
-  for (const group of pdrSectionGroups(specSection)) {
+  for (const group of pdrSectionGroups(specSection, request, context)) {
     const { tr, cost } = groupRow(group, request, context);
     if (tr) items.push({ type: 'row', section: 'spec', heading: PAPER_HEADINGS.spec, tr, cost });
   }

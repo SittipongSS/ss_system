@@ -23,14 +23,16 @@ import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
-import PdrSummary from "@/components/requests/PdrSummary";
+import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
 import { RowStepActions } from "@/components/requests/NextStepBar";
-import { PDR_SECTIONS, pdrSectionProgress } from "@/lib/requests/pdrFields";
+import { PDR_SECTIONS } from "@/lib/requests/pdrFields";
 import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep,
+  // ทะเบียนหมวดสินค้า — ฟอร์ม PDR ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
+  categories = [],
   pdrDraft, onPdrDraftChange,
 }) {
   /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
@@ -40,13 +42,14 @@ export default function ScentDevDetail({
      กำลังอ่านอยู่ตอนข้อมูลโหลดเสร็จ */
   const [view, setView] = useState((request.items || []).length ? "work" : "pdr");
   const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
-  // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — สองฝั่งมีหมวดคนละชุด (ฝั่งแก้มี "บรีฟกลิ่น")
+  // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — คีย์ชุดเดียวกันแล้ว (ทั้งสองฝั่งมี
+  // "บรีฟกลิ่น") แต่คนละ state โดยตั้งใจ: ปิดโหมดแก้แล้วต้องกลับไปที่หมวดที่กำลังอ่าน
+  // ค้างไว้ ไม่ใช่กระโดดไปหมวดที่เพิ่งแก้เสร็จ
   const [draftSection, setDraftSection] = useState("request");
 
   // ⚠️ ปุ่ม "แก้แบบฟอร์ม PDR" อยู่ที่แผงจัดการ (นอก component นี้) — กดตอนอยู่แท็บ
   // "งาน" แล้วต้องพาไปแท็บที่แก้ได้เอง ไม่ใช่เปิดโหมดแก้ทิ้งไว้ในแท็บที่มองไม่เห็น
   useEffect(() => { if (pdrDraft) setView("pdr"); }, [pdrDraft]);
-  const active = PDR_SECTIONS.find((s) => s.key === sectionKey) || PDR_SECTIONS[0];
   const context = { ...(request.pdrContext || {}), briefs: request.briefs || [] };
 
   return (
@@ -105,6 +108,7 @@ export default function ScentDevDetail({
               >
                 <PdrForm
                   section={draftSection}
+                  categories={categories}
                   value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
                   briefs={pdrDraft.briefs}
                   onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
@@ -117,22 +121,18 @@ export default function ScentDevDetail({
             </>
           ) : (
             <SectionRail
-              sections={PDR_SECTIONS.map((s, i) => ({
-                key: s.key,
-                // ⭐ เลขนำหน้าเฉพาะฝั่งอ่าน — ที่นี่หมวดตรงกับกระดาษ FM-RD-01 หนึ่งต่อหนึ่ง
-                // (RD อ้างกันทางโทรศัพท์ด้วยเลขข้อ) · ฝั่งกรอกมี "บรีฟกลิ่น" ที่ไม่มีบน
-                // กระดาษแทรกอยู่ ใส่เลขที่นั่นจะชี้ผิดข้อ
-                label: `${i + 1} ${s.title}`,
-                count: pdrSectionProgress(s, request, context),
-              }))}
-              value={active.key}
+              // ⭐ รายชื่อหมวดมาจากที่เดียว (`pdrReadRailSections`) และมี "บรีฟกลิ่น"
+              // เป็นหมวดของตัวเองเหมือนฝั่งกรอก — เดิมบรีฟถูกวาดค้างไว้บนสุดนอกราง
+              // ⇒ เลือกหมวด 4 แล้วยังเห็นบรีฟอยู่ข้างบน อ่านเหมือนสองหน้ามาต่อกัน
+              sections={pdrReadRailSections(request, request.briefs || [], context)}
+              value={sectionKey}
               onChange={setSectionKey}
               ariaLabel="หมวดของแบบฟอร์ม"
             >
               {/* ⚠️ **ไม่มีปุ่มระดับใบตรงนี้แล้ว** (มติผู้ใช้ 2026-08-09) — "ออกเอกสาร"
                   กับ "แก้แบบฟอร์ม PDR" ทำอะไรกับ *ทั้งใบ* จึงย้ายไปแผงจัดการรวมกับ
                   ส่ง/แก้ข้อมูล/ลบ · ปุ่มระดับใบกระจายสองที่คือสิ่งที่ ม-49 ห้ามไว้ */}
-              <PdrSummary request={request} briefs={request.briefs || []} sections={[active]} />
+              <PdrSummary request={request} briefs={request.briefs || []} section={sectionKey} />
             </SectionRail>
           )}
         </div>

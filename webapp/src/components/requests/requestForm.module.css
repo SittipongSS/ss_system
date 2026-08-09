@@ -340,16 +340,47 @@
   padding-top: var(--space-3);
 }
 
-/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย */
+/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย
+   ⚠️ **ไม่มีแถบสีซ้าย** (มติผู้ใช้ 2026-08-09) — แถบ accent หนา 3px อ่านเหมือน
+   "ก้อนนี้สำคัญ/ถูกเลือกอยู่" ทั้งที่ทุกก้อนเท่ากัน · ตัวแบ่งคือป้ายเลขมุมซ้ายแทน */
 .briefCard {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-ink);
   border-radius: var(--radius);
   background: var(--panel-2);
+}
+
+/* หัวก้อน: ป้ายเลข + ชื่อเรียก — เลขคือสิ่งที่คนใช้อ้างกัน ("ก้อนที่ 2 เอาโทนอุ่นกว่านี้") */
+.briefHead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* ⚠️ สีอ่อนของ accent ไม่ใช่เทา — ถอดแถบสีซ้ายออกแล้วทั้งบล็อกกลายเป็นเทาล้วน
+   จนสายตาไม่มีจุดเกาะว่าก้อนใหม่เริ่มตรงไหน (ผู้ใช้ทักว่า "สีหายมั้ย") · ป้ายเลข
+   จึงถือสีไว้แทน — จุดเล็กที่มีสี อ่านเป็น "ลำดับ" ไม่ใช่ "ก้อนนี้สำคัญกว่า" */
+.briefNo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.briefTitle {
+  min-width: 0;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* PDR แบบอ่าน — คู่ป้าย/ค่า อ่านเร็วกว่าย่อหน้า และช่องที่ไม่ได้กรอกถูกตัดทิ้ง
@@ -443,5 +474,8 @@
 
 /* ช่องเลือก + ปุ่มยืนยันเพิ่ม (สินค้า FG) — ปุ่มไม่ยืด ช่องกินที่เหลือ
    ⚠️ ปุ่มชิดบนไม่ได้ ต้อง `align-items: flex-start` เพราะช่องค้นหาสูงกว่าปุ่ม */
-.pickAdd { display: flex; align-items: flex-start; gap: var(--space-2); }
+/* แถว "เลือกแล้วกดเพิ่ม" — ตัวเลือกยืดเต็ม ปุ่มยืนขวา
+   ⚠️ `stretch` ไม่ใช่ `flex-start` — ตัวเลือกสูง 36 แต่ปุ่ม sm สูง 30 ⇒ ขอบล่าง
+   เหลื่อมกัน 6px มองออกชัดตอนอยู่ติดกัน (ผู้ใช้ทักมา 2026-08-09) */
+.pickAdd { display: flex; align-items: stretch; gap: var(--space-2); }
 .pickAdd > :first-child { flex: 1; min-width: 0; }
