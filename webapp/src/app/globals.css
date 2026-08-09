@@ -3525,7 +3525,18 @@ button.empty-state { width: 100%; font: inherit; }
 .btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Toolbar row — filter / sort / search controls live here. */
-.toolbar { display: flex; align-items: center; gap: var(--space-2-5); flex-wrap: wrap; }
+/* แถบเครื่องมือเหนือตาราง (ช่องค้นหา + ตัวกรอง + เรียง)
+   ⭐ ระยะล่างเป็นของ **คลาสนี้** ไม่ใช่ของหน้า — ก่อนหน้านี้ 14 หน้าใส่ inline เอง
+   คนละค่า (8 · 10 · 12 · 14 · 20px) ⇒ บางหน้าช่องค้นหาไปชิดหัวตาราง อ่านเป็น
+   ก้อนเดียวกัน (ผู้ใช้ทัก 2026-08-08) · 16px = จังหวะระหว่างกลุ่มของระบบ
+   ซึ่งมากกว่า padding ในการ์ด (12/14) จึงแยกกลุ่มออกจากกันจริง */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
 .toolbar > .spacer { margin-left: auto; }
 .toolbar-label {
   display: inline-flex;

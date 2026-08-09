@@ -4,14 +4,14 @@
     "sales": {
       "legacyTable": 46,
       "legacySurface": 77,
-      "inlineStyle": 971,
+      "inlineStyle": 966,
       "rawButtonClass": 177,
       "rawInputClass": 60
     },
     "sahamit": {
       "legacyTable": 21,
       "legacySurface": 34,
-      "inlineStyle": 677,
+      "inlineStyle": 673,
       "rawButtonClass": 67,
       "rawInputClass": 25
     },
@@ -39,14 +39,14 @@
     "settings": {
       "legacyTable": 8,
       "legacySurface": 37,
-      "inlineStyle": 99,
+      "inlineStyle": 97,
       "rawButtonClass": 92,
       "rawInputClass": 39
     },
     "shared": {
       "legacyTable": 3,
       "legacySurface": 19,
-      "inlineStyle": 186,
+      "inlineStyle": 185,
       "rawButtonClass": 48,
       "rawInputClass": 15
     }

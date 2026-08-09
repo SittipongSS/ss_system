@@ -110,7 +110,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
       </div>
 
       <div>
-        <div className="toolbar" style={{ marginBottom: 8 }}>
+        <div className="toolbar">
           <span className="toolbar-label">บรรทัดต้นทุน ({form.lines.length})</span>
           <span className="spacer" />
           <button

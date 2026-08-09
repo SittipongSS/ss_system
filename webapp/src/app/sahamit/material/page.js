@@ -209,7 +209,7 @@ export default function MaterialPage() {
             <Stat n={stats.slip} label="เราส่งช้า" color="var(--red)" />
           </div>
 
-          <div className="toolbar" style={{ marginBottom: 14 }}>
+          <div className="toolbar">
             <div className="search-glass" style={{ width: 240 }}>
               <Search size={18} color="var(--text-3)" />
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />

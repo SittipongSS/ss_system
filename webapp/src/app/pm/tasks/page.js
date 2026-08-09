@@ -674,7 +674,7 @@ export default function TasksPage() {
 
       {/* ── แถบเครื่องมือ ── */}
       <SaSection icon={<ListTodo size={17} />} title="รายการงาน" subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน" actions={<span className="ui-badge">{visible.length} งาน</span>}>
-      <div className="toolbar" style={{ marginBottom: "20px" }}>
+      <div className="toolbar">
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />

@@ -213,7 +213,7 @@ export default function PoPage() {
         </div>
       ) : (
         <>
-          <div className="toolbar" style={{ marginBottom: 14 }}>
+          <div className="toolbar">
             <div className="search-glass" style={{ width: 240 }}>
               <Search size={18} color="var(--text-3)" />
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเลข PO / สินค้า / สถานที่ส่ง..." />
