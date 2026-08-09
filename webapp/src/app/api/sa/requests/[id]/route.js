@@ -24,7 +24,8 @@ import {
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
-import { requestHasItems, requestKindLabel } from '@/lib/master/requestTypes';
+import { requestHasItems, requestKindLabel, requestShapeError } from '@/lib/master/requestTypes';
+import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -164,6 +165,24 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedAt = nowIso;
       if (due) patch.committedDueDate = due;
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'update') {
+      // ⭐ **แก้คำร้องที่ยังไม่ถูกรับเรื่อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้
+      // ใบที่บันทึกแล้วแก้ไม่ได้เลยสักช่อง ต้องลบทิ้งแล้วเปิดใหม่
+      // ⚠️ กฎว่า "ใครแก้ได้ ตอนไหน ช่องไหน" อยู่ใน `lib/requests/requestEdit.js`
+      // ที่เดียว — หน้าจอถามตัวเดียวกันเพื่อไม่ให้ปุ่มกับ API เห็นไม่ตรงกัน
+      const denied = requestEditError(before, user);
+      if (denied) return Response.json({ error: denied }, { status: 403 });
+
+      const next = requestEditPatch(body);
+      // ⚠️ ด่านรูปทรงเดียวกับตอนเปิดใบ — ชื่อเรื่องบังคับ · วันที่ต้องมีและถูกรูปแบบ ·
+      // ด่วนต้องมีเหตุผล · ส่งของเดิมที่ไม่ได้แก้เข้าไปด้วยเพื่อให้ด่านเห็นใบทั้งใบ
+      const shapeError = requestShapeError(before.kind, {
+        ...before, ...next, items: before.items,
+      });
+      if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
+
+      Object.assign(patch, next);
+      summary = `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
     } else if (action === 'pdr') {
       // ⭐ แก้แบบฟอร์ม PDR — สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" (ดู lib/requests/pdrEdit.js)
       const denied = editPdrError(before, user);

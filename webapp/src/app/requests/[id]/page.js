@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, FolderKanban, Handshake, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FolderKanban, Handshake, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -17,6 +17,7 @@ import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
@@ -120,6 +121,8 @@ export default function RequestDetailPage() {
   const [ackDue, setAckDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
+  // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
+  const [editDraft, setEditDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -570,6 +573,26 @@ export default function RequestDetailPage() {
         }),
       },
       {
+        // ⭐ **แก้ข้อมูลคำร้อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้ใบที่บันทึกแล้ว
+        // แก้ไม่ได้เลยสักช่อง ต้องลบทิ้งเปิดใหม่แม้แค่พิมพ์ชื่อเรื่องผิด
+        // ⚠️ แก้ได้เฉพาะช่องที่ไม่กระทบว่าใบผูกกับอะไร (ดู lib/requests/requestEdit.js)
+        // — ปุ่มถามด่านตัวเดียวกับ API เพื่อไม่ให้ปุ่มโผล่แล้วกดไม่ผ่าน
+        id: "edit",
+        label: "แก้ข้อมูลคำร้อง",
+        kind: "edit",
+        icon: Pencil,
+        onClick: () => setEditDraft({
+          title: req.title || "",
+          body: req.body || "",
+          requestedDueDate: req.requestedDueDate || "",
+          urgent: !!req.urgent,
+          urgentReason: req.urgentReason || "",
+        }),
+        // ⚠️ ฝั่งจอไม่มี `user.id` (context เก็บแค่ role/department) จึงถามด้วย
+        // `_mine` ที่ server คำนวณมาให้ + ขั้นชุดเดียวกับ lib · ด่านจริงอยู่ที่ API
+        visible: (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status),
+      },
+      {
         // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
         // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
         //
@@ -950,6 +973,86 @@ export default function RequestDetailPage() {
 
       {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
           และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ลงเธรดว่าเลื่อนจากวันไหนเป็นวันไหน */}
+      {/* ── แก้ข้อมูลคำร้อง (มติผู้ใช้ 2026-08-09) ────────────────────────────
+          ⚠️ **ช่องที่นี่ต้องเท่ากับ `REQUEST_EDITABLE_FIELDS` เป๊ะ** — ลิสต์นั้นเป็น
+          ของ API ด้วย · เพิ่มช่องที่นี่โดยไม่เพิ่มในลิสต์ = พิมพ์แล้วหายเงียบ
+          ⚠️ ของที่ผูก (ดีล · ใบสั่งขาย · รายการ · หัวข้อ) แก้ทางนี้ไม่ได้ และ
+          ข้อความในโมดัลบอกทางออกไว้ ไม่ใช่ปล่อยให้หาเอง */}
+      <Modal
+        open={!!editDraft} onClose={() => setEditDraft(null)} size="md" dismissible={!saving}
+        title="แก้ข้อมูลคำร้อง"
+      >
+        {editDraft && (
+          <>
+            <div className="form-grid cols-2">
+              <div className="form-group col-span-2">
+                <label htmlFor="edit-title">ชื่อเรื่อง *</label>
+                <Input
+                  id="edit-title" maxLength={200}
+                  value={editDraft.title} disabled={saving}
+                  onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
+                />
+              </div>
+              <div className="form-group col-span-2">
+                <label htmlFor="edit-body">รายละเอียด</label>
+                <Textarea
+                  variant="data" id="edit-body" rows={4} maxLength={4000}
+                  value={editDraft.body} disabled={saving}
+                  onChange={(e) => setEditDraft({ ...editDraft, body: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-due">อยากได้คำตอบภายใน *</label>
+                <DateInput
+                  id="edit-due" value={editDraft.requestedDueDate} disabled={saving}
+                  onChange={(v) => setEditDraft({ ...editDraft, requestedDueDate: v })}
+                />
+              </div>
+              <div className="form-group">
+                <span className="form-field-label">ความเร่งด่วน</span>
+                <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                  <button
+                    type="button" className="ui-switch" disabled={saving}
+                    data-on={editDraft.urgent ? "1" : undefined} aria-pressed={editDraft.urgent}
+                    onClick={() => setEditDraft({ ...editDraft, urgent: !editDraft.urgent })}
+                  >
+                    <i aria-hidden="true" /> ด่วน
+                  </button>
+                </div>
+              </div>
+              {editDraft.urgent && (
+                <div className="form-group col-span-2">
+                  <label htmlFor="edit-why">เหตุผลที่เป็นงานด่วน *</label>
+                  <Textarea
+                    variant="data" id="edit-why" rows={2} maxLength={500}
+                    value={editDraft.urgentReason} disabled={saving}
+                    onChange={(e) => setEditDraft({ ...editDraft, urgentReason: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+            <small className={styles.hint}>
+              เปลี่ยนดีล ใบสั่งขาย รายการ หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
+              (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
+            </small>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setEditDraft(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !editDraft.title.trim() || !editDraft.requestedDueDate
+                  || (editDraft.urgent && !editDraft.urgentReason.trim())}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({ action: "update", ...editDraft }),
+                }, "แก้ข้อมูลคำร้องแล้ว").then((ok) => { if (ok) setEditDraft(null); })}
+              >
+                บันทึกการแก้ไข
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
       <Modal
         open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
         title="เลื่อนวันกำหนดส่ง"
