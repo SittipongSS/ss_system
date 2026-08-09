@@ -14,7 +14,8 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
-import { Image as ImageIcon } from "lucide-react";
+import { FlaskConical, Image as ImageIcon } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
@@ -212,8 +213,11 @@ export default function PdrForm({
     setBrief(i, { [field]: list.includes(key) ? list.filter((k) => k !== key) : [...list, key] });
   };
 
+  // ⚠️ ในโหมดราง **ไม่มีกรอบการ์ดของตัวเอง** (มติผู้ใช้ 2026-08-09: "หน้าตาคนละส่วน
+  // กันแปลก ๆ") — ตัวรางเป็นการ์ดอยู่แล้ว ซ้อนอีกชั้นได้การ์ดในการ์ด · ส่วนที่มีของน้อย
+  // (บรีฟกลิ่นตอนยังไม่เลือก SO) จะเหลือกล่องลอยที่อ่านเหมือนคนละของกับราง
   return (
-    <div className={styles.pdr}>
+    <div className={rail ? styles.pdrPlain : styles.pdr}>
       {!rail && (
         <div className={styles.pdrHead}>
           <strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong>
@@ -372,7 +376,12 @@ export default function PdrForm({
           </small>
         )}
         {!briefs.length ? (
-          <small className={styles.hint}>เลือกใบสั่งขายก่อน แล้วบล็อกบรีฟจะขึ้นตามจำนวนกลิ่นที่ขาย</small>
+          // ⚠️ บรรทัดจางลอย ๆ ในพื้นที่ว่าง ๆ อ่านเหมือนหน้าโหลดไม่ครบ — ส่วนนี้จะว่าง
+          // ทุกครั้งจนกว่าจะเลือกใบสั่งขาย จึงต้องเป็นสถานะว่างที่บอกทางออก
+          <EmptyState icon={FlaskConical}>
+            ยังไม่มีบล็อกบรีฟ
+            <small>เลือกใบสั่งขายในแท็บ &ldquo;งาน&rdquo; ก่อน — บล็อกจะขึ้นตามจำนวนกลิ่นที่ขายในใบนั้น</small>
+          </EmptyState>
         ) : briefs.map((brief, i) => (
           <div key={i} className={styles.briefCard}>
             <div className="form-group">

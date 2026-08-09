@@ -5,15 +5,6 @@
 /* ข้อความช่วยเหลือใต้ช่องกรอก (globals.css ไม่ได้ให้สไตล์ <small> ใน .form-group) */
 .hint { color: var(--text-3); }
 
-/* แถวติ๊ก "งานด่วน" — ให้เส้นฐานตรงกับช่องข้าง ๆ ที่มี label อยู่ด้านบน */
-.checkRow {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-}
-.checkLabel { font-size: var(--fs-7); }
-
 /* ป้ายชื่อช่องที่ไม่มี input ให้ผูก htmlFor ได้ (SearchableSelect ไม่รับ prop `id`)
    — ก่อนหน้านี้เขียน <label htmlFor="req-deal"> ทับไว้ ทั้งที่ไม่มี element ไอดีนั้น
    จริง ผลคือคลิกป้ายแล้วโฟกัสไม่ไปไหน และ screen reader ประกาศป้ายที่ชี้ที่ว่าง ·
@@ -445,6 +436,8 @@
 .ctxAction { margin-left: auto; }
 
 /* ส่วนของ PDR ในโหมดราง — ไม่มีลิ้นชักซ้อน (รางเลือกส่วนให้แล้ว) */
+/* โหมดราง — ไม่มีกรอบ/พื้นของตัวเอง (รางเป็นการ์ดให้แล้ว) */
+.pdrPlain { display: flex; flex-direction: column; gap: var(--space-2); }
 .pdrFlat { display: flex; flex-direction: column; gap: var(--space-3); }
 .pdrFlatTitle { margin: 0; font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text); }
 
