@@ -3623,6 +3623,43 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .tab-overall-seg > i[data-ok] { background: var(--green); box-shadow: none; }
 
+/* ── ไฟล์ที่เลือกไว้ก่อนบันทึก (`ui/PendingFiles`) ──────────────────────────
+   ปุ่มแนบเป็นปุ่มเงียบ ไม่ใช่กล่องเส้นประเต็มแถว — ตอนสร้างของใหม่ ไฟล์เป็น
+   ของเสริม ไม่ใช่คำถามหลักของฟอร์ม (แพตเทิร์นเดียวกับโมดัลงาน) */
+.pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.pending-files-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  cursor: pointer;
+}
+.pending-files-add:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.pending-files-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pending-files-add:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.pending-files-add small { color: var(--text-3); font-size: var(--fs-3); }
+
+.pending-files-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; }
+.pending-files-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+  min-width: 0;
+}
+.pending-files-row:first-child { border-top: 0; }
+.pending-files-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ขนาดไฟล์ชิดขวาก่อนปุ่มถอด — ตัวเลขต้องเรียงกันเป็นคอลัมน์อ่านง่าย */
+.pending-files-size { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 /* ── รายการบรรทัดที่ยุบเมื่อกรอกแล้ว (`ui/EditableLineList`) ────────────────
    แถวที่กรอกเสร็จยุบเหลือแถวเดียวกินเต็มความกว้าง — ที่กว้างคือเหตุผลที่เลือกแบบนี้
    แทนรางข้าง (ราง 13rem ใส่ได้แค่ชื่อสั้น ๆ) · ใบที่กำลังกรอกกางเป็นการ์ดเต็ม */
