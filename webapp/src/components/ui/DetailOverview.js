@@ -1,3 +1,4 @@
+import { Children } from "react";
 import styles from "./DetailOverview.module.css";
 
 export function DetailStateBadge({ label, color = "var(--accent)" }) {
@@ -15,6 +16,7 @@ export default function DetailOverview({
   children,
   className = "",
 }) {
+  const extra = Children.toArray(children);
   return (
     <section className={`${styles.overviewCard} ${className}`.trim()}>
       <div className={styles.overviewHeading}>
@@ -48,7 +50,11 @@ export default function DetailOverview({
           })}
         </div>
       ) : null}
-      {children ? <div className={styles.extra}>{children}</div> : null}
+      {/* 🐞 `children ? …` ไม่พอ — ผู้เรียกส่งลูกหลายตัวที่เป็นเงื่อนไข
+          (`{cond && <X/>}`) ⇒ ได้อาเรย์ของ `false` ซึ่ง truthy ⇒ โซนนี้ยังถูกวาด
+          เป็น **แถบว่างพร้อมเส้นคั่น** ใต้หัวใบ (ผู้ใช้เห็นบนจอ tablet 2026-08-09)
+          · `Children.toArray` ทิ้ง null/undefined/boolean ให้แล้ว */}
+      {extra.length ? <div className={styles.extra}>{extra}</div> : null}
     </section>
   );
 }

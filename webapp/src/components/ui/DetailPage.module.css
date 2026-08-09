@@ -173,13 +173,22 @@
   .layout {
     grid-template-columns: 1fr;
   }
+  /* ⚠️ **คอลัมน์ไหลเอง ไม่ใช่กริดสองช่อง** — กริดจับการ์ดลงช่องตามลำดับ DOM แล้ว
+     ความสูงของแถวเท่ากับการ์ดที่สูงที่สุดในแถว ⇒ การ์ด control (สูง) จับคู่กับการ์ด
+     บริบท (เตี้ย) แล้วเหลือรูโหว่ครึ่งจอ · ยิ่งมีการ์ดมาก (คุม · บริบท · สรุป ·
+     ไฟล์แนบ) ยิ่งขาดวิ่น (ผู้ใช้ทักจากจอ tablet 2026-08-09)
+     `columns` ให้เบราว์เซอร์เกลี่ยเองตามความสูงจริง ⇒ ไม่มีรู
+     ⚠️ `break-inside: avoid` จำเป็น — ไม่งั้นการ์ดถูกผ่าครึ่งคนละคอลัมน์
+     ⚠️ ระยะห่างต้องเป็น margin ไม่ใช่ gap ของ flex — พอเป็น block แล้ว gap ไม่ทำงาน */
   .aside {
     position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* การ์ดสูงตามเนื้อตัวเอง — ค่า stretch เดิมยืดการ์ดเตี้ย (เช่นการ์ดบริบท
-       โครงการ/ดีล) ให้สูงเท่าการ์ด control ข้าง ๆ กลายเป็นกล่องเปล่ายาวทั้งแถบ */
-    align-items: start;
+    display: block;
+    columns: 2;
+    column-gap: var(--space-3-5);
+  }
+  .aside > * {
+    break-inside: avoid;
+    margin-bottom: var(--space-3-5);
   }
 }
 @media (max-width: 680px) {
