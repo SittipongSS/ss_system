@@ -9,7 +9,7 @@
 // วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
 import styles from "./scentDelivery.module.css";
@@ -43,14 +43,23 @@ export default function DocumentLines({
 
             <div className="form-grid">
               <div className="form-group col-span-2">
-                <label htmlFor={`doc-type-${i}`}>ชนิดเอกสาร</label>
-                <Select
-                  id={`doc-type-${i}`} value={row.docType} disabled={disabled}
-                  onChange={(e) => patch(i, { docType: e.target.value })}
-                  options={[
-                    { value: "", label: "— เลือกชนิดเอกสาร —" },
-                    ...vocabulary.types.map((t) => ({ value: t.value, label: t.label })),
-                  ]}
+                <span className="form-field-label">ชนิดเอกสาร</span>
+                {/* ⭐ **แผ่นเลือก ไม่ใช่ดรอปดาวน์** (มติผู้ใช้ 2026-08-09) — ชุดตายตัว
+                    4–5 ตัว เข้ากติกาคอนโทรล v2 ("≤6 กางให้เห็น") เหมือนหัวข้อคำร้อง
+                    · คนขอเอกสารส่วนใหญ่ไม่ได้จำว่า COA ต่างจาก MSDS ยังไง ⇒ คำขยาย
+                    ใต้ชื่อทำให้เลือกถูกตั้งแต่ครั้งแรก แทนที่จะเปิดดรอปดาวน์อ่านทีละอัน
+                    ⚠️ ไม่มีตัวเลือก "— เลือกชนิดเอกสาร —" อีกแล้ว: แผ่นที่ยังไม่เลือก
+                    คือทุกใบไม่มีขอบ accent ซึ่งอ่านออกอยู่แล้วว่ายังไม่ได้เลือก */}
+                <OptionTiles
+                  value={row.docType}
+                  onChange={(v) => patch(i, { docType: v })}
+                  disabled={disabled}
+                  ariaLabel={`ชนิดเอกสารของรายการที่ ${i + 1}`}
+                  options={vocabulary.types.map((t) => ({
+                    value: t.value,
+                    label: t.short || t.label,
+                    description: t.summary || undefined,
+                  }))}
                 />
               </div>
               <div className="form-group col-span-2">
