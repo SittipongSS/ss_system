@@ -374,6 +374,27 @@ export function pdrFieldVisible(field, values = {}) {
 }
 
 /**
+ * ความคืบหน้าของส่วนหนึ่งในแบบฟอร์ม PDR — `{ total, filled }`
+ *
+ * ⭐ มติผู้ใช้ 2026-08-09 (รีดีไซน์ฟอร์มคำร้อง): ส่วนพับ `<details>` เดิมโชว์แค่ชื่อ
+ * ⇒ ต้องกางทุกลิ้นชักถึงจะรู้ว่ากรอกครบยัง · ตัวเลขนี้ไปอยู่บนหัวส่วน
+ *
+ * ⚠️ นับเฉพาะช่องที่ **กรอกเองได้และมองเห็นอยู่จริง** — ช่องที่ระบบเติม (`derived`)
+ * ไม่ใช่งานของคนกรอก และช่องที่ซ่อนตามประเภทคำขอ (`showFor`) นับเมื่อไรตัวหารจะ
+ * เปลี่ยนไปมาทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
+ */
+export function pdrSectionProgress(section, values = {}) {
+  const fields = (section?.fields || [])
+    .filter((f) => f.type !== 'derived' && pdrFieldVisible(f, values));
+  const filled = fields.filter((f) => {
+    const v = values?.[f.key];
+    if (Array.isArray(v)) return v.length > 0;
+    return v != null && String(v).trim() !== '';
+  }).length;
+  return { total: fields.length, filled };
+}
+
+/**
  * ติ๊กว่ามีภาพประกอบแล้วต้องแนบจริง — คืนข้อความไทย หรือ null ถ้าผ่าน
  *
  * ⚠️ มติผู้ใช้ตอนไล่ฟอร์ม: "แยกแต่ถ้าบอกมี ต้องแนบภาพประกอบนะ" · ปล่อยให้ติ๊กแล้ว

@@ -27,6 +27,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
+import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
@@ -235,6 +236,33 @@ export default function RequestForm({
 
   return (
     <>
+      {/* ── ขั้นเลือกฝ่าย/หัวข้อ — **ยุบเป็นแถบบริบทเมื่อกางฟอร์มแล้ว**
+          (มติผู้ใช้ 2026-08-09 "แบบ 1")
+          ก่อนหน้านี้ขั้นนี้ไม่ยุบเลย: แถวปุ่มฝ่าย 3 ใบ (สองใบจางกดไม่ได้) + ดรอปดาวน์
+          หัวข้อที่ถูกล็อก + ปุ่มเปลี่ยน + คำอธิบาย 3 บรรทัดซ้อนกัน = จอแรกของ
+          "พัฒนากลิ่น" มีช่องที่กรอกได้จริงช่องเดียว ที่เหลือเป็นของที่ตัดสินใจไปแล้ว
+          ⚠️ **ไม่ใช่ซ่อน** — แถบยังบอกฝ่าย/หัวข้อ/เงื่อนไขของหัวข้อ และมีปุ่มเปลี่ยน
+          อยู่ในนั้น · เหตุผลที่กดแล้วเสียอะไรย้ายไปเป็น `title` ของปุ่ม ไม่ใช่บรรทัดจาง */}
+      {revealed ? (
+        <div className={styles.ctxBar}>
+          <span className={styles.ctxDept}>{REQUEST_DEPT_LABELS[dept]?.code || dept}</span>
+          <span className={styles.ctxKind}>{requestKindLabel(kind)}</span>
+          {meta.dealType && <span className={styles.ctxTag}>ดีล {meta.dealType}</span>}
+          {stepLabel && <span className={styles.ctxTag}>{stepLabel}</span>}
+          {topicAction && (
+            <span className={styles.ctxAction}>
+              <Button
+                variant="quiet" size="sm" disabled={disabled}
+                title="ฟอร์มที่กรอกไว้จะถูกล้าง"
+                onClick={topicAction.onClick}
+              >
+                {topicAction.label}
+              </Button>
+            </span>
+          )}
+        </div>
+      ) : (
+      <>
       {/* ── 1) ฝ่าย → 2) หัวข้อ (หัวข้อถูกกรองด้วยฝ่าย) ───────────────────── */}
       <div className="form-group">
         <span className={styles.fieldLabel} id="req-dept-label">ส่งถึงฝ่ายไหน</span>
@@ -330,29 +358,28 @@ export default function RequestForm({
               </Button>
             </div>
           )}
-          {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
-              เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
-          {revealed && topicAction && (
-            <small className={styles.hint}>
-              ล็อกไว้ระหว่างกรอก — กด &ldquo;{topicAction.label}&rdquo; เพื่อแก้ (ฟอร์มที่กรอกไว้จะถูกล้าง)
-            </small>
-          )}
+          {/* คำอธิบายหัวข้ออยู่ที่ **ขั้นเลือก** ที่เดียว — ตอนนี้คือจังหวะที่มันช่วย
+              ตัดสินใจ · พอกางฟอร์มแล้วมันกลายเป็นข้อความค้างจอ (ย้ายเงื่อนไขที่ยัง
+              ต้องรู้ระหว่างกรอกไปอยู่ติดช่องที่มันคุมแทน เช่น ใบสั่งขายของบรีฟกลิ่น) */}
           {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
           {meta.dealType && (
             <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
           )}
         </div>
       </div>
+      </>
+      )}
 
       {revealed && (
       <>
-      {/* ── 3) ของที่หัวข้อนั้นต้องอ้าง ────────────────────────────────────
+      {/* ── โซน ① งานไหน — ของที่หัวข้อนั้นต้องอ้าง ────────────────────────
           ⭐ **อยู่ใต้หัวข้อเสมอ** — ช่องพวกนี้โผล่/หายตามหัวข้อที่เพิ่งเลือก วางไว้
           เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
+      <FormZone title="① งานไหน" />
       {needsProject && (
-      <>
-      <div className="form-group">
+      <div className="form-grid cols-2">
+      <div className="form-group col-span-2">
         <span className={styles.fieldLabel}>ดีล</span>
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
             ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
@@ -382,19 +409,17 @@ export default function RequestForm({
           **หายเงียบ**: เลือกดีลแล้วไม่มีอะไรบอกว่าใบนี้จะเกาะลูกค้า/โครงการไหน
           ต่างจากบล็อกบรีฟกลิ่นที่โชว์ของที่เติมจาก SO ครบ · เป็นตัวอย่างของสิ่งที่
           server จะเขียนจริง ไม่ใช่ช่องให้แก้ (`requestPayload` ไม่ส่งสองค่านี้เลย) */}
-      <div className="form-grid">
-        <DerivedField
-          label="ลูกค้า" from="เติมจากดีลที่เลือก"
-          value={selectedDeal?.customerName || ""}
-        />
-        <DerivedField
-          label="โครงการ" from="เติมจากดีลที่เลือก"
-          value={(() => {
-            const project = projects.find((p) => p.id === selectedDeal?.projectId);
-            return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
-          })()}
-        />
-      </div>
+      <DerivedField
+        label="ลูกค้า" from="เติมจากดีลที่เลือก"
+        value={selectedDeal?.customerName || ""}
+      />
+      <DerivedField
+        label="โครงการ" from="เติมจากดีลที่เลือก"
+        value={(() => {
+          const project = projects.find((p) => p.id === selectedDeal?.projectId);
+          return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
+        })()}
+      />
 
       {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────
           ⭐ มติผู้ใช้ 2026-08-08: เอกสารอย่าง COA/IFRA มักผูกกับใบเสนอราคา ใบสั่งขาย
@@ -403,7 +428,7 @@ export default function RequestForm({
           ⚠️ **ว่างได้ทุกช่อง** — ด่านที่ server ตรวจแค่ "ของมีจริง + อยู่ดีลเดียวกัน"
           ⚠️ QT/SO **กรองตามดีลที่เลือก** — อ้างข้ามดีลคือความขัดแย้งที่ต้องกันตั้งแต่จอ */}
       {optionalRefs.length > 0 && (
-        <div className="form-grid">
+        <>
           {optionalRefs.includes("quotation") && (
             <div className="form-group">
               <span className={styles.fieldLabel}>
@@ -495,9 +520,9 @@ export default function RequestForm({
               )}
             </div>
           )}
-        </div>
+        </>
       )}
-      </>
+      </div>
       )}
 
       {/* ── บรีฟกลิ่น: ยึดใบสั่งขาย (ค่าบริการออกแบบกลิ่น) ─────────────────
@@ -505,9 +530,8 @@ export default function RequestForm({
           → เลือก SO ที่เดียว ดีล/โครงการ/ลูกค้า server เติมจาก SO เอง ไม่ให้เลือกซ้ำ
           แล้วขัดกันเอง (SO ของดีล A แต่เลือกดีล B) */}
       {needsSalesOrder && (
-        <>
-          <div className="form-grid">
-            <div className="form-group">
+        <div className="form-grid cols-2">
+            <div className="form-group col-span-2">
               <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น *</span>
               <SearchableSelect
                 value={value.salesOrderId} disabled={disabled}
@@ -536,6 +560,21 @@ export default function RequestForm({
                 }}
                 ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
               />
+              {/* ⚠️ prod เคยมี sales_orders = 0 ใบ — ต้องบอกทางออกตรงนี้ ไม่ใช่ปล่อยให้
+                  เจอ dropdown ว่างแล้วคิดว่าระบบพัง
+                  ⭐ ลิสต์กรองแล้ว ⇒ ต้องบอกด้วยว่า**ซ่อนอะไรไปเพราะอะไร** ตั้งแต่ยังไม่กด
+                  เปิด dropdown — คนที่ถือใบในมืออยู่จะได้รู้ทันทีว่าต้องไปทำอะไรก่อน
+                  ไม่ใช่ไปเจอตอนค้นแล้วไม่พบ
+                  ⭐ อยู่ **ใต้ช่องที่มันคุม** (มติ 2026-08-09) — เดิมลอยท้ายบล็อกรวมกับ
+                  คำอธิบายหัวข้ออีกสองบรรทัดจนอ่านไม่ออกว่าอันไหนพูดถึงช่องไหน */}
+              <small className={styles.hint}>
+                {!salesOrders.length
+                  ? "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"
+                  : [
+                    "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง",
+                    scentDesignOrderSkipHint(soSkips),
+                  ].filter(Boolean).join(" · ")}
+              </small>
             </div>
             <DerivedField
               label="ลูกค้า" from="เติมจาก SO"
@@ -545,26 +584,12 @@ export default function RequestForm({
               label="ดีล" from="เติมจาก SO"
               value={soDeal ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}` : ""}
             />
-            <DerivedField label="ขั้นในไทม์ไลน์" from="—" value={stepLabel || ""} />
-          </div>
-          {/* ⚠️ prod เคยมี sales_orders = 0 ใบ — ต้องบอกทางออกตรงนี้ ไม่ใช่ปล่อยให้
-              เจอ dropdown ว่างแล้วคิดว่าระบบพัง
-              ⭐ ลิสต์กรองแล้ว ⇒ ต้องบอกด้วยว่า**ซ่อนอะไรไปเพราะอะไร** ตั้งแต่ยังไม่กด
-              เปิด dropdown — คนที่ถือใบในมืออยู่จะได้รู้ทันทีว่าต้องไปทำอะไรก่อน
-              ไม่ใช่ไปเจอตอนค้นแล้วไม่พบ */}
-          <small className={styles.hint}>
-            {!salesOrders.length
-              ? "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"
-              : [
-                "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง",
-                scentDesignOrderSkipHint(soSkips),
-              ].filter(Boolean).join(" · ")}
-          </small>
-        </>
+        </div>
       )}
 
-      {/* ── 4) ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────────────────────── */}
-      <div className="form-grid">
+      {/* ── โซน ② เรื่องที่ขอ — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
+      <FormZone title="② เรื่องที่ขอ" />
+      <div className="form-grid cols-2">
         <div className="form-group col-span-2">
           <label htmlFor="req-title">{copy.titleLabel}</label>
           <input
@@ -591,30 +616,12 @@ export default function RequestForm({
           </small>
         </div>
         )}
-      </div>
 
-      {/* ⭐ หัวข้อที่ใช้แบบฟอร์ม PDR ใช้มันแทนช่องรายละเอียดธรรมดา — ธง `hasPdr`
-          มาจากทะเบียนหัวข้อ ไม่ใช่การเทียบชื่อหัวข้อในฟอร์ม (มี ratchet ห้ามไว้) */}
-      {hasPdr && (
-        <PdrForm
-          value={value.pdr || emptyPdr()}
-          onChange={(pdr) => set({ pdr })}
-          briefs={value.briefs || []}
-          onBriefsChange={(briefs) => set({ briefs })}
-          disabled={disabled}
-          scentCount={scentCount}
-          customer={pdrDerived.customer || ""}
-          deal={pdrDerived.deal || ""}
-          coordinator={pdrDerived.coordinator || ""}
-          contactName={pdrDerived.contactName || ""}
-          contactPhone={pdrDerived.contactPhone || ""}
-          sampleDue={pdrDerived.sampleDue || ""}
-        />
-      )}
-
-      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ──────── */}
+      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ────────
+          อยู่ในโซน ② เพราะมันคือ "ขออะไร" ไม่ใช่ "งานไหน" — กลิ่น/สูตร/หมวดสินค้า
+          เป็นตัวตนของสิ่งที่ขอ ส่วนดีล/SO ในโซน ① คือบริบทของงานที่มันสังกัด */}
       {needsScent && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>
             {copy.scentLabel}
           </span>
@@ -637,7 +644,7 @@ export default function RequestForm({
           Mock-up สินค้ายังไม่มีในระบบ · ธง isExcise/requiresFdaNotice ติดมากับหมวด
           ทำให้ RD เห็นทันทีว่าตัวอย่างนี้เป็นสินค้าที่ต้องขึ้นทะเบียน/แจ้ง อย. หรือไม่ */}
       {needsProductType && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>ประเภทสินค้าที่จะขึ้นตัวอย่าง</span>
           <SearchableSelect
             value={value.productTypeId} disabled={disabled}
@@ -663,7 +670,7 @@ export default function RequestForm({
       )}
 
       {needsFormula && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.formulaLabel}</span>
           <SearchableSelect
             value={value.formulaId} disabled={disabled}
@@ -692,7 +699,7 @@ export default function RequestForm({
           ส่วนนี่คือ "หมวดไหน กลิ่นไหน" ซึ่งเป็นตัวตนของสูตรที่จะเกิด · ยัดสองอย่างนี้
           ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
       {lineShape === "product_dev" && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           <ProductDevLines
             rows={items.length ? items : [emptyProductDevRow()]}
@@ -707,7 +714,7 @@ export default function RequestForm({
 
       {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
       {(lineShape === "document" || lineShape === "billing_doc") && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
               คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
@@ -719,10 +726,37 @@ export default function RequestForm({
           />
         </div>
       )}
+      </div>
 
+      {/* ── โซน ③ แบบฟอร์ม PDR — เฉพาะหัวข้อที่ประกาศ `hasPdr` ────────────────
+          ⭐ ใช้แทนช่องรายละเอียดธรรมดา (ธง `hasPdr` มาจากทะเบียนหัวข้อ ไม่ใช่การ
+          เทียบชื่อหัวข้อในฟอร์ม — มี ratchet ห้ามไว้)
+          ⚠️ อยู่ **หลัง** เรื่องที่ขอเสมอ: PDR คือรายละเอียดของสิ่งที่เพิ่งบอกไป
+          วางไว้ก่อนชื่อเรื่องเมื่อไร คนจะเจอฟอร์ม 48 ช่องก่อนรู้ว่าตัวเองขออะไร */}
+      {hasPdr && (
+        <>
+          <FormZone title="③ แบบฟอร์ม PDR" note="กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก" />
+          <PdrForm
+            value={value.pdr || emptyPdr()}
+            onChange={(pdr) => set({ pdr })}
+            briefs={value.briefs || []}
+            onBriefsChange={(briefs) => set({ briefs })}
+            disabled={disabled}
+            scentCount={scentCount}
+            customer={pdrDerived.customer || ""}
+            deal={pdrDerived.deal || ""}
+            coordinator={pdrDerived.coordinator || ""}
+            contactName={pdrDerived.contactName || ""}
+            contactPhone={pdrDerived.contactPhone || ""}
+            sampleDue={pdrDerived.sampleDue || ""}
+          />
+        </>
+      )}
 
-      {/* ── 5) วันที่ต้องการคำตอบ + ด่วน ──────────────────────────────────── */}
-      <div className="form-grid">
+      {/* ── โซนสุดท้าย: กำหนด · ความเร่งด่วน · ไฟล์ ─────────────────────────
+          เลขโซนไล่ตามที่หัวข้อนั้นมีจริง — หัวข้อที่ไม่มี PDR โซนนี้คือ ③ */}
+      <FormZone title={`${hasPdr ? "④" : "③"} กำหนด ความเร่งด่วน และไฟล์`} />
+      <div className="form-grid cols-2">
         <div className="form-group">
           {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
               ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
@@ -759,16 +793,14 @@ export default function RequestForm({
             />
           </div>
         )}
-      </div>
 
-      {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ─────────────
+      {/* ── แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ────────────────
           ⭐ **ช่องไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่
           หน้าสร้างคำร้องเลย เพราะตอนนี้เหมือนต้องบันทึกก่อน") — ไฟล์เก็บใน
           `value.files` แล้วผู้เรียกอัปให้หลังได้ id (`uploadDraftFiles`) · เดิมซ่อน
           พร้อม @ ด้วยธง `deferAttachments` ทั้งที่กลไกอัปมีอยู่แล้ว
           ⚠️ @ ยังซ่อนตอนร่าง (`deferMentions`) — แจ้งเตือนออกตอนกดส่ง ไม่ใช่ตอน
           บันทึกร่าง โชว์ไว้จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรในจังหวะที่คนคาดว่าเกิด */}
-      <div className="form-grid">
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>แนบไฟล์</span>
           {/* ไฟล์ถูกอัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอกฟอร์ม) —

@@ -3582,6 +3582,35 @@ button.empty-state { width: 100%; font: inherit; }
 .form-field-label.split,
 .deal-field-label.split { justify-content: space-between; gap: var(--space-2); }
 
+/* ── หัวคั่นโซนของฟอร์มยาว (`ui/FormZone`) ────────────────────────────────
+   ชื่อโซนตัวจิ๋วพิมพ์ใหญ่ + เส้นลากยาวจนสุดแถว — บอกจังหวะโดยไม่แย่งน้ำหนัก
+   จากป้ายของช่องกรอก · โน้ตท้ายเส้นใช้กับเงื่อนไขของทั้งโซน
+   ⚠️ ระยะห่างบนมากกว่าล่างโดยตั้งใจ — หัวโซนต้องเกาะกับของที่มันครอบ ไม่ใช่ลอยกลาง */
+.form-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-5) 0 var(--space-2);
+}
+.form-zone:first-child { margin-top: 0; }
+/* จอแคบ: โน้ตลงบรรทัดของตัวเอง — ไม่งั้นมันบีบเส้นคั่นจนเหลือขีดสั้น ๆ 15px
+   (วัดจริงที่ 375px) ซึ่งอ่านเหมือนความผิดพลาดมากกว่าเส้นแบ่ง */
+@media (max-width: 560px) {
+  .form-zone-note { flex-basis: 100%; }
+}
+.form-zone-title {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  margin: 0;
+}
+.form-zone-rule { flex: 1; height: 1px; background: var(--border); }
+.form-zone-note { font-size: var(--fs-3); color: var(--text-3); }
+
 /* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
    หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
    ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */

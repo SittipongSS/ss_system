@@ -19,7 +19,7 @@ import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBri
 import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
   PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
-  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible,
+  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible, pdrSectionProgress,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 
@@ -82,10 +82,23 @@ function Derived({ label, value, from }) {
   );
 }
 
-function Section({ title, note, children, open = false }) {
+/* ── ส่วนพับของ PDR — หัวส่วนบอกด้วยว่ามีกี่ช่องและกรอกไปแล้วเท่าไร ──────
+   ⭐ มติผู้ใช้ 2026-08-09: ของเดิมโชว์แค่ชื่อส่วน ⇒ ต้องกางทั้ง 5 ลิ้นชักถึงจะรู้
+   ว่ายังขาดตรงไหน · ตอนนี้เห็นตั้งแต่ยังพับอยู่
+   ⚠️ นับจาก `pdrSectionProgress` ที่เดียว (ไม่นับช่องที่ระบบเติมและช่องที่ซ่อน
+   ตามประเภทคำขอ) — ตัวเลขบนหัวกับของที่กางออกมาต้องเป็นชุดเดียวกัน */
+function Section({ title, note, children, open = false, progress = null }) {
+  const done = progress && progress.total > 0 && progress.filled >= progress.total;
   return (
     <details className={styles.pdrSection} open={open}>
-      <summary className={styles.pdrSummary}>{title}</summary>
+      <summary className={styles.pdrSummary}>
+        <span>{title}</span>
+        {progress && progress.total > 0 && (
+          <span className={styles.pdrCount} data-done={done ? "1" : undefined}>
+            {progress.filled}/{progress.total} ช่อง
+          </span>
+        )}
+      </summary>
       <div className={styles.pdrBody}>
         {note && <small className={styles.hint}>{note}</small>}
         {children}
@@ -161,8 +174,8 @@ export default function PdrForm({
         <span className={styles.pdrCode}>FM-RD-01</span>
       </div>
 
-      <Section title={SECTION.request.title} open note={SECTION.request.note}>
-        <div className="form-grid">
+      <Section title={SECTION.request.title} open note={SECTION.request.note} progress={pdrSectionProgress(SECTION.request, value)}>
+        <div className="form-grid cols-2">
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
           <Derived label={label("department")} value="การขายและบริการ" from={FIELD.department.from} />
@@ -189,8 +202,8 @@ export default function PdrForm({
         </div>
       </Section>
 
-      <Section title={SECTION.customer.title}>
-        <div className="form-grid">
+      <Section title={SECTION.customer.title} progress={pdrSectionProgress(SECTION.customer, value)}>
+        <div className="form-grid cols-2">
           {/* ⚠️ นำหน้าผู้ติดต่อ (มติผู้ใช้) — "งานนี้คืองานไหน" ต้องรู้ก่อนรายละเอียดคน */}
           <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
           <Derived label={label("contactName")} value={contactName} from={FIELD.contactName.from} />
@@ -318,7 +331,7 @@ export default function PdrForm({
                 onChange={(e) => setBrief(i, { brief: e.target.value })}
               />
             </div>
-            <div className="form-grid">
+            <div className="form-grid cols-2">
               <div className="form-group">
                 <label htmlFor={`brief-insp-${i}`}>แรงบันดาลใจ</label>
                 <Input id={`brief-insp-${i}`} value={brief.inspiration || ""} disabled={disabled}
@@ -395,8 +408,8 @@ export default function PdrForm({
         ))}
       </Section>
 
-      <Section title={SECTION.spec.title}>
-        <div className="form-grid">
+      <Section title={SECTION.spec.title} progress={pdrSectionProgress(SECTION.spec, value)}>
+        <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="pdr-cost">{label("targetCost")}</label>
             <Input id="pdr-cost" value={value.targetCost} disabled={disabled}
@@ -463,7 +476,7 @@ export default function PdrForm({
         </div>
       </Section>
 
-      <Section title={SECTION.regulatory.title} note={SECTION.regulatory.note}>
+      <Section title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrSectionProgress(SECTION.regulatory, value)}>
         <ChipPicker
           label={label("documents")} options={PDR_DOCUMENTS} disabled={disabled}
           value={value.documents} onChange={(v) => set({ documents: v })}
@@ -494,7 +507,7 @@ export default function PdrForm({
           แทนที่จะเป็นเส้นว่างทุกใบ
           ⚠️ ช่องวนจากทะเบียนโดยตั้งใจ — ป้ายตำแหน่งต้องตรงกับที่กระดาษพิมพ์เป๊ะ
           ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
-      <Section title={SECTION.signers.title} note={SECTION.signers.note}>
+      <Section title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrSectionProgress(SECTION.signers, value)}>
         {SECTION.signers.fields.map((f) => (
           <div className="form-group" key={f.key}>
             <label htmlFor={`pdr-${f.key}`}>{f.label}</label>

@@ -312,11 +312,28 @@
 }
 
 .pdrSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   font-size: var(--fs-5);
   font-weight: var(--fw-semibold);
   cursor: pointer;
 }
+
+/* ⚠️ ตัวนับชิดขวาแต่เว้นที่ให้ลูกศรของ <details> — `list-style` ของ summary อยู่
+   ซ้ายสุด ถ้าใช้ margin-left:auto กับตัวนับอย่างเดียวมันจะชนขอบการ์ดพอดี */
+.pdrCount {
+  margin-left: auto;
+  margin-right: var(--space-1);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ครบทั้งส่วนแล้ว — เขียว ไม่ใช่ accent เพราะมันคือ "ผ่านแล้ว" ไม่ใช่ "กำลังเลือกอยู่" */
+.pdrCount[data-done] { color: var(--green); }
 
 .pdrSummary:hover { color: var(--accent-ink); }
 
@@ -381,3 +398,45 @@
 /* เลยกำหนดแล้ว — สีบอกความเร่งด่วน ไม่ใช่ตกแต่ง
    ⚠️ ไม่มีแถบสีที่ขอบแถว/การ์ด (ม-59) — ใช้สีตัวอักษรบนวันที่ที่เลยแล้วเท่านั้น */
 .overdue { color: var(--red); }
+
+/* ── แถบบริบท: ขั้นเลือกฝ่าย/หัวข้อที่ยุบแล้ว ───────────────────────────
+   มติผู้ใช้ 2026-08-09 — ขั้นที่ตัดสินใจไปแล้วเหลือหนึ่งบรรทัด: ฝ่าย · หัวข้อ ·
+   ป้ายบริบทของหัวข้อ (ประเภทดีล/ขั้นในไทม์ไลน์) · ปุ่มเปลี่ยนชิดขวา
+   ⚠️ ไม่ใช่หัวการ์ด — มันอยู่ **ในฟอร์ม** และเลื่อนไปกับเนื้อ เพราะเป็นสิ่งที่
+   ผู้ใช้เลือกเอง ไม่ใช่ชื่อหน้า (ชื่อหน้าคือ "เปิดคำร้อง" ที่หัว Workspace) */
+.ctxBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+/* รหัสฝ่ายใช้สีของ "ของกลางที่อ่านเป็นรหัส" ชุดเดียวกับป้ายฝ่ายในคิวคำร้อง */
+.ctxDept {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  color: var(--teal);
+  border: 1px solid var(--teal);
+  background: var(--teal-soft);
+  border-radius: var(--radius);
+  padding: var(--space-0-5) var(--space-2);
+}
+
+.ctxKind { font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text-1); }
+
+/* ป้ายบริบท — บอกว่าใบนี้เกาะอะไรอยู่ ไม่ใช่ปุ่ม จึงไม่มี hover/cursor */
+.ctxTag {
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2-5);
+}
+
+.ctxAction { margin-left: auto; }
