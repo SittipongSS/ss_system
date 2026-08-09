@@ -19,6 +19,14 @@
 --
 -- ⚠ DML ล้วน (INSERT/UPDATE) — รันผ่าน Supabase SQL Editor หรือ service role ก็ได้
 --   รันซ้ำไม่เสียหาย (ON CONFLICT DO NOTHING / UPDATE เฉพาะตอนยังว่าง)
+--
+-- 🐞 **ฐานที่ถูก seed ผ่าน UI มาก่อนแล้ว** (สร้างร่างจากหน้าตั้งค่า → เผยแพร่) จะได้ id
+--    เป็น `document-standard-pdr-<uuid>` ตามที่ `createDocumentStandardDraft` ออกให้
+--    ⇒ `ON CONFLICT (id) DO NOTHING` **กันไม่ได้** เพราะคนละ id · ผลคือมีแถว
+--    `status = 'published'` ของ `pdr` **สองแถว** แล้ว `publishedNumberingPattern`
+--    กับ route พิมพ์เอกสารที่ใช้ `.eq('status','published').maybeSingle()` จะ error
+--    แล้วตกไปใช้ค่าสำรองเงียบ ๆ
+--    ⇒ ด่านจริงคือ `WHERE NOT EXISTS (… ของ pdr …)` ไม่ใช่การชน id
 
 INSERT INTO public.document_standards ("documentKey")
 VALUES ('pdr')
@@ -31,7 +39,7 @@ INSERT INTO public.document_standard_versions (
   "updatedById", "updatedByName", "updatedByRole",
   "publishedById", "publishedByName", "publishedByRole", "publishedAt"
 )
-VALUES (
+SELECT
   'document-standard-pdr-v1', 'pdr', 1, 'published',
   'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์', 'PRODUCT DEVELOPMENT REQUEST (PDR)',
   'FM-RD-01', '02', DATE '2026-02-06', 'terracotta',
@@ -40,8 +48,9 @@ VALUES (
   'migration-0226', 'Migration 0226', 'system',
   'migration-0226', 'Migration 0226', 'system',
   'migration-0226', 'Migration 0226', 'system', now()
-)
-ON CONFLICT (id) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.document_standard_versions WHERE "documentKey" = 'pdr'
+);
 
 UPDATE public.document_standards
 SET "publishedVersionId" = 'document-standard-pdr-v1',
