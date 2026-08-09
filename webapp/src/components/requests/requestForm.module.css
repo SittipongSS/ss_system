@@ -443,5 +443,8 @@
 
 /* ช่องเลือก + ปุ่มยืนยันเพิ่ม (สินค้า FG) — ปุ่มไม่ยืด ช่องกินที่เหลือ
    ⚠️ ปุ่มชิดบนไม่ได้ ต้อง `align-items: flex-start` เพราะช่องค้นหาสูงกว่าปุ่ม */
-.pickAdd { display: flex; align-items: flex-start; gap: var(--space-2); }
+/* แถว "เลือกแล้วกดเพิ่ม" — ตัวเลือกยืดเต็ม ปุ่มยืนขวา
+   ⚠️ `stretch` ไม่ใช่ `flex-start` — ตัวเลือกสูง 36 แต่ปุ่ม sm สูง 30 ⇒ ขอบล่าง
+   เหลื่อมกัน 6px มองออกชัดตอนอยู่ติดกัน (ผู้ใช้ทักมา 2026-08-09) */
+.pickAdd { display: flex; align-items: stretch; gap: var(--space-2); }
 .pickAdd > :first-child { flex: 1; min-width: 0; }

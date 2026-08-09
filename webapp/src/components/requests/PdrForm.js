@@ -341,6 +341,10 @@ export default function PdrForm({
                 value={kindPick}
                 disabled={disabled}
                 onChange={setKindPick}
+                // ป้ายอยู่ข้างบนแล้ว — ป้ายในตัวจะซ้อนสองชั้นและดันตัวเลือกให้เตี้ยกว่า
+                // ปุ่ม "เพิ่ม" คนละแนว (ท่าเดียวกับช่องเลือก FG ในฟอร์มคำร้อง)
+                label={null}
+                ariaLabel="เลือกหมวดสินค้าที่จะเพิ่ม"
               />
               <Button
                 size="sm" icon={<Plus size={14} aria-hidden="true" />}
