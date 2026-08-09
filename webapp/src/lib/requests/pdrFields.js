@@ -22,6 +22,7 @@
 // เดียวกันทั้งตอนกันไม่ให้เปิดใบผิด และตอนพิมพ์ลงกระดาษ
 import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
 import { categoryLabel } from '@/lib/master/categoryOf';
+import { fmtDate } from '@/lib/format';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -409,6 +410,10 @@ export function pdrFieldText(field, request = {}, context = {}) {
   if (raw == null || String(raw).trim() === '') return null;
   if (field.type === 'select') return labelOf(field.options || [], raw) || String(raw);
   if (field.type === 'money') return money(raw);
+  // ⚠️ ช่อง `type: 'date'` เคยตกมาที่ `String(raw)` ท้ายไฟล์ ⇒ พิมพ์ ISO ดิบลงกระดาษ
+  // (ข้อ 1.13 วันที่ต้องการสินค้า · 1.14 วันที่ต้องการจำหน่าย) · คอลัมน์เป็น `date`
+  // ล้วน `fmtDate` จึงเดินทาง date-only ไม่แปลงเป็น moment = ไม่มีวันเลื่อนจาก timezone
+  if (field.type === 'date') return fmtDate(String(raw).trim());
   return String(raw).trim();
 }
 
@@ -604,15 +609,20 @@ export function pdrSectionGroups(section, request = null, context = {}) {
 //
 // ⚠️ **ไม่ถอยไปใช้ `createdAt`** — สองวันนี้ต่างกันจริงเมื่อร่างค้างไว้ก่อนกดส่ง
 // และกระดาษถามหา "วันที่ร้องขอ" ซึ่งคือวันที่เรื่องออกจากมือผู้ขอ ไม่ใช่วันที่เริ่มพิมพ์
+// ⚠️ **DD/MM/YYYY ไม่ใช่ ISO** (มติผู้ใช้ 2026-08-10) — เดิมคืน `slice(0, 10)` ดิบ ⇒
+// หัวใบพิมพ์ "2026-08-07" ซึ่งเป็นรูปของฐานข้อมูล ไม่ใช่รูปที่คนไทยอ่านวันที่
+// ผ่าน `fmtDate` ตัวกลาง (ค.ศ. เหมือนทั้งระบบ — พ.ศ. ใช้เฉพาะ "วันที่มีผล" ของ
+// เอกสารควบคุมเท่านั้น) · **คงค่า null ไว้** ไม่ให้กลายเป็น "-" เพราะร่างที่ยังไม่ส่ง
+// ต้องขึ้น N/A ตามกติกาของช่อง ไม่ใช่ขีดที่อ่านเหมือนว่าไม่มีวัน
 function requestedAtText(request = {}) {
   const at = request.submittedAt || null;
-  return at ? String(at).slice(0, 10) : null;
+  return at ? fmtDate(String(at).slice(0, 10)) : null;
 }
 
 function sampleDueText(request = {}) {
   const at = request.requestedDueDate || null;
   if (!at && !request.urgent) return null;
-  return `${at || 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
+  return `${at ? fmtDate(at) : 'ยังไม่ระบุวัน'}${request.urgent ? ' · ด่วน' : ''}`;
 }
 
 // ⚠️ `salesOrderLines` = บรรทัดของใบสั่งขายที่ผูกอยู่ — ใช้หา **จำนวนกลิ่นที่ขาย**
