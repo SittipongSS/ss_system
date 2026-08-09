@@ -15,12 +15,12 @@
 // ในจังหวะเดียวกับที่ฟอร์มเปิดคำร้องได้ `ui/Tabs` + `ui/SectionRail` ⇒ ระบบมีแท็บ
 // สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
 // components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
-import PdrForm from "@/components/requests/PdrForm";
+import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import PdrSummary from "@/components/requests/PdrSummary";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import { PDR_SECTIONS, pdrSectionProgress } from "@/lib/requests/pdrFields";
@@ -29,10 +29,16 @@ import styles from "./details.module.css";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep,
-  pdrDraft, onPdrDraftChange, onPdrEdit, onPdrSave, onPdrCancel, onOpenDocument,
+  pdrDraft, onPdrDraftChange, onPdrSave, onPdrCancel,
 }) {
   const [view, setView] = useState("work");
   const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
+  // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — สองฝั่งมีหมวดคนละชุด (ฝั่งแก้มี "บรีฟกลิ่น")
+  const [draftSection, setDraftSection] = useState("request");
+
+  // ⚠️ ปุ่ม "แก้แบบฟอร์ม PDR" อยู่ที่แผงจัดการ (นอก component นี้) — กดตอนอยู่แท็บ
+  // "งาน" แล้วต้องพาไปแท็บที่แก้ได้เอง ไม่ใช่เปิดโหมดแก้ทิ้งไว้ในแท็บที่มองไม่เห็น
+  useEffect(() => { if (pdrDraft) setView("pdr"); }, [pdrDraft]);
   const active = PDR_SECTIONS.find((s) => s.key === sectionKey) || PDR_SECTIONS[0];
   const context = { ...(request.pdrContext || {}), briefs: request.briefs || [] };
 
@@ -65,15 +71,26 @@ export default function ScentDevDetail({
         <div className={styles.pdrBlock}>
           {pdrDraft ? (
             <>
-              {/* โหมดแก้ = ฟอร์มเต็มในแท็บ (มีทั้งหน้าให้แล้ว ไม่เบียดเธรด) —
-                  ฟอร์มแก้=ฟอร์มสร้างตัวเดิม (กฎ AGENTS.md) · แบ่งหมวดฝั่งแก้
-                  เป็นงวดถัดไปของแผน ถ้าใช้จริงแล้วยังยาวไป */}
-              <PdrForm
-                value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
-                briefs={pdrDraft.briefs}
-                onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
-                disabled={saving}
-              />
+              {/* ⭐ **ฟอร์มแก้ = ฟอร์มสร้างตัวเดิม รวมถึงผังด้วย** (มติผู้ใช้ 2026-08-09)
+                  — เดิมส่ง `PdrForm` แบบไม่มีรางออกมา ⇒ ฝั่งกรอกที่หน้าเปิดคำร้อง
+                  เป็นรางข้าง แต่ฝั่งแก้ที่นี่เป็นลิ้นชักยาวทั้งหน้า · คนละหน้าตาทั้งที่
+                  เป็นฟอร์มเดียวกัน ซึ่งเป็นโรคที่ AGENTS.md ห้ามไว้ตรง ๆ
+                  ⚠️ รางใช้ `section`/`onChange` ชุดเดียวกับหน้าเปิดคำร้อง — ตัวนับ
+                  ต่อหมวดมาจาก `pdrRailSections` ที่เดียว */}
+              <SectionRail
+                ariaLabel="หมวดของแบบฟอร์ม"
+                value={draftSection}
+                onChange={setDraftSection}
+                sections={pdrRailSections(pdrDraft.pdr, pdrDraft.briefs)}
+              >
+                <PdrForm
+                  section={draftSection}
+                  value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
+                  briefs={pdrDraft.briefs}
+                  onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
+                  disabled={saving}
+                />
+              </SectionRail>
               <div className={`action-bar ${styles.pdrActions}`}>
                 <Button variant="quiet" disabled={saving} onClick={onPdrCancel}>ยกเลิก</Button>
                 <Button tone="primary" disabled={saving} onClick={onPdrSave}>บันทึกแบบฟอร์ม</Button>
@@ -93,14 +110,10 @@ export default function ScentDevDetail({
               onChange={setSectionKey}
               ariaLabel="หมวดของแบบฟอร์ม"
             >
+              {/* ⚠️ **ไม่มีปุ่มระดับใบตรงนี้แล้ว** (มติผู้ใช้ 2026-08-09) — "ออกเอกสาร"
+                  กับ "แก้แบบฟอร์ม PDR" ทำอะไรกับ *ทั้งใบ* จึงย้ายไปแผงจัดการรวมกับ
+                  ส่ง/แก้ข้อมูล/ลบ · ปุ่มระดับใบกระจายสองที่คือสิ่งที่ ม-49 ห้ามไว้ */}
               <PdrSummary request={request} briefs={request.briefs || []} sections={[active]} />
-              {request._canEditPdr && (
-                <div className={`action-bar ${styles.pdrActions}`}>
-                  {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับออกเป็น HTML */}
-                  <Button variant="quiet" onClick={onOpenDocument}>ดูฉบับที่ออกจริง</Button>
-                  <Button variant="quiet" disabled={saving} onClick={onPdrEdit}>แก้แบบฟอร์ม PDR</Button>
-                </div>
-              )}
             </SectionRail>
           )}
         </div>

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, FolderKanban, Handshake, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -573,6 +573,30 @@ export default function RequestDetailPage() {
         }),
       },
       {
+        // ⭐ **ออกเอกสาร** (มติผู้ใช้ 2026-08-09) — เดิมชื่อ "ดูฉบับที่ออกจริง" และ
+        // ซ่อนอยู่ในแท็บแบบฟอร์ม · เป็นของระดับใบจึงย้ายมารวมที่แผงจัดการ
+        // ⚠️ ป้ายสั้นกว่าเดิมแต่ยังไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็นหน้า HTML
+        id: "pdr-document",
+        label: "ออกเอกสาร",
+        kind: "open",
+        icon: FileText,
+        onClick: () => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank"),
+        visible: requestHasPdr(req.kind),
+      },
+      {
+        // ⭐ แก้แบบฟอร์ม PDR — ย้ายมาจากในแท็บด้วยเหตุผลเดียวกัน · สิทธิ์สลับมือ
+        // ที่จังหวะ "รับเรื่อง" ซึ่ง server ตัดสินมาให้แล้ว (`_canEditPdr`)
+        id: "pdr-edit",
+        label: "แก้แบบฟอร์ม PDR",
+        kind: "edit",
+        icon: Pencil,
+        onClick: () => setPdrDraft({
+          pdr: pdrValuesFrom(req),
+          briefs: (req.briefs || []).map((b) => ({ ...b })),
+        }),
+        visible: requestHasPdr(req.kind) && !!req._canEditPdr && !pdrDraft,
+      },
+      {
         // ⭐ **แก้ข้อมูลคำร้อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้ใบที่บันทึกแล้ว
         // แก้ไม่ได้เลยสักช่อง ต้องลบทิ้งเปิดใหม่แม้แค่พิมพ์ชื่อเรื่องผิด
         // ⚠️ แก้ได้เฉพาะช่องที่ไม่กระทบว่าใบผูกกับอะไร (ดู lib/requests/requestEdit.js)
@@ -888,15 +912,10 @@ export default function RequestDetailPage() {
         pdrDraft={pdrDraft}
         onPdrDraftChange={setPdrDraft}
         onPdrCancel={() => setPdrDraft(null)}
-        onPdrEdit={() => setPdrDraft({
-          pdr: pdrValuesFrom(req),
-          briefs: (req.briefs || []).map((b) => ({ ...b })),
-        })}
         onPdrSave={() => call("", {
           method: "PATCH",
           body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
         }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
-        onOpenDocument={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
       />
 
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
