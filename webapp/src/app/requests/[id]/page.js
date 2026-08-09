@@ -898,7 +898,7 @@ export default function RequestDetailPage() {
           ⚠️ ช่องมาจาก `RequestEditableFields` ตัวเดียวกับฟอร์มเปิดคำร้อง — ห้ามวาง
           Input/Textarea เองที่นี่ (กฎ AGENTS.md · เคยเพี้ยนมาแล้ว 6 จุด) */}
       {editDraft && (
-        <DetailCard icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง">
+        <DetailCard icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง" className={styles.editCard}>
           <div className="form-grid cols-2">
             <RequestTitleBodyFields
               value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
