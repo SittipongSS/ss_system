@@ -197,8 +197,14 @@ export async function findRequest(supabase, id) {
     salesOrderLines = lines || [];
   }
 
+  // ⚠️ ทะเบียนหมวดสินค้า — ช่อง "ประเภทสินค้า" (PDR 1.11) เก็บรหัสล้วน · โหลดที่นี่
+  // ที่เดียวแล้วส่งเข้า context ⇒ ทั้งจอสรุปและเอกสารที่ออกจริงได้ชื่อชุดเดียวกัน
+  const { data: categories } = await supabase
+    .from('product_types').select('"mainCategoryCode", "typeCode", "nameTh", "nameEn"');
+
   withBriefs.pdrContext = pdrContext({
     request: withBriefs, project, customer, deal, briefs: briefs || [], salesOrderLines,
+    categories: categories || [],
   });
 
   const items = await attachRowPrice(supabase, withBriefs.items || []);

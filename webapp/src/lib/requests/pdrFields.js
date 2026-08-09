@@ -499,10 +499,16 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
  * ต้องไม่ถูกดูดมารวมกันข้ามลำดับบนกระดาษ
  *
  * คืน [{ no, title, fields }] · `title` = ชื่อกลุ่มถ้ามี ไม่งั้นเป็นป้ายของช่องเดียวนั้น
+ *
+ * ⚠️ ต้องส่ง `request`/`context` มาด้วยเพื่อ **ตัดช่อง `legacy` ที่ใบนี้ไม่มีค่า** —
+ * กติกาเดียวกับ `pdrSectionRows` · ไม่ตัด กระดาษทุกใบใหม่จะมีบรรทัด
+ * "ประเภทสินค้า (บันทึกไว้เดิม): N/A" ติดมาตลอด (เคยหลุดมาแล้วรอบหนึ่ง)
  */
-export function pdrSectionGroups(section) {
+export function pdrSectionGroups(section, request = null, context = {}) {
+  const keep = (field) => !field.legacy || !request
+    || (pdrFieldText(field, request, context) ?? '') !== '';
   const out = [];
-  for (const field of section?.fields || []) {
+  for (const field of (section?.fields || []).filter(keep)) {
     const last = out[out.length - 1];
     if (field.group && last?.group === field.group) {
       last.fields.push(field);
@@ -554,6 +560,10 @@ function sampleDueText(request = {}) {
 // ไม่ใช่จำนวนก้อนบรีฟ (ดูเหตุผลที่ `case 'scentCount'`) · ไม่ส่งมา = ช่องนั้นขึ้น N/A
 export function pdrContext({
   request = {}, project = null, customer = null, deal = null, briefs = [], salesOrderLines = null,
+  // ⚠️ ทะเบียนหมวดสินค้า — ช่อง `type:'categories'` เก็บแต่รหัส (`MM-TTT`) ชื่อจึงต้อง
+  // มาจากทะเบียน · ไม่ส่งมา = จอ/กระดาษพิมพ์รหัสเปล่า ("01-005 · 01-003") ซึ่งอ่านไม่ออก
+  // ⇒ อยู่ใน context ตัวกลางที่เดียว ไม่ใช่ต่างจอต่างเดินสายเอง (จอไหนลืมก็เพี้ยนจอนั้น)
+  categories = [],
 } = {}) {
   const primary = (Array.isArray(customer?.contacts) ? customer.contacts[0] : null) || {};
   const phone = primary.phone || customer?.contactPhone || null;
@@ -573,5 +583,6 @@ export function pdrContext({
     sampleDue: sampleDueText(request),
     scentCount: salesOrderLines ? scentCountForOrder(salesOrderLines) : null,
     briefs,
+    categories,
   };
 }

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   PDR_COLUMNS, PDR_FIELDS, PDR_SECTIONS,
-  pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrSectionRows,
+  pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrSectionGroups, pdrSectionRows,
 } from './pdrFields.js';
 import { normalizePdr } from './pdr.js';
 import { renderPdrDocument } from './pdrDocument.js';
@@ -315,4 +315,48 @@ test('2.9 Value Proposition เป็น "ติ๊กแล้วเขีย�
     assert.equal(f.type, 'tick', key);
     assert.equal(f.group, 'Value Proposition', key);
   }
+});
+
+// ── หมวดสินค้า: รหัสในฐานข้อมูล ชื่อบนจอ ─────────────────────────────────
+//
+// 🐞 ผู้ใช้ทักมาเอง (2026-08-09): เพิ่มหมวดในฟอร์มแล้วป้ายขึ้น "01-005 อโรม่าออยล์"
+// แต่จอสรุปกับเอกสารพิมพ์ "01-005 · 01-003" เปล่า ๆ เพราะทะเบียนหมวดไม่ได้เดินทาง
+// ไปถึงสองที่นั้น ⇒ ทะเบียนต้องอยู่ใน `pdrContext` ตัวกลาง ไม่ใช่ต่างจอต่างเดินสาย
+const CATEGORY_REGISTRY = [
+  { mainCategoryCode: '01', typeCode: '005', nameTh: 'อโรม่าออยล์' },
+  { mainCategoryCode: '01', typeCode: '003', nameTh: 'เทียนหอม' },
+];
+
+test('⭐ ป้ายหมวดสินค้ามาจากทะเบียนใน context — ไม่ใช่รหัสเปล่า', () => {
+  const field = PDR_FIELDS.find((f) => f.key === 'productKinds');
+  const request = { pdrProductKinds: ['01-005', '01-003'] };
+  assert.equal(
+    pdrFieldText(field, request, pdrContext({ categories: CATEGORY_REGISTRY })),
+    '01-005 อโรม่าออยล์ · 01-003 เทียนหอม',
+  );
+  // ⚠️ ไม่มีทะเบียน = พิมพ์รหัสดิบ ไม่ใช่ค่าว่าง — ใบที่มีข้อมูลต้องอ่านออกเสมอ
+  assert.equal(pdrFieldText(field, request, {}), '01-005 · 01-003');
+});
+
+test('⭐ ช่อง legacy ที่ว่างต้องไม่ติดไปบนกระดาษ — ทั้งแบบรายแถวและแบบจัดกลุ่ม', () => {
+  const section = PDR_SECTIONS.find((s) => s.key === 'customer');
+  const legacyField = PDR_FIELDS.find((f) => f.key === 'productKind');
+  assert.equal(legacyField.legacy, true, 'productKind ต้องยังเป็นช่อง legacy');
+
+  const empty = { pdrProductKinds: ['01-005'] };
+  const groupTitles = (request) => pdrSectionGroups(section, request, {})
+    .flatMap((g) => g.fields.map((f) => f.key));
+  assert.ok(!groupTitles(empty).includes('productKind'), 'ใบใหม่ต้องไม่มีบรรทัด legacy');
+  assert.ok(
+    !pdrSectionRows(section, empty, { includeEmpty: true })
+      .some(([label]) => label === legacyField.label),
+  );
+
+  // ใบเก่าที่มีค่าจริงต้องยังอ่านได้ทั้งสองทาง
+  const old = { pdrProductKind: 'ครีมบำรุงผิว' };
+  assert.ok(groupTitles(old).includes('productKind'));
+  assert.ok(
+    pdrSectionRows(section, old, { includeEmpty: true })
+      .some(([label, value]) => label === legacyField.label && value === 'ครีมบำรุงผิว'),
+  );
 });
