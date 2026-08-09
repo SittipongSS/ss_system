@@ -3660,6 +3660,7 @@ button.empty-state { width: 100%; font: inherit; }
 /* คำขยาย (รายละเอียด/วันที่) หดได้ก่อนเพื่อน — ชื่อของต้องไม่โดนตัด */
 .line-summary-sub { color: var(--text-3); font-size: var(--fs-4); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line-summary-open { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }
+.line-empty { margin: 0; font-size: var(--fs-5); color: var(--text-3); }
 
 /* ── รางเลือกส่วนสองชั้น (`ui/SectionRail`) ────────────────────────────────
    ⚠️ จอแคบกลายเป็นแถบเลื่อนแนวนอน ไม่ยุบเป็นดรอปดาวน์ — ตัวเลขที่กรอกแล้วของ

@@ -21,10 +21,14 @@ export default function EditableLineList({
   children,              // ตัวแก้ไขของบรรทัดที่เปิดอยู่
   onAdd,
   addLabel = "เพิ่มรายการ",
+  emptyText = "ยังไม่มีรายการ — กดปุ่มข้างล่างเพื่อเพิ่มรายการแรก",
   disabled = false,
 }) {
   return (
     <div className="line-list">
+      {/* ⚠️ ยังไม่มีแถวเลยต้อง **บอกว่าให้ทำอะไร** ไม่ใช่ปล่อยว่าง — ใบเพิ่งเลือกหัวข้อ
+          จะมาถึงตรงนี้พร้อมศูนย์แถวเสมอ (มติผู้ใช้ 2026-08-09) */}
+      {count === 0 && <p className="line-empty">{emptyText}</p>}
       {Array.from({ length: count }, (_, i) => (i === active ? (
         <div className="line-open" key={`open-${i}`}>{children}</div>
       ) : (

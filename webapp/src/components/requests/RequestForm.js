@@ -32,8 +32,8 @@ import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
 import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
-import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
-import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
+import ProductDevLines from "@/components/requests/ProductDevLines";
+import DocumentLines from "@/components/requests/DocumentLines";
 import PdrForm, { emptyPdr, pdrRailSections } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
@@ -109,14 +109,13 @@ export const emptyRequestForm = (over = {}) => ({
 
 // รายการตั้งต้นตามรูปร่างบรรทัดของหัวข้อ
 // (ไม่ export: ใช้เฉพาะในไฟล์นี้ · export ที่ไม่มีผู้เรียกคือโค้ดตายที่ lint ไม่จับ)
-function itemsForKind(kind, existing = []) {
-  // ⚠️ บรรทัดแต่ละรูปร่างเป็นคนละโครง — สลับหัวข้อมาแล้วต้องเริ่มใหม่ ไม่ใช่ลาก
-  // บรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
-  // ⭐ ตัดสินจาก **รูปร่างบรรทัด** ไม่ใช่ชื่อหัวข้อ — ฝ่ายที่เพิ่มหัวข้อใหม่ที่ใช้รูปร่าง
-  // เดิมจะได้แถวเปล่าถูกชนิดทันที โดยไม่ต้องมาต่อชื่อหัวข้อไว้ในฟอร์ม
-  const shape = lineShapeForKind(kind);
-  if (shape === 'product_dev') return [emptyProductDevRow()];
-  if (shape === 'document' || shape === 'billing_doc') return [emptyDocumentRow()];
+function itemsForKind() {
+  // ⚠️ **เริ่มที่ศูนย์แถวเสมอ** (มติผู้ใช้ 2026-08-09: "กดเพิ่มรายการก่อน ยังไม่ได้มี
+  // รายการแรก") — ของเดิมงอกแถวเปล่าให้ทันทีที่เลือกหัวข้อ ⇒ ใบที่คนยังไม่ได้แตะ
+  // รายการเลยก็มีแถวว่างติดไปด้วย และเกจ "รายการอย่างน้อย 1 รายการ" ก็ติ๊กเขียว
+  // ทั้งที่ยังไม่มีของจริงสักชิ้น
+  // ⚠️ สลับหัวข้อยังต้องล้างแถวเดิมอยู่ — บรรทัดแต่ละรูปร่างเป็นคนละโครง ลากข้าม
+  // หัวข้อแล้วจะได้แถวที่ไม่มีหมวด/กลิ่น (นี่คือเหตุผลเดิมของฟังก์ชันนี้)
   return [];
 }
 
@@ -838,7 +837,7 @@ export default function RequestForm({
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           <ProductDevLines
-            rows={items.length ? items : [emptyProductDevRow()]}
+            rows={items}
             onChange={(rows) => set({ items: rows })}
             categories={productTypes}
             scents={scents}
@@ -855,7 +854,7 @@ export default function RequestForm({
           {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
               คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
           <DocumentLines
-            rows={items.length ? items : [emptyDocumentRow()]}
+            rows={items}
             onChange={(rows) => set({ items: rows })}
             vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
             disabled={disabled}

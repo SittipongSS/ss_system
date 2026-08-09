@@ -15,9 +15,17 @@ const registry = {
 };
 
 test('ครบทั้งหมวดและกลิ่น — รหัส+ชื่อ ทั้งสองฝั่ง คั่นด้วย ×', () => {
-  const { main, sub } = productDevRowText({ categoryCode: '001', scentId: 'SC-1' }, 0, registry);
+  const { main } = productDevRowText({ categoryCode: '001', scentId: 'SC-1' }, 0, registry);
   assert.equal(main, '001 ครีมบำรุงผิว × PF1093001 ARMANI POWER OF YOU');
-  assert.ok(sub, 'ต้องมีวันที่ของกลิ่น');
+});
+
+test('คำขยาย = วันที่ของกลิ่น · จำนวน+หน่วย (มติ 2026-08-09)', () => {
+  const full = productDevRowText({ categoryCode: '001', scentId: 'SC-1', qty: '3', unit: 'ขวด' }, 0, registry);
+  assert.match(full.sub, / · 3 ขวด$/);
+  // จำนวนไม่มีหน่วยก็ยังต้องโชว์ — คนกรอกเลขไว้ก่อนเป็นเรื่องปกติ
+  assert.match(productDevRowText({ scentId: 'SC-2', qty: '5' }, 0, registry).sub, /^5$/);
+  // หน่วยลอย ๆ ที่ไม่มีจำนวนไม่ใช่ข้อมูล — ไม่ต้องโชว์
+  assert.equal(productDevRowText({ scentId: 'SC-2', unit: 'ขวด' }, 0, registry).sub, '');
 });
 
 test('หมวดที่มีแต่ชื่ออังกฤษก็ใช้ได้ — ไม่ปล่อยให้เหลือแต่รหัส', () => {

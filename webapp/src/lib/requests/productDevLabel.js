@@ -20,7 +20,9 @@ function findCategory(categories, code) {
  * ข้อความของแถว — `{ main, sub }`
  *
  * `main` = "รหัส ชื่อหมวด × รหัส ชื่อกลิ่น" (เท่าที่เลือกแล้ว) · ยังไม่เลือกอะไรเลย
- * ถอยไปใช้ "รายการที่ N" · `sub` = วันที่ของกลิ่น (ว่างได้)
+ * ถอยไปใช้ "รายการที่ N"
+ * `sub` = "วันที่ของกลิ่น · จำนวน+หน่วย" (มติผู้ใช้ 2026-08-09) — สองอย่างนี้เป็น
+ * ของที่ต่างกันได้ทั้งที่หมวด×กลิ่นเหมือนกัน จึงต้องเห็นตอนแถวยุบ · ว่างได้ทั้งคู่
  */
 export function productDevRowText(row = {}, index = 0, { categories = [], scents = [] } = {}) {
   const category = findCategory(categories, row.categoryCode);
@@ -30,8 +32,14 @@ export function productDevRowText(row = {}, index = 0, { categories = [], scents
     : '';
   const scentText = scent ? [scent.code, scent.name].filter(Boolean).join(' ') : '';
   const main = [categoryText, scentText].filter(Boolean).join(' × ');
+
+  // ⚠️ จำนวนไม่มีหน่วยก็ยังมีความหมาย (คนกรอก "3" ไว้ก่อน) — โชว์เท่าที่มี
+  const qty = String(row.qty ?? '').trim();
+  const unit = String(row.unit ?? '').trim();
+  const qtyText = qty ? [qty, unit].filter(Boolean).join(' ') : '';
+
   return {
     main: main || `รายการที่ ${index + 1}`,
-    sub: scent?.createdAt ? fmtDate(scent.createdAt) : '',
+    sub: [scent?.createdAt ? fmtDate(scent.createdAt) : '', qtyText].filter(Boolean).join(' · '),
   };
 }
