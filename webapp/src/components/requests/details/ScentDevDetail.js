@@ -9,8 +9,16 @@
 //   · งาน = การ์ด direction + ตารางสรุป (+เธรดที่เปลือกวางต่อท้าย)
 //   · แบบฟอร์ม PDR = **สองชั้นแบบด้านข้าง** — รายการหมวดซ้าย (ตัวนับครบ x/y)
 //     เนื้อหมวดขวา · อ่าน/แก้อยู่ในแท็บนี้ ไม่เบียดเธรดอีก
+//
+// ⚠️ **แท็บกับรางใช้ของกลาง ไม่ใช่ของหน้านี้เอง** (2026-08-09) — เดิมหน้านี้เขียน
+// แถบแท็บ (`.viewTabs` = ปุ่มสองปุ่มติด role="tab") และรางหมวด (`.pdrNav`) ของตัวเอง
+// ในจังหวะเดียวกับที่ฟอร์มเปิดคำร้องได้ `ui/Tabs` + `ui/SectionRail` ⇒ ระบบมีแท็บ
+// สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
+// components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
 import { useState } from "react";
 import Button from "@/components/ui/Button";
+import Tabs from "@/components/ui/Tabs";
+import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
 import PdrForm from "@/components/requests/PdrForm";
 import PdrSummary from "@/components/requests/PdrSummary";
@@ -30,21 +38,12 @@ export default function ScentDevDetail({
 
   return (
     <>
-      {/* ชั้นแรก: แท็บมุมมอง — ปุ่มเดียวกันทั้งสองสถานะ ไม่ก๊อปเนื้อ */}
-      <div className={styles.viewTabs} role="tablist" aria-label="มุมมองของใบ">
-        <Button
-          variant={view === "work" ? undefined : "quiet"} tone={view === "work" ? "primary" : undefined}
-          onClick={() => setView("work")} role="tab" aria-selected={view === "work"}
-        >
-          งาน
-        </Button>
-        <Button
-          variant={view === "pdr" ? undefined : "quiet"} tone={view === "pdr" ? "primary" : undefined}
-          onClick={() => setView("pdr")} role="tab" aria-selected={view === "pdr"}
-        >
-          แบบฟอร์ม PDR
-        </Button>
-      </div>
+      {/* ชั้นแรก: แท็บมุมมอง — `ui/Tabs` ตัวเดียวกับที่ฟอร์มเปิดคำร้องใช้ */}
+      <Tabs
+        tabs={[{ key: "work", label: "งาน" }, { key: "pdr", label: "แบบฟอร์ม PDR" }]}
+        value={view} onChange={setView} ariaLabel="มุมมองของใบ"
+        className={styles.viewTabs}
+      />
 
       {view === "work" && (
         <>
@@ -81,38 +80,28 @@ export default function ScentDevDetail({
               </div>
             </>
           ) : (
-            <div className={styles.pdrSplit}>
-              {/* ชั้นสอง: รายการหมวดด้านซ้าย + ตัวนับครบ — ตัวเลขชุดเดียวกับ
-                  pdrSectionProgress ที่การ์ด panel จะใช้ (ม-94) */}
-              <div className={styles.pdrNav} role="tablist" aria-label="หมวดของแบบฟอร์ม">
-                {PDR_SECTIONS.map((s, i) => {
-                  const p = pdrSectionProgress(s, request, context);
-                  const on = s.key === active.key;
-                  return (
-                    <button
-                      key={s.key} type="button" role="tab" aria-selected={on}
-                      className={styles.pdrNavItem} data-on={on ? "1" : undefined}
-                      onClick={() => setSectionKey(s.key)}
-                    >
-                      <span>{i + 1} {s.title}</span>
-                      <span className={styles.pdrNavCount}>
-                        {p.filled}/{p.total}{p.total > 0 && p.filled === p.total ? " ✓" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className={styles.pdrPane}>
-                <PdrSummary request={request} briefs={request.briefs || []} sections={[active]} />
-                {request._canEditPdr && (
-                  <div className={`action-bar ${styles.pdrActions}`}>
-                    {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับออกเป็น HTML */}
-                    <Button variant="quiet" onClick={onOpenDocument}>ดูฉบับที่ออกจริง</Button>
-                    <Button variant="quiet" disabled={saving} onClick={onPdrEdit}>แก้แบบฟอร์ม PDR</Button>
-                  </div>
-                )}
-              </div>
-            </div>
+            <SectionRail
+              sections={PDR_SECTIONS.map((s, i) => ({
+                key: s.key,
+                // ⭐ เลขนำหน้าเฉพาะฝั่งอ่าน — ที่นี่หมวดตรงกับกระดาษ FM-RD-01 หนึ่งต่อหนึ่ง
+                // (RD อ้างกันทางโทรศัพท์ด้วยเลขข้อ) · ฝั่งกรอกมี "บรีฟกลิ่น" ที่ไม่มีบน
+                // กระดาษแทรกอยู่ ใส่เลขที่นั่นจะชี้ผิดข้อ
+                label: `${i + 1} ${s.title}`,
+                count: pdrSectionProgress(s, request, context),
+              }))}
+              value={active.key}
+              onChange={setSectionKey}
+              ariaLabel="หมวดของแบบฟอร์ม"
+            >
+              <PdrSummary request={request} briefs={request.briefs || []} sections={[active]} />
+              {request._canEditPdr && (
+                <div className={`action-bar ${styles.pdrActions}`}>
+                  {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับออกเป็น HTML */}
+                  <Button variant="quiet" onClick={onOpenDocument}>ดูฉบับที่ออกจริง</Button>
+                  <Button variant="quiet" disabled={saving} onClick={onPdrEdit}>แก้แบบฟอร์ม PDR</Button>
+                </div>
+              )}
+            </SectionRail>
           )}
         </div>
       )}
