@@ -14,6 +14,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
+import { Image as ImageIcon } from "lucide-react";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
@@ -118,18 +119,26 @@ function Section({ title, note, children, open = false, progress = null, flat = 
   );
 }
 
-// ติ๊กแล้วเขียนต่อ — กลุ่มลูกค้าเป้าหมาย / Value Proposition (มติผู้ใช้)
+// เปิดแล้วเขียนต่อ — กลุ่มลูกค้าเป้าหมาย / Value Proposition (มติผู้ใช้)
+//
+// ⭐ **สวิตช์ ไม่ใช่ checkbox** (มติผู้ใช้ 2026-08-09) — มันคือธง "ข้อนี้เกี่ยวไหม"
+// ซึ่งกติกาคอนโทรล v2 บอกให้ใช้สวิตช์ · และเปิดแล้วมีช่องพิมพ์งอกออกมา ซึ่งอ่านเป็น
+// เหตุ-ผลชัดกว่ากล่องติ๊กเล็ก ๆ
+// ⚠️ ค่าที่เก็บยังเป็น string เหมือนเดิม (" " = เปิดแต่ยังไม่พิมพ์) — เอกสารกับจอสรุป
+// อ่านค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean
 function TickAndWrite({ label, value, onChange, disabled }) {
   const on = value != null && value !== "";
   return (
     <div className="form-group">
-      <label className={styles.checkRow}>
-        <input
-          type="checkbox" checked={on} disabled={disabled}
-          onChange={(e) => onChange(e.target.checked ? " " : "")}
-        />
-        <span className={styles.checkLabel}>{label}</span>
-      </label>
+      <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+        <button
+          type="button" className="ui-switch" disabled={disabled}
+          data-on={on ? "1" : undefined} aria-pressed={on}
+          onClick={() => onChange(on ? "" : " ")}
+        >
+          <i aria-hidden="true" />{label}
+        </button>
+      </div>
       {on && (
         <Input
           value={value.trim()} disabled={disabled} aria-label={label}
@@ -222,9 +231,10 @@ export default function PdrForm({
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
           <Derived label={label("department")} value="การขายและบริการ" from={FIELD.department.from} />
-          {/* ⚠️ วันเดียวกับช่อง "ต้องการคำตอบ" ของคำร้อง ไม่ใช่ช่องใหม่ — เก็บซ้ำ
-              เมื่อไรก็ได้สองวันที่ขัดกันโดยไม่มีใครรู้ว่าอันไหนจริง */}
-          <Derived label={label("sampleDue")} value={sampleDue} from={FIELD.sampleDue.from} />
+          {/* ⚠️ **ไม่มีแถว "วันที่คาดหวังกำหนดส่งตัวอย่าง" ที่ฟอร์มกรอก** (มติผู้ใช้
+              2026-08-09) — มันคือช่อง "ต้องการคำตอบ" ของคำร้องที่กรอกในแท็บ
+              "กำหนดและไฟล์" อยู่แล้ว · โชว์ซ้ำที่นี่เป็นแถวอ่านอย่างเดียวที่ไม่ได้
+              เพิ่มข้อมูลอะไร · ฝั่งอ่าน (PdrSummary/เอกสาร) ยังพิมพ์ตามเดิม */}
           <div className="form-group">
             <label htmlFor="pdr-type">{label("requestType")}</label>
             <Select
@@ -300,7 +310,9 @@ export default function PdrForm({
           value={value.targetPsychographic} onChange={(v) => set({ targetPsychographic: v })} />
         <TickAndWrite label={label("targetPainpoint")} disabled={disabled}
           value={value.targetPainpoint} onChange={(v) => set({ targetPainpoint: v })} />
-        <div className="form-grid">
+        {/* ⚠️ `.form-grid` เปล่า = คอลัมน์เดียว — ต้องมี `cols-2` สองวันที่ถึงจะอยู่
+            บรรทัดเดียวกันซ้ายขวาตามที่ผู้ใช้ขอ (2026-08-09) */}
+        <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="pdr-pkind">{label("productKind")}</label>
             <Input id="pdr-pkind" value={value.productKind} disabled={disabled}
@@ -479,6 +491,13 @@ export default function PdrForm({
             <Input id="pdr-moq" value={value.moq} disabled={disabled}
               onChange={(e) => set({ moq: e.target.value })} />
           </div>
+          {/* ⭐ ขนาดบรรจุอยู่ติด MOQ (มติผู้ใช้ 2026-08-09) — สองข้อนี้ตอบคำถาม
+              เดียวกันของฝ่ายผลิต ("สั่งขั้นต่ำเท่าไร บรรจุขนาดไหน") จึงต้องอ่านคู่กัน */}
+          <div className="form-group">
+            <label htmlFor="pdr-pack">{label("packSize")}</label>
+            <Input id="pdr-pack" value={value.packSize} disabled={disabled}
+              onChange={(e) => set({ packSize: e.target.value })} />
+          </div>
           <div className="form-group">
             <label htmlFor="pdr-tex">{label("texture")}</label>
             <Select id="pdr-tex" value={value.texture} disabled={disabled}
@@ -489,22 +508,29 @@ export default function PdrForm({
             <Input id="pdr-color" value={value.color} disabled={disabled}
               onChange={(e) => set({ color: e.target.value })} />
           </div>
-          <div className="form-group">
-            <label htmlFor="pdr-pack">{label("packSize")}</label>
-            <Input id="pdr-pack" value={value.packSize} disabled={disabled}
-              onChange={(e) => set({ packSize: e.target.value })} />
-          </div>
           <ChipPicker
             label={label("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
             value={value.packagingForms} onChange={(v) => set({ packagingForms: v })}
           />
           <div className="form-group">
-            <label htmlFor="pdr-art">{label("packagingArtwork")}</label>
-            <Select id="pdr-art" value={value.packagingArtwork || ""} disabled={disabled}
-              onChange={(e) => set({ packagingArtwork: e.target.value })}
-              options={withBlank(PDR_ARTWORK)} />
+            <span className={styles.fieldLabel}>{label("packagingArtwork")}</span>
+            {/* ⭐ **สวิตช์ ไม่ใช่ดรอปดาวน์** (มติผู้ใช้ 2026-08-09) — มันคือธง "มี/ไม่มี"
+                ซึ่งกติกาคอนโทรล v2 บอกให้ใช้สวิตช์ · และเปิดแล้ว **บังคับแนบไฟล์**
+                ⚠️ ค่าที่เก็บยังเป็น 'has'/'none' เหมือนเดิม — เอกสารกับจอสรุปอ่าน
+                ค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean เพราะแถวเก่าจะอ่านไม่ออก */}
+            <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+              <button
+                type="button" className="ui-switch" disabled={disabled}
+                data-on={value.packagingArtwork === "has" ? "1" : undefined}
+                aria-pressed={value.packagingArtwork === "has"}
+                onClick={() => set({ packagingArtwork: value.packagingArtwork === "has" ? "none" : "has" })}
+              >
+                <i aria-hidden="true" /><ImageIcon size={13} aria-hidden="true" /> ภาพประกอบ
+              </button>
+            </div>
             {/* ⚠️ มติผู้ใช้: บอกว่ามี = ต้องแนบจริง · บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ
-                (หน้าเปิดคำร้องยังแนบไฟล์ไม่ได้ ต้องมี id ของใบก่อน) */}
+                (หน้าเปิดคำร้องยังแนบไฟล์ไม่ได้ ต้องมี id ของใบก่อน — ด่านจริงอยู่ที่
+                `pdrArtworkError` ซึ่งผู้เรียกส่ง stage: 'submit' เข้าไป) */}
             {value.packagingArtwork === "has" && (
               <small className={styles.hint}>ต้องแนบไฟล์ภาพก่อนกดส่ง</small>
             )}
@@ -524,8 +550,14 @@ export default function PdrForm({
           </div>
           <div className="form-group col-span-2">
             <label htmlFor="pdr-sample">{label("brandSample")}</label>
-            <Input id="pdr-sample" value={value.brandSample} disabled={disabled}
-              onChange={(e) => set({ brandSample: e.target.value })} />
+            {/* ⭐ ข้อความยาว (มติผู้ใช้ 2026-08-09) — ลูกค้ามักยกตัวอย่างหลายแบรนด์
+                พร้อมเหตุผล ช่องบรรทัดเดียวทำให้พิมพ์แล้วอ่านย้อนไม่ได้ */}
+            <Textarea
+              id="pdr-sample" rows={3} maxLength={2000}
+              value={value.brandSample} disabled={disabled}
+              placeholder="เช่น Jo Malone Wood Sage & Sea Salt — ชอบความสดโปร่ง · Diptyque Baies — ชอบกลิ่นผลไม้"
+              onChange={(e) => set({ brandSample: e.target.value })}
+            />
           </div>
         </div>
       </Section>

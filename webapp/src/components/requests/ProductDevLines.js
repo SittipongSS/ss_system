@@ -6,13 +6,21 @@
 //
 // ⚠️ หมวดใช้ **ตัวเลือกกลาง** ตัวเดียวกับฟอร์มดีล/โครงการ/ทะเบียนสูตร (P2c) —
 // ช่องเดียว หมวดหลักเป็นหัวกลุ่ม ⇒ ลงเซลล์ตารางได้ · นี่คือเหตุผลที่ยุบมันตั้งแต่ P2c
-import { Plus, Trash2 } from "lucide-react";
+//
+// ⭐ **ยุบบรรทัดที่กรอกแล้ว** (มติผู้ใช้ 2026-08-09 · `ui/EditableLineList`) —
+// แต่ละแถวมี 5 ช่อง กางพร้อมกันหลายแถวแล้วยาวเกินจอตั้งแต่แถวที่สอง
+// ⚠️ **เลือกแบบนี้แทนรางข้าง** เพราะแถวสรุปกินเต็มความกว้าง ⇒ ใส่ได้ครบทั้ง
+// รหัส+ชื่อหมวด · รหัส+ชื่อกลิ่น · วันที่ของกลิ่น (มติผู้ใช้) ซึ่งรางกว้าง 13rem ใส่ไม่ลง
+import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import EditableLineList from "@/components/ui/EditableLineList";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
+import { productDevRowText } from "@/lib/requests/productDevLabel";
 import styles from "./scentDelivery.module.css";
 
 export const emptyProductDevRow = () => ({
@@ -30,6 +38,8 @@ export function duplicatePair(row, index, rows) {
 export default function ProductDevLines({
   rows, onChange, categories = [], scents = [], customerId = null, disabled = false,
 }) {
+  // ⚠️ จำตำแหน่ง ไม่ใช่ id — แถวยังไม่มี id จนกว่าจะบันทึก (เหตุผลเดียวกับ DocumentLines)
+  const [active, setActive] = useState(0);
   const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
 
   // ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) — กรองที่ต้นทาง ไม่ปล่อยให้เลือกผิดแล้วให้
@@ -42,95 +52,120 @@ export default function ProductDevLines({
       search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
     }));
 
+  const at = Math.min(active, Math.max(rows.length - 1, 0));
+  const row = rows[at] || emptyProductDevRow();
+  const dup = duplicatePair(row, at, rows);
+  const patchAt = (next) => patch(at, next);
+  const addRow = () => {
+    onChange([...rows, emptyProductDevRow()]);
+    setActive(rows.length);
+  };
+  const removeRow = () => {
+    onChange(rows.filter((_, j) => j !== at));
+    setActive(Math.max(at - 1, 0));
+  };
+
   return (
     <div className={styles.wrap}>
-      {rows.map((row, i) => {
-        const dup = duplicatePair(row, i, rows);
-        return (
-          <div key={i} className={styles.row}>
-            <div className={styles.rowHead}>
-              <span className={styles.rowNo}>รายการที่ {i + 1}</span>
+      <EditableLineList
+        count={rows.length}
+        active={at}
+        onActiveChange={setActive}
+        onAdd={addRow}
+        addLabel="เพิ่มรายการ"
+        disabled={disabled}
+        renderSummary={(i) => {
+          const r = rows[i];
+          const { main, sub } = productDevRowText(r, i, { categories, scents });
+          // ครบ = มีทั้งหมวดและกลิ่น (สองอย่างนี้คือตัวตนของสูตรที่จะเกิด)
+          const ready = Boolean(r.categoryCode && r.scentId) && !duplicatePair(r, i, rows);
+          return (
+            <>
+              <span className="line-summary-dot" data-ok={ready ? "1" : undefined} />
+              <span className="line-summary-main">{main}</span>
+              {sub && <span className="line-summary-sub">{sub}</span>}
+              <span className="line-summary-open">แก้ไข</span>
+            </>
+          );
+        }}
+      >
+        <div className="form-grid cols-2">
+          <div className="form-group col-span-2">
+            <span className="form-field-label split">
+              ของที่ขอ
               {rows.length > 1 && (
                 <Button
                   size="sm" variant="ghost" tone="danger" disabled={disabled}
                   title="ลบรายการนี้"
                   icon={<Trash2 size={14} aria-hidden="true" />}
-                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                />
+                  onClick={removeRow}
+                >
+                  ลบรายการนี้
+                </Button>
               )}
-            </div>
-
-            <div className="form-grid">
-              <ProductCategorySelect
-                categories={categories}
-                value={row.categoryCode}
-                disabled={disabled}
-                required
-                onChange={(categoryCode) => patch(i, { categoryCode })}
-              />
-
-              <div className="form-group col-span-2">
-                <label htmlFor={`pd-scent-${i}`}>กลิ่น</label>
-                <SearchableSelect
-                  id={`pd-scent-${i}`} value={row.scentId} disabled={disabled}
-                  onChange={(v) => patch(i, { scentId: v })}
-                  options={scentOptions}
-                  placeholder="เลือกกลิ่นจากทะเบียน"
-                  emptyText={customerId
-                    ? "ลูกค้ารายนี้ยังไม่มีกลิ่นที่ใช้ได้ — ต้องผ่านสายพัฒนากลิ่นก่อน"
-                    : "เลือกดีลก่อน แล้วจะเห็นกลิ่นของลูกค้ารายนั้น"}
-                />
-                {dup && (
-                  <p className={styles.error}>
-                    หมวดกับกลิ่นคู่นี้ซ้ำกับรายการก่อนหน้า — เป็นของชิ้นเดียวกัน
-                  </p>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor={`pd-qty-${i}`}>
-                  จำนวน <span className={styles.hint}>(ไม่บังคับ)</span>
-                </label>
-                <Input
-                  id={`pd-qty-${i}`} type="number" min="0" step="any" mono
-                  value={row.qty} disabled={disabled}
-                  onChange={(e) => patch(i, { qty: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`pd-unit-${i}`}>
-                  หน่วย <span className={styles.hint}>(ไม่บังคับ)</span>
-                </label>
-                <Input
-                  id={`pd-unit-${i}`} value={row.unit} disabled={disabled}
-                  placeholder="เช่น ชิ้น · ขวด"
-                  onChange={(e) => patch(i, { unit: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group col-span-2">
-                <label htmlFor={`pd-spec-${i}`}>
-                  รายละเอียด <span className={styles.hint}>(ไม่บังคับ)</span>
-                </label>
-                <Textarea
-                  id={`pd-spec-${i}`} rows={2} maxLength={2000}
-                  value={row.spec} disabled={disabled}
-                  placeholder="สิ่งที่อยากได้จากตัวอย่างนี้ เช่น ขนาด · สี · ความเข้มข้น"
-                  onChange={(e) => patch(i, { spec: e.target.value })}
-                />
-              </div>
-            </div>
+            </span>
           </div>
-        );
-      })}
 
-      <Button
-        size="sm" disabled={disabled}
-        icon={<Plus size={14} aria-hidden="true" />}
-        onClick={() => onChange([...rows, emptyProductDevRow()])}
-      >
-        เพิ่มรายการ
-      </Button>
+          <ProductCategorySelect
+            categories={categories}
+            value={row.categoryCode}
+            disabled={disabled}
+            required
+            onChange={(categoryCode) => patchAt({ categoryCode })}
+          />
+
+          <div className="form-group col-span-2">
+            <label htmlFor={`pd-scent-${at}`}>กลิ่น</label>
+            <SearchableSelect
+              id={`pd-scent-${at}`} value={row.scentId} disabled={disabled}
+              onChange={(v) => patchAt({ scentId: v })}
+              options={scentOptions}
+              placeholder="เลือกกลิ่นจากทะเบียน"
+              emptyText={customerId
+                ? "ลูกค้ารายนี้ยังไม่มีกลิ่นที่ใช้ได้ — ต้องผ่านสายพัฒนากลิ่นก่อน"
+                : "เลือกดีลก่อน แล้วจะเห็นกลิ่นของลูกค้ารายนั้น"}
+            />
+            {dup && (
+              <p className={styles.error}>
+                หมวดกับกลิ่นคู่นี้ซ้ำกับรายการก่อนหน้า — เป็นของชิ้นเดียวกัน
+              </p>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor={`pd-qty-${at}`}>
+              จำนวน <span className={styles.hint}>(ไม่บังคับ)</span>
+            </label>
+            <Input
+              id={`pd-qty-${at}`} type="number" min="0" step="any" mono
+              value={row.qty} disabled={disabled}
+              onChange={(e) => patchAt({ qty: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor={`pd-unit-${at}`}>
+              หน่วย <span className={styles.hint}>(ไม่บังคับ)</span>
+            </label>
+            <Input
+              id={`pd-unit-${at}`} value={row.unit} disabled={disabled}
+              placeholder="เช่น ชิ้น · ขวด"
+              onChange={(e) => patchAt({ unit: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group col-span-2">
+            <label htmlFor={`pd-spec-${at}`}>
+              รายละเอียด <span className={styles.hint}>(ไม่บังคับ)</span>
+            </label>
+            <Textarea
+              id={`pd-spec-${at}`} rows={2} maxLength={2000}
+              value={row.spec} disabled={disabled}
+              placeholder="สิ่งที่อยากได้จากตัวอย่างนี้ เช่น ขนาด · สี · ความเข้มข้น"
+              onChange={(e) => patchAt({ spec: e.target.value })}
+            />
+          </div>
+        </div>
+      </EditableLineList>
     </div>
   );
 }

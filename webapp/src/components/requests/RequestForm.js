@@ -21,9 +21,10 @@
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
 import { useState } from "react";
-import { Paperclip, Plus, X, AtSign } from "lucide-react";
+import { Flame, Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
+import PendingFiles from "@/components/ui/PendingFiles";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -32,8 +33,8 @@ import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
 import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
-import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
-import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
+import ProductDevLines from "@/components/requests/ProductDevLines";
+import DocumentLines from "@/components/requests/DocumentLines";
 import PdrForm, { emptyPdr, pdrRailSections } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
@@ -52,7 +53,6 @@ import {
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import styles from "./requestForm.module.css";
 
 
@@ -109,14 +109,13 @@ export const emptyRequestForm = (over = {}) => ({
 
 // รายการตั้งต้นตามรูปร่างบรรทัดของหัวข้อ
 // (ไม่ export: ใช้เฉพาะในไฟล์นี้ · export ที่ไม่มีผู้เรียกคือโค้ดตายที่ lint ไม่จับ)
-function itemsForKind(kind, existing = []) {
-  // ⚠️ บรรทัดแต่ละรูปร่างเป็นคนละโครง — สลับหัวข้อมาแล้วต้องเริ่มใหม่ ไม่ใช่ลาก
-  // บรรทัดวัสดุเดิมมาแล้วได้แถวที่ไม่มีหมวด/กลิ่น
-  // ⭐ ตัดสินจาก **รูปร่างบรรทัด** ไม่ใช่ชื่อหัวข้อ — ฝ่ายที่เพิ่มหัวข้อใหม่ที่ใช้รูปร่าง
-  // เดิมจะได้แถวเปล่าถูกชนิดทันที โดยไม่ต้องมาต่อชื่อหัวข้อไว้ในฟอร์ม
-  const shape = lineShapeForKind(kind);
-  if (shape === 'product_dev') return [emptyProductDevRow()];
-  if (shape === 'document' || shape === 'billing_doc') return [emptyDocumentRow()];
+function itemsForKind() {
+  // ⚠️ **เริ่มที่ศูนย์แถวเสมอ** (มติผู้ใช้ 2026-08-09: "กดเพิ่มรายการก่อน ยังไม่ได้มี
+  // รายการแรก") — ของเดิมงอกแถวเปล่าให้ทันทีที่เลือกหัวข้อ ⇒ ใบที่คนยังไม่ได้แตะ
+  // รายการเลยก็มีแถวว่างติดไปด้วย และเกจ "รายการอย่างน้อย 1 รายการ" ก็ติ๊กเขียว
+  // ทั้งที่ยังไม่มีของจริงสักชิ้น
+  // ⚠️ สลับหัวข้อยังต้องล้างแถวเดิมอยู่ — บรรทัดแต่ละรูปร่างเป็นคนละโครง ลากข้าม
+  // หัวข้อแล้วจะได้แถวที่ไม่มีหมวด/กลิ่น (นี่คือเหตุผลเดิมของฟังก์ชันนี้)
   return [];
 }
 
@@ -238,6 +237,8 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
+  // ไฟล์ใหญ่เกินเพดาน — ด่านอยู่ใน PendingFiles ที่เดียว ที่นี่แค่รับข้อความมาโชว์
+  const [fileError, setFileError] = useState("");
   const formTabs = requestFormTabs(value, { optionalRefs });
   // หัวข้อเปลี่ยน = ชุดแท็บเปลี่ยน (แท็บ PDR หายไป) ⇒ ถอยไปแท็บแรกแทนจอว่าง
   const activeTab = formTabs.some((t) => t.key === tab) ? tab : (formTabs[0]?.key || "work");
@@ -294,12 +295,6 @@ export default function RequestForm({
     ),
   }));
 
-  const addFiles = (list) => {
-    const picked = Array.from(list || []).filter((f) => f.size <= MAX_UPLOAD_BYTES);
-    if (!picked.length) return;
-    set({ files: [...(value.files || []), ...picked] });
-  };
-  const removeFile = (idx) => set({ files: (value.files || []).filter((_, i) => i !== idx) });
 
   const toggleMention = (person) => {
     const picked = value.mentions || [];
@@ -838,7 +833,7 @@ export default function RequestForm({
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           <ProductDevLines
-            rows={items.length ? items : [emptyProductDevRow()]}
+            rows={items}
             onChange={(rows) => set({ items: rows })}
             categories={productTypes}
             scents={scents}
@@ -855,7 +850,7 @@ export default function RequestForm({
           {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
               คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
           <DocumentLines
-            rows={items.length ? items : [emptyDocumentRow()]}
+            rows={items}
             onChange={(rows) => set({ items: rows })}
             vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
             disabled={disabled}
@@ -865,16 +860,19 @@ export default function RequestForm({
       </div>
       )}
 
-      {/* ── แท็บ "ฟอร์ม PDR" — เฉพาะหัวข้อที่ประกาศ `hasPdr` ──────────────────
+      {/* ── ราง PDR **อยู่ในแท็บ "รายละเอียด"** เฉพาะหัวข้อที่ประกาศ `hasPdr` ─────
           ⭐ ใช้แทนช่องรายละเอียดธรรมดา (ธง `hasPdr` มาจากทะเบียนหัวข้อ ไม่ใช่การ
           เทียบชื่อหัวข้อในฟอร์ม — มี ratchet ห้ามไว้)
+          ⭐ **รวมกับ "เรื่องที่ขอ" เป็นแท็บเดียว** (มติผู้ใช้ 2026-08-09) — แบบฟอร์ม
+          คือรายละเอียดของสิ่งที่ขอ ไม่ใช่คนละเรื่อง · แยกแท็บอยู่ทำให้จำนวนแท็บ
+          ไม่เท่ากันระหว่างหัวข้อ และคนต้องสลับไปมาระหว่างชื่อเรื่องกับบรีฟ
           ⭐ **สองชั้นด้วยรางข้าง** (มติ "แบบ A") — 6 ส่วนที่เคยเป็นลิ้นชักซ้อนกันลงมา
           กลายเป็นรายการด้านข้างที่บอกด้วยว่าส่วนไหนกรอกไปเท่าไร ⇒ ไม่ต้องกางทุกอัน
           เพื่อตรวจว่าเหลือตรงไหน
           ⚠️ ฝั่งอ่านบนหน้ารายละเอียด (`PdrSummary`) ยังเป็นลิ้นชักอยู่ — ตามแผนของ
           ผู้ใช้จะยกไปใช้รางเดียวกันใน "ตอน B" · จนกว่าจะถึงตอนนั้นสองฝั่งต่างผังกัน
           โดยตั้งใจ ไม่ใช่หลุด */}
-      {activeTab === "pdr" && hasPdr && (
+      {activeTab === "subject" && hasPdr && (
         <SectionRail
           sections={railSections}
           value={activeRail}
@@ -919,14 +917,20 @@ export default function RequestForm({
           </small>
         </div>
         <div className="form-group">
-          <label htmlFor="req-urgent">ความเร่งด่วน</label>
-          <label className={styles.checkRow}>
-            <input
-              id="req-urgent" type="checkbox" checked={!!value.urgent} disabled={disabled}
-              onChange={(e) => set({ urgent: e.target.checked })}
-            />
-            <span className={styles.checkLabel}>งานด่วน</span>
-          </label>
+          <span className={styles.fieldLabel}>ความเร่งด่วน</span>
+          {/* ⭐ **สวิตช์ ไม่ใช่ checkbox** (มติผู้ใช้ 2026-08-09 · กติกาคอนโทรล v2
+              "ธง/โหมดพิเศษ = สวิตช์") — ทรงเดียวกับธง ด่วน/สำคัญ ของโมดัลงาน
+              ⚠️ ติ๊กแล้วมีช่องเหตุผลงอกข้างล่าง (บังคับ) — สวิตช์ทำให้ "ติดหรือไม่ติด"
+              อ่านออกจากระยะไกลกว่ากล่องติ๊กเล็ก ๆ ซึ่งสำคัญกับธงที่มีผลต่อคิวของฝ่ายอื่น */}
+          <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+            <button
+              type="button" className="ui-switch" disabled={disabled}
+              data-on={value.urgent ? "1" : undefined} aria-pressed={!!value.urgent}
+              onClick={() => set({ urgent: !value.urgent })}
+            >
+              <i aria-hidden="true" /><Flame size={13} aria-hidden="true" /> ด่วน
+            </button>
+          </div>
         </div>
         {/* ⭐ **ด่วนแล้วต้องบอกว่าทำไม** (mig 0222) — ฟอร์มกระดาษ FM-RD-01 เขียนบนหัวว่า
             "หากเป็นงานด่วน กรุณาระบุคำว่าด่วน และวันที่ต้องการ พร้อมแจ้งเหตุผล"
@@ -952,32 +956,19 @@ export default function RequestForm({
           บันทึกร่าง โชว์ไว้จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรในจังหวะที่คนคาดว่าเกิด */}
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>แนบไฟล์</span>
-          {/* ไฟล์ถูกอัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอกฟอร์ม) —
-              เก็บไว้ในหน่วยความจำก่อน แล้วผู้เรียกอัปตามลำดับ */}
-          <label className={styles.fileDrop}>
-            <Paperclip size={14} aria-hidden="true" />
-            <span>เลือกไฟล์ (สูงสุด {MAX_UPLOAD_MB} MB ต่อไฟล์)</span>
-            <input
-              type="file" multiple accept={UPLOAD_ACCEPT_ATTR} disabled={disabled}
-              className={styles.fileInput}
-              onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
-            />
-          </label>
-          {!!(value.files || []).length && (
-            <ul className={styles.fileList}>
-              {(value.files || []).map((f, i) => (
-                <li key={`${f.name}-${i}`} className={styles.fileRow}>
-                  <span className={styles.fileName}>{f.name}</span>
-                  {/* ปุ่มไอคอนผ่าน <Button> กลาง — ห้ามเขียนคลาส btn เองในของใหม่
-                      (ด่าน audit:ui นับ rawButtonClass เป็น ratchet ขึ้นไม่ได้) */}
-                  <Button
-                    iconOnly icon={<X size={13} />} disabled={disabled}
-                    onClick={() => removeFile(i)} aria-label={`เอา ${f.name} ออก`}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* ⭐ ใช้ `ui/PendingFiles` ของกลาง (มติผู้ใช้ 2026-08-09: "ดูรูปแบบที่อื่น ๆ
+              ใช้หน่อย") — ฟอร์มสร้างทุกที่ในระบบต้องหน้าตาเดียวกันตอนถือไฟล์รอ
+              · ของเดิมเป็นกล่องเส้นประเต็มแถวเฉพาะที่นี่ ซึ่งอ่านเหมือนไฟล์เป็น
+              คำถามหลักของฟอร์ม ทั้งที่มันเป็นของเสริม
+              ⚠️ ไฟล์ถูกอัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอก) — เก็บไว้
+              ใน `value.files` แล้วผู้เรียกอัปตามลำดับ (`uploadDraftFiles`) */}
+          <PendingFiles
+            files={value.files || []}
+            onChange={(files) => set({ files })}
+            disabled={disabled}
+            onOversize={setFileError}
+          />
+          {fileError && <small className="text-[var(--red)] text-[13px]">{fileError}</small>}
         </div>
 
         {!deferMentions && (

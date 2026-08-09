@@ -5,8 +5,10 @@
 // กันจริง: ฝั่งใบขอราคาผลิตคำนวณ `kind` ใหม่เองจนไม่ตรงกับที่ฟอร์มแสดง และไม่เคย
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
 import {
-  requestHasItems, requestHasPdr, requestNeedsRef, requestShapeError,
+  lineShapeForKind, requestHasItems, requestHasPdr, requestNeedsRef, requestShapeError,
 } from '@/lib/master/requestTypes';
+import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 
 /**
@@ -32,6 +34,29 @@ export function requestFormBlocker(form) {
     items: requestHasItems(form.kind) ? form.items : undefined,
   });
   if (shape) return shape;
+
+  // ⭐ **แถวเปล่าไม่นับว่ามีรายการ** (มติผู้ใช้ 2026-08-09: "ต้องบังคับเพิ่มรายการ")
+  // `requestShapeError` เช็คแค่ `items.length` ⇒ กด "เพิ่มรายการ" เฉย ๆ แล้วไม่เลือก
+  // อะไรเลยก็ผ่านด่านฝั่งจอ แล้วไปตายที่ server ตอนกดบันทึก (เสียรอบไปหนึ่งรอบ)
+  // ⚠️ **ใช้ตัวตรวจตัวเดียวกับ server** (`normalizeLinesFor`) ไม่ใช่เขียนกฎซ้ำ —
+  // กฎรายแถวอยู่ในรูปร่างบรรทัดของฝ่ายนั้น ๆ ที่เดียว
+  if (requestHasItems(form.kind)) {
+    const { error: lineError } = normalizeLinesFor(lineShapeForKind(form.kind), form.items);
+    if (lineError) return lineError;
+  }
+
+  // ⭐ **ติ๊กว่ามีภาพประกอบ = ต้องแนบไฟล์ตั้งแต่ตอนนี้** (มติผู้ใช้ 2026-08-09)
+  // เดิมด่านนี้ยิงเฉพาะจังหวะ "กดส่ง" เพราะหน้าเปิดคำร้องยังแนบไฟล์ไม่ได้ · ตอนนี้
+  // ฟอร์มถือไฟล์ได้แล้ว (`value.files`) ⇒ บังคับตั้งแต่ตอนบันทึกร่างได้จริง และดีกว่า
+  // ปล่อยให้ไปติดตอนกดส่งซึ่งเป็นคนละหน้ากัน
+  // ⚠️ ใช้ `pdrArtworkError` ตัวเดียวกับ server ไม่ใช่เขียนเงื่อนไขใหม่
+  if (requestHasPdr(form.kind)) {
+    const artwork = pdrArtworkError(form.pdr || {}, {
+      attachmentCount: (form.files || []).length,
+      stage: 'submit',
+    });
+    if (artwork) return artwork;
+  }
 
   // ⚠️ เดิมมีด่าน "ทุกรายการต้องเลือกวัสดุ" ต่อท้ายตรงนี้ — เป็นกฎของ**บรรทัดวัสดุ**
   // ซึ่งถูกถอดใน mig 0219 (ม-28) · ปล่อยไว้แล้วจะบล็อกบรรทัดพัฒนาสูตร/เอกสารทุกแถว

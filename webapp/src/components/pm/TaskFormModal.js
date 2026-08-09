@@ -9,7 +9,7 @@
 // canChangeStatus อย่างเดียว = ส่งแค่ status (API บังคับ statusOnly ซ้ำอยู่ดี).
 // ไม่มี auto-save — กดบันทึกครั้งเดียว ([[no-autosave-explicit-save]])
 import { useEffect, useRef, useState } from "react";
-import { FileText, Flame, Paperclip, Star, Tag, UserPlus, X } from "lucide-react";
+import { Flame, Star, Tag, UserPlus, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -17,12 +17,12 @@ import StageSteps from "@/components/ui/StageSteps";
 import Select from "@/components/ui/Select";
 import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import PendingFiles from "@/components/ui/PendingFiles";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { describeResponseError } from "@/lib/fetchError";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import Textarea from "@/components/ui/Textarea";
 
 export const TASK_BLANK = {
@@ -95,7 +95,6 @@ export default function TaskFormModal({
   const [pendingFiles, setPendingFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const fileRef = useRef(null);
 
   // เติมฟอร์มตอนเปิด. ผูกกับ task.id (ไม่ใช่ object) — caller หลายที่สร้าง object
   // ใหม่ทุก render จะทำให้ทับสิ่งที่พิมพ์ค้างไว้
@@ -133,14 +132,6 @@ export default function TaskFormModal({
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
   const willComplete = editing && form.status === "Completed" && task.status !== "Completed";
   const needLateReason = willComplete && !!form.dueDate && form.dueDate < todayLocal();
-
-  const selectFiles = (event) => {
-    const picked = Array.from(event.target.files || []);
-    event.target.value = "";
-    const oversized = picked.filter((f) => f.size > MAX_UPLOAD_BYTES);
-    if (oversized.length) setError(`ไฟล์ใหญ่เกิน ${MAX_UPLOAD_MB} MB: ${oversized.map((f) => f.name).join(", ")}`);
-    setPendingFiles((cur) => [...cur, ...picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)]);
-  };
 
   // เรียกได้ทั้งจาก onSubmit ของฟอร์ม (กด Enter) และจากปุ่มในแถบท้ายโมดัล
   // ซึ่งอยู่นอก <form> — ปุ่มนั้นส่ง event ที่ไม่มี preventDefault ก็ยังทำงานได้
@@ -383,34 +374,15 @@ export default function TaskFormModal({
             {editing ? (
               <AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={canManage} inlineUpload />
             ) : (
-              <div className="mt-1 flex flex-col items-end">
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={saving}
-                  className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50">
-                  <Paperclip size={13} /><span>แนบไฟล์</span>
-                </button>
-                <input ref={fileRef} type="file" accept={UPLOAD_ACCEPT_ATTR} multiple onChange={selectFiles} className="hidden" />
-                {pendingFiles.length > 0 && (
-                  <div className="mt-1 w-full divide-y divide-[var(--border)]">
-                    {pendingFiles.map((file) => {
-                      const key = `${file.name}:${file.size}:${file.lastModified}`;
-                      return (
-                        <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs">
-                          <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-2)]">
-                            <FileText size={14} className="shrink-0" />
-                            <span className="truncate">{file.name}</span>
-                            <span className="shrink-0 text-[10px] text-[var(--text-3)]">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
-                          </span>
-                          <button type="button" className="btn-icon danger shrink-0" title="นำออก"
-                            aria-label={`นำ ${file.name} ออกจากรายการแนบ`}
-                            onClick={() => setPendingFiles((cur) => cur.filter((i) => `${i.name}:${i.size}:${i.lastModified}` !== key))}>
-                            <X size={13} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              // ⭐ ตะกร้าไฟล์รอใช้ `ui/PendingFiles` ของกลาง (2026-08-09) — ฟอร์มสร้าง
+              // ทุกที่ในระบบต้องหน้าตาเดียวกันตอนถือไฟล์ที่ยังอัปไม่ได้ · เดิมที่นี่กับ
+              // ฟอร์มคำร้องเขียนคนละชุด ⇒ สองทรงของเรื่องเดียวกัน
+              <PendingFiles
+                files={pendingFiles}
+                onChange={setPendingFiles}
+                disabled={saving}
+                onOversize={setError}
+              />
             )}
           </div>
           <div className="form-group">
