@@ -20,17 +20,21 @@
 // "ยังกรอกไม่ครบ" — เนื้อฟอร์ม หรือแถบปุ่มของผู้เรียก)
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
-import { Paperclip, X, AtSign } from "lucide-react";
+import { useState } from "react";
+import { Paperclip, Plus, X, AtSign } from "lucide-react";
+import Tabs from "@/components/ui/Tabs";
+import SectionRail from "@/components/ui/SectionRail";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
+import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
-import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
+import PdrForm, { emptyPdr, pdrRailSections } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
@@ -41,6 +45,7 @@ import {
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
+import { requestFormTabs } from "@/lib/requests/formTabs";
 import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
@@ -119,6 +124,7 @@ export default function RequestForm({
   value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
+  me = null,               // ผู้ใช้ที่กำลังเปิดใบ — ใช้พรีวิว "ผู้ร้องขอ" ก่อนบันทึก
   customers = [], quotations = [], products = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
@@ -201,7 +207,15 @@ export default function RequestForm({
   const pdrDerived = pdrContext({
     // ⚠️ `requestedDueDate`/`urgent` อยู่บนฟอร์ม ไม่ใช่บนแถวที่บันทึกแล้ว — ส่งเข้าไป
     // ในรูปเดียวกับแถวคำร้อง เพื่อให้ตัวคำนวณเป็นตัวเดียวกันจริง ๆ ไม่ใช่แค่คล้ายกัน
-    request: { requestedDueDate: value.requestedDueDate, urgent: value.urgent, customerName: selectedSo?.customerName || null },
+    // ⚠️ รูปเดียวกับแถวคำร้องจริง เพื่อให้ตัวคำนวณเป็นตัวเดียวกัน ไม่ใช่แค่คล้ายกัน
+    // ⭐ `requestedByName` = คนที่กำลังเปิดใบ — ทำให้ "ผู้ร้องขอ (AE)" พรีวิวได้
+    //    ตั้งแต่ยังไม่บันทึก (โครงการที่ระบุผู้ดูแลไว้ยังชนะเสมอ ตามลำดับใน pdrContext)
+    request: {
+      requestedDueDate: value.requestedDueDate,
+      urgent: value.urgent,
+      customerName: selectedSo?.customerName || null,
+      requestedByName: me?.name || null,
+    },
     project: projects.find((p) => p.id === (soDeal?.projectId || value.projectId)) || null,
     customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
     deal: soDeal,
@@ -214,6 +228,45 @@ export default function RequestForm({
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
   const shapeError = requestFormBlocker(value);
+
+  // ── แท็บ + เกจ (มติผู้ใช้ 2026-08-09 "แบบ A") ─────────────────────────
+  // ⚠️ **state ของแท็บเป็น "ตำแหน่งสายตา" ไม่ใช่ข้อมูลของฟอร์ม** — ค่าที่กรอกยัง
+  // controlled ทั้งหมดผ่าน `value/onChange` เหมือนเดิม · เก็บไว้ในนี้เพื่อให้ข้อความ
+  // "ยังขาดอะไร" กระโดดไปแท็บนั้นได้ (ผู้เรียกไม่ต้องรู้จักแท็บ)
+  const [tab, setTab] = useState("work");
+  const [pdrSection, setPdrSection] = useState("request");
+  // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
+  // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
+  const [fgPick, setFgPick] = useState("");
+  const formTabs = requestFormTabs(value, { optionalRefs });
+  // หัวข้อเปลี่ยน = ชุดแท็บเปลี่ยน (แท็บ PDR หายไป) ⇒ ถอยไปแท็บแรกแทนจอว่าง
+  const activeTab = formTabs.some((t) => t.key === tab) ? tab : (formTabs[0]?.key || "work");
+  const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
+  const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
+  const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
+  const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || []) : [];
+  const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
+
+  const tabItems = formTabs.map((t) => ({
+    key: t.key,
+    label: (
+      <span className="tab-with-meter">
+        {/* วงแหวน = ช่องบังคับของแท็บนี้ · แท็บที่ไม่มีช่องบังคับเลย (PDR) ไม่มีวงแหวน
+            — วงแหวนเขียวถาวรจะอ่านเหมือน "ครบแล้ว" ทั้งที่ไม่เคยมีอะไรให้ครบ */}
+        {t.required.total > 0 && (
+          <span
+            className="tab-meter"
+            data-state={t.required.missing.length ? "missing" : "full"}
+            aria-hidden="true"
+          />
+        )}
+        {t.label}
+        {t.optional.total > 0 && (
+          <span className="tab-count" title="ช่องไม่บังคับที่กรอกแล้ว">{t.optional.filled}/{t.optional.total}</span>
+        )}
+      </span>
+    ),
+  }));
 
   const addFiles = (list) => {
     const picked = Array.from(list || []).filter((f) => f.size <= MAX_UPLOAD_BYTES);
@@ -235,6 +288,33 @@ export default function RequestForm({
 
   return (
     <>
+      {/* ── ขั้นเลือกฝ่าย/หัวข้อ — **ยุบเป็นแถบบริบทเมื่อกางฟอร์มแล้ว**
+          (มติผู้ใช้ 2026-08-09 "แบบ 1")
+          ก่อนหน้านี้ขั้นนี้ไม่ยุบเลย: แถวปุ่มฝ่าย 3 ใบ (สองใบจางกดไม่ได้) + ดรอปดาวน์
+          หัวข้อที่ถูกล็อก + ปุ่มเปลี่ยน + คำอธิบาย 3 บรรทัดซ้อนกัน = จอแรกของ
+          "พัฒนากลิ่น" มีช่องที่กรอกได้จริงช่องเดียว ที่เหลือเป็นของที่ตัดสินใจไปแล้ว
+          ⚠️ **ไม่ใช่ซ่อน** — แถบยังบอกฝ่าย/หัวข้อ/เงื่อนไขของหัวข้อ และมีปุ่มเปลี่ยน
+          อยู่ในนั้น · เหตุผลที่กดแล้วเสียอะไรย้ายไปเป็น `title` ของปุ่ม ไม่ใช่บรรทัดจาง */}
+      {revealed ? (
+        <div className={styles.ctxBar}>
+          <span className={styles.ctxDept}>{REQUEST_DEPT_LABELS[dept]?.code || dept}</span>
+          <span className={styles.ctxKind}>{requestKindLabel(kind)}</span>
+          {meta.dealType && <span className={styles.ctxTag}>ดีล {meta.dealType}</span>}
+          {stepLabel && <span className={styles.ctxTag}>{stepLabel}</span>}
+          {topicAction && (
+            <span className={styles.ctxAction}>
+              <Button
+                variant="quiet" size="sm" disabled={disabled}
+                title="ฟอร์มที่กรอกไว้จะถูกล้าง"
+                onClick={topicAction.onClick}
+              >
+                {topicAction.label}
+              </Button>
+            </span>
+          )}
+        </div>
+      ) : (
+      <>
       {/* ── 1) ฝ่าย → 2) หัวข้อ (หัวข้อถูกกรองด้วยฝ่าย) ───────────────────── */}
       <div className="form-group">
         <span className={styles.fieldLabel} id="req-dept-label">ส่งถึงฝ่ายไหน</span>
@@ -330,29 +410,63 @@ export default function RequestForm({
               </Button>
             </div>
           )}
-          {/* บอกว่าทำไมช่องถูกล็อก และกดแล้วจะเสียอะไร — ช่องที่กดไม่ได้โดยไม่บอก
-              เหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง */}
-          {revealed && topicAction && (
-            <small className={styles.hint}>
-              ล็อกไว้ระหว่างกรอก — กด &ldquo;{topicAction.label}&rdquo; เพื่อแก้ (ฟอร์มที่กรอกไว้จะถูกล้าง)
-            </small>
-          )}
+          {/* คำอธิบายหัวข้ออยู่ที่ **ขั้นเลือก** ที่เดียว — ตอนนี้คือจังหวะที่มันช่วย
+              ตัดสินใจ · พอกางฟอร์มแล้วมันกลายเป็นข้อความค้างจอ (ย้ายเงื่อนไขที่ยัง
+              ต้องรู้ระหว่างกรอกไปอยู่ติดช่องที่มันคุมแทน เช่น ใบสั่งขายของบรีฟกลิ่น) */}
           {meta.hint && <small className={styles.hint}>{meta.hint}</small>}
           {meta.dealType && (
             <small className={styles.hint}>ใช้กับดีลประเภท {meta.dealType} เป็นหลัก</small>
           )}
         </div>
       </div>
+      </>
+      )}
 
       {revealed && (
       <>
-      {/* ── 3) ของที่หัวข้อนั้นต้องอ้าง ────────────────────────────────────
-          ⭐ **อยู่ใต้หัวข้อเสมอ** — ช่องพวกนี้โผล่/หายตามหัวข้อที่เพิ่งเลือก วางไว้
-          เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
+      {/* ── แถบแท็บ + เกจ (มติผู้ใช้ 2026-08-09) ──────────────────────────
+          ⚠️ **แท็บซ่อนของ ⇒ ต้องมีคนพาไปหาสิ่งที่ขาด** — บรรทัดใต้แท็บบอกว่าขาด
+          ช่องไหนอยู่แท็บไหน และกดแล้วกระโดดไปเลย · ไม่มีบรรทัดนี้เมื่อไร ผู้ใช้จะ
+          เจอปุ่มส่งที่กดไม่ได้โดยไม่รู้ว่าต้องไปเปิดแท็บไหน */}
+      <div className="tabbar-with-meter">
+        <Tabs tabs={tabItems} value={activeTab} onChange={setTab} ariaLabel="ส่วนของฟอร์มคำร้อง" />
+        <span className="tab-overall">
+          ช่องบังคับ {requiredFilled}/{requiredTotal}
+          {/* ⭐ ขีดละ "หนึ่งช่องบังคับ" ไม่ใช่เปอร์เซ็นต์ — ทั้งใบมีช่องบังคับ 1–4 ช่อง
+              เท่านั้น การนับขีดจึงตรงกว่า % ที่ต้องแปลงกลับในหัว (และไม่ต้องมี
+              inline width ซึ่ง ratchet ห้ามเพิ่ม) */}
+          <span
+            className="tab-overall-seg" role="progressbar"
+            aria-valuenow={requiredFilled} aria-valuemax={requiredTotal}
+            aria-label="ช่องบังคับที่กรอกแล้ว"
+          >
+            {Array.from({ length: requiredTotal }, (_, i) => (
+              <i key={i} data-ok={i < requiredFilled ? "1" : undefined} />
+            ))}
+          </span>
+        </span>
+      </div>
+      {missingAll.length > 0 && (
+        <p className="tab-missing">
+          <span>ยังขาด</span>
+          {missingAll.map((m) => (
+            <button
+              key={`${m.tab}-${m.label}`} type="button" className="tab-missing-jump"
+              onClick={() => setTab(m.tab)}
+            >
+              {m.label}
+              {m.tab !== activeTab && <span className="tab-missing-where"> · {m.tabLabel}</span>}
+            </button>
+          ))}
+        </p>
+      )}
+
+      {/* ── แท็บ "งาน" — ของที่หัวข้อนั้นต้องอ้าง ─────────────────────────
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
+      {activeTab === "work" && (<>
       {needsProject && (
-      <>
-      <div className="form-group">
+      <div className="form-grid cols-2">
+      <div className="form-group col-span-2">
         <span className={styles.fieldLabel}>ดีล</span>
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
             ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
@@ -382,19 +496,17 @@ export default function RequestForm({
           **หายเงียบ**: เลือกดีลแล้วไม่มีอะไรบอกว่าใบนี้จะเกาะลูกค้า/โครงการไหน
           ต่างจากบล็อกบรีฟกลิ่นที่โชว์ของที่เติมจาก SO ครบ · เป็นตัวอย่างของสิ่งที่
           server จะเขียนจริง ไม่ใช่ช่องให้แก้ (`requestPayload` ไม่ส่งสองค่านี้เลย) */}
-      <div className="form-grid">
-        <DerivedField
-          label="ลูกค้า" from="เติมจากดีลที่เลือก"
-          value={selectedDeal?.customerName || ""}
-        />
-        <DerivedField
-          label="โครงการ" from="เติมจากดีลที่เลือก"
-          value={(() => {
-            const project = projects.find((p) => p.id === selectedDeal?.projectId);
-            return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
-          })()}
-        />
-      </div>
+      <DerivedField
+        label="ลูกค้า" from="เติมจากดีลที่เลือก"
+        value={selectedDeal?.customerName || ""}
+      />
+      <DerivedField
+        label="โครงการ" from="เติมจากดีลที่เลือก"
+        value={(() => {
+          const project = projects.find((p) => p.id === selectedDeal?.projectId);
+          return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
+        })()}
+      />
 
       {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────
           ⭐ มติผู้ใช้ 2026-08-08: เอกสารอย่าง COA/IFRA มักผูกกับใบเสนอราคา ใบสั่งขาย
@@ -403,7 +515,11 @@ export default function RequestForm({
           ⚠️ **ว่างได้ทุกช่อง** — ด่านที่ server ตรวจแค่ "ของมีจริง + อยู่ดีลเดียวกัน"
           ⚠️ QT/SO **กรองตามดีลที่เลือก** — อ้างข้ามดีลคือความขัดแย้งที่ต้องกันตั้งแต่จอ */}
       {optionalRefs.length > 0 && (
-        <div className="form-grid">
+        <>
+          {/* หัวคั่นย่อยในแท็บเดียวกัน — แยก "ของที่ต้องอ้าง" ออกจาก "อ้างอิงเพิ่ม"
+              ให้ชัด · ทั้งสองก้อนเป็นเรื่อง "งานไหน" เหมือนกันจึงไม่แยกแท็บ แต่
+              ก้อนล่างว่างได้ทุกช่อง ซึ่งต่างกันมากพอที่ต้องบอก */}
+          <FormZone title="อ้างอิงเพิ่ม" note="ว่างได้ทุกช่อง" className="col-span-2" />
           {optionalRefs.includes("quotation") && (
             <div className="form-group">
               <span className={styles.fieldLabel}>
@@ -453,24 +569,40 @@ export default function RequestForm({
               </span>
               {/* ⭐ หลายรายการ (ม-89) — เลือกทีละตัวจากดรอปดาวน์ ตัวที่เลือกแล้วขึ้น
                   เป็นป้ายถอดได้ข้างล่าง (แพตเทิร์นเดียวกับรายการไฟล์แนบ)
-                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
-              <SearchableSelect
-                value="" disabled={disabled}
-                onChange={(v) => {
-                  if (!v || (value.productIds || []).includes(v)) return;
-                  set({ productIds: [...(value.productIds || []), v] });
-                }}
-                options={products
-                  .filter((fg) => !(value.productIds || []).includes(fg.id))
-                  .map((fg) => ({
-                    value: fg.id,
-                    label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
-                    search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
-                  }))}
-                placeholder="— เลือกเพื่อเพิ่ม —"
-                emptyText="ยังไม่มีสินค้าในทะเบียน"
-                ariaLabel="เพิ่มสินค้า (FG) ที่อ้างถึง"
-              />
+                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด
+                  ⭐ **เลือกแล้วต้องกด "เพิ่ม" อีกที** (มติผู้ใช้ 2026-08-09) — ทะเบียน
+                  สินค้ามีรหัสที่หน้าตาใกล้กันมาก การเลือกผิดแล้วมันเข้าลิสต์ทันที
+                  แปลว่าต้องหาปุ่มถอดออกทุกครั้งที่พลาด · ตอนนี้ค่าที่เลือกค้างในช่อง
+                  ให้อ่านทวนก่อน แล้วค่อยยืนยัน */}
+              <div className={styles.pickAdd}>
+                <SearchableSelect
+                  value={fgPick} disabled={disabled}
+                  onChange={setFgPick}
+                  options={products
+                    .filter((fg) => !(value.productIds || []).includes(fg.id))
+                    .map((fg) => ({
+                      value: fg.id,
+                      label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+                      search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
+                    }))}
+                  placeholder="— เลือกสินค้า —"
+                  emptyText="ยังไม่มีสินค้าในทะเบียน"
+                  ariaLabel="เลือกสินค้า (FG) ที่จะเพิ่ม"
+                />
+                {/* ปุ่มที่กดไม่ได้ต้องบอกเหตุผล (กฎเดียวกับ `requestFormBlocker`) */}
+                <Button
+                  size="sm" icon={<Plus size={14} aria-hidden="true" />}
+                  disabled={disabled || !fgPick}
+                  title={fgPick ? undefined : "เลือกสินค้าจากช่องซ้ายก่อน"}
+                  onClick={() => {
+                    if (!fgPick || (value.productIds || []).includes(fgPick)) return;
+                    set({ productIds: [...(value.productIds || []), fgPick] });
+                    setFgPick("");
+                  }}
+                >
+                  เพิ่ม
+                </Button>
+              </div>
               {!!(value.productIds || []).length && (
                 <ul className={styles.fileList}>
                   {(value.productIds || []).map((fgId) => {
@@ -495,9 +627,9 @@ export default function RequestForm({
               )}
             </div>
           )}
-        </div>
+        </>
       )}
-      </>
+      </div>
       )}
 
       {/* ── บรีฟกลิ่น: ยึดใบสั่งขาย (ค่าบริการออกแบบกลิ่น) ─────────────────
@@ -505,9 +637,8 @@ export default function RequestForm({
           → เลือก SO ที่เดียว ดีล/โครงการ/ลูกค้า server เติมจาก SO เอง ไม่ให้เลือกซ้ำ
           แล้วขัดกันเอง (SO ของดีล A แต่เลือกดีล B) */}
       {needsSalesOrder && (
-        <>
-          <div className="form-grid">
-            <div className="form-group">
+        <div className="form-grid cols-2">
+            <div className="form-group col-span-2">
               <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น *</span>
               <SearchableSelect
                 value={value.salesOrderId} disabled={disabled}
@@ -536,6 +667,21 @@ export default function RequestForm({
                 }}
                 ariaLabel="ใบสั่งขายของบรีฟกลิ่น"
               />
+              {/* ⚠️ prod เคยมี sales_orders = 0 ใบ — ต้องบอกทางออกตรงนี้ ไม่ใช่ปล่อยให้
+                  เจอ dropdown ว่างแล้วคิดว่าระบบพัง
+                  ⭐ ลิสต์กรองแล้ว ⇒ ต้องบอกด้วยว่า**ซ่อนอะไรไปเพราะอะไร** ตั้งแต่ยังไม่กด
+                  เปิด dropdown — คนที่ถือใบในมืออยู่จะได้รู้ทันทีว่าต้องไปทำอะไรก่อน
+                  ไม่ใช่ไปเจอตอนค้นแล้วไม่พบ
+                  ⭐ อยู่ **ใต้ช่องที่มันคุม** (มติ 2026-08-09) — เดิมลอยท้ายบล็อกรวมกับ
+                  คำอธิบายหัวข้ออีกสองบรรทัดจนอ่านไม่ออกว่าอันไหนพูดถึงช่องไหน */}
+              <small className={styles.hint}>
+                {!salesOrders.length
+                  ? "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"
+                  : [
+                    "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง",
+                    scentDesignOrderSkipHint(soSkips),
+                  ].filter(Boolean).join(" · ")}
+              </small>
             </div>
             <DerivedField
               label="ลูกค้า" from="เติมจาก SO"
@@ -545,26 +691,14 @@ export default function RequestForm({
               label="ดีล" from="เติมจาก SO"
               value={soDeal ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}` : ""}
             />
-            <DerivedField label="ขั้นในไทม์ไลน์" from="—" value={stepLabel || ""} />
-          </div>
-          {/* ⚠️ prod เคยมี sales_orders = 0 ใบ — ต้องบอกทางออกตรงนี้ ไม่ใช่ปล่อยให้
-              เจอ dropdown ว่างแล้วคิดว่าระบบพัง
-              ⭐ ลิสต์กรองแล้ว ⇒ ต้องบอกด้วยว่า**ซ่อนอะไรไปเพราะอะไร** ตั้งแต่ยังไม่กด
-              เปิด dropdown — คนที่ถือใบในมืออยู่จะได้รู้ทันทีว่าต้องไปทำอะไรก่อน
-              ไม่ใช่ไปเจอตอนค้นแล้วไม่พบ */}
-          <small className={styles.hint}>
-            {!salesOrders.length
-              ? "ยังไม่มีใบสั่งขายในระบบ — ต้องออก QT แล้วรับเป็น SO ก่อนจึงเปิดบรีฟกลิ่นได้"
-              : [
-                "ดีลและโครงการเติมจาก SO — ไม่ให้เลือกซ้ำแล้วขัดกันเอง",
-                scentDesignOrderSkipHint(soSkips),
-              ].filter(Boolean).join(" · ")}
-          </small>
-        </>
+        </div>
       )}
 
-      {/* ── 4) ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────────────────────── */}
-      <div className="form-grid">
+      </>)}
+
+      {/* ── แท็บ "เรื่องที่ขอ" — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
+      {activeTab === "subject" && (
+      <div className="form-grid cols-2">
         <div className="form-group col-span-2">
           <label htmlFor="req-title">{copy.titleLabel}</label>
           <input
@@ -591,30 +725,12 @@ export default function RequestForm({
           </small>
         </div>
         )}
-      </div>
 
-      {/* ⭐ หัวข้อที่ใช้แบบฟอร์ม PDR ใช้มันแทนช่องรายละเอียดธรรมดา — ธง `hasPdr`
-          มาจากทะเบียนหัวข้อ ไม่ใช่การเทียบชื่อหัวข้อในฟอร์ม (มี ratchet ห้ามไว้) */}
-      {hasPdr && (
-        <PdrForm
-          value={value.pdr || emptyPdr()}
-          onChange={(pdr) => set({ pdr })}
-          briefs={value.briefs || []}
-          onBriefsChange={(briefs) => set({ briefs })}
-          disabled={disabled}
-          scentCount={scentCount}
-          customer={pdrDerived.customer || ""}
-          deal={pdrDerived.deal || ""}
-          coordinator={pdrDerived.coordinator || ""}
-          contactName={pdrDerived.contactName || ""}
-          contactPhone={pdrDerived.contactPhone || ""}
-          sampleDue={pdrDerived.sampleDue || ""}
-        />
-      )}
-
-      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ──────── */}
+      {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ────────
+          อยู่ในโซน ② เพราะมันคือ "ขออะไร" ไม่ใช่ "งานไหน" — กลิ่น/สูตร/หมวดสินค้า
+          เป็นตัวตนของสิ่งที่ขอ ส่วนดีล/SO ในโซน ① คือบริบทของงานที่มันสังกัด */}
       {needsScent && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>
             {copy.scentLabel}
           </span>
@@ -637,7 +753,7 @@ export default function RequestForm({
           Mock-up สินค้ายังไม่มีในระบบ · ธง isExcise/requiresFdaNotice ติดมากับหมวด
           ทำให้ RD เห็นทันทีว่าตัวอย่างนี้เป็นสินค้าที่ต้องขึ้นทะเบียน/แจ้ง อย. หรือไม่ */}
       {needsProductType && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>ประเภทสินค้าที่จะขึ้นตัวอย่าง</span>
           <SearchableSelect
             value={value.productTypeId} disabled={disabled}
@@ -663,7 +779,7 @@ export default function RequestForm({
       )}
 
       {needsFormula && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.formulaLabel}</span>
           <SearchableSelect
             value={value.formulaId} disabled={disabled}
@@ -692,7 +808,7 @@ export default function RequestForm({
           ส่วนนี่คือ "หมวดไหน กลิ่นไหน" ซึ่งเป็นตัวตนของสูตรที่จะเกิด · ยัดสองอย่างนี้
           ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
       {lineShape === "product_dev" && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           <ProductDevLines
             rows={items.length ? items : [emptyProductDevRow()]}
@@ -707,7 +823,7 @@ export default function RequestForm({
 
       {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
       {(lineShape === "document" || lineShape === "billing_doc") && (
-        <div className="form-group">
+        <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
           {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
               คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
@@ -719,10 +835,50 @@ export default function RequestForm({
           />
         </div>
       )}
+      </div>
+      )}
 
+      {/* ── แท็บ "ฟอร์ม PDR" — เฉพาะหัวข้อที่ประกาศ `hasPdr` ──────────────────
+          ⭐ ใช้แทนช่องรายละเอียดธรรมดา (ธง `hasPdr` มาจากทะเบียนหัวข้อ ไม่ใช่การ
+          เทียบชื่อหัวข้อในฟอร์ม — มี ratchet ห้ามไว้)
+          ⭐ **สองชั้นด้วยรางข้าง** (มติ "แบบ A") — 6 ส่วนที่เคยเป็นลิ้นชักซ้อนกันลงมา
+          กลายเป็นรายการด้านข้างที่บอกด้วยว่าส่วนไหนกรอกไปเท่าไร ⇒ ไม่ต้องกางทุกอัน
+          เพื่อตรวจว่าเหลือตรงไหน
+          ⚠️ ฝั่งอ่านบนหน้ารายละเอียด (`PdrSummary`) ยังเป็นลิ้นชักอยู่ — ตามแผนของ
+          ผู้ใช้จะยกไปใช้รางเดียวกันใน "ตอน B" · จนกว่าจะถึงตอนนั้นสองฝั่งต่างผังกัน
+          โดยตั้งใจ ไม่ใช่หลุด */}
+      {activeTab === "pdr" && hasPdr && (
+        <SectionRail
+          sections={railSections}
+          value={activeRail}
+          onChange={setPdrSection}
+          ariaLabel="ส่วนของแบบฟอร์ม PDR"
+        >
+          {/* 🐞 เดิม **ไม่ได้ส่ง `requester` เลย** — ช่อง "ผู้ร้องขอ (AE)" จึงขึ้นเส้นประ
+              ค้างทุกใบตอนกรอก ทั้งที่ `pdrContext` คำนวณค่าไว้ให้แล้ว (โผล่จริงตอน
+              บันทึกเสร็จเท่านั้น = อาการที่ผู้ใช้ทักมา 2026-08-09) */}
+          <PdrForm
+            section={activeRail}
+            value={value.pdr || emptyPdr()}
+            onChange={(pdr) => set({ pdr })}
+            briefs={value.briefs || []}
+            onBriefsChange={(briefs) => set({ briefs })}
+            disabled={disabled}
+            scentCount={scentCount}
+            customer={pdrDerived.customer || ""}
+            deal={pdrDerived.deal || ""}
+            requester={pdrDerived.requester || ""}
+            coordinator={pdrDerived.coordinator || ""}
+            contactName={pdrDerived.contactName || ""}
+            contactPhone={pdrDerived.contactPhone || ""}
+            sampleDue={pdrDerived.sampleDue || ""}
+          />
+        </SectionRail>
+      )}
 
-      {/* ── 5) วันที่ต้องการคำตอบ + ด่วน ──────────────────────────────────── */}
-      <div className="form-grid">
+      {/* ── แท็บสุดท้าย: กำหนด · ความเร่งด่วน · ไฟล์ ─────────────────────── */}
+      {activeTab === "due" && (
+      <div className="form-grid cols-2">
         <div className="form-group">
           {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
               ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
@@ -759,16 +915,14 @@ export default function RequestForm({
             />
           </div>
         )}
-      </div>
 
-      {/* ── 6) แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ─────────────
+      {/* ── แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ────────────────
           ⭐ **ช่องไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่
           หน้าสร้างคำร้องเลย เพราะตอนนี้เหมือนต้องบันทึกก่อน") — ไฟล์เก็บใน
           `value.files` แล้วผู้เรียกอัปให้หลังได้ id (`uploadDraftFiles`) · เดิมซ่อน
           พร้อม @ ด้วยธง `deferAttachments` ทั้งที่กลไกอัปมีอยู่แล้ว
           ⚠️ @ ยังซ่อนตอนร่าง (`deferMentions`) — แจ้งเตือนออกตอนกดส่ง ไม่ใช่ตอน
           บันทึกร่าง โชว์ไว้จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรในจังหวะที่คนคาดว่าเกิด */}
-      <div className="form-grid">
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>แนบไฟล์</span>
           {/* ไฟล์ถูกอัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอกฟอร์ม) —
@@ -831,6 +985,7 @@ export default function RequestForm({
         </div>
         )}
       </div>
+      )}
 
       {/* บอกว่ายังขาดอะไรอยู่ตรงนี้ที่เดียว — ฟอร์มรู้กฎของตัวเองอยู่แล้ว (ด่าน
           ตัวเดียวกับที่ server ใช้) · ก่อนหน้านี้ปุ่มแค่จางลงเงียบ ๆ ผู้ใช้ต้องเดาว่า

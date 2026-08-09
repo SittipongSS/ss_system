@@ -3582,6 +3582,139 @@ button.empty-state { width: 100%; font: inherit; }
 .form-field-label.split,
 .deal-field-label.split { justify-content: space-between; gap: var(--space-2); }
 
+/* ── เกจของแท็บฟอร์ม (`lib/requests/formTabs`) ────────────────────────────
+   วงแหวนหน้าชื่อแท็บ = **ช่องบังคับ** ของแท็บนั้น · ตัวเลขข้างหลัง = ช่องที่กรอกแล้ว
+   ⚠️ สองอย่างนี้คนละความหมาย ห้ามยุบเป็นเลขเดียว — แบบฟอร์ม PDR 41 ช่อง
+   ไม่บังคับสักช่อง ถ้าเอามารวมเป็น % เดียว เกจจะขึ้น ~12% ทั้งที่ส่งได้แล้ว */
+.tab-meter {
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-full);
+  flex: none;
+  position: relative;
+  background: var(--panel-3);
+}
+.tab-meter::after {
+  content: "";
+  position: absolute;
+  inset: 3.5px;
+  border-radius: var(--radius-full);
+  background: var(--panel);
+}
+/* ครบแล้ว = ทึบเขียว · ยังขาด = วงแหวนเหลืองกลวง (ไม่ใช่แดง — กรอกยังไม่จบ
+   ไม่ใช่ความผิดพลาด กติกาเดียวกับข้อความ "ยังกรอกไม่ครบ") */
+.tab-meter[data-state="full"] { background: var(--green); }
+.tab-meter[data-state="full"]::after { background: var(--green); }
+.tab-meter[data-state="missing"] { background: var(--amber-soft); box-shadow: inset 0 0 0 1.5px var(--amber); }
+.tab-meter[data-state="missing"]::after { display: none; }
+.tab-count { font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* แถบสรุปทั้งใบ — อยู่ท้ายแถบแท็บ บอก "ช่องบังคับกี่/กี่"
+   ⚠️ ใช้ `.progress` ของกลาง ไม่ทำแถบใหม่ — แถบความคืบหน้าในระบบมีทรงเดียว
+   (กติกา "หนึ่ง pattern มีทรงเดียว") · ที่นี่แค่กำหนดความกว้างให้มันพอดีแถบแท็บ */
+.tab-overall { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; font-size: var(--fs-3); color: var(--text-3); }
+.tab-overall-seg { display: flex; gap: var(--space-0-5); }
+.tab-overall-seg > i {
+  width: 18px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.tab-overall-seg > i[data-ok] { background: var(--green); box-shadow: none; }
+
+/* ── รางเลือกส่วนสองชั้น (`ui/SectionRail`) ────────────────────────────────
+   ⚠️ จอแคบกลายเป็นแถบเลื่อนแนวนอน ไม่ยุบเป็นดรอปดาวน์ — ตัวเลขที่กรอกแล้วของ
+   ส่วนอื่นต้องยังเห็นอยู่ ไม่งั้นรางก็ไม่ต่างจากลิ้นชักเดิม */
+.section-rail {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  min-width: 0;
+}
+.section-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+.section-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.section-rail-item:hover:not([data-on]) { color: var(--text-2); background: var(--panel-3); }
+.section-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-rail-item[data-on] {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+/* ⚠️ ชื่อส่วนตัดคำได้ ไม่ใช่ ellipsis — "ข้อกำหนดด้านเอกสารและกฎระเบียบ" ยาวกว่าราง
+   ตัดท้ายทิ้งแล้วเหลือ "ข้อกำหนดด้านเอกสารแ…" ซึ่งอ่านไม่ออกว่าคนละส่วนกับ
+   "ข้อกำหนดผลิตภัณฑ์" (แถวเลื่อนแนวนอนบนจอแคบยังคง nowrap เพราะไม่มีเพดานความกว้าง) */
+.section-rail-label { min-width: 0; }
+.section-rail-count { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.section-rail-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--panel-3); flex: none; }
+.section-rail-dot[data-tone="some"] { background: var(--amber); }
+.section-rail-dot[data-tone="full"] { background: var(--green); }
+.section-rail-body { padding: var(--space-4); min-width: 0; }
+@media (max-width: 768px) {
+  .section-rail { grid-template-columns: 1fr; }
+  .section-rail-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  /* ⚠️ `flex: none` จำเป็น — แถวเลื่อนแนวนอนที่ปล่อยให้ลูกหดจะบีบทุกส่วนให้ทับกัน
+     แทนที่จะเลื่อน (เจอจริงบนจอ 375px) */
+  .section-rail-item { white-space: nowrap; flex: none; }
+  .section-rail-label { white-space: nowrap; overflow: visible; }
+  /* เกจรวมลงบรรทัดของตัวเอง — ไม่งั้นมันกินครึ่งแถวจนแท็บท้าย ๆ (ฟอร์ม PDR ·
+     กำหนด) ถูกดันออกนอกจอโดยไม่มีอะไรบอกว่ายังมีอยู่ */
+  .tab-overall { margin-left: 0; flex-basis: 100%; justify-content: flex-end; }
+}
+
+/* ── หัวคั่นโซนของฟอร์มยาว (`ui/FormZone`) ────────────────────────────────
+   ชื่อโซนตัวจิ๋วพิมพ์ใหญ่ + เส้นลากยาวจนสุดแถว — บอกจังหวะโดยไม่แย่งน้ำหนัก
+   จากป้ายของช่องกรอก · โน้ตท้ายเส้นใช้กับเงื่อนไขของทั้งโซน
+   ⚠️ ระยะห่างบนมากกว่าล่างโดยตั้งใจ — หัวโซนต้องเกาะกับของที่มันครอบ ไม่ใช่ลอยกลาง */
+.form-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-5) 0 var(--space-2);
+}
+.form-zone:first-child { margin-top: 0; }
+/* จอแคบ: โน้ตลงบรรทัดของตัวเอง — ไม่งั้นมันบีบเส้นคั่นจนเหลือขีดสั้น ๆ 15px
+   (วัดจริงที่ 375px) ซึ่งอ่านเหมือนความผิดพลาดมากกว่าเส้นแบ่ง */
+@media (max-width: 560px) {
+  .form-zone-note { flex-basis: 100%; }
+}
+.form-zone-title {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  margin: 0;
+}
+.form-zone-rule { flex: 1; height: 1px; background: var(--border); }
+.form-zone-note { font-size: var(--fs-3); color: var(--text-3); }
+
 /* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
    หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
    ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */
@@ -5695,3 +5828,33 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   display: inline-block;
   margin-right: var(--space-1-5);
 }
+
+/* แถบแท็บของฟอร์มที่มีเกจท้ายแถว — Tabs กินความกว้างที่เหลือ เกจชิดขวา
+   ⚠️ เกจอยู่ **นอก** `ui/Tabs` เพราะมันไม่ใช่แท็บ (กดไม่ได้) — ยัดเข้าไปในลิสต์
+   แท็บเมื่อไร คีย์บอร์ดจะเดินลูกศรไปโดนของที่กดไม่ได้ */
+.tabbar-with-meter { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.tabbar-with-meter > .tabs-header { flex: 1; min-width: 0; }
+.tab-with-meter { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* บรรทัด "ยังขาด …" ใต้แท็บ — กดชื่อช่องแล้วกระโดดไปแท็บที่มันอยู่ */
+.tab-missing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-5);
+  color: var(--amber);
+}
+.tab-missing-jump {
+  border: 1px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2-5);
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.tab-missing-jump:hover { background: color-mix(in srgb, var(--amber) 26%, transparent); }
+.tab-missing-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-missing-where { color: var(--text-3); }
