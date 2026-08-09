@@ -119,18 +119,26 @@ function Section({ title, note, children, open = false, progress = null, flat = 
   );
 }
 
-// ติ๊กแล้วเขียนต่อ — กลุ่มลูกค้าเป้าหมาย / Value Proposition (มติผู้ใช้)
+// เปิดแล้วเขียนต่อ — กลุ่มลูกค้าเป้าหมาย / Value Proposition (มติผู้ใช้)
+//
+// ⭐ **สวิตช์ ไม่ใช่ checkbox** (มติผู้ใช้ 2026-08-09) — มันคือธง "ข้อนี้เกี่ยวไหม"
+// ซึ่งกติกาคอนโทรล v2 บอกให้ใช้สวิตช์ · และเปิดแล้วมีช่องพิมพ์งอกออกมา ซึ่งอ่านเป็น
+// เหตุ-ผลชัดกว่ากล่องติ๊กเล็ก ๆ
+// ⚠️ ค่าที่เก็บยังเป็น string เหมือนเดิม (" " = เปิดแต่ยังไม่พิมพ์) — เอกสารกับจอสรุป
+// อ่านค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean
 function TickAndWrite({ label, value, onChange, disabled }) {
   const on = value != null && value !== "";
   return (
     <div className="form-group">
-      <label className={styles.checkRow}>
-        <input
-          type="checkbox" checked={on} disabled={disabled}
-          onChange={(e) => onChange(e.target.checked ? " " : "")}
-        />
-        <span className={styles.checkLabel}>{label}</span>
-      </label>
+      <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+        <button
+          type="button" className="ui-switch" disabled={disabled}
+          data-on={on ? "1" : undefined} aria-pressed={on}
+          onClick={() => onChange(on ? "" : " ")}
+        >
+          <i aria-hidden="true" />{label}
+        </button>
+      </div>
       {on && (
         <Input
           value={value.trim()} disabled={disabled} aria-label={label}
@@ -517,7 +525,7 @@ export default function PdrForm({
                 aria-pressed={value.packagingArtwork === "has"}
                 onClick={() => set({ packagingArtwork: value.packagingArtwork === "has" ? "none" : "has" })}
               >
-                <i aria-hidden="true" /><ImageIcon size={13} aria-hidden="true" /> มีภาพประกอบ
+                <i aria-hidden="true" /><ImageIcon size={13} aria-hidden="true" /> ภาพประกอบ
               </button>
             </div>
             {/* ⚠️ มติผู้ใช้: บอกว่ามี = ต้องแนบจริง · บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ

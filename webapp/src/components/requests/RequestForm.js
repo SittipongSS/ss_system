@@ -928,7 +928,7 @@ export default function RequestForm({
               data-on={value.urgent ? "1" : undefined} aria-pressed={!!value.urgent}
               onClick={() => set({ urgent: !value.urgent })}
             >
-              <i aria-hidden="true" /><Flame size={13} aria-hidden="true" /> งานด่วน
+              <i aria-hidden="true" /><Flame size={13} aria-hidden="true" /> ด่วน
             </button>
           </div>
         </div>
