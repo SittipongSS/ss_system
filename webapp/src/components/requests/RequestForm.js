@@ -124,6 +124,7 @@ export default function RequestForm({
   value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
   projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
+  me = null,               // ผู้ใช้ที่กำลังเปิดใบ — ใช้พรีวิว "ผู้ร้องขอ" ก่อนบันทึก
   customers = [], quotations = [], products = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
   lockKind = false, disabled = false,
@@ -206,7 +207,15 @@ export default function RequestForm({
   const pdrDerived = pdrContext({
     // ⚠️ `requestedDueDate`/`urgent` อยู่บนฟอร์ม ไม่ใช่บนแถวที่บันทึกแล้ว — ส่งเข้าไป
     // ในรูปเดียวกับแถวคำร้อง เพื่อให้ตัวคำนวณเป็นตัวเดียวกันจริง ๆ ไม่ใช่แค่คล้ายกัน
-    request: { requestedDueDate: value.requestedDueDate, urgent: value.urgent, customerName: selectedSo?.customerName || null },
+    // ⚠️ รูปเดียวกับแถวคำร้องจริง เพื่อให้ตัวคำนวณเป็นตัวเดียวกัน ไม่ใช่แค่คล้ายกัน
+    // ⭐ `requestedByName` = คนที่กำลังเปิดใบ — ทำให้ "ผู้ร้องขอ (AE)" พรีวิวได้
+    //    ตั้งแต่ยังไม่บันทึก (โครงการที่ระบุผู้ดูแลไว้ยังชนะเสมอ ตามลำดับใน pdrContext)
+    request: {
+      requestedDueDate: value.requestedDueDate,
+      urgent: value.urgent,
+      customerName: selectedSo?.customerName || null,
+      requestedByName: me?.name || null,
+    },
     project: projects.find((p) => p.id === (soDeal?.projectId || value.projectId)) || null,
     customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
     deal: soDeal,
@@ -845,6 +854,9 @@ export default function RequestForm({
           onChange={setPdrSection}
           ariaLabel="ส่วนของแบบฟอร์ม PDR"
         >
+          {/* 🐞 เดิม **ไม่ได้ส่ง `requester` เลย** — ช่อง "ผู้ร้องขอ (AE)" จึงขึ้นเส้นประ
+              ค้างทุกใบตอนกรอก ทั้งที่ `pdrContext` คำนวณค่าไว้ให้แล้ว (โผล่จริงตอน
+              บันทึกเสร็จเท่านั้น = อาการที่ผู้ใช้ทักมา 2026-08-09) */}
           <PdrForm
             section={activeRail}
             value={value.pdr || emptyPdr()}
@@ -855,6 +867,7 @@ export default function RequestForm({
             scentCount={scentCount}
             customer={pdrDerived.customer || ""}
             deal={pdrDerived.deal || ""}
+            requester={pdrDerived.requester || ""}
             coordinator={pdrDerived.coordinator || ""}
             contactName={pdrDerived.contactName || ""}
             contactPhone={pdrDerived.contactPhone || ""}

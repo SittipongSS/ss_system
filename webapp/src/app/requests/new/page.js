@@ -69,6 +69,11 @@ export default function NewRequestPage() {
   const [mentionPeople, setMentionPeople] = useState([]);
   // ⭐ ทะเบียนลูกค้า — ฟอร์ม PDR เติม "ชื่อผู้ติดต่อ / Phone-Line" จากที่นี่ (มติผู้ใช้)
   const [customers, setCustomers] = useState([]);
+  /* ⭐ **ตัวตนของคนที่กำลังเปิดใบ** (มติผู้ใช้ 2026-08-09: "เติมพรีวิวให้เห็นตั้งแต่
+     ตอนกรอกฟอร์ม") — ช่อง "ผู้ร้องขอ (AE)" ของแบบฟอร์ม PDR ถอยมาใช้ชื่อคนเปิดใบ
+     เมื่อโครงการยังไม่ระบุผู้ดูแล · ไม่ส่งมา = ช่องขึ้นเส้นประค้างจนกว่าจะกดบันทึก
+     ทั้งที่ค่านี้รู้ได้ตั้งแต่ยังไม่กรอกอะไรเลย */
+  const [me, setMe] = useState(null);
 
   useEffect(() => {
     const grab = (url, set) => fetch(url, { cache: "no-store" })
@@ -85,6 +90,7 @@ export default function NewRequestPage() {
     grab("/api/sa/requests/mentionable", setMentionPeople);
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
   }, []);
 
   // ⭐ บล็อกบรีฟของใบที่ prefill มา — ตอนเลือก SO เองในฟอร์ม `onChange` เป็นคนงอก
@@ -155,7 +161,7 @@ export default function NewRequestPage() {
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
-          quotations={quotations} products={products}
+          quotations={quotations} products={products} me={me}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
           // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว
