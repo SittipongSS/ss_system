@@ -2121,7 +2121,7 @@ h1, h2, h3, h4, h5, h6 {
 .ui-badge-w-fc { --cell-badge-w: 74px; }       /* FC% — กันแถวที่ยังไม่มีค่าเยื้อง */
 .ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
 .ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ยกเลิกอนุมัติ" */
-.ui-badge-w-lead { --cell-badge-w: 150px; }    /* สถานะลีด — "รอกระจาย (ได้ทีมแล้ว)" */
+.ui-badge-w-lead { --cell-badge-w: 92px; }     /* สถานะลีด — "เปิดลูกค้าแล้ว" / "นัดประชุมแล้ว" 88px */
 .ui-badge-w-channel { --cell-badge-w: 88px; }  /* ช่องทางที่รับลีด — "Typeform" */
 .ui-badge-w-nextstep { --cell-badge-w: 88px; } /* ก้าวถัดไปของคำร้อง — "รอฝ่ายทำต่อ" / "รอผู้ขอทำต่อ" 84px */
 .ui-badge-w-registry { --cell-badge-w: 92px; } /* สถานะกลิ่น/สูตร — "รอเข้าทะเบียน" 89px */

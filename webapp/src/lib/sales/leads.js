@@ -33,7 +33,7 @@ export const CHANNEL_GROUP_COLORS = { online: 'var(--blue)', onsite: 'var(--ambe
 export const LEAD_STATUSES = ['new', 'screened', 'assigned', 'contacted', 'meeting', 'qualified', 'disqualified'];
 export const LEAD_STATUS_LABELS = {
   new: 'รอคัดกรอง',
-  screened: 'รอกระจาย (ได้ทีมแล้ว)',
+  screened: 'รอกระจาย',
   assigned: 'รอติดต่อกลับ',
   contacted: 'ติดต่อแล้ว',
   meeting: 'นัดประชุมแล้ว',
