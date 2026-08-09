@@ -227,6 +227,10 @@ export default function HomeHubPage() {
                 const Icon = system.icon;
                 const landing = systemLandingForUser(system, userContext);
                 const descriptionId = `system-description-${system.key}`;
+                // คลาสการ์ดเขียนที่เดียวแล้วใช้ทั้งสองสาขา — เขียนซ้ำเมื่อไร งบ
+                // `legacySurface` ของ `glass-panel` (scripts/uiLegacyBudget.mjs) ขึ้น 1
+                // แล้ว `npm run audit:ui` ดับ เพราะเพดานขึ้นไม่ได้ ลงได้อย่างเดียว
+                const cardClass = `home-system-card glass-panel${system.disabled ? ' is-disabled' : ''}`;
                 const body = (
                   <>
                     <span className="home-system-icon"><Icon size={24} strokeWidth={1.7} aria-hidden="true" /></span>
@@ -244,7 +248,7 @@ export default function HomeHubPage() {
                   return (
                     <div
                       key={system.key}
-                      className="home-system-card glass-panel is-disabled"
+                      className={cardClass}
                       aria-describedby={descriptionId}
                     >
                       {body}
@@ -257,7 +261,7 @@ export default function HomeHubPage() {
                   <Link
                     key={system.key}
                     href={landing}
-                    className="home-system-card glass-panel"
+                    className={cardClass}
                     aria-describedby={descriptionId}
                     onClick={() => rememberSystem(system.key)}
                   >
