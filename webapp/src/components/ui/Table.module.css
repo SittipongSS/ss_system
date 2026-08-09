@@ -166,15 +166,31 @@
   height: 42px;
   padding-block: var(--space-1-5);
 }
-/* 44 ไม่ใช่ 40 และ padding แค่ 2px — ต้องเหลือที่ให้ MoneyInput (--ctl-h 36px
-   + border แถว 1px) ยืนได้โดยแถว**ไม่กระตุก**ตอนคลิกเริ่มแก้ในกริด
-   (วัดจริงบน /sales-planning/targets: 40px+padding 8 ทำแถวโต 42 → 45 ทุกคลิก
-   · 44+padding 8 ยังเหลือกระตุก 1px จาก border · v1 ที่ 48 รอดเพราะมี slack
-   แบบเดียวกับค่านี้) */
+/* 44 ไม่ใช่ 40 — ต้องเหลือที่ให้ MoneyInput (36px border-box) ยืนได้โดยแถว
+   **ไม่กระตุก**ตอนคลิกเริ่มแก้ในกริด (วัดจริงบน /sales-planning/targets:
+   40px+padding 8 ทำแถวโต 42 → 45 ทุกคลิก · 44+padding 8 ยังเหลือกระตุก 1px
+   จาก border · v1 ที่ 48 รอดเพราะมี slack แบบเดียวกับค่านี้)
+   ⚠️ **เพดานของ padding-block คือ 3px ไม่ใช่ 4** — `height` ของ td เป็น
+   border-box จึงกินเส้นคั่นแถว 1px ไปด้วย ⇒ 36 (ctl) + 2p + 1 (border) ≤ 44
+   ลอง 4px มาแล้ว วัดได้แถวโต 44 → **45 ทุกครั้งที่คลิกช่องตัวเลข** = กระตุก
+   (ตรงกับที่บรรทัดบนเตือนไว้เป๊ะ) · 2px เป็นค่าที่ยังมี slack เหลือ 3px */
 :global([data-ds="v2"]) .scroll[data-family="editable"] :global(td),
 :global([data-ds="v2"]) .scroll[data-family="matrix"] :global(td) {
   height: 44px;
   padding-block: var(--space-0-5);
+}
+
+/* ⭐ **แถวแรกเท่านั้นที่ได้ที่หายใจเพิ่ม** (ผู้ใช้ทัก 2026-08-09 "รายสินค้า
+   ชิดหัวตารางเกินไป") — padding 2px ทำให้เนื้อในเริ่มห่างเส้นใต้หัวตารางแค่ 2px
+   อ่านเป็นชนหัว · แก้ที่ padding ของทุกแถวไม่ได้เพราะติดเพดาน 3px ข้างบน
+   ⇒ ยกเฉพาะแถวแรก เพราะ **หัวตารางคือขอบของกลุ่ม ไม่ใช่เส้นคั่นแถวธรรมดา**
+   จึงควรห่างกว่าที่แถวห่างกันเองอยู่แล้ว
+   ⚠️ ต้องดัน `height` เป็น 48 คู่กันเสมอ — 36 + 8 + 2 + 1 (border) = 47
+   ถ้าปล่อยไว้ที่ 44 แถวแรกจะโตเองแล้วกลับไปกระตุกตอนคลิกเหมือนเดิม */
+:global([data-ds="v2"]) .scroll[data-family="editable"] :global(tbody tr:first-child td),
+:global([data-ds="v2"]) .scroll[data-family="matrix"] :global(tbody tr:first-child td) {
+  height: 48px;
+  padding-top: var(--space-2);
 }
 
 .scroll[data-family="matrix"] :global(th:first-child),
