@@ -61,13 +61,37 @@ export const formatMoneyInputWhileTyping = (value) => {
   return `${sign}${grouped}${decimal !== undefined ? `.${decimal.slice(0, 2)}` : ""}`;
 };
 
-export const isoDateToDisplay = (value) => {
-  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+// ── ปี พ.ศ. ↔ ค.ศ. ─────────────────────────────────────────────────────
+//
+// ⭐ **ที่เก็บเป็น ค.ศ. เสมอ** (ISO `YYYY-MM-DD`) — พ.ศ. เป็นเรื่องของ *การแสดงผล
+// และการกรอก* เท่านั้น · ห้ามเขียน พ.ศ. ลงฐานหรือส่งขึ้น API เด็ดขาด ไม่งั้นแถวที่
+// เขียนคนละยุคจะเรียงลำดับและเทียบกันไม่ได้ โดยไม่มีอะไรฟ้อง
+//
+// ใช้ที่ไหน: ฟอร์มที่ **กระดาษสั่งให้เป็น พ.ศ.** เช่น "วันที่มีผล" ของเอกสารควบคุม
+// (ตั้งค่า → มาตรฐานเอกสาร) ซึ่งพิมพ์ลงหัวกระดาษเป็น พ.ศ. อยู่แล้ว ⇒ ถ้าช่องกรอก
+// เป็น ค.ศ. คนกรอกจะเห็นเลขเด้งไป 543 ปีตอนบันทึก
+// ⚠️ **ไม่ใช่ค่าตั้งต้นของระบบ** — ที่อื่นทั้งหมดยังเป็น ค.ศ. (มติผู้ใช้ 2026-08-10
+// ให้ครอบแค่หน้ามาตรฐานเอกสาร) อย่าเผลอเปลี่ยนเป็น BE ทั้งระบบจากจุดนี้
+export const BUDDHIST_YEAR_OFFSET = 543;
+
+const shiftDisplayYear = (display, delta) => {
+  const match = String(display || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return display;
+  return `${match[1]}/${match[2]}/${Number(match[3]) + delta}`;
 };
 
-export const displayDateToIso = (value) => {
-  const match = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+export const isoDateToDisplay = (value, { era = "CE" } = {}) => {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const display = `${match[3]}/${match[2]}/${match[1]}`;
+  return era === "BE" ? shiftDisplayYear(display, BUDDHIST_YEAR_OFFSET) : display;
+};
+
+export const displayDateToIso = (value, { era = "CE" } = {}) => {
+  // แปลงปีกลับเป็น ค.ศ. ก่อนตรวจความถูกต้อง — ไม่งั้น 29/02/2567 (ปีอธิกสุรทิน
+  // ในปฏิทิน พ.ศ. คือ ค.ศ. 2024) จะถูกตัดทิ้งเพราะ 2567 ไม่ใช่ปีอธิกสุรทิน
+  const normalized = era === "BE" ? shiftDisplayYear(value, -BUDDHIST_YEAR_OFFSET) : value;
+  const match = String(normalized || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return null;
   const [, dd, mm, yyyy] = match;
   const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
