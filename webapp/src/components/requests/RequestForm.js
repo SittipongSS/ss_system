@@ -20,7 +20,10 @@
 // "ยังกรอกไม่ครบ" — เนื้อฟอร์ม หรือแถบปุ่มของผู้เรียก)
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
+import { useState } from "react";
 import { Paperclip, X, AtSign } from "lucide-react";
+import Tabs from "@/components/ui/Tabs";
+import SectionRail from "@/components/ui/SectionRail";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -31,7 +34,7 @@ import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines, { emptyProductDevRow } from "@/components/requests/ProductDevLines";
 import DocumentLines, { emptyDocumentRow } from "@/components/requests/DocumentLines";
-import PdrForm, { emptyPdr } from "@/components/requests/PdrForm";
+import PdrForm, { emptyPdr, pdrRailSections } from "@/components/requests/PdrForm";
 import { pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
@@ -42,6 +45,7 @@ import {
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
+import { requestFormTabs } from "@/lib/requests/formTabs";
 import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
@@ -216,6 +220,42 @@ export default function RequestForm({
   // action เองแล้วเพี้ยนจาก server จนปุ่มไม่เคยโผล่)
   const shapeError = requestFormBlocker(value);
 
+  // ── แท็บ + เกจ (มติผู้ใช้ 2026-08-09 "แบบ A") ─────────────────────────
+  // ⚠️ **state ของแท็บเป็น "ตำแหน่งสายตา" ไม่ใช่ข้อมูลของฟอร์ม** — ค่าที่กรอกยัง
+  // controlled ทั้งหมดผ่าน `value/onChange` เหมือนเดิม · เก็บไว้ในนี้เพื่อให้ข้อความ
+  // "ยังขาดอะไร" กระโดดไปแท็บนั้นได้ (ผู้เรียกไม่ต้องรู้จักแท็บ)
+  const [tab, setTab] = useState("work");
+  const [pdrSection, setPdrSection] = useState("request");
+  const formTabs = requestFormTabs(value, { optionalRefs });
+  // หัวข้อเปลี่ยน = ชุดแท็บเปลี่ยน (แท็บ PDR หายไป) ⇒ ถอยไปแท็บแรกแทนจอว่าง
+  const activeTab = formTabs.some((t) => t.key === tab) ? tab : (formTabs[0]?.key || "work");
+  const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
+  const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
+  const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
+  const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || []) : [];
+  const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
+
+  const tabItems = formTabs.map((t) => ({
+    key: t.key,
+    label: (
+      <span className="tab-with-meter">
+        {/* วงแหวน = ช่องบังคับของแท็บนี้ · แท็บที่ไม่มีช่องบังคับเลย (PDR) ไม่มีวงแหวน
+            — วงแหวนเขียวถาวรจะอ่านเหมือน "ครบแล้ว" ทั้งที่ไม่เคยมีอะไรให้ครบ */}
+        {t.required.total > 0 && (
+          <span
+            className="tab-meter"
+            data-state={t.required.missing.length ? "missing" : "full"}
+            aria-hidden="true"
+          />
+        )}
+        {t.label}
+        {t.optional.total > 0 && (
+          <span className="tab-count" title="ช่องไม่บังคับที่กรอกแล้ว">{t.optional.filled}/{t.optional.total}</span>
+        )}
+      </span>
+    ),
+  }));
+
   const addFiles = (list) => {
     const picked = Array.from(list || []).filter((f) => f.size <= MAX_UPLOAD_BYTES);
     if (!picked.length) return;
@@ -372,11 +412,46 @@ export default function RequestForm({
 
       {revealed && (
       <>
-      {/* ── โซน ① งานไหน — ของที่หัวข้อนั้นต้องอ้าง ────────────────────────
-          ⭐ **อยู่ใต้หัวข้อเสมอ** — ช่องพวกนี้โผล่/หายตามหัวข้อที่เพิ่งเลือก วางไว้
-          เหนือหัวข้อเมื่อไร ผู้ใช้จะเจอช่องงอกขึ้นมาเหนือจุดที่ตัวเองกำลังมองอยู่
+      {/* ── แถบแท็บ + เกจ (มติผู้ใช้ 2026-08-09) ──────────────────────────
+          ⚠️ **แท็บซ่อนของ ⇒ ต้องมีคนพาไปหาสิ่งที่ขาด** — บรรทัดใต้แท็บบอกว่าขาด
+          ช่องไหนอยู่แท็บไหน และกดแล้วกระโดดไปเลย · ไม่มีบรรทัดนี้เมื่อไร ผู้ใช้จะ
+          เจอปุ่มส่งที่กดไม่ได้โดยไม่รู้ว่าต้องไปเปิดแท็บไหน */}
+      <div className="tabbar-with-meter">
+        <Tabs tabs={tabItems} value={activeTab} onChange={setTab} ariaLabel="ส่วนของฟอร์มคำร้อง" />
+        <span className="tab-overall">
+          ช่องบังคับ {requiredFilled}/{requiredTotal}
+          {/* ⭐ ขีดละ "หนึ่งช่องบังคับ" ไม่ใช่เปอร์เซ็นต์ — ทั้งใบมีช่องบังคับ 1–4 ช่อง
+              เท่านั้น การนับขีดจึงตรงกว่า % ที่ต้องแปลงกลับในหัว (และไม่ต้องมี
+              inline width ซึ่ง ratchet ห้ามเพิ่ม) */}
+          <span
+            className="tab-overall-seg" role="progressbar"
+            aria-valuenow={requiredFilled} aria-valuemax={requiredTotal}
+            aria-label="ช่องบังคับที่กรอกแล้ว"
+          >
+            {Array.from({ length: requiredTotal }, (_, i) => (
+              <i key={i} data-ok={i < requiredFilled ? "1" : undefined} />
+            ))}
+          </span>
+        </span>
+      </div>
+      {missingAll.length > 0 && (
+        <p className="tab-missing">
+          <span>ยังขาด</span>
+          {missingAll.map((m) => (
+            <button
+              key={`${m.tab}-${m.label}`} type="button" className="tab-missing-jump"
+              onClick={() => setTab(m.tab)}
+            >
+              {m.label}
+              {m.tab !== activeTab && <span className="tab-missing-where"> · {m.tabLabel}</span>}
+            </button>
+          ))}
+        </p>
+      )}
+
+      {/* ── แท็บ "งาน" — ของที่หัวข้อนั้นต้องอ้าง ─────────────────────────
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
-      <FormZone title="① งานไหน" />
+      {activeTab === "work" && (<>
       {needsProject && (
       <div className="form-grid cols-2">
       <div className="form-group col-span-2">
@@ -429,6 +504,10 @@ export default function RequestForm({
           ⚠️ QT/SO **กรองตามดีลที่เลือก** — อ้างข้ามดีลคือความขัดแย้งที่ต้องกันตั้งแต่จอ */}
       {optionalRefs.length > 0 && (
         <>
+          {/* หัวคั่นย่อยในแท็บเดียวกัน — แยก "ของที่ต้องอ้าง" ออกจาก "อ้างอิงเพิ่ม"
+              ให้ชัด · ทั้งสองก้อนเป็นเรื่อง "งานไหน" เหมือนกันจึงไม่แยกแท็บ แต่
+              ก้อนล่างว่างได้ทุกช่อง ซึ่งต่างกันมากพอที่ต้องบอก */}
+          <FormZone title="อ้างอิงเพิ่ม" note="ว่างได้ทุกช่อง" className="col-span-2" />
           {optionalRefs.includes("quotation") && (
             <div className="form-group">
               <span className={styles.fieldLabel}>
@@ -587,8 +666,10 @@ export default function RequestForm({
         </div>
       )}
 
-      {/* ── โซน ② เรื่องที่ขอ — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
-      <FormZone title="② เรื่องที่ขอ" />
+      </>)}
+
+      {/* ── แท็บ "เรื่องที่ขอ" — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
+      {activeTab === "subject" && (
       <div className="form-grid cols-2">
         <div className="form-group col-span-2">
           <label htmlFor="req-title">{copy.titleLabel}</label>
@@ -727,16 +808,26 @@ export default function RequestForm({
         </div>
       )}
       </div>
+      )}
 
-      {/* ── โซน ③ แบบฟอร์ม PDR — เฉพาะหัวข้อที่ประกาศ `hasPdr` ────────────────
+      {/* ── แท็บ "ฟอร์ม PDR" — เฉพาะหัวข้อที่ประกาศ `hasPdr` ──────────────────
           ⭐ ใช้แทนช่องรายละเอียดธรรมดา (ธง `hasPdr` มาจากทะเบียนหัวข้อ ไม่ใช่การ
           เทียบชื่อหัวข้อในฟอร์ม — มี ratchet ห้ามไว้)
-          ⚠️ อยู่ **หลัง** เรื่องที่ขอเสมอ: PDR คือรายละเอียดของสิ่งที่เพิ่งบอกไป
-          วางไว้ก่อนชื่อเรื่องเมื่อไร คนจะเจอฟอร์ม 48 ช่องก่อนรู้ว่าตัวเองขออะไร */}
-      {hasPdr && (
-        <>
-          <FormZone title="③ แบบฟอร์ม PDR" note="กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก" />
+          ⭐ **สองชั้นด้วยรางข้าง** (มติ "แบบ A") — 6 ส่วนที่เคยเป็นลิ้นชักซ้อนกันลงมา
+          กลายเป็นรายการด้านข้างที่บอกด้วยว่าส่วนไหนกรอกไปเท่าไร ⇒ ไม่ต้องกางทุกอัน
+          เพื่อตรวจว่าเหลือตรงไหน
+          ⚠️ ฝั่งอ่านบนหน้ารายละเอียด (`PdrSummary`) ยังเป็นลิ้นชักอยู่ — ตามแผนของ
+          ผู้ใช้จะยกไปใช้รางเดียวกันใน "ตอน B" · จนกว่าจะถึงตอนนั้นสองฝั่งต่างผังกัน
+          โดยตั้งใจ ไม่ใช่หลุด */}
+      {activeTab === "pdr" && hasPdr && (
+        <SectionRail
+          sections={railSections}
+          value={activeRail}
+          onChange={setPdrSection}
+          ariaLabel="ส่วนของแบบฟอร์ม PDR"
+        >
           <PdrForm
+            section={activeRail}
             value={value.pdr || emptyPdr()}
             onChange={(pdr) => set({ pdr })}
             briefs={value.briefs || []}
@@ -750,12 +841,11 @@ export default function RequestForm({
             contactPhone={pdrDerived.contactPhone || ""}
             sampleDue={pdrDerived.sampleDue || ""}
           />
-        </>
+        </SectionRail>
       )}
 
-      {/* ── โซนสุดท้าย: กำหนด · ความเร่งด่วน · ไฟล์ ─────────────────────────
-          เลขโซนไล่ตามที่หัวข้อนั้นมีจริง — หัวข้อที่ไม่มี PDR โซนนี้คือ ③ */}
-      <FormZone title={`${hasPdr ? "④" : "③"} กำหนด ความเร่งด่วน และไฟล์`} />
+      {/* ── แท็บสุดท้าย: กำหนด · ความเร่งด่วน · ไฟล์ ─────────────────────── */}
+      {activeTab === "due" && (
       <div className="form-grid cols-2">
         <div className="form-group">
           {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
@@ -863,6 +953,7 @@ export default function RequestForm({
         </div>
         )}
       </div>
+      )}
 
       {/* บอกว่ายังขาดอะไรอยู่ตรงนี้ที่เดียว — ฟอร์มรู้กฎของตัวเองอยู่แล้ว (ด่าน
           ตัวเดียวกับที่ server ใช้) · ก่อนหน้านี้ปุ่มแค่จางลงเงียบ ๆ ผู้ใช้ต้องเดาว่า

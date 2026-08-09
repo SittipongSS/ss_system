@@ -9,10 +9,12 @@
 //
 // ไม่ใช่ `<fieldset>/<legend>`: โซนพวกนี้กินหลาย `.form-grid` ที่ซ้อนกันไม่ได้
 // ในกริดเดียว — ใช้ heading จริงเพื่อให้ screen reader ไล่โครงได้เหมือนกัน
-export default function FormZone({ title, level = 3, note = null }) {
+export default function FormZone({ title, level = 3, note = null, className = "" }) {
   const Heading = `h${level}`;
+  // ⚠️ อยู่ในกริดต้องส่ง `col-span-2` มาเอง — ไม่งั้นหัวโซนจะกลายเป็นช่องหนึ่ง
+  // ในคอลัมน์ซ้ายแล้วมีช่องกรอกมายืนข้าง ๆ (เจอจริงตอนทดสอบ 2026-08-09)
   return (
-    <div className="form-zone">
+    <div className={`form-zone ${className}`.trim()}>
       <Heading className="form-zone-title">{title}</Heading>
       <span className="form-zone-rule" aria-hidden="true" />
       {note && <span className="form-zone-note">{note}</span>}

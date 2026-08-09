@@ -440,3 +440,7 @@
 }
 
 .ctxAction { margin-left: auto; }
+
+/* ส่วนของ PDR ในโหมดราง — ไม่มีลิ้นชักซ้อน (รางเลือกส่วนให้แล้ว) */
+.pdrFlat { display: flex; flex-direction: column; gap: var(--space-3); }
+.pdrFlatTitle { margin: 0; font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text); }

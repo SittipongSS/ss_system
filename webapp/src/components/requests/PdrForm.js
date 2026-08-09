@@ -87,8 +87,19 @@ function Derived({ label, value, from }) {
    ว่ายังขาดตรงไหน · ตอนนี้เห็นตั้งแต่ยังพับอยู่
    ⚠️ นับจาก `pdrSectionProgress` ที่เดียว (ไม่นับช่องที่ระบบเติมและช่องที่ซ่อน
    ตามประเภทคำขอ) — ตัวเลขบนหัวกับของที่กางออกมาต้องเป็นชุดเดียวกัน */
-function Section({ title, note, children, open = false, progress = null }) {
+function Section({ title, note, children, open = false, progress = null, flat = false }) {
   const done = progress && progress.total > 0 && progress.filled >= progress.total;
+  // โหมดแบน — ใช้ตอนอยู่ในรางเลือกส่วน (`ui/SectionRail`) ซึ่งทำหน้าที่เลือกส่วน
+  // ให้แล้ว · ลิ้นชักซ้อนในรางคือการกดสองครั้งเพื่อเห็นของชิ้นเดียว
+  if (flat) {
+    return (
+      <div className={styles.pdrFlat}>
+        <h5 className={styles.pdrFlatTitle}>{title}</h5>
+        {note && <small className={styles.hint}>{note}</small>}
+        {children}
+      </div>
+    );
+  }
   return (
     <details className={styles.pdrSection} open={open}>
       <summary className={styles.pdrSummary}>
@@ -129,11 +140,36 @@ function TickAndWrite({ label, value, onChange, disabled }) {
   );
 }
 
+/* รายการส่วนสำหรับรางเลือกส่วน — ลำดับตรงกับที่ฟอร์มเรนเดอร์เป๊ะ
+   ⚠️ "บรีฟกลิ่น" ไม่ได้อยู่ใน `PDR_SECTIONS` (มันไม่ใช่ช่องบนกระดาษ FM-RD-01
+   แต่เป็นก้อนของระบบ) จึงต้องแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก */
+export function pdrRailSections(value = {}, briefs = []) {
+  const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
+  const count = (key) => pdrSectionProgress(of(key), value);
+  return [
+    { key: "request", label: of("request").title, count: count("request") },
+    { key: "customer", label: of("customer").title, count: count("customer") },
+    {
+      key: "briefs",
+      label: "บรีฟกลิ่น",
+      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.label || "").trim()).length },
+    },
+    { key: "spec", label: of("spec").title, count: count("spec") },
+    { key: "regulatory", label: of("regulatory").title, count: count("regulatory") },
+    { key: "signers", label: of("signers").title, count: count("signers") },
+  ];
+}
+
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
   scentCount = null, customer = null, deal = null, requester = null,
   coordinator = null, contactName = null, contactPhone = null, sampleDue = null,
+  // โหมดราง (มติผู้ใช้ 2026-08-09 "แบบ A") — ผู้เรียกวางรางเลือกส่วนเอง แล้วบอกว่า
+  // ตอนนี้อยู่ส่วนไหน · ไม่ส่ง = ลิ้นชักครบทุกส่วนเหมือนเดิม (ฝั่งอ่านยังใช้แบบนั้น)
+  section = null,
 }) {
+  const rail = section != null;
+  const show = (key) => !rail || section === key;
   // ⭐ ลูกค้าซื้อหลายกลิ่นแต่บอกมาแนวเดียวเป็นเรื่องปกติ (มติผู้ใช้) — รวบเป็นก้อนเดียว
   // แล้ว RD ส่งหลาย direction จากก้อนนั้น ซึ่งระบบรองรับอยู่แล้ว · จำนวนกลิ่นที่ขาย
   // เป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน
@@ -169,12 +205,16 @@ export default function PdrForm({
 
   return (
     <div className={styles.pdr}>
-      <div className={styles.pdrHead}>
-        <strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong>
-        <span className={styles.pdrCode}>FM-RD-01</span>
-      </div>
+      {!rail && (
+        <div className={styles.pdrHead}>
+          <strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong>
+          <span className={styles.pdrCode}>FM-RD-01</span>
+        </div>
+      )}
 
-      <Section title={SECTION.request.title} open note={SECTION.request.note} progress={pdrSectionProgress(SECTION.request, value)}>
+      {show("request") && (
+
+      <Section flat={rail} title={SECTION.request.title} open note={SECTION.request.note} progress={pdrSectionProgress(SECTION.request, value)}>
         <div className="form-grid cols-2">
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
@@ -202,7 +242,11 @@ export default function PdrForm({
         </div>
       </Section>
 
-      <Section title={SECTION.customer.title} progress={pdrSectionProgress(SECTION.customer, value)}>
+      )}
+
+      {show("customer") && (
+
+      <Section flat={rail} title={SECTION.customer.title} progress={pdrSectionProgress(SECTION.customer, value)}>
         <div className="form-grid cols-2">
           {/* ⚠️ นำหน้าผู้ติดต่อ (มติผู้ใช้) — "งานนี้คืองานไหน" ต้องรู้ก่อนรายละเอียดคน */}
           <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
@@ -277,8 +321,12 @@ export default function PdrForm({
         </div>
       </Section>
 
+      )}
+
       {/* ⭐ ชั้นกลางของโครงสามชั้น — จำนวนก้อนมาจากใบสั่งขาย ไม่มีปุ่มเพิ่ม/ลบ */}
+      {show("briefs") && (
       <Section
+        flat={rail}
         title={`บรีฟกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`}
         open={briefs.length > 0}
         note="กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก"
@@ -407,8 +455,11 @@ export default function PdrForm({
           </div>
         ))}
       </Section>
+      )}
 
-      <Section title={SECTION.spec.title} progress={pdrSectionProgress(SECTION.spec, value)}>
+      {show("spec") && (
+
+      <Section flat={rail} title={SECTION.spec.title} progress={pdrSectionProgress(SECTION.spec, value)}>
         <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="pdr-cost">{label("targetCost")}</label>
@@ -476,7 +527,11 @@ export default function PdrForm({
         </div>
       </Section>
 
-      <Section title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrSectionProgress(SECTION.regulatory, value)}>
+      )}
+
+      {show("regulatory") && (
+
+      <Section flat={rail} title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrSectionProgress(SECTION.regulatory, value)}>
         <ChipPicker
           label={label("documents")} options={PDR_DOCUMENTS} disabled={disabled}
           value={value.documents} onChange={(v) => set({ documents: v })}
@@ -501,13 +556,16 @@ export default function PdrForm({
         </div>
       </Section>
 
+      )}
+
       {/* ── ผู้เซ็นบนเอกสาร (ม-45 · mig 0221) ─────────────────────────────
           ⭐ **ชื่อบนกระดาษ ไม่ใช่ role ในระบบ** — ระบบยังไม่มีตำแหน่ง Perfumer /
           PD Chemist / Project Coordinator · กรอกชื่อไว้เพื่อให้พิมพ์ลงตารางลายเซ็น
           แทนที่จะเป็นเส้นว่างทุกใบ
           ⚠️ ช่องวนจากทะเบียนโดยตั้งใจ — ป้ายตำแหน่งต้องตรงกับที่กระดาษพิมพ์เป๊ะ
           ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
-      <Section title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrSectionProgress(SECTION.signers, value)}>
+      {show("signers") && (
+      <Section flat={rail} title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrSectionProgress(SECTION.signers, value)}>
         {SECTION.signers.fields.map((f) => (
           <div className="form-group" key={f.key}>
             <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
@@ -519,6 +577,7 @@ export default function PdrForm({
           </div>
         ))}
       </Section>
+      )}
     </div>
   );
 }
