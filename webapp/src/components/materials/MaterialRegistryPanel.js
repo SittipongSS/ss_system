@@ -31,10 +31,11 @@ import {
   revisionTiers, revisionValidUntil, tierUnitPrice,
 } from "@/lib/materialPrices";
 import { pmTypeLabel } from "@/lib/master/materialTypes";
+import { businessDate } from "@/lib/businessDate";
 
 const money = (v) => (v == null ? "—" : Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const qtyText = (v) => (v == null ? "ทุกจำนวน" : `≥ ${Number(v).toLocaleString("th-TH")}`);
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => businessDate();
 const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
 
 const STATE_TONE = {

@@ -15,6 +15,33 @@ test("date input converts display format and ISO payload without timezone", () =
   assert.equal(displayDateToIso("31/02/2026"), null);
 });
 
+// ── พ.ศ. เป็นเรื่องของ "การกรอก/แสดง" เท่านั้น ที่เก็บยังเป็น ค.ศ. เสมอ ────
+// ใช้ที่ช่อง "วันที่มีผล" ของเอกสารควบคุม ซึ่งพิมพ์ลงหัวกระดาษเป็น พ.ศ. อยู่แล้ว
+// ⚠️ ถ้าเทสต์ชุดนี้แดงเพราะมีคนเปลี่ยนค่าตั้งต้นเป็น BE = ระบบกำลังจะเขียน พ.ศ.
+//    ลงฐาน ซึ่งทำให้แถวที่เขียนคนละยุคเรียงลำดับกันไม่ได้โดยไม่มีอะไรฟ้อง
+test("era BE แปลงเฉพาะตอนแสดง/กรอก — ค่าที่เก็บยังเป็น ค.ศ.", () => {
+  assert.equal(isoDateToDisplay("2026-08-15", { era: "BE" }), "15/08/2569");
+  assert.equal(displayDateToIso("15/08/2569", { era: "BE" }), "2026-08-15");
+  // ไป-กลับต้องได้ค่าเดิมเป๊ะ
+  assert.equal(displayDateToIso(isoDateToDisplay("2026-02-06", { era: "BE" }), { era: "BE" }), "2026-02-06");
+});
+
+test("ค่าตั้งต้นยังเป็น ค.ศ. — ไม่มีใครได้ พ.ศ. โดยไม่ได้ขอ", () => {
+  assert.equal(isoDateToDisplay("2026-08-15"), "15/08/2026");
+  assert.equal(isoDateToDisplay("2026-08-15", {}), "15/08/2026");
+  assert.equal(isoDateToDisplay("2026-08-15", { era: "CE" }), "15/08/2026");
+  assert.equal(displayDateToIso("15/08/2026"), "2026-08-15");
+});
+
+test("era BE ตรวจวันที่ผิดปฏิทินได้เหมือนเดิม — รวมปีอธิกสุรทิน", () => {
+  // 2567 ไม่ใช่ปีอธิกสุรทินถ้าเอาเลข พ.ศ. ไปคำนวณตรง ๆ แต่ 29 ก.พ. 2567 = 2024-02-29
+  // ซึ่งมีจริง ⇒ ต้องแปลงปีกลับเป็น ค.ศ. **ก่อน** ตรวจ ไม่ใช่หลัง
+  assert.equal(displayDateToIso("29/02/2567", { era: "BE" }), "2024-02-29");
+  assert.equal(displayDateToIso("29/02/2569", { era: "BE" }), null); // 2026 ไม่ใช่ปีอธิกสุรทิน
+  assert.equal(displayDateToIso("31/02/2569", { era: "BE" }), null);
+  assert.equal(displayDateToIso("", { era: "BE" }), null);
+});
+
 test("phone and national ID inputs format progressively", () => {
   assert.equal(formatPhoneInput("0812345678"), "081-234-5678");
   assert.equal(formatPhoneInput("021234567"), "02-123-4567");

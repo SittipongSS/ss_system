@@ -97,7 +97,9 @@ test('⭐ วันที่ร้องขออ่านจาก submittedAt 
   assert.ok(field, 'ทะเบียนต้องมีช่อง "วันที่ร้องขอ" — เป็นข้อแรกของ Request Information');
   // ร่างค้างไว้สามวันแล้วค่อยกดส่ง — ต้องได้วันที่ยื่น ไม่ใช่วันที่เริ่มพิมพ์
   const sent = { createdAt: '2026-08-05T09:00:00Z', submittedAt: '2026-08-08T14:20:00Z' };
-  assert.equal(pdrFieldText(field, sent, pdrContext({ request: sent })), '2026-08-08');
+  // ⚠️ DD/MM/YYYY ไม่ใช่ ISO (มติผู้ใช้ 2026-08-10) — กระดาษต้องอ่านเป็นรูปที่คนอ่าน
+  // วันที่ ไม่ใช่รูปของฐานข้อมูล · ค.ศ. เหมือนทั้งระบบ
+  assert.equal(pdrFieldText(field, sent, pdrContext({ request: sent })), '08/08/2026');
   const draft = { createdAt: '2026-08-05T09:00:00Z' };
   assert.equal(pdrFieldText(field, draft, pdrContext({ request: draft })), null);
 });
@@ -193,12 +195,47 @@ test('ช่องติ๊กหลายตัวแสดงเป็นป�
   assert.equal(pdrFieldText(docs, {}), null);
 });
 
+// ── ทุกวันที่บนกระดาษ PDR เป็น DD/MM/YYYY ค.ศ. ─────────────────────────
+// มติผู้ใช้ 2026-08-10 · เดิมหลุด ISO ดิบออกกระดาษ 4 จุด เพราะทางเดินต่างกัน:
+// หัวใบผ่าน `requestedAtText` · วันคาดหวังผ่าน `sampleDueText` · ส่วนข้อ 1.13/1.14
+// เป็น `type: 'date'` ที่ไม่มี case ของตัวเอง เลยตกไปที่ `String(raw)` ท้ายฟังก์ชัน
+// ⚠️ ค.ศ. ไม่ใช่ พ.ศ. — พ.ศ. ใช้เฉพาะ "วันที่มีผล" ของเอกสารควบคุมเท่านั้น
+test('⭐ วันที่บนกระดาษ PDR เป็น DD/MM/YYYY ค.ศ. ทุกจุด ไม่มี ISO ดิบหลุด', () => {
+  const req = {
+    submittedAt: '2026-08-08T14:20:00Z',
+    requestedDueDate: '2026-08-20',
+    pdrWantedAt: '2026-09-01',
+    pdrSellFrom: '2026-12-25',
+  };
+  const ctx = pdrContext({ request: req });
+  const textOf = (key) => pdrFieldText(PDR_FIELDS.find((f) => f.key === key), req, ctx);
+
+  assert.equal(textOf('requestedAt'), '08/08/2026');   // หัวใบ
+  assert.equal(textOf('sampleDue'), '20/08/2026');
+  assert.equal(textOf('wantedAt'), '01/09/2026');      // ข้อ 1.13
+  assert.equal(textOf('sellFrom'), '25/12/2026');      // ข้อ 1.14
+
+  for (const key of ['requestedAt', 'sampleDue', 'wantedAt', 'sellFrom']) {
+    assert.doesNotMatch(String(textOf(key)), /\d{4}-\d{2}-\d{2}/, `${key} ยังพิมพ์ ISO ดิบ`);
+  }
+});
+
+test('ช่องวันที่ที่ยังไม่มีค่า ต้องคืน null (N/A) ไม่ใช่ "-"', () => {
+  // `fmtDate(null)` คืน "-" ซึ่งบนกระดาษอ่านเหมือน "ไม่มีวัน" ทั้งที่ความหมายคือ
+  // "ยังไม่ถึงขั้นที่มีวัน" (ร่างที่ยังไม่กดส่ง) ⇒ ต้องกันไว้ก่อนเรียก fmtDate
+  const draft = { createdAt: '2026-08-05T09:00:00Z' };
+  const ctx = pdrContext({ request: draft });
+  assert.equal(pdrFieldText(PDR_FIELDS.find((f) => f.key === 'requestedAt'), draft, ctx), null);
+  assert.equal(pdrFieldText(PDR_FIELDS.find((f) => f.key === 'wantedAt'), draft, ctx), null);
+  assert.equal(pdrFieldText(PDR_FIELDS.find((f) => f.key === 'sampleDue'), draft, ctx), null);
+});
+
 test('วันคาดหวังตัวอย่างอ่านจาก requestedDueDate เดิม ไม่ใช่คอลัมน์ใหม่', () => {
   // ⚠️ เก็บซ้ำอีกช่องเมื่อไรก็ได้สองวันที่ขัดกันโดยไม่มีใครรู้ว่าอันไหนจริง
   const f = PDR_FIELDS.find((x) => x.key === 'sampleDue');
   assert.equal(f.column, undefined);
-  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20' }), '2026-08-20');
-  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20', urgent: true }), '2026-08-20 · ด่วน');
+  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20' }), '20/08/2026');
+  assert.equal(pdrFieldText(f, { requestedDueDate: '2026-08-20', urgent: true }), '20/08/2026 · ด่วน');
   assert.equal(pdrFieldText(f, {}), null);
 });
 
@@ -267,7 +304,7 @@ test('🐞 หน้าเปิดคำร้องกับหน้ารา
     briefs: [{ id: 'B1' }],
   };
   const ctx = pdrContext(args);
-  assert.equal(ctx.sampleDue, '2026-08-20 · ด่วน');
+  assert.equal(ctx.sampleDue, '20/08/2026 · ด่วน');
 
   // ค่าที่ context ให้มา ต้องเป็นค่าเดียวกับที่จอแสดง/เอกสารอ่านผ่าน pdrFieldText
   for (const key of ['requester', 'coordinator', 'contactName', 'contactPhone', 'sampleDue']) {

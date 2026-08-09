@@ -162,6 +162,15 @@ export function DocumentControlCard({
       {children}
       {hasActions ? (
         <div className={styles.actionStack}>
+          {/* 🐞 **เหตุผลที่ปุ่มหลักกดไม่ได้ ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip** —
+              `disabledReason` เดิมไหลไปเป็น `title` อย่างเดียว ⇒ ประโยคที่ระบุสาเหตุ
+              ได้จริง (เช่น "รายการที่ 2: ต้องเลือกหมวดสินค้า") **ไม่เคยขึ้นบนจอเลย**
+              ต้องเอาเมาส์ไปค้างบนปุ่มที่กดไม่ได้ถึงจะเห็น และบนจอสัมผัสไม่มีทางเห็น
+              ⚠️ ขึ้นเฉพาะตอนปุ่มถูกปิดจริง — ปุ่มที่กดได้อยู่แล้วไม่ต้องมีคำอธิบาย
+              ⚠️ `title` ยังอยู่ตามเดิม ไม่ได้ถอด (คนที่ชินกับ tooltip ยังได้เหมือนเดิม) */}
+          {actions.primaryAction?.disabledReason && (actions.primaryAction.disabled || busy) ? (
+            <p className={styles.blockedReason} role="status">{actions.primaryAction.disabledReason}</p>
+          ) : null}
           {actions.primaryAction ? <DocumentAction action={actions.primaryAction} slot="primary" busy={busy} /> : null}
           {actions.secondaryActions.map((action) => <DocumentAction key={action.id} action={action} slot="secondary" busy={busy} />)}
           {actions.dangerActions.length ? <div className={styles.dangerDivider} /> : null}

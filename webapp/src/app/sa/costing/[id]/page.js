@@ -53,6 +53,7 @@ import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 import { productSelectOptions } from "@/components/master/productOption";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 const money = (value) => (value == null
   ? "—"
@@ -229,7 +230,7 @@ export default function CostingDetailPage() {
   const approval = approvalProgress(request.items || []);
   const pricing = pricingProgress((request.items || []).flatMap((i) => i.components || []));
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = businessDate();
   const suggestQty = suggestedTierQty(request);
 
   // ดึงราคาล่าสุดทุกบรรทัดที่ผูกวัสดุแล้ว — toast บอกจำนวนจริง ไม่ใช่ "สำเร็จ" ลอย ๆ

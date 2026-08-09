@@ -18,13 +18,14 @@ import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destination
 import { useCan } from "@/lib/roleContext";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
+import { businessDate } from "@/lib/businessDate";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 // มูลค่า PO โชว์เต็ม 2 ตำแหน่ง (ไม่ย่อ) — formatter กลาง fmtMoney
 const baht = (n) => fmtMoney(n);
 const VAT = 1.07;
 const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessDate();
 // มูลค่าก่อน VAT ของ PO (ตัดบรรทัดยกเลิก) — ใช้เรียงมุมมองรายใบ
 const poExVat = (po, priceByFg) => (po.lines || []).reduce((s, l) => {
   if (l.status === "cancelled") return s;

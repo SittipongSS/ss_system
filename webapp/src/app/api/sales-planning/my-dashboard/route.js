@@ -5,6 +5,7 @@ import { taskCreditId } from '@/lib/permissions';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,7 +84,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // Action Items: Leads that need immediate attention
   // e.g., 'assigned' or 'screened' (needs contact), or 'meeting' (has upcoming meeting)
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = businessDate();
   const actionLeads = activeLeads.filter(l => 
     ['assigned', 'screened'].includes(l.status) || 
     (l.status === 'meeting' && l.meetingAt && String(l.meetingAt).slice(0, 10) >= todayStr)

@@ -9,6 +9,7 @@ import { deliveriesForSalesOrder, productionReadiness } from '@/lib/pm/deliverie
 import { LIVE_JOB_STATUSES } from '@/lib/pm/productionPlan';
 import { deliveriesForJobs, loadJobs } from '@/lib/pm/productionJobsRepo';
 import { loadCapacityDays, loadLines, requireProduction } from '@/lib/pm/productionLinesRepo';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
     // ของเข้าของ SO ที่งานบนบอร์ดอ้างถึง → ป้าย "วางก่อนของมา" บนชิป
     const deliveries = await deliveriesForJobs(supabase, jobs);
-    const todayIso = toLocalISODate(new Date());
+    const todayIso = businessDate();
     const withReadiness = jobs.map((job) => ({
       ...job,
       readiness: job.salesOrderId

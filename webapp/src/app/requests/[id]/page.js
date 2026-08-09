@@ -26,6 +26,7 @@ import {
 import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
+import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/requests/RequestEditableFields";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -188,7 +189,8 @@ export default function RequestDetailPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
-      setToast({ kind: "success", msg: okMsg });
+      // okMsg = null ⇒ เงียบไว้ (ขั้นกลางของงานที่ยิงหลายครั้ง — ทักครั้งเดียวตอนจบ)
+      if (okMsg) setToast({ kind: "success", msg: okMsg });
       await load();
       return true;
     } catch (e) { setToast({ kind: "error", msg: e.message }); return false; }
@@ -473,17 +475,38 @@ export default function RequestDetailPage() {
      ⚠️ ปล่อยให้ปุ่มอื่นค้างไว้ = กด "ส่งคำร้อง" ระหว่างที่ยังไม่บันทึกฟอร์ม แล้วของที่
      พิมพ์ค้างหายเงียบ ๆ */
   const editingPdr = !!pdrDraft;
+  // โหมดแก้ = แก้หัวใบ หรือแก้แบบฟอร์ม (หรือทั้งคู่ ถ้าขั้นนั้นเปิดให้ทั้งสอง)
+  const editing = editingPdr || !!editDraft;
+  const cancelEdit = () => { setPdrDraft(null); setEditDraft(null); };
 
-  const primaryAction = editingPdr
+  const primaryAction = editing
     ? {
-      id: "pdr-save",
-      label: "บันทึกแบบฟอร์ม",
+      id: "edit-save",
+      label: "บันทึกการแก้ไข",
       kind: "save",
       icon: Check,
-      onClick: () => call("", {
-        method: "PATCH",
-        body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
-      }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); }),
+      /* ⚠️ **สอง action คนละด่าน จึงยิงสองครั้ง** — API เป็น action-based และ
+         `update`/`pdr` มีด่านสิทธิ์คนละชุด (สลับมือคนละจังหวะ) การยุบเป็นครั้งเดียว
+         = ต้องเขียนด่านชุดที่สามที่ต้องคอยให้ตรงกับสองชุดเดิมตลอดไป
+         ⚠️ ยิงหัวใบก่อน แล้วค่อยแบบฟอร์ม — หัวใบล้ม (เช่นลืมเหตุผลด่วน) ต้องหยุด
+         ทันทีโดยที่แบบฟอร์มยังไม่ถูกเขียน ไม่ใช่บันทึกครึ่งเดียวแล้วบอกว่าพลาด */
+      onClick: async () => {
+        if (editDraft) {
+          const ok = await call("", {
+            method: "PATCH",
+            body: JSON.stringify({ action: "update", ...editDraft }),
+          }, pdrDraft ? null : "แก้ข้อมูลคำร้องแล้ว");
+          if (!ok) return;
+        }
+        if (pdrDraft) {
+          const ok = await call("", {
+            method: "PATCH",
+            body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+          }, "บันทึกการแก้ไขแล้ว");
+          if (!ok) return;
+        }
+        cancelEdit();
+      },
     }
     : req._mine && req.status === "draft"
     ? {
@@ -577,17 +600,24 @@ export default function RequestDetailPage() {
   //
   // ⚠️ ยังใช้ `normalizeDocumentControlActions` ตัวเดิม — กติกา `visible: false`
   // อยู่ที่เดียวกับทุกโมดูล เปลี่ยนแค่ *ที่วาง* ไม่ใช่กติกา
+  /* ⚠️ สองด่านคนละชุด ต้องถามแยกกันแม้ปุ่มจะเหลือปุ่มเดียว
+     · `canEditInfo`   = ผู้ขอแก้หัวใบได้ (ถึงก่อนรับเรื่องเท่านั้น — requestEdit.js)
+     · `canEditPdrNow` = สิทธิ์แก้ PDR ซึ่ง **สลับมือ** ไปฝ่ายปลายทางตอนรับเรื่อง
+       (pdrEdit.js) ⇒ RD หลังรับเรื่องกด "แก้ไข" แล้วได้เฉพาะแบบฟอร์ม ไม่ได้หัวใบ */
+  const canEditInfo = (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status);
+  const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
+
   const requestActions = normalizeDocumentControlActions({
     // โครง panel: ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรด — เข้า normalize ตรงเพื่อไปโผล่ที่การ์ดขวา
     primaryAction: usePanel ? primaryAction : headerAction,
-    secondaryActions: editingPdr ? [
+    secondaryActions: editing ? [
       {
-        id: "pdr-cancel",
+        id: "edit-cancel",
         label: "ยกเลิกการแก้",
         kind: "open",
         icon: Undo2,
         variant: "ghost",
-        onClick: () => setPdrDraft(null),
+        onClick: cancelEdit,
       },
     ] : [
       {
@@ -618,37 +648,38 @@ export default function RequestDetailPage() {
         visible: requestHasPdr(req.kind),
       },
       {
-        // ⭐ แก้แบบฟอร์ม PDR — ย้ายมาจากในแท็บด้วยเหตุผลเดียวกัน · สิทธิ์สลับมือ
-        // ที่จังหวะ "รับเรื่อง" ซึ่ง server ตัดสินมาให้แล้ว (`_canEditPdr`)
-        id: "pdr-edit",
-        label: "แก้แบบฟอร์ม PDR",
-        kind: "edit",
-        icon: Pencil,
-        onClick: () => setPdrDraft({
-          pdr: pdrValuesFrom(req),
-          briefs: (req.briefs || []).map((b) => ({ ...b })),
-        }),
-        visible: requestHasPdr(req.kind) && !!req._canEditPdr && !pdrDraft,
-      },
-      {
-        // ⭐ **แก้ข้อมูลคำร้อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้ใบที่บันทึกแล้ว
-        // แก้ไม่ได้เลยสักช่อง ต้องลบทิ้งเปิดใหม่แม้แค่พิมพ์ชื่อเรื่องผิด
-        // ⚠️ แก้ได้เฉพาะช่องที่ไม่กระทบว่าใบผูกกับอะไร (ดู lib/requests/requestEdit.js)
-        // — ปุ่มถามด่านตัวเดียวกับ API เพื่อไม่ให้ปุ่มโผล่แล้วกดไม่ผ่าน
+        /* ⭐ **ปุ่มแก้ปุ่มเดียว** (มติผู้ใช้ 2026-08-10) — เดิมแยกเป็น "แก้ข้อมูลคำร้อง"
+           กับ "แก้แบบฟอร์ม PDR" สองปุ่มในเมนูเดียวกัน ทั้งที่คนกดคิดแค่ว่า "จะแก้ใบนี้"
+           แล้วต้องมาเดาว่าของที่อยากแก้อยู่ปุ่มไหน · ปุ่มเดียวเปิดโหมดแก้ แล้วโหมดนั้น
+           กางเฉพาะส่วนที่ **คนนี้ ณ ขั้นนี้** แก้ได้จริง
+           ⚠️ สองฝั่งมีด่านคนละชุด และสลับมือคนละจังหวะ — `_canEdit` (ผู้ขอ ถึงก่อน
+           รับเรื่อง) กับ `_canEditPdr` (สลับไปฝ่ายปลายทางตอนรับเรื่อง) ⇒ บางขั้นกางได้
+           ทั้งสองส่วน บางขั้นได้ส่วนเดียว · server ตัดสินมาให้แล้วทั้งคู่ */
         id: "edit",
-        label: "แก้ข้อมูลคำร้อง",
+        label: "แก้ไข",
         kind: "edit",
         icon: Pencil,
-        onClick: () => setEditDraft({
-          title: req.title || "",
-          body: req.body || "",
-          requestedDueDate: req.requestedDueDate || "",
-          urgent: !!req.urgent,
-          urgentReason: req.urgentReason || "",
-        }),
+        onClick: () => {
+          if (canEditInfo) {
+            setEditDraft({
+              kind: req.kind,
+              title: req.title || "",
+              body: req.body || "",
+              requestedDueDate: req.requestedDueDate || "",
+              urgent: !!req.urgent,
+              urgentReason: req.urgentReason || "",
+            });
+          }
+          if (canEditPdrNow) {
+            setPdrDraft({
+              pdr: pdrValuesFrom(req),
+              briefs: (req.briefs || []).map((b) => ({ ...b })),
+            });
+          }
+        },
         // ⚠️ ฝั่งจอไม่มี `user.id` (context เก็บแค่ role/department) จึงถามด้วย
         // `_mine` ที่ server คำนวณมาให้ + ขั้นชุดเดียวกับ lib · ด่านจริงอยู่ที่ API
-        visible: (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status),
+        visible: (canEditInfo || canEditPdrNow) && !editing,
       },
       {
         // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
@@ -666,7 +697,7 @@ export default function RequestDetailPage() {
         visible: canAnswer && !!req.acknowledgedAt,
       },
     ],
-    dangerActions: editingPdr ? [] : [
+    dangerActions: editing ? [] : [
       {
         id: "delete",
         // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
@@ -860,6 +891,29 @@ export default function RequestDetailPage() {
         {!usePanel && attachmentsBlock}
       </SalesDetailOverview>
 
+      {/* ── โหมดแก้: หัวใบ ─────────────────────────────────────────────────
+          ⭐ **ในหน้า ไม่ใช่โมดัล** — แบบฟอร์ม PDR ก็แก้ในหน้าอยู่แล้ว และปุ่มบันทึก/
+          ยกเลิกอยู่ที่แผงจัดการที่เดียว (มติผู้ใช้ 2026-08-09) ⇒ ปุ่ม "แก้ไข" ปุ่มเดียว
+          เปิดทั้งสองส่วนบนพื้นเดียวกัน ไม่มีโมดัลซ้อนหน้าที่กำลังแก้อยู่
+          ⚠️ ช่องมาจาก `RequestEditableFields` ตัวเดียวกับฟอร์มเปิดคำร้อง — ห้ามวาง
+          Input/Textarea เองที่นี่ (กฎ AGENTS.md · เคยเพี้ยนมาแล้ว 6 จุด) */}
+      {editDraft && (
+        <DetailCard icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง" className={styles.editCard}>
+          <div className="form-grid cols-2">
+            <RequestTitleBodyFields
+              value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
+            />
+            <RequestDueUrgentFields
+              value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
+            />
+          </div>
+          <small className={styles.hint}>
+            เปลี่ยนดีล ใบสั่งขาย รายการ หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
+            (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
+          </small>
+        </DetailCard>
+      )}
+
       {/* ⭐ โครงสองแบบ (มติผู้ใช้ 2026-08-09 — รีดีไซน์ทีละหัวข้อ):
           · หัวข้อธง `detailControlPanel` — การ์ดขวา DOCUMENT CONTROL ถือ สถานะ+ราง
             แนวตั้ง+ปุ่มระดับใบ **ที่เดียว** (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป)
@@ -1046,81 +1100,6 @@ export default function RequestDetailPage() {
           ของ API ด้วย · เพิ่มช่องที่นี่โดยไม่เพิ่มในลิสต์ = พิมพ์แล้วหายเงียบ
           ⚠️ ของที่ผูก (ดีล · ใบสั่งขาย · รายการ · หัวข้อ) แก้ทางนี้ไม่ได้ และ
           ข้อความในโมดัลบอกทางออกไว้ ไม่ใช่ปล่อยให้หาเอง */}
-      <Modal
-        open={!!editDraft} onClose={() => setEditDraft(null)} size="md" dismissible={!saving}
-        title="แก้ข้อมูลคำร้อง"
-      >
-        {editDraft && (
-          <>
-            <div className="form-grid cols-2">
-              <div className="form-group col-span-2">
-                <label htmlFor="edit-title">ชื่อเรื่อง *</label>
-                <Input
-                  id="edit-title" maxLength={200}
-                  value={editDraft.title} disabled={saving}
-                  onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <label htmlFor="edit-body">รายละเอียด</label>
-                <Textarea
-                  variant="data" id="edit-body" rows={4} maxLength={4000}
-                  value={editDraft.body} disabled={saving}
-                  onChange={(e) => setEditDraft({ ...editDraft, body: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="edit-due">อยากได้คำตอบภายใน *</label>
-                <DateInput
-                  id="edit-due" value={editDraft.requestedDueDate} disabled={saving}
-                  onChange={(v) => setEditDraft({ ...editDraft, requestedDueDate: v })}
-                />
-              </div>
-              <div className="form-group">
-                <span className="form-field-label">ความเร่งด่วน</span>
-                <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
-                  <button
-                    type="button" className="ui-switch" disabled={saving}
-                    data-on={editDraft.urgent ? "1" : undefined} aria-pressed={editDraft.urgent}
-                    onClick={() => setEditDraft({ ...editDraft, urgent: !editDraft.urgent })}
-                  >
-                    <i aria-hidden="true" /> ด่วน
-                  </button>
-                </div>
-              </div>
-              {editDraft.urgent && (
-                <div className="form-group col-span-2">
-                  <label htmlFor="edit-why">เหตุผลที่เป็นงานด่วน *</label>
-                  <Textarea
-                    variant="data" id="edit-why" rows={2} maxLength={500}
-                    value={editDraft.urgentReason} disabled={saving}
-                    onChange={(e) => setEditDraft({ ...editDraft, urgentReason: e.target.value })}
-                  />
-                </div>
-              )}
-            </div>
-            <small className={styles.hint}>
-              เปลี่ยนดีล ใบสั่งขาย รายการ หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
-              (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
-            </small>
-            <div className={`action-bar ${styles.modalActions}`}>
-              <Button variant="quiet" disabled={saving} onClick={() => setEditDraft(null)}>ยกเลิก</Button>
-              <Button
-                tone="primary"
-                disabled={saving || !editDraft.title.trim() || !editDraft.requestedDueDate
-                  || (editDraft.urgent && !editDraft.urgentReason.trim())}
-                onClick={() => call("", {
-                  method: "PATCH",
-                  body: JSON.stringify({ action: "update", ...editDraft }),
-                }, "แก้ข้อมูลคำร้องแล้ว").then((ok) => { if (ok) setEditDraft(null); })}
-              >
-                บันทึกการแก้ไข
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
-
       <Modal
         open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
         title="เลื่อนวันกำหนดส่ง"

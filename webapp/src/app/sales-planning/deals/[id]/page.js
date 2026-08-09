@@ -49,6 +49,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -473,7 +474,7 @@ export default function DealOverviewPage() {
     setLinkLoading(true);
     setLinkProjects([]);
     setLinkProjectId("");
-    setLinkStartDate(new Date().toISOString().slice(0, 10));
+    setLinkStartDate(businessDate());
     try {
       const res = await fetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
@@ -516,7 +517,7 @@ export default function DealOverviewPage() {
       name: deal.title || "",
       customerId: deal.customerId || "",
       // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
-      startDate: deal.startDate || new Date().toISOString().slice(0, 10),
+      startDate: deal.startDate || businessDate(),
       dueDate: deal.endDate || deal.expectedCloseDate || "",
       // ⚠️ ไม่ส่ง `type` แล้ว (มติ 2026-08-08: โครงการ = ภาชนะ ไม่มีช่องประเภทงาน) —
       // endpoint create-project ใช้ประเภทของดีลก่อตั้งเอง (fallback `deal.dealType`)

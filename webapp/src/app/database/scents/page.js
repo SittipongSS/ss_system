@@ -39,12 +39,13 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
+import { businessDate } from "@/lib/businessDate";
 import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
   isScentRegistrar, matchesScentSource, scentSourceLabel,
 } from "@/lib/master/scents";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => businessDate();
 
 export default function ScentsPage() {
   const role = useRole();

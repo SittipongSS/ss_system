@@ -30,6 +30,7 @@ import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
 import { requestKindLabel } from "@/lib/master/requestTypes";
+import { businessDate } from "@/lib/businessDate";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -339,7 +340,7 @@ export default function TimelineWorkspace({
   const inProgress = tasks.filter((task) => task.status === "In Progress").length;
   const progressPct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const milestones = tasks.filter((task) => task.isMilestone);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDate();
   const overdue = tasks.filter((task) => task.status !== "Completed" && task.finishDate && task.finishDate < today).length;
   const togglePhase = (key) => setCollapsedPhases((current) => {
     const next = new Set(current);

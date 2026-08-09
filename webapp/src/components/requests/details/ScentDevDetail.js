@@ -106,6 +106,10 @@ export default function ScentDevDetail({
                 onChange={setDraftSection}
                 sections={pdrRailSections(pdrDraft.pdr, pdrDraft.briefs)}
               >
+                {/* 🐞 **ต้องส่ง `context` ด้วยเสมอ** — เดิมส่งแค่ 7 พร็อพแล้วลืมค่าที่ระบบ
+                    เติมให้ทั้งก้อน ⇒ ช่อง "เติมจาก…" เป็นเส้นประทั้งแผง และปุ่มรวบ/แยก
+                    บรีฟหายไปเลยเพราะ `scentCount` ว่าง · ข้อมูลมีอยู่แล้วที่ `context`
+                    ด้านบนซึ่งฝั่งอ่านใช้อยู่ — เป็นการลืมเดินสายล้วน ๆ */}
                 <PdrForm
                   section={draftSection}
                   categories={categories}
@@ -113,6 +117,7 @@ export default function ScentDevDetail({
                   briefs={pdrDraft.briefs}
                   onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
                   disabled={saving}
+                  context={context}
                 />
               </SectionRail>
               {/* ⚠️ **ไม่มีปุ่มบันทึก/ยกเลิกตรงนี้** (มติผู้ใช้ 2026-08-09) — แผงจัดการ

@@ -55,6 +55,7 @@ import { productionReadiness } from "@/lib/pm/deliveries";
 import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -389,7 +390,7 @@ export default function SalesOrderDetailPage() {
 
   // ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — สรุปเป็น "พร้อมผลิตหรือยัง"
   const deliveries = useMemo(() => order?.deliveries || [], [order?.deliveries]);
-  const todayIso = toLocalISODate(new Date());
+  const todayIso = businessDate();
   const readiness = useMemo(
     () => productionReadiness(deliveries, todayIso),
     [deliveries, todayIso],

@@ -22,6 +22,7 @@ import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/r
 import { VISIT_SCOPES, VISIT_SCOPE_LABELS, groupVisits, openCount } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 const SECTIONS = [
   { key: "overdue", title: "ค้างอยู่", tone: "danger" },
@@ -64,7 +65,7 @@ export default function MyVisitsPage() {
   useEffect(() => { load(); }, [load]);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
-  const todayIso = toLocalISODate(new Date());
+  const todayIso = businessDate();
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
 

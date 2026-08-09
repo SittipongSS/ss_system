@@ -8,6 +8,7 @@ import { AlertTriangle, ChevronDown, Edit3, Expand, Eye, FileBadge2, Save, Send,
 import Workspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import Button from "@/components/ui/Button";
+import DateInput from "@/components/ui/DateInput";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -128,7 +129,13 @@ function DocumentStandardFields({ form, setForm }) {
           <div className={styles.formTriple}>
             <label><span>รหัสแบบฟอร์ม <b>*</b></span><input className="premium-input mono" value={form.formCode} onChange={(event) => update("formCode", event.target.value)} required maxLength={40} placeholder="FM-SA-01" /></label>
             <label><span>Revision <b>*</b></span><input className="premium-input mono" value={form.revision} onChange={(event) => update("revision", event.target.value)} required maxLength={20} placeholder="00" /></label>
-            <label><span>วันที่มีผล <b>*</b></span><input className="premium-input" type="date" value={form.effectiveDate} onChange={(event) => update("effectiveDate", event.target.value)} required /></label>
+            {/* ⭐ **กรอกเป็น พ.ศ.** (มติผู้ใช้ 2026-08-10) — วันที่นี้ถูกพิมพ์ลงหัวกระดาษ
+                เป็น พ.ศ. อยู่แล้ว (`formatEffectiveDate`) และหน้านี้ก็แสดงเป็น พ.ศ. ทั้ง
+                3 จุด · ของเดิมเป็น `<input type="date">` ซึ่งกรอก **ค.ศ.** ⇒ พิมพ์
+                15/01/2026 แล้วเด้งกลับมา 15/01/2569 เหมือนระบบแก้ค่าเอง
+                ⚠️ ที่เก็บยังเป็น ISO ค.ศ. เหมือนเดิม — `era` แปลงแค่ตอนกรอก/แสดง
+                ⚠️ **ครอบแค่หน้านี้** ที่อื่นทั้งระบบยังเป็น ค.ศ. อย่าขยายจากจุดนี้ */}
+            <label><span>วันที่มีผล <b>*</b></span><DateInput era="BE" value={form.effectiveDate} onChange={(iso) => update("effectiveDate", iso)} required ariaLabel="วันที่มีผล (พ.ศ.)" /></label>
           </div>
         </div>
       </section>

@@ -11,6 +11,7 @@
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { accessConflict } from './sites';
 import { dayLoad, overlaps, sortByTime } from './rounds';
+import { businessDate } from '@/lib/businessDate';
 
 const OPEN_STATUSES = ['scheduled'];
 const isOpen = (visit) => OPEN_STATUSES.includes(visit?.status);
@@ -26,7 +27,7 @@ const shiftDays = (iso, days) => {
 //
 // ⚠️ นับเฉพาะนัดที่ยัง "เปิด" อยู่ — ที่ปิด/ยกเลิก/เลื่อนแล้วไม่ใช่งานค้าง ·
 // ถ้านับรวม ตัวเลข "ค้าง" จะโตขึ้นตลอดกาลจนไม่มีความหมาย
-export function serviceCounts(visits = [], todayIso = toLocalISODate(new Date())) {
+export function serviceCounts(visits = [], todayIso = businessDate()) {
   const weekEnd = shiftDays(todayIso, 6);
   let overdue = 0;
   let today = 0;
@@ -53,7 +54,7 @@ export function serviceCounts(visits = [], todayIso = toLocalISODate(new Date())
 // ลำดับ: นัดค้าง → เวลาทับกัน → ชนช่วงเข้าไซต์ → ยังไม่มอบหมายช่าง
 // ⚠️ **เตือน ไม่บล็อก** ทุกข้อ (กติกาเดียวกับทั้งโมดูล) — รายการนี้คือรายการที่
 //    ให้คนไปตัดสินใจ ไม่ใช่รายการความผิด
-export function serviceAttention(visits = [], sitesById = new Map(), todayIso = toLocalISODate(new Date())) {
+export function serviceAttention(visits = [], sitesById = new Map(), todayIso = businessDate()) {
   const overlapIds = new Set();
   for (const pair of overlaps(visits)) {
     if (pair.a?.id) overlapIds.add(pair.a.id);
@@ -150,7 +151,7 @@ export function refillTotals(sites = []) {
 // ── วันนี้ใครไปไหน ───────────────────────────────────────────────────────
 // ⚠️ นัดที่ยังไม่มอบหมายรวมเป็นแถว "ยังไม่มอบหมาย" แถวเดียว ไม่ใช่ซ่อนหาย —
 //    ของที่ไม่มีเจ้าของคือของที่ต้องเห็นที่สุด
-export function todayByTechnician(visits = [], todayIso = toLocalISODate(new Date())) {
+export function todayByTechnician(visits = [], todayIso = businessDate()) {
   const rows = visits.filter((v) => isOpen(v) && String(v.scheduledDate || '') === todayIso);
   return dayLoad(rows)
     .map((entry) => ({ ...entry, visits: sortByTime(entry.visits) }))

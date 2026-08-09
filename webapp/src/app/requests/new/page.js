@@ -27,6 +27,7 @@ import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import styles from "./page.module.css";
 
 const asArray = (d) => (Array.isArray(d) ? d : []);
@@ -52,11 +53,20 @@ export default function NewRequestPage() {
   const returnTo = back && back.startsWith("/") && !back.startsWith("//") ? back : "/requests";
 
   const [form, setForm] = useState(() => emptyRequestForm(defaults));
+  /* ⭐ **กันงานหายเมื่อออกจากหน้ากลางคัน** — หัวข้อ scent_dev มี PDR 41 ช่อง +
+     บรีฟรายกลิ่น รวมทั้งฟอร์มเกิน 50 ช่อง แต่เดิมไม่มีตัวกันเลย
+     ⚠️ ทางที่หายเงียบจริงคือ **กดเมนูซ้าย** ไม่ใช่ปิดแท็บ — `useUnsavedChanges`
+     ดักทั้ง `beforeunload` และคลิกลิงก์ภายในแอป (Next นำทางฝั่ง client ไม่ยิง
+     beforeunload) · แพตเทิร์นเดียวกับใบเสนอราคา/ใบสั่งขาย
+     ⚠️ เทียบกับค่าตั้งต้น **ที่คิดจาก `defaults` ชุดเดียวกัน** — มาจากลิงก์ที่เติม
+     ดีล/SO มาให้แล้วต้องไม่นับว่าแก้ · ปิดตอน `saving` เพราะกำลังจะพาไปหน้าถัดไป */
+  const pristine = useMemo(() => JSON.stringify(emptyRequestForm(defaults)), [defaults]);
   // ⭐ สองขั้น: เลือกฝ่าย+หัวข้อให้จบ → กดแล้วค่อยกางฟอร์มของหัวข้อนั้น
   // มาจากลิงก์ที่ระบุหัวข้อมาแล้ว (เช่นจากหน้าดีล) = ข้ามขั้นแรกไปเลย ไม่ต้องกดซ้ำ
   // สิ่งที่ผู้ใช้เพิ่งเลือกไว้แล้ว
   const [revealed, setRevealed] = useState(!!defaults.kind);
   const [saving, setSaving] = useState(false);
+  useUnsavedChanges(!saving && JSON.stringify(form) !== pristine);
   const [toast, setToast] = useState(null);
 
   const [projects, setProjects] = useState([]);

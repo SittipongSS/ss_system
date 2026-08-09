@@ -7,11 +7,12 @@ import { canViewRequest } from '@/lib/deptRequests';
 import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { appendUpdate } from '@/lib/master/updates';
 import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
 // วันนี้แบบ 'YYYY-MM-DD' (โซนเวลาเซิร์ฟเวอร์) — ใช้เซ็ต completedAt.
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessDate();
 
 // GET /api/pm/personal-tasks — งานส่วนตัวของฉันเท่านั้น (เห็นเฉพาะของตัวเอง).
 export const GET = withUser(async ({ user, supabase }) => {

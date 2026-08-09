@@ -6,6 +6,7 @@
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ปฏิทิน/ฟอร์ม) และ server (validate + gen)
 import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
 import { accessConflict, minutesOf, toHHMM } from './sites';
+import { businessDate } from '@/lib/businessDate';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
 export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove'];
@@ -270,7 +271,7 @@ export function plannedDates(plan, { from, to } = {}) {
 // สะท้อนของจริงเสมอ
 export function ensureVisits(plan, existing = [], { from = null, horizonDays = 90 } = {}) {
   if (!plan?.isActive) return [];
-  const startIso = from || toLocalISODate(new Date());
+  const startIso = from || businessDate();
   const start = parseDate(startIso);
   if (!start) return [];
   const end = new Date(start);

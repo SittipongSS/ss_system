@@ -9,10 +9,11 @@ import { useMemo } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { MATERIAL_STATE_LABELS, materialPriceState } from "@/lib/materialPrices";
 import { pmTypeLabel } from "@/lib/master/materialTypes";
+import { businessDate } from "@/lib/businessDate";
 
 export const NEW_MATERIAL = "__new__";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => businessDate();
 
 export default function MaterialPicker({
   materials = [], kind, pmType = "", customerId = null,

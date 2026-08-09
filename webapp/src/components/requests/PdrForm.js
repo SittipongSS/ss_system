@@ -172,14 +172,28 @@ export function pdrRailSections(value = {}, briefs = []) {
 
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
-  scentCount = null, customer = null, deal = null, requester = null,
-  coordinator = null, contactName = null, contactPhone = null, sampleDue = null,
+  /* ⭐ **ค่าที่ระบบเติมให้มาเป็นก้อนเดียว** — ผลลัพธ์ของ `pdrContext()` ตรง ๆ
+     🐞 เดิมแตกเป็น 8 พร็อพแยก (scentCount · customer · deal · requester ·
+     coordinator · contactName · contactPhone · sampleDue) ⇒ หน้าแก้ PDR
+     (`ScentDevDetail`) ส่งมาไม่ครบสักตัว โดยไม่มีอะไรฟ้อง ผลคือ:
+       · ช่อง "เติมจาก…" ทุกช่องกลายเป็นเส้นประ ทั้งที่ข้อมูลมีอยู่ในใบแล้ว
+       · `scentCount` ว่าง ⇒ `canMerge` เป็นเท็จ ⇒ **ปุ่ม "รวบเป็นบรีฟเดียว /
+         แยกบรีฟรายกลิ่น" ไม่เรนเดอร์เลย** และใบที่บันทึกแบบรวบไว้จะโชว์
+         "กลิ่นที่ 1" แทน "บรีฟรวมทุกกลิ่น"
+     รับเป็นก้อนเดียวแล้วผู้เรียกลืมทีละตัวไม่ได้อีก — ลืมทั้งก้อนยังเห็นทันที */
+  context = {},
   // ทะเบียนหมวดสินค้า — ผู้เรียกส่งมา (ชุดเดียวกับที่ฟอร์มคำร้องใช้กับบรรทัด)
   categories = [],
   // โหมดราง (มติผู้ใช้ 2026-08-09 "แบบ A") — ผู้เรียกวางรางเลือกส่วนเอง แล้วบอกว่า
   // ตอนนี้อยู่ส่วนไหน · ไม่ส่ง = ลิ้นชักครบทุกส่วนเหมือนเดิม (ฝั่งอ่านยังใช้แบบนั้น)
   section = null,
 }) {
+  // ⚠️ อ่านจาก `context` ก้อนเดียว — ชื่อคีย์ตรงกับที่ `pdrContext()` คืนมาเป๊ะ
+  // ห้ามรับเป็นพร็อพแยกอีก (ดูเหตุผลที่หัวพร็อพ)
+  const {
+    scentCount = null, customer = null, deal = null, requester = null,
+    coordinator = null, contactName = null, contactPhone = null,
+  } = context;
   const rail = section != null;
   // ตัวที่เลือกค้างไว้ก่อนกด "เพิ่ม" — ยังไม่ใช่ข้อมูลของใบ (ท่าเดียวกับ FG)
   const [kindPick, setKindPick] = useState("");
