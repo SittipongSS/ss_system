@@ -15,7 +15,7 @@
 import {
   requestHasItems, requestHasPdr, requestNeedsRef,
 } from '@/lib/master/requestTypes';
-import { PDR_SECTIONS, pdrSectionProgress } from '@/lib/requests/pdrFields';
+import { PDR_SECTIONS, pdrFormProgress } from '@/lib/requests/pdrFields';
 
 export const REQUEST_TAB_KEYS = ['work', 'subject', 'pdr', 'due'];
 
@@ -106,7 +106,7 @@ function optionalCounts(form, kind, optionalRefs) {
   if (requestHasPdr(kind)) {
     const values = form.pdr || {};
     for (const section of PDR_SECTIONS) {
-      const p = pdrSectionProgress(section, values);
+      const p = pdrFormProgress(section, values);
       counts.pdr.total += p.total;
       counts.pdr.filled += p.filled;
     }

@@ -19,7 +19,7 @@ import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBri
 import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
   PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
-  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible, pdrSectionProgress,
+  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible, pdrFormProgress,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 
@@ -85,7 +85,7 @@ function Derived({ label, value, from }) {
 /* ── ส่วนพับของ PDR — หัวส่วนบอกด้วยว่ามีกี่ช่องและกรอกไปแล้วเท่าไร ──────
    ⭐ มติผู้ใช้ 2026-08-09: ของเดิมโชว์แค่ชื่อส่วน ⇒ ต้องกางทั้ง 5 ลิ้นชักถึงจะรู้
    ว่ายังขาดตรงไหน · ตอนนี้เห็นตั้งแต่ยังพับอยู่
-   ⚠️ นับจาก `pdrSectionProgress` ที่เดียว (ไม่นับช่องที่ระบบเติมและช่องที่ซ่อน
+   ⚠️ นับจาก `pdrFormProgress` ที่เดียว (ไม่นับช่องที่ระบบเติมและช่องที่ซ่อน
    ตามประเภทคำขอ) — ตัวเลขบนหัวกับของที่กางออกมาต้องเป็นชุดเดียวกัน */
 function Section({ title, note, children, open = false, progress = null, flat = false }) {
   const done = progress && progress.total > 0 && progress.filled >= progress.total;
@@ -145,7 +145,7 @@ function TickAndWrite({ label, value, onChange, disabled }) {
    แต่เป็นก้อนของระบบ) จึงต้องแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก */
 export function pdrRailSections(value = {}, briefs = []) {
   const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
-  const count = (key) => pdrSectionProgress(of(key), value);
+  const count = (key) => pdrFormProgress(of(key), value);
   return [
     { key: "request", label: of("request").title, count: count("request") },
     { key: "customer", label: of("customer").title, count: count("customer") },
@@ -214,7 +214,7 @@ export default function PdrForm({
 
       {show("request") && (
 
-      <Section flat={rail} title={SECTION.request.title} open note={SECTION.request.note} progress={pdrSectionProgress(SECTION.request, value)}>
+      <Section flat={rail} title={SECTION.request.title} open note={SECTION.request.note} progress={pdrFormProgress(SECTION.request, value)}>
         <div className="form-grid cols-2">
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
@@ -246,7 +246,7 @@ export default function PdrForm({
 
       {show("customer") && (
 
-      <Section flat={rail} title={SECTION.customer.title} progress={pdrSectionProgress(SECTION.customer, value)}>
+      <Section flat={rail} title={SECTION.customer.title} progress={pdrFormProgress(SECTION.customer, value)}>
         <div className="form-grid cols-2">
           {/* ⚠️ นำหน้าผู้ติดต่อ (มติผู้ใช้) — "งานนี้คืองานไหน" ต้องรู้ก่อนรายละเอียดคน */}
           <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
@@ -459,7 +459,7 @@ export default function PdrForm({
 
       {show("spec") && (
 
-      <Section flat={rail} title={SECTION.spec.title} progress={pdrSectionProgress(SECTION.spec, value)}>
+      <Section flat={rail} title={SECTION.spec.title} progress={pdrFormProgress(SECTION.spec, value)}>
         <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="pdr-cost">{label("targetCost")}</label>
@@ -531,7 +531,7 @@ export default function PdrForm({
 
       {show("regulatory") && (
 
-      <Section flat={rail} title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrSectionProgress(SECTION.regulatory, value)}>
+      <Section flat={rail} title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrFormProgress(SECTION.regulatory, value)}>
         <ChipPicker
           label={label("documents")} options={PDR_DOCUMENTS} disabled={disabled}
           value={value.documents} onChange={(v) => set({ documents: v })}
@@ -565,7 +565,7 @@ export default function PdrForm({
           ⚠️ ช่องวนจากทะเบียนโดยตั้งใจ — ป้ายตำแหน่งต้องตรงกับที่กระดาษพิมพ์เป๊ะ
           ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
       {show("signers") && (
-      <Section flat={rail} title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrSectionProgress(SECTION.signers, value)}>
+      <Section flat={rail} title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrFormProgress(SECTION.signers, value)}>
         {SECTION.signers.fields.map((f) => (
           <div className="form-group" key={f.key}>
             <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
