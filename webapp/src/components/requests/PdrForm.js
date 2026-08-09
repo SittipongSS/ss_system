@@ -165,7 +165,10 @@ export function pdrRailSections(value = {}, briefs = []) {
     {
       key: "briefs",
       label: "บรีฟกลิ่น",
-      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.label || "").trim()).length },
+      // ⚠️ นับ **ก้อนที่มีเนื้อบรีฟ** ไม่ใช่ก้อนที่มีชื่อ — ชื่อเรียกที่เว้นว่างไว้จะถูก
+      // เติม "กลิ่นที่ N" ให้ตอนบันทึก (scentBriefs.js) ⇒ ถ้านับชื่อ เกจจะเด้งเป็น
+      // เต็มทันทีที่กดบันทึกครั้งแรก ทั้งที่ยังไม่ได้เขียนบรีฟสักตัว
+      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.brief || "").trim()).length },
     },
     { key: "spec", label: of("spec").title, count: count("spec") },
     { key: "regulatory", label: of("regulatory").title, count: count("regulatory") },
@@ -446,10 +449,17 @@ export default function PdrForm({
           </EmptyState>
         ) : briefs.map((brief, i) => (
           <div key={i} className={styles.briefCard}>
+            {/* ป้ายเลขมุมซ้ายแทนแถบสีซ้าย (มติผู้ใช้ 2026-08-09) — ทรงเดียวกับฝั่งอ่าน
+                ⚠️ โหมดรวบบรีฟเดียวไม่มีเลข: ก้อนเดียวครอบทุกกลิ่น เลข "1" จะอ่านเหมือน
+                ยังมีก้อนที่ 2 ตามมา */}
+            <div className={styles.briefHead}>
+              {!merged && <span className={styles.briefNo}>{i + 1}</span>}
+              <span className={styles.briefTitle}>
+                {merged ? "บรีฟรวมทุกกลิ่น" : (brief.label || `กลิ่นที่ ${i + 1}`)}
+              </span>
+            </div>
             <div className="form-group">
-              <label htmlFor={`brief-label-${i}`}>
-                {merged ? "ชื่อเรียกบรีฟ" : `กลิ่นที่ ${i + 1} — ชื่อเรียก`}
-              </label>
+              <label htmlFor={`brief-label-${i}`}>ชื่อเรียก</label>
               <Input
                 id={`brief-label-${i}`} value={brief.label || ""} disabled={disabled}
                 placeholder="เช่น แนวสดชื่น"

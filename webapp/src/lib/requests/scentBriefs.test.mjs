@@ -28,8 +28,12 @@ test('⭐ จำนวนกลิ่นที่ขายเป็น **เพ�
   assert.equal(normalizeScentBriefs(three).error, null);
 });
 
-test('ชื่อเรียกบังคับ และซ้ำกันไม่ได้', () => {
-  assert.match(normalizeScentBriefs([{}]).error, /ต้องตั้งชื่อเรียก/);
+test('ชื่อเรียกว่างได้ (เติม "กลิ่นที่ N" ให้) แต่ซ้ำกันไม่ได้', () => {
+  // 🐞 เดิมบังคับตั้งชื่อทุกก้อน ⇒ ใบที่ขาย 25 กลิ่นต้องตั้งชื่อครบ 25 ก่อนถึงจะกด
+  // บันทึกร่างได้ ทั้งที่ฟอร์มเขียนไว้ว่า "กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก"
+  const blank = normalizeScentBriefs([{}, {}]);
+  assert.equal(blank.error, null);
+  assert.deepEqual(blank.briefs.map((b) => b.label), ['กลิ่นที่ 1', 'กลิ่นที่ 2']);
   assert.match(normalizeScentBriefs([ok, { label: 'แนวสดชื่น' }]).error, /ซ้ำกับก้อนก่อนหน้า/);
   // เทียบแบบไม่สนตัวพิมพ์ — "Fresh" กับ "fresh" คนอ่านแยกไม่ออกอยู่ดี
   assert.match(normalizeScentBriefs([{ label: 'Fresh' }, { label: 'fresh' }]).error, /ซ้ำ/);

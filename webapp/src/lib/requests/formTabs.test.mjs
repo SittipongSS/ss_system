@@ -68,11 +68,13 @@ test('เกจช่องไม่บังคับของ PDR นับร
   const form = {
     ...base, kind: 'scent_dev', salesOrderId: 'SO-1',
     pdr: { customerBrand: 'Vanique', moodTone: 'อบอุ่น' },
-    briefs: [{ label: 'กลิ่นที่ 1' }, { label: '' }],
+    // ⚠️ ก้อนที่มี **เนื้อบรีฟ** เท่านั้นที่นับ — ชื่อเรียกใช้นับไม่ได้เพราะระบบเติม
+    // "กลิ่นที่ N" ให้เองตอนบันทึก (scentBriefs.js) ⇒ นับชื่อแล้วเกจจะเต็มเองทั้งใบ
+    briefs: [{ label: 'กลิ่นที่ 1', brief: 'โทนอุ่น' }, { label: 'กลิ่นที่ 2' }],
   };
   const subject = requestFormTabs(form).find((t) => t.key === 'subject');
   assert.ok(subject.optional.total > 20, 'ต้องนับช่องทั้งแบบฟอร์ม PDR');
-  // 2 ช่องที่กรอก + 1 บรีฟที่ตั้งชื่อแล้ว
+  // 2 ช่องที่กรอก + 1 บรีฟที่เขียนเนื้อแล้ว
   assert.equal(subject.optional.filled, 3);
   // ⚠️ ช่องบังคับของแท็บนี้คือ "ชื่อเรื่อง" ของคำร้อง — แบบฟอร์ม PDR ไม่มีช่องบังคับเลย
   assert.equal(subject.required.total, 1);

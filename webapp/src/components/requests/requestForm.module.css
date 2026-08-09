@@ -340,16 +340,43 @@
   padding-top: var(--space-3);
 }
 
-/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย */
+/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย
+   ⚠️ **ไม่มีแถบสีซ้าย** (มติผู้ใช้ 2026-08-09) — แถบ accent หนา 3px อ่านเหมือน
+   "ก้อนนี้สำคัญ/ถูกเลือกอยู่" ทั้งที่ทุกก้อนเท่ากัน · ตัวแบ่งคือป้ายเลขมุมซ้ายแทน */
 .briefCard {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-ink);
   border-radius: var(--radius);
   background: var(--panel-2);
+}
+
+/* หัวก้อน: ป้ายเลข + ชื่อเรียก — เลขคือสิ่งที่คนใช้อ้างกัน ("ก้อนที่ 2 เอาโทนอุ่นกว่านี้") */
+.briefHead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.briefNo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--panel-3);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.briefTitle {
+  min-width: 0;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* PDR แบบอ่าน — คู่ป้าย/ค่า อ่านเร็วกว่าย่อหน้า และช่องที่ไม่ได้กรอกถูกตัดทิ้ง

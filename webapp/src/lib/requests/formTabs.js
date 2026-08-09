@@ -132,10 +132,12 @@ function optionalCounts(form, kind, optionalRefs) {
       counts.subject.total += p.total;
       counts.subject.filled += p.filled;
     }
-    // บรีฟรายกลิ่น — จำนวนก้อนมาจากใบสั่งขาย ก้อนที่เขียนชื่อแล้วถือว่ากรอก
+    // บรีฟรายกลิ่น — จำนวนก้อนมาจากใบสั่งขาย ก้อนที่เขียนเนื้อบรีฟแล้วถือว่ากรอก
+    // ⚠️ ไม่นับ "ชื่อเรียก" — ชื่อที่เว้นว่างจะถูกเติม "กลิ่นที่ N" ให้ตอนบันทึก
+    // (scentBriefs.js) ⇒ นับชื่อแล้วเกจจะเต็มเองโดยที่ยังไม่มีใครเขียนบรีฟ
     for (const brief of form.briefs || []) {
       counts.subject.total += 1;
-      if (filled(brief?.label)) counts.subject.filled += 1;
+      if (filled(brief?.brief)) counts.subject.filled += 1;
     }
   }
 
