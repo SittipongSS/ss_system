@@ -317,6 +317,19 @@
   margin-top: var(--space-4-5);
 }
 
+/* เหตุผลที่ปุ่มหลักยังกดไม่ได้ — วางเหนือปุ่มเพื่อให้อ่านก่อนมือจะไปถึงปุ่ม
+   สีเหลืองอำพัน = "ยังไม่พร้อม" ไม่ใช่ "ผิดพลาด" (แดงสงวนไว้ให้ของที่พังจริง) */
+.blockedReason {
+  margin: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-normal);
+}
+
 .action {
   width: 100%;
   min-height: 40px;

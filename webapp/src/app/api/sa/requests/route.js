@@ -429,10 +429,19 @@ export async function POST(request) {
     //
     // ตรวจและประกอบแถวไปแล้วก่อน insert หัว (ดูเหตุผลที่นั่น) — เหลือแค่เขียนลงตาราง
     // ⚠️ ตารางแยกจาก dept_request_items โดยตั้งใจ (บรีฟไม่เดิน 5 ก้าว — ดู 0213)
+    // 🐞 **ล้มแล้วต้องลบหัวทิ้งด้วย** — เดิมโยน error เปล่า ๆ ทิ้งใบร่างที่ไม่มีบรีฟ
+    // ค้างไว้ · ใบร่างนั้นยังจองใบสั่งขายตามกติกา 1 SO : 1 PDR
+    // (`lib/requests/scentDesignOrders.js`) ⇒ **เปิดใบใหม่จาก SO เดิมไม่ได้อีก**
+    // และคนกดไม่รู้ด้วยซ้ำว่ามีใบค้าง เพราะหน้าจอเห็นแต่ error
+    // ⚠️ ต้องทำเหมือนบล็อก `itemRows` ข้างล่างซึ่งลบหัวก่อนโยนอยู่แล้ว — ของสองก้อน
+    // นี้อยู่ในธุรกรรมเดียวกันในความหมายของผู้ใช้ แต่ Supabase ไม่มี transaction ให้
     if (briefRows.length) {
       const { error: briefInsertError } = await supabase
         .from('dept_request_scents').insert(briefRows);
-      if (briefInsertError) throw briefInsertError;
+      if (briefInsertError) {
+        await supabase.from('dept_requests').delete().eq('id', requestId);
+        throw briefInsertError;
+      }
     }
 
     // 3) รายการ (เฉพาะหัวข้อที่มีบรรทัด) — ชั้นจำนวนถูกถอดใน mig 0219
