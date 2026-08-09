@@ -34,6 +34,7 @@ const documentKind = {
     bodyPlaceholder: 'ลูกค้ารายไหน · เอาไปใช้ทำอะไร · มีกำหนดจากฝั่งลูกค้าไหม',
     itemsLabel: 'เอกสารที่ขอ — 1 บรรทัด = 1 ชนิด',
   },
+  summary: 'IFRA · COA · MSDS',
   hint: 'ขอเอกสาร/ใบรับรองของงานในโครงการนี้จากฝ่าย R&D (IFRA · COA · MSDS)',
 };
 

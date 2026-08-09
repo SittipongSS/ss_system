@@ -24,7 +24,7 @@ import { useState } from "react";
 import { Paperclip, Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
-import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
@@ -247,6 +247,32 @@ export default function RequestForm({
   const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || []) : [];
   const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
 
+  /* หัวข้อของฝ่ายนี้ จัดกลุ่มตามตระกูล — ลำดับกลุ่มมาจากลำดับของ `kindsForDept`
+     (ทะเบียนเรียงให้แล้ว) ไม่ใช่ลำดับตัวอักษร */
+  const kindFamilies = Object.entries(
+    kindsForDept(dept).reduce((acc, k) => {
+      const family = requestKindFamily(k);
+      (acc[family] = acc[family] || []).push(k);
+      return acc;
+    }, {}),
+  );
+
+  // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้นค่าเก่าค้าง
+  // แล้วถูกส่งไปกับคำร้องหัวข้อใหม่
+  const pickKind = (next) => set({
+    kind: next,
+    scentId: "",
+    formulaId: "",
+    productId: "",
+    productTypeId: "",
+    salesOrderId: "",
+    quotationId: "",
+    productIds: [],
+    formulaCode: "",
+    formulaName: "",
+    items: itemsForKind(next),
+  });
+
   const tabItems = formTabs.map((t) => ({
     key: t.key,
     label: (
@@ -354,36 +380,37 @@ export default function RequestForm({
 
       <div className="form-grid">
         <div className="form-group col-span-2">
-          <label htmlFor="req-kind">ขอเรื่องอะไร</label>
-          <Select
-            id="req-kind" value={kind} disabled={disabled || lockKind || !dept || revealed}
-            onChange={(e) => {
-              const next = e.target.value;
-              // เปลี่ยนหัวข้อ = ล้างช่องเฉพาะหัวข้อทิ้ง (กลิ่น/สูตร/รายการ) ไม่งั้น
-              // ค่าเก่าค้างแล้วถูกส่งไปกับคำร้องหัวข้อใหม่
-              set({
-                kind: next,
-                scentId: "",
-                formulaId: "",
-                productId: "",
-                productTypeId: "",
-                salesOrderId: "",
-                quotationId: "",
-                productIds: [],
-                formulaCode: "",
-                formulaName: "",
-                items: itemsForKind(next),
-              });
-            }}
-            options={[
-              { value: "", label: dept ? "เลือกหัวข้อ" : "เลือกฝ่ายก่อน" },
-              // หัวกลุ่ม (`group`) มาจากตระกูลของหัวข้อ — ฝ่าย RD มีทั้งงานพัฒนาและ
-              // ขอราคาปนกัน ลิสต์แบนทำให้สองเรื่องนี้ดูเท่ากันทั้งที่คนละจังหวะของงาน
-              ...kindsForDept(dept).map((k) => ({
-                value: k, label: requestKindLabel(k), group: requestKindFamily(k),
-              })),
-            ]}
-          />
+          <span className={styles.fieldLabel} id="req-kind-label">หัวข้อ</span>
+          {/* ⭐ **แผ่นเลือก ไม่ใช่ดรอปดาวน์** (มติผู้ใช้ 2026-08-09) — หัวข้อของฝ่ายหนึ่ง
+              มี 4 ตัวตายตัว ซึ่งเข้ากติกาคอนโทรล v2 ข้อแรก (ชุดเล็กต้องกางให้เห็น)
+              · ดรอปดาวน์ซ่อนไว้ทั้งจำนวนและคำอธิบาย ⇒ คนที่ยังไม่ชินต้องเปิดอ่านทีละอัน
+              · แผ่นพก `summary` มาด้วย ⇒ รู้ตั้งแต่ยังไม่กดว่าหัวข้อไหนทำอะไร
+              ⚠️ **จัดกลุ่มตามตระกูล** (ทั่วไป / งานพัฒนา) เหมือนที่ดรอปดาวน์เคยทำ —
+              ทิ้งหัวกลุ่มเมื่อไร งานพัฒนากับงานทั่วไปจะดูเท่ากันทั้งที่คนละจังหวะของงาน
+              ⚠️ ถ้าวันหนึ่งฝ่ายไหนมีหัวข้อเกิน ~6 ตัว ให้ฝ่ายนั้นถอยไป SearchableSelect
+              (กติกา "≤6 กางให้เห็น เกินนั้นใช้ช่องค้น") ไม่ใช่ยัดแผ่นต่อไปเรื่อย ๆ */}
+          {dept ? (
+            <div className="option-groups" role="group" aria-labelledby="req-kind-label">
+              {kindFamilies.map(([family, kinds]) => (
+                <div className="option-group" key={family}>
+                  <span className="option-group-name">{family}</span>
+                  <OptionTiles
+                    value={kind}
+                    onChange={pickKind}
+                    disabled={disabled || lockKind || revealed}
+                    ariaLabel={`หัวข้อ ${family}`}
+                    options={kinds.map((k) => ({
+                      value: k,
+                      label: requestKindLabel(k),
+                      description: requestKindMeta(k)?.summary || undefined,
+                    }))}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <small className={styles.hint}>เลือกฝ่ายก่อน</small>
+          )}
           {topicAction && (
             <div className={styles.topicAction}>
               {/* ⚠️ **เหตุผลที่กดไม่ได้อยู่ติดปุ่ม** — เดิมข้อความไปโผล่ชิดซ้ายใต้ช่อง
