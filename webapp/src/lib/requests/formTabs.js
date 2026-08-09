@@ -23,12 +23,16 @@ import { PDR_SECTIONS, pdrFormProgress } from '@/lib/requests/pdrFields';
    คงวาแทน "ทุกหัวข้อหน้าตาเหมือนกันหมด แลกกับคลิกเพิ่มในหัวข้อเล็ก"
    ⛔ ห้ามใส่เงื่อนไข "หัวข้อเล็กไม่ต้องมีแท็บ" กลับมาโดยไม่ถามเจ้าของงานก่อน —
    มันคือสองเลย์เอาต์ที่ต้องดูแลคู่กันไปตลอด ซึ่งเป็นสิ่งที่มติข้อนี้ปฏิเสธ */
-export const REQUEST_TAB_KEYS = ['work', 'subject', 'pdr', 'due'];
+export const REQUEST_TAB_KEYS = ['work', 'subject', 'due'];
 
+/* ⭐ **สามแท็บเท่ากันทุกหัวข้อ** (มติผู้ใช้ 2026-08-09) — เดิมหัวข้อที่มีแบบฟอร์ม PDR
+   ได้แท็บที่สี่ ทำให้จำนวนแท็บไม่เท่ากันระหว่างหัวข้อ · ตอนนี้ PDR ไปอยู่ใน
+   "รายละเอียด" ซึ่งเป็นที่ของ *เนื้อคำร้อง* อยู่แล้ว (ชื่อเรื่อง · บรีฟ · รายการที่ขอ)
+   ⚠️ ชื่อ "รายละเอียด" ไม่ใช่ "เรื่องที่ขอ" อีกแล้ว — พอ PDR เข้ามาอยู่ด้วย
+   แท็บนี้ไม่ได้ถามแค่ "ขออะไร" แต่เป็นรายละเอียดทั้งหมดของสิ่งที่ขอ */
 const TAB_LABELS = {
   work: 'งาน',
-  subject: 'เรื่องที่ขอ',
-  pdr: 'ฟอร์ม PDR',
+  subject: 'รายละเอียด',
   due: 'กำหนดและไฟล์',
 };
 
@@ -91,7 +95,6 @@ function optionalCounts(form, kind, optionalRefs) {
   const counts = {
     work: { total: 0, filled: 0 },
     subject: { total: 0, filled: 0 },
-    pdr: { total: 0, filled: 0 },
     due: { total: 0, filled: 0 },
   };
   const add = (tab, has, isFilled) => {
@@ -109,17 +112,18 @@ function optionalCounts(form, kind, optionalRefs) {
   add('subject', requestNeedsRef(kind, 'scent'), filled(form.scentId));
   add('subject', requestNeedsRef(kind, 'formula'), filled(form.formulaId));
 
+  // แบบฟอร์ม PDR นับรวมอยู่ใน "รายละเอียด" — มันคือเนื้อของสิ่งที่ขอ ไม่ใช่คนละเรื่อง
   if (requestHasPdr(kind)) {
     const values = form.pdr || {};
     for (const section of PDR_SECTIONS) {
       const p = pdrFormProgress(section, values);
-      counts.pdr.total += p.total;
-      counts.pdr.filled += p.filled;
+      counts.subject.total += p.total;
+      counts.subject.filled += p.filled;
     }
     // บรีฟรายกลิ่น — จำนวนก้อนมาจากใบสั่งขาย ก้อนที่เขียนชื่อแล้วถือว่ากรอก
     for (const brief of form.briefs || []) {
-      counts.pdr.total += 1;
-      if (filled(brief?.label)) counts.pdr.filled += 1;
+      counts.subject.total += 1;
+      if (filled(brief?.label)) counts.subject.filled += 1;
     }
   }
 
@@ -131,7 +135,6 @@ function optionalCounts(form, kind, optionalRefs) {
  * แท็บทั้งหมดของหัวข้อนี้ พร้อมเกจ — ผู้เรียกเอาไปวาดตรง ๆ ได้เลย
  *
  * คืน `[{ key, label, required: {total, filled, missing[]}, optional: {total, filled} }]`
- * · แท็บ PDR โผล่เฉพาะหัวข้อที่ประกาศ `hasPdr`
  * · `optionalRefs` ส่งเข้ามาเพราะมันเป็นของหัวข้อ (ดู `requestOptionalRefs`)
  *   แต่ผู้เรียกรู้อยู่แล้ว — รับเป็น argument ดีกว่า import วนกันไปมา
  */
@@ -140,7 +143,6 @@ export function requestFormTabs(form = {}, { optionalRefs = [] } = {}) {
   const checks = requiredChecks(form);
   const optional = optionalCounts(form, kind, optionalRefs);
   return REQUEST_TAB_KEYS
-    .filter((key) => (key === 'pdr' ? requestHasPdr(kind) : true))
     .map((key) => {
       const mine = checks.filter((c) => c.tab === key);
       return {

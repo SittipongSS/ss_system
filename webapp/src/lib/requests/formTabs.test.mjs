@@ -49,10 +49,11 @@ test('ตัวหารนับเฉพาะช่องบังคับ�
   // สอบถามข้อมูลต้องมีดีล + โครงการของดีล — ไม่มีใบสั่งขาย
   assert.equal(work.required.total, 2);
   assert.equal(work.required.filled, 2);
-  assert.equal(info.some((t) => t.key === 'pdr'), false, 'หัวข้อที่ไม่มี PDR ต้องไม่มีแท็บ PDR');
+  // ⭐ สามแท็บเท่ากันทุกหัวข้อ (มติ 2026-08-09) — PDR ไปรวมอยู่ใน "รายละเอียด"
+  assert.deepEqual(info.map((t) => t.key), ['work', 'subject', 'due']);
 
   const scent = requestFormTabs({ ...base, kind: 'scent_dev', salesOrderId: 'SO-1' });
-  assert.equal(scent.some((t) => t.key === 'pdr'), true);
+  assert.deepEqual(scent.map((t) => t.key), ['work', 'subject', 'due']);
   // พัฒนากลิ่นยึดใบสั่งขาย ไม่ได้ยึดดีล ⇒ แท็บงานมีช่องบังคับตัวเดียว
   assert.equal(scent.find((t) => t.key === 'work').required.total, 1);
 });
@@ -62,15 +63,16 @@ test('ยังไม่เลือกดีล = ขาด "ดีล" ไม�
   assert.deepEqual(missing.map((m) => m.label), ['ดีล']);
 });
 
-test('เกจช่องไม่บังคับของ PDR นับตามที่กรอกจริง', () => {
+test('เกจช่องไม่บังคับของ PDR นับรวมอยู่ในแท็บรายละเอียด', () => {
   const form = {
     ...base, kind: 'scent_dev', salesOrderId: 'SO-1',
     pdr: { customerBrand: 'Vanique', moodTone: 'อบอุ่น' },
     briefs: [{ label: 'กลิ่นที่ 1' }, { label: '' }],
   };
-  const pdr = requestFormTabs(form).find((t) => t.key === 'pdr');
-  assert.ok(pdr.optional.total > 20, 'PDR ต้องนับช่องทั้งแบบฟอร์ม');
+  const subject = requestFormTabs(form).find((t) => t.key === 'subject');
+  assert.ok(subject.optional.total > 20, 'ต้องนับช่องทั้งแบบฟอร์ม PDR');
   // 2 ช่องที่กรอก + 1 บรีฟที่ตั้งชื่อแล้ว
-  assert.equal(pdr.optional.filled, 3);
-  assert.equal(pdr.required.total, 0, 'PDR ไม่มีช่องบังคับสักช่อง');
+  assert.equal(subject.optional.filled, 3);
+  // ⚠️ ช่องบังคับของแท็บนี้คือ "ชื่อเรื่อง" ของคำร้อง — แบบฟอร์ม PDR ไม่มีช่องบังคับเลย
+  assert.equal(subject.required.total, 1);
 });
