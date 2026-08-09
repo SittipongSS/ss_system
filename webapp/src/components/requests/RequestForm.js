@@ -21,7 +21,7 @@
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
 import { useState } from "react";
-import { Paperclip, X, AtSign } from "lucide-react";
+import { Paperclip, Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import Select from "@/components/ui/Select";
@@ -226,6 +226,9 @@ export default function RequestForm({
   // "ยังขาดอะไร" กระโดดไปแท็บนั้นได้ (ผู้เรียกไม่ต้องรู้จักแท็บ)
   const [tab, setTab] = useState("work");
   const [pdrSection, setPdrSection] = useState("request");
+  // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
+  // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
+  const [fgPick, setFgPick] = useState("");
   const formTabs = requestFormTabs(value, { optionalRefs });
   // หัวข้อเปลี่ยน = ชุดแท็บเปลี่ยน (แท็บ PDR หายไป) ⇒ ถอยไปแท็บแรกแทนจอว่าง
   const activeTab = formTabs.some((t) => t.key === tab) ? tab : (formTabs[0]?.key || "work");
@@ -557,24 +560,40 @@ export default function RequestForm({
               </span>
               {/* ⭐ หลายรายการ (ม-89) — เลือกทีละตัวจากดรอปดาวน์ ตัวที่เลือกแล้วขึ้น
                   เป็นป้ายถอดได้ข้างล่าง (แพตเทิร์นเดียวกับรายการไฟล์แนบ)
-                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด */}
-              <SearchableSelect
-                value="" disabled={disabled}
-                onChange={(v) => {
-                  if (!v || (value.productIds || []).includes(v)) return;
-                  set({ productIds: [...(value.productIds || []), v] });
-                }}
-                options={products
-                  .filter((fg) => !(value.productIds || []).includes(fg.id))
-                  .map((fg) => ({
-                    value: fg.id,
-                    label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
-                    search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
-                  }))}
-                placeholder="— เลือกเพื่อเพิ่ม —"
-                emptyText="ยังไม่มีสินค้าในทะเบียน"
-                ariaLabel="เพิ่มสินค้า (FG) ที่อ้างถึง"
-              />
+                  · FG ไม่ผูกดีล — ทะเบียนสินค้าค้นด้วยรหัส/ชื่อ/ลูกค้าได้ทั้งชุด
+                  ⭐ **เลือกแล้วต้องกด "เพิ่ม" อีกที** (มติผู้ใช้ 2026-08-09) — ทะเบียน
+                  สินค้ามีรหัสที่หน้าตาใกล้กันมาก การเลือกผิดแล้วมันเข้าลิสต์ทันที
+                  แปลว่าต้องหาปุ่มถอดออกทุกครั้งที่พลาด · ตอนนี้ค่าที่เลือกค้างในช่อง
+                  ให้อ่านทวนก่อน แล้วค่อยยืนยัน */}
+              <div className={styles.pickAdd}>
+                <SearchableSelect
+                  value={fgPick} disabled={disabled}
+                  onChange={setFgPick}
+                  options={products
+                    .filter((fg) => !(value.productIds || []).includes(fg.id))
+                    .map((fg) => ({
+                      value: fg.id,
+                      label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+                      search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
+                    }))}
+                  placeholder="— เลือกสินค้า —"
+                  emptyText="ยังไม่มีสินค้าในทะเบียน"
+                  ariaLabel="เลือกสินค้า (FG) ที่จะเพิ่ม"
+                />
+                {/* ปุ่มที่กดไม่ได้ต้องบอกเหตุผล (กฎเดียวกับ `requestFormBlocker`) */}
+                <Button
+                  size="sm" icon={<Plus size={14} aria-hidden="true" />}
+                  disabled={disabled || !fgPick}
+                  title={fgPick ? undefined : "เลือกสินค้าจากช่องซ้ายก่อน"}
+                  onClick={() => {
+                    if (!fgPick || (value.productIds || []).includes(fgPick)) return;
+                    set({ productIds: [...(value.productIds || []), fgPick] });
+                    setFgPick("");
+                  }}
+                >
+                  เพิ่ม
+                </Button>
+              </div>
               {!!(value.productIds || []).length && (
                 <ul className={styles.fileList}>
                   {(value.productIds || []).map((fgId) => {
