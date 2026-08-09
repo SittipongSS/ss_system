@@ -52,8 +52,15 @@ WHERE NOT EXISTS (
   SELECT 1 FROM public.document_standard_versions WHERE "documentKey" = 'pdr'
 );
 
+-- ⚠️ **อ่าน id ของแถวที่เผยแพร่จริง ไม่ hardcode `document-standard-pdr-v1`** —
+-- ฐานที่ seed ผ่าน UI มาก่อนได้ id เป็น UUID การชี้ตายตัวจะชี้ไปแถวที่ไม่มีอยู่
+-- แล้ว publishedVersionId กลายเป็น FK ที่ไม่มีปลายทาง (หรือ error ที่ REFERENCES)
 UPDATE public.document_standards
-SET "publishedVersionId" = 'document-standard-pdr-v1',
+SET "publishedVersionId" = (
+      SELECT id FROM public.document_standard_versions
+      WHERE "documentKey" = 'pdr' AND status = 'published'
+      ORDER BY "versionNumber" DESC LIMIT 1
+    ),
     "updatedAt" = now()
 WHERE "documentKey" = 'pdr'
   AND "publishedVersionId" IS NULL;
