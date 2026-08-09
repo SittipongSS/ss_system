@@ -892,14 +892,11 @@ export default function RequestForm({
             briefs={value.briefs || []}
             onBriefsChange={(briefs) => set({ briefs })}
             disabled={disabled}
-            scentCount={scentCount}
-            customer={pdrDerived.customer || ""}
-            deal={pdrDerived.deal || ""}
-            requester={pdrDerived.requester || ""}
-            coordinator={pdrDerived.coordinator || ""}
-            contactName={pdrDerived.contactName || ""}
-            contactPhone={pdrDerived.contactPhone || ""}
-            sampleDue={pdrDerived.sampleDue || ""}
+            /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
+               เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)
+               ⚠️ `scentCount` ของหน้านี้คำนวณสด ๆ จากใบสั่งขายที่เพิ่งเลือก จึงทับของใน
+               ก้อนซึ่งอาจยังว่างตอนกำลังกรอก */
+            context={{ ...pdrDerived, scentCount }}
           />
         </SectionRail>
       )}
