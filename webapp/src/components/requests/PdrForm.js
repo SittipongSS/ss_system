@@ -14,7 +14,10 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
-import { FlaskConical, Image as ImageIcon } from "lucide-react";
+import { useState } from "react";
+import { FlaskConical, Image as ImageIcon, Plus, X } from "lucide-react";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import { categoryLabel } from "@/lib/master/categoryOf";
 import EmptyState from "@/components/ui/EmptyState";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
@@ -43,7 +46,7 @@ const withBlank = (options) => [{ value: "", label: "— เลือก —" },
 // ⭐ derive จากทะเบียน — เพิ่มช่องในทะเบียนแล้วฟอร์มรู้เองว่าต้องมีคีย์นั้น
 // (เดิมไล่เขียนมือ ⇒ ช่องใหม่จะเป็น undefined แล้ว React ด่าเรื่อง uncontrolled input)
 export const emptyPdr = () => Object.fromEntries(
-  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, f.type === "multi" ? [] : ""]),
+  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, ["multi", "categories"].includes(f.type) ? [] : ""]),
 );
 
 // ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
@@ -75,9 +78,9 @@ function ChipPicker({ label, options, value, onChange, disabled, hint }) {
 }
 
 // ช่องที่ระบบเติมให้ — เส้นประ อ่านอย่างเดียว (แพตเทิร์นเดียวกับ "เติมจาก SO")
-function Derived({ label, value, from }) {
+function Derived({ label, value, from, wide = false }) {
   return (
-    <div className="form-group">
+    <div className={wide ? "form-group col-span-2" : "form-group"}>
       <span className={styles.fieldLabel}>{label}</span>
       <div className={styles.derived} data-empty={value ? undefined : "1"}>{value || from}</div>
     </div>
@@ -174,11 +177,15 @@ export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
   scentCount = null, customer = null, deal = null, requester = null,
   coordinator = null, contactName = null, contactPhone = null, sampleDue = null,
+  // ทะเบียนหมวดสินค้า — ผู้เรียกส่งมา (ชุดเดียวกับที่ฟอร์มคำร้องใช้กับบรรทัด)
+  categories = [],
   // โหมดราง (มติผู้ใช้ 2026-08-09 "แบบ A") — ผู้เรียกวางรางเลือกส่วนเอง แล้วบอกว่า
   // ตอนนี้อยู่ส่วนไหน · ไม่ส่ง = ลิ้นชักครบทุกส่วนเหมือนเดิม (ฝั่งอ่านยังใช้แบบนั้น)
   section = null,
 }) {
   const rail = section != null;
+  // ตัวที่เลือกค้างไว้ก่อนกด "เพิ่ม" — ยังไม่ใช่ข้อมูลของใบ (ท่าเดียวกับ FG)
+  const [kindPick, setKindPick] = useState("");
   const show = (key) => !rail || section === key;
   // ⭐ ลูกค้าซื้อหลายกลิ่นแต่บอกมาแนวเดียวเป็นเรื่องปกติ (มติผู้ใช้) — รวบเป็นก้อนเดียว
   // แล้ว RD ส่งหลาย direction จากก้อนนั้น ซึ่งระบบรองรับอยู่แล้ว · จำนวนกลิ่นที่ขาย
@@ -317,15 +324,66 @@ export default function PdrForm({
         {/* ⚠️ `.form-grid` เปล่า = คอลัมน์เดียว — ต้องมี `cols-2` สองวันที่ถึงจะอยู่
             บรรทัดเดียวกันซ้ายขวาตามที่ผู้ใช้ขอ (2026-08-09) */}
         <div className="form-grid cols-2">
-          <div className="form-group">
-            <label htmlFor="pdr-pkind">{label("productKind")}</label>
-            <Input id="pdr-pkind" value={value.productKind} disabled={disabled}
-              onChange={(e) => set({ productKind: e.target.value })} />
+          {/* ⭐ **หมวดสินค้าหลายรายการ** (มติผู้ใช้ 2026-08-09) — ตัวเลือกกลางตัวเดียว
+              กับฟอร์มดีล/บรรทัดคำร้อง แล้วยืนยันด้วยปุ่ม "เพิ่ม" (ท่าเดียวกับ FG ใน
+              ฟอร์มคำร้อง) · ที่เลือกแล้วขึ้นเป็นป้ายถอดได้
+              ⚠️ ค่าที่เก็บคือ `typeCode` ชุดเดียวกับ `dept_request_items.categoryCode`
+              ⇒ เทียบกันได้ตรง ๆ ว่าที่ขอไว้กับที่ทำจริงตรงกันไหม
+              ⚠️ ช่องข้อความเดิม (`productKind`) ไม่แสดงในฟอร์มแล้ว — เก็บไว้ให้จอสรุป/
+              เอกสารอ่านใบเก่าเท่านั้น (ดูธง `legacy` ในทะเบียน) */}
+          <div className="form-group col-span-2">
+            <span className={styles.fieldLabel}>
+              {label("productKinds")}
+            </span>
+            <div className={styles.pickAdd}>
+              <ProductCategorySelect
+                categories={categories}
+                value={kindPick}
+                disabled={disabled}
+                onChange={setKindPick}
+              />
+              <Button
+                size="sm" icon={<Plus size={14} aria-hidden="true" />}
+                disabled={disabled || !kindPick}
+                title={kindPick ? undefined : "เลือกหมวดสินค้าก่อน"}
+                onClick={() => {
+                  const list = Array.isArray(value.productKinds) ? value.productKinds : [];
+                  if (!kindPick || list.includes(kindPick)) return;
+                  set({ productKinds: [...list, kindPick] });
+                  setKindPick("");
+                }}
+              >
+                เพิ่ม
+              </Button>
+            </div>
+            {!!(value.productKinds || []).length && (
+              <ul className={styles.fileList}>
+                {(value.productKinds || []).map((code) => {
+                  const text = categoryLabel(code, categories);
+                  return (
+                    <li key={code} className={styles.fileRow}>
+                      <span className={styles.fileName}>{text}</span>
+                      <Button
+                        iconOnly icon={<X size={13} />} disabled={disabled}
+                        aria-label={`เอา ${text} ออก`}
+                        onClick={() => set({
+                          productKinds: (value.productKinds || []).filter((c) => c !== code),
+                        })}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
+          {/* ⚠️ เต็มแถวเพื่อ **ดันสองวันที่ให้อยู่บรรทัดเดียวกัน** (มติผู้ใช้ 2026-08-09) —
+              ช่องหมวดสินค้าด้านบนกินเต็มแถว ทำให้ parity พลิก ถ้าปล่อยตัวนี้ครึ่งแถว
+              "วันที่ต้องการสินค้า" จะไปจับคู่กับมันแทน แล้ว "วันที่ต้องการจำหน่าย" เหลือเดี่ยว */}
           <Derived
             label={label("scentCount")}
             value={scentCount != null ? `${scentCount} กลิ่น` : ""}
             from={FIELD.scentCount.from}
+            wide
           />
           <div className="form-group">
             <label htmlFor="pdr-want">{label("wantedAt")}</label>
@@ -521,6 +579,15 @@ export default function PdrForm({
             label={label("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
             value={value.packagingForms} onChange={(v) => set({ packagingForms: v })}
           />
+          {/* เงื่อนไขการโผล่มาจากทะเบียน (`showForMulti`) เหมือนชุดเอกสาร */}
+          {pdrFieldVisible(FIELD.packagingFormsOther, value) && (
+            <div className="form-group col-span-2">
+              <label htmlFor="pdr-pack-other">{label("packagingFormsOther")}</label>
+              <Input id="pdr-pack-other" value={value.packagingFormsOther || ""} disabled={disabled}
+                placeholder={FIELD.packagingFormsOther.placeholder}
+                onChange={(e) => set({ packagingFormsOther: e.target.value })} />
+            </div>
+          )}
           <div className="form-group">
             <span className={styles.fieldLabel}>{label("packagingArtwork")}</span>
             {/* ⭐ **สวิตช์ ไม่ใช่ดรอปดาวน์** (มติผู้ใช้ 2026-08-09) — มันคือธง "มี/ไม่มี"
@@ -581,6 +648,16 @@ export default function PdrForm({
           value={value.documents} onChange={(v) => set({ documents: v })}
           hint="COA · MSDS · IFRA · อย. มีให้เป็นพื้นฐานอยู่แล้ว — ติ๊กเพื่อยืนยันว่าใบนี้ต้องการ"
         />
+        {/* ⭐ ติ๊ก "อื่น ๆ" แล้วมีช่องพิมพ์ต่อ (มติผู้ใช้ 2026-08-09) — เงื่อนไขการโผล่
+            มาจากทะเบียน (`showForDocument`) ไม่ใช่ if เขียนตายตัวที่นี่ */}
+        {pdrFieldVisible(FIELD.documentsOther, value) && (
+          <div className="form-group col-span-2">
+            <label htmlFor="pdr-doc-other">{label("documentsOther")}</label>
+            <Input id="pdr-doc-other" value={value.documentsOther || ""} disabled={disabled}
+              placeholder={FIELD.documentsOther.placeholder}
+              onChange={(e) => set({ documentsOther: e.target.value })} />
+          </div>
+        )}
         {pdrFieldVisible(FIELD.exportDocNote, value) && (
           <div className="form-group col-span-2">
             <label htmlFor="pdr-export">{label("exportDocNote")}</label>

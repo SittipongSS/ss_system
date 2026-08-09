@@ -21,6 +21,7 @@
 // ⚠️ ตัวนับเดียวกับที่ด่านหน้าประตูของหัวข้อใช้ — "จำนวนกลิ่นที่ขาย" ต้องเป็นเลข
 // เดียวกันทั้งตอนกันไม่ให้เปิดใบผิด และตอนพิมพ์ลงกระดาษ
 import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
+import { categoryLabel } from '@/lib/master/categoryOf';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -44,6 +45,10 @@ export const PDR_PACKAGING_FORMS = [
   { value: 'bottle', label: 'ขวด' },
   { value: 'cap', label: 'ฝา' },
   { value: 'box', label: 'กล่อง' },
+  // ⭐ ทางออกที่ต้องมี (มติผู้ใช้ 2026-08-09) — บรรจุภัณฑ์นอกสามอย่างนี้มีจริง
+  // (ถุงซิป · หลอดบีบ · ขวดสเปรย์) · ไม่มีทางออก = คนติ๊กตัวที่ใกล้เคียงที่สุด
+  // แล้วตัวเลข "ขอขวดกี่ใบ" ผิดเงียบ ๆ · ติ๊กแล้วมีช่องพิมพ์ต่อ
+  { value: 'other', label: 'อื่น ๆ' },
 ];
 
 // ⭐ มติผู้ใช้: **ติ๊กว่ามีภาพประกอบ = ต้องแนบภาพจริง** ⇒ ด่านบังคับอยู่ที่
@@ -62,6 +67,8 @@ export const PDR_DOCUMENTS = [
   { value: 'fda', label: 'อย.' },
   { value: 'halal', label: 'ฮาลาล (Halal)' },
   { value: 'export', label: 'เอกสารส่งออก' },
+  // ⭐ ทางออกเดียวกับชุดบรรจุภัณฑ์ — ติ๊กแล้วมีช่องพิมพ์ต่อ
+  { value: 'other', label: 'อื่น ๆ' },
 ];
 
 const labelOf = (list, value) => list.find((o) => o.value === value)?.label || null;
@@ -183,11 +190,21 @@ export const PDR_SECTIONS = [
         key: 'targetPainpoint', column: 'pdrTargetPainpoint', label: 'Painpoint',
         hint: 'ทำไมต้องทำแบรนด์นี้', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
+      // ⭐ **หมวดสินค้าหลายรายการ** (มติผู้ใช้ 2026-08-09) — เลือกจากทะเบียนเดียวกับ
+      // บรรทัดคำร้อง/ฟอร์มดีล ไม่ใช่พิมพ์เอง ⇒ นับได้ว่าขอพัฒนาหมวดไหนกี่ครั้ง
+      // โน้ตสีแดงบนกระดาษข้อ 1.11 — ลูกค้าที่สั่ง Fragrance ต้องบอกปลายทางด้วย
+      // ไม่งั้น RD ตั้งความเข้มข้นกับเบสไม่ได้ (น้ำหอมกับน้ำยาปรับผ้านุ่มคนละโจทย์)
       {
-        key: 'productKind', no: '1.11', column: 'pdrProductKind', label: 'ประเภทสินค้า', type: 'text',
-        // โน้ตสีแดงบนกระดาษข้อ 1.11 — ลูกค้าที่สั่ง Fragrance ต้องบอกปลายทางด้วย
-        // ไม่งั้น RD ตั้งความเข้มข้นกับเบสไม่ได้ (น้ำหอมกับน้ำยาปรับผ้านุ่มคนละโจทย์)
+        key: 'productKinds', no: '1.11', column: 'pdrProductKinds',
+        label: 'ประเภทสินค้า', type: 'categories',
         hint: 'หากผลิตเป็น Fragrance ให้ระบุด้วยว่านำไปใช้กับสินค้าประเภทใด',
+      },
+      // ⚠️ ช่องข้อความอิสระเดิม **เก็บไว้อ่านใบเก่า** — 0227 ไม่ย้ายค่าให้ เพราะข้อความ
+      // อย่าง "ครีมบำรุงผิว" แปลงเป็นรหัสหมวดอัตโนมัติไม่ได้ · ฟอร์มไม่เขียนลงตัวนี้แล้ว
+      // แต่จอสรุป/เอกสารยังพิมพ์ถ้าใบนั้นมีค่า (ไม่งั้นข้อมูลเก่าหายไปจากกระดาษ)
+      {
+        key: 'productKind', column: 'pdrProductKind', label: 'ประเภทสินค้า (บันทึกไว้เดิม)',
+        type: 'text', legacy: true,
       },
       {
         key: 'scentCount', no: '1.12', label: 'จำนวนกลิ่นที่ต้องการพัฒนา',
@@ -222,6 +239,12 @@ export const PDR_SECTIONS = [
         type: 'multi', options: PDR_PACKAGING_FORMS, group: 'รูปแบบบรรจุภัณฑ์',
       },
       {
+        key: 'packagingFormsOther', column: 'pdrPackagingFormsOther',
+        label: 'รูปแบบบรรจุภัณฑ์ — อื่น ๆ ระบุ', type: 'text', wide: true,
+        group: 'รูปแบบบรรจุภัณฑ์', showForMulti: { key: 'packagingForms', value: 'other' },
+        placeholder: 'เช่น ถุงซิป · หลอดบีบ · ขวดสเปรย์',
+      },
+      {
         key: 'packagingArtwork', column: 'pdrPackagingArtwork', label: 'ภาพประกอบบรรจุภัณฑ์',
         type: 'select', options: PDR_ARTWORK, group: 'รูปแบบบรรจุภัณฑ์',
       },
@@ -249,6 +272,11 @@ export const PDR_SECTIONS = [
       {
         key: 'documents', column: 'pdrDocuments', label: 'เอกสารที่ลูกค้าต้องการ',
         type: 'multi', options: PDR_DOCUMENTS,
+      },
+      {
+        key: 'documentsOther', column: 'pdrDocumentsOther', label: 'เอกสาร — อื่น ๆ ระบุ',
+        type: 'text', wide: true, showForDocument: 'other',
+        placeholder: 'ระบุชื่อเอกสารที่ลูกค้าขอ',
       },
       {
         key: 'exportDocNote', column: 'pdrExportDocNote', label: 'เอกสารส่งออก — ระบุ',
@@ -348,6 +376,16 @@ export function pdrFieldText(field, request = {}, context = {}) {
     return list.map((v) => labelOf(field.options || [], v) || String(v)).join(' · ');
   }
 
+  // ⭐ หมวดสินค้าหลายรายการ — ป้ายมาจากทะเบียนที่ผู้เรียกส่งมา (`context.categories`)
+  // ⚠️ ไม่มีทะเบียน = พิมพ์รหัสดิบ ไม่ใช่ค่าว่าง — ใบที่มีข้อมูลต้องอ่านออกเสมอ
+  // แม้จอที่เรียกจะลืมส่งทะเบียนมา (บทเรียนเดียวกับ docTypeLabel)
+  if (field.type === 'categories') {
+    const list = Array.isArray(raw) ? raw : [];
+    if (!list.length) return null;
+    const registry = context.categories || [];
+    return list.map((code) => categoryLabel(code, registry)).join(' · ');
+  }
+
   if (raw == null || String(raw).trim() === '') return null;
   if (field.type === 'select') return labelOf(field.options || [], raw) || String(raw);
   if (field.type === 'money') return money(raw);
@@ -370,6 +408,14 @@ export function pdrFieldVisible(field, values = {}) {
     const list = Array.isArray(values.documents) ? values.documents : [];
     return list.includes(field.showForDocument);
   }
+  // ⭐ เงื่อนไขทั่วไป "ติ๊กค่านี้ในชุดไหน" (2026-08-09) — `showForDocument` เป็นกรณี
+  // เฉพาะของชุดเอกสารที่มีมาก่อน · ตัวนี้ใช้ได้กับทุกชุดติ๊กหลายตัว
+  if (field?.showForMulti) {
+    const list = Array.isArray(values[field.showForMulti.key]) ? values[field.showForMulti.key] : [];
+    return list.includes(field.showForMulti.value);
+  }
+  // ⚠️ ช่องที่เก็บไว้อ่านของเก่าอย่างเดียว — ฟอร์มไม่แสดง (ผู้เรียกฝั่งอ่านข้ามเอง
+  // ด้วย `field.legacy` เพราะจอสรุป/เอกสารยังต้องพิมพ์ค่าที่ใบเก่ามี)
   return true;
 }
 
@@ -392,7 +438,8 @@ export function pdrFieldVisible(field, values = {}) {
  */
 export function pdrFormProgress(section, values = {}) {
   const fields = (section?.fields || [])
-    .filter((f) => f.type !== 'derived' && pdrFieldVisible(f, values));
+    // ⚠️ `legacy` = ช่องที่ฟอร์มไม่แสดงแล้ว — นับเข้าตัวหารจะกรอกให้ครบไม่ได้ตลอดกาล
+    .filter((f) => f.type !== 'derived' && !f.legacy && pdrFieldVisible(f, values));
   const filled = fields.filter((f) => {
     const v = values?.[f.key];
     if (Array.isArray(v)) return v.length > 0;
@@ -434,6 +481,9 @@ export function pdrSectionProgress(section, request = {}, context = {}) {
 
 export function pdrSectionRows(section, request = {}, { includeEmpty = false, context = {} } = {}) {
   return (section?.fields || [])
+    // ⚠️ ช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง — ใบใหม่ไม่เขียนลงช่องนี้แล้ว ปล่อยให้
+    // `includeEmpty` ลากมาด้วยจะได้บรรทัด "ประเภทสินค้า (บันทึกไว้เดิม): N/A" ติดทุกใบ
+    .filter((f) => !f.legacy || (pdrFieldText(f, request, context) ?? '') !== '')
     .map((f) => [f.label, pdrFieldText(f, request, context)])
     .filter(([, v]) => includeEmpty || (v != null && String(v).trim() !== ''));
 }

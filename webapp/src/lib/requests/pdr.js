@@ -23,7 +23,7 @@ const TEXT_LIMITS = {
 };
 
 // ช่องติ๊กหลายตัว — เก็บเป็น text[] ตามแพตเทิร์นของ dept_request_scents (0213)
-const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20 };
+const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20, pdrProductKinds: 20 };
 
 const AMOUNTS = ['pdrProjectValue', 'pdrTargetCost', 'pdrTargetPrice'];
 const DATES = ['pdrWantedAt', 'pdrSellFrom'];
@@ -51,7 +51,8 @@ export function normalizePdr(input) {
 
     // ⚠️ ช่องติ๊กหลายตัว — **ไม่ตรวจว่าค่าอยู่ในชุดตัวเลือกไหม** ตามแพตเทิร์นของ
     // 0213: ชุดตัวเลือกอยู่ฝั่งโค้ดและยังเปลี่ยนได้ · ที่ตรวจคือรูปแบบและจำนวน
-    if (FIELD_TYPE[field] === 'multi') {
+    // ⚠️ 'categories' เก็บเหมือน 'multi' (text[]) ต่างกันแค่ที่มาของป้าย
+    if (FIELD_TYPE[field] === 'multi' || FIELD_TYPE[field] === 'categories') {
       const list = (Array.isArray(value) ? value : [])
         .map((v) => String(v ?? '').trim()).filter(Boolean);
       if (list.length > MAX_ITEMS[column]) {

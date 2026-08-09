@@ -17,7 +17,8 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   const { columns } = normalizePdr({});
   assert.deepEqual([...PDR_COLUMNS].sort(), Object.keys(columns).sort());
   // 29 ช่องของ 0214/0218 + 5 ชื่อผู้เซ็นของ 0221 (ม-45)
-  assert.equal(PDR_COLUMNS.length, 34);
+  // + 3 ของ 0227: หมวดสินค้าหลายรายการ · "อื่น ๆ" ของบรรจุภัณฑ์และเอกสาร
+  assert.equal(PDR_COLUMNS.length, 37);
 });
 
 test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {

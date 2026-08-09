@@ -18,6 +18,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
+import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
@@ -115,6 +116,12 @@ export default function RequestDetailPage() {
   // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
   // สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" — server เป็นคนตัดสิน (`_canEditPdr`)
   const [pdrDraft, setPdrDraft] = useState(null);
+  /* ทะเบียนหมวดสินค้า — ฟอร์ม PDR (โหมดแก้) ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
+     ⚠️ โหลดเสมอ ไม่รอให้กดแก้ — โหลดตอนกดจะได้ดรอปดาวน์ว่างในวินาทีแรก */
+  const [productTypes, setProductTypes] = useState([]);
+  useEffect(() => {
+    cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
+  }, []);
   // ⭐ วันกำหนดส่งตอนรับเรื่อง — บังคับเฉพาะหัวข้อที่ประกาศธง (มติผู้ใช้ 2026-08-06)
   // ⚠️ ปุ่มเดิมยิง `acknowledge` เปล่า ๆ ⇒ พอ server บังคับแล้วจะกดไม่ผ่านทุกครั้ง
   // ถ้าไม่มีช่องให้กรอก · ด่านกับหน้าจอต้องมาพร้อมกันเสมอ
@@ -917,6 +924,7 @@ export default function RequestDetailPage() {
           เดียวกับแถบท้ายเธรดเป๊ะ · ส่งเฉพาะโครง panel: โครงเดิมยังใช้แถบท้ายเธรด */}
       <KindDetail
         request={req}
+        categories={productTypes}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         rowStep={usePanel ? {

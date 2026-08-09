@@ -31,6 +31,8 @@ import styles from "./details.module.css";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep,
+  // ทะเบียนหมวดสินค้า — ฟอร์ม PDR ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
+  categories = [],
   pdrDraft, onPdrDraftChange,
 }) {
   /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
@@ -105,6 +107,7 @@ export default function ScentDevDetail({
               >
                 <PdrForm
                   section={draftSection}
+                  categories={categories}
                   value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
                   briefs={pdrDraft.briefs}
                   onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}

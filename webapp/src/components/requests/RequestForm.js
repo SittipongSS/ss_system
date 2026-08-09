@@ -884,6 +884,7 @@ export default function RequestForm({
               บันทึกเสร็จเท่านั้น = อาการที่ผู้ใช้ทักมา 2026-08-09) */}
           <PdrForm
             section={activeRail}
+            categories={productTypes}
             value={value.pdr || emptyPdr()}
             onChange={(pdr) => set({ pdr })}
             briefs={value.briefs || []}
