@@ -42,7 +42,9 @@ const uiFiles = files.filter((file) => /\.(?:js|css)$/.test(file) && (
 const colorAllowList = [
   "src/app/globals.css",
   "src/components/documents/",
-  "src/app/settings/document-standards/quotation-preview/page.module.css",
+  // หน้าพรีวิวเต็มจอของมาตรฐานเอกสาร — เดิมชื่อ `quotation-preview` เปลี่ยนเป็น
+  // `preview` ตอนทำให้รองรับเอกสารครบทุกชนิด (สีดิบในนี้เป็นสีกระดาษ ไม่ใช่สีของแอป)
+  "src/app/settings/document-standards/preview/page.module.css",
 ];
 
 /* หนี้เก่า: prompt() ที่ยังไม่ได้แปลงเป็นกล่องกรอกของระบบ — โผล่มาตอนเติม prompt เข้า

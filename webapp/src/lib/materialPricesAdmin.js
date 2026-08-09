@@ -176,6 +176,8 @@ export async function findRequest(supabase, id) {
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
+      // ⚠️ `title` ต้องมาด้วย — เอกสาร PDR พิมพ์ช่อง "โครงการ" เป็น **ชื่อดีล**
+      // ไม่ใช่รหัส · รหัสอย่างเดียว RD อ่านแล้วไม่รู้ว่างานอะไร
       ? supabase.from('sales_deals').select('id, code, title').eq('id', withBriefs.dealId)
         .maybeSingle().then((r) => r.data)
       : null,

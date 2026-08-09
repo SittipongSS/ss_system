@@ -73,10 +73,18 @@ const labelOf = (list, value) => list.find((o) => o.value === value)?.label || n
  *   key      ชื่อช่องในฟอร์ม (สั้น — อยู่ในบริบท PDR อยู่แล้ว)
  *   column   คอลัมน์บนแถวคำร้อง (mig 0214 · prefix `pdr` กันปนกับกลไกคำร้อง)
  *   label    ป้ายชื่อ — **ชุดเดียวทั้งสามจอ**
+ *   no       เลขข้อบนกระดาษ FM-RD-01 (เช่น '1.1') — เอกสารพิมพ์นำหน้าป้าย
+ *            ⚠️ **แยกจาก label โดยตั้งใจ** เพราะบนจอผู้ใช้ไม่ได้ถือกระดาษอยู่ตรงหน้า
+ *            เลขข้อจึงเป็นสัญญาณรบกวน · แต่บนกระดาษมันคือสิ่งที่ RD ใช้อ้างกันทางโทรศัพท์
+ *            ช่องที่ไม่มีบนกระดาษ (ดีล) ไม่มี `no`
  *   hint     คำขยายในวงเล็บ · ฟอร์มแสดงต่อท้ายป้าย จอแสดง/เอกสารไม่แสดง (กินที่)
  *   type     'text' | 'money' | 'date' | 'select' | 'tick' | 'derived'
  *   options  ตัวเลือกของ select — ใช้แปลงค่าดิบเป็นป้ายด้วย
  *   derive   ที่มาของค่าที่ระบบเติมให้เอง (ไม่ได้อยู่ในคอลัมน์ pdr*)
+ *
+ * ⚠️ **ลำดับในไฟล์นี้ = ลำดับบนกระดาษ** — ทั้งสามจอเรียงตามนี้ · เดิม 1.9 กับ 1.12
+ * แทรกอยู่ระหว่าง 1.3 กับ 1.4 และ 1.10 ตกไปท้ายสุด คนที่ถือกระดาษกรอกตามจอจึงต้อง
+ * กระโดดไปมา
  */
 export const PDR_SECTIONS = [
   {
@@ -96,7 +104,9 @@ export const PDR_SECTIONS = [
       // กดส่ง จะพิมพ์วันที่สร้างร่างลงกระดาษ ซึ่งไม่ใช่วันที่ยื่นจริง
       //
       // ⚠️ ร่างที่ยังไม่ส่ง = ยังไม่มีวันยื่น ⇒ N/A ตามกติกา ไม่ใช่ถอยไปใช้ createdAt
-      { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'วันที่ยื่นคำร้อง' },
+      // ⭐ `inHeader` — เอกสารพิมพ์ไว้บนหัวใบ (มติผู้ใช้ 2026-08-09: "วันที่ [ร้องขอ]
+      // ใต้โครงการ") ไม่ใช่ในตาราง · จอแสดงกับฟอร์มไม่มีหัวใบ จึงยังโชว์ในลิสต์ตามเดิม
+      { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'วันที่ยื่นคำร้อง', inHeader: true },
       { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้ดูแลโครงการ' },
       { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
       { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },
@@ -132,34 +142,37 @@ export const PDR_SECTIONS = [
     fields: [
       // ⭐ 1.1/1.2 มาจาก **ทะเบียนลูกค้า** (มติผู้ใช้) ไม่ใช่ช่องกรอกซ้ำ — พิมพ์ซ้ำ
       // เมื่อไรก็ได้เบอร์สองชุดที่ขัดกัน และเบอร์ที่ RD โทรจะเป็นเบอร์ที่เก่ากว่า
-      { key: 'contactName', label: 'ชื่อผู้ติดต่อ', type: 'derived', derive: 'contactName', from: 'เติมจากทะเบียนลูกค้า' },
-      { key: 'contactPhone', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
-      { key: 'customer', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
-      { key: 'deal', label: 'ดีล', type: 'derived', derive: 'deal', from: 'เติมจาก SO' },
+      // ⚠️ **นำหน้า 1.1** (มติผู้ใช้ 2026-08-09) — ไม่มีข้อนี้บนกระดาษ แต่มันคือ "งานนี้
+      // คืองานไหน" ซึ่งต้องรู้ก่อนรายละเอียดผู้ติดต่อ · ไม่ได้ทำให้เลขข้อ 1.1–1.14 เพี้ยน
+      // เพราะช่องที่ไม่มีบนกระดาษไม่มีเลขข้ออยู่แล้ว
+      //
+      // ⭐ `docLabel` = **ป้ายเฉพาะบนกระดาษ** — เอกสารทุกชนิดของบริษัทเรียกดีลว่า
+      // "โครงการ" (QT/SO/ET/ไทม์ไลน์) ส่วนบนจอต้องเป็น "ดีล" เพราะระบบมี *โครงการ*
+      // (รหัส PJ) เป็นอีกสิ่งหนึ่งจริง ๆ ⇒ ใช้คำเดียวกันบนจอจะชี้ผิดตัว
+      {
+        key: 'deal', label: 'ดีล', docLabel: 'โครงการ',
+        type: 'derived', derive: 'deal', from: 'เติมจาก SO',
+      },
+      { key: 'contactName', no: '1.1', label: 'ชื่อผู้ติดต่อ', type: 'derived', derive: 'contactName', from: 'เติมจากทะเบียนลูกค้า' },
+      { key: 'contactPhone', no: '1.2', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
+      { key: 'customer', no: '1.3', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
+      { key: 'customerBrand', no: '1.4', column: 'pdrCustomerBrand', label: 'ชื่อแบรนด์', type: 'text' },
+      { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', label: 'Mood & Tone', type: 'text' },
+      { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', label: 'ทิศทางการเติบโตของแบรนด์', type: 'text' },
+      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'text' },
+      {
+        key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', label: 'ประเภทลูกค้า',
+        type: 'select', options: PDR_CUSTOMER_KINDS,
+      },
       // ⚠️ **ไม่ derive จากดีล** — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
       // (ลูกค้าอาจจ่ายค่าออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน — ผู้ใช้ทักเอง)
       {
-        key: 'projectValue', column: 'pdrProjectValue', label: 'มูลค่าโปรเจกต์ทั้งหมด',
+        key: 'projectValue', no: '1.9', column: 'pdrProjectValue', label: 'มูลค่าโปรเจกต์ทั้งหมด',
         type: 'money', placeholder: 'ทั้งโครงการ ไม่ใช่แค่ค่าออกแบบกลิ่น',
       },
+      // ⭐ ติ๊กแล้วเขียนต่อ (มติผู้ใช้) — สามช่องนี้คือข้อ 1.10 ข้อเดียวบนกระดาษ
       {
-        key: 'scentCount', label: 'จำนวนกลิ่นที่ต้องการพัฒนา',
-        type: 'derived', derive: 'scentCount', from: 'เติมจากใบสั่งขาย',
-      },
-      { key: 'customerBrand', column: 'pdrCustomerBrand', label: 'ชื่อแบรนด์', type: 'text' },
-      { key: 'moodTone', column: 'pdrMoodTone', label: 'Mood & Tone', type: 'text' },
-      { key: 'brandDirection', column: 'pdrBrandDirection', label: 'ทิศทางการเติบโตของแบรนด์', type: 'text' },
-      { key: 'shipTo', column: 'pdrShipTo', label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'text' },
-      {
-        key: 'customerKind', column: 'pdrCustomerKind', label: 'ประเภทลูกค้า',
-        type: 'select', options: PDR_CUSTOMER_KINDS,
-      },
-      { key: 'productKind', column: 'pdrProductKind', label: 'ประเภทสินค้า', type: 'text' },
-      { key: 'wantedAt', column: 'pdrWantedAt', label: 'วันที่ต้องการสินค้า', type: 'date' },
-      { key: 'sellFrom', column: 'pdrSellFrom', label: 'วันที่ต้องการจำหน่าย', type: 'date' },
-      // ⭐ ติ๊กแล้วเขียนต่อ (มติผู้ใช้) — สามช่องนี้อยู่ใต้หัวข้อย่อยเดียวกันบนฟอร์ม
-      {
-        key: 'targetDemographic', column: 'pdrTargetDemographic', label: 'DemoGraphic',
+        key: 'targetDemographic', no: '1.10', column: 'pdrTargetDemographic', label: 'DemoGraphic',
         hint: 'เพศ · อายุ · การศึกษา · รายได้', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
       {
@@ -170,6 +183,18 @@ export const PDR_SECTIONS = [
         key: 'targetPainpoint', column: 'pdrTargetPainpoint', label: 'Painpoint',
         hint: 'ทำไมต้องทำแบรนด์นี้', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
+      {
+        key: 'productKind', no: '1.11', column: 'pdrProductKind', label: 'ประเภทสินค้า', type: 'text',
+        // โน้ตสีแดงบนกระดาษข้อ 1.11 — ลูกค้าที่สั่ง Fragrance ต้องบอกปลายทางด้วย
+        // ไม่งั้น RD ตั้งความเข้มข้นกับเบสไม่ได้ (น้ำหอมกับน้ำยาปรับผ้านุ่มคนละโจทย์)
+        hint: 'หากผลิตเป็น Fragrance ให้ระบุด้วยว่านำไปใช้กับสินค้าประเภทใด',
+      },
+      {
+        key: 'scentCount', no: '1.12', label: 'จำนวนกลิ่นที่ต้องการพัฒนา',
+        type: 'derived', derive: 'scentCount', from: 'เติมจากใบสั่งขาย',
+      },
+      { key: 'wantedAt', no: '1.13', column: 'pdrWantedAt', label: 'วันที่ต้องการสินค้า', type: 'date' },
+      { key: 'sellFrom', no: '1.14', column: 'pdrSellFrom', label: 'วันที่ต้องการจำหน่าย', type: 'date' },
     ],
   },
   {
@@ -177,32 +202,32 @@ export const PDR_SECTIONS = [
     title: 'ข้อกำหนดผลิตภัณฑ์',
     fields: [
       {
-        key: 'targetCost', column: 'pdrTargetCost', label: 'Target Cost / KG',
+        key: 'targetCost', no: '2.2', column: 'pdrTargetCost', label: 'Target Cost / KG',
         hint: 'F/FB ไม่รวมบรรจุภัณฑ์', type: 'money',
       },
       {
-        key: 'targetPrice', column: 'pdrTargetPrice', label: 'Target Price / Unit',
+        key: 'targetPrice', no: '2.3', column: 'pdrTargetPrice', label: 'Target Price / Unit',
         hint: 'ราคาขาย', type: 'money',
       },
-      { key: 'moq', column: 'pdrMoq', label: 'MOQ ที่คาดหวัง', type: 'text' },
+      { key: 'moq', no: '2.4', column: 'pdrMoq', label: 'MOQ ที่คาดหวัง', type: 'text' },
       {
-        key: 'texture', column: 'pdrTexture', label: 'ลักษณะเนื้อผลิตภัณฑ์',
+        key: 'texture', no: '2.5', column: 'pdrTexture', label: 'ลักษณะเนื้อผลิตภัณฑ์',
         type: 'select', options: PDR_TEXTURES,
       },
-      { key: 'color', column: 'pdrColor', label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
-      { key: 'packSize', column: 'pdrPackSize', label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
-      // 2.8 รูปแบบบรรจุภัณฑ์
+      { key: 'color', no: '2.6', column: 'pdrColor', label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
+      { key: 'packSize', no: '2.7', column: 'pdrPackSize', label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
+      // 2.8 รูปแบบบรรจุภัณฑ์ — กระดาษรวม ขวด/ฝา/กล่อง กับ มี/ไม่มีภาพประกอบ ไว้ข้อเดียว
       {
-        key: 'packagingForms', column: 'pdrPackagingForms', label: 'รูปแบบบรรจุภัณฑ์',
-        type: 'multi', options: PDR_PACKAGING_FORMS,
+        key: 'packagingForms', no: '2.8', column: 'pdrPackagingForms', label: 'รูปแบบบรรจุภัณฑ์',
+        type: 'multi', options: PDR_PACKAGING_FORMS, group: 'รูปแบบบรรจุภัณฑ์',
       },
       {
         key: 'packagingArtwork', column: 'pdrPackagingArtwork', label: 'ภาพประกอบบรรจุภัณฑ์',
-        type: 'select', options: PDR_ARTWORK,
+        type: 'select', options: PDR_ARTWORK, group: 'รูปแบบบรรจุภัณฑ์',
       },
       // 2.9 Value Proposition — **ของทั้งใบ ไม่ใช่รายกลิ่น** (มติผู้ใช้)
       {
-        key: 'vpAttribute', column: 'pdrVpAttribute', label: 'Attribute',
+        key: 'vpAttribute', no: '2.9', column: 'pdrVpAttribute', label: 'Attribute',
         hint: 'คุณสมบัติของสินค้า', type: 'tick', group: 'Value Proposition', wide: true,
       },
       {
@@ -213,7 +238,7 @@ export const PDR_SECTIONS = [
         key: 'vpValue', column: 'pdrVpValue', label: 'Value',
         hint: 'คุณค่าที่แบรนด์ส่งมอบ', type: 'tick', group: 'Value Proposition', wide: true,
       },
-      { key: 'brandSample', column: 'pdrBrandSample', label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
+      { key: 'brandSample', no: '2.10', column: 'pdrBrandSample', label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
     ],
   },
   {
@@ -385,6 +410,36 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
 }
 
 /**
+ * ช่องของหัวข้อหนึ่ง **จัดกลุ่มตามข้อบนกระดาษแล้ว** — สำหรับตัวสร้างเอกสาร
+ *
+ * ⭐ กระดาษ FM-RD-01 มีบางข้อที่รวมหลายช่องไว้ในกล่องเดียว (1.10 กลุ่มลูกค้าเป้าหมาย
+ * · 2.8 รูปแบบบรรจุภัณฑ์ · 2.9 Value Proposition) ⇒ ต้องพิมพ์เป็นแถวเดียว ไม่ใช่
+ * สามแถวแยก ไม่งั้นเลขข้อบนกระดาษกับบนเอกสารนับไม่ตรงกัน
+ *
+ * ⚠️ จับกลุ่มจาก `group` ของช่องที่ **ติดกัน** เท่านั้น — ช่องที่ group ซ้ำแต่อยู่คนละที่
+ * ต้องไม่ถูกดูดมารวมกันข้ามลำดับบนกระดาษ
+ *
+ * คืน [{ no, title, fields }] · `title` = ชื่อกลุ่มถ้ามี ไม่งั้นเป็นป้ายของช่องเดียวนั้น
+ */
+export function pdrSectionGroups(section) {
+  const out = [];
+  for (const field of section?.fields || []) {
+    const last = out[out.length - 1];
+    if (field.group && last?.group === field.group) {
+      last.fields.push(field);
+      continue;
+    }
+    out.push({
+      group: field.group || null,
+      no: field.no || null,
+      title: field.group || field.label,
+      fields: [field],
+    });
+  }
+  return out;
+}
+
+/**
  * ค่าที่ระบบเติมให้เอง — ประกอบจากแถวที่โหลดมาแล้ว คืน object ที่ส่งเป็น `context`
  *
  * ⭐ **ที่เดียวที่รู้ว่าค่าเติมเองมาจากตารางไหน** — จอแสดง เอกสาร และฟอร์มตอนเปิดใบ
@@ -429,7 +484,10 @@ export function pdrContext({
     requester: project?.aeOwner || request.requestedByName || null,
     coordinator: project?.acOwner || null,
     customer: request.customerName || customer?.name || null,
-    deal: deal?.code || deal?.id || null,
+    // ⚠️ **ชื่องาน ไม่ใช่รหัสดีล** (มติผู้ใช้ 2026-08-09) — ใบมีเลขที่เอกสารเป็นรหัส
+    // อยู่แล้ว รหัสที่สองอ่านแล้วสับสนว่าอันไหนคือเลขของใบนี้
+    // ⚠️ ถอยไปใช้รหัสเมื่อดีลยังไม่ได้ตั้งชื่อ — ช่องว่างแย่กว่ารหัสที่อ่านออก
+    deal: deal?.title || deal?.code || deal?.id || null,
     contactName: primary.name || customer?.contactPerson || null,
     // Phone / Line เป็นช่องเดียวบนกระดาษ — ต่อกันด้วย · เมื่อมีทั้งคู่
     contactPhone: [phone, line].filter(Boolean).join(' · ') || null,
