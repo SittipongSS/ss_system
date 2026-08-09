@@ -123,6 +123,8 @@ export async function PATCH(request, { params }) {
   const nowIso = new Date().toISOString();
   const patch = { updatedAt: nowIso };
   let summary = '';
+  // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
+  let eventReason = null;
 
   try {
     if (action === 'submit') {
@@ -271,6 +273,8 @@ export async function PATCH(request, { params }) {
       if (reason.length > 500) {
         return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
       }
+      // ⚠️ ต้องส่งต่อให้เธรดด้วย ไม่ใช่จบที่ audit log — ดูเหตุผลที่ appendRequestEvent
+      eventReason = reason || null;
       // ⚠️ เขียน **วันเดิม → วันใหม่** ลงเธรด ไม่ใช่แค่ "แก้วันแล้ว" — คนอ่านย้อนหลัง
       // ต้องเห็นว่าเลื่อนไปกี่ครั้งและครั้งละกี่วัน โดยไม่ต้องไปขุด audit log
       summary = `เลื่อนวันกำหนดส่ง ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
@@ -389,7 +393,13 @@ export async function PATCH(request, { params }) {
       : [];
     await appendRequestEvent(supabase, {
       request: after, action,
-      opts: { reason: patch.cancelReason ?? patch.bounceReason }, user, mentions,
+      opts: {
+        reason: patch.cancelReason ?? patch.bounceReason ?? eventReason,
+        // วันเดิมก่อนเลื่อน — อ่านจาก `before` เพราะ `after` ถูกทับไปแล้ว
+        previousDueDate: before.committedDueDate ?? null,
+      },
+      user,
+      mentions,
     });
 
     // แจ้งฝ่ายเจ้าของเมื่อมีคำร้องใหม่เข้าคิว (space rd/pc ตามฝ่าย)

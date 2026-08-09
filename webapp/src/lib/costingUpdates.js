@@ -12,11 +12,13 @@
 // ⚠️ ทุกฟังก์ชันต้องทนของไม่ครบ (คืน null) — ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จ
 // แล้ว การโยน error ตรงนั้นจะทำให้ action ที่สำเร็จแล้วตอบ 500
 
+import { fmtDate } from '@/lib/format';
+
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
 // ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
-export function askActionUpdate(action, ask, { reason = null } = {}) {
+export function askActionUpdate(action, ask, { reason = null, previousDueDate = null } = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';
   if (action === 'submit') {
@@ -44,6 +46,41 @@ export function askActionUpdate(action, ask, { reason = null } = {}) {
       body: `ฝ่าย ${dept} ตีกลับให้แก้ไข — ${clip(reason) || 'ไม่ระบุเหตุผล'}`,
       meta: { dept },
     };
+  }
+  // 🐞 **สี่ action ที่เคยไม่ลงเธรดเลย** (ตรวจ 2026-08-09) — route ประกอบข้อความ
+  // สวยงามไว้แล้วแต่ส่งเข้า `recordAudit` อย่างเดียว ซึ่งไม่มีใครเปิดดู และไม่ยิง
+  // แจ้งเตือน (แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด) ⇒ เหตุการณ์เงียบสนิทบนจอ
+  //
+  // ⭐ `reschedule` แรงที่สุด — route เขียนคอมเมนต์สัญญาไว้เองว่า "ไม่แก้เงียบ ๆ —
+  // วันกำหนดส่งคือคำสัญญาที่ให้ฝ่ายขายไปแล้ว … เลื่อนแล้วต้องเห็นในเธรด" แต่ไม่เคย
+  // เห็นจริง · และเกิดกับใบที่ฝ่ายปลายทาง **รับเรื่องไปแล้ว** = ฝ่ายขายยังเชื่อวันเดิม
+  if (action === 'reschedule') {
+    const from = previousDueDate ? fmtDate(previousDueDate) : '(ไม่เคยระบุ)';
+    const to = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
+    return {
+      kind: 'reschedule',
+      body: `ฝ่าย ${dept} เลื่อนวันกำหนดส่ง ${from} → ${to}`
+        + (clip(reason) ? ` — ${clip(reason)}` : ''),
+      meta: { dept, from: previousDueDate || null, to: ask.committedDueDate || null },
+    };
+  }
+  // หัวหน้าสายงานขายยืนยัน — ฝ่ายปลายทางรออยู่ว่าลงมือได้หรือยัง (ประตู mig 0216)
+  if (action === 'approve') {
+    return { kind: 'approve', body: `ยืนยันให้ฝ่าย ${dept} ดำเนินการได้`, meta: { dept } };
+  }
+  // แก้ข้อมูลใบหลังส่งแล้ว — สถานะ `pending` แปลว่าใบอยู่บนคิวฝ่ายปลายทางแล้ว
+  // คนที่กำลังจะรับเรื่องต้องรู้ว่าเนื้อในเปลี่ยน (ดู lib/requests/requestEdit.js)
+  if (action === 'update') {
+    return {
+      kind: 'update',
+      body: 'ผู้ขอแก้ข้อมูลคำร้อง — ตรวจรายละเอียดอีกครั้งก่อนรับเรื่อง',
+      meta: {},
+    };
+  }
+  // แบบฟอร์ม PDR แก้ได้ทั้งก่อนและหลังรับเรื่อง (สิทธิ์สลับมือที่จังหวะนั้น) ⇒
+  // อีกฝ่ายอาจอ่านฉบับก่อนหน้าไปแล้ว
+  if (action === 'pdr') {
+    return { kind: 'pdr', body: 'แก้แบบฟอร์ม PDR', meta: {} };
   }
   if (action === 'close') {
     return { kind: 'close', body: 'ปิดเคส', meta: {} };

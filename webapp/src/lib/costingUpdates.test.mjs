@@ -26,6 +26,52 @@ test('คำร้อง: ทุก action คืน kind ที่ประก�
   assert.equal(askActionUpdate('submit', null), null);
 });
 
+// ── ทุก action ของ PATCH คำร้องต้องมีที่ลงในเธรด ──────────────────────
+//
+// 🐞 ตรวจ 2026-08-09: `reschedule` · `approve` · `update` · `pdr` **ไม่มีแถวลงเธรด
+// เลย** — route ประกอบข้อความไว้สวยงามแล้วส่งเข้า `recordAudit` อย่างเดียว ซึ่งไม่มี
+// ใครเปิดดู และไม่ยิงแจ้งเตือน (แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด) ⇒ เงียบสนิทบนจอ
+// ⚠️ เทสต์นี้อ่านรายชื่อ action จาก route จริง ไม่ใช่ลิสต์ที่พิมพ์ไว้เอง — เพิ่ม action
+// ใหม่ที่ route แล้วลืมเธรด จะแดงทันทีโดยไม่ต้องมีใครจำได้ว่าต้องมาแก้ที่นี่
+test('⭐ ทุก action ที่ route รองรับ ต้องมีแถวลงเธรด (ยกเว้นที่จงใจไม่ลง)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const routeSrc = readFileSync(
+    new URL('../app/api/sa/requests/[id]/route.js', import.meta.url), 'utf8',
+  );
+  const actions = [...routeSrc.matchAll(/action === '([a-z_]+)'/g)].map((m) => m[1]);
+  assert.ok(actions.length >= 10, `อ่าน action จาก route ได้แค่ ${actions.length} ตัว — regex น่าจะพัง`);
+
+  const ask = { dept: 'RD', docNo: 'DR-26080001', items: [{}], committedDueDate: '2026-08-20' };
+  const missing = [];
+  for (const action of new Set(actions)) {
+    if (!askActionUpdate(action, ask, { reason: 'เหตุผล', previousDueDate: '2026-08-10' })) {
+      missing.push(action);
+    }
+  }
+  assert.deepEqual(missing, [], `action เหล่านี้ยังไม่มีแถวลงเธรด: ${missing.join(', ')}`);
+});
+
+test('⭐ เลื่อนวันกำหนดส่งต้องบอก "จากวันไหน → วันไหน" ไม่ใช่แค่ "แก้วันแล้ว"', () => {
+  const ask = { dept: 'RD', committedDueDate: '2026-08-20' };
+  const u = askActionUpdate('reschedule', ask, { previousDueDate: '2026-08-10', reason: 'ตัวอย่างยังไม่นิ่ง' });
+  assert.ok(declared('dept_request', u.kind));
+  // วันที่บนจอเป็น DD/MM/YYYY เหมือนที่อื่นทั้งระบบ ไม่ใช่ ISO ดิบ
+  assert.match(u.body, /10\/08\/2026/);
+  assert.match(u.body, /20\/08\/2026/);
+  assert.match(u.body, /ตัวอย่างยังไม่นิ่ง/);
+  // ใบที่ไม่เคยระบุวันมาก่อนต้องอ่านออกว่าเพิ่งมีวันครั้งแรก ไม่ใช่ช่องว่าง
+  assert.match(askActionUpdate('reschedule', ask, {}).body, /ไม่เคยระบุ/);
+  // เก็บวันดิบไว้ใน meta ให้จอ/รายงานใช้ต่อได้ โดยไม่ต้องแกะจากข้อความ
+  assert.equal(u.meta.from, '2026-08-10');
+  assert.equal(u.meta.to, '2026-08-20');
+});
+
+test('kind ใหม่ทั้งสี่มีป้ายในทะเบียน — ขาดที่ใดที่หนึ่งเหตุการณ์จะเงียบบนจอ', () => {
+  for (const kind of ['reschedule', 'approve', 'update', 'pdr']) {
+    assert.ok(declared('dept_request', kind), `kind ${kind} ไม่มีป้ายใน UPDATE_KINDS.dept_request`);
+  }
+});
+
 test('คำร้อง: ยกเลิกต้องพาเหตุผลไปด้วย', () => {
   const ask = { dept: 'RD', items: [] };
   assert.match(askActionUpdate('cancel', ask, { reason: 'ลูกค้าถอย' }).body, /ลูกค้าถอย/);
