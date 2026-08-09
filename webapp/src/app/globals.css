@@ -1177,6 +1177,28 @@ button, select, input, textarea {
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
 .topnav-sys-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); background: var(--accent-soft); }
 
+/* ── ระบบ/เมนูที่ยังไม่เปิดใช้ — จางและกดไม่ได้ ไม่ใช่ซ่อน ────────────────
+   มติผู้ใช้ 2026-08-09 · ตัว is-disabled เรนเดอร์เป็น <span> อยู่แล้ว (ไม่ใช่ <a>)
+   ⚠️ `pointer-events: none` ที่นี่เป็นแค่ชั้นสอง — กันเมาส์ไม่ให้ติด hover state
+   ของเพื่อนบ้าน ไม่ใช่ตัวกันการกด · ตัวกันจริงคือการไม่เรนเดอร์ลิงก์ตั้งแต่ต้น */
+.topnav-sys-item.is-disabled,
+.topnav-item.is-disabled,
+.mobile-nav-card.is-disabled,
+.mbn-item.is-disabled {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* ป้าย "ยังไม่เปิดใช้" ท้ายรายการในเมนูสลับระบบ — รายการนั้นจางอยู่แล้วแต่
+   ความจางอย่างเดียวบอกไม่ได้ว่า "ยังไม่เปิด" หรือ "สิทธิ์ไม่ถึง" ซึ่งคนละเรื่องกัน */
+.nav-disabled-note {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  white-space: nowrap;
+}
+
 /* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก
    ⚠️ นี่คือการปรับ *สีตัวอักษรตามพื้นผิว* ไม่ใช่การนิยาม ghost ใหม่ — รูปทรง
    (ขอบ/พื้น/เงา) ยังมาจาก `.btn.ghost` ที่เดียว แถบนี้เป็นกรมท่าทั้งสองธีม
@@ -1844,6 +1866,23 @@ h1, h2, h3, h4, h5, h6 {
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
   box-shadow: var(--shadow-md);
 }
+/* การ์ดระบบที่ยังไม่เปิดใช้ — ใช้ --op-muted ไม่ใช่ --op-disabled เพราะการ์ดนี้มี
+   คำอธิบายเป็นย่อหน้าที่ยังต้องอ่านออก (0.45 ทำให้ตัวอักษร --text-2 ตกเกณฑ์คอนทราสต์)
+   ส่วนเมนูบนแถบเป็น "ตัวควบคุม" คำเดียว จึงใช้ --op-disabled ตามเพื่อนบ้านทั้งระบบ */
+.home-system-card.is-disabled {
+  opacity: var(--op-muted);
+  cursor: not-allowed;
+}
+/* การ์ดนี้เป็น <div> แล้ว แต่ .home-system-card:hover ยังจับได้อยู่ — ต้องปิดเอง
+   ไม่งั้นการ์ดที่กดไม่ได้ยังเด้งขึ้นตอนเอาเมาส์ไปวาง = คำเชิญให้กด */
+.home-system-card.is-disabled:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--panel); /* ค่าเดียวกับ .glass-panel — คืนพื้นเดิม ไม่ใช่ล้างทิ้ง */
+  box-shadow: var(--glass-shadow);
+}
+.home-system-card.is-disabled .home-system-icon { background: var(--text-3); }
+.home-system-card.is-disabled .home-system-enter { color: var(--text-3); font-weight: var(--fw-semibold); }
 .home-system-icon {
   width: 48px;
   height: 48px;

@@ -16,7 +16,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
-import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, systemLandingForUser, systemsForUser } from '@/config/systems';
+import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -244,7 +244,10 @@ export default function AppLayout({ children }) {
         // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
-        { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
+        // `disabled: true` = จางและกดไม่ได้ **ไม่ใช่ถอดออก** (มติผู้ใช้ 2026-08-09) —
+        // ถอดเมื่อไร ฝ่ายขายจะไปเปิดใบผิดชนิดแทน แล้วเราไม่รู้ว่ามีคนรออยู่กี่ใบ
+        // ⚠️ เปลือก UI เท่านั้น — /sa/costing ยังเข้าได้ถ้าพิมพ์ URL ตรง ๆ
+        { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/sa/costing') },
         // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/
         // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
         // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
@@ -392,6 +395,7 @@ export default function AppLayout({ children }) {
         label: system.label,
         home: systemLandingForUser(system, userContext),
         icon: system.icon,
+        disabled: system.disabled,
         items: group.items.filter((item) => {
           const caps = item.caps || [item.cap];
           return caps.some((cap) => canUser(userContext, cap)) &&
@@ -441,6 +445,16 @@ export default function AppLayout({ children }) {
                 </Link>
                 {accessibleGroups.map((g) => {
                   const SystemIcon = g.icon || LayoutDashboard;
+                  // ระบบที่ยังไม่เปิด — อยู่ในรายการต่อไปแต่กดไม่ได้ · <span> ไม่ใช่ <Link>
+                  // ที่ปิดด้วย CSS ด้วยเหตุผลเดียวกับการ์ดหน้าแรก (ดู home/page.js)
+                  if (g.disabled) {
+                    return (
+                      <span key={g.system} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
+                        <SystemIcon size={15} className="ico" /> {g.label}
+                        <small className="nav-disabled-note">{SYSTEM_DISABLED_NOTE}</small>
+                      </span>
+                    );
+                  }
                   return (
                     <Link
                       key={g.system}
@@ -494,6 +508,15 @@ export default function AppLayout({ children }) {
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
+            // เมนูที่ยังไม่เปิด — จางและกดไม่ได้ (ดูหมายเหตุที่นิยามเมนูใน allGroups)
+            if (item.disabled) {
+              return (
+                <span key={item.href} aria-disabled="true" title={SYSTEM_DISABLED_NOTE} className="topnav-item is-disabled">
+                  <Icon size={16} className="ico" />
+                  <span>{item.name}</span>
+                </span>
+              );
+            }
             return (
               <Link href={item.href} key={item.href} className={`topnav-item ${active ? 'active' : ''}`}>
                 <Icon size={16} className="ico" />
@@ -550,6 +573,13 @@ export default function AppLayout({ children }) {
               <div className="mobile-nav-grid">
                 {menuItems.map((item) => {
                   const Icon = item.icon;
+                  if (item.disabled) {
+                    return (
+                      <span key={item.href} aria-disabled="true" className="mobile-nav-card is-disabled">
+                        <Icon size={20} /><span>{item.name}</span>
+                      </span>
+                    );
+                  }
                   return (
                     <Link href={item.href} key={item.href} className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}>
                       <Icon size={20} /><span>{item.name}</span>
