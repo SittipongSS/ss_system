@@ -106,9 +106,7 @@ export const PDR_SECTIONS = [
       // ⚠️ ร่างที่ยังไม่ส่ง = ยังไม่มีวันยื่น ⇒ N/A ตามกติกา ไม่ใช่ถอยไปใช้ createdAt
       // ⭐ `inHeader` — เอกสารพิมพ์ไว้บนหัวใบ (มติผู้ใช้ 2026-08-09: "วันที่ [ร้องขอ]
       // ใต้โครงการ") ไม่ใช่ในตาราง · จอแสดงกับฟอร์มไม่มีหัวใบ จึงยังโชว์ในลิสต์ตามเดิม
-      // ⚠️ `from` = ข้อความที่ **ฟอร์มตอนกรอก** โชว์แทนค่าที่ยังไม่มี ⇒ ต้องบอก
-      // ว่าค่านี้จะมาเมื่อไร ไม่ใช่บอกชื่อช่องซ้ำ (มติผู้ใช้ 2026-08-09 เรื่องพรีวิว)
-      { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'ออกให้ตอนกดส่ง — ไม่ใช่วันที่สร้างร่าง', inHeader: true },
+      { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'วันที่ยื่นคำร้อง', inHeader: true },
       { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้ดูแลโครงการ' },
       { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
       { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },

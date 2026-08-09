@@ -216,10 +216,9 @@ export default function PdrForm({
 
       <Section flat={rail} title={SECTION.request.title} open note={SECTION.request.note} progress={pdrFormProgress(SECTION.request, value)}>
         <div className="form-grid cols-2">
-          {/* ⭐ โชว์บนฟอร์มด้วย (มติผู้ใช้ 2026-08-09) — เดิมมีแต่บนกระดาษกับจอสรุป
-              ⇒ คนกรอกไม่มีทางรู้ว่าเอกสารจะพิมพ์วันไหน · ร่างยังไม่ส่ง = ยังไม่มีวันยื่น
-              จึงโชว์เป็นเส้นประที่บอกว่า "ออกให้ตอนกดส่ง" ไม่ใช่เดาเป็นวันนี้ */}
-          <Derived label={label("requestedAt")} value="" from={FIELD.requestedAt.from} />
+          {/* ⚠️ **ไม่มีแถว "วันที่ร้องขอ" ที่ฟอร์มกรอก** (มติผู้ใช้ 2026-08-09) — ระบบ
+              ออกให้เองตอนกดส่ง (`submittedAt`) คนกรอกทำอะไรกับมันไม่ได้ ⇒ วางไว้ก็เป็น
+              แถวเส้นประที่กินที่เปล่า ๆ · ฝั่งอ่าน (PdrSummary/เอกสาร) ยังโชว์ตามเดิม */}
           <Derived label={label("requester")} value={requester} from={FIELD.requester.from} />
           <Derived label={label("coordinator")} value={coordinator} from={FIELD.coordinator.from} />
           <Derived label={label("department")} value="การขายและบริการ" from={FIELD.department.from} />
