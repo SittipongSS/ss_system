@@ -3718,9 +3718,14 @@ button.empty-state { width: 100%; font: inherit; }
 /* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
    หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
    ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */
-/* ⚠️ ไหลตามเนื้อ ไม่ใช่กริดแบ่งเท่า ๆ กัน — จำนวนช่องทางต่อกลุ่มไม่เท่ากันเลย
-   (Online 5 · Onsite 2 · Website 1) กริดคอลัมน์เท่ากันจึงบีบ Online ให้ชิป
-   ตกบรรทัด ขณะที่ Website เหลือที่ว่างเกือบเต็มคอลัมน์ (มติผู้ใช้ 2026-08-09) */
+/* ⚠️ ไหลตามเนื้อ ไม่ใช่กริดแบ่งเท่า ๆ กัน — จำนวนสมาชิกต่อกลุ่มไม่เท่ากันเลย
+   (ช่องทางลีด: Online 5 · Onsite 2 · Website 1 · หัวข้อคำร้อง: ทั่วไป 2 · งานพัฒนา 2)
+   กริดคอลัมน์เท่ากันจึงบีบกลุ่มใหญ่ให้ตกบรรทัด ขณะที่กลุ่มเล็กเหลือที่ว่างเกือบเต็ม
+   คอลัมน์ (มติผู้ใช้ 2026-08-09)
+   ⚠️ `.option-groups` เป็นชื่อกลางของ pattern นี้ ส่วน `.lead-channel-groups` เป็น
+   ชื่อเดิมในบล็อกนิยามเดียวกัน — ห้ามแยกไปประกาศชุดที่สอง (กฎ "หนึ่ง pattern
+   มีทรงเดียว") · กลุ่มของแผ่นเลือกกินที่มากกว่าชิป จึงยืดเต็มแถวเมื่อมีที่ */
+.option-groups,
 .lead-channel-groups {
   display: flex;
   flex-wrap: wrap;
@@ -3728,6 +3733,15 @@ button.empty-state { width: 100%; font: inherit; }
   gap: var(--space-3) var(--space-6);
 }
 .lead-channel-groups.is-compact { flex-direction: column; }
+/* กลุ่มของแผ่นเลือก — แผ่นกว้างกว่าชิป จึงให้แต่ละกลุ่มยืดแบ่งแถวกันเอง */
+.option-group { display: flex; flex-direction: column; gap: var(--space-1-5); flex: 1 1 18rem; min-width: 0; }
+.option-group-name {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
 .lead-channel-group { display: flex; flex-direction: column; gap: var(--space-1-5); min-width: 0; }
 .lead-channel-group-name {
   font-size: var(--fs-3);
