@@ -16,7 +16,9 @@
 // สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
 // components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
 import { useEffect, useState } from "react";
+import { FlaskConical } from "lucide-react";
 import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
@@ -29,9 +31,14 @@ import styles from "./details.module.css";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep,
-  pdrDraft, onPdrDraftChange, onPdrSave, onPdrCancel,
+  pdrDraft, onPdrDraftChange,
 }) {
-  const [view, setView] = useState("work");
+  /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
+     direction สักตัว เปิดมาเจอแท็บ "งาน" ที่ว่างเปล่าทุกครั้ง ⇒ ตั้งต้นที่แบบฟอร์ม
+     ซึ่งเป็นเนื้อเดียวที่มีจริงในช่วงนั้น · พอ RD ส่งของแล้ว "งาน" กลับมาเป็นตัวตั้งต้น
+     ⚠️ ใช้ค่าเริ่มต้นของ useState ไม่ใช่ effect — sync ทีหลังจะเด้งแท็บใต้มือคนที่
+     กำลังอ่านอยู่ตอนข้อมูลโหลดเสร็จ */
+  const [view, setView] = useState((request.items || []).length ? "work" : "pdr");
   const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
   // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — สองฝั่งมีหมวดคนละชุด (ฝั่งแก้มี "บรีฟกลิ่น")
   const [draftSection, setDraftSection] = useState("request");
@@ -53,6 +60,19 @@ export default function ScentDevDetail({
 
       {view === "work" && (
         <>
+          {/* ⚠️ **แท็บนี้ว่างจนกว่า RD จะส่งของ** — direction เกิดตอนฝ่ายกด "ส่งกลิ่น"
+              (lib/requests/delivery.js) ไม่ได้เกิดตอนเปิดใบ ⇒ ใบร่าง/ใบที่เพิ่งส่ง
+              ยังไม่มีอะไรให้โชว์จริง ๆ · ต้องบอกว่ากำลังรออะไรอยู่ ไม่ใช่หน้าเปล่า
+              ซึ่งอ่านเหมือนระบบพัง (มติผู้ใช้ 2026-08-09 — ถามว่า "แท็บงานแทบไม่มีอะไร") */}
+          {!(request.items || []).length && (
+            <EmptyState icon={FlaskConical}>
+              ยังไม่มี direction จากฝ่าย {request.dept}
+              <small>
+                RD จะส่งกลิ่นเข้ามาทีละตัวหลังรับเรื่อง — แต่ละตัวขึ้นเป็นแถวที่เดินสถานะของตัวเอง
+                · ระหว่างนี้ดูสิ่งที่ขอไว้ได้ที่แท็บ &ldquo;แบบฟอร์ม PDR&rdquo;
+              </small>
+            </EmptyState>
+          )}
           {/* ⚠️ ป้ายกระทบยอด SO กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
               ScentPanel) — ห้ามวาดซ้ำที่นี่อีก */}
           <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
@@ -91,10 +111,9 @@ export default function ScentDevDetail({
                   disabled={saving}
                 />
               </SectionRail>
-              <div className={`action-bar ${styles.pdrActions}`}>
-                <Button variant="quiet" disabled={saving} onClick={onPdrCancel}>ยกเลิก</Button>
-                <Button tone="primary" disabled={saving} onClick={onPdrSave}>บันทึกแบบฟอร์ม</Button>
-              </div>
+              {/* ⚠️ **ไม่มีปุ่มบันทึก/ยกเลิกตรงนี้** (มติผู้ใช้ 2026-08-09) — แผงจัดการ
+                  คือศูนย์กลางการควบคุม · พอเปิดโหมดแก้ แผงจะสลับเป็น "บันทึกแบบฟอร์ม /
+                  ยกเลิกการแก้" เอง ⇒ ปุ่มของใบอยู่ที่เดียวตลอดทุกโหมด */}
             </>
           ) : (
             <SectionRail

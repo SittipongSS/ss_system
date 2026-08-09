@@ -460,7 +460,25 @@ export default function RequestDetailPage() {
   const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
   const workflowSteps = workflowStepsFromIndex(railSteps, workflowIndex, req.status === "cancelled");
 
-  const primaryAction = req._mine && req.status === "draft"
+  /* ⭐ **แผงจัดการคือศูนย์กลางการควบคุม — เปิดโหมดแก้แล้วแผงต้องเปลี่ยนตาม**
+     (มติผู้ใช้ 2026-08-09) · ระหว่างแก้แบบฟอร์ม PDR ปุ่มของทั้งใบ (ส่ง/ลบ/แก้ข้อมูล)
+     ต้องหลบไป เหลือแค่ "บันทึกแบบฟอร์ม / ยกเลิก" ซึ่งเป็นสองทางเดียวที่ออกจากโหมดนี้ได้
+     ⚠️ ปล่อยให้ปุ่มอื่นค้างไว้ = กด "ส่งคำร้อง" ระหว่างที่ยังไม่บันทึกฟอร์ม แล้วของที่
+     พิมพ์ค้างหายเงียบ ๆ */
+  const editingPdr = !!pdrDraft;
+
+  const primaryAction = editingPdr
+    ? {
+      id: "pdr-save",
+      label: "บันทึกแบบฟอร์ม",
+      kind: "save",
+      icon: Check,
+      onClick: () => call("", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+      }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); }),
+    }
+    : req._mine && req.status === "draft"
     ? {
       id: "submit",
       label: "ส่งคำร้อง",
@@ -555,7 +573,16 @@ export default function RequestDetailPage() {
   const requestActions = normalizeDocumentControlActions({
     // โครง panel: ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรด — เข้า normalize ตรงเพื่อไปโผล่ที่การ์ดขวา
     primaryAction: usePanel ? primaryAction : headerAction,
-    secondaryActions: [
+    secondaryActions: editingPdr ? [
+      {
+        id: "pdr-cancel",
+        label: "ยกเลิกการแก้",
+        kind: "open",
+        icon: Undo2,
+        variant: "ghost",
+        onClick: () => setPdrDraft(null),
+      },
+    ] : [
       {
         // ⭐ **รวบส่งของหลายแถว** (ช่องว่างข้อ 3 ของแบบพัฒนาสูตร) — ใบที่ขอ 5 รายการ
         // และเสร็จพร้อมกัน ไม่ต้องเปิดโมดัลห้ารอบกรอกวันเดิมห้าครั้ง
@@ -632,7 +659,7 @@ export default function RequestDetailPage() {
         visible: canAnswer && !!req.acknowledgedAt,
       },
     ],
-    dangerActions: [
+    dangerActions: editingPdr ? [] : [
       {
         id: "delete",
         // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
@@ -911,11 +938,6 @@ export default function RequestDetailPage() {
         reconcileText={reconcile ? soReconcileText(reconcile) : null}
         pdrDraft={pdrDraft}
         onPdrDraftChange={setPdrDraft}
-        onPdrCancel={() => setPdrDraft(null)}
-        onPdrSave={() => call("", {
-          method: "PATCH",
-          body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
-        }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
       />
 
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
