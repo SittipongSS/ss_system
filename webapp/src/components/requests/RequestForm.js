@@ -21,7 +21,7 @@
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
 import { useState } from "react";
-import { Flame, Plus, X, AtSign } from "lucide-react";
+import { Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import PendingFiles from "@/components/ui/PendingFiles";
@@ -29,12 +29,11 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
-import DateInput from "@/components/ui/DateInput";
-import Textarea from "@/components/ui/Textarea";
 import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import DocumentLines from "@/components/requests/DocumentLines";
+import { RequestDueUrgentFields, RequestTitleBodyFields } from "./RequestEditableFields";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
@@ -723,32 +722,9 @@ export default function RequestForm({
       {/* ── แท็บ "เรื่องที่ขอ" — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
       {activeTab === "subject" && (
       <div className="form-grid cols-2">
-        <div className="form-group col-span-2">
-          <label htmlFor="req-title">{copy.titleLabel}</label>
-          <input
-            id="req-title" className="premium-input" maxLength={200}
-            value={value.title} disabled={disabled}
-            placeholder={copy.titlePlaceholder}
-            onChange={(e) => set({ title: e.target.value })}
-          />
-        </div>
-        {!hasPdr && (
-        <div className="form-group col-span-2">
-          <label htmlFor="req-body">{copy.bodyLabel}</label>
-          <Textarea
-            variant="data"
-            id="req-body" rows={4} maxLength={4000}
-            value={value.body} disabled={disabled}
-            placeholder={copy.bodyPlaceholder}
-            onChange={(e) => set({ body: e.target.value })}
-          />
-          {/* วางลิงก์หรือรหัสเอกสารในรายละเอียดได้เลย — เธรดเรนเดอร์เป็นลิงก์ให้เอง
-              ผ่าน RichText (/go/<รหัส>) ไม่ต้องมีช่อง "ลิงก์" แยก */}
-          <small className={styles.hint}>
-            วาง URL หรือรหัสเอกสาร (เช่น QT-26080001) ลงไปได้ — ระบบทำเป็นลิงก์ให้เอง
-          </small>
-        </div>
-        )}
+        {/* ⭐ ช่องเดียวกับที่โมดัล "แก้ไข" ใช้ — ห้ามวางซ้ำที่นี่
+            (ดูเหตุผลเต็มใน components/requests/RequestEditableFields.js) */}
+        <RequestTitleBodyFields value={value} onChange={onChange} disabled={disabled} />
 
       {/* ── หัวข้อที่ต้องอ้างทะเบียน: F/Mock-up อ้างกลิ่น · FB อ้างสูตร ────────
           อยู่ในโซน ② เพราะมันคือ "ขออะไร" ไม่ใช่ "งานไหน" — กลิ่น/สูตร/หมวดสินค้า
@@ -904,48 +880,8 @@ export default function RequestForm({
       {/* ── แท็บสุดท้าย: กำหนด · ความเร่งด่วน · ไฟล์ ─────────────────────── */}
       {activeTab === "due" && (
       <div className="form-grid cols-2">
-        <div className="form-group">
-          {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
-              ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
-          <label htmlFor="req-due">อยากได้คำตอบภายใน (บังคับ)</label>
-          <DateInput
-            id="req-due" value={value.requestedDueDate} disabled={disabled}
-            onChange={(v) => set({ requestedDueDate: v })}
-          />
-          <small className={styles.hint}>
-            เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกดรับเรื่อง
-          </small>
-        </div>
-        <div className="form-group">
-          <span className={styles.fieldLabel}>ความเร่งด่วน</span>
-          {/* ⭐ **สวิตช์ ไม่ใช่ checkbox** (มติผู้ใช้ 2026-08-09 · กติกาคอนโทรล v2
-              "ธง/โหมดพิเศษ = สวิตช์") — ทรงเดียวกับธง ด่วน/สำคัญ ของโมดัลงาน
-              ⚠️ ติ๊กแล้วมีช่องเหตุผลงอกข้างล่าง (บังคับ) — สวิตช์ทำให้ "ติดหรือไม่ติด"
-              อ่านออกจากระยะไกลกว่ากล่องติ๊กเล็ก ๆ ซึ่งสำคัญกับธงที่มีผลต่อคิวของฝ่ายอื่น */}
-          <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
-            <button
-              type="button" className="ui-switch" disabled={disabled}
-              data-on={value.urgent ? "1" : undefined} aria-pressed={!!value.urgent}
-              onClick={() => set({ urgent: !value.urgent })}
-            >
-              <i aria-hidden="true" /><Flame size={13} aria-hidden="true" /> ด่วน
-            </button>
-          </div>
-        </div>
-        {/* ⭐ **ด่วนแล้วต้องบอกว่าทำไม** (mig 0222) — ฟอร์มกระดาษ FM-RD-01 เขียนบนหัวว่า
-            "หากเป็นงานด่วน กรุณาระบุคำว่าด่วน และวันที่ต้องการ พร้อมแจ้งเหตุผล"
-            ⚠️ ติ๊กด่วนได้ฟรีเมื่อไร ทุกใบก็ด่วนภายในสองเดือน แล้วธงนั้นเลิกมีความหมาย */}
-        {value.urgent && (
-          <div className="form-group col-span-2">
-            <label htmlFor="req-urgent-why">เหตุผลที่เป็นงานด่วน *</label>
-            <Textarea
-              variant="data" id="req-urgent-why" rows={2} maxLength={500}
-              value={value.urgentReason || ""} disabled={disabled}
-              placeholder="เช่น ลูกค้าต้องใช้ในงานแสดงสินค้าวันที่ 20 · ล็อตผลิตปิดสิ้นเดือน"
-              onChange={(e) => set({ urgentReason: e.target.value })}
-            />
-          </div>
-        )}
+        {/* ⭐ ช่องเดียวกับที่โมดัล "แก้ไข" ใช้ — ห้ามวางซ้ำที่นี่ */}
+        <RequestDueUrgentFields value={value} onChange={onChange} disabled={disabled} />
 
       {/* ── แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ────────────────
           ⭐ **ช่องไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่
