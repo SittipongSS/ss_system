@@ -765,7 +765,7 @@ export default function SalesPlanningPipelinePage() {
           )}
 
           <SaSection icon={<FolderKanban size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
-          <div className="toolbar" style={{ marginBottom: 14 }}>
+          <div className="toolbar">
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />

@@ -1,4 +1,4 @@
-import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Thai } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
@@ -10,16 +10,15 @@ import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 // so edits/deletes show up immediately (no 5-min stale window).
 export const dynamic = "force-dynamic";
 
+/* ⭐ **ตัวพิมพ์ตัวเดียวทั้งระบบ** (มติผู้ใช้ 2026-08-09) — เดิมโหลด IBM Plex Mono
+   มาคู่กัน แต่ Plex Mono ไม่มีชุดไทย ⇒ ฿ (U+0E3F อยู่ในบล็อกไทย) และข้อความไทย
+   ในกล่อง mono ตกไปใช้ฟอนต์ระบบ กลายเป็นฟอนต์ที่สาม/สี่บนจอโดยไม่มีใครสั่ง
+   เหตุผลเต็มและข้อยกเว้นเดียว (กล่องวางข้อมูลดิบ) อยู่ที่ globals.css บนโทเคน
+   `--font-mono` — อย่าเพิ่มฟอนต์ที่นี่โดยไม่แก้ที่นั่นด้วย */
 const ibmPlexSansThai = IBM_Plex_Sans_Thai({
   weight: ['400', '500', '600', '700'],
   subsets: ["thai", "latin"],
   variable: "--font-plex-sans",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  weight: ['400', '500', '600'],
-  subsets: ["latin"],
-  variable: "--font-plex-mono",
 });
 
 export const metadata = {
@@ -29,7 +28,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th" className={`${ibmPlexSansThai.variable} ${ibmPlexMono.variable}`} suppressHydrationWarning>
+    <html lang="th" className={ibmPlexSansThai.variable} suppressHydrationWarning>
       <body className="font-sans antialiased transition-colors duration-300">
         {/* Anti-FOUC theme script. next/script with beforeInteractive is injected
             into <head> and runs before hydration, so the theme is set before

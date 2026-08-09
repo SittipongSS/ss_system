@@ -156,7 +156,7 @@ export default function ProjectsIndexPage() {
         </SaMetricStrip>
 
         <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
-          <div className="toolbar" style={{ marginBottom: 14 }}>
+          <div className="toolbar">
             <div className="search-glass" style={{ width: 300 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />

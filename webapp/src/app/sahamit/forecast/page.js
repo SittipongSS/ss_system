@@ -296,7 +296,7 @@ function ForecastPageInner() {
 
           {/* ค้นหา + กรองหมวด — มีผลกับแท็บที่เป็นรายการสินค้า (ไม่รวมประวัติ/เทียบรอบ) */}
           {tab !== "history" && (
-            <div className="toolbar" style={{ margin: "12px 0" }}>
+            <div className="toolbar">
               <div className="search-glass" style={{ width: 240 }}>
                 <Search size={18} color="var(--text-3)" />
                 <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />

@@ -91,7 +91,7 @@ export default function QuotationInstallments({
       </div>
 
       <div className={styles.installmentPanel}>
-        <div className="toolbar" style={{ marginBottom: 10, gap: 8 }}>
+        <div className="toolbar" style={{ gap: 8 }}>
           {split && !disabled && (
             <>
               <button type="button" className="btn ghost sm" disabled={rows.length >= MAX_INSTALLMENTS} onClick={addInstallment}><Plus size={13} aria-hidden="true" /> เพิ่มงวด</button>

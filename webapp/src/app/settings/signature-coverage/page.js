@@ -146,7 +146,7 @@ export default function SignatureCoveragePage() {
         </p>
       </div>
 
-      <div className="toolbar" style={{ marginBottom: 12 }}>
+      <div className="toolbar">
         <div className="segmented">
           {FILTERS.map((f) => (
             <button key={f.v} className={filter === f.v ? "active" : ""} onClick={() => setFilter(f.v)}>

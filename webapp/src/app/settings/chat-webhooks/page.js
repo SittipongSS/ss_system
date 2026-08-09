@@ -138,7 +138,7 @@ export default function ChatWebhooksPage() {
                 <input
                   type="text"
                   className="premium-input"
-                  style={{ flex: 1, minWidth: 280, fontFamily: "monospace", fontSize: "var(--fs-5)" }}
+                  style={{ flex: 1, minWidth: 280, fontSize: "var(--fs-5)" }}
                   placeholder="https://chat.googleapis.com/v1/spaces/…"
                   value={row.url}
                   onChange={(e) => patchRow(row.key, { url: e.target.value })}

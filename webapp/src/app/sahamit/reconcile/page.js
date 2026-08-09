@@ -285,7 +285,7 @@ export default function ReconcilePage() {
     >
       {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
       {!loading && !error && matrix.rows.length > 0 && (
-        <div className="toolbar" style={{ marginBottom: 12 }}>
+        <div className="toolbar">
           <div className="search-glass" style={{ width: 240 }}>
             <Search size={18} color="var(--text-3)" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />

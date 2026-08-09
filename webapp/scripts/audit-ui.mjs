@@ -205,6 +205,7 @@ const RAW_LETTER_SPACING_CAP = 4;
 const rawColorViolations = [];
 const typeScaleViolations = [];
 const fontWeightViolations = [];
+const fontFamilyViolations = [];
 let rawLineHeightCount = 0;
 let rawRadiusCount = 0;
 let rawShadowCount = 0;
@@ -320,6 +321,39 @@ for (const file of uiFiles) {
       }
       for (const hit of line.matchAll(/fontWeight:\s*(?:"(\d+)"|'(\d+)'|(\d+))(?=\s*[,}])/g)) {
         fontWeightViolations.push(`${rel}:${index + 1} fontWeight: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fw-…)`);
+      }
+    });
+  }
+
+  /* ── ตัวพิมพ์ต้องมาจากโทเคน — ระบบมี **ฟอนต์เดียว** (มติผู้ใช้ 2026-08-09) ──
+     ชั้นพิมพ์เคยคุมแค่ *ขนาด* กับ *น้ำหนัก* ไม่เคยแตะ `font-family` เลย ผลคือ
+     `font-mono` งอกไปถึง 139 จุด/34 ไฟล์ แล้วลาก IBM Plex Mono (ซึ่ง**ไม่มีชุดไทย**)
+     มาทับ ฿ และข้อความไทยจนตกไปใช้ฟอนต์ระบบ = ตาเห็นฟอนต์ปนกัน 5 แบบ
+     ถ้าไม่มีกฎนี้ มันจะงอกกลับมาแน่นอนทุกฟีเจอร์ใหม่
+
+     ที่อนุญาต: `var(--font-…)` · `inherit` · `initial` · `unset` · `revert`
+     ยกเว้นทั้งไฟล์:
+       · `src/components/documents/` + `src/lib/print*` `src/lib/sales/*Document*`
+         `src/lib/sales/*Template*` — หน้าต่างพิมพ์ประกอบ HTML เองและไม่โหลด
+         globals.css โทเคนจึงไม่มีค่าที่นั่น
+     ยกเว้นรายบรรทัด: `.textarea-premium` ใน globals.css — กล่องวางข้อมูลดิบ
+       (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์ */
+  const FONT_FAMILY_PRINT_EXEMPT = /^src\/(components\/documents\/|lib\/(printTheme|sales\/quotation(Document|Master)))/;
+  if (!FONT_FAMILY_PRINT_EXEMPT.test(rel)) {
+    source.split(/\r?\n/).forEach((line, index) => {
+      for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
+        const value = hit[1].trim();
+        if (/^var\(--font-/.test(value)) continue;
+        if (/^(inherit|initial|unset|revert)\b/.test(value)) continue;
+        // ข้อยกเว้นเดียวของระบบ — ประกาศไว้ที่ globals.css พร้อมเหตุผลเต็ม
+        if (rel === "src/app/globals.css" && /ui-monospace/.test(value)) continue;
+        fontFamilyViolations.push(`${rel}:${index + 1} font-family: ${value} → var(--font-…)`);
+      }
+      for (const hit of line.matchAll(/fontFamily:\s*["']([^"']*)["']/g)) {
+        const value = hit[1].trim();
+        if (/var\(--font-/.test(value)) continue;
+        if (/^(inherit|initial|unset|revert)$/.test(value)) continue;
+        fontFamilyViolations.push(`${rel}:${index + 1} fontFamily: "${value}" → var(--font-…)`);
       }
     });
   }
@@ -619,6 +653,7 @@ const failures = [
   ...rawColorViolations.map((item) => `raw color outside design tokens: ${item}`),
   ...typeScaleViolations.map((item) => `font-size นอกชั้นพิมพ์กลาง: ${item}`),
   ...fontWeightViolations.map((item) => `น้ำหนักตัวอักษรนอกชั้นกลาง: ${item}`),
+  ...fontFamilyViolations.map((item) => `ตัวพิมพ์นอกโทเคน (ระบบมีฟอนต์เดียว): ${item}`),
   ...zIndexViolations.map((item) => `z-index นอกชั้นซ้อนกลาง: ${item}`),
   ...motionViolations.map((item) => `เวลาใน transition/animation นอกชั้นจังหวะกลาง: ${item}`),
   ...(rawSpacingCount > RAW_SPACING_CAP
@@ -704,6 +739,7 @@ console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.lengt
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 console.log(`Font-weight violations (นอกโทเคน --fw-*): ${fontWeightViolations.length}`);
+console.log(`Font-family violations (นอกโทเคน --font-*): ${fontFamilyViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);

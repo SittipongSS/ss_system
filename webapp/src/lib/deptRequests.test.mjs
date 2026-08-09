@@ -113,8 +113,10 @@ test('ด่านตอนสร้าง: พัฒนากลิ่นส่
   assert.equal(requestShapeError('formula_dev', dev), null);
   // ⚠️ **โครงการมาจากดีล** — ไม่มี projectId แต่มีดีลถือว่าผ่านด่านนี้ แล้วไปตกที่
   // handler ถ้าดีลนั้นไม่ผูกโครงการจริง (ข้อความละเอียดกว่า) · ตกที่นี่เมื่อไม่มีทั้งคู่
+  // และตอนไม่มีทั้งคู่ต้องบอก **ดีล** ซึ่งเป็นช่องที่กดได้จริง (ช่องโครงการบนจอ
+  // เป็นช่องอ่านอย่างเดียว "เติมจากดีลที่เลือก")
   assert.equal(requestShapeError('formula_dev', { ...dev, projectId: '' }), null);
-  assert.match(requestShapeError('formula_dev', { ...dev, projectId: '', dealId: '' }), /โครงการ/);
+  assert.match(requestShapeError('formula_dev', { ...dev, projectId: '', dealId: '' }), /ดีล/);
 });
 
 test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมหัวข้อที่มีบรรทัด', () => {
@@ -682,10 +684,11 @@ test('🐞 โครงการเป็นของที่ server เติ�
   // payload ไม่มี projectId โดยเจตนา — แต่ต้องผ่านด่าน เพราะดีลมาแล้ว
   assert.equal('projectId' in payload, false);
   assert.equal(requestShapeError('formula_dev', payload), null);
-  // ไม่มีทั้งคู่ = ตกเหมือนเดิม
+  // ไม่มีทั้งคู่ = ยังตก แต่ต้องบอก **ต้นทาง** ที่ผู้ใช้กดได้ ไม่ใช่ปลายทางที่
+  // ไม่มีช่องให้กรอก (เดิมคืน "ต้องเลือกโครงการ" — ดูเทสต์ฟอร์มเปล่าข้างล่าง)
   assert.match(
     requestShapeError('formula_dev', { ...payload, dealId: null }),
-    /โครงการ/,
+    /ดีล/,
   );
 });
 
@@ -699,6 +702,23 @@ test('ฟอร์มบอกให้ตรงว่าติดอะไร �
   };
   assert.match(requestFormBlocker(form), /ดีลนี้ยังไม่ผูกโครงการ/);
   assert.equal(requestFormBlocker({ ...form, projectId: 'PRJ-1' }), null);
+});
+
+test('ฟอร์มเปล่าบอกให้เลือกดีล ไม่ใช่โครงการ — ทุกหัวข้อที่โครงการมาจากดีล', () => {
+  // 🐞 อาการเดียวกับเทสต์ข้างบน แต่มาอีกครึ่ง: **ยังไม่เลือกดีลเลย**
+  // (สิ่งแรกที่ทุกคนเจอตอนเปิดฟอร์ม) — เดิมขึ้น "ต้องเลือกโครงการ" ทั้งที่ช่อง
+  // โครงการบนจอเป็นช่องอ่านอย่างเดียวเขียนว่า "เติมจากดีลที่เลือก"
+  // ตรวจในเบราว์เซอร์แล้วเจอจริงทั้ง พัฒนาสูตร · ขอเอกสาร · สอบถามข้อมูล
+  for (const kind of ['formula_dev', 'document']) {
+    const blocker = requestFormBlocker({
+      kind, dept: 'RD', title: 'ทดสอบ', dealId: '', projectId: '',
+      requestedDueDate: '2569-08-20',
+      items: [{ categoryCode: '01-002', scentId: 'SCT-1', docType: 'IFRA' }],
+    });
+    assert.match(blocker, /ดีล/, `${kind}: ต้องบอกให้เลือกดีล`);
+    assert.doesNotMatch(blocker, /ต้องเลือกโครงการ/,
+      `${kind}: ห้ามสั่งให้เลือกโครงการ — ฟอร์มไม่มีช่องให้เลือก`);
+  }
 });
 
 // ── 🐞 ปุ่มค้างจางเมื่อ fetch โยน (ผู้ใช้เจอเอง 2026-08-07) ──────────────

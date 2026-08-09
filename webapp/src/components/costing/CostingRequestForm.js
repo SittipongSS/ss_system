@@ -162,7 +162,7 @@ export default function CostingRequestForm({
       </div>
 
       <div>
-        <div className="toolbar" style={{ marginBottom: 8 }}>
+        <div className="toolbar">
           <span className="toolbar-label">สินค้าในใบ ({form.items.length})</span>
           <span className="spacer" />
           <button

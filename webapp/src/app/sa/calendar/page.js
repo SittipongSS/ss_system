@@ -22,6 +22,7 @@ import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import { isInLocalMonth } from "@/lib/sales/leadCalendar";
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
+import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -125,16 +126,6 @@ export default function SalesCalendarPage() {
     return map;
   }, [visible]);
 
-  const cells = useMemo(() => {
-    const startPad = new Date(cursor.y, cursor.m, 1).getDay();
-    const days = new Date(cursor.y, cursor.m + 1, 0).getDate();
-    const out = [];
-    for (let i = 0; i < startPad; i += 1) out.push(null);
-    for (let d = 1; d <= days; d += 1) out.push(d);
-    while (out.length % 7 !== 0) out.push(null);
-    return out;
-  }, [cursor]);
-
   const goMonth = (delta) => setCursor((current) => {
     const m = current.m + delta;
     if (m < 0) return { y: current.y - 1, m: 11 };
@@ -200,32 +191,17 @@ export default function SalesCalendarPage() {
       </div>
 
       {view === "month" ? (
-        <div className={styles.grid}>
-          {WEEKDAYS_TH.map((name, index) => (
-            <div key={name} className={`${styles.dow} ${index === 0 || index === 6 ? styles.dowWeekend : ""}`.trim()}>
-              {name}
-            </div>
-          ))}
-          {cells.map((day, index) => {
-            if (day === null) return <div key={`pad-${index}`} className={`${styles.cell} ${styles.cellPad}`} />;
-            const key = `${cursor.y}-${pad(cursor.m + 1)}-${pad(day)}`;
-            const weekday = new Date(cursor.y, cursor.m, day).getDay();
-            const weekend = weekday === 0 || weekday === 6;
-            const holiday = holidayByDay.get(key);
-            const items = byDay.get(key) || [];
-            const cellClass = [
-              styles.cell,
-              holiday ? styles.cellHoliday : weekend ? styles.cellWeekend : "",
-              key === todayKey ? styles.cellToday : "",
-            ].filter(Boolean).join(" ");
+        <MonthGrid
+          year={cursor.y}
+          month={cursor.m}
+          todayISO={todayKey}
+          holidayOf={(iso) => holidayByDay.get(iso)}
+        >
+          {({ iso }) => {
+            const items = byDay.get(iso) || [];
+            if (!items.length) return null;
             return (
-              <div key={key} className={cellClass}>
-                <div className={styles.cellHead}>
-                  <span className={`${styles.dayNum} ${key === todayKey ? styles.dayNumToday : weekend && !holiday ? styles.dayNumMuted : ""}`.trim()}>
-                    {day}
-                  </span>
-                  {holiday && <span className={styles.holidayName} title={holiday}>{holiday}</span>}
-                </div>
+              <>
                 {items.slice(0, MAX_PER_CELL).map((entry) => (
                   <button
                     key={entry.id}
@@ -241,10 +217,10 @@ export default function SalesCalendarPage() {
                 {items.length > MAX_PER_CELL && (
                   <span className={styles.more}>+ อีก {items.length - MAX_PER_CELL} นัด</span>
                 )}
-              </div>
+              </>
             );
-          })}
-        </div>
+          }}
+        </MonthGrid>
       ) : (
         <div className={styles.list}>
           {[...byDay.keys()].sort().map((key) => {

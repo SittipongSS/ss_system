@@ -6,11 +6,12 @@ import {
 } from "recharts";
 import { fcVsPoByMonth, unitMultiplier } from "@/lib/sahamit/dashboard";
 import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
-import { CHART_LINE_TYPE } from "@/lib/chartTheme";
+import { CHART_LINE_TYPE, CHART_CATEGORICAL, CHART_SERIES } from "@/lib/chartTheme";
 
 // แท็บ "FC ซ้อน PO รายเดือน" — กราฟซ้อน: แท่ง PO ที่มาแล้ว + แท่ง FC ที่ยังรอ PO
 // (ติดลบ = PO เกิน FC, สีแดง) + เส้น FC แต่ละรอบ. ต่อจาก peak engine (fcVsPoByMonth).
-const ROUND_COLORS = ["var(--blue)", "var(--accent)", "var(--green)", "var(--violet)", "var(--amber)", "var(--teal)", "var(--text-3)"];
+/* หกตัวแรกมาจากชุดกลาง (ดู chartTheme.js) + หางเทาของเดิม */
+const ROUND_COLORS = [...CHART_CATEGORICAL, "var(--text-3)"];
 const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const shortMonth = (ym) => {
   if (!ym) return "";
@@ -61,7 +62,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
           <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" }} labelFormatter={shortMonth} formatter={tipFormatter} />
           <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
           {/* แท่งซ้อน: PO ที่มาแล้ว + FC ที่ยังรอ = ความสูง FC ที่ commit (peak) */}
-          <Bar dataKey="PO" stackId="fill" fill="var(--accent)" name="PO (มาแล้ว)" barSize={38} />
+          <Bar dataKey="PO" stackId="fill" fill={CHART_SERIES.actual} name="PO (มาแล้ว)" barSize={38} />
           <Bar dataKey="waiting" stackId="fill" name="FC ที่รอ PO" barSize={38} radius={[4, 4, 0, 0]}>
             {data.map((d, i) => <Cell key={i} fill={d.waiting >= 0 ? "var(--panel-2)" : "var(--red)"} />)}
           </Bar>

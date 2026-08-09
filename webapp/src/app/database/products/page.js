@@ -357,7 +357,9 @@ export default function ProductRegistry() {
               { label: "ทั้งหมด", value: products.length },
               { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
               { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
-              { label: "ต้องเสียภาษี", value: counts.taxable, tone: "accent" },
+              /* is-accent ไม่มีกฎ CSS รองรับ (โทนตาย ไม่เคยติดสี) — เลขจำแนกประเภท
+                 ใช้ info · accent สงวนให้ปุ่ม/จุดกดตามกติกา L1 */
+              { label: "ต้องเสียภาษี", value: counts.taxable, tone: "info" },
             ]}
           />
           <ApprovalQueue

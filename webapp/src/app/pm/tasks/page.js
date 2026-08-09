@@ -609,7 +609,9 @@ export default function TasksPage() {
       <div className="flex flex-col gap-4">
 
       {/* scope tabs */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+      {/* ไม่มี marginBottom — คอลัมน์นอกเป็น flex gap-4 (16px) เจ้าของจังหวะ
+          margin ที่นี่จะทบเป็น 34px (วัดจริง 2026-08-08) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {allowedScopes.length > 1 && (
           <div className="segmented scope-toggle">
             {allowedScopes.map((s) => (
@@ -672,7 +674,7 @@ export default function TasksPage() {
 
       {/* ── แถบเครื่องมือ ── */}
       <SaSection icon={<ListTodo size={17} />} title="รายการงาน" subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน" actions={<span className="ui-badge">{visible.length} งาน</span>}>
-      <div className="toolbar" style={{ marginBottom: "20px" }}>
+      <div className="toolbar">
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />

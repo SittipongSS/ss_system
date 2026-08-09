@@ -6,9 +6,30 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* IBM Plex Sans Thai — loaded via next/font (--font-plex-sans / --font-plex-mono on <html>) */
+  /* ── ตัวพิมพ์ของระบบ = **ฟอนต์เดียว** (มติผู้ใช้ 2026-08-09) ──────────────
+     IBM Plex Sans Thai — โหลดผ่าน next/font (--font-plex-sans บน <html>)
+
+     เดิมโหลด IBM Plex Mono มาด้วย แล้วผูกกับ `--font-mono` ⇒ ตาเห็นฟอนต์ปนกัน
+     **5 แบบ** ไม่ใช่ 2 เพราะ Plex Mono **ไม่มีชุดไทยให้เลือกเลย** (subset มีแค่
+     cyrillic/vietnamese/latin) จึงเกิดของที่ไม่มีใครสั่ง:
+       · **฿ = U+0E3F อยู่ในบล็อกไทย** ⇒ ทุกยอดเงินในกล่อง mono ตกไปใช้ฟอนต์ระบบ
+       · ข้อความไทยใน `font-mono` 28 บรรทัด ⇒ ฟอนต์ระบบเช่นกัน
+       · `font-mono` + `font-bold` 18 จุด แต่ mono ไม่ได้โหลด 700 ⇒ **ตัวหนาสังเคราะห์**
+       · `.mono` ให้ผลสองแบบ (ที่นี่ = Plex Mono · แต่ในตารางถูก `--font-numeric`
+         ทับด้วย !important) ⇒ เลขที่เอกสารตัวเดียวกันคนละฟอนต์ในหน้าเดียว
+
+     ⭐ **ตัวเลขไม่เสียการเรียงคอลัมน์** — แกะ hmtx ของ woff2 จริงแล้ว 0-9 ของ
+     Plex Sans Thai กว้าง 600/1000 em เท่ากันหมดโดยกำเนิด (จุด/จุลภาค = 272)
+     เหตุผลหลักที่คนเก็บ mono ไว้ (เลขตรงคอลัมน์) จึงได้อยู่แล้วโดยไม่ต้องมี mono
+
+     `--font-mono` ยังอยู่ในฐานะ **ชื่อเดิมที่ชี้ไปที่เดียวกัน** — คลาส `font-mono`
+     ของ Tailwind คือ `font-family: var(--font-mono)` ตรง ๆ (139 จุด/34 ไฟล์) การ
+     เปลี่ยนที่นี่จุดเดียวจึงกวาดได้ทั้งหมดโดยไม่ต้องไล่แก้รายจุด
+     ⚠️ ข้อยกเว้นเดียวคือกล่องวางข้อมูลดิบ `.textarea-premium` (JSON/ล็อก) ที่ต้อง
+     เรียงคอลัมน์จริง — เขียนสแตกของ **ระบบปฏิบัติการ** ไว้ตรงนั้น ไม่โหลดเว็บฟอนต์
+     ตัวที่สองกลับเข้ามา */
   --font-sans: var(--font-plex-sans), "IBM Plex Sans Thai", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-mono: var(--font-sans);
   --font-numeric: var(--font-sans);
 
   /* UI density: keep in sync with the inline `zoom` on <body> in layout.js.
@@ -99,6 +120,16 @@
   --chart-plan: var(--blue);
   --chart-forecast: var(--amber);
   --chart-actual: var(--green);
+  /* ชุดสีจำแนกประเภท (categorical เช่น เส้น "รอบ FC") — หยิบผ่าน
+     CHART_CATEGORICAL เท่านั้น · ค่า v1 = หกตัวแรกของ ROUND_COLORS เดิมเป๊ะ
+     v2 ทับด้วยลำดับที่วัดแล้ว (คู่ติดกันทุกคู่ผ่าน CVD 4 ตัวแรก · ตัว 5-6
+     ยอมรับ WARN — relief คือ legend + ป้ายรอบ) · เกิน 6 วนซ้ำที่ผู้เรียก */
+  --chart-cat-1: var(--blue);
+  --chart-cat-2: var(--accent);
+  --chart-cat-3: var(--green);
+  --chart-cat-4: var(--violet);
+  --chart-cat-5: var(--amber);
+  --chart-cat-6: var(--teal);
 
   /* Controlled-document accents must match the self-contained print engine. */
   --document-accent-terracotta: #ad5d43;
@@ -559,6 +590,10 @@ body {
      ส่วน row-tone ที่ mix กับ --navy จะเข้มลงตาม = เข้าชุดพื้นดำพอดี */
   --navy: #0a0d12;
   --navy-ink: #9db4d4;
+  /* ปุ่มยืนยัน (.btn-primary) เดิมผูก var(--navy) ตรง ๆ — พอ v2 ทำ navy เป็น
+     สีพื้น topbar ปุ่มเลยกลายเป็นก้อนดำ (เจอบน pilot /requests/[id]) จึงแยก
+     โทเคนปุ่มออกจากพื้น: มืดใช้ navy สว่างขึ้นให้ลอยจากพื้นดำ (ขาว 5.5:1) */
+  --action-primary: #2b4f86;
 
   --green: #57ab7c;
   --green-soft: rgba(87, 171, 124, 0.15);
@@ -586,6 +621,14 @@ body {
   --chart-plan: #4a85d6;
   --chart-forecast: #bd8628;
   --chart-actual: #37884f;
+  /* categorical มืด: 4 ตัวแรกผ่าน validator ทุกข้อ (ลำดับสำคัญ — ส้มกับเขียว
+     ห้ามติดกัน) · 5-6 WARN-accept */
+  --chart-cat-1: #4a85d6;
+  --chart-cat-2: #c57f2e;
+  --chart-cat-3: #c9679b;
+  --chart-cat-4: #37884f;
+  --chart-cat-5: #a495db;
+  --chart-cat-6: #bd8628;
 
   /* ⚠️ ไม่ทับ --radius-* ใน Phase 0 — เทสต์ radiusScale อ่านขั้นจากประกาศตัวสุดท้าย
      ทั้งไฟล์ การทับที่นี่จะเปลี่ยนนิยาม "ตรงขั้นเป๊ะ" ของฝั่ง v1 ไปด้วย (เจอจริง:
@@ -613,6 +656,13 @@ body {
 [data-ds="v2"] .glass-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+/* ปุ่มยืนยันอ่านจากโทเคน action ไม่ใช่สีพื้น topbar (ดูคอมเมนต์ --action-primary) */
+[data-ds="v2"] .btn-primary {
+  background: var(--action-primary);
+}
+[data-ds="v2"] .btn-primary:hover {
+  background: color-mix(in oklab, var(--action-primary) 88%, var(--text));
 }
 /* ฉากหลังโมดัลก็เข้ากติกาเดียวกัน — v2 ไม่มี blur ทั้งระบบ (ฝั่ง v1 ยังคงเดิม) */
 [data-ds="v2"] .overlay {
@@ -703,6 +753,7 @@ body {
 
   --navy: #211e1a;   /* topbar เข้มอมอุ่น — เอกลักษณ์โต๊ะช่างบนธีมสว่าง */
   --navy-ink: #243b63;
+  --action-primary: #243b63;   /* ปุ่มยืนยัน = navy แบรนด์ v1 (ขาวบนพื้นนี้พิสูจน์แล้ว) */
 
   --green: #357558;
   --green-soft: #e2f1e9;
@@ -722,6 +773,13 @@ body {
   --chart-plan: #2e6fbf;
   --chart-forecast: #a8701c;
   --chart-actual: #1b7a40;
+  /* categorical สว่าง: กติกาเดียวกับธีมมืด */
+  --chart-cat-1: #2e6fbf;
+  --chart-cat-2: #d9730d;
+  --chart-cat-3: #b25389;
+  --chart-cat-4: #1b7a40;
+  --chart-cat-5: #6f5e9f;
+  --chart-cat-6: #a8701c;
 
   --shadow-sm: none;
   --shadow-md: none;
@@ -3537,7 +3595,18 @@ button.empty-state { width: 100%; font: inherit; }
 .btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Toolbar row — filter / sort / search controls live here. */
-.toolbar { display: flex; align-items: center; gap: var(--space-2-5); flex-wrap: wrap; }
+/* แถบเครื่องมือเหนือตาราง (ช่องค้นหา + ตัวกรอง + เรียง)
+   ⭐ ระยะล่างเป็นของ **คลาสนี้** ไม่ใช่ของหน้า — ก่อนหน้านี้ 14 หน้าใส่ inline เอง
+   คนละค่า (8 · 10 · 12 · 14 · 20px) ⇒ บางหน้าช่องค้นหาไปชิดหัวตาราง อ่านเป็น
+   ก้อนเดียวกัน (ผู้ใช้ทัก 2026-08-08) · 16px = จังหวะระหว่างกลุ่มของระบบ
+   ซึ่งมากกว่า padding ในการ์ด (12/14) จึงแยกกลุ่มออกจากกันจริง */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
 .toolbar > .spacer { margin-left: auto; }
 .toolbar-label {
   display: inline-flex;
@@ -4351,6 +4420,13 @@ button.empty-state { width: 100%; font: inherit; }
   background: var(--accent);
 }
 
+/* ⭐ **ข้อยกเว้นเดียวของกฎ "ฟอนต์เดียว"** — กล่องวางข้อมูลดิบ (`Textarea
+   variant="data"`: JSON · ล็อก · ข้อความที่ก๊อปมาวาง) เป็นที่เดียวที่ความกว้าง
+   ตัวอักษรเท่ากันมี **หน้าที่จริง** ไม่ใช่แค่สัญญาณสายตา — JSON ที่ย่อหน้าไม่ตรง
+   อ่านโครงสร้างไม่ออก
+   ⚠️ ใช้สแตกของ **ระบบปฏิบัติการ** ไม่ใช่เว็บฟอนต์ — จุดประสงค์ของมติคือไม่โหลด
+   ตัวพิมพ์ตัวที่สองเข้ามา · ที่นี่จึงเป็นจุดเดียวในระบบที่ได้รับอนุญาตให้เขียน
+   `font-family` เป็นสแตกดิบ (ดูกฎใน scripts/audit-ui.mjs) */
 .textarea-premium {
   width: 100%;
   height: 100px;
@@ -4359,7 +4435,7 @@ button.empty-state { width: 100%; font: inherit; }
   border-radius: var(--radius);
   padding: var(--space-2) var(--space-2-5);
   color: var(--text);
-  font-family: var(--font-mono);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: var(--fs-5);
   resize: none;
 }
@@ -5790,8 +5866,11 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-weight: var(--fw-bold);
 }
 
+/* คอลัมน์รหัส FG ในใบเตรียมส่ง — ผ่านโทเคนเหมือนที่อื่น (เดิมเขียนสแตกดิบ
+   ที่ไม่มี IBM Plex Mono อยู่ในนั้นด้วยซ้ำ = ฟอนต์ที่ห้าบนจอ) · คลาสนี้ขึ้นทั้ง
+   บนจอและบนกระดาษ ไม่ใช่ print-only */
 .shipment-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .shipment-num {
