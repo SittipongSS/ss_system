@@ -13,7 +13,7 @@
 // ไม่บังคับ ⇒ แสดงช่องว่างครบทุกช่องจะกลบของที่กรอกจริงจนหาไม่เจอ
 // (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
 import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
+import { PDR_SECTIONS, pdrSectionProgress, pdrSectionRows } from "@/lib/requests/pdrFields";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
 
@@ -56,61 +56,129 @@ function Chips({ label, values, textOf }) {
   );
 }
 
-export default function PdrSummary({ request, briefs = [] }) {
+/**
+ * หมวดของ **ฝั่งอ่าน** สำหรับรางเลือกส่วน — ชุดเดียวกับฝั่งกรอก (`pdrRailSections`)
+ *
+ * ⭐ **บรีฟกลิ่นเป็นหมวดของตัวเอง คั่นระหว่าง "ข้อมูลลูกค้า" กับ "ข้อกำหนดผลิตภัณฑ์"**
+ * เหมือนฝั่งกรอกเป๊ะ ๆ (มติผู้ใช้ 2026-08-09) — เดิมฝั่งอ่านยัดบรีฟไว้บนสุด*นอกราง*
+ * ⇒ กดเลือกหมวด 4 แล้วยังเห็นบรีฟค้างอยู่ข้างบน อ่านเหมือนหน้าคนละส่วนมาต่อกัน
+ *
+ * ⚠️ เลขนำหน้าใส่เฉพาะห้าหมวดที่ตรงกับกระดาษ FM-RD-01 หนึ่งต่อหนึ่ง (RD อ้างกันทาง
+ * โทรศัพท์ด้วยเลขข้อ) · บรีฟไม่มีเลขเพราะบนกระดาษมันอยู่ในข้อ 2.1 ของหมวดถัดไป
+ */
+export function pdrReadRailSections(request, briefs = [], context = {}) {
+  const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
+  const numbered = (key, no) => ({
+    key,
+    label: `${no} ${of(key).title}`,
+    count: pdrSectionProgress(of(key), request, context),
+  });
+  return [
+    numbered("request", 1),
+    numbered("customer", 2),
+    {
+      key: "briefs",
+      label: "บรีฟกลิ่น",
+      // นับ "ก้อนที่มีเนื้อบรีฟ" ชุดเดียวกับฝั่งกรอก — ตัวเลขสองฝั่งต้องตรงกัน
+      // (ชื่อเรียกใช้นับไม่ได้ ระบบเติมให้เองเมื่อเว้นว่าง — ดู scentBriefs.js)
+      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.brief || "").trim()).length },
+    },
+    numbered("spec", 3),
+    numbered("regulatory", 4),
+    numbered("signers", 5),
+  ];
+}
+
+export default function PdrSummary({ request, briefs = [], section = null }) {
+  // โหมดราง — ผู้เรียกเลือกหมวดให้แล้ว (ท่าเดียวกับ `PdrForm`) · ไม่ส่ง = ลิ้นชักครบทุกหมวด
+  const rail = section != null;
+  const show = (key) => !rail || section === key;
+  const list = rail ? PDR_SECTIONS.filter((s) => s.key === section) : PDR_SECTIONS;
   if (!request) return null;
-  return (
-    <div className={styles.pdr}>
-      <div className={styles.pdrHead}>
-        <strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong>
-        <span className={styles.pdrCode}>FM-RD-01</span>
+  const briefBlocks = !briefs.length ? (
+    <small className={styles.hint}>ใบนี้ยังไม่มีบรีฟรายกลิ่น</small>
+  ) : briefs.map((b, i) => (
+    <div key={b.id || i} className={styles.briefCard}>
+      {/* ป้ายเลขมุมซ้ายแทนแถบสี (มติผู้ใช้ 2026-08-09) — ทุกก้อนน้ำหนักเท่ากัน */}
+      <div className={styles.briefHead}>
+        <span className={styles.briefNo}>{i + 1}</span>
+        <span className={styles.briefTitle}>{b.label || `กลิ่นที่ ${i + 1}`}</span>
       </div>
+      <BriefFacts brief={b} />
+    </div>
+  ));
 
-      {/* ⭐ บรีฟขึ้นก่อนและกางไว้ — RD หยิบงานแล้วต้องเห็นอันนี้ทันที ไม่ต้องกดหา */}
-      <details className={styles.pdrSection} open>
-        <summary className={styles.pdrSummary}>
-          บรีฟกลิ่น{briefs.length ? ` — ${briefs.length} ก้อน` : ""}
-        </summary>
-        <div className={styles.pdrBody}>
-          {!briefs.length ? (
-            <small className={styles.hint}>ใบนี้ยังไม่มีบรีฟรายกลิ่น</small>
-          ) : briefs.map((b, i) => (
-            <div key={b.id || i} className={styles.briefCard}>
-              <strong>{b.label || `กลิ่นที่ ${i + 1}`}</strong>
-              {/* บรีฟเป็นช่องหลักของก้อนนี้ — ว่างก็ต้องเห็นว่าว่าง (N/A) ไม่ใช่หายไป */}
-              <Facts rows={[
-                ["บรีฟกลิ่น", b.brief],
-                ["แรงบันดาลใจ", b.inspiration],
-                ["ช่วงกลิ่นที่ชื่นชอบ", b.likedNotes],
-                ["กลิ่นที่ End-user ไม่ชอบ", b.dislikedNotes],
-                ["ให้ทำวิจัยเรื่อง", b.researchTopic],
-                // ⭐ ข้อความต่อท้าย Scentotype รายตัว (ข้อ 2.1.4 บนกระดาษ · mig 0222)
-                ...(b.scentotypes || []).map((t) => [
-                  `Scentotype — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
-                ]),
-              ]} />
-              <dl className={styles.pdrFacts}>
-                <Chips label="Scentotype" values={b.scentotypes} textOf={scentotypeLabel} />
-                <Chips label="Performance ของกลิ่น" values={b.performance} textOf={scentPerformanceLabel} />
-              </dl>
-            </div>
-          ))}
+  return (
+    <div className={rail ? styles.pdrPlain : styles.pdr}>
+      {!rail && (
+        <div className={styles.pdrHead}>
+          <strong>แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)</strong>
+          <span className={styles.pdrCode}>FM-RD-01</span>
         </div>
-      </details>
+      )}
 
-      {/* หัวข้อทั้งหมดมาจากทะเบียนเดียวกับฟอร์ม — ชื่อ ลำดับ และป้ายช่องตรงกันเสมอ */}
-      {PDR_SECTIONS.map((section) => (
-        <details key={section.key} className={styles.pdrSection}>
-          <summary className={styles.pdrSummary}>{section.title}</summary>
+      {show("briefs") && (rail ? (
+        <div className={styles.pdrFlat}>
+          <h5 className={styles.pdrFlatTitle}>
+            บรีฟกลิ่น{briefs.length ? ` — ${briefs.length} ก้อน` : ""}
+          </h5>
+          {briefBlocks}
+        </div>
+      ) : (
+        /* ⭐ นอกราง: บรีฟขึ้นก่อนและกางไว้ — RD หยิบงานแล้วต้องเห็นทันที ไม่ต้องกดหา */
+        <details className={styles.pdrSection} open>
+          <summary className={styles.pdrSummary}>
+            บรีฟกลิ่น{briefs.length ? ` — ${briefs.length} ก้อน` : ""}
+          </summary>
+          <div className={styles.pdrBody}>{briefBlocks}</div>
+        </details>
+      ))}
+
+      {list.map((section_) => (rail ? (
+        <div key={section_.key} className={styles.pdrFlat}>
+          <h5 className={styles.pdrFlatTitle}>{section_.title}</h5>
+          <Facts rows={pdrSectionRows(section_, request, {
+            includeEmpty: true,
+            context: { ...(request.pdrContext || {}), briefs },
+          })} />
+        </div>
+      ) : (
+        <details key={section_.key} className={styles.pdrSection}>
+          <summary className={styles.pdrSummary}>{section_.title}</summary>
           <div className={styles.pdrBody}>
             {/* ⚠️ `includeEmpty` — จอต้องแสดงช่องว่างเป็น N/A เหมือนกระดาษ
                 (มติผู้ใช้ 2026-08-07) ไม่ใช่ซ่อนทิ้งแล้วอ่านไม่ออกว่าถามหรือยัง */}
-            <Facts rows={pdrSectionRows(section, request, {
+            <Facts rows={pdrSectionRows(section_, request, {
               includeEmpty: true,
               context: { ...(request.pdrContext || {}), briefs },
             })} />
           </div>
         </details>
-      ))}
+      )))}
     </div>
+  );
+}
+
+// ช่องของบรีฟหนึ่งก้อน — แยกออกมาเพื่อให้ทั้งโหมดรางและโหมดลิ้นชักใช้ก้อนเดียวกัน
+function BriefFacts({ brief: b }) {
+  return (
+    <>
+      {/* บรีฟเป็นช่องหลักของก้อนนี้ — ว่างก็ต้องเห็นว่าว่าง (N/A) ไม่ใช่หายไป */}
+      <Facts rows={[
+        ["บรีฟกลิ่น", b.brief],
+        ["แรงบันดาลใจ", b.inspiration],
+        ["ช่วงกลิ่นที่ชื่นชอบ", b.likedNotes],
+        ["กลิ่นที่ End-user ไม่ชอบ", b.dislikedNotes],
+        ["ให้ทำวิจัยเรื่อง", b.researchTopic],
+        // ⭐ ข้อความต่อท้าย Scentotype รายตัว (ข้อ 2.1.4 บนกระดาษ · mig 0222)
+        ...(b.scentotypes || []).map((t) => [
+          `Scentotype — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
+        ]),
+      ]} />
+      <dl className={styles.pdrFacts}>
+        <Chips label="Scentotype" values={b.scentotypes} textOf={scentotypeLabel} />
+        <Chips label="Performance ของกลิ่น" values={b.performance} textOf={scentPerformanceLabel} />
+      </dl>
+    </>
   );
 }

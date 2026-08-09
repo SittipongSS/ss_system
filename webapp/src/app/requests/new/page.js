@@ -18,7 +18,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import Button from "@/components/ui/Button";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentReadinessList } from "@/components/ui/DocumentControlPanel";
+import { requiredChecks } from "@/lib/requests/formTabs";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/master/requestCreate";
@@ -69,6 +71,11 @@ export default function NewRequestPage() {
   const [mentionPeople, setMentionPeople] = useState([]);
   // ⭐ ทะเบียนลูกค้า — ฟอร์ม PDR เติม "ชื่อผู้ติดต่อ / Phone-Line" จากที่นี่ (มติผู้ใช้)
   const [customers, setCustomers] = useState([]);
+  /* ⭐ **ตัวตนของคนที่กำลังเปิดใบ** (มติผู้ใช้ 2026-08-09: "เติมพรีวิวให้เห็นตั้งแต่
+     ตอนกรอกฟอร์ม") — ช่อง "ผู้ร้องขอ (AE)" ของแบบฟอร์ม PDR ถอยมาใช้ชื่อคนเปิดใบ
+     เมื่อโครงการยังไม่ระบุผู้ดูแล · ไม่ส่งมา = ช่องขึ้นเส้นประค้างจนกว่าจะกดบันทึก
+     ทั้งที่ค่านี้รู้ได้ตั้งแต่ยังไม่กรอกอะไรเลย */
+  const [me, setMe] = useState(null);
 
   useEffect(() => {
     const grab = (url, set) => fetch(url, { cache: "no-store" })
@@ -85,6 +92,7 @@ export default function NewRequestPage() {
     grab("/api/sa/requests/mentionable", setMentionPeople);
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
   }, []);
 
   // ⭐ บล็อกบรีฟของใบที่ prefill มา — ตอนเลือก SO เองในฟอร์ม `onChange` เป็นคนงอก
@@ -144,6 +152,55 @@ export default function NewRequestPage() {
     }
   };
 
+  /* ── แผงจัดการด้านข้าง — ผังเดียวกับหน้าสร้างใบเสนอราคา (มติผู้ใช้ 2026-08-09)
+     ⭐ รายการความพร้อมมาจาก `requiredChecks` **ตัวเดียวกับเกจบนแท็บและด่านส่ง**
+     ⇒ สามที่พูดตรงกันเสมอ (แผงบอกว่าครบ แต่ปุ่มกดไม่ได้ = สิ่งที่ทำให้คนเลิกเชื่อจอ)
+     ⚠️ ปุ่มลบ/แก้ **ไม่ได้อยู่ที่นี่** — ร่างที่บันทึกแล้วมีชีวิตอยู่ที่หน้ารายละเอียด
+     ซึ่งมีทั้งส่ง/ยกเลิก/ลบครบอยู่แล้ว · ทำซ้ำที่นี่ = สองที่ที่ต้องคอยให้ตรงกัน */
+  const readinessItems = revealed
+    ? requiredChecks(form).map((c) => ({
+      id: `${c.tab}-${c.label}`,
+      label: c.label,
+      ready: c.ok,
+      detail: c.ok ? undefined : "ยังไม่ได้กรอก",
+    }))
+    : [{
+      id: "kind",
+      label: "เลือกฝ่ายและหัวข้อ",
+      ready: !!form.kind,
+      detail: form.kind ? requestKindLabel(form.kind) : "เลือกก่อนจึงกางฟอร์มได้",
+    }];
+
+  const controlPanel = (
+    <DocumentControlCard
+      eyebrow="REQUEST CONTROL"
+      title="จัดการคำร้อง"
+      status="ฉบับใหม่"
+      statusColor="var(--accent)"
+      statusDescription="ตรวจความพร้อมแล้วบันทึกเป็นร่าง"
+      notices={<DocumentReadinessList items={readinessItems} label="ความพร้อมของคำร้อง" />}
+      primaryAction={{
+        id: "save",
+        kind: "save",
+        label: saving ? "กำลังบันทึก…" : "บันทึกร่าง",
+        disabled: !revealed || !!blocker,
+        // ⚠️ ปุ่มที่กดไม่ได้ต้องบอกเหตุผล — ด่านตัวเดียวกับที่ฟอร์มใช้
+        disabledReason: !revealed ? "เลือกฝ่ายและหัวข้อก่อน" : blocker || undefined,
+        onClick: saveDraft,
+      }}
+      secondaryActions={[{
+        id: "cancel",
+        kind: "open",
+        icon: null,
+        label: "ยกเลิก",
+        variant: "ghost",
+        href: returnTo,
+      }]}
+      busy={saving}
+      footer="บันทึกแล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
+    />
+  );
+
   return (
     <Workspace
       icon={<ClipboardList size={22} />}
@@ -151,11 +208,12 @@ export default function NewRequestPage() {
       subtitle="คำร้องจะถูกสร้างเป็นร่างก่อน — เลขที่จะออกตอนกดส่ง"
       back={{ href: returnTo, label: "กลับ" }}
     >
+      <DetailPageLayout aside={controlPanel} asideLabel="ความพร้อมและการจัดการคำร้องใหม่">
       <div className={styles.form}>
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
-          quotations={quotations} products={products}
+          quotations={quotations} products={products} me={me}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople}
           // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว
@@ -193,21 +251,10 @@ export default function NewRequestPage() {
           }}
         />
 
-        {/* ⚠️ แถบล่างเหลือเฉพาะปุ่มที่ทำอะไรกับ **ทั้งใบ** — ปุ่มคุมหัวข้อย้ายไปอยู่
-            ติดช่องหัวข้อแล้ว · ขั้นที่ยังไม่กางฟอร์มไม่มีปุ่มบันทึก เพราะยังไม่มีอะไร
-            ให้บันทึกนอกจากฝ่ายกับหัวข้อ */}
-        <div className={`action-bar ${styles.actions}`}>
-          {revealed && blocker && <span className={styles.blocker}>⚠ {blocker}</span>}
-          <Button variant="quiet" disabled={saving} onClick={() => router.push(returnTo)}>
-            ยกเลิก
-          </Button>
-          {revealed && (
-            <Button tone="accent" disabled={saving || !!blocker} onClick={saveDraft}>
-              บันทึกร่าง
-            </Button>
-          )}
-        </div>
+        {/* ⚠️ **ไม่มีแถบปุ่มล่างแล้ว** — ปุ่มทั้งใบย้ายไปแผงจัดการด้านข้าง (ผังเดียว
+            กับหน้าสร้างใบเสนอราคา) · ปุ่มคุมหัวข้อยังอยู่ติดช่องหัวข้อเหมือนเดิม */}
       </div>
+      </DetailPageLayout>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

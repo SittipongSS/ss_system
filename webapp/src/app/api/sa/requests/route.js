@@ -344,10 +344,37 @@ export async function POST(request) {
     // ⚠️ ปล่อยผ่านเฉพาะหัวข้อที่ประกาศธง — ส่ง `pdr` มากับหัวข้ออื่นคือของที่ไม่มี
     // ความหมาย ไม่ควรเงียบ ๆ เขียนลงคอลัมน์
     let pdrColumns = {};
+    let briefRows = [];
     if (requestHasPdr(kind)) {
       const { columns, error: pdrError } = normalizePdr(body.pdr);
       if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
       pdrColumns = columns;
+
+      // 🔴 **บรีฟต้องตรวจตรงนี้ ไม่ใช่หลัง insert หัวคำร้อง** (ผู้ใช้เจอเอง 2026-08-09)
+      // เดิมด่านบรีฟอยู่หลังหัวถูกเขียนลง DB แล้ว ⇒ ตกด่าน = ตอบ 400 แต่**แถวคำร้อง
+      // ค้างอยู่** · ผู้ใช้เห็นแต่ข้อความว่าบันทึกไม่สำเร็จ แล้วกดใหม่ก็เจอ "ใบสั่งขายนี้
+      // เปิดคำร้องไปแล้ว" (กติกา 1 SO : 1 PDR) ⇒ **ใบสั่งขายใบนั้นใช้ไม่ได้อีกเลย**
+      // ทั้งที่ยังไม่เคยเปิดสำเร็จสักครั้ง · คอมเมนต์เหนือ PDR เขียนกฎนี้ไว้แล้ว
+      // ("ตรวจก่อน insert เสมอ") แต่บรีฟหลุดออกไปอยู่นอกกฎ
+      // ⚠️ `scentCount` — ชื่อออปชันต้องตรงกับที่ `normalizeScentBriefs` อ่าน · เดิมส่ง
+      // `expected` ซึ่งไม่มีใครอ่าน ⇒ เพดาน "บรีฟห้ามเกินจำนวนกลิ่นที่ขาย" ไม่เคยทำงาน
+      const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, { scentCount });
+      if (briefError) return Response.json({ error: briefError }, { status: 400 });
+      briefRows = briefs.map((b) => ({
+        id: `DRS-${randomUUID()}`,
+        requestId,
+        sortOrder: b.sortOrder,
+        label: b.label,
+        brief: b.brief,
+        researchTopic: b.researchTopic,
+        inspiration: b.inspiration,
+        likedNotes: b.likedNotes,
+        dislikedNotes: b.dislikedNotes,
+        scentotypes: b.scentotypes,
+        // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
+        scentotypeNotes: b.scentotypeNotes || {},
+        performance: b.performance,
+      }));
     }
 
     // 2) หัวคำร้อง — stepKey มาจากชนิด ไม่ใช่จาก client (กันปักหมุดผิดขั้น)
@@ -400,28 +427,9 @@ export async function POST(request) {
 
     // 2.5) บรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น (mig 0213)
     //
-    // ⚠️ ตรวจ **หลัง** รู้จำนวนกลิ่นจากใบสั่งขายแล้ว เพราะด่านบังคับให้เท่ากัน ·
-    // ตารางแยกจาก dept_request_items โดยตั้งใจ (บรีฟไม่เดิน 5 ก้าว — ดู 0213)
-    if (requestHasPdr(kind)) {
-      const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, {
-        expected: scentCount,
-      });
-      if (briefError) return Response.json({ error: briefError }, { status: 400 });
-      const briefRows = briefs.map((b) => ({
-        id: `DRS-${randomUUID()}`,
-        requestId,
-        sortOrder: b.sortOrder,
-        label: b.label,
-        brief: b.brief,
-        researchTopic: b.researchTopic,
-        inspiration: b.inspiration,
-        likedNotes: b.likedNotes,
-        dislikedNotes: b.dislikedNotes,
-        scentotypes: b.scentotypes,
-        // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
-        scentotypeNotes: b.scentotypeNotes || {},
-        performance: b.performance,
-      }));
+    // ตรวจและประกอบแถวไปแล้วก่อน insert หัว (ดูเหตุผลที่นั่น) — เหลือแค่เขียนลงตาราง
+    // ⚠️ ตารางแยกจาก dept_request_items โดยตั้งใจ (บรีฟไม่เดิน 5 ก้าว — ดู 0213)
+    if (briefRows.length) {
       const { error: briefInsertError } = await supabase
         .from('dept_request_scents').insert(briefRows);
       if (briefInsertError) throw briefInsertError;

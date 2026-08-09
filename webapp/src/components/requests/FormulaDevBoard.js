@@ -4,7 +4,9 @@
 // ⭐ **โครงสองชั้น** — คำร้อง → แถว (หมวด × กลิ่น) · ไม่มีชั้นบรีฟให้จัดกลุ่มเหมือน
 // พัฒนากลิ่น ⇒ ตารางเป็นรายแถวตรง ๆ
 //
-// ⭐ **ตารางนี้ไม่มีปุ่ม** — ปุ่มของแต่ละก้าวอยู่ท้ายเธรดที่เดียว (NextStepBar · ม-49)
+// ⭐ **ก้าวถัดไปอยู่ติดแถว** (ม-94 — มติเดียวกับสายเอกสาร) — คอลัมน์ท้ายรับปุ่ม
+// ผ่าน `renderStep` จากหัวข้อ (RowStepActions ก้อนเดียวกับแถบท้ายเธรด — ย้าย
+// ไม่ก๊อป: โครง panel แถบท้ายเธรดของแถวพวกนี้เงียบ ดูเปลือก /requests/[id])
 //
 // ⚠️ การนับอยู่ที่ `lib/requests/formulaDevBoard.js` ทั้งหมด — ประกอบ array ของแถว
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
@@ -18,7 +20,7 @@ import styles from "./briefBoard.module.css";
 const qty = (n) => Number(n).toLocaleString("th-TH");
 const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
-export default function FormulaDevBoard({ rows = [] }) {
+export default function FormulaDevBoard({ rows = [], renderStep = null }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง
   if (!rows.length) return null;
 
@@ -26,13 +28,14 @@ export default function FormulaDevBoard({ rows = [] }) {
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
       <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
-      <TableScroll surface="embedded" minWidth={640}>
+      <TableScroll surface="embedded" minWidth={renderStep ? 760 : 640}>
         <table>
           <thead>
             <tr>
               <th className={styles.colName}>หมวดสินค้า × กลิ่น</th>
               <th className={styles.colOutcome}>ผลลัพธ์</th>
               <th className={styles.colStage}>สถานะ</th>
+              {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
           <tbody>
@@ -81,6 +84,7 @@ export default function FormulaDevBoard({ rows = [] }) {
                     : <span className={styles.note}>ยังไม่ถึงตาลูกค้า</span>}
                 </td>
                 <td><StatusBadge tone={r.stageTone} label={r.stageLabel} /></td>
+                {renderStep && <td className={styles.stepCell}>{renderStep(r)}</td>}
               </tr>
             ))}
           </tbody>

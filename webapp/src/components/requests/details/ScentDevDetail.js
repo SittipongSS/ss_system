@@ -5,92 +5,138 @@
 // เป็นจริงเชิงโครงสร้าง ไม่ใช่เชิงตั้งใจ · เพิ่มของเฉพาะหัวข้อนี้ = แก้ไฟล์นี้ไฟล์เดียว
 // ไม่ต้องไปแทรก `kind === 'scent_dev'` กลางหน้าที่ทุกหัวข้อใช้ร่วมกัน
 //
-// หัวข้อนี้ต่างจากตัวอื่นสามอย่าง:
-//   1 **แบบฟอร์ม PDR** (FM-RD-01) แทนช่องรายละเอียดธรรมดา
-//   2 **โครงสามชั้น** — บรีฟรายกลิ่น (AE เขียนตอนเปิด) → direction (RD สร้างตอนส่ง)
-//   3 **กระทบยอดกับใบสั่งขาย** — คอนเฟิร์มแล้วกี่ กก. เทียบกับที่ขายไป
+// ⭐ **สองมุมมอง** (ม-94 ทาง ก · มติผู้ใช้ 2026-08-09): แท็บ [งาน | แบบฟอร์ม PDR]
+//   · งาน = การ์ด direction + ตารางสรุป (+เธรดที่เปลือกวางต่อท้าย)
+//   · แบบฟอร์ม PDR = **สองชั้นแบบด้านข้าง** — รายการหมวดซ้าย (ตัวนับครบ x/y)
+//     เนื้อหมวดขวา · อ่าน/แก้อยู่ในแท็บนี้ ไม่เบียดเธรดอีก
+//
+// ⚠️ **แท็บกับรางใช้ของกลาง ไม่ใช่ของหน้านี้เอง** (2026-08-09) — เดิมหน้านี้เขียน
+// แถบแท็บ (`.viewTabs` = ปุ่มสองปุ่มติด role="tab") และรางหมวด (`.pdrNav`) ของตัวเอง
+// ในจังหวะเดียวกับที่ฟอร์มเปิดคำร้องได้ `ui/Tabs` + `ui/SectionRail` ⇒ ระบบมีแท็บ
+// สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
+// components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
+import { useEffect, useState } from "react";
+import { FlaskConical } from "lucide-react";
 import Button from "@/components/ui/Button";
-import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
+import Tabs from "@/components/ui/Tabs";
+import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
-import PdrForm from "@/components/requests/PdrForm";
-import PdrSummary from "@/components/requests/PdrSummary";
+import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
+import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
+import { RowStepActions } from "@/components/requests/NextStepBar";
+import { PDR_SECTIONS } from "@/lib/requests/pdrFields";
 import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
-  request, board, briefSummary, reconcile, reconcileTone, reconcileText,
-  canEditAttachments, saving,
-  pdrDraft, onPdrDraftChange, onPdrEdit, onPdrSave, onPdrCancel, onOpenDocument,
+  request, board, canEditAttachments, saving, rowStep,
+  // ทะเบียนหมวดสินค้า — ฟอร์ม PDR ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
+  categories = [],
+  pdrDraft, onPdrDraftChange,
 }) {
+  /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
+     direction สักตัว เปิดมาเจอแท็บ "งาน" ที่ว่างเปล่าทุกครั้ง ⇒ ตั้งต้นที่แบบฟอร์ม
+     ซึ่งเป็นเนื้อเดียวที่มีจริงในช่วงนั้น · พอ RD ส่งของแล้ว "งาน" กลับมาเป็นตัวตั้งต้น
+     ⚠️ ใช้ค่าเริ่มต้นของ useState ไม่ใช่ effect — sync ทีหลังจะเด้งแท็บใต้มือคนที่
+     กำลังอ่านอยู่ตอนข้อมูลโหลดเสร็จ */
+  const [view, setView] = useState((request.items || []).length ? "work" : "pdr");
+  const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
+  // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — คีย์ชุดเดียวกันแล้ว (ทั้งสองฝั่งมี
+  // "บรีฟกลิ่น") แต่คนละ state โดยตั้งใจ: ปิดโหมดแก้แล้วต้องกลับไปที่หมวดที่กำลังอ่าน
+  // ค้างไว้ ไม่ใช่กระโดดไปหมวดที่เพิ่งแก้เสร็จ
+  const [draftSection, setDraftSection] = useState("request");
+
+  // ⚠️ ปุ่ม "แก้แบบฟอร์ม PDR" อยู่ที่แผงจัดการ (นอก component นี้) — กดตอนอยู่แท็บ
+  // "งาน" แล้วต้องพาไปแท็บที่แก้ได้เอง ไม่ใช่เปิดโหมดแก้ทิ้งไว้ในแท็บที่มองไม่เห็น
+  useEffect(() => { if (pdrDraft) setView("pdr"); }, [pdrDraft]);
+  const context = { ...(request.pdrContext || {}), briefs: request.briefs || [] };
+
   return (
     <>
-      {/* ⭐ กระทบยอดกับใบสั่งขาย — **เตือน ไม่บล็อก** (มติผู้ใช้)
-          ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก) และส่งขาดก็เกิดได้ · บล็อกเมื่อไร
-          คนจะเลี่ยงด้วยการ *ไม่บันทึกจำนวน* ซึ่งแย่กว่าตัวเลขที่ไม่ตรงมาก เพราะตอนนั้น
-          ระบบจะไม่รู้อะไรเลยแทนที่จะรู้ว่าไม่ตรง */}
-      {reconcile && reconcileText && (
-        <StatusNotice tone={reconcileTone}>{reconcileText}</StatusNotice>
+      {/* ชั้นแรก: แท็บมุมมอง — `ui/Tabs` ตัวเดียวกับที่ฟอร์มเปิดคำร้องใช้ */}
+      <Tabs
+        tabs={[{ key: "work", label: "งาน" }, { key: "pdr", label: "แบบฟอร์ม PDR" }]}
+        value={view} onChange={setView} ariaLabel="มุมมองของใบ"
+        className={styles.viewTabs}
+      />
+
+      {view === "work" && (
+        <>
+          {/* ⚠️ **แท็บนี้ว่างจนกว่า RD จะส่งของ** — direction เกิดตอนฝ่ายกด "ส่งกลิ่น"
+              (lib/requests/delivery.js) ไม่ได้เกิดตอนเปิดใบ ⇒ ใบร่าง/ใบที่เพิ่งส่ง
+              ยังไม่มีอะไรให้โชว์จริง ๆ · ต้องบอกว่ากำลังรออะไรอยู่ ไม่ใช่หน้าเปล่า
+              ซึ่งอ่านเหมือนระบบพัง (มติผู้ใช้ 2026-08-09 — ถามว่า "แท็บงานแทบไม่มีอะไร") */}
+          {!(request.items || []).length && (
+            <EmptyState icon={FlaskConical}>
+              ยังไม่มี direction จากฝ่าย {request.dept}
+              <small>
+                RD จะส่งกลิ่นเข้ามาทีละตัวหลังรับเรื่อง — แต่ละตัวขึ้นเป็นแถวที่เดินสถานะของตัวเอง
+                · ระหว่างนี้ดูสิ่งที่ขอไว้ได้ที่แท็บ &ldquo;แบบฟอร์ม PDR&rdquo;
+              </small>
+            </EmptyState>
+          )}
+          {/* ⚠️ ป้ายกระทบยอด SO กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
+              ScentPanel) — ห้ามวาดซ้ำที่นี่อีก */}
+          <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
+          {/* ปุ่มก้าวติดแถว direction (ม-94) — แถวของ board ชี้กลับ item ดิบด้วย id */}
+          <BriefBoard
+            groups={board}
+            renderStep={rowStep ? (d) => {
+              const item = (request.items || []).find((it) => it.id === d.id);
+              return item ? <RowStepActions row={item} {...rowStep} /> : null;
+            } : null}
+          />
+        </>
       )}
 
-      <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
-
-      {/* ⭐ ตารางสรุปทั้งใบ (แบบหน้าจอ §07) — "สถานการณ์ตอนนี้" ส่วน PDR คือ
-          "ที่ขอไว้ตอนแรก" · ตารางนี้ไม่มีปุ่ม ปุ่มอยู่ท้ายเธรดที่เดียว (ม-49) */}
-      <BriefBoard groups={board} />
-
-      <div className={styles.summaryBar}>
-        <span><strong>{briefSummary.briefs}</strong> บรีฟ</span>
-        {reconcile && <span><strong>{reconcile.ordered}</strong> กลิ่นตาม SO</span>}
-        <span><strong>{briefSummary.directions}</strong> direction ที่ส่งแล้ว</span>
-        {/* ⚠️ นับ **ก้อนที่ยังไม่มี direction เลย** ไม่ใช่ก้อนที่ยังไม่จบ — คำถามที่ RD
-            ถามตัวเองคือ "เหลือบรีฟไหนที่ยังไม่ได้ลงมือ" */}
-        {briefSummary.untouched > 0 && (
-          <span data-tone="warn"><strong>{briefSummary.untouched}</strong> บรีฟที่ยังไม่ได้ลงมือ</span>
-        )}
-        {/* ⭐ สองขั้นที่ "ค้างโดยไม่มีใครเห็น" ได้ง่ายที่สุด — รอลูกค้าตอบคือรอข้างนอก
-            ส่วนรอใส่ราคาคือของที่จบกับลูกค้าแล้วแต่ยังปิดใบไม่ได้ */}
-        {briefSummary.waitingCustomer > 0 && (
-          <span><strong>{briefSummary.waitingCustomer}</strong> รอลูกค้าตอบ</span>
-        )}
-        {briefSummary.awaitingPrice > 0 && (
-          <span data-tone="warn"><strong>{briefSummary.awaitingPrice}</strong> รอใส่ราคา</span>
-        )}
-        {reconcile && reconcileText && (
-          <span data-tone={reconcileTone}>{reconcileText}</span>
-        )}
-      </div>
-
-      {/* ⭐ PDR แบบอ่าน — วางเหนือเธรด เพราะ RD หยิบงานแล้วต้องอ่านบรีฟก่อนคุย */}
-      <div className={styles.pdrBlock}>
-        {pdrDraft ? (
-          <>
-            <PdrForm
-              value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
-              briefs={pdrDraft.briefs}
-              onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
-              disabled={saving}
-            />
-            <div className={`action-bar ${styles.pdrActions}`}>
-              <Button variant="quiet" disabled={saving} onClick={onPdrCancel}>ยกเลิก</Button>
-              <Button tone="primary" disabled={saving} onClick={onPdrSave}>บันทึกแบบฟอร์ม</Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <PdrSummary request={request} briefs={request.briefs || []} />
-            {/* ⚠️ ปุ่มโผล่ตาม `_canEditPdr` ที่ **server คำนวณ** — หน้าจอไม่มี user.id
-                จึงตัดสินเองไม่ได้ (บทเรียนเดียวกับ `_canApprove`) */}
-            {request._canEditPdr && (
-              <div className={`action-bar ${styles.pdrActions}`}>
-                {/* ⚠️ "ดูฉบับที่ออกจริง" ไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็น HTML
-                    เหมือน QT/SO ไม่ใช่ไฟล์ที่โหลดลงเครื่อง */}
-                <Button variant="quiet" onClick={onOpenDocument}>ดูฉบับที่ออกจริง</Button>
-                <Button variant="quiet" disabled={saving} onClick={onPdrEdit}>แก้แบบฟอร์ม PDR</Button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {view === "pdr" && (
+        <div className={styles.pdrBlock}>
+          {pdrDraft ? (
+            <>
+              {/* ⭐ **ฟอร์มแก้ = ฟอร์มสร้างตัวเดิม รวมถึงผังด้วย** (มติผู้ใช้ 2026-08-09)
+                  — เดิมส่ง `PdrForm` แบบไม่มีรางออกมา ⇒ ฝั่งกรอกที่หน้าเปิดคำร้อง
+                  เป็นรางข้าง แต่ฝั่งแก้ที่นี่เป็นลิ้นชักยาวทั้งหน้า · คนละหน้าตาทั้งที่
+                  เป็นฟอร์มเดียวกัน ซึ่งเป็นโรคที่ AGENTS.md ห้ามไว้ตรง ๆ
+                  ⚠️ รางใช้ `section`/`onChange` ชุดเดียวกับหน้าเปิดคำร้อง — ตัวนับ
+                  ต่อหมวดมาจาก `pdrRailSections` ที่เดียว */}
+              <SectionRail
+                ariaLabel="หมวดของแบบฟอร์ม"
+                value={draftSection}
+                onChange={setDraftSection}
+                sections={pdrRailSections(pdrDraft.pdr, pdrDraft.briefs)}
+              >
+                <PdrForm
+                  section={draftSection}
+                  categories={categories}
+                  value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
+                  briefs={pdrDraft.briefs}
+                  onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
+                  disabled={saving}
+                />
+              </SectionRail>
+              {/* ⚠️ **ไม่มีปุ่มบันทึก/ยกเลิกตรงนี้** (มติผู้ใช้ 2026-08-09) — แผงจัดการ
+                  คือศูนย์กลางการควบคุม · พอเปิดโหมดแก้ แผงจะสลับเป็น "บันทึกแบบฟอร์ม /
+                  ยกเลิกการแก้" เอง ⇒ ปุ่มของใบอยู่ที่เดียวตลอดทุกโหมด */}
+            </>
+          ) : (
+            <SectionRail
+              // ⭐ รายชื่อหมวดมาจากที่เดียว (`pdrReadRailSections`) และมี "บรีฟกลิ่น"
+              // เป็นหมวดของตัวเองเหมือนฝั่งกรอก — เดิมบรีฟถูกวาดค้างไว้บนสุดนอกราง
+              // ⇒ เลือกหมวด 4 แล้วยังเห็นบรีฟอยู่ข้างบน อ่านเหมือนสองหน้ามาต่อกัน
+              sections={pdrReadRailSections(request, request.briefs || [], context)}
+              value={sectionKey}
+              onChange={setSectionKey}
+              ariaLabel="หมวดของแบบฟอร์ม"
+            >
+              {/* ⚠️ **ไม่มีปุ่มระดับใบตรงนี้แล้ว** (มติผู้ใช้ 2026-08-09) — "ออกเอกสาร"
+                  กับ "แก้แบบฟอร์ม PDR" ทำอะไรกับ *ทั้งใบ* จึงย้ายไปแผงจัดการรวมกับ
+                  ส่ง/แก้ข้อมูล/ลบ · ปุ่มระดับใบกระจายสองที่คือสิ่งที่ ม-49 ห้ามไว้ */}
+              <PdrSummary request={request} briefs={request.briefs || []} section={sectionKey} />
+            </SectionRail>
+          )}
+        </div>
+      )}
     </>
   );
 }

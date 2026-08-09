@@ -43,6 +43,27 @@ export function categoryFlags(categoryCode, productTypes = []) {
   return { isExcise: !!row?.isExcise, requiresFdaNotice: !!row?.requiresFdaNotice };
 }
 
+/**
+ * แถวหมวดจากรหัสประกอบ `MM-TTT` — คืน row หรือ null
+ *
+ * ⚠️ **รหัสที่ระบบเก็บคือ `mainCategoryCode-typeCode`** ไม่ใช่ `typeCode` เดี่ยว ๆ
+ * (ทะเบียนมี typeCode ซ้ำข้ามหมวดหลักได้) · เทียบผิดคีย์แล้วป้ายจะขึ้นเป็นรหัสดิบ
+ * ทั้งที่ทะเบียนมีชื่ออยู่ — เจอจริงตอนทำ 0227 จึงยกมาเป็นตัวกลางตัวนี้
+ */
+export function categoryRow(categoryCode, productTypes = []) {
+  if (!categoryCode) return null;
+  return (productTypes || []).find(
+    (t) => `${t.mainCategoryCode}-${t.typeCode}` === categoryCode,
+  ) || null;
+}
+
+/** ป้ายอ่านออกของหมวด — "รหัส ชื่อ" · ไม่พบในทะเบียนคืนรหัสดิบ (ห้ามคืนค่าว่าง) */
+export function categoryLabel(categoryCode, productTypes = []) {
+  const row = categoryRow(categoryCode, productTypes);
+  if (!row) return String(categoryCode ?? '');
+  return [categoryCode, row.nameTh || row.nameEn].filter(Boolean).join(' ');
+}
+
 export function isExciseCategory(categoryCode, productTypes = []) {
   return categoryFlags(categoryCode, productTypes).isExcise;
 }

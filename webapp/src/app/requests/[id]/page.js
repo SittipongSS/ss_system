@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -16,10 +16,12 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
-import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
+import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
-  WorkflowRail,
+  DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
 import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
 import RowActionMenu from "@/components/ui/RowActionMenu";
@@ -35,7 +37,7 @@ import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
-import { pdrValuesFrom } from "@/components/requests/PdrForm";
+import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -46,7 +48,7 @@ import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
-import { detailForKind } from "@/components/requests/details";
+import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
@@ -54,7 +56,7 @@ import ScentDeliveryFields, {
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import { requestDeliversRows, requestHasItems, requestKindLabel, requestUsesControlPanel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -114,12 +116,20 @@ export default function RequestDetailPage() {
   // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
   // สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" — server เป็นคนตัดสิน (`_canEditPdr`)
   const [pdrDraft, setPdrDraft] = useState(null);
+  /* ทะเบียนหมวดสินค้า — ฟอร์ม PDR (โหมดแก้) ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
+     ⚠️ โหลดเสมอ ไม่รอให้กดแก้ — โหลดตอนกดจะได้ดรอปดาวน์ว่างในวินาทีแรก */
+  const [productTypes, setProductTypes] = useState([]);
+  useEffect(() => {
+    cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
+  }, []);
   // ⭐ วันกำหนดส่งตอนรับเรื่อง — บังคับเฉพาะหัวข้อที่ประกาศธง (มติผู้ใช้ 2026-08-06)
   // ⚠️ ปุ่มเดิมยิง `acknowledge` เปล่า ๆ ⇒ พอ server บังคับแล้วจะกดไม่ผ่านทุกครั้ง
   // ถ้าไม่มีช่องให้กรอก · ด่านกับหน้าจอต้องมาพร้อมกันเสมอ
   const [ackDue, setAckDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
+  // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
+  const [editDraft, setEditDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -206,6 +216,8 @@ export default function RequestDetailPage() {
   const showPdr = requestHasPdr(req.kind);
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
+  // การ์ด panel รายหัวข้อ (ม-94) — null = มีแค่การ์ด control กลาง + การ์ดบริบท
+  const KindPanel = panelForKind(req.kind);
   // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
   // โดยไม่ต้องไล่อ่านทีละแถว
   //
@@ -282,6 +294,9 @@ export default function RequestDetailPage() {
           formulaDate: hopDraft.formulaDate || null,
         } : {}),
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
+        // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
+        // "ต้องบอกเหตุผลที่ปฏิเสธ" ทั้งที่กรอกแล้ว (เจอตอนกดจริงจากตาราง ม-94)
+        ...(hop === "refuse" ? { note: hopDraft.note } : {}),
         ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
     }, outcome === "revise"
@@ -452,7 +467,25 @@ export default function RequestDetailPage() {
   const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
   const workflowSteps = workflowStepsFromIndex(railSteps, workflowIndex, req.status === "cancelled");
 
-  const primaryAction = req._mine && req.status === "draft"
+  /* ⭐ **แผงจัดการคือศูนย์กลางการควบคุม — เปิดโหมดแก้แล้วแผงต้องเปลี่ยนตาม**
+     (มติผู้ใช้ 2026-08-09) · ระหว่างแก้แบบฟอร์ม PDR ปุ่มของทั้งใบ (ส่ง/ลบ/แก้ข้อมูล)
+     ต้องหลบไป เหลือแค่ "บันทึกแบบฟอร์ม / ยกเลิก" ซึ่งเป็นสองทางเดียวที่ออกจากโหมดนี้ได้
+     ⚠️ ปล่อยให้ปุ่มอื่นค้างไว้ = กด "ส่งคำร้อง" ระหว่างที่ยังไม่บันทึกฟอร์ม แล้วของที่
+     พิมพ์ค้างหายเงียบ ๆ */
+  const editingPdr = !!pdrDraft;
+
+  const primaryAction = editingPdr
+    ? {
+      id: "pdr-save",
+      label: "บันทึกแบบฟอร์ม",
+      kind: "save",
+      icon: Check,
+      onClick: () => call("", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+      }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); }),
+    }
+    : req._mine && req.status === "draft"
     ? {
       id: "submit",
       label: "ส่งคำร้อง",
@@ -526,10 +559,14 @@ export default function RequestDetailPage() {
   // ⚠️ **ที่เดียวเสมอ ไม่โชว์สองที่** — `primaryAction` ตัวเดียวกัน ย้ายที่วาง ไม่ใช่
   // ก๊อป · โชว์ทั้งหัวใบและท้ายเธรดเมื่อไร ก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
   // ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
-  const threadStep = !hasItems && primaryAction
+  // ⭐ โครง Control Panel (มติผู้ใช้ 2026-08-09) — หัวข้อที่เปิดธง ปุ่มระดับใบ
+  // **ทั้งชุด**อยู่การ์ดขวาที่เดียว: ไม่มีปุ่มบนหัวใบ และไม่มีแถบท้ายเธรด
+  // (ยังคงกติกา "ที่เดียวเสมอ" — แค่ที่นั้นเปลี่ยนเป็น panel)
+  const usePanel = requestUsesControlPanel(req.kind);
+  const threadStep = !usePanel && !hasItems && primaryAction
     ? { ...primaryAction, hint: THREAD_STEP_HINT[primaryAction.id] || "รอดำเนินการ" }
     : null;
-  const headerAction = threadStep ? null : primaryAction;
+  const headerAction = (threadStep || usePanel) ? null : primaryAction;
 
   // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
   //
@@ -541,8 +578,18 @@ export default function RequestDetailPage() {
   // ⚠️ ยังใช้ `normalizeDocumentControlActions` ตัวเดิม — กติกา `visible: false`
   // อยู่ที่เดียวกับทุกโมดูล เปลี่ยนแค่ *ที่วาง* ไม่ใช่กติกา
   const requestActions = normalizeDocumentControlActions({
-    primaryAction: headerAction,
-    secondaryActions: [
+    // โครง panel: ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรด — เข้า normalize ตรงเพื่อไปโผล่ที่การ์ดขวา
+    primaryAction: usePanel ? primaryAction : headerAction,
+    secondaryActions: editingPdr ? [
+      {
+        id: "pdr-cancel",
+        label: "ยกเลิกการแก้",
+        kind: "open",
+        icon: Undo2,
+        variant: "ghost",
+        onClick: () => setPdrDraft(null),
+      },
+    ] : [
       {
         // ⭐ **รวบส่งของหลายแถว** (ช่องว่างข้อ 3 ของแบบพัฒนาสูตร) — ใบที่ขอ 5 รายการ
         // และเสร็จพร้อมกัน ไม่ต้องเปิดโมดัลห้ารอบกรอกวันเดิมห้าครั้ง
@@ -560,6 +607,50 @@ export default function RequestDetailPage() {
         }),
       },
       {
+        // ⭐ **ออกเอกสาร** (มติผู้ใช้ 2026-08-09) — เดิมชื่อ "ดูฉบับที่ออกจริง" และ
+        // ซ่อนอยู่ในแท็บแบบฟอร์ม · เป็นของระดับใบจึงย้ายมารวมที่แผงจัดการ
+        // ⚠️ ป้ายสั้นกว่าเดิมแต่ยังไม่ใช่ "ดาวน์โหลด" — ฉบับที่ออกเป็นหน้า HTML
+        id: "pdr-document",
+        label: "ออกเอกสาร",
+        kind: "open",
+        icon: FileText,
+        onClick: () => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank"),
+        visible: requestHasPdr(req.kind),
+      },
+      {
+        // ⭐ แก้แบบฟอร์ม PDR — ย้ายมาจากในแท็บด้วยเหตุผลเดียวกัน · สิทธิ์สลับมือ
+        // ที่จังหวะ "รับเรื่อง" ซึ่ง server ตัดสินมาให้แล้ว (`_canEditPdr`)
+        id: "pdr-edit",
+        label: "แก้แบบฟอร์ม PDR",
+        kind: "edit",
+        icon: Pencil,
+        onClick: () => setPdrDraft({
+          pdr: pdrValuesFrom(req),
+          briefs: (req.briefs || []).map((b) => ({ ...b })),
+        }),
+        visible: requestHasPdr(req.kind) && !!req._canEditPdr && !pdrDraft,
+      },
+      {
+        // ⭐ **แก้ข้อมูลคำร้อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้ใบที่บันทึกแล้ว
+        // แก้ไม่ได้เลยสักช่อง ต้องลบทิ้งเปิดใหม่แม้แค่พิมพ์ชื่อเรื่องผิด
+        // ⚠️ แก้ได้เฉพาะช่องที่ไม่กระทบว่าใบผูกกับอะไร (ดู lib/requests/requestEdit.js)
+        // — ปุ่มถามด่านตัวเดียวกับ API เพื่อไม่ให้ปุ่มโผล่แล้วกดไม่ผ่าน
+        id: "edit",
+        label: "แก้ข้อมูลคำร้อง",
+        kind: "edit",
+        icon: Pencil,
+        onClick: () => setEditDraft({
+          title: req.title || "",
+          body: req.body || "",
+          requestedDueDate: req.requestedDueDate || "",
+          urgent: !!req.urgent,
+          urgentReason: req.urgentReason || "",
+        }),
+        // ⚠️ ฝั่งจอไม่มี `user.id` (context เก็บแค่ role/department) จึงถามด้วย
+        // `_mine` ที่ server คำนวณมาให้ + ขั้นชุดเดียวกับ lib · ด่านจริงอยู่ที่ API
+        visible: (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status),
+      },
+      {
         // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
         // ตอนรับเรื่องเลือกวันไปก่อนแล้วมาเจอของจริง · ไม่ต้องตีกลับแล้วรับใหม่
         //
@@ -575,7 +666,7 @@ export default function RequestDetailPage() {
         visible: canAnswer && !!req.acknowledgedAt,
       },
     ],
-    dangerActions: [
+    dangerActions: editingPdr ? [] : [
       {
         id: "delete",
         // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
@@ -608,9 +699,10 @@ export default function RequestDetailPage() {
       },
     ],
   });
-  const hasHeaderActions = !!requestActions.primaryAction
+  // โครง panel: หัวใบไม่มีปุ่มเลย — ทุกปุ่มระดับใบอยู่การ์ดขวาที่เดียว
+  const hasHeaderActions = !usePanel && (!!requestActions.primaryAction
     || requestActions.secondaryActions.length > 0
-    || requestActions.dangerActions.length > 0;
+    || requestActions.dangerActions.length > 0);
 
   // รายการในเมนู "…" ของหัวใบ — secondary + danger ชุดเดิมทั้งหมด
   // ⚠️ ลำดับ: เดินหน้ารอง → เส้นคั่น → อันตราย (แพตเทิร์นเดียวกับ RecordActionMenu)
@@ -653,6 +745,21 @@ export default function RequestDetailPage() {
     },
   ];
 
+  /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
+     ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
+     ต้องส่งกันทาง LINE) · ประกาศครั้งเดียวแล้ววางได้สองที่ตามโครงของหัวข้อ */
+  const attachmentsBlock = (
+    <div className={styles.attachBlock}>
+      <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
+      <AttachmentsPanel
+        entityType="dept_request"
+        entityId={req.id}
+        canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        inlineUpload
+      />
+    </div>
+  );
+
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
@@ -673,7 +780,10 @@ export default function RequestDetailPage() {
         eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
         description={req.title || req.customerName || "ราคากลาง"}
-        badges={<SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
+        badges={usePanel
+          // โครง panel: สถานะอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรก)
+          ? null
+          : <SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
         actions={hasHeaderActions ? (
           <>
             {requestActions.primaryAction ? (
@@ -696,9 +806,11 @@ export default function RequestDetailPage() {
         ) : null}
         facts={headerFacts}
       >
-        {/* รางก้าว — เดิมซ่อนอยู่ในการ์ดขวาที่ต้องเลื่อนไปหา ทั้งที่มันคือคำตอบของ
-            คำถามแรกที่คนเปิดใบมาถาม ("ตอนนี้ถึงไหนแล้ว") */}
-        <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+        {/* รางก้าว — โครงเดิมวางแนวนอนบนหัวใบ · โครง panel ย้ายไปการ์ดขวาแนวตั้ง
+            (WorkflowRail ตัวเดียวกัน ต่างแค่ orientation — ห้ามมีสองชุด) */}
+        {!usePanel && (
+          <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
+        )}
 
         {/* รายละเอียดคำร้อง — เดิมแสดงเฉพาะชนิดที่ไม่มีบรรทัด แต่ตอนนี้ทุกหัวข้อมี
             ชื่อเรื่อง+รายละเอียดบังคับ (มติ 2026-08-03) จึงต้องแสดงทุกใบ
@@ -740,24 +852,83 @@ export default function RequestDetailPage() {
           </div>
         )}
 
-        {/* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะ
-            รายบรรทัดของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิง
-            มากที่สุดแนบไม่ได้เลย ต้องไปส่งกันทาง LINE) */}
-        <div className={styles.attachBlock}>
-          <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
-          <AttachmentsPanel
-            entityType="dept_request"
-            entityId={req.id}
-            canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-            inlineUpload
-          />
-        </div>
+        {/* ⭐ **ไฟล์แนบย้ายไปคอลัมน์ขวา** (มติผู้ใช้ 2026-08-09) — มันเป็นของ *ทั้งใบ*
+            เหมือนปุ่มระดับใบ · วางเป็นแถบกว้างใต้หัวใบทำให้จอแรกเป็นกล่องว่างเปล่า
+            ครึ่งจอ ทั้งที่ส่วนใหญ่ไม่มีไฟล์ · ท้ายเธรดก็ไม่ใช่ที่ของมัน — เธรดมีที่แนบ
+            ของตัวเองรายข้อความอยู่แล้ว (ของสองอันนี้คนละความหมาย: ของใบ vs ของบทสนทนา)
+            ⚠️ หัวข้อที่ยังไม่เปิดโครง panel ยังใช้ที่เดิม — ไม่มีคอลัมน์ขวาให้ย้ายไป */}
+        {!usePanel && attachmentsBlock}
       </SalesDetailOverview>
 
-      {/* ⚠️ ไม่มีรางขวาแล้ว — การ์ด "สรุปคำร้อง" กับ "จัดการเอกสาร" พูดเรื่องเดียวกับ
-          หัวใบทุกบรรทัด (สถานะ · ฝ่ายผู้ตอบ · ความคืบหน้า) · ปุ่มกับรางก้าวย้ายขึ้นหัวใบ
-          แล้ว รางขวาจึงเหลือแต่ของซ้ำ ⇒ ยุบทิ้ง หน้าเหลือคอลัมน์เดียวเต็มความกว้าง */}
-      <DetailPageLayout>
+      {/* ⭐ โครงสองแบบ (มติผู้ใช้ 2026-08-09 — รีดีไซน์ทีละหัวข้อ):
+          · หัวข้อธง `detailControlPanel` — การ์ดขวา DOCUMENT CONTROL ถือ สถานะ+ราง
+            แนวตั้ง+ปุ่มระดับใบ **ที่เดียว** (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป)
+          · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
+            การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
+      <DetailPageLayout
+        className={usePanel ? styles.panelLayout : ""}
+        asideLabel="จัดการคำร้อง"
+        aside={usePanel ? (
+          <>
+            <DocumentControlCard
+              title="จัดการคำร้อง"
+              status={REQUEST_STATUS_LABELS[req.status] || req.status}
+              statusColor={STATUS_TONE[req.status]}
+              workflowSteps={workflowSteps}
+              primaryAction={requestActions.primaryAction}
+              secondaryActions={requestActions.secondaryActions}
+              dangerActions={requestActions.dangerActions}
+              busy={saving}
+            />
+            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
+                (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
+                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
+            {req.refProject && (
+              <ContextCard
+                href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
+                icon={FolderKanban}
+                eyebrow="โครงการ"
+                title={req.refProject.name || req.refProject.code || req.refProject.id}
+                subtitle={req.refProject.code || undefined}
+              />
+            )}
+            {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
+                /sales-planning/deals โดน redirect หนึ่งเด้ง */}
+            {req.refDeal && (
+              <ContextCard
+                href={`/sa/deals/${req.refDeal.id}`}
+                icon={Handshake}
+                eyebrow="ดีล"
+                title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
+                subtitle={req.customerName || undefined}
+              />
+            )}
+            {/* การ์ดรายหัวข้อ — ส่งก้อนชุดเดียวกับ KindDetail แล้วให้หัวข้อหยิบ
+                ของตัวเอง (แพตเทิร์น ม-34 เดียวกับเนื้อกลางหน้า) */}
+            {KindPanel && (
+              <KindPanel
+                request={req}
+                docBoard={docBoard}
+                docTotals={docTotals}
+                formulaBoard={formulaBoard}
+                formulaTotals={formulaTotals}
+                board={board}
+                briefSummary={briefSummary}
+              />
+            )}
+            {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
+                สรุป → หลักฐาน · การ์ดทรงเดียวกับที่อื่นในคอลัมน์ (`DetailCard`) */}
+            <DetailCard icon={Paperclip} title="ไฟล์แนบของคำร้อง">
+              <AttachmentsPanel
+                entityType="dept_request"
+                entityId={req.id}
+                canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+                inlineUpload
+              />
+            </DetailCard>
+          </>
+        ) : null}
+      >
         <div>
 
       {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":
@@ -768,10 +939,20 @@ export default function RequestDetailPage() {
           — เลือกให้ที่นี่ต้องรู้ว่าหัวข้อไหนใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่
           ของเปลือก (ม-34) · เคยเขียนเป็น `docBoard.length ? … : …` ซึ่งเดาจากข้อมูล
           ⇒ ใบร่างที่ยังไม่มีแถวจะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ */}
+      {/* `rowStep` = ปุ่มก้าวติดแถวในตาราง (มติผู้ใช้ 2026-08-09) — ชุด callback
+          เดียวกับแถบท้ายเธรดเป๊ะ · ส่งเฉพาะโครง panel: โครงเดิมยังใช้แถบท้ายเธรด */}
       <KindDetail
         request={req}
+        categories={productTypes}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        rowStep={usePanel ? {
+          canDept: canAnswer,
+          canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
+          busy: saving,
+          onHop: (row, hop, outcome) => openHop(row, hop, outcome),
+          onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
+        } : null}
         saving={saving}
         board={board}
         briefSummary={briefSummary}
@@ -784,16 +965,6 @@ export default function RequestDetailPage() {
         reconcileText={reconcile ? soReconcileText(reconcile) : null}
         pdrDraft={pdrDraft}
         onPdrDraftChange={setPdrDraft}
-        onPdrCancel={() => setPdrDraft(null)}
-        onPdrEdit={() => setPdrDraft({
-          pdr: pdrValuesFrom(req),
-          briefs: (req.briefs || []).map((b) => ({ ...b })),
-        })}
-        onPdrSave={() => call("", {
-          method: "PATCH",
-          body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
-        }, "บันทึกแบบฟอร์มแล้ว").then((ok) => { if (ok) setPdrDraft(null); })}
-        onOpenDocument={() => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank")}
       />
 
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
@@ -824,7 +995,10 @@ export default function RequestDetailPage() {
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
       <NextStepBar
-        rows={req.items || []}
+        // ⭐ ย้าย ไม่ก๊อป (มติผู้ใช้ 2026-08-09): โครง panel ปุ่มก้าวรายแถวอยู่ใน
+        // ตารางของหัวข้อ (เอกสารที่ขอ · สรุปทั้งใบ) — แถบท้ายเธรดเงียบทั้งใบ
+        // (สองที่เมื่อไรก็เพี้ยนกันเมื่อนั้น) · หัวข้อโครงเดิมไม่กระทบ
+        rows={usePanel ? [] : (req.items || [])}
         canDept={canAnswer}
         canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
         busy={saving}
@@ -867,6 +1041,86 @@ export default function RequestDetailPage() {
 
       {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
           และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ลงเธรดว่าเลื่อนจากวันไหนเป็นวันไหน */}
+      {/* ── แก้ข้อมูลคำร้อง (มติผู้ใช้ 2026-08-09) ────────────────────────────
+          ⚠️ **ช่องที่นี่ต้องเท่ากับ `REQUEST_EDITABLE_FIELDS` เป๊ะ** — ลิสต์นั้นเป็น
+          ของ API ด้วย · เพิ่มช่องที่นี่โดยไม่เพิ่มในลิสต์ = พิมพ์แล้วหายเงียบ
+          ⚠️ ของที่ผูก (ดีล · ใบสั่งขาย · รายการ · หัวข้อ) แก้ทางนี้ไม่ได้ และ
+          ข้อความในโมดัลบอกทางออกไว้ ไม่ใช่ปล่อยให้หาเอง */}
+      <Modal
+        open={!!editDraft} onClose={() => setEditDraft(null)} size="md" dismissible={!saving}
+        title="แก้ข้อมูลคำร้อง"
+      >
+        {editDraft && (
+          <>
+            <div className="form-grid cols-2">
+              <div className="form-group col-span-2">
+                <label htmlFor="edit-title">ชื่อเรื่อง *</label>
+                <Input
+                  id="edit-title" maxLength={200}
+                  value={editDraft.title} disabled={saving}
+                  onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
+                />
+              </div>
+              <div className="form-group col-span-2">
+                <label htmlFor="edit-body">รายละเอียด</label>
+                <Textarea
+                  variant="data" id="edit-body" rows={4} maxLength={4000}
+                  value={editDraft.body} disabled={saving}
+                  onChange={(e) => setEditDraft({ ...editDraft, body: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-due">อยากได้คำตอบภายใน *</label>
+                <DateInput
+                  id="edit-due" value={editDraft.requestedDueDate} disabled={saving}
+                  onChange={(v) => setEditDraft({ ...editDraft, requestedDueDate: v })}
+                />
+              </div>
+              <div className="form-group">
+                <span className="form-field-label">ความเร่งด่วน</span>
+                <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                  <button
+                    type="button" className="ui-switch" disabled={saving}
+                    data-on={editDraft.urgent ? "1" : undefined} aria-pressed={editDraft.urgent}
+                    onClick={() => setEditDraft({ ...editDraft, urgent: !editDraft.urgent })}
+                  >
+                    <i aria-hidden="true" /> ด่วน
+                  </button>
+                </div>
+              </div>
+              {editDraft.urgent && (
+                <div className="form-group col-span-2">
+                  <label htmlFor="edit-why">เหตุผลที่เป็นงานด่วน *</label>
+                  <Textarea
+                    variant="data" id="edit-why" rows={2} maxLength={500}
+                    value={editDraft.urgentReason} disabled={saving}
+                    onChange={(e) => setEditDraft({ ...editDraft, urgentReason: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+            <small className={styles.hint}>
+              เปลี่ยนดีล ใบสั่งขาย รายการ หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
+              (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
+            </small>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setEditDraft(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !editDraft.title.trim() || !editDraft.requestedDueDate
+                  || (editDraft.urgent && !editDraft.urgentReason.trim())}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({ action: "update", ...editDraft }),
+                }, "แก้ข้อมูลคำร้องแล้ว").then((ok) => { if (ok) setEditDraft(null); })}
+              >
+                บันทึกการแก้ไข
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
       <Modal
         open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
         title="เลื่อนวันกำหนดส่ง"

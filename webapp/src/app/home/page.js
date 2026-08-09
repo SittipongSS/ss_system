@@ -11,6 +11,7 @@ import { fmtName } from "@/lib/format";
 import {
   recentSystemForUser,
   RECENT_SYSTEM_STORAGE_KEY,
+  SYSTEM_DISABLED_NOTE,
   systemLandingForUser,
   systemsForUser,
 } from "@/config/systems";
@@ -150,6 +151,8 @@ export default function HomeHubPage() {
   const canOpenUsers = canUser(userContext, "users:manage") || canUser(userContext, "users:view");
   const recentLanding = recentSystem ? systemLandingForUser(recentSystem, userContext) : null;
   const countClass = `count-${Math.min(Math.max(visibleSystems.length, 1), 6)}`;
+  const openSystems = visibleSystems.filter((system) => !system.disabled);
+  const disabledCount = visibleSystems.length - openSystems.length;
 
   return (
     <main className="home-hub">
@@ -209,7 +212,12 @@ export default function HomeHubPage() {
           <div className="home-section-heading">
             <div>
               <h2 id="home-systems-title">ระบบที่คุณใช้งานได้</h2>
-              <p>{visibleSystems.length} พื้นที่ทำงานตามบทบาทและสิทธิ์ปัจจุบัน</p>
+              {/* นับเฉพาะระบบที่เปิดอยู่ — ระบบที่ยังไม่เปิดยังโชว์การ์ดจาง ๆ อยู่
+                  แต่ถ้านับรวมเข้าไปด้วย ตัวเลขจะไม่ตรงกับจำนวนการ์ดที่กดได้จริง */}
+              <p>
+                {openSystems.length} พื้นที่ทำงานตามบทบาทและสิทธิ์ปัจจุบัน
+                {disabledCount > 0 && ` · อีก ${disabledCount} ระบบ${SYSTEM_DISABLED_NOTE}`}
+              </p>
             </div>
           </div>
 
@@ -219,19 +227,45 @@ export default function HomeHubPage() {
                 const Icon = system.icon;
                 const landing = systemLandingForUser(system, userContext);
                 const descriptionId = `system-description-${system.key}`;
-                return (
-                  <Link
-                    key={system.key}
-                    href={landing}
-                    className="home-system-card glass-panel"
-                    aria-describedby={descriptionId}
-                    onClick={() => rememberSystem(system.key)}
-                  >
+                // คลาสการ์ดเขียนที่เดียวแล้วใช้ทั้งสองสาขา — เขียนซ้ำเมื่อไร งบ
+                // `legacySurface` ของ `glass-panel` (scripts/uiLegacyBudget.mjs) ขึ้น 1
+                // แล้ว `npm run audit:ui` ดับ เพราะเพดานขึ้นไม่ได้ ลงได้อย่างเดียว
+                const cardClass = `home-system-card glass-panel${system.disabled ? ' is-disabled' : ''}`;
+                const body = (
+                  <>
                     <span className="home-system-icon"><Icon size={24} strokeWidth={1.7} aria-hidden="true" /></span>
                     <span className="home-system-copy">
                       <strong>{system.label}</strong>
                       <span id={descriptionId}>{system.description}</span>
                     </span>
+                  </>
+                );
+
+                // ระบบที่ยังไม่เปิด — การ์ดยังอยู่ครบแต่กดไม่ได้ · ใช้ <div> ไม่ใช่ <Link>
+                // ที่ปิดด้วย CSS เพราะ pointer-events ไม่กัน Enter บนคีย์บอร์ดกับเมนู
+                // "เปิดในแท็บใหม่" ของเบราว์เซอร์ — ลิงก์ที่ยังอยู่ใน DOM คือลิงก์ที่กดได้
+                if (system.disabled) {
+                  return (
+                    <div
+                      key={system.key}
+                      className={cardClass}
+                      aria-describedby={descriptionId}
+                    >
+                      {body}
+                      <span className="home-system-enter">{SYSTEM_DISABLED_NOTE}</span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={system.key}
+                    href={landing}
+                    className={cardClass}
+                    aria-describedby={descriptionId}
+                    onClick={() => rememberSystem(system.key)}
+                  >
+                    {body}
                     <span className="home-system-enter">เข้าใช้งาน <ArrowRight size={16} aria-hidden="true" /></span>
                   </Link>
                 );

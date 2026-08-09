@@ -58,6 +58,56 @@ const OUTCOME_BUTTON = {
 
 const WAITING_TEXT = { dept: "รอฝ่ายปลายทาง", requester: "รอฝ่ายขาย" };
 
+// ── ปุ่ม/ป้ายก้าวถัดไปของ "แถวเดียว" — ก้อนกลางที่สองที่วางใช้ร่วมกัน ──────
+//
+// ⭐ แยกออกมาเพื่อให้ **ตารางเอกสาร** วางปุ่มติดแถวได้ (มติผู้ใช้ 2026-08-09:
+// "ก้าวถัดไปก็อยากในรายการเอกสารเลย") โดยไม่โคลนกติกา hop/เจ้าของ/ปฏิเสธ —
+// สองที่ประกอบเองเมื่อไรก็เพี้ยนกันเมื่อนั้น (โรคเดิมของฟอร์มสร้าง/แก้)
+// คืน null = แถวจบแล้ว ไม่มีก้าวให้เดิน
+export function RowStepActions({ row, canDept = false, canRequester = false, busy = false, onHop, onPrice }) {
+  const stage = rowStage(row);
+  const hop = hopAtStage(row, stage);
+  if (!hop) return null;
+  const owner = OWNER_OF[hop];
+  const isMine = owner === "dept" ? canDept : canRequester;
+  if (!isMine) return <span className={styles.waiting}>{WAITING_TEXT[owner]}</span>;
+  if (hop === "outcome") {
+    return (
+      <div className={styles.actions}>
+        {ROW_OUTCOMES.map((outcome) => (
+          <Button
+            key={outcome} disabled={busy}
+            tone={OUTCOME_BUTTON[outcome].tone}
+            variant={OUTCOME_BUTTON[outcome].variant}
+            onClick={() => onHop?.(row, "outcome", outcome)}
+          >
+            {hopLabel("outcome", outcome)}
+          </Button>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className={styles.actions}>
+      <Button
+        tone="primary" disabled={busy}
+        onClick={() => (hop === "price" ? onPrice?.(row) : onHop?.(row, hop))}
+      >
+        {hop === "price" ? "ใส่ราคา" : hopLabelFor(row, hop)}
+      </Button>
+      {/* สายเอกสารมีทางจบที่สองของฝ่าย: "ปฏิเสธ" + เหตุผลบังคับ (ม-85 · ม-89) */}
+      {hop === "ready" && isDocLineKind(row.lineKind) && (
+        <Button
+          tone="danger" variant="outline" disabled={busy}
+          onClick={() => onHop?.(row, "refuse")}
+        >
+          {hopLabelFor(row, "refuse")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function NextStepBar({
   rows = [], canDept = false, canRequester = false, busy = false,
   onHop, onPrice,
@@ -96,57 +146,20 @@ export default function NextStepBar({
   return (
     <div className={styles.bar}>
       <div className="toolbar-label">ก้าวถัดไป</div>
-      {pending.map(({ row, stage, hop }) => {
-        const owner = OWNER_OF[hop];
-        const isMine = owner === "dept" ? canDept : canRequester;
-        return (
-          <div key={row.id} className={styles.row}>
-            <div className={styles.label}>
-              <strong>{row.label}</strong>
-              <span className={styles.stage}>{ROW_STAGE_LABELS[stage]}</span>
-            </div>
-            {/* ⚠️ ฝั่งที่ไม่ใช่ตาตัวเอง **เห็นป้ายว่ารอใคร ไม่ใช่ปุ่มจาง ๆ** — ปุ่มที่
-                กดไม่ได้โดยไม่บอกเหตุผลคือสิ่งที่ทำให้คนคิดว่าระบบพัง (กับดักที่แผน
-                บันทึกไว้ และแบบหน้าจอ §03 ย้ำอีกรอบ) */}
-            {!isMine ? (
-              <span className={styles.waiting}>{WAITING_TEXT[owner]}</span>
-            ) : hop === "outcome" ? (
-              <div className={styles.actions}>
-                {ROW_OUTCOMES.map((outcome) => (
-                  <Button
-                    key={outcome} disabled={busy}
-                    tone={OUTCOME_BUTTON[outcome].tone}
-                    variant={OUTCOME_BUTTON[outcome].variant}
-                    onClick={() => onHop?.(row, "outcome", outcome)}
-                  >
-                    {hopLabel("outcome", outcome)}
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.actions}>
-                <Button
-                  tone="primary" disabled={busy}
-                  onClick={() => (hop === "price" ? onPrice?.(row) : onHop?.(row, hop))}
-                >
-                  {hop === "price" ? "ใส่ราคา" : hopLabelFor(row, hop)}
-                </Button>
-                {/* ⭐ สายเอกสารมีทางจบที่สองของฝ่าย: "ปฏิเสธ" + เหตุผลบังคับ (ม-85 ·
-                    คำตาม ม-89) — วางคู่ปุ่มส่งเพราะเป็นคำตอบของจังหวะเดียวกัน
-                    · เส้นขอบแดง ไม่ใช่ปุ่มทึบ — ทางรองที่ต้องเห็น ไม่ใช่ทางหลัก */}
-                {hop === "ready" && isDocLineKind(row.lineKind) && (
-                  <Button
-                    tone="danger" variant="outline" disabled={busy}
-                    onClick={() => onHop?.(row, "refuse")}
-                  >
-                    {hopLabelFor(row, "refuse")}
-                  </Button>
-                )}
-              </div>
-            )}
+      {pending.map(({ row, stage }) => (
+        <div key={row.id} className={styles.row}>
+          <div className={styles.label}>
+            <strong>{row.label}</strong>
+            <span className={styles.stage}>{ROW_STAGE_LABELS[stage]}</span>
           </div>
-        );
-      })}
+          {/* ⚠️ ปุ่ม/ป้าย "รอใคร" มาจาก RowStepActions ก้อนเดียว — ฝั่งที่ไม่ใช่
+              ตาตัวเองเห็นป้ายว่ารอใคร ไม่ใช่ปุ่มจาง ๆ (กับดักที่แผนบันทึกไว้) */}
+          <RowStepActions
+            row={row} canDept={canDept} canRequester={canRequester}
+            busy={busy} onHop={onHop} onPrice={onPrice}
+          />
+        </div>
+      ))}
     </div>
   );
 }

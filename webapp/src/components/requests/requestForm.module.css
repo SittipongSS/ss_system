@@ -5,15 +5,6 @@
 /* ข้อความช่วยเหลือใต้ช่องกรอก (globals.css ไม่ได้ให้สไตล์ <small> ใน .form-group) */
 .hint { color: var(--text-3); }
 
-/* แถวติ๊ก "งานด่วน" — ให้เส้นฐานตรงกับช่องข้าง ๆ ที่มี label อยู่ด้านบน */
-.checkRow {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-}
-.checkLabel { font-size: var(--fs-7); }
-
 /* ป้ายชื่อช่องที่ไม่มี input ให้ผูก htmlFor ได้ (SearchableSelect ไม่รับ prop `id`)
    — ก่อนหน้านี้เขียน <label htmlFor="req-deal"> ทับไว้ ทั้งที่ไม่มี element ไอดีนั้น
    จริง ผลคือคลิกป้ายแล้วโฟกัสไม่ไปไหน และ screen reader ประกาศป้ายที่ชี้ที่ว่าง ·
@@ -195,9 +186,13 @@
 /* ── ฝ่ายผู้รับ: ปุ่มเรียงกัน ไม่ใช่ดรอปดาวน์ ────────────────────────────
    คำถามแรกของฟอร์มและมีสามตัวเลือก — ดรอปดาวน์ซ่อนจำนวนไว้จนกว่าจะกด ทำให้
    คำถามแรกดูเหมือนช่องเปล่า · ฝ่ายที่ยังไม่เปิดอยู่ในลิสต์เดียวกันแบบจาง */
+/* ⚠️ **กริด ไม่ใช่ flex-wrap** (มติผู้ใช้ 2026-08-09) — ของเดิม `flex: 1 1 8rem`
+   ทำให้ตัวที่ตกลงบรรทัดใหม่ (FN บนจอแนวตั้ง) ยืดเต็มแถวคนเดียว ⇒ อ่านเหมือน
+   "ฝ่ายนี้สำคัญกว่า" ทั้งที่มันเป็นตัวที่ยังเปิดใช้ไม่ได้ด้วยซ้ำ
+   · auto-fit + minmax = ทุกใบกว้างเท่ากันเสมอ ไม่ว่าจะพับกี่แถว */
 .deptPicker {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-2);
 }
 
@@ -206,7 +201,6 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
-  flex: 1 1 8rem;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -312,11 +306,28 @@
 }
 
 .pdrSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   font-size: var(--fs-5);
   font-weight: var(--fw-semibold);
   cursor: pointer;
 }
+
+/* ⚠️ ตัวนับชิดขวาแต่เว้นที่ให้ลูกศรของ <details> — `list-style` ของ summary อยู่
+   ซ้ายสุด ถ้าใช้ margin-left:auto กับตัวนับอย่างเดียวมันจะชนขอบการ์ดพอดี */
+.pdrCount {
+  margin-left: auto;
+  margin-right: var(--space-1);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ครบทั้งส่วนแล้ว — เขียว ไม่ใช่ accent เพราะมันคือ "ผ่านแล้ว" ไม่ใช่ "กำลังเลือกอยู่" */
+.pdrCount[data-done] { color: var(--green); }
 
 .pdrSummary:hover { color: var(--accent-ink); }
 
@@ -329,16 +340,47 @@
   padding-top: var(--space-3);
 }
 
-/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย */
+/* บล็อกบรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น จำนวนก้อนมาจากใบสั่งขาย
+   ⚠️ **ไม่มีแถบสีซ้าย** (มติผู้ใช้ 2026-08-09) — แถบ accent หนา 3px อ่านเหมือน
+   "ก้อนนี้สำคัญ/ถูกเลือกอยู่" ทั้งที่ทุกก้อนเท่ากัน · ตัวแบ่งคือป้ายเลขมุมซ้ายแทน */
 .briefCard {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-ink);
   border-radius: var(--radius);
   background: var(--panel-2);
+}
+
+/* หัวก้อน: ป้ายเลข + ชื่อเรียก — เลขคือสิ่งที่คนใช้อ้างกัน ("ก้อนที่ 2 เอาโทนอุ่นกว่านี้") */
+.briefHead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* ⚠️ สีอ่อนของ accent ไม่ใช่เทา — ถอดแถบสีซ้ายออกแล้วทั้งบล็อกกลายเป็นเทาล้วน
+   จนสายตาไม่มีจุดเกาะว่าก้อนใหม่เริ่มตรงไหน (ผู้ใช้ทักว่า "สีหายมั้ย") · ป้ายเลข
+   จึงถือสีไว้แทน — จุดเล็กที่มีสี อ่านเป็น "ลำดับ" ไม่ใช่ "ก้อนนี้สำคัญกว่า" */
+.briefNo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.briefTitle {
+  min-width: 0;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* PDR แบบอ่าน — คู่ป้าย/ค่า อ่านเร็วกว่าย่อหน้า และช่องที่ไม่ได้กรอกถูกตัดทิ้ง
@@ -381,3 +423,59 @@
 /* เลยกำหนดแล้ว — สีบอกความเร่งด่วน ไม่ใช่ตกแต่ง
    ⚠️ ไม่มีแถบสีที่ขอบแถว/การ์ด (ม-59) — ใช้สีตัวอักษรบนวันที่ที่เลยแล้วเท่านั้น */
 .overdue { color: var(--red); }
+
+/* ── แถบบริบท: ขั้นเลือกฝ่าย/หัวข้อที่ยุบแล้ว ───────────────────────────
+   มติผู้ใช้ 2026-08-09 — ขั้นที่ตัดสินใจไปแล้วเหลือหนึ่งบรรทัด: ฝ่าย · หัวข้อ ·
+   ป้ายบริบทของหัวข้อ (ประเภทดีล/ขั้นในไทม์ไลน์) · ปุ่มเปลี่ยนชิดขวา
+   ⚠️ ไม่ใช่หัวการ์ด — มันอยู่ **ในฟอร์ม** และเลื่อนไปกับเนื้อ เพราะเป็นสิ่งที่
+   ผู้ใช้เลือกเอง ไม่ใช่ชื่อหน้า (ชื่อหน้าคือ "เปิดคำร้อง" ที่หัว Workspace) */
+.ctxBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+/* รหัสฝ่ายใช้สีของ "ของกลางที่อ่านเป็นรหัส" ชุดเดียวกับป้ายฝ่ายในคิวคำร้อง */
+.ctxDept {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  color: var(--teal);
+  border: 1px solid var(--teal);
+  background: var(--teal-soft);
+  border-radius: var(--radius);
+  padding: var(--space-0-5) var(--space-2);
+}
+
+.ctxKind { font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text-1); }
+
+/* ป้ายบริบท — บอกว่าใบนี้เกาะอะไรอยู่ ไม่ใช่ปุ่ม จึงไม่มี hover/cursor */
+.ctxTag {
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2-5);
+}
+
+.ctxAction { margin-left: auto; }
+
+/* ส่วนของ PDR ในโหมดราง — ไม่มีลิ้นชักซ้อน (รางเลือกส่วนให้แล้ว) */
+/* โหมดราง — ไม่มีกรอบ/พื้นของตัวเอง (รางเป็นการ์ดให้แล้ว) */
+.pdrPlain { display: flex; flex-direction: column; gap: var(--space-2); }
+.pdrFlat { display: flex; flex-direction: column; gap: var(--space-3); }
+.pdrFlatTitle { margin: 0; font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text); }
+
+/* ช่องเลือก + ปุ่มยืนยันเพิ่ม (สินค้า FG) — ปุ่มไม่ยืด ช่องกินที่เหลือ
+   ⚠️ ปุ่มชิดบนไม่ได้ ต้อง `align-items: flex-start` เพราะช่องค้นหาสูงกว่าปุ่ม */
+/* แถว "เลือกแล้วกดเพิ่ม" — ตัวเลือกยืดเต็ม ปุ่มยืนขวา
+   ⚠️ `stretch` ไม่ใช่ `flex-start` — ตัวเลือกสูง 36 แต่ปุ่ม sm สูง 30 ⇒ ขอบล่าง
+   เหลื่อมกัน 6px มองออกชัดตอนอยู่ติดกัน (ผู้ใช้ทักมา 2026-08-09) */
+.pickAdd { display: flex; align-items: stretch; gap: var(--space-2); }
+.pickAdd > :first-child { flex: 1; min-width: 0; }

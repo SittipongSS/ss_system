@@ -3,6 +3,16 @@ import { canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUse
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
+// ── ระบบที่ยังไม่เปิดใช้ ────────────────────────────────────────────────
+//
+// `disabled: true` = **จางและกดไม่ได้ ไม่ใช่ซ่อน** (แพตเทิร์นเดียวกับปุ่มเลือกฝ่าย
+// ที่ยังไม่เปิดใน `RequestForm`) · ซ่อนเมื่อไร คนที่เคยใช้ระบบนั้นจะนึกว่าสิทธิ์ตัวเอง
+// หาย แล้วเดินมาถามผู้ดูแลทีละคน — การ์ดจาง ๆ ที่เขียนว่า "ยังไม่เปิดใช้" ตอบแทนได้เอง
+//
+// ⚠️ ด่านนี้เป็น **เปลือก UI เท่านั้น** ไม่ใช่ด่านสิทธิ์ — พิมพ์ URL ตรง ๆ ยังเข้าได้
+// ถ้าวันไหนต้องปิดจริง ต้องปิดที่ `lib/permissions.js` หรือชั้น API ไม่ใช่ที่ไฟล์นี้
+export const SYSTEM_DISABLED_NOTE = 'ยังไม่เปิดใช้';
+
 export const SYSTEM_CATALOG = [
   {
     key: 'salesplan',
@@ -48,6 +58,7 @@ export const SYSTEM_CATALOG = [
     // ⚠️ canViewProduction แคบ staff เหลือ PC/PD/WH/QC — **ฝ่าย TS ไม่เห็น**
     //    เพราะเป็นคนละทีมปฏิบัติงาน (มติผู้ใช้ 2026-07-31)
     isVisible: (user) => canViewProduction(user),
+    disabled: true, // ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) — ดูหมายเหตุที่ SYSTEM_DISABLED_NOTE
     // ⭐ X-1: ลงที่ **ภาพรวม** ทุกคน — หน้าเดียวที่ตอบพร้อมกันว่าต้องตัดสินใจอะไรก่อน
     // (สำหรับ PC/PD) และโรงงานจะผลิตอะไรวันไหน (สำหรับคลัง/QC/ฝ่ายขาย) แล้วค่อยกด
     // ต่อไปคิว/บอร์ดจากตรงนั้น · เลิกแยกปลายทางตามสิทธิ์เพราะทั้งสองกลุ่มเริ่มที่
@@ -66,6 +77,7 @@ export const SYSTEM_CATALOG = [
     description: 'ไซต์ติดตั้ง เครื่องกระจายกลิ่น และตารางเข้าบริการของฝ่ายเทคนิค',
     icon: Wrench,
     isVisible: (user) => canViewService(user),
+    disabled: true, // ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) — ดูหมายเหตุที่ SYSTEM_DISABLED_NOTE
     // ⭐ X-1: ลงที่ **ภาพรวม** — ตอบ "มีอะไรค้าง / วันนี้ใครไปไหน / ไซต์ไหนกำลังจะ
     // มีปัญหา" ในหน้าเดียว แล้วค่อยกดต่อไปตาราง · **คนละหน้ากับภาพรวมของวางแผนผลิต**
     // ตามมติแยกทีม (TS ≠ PD) — ไม่มีปฏิทินรวมสองระบบ
@@ -103,6 +115,7 @@ export const SYSTEM_CATALOG = [
     description: 'ติดตามงาน การประชุม และเป้าหมาย Rock & Improve ขององค์กร',
     icon: Briefcase,
     isVisible: (user) => canAccessMgmt(user),
+    disabled: true, // ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) — ดูหมายเหตุที่ SYSTEM_DISABLED_NOTE
     landing: () => '/mgmt',
   },
   {
@@ -137,5 +150,7 @@ export function systemLandingForUser(systemOrKey, user) {
 
 export function recentSystemForUser(user, storedKey) {
   const system = getSystemByKey(storedKey);
-  return system?.isVisible(user) ? system : null;
+  // ระบบที่ปิดอยู่ต้องไม่ขึ้นการ์ด "ทำงานต่อ" — คนที่ใช้ระบบนั้นเป็นระบบสุดท้ายก่อนปิด
+  // จะเปิดหน้าแรกมาเจอปุ่มใหญ่ที่กดไปแล้วขัดกับการ์ดจาง ๆ ข้างล่างที่บอกว่ายังไม่เปิด
+  return system?.isVisible(user) && !system.disabled ? system : null;
 }

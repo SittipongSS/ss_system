@@ -4,9 +4,9 @@
 // ⭐ **อ่านครั้งเดียวรู้ทั้งใบ** — เดิมหน้ารายละเอียดมีแต่การ์ดรายแถวเรียงลงมา ⇒ ใบที่มี
 // 3 บรีฟ × 2 direction = 6 การ์ด ต้องไถทั้งหน้าถึงจะตอบได้ว่าบรีฟไหนยังไม่มีอะไรเลย
 //
-// ⭐ **ตารางนี้ไม่มีปุ่ม** — ปุ่มของแต่ละก้าวอยู่ท้ายเธรดที่เดียว (NextStepBar · ม-36 ก)
-// ที่เดียว · ใส่ปุ่มซ้ำที่นี่จะได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน ซึ่งเป็นโรค
-// เดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
+// ⭐ **ก้าวถัดไปอยู่ติดแถว direction** (ม-94 — มติเดียวกับสายเอกสาร/สูตร) —
+// คอลัมน์ท้ายรับปุ่มผ่าน `renderStep` (RowStepActions ก้อนเดียวกับแถบท้ายเธรด —
+// ย้าย ไม่ก๊อป: โครง panel แถบท้ายเธรดเงียบทั้งใบ ดูเปลือก /requests/[id])
 //
 // ⚠️ การจัดกลุ่ม/นับ อยู่ที่ `lib/requests/briefBoard.js` ทั้งหมด — กฎที่ตั้งไว้หลัง
 // บั๊กรางซ้ำ (#1033): ประกอบ array ของแถวใน JSX เมื่อไร CI จะมองไม่เห็น
@@ -23,7 +23,7 @@ const qty = (n) => Number(n).toLocaleString("th-TH");
  * `briefBoardTotals` จากก้อนเดียวกัน ⇒ ตัวเลขข้างบนกับตารางข้างล่างขัดกันไม่ได้
  * เชิงโครงสร้าง · ประกอบสองรอบเมื่อไรก็เปิดทางให้สองที่นับคนละแบบ
  */
-export default function BriefBoard({ groups = [] }) {
+export default function BriefBoard({ groups = [], renderStep = null }) {
   // ยังไม่มีทั้งบรีฟและ direction = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง
   if (!groups.length) return null;
 
@@ -31,20 +31,21 @@ export default function BriefBoard({ groups = [] }) {
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
       <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
-      <TableScroll surface="embedded" minWidth={640}>
+      <TableScroll surface="embedded" minWidth={renderStep ? 780 : 640}>
         <table>
           <thead>
             <tr>
               <th className={styles.colName}>กลิ่น</th>
               <th className={styles.colOutcome}>ผลลัพธ์</th>
               <th className={styles.colStage}>สถานะ</th>
+              {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
           <tbody>
             {groups.map((g) => (
               <Fragment key={g.id || "orphan"}>
                 <tr className={styles.groupRow}>
-                  <th scope="rowgroup" colSpan={3}>
+                  <th scope="rowgroup" colSpan={renderStep ? 4 : 3}>
                     {g.label}
                     {g.brief && <span className={styles.groupBrief}>{g.brief}</span>}
                   </th>
@@ -54,7 +55,7 @@ export default function BriefBoard({ groups = [] }) {
                     "ยังไม่ได้ลงมือ" คือข้อมูลที่คนเปิดใบมาต้องเห็นก่อนอย่างอื่น */}
                 {!g.directions.length ? (
                   <tr>
-                    <td colSpan={3} className={styles.untouched}>ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td>
+                    <td colSpan={renderStep ? 4 : 3} className={styles.untouched}>ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td>
                   </tr>
                 ) : g.directions.map((d) => (
                   <tr key={d.id}>
@@ -79,6 +80,7 @@ export default function BriefBoard({ groups = [] }) {
                       )}
                     </td>
                     <td><StatusBadge tone={d.stageTone} label={d.stageLabel} /></td>
+                    {renderStep && <td className={styles.stepCell}>{renderStep(d)}</td>}
                   </tr>
                 ))}
               </Fragment>

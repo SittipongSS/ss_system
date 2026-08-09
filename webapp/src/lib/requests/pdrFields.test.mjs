@@ -6,8 +6,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PDR_COLUMNS, PDR_FIELDS, PDR_SECTIONS,
-  pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrSectionRows,
+  PDR_COLUMNS, PDR_FIELDS, PDR_FRAGRANCE_OIL_CODE, PDR_SECTIONS,
+  pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrIsArrayField,
+  pdrSectionGroups, pdrSectionRows, pdrValuesFrom,
 } from './pdrFields.js';
 import { normalizePdr } from './pdr.js';
 import { renderPdrDocument } from './pdrDocument.js';
@@ -17,7 +18,9 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   const { columns } = normalizePdr({});
   assert.deepEqual([...PDR_COLUMNS].sort(), Object.keys(columns).sort());
   // 29 ช่องของ 0214/0218 + 5 ชื่อผู้เซ็นของ 0221 (ม-45)
-  assert.equal(PDR_COLUMNS.length, 34);
+  // + 3 ของ 0227: หมวดสินค้าหลายรายการ · "อื่น ๆ" ของบรรจุภัณฑ์และเอกสาร
+  // + 1 ของ 0228: หัวน้ำหอมนำไปใช้กับอะไร
+  assert.equal(PDR_COLUMNS.length, 38);
 });
 
 test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {
@@ -314,4 +317,71 @@ test('2.9 Value Proposition เป็น "ติ๊กแล้วเขีย�
     assert.equal(f.type, 'tick', key);
     assert.equal(f.group, 'Value Proposition', key);
   }
+});
+
+// ── หมวดสินค้า: รหัสในฐานข้อมูล ชื่อบนจอ ─────────────────────────────────
+//
+// 🐞 ผู้ใช้ทักมาเอง (2026-08-09): เพิ่มหมวดในฟอร์มแล้วป้ายขึ้น "01-005 อโรม่าออยล์"
+// แต่จอสรุปกับเอกสารพิมพ์ "01-005 · 01-003" เปล่า ๆ เพราะทะเบียนหมวดไม่ได้เดินทาง
+// ไปถึงสองที่นั้น ⇒ ทะเบียนต้องอยู่ใน `pdrContext` ตัวกลาง ไม่ใช่ต่างจอต่างเดินสาย
+const CATEGORY_REGISTRY = [
+  { mainCategoryCode: '01', typeCode: '005', nameTh: 'อโรม่าออยล์' },
+  { mainCategoryCode: '01', typeCode: '003', nameTh: 'เทียนหอม' },
+];
+
+test('⭐ ป้ายหมวดสินค้ามาจากทะเบียนใน context — ไม่ใช่รหัสเปล่า', () => {
+  const field = PDR_FIELDS.find((f) => f.key === 'productKinds');
+  const request = { pdrProductKinds: ['01-005', '01-003'] };
+  assert.equal(
+    pdrFieldText(field, request, pdrContext({ categories: CATEGORY_REGISTRY })),
+    '01-005 อโรม่าออยล์ · 01-003 เทียนหอม',
+  );
+  // ⚠️ ไม่มีทะเบียน = พิมพ์รหัสดิบ ไม่ใช่ค่าว่าง — ใบที่มีข้อมูลต้องอ่านออกเสมอ
+  assert.equal(pdrFieldText(field, request, {}), '01-005 · 01-003');
+});
+
+test('⭐ ช่อง legacy ที่ว่างต้องไม่ติดไปบนกระดาษ — ทั้งแบบรายแถวและแบบจัดกลุ่ม', () => {
+  const section = PDR_SECTIONS.find((s) => s.key === 'customer');
+  const legacyField = PDR_FIELDS.find((f) => f.key === 'productKind');
+  assert.equal(legacyField.legacy, true, 'productKind ต้องยังเป็นช่อง legacy');
+
+  const empty = { pdrProductKinds: ['01-005'] };
+  const groupTitles = (request) => pdrSectionGroups(section, request, {})
+    .flatMap((g) => g.fields.map((f) => f.key));
+  assert.ok(!groupTitles(empty).includes('productKind'), 'ใบใหม่ต้องไม่มีบรรทัด legacy');
+  assert.ok(
+    !pdrSectionRows(section, empty, { includeEmpty: true })
+      .some(([label]) => label === legacyField.label),
+  );
+
+  // ใบเก่าที่มีค่าจริงต้องยังอ่านได้ทั้งสองทาง
+  const old = { pdrProductKind: 'ครีมบำรุงผิว' };
+  assert.ok(groupTitles(old).includes('productKind'));
+  assert.ok(
+    pdrSectionRows(section, old, { includeEmpty: true })
+      .some(([label, value]) => label === legacyField.label && value === 'ครีมบำรุงผิว'),
+  );
+});
+
+test('🐞 ช่องที่เก็บเป็นอาเรย์ต้องกลับมาเป็นอาเรย์ตอนเปิดโหมดแก้ — ไม่ใช่สตริง', () => {
+  // ของจริง: `pdrValuesFrom` รู้จักแต่ `multi` ⇒ ช่องชนิด `categories` ถูก String()
+  // ⇒ ฟอร์มเรียก `.map()` บนสตริง ⇒ **กดแก้แล้วเข้าหมวดข้อมูลลูกค้า จอพังทั้งหมวด**
+  const row = { pdrProductKinds: ['01-005', '01-003'], pdrDocuments: ['coa'] };
+  const values = pdrValuesFrom(row);
+  for (const field of PDR_FIELDS.filter((f) => f.column && pdrIsArrayField(f))) {
+    assert.ok(Array.isArray(values[field.key]), `${field.key} ต้องเป็นอาเรย์`);
+  }
+  assert.deepEqual(values.productKinds, ['01-005', '01-003']);
+  // ใบเก่าที่คอลัมน์ยังว่าง (ก่อน mig 0227) ต้องได้อาเรย์ว่าง ไม่ใช่ ""
+  assert.deepEqual(pdrValuesFrom({}).productKinds, []);
+});
+
+test('⭐ เลือกหมวดหัวน้ำหอมแล้วช่อง "นำไปใช้กับอะไร" ต้องโผล่ — หมวดอื่นต้องไม่โผล่', () => {
+  // โน้ตสีแดงข้อ 1.11 บนกระดาษเคยเป็นแค่คำขยายป้าย ไม่มีที่ให้ตอบ (มติผู้ใช้ 2026-08-09)
+  const field = PDR_FIELDS.find((f) => f.key === 'fragranceUse');
+  assert.equal(pdrFieldVisible(field, { productKinds: [PDR_FRAGRANCE_OIL_CODE] }), true);
+  assert.equal(pdrFieldVisible(field, { productKinds: ['01-003'] }), false);
+  // เลือกหลายหมวดโดยมีหัวน้ำหอมอยู่ด้วย ก็ต้องโผล่
+  assert.equal(pdrFieldVisible(field, { productKinds: ['01-003', PDR_FRAGRANCE_OIL_CODE] }), true);
+  assert.equal(pdrFieldVisible(field, {}), false);
 });

@@ -29,10 +29,7 @@ import {
   numberingPatternExample,
   resolveDocumentAccentKey,
 } from "@/lib/documentStandards";
-import { buildQuotationMasterPreview } from "@/lib/sales/quotationMasterTemplate";
-import { renderQuotationMasterDocumentHTML } from "@/lib/sales/quotationMasterDocument";
-import { buildBillPrintHTML } from "@/lib/tax/billPrint";
-import { buildGanttPrintHTML } from "@/lib/pm/ganttPrint";
+import { buildStandardPreviewHTML } from "@/lib/documents/standardPreview";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -97,78 +94,17 @@ function AccentMark({ accentKey, label = true, className = "" }) {
   );
 }
 
-// โครงการตัวอย่างของพรีวิวเอกสารไทม์ไลน์ — วันที่ชุดเดียวกับตัวอย่างเลขที่ (20/07/2569)
-// timelineDocBase เว้นว่างไว้ตั้งใจ: พรีวิวโชว์เลขที่ "ตอนออก" (Rev 0) ตรงตามรูปแบบที่
-// กำลังแก้อยู่ ไม่ต้องประกอบเลข Rev ใหม่
-const timelinePreviewProject = (standard) => ({
-  id: "timeline-preview",
-  code: "PJ-26070001",
-  rev: 0,
-  timelineDocBase: "",
-  timelineDocNumber: numberingPatternExample(standard?.numberingPattern, "0") || "PT-26070001-0",
-  name: "น้ำหอม Eau de Parfum 50 ml",
-  productName: "น้ำหอม Eau de Parfum 50 ml",
-  customerName: "บริษัท ตัวอย่าง จำกัด",
-  aeOwner: "ตัวอย่าง ผู้ดูแล",
-  preparedBy: "ตัวอย่าง ผู้ประสานงาน",
-  aeSupervisor: "ตัวอย่าง ผู้ตรวจสอบ",
-  startDate: "2026-07-20",
-  dueDate: "2026-09-14",
-  categoryFallback: "น้ำหอม / Eau de Parfum",
-  metadata: { brand: "EXAMPLE", quotationNumber: "QT-26070001-0", poNumber: "PO-2607-001" },
-  projectProducts: [],
-  tasks: [
-    { id: "t1", phase: "เตรียมงาน", name: "ยืนยันบรีฟและกลิ่นตัวอย่าง", role: "AC", status: "Completed", startDate: "2026-07-20", finishDate: "2026-07-31" },
-    { id: "t2", phase: "เตรียมงาน", name: "อนุมัติสูตร", role: "RD", status: "Completed", startDate: "2026-08-01", finishDate: "2026-08-07", isMilestone: true },
-    { id: "t3", phase: "ผลิต", name: "สั่งวัสดุบรรจุ", role: "PC", status: "In Progress", startDate: "2026-08-08", finishDate: "2026-08-28" },
-    { id: "t4", phase: "ผลิต", name: "ผลิตและบรรจุ", role: "PD", status: "Pending", startDate: "2026-08-29", finishDate: "2026-09-14" },
-  ],
-});
-
 // พรีวิวเอกสารจริง — เรนเดอร์ด้วยเครื่องยนต์ตัวเดียวกับที่พิมพ์/ตรึง (ไม่ใช่กล่อง CSS
 // จำลองแบบเดิมที่โชว์คนละสีคนละสัดส่วนกับใบจริง) ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
 // จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที
+//
+// ⚠️ ใบตัวอย่างกับการเลือกเครื่องยนต์อยู่ที่ `lib/documents/standardPreview` ที่เดียว —
+// หน้าเต็มจอเรียกตัวเดียวกัน เพิ่มชนิดเอกสารใหม่จึงแก้ไฟล์เดียว
 function LiveDocumentPreview({ documentKey, standard, className = "" }) {
-  const html = useMemo(() => {
-    if (documentKey === "projectTimeline") {
-      // ส่งมาตรฐานเป็น activeStandard (ไม่ใช่ timelineStandardSnapshot บนตัวอย่าง)
-      // เพื่อให้ร่างที่กำลังแก้มีผลกับพรีวิวทันที
-      return buildGanttPrintHTML(timelinePreviewProject(standard), null, standard, { toolbar: false });
-    }
-    if (documentKey === "exciseTaxNotice") {
-      return buildBillPrintHTML({
-        id: "TAX-PREVIEW",
-        taxNoticeNumber: numberingPatternExample(standard?.numberingPattern, "0") || "ET-26070001-0",
-        taxNoticeStandardSnapshot: standard,
-        quotationRef: "QT-26070001-0",
-        poReference: "SO-26070001-0",
-        customerName: "บริษัท ตัวอย่าง จำกัด",
-        customerTaxId: "0100000000001",
-        createdAt: "2026-07-20T09:00:00+07:00",
-        deliveryDate: "2026-08-20",
-        items: [{
-          id: "preview-line-1",
-          quantity: 100,
-          totalTax: 880,
-          product: {
-            fgCode: "PF-EDP-050-001",
-            brand: "EXAMPLE",
-            productDescription: "น้ำหอม Eau de Parfum 50 ml",
-            retailPriceIncVat: 107,
-            retailPriceExVat: 100,
-          },
-        }],
-      }, {
-        name: "บริษัท ตัวอย่าง จำกัด",
-        taxId: "0100000000001",
-        address: "กรุงเทพมหานคร",
-        // company/activeStandard ปล่อยว่าง: มาตรฐานมากับ taxNoticeStandardSnapshot แล้ว
-        // และบล็อกบริษัทตกไปใช้ค่าที่เผยแพร่ · ส่ง toolbar:false เป็นตัวสุดท้าย
-      }, undefined, null, { toolbar: false });
-    }
-    const model = buildQuotationMasterPreview("standard", "approved", "v4", documentKey, { standard });
-    return renderQuotationMasterDocumentHTML(model, { toolbar: false });
-  }, [documentKey, standard]);
+  const html = useMemo(
+    () => buildStandardPreviewHTML(documentKey, standard),
+    [documentKey, standard],
+  );
   return (
     <iframe
       className={`${styles.livePreview} ${className}`.trim()}
@@ -419,13 +355,12 @@ export default function DocumentStandardsPage() {
                   <h2 id="live-preview-title">ตัวอย่างเอกสารจริง · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
                   <p>เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์ — สิ่งที่เห็นตรงนี้คือสิ่งที่ออกจากเครื่องพิมพ์</p>
                 </div>
-                {/* หน้าเต็มจอใช้เครื่องยนต์ใบเสนอราคา จึงมีเฉพาะ QT/SO — ใบภาษีและ
-                    ไทม์ไลน์ดูจากพรีวิวในหน้านี้ (เรนเดอร์ด้วยเครื่องยนต์ของตัวเอง) */}
-                {selectedKey === "quotation" || selectedKey === "salesOrder" ? (
-                  <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
-                    <Expand size={14} /> เปิดเต็มจอ
-                  </Link>
-                ) : null}
+                {/* 🐞 เดิมปุ่มนี้ขึ้นเฉพาะ QT/SO เพราะหน้าเต็มจอมีเครื่องยนต์ใบเสนอราคา
+                    ของตัวเอง ⇒ อีกสามชนิดดูเต็มจอไม่ได้เลย (ผู้ใช้ทักเอง) · ตอนนี้หน้านั้น
+                    เรียก `buildStandardPreviewHTML` ตัวเดียวกับพรีวิวในหน้านี้ จึงครบทุกชนิด */}
+                <Link className="btn ghost sm" href={`/settings/document-standards/preview?doc=${selectedKey}`}>
+                  <Expand size={14} /> เปิดเต็มจอ
+                </Link>
               </header>
               <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} />
             </section>

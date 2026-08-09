@@ -1235,6 +1235,28 @@ button, select, input, textarea {
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
 .topnav-sys-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); background: var(--accent-soft); }
 
+/* ── ระบบ/เมนูที่ยังไม่เปิดใช้ — จางและกดไม่ได้ ไม่ใช่ซ่อน ────────────────
+   มติผู้ใช้ 2026-08-09 · ตัว is-disabled เรนเดอร์เป็น <span> อยู่แล้ว (ไม่ใช่ <a>)
+   ⚠️ `pointer-events: none` ที่นี่เป็นแค่ชั้นสอง — กันเมาส์ไม่ให้ติด hover state
+   ของเพื่อนบ้าน ไม่ใช่ตัวกันการกด · ตัวกันจริงคือการไม่เรนเดอร์ลิงก์ตั้งแต่ต้น */
+.topnav-sys-item.is-disabled,
+.topnav-item.is-disabled,
+.mobile-nav-card.is-disabled,
+.mbn-item.is-disabled {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* ป้าย "ยังไม่เปิดใช้" ท้ายรายการในเมนูสลับระบบ — รายการนั้นจางอยู่แล้วแต่
+   ความจางอย่างเดียวบอกไม่ได้ว่า "ยังไม่เปิด" หรือ "สิทธิ์ไม่ถึง" ซึ่งคนละเรื่องกัน */
+.nav-disabled-note {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  white-space: nowrap;
+}
+
 /* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก
    ⚠️ นี่คือการปรับ *สีตัวอักษรตามพื้นผิว* ไม่ใช่การนิยาม ghost ใหม่ — รูปทรง
    (ขอบ/พื้น/เงา) ยังมาจาก `.btn.ghost` ที่เดียว แถบนี้เป็นกรมท่าทั้งสองธีม
@@ -1902,6 +1924,23 @@ h1, h2, h3, h4, h5, h6 {
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
   box-shadow: var(--shadow-md);
 }
+/* การ์ดระบบที่ยังไม่เปิดใช้ — ใช้ --op-muted ไม่ใช่ --op-disabled เพราะการ์ดนี้มี
+   คำอธิบายเป็นย่อหน้าที่ยังต้องอ่านออก (0.45 ทำให้ตัวอักษร --text-2 ตกเกณฑ์คอนทราสต์)
+   ส่วนเมนูบนแถบเป็น "ตัวควบคุม" คำเดียว จึงใช้ --op-disabled ตามเพื่อนบ้านทั้งระบบ */
+.home-system-card.is-disabled {
+  opacity: var(--op-muted);
+  cursor: not-allowed;
+}
+/* การ์ดนี้เป็น <div> แล้ว แต่ .home-system-card:hover ยังจับได้อยู่ — ต้องปิดเอง
+   ไม่งั้นการ์ดที่กดไม่ได้ยังเด้งขึ้นตอนเอาเมาส์ไปวาง = คำเชิญให้กด */
+.home-system-card.is-disabled:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--panel); /* ค่าเดียวกับ .glass-panel — คืนพื้นเดิม ไม่ใช่ล้างทิ้ง */
+  box-shadow: var(--glass-shadow);
+}
+.home-system-card.is-disabled .home-system-icon { background: var(--text-3); }
+.home-system-card.is-disabled .home-system-enter { color: var(--text-3); font-weight: var(--fw-semibold); }
 .home-system-icon {
   width: 48px;
   height: 48px;
@@ -3461,6 +3500,16 @@ button.ui-kpi-card { cursor: pointer; }
 }
 .empty-state .es-icon { opacity: 0.45; }
 .empty-state .es-action { margin-top: var(--space-1); }
+/* 🐞 บรรทัดขยายใต้หัวข้อ — `<small>` เป็น inline ⇒ ไหลต่อท้ายหัวข้อเป็นย่อหน้าเดียว
+   อ่านออกมาว่า "ยังไม่มี direction จากฝ่าย RDRD จะส่งกลิ่นเข้ามา…" (ผู้ใช้เห็นเอง
+   2026-08-09) · ทุกสถานะว่างในระบบเขียนคู่ "หัวข้อ + <small>ขยาย" แบบเดียวกัน
+   จึงแก้ที่นิยามกลางที่เดียว ไม่ใช่ไล่ใส่ <br> รายจุด */
+.empty-state small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
 
 /* กล่องหมายเหตุประกอบหน้า (ไอคอน + ข้อความสั้น) — ใช้ร่วมกัน เช่น หน้าวันหยุด/แจ้งเตือน Chat */
 .info-note {
@@ -3605,7 +3654,15 @@ button.empty-state { width: 100%; font: inherit; }
 .form-grid.cols-2 > label .date-input-wrap,
 .form-grid.cols-2 > label > input,
 .form-grid.cols-2 > label > textarea { width: 100%; }
+/* ช่องกรอกหนึ่งช่องในฟอร์ม (ป้ายบน + คอนโทรลล่าง) — `.form-field` คือชื่อกลาง
+   ส่วน `.deal-field` เป็นชื่อเดิมที่ฟอร์มดีลใช้อยู่ **นิยามเดียวกันบล็อกเดียว**
+   (กติกา "หนึ่ง pattern มีทรงเดียว" — ฟอร์มลีดเป็นผู้เรียกรายที่สอง ถ้าประกาศ
+   ชุดใหม่ของตัวเองเมื่อไร สองฟอร์มจะไหลออกจากกันแบบที่เคยเจอมาแล้ว)
+   ⚠️ ห้ามเพิ่มกฎให้ชื่อใดชื่อหนึ่งแยก — ต้องแก้ที่บล็อกนี้เท่านั้น */
+.form-field,
 .deal-field { display: flex; flex-direction: column; gap: var(--space-1-5); min-width: 0; }
+/* ช่องที่กินเต็มความกว้างของ grid แม่ (ใช้กับ .form-grid.cols-2 / pm-form-grid) */
+.form-field.span-2 { grid-column: 1 / -1; }
 /* แถวคู่ของฟอร์มดีล — กินเต็มความกว้างของ grid แม่ แล้วแบ่งซ้าย-ขวาเอง เพื่อให้คู่ที่
    ตั้งใจให้อยู่ด้วยกัน (เช่น วันที่เริ่ม/สิ้นสุด) ไม่หลุดคนละบรรทัดเวลาจำนวนช่องเปลี่ยน.
    [data-single] = แถวที่เหลือช่องเดียว (จำนวนคี่) ให้กินเต็มแถว ไม่ทิ้งรูข้าง ๆ.
@@ -3613,6 +3670,10 @@ button.empty-state { width: 100%; font: inherit; }
 .deal-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4-5); min-width: 0; }
 .deal-row[data-single] { grid-template-columns: 1fr; }
 @media (max-width: 560px) { .deal-row { grid-template-columns: 1fr; } }
+.form-field .ui-select,
+.form-field .date-input-wrap,
+.form-field > input,
+.form-field > textarea,
 .deal-field .ui-select,
 .deal-field .date-input-wrap,
 .deal-field > input,
@@ -3625,15 +3686,271 @@ button.empty-state { width: 100%; font: inherit; }
    หลวม ๆ จะแตกเป็นคนละ flex item แล้วดอกจัน/คำขยายตกไปอยู่คนละบรรทัด (ผู้ใช้
    ส่งภาพมา 2026-08-08: "ประเภทดีล" กับ * คนละบรรทัด) ⇒ ห่อป้ายทั้งก้อนด้วย
    span เดียวเสมอ */
+.form-field-label,
 .deal-field-label {
   display: flex;
   align-items: baseline;
   gap: var(--space-1);
   min-width: 0;
 }
+.form-field > small,
+.form-field-label .soft,
 .deal-field-label .soft { color: var(--text-3); font-weight: var(--fw-normal); }
 /* แถวป้ายที่มีคอนโทรลชิดขวา (เช่น สวิตช์ดีลเก่าที่แถวสถานะ) */
+.form-field-label.split,
 .deal-field-label.split { justify-content: space-between; gap: var(--space-2); }
+
+/* ── เกจของแท็บฟอร์ม (`lib/requests/formTabs`) ────────────────────────────
+   วงแหวนหน้าชื่อแท็บ = **ช่องบังคับ** ของแท็บนั้น · ตัวเลขข้างหลัง = ช่องที่กรอกแล้ว
+   ⚠️ สองอย่างนี้คนละความหมาย ห้ามยุบเป็นเลขเดียว — แบบฟอร์ม PDR 41 ช่อง
+   ไม่บังคับสักช่อง ถ้าเอามารวมเป็น % เดียว เกจจะขึ้น ~12% ทั้งที่ส่งได้แล้ว */
+.tab-meter {
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-full);
+  flex: none;
+  position: relative;
+  background: var(--panel-3);
+}
+.tab-meter::after {
+  content: "";
+  position: absolute;
+  inset: 3.5px;
+  border-radius: var(--radius-full);
+  background: var(--panel);
+}
+/* ครบแล้ว = ทึบเขียว · ยังขาด = วงแหวนเหลืองกลวง (ไม่ใช่แดง — กรอกยังไม่จบ
+   ไม่ใช่ความผิดพลาด กติกาเดียวกับข้อความ "ยังกรอกไม่ครบ") */
+.tab-meter[data-state="full"] { background: var(--green); }
+.tab-meter[data-state="full"]::after { background: var(--green); }
+.tab-meter[data-state="missing"] { background: var(--amber-soft); box-shadow: inset 0 0 0 1.5px var(--amber); }
+.tab-meter[data-state="missing"]::after { display: none; }
+.tab-count { font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* แถบสรุปทั้งใบ — อยู่ท้ายแถบแท็บ บอก "ช่องบังคับกี่/กี่"
+   ⚠️ ใช้ `.progress` ของกลาง ไม่ทำแถบใหม่ — แถบความคืบหน้าในระบบมีทรงเดียว
+   (กติกา "หนึ่ง pattern มีทรงเดียว") · ที่นี่แค่กำหนดความกว้างให้มันพอดีแถบแท็บ */
+.tab-overall { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; font-size: var(--fs-3); color: var(--text-3); }
+.tab-overall-seg { display: flex; gap: var(--space-0-5); }
+.tab-overall-seg > i {
+  width: 18px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.tab-overall-seg > i[data-ok] { background: var(--green); box-shadow: none; }
+
+/* ── ไฟล์ที่เลือกไว้ก่อนบันทึก (`ui/PendingFiles`) ──────────────────────────
+   ปุ่มแนบเป็นปุ่มเงียบ ไม่ใช่กล่องเส้นประเต็มแถว — ตอนสร้างของใหม่ ไฟล์เป็น
+   ของเสริม ไม่ใช่คำถามหลักของฟอร์ม (แพตเทิร์นเดียวกับโมดัลงาน) */
+.pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.pending-files-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  cursor: pointer;
+}
+.pending-files-add:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.pending-files-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pending-files-add:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.pending-files-add small { color: var(--text-3); font-size: var(--fs-3); }
+
+.pending-files-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; }
+.pending-files-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+  min-width: 0;
+}
+.pending-files-row:first-child { border-top: 0; }
+.pending-files-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ขนาดไฟล์ชิดขวาก่อนปุ่มถอด — ตัวเลขต้องเรียงกันเป็นคอลัมน์อ่านง่าย */
+.pending-files-size { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── รายการบรรทัดที่ยุบเมื่อกรอกแล้ว (`ui/EditableLineList`) ────────────────
+   แถวที่กรอกเสร็จยุบเหลือแถวเดียวกินเต็มความกว้าง — ที่กว้างคือเหตุผลที่เลือกแบบนี้
+   แทนรางข้าง (ราง 13rem ใส่ได้แค่ชื่อสั้น ๆ) · ใบที่กำลังกรอกกางเป็นการ์ดเต็ม */
+.line-list { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.line-list > * { align-self: stretch; }
+.line-list > button:last-child { align-self: flex-start; }
+.line-open {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  background: var(--panel-2);
+}
+.line-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.line-summary:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.line-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.line-summary:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+/* จุดสถานะหน้าแถว — เขียว = ครบ · เหลือง = ยังขาดของบังคับในแถวนั้น */
+.line-summary-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--amber); flex: none; }
+.line-summary-dot[data-ok] { background: var(--green); }
+.line-summary-main { font-weight: var(--fw-semibold); color: var(--text); white-space: nowrap; }
+/* คำขยาย (รายละเอียด/วันที่) หดได้ก่อนเพื่อน — ชื่อของต้องไม่โดนตัด */
+.line-summary-sub { color: var(--text-3); font-size: var(--fs-4); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-summary-open { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }
+.line-empty { margin: 0; font-size: var(--fs-5); color: var(--text-3); }
+
+/* ── รางเลือกส่วนสองชั้น (`ui/SectionRail`) ────────────────────────────────
+   ⚠️ จอแคบกลายเป็นแถบเลื่อนแนวนอน ไม่ยุบเป็นดรอปดาวน์ — ตัวเลขที่กรอกแล้วของ
+   ส่วนอื่นต้องยังเห็นอยู่ ไม่งั้นรางก็ไม่ต่างจากลิ้นชักเดิม */
+.section-rail {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  min-width: 0;
+  /* ⚠️ ต้องมีพื้นของตัวเอง — เนื้อในรางเป็นโหมด "แบน" (ไม่มีกล่องของตัวเองแล้ว)
+     ⇒ ปล่อยโปร่งจะเห็นพื้นหน้าทะลุขึ้นมา อ่านเป็น "รางมีพื้น เนื้อไม่มีพื้น"
+     คนละใบกัน (ผู้ใช้ทัก 2026-08-09) · รางกับเนื้อเป็นสองโซนของการ์ดใบเดียว */
+  background: var(--panel);
+}
+.section-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+.section-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.section-rail-item:hover:not([data-on]) { color: var(--text-2); background: var(--panel-3); }
+.section-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-rail-item[data-on] {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+/* ⚠️ ชื่อส่วนตัดคำได้ ไม่ใช่ ellipsis — "ข้อกำหนดด้านเอกสารและกฎระเบียบ" ยาวกว่าราง
+   ตัดท้ายทิ้งแล้วเหลือ "ข้อกำหนดด้านเอกสารแ…" ซึ่งอ่านไม่ออกว่าคนละส่วนกับ
+   "ข้อกำหนดผลิตภัณฑ์" (แถวเลื่อนแนวนอนบนจอแคบยังคง nowrap เพราะไม่มีเพดานความกว้าง) */
+.section-rail-label { min-width: 0; }
+.section-rail-count { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.section-rail-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--panel-3); flex: none; }
+.section-rail-dot[data-tone="some"] { background: var(--amber); }
+.section-rail-dot[data-tone="full"] { background: var(--green); }
+.section-rail-body { padding: var(--space-4); min-width: 0; }
+@media (max-width: 768px) {
+  .section-rail { grid-template-columns: 1fr; }
+  .section-rail-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  /* ⚠️ `flex: none` จำเป็น — แถวเลื่อนแนวนอนที่ปล่อยให้ลูกหดจะบีบทุกส่วนให้ทับกัน
+     แทนที่จะเลื่อน (เจอจริงบนจอ 375px) */
+  .section-rail-item { white-space: nowrap; flex: none; }
+  .section-rail-label { white-space: nowrap; overflow: visible; }
+  /* เกจรวมลงบรรทัดของตัวเอง — ไม่งั้นมันกินครึ่งแถวจนแท็บท้าย ๆ (ฟอร์ม PDR ·
+     กำหนด) ถูกดันออกนอกจอโดยไม่มีอะไรบอกว่ายังมีอยู่ */
+  .tab-overall { margin-left: 0; flex-basis: 100%; justify-content: flex-end; }
+}
+
+/* ── หัวคั่นโซนของฟอร์มยาว (`ui/FormZone`) ────────────────────────────────
+   ชื่อโซนตัวจิ๋วพิมพ์ใหญ่ + เส้นลากยาวจนสุดแถว — บอกจังหวะโดยไม่แย่งน้ำหนัก
+   จากป้ายของช่องกรอก · โน้ตท้ายเส้นใช้กับเงื่อนไขของทั้งโซน
+   ⚠️ ระยะห่างบนมากกว่าล่างโดยตั้งใจ — หัวโซนต้องเกาะกับของที่มันครอบ ไม่ใช่ลอยกลาง */
+.form-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-5) 0 var(--space-2);
+}
+.form-zone:first-child { margin-top: 0; }
+/* จอแคบ: โน้ตลงบรรทัดของตัวเอง — ไม่งั้นมันบีบเส้นคั่นจนเหลือขีดสั้น ๆ 15px
+   (วัดจริงที่ 375px) ซึ่งอ่านเหมือนความผิดพลาดมากกว่าเส้นแบ่ง */
+@media (max-width: 560px) {
+  .form-zone-note { flex-basis: 100%; }
+}
+.form-zone-title {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  margin: 0;
+}
+.form-zone-rule { flex: 1; height: 1px; background: var(--border); }
+.form-zone-note { font-size: var(--fs-3); color: var(--text-3); }
+
+/* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
+   หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
+   ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */
+/* ⚠️ ไหลตามเนื้อ ไม่ใช่กริดแบ่งเท่า ๆ กัน — จำนวนสมาชิกต่อกลุ่มไม่เท่ากันเลย
+   (ช่องทางลีด: Online 5 · Onsite 2 · Website 1 · หัวข้อคำร้อง: ทั่วไป 2 · งานพัฒนา 2)
+   กริดคอลัมน์เท่ากันจึงบีบกลุ่มใหญ่ให้ตกบรรทัด ขณะที่กลุ่มเล็กเหลือที่ว่างเกือบเต็ม
+   คอลัมน์ (มติผู้ใช้ 2026-08-09)
+   ⚠️ `.option-groups` เป็นชื่อกลางของ pattern นี้ ส่วน `.lead-channel-groups` เป็น
+   ชื่อเดิมในบล็อกนิยามเดียวกัน — ห้ามแยกไปประกาศชุดที่สอง (กฎ "หนึ่ง pattern
+   มีทรงเดียว") · กลุ่มของแผ่นเลือกกินที่มากกว่าชิป จึงยืดเต็มแถวเมื่อมีที่ */
+.option-groups,
+.lead-channel-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-6);
+}
+.lead-channel-groups.is-compact { flex-direction: column; }
+/* กลุ่มของแผ่นเลือก — แผ่นกว้างกว่าชิป จึงให้แต่ละกลุ่มยืดแบ่งแถวกันเอง */
+.option-group { display: flex; flex-direction: column; gap: var(--space-1-5); flex: 1 1 18rem; min-width: 0; }
+.option-group-name {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.lead-channel-group { display: flex; flex-direction: column; gap: var(--space-1-5); min-width: 0; }
+.lead-channel-group-name {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.lead-channel-group[data-group="online"] .lead-channel-group-name { color: var(--blue); }
+.lead-channel-group[data-group="onsite"] .lead-channel-group-name { color: var(--amber); }
+.lead-channel-group[data-group="website"] .lead-channel-group-name { color: var(--teal); }
 
 /* สวิตช์เล็กของฟอร์ม — ธง/โหมดพิเศษ (กติกาคอนโทรล v2: ธง = สวิตช์ ไม่ใช่ checkbox
    ลอย ๆ) · ตัวแรกที่ใช้: "ดีลเก่าจากระบบเดิม" (มติผู้ใช้ 2026-08-08 เปิดถาวรทุกคน) */
@@ -3669,6 +3986,7 @@ button.empty-state { width: 100%; font: inherit; }
   left: 1px;
   transition: left var(--motion-fast);
 }
+.ui-switch:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .ui-switch[data-on] { color: var(--accent-ink); font-weight: var(--fw-semibold); }
 .ui-switch[data-on] i { background: var(--accent); border-color: var(--accent); }
 .ui-switch[data-on] i::after { left: 12px; background: var(--accent-fg); }
@@ -3698,12 +4016,21 @@ button.empty-state { width: 100%; font: inherit; }
 .option-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  /* ทุกแถวสูงเท่ากัน — ในชุดเดียวกันมักมีทั้งแผ่นที่มีคำกำกับและไม่มี
+     ถ้าปล่อยให้แต่ละแถวสูงตามเนื้อ แถวบน (ไม่มีคำกำกับ) จะเตี้ยกว่าแถวล่าง
+     เห็นชัดตอนจอแคบที่กริดหักเป็น 2 คอลัมน์ (มติผู้ใช้ 2026-08-09) */
+  grid-auto-rows: 1fr;
   gap: var(--space-2);
 }
 .option-tile {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  /* ป้ายชิดบนเสมอ — แผ่นในแถวเดียวกันสูงเท่ากัน (กริด stretch) แต่เนื้อไม่เท่า
+     ถ้าจัดกลางแนวตั้ง ป้ายของแผ่นที่ไม่มีคำกำกับจะลอยต่ำกว่าป้ายข้าง ๆ
+     ⚠️ min-height = touch target มือถือ ห้ามต่ำกว่า 44px */
+  justify-content: flex-start;
+  min-height: 44px;
   gap: var(--space-0-5);
   padding: var(--space-1-5) var(--space-3) var(--space-2);
   border: 1px solid var(--border);
@@ -3720,6 +4047,12 @@ button.empty-state { width: 100%; font: inherit; }
 .option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
 .option-tile-sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+/* ⚠️ **ในกลุ่มตัวเลือกที่แตกเป็นหลายกริด คำอธิบายต้องจองที่เท่ากัน** (มติผู้ใช้
+   2026-08-09) — `grid-auto-rows: 1fr` ทำให้แผ่นใน *กริดเดียวกัน* สูงเท่ากัน แต่
+   `.option-groups` มีกริดคนละอันต่อกลุ่ม ⇒ กลุ่มที่คำอธิบายตกสองบรรทัดจะสูงกว่า
+   กลุ่มข้าง ๆ แล้วอ่านเหมือน "หัวข้อกลุ่มนี้สำคัญกว่า" ซึ่งไม่จริง
+   · จองสองบรรทัดไว้เลย = ทุกแผ่นทั้งคำถามสูงเท่ากัน และป้ายชื่ออยู่ระดับเดียวกัน */
+.option-groups .option-tile-sub { min-height: calc(2 * var(--lh-thai) * 1em); }
 /* โทนต่อตัวเลือก — ชุดสีเดียวกับ badge ประเภทดีล (DEAL_TYPE_COLORS) */
 .option-tile[data-tone="amber"] .option-tile-title { color: var(--amber); }
 .option-tile[data-tone="blue"] .option-tile-title { color: var(--blue); }
@@ -5723,3 +6056,33 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   display: inline-block;
   margin-right: var(--space-1-5);
 }
+
+/* แถบแท็บของฟอร์มที่มีเกจท้ายแถว — Tabs กินความกว้างที่เหลือ เกจชิดขวา
+   ⚠️ เกจอยู่ **นอก** `ui/Tabs` เพราะมันไม่ใช่แท็บ (กดไม่ได้) — ยัดเข้าไปในลิสต์
+   แท็บเมื่อไร คีย์บอร์ดจะเดินลูกศรไปโดนของที่กดไม่ได้ */
+.tabbar-with-meter { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.tabbar-with-meter > .tabs-header { flex: 1; min-width: 0; }
+.tab-with-meter { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* บรรทัด "ยังขาด …" ใต้แท็บ — กดชื่อช่องแล้วกระโดดไปแท็บที่มันอยู่ */
+.tab-missing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-5);
+  color: var(--amber);
+}
+.tab-missing-jump {
+  border: 1px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2-5);
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.tab-missing-jump:hover { background: color-mix(in srgb, var(--amber) 26%, transparent); }
+.tab-missing-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-missing-where { color: var(--text-3); }

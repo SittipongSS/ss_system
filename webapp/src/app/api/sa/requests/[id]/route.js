@@ -24,7 +24,8 @@ import {
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, generateRequestDocNo, submitRequestError,
 } from '@/lib/deptRequests';
-import { requestHasItems, requestKindLabel } from '@/lib/master/requestTypes';
+import { requestHasItems, requestKindLabel, requestShapeError } from '@/lib/master/requestTypes';
+import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -164,6 +165,24 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedAt = nowIso;
       if (due) patch.committedDueDate = due;
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'update') {
+      // ⭐ **แก้คำร้องที่ยังไม่ถูกรับเรื่อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้
+      // ใบที่บันทึกแล้วแก้ไม่ได้เลยสักช่อง ต้องลบทิ้งแล้วเปิดใหม่
+      // ⚠️ กฎว่า "ใครแก้ได้ ตอนไหน ช่องไหน" อยู่ใน `lib/requests/requestEdit.js`
+      // ที่เดียว — หน้าจอถามตัวเดียวกันเพื่อไม่ให้ปุ่มกับ API เห็นไม่ตรงกัน
+      const denied = requestEditError(before, user);
+      if (denied) return Response.json({ error: denied }, { status: 403 });
+
+      const next = requestEditPatch(body);
+      // ⚠️ ด่านรูปทรงเดียวกับตอนเปิดใบ — ชื่อเรื่องบังคับ · วันที่ต้องมีและถูกรูปแบบ ·
+      // ด่วนต้องมีเหตุผล · ส่งของเดิมที่ไม่ได้แก้เข้าไปด้วยเพื่อให้ด่านเห็นใบทั้งใบ
+      const shapeError = requestShapeError(before.kind, {
+        ...before, ...next, items: before.items,
+      });
+      if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
+
+      Object.assign(patch, next);
+      summary = `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
     } else if (action === 'pdr') {
       // ⭐ แก้แบบฟอร์ม PDR — สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" (ดู lib/requests/pdrEdit.js)
       const denied = editPdrError(before, user);
@@ -178,12 +197,20 @@ export async function PATCH(request, { params }) {
       // ⚠️ **ไม่ลบแล้วสร้างใหม่** ถ้ามี direction ชี้อยู่ — `dept_request_items.briefId`
       // เป็น ON DELETE SET NULL ⇒ ลบบรีฟทิ้งแล้ว direction ที่ RD ส่งไปแล้วจะขาดจาก
       // บรีฟที่มันตอบ · จึงอัปเดตทับตาม id เดิม และห้ามเปลี่ยนจำนวนหลังมีของส่งแล้ว
-      if (Array.isArray(body.briefs)) {
-        const { data: existing, error: loadError } = await supabase
-          .from('dept_request_scents').select('id').eq('requestId', id)
-          .order('sortOrder', { ascending: true });
-        if (loadError) throw loadError;
+      const { data: existing, error: loadError } = Array.isArray(body.briefs)
+        ? await supabase.from('dept_request_scents').select('id').eq('requestId', id)
+          .order('sortOrder', { ascending: true })
+        : { data: null, error: null };
+      if (loadError) throw loadError;
 
+      // 🔴 **ใบที่ไม่มีบรีฟต้องยังบันทึกส่วนอื่นได้** (ผู้ใช้เจอเอง 2026-08-09) —
+      // เดิมพอ `briefs` ว่าง `normalizeScentBriefs` ตีกลับ "ต้องมีบรีฟกลิ่นอย่างน้อย
+      // 1 ก้อน" ⇒ คนที่กำลังแก้ *หมวดสินค้า* กดบันทึกแล้วโดนบล็อกด้วยเรื่องคนละส่วน
+      // และไม่มีทางแก้ในจอนั้นเลย เพราะจำนวนบล็อกบรีฟมาจากใบสั่งขาย กดเพิ่มเองไม่ได้
+      // ⇒ ไม่มีทั้งของเดิมและของใหม่ = ไม่มีอะไรต้องเขียน ข้ามไปเงียบ ๆ
+      // ⚠️ **ยังไม่ข้ามเมื่อของเดิมมีอยู่** — ส่งอาเรย์ว่างมาทับใบที่มีบรีฟแล้วคือคำสั่ง
+      // ลบทั้งชุด ซึ่งต้องโดนตีกลับเหมือนเดิม (direction ที่ส่งไปแล้วผูกกับบรีฟอยู่)
+      if (Array.isArray(body.briefs) && (body.briefs.length || (existing || []).length)) {
         const delivered = (before.items || []).some((i) => i.briefId);
         if (delivered && body.briefs.length !== (existing || []).length) {
           return Response.json({

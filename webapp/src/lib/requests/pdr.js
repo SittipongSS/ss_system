@@ -6,7 +6,7 @@
 // ⭐ **แผนที่ช่อง→คอลัมน์ derive จากทะเบียน** (`pdrFields.js`) ไม่ไล่เขียนมือ —
 // เดิมเขียนมือ 21 บรรทัด ⇒ เพิ่มช่องในทะเบียนแล้วลืมมาเติมที่นี่ = ช่องใหม่กรอกได้
 // บนจอแต่ไม่เคยถูกบันทึก ซึ่งเป็นบั๊กเดียวกับที่เพิ่งแก้ไปใน #1052 แค่มาอีกทาง
-import { PDR_FIELDS } from '@/lib/requests/pdrFields';
+import { PDR_FIELDS, pdrIsArrayField } from '@/lib/requests/pdrFields';
 
 const TEXT_LIMITS = {
   pdrRequestType: 40, pdrCustomerBrand: 200, pdrMoodTone: 500, pdrBrandDirection: 500,
@@ -20,10 +20,14 @@ const TEXT_LIMITS = {
   // 0221 — ชื่อผู้เซ็นบนกระดาษ (ม-45)
   pdrSignSalesManager: 200, pdrSignPerfumer: 200, pdrSignChemist: 200,
   pdrSignCoordinator: 200, pdrSignFinalApprover: 200,
+  // 0227 — ข้อความต่อท้ายตัวเลือก "อื่น ๆ"
+  pdrPackagingFormsOther: 500, pdrDocumentsOther: 500,
+  // 0228 — หัวน้ำหอมนำไปใช้กับอะไร (โน้ตสีแดงข้อ 1.11)
+  pdrFragranceUse: 500,
 };
 
 // ช่องติ๊กหลายตัว — เก็บเป็น text[] ตามแพตเทิร์นของ dept_request_scents (0213)
-const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20 };
+const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20, pdrProductKinds: 20 };
 
 const AMOUNTS = ['pdrProjectValue', 'pdrTargetCost', 'pdrTargetPrice'];
 const DATES = ['pdrWantedAt', 'pdrSellFrom'];
@@ -51,7 +55,8 @@ export function normalizePdr(input) {
 
     // ⚠️ ช่องติ๊กหลายตัว — **ไม่ตรวจว่าค่าอยู่ในชุดตัวเลือกไหม** ตามแพตเทิร์นของ
     // 0213: ชุดตัวเลือกอยู่ฝั่งโค้ดและยังเปลี่ยนได้ · ที่ตรวจคือรูปแบบและจำนวน
-    if (FIELD_TYPE[field] === 'multi') {
+    // ⚠️ 'categories' เก็บเหมือน 'multi' (text[]) ต่างกันแค่ที่มาของป้าย
+    if (pdrIsArrayField({ type: FIELD_TYPE[field] })) {
       const list = (Array.isArray(value) ? value : [])
         .map((v) => String(v ?? '').trim()).filter(Boolean);
       if (list.length > MAX_ITEMS[column]) {

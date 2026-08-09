@@ -74,3 +74,7 @@
 .colName { width: 42%; }
 .colOutcome { width: 33%; }
 .colStage { width: 25%; }
+
+/* คอลัมน์ "ก้าวถัดไป" ในตารางเอกสาร (ม-94) — ปุ่มติดแถว ไม่ต้องเลื่อนหาท้ายเธรด */
+.colStep { width: 33%; }
+.stepCell { white-space: nowrap; }

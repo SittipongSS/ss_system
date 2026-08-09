@@ -110,6 +110,13 @@ export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }
 
+// โครงหน้ารายละเอียดแบบ Control Panel (มติผู้ใช้ 2026-08-09) — หัวข้อเปิดธงนี้
+// ทีละตัว: สถานะ/ราง/ปุ่มระดับใบ **ย้าย**จากหัวใบไปการ์ดขวา (ไม่ก๊อป — บทเรียน
+// รางขวารุ่นแรกที่ถูกยุบเพราะพูดซ้ำหัวใบทุกบรรทัด)
+export function requestUsesControlPanel(kind) {
+  return !!REQUEST_KINDS[kind]?.detailControlPanel;
+}
+
 // ของที่หัวข้อนี้ต้องอ้างถึง — คืนรายชื่อคีย์ของ REQUEST_NEEDS
 export function requestNeeds(kind) {
   return REQUEST_KINDS[kind]?.needs || [];
@@ -168,6 +175,11 @@ const KIND_FAMILY_LABEL = {
   RQ: 'ทั่วไป',
 };
 
+/* ⭐ **ลำดับตระกูลที่ผู้ใช้สั่ง** (มติผู้ใช้ 2026-08-09): งานพัฒนามาก่อน ทั่วไปตามหลัง
+   — งานพัฒนาคือเหตุผลที่ฝ่าย RD มีคิวคำร้อง ส่วนสอบถาม/ขอเอกสารเป็นงานประกอบ
+   ⚠️ ตระกูลที่ไม่อยู่ในลิสต์นี้ต่อท้ายตามลำดับที่เจอในทะเบียน (ไม่ต้องมาลงทะเบียนซ้ำ) */
+const FAMILY_ORDER = ['งานพัฒนา', 'ทั่วไป'];
+
 export function requestKindFamily(kind) {
   return KIND_FAMILY_LABEL[REQUEST_KINDS[kind]?.scope] || 'ทั่วไป';
 }
@@ -219,13 +231,18 @@ export function kindsForDept(dept) {
   // ทั่วไป(ขอเอกสาร)" · เรียงที่นี่ไม่ใช่ที่ฟอร์ม เพราะลิสต์นี้เป็นของ API ด้วย
   // และสองที่ต้องเห็นลำดับเดียวกัน
   //
-  // ⚠️ ลำดับ *ของตระกูล* มาจากลำดับที่เจอครั้งแรกในทะเบียน ไม่ใช่ลิสต์ตายตัว —
-  // ฝ่ายที่เพิ่มหัวข้อใหม่จึงไม่ต้องมาลงทะเบียนตระกูลของตัวเองที่ไฟล์นี้อีกจุด
-  const order = [];
+  // ⚠️ ลำดับ *ของตระกูล* — ตัวที่ประกาศไว้ใน `FAMILY_ORDER` มาก่อนตามลำดับนั้น
+  // ที่เหลือตามลำดับที่เจอครั้งแรกในทะเบียน ⇒ ฝ่ายที่เพิ่มหัวข้อใหม่ยังไม่ต้องมา
+  // ลงทะเบียนตระกูลของตัวเองที่นี่ แต่ตระกูลที่ผู้ใช้สั่งลำดับไว้แล้วจะไม่สลับเอง
+  const seen = [];
   for (const k of list) {
     const family = requestKindFamily(k);
-    if (!order.includes(family)) order.push(family);
+    if (!seen.includes(family)) seen.push(family);
   }
+  const order = [
+    ...FAMILY_ORDER.filter((f) => seen.includes(f)),
+    ...seen.filter((f) => !FAMILY_ORDER.includes(f)),
+  ];
   return list.slice().sort(
     (a, b) => order.indexOf(requestKindFamily(a)) - order.indexOf(requestKindFamily(b)),
   );

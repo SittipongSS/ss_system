@@ -8,7 +8,6 @@ import { canViewRequests } from '@/lib/permissions';
 import { canReadRequestRow } from '@/lib/requests/access';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { requestHasPdr } from '@/lib/master/requestTypes';
-import { resolveDocumentForm } from '@/lib/documentStandards';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { renderPdrDocument } from '@/lib/requests/pdrDocument';
 
@@ -27,17 +26,22 @@ export async function GET(_request, { params }) {
     return Response.json({ error: 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR' }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
-    .from('company_profile').select('*').limit(1).maybeSingle();
+  // ⚠️ มาตรฐานที่เผยแพร่อ่านคู่กับบล็อกบริษัท — ล้มเมื่อไรส่ง null แล้วเอกสารตกไปใช้
+  // ค่าสำรอง `FM-RD-01 Rev.02` ใน documentBrand.js · ตารางตั้งค่าล่มต้องไม่ทำให้
+  // พิมพ์เอกสารไม่ได้ (กติกาเดียวกับ publishedNumberingPattern)
+  const [{ data: profile }, { data: standard }] = await Promise.all([
+    supabase.from('company_profile').select('*').limit(1).maybeSingle(),
+    supabase.from('document_standard_versions').select('*')
+      .eq('documentKey', 'pdr').eq('status', 'published').maybeSingle(),
+  ]);
 
   const html = renderPdrDocument({
     request: row,
     briefs: row.briefs || [],
     company: resolveCompanyBlock(profile || null),
-    // ⚠️ ยังไม่ผูกมาตรฐานที่เผยแพร่ — `resolveDocumentForm(null, …)` ตกไปใช้ค่าสำรอง
-    // `FM-RD-01 Rev.02` ซึ่งตรงกับกระดาษจริงอยู่แล้ว · ผูกทีหลังได้โดยไม่กระทบเอกสาร
-    // ที่พิมพ์ไปแล้ว เพราะรหัสฟอร์มอยู่บนกระดาษที่ออกไปเท่านั้น
-    form: resolveDocumentForm(null, 'pdr'),
+    // ⭐ **มาตรฐานคุมทั้งรหัสฟอร์ม Rev วันที่มีผล ชื่อบนหัวใบ และสี Accent** — ส่ง
+    // แถวเวอร์ชันดิบเข้าไป ตัวเอกสาร resolve เองที่เดียว (แบบเดียวกับ ganttPrint/billPrint)
+    standard: standard || null,
   });
 
   return new Response(html, {

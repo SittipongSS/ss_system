@@ -1,0 +1,82 @@
+"use client";
+// ── การ์ด panel รายหัวข้อ · ขอเอกสาร (ม-94) ──────────────────────────────
+//
+// ⭐ หัวข้อนี้ก้าวจริงอยู่ **รายแถว** (ส่งเอกสาร/ปฏิเสธ ที่ท้ายเธรด) — panel จึง
+// ไม่มีปุ่มของตัวเอง แต่ตอบสองคำถามที่การ์ด control กลางตอบไม่ได้:
+//   1 "เหลือแถวไหนรอมือใคร" — เช็คลิสต์รายแถว (ผู้ตอบเห็นงานตัวเอง ผู้ขอเห็นความคืบ)
+//   2 "ใบนี้ของงานไหน" — อ้างอิง QT/SO/FG ที่ **ย้าย**มาจากแถบบนหน้า (ไม่ก๊อป —
+//     บทเรียนรางขวารุ่นแรก: ของซ้ำสองที่คือเหตุที่มันถูกยุบ)
+//
+// ⚠️ ตัวเลข/สถานะนับที่ lib ก้อนเดิม (docBoard · docTotals) — ที่นี่แค่เปลี่ยนที่วาง
+import {
+  DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
+} from "@/components/ui/DocumentControlPanel";
+import styles from "./details.module.css";
+
+export default function DocumentPanel({ request, docBoard: board = [], docTotals: totals }) {
+  // เช็คลิสต์รายแถว — ✓ = จบแล้ว (ได้รับ/ปฏิเสธ) · ช่องว่าง = ยังเดินอยู่
+  // ป้ายขั้น/ธงจบมาจากแถวของ documentBoard ตรง ๆ — คำเดียวกับตารางกลางหน้าเสมอ
+  const items = board.map((row) => ({
+    id: row.id,
+    // แถวของ documentBoard เรียกป้ายว่า `name` (มาจากทะเบียนคำศัพท์ ไม่ใช่ label ดิบ)
+    label: row.name,
+    detail: row.stageLabel || "",
+    ready: row.received || row.refused,
+  }));
+
+  // อ้างอิงของหัวข้อนี้ (ม-88) — โชว์เฉพาะตัวที่อ้างจริง · ตามกลับไม่เจอ = ใบถูกลบ
+  const refs = [
+    request.quotationId && {
+      label: "ใบเสนอราคา",
+      value: request.refQuotation?.quoteNumber || "ถูกลบไปแล้ว",
+      href: request.refQuotation ? `/sales-planning/quotations/${request.quotationId}` : null,
+    },
+    request.salesOrderId && {
+      label: "ใบสั่งขาย",
+      value: request.refSalesOrder?.orderNumber || "ถูกลบไปแล้ว",
+      href: request.refSalesOrder ? `/sales-planning/sales-orders/${request.salesOrderId}` : null,
+    },
+    ...(Array.isArray(request.productRefs) && request.productRefs.length
+      ? request.productRefs.map((fg, i) => ({
+        label: i === 0 ? "สินค้า (FG)" : "",
+        value: fg.label || fg.id,
+        href: null,
+      }))
+      : (request.productId ? [{
+        label: "สินค้า (FG)",
+        value: request.productName || request.productId,
+        href: null,
+      }] : [])),
+  ].filter(Boolean);
+
+  return (
+    <>
+      {totals.asked > 0 && (
+        <DocumentSummaryCard
+          title="สรุปใบนี้"
+          rows={[
+            { id: "received", label: "มาแล้ว", value: String(totals.received) },
+            { id: "waiting", label: "รอเอกสาร", value: String(totals.waiting) },
+            // "ปฏิเสธ" แยกจาก "มาแล้ว" เสมอ (ม-89) — จบเหมือนกันแต่คนละความหมาย
+            { id: "refused", label: "ปฏิเสธ", value: String(totals.refused) },
+            { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
+          ]}
+        >
+          <DocumentReadinessList items={items} label="รายการเอกสารในใบนี้" />
+        </DocumentSummaryCard>
+      )}
+      {refs.length > 0 && (
+        <RelatedDocumentCard eyebrow="อ้างอิงของใบนี้" title="เอกสารที่เกี่ยวข้อง">
+          {refs.map((ref, i) => (
+            <p key={`${ref.label}-${i}`} className={styles.panelRef}>
+              {ref.label && <span className={styles.panelRefLabel}>{ref.label} </span>}
+              {ref.href
+                ? <a className="linklike" href={ref.href}><strong>{ref.value}</strong></a>
+                : <strong>{ref.value}</strong>}
+            </p>
+          ))}
+        </RelatedDocumentCard>
+      )}
+    </>
+  );
+}

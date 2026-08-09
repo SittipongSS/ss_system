@@ -45,13 +45,14 @@
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
-| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR · **ม-76…ม-79 รอบรื้อ 4 อาการ (2026-08-08)** |
+| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR · ม-76…ม-94 รอบรื้อ 4 อาการ + Control Panel (2026-08-08) · **ม-95…ม-96 เอกสาร PDR เหมือนกระดาษ FM-RD-01 + แบ่งหน้าเอง + พรีวิวเต็มจอครบทุกชนิด (2026-08-09)** |
 | [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล เปิดมาเจออะไร กดต่อไปไหน |
 | [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" รายก้าว** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
 | [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล + ตารางเทียบว่าต่างจากพัฒนากลิ่นตรงไหน |
 | [all-documents-system-ui-mockup.html](all-documents-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "เอกสารของโครงการ/ดีล"** — 3 ทางที่เอกสารเข้าสายนี้ · ขอจาก R&D อย่างเดียว (ม-87) · §05 บันทึกว่าอะไรอยู่นอกสาย |
 | [document-request-system-ui-mockup.html](document-request-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "ขอเอกสาร" ทุกขั้นตอน SA × RD** — 8 ขั้นตาม ม-88 · ตรงกับโค้ดที่ส่งแล้วทุกจอ (เขียนใหม่หลัง ม-83…ม-88) |
 | [info-inquiry-system-ui-mockup.html](info-inquiry-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "สอบถามข้อมูล" ทุกขั้นตอน SA × RD** — หัวข้อสุดท้ายของชุดคำร้อง · ไม่มีรายการ ทั้งใบคือเธรด · ตรงกับโค้ดที่ merge แล้ว (ม-83/84/86/87/89/92) |
+| [scent-dev-panel-plan.md](scent-dev-panel-plan.md) | **แผนพัฒนากลิ่น × Control Panel (ม-94 ขั้นสุดท้าย)** — 3 งวด · โฟกัส PDR (รอเคาะทาง ก/ข/ค) · สถานะ รอดำเนินการ |
 | [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" รายก้าว** — P4 (ม-36) · §05/§06 เป็นคำถามค้างที่ตัดสินไปแล้ว ดูใบระดับทั้งระบบแทน |
 | [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) | ⭐ **แบบหน้าจอ "ระบบลีด" ครบทุกฝ่าย** — MKT รับลีด → Sup คัดกรอง → Senior กระจาย → AE ติดต่อ/นัด/เปิดดีล + ตารางสิทธิ์ + ข้อเสนอปฏิทินนัด |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |

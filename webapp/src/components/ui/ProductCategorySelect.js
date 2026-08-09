@@ -34,7 +34,11 @@ export default function ProductCategorySelect({
   onSubChange,
   disabled = false,
   required = false,
+  // ⚠️ `label={null}` = ไม่ต้องป้ายในตัว — ใช้ตอนผู้เรียกมีป้ายของตัวเองอยู่แล้ว
+  // (เช่นแถว "เลือกแล้วกดเพิ่ม" ใน PDR) · มีป้ายในตัวจะได้ป้ายซ้อนสองชั้น **และ**
+  // ตัวเลือกจะสูงกว่าปุ่มข้าง ๆ หนึ่งบรรทัด ทำให้ปุ่มลอยไปชนป้ายแทนที่จะอยู่แนวเดียวกัน
   label = "หมวดสินค้า",
+  ariaLabel,
   className = "",
 }) {
   const [valueMain = "", valueSub = ""] = String(value || "").split("-");
@@ -98,27 +102,34 @@ export default function ProductCategorySelect({
     onChange?.(code || "", { mainCode: nextMain, typeCode: nextType, category });
   };
 
+  const picker = (
+    <TwoPanePicker
+      groups={groups}
+      value={currentCode}
+      onChange={(code) => choose(code)}
+      disabled={disabled}
+      clearable
+      clearLabel="— ไม่ระบุ —"
+      placeholder="เลือกหมวดสินค้า"
+      groupSearchPlaceholder="ค้นหมวดหลัก…"
+      itemSearchPlaceholder="ค้นด้วยรหัส · ชื่อไทย · ชื่ออังกฤษ"
+      allGroupKey={ALL_KEY}
+      // ไม่มีป้ายในตัว = ต้องมีชื่อจากที่อื่นให้ screen reader เสมอ ห้ามเหลือเปล่า
+      ariaLabel={label || ariaLabel || "หมวดสินค้า"}
+      // ⚠️ emptyText ต้องบอก **ทำไมว่างและใครแก้ได้** ไม่ใช่ "ไม่พบรายการ" เฉย ๆ
+      itemEmptyText="ไม่พบหมวดที่ตรงกับคำค้น — ค้นได้ทั้งรหัส ชื่อไทย และชื่ออังกฤษ"
+      groupEmptyText="ยังไม่มีหมวดสินค้าในระบบ — เพิ่มได้ที่ ตั้งค่า › หมวดสินค้า"
+    />
+  );
+
   return (
     <div className={`ui-product-category-select ${className}`.trim()}>
-      <label>
-        <span>{label}{required ? <span className="required-mark"> *</span> : null}</span>
-        <TwoPanePicker
-          groups={groups}
-          value={currentCode}
-          onChange={(code) => choose(code)}
-          disabled={disabled}
-          clearable
-          clearLabel="— ไม่ระบุ —"
-          placeholder="เลือกหมวดสินค้า"
-          groupSearchPlaceholder="ค้นหมวดหลัก…"
-          itemSearchPlaceholder="ค้นด้วยรหัส · ชื่อไทย · ชื่ออังกฤษ"
-          allGroupKey={ALL_KEY}
-          ariaLabel={label}
-          // ⚠️ emptyText ต้องบอก **ทำไมว่างและใครแก้ได้** ไม่ใช่ "ไม่พบรายการ" เฉย ๆ
-          itemEmptyText="ไม่พบหมวดที่ตรงกับคำค้น — ค้นได้ทั้งรหัส ชื่อไทย และชื่ออังกฤษ"
-          groupEmptyText="ยังไม่มีหมวดสินค้าในระบบ — เพิ่มได้ที่ ตั้งค่า › หมวดสินค้า"
-        />
-      </label>
+      {label ? (
+        <label>
+          <span>{label}{required ? <span className="required-mark"> *</span> : null}</span>
+          {picker}
+        </label>
+      ) : picker}
     </div>
   );
 }

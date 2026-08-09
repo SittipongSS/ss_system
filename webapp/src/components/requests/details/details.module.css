@@ -15,21 +15,18 @@
 /* คำชี้ทางใต้หัวข้อไฟล์ของแถว — สายเอกสารใช้บอกว่า "แนบผ่านปุ่มส่งเอกสาร" (ม-90) */
 .rowAttachHint { margin: var(--space-1) 0 0; font-size: var(--fs-7); color: var(--text-3); }
 
-/* แถบตัวเลขของพัฒนากลิ่น — บรีฟ/direction/รอลูกค้า/รอราคา */
-.summaryBar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding: var(--space-2-5) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-5);
-  color: var(--text-2);
-}
-.summaryBar strong { color: var(--text); }
-.summaryBar [data-tone="warn"] strong { color: var(--amber); }
-.summaryBar [data-tone="danger"] strong { color: var(--red); }
+/* แถวอ้างอิงบนการ์ด panel (ม-94) — QT/SO/FG ของสายขอเอกสาร */
+.panelRef { margin: 0 0 var(--space-1-5); font-size: var(--fs-5); }
+.panelRefLabel { color: var(--text-3); }
+
 
 .pdrBlock { margin-bottom: var(--space-3); }
-.pdrActions { margin-top: var(--space-3); }
+/* ⚠️ `.pdrActions` ถูกถอด — ปุ่มบันทึก/ยกเลิกของแบบฟอร์มย้ายไปแผงจัดการแล้ว (2026-08-09) */
+
+/* ── สองมุมมอง + PDR สองชั้นแบบด้านข้าง (ม-94 ทาง ก) ─────────────────────
+   ชั้นแรกแท็บ [งาน | แบบฟอร์ม PDR] · ชั้นสองรายการหมวดซ้าย เนื้อหมวดขวา */
+/* ⚠️ แถบแท็บกับรางหมวดของหน้านี้ **ถูกยุบไปใช้ของกลางแล้ว** (2026-08-09) —
+   `ui/Tabs` + `ui/SectionRail` ตัวเดียวกับฟอร์มเปิดคำร้อง · ที่เหลือตรงนี้คือ
+   ระยะห่างเฉพาะจุดที่ของกลางไม่ควรรู้จัก
+   ⛔ ห้ามเขียน `.pdrNav`/`.pdrSplit` กลับมา — มันคือรางทรงที่สองของระบบ */
+.viewTabs { margin-bottom: var(--space-3); }

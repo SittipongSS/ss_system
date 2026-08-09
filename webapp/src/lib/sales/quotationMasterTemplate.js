@@ -237,7 +237,7 @@ function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
 }
 
 // ── V4: โมเดลความสูงที่ calibrate จากการวัด DOM จริง (2026-07-20) ─────────────
-// วัดที่ /settings/document-standards/quotation-preview สเกล 1123px = A4 297mm:
+// วัดที่ /settings/document-standards/preview สเกล 1123px = A4 297mm:
 // พื้นที่เนื้อหาใต้หัวเอกสาร 888px · แถวสินค้า 1 บรรทัด 50px · บรรทัดข้อความเพิ่ม
 // +17px · party grid 134px (ที่อยู่ยาว 167) · หัวตาราง 32 · ป้าย "ต่อ" 15 ·
 // มูลค่ารวม 87 · ตารางงวด 27+25/งวด · กล่องเงื่อนไข ~118-175 · ลงชื่อ 145

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   recentSystemForUser,
+  SYSTEM_CATALOG,
   SYSTEM_ORDER,
   systemLandingForUser,
   systemsForUser,
@@ -119,7 +120,28 @@ test('recent system is accepted only while the current user can access it', () =
   const grantedSales = { role: 'ae', team: 'ODM', extraCaps: ['mgmt:view'] };
 
   assert.equal(recentSystemForUser(secretary, 'salesplan'), null);
-  assert.equal(recentSystemForUser(secretary, 'mgmt')?.key, 'mgmt');
-  assert.equal(recentSystemForUser(grantedSales, 'mgmt')?.key, 'mgmt');
+  assert.equal(recentSystemForUser(secretary, 'master')?.key, 'master');
+  assert.equal(recentSystemForUser(grantedSales, 'master')?.key, 'master');
   assert.equal(recentSystemForUser(grantedSales, 'unknown'), null);
+
+  // สิทธิ์ราย **ผู้ใช้** ยังเปิดการ์ดระบบให้ได้ — เดิมเคสนี้ทดสอบผ่าน `mgmt` แต่
+  // `mgmt` ถูกปิดชั่วคราว (ดูเทสต์ถัดไป) จึงใช้เป็นตัวอย่างของ "ระบบล่าสุด" ไม่ได้แล้ว
+  assert.ok(keysFor(grantedSales).includes('mgmt'));
+});
+
+// ── ระบบที่ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) ──────────────────────────
+//
+// กฎคือ **จางแต่ยังอยู่** — ถ้าวันไหนมีคนไปกรองมันทิ้งใน `systemsForUser` การ์ดจะหาย
+// แล้วผู้ใช้จะนึกว่าสิทธิ์ตัวเองโดนถอด · และถ้ามีคนถอด `disabled` ออกโดยไม่ตั้งใจ
+// เทสต์นี้ดับเพื่อบังคับให้เป็นการตัดสินใจ ไม่ใช่ผลข้างเคียง
+test('⭐ ระบบที่ยังไม่เปิดใช้ยังโชว์การ์ด แต่ห้ามถูกหยิบเป็น "ทำงานต่อ"', () => {
+  const admin = { role: 'admin', team: null, extraCaps: [] };
+  const disabledKeys = SYSTEM_CATALOG.filter((system) => system.disabled).map((system) => system.key);
+
+  assert.deepEqual(disabledKeys, ['production', 'service', 'mgmt']);
+
+  for (const key of disabledKeys) {
+    assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์การ์ด`);
+    assert.equal(recentSystemForUser(admin, key), null, `${key} ต้องไม่ขึ้นการ์ดทำงานต่อ`);
+  }
 });
