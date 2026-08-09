@@ -195,9 +195,13 @@
 /* ── ฝ่ายผู้รับ: ปุ่มเรียงกัน ไม่ใช่ดรอปดาวน์ ────────────────────────────
    คำถามแรกของฟอร์มและมีสามตัวเลือก — ดรอปดาวน์ซ่อนจำนวนไว้จนกว่าจะกด ทำให้
    คำถามแรกดูเหมือนช่องเปล่า · ฝ่ายที่ยังไม่เปิดอยู่ในลิสต์เดียวกันแบบจาง */
+/* ⚠️ **กริด ไม่ใช่ flex-wrap** (มติผู้ใช้ 2026-08-09) — ของเดิม `flex: 1 1 8rem`
+   ทำให้ตัวที่ตกลงบรรทัดใหม่ (FN บนจอแนวตั้ง) ยืดเต็มแถวคนเดียว ⇒ อ่านเหมือน
+   "ฝ่ายนี้สำคัญกว่า" ทั้งที่มันเป็นตัวที่ยังเปิดใช้ไม่ได้ด้วยซ้ำ
+   · auto-fit + minmax = ทุกใบกว้างเท่ากันเสมอ ไม่ว่าจะพับกี่แถว */
 .deptPicker {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-2);
 }
 
@@ -206,7 +210,6 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
-  flex: 1 1 8rem;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);

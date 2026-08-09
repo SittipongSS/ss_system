@@ -3849,6 +3849,12 @@ button.empty-state { width: 100%; font: inherit; }
 .option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
 .option-tile-sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+/* ⚠️ **ในกลุ่มตัวเลือกที่แตกเป็นหลายกริด คำอธิบายต้องจองที่เท่ากัน** (มติผู้ใช้
+   2026-08-09) — `grid-auto-rows: 1fr` ทำให้แผ่นใน *กริดเดียวกัน* สูงเท่ากัน แต่
+   `.option-groups` มีกริดคนละอันต่อกลุ่ม ⇒ กลุ่มที่คำอธิบายตกสองบรรทัดจะสูงกว่า
+   กลุ่มข้าง ๆ แล้วอ่านเหมือน "หัวข้อกลุ่มนี้สำคัญกว่า" ซึ่งไม่จริง
+   · จองสองบรรทัดไว้เลย = ทุกแผ่นทั้งคำถามสูงเท่ากัน และป้ายชื่ออยู่ระดับเดียวกัน */
+.option-groups .option-tile-sub { min-height: calc(2 * var(--lh-thai) * 1em); }
 /* โทนต่อตัวเลือก — ชุดสีเดียวกับ badge ประเภทดีล (DEAL_TYPE_COLORS) */
 .option-tile[data-tone="amber"] .option-tile-title { color: var(--amber); }
 .option-tile[data-tone="blue"] .option-tile-title { color: var(--blue); }
