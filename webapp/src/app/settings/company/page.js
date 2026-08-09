@@ -14,6 +14,7 @@ import VersionControlCard from "@/components/ui/VersionControlCard";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/organizationSettings";
+import { branchLabel } from "@/lib/master/thaiAddress";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -248,7 +249,9 @@ export default function CompanySettingsPage() {
             </div>
             <div className={styles.metaGrid}>
               <div><span>เลขผู้เสียภาษี</span><strong>{data.published.taxId}</strong></div>
-              <div><span>สาขา</span><strong>{data.published.branchCode}</strong></div>
+              {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขที่ต้องอ่าน
+                  (หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว · lib/master/thaiAddress.js) */}
+              <div><span>สาขา</span><strong>{branchLabel(data.published.branchCode)}</strong></div>
               <div className={styles.full}><span>ช่องทางติดต่อ</span><strong>{publishedContacts}</strong></div>
               <div className={styles.full}><span>เผยแพร่เมื่อ</span><strong>{formatDate(data.published.publishedAt)}</strong></div>
             </div>
@@ -296,7 +299,11 @@ export default function CompanySettingsPage() {
               <label className={styles.full}>ชื่อนิติบุคคลภาษาไทย <b>*</b><input className="premium-input" value={form.legalNameTh} onChange={(event) => setForm({ ...form, legalNameTh: event.target.value })} required maxLength={200} /></label>
               <label className={styles.full}>ชื่อนิติบุคคลภาษาอังกฤษ<input className="premium-input" value={form.legalNameEn} onChange={(event) => setForm({ ...form, legalNameEn: event.target.value })} maxLength={200} /></label>
               <label>เลขประจำตัวผู้เสียภาษี <b>*</b><input className="premium-input" inputMode="numeric" value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} required maxLength={17} /></label>
-              <label>รหัสสาขา <b>*</b><input className="premium-input" inputMode="numeric" value={form.branchCode} onChange={(event) => setForm({ ...form, branchCode: event.target.value })} required maxLength={5} /></label>
+              {/* ⚠️ บังคับกรอกที่นี่ (ต่างจากฝั่งลูกค้าที่ว่างได้) เพราะเป็นเลขสาขา
+                  **ของบริษัทเอง** ที่ต้องพิมพ์ลงหัวเอกสารทุกใบ · แต่ต้องสอนความหมาย
+                  ให้ตรงกับฝั่งลูกค้า (AddressesEditor เขียน "ว่าง = สำนักงานใหญ่")
+                  ไม่งั้นคนกรอก 00000 โดยไม่รู้ว่ามันแปลว่าอะไร */}
+              <label>รหัสสาขา <b>*</b><input className="premium-input" inputMode="numeric" placeholder="00000 = สำนักงานใหญ่" value={form.branchCode} onChange={(event) => setForm({ ...form, branchCode: event.target.value })} required maxLength={5} /></label>
             </div>
           </section>
           <section className={styles.formSection}>

@@ -28,6 +28,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
+import { branchLabel } from "@/lib/master/thaiAddress";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -439,8 +440,12 @@ function NewQuotationInner() {
                     : null}
                   <span className={styles.addressPreview}>{shippingAddress || "-"}</span>
                 </label>
-                {/* สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่แต่ละที่ (มติผู้ใช้ 2026-08-05) */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{customer.branchCode || "00000"}</span></div>
+                {/* สาขา = ของ **ที่อยู่ออกบิล** (มติผู้ใช้ 2026-08-06 กลับมติ 2026-08-05
+                    — ดูเหตุผลยาวที่ lib/master/addresses.js) · ที่นี่ยังอ่านช่องระดับลูกค้า
+                    ซึ่งเป็น "กระจกของที่อยู่ออกบิลหลัก" ตามที่ไฟล์นั้นอธิบายไว้
+                    ⚠️ ผ่าน branchLabel — `|| "00000"` เดิมทำให้จอโชว์เลขดิบ ขณะที่หน้า
+                    ทะเบียนลูกค้าโชว์ "สำนักงานใหญ่" สำหรับข้อมูลตัวเดียวกัน */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchLabel(customer.branchCode)}</span></div>
                 <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={customer.contactPerson || "-"} />}</label>
               </div>
             </section>
