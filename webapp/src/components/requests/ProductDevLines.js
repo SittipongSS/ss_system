@@ -7,19 +7,20 @@
 // ⚠️ หมวดใช้ **ตัวเลือกกลาง** ตัวเดียวกับฟอร์มดีล/โครงการ/ทะเบียนสูตร (P2c) —
 // ช่องเดียว หมวดหลักเป็นหัวกลุ่ม ⇒ ลงเซลล์ตารางได้ · นี่คือเหตุผลที่ยุบมันตั้งแต่ P2c
 //
-// ⭐ **รางข้างสองชั้น** (มติผู้ใช้ 2026-08-09) — ผังเดียวกับรายการเอกสารและแบบฟอร์ม
-// PDR · แต่ละแถวมี 5 ช่อง กางพร้อมกันหลายแถวแล้วยาวเกินจอทันทีตั้งแต่แถวที่สอง
-// ⚠️ ป้ายในรางต้องบอกว่า **แถวนั้นคือของชิ้นไหน** (หมวด × กลิ่น = ตัวตนของสูตร)
-// ไม่ใช่ "รายการที่ 2" — และแถวที่ซ้ำกับแถวก่อนต้องเห็นได้จากราง ไม่ต้องกดเข้าไปดู
+// ⭐ **ยุบบรรทัดที่กรอกแล้ว** (มติผู้ใช้ 2026-08-09 · `ui/EditableLineList`) —
+// แต่ละแถวมี 5 ช่อง กางพร้อมกันหลายแถวแล้วยาวเกินจอตั้งแต่แถวที่สอง
+// ⚠️ **เลือกแบบนี้แทนรางข้าง** เพราะแถวสรุปกินเต็มความกว้าง ⇒ ใส่ได้ครบทั้ง
+// รหัส+ชื่อหมวด · รหัส+ชื่อกลิ่น · วันที่ของกลิ่น (มติผู้ใช้) ซึ่งรางกว้าง 13rem ใส่ไม่ลง
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import SectionRail from "@/components/ui/SectionRail";
+import EditableLineList from "@/components/ui/EditableLineList";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
+import { productDevRowText } from "@/lib/requests/productDevLabel";
 import styles from "./scentDelivery.module.css";
 
 export const emptyProductDevRow = () => ({
@@ -32,15 +33,6 @@ export function duplicatePair(row, index, rows) {
   if (!row.categoryCode || !row.scentId) return false;
   return rows.some((r, i) => i < index
     && r.categoryCode === row.categoryCode && r.scentId === row.scentId);
-}
-
-/* ป้ายของแถวในราง — "หมวด × กลิ่น" คือตัวตนของสูตรที่จะเกิด จึงเป็นคำตอบที่ดีที่สุด
-   ⚠️ เลือกยังไม่ครบ = บอกเท่าที่มี (หมวดอย่างเดียว/กลิ่นอย่างเดียว) ดีกว่าเลขลำดับล้วน */
-function rowLabel(row, index, categories, scents) {
-  const cat = categories.find((c) => c.typeCode === row.categoryCode || String(c.id) === row.categoryCode);
-  const scent = scents.find((s) => s.id === row.scentId);
-  const parts = [cat?.nameTh || cat?.nameEn || cat?.typeCode, scent?.code || scent?.name].filter(Boolean);
-  return parts.length ? parts.join(" × ") : `รายการที่ ${index + 1}`;
 }
 
 export default function ProductDevLines({
@@ -75,16 +67,27 @@ export default function ProductDevLines({
 
   return (
     <div className={styles.wrap}>
-      <SectionRail
-        ariaLabel="รายการที่ขอ"
-        value={String(at)}
-        onChange={(key) => setActive(Number(key))}
-        sections={rows.map((r, i) => ({
-          key: String(i),
-          label: rowLabel(r, i, categories, scents),
+      <EditableLineList
+        count={rows.length}
+        active={at}
+        onActiveChange={setActive}
+        onAdd={addRow}
+        addLabel="เพิ่มรายการ"
+        disabled={disabled}
+        renderSummary={(i) => {
+          const r = rows[i];
+          const { main, sub } = productDevRowText(r, i, { categories, scents });
           // ครบ = มีทั้งหมวดและกลิ่น (สองอย่างนี้คือตัวตนของสูตรที่จะเกิด)
-          count: { total: 2, filled: (r.categoryCode ? 1 : 0) + (r.scentId ? 1 : 0) },
-        }))}
+          const ready = Boolean(r.categoryCode && r.scentId) && !duplicatePair(r, i, rows);
+          return (
+            <>
+              <span className="line-summary-dot" data-ok={ready ? "1" : undefined} />
+              <span className="line-summary-main">{main}</span>
+              {sub && <span className="line-summary-sub">{sub}</span>}
+              <span className="line-summary-open">แก้ไข</span>
+            </>
+          );
+        }}
       >
         <div className="form-grid cols-2">
           <div className="form-group col-span-2">
@@ -162,15 +165,7 @@ export default function ProductDevLines({
             />
           </div>
         </div>
-      </SectionRail>
-
-      <Button
-        size="sm" disabled={disabled}
-        icon={<Plus size={14} aria-hidden="true" />}
-        onClick={addRow}
-      >
-        เพิ่มรายการ
-      </Button>
+      </EditableLineList>
     </div>
   );
 }

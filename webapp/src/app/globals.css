@@ -3623,6 +3623,44 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .tab-overall-seg > i[data-ok] { background: var(--green); box-shadow: none; }
 
+/* ── รายการบรรทัดที่ยุบเมื่อกรอกแล้ว (`ui/EditableLineList`) ────────────────
+   แถวที่กรอกเสร็จยุบเหลือแถวเดียวกินเต็มความกว้าง — ที่กว้างคือเหตุผลที่เลือกแบบนี้
+   แทนรางข้าง (ราง 13rem ใส่ได้แค่ชื่อสั้น ๆ) · ใบที่กำลังกรอกกางเป็นการ์ดเต็ม */
+.line-list { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.line-list > * { align-self: stretch; }
+.line-list > button:last-child { align-self: flex-start; }
+.line-open {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  background: var(--panel-2);
+}
+.line-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.line-summary:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.line-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.line-summary:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+/* จุดสถานะหน้าแถว — เขียว = ครบ · เหลือง = ยังขาดของบังคับในแถวนั้น */
+.line-summary-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--amber); flex: none; }
+.line-summary-dot[data-ok] { background: var(--green); }
+.line-summary-main { font-weight: var(--fw-semibold); color: var(--text); white-space: nowrap; }
+/* คำขยาย (รายละเอียด/วันที่) หดได้ก่อนเพื่อน — ชื่อของต้องไม่โดนตัด */
+.line-summary-sub { color: var(--text-3); font-size: var(--fs-4); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-summary-open { margin-left: auto; font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }
+
 /* ── รางเลือกส่วนสองชั้น (`ui/SectionRail`) ────────────────────────────────
    ⚠️ จอแคบกลายเป็นแถบเลื่อนแนวนอน ไม่ยุบเป็นดรอปดาวน์ — ตัวเลขที่กรอกแล้วของ
    ส่วนอื่นต้องยังเห็นอยู่ ไม่งั้นรางก็ไม่ต่างจากลิ้นชักเดิม */

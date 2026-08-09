@@ -4,32 +4,29 @@
 // ⭐ 1 บรรทัด = 1 ชนิดเอกสาร — ขอหลายอย่างในใบเดียวได้ และแต่ละอย่างเดินคนละจังหวะ
 // (IFRA มาก่อน COA ได้) ⇒ สถานะอยู่ที่แถว เหมือนทุกสายในระบบนี้
 //
-// ⭐ **รางข้างสองชั้น** (มติผู้ใช้ 2026-08-09) — รายการที่ขอเป็นรางซ้าย เนื้อของ
-// รายการที่เลือกอยู่ขวา · ผังเดียวกับแบบฟอร์ม PDR (`ui/SectionRail`) ⇒ ฟอร์มคำร้อง
-// พูดภาษาเดียวทั้งใบ · ของเดิมกางทุกบรรทัดพร้อมกัน แค่ 3 รายการก็สูง ~900px เกินจอ
-//
-// ⚠️ **รางต้องบอกให้ครบว่าแต่ละใบขออะไร** — ต่างจาก PDR ที่หมวดตายตัวรู้อยู่แล้ว
-// รายการเอกสารเป็นของที่ผู้ใช้สร้างเอง ถ้ารางโชว์แค่ "รายการที่ 2" คนจะไม่รู้ว่า
-// ขออะไรไปแล้วบ้างจนกว่าจะกดเข้าไปดูทีละใบ ⇒ ป้ายในรางใช้ **ชื่อชนิดที่เลือกแล้ว**
-// และจุดสีบอกว่าใบนั้นครบหรือยัง
+// ⭐ **ยุบบรรทัดที่กรอกแล้ว** (มติผู้ใช้ 2026-08-09 · `ui/EditableLineList`) —
+// ของเดิมกางทุกบรรทัดพร้อมกัน แค่ 3 รายการก็สูง ~900px เกินจอ
+// ⚠️ **เลือกแบบนี้แทนรางข้าง** ทั้งที่แบบฟอร์ม PDR ใช้ราง เพราะแถวสรุปกินเต็ม
+// ความกว้าง ⇒ โชว์ได้ทั้งชนิดและรายละเอียด ส่วนรางกว้าง 13rem ใส่ได้แค่ชื่อชนิด
+// · และรายการเอกสารเป็นของที่ผู้ใช้สร้างเอง (ต่างจากหมวด PDR ที่ตายตัว) คำถาม
+// ของหัวข้อนี้คือ "ขออะไรไปแล้วบ้าง" ⇒ ทั้งชุดต้องอยู่ในสายตาพร้อมกัน
 //
 // ⚠️ **ไม่มีช่อง "ต้องใช้ภายใน" รายแถว** — `dueAt` ของ 0204 เป็นคำสัญญาของ *ผู้ตอบ*
 // ("รับปากว่าจะส่งวันไหน") ยัดความหมายของผู้ขอลงช่องเดียวกันแล้วสองฝ่ายจะเขียนทับกัน
 // วันที่ต้องการคำตอบระดับใบมีอยู่แล้ว
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import OptionTiles from "@/components/ui/OptionTiles";
-import SectionRail from "@/components/ui/SectionRail";
+import EditableLineList from "@/components/ui/EditableLineList";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
 import styles from "./scentDelivery.module.css";
 
 export const emptyDocumentRow = () => ({ docType: "", spec: "" });
 
-/* ป้ายของแถวในราง — ชนิดที่เลือกแล้วคือคำตอบที่ดีที่สุด · ยังไม่เลือก = บอกเลขที่
-   ⚠️ ต้องสั้น รางกว้าง 13rem (ดู `.section-rail`) */
-function railLabel(row, index, vocabulary) {
+/* ชื่อของแถว — ชนิดที่เลือกแล้วคือคำตอบที่ดีที่สุด · ยังไม่เลือก = บอกเลขที่ */
+function rowTitle(row, index, vocabulary) {
   const type = vocabulary.types.find((t) => t.value === row.docType);
   if (!type) return `รายการที่ ${index + 1}`;
   return type.short || type.label;
@@ -57,21 +54,28 @@ export default function DocumentLines({
     setActive(Math.max(at - 1, 0));
   };
 
+  const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim());
+
   return (
     <div className={styles.wrap}>
-      <SectionRail
-        ariaLabel="รายการเอกสารที่ขอ"
-        value={String(at)}
-        onChange={(key) => setActive(Number(key))}
-        sections={rows.map((r, i) => ({
-          key: String(i),
-          label: railLabel(r, i, vocabulary),
-          // จุดสี: เขียว = ใบนี้ครบแล้ว · เทา = ยังไม่ได้เลือกชนิด
-          count: {
-            total: 1,
-            filled: r.docType && (!vocabulary.needsDetail(r.docType) || r.spec.trim()) ? 1 : 0,
-          },
-        }))}
+      <EditableLineList
+        count={rows.length}
+        active={at}
+        onActiveChange={setActive}
+        onAdd={addRow}
+        addLabel="เพิ่มเอกสาร"
+        disabled={disabled}
+        renderSummary={(i) => {
+          const r = rows[i];
+          return (
+            <>
+              <span className="line-summary-dot" data-ok={rowReady(r) ? "1" : undefined} />
+              <span className="line-summary-main">{rowTitle(r, i, vocabulary)}</span>
+              {r.spec.trim() && <span className="line-summary-sub">{r.spec.trim()}</span>}
+              <span className="line-summary-open">แก้ไข</span>
+            </>
+          );
+        }}
       >
         <div className="form-grid cols-2">
           <div className="form-group col-span-2">
@@ -96,7 +100,7 @@ export default function DocumentLines({
               value={row.docType}
               onChange={(v) => patch({ docType: v })}
               disabled={disabled}
-              ariaLabel={`ชนิดเอกสารของ${railLabel(row, at, vocabulary)}`}
+              ariaLabel={`ชนิดเอกสารของ${rowTitle(row, at, vocabulary)}`}
               options={vocabulary.types.map((t) => ({
                 value: t.value,
                 label: t.short || t.label,
@@ -125,15 +129,7 @@ export default function DocumentLines({
             )}
           </div>
         </div>
-      </SectionRail>
-
-      <Button
-        size="sm" disabled={disabled}
-        icon={<Plus size={14} aria-hidden="true" />}
-        onClick={addRow}
-      >
-        เพิ่มเอกสาร
-      </Button>
+      </EditableLineList>
     </div>
   );
 }
