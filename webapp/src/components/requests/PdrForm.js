@@ -191,24 +191,11 @@ export default function PdrForm({
 
       <Section title={SECTION.customer.title}>
         <div className="form-grid">
+          {/* ⚠️ นำหน้าผู้ติดต่อ (มติผู้ใช้) — "งานนี้คืองานไหน" ต้องรู้ก่อนรายละเอียดคน */}
+          <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
           <Derived label={label("contactName")} value={contactName} from={FIELD.contactName.from} />
           <Derived label={label("contactPhone")} value={contactPhone} from={FIELD.contactPhone.from} />
           <Derived label={label("customer")} value={customer} from={FIELD.customer.from} />
-          <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
-          {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
-              โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
-              ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
-          <div className="form-group">
-            <label htmlFor="pdr-value">{label("projectValue")}</label>
-            <Input id="pdr-value" value={value.projectValue || ""} disabled={disabled}
-              placeholder={FIELD.projectValue.placeholder}
-              onChange={(e) => set({ projectValue: e.target.value })} />
-          </div>
-          <Derived
-            label={label("scentCount")}
-            value={scentCount != null ? `${scentCount} กลิ่น` : ""}
-            from={FIELD.scentCount.from}
-          />
           <div className="form-group">
             <label htmlFor="pdr-brand">{label("customerBrand")}</label>
             <Input id="pdr-brand" value={value.customerBrand} disabled={disabled}
@@ -234,11 +221,36 @@ export default function PdrForm({
             <Select id="pdr-ckind" value={value.customerKind} disabled={disabled}
               onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
           </div>
+          {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
+              โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
+              ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
+          <div className="form-group">
+            <label htmlFor="pdr-value">{label("projectValue")}</label>
+            <Input id="pdr-value" value={value.projectValue || ""} disabled={disabled}
+              placeholder={FIELD.projectValue.placeholder}
+              onChange={(e) => set({ projectValue: e.target.value })} />
+          </div>
+        </div>
+        {/* ⭐ ข้อ 1.10 บนกระดาษ — อยู่ระหว่าง 1.9 กับ 1.11 ตามลำดับกระดาษ ไม่ใช่ท้ายสุด
+            (AE กรอกโดยวางกระดาษไว้ข้าง ๆ ลำดับที่ไม่ตรงทำให้ต้องกระโดดหาไปมา) */}
+        <span className={styles.fieldLabel}>{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
+        <TickAndWrite label={label("targetDemographic")} disabled={disabled}
+          value={value.targetDemographic} onChange={(v) => set({ targetDemographic: v })} />
+        <TickAndWrite label={label("targetPsychographic")} disabled={disabled}
+          value={value.targetPsychographic} onChange={(v) => set({ targetPsychographic: v })} />
+        <TickAndWrite label={label("targetPainpoint")} disabled={disabled}
+          value={value.targetPainpoint} onChange={(v) => set({ targetPainpoint: v })} />
+        <div className="form-grid">
           <div className="form-group">
             <label htmlFor="pdr-pkind">{label("productKind")}</label>
             <Input id="pdr-pkind" value={value.productKind} disabled={disabled}
               onChange={(e) => set({ productKind: e.target.value })} />
           </div>
+          <Derived
+            label={label("scentCount")}
+            value={scentCount != null ? `${scentCount} กลิ่น` : ""}
+            from={FIELD.scentCount.from}
+          />
           <div className="form-group">
             <label htmlFor="pdr-want">{label("wantedAt")}</label>
             <DateInput id="pdr-want" value={value.wantedAt} disabled={disabled}
@@ -250,13 +262,6 @@ export default function PdrForm({
               onChange={(v) => set({ sellFrom: v })} />
           </div>
         </div>
-        <span className={styles.fieldLabel}>{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
-        <TickAndWrite label={label("targetDemographic")} disabled={disabled}
-          value={value.targetDemographic} onChange={(v) => set({ targetDemographic: v })} />
-        <TickAndWrite label={label("targetPsychographic")} disabled={disabled}
-          value={value.targetPsychographic} onChange={(v) => set({ targetPsychographic: v })} />
-        <TickAndWrite label={label("targetPainpoint")} disabled={disabled}
-          value={value.targetPainpoint} onChange={(v) => set({ targetPainpoint: v })} />
       </Section>
 
       {/* ⭐ ชั้นกลางของโครงสามชั้น — จำนวนก้อนมาจากใบสั่งขาย ไม่มีปุ่มเพิ่ม/ลบ */}
