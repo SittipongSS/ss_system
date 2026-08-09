@@ -33,6 +33,7 @@ import {
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 // ⚠️ ต้องย้อนหลังพอที่จะเห็น **นัดค้าง** ทั้งหมด ไม่ใช่แค่สัปดาห์ที่แล้ว —
 // นัดที่ค้างมา 2 เดือนคือนัดที่เจ็บที่สุด ถ้าช่วงที่ดึงสั้นไปมันจะหายไปเงียบ ๆ
@@ -68,7 +69,7 @@ export default function ServiceOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const todayIso = useMemo(() => toLocalISODate(new Date()), []);
+  const todayIso = useMemo(() => businessDate(), []);
   const range = useMemo(
     () => ({ from: shiftDays(todayIso, -LOOKBACK_DAYS), to: shiftDays(todayIso, 6) }),
     [todayIso],

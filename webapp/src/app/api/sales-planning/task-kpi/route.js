@@ -1,6 +1,7 @@
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { can, canSeeTaskKpi } from '@/lib/permissions';
 import { loadUserDirectory, teamUserIds } from '@/lib/usersRepo';
+import { businessDate } from '@/lib/businessDate';
 import {
   TASK_KPI_WEIGHTS, aggregateGroup, clampPeriod, emptyPerson, finalize,
   inPeriod, loadTasksForUsers, tallyTask, taskCreditId,
@@ -44,7 +45,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     return fail(error.message, 500);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDate();
   for (const task of tasks.filter((t) => inPeriod(t, period.from, period.to))) {
     const rid = taskCreditId(task);
     if (!rid || !targetSet.has(rid)) continue;

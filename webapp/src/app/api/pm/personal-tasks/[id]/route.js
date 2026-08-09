@@ -18,7 +18,7 @@ const EDITABLE = [
   'important', 'urgent', 'difficulty', 'projectId', 'dealId', 'assigneeId',
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessDate();
 
 async function loadTask(supabase, id) {
   const { data } = await supabase.from('personal_tasks').select('*').eq('id', id).maybeSingle();

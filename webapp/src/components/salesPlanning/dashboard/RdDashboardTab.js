@@ -5,6 +5,7 @@ import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, ListTodo, 
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import styles from "./DashboardShell.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 function monthRange(month) {
   if (!/^\d{4}-\d{2}$/.test(month || "")) return null;
@@ -20,7 +21,7 @@ export default function RdDashboardTab({ month }) {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [visible, setVisible] = useState(FEED_PAGE);
-  const todayISO = new Date().toLocaleDateString("en-CA");
+  const todayISO = businessDate();
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {

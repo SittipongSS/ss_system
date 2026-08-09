@@ -52,6 +52,7 @@ import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 // ความยาวเหตุผล 10–500 ย้ายไปอยู่ที่ recordLifecycle (ค่าเริ่มต้นของ reasonPolicy)
 // แล้ว — TransitionDialog บังคับให้เอง หน้านี้ไม่ต้องถือเลขของตัวเองอีก
@@ -412,7 +413,7 @@ export default function ProjectDetailPage() {
   const deliveryStepBadgeFor = useMemo(() => {
     const rows = data?.deliveries || [];
     if (!rows.length) return null;
-    const today = toLocalISODate(new Date());
+    const today = businessDate();
     return (task) => {
       if (!DELIVERY_STEP_KEYS.includes(task?.workflowTemplateStepKey)) return null;
       const scoped = task.dealId ? deliveriesForDeal(rows, task.dealId) : rows;

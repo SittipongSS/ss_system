@@ -4,6 +4,7 @@
 // ตารางสวยแค่ไหนก็ไม่มีค่าถ้าไม่มีใครปิดงาน แล้วทุกแถวค้างเป็น 'นัดไว้' ตลอดกาล
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { sortByTime } from './rounds';
+import { businessDate } from '@/lib/businessDate';
 
 export const VISIT_SCOPES = ['mine', 'team'];
 export const VISIT_SCOPE_LABELS = { mine: 'ของฉัน', team: 'ทั้งทีม' };
@@ -23,7 +24,7 @@ const shiftDays = (iso, days) => {
 //
 // ⚠️ นัดที่ปิดไปแล้ววันนี้ยัง**อยู่ในกลุ่มวันนี้** (ไม่หายไปทันทีที่กดปิด) — ช่างต้อง
 // เห็นว่าตัวเองทำอะไรไปแล้วบ้าง และกดกลับเข้าไปแก้ได้ถ้ากรอกผิด
-export function groupVisits(visits = [], todayIso = toLocalISODate(new Date())) {
+export function groupVisits(visits = [], todayIso = businessDate()) {
   const tomorrowIso = shiftDays(todayIso, 1);
   const overdue = [];
   const today = [];
@@ -75,7 +76,7 @@ export function openCount(groups) {
 // ⭐ เติมให้ครบที่สุดเท่าที่รู้ — ช่างที่ยืนอยู่หน้างานจะไม่พิมพ์เวลาเอง
 //   วันที่เข้าจริง  = วันนี้ (ไม่ใช่วันที่นัด — คนปิดงานตอนที่ทำเสร็จจริง)
 //   เวลาเริ่ม/จบ    = เวลาที่นัดไว้ ถ้ามี · ไม่มีก็เว้นไว้ให้กดปุ่ม "ตอนนี้"
-export function closeFormDefaults(visit, { todayIso = toLocalISODate(new Date()), nowHHMM = null } = {}) {
+export function closeFormDefaults(visit, { todayIso = businessDate(), nowHHMM = null } = {}) {
   const hhmm = (value) => (value ? String(value).slice(0, 5) : '');
   return {
     actualDate: visit?.actualDate || todayIso,

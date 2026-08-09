@@ -15,8 +15,9 @@ import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
-export const todayStr = () => new Date().toISOString().slice(0, 10);
+export const todayStr = () => businessDate();
 
 export const emptyPoHeader = () => ({
   poNumber: "", docDate: todayStr(), receivedDate: todayStr(),

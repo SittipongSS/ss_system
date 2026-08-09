@@ -10,6 +10,7 @@ import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
 import { assetCountsBySite, findCustomer, loadSites, requireService } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       })));
     }
 
-    const todayIso = toLocalISODate(new Date());
+    const todayIso = businessDate();
     const [schedule, assets] = await Promise.all([
       siteScheduleContext(supabase, siteIds, todayIso),
       assetsForSites(supabase, siteIds),

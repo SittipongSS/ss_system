@@ -36,6 +36,7 @@ import {
   UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { businessDate } from "@/lib/businessDate";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
@@ -286,7 +287,7 @@ export default function AttachmentsPanel({
 
   // วันนี้ (ISO ตามเวลาเครื่องผู้ใช้) — ใช้ตัดสินว่าเอกสารพ้นอายุหรือยัง · คำนวณ
   // ครั้งเดียวต่อ render เพื่อให้ทุกการ์ด/ทุกแถวตัดสินด้วยวันเดียวกัน
-  const today = toLocalISODate(new Date());
+  const today = businessDate();
 
   // ไฟล์ Drive (private) เปิดผ่าน proxy ที่เช็กสิทธิ์ + stream; ไฟล์เก่าบน Supabase
   // (driveFileId ว่าง) ใช้ public URL ตรงเหมือนเดิม.

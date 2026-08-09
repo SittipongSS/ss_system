@@ -7,6 +7,7 @@ import { fmtMoney } from "@/lib/format";
 import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
 import { notifyToast } from "@/components/ui/Toast";
+import { businessDate } from "@/lib/businessDate";
 
 // LG records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
@@ -25,7 +26,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
     if (open) {
       setReceiptNumber("");
       setPaidAmount(order?.totalTax ? String(order.totalTax) : "");
-      setPaidDate(new Date().toISOString().slice(0, 10));
+      setPaidDate(businessDate());
       setFormRef("");
       setFile(null);
       setError(null);

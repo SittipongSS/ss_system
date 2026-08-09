@@ -9,6 +9,7 @@
 import 'server-only';
 import { listAttachments } from '@/lib/master/attachments';
 import { docTypesFor, requiredDocKeys, unsatisfiedRequiredDocs } from '@/lib/master/attachmentTypes';
+import { businessDate } from '@/lib/businessDate';
 
 // เอกสารบังคับที่ยังใช้ไม่ได้ — คืน [{ key, label, reason, expiresAt }] (ว่าง = ครบ)
 //   reason 'absent'  = ยังไม่ได้แนบเลย
@@ -27,5 +28,5 @@ export async function missingRequiredDocs(entityType, entityId, record, { today 
 
   const attachments = await listAttachments(entityType, entityId);
   // กติกาการตัดสินอยู่ที่ attachmentTypes (ไม่มี I/O) — ไฟล์นี้เหลือหน้าที่ไปเอาข้อมูล
-  return unsatisfiedRequiredDocs(entityType, docTypes, attachments, today || new Date().toISOString().slice(0, 10));
+  return unsatisfiedRequiredDocs(entityType, docTypes, attachments, today || businessDate());
 }

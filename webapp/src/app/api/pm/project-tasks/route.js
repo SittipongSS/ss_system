@@ -7,6 +7,7 @@ import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, forbidden, notFound, badRequest, conflict, unauthorized } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,7 +155,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // anchor: โครงการใช้วันเริ่มโครงการ; ชุดลอยของดีลใช้วันเริ่มเร็วสุดของชุด (fallback วันนี้)
   const anchor = project
     ? resolveSchedule(project).anchor
-    : ((allTasks || []).map((t) => t.startDate).filter(Boolean).sort()[0] || new Date().toISOString().slice(0, 10));
+    : ((allTasks || []).map((t) => t.startDate).filter(Boolean).sort()[0] || businessDate());
   const recalced = recalculateGraph(tasksWithNew, anchor);
   const finalRow = recalced.find(t => t.id === row.id);
 

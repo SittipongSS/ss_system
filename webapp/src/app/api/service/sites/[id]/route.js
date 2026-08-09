@@ -8,6 +8,7 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { findCustomer, loadAssets, requireSite } from '@/lib/service/sitesRepo';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     if (access.response) return access.response;
     // schedule = เข้าเติมล่าสุด + นัดครั้งหน้า → ตารางเครื่องใช้ประเมินว่าน้ำหอม
     // จะหมดวันไหน และมีนัดครอบแล้วหรือยัง (S-4)
-    const todayIso = toLocalISODate(new Date());
+    const todayIso = businessDate();
     const schedule = await siteScheduleContext(supabase, [id], todayIso);
     return ok({
       site: access.site,

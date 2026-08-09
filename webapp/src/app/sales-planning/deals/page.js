@@ -40,6 +40,7 @@ import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
    (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
@@ -86,7 +87,7 @@ export default function SalesPlanningPipelinePage() {
   /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
      ใช้ตัดสิน "FC เลยกำหนด" และนับถอยหลังก่อนขึ้นเดือนใหม่ */
   const [today, setToday] = useState(null);
-  useEffect(() => { setToday(new Date().toISOString().slice(0, 10)); }, []);
+  useEffect(() => { setToday(businessDate()); }, []);
   const currentMonth = today ? today.slice(0, 7) : null;
   const reviewWindow = forecastReviewWindow(today);
 

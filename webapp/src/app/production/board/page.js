@@ -20,6 +20,7 @@ import { lineLoad } from "@/lib/pm/productionPlan";
 import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const WEEKS = 4;
@@ -108,7 +109,7 @@ export default function ProductionBoardPage() {
     return next;
   });
 
-  const todayIso = toLocalISODate(new Date());
+  const todayIso = businessDate();
   const rangeLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[days.length - 1].date.getDate()} ${days[days.length - 1].date.toLocaleDateString("th-TH", { month: "short" })} ${days[days.length - 1].date.getFullYear()}`;
 
   // จำนวนช่องที่จองเกินกำลัง — ตัวเลขที่ต้องเห็นก่อนเลื่อนดูทั้งบอร์ด

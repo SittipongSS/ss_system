@@ -8,6 +8,7 @@
 // ตัวเลขที่กดต่อไปหางานไม่ได้ คือตัวเลขที่ไม่มีใครเปิดดูรอบสอง
 import { toLocalISODate } from './dateHelpers';
 import { LIVE_JOB_STATUSES, jobFinishDate, lineLoad, dueRisk, readinessConflict } from './productionPlan';
+import { businessDate } from '@/lib/businessDate';
 
 // ── ตัวเลขหัวหน้าจอ ──────────────────────────────────────────────────────
 // ⚠️ ยกเลิกไม่นับในทุกช่อง — งานที่ถูกยกเลิกยังอยู่ในตารางเพื่อเก็บประวัติ
@@ -99,7 +100,7 @@ export function capacityGlance(jobs = [], lines = [], { from, to, holidays, over
 //
 // คืนครบทุกไลน์ที่เปิดใช้ รวมไลน์ที่ว่าง — ไลน์ว่างคือข้อมูล ไม่ใช่ช่องที่ควรหาย
 // (PC ต้องเห็นที่ว่างเพื่อแทรกงานด่วน)
-export function runningToday(jobs = [], lines = [], { todayIso = toLocalISODate(new Date()), holidays, overridesByLine } = {}) {
+export function runningToday(jobs = [], lines = [], { todayIso = businessDate(), holidays, overridesByLine } = {}) {
   const load = lineLoad(jobs, lines, { from: todayIso, to: todayIso, holidays, overridesByLine });
   return lines
     .filter((line) => line.isActive !== false)

@@ -11,13 +11,14 @@ import {
 } from "@/lib/sales/quotationWonEvidence";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
+import { businessDate } from "@/lib/businessDate";
 
 // ฟอร์มยืนยัน Won จากใบเสนอราคา (บังคับหลักฐาน — feedback ผู้ใช้ 2026-07-15):
 // แนบไฟล์ สลิป/PO/เอกสารยืนยันการสั่งซื้อ ≥1 + วันที่เอกสาร; ถ้าไม่ใช่เอกสาร
 // การชำระเงิน ต้องกรอกกำหนดชำระ. อัปไฟล์ผ่าน /api/upload ไป private Supabase bucket
 // แล้วส่ง ref ไปกับ POST /quotations/[id]/accept — ใช้ร่วมหน้า editor + หน้าดีล.
 export default function QuotationWonDialog({ open, onClose, quote, customerName, onDone }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDate();
   const [docType, setDocType] = useState("payment_slip");
   const [docDate, setDocDate] = useState(today);
   const [dueDate, setDueDate] = useState("");

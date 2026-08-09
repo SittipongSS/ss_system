@@ -13,6 +13,7 @@ import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
+import { businessDate } from "@/lib/businessDate";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
@@ -41,7 +42,7 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
     setBusy(true);
     try {
       const t = row.tracking || {};
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessDate();
       const body = {
         pmDueDate: d.pmDueDate || null,
         rmDueDate: d.rmDueDate || null,

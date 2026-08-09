@@ -28,6 +28,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -195,7 +196,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const accessText = site ? accessWindowText(site) : "";
 
   // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("ช่างจะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
-  const todayIso = toLocalISODate(new Date());
+  const todayIso = businessDate();
   const upcoming = useMemo(
     () => visits.filter((v) => v.scheduledDate >= todayIso && v.status === "scheduled"),
     [visits, todayIso],

@@ -17,6 +17,7 @@ import {
 import { findCostingRequest } from '@/lib/costingAdmin';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function PATCH(request, { params }) {
   // status: null = ทุกสถานะ — วัสดุร่างต้องโหลดมาด้วย ไม่งั้นจะรายงานว่า "ไม่พบวัสดุ"
   // ทั้งที่ของจริงคือ "ยังเป็นร่าง รอ RD/PC รับ" ซึ่งคนละเรื่องกันสำหรับผู้ใช้
   const materials = await loadMaterials(supabase, { status: null });
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = businessDate();
   const nowIso = new Date().toISOString();
 
   // จำกัดเฉพาะบรรทัดที่ระบุ ถ้าส่ง componentIds มา (ไม่งั้นดึงทุกบรรทัดที่ดึงได้)

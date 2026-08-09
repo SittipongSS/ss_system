@@ -26,6 +26,7 @@ import { deliveryRollup, openDeliveriesToChase } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import styles from "./DeliveriesPanel.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", salesOrderId: "", dueDate: "", note: "" };
 
@@ -59,7 +60,7 @@ export default function DeliveriesPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const today = toLocalISODate(new Date());
+  const today = businessDate();
   const sum = deliveryRollup(deliveries, today);
   // จำนวนที่ "ขอให้อัปเดตได้" — ยังไม่มา และยังไม่มีคำร้องค้างอยู่
   const chaseable = openDeliveriesToChase(deliveries).length;

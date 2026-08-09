@@ -24,7 +24,17 @@ let activeHolidays = new Set(THAI_HOLIDAYS);
 export const setHolidays = (dates) => { activeHolidays = new Set(dates || []); };
 export const getHolidays = () => activeHolidays;
 
-/** แปลง Date เป็น 'YYYY-MM-DD' อิงเวลาท้องถิ่น (กันวันเพี้ยนจาก UTC) */
+/** แปลง Date **ที่ผู้เรียกมีอยู่แล้ว** เป็น 'YYYY-MM-DD' อิงโซนของเครื่องที่รัน
+ *
+ * ใช้กับวันในปฏิทิน/ตารางที่เดินวันด้วย `new Date(y, m, d)` อยู่แล้ว — ตรงนั้นถูก
+ * เพราะ Date ถูกสร้างด้วยเวลาท้องถิ่นตั้งแต่แรก
+ *
+ * ⚠️ **ห้ามใช้หา "วันนี้"** — `toLocalISODate(new Date())` อิงโซนของเครื่องที่รัน
+ * ⇒ ถูกบนเบราว์เซอร์ไทย แต่ **ผิดบนเซิร์ฟเวอร์ซึ่งรันที่ UTC** และผิดทั้งวัน
+ * ไม่ใช่แค่เช้ามืด · ใช้ `businessDate()` จาก `lib/businessDate` แทน
+ * (คอมเมนต์เดิมเขียนว่า "กันวันเพี้ยนจาก UTC" ซึ่งจริงครึ่งเดียวและพาให้เข้าใจผิด —
+ * มี ratchet test คุมอยู่ที่ `lib/businessDate.test.mjs`)
+ */
 export const toLocalISODate = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

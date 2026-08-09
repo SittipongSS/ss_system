@@ -4,8 +4,9 @@
 import { isBusinessDay } from './dateHelpers';
 import { templateFor, templateForMerge, defaultAssignee } from './templates';
 import { templateMatchesCategory } from '../workflowTemplates';
+import { businessDate } from '@/lib/businessDate';
 
-export const todayStr = () => new Date().toISOString().slice(0, 10);
+export const todayStr = () => businessDate();
 
 export const toDateStr = (d) => {
   if (!d) return null;

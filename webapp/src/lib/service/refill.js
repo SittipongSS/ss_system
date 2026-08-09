@@ -7,6 +7,7 @@
 // ทุกป้ายจึงต้องอ่านออกว่าเป็นการคาดการณ์ ไม่ใช่ค่าที่วัดมา
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { refillDueDate } from './sites';
+import { businessDate } from '@/lib/businessDate';
 
 // ใกล้หมดภายในกี่วันถึงเรียกว่า "ต้องรีบ" — 14 วันคือเวลาที่ยังจัดรอบวิ่งทันโดยไม่ต้องแทรกคิว
 export const REFILL_SOON_DAYS = 14;
@@ -41,7 +42,7 @@ export function refillAnchor(asset, lastSiteRefillDate = null) {
 export function refillStatus(asset, {
   lastSiteRefillDate = null,
   nextVisitDate = null,
-  todayIso = toLocalISODate(new Date()),
+  todayIso = businessDate(),
   soonDays = REFILL_SOON_DAYS,
 } = {}) {
   // เครื่องที่ถอดออกแล้วไม่ต้องเตือน — ของไม่ได้อยู่หน้างานแล้ว

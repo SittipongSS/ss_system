@@ -29,6 +29,7 @@ import {
 import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import styles from "./page.module.css";
+import { businessDate } from "@/lib/businessDate";
 
 const OPEN_STATUSES = "draft,planned,in_progress";
 const ATTENTION_LIMIT = 8;
@@ -63,7 +64,7 @@ export default function ProductionOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const todayIso = useMemo(() => toLocalISODate(new Date()), []);
+  const todayIso = useMemo(() => businessDate(), []);
   const weekEnd = useMemo(() => shiftDays(todayIso, 6), [todayIso]);
 
   const load = useCallback(async () => {

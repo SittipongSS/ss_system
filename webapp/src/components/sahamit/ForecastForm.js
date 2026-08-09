@@ -10,6 +10,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, convertEntryUnit } from "@/lib/sahamit/units";
+import { businessDate } from "@/lib/businessDate";
 
 // ฟอร์มลง/แก้รอบ FC — ใช้ร่วม 2 หน้า: สร้าง (/sahamit/forecast/new) กับแก้
 // (/sahamit/forecast/[id]/edit) ตามกฎ component เดียวสองโหมด (เหมือน PoForm).
@@ -44,7 +45,7 @@ function monthsBetween(start, end) {
 // onDone(json): บันทึกสำเร็จ (ส่ง response กลับให้หน้าไป redirect/refresh)
 // onCancel(): กดยกเลิก · onEditExisting(round): ไปแก้รอบที่ลงวันซ้ำ (หน้า new → navigate)
 export default function ForecastForm({ products = [], editRound = null, existingRounds = [], onDone, onCancel, onEditExisting }) {
-  const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [receivedDate, setReceivedDate] = useState(() => businessDate());
   const [note, setNote] = useState("");
   const [startMonth, setStartMonth] = useState(thisMonth);
   const [endMonth, setEndMonth] = useState(() => addMonths(thisMonth(), 3));
@@ -98,11 +99,11 @@ export default function ForecastForm({ products = [], editRound = null, existing
   useEffect(() => {
     setUnknown([]); setPick(""); setError(""); setBusy(false); setEntryUnit("piece");
     if (editRound) {
-      setReceivedDate(String(editRound.receivedDate || "").slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setReceivedDate(String(editRound.receivedDate || "").slice(0, 10) || businessDate());
       setNote(editRound.note || "");
       loadRoundIntoGrid(editRound);
     } else {
-      setReceivedDate(new Date().toISOString().slice(0, 10));
+      setReceivedDate(businessDate());
       setNote(""); setStartMonth(thisMonth()); setEndMonth(addMonths(thisMonth(), 3));
       setMonthsOverride(null); setRows([]);
     }
