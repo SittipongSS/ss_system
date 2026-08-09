@@ -77,12 +77,23 @@ export const displayDateToIso = (value) => {
 
 // เงินแบบย่อ: ฿ + x.xxK (พัน) / x.xxM (ล้าน); ต่ำกว่าพันแสดงเต็ม 2 ทศนิยม.
 // ใช้ในที่แคบ เช่น KPI card / กราฟ / แดชบอร์ด ที่ตัวเลขยาวเกินไป.
+//
+// 🐞 **ขอบต้องเทียบ "หลังปัด" ไม่ใช่ก่อนปัด** — เดิมเช็ก `abs >= 1e6` ก่อน แล้วค่อย
+// `(abs/1e3).toFixed(2)` ⇒ 999,999 ไม่ถึงล้าน ตกอยู่ชั้น K แล้วปัดขึ้นเป็น
+// **"฿1000.00K"** (ควรอ่านว่า ฿1.00M) · ช่วง 9xx,xxx คือยอดเป้า/ยอด Won ที่เกิดจริง
+// ทุกเดือน และตัวนี้คือ formatter ย่อกลางของ KPI card + หน้าตั้งเป้า + แดชบอร์ดผลงาน
+// จึงย้ายขอบมาที่ค่าที่ "ปัดแล้วได้ 1000.00" พอดี: 999,995 และ 999.995
+const COMPACT_M = 999_995;   // ต่ำกว่านี้ (abs/1e6).toFixed(2) ยังไม่ถึง "1.00"
+const COMPACT_K = 999.995;   // ต่ำกว่านี้ (abs/1e3).toFixed(2) ยังไม่ถึง "1.00"
+
 export const fmtMoneyCompact = (amount) => {
   const n = Number(amount) || 0;
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
-  if (abs >= 1e6) return `${sign}฿${(abs / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `${sign}฿${(abs / 1e3).toFixed(2)}K`;
+  // ⚠️ ไม่มีหน่วยเหนือ M — พันล้านขึ้นไปจึงคั่นหลักพันในตัวเลขแทน ("฿1,000.00M")
+  // ไม่ใช่ "฿1000.00M" ที่อ่านผิดเป็นหลักหมื่นล้านได้
+  if (abs >= COMPACT_M) return `${sign}฿${fmtNumber(abs / 1e6, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+  if (abs >= COMPACT_K) return `${sign}฿${(abs / 1e3).toFixed(2)}K`;
   return fmtMoney(n);
 };
 

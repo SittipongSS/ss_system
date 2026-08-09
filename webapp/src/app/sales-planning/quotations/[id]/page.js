@@ -36,6 +36,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
+import { branchLabel } from "@/lib/master/thaiAddress";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -727,8 +728,14 @@ export default function QuotationEditorPage() {
                 )}
               </div>
               <div className={styles.customerGrid}>
-                {/* สาขาเป็นของลูกค้าทั้งราย ไม่ใช่ของที่อยู่ — เลือกที่อยู่คนละที่ไม่ทำให้สาขาขยับ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · สาขา ${quote.branchCode}` : ""}</span></div>
+                {/* สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติผู้ใช้ 2026-08-06 ที่กลับมติ
+                    2026-08-05 — ดูเหตุผลยาวที่ lib/master/addresses.js) · ค่าถูกตรึงไว้ใน
+                    snapshot ตอนออกใบแล้วโดย pickDocumentAddresses
+                    ⚠️ ผ่าน branchLabel เสมอ — `branchCode` **มีค่าเสมอ ไม่เคยว่าง** เพราะ
+                    unique (taxId, branchCode) บังคับ not null แล้วตกไป '00000' ⇒ เขียน
+                    `สาขา ${...}` ตรง ๆ จะได้ "สาขา 00000" บนใบเกือบทุกใบ ขณะที่หน้าทะเบียน
+                    ลูกค้าเรียก branchLabel แล้วขึ้น "สำนักงานใหญ่" = ข้อมูลตัวเดียวกันสองคำ */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · ${branchLabel(quote.branchCode)}` : ""}</span></div>
                 <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</span></div>
                 {editable && billingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่ออกบิล

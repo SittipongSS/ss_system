@@ -21,8 +21,13 @@ export const DOC_REF_TYPES = {
   SO: { label: 'ใบสั่งขาย', table: 'sales_orders', column: 'orderNumber', path: (id) => `/sa/sales-orders/${id}` },
   PJ: { label: 'โครงการ', table: 'projects', column: 'code', path: (id) => `/sa/projects/${id}` },
   DL: { label: 'ดีล', table: 'sales_deals', column: 'code', path: (id) => `/sa/deals/${id}` },
-  CR: { label: 'ใบขอราคาผลิต', table: 'costing_requests', column: 'code', path: (id) => `/sa/costing/${id}` },
-  DR: { label: 'คำร้อง', table: 'dept_requests', column: 'code', path: (id) => `/requests/${id}` },
+  // ⚠️ **สองตารางนี้เก็บเลขที่ไว้ที่ `docNo` ไม่ใช่ `code`** — ต่างจาก PJ/DL ที่ใช้ `code` จริง
+  // เดิมเขียน 'code' ตามเพื่อนบ้าน ทำให้ `/go/CR-…` ยิง `.eq('code', …)` แล้ว PostgREST
+  // คืน 42703 ⇒ ผู้ใช้เห็น "เปิดทะเบียนไม่สำเร็จ: column … does not exist" **ทุกครั้ง**
+  // ที่กดเลขที่ CR-/DR- ในเธรด · ยืนยันจาก 0141_costing_requests.sql:25 และ
+  // 0173_dept_requests.sql — ไม่มีคอลัมน์ชื่อ `code` ในสองตารางนี้เลย
+  CR: { label: 'ใบขอราคาผลิต', table: 'costing_requests', column: 'docNo', path: (id) => `/sa/costing/${id}` },
+  DR: { label: 'คำร้อง', table: 'dept_requests', column: 'docNo', path: (id) => `/requests/${id}` },
 };
 
 // รูปแบบที่ยอมรับ: คำนำหน้า 2 ตัวอักษร + ขีด + ตัวเลข/ขีด (เช่น QT-26070028-0, PJ-26070027)

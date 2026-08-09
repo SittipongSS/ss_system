@@ -37,6 +37,7 @@ import {
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -621,7 +622,9 @@ export default function SalesOrderDetailPage() {
             <DetailCard icon={MapPin} eyebrow="CUSTOMER SNAPSHOT" title="ข้อมูลลูกค้าในเอกสาร">
               <dl className={styles.addressList}>
                 <div>
-                  <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · สาขา ${order.quotation.branchCode}` : ""}</dt>
+                  {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขสาขาที่ต้องอ่าน
+                      (ดู lib/master/thaiAddress.js · หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว) */}
+                  <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · ${branchLabel(order.quotation.branchCode)}` : ""}</dt>
                   <dd>{order.quotation?.billingAddress || "-"}</dd>
                 </div>
                 <div>
