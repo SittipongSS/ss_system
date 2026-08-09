@@ -57,6 +57,15 @@ export default function MobileBottomNav({ items, pathname, label }) {
               }
               const Icon = item.icon;
               const active = item.match(pathname);
+              // เมนูที่ยังไม่เปิด — ช่องยังอยู่ (จำนวนช่อง/หน้าไม่ขยับ) แต่กดไม่ได้
+              if (item.disabled) {
+                return (
+                  <span className="mbn-item is-disabled" key={item.href} aria-disabled="true">
+                    <span className="mbn-ico"><Icon size={19} aria-hidden="true" /></span>
+                    <span>{item.shortName || item.name}</span>
+                  </span>
+                );
+              }
               return (
                 <Link
                   href={item.href}
