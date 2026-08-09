@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -37,7 +37,7 @@ import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
-import { pdrValuesFrom } from "@/components/requests/PdrForm";
+import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -745,6 +745,21 @@ export default function RequestDetailPage() {
     },
   ];
 
+  /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
+     ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
+     ต้องส่งกันทาง LINE) · ประกาศครั้งเดียวแล้ววางได้สองที่ตามโครงของหัวข้อ */
+  const attachmentsBlock = (
+    <div className={styles.attachBlock}>
+      <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
+      <AttachmentsPanel
+        entityType="dept_request"
+        entityId={req.id}
+        canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        inlineUpload
+      />
+    </div>
+  );
+
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
@@ -837,18 +852,12 @@ export default function RequestDetailPage() {
           </div>
         )}
 
-        {/* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะ
-            รายบรรทัดของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิง
-            มากที่สุดแนบไม่ได้เลย ต้องไปส่งกันทาง LINE) */}
-        <div className={styles.attachBlock}>
-          <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
-          <AttachmentsPanel
-            entityType="dept_request"
-            entityId={req.id}
-            canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-            inlineUpload
-          />
-        </div>
+        {/* ⭐ **ไฟล์แนบย้ายไปคอลัมน์ขวา** (มติผู้ใช้ 2026-08-09) — มันเป็นของ *ทั้งใบ*
+            เหมือนปุ่มระดับใบ · วางเป็นแถบกว้างใต้หัวใบทำให้จอแรกเป็นกล่องว่างเปล่า
+            ครึ่งจอ ทั้งที่ส่วนใหญ่ไม่มีไฟล์ · ท้ายเธรดก็ไม่ใช่ที่ของมัน — เธรดมีที่แนบ
+            ของตัวเองรายข้อความอยู่แล้ว (ของสองอันนี้คนละความหมาย: ของใบ vs ของบทสนทนา)
+            ⚠️ หัวข้อที่ยังไม่เปิดโครง panel ยังใช้ที่เดิม — ไม่มีคอลัมน์ขวาให้ย้ายไป */}
+        {!usePanel && attachmentsBlock}
       </SalesDetailOverview>
 
       {/* ⭐ โครงสองแบบ (มติผู้ใช้ 2026-08-09 — รีดีไซน์ทีละหัวข้อ):
@@ -907,6 +916,16 @@ export default function RequestDetailPage() {
                 briefSummary={briefSummary}
               />
             )}
+            {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
+                สรุป → หลักฐาน · การ์ดทรงเดียวกับที่อื่นในคอลัมน์ (`DetailCard`) */}
+            <DetailCard icon={Paperclip} title="ไฟล์แนบของคำร้อง">
+              <AttachmentsPanel
+                entityType="dept_request"
+                entityId={req.id}
+                canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+                inlineUpload
+              />
+            </DetailCard>
           </>
         ) : null}
       >

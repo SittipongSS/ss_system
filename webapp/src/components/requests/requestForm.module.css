@@ -355,6 +355,9 @@
 
 /* หัวก้อน: ป้ายเลข + ชื่อเรียก — เลขคือสิ่งที่คนใช้อ้างกัน ("ก้อนที่ 2 เอาโทนอุ่นกว่านี้") */
 .briefHead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* ⚠️ สีอ่อนของ accent ไม่ใช่เทา — ถอดแถบสีซ้ายออกแล้วทั้งบล็อกกลายเป็นเทาล้วน
+   จนสายตาไม่มีจุดเกาะว่าก้อนใหม่เริ่มตรงไหน (ผู้ใช้ทักว่า "สีหายมั้ย") · ป้ายเลข
+   จึงถือสีไว้แทน — จุดเล็กที่มีสี อ่านเป็น "ลำดับ" ไม่ใช่ "ก้อนนี้สำคัญกว่า" */
 .briefNo {
   display: inline-flex;
   align-items: center;
@@ -363,9 +366,10 @@
   height: 1.5rem;
   padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
-  background: var(--panel-3);
-  color: var(--text-3);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
   flex: none;
 }

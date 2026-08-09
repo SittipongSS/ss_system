@@ -71,6 +71,16 @@ export const PDR_DOCUMENTS = [
   { value: 'other', label: 'อื่น ๆ' },
 ];
 
+/**
+ * รหัสหมวด "หัวน้ำหอม" (FRAGRANCE OIL) — เลือกหมวดนี้แล้วต้องบอกปลายทางด้วย
+ *
+ * ⚠️ **รหัสตายตัวโดยตั้งใจ** — โน้ตสีแดงบนกระดาษข้อ 1.11 ผูกกับสินค้าตัวนี้ตัวเดียว
+ * (หัวน้ำหอมเป็นวัตถุดิบ ไม่ใช่ปลายทาง) ไม่ใช่คุณสมบัติที่หมวดอื่นจะมีบ้างในอนาคต
+ * · วันไหนมีหมวด "วัตถุดิบ" แบบเดียวกันเพิ่ม ให้ย้ายไปเป็นช่องติ๊กบนทะเบียนหมวด
+ * (ท่าเดียวกับ `isExcise`/`requiresFdaNotice` — ดู lib/master/categoryOf.js)
+ */
+export const PDR_FRAGRANCE_OIL_CODE = '02-020';
+
 const labelOf = (list, value) => list.find((o) => o.value === value)?.label || null;
 
 /**
@@ -197,7 +207,17 @@ export const PDR_SECTIONS = [
       {
         key: 'productKinds', no: '1.11', column: 'pdrProductKinds',
         label: 'ประเภทสินค้า', type: 'categories',
-        hint: 'หากผลิตเป็น Fragrance ให้ระบุด้วยว่านำไปใช้กับสินค้าประเภทใด',
+        hint: 'หากผลิตเป็น Fragrance Oil ให้ระบุด้วยว่านำไปใช้กับสินค้าประเภทใด',
+      },
+      // ⭐ คำตอบของโน้ตสีแดงข้อ 1.11 (มติผู้ใช้ 2026-08-09 · mig 0228) — เดิมคำเตือน
+      // เป็นแค่คำขยายป้าย ไม่มีที่ให้กรอกคำตอบ ⇒ ไม่มีใครตอบ
+      // ⚠️ เงื่อนไขการโผล่มาจากทะเบียน (`showForMulti`) ไม่ใช่ `if` ในฟอร์ม — กติกา
+      // เดียวกับช่อง "อื่น ๆ" ของบรรจุภัณฑ์/เอกสาร
+      {
+        key: 'fragranceUse', column: 'pdrFragranceUse',
+        label: 'หัวน้ำหอมนี้นำไปใช้กับสินค้าประเภทใด', type: 'text',
+        hint: 'เช่น น้ำหอม EDP · น้ำยาปรับผ้านุ่ม · เทียนหอม',
+        showForMulti: { key: 'productKinds', value: PDR_FRAGRANCE_OIL_CODE },
       },
       // ⚠️ ช่องข้อความอิสระเดิม **เก็บไว้อ่านใบเก่า** — 0227 ไม่ย้ายค่าให้ เพราะข้อความ
       // อย่าง "ครีมบำรุงผิว" แปลงเป็นรหัสหมวดอัตโนมัติไม่ได้ · ฟอร์มไม่เขียนลงตัวนี้แล้ว
@@ -504,6 +524,45 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
  * กติกาเดียวกับ `pdrSectionRows` · ไม่ตัด กระดาษทุกใบใหม่จะมีบรรทัด
  * "ประเภทสินค้า (บันทึกไว้เดิม): N/A" ติดมาตลอด (เคยหลุดมาแล้วรอบหนึ่ง)
  */
+/**
+ * ช่องนี้เก็บเป็น **อาเรย์** ไหม (คอลัมน์ `text[]`)
+ *
+ * 🐞 ที่ต้องมีตัวกลาง: กติกา "อาเรย์คือชนิดไหนบ้าง" เคยกระจายอยู่ 4 ที่ (ฟอร์มค่าว่าง ·
+ * ตัวอ่านค่าจากแถว · ตัวตรวจก่อนเขียน DB · ตัวแปลงป้าย) · พอเพิ่มชนิด `categories`
+ * (0227) มีที่หนึ่งที่ลืมแก้ ⇒ `pdrValuesFrom` คืนค่าเป็น **สตริง** ให้ช่องที่ฟอร์ม
+ * เรียก `.map()` ⇒ กด "แก้แบบฟอร์ม PDR" แล้วเข้าหมวดข้อมูลลูกค้า **จอพังทั้งหมวด**
+ * ⇒ ตอนนี้ทุกที่ถามฟังก์ชันนี้ที่เดียว
+ */
+export const pdrIsArrayField = (field) => ['multi', 'categories'].includes(field?.type);
+
+/**
+ * ค่าเริ่มต้นของฟอร์ม — derive จากทะเบียน เพิ่มช่องแล้วฟอร์มรู้เองว่าต้องมีคีย์นั้น
+ * (เดิมไล่เขียนมือ ⇒ ช่องใหม่เป็น undefined แล้ว React ด่าเรื่อง uncontrolled input)
+ */
+export const emptyPdr = () => Object.fromEntries(
+  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, pdrIsArrayField(f) ? [] : '']),
+);
+
+/**
+ * คอลัมน์ `pdr*` บนแถวคำร้อง → ค่าที่ฟอร์มใช้ — ทางกลับของ `normalizePdr`
+ *
+ * ⚠️ ชื่อช่องในฟอร์มสั้นเพราะอยู่ในบริบท PDR อยู่แล้ว · DB ต้อง prefix เพื่อไม่ให้ปน
+ * กับคอลัมน์ของกลไกคำร้อง ⇒ ต้องมีตัวแปลงทั้งสองทาง ไม่ใช่ทางเดียว
+ * ⚠️ **อยู่ในทะเบียน ไม่ใช่ในคอมโพเนนต์** — มันเป็นตรรกะล้วนที่พังเงียบได้ (บั๊กอาเรย์
+ * ข้างบน) · อยู่ในไฟล์ JSX แล้วเทสต์ node เรียกไม่ได้ จึงไม่มีใครดักไว้
+ */
+export function pdrValuesFrom(row = {}) {
+  return Object.fromEntries(
+    PDR_FIELDS.filter((f) => f.column).map((f) => {
+      const raw = row[f.column];
+      // ช่องอาเรย์ต้องกลับมาเป็นอาเรย์ — ไม่งั้น `String([])` ได้ "" แล้วค่าที่ติ๊กไว้
+      // หายทั้งชุดตอนเปิดโหมดแก้ (และช่องที่เรียก `.map()` จะพังทั้งหมวด)
+      if (pdrIsArrayField(f)) return [f.key, Array.isArray(raw) ? raw : []];
+      return [f.key, raw == null ? '' : String(raw)];
+    }),
+  );
+}
+
 export function pdrSectionGroups(section, request = null, context = {}) {
   const keep = (field) => !field.legacy || !request
     || (pdrFieldText(field, request, context) ?? '') !== '';

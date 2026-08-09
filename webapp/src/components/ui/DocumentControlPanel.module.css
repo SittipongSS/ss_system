@@ -257,6 +257,10 @@
   list-style: none;
 }
 
+/* ⚠️ ในการ์ดสรุป รายการนี้ต่อท้ายแถวตัวเลขซึ่งปิดท้ายด้วยเส้นคั่น — ไม่เว้นระยะ
+   บรรทัดแรกจะแปะติดเส้นพอดี (ผู้ใช้ทัก 2026-08-09 "ตัวหนังสือชิดเส้น") */
+.summaryCard .readinessList { margin-top: var(--space-4); }
+
 .readinessList li {
   display: flex;
   align-items: flex-start;

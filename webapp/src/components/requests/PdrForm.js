@@ -43,12 +43,6 @@ const label = (key) => (FIELD[key].hint
 
 const withBlank = (options) => [{ value: "", label: "— เลือก —" }, ...options];
 
-// ⭐ derive จากทะเบียน — เพิ่มช่องในทะเบียนแล้วฟอร์มรู้เองว่าต้องมีคีย์นั้น
-// (เดิมไล่เขียนมือ ⇒ ช่องใหม่จะเป็น undefined แล้ว React ด่าเรื่อง uncontrolled input)
-export const emptyPdr = () => Object.fromEntries(
-  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, ["multi", "categories"].includes(f.type) ? [] : ""]),
-);
-
 // ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
 // ⚠️ **ไม่ติ๊กไว้ล่วงหน้า** (มติผู้ใช้เรื่องหมวดเอกสาร) — ค่าเริ่มต้นที่ติ๊กไว้ให้
 // แปลว่าไม่มีใครตัดสินใจ แล้วเสียงลืมติ๊กของที่ควรมีจริงจะกลืนหายไปกับค่าเริ่มต้น
@@ -383,6 +377,20 @@ export default function PdrForm({
               </ul>
             )}
           </div>
+          {/* ⭐ เลือก "หัวน้ำหอม" แล้วต้องบอกปลายทาง (มติผู้ใช้ 2026-08-09 · mig 0228)
+              — หัวน้ำหอมเป็นวัตถุดิบ ไม่ใช่ปลายทาง · RD ตั้งความเข้มข้นกับเบสไม่ได้
+              ถ้าไม่รู้ว่าเอาไปลงน้ำหอมหรือน้ำยาปรับผ้านุ่ม (โน้ตสีแดงข้อ 1.11) */}
+          {pdrFieldVisible(FIELD.fragranceUse, value) && (
+            <div className="form-group col-span-2">
+              {/* ป้ายล้วน — คำขยายไปอยู่ที่ placeholder แล้ว ไม่ต้องซ้ำสองที่ */}
+              <label htmlFor="pdr-fragrance-use">{FIELD.fragranceUse.label}</label>
+              <Input
+                id="pdr-fragrance-use" value={value.fragranceUse || ""} disabled={disabled}
+                placeholder={FIELD.fragranceUse.hint}
+                onChange={(e) => set({ fragranceUse: e.target.value })}
+              />
+            </div>
+          )}
           {/* ⚠️ เต็มแถวเพื่อ **ดันสองวันที่ให้อยู่บรรทัดเดียวกัน** (มติผู้ใช้ 2026-08-09) —
               ช่องหมวดสินค้าด้านบนกินเต็มแถว ทำให้ parity พลิก ถ้าปล่อยตัวนี้ครึ่งแถว
               "วันที่ต้องการสินค้า" จะไปจับคู่กับมันแทน แล้ว "วันที่ต้องการจำหน่าย" เหลือเดี่ยว */}
@@ -717,18 +725,3 @@ export default function PdrForm({
   );
 }
 
-// คอลัมน์ `pdr*` บนแถวคำร้อง → ค่าที่ฟอร์มใช้ — ทางกลับของ normalizePdr
-//
-// ⚠️ ชื่อช่องในฟอร์มสั้นเพราะอยู่ในบริบท PDR อยู่แล้ว · DB ต้อง prefix เพื่อไม่ให้ปน
-// กับคอลัมน์ของกลไกคำร้อง ⇒ ต้องมีตัวแปลงทั้งสองทาง ไม่ใช่ทางเดียว
-export function pdrValuesFrom(row = {}) {
-  return Object.fromEntries(
-    PDR_FIELDS.filter((f) => f.column).map((f) => {
-      const raw = row[f.column];
-      // ช่องติ๊กหลายตัวต้องกลับมาเป็น array — ไม่งั้น `String([])` ได้ "" แล้วค่าที่
-      // ติ๊กไว้หายทั้งชุดตอนเปิดโหมดแก้
-      if (f.type === "multi") return [f.key, Array.isArray(raw) ? raw : []];
-      return [f.key, raw == null ? "" : String(raw)];
-    }),
-  );
-}
