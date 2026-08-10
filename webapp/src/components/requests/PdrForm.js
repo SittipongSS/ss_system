@@ -480,13 +480,20 @@ export default function PdrForm({
                 {merged ? "บรีฟรวมทุกกลิ่น" : (brief.label || `กลิ่นที่ ${i + 1}`)}
               </span>
             </div>
+            {/* ⭐ **บังคับก่อนกดส่ง ไม่ใช่ก่อนบันทึกร่าง** (มติผู้ใช้ 2026-08-10) — ป้ายบอก
+                ล่วงหน้าว่าช่องนี้ข้ามไม่ได้ตอนส่ง ส่วนด่านจริงอยู่ที่ API ตัวเดียวกับที่
+                หน้าจอถาม (`scentBriefNameError`) · ร่างยังบันทึกได้ทั้งที่ยังว่าง
+                ⚠️ ไม่ใส่ `required` บน input — จะบล็อกการบันทึกร่างซึ่งขัดกับมติเดิม */}
             <div className="form-group">
-              <label htmlFor={`brief-label-${i}`}>ชื่อเรียก</label>
+              <label htmlFor={`brief-label-${i}`}>ชื่อเรียก <b>*</b></label>
               <Input
                 id={`brief-label-${i}`} value={brief.label || ""} disabled={disabled}
                 placeholder="เช่น แนวสดชื่น"
                 onChange={(e) => setBrief(i, { label: e.target.value })}
               />
+              <small className={styles.hint}>
+                ตั้งชื่อให้ต่างกันแต่ละก้อน — RD ใช้ชื่อนี้บอกว่ากลิ่นที่ส่งกลับมาตอบก้อนไหน
+              </small>
             </div>
             <div className="form-group">
               <label htmlFor={`brief-body-${i}`}>บรีฟกลิ่น</label>
