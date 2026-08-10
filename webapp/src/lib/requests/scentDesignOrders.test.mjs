@@ -33,6 +33,10 @@ test('⭐ หมวด 03 ทั้งก้อนใช้ไม่ได้ �
   assert.ok(!isScentDesignLine({ categoryCode: '03-003' }), 'PACKAGE DESIGN ไม่ใช่งานกลิ่น');
   assert.ok(!isScentDesignLine({ categoryCode: '03-004' }), 'CI DESIGN ไม่ใช่งานกลิ่น');
   assert.ok(!isScentDesignLine({ categoryCode: '01-002' }));
+  // ⭐ แก้ไขกลิ่น (มติผู้ใช้ 2026-08-10) — งานแก้กลิ่นเดิมยังเป็นงานที่ RD ต้องพัฒนา
+  // และส่ง direction กลับ ⇒ ใบที่ขายแต่ค่าแก้กลิ่นต้องเปิดคำร้องพัฒนากลิ่นได้
+  assert.ok(isScentDesignLine({ categoryCode: '03-010' }), 'แก้ไขกลิ่นต้องผ่าน');
+  assert.equal(scentCountForOrder([{ qty: 2, categoryCode: '03-010' }]), 2);
 });
 
 test('จำนวนกลิ่นมาจาก qty ของบรรทัดออกแบบกลิ่น', () => {
