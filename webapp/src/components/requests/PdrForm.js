@@ -11,14 +11,12 @@
 // · จำนวนกลิ่น) ⇒ ขึ้นเป็นช่องเส้นประ ไม่ให้พิมพ์ซ้ำแล้วขัดกับของจริง
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-/* ⏸️ **ช่องเงินสามช่องยังเป็นช่องข้อความอิสระ — ชั่วคราว** (มติผู้ใช้ 2026-08-10)
-   กติกาที่หัว `ui/Input.js` บอกว่าช่องเงินต้องใช้ `MoneyInput` และเคยสลับไปแล้วครั้งหนึ่ง
-   แต่ผู้ใช้ขอถอยกลับก่อน เพราะกำลังจะรื้อฟอร์มใหม่ทั้งใบ ⇒ ล็อกการพิมพ์ตอนนี้แล้ว
-   ต้องมารื้ออีกรอบ
-   ⚠️ **คอลัมน์เป็น `numeric` (0214) ไม่ใช่ text** — ช่องรับข้อความอิสระได้ก็จริง แต่
-   "1,200.-" / "300-400" ยังถูกตีกลับที่ด่าน server อยู่ดี · ที่แก้ไปคือข้อความตีกลับ
-   ให้บอกชื่อช่องและทวนค่าที่พิมพ์ (`lib/requests/pdr.js`) ⇒ ตกด่านแล้วรู้ว่าต้องแก้ตรงไหน
-   ตอนรื้อฟอร์มค่อยตัดสินว่าจะเป็น `MoneyInput` หรือย้ายเป็นคอลัมน์ข้อความจริง */
+/* ⚠️ **ช่องเงินใช้ `MoneyInput` เสมอ ห้ามใช้ `Input` ธรรมดา** (กติกาที่หัว `ui/Input.js`)
+   🐞 ผู้ใช้เจอเอง 2026-08-10 — สามช่องนี้เคยเป็นช่องข้อความอิสระ ทั้งที่คอลัมน์เป็น
+   `numeric` (0214) ⇒ พิมพ์ "1,200.-" / "300-400" / "ไม่เกิน 500" ลงไปได้ แล้วไปตายที่
+   ด่าน server ตอนกดบันทึก · ช่องเงินอยู่คนละหมวดกันสองหมวด ⇒ ตกด่านแล้วหาไม่เจอ
+   ว่าผิดช่องไหน (ข้อความตีกลับบอกชื่อช่องแล้วเป็นด่านสุดท้าย ไม่ใช่ด่านแรก) */
+import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
@@ -326,9 +324,9 @@ export default function PdrForm({
               ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
           <div className="form-group">
             <label htmlFor="pdr-value">{label("projectValue")}</label>
-            <Input id="pdr-value" value={value.projectValue || ""} disabled={disabled}
+            <MoneyInput id="pdr-value" value={value.projectValue} disabled={disabled}
               placeholder={FIELD.projectValue.placeholder}
-              onChange={(e) => set({ projectValue: e.target.value })} />
+              onChange={(v) => set({ projectValue: v ?? "" })} />
           </div>
         </div>
         {/* ⭐ ข้อ 1.10 บนกระดาษ — อยู่ระหว่าง 1.9 กับ 1.11 ตามลำดับกระดาษ ไม่ใช่ท้ายสุด
@@ -596,13 +594,13 @@ export default function PdrForm({
         <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="pdr-cost">{label("targetCost")}</label>
-            <Input id="pdr-cost" value={value.targetCost} disabled={disabled}
-              onChange={(e) => set({ targetCost: e.target.value })} />
+            <MoneyInput id="pdr-cost" value={value.targetCost} disabled={disabled}
+              onChange={(v) => set({ targetCost: v ?? "" })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-price">{label("targetPrice")}</label>
-            <Input id="pdr-price" value={value.targetPrice} disabled={disabled}
-              onChange={(e) => set({ targetPrice: e.target.value })} />
+            <MoneyInput id="pdr-price" value={value.targetPrice} disabled={disabled}
+              onChange={(v) => set({ targetPrice: v ?? "" })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-moq">{label("moq")}</label>
