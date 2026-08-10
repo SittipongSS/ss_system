@@ -7,3 +7,37 @@
 .priceNone { color: var(--text-3); font-size: var(--fs-4); }
 .priceExpired { color: var(--amber); }
 .priceTiers { color: var(--text-3); font-size: var(--fs-3); }
+
+/* ── หน้ารายละเอียดของทะเบียน ─────────────────────────────────────────── */
+/* `.page` ของ Workspace เป็น block ไม่มี gap — เหมือนหน้าคำร้อง (ดู page.module.css
+   ของ requests/[id]) ⇒ ต้องมี margin เอง ไม่งั้นแถวการ์ดแนบหัวใบ 0px */
+.detailLayout { margin-top: var(--space-4-5); }
+
+.factGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+}
+.factGrid > div { min-width: 0; }
+.factWide { grid-column: 1 / -1; }
+.factGrid dt {
+  margin: 0 0 var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+.factGrid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  overflow-wrap: anywhere;
+}
+
+.priceBlock { display: flex; flex-direction: column; gap: var(--space-1); }
+.priceValue { font-size: var(--fs-9); font-weight: var(--fw-bold); }
+
+@media (max-width: 680px) {
+  .factGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.muted { color: var(--text-3); }

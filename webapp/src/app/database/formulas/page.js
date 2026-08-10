@@ -60,6 +60,10 @@ export default function FormulasPage() {
   const [loadError, setLoadError] = useState("");
   // ?q= = ลิงก์เข้ามาจากที่อื่น — ดูหมายเหตุเดียวกันในหน้าทะเบียนกลิ่น
   const linkedQuery = useSearchParams().get("q") || "";
+  /* ⭐ `?edit=<id>` — ปุ่ม "แก้ไขข้อมูล" บนหน้ารายละเอียดส่งกลับมาเปิดฟอร์มที่นี่
+     ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
+     (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
+  const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   const [sourceFilter, setSourceFilter] = useState("");
@@ -104,6 +108,17 @@ export default function FormulasPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  /* เปิดฟอร์มแก้จากลิงก์ `?edit=` — รอจนโหลดรายการเสร็จเพราะฟอร์มต้องใช้แถวเต็ม
+     ⚠️ ยิงครั้งเดียว (`openedFromLink`) — ไม่งั้นปิดฟอร์มแล้วมันเด้งกลับมาเปิดใหม่
+     ทุกครั้งที่ข้อมูลรีเฟรช เพราะพารามิเตอร์บน URL ยังอยู่ */
+  const [openedFromLink, setOpenedFromLink] = useState(false);
+  useEffect(() => {
+    if (!linkedEditId || openedFromLink || !formulas.length) return;
+    const row = formulas.find((x) => x.id === linkedEditId);
+    setOpenedFromLink(true);
+    if (row) setForm({ mode: "edit", formula: row, value: formulaToForm(row) });
+  }, [linkedEditId, openedFromLink, formulas]);
   // หมวดสินค้าเป็นครึ่งหนึ่งของตัวตนสูตรแล้ว (0207) — ชุด master ที่แทบไม่เปลี่ยน
   // จึงโหลดครั้งเดียวผ่านแคช ไม่ต้องดึงซ้ำทุกครั้งที่กดรีเฟรชทะเบียน
   useEffect(() => {
@@ -424,7 +439,8 @@ export default function FormulasPage() {
                   <tr key={f.id}>
                     <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
                     <td className={styles.name}>
-                      {f.name}
+                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด (กติกาเดียวกับทะเบียนกลิ่น) */}
+                      <Link href={`/database/formulas/${f.id}`}>{f.name}</Link>
                       {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
                           ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
                       {f.customerTradeName && (

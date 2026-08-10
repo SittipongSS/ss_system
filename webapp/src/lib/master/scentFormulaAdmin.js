@@ -420,3 +420,27 @@ export async function attachRegistryPrice(supabase, rows, { column, kind }) {
   }
   return rows.map((r) => ({ ...r, price: byRow.get(r.id) || null }));
 }
+
+/* ── ใบเดียวพร้อมของประกอบ — ใช้โดยหน้ารายละเอียด ────────────────────────
+ * ⚠️ ต้องต่อ "ที่มา" และ "ราคา" ชุดเดียวกับหน้ารายการ ไม่งั้นเปิดใบเดียวกันจาก
+ * สองทางแล้วเห็นข้อมูลไม่เท่ากัน — โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
+ */
+export async function findScentDetail(supabase, id) {
+  const scent = await findScent(supabase, id);
+  if (!scent) return null;
+  const [withSource] = await attachScentSource(supabase, [scent]);
+  const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
+    column: 'scentId', kind: 'RM_F',
+  });
+  return withPrice;
+}
+
+export async function findFormulaDetail(supabase, id) {
+  const formula = await findFormula(supabase, id);
+  if (!formula) return null;
+  const [withSource] = await attachFormulaSource(supabase, [formula]);
+  const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
+    column: 'formulaId', kind: 'RM_FB',
+  });
+  return withPrice;
+}

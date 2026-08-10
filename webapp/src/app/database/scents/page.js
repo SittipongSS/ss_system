@@ -65,6 +65,10 @@ export default function ScentsPage() {
   // รายตัว ลิงก์ตรงจึงเป็น "เปิดทะเบียนแล้วค้นให้เลย" · ตั้งสถานะเป็น "ทุกสถานะ"
   // ด้วย ไม่งั้นกลิ่นที่เก็บเข้ากรุแล้วจะถูก default "ที่ใช้งานอยู่" กรองหายไปเงียบ ๆ
   const linkedQuery = useSearchParams().get("q") || "";
+  /* ⭐ `?edit=<id>` — ปุ่ม "แก้ไขข้อมูล" บนหน้ารายละเอียดส่งกลับมาเปิดฟอร์มที่นี่
+     ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
+     (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
+  const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
   const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
@@ -90,6 +94,17 @@ export default function ScentsPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  /* เปิดฟอร์มแก้จากลิงก์ `?edit=` — รอจนโหลดรายการเสร็จเพราะฟอร์มต้องใช้แถวเต็ม
+     ⚠️ ยิงครั้งเดียว (`openedFromLink`) — ไม่งั้นปิดฟอร์มแล้วมันเด้งกลับมาเปิดใหม่
+     ทุกครั้งที่ข้อมูลรีเฟรช เพราะพารามิเตอร์บน URL ยังอยู่ */
+  const [openedFromLink, setOpenedFromLink] = useState(false);
+  useEffect(() => {
+    if (!linkedEditId || openedFromLink || !scents.length) return;
+    const row = scents.find((x) => x.id === linkedEditId);
+    setOpenedFromLink(true);
+    if (row) setForm({ mode: "edit", scent: row, value: scentToForm(row) });
+  }, [linkedEditId, openedFromLink, scents]);
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
   }, []);
@@ -463,11 +478,13 @@ export default function ScentsPage() {
                           — ไม่ใช่แทนที่กัน · ทิ้งคำนำหน้าเมื่อไรคนจะเริ่มอ้างชื่อลูกค้า
                           เป็นชื่อทางการ ซึ่งเป็นโรคเดิมที่ 0171 บันทึกไว้ */}
                       <td>
-                        <div className={styles.name}>
+                        {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด — แถวตารางบอกได้แค่ย่อ ๆ
+                            ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
+                        <Link href={`/database/scents/${s.id}`} className={styles.name}>
                           {s.code ? <span className="mono">{s.code}</span> : null}
                           {s.code ? " · " : null}
                           {s.name}
-                        </div>
+                        </Link>
                         {(s.customerTradeName || s.derivedFromScentId) && (
                           <div className={styles.sub}>
                             {[

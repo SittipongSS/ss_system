@@ -8,7 +8,7 @@ import {
   sendScentError,
 } from '@/lib/master/scents';
 import {
-  assertDerivedFromScent, countRequestItemsProducingScent, findScent, updateScent,
+  assertDerivedFromScent, countRequestItemsProducingScent, findScent, findScentDetail, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
@@ -20,7 +20,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!canViewScents(user)) return forbidden();
   const { id } = await ctx.params;
   try {
-    const scent = await findScent(supabase, id);
+    // ⚠️ ต่อ "ที่มา" และ "ราคา" ชุดเดียวกับหน้ารายการ — เปิดใบเดียวกันจากสองทาง
+    // แล้วเห็นข้อมูลไม่เท่ากันคือโรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
+    const scent = await findScentDetail(supabase, id);
     if (!scent) return notFound('ไม่พบกลิ่น');
     return ok(scent);
   } catch (e) {

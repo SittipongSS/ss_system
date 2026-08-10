@@ -6,7 +6,7 @@ import {
   deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
 } from '@/lib/master/formulas';
 import {
-  countProductsUsingFormula, editFormula, findFormula, updateFormula,
+  countProductsUsingFormula, editFormula, findFormula, findFormulaDetail, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, formulaForcePreview, isDryRun, isForceRequest } from '@/lib/forceDelete';
 
@@ -17,7 +17,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!canViewFormulas(user)) return forbidden();
   const { id } = await ctx.params;
   try {
-    const formula = await findFormula(supabase, id);
+    // ⚠️ ต่อ "ที่มา" และ "ราคา" ชุดเดียวกับหน้ารายการ — เปิดใบเดียวกันจากสองทาง
+    // แล้วเห็นข้อมูลไม่เท่ากันคือโรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
+    const formula = await findFormulaDetail(supabase, id);
     if (!formula) return notFound('ไม่พบสูตร');
     return ok(formula);
   } catch (e) {
