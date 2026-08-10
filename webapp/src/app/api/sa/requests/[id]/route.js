@@ -201,6 +201,20 @@ export async function PATCH(request, { params }) {
       if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
       Object.assign(patch, columns);
 
+      /* ⭐ ข้อ 2.2/2.3 · ต้นทุน/ราคาขายรายสินค้า (mig 0229) — **ตรวจตรงนี้ ก่อนเขียน
+         อะไรลง DB** ตามกฎเดียวกับที่ route สร้างใบเขียนไว้ ("ตรวจก่อน insert เสมอ") ·
+         ตกด่านหลังบรีฟถูกเขียนไปแล้ว = ใบที่บันทึกครึ่งเดียวโดยผู้ใช้เห็นแค่ข้อความ error
+         ⚠️ ไม่ส่ง `pdrTargets` มา = ไม่แตะของเดิมเลย (ผู้เรียกที่แก้แค่ส่วนอื่น) ·
+         ส่งอาเรย์ว่างมา = สั่งลบทั้งชุด ซึ่งต่างกัน */
+      let nextTargets = null;
+      if (Array.isArray(body.pdrTargets)) {
+        const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
+          categoryCodes: columns.pdrProductKinds || before.pdrProductKinds || [],
+        });
+        if (targetError) return Response.json({ error: targetError }, { status: 400 });
+        nextTargets = targets;
+      }
+
       // บรีฟรายกลิ่น — เขียนทับทั้งชุด (แก้ = ส่งมาใหม่ทั้งก้อน ไม่ใช่ patch รายช่อง)
       //
       // ⚠️ **ไม่ลบแล้วสร้างใหม่** ถ้ามี direction ชี้อยู่ — `dept_request_items.briefId`
@@ -261,23 +275,17 @@ export async function PATCH(request, { params }) {
         }
       }
 
-      /* ⭐ ข้อ 2.2/2.3 · ต้นทุน/ราคาขายรายสินค้า (mig 0229) — **ลบทิ้งแล้วเขียนใหม่**
-         ต่างจากบรีฟที่ต้องอัปเดตทับตาม id เดิม เพราะบรีฟมี direction ของ RD ชี้กลับมา
-         (`dept_request_items.briefId`) แต่แถวราคาไม่มีใครชี้ถึง ⇒ ลบ-เขียนใหม่คือ
-         ท่าที่ตรงกับความหมาย: ผู้ใช้จัดลำดับใหม่/เอาออก/เพิ่มได้อิสระในรอบเดียว
-         ⚠️ ไม่แตะเลยเมื่อ `pdrTargets` ไม่ได้ถูกส่งมา — ผู้เรียกที่แก้แค่ส่วนอื่นต้อง
-         ไม่ลบรายการของคนอื่นทิ้งโดยไม่ตั้งใจ (กติกาเดียวกับบรีฟ) */
-      if (Array.isArray(body.pdrTargets)) {
-        const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
-          categoryCodes: columns.pdrProductKinds || before.pdrProductKinds || [],
-        });
-        if (targetError) return Response.json({ error: targetError }, { status: 400 });
+      /* เขียนแถว 2.2/2.3 — **ลบทิ้งแล้วเขียนใหม่** ต่างจากบรีฟที่ต้องอัปเดตทับตาม id
+         เดิม เพราะบรีฟมี direction ของ RD ชี้กลับมา (`dept_request_items.briefId`)
+         แต่แถวราคาไม่มีใครชี้ถึง ⇒ ลบ-เขียนใหม่คือท่าที่ตรงกับความหมาย: ผู้ใช้จัด
+         ลำดับใหม่/เอาออก/เพิ่มได้อิสระในรอบเดียว (ด่านตรวจอยู่ข้างบนก่อนเขียนอะไรลง DB) */
+      if (nextTargets) {
         const { error: clearError } = await supabase
           .from('dept_request_pdr_targets').delete().eq('requestId', id);
         if (clearError) throw clearError;
-        if (targets.length) {
+        if (nextTargets.length) {
           const { error: insertError } = await supabase.from('dept_request_pdr_targets')
-            .insert(targets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId: id })));
+            .insert(nextTargets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId: id })));
           if (insertError) throw insertError;
         }
       }

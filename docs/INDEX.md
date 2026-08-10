@@ -45,7 +45,7 @@
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |
 | [webapp/DEPLOY.md](../webapp/DEPLOY.md) | Vercel + Supabase |
-| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR · ม-76…ม-94 รอบรื้อ 4 อาการ + Control Panel (2026-08-08) · **ม-95…ม-96 เอกสาร PDR เหมือนกระดาษ FM-RD-01 + แบ่งหน้าเอง + พรีวิวเต็มจอครบทุกชนิด (2026-08-09)** |
+| [requests-rd-decision-log.md](requests-rd-decision-log.md) | มติสายคำร้อง RD — ม-1…ม-24 รอบแรก · ม-25…ม-62 รอบรื้อที่สอง · ม-63…ม-75 รอบแบบทั้งระบบ + ฟอร์ม PDR · ม-76…ม-94 รอบรื้อ 4 อาการ + Control Panel (2026-08-08) · ม-95…ม-96 เอกสาร PDR เหมือนกระดาษ FM-RD-01 + แบ่งหน้าเอง + พรีวิวเต็มจอครบทุกชนิด (2026-08-09) · **PDR 2.2/2.3 เป็นต้นทุน/ราคาขายรายสินค้า (mig 0229) + หมวดใบสั่งขายที่เปิดคำร้องพัฒนากลิ่นได้ (2026-08-10)** |
 | [scent-dev-system-ui-mockup.html](scent-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล เปิดมาเจออะไร กดต่อไปไหน |
 | [rd-scent-dev-ui-mockup.html](rd-scent-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนากลิ่น" รายก้าว** — ต้นฉบับที่โค้ดต้องเทียบ (ม-33) |
 | [formula-dev-system-ui-mockup.html](formula-dev-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" ระดับทั้งระบบ** — SA × RD × ฐานข้อมูล + ตารางเทียบว่าต่างจากพัฒนากลิ่นตรงไหน |
