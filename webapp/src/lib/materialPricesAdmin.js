@@ -8,13 +8,22 @@ import { normalizePmType } from '@/lib/master/materialTypes';
 
 // โหลดวัสดุในทะเบียนพร้อมรุ่นราคา + ชั้นราคาของแต่ละรุ่น (ก้อนเดียว กัน N+1)
 // status: undefined = ที่ใช้งานได้จริง (active) · null = ทุกสถานะ · array = ตามที่ระบุ
-export async function loadMaterials(supabase, { status, kind = null, customerId } = {}) {
+/* `linked` = กรองด้วยตัวชี้ทะเบียน เช่น { column: 'scentId', ids: [...] }
+   ⚠️ มีไว้ให้ทะเบียนกลิ่น/สูตรดึง "ราคาล่าสุดของแถวที่กำลังแสดง" โดยไม่ต้องโหลด
+   ทะเบียนวัสดุทั้งก้อน — หน้าทะเบียนกลิ่นเปิดบ่อยกว่าหน้าวัสดุมาก
+   ⚠️ ids ว่าง = ไม่มีอะไรให้หา คืนลิสต์ว่างทันที ไม่ใช่ยิง `.in()` ด้วย array ว่าง
+   ซึ่ง PostgREST ตีความเป็น "ไม่กรอง" แล้วได้ทั้งตารางกลับมา */
+export async function loadMaterials(supabase, {
+  status, kind = null, customerId, linked = null,
+} = {}) {
+  if (linked && !linked.ids?.length) return [];
   let query = supabase.from('material_prices').select('*');
   if (status !== null) {
     const wanted = Array.isArray(status) ? status : [status || 'active'];
     query = query.in('status', wanted);
   }
   if (kind) query = query.eq('kind', kind);
+  if (linked) query = query.in(linked.column, linked.ids);
   // customerId: undefined = ไม่กรอง (ทั้งทะเบียน); ค่าอื่น (รวม null ผ่าน .is) = กรองตรง
   if (customerId !== undefined) {
     query = customerId === null ? query.is('customerId', null) : query.eq('customerId', customerId);

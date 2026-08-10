@@ -31,6 +31,7 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RegistryPrice from "@/components/database/RegistryPrice";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import styles from "./page.module.css";
@@ -204,8 +205,10 @@ export default function ScentsPage() {
       derivedFromScentId: v.derivedFromScentId,
       note: v.note,
     };
+    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
+    // API ซึ่งยอมเฉพาะ RD ที่รับกลิ่นเข้าทะเบียนได้
+    if (registrar && v.code.trim()) payload.code = v.code.trim();
     if (form.mode === "create") {
-      if (registrar && v.code.trim()) payload.code = v.code.trim();
       // ⭐ กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่/สถานะเกิดไปแล้วในอดีต (ม-75)
       // ⚠️ ส่งเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
       // จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ (server บังคับซ้ำที่ `newScentStatus`)
@@ -443,6 +446,9 @@ export default function ScentsPage() {
                   <th className={styles.colCustomer}>ลูกค้า</th>
                   <th className={styles.colSource}>ที่มา</th>
                   <th className={`${styles.colDates} num`}>วันที่</th>
+                  {/* ⭐ ราคา F มาจาก **ทะเบียนวัสดุ** ไม่ใช่คอลัมน์ของทะเบียนกลิ่น
+                      (ดู attachRegistryPrice) — ที่นี่แสดงอย่างเดียว */}
+                  <th className="num">ราคา F</th>
                   <th className={styles.colStatus}>สถานะ</th>
                 </tr>
               </thead>
@@ -512,6 +518,9 @@ export default function ScentsPage() {
                             : "ยังไม่ส่ง"}
                         </div>
                       </td>
+                      {/* ราคา F ล่าสุดจากทะเบียนวัสดุ — สามสถานะที่ต้องอ่านออกคนละแบบ:
+                          ยังไม่ผูกวัสดุ · ผูกแล้วแต่ยังไม่มีใครใส่ราคา · ราคาหมดอายุ */}
+                      <td className="num"><RegistryPrice price={s.price} /></td>
                       {/* ⭐ สถานะกับปุ่มอยู่เซลล์เดียวกัน — ปุ่มหลักถูกกำหนดโดยสถานะตรง ๆ
                           (ร่าง → รับเข้าทะเบียน) แยกสองคอลัมน์คือถามซ้ำ
                           ⚠️ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น

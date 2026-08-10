@@ -4,6 +4,10 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
+import { loadMaterials } from '@/lib/materialPricesAdmin';
+import {
+  latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
+} from '@/lib/materialPrices';
 import { derivedFromError, newScentStatus, normalizeScentInput } from '@/lib/master/scents';
 import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
@@ -18,7 +22,9 @@ export async function loadScents(supabase, { status = null, customerId = null } 
   if (customerId) query = query.eq('customerId', customerId);
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  return attachScentSource(supabase, data || []);
+  const withSource = await attachScentSource(supabase, data || []);
+  // ราคา F ของกลิ่น — ดูเหตุผลที่ `attachRegistryPrice`
+  return attachRegistryPrice(supabase, withSource, { column: 'scentId', kind: 'RM_F' });
 }
 
 // ── ที่มาของกลิ่นแต่ละตัว ────────────────────────────────────────────────
@@ -162,7 +168,9 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
   if (customerId) query = query.eq('customerId', customerId);
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
-  return attachFormulaSource(supabase, data || []);
+  const withSource = await attachFormulaSource(supabase, data || []);
+  // ราคา FB ของสูตร — คู่ขนานกับ F ของกลิ่น
+  return attachRegistryPrice(supabase, withSource, { column: 'formulaId', kind: 'RM_FB' });
 }
 
 // ── ที่มาของสูตรแต่ละตัว ─────────────────────────────────────────────────
@@ -376,4 +384,39 @@ export async function linkProductToRegistry(supabase, productId, { formulaId = n
     .from('products').update(patch).eq('id', productId).select('id').single();
   if (error) throw error;
   return data;
+}
+
+// ── ราคาล่าสุดของทะเบียน — F ผูกกลิ่น · FB ผูกสูตร ────────────────────────
+//
+// ⭐ **ราคาไม่ได้อยู่ในทะเบียนกลิ่น/สูตร มันอยู่ที่ทะเบียนวัสดุ** (`material_prices`)
+// ซึ่งมี rev · ชั้นจำนวน · อายุราคา และเป็นตัวที่ใบขอราคาผลิตดึงไปใช้จริง
+// (`fill-prices`) · คำร้องพัฒนากลิ่น/สูตรตอบราคาแล้วเขียนลงที่นั่นพร้อมประทับ
+// `scentId`/`formulaId` ไว้ตั้งแต่ mig 0171
+//
+// ⇒ ทะเบียนกลิ่น/สูตร **แสดง** ราคาจากที่นั่น ไม่เก็บสำเนาของตัวเอง
+// ⚠️ เก็บสำเนาเมื่อไรก็ได้ราคาสองแหล่งที่ขัดกันเองภายในไม่กี่เดือน แล้วไม่มีใคร
+// ตอบได้ว่าใบขอราคาผลิตควรเชื่ออันไหน — โรคประจำถิ่นที่รีโปนี้จ่ายค่าเรียนมาหลายรอบ
+//
+// ⚠️ คืน `null` เมื่อยังไม่มีวัสดุผูก **ต่างจาก** `{ price: null }` ที่แปลว่าผูกแล้ว
+// แต่ยังไม่มีใครใส่ราคา — สองอย่างนี้ผู้ใช้ต้องอ่านออกว่าคนละเรื่อง
+export async function attachRegistryPrice(supabase, rows, { column, kind }) {
+  const ids = rows.map((r) => r.id).filter(Boolean);
+  const materials = await loadMaterials(supabase, {
+    status: null, kind, linked: { column, ids },
+  });
+  const byRow = new Map();
+  for (const m of materials) {
+    const key = m[column];
+    if (!key) continue;
+    const rev = latestRevision(m.revisions || []);
+    byRow.set(key, {
+      materialId: m.id,
+      state: materialPriceState(m, rev),
+      unitPrice: revisionUnitPrice(rev),
+      range: revisionPriceRange(rev),
+      validUntil: rev?.validUntil || null,
+      revisionNo: rev?.revisionNo ?? null,
+    });
+  }
+  return rows.map((r) => ({ ...r, price: byRow.get(r.id) || null }));
 }

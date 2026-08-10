@@ -24,6 +24,7 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RegistryPrice from "@/components/database/RegistryPrice";
 import StatusNotice from "@/components/ui/StatusNotice";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -168,19 +169,23 @@ export default function FormulasPage() {
 
   const submitForm = async () => {
     const v = form.value;
-    // ⚠️ **ไม่ส่ง customerId/customerName อีกแล้ว** — server เติมจากกลิ่นเสมอ (0207)
-    // ส่งไปก็ถูกทิ้ง แต่การส่งจะทำให้คนอ่านโค้ดเข้าใจผิดว่าฟอร์มยังคุมค่านั้นอยู่
+    // ⚠️ ส่ง `customerId` ได้แล้ว (มติผู้ใช้ 2026-08-10 กลับทิศจาก 0207) แต่
+    // `customerName` ยังไม่ส่ง — server อ่านจากทะเบียนลูกค้าเสมอ (ชื่ออาจเก่า)
     const payload = {
       name: v.name,
       formulaDate: v.formulaDate || null,
       categoryCode: v.categoryCode || null,
+      customerId: v.customerId || null,
       scentId: v.scentId || null,
       customerTradeName: v.customerTradeName,
       derivedFromFormulaId: v.derivedFromFormulaId || null,
       note: v.note,
     };
+    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
+    // API ซึ่งยอมเฉพาะคนที่รับเข้าทะเบียนได้ · ที่นี่ส่งเฉพาะตอนมีสิทธิ์เพื่อไม่ให้
+    // คนที่ไม่มีสิทธิ์โดนตีกลับทั้งฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว
+    if (registrar && v.code.trim()) payload.code = v.code.trim();
     if (form.mode === "create") {
-      if (registrar && v.code.trim()) payload.code = v.code.trim();
       const done = await call("/api/master/formulas", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -408,7 +413,10 @@ export default function FormulasPage() {
                 <tr>
                   <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
                   <th className={styles.colSource}>ที่มา</th>
-                  <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th className={styles.actionsCol}></th>
+                  <th>วันที่</th><th>ลูกค้า</th>
+                  {/* ราคา FB มาจากทะเบียนวัสดุ — คู่ขนานกับราคา F ของกลิ่น */}
+                  <th className="num">ราคา FB</th>
+                  <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
@@ -474,6 +482,8 @@ export default function FormulasPage() {
                     <td>
                       {f.customerName || <span className={styles.muted}>สูตรกลาง</span>}
                     </td>
+                    {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ — แสดงอย่างเดียว */}
+                    <td className="num"><RegistryPrice price={f.price} /></td>
                     <td>
                       <StatusBadge
                         tone={FORMULA_STATUS_TONES[f.status]}

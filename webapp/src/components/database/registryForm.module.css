@@ -2,3 +2,8 @@
    globals.css ไม่ได้ให้สไตล์กับ <small> ใน .form-group ไว้ — แต่ละฟอร์มจึงต้องมี
    คลาสของตัวเอง (แพตเทิร์นเดียวกับ `.form label small` ของหน้าหมวดสินค้า) */
 .hint { color: var(--text-3); }
+
+/* ราคาบนหน้าทะเบียน — "ยังไม่มี" ต้องอ่านเป็นสถานะ ไม่ใช่ค่าว่าง */
+.priceNone { color: var(--text-3); font-size: var(--fs-4); }
+.priceExpired { color: var(--amber); }
+.priceTiers { color: var(--text-3); font-size: var(--fs-3); }
