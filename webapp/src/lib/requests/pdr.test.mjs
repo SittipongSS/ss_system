@@ -51,3 +51,23 @@ test('ความยาวต้องไม่หลวมกว่า CHECK �
   assert.match(normalizePdr({ customerBrand: 'ก'.repeat(201) }).error, /ยาวเกิน 200/);
   assert.match(normalizePdr({ moq: 'ก'.repeat(101) }).error, /ยาวเกิน 100/);
 });
+
+// ⭐ ผู้ใช้เจอเอง 2026-08-10 — กดบันทึกแล้วได้ toast "ราคาและมูลค่าต้องเป็นตัวเลข
+// ไม่ติดลบ" ซึ่ง **ไม่บอกว่าช่องไหน** ทั้งที่ฟอร์มมี ~48 ช่องและช่องเงินมีสามช่อง
+// อยู่คนละลิ้นชักกัน ⇒ ตกด่านแล้วหาไม่เจอว่าต้องแก้ตรงไหน
+test('ข้อความตีกลับต้องบอกชื่อช่องและค่าที่พิมพ์มา', () => {
+  const cost = normalizePdr({ targetCost: '1,200.-' }).error;
+  assert.match(cost, /Target Cost \/ KG/);
+  assert.match(cost, /1,200\.-/);
+
+  assert.match(normalizePdr({ projectValue: 'หนึ่งล้าน' }).error, /มูลค่าโปรเจกต์ทั้งหมด/);
+  assert.match(normalizePdr({ targetPrice: '-5' }).error, /Target Price \/ Unit/);
+  assert.match(normalizePdr({ wantedAt: '06/08/2569' }).error, /วันที่ต้องการสินค้า/);
+  assert.match(normalizePdr({ moq: 'ก'.repeat(101) }).error, /MOQ ที่คาดหวัง/);
+  assert.match(normalizePdr({ documents: Array(21).fill('d') }).error, /เอกสาร/);
+
+  // ค่ายาวต้องถูกตัด ไม่งั้น toast บังทั้งจอ
+  const long = normalizePdr({ targetCost: 'x'.repeat(300) }).error;
+  assert.equal(long.includes('…'), true);
+  assert.equal(long.length < 120, true, long);
+});
