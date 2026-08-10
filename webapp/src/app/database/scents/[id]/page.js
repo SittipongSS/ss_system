@@ -49,11 +49,15 @@ export default function ScentDetailPage() {
     );
   }
 
+  /* ⚠️ `scentSourceLabel` คืน **object** `{ kind, label, requestId }` ไม่ใช่สตริง —
+     เอาไปวางใน JSX ตรง ๆ ได้ error "Objects are not valid as a React child"
+     (เจอจริงตอนเปิดหน้านี้ครั้งแรก) · ที่นี่ใช้แค่ `label` */
   const src = scentSourceLabel(scent);
+  const srcLabel = src?.label || null;
   return (
     <RegistryDetailShell
       back={back}
-      eyebrow={`ทะเบียนกลิ่น${src ? ` · ${src}` : ""}`}
+      eyebrow={`ทะเบียนกลิ่น${srcLabel ? ` · ${srcLabel}` : ""}`}
       title={scent.code ? `${scent.code} · ${scent.name}` : scent.name}
       description={scent.customerName || scent.customerId}
       statusLabel={SCENT_STATUS_LABELS[scent.status] || scent.status}
@@ -86,7 +90,7 @@ export default function ScentDetailPage() {
           { label: "ชื่อที่ลูกค้าเรียก", value: scent.customerTradeName },
           { label: "แก้มาจากกลิ่น", value: scent.derivedFromScentId },
           { label: "เจ้าของกลิ่น (RD)", value: scent.ownerName },
-          { label: "ที่มา", value: src },
+          { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
       />

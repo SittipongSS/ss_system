@@ -55,11 +55,13 @@ export default function FormulaDetailPage() {
     );
   }
 
+  // ⚠️ คืน object เหมือน `scentSourceLabel` — ใช้แค่ `label` (ดูหมายเหตุที่หน้ากลิ่น)
   const src = formulaSourceLabel(formula);
+  const srcLabel = src?.label || null;
   return (
     <RegistryDetailShell
       back={back}
-      eyebrow={`ทะเบียนสูตร${src ? ` · ${src}` : ""}`}
+      eyebrow={`ทะเบียนสูตร${srcLabel ? ` · ${srcLabel}` : ""}`}
       title={formula.code ? `${formula.code} · ${formula.name}` : formula.name}
       description={formula.customerName || "สูตรฐาน — ใช้ได้ทุกลูกค้า"}
       statusLabel={FORMULA_STATUS_LABELS[formula.status] || formula.status}
@@ -91,7 +93,7 @@ export default function FormulaDetailPage() {
           { label: "กลิ่นที่ใช้", value: scentName || formula.scentId },
           { label: "หมวดสินค้า", value: formula.categoryCode },
           { label: "แก้มาจากสูตร", value: formula.derivedFromFormulaId },
-          { label: "ที่มา", value: src },
+          { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
       />
