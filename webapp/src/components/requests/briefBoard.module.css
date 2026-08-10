@@ -78,3 +78,67 @@
 /* คอลัมน์ "ก้าวถัดไป" ในตารางเอกสาร (ม-94) — ปุ่มติดแถว ไม่ต้องเลื่อนหาท้ายเธรด */
 .colStep { width: 33%; }
 .stepCell { white-space: nowrap; }
+
+/* ── แถบสรุปต่อบรีฟ (พับ/กางได้) — ทางเลือก ก+ มติผู้ใช้ 2026-08-10 ────────
+   ⭐ ใบ 25 บรีฟที่เดินครบสองรอบมีได้ ~150 แถว · กางทุกก้อนพร้อมกันคือหน้าที่
+   เลื่อนไม่จบ ⇒ ก้อนที่ยังต้องลงมือกางไว้ ก้อนที่จบแล้วพับ อ่านสรุปได้จากแถบ */
+.rollBtn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2-5);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-3);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rollBtn:hover { background: var(--panel-2); }
+
+.rollBtn strong { font-weight: var(--fw-bold); }
+
+/* ลูกศรกว้างคงที่ — ป้ายชื่อของทุกก้อนจึงเริ่มตรงกันไม่ว่าพับหรือกาง */
+.caret {
+  width: 12px;
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+/* ⚠️ เยื้องด้วย padding ของเซลล์ ไม่ใช่ margin ของเนื้อใน — เส้นตารางต้องยังลากยาว
+   เต็มความกว้าง ไม่งั้นแถวรอบแก้จะอ่านเป็นตารางซ้อนตาราง */
+.childCell { padding-left: var(--space-6); position: relative; }
+.childCell::before {
+  content: "↳";
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-3);
+}
+
+/* แถบท้าย: บรีฟที่ยังไม่มี direction — รวมเป็นบรรทัดเดียว ไม่กางทีละก้อน */
+.restStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  flex-wrap: wrap;
+  padding: var(--space-2-5) var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.restStrip strong { color: var(--text); }
+
+/* ดันปุ่มไปชิดขวาโดยไม่ต้องใส่ style ดิบที่ JSX (ชั้นเก่าที่ ratchet คุมอยู่) */
+.restToggle { margin-left: auto; }
+
+.restNames {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+  padding: 0 var(--space-3) var(--space-2-5);
+}

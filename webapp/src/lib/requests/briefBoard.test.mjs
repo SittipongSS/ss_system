@@ -96,3 +96,67 @@ test('🐞 direction ที่ยังไม่ผูกบรีฟต้อ�
   const board = briefBoard([{ id: 'B1' }], [dir(), dir({ id: 'x', briefId: null })]);
   assert.equal(briefBoardTotals(board).directions, 2);
 });
+
+// ── สายพันธุ์ของงาน + สรุปต่อบรีฟ (ทางเลือก ก+ · มติผู้ใช้ 2026-08-10) ────
+//
+// รูปร่างจริงที่ผู้ใช้ยืนยัน: 1 บรีฟ → 2-3 direction · ลูกค้าขอแก้ → พัฒนาต่ออีก 2-3
+// ที่ผูกกลับไปหาตัวต้นทาง ⇒ ใบ 25 บรีฟที่เดินครบสองรอบมีได้ ~150 แถว
+// ถ้าเรียงตาม sortOrder เฉย ๆ ตัวที่แก้มาจาก FR-02 จะไปอยู่ท้ายสุด อ่านไม่ออกว่า
+// เกี่ยวกับใคร ทั้งที่ฐานเก็บ `derivedFromItemId` ไว้แล้ว
+test('⭐ รอบแก้ต้องอยู่ต่อจากตัวต้นทางทันที และเยื้องหนึ่งชั้น', () => {
+  const items = [
+    dir({ id: 'D1', label: 'FR-01', sortOrder: 1 }),
+    dir({ id: 'D2', label: 'FR-02', sortOrder: 2 }),
+    dir({ id: 'D3', label: 'FR-03', sortOrder: 3 }),
+    // เกิดทีหลังสุด แต่เป็นรอบแก้ของ FR-02
+    dir({ id: 'D4', label: 'FR-04', sortOrder: 4, derivedFromItemId: 'D2' }),
+  ];
+  const [g] = briefBoard([{ id: 'B1', label: 'แนวสดชื่น' }], items);
+  assert.deepEqual(g.directions.map((d) => d.name), ['FR-01', 'FR-02', 'FR-04', 'FR-03']);
+  assert.deepEqual(g.directions.map((d) => d.depth), [0, 0, 1, 0]);
+  assert.equal(g.directions.find((d) => d.name === 'FR-04').parentId, 'D2');
+});
+
+test('รอบแก้ของรอบแก้ยังเยื้องชั้นเดียว — คอลัมน์แรกต้องไม่หมดที่', () => {
+  const items = [
+    dir({ id: 'D1', label: 'FR-01', sortOrder: 1 }),
+    dir({ id: 'D2', label: 'FR-02', sortOrder: 2, derivedFromItemId: 'D1' }),
+    dir({ id: 'D3', label: 'FR-03', sortOrder: 3, derivedFromItemId: 'D2' }),
+  ];
+  const [g] = briefBoard([{ id: 'B1', label: 'ก' }], items);
+  assert.deepEqual(g.directions.map((d) => d.name), ['FR-01', 'FR-02', 'FR-03']);
+  assert.deepEqual(g.directions.map((d) => d.depth), [0, 1, 1]);
+});
+
+test('⚠️ พ่อไม่ได้อยู่ในบรีฟเดียวกัน (ข้อมูลเก่าก่อน #1049) ต้องไม่หายไป', () => {
+  const items = [dir({ id: 'D9', label: 'FR-09', derivedFromItemId: 'ไม่มีตัวนี้ในบรีฟ' })];
+  const [g] = briefBoard([{ id: 'B1', label: 'ก' }], items);
+  assert.equal(g.directions.length, 1, 'แถวกำพร้าต้องยังขึ้น');
+  assert.equal(g.directions[0].depth, 0, 'ไม่มีพ่อให้เกาะ = ถือเป็นราก');
+});
+
+test('สรุปต่อบรีฟบอกได้ว่าก้อนนี้ยังต้องลงมือไหม โดยไม่ต้องกาง', () => {
+  const sent = dir({ id: 'D1', label: 'FR-01', outcome: 'confirmed', sentAt: '2026-08-05' });
+  const [g] = briefBoard([{ id: 'B1', label: 'ก' }], [sent]);
+  assert.equal(g.summary.total, 1);
+  assert.equal(g.summary.confirmed, 1);
+  // ⚠️ needsAction = รอ **ฝั่งเรา** ทำอะไร ไม่ใช่ "ยังไม่จบ" — ตัวที่ส่งไปแล้วรอ
+  // ลูกค้าตอบไม่ใช่ของที่เราต้องลงมือ ก้อนนั้นพับได้
+  assert.equal(typeof g.summary.needsAction, 'boolean');
+  const [empty] = briefBoard([{ id: 'B9', label: 'ว่าง' }], []);
+  assert.equal(empty.summary.total, 0);
+  assert.equal(empty.summary.needsAction, false);
+  assert.equal(empty.untouched, true);
+});
+
+test('ยอดรวมทั้งใบยังตรงกับตารางหลังเพิ่มสายพันธุ์', () => {
+  const items = [
+    dir({ id: 'D1', label: 'FR-01', outcome: 'confirmed' }),
+    dir({ id: 'D2', label: 'FR-02', derivedFromItemId: 'D1' }),
+  ];
+  const groups = briefBoard([{ id: 'B1', label: 'ก' }, { id: 'B2', label: 'ข' }], items);
+  const totals = briefBoardTotals(groups);
+  assert.equal(totals.directions, 2, 'ห้ามนับซ้ำหรือตกหล่นจากการจัดสายพันธุ์');
+  assert.equal(totals.untouched, 1);
+  assert.equal(totals.confirmed, 1);
+});

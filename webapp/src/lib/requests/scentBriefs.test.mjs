@@ -2,8 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_SCENT_BRIEFS, briefHasContent, briefLinkError, briefsDroppedByMerge,
-  normalizeScentBriefs, switchBriefMode,
+  MAX_SCENT_BRIEFS, briefHasContent, briefLinkError, briefsDroppedByMerge, defaultBriefLabel, normalizeScentBriefs, scentBriefNameError, switchBriefMode,
 } from './scentBriefs.js';
 import { SCENTOTYPE_VALUES, SCENT_PERFORMANCE_VALUES } from './kinds/rd/scentBriefTypes.js';
 
@@ -136,4 +135,39 @@ test('briefHasContent ครอบทุกช่องที่กรอกไ�
   assert.equal(briefHasContent({ performance: ['lasting'] }), true);
   assert.equal(briefHasContent({ scentotypeNotes: { cheerer: 'สว่าง' } }), true);
   assert.equal(briefHasContent({ scentotypes: [], scentotypeNotes: { cheerer: ' ' } }), false);
+});
+
+// ── บังคับตั้งชื่อบรีฟก่อนกดส่ง (มติผู้ใช้ 2026-08-10) ────────────────────
+//
+// ⚠️ ด่านนี้ต้อง **ไม่** ทำงานตอนร่าง — ฟอร์มปั๊มบล็อกบรีฟตามจำนวนกลิ่นที่ขาย
+// แล้วเขียนไว้เองว่า "กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก" · บังคับตอนร่างคือ
+// สิ่งที่ผู้ใช้ทักมาเองเมื่อ 2026-08-09 (ใบขาย 25 กลิ่นต้องตั้งชื่อครบ 25 ก่อนบันทึก)
+test('ชื่อบรีฟ: ร่างปล่อยว่างได้ · กดส่งต้องครบ', () => {
+  const briefs = [{ label: 'แนวสดชื่น' }, { label: 'กลิ่นที่ 2' }, { label: '' }];
+  assert.equal(scentBriefNameError(briefs, { stage: 'draft' }), null);
+  assert.equal(scentBriefNameError(briefs), null, 'ไม่ระบุ stage = ถือว่าร่าง');
+  const err = scentBriefNameError(briefs, { stage: 'submit' });
+  assert.match(err, /ก้อนที่ 2/);
+  assert.match(err, /ก้อนที่ 3/);
+  assert.doesNotMatch(err, /ก้อนที่ 1/, 'ก้อนที่ตั้งชื่อแล้วต้องไม่ถูกทัก');
+});
+
+test('ชื่อบรีฟ: ตั้งครบแล้วผ่าน · ชื่อที่ระบบเติมให้ไม่นับว่าตั้งแล้ว', () => {
+  assert.equal(scentBriefNameError([{ label: 'ก' }, { label: 'ข' }], { stage: 'submit' }), null);
+  // `กลิ่นที่ N` คือค่าที่ normalizeScentBriefs เติมให้ — ต้องถูกจับได้
+  assert.ok(scentBriefNameError([{ label: 'กลิ่นที่ 7' }], { stage: 'submit' }));
+  assert.equal(scentBriefNameError([], { stage: 'submit' }), null, 'ไม่มีบรีฟ = ไม่มีอะไรต้องตั้งชื่อ');
+});
+
+test('ชื่อบรีฟ: ขึ้นแค่ 3 ก้อนแรกแล้วบอกว่าเหลืออีกกี่ก้อน', () => {
+  const many = Array.from({ length: 6 }, () => ({ label: '' }));
+  const err = scentBriefNameError(many, { stage: 'submit' });
+  assert.match(err, /และอีก 3 ก้อน/);
+});
+
+test('รูปแบบชื่อที่เติมให้ ต้องมาจากที่เดียวกับด่านตรวจ', () => {
+  // เขียนรูปแบบซ้ำอีกที่เมื่อไร ด่านจะเพี้ยนจากค่าที่เติมจริงโดยไม่มีอะไรฟ้อง
+  const { briefs } = normalizeScentBriefs([{ brief: 'x' }, { brief: 'y' }], {});
+  assert.equal(briefs[0].label, defaultBriefLabel(0));
+  assert.ok(scentBriefNameError(briefs, { stage: 'submit' }), 'ชื่อที่เติมให้ต้องยังนับว่าไม่ได้ตั้ง');
 });

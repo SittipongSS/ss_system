@@ -17,7 +17,7 @@ import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { listAttachments } from '@/lib/master/attachments';
-import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
+import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
@@ -144,6 +144,12 @@ export async function PATCH(request, { params }) {
         { attachmentCount: (await listAttachments('dept_request', id)).length, stage: 'submit' },
       );
       if (artworkError) return Response.json({ error: artworkError }, { status: 409 });
+
+      // ⭐ **ชื่อเรียกบรีฟต้องครบก่อนส่ง** (มติผู้ใช้ 2026-08-10) — ด่านเดียวกับ artwork
+      // ข้างบนทั้งเหตุผลและจังหวะ: ร่างยังปล่อยว่างได้ กดส่งคือจังหวะที่ต้องครบ
+      // (ดูเหตุผลเต็มที่ `lib/requests/scentBriefs.js`)
+      const briefNameError = scentBriefNameError(before.briefs, { stage: 'submit' });
+      if (briefNameError) return Response.json({ error: briefNameError }, { status: 409 });
       // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
       patch.docNo = await generateRequestDocNo(supabase, before.kind, before.dept);
       patch.status = 'pending';
