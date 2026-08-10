@@ -3,13 +3,17 @@
 //
 // ⚠️ เปลือกเดียวกับทะเบียนกลิ่น (`RegistryDetailShell`) — ต่างกันแค่ข้อเท็จจริง
 // กับปุ่ม · เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎ AGENTS.md)
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Beaker, Pencil } from "lucide-react";
+import { BadgeDollarSign, Beaker, Pencil } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import Toast from "@/components/ui/Toast";
 import { fmtDate } from "@/lib/format";
+import { useDepartment, useRole } from "@/lib/roleContext";
+import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
-  FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaSourceLabel,
+  FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaSourceLabel, isFormulaUsable,
 } from "@/lib/master/formulas";
 
 const TONE_COLOR = {
@@ -19,10 +23,15 @@ const TONE_COLOR = {
 export default function FormulaDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const role = useRole();
+  const department = useDepartment();
+  const me = useMemo(() => ({ role, department }), [role, department]);
   const [formula, setFormula] = useState(null);
   const [scentName, setScentName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pricing, setPricing] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -58,6 +67,9 @@ export default function FormulaDetailPage() {
   // ⚠️ คืน object เหมือน `scentSourceLabel` — ใช้แค่ `label` (ดูหมายเหตุที่หน้ากลิ่น)
   const src = formulaSourceLabel(formula);
   const srcLabel = src?.label || null;
+  // ปุ่มใส่ราคา FB — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
+  const canPrice = canQuoteMaterial(me, "RM_FB") && isFormulaUsable(formula);
+  const hasPrice = formula.price?.unitPrice != null;
   return (
     <RegistryDetailShell
       back={back}
@@ -81,6 +93,12 @@ export default function FormulaDetailPage() {
         icon: Pencil,
         onClick: () => router.push(`/database/formulas?edit=${formula.id}`),
       }}
+      secondaryActions={canPrice ? [{
+        id: "price",
+        label: hasPrice ? "ออกราคา FB ใหม่" : "ใส่ราคา FB",
+        icon: BadgeDollarSign,
+        onClick: () => setPricing(true),
+      }] : []}
     >
       <RegistryFactCard
         icon={Beaker}
@@ -97,6 +115,19 @@ export default function FormulaDetailPage() {
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
       />
+
+      <RegistryPriceModal
+        open={pricing}
+        onClose={() => setPricing(false)}
+        title={`${hasPrice ? "ออกราคา FB ใหม่" : "ใส่ราคา FB"} — ${formula.name}`}
+        endpoint={`/api/master/formulas/${formula.id}/price`}
+        onSaved={(msg) => {
+          setPricing(false);
+          setToast({ kind: "success", msg });
+          load();
+        }}
+      />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </RegistryDetailShell>
   );
 }

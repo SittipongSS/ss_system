@@ -18,13 +18,14 @@ import Workspace from "@/components/ui/Workspace";
 import MaterialRegistryPanel from "@/components/materials/MaterialRegistryPanel";
 import { cachedFetchJson } from "@/lib/apiCache";
 
-const REGISTRY_BLURB = "ข้อมูลหลักของราคาวัตถุดิบและบรรจุภัณฑ์ — ใบขอราคาผลิตเลือกวัสดุจากที่นี่ "
-  + "แต่ละราคาเป็นรุ่น (rev) เก็บประวัติครบ และมีได้หลายชั้นจำนวน";
+// มติผู้ใช้ 2026-08-10: ทะเบียนนี้เหลือ **บรรจุภัณฑ์ (PM) อย่างเดียว** เตรียมต่อ
+// โมดูลจัดซื้อ · ราคา RM (หัวน้ำหอม F / เนื้อสาร FB) จัดการที่ทะเบียนกลิ่น/สูตร
+const REGISTRY_BLURB = "ข้อมูลหลักของราคาบรรจุภัณฑ์ (PM) — ใบขอราคาผลิตเลือกวัสดุจากที่นี่ "
+  + "แต่ละราคาเป็นรุ่น (rev) มีได้หลายชั้นจำนวน · ราคา F/FB ดูที่ทะเบียนกลิ่นและทะเบียนสูตร";
 
 export default function MaterialsPage() {
   const [materials, setMaterials] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -34,7 +35,9 @@ export default function MaterialsPage() {
       const res = await fetch("/api/sa/materials", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดทะเบียนไม่สำเร็จ");
-      setMaterials(Array.isArray(d) ? d : []);
+      // แถว RM ที่สายคำร้อง/ปุ่มใส่ราคาสร้างไว้ยังอยู่ใน DB (ใบขอราคาผลิตอ้างต่อ)
+      // แต่หน้านี้ไม่ใช่ที่จัดการมันแล้ว — เห็นเฉพาะบรรจุภัณฑ์
+      setMaterials((Array.isArray(d) ? d : []).filter((m) => m.kind === "PM"));
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
   }, []);
@@ -42,11 +45,6 @@ export default function MaterialsPage() {
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
-    // ทะเบียนสูตร — วัสดุ RM ผูกสูตรจากที่นี่ ไม่ใช่พิมพ์รหัสเอง (mig 0181)
-    fetch("/api/master/formulas?status=active", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setFormulas(Array.isArray(d) ? d : []))
-      .catch(() => setFormulas([]));
   }, []);
 
   return (
@@ -56,7 +54,7 @@ export default function MaterialsPage() {
       subtitle={REGISTRY_BLURB}
     >
       <MaterialRegistryPanel
-        materials={materials} customers={customers} formulas={formulas}
+        materials={materials} customers={customers}
         loading={loading} loadError={loadError} reload={reload}
       />
     </Workspace>
