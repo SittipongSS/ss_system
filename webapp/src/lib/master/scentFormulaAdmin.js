@@ -5,7 +5,7 @@
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
 import { derivedFromError, newScentStatus, normalizeScentInput } from '@/lib/master/scents';
-import { derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
+import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -226,11 +226,29 @@ export async function findFormula(supabase, id) {
 //
 // กฎที่ถูกคือ **"กลิ่นเป็นเจ้าของคำตอบเมื่อมีกลิ่น"** ไม่ใช่ "สูตรห้ามมีลูกค้า" —
 // สูตรฐานที่ไม่ผูกกลิ่นยังผูกลูกค้าได้ตามที่ผู้เรียกกำหนด (แต่ไม่ใช่จากฟอร์มทะเบียน)
-async function customerFromScent(supabase, scentId) {
-  if (!scentId) return null;
-  const scent = await findScent(supabase, scentId);
-  if (!scent) throw new Error('ไม่พบกลิ่นที่เลือกในทะเบียนกลิ่น');
-  return { customerId: scent.customerId, customerName: scent.customerName ?? null };
+/* ⭐ **กลับทิศจาก 0207** (มติผู้ใช้ 2026-08-10) — ลูกค้าเป็นค่าที่คนกรอกเลือกเอง
+   แล้ว **กลิ่นต้องเป็นของลูกค้ารายนั้น** · ของเดิม derive ลูกค้าจากกลิ่น ซึ่งกันรูเดิม
+   ได้ก็จริงแต่กลับทิศจากที่คนคิด (เขารู้ลูกค้าก่อน แล้วค่อยหากลิ่นของลูกค้าคนนั้น)
+   ⚠️ รูที่ 0207 ปิดไว้ต้องไม่กลับมา — ตรวจตรง ๆ ด้วย `formulaScentCustomerError`
+   แทนการเติมให้ · ป้องกันเรื่องเดียวกันคนละกลไก
+   ⚠️ `customerName` อ่านจากทะเบียนลูกค้าเสมอ ไม่รับจาก client (ชื่ออาจเก่า) */
+async function customerForFormula(supabase, { customerId, scentId }) {
+  if (scentId) {
+    const scent = await findScent(supabase, scentId);
+    if (!scent) throw new Error('ไม่พบกลิ่นที่เลือกในทะเบียนกลิ่น');
+    const mismatch = formulaScentCustomerError(scent, { customerId });
+    if (mismatch) throw new Error(mismatch);
+    // ผ่านด่านแล้ว = ลูกค้าของสูตรกับของกลิ่นเป็นคนเดียวกัน ⇒ ใช้ชื่อจากกลิ่นได้เลย
+    return { customerId: scent.customerId, customerName: scent.customerName ?? null };
+  }
+  if (!customerId) return { customerId: null, customerName: null };
+  // ⚠️ ต้องแยก error ออกจาก "ไม่เจอ" — ทิ้ง error แล้วเช็ค `!data` ทำให้ปัญหาการอ่าน
+  // กลายเป็น "ไม่พบลูกค้า" แล้วไล่ผิดทางยาว (มี ratchet test คุมทั้งรีโป)
+  const { data, error } = await supabase
+    .from('customers').select('id, name').eq('id', customerId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('ไม่พบลูกค้าที่เลือก');
+  return { customerId: data.id, customerName: data.name ?? null };
 }
 
 export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId, customerId, id }) {
@@ -250,9 +268,9 @@ export async function createFormula(supabase, input, user, {
   if (error) throw new Error(error);
   if (accepted && !value.code) throw new Error('ต้องระบุรหัสสูตร');
 
-  const customer = await customerFromScent(supabase, value.scentId)
-    || fallbackCustomer
-    || { customerId: null, customerName: null };
+  // fallbackCustomer ยังใช้ได้เฉพาะทาง "จัดระเบียบ" ที่ไม่ได้ส่งลูกค้ามา (ดูหัวข้อบน)
+  const picked = await customerForFormula(supabase, value);
+  const customer = picked.customerId ? picked : (fallbackCustomer || picked);
   await assertDerivedFromFormula(supabase, { ...value, ...customer });
 
   const nowIso = new Date().toISOString();
@@ -283,7 +301,10 @@ export async function createFormula(supabase, input, user, {
 export async function editFormula(supabase, id, patch) {
   // ⚠️ ไม่มีกลิ่น = **ไม่แตะลูกค้าเดิม** ไม่ใช่ล้างทิ้ง — สูตรฐานที่ผูกลูกค้าไว้จาก
   // การจัดระเบียบ ต้องไม่กลายเป็นไร้ลูกค้าเพราะแค่มีคนเข้ามาแก้ชื่อ
-  const customer = await customerFromScent(supabase, patch.scentId);
+  // ⚠️ ไม่ส่งทั้งลูกค้าและกลิ่นมา = **ไม่แตะลูกค้าเดิม** ไม่ใช่ล้างทิ้ง — สูตรฐานที่ผูก
+  // ลูกค้าไว้จากการจัดระเบียบ ต้องไม่กลายเป็นไร้ลูกค้าเพราะแค่มีคนเข้ามาแก้ชื่อ
+  const touchesCustomer = 'customerId' in patch || 'scentId' in patch;
+  const customer = touchesCustomer ? await customerForFormula(supabase, patch) : null;
   await assertDerivedFromFormula(supabase, { ...patch, ...(customer || {}), id });
   return updateFormula(supabase, id, customer ? { ...patch, ...customer } : patch);
 }

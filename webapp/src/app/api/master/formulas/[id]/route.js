@@ -46,7 +46,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!canEditFormula(user, formula)) return forbidden('ไม่มีสิทธิ์แก้สูตรนี้');
       const { value, error } = normalizeFormulaInput({ ...formula, ...body });
       if (error) return badRequest(error);
-      const { code, ...editable } = value;   // รหัสเปลี่ยนผ่าน action 'accept' เท่านั้น
+      /* ⭐ **แก้รหัสได้แล้ว** (มติผู้ใช้ 2026-08-10) — เดิมรหัสเปลี่ยนผ่าน action
+         'accept' เท่านั้น ⇒ พิมพ์รหัสผิดตอนรับเข้าทะเบียนแล้วแก้ไม่ได้เลย ต้องลบ
+         ทั้งแถวแล้วสร้างใหม่ ซึ่งช่วงย้ายระบบที่พิมพ์รหัสเป็นร้อยตัวคือกำแพงจริง
+         ⚠️ **เฉพาะคนที่รับสูตรเข้าทะเบียนได้** — รหัสคือตัวตนที่ระบบอื่นอ้างถึง
+         (ใบขอราคา · สินค้า · เอกสาร) ไม่ใช่ข้อความทั่วไปที่ใครก็แก้ได้
+         ⚠️ สถานะยังเปลี่ยนผ่าน action เฉพาะทางเหมือนเดิม — กันหน้าจอส่งมาเงียบ ๆ */
+      const { code, ...editable } = value;
+      if (code !== undefined && code !== (formula.code ?? null)) {
+        if (!isFormulaRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
+        editable.code = code;
+      }
       // ⚠️ ต้อง derive ลูกค้าใหม่ **ทุกครั้งที่แก้** ไม่ใช่เฉพาะตอนสร้าง — เปลี่ยนกลิ่น
       // ที่สูตรใช้แล้วลูกค้าไม่ตามไปด้วย = สูตรของลูกค้า A ที่ใช้กลิ่นของลูกค้า B
       // ซึ่งคือรูที่ 0207 ตั้งใจปิด

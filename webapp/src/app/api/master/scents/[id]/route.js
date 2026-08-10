@@ -56,8 +56,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       // ⚠️ ส่ง id ไปด้วย — กันกลิ่นอ้างตัวเองเป็นต้นทาง (constraint ของ 0205 กันอยู่
       // แล้ว แต่ที่นี่ได้ข้อความไทยแทน error ดิบของ Postgres)
       await assertDerivedFromScent(supabase, { ...value, id });
-      // รหัส/สถานะเปลี่ยนผ่าน action เฉพาะทางเท่านั้น — กันหน้าจอส่งมาเงียบ ๆ
+      /* ⭐ **แก้รหัสได้แล้ว** (มติผู้ใช้ 2026-08-10) — เดิมรหัสเปลี่ยนผ่าน action
+         'accept' เท่านั้น ⇒ พิมพ์รหัสผิดตอนรับเข้าทะเบียนแล้วแก้ไม่ได้เลย ต้องลบ
+         ทั้งแถวแล้วสร้างใหม่ ซึ่งช่วงย้ายระบบที่พิมพ์รหัสเป็นร้อยตัวคือกำแพงจริง
+         ⚠️ **เฉพาะคนที่รับกลิ่นเข้าทะเบียนได้** — รหัสคือตัวตนที่ระบบอื่นอ้างถึง
+         (ใบขอราคา · สินค้า · เอกสาร) ไม่ใช่ข้อความทั่วไปที่ใครก็แก้ได้
+         ⚠️ สถานะยังเปลี่ยนผ่าน action เฉพาะทางเหมือนเดิม — กันหน้าจอส่งมาเงียบ ๆ */
       const { code, ...editable } = value;
+      if (code !== undefined && code !== (scent.code ?? null)) {
+        if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
+        editable.code = code;
+      }
       const data = await updateScent(supabase, id, editable);
       await recordAudit({
         user, action: 'update', entityType: 'scent', entityId: id,

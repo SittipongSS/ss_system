@@ -49,8 +49,10 @@ export default function FormulasPage() {
 
   const [formulas, setFormulas] = useState([]);
   const [scents, setScents] = useState([]);
-  // 🗑 `customers` หายไปพร้อมช่องลูกค้าในฟอร์ม (0207) — ลูกค้าของสูตรมาจากกลิ่น
-  // ฝั่ง server แล้ว หน้านี้จึงไม่ต้องรู้จักรายชื่อลูกค้าเลย
+  // ⭐ `customers` กลับมา (มติผู้ใช้ 2026-08-10: "สูตรผูกลูกค้าก่อน แล้วเลือกกลิ่นที่
+  // ลูกค้ามี") — กลับทิศจาก 0207 · รูเดิม (สูตรลูกค้า A ใช้กลิ่นลูกค้า B) กันด้วยการ
+  // กรองตัวเลือกบนฟอร์ม + ด่าน `formulaScentCustomerError` ฝั่ง server
+  const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [unsorted, setUnsorted] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,10 +82,11 @@ export default function FormulasPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const [fRes, uRes, sRes] = await Promise.all([
+      const [fRes, uRes, sRes, cRes] = await Promise.all([
         fetch("/api/master/formulas", { cache: "no-store" }),
         fetch("/api/master/formulas/unsorted", { cache: "no-store" }),
         fetch("/api/master/scents", { cache: "no-store" }),
+        fetch("/api/customers", { cache: "no-store" }),
       ]);
       const fData = await fRes.json().catch(() => null);
       if (!fRes.ok) throw new Error(fData?.error || "โหลดทะเบียนสูตรไม่สำเร็จ");
@@ -92,6 +95,9 @@ export default function FormulasPage() {
       setUnsorted(uRes.ok && Array.isArray(uData) ? uData : []);
       const sData = await sRes.json().catch(() => null);
       setScents(sRes.ok && Array.isArray(sData) ? sData : []);
+      // ⚠️ ลูกค้าโหลดไม่ได้ = ฟอร์มเลือกลูกค้าไม่ได้ แต่ไม่ควรทำให้ทั้งหน้าพัง
+      const cData = await cRes.json().catch(() => null);
+      setCustomers(cRes.ok && Array.isArray(cData) ? cData : []);
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
   }, []);
@@ -531,6 +537,7 @@ export default function FormulasPage() {
         {form && (
           <>
             <FormulaForm
+              customers={customers}
               mode={form.mode} value={form.value} scents={scents}
               formulas={formulas} categories={categories}
               editingId={form.formula?.id || null}

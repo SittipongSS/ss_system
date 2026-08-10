@@ -17,6 +17,7 @@ import Textarea from "@/components/ui/Textarea";
 export const emptyFormulaForm = () => ({
   name: "",
   code: "",
+  customerId: "",
   formulaDate: "",
   categoryCode: "",
   scentId: "",
@@ -29,6 +30,7 @@ export function formulaToForm(formula) {
   return {
     name: formula.name || "",
     code: formula.code || "",
+    customerId: formula.customerId || "",
     formulaDate: formula.formulaDate || "",
     categoryCode: formula.categoryCode || "",
     scentId: formula.scentId || "",
@@ -39,13 +41,30 @@ export function formulaToForm(formula) {
 }
 
 export default function FormulaForm({
-  mode = "create", value, onChange, scents = [], formulas = [], categories = [],
+  mode = "create", value, onChange, scents = [], formulas = [], customers = [], categories = [],
   editingId = null, canSetCode = false, disabled = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
 
-  // ลูกค้าของสูตร = ลูกค้าของกลิ่นที่เลือก — โชว์ให้เห็น แต่แก้ไม่ได้
   const scent = scents.find((s) => s.id === value.scentId) || null;
+
+  /* ⭐ **เลือกลูกค้าก่อน แล้วค่อยเลือกกลิ่นของลูกค้ารายนั้น** (มติผู้ใช้ 2026-08-10)
+     — กลับทิศจาก 0207 ที่ derive ลูกค้าจากกลิ่น · ทิศนี้ตรงกับที่คนกรอกคิดจริง
+     ⚠️ **รูที่ 0207 ปิดไว้ต้องไม่กลับมา** (สูตรของลูกค้า A ใช้กลิ่นของลูกค้า B) —
+     กันสองชั้น: ที่นี่กรองตัวเลือกให้เหลือเฉพาะกลิ่นของลูกค้าที่เลือก · และ server
+     ตรวจซ้ำด้วย `formulaScentCustomerError` (ด่านจริงอยู่ที่ server เสมอ)
+     ⚠️ เปลี่ยนลูกค้าแล้ว **ล้างกลิ่นที่เลือกไว้ถ้าไม่ใช่ของลูกค้าใหม่** — ไม่งั้นค่าเก่า
+     ค้างอยู่แล้วโดน server ตีกลับตอนบันทึก ทั้งที่บนจอดูเหมือนถูก */
+  const pickCustomer = (customerId) => {
+    const keep = !value.scentId
+      || scents.find((x) => x.id === value.scentId)?.customerId === customerId;
+    set({ customerId, ...(keep ? {} : { scentId: "" }) });
+  };
+  const customerOptions = customers.map((c) => ({
+    value: c.id,
+    label: c.name || c.id,
+    search: [c.name, c.code, c.id].filter(Boolean).join(" "),
+  }));
 
   // สายพันธุ์: สูตรของลูกค้ารายเดียวกัน + สูตรฐาน (ไม่ผูกลูกค้า) ซึ่งเป็นต้นทางได้จริง
   const lineageOptions = formulas
@@ -61,6 +80,10 @@ export default function FormulaForm({
   // แล้วกลิ่นที่เคยผูกหายไปจากลิสต์เงียบ ๆ)
   const scentOptions = scents
     .filter((s) => isScentUsable(s) || s.id === value.scentId)
+    // กรองตามลูกค้าที่เลือก — ยังไม่เลือกลูกค้า = ยังไม่มีกลิ่นให้เลือก (สูตรฐาน
+    // ผูกกลิ่นของลูกค้ารายใดรายหนึ่งไม่ได้ · ดู formulaScentCustomerError)
+    .filter((s) => (value.customerId ? s.customerId === value.customerId : false)
+      || s.id === value.scentId)
     .map((s) => ({
       value: s.id,
       label: s.code ? `${s.name} · ${s.code}` : s.name,
@@ -78,7 +101,7 @@ export default function FormulaForm({
         />
       </div>
 
-      {canSetCode && mode === "create" && (
+      {canSetCode && (
         <div className="form-group">
           <label htmlFor="formula-code">รหัสสูตร <span className={styles.hint}>(ไม่บังคับ)</span></label>
           <input
@@ -108,28 +131,35 @@ export default function FormulaForm({
         onChange={(categoryCode) => set({ categoryCode })}
       />
 
+      {/* ลูกค้าอยู่ **ก่อน** กลิ่น — ลำดับบนจอต้องตรงกับลำดับที่คนคิด */}
       <div className="form-group col-span-2">
-        <label htmlFor="formula-scent">กลิ่นที่ใช้</label>
+        <label htmlFor="formula-customer">ลูกค้า</label>
         <SearchableSelect
-          id="formula-scent" value={value.scentId} disabled={disabled}
-          onChange={(v) => set({ scentId: v })}
-          options={scentOptions}
-          placeholder="ไม่ระบุ"
-          emptyText="ยังไม่มีกลิ่นในทะเบียน"
+          id="formula-customer" value={value.customerId || ""} disabled={disabled}
+          onChange={pickCustomer}
+          options={customerOptions}
+          placeholder="ไม่ผูกลูกค้า (สูตรฐาน ใช้ได้ทุกลูกค้า)"
+          emptyText="ยังไม่มีลูกค้าในทะเบียน"
         />
       </div>
 
-      {/* ⭐ **ไม่มีช่องลูกค้าอีกแล้ว** — server เติมจากกลิ่นเสมอ (mig 0207)
-          เดิมกรอกเองและเว้นว่างได้ ⇒ สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B ได้
-          โดยไม่มีอะไรห้าม · ที่นี่แสดงผลลัพธ์ให้เห็น ไม่ใช่ให้เลือก */}
       <div className="form-group col-span-2">
-        <span className="toolbar-label">ลูกค้า</span>
-        <p className={styles.hint}>
-          {value.scentId
-            ? `${scent?.customerName || scent?.customerId || "—"} — มาจากกลิ่นที่เลือก เปลี่ยนที่นี่ไม่ได้`
-            : "ไม่ผูกกลิ่น = สูตรฐาน ใช้ได้ทุกลูกค้า"}
-        </p>
+        <label htmlFor="formula-scent">กลิ่นที่ใช้</label>
+        <SearchableSelect
+          id="formula-scent" value={value.scentId} disabled={disabled || !value.customerId}
+          onChange={(v) => set({ scentId: v })}
+          options={scentOptions}
+          placeholder={value.customerId ? "ไม่ระบุ" : "เลือกลูกค้าก่อน"}
+          emptyText={value.customerId
+            ? "ลูกค้ารายนี้ยังไม่มีกลิ่นในทะเบียน"
+            : "เลือกลูกค้าก่อนจึงจะเลือกกลิ่นได้"}
+        />
+        <small className={styles.hint}>
+          เห็นเฉพาะกลิ่นของลูกค้าที่เลือก — สูตรของลูกค้ารายหนึ่งใช้กลิ่นของอีกรายไม่ได้
+        </small>
       </div>
+
+
 
       <div className="form-group col-span-2">
         <label htmlFor="formula-trade-name">
