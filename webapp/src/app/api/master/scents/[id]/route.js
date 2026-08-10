@@ -67,6 +67,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const { code, ...editable } = value;
       if (code !== undefined && code !== (scent.code ?? null)) {
         if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
+        /* 🐞 **ล้างรหัสของกลิ่นที่รับเข้าทะเบียนแล้วไม่ได้** — DB มี CHECK
+           `status = 'draft' OR code IS NOT NULL` อยู่แล้ว แต่ปล่อยให้ชนที่ฐานจะได้
+           error ดิบของ Postgres ที่คนอ่านไม่ออก · ตอบเป็นภาษาไทยตั้งแต่ที่นี่
+           ⚠️ ร่างยังล้างได้ — ร่างที่ยังไม่มีรหัสคือสถานะปกติของมัน */
+        if (!code && scent.status !== 'draft') {
+          return badRequest('กลิ่นที่รับเข้าทะเบียนแล้วต้องมีรหัสเสมอ — แก้เป็นรหัสใหม่ หรือเก็บเข้ากรุแทน');
+        }
         editable.code = code;
       }
       const data = await updateScent(supabase, id, editable);

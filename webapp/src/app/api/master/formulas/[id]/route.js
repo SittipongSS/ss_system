@@ -57,6 +57,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const { code, ...editable } = value;
       if (code !== undefined && code !== (formula.code ?? null)) {
         if (!isFormulaRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
+        /* 🐞 **ล้างรหัสของสูตรที่รับเข้าทะเบียนแล้วไม่ได้** — DB มี CHECK
+           `status = 'draft' OR code IS NOT NULL` อยู่แล้ว แต่ปล่อยให้ชนที่ฐานจะได้
+           error ดิบของ Postgres ที่คนอ่านไม่ออก · ตอบเป็นภาษาไทยตั้งแต่ที่นี่
+           ⚠️ ร่างยังล้างได้ — ร่างที่ยังไม่มีรหัสคือสถานะปกติของมัน */
+        if (!code && formula.status !== 'draft') {
+          return badRequest('สูตรที่รับเข้าทะเบียนแล้วต้องมีรหัสเสมอ — แก้เป็นรหัสใหม่ หรือเก็บเข้ากรุแทน');
+        }
         editable.code = code;
       }
       // ⚠️ ต้อง derive ลูกค้าใหม่ **ทุกครั้งที่แก้** ไม่ใช่เฉพาะตอนสร้าง — เปลี่ยนกลิ่น
