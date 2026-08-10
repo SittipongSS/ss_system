@@ -101,6 +101,8 @@ export const emptyRequestForm = (over = {}) => ({
   // แบบฟอร์ม PDR + บรีฟรายกลิ่น — ใช้เฉพาะหัวข้อที่ประกาศ `hasPdr`
   pdr: emptyPdr(),
   briefs: [],
+  // แถวข้อ 2.2/2.3 ของ PDR (mig 0229) — ตารางลูก เดินสายแยกเหมือนบรีฟ
+  pdrTargets: [],
   files: [],       // File[] — อัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอก)
   mentions: [],    // [{ id, name }] ที่ผู้ใช้เลือกจากรายการ
   ...over,
@@ -246,7 +248,7 @@ export default function RequestForm({
   const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
   const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
   const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
-  const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || []) : [];
+  const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || [], value.pdrTargets || []) : [];
   const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
 
   /* หัวข้อของฝ่ายนี้ จัดกลุ่มตามตระกูล — ลำดับกลุ่มมาจากลำดับของ `kindsForDept`
@@ -867,6 +869,8 @@ export default function RequestForm({
             onChange={(pdr) => set({ pdr })}
             briefs={value.briefs || []}
             onBriefsChange={(briefs) => set({ briefs })}
+            targets={value.pdrTargets || []}
+            onTargetsChange={(pdrTargets) => set({ pdrTargets })}
             disabled={disabled}
             /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
                เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)

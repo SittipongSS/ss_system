@@ -185,7 +185,11 @@ export const PDR_SECTIONS = [
       // ⚠️ **ไม่ derive จากดีล** — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
       // (ลูกค้าอาจจ่ายค่าออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน — ผู้ใช้ทักเอง)
       {
-        key: 'projectValue', no: '1.9', column: 'pdrProjectValue', label: 'มูลค่าโปรเจกต์ทั้งหมด',
+        // ⚠️ หน่วยอยู่ในป้าย ไม่ใช่ในคำใบ้ (มติผู้ใช้ 2026-08-10) — คำใบ้จางและหายไป
+        // ตอนพิมพ์ลงกระดาษ · หน่วยของตัวเลขต้องติดกับตัวเลขเสมอ ไม่งั้น "1,200" อ่านได้
+        // ทั้งบาทและพันบาท (ป้ายนี้ใช้ร่วมกันสามจอ: ฟอร์ม · จอสรุป · เอกสาร)
+        key: 'projectValue', no: '1.9', column: 'pdrProjectValue',
+        label: 'มูลค่าโปรเจกต์ทั้งหมด (บาท)',
         type: 'money', placeholder: 'ทั้งโครงการ ไม่ใช่แค่ค่าออกแบบกลิ่น',
       },
       // ⭐ ติ๊กแล้วเขียนต่อ (มติผู้ใช้) — สามช่องนี้คือข้อ 1.10 ข้อเดียวบนกระดาษ
@@ -239,13 +243,25 @@ export const PDR_SECTIONS = [
     key: 'spec',
     title: 'ข้อกำหนดผลิตภัณฑ์',
     fields: [
+      // ⭐ **2.2/2.3 ย้ายไปเป็นรายการรายสินค้าแล้ว** (มติผู้ใช้ 2026-08-10 · mig 0229)
+      // — หนึ่งแถวถือทั้งต้นทุนต่อกิโล (แยกสวิตช์ F/FB) และราคาขายต่อชิ้น · แถวอยู่ใน
+      // ตารางลูก `dept_request_pdr_targets` ไม่ใช่คอลัมน์บนหัวใบ จึงไม่มี `column`
+      // ที่นี่ และ **ไม่ผ่าน `normalizePdr`** (ด่านอยู่ที่ `lib/requests/pdrTargets.js`
+      // แพตเทิร์นเดียวกับบรีฟกลิ่น)
       {
-        key: 'targetCost', no: '2.2', column: 'pdrTargetCost', label: 'Target Cost / KG',
-        hint: 'F/FB ไม่รวมบรรจุภัณฑ์', type: 'money',
+        key: 'targets', no: '2.2', label: 'Target Cost / KG · Target Price / Unit',
+        hint: 'ต้นทุน F/FB ไม่รวมบรรจุภัณฑ์ และราคาขายต่อชิ้น — รายสินค้า', type: 'targets',
+      },
+      // ⚠️ สองช่องเดิม **เก็บไว้อ่านใบเก่า** — ตัวเลขเดียวทั้งใบที่ไม่รู้ว่าเป็นของหมวดไหน
+      // ย้ายมาลงตารางใหม่ไม่ได้โดยไม่เดา · ฟอร์มไม่เขียนลงแล้ว แต่จอสรุป/เอกสารยังพิมพ์
+      // ถ้าใบนั้นมีค่า (กติกาเดียวกับ `productKind` ตอน 0227)
+      {
+        key: 'targetCost', column: 'pdrTargetCost', label: 'Target Cost / KG (บันทึกไว้เดิม)',
+        type: 'money', legacy: true,
       },
       {
-        key: 'targetPrice', no: '2.3', column: 'pdrTargetPrice', label: 'Target Price / Unit',
-        hint: 'ราคาขาย', type: 'money',
+        key: 'targetPrice', column: 'pdrTargetPrice', label: 'Target Price / Unit (บันทึกไว้เดิม)',
+        type: 'money', legacy: true,
       },
       { key: 'moq', no: '2.4', column: 'pdrMoq', label: 'MOQ ที่คาดหวัง', type: 'text' },
       {
@@ -464,7 +480,11 @@ export function pdrFieldVisible(field, values = {}) {
 export function pdrFormProgress(section, values = {}) {
   const fields = (section?.fields || [])
     // ⚠️ `legacy` = ช่องที่ฟอร์มไม่แสดงแล้ว — นับเข้าตัวหารจะกรอกให้ครบไม่ได้ตลอดกาล
-    .filter((f) => f.type !== 'derived' && !f.legacy && pdrFieldVisible(f, values));
+    // ⚠️ `targets` (ข้อ 2.2/2.3) เก็บอยู่คนละตาราง ไม่ได้อยู่ใน `values` ⇒ นับที่นี่
+    // แล้วเกจจะขาดหนึ่งช่องตลอดกาล · ตัวนับของมันอยู่ที่ `pdrTargetsProgress`
+    // ซึ่งรางเลือกส่วนบวกเข้ามาเอง (บทเรียนเดียวกับเกจ 12% ใน form-design-rules)
+    .filter((f) => f.type !== 'derived' && f.type !== 'targets' && !f.legacy
+      && pdrFieldVisible(f, values));
   const filled = fields.filter((f) => {
     const v = values?.[f.key];
     if (Array.isArray(v)) return v.length > 0;
@@ -509,6 +529,9 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
     // ⚠️ ช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง — ใบใหม่ไม่เขียนลงช่องนี้แล้ว ปล่อยให้
     // `includeEmpty` ลากมาด้วยจะได้บรรทัด "ประเภทสินค้า (บันทึกไว้เดิม): N/A" ติดทุกใบ
     .filter((f) => !f.legacy || (pdrFieldText(f, request, context) ?? '') !== '')
+    // ⚠️ ข้อ 2.2/2.3 ไม่ใช่คู่ป้าย/ค่า แต่เป็น **ตารางรายสินค้า** (mig 0229) — ผู้เรียก
+    // วาดเองจาก `request.targets` · ลากมาเป็นแถวว่างที่นี่จะได้บรรทัดที่ไม่มีวันมีค่า
+    .filter((f) => f.type !== 'targets')
     .map((f) => [f.label, pdrFieldText(f, request, context)])
     .filter(([, v]) => includeEmpty || (v != null && String(v).trim() !== ''));
 }
@@ -569,8 +592,10 @@ export function pdrValuesFrom(row = {}) {
 }
 
 export function pdrSectionGroups(section, request = null, context = {}) {
-  const keep = (field) => !field.legacy || !request
-    || (pdrFieldText(field, request, context) ?? '') !== '';
+  // ⚠️ ข้อ 2.2/2.3 เป็นตารางรายสินค้า (mig 0229) ไม่ใช่คู่ป้าย/ค่า — ผู้เรียกวาดเอง
+  // จาก `request.targets` · ปล่อยเข้ามาที่นี่จะได้กล่องว่างบนกระดาษที่ไม่มีวันมีค่า
+  const keep = (field) => field.type !== 'targets'
+    && (!field.legacy || !request || (pdrFieldText(field, request, context) ?? '') !== '');
   const out = [];
   for (const field of (section?.fields || []).filter(keep)) {
     const last = out[out.length - 1];

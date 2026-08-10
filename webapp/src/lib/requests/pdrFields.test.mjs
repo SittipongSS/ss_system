@@ -108,7 +108,13 @@ test('บนจอซ่อนช่องว่าง · บนเอกสา�
   const spec = PDR_SECTIONS.find((s) => s.key === 'spec');
   const req = { pdrMoq: '50' };
   assert.deepEqual(pdrSectionRows(spec, req), [['MOQ ที่คาดหวัง', '50']]);
-  assert.equal(pdrSectionRows(spec, req, { includeEmpty: true }).length, spec.fields.length);
+  // ⚠️ ตัวหารไม่ใช่ `spec.fields.length` ดิบ ๆ — ข้อ 2.2/2.3 เป็นตารางรายสินค้า
+  // (mig 0229) ไม่ใช่คู่ป้าย/ค่า และช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง
+  const printable = spec.fields.filter((f) => f.type !== 'targets' && !f.legacy);
+  assert.equal(pdrSectionRows(spec, req, { includeEmpty: true }).length, printable.length);
+  // ใบเก่าที่มีค่าในช่องเดิมยังต้องพิมพ์ออกกระดาษ ไม่ใช่หายไปพร้อมการย้ายโครง
+  const legacy = pdrSectionRows(spec, { ...req, pdrTargetCost: 1200 });
+  assert.deepEqual(legacy, [['Target Cost / KG (บันทึกไว้เดิม)', '1,200'], ['MOQ ที่คาดหวัง', '50']]);
 });
 
 // ── สามจออ่านจากทะเบียนเดียวกันจริงไหม ────────────────────────────────────
@@ -151,6 +157,33 @@ test('⭐ ช่องเงินของ PDR ต้องเป็น MoneyIn
     (src.match(/<MoneyInput\b/g) || []).length, moneyFields.length,
     `ทะเบียนมีช่องเงิน ${moneyFields.length} ช่อง — ฟอร์มต้องมี <MoneyInput> ครบเท่ากัน`,
   );
+});
+
+// 🐞 บทเรียนซ้ำสองรอบในไฟล์นี้: ของที่ต้อง "เดินสายไปด้วย" แล้วลืม จะหายเงียบ —
+// `form.pdr` เคยไม่ถูกส่งไป API ทั้ง 21 ช่อง และ `context` เคยไม่ถูกส่งจากหน้าแก้
+// แถวข้อ 2.2/2.3 (mig 0229) เดินสายแยกเหมือนบรีฟ จึงพังแบบเดียวกันได้อีก
+test('⭐ แถว 2.2/2.3 ต้องถูกเดินสายครบทุกทาง — กรอก · ส่ง · แก้ · อ่าน · กระดาษ', () => {
+  const wired = {
+    // ฟอร์มรับแถวและส่งกลับ
+    'src/components/requests/PdrForm.js': [/targets/, /onTargetsChange/],
+    // สองที่ที่เรียก PdrForm ต้องส่งทั้งคู่ (หน้าเปิดใบ · หน้าแก้)
+    'src/components/requests/RequestForm.js': [/targets=\{/, /onTargetsChange=\{/],
+    'src/components/requests/details/ScentDevDetail.js': [/targets=\{/, /onTargetsChange=\{/],
+    // payload ตอนสร้าง และตอนกดบันทึกในหน้ารายละเอียด
+    'src/lib/master/requestCreate.js': [/pdrTargets/],
+    'src/app/requests/[id]/page.js': [/pdrTargets/, /pdrTargetValuesFrom/],
+    // ด่านฝั่ง server ทั้งสองทาง
+    'src/app/api/sa/requests/route.js': [/normalizePdrTargets/],
+    'src/app/api/sa/requests/[id]/route.js': [/normalizePdrTargets/],
+    // โหลดแถวมากับใบ · จอสรุป · เอกสาร
+    'src/lib/materialPricesAdmin.js': [/dept_request_pdr_targets/],
+    'src/components/requests/PdrSummary.js': [/PDR_TARGET_KINDS/],
+    'src/lib/requests/pdrDocument.js': [/PDR_TARGET_KINDS/],
+  };
+  for (const [file, patterns] of Object.entries(wired)) {
+    const src = readFileSync(file, 'utf8');
+    for (const re of patterns) assert.match(src, re, `${file}: ขาด ${re}`);
+  }
 });
 
 test('⭐ ไม่มีจอไหนเขียนป้ายของตัวเองซ้ำอีก', () => {

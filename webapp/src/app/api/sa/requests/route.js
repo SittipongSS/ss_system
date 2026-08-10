@@ -16,6 +16,7 @@ import {
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
+import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { requestOptionalRefs } from '@/lib/master/requestTypes';
 import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
@@ -345,6 +346,7 @@ export async function POST(request) {
     // ความหมาย ไม่ควรเงียบ ๆ เขียนลงคอลัมน์
     let pdrColumns = {};
     let briefRows = [];
+    let targetRows = [];
     if (requestHasPdr(kind)) {
       const { columns, error: pdrError } = normalizePdr(body.pdr);
       if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
@@ -360,6 +362,17 @@ export async function POST(request) {
       // `expected` ซึ่งไม่มีใครอ่าน ⇒ เพดาน "บรีฟห้ามเกินจำนวนกลิ่นที่ขาย" ไม่เคยทำงาน
       const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, { scentCount });
       if (briefError) return Response.json({ error: briefError }, { status: 400 });
+
+      // ⭐ ข้อ 2.2/2.3 · ต้นทุน/ราคาขายรายสินค้า (mig 0229) — ตรวจก่อน insert เหมือน
+      // บรีฟ ด้วยเหตุผลเดียวกันที่เขียนไว้ข้างบน (ตกด่านหลัง insert = ใบร่างค้างที่จอง
+      // ใบสั่งขายไว้แล้ว)
+      // ⚠️ ส่งหมวดจากข้อ 1.11 ของ *ใบเดียวกัน* เข้าไปด้วย — แถวที่อ้างหมวดนอกนั้น
+      // แปลว่าฟอร์มกับใบไม่ตรงกัน ต้องถูกทัก ไม่ใช่เขียนลงเงียบ ๆ
+      const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
+        categoryCodes: pdrColumns.pdrProductKinds || [],
+      });
+      if (targetError) return Response.json({ error: targetError }, { status: 400 });
+      targetRows = targets.map((t) => ({ id: `DPT-${randomUUID()}`, requestId, ...t }));
       briefRows = briefs.map((b) => ({
         id: `DRS-${randomUUID()}`,
         requestId,
@@ -441,6 +454,16 @@ export async function POST(request) {
       if (briefInsertError) {
         await supabase.from('dept_requests').delete().eq('id', requestId);
         throw briefInsertError;
+      }
+    }
+
+    // 2.1) แถวข้อ 2.2/2.3 — กติกาเดียวกับบรีฟทุกข้อ รวมถึงลบหัวทิ้งเมื่อล้ม
+    if (targetRows.length) {
+      const { error: targetInsertError } = await supabase
+        .from('dept_request_pdr_targets').insert(targetRows);
+      if (targetInsertError) {
+        await supabase.from('dept_requests').delete().eq('id', requestId);
+        throw targetInsertError;
       }
     }
 

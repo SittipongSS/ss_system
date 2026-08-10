@@ -104,7 +104,7 @@ export default function ScentDevDetail({
                 ariaLabel="หมวดของแบบฟอร์ม"
                 value={draftSection}
                 onChange={setDraftSection}
-                sections={pdrRailSections(pdrDraft.pdr, pdrDraft.briefs)}
+                sections={pdrRailSections(pdrDraft.pdr, pdrDraft.briefs, pdrDraft.targets)}
               >
                 {/* 🐞 **ต้องส่ง `context` ด้วยเสมอ** — เดิมส่งแค่ 7 พร็อพแล้วลืมค่าที่ระบบ
                     เติมให้ทั้งก้อน ⇒ ช่อง "เติมจาก…" เป็นเส้นประทั้งแผง และปุ่มรวบ/แยก
@@ -116,6 +116,8 @@ export default function ScentDevDetail({
                   value={pdrDraft.pdr} onChange={(pdr) => onPdrDraftChange({ ...pdrDraft, pdr })}
                   briefs={pdrDraft.briefs}
                   onBriefsChange={(briefs) => onPdrDraftChange({ ...pdrDraft, briefs })}
+                  targets={pdrDraft.targets || []}
+                  onTargetsChange={(targets) => onPdrDraftChange({ ...pdrDraft, targets })}
                   disabled={saving}
                   context={context}
                 />

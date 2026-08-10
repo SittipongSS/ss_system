@@ -25,6 +25,10 @@ import { FlaskConical, Image as ImageIcon, Plus, X } from "lucide-react";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { categoryLabel } from "@/lib/master/categoryOf";
 import EmptyState from "@/components/ui/EmptyState";
+import EditableLineList from "@/components/ui/EditableLineList";
+import {
+  PDR_TARGET_KINDS, emptyPdrTarget, pdrTargetFilled, pdrTargetsProgress,
+} from "@/lib/requests/pdrTargets";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
@@ -153,12 +157,160 @@ function TickAndWrite({ label, value, onChange, disabled }) {
   );
 }
 
+/* ── ข้อ 2.2 + 2.3 · ต้นทุนและราคาขายเป้าหมาย "รายสินค้า" (mig 0229) ──────
+ *
+ * ⭐ **ตารางเดียวจบทั้งสองข้อ** (มติผู้ใช้ 2026-08-10) — เดิมเป็นช่องเงินสองช่อง
+ * ตัวเลขเดียวทั้งใบ ⇒ ใบที่ขอ Room Spray + Reed Diffuser + Sachet พร้อมกันกรอกได้
+ * แค่ราคาเดียว · ตอนนี้หนึ่งแถว = สินค้าหนึ่งตัว ถือทั้งต้นทุน F/FB ต่อกิโล และ
+ * ราคาขายต่อชิ้น ⇒ เปิดสินค้าตัวไหนก็คิดกำไรของตัวนั้นได้ในที่เดียว
+ * (เอกสาร FM-RD-01 ยังพิมพ์แยก 2.2/2.3 ตามกระดาษ — คนละเรื่องกับตอนกรอก)
+ *
+ * ⚠️ **หมวดมาจากข้อ 1.11 ของใบเดียวกัน** ไม่ใช่ทะเบียนทั้งหมด — ใบประกาศไว้แล้วว่า
+ * ขอพัฒนาหมวดอะไร · เลือกนอกนั้นได้เมื่อไร 1.11 กับ 2.2 จะขัดกันเองเงียบ ๆ
+ * ⚠️ **เลือกซ้ำหมวดได้** — Room Spray 50ml กับ 100ml คนละต้นทุน (มติผู้ใช้)
+ */
+function PdrTargetList({ targets, onChange, productKinds, categories, disabled }) {
+  const rows = Array.isArray(targets) ? targets : [];
+  const kinds = Array.isArray(productKinds) ? productKinds : [];
+  const [pick, setPick] = useState("");
+  const [active, setActive] = useState(0);
+
+  const nameOf = (code) => categoryLabel(code, categories) || code;
+  const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
+  const add = () => {
+    if (!pick) return;
+    onChange([...rows, emptyPdrTarget(pick)]);
+    setActive(rows.length);
+  };
+
+  const row = rows[active];
+  return (
+    <div className="form-group col-span-2">
+      <span className={styles.fieldLabel}>{label("targets")}</span>
+      {/* ⚠️ ยังไม่ติ๊ก 1.11 = **บอกว่าต้องไปทำอะไรก่อน** ไม่ใช่ปล่อยตัวเลือกว่างให้งง
+          (กติกาเดียวกับ `emptyText` ของลิสต์อื่นในระบบ) */}
+      {!kinds.length && (
+        <small className={styles.hint}>ติ๊กประเภทสินค้าในข้อ 1.11 ก่อน แล้วจึงเพิ่มรายการที่นี่ได้</small>
+      )}
+      <EditableLineList
+        count={rows.length}
+        active={active}
+        onActiveChange={setActive}
+        disabled={disabled}
+        addLabel="เพิ่มรายการ"
+        emptyText="ยังไม่มีรายการ — เลือกประเภทสินค้าแล้วกดเพิ่ม"
+        onAdd={add}
+        addControl={(
+          <Select
+            value={pick}
+            disabled={disabled || !kinds.length}
+            ariaLabel="เลือกประเภทสินค้าที่จะเพิ่ม"
+            onChange={(e) => setPick(e.target.value)}
+            options={[
+              { value: "", label: kinds.length ? "— เลือกประเภทสินค้า —" : "ยังไม่ได้ติ๊กในข้อ 1.11" },
+              ...kinds.map((code) => ({ value: code, label: nameOf(code) })),
+            ]}
+          />
+        )}
+        renderSummary={(i) => {
+          const r = rows[i];
+          const bits = [];
+          for (const kind of PDR_TARGET_KINDS) {
+            if (!r[kind.onField]) continue;
+            const price = r[kind.priceField];
+            bits.push(`${kind.label}${price === "" || price == null ? "" : ` ${price} บาท/Kg`}`);
+          }
+          if (r.pricePerUnit !== "" && r.pricePerUnit != null) bits.push(`ขาย ${r.pricePerUnit} บาท/ชิ้น`);
+          return (
+            <>
+              <span className="line-summary-dot" data-ok={pdrTargetFilled(r) ? "1" : undefined} />
+              <span className="line-summary-main">{nameOf(r.categoryCode)}</span>
+              <span className="line-summary-sub">{bits.join(" · ") || "ยังไม่กรอกราคา"}</span>
+            </>
+          );
+        }}
+      >
+        {row && (
+          <>
+            <div className={styles.pdrTargetHead}>
+              <span className={styles.fieldLabel}>{nameOf(row.categoryCode)}</span>
+              <Button
+                iconOnly icon={<X size={13} />} disabled={disabled}
+                aria-label={`เอา ${nameOf(row.categoryCode)} ออกจากรายการ`}
+                onClick={() => {
+                  onChange(rows.filter((_, j) => j !== active));
+                  setActive((a) => Math.max(0, a - 1));
+                }}
+              />
+            </div>
+            {/* สวิตช์ F/FB — เปิดแล้วค่อยงอกช่องรายละเอียดกับราคา (ท่าเดียวกับ
+                `TickAndWrite` ของข้อ 1.10/2.9) · เปิดพร้อมกันทั้งคู่ได้ */}
+            {PDR_TARGET_KINDS.map((kind) => {
+              const on = !!row[kind.onField];
+              return (
+                <div className="form-group" key={kind.key}>
+                  <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                    <button
+                      type="button" className="ui-switch" disabled={disabled}
+                      data-on={on ? "1" : undefined} aria-pressed={on}
+                      onClick={() => patch(active, { [kind.onField]: !on })}
+                    >
+                      <i aria-hidden="true" />{kind.label}
+                    </button>
+                  </div>
+                  {on && (
+                    <div className="form-grid cols-2">
+                      <div className="form-group">
+                        <label htmlFor={`pdr-target-note-${kind.key}`}>รายละเอียด</label>
+                        <Input
+                          id={`pdr-target-note-${kind.key}`} value={row[kind.noteField] || ""}
+                          disabled={disabled}
+                          onChange={(e) => patch(active, { [kind.noteField]: e.target.value })}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor={`pdr-target-kg-${kind.key}`}>ราคา (บาท/Kg)</label>
+                        <MoneyInput
+                          id={`pdr-target-kg-${kind.key}`} value={row[kind.priceField]}
+                          disabled={disabled}
+                          onChange={(v) => patch(active, { [kind.priceField]: v ?? "" })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* ⭐ ข้อ 2.3 — **ราคาต่อแถว ไม่ใช่ต่อ F/FB** (มติผู้ใช้): ชิ้นที่ขายมีชิ้นเดียว
+                ไม่ได้แยกตามว่าข้างในเป็นหัวน้ำหอมหรือเนื้อสาร */}
+            <div className="form-group">
+              <label htmlFor="pdr-target-unit">ราคาขาย (บาท/ชิ้น) — ข้อ 2.3</label>
+              <MoneyInput
+                id="pdr-target-unit" value={row.pricePerUnit} disabled={disabled}
+                onChange={(v) => patch(active, { pricePerUnit: v ?? "" })}
+              />
+            </div>
+          </>
+        )}
+      </EditableLineList>
+    </div>
+  );
+}
+
 /* รายการส่วนสำหรับรางเลือกส่วน — ลำดับตรงกับที่ฟอร์มเรนเดอร์เป๊ะ
    ⚠️ "บรีฟกลิ่น" ไม่ได้อยู่ใน `PDR_SECTIONS` (มันไม่ใช่ช่องบนกระดาษ FM-RD-01
    แต่เป็นก้อนของระบบ) จึงต้องแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก */
-export function pdrRailSections(value = {}, briefs = []) {
+export function pdrRailSections(value = {}, briefs = [], targets = []) {
   const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
   const count = (key) => pdrFormProgress(of(key), value);
+  // ⚠️ หมวดสเปกมีทั้งช่องธรรมดาและ **แถวรายสินค้า** (ข้อ 2.2/2.3 · mig 0229) ที่อยู่
+  // คนละตาราง ⇒ บวกสองตัวนับเข้าด้วยกัน ไม่งั้นเลข "กรอกแล้ว/ทั้งหมด" บนหัวหมวด
+  // จะไม่รวมของที่ผู้ใช้เพิ่งกรอกไป
+  const specCount = () => {
+    const base = count("spec");
+    const rows = pdrTargetsProgress(targets);
+    return { total: base.total + rows.total, filled: base.filled + rows.filled };
+  };
   return [
     { key: "request", label: of("request").title, count: count("request") },
     { key: "customer", label: of("customer").title, count: count("customer") },
@@ -170,7 +322,7 @@ export function pdrRailSections(value = {}, briefs = []) {
       // เต็มทันทีที่กดบันทึกครั้งแรก ทั้งที่ยังไม่ได้เขียนบรีฟสักตัว
       count: { total: briefs.length, filled: briefs.filter((b) => String(b?.brief || "").trim()).length },
     },
-    { key: "spec", label: of("spec").title, count: count("spec") },
+    { key: "spec", label: of("spec").title, count: specCount() },
     { key: "regulatory", label: of("regulatory").title, count: count("regulatory") },
     { key: "signers", label: of("signers").title, count: count("signers") },
   ];
@@ -178,6 +330,11 @@ export function pdrRailSections(value = {}, briefs = []) {
 
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,
+  /* แถวข้อ 2.2/2.3 — อยู่คนละตารางกับหัวใบ (mig 0229) จึงเดินสายแยกเหมือนบรีฟ
+     ⚠️ ผู้เรียกที่ลืมส่ง `onTargetsChange` จะได้ลิสต์ที่กดเพิ่มแล้วไม่มีอะไรเกิดขึ้น —
+     ค่าตั้งต้นเป็น no-op ที่ปลอดภัย แต่เทสต์ฝั่งหน้าจอ (`pdrFields.test.mjs`) บังคับว่า
+     ทั้งสองที่ที่เรียก `PdrForm` ต้องส่งมาครบ */
+  targets = [], onTargetsChange = () => {},
   /* ⭐ **ค่าที่ระบบเติมให้มาเป็นก้อนเดียว** — ผลลัพธ์ของ `pdrContext()` ตรง ๆ
      🐞 เดิมแตกเป็น 8 พร็อพแยก (scentCount · customer · deal · requester ·
      coordinator · contactName · contactPhone · sampleDue) ⇒ หน้าแก้ PDR
@@ -592,16 +749,13 @@ export default function PdrForm({
 
       <Section flat={rail} title={SECTION.spec.title} progress={pdrFormProgress(SECTION.spec, value)}>
         <div className="form-grid cols-2">
-          <div className="form-group">
-            <label htmlFor="pdr-cost">{label("targetCost")}</label>
-            <MoneyInput id="pdr-cost" value={value.targetCost} disabled={disabled}
-              onChange={(v) => set({ targetCost: v ?? "" })} />
-          </div>
-          <div className="form-group">
-            <label htmlFor="pdr-price">{label("targetPrice")}</label>
-            <MoneyInput id="pdr-price" value={value.targetPrice} disabled={disabled}
-              onChange={(v) => set({ targetPrice: v ?? "" })} />
-          </div>
+          <PdrTargetList
+            targets={targets}
+            onChange={onTargetsChange}
+            productKinds={value.productKinds}
+            categories={categories}
+            disabled={disabled}
+          />
           <div className="form-group">
             <label htmlFor="pdr-moq">{label("moq")}</label>
             <Input id="pdr-moq" value={value.moq} disabled={disabled}

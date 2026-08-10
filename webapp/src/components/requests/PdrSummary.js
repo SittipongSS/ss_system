@@ -14,8 +14,39 @@
 // (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
 import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { PDR_SECTIONS, pdrSectionProgress, pdrSectionRows } from "@/lib/requests/pdrFields";
+import { PDR_TARGET_KINDS } from "@/lib/requests/pdrTargets";
+import { categoryLabel } from "@/lib/master/categoryOf";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
+
+/* ── 2.2/2.3 ฝั่งอ่าน — ตารางเดียวเหมือนฝั่งกรอก (mig 0229) ──────────────
+   ⚠️ ประกอบ **แถวป้าย/ค่า** ส่งเข้า `Facts` ตัวเดิม ไม่วาดตารางของตัวเอง — จอนี้มี
+   รูปแบบเดียวทั้งหน้า และช่องว่างต้องอ่านเป็น N/A เหมือนช่องอื่นทุกช่อง */
+function targetFacts(request) {
+  const list = Array.isArray(request.targets) ? request.targets : [];
+  const categories = request.pdrContext?.categories || [];
+  const money = (v) => (v == null || v === "" ? null : Number(v).toLocaleString("th-TH"));
+  const nameOf = (code) => categoryLabel(code, categories) || code;
+
+  const cost = list.map((t) => {
+    const parts = PDR_TARGET_KINDS.filter((k) => t[k.onField]).map((k) => {
+      const note = String(t[k.noteField] || "").trim();
+      const price = money(t[k.priceField]);
+      return `${k.label}${note ? ` ${note}` : ""}${price ? ` ${price} บาท/Kg` : ""}`;
+    });
+    return parts.length ? `${nameOf(t.categoryCode)} — ${parts.join(" · ")}` : null;
+  }).filter(Boolean);
+
+  const unit = list.map((t) => {
+    const price = money(t.pricePerUnit);
+    return price ? `${nameOf(t.categoryCode)} — ${price} บาท/ชิ้น` : null;
+  }).filter(Boolean);
+
+  return [
+    ["Target Cost / KG (F/FB ไม่รวมบรรจุภัณฑ์)", cost.join("\n")],
+    ["Target Price / Unit (ราคาขาย)", unit.join("\n")],
+  ];
+}
 
 function Facts({ rows }) {
   // ⭐ **แสดงทุกช่อง ช่องที่ไม่ได้กรอกขึ้นว่า N/A** (มติผู้ใช้ 2026-08-07)
@@ -137,10 +168,13 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
       {list.map((section_) => (rail ? (
         <div key={section_.key} className={styles.pdrFlat}>
           <h5 className={styles.pdrFlatTitle}>{section_.title}</h5>
-          <Facts rows={pdrSectionRows(section_, request, {
-            includeEmpty: true,
-            context: { ...(request.pdrContext || {}), briefs },
-          })} />
+          <Facts rows={[
+            ...(section_.key === "spec" ? targetFacts(request) : []),
+            ...pdrSectionRows(section_, request, {
+              includeEmpty: true,
+              context: { ...(request.pdrContext || {}), briefs },
+            }),
+          ]} />
         </div>
       ) : (
         <details key={section_.key} className={styles.pdrSection}>
@@ -148,10 +182,13 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
           <div className={styles.pdrBody}>
             {/* ⚠️ `includeEmpty` — จอต้องแสดงช่องว่างเป็น N/A เหมือนกระดาษ
                 (มติผู้ใช้ 2026-08-07) ไม่ใช่ซ่อนทิ้งแล้วอ่านไม่ออกว่าถามหรือยัง */}
-            <Facts rows={pdrSectionRows(section_, request, {
-              includeEmpty: true,
-              context: { ...(request.pdrContext || {}), briefs },
-            })} />
+            <Facts rows={[
+              ...(section_.key === "spec" ? targetFacts(request) : []),
+              ...pdrSectionRows(section_, request, {
+                includeEmpty: true,
+                context: { ...(request.pdrContext || {}), briefs },
+              }),
+            ]} />
           </div>
         </details>
       )))}

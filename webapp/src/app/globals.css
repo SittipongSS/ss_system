@@ -3784,6 +3784,11 @@ button.empty-state { width: 100%; font: inherit; }
 .line-list { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .line-list > * { align-self: stretch; }
 .line-list > button:last-child { align-self: flex-start; }
+/* แถวท้ายรายการที่ต้อง **เลือกก่อนแล้วค่อยกดเพิ่ม** (PDR 2.2 เลือกประเภทสินค้าก่อน)
+   — ตัวเลือกยืดกินที่ว่าง ปุ่มคงขนาดตัวเอง ท่าเดียวกับแถวเลือก-แล้ว-เพิ่มของข้อ 1.11 */
+.line-add { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.line-add > *:first-child { flex: 1 1 200px; min-width: 0; }
+.line-add > button { flex: none; }
 .line-open {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
