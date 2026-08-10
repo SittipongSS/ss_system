@@ -3,13 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ตาราง "สรุปทั้งใบ" — ปัจจุบัน vs 3 ทางเลือก</title>
+<title>ตาราง "สรุปทั้งใบ" — ปัจจุบัน vs ทางเลือก</title>
 <style>
-  /* โทเคน v2 โต๊ะช่าง (ธีมมืด) — คัดจาก globals.css เพื่อให้ม็อกอัพหน้าตาตรงของจริง */
+  /* โทเคน v2 โต๊ะช่าง (ธีมมืด) — คัดจาก globals.css ให้ม็อกอัพหน้าตาตรงของจริง */
   :root{
     --bg:#0f1319; --panel:#1a1f29; --panel-2:#232b38; --panel-3:#2a3342;
-    --border:#303948; --border-strong:#444f63;
-    --text:#edf1f7; --text-2:#a2acbb; --text-3:#8b95a5;
+    --border:#303948; --text:#edf1f7; --text-2:#a2acbb; --text-3:#8b95a5;
     --accent:#d97b4f; --accent-ink:#df8760;
     --green:#57ab7c; --amber:#d9a13f; --blue:#7ea8dd; --red:#e07f74;
     --radius:6px; --radius-lg:10px;
@@ -17,77 +16,91 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);
     font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;
-    font-size:14px;line-height:1.55;padding:28px}
-  h1{font-size:24px;margin:0 0 6px}
+    font-size:14px;line-height:1.55;padding:26px}
+  h1{font-size:23px;margin:0 0 6px}
   h2{font-size:17px;margin:0 0 4px}
-  .sub{color:var(--text-3);font-size:13px;margin:0 0 24px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:18px}
+  .sub{color:var(--text-3);font-size:13px;margin:0 0 20px}
+  .shape{border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));
+    border-radius:var(--radius-lg);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+    padding:14px 18px;margin:0 0 22px}
+  .shape b{color:var(--accent-ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:18px}
   .opt{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden}
   .opt.now{border-color:color-mix(in srgb,var(--red) 40%,var(--border))}
-  .opt.pick{border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+  .opt.pick{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 20%,transparent)}
   .ohead{padding:14px 18px;border-bottom:1px solid var(--border);background:var(--panel-2)}
   .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
     color:var(--accent-ink);margin-bottom:4px}
   .tag.bad{color:var(--red)}
   .obody{padding:18px}
-  .state{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.05em;
-    text-transform:uppercase;margin:0 0 8px}
-  .state+.state{margin-top:20px}
-  /* ตารางจำลอง */
+  .state{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.05em;margin:0 0 8px}
+  .state+*{margin-top:0}
+  .state.gap{margin-top:20px}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border)}
-  thead th{color:var(--text-3);font-weight:600;font-size:11px;background:var(--panel-2);
-    text-transform:none;height:32px}
+  thead th{color:var(--text-3);font-weight:600;font-size:11px;background:var(--panel-2);height:32px}
   tr.g th{background:var(--panel-3);color:var(--text);font-weight:700;font-size:12px}
-  td.none{color:var(--text-3);font-style:normal}
+  td.none{color:var(--text-3)}
   .box{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-  /* แถบสรุป */
-  .strip{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-    padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);
-    background:var(--panel-2)}
-  .strip b{font-size:16px}
+  .child td:first-child{padding-left:26px;position:relative}
+  .child td:first-child::before{content:"↳";position:absolute;left:10px;color:var(--text-3)}
+  .roll{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px;
+    border-bottom:1px solid var(--border);background:var(--panel-3);font-size:12.5px}
+  .roll:last-child{border-bottom:0}
+  .roll b{font-weight:700}
+  .caret{color:var(--text-3);width:12px;display:inline-block}
+  .strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 13px;
+    border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);font-size:12.5px}
   .chip{display:inline-block;padding:2px 8px;border:1px solid var(--border);
     border-radius:99px;font-size:11px;color:var(--text-2);background:var(--panel)}
   .badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700}
   .b-green{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
   .b-amber{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
   .b-blue{background:color-mix(in srgb,var(--blue) 16%,transparent);color:var(--blue)}
+  .b-red{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red)}
   .note{margin:14px 0 0;padding:11px 13px;border-radius:var(--radius);
     background:color-mix(in srgb,var(--panel-2) 70%,transparent);
     border:1px solid var(--border);font-size:12.5px;color:var(--text-2)}
   .note b{color:var(--text)}
-  .plus{color:var(--green)} .minus{color:var(--amber)}
-  ul{margin:6px 0 0;padding-left:18px} li{margin:3px 0}
-  .metric{display:flex;gap:22px;flex-wrap:wrap;margin:0 0 22px;
-    padding:14px 18px;border:1px solid color-mix(in srgb,var(--red) 35%,var(--border));
-    border-radius:var(--radius-lg);background:color-mix(in srgb,var(--red) 7%,var(--panel))}
-  .metric div{min-width:104px}
+  .plus{color:var(--green);font-weight:700} .minus{color:var(--amber);font-weight:700}
+  .kill{color:var(--red);font-weight:700}
+  .metric{display:flex;gap:20px;flex-wrap:wrap;margin:0 0 20px;padding:13px 18px;
+    border:1px solid color-mix(in srgb,var(--red) 35%,var(--border));border-radius:var(--radius-lg);
+    background:color-mix(in srgb,var(--red) 7%,var(--panel))}
+  .metric div{min-width:100px}
   .metric small{display:block;color:var(--text-3);font-size:11px}
-  .metric strong{font-size:20px}
+  .metric strong{font-size:19px}
   .fade{opacity:.5}
 </style>
 </head>
 <body>
 
-<h1>ตาราง “สรุปทั้งใบ” — ปัจจุบัน vs 3 ทางเลือก</h1>
-<p class="sub">วัดจริงบนใบ scent_dev ที่มี 25 บรีฟ · <code>components/requests/BriefBoard.js</code></p>
+<h1>ตาราง “สรุปทั้งใบ” — ปัจจุบัน vs ทางเลือก</h1>
+<p class="sub">วัดจริงบนใบ scent_dev 25 บรีฟ · <code>components/requests/BriefBoard.js</code></p>
+
+<div class="shape">
+  <b>รูปร่างข้อมูลจริง (ผู้ใช้ยืนยัน 2026-08-10)</b> — 1 บรีฟ → พัฒนา <b>2-3 direction</b> ·
+  ลูกค้าขอแก้ → พัฒนาต่ออีก <b>2-3 direction</b> ที่ผูกกลับไปหาตัวต้นทาง
+  (<code>derivedFromItemId</code> → <code>derivedFromScentId</code> = มี<b>สายพันธุ์</b>ของงาน)
+  <br>⇒ ใบ 25 บรีฟที่เดินครบสองรอบ = <b>ประมาณ 150 แถว</b> · ตัวเลขนี้คือสิ่งที่ทางเลือกต้องรับไหว
+</div>
 
 <div class="metric">
-  <div><small>แถวทั้งหมด</small><strong>50</strong></div>
-  <div><small>หัวกลุ่ม</small><strong>25</strong></div>
-  <div><small>“ยังไม่มี direction”</small><strong>25</strong></div>
+  <div><small>วันนี้ (0 direction)</small><strong>50 แถว</strong></div>
   <div><small>แถวที่มีข้อมูลจริง</small><strong style="color:var(--red)">0</strong></div>
-  <div><small>ความสูงตาราง</small><strong>1,986px</strong></div>
+  <div><small>ความสูง</small><strong>1,986px</strong></div>
   <div><small>คอลัมน์ที่ว่างทุกแถว</small><strong>3 / 4</strong></div>
+  <div><small>เดินครบสองรอบ</small><strong>~150 แถว</strong></div>
 </div>
 
 <div class="grid">
 
   <!-- ปัจจุบัน -->
   <section class="opt now">
-    <div class="ohead"><span class="tag bad">ปัจจุบัน</span><h2>ตารางกางทุกบรีฟเสมอ</h2></div>
+    <div class="ohead"><span class="tag bad">ปัจจุบัน</span><h2>กางทุกบรีฟเสมอ · รอบแก้เป็นแถวลอย</h2></div>
     <div class="obody">
-      <p class="state">ใบที่เพิ่งเปิด (0 direction) — สถานะที่พบบ่อยที่สุด</p>
+      <p class="state">ใบที่เพิ่งเปิด — สถานะที่พบบ่อยที่สุด</p>
       <div class="box">
         <table>
           <thead><tr><th>กลิ่น</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
@@ -96,129 +109,130 @@
             <tr><td class="none" colspan="4">ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td></tr>
             <tr class="g"><th colspan="4">กลิ่นที่ 2</th></tr>
             <tr><td class="none" colspan="4">ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td></tr>
-            <tr class="g"><th colspan="4">กลิ่นที่ 3</th></tr>
-            <tr><td class="none" colspan="4">ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td></tr>
-            <tr class="fade"><td colspan="4" style="text-align:center;color:var(--text-3)">… ซ้ำแบบนี้อีก 22 ก้อน (รวม 1,986px)</td></tr>
+            <tr class="fade"><td colspan="4" style="text-align:center;color:var(--text-3)">… อีก 23 ก้อน · รวม 1,986px</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="state gap">ใบที่เดินครบสองรอบ</p>
+      <div class="box">
+        <table>
+          <tbody>
+            <tr class="g"><th colspan="4">แนวสดชื่น</th></tr>
+            <tr><td>FR-01</td><td><span class="badge b-red">ลูกค้าไม่เอา</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr><td>FR-02</td><td><span class="badge b-amber">ขอให้แก้</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr><td>FR-03</td><td><span class="badge b-green">คอนเฟิร์ม</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr><td>FR-04 <span class="chip">รอบแก้</span></td><td>—</td><td><span class="badge b-amber">รอส่ง</span></td><td>ส่งกลิ่น</td></tr>
+            <tr class="fade"><td colspan="4" style="text-align:center;color:var(--text-3)">… × 25 บรีฟ ≈ 150 แถว</td></tr>
           </tbody>
         </table>
       </div>
       <div class="note">
-        <b>ปัญหา</b> ตารางสี่คอลัมน์ที่สามคอลัมน์ว่างทุกแถว · ต้องเลื่อนสองจอเพื่ออ่าน
-        คำว่า “ยังไม่มี” 25 ครั้ง · หัวตารางเลื่อนพ้นจอไปแล้วตั้งแต่ก้อนที่ 5
-        <br><b>ชั้นข้อมูลก็มีปัญหา</b> ชื่อบรีฟ 24/25 ก้อนเป็นค่าตั้งต้น “กลิ่นที่ N”
-        ⇒ คอลัมน์แรกไม่ได้ช่วยแยกแยะอะไร
+        <span class="kill">✕</span> ใบใหม่ = เลื่อนสองจอเพื่ออ่านคำว่า “ยังไม่มี” 25 ครั้ง<br>
+        <span class="kill">✕</span> ใบที่เดินแล้ว = 150 แถวเรียงกันรวด · <b>รอบแก้ลอยเป็นแถวธรรมดา</b>
+        อ่านไม่ออกว่า FR-04 แก้มาจาก FR-02 ทั้งที่ข้อมูลสายพันธุ์มีอยู่ในฐานแล้ว
       </div>
     </div>
   </section>
 
-  <!-- ทางเลือก ก -->
+  <!-- ก+ -->
   <section class="opt pick">
-    <div class="ohead"><span class="tag">ทางเลือก ก</span><h2>แถบสรุปก่อน — ตารางงอกเมื่อมีของ</h2></div>
+    <div class="ohead"><span class="tag">ทางเลือก ก+ · แนะนำ</span><h2>บรีฟเป็นแถบสรุป กางได้ · รอบแก้เยื้องใต้ต้นทาง</h2></div>
     <div class="obody">
-      <p class="state">ใบที่เพิ่งเปิด</p>
+      <p class="state">ใบที่เพิ่งเปิด — จบใน 1 บรรทัด</p>
       <div class="strip">
-        <span><b>25</b> บรีฟ</span>
-        <span style="color:var(--text-3)">·</span>
+        <span><b>25</b> บรีฟ</span><span style="color:var(--text-3)">·</span>
         <span style="color:var(--amber)">ยังไม่มี direction สักตัว</span>
-        <span style="margin-left:auto"><span class="chip">แนวสดชื่น</span>
-          <span class="chip">กลิ่นที่ 2</span><span class="chip">+23</span></span>
+        <span style="margin-left:auto"><span class="chip">กางดูรายชื่อ</span></span>
       </div>
 
-      <p class="state">ใบที่ RD เริ่มส่งของแล้ว</p>
+      <p class="state gap">ใบที่เดินครบสองรอบ — บรีฟที่ต้องดูกางไว้ ที่จบแล้วพับ</p>
       <div class="box">
+        <div class="roll">
+          <span class="caret">▾</span><b>แนวสดชื่น</b>
+          <span class="chip">4 direction</span>
+          <span class="badge b-green">คอนเฟิร์ม 1</span>
+          <span class="badge b-amber">รอบแก้ 1 · รอส่ง</span>
+        </div>
         <table>
-          <thead><tr><th>กลิ่น</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
+          <thead><tr><th>direction</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
           <tbody>
-            <tr class="g"><th colspan="4">แนวสดชื่น</th></tr>
-            <tr><td>FR-01 <span class="chip">รอบแก้</span></td>
-              <td><span class="badge b-green">ลูกค้าคอนเฟิร์ม</span></td>
-              <td><span class="badge b-blue">ส่งให้ลูกค้าแล้ว</span></td><td>—</td></tr>
-            <tr><td>FR-02</td><td><span style="color:var(--text-3)">ยังไม่ถึงขั้นลูกค้าตอบ</span></td>
-              <td><span class="badge b-amber">รอส่ง</span></td><td>ส่งกลิ่น</td></tr>
+            <tr><td>FR-01</td><td><span class="badge b-red">ลูกค้าไม่เอา</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr><td>FR-02</td><td><span class="badge b-amber">ขอให้แก้</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr class="child"><td>FR-04</td><td>—</td><td><span class="badge b-amber">รอส่ง</span></td><td>ส่งกลิ่น</td></tr>
+            <tr><td>FR-03</td><td><span class="badge b-green">คอนเฟิร์ม</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
           </tbody>
         </table>
+        <div class="roll"><span class="caret">▸</span><b>กลิ่นที่ 4</b>
+          <span class="chip">3 direction</span><span class="badge b-green">จบแล้ว</span></div>
+        <div class="roll"><span class="caret">▸</span><b>กลิ่นที่ 7</b>
+          <span class="chip">2 direction</span><span class="badge b-blue">รอลูกค้าตอบ</span></div>
       </div>
       <div class="strip" style="margin-top:10px">
-        <span style="color:var(--text-3)">อีก <b style="color:var(--text)">23</b> บรีฟยังไม่มี direction</span>
+        <span style="color:var(--text-3)">ยังไม่ลงมือ <b style="color:var(--text)">22</b> บรีฟ</span>
         <span style="margin-left:auto"><span class="chip">กางดู</span></span>
       </div>
       <div class="note">
-        <span class="plus">+</span> แก้เฉพาะเคสที่พัง ไม่แตะโครงที่ถูกอยู่แล้ว · งานเล็กที่สุด<br>
-        <span class="plus">+</span> ยังนับได้ว่าเหลือกี่บรีฟที่ยังไม่ลงมือ (ข้อมูลที่คอมเมนต์เดิมบอกว่าสำคัญ)<br>
-        <span class="minus">−</span> ยังมีตารางสองระดับ (บรีฟ → direction) ตอนใบเดินไปแล้ว
+        <span class="plus">+</span> ใบใหม่จบใน 1 บรรทัด · ใบที่เดินแล้วเห็นเฉพาะบรีฟที่ต้องลงมือ<br>
+        <span class="plus">+</span> <b>รอบแก้เยื้องใต้ตัวต้นทาง</b> — ใช้สายพันธุ์ที่ฐานมีอยู่แล้ว
+        (<code>derivedFromItemId</code>) ตอบได้ว่า “FR-04 แก้มาจาก FR-02”<br>
+        <span class="plus">+</span> คำถามเดิมที่โครงนี้ตั้งใจตอบ (“บรีฟไหนยังไม่มีอะไรเลย”) ยังตอบได้<br>
+        <span class="minus">−</span> ต้องเพิ่มสรุปต่อบรีฟใน <code>briefBoard.js</code> + สถานะพับ/กาง
       </div>
     </div>
   </section>
 
-  <!-- ทางเลือก ข -->
+  <!-- ข -->
   <section class="opt">
-    <div class="ohead"><span class="tag">ทางเลือก ข</span><h2>สลับแกน — แถวคือ direction</h2></div>
+    <div class="ohead"><span class="tag">ทางเลือก ข</span><h2>สลับแกน — แถวคือ direction แบนชั้นเดียว</h2></div>
     <div class="obody">
-      <p class="state">ใบที่เพิ่งเปิด</p>
-      <div class="strip">
-        <span style="color:var(--amber)">ยังไม่มี direction</span>
-        <span style="color:var(--text-3)">· บรีฟที่รออยู่ <b style="color:var(--text)">25</b> ก้อน</span>
-      </div>
-
-      <p class="state">ใบที่ RD เริ่มส่งของแล้ว</p>
+      <p class="state">ใบที่เดินครบสองรอบ</p>
       <div class="box">
         <table>
           <thead><tr><th>direction</th><th>มาจากบรีฟ</th><th>ผลลัพธ์</th><th>สถานะ</th></tr></thead>
           <tbody>
-            <tr><td>FR-01 <span class="chip">รอบแก้</span></td><td style="color:var(--text-2)">แนวสดชื่น</td>
-              <td><span class="badge b-green">คอนเฟิร์ม</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td></tr>
-            <tr><td>FR-02</td><td style="color:var(--text-2)">แนวสดชื่น</td>
-              <td><span style="color:var(--text-3)">ยังไม่ถึงตาลูกค้า</span></td><td><span class="badge b-amber">รอส่ง</span></td></tr>
-            <tr><td>FR-07</td><td style="color:var(--text-2)">กลิ่นที่ 4</td>
-              <td><span style="color:var(--text-3)">ยังไม่ถึงตาลูกค้า</span></td><td><span class="badge b-amber">รอส่ง</span></td></tr>
+            <tr><td>FR-01</td><td style="color:var(--text-2)">แนวสดชื่น</td><td><span class="badge b-red">ไม่เอา</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td></tr>
+            <tr><td>FR-02</td><td style="color:var(--text-2)">แนวสดชื่น</td><td><span class="badge b-amber">ขอให้แก้</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td></tr>
+            <tr><td>FR-03</td><td style="color:var(--text-2)">แนวสดชื่น</td><td><span class="badge b-green">คอนเฟิร์ม</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td></tr>
+            <tr><td>FR-04 <span class="chip">รอบแก้</span></td><td style="color:var(--text-2)">แนวสดชื่น</td><td>—</td><td><span class="badge b-amber">รอส่ง</span></td></tr>
+            <tr class="fade"><td colspan="4" style="text-align:center;color:var(--text-3)">… 150 แถว · ชื่อบรีฟซ้ำก้อนละ 4-6 ครั้ง</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="strip" style="margin-top:10px">
-        <span style="color:var(--text-3)">บรีฟที่ยังไม่มี direction <b style="color:var(--text)">23</b> ก้อน</span>
-        <span style="margin-left:auto"><span class="chip">กางดู</span></span>
-      </div>
       <div class="note">
-        <span class="plus">+</span> ทุกแถวมีข้อมูลจริงเสมอ ไม่มีแถวเปล่า<br>
-        <span class="plus">+</span> ตารางแบนชั้นเดียว เรียง/กรองได้ (เช่น “เอาเฉพาะที่รอส่ง”)<br>
-        <span class="minus">−</span> เสียการอ่าน “บรีฟก้อนนี้มีกี่ direction” ในพริบตา — ต้องดูคอลัมน์ที่สอง<br>
-        <span class="minus">−</span> งานใหญ่กว่า ก (เปลี่ยนทั้งชั้น <code>briefBoard()</code> และคอลัมน์ก้าวถัดไป)
+        <span class="plus">+</span> ทุกแถวมีข้อมูลจริง · เรียง/กรองได้ (“เอาเฉพาะที่รอส่ง”)<br>
+        <span class="kill">✕</span> รูปร่างข้อมูลจริงทำให้แบน <b>150 แถว ชื่อบรีฟซ้ำก้อนละ 4-6 ครั้ง</b><br>
+        <span class="kill">✕</span> เสียสายพันธุ์ — FR-04 กับ FR-02 กลายเป็นสองแถวที่ไม่เกี่ยวกัน<br>
+        <span class="minus">−</span> คำถาม “บรีฟไหนยังไม่ลงมือ” ตกไปเป็นแถบท้ายตาราง
       </div>
     </div>
   </section>
 
-  <!-- ทางเลือก ค -->
+  <!-- ค -->
   <section class="opt">
     <div class="ohead"><span class="tag">ทางเลือก ค</span><h2>เลิกมีตารางที่สอง — ยุบเข้าแท็บ PDR</h2></div>
     <div class="obody">
-      <p class="state">แท็บ “งาน” เหลือเฉพาะสิ่งที่ RD ส่งมา</p>
+      <p class="state">แท็บ “งาน” = เฉพาะสิ่งที่ RD ส่งมา</p>
       <div class="box">
         <table>
           <thead><tr><th>direction</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
           <tbody>
-            <tr><td>FR-01</td><td><span class="badge b-green">คอนเฟิร์ม</span></td>
-              <td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
-            <tr><td>FR-02</td><td><span style="color:var(--text-3)">ยังไม่ถึงตาลูกค้า</span></td>
-              <td><span class="badge b-amber">รอส่ง</span></td><td>ส่งกลิ่น</td></tr>
+            <tr><td>FR-03</td><td><span class="badge b-green">คอนเฟิร์ม</span></td><td><span class="badge b-blue">ส่งแล้ว</span></td><td>—</td></tr>
+            <tr><td>FR-04 <span class="chip">รอบแก้</span></td><td>—</td><td><span class="badge b-amber">รอส่ง</span></td><td>ส่งกลิ่น</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="state">แท็บ “แบบฟอร์ม PDR” — บรีฟอยู่ที่นี่อยู่แล้ว เพิ่มแค่ตัวนับ</p>
+      <p class="state gap">แท็บ “แบบฟอร์ม PDR” — บรีฟอยู่ที่นี่อยู่แล้ว เพิ่มแค่ตัวนับ</p>
       <div class="box">
-        <table>
-          <tbody>
-            <tr><td style="width:62%">แนวสดชื่น</td><td><span class="badge b-blue">2 direction</span></td></tr>
-            <tr><td>กลิ่นที่ 2</td><td><span style="color:var(--text-3)">ยังไม่ลงมือ</span></td></tr>
-            <tr class="fade"><td colspan="2" style="text-align:center;color:var(--text-3)">… อีก 23 ก้อน (อยู่ในรางที่มีอยู่แล้ว)</td></tr>
-          </tbody>
-        </table>
+        <table><tbody>
+          <tr><td style="width:62%">แนวสดชื่น</td><td><span class="badge b-blue">4 direction</span></td></tr>
+          <tr><td>กลิ่นที่ 2</td><td><span style="color:var(--text-3)">ยังไม่ลงมือ</span></td></tr>
+          <tr class="fade"><td colspan="2" style="text-align:center;color:var(--text-3)">… อีก 23 ก้อน (ในรางที่มีอยู่แล้ว)</td></tr>
+        </tbody></table>
       </div>
       <div class="note">
-        <span class="plus">+</span> เลิกมีรายชื่อบรีฟสองที่ (ตอนนี้ซ้ำกันระหว่างแท็บ PDR กับตารางนี้)<br>
-        <span class="plus">+</span> แต่ละแท็บตอบคำถามเดียว: PDR = “ขออะไรไป” · งาน = “ได้อะไรกลับมา”<br>
-        <span class="minus">−</span> ตอบ “บรีฟไหนยังไม่มีอะไรเลย” ต้องสลับแท็บ ซึ่งเป็นคำถามที่โครงเดิม
-        <b>ตั้งใจ</b>ให้ตอบได้ในตารางเดียว (ดูคอมเมนต์หัวไฟล์ <code>briefBoard.js</code>)<br>
-        <span class="minus">−</span> งานใหญ่สุด กระทบทั้งสองแท็บ
+        <span class="plus">+</span> เลิกมีรายชื่อบรีฟสองที่ (ตอนนี้ซ้ำระหว่างแท็บ PDR กับตารางนี้)<br>
+        <span class="minus">−</span> ตอบ “บรีฟไหนยังไม่ลงมือ” ต้องสลับแท็บ — คำถามที่โครงเดิม<b>ตั้งใจ</b>ให้ตอบในตารางเดียว<br>
+        <span class="minus">−</span> สายพันธุ์รอบแก้ยังไม่ได้แก้อยู่ดี · งานใหญ่สุด กระทบสองแท็บ
       </div>
     </div>
   </section>
@@ -226,10 +240,10 @@
 </div>
 
 <div class="note" style="margin-top:22px">
-  <b>ที่ต้องแก้ไม่ว่าเลือกทางไหน</b> — ชื่อบรีฟ 24/25 ก้อนเป็นค่าตั้งต้น
-  <code>กลิ่นที่ N</code> (ตั้งใน <code>briefBoard.js</code> เมื่อ <code>b.label</code> ว่าง)
-  ⇒ ควรบังคับตั้งชื่อตอนสร้างบรีฟ หรือเอาแนวกลิ่น/หมวดสินค้ามาแสดงแทนเลขลำดับ
-  ไม่งั้นคอลัมน์แรกยังไม่ช่วยแยกแยะอยู่ดี
+  <b>ต้องแก้ไม่ว่าเลือกทางไหน</b> — ชื่อบรีฟ 24/25 ก้อนเป็นค่าตั้งต้น <code>กลิ่นที่ N</code>
+  (ตั้งใน <code>briefBoard.js</code> เมื่อ <code>b.label</code> ว่าง) ⇒ คอลัมน์แรกไม่ช่วยแยกแยะ
+  · เลือกอย่างใดอย่างหนึ่ง: <b>บังคับตั้งชื่อตอนสร้างบรีฟ</b> หรือ
+  <b>เอาแนวกลิ่น/หมวดสินค้ามาแสดงแทนเลขลำดับ</b>
 </div>
 
 </body>
