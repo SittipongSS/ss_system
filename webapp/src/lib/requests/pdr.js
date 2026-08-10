@@ -40,6 +40,15 @@ const FIELD_TO_COLUMN = Object.fromEntries(
 );
 const FIELD_TYPE = Object.fromEntries(PDR_FIELDS.map((f) => [f.key, f.type]));
 
+// ⭐ **ข้อความตีกลับต้องบอกชื่อช่อง** (ผู้ใช้เจอเอง 2026-08-10) — ฟอร์มมี ~48 ช่อง
+// และ toast เดิมบอกแค่ "ราคาและมูลค่าต้องเป็นตัวเลขไม่ติดลบ" ⇒ ตกด่านแล้วต้องไล่
+// กางลิ้นชักหาเองว่าช่องไหนผิด · ป้ายมาจากทะเบียนกลาง ไม่พิมพ์คำซ้ำ
+const FIELD_LABEL = Object.fromEntries(PDR_FIELDS.map((f) => [f.key, f.label]));
+const at = (field) => `ช่อง "${FIELD_LABEL[field] || field}"`;
+// ค่าที่พิมพ์ผิดต้องเห็นในข้อความด้วย — "ได้รับ 1,200.-" บอกทันทีว่าติดตรงไหน
+// ⚠️ ตัดให้สั้น: ค่าที่ยาวเป็นพันตัวอักษรจะดัน toast จนบังทั้งจอ
+const got = (text) => `ได้รับ "${text.length > 40 ? `${text.slice(0, 40)}…` : text}"`;
+
 /**
  * ค่าจากฟอร์ม PDR → คอลัมน์ที่พร้อม insert — คืน { columns, error }
  *
@@ -60,7 +69,7 @@ export function normalizePdr(input) {
       const list = (Array.isArray(value) ? value : [])
         .map((v) => String(v ?? '').trim()).filter(Boolean);
       if (list.length > MAX_ITEMS[column]) {
-        return { columns: {}, error: `เลือกได้ไม่เกิน ${MAX_ITEMS[column]} รายการ` };
+        return { columns: {}, error: `${at(field)} เลือกได้ไม่เกิน ${MAX_ITEMS[column]} รายการ` };
       }
       // ⚠️ ซ้ำต้องตัดทิ้ง ไม่ใช่ตีกลับ — ติ๊กซ้ำเป็นความผิดพลาดของหน้าจอ ไม่ใช่ของคนกรอก
       columns[column] = [...new Set(list)];
@@ -68,13 +77,16 @@ export function normalizePdr(input) {
     }
 
     if (AMOUNTS.includes(column)) {
-      const text = String(value ?? '').replace(/,/g, '').trim();
+      // ⚠️ ข้อความที่เอาไปทวนในข้อความตีกลับคือ **ของที่ผู้ใช้พิมพ์จริง** ไม่ใช่ตัวที่
+      // ถอดลูกน้ำแล้ว — ทวนกลับไปคนละหน้าตากับที่เห็นบนจอ คนอ่านจะหาช่องไม่เจอ
+      const typed = String(value ?? '').trim();
+      const text = typed.replace(/,/g, '');
       if (!text) { columns[column] = null; continue; }
       const num = Number(text);
       // ⚠️ ตัวเลขติดลบหรืออ่านไม่ออกต้องตีกลับ ไม่ใช่เก็บ null เงียบ ๆ — ผู้ใช้พิมพ์
       // อะไรลงไปแล้ว การกลืนทิ้งแปลว่าเขาคิดว่าบันทึกได้
       if (!Number.isFinite(num) || num < 0) {
-        return { columns: {}, error: 'ราคาและมูลค่าต้องเป็นตัวเลขไม่ติดลบ' };
+        return { columns: {}, error: `${at(field)} ต้องเป็นตัวเลขไม่ติดลบ — ${got(typed)}` };
       }
       columns[column] = num;
       continue;
@@ -83,14 +95,19 @@ export function normalizePdr(input) {
     if (DATES.includes(column)) {
       const text = String(value ?? '').trim();
       if (!text) { columns[column] = null; continue; }
-      if (!ISO_DATE.test(text)) return { columns: {}, error: 'วันที่ในแบบฟอร์ม PDR ไม่ถูกต้อง' };
+      if (!ISO_DATE.test(text)) {
+        return { columns: {}, error: `${at(field)} เป็นวันที่ที่อ่านไม่ออก — ${got(text)}` };
+      }
       columns[column] = text;
       continue;
     }
 
     const text = String(value ?? '').trim();
     if (text.length > TEXT_LIMITS[column]) {
-      return { columns: {}, error: `ข้อความในแบบฟอร์ม PDR ยาวเกิน ${TEXT_LIMITS[column]} ตัวอักษร` };
+      return {
+        columns: {},
+        error: `${at(field)} ยาวเกิน ${TEXT_LIMITS[column]} ตัวอักษร (พิมพ์มา ${text.length})`,
+      };
     }
     columns[column] = text || null;
   }
