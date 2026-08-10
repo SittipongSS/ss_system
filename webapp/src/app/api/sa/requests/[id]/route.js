@@ -277,7 +277,7 @@ export async function PATCH(request, { params }) {
         if (clearError) throw clearError;
         if (targets.length) {
           const { error: insertError } = await supabase.from('dept_request_pdr_targets')
-            .insert(targets.map((t) => ({ id: `DPT-${randomUUID()}`, requestId: id, ...t })));
+            .insert(targets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId: id })));
           if (insertError) throw insertError;
         }
       }

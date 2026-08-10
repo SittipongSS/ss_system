@@ -16,7 +16,7 @@ test('แถวปกติ — สวิตช์เปิดแล้วเก
   assert.equal(error, null);
   assert.equal(targets.length, 1);
   assert.deepEqual(targets[0], {
-    id: null, sortOrder: 1, categoryCode: '02-010',
+    sortOrder: 1, categoryCode: '02-010',
     fOn: true, fNote: 'เข้มข้น 20%', fPricePerKg: 1200.5,
     fbOn: false, fbNote: null, fbPricePerKg: null,
     pricePerUnit: 590,
@@ -77,6 +77,19 @@ test('ใบที่ยังไม่กรอกอะไรเลยต้�
   assert.deepEqual(normalizePdrTargets([]), { targets: [], error: null });
   assert.deepEqual(normalizePdrTargets(null), { targets: [], error: null });
   assert.equal(normalizePdrTargets([{ categoryCode: '02-010' }]).error, null);
+});
+
+// 🐞 เจอตอนกดบันทึกจริง: route ประกอบแถวเป็น `{ id: DPT-…, requestId, ...t }` ⇒ ถ้า
+// ตัวแปลงคืน `id` ติดมาด้วย มันจะทับ id ที่เพิ่งสร้าง (เป็น null) แล้ว insert ตกที่
+// PRIMARY KEY ⇒ ทั้งใบพังเป็น 500 โดยหน้าจอบอกแค่ "บันทึกไม่สำเร็จ"
+test('⭐ ผลลัพธ์ต้องไม่มีคีย์ `id` ติดมา — id เป็นของฝั่งที่เขียนลง DB เท่านั้น', () => {
+  const { targets } = normalizePdrTargets([
+    { id: 'DPT-เก่า', categoryCode: '02-010', fOn: true, fPricePerKg: '10' },
+    { categoryCode: '02-010' },
+  ]);
+  for (const row of targets) {
+    assert.equal(Object.hasOwn(row, 'id'), false, `แถวยังมีคีย์ id: ${JSON.stringify(row)}`);
+  }
 });
 
 test('ทางกลับ: แถวจาก DB → ค่าฟอร์ม เป็นสตริงทุกช่องยกเว้นสวิตช์', () => {

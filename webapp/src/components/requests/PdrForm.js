@@ -24,6 +24,7 @@ import { useState } from "react";
 import { FlaskConical, Image as ImageIcon, Plus, X } from "lucide-react";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { categoryLabel } from "@/lib/master/categoryOf";
+import { fmtNumber } from "@/lib/format";
 import EmptyState from "@/components/ui/EmptyState";
 import EditableLineList from "@/components/ui/EditableLineList";
 import {
@@ -201,10 +202,12 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
         emptyText="ยังไม่มีรายการ — เลือกประเภทสินค้าแล้วกดเพิ่ม"
         onAdd={add}
         addControl={(
+          /* ⚠️ `ui/Select` รับ `aria-label` (ไม่ใช่ `ariaLabel` แบบ ProductCategorySelect)
+             — ส่งผิดชื่อแล้วพร็อพไหลลง DOM ตรง ๆ แล้ว React ด่าใน console */
           <Select
             value={pick}
             disabled={disabled || !kinds.length}
-            ariaLabel="เลือกประเภทสินค้าที่จะเพิ่ม"
+            aria-label="เลือกประเภทสินค้าที่จะเพิ่ม"
             onChange={(e) => setPick(e.target.value)}
             options={[
               { value: "", label: kinds.length ? "— เลือกประเภทสินค้า —" : "ยังไม่ได้ติ๊กในข้อ 1.11" },
@@ -214,13 +217,16 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
         )}
         renderSummary={(i) => {
           const r = rows[i];
+          // ⚠️ ตัวเลขบนแถวยุบต้องจัดรูปแบบเหมือนในช่องกรอก — ช่องโชว์ "1,200.00"
+          // แต่แถวยุบเคยโชว์ "1200" ดิบ ๆ อ่านเหมือนคนละค่ากัน (`fmtNumber` ของกลาง)
+          const baht = (v) => (v === "" || v == null ? null : fmtNumber(v));
           const bits = [];
           for (const kind of PDR_TARGET_KINDS) {
             if (!r[kind.onField]) continue;
-            const price = r[kind.priceField];
-            bits.push(`${kind.label}${price === "" || price == null ? "" : ` ${price} บาท/Kg`}`);
+            const price = baht(r[kind.priceField]);
+            bits.push(`${kind.label}${price ? ` ${price} บาท/Kg` : ""}`);
           }
-          if (r.pricePerUnit !== "" && r.pricePerUnit != null) bits.push(`ขาย ${r.pricePerUnit} บาท/ชิ้น`);
+          if (baht(r.pricePerUnit)) bits.push(`ขาย ${baht(r.pricePerUnit)} บาท/ชิ้น`);
           return (
             <>
               <span className="line-summary-dot" data-ok={pdrTargetFilled(r) ? "1" : undefined} />

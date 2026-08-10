@@ -372,7 +372,7 @@ export async function POST(request) {
         categoryCodes: pdrColumns.pdrProductKinds || [],
       });
       if (targetError) return Response.json({ error: targetError }, { status: 400 });
-      targetRows = targets.map((t) => ({ id: `DPT-${randomUUID()}`, requestId, ...t }));
+      targetRows = targets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId }));
       briefRows = briefs.map((b) => ({
         id: `DRS-${randomUUID()}`,
         requestId,

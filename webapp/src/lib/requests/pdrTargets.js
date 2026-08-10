@@ -100,7 +100,11 @@ export function normalizePdrTargets(input, { categoryCodes = null } = {}) {
       };
     }
 
-    const row = { id: raw.id || null, sortOrder: i + 1, categoryCode };
+    // ⚠️ **ไม่คืน `id` ที่ผู้เรียกส่งมา** — 🐞 เดิมคืน `id: raw.id || null` แล้ว route
+    // ประกอบแถวด้วย `{ id: DPT-…, ...t }` ⇒ `null` ทับ id ที่เพิ่งสร้าง ⇒ insert ตกที่
+    // PRIMARY KEY แล้วทั้งใบพังเป็น 500 (เจอตอนกดบันทึกจริง 2026-08-10)
+    // id ของแถวเป็นเรื่องของฝั่งที่เขียนลง DB เท่านั้น ไม่ใช่ของที่ฟอร์มส่งมาบอก
+    const row = { sortOrder: i + 1, categoryCode };
 
     for (const kind of PDR_TARGET_KINDS) {
       const on = !!raw[kind.onField];
