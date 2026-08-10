@@ -88,7 +88,7 @@ export default function ScentForm({
         </small>
       </div>
 
-      {canSetCode && mode === "create" && (
+      {canSetCode && (
         <div className="form-group col-span-2">
           <label htmlFor="scent-code">รหัสกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span></label>
           <input

@@ -2,22 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptFormulaError,
-  archiveFormulaError,
-  canEditFormula,
-  canProposeFormula,
-  canViewFormulas,
-  deleteFormulaError,
-  derivedFromFormulaError,
-  findFormulaByCode,
-  findFormulaByIdentity,
-  formulaIdentityKey,
-  formulaTransitionError,
-  isFormulaRegistrar,
-  isFormulaUsable,
-  normalizeFormulaInput,
-  sanitizeInheritedFormulaDate,
-  unsortedFormulaRows,
+  acceptFormulaError, archiveFormulaError, canEditFormula, canProposeFormula, canViewFormulas, deleteFormulaError, derivedFromFormulaError, findFormulaByCode, findFormulaByIdentity, formulaIdentityKey, formulaScentCustomerError, formulaTransitionError, isFormulaRegistrar, isFormulaUsable, normalizeFormulaInput, sanitizeInheritedFormulaDate, unsortedFormulaRows,
 } from './formulas.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -87,12 +72,29 @@ test('รูปแบบวันที่ต้องเป็น ISO', () => {
   assert.match(normalizeFormulaInput({ name: 'A', formulaDate: '06/08/2025' }).error, /ไม่ถูกต้อง/);
 });
 
-test('⭐ ลูกค้าไม่รับจากฟอร์มอีกแล้ว — server เติมจากกลิ่นเสมอ (0207)', () => {
-  // เดิมกรอกเองและเว้นว่างได้ ⇒ สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B ได้
-  // โดยไม่มีอะไรห้าม · ตอนนี้ค่าที่ส่งมาต้องถูกทิ้ง ไม่ใช่แค่ "ไม่แนะนำให้ส่ง"
+// ⭐ **กลับทิศจาก 0207** (มติผู้ใช้ 2026-08-10: "สูตรผูกลูกค้าก่อน แล้วเลือกกลิ่น
+// ที่ลูกค้ามี") — ลูกค้ากลับมาเป็นช่องกรอก แต่ **รูที่ 0207 ปิดไว้ต้องไม่กลับมา**
+// (สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B) ⇒ ย้ายจากการ derive มาเป็นการตรวจตรง ๆ
+test('ลูกค้ารับจากฟอร์มได้ แต่ชื่อลูกค้ายังไม่รับ (server อ่านจากทะเบียนเสมอ)', () => {
   const { value } = normalizeFormulaInput({ name: 'A', customerId: 'CUS-1', customerName: 'ก' });
-  assert.equal('customerId' in value, false, 'ห้ามให้ client กำหนดลูกค้าของสูตร');
-  assert.equal('customerName' in value, false);
+  assert.equal(value.customerId, 'CUS-1');
+  assert.equal('customerName' in value, false, 'ชื่อที่ client ส่งมาอาจเก่าแล้ว');
+  // ว่าง = สูตรฐาน — พฤติกรรมเดิมต้องไม่หาย
+  assert.equal(normalizeFormulaInput({ name: 'A' }).value.customerId, null);
+});
+
+test('⭐ รูของ 0207 ต้องไม่กลับมา — กลิ่นข้ามลูกค้าถูกปฏิเสธ', () => {
+  const scent = { id: 'SC-1', customerId: 'CUS-2', customerName: 'ข' };
+  assert.match(
+    formulaScentCustomerError(scent, { customerId: 'CUS-1' }),
+    /ลูกค้าคนละราย/,
+    'สูตรของลูกค้า A ห้ามใช้กลิ่นของลูกค้า B',
+  );
+  assert.equal(formulaScentCustomerError(scent, { customerId: 'CUS-2' }), null);
+  // สูตรฐานที่ผูกกลิ่นของลูกค้ารายหนึ่ง = ไม่ใช่สูตรฐานแล้ว แต่ไม่ได้ประกาศตัว
+  assert.match(formulaScentCustomerError(scent, {}), /เลือกลูกค้าก่อน/);
+  // ไม่เลือกกลิ่น = ไม่มีอะไรต้องตรวจ
+  assert.equal(formulaScentCustomerError(null, { customerId: 'CUS-1' }), null);
 });
 
 test('หมวดสินค้าต้องเป็นรูป MM-TTT — ครึ่งหนึ่งของตัวตน จะรับค่ามั่วไม่ได้', () => {
@@ -194,11 +196,11 @@ test('เก็บเฉพาะสินค้าที่มีชื่อ�
 // เทสต์นี้ล็อกที่ระดับ "ค่าที่ normalize คืน" — ตัวที่ derive จริงอยู่ใน
 // scentFormulaAdmin ซึ่งแตะ DB · สิ่งที่ต้องกันคือ **ห้ามมี customerId โผล่กลับมา
 // เป็นช่องที่ client กำหนดได้** ไม่ว่าจะทางไหน
-test('สูตรฐานไม่ได้แปลว่า "ห้ามมีลูกค้า" — แค่ลูกค้าไม่ได้มาจากฟอร์ม', () => {
+test('สูตรที่ไม่ผูกกลิ่น ผูกลูกค้าได้ — ไม่ใช่ทุกสูตรต้องมีกลิ่น', () => {
+  // สูตรที่ไม่ผูกกลิ่นแต่ผูกลูกค้า = มีจริง (ทาง "จัดระเบียบ" ย้ายสินค้าของลูกค้า
+  // รายหนึ่งมาเป็นสูตร) — ต้องผ่าน ไม่ใช่ถูกปฏิเสธ
   const { value } = normalizeFormulaInput({ name: 'สูตรฐานเทียน', customerId: 'CUS-1' });
-  // ฟอร์มกำหนดไม่ได้…
-  assert.equal('customerId' in value, false);
-  // …แต่ตัวสูตรเองไม่ได้ถูกบังคับให้ไม่มีลูกค้า — ไม่มีกฎไหนที่นี่ปฏิเสธมัน
+  assert.equal(value.customerId, 'CUS-1');
   assert.equal(value.name, 'สูตรฐานเทียน');
   assert.equal(value.scentId, null);
 });

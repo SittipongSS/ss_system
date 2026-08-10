@@ -31,6 +31,7 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RegistryPrice from "@/components/database/RegistryPrice";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import styles from "./page.module.css";
@@ -64,6 +65,10 @@ export default function ScentsPage() {
   // รายตัว ลิงก์ตรงจึงเป็น "เปิดทะเบียนแล้วค้นให้เลย" · ตั้งสถานะเป็น "ทุกสถานะ"
   // ด้วย ไม่งั้นกลิ่นที่เก็บเข้ากรุแล้วจะถูก default "ที่ใช้งานอยู่" กรองหายไปเงียบ ๆ
   const linkedQuery = useSearchParams().get("q") || "";
+  /* ⭐ `?edit=<id>` — ปุ่ม "แก้ไขข้อมูล" บนหน้ารายละเอียดส่งกลับมาเปิดฟอร์มที่นี่
+     ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
+     (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
+  const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
   const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
@@ -89,6 +94,17 @@ export default function ScentsPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  /* เปิดฟอร์มแก้จากลิงก์ `?edit=` — รอจนโหลดรายการเสร็จเพราะฟอร์มต้องใช้แถวเต็ม
+     ⚠️ ยิงครั้งเดียว (`openedFromLink`) — ไม่งั้นปิดฟอร์มแล้วมันเด้งกลับมาเปิดใหม่
+     ทุกครั้งที่ข้อมูลรีเฟรช เพราะพารามิเตอร์บน URL ยังอยู่ */
+  const [openedFromLink, setOpenedFromLink] = useState(false);
+  useEffect(() => {
+    if (!linkedEditId || openedFromLink || !scents.length) return;
+    const row = scents.find((x) => x.id === linkedEditId);
+    setOpenedFromLink(true);
+    if (row) setForm({ mode: "edit", scent: row, value: scentToForm(row) });
+  }, [linkedEditId, openedFromLink, scents]);
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
   }, []);
@@ -204,8 +220,10 @@ export default function ScentsPage() {
       derivedFromScentId: v.derivedFromScentId,
       note: v.note,
     };
+    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
+    // API ซึ่งยอมเฉพาะ RD ที่รับกลิ่นเข้าทะเบียนได้
+    if (registrar && v.code.trim()) payload.code = v.code.trim();
     if (form.mode === "create") {
-      if (registrar && v.code.trim()) payload.code = v.code.trim();
       // ⭐ กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่/สถานะเกิดไปแล้วในอดีต (ม-75)
       // ⚠️ ส่งเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
       // จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ (server บังคับซ้ำที่ `newScentStatus`)
@@ -443,6 +461,9 @@ export default function ScentsPage() {
                   <th className={styles.colCustomer}>ลูกค้า</th>
                   <th className={styles.colSource}>ที่มา</th>
                   <th className={`${styles.colDates} num`}>วันที่</th>
+                  {/* ⭐ ราคา F มาจาก **ทะเบียนวัสดุ** ไม่ใช่คอลัมน์ของทะเบียนกลิ่น
+                      (ดู attachRegistryPrice) — ที่นี่แสดงอย่างเดียว */}
+                  <th className="num">ราคา F</th>
                   <th className={styles.colStatus}>สถานะ</th>
                 </tr>
               </thead>
@@ -457,11 +478,13 @@ export default function ScentsPage() {
                           — ไม่ใช่แทนที่กัน · ทิ้งคำนำหน้าเมื่อไรคนจะเริ่มอ้างชื่อลูกค้า
                           เป็นชื่อทางการ ซึ่งเป็นโรคเดิมที่ 0171 บันทึกไว้ */}
                       <td>
-                        <div className={styles.name}>
+                        {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด — แถวตารางบอกได้แค่ย่อ ๆ
+                            ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
+                        <Link href={`/database/scents/${s.id}`} className={styles.name}>
                           {s.code ? <span className="mono">{s.code}</span> : null}
                           {s.code ? " · " : null}
                           {s.name}
-                        </div>
+                        </Link>
                         {(s.customerTradeName || s.derivedFromScentId) && (
                           <div className={styles.sub}>
                             {[
@@ -512,6 +535,9 @@ export default function ScentsPage() {
                             : "ยังไม่ส่ง"}
                         </div>
                       </td>
+                      {/* ราคา F ล่าสุดจากทะเบียนวัสดุ — สามสถานะที่ต้องอ่านออกคนละแบบ:
+                          ยังไม่ผูกวัสดุ · ผูกแล้วแต่ยังไม่มีใครใส่ราคา · ราคาหมดอายุ */}
+                      <td className="num"><RegistryPrice price={s.price} /></td>
                       {/* ⭐ สถานะกับปุ่มอยู่เซลล์เดียวกัน — ปุ่มหลักถูกกำหนดโดยสถานะตรง ๆ
                           (ร่าง → รับเข้าทะเบียน) แยกสองคอลัมน์คือถามซ้ำ
                           ⚠️ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น

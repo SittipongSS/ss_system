@@ -187,10 +187,16 @@ export function normalizeFormulaInput(body = {}) {
       customerTradeName: customerTradeName || null,
       derivedFromFormulaId: String(body.derivedFromFormulaId ?? '').trim() || null,
       dealId: String(body.dealId ?? '').trim() || null,
-      // ⚠️ **customerId/customerName ไม่รับจาก body อีกแล้ว** — server เติมจากกลิ่น
-      // (ดู scentFormulaAdmin.customerFromScent) · เดิมกรอกเองและเว้นว่างได้ ⇒ เปิดทาง
-      // ให้สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B โดยไม่มีอะไรห้าม
-      // แพตเทิร์นเดียวกับ productFormulaSnapshot: ค่าที่ derive ได้ ห้ามให้ client ส่ง
+      /* ⭐ **ลูกค้ากลับมาเป็นช่องกรอก** (มติผู้ใช้ 2026-08-10: "สูตรผูกลูกค้าก่อน
+         แล้วเลือกกลิ่นที่ลูกค้ามี") — กลับทิศจาก 0207 ที่ derive จากกลิ่น
+         ⚠️ **สิ่งที่ 0207 กันไว้ต้องไม่หลุด** — รูเดิมคือ "สูตรผูกลูกค้า A แต่ใช้กลิ่น
+         ของลูกค้า B" · ตอนนี้กันด้วย `formulaScentCustomerError()` ที่ตรวจตรง ๆ แทน
+         การ derive · ป้องกันเรื่องเดียวกัน คนละกลไก และเป็นทิศที่คนกรอกคิดจริง
+         (รู้ลูกค้าก่อน แล้วค่อยหากลิ่นของเขา)
+         ⚠️ ว่างได้ = สูตรฐาน ใช้ได้ทุกลูกค้า — พฤติกรรมเดิม ห้ามหาย
+         ⚠️ `customerName` ยัง **ไม่รับจาก body** — server อ่านจากทะเบียนลูกค้าเสมอ
+         (ชื่อที่ client ส่งมาอาจเก่าแล้ว) */
+      customerId: String(body.customerId ?? '').trim() || null,
       note: note || null,
     },
     error: null,
@@ -274,4 +280,27 @@ export function formulaSourceLabel(formula) {
 export function matchesFormulaSource(formula, filter) {
   if (!filter) return true;
   return formulaSourceKind(formula) === filter;
+}
+
+/**
+ * กลิ่นที่เลือกเป็นของลูกค้ารายเดียวกับสูตรหรือไม่ — คืนข้อความไทย หรือ null ถ้าผ่าน
+ *
+ * ⭐ ตัวแทนของกลไก derive ที่ 0207 ใช้ (มติผู้ใช้ 2026-08-10 กลับทิศ) — กันรูเดิม
+ * "สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B" ด้วยการ **ตรวจ** แทนการ **เติมให้**
+ *
+ * ⚠️ สูตรฐาน (ไม่ผูกลูกค้า) ห้ามผูกกลิ่นของลูกค้ารายใดราย หนึ่ง — ไม่งั้นมันไม่ใช่
+ * สูตรฐานแล้ว แต่เป็นสูตรของลูกค้าคนนั้นที่ไม่ได้ประกาศตัว
+ * ⚠️ กลิ่นทุกตัวมีลูกค้าเสมอ (`scents.customerId` NOT NULL — มติ 9) จึงไม่มีเคส
+ * "กลิ่นกลาง" ให้ต้องยกเว้น
+ */
+export function formulaScentCustomerError(scent, { customerId } = {}) {
+  if (!scent) return null;
+  const owner = scent.customerId || null;
+  if (!customerId) {
+    return 'สูตรฐาน (ไม่ผูกลูกค้า) เลือกกลิ่นของลูกค้าไม่ได้ — เลือกลูกค้าก่อน หรือเอากลิ่นออก';
+  }
+  if (owner && owner !== customerId) {
+    return 'กลิ่นที่เลือกเป็นของลูกค้าคนละราย — เลือกกลิ่นของลูกค้ารายนี้';
+  }
+  return null;
 }

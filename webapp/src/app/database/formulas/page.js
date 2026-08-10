@@ -24,6 +24,7 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RegistryPrice from "@/components/database/RegistryPrice";
 import StatusNotice from "@/components/ui/StatusNotice";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -49,14 +50,20 @@ export default function FormulasPage() {
 
   const [formulas, setFormulas] = useState([]);
   const [scents, setScents] = useState([]);
-  // 🗑 `customers` หายไปพร้อมช่องลูกค้าในฟอร์ม (0207) — ลูกค้าของสูตรมาจากกลิ่น
-  // ฝั่ง server แล้ว หน้านี้จึงไม่ต้องรู้จักรายชื่อลูกค้าเลย
+  // ⭐ `customers` กลับมา (มติผู้ใช้ 2026-08-10: "สูตรผูกลูกค้าก่อน แล้วเลือกกลิ่นที่
+  // ลูกค้ามี") — กลับทิศจาก 0207 · รูเดิม (สูตรลูกค้า A ใช้กลิ่นลูกค้า B) กันด้วยการ
+  // กรองตัวเลือกบนฟอร์ม + ด่าน `formulaScentCustomerError` ฝั่ง server
+  const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [unsorted, setUnsorted] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   // ?q= = ลิงก์เข้ามาจากที่อื่น — ดูหมายเหตุเดียวกันในหน้าทะเบียนกลิ่น
   const linkedQuery = useSearchParams().get("q") || "";
+  /* ⭐ `?edit=<id>` — ปุ่ม "แก้ไขข้อมูล" บนหน้ารายละเอียดส่งกลับมาเปิดฟอร์มที่นี่
+     ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
+     (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
+  const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   const [sourceFilter, setSourceFilter] = useState("");
@@ -80,10 +87,11 @@ export default function FormulasPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const [fRes, uRes, sRes] = await Promise.all([
+      const [fRes, uRes, sRes, cRes] = await Promise.all([
         fetch("/api/master/formulas", { cache: "no-store" }),
         fetch("/api/master/formulas/unsorted", { cache: "no-store" }),
         fetch("/api/master/scents", { cache: "no-store" }),
+        fetch("/api/customers", { cache: "no-store" }),
       ]);
       const fData = await fRes.json().catch(() => null);
       if (!fRes.ok) throw new Error(fData?.error || "โหลดทะเบียนสูตรไม่สำเร็จ");
@@ -92,11 +100,25 @@ export default function FormulasPage() {
       setUnsorted(uRes.ok && Array.isArray(uData) ? uData : []);
       const sData = await sRes.json().catch(() => null);
       setScents(sRes.ok && Array.isArray(sData) ? sData : []);
+      // ⚠️ ลูกค้าโหลดไม่ได้ = ฟอร์มเลือกลูกค้าไม่ได้ แต่ไม่ควรทำให้ทั้งหน้าพัง
+      const cData = await cRes.json().catch(() => null);
+      setCustomers(cRes.ok && Array.isArray(cData) ? cData : []);
     } catch (e) { setLoadError(e.message); }
     setLoading(false);
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  /* เปิดฟอร์มแก้จากลิงก์ `?edit=` — รอจนโหลดรายการเสร็จเพราะฟอร์มต้องใช้แถวเต็ม
+     ⚠️ ยิงครั้งเดียว (`openedFromLink`) — ไม่งั้นปิดฟอร์มแล้วมันเด้งกลับมาเปิดใหม่
+     ทุกครั้งที่ข้อมูลรีเฟรช เพราะพารามิเตอร์บน URL ยังอยู่ */
+  const [openedFromLink, setOpenedFromLink] = useState(false);
+  useEffect(() => {
+    if (!linkedEditId || openedFromLink || !formulas.length) return;
+    const row = formulas.find((x) => x.id === linkedEditId);
+    setOpenedFromLink(true);
+    if (row) setForm({ mode: "edit", formula: row, value: formulaToForm(row) });
+  }, [linkedEditId, openedFromLink, formulas]);
   // หมวดสินค้าเป็นครึ่งหนึ่งของตัวตนสูตรแล้ว (0207) — ชุด master ที่แทบไม่เปลี่ยน
   // จึงโหลดครั้งเดียวผ่านแคช ไม่ต้องดึงซ้ำทุกครั้งที่กดรีเฟรชทะเบียน
   useEffect(() => {
@@ -162,19 +184,23 @@ export default function FormulasPage() {
 
   const submitForm = async () => {
     const v = form.value;
-    // ⚠️ **ไม่ส่ง customerId/customerName อีกแล้ว** — server เติมจากกลิ่นเสมอ (0207)
-    // ส่งไปก็ถูกทิ้ง แต่การส่งจะทำให้คนอ่านโค้ดเข้าใจผิดว่าฟอร์มยังคุมค่านั้นอยู่
+    // ⚠️ ส่ง `customerId` ได้แล้ว (มติผู้ใช้ 2026-08-10 กลับทิศจาก 0207) แต่
+    // `customerName` ยังไม่ส่ง — server อ่านจากทะเบียนลูกค้าเสมอ (ชื่ออาจเก่า)
     const payload = {
       name: v.name,
       formulaDate: v.formulaDate || null,
       categoryCode: v.categoryCode || null,
+      customerId: v.customerId || null,
       scentId: v.scentId || null,
       customerTradeName: v.customerTradeName,
       derivedFromFormulaId: v.derivedFromFormulaId || null,
       note: v.note,
     };
+    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
+    // API ซึ่งยอมเฉพาะคนที่รับเข้าทะเบียนได้ · ที่นี่ส่งเฉพาะตอนมีสิทธิ์เพื่อไม่ให้
+    // คนที่ไม่มีสิทธิ์โดนตีกลับทั้งฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว
+    if (registrar && v.code.trim()) payload.code = v.code.trim();
     if (form.mode === "create") {
-      if (registrar && v.code.trim()) payload.code = v.code.trim();
       const done = await call("/api/master/formulas", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -402,7 +428,10 @@ export default function FormulasPage() {
                 <tr>
                   <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
                   <th className={styles.colSource}>ที่มา</th>
-                  <th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th className={styles.actionsCol}></th>
+                  <th>วันที่</th><th>ลูกค้า</th>
+                  {/* ราคา FB มาจากทะเบียนวัสดุ — คู่ขนานกับราคา F ของกลิ่น */}
+                  <th className="num">ราคา FB</th>
+                  <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
@@ -410,7 +439,8 @@ export default function FormulasPage() {
                   <tr key={f.id}>
                     <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
                     <td className={styles.name}>
-                      {f.name}
+                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด (กติกาเดียวกับทะเบียนกลิ่น) */}
+                      <Link href={`/database/formulas/${f.id}`}>{f.name}</Link>
                       {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
                           ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
                       {f.customerTradeName && (
@@ -468,6 +498,8 @@ export default function FormulasPage() {
                     <td>
                       {f.customerName || <span className={styles.muted}>สูตรกลาง</span>}
                     </td>
+                    {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ — แสดงอย่างเดียว */}
+                    <td className="num"><RegistryPrice price={f.price} /></td>
                     <td>
                       <StatusBadge
                         tone={FORMULA_STATUS_TONES[f.status]}
@@ -531,6 +563,7 @@ export default function FormulasPage() {
         {form && (
           <>
             <FormulaForm
+              customers={customers}
               mode={form.mode} value={form.value} scents={scents}
               formulas={formulas} categories={categories}
               editingId={form.formula?.id || null}
