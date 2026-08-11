@@ -13,6 +13,7 @@
 //   onCodeMode     — มีสวิตช์ "ระบบใหม่" (โหมดสร้าง) · ไม่ส่ง = โหมดแก้
 //                    เปิด = ไม่มีช่องพิมพ์รหัส มีตัวเลือกหมวด + แถบรหัสที่ประกอบให้
 //                    ปิด = ช่องพิมพ์รหัสแบบเดิม หมวดอ่านย้อนจากรหัส (mig 0230)
+import { useEffect, useState } from "react";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -25,6 +26,9 @@ import {
 import {
   CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment, fgCodeParts,
 } from "@/lib/master/masterCodes";
+import {
+  productDuplicateWarning, productOtherSizeHint, splitProductMatches,
+} from "@/lib/master/productDuplicate";
 import { brandBoth } from "@/lib/master/brands";
 import {
   DEFAULT_SALE_UNIT,
@@ -127,6 +131,7 @@ export default function ProductForm({
   onCodeMode = null,
   nextFgRunNo = null,        // เลขรันถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
   fgLocked = false,          // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
+  selfId = null,             // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const money = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v));
@@ -138,6 +143,30 @@ export default function ProductForm({
   // ปิดสวิตช์ แล้วกล่องหมวดจะประกาศหมวดที่ยังไม่มีรหัสรองรับ (เห็นตอนพรีวิว: ช่องรหัส
   // ว่าง แต่กล่องยังบอกว่า 01-002 ต้องเสียภาษีสรรพสามิต)
   const categoryCode = autoCode ? (form.categoryCode || "") : (categoryOf(form.fgCode) || "");
+
+  // ── เช็คสินค้าซ้ำของลูกค้ารายนี้ (มติผู้ใช้ 2026-08-12) ────────────────────
+  // โหลด FG ของลูกค้าที่เลือกครั้งเดียวต่อ 1 ลูกค้า แล้วเทียบชื่อ/ขนาดในเครื่องระหว่าง
+  // พิมพ์ — ลิสต์ต่อลูกค้าสั้น (หลักสิบ) และคนกรอกแก้ชื่อ/ขนาดหลายรอบกว่าจะลงตัว
+  // ยิงทุกครั้งที่พิมพ์คือยิงเปล่า
+  const [customerProducts, setCustomerProducts] = useState([]);
+  useEffect(() => {
+    if (!form.customerId) { setCustomerProducts([]); return undefined; }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/master/products/by-customer?customerId=${encodeURIComponent(form.customerId)}`, { signal: controller.signal });
+        setCustomerProducts(res.ok ? await res.json() : []);
+      } catch {
+        // โหลดไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — รหัส FG ยังกันซ้ำที่ระดับ DB อยู่
+        setCustomerProducts([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [form.customerId]);
+
+  const { sameSize, otherSize } = splitProductMatches(customerProducts, form, { excludeId: selfId });
+  const duplicateWarning = productDuplicateWarning(sameSize);
+  const otherSizeHint = productOtherSizeHint(otherSize);
   const selectedCustomer = customers.find((c) => c.id === form.customerId) || null;
 
   // ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 · **แต่ถ้าสินค้าตัวนี้มีราคาค้างอยู่ ต้องโชว์เสมอ**
@@ -297,6 +326,16 @@ export default function ProductForm({
           </div>
           <div className="form-group col-span-2">
             <span className="text-xs text-[var(--text-3)]">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) — ไม่ต้องครบทั้งสอง</span>
+            {/* ด่านซ้ำของสินค้า = ลูกค้า + ชื่อ + ขนาดบรรจุ (ขนาดอยู่ section 2 แต่คำเตือน
+                อยู่ตรงนี้ เพราะ "ชื่อ" คือช่องที่คนกำลังตัดสินใจว่าจะตั้งซ้ำหรือไม่)
+                · ตรงทั้งชื่อและขนาด = เตือน (บันทึกต่อได้ตามมติ — มีเคสที่ตั้งใจซ้ำจริง)
+                · ชื่อเดียวกันคนละขนาด = เรื่องปกติของตระกูลสินค้า บอกเฉย ๆ ไม่ใช่เตือน */}
+            {duplicateWarning && (
+              <span className="text-xs text-[var(--amber)] mt-1">{duplicateWarning}</span>
+            )}
+            {!duplicateWarning && otherSizeHint && (
+              <span className="text-xs text-[var(--text-3)] mt-1">{otherSizeHint}</span>
+            )}
           </div>
           <div className="form-group col-span-2">
             <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>

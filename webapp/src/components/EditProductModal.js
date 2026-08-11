@@ -171,6 +171,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           currentCostPrice={product.costPrice}
           onCustomerChange={handleCustomerChange}
           fgLocked={isAutoFgCode(product.fgCode)}
+          selfId={product.id}
         />
 
         {/* แผงอัปเดตราคาผลิต — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}
