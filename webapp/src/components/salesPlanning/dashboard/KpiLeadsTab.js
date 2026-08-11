@@ -4,7 +4,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Filter, Users, PhoneCall, CalendarClock } from "lucide-react";
 import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, slaPendingTone } from "@/lib/sales/leads";
 import { TEAM_LABELS } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -12,12 +12,6 @@ import { fmtName, fmtPercent } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
-
-/* โทนของการ์ด SLA มาจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
-   ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง" —
-   ของเดิมเขียน `(pending ?? 0) ? "warning" : "good"` ซึ่งกลบ null เป็น 0 แล้วการ์ดขึ้น
-   เขียวว่าเรียบร้อย ทั้งที่ตัวเลขข้างในโชว์ "-" อยู่โต้ง ๆ · ไม่มีโทน = ไม่ตัดสิน */
-const pendingTone = (pending) => (pending == null ? undefined : (pending ? "warning" : "good"));
 
 /* สามด่านของเส้นทางลีด วัดด้วยกติกาเดียวกัน (≤1 วันทำการ) ต่างกันแค่คู่ timestamp —
    ประกาศเป็นลิสต์เพื่อให้เพิ่ม/ลดด่านแล้วไม่ต้องไล่แก้ JSX ทีละใบ
@@ -28,6 +22,27 @@ const SLA_STAGES = [
   { key: "screen", icon: <Filter />, label: "SLA คัดกรอง ≤1 วันทำการ" },
   { key: "assign", icon: <Users />, label: "SLA กระจาย ≤1 วันทำการ" },
   { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ" },
+];
+
+/* Conversion เป็น **สองสเตป** ไม่ใช่สายเดียวยาว ๆ (มติผู้ใช้ 2026-08-11)
+ *   เข้า → ติดต่อ → เปิดลูกค้า
+ *
+ * ⚠️ **นัดไม่ใช่ขั้นในสาย** — เปิดลูกค้ามาจาก create_deal ซึ่งไปได้จากทั้ง contacted
+ * และ meeting ⇒ ข้ามขั้นนัดได้ · ถ้าเอานัดยัดเข้าไปกลางสายจะได้ผังที่ปลายสายมากกว่า
+ * ต้นสาย (เดือน ส.ค.: นัด 2 แต่เปิดลูกค้า 4) ซึ่งอ่านแล้วเหมือนระบบคำนวณพัง
+ * 🐞 โน้ตเดิมเขียน "ลีด 53 → นัด 2 → เปิดลูกค้า 4" ด้วยลูกศรติดกันแบบนั้นจริง ๆ
+ *
+ * ⇒ นัดจึงอยู่ **ข้างสาย** เป็นอัตราของตัวเอง ตัวหารคือ `contacted` ไม่ใช่ `total`
+ * ("ได้คุยแล้วกี่ % ที่นัดต่อได้" คือคำถามจริง ส่วน "กี่ % ของลีดทั้งหมด" ไม่มีใครถาม)
+ * ใช้ `contacted` เป็นตัวหารได้ตรง ๆ เพราะ `นัด ⊆ ติดต่อ` เสมอตามโครงสร้าง:
+ * LEAD_TRANSITIONS ให้ action `meeting` ไปได้จาก contacted/meeting เท่านั้น (ต้องผ่าน
+ * `contact` ซึ่งเซ็ต firstContactAt ก่อน) และ `bounce` ล้าง firstContactAt กับ
+ * meetingAt พร้อมกัน — ไม่มีทางมีใบที่นัดแล้วแต่ไม่เคยติดต่อ
+ */
+const CONVERSION_STEPS = [
+  { key: "s1", label: "Conversion ขั้น 1 — เข้า → ติดต่อ", hit: (f) => f.contacted, base: (f) => f.total, unit: "ใบที่เข้ามา" },
+  { key: "s2", label: "Conversion ขั้น 2 — ติดต่อ → เปิดลูกค้า", hit: (f) => f.qualified, base: (f) => f.contacted, unit: "ใบที่ได้คุย" },
+  { key: "meet", label: "ได้นัดประชุม (ไม่ใช่ขั้นบังคับ)", hit: (f) => f.meeting, base: (f) => f.contacted, unit: "ใบที่ได้คุย" },
 ];
 
 export default function KpiLeadsTab({ month, teamFilter }) {
@@ -104,11 +119,23 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                 label={label}
                 value={pct(s.hit, s.checked)}
                 note={`ทัน ${s.hit ?? 0}/${s.checked ?? 0} · ค้างตอนนี้ ${s.pending ?? "-"}`}
-                tone={pendingTone(s.pending)}
+                tone={slaPendingTone(s.pending)}
               />
             );
           })}
-          <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
+        </div>
+        {/* Conversion แยกกริดของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม (ทันเวลาไหม
+            vs หล่นตรงไหน) และถ้ารวมกริดเดียว 6 ใบจะตัดบรรทัดเป็น 5+1 ห้อยไว้ใบเดียว */}
+        <div className={styles.qualityGrid} aria-busy={loading}>
+          {CONVERSION_STEPS.map(({ key, label, hit, base, unit }) => (
+            <SaMetric
+              key={key}
+              icon={<CalendarClock />}
+              label={label}
+              value={pct(hit(f), base(f))}
+              note={`${hit(f) ?? 0} จาก ${base(f) ?? 0} ${unit}`}
+            />
+          ))}
         </div>
       </SaSection>
 

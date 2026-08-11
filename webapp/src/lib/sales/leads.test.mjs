@@ -9,8 +9,10 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf, slaStage,
+  sourceLeadIdOf, slaStage, slaPendingTone,
 } from './leads';
+import { bangkokDate } from './handoffQueue';
+import { businessDayKey } from '../datePeriods';
 
 test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website→website', () => {
   assert.equal(channelGroupOf('chatcone_line'), 'online');
@@ -77,6 +79,41 @@ test('slaStage: เวลาผิดลำดับไม่นับเป็�
 test('slaStage: ไม่มีแถวเลย → checked 0 (ไม่ระเบิด, ไม่หารศูนย์ที่ผู้เรียก)', () => {
   assert.deepEqual(slaStage([], 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
   assert.deepEqual(slaStage(undefined, 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
+});
+
+test('SLA ใช้วันไทย ไม่ใช่วัน UTC — ลีดดึงดึกต้องไม่โดนหักวันฟรี', () => {
+  const noHolidays = new Set();
+  // 2026-08-10T18:30Z = 2026-08-11 01:30 ตามเวลาไทย ⇒ "วันที่เข้ามา" คือ 11 ไม่ใช่ 10
+  const nightLead = '2026-08-10T18:30:00.000Z';   // อังคาร 01:30 น. เวลาไทย
+  const nextDay   = '2026-08-12T03:00:00.000Z';   // พุธ 10:00 น. เวลาไทย
+  // วันไทย: 11 → 12 = 1 วันทำการ ⇒ ทัน
+  assert.equal(slaBusinessDays(nightLead, nextDay, noHolidays), 1);
+  assert.equal(slaHit(nightLead, nextDay, noHolidays), true);
+  // 🐞 ถ้าหาวันด้วย slice(0,10) จะได้ 10 → 12 = 2 วันทำการ ⇒ พลาดทั้งที่ทำทัน
+  assert.notEqual(slaBusinessDays(nightLead, nextDay, noHolidays), 2);
+});
+
+test('นาฬิกาเดียวกันทั้งระบบ: bangkokDate ของคิวรอยต่อ = businessDayKey', () => {
+  // ถ้าใครแอบเขียนวิธีหาวันของตัวเองเพิ่ม เทสนี้จะพัง — ตัวเลข SLA กับ "ค้างกี่วัน"
+  // ต้องมาจากนาฬิกาเรือนเดียวกันเสมอ ไม่งั้นสองการ์ดบนจอเดียวกันเถียงกันเองได้
+  for (const iso of [
+    '2026-08-10T18:30:00.000Z', // 01:30 น. วันไทยถัดไป
+    '2026-08-10T10:00:00.000Z', // 17:00 น. วันเดียวกัน
+    '2026-08-10T16:59:59.000Z', // 23:59 น. วันเดียวกัน (ขอบ)
+    '2026-08-10T17:00:00.000Z', // 00:00 น. วันถัดไป (ขอบ)
+  ]) {
+    assert.equal(bangkokDate(iso), businessDayKey(iso), `วันไม่ตรงกันที่ ${iso}`);
+  }
+  assert.equal(bangkokDate(null), '');
+  assert.equal(bangkokDate('ไม่ใช่วันที่'), '');
+});
+
+test('slaPendingTone: null = นับไม่ได้ ต้องไม่ขึ้นเขียว · 0 = ไม่มีของค้างจริง ๆ', () => {
+  assert.equal(slaPendingTone(0), 'good');
+  assert.equal(slaPendingTone(7), 'warning');
+  // 🐞 หัวใจของบั๊ก: `pending ?? 0` เคยกลบ null เป็น 0 แล้วได้ "good"
+  assert.equal(slaPendingTone(null), undefined);
+  assert.equal(slaPendingTone(undefined), undefined);
 });
 
 test('service detail บังคับเฉพาะ product/other', () => {

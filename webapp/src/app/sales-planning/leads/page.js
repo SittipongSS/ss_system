@@ -5,7 +5,9 @@ import Select from "@/components/ui/Select";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
 // คัดกรอง (Supervisor เลือกทีม) → กระจาย (Senior เลือก AE) → ติดต่อ/นัด → เปิดลูกค้า.
-// SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
+// SLA 1 วันทำการ **ทั้งสามด่าน** (คัดกรอง · กระจาย · ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ.
+// ⚠️ แถบ KPI บนหน้านี้มี 4 ช่องตายตัวจึงโชว์ได้แค่ 2 ด่าน — ครบสามด่านอยู่ที่แท็บ "KPI ลีด"
+// (/sa/dashboard?tab=lead_kpi) · จะเอามาครบต้องรื้อ `.ui-metric-strip` ที่ repeat(4, …) ก่อน
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -38,7 +40,7 @@ import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES,
   leadBudgetText, LEAD_STATUS_LABELS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
+  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone,
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, thisMonth, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
@@ -480,9 +482,16 @@ export default function LeadsPage() {
             <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
             {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
                 ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ */}
-            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${periodNote} · ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
+            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.screen?.pending)} />
+            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.contact?.pending)} />
+            {/* Conversion เป็นสองสเตป: เข้า → ติดต่อ → เปิดลูกค้า (มติผู้ใช้ 2026-08-11)
+                ค่าบนการ์ดคือ **ตลอดสาย** (เปิดลูกค้า ÷ เข้า) ส่วนโน้ตกางให้เห็นทั้งสามจุด —
+                แถบนี้มี 4 ช่องตายตัว (`.ui-metric-strip` = repeat(4,…)) จึงแยกเป็นใบ ๆ
+                ไม่ได้เหมือนแท็บ KPI เต็ม · อัตราได้นัดอยู่ที่แท็บนั้น ไม่ยัดมาที่นี่
+                ⚠️ **นัดไม่อยู่ในสาย** — เปิดลูกค้าข้ามขั้นนัดได้ ถ้าใส่กลางสายจะได้ผังที่
+                ปลายสายมากกว่าต้นสาย (ดูเหตุผลเต็มที่ CONVERSION_STEPS ใน KpiLeadsTab)
+                🐞 ของเดิมเขียน "ลีด → นัด → เปิดลูกค้า" ติดลูกศรกันแบบนั้นจริง ๆ */}
+            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`เข้า ${kpi?.funnel?.total ?? 0} → ติดต่อ ${kpi?.funnel?.contacted ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
           </SaMetricStrip>
 
         {/* การ์ด "ค้างคิว" — อะไรค้าง ค้างกี่วันทำการ ใครถือ

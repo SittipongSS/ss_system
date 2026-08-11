@@ -1,9 +1,11 @@
 // โมดูลลีด (Sales Revamp เฟส C) — enum/labels/กติกา transition + SLA วันทำการ.
 // เส้นชีวิต: Marketing กรอกลีดรายวัน → Supervisor คัดกรองส่งทีม (SLA 1 วันทำการ) →
-// Senior AE กระจายให้ AE → AE ติดต่อกลับ (SLA 1 วันทำการ) → นัดประชุม →
+// Senior AE กระจายให้ AE (SLA 1 วันทำการ) → AE ติดต่อกลับ (SLA 1 วันทำการ) → นัดประชุม →
 // เปิดลูกค้า (qualified) / ไม่ไปต่อ (disqualified) / ตีกลับทีมผิด (bounce → new).
-// KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ.
+// KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ · ทุกด่านวัดด้วย slaStage ตัวเดียว
+// และหาวันด้วย businessDayKey (เวลาไทย) ตัวเดียวเท่านั้น — ดูเหตุผลที่ slaBusinessDays
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
+import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 
@@ -326,9 +328,20 @@ export function chunkLeadIds(ids = [], size = LEAD_ID_CHUNK) {
 
 // SLA "ภายใน 1 วันทำการ": จำนวนวันทำการที่ผ่านไประหว่าง 2 เวลา ≤ 1
 // (เกิดวันเดียวกัน = 0; ข้าม 1 วันทำการ = 1 → ยังทัน; ข้ามเสาร์-อาทิตย์/วันหยุดไม่นับ)
+//
+// 🐞 เดิมหาวันด้วย `String(iso).slice(0, 10)` = **วันแบบ UTC** ⇒ ทุกเหตุการณ์ที่เกิด
+// ช่วง 00:00–07:00 ตามเวลาไทยถูกบันทึกเป็นวันก่อนหน้า นาฬิกา SLA เริ่มเดินเร็วไปหนึ่งวัน
+// (ลีดดึกจาก LINE/Meta/Typeform มีจริงทุกวัน) · ที่แย่กว่าคือ **การ์ดค้างคิวข้าง ๆ ใช้
+// วันไทยอยู่แล้ว** (businessDaysWaiting → businessDayKey) ⇒ ฟีเจอร์เดียวมีสองนาฬิกา
+// เดินคนละเขตเวลา ตัวเลข % กับ "ค้างกี่วัน" จึงเถียงกันเองได้โดยไม่มีอะไรฟ้อง
+// (ตรวจเจอ 2026-08-11 · ตอนนั้นทำให้ SLA กระจายเพี้ยนไป 1 ใบจาก 127)
+//
+// ⇒ ทั้งระบบใช้ `businessDayKey` ตัวเดียวเป็นนาฬิกา ห้ามหาวันจาก timestamp ด้วยวิธีอื่น
 export function slaBusinessDays(fromIso, toIso, holidays) {
-  if (!fromIso || !toIso) return null;
-  return countBusinessDays(String(fromIso).slice(0, 10), String(toIso).slice(0, 10), holidays);
+  const from = businessDayKey(fromIso);
+  const to = businessDayKey(toIso);
+  if (!from || !to) return null;
+  return countBusinessDays(from, to, holidays);
 }
 export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
   const d = slaBusinessDays(fromIso, toIso, holidays);
@@ -357,4 +370,19 @@ export function slaStage(rows, fromKey, toKey, holidays, limitDays = 1) {
   const checked = (rows || []).filter((l) => l?.[fromKey] && l?.[toKey]);
   const hit = checked.filter((l) => slaHit(l[fromKey], l[toKey], holidays, limitDays) === true);
   return { checked: checked.length, hit: hit.length };
+}
+
+/** โทนของการ์ด SLA — ตัดสินจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
+ *
+ *  ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง"
+ *  🐞 ทั้งหน้าคิวลีดและแท็บ KPI เคยเขียน `(pending ?? 0) ? "warning" : "good"` ซึ่งกลบ
+ *  null เป็น 0 แล้วการ์ดขึ้น**เขียว**ว่าเรียบร้อย ทั้งที่ตัวเลขข้างในโชว์ "-" อยู่โต้ง ๆ
+ *  — เขียวคือคำตอบที่ดูปกติจนไม่มีใครสงสัย · ไม่รู้คำตอบ = ไม่ตัดสิน (คืน undefined)
+ *
+ *  อยู่ที่นี่เพราะสองหน้าจอโชว์ตัวเลขชุดเดียวกัน ถ้าต่างคนต่างเขียนเงื่อนไขมันเพี้ยนหากัน
+ *  เงียบ ๆ แน่ (เคยเกิดแล้วรอบนี้: แก้แท็บ KPI ไปข้างเดียว หน้าคิวลีดยังเขียวอยู่)
+ */
+export function slaPendingTone(pending) {
+  if (pending == null) return undefined;
+  return pending ? 'warning' : 'good';
 }
