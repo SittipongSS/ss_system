@@ -4,6 +4,8 @@ import {
   canEditQuotationContent,
   canRejectQuotationSubmission,
   canReviseQuotation,
+  isEditableQuotation,
+  isRevisableQuotation,
   canWithdrawQuotationSubmission,
   isQuotationAwaitingApproval,
   isQuotationSubmitter,
@@ -135,4 +137,62 @@ test('ใบที่รออนุมัติถือว่าถูกล�
     assert.equal(isQuotationAwaitingApproval({ ...pending, approvalStatus }), false);
   }
   assert.equal(isQuotationAwaitingApproval(null), false);
+});
+
+// ── ด่าน "แก้ทับได้ไหม" ที่หน้ารายการกับหน้ารายละเอียดต้องใช้ร่วมกัน ──────────
+//
+// 🐞 IS-26080011 (2026-08-11): หน้ารายการเช็คแค่ `status` ⇒ ใบที่อนุมัติแล้ว (ซึ่ง
+// mig 0165 ตั้งเป็น 'sent' ให้เอง) ได้ปุ่มดินสอที่พาไป `?edit=1` ⇒ ผู้ใช้ตกไปอยู่ใน
+// โหมดแก้ไขของใบที่แก้ไม่ได้ ซึ่งซ่อนปุ่มทั้งการ์ดจนเหลือ "Won" ปุ่มเดียว
+test('ใบที่อนุมัติแล้วแก้ทับไม่ได้ แม้สถานะจะเป็น sent — เคสที่ผู้ใช้เจอจริง', () => {
+  const approvedSent = { status: 'sent', approvalStatus: 'approved' };
+  assert.equal(isEditableQuotation(approvedSent), false, 'อนุมัติแล้วต้องแก้ทับไม่ได้');
+  assert.equal(isRevisableQuotation(approvedSent), true, 'ทางออกคือออก Rev.');
+});
+
+test('ร่างที่ยังไม่ยื่น = แก้ทับได้ · ออก Rev. ไม่ได้ (ยังไม่มีอะไรให้ทำฉบับใหม่)', () => {
+  const draft = { status: 'draft', approvalStatus: 'not_submitted' };
+  assert.equal(isEditableQuotation(draft), true);
+  assert.equal(isRevisableQuotation(draft), false);
+});
+
+test('ใบที่ยื่นอนุมัติแล้วรออยู่ — แก้ทับไม่ได้ และยังออก Rev. ไม่ได้ (ต้องดึงกลับก่อน)', () => {
+  const waiting = { status: 'draft', approvalStatus: 'pending' };
+  assert.equal(isEditableQuotation(waiting), false);
+  assert.equal(isRevisableQuotation(waiting), false);
+});
+
+test('ใบที่ออก Rev. ไปแล้ว (revised) และใบที่ปิด Won (accepted) — หมดทางแก้ทั้งคู่', () => {
+  for (const status of ['revised', 'accepted', 'closed']) {
+    const row = { status, approvalStatus: 'approved' };
+    assert.equal(isEditableQuotation(row), false, `${status} ต้องแก้ทับไม่ได้`);
+    assert.equal(isRevisableQuotation(row), false, `${status} ต้องออก Rev. ไม่ได้`);
+  }
+});
+
+test('ใบ grandfather (not_required) แก้ทับไม่ได้ แต่ออก Rev. ได้', () => {
+  const grandfather = { status: 'sent', approvalStatus: 'not_required' };
+  assert.equal(isEditableQuotation(grandfather), false);
+  assert.equal(isRevisableQuotation(grandfather), true);
+});
+
+test('ด่านเต็มคูณสิทธิ์ผู้ใช้กับขอบเขตทีมทับตัวเอกสารอีกชั้น', () => {
+  const draft = { status: 'draft', approvalStatus: 'not_submitted' };
+  assert.equal(canEditQuotationContent(draft, { canEdit: true, inScope: true }), true);
+  assert.equal(canEditQuotationContent(draft, { canEdit: false, inScope: true }), false);
+  assert.equal(canEditQuotationContent(draft, { canEdit: true, inScope: false }), false);
+  // ตัวเอกสารปิดแล้ว สิทธิ์เต็มก็ไม่ช่วย
+  assert.equal(
+    canEditQuotationContent({ status: 'sent', approvalStatus: 'approved' }, { canEdit: true, inScope: true }),
+    false,
+  );
+  assert.equal(
+    canReviseQuotation({ status: 'sent', approvalStatus: 'approved' }, { canEdit: true, inScope: true }),
+    true,
+  );
+});
+
+test('ไม่มีใบ = ทำอะไรไม่ได้สักอย่าง (หน้าจอเรนเดอร์ก่อนโหลดเสร็จ)', () => {
+  assert.equal(isEditableQuotation(null), false);
+  assert.equal(isRevisableQuotation(undefined), false);
 });

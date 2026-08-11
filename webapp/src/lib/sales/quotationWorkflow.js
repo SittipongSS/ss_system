@@ -10,6 +10,40 @@ export function isRevisableQuotationApprovalStatus(approvalStatus) {
   return REVISABLE_APPROVAL_STATUSES.has(approvalStatus);
 }
 
+/**
+ * แก้ทับฉบับเดิมได้ไหม — **ด่านเดียวกับ `PATCH /api/sales-planning/quotations/[id]`**
+ * (สถานะที่แก้ได้ **และ** ยังไม่เคยยื่นอนุมัติ) · ใบที่ผ่านด่านนี้ไม่ได้ต้องใช้ "ออก Rev."
+ *
+ * 🐞 **บั๊กจริงที่ผู้ใช้แจ้ง (IS-26080011 · 2026-08-11)**: กติกานี้เคยถูกเขียนแยกกันสองที่ —
+ * หน้ารายละเอียดตรวจครบสองชั้น ส่วนหน้ารายการตรวจแค่ `status` แล้วโชว์ปุ่มดินสอที่พาไป
+ * `?edit=1` · ตั้งแต่ mig 0165 การอนุมัติตั้ง `status='sent'` ให้เอง ⇒ **ใบที่อนุมัติแล้ว
+ * ทุกใบเข้าเงื่อนไขของหน้ารายการ** (23 จาก 36 ใบบน prod ตอนพบ) ⇒ ผู้ใช้กดดินสอแล้วตกไป
+ * อยู่ในโหมดแก้ไขของใบที่แก้ไม่ได้ ซึ่งซ่อนปุ่มทั้งการ์ดจนเหลือ "Won" ปุ่มเดียว
+ * และไม่มีทางออกนอกจากลบ `?edit=1` ทิ้งเองในแถบ URL
+ *
+ * ⚠️ **ห้ามแตกกติกานี้ไปเขียนซ้ำที่หน้าจอ** — ทั้งดินสอในรายการ ปุ่ม "แก้ไขข้อมูล"
+ * และโหมดแก้ไขของหน้ารายละเอียด ต้องถามฟังก์ชันนี้ตัวเดียวกัน
+ * ⚠️ ด่านฝั่ง server มีเพิ่มอีกสองชั้นที่ตัดสินด้วยผู้ใช้/ดีล (`inSalesEditScope` ·
+ * ดีล Lost) ซึ่งหน้าจอไม่รู้ — ที่นี่ตอบเฉพาะ "ตัวเอกสารเปิดให้แก้ไหม"
+ */
+export function isEditableQuotation(quotation) {
+  return Boolean(quotation)
+    && EDITABLE_QUOTATION_STATUSES.has(quotation.status)
+    && quotation.approvalStatus === 'not_submitted';
+}
+
+/**
+ * ออก Rev. ได้ไหม — ใบที่อนุมัติแล้ว (หรือใบ grandfather) และยังอยู่ในสถานะที่เดินต่อได้
+ *
+ * ⚠️ ย้ายมาจากหน้ารายละเอียดซึ่งเก็บชุดสถานะไว้เป็น `const EDITABLE` ของตัวเอง —
+ * ชุดสถานะเดียวกันที่ถูกก๊อปไปไว้หลายที่คือรูปแบบที่ทำให้เกิด IS-26080011 มาแล้ว
+ */
+export function isRevisableQuotation(quotation) {
+  return Boolean(quotation)
+    && isRevisableQuotationApprovalStatus(quotation.approvalStatus)
+    && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
+}
+
 export function isQuotationSubmitter(quotation, userId) {
   return Boolean(userId)
     && quotation?.approvalStatus === 'pending'
@@ -66,23 +100,21 @@ export function quotationRejectionNotice(quotation) {
   };
 }
 
+// ── ด่านเต็ม = ตัวเอกสาร + สิทธิ์ของผู้ใช้ + ขอบเขตทีม ─────────────────────
+//
+// ⚠️ **ชุดสถานะอยู่ใน `isEditableQuotation` / `isRevisableQuotation` ที่เดียว** —
+// สองฟังก์ชันนี้เติมเฉพาะเงื่อนไขที่ขึ้นกับ *ผู้ใช้* · หน้าจอฝั่ง client เรียกตัว
+// document-only ได้ตรง ๆ เพราะไม่รู้ `inScope` (ขอบเขตทีมตัดที่ server เท่านั้น)
 export function canEditQuotationContent(
   quotation,
   { canEdit = false, inScope = false } = {},
 ) {
-  return Boolean(quotation)
-    && canEdit
-    && inScope
-    && quotation.approvalStatus === 'not_submitted'
-    && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
+  return Boolean(canEdit) && Boolean(inScope) && isEditableQuotation(quotation);
 }
+
 export function canReviseQuotation(
   quotation,
   { canEdit = false, inScope = false } = {},
 ) {
-  return Boolean(quotation)
-    && canEdit
-    && inScope
-    && REVISABLE_APPROVAL_STATUSES.has(quotation.approvalStatus)
-    && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
+  return Boolean(canEdit) && Boolean(inScope) && isRevisableQuotation(quotation);
 }
