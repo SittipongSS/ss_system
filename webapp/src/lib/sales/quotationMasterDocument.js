@@ -6,6 +6,7 @@
 // DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
 // (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
+import { fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
   documentFileName,
@@ -40,7 +41,8 @@ function partyGrid(model) {
   // (ถ้าปล่อยให้เปลือกเติม "-" ให้ทั้งช่อง เบอร์จะหายไป)
   const contactName = model.customer.contactName;
   const contact = `${contactName === null || contactName === undefined || contactName === '' ? '-' : contactName}`
-    + (model.customer.contactPhone ? ` · ${model.customer.contactPhone}` : '');
+    // เบอร์บนกระดาษต้องอ่านเป็นรูปเดียวกับบนจอ — จัดรูปแบบผ่านตัวกลางเสมอ
+    + (model.customer.contactPhone ? ` · ${fmtPhone(model.customer.contactPhone)}` : '');
   return shellPartyGrid({
     ariaLabel: 'ข้อมูลลูกค้าและข้อมูลอ้างอิง',
     party: {

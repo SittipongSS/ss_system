@@ -17,6 +17,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Toast from "@/components/ui/Toast";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import DateInput from "@/components/ui/DateInput";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
@@ -607,8 +608,8 @@ export default function SalesOrderDetailPage() {
 
             <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร">
               <div className={styles.formStack}>
-                <label><span>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(event) => updateField("orderDate", event.target.value)} /></label>
-                <label><span>กำหนดชำระ</span><input className="premium-input" type="date" value={form.paymentDueDate} disabled={!editable} onChange={(event) => updateField("paymentDueDate", event.target.value)} /></label>
+                <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
+                <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
                 {editable
                   ? <label><span>หมายเหตุ</span><Textarea rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
                   : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}

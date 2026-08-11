@@ -116,7 +116,9 @@ test('Sale Order แสดงข้อมูลลูกค้าครบ ร�
   assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105551234567/);
   assert.match(html, /123 ถนนสุขุมวิท/);
   assert.match(html, /456 คลังสินค้า/);
-  assert.match(html, /คุณสมชาย · 021234567/);
+  // ⭐ เบอร์บนกระดาษจัดรูปแบบผ่าน `fmtPhone` เหมือนทุกที่บนจอ (2026-08-11) —
+  // เดิมพิมพ์ตัวเลขติดกันดิบ ๆ ซึ่งเป็นรูปเดียวในระบบที่ไม่มีขีดคั่น
+  assert.match(html, /คุณสมชาย · 02-123-4567/);
 });
 
 test('Sale Order VAT rate is rounded — no float noise like 7.000000000000001%', () => {
