@@ -9,7 +9,12 @@ import { TableScroll } from "@/components/ui/Table";
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
 import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Search } from "lucide-react";
+import {
+  ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, ChevronRight, ChevronsDownUp,
+  ChevronsUpDown, ClipboardList, FolderKanban, Layers, Search, Tag, User, Users,
+} from "lucide-react";
+import FilterPopover from "@/components/ui/FilterPopover";
+import MenuSelect from "@/components/ui/MenuSelect";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
@@ -23,6 +28,10 @@ import {
   requestDueText, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
+import {
+  REQUEST_GROUP_OPTIONS, REQUEST_SORT_OPTIONS, filterRequestRows, groupRequestRows,
+  requestFacetOptions, requestFilterCount, sortRequestRows,
+} from "@/lib/requests/queueList";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
@@ -46,26 +55,69 @@ export default function RequestQueuePanel({
   // ⭐ ห่อด้วยการ์ดที่มีหัวข้อ + จำนวน ตามต้นแบบ · ส่ง null เมื่อผู้เรียกห่อเองอยู่แล้ว
   // (ภาพรวมฝ่ายวางพาเนลนี้ไว้ในหัวข้อ "ใกล้ถึงกำหนด…" ⇒ ซ้อนการ์ดสองชั้นไม่ได้)
   sectionTitle = "รายการคำร้อง",
-  sectionSubtitle = "ค้นหา กรอง และสลับมุมมองเพื่อติดตามเรื่อง",
+  sectionSubtitle = "ค้นหา กรอง จัดกลุ่ม และติดตามทุกใบ",
   unit = "เรื่อง",
+  /* ⚠️ **ปิดเครื่องมือเมื่อพาเนลไม่ใช่รายการทั้งก้อน** — หน้าภาพรวมฝ่ายวางพาเนลนี้ไว้
+     ในการ์ด "คิวถัดไป" ซึ่งส่งมาแค่ไม่กี่ใบที่คัดมาแล้ว · ให้กรอง/จัดกลุ่มซ้อนบนชุดที่
+     คัดมาแล้วอีกชั้นคือการเชิญให้คนเข้าใจผิดว่านี่คือคิวทั้งหมด */
+  tools = true,
 }) {
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   const today = businessDate();
-  const { view, countFilter, setCountFilter, search, setSearch } = board;
+  const {
+    view, countFilter, setCountFilter, search, setSearch,
+    filters = {}, setFilter, clearFilters,
+    groupBy = "none", setGroupBy, collapsed, setCollapsed, toggleGroup,
+    sortKey = "urgency", sortDir = "asc", setSort, toggleSortDir,
+  } = board;
 
   // ⭐ **ตัวเลขบนแถบกดกรองได้** — "เลยกำหนด 2" คือคำถามแรกที่หัวหน้าเปิดคิวมาถาม
   // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
   // ⚠️ กรองที่จอได้ **เพราะชุดข้อมูลนี้ผ่านด่านขอบเขตของ API มาแล้ว** — ต่างจาก
   // ตัวสลับขอบเขตบนหน้าแม่ที่ต้องกรองฝั่ง server (กับดักข้อ 9 ของแผน)
   const visibleRows = useMemo(
-    () => rows
-      .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
-      .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabel })),
-    [rows, countFilter, search, today],
+    () => sortRequestRows(
+      filterRequestRows(
+        rows
+          .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
+          .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabel })),
+        tools ? filters : {},
+      ),
+      { key: sortKey, dir: sortDir },
+    ),
+    [rows, countFilter, search, today, filters, sortKey, sortDir, tools],
   );
-  const groups = groupQueueRows(visibleRows, { todayIso: today });
+
+  /* ⭐ **สองโหมดจัดกลุ่ม รูปร่างเดียวกัน** — เลือกมิติเอง (ฝ่าย/ชนิด/ลูกค้า/ผู้รับเรื่อง)
+     หรือปล่อยไว้ให้จัดตามความเร่ง (`groupQueueRows` ของเดิม ซึ่งเป็นสิ่งที่ทำให้ใบ
+     ตีกลับกับใบที่ยังไม่มีใครรับขึ้นบนสุด) · ทั้งสองโหมดคืน `{ key, label, rows }`
+     เหมือนกัน ⇒ ตารางกับการ์ดวาดโค้ดชุดเดียว ไม่ใช่สองสำเนา */
+  const groups = useMemo(() => (
+    (tools && groupRequestRows(visibleRows, groupBy))
+    || groupQueueRows(visibleRows, { todayIso: today })
+      .map((g) => ({ key: g.group, label: g.label, rows: g.rows }))
+  ), [visibleRows, groupBy, today, tools]);
+
+  const collapsedSet = collapsed instanceof Set ? collapsed : new Set();
+  const isCollapsed = (key) => collapsedSet.has(key);
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsedSet.has(g.key));
+  const filterCount = requestFilterCount(filters);
+  // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
+  // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
+  const facetGroups = useMemo(() => [
+    { key: "dept", label: "ฝ่ายที่ขอไป", icon: Building2 },
+    { key: "kind", label: "ชนิดคำร้อง", icon: Tag },
+    { key: "customer", label: "ลูกค้า", icon: Users },
+    { key: "project", label: "โครงการ", icon: FolderKanban },
+    { key: "owner", label: "ผู้รับเรื่อง", icon: User },
+  ].map((g) => ({
+    ...g,
+    options: requestFacetOptions(rows, g.key),
+    selected: filters[g.key] || [],
+    onChange: (values) => setFilter?.(g.key, values),
+  })), [rows, filters, setFilter]);
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -99,6 +151,56 @@ export default function RequestQueuePanel({
             กรอง: {QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label} ×
           </Button>
         )}
+        {/* ── ชุดเดียวกับหน้ารายการดีล: กรอง → จัดกลุ่ม → ย่อ/ขยาย → เรียง+ทิศ ──
+            (มติผู้ใช้ 2026-08-11 · แบบ จ) — หน้าดีลประกาศชุดนี้เป็นมาตรฐานของระบบ
+            ไว้เองตั้งแต่ 2026-07-18 · คิวคำร้องเคยมีแค่ช่องค้นหา ⇒ ตอบคำถาม
+            "ใบของลูกค้านี้มีกี่ใบ" หรือ "ใครถืออยู่บ้าง" ไม่ได้เลย */}
+        {tools && (
+          <>
+            <FilterPopover
+              count={filterCount}
+              onClear={() => clearFilters?.()}
+              groups={facetGroups}
+            />
+            <MenuSelect
+              icon={Layers}
+              label="จัดกลุ่ม"
+              title="จัดกลุ่มรายการคำร้อง"
+              value={groupBy}
+              onChange={(value) => setGroupBy?.(value)}
+              options={REQUEST_GROUP_OPTIONS}
+              isActive={(value) => value !== "none"}
+            />
+            {groups.length > 1 && (
+              <Button
+                iconOnly
+                onClick={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
+                title={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
+                aria-label={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
+                icon={allCollapsed ? <ChevronsUpDown size={15} /> : <ChevronsDownUp size={15} />}
+              />
+            )}
+            <div className="spacer" />
+            <MenuSelect
+              icon={ArrowUpDown}
+              label="เรียง"
+              title="เรียงลำดับ"
+              value={sortKey}
+              onChange={(key) => setSort?.(key)}
+              options={REQUEST_SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+              showValue
+              isActive={(key) => key !== "urgency"}
+            />
+            <Button
+              iconOnly
+              className="ui-sort-direction"
+              onClick={() => toggleSortDir?.()}
+              title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
+              aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
+              icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+            />
+          </>
+        )}
       </div>
 
       {loading ? (
@@ -123,9 +225,16 @@ export default function RequestQueuePanel({
            ⚠️ ไม่มีแถบสีขอบการ์ด — ความเร่งด่วนบอกด้วยป้ายข้อความเหมือนในตาราง */
         <div className={styles.queueCards}>
           {groups.map((g) => (
-            <Fragment key={g.group}>
-              <div className={styles.cardGroupLabel} data-group={g.group}>{g.label} · {g.rows.length}</div>
-              {g.rows.map((ask) => {
+            <Fragment key={g.key}>
+              {/* หัวกลุ่มกดย่อ/ขยายได้ทั้งสองมุมมอง — ทรงเดียวกับหน้ารายการดีล */}
+              <button
+                type="button" className={styles.cardGroupLabel} data-group={g.key}
+                onClick={() => toggleGroup?.(g.key)} aria-expanded={!isCollapsed(g.key)}
+              >
+                {isCollapsed(g.key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                {g.label} · {g.rows.length}
+              </button>
+              {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
                 const due = requestDueText(ask, { todayIso: today });
@@ -215,11 +324,20 @@ export default function RequestQueuePanel({
                   ⚠️ จัดกลุ่มจริงที่ groupQueueRows ไม่ใช่แทรกเส้นตอนคีย์เปลี่ยน
                   (ตัวเรียงไม่ได้เรียงตามลำดับกลุ่มเป๊ะ ๆ จะได้หัวข้อซ้ำกลางตาราง) */}
               {groups.map((g) => (
-                <Fragment key={g.group}>
-                  <tr className={styles.groupRow} data-group={g.group}>
-                    <td colSpan={4}>{g.label} · {g.rows.length}</td>
+                <Fragment key={g.key}>
+                  <tr className={styles.groupRow} data-group={g.key}>
+                    <td colSpan={4}>
+                      <button
+                        type="button" onClick={() => toggleGroup?.(g.key)}
+                        aria-expanded={!isCollapsed(g.key)}
+                      >
+                        {isCollapsed(g.key) ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                        <strong>{g.label}</strong>
+                        <span className="ui-badge">{g.rows.length} {unit}</span>
+                      </button>
+                    </td>
                   </tr>
-                  {g.rows.map((ask) => {
+                  {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
                 const due = requestDueText(ask, { todayIso: today });

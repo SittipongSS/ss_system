@@ -9,7 +9,7 @@
 // (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList, Plus, Undo2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
@@ -23,6 +23,8 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
 import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
 import StartHereCard from "@/components/requests/StartHereCard";
+import AlertBanner from "@/components/ui/AlertBanner";
+import { bouncedDaysText } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 
 // คำโปรยของแต่ละแท็บ — บอกว่ากำลังดูอะไรอยู่ ไม่ใช่ชื่อแท็บซ้ำอีกรอบ
@@ -195,6 +197,20 @@ export default function RequestsPage() {
   const rows = tab === "mine" ? visibleMine : tabRows;
   const counts = queueCounts(rows, { todayIso: today });
 
+  /* ⭐ **แถบเตือนใบตีกลับ** (แบบ จ · 2026-08-11) — ตัวเลขบนแถบบอกว่ามีกี่ใบ แต่
+     แถบตัวเลขคือของที่ตาเลื่อนผ่าน · ใบที่ฝ่ายส่งคืนมาแล้วค้างหลายวันคือของที่
+     **ไม่มีใครกำลังทำอยู่เลย** (ฝ่ายปล่อยมือแล้ว ผู้ขอยังไม่รู้ตัว) ⇒ ต้องมีอะไร
+     สักอย่างที่อ่านไม่ผ่าน · ปุ่มพาไปตัวกรองเลย ไม่ใช่บอกเฉย ๆ แล้วให้ไปหาเอง
+     ⚠️ นับจาก **ใบของตัวเอง** เท่านั้น — ใบตีกลับของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา */
+  const bouncedRows = useMemo(
+    () => requests.filter((r) => r._mine && r.status === "draft" && r.bouncedAt),
+    [requests],
+  );
+  const bouncedWorst = useMemo(() => bouncedRows
+    .map((r) => bouncedDaysText(r, { todayIso: today }))
+    .filter(Boolean)
+    .sort((a, b) => b.days - a.days)[0] || null, [bouncedRows, today]);
+
   return (
     <Workspace
       icon={<ClipboardList size={22} />}
@@ -262,6 +278,24 @@ export default function RequestsPage() {
           </span>
         )}
       </div>
+
+      {/* ⚠️ อยู่ **เหนือ** การ์ดเริ่มที่นี่ — ใบตีกลับไม่มีใครทำอยู่เลย จึงเร่งกว่า
+          ใบที่รอฝ่ายอยู่ · การ์ดเริ่มที่นี่ก็ชี้ใบเดียวกันอยู่แล้วเมื่อมันเร่งที่สุด */}
+      {!loading && !loadError && bouncedRows.length > 0 && tab !== "history" && (
+        <AlertBanner
+          tone="danger"
+          icon={Undo2}
+          action={(
+            <Button size="sm" onClick={() => { setTab("mine"); board.setCountFilter("bounced"); }}>
+              ดูใบที่ตีกลับ
+            </Button>
+          )}
+        >
+          <strong>มีใบตีกลับค้าง {bouncedRows.length} ใบ</strong>
+          {bouncedWorst ? ` — ใบที่ค้างนานสุด${bouncedWorst.days > 0 ? ` ${bouncedWorst.days} วัน` : "ตีกลับวันนี้"}` : ""}
+          {" · แก้แล้วกดส่งใหม่ได้เลย เลขที่เดิม"}
+        </AlertBanner>
+      )}
 
       {/* ⭐ **อยู่ใต้แถวตัวกรอง** — มันเป็นคำตอบของทั้งหน้า ไม่ใช่ของแท็บใดแท็บหนึ่ง
           🪤 เคยแทรกอยู่ **ระหว่าง** ขอบเขตกับแท็บ ⇒ ผ่ากลุ่มตัวเลือกขาดสองท่อน */}
