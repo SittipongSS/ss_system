@@ -741,13 +741,6 @@ export const quotationDealTitle = (quote) =>
 // ไม่มีดีลจริง (snapshot เก่าที่เหลือแต่ชื่อ) → ห้ามเดาประเภทให้
 export const quotationDealType = (quote) => (quote?.deal ? dealTypeOf(quote.deal) || '-' : '-');
 
-// อัตราส่วนลดท้ายใบที่พิมพ์บนกระดาษ ("หัก ส่วนลด X%") — % ตัดที่ 100 ให้ตรงกับยอดที่หัก
-// จริง (discountAmountOf clamp ไว้เหมือนกัน) ฝั่งบันทึกก็ clamp แล้ว (normalizeDiscountValue)
-// แต่ใบเก่าที่บันทึกค่าเกินไว้ก่อนหน้านั้นยังมีอยู่ใน DB จึงต้องกันตอนแสดงด้วย
-// (ส่วนลดรายบรรทัดพิมพ์ยอดเงินอย่างเดียว ไม่ผ่านทางนี้)
-const printedDiscountValue = (type, value) =>
-  (type === 'percent' ? Math.min(Number(value || 0), 100) : Number(value || 0));
-
 export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const form = options.form || DOCUMENT_FORMS.quotation;
   const lines = (Array.isArray(quote.lines) ? quote.lines : [])
@@ -925,10 +918,8 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     ],
     lines,
     totals,
-    discount: {
-      type: quote.discountType || 'amount',
-      value: printedDiscountValue(quote.discountType, quote.discountValue),
-    },
+    // ชนิด/อัตราส่วนลดไม่ขึ้นกระดาษแล้ว (ทั้งรายบรรทัดและท้ายใบ) — เอกสารมีแต่ยอดเงิน
+    // ที่หัก จึงไม่ส่งต่อเข้า model ให้ renderer มีข้อมูลที่ไม่ได้ใช้ค้างอยู่
     vatRate: Number(quote.vatRate || 0),
     installments,
     paymentMethod,

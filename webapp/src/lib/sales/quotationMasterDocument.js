@@ -115,7 +115,7 @@ function totalsSection(model) {
     <section class="totals" aria-label="สรุปยอด">
       <div><span>รวมสินค้า / บริการ</span><strong>${money(totals.subtotal)}</strong></div>
       ${hasDiscount ? `
-      <div><span>หัก ส่วนลด${model.discount.type === 'percent' ? ` ${Number(model.discount.value)}%` : ''}</span><strong>-${money(totals.discountAmount)}</strong></div>
+      <div><span>หัก ส่วนลด</span><strong>-${money(totals.discountAmount)}</strong></div>
       <div class="afterDiscount"><span>ยอดหลังหักส่วนลด</span><strong>${money(totals.afterDiscount)}</strong></div>` : ''}
       <div><span>ภาษีมูลค่าเพิ่ม ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
       <div class="grandTotal"><span>ยอดรวมทั้งสิ้น</span><strong>${money(totals.totalAmount)} บาท</strong></div>

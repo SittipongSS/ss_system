@@ -222,18 +222,19 @@ test('V4 doc: ใบหลายหน้า หัวตารางมีค�
   assert.ok(!html.includes('<table class="itemTable">'), 'ไม่มีตารางแบบไม่มีส่วนลดปนมา');
 });
 
-test('V4 doc: ส่วนลดท้ายใบที่เก็บ % เกิน 100 ไว้ ต้องพิมพ์ป้ายไม่เกิน 100% (ให้ตรงกับยอดที่หักจริง)', () => {
-  // แถวก่อนมี clamp ฝั่งบันทึก: เก็บ 250% ไว้ แต่ยอดที่หักได้จริงคือ 100% ของฐาน
-  // (ช่องส่วนลดรายบรรทัดพิมพ์ยอดเงินอย่างเดียว จึงไม่มีอัตราให้ขัดกันตั้งแต่ต้น)
+test('V4 doc: ส่วนลดทุกชั้นพิมพ์เป็นยอดเงิน ไม่มีอัตรา % บนกระดาษเลย', () => {
+  // ทั้งบรรทัดและท้ายใบตั้งเป็นแบบ % — เอกสารต้องมีแต่ตัวเงินที่หัก
   const q = {
     ...baseQuote([lineOf('1', {
-      discountType: 'percent', discountValue: 150, discountAmount: 500, lineTotal: 500,
+      discountType: 'percent', discountValue: 5, discountAmount: 500, lineTotal: 500,
     })]),
-    discountType: 'percent', discountValue: 250, discountAmount: 500,
+    discountType: 'percent', discountValue: 10, discountAmount: 50,
   };
   const html = buildQuotationMasterHTML(q, {});
-  // เทียบเฉพาะจุดที่พิมพ์อัตรา — เลข 150/250 โผล่ในพาธของโลโก้ SVG ได้ ไม่เกี่ยวกัน
-  assert.match(html, /หัก ส่วนลด 100%/, 'ป้ายส่วนลดท้ายใบตัดที่ 100%');
-  assert.doesNotMatch(html, /หัก ส่วนลด 250%/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
+  assert.match(html, /<span>หัก ส่วนลด<\/span><strong>-50\.00/, 'ท้ายใบเป็นยอดเงินล้วน');
+  assert.doesNotMatch(html, /หัก ส่วนลด \d/, 'ไม่มีอัตราต่อท้ายป้ายส่วนลดท้ายใบ');
   assert.doesNotMatch(html, /class="itemDiscountRate"/, 'บรรทัดไม่พิมพ์อัตราเลย');
+  assert.ok(html.includes('-500.00'), 'ยอดที่หักรายบรรทัดยังอยู่');
+  // VAT ยังเป็นอัตราตามเดิม — ตัดเฉพาะอัตราส่วนลด ไม่ใช่ % ทุกตัวบนใบ
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%/);
 });
