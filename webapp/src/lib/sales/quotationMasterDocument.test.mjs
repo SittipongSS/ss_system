@@ -203,8 +203,10 @@ test('V4 doc: มีส่วนลดรายบรรทัด = โชว์
   assert.match(html, /<th class="number">ส่วนลด<\/th>/);
   assert.match(html, /<table class="itemTable withLineDiscount">/);
   assert.ok(html.includes('-50.00'), 'ส่วนลดบรรทัดแรกแสดงเป็นยอดที่หัก');
-  assert.match(html, /class="itemDiscountRate">5%/, 'ส่วนลดแบบ % กำกับอัตราไว้');
   assert.ok(html.includes('-200.00'), 'ส่วนลดบรรทัดสองแสดงเป็นยอดที่หัก');
+  // ยอดเงินอย่างเดียว — ไม่กำกับอัตรา % ในช่องส่วนลดของบรรทัด (มติผู้ใช้ 2026-08-11)
+  assert.doesNotMatch(html, /class="itemDiscountRate"/, 'ไม่มีป้ายอัตราในช่องส่วนลด');
+  assert.doesNotMatch(html, /<td class="number">-50\.00[^<]*5%/, 'ไม่มี % ต่อท้ายยอดที่หัก');
   assert.ok(html.includes('950.00') && html.includes('800.00'), 'จำนวนเงินคือยอดหลังหักส่วนลด');
 });
 
@@ -220,8 +222,9 @@ test('V4 doc: ใบหลายหน้า หัวตารางมีค�
   assert.ok(!html.includes('<table class="itemTable">'), 'ไม่มีตารางแบบไม่มีส่วนลดปนมา');
 });
 
-test('V4 doc: ใบเก่าที่เก็บ % เกิน 100 ไว้ ต้องพิมพ์ป้ายไม่เกิน 100% (ให้ตรงกับยอดที่หักจริง)', () => {
-  // แถวก่อนมี clamp ฝั่งบันทึก: discountValue 150 แต่ยอดที่หักได้จริงคือ 100% ของฐาน
+test('V4 doc: ส่วนลดท้ายใบที่เก็บ % เกิน 100 ไว้ ต้องพิมพ์ป้ายไม่เกิน 100% (ให้ตรงกับยอดที่หักจริง)', () => {
+  // แถวก่อนมี clamp ฝั่งบันทึก: เก็บ 250% ไว้ แต่ยอดที่หักได้จริงคือ 100% ของฐาน
+  // (ช่องส่วนลดรายบรรทัดพิมพ์ยอดเงินอย่างเดียว จึงไม่มีอัตราให้ขัดกันตั้งแต่ต้น)
   const q = {
     ...baseQuote([lineOf('1', {
       discountType: 'percent', discountValue: 150, discountAmount: 500, lineTotal: 500,
@@ -230,8 +233,7 @@ test('V4 doc: ใบเก่าที่เก็บ % เกิน 100 ไว�
   };
   const html = buildQuotationMasterHTML(q, {});
   // เทียบเฉพาะจุดที่พิมพ์อัตรา — เลข 150/250 โผล่ในพาธของโลโก้ SVG ได้ ไม่เกี่ยวกัน
-  assert.match(html, /class="itemDiscountRate">100%/, 'ป้ายรายบรรทัดตัดที่ 100%');
-  assert.doesNotMatch(html, /class="itemDiscountRate">150%/, 'ไม่พิมพ์ค่าดิบของบรรทัด');
   assert.match(html, /หัก ส่วนลด 100%/, 'ป้ายส่วนลดท้ายใบตัดที่ 100%');
   assert.doesNotMatch(html, /หัก ส่วนลด 250%/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
+  assert.doesNotMatch(html, /class="itemDiscountRate"/, 'บรรทัดไม่พิมพ์อัตราเลย');
 });
