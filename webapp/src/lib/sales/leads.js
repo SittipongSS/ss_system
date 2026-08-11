@@ -337,3 +337,24 @@ export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
   if (d == null || d < 0) return null;
   return d <= limitDays;
 }
+
+/** SLA ของ "หนึ่งด่าน" — คืน { checked, hit } ของลีดที่**ผ่านด่านนั้นไปแล้ว**
+ *
+ *  ทั้งสามด่านของเส้นทางลีดวัดด้วยกติกาเดียวกันเป๊ะ ต่างกันแค่คู่ timestamp:
+ *    คัดกรอง   createdAt  → screenedAt      (หัวหน้าฝ่ายขายเลือกทีม)
+ *    กระจาย    screenedAt → assignedAt      (Senior AE เลือก AE)
+ *    ติดต่อกลับ assignedAt → firstContactAt  (AE ติดต่อลูกค้าครั้งแรก)
+ *
+ *  ⚠️ `checked` นับเฉพาะใบที่มี **ทั้งสองเวลา** — ใบที่ยังไม่ถึงด่านถัดไปเป็น "ค้าง"
+ *  ไม่ใช่ "พลาด" (ของค้างนับแยกจาก countLeadsByStatus ซึ่งดูสถานะ ณ ตอนนี้)
+ *  ⚠️ `hit` เทียบ `=== true` ไม่ใช่ truthy — slaHit คืน null เมื่อข้อมูลเวลาผิดลำดับ
+ *  ซึ่งต้องไม่ถูกนับเป็นทัน (ดูคอมเมนต์ใน slaHit)
+ *
+ *  แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพราะกติกาอยู่ในไฟล์ route แล้วเทสต์เข้าไม่ถึง
+ *  (ท่าเดียวกับ meetingTimesSinceBounce / pickNextMeetingAt ข้างบน)
+ */
+export function slaStage(rows, fromKey, toKey, holidays, limitDays = 1) {
+  const checked = (rows || []).filter((l) => l?.[fromKey] && l?.[toKey]);
+  const hit = checked.filter((l) => slaHit(l[fromKey], l[toKey], holidays, limitDays) === true);
+  return { checked: checked.length, hit: hit.length };
+}
