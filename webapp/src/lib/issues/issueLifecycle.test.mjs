@@ -148,3 +148,28 @@ test('คิวเรียงตามผลกระทบก่อน แล�
   ]);
   assert.deepEqual(queue.map((r) => r.id), ['b', 'a', 'd', 'c']);
 });
+
+// ── เรียงคิว: เรื่องที่จบแล้วต้องไม่ลอยเหนือเรื่องที่ยังไม่มีใครรับ (2026-08-11) ──
+//
+// 🐞 ของจริงที่เห็นในระบบ: IS-26080002 ถูกปฏิเสธไปแล้วแต่ตั้งไว้เป็น `blocked`
+// ⇒ ลอยอยู่บนสุดของแท็บ "ทั้งหมด" เหนือเรื่องที่ยังไม่มีใครรับ
+test('เรื่องที่ปิด/ปฏิเสธแล้วไปท้ายเสมอ แม้ผลกระทบจะแรงกว่า', () => {
+  const rows = [
+    { code: 'ปิดแล้ว-blocked', status: 'closed', impact: 'blocked', createdAt: '2026-08-01T00:00:00Z' },
+    { code: 'ปฏิเสธ-blocked', status: 'rejected', impact: 'blocked', createdAt: '2026-08-02T00:00:00Z' },
+    { code: 'ค้าง-minor', status: 'pending', impact: 'minor', createdAt: '2026-08-03T00:00:00Z' },
+    { code: 'ค้าง-blocked', status: 'pending', impact: 'blocked', createdAt: '2026-08-04T00:00:00Z' },
+  ];
+  assert.deepEqual(
+    sortIssueQueue(rows).map((r) => r.code),
+    ['ค้าง-blocked', 'ค้าง-minor', 'ปฏิเสธ-blocked', 'ปิดแล้ว-blocked'],
+  );
+});
+
+test('ในกลุ่มที่ยังเดินอยู่ ผลกระทบยังมาก่อนเวลาเหมือนเดิม', () => {
+  const rows = [
+    { code: 'ใหม่-minor', status: 'pending', impact: 'minor', createdAt: '2026-08-10T00:00:00Z' },
+    { code: 'เก่า-blocked', status: 'acknowledged', impact: 'blocked', createdAt: '2026-08-01T00:00:00Z' },
+  ];
+  assert.deepEqual(sortIssueQueue(rows).map((r) => r.code), ['เก่า-blocked', 'ใหม่-minor']);
+});

@@ -61,32 +61,41 @@ export default function SupportPage() {
   const [reporting, setReporting] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
-  // ผู้ใช้ทั่วไปได้เรื่องของตัวเองทั้งหมดในคำขอเดียว (ไม่มีแท็บให้สลับ)
-  // แอดมินดึง "ที่ยังเดินอยู่" ก้อนเดียวแล้วแยกถังในหน้า — ตัวเลขบนการ์ดกับรายการ
-  // จึงมาจากข้อมูลชุดเดียวกันเสมอ ไม่มีทางขัดกันเอง
+  const fetchIssues = async (url) => {
+    const res = await fetch(url, { cache: "no-store" });
+    // ⚠️ **ห้ามกลืน error เป็นลิสต์ว่าง** — ของเดิมทำ `r.ok ? r.json() : { items: [] }`
+    // ⇒ API ล่มแล้วหน้าขึ้นว่า "ไม่มีเรื่องในถังนี้" · แอดมินอ่านว่าไม่มีงานค้าง
+    if (!res.ok) throw new Error(await describeResponseError(res, "โหลดรายการไม่สำเร็จ"));
+    const body = await res.json().catch(() => ({}));
+    return body.items || [];
+  };
+
+  /* ⭐ **โหลดรอบเดียวจบทั้งหน้า ผูกกับแท็บด้วย** (2026-08-11)
+     ผู้ใช้ทั่วไปได้เรื่องของตัวเองทั้งหมดในคำขอเดียว (ไม่มีแท็บให้สลับ) · แอดมินดึง
+     "ที่ยังเดินอยู่" ไว้ทำตัวเลขการ์ดเสมอ แล้วดึงก้อนของแท็บ "ทั้งหมด/ที่ฉันรับผิดชอบ"
+     เพิ่มเมื่ออยู่แท็บนั้น
+
+     🐞 **สองบั๊กที่ปิดพร้อมกันตรงนี้**
+     1. ของเดิม `load()` ล้าง `extra` เป็น null แต่ effect ที่ดึง `extra` ผูกกับ
+        `[admin, tab]` เท่านั้น ⇒ กด "รับเรื่อง" หรือแจ้งเรื่องใหม่ขณะอยู่แท็บ
+        "ทั้งหมด" แล้วรายการกลายเป็นว่างจนกว่าจะสลับแท็บไปกลับ
+     2. การดึงของแท็บไม่มี `loading` ของตัวเอง ⇒ สลับแท็บแล้วเห็น "ไม่มีเรื่องในถังนี้"
+        แวบหนึ่งก่อนข้อมูลมา */
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(admin ? "/api/issues?status=open" : "/api/issues", { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "โหลดรายการไม่สำเร็จ");
-      setOpen(body.items || []);
-      setExtra(null);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
-  }, [admin]);
-  useEffect(() => { load(); }, [load]);
-
-  // สองแท็บนี้ถามฝั่ง server ต่างหาก (ปิดแล้ว/ของฉัน ไม่อยู่ในก้อน open)
-  useEffect(() => {
-    if (!admin || (tab !== "all" && tab !== "mine")) return;
-    let alive = true;
-    setExtra(null);
-    fetch(tab === "all" ? "/api/issues" : "/api/issues?mine=1", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => { if (alive) setExtra(d.items || []); })
-      .catch(() => { if (alive) setExtra([]); });
-    return () => { alive = false; };
+      const openItems = await fetchIssues(admin ? "/api/issues?status=open" : "/api/issues");
+      setOpen(openItems);
+      if (admin && (tab === "all" || tab === "mine")) {
+        setExtra(await fetchIssues(tab === "all" ? "/api/issues" : "/api/issues?mine=1"));
+      } else {
+        setExtra(null);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally { setLoading(false); }
   }, [admin, tab]);
+  useEffect(() => { load(); }, [load]);
 
   const counts = useMemo(() => ({
     pending: open.filter((r) => r.status === "pending").length,
@@ -95,6 +104,8 @@ export default function SupportPage() {
     blocked: open.filter((r) => r.impact === "blocked").length,
   }), [open]);
 
+  // ⚠️ `extra === null` = ยังไม่ได้โหลดก้อนของแท็บนี้ (คนละเรื่องกับ "โหลดแล้วไม่มีของ")
+  // — ตอนกำลังโหลดจะถูกโครง `loading` ของ Workspace บังอยู่แล้ว
   const rows = !admin ? open
     : tab === "all" || tab === "mine" ? (extra || [])
       : open.filter((r) => r.status === tab);
