@@ -99,6 +99,9 @@ export async function GET(request, { params }) {
       // ไม่มี user.id ⇒ ตัดสินเองไม่ได้ · เคยพลาดมาแล้วตอนแยกด่านคำร้อง (#1016)
       {
         ...row,
+        // ⚠️ **ที่นี่ `_mine` = "จัดการใบนี้ได้"** (เจ้าของใบ · เพื่อนร่วมทีม · admin)
+        // ไม่ใช่ "ฉันเปิดเอง" — หน้ารายละเอียดใช้ธงนี้ตัดสินว่าจะโชว์ปุ่มไหน ส่วน
+        // รายการใช้ชื่อเดียวกันแทน "ฉันเปิดเอง" (ดูคอมเมนต์ที่ route ของรายการ)
         _mine: canManageRequest(user, row),
         _canApprove: !approveRequestError(row, user),
         _canEditPdr: canEditPdr(user, row),
@@ -130,7 +133,7 @@ export async function PATCH(request, { params }) {
   try {
     if (action === 'submit') {
       if (!canManageRequest(user, before)) {
-        return Response.json({ error: 'ส่งคำร้องได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });
+        return Response.json({ error: 'ส่งคำร้องได้เฉพาะผู้เปิดเรื่องหรือคนในทีมเดียวกัน' }, { status: 403 });
       }
       const err = submitRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });

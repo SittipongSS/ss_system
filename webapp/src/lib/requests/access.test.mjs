@@ -10,7 +10,7 @@ import {
   REQUEST_ANSWER_DEPARTMENTS, ROLES, canAnswerRequestsFor, canViewCosting, canViewRequests,
 } from '../permissions.js';
 import { REQUEST_DEPTS } from '../master/requestTypes.js';
-import { canAnswerRequest } from './access.js';
+import { canAnswerRequest, canManageRequest, canReadRequestRow, canViewRequest } from './access.js';
 
 // ฝ่ายที่ role `staff` ครอบ — ต้องลองให้ครบ ไม่ใช่แค่ RD/PC ที่รู้ว่าผ่าน
 const STAFF_DEPARTMENTS = ['PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
@@ -103,4 +103,51 @@ test('ratchet: ระบบคำร้องห้ามถาม "ตอบร
     // อนุญาตในคอมเมนต์ (อธิบายของเดิม) แต่ห้ามเรียกจริง
     assert.ok(!/canQuoteMaterial\(/.test(src), `${file}: ยังเรียก canQuoteMaterial อยู่`);
   }
+});
+
+// ── ทีมเดียวกัน = ใบเดียวกัน (มติผู้ใช้ 2026-08-11) ───────────────────────
+//
+// 🐞 อาการที่ผู้ใช้แจ้ง: คิวมีขอบเขต "ทีม" ให้เลือกอยู่แล้ว ⇒ เห็นแถวของเพื่อนร่วมทีม
+// แต่กดเปิดใบไม่ได้ เพราะด่านรายแถวยังเป็น "ของตัวเองเท่านั้น" ⇒ 403 กลางทาง
+const owner = { id: 'USR-OWNER', role: 'ae', team: 'SV' };
+const teammate = { id: 'USR-MATE', role: 'ac', team: 'SV' };
+const otherTeam = { id: 'USR-KA', role: 'ae', team: 'KA' };
+const multiTeam = { id: 'USR-MULTI', role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] };
+const rdStaff = { id: 'USR-RD', role: 'rd' };
+const svRequest = { requestedById: 'USR-OWNER', team: 'SV', dept: 'RD', status: 'pending' };
+
+test('เพื่อนร่วมทีมทำแทนกันได้ทุกอย่าง — ไม่ใช่แค่มองเห็น', () => {
+  assert.equal(canManageRequest(teammate, svRequest), true);
+  assert.equal(canViewRequest(teammate, svRequest), true);
+  assert.equal(canReadRequestRow(teammate, svRequest), true);
+});
+
+test('คนละทีมยังเข้าไม่ได้ — ขอบเขตคือทีม ไม่ใช่ทั้งฝ่ายขาย', () => {
+  assert.equal(canManageRequest(otherTeam, svRequest), false);
+  assert.equal(canReadRequestRow(otherTeam, svRequest), false);
+});
+
+test('คนอยู่หลายทีมเห็นของทุกทีมที่สังกัด (#1122)', () => {
+  assert.equal(canManageRequest(multiTeam, svRequest), true);
+  assert.equal(canManageRequest(multiTeam, { ...svRequest, team: 'KA' }), false);
+});
+
+test('⚠️ ใบไม่มีทีม ต้องไม่กลายเป็นใบสาธารณะ', () => {
+  // ใบที่แอดมินหรือฝ่ายอื่นเปิด (`team` ว่าง) กับผู้ใช้ที่ไม่มีทีม (RD/PC) จะ "ตรงกัน"
+  // ทันทีถ้าปล่อยให้ null เทียบ null ผ่าน — ช่องรั่วที่เงียบที่สุดของด่านแบบนี้
+  const noTeamRequest = { requestedById: 'USR-ADMIN', team: null, dept: 'RD' };
+  assert.equal(canManageRequest(teammate, noTeamRequest), false);
+  assert.equal(canManageRequest(rdStaff, noTeamRequest), false);
+  assert.equal(canManageRequest({ id: 'USR-X', role: 'ae' }, { requestedById: 'USR-Y', team: '' }), false);
+});
+
+test('เจ้าของใบยังทำได้เหมือนเดิม และฝ่ายที่ต้องตอบยังอ่านได้ตามเดิม', () => {
+  assert.equal(canManageRequest(owner, svRequest), true);
+  assert.equal(canManageRequest(rdStaff, svRequest), false, 'ฝ่ายที่ตอบไม่ใช่เจ้าของใบ');
+  assert.equal(canReadRequestRow(rdStaff, svRequest), true, 'แต่ต้องอ่านใบที่ส่งถึงฝ่ายตัวเองได้');
+});
+
+test('ไม่ได้ล็อกอิน = ไม่ได้อะไรเลย แม้ใบจะมีทีมตรงกัน', () => {
+  assert.equal(canManageRequest(null, svRequest), false);
+  assert.equal(canManageRequest({ role: 'ae', team: 'SV' }, svRequest), false, 'ไม่มี id = ไม่ใช่คน');
 });
