@@ -11,6 +11,7 @@
 // ส่งมาอยู่แล้ว (`items` · `acknowledgedById/Name` · `committedDueDate` · `closedAt`)
 import { requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
 import { FACET_NONE } from '@/lib/requests/queueList';
+import { requestAssignee } from '@/lib/requests/assign';
 
 /* คีย์ของกองที่ยังไม่มีใครรับ — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันเป็นแถวหนึ่ง
    ในตารางเดียวกับคน (กองที่ต้องแจกก่อนอย่างอื่น)
@@ -30,7 +31,10 @@ export const UNASSIGNED = FACET_NONE;
  */
 export const requestLineCount = (request) => (Array.isArray(request?.items) ? request.items.length : 0);
 
-const nameOf = (request) => String(request?.acknowledgedByName || '').trim();
+// ⚠️ **ที่เดียวที่ตัดสินว่าใบอยู่ที่ใคร** คือ `requestAssignee` — ผู้รับผิดชอบก่อน
+// แล้วถอยไปคนที่กดรับเรื่อง (mig 0230) · เขียนกฎถอยหลังซ้ำที่นี่เมื่อไร ตารางคน
+// กับตัวกรองในคิวจะเริ่มตอบไม่ตรงกัน
+const nameOf = (request) => requestAssignee(request).name;
 
 /**
  * งานค้างรายคน — คืนแถวเรียงจากคนที่ถือเยอะสุด · กอง "ยังไม่มีคนรับ" ต่อท้ายเสมอ
@@ -45,10 +49,11 @@ const nameOf = (request) => String(request?.acknowledgedByName || '').trim();
 export function ownerWorkload(rows = [], { todayIso = null } = {}) {
   const map = new Map();
   for (const request of rows) {
-    const key = request?.acknowledgedById || (nameOf(request) ? nameOf(request).toLocaleLowerCase('th-TH') : UNASSIGNED);
+    const who = requestAssignee(request);
+    const key = who.id || (who.name ? who.name.toLocaleLowerCase('th-TH') : UNASSIGNED);
     const bucket = map.get(key) || {
       key,
-      name: key === UNASSIGNED ? 'ยังไม่มีคนรับ' : (nameOf(request) || 'ผู้รับเรื่อง'),
+      name: key === UNASSIGNED ? 'ยังไม่มีคนรับ' : (who.name || 'ผู้รับผิดชอบ'),
       unassigned: key === UNASSIGNED,
       requests: 0,
       lines: 0,

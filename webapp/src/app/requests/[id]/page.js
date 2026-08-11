@@ -7,12 +7,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2,
+  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PersonSelect from "@/components/ui/PersonSelect";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { personFullName } from "@/lib/ui/personName";
+import { requestAssignee } from "@/lib/requests/assign";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
@@ -131,6 +135,17 @@ export default function RequestDetailPage() {
   const [ackDue, setAckDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
+  /* ⭐ มอบหมายผู้รับผิดชอบ (mig 0230) — `null` = ปิดโมดัล · สตริง = id ที่เลือกอยู่
+     (สตริงว่าง = "ยังไม่ระบุ" ซึ่งแปลว่าถอนการมอบหมาย) */
+  const [assign, setAssign] = useState(null);
+  /* ⚠️ ชื่อ `directory` ไม่ใช่ `people` — `people` ถูกใช้ไปแล้วกับ **แถวคนบนหัวใบ**
+     (`requestHeaderPeople`) ซึ่งเป็นคนละเรื่องกันสิ้นเชิง
+     ⚠️ `usePeopleDirectory` รวมคนที่ปิดบัญชีแล้วด้วย (ใบเก่าต้องอ่านชื่อออก) —
+     ตัวเลือกในโมดัลจึงกรองเฉพาะคนที่ยังใช้งานอยู่ ไม่งั้นมอบงานให้คนที่ลาออกได้ */
+  const directory = usePeopleDirectory();
+  // ใบนี้อยู่ที่ใคร — ผู้รับผิดชอบก่อน แล้วถอยไปคนที่กดรับเรื่อง (กฎเดียวกับคิว)
+  const assignee = requestAssignee(req || {});
+  const activePeople = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
   const [editDraft, setEditDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
@@ -707,6 +722,18 @@ export default function RequestDetailPage() {
         // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
         visible: canAnswer && !!req.acknowledgedAt,
       },
+      {
+        /* ⭐ **มอบหมายผู้รับผิดชอบ** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่อง
+           กับ "รับเรื่อง": รับเรื่อง = ฝ่ายรับปากกับผู้ขอ · มอบหมาย = จัดคนในฝ่าย
+           ⚠️ เห็นตั้งแต่ใบยังไม่ถูกรับเรื่อง (ต่างจากเลื่อนวัน) — หัวหน้าแจกงาน
+           ก่อนใครกดรับได้ และนั่นคือลำดับที่ใช้จริง */
+        id: "assign",
+        label: assignee.name ? `เปลี่ยนผู้รับผิดชอบ (${assignee.name})` : "มอบหมายผู้รับผิดชอบ",
+        kind: "edit",
+        icon: UserPlus,
+        onClick: () => setAssign(req.assigneeId || ""),
+        visible: canAnswer,
+      },
     ],
     dangerActions: editing ? [] : [
       {
@@ -1185,6 +1212,54 @@ export default function RequestDetailPage() {
                 }, "เลื่อนวันแล้ว").then((ok) => { if (ok) setReschedule(null); })}
               >
                 บันทึกวันใหม่
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* มอบหมายผู้รับผิดชอบ — ช่องเลือกคนตัวกลางของระบบ (`PersonSelect`)
+          ⚠️ **เลือก "ยังไม่ระบุ" = ถอนการมอบหมาย** ไม่ใช่ปิดโมดัลเฉย ๆ — คนลาออก/
+          ลาป่วยต้องเอางานออกจากมือได้ ไม่งั้นเขาค้างเป็นเจ้าของงานถาวร
+          ⚠️ รายชื่อไม่กรองด้วยฝ่ายโดยตั้งใจ — งานข้ามฝ่ายมีจริง (RD ยืมคน QC มาช่วยดม)
+          และการบล็อกจะบังคับให้ต้องไปแก้ทะเบียนก่อนถึงจะทำงานได้ */}
+      <Modal
+        open={assign !== null} onClose={() => setAssign(null)} size="sm" dismissible={!saving}
+        title="มอบหมายผู้รับผิดชอบ"
+      >
+        {assign !== null && (
+          <>
+            <div className="form-group">
+              <label htmlFor="assign-who">ผู้รับผิดชอบ</label>
+              <PersonSelect
+                id="assign-who" users={activePeople} value={assign} disabled={saving}
+                emptyLabel="ยังไม่ระบุ (ถอนการมอบหมาย)"
+                onChange={(v) => setAssign(v || "")}
+              />
+              <small className={styles.hint}>
+                {req.acknowledgedByName
+                  ? `ผู้กดรับเรื่อง: ${req.acknowledgedByName} — คนละช่องกับผู้รับผิดชอบ`
+                  : "ยังไม่มีใครกดรับเรื่อง — มอบหมายไว้ก่อนได้"}
+              </small>
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setAssign(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || assign === (req.assigneeId || "")}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    action: "assign",
+                    assigneeId: assign || null,
+                    // ชื่อ ณ ตอนมอบหมาย — snapshot แบบเดียวกับ `acknowledgedByName`
+                    assigneeName: assign
+                      ? (personFullName(activePeople.find((u) => u.id === assign)) || null)
+                      : null,
+                  }),
+                }, assign ? "มอบหมายแล้ว" : "ถอนการมอบหมายแล้ว").then((ok) => { if (ok) setAssign(null); })}
+              >
+                {assign ? "มอบหมาย" : "ถอนการมอบหมาย"}
               </Button>
             </div>
           </>

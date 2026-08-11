@@ -13,6 +13,7 @@ import {
 } from '@/lib/forceDelete';
 import { randomUUID } from 'crypto';
 import { approveRequestError } from '@/lib/requests/approval';
+import { assignPatch, assignRequestError } from '@/lib/requests/assign';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
@@ -324,6 +325,31 @@ export async function PATCH(request, { params }) {
       // ต้องเห็นว่าเลื่อนไปกี่ครั้งและครั้งละกี่วัน โดยไม่ต้องไปขุด audit log
       summary = `เลื่อนวันกำหนดส่ง ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
         + (reason ? ` — ${reason}` : '');
+    } else if (action === 'assign') {
+      /* ⭐ **มอบหมายให้คนในฝ่าย** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่องกับ
+         "รับเรื่อง": รับเรื่องคือคำสัญญาของ *ฝ่าย* ต่อผู้ขอ · มอบหมายคือการจัดคน
+         *ในฝ่าย* ซึ่งเปลี่ยนได้หลายรอบระหว่างทาง
+         ⚠️ สิทธิ์เดียวกับการตอบ (`canAnswerRequest`) — คนนอกฝ่ายจัดคนในฝ่ายอื่นไม่ได้
+         ⚠️ **ไม่ตรวจว่าคนที่ถูกมอบหมายอยู่ฝ่ายนี้จริงไหม** โดยตั้งใจ — งานข้ามฝ่าย
+         มีจริง (RD ยืมคน QC มาช่วยดม) และการบล็อกจะทำให้ต้องแก้ทะเบียนก่อนทำงาน */
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `มอบหมายได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = assignRequestError(before, {
+        assigneeId: body.assigneeId ?? null,
+        assigneeName: body.assigneeName ?? null,
+      });
+      if (err) return Response.json({ error: err }, { status: 409 });
+      Object.assign(patch, assignPatch({
+        assigneeId: body.assigneeId ?? null,
+        assigneeName: body.assigneeName ?? null,
+        by: user,
+        nowIso,
+      }));
+      // ⚠️ ลงเธรดเสมอ รวมตอน **ถอน** — "ทำไมงานกลับมาอยู่กองกลาง" ต้องตามได้
+      summary = patch.assigneeId || patch.assigneeName
+        ? `มอบหมายให้ ${patch.assigneeName || patch.assigneeId}`
+        : `ถอนการมอบหมาย${before.assigneeName ? ` (เดิม ${before.assigneeName})` : ''}`;
     } else if (action === 'approve') {
       // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — RD รับเรื่องแล้ว แต่ลงมือไม่ได้จนกว่า
       // หัวหน้าจะยืนยัน · ด่านทั้งชุดอยู่ที่ lib/requests/approval.js ที่เดียว
@@ -442,6 +468,9 @@ export async function PATCH(request, { params }) {
         reason: patch.cancelReason ?? patch.bounceReason ?? eventReason,
         // วันเดิมก่อนเลื่อน — อ่านจาก `before` เพราะ `after` ถูกทับไปแล้ว
         previousDueDate: before.committedDueDate ?? null,
+        // ⚠️ อ่านจาก `patch` ไม่ใช่ `body` — ตอนถอนมอบหมาย `patch` เป็น null ชัดเจน
+        // ส่วน body อาจไม่ส่งคีย์มาเลย แล้วเธรดจะเขียนว่า "มอบหมายให้ undefined"
+        assigneeName: patch.assigneeName ?? null,
       },
       user,
       mentions,

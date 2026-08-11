@@ -18,7 +18,7 @@ const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
 // ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
-export function askActionUpdate(action, ask, { reason = null, previousDueDate = null } = {}) {
+export function askActionUpdate(action, ask, { reason = null, previousDueDate = null, assigneeName = null } = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';
   if (action === 'submit') {
@@ -70,6 +70,16 @@ export function askActionUpdate(action, ask, { reason = null, previousDueDate = 
   }
   // แก้ข้อมูลใบหลังส่งแล้ว — สถานะ `pending` แปลว่าใบอยู่บนคิวฝ่ายปลายทางแล้ว
   // คนที่กำลังจะรับเรื่องต้องรู้ว่าเนื้อในเปลี่ยน (ดู lib/requests/requestEdit.js)
+  /* ⭐ มอบหมาย/ถอนมอบหมาย (mig 0230) — ต้องลงเธรดทั้งสองทาง · "ทำไมงานกลับมาอยู่
+     กองกลาง" ตามไม่ได้เลยถ้าลงแค่ตอนมอบ */
+  if (action === 'assign') {
+    const name = String(assigneeName || '').trim();
+    return {
+      kind: 'assign',
+      body: name ? `มอบหมายให้ ${name}` : 'ถอนการมอบหมาย — งานกลับไปอยู่กองกลางของฝ่าย',
+      meta: { dept },
+    };
+  }
   if (action === 'update') {
     return {
       kind: 'update',
