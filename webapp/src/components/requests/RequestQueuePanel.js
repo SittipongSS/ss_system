@@ -197,6 +197,9 @@ export default function RequestQueuePanel({
                 ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
               ].filter(Boolean).join(" · ")}
+              {/* รหัสลูกค้าเกาะท้ายชื่อกิจการเสมอ ไม่ว่าชื่อจะอยู่บรรทัดหลัก
+                  (ใบที่ไม่มีเรื่อง) หรือบรรทัดรอง — ตัวเชื่อมกับรหัสกลิ่น/MU */}
+              {ask.customerArCode ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
               {cols.includes("dept") ? "" : ` → ${ask.dept}`}
             </div>
           </>
@@ -365,7 +368,9 @@ export default function RequestQueuePanel({
                 onClick={() => toggleGroup?.(g.key)} aria-expanded={!isCollapsed(g.key)}
               >
                 {isCollapsed(g.key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                {g.label} · {g.rows.length}
+                {g.label}
+                {g.sub ? <span className={styles.arCode}>{g.sub}</span> : null}
+                {` · ${g.rows.length}`}
               </button>
               )}
               {!isCollapsed(g.key) && g.rows.map((ask) => {
@@ -402,6 +407,7 @@ export default function RequestQueuePanel({
                         ask.title && ask.customerName ? ask.customerName : null,
                         ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
                       ].filter(Boolean).join(" · ")}
+                      {ask.customerArCode ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
                       {` → ${ask.dept}`}
                     </span>
                     {/* ⭐ ใบตีกลับบอกใครส่งคืนและเพราะอะไรตั้งแต่ในการ์ด (2026-08-11) */}
@@ -466,6 +472,7 @@ export default function RequestQueuePanel({
                       >
                         {isCollapsed(g.key) ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                         <strong>{g.label}</strong>
+                        {g.sub ? <span className={styles.arCode}>{g.sub}</span> : null}
                         <span className="ui-badge">{g.rows.length} {unit}</span>
                       </button>
                     </td>

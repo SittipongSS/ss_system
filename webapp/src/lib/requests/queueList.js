@@ -27,11 +27,14 @@ export const REQUEST_GROUP_OPTIONS = [
 ];
 
 /**
- * มิติหนึ่งของคำร้องหนึ่งใบ — คืน `{ key, label }` เสมอ (ไม่มีเคสคืน null)
+ * มิติหนึ่งของคำร้องหนึ่งใบ — คืน `{ key, label, sub? }` เสมอ (ไม่มีเคสคืน null)
  *
  * ⚠️ `key` ใช้เทียบ ส่วน `label` ใช้แสดง — ห้ามเอา label ไปเป็นคีย์ เพราะชื่อลูกค้า
  * ที่พิมพ์คนละแบบ ("บจก. A" / "บริษัท A") จะกลายเป็นสองกลุ่มทั้งที่เป็นรายเดียวกัน
  * ⇒ ลูกค้าเทียบด้วย `customerId` ก่อนเสมอ แล้วค่อยถอยไปใช้ชื่อที่ normalize แล้ว
+ *
+ * `sub` = บรรทัดเล็กใต้ป้าย (รหัส AR ของลูกค้า) — ไม่ใช่ส่วนหนึ่งของคีย์ ⇒ ลูกค้าที่
+ * ยังไม่ได้ออกรหัสยังรวมกลุ่มเดียวกับใบเก่าของตัวเองตามเดิม
  */
 export function requestFacet(request = {}, dimension) {
   if (dimension === 'dept') {
@@ -47,8 +50,9 @@ export function requestFacet(request = {}, dimension) {
   if (dimension === 'customer') {
     const id = request.customerId || null;
     const name = String(request.customerName || '').trim();
-    if (id) return { key: String(id), label: name || 'ลูกค้า (ไม่มีชื่อ)' };
-    if (name) return { key: name.toLocaleLowerCase('th-TH'), label: name };
+    const sub = String(request.customerArCode || '').trim() || null;
+    if (id) return { key: String(id), label: name || 'ลูกค้า (ไม่มีชื่อ)', sub };
+    if (name) return { key: name.toLocaleLowerCase('th-TH'), label: name, sub };
     return { key: FACET_NONE, label: 'ไม่ระบุลูกค้า' };
   }
   if (dimension === 'project') {
@@ -85,17 +89,19 @@ export function requestFacet(request = {}, dimension) {
 export function requestFacetOptions(rows = [], dimension) {
   const map = new Map();
   for (const row of rows) {
-    const { key, label } = requestFacet(row, dimension);
+    const { key, label, sub } = requestFacet(row, dimension);
     const found = map.get(key);
-    if (found) found.count += 1;
-    else map.set(key, { value: key, label, count: 1, missing: key === FACET_NONE });
+    if (found) { found.count += 1; if (!found.sub && sub) found.sub = sub; }
+    else map.set(key, { value: key, label, sub: sub || null, count: 1, missing: key === FACET_NONE });
   }
   return [...map.values()]
     .sort((a, b) => {
       if (a.missing !== b.missing) return a.missing ? 1 : -1;
       return a.label.localeCompare(b.label, 'th');
     })
-    .map(({ value, label, count }) => ({ value, label: `${label} (${count})` }));
+    // ⚠️ รหัส AR ต่อท้ายป้ายในเมนูกรอง ไม่ใช่บรรทัดใหม่ — รายการเลือกเป็นบรรทัดเดียว
+    // ต่อรายการอยู่แล้ว และคนเปิดเมนูนี้กำลัง "หาให้เจอ" ไม่ได้กำลังอ่านรายละเอียด
+    .map(({ value, label, sub, count }) => ({ value, label: `${label}${sub ? ` · ${sub}` : ''} (${count})` }));
 }
 
 /**
@@ -176,8 +182,10 @@ export function groupRequestRows(rows = [], dimension) {
   if (!dimension || dimension === 'none') return null;
   const map = new Map();
   for (const row of rows) {
-    const { key, label } = requestFacet(row, dimension);
-    const group = map.get(key) || { key, label, rows: [], missing: key === FACET_NONE };
+    const { key, label, sub } = requestFacet(row, dimension);
+    const group = map.get(key) || { key, label, sub: sub || null, rows: [], missing: key === FACET_NONE };
+    // ใบเก่าของลูกค้ารายเดียวกันอาจโหลดมาก่อนที่รหัสจะถูกออก — เอาค่าแรกที่เจอจริง
+    if (!group.sub && sub) group.sub = sub;
     group.rows.push(row);
     map.set(key, group);
   }

@@ -74,6 +74,8 @@ export function matchesQueueSearch(request, term, { kindLabel = () => '' } = {})
     request?.docNo,
     request?.title,
     request?.customerName,
+    // รหัสลูกค้า (AR) — ตาเห็นบนแถวแล้ว จึงต้องค้นเจอด้วย (กฎของฟังก์ชันนี้)
+    request?.customerArCode,
     request?.formulaCode,
     kindLabel(request?.kind),
     request?.dept,
