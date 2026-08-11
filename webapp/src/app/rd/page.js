@@ -86,7 +86,7 @@ export default function RdOverviewPage() {
     <Workspace
       icon={<FlaskConical size={22} />}
       title="ภาพรวมฝ่ายวิจัยและพัฒนา"
-      subtitle="งานที่ค้างอยู่กับฝ่าย และของที่ใกล้ถึงกำหนดที่รับปากไว้"
+      subtitle="เริ่มที่ใบไหนก่อน และหลังจากนั้นคิวเรียงยังไง"
     >
       {/* ⚠️ ระยะห่างระหว่างก้อนมาจาก `flex flex-col gap-4` แบบเดียวกับหน้าอื่นที่ใช้
           `MetricStrip` + `WorkspaceSection` (ใบสั่งขาย · โครงการ · ดีล) — ทั้ง

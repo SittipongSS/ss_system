@@ -5,10 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import { useRole } from "@/lib/roleContext";
-import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi } from "@/lib/permissions";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
+import { TAB_PERIOD, resolveDashboardTab } from "@/lib/salesPlanning/dashboardTabs";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
@@ -22,27 +22,10 @@ import SkeletonRows from "@/components/ui/Skeleton";
 // "KPI ดีล" เดิม (2026-07-18): บอร์ดประชุมเช้า + ทบยอด + เจาะรายคน/ทีม —
 // เนื้อหาทั้งหมดอยู่ใน components/salesPlanning/dashboard/performance/.
 
-const DASHBOARD_TABS = [
-  { key: "my", label: "แดชบอร์ดของฉัน" },
-  { key: "lead_kpi", label: "KPI ลีด" },
-  { key: "performance", label: "ผลงานขาย" },
-  { key: "task_kpi", label: "KPI งาน" },
-];
-
-/* ⭐ แต่ละแท็บกินช่วงเวลาคนละหน่วย — ตัวคุมบนหัวหน้าจึงต้องเปลี่ยนตามแท็บ
-   (มติผู้ใช้ 2026-08-05) ของเดิมโชว์ตัวเลือก "เดือน" ตัวเดียวทุกแท็บ ทั้งที่
-   - ผลงานขาย รับแค่ `year` (month.slice(0,4)) ⇒ เลือก ม.ค. กับ ธ.ค. ปีเดียวกัน
-     ตัวเลขไม่ขยับสักตัว
-   - KPI งาน ไม่รับอะไรเลย และถือตัวเลือกช่วงวัน from/to + ทีม ของตัวเองอยู่ข้างใน
-     ⇒ จอเดียวมีตัวคุมเวลาสองชุด ชุดบนไม่ทำอะไร
-   ⚠️ เพิ่มแท็บใหม่ต้องมาเติมที่นี่ด้วย ไม่งั้นจะได้ตัวเลือกเดือนที่อาจไม่มีผล
-   "none" = แท็บถือตัวคุมของตัวเอง หัวหน้าต้องไม่มีตัวคุมซ้อน */
-const TAB_PERIOD = {
-  my: "month",
-  lead_kpi: "month",
-  performance: "year",
-  task_kpi: "none",
-};
+/* ⭐ **ตารางแท็บ · ช่วงเวลา · สิทธิ์ ย้ายไป `lib/salesPlanning/dashboardTabs.js`**
+   (2026-08-11) — กฎ "ใครเห็นแท็บไหน" พังเงียบได้ (ตอนลบแท็บแดชบอร์ด RD เกือบทำให้
+   role rd เหลือศูนย์แท็บ) และอยู่ในไฟล์ JSX แล้วเทสต์ node เรียกไม่ได้ ⇒ ยกออกไป
+   พร้อมเทสต์ที่ยืนยันว่า **ไม่มี role ไหนเหลือศูนย์แท็บ** */
 
 export default function SalesPlanningOverviewPage() {
   return (
@@ -75,33 +58,10 @@ function DashboardContent() {
     if (t) setTab(t);
   }, [searchParams]);
 
-  /* 🔑 สิทธิ์ของแท็บตัดสิน **ที่เดียว** แล้วใช้ทั้งแถบแท็บและตัวเนื้อหา
-     ของเดิมเช็คสองที่ (filter ของแถบ + เงื่อนไขตอน render) แล้วไม่ตรงกัน:
-     - เปิดแท็บที่ไม่มีสิทธิ์ → แท็บหายจากแถบ *และ* เนื้อหาไม่ render
-       ⇒ ได้หน้าว่างเปล่าโดยไม่มีอะไรบอกว่าเกิดอะไรขึ้น
-     - `lead_kpi` ลืมใส่เงื่อนไขตอน render ⇒ คนไม่มีสิทธิ์เปิดลิงก์ตรงได้เนื้อหาจริง
-       แล้วไปตกที่ API 403 เป็นกล่อง error แทน = พฤติกรรมสองแบบของเรื่องเดียวกัน */
-  const allowedTabs = DASHBOARD_TABS.filter((t) => {
-    if (t.key === "performance") return canSeeDealKpi(role); // ผลงานขาย = สิทธิ์เดิมของ KPI ดีล
-    if (t.key === "task_kpi") return canSeeTaskKpi(role);
-    if (t.key === "lead_kpi") return canSeeLeadKpi(role);
-    /* ⭐ **แท็บ "แดชบอร์ด RD" ถูกลบทิ้ง** (มติผู้ใช้ 2026-08-11) — ภาพรวมของฝ่าย RD
-       ย้ายไปอยู่ที่โมดูลของฝ่ายเอง (`/rd`) ซึ่งตอบคำถาม "วันนี้ทำอะไรก่อน" ด้วยคิวจริง
-       แทน KPI รายเดือนที่ไม่มีใครใช้ตัดสินใจ
-       ⚠️ **ต้องปลด `role !== "rd"` ของแท็บ "ของฉัน" ไปพร้อมกัน** — เดิม rd ถูกกันออก
-       จากแท็บนั้นเพราะมีแท็บ RD ให้อยู่แล้ว · ลบแท็บ RD โดยไม่ปลดข้อนี้ = role rd
-       เปิดหน้าแดชบอร์ดแล้ว **เหลือศูนย์แท็บ** ได้จอเปล่าที่ไม่มีอะไรบอกว่าทำไม */
-    if (t.key === "my") return true;
-    return true;
-  });
-  // แท็บที่แสดงจริง = ตัวที่ขอมาถ้ามีสิทธิ์ ไม่งั้นถอยไปตัวแรกที่เปิดให้
-  // (role rd ที่เปิดหน้าเปล่า ๆ จึงตกมาที่ "แดชบอร์ด RD" เองโดยไม่ต้องมี effect เด้ง)
-  const activeTab = allowedTabs.some((t) => t.key === tab) ? tab : allowedTabs[0]?.key;
-  /* บอกเฉพาะตอนที่ผู้ใช้ **ขอแท็บนั้นมาเองทาง URL** — ไม่ใช่ตอนที่ค่าตั้งต้น "my"
-     ของ role rd ตกไปแท็บอื่น (นั่นคือพฤติกรรมปกติ ไม่ใช่การถูกปฏิเสธ) */
-  const deniedTab = normalizeTab(searchParams.get("tab")) === tab && tab !== activeTab
-    ? DASHBOARD_TABS.find((t) => t.key === tab)
-    : null;
+  /* สิทธิ์ + แท็บที่แสดงจริง + "ถูกปฏิเสธไหม" มาจากตัวเดียวที่ lib (มีเทสต์คุม)
+     ⚠️ ส่ง **state `tab`** เข้าไป ไม่ใช่อ่าน searchParams ซ้ำ — กดสลับแท็บเขียนลง state
+     อ่านจาก URL ตรง ๆ เมื่อไร ปุ่มแท็บจะกดแล้วไม่มีอะไรเกิดขึ้น */
+  const { tab: activeTab, denied: deniedTab, allowed: allowedTabs } = resolveDashboardTab(role, tab);
 
   const period = TAB_PERIOD[activeTab] || "none";
 
