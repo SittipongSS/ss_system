@@ -80,8 +80,8 @@
 .rowLink { cursor: pointer; }
 .docCell { font-weight: var(--fw-medium); }
 .urgentTag { color: var(--red); margin-left: var(--space-1-5); }
-/* ⚠️ ผู้ใช้จริงคือ RequestListCard (การ์ดคำร้องบนหน้าดีล/โครงการ) ไม่ใช่ตารางคิว —
-   ตารางคิวเลิกมีคอลัมน์ "ชนิด" แล้ว (ยุบเข้าบรรทัดรองของคอลัมน์คำร้อง) */
+/* ใช้เฉพาะชุดคอลัมน์ "linked" (หน้าดีล/โครงการ) — ชุด "queue" ยุบชนิดเข้าบรรทัดรอง
+   ของคอลัมน์คำร้องไปแล้ว (มติ 2026-08-08) */
 .kindCell { font-size: var(--fs-6); }
 .subText { font-size: var(--fs-3); color: var(--text-3); }
 .muted { color: var(--text-3); }
@@ -96,11 +96,10 @@
 .colProgress { width: 104px; }
 
 
-/* ── การ์ด "คำร้องที่ผูกกับรายการนี้" (หน้าดีล/โครงการ) ─────────────── */
-.listCard { padding: var(--space-4); }
-.listTitle { margin: 0; font-size: var(--fs-10); font-weight: var(--fw-bold); }
-.listLink { font-weight: var(--fw-bold); }
-.listEmpty { padding: var(--space-3); color: var(--text-3); font-size: var(--fs-7); }
+/* 🗑️ `.listCard` · `.listTitle` · `.listLink` · `.listEmpty` ถูกถอดทั้งชุด —
+   การ์ด "คำร้องที่ผูกกับรายการนี้" บนหน้าดีล/โครงการ เลิกเป็นตารางสำเนาที่สอง
+   แล้วใช้ `RequestQueuePanel` (ชุดคอลัมน์ "linked") ตัวเดียวกับหน้าคิว
+   (มติผู้ใช้ 2026-08-11 · แบบ ข) */
 
 /* 🗑️ `.counts` · `.filterNote` · `.clearFilter` · `.countChip` ถูกถอดทั้งชุด —
    แถบตัวเลขย้ายไป `QueueCountStrip` (MetricStrip) · ตัวสลับมุมมองขึ้นไปอยู่หัวการ์ด ·

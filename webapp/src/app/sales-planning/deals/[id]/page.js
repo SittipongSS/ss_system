@@ -40,7 +40,7 @@ import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
 import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import UiStatusBadge from "@/components/ui/StatusBadge";
-import RequestListCard from "@/components/requests/RequestListCard";
+import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
@@ -951,26 +951,40 @@ export default function DealOverviewPage() {
           )}
 
           {(tab === "inquiries" || tab === "overview") && (
-            <RequestListCard
-              requests={data.inquiries || []}
-              openHref={`/requests?dealId=${deal.id}`}
-              /* ⭐ **ทางลัดพัฒนาสูตร** (มติผู้ใช้ 2026-08-08 · ช่องว่างข้อ 1 ของแบบ) —
-                 คู่ขนานกับการ์ด "บรีฟกลิ่นของใบนี้" บนหน้าใบสั่งขาย · ต่างกันที่
-                 พัฒนาสูตรเริ่มที่ **ดีล** ไม่ใช่ SO (ม-40)
-                 ⚠️ ไม่มีโครงการ = เปิดไม่ได้ (`REQUEST_NEEDS.project` derive จากดีล) ⇒
-                 บอกเหตุผลเป็นข้อความ ไม่ใช่ปุ่มจางที่กดไม่ได้แล้วไม่บอกว่าทำไม
-                 ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — ด่านตอน POST ยังตรวจครบเหมือนเดิม */
-              quickActions={canEdit && (deal.projectId ? (
-                <Button
-                  as={Link} size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
-                  href={`/requests/new?kind=formula_dev&dealId=${encodeURIComponent(deal.id)}&projectId=${encodeURIComponent(deal.projectId)}&returnTo=${encodeURIComponent(`/sales-planning/deals/${deal.id}`)}`}
-                  title="ขอตัวอย่างจาก R&D ในนามดีลนี้ — 1 บรรทัด = หมวดสินค้า × กลิ่น"
-                >
-                  ขอตัวอย่าง (พัฒนาสูตร)
-                </Button>
-              ) : (
-                <span className="toolbar-label">ผูกโครงการก่อนถึงจะเปิดคำร้องได้</span>
-              ))}
+            /* ⭐ **ตารางคำร้องชุดเดียวกับหน้าคิว** (มติผู้ใช้ 2026-08-11 · แบบ ข) —
+               ของเดิมเป็น `RequestListCard` อีกสำเนา ที่บอกได้แค่ "สถานะ" ⇒ ใบที่
+               ถูกตีกลับขึ้นว่า "ร่าง" เหมือนใบที่ยังไม่เคยส่ง · และเรียงตามลำดับที่
+               API ส่งมาเฉย ๆ ไม่ใช่ตามความเร่งเหมือนคิว */
+            <RequestQueuePanel
+              scope="mine" rows={data.inquiries || []}
+              columns="linked" tools="none"
+              sectionTitle="คำร้องข้ามฝ่าย"
+              sectionSubtitle="เรื่องที่เปิดถึงฝ่ายอื่นในนามดีลนี้"
+              emptyText="ยังไม่มีคำร้องที่ผูกกับรายการนี้"
+              headerActions={(
+                <>
+                  {/* ⭐ **ทางลัดพัฒนาสูตร** (มติผู้ใช้ 2026-08-08 · ช่องว่างข้อ 1 ของแบบ) —
+                      คู่ขนานกับการ์ด "บรีฟกลิ่นของใบนี้" บนหน้าใบสั่งขาย · ต่างกันที่
+                      พัฒนาสูตรเริ่มที่ **ดีล** ไม่ใช่ SO (ม-40)
+                      ⚠️ ไม่มีโครงการ = เปิดไม่ได้ (`REQUEST_NEEDS.project` derive จากดีล) ⇒
+                      บอกเหตุผลเป็นข้อความ ไม่ใช่ปุ่มจางที่กดไม่ได้แล้วไม่บอกว่าทำไม
+                      ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — ด่านตอน POST ยังตรวจครบเหมือนเดิม */}
+                  {canEdit && (deal.projectId ? (
+                    <Button
+                      as={Link} size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
+                      href={`/requests/new?kind=formula_dev&dealId=${encodeURIComponent(deal.id)}&projectId=${encodeURIComponent(deal.projectId)}&returnTo=${encodeURIComponent(`/sales-planning/deals/${deal.id}`)}`}
+                      title="ขอตัวอย่างจาก R&D ในนามดีลนี้ — 1 บรรทัด = หมวดสินค้า × กลิ่น"
+                    >
+                      ขอตัวอย่าง (พัฒนาสูตร)
+                    </Button>
+                  ) : (
+                    <span className="toolbar-label">ผูกโครงการก่อนถึงจะเปิดคำร้องได้</span>
+                  ))}
+                  <Button as={Link} size="sm" href={`/requests?dealId=${deal.id}`} icon={<ExternalLink size={13} aria-hidden="true" />}>
+                    เปิดหน้าคำร้อง
+                  </Button>
+                </>
+              )}
             />
           )}
 
