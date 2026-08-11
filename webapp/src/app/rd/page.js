@@ -29,6 +29,7 @@ import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import StartHereCard from "@/components/requests/StartHereCard";
 import OwnerWorkloadPanel from "@/components/requests/OwnerWorkloadPanel";
+import DueWeekPanel from "@/components/requests/DueWeekPanel";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
 import {
@@ -170,6 +171,14 @@ export default function RdOverviewPage() {
             );
           })}
         </MetricStrip>
+      )}
+
+      {/* ⭐ **ปฏิทินคำสัญญา** (มติผู้ใช้ 2026-08-12 · แบบ ข) — อยู่ **เหนือคิวถัดไป**
+          เพราะมันตอบคำถามของคนที่กำลังจะ *รับปากวันใหม่* ซึ่งเกิดก่อนการลงมือทำ
+          ⚠️ ป้อน `deptRows` ทั้งก้อน ไม่ใช่ `nextUp` — ปฏิทินต้องเห็นทุกใบที่มีวัน
+          ไม่ใช่แค่ห้าใบถัดไป */}
+      {!loading && !loadError && (
+        <DueWeekPanel rows={deptRows} todayIso={today} queueHref="/rd/requests" />
       )}
 
       {/* ⭐ **ตารางเดียวกับคิว** (มติผู้ใช้ 2026-08-08) — เดิมหน้านี้เขียนตารางของตัวเอง

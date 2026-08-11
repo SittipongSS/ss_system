@@ -127,10 +127,16 @@ test('⭐ ใบตีกลับต้องอยู่บนสุดขอ�
   assert.equal(pick.request.id, 'B');
   assert.equal(pick.next.bounced, true);
 
-  // แถบตัวเลขของ *ฝ่าย* ไม่ต้องมีกล่องที่เป็น 0 ตลอดกาล
+  /* แถบตัวเลขของแต่ละฝั่งไม่ต้องมีกล่องที่เป็น 0 ตลอดกาล
+     ฝ่าย: ไม่มี "ตีกลับ" (งานของผู้ขอ) · ผู้ขอ: ไม่มี "ยังไม่ได้ให้วัน" (งานของฝ่าย) */
   const deptKeys = queueCountMeta({ scope: 'dept' }).map((m) => m.key);
   assert.ok(!deptKeys.includes('bounced'));
-  assert.equal(queueCountMeta().length, QUEUE_COUNT_META.length);
+  assert.ok(deptKeys.includes('undated'));
+  const requesterKeys = queueCountMeta().map((m) => m.key);
+  assert.ok(requesterKeys.includes('bounced'));
+  assert.ok(!requesterKeys.includes('undated'));
+  // ทุกคีย์ต้องอยู่ฝั่งใดฝั่งหนึ่งเสมอ — คีย์ที่ตกทั้งสองฝั่งคือกล่องที่ไม่มีใครเห็น
+  assert.equal(new Set([...deptKeys, ...requesterKeys]).size, QUEUE_COUNT_META.length);
 });
 
 test('🔴 กดตัวเลขแล้วได้จำนวนใบเท่าตัวเลขนั้นเป๊ะ ๆ — ตัวนับกับตัวกรองใช้กติกาเดียวกัน', () => {

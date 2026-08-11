@@ -66,10 +66,18 @@ export default function RdRequestsPage() {
      ⚠️ ตั้งครั้งเดียวตอนเปิดจากลิงก์ แล้วปล่อยให้ผู้ใช้แก้ตัวกรองต่อได้เอง — เฝ้า
      ค่าตลอดเวลาแปลว่าผู้ใช้กดล้างตัวกรองไม่ได้เลย (มันจะเด้งกลับมาทุก render) */
   const ownerParam = searchParams.get("owner");
-  const { setFilter } = board;
+  const { setFilter, setCountFilter } = board;
   useEffect(() => {
     if (ownerParam) setFilter("owner", [ownerParam]);
   }, [ownerParam, setFilter]);
+
+  /* ⭐ `?count=` มาจากปุ่มบนหน้าภาพรวม (ปฏิทินคำสัญญา → "ยังไม่ได้ให้วัน") —
+     คีย์เดียวกับแถบตัวเลขในหน้านี้ (`QUEUE_COUNT_META`) ⇒ กดแล้วได้คิวที่กรองไว้แล้ว
+     ⚠️ ตั้งครั้งเดียวตอนเปิดจากลิงก์ เหมือน `?owner=` — เฝ้าค่าตลอดแปลว่ากดล้างไม่ได้ */
+  const countParam = searchParams.get("count");
+  useEffect(() => {
+    if (countParam) setCountFilter(countParam);
+  }, [countParam, setCountFilter]);
 
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),
