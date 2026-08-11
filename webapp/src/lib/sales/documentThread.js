@@ -40,13 +40,14 @@ export async function appendDocumentEvent(supabase, {
  * ทุกจุดคือมีจุดที่ลืมแน่นอน — พลาดแล้วเธรดดีลขาดเรื่องไปเงียบ ๆ
  *
  * @param request  แถวคำร้อง (ต้องมี id · kind · dept · docNo · dealId)
- * @param action   submit | acknowledge | update | pdr | reschedule | approve |
- *                 bounce | answer | close | cancel
- * @param opts     { reason, previousDueDate }
+ * @param action   submit | acknowledge | assign | update | pdr | reschedule |
+ *                 approve | bounce | answer | close | cancel
+ * @param opts     { reason, previousDueDate, assigneeName }
  *                 reason = เหตุผลตอนยกเลิก/ตีกลับ/เลื่อนวัน
  *                 previousDueDate = วันกำหนดส่ง **ก่อน** เลื่อน (route ต้องอ่านจาก
  *                 แถวเดิม เพราะแถวที่ส่งมาถูกทับไปแล้ว) — เธรดต้องบอกว่าเลื่อนจาก
  *                 วันไหนเป็นวันไหน ไม่ใช่แค่ "แก้วันแล้ว"
+ *                 assigneeName = ชื่อผู้รับผิดชอบหลังมอบหมาย (null = ถอนมอบหมาย)
  * @param mentions คนที่ถูก @ ในเรื่องนี้ — **ต้องผ่าน sanitizeMentions มาแล้ว**
  *                 รูป [{ id, name }] · ลงเฉพาะแถวของเธรด **คำร้อง** (แจ้งเตือน
  *                 อ่านจาก meta.mentions ของแถวนั้น) ไม่ยกไปเธรดดีล เพราะคนที่ถูก

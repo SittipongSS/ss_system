@@ -33,6 +33,7 @@ import {
   requestFacetOptions, requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
+import { requestAssignee } from "@/lib/requests/assign";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
@@ -169,8 +170,8 @@ export default function RequestQueuePanel({
                 ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
                 ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย และเฉพาะตอนไม่มีคอลัมน์ "ผู้รับเรื่อง"
                 แยกอยู่แล้ว — ไม่งั้นชื่อเดียวกันขึ้นสองช่องในแถวเดียว */}
-            {next.owner === "dept" && ask.acknowledgedByName && !cols.includes("owner") && (
-              <div className={styles.subText}>{ask.acknowledgedByName}</div>
+            {next.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+              <div className={styles.subText}>{requestAssignee(ask).name}</div>
             )}
             {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
             {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
@@ -204,8 +205,11 @@ export default function RequestQueuePanel({
         return <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>;
       case "dept":
         return <span className={styles.smallCell}>{ask.dept}</span>;
-      case "owner":
-        return ask.acknowledgedByName || <span className={styles.muted}>ยังไม่มีผู้รับ</span>;
+      case "owner": {
+        // ผู้รับผิดชอบก่อน แล้วถอยไปคนที่กดรับเรื่อง (mig 0230 · `requestAssignee`)
+        const who = requestAssignee(ask);
+        return who.name || <span className={styles.muted}>ยังไม่มีผู้รับ</span>;
+      }
       /* ⭐ **"เหลือกี่วัน" เป็นบรรทัดหลัก วันที่เป็นบรรทัดรอง** (มติผู้ใช้ 2026-08-11 ·
          แบบ ก) — คนกวาดคิวถามว่า *ทันไหม* ไม่ได้ถามว่า *วันที่เท่าไร*
          ⚠️ ใบที่ยังไม่มีใครให้วันขึ้น "ยังไม่ให้วัน" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง

@@ -8,6 +8,8 @@
 // มีอยู่ในคิวแล้ว (`queueList.js` · แบบ จ) หน้านี้แค่ส่ง `?owner=` ไปให้
 // ⚠️ ตัวเลข "กลิ่น" มาจาก `requestLineCount` ตัวเดียวกับสายพาน — สองก้อนบนหน้า
 // เดียวกันนับคนละแบบเมื่อไร ไม่มีใครรู้ว่าอันไหนถูก
+// ⚠️ **"ใครถือ" = ผู้รับผิดชอบที่มอบหมายไว้ (mig 0230) แล้วถอยไปคนที่กดรับเรื่อง** —
+// กฎอยู่ที่ `requestAssignee` ที่เดียว (lib/requests/assign.js)
 import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
 import { Users } from "lucide-react";
@@ -21,7 +23,7 @@ export default function OwnerWorkloadPanel({
   // ลิงก์ปลายทางของแต่ละแถว — ผู้เรียกเป็นคนรู้ว่าคิวของฝ่ายตัวเองอยู่ที่ไหน
   queueHref = "/rd/requests",
   title = "งานค้างรายคน",
-  subtitle = "นับเฉพาะใบที่ฝ่ายถืออยู่ · กดชื่อเพื่อเปิดคิวที่กรองคนนั้นไว้แล้ว",
+  subtitle = "ผู้รับผิดชอบที่มอบหมายไว้ · ใบที่ยังไม่มอบหมายใช้คนที่กดรับเรื่องแทน — กดชื่อเพื่อเปิดคิวของคนนั้น",
 }) {
   return (
     <WorkspaceSection
@@ -40,7 +42,7 @@ export default function OwnerWorkloadPanel({
           <table className="w-full">
           <thead>
             <tr>
-              <th>ผู้รับเรื่อง</th>
+              <th>ผู้รับผิดชอบ</th>
               {/* ⚠️ หัวชิดขวาตามเนื้อข้างล่าง (กฎ 4 · UI_DESIGN_SYSTEM.md) */}
               <th className="num">ใบ</th>
               <th className="num">กลิ่น</th>

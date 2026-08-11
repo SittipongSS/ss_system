@@ -21,7 +21,7 @@ export const REQUEST_COLUMNS = {
   doc: { label: 'คำร้อง' },
   kind: { label: 'ชนิด' },
   dept: { label: 'ถึงฝ่าย' },
-  owner: { label: 'ผู้รับเรื่อง' },
+  owner: { label: 'ผู้รับผิดชอบ' },
   due: { label: 'กำหนดส่ง', num: true },
   progress: { label: 'คืบหน้า', num: true },
   status: { label: 'สถานะ' },

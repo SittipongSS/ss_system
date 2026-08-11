@@ -11,6 +11,7 @@
 // ต้นเหตุไม่เจอเพราะสองฝั่งต่างก็ดูถูกในตัวเอง
 import { compareRequestUrgency } from '@/lib/requests/queue';
 import { requestKindLabel } from '@/lib/master/requestTypes';
+import { requestAssignee } from '@/lib/requests/assign';
 
 // ค่าที่ใช้แทน "ไม่มีข้อมูลในมิตินี้" — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันต้อง
 // ถูกเลือกในตัวกรองได้ ("ยังไม่มีคนรับ" คือสิ่งที่หัวหน้าอยากกรองที่สุด)
@@ -22,7 +23,7 @@ export const REQUEST_GROUP_OPTIONS = [
   { value: 'kind', label: 'ชนิดคำร้อง' },
   { value: 'customer', label: 'ลูกค้า' },
   { value: 'project', label: 'โครงการ' },
-  { value: 'owner', label: 'ผู้รับเรื่อง' },
+  { value: 'owner', label: 'ผู้รับผิดชอบ' },
 ];
 
 /**
@@ -62,10 +63,12 @@ export function requestFacet(request = {}, dimension) {
     return { key: String(id), label };
   }
   if (dimension === 'owner') {
-    // ⭐ ผู้รับเรื่อง = คนที่ **กดรับ** ไม่ใช่คนเปิดใบ — คำถามคือ "งานค้างอยู่ที่ใคร"
-    const name = String(request.acknowledgedByName || '').trim();
-    if (request.acknowledgedById || name) {
-      return { key: String(request.acknowledgedById || name.toLocaleLowerCase('th-TH')), label: name || 'ผู้รับเรื่อง' };
+    /* ⭐ **ผู้รับผิดชอบก่อน แล้วถอยไปคนที่กดรับเรื่อง** (mig 0230) — คำถามคือ
+       "งานค้างอยู่ที่ใคร" ไม่ใช่ "ใครกดปุ่มรับ" · กฎอยู่ที่ `requestAssignee`
+       ที่เดียว ใช้ร่วมกับตาราง "งานค้างรายคน" บนหน้าภาพรวม (ม-107) */
+    const who = requestAssignee(request);
+    if (who.id || who.name) {
+      return { key: String(who.id || who.name.toLocaleLowerCase('th-TH')), label: who.name || 'ผู้รับผิดชอบ' };
     }
     return { key: FACET_NONE, label: 'ยังไม่มีคนรับ' };
   }
