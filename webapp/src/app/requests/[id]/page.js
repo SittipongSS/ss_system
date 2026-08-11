@@ -776,31 +776,21 @@ export default function RequestDetailPage() {
   const headerFacts = requestHeaderFacts(req, { hasItems, progress })
     .map((fact) => ({ ...fact, icon: FACT_ICONS[fact.key] }));
 
-  /* ⭐ **บรรทัดคนสองฝั่งของใบ** (ม-101) — ผู้ยื่น → ผู้รับเรื่อง อ่านเป็นเส้นทางเดียว
+  /* ⭐ **ชิปผู้ยื่น** (ม-101) — ใบของใคร อ่านพร้อมเลขที่ใบในสายตาเดียว
      ⚠️ ใช้ `_opener` ไม่ใช่ `_mine` — ตั้งแต่ทีมทำแทนกันได้ (ม-100) `_mine` แปลว่า
-     "จัดการได้" ⇒ ป้าย "ใบของฉัน" จะไปขึ้นบนใบของเพื่อนร่วมทีม */
+     "จัดการได้" ⇒ ป้าย "ใบของฉัน" จะไปขึ้นบนใบของเพื่อนร่วมทีม
+     ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้** — เคยลองทำเป็นชิปคู่ แล้วผู้ใช้เลือกบรรทัด
+     "รับเรื่องโดย …" ใต้หัวใบแทน (ม-101.2) · มีที่เดียวพอ */
   const people = requestHeaderPeople(req, { mine: !!req._opener });
   const initials = (name) => String(name || "")
     .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "—";
   const peopleRow = people ? (
-    <>
-      <span className={`${styles.person} ${people.requester.mine ? styles.personSelf : styles.personTeam}`}>
-        <span className={styles.personAvatar}>{initials(people.requester.name)}</span>
-        {people.requester.label}
-        {people.requester.team ? ` · ทีม ${people.requester.team}` : ""}
-        {people.requester.mine ? null : <b>{people.requester.name}</b>}
-      </span>
-      {/* ลูกศรมีความหมายก็ต่อเมื่อชิปอยู่บรรทัดเดียวกัน — จอแคบซ่อนใน CSS */}
-      <span className={styles.personArrow} aria-hidden="true">→</span>
-      <span className={`${styles.person} ${people.receiver.pending ? styles.personEmpty : styles.personDept}`}>
-        <span className={styles.personAvatar}>
-          {people.receiver.pending ? req.dept : initials(people.receiver.name)}
-        </span>
-        {people.receiver.pending
-          ? `${people.receiver.name} · ${people.receiver.label}`
-          : <>{people.receiver.label} · <b>{people.receiver.name}</b>{people.receiver.at ? ` · ${fmtDate(people.receiver.at)}` : ""}</>}
-      </span>
-    </>
+    <span className={`${styles.person} ${people.requester.mine ? styles.personSelf : styles.personTeam}`}>
+      <span className={styles.personAvatar}>{initials(people.requester.name)}</span>
+      {people.requester.label}
+      {people.requester.team ? ` · ทีม ${people.requester.team}` : ""}
+      {people.requester.mine ? null : <b>{people.requester.name}</b>}
+    </span>
   ) : null;
 
   /* ⭐ **เนื้อคำร้องอยู่ในคอลัมน์เนื้อหา ไม่ใช่ในหัวใบ** (ผู้ใช้ทัก 2026-08-11)
@@ -907,8 +897,18 @@ export default function RequestDetailPage() {
         {/* ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้แล้ว** — ย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นบนหัวใบ (ม-101)
             บรรทัดนี้เคยพูดซ้ำกับชิปคำต่อคำ (ผู้ใช้ทัก 2026-08-11) · เหลือไว้เฉพาะรหัสสูตร
             ซึ่งยังไม่มีที่อยู่อื่นบนหัวใบ */}
-        {req.formulaCode && (
-          <p className={styles.headMeta}>สูตร {req.formulaCode}</p>
+        {/* ⭐ **ผู้รับเรื่องอยู่ตรงนี้ ไม่ใช่ในชิปบนหัวใบ** (มติผู้ใช้ ม-101.2) —
+            เคยย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นตามที่สั่ง แล้วผู้ใช้เลือกกลับมาบรรทัดนี้
+            ⚠️ มีที่เดียวเท่านั้น — ตอนที่มีทั้งชิปและบรรทัด มันพูดซ้ำคำต่อคำ
+            (ชื่อเดียวกัน วันที่เดียวกัน) ผู้ใช้ทักทันที */}
+        {(req.acknowledgedByName || req.formulaCode) && (
+          <p className={styles.headMeta}>
+            {req.acknowledgedByName
+              ? `รับเรื่องโดย ${req.acknowledgedByName} · ${fmtDate(req.acknowledgedAt)}`
+              : ""}
+            {req.acknowledgedByName && req.formulaCode ? " · " : ""}
+            {req.formulaCode ? `สูตร ${req.formulaCode}` : ""}
+          </p>
         )}
 
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)

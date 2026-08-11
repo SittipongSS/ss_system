@@ -96,20 +96,13 @@ test('ใบของเพื่อนร่วมทีมโชว์ชื�
   assert.equal(own.requester.mine, true);
 });
 
-test('ยังไม่มีใครรับเรื่อง = ชิปที่บอกว่าว่าง ไม่ใช่ชิปที่หายไป', () => {
-  const people = requestHeaderPeople(base, {});
-  assert.equal(people.receiver.pending, true);
-  assert.equal(people.receiver.name, 'ยังไม่มีใครรับเรื่อง');
-  assert.equal(people.receiver.label, 'ฝ่าย RD');
-});
-
-test('รับเรื่องแล้ว — ชิปขวาเป็นชื่อคนรับพร้อมวันที่', () => {
+// ⚠️ ผู้รับเรื่องเคยเป็นชิปคู่กับผู้ยื่น แล้วผู้ใช้เลือกกลับไปใช้บรรทัด "รับเรื่องโดย …"
+// ใต้หัวใบแทน (ม-101.2) — ชิปจึงมีฝั่งเดียว · เทสต์นี้กันการเติมกลับโดยไม่ตั้งใจ
+test('ชิปมีเฉพาะผู้ยื่น — ผู้รับเรื่องอยู่บรรทัดใต้หัวใบ ไม่ใช่ในชิป', () => {
   const people = requestHeaderPeople(
     { ...base, acknowledgedByName: 'ProjectCo.Krapook', acknowledgedAt: '2026-08-11T02:36:34Z' }, {},
   );
-  assert.equal(people.receiver.pending, false);
-  assert.equal(people.receiver.name, 'ProjectCo.Krapook');
-  assert.ok(people.receiver.at);
+  assert.deepEqual(Object.keys(people), ['requester']);
 });
 
 // ── คำบอกเวลา ──────────────────────────────────────────────────────────
