@@ -142,6 +142,9 @@ export default function RdOverviewPage() {
             ห่อซ้ำอีกชั้นจะได้การ์ดซ้อนการ์ด */}
         <RequestQueuePanel
           scope="queue" dept={DEPT} rows={nextUp} board={board}
+          /* ⚠️ ไม่มีแถบกรอง/จัดกลุ่ม — พาเนลนี้ได้แค่ใบที่คัดมาแล้ว (คิวถัดไป)
+             กรองซ้อนบนของที่คัดมาแล้วจะอ่านเหมือนนี่คือคิวทั้งหมด */
+          tools={false}
           sectionTitle={null}
           emptyText="ไม่มีใบอื่นรอฝ่ายอยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
           loading={loading} loadError={loadError} reload={reload}

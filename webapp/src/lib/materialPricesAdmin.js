@@ -144,11 +144,30 @@ export async function loadRequests(supabase, {
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
+  /* ⭐ **ชื่อโครงการมาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ 2026-08-11) — คิวจัดกลุ่ม
+     ตามโครงการได้แล้ว แต่แถวเก็บแค่ `projectId` ⇒ หัวกลุ่มจะเป็น uuid ที่ไม่มีใคร
+     อ่านออก · `findRequest` โหลดโครงการอยู่แล้วแต่นั่นคือตอนเปิด **ใบเดียว**
+     ⚠️ **คิวรวมเดียว ไม่ใช่ N+1** — คิวหนึ่งหน้ามีได้ 100+ ใบ · ดึงรายใบแปลว่า
+     100 query ต่อการเปิดหน้าหนึ่งครั้ง (โรคที่หน้านี้เพิ่งถอด 8 endpoint ทิ้งไป) */
+  const projectIds = [...new Set(asks.map((a) => a.projectId).filter(Boolean))];
+  let projects = [];
+  if (projectIds.length) {
+    const { data, error: projectError } = await supabase
+      .from('projects').select('id, code, name').in('id', projectIds);
+    if (projectError) throw projectError;
+    projects = data || [];
+  }
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+
   // ⚠️ เดิมมีขั้นดึง `dept_request_item_tiers` มาแปะรายแถว — ตารางถูก DROP ใน
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
   return asks.map((a) => ({
     ...a,
     items: (items || []).filter((i) => i.requestId === a.id),
+    // แบนเป็นสองช่อง ไม่ใช่ก้อน `project` ซ้อน — แถวคิวถูกส่งลงจอตรง ๆ และของซ้อน
+    // ชั้นทำให้ต้องเช็ค null สองชั้นทุกที่ที่อ่าน
+    projectCode: projectById.get(a.projectId)?.code ?? null,
+    projectName: projectById.get(a.projectId)?.name ?? null,
   }));
 }
 
