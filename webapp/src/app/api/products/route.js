@@ -4,6 +4,10 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permissions';
 import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
+import {
+  CODE_MODE_AUTO, FG_SCOPE, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError,
+  nextMasterNumber,
+} from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
 import { chatCard, sendChat } from '@/lib/chat';
@@ -79,18 +83,52 @@ export async function POST(request) {
   if (customerError) return Response.json({ error: customerError.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
+  // ── รหัสสินค้า: สวิตช์ "ระบบใหม่" ในโมดัล (มติผู้ใช้ 2026-08-12, mig 0230) ──
+  // เปิด (auto) = ประกอบให้จาก **รหัสลูกค้าที่เลือก + หมวดที่เลือก + เลขรันที่จองสด**
+  //   FG-AAAA-BB-CCC-DDDDD (ลูกค้าเก่ารหัส 3 หลักเติมศูนย์เป็น AAAA ตอนประกอบ)
+  // ปิด (manual) = ใช้รหัสที่กรอกมา (รูปแบบเดิม FG-AAA-BB-CCC-DDDD)
+  //
+  // ⚠️ ท่อน AAAA/BB-CCC ประกอบจากค่าที่ **server อ่านเอง** (customer.arCode ที่เพิ่ง
+  // โหลด + categoryCode ที่ตรวจแล้ว) ไม่ใช่จากสตริงที่ client ส่งมา — ไม่งั้นรหัสบนใบ
+  // จะเป็นของลูกค้าหนึ่ง แต่ customerId ชี้อีกคน โดยไม่มีอะไรจับได้
+  const codeMode = codeModeOf(body.codeMode);
+  const categoryCode = body.categoryCode || categoryOf(body.fgCode);
+  const categoryError = await activeProductTypeError(categoryCode);
+  if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
+
+  let fgCode = String(body.fgCode || '').trim();
+  if (codeMode === CODE_MODE_AUTO) {
+    if (!customerCodeSegment(customer.arCode)) {
+      return Response.json(
+        { error: `ลูกค้ารายนี้มีรหัส "${customer.arCode || '—'}" ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง` },
+        { status: 400 },
+      );
+    }
+    try {
+      fgCode = composeFgCode({
+        arCode: customer.arCode,
+        categoryCode,
+        runNo: await nextMasterNumber(supabase, FG_SCOPE),
+      });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+  const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
+  if (codeError) return Response.json({ error: codeError }, { status: 400 });
+
   // Duplicate FG Code check
   const { data: dup, error: dupError } = await supabase
     .from('products')
     .select('id')
-    .eq('fgCode', body.fgCode)
+    .eq('fgCode', fgCode)
     .maybeSingle();
   if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
   if (dup) {
     return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
   }
 
-  const { fgCode, volume, costPrice, retailPriceIncVat } = body;
+  const { volume, costPrice, retailPriceIncVat } = body;
   // ราคาผลิต/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
   // ภาษี/ต้นทุน ให้ถือว่า 0 เพื่อกัน NaN เมื่อยังไม่ได้กรอกราคา.
   const costPriceNum = costPrice == null || costPrice === '' ? 0 : Number(costPrice);
@@ -98,11 +136,8 @@ export async function POST(request) {
     retailPriceIncVat == null || retailPriceIncVat === '' ? 0 : Number(retailPriceIncVat);
   // Every FG belongs to a customer (chosen at creation). customerName is a
   // snapshot taken server-side so the catalog row is stable even if the
-  // customer is later renamed. Category is derived from the FG code.
-  const categoryCode = body.categoryCode || categoryOf(fgCode);
-  const categoryError = await activeProductTypeError(categoryCode);
-  if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
-
+  // customer is later renamed. Category comes from the picker (auto mode) or is
+  // derived from the typed FG code (manual) — ตรวจไปแล้วด้านบนพร้อมกับตัวรหัส
   // สูตรมาจากทะเบียน — ชื่อ/รหัส/วันที่เป็น snapshot ที่ derive จาก formulaId
   let formulaSnapshot;
   try {

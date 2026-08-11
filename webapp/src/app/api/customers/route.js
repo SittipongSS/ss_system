@@ -4,6 +4,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
+import {
+  AR_SCOPE, CODE_MODE_AUTO, arCodeError, codeModeOf, formatArCode, nextMasterNumber,
+} from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 
@@ -59,11 +62,34 @@ export async function POST(request) {
   const user = await getCurrentUser();
   const body = await request.json();
 
+  // ── รหัสลูกค้า: สวิตช์ "ระบบใหม่" ในโมดัล (มติผู้ใช้ 2026-08-12, mig 0230) ──
+  // เปิด (auto) = server ออกเลขให้เอง AR-AAAA เริ่ม 1001 · ปิด (manual) = ใช้รหัสที่
+  // กรอกมา (รูปแบบเดิม AR-AAA)
+  //
+  // ⚠️ **เลขจองที่นี่ที่เดียว ตอนจะ insert จริง** — ไม่ใช่ตอนเปิดฟอร์ม: เปิดฟอร์มแล้ว
+  // ปิดทิ้งเป็นเรื่องปกติ ถ้าจองตั้งแต่ตอนนั้น เลขจะโหว่เป็นรูทุกครั้งที่มีคนเปลี่ยนใจ
+  // (ฟอร์มจึงได้แค่ "เลขถัดไป" แบบพรีวิวจาก /next-code)
+  //
+  // ⚠️ ค่าที่ client ส่งมาในโหมด auto **ไม่ถูกใช้เลย** — ถือเป็นแค่สิ่งที่หน้าจอโชว์
+  // ตอนนั้น ไม่ใช่คำสั่ง (สองคนเปิดฟอร์มพร้อมกันจะเห็นเลขเดียวกัน แต่ต้องได้คนละเลข)
+  const codeMode = codeModeOf(body.codeMode);
+  let arCode = String(body.arCode || '').trim();
+  if (codeMode === CODE_MODE_AUTO) {
+    try {
+      arCode = formatArCode(await nextMasterNumber(supabase, AR_SCOPE));
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  } else {
+    const codeError = arCodeError(arCode, { mode: codeMode });
+    if (codeError) return Response.json({ error: codeError }, { status: 400 });
+  }
+
   // Duplicate AR Code check
   const { data: dup, error: dupError } = await supabase
     .from('customers')
     .select('id')
-    .eq('arCode', body.arCode)
+    .eq('arCode', arCode)
     .maybeSingle();
   if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
   if (dup) {
@@ -114,7 +140,7 @@ export async function POST(request) {
     // Collision-proof id. The old 'CUS-'+last-6-ms scheme repeated every ~16.7
     // min and the live DB has no unique on id — two customers could share one.
     id: 'CUS-' + randomUUID(),
-    arCode: body.arCode,
+    arCode,
     name: body.name,
     taxId: body.taxId || null,
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034

@@ -13,6 +13,7 @@ import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
+import { isAutoArCode } from "@/lib/master/masterCodes";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -803,12 +804,15 @@ export default function CustomerDetails() {
       <Modal open={isEditing} onClose={() => setIsEditing(false)} title="แก้ไขข้อมูลลูกค้า (Edit Customer)" size="lg">
         <form onSubmit={handleEditSubmit}>
           {/* ฟอร์มเดียวกับโมดัลเพิ่มลูกค้า (หน้ารวม) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
-              ต่างแค่โหมด: มีช่องทีมดูแล (ย้ายทีมได้เฉพาะ superuser — API บังคับซ้ำ) */}
+              ต่างแค่โหมด: มีช่องทีมดูแล (ย้ายทีมได้เฉพาะ superuser — API บังคับซ้ำ) ·
+              ไม่มีสวิตช์โหมดรหัส (รหัสออกไปแล้ว) และรหัสที่ระบบเป็นคนออกให้ = ล็อก
+              (mig 0230 — API บังคับซ้ำที่ PATCH) */}
           <CustomerForm
             form={formData}
             onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
             showTeams
             canEditTeams={superuser}
+            arLocked={isAutoArCode(customer.arCode)}
           />
           <div className="form-action-bar is-page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>

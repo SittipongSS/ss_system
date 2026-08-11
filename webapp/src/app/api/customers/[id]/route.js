@@ -8,6 +8,7 @@ import {
 import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
+import { CODE_MODE_MANUAL, arCodeError, isAutoArCode } from '@/lib/master/masterCodes';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
@@ -260,6 +261,17 @@ export async function PATCH(request, { params }) {
   }
 
   if (body.arCode && body.arCode !== customer.arCode) {
+    // ⚠️ รหัสที่ระบบออกให้ (AR-AAAA 4 หลัก, mig 0230) แก้ไม่ได้ — เลขนั้นถูกจองไปแล้ว
+    // จากเคาน์เตอร์กลาง แก้ทิ้งเมื่อไรคือเลขที่หายไปจากระบบโดยไม่มีใครรู้ และรหัสเดิม
+    // อาจถูกอ้างบนเอกสารที่ออกไปแล้ว · รหัสที่กรอกเอง (รูปแบบเดิม) ยังแก้ได้ตามเดิม
+    if (isAutoArCode(customer.arCode)) {
+      return Response.json(
+        { error: 'รหัสลูกค้านี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้' },
+        { status: 400 },
+      );
+    }
+    const codeError = arCodeError(body.arCode, { mode: CODE_MODE_MANUAL });
+    if (codeError) return Response.json({ error: codeError }, { status: 400 });
     const { data: dup, error: dupError } = await supabase
       .from('customers')
       .select('id')
