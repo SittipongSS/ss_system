@@ -41,7 +41,8 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import { isWonStage } from "@/lib/salesPlanning";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
-import RequestListCard from "@/components/requests/RequestListCard";
+import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
+import Button from "@/components/ui/Button";
 import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
 import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -931,7 +932,23 @@ export default function ProjectDetailPage() {
 
       {/* คำร้องข้ามฝ่ายอยู่ท้ายแท็บ "งาน" ไม่ใช่แท็บของตัวเอง (มติผู้ใช้ 2026-08-05) —
           ทั้งสองตอบคำถามเดียวกันว่า "ตอนนี้ค้างใครอยู่" และถูกเปิดพร้อมกันเสมอ */}
-      {tab === "tasks" && <RequestListCard requests={p.inquiries || []} title="คำร้องข้ามฝ่ายของโครงการและดีล" />}
+      {/* ⭐ **ตารางคำร้องชุดเดียวกับหน้าคิว** (มติผู้ใช้ 2026-08-11 · แบบ ข) — ของเดิม
+          เป็น `RequestListCard` อีกสำเนาที่บอกได้แค่ "สถานะ" ⇒ ใบที่ถูกตีกลับขึ้นว่า
+          "ร่าง" เฉย ๆ เหมือนใบที่ยังไม่เคยส่ง · ตอนนี้ได้คอลัมน์ "ต้องทำอะไร" ด้วย */}
+      {tab === "tasks" && (
+        <RequestQueuePanel
+          scope="mine" rows={p.inquiries || []}
+          columns="linked" tools="none"
+          sectionTitle="คำร้องข้ามฝ่ายของโครงการและดีล"
+          sectionSubtitle="เรื่องที่เปิดถึงฝ่ายอื่นในนามโครงการนี้"
+          emptyText="ยังไม่มีคำร้องที่ผูกกับรายการนี้"
+          headerActions={(
+            <Button as={Link} size="sm" href="/requests" icon={<ExternalLink size={13} aria-hidden="true" />}>
+              เปิดหน้าคำร้อง
+            </Button>
+          )}
+        />
+      )}
 
       {/* แบนเนอร์แดง "ยกเลิกแล้ว" + ปุ่มกู้คืน ย้ายไปการ์ด Control แล้ว — ข้อความไปอยู่
           notices ส่วนปุ่มเป็น transition `restore_from_dropped` (สิทธิ์เดิม senior_ae ขึ้นไป)

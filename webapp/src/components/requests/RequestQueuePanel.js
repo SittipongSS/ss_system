@@ -19,7 +19,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { WorkspaceSection } from "@/components/ui/Workspace";
-import { matchesQueueSearch } from "@/lib/requests/useQueueBoard";
+import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
@@ -32,6 +32,8 @@ import {
   REQUEST_GROUP_OPTIONS, REQUEST_SORT_OPTIONS, filterRequestRows, groupRequestRows,
   requestFacetOptions, requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
+import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
+import { RequestStatusBadge } from "@/components/requests/requestUi";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
@@ -46,9 +48,11 @@ export default function RequestQueuePanel({
   // **ปุ่มรีเฟรชบนจอ** ซึ่งทั้งระบบไม่มีที่อื่น และหน้าที่ต้องกดเองแปลว่าข้อมูลไม่สด
   // โดยปริยาย ⇒ ผู้ใช้จะกดทุกครั้งเพราะไม่กล้าเชื่อสิ่งที่เห็น
   loading = false, loadError = "", reload,
-  // ⭐ **สถานะมาจากหน้าแม่** (`useQueueBoard`) — ต้นแบบหน้างานของฉันวางตัวสลับมุมมอง
-  // ไว้ในหัวการ์ด ซึ่งอยู่คนละชั้นกับพาเนลนี้ ⇒ พาเนลถือ state เองไม่ได้
-  board,
+  /* ⭐ **สถานะมาจากหน้าแม่ได้ แต่ไม่บังคับ** (`useQueueBoard`) — หน้าคิววางตัวสลับ
+     มุมมองไว้ในหัวการ์ด ซึ่งอยู่คนละชั้นกับพาเนล จึงต้องส่งฮุกลงมา · ส่วนการ์ดบน
+     หน้าดีล/โครงการไม่มีเครื่องมือเลย ⇒ ไม่ส่งก็ได้ พาเนลถือของตัวเอง
+     ⚠️ การบังคับให้ทุกที่ต้องรู้จักฮุกก่อน คือเหตุผลหนึ่งที่เคยมีตารางสำเนาที่สอง */
+  board = null,
   // ⚠️ ข้อความตอนว่างต้องพูดถึง **ชุดแถวที่ผู้เรียกส่งมา** — ภาพรวมฝ่ายส่งเฉพาะใบที่
   // ใกล้ถึงกำหนด 7 วัน ⇒ "ไม่มีคำร้องรอฝ่าย … ตอบ" ที่เป็นค่าตั้งต้นจะโกหก
   emptyText = null,
@@ -59,19 +63,34 @@ export default function RequestQueuePanel({
   unit = "เรื่อง",
   /* ⚠️ **ปิดเครื่องมือเมื่อพาเนลไม่ใช่รายการทั้งก้อน** — หน้าภาพรวมฝ่ายวางพาเนลนี้ไว้
      ในการ์ด "คิวถัดไป" ซึ่งส่งมาแค่ไม่กี่ใบที่คัดมาแล้ว · ให้กรอง/จัดกลุ่มซ้อนบนชุดที่
-     คัดมาแล้วอีกชั้นคือการเชิญให้คนเข้าใจผิดว่านี่คือคิวทั้งหมด */
-  tools = true,
+     คัดมาแล้วอีกชั้นคือการเชิญให้คนเข้าใจผิดว่านี่คือคิวทั้งหมด
+     "full" = ค้นหา + กรอง/จัดกลุ่ม/เรียง · "search" = ค้นหาอย่างเดียว · "none" = ไม่มีแถบ
+     ⚠️ รับ `true`/`false` ต่อได้ด้วย — ผู้เรียกเดิมส่งแบบนั้นอยู่ */
+  tools = "full",
+  /* ชุดคอลัมน์ — ชื่อชุดในทะเบียน ("queue" · "linked") หรือระบุเป็นอาร์เรย์เอง */
+  columns = "queue",
+  /* ปุ่มเพิ่มบนหัวการ์ด (ต่อจากป้ายจำนวน) — การ์ดบนหน้าดีลมีทางลัดเปิดคำร้องของตัวเอง */
+  headerActions = null,
 }) {
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   const today = businessDate();
+  const ownBoard = useQueueBoard();
   const {
     view, countFilter, setCountFilter, search, setSearch,
     filters = {}, setFilter, clearFilters,
     groupBy = "none", setGroupBy, collapsed, setCollapsed, toggleGroup,
     sortKey = "urgency", sortDir = "asc", setSort, toggleSortDir,
-  } = board;
+  } = board || ownBoard;
+
+  /* ความกว้างตายตัวของคอลัมน์ที่เนื้อคงที่ — ที่เหลือปล่อยให้ยืดตามเนื้อ
+     (คลาสอยู่ใน requestForm.module.css ตามด่าน audit:ui ห้าม inline style) */
+  const COL_WIDTH = { next: styles.colNext, due: styles.colDue, progress: styles.colProgress };
+  // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
+  const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
+  const showTools = toolLevel === "full";
+  const showToolbar = toolLevel !== "none";
 
   // ⭐ **ตัวเลขบนแถบกดกรองได้** — "เลยกำหนด 2" คือคำถามแรกที่หัวหน้าเปิดคิวมาถาม
   // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
@@ -83,11 +102,11 @@ export default function RequestQueuePanel({
         rows
           .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
           .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabel })),
-        tools ? filters : {},
+        showTools ? filters : {},
       ),
       { key: sortKey, dir: sortDir },
     ),
-    [rows, countFilter, search, today, filters, sortKey, sortDir, tools],
+    [rows, countFilter, search, today, filters, sortKey, sortDir, showTools],
   );
 
   /* ⭐ **สองโหมดจัดกลุ่ม รูปร่างเดียวกัน** — เลือกมิติเอง (ฝ่าย/ชนิด/ลูกค้า/ผู้รับเรื่อง)
@@ -95,14 +114,18 @@ export default function RequestQueuePanel({
      ตีกลับกับใบที่ยังไม่มีใครรับขึ้นบนสุด) · ทั้งสองโหมดคืน `{ key, label, rows }`
      เหมือนกัน ⇒ ตารางกับการ์ดวาดโค้ดชุดเดียว ไม่ใช่สองสำเนา */
   const groups = useMemo(() => (
-    (tools && groupRequestRows(visibleRows, groupBy))
+    (showTools && groupRequestRows(visibleRows, groupBy))
     || groupQueueRows(visibleRows, { todayIso: today })
       .map((g) => ({ key: g.group, label: g.label, rows: g.rows }))
-  ), [visibleRows, groupBy, today, tools]);
+  ), [visibleRows, groupBy, today, showTools]);
 
+  /* ⚠️ **หัวกลุ่มหายเมื่อมีกลุ่มเดียวและเปลี่ยนการจัดกลุ่มไม่ได้** — การ์ดบนหน้าดีล
+     มักมี 1-3 ใบ · หัวข้อ "ยังไม่มีใครรับเรื่อง · 1" เหนือแถวเดียวคือเส้นที่ไม่ได้
+     แบ่งอะไร · ในคิวยังโชว์เสมอ เพราะที่นั่นหัวกลุ่มคือสิ่งที่ทำให้ลำดับความเร่งมองเห็นได้ */
   const collapsedSet = collapsed instanceof Set ? collapsed : new Set();
   const isCollapsed = (key) => collapsedSet.has(key);
   const allCollapsed = groups.length > 0 && groups.every((g) => collapsedSet.has(g.key));
+  const showGroupHeads = showTools || groups.length > 1;
   const filterCount = requestFilterCount(filters);
   // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
   // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
@@ -118,6 +141,109 @@ export default function RequestQueuePanel({
     selected: filters[g.key] || [],
     onChange: (values) => setFilter?.(g.key, values),
   })), [rows, filters, setFilter]);
+
+  /* ── คอลัมน์: ทะเบียนบอกว่ามีอะไร ที่นี่บอกว่าวาดยังไง ──────────────────
+     ⚠️ **ทุกคีย์ในทะเบียนต้องมีตัววาดที่นี่** — `queueColumns.test.mjs` สแกนไฟล์นี้
+     เช็คไว้ · ขาดไปแล้วคอลัมน์นั้นจะเป็นช่องว่างเงียบ ๆ ไม่มี error ให้เห็น */
+  const cols = requestColumns(columns);
+  const cell = (key, ask) => {
+    const next = requestNextStep(ask);
+    const due = requestDueText(ask, { todayIso: today });
+    // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
+    const bounced = bouncedDaysText(ask, { todayIso: today });
+    const p = requestProgress(ask.items || []);
+    switch (key) {
+      /* ⚠️ สองโทน: ตาฝ่าย / รออีกฝั่ง — **สีสงวนให้เจ้าของก้าว** ไม่ใช่ให้ชนิดคำร้อง
+         ⭐ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็นเส้นตรงลงมา
+         ตากวาดคอลัมน์ได้เป็นแนว (กฎ 1 · UI_DESIGN_SYSTEM.md) */
+      case "next":
+        return next ? (
+          <>
+            <span
+              className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
+              data-owner={next.owner}
+            >
+              {next.label}
+            </span>
+            {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
+                ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
+                ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย และเฉพาะตอนไม่มีคอลัมน์ "ผู้รับเรื่อง"
+                แยกอยู่แล้ว — ไม่งั้นชื่อเดียวกันขึ้นสองช่องในแถวเดียว */}
+            {next.owner === "dept" && ask.acknowledgedByName && !cols.includes("owner") && (
+              <div className={styles.subText}>{ask.acknowledgedByName}</div>
+            )}
+            {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
+            {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
+              <div className={`${styles.subText} ${styles.overdue}`}>
+                {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+              </div>
+            )}
+          </>
+        ) : <span className={styles.muted}>—</span>;
+      /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
+         ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
+      case "doc":
+        return (
+          <>
+            <div className={styles.docCell}>
+              {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
+              {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
+            </div>
+            <div className={styles.subText}>
+              {[
+                ask.docNo || "ร่าง",
+                cols.includes("kind") ? null : requestKindLabel(ask.kind),
+                ask.title && ask.customerName ? ask.customerName : null,
+                ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+              ].filter(Boolean).join(" · ")}
+              {cols.includes("dept") ? "" : ` → ${ask.dept}`}
+            </div>
+          </>
+        );
+      case "kind":
+        return <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>;
+      case "dept":
+        return <span className={styles.smallCell}>{ask.dept}</span>;
+      case "owner":
+        return ask.acknowledgedByName || <span className={styles.muted}>ยังไม่มีผู้รับ</span>;
+      /* ⭐ **"เหลือกี่วัน" เป็นบรรทัดหลัก วันที่เป็นบรรทัดรอง** (มติผู้ใช้ 2026-08-11 ·
+         แบบ ก) — คนกวาดคิวถามว่า *ทันไหม* ไม่ได้ถามว่า *วันที่เท่าไร*
+         ⚠️ ใบที่ยังไม่มีใครให้วันขึ้น "ยังไม่ให้วัน" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง
+         "ไม่มีกำหนด" และ "ระบบไม่รู้" ซึ่งคนละเรื่องกัน */
+      case "due":
+        if (bounced) {
+          return (
+            <>
+              <div className={styles.overdue}>{bounced.note}</div>
+              <div className={styles.subText}>{fmtDate(bounced.date)}</div>
+            </>
+          );
+        }
+        if (due) {
+          return (
+            <>
+              <div className={due.overdue ? styles.overdue : undefined}>
+                {due.note || fmtDate(due.date)}
+              </div>
+              {due.note && <div className={styles.subText}>{fmtDate(due.date)}</div>}
+            </>
+          );
+        }
+        return <span className={styles.muted}>ยังไม่ให้วัน</span>;
+      case "progress":
+        return p.total > 0 ? (
+          <>
+            <div>{p.done} / {p.total}</div>
+            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" */}
+            <div className={styles.subText}>{requestLineNoun(ask.kind)}</div>
+          </>
+        ) : <span className={styles.muted}>—</span>;
+      case "status":
+        return <RequestStatusBadge status={ask.status} />;
+      default:
+        return null;
+    }
+  };
 
   // ── เปิดคำร้อง = สามสเต็ปในปุ่มเดียว ─────────────────────────────────────
   //
@@ -137,6 +263,7 @@ export default function RequestQueuePanel({
           ⭐ **ค้นหาเป็นของใหม่** (มติผู้ใช้ 2026-08-08) — คิวไม่เคยมีช่องค้นหาเลย
           ทั้งที่พอมีเรื่องเกิน 20 ใบ การหา "ใบของลูกค้า A" ต้องกวาดตาเอง
           ⚠️ ค้นจากสิ่งที่ตาเห็นในตารางเท่านั้น (`matchesQueueSearch`) */}
+      {showToolbar && (
       <div className="toolbar">
         <div className={`search-glass ${styles.searchBox}`}>
           <Search size={18} color="var(--text-3)" />
@@ -155,7 +282,7 @@ export default function RequestQueuePanel({
             (มติผู้ใช้ 2026-08-11 · แบบ จ) — หน้าดีลประกาศชุดนี้เป็นมาตรฐานของระบบ
             ไว้เองตั้งแต่ 2026-07-18 · คิวคำร้องเคยมีแค่ช่องค้นหา ⇒ ตอบคำถาม
             "ใบของลูกค้านี้มีกี่ใบ" หรือ "ใครถืออยู่บ้าง" ไม่ได้เลย */}
-        {tools && (
+        {showTools && (
           <>
             <FilterPopover
               count={filterCount}
@@ -202,6 +329,7 @@ export default function RequestQueuePanel({
           </>
         )}
       </div>
+      )}
 
       {loading ? (
         <SkeletonRows rows={4} />
@@ -227,6 +355,7 @@ export default function RequestQueuePanel({
           {groups.map((g) => (
             <Fragment key={g.key}>
               {/* หัวกลุ่มกดย่อ/ขยายได้ทั้งสองมุมมอง — ทรงเดียวกับหน้ารายการดีล */}
+              {showGroupHeads && (
               <button
                 type="button" className={styles.cardGroupLabel} data-group={g.key}
                 onClick={() => toggleGroup?.(g.key)} aria-expanded={!isCollapsed(g.key)}
@@ -234,6 +363,7 @@ export default function RequestQueuePanel({
                 {isCollapsed(g.key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                 {g.label} · {g.rows.length}
               </button>
+              )}
               {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
@@ -297,25 +427,23 @@ export default function RequestQueuePanel({
         </div>
       ) : (
         <TableScroll cells="stacked">
-          {/* ⭐ **4 คอลัมน์ ไม่ใช่ 8** (มติผู้ใช้ 2026-08-08) — ของเดิมวางทุกอย่างเป็น
-              คอลัมน์ที่มีน้ำหนักเท่ากันหมด ⇒ ตาไม่รู้จะเริ่มที่ไหน และ "ก้าวถัดไป"
-              ซึ่งเป็นเหตุผลที่คนเปิดคิว อยู่คอลัมน์ที่ 5 จาก 8
-              ⇒ ยุบของที่คนอ่านเป็นก้อนเดียวกันอยู่แล้วเข้าเซลล์เดียวสองบรรทัด
-              (เลขที่ + ชนิด + เรื่อง/ลูกค้า + ถึงฝ่าย = "ใบนี้คือใบอะไร") */}
+          {/* ⭐ **คอลัมน์มาจากทะเบียน ไม่ใช่เขียนตายในตาราง** (มติผู้ใช้ 2026-08-11 ·
+              แบบ ข) — ของเดิมมีตารางคำร้องสองสำเนา: คิว 4 คอลัมน์กับการ์ดบนหน้า
+              ดีล/โครงการ 6 คอลัมน์ · ใบเดียวกันจึงอ่านได้คนละเรื่องสองหน้า และใบ
+              ตีกลับ (ม-102) โผล่แค่ในคิว · ดูเหตุผลเต็มที่ `lib/requests/queueColumns.js`
+              ⚠️ หัวกับเนื้ออ่านจาก `cols` ตัวเดียวกัน ⇒ สลับลำดับกันไม่ได้อีก
+              (เคยสลับกันอยู่สองคอลัมน์: "คืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป) */}
           <table className="premium-table">
             <thead>
               <tr>
-                {/* ⭐ คอลัมน์แรกคือคำตอบของคำถามแรก — "ฉันต้องทำอะไร"
-                    มาจาก requestNextStep ตัวเดียวกับที่แถบตัวเลขใช้ ⇒ ตัวเลขข้างบน
-                    กับคอลัมน์นี้ขัดกันไม่ได้เชิงโครงสร้าง
-                    ⚠️ ลำดับหัวตารางต้องตรงกับลำดับ <td> ข้างล่างเป๊ะ ๆ — เคยสลับกัน
-                    อยู่สองคอลัมน์ ("ความคืบหน้า" ลอยอยู่เหนือป้ายก้าวถัดไป) */}
-                <th className={styles.colNext}>ต้องทำอะไร</th>
-                <th>คำร้อง</th>
-                {/* ⚠️ หัวชิดขวาตามเนื้อข้างล่าง (กฎ 4 · UI_DESIGN_SYSTEM.md) — หัวชิดซ้าย
-                    แต่เนื้อชิดขวา = สองเส้นที่ไม่ตรงกันในคอลัมน์เดียว */}
-                <th className={`${styles.colDue} num`}>กำหนดส่ง</th>
-                <th className={`${styles.colProgress} num`}>คืบหน้า</th>
+                {cols.map((key) => (
+                  <th
+                    key={key}
+                    className={`${COL_WIDTH[key] || ""} ${REQUEST_COLUMNS[key].num ? "num" : ""}`.trim() || undefined}
+                  >
+                    {REQUEST_COLUMNS[key].label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -325,8 +453,9 @@ export default function RequestQueuePanel({
                   (ตัวเรียงไม่ได้เรียงตามลำดับกลุ่มเป๊ะ ๆ จะได้หัวข้อซ้ำกลางตาราง) */}
               {groups.map((g) => (
                 <Fragment key={g.key}>
+                  {showGroupHeads && (
                   <tr className={styles.groupRow} data-group={g.key}>
-                    <td colSpan={4}>
+                    <td colSpan={cols.length}>
                       <button
                         type="button" onClick={() => toggleGroup?.(g.key)}
                         aria-expanded={!isCollapsed(g.key)}
@@ -337,108 +466,19 @@ export default function RequestQueuePanel({
                       </button>
                     </td>
                   </tr>
-                  {!isCollapsed(g.key) && g.rows.map((ask) => {
-                const p = requestProgress(ask.items || []);
-                const next = requestNextStep(ask);
-                const due = requestDueText(ask, { todayIso: today });
-                // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
-                const bounced = bouncedDaysText(ask, { todayIso: today });
-                return (
-                  <tr
-                    key={ask.id} className={styles.rowLink}
-                    onClick={() => router.push(`/requests/${ask.id}`)}
-                  >
-                    {/* ⚠️ สองโทน: ตาฝ่าย / รออีกฝั่ง — **สีสงวนให้เจ้าของก้าว**
-                        ไม่ใช่ให้ชนิดคำร้อง (ชนิดอยู่บรรทัดรองของคอลัมน์ถัดไป)
-                        ⭐ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น
-                        เส้นตรงลงมา ตากวาดคอลัมน์ได้เป็นแนว (กฎ 1 · UI_DESIGN_SYSTEM.md) */}
-                    <td>
-                      {next
-                        ? (
-                          <>
-                            <span
-                              className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
-                              data-owner={next.owner}
-                            >
-                              {next.label}
-                            </span>
-                            {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่
-                                *ฝั่งไหน* · ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
-                                ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย — ใบที่รออีกฝั่งอยู่ ชื่อคนของเรา
-                                ไม่ใช่คำตอบของคำถาม "ใครต้องทำต่อ" */}
-                            {next.owner === "dept" && ask.acknowledgedByName && (
-                              <div className={styles.subText}>{ask.acknowledgedByName}</div>
-                            )}
-                            {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
-                            {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
-                              <div className={`${styles.subText} ${styles.overdue}`}>
-                                {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
-                              </div>
-                            )}
-                          </>
-                        )
-                        : <span className={styles.muted}>—</span>}
-                    </td>
-                    {/* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่าย
-                        เป็นบรรทัดรอง · สี่อย่างนี้คนอ่านเป็นก้อนเดียวอยู่แล้ว
-                        ⚠️ ชนิดที่ไม่มีบรรทัดสื่อความด้วยหัวเรื่อง — ชนิดขอราคาสื่อด้วยลูกค้า */}
-                    <td>
-                      <div className={styles.docCell}>
-                        {ask.title || ask.customerName
-                          || <span className={styles.muted}>ราคากลาง</span>}
-                        {ask.urgent && (
-                          <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
-                        )}
-                      </div>
-                      <div className={styles.subText}>
-                        {[
-                          ask.docNo || "ร่าง",
-                          requestKindLabel(ask.kind),
-                          ask.title && ask.customerName ? ask.customerName : null,
-                          ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
-                        ].filter(Boolean).join(" · ")}
-                        {` → ${ask.dept}`}
-                      </div>
-                    </td>
-                    {/* ⭐ กำหนดส่งเคยต้องเข้าใบถึงจะเห็น ทั้งที่ "เลยกำหนดไหม" คือ
-                        คำถามที่สองของหัวหน้า · `.num` ให้ชิดขวา + tabular-nums
-                        ⇒ หลักวันตรงกันทุกแถว เทียบข้ามแถวได้ (กฎ 3) */}
-                    {/* ⭐ **"เหลือกี่วัน" เป็นบรรทัดหลัก วันที่เป็นบรรทัดรอง** (มติผู้ใช้
-                        2026-08-11 · แบบ ก) — คนกวาดคิวถามว่า *ทันไหม* ไม่ได้ถามว่า
-                        *วันที่เท่าไร* · วันที่ยังอยู่ไว้อ้างอิงตอนคุยกับฝ่ายขาย
-                        ⚠️ ใบที่ยังไม่มีใครให้วันขึ้น "ยังไม่ให้วัน" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง
-                        "ไม่มีกำหนด" และ "ระบบไม่รู้" ซึ่งคนละเรื่องกัน */}
-                    <td className="num">
-                      {bounced ? (
-                        <>
-                          <div className={styles.overdue}>{bounced.note}</div>
-                          <div className={styles.subText}>{fmtDate(bounced.date)}</div>
-                        </>
-                      ) : due ? (
-                        <>
-                          <div className={due.overdue ? styles.overdue : undefined}>
-                            {due.note || fmtDate(due.date)}
-                          </div>
-                          {due.note && (
-                            <div className={styles.subText}>{fmtDate(due.date)}</div>
-                          )}
-                        </>
-                      ) : <span className={styles.muted}>ยังไม่ให้วัน</span>}
-                    </td>
-                    <td className="num">
-                      {p.total > 0
-                        ? (
-                          <>
-                            <div>{p.done} / {p.total}</div>
-                            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" */}
-                            <div className={styles.subText}>{requestLineNoun(ask.kind)}</div>
-                          </>
-                        )
-                        : <span className={styles.muted}>—</span>}
-                    </td>
-                  </tr>
-                );
-                  })}
+                  )}
+                  {!isCollapsed(g.key) && g.rows.map((ask) => (
+                    <tr
+                      key={ask.id} className={styles.rowLink}
+                      onClick={() => router.push(`/requests/${ask.id}`)}
+                    >
+                      {cols.map((key) => (
+                        <td key={key} className={REQUEST_COLUMNS[key].num ? "num" : undefined}>
+                          {cell(key, ask)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
                 </Fragment>
               ))}
             </tbody>
@@ -457,7 +497,12 @@ export default function RequestQueuePanel({
       icon={<ClipboardList size={17} />}
       title={sectionTitle}
       subtitle={sectionSubtitle}
-      actions={<span className="ui-badge">{visibleRows.length} {unit}</span>}
+      actions={(
+        <>
+          <span className="ui-badge">{visibleRows.length} {unit}</span>
+          {headerActions}
+        </>
+      )}
     >
       {body}
     </WorkspaceSection>
