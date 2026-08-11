@@ -65,8 +65,72 @@ test('⭐ ตัวที่ 4 แยกงานที่ไม่ใช่ข�
 
 test('ใบที่ปิด/ยกเลิกแล้วไม่ถูกนับในแถบใดเลย', () => {
   const rows = [req({ status: 'closed' }), req({ status: 'cancelled' }), req({ status: 'draft' })];
-  assert.deepEqual(queueCounts(rows, { todayIso: '2026-08-05' }),
-    { unacked: 0, overdue: 0, working: 0, waitingRequester: 0 });
+  const counts = queueCounts(rows, { todayIso: '2026-08-05' });
+  // ⚠️ เทียบกับ **ทะเบียน** ไม่ใช่ก้อนที่พิมพ์ไว้ — เพิ่มตัวเลขใหม่แล้วเทสต์นี้จะ
+  // ดับด้วยเหตุผลผิด ๆ (คีย์ใหม่ ≠ ใบที่ปิดถูกนับ) · สิ่งที่ตรึงคือ "ทุกช่องเป็น 0"
+  assert.deepEqual(counts, Object.fromEntries(QUEUE_COUNT_META.map((m) => [m.key, 0])));
+});
+
+// 🐞 ผู้ใช้ถามเอง 2026-08-11 ว่า "ตีกลับอยู่ไหน" — ไล่โค้ดแล้วพบว่าใบที่ถูกตีกลับ
+// กลับเป็น `draft` ⇒ ป้ายขึ้น "ยังไม่ได้ส่ง" เหมือนร่างที่ไม่เคยส่ง และ **ไม่ถูกนับ
+// ในแถบตัวเลขสักช่อง** ⇒ ค้างได้ไม่จำกัดโดยไม่มีอะไรทวง
+test('⭐ ใบที่ถูกตีกลับต้องแยกจากร่างที่ไม่เคยส่ง — ทั้งป้ายและตัวเลข', async () => {
+  const { bouncedDaysText } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-11' };
+  const fresh = req({ id: 'A', status: 'draft' });
+  const bounced = req({ id: 'B', status: 'draft', bouncedAt: '2026-08-08T03:00:00Z', bounceReason: 'ยังไม่แนบสเปก' });
+
+  assert.equal(requestNextStep(fresh).label, 'ยังไม่ได้ส่ง');
+  assert.equal(requestNextStep(fresh).bounced, undefined);
+  assert.equal(requestNextStep(bounced).label, 'ตีกลับ — ต้องแก้');
+  assert.equal(requestNextStep(bounced).bounced, true);
+  // ⚠️ ยังเป็นงานของ **ผู้ขอ** ไม่ใช่ของฝ่าย — ฝ่ายส่งคืนไปแล้ว
+  assert.equal(requestNextStep(bounced).owner, 'requester');
+
+  const counts = queueCounts([fresh, bounced], t);
+  assert.equal(counts.bounced, 1, 'ใบตีกลับต้องถูกนับ');
+  // ไม่ไหลไปช่องอื่น — ไม่ใช่ "กำลังดำเนินการ" และไม่ใช่ "เลยกำหนด"
+  assert.equal(counts.working, 0);
+  assert.equal(counts.overdue, 0);
+  assert.equal(counts.unacked, 0);
+  assert.equal(counts.waitingRequester, 0, 'draft ไม่ควรไหลเข้าช่องของใบที่เปิดอยู่');
+
+  // นับวันค้างจาก bouncedAt — ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง
+  assert.equal(bouncedDaysText(bounced, t).days, 3);
+  assert.match(bouncedDaysText(bounced, t).note, /ค้าง 3 วัน/);
+  assert.equal(bouncedDaysText(bounced, { todayIso: '2026-08-08' }).note, 'ตีกลับวันนี้');
+  assert.equal(bouncedDaysText(fresh, t), null, 'ร่างที่ไม่เคยส่งไม่มีวันตีกลับ');
+  // ใบที่ส่งใหม่แล้ว (pending) ไม่ใช่ใบตีกลับอีกต่อไป แม้ยังมี bouncedAt ติดอยู่
+  const resent = req({ id: 'C', status: 'pending', bouncedAt: '2026-08-08T03:00:00Z' });
+  assert.equal(bouncedDaysText(resent, t), null);
+  assert.equal(queueCounts([resent], t).bounced, 0);
+});
+
+test('⭐ ใบตีกลับต้องอยู่บนสุดของคิว ไม่ใช่ตกกลุ่ม "จบแล้ว" กับใบที่ปิดไปจริง', async () => {
+  const { QUEUE_GROUPS, groupQueueRows, queueCountMeta, requestGroupKey, startHereRequest } =
+    await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-11' };
+  const bounced = req({ id: 'B', status: 'draft', bouncedAt: '2026-08-08T03:00:00Z' });
+  const fresh = req({ id: 'A', status: 'draft' });
+
+  // 🐞 draft ไม่อยู่ใน REQUEST_OPEN_STATUSES ⇒ เดิมได้คีย์ 'settled'
+  assert.equal(requestGroupKey(bounced, t), 'bounced');
+  assert.equal(requestGroupKey(fresh, t), 'settled', 'ร่างที่ไม่เคยส่งยังไม่ใช่ของค้าง');
+  assert.equal(QUEUE_GROUPS[0].key, 'bounced', 'กลุ่มตีกลับต้องเป็นกลุ่มแรก');
+
+  const groups = groupQueueRows([req({ id: 'P', status: 'pending' }), bounced, fresh], t);
+  assert.equal(groups[0].group, 'bounced');
+  assert.deepEqual(groups[0].rows.map((r) => r.id), ['B']);
+
+  // การ์ด "เริ่มที่นี่" ต้องชี้ใบตีกลับก่อน — เดิมถูกกรองทิ้งพร้อมกลุ่ม settled
+  const pick = startHereRequest([fresh, bounced], t);
+  assert.equal(pick.request.id, 'B');
+  assert.equal(pick.next.bounced, true);
+
+  // แถบตัวเลขของ *ฝ่าย* ไม่ต้องมีกล่องที่เป็น 0 ตลอดกาล
+  const deptKeys = queueCountMeta({ scope: 'dept' }).map((m) => m.key);
+  assert.ok(!deptKeys.includes('bounced'));
+  assert.equal(queueCountMeta().length, QUEUE_COUNT_META.length);
 });
 
 test('🔴 กดตัวเลขแล้วได้จำนวนใบเท่าตัวเลขนั้นเป๊ะ ๆ — ตัวนับกับตัวกรองใช้กติกาเดียวกัน', () => {

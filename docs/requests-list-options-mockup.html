@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รื้อตารางรายการคำร้อง — ปัญหา + 3 ทางเลือก</title>
+<style>
+  /* จานสี v1 (ธีมสว่าง) — v2 ถูกยกเลิกแล้ว 2026-08-11 */
+  :root{
+    --bg:#efe9dd; --panel:#ffffff; --panel-2:#f7f4ee; --panel-3:#eee9e0;
+    --border:rgba(49,55,69,.13); --border-strong:rgba(49,55,69,.24);
+    --text:#171d29; --text-2:#596170; --text-3:#6c7382;
+    --accent:#c9794d; --accent-ink:#9c5228; --navy:#243b63;
+    --green:#357558; --red:#a74747; --amber:#926024; --blue:#466990;
+    --radius:6px; --radius-lg:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--text);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;font-size:14px;line-height:1.55}
+  h1{font-size:23px;margin:0 0 6px}
+  h2{font-size:18px;margin:32px 0 10px}
+  .sub{color:var(--text-3);font-size:13px;margin:0 0 20px}
+
+  .card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+    box-shadow:0 1px 2px rgba(23,29,41,.05);overflow:hidden;margin:0 0 20px}
+  .chead{padding:13px 17px;border-bottom:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+  .chead b{font-size:15px}
+  .chead .q{color:var(--text-2);font-size:13px}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.05em;padding:2px 9px;border-radius:999px;
+    border:1px solid var(--accent);color:var(--accent-ink)}
+  .tag.bad{border-color:var(--red);color:var(--red)}
+  .cbody{padding:17px}
+  .screen{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg);padding:14px}
+
+  .bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden}
+  .seg span{padding:5px 13px;font-size:12.5px;color:var(--text-2);border-right:1px solid var(--border)}
+  .seg span:last-child{border-right:0}
+  .seg span.on{background:var(--accent);color:#fff;font-weight:700}
+  .chip{padding:4px 12px;border-radius:999px;border:1px solid var(--border-strong);font-size:12.5px;
+    color:var(--text-2);background:var(--panel)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .chip.num b{font-variant-numeric:tabular-nums}
+  .layer{border:1px dashed var(--red);border-radius:var(--radius);padding:7px 11px;margin-bottom:7px;
+    font-size:12px;color:var(--red);background:rgba(167,71,71,.05)}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel)}
+  th{text-align:left;font-size:11px;letter-spacing:.05em;color:var(--text-3);font-weight:700;
+    padding:8px 11px;border-bottom:1px solid var(--border-strong);background:var(--panel-2);white-space:nowrap}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .sub2{font-size:11.5px;color:var(--text-3)}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
+  .pill.red{color:var(--red);border-color:var(--red)} .pill.amber{color:var(--amber);border-color:var(--amber)}
+  .pill.green{color:var(--green);border-color:var(--green)} .pill.blue{color:var(--blue);border-color:var(--blue)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .dot.red{background:var(--red)} .dot.amber{background:var(--amber)} .dot.blue{background:var(--blue)} .dot.green{background:var(--green)}
+  .grp td{background:var(--panel-3);font-weight:700;font-size:11.5px;color:var(--text-2)}
+
+  /* แบบ ค — บรรทัดเดียว */
+  .line{display:grid;grid-template-columns:118px 1fr 150px 96px 78px;gap:12px;align-items:center;
+    padding:8px 12px;border-bottom:1px solid var(--border);font-size:12.5px;background:var(--panel)}
+  .line:last-child{border-bottom:0}
+  .line .no{font-variant-numeric:tabular-nums;color:var(--text-2);font-size:11.5px}
+
+  .pro{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px;font-size:12.5px}
+  .pro div{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--panel-2)}
+  .pro b{display:block;font-size:11px;letter-spacing:.05em;margin-bottom:5px}
+  .pro .good b{color:var(--green)} .pro .bad b{color:var(--red)}
+  .cap{font-size:12px;color:var(--text-3);margin:9px 0 0}
+</style>
+</head>
+<body>
+
+<h1>รื้อตารางรายการคำร้อง</h1>
+<p class="sub">หน้า <code>/requests</code> · ใช้จานสี v1 ธีมสว่าง (v2 ยกเลิกแล้ว) · ข้อมูลตัวอย่างจากคิวจริง</p>
+
+<h2>ปัญหาที่วินิจฉัยจากโครงจริง</h2>
+<div class="card"><div class="cbody">
+  <div class="screen">
+    <div class="layer">ชั้น 1 · ขอบเขต — ของฉัน / ทีม / ทั้งหมด</div>
+    <div class="layer">ชั้น 2 · มุมมอง — รอฉันตอบ (6) / ที่ฉันเปิด (2) / ประวัติ (31)</div>
+    <div class="layer">ชั้น 3 · การ์ด "เริ่มที่นี่"</div>
+    <div class="layer">ชั้น 4 · แถบตัวเลข 4 ตัว (กดแล้ว<b>กรอง</b>ทับอีกชั้น)</div>
+    <div class="layer">ชั้น 5 · การ์ด "รายการคำร้อง" + ช่องค้น</div>
+    <div class="layer" style="border-color:var(--border-strong);color:var(--text-2);background:transparent">ชั้น 6 · ตารางจริง — เริ่มที่ ~700px จากขอบบนบนจอ 13"</div>
+  </div>
+  <div class="pro">
+    <div class="bad"><b>สามมิติที่ทับกัน</b>ขอบเขต × มุมมอง × แถบตัวเลข = ต้องถือสถานะในหัวสามตัวว่าตอนนี้กรองอะไรอยู่ ·
+      บางคู่ไม่มีความหมาย (ประวัติ + เลยกำหนด) แต่กดได้</div>
+    <div class="bad"><b>ตารางคำร้องมีสามชุดในระบบ</b>คิว 4 คอลัมน์ · <code>RequestListCard</code> 6 คอลัมน์
+      ในหน้าดีล/โครงการ · แถวสรุปในภาพรวมฝ่าย ⇒ คำร้องใบเดียวอ่านได้สามหน้าตา</div>
+  </div>
+</div></div>
+
+<h2>🐞 รูที่เพิ่งเจอ — ใบที่ถูก "ตีกลับ" เป็นใบเงียบ</h2>
+<div class="card" style="border-color:var(--red)"><div class="cbody">
+  <p style="margin:0 0 12px">ตีกลับ = ฝ่ายผู้รับกดคืน ⇒ <code>status</code> กลับเป็น <b>draft</b> พร้อมเก็บ
+    <code>bounceReason</code> · <code>bouncedAt</code> · <code>bouncedByName</code> (เลขที่เดิม — #1129)
+    <b>แต่หน้าจอไม่รู้เรื่องนี้เลย</b></p>
+  <table>
+    <thead><tr><th style="width:210px">ที่</th><th>ผลลัพธ์วันนี้</th></tr></thead>
+    <tbody>
+      <tr><td>แท็บ <b>รอฉันตอบ</b></td><td><code>if (r.status === 'draft') return false</code> ⇒ <b>ไม่ขึ้น</b></td></tr>
+      <tr><td>แท็บ <b>ที่ฉันเปิด</b></td><td>ขึ้น — แต่ป้ายเขียน <b>"ยังไม่ได้ส่ง"</b> เหมือนร่างที่ไม่เคยส่ง</td></tr>
+      <tr><td>แถบตัวเลข 4 ตัว</td><td><code>matchesQueueCount</code> ตัด <code>draft</code> ตั้งแต่บรรทัดแรก ⇒ <b>ไม่ถูกนับสักช่อง</b></td></tr>
+      <tr><td>ประวัติ</td><td>ไม่ขึ้น (ยังไม่จบ)</td></tr>
+    </tbody>
+  </table>
+  <p class="cap" style="color:var(--red)">⇒ ใบที่โดนตีกลับปนอยู่กับร่างที่ไม่เคยส่ง · ไม่มีตัวเลขไหนทวง ·
+    <b>นาฬิกาหยุดเดินแต่ใบยังไม่จบ</b> ถ้าผู้ขอไม่กลับมาแก้ มันหายเงียบ</p>
+
+  <p style="margin:15px 0 8px"><b>ที่ควรเป็น — 4 ข้อ (ใส่ไว้ในทุกแบบข้างล่างแล้ว)</b></p>
+  <table>
+    <tr><td style="width:28px">1</td><td>ป้ายของตัวเอง <span class="pill red">ตีกลับ — ต้องแก้</span> ไม่ใช่ "ยังไม่ได้ส่ง" · บรรทัดรองบอกว่าใครตีกลับและเพราะอะไร</td></tr>
+    <tr><td>2</td><td>ชิปของตัวเองในแถวกรอง — เป็นงานของ<b>ผู้ขอ</b> ไม่ใช่ของฝ่าย</td></tr>
+    <tr><td>3</td><td>นับในแถบตัวเลข — แยก "ร่างที่เคยส่งแล้วโดนตีกลับ" ออกจาก "ร่างที่ไม่เคยส่ง"</td></tr>
+    <tr><td>4</td><td>นับวันค้างจาก <code>bouncedAt</code> — "ตีกลับมา 3 วันแล้วยังไม่แก้"</td></tr>
+  </table>
+</div></div>
+
+<!-- ── แบบ ก ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ก</span><b>กรองมิติเดียว</b>
+    <span class="q">— ยุบสามชั้นเหลือแถวชิปแถวเดียว ตารางขึ้นมาอยู่ครึ่งบนจอ</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="bar">
+        <div class="seg"><span class="on">ของฉัน</span><span>ทีม</span><span>ทั้งหมด</span></div>
+        <span style="color:var(--text-3)">·</span>
+        <span class="chip on num">รอฉันตอบ <b>6</b></span>
+        <span class="chip num">ยังไม่มีใครรับ <b>2</b></span>
+        <span class="chip num">เลยกำหนด <b>1</b></span>
+        <span class="chip num" style="border-color:var(--red);color:var(--red)">ตีกลับ <b>1</b></span>
+        <span class="chip num">ที่ฉันเปิด <b>2</b></span>
+        <span class="chip num">ประวัติ <b>31</b></span>
+      </div>
+      <table>
+        <thead><tr><th>ต้องทำอะไร</th><th>คำร้อง</th><th class="num">กำหนดส่ง</th><th class="num">คืบหน้า</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">ยังไม่มีใครรับเรื่อง · 2</td></tr>
+          <tr><td><span class="dot red"></span>รอรับเรื่อง</td>
+              <td>ขอ Mock up<div class="sub2">RQ-26080022 · สอบถามข้อมูล · บัตเตอร์ฟลาย ไทย เพอร์ฟูม → RD</div></td>
+              <td class="num"><span class="pill">ยังไม่ให้วัน</span></td><td class="num">—</td></tr>
+          <tr class="grp" style="background:rgba(167,71,71,.08);color:var(--red)"><td colspan="4">ตีกลับ รอคุณแก้ · 1</td></tr>
+          <tr><td><span class="pill red">ตีกลับ — ต้องแก้</span><div class="sub2">ปกิตา · 3 วันที่แล้ว</div></td>
+              <td>ขอราคา FB สูตรเดิม<div class="sub2">RQ-26080015 · สอบถามข้อมูล · ลอรีอัล → RD</div>
+                  <div class="sub2" style="color:var(--red)">"ยังไม่ได้แนบสเปกกลิ่นที่จะเทียบ"</div></td>
+              <td class="num"><span class="pill red">ค้าง 3 วัน</span></td><td class="num">—</td></tr>
+          <tr class="grp"><td colspan="4">กำลังดำเนินการ · 4</td></tr>
+          <tr><td><span class="dot amber"></span>รอฝ่ายเริ่ม<div class="sub2">ปกิตา เจริญวงษ์</div></td>
+              <td>รบกวนขอราคา FB ค่ะ<div class="sub2">RQ-26080018 · สอบถามข้อมูล · คุณนิชานันท์ → RD</div></td>
+              <td class="num">อีก 1 วัน<div class="sub2">12/08/2026</div></td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+      <p class="cap">การ์ด "เริ่มที่นี่" ยุบเป็น<b>แถวแรกที่ไฮไลต์</b>ในตาราง — ไม่กินการ์ดเต็มใบอีก</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>เห็นตารางตั้งแต่เปิดหน้า · ชิปบอกจำนวนทุกตัวในแถวเดียว
+        กดสลับได้ทันทีโดยไม่ต้องไล่สองชั้น · สถานะที่กรองอยู่เห็นครบในบรรทัดเดียว</div>
+      <div class="bad"><b>เสียอะไร</b>ชิป 5 ตัวบนจอแคบตกบรรทัด · เสียการ์ด "เริ่มที่นี่" ที่เคยเด่น
+        (ย้ายไปเป็นแถวไฮไลต์แทน)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ข ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ข</span><b>ตารางเดียวทั้งระบบ</b>
+    <span class="q">— คอลัมน์เปลี่ยนตามบริบท ยุบ <code>RequestListCard</code> เข้ามาด้วย</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="bar">
+        <div class="seg"><span class="on">ของฉัน</span><span>ทีม</span><span>ทั้งหมด</span></div>
+        <div class="seg"><span class="on">รอฉันตอบ (6)</span><span>ที่ฉันเปิด (2)</span><span>ประวัติ (31)</span></div>
+      </div>
+      <table>
+        <thead><tr><th>ต้องทำอะไร</th><th>คำร้อง</th><th>ถึงฝ่าย</th><th>ผู้รับเรื่อง</th><th class="num">กำหนดส่ง</th><th class="num">คืบหน้า</th></tr></thead>
+        <tbody>
+          <tr><td><span class="dot red"></span>รอรับเรื่อง</td>
+              <td>ขอ Mock up<div class="sub2">RQ-26080022 · สอบถามข้อมูล</div></td>
+              <td><span class="pill blue">RD</span></td><td class="sub2">ยังไม่มีผู้รับ</td>
+              <td class="num"><span class="pill">ยังไม่ให้วัน</span></td><td class="num">—</td></tr>
+          <tr><td><span class="dot amber"></span>รอฝ่ายเริ่ม</td>
+              <td>รบกวนขอราคา FB ค่ะ<div class="sub2">RQ-26080018 · สอบถามข้อมูล</div></td>
+              <td><span class="pill blue">RD</span></td><td>ปกิตา เจริญวงษ์</td>
+              <td class="num">อีก 1 วัน<div class="sub2">12/08/2026</div></td><td class="num">—</td></tr>
+          <tr><td><span class="pill red">ตีกลับ — ต้องแก้</span><div class="sub2">ปกิตา · 3 วันที่แล้ว</div></td>
+              <td>ขอราคา FB สูตรเดิม<div class="sub2">RQ-26080015 · สอบถามข้อมูล</div>
+                  <div class="sub2" style="color:var(--red)">"ยังไม่ได้แนบสเปกกลิ่นที่จะเทียบ"</div></td>
+              <td><span class="pill blue">RD</span></td><td class="sub2">ตีกลับแล้ว</td>
+              <td class="num"><span class="pill red">ค้าง 3 วัน</span></td><td class="num">—</td></tr>
+          <tr><td><span class="dot green"></span>รอ AE ส่งลูกค้า</td>
+              <td>ออกแบบกลิ่น 6 ทาง<div class="sub2">SB-26080002 · พัฒนากลิ่น</div></td>
+              <td><span class="pill blue">RD</span></td><td>ณิชา ลัคนาภิเศรษฐ์</td>
+              <td class="num"><span class="pill green">ไม่ใช่ของเรา</span></td><td class="num">4 / 6<div class="sub2">กลิ่น</div></td></tr>
+        </tbody>
+      </table>
+      <p class="cap"><b>หน้าดีล/โครงการใช้ตารางตัวเดียวกัน</b> แค่ปิดคอลัมน์ "ถึงฝ่าย" (ในดีลรู้อยู่แล้ว)
+        และเพิ่ม "รับปากว่าจะตอบ" — ปิด/เปิดคอลัมน์ผ่าน props ไม่ใช่เขียนตารางใหม่</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>คำร้องใบเดียวหน้าตาเดียวทุกที่ · ลดตารางในระบบจาก 3 เหลือ 1 ·
+        แก้คอลัมน์ทีเดียวได้ทั้งระบบ (กฎเดียวกับฟอร์มสร้าง/แก้ใน AGENTS.md)</div>
+      <div class="bad"><b>เสียอะไร</b>6 คอลัมน์บนจอแคบต้องเลื่อนแนวนอน · ไม่ได้แก้ปัญหาสามชั้นกรอง
+        (ยังเป็นสอง Segmented เหมือนเดิม)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ค ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ค</span><b>บรรทัดเดียวต่อใบ</b>
+    <span class="q">— ทิ้งหัวตาราง อ่านเป็นรายการ เห็นได้ 2 เท่าในจอเดียว</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="bar">
+        <div class="seg"><span class="on">ของฉัน</span><span>ทีม</span><span>ทั้งหมด</span></div>
+        <span class="chip on num">รอฉันตอบ <b>6</b></span>
+        <span class="chip num" style="border-color:var(--red);color:var(--red)">ตีกลับ <b>1</b></span>
+        <span class="chip num">ที่ฉันเปิด <b>2</b></span>
+        <span class="chip num">ประวัติ <b>31</b></span>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div class="line" style="background:var(--panel-3);font-size:11.5px;color:var(--text-3);font-weight:700">
+          <span>สถานะ</span><span>คำร้อง</span><span>ผู้รับเรื่อง</span><span>กำหนด</span><span>คืบหน้า</span></div>
+        <div class="line"><span><span class="dot red"></span>รอรับ</span>
+          <span>ขอ Mock up <span class="no">· RQ-26080022 · บัตเตอร์ฟลาย</span></span>
+          <span class="sub2">ยังไม่มีผู้รับ</span><span class="pill">ไม่มีวัน</span><span class="sub2">—</span></div>
+        <div class="line"><span><span class="dot amber"></span>รอเริ่ม</span>
+          <span>รบกวนขอราคา FB ค่ะ <span class="no">· RQ-26080018 · คุณนิชานันท์</span></span>
+          <span>ปกิตา</span><span class="pill amber">อีก 1 วัน</span><span class="sub2">—</span></div>
+        <div class="line" style="background:rgba(167,71,71,.06)"><span style="color:var(--red);font-weight:700">ตีกลับ</span>
+          <span>ขอราคา FB สูตรเดิม <span class="no">· RQ-26080015 · ลอรีอัล · "ยังไม่ได้แนบสเปก…"</span></span>
+          <span class="sub2">ปกิตาตีกลับ</span><span class="pill red">ค้าง 3 วัน</span><span class="sub2">—</span></div>
+        <div class="line"><span><span class="dot blue"></span>ส่งบางส่วน</span>
+          <span>ออกแบบกลิ่น 6 ทาง <span class="no">· SB-26080002 · ยูนิลีเวอร์</span></span>
+          <span>ณิชา</span><span class="pill red">เลย 3 วัน</span><span>4/6</span></div>
+        <div class="line"><span><span class="dot green"></span>รอ AE</span>
+          <span>ส่งตัวอย่าง 3 ทาง <span class="no">· SB-26080009 · บาธ แอนด์ บลูม</span></span>
+          <span>ณิชา</span><span class="sub2">ไม่ใช่ของเรา</span><span>3/3</span></div>
+      </div>
+      <p class="cap">แถวสูง 34px แทน 60px ⇒ จอ 13" เห็น ~14 ใบแทน 7 ใบ · รายละเอียดที่ตัดออกไปอยู่ในใบ</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>กวาดตาทั้งคิวได้ในจอเดียว ไม่ต้องเลื่อน · เหมาะกับคนที่เปิดหน้านี้
+        วันละหลายรอบเพื่อดูว่ามีอะไรใหม่</div>
+      <div class="bad"><b>เสียอะไร</b>ชื่อลูกค้ายาวโดนตัด · ชนิดคำร้องหายจากบรรทัด (ไปอยู่ในสีจุด) ·
+        บนมือถือกลายเป็นบรรทัดที่แน่นเกินอ่าน ต้องมีโหมดการ์ดคู่กัน</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ง ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ง</span><b>ชิปสถานะ + แผงตัวกรองจัดกลุ่ม</b>
+    <span class="q">— ใช้ <code>ui/FilterPopover</code> ที่มีอยู่แล้ว (หน้างาน PM · ทะเบียนลูกค้า/สินค้า ใช้อยู่)</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="bar">
+        <div class="seg"><span class="on">ของฉัน</span><span>ทีม</span><span>ทั้งหมด</span></div>
+        <span style="color:var(--text-3)">·</span>
+        <span class="chip on num">รอฉันตอบ <b>6</b></span>
+        <span class="chip num" style="border-color:var(--red);color:var(--red)">ตีกลับ <b>1</b></span>
+        <span class="chip num">ยังไม่มีใครรับ <b>2</b></span>
+        <span class="chip num">เลยกำหนด <b>1</b></span>
+        <span class="chip num">ประวัติ <b>31</b></span>
+        <span style="flex:1"></span>
+        <span class="chip" style="border-color:var(--accent);color:var(--accent-ink);font-weight:700">⚙ ตัวกรอง 2</span>
+        <span class="chip">↕ เรียง: ด่วนก่อน</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:150px 1fr;border:1px solid var(--border-strong);
+        border-radius:var(--radius);overflow:hidden;max-width:430px;margin:0 0 12px;background:var(--panel)">
+        <div style="border-right:1px solid var(--border);background:var(--panel-2)">
+          <div style="padding:8px 12px;font-size:12.5px;background:var(--accent);color:#fff;font-weight:700">🏷 ฝ่าย <b>1</b></div>
+          <div style="padding:8px 12px;font-size:12.5px;color:var(--text-2)">📋 ชนิดคำร้อง <b>1</b></div>
+          <div style="padding:8px 12px;font-size:12.5px;color:var(--text-2)">🏢 ลูกค้า</div>
+          <div style="padding:8px 12px;font-size:12.5px;color:var(--text-2)">👤 ผู้รับเรื่อง</div>
+        </div>
+        <div style="padding:9px 12px">
+          <div style="border:1px solid var(--border);border-radius:var(--radius);padding:5px 10px;
+            font-size:12px;color:var(--text-3);margin-bottom:8px">ค้นในกลุ่มนี้…</div>
+          <div style="font-size:12.5px;line-height:2"><span style="color:var(--accent-ink)">☑</span> RD — วิจัยและพัฒนา<br>
+            <span style="color:var(--text-3)">☐</span> PC — จัดซื้อ<br>
+            <span style="color:var(--text-3)">☐</span> FN — บัญชี</div>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>ต้องทำอะไร</th><th>คำร้อง</th><th class="num">กำหนดส่ง</th><th class="num">คืบหน้า</th></tr></thead>
+        <tbody>
+          <tr><td><span class="dot amber"></span>รอฝ่ายเริ่ม<div class="sub2">ปกิตา เจริญวงษ์</div></td>
+              <td>รบกวนขอราคา FB ค่ะ<div class="sub2">RQ-26080018 · สอบถามข้อมูล · คุณนิชานันท์ → RD</div></td>
+              <td class="num">อีก 1 วัน<div class="sub2">12/08/2026</div></td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+      <p class="cap"><b>เส้นแบ่งที่ใช้ตัดสิน</b> — สิ่งที่เป็น <i>เหตุผลที่เปิดหน้ามา</i> อยู่นอกแผงเสมอ
+        (สถานะงาน · ขอบเขต) · สิ่งที่เป็น <i>การซอยให้แคบลง</i> อยู่ในแผง (ฝ่าย · ชนิด · ลูกค้า · ผู้รับเรื่อง)
+        — กติกาเดียวกับที่หน้างาน PM เขียนไว้ว่า "สถานะไม่อยู่ในแผงนี้เพราะเป็น drill-down"</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>ใช้ของที่มีอยู่แล้ว ไม่ต้องคิดคอนโทรลใหม่ · ได้ป้ายนับ+ปุ่มล้าง+ค้นในกลุ่มฟรี ·
+        หน้าคำร้องหน้าตาเดียวกับหน้างาน/ทะเบียน ⇒ คนที่ใช้หน้าอื่นเป็นอยู่แล้วไม่ต้องเรียนใหม่ ·
+        เพิ่มมิติใหม่ (ทีม · ลูกค้า) ได้โดยไม่ทำให้แถวบนยาวขึ้น</div>
+      <div class="bad"><b>เสียอะไร</b>มิติที่อยู่ในแผง <b>มองไม่เห็นว่ากรองอยู่</b> จนกว่าจะดูเลขบนปุ่ม
+        (บรรเทาด้วยป้ายนับ + ชิปสรุปใต้แถบเมื่อกรองอยู่) · ต้องกดสองครั้งกว่าจะเปลี่ยนฝ่าย</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ จ ─────────────────────────────────────── -->
+<div class="card" style="border-color:var(--accent)">
+  <div class="chead" style="background:rgba(201,121,77,.07)"><span class="tag">แบบ จ</span><b>ลอกโครงหน้ารายการดีล</b>
+    <span class="q">— หน้าดีลคือหน้าที่ตั้งมาตรฐานนี้ไว้เอง (มติ 2026-07-18 · เขียนในไฟล์ว่า "มาตรฐานทั้งระบบ")</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="bar" style="justify-content:space-between">
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+          <div class="seg"><span class="on">ของฉัน</span><span>ทีม</span><span>ทั้งหมด</span></div>
+        </div>
+        <span style="color:var(--accent-ink);font-size:12.5px">ดูภาพรวมฝ่าย →</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:11px">
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:9px 11px;background:var(--panel)">
+          <div style="font-size:11.5px;color:var(--text-3)">รอฉันตอบ</div><div style="font-size:20px;font-weight:700">6</div></div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:9px 11px;background:var(--panel)">
+          <div style="font-size:11.5px;color:var(--text-3)">ยังไม่มีใครรับ</div><div style="font-size:20px;font-weight:700;color:var(--amber)">2</div></div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:9px 11px;background:var(--panel)">
+          <div style="font-size:11.5px;color:var(--text-3)">เลยกำหนด</div><div style="font-size:20px;font-weight:700;color:var(--red)">1</div></div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:9px 11px;background:var(--panel)">
+          <div style="font-size:11.5px;color:var(--text-3)">ตีกลับ รอคุณแก้</div><div style="font-size:20px;font-weight:700;color:var(--red)">1</div></div>
+      </div>
+
+      <div style="border:1px solid var(--red);border-radius:var(--radius);padding:9px 13px;margin-bottom:11px;
+        background:rgba(167,71,71,.06);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12.5px"><b style="color:var(--red)">มีใบตีกลับค้าง 1 ใบ</b> — ตีกลับมา 3 วันแล้วยังไม่ได้แก้</span>
+        <span class="chip" style="border-color:var(--red);color:var(--red)">ดูใบที่ตีกลับ</span>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden">
+        <div style="padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div><b style="font-size:14px">คิวคำร้อง</b>
+            <div class="sub2">ค้นหา กรอง จัดกลุ่ม และติดตามทุกใบ</div></div>
+          <span class="pill">9 ใบ</span>
+        </div>
+        <div style="padding:11px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+          <span style="border:1px solid var(--border-strong);border-radius:var(--radius);padding:5px 11px;
+            font-size:12.5px;color:var(--text-3);min-width:220px">🔍 ค้นเลขที่ / เรื่อง / ลูกค้า…</span>
+          <span class="chip" style="border-color:var(--accent);color:var(--accent-ink);font-weight:700">⚙ ตัวกรอง 2</span>
+          <span class="chip">▤ จัดกลุ่ม: ฝ่าย</span>
+          <span class="chip" style="padding:4px 9px">⇅</span>
+          <span style="flex:1"></span>
+          <span class="chip">↕ เรียง: ด่วนก่อน</span>
+          <span class="chip" style="padding:4px 9px">↓</span>
+        </div>
+        <table>
+          <thead><tr><th>ต้องทำอะไร</th><th>คำร้อง</th><th class="num">กำหนดส่ง</th><th class="num">คืบหน้า</th></tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="4">▾ RD — วิจัยและพัฒนา · 7 ใบ</td></tr>
+            <tr><td><span class="pill red">ตีกลับ — ต้องแก้</span><div class="sub2">ปกิตา · 3 วันที่แล้ว</div></td>
+                <td>ขอราคา FB สูตรเดิม<div class="sub2">RQ-26080015 · ลอรีอัล</div>
+                    <div class="sub2" style="color:var(--red)">"ยังไม่ได้แนบสเปกกลิ่นที่จะเทียบ"</div></td>
+                <td class="num"><span class="pill red">ค้าง 3 วัน</span></td><td class="num">—</td></tr>
+            <tr><td><span class="dot amber"></span>รอฝ่ายเริ่ม<div class="sub2">ปกิตา เจริญวงษ์</div></td>
+                <td>รบกวนขอราคา FB ค่ะ<div class="sub2">RQ-26080018 · คุณนิชานันท์</div></td>
+                <td class="num">อีก 1 วัน<div class="sub2">12/08/2026</div></td><td class="num">—</td></tr>
+            <tr class="grp"><td colspan="4">▸ PC — จัดซื้อ · 2 ใบ <span style="font-weight:400">(ย่อไว้)</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap"><b>เทียบกับหน้าดีลทีละชิ้น</b> — ขอบเขต Segmented ✓ · MetricStrip ✓ · แบนเนอร์เตือน+ปุ่มพาไปตัวกรอง ✓
+        · การ์ด+badge จำนวน ✓ · ค้น → ตัวกรอง → จัดกลุ่ม → ย่อ/ขยาย → เรียง+ทิศทาง ✓ · หัวกลุ่มย่อ/ขยายได้ ✓</p>
+    </div>
+
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>ไม่ต้องออกแบบอะไรใหม่เลย — ทุกชิ้นมีอยู่แล้วและผ่านการใช้จริง ·
+        คนที่ใช้หน้าดีลเป็นอยู่แล้วใช้หน้านี้เป็นทันที · <b>ได้ "จัดกลุ่ม" ที่หน้าคำร้องไม่เคยมี</b>
+        (ตามฝ่าย · ลูกค้า · ชนิด · ผู้รับเรื่อง) พร้อมย่อ/ขยายรายกลุ่ม · ได้เรียงลำดับที่เลือกเองได้</div>
+      <div class="bad"><b>ต้องตัดสินเพิ่ม 1 ข้อ</b>หน้าดีลเอา <i>สถานะ</i> ใส่ในแผงตัวกรอง แต่หน้างาน PM
+        จงใจไม่เอาเข้าเพราะ "เป็น drill-down" — คิวคำร้องเข้าข่ายหลัง (สถานะ = เหตุผลที่เปิดหน้ามา)
+        ⇒ <b>ข้อเสนอ: MetricStrip 4 ตัวกดแล้วกรองในที่ ทำหน้าที่แทนแท็บสถานะ</b> ส่วนแผงเก็บมิติที่เหลือ</div>
+    </div>
+  </div>
+</div>
+
+<h2>ผมแนะนำ: จ + ข</h2>
+<div class="card"><div class="cbody">
+  <p style="margin:0 0 10px"><b>สองแบบนี้แก้คนละปัญหาและไม่ชนกัน</b> — ทำพร้อมกันได้ในรอบเดียว</p>
+  <table>
+    <tr style="background:rgba(201,121,77,.07)"><td style="width:74px"><b>จ</b></td>
+      <td><b>ลอกโครงหน้ารายการดีล</b> — เป็นมาตรฐานที่ระบบประกาศไว้เองแล้ว · ได้ตัวกรองจัดกลุ่ม +
+      <b>จัดกลุ่มแถว</b> + เรียงลำดับ ครบในรอบเดียวโดยไม่ต้องออกแบบใหม่ · MetricStrip กดกรองแทนแท็บสถานะ</td></tr>
+    <tr><td style="width:74px"><b>ง</b></td><td>แก้ <i>สามชั้นกรอง</i> ⇒ ชิปสถานะแถวเดียว (เห็นตลอด) + แผงตัวกรองจัดกลุ่มสำหรับมิติที่เหลือ ·
+      <b>เป็น ก ที่ใช้คอนโทรลของบ้านแทนการคิดใหม่</b> และมีที่ให้มิติที่ยังไม่มี (ลูกค้า · ผู้รับเรื่อง) โดยแถวบนไม่ยาวขึ้น</td></tr>
+    <tr><td><b>ก</b></td><td>เวอร์ชันไม่มีแผง — เลือกอันนี้ถ้าอยากให้ทุกตัวกรองเห็นหมดตลอดเวลา และยอมให้แถวบนตกบรรทัดบนจอแคบ</td></tr>
+    <tr><td><b>ข</b></td><td>แก้ <i>ตารางสามชุด</i> ⇒ เหลือชุดเดียว เปิด/ปิดคอลัมน์ตามบริบทผ่าน props</td></tr>
+    <tr style="background:rgba(167,71,71,.06)"><td style="color:var(--red)"><b>ตีกลับ</b></td>
+      <td><b>ทำก่อนทุกแบบ</b> — เป็นบั๊กของกลไก ไม่ใช่เรื่องเลย์เอาต์ · ใบที่โดนตีกลับหายจากทุกตัวนับวันนี้
+      ⇒ แก้ที่ <code>requestNextStep</code> + <code>matchesQueueCount</code> แล้วทั้งสามแบบได้ประโยชน์พร้อมกัน</td></tr>
+    <tr><td><b>ค</b></td><td>ยังไม่ทำ — ความหนาแน่นเป็นเรื่องรสนิยม และเสียข้อมูลต่อแถวจริง ๆ · ถ้าหลังใช้ ก+ข แล้วยังรู้สึกว่ายาว ค่อยกลับมาทำ</td></tr>
+  </table>
+</div></div>
+
+</body>
+</html>

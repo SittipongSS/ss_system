@@ -149,10 +149,19 @@ export default function RequestsPage() {
   // มีคำตอบเดียวต่อคน · เปลี่ยนตามแท็บเมื่อไรมันจะกลายเป็น "ใบบนสุดของสิ่งที่เห็น"
   // ซึ่งซ้ำกับแถวแรกของตารางที่อยู่ข้างใต้อยู่แล้ว
   // ⚠️ ประวัติไม่มีอะไรให้ทำ ⇒ ซ่อนการ์ดทั้งใบในแท็บนั้น (ต่างจาก "ว่าง" ซึ่งต้องบอก)
+  // ⭐ **บวกใบที่ถูกตีกลับของตัวเองเข้าไปด้วย** (2026-08-11) — แท็บ "รอฉันตอบ" ตัด
+  // ร่างทิ้งทั้งหมด (ไม่งั้นเลขบนแท็บบวกกันเกินจริง) แต่ใบตีกลับคือร่างที่ **ฝ่าย
+  // ส่งคืนมาให้เราแก้** ⇒ เป็นของค้างที่ขวางงานตัวเองอยู่จริง ๆ · ปล่อยไว้แบบเดิม
+  // การ์ดจะขึ้นว่า "ไม่มีเรื่องรอคุณอยู่ตอนนี้" ทั้งที่มีใบรอเราแก้อยู่
+  // ⚠️ บวกเข้าที่ **ตัวการ์ด** ไม่ใช่ที่ `queueTabRows` — ใบยังต้องอยู่แท็บ
+  // "ที่ฉันเปิด" ที่เดียว ไม่งั้นนับซ้ำสองแท็บ
   const today = businessDate();
   const startHere = useMemo(
     () => startHereRequest(
-      queueTabRows(requests, { tab: "todo", myDepts }),
+      [
+        ...queueTabRows(requests, { tab: "todo", myDepts }),
+        ...requests.filter((r) => r._mine && r.status === "draft" && r.bouncedAt),
+      ],
       { todayIso: today },
     ),
     [requests, myDepts, today],
@@ -267,6 +276,8 @@ export default function RequestsPage() {
           filter activeKey={board.countFilter}
           note="กดเพื่อกรองรายการ"
           ariaLabel="ตัวเลขสรุปคิวคำร้อง — กดเพื่อกรอง"
+          /* ตีกลับเป็นงานของผู้ขอ — แท็บคิวฝ่ายไม่ต้องมีกล่องที่เป็น 0 ตลอด */
+          scope={tab === "todo" ? "dept" : "requester"}
           onSelect={(key, on) => board.setCountFilter(on ? null : key)}
         />
       )}

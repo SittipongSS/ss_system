@@ -4934,6 +4934,14 @@ button.empty-state { width: 100%; font: inherit; }
   background: var(--panel);
   box-shadow: var(--glass-shadow);
 }
+/* แถบที่มี 5 ตัว (คิวคำร้องของผู้ขอ — มีช่อง "ตีกลับ" เพิ่ม) — ไม่งั้นตัวที่ 5
+   ตกไปขึ้นบรรทัดใหม่ตัวเดียวโดด ๆ · ประกาศที่นี่ที่เดียว ไม่ใช่ให้แต่ละหน้าส่ง
+   คลาสมาเอง (แล้วหน้าที่ลืมส่งจะได้แถวกำพร้าเงียบ ๆ) */
+/* ⚠️ `data-count` ไม่ใช่ `:has(> :nth-child(5))` — เขียนแบบ `:has` แล้ว **หายไป
+   ทั้งกฎ** ตอน build (lightningcss ตัดทิ้งตาม target ของ browserslist) · จอไม่ขึ้น
+   error ให้เห็น มันแค่กลับไปใช้ 4 คอลัมน์เงียบ ๆ (เจอเองตอนตรวจบนพรีวิว) */
+.ui-metric-strip[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
 .ui-metric {
   display: flex;
   align-items: center;
