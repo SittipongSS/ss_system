@@ -101,3 +101,95 @@
    `.panelLayout` ด้วยเหตุผลเดียวกัน (`.page` เป็น block ไม่มี gap ⇒ แนบหัวใบ 0px
    ผู้ใช้ทัก 2026-08-10 ว่า "ส่วน edit ชิด header") */
 .editCard { margin-top: var(--space-4-5); }
+
+/* ── บรรทัดคนสองฝั่งของใบ (ม-101) ────────────────────────────────────────
+   ผู้ยื่น → ผู้รับเรื่อง · ชิปคู่นี้ตอบคำถามแรกของคนที่เปิดใบของเพื่อนร่วมทีม
+   ⚠️ สีมีความหมาย ไม่ใช่ตกแต่ง: เขียวอมฟ้า = ใบของฉัน · ม่วง = ใบของคนในทีม ·
+   น้ำเงิน = ฝ่ายที่รับเรื่องแล้ว · ขอบประจาง = ยังไม่มีใครรับ */
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-0-5) var(--space-3) var(--space-0-5) var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  white-space: nowrap;
+}
+
+.person b {
+  overflow: hidden;
+  color: inherit;
+  font-weight: var(--fw-bold);
+  text-overflow: ellipsis;
+}
+
+.personAvatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  /* ขนาดวงกลม = ความสูงของชิปพอดี (ขั้น --space-*) ไม่ใช่ตัวเลขที่คิดขึ้นเอง */
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--fs-1);
+  font-weight: var(--fw-bold);
+}
+
+.personSelf {
+  border-color: color-mix(in srgb, var(--teal) 40%, transparent);
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+.personSelf .personAvatar { background: var(--teal); }
+
+.personTeam {
+  border-color: color-mix(in srgb, var(--violet) 40%, transparent);
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.personTeam .personAvatar { background: var(--violet); }
+
+.personDept {
+  border-color: color-mix(in srgb, var(--blue) 40%, transparent);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+.personDept .personAvatar { background: var(--blue); }
+
+.personEmpty {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-3);
+}
+.personEmpty .personAvatar {
+  background: var(--panel-3);
+  color: var(--text-3);
+}
+
+.personArrow { color: var(--text-3); }
+
+/* บรรทัดเรื่อง — หัวข้อคำร้อง + ลูกค้า อ่านเป็นประโยคเดียว */
+.subject { min-width: 0; }
+.subject b { color: var(--text); font-weight: var(--fw-bold); }
+
+/* ⚠️ ห้ามตัดกลางรหัส — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */
+.arCode {
+  margin-left: var(--space-1-5);
+  color: var(--text-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
+/* จอแคบ: ชิปเรียงบนลงล่าง ⇒ ลูกศรจะค้างท้ายบรรทัดบนเหมือนพิมพ์ค้าง
+   (จุดตัด 480 จากชุดที่มีอยู่แล้ว — ห้ามคิดค่าใหม่) */
+@media (max-width: 480px) {
+  .personArrow { display: none; }
+}
