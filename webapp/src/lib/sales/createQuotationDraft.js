@@ -6,7 +6,9 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { resolveProbability } from '@/lib/sales/dealProbability';
-import { advanceStage, dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import {
+  advanceStage, dealAuditLabel, generateQuoteNumber, normalizeDiscountValue, quoteTotals, toMoney,
+} from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
@@ -58,7 +60,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
 
   // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
   const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
-  const discountValue = discountType ? toMoney(body.discountValue) : 0;
+  const discountValue = normalizeDiscountValue(discountType, body.discountValue);
   // default +VAT 7% ท้ายใบ (มติ 2026-07-19): ราคาบรรทัด = ราคาผลิตไม่รวม VAT →
   // ท้ายใบเห็นยอด ex-VAT แล้วบวก VAT ให้ยอดจบเทียบกับเอกสารจริงของลูกค้า (เช่น PO
   // สหมิตรที่ยอดรวม VAT) ได้; ผู้ใช้สลับเป็น "รวม VAT แล้ว" (0) ในใบได้เสมอ

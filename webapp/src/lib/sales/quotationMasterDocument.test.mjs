@@ -219,3 +219,19 @@ test('V4 doc: ใบหลายหน้า หัวตารางมีค�
   assert.equal(headers, tables, 'ทุกตารางมีหัวคอลัมน์ส่วนลด');
   assert.ok(!html.includes('<table class="itemTable">'), 'ไม่มีตารางแบบไม่มีส่วนลดปนมา');
 });
+
+test('V4 doc: ใบเก่าที่เก็บ % เกิน 100 ไว้ ต้องพิมพ์ป้ายไม่เกิน 100% (ให้ตรงกับยอดที่หักจริง)', () => {
+  // แถวก่อนมี clamp ฝั่งบันทึก: discountValue 150 แต่ยอดที่หักได้จริงคือ 100% ของฐาน
+  const q = {
+    ...baseQuote([lineOf('1', {
+      discountType: 'percent', discountValue: 150, discountAmount: 500, lineTotal: 500,
+    })]),
+    discountType: 'percent', discountValue: 250, discountAmount: 500,
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  // เทียบเฉพาะจุดที่พิมพ์อัตรา — เลข 150/250 โผล่ในพาธของโลโก้ SVG ได้ ไม่เกี่ยวกัน
+  assert.match(html, /class="itemDiscountRate">100%/, 'ป้ายรายบรรทัดตัดที่ 100%');
+  assert.doesNotMatch(html, /class="itemDiscountRate">150%/, 'ไม่พิมพ์ค่าดิบของบรรทัด');
+  assert.match(html, /หัก ส่วนลด 100%/, 'ป้ายส่วนลดท้ายใบตัดที่ 100%');
+  assert.doesNotMatch(html, /หัก ส่วนลด 250%/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
+});

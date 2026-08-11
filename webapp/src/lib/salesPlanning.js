@@ -312,6 +312,15 @@ export function discountAmountOf(base, discountType, discountValue) {
   return Math.min(amt, b); // ส่วนลดไม่เกินฐาน — ยอดไม่ติดลบ
 }
 
+// ค่าส่วนลดที่ "บันทึกได้จริง" — % เกิน 100 ถูกตัดเหลือ 100
+// การคำนวณ clamp ให้อยู่แล้ว (discountAmountOf) แต่ถ้าเก็บค่าดิบลง DB เอกสารจะพิมพ์
+// ป้าย "ส่วนลด 150%" คู่กับยอดที่หักแค่ 100% ของฐาน = ป้ายขัดกับตัวเลขบนกระดาษเดียวกัน
+export function normalizeDiscountValue(discountType, discountValue) {
+  if (!discountType) return 0;
+  const v = toMoney(discountValue);
+  return discountType === 'percent' ? Math.min(v, 100) : v;
+}
+
 // ยอดสุทธิรายบรรทัด: qty × unitPrice − ส่วนลดบรรทัด (ปัดสตางค์)
 export function quoteLineNet(line = {}) {
   const gross = round2(toMoney(line.qty, 1) * toMoney(line.unitPrice));

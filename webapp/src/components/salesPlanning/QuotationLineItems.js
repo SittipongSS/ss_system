@@ -130,6 +130,10 @@ export default function QuotationLineItems({
   const setLine = (index, patch) => onChange?.(lines.map((line, lineIndex) => (
     lineIndex === index ? { ...line, ...patch } : line
   )));
+  // ส่วนลด % เกิน 100 ไม่มีความหมาย — server clamp อยู่แล้ว (normalizeDiscountValue)
+  // แต่ถ้าปล่อยให้พิมพ์ 150 ค้างบนจอ ตัวเลขที่เห็นจะไม่ตรงกับยอดที่คำนวณให้ทันที
+  const clampDiscount = (type, value) =>
+    (type === "percent" && Number(value) > 100 ? 100 : value);
   const removeLine = (index) => onChange?.(lines.filter((_, lineIndex) => lineIndex !== index));
 
   // บรรทัด FG โชว์ 2 บรรทัด (มติผู้ใช้ 2026-07-19): รหัส · แบรนด์ / ชื่อสินค้า · ปริมาตร
@@ -278,7 +282,7 @@ export default function QuotationLineItems({
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
                     </Select>
-                    <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: value ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
+                    <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: clampDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
                   </div>
                 </td>
                 <td className={`num mono ${styles.lineAmount}`}>{fmtMoney(quoteLineNet(line).lineTotal)}</td>
@@ -305,7 +309,7 @@ export default function QuotationLineItems({
                 <option value="percent">%</option>
                 <option value="amount">บาท</option>
               </Select>
-              <MoneyInput min="0" value={discountValue || ""} disabled={!editable || !discountType} onChange={(value) => onDiscountChange?.({ type: discountType, value: value ?? "" })} aria-label="ส่วนลดท้ายใบ" />
+              <MoneyInput min="0" value={discountValue || ""} disabled={!editable || !discountType} onChange={(value) => onDiscountChange?.({ type: discountType, value: clampDiscount(discountType, value) ?? "" })} aria-label="ส่วนลดท้ายใบ" />
             </span>
             <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-"}</strong>
           </div>

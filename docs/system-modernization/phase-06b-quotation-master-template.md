@@ -182,6 +182,17 @@
 - ความกว้างคอลัมน์ของโหมดนี้อยู่ที่คลาส `.itemTable.withLineDiscount` ใน `documentShell.js`
   (ใบสั่งขาย FM-SA-03 ใช้เครื่องยนต์เดียวกัน จึงได้พฤติกรรมนี้ด้วยถ้าบรรทัดมีส่วนลดติดมา)
 
+### ตามผลของการโชว์อัตรา: % ต้องไม่เกิน 100 ตั้งแต่ตอนบันทึก
+
+- พอเอกสารพิมพ์ "อัตรา" ออกไปด้วย ค่าที่เก็บก็ต้องเป็นค่าที่ใช้จริง: `discountAmountOf`
+  clamp % ที่ 100 มาตลอด แต่ฝั่งบันทึกเก็บค่าดิบ ⇒ ใบที่กรอก 150% จะพิมพ์ "150%"
+  คู่กับยอดที่หักแค่ 100% ของฐาน — ป้ายขัดกับตัวเลขบนกระดาษแผ่นเดียวกัน
+- `normalizeDiscountValue(discountType, discountValue)` ใน `salesPlanning.js` เป็นจุดเดียว
+  ของกติกานี้ ใช้ทั้งบรรทัด (`normalizeManualLines`) และส่วนลดท้ายใบ (route แก้ไข +
+  `createQuotationDraft`); ฝั่งจอ `QuotationLineItems` clamp ตอนพิมพ์เพื่อให้เห็นทันที
+- ฝั่งเอกสาร clamp ตอนแสดงอีกชั้น (`printedDiscountValue`) เพราะแถวที่บันทึกไว้ก่อน
+  กติกานี้ยังมีค่าเกิน 100 ค้างใน DB
+
 ## Known risks
 
 - Browser print engine อาจแบ่งหน้าไม่เหมือนกันตาม font readiness จึงต้องรอ `document.fonts.ready` ก่อน Print/PDF

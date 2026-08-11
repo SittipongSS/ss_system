@@ -11,7 +11,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
-  inSalesEditScope, inSalesViewScope, quoteTotals, toMoney,
+  inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
@@ -237,7 +237,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const discountType = 'discountType' in body
       ? (['percent', 'amount'].includes(body.discountType) ? body.discountType : null)
       : before.discountType;
-    const discountValue = discountType ? toMoney('discountValue' in body ? body.discountValue : before.discountValue) : 0;
+    const discountValue = normalizeDiscountValue(
+      discountType,
+      'discountValue' in body ? body.discountValue : before.discountValue,
+    );
     const vatRate = toMoney('vatRate' in body ? body.vatRate : before.vatRate, 0);
     const totals = quoteTotals(newLines, { discountType, discountValue, vatRate });
     Object.assign(patch, totals, { discountType, discountValue, vatRate });
