@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รื้อแดชบอร์ดของฉัน — ปัญหา + 3 ทางเลือก</title>
+<style>
+  /* จานสี v1 (ธีมสว่าง) — v2 ถูกยกเลิกแล้ว 2026-08-11 */
+  :root{
+    --bg:#efe9dd; --panel:#ffffff; --panel-2:#f7f4ee; --panel-3:#eee9e0;
+    --border:rgba(49,55,69,.13); --border-strong:rgba(49,55,69,.24);
+    --text:#171d29; --text-2:#596170; --text-3:#6c7382;
+    --accent:#c9794d; --accent-ink:#9c5228; --navy:#243b63;
+    --green:#357558; --red:#a74747; --amber:#926024; --blue:#466990;
+    --radius:6px; --radius-lg:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--text);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;font-size:14px;line-height:1.55}
+  h1{font-size:23px;margin:0 0 6px}
+  h2{font-size:18px;margin:32px 0 10px}
+  .sub{color:var(--text-3);font-size:13px;margin:0 0 20px}
+
+  .card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+    box-shadow:0 1px 2px rgba(23,29,41,.05);overflow:hidden;margin:0 0 20px}
+  .chead{padding:13px 17px;border-bottom:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+  .chead b{font-size:15px}
+  .chead .q{color:var(--text-2);font-size:13px}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.05em;padding:2px 9px;border-radius:999px;
+    border:1px solid var(--accent);color:var(--accent-ink)}
+  .tag.bad{border-color:var(--red);color:var(--red)}
+  .cbody{padding:17px}
+  .screen{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg);padding:14px}
+
+  .bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden}
+  .seg span{padding:5px 13px;font-size:12.5px;color:var(--text-2);border-right:1px solid var(--border)}
+  .seg span:last-child{border-right:0}
+  .seg span.on{background:var(--accent);color:#fff;font-weight:700}
+  .chip{padding:4px 12px;border-radius:999px;border:1px solid var(--border-strong);font-size:12.5px;
+    color:var(--text-2);background:var(--panel)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .chip.num b{font-variant-numeric:tabular-nums}
+  .layer{border:1px dashed var(--red);border-radius:var(--radius);padding:7px 11px;margin-bottom:7px;
+    font-size:12px;color:var(--red);background:rgba(167,71,71,.05)}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel)}
+  th{text-align:left;font-size:11px;letter-spacing:.05em;color:var(--text-3);font-weight:700;
+    padding:8px 11px;border-bottom:1px solid var(--border-strong);background:var(--panel-2);white-space:nowrap}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .sub2{font-size:11.5px;color:var(--text-3)}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
+  .pill.red{color:var(--red);border-color:var(--red)} .pill.amber{color:var(--amber);border-color:var(--amber)}
+  .pill.green{color:var(--green);border-color:var(--green)} .pill.blue{color:var(--blue);border-color:var(--blue)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .dot.red{background:var(--red)} .dot.amber{background:var(--amber)} .dot.blue{background:var(--blue)} .dot.green{background:var(--green)}
+  .grp td{background:var(--panel-3);font-weight:700;font-size:11.5px;color:var(--text-2)}
+
+  /* แบบ ค — บรรทัดเดียว */
+  .line{display:grid;grid-template-columns:118px 1fr 150px 96px 78px;gap:12px;align-items:center;
+    padding:8px 12px;border-bottom:1px solid var(--border);font-size:12.5px;background:var(--panel)}
+  .line:last-child{border-bottom:0}
+  .line .no{font-variant-numeric:tabular-nums;color:var(--text-2);font-size:11.5px}
+
+  .pro{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px;font-size:12.5px}
+  .pro div{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--panel-2)}
+  .pro b{display:block;font-size:11px;letter-spacing:.05em;margin-bottom:5px}
+  .pro .good b{color:var(--green)} .pro .bad b{color:var(--red)}
+  .cap{font-size:12px;color:var(--text-3);margin:9px 0 0}
+</style>
+<style>
+  .cols{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:11px 13px;margin-bottom:9px}
+  .box h4{margin:0 0 7px;font-size:13px}
+  .box .sub2{margin-bottom:6px}
+  .metric{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:9px 11px}
+  .metric .lab{font-size:11.5px;color:var(--text-3)}
+  .metric .val{font-size:20px;font-weight:700;line-height:1.2}
+  .strip{display:grid;gap:9px;margin-bottom:11px}
+  .strip.c4{grid-template-columns:repeat(4,1fr)} .strip.c5{grid-template-columns:repeat(5,1fr)}
+  .hero{border:1px solid var(--accent);border-radius:var(--radius-lg);background:rgba(201,121,77,.06);padding:12px 14px;margin-bottom:11px;
+    display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .hero .eyebrow{font-size:11px;letter-spacing:.05em;color:var(--accent-ink);font-weight:700}
+  .hero .step{font-size:16px;font-weight:700;margin:3px 0 1px}
+  .btn{display:inline-block;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel);font-size:12.5px;color:var(--text-2)}
+  .btn.primary{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
+  .feedrow{padding:8px 11px;border-bottom:1px solid var(--border);font-size:12.5px;background:var(--panel)}
+  .feedrow:last-child{border-bottom:0}
+  .kill{text-decoration:line-through;color:var(--text-3)}
+  ul.tight{margin:6px 0 0;padding-left:18px} ul.tight li{margin:3px 0}
+</style>
+
+</head>
+<body>
+
+<h1>รื้อ "แดชบอร์ดของฉัน"</h1>
+<p class="sub">แท็บแรกของ <code>/sa/dashboard</code> · จานสี v1 ธีมสว่าง · วินิจฉัยจากโครงจริง (<code>MyDashboardTab.js</code> 319 บรรทัด + <code>api/sales-planning/my-dashboard</code>)</p>
+
+<h2>ปัญหาที่วินิจฉัยจากโค้ดจริง</h2>
+<div class="card"><div class="cbody">
+  <div class="screen">
+    <div class="layer">1 · แถวตัวเลข 4 ช่อง (เป้า · Actual · ดีลเปิด · งานเลยกำหนด)</div>
+    <div class="layer">2 · <b>ฟีดกิจกรรม</b> กินคอลัมน์กลางทั้งหน้า — ตอบ "อะไรเพิ่งเกิด" ไม่ใช่ "ฉันต้องทำอะไร"</div>
+    <div class="layer">3 · คอลัมน์ขวา <b>5 การ์ด</b> — ลีดต้องติดต่อ / Won รอ SO / SO รอใบยื่นภาษี / ภาพรวมงาน / Pipeline FC</div>
+    <div class="layer" style="border-color:var(--border-strong);color:var(--text-2);background:transparent">แต่ละใบมีลิงก์ "ดูทั้งหมด" ของตัวเอง — ไม่มีที่ไหนบอกว่ารวมแล้วค้างกี่ชิ้น และอันไหนก่อน</div>
+  </div>
+  <div class="pro">
+    <div class="bad"><b>ห้าอย่างที่ตรวจเจอ</b>
+      <ul class="tight">
+        <li><b>ไม่มีที่ไหนตอบว่า "เริ่มที่ไหน"</b> — ปัญหาเดียวกับภาพรวม RD ก่อนรื้อ (ม-93) ซึ่งแก้ไปแล้วด้วยการ์ด "เริ่มที่นี่" + คิวถัดไป</li>
+        <li><b>คำร้องไม่อยู่ในแดชบอร์ดเลย</b> — API ไม่แตะ <code>dept_requests</code> สักบรรทัด ⇒ ใบที่ถูกตีกลับ (ม-102) มองไม่เห็นจากหน้านี้ ทั้งที่เป็นของค้างที่<b>ไม่มีใครกำลังทำอยู่</b></li>
+        <li><b>ตัวเลขซ้ำสองที่ในหน้าเดียว</b> — เป้า/Actual อยู่ทั้งแถวบนและการ์ดขวา · งานเลยกำหนดอยู่ทั้งแถวบนและการ์ด "ภาพรวมงาน"</li>
+        <li><b>ดีไซน์ระบบส่วนตัว</b> — <code>DashboardShell.module.css</code> 69 คลาส (card/queueCard/quickFacts/...) ทั้งที่ระบบมี <code>Workspace</code> · <code>WorkspaceSection</code> · <code>MetricStrip</code> · <code>StartHereCard</code> อยู่แล้ว ⇒ ปรับสี/ระยะทีต้องตามแก้ที่นี่ด้วยมือ</li>
+        <li><b>ของตกแต่งที่ระบบเลิกใช้แล้ว</b> — ป้าย "LIVE FEED" และปุ่ม "อัปเดต" (คิวคำร้องถอดปุ่มรีเฟรชทิ้งไปแล้ว: หน้าที่ต้องกดเองแปลว่าข้อมูลไม่สดโดยปริยาย)</li>
+      </ul>
+    </div>
+    <div class="good"><b>ของดีที่ต้องเก็บไว้</b>
+      <ul class="tight">
+        <li>คิว <b>รอยต่อเอกสาร</b> (Won → SO → ใบยื่นภาษี) — สองจุดที่ระบบส่งไม้ต่อแล้วไม่มีอะไรคอยทวง</li>
+        <li>ลีดที่ต้องติดต่อ + นัดหมายที่จะถึง</li>
+        <li>เป้า/Actual/Gap ของเดือน · Pipeline แยกตาม FC%</li>
+        <li>ทุกตัวเลขนับ <b>เฉพาะของฉัน</b> (มติ 2026-07-28) — ไม่ใช่ของทั้งทีม</li>
+      </ul>
+    </div>
+  </div>
+</div></div>
+
+<!-- ── แบบ ก ─────────────────────────────────────── -->
+<div class="card" style="border-color:var(--accent)">
+  <div class="chead" style="background:rgba(201,121,77,.07)"><span class="tag">แบบ ก</span><b>"วันนี้ทำอะไรก่อน" — คิวรวมข้ามโมดูล</b>
+    <span class="q">— โครงเดียวกับภาพรวม RD ที่รื้อไปแล้ว (ม-93)</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="strip c5">
+        <div class="metric"><div class="lab">ค้างทั้งหมด</div><div class="val">12</div></div>
+        <div class="metric"><div class="lab">เลยกำหนด</div><div class="val" style="color:var(--red)">3</div></div>
+        <div class="metric"><div class="lab">ตีกลับ รอแก้</div><div class="val" style="color:var(--red)">1</div></div>
+        <div class="metric"><div class="lab">รอออกเอกสาร</div><div class="val" style="color:var(--amber)">4</div></div>
+        <div class="metric"><div class="lab">เป้าเดือนนี้</div><div class="val">62%</div></div>
+      </div>
+
+      <div class="hero">
+        <div>
+          <div class="eyebrow">🔥 เริ่มที่นี่</div>
+          <div class="step">คำร้องถูกตีกลับ — ต้องแก้แล้วส่งใหม่</div>
+          <div class="sub2">RQ-26080029 · พัฒนากลิ่น · สปาฟินเเลนด์ — ปกิตา (RD) ตีกลับเมื่อ 3 วันที่แล้ว</div>
+        </div>
+        <span class="btn primary">เปิดใบนี้ →</span>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden">
+        <div style="padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div><b style="font-size:14px">คิวของฉัน</b><div class="sub2">ทุกอย่างที่รอฉันอยู่ — ลีด · งาน · คำร้อง · เอกสาร</div></div>
+          <span class="pill">12 รายการ</span>
+        </div>
+        <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+          <span class="chip on">ทั้งหมด 12</span><span class="chip">ลีด 3</span><span class="chip">งาน 4</span>
+          <span class="chip">คำร้อง 1</span><span class="chip">เอกสาร 4</span>
+          <span style="flex:1"></span><span class="chip">↕ เรียง: ความเร่ง</span>
+        </div>
+        <table>
+          <thead><tr><th>ต้องทำอะไร</th><th>เรื่อง</th><th class="num">กำหนด</th></tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="3">เลยกำหนดแล้ว · 3</td></tr>
+            <tr><td><span class="pill red">แก้แล้วส่งใหม่</span><div class="sub2">คำร้อง</div></td>
+                <td>RQ-26080029 · สปาฟินเเลนด์<div class="sub2">"ขอใบสั่งขายที่แจ้งไปในคอมเมนต์"</div></td>
+                <td class="num"><span class="pill red">ค้าง 3 วัน</span></td></tr>
+            <tr><td><span class="pill red">โทรกลับลูกค้า</span><div class="sub2">ลีด</div></td>
+                <td>บจก. บัตเตอร์ฟลาย ไทย<div class="sub2">มอบหมายให้คุณ 5 วันที่แล้ว</div></td>
+                <td class="num"><span class="pill red">เกิน 5 วัน</span></td></tr>
+            <tr class="grp"><td colspan="3">ครบกำหนดวันนี้ · 2</td></tr>
+            <tr><td><span class="pill amber">ออกใบสั่งขาย</span><div class="sub2">เอกสาร</div></td>
+                <td>QT-26080037 Won แล้ว · ฿355,320<div class="sub2">Won 09/08/2026</div></td>
+                <td class="num">วันนี้</td></tr>
+            <tr class="grp"><td colspan="3">สัปดาห์นี้ · 7 <span style="font-weight:400">(ย่อไว้)</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">ฟีดกิจกรรมย้ายลงท้ายหน้าเป็นการ์ดยุบได้ — ยังอยู่ แต่ไม่ใช่สิ่งแรกที่ตาไปเจอ</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>เปิดมาแล้วรู้ทันทีว่า<b>เริ่มที่ไหน</b> · ของค้างทุกชนิดอยู่ตารางเดียว เรียงตามความเร่งจริง ไม่ใช่กระจาย 5 การ์ด ·
+        <b>คำร้องเข้ามาอยู่ในสายตาแล้ว</b> · ใช้ primitive กลางทั้งหน้า (ลบ CSS ส่วนตัว 69 คลาส)</div>
+      <div class="bad"><b>ต้องทำเพิ่ม</b>API ต้องดึงคำร้องของฉันมาด้วย (query เพิ่ม 1 ชุด) · ต้องนิยาม "ก้าวถัดไป" ให้ของ 5 ชนิดที่มาจากคนละตาราง —
+        งานจริงอยู่ที่ตรงนี้ ไม่ใช่ที่หน้าจอ · ฟีดที่เคยเป็นพระเอกถูกลดชั้น (ถ้าใช้บ่อยกว่าที่คิด จะรู้สึกว่าหาย)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ข ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ข</span><b>คงโครงเดิม — เปลี่ยนเป็นของกลาง + อุดรูที่ขาด</b>
+    <span class="q">— เสี่ยงน้อยสุด แตะโครงน้อยสุด</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="strip c4">
+        <div class="metric"><div class="lab">เป้าเดือนนี้</div><div class="val">฿1.20M</div><div class="sub2">สำเร็จ 62%</div></div>
+        <div class="metric"><div class="lab">Actual</div><div class="val" style="color:var(--green)">฿744K</div><div class="sub2">Gap ฿456K</div></div>
+        <div class="metric"><div class="lab">ดีลที่เปิดอยู่</div><div class="val">9</div><div class="sub2">Pipeline ฿3.1M</div></div>
+        <div class="metric"><div class="lab">ค้างที่ฉัน</div><div class="val" style="color:var(--red)">12</div><div class="sub2">กดเพื่อดูรายการ</div></div>
+      </div>
+      <div class="cols">
+        <div>
+          <div class="box"><h4>สิ่งที่ต้องดำเนินการ <span class="pill">12</span></h4>
+            <div class="sub2">รวมห้าคิวที่เคยแยกกัน — กดชิปเพื่อกรอง</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+              <span class="chip on">ทั้งหมด</span><span class="chip">ลีด 3</span><span class="chip">งาน 4</span><span class="chip">คำร้อง 1</span><span class="chip">เอกสาร 4</span>
+            </div>
+            <div class="feedrow"><span class="dot red"></span><b>คำร้องตีกลับ</b> RQ-26080029 · ค้าง 3 วัน</div>
+            <div class="feedrow"><span class="dot red"></span><b>ลีดรอโทรกลับ</b> บจก. บัตเตอร์ฟลาย ไทย</div>
+            <div class="feedrow"><span class="dot amber"></span><b>Won รอออก SO</b> QT-26080037 · ฿355,320</div>
+          </div>
+          <div class="box"><h4>รายการอัปเดตล่าสุด</h4><div class="sub2">ฟีดเดิม อยู่ที่เดิม ขนาดเท่าเดิม</div></div>
+        </div>
+        <div>
+          <div class="box"><h4>Pipeline ตาม FC</h4><div class="sub2">90% ฿1.2M · 70% ฿0.9M · 50% ฿1.0M</div></div>
+          <div class="box"><h4 class="kill">เป้าหมายของฉัน</h4><div class="sub2">ตัดทิ้ง — ซ้ำกับแถบตัวเลขข้างบน</div></div>
+          <div class="box"><h4 class="kill">ภาพรวมงาน</h4><div class="sub2">ตัดทิ้ง — ยุบเข้าคิว "สิ่งที่ต้องดำเนินการ"</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>แก้ครบสี่ข้อจากห้าข้อที่วินิจฉัย (ตัวเลขซ้ำ · ของค้างกระจาย · คำร้องหาย · CSS ส่วนตัว) โดย<b>ไม่ต้องรื้อลำดับการอ่านของหน้า</b> ·
+        คนที่ใช้อยู่ทุกวันไม่ต้องเรียนใหม่ · งานน้อยกว่าแบบ ก ราวครึ่ง</div>
+      <div class="bad"><b>ไม่ได้แก้</b>ข้อที่ใหญ่ที่สุด — <b>ยังไม่มีที่ไหนบอกว่า "เริ่มที่ไหน"</b> · ฟีดยังกินพื้นที่กลางหน้าเท่าเดิม</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ค ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ค</span><b>สองคอลัมน์ "ต้องทำ" / "ตัวเลข" — ตัดฟีดทิ้ง</b>
+    <span class="q">— สุดทางอีกด้าน</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="cols">
+        <div>
+          <div class="hero" style="margin-bottom:9px"><div><div class="eyebrow">🔥 เริ่มที่นี่</div>
+            <div class="step">คำร้องถูกตีกลับ — RQ-26080029</div></div><span class="btn primary">เปิด →</span></div>
+          <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);overflow:hidden">
+            <div class="feedrow"><b>คิวของฉัน · 12 รายการ</b></div>
+            <div class="feedrow"><span class="dot red"></span>ลีดรอโทรกลับ — บจก. บัตเตอร์ฟลาย ไทย <span class="pill red">เกิน 5 วัน</span></div>
+            <div class="feedrow"><span class="dot amber"></span>Won รอออก SO — QT-26080037</div>
+            <div class="feedrow"><span class="dot amber"></span>SO รอออกใบยื่นภาษี — SO-26080012</div>
+            <div class="feedrow"><span class="dot blue"></span>งานวันนี้ — ส่งตัวอย่างกลิ่นให้ลูกค้า</div>
+          </div>
+        </div>
+        <div>
+          <div class="box"><h4>เป้าเดือนนี้</h4><div style="font-size:22px;font-weight:700">฿744K <span class="sub2">/ ฿1.20M · 62%</span></div></div>
+          <div class="box"><h4>Pipeline</h4><div class="sub2">9 ดีล · ฿3.1M<br>FC90 ฿1.2M · FC70 ฿0.9M · FC50 ฿1.0M</div></div>
+          <div class="box"><h4>เดือนนี้ปิดได้</h4><div class="sub2">3 ดีล · ฿744K</div></div>
+        </div>
+      </div>
+      <p class="cap">ฟีดกิจกรรมถูกตัดทิ้งทั้งก้อน — ความเคลื่อนไหวรายดีลอ่านได้ที่เธรดในหน้าดีลอยู่แล้ว</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>หน้าสั้นที่สุด อ่านจบในจอเดียว · แยกชัดว่า "ต้องทำ" กับ "ตัวเลข" คนละฝั่ง · ไม่มีอะไรซ้ำกันเลย</div>
+      <div class="bad"><b>เสี่ยง</b>ตัดฟีดคือการตัดของที่มีคนใช้อยู่โดยไม่ได้ถาม — และ <b>ฟีดคือที่เดียวที่เห็นความเคลื่อนไหวข้ามดีลโดยไม่ต้องเปิดทีละใบ</b></div>
+    </div>
+  </div>
+</div>
+
+<h2>ผมแนะนำ: ก</h2>
+<div class="card"><div class="cbody">
+  <p style="margin:0 0 10px">เหตุผลเดียวกับที่เลือก ก ตอนรื้อภาพรวม RD — และรอบนั้นได้ผล: <b>แดชบอร์ดที่ตอบว่า "มีอะไรบ้าง" แต่ไม่ตอบว่า "เริ่มที่ไหน" คนจะเลิกเปิดภายในสองสัปดาห์</b></p>
+  <ul class="tight">
+    <li>ของกลางพร้อมแล้วทั้งชุด — <code>StartHereCard</code> · <code>QueueCountStrip</code> · <code>RequestQueuePanel</code> (toolbar กรอง/จัดกลุ่ม/เรียง เพิ่งทำเสร็จ)</li>
+    <li>งานจริงอยู่ที่ <b>นิยาม "ก้าวถัดไป" ของห้าชนิด</b> ให้อยู่ที่ lib ที่เดียว แล้วเทสต์ได้โดยไม่ต้องมีจอ — แบบเดียวกับ <code>requestNextStep</code></li>
+    <li>ทำเป็นสองก้อนได้: <b>ก1</b> คิวรวม + เริ่มที่นี่ (ของใหญ่) · <b>ก2</b> ย้ายฟีดลงท้าย + ลบ CSS ส่วนตัว</li>
+  </ul>
+  <p style="margin:10px 0 0" class="sub2">ถ้าอยากได้เร็วและเสี่ยงต่ำกว่า เลือก <b>ข</b> ก่อนก็ได้ — แล้วค่อยเติม "เริ่มที่นี่" ทีหลัง (ข ไม่ปิดทาง ก)</p>
+</div></div>
+
+</body>
+</html>

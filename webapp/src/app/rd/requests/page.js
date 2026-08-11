@@ -61,6 +61,16 @@ export default function RdRequestsPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  /* ⭐ **`?owner=` มาจากตาราง "งานค้างรายคน" บนหน้าภาพรวม** (2026-08-12 · แบบ ก) —
+     กดชื่อคนแล้วต้องได้คิวที่ **กรองคนนั้นไว้แล้ว** ไม่ใช่คิวทั้งกองให้ไปหาเอง
+     ⚠️ ตั้งครั้งเดียวตอนเปิดจากลิงก์ แล้วปล่อยให้ผู้ใช้แก้ตัวกรองต่อได้เอง — เฝ้า
+     ค่าตลอดเวลาแปลว่าผู้ใช้กดล้างตัวกรองไม่ได้เลย (มันจะเด้งกลับมาทุก render) */
+  const ownerParam = searchParams.get("owner");
+  const { setFilter } = board;
+  useEffect(() => {
+    if (ownerParam) setFilter("owner", [ownerParam]);
+  }, [ownerParam, setFilter]);
+
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),
     [requests, tab],
