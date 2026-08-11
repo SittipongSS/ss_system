@@ -186,3 +186,36 @@ test('V4 doc: preview model (fixture) เรนเดอร์ได้เหม
   const sheetCount = (html.match(/class="sheet"/g) || []).length;
   assert.equal(sheetCount, model.pages.length);
 });
+
+test('V4 doc: ไม่มีส่วนลดรายบรรทัด = ไม่มีคอลัมน์ส่วนลด', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1'), lineOf('2')]), {});
+  assert.ok(!html.includes('<table class="itemTable withLineDiscount">'), 'ตารางไม่ติดคลาสส่วนลด');
+  assert.ok(!html.includes('<th class="number">ส่วนลด</th>'), 'ไม่มีหัวคอลัมน์ส่วนลด');
+});
+
+test('V4 doc: มีส่วนลดรายบรรทัด = โชว์คอลัมน์ส่วนลด และยอดกระทบกันได้', () => {
+  // 10 × 100 = 1,000 − 5% (50) = 950 · บรรทัดสองลดเป็นจำนวนเงิน 200 → 800
+  const lines = [
+    lineOf('1', { discountType: 'percent', discountValue: 5, discountAmount: 50, lineTotal: 950 }),
+    lineOf('2', { discountType: 'amount', discountValue: 200, discountAmount: 200, lineTotal: 800 }),
+  ];
+  const html = buildQuotationMasterHTML(baseQuote(lines), {});
+  assert.match(html, /<th class="number">ส่วนลด<\/th>/);
+  assert.match(html, /<table class="itemTable withLineDiscount">/);
+  assert.ok(html.includes('-50.00'), 'ส่วนลดบรรทัดแรกแสดงเป็นยอดที่หัก');
+  assert.match(html, /class="itemDiscountRate">5%/, 'ส่วนลดแบบ % กำกับอัตราไว้');
+  assert.ok(html.includes('-200.00'), 'ส่วนลดบรรทัดสองแสดงเป็นยอดที่หัก');
+  assert.ok(html.includes('950.00') && html.includes('800.00'), 'จำนวนเงินคือยอดหลังหักส่วนลด');
+});
+
+test('V4 doc: ใบหลายหน้า หัวตารางมีคอลัมน์ส่วนลดเท่ากันทุกหน้า', () => {
+  const lines = Array.from({ length: 30 }, (_, i) => lineOf(`L${i}`, i === 0
+    ? { discountType: 'amount', discountValue: 100, discountAmount: 100, lineTotal: 900 }
+    : {}));
+  const html = buildQuotationMasterHTML(baseQuote(lines), {});
+  const tables = (html.match(/<table class="itemTable withLineDiscount">/g) || []).length;
+  const headers = (html.match(/<th class="number">ส่วนลด<\/th>/g) || []).length;
+  assert.ok(tables >= 2, 'ต้องมีตารางรายการมากกว่า 1 หน้า');
+  assert.equal(headers, tables, 'ทุกตารางมีหัวคอลัมน์ส่วนลด');
+  assert.ok(!html.includes('<table class="itemTable">'), 'ไม่มีตารางแบบไม่มีส่วนลดปนมา');
+});
