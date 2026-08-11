@@ -9,7 +9,7 @@
 อ่านคู่กับ:
 - [webapp/AGENTS.md](../webapp/AGENTS.md) — กฎ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง"
 - [webapp/UI_DESIGN_SYSTEM.md](../webapp/UI_DESIGN_SYSTEM.md) — สัญญาชั้นกลาง/โทเคน
-- [design-v2-plan.md](design-v2-plan.md) — งานรื้อภาษาภาพและกติกาถาวรของ v2
+- [design-v2-plan.md](design-v2-plan.md) — ⏸️ **ระงับ 2026-08-11** (เลิกทำ v2 เพราะไม่มีธีมสว่าง) · เก็บไว้อ่านเป็นบันทึกว่าเคยตัดสินอะไรไปบ้าง
 
 ---
 

@@ -16,12 +16,6 @@
   background: linear-gradient(90deg, var(--accent), var(--navy));
   content: "";
 }
-/* v2 โต๊ะช่าง: --navy ของ v2 เกือบดำ ทำริบบิ้นเดิมกลายเป็นส้ม→ดำแข็ง ๆ
-   (เห็นจริงบน pilot ใบเสนอราคา 2026-08-08) — v2 ใช้เส้น accent ล้วน */
-:global([data-ds="v2"]) .summaryCard::before {
-  background: var(--accent);
-}
-
 .summaryLabel {
   margin-top: 3px;
   color: var(--text-3);

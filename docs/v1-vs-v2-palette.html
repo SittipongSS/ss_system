@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สี v1 vs v2 — ธีมสว่างและธีมมืด</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:#14181f;color:#e8ecf3;
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;font-size:14px;line-height:1.55}
+  h1{font-size:23px;margin:0 0 6px}
+  h2{font-size:17px;margin:30px 0 10px}
+  .sub{color:#8b95a5;font-size:13px;margin:0 0 20px}
+  .warn{border:1px solid #7a4a3a;background:#241a17;border-radius:10px;padding:14px 18px;margin:0 0 24px}
+  .warn b{color:#e0a184}
+
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+  .card{border:1px solid #2b3442;border-radius:10px;overflow:hidden;background:#1a1f29}
+  .chead{padding:11px 15px;border-bottom:1px solid #2b3442;background:#232b38;
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .chead b{font-size:14px}
+  .chead span{font-size:11.5px;color:#8b95a5}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  td{padding:6px 12px;border-bottom:1px solid #232b38;vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .name{color:#a2acbb;font-family:ui-monospace,monospace;font-size:11.5px;white-space:nowrap}
+  .hex{font-family:ui-monospace,monospace;font-size:11px;color:#8b95a5;text-align:right;white-space:nowrap}
+  .sw{width:34px;height:20px;border-radius:4px;border:1px solid rgba(255,255,255,.18);display:inline-block;vertical-align:middle}
+  .diff td{background:rgba(217,123,79,.10)}
+  .diff .name{color:#df8760}
+
+  /* ตัวอย่างการ์ดจริงของแต่ละชุด */
+  .demo{padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .box{border-radius:10px;padding:14px 16px;border-width:1px;border-style:solid}
+  .box .t{font-size:11px;letter-spacing:.06em;margin-bottom:8px;opacity:.8}
+  .box .h{font-size:15px;font-weight:700;margin-bottom:3px}
+  .box .m{font-size:12px}
+  .box .row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .pill{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid}
+  .btn{font-size:12px;padding:5px 13px;border-radius:6px;border:0;font-weight:700}
+</style>
+</head>
+<body>
+
+<h1>สี v1 vs v2 — ต่างกันตรงไหน</h1>
+<p class="sub">ค่าดึงตรงจาก <code>globals.css</code> วันนี้ · แถวที่ไฮไลต์ = ค่าต่างกันจริง</p>
+
+<div class="warn">
+  <b>ข้อสำคัญก่อนอื่น — v2 ไม่มีธีมสว่าง</b><br>
+  คอมเมนต์ในโค้ดเขียนไว้เอง: <i>"v2 มีโหมดเดียว (มืด) — ธีมสว่างเป็นการตัดสินใจค้างของ Phase 1
+  จึงทับทั้ง <code>:root</code> และ <code>[data-theme="dark"]</code>"</i><br>
+  ⇒ <b>เปิด v2 แล้วสวิตช์ธีมสว่างไม่มีผล</b> ได้พื้นมืดเสมอ · ถ้าคนส่วนใหญ่ใช้สว่าง นี่คือเหตุผลที่
+  "สี v2" ดูผิดตั้งแต่แรก — ไม่ใช่เรื่องเฉดสี แต่เป็นเพราะธีมที่เคยใช้หายไปทั้งธีม
+</div>
+
+<h2>1 · ธีมสว่าง — มีแค่ v1</h2>
+<div class="cols">
+  <div class="card">
+    <div class="chead"><b>v1 สว่าง (ครีมอุ่น)</b><span>ใช้อยู่จริงวันนี้</span></div>
+    <table>
+      <tr><td class="name">--bg</td><td><i class="sw" style="background:#efe9dd"></i></td><td class="hex">#efe9dd</td></tr>
+      <tr><td class="name">--panel</td><td><i class="sw" style="background:rgba(255,255,255,.94)"></i></td><td class="hex">rgba(255,255,255,.94)</td></tr>
+      <tr><td class="name">--panel-2</td><td><i class="sw" style="background:#f7f4ee"></i></td><td class="hex">#f7f4ee</td></tr>
+      <tr><td class="name">--border</td><td><i class="sw" style="background:#dcdadb"></i></td><td class="hex">rgba(49,55,69,.13)</td></tr>
+      <tr><td class="name">--text</td><td><i class="sw" style="background:#171d29"></i></td><td class="hex">#171d29</td></tr>
+      <tr><td class="name">--accent</td><td><i class="sw" style="background:#c9794d"></i></td><td class="hex">#c9794d</td></tr>
+      <tr><td class="name">--navy</td><td><i class="sw" style="background:#243b63"></i></td><td class="hex">#243b63</td></tr>
+    </table>
+    <div class="demo">
+      <div class="box" style="background:#efe9dd;border-color:rgba(49,55,69,.13);color:#171d29">
+        <div class="t" style="color:#6c7382">พื้นหน้า</div>
+        <div class="box" style="background:rgba(255,255,255,.94);border-color:rgba(49,55,69,.13)">
+          <div class="h">การ์ดกระจก</div>
+          <div class="m" style="color:#596170">ตัวอักษรรอง · เงานุ่ม · ขอบโปร่ง</div>
+          <div class="row">
+            <span class="pill" style="color:#357558;border-color:#357558">สำเร็จ</span>
+            <span class="pill" style="color:#a74747;border-color:#a74747">เลยกำหนด</span>
+            <button class="btn" style="background:#c9794d;color:#fff">ปุ่มหลัก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border-color:#7a4a3a">
+    <div class="chead" style="background:#241a17"><b>v2 สว่าง</b><span style="color:#e0a184">ไม่มี — ตกไปใช้ชุดมืด</span></div>
+    <div class="demo">
+      <div class="box" style="background:#0f1319;border-color:#303948;color:#edf1f7">
+        <div class="t" style="color:#8b95a5">เปิดธีมสว่าง แต่ได้แบบนี้</div>
+        <div class="box" style="background:#1a1f29;border-color:#303948">
+          <div class="h">การ์ดทึบ</div>
+          <div class="m" style="color:#a2acbb">สวิตช์ธีมกดแล้วไม่มีอะไรเปลี่ยน</div>
+          <div class="row">
+            <span class="pill" style="color:#57ab7c;border-color:#57ab7c">สำเร็จ</span>
+            <span class="pill" style="color:#e07f74;border-color:#e07f74">เลยกำหนด</span>
+            <button class="btn" style="background:#d97b4f;color:#0f1319">ปุ่มหลัก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>2 · ธีมมืด — ต่างกันทุกพื้นผิว</h2>
+<div class="cols">
+  <div class="card">
+    <div class="chead"><b>v1 มืด (navy กระจก)</b><span>ของเดิม</span></div>
+    <table>
+      <tr class="diff"><td class="name">--bg</td><td><i class="sw" style="background:#121726"></i></td><td class="hex">#121726</td></tr>
+      <tr class="diff"><td class="name">--panel</td><td><i class="sw" style="background:rgba(27,34,56,.96)"></i></td><td class="hex">rgba(27,34,56,.96) กระจก</td></tr>
+      <tr class="diff"><td class="name">--panel-2</td><td><i class="sw" style="background:#232b44"></i></td><td class="hex">#232b44</td></tr>
+      <tr class="diff"><td class="name">--border</td><td><i class="sw" style="background:#2b3240"></i></td><td class="hex">rgba(225,230,241,.12) โปร่ง</td></tr>
+      <tr><td class="name">--text</td><td><i class="sw" style="background:#f4f6fb"></i></td><td class="hex">#f4f6fb</td></tr>
+      <tr class="diff"><td class="name">--text-2</td><td><i class="sw" style="background:#bdc5d4"></i></td><td class="hex">#bdc5d4</td></tr>
+      <tr class="diff"><td class="name">--accent</td><td><i class="sw" style="background:#d38a61"></i></td><td class="hex">#d38a61</td></tr>
+      <tr class="diff"><td class="name">--navy (แถบบน)</td><td><i class="sw" style="background:#20365d"></i></td><td class="hex">#20365d</td></tr>
+      <tr class="diff"><td class="name">--green</td><td><i class="sw" style="background:#4fad82"></i></td><td class="hex">#4fad82</td></tr>
+      <tr class="diff"><td class="name">--red</td><td><i class="sw" style="background:#cc8787"></i></td><td class="hex">#cc8787</td></tr>
+    </table>
+    <div class="demo">
+      <div class="box" style="background:#121726;border-color:rgba(225,230,241,.12);color:#f4f6fb">
+        <div class="t" style="color:#8e99ad">พื้นหน้า navy</div>
+        <div class="box" style="background:rgba(27,34,56,.96);border-color:rgba(225,230,241,.12);box-shadow:0 8px 24px rgba(0,0,0,.35)">
+          <div class="h">การ์ดกระจก + เงา</div>
+          <div class="m" style="color:#bdc5d4">ขอบโปร่ง · พื้นอมน้ำเงิน</div>
+          <div class="row">
+            <span class="pill" style="color:#4fad82;border-color:#4fad82">สำเร็จ</span>
+            <span class="pill" style="color:#cc8787;border-color:#cc8787">เลยกำหนด</span>
+            <button class="btn" style="background:#d38a61;color:#121726">ปุ่มหลัก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chead"><b>v2 มืด (โต๊ะช่างทึบ)</b><span>ที่เปิดใช้อยู่</span></div>
+    <table>
+      <tr class="diff"><td class="name">--bg</td><td><i class="sw" style="background:#0f1319"></i></td><td class="hex">#0f1319</td></tr>
+      <tr class="diff"><td class="name">--panel</td><td><i class="sw" style="background:#1a1f29"></i></td><td class="hex">#1a1f29 ทึบ</td></tr>
+      <tr class="diff"><td class="name">--panel-2</td><td><i class="sw" style="background:#232b38"></i></td><td class="hex">#232b38</td></tr>
+      <tr class="diff"><td class="name">--border</td><td><i class="sw" style="background:#303948"></i></td><td class="hex">#303948 ทึบ</td></tr>
+      <tr><td class="name">--text</td><td><i class="sw" style="background:#edf1f7"></i></td><td class="hex">#edf1f7</td></tr>
+      <tr class="diff"><td class="name">--text-2</td><td><i class="sw" style="background:#a2acbb"></i></td><td class="hex">#a2acbb</td></tr>
+      <tr class="diff"><td class="name">--accent</td><td><i class="sw" style="background:#d97b4f"></i></td><td class="hex">#d97b4f</td></tr>
+      <tr class="diff"><td class="name">--navy (แถบบน)</td><td><i class="sw" style="background:#0a0d12"></i></td><td class="hex">#0a0d12 เกือบดำ</td></tr>
+      <tr class="diff"><td class="name">--green</td><td><i class="sw" style="background:#57ab7c"></i></td><td class="hex">#57ab7c</td></tr>
+      <tr class="diff"><td class="name">--red</td><td><i class="sw" style="background:#e07f74"></i></td><td class="hex">#e07f74</td></tr>
+    </table>
+    <div class="demo">
+      <div class="box" style="background:#0f1319;border-color:#303948;color:#edf1f7">
+        <div class="t" style="color:#8b95a5">พื้นหน้าเกือบดำ</div>
+        <div class="box" style="background:#1a1f29;border-color:#303948">
+          <div class="h">การ์ดทึบ ไม่มีเงา</div>
+          <div class="m" style="color:#a2acbb">เส้น 1px เป็นตัวแบ่งชั้นหลัก</div>
+          <div class="row">
+            <span class="pill" style="color:#57ab7c;border-color:#57ab7c">สำเร็จ</span>
+            <span class="pill" style="color:#e07f74;border-color:#e07f74">เลยกำหนด</span>
+            <button class="btn" style="background:#d97b4f;color:#0f1319">ปุ่มหลัก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>3 · v2 เปลี่ยนอะไรนอกจากสี</h2>
+<div class="card"><table>
+  <tr><td class="name" style="width:130px">พื้นผิว</td><td>กระจก (alpha + blur) → <b>ทึบ 100%</b></td></tr>
+  <tr><td class="name">เงา</td><td>การ์ดมีเงานุ่ม → <b>เหลือเฉพาะแผงลอย</b> (dropdown/ปฏิทิน)</td></tr>
+  <tr><td class="name">gradient</td><td>พื้นหลังมีแสงโคม 4 มุม → <b>ไม่มี</b></td></tr>
+  <tr><td class="name">ตัวแบ่งชั้น</td><td>เงา+พื้นต่างระดับ → <b>เส้น 1px</b></td></tr>
+  <tr><td class="name">แถบบนสุด</td><td>navy แบรนด์ → <b>เกือบดำ</b> (มติ 2026-08-08 "กดดำเลยก็ได้")</td></tr>
+  <tr><td class="name">ความหนาแน่น</td><td>อัดแถว/ระยะห่างให้แน่นขึ้น (ยังคงไว้ได้แม้เปลี่ยนสีกลับ)</td></tr>
+</table></div>
+
+<h2>4 · ทางเลือก</h2>
+<div class="card"><table>
+  <tr><td class="name" style="width:60px">ก</td><td><b>ทำธีมสว่างให้ v2</b> — เก็บโครง/ความหนาแน่นของ v2 ไว้ แต่ใช้จานสีครีมอุ่นของ v1 บนธีมสว่าง และให้สวิตช์ธีมกลับมาทำงาน (งานที่ Phase 1 ค้างไว้)</td></tr>
+  <tr><td class="name">ข</td><td><b>v2 ใช้สี v1 ทั้งสองธีม</b> — คงเฉพาะภาษา flat/หนาแน่น เปลี่ยนจานสีกลับเป็นของเดิมทั้งชุด</td></tr>
+  <tr><td class="name">ค</td><td><b>เลิก v2</b> — ปิดสวิตช์ถาวร ยกเลิก Phase 4 กลับไปใช้ v1 ล้วน</td></tr>
+  <tr><td class="name">ง</td><td><b>แก้เฉพาะจุดที่ขัดตา</b> — บอกมาเป็นข้อ (เช่น แถบบนดำเกินไป · พื้นมืดเกินไป · อยากได้การ์ดกระจกคืน)</td></tr>
+</table></div>
+
+</body>
+</html>
