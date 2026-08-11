@@ -189,7 +189,9 @@ export async function findRequest(supabase, id) {
         .maybeSingle().then((r) => r.data)
       : null,
     withBriefs.customerId
-      ? supabase.from('customers').select('id, name, contacts, "contactPerson", "contactPhone"')
+      // ⚠️ `arCode` เพิ่มมาเพื่อหัวใบ (ม-98) — ใบเก็บแค่ `customerName` ตอนเปิด
+      // รหัสลูกค้าอยู่ที่ทะเบียนที่เดียว ไม่ประทับลงใบ (ดูเหตุผลใน headerFacts.js)
+      ? supabase.from('customers').select('id, name, "arCode", contacts, "contactPerson", "contactPhone"')
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
@@ -245,6 +247,17 @@ export async function findRequest(supabase, id) {
     ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder,
     refProject: project ? { id: project.id, code: project.code, name: project.name } : null,
     refDeal: deal,
+    // ⚠️ เลือกฟิลด์ทีละตัว ไม่ส่ง `customer` ทั้งแถว — ทะเบียนลูกค้ามีที่อยู่ เครดิต
+    // และรายชื่อผู้ติดต่อทั้งชุด ซึ่งหน้าคำร้องไม่ได้ใช้และไม่ควรหลุดออกทาง response
+    refCustomer: customer
+      ? {
+        id: customer.id,
+        arCode: customer.arCode || null,
+        name: customer.name || null,
+        contactPerson: customer.contactPerson || null,
+        contactPhone: customer.contactPhone || null,
+      }
+      : null,
   };
 }
 

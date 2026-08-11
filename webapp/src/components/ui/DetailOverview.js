@@ -44,6 +44,17 @@ export default function DetailOverview({
                   <strong title={typeof fact.value === "string" ? fact.value : undefined}>
                     {fact.value ?? "-"}
                   </strong>
+                  {/* บรรทัดรอง — ของที่อ่านคู่กับค่าหลักเสมอ (รหัสลูกค้าใต้ชื่อลูกค้า ·
+                      เบอร์ใต้ชื่อผู้ติดต่อ) · ไม่ใช่ที่เก็บของที่ไม่มีช่องว่าง
+                      กริดขึ้นแถวสองได้แล้ว ช่องใหม่จึงไม่ต้องเบียดมาอยู่ตรงนี้ */}
+                  {fact.sub ? (
+                    <small
+                      className={styles.factSub}
+                      title={typeof fact.sub === "string" ? fact.sub : undefined}
+                    >
+                      {fact.sub}
+                    </small>
+                  ) : null}
                 </span>
               </div>
             );

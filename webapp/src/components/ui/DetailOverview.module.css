@@ -85,9 +85,20 @@
   content: "";
 }
 
+/* ⭐ **ขึ้นแถวสองได้** (มติผู้ใช้ 2026-08-11 · ม-98) — ของเดิมเป็น 4 คอลัมน์ตายตัว
+   ⇒ หน้าที่มีข้อเท็จจริงเกินสี่อย่างต้องเลือกทิ้ง หรือให้สองอย่างสลับกันใช้ช่องเดียว
+   ซึ่งเป็นบั๊กที่ผู้ใช้เจอเองบนหัวใบคำร้อง (ลูกค้าหายทั้งใบเมื่อใบนั้นมีบรรทัด)
+   auto-fit ยังได้ 4 คอลัมน์เท่าเดิมบนจอกว้าง ⇒ หน้าที่ส่งช่องไม่เกินสี่หน้าตาไม่เปลี่ยน
+
+   ⚠️ **เส้นคั่นคอลัมน์สุดท้ายตัดด้วย `overflow: hidden` ของการ์ด** ไม่ใช่ `:last-child`
+   — พอกริดขึ้นหลายแถว `:last-child` คือช่องสุดท้ายของ *ทั้งกริด* ไม่ใช่ของแต่ละแถว
+   ⇒ แถวแรกจะมีเส้นค้างชนขอบการ์ดเป็นเส้นคู่ · ยื่นกริดเกินขอบ 1px แล้วให้การ์ดตัดทิ้ง
+   ได้ผลเท่ากันทุกแถวโดยไม่ต้องรู้ว่าแถวหนึ่งมีกี่ช่อง (เหตุผลเดียวกับขอบล่าง) */
 .quickFacts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-inline-end: -1px;
+  margin-block-end: -1px;
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-2) 68%, transparent);
 }
@@ -99,11 +110,10 @@
   min-width: 0;
   padding: 13px var(--space-4);
   border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   color: var(--text-2);
   font-size: var(--fs-6);
 }
-
-.quickFacts > div:last-child { border-right: 0; }
 .quickFacts svg { flex: 0 0 auto; color: var(--accent-ink); }
 .quickFacts span { min-width: 0; }
 
@@ -119,6 +129,21 @@
   overflow: hidden;
   color: var(--text-2);
   font-weight: var(--fw-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* บรรทัดรองใต้ค่า — จางกว่าค่าหลัก แต่ยังอ่านออกในระยะกวาดสายตา
+   ⚠️ **ต้องเขียน `.quickFacts .factSub`** ไม่ใช่ `.factSub` เดี่ยว — ป้ายหัวช่องใช้
+   `.quickFacts small` (0,0,1,1) ซึ่งชนะคลาสเดี่ยว (0,0,1,0) ⇒ `margin-bottom` ของ
+   ป้าย (ที่ถูกต้องสำหรับข้อความ *เหนือ* ค่า) จะเล็ดลอดมาดันบรรทัดรองที่อยู่ *ใต้* ค่า */
+.quickFacts .factSub {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--space-0-5);
+  margin-bottom: 0;
+  color: var(--text-3);
+  font-size: var(--fs-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
