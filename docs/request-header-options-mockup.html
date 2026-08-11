@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>หัวใบคำร้อง — แบบที่เลือก (ข + ค)</title>
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ (ชุดเดียวกับ system-issue-ui-mockup.html) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--violet:#6f5e9f;--violet-soft:#eee9f6;--teal:#377275;--teal-soft:#e0f0f0;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+--font-mono:ui-monospace,"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}
+
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-7) var(--space-5) 64px;background:var(--bg);color:var(--text);
+  font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:var(--space-7)}
+h1{margin:0;font-size:var(--fs-28);line-height:1.3;text-wrap:balance}
+h2{margin:0;font-size:var(--fs-18)}
+h3{margin:0;font-size:var(--fs-14);color:var(--text-2)}
+p{margin:0;color:var(--text-2);max-width:74ch}
+.lede{font-size:var(--fs-16)}
+.sectionHead{display:grid;gap:var(--space-3)}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-11);font-weight:700;letter-spacing:.04em}
+.tag.opt{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.alt{background:var(--panel-3);color:var(--text-3)}
+.eyebrowRow{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+
+/* ── การ์ดหัวใบ (ทรงเดียวกับ DetailOverview) ───────────────────────── */
+.card{overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+  background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+  box-shadow:var(--shadow-md)}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-5);
+  padding:var(--space-5) 22px var(--space-4)}
+.titleBlock{min-width:0;display:grid;gap:7px}
+.eyebrow{color:var(--accent-ink);font-size:var(--fs-11);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.docNo{margin:0;font-size:var(--fs-28);line-height:1.15;font-weight:700;letter-spacing:-.01em}
+/* ⭐ บรรทัดลูกค้า — ยกมาจากแบบ ค: อ่านเป็นประโยคเดียวว่า "ทำอะไร ให้ใคร" */
+.subject{color:var(--text-2);font-size:var(--fs-13);overflow-wrap:anywhere}
+.subject b{color:var(--text);font-weight:700}
+/* รหัสลูกค้าห้ามตัดกลางคำ — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */
+.subject .mono{font-family:var(--font-mono);font-size:var(--fs-11);color:var(--text-3);white-space:nowrap}
+.state{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:var(--radius-full);
+  border:1px solid var(--border);background:var(--panel-2);font-size:var(--fs-12);font-weight:700;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--state,var(--amber))}
+
+/* ⭐ ชิปผู้ขอ — ยกมาจากแบบ ค (avatar + ทีม + ชื่อ) */
+.owner{display:inline-flex;align-items:center;gap:8px;padding:3px 12px 3px 4px;border-radius:var(--radius-full);
+  border:1px solid var(--border);background:var(--panel-2);font-size:var(--fs-12);color:var(--text-2);
+  white-space:nowrap;width:max-content}
+.owner.team{border-color:color-mix(in srgb,var(--violet) 40%,transparent);background:var(--violet-soft);color:var(--violet)}
+.owner.self{border-color:color-mix(in srgb,var(--teal) 40%,transparent);background:var(--teal-soft);color:var(--teal)}
+.owner b{font-weight:700}
+/* ⭐ ชิปคู่ — ผู้ยื่น | ผู้รับเรื่อง อยู่บรรทัดเดียวกัน (สองฝั่งของใบ) */
+.people{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
+.owner.dept{border-color:color-mix(in srgb,var(--blue) 40%,transparent);background:var(--blue-soft);color:var(--blue)}
+.owner.dept .avatar{background:var(--blue)}
+.owner.empty{border-style:dashed;background:transparent;color:var(--text-3)}
+.owner.empty .avatar{background:var(--panel-3);color:var(--text-3)}
+.arrow{color:var(--text-3);font-size:var(--fs-12)}
+.avatar{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--accent);color:#fff;font-size:10px;font-weight:700}
+.owner.self .avatar{background:var(--teal)}
+.owner.team .avatar{background:var(--violet)}
+
+/* แถบข้อเท็จจริง — auto-fit ตัวเดิมที่ลงไปแล้วใน ม-98 */
+/* ⚠️ **flex ไม่ใช่ grid** — grid auto-fit ตรึงจำนวนคอลัมน์ไว้ทั้งกริด แถวสุดท้ายที่มี
+   ช่องไม่ครบจึงเหลือ "ช่องโหว่" เป็นพื้นที่ว่างพร้อมเส้นคั่นลอย (เห็นจริงบนจอ 700px:
+   4 ช่อง = 3 คอลัมน์ + แถวสองมีช่องเดียว เหลือรู 2 ช่อง)
+   flex-wrap + `flex:1 1 190px` ทำให้ช่องในแต่ละแถวยืดเต็มแถวเสมอ ไม่ว่าจะเหลือกี่ช่อง */
+.facts{display:flex;flex-wrap:wrap;
+  margin-inline-end:-1px;margin-block-end:-1px;border-top:1px solid var(--border);
+  background:color-mix(in srgb,var(--panel-2) 68%,transparent)}
+.facts > div{flex:1 1 210px;display:flex;align-items:center;min-width:0;padding:13px var(--space-4);
+  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  color:var(--text-2);font-size:var(--fs-13)}
+.facts small{display:block;margin-bottom:2px;color:var(--text-3);font-size:var(--fs-11)}
+.facts strong{display:block;overflow:hidden;color:var(--text-2);font-weight:700;
+  text-overflow:ellipsis;white-space:nowrap}
+.facts .sub{display:block;margin-top:2px;color:var(--text-3);font-size:var(--fs-11);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.facts span.cell{min-width:0}
+.late{color:var(--red)}
+.ok{color:var(--green)}
+.muted{color:var(--text-3)}
+
+/* คำอธิบาย */
+.notes{display:grid;gap:var(--space-2);padding-left:0;margin:0;list-style:none}
+/* ⚠️ ไม่ใช้ flex ที่ <li> — ตัวหนา/โค้ดที่อยู่ในบรรทัดจะกลายเป็น flex item แล้วแตก
+   เป็นคอลัมน์ของตัวเองบนจอแคบ (เจอจริงตอนตรวจที่ 375px) */
+.notes li{position:relative;padding-left:15px;color:var(--text-2);font-size:var(--fs-13)}
+.notes li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.notes li.add::before{background:var(--green)}
+.notes li.cut::before{background:var(--red)}
+.k{font-weight:700;color:var(--text)}
+.pairs{display:grid;gap:var(--space-4)}
+.foot{color:var(--text-3);font-size:var(--fs-12)}
+.divider{height:1px;background:var(--border)}
+/* จอแคบ: บังคับสองช่องต่อแถวพอดี ๆ แทนที่จะให้ flex คำนวณเอง — ไม่งั้นแถวสุดท้าย
+   เหลือช่องเดียวยืดเต็มความกว้าง (ยังอ่านได้ แต่ดูเหมือนช่องนั้นสำคัญกว่าเพื่อน)
+   จุดตัด 768 / 480 มาจากชุดที่มีอยู่แล้วใน globals.css — ไม่คิดค่าใหม่ */
+@media (max-width:768px){ .facts > div{flex-basis:calc(50% - 1px)} }
+@media (max-width:480px){
+  .facts > div{flex-basis:100%}
+  /* ลูกศรระหว่างชิปมีความหมายก็ต่อเมื่อชิปอยู่บรรทัดเดียวกัน — พอชิปขึ้นบรรทัดใหม่
+     ลูกศรจะค้างท้ายบรรทัดบนเหมือนพิมพ์ค้าง · ชิปเรียงบนลงล่างสื่อลำดับอยู่แล้ว */
+  .arrow{display:none}
+  .people{gap:6px}
+}
+@media (max-width:680px){
+  body{padding:var(--space-5) var(--space-3) 48px}
+  .head{flex-direction:column;gap:var(--space-3)}
+  .docNo{font-size:var(--fs-22)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="sectionHead">
+    <span class="eyebrow">คำร้อง · หัวใบ (หน้ารายละเอียด)</span>
+    <h1>แบบที่เลือก — คนอยู่บนหัว เวลาอยู่ในแถบ</h1>
+    <p class="lede">
+      <b>สองฝั่งของใบอยู่ติดกันบนหัว</b> — ชิปซ้ายคือผู้ยื่น ชิปขวาคือผู้รับเรื่องฝ่ายปลายทาง ·
+      <b>ลูกค้า</b> ต่อท้ายหัวข้อเรื่องเป็นประโยคเดียว · แถบข้างล่างเหลือแต่เรื่องเวลา —
+      ชั้นบน <b>"เดินมาถึงไหน"</b> ชั้นล่าง <b>"สัญญาว่าเมื่อไร"</b>
+    </p>
+  </header>
+
+  <!-- ───────── ตัวอย่างที่ 1 — ใบที่ยังไม่มีใครรับ ───────── -->
+  <section class="sectionHead">
+    <div class="eyebrowRow"><span class="tag opt">ตัวอย่าง 1</span><h2>ใบด่วนที่ยังไม่มีใครรับ · มองจากเพื่อนร่วมทีม</h2></div>
+    <div class="card">
+      <div class="head">
+        <div class="titleBlock">
+          <span class="eyebrow">สอบถามข้อมูล · ถึงฝ่าย RD</span>
+          <p class="docNo">RQ-26080029</p>
+          <span class="subject">ขอ Mockup กลิ่นเเละราคา FB · ให้ <b>สปาฟินเเลนด์</b> <span class="mono">AR-899</span></span>
+          <span class="people">
+            <span class="owner team"><span class="avatar">PH</span> ผู้ยื่น · ทีม SV <b>Panuwat</b></span>
+            <span class="arrow">→</span>
+            <span class="owner empty"><span class="avatar">RD</span> ยังไม่มีใครรับเรื่อง</span>
+          </span>
+        </div>
+        <span class="state"><span class="dot" style="--state:var(--amber)"></span> รอรับเรื่อง</span>
+      </div>
+      <div class="facts">
+        <div><span class="cell"><small>ส่งเมื่อ</small><strong>10/08/2026</strong><span class="sub">ค้างมา 1 วัน</span></span></div>
+        <div><span class="cell"><small>ความเร่งด่วน</small><strong class="late">งานด่วน</strong><span class="sub">ลูกค้านัดประชุม 18/8 15.00 น.</span></span></div>
+      </div>
+      <div class="facts">
+        <div><span class="cell"><small>ผู้ขอต้องการคำตอบ</small><strong>18/08/2026</strong><span class="sub">อีก 7 วัน</span></span></div>
+        <div><span class="cell"><small>RD กำหนดส่ง</small><strong class="muted">ยังไม่ระบุ</strong><span class="sub">ระบุตอนกดรับเรื่อง</span></span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li class="add">ชิปคู่อ่านเป็นเส้นทางเดียว — <span class="k">ผู้ยื่น → ผู้รับเรื่อง</span> · ฝั่งขวายังว่างก็ขึ้นชิปขอบประว่า "ยังไม่มีใครรับเรื่อง" ไม่ใช่หายไปเฉย ๆ</li>
+      <li class="add">ชิปม่วง = ใบของเพื่อนร่วมทีม · ใบของตัวเองใช้ชิปเขียวอมฟ้าเขียนว่า <span class="k">"ใบของฉัน"</span> (ดูตัวอย่างที่ 2)</li>
+      <li class="add">ลูกค้าอ่านต่อจากหัวข้อเรื่องได้เลย — <span class="k">"ขอ Mockup … ให้สปาฟินเเลนด์ AR-899"</span></li>
+      <li>ชั้นล่างมีสองช่องคู่กันเสมอ ⇒ เห็นทันทีว่าฝ่ายยังไม่รับปากวันทั้งที่ผู้ขอตั้งวันไว้แล้ว</li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ───────── ตัวอย่างที่ 2 — ใบที่ RD รับปากวันแล้ว ───────── -->
+  <section class="sectionHead">
+    <div class="eyebrowRow"><span class="tag opt">ตัวอย่าง 2</span><h2>ใบที่ RD รับเรื่องและรับปากวันแล้ว · มองจากคนเปิดใบเอง</h2></div>
+    <div class="card">
+      <div class="head">
+        <div class="titleBlock">
+          <span class="eyebrow">สอบถามข้อมูล · ถึงฝ่าย RD</span>
+          <p class="docNo">RQ-26080027</p>
+          <span class="subject">รบกวนขอราคา F ค่ะ · ให้ <b>บริษัท รวย เหนือ ฝัน จำกัด</b> <span class="mono">AR-787</span></span>
+          <span class="people">
+            <span class="owner self"><span class="avatar">SS</span> ใบของฉัน · ทีม <b>ODM</b></span>
+            <span class="arrow">→</span>
+            <span class="owner dept"><span class="avatar">KP</span> รับเรื่องแล้ว · <b>ProjectCo.Krapook</b> · 11/08</span>
+          </span>
+        </div>
+        <span class="state"><span class="dot" style="--state:var(--blue)"></span> กำลังดำเนินการ</span>
+      </div>
+      <div class="facts">
+        <div><span class="cell"><small>ส่งเมื่อ</small><strong>10/08/2026</strong><span class="sub">1 วันก่อน</span></span></div>
+        <div><span class="cell"><small>ตอบแล้ว</small><strong>0/3 รายการ</strong><span class="sub">ยังไม่มีรายการที่ตอบ</span></span></div>
+      </div>
+      <div class="facts">
+        <div><span class="cell"><small>ผู้ขอต้องการคำตอบ</small><strong>14/08/2026</strong><span class="sub">อีก 3 วัน</span></span></div>
+        <div><span class="cell"><small>RD กำหนดส่ง</small><strong class="ok">13/08/2026</strong><span class="sub ok">เร็วกว่าที่ขอ 1 วัน</span></span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li class="add">พอ RD ให้วันแล้ว สองช่องล่างเทียบกันเอง — <span class="k">เร็วกว่าที่ขอ</span> เขียว · <span class="k">ช้ากว่าที่ขอ</span> แดง · ตรงวันพอดีเป็นสีปกติ</li>
+      <li class="add">ช่อง <span class="k">ตอบแล้ว X/Y</span> ขึ้นเฉพาะใบที่มีรายการข้างใน — ใบสอบถามข้อมูลเปล่า ๆ ไม่มีช่องนี้</li>
+      <li class="cut">ผู้รับเรื่องย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นแล้ว — ไม่กินช่องในแถบอีก วันที่รับเรื่องไปอยู่ท้ายชิป</li>
+      <li>ชั้นบนตอบ "เดินมาถึงไหน" · ชั้นล่างตอบ "สัญญาว่าเมื่อไร" — สองคำถามที่คนตามงานถามคนละจังหวะกัน</li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ───────── ทางเลือกจังหวะ ───────── -->
+  <section class="sectionHead">
+    <div class="eyebrowRow"><span class="tag alt">ถ้าอยากให้เตี้ยลง</span><h2>ยุบเหลือชั้นเดียว</h2></div>
+    <p>ถ้าสองชั้นสูงเกินไป ยุบเป็นแถบเดียวได้ (กริดตัดคอลัมน์เองตามความกว้าง) — แลกกับการที่ "เดินถึงไหน" กับ "สัญญาเมื่อไร" ไม่ได้แยกกลุ่มให้เห็น</p>
+    <div class="card">
+      <div class="head">
+        <div class="titleBlock">
+          <span class="eyebrow">สอบถามข้อมูล · ถึงฝ่าย RD</span>
+          <p class="docNo">RQ-26080027</p>
+          <span class="subject">รบกวนขอราคา F ค่ะ · ให้ <b>บริษัท รวย เหนือ ฝัน จำกัด</b> <span class="mono">AR-787</span></span>
+          <span class="people">
+            <span class="owner self"><span class="avatar">SS</span> ใบของฉัน · ทีม <b>ODM</b></span>
+            <span class="arrow">→</span>
+            <span class="owner dept"><span class="avatar">KP</span> รับเรื่องแล้ว · <b>ProjectCo.Krapook</b> · 11/08</span>
+          </span>
+        </div>
+        <span class="state"><span class="dot" style="--state:var(--blue)"></span> กำลังดำเนินการ</span>
+      </div>
+      <div class="facts">
+        <div><span class="cell"><small>ส่งเมื่อ</small><strong>10/08/2026</strong><span class="sub">1 วันก่อน</span></span></div>
+        <div><span class="cell"><small>ตอบแล้ว</small><strong>0/3 รายการ</strong><span class="sub">ยังไม่มีที่ตอบ</span></span></div>
+        <div><span class="cell"><small>ผู้ขอต้องการ</small><strong>14/08/2026</strong><span class="sub">อีก 3 วัน</span></span></div>
+        <div><span class="cell"><small>RD กำหนดส่ง</small><strong class="ok">13/08/2026</strong><span class="sub ok">เร็วกว่าที่ขอ 1 วัน</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">
+    โทเคนทั้งหมดยกจาก <span class="k">globals.css</span> ไม่มีค่าสีดิบ · แถบข้อเท็จจริงเปลี่ยนจาก grid auto-fit เป็น <span class="k">flex-wrap</span> (ดูเหตุผลในคอมเมนต์ CSS) ⇒ จอ 768 ลงมาบังคับสองช่องต่อแถว · 480 ลงมาเหลือช่องเดียวต่อแถว · รูปวงกลมในชิปเป็นอักษรย่อจากชื่อ
+    ไม่ใช่รูปถ่าย (ระบบยังไม่มีรูปโปรไฟล์) · ฟอนต์ในไฟล์นี้อาจไม่ตรงของจริง 100% ถ้าเครื่องไม่มี IBM Plex Sans Thai
+  </p>
+
+</div>
+</body>
+</html>

@@ -34,7 +34,7 @@ import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
-import { requestHeaderFacts } from "@/lib/requests/headerFacts";
+import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
@@ -768,13 +768,40 @@ export default function RequestDetailPage() {
   ];
 
   // ⭐ **กติกา "ช่องไหนขึ้นเมื่อไร" อยู่ที่ `lib/requests/headerFacts.js`** พร้อมเทสต์
-  // (ม-98) — ของเดิมประกอบตรงนี้กลาง JSX แล้วให้ "ลูกค้า" กับ "ตอบแล้ว" สลับกันใช้
-  // ช่องเดียว ⇒ ใบที่มีบรรทัดไม่เคยโชว์ลูกค้าเลย ซึ่งผู้ใช้แจ้งเข้ามาเอง (IS-26080003)
+  // (ม-98 · ม-101) — ของเดิมประกอบตรงนี้กลาง JSX แล้วให้ "ลูกค้า" กับ "ตอบแล้ว"
+  // สลับกันใช้ช่องเดียว ⇒ ใบที่มีบรรทัดไม่เคยโชว์ลูกค้าเลย (IS-26080003)
   // ⚠️ ไอคอนอยู่ที่นี่ ไม่ใช่ในไลบรารี — ไลบรารีต้องไม่ import component ของ React
   // (เทสต์รันด้วย node เปล่า) · คีย์ที่ไม่มีไอคอนไม่ต้องประกาศ
-  const FACT_ICONS = { created: ClipboardList };
+  const FACT_ICONS = { submitted: ClipboardList };
   const headerFacts = requestHeaderFacts(req, { hasItems, progress })
     .map((fact) => ({ ...fact, icon: FACT_ICONS[fact.key] }));
+
+  /* ⭐ **บรรทัดคนสองฝั่งของใบ** (ม-101) — ผู้ยื่น → ผู้รับเรื่อง อ่านเป็นเส้นทางเดียว
+     ⚠️ ใช้ `_opener` ไม่ใช่ `_mine` — ตั้งแต่ทีมทำแทนกันได้ (ม-100) `_mine` แปลว่า
+     "จัดการได้" ⇒ ป้าย "ใบของฉัน" จะไปขึ้นบนใบของเพื่อนร่วมทีม */
+  const people = requestHeaderPeople(req, { mine: !!req._opener });
+  const initials = (name) => String(name || "")
+    .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "—";
+  const peopleRow = people ? (
+    <>
+      <span className={`${styles.person} ${people.requester.mine ? styles.personSelf : styles.personTeam}`}>
+        <span className={styles.personAvatar}>{initials(people.requester.name)}</span>
+        {people.requester.label}
+        {people.requester.team ? ` · ทีม ${people.requester.team}` : ""}
+        {people.requester.mine ? null : <b>{people.requester.name}</b>}
+      </span>
+      {/* ลูกศรมีความหมายก็ต่อเมื่อชิปอยู่บรรทัดเดียวกัน — จอแคบซ่อนใน CSS */}
+      <span className={styles.personArrow} aria-hidden="true">→</span>
+      <span className={`${styles.person} ${people.receiver.pending ? styles.personEmpty : styles.personDept}`}>
+        <span className={styles.personAvatar}>
+          {people.receiver.pending ? req.dept : initials(people.receiver.name)}
+        </span>
+        {people.receiver.pending
+          ? `${people.receiver.name} · ${people.receiver.label}`
+          : <>{people.receiver.label} · <b>{people.receiver.name}</b>{people.receiver.at ? ` · ${fmtDate(people.receiver.at)}` : ""}</>}
+      </span>
+    </>
+  ) : null;
 
   /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
      ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
@@ -810,7 +837,23 @@ export default function RequestDetailPage() {
       <SalesDetailOverview
         eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
-        description={req.title || req.customerName || "ราคากลาง"}
+        /* ⭐ ลูกค้าต่อท้ายหัวข้อเรื่องเป็นประโยคเดียว "ทำอะไร ให้ใคร" (ม-101) —
+           เดิมลูกค้าเป็นช่องในแถบซึ่งหายไปทั้งใบเมื่อใบนั้นมีบรรทัด */
+        description={
+          <span className={styles.subject}>
+            {req.title || requestKindLabel(req.kind)}
+            {req.customerName ? (
+              <>
+                {" · ให้ "}<b>{req.customerName}</b>
+                {req.refCustomer?.arCode ? (
+                  // ⚠️ nowrap — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส
+                  <span className={styles.arCode}>{req.refCustomer.arCode}</span>
+                ) : null}
+              </>
+            ) : null}
+          </span>
+        }
+        meta={peopleRow}
         badges={usePanel
           // โครง panel: สถานะอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรก)
           ? null

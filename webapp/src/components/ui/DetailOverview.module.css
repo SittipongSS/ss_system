@@ -95,8 +95,8 @@
    ⇒ แถวแรกจะมีเส้นค้างชนขอบการ์ดเป็นเส้นคู่ · ยื่นกริดเกินขอบ 1px แล้วให้การ์ดตัดทิ้ง
    ได้ผลเท่ากันทุกแถวโดยไม่ต้องรู้ว่าแถวหนึ่งมีกี่ช่อง (เหตุผลเดียวกับขอบล่าง) */
 .quickFacts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   margin-inline-end: -1px;
   margin-block-end: -1px;
   border-top: 1px solid var(--border);
@@ -104,6 +104,11 @@
 }
 
 .quickFacts > div {
+  /* ⚠️ **flex ไม่ใช่ grid** — `grid auto-fit` ตรึงจำนวนคอลัมน์ไว้ทั้งกริด แถวสุดท้าย
+     ที่มีช่องไม่ครบจึงเหลือ **ช่องโหว่**: พื้นที่ว่างพร้อมเส้นคั่นลอยที่อ่านเหมือนจอพัง
+     (ผู้ใช้ส่งภาพมา 2026-08-11 — 4 ช่องบนจอ 700px = 3 คอลัมน์ + แถวสองมีช่องเดียว)
+     `flex: 1 1 210px` ทำให้ช่องในแต่ละแถวยืดเต็มแถวเสมอ ไม่ว่าจะเหลือกี่ช่อง */
+  flex: 1 1 210px;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -133,6 +138,15 @@
   white-space: nowrap;
 }
 
+/* โทนของช่อง — ค่าที่ต้องรีบ (แดง) · ที่ตกลงกันได้แล้ว (เขียว) · ที่ยังไม่มีข้อมูล (จาง)
+   ⚠️ ทาที่ **ค่ากับบรรทัดรอง** ไม่ใช่ทั้งช่อง — พื้นสีเต็มช่องบนแถบที่มี 4-6 ช่อง
+   จะกลายเป็นแถบสีรุ้งที่ไม่มีอะไรเด่นเลย */
+.quickFacts > div[data-tone="late"] strong,
+.quickFacts > div[data-tone="late"] .factSub { color: var(--red); }
+.quickFacts > div[data-tone="ok"] strong,
+.quickFacts > div[data-tone="ok"] .factSub { color: var(--green); }
+.quickFacts > div[data-tone="muted"] strong { color: var(--text-3); }
+
 /* บรรทัดรองใต้ค่า — จางกว่าค่าหลัก แต่ยังอ่านออกในระยะกวาดสายตา
    ⚠️ **ต้องเขียน `.quickFacts .factSub`** ไม่ใช่ `.factSub` เดี่ยว — ป้ายหัวช่องใช้
    `.quickFacts small` (0,0,1,1) ซึ่งชนะคลาสเดี่ยว (0,0,1,0) ⇒ `margin-bottom` ของ
@@ -159,10 +173,22 @@
   border-top: 1px solid var(--border);
 }
 
+/* แถวใต้คำอธิบาย (ชิปคน ฯลฯ) — เว้นจากคำอธิบายเท่าระยะระหว่างบรรทัดของหัวใบ */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* จอแคบ: **บังคับจำนวนช่องต่อแถว** แทนที่จะให้ flex คำนวณเอง — ไม่งั้นแถวสุดท้าย
+   เหลือช่องเดียวยืดเต็มความกว้าง ซึ่งอ่านเหมือนช่องนั้นสำคัญกว่าเพื่อน
+   ⚠️ 900 = จังหวะเดิมของแถบนี้ (เคยเป็น `grid-template-columns: repeat(2,…)`)
+   เก็บพฤติกรรมเดิมไว้ให้หน้าอื่นที่ใช้ `DetailOverview` ไม่เปลี่ยนหน้าตาที่ความกว้างนี้
+   ⚠️ จุดตัด 900 / 680 / 480 มาจากชุดที่มีอยู่แล้ว — ห้ามคิดค่าใหม่ (เพดานเต็ม 13/13) */
 @media (max-width: 900px) {
-  .quickFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .quickFacts > div:nth-child(2n) { border-right: 0; }
-  .quickFacts > div:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .quickFacts > div { flex-basis: calc(50% - 1px); }
 }
 
 @media (max-width: 680px) {
@@ -178,13 +204,9 @@
 
   .badgeRow,
   .actionRow { justify-content: flex-start; }
-  .quickFacts { grid-template-columns: minmax(0, 1fr); }
+  .quickFacts > div { min-height: 48px; }
+}
 
-  .quickFacts > div {
-    min-height: 48px;
-    border-top: 1px solid var(--border);
-    border-right: 0;
-  }
-
-  .quickFacts > div:first-child { border-top: 0; }
+@media (max-width: 480px) {
+  .quickFacts > div { flex-basis: 100%; }
 }
