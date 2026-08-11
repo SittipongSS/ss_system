@@ -70,11 +70,15 @@ export function committedVsRequested(committedDate, requestedDate) {
 }
 
 /**
- * ชิปคนสองฝั่งของใบ — `{ requester, receiver }`
+ * ชิปผู้ยื่นบนหัวใบ — `{ requester }`
  *
  * ⚠️ `mine` ต้องมาจาก **"ฉันเป็นคนเปิดใบนี้"** (`_opener` จาก server) ไม่ใช่ `_mine`
  * ซึ่งแปลว่า "จัดการได้" — ตั้งแต่ทีมทำแทนกันได้ (ม-100) สองอย่างนี้ไม่เท่ากันแล้ว
  * และป้าย "ใบของฉัน" ที่ขึ้นบนใบของเพื่อนคือการโกหกหน้าจอ
+ *
+ * ⚠️ **ผู้รับเรื่องไม่อยู่ในชิป** — เคยลองทำเป็นชิปคู่ (ผู้ยื่น → ผู้รับเรื่อง) แล้วผู้ใช้
+ * เลือกกลับไปใช้บรรทัด "รับเรื่องโดย …" ใต้หัวใบแทน (ม-101.2) · ที่นี่จึงมีฝั่งเดียว
+ * ห้ามเติมกลับโดยไม่ถามก่อน — สองที่พร้อมกันคือข้อมูลซ้ำที่ผู้ใช้ทักมาแล้ว
  */
 export function requestHeaderPeople(request, { mine = false } = {}) {
   if (!request) return null;
@@ -87,19 +91,6 @@ export function requestHeaderPeople(request, { mine = false } = {}) {
       team: team || null,
       mine,
     },
-    receiver: request.acknowledgedByName
-      ? {
-        name: request.acknowledgedByName,
-        label: 'รับเรื่องแล้ว',
-        at: request.acknowledgedAt || null,
-        pending: false,
-      }
-      : {
-        name: `ยังไม่มีใครรับเรื่อง`,
-        label: `ฝ่าย ${request.dept || '—'}`,
-        at: null,
-        pending: true,
-      },
   };
 }
 

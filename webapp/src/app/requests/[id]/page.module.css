@@ -103,9 +103,9 @@
 .editCard { margin-top: var(--space-4-5); }
 
 /* ── บรรทัดคนสองฝั่งของใบ (ม-101) ────────────────────────────────────────
-   ผู้ยื่น → ผู้รับเรื่อง · ชิปคู่นี้ตอบคำถามแรกของคนที่เปิดใบของเพื่อนร่วมทีม
-   ⚠️ สีมีความหมาย ไม่ใช่ตกแต่ง: เขียวอมฟ้า = ใบของฉัน · ม่วง = ใบของคนในทีม ·
-   น้ำเงิน = ฝ่ายที่รับเรื่องแล้ว · ขอบประจาง = ยังไม่มีใครรับ */
+   ชิปนี้ตอบคำถามแรกของคนที่เปิดใบของเพื่อนร่วมทีม: ใบนี้ของใคร
+   ⚠️ สีมีความหมาย ไม่ใช่ตกแต่ง: เขียวอมฟ้า = ใบของฉัน · ม่วง = ใบของคนในทีม
+   ⚠️ ผู้รับเรื่องไม่อยู่ในชิป — อยู่บรรทัด "รับเรื่องโดย …" ใต้หัวใบ (ม-101.2) */
 .person {
   display: inline-flex;
   align-items: center;
@@ -156,25 +156,6 @@
 }
 .personTeam .personAvatar { background: var(--violet); }
 
-.personDept {
-  border-color: color-mix(in srgb, var(--blue) 40%, transparent);
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-.personDept .personAvatar { background: var(--blue); }
-
-.personEmpty {
-  border-style: dashed;
-  background: transparent;
-  color: var(--text-3);
-}
-.personEmpty .personAvatar {
-  background: var(--panel-3);
-  color: var(--text-3);
-}
-
-.personArrow { color: var(--text-3); }
-
 /* บรรทัดเรื่อง — หัวข้อคำร้อง + ลูกค้า อ่านเป็นประโยคเดียว */
 .subject { min-width: 0; }
 .subject b { color: var(--text); font-weight: var(--fw-bold); }
@@ -186,12 +167,6 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--fs-3);
   white-space: nowrap;
-}
-
-/* จอแคบ: ชิปเรียงบนลงล่าง ⇒ ลูกศรจะค้างท้ายบรรทัดบนเหมือนพิมพ์ค้าง
-   (จุดตัด 480 จากชุดที่มีอยู่แล้ว — ห้ามคิดค่าใหม่) */
-@media (max-width: 480px) {
-  .personArrow { display: none; }
 }
 
 /* การ์ดเนื้อคำร้อง — ย้ายลงมาจากหัวใบ (ผู้ใช้ทัก 2026-08-11)
