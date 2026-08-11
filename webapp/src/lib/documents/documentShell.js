@@ -262,6 +262,12 @@ export function documentShellCss(orientation = 'portrait') {
   .itemTable td:nth-child(3) { width: 17mm; }
   .itemTable td:nth-child(4) { width: 13mm; }
   .itemTable td:nth-child(5), .itemTable td:nth-child(6) { width: 23mm; }
+  /* ใบที่มีส่วนลดรายบรรทัด: แทรกคอลัมน์ส่วนลดก่อนจำนวนเงิน — บีบราคา/หน่วยลงเล็กน้อย
+     แล้วให้ช่องรายละเอียด (คอลัมน์ 2 กว้างอัตโนมัติ) เสียพื้นที่เท่าที่จำเป็น */
+  .itemTable.withLineDiscount td:nth-child(5) { width: 21mm; }
+  .itemTable.withLineDiscount td:nth-child(6) { width: 19mm; }
+  .itemTable.withLineDiscount td:nth-child(7) { width: 23mm; }
+  .itemDiscountRate { display: block; margin-top: .3mm; color: var(--doc-muted); font-size: 7.4pt; line-height: 1.4; }
   .itemIdentity { display: block; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   .itemName { display: block; margin-top: .35mm; color: var(--doc-text); font-weight: 500; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .itemNote { display: block; margin-top: .7mm; color: var(--doc-muted); font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
