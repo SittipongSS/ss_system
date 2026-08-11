@@ -426,3 +426,43 @@ test('ผู้เรียกที่ส่ง referenceRows เองยั�
   });
   assert.deepEqual(model.referenceRows.map((row) => row.label), ['อ้างอิง QT']);
 });
+
+// ── กลุ่มท้ายเอกสารสูงเกินหนึ่งหน้า (IS-26080009) ────────────────────────────
+// 🐞 ผู้ใช้แจ้ง "ตารางงวดชำระในเอกสารทับหัวข้อ" — ใบจริง QT-26080032 หมายเหตุยาว
+// ~30 บรรทัด กลุ่มท้ายเอกสารจึงสูงเกินหน้าเต็ม แต่ V4 ยังยัดลงหน้าเดียวแล้วปล่อยล้น
+// ⚠️ CSS `.v4 .paymentContent { justify-content: flex-end }` ดันส่วนที่ล้น **ขึ้น**
+// ตารางงวดชำระจึงไปทับหัวเอกสาร (วัดของจริง: -65px จากขอบบนกระดาษ)
+const quoteWithRemarks = (remarks) => ({
+  ...QUOTE_WITH_PROJECT,
+  notes: remarks,
+  paymentPlan: {
+    type: 'installment',
+    paymentMethod: 'โอนเข้าบัญชีบริษัท',
+    installments: [
+      { no: 1, label: 'ชำระยืนยันสั่งซื้อ', percent: 50, amount: 404781 },
+      { no: 2, label: 'ชำระหลังส่งสินค้า ภายใน 3 วัน', percent: 50, amount: 404781 },
+    ],
+  },
+});
+
+test('หมายเหตุยาวจนกลุ่มท้ายเอกสารเกินหนึ่งหน้า = ผ่าหน้าลงชื่อออกไป ไม่ปล่อยล้น', () => {
+  const longRemarks = Array.from({ length: 40 }, (_, index) => `บรรทัดหมายเหตุที่ ${index + 1}`).join('\n');
+  const pages = buildQuotationMasterModelFromQuote(quoteWithRemarks(longRemarks)).pages;
+  assert.deepEqual(pages.map((page) => page.kind), ['items', 'payment', 'acceptance']);
+
+  const payment = pages.find((page) => page.kind === 'payment');
+  const acceptance = pages.find((page) => page.kind === 'acceptance');
+  assert.equal(payment.showPayment, true);
+  assert.equal(payment.showSignatures, false, 'หน้าที่ล้นแล้วต้องไม่แบกช่องลงชื่อไว้อีก');
+  assert.equal(acceptance.showSignatures, true);
+  assert.equal(acceptance.showPayment, false);
+  // ช่องลงชื่อต้องมีที่เดียวเสมอ ไม่ว่าจะผ่าหรือไม่
+  assert.equal(pages.filter((page) => page.showSignatures).length, 1);
+});
+
+test('หมายเหตุปกติยังอยู่หน้าเดียวเหมือนเดิม — ห้ามผ่าเพราะเผื่อไว้ก่อน', () => {
+  const pages = buildQuotationMasterModelFromQuote(quoteWithRemarks('- ผลิต 45-60 วัน\n- ส่งฟรีในกรุงเทพและปริมณฑล')).pages;
+  assert.equal(pages.some((page) => page.kind === 'acceptance'), false);
+  const last = pages[pages.length - 1];
+  assert.equal(last.showPayment, last.showSignatures, 'กลุ่มท้ายเอกสารต้องอยู่ด้วยกัน');
+});

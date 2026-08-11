@@ -322,8 +322,19 @@ export function documentShellCss(orientation = 'portrait') {
     transform: translate(-50%, -50%) rotate(-24deg); color: var(--doc-watermark);
     border: 4px solid currentcolor; padding: 3mm 8mm; font-size: 34pt; font-weight: 700;
     letter-spacing: .08em; pointer-events: none; }
-  /* V4 = หน้าตาแบบ V2 (ไม่มี accent override) — ต่างที่การจัดหน้า: กลุ่มท้ายเอกสารชิดล่าง */
-  .v4 .paymentContent { justify-content: flex-end; break-inside: avoid; }
+  /* V4 = หน้าตาแบบ V2 (ไม่มี accent override) — ต่างที่การจัดหน้า: กลุ่มท้ายเอกสารชิดล่าง
+
+     🐞 บั๊กที่ผู้ใช้แจ้ง (IS-26080009 · 2026-08-11): "ตารางงวดชำระในเอกสารทับหัวข้อ"
+     flex-end ดันของ **ขึ้น** เมื่อกลุ่มท้ายเอกสารสูงเกินพื้นที่ที่เหลือ — ส่วนที่ล้นจึงไป
+     ทับหัวเอกสาร (ตารางงวดชำระไปนั่งบนบรรทัดโทร/Line/เว็บไซต์) แทนที่จะล้นลงล่าง
+     วัดของจริงตอนล้น 169px: .paymentDetails ไปอยู่ที่ -65px จากขอบบนกระดาษ
+
+     ⚠️ safe = "ชิดล่างเฉพาะตอนมีที่เหลือ ถ้าล้นให้กลับไปชิดบน" — ตอนพอดีหน้าผลลัพธ์
+     เหมือนเดิมทุก px (ยืนยันด้วยการวัด DOM) ส่วนตอนล้นจะล้นลงล่างแล้วถูก
+     .sheet overflow:hidden ตัด ซึ่งอ่านออกกว่าทับหัวเอกสารมาก
+     ⚠️ เบราว์เซอร์ที่ไม่รู้จัก safe จะทิ้งทั้งบรรทัดนี้ → ตกไปที่ flex-start = ล้นลงล่าง
+     เหมือนกัน ไม่มีทางกลับไปทับหัวเอกสารได้อีก */
+  .v4 .paymentContent { justify-content: safe flex-end; break-inside: avoid; }
   .v4 .signatures { margin-top: 3mm; }
 
   @page { size: ${paper.page}; margin: 0; }

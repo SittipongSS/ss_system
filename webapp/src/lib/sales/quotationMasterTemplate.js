@@ -267,6 +267,11 @@ const V4_SIGNATURES = 9; // 145px + ระยะห่าง
 const V4_TERMS_BASE = 8; // หัวข้อสองภาษา+padding กล่องเงื่อนไข 3 กล่อง (typography อ่านง่าย)
 const V4_INSTALLMENT_BASE = 3; // หัวข้อ+หัวตารางงวด
 const V4_INSTALLMENT_ROW = 2; // 25px/งวด
+const V4_SECTION_LEAD = 2; // หัวข้อ "รายละเอียดการชำระเงิน" บนหน้าท้ายเอกสาร 34px
+
+// ความจุของ "หน้าท้ายเอกสารทั้งหน้า" — เต็มหน้าลบหัวข้อกลุ่มและเผื่อประเมินพลาด
+// ⚠️ กลุ่มที่สูงเกินค่านี้ **ไม่มีหน้าไหนรับไหว** ต้องผ่า ไม่ใช่ยัดลงหน้าเดียวแล้วปล่อยล้น
+const V4_GROUP_PAGE_CAPACITY = V4_PAGE_UNITS - V4_SECTION_LEAD - V4_SAFETY;
 
 function v4RowCost(line) {
   return V4_ROW_BASE + rowUnits(line);
@@ -415,6 +420,12 @@ function paymentContentUnits({ installments, paymentMethod, paymentTerms, remark
 // ถ้าท้ายหน้าสุดท้ายเหลือที่พอ → วางต่อจากมูลค่ารวมเลย (ไม่เปลืองหน้า)
 // ถ้าไม่พอ → ยกไปทั้งกลุ่มเป็นหน้าของตัวเอง (มติผู้ใช้: ยอมให้กลุ่มอยู่หน้าเดียวได้)
 // ทุกค่าคิดในหน่วย px-calibrated ชุดเดียวกับ paginateFilled
+//
+// 🐞 บั๊กที่ผู้ใช้แจ้ง (IS-26080009 · 2026-08-11): "ตารางงวดชำระในเอกสารทับหัวข้อ"
+// กติกา "กลุ่มไม่แตก" เดิมไม่มีทางออกเมื่อกลุ่ม **สูงเกินหนึ่งหน้าเต็ม** (ใบที่หมายเหตุ
+// ยาวหลายสิบบรรทัด) — โค้ดยังยัดลงหน้าเดียวแล้วปล่อยล้น ซึ่ง CSS `flex-end` ดันส่วนที่ล้น
+// ขึ้นไปทับหัวเอกสาร ⇒ เอกสารที่ส่งลูกค้าอ่านไม่ออก · V1–V3 มีทางออกนี้อยู่แล้ว
+// (separateAcceptancePage) แต่ V4 ตัดทิ้งตอนเปลี่ยนกติกา จึงเอากลับมาเฉพาะเคสที่ล้นจริง
 function buildGroupedPages({
   linePages,
   installments,
@@ -442,16 +453,30 @@ function buildGroupedPages({
   }));
 
   if (!groupFitsOnLastPage) {
+    // ผ่าเฉพาะตอนกลุ่มสูงเกินหนึ่งหน้าเต็ม — ที่เหลือยังอยู่หน้าเดียวตามมติเดิม
+    const splitAcceptance = groupUnits > V4_GROUP_PAGE_CAPACITY;
     pages.push({
       id: 'payment',
       kind: 'payment',
       lines: [],
       showParty: false,
       showTotals: false,
-      // กลุ่มไม่แตก — เงื่อนไขชำระและลงชื่ออยู่หน้าเดียวกันเสมอ
+      // กลุ่มไม่แตก — เงื่อนไขชำระและลงชื่ออยู่หน้าเดียวกันเสมอ ยกเว้นตอนล้นทั้งหน้า
       showPayment: true,
-      showSignatures: true,
+      showSignatures: !splitAcceptance,
     });
+
+    if (splitAcceptance) {
+      pages.push({
+        id: 'acceptance',
+        kind: 'acceptance',
+        lines: [],
+        showParty: false,
+        showTotals: false,
+        showPayment: false,
+        showSignatures: true,
+      });
+    }
   }
 
   return pages;
