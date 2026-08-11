@@ -25,7 +25,8 @@ export {
   normalizeRequestStatus,
 } from '@/lib/requests/statuses';
 
-export { generateRequestDocNo } from '@/lib/requests/docNo';
+export { ensureRequestDocNo, generateRequestDocNo } from '@/lib/requests/docNo';
+export { requestGuardMessage } from '@/lib/requests/dbGuard';
 
 export { MAX_REQUEST_ITEMS } from '@/lib/requests/lines';
 
