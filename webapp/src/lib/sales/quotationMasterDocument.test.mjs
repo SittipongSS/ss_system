@@ -237,3 +237,37 @@ test('V4 doc: ส่วนลดท้ายใบที่เก็บ % เก
   assert.doesNotMatch(html, /หัก ส่วนลด 250%/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
   assert.doesNotMatch(html, /class="itemDiscountRate"/, 'บรรทัดไม่พิมพ์อัตราเลย');
 });
+
+// ── ล็อกกติกา "สองชั้นคนละแบบ" (มติผู้ใช้ 2026-08-11) ───────────────────────────
+// รายบรรทัด = ยอดเงินล้วน · ท้ายใบ = ยอดเงิน + อัตราเมื่อกรอกเป็น %
+// เคยมีรอบที่ตัด % ท้ายใบทิ้งไปด้วยแล้วยกเลิกมติ — เทสต์ชุดนี้กันไม่ให้หลุดกลับมาเงียบ ๆ
+test('V4 doc: บรรทัดตั้งส่วนลดเป็น % → ช่องส่วนลดพิมพ์แต่ยอดเงิน ไม่มีอัตรา', () => {
+  const lines = [
+    lineOf('1', { discountType: 'percent', discountValue: 5, discountAmount: 50, lineTotal: 950 }),
+    lineOf('2'),
+  ];
+  const html = buildQuotationMasterHTML(baseQuote(lines), {});
+  // ช่องส่วนลดของแถวแรก = ยอดที่หัก ปิดท้ายด้วย </td> ทันที (ไม่มี span อัตราคั่น)
+  assert.match(html, /<td class="number">-50\.00<\/td>/, 'บรรทัดโชว์ยอดเงินล้วน');
+  assert.doesNotMatch(html, /-50\.00[^<]*5%/, 'ไม่มีอัตราต่อท้ายยอดที่หัก');
+  assert.doesNotMatch(html, /class="itemDiscountRate"/, 'ไม่มี element สำหรับอัตรารายบรรทัด');
+  assert.match(html, /<td class="number">-<\/td>/, 'บรรทัดที่ไม่มีส่วนลดขึ้นขีด');
+});
+
+test('V4 doc: ส่วนลดท้ายใบตั้งเป็น % → ป้ายต้องมีอัตรากำกับคู่กับยอดเงิน', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    discountType: 'percent', discountValue: 5, discountAmount: 50,
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /<span>หัก ส่วนลด 5%<\/span><strong>-50\.00<\/strong>/, 'ท้ายใบมีอัตรา + ยอดเงิน');
+});
+
+test('V4 doc: ส่วนลดท้ายใบตั้งเป็นจำนวนเงิน → ป้ายไม่มีอัตราให้กำกับ', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    discountType: 'amount', discountValue: 300, discountAmount: 300,
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /<span>หัก ส่วนลด<\/span><strong>-300\.00<\/strong>/, 'ป้ายเปล่า + ยอดเงิน');
+});
