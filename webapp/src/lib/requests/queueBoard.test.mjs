@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  QUEUE_COUNT_META, matchesQueueCount, queueCounts, requestNextStep,
+  QUEUE_COUNT_META, matchesQueueCount, queueCounts, requestNextStep, visibleQueueRows,
 } from './queueBoard.js';
 
 const req = (over = {}) => ({ id: 'DR-1', status: 'acknowledged', dept: 'RD', items: [], ...over });
@@ -312,4 +312,37 @@ test('เริ่มที่นี่ — ใบที่จบแล้วไ
   assert.equal(pick.request.id, 'Z');
   assert.equal(pick.next.label, 'รอปิดเรื่อง');
   assert.equal(pick.remaining, 0);
+});
+
+// ── ขอบเขตเป็นตัวตัดสินแถว แท็บบทบาทเป็นตัวรอง (2026-08-11) ──────────────
+//
+// 🐞 ผู้ใช้แจ้ง: API ส่งใบมา 15 ใบ แต่หน้าโชว์ 0 ทุกแท็บ — แท็บทั้งสามผูกกับ "ฉัน"
+// ทั้งหมด ⇒ ใบที่ขอบเขตทีม/ทั้งหมดโหลดมาไม่มีแท็บไหนรับ
+test('ขอบเขตทีม/ทั้งหมด — แสดงทุกใบที่โหลดมา ไม่กรองด้วย "ฉัน" อีกชั้น', () => {
+  const rows = [
+    { id: 'A', status: 'pending', dept: 'RD', _mine: false },
+    { id: 'B', status: 'pending', dept: 'RD', _mine: false },
+    { id: 'C', status: 'draft', dept: 'RD', _mine: true },
+  ];
+  for (const scope of ['team', 'all']) {
+    assert.equal(visibleQueueRows(rows, { scope, tab: 'todo', myDepts: [] }).length, 3, scope);
+    // แท็บที่ค้างมาจาก URL ต้องไม่ทำให้หายไปไหน
+    assert.equal(visibleQueueRows(rows, { scope, tab: 'mine', myDepts: [] }).length, 3, scope);
+  }
+});
+
+test('ขอบเขต "ของฉัน" — ยังกรองด้วยแท็บบทบาทเหมือนเดิม', () => {
+  const rows = [
+    { id: 'A', status: 'pending', dept: 'RD', _mine: false },
+    { id: 'C', status: 'draft', dept: 'RD', _mine: true },
+  ];
+  assert.deepEqual(
+    visibleQueueRows(rows, { scope: 'mine', tab: 'mine', myDepts: [] }).map((r) => r.id),
+    ['C'],
+  );
+});
+
+test('ไม่ส่งขอบเขตมา = ทำตัวเหมือน "ของฉัน" (ค่าตั้งต้นเดิม ไม่เปลี่ยนพฤติกรรมผู้เรียกเก่า)', () => {
+  const rows = [{ id: 'A', status: 'pending', dept: 'RD', _mine: false }];
+  assert.equal(visibleQueueRows(rows, { tab: 'mine', myDepts: [] }).length, 0);
 });

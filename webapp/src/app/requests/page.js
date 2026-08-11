@@ -21,7 +21,7 @@ import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
-import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
+import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest, visibleQueueRows } from "@/lib/requests/queueBoard";
 import StartHereCard from "@/components/requests/StartHereCard";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { bouncedDaysText } from "@/lib/requests/queueBoard";
@@ -140,9 +140,16 @@ export default function RequestsPage() {
   // 🐞 subtitle ของหน้านี้บอกไว้ตั้งแต่ต้นว่า "เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ"
   // แต่ไม่มีใครเรียงจริง — API คืนมาเรียง createdAt ล้วน · ตัวเรียงมีอยู่แล้วใน lib
   // (compareRequestUrgency) แต่มีแค่หน้า dashboard RD ที่เรียก
+  /* ⭐ **ขอบเขตเป็นตัวตัดสินแถว แท็บบทบาทเป็นตัวรอง** — โครงเดียวกับหน้า "งานของฉัน"
+     (มติผู้ใช้ 2026-08-11) · ที่นั่นตัวสลับ "บทบาทของฉันในงาน" โผล่เฉพาะตอนเลือก
+     "ของฉัน" เพราะพอเลือกทีม/ทั้งหมดแล้ว คำถามไม่ใช่ "บทบาทฉันคืออะไร" อีกต่อไป
+     🐞 ของเดิมกรองด้วยแท็บเสมอ ⇒ ใบที่ขอบเขตทีม/ทั้งหมดโหลดมาไม่มีแท็บไหนรับ
+     หน้าจึงว่างเปล่าทั้งที่ API ส่งมา 15 ใบ (ผู้ใช้ส่งภาพมา) */
+  const roleTabsApply = activeScope === "mine";
   const tabRows = useMemo(
-    () => queueTabRows(requests, { tab, myDepts }).slice().sort(compareRequestUrgency),
-    [requests, tab, myDepts],
+    () => visibleQueueRows(requests, { scope: activeScope, tab, myDepts })
+      .slice().sort(compareRequestUrgency),
+    [requests, activeScope, tab, myDepts],
   );
 
   // ── การ์ด "เริ่มที่นี่" ────────────────────────────────────────────────
@@ -194,7 +201,10 @@ export default function RequestsPage() {
     return `?${q.toString()}`;
   })();
 
-  const rows = tab === "mine" ? visibleMine : tabRows;
+  /* ⚠️ แท็บ "ที่ฉันเปิด" มีเส้นทางของตัวเอง (กรองด้วย `?dealId=` ตอนมาจากหน้าดีล)
+     — ใช้ได้เฉพาะขอบเขต "ของฉัน" · ขอบเขตทีม/ทั้งหมดต้องผ่าน `tabRows` เสมอ ไม่งั้น
+     ใบของเพื่อนร่วมทีมโดนกรองทิ้งอีกชั้นแล้วหน้าว่างเหมือนเดิม */
+  const rows = (roleTabsApply && tab === "mine") ? visibleMine : tabRows;
   const counts = queueCounts(rows, { todayIso: today });
 
   /* ⭐ **แถบเตือนใบตีกลับ** (แบบ จ · 2026-08-11) — ตัวเลขบนแถบบอกว่ามีกี่ใบ แต่
@@ -215,9 +225,11 @@ export default function RequestsPage() {
     <Workspace
       icon={<ClipboardList size={22} />}
       title="คำร้องข้ามฝ่าย"
-      subtitle={tab === "todo" ? TAB_BLURB.todo
-        : tab === "history" ? TAB_BLURB.history
-          : mineBlurb(dealParam)}
+      subtitle={!roleTabsApply
+        ? `ทุกใบใน${SCOPE_LABELS[activeScope]} — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ`
+        : tab === "todo" ? TAB_BLURB.todo
+          : tab === "history" ? TAB_BLURB.history
+            : mineBlurb(dealParam)}
       /* ⭐ **ตัวสลับมุมมอง + ปุ่มหลักอยู่ในหัวการ์ด** ตามต้นแบบหน้างานของฉัน
          (มติผู้ใช้ 2026-08-08) — ของเดิมปุ่ม "เปิดคำร้อง" ลอยอยู่กลางหน้าใต้แท็บ
          และตัวสลับมุมมองลอยเดี่ยวใต้แถบตัวเลข ⇒ ของสองชิ้นที่เป็น "เครื่องมือของ
@@ -257,7 +269,10 @@ export default function RequestsPage() {
             value: s, label: SCOPE_LABELS[s], disabled: !canUseScope(me, s),
           }))}
         />
-        <Segmented
+        {/* แท็บบทบาทมีความหมายเฉพาะขอบเขต "ของฉัน" — ซ่อนไปเลยตอนเลือกทีม/ทั้งหมด
+            (ทำแบบเดียวกับตัวสลับ "บทบาทของฉันในงาน" ที่หน้างานของฉัน) ไม่ใช่ทำจาง
+            เพราะมันไม่ได้ "ไม่มีสิทธิ์" แต่ "ไม่เกี่ยวกับมุมมองนี้" */}
+        {roleTabsApply && <Segmented
           ariaLabel="มุมมองหน้าคำร้อง"
           className="scope-toggle"
           value={tab}
@@ -268,7 +283,7 @@ export default function RequestsPage() {
             // ขัดกันไม่ได้ (เดิมนับคนละที่กัน)
             label: `${t.label} (${queueTabRows(requests, { tab: t.key, myDepts }).length})`,
           }))}
-        />
+        />}
         {activeScope === "team" && (
           <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
         )}
