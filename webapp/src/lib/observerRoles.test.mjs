@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import {
   ROLES, capsFor, isReadOnlyObserver,
-  canSeeDealKpi, canSeeLeadKpi, canSeeTaskKpi, canSeeRdKpi,
+  canSeeDealKpi, canSeeLeadKpi, canSeeTaskKpi,
   salesDealScopes, pmTaskScopes, viewScope, editScope,
 } from './permissions.js';
 
@@ -28,8 +28,11 @@ test('isReadOnlyObserver ครอบทั้งสองตำแหน่ง'
   }
 });
 
+// ⚠️ KPI ฝ่าย RD ถูกถอดออกจากชุดนี้พร้อมกับแท็บแดชบอร์ด RD (2026-08-11) —
+// ภาพรวมของฝ่ายย้ายไปที่โมดูล `/rd` ซึ่งเป็นคิวจริง ไม่ใช่ KPI รายเดือน
+const gates = { deal: canSeeDealKpi, lead: canSeeLeadKpi, task: canSeeTaskKpi };
+
 test('ผู้สังเกตการณ์เห็น KPI ครบทุกตัวเท่ากัน — ไม่มีตัวไหนขาดไปเฉพาะคนใดคนหนึ่ง', () => {
-  const gates = { deal: canSeeDealKpi, lead: canSeeLeadKpi, task: canSeeTaskKpi, rd: canSeeRdKpi };
   for (const [name, gate] of Object.entries(gates)) {
     assert.equal(gate('viewer'), gate('executive'), `KPI ${name}: viewer กับ executive ไม่ตรงกัน`);
     assert.equal(gate('viewer'), true, `KPI ${name}: ผู้สังเกตการณ์ต้องเห็น`);

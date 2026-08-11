@@ -56,7 +56,6 @@
 .postTitle { display: inline-block; margin: var(--space-1) 0 var(--space-0-5); color: var(--text-1); font-size: var(--fs-8); font-weight: var(--fw-bold); text-decoration: none; }
 .postTitle:hover { color: var(--accent-ink); }
 .postBody p { display: -webkit-box; overflow: hidden; margin: var(--space-1) 0 var(--space-2-5); font-size: var(--fs-7); line-height: 1.55; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.statusText { color: var(--text-3); font-style: italic; }
 .postFooter { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: var(--fs-3); }
 .postFooter a { display: flex; align-items: center; gap: var(--space-0-5); margin-left: auto; color: var(--accent-ink); text-decoration: none; }
 .urgent { color: var(--red); font-weight: var(--fw-bold); }

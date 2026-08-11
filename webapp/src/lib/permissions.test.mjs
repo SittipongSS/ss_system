@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -395,13 +395,6 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
   // Sales KPI dashboards stay Sales' own (RD is measured separately).
   assert.equal(canSeeTaskKpi('rd'), false);
   // ...and the RD dashboard/KPI is its own surface: rd + oversight only.
-  assert.equal(canSeeRdKpi('rd'), true);
-  assert.equal(canSeeRdKpi('admin'), true);
-  assert.equal(canSeeRdKpi('ae_supervisor'), true);
-  assert.equal(canSeeRdKpi('viewer'), true);
-  assert.equal(canSeeRdKpi('ae'), false);
-  assert.equal(canSeeRdKpi('senior_ae'), false);
-  assert.equal(canSeeRdKpi('staff'), false);
 });
 
 test('rd: assigns and pulls tasks within its own department only', () => {

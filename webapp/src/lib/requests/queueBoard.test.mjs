@@ -207,6 +207,37 @@ test('เริ่มที่นี่ — ก้าวถัดไปกับ
   assert.equal(pick.remaining, 1, 'ชี้ไปแล้วหนึ่งใบ เหลืออีกหนึ่ง — ไม่ใช่ 2');
 });
 
+// ── คิวถัดไป (หน้าภาพรวมฝ่าย · แบบ ก) ────────────────────────────────────
+test('⭐ คิวถัดไปเรียงชุดเดียวกับ "เริ่มที่นี่" และตัดใบที่การ์ดชี้ไปแล้วออก', async () => {
+  const { nextUpRows, startHereRequest } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-05' };
+  const rows = [
+    req({ id: 'B', acknowledgedAt: '2026-08-01', committedDueDate: '2026-12-31', items: [waitDept] }),
+    req({ id: 'D', acknowledgedAt: '2026-08-01', committedDueDate: '2026-08-01', items: [waitDept] }),
+    req({ id: 'A', status: 'pending', submittedAt: '2026-08-02' }),
+  ];
+  const pick = startHereRequest(rows, t);
+  const next = nextUpRows(rows, t);
+  assert.equal(pick.request.id, 'A', 'ใบที่ยังไม่มีใครรับมาก่อน');
+  assert.equal(next.some((r) => r.id === pick.request.id), false, 'ห้ามพูดซ้ำใบที่การ์ดชี้');
+  // เลยกำหนดมาก่อนใบที่ยังมีเวลา — เกณฑ์เดียวกับคิว ไม่ใช่ลำดับของตัวเอง
+  assert.deepEqual(next.map((r) => r.id), ['D', 'B']);
+});
+
+test('คิวถัดไป — จำกัดจำนวนได้ · ใบที่จบแล้วไม่นับ · ไม่มีอะไรค้าง = []', async () => {
+  const { nextUpRows } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-05' };
+  const many = ['A', 'B', 'C', 'D', 'E'].map((id, i) => req({
+    id, acknowledgedAt: '2026-08-01', committedDueDate: `2026-08-1${i}`, items: [waitDept],
+  }));
+  assert.equal(nextUpRows(many, { ...t, limit: 2 }).length, 2);
+  assert.equal(nextUpRows(many, t).length, 4, 'ตัดหัวหนึ่งใบ เหลือสี่');
+  assert.deepEqual(nextUpRows([], t), []);
+  assert.deepEqual(nextUpRows([req({ status: 'closed' })], t), []);
+  // ใบเดียวทั้งคิว = การ์ดชี้ไปแล้ว ไม่มีอะไรต่อ
+  assert.deepEqual(nextUpRows([req({ status: 'pending' })], t), []);
+});
+
 test('เริ่มที่นี่ — ใบที่จบแล้วไม่นับ และไม่มีอะไรค้าง = null', async () => {
   const { startHereRequest } = await import('./queueBoard.js');
   const t = { todayIso: '2026-08-05' };

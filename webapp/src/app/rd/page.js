@@ -21,7 +21,7 @@ import Button from "@/components/ui/Button";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { businessDate } from "@/lib/businessDate";
 import {
-  dueSoonRows, queueCounts, requestNextStep, startHereRequest,
+  nextUpRows, queueCounts, requestNextStep, startHereRequest,
 } from "@/lib/requests/queueBoard";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
@@ -69,9 +69,17 @@ export default function RdOverviewPage() {
     ),
     [deptRows, today],
   );
-  const dueSoon = useMemo(
-    () => dueSoonRows(requests, { dept: DEPT, todayIso: today, days: 7 }),
-    [requests, today],
+  /* ⭐ **คิวถัดไป ไม่ใช่ "ใกล้ถึงกำหนด"** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ก้อนที่สอง
+     ของหน้าเคยกรองด้วย `committedDueDate` 7 วัน ⇒ **ใบที่ยังไม่มีใครรับหายหมด**
+     เพราะยังไม่มีใครให้วัน · ของด่วนที่สุดของฝ่ายจึงไม่เคยโผล่บนหน้าภาพรวมเลย
+     ⚠️ เรียงชุดเดียวกับการ์ด "เริ่มที่นี่" และตัดใบที่การ์ดชี้ออกให้แล้ว (`nextUpRows`)
+     — เรียงคนละชุดเมื่อไร การ์ดจะชี้ใบหนึ่งแต่ตารางขึ้นอีกใบเป็นอันดับหนึ่ง */
+  const nextUp = useMemo(
+    () => nextUpRows(
+      deptRows.filter((r) => requestNextStep(r)?.owner === "dept"),
+      { todayIso: today, limit: 5 },
+    ),
+    [deptRows, today],
   );
 
   return (
@@ -116,15 +124,15 @@ export default function RdOverviewPage() {
           ส่วนของพาเนลจะนับเฉพาะแถวใกล้ถึงกำหนด ⇒ สองแถบป้ายเหมือนกันแต่คนละตัวเลข
           ⚠️ ปิดปุ่มเปิดคำร้อง — คิวของฝ่ายเป็นที่ **ตอบ** ไม่ใช่ที่เปิด */}
       <WorkspaceSection
-        title="ใกล้ถึงกำหนด และที่เลยกำหนดแล้ว"
-        subtitle="นับจากวันที่ฝ่ายรับปากไว้ตอนรับเรื่อง (7 วันข้างหน้า) — ใบที่ยังไม่รับเรื่องอยู่ในคิว"
+        title="คิวถัดไป"
+        subtitle="เรียงลำดับเดียวกับที่การ์ดข้างบนใช้เลือก — ห้าใบถัดไปหลังใบที่ชี้ไว้"
         /* ⚠️ ตัวสลับมุมมองอยู่คู่กับตารางที่มันคุม — หน้านี้มีตารางเดียวและอยู่ในหัวข้อนี้
            ต่างจากหน้าคิวที่ตารางเป็นเนื้อของทั้งหน้า ตัวสลับจึงขึ้นไปอยู่หัวการ์ดได้ */
         actions={(
           <div className="flex gap-3 items-center flex-wrap">
             <ViewSwitcher
               value={board.view} onChange={board.setView}
-              modes={["table", "list"]} ariaLabel="มุมมองรายการใกล้ถึงกำหนด"
+              modes={["table", "list"]} ariaLabel="มุมมองคิวถัดไป"
             />
             <Button onClick={() => router.push("/rd/requests")}>เปิดคิวทั้งหมด</Button>
           </div>
@@ -133,9 +141,9 @@ export default function RdOverviewPage() {
         {/* ⚠️ `sectionTitle={null}` — พาเนลอยู่ในการ์ด "ใกล้ถึงกำหนด…" อยู่แล้ว
             ห่อซ้ำอีกชั้นจะได้การ์ดซ้อนการ์ด */}
         <RequestQueuePanel
-          scope="queue" dept={DEPT} rows={dueSoon} board={board}
+          scope="queue" dept={DEPT} rows={nextUp} board={board}
           sectionTitle={null}
-          emptyText="ไม่มีงานที่ใกล้ถึงกำหนดใน 7 วัน — ของที่ยังไม่รับเรื่องดูได้ที่คิว"
+          emptyText="ไม่มีใบอื่นรอฝ่ายอยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
           loading={loading} loadError={loadError} reload={reload}
         />
       </WorkspaceSection>

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import { useRole } from "@/lib/roleContext";
-import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
+import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi } from "@/lib/permissions";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
@@ -14,7 +14,6 @@ import styles from "./page.module.css";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
-import RdDashboardTab from "@/components/salesPlanning/dashboard/RdDashboardTab";
 import PerformanceTab from "@/components/salesPlanning/dashboard/performance/PerformanceTab";
 import Tabs from "@/components/ui/Tabs";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -25,7 +24,6 @@ import SkeletonRows from "@/components/ui/Skeleton";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
-  { key: "rd_kpi", label: "แดชบอร์ด RD" },
   { key: "lead_kpi", label: "KPI ลีด" },
   { key: "performance", label: "ผลงานขาย" },
   { key: "task_kpi", label: "KPI งาน" },
@@ -41,7 +39,6 @@ const DASHBOARD_TABS = [
    "none" = แท็บถือตัวคุมของตัวเอง หัวหน้าต้องไม่มีตัวคุมซ้อน */
 const TAB_PERIOD = {
   my: "month",
-  rd_kpi: "month",
   lead_kpi: "month",
   performance: "year",
   task_kpi: "none",
@@ -80,7 +77,7 @@ function DashboardContent() {
 
   /* 🔑 สิทธิ์ของแท็บตัดสิน **ที่เดียว** แล้วใช้ทั้งแถบแท็บและตัวเนื้อหา
      ของเดิมเช็คสองที่ (filter ของแถบ + เงื่อนไขตอน render) แล้วไม่ตรงกัน:
-     - เปิด ?tab=rd_kpi โดยไม่มีสิทธิ์ → แท็บหายจากแถบ *และ* เนื้อหาไม่ render
+     - เปิดแท็บที่ไม่มีสิทธิ์ → แท็บหายจากแถบ *และ* เนื้อหาไม่ render
        ⇒ ได้หน้าว่างเปล่าโดยไม่มีอะไรบอกว่าเกิดอะไรขึ้น
      - `lead_kpi` ลืมใส่เงื่อนไขตอน render ⇒ คนไม่มีสิทธิ์เปิดลิงก์ตรงได้เนื้อหาจริง
        แล้วไปตกที่ API 403 เป็นกล่อง error แทน = พฤติกรรมสองแบบของเรื่องเดียวกัน */
@@ -88,8 +85,13 @@ function DashboardContent() {
     if (t.key === "performance") return canSeeDealKpi(role); // ผลงานขาย = สิทธิ์เดิมของ KPI ดีล
     if (t.key === "task_kpi") return canSeeTaskKpi(role);
     if (t.key === "lead_kpi") return canSeeLeadKpi(role);
-    if (t.key === "rd_kpi") return canSeeRdKpi(role); // แดชบอร์ด/KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย
-    if (t.key === "my") return role !== "rd"; // rd ไม่มีดีลของตัวเอง — ใช้แท็บ RD แทน
+    /* ⭐ **แท็บ "แดชบอร์ด RD" ถูกลบทิ้ง** (มติผู้ใช้ 2026-08-11) — ภาพรวมของฝ่าย RD
+       ย้ายไปอยู่ที่โมดูลของฝ่ายเอง (`/rd`) ซึ่งตอบคำถาม "วันนี้ทำอะไรก่อน" ด้วยคิวจริง
+       แทน KPI รายเดือนที่ไม่มีใครใช้ตัดสินใจ
+       ⚠️ **ต้องปลด `role !== "rd"` ของแท็บ "ของฉัน" ไปพร้อมกัน** — เดิม rd ถูกกันออก
+       จากแท็บนั้นเพราะมีแท็บ RD ให้อยู่แล้ว · ลบแท็บ RD โดยไม่ปลดข้อนี้ = role rd
+       เปิดหน้าแดชบอร์ดแล้ว **เหลือศูนย์แท็บ** ได้จอเปล่าที่ไม่มีอะไรบอกว่าทำไม */
+    if (t.key === "my") return true;
     return true;
   });
   // แท็บที่แสดงจริง = ตัวที่ขอมาถ้ามีสิทธิ์ ไม่งั้นถอยไปตัวแรกที่เปิดให้
@@ -145,7 +147,6 @@ function DashboardContent() {
         {/* เงื่อนไขสิทธิ์ไม่ต้องเช็คซ้ำตรงนี้ — activeTab มาจาก allowedTabs อยู่แล้ว */}
         {activeTab === "my" && <MyDashboardTab month={month} />}
 
-        {activeTab === "rd_kpi" && <RdDashboardTab month={month} />}
 
         {activeTab === "lead_kpi" && <KpiLeadsTab month={month} />}
 

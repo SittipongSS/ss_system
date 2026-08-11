@@ -1,5 +1,5 @@
 // ── ตัวคิดคะแนน KPI งาน (personal_tasks) — แชร์ระหว่าง KPI งานฝ่ายขาย
-// (/api/sales-planning/task-kpi) กับ KPI ฝ่าย RD (/api/sales-planning/rd-kpi)
+// (/api/sales-planning/task-kpi) · ฝั่ง RD เคยเรียกตัวนี้ด้วย แต่แดชบอร์ด RD ถูกลบแล้ว
 // เพื่อให้สูตรคะแนนไม่ drift: เสร็จ 40 + ตรงเวลา 40 + ความยาก 20 ──
 import { taskCreditId } from '@/lib/permissions';
 
