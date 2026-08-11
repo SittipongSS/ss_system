@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
+import { Inbox, Filter, Users, PhoneCall, CalendarClock } from "lucide-react";
 import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
 import { TEAM_LABELS } from "@/lib/permissions";
@@ -12,6 +12,23 @@ import { fmtName, fmtPercent } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
+
+/* โทนของการ์ด SLA มาจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
+   ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง" —
+   ของเดิมเขียน `(pending ?? 0) ? "warning" : "good"` ซึ่งกลบ null เป็น 0 แล้วการ์ดขึ้น
+   เขียวว่าเรียบร้อย ทั้งที่ตัวเลขข้างในโชว์ "-" อยู่โต้ง ๆ · ไม่มีโทน = ไม่ตัดสิน */
+const pendingTone = (pending) => (pending == null ? undefined : (pending ? "warning" : "good"));
+
+/* สามด่านของเส้นทางลีด วัดด้วยกติกาเดียวกัน (≤1 วันทำการ) ต่างกันแค่คู่ timestamp —
+   ประกาศเป็นลิสต์เพื่อให้เพิ่ม/ลดด่านแล้วไม่ต้องไล่แก้ JSX ทีละใบ
+   ⚠️ หมายเหตุใต้ตัวเลขต้องสั้นระดับ "ทัน x/y · ค้างตอนนี้ z" เท่านั้น — `.ui-metric em`
+   เป็น nowrap + ellipsis แต่กล่องข้างในไม่มี min-width:0 ellipsis เลยไม่ทำงาน
+   ข้อความยาวจึงล้นไปทับการ์ดข้าง ๆ (เจอตอนลองใส่ชื่อผู้รับผิดชอบด่านลงไป) */
+const SLA_STAGES = [
+  { key: "screen", icon: <Filter />, label: "SLA คัดกรอง ≤1 วันทำการ" },
+  { key: "assign", icon: <Users />, label: "SLA กระจาย ≤1 วันทำการ" },
+  { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ" },
+];
 
 export default function KpiLeadsTab({ month, teamFilter }) {
   /* ชื่อคน — อ่านจาก id ไม่ใช่สำเนาชื่อที่ค้างอยู่ในแถว (ท่าเดียวกับหน้าคิวลีด)
@@ -78,8 +95,19 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         <div className={styles.qualityGrid} aria-busy={loading}>
           {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
               โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
-          <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างตอนนี้ ${sla.screen?.pending ?? "-"}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
-          <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างตอนนี้ ${sla.contact?.pending ?? "-"}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
+          {SLA_STAGES.map(({ key, icon, label }) => {
+            const s = sla[key] || {};
+            return (
+              <SaMetric
+                key={key}
+                icon={icon}
+                label={label}
+                value={pct(s.hit, s.checked)}
+                note={`ทัน ${s.hit ?? 0}/${s.checked ?? 0} · ค้างตอนนี้ ${s.pending ?? "-"}`}
+                tone={pendingTone(s.pending)}
+              />
+            );
+          })}
           <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
         </div>
       </SaSection>

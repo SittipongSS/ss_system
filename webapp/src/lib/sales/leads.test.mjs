@@ -9,7 +9,7 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf,
+  sourceLeadIdOf, slaStage,
 } from './leads';
 
 test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website→website', () => {
@@ -49,6 +49,34 @@ test('SLA วันทำการ: วันเดียวกัน=0 (ทั�
   // ปลายทางก่อนต้นทาง (เวลาผิดลำดับ เช่น firstContactAt ค้างจากรอบก่อน bounce) →
   // ไม่นับเป็น "ทัน" (กัน KPI พอง) — คืน null ไม่ใช่ true
   assert.equal(slaHit('2026-07-13', '2026-07-10', noHolidays), null);
+});
+
+test('slaStage: นับเฉพาะใบที่ผ่านด่านแล้ว — ใบที่ยังไม่ถึงด่านถัดไปไม่ใช่ "พลาด"', () => {
+  const noHolidays = new Set();
+  const rows = [
+    // คัดกรองวันเดียวกัน แล้วกระจายวันทำการถัดไป → ทันทั้งสองด่าน
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: '2026-07-13' },
+    // คัดกรองทัน แต่กระจายช้า 2 วันทำการ → ด่านกระจายพลาด
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: '2026-07-14' },
+    // คัดกรองแล้วแต่ยังไม่ได้กระจาย = ของค้าง ต้อง**ไม่**เข้า checked ของด่านกระจาย
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: null },
+    // ยังไม่ถูกคัดกรองเลย — ไม่เข้า checked ของด่านไหนทั้งนั้น
+    { createdAt: '2026-07-10', screenedAt: null, assignedAt: null },
+  ];
+  assert.deepEqual(slaStage(rows, 'createdAt', 'screenedAt', noHolidays), { checked: 3, hit: 3 });
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 2, hit: 1 });
+});
+
+test('slaStage: เวลาผิดลำดับไม่นับเป็นทัน (กัน KPI พองหลังตีกลับ)', () => {
+  const noHolidays = new Set();
+  // assignedAt ก่อน screenedAt = ข้อมูลค้างจากรอบก่อน — slaHit คืน null ต้องไม่ถูกนับเป็น hit
+  const rows = [{ screenedAt: '2026-07-13', assignedAt: '2026-07-10' }];
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 1, hit: 0 });
+});
+
+test('slaStage: ไม่มีแถวเลย → checked 0 (ไม่ระเบิด, ไม่หารศูนย์ที่ผู้เรียก)', () => {
+  assert.deepEqual(slaStage([], 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
+  assert.deepEqual(slaStage(undefined, 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
 });
 
 test('service detail บังคับเฉพาะ product/other', () => {

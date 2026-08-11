@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, channelGroupOf, chunkLeadIds } from '@/lib/sales/leads';
+import { slaHit, slaStage, channelGroupOf, chunkLeadIds } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
@@ -86,11 +86,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (l.status === 'qualified') byChannel[ch].qualified += 1;
   }
 
-  // SLA (นับเฉพาะใบที่ถึงขั้นนั้นแล้ว): hit = ≤1 วันทำการ
-  const screenChecked = rows.filter((l) => l.screenedAt);
-  const screenHits = screenChecked.filter((l) => slaHit(l.createdAt, l.screenedAt, holidays) === true);
-  const contactChecked = rows.filter((l) => l.assignedAt && l.firstContactAt);
-  const contactHits = contactChecked.filter((l) => slaHit(l.assignedAt, l.firstContactAt, holidays) === true);
+  /* SLA (นับเฉพาะใบที่ถึงขั้นนั้นแล้ว): hit = ≤1 วันทำการ · กติกาอยู่ใน slaStage ที่เดียว
+     เส้นทางลีดมี **สามด่าน** ไม่ใช่สอง — ด่านกลาง "กระจาย" (Senior AE เลือก AE) เคยหายไป
+     ทั้งที่การ์ดค้างคิวขึ้นหัวว่า "SLA 1 วันทำการทุกขั้น" และ `screenedAt`/`assignedAt`
+     มีอยู่ในแถวแล้ว คำนวณได้ทันที · ของค้างขั้นนี้เป็นอันดับสองของทั้งฝ่ายแต่ไม่มีตัวเลขไหนแตะ */
+  const screen = slaStage(rows, 'createdAt', 'screenedAt', holidays);
+  const assign = slaStage(rows, 'screenedAt', 'assignedAt', holidays);
+  const contact = slaStage(rows, 'assignedAt', 'firstContactAt', holidays);
 
   /* "ค้าง" = **ค้างอยู่ ณ ตอนนี้** ไม่ใช่ "ลีดของเดือนที่เลือกที่ยังค้าง"
      🐞 เดิมกรองจาก `rows` ซึ่งถูกตัดด้วยเดือนไปแล้ว ⇒ ลีดที่ค้างข้ามเดือนมา — ซึ่งเป็น
@@ -99,9 +101,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
      ⚠️ คิวคัดกรองเป็น **คิวกลาง ไม่มีทีม** (`new` มี team = null เสมอ) ⇒ ไม่ใส่ตัวกรองทีม
      ไม่งั้นพอเลือกทีมแล้วจะได้ 0 ทุกครั้งทั้งที่คิวกลางมีของค้างอยู่
-     ส่วน "รอติดต่อกลับ" มอบเข้าทีมแล้ว จึงกรองทีมตามที่ผู้ใช้เลือก */
-  const [screenPending, contactPending] = await Promise.all([
+     ส่วน "รอกระจาย" (`screened`) กับ "รอติดต่อกลับ" (`assigned`) ถูกคัดเข้าทีมแล้ว
+     (action `screen` บังคับเลือกทีม) จึงกรองทีมตามที่ผู้ใช้เลือกได้ทั้งคู่ */
+  const [screenPending, assignPending, contactPending] = await Promise.all([
     countLeadsByStatus(supabase, 'new', null),
+    countLeadsByStatus(supabase, 'screened', team),
     countLeadsByStatus(supabase, 'assigned', team),
   ]);
 
@@ -156,9 +160,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return ok({
     month,
     funnel,
+    // ลำดับ = ลำดับของด่านจริงบนเส้นทาง (คัดกรอง → กระจาย → ติดต่อกลับ) หน้าจอเรียงตามนี้ได้เลย
     sla: {
-      screen: { checked: screenChecked.length, hit: screenHits.length, pending: screenPending },
-      contact: { checked: contactChecked.length, hit: contactHits.length, pending: contactPending },
+      screen: { ...screen, pending: screenPending },
+      assign: { ...assign, pending: assignPending },
+      contact: { ...contact, pending: contactPending },
     },
     byCreator: Object.values(byCreator)
       .map((c) => ({ ...c, days: c.days.size, perDay: c.days.size ? +(c.count / c.days.size).toFixed(1) : 0 }))
