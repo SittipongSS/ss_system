@@ -10,8 +10,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { paginateMobileNav, pageIndexOfActive } from '@/lib/mobileNavPages';
+import { navCountFor } from '@/lib/nav/useNavCounts';
 
-export default function MobileBottomNav({ items, pathname, label }) {
+export default function MobileBottomNav({ items, pathname, label, counts }) {
   const pagerRef = useRef(null);
   const [visiblePage, setVisiblePage] = useState(0);
 
@@ -66,14 +67,21 @@ export default function MobileBottomNav({ items, pathname, label }) {
                   </span>
                 );
               }
+              // ⚠️ ช่องกว้าง ~71px วางป้ายข้างชื่อไม่ได้ — เกาะมุมไอคอนแทน
+              // (ป้ายที่ดันชื่อจนถูกตัดด้วย … ทำให้อ่านไม่ออกทั้งสองอย่าง)
+              const count = navCountFor(counts, item.href);
               return (
                 <Link
                   href={item.href}
                   key={item.href}
                   className={`mbn-item${active ? ' active' : ''}`}
                   aria-current={active ? 'page' : undefined}
+                  aria-label={count ? `${item.shortName || item.name} ${count} รายการรอคุณ` : undefined}
                 >
-                  <span className="mbn-ico"><Icon size={19} aria-hidden="true" /></span>
+                  <span className="mbn-ico">
+                    <Icon size={19} aria-hidden="true" />
+                    {count ? <span className="mbn-count">{count > 99 ? '99+' : count}</span> : null}
+                  </span>
                   {/* shortName = ชื่อสั้นเฉพาะแถบล่าง (ช่องกว้าง ~71px) — ป้ายที่ยาว
                       เกินถูกตัดท้ายด้วย … ซึ่งอ่านไม่ออก ดู navMenuNames.test.mjs */}
                   <span>{item.shortName || item.name}</span>

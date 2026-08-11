@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import {
-  REQUEST_ANSWER_DEPARTMENTS, attributionTeam, canAnswerRequestsFor, canUser, canViewRequests, isSuperuser,
+  REQUEST_ANSWER_DEPARTMENTS, attributionTeam, canAnswerRequestsFor, canUser, canViewRequests,
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
@@ -19,7 +19,7 @@ import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { requestOptionalRefs } from '@/lib/master/requestTypes';
-import { REQUEST_SCOPES, resolveScope, scopeFilter } from '@/lib/requests/scope';
+import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
@@ -41,55 +41,17 @@ export async function GET(request) {
     const statusParam = url.searchParams.get('status');
     const status = statusParam ? statusParam.split(',').filter(Boolean) : null;
     const dealId = url.searchParams.get('dealId');
-    // ⭐ ขอบเขตที่ขอมา — **บังคับที่นี่ ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
+    // ⭐ ขอบเขตที่ขอมา — **บังคับที่ server ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
     // สิทธิ์ไม่พอให้ถอยลงมา ไม่ปฏิเสธ ⇒ ลิงก์ที่แชร์กันไว้ไม่พังในมือคนสิทธิ์น้อยกว่า
-    const scope = resolveScope(user, url.searchParams.get('scope'));
-    const scopeWhere = scopeFilter(user, scope);
-
-    // _mine: ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย)
-    // จึงติดธงมาจาก server ให้แท็บ "คำร้องของฉัน" แยกได้โดยไม่ต้องเดาจากชื่อ
-    //
-    // ⚠️ **ที่นี่ `_mine` = "ฉันเป็นคนเปิดใบนี้" เท่านั้น** ไม่ใช่ "ฉันจัดการได้" —
-    // ตั้งแต่เปิดให้ทีมทำแทนกันได้ (ม-100) สองอย่างนี้ไม่เท่ากันแล้ว · แท็บ
-    // "ที่ฉันเปิด" ต้องหมายความตามชื่อ ไม่งั้นใบของเพื่อนร่วมทีมจะไหลเข้ามาปน
-    // ⚠️ หน้ารายละเอียดติดธงชื่อเดียวกันแต่คนละความหมาย (= จัดการได้) — อย่า "แก้ให้
-    // ตรงกัน" โดยไม่อ่านสองที่ก่อน
-    const decorate = (rows) => rows
-      .filter((r) => !dealId || r.dealId === dealId)
-      .map((r) => ({ ...r, _mine: r.requestedById === user?.id }));
-
-    // ขอบเขตที่เห็น: admin ทั้งหมด · RD/PC คิวของฝ่ายตน + ของที่ตัวเองเปิด ·
-    // ผู้ขอเฉพาะของตัวเอง (คำร้องเป็นงานปฏิบัติของคนเปิด ไม่ใช่ของทั้งทีม)
-    if (isSuperuser(user?.role)) {
-      // 🐞 **ผู้ดูแลระบบต้องเห็นทุกใบเมื่อไม่ได้ระบุขอบเขตมา** — ของเดิมเอา `scopeWhere`
-      // ที่ตั้งต้นเป็น "ของฉัน" มาใช้แล้วคืนทันที ⇒ admin ที่ไม่ได้เปิดใบเอง **เห็นหน้าคิว
-      // ว่างเปล่า ทั้งสามแท็บเป็น (0)** ทั้งที่มีคำร้องอยู่จริง (ผู้ใช้เจอเองบนจอ)
-      //
-      // ⚠️ ระบุ `?scope=` มาเมื่อไรก็ยังเคารพเหมือนเดิม — ตัวสลับขอบเขตบนจอยังทำงาน
-      // ที่แก้คือ **ค่าตั้งต้น** ไม่ใช่การปลดด่าน (admin เห็นได้ทุกใบอยู่แล้วโดยสิทธิ์)
-      const explicit = REQUEST_SCOPES.includes(url.searchParams.get('scope'));
-      const adminWhere = explicit ? (scopeWhere || {}) : {};
-      return Response.json(
-        decorate(await loadRequests(supabase, { status, ...adminWhere })),
-        { headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': explicit ? scope : 'all' } },
-      );
-    }
-    // ⚠️ ผู้ใช้ทั่วไป: `scopeWhere` แคบกว่าหรือเท่ากับ "ของตัวเอง" เสมอ (resolveScope
-    // ไม่มีทางคืน 'all' ให้คนที่ไม่ใช่ผู้ดูแล) ⇒ ใช้แทนที่ตัวกรองเดิมได้ตรง ๆ
-    const mine = await loadRequests(supabase, { status, ...(scopeWhere || {}) });
-    // ฝ่ายที่ผู้ใช้คนนี้รับคำร้องได้ — อ่านจากลิสต์กลาง ไม่สะกดเองในนี้
-    const dept = REQUEST_ANSWER_DEPARTMENTS.find((d) => canAnswerRequestsFor(user, d));
-    if (!dept) return Response.json(decorate(mine), { headers: { 'Cache-Control': 'no-store' } });
-
-    const queue = await loadRequests(supabase, { status, dept });
-    const byId = new Map([...queue, ...mine].map((r) => [r.id, r]));
-    // ร่างของคนอื่นยังไม่ถูกส่ง = ยังไม่ใช่งานของฝ่าย ไม่ควรโผล่ในคิว
-    const rows = [...byId.values()]
-      .filter((r) => r.status !== 'draft' || r.requestedById === user?.id)
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    return Response.json(decorate(rows), {
-      headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': scope },
+    // ⚠️ ตัวเลือกใบ + ธง `_mine` อยู่ที่ lib/requests/visibleRows.js ที่เดียว —
+    // ตัวเลขบนเมนู (/api/nav/counts) ต้องนับจากชุดเดียวกับที่หน้านี้แสดง
+    const { rows, scope } = await loadVisibleRequests(supabase, user, {
+      scopeParam: url.searchParams.get('scope'), status,
     });
+    return Response.json(
+      rows.filter((r) => !dealId || r.dealId === dealId),
+      { headers: { 'Cache-Control': 'no-store', 'X-Request-Scope': scope } },
+    );
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
