@@ -11,6 +11,7 @@ import Button from "@/components/ui/Button";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import StatusSelect from "@/components/pm/StatusSelect";
+import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -611,28 +612,38 @@ export default function TasksPage() {
       {/* scope tabs */}
       {/* ไม่มี marginBottom — คอลัมน์นอกเป็น flex gap-4 (16px) เจ้าของจังหวะ
           margin ที่นี่จะทบเป็น 34px (วัดจริง 2026-08-08) */}
+      {/* ⚠️ ทั้งสองชั้นใช้ Segmented ตัวกลาง ไม่ใช่ .segmented ที่เขียนปุ่มเอง —
+          ของเดิมเขียนเองทั้งคู่จึงไม่มีการเดินด้วยลูกศร/โฟกัสแบบ roving tabindex
+          และป้ายจำนวนต้องมาเป็น `count` (ไม่ใช่ "(12)" ต่อท้ายชื่อ) ดูเหตุผลใน Segmented.js */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {allowedScopes.length > 1 && (
-          <div className="segmented scope-toggle">
-            {allowedScopes.map((s) => (
-              <button key={s} onClick={() => { setScope(s); setAssigneeFilter([]); }} className={scope === s ? "active" : ""}>{role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s]}</button>
-            ))}
-          </div>
+          <Segmented
+            ariaLabel="ขอบเขตของรายการงาน"
+            className="scope-toggle"
+            value={scope}
+            onChange={(next) => { setScope(next); setAssigneeFilter([]); }}
+            options={allowedScopes.map((s) => ({
+              value: s,
+              label: role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s],
+            }))}
+          />
         )}
 
+        {/* ⚠️ ไม่มี count ที่ชั้นขอบเขต — ทีม/ทั้งหมด ดึงข้อมูลคนละชุดจาก API
+            (loadWork(scope)) ตัวเลขจึงต้องยิงเพิ่มทุกครั้งที่เข้าหน้า ส่วนชั้นบทบาท
+            แบ่งจากชุดที่โหลดมาแล้ว นับได้ฟรี */}
         {scope === "mine" && (
-          <div className="segmented scope-toggle" aria-label="บทบาทของฉันในงาน">
-            {Object.values(MINE_TASK_VIEWS).map((taskView) => (
-              <button
-                key={taskView}
-                type="button"
-                onClick={() => setMineView(taskView)}
-                className={mineView === taskView ? "active" : ""}
-              >
-                {MINE_VIEW_TH[taskView]} <span style={{ opacity: 0.72 }}>({mineViewCounts[taskView] || 0})</span>
-              </button>
-            ))}
-          </div>
+          <Segmented
+            ariaLabel="บทบาทของฉันในงาน"
+            className="scope-toggle"
+            value={mineView}
+            onChange={setMineView}
+            options={Object.values(MINE_TASK_VIEWS).map((taskView) => ({
+              value: taskView,
+              label: MINE_VIEW_TH[taskView],
+              count: mineViewCounts[taskView] || 0,
+            }))}
+          />
         )}
       </div>
 

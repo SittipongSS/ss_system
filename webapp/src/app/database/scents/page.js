@@ -37,6 +37,7 @@ import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/Sc
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
@@ -109,6 +110,17 @@ export default function ScentsPage() {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
   }, []);
 
+  /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003) — ผู้ใช้ทำงานกับรหัสลูกค้า
+     คู่กับรหัสกลิ่น/รหัส MU อยู่แล้ว แต่ทะเบียนนี้โชว์แต่ชื่อบริษัท ⇒ ต้องเปิดทะเบียน
+     ลูกค้าอีกแท็บเพื่อแปลงกลับทุกครั้ง
+     ⚠️ แผนที่เดียวใช้ทั้งตารางและการ์ด — สร้างใหม่ทุกแถวคือ O(n²) ตอนเรนเดอร์ */
+  const arIndex = useMemo(() => customerArIndex(customers), [customers]);
+  // การ์ดบนจอแคบเป็นข้อความล้วนคั่นด้วย " · " — รหัสต่อท้ายชื่อในบรรทัดเดียวกัน
+  const customerLabel = (scent) => {
+    const { name, arCode } = customerWithAr(scent.customerId, scent.customerName, arIndex);
+    return arCode ? `${name} · ${arCode}` : name;
+  };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return scents.filter((s) => {
@@ -119,10 +131,13 @@ export default function ScentsPage() {
       // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
       // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
       // ⭐ เลขที่คำร้องด้วย — RD ถือใบอยู่ในมือแล้วอยากรู้ว่าใบนั้นออกกลิ่นอะไรมาบ้าง
-      return [s.name, s.code, s.customerName, s.customerTradeName, s.note, s.sourceRequest?.docNo]
-        .filter(Boolean).join(" ").toLowerCase().includes(q);
+      // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าในมืออยากรู้ว่ารายนี้มีกลิ่นอะไรบ้าง
+      return [
+        s.name, s.code, customerSearchText(s.customerId, s.customerName, arIndex),
+        s.customerTradeName, s.note, s.sourceRequest?.docNo,
+      ].filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [scents, statusFilter, sourceFilter, search]);
+  }, [scents, statusFilter, sourceFilter, search, arIndex]);
 
   // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
   const scentLabelById = useMemo(
@@ -418,7 +433,7 @@ export default function ScentsPage() {
                     </div>
                     <div className={styles.sub}>
                       {[
-                        s.customerName || s.customerId,
+                        customerLabel(s),
                         s.customerTradeName ? `ลูกค้าเรียก “${s.customerTradeName}”` : null,
                         s.derivedFromScentId
                           ? `แก้จาก ${scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}`
@@ -501,7 +516,14 @@ export default function ScentsPage() {
                           </div>
                         )}
                       </td>
-                      <td>{s.customerName || s.customerId}</td>
+                      <td>
+                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
+                        {customerWithAr(s.customerId, s.customerName, arIndex).arCode ? (
+                          <span className={styles.arCode}>
+                            {customerWithAr(s.customerId, s.customerName, arIndex).arCode}
+                          </span>
+                        ) : null}
+                      </td>
                       {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
                           ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง
                           ⚠️ ลิงก์ไปคำร้องเฉพาะตอนตามกลับได้จริง — คำร้องที่ถูกลบไปแล้ว

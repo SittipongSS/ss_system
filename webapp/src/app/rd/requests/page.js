@@ -96,9 +96,10 @@ export default function RdRequestsPage() {
           onChange={setTab}
           options={DEPT_QUEUE_TABS.map((t) => ({
             value: t.key,
+            label: t.label,
             // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
-            // ขัดกันไม่ได้
-            label: `${t.label} (${deptQueueRows(requests, { dept: DEPT, tab: t.key }).length})`,
+            // ขัดกันไม่ได้ · ส่งเป็น `count` ไม่ใช่ต่อท้ายป้ายชื่อ (ดู Segmented.js)
+            count: deptQueueRows(requests, { dept: DEPT, tab: t.key }).length,
           }))}
         />
       </div>

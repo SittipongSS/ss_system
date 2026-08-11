@@ -83,3 +83,13 @@
   justify-content: space-between;
   gap: var(--space-2);
 }
+
+/* รหัสลูกค้า (AR) ต่อท้ายชื่อกิจการ — จางกว่าชื่อ แต่ยังกวาดตาเจอ (IS-26080003)
+   ⚠️ ห้ามตัดกลางรหัส: "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */
+.arCode {
+  margin-left: var(--space-1-5);
+  color: var(--text-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
