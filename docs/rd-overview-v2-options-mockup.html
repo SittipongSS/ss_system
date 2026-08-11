@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ภาพรวม R&D — 3 ทางเลือกต่อยอด</title>
+<style>
+  /* จานสี v1 (ธีมสว่าง) — v2 ถูกยกเลิกแล้ว 2026-08-11 */
+  :root{
+    --bg:#efe9dd; --panel:#ffffff; --panel-2:#f7f4ee; --panel-3:#eee9e0;
+    --border:rgba(49,55,69,.13); --border-strong:rgba(49,55,69,.24);
+    --text:#171d29; --text-2:#596170; --text-3:#6c7382;
+    --accent:#c9794d; --accent-ink:#9c5228; --navy:#243b63;
+    --green:#357558; --red:#a74747; --amber:#926024; --blue:#466990;
+    --radius:6px; --radius-lg:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--text);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;font-size:14px;line-height:1.55}
+  h1{font-size:23px;margin:0 0 6px}
+  h2{font-size:18px;margin:32px 0 10px}
+  .sub{color:var(--text-3);font-size:13px;margin:0 0 20px}
+
+  .card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+    box-shadow:0 1px 2px rgba(23,29,41,.05);overflow:hidden;margin:0 0 20px}
+  .chead{padding:13px 17px;border-bottom:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+  .chead b{font-size:15px}
+  .chead .q{color:var(--text-2);font-size:13px}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.05em;padding:2px 9px;border-radius:999px;
+    border:1px solid var(--accent);color:var(--accent-ink)}
+  .tag.bad{border-color:var(--red);color:var(--red)}
+  .cbody{padding:17px}
+  .screen{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg);padding:14px}
+
+  .bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden}
+  .seg span{padding:5px 13px;font-size:12.5px;color:var(--text-2);border-right:1px solid var(--border)}
+  .seg span:last-child{border-right:0}
+  .seg span.on{background:var(--accent);color:#fff;font-weight:700}
+  .chip{padding:4px 12px;border-radius:999px;border:1px solid var(--border-strong);font-size:12.5px;
+    color:var(--text-2);background:var(--panel)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .chip.num b{font-variant-numeric:tabular-nums}
+  .layer{border:1px dashed var(--red);border-radius:var(--radius);padding:7px 11px;margin-bottom:7px;
+    font-size:12px;color:var(--red);background:rgba(167,71,71,.05)}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel)}
+  th{text-align:left;font-size:11px;letter-spacing:.05em;color:var(--text-3);font-weight:700;
+    padding:8px 11px;border-bottom:1px solid var(--border-strong);background:var(--panel-2);white-space:nowrap}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .sub2{font-size:11.5px;color:var(--text-3)}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
+  .pill.red{color:var(--red);border-color:var(--red)} .pill.amber{color:var(--amber);border-color:var(--amber)}
+  .pill.green{color:var(--green);border-color:var(--green)} .pill.blue{color:var(--blue);border-color:var(--blue)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .dot.red{background:var(--red)} .dot.amber{background:var(--amber)} .dot.blue{background:var(--blue)} .dot.green{background:var(--green)}
+  .grp td{background:var(--panel-3);font-weight:700;font-size:11.5px;color:var(--text-2)}
+
+  /* แบบ ค — บรรทัดเดียว */
+  .line{display:grid;grid-template-columns:118px 1fr 150px 96px 78px;gap:12px;align-items:center;
+    padding:8px 12px;border-bottom:1px solid var(--border);font-size:12.5px;background:var(--panel)}
+  .line:last-child{border-bottom:0}
+  .line .no{font-variant-numeric:tabular-nums;color:var(--text-2);font-size:11.5px}
+
+  .pro{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px;font-size:12.5px}
+  .pro div{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--panel-2)}
+  .pro b{display:block;font-size:11px;letter-spacing:.05em;margin-bottom:5px}
+  .pro .good b{color:var(--green)} .pro .bad b{color:var(--red)}
+  .cap{font-size:12px;color:var(--text-3);margin:9px 0 0}
+</style>
+<style>
+  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:12px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:11px 13px;margin-bottom:9px}
+  .box h4{margin:0 0 6px;font-size:13px}
+  .metric{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:9px 11px}
+  .metric .lab{font-size:11.5px;color:var(--text-3)}
+  .metric .val{font-size:20px;font-weight:700;line-height:1.2}
+  .strip{display:grid;gap:9px;margin-bottom:11px}
+  .strip.c4{grid-template-columns:repeat(4,1fr)} .strip.c5{grid-template-columns:repeat(5,1fr)}
+  .hero{border:1px solid var(--accent);border-radius:var(--radius-lg);background:rgba(201,121,77,.06);padding:12px 14px;margin-bottom:11px;
+    display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .hero .eyebrow{font-size:11px;letter-spacing:.05em;color:var(--accent-ink);font-weight:700}
+  .hero .step{font-size:16px;font-weight:700;margin:3px 0 1px}
+  .btn{display:inline-block;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel);font-size:12.5px;color:var(--text-2)}
+  .btn.primary{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
+  ul.tight{margin:6px 0 0;padding-left:18px} ul.tight li{margin:3px 0}
+  .week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .day{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:7px 8px;min-height:74px}
+  .day .dnum{font-size:11px;color:var(--text-3);margin-bottom:5px}
+  .day.today{border-color:var(--accent);background:rgba(201,121,77,.06)}
+  .job{font-size:11px;padding:2px 5px;border-radius:4px;background:var(--panel-3);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .job.red{background:rgba(167,71,71,.13);color:var(--red)}
+  .bar{height:7px;border-radius:4px;background:var(--panel-3);overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .person{display:grid;grid-template-columns:1fr 58px 58px 78px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+  .person:last-child{border-bottom:0}
+  .funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .stage{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:9px 11px}
+  .stage .n{font-size:19px;font-weight:700}
+  .stage .who{font-size:11px;color:var(--text-3)}
+</style>
+
+</head>
+<body>
+
+<h1>ภาพรวมฝ่ายวิจัยและพัฒนา — ต่อยอดจากที่รื้อไปแล้ว</h1>
+<p class="sub">หน้า <code>/rd</code> · จานสี v1 ธีมสว่าง · วินิจฉัยจากโค้ดจริง (<code>src/app/rd/page.js</code> 156 บรรทัด)</p>
+
+<h2>วันนี้หน้านี้ตอบอะไรได้ / ไม่ได้</h2>
+<div class="card"><div class="cbody">
+  <div class="screen">
+    <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:10px 12px;margin-bottom:7px">
+      <b>1 · การ์ด "เริ่มที่นี่"</b> — ชี้ใบเดียวที่ควรทำก่อน <span class="pill green">ทำแล้ว ม-93</span></div>
+    <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:10px 12px;margin-bottom:7px">
+      <b>2 · แถบตัวเลข 4 ช่อง</b> — ยังไม่รับเรื่อง · เลยกำหนด · กำลังดำเนินการ · รอฝ่ายขายทำต่อ <span class="pill green">ทำแล้ว</span></div>
+    <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:10px 12px">
+      <b>3 · "คิวถัดไป"</b> — 5 ใบถัดไป (ตารางชุดเดียวกับหน้าคิว) <span class="pill green">ทำแล้ว</span></div>
+  </div>
+  <div class="pro">
+    <div class="bad"><b>สี่คำถามที่ยังตอบไม่ได้</b>
+      <ul class="tight">
+        <li><b>"งานอยู่ที่ใคร"</b> — ทั้งหน้าไม่มีชื่อคนสักที่ ทั้งที่ <code>acknowledgedByName</code> มีอยู่ในแถวแล้ว
+          ⇒ หัวหน้าต้องเปิดคิวแล้วกวาดตาทีละแถวเพื่อรู้ว่าใครถือกี่ใบ</li>
+        <li><b>"สัปดาห์นี้ต้องส่งอะไรบ้าง"</b> — <code>committedDueDate</code> คือวันที่ฝ่าย<b>รับปากไว้เอง</b>
+          แต่หน้านี้บอกได้แค่ "เลยกำหนดกี่ใบ" ไม่ได้บอกว่าวันไหนกองหนัก</li>
+        <li><b>ภาระจริงเป็น "กลิ่น" ไม่ใช่ "ใบ"</b> — ใบพัฒนากลิ่นหนึ่งใบมีได้ 5 กลิ่น ·
+          ตัวเลขทั้งแถบนับเป็นใบ ⇒ "ค้าง 8 ใบ" อาจเป็น 8 หรือ 30 กลิ่นก็ได้ (ข้อมูลมีอยู่แล้วใน <code>items</code>)</li>
+        <li><b>ของที่ส่งกลับไปแล้วรอฝ่ายขาย</b> — มีตัวเลข "รอฝ่ายขายทำต่อ" แต่กดแล้วไปหน้าคิว
+          ไม่มีที่ไหนบอกว่าค้างที่ฝั่งโน้นมานานแค่ไหน (งานที่ฝ่ายทำเสร็จแล้วแต่ยังไม่ถูกปิด)</li>
+      </ul>
+    </div>
+    <div class="good"><b>ข้อจำกัดที่ตั้งไว้เองและยังควรเคารพ</b>
+      <ul class="tight">
+        <li>หัวไฟล์เขียนไว้: <b>"ยังไม่มีสถิติ/กราฟโดยตั้งใจ — ทั้งระบบมีคำร้องหลักหน่วย กราฟที่มีจุดเดียวแย่กว่าไม่มีกราฟ"</b></li>
+        <li>ทุกก้อนต้องใช้ primitive กลาง (<code>QueueCountStrip</code> · <code>RequestQueuePanel</code> · <code>WorkspaceSection</code>) — <code>audit:ui</code> มี ratchet คุมอยู่</li>
+        <li>ทั้งสามแบบข้างล่าง <b>ไม่ต้องแก้ฐานข้อมูลเลย</b> — ใช้ฟิลด์ที่ API ส่งมาอยู่แล้วทั้งหมด</li>
+      </ul>
+    </div>
+  </div>
+</div></div>
+
+<!-- ── แบบ ก ─────────────────────────────────────── -->
+<div class="card" style="border-color:var(--accent)">
+  <div class="chead" style="background:rgba(201,121,77,.07)"><span class="tag">แบบ ก</span><b>"งานอยู่ที่ใคร" — เพิ่มแถวคนของฝ่าย</b>
+    <span class="q">— ใช้ <code>acknowledgedByName</code> ที่มีอยู่แล้ว ไม่ต้องแก้ DB</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="hero"><div><div class="eyebrow">🔥 เริ่มที่นี่</div>
+        <div class="step">รับเรื่อง — ยังไม่มีใครรับ</div>
+        <div class="sub2">RQ-26080029 · สอบถามข้อมูล · สปาฟินเเลนด์ — ส่งมา 3 วันแล้ว</div></div>
+        <span class="btn primary">เปิดใบนี้ →</span></div>
+
+      <div class="strip c4">
+        <div class="metric"><div class="lab">ยังไม่รับเรื่อง</div><div class="val" style="color:var(--amber)">8</div></div>
+        <div class="metric"><div class="lab">เลยกำหนด</div><div class="val" style="color:var(--red)">0</div></div>
+        <div class="metric"><div class="lab">กำลังดำเนินการ</div><div class="val" style="color:var(--blue)">7</div></div>
+        <div class="metric"><div class="lab">รอฝ่ายขายทำต่อ</div><div class="val">0</div></div>
+      </div>
+
+      <div class="cols">
+        <div style="border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden">
+          <div style="padding:11px 14px;border-bottom:1px solid var(--border)">
+            <b style="font-size:14px">คิวถัดไป</b><div class="sub2">เรียงชุดเดียวกับการ์ดข้างบน — ห้าใบถัดไป</div></div>
+          <table>
+            <thead><tr><th>ต้องทำอะไร</th><th>คำร้อง</th><th class="num">กำหนดส่ง</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill amber">รอรับเรื่อง</span></td>
+                  <td>ขอ Mock Up สินค้า Scented Candle<div class="sub2">RQ-26080023 · สอบถามข้อมูล · สุดารัตน์</div></td>
+                  <td class="num">ยังไม่ให้วัน</td></tr>
+              <tr><td><span class="pill blue">ส่ง direction</span><div class="sub2">ปกิตา</div></td>
+                  <td>บรีฟกลิ่นใหม่ Room Spray<div class="sub2">SB-26080002 · พัฒนากลิ่น · แฮปป้าเวลเนส</div></td>
+                  <td class="num">อีก 2 วัน<div class="sub2">14/08/2026</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="box"><h4>งานค้างรายคน <span class="pill">4 คน</span></h4>
+            <div class="sub2">นับเฉพาะใบที่ฝ่ายถืออยู่ · กดชื่อ = เปิดคิวที่กรองคนนั้นไว้แล้ว</div>
+            <div style="margin-top:8px">
+              <div class="person"><b>ปกิตา</b><span class="num">5 ใบ</span><span class="num">12 กลิ่น</span><span class="pill red">เลย 1</span></div>
+              <div class="person"><b>ธนพล</b><span class="num">3 ใบ</span><span class="num">4 กลิ่น</span><span class="pill">—</span></div>
+              <div class="person"><b>อรอนงค์</b><span class="num">2 ใบ</span><span class="num">2 กลิ่น</span><span class="pill">—</span></div>
+              <div class="person" style="color:var(--amber)"><b>ยังไม่มีคนรับ</b><span class="num">8 ใบ</span><span class="num">19 กลิ่น</span><span class="pill amber">รอ 3 วัน</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">แถว "ยังไม่มีคนรับ" อยู่ในตารางเดียวกับคน — เพราะมันคือกองที่ต้องแจกก่อนอย่างอื่น</p>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>ตอบ "งานอยู่ที่ใคร" ได้ในบรรทัดเดียว · หัวหน้าเห็นทันทีว่าใครกองเยอะ ใครว่าง ·
+        <b>นับเป็นกลิ่นด้วย ไม่ใช่แค่ใบ</b> ⇒ ภาระจริงเทียบกันได้ · ตัวจัดกลุ่ม "ผู้รับเรื่อง" ในคิวมีอยู่แล้ว กดจากที่นี่ไปเปิดต่อได้เลย</div>
+      <div class="bad"><b>ข้อจำกัด</b>"ใครถือ" = คนที่<b>กดรับเรื่อง</b> ไม่ใช่คนที่ลงมือปรุงจริง — ถ้าหัวหน้ากดรับแทนทีมทั้งกอง ตารางจะขึ้นชื่อหัวหน้าคนเดียว ·
+        การมอบหมายรายคนจริง ๆ ต้องมีฟิลด์ผู้รับผิดชอบ (งานถัดไปในลิสต์)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ข ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ข</span><b>"สัปดาห์นี้ต้องส่งอะไร" — ปฏิทินคำสัญญา</b>
+    <span class="q">— <code>committedDueDate</code> คือวันที่ฝ่ายรับปากไว้เอง</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="strip c4">
+        <div class="metric"><div class="lab">ต้องส่งสัปดาห์นี้</div><div class="val">6</div></div>
+        <div class="metric"><div class="lab">เลยกำหนด</div><div class="val" style="color:var(--red)">0</div></div>
+        <div class="metric"><div class="lab">ยังไม่รับเรื่อง</div><div class="val" style="color:var(--amber)">8</div></div>
+        <div class="metric"><div class="lab">ยังไม่ได้ให้วัน</div><div class="val" style="color:var(--amber)">8</div></div>
+      </div>
+      <div class="box"><h4>สัปดาห์นี้ · 10–16 ส.ค. 2026</h4>
+        <div class="week">
+          <div class="day"><div class="dnum">จ. 10</div></div>
+          <div class="day"><div class="dnum">อ. 11</div><div class="job red">SB-26080002 · 3 กลิ่น</div></div>
+          <div class="day today"><div class="dnum">พ. 12 · วันนี้</div><div class="job">RQ-26080020</div><div class="job">SB-26080003 · 2 กลิ่น</div></div>
+          <div class="day"><div class="dnum">พฤ. 13</div><div class="job">RQ-26080028</div></div>
+          <div class="day"><div class="dnum">ศ. 14</div><div class="job">SB-26080004 · 5 กลิ่น</div><div class="job">RQ-26080031</div></div>
+          <div class="day" style="background:var(--panel-2)"><div class="dnum">ส. 15</div></div>
+          <div class="day" style="background:var(--panel-2)"><div class="dnum">อา. 16</div></div>
+        </div>
+        <p class="cap">ใบที่ <b>ยังไม่ได้ให้วัน</b> ไม่อยู่ในปฏิทิน — มีป้ายนับแยกไว้ข้างบน กดแล้วเปิดคิวที่กรองไว้</p>
+      </div>
+      <div class="box"><h4>คิวถัดไป</h4><div class="sub2">ตารางเดิม ไม่เปลี่ยน</div></div>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>เห็นว่าวันไหนกองหนักก่อนจะรับปากใบใหม่ — ตอนนี้ RD ให้วันโดยไม่เห็นว่าวันนั้นรับปากไว้กี่ใบแล้ว ·
+        เป็นเครื่องมือ<b>ป้องกันไม่ให้เลยกำหนด</b> ไม่ใช่แค่รายงานว่าเลยไปแล้ว</div>
+      <div class="bad"><b>ข้อจำกัด</b>ของจริงตอนนี้ <b>8 ใบจาก 15 ยังไม่มีใครให้วัน</b> ⇒ ปฏิทินจะโล่งผิดจริง ถ้าไม่คู่กับป้าย "ยังไม่ได้ให้วัน" ที่กดได้ ·
+        มีค่าเมื่อฝ่ายให้วันเป็นนิสัยแล้วเท่านั้น</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ค ─────────────────────────────────────── -->
+<div class="card">
+  <div class="chead"><span class="tag">แบบ ค</span><b>"สายพาน" — นับเป็นกลิ่น ไม่ใช่ใบ</b>
+    <span class="q">— ภาระจริงของฝ่ายคือจำนวนกลิ่นที่ต้องปรุง</span></div>
+  <div class="cbody">
+    <div class="screen">
+      <div class="funnel">
+        <div class="stage"><div class="who">รอรับเรื่อง</div><div class="n">19 กลิ่น</div><div class="sub2">8 ใบ · รอนานสุด 3 วัน</div><div class="bar"><i style="width:46%"></i></div></div>
+        <div class="stage"><div class="who">กำลังปรุง</div><div class="n">14 กลิ่น</div><div class="sub2">7 ใบ · ส่งแล้ว 6/20</div><div class="bar"><i style="width:30%"></i></div></div>
+        <div class="stage"><div class="who">ส่ง direction แล้ว รอลูกค้า</div><div class="n">6 กลิ่น</div><div class="sub2">3 ใบ · รอมา 5 วัน</div><div class="bar"><i style="width:15%"></i></div></div>
+        <div class="stage"><div class="who">ปิดเดือนนี้</div><div class="n">11 กลิ่น</div><div class="sub2">5 ใบ</div><div class="bar"><i style="width:9%"></i></div></div>
+      </div>
+      <p class="cap" style="margin-bottom:11px">กดช่องไหน = เปิดคิวที่กรองขั้นนั้นไว้แล้ว · แถบใต้ตัวเลขคือสัดส่วนของงานทั้งฝ่าย ไม่ใช่กราฟเวลา</p>
+      <div class="hero"><div><div class="eyebrow">🔥 เริ่มที่นี่</div><div class="step">รับเรื่อง — ยังไม่มีใครรับ</div>
+        <div class="sub2">RQ-26080029 · ส่งมา 3 วันแล้ว</div></div><span class="btn primary">เปิดใบนี้ →</span></div>
+      <div class="box"><h4>คิวถัดไป</h4><div class="sub2">ตารางเดิม ไม่เปลี่ยน</div></div>
+    </div>
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>ตัวเลขตรงกับภาระจริง — "8 ใบ" อ่านไม่ออกว่าหนักแค่ไหน แต่ "19 กลิ่น" อ่านออกทันที ·
+        เห็นคอขวดว่าอยู่ขั้นไหน · ยังไม่ใช่กราฟ (เคารพข้อจำกัดที่หน้านี้ตั้งไว้เอง)</div>
+      <div class="bad"><b>ข้อจำกัด</b>ใบที่ไม่ใช่พัฒนากลิ่น (สอบถามข้อมูล · ขอเอกสาร) <b>ไม่มีบรรทัด</b> ⇒ นับเป็นกลิ่นไม่ได้
+        ต้องโชว์คู่กันสองหน่วย ("19 กลิ่น · 4 ใบไม่มีบรรทัด") ไม่งั้นตัวเลขจะไม่ครบแล้วไม่มีใครรู้</div>
+    </div>
+  </div>
+</div>
+
+<h2>ผมแนะนำ: ก แล้วค่อย ค</h2>
+<div class="card"><div class="cbody">
+  <ul class="tight" style="margin-top:0">
+    <li><b>ก</b> ตอบคำถามที่ขาดหายที่สุด (ทั้งหน้าไม่มีชื่อคนสักที่) และต่อยอดตรงกับงานถัดไปในลิสต์ — มอบหมายงาน RD รายคน</li>
+    <li><b>ค</b> แก้หน่วยของตัวเลขให้ตรงกับภาระจริง ทำต่อได้ทันทีเพราะใช้ <code>items</code> ที่มีอยู่แล้ว</li>
+    <li><b>ข</b> เก็บไว้ทีหลัง — ตอนนี้ 8 ใบจาก 15 ยังไม่มีใครให้วัน ปฏิทินจะโล่งจนอ่านผิด</li>
+  </ul>
+  <p class="sub2" style="margin:10px 0 0">ทั้งสามแบบไม่ต้องแตะฐานข้อมูล ใช้ฟิลด์ที่ API ส่งมาอยู่แล้ว · เลือกได้มากกว่าหนึ่ง</p>
+</div></div>
+
+</body>
+</html>
