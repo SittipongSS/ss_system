@@ -656,8 +656,8 @@ function UserFields({ form, setForm, requirePassword, edit }) {
             )}
             {/* ทีมหลักถามเฉพาะตอนที่มันมีคำตอบให้เลือกจริง — ทีมเดียวก็คือทีมหลักอยู่แล้ว */}
             {teams.length > 1 && (
-              <div style={{ marginTop: 10 }}>
-                <label style={{ display: "block" }}>ทีมหลัก</label>
+              <div className="form-group mt-3">
+                <label>ทีมหลัก</label>
                 <ChoiceChips
                   ariaLabel="ทีมหลัก"
                   value={form.team}
