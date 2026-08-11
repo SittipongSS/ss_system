@@ -14,6 +14,7 @@ import {
   Boxes, RefreshCw, History, Pencil, Plus, Check, Archive,
   ArchiveRestore, Search, Trash2, Coins,
 } from "lucide-react";
+import DateInput from "@/components/ui/DateInput";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
@@ -441,10 +442,10 @@ export default function MaterialRegistryPanel({
             />
             <div className="form-group">
               <label htmlFor="mat-valid-until">ราคาใช้ได้ถึง</label>
-              <input
-                id="mat-valid-until" className="premium-input" type="date"
-                value={validUntil} disabled={saving}
-                onChange={(e) => setValidUntil(e.target.value)}
+              <DateInput
+                id="mat-valid-until" value={validUntil} disabled={saving}
+                ariaLabel="ราคาใช้ได้ถึง"
+                onChange={(iso) => setValidUntil(iso)}
               />
               <small style={{ color: "var(--text-3)" }}>เว้นว่าง = ใช้ค่าตั้งต้น 90 วันนับจากวันนี้</small>
             </div>

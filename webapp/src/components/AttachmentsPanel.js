@@ -3,6 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import Input from "@/components/ui/Input";
+import DateInput from "@/components/ui/DateInput";
 // เอกสารแนบหลายไฟล์แบบมีประเภท (migration 0028) — ใช้ซ้ำได้ทุก entity.
 // props:
 //   entityType  'customer' | 'product' | 'order'
@@ -355,12 +356,12 @@ export default function AttachmentsPanel({
       <div className="flex items-center gap-2 flex-wrap pb-1 pl-[2px]">
         <span className="text-[10px] text-[var(--text-3)] shrink-0">ออกเมื่อ</span>
         {canEdit ? (
-          <Input
-            type="date"
-            className="text-[11px] w-[150px]"
+          <DateInput
+            compact
+            className="w-[150px]"
             value={validity.issuedDate}
-            onChange={(e) => saveIssuedDate(it, e.target.value)}
-            aria-label="วันที่ออกเอกสาร"
+            onChange={(iso) => saveIssuedDate(it, iso)}
+            ariaLabel="วันที่ออกเอกสาร"
           />
         ) : (
           <span className="text-[10px] text-[var(--text-2)]">{validity.issuedDate || "—"}</span>

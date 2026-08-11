@@ -1,6 +1,7 @@
 "use client";
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fmtPhone } from "@/lib/format";
 import { use } from "react";
 import { MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -236,7 +237,7 @@ export default function ServiceSiteDetailPage({ params }) {
         <dl className={styles.info}>
           <div><dt>โซน</dt><dd>{site.zone || "-"}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{site.address || "-"}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>{site.contactName || "-"}{site.contactPhone ? ` · ${site.contactPhone}` : ""}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>{site.contactName || "-"}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>
             <dt>ช่วงเวลาที่เข้าได้</dt>
             <dd>{accessText || <span className={styles.muted}>ไม่จำกัด</span>}</dd>

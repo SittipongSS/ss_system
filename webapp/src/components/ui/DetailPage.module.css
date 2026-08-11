@@ -207,20 +207,3 @@
   }
 }
 
-/* v2 โต๊ะช่าง: คอลัมน์ .main มี gap 16px ของตัวเอง — margin ของบล็อกเก่า
-   (kpi-grid mb 20 / tabs-header mb 18) มาทบเป็น 34-40px (วัดจริงบน
-   deal/projects detail 2026-08-08) · v1 คงเดิม
-   🐞 **ล้างได้เฉพาะบล็อกที่พ่อมี gap จริง** — ของเดิมใช้ selector ลูกหลานล้วน จึงไป
-   ล้าง margin ของแถบแท็บที่ซ้อนลึกกว่านั้นด้วย ซึ่ง gap ของ `.main` **เอื้อมไม่ถึง**
-   ⇒ แถบแท็บชนเนื้อหาสนิท 0px (วัดจริงบน /requests/[id] แท็บ "แบบฟอร์ม PDR" —
-   ผู้ใช้ทัก 2026-08-10 ว่า "ข้อมูลชิดแท็บเกินไป")
-   ⚠️ **ลูกตรงของ `.main` อย่างเดียวก็ไม่พอ** — deal/projects ห่อบล็อกไว้ใน
-   `.flex.flex-col.gap-5` อีกชั้น ถ้าใช้ `>` เฉย ๆ สองหน้านั้นเด้งกลับไปทบเป็น 38-40px
-   CSS ถามพ่อว่ามี gap มั้ยไม่ได้ ⇒ เขียนเงื่อนไขให้ตรงของจริง: ลูกตรงของ `.main`
-   หรือลูกตรงของกล่องที่ประกาศ gap ไว้ (`[class*="gap-"]` ของ Tailwind) */
-:global([data-ds="v2"]) .main > :global(.kpi-grid),
-:global([data-ds="v2"]) .main > :global(.tabs-header),
-:global([data-ds="v2"]) .main :global([class*="gap-"]) > :global(.kpi-grid),
-:global([data-ds="v2"]) .main :global([class*="gap-"]) > :global(.tabs-header) {
-  margin-bottom: 0;
-}
