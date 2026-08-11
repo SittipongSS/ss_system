@@ -1,15 +1,35 @@
 "use client";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+// ── แดชบอร์ดของฉัน — "วันนี้ทำอะไรก่อน" (มติผู้ใช้ 2026-08-12 · แบบ ก) ─────
+//
+// 🐞 **ของเดิมตอบว่า "มีอะไรบ้าง" แต่ไม่เคยตอบว่า "เริ่มที่ไหน"** — ของค้างกระจาย
+// อยู่ห้าการ์ดในคอลัมน์ขวา (ลีด · Won รอ SO · SO รอใบยื่นภาษี · ภาพรวมงาน ·
+// Pipeline FC) แต่ละใบมีลิงก์ "ดูทั้งหมด" ของตัวเอง ⇒ ไม่มีที่ไหนบอกว่ารวมแล้ว
+// ค้างกี่ชิ้นและอันไหนก่อน · ส่วนกลางหน้าเป็น **ฟีดกิจกรรม** ซึ่งตอบว่า *อะไรเพิ่งเกิด*
+// ไม่ใช่ *ฉันต้องทำอะไร* · และคำร้องไม่อยู่ในหน้านี้เลย (ใบตีกลับจึงมองไม่เห็น)
+//
+// ⭐ ตอนนี้: แถบตัวเลข → การ์ด "เริ่มที่นี่" → **คิวรวมทุกชนิด** → ตัวเลขของฉัน → ฟีด
+// ⚠️ ตรรกะการรวม/เรียง/จัดกลุ่มอยู่ที่ `lib/salesPlanning/myQueue.js` ทั้งหมด —
+// ที่นี่แค่วาด · ตัวเลขบนแถบนับจาก **คิวเดียวกับตารางข้างล่าง** เสมอ (ของเดิมนับ
+// คนละที่กัน แล้วเลขไม่ตรงกันได้โดยไม่มีใครรู้)
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, FileText,
-  FolderKanban, ListTodo, ReceiptText, RefreshCw, Target, TrendingUp,
+  Activity, AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, Flame, ListTodo,
+  Target, TrendingUp, Undo2,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
-import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 import { useCan } from "@/lib/roleContext";
+import { businessDate } from "@/lib/businessDate";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { TableScroll } from "@/components/ui/Table";
+import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import {
+  MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
+} from "@/lib/salesPlanning/myQueue";
 import styles from "./DashboardShell.module.css";
 
 const ACTIVITY_KIND_LABEL = {
@@ -23,11 +43,14 @@ const ACTIVITY_KIND_LABEL = {
 const FEED_PAGE = 8;
 
 export default function MyDashboardTab({ month }) {
+  const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [visible, setVisible] = useState(FEED_PAGE);
+  // ชิปกรองของคิว — null = ทุกชนิด (คีย์มาจาก `MY_QUEUE_KINDS`)
+  const [kind, setKind] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,16 +71,30 @@ export default function MyDashboardTab({ month }) {
   // เปลี่ยนตัวกรองหรือเดือน = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
   useEffect(() => { setVisible(FEED_PAGE); }, [filter, month]);
 
+  const today = businessDate();
+  const handoff = data?.handoff || {};
+  const queue = useMemo(() => buildMyQueue({
+    requests: data?.myRequests || [],
+    leads: data?.actionLeads || [],
+    tasks: data?.openTasks || [],
+    awaitingSalesOrder: handoff.awaitingSalesOrder || [],
+    awaitingFiling: handoff.awaitingFiling || [],
+    todayIso: today,
+  }), [data, handoff.awaitingSalesOrder, handoff.awaitingFiling, today]);
+
+  const counts = myQueueCounts(queue);
+  const shown = kind ? queue.filter((item) => item.kind === kind) : queue;
+  const groups = groupMyQueue(shown);
+  // ⭐ "เริ่มที่นี่" = แถวบนสุดของคิวเดียวกัน — ไม่ใช่กติกาความเร่งชุดใหม่
+  // (ประกาศเกณฑ์ของตัวเองเมื่อไรจะได้ "การ์ดชี้ใบ A แต่ตารางเรียงใบ B ไว้บนสุด")
+  const startHere = queue[0] || null;
+
   const feed = useMemo(() => {
     const dealPosts = (data?.dealActivityFeed || []).map((item) => ({
-      ...item,
-      feedType: "deal",
-      feedAt: item.updatedAt || item.createdAt,
+      ...item, feedType: "deal", feedAt: item.updatedAt || item.createdAt,
     }));
     const taskPosts = (data?.taskFeed || []).map((item) => ({
-      ...item,
-      feedType: "task",
-      feedAt: item.updatedAt || item.createdAt,
+      ...item, feedType: "task", feedAt: item.updatedAt || item.createdAt,
     }));
     return [...dealPosts, ...taskPosts]
       .filter((item) => filter === "all" || item.feedType === filter || (filter === "urgent" && item.urgent))
@@ -67,253 +104,279 @@ export default function MyDashboardTab({ month }) {
   const shownFeed = feed.slice(0, visible);
 
   const target = Number(data?.target || 0);
-  // "ยังไม่ตั้งเป้า" (ไม่มี record) ≠ "เป้า = 0 จริง" — เคสแรกแสดง dash ตาม rulebook, เคสหลังแสดงตัวเลข
-  // ระหว่างโหลดรอบแรก (data ยังไม่มา) ก็แสดง dash ไปก่อน ไม่ใช่ ฿0.00
+  // "ยังไม่ตั้งเป้า" (ไม่มี record) ≠ "เป้า = 0 จริง" — เคสแรกแสดง dash ตาม rulebook
   const hasTarget = !!data?.hasTarget;
   const canSetTarget = useCan("salesplan:target");
   const actual = Number(data?.wonValue || 0);
-  const gap = Number(data?.targetGap || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
-  const tasks = data?.taskSummary || { total: 0, today: 0, overdue: 0, urgent: 0 };
-  const actionLeads = data?.actionLeads || [];
   const byForecast = data?.byForecast || [];
-  // คิวรอยต่อเอกสาร — สองจุดที่ระบบส่งไม้ต่อแล้วไม่มีอะไรคอยทวง (ดู lib/sales/handoffQueue)
-  const handoff = data?.handoff || {};
-  const awaitingSalesOrder = handoff.awaitingSalesOrder || [];
-  const awaitingFiling = handoff.awaitingFiling || [];
 
-  if (error) return <div className="glass-panel" role="alert" style={{ padding: 16, color: "var(--red)" }}>{error}</div>;
+  if (error) return <StatusNotice tone="error" title="โหลดแดชบอร์ดไม่สำเร็จ">{error}</StatusNotice>;
 
   return (
-    <div className={styles.page} aria-busy={loading}>
-      <div className={styles.layout}>
-        <main className={styles.documentColumn}>
-          <section className={`${styles.card} ${styles.overviewCard}`}>
-            <div className={styles.overviewHeading}>
-              <div>
-                <div className={styles.overviewEyebrowRow}>
-                  <span className={styles.eyebrow}>MY · SALES WORKSPACE</span>
-                  <span className={styles.period}>รอบข้อมูล {data?.periodFrom ? fmtDate(data.periodFrom) : "-"} – {data?.periodTo ? fmtDate(data.periodTo) : "-"}</span>
-                </div>
-                <h2>ศูนย์ติดตามงานของฉัน</h2>
-                <p>ยอดขาย · ดีลที่รับผิดชอบ · งานที่ต้องทำ · การติดตามลูกค้า</p>
-              </div>
-              <div className={styles.headerActions}>
-                <span className={styles.liveBadge}><Activity size={12} /> LIVE FEED</span>
-                <button type="button" className="btn ghost sm" onClick={load} disabled={loading}><RefreshCw size={14} /> อัปเดต</button>
-              </div>
-            </div>
-            <div className={styles.quickFacts}>
-              <QuickFact icon={<Target />} label="เป้าหมาย" value={hasTarget ? fmtMoney(target) : "—"} note={hasTarget ? `สำเร็จ ${fmtPercent(targetPct)}` : data ? "ยังไม่ตั้งเป้า" : ""} />
-              {/* Actual = ยอด Won จริง แสดง 0 ได้ (ศูนย์จริง) แต่ Gap มีความหมายก็ต่อเมื่อมีเป้า */}
-              <QuickFact icon={<CheckCircle2 />} label="Actual" value={fmtMoney(actual)} note={`Gap ${hasTarget ? fmtMoney(gap) : "—"}`} tone={actual >= target && target > 0 ? "good" : undefined} />
-              <QuickFact icon={<FolderKanban />} label="ดีลที่เปิดอยู่" value={data?.openDealsCount || 0} note={`Pipeline ${fmtMoney(data?.pipelineValue || 0)}`} />
-              <QuickFact icon={<AlertTriangle />} label="งานเลยกำหนด" value={tasks.overdue || 0} note={`งานค้าง ${tasks.total || 0}`} tone={tasks.overdue ? "danger" : "good"} />
-            </div>
-          </section>
-
-          <section className={`${styles.card} ${styles.feedCard}`}>
-            <div className={styles.sectionHead}>
-              <div className={styles.sectionTitle}><Activity size={17} /><div><h3>รายการอัปเดตล่าสุด</h3><span>กิจกรรมจากดีลและงานที่คุณรับผิดชอบ</span></div></div>
-              <div className={styles.filters}>
-                {[["all", "ทั้งหมด"], ["deal", "ดีล"], ["task", "งาน"], ["urgent", "ด่วน"]].map(([key, label]) => (
-                  <button type="button" key={key} className={filter === key ? styles.activeFilter : ""} onClick={() => setFilter(key)}>{label}</button>
-                ))}
-              </div>
-            </div>
-            <div className={styles.feed}>
-              {shownFeed.map((item) => item.feedType === "task"
-                ? <TaskPost key={`task-${item.id}`} item={item} />
-                : <DealPost key={`deal-${item.id}`} item={item} />)}
-              {feed.length > visible && (
-                <div className={styles.feedMore}>
-                  <button type="button" className="btn ghost sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
-                    ดูเพิ่มเติม (อีก {feed.length - visible})
-                  </button>
-                </div>
-              )}
-              {!feed.length && <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>}
-            </div>
-          </section>
-        </main>
-
-        <aside className={styles.aside}>
-          <section className={`${styles.card} ${styles.queueCard}`}>
-            <div className={styles.queueHead}>
-              <div className={styles.sectionTitle}><Clock3 size={17} /><div><h3>สิ่งที่ต้องดำเนินการ</h3><span>{actionLeads.length} รายการล่าสุด</span></div></div>
-              <Link href="/sales-planning/leads">ดูทั้งหมด</Link>
-            </div>
-            <div className={styles.queueList}>
-              {actionLeads.slice(0, 10).map((lead) => (
-                <Link href={`/sales-planning/leads/${lead.id}`} key={lead.id} className={styles.queueItem}>
-                  <div><strong>{LEAD_STATUS_LABELS[lead.status] || lead.status}</strong><span className={styles.dot} /></div>
-                  <h4>{lead.company || lead.contactName || "ลีด"}</h4>
-                  <p>{lead.status === "meeting" && lead.meetingAt ? `นัดหมาย ${fmtDate(lead.meetingAt)}` : "รอการติดต่อกลับ"}</p>
-                </Link>
-              ))}
-              {!actionLeads.length && <div className={styles.empty}>ไม่มีรายการเร่งด่วน 🎉</div>}
-            </div>
-          </section>
-
-          {/* คิวรอยต่อเอกสาร: Won → ใบสั่งขาย → ใบยื่นชำระภาษี. ก่อนหน้านี้สองจุดนี้เป็น
-              manual ล้วน — ไม่มีคิว ไม่มีตัวเลข ต้องมีคนจำไปกดเอง. ตัวเลขนับเฉพาะดีลที่
-              ฉันเป็นเจ้าของ (เหมือนทุกอย่างในแท็บนี้) ส่วนภาพรวมทั้งทีมดูที่หน้ารายการ */}
-          {handoff.error && (
-            <StatusNotice tone="error" title="โหลดคิวรอยต่อเอกสารไม่สำเร็จ">{handoff.error}</StatusNotice>
-          )}
-
-          <HandoffQueueCard
-            icon={<FileText size={17} />}
-            title="Won รอออก ใบสั่งขาย"
-            hint="ใบเสนอราคาที่ปิดได้แล้วแต่ยังไม่มี SO"
-            items={awaitingSalesOrder}
-            allHref="/sa/quotations"
-            emptyText="ออก SO ครบทุกใบแล้ว 🎉"
-            renderItem={(quote) => ({
-              key: quote.id,
-              href: `/sa/quotations/${quote.id}`,
-              eyebrow: quote.quoteNumber,
-              title: quote.customerName || "ลูกค้า",
-              note: `Won ${fmtDate(quote.acceptedAt)} · ${fmtMoney(quote.totalAmount)}`,
-            })}
+    <div className="flex flex-col gap-4" aria-busy={loading}>
+      {/* ⭐ **ตัวเลขทุกช่องนับจากคิวเดียวกับตารางข้างล่าง** ยกเว้นช่องเป้าซึ่งเป็น
+          ตัวเลขของเดือน ไม่ใช่ของค้าง · กดแล้วกรองในที่ (ไม่พาออกจากหน้า) */}
+      {!loading && (
+        <MetricStrip aria-label="ของค้างของฉัน — กดเพื่อกรองคิว" data-count={5}>
+          <Metric
+            as="button" type="button" icon={<ListTodo />} label="ค้างทั้งหมด" value={counts.total}
+            note={kind ? "กดเพื่อเลิกกรอง" : "ทุกชนิดรวมกัน"}
+            active={!kind} onClick={() => setKind(null)}
           />
-
-          <HandoffQueueCard
-            icon={<ReceiptText size={17} />}
-            title="SO รอออกใบยื่นภาษี"
-            hint="SO อนุมัติแล้วที่มีสินค้าสรรพสามิต"
-            items={awaitingFiling}
-            allHref="/tax/filings"
-            allLabel="เปิดหน้ายื่นชำระ"
-            emptyText="ยื่นครบทุกใบแล้ว 🎉"
-            renderItem={(order) => ({
-              key: order.id,
-              href: `/sa/sales-orders/${order.id}`,
-              eyebrow: order.orderNumber,
-              title: order.customerName || "ลูกค้า",
-              note: `อนุมัติ ${fmtDate(order.approvedAt)} · ภาษี ${fmtMoney(order.filingTotalTax)}`,
-            })}
+          <Metric
+            icon={<AlertTriangle />} label="เลยกำหนด" value={counts.overdue}
+            note="เลยวันที่รับปากไว้" tone={counts.overdue ? "danger" : undefined}
           />
+          <Metric
+            as="button" type="button" icon={<Undo2 />} label="ตีกลับ รอคุณแก้" value={counts.bounced}
+            note={counts.bounced ? "กดเพื่อดูเฉพาะคำร้อง" : "ไม่มีใบตีกลับ"}
+            tone={counts.bounced ? "danger" : undefined}
+            active={kind === "request"} onClick={() => setKind(kind === "request" ? null : "request")}
+          />
+          <Metric
+            as="button" type="button" icon={<CheckCircle2 />} label="รอออกเอกสาร" value={counts.document}
+            note="Won รอ SO · SO รอใบยื่นภาษี" tone={counts.document ? "warning" : undefined}
+            active={kind === "document"} onClick={() => setKind(kind === "document" ? null : "document")}
+          />
+          <Metric
+            icon={<Target />} label="เป้าเดือนนี้"
+            value={hasTarget ? fmtPercent(targetPct, 0) : "—"}
+            note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
+            tone={hasTarget && targetPct >= 100 ? "good" : undefined}
+          />
+        </MetricStrip>
+      )}
 
-          {/* ตัวเลขเป้า/ทบยอด/กราฟฉบับเต็มย้ายไปแท็บ "ผลงานขาย" (2026-07-18) —
-              ที่นี่เหลือสรุปบรรทัดเดียว + ลิงก์เจาะตัวเอง กันข้อมูลซ้ำสองที่แล้วเพี้ยนหากัน */}
-          <section className={`${styles.card} ${styles.teamCard}`}>
-            <div className={styles.sectionTitle}><TrendingUp size={18} /><div><h3>เป้าหมายของฉัน</h3><span>เดือนนี้</span></div></div>
-            <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <strong style={{ fontSize: "var(--fs-13)" }}>{fmtMoney(actual)}</strong>
-              <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                {hasTarget ? `/ ${fmtMoney(target)} · ${fmtPercent(targetPct)}` : data ? "/ — · ยังไม่ตั้งเป้า" : "/ —"}
-              </span>
+      {/* ⭐ การ์ด "เริ่มที่นี่" — แถวบนสุดของคิว · บอกว่าว่างด้วย ไม่ใช่ซ่อนทิ้ง
+          (หายไปเฉย ๆ อ่านไม่ออกว่างานหมดจริงหรือหน้ายังโหลดไม่เสร็จ) */}
+      {!loading && (startHere ? (
+        <div className={styles.startHere}>
+          <div className={styles.startBody}>
+            <div className={styles.startEyebrow}><Flame size={13} /> เริ่มที่นี่</div>
+            <div className={styles.startStep}>{startHere.step}</div>
+            <div className={styles.startTitle}>{startHere.title}</div>
+            <div className={styles.startSub}>
+              {[startHere.sub, startHere.dueText].filter(Boolean).join(" · ")}
+              {queue.length > 1 ? ` — และอีก ${queue.length - 1} เรื่องต่อจากนี้` : ""}
             </div>
-            {/* ตั้งเป้าได้เฉพาะผู้ถือสิทธิ์ salesplan:target (admin/หัวหน้าทีม) — AE ทั่วไปไม่มีลิงก์เพราะเข้าหน้านั้นไม่ได้ */}
-            {data && !hasTarget && canSetTarget && (
-              <Link href="/sa/targets" className="btn ghost sm" style={{ width: "100%", marginTop: 12 }}>
-                ตั้งเป้าเดือนนี้ <ArrowUpRight size={13} />
-              </Link>
-            )}
-            <Link
-              href={data?.me?.id ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}` : "/sa/dashboard?tab=performance"}
-              className="btn ghost sm"
-              style={{ width: "100%", marginTop: 12 }}
+          </div>
+          <Button tone="primary" icon={<ArrowRight size={15} />} onClick={() => router.push(startHere.href)}>
+            เปิดเรื่องนี้
+          </Button>
+        </div>
+      ) : (
+        <div className={styles.startClear}><CheckCircle2 size={16} /> ไม่มีเรื่องค้างของคุณตอนนี้</div>
+      ))}
+
+      <WorkspaceSection
+        icon={<ListTodo size={17} />}
+        title="คิวของฉัน"
+        subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
+        actions={<span className="ui-badge">{shown.length} รายการ</span>}
+      >
+        {/* ชิปกรองตามชนิด — ตัวเลขในชิปมาจากคิวก้อนเดียวกัน ไม่ใช่นับใหม่ */}
+        <div className="toolbar">
+          <Button size="sm" tone={kind ? undefined : "primary"} onClick={() => setKind(null)}>
+            ทั้งหมด {counts.total}
+          </Button>
+          {MY_QUEUE_KINDS.map((k) => (
+            <Button
+              key={k.key} size="sm" tone={kind === k.key ? "primary" : undefined}
+              disabled={!counts.byKind[k.key]}
+              onClick={() => setKind(kind === k.key ? null : k.key)}
             >
-              ดูผลงานเต็ม (ทบยอด · กราฟ · YoY) <ArrowUpRight size={13} />
-            </Link>
-          </section>
+              {k.label} {counts.byKind[k.key] || 0}
+            </Button>
+          ))}
+        </div>
 
-          <section className={`${styles.card} ${styles.teamCard}`}>
-            <div className={styles.sectionTitle}><ListTodo size={18} /><div><h3>ภาพรวมงาน</h3><span>งานที่คุณรับผิดชอบอยู่</span></div></div>
-            <div className={styles.teamFacts}>
-              <p>งานค้าง <strong>{tasks.total || 0}</strong></p>
-              <p>วันนี้ <strong>{tasks.today || 0}</strong></p>
-              <p>ต้องรีบ <strong style={{ color: tasks.urgent ? "var(--amber)" : undefined }}>{tasks.urgent || 0}</strong></p>
-              <p>เลยกำหนด <strong className={tasks.overdue ? styles.danger : ""}>{tasks.overdue || 0}</strong></p>
-            </div>
-            <Link href="/pm/tasks" className="btn ghost sm" style={{ width: "100%", marginTop: 12 }}>เปิดงานของฉัน <ArrowUpRight size={13} /></Link>
-          </section>
+        {loading ? <SkeletonRows rows={4} /> : shown.length === 0 ? (
+          <EmptyState icon={CheckCircle2}>
+            {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้ 🎉"}
+          </EmptyState>
+        ) : (
+          <TableScroll cells="stacked">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th>ต้องทำอะไร</th>
+                  <th>เรื่อง</th>
+                  <th className="num">กำหนด</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* หัวกลุ่มเป็นแถวเต็มความกว้าง แล้วตามด้วยแถวของกลุ่มนั้น —
+                    แพตเทิร์นเดียวกับคิวคำร้อง (`RequestQueuePanel`) */}
+                {groups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr className={styles.groupRow} data-tone={group.tone}>
+                      <td colSpan={3}>{group.label} · {group.items.length}</td>
+                    </tr>
+                    {group.items.map((item) => (
+                      <tr
+                        key={item.key} className={styles.queueRow}
+                        onClick={() => router.push(item.href)}
+                      >
+                        <td>
+                          <span className="ui-badge ui-badge-cell ui-badge-w-nextstep">{item.step}</span>
+                          <div className={styles.rowMeta}>
+                            {MY_QUEUE_KINDS.find((k) => k.key === item.kind)?.label}
+                          </div>
+                        </td>
+                        <td>
+                          <div className={styles.rowTitle}>
+                            {item.title}
+                            {item.urgent && <span className={`ui-badge ${styles.rowUrgent}`}>ด่วน</span>}
+                          </div>
+                          <div className={styles.rowMeta}>{item.sub}</div>
+                        </td>
+                        <td className="num">
+                          <div className={item.overdue ? styles.rowOverdue : undefined}>{item.dueText}</div>
+                          {item.due && <div className={styles.rowMeta}>{fmtDate(item.due)}</div>}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+      </WorkspaceSection>
 
-          <section className={`${styles.card} ${styles.teamCard}`}>
-            <div className={styles.sectionTitle}><FolderKanban size={18} /><div><h3>Pipeline ตาม FC</h3><span>ดีลที่ยังเปิดอยู่</span></div></div>
-            <div className={styles.teamFacts}>
-              {byForecast.map((bucket) => <p key={bucket.level}>FC {bucket.level}% <strong>{fmtMoney(bucket.value)}</strong><span>{bucket.count} ดีล</span></p>)}
+      {/* ตัวเลขของเดือน — **ไม่ใช่ของค้าง** จึงอยู่ใต้คิว · ฉบับเต็ม (ทบยอด/กราฟ/YoY)
+          อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18) ที่นี่มีแค่ทางเข้า */}
+      {!loading && (
+        <WorkspaceSection
+          icon={<TrendingUp size={17} />}
+          title="ตัวเลขของฉันเดือนนี้"
+          subtitle="เป้า · ยอดปิดได้ · ไปป์ไลน์ที่ยังเปิดอยู่"
+          actions={(
+            <div className="flex gap-2 items-center flex-wrap">
+              {data && !hasTarget && canSetTarget && (
+                <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
+                  ตั้งเป้าเดือนนี้
+                </Button>
+              )}
+              <Button
+                as={Link} size="sm" icon={<ArrowUpRight size={13} />}
+                href={data?.me?.id
+                  ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}`
+                  : "/sa/dashboard?tab=performance"}
+              >
+                ดูผลงานเต็ม
+              </Button>
             </div>
-            <Link href="/sales-planning/deals" className="btn ghost sm" style={{ width: "100%", marginTop: 12 }}>เปิดดีลทั้งหมด <ArrowUpRight size={13} /></Link>
-          </section>
-        </aside>
-      </div>
+          )}
+        >
+          <div className={styles.numbers}>
+            <p>
+              ยอดปิดได้
+              <strong>{fmtMoney(actual)}</strong>
+              <span>{hasTarget ? `จากเป้า ${fmtMoney(target)}` : "ยังไม่ตั้งเป้าเดือนนี้"}</span>
+            </p>
+            <p>
+              ดีลที่เปิดอยู่
+              <strong>{data?.openDealsCount || 0}</strong>
+              <span>Pipeline {fmtMoney(data?.pipelineValue || 0)}</span>
+            </p>
+            {byForecast.map((bucket) => (
+              <p key={bucket.level}>
+                FC {bucket.level}%
+                <strong>{fmtMoney(bucket.value)}</strong>
+                <span>{bucket.count} ดีล</span>
+              </p>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+
+      {/* ⭐ **ฟีดย้ายลงท้ายหน้า** — มันตอบว่า *อะไรเพิ่งเกิด* ซึ่งมีค่า แต่ไม่ใช่สิ่งแรก
+          ที่ตาควรไปเจอตอนเปิดหน้ามาทำงาน (มติผู้ใช้ 2026-08-12 · แบบ ก) */}
+      <WorkspaceSection
+        icon={<Activity size={17} />}
+        title="รายการอัปเดตล่าสุด"
+        subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
+        actions={(
+          <div className={styles.filters}>
+            {[["all", "ทั้งหมด"], ["deal", "ดีล"], ["task", "งาน"], ["urgent", "ด่วน"]].map(([key, label]) => (
+              <button
+                type="button" key={key}
+                className={filter === key ? styles.activeFilter : ""}
+                onClick={() => setFilter(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      >
+        <div className={styles.feed}>
+          {shownFeed.map((item) => (item.feedType === "task"
+            ? <TaskPost key={`task-${item.id}`} item={item} />
+            : <DealPost key={`deal-${item.id}`} item={item} />))}
+          {feed.length > visible && (
+            <div className={styles.feedMore}>
+              <Button size="sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
+                ดูเพิ่มเติม (อีก {feed.length - visible})
+              </Button>
+            </div>
+          )}
+          {!feed.length && (
+            <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
+          )}
+        </div>
+      </WorkspaceSection>
     </div>
   );
-}
-
-// การ์ดคิวรอยต่อเอกสาร — หน้าตาเดียวกับคิวลีดข้างบน (queueCard/queueItem ชุดเดิม)
-// ทั้งสองใบใช้ component ตัวนี้ร่วมกัน ต่างกันแค่ props ไม่ใช่คนละชุด (กฎ AGENTS.md)
-const HANDOFF_PREVIEW = 5;
-
-function HandoffQueueCard({ icon, title, hint, items, allHref, allLabel = "ดูทั้งหมด", emptyText, renderItem }) {
-  return (
-    <section className={`${styles.card} ${styles.queueCard}`}>
-      <div className={styles.queueHead}>
-        <div className={styles.sectionTitle}>
-          {icon}
-          <div><h3>{title}</h3><span>{items.length ? `${items.length} ใบ · ${hint}` : hint}</span></div>
-        </div>
-        <Link href={allHref}>{allLabel}</Link>
-      </div>
-      <div className={styles.queueList}>
-        {items.slice(0, HANDOFF_PREVIEW).map((item) => {
-          const row = renderItem(item);
-          return (
-            <Link href={row.href} key={row.key} className={styles.queueItem}>
-              <div><strong>{row.eyebrow}</strong><span className={styles.dot} /></div>
-              <h4>{row.title}</h4>
-              <p>{row.note}</p>
-            </Link>
-          );
-        })}
-        {items.length > HANDOFF_PREVIEW && (
-          <Link href={allHref} className={styles.queueItem}>
-            <p>และอีก {items.length - HANDOFF_PREVIEW} ใบ — {allLabel}</p>
-          </Link>
-        )}
-        {!items.length && <div className={styles.empty}>{emptyText}</div>}
-      </div>
-    </section>
-  );
-}
-
-function QuickFact({ icon, label, value, note, tone }) {
-  return <div><span className={styles.factIcon}>{icon}</span><span><small>{label}</small><strong className={tone ? styles[tone] : ""}>{value ?? "-"}</strong><em>{note}</em></span></div>;
 }
 
 function TaskPost({ item }) {
   const statusLabel = { Pending: "รอดำเนินการ", "In Progress": "กำลังทำ", Completed: "เสร็จแล้ว" }[item.status] || item.status;
-  return <article className={`${styles.post} ${styles.taskPost}`}>
-    <div className={`${styles.avatar} ${styles.taskAvatar}`}><ListTodo size={16} /></div>
-    <div className={styles.postBody}>
-      <div className={styles.postMeta}><strong>{item.assigneeName || "ฉัน"}</strong><span>·</span><span>{fmtDateTime(item.feedAt)}</span><span className={styles.typeLabel}>งาน</span></div>
-      <Link href={`/pm/tasks/${item.id}`} className={styles.postTitle}>{item.title || "งาน"}</Link>
-      <p>{item.note || `${item.assignedByName ? `${item.assignedByName} มอบหมาย · ` : ""}${item.category || "งานทั่วไป"}`}</p>
-      <div className={styles.postFooter}>
-        <span className={`${styles.taskStatus} ${item.status === "Completed" ? styles.completed : ""}`}>{statusLabel}</span>
-        {item.urgent && <span className={styles.urgent}>ด่วน</span>}{item.important && <span className={styles.important}>สำคัญ</span>}
-        {item.dueDate && <span className={styles.taskDue}>กำหนด {fmtDate(item.dueDate)}</span>}
-        <Link href={`/pm/tasks/${item.id}`}>เปิดงาน <ArrowUpRight size={12} /></Link>
+  return (
+    <article className={`${styles.post} ${styles.taskPost}`}>
+      <div className={`${styles.avatar} ${styles.taskAvatar}`}><ListTodo size={16} /></div>
+      <div className={styles.postBody}>
+        <div className={styles.postMeta}>
+          <strong>{item.assigneeName || "ฉัน"}</strong><span>·</span>
+          <span>{fmtDateTime(item.feedAt)}</span><span className={styles.typeLabel}>งาน</span>
+        </div>
+        <Link href={`/pm/tasks/${item.id}`} className={styles.postTitle}>{item.title || "งาน"}</Link>
+        <p>{item.note || `${item.assignedByName ? `${item.assignedByName} มอบหมาย · ` : ""}${item.category || "งานทั่วไป"}`}</p>
+        <div className={styles.postFooter}>
+          <span className={`${styles.taskStatus} ${item.status === "Completed" ? styles.completed : ""}`}>{statusLabel}</span>
+          {item.urgent && <span className={styles.urgent}>ด่วน</span>}
+          {item.important && <span className={styles.important}>สำคัญ</span>}
+          {item.dueDate && <span className={styles.taskDue}>กำหนด {fmtDate(item.dueDate)}</span>}
+          <Link href={`/pm/tasks/${item.id}`}>เปิดงาน <ArrowUpRight size={12} /></Link>
+        </div>
       </div>
-    </div>
-  </article>;
+    </article>
+  );
 }
 
 function DealPost({ item }) {
-  return <article className={styles.post}>
-    <div className={styles.avatar}>SA</div>
-    <div className={styles.postBody}>
-      <div className={styles.postMeta}><strong>{item.createdByName || "ฝ่ายขาย"}</strong><span>·</span><span>{fmtDateTime(item.feedAt)}</span><span className={styles.typeLabel}>{ACTIVITY_KIND_LABEL[item.kind] || "ดีล"}</span></div>
-      <Link href={`/sales-planning/deals/${item.dealId}`} className={styles.postTitle}>{item.dealCode ? `${item.dealCode} · ` : ""}{item.dealTitle || "ดีล"}</Link>
-      <p>{item.body || "อัปเดตความเคลื่อนไหวของดีล"}</p>
-      <div className={styles.postFooter}>
-        {item.customerName && <span>{item.customerName}</span>}{item.urgent && <span className={styles.urgent}>ต้องติดตาม</span>}
-        {item.dueDate && <span className={styles.taskDue}>กำหนด {fmtDate(item.dueDate)}</span>}
-        <Link href={`/sales-planning/deals/${item.dealId}`}>เปิดดีล <ArrowUpRight size={12} /></Link>
+  return (
+    <article className={styles.post}>
+      <div className={styles.avatar}>SA</div>
+      <div className={styles.postBody}>
+        <div className={styles.postMeta}>
+          <strong>{item.createdByName || "ฝ่ายขาย"}</strong><span>·</span>
+          <span>{fmtDateTime(item.feedAt)}</span>
+          <span className={styles.typeLabel}>{ACTIVITY_KIND_LABEL[item.kind] || "ดีล"}</span>
+        </div>
+        <Link href={`/sales-planning/deals/${item.dealId}`} className={styles.postTitle}>
+          {item.dealCode ? `${item.dealCode} · ` : ""}{item.dealTitle || "ดีล"}
+        </Link>
+        <p>{item.body || "อัปเดตความเคลื่อนไหวของดีล"}</p>
+        <div className={styles.postFooter}>
+          {item.customerName && <span>{item.customerName}</span>}
+          {item.urgent && <span className={styles.urgent}>ต้องติดตาม</span>}
+          {item.dueDate && <span className={styles.taskDue}>กำหนด {fmtDate(item.dueDate)}</span>}
+          <Link href={`/sales-planning/deals/${item.dealId}`}>เปิดดีล <ArrowUpRight size={12} /></Link>
+        </div>
       </div>
-    </div>
-  </article>;
+    </article>
+  );
 }

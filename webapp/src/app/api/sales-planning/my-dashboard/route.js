@@ -15,7 +15,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
 
   // 1. My Target & Won
-  const [targetRes, dealsRes, leadsRes, tasksByOwner, tasksByAssignee, tasksByProxy] = await Promise.all([
+  const [
+    targetRes, dealsRes, leadsRes, tasksByOwner, tasksByAssignee, tasksByProxy, myRequestsRes,
+  ] = await Promise.all([
     supabase
       .from('sales_targets')
       .select('targetAmount')
@@ -35,6 +37,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     supabase.from('personal_tasks').select('*').eq('ownerId', user.id),
     supabase.from('personal_tasks').select('*').eq('assigneeId', user.id),
     supabase.from('personal_tasks').select('*').eq('proxyBy', user.id),
+    /* ⭐ **คำร้องของฉัน** (2026-08-12 · แบบ ก) — แดชบอร์ดนี้ไม่เคยแตะ `dept_requests`
+       สักบรรทัด ⇒ ใบที่ถูกตีกลับ (ม-102) มองไม่เห็นจากหน้านี้เลย ทั้งที่เป็นของค้าง
+       ที่ **ไม่มีใครกำลังทำอยู่** (ฝ่ายปล่อยมือแล้ว ผู้ขอยังไม่รู้ตัว)
+       ⚠️ รวม `draft` ด้วยโดยตั้งใจ — ใบตีกลับกลับไปเป็นร่าง · ตัวกรองฝั่งล่างจะตัด
+       ร่างที่ยังไม่เคยส่งออกเอง (ร่างเปล่าไม่ใช่ของค้าง มันคือของที่ยังไม่เริ่ม) */
+    supabase.from('dept_requests').select('*')
+      .eq('requestedById', user.id)
+      .in('status', ['draft', 'pending', 'acknowledged']),
   ]);
 
   const target = targetRes.data?.targetAmount || 0;
@@ -157,6 +167,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     handoff = { awaitingSalesOrder: [], awaitingFiling: [], error: handoffError.message };
   }
 
+  /* คำร้องที่เป็น "ของค้างของฉัน" จริง ๆ — ร่างที่ยังไม่เคยส่งไม่นับ (ยังไม่เริ่ม)
+     แต่ร่างที่ **ถูกตีกลับ** นับ เพราะฝ่ายส่งคืนมาให้เราแก้แล้ว */
+  const myRequests = (myRequestsRes.data || [])
+    .filter((r) => r.status !== 'draft' || r.bouncedAt);
+
   const [year, monthNumber] = month.split('-').map(Number);
   const periodFrom = `${month}-01`;
   const periodTo = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
@@ -183,5 +198,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     taskFeed,
     dealActivityFeed,
     handoff,
+    // ⚠️ ส่ง **แถวดิบ** ให้จอ ไม่ใช่ตัวเลขสรุป — คิวรวม (`lib/salesPlanning/myQueue.js`)
+    // ต้องเรียงของทุกชนิดด้วยกติกาเดียวกัน จึงต้องเห็นวันที่ของแต่ละใบเอง
+    myRequests,
+    /* งานที่ยังไม่จบ — **กติกาเดียวกับ `summarizeOpenTasks`** (`status !== 'Completed'`)
+       ⚠️ เดาสถานะเองเมื่อไร ตัวเลขบนแถบกับจำนวนแถวในตารางจะไม่ตรงกันทันที
+       (ค่าจริงในตารางนี้เป็น 'Completed' ตัวใหญ่ ไม่ใช่ 'done') */
+    openTasks: myTasks.filter((task) => task.status !== 'Completed'),
   });
 });

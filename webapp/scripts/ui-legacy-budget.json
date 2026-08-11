@@ -3,9 +3,9 @@
   "modules": {
     "sales": {
       "legacyTable": 44,
-      "legacySurface": 74,
-      "inlineStyle": 942,
-      "rawButtonClass": 167,
+      "legacySurface": 73,
+      "inlineStyle": 933,
+      "rawButtonClass": 161,
       "rawInputClass": 55
     },
     "sahamit": {
