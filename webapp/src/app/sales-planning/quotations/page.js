@@ -21,6 +21,7 @@ import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { quotesAwaitingSalesOrder } from "@/lib/sales/handoffQueue";
+import { isEditableQuotation } from "@/lib/sales/quotationWorkflow";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 
@@ -262,8 +263,12 @@ export default function QuotationsPage() {
                           }}>
                           <Printer size={15} aria-hidden="true" />
                         </button>
-                        {/* แก้ได้เฉพาะสถานะที่ API เปิด (draft/sent/rejected) — ใบอื่นใช้ Revise ที่หน้าใบ */}
-                        {canEdit && ["draft", "sent", "rejected"].includes(r.status) && (
+                        {/* ⚠️ ด่านเดียวกับหน้ารายละเอียดและ PATCH ของ API (`isEditableQuotation`)
+                            — ใบอื่นใช้ "ออก Rev." ที่หน้าใบ
+                            🐞 เดิมเช็คแค่ `status` ⇒ ใบที่อนุมัติแล้ว (ซึ่ง mig 0165 ตั้งเป็น
+                            'sent' ให้เอง) ก็ได้ดินสอ ⇒ กดแล้วตกไปอยู่ในโหมดแก้ไขของใบที่แก้
+                            ไม่ได้ ซึ่งซ่อนปุ่มทั้งการ์ดจนเหลือ "Won" ปุ่มเดียว (IS-26080011) */}
+                        {canEdit && isEditableQuotation(r) && (
                           <Link prefetch={false} href={`/sa/quotations/${r.id}?edit=1`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
                             <Pencil size={15} aria-hidden="true" />
                           </Link>

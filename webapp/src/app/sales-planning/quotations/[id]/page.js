@@ -42,9 +42,10 @@ import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePri
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import {
   canRejectQuotationSubmission,
+  isRevisableQuotation,
   canWithdrawQuotationSubmission,
+  isEditableQuotation,
   isQuotationAwaitingApproval,
-  isRevisableQuotationApprovalStatus,
   quotationRejectionNotice,
 } from "@/lib/sales/quotationWorkflow";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
@@ -53,13 +54,14 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
-const EDITABLE = new Set(["draft", "sent", "rejected"]);
 
 export default function QuotationEditorPage() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const editMode = searchParams.get("edit") === "1";
+  // ⚠️ **URL ขอโหมดแก้ไขได้ แต่ไม่ได้แปลว่าได้** — ตัวจริงคือ `editMode` ข้างล่าง
+  // ซึ่งคูณกับ `canEditDocument` (ดูเหตุผลเต็มที่บรรทัดนั้น · IS-26080011)
+  const editRequested = searchParams.get("edit") === "1";
   const canEditCap = useCan("salesplan:edit");
   const role = useRole();
 
@@ -164,8 +166,17 @@ export default function QuotationEditorPage() {
     cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
-  const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status)
-    && quote.approvalStatus === "not_submitted";
+  // ด่าน "เอกสารเปิดให้แก้ไหม" อยู่ที่ `lib/sales/quotationWorkflow.js` ที่เดียว —
+  // หน้ารายการใช้ตัวเดียวกันตัดสินว่าจะโชว์ดินสอไหม (เดิมเขียนแยกกันแล้วหลุดจากกัน)
+  const canEditDocument = !!quote && canEditCap && isEditableQuotation(quote);
+  // ⭐ **โหมดแก้ไข = URL ขอมา *และ* ใบนี้แก้ได้จริง** (IS-26080011)
+  //
+  // 🐞 เดิมอ่านจาก URL ล้วน ⇒ `?edit=1` ที่ค้างอยู่บนใบที่อนุมัติแล้ว (จากปุ่มดินสอใน
+  // หน้ารายการ · bookmark · ปุ่ม back) ทำให้ปุ่ม **ทุกตัว** ในการ์ดหาย เพราะทั้งลิสต์
+  // กั้นด้วย `!editMode` ส่วนปุ่ม "บันทึก" ก็ไม่ขึ้นเพราะ `editable` เป็น false
+  // ⇒ ผู้ใช้เหลือปุ่ม "Won" ปุ่มเดียว ออก Rev. ไม่ได้ พิมพ์ไม่ได้ และไม่มีทางออกจาก
+  // โหมดนี้นอกจากลบพารามิเตอร์ทิ้งเองในแถบ URL (ผู้ใช้แจ้งเข้ามาเอง 2026-08-11)
+  const editMode = editRequested && canEditDocument;
   // สองขั้นแยกกัน (mig 0155): needsSubmit = ร่างที่ผู้จัดทำยังไม่กดยื่น ·
   // awaitingApproval = ยื่นแล้วรอเจ้าของดีล. ทั้งคู่บล็อกปุ่มส่ง/Won เหมือนกัน แต่ปุ่มที่
   // ต้องกดต่อคนละตัว — เดิมมีสถานะเดียว (pending) ทำให้อนุมัติใบที่ยังกรอกไม่เสร็จได้
@@ -184,9 +195,7 @@ export default function QuotationEditorPage() {
   const rejectionNotice = quotationRejectionNotice(quote);
   // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Rev.
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
-  const canReviseDocument = !!quote && canEditCap
-    && isRevisableQuotationApprovalStatus(quote.approvalStatus)
-    && EDITABLE.has(quote.status);
+  const canReviseDocument = !!quote && canEditCap && isRevisableQuotation(quote);
   // ปิด Won ได้เมื่อใบผ่านการอนุมัติแล้ว (หรือใบ grandfather) และยังไม่ถูกรับ/ปิด —
   // หลัง mig 0165 ใบพวกนี้เป็น 'sent' เสมอ ส่วน 'draft' เหลือไว้รองรับใบเก่าที่อนุมัติ
   // ก่อน migration และใบ grandfather ที่ไม่เคยผ่านเส้นทางอนุมัติ
@@ -199,7 +208,9 @@ export default function QuotationEditorPage() {
     && !isQuotationAwaitingApproval(quote)
     && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
-  const editable = canEditDocument && editMode;
+  // เท่ากับ `editMode` แล้วตั้งแต่ `editMode` คูณ `canEditDocument` เข้าไป — คงชื่อไว้
+  // เพราะ JSX ทั้งหน้าอ่านว่า "ช่องนี้แก้ได้ไหม" ไม่ใช่ "อยู่ในโหมดไหน"
+  const editable = editMode;
 
   // ตัวเลือกที่อยู่ (0202) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
   // ฝั่ง server (pickDocumentAddresses) จะได้ไม่โชว์คนละอย่างกับที่บันทึกจริง
