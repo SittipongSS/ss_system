@@ -23,7 +23,7 @@ import {
   acknowledgeRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
-  deleteRequestError, generateRequestDocNo, submitRequestError,
+  deleteRequestError, ensureRequestDocNo, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
 import { requestHasItems, requestKindLabel, requestShapeError } from '@/lib/master/requestTypes';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
@@ -152,7 +152,9 @@ export async function PATCH(request, { params }) {
       const briefNameError = scentBriefNameError(before.briefs, { stage: 'submit' });
       if (briefNameError) return Response.json({ error: briefNameError }, { status: 409 });
       // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
-      patch.docNo = await generateRequestDocNo(supabase, before.kind, before.dept);
+      // ⚠️ ใบที่ถูก **ตีกลับ** เป็นร่างที่มีเลขอยู่แล้ว ⇒ ต้องใช้เลขเดิม ไม่ใช่ออกใหม่
+      // (`docNo` แก้ไม่ได้ที่ระดับ trigger — ดูเหตุผลเต็มใน `ensureRequestDocNo`)
+      patch.docNo = await ensureRequestDocNo(supabase, before);
       patch.status = 'pending';
       patch.submittedAt = nowIso;
       summary = `ส่งคำร้อง ${patch.docNo} ถึงฝ่าย ${before.dept}`;
@@ -473,7 +475,8 @@ export async function PATCH(request, { params }) {
       _canEditPdr: canEditPdr(user, after),
     });
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 });
+    // guard ระดับ DB โยนรหัสดิบ — แปลก่อนส่งขึ้นจอ ไม่งั้นผู้ใช้เห็นแต่ชื่อ exception
+    return Response.json({ error: requestGuardMessage(e) || e.message }, { status: 500 });
   }
 }
 
@@ -520,7 +523,9 @@ export async function DELETE(request, { params }) {
   const { error } = force
     ? await supabase.rpc('force_delete_dept_request', { p_id: id })
     : await supabase.from('dept_requests').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return Response.json({ error: requestGuardMessage(error) || error.message }, { status: 500 });
+  }
   // เธรดไม่มี FK กับคำร้อง (polymorphic) — ลบแล้วต้องเก็บกวาดเอง ไม่งั้นเหลือเธรด
   // ลอยที่ไม่มีเจ้าของ · ครอบทั้งเส้นปกติและเส้น force (RPC ไม่รู้จักตารางนี้)
   await purgeUpdates(supabase, 'dept_request', id);
