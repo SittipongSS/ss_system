@@ -3827,6 +3827,49 @@ button.empty-state { width: 100%; font: inherit; }
   color: var(--text);
 }
 
+/* แถบรหัสที่ระบบประกอบให้ (CodeStrip) — มติผู้ใช้ 2026-08-12 "แบบ A"
+   เส้นประ = ภาษาเดียวกับ .deal-derived (ค่าที่ระบบเติมให้ ไม่ใช่ช่องที่แก้ได้)
+   ⚠️ เลื่อนแนวนอนในตัวเอง: รหัส FG มี 5 ท่อน บนมือถือกว้างไม่พอ — ปล่อยให้ดัน
+   ความกว้างโมดัลเมื่อไร ทั้งฟอร์มจะเลื่อนซ้ายขวาทั้งใบ */
+.code-strip {
+  display: flex;
+  align-items: stretch;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  overflow-x: auto;
+  min-height: var(--ctl-h);
+}
+.code-strip-part {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-0-5);
+  padding: var(--space-1) var(--space-3);
+}
+.code-strip-part + .code-strip-part { border-left: 1px solid var(--border); }
+.code-strip-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: var(--lh-tight);
+}
+.code-strip-key {
+  font-size: var(--fs-3);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.code-strip-part[data-tone="fixed"] .code-strip-value { color: var(--text-3); }
+/* ท่อนที่ระบบเพิ่งออกให้ (เลขรัน) = สีเน้น — ท่อนเดียวในรหัสที่ยังไม่มีใครเห็นมาก่อน */
+.code-strip-part[data-tone="new"] .code-strip-value { color: var(--accent-ink); }
+.code-strip-part[data-blank] .code-strip-value { color: var(--text-3); opacity: var(--op-muted); }
+
 /* ── คอนโทรลเลือกแบบเห็นครบ (กติกาคอนโทรล v2 — มติผู้ใช้ 2026-08-08) ──────
    "ไม่จำเป็นต้องใช้ dropdown ทุกอย่าง … อยากให้ผู้ใช้ใช้ง่ายกว่า"
    ชุดตายตัว 2–4 = แผ่นเลือก (OptionTiles) · ลำดับขั้น 4–6 = แถบขั้น (StageSteps)

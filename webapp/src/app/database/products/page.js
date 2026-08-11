@@ -20,7 +20,10 @@ import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
-import { categoryOf, categoryFlags, categoryInfo } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
+import {
+  CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
+} from "@/lib/master/masterCodes";
 import { brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney } from "@/lib/format";
 
@@ -66,6 +69,9 @@ export default function ProductRegistry() {
 
   const emptyForm = EMPTY_PRODUCT;
   const [formData, setFormData] = useState(emptyForm);
+  // โหมดรหัสสินค้า (มติผู้ใช้ 2026-08-12) — ตั้งต้น "ระบบใหม่" ทุกครั้งที่เปิดฟอร์ม
+  const [codeMode, setCodeMode] = useState(DEFAULT_CODE_MODE);
+  const [nextFgRunNo, setNextFgRunNo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
   const [search, setSearch] = useState("");
@@ -106,8 +112,6 @@ export default function ProductRegistry() {
     }
     await sendDecision(id, status, { rejectionReason });
   };
-
-  const getCategoryInfo = (fgCode) => categoryInfo(fgCode, productTypes);
 
   // Main category (เช่น ODM) + sub-category name for the list — prefers the
   // stored categoryCode (set on save), falls back to deriving it from fgCode
@@ -151,9 +155,20 @@ export default function ProductRegistry() {
 
 
 
-  const openForm = () => {
+  // เปิดฟอร์ม = เริ่มใหม่ทุกครั้ง (ฟอร์มเปล่า + สวิตช์กลับไปที่ "ระบบใหม่") แล้วถาม
+  // เลขรันถัดไปมาโชว์บนแถบรหัส
+  // ⚠️ พรีวิวเท่านั้น — เลขจริงจองตอน POST (ฟอร์มเขียนกำกับไว้แล้ว)
+  const openForm = async () => {
     setFormData(emptyForm);
+    setCodeMode(DEFAULT_CODE_MODE);
+    setNextFgRunNo(null);
     setShowForm(true);
+    try {
+      const res = await fetch("/api/master/products/next-code");
+      if (res.ok) setNextFgRunNo((await res.json()).number ?? null);
+    } catch {
+      // อ่านไม่ได้ = ท่อนเลขรันบนแถบเป็นช่องว่าง ไม่ใช่ตัวเลขมั่ว — บันทึกได้ตามปกติ
+    }
   };
 
   // prefill จากใบขอราคาผลิต (มติ 2026-07-23 — "ไปต่อ" กรอกฟอร์มให้เกือบหมด):
@@ -169,8 +184,10 @@ export default function ProductRegistry() {
     // เติมเฉพาะช่องที่ฟอร์มสินค้ามีจริง — ชื่อสินค้าจากรายการในใบขอราคา
     // (ประกอบกลิ่นเข้าไปในชื่อถ้ามี ช่วยให้ไม่ต้องพิมพ์ซ้ำ) เซลเติมรหัส FG + ลูกค้าเอง
     const desc = [data.productDescription, data.fragranceName].filter(Boolean).join(" · ");
-    setFormData({ ...emptyForm, productDescription: desc });
-    setShowForm(true);
+    // เปิดผ่าน openForm เพื่อให้ได้ของครบชุดเหมือนกดปุ่มเอง (สวิตช์โหมดรหัส + เลขรัน
+    // ถัดไปบนแถบรหัส) แล้วค่อยเติมชื่อจากใบขอราคาทับ — เปิดฟอร์มเองตรง ๆ เมื่อไร
+    // แถบรหัสจะว่างทั้งที่โหมดเป็น "ระบบใหม่"
+    openForm().then(() => setFormData((f) => ({ ...f, productDescription: desc })));
     // ล้าง query ออกจาก URL กัน prefill ซ้ำตอน refresh
     window.history.replaceState({}, "", window.location.pathname);
     // emptyForm คงที่ตลอดอายุหน้า — รันครั้งเดียวตอน mount พอ
@@ -186,9 +203,23 @@ export default function ProductRegistry() {
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       notifyToast.error("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
+    // ด่านรหัส/หมวด — ตัวตรวจตัวเดียวกับที่ API ใช้ (กฎ: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้
+    // ห้ามมี) · โหมดระบบใหม่: ยังไม่มีรหัสให้ตรวจ (server ประกอบตอนบันทึก) จึงตรวจว่า
+    // ตอบครบสามคำตอบหรือยังแทน
+    if (codeMode === CODE_MODE_AUTO) {
+      if (!formData.categoryCode) { notifyToast.error("กรุณาเลือกหมวดสินค้า"); return; }
+      const customer = customers.find((c) => c.id === formData.customerId);
+      if (!customerCodeSegment(customer?.arCode)) {
+        notifyToast.error(`ลูกค้ารายนี้มีรหัส ${customer?.arCode || "—"} ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง`);
+        return;
+      }
+    } else {
+      const codeError = fgCodeError(formData.fgCode, { mode: codeMode, categoryCode: formData.categoryCode });
+      if (codeError) { notifyToast.error(codeError); return; }
+    }
     // เตือนกลับด้านกับของเดิม: popup เฉพาะหมวดที่ติ๊กธงบน product_types (mig 0131 —
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
-    const catInfo = getCategoryInfo(formData.fgCode);
+    const catInfo = categoryInfoOf(formData.categoryCode || categoryOf(formData.fgCode), productTypes);
     const catLabel = catInfo?.typeInfo
       ? `${catInfo.code} (${catInfo.typeInfo.nameTh || catInfo.typeInfo.nameEn || ""})`
       : catInfo?.code || "";
@@ -208,6 +239,7 @@ export default function ProductRegistry() {
     setSubmitting(true);
     const payload = {
       ...formData,
+      codeMode,
       assignee: userName,
       volume: parseFloat(formData.volume),
       volumeUnit: formData.volumeUnit || "ml",
@@ -224,6 +256,10 @@ export default function ProductRegistry() {
         const created = await res.json();
         setShowForm(false);
         await fetchProducts();
+        // โหมดระบบใหม่ผู้ใช้ไม่ได้พิมพ์รหัสเอง — ต้องบอกว่าได้รหัสอะไรไป
+        if (codeMode === CODE_MODE_AUTO && created?.fgCode) {
+          notifyToast.success(`บันทึกแล้ว — รหัสสินค้าที่ได้คือ ${created.fgCode}`);
+        }
         if (created?.approvalStatus === "pending") {
           notifyToast.info("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำสินค้านี้ไปใช้งานได้");
         }
@@ -531,6 +567,9 @@ export default function ProductRegistry() {
             brandOptions={brandOptions}
             creatorName={userName}
             onCustomerChange={(v) => setFormData((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }))}
+            codeMode={codeMode}
+            onCodeMode={setCodeMode}
+            nextFgRunNo={nextFgRunNo}
           />
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>

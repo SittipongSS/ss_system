@@ -10,10 +10,25 @@
 //   creatorName    — ป้าย "ผู้สร้าง" มีเฉพาะตอนสร้าง
 //   factoryPrice   — "input" (สร้าง: กรอกได้) | "readonly" (แก้: ดูอย่างเดียว
 //                    ต้องกดปุ่มอัปเดตราคาผลิตแยก เพราะกระทบประวัติราคา/ต้นทุน)
+//   onCodeMode     — มีสวิตช์ "ระบบใหม่" (โหมดสร้าง) · ไม่ส่ง = โหมดแก้
+//                    เปิด = ไม่มีช่องพิมพ์รหัส มีตัวเลือกหมวด + แถบรหัสที่ประกอบให้
+//                    ปิด = ช่องพิมพ์รหัสแบบเดิม หมวดอ่านย้อนจากรหัส (mig 0230)
+import { useEffect, useState } from "react";
+import ChoiceChips from "@/components/ui/ChoiceChips";
+import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { RETAIL_PRICE_MAIN_CATEGORY, categoryInfo, showsRetailPrice } from "@/lib/master/categoryOf";
+import {
+  RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
+} from "@/lib/master/categoryOf";
+import {
+  CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment, fgCodeParts,
+} from "@/lib/master/masterCodes";
+import {
+  productDuplicateWarning, productOtherSizeHint, splitProductMatches,
+} from "@/lib/master/productDuplicate";
 import { brandBoth } from "@/lib/master/brands";
 import {
   DEFAULT_SALE_UNIT,
@@ -28,6 +43,9 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
+  // หมวดสินค้า (mig 0230): โหมดระบบใหม่เลือกจากตัวเลือกหมวดแล้วรหัสประกอบตาม ·
+  // โหมดกรอกเองอ่านย้อนจากรหัสที่พิมพ์ — ทั้งสองทางเขียนลงช่องนี้ช่องเดียว
+  categoryCode: "",
   brandName: "", brandNameEn: "",
   // สูตรมาจากทะเบียน (mig 0171) — formulaName/Code/Date เป็น snapshot ที่ server
   // เติมให้จาก formulaId ฟอร์มไม่ต้องส่ง (เก็บไว้ใน state เพื่อโชว์ค่าเดิมของ
@@ -38,7 +56,7 @@ export const EMPTY_PRODUCT = {
 
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
 export const PRODUCT_EDIT_FIELDS = [
-  "customerId", "fgCode", "productDescription", "productDescriptionEn",
+  "customerId", "fgCode", "categoryCode", "productDescription", "productDescriptionEn",
   "brandName", "brandNameEn", "formulaId", "formulaName", "formulaCode", "formulaDate",
   "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
 ];
@@ -49,11 +67,15 @@ export const productToForm = (p) => {
   return seed;
 };
 
-// กล่องบอกหมวดหมู่/ภาษีสรรพสามิต/จดแจ้ง อย. ใต้ช่อง FG Code — ธงมาจากช่องติ๊ก
-// บนหมวดสินค้า (product_types.isExcise / requiresFdaNotice, mig 0131)
-function CategoryBox({ fgCode, productTypes }) {
-  const cat = categoryInfo(fgCode, productTypes);
-  if (!fgCode) {
+// กล่องบอกหมวดหมู่/ภาษีสรรพสามิต/จดแจ้ง อย. — ธงมาจากช่องติ๊กบนหมวดสินค้า
+// (product_types.isExcise / requiresFdaNotice, mig 0131)
+//
+// รับ **รหัสหมวด** ตรง ๆ (โหมดระบบใหม่: มาจากตัวเลือกหมวด) หรืออ่านย้อนจากรหัส FG
+// ที่พิมพ์ (โหมดกรอกเอง) — สองทางนี้คือสองโหมดของฟอร์ม ไม่ใช่กล่องคนละใบ
+function CategoryBox({ categoryCode, fgCode, productTypes }) {
+  const code = categoryCode || categoryOf(fgCode);
+  const cat = categoryInfoOf(code, productTypes);
+  if (!categoryCode && !fgCode) {
     return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวดที่ติ๊ก &quot;เสียภาษีสรรพสามิต&quot; เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
   }
   if (!cat.code) {
@@ -75,7 +97,9 @@ function CategoryBox({ fgCode, productTypes }) {
   return (
     <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
       <div className="flex items-center gap-2">
-        <span className="font-mono bg-white/50 px-1.5 py-0.5 rounded text-[10px] font-bold">{cat.code}</span>
+        {/* พื้นชิปเคยเป็น bg-white/50 — บนธีมมืดกลายเป็นขาวจาง ๆ ทับตัวอักษรสีส้ม
+            อ่านแทบไม่ออก · ใช้พื้นของระบบแทนเพื่อให้อ่านได้ทั้งสองธีม */}
+        <span className="font-mono px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--panel)]">{cat.code}</span>
         <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
       </div>
       <div className="text-[11px] opacity-80 pl-1">กลุ่มหลัก: {cat.typeInfo.mainCategoryName}</div>
@@ -101,9 +125,49 @@ export default function ProductForm({
   creatorName = null,        // ป้าย "ผู้สร้าง" (เฉพาะตอนสร้าง)
   factoryPrice = "input",    // "input" | "readonly"
   currentCostPrice = null,   // โชว์ตอน readonly
+  // ── โหมดรหัสสินค้า (มติผู้ใช้ 2026-08-12 "แบบ A") ────────────────────────
+  // onCodeMode = null (ค่าตั้งต้น) แปลว่าไม่มีสวิตช์ = โหมดแก้
+  codeMode = CODE_MODE_MANUAL,
+  onCodeMode = null,
+  nextFgRunNo = null,        // เลขรันถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
+  fgLocked = false,          // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
+  selfId = null,             // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const money = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v));
+  const mode = codeModeOf(codeMode);
+  const autoCode = !!onCodeMode && mode === CODE_MODE_AUTO;
+
+  // หมวดสินค้า: โหมดระบบใหม่เลือกจากตัวเลือกหมวดกลาง · โหมดกรอกเอง**อ่านจากรหัสที่พิมพ์
+  // เท่านั้น** — ไม่ถอยไปใช้ form.categoryCode เพราะค่านั้นอาจเป็นของที่เลือกไว้ก่อนกด
+  // ปิดสวิตช์ แล้วกล่องหมวดจะประกาศหมวดที่ยังไม่มีรหัสรองรับ (เห็นตอนพรีวิว: ช่องรหัส
+  // ว่าง แต่กล่องยังบอกว่า 01-002 ต้องเสียภาษีสรรพสามิต)
+  const categoryCode = autoCode ? (form.categoryCode || "") : (categoryOf(form.fgCode) || "");
+
+  // ── เช็คสินค้าซ้ำของลูกค้ารายนี้ (มติผู้ใช้ 2026-08-12) ────────────────────
+  // โหลด FG ของลูกค้าที่เลือกครั้งเดียวต่อ 1 ลูกค้า แล้วเทียบชื่อ/ขนาดในเครื่องระหว่าง
+  // พิมพ์ — ลิสต์ต่อลูกค้าสั้น (หลักสิบ) และคนกรอกแก้ชื่อ/ขนาดหลายรอบกว่าจะลงตัว
+  // ยิงทุกครั้งที่พิมพ์คือยิงเปล่า
+  const [customerProducts, setCustomerProducts] = useState([]);
+  useEffect(() => {
+    if (!form.customerId) { setCustomerProducts([]); return undefined; }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/master/products/by-customer?customerId=${encodeURIComponent(form.customerId)}`, { signal: controller.signal });
+        setCustomerProducts(res.ok ? await res.json() : []);
+      } catch {
+        // โหลดไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — รหัส FG ยังกันซ้ำที่ระดับ DB อยู่
+        setCustomerProducts([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [form.customerId]);
+
+  const { sameSize, otherSize } = splitProductMatches(customerProducts, form, { excludeId: selfId });
+  const duplicateWarning = productDuplicateWarning(sameSize);
+  const otherSizeHint = productOtherSizeHint(otherSize);
+  const selectedCustomer = customers.find((c) => c.id === form.customerId) || null;
 
   // ราคาขายปลีกโผล่เฉพาะกลุ่มหลัก 01 · **แต่ถ้าสินค้าตัวนี้มีราคาค้างอยู่ ต้องโชว์เสมอ**
   // ไม่ว่าหมวดไหน — ซ่อนช่องที่ยังมีค่า = ค่าติดอยู่ในฐานข้อมูลโดยไม่มีทางเห็นหรือลบ
@@ -113,7 +177,7 @@ export default function ProductForm({
   const saleUnitLabel = form.saleUnit || DEFAULT_SALE_UNIT;
   const packaging = packagingSummary(form);
 
-  const inRetailCategory = showsRetailPrice(form.fgCode, productTypes);
+  const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
   const showRetail = inRetailCategory || hasRetailValue;
 
@@ -131,6 +195,74 @@ export default function ProductForm({
 
   return (
     <>
+      {/* ── รหัสสินค้า + สวิตช์โหมด — อยู่เหนือทุก section (มติผู้ใช้ 2026-08-12 แบบ A)
+          โหมดระบบใหม่: รหัสไม่ใช่ช่องกรอก แต่เป็น **ผลของสามคำตอบด้านล่าง** จึงโชว์
+          เป็นแถบที่โตขึ้นทีละท่อนตามที่ตอบ — ท่อนไหนยังว่างคือยังไม่ได้ตอบข้อนั้น ── */}
+      <div className="mb-[22px]">
+        <div className="form-group">
+          <label className="flex items-center gap-2 flex-wrap">
+            <span>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></span>
+            {onCodeMode && (
+              <button
+                type="button"
+                className="ui-switch ml-auto"
+                data-on={mode === CODE_MODE_AUTO ? "1" : undefined}
+                aria-pressed={mode === CODE_MODE_AUTO}
+                onClick={() => onCodeMode(mode === CODE_MODE_AUTO ? CODE_MODE_MANUAL : CODE_MODE_AUTO)}
+              >
+                <i aria-hidden="true" />ระบบใหม่ — ออกรหัสให้เอง
+              </button>
+            )}
+          </label>
+          {autoCode ? (
+            <>
+              <CodeStrip
+                parts={fgCodeParts({
+                  arCode: selectedCustomer?.arCode,
+                  categoryCode,
+                  runNo: nextFgRunNo,
+                })}
+                ariaLabel="รหัสสินค้าที่ระบบจะออกให้"
+              />
+              <span className="text-xs text-[var(--text-3)] mt-1">
+                {selectedCustomer && selectedCustomer.arCode && !customerCodeSegment(selectedCustomer.arCode)
+                  ? `ลูกค้ารายนี้มีรหัส ${selectedCustomer.arCode} ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์แล้วกรอกรหัสสินค้าเอง`
+                  : "เลือกลูกค้าและหมวดด้านล่างให้ครบ แล้วรหัสจะประกอบเอง · เลขรันจองตอนกดบันทึก"}
+              </span>
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                name="fgCode"
+                value={form.fgCode}
+                onChange={(e) => {
+                  // โหมดกรอกเอง: หมวดอ่านย้อนจากรหัสที่พิมพ์ — เก็บลงช่องเดียวกับที่
+                  // ตัวเลือกหมวดเขียน (form.categoryCode) เพื่อไม่ให้มีสองแหล่งความจริง
+                  const fgCode = e.target.value;
+                  onForm({ fgCode, categoryCode: categoryOf(fgCode) || "" });
+                }}
+                required
+                readOnly={fgLocked}
+                placeholder={FG_MANUAL_HINT}
+                className="premium-input w-full font-mono text-base"
+                style={fgLocked ? { color: "var(--text-3)", background: "var(--panel-2)", cursor: "not-allowed" } : undefined}
+              />
+              {fgLocked ? (
+                <span className="text-xs text-[var(--text-3)] mt-1">
+                  รหัสนี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้ — ต้องการรหัสอื่นต้องสร้างรายการใหม่
+                </span>
+              ) : (
+                <span className="text-xs text-[var(--text-3)] mt-1">
+                  กรอกเอง {FG_MANUAL_HINT} — ระบบอ่านหมวด BB-CCC จากรหัสให้เอง
+                </span>
+              )}
+              <CategoryBox fgCode={form.fgCode} productTypes={productTypes} />
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Section 1: product */}
       <div className="mb-[22px]">
         <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
@@ -142,26 +274,10 @@ export default function ProductForm({
           )}
         </div>
         <div className="form-grid cols-2">
+          {/* ⭐ ลูกค้าขึ้นก่อนทุกช่อง — เป็นตัวกำหนดทั้ง **ท่อน AAAA ของรหัส** และชุด
+              แบรนด์ที่เลือกได้ (กฎ "ตัวกำหนดบริบทอยู่บนสุด") · ของเดิมอยู่ใต้รหัสที่
+              ต้องพิมพ์เอง ทั้งที่รหัสนั้นมีรหัสลูกค้าฝังอยู่ข้างใน */}
           <div className="form-group col-span-2">
-            <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="fgCode" value={form.fgCode} onChange={set("fgCode")} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
-            <CategoryBox fgCode={form.fgCode} productTypes={productTypes} />
-          </div>
-          {/* ชื่อ TH/EN อยู่แถวเดียวกัน — เดิมกินคนละแถวเต็มทั้งที่ช่องสั้น และเงื่อนไข
-              "อย่างน้อย 1 ภาษา" ไปแปะใต้ช่อง EN ช่องเดียว คนที่กรอก TH แล้วข้ามจึงไม่เห็น
-              ตอนนี้ดาวอยู่ที่ป้ายทั้งสองช่อง + คำอธิบายกินเต็มแถวใต้ทั้งคู่ */}
-          <div className="form-group">
-            <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="productDescription" value={form.productDescription} onChange={set("productDescription")} placeholder="เช่น มิดไนท์บลูม" className="premium-input w-full" />
-          </div>
-          <div className="form-group">
-            <label>ชื่อสินค้า / รายละเอียด (อังกฤษ) <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="productDescriptionEn" value={form.productDescriptionEn} onChange={set("productDescriptionEn")} placeholder="e.g. Midnight Bloom" className="premium-input w-full" />
-          </div>
-          <div className="form-group col-span-2">
-            <span className="text-xs text-[var(--text-3)]">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) — ไม่ต้องครบทั้งสอง</span>
-          </div>
-          <div className="form-group">
             <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
             <SearchableSelect
               entity="customer"
@@ -181,7 +297,47 @@ export default function ProductForm({
                 : "เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ"}
             </span>
           </div>
+          {/* หมวดสินค้า: ตัวเลือกหมวดกลางตัวเดียวกับฟอร์มดีล/โครงการ (TwoPanePicker
+              105 หมวด/4 กลุ่ม) — โผล่เฉพาะโหมดระบบใหม่ เพราะโหมดกรอกเองหมวดฝังอยู่ใน
+              รหัสที่พิมพ์แล้ว การมีตัวเลือกซ้ำอีกช่องคือการพูดเรื่องเดียวกันสองทาง */}
+          {autoCode && (
+            <div className="form-group col-span-2">
+              {/* ป้ายมากับตัวคอนโทรลเอง — ผู้เรียกใส่ป้ายซ้อนอีกชั้นเมื่อไร จะได้
+                  "หมวดสินค้า *" สองบรรทัดติดกัน (เจอตอนพรีวิวรอบแรก) */}
+              <ProductCategorySelect
+                categories={productTypes}
+                value={categoryCode}
+                onChange={(code) => onForm({ categoryCode: code || "" })}
+                required
+              />
+              <CategoryBox categoryCode={categoryCode} productTypes={productTypes} />
+            </div>
+          )}
+          {/* ชื่อ TH/EN อยู่แถวเดียวกัน — เดิมกินคนละแถวเต็มทั้งที่ช่องสั้น และเงื่อนไข
+              "อย่างน้อย 1 ภาษา" ไปแปะใต้ช่อง EN ช่องเดียว คนที่กรอก TH แล้วข้ามจึงไม่เห็น
+              ตอนนี้ดาวอยู่ที่ป้ายทั้งสองช่อง + คำอธิบายกินเต็มแถวใต้ทั้งคู่ */}
           <div className="form-group">
+            <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
+            <input type="text" name="productDescription" value={form.productDescription} onChange={set("productDescription")} placeholder="เช่น มิดไนท์บลูม" className="premium-input w-full" />
+          </div>
+          <div className="form-group">
+            <label>ชื่อสินค้า / รายละเอียด (อังกฤษ) <span className="text-[var(--red)]">*</span></label>
+            <input type="text" name="productDescriptionEn" value={form.productDescriptionEn} onChange={set("productDescriptionEn")} placeholder="e.g. Midnight Bloom" className="premium-input w-full" />
+          </div>
+          <div className="form-group col-span-2">
+            <span className="text-xs text-[var(--text-3)]">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) — ไม่ต้องครบทั้งสอง</span>
+            {/* ด่านซ้ำของสินค้า = ลูกค้า + ชื่อ + ขนาดบรรจุ (ขนาดอยู่ section 2 แต่คำเตือน
+                อยู่ตรงนี้ เพราะ "ชื่อ" คือช่องที่คนกำลังตัดสินใจว่าจะตั้งซ้ำหรือไม่)
+                · ตรงทั้งชื่อและขนาด = เตือน (บันทึกต่อได้ตามมติ — มีเคสที่ตั้งใจซ้ำจริง)
+                · ชื่อเดียวกันคนละขนาด = เรื่องปกติของตระกูลสินค้า บอกเฉย ๆ ไม่ใช่เตือน */}
+            {duplicateWarning && (
+              <span className="text-xs text-[var(--amber)] mt-1">{duplicateWarning}</span>
+            )}
+            {!duplicateWarning && otherSizeHint && (
+              <span className="text-xs text-[var(--text-3)] mt-1">{otherSizeHint}</span>
+            )}
+          </div>
+          <div className="form-group col-span-2">
             <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
             <div className="flex gap-1.5 items-center">
               <div className="flex-1 min-w-0">
@@ -255,13 +411,16 @@ export default function ProductForm({
               ผิดทันที ('1 ml = 50 ขวด') */}
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
-            <div className="flex gap-2">
-              <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
-              <Select name="volumeUnit" value={form.volumeUnit || DEFAULT_VOLUME_UNIT} onChange={set("volumeUnit")} style={{ width: "80px" }}>
-                {unitOptions(VOLUME_UNITS, form.volumeUnit).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </Select>
+            <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
+            {/* หน่วยปริมาตรมี 6 ตัว = กางให้เห็นตามกติกาคอนโทรล (≤6 ไม่ต้องซ่อนในดรอปดาวน์)
+                ⚠️ หน่วยขายด้านล่างยังเป็นดรอปดาวน์เพราะมี 8 ตัว — เกินเกณฑ์ */}
+            <div className="mt-1.5">
+              <ChoiceChips
+                value={form.volumeUnit || DEFAULT_VOLUME_UNIT}
+                onChange={(v) => onForm({ volumeUnit: v })}
+                options={unitOptions(VOLUME_UNITS, form.volumeUnit)}
+                ariaLabel="หน่วยปริมาตร/น้ำหนักบรรจุ"
+              />
             </div>
             <span className="text-xs text-[var(--text-3)] mt-1"><strong>ขนาดของ 1 {saleUnitLabel}</strong> — ไม่ใช่หน่วยที่ใช้นับขาย</span>
           </div>

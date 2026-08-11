@@ -26,8 +26,16 @@ export const RETAIL_PRICE_MAIN_CATEGORY = '01';
 // จึงเป็น "กลุ่ม 01 **หรือ** หมวดที่ติ๊กสรรพสามิต" ไม่ใช่กลุ่ม 01 อย่างเดียว
 // (ผู้เรียกที่ยังไม่มีรายการหมวด ส่งมาไม่ได้ก็ได้ — จะเหลือกติกากลุ่ม 01 เหมือนเดิม)
 export function showsRetailPrice(fgCode, productTypes = []) {
-  if (mainCategoryOf(fgCode) === RETAIL_PRICE_MAIN_CATEGORY) return true;
-  return isExciseCategory(categoryOf(fgCode), productTypes);
+  return showsRetailPriceForCategory(categoryOf(fgCode), productTypes);
+}
+
+// เหมือนกันแต่รับรหัสหมวดตรง ๆ — ฟอร์มสินค้าโหมด "ระบบใหม่" รู้หมวดตั้งแต่ตอนเลือก
+// ทั้งที่รหัส FG ยังไม่ถูกประกอบ (เลขรันมาจาก server ตอนบันทึก) ⇒ ถ้าผูกกับ fgCode
+// อย่างเดียว ช่องราคาขายปลีกจะไม่โผล่เลยตอนสร้าง แล้วสินค้าสรรพสามิตจะถูกบันทึกโดยไม่มี
+// ราคาขายปลีก = ภาษีคิดเป็น 0 เงียบ ๆ (บั๊กเดียวกับที่คอมเมนต์ด้านบนเล่าไว้)
+export function showsRetailPriceForCategory(categoryCode, productTypes = []) {
+  if (categoryCode && String(categoryCode).slice(0, 2) === RETAIL_PRICE_MAIN_CATEGORY) return true;
+  return isExciseCategory(categoryCode, productTypes);
 }
 
 // มติ 2026-07-20: ภาษีสรรพสามิต/จดแจ้ง อย. ยึด "ช่องติ๊กบนหมวดสินค้า"
@@ -74,8 +82,14 @@ export function isExciseCategory(categoryCode, productTypes = []) {
 // lookup lives in one place.
 export function categoryInfo(fgCode, productTypes = []) {
   if (!fgCode) return null;
-  const code = categoryOf(fgCode);
-  if (!code) return { found: false, code: null };
-  const typeInfo = productTypes.find((t) => `${t.mainCategoryCode}-${t.typeCode}` === code);
-  return { found: !!typeInfo, code, typeInfo };
+  return categoryInfoOf(categoryOf(fgCode), productTypes);
+}
+
+// เหมือน categoryInfo แต่รับ "รหัสหมวด" ตรง ๆ — ใช้เมื่อหมวดมาจากตัวเลือกหมวด
+// (ProductCategorySelect) ไม่ได้มาจากการอ่านย้อนจากรหัส FG ที่พิมพ์ (มติ 2026-08-12:
+// โหมดระบบใหม่เลือกหมวดก่อน แล้วรหัสค่อยประกอบตาม — ไม่ใช่พิมพ์รหัสแล้ว parse กลับ)
+export function categoryInfoOf(categoryCode, productTypes = []) {
+  if (!categoryCode) return { found: false, code: null };
+  const typeInfo = productTypes.find((t) => `${t.mainCategoryCode}-${t.typeCode}` === categoryCode);
+  return { found: !!typeInfo, code: categoryCode, typeInfo };
 }

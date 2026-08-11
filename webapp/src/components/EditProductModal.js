@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
 import ProductForm, { PRODUCT_EDIT_FIELDS } from "@/components/database/ProductForm";
 import { brandTh, brandEn, normalizeBrands } from "@/lib/master/brands";
+import { isAutoFgCode } from "@/lib/master/masterCodes";
 import { fmtMoney } from "@/lib/format";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
@@ -156,7 +157,9 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     <Modal open={open} onClose={() => !(submitting || priceSubmitting) && onClose()} title={`แก้ไขสินค้า — ${product.fgCode}`} size="lg">
       <form onSubmit={submit}>
         {/* ฟอร์มเดียวกับโมดัลเพิ่มสินค้า (/database/products) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
-            ต่างแค่โหมด: ไม่มีป้ายผู้สร้าง และราคาผลิตดูอย่างเดียว (แก้ผ่านแผงด้านล่าง) */}
+            ต่างแค่โหมด: ไม่มีป้ายผู้สร้าง · ราคาผลิตดูอย่างเดียว (แก้ผ่านแผงด้านล่าง) ·
+            ไม่มีสวิตช์โหมดรหัส (รหัสออกไปแล้ว) และรหัสที่ระบบเป็นคนออกให้ = ล็อก
+            (mig 0230 — API บังคับซ้ำที่ PATCH) */}
         <ProductForm
           form={form}
           onForm={(patch) => setForm((f) => ({ ...f, ...patch }))}
@@ -167,6 +170,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           factoryPrice="readonly"
           currentCostPrice={product.costPrice}
           onCustomerChange={handleCustomerChange}
+          fgLocked={isAutoFgCode(product.fgCode)}
+          selfId={product.id}
         />
 
         {/* แผงอัปเดตราคาผลิต — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}

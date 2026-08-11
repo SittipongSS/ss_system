@@ -8,6 +8,7 @@ import { canApproveMasterData, isSuperuser, TEAMS } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
+import { CODE_MODE_AUTO, DEFAULT_CODE_MODE } from "@/lib/master/masterCodes";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
@@ -55,6 +56,10 @@ export default function CustomerDirectory() {
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const [formData, setFormData] = useState(EMPTY_CUSTOMER);
+  // โหมดรหัสลูกค้า (มติผู้ใช้ 2026-08-12) — ตั้งต้น "ระบบใหม่" ทุกครั้งที่เปิดฟอร์ม
+  // เพราะการเพิ่มลูกค้ารายใหม่คือกรณีปกติ · ปิดสวิตช์ = กรอกรหัสเดิมเอง (ข้อมูลย้อนหลัง)
+  const [codeMode, setCodeMode] = useState(DEFAULT_CODE_MODE);
+  const [nextArNumber, setNextArNumber] = useState(null);
 
   const fetchCustomers = async () => {
     try {
@@ -91,6 +96,24 @@ export default function CustomerDirectory() {
     await sendDecision(id, status, { rejectionReason });
   };
 
+  // เปิดฟอร์ม = เริ่มใหม่ทุกครั้ง (ฟอร์มเปล่า + สวิตช์กลับไปที่ "ระบบใหม่") แล้วถาม
+  // เลขถัดไปมาโชว์บนแถบรหัส
+  // ⚠️ เป็นแค่ **พรีวิว** — เลขจริงจองตอน POST ถ้ามีคนบันทึกก่อน เลขที่ได้จะขยับ
+  // (ฟอร์มเขียนกำกับไว้แล้ว) · ยิงทุกครั้งที่เปิด ไม่ cache เพราะเลขขยับได้ตลอด
+  const openForm = async () => {
+    setFormData(EMPTY_CUSTOMER);
+    setCodeMode(DEFAULT_CODE_MODE);
+    setNextArNumber(null);
+    setShowForm(true);
+    try {
+      const res = await fetch("/api/master/customers/next-code");
+      if (res.ok) setNextArNumber((await res.json()).number ?? null);
+    } catch {
+      // อ่านเลขถัดไปไม่ได้ = แถบรหัสโชว์ช่องว่าง ไม่ใช่ตัวเลขมั่ว — บันทึกได้ตามปกติ
+      // เพราะเลขจริงมาจาก server ตอน POST อยู่แล้ว
+    }
+  };
+
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -100,6 +123,9 @@ export default function CustomerDirectory() {
 
     // แผนที่/เอกสารแนบเพิ่มทีหลังที่หน้าลูกค้า (ส่วน "เอกสารของลูกค้า").
     const payload = {
+      // โหมดรหัส: auto = server ออกเลขให้ (ค่า arCode ที่ส่งไปไม่ถูกใช้ ส่งไปเพื่อ
+      // ให้ payload หน้าตาเดียวกันทั้งสองโหมด) · manual = ใช้รหัสที่กรอก
+      codeMode,
       arCode: formData.arCode,
       name: formData.name,
       customerType: formData.customerType || "company",
@@ -126,6 +152,11 @@ export default function CustomerDirectory() {
         setFormData(EMPTY_CUSTOMER);
         setShowForm(false);
         fetchCustomers();
+        // เลขที่ระบบเพิ่งจองไป = เลขถัดไปของใบหน้าเปลี่ยนแล้ว ต้องบอกให้รู้ว่าได้เลขอะไร
+        // (โหมด auto ผู้ใช้ไม่ได้พิมพ์รหัสเอง จึงไม่มีทางรู้ถ้าไม่บอก)
+        if (codeMode === CODE_MODE_AUTO && created?.arCode) {
+          notifyToast.success(`บันทึกแล้ว — รหัสลูกค้าที่ได้คือ ${created.arCode}`);
+        }
         if (created?.approvalStatus === "pending") {
           notifyToast.info("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำลูกค้ารายนี้ไปใช้งานได้");
         }
@@ -185,7 +216,7 @@ export default function CustomerDirectory() {
     <>
       <span className="ui-badge">{customers.length} รายการ</span>
       {canEdit && (
-        <button onClick={() => setShowForm(true)} className="btn btn-accent flex items-center gap-1.5">
+        <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
           <Plus size={16} /> เพิ่มลูกค้า
         </button>
       )}
@@ -396,6 +427,9 @@ export default function CustomerDirectory() {
             showTeams={superuser || myTeams.length > 1}
             canEditTeams={superuser || myTeams.length > 1}
             teamOptions={superuser ? TEAMS : myTeams}
+            codeMode={codeMode}
+            onCodeMode={setCodeMode}
+            nextArNumber={nextArNumber}
           />
           <div className="form-action-bar">
             <button

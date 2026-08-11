@@ -6,6 +6,7 @@ import {
 } from '@/lib/master/approval';
 import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
+import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode } from '@/lib/master/masterCodes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
@@ -176,6 +177,21 @@ export async function PATCH(request, { params }) {
 
   // Duplicate FG Code check (if changing)
   if (body.fgCode && body.fgCode !== product.fgCode) {
+    // ⚠️ รหัสที่ระบบออกให้ (FG-AAAA-BB-CCC-DDDDD, mig 0230) แก้ไม่ได้ — เลขรันถูกจอง
+    // จากเคาน์เตอร์กลางไปแล้ว และรหัสไปอยู่บนใบเสนอราคา/ใบสั่งขาย/ทะเบียนสรรพสามิต
+    // ⇒ แก้ที่นี่ = ข้อมูลปลายน้ำอ้างรหัสที่ไม่มีอยู่แล้ว · ต้องการรหัสอื่น = สร้างใบใหม่
+    // (รหัสที่กรอกเองแบบเดิมยังแก้ได้ตามเดิม เพราะไม่มีเลขจองผูกอยู่)
+    if (isAutoFgCode(product.fgCode)) {
+      return Response.json(
+        { error: 'รหัสสินค้านี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้' },
+        { status: 400 },
+      );
+    }
+    const codeError = fgCodeError(body.fgCode, {
+      mode: CODE_MODE_MANUAL,
+      categoryCode: body.categoryCode ?? null,
+    });
+    if (codeError) return Response.json({ error: codeError }, { status: 400 });
     const { data: dup, error: dupError } = await supabase
       .from('products')
       .select('id')
