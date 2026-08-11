@@ -37,7 +37,7 @@ export function requestEditError(request, user) {
       ? 'คำร้องถูกยกเลิกแล้ว — แก้ไม่ได้'
       : 'ฝ่ายปลายทางรับเรื่องไปแล้ว — แก้ไม่ได้ ให้คุยต่อในเธรดแทน';
   }
-  if (!canManageRequest(user, request)) return 'แก้ได้เฉพาะผู้เปิดคำร้อง';
+  if (!canManageRequest(user, request)) return 'แก้ได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน';
   return null;
 }
 

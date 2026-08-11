@@ -10,6 +10,9 @@ export default function DetailOverview({
   eyebrow,
   title,
   description,
+  // แถวใต้คำอธิบาย — ของที่ "อ่านพร้อมชื่อเรื่อง" เช่นชิปคนสองฝั่งของใบคำร้อง (ม-101)
+  // ⚠️ ไม่ใช่ที่วางปุ่ม — ปุ่มมี `actions` ของตัวเองที่ฝั่งขวาแล้ว
+  meta,
   badges,
   actions,
   facts = [],
@@ -24,6 +27,7 @@ export default function DetailOverview({
           {eyebrow ? <span className={styles.eyebrow}>{eyebrow}</span> : null}
           <h1>{title || "-"}</h1>
           {description ? <div className={styles.description}>{description}</div> : null}
+          {meta ? <div className={styles.meta}>{meta}</div> : null}
         </div>
         {(badges || actions) ? (
           <div className={styles.headingActions}>
@@ -37,7 +41,7 @@ export default function DetailOverview({
           {facts.map((fact, index) => {
             const Icon = fact.icon;
             return (
-              <div key={fact.key || `${fact.label}-${index}`}>
+              <div key={fact.key || `${fact.label}-${index}`} data-tone={fact.tone || undefined}>
                 {Icon ? <Icon size={17} aria-hidden="true" /> : null}
                 <span>
                   <small>{fact.label}</small>

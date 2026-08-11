@@ -45,6 +45,6 @@ export function editPdrError(request, user) {
   if (!side) return 'คำร้องปิดแล้ว — แก้แบบฟอร์มไม่ได้';
   if (canEditPdr(user, request)) return null;
   return side === 'requester'
-    ? 'ช่วงนี้แก้ได้เฉพาะผู้เปิดคำร้อง'
+    ? 'ช่วงนี้แก้ได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน'
     : `รับเรื่องแล้ว — ช่วงนี้แก้ได้เฉพาะฝ่าย ${request.dept}`;
 }

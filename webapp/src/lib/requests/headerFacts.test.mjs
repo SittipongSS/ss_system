@@ -1,105 +1,140 @@
-// หัวใบคำร้อง — ช่องไหนขึ้นเมื่อไร
+// หัวใบคำร้อง — ช่องไหนขึ้นเมื่อไร และเวลาถูกอ่านเป็นคำว่าอะไร
 //
-// ⚠️ เคสแรกคือบั๊กที่ผู้ใช้แจ้งเอง (IS-26080003): ใบที่มีบรรทัดไม่เคยโชว์ลูกค้า
+// ⚠️ เคสในไฟล์นี้มาจากของจริงที่ผู้ใช้แจ้งเองสองรอบ:
+//   IS-26080003 — ใบที่มีบรรทัดไม่เคยโชว์ลูกค้า (ม-98)
+//   ม-101       — สองวันกำหนดสลับกันใช้ช่องเดียว ⇒ เทียบกันไม่ได้
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestHeaderFacts } from './headerFacts.js';
+import {
+  ageLabel, committedVsRequested, countdownLabel, requestHeaderFacts, requestHeaderPeople,
+} from './headerFacts.js';
+
+const NOW = new Date('2026-08-11T09:00:00+07:00');
 
 const base = {
-  createdAt: '2026-08-10T04:19:26.251Z',
-  requestedByName: 'Patinya Poonsittichokchai',
-  team: 'KA',
-  customerName: 'บริษัท กี๊ก แกลเลอรี่ จำกัด สำนักงานใหญ่',
-  refCustomer: { id: 'CUS-1', arCode: 'AR-231', contactPerson: 'คุณเจี๊ยบ', contactPhone: '081-234-5678' },
-  requestedDueDate: '2026-08-15',
+  dept: 'RD',
+  requestedByName: 'Panuwat Hongloylom',
+  team: 'SV',
+  customerName: 'สปาฟินเเลนด์',
+  refCustomer: { id: 'CUS-1', arCode: 'AR-899' },
+  submittedAt: '2026-08-10T12:09:12.347+00:00',
+  requestedDueDate: '2026-08-18',
 };
 
 const keys = (facts) => facts.map((f) => f.key);
 const byKey = (facts, key) => facts.find((f) => f.key === key);
 
-test('ลูกค้าขึ้นทุกใบ — ทั้งใบที่มีบรรทัดและใบที่ไม่มี', () => {
-  const withRows = requestHeaderFacts(base, { hasItems: true, progress: { done: 2, total: 5 } });
-  const withoutRows = requestHeaderFacts(base, { hasItems: false });
-
-  assert.ok(keys(withRows).includes('customer'), 'ใบที่มีบรรทัดต้องเห็นลูกค้า');
-  assert.ok(keys(withoutRows).includes('customer'));
-  // ของเดิมสองช่องนี้แย่งที่กัน — ตอนนี้อยู่ด้วยกันได้
-  assert.ok(keys(withRows).includes('progress'));
+// ── แถบข้อเท็จจริง = เรื่องเวลาล้วน ──────────────────────────────────────
+test('แถบข้อเท็จจริงไม่มีลูกค้าและไม่มีคนแล้ว — สองอย่างนั้นอยู่บรรทัดบน (ม-101)', () => {
+  const facts = requestHeaderFacts(base, { now: NOW });
+  for (const gone of ['customer', 'contact', 'requester', 'created']) {
+    assert.equal(keys(facts).includes(gone), false, `${gone} ต้องไม่อยู่ในแถบแล้ว`);
+  }
+  assert.deepEqual(keys(facts), ['submitted', 'requestedDue', 'committedDue']);
 });
 
-test('ชื่อลูกค้าเป็นตัวหลัก รหัส AR เป็นบรรทัดรอง', () => {
-  const customer = byKey(requestHeaderFacts(base, {}), 'customer');
-  assert.equal(customer.value, base.customerName);
-  assert.equal(customer.sub, 'AR-231');
+test('สองวันกำหนดอยู่คู่กันเสมอ แม้ฝ่ายยังไม่รับปาก', () => {
+  const facts = requestHeaderFacts(base, { now: NOW });
+  assert.equal(byKey(facts, 'requestedDue').value, '18/08/2026');
+  const committed = byKey(facts, 'committedDue');
+  assert.equal(committed.label, 'RD กำหนดส่ง');
+  // ⚠️ ห้ามเป็นขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
+  assert.equal(committed.value, 'ยังไม่ระบุ');
+  assert.equal(committed.sub, 'ระบุตอนกดรับเรื่อง');
 });
 
-test('ใบที่ทะเบียนยังไม่มีรหัส AR — โชว์ชื่อเปล่า ไม่ใช่ขีดหรือช่องว่าง', () => {
-  const facts = requestHeaderFacts({ ...base, refCustomer: { id: 'CUS-1' } }, {});
-  const customer = byKey(facts, 'customer');
-  assert.equal(customer.value, base.customerName);
-  assert.equal(customer.sub, null);
-});
-
-test('ใบที่ไม่ได้ผูกลูกค้า — ช่องยังอยู่แต่บอกว่าไม่มี', () => {
-  const facts = requestHeaderFacts({ ...base, customerName: null, refCustomer: null }, {});
-  assert.equal(byKey(facts, 'customer').value, '—');
-  assert.equal(keys(facts).includes('contact'), false, 'ไม่มีลูกค้า = ไม่มีผู้ติดต่อให้โชว์');
-});
-
-test('ทีมของผู้ขอเป็นบรรทัดรอง ไม่กินช่องของตัวเอง', () => {
-  const requester = byKey(requestHeaderFacts(base, {}), 'requester');
-  assert.equal(requester.value, base.requestedByName);
-  assert.equal(requester.sub, 'ทีม KA');
-  assert.equal(byKey(requestHeaderFacts({ ...base, team: null }, {}), 'requester').sub, null);
-});
-
-test('ผู้ติดต่อขึ้นเฉพาะที่ทะเบียนมีข้อมูล · มีแต่เบอร์ก็ยังใช้ได้', () => {
-  const both = byKey(requestHeaderFacts(base, {}), 'contact');
-  assert.equal(both.value, 'คุณเจี๊ยบ');
-  assert.equal(both.sub, '081-234-5678');
-
-  const phoneOnly = requestHeaderFacts(
-    { ...base, refCustomer: { id: 'CUS-1', contactPhone: '02-000-0000' } }, {},
+test('รับปากวันแล้ว — บอกด้วยว่าเทียบกับที่ขอแล้วเป็นยังไง', () => {
+  const facts = requestHeaderFacts(
+    { ...base, requestedDueDate: '2026-08-14', committedDueDate: '2026-08-13' }, { now: NOW },
   );
-  assert.equal(byKey(phoneOnly, 'contact').value, '02-000-0000');
-  assert.equal(byKey(phoneOnly, 'contact').sub, null);
-
-  const none = requestHeaderFacts({ ...base, refCustomer: { id: 'CUS-1', arCode: 'AR-231' } }, {});
-  assert.equal(keys(none).includes('contact'), false);
+  const committed = byKey(facts, 'committedDue');
+  assert.equal(committed.value, '13/08/2026');
+  assert.equal(committed.sub, 'เร็วกว่าที่ขอ 1 วัน');
+  assert.equal(committed.tone, 'ok');
 });
 
-test('รับปากวันแล้ว — วันที่ผู้ขอขอต้องยังอ่านได้ ไม่หายไปทั้งอัน', () => {
-  const due = byKey(requestHeaderFacts({ ...base, committedDueDate: '2026-08-20' }, {}), 'due');
-  assert.equal(due.label, 'รับปากส่ง');
-  assert.equal(due.value, '20/08/2026');
-  assert.match(due.sub, /15\/08\/2026/);
-});
-
-test('ยังไม่มีใครรับปาก — โชว์วันที่ผู้ขอต้องการ พร้อมบอกว่ายังไม่มีคนรับปาก', () => {
-  const due = byKey(requestHeaderFacts(base, {}), 'due');
-  assert.equal(due.label, 'ต้องการคำตอบ');
-  assert.equal(due.value, '15/08/2026');
-  assert.equal(due.sub, 'ยังไม่มีใครรับปากวัน');
-});
-
-test('ใบด่วนโชว์ป้ายด่วนพร้อมเหตุผล — ใบปกติไม่มีช่องนี้เลย', () => {
-  const urgent = byKey(
-    requestHeaderFacts({ ...base, urgent: true, urgentReason: 'ลูกค้าเร่งปิดดีลศุกร์นี้' }, {}),
-    'urgent',
+test('ฝ่ายให้วันช้ากว่าที่ขอ = ทาสีเตือน ไม่ใช่ปล่อยผ่านเงียบ ๆ', () => {
+  const facts = requestHeaderFacts(
+    { ...base, requestedDueDate: '2026-08-14', committedDueDate: '2026-08-20' }, { now: NOW },
   );
-  assert.equal(urgent.value, 'งานด่วน');
-  assert.equal(urgent.sub, 'ลูกค้าเร่งปิดดีลศุกร์นี้');
-  assert.equal(keys(requestHeaderFacts(base, {})).includes('urgent'), false);
+  assert.equal(byKey(facts, 'committedDue').sub, 'ช้ากว่าที่ขอ 6 วัน');
+  assert.equal(byKey(facts, 'committedDue').tone, 'late');
 });
 
-test('ลำดับช่องคงที่ — ลูกค้าอยู่ต่อจากผู้ขอเสมอ', () => {
-  const order = keys(requestHeaderFacts(
-    { ...base, urgent: true, committedDueDate: '2026-08-20' },
-    { hasItems: true, progress: { done: 1, total: 3 } },
+test('ช่อง "ส่งเมื่อ" ใช้วันที่ส่ง ไม่ใช่วันที่สร้าง · ร่างที่ยังไม่ส่งบอกตรง ๆ', () => {
+  assert.equal(byKey(requestHeaderFacts(base, { now: NOW }), 'submitted').value, '10/08/2026');
+  const draft = byKey(requestHeaderFacts({ ...base, submittedAt: null }, { now: NOW }), 'submitted');
+  assert.equal(draft.value, 'ยังไม่ได้ส่ง');
+});
+
+test('ตอบแล้ว X/Y ขึ้นเฉพาะใบที่มีบรรทัด · ด่วนขึ้นเฉพาะใบที่ติ๊กด่วน', () => {
+  const plain = keys(requestHeaderFacts(base, { now: NOW }));
+  assert.equal(plain.includes('progress'), false);
+  assert.equal(plain.includes('urgent'), false);
+
+  const rich = keys(requestHeaderFacts(
+    { ...base, urgent: true, urgentReason: 'ลูกค้านัดประชุม 18/8' },
+    { hasItems: true, progress: { done: 0, total: 3 }, now: NOW },
   ));
-  assert.deepEqual(order, ['created', 'requester', 'customer', 'contact', 'progress', 'due', 'urgent']);
+  assert.deepEqual(rich, ['submitted', 'progress', 'urgent', 'requestedDue', 'committedDue']);
 });
 
 test('ไม่มีใบ = ไม่มีช่อง (หน้าจอเรนเดอร์ก่อนโหลดเสร็จได้)', () => {
   assert.deepEqual(requestHeaderFacts(null, {}), []);
+  assert.equal(requestHeaderPeople(null), null);
+});
+
+// ── ชิปคนสองฝั่ง ────────────────────────────────────────────────────────
+test('ใบของเพื่อนร่วมทีมโชว์ชื่อผู้ยื่น · ใบของตัวเองบอกว่า "ใบของฉัน"', () => {
+  const other = requestHeaderPeople(base, { mine: false });
+  assert.equal(other.requester.label, 'ผู้ยื่น');
+  assert.equal(other.requester.name, 'Panuwat Hongloylom');
+  assert.equal(other.requester.team, 'SV');
+
+  const own = requestHeaderPeople(base, { mine: true });
+  assert.equal(own.requester.label, 'ใบของฉัน');
+  assert.equal(own.requester.mine, true);
+});
+
+test('ยังไม่มีใครรับเรื่อง = ชิปที่บอกว่าว่าง ไม่ใช่ชิปที่หายไป', () => {
+  const people = requestHeaderPeople(base, {});
+  assert.equal(people.receiver.pending, true);
+  assert.equal(people.receiver.name, 'ยังไม่มีใครรับเรื่อง');
+  assert.equal(people.receiver.label, 'ฝ่าย RD');
+});
+
+test('รับเรื่องแล้ว — ชิปขวาเป็นชื่อคนรับพร้อมวันที่', () => {
+  const people = requestHeaderPeople(
+    { ...base, acknowledgedByName: 'ProjectCo.Krapook', acknowledgedAt: '2026-08-11T02:36:34Z' }, {},
+  );
+  assert.equal(people.receiver.pending, false);
+  assert.equal(people.receiver.name, 'ProjectCo.Krapook');
+  assert.ok(people.receiver.at);
+});
+
+// ── คำบอกเวลา ──────────────────────────────────────────────────────────
+// ⚠️ **สร้างวันจาก NOW เสมอ ห้ามสะกดเวลาพร้อม offset** — "วันนี้/เมื่อวาน" นับที่
+// ปฏิทิน **ตามเขตเวลาของเครื่องที่รัน** (กติกาเดียวกับ `fmtDate`) ⇒ ค่าอย่าง
+// `2026-08-11T01:00+07:00` เป็นวันที่ 11 ที่ไทย แต่เป็นวันที่ 10 บนรันเนอร์ที่เป็น UTC
+// เทสต์เดิมเขียนแบบนั้นแล้วผ่านบนเครื่องไทย · แดงบน CI (เจอจริง 2026-08-11)
+const daysAgo = (n) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+
+test('คำบอกอายุใบอ่านเป็นภาษาคน', () => {
+  assert.equal(ageLabel(daysAgo(0), NOW), 'วันนี้');
+  assert.equal(ageLabel(daysAgo(1), NOW), 'เมื่อวาน');
+  assert.equal(ageLabel(daysAgo(6), NOW), 'ค้างมา 6 วัน');
+  assert.equal(ageLabel(null, NOW), null);
+});
+
+test('นับถอยหลังบอกทั้งก่อนและหลังกำหนด', () => {
+  assert.equal(countdownLabel('2026-08-14', NOW), 'อีก 3 วัน');
+  assert.equal(countdownLabel('2026-08-11', NOW), 'ครบกำหนดวันนี้');
+  assert.equal(countdownLabel('2026-08-09', NOW), 'เลยกำหนดมา 2 วัน');
+});
+
+test('เทียบสองวัน — ตรงวันพอดีก็ต้องบอก ไม่ใช่เงียบ', () => {
+  assert.deepEqual(committedVsRequested('2026-08-14', '2026-08-14'), { text: 'ตรงกับที่ขอ', tone: 'ok' });
+  assert.equal(committedVsRequested('2026-08-13', '2026-08-14').tone, 'ok');
+  assert.equal(committedVsRequested('2026-08-20', '2026-08-14').tone, 'late');
+  assert.equal(committedVsRequested(null, '2026-08-14'), null);
 });
