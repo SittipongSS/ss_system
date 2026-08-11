@@ -1,5 +1,5 @@
 // UI ชิ้นเล็กที่ใช้ร่วมกันของคำร้องข้ามฝ่าย (หน้าดีล / หน้าโครงการ / งานของฉัน /
-// แดชบอร์ด RD) — ยกมาแทน components/salesPlanning/inquiryUi.js ที่ปลดระวางพร้อม
+// ภาพรวมฝ่าย RD) — ยกมาแทน components/salesPlanning/inquiryUi.js ที่ปลดระวางพร้อม
 // ระบบสอบถามใน mig 0174
 import StatusBadge from "@/components/ui/StatusBadge";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/deptRequests";

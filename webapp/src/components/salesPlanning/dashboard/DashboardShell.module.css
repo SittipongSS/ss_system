@@ -1,9 +1,8 @@
 /* โครงหน้าแดชบอร์ดสองคอลัมน์ (เนื้อหา + แถบข้าง) พร้อมการ์ด/ฟีด/คิว
-   ⚠️ **ใช้ร่วมกันสองแท็บ**: แดชบอร์ดของฉัน (MyDashboardTab) กับ แดชบอร์ด RD
-   (RdDashboardTab) — เดิมไฟล์นี้ชื่อ RdDashboardTab.module.css แล้วแท็บ "ของฉัน"
-   ไป import ข้ามมาใช้ทั้งไฟล์ ชื่อจึงโกหก: คนแก้สไตล์ของ RD ไม่มีทางรู้ว่ากำลัง
-   แก้แดชบอร์ดของฉันไปด้วย (เปลี่ยนชื่อ 2026-08-05)
-   ⇒ แก้คลาสในไฟล์นี้ ต้องเปิดดูทั้งสองแท็บ · สไตล์ที่เป็นของแท็บใดแท็บหนึ่งจริง ๆ
+   ⚠️ เดิมไฟล์นี้ชื่อ RdDashboardTab.module.css แล้วแท็บ "ของฉัน" ไป import ข้ามมา
+   ใช้ทั้งไฟล์ ชื่อจึงโกหก (เปลี่ยนชื่อ 2026-08-05) · **แท็บแดชบอร์ด RD ถูกลบทิ้งแล้ว
+   2026-08-11** เหลือผู้ใช้รายเดียวคือ MyDashboardTab
+   ⇒ สไตล์ที่เป็นของแท็บใดแท็บหนึ่งจริง ๆ
      ให้แยกไปไฟล์ของตัวเอง อย่าเติมเข้ามาที่นี่ */
 .page { min-width: 0; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: var(--space-4-5); }
@@ -56,7 +55,6 @@
 .postTitle { display: inline-block; margin: var(--space-1) 0 var(--space-0-5); color: var(--text-1); font-size: var(--fs-8); font-weight: var(--fw-bold); text-decoration: none; }
 .postTitle:hover { color: var(--accent-ink); }
 .postBody p { display: -webkit-box; overflow: hidden; margin: var(--space-1) 0 var(--space-2-5); font-size: var(--fs-7); line-height: 1.55; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.statusText { color: var(--text-3); font-style: italic; }
 .postFooter { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: var(--fs-3); }
 .postFooter a { display: flex; align-items: center; gap: var(--space-0-5); margin-left: auto; color: var(--accent-ink); text-decoration: none; }
 .urgent { color: var(--red); font-weight: var(--fw-bold); }

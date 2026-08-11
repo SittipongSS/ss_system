@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รื้อโมดูล RD — หน้าภาพรวม 3 แบบ + ตารางคิว</title>
+<style>
+  /* โทเคน v2 โต๊ะช่าง (ธีมมืด) — คัดจาก globals.css ให้ม็อกอัพหน้าตาตรงของจริง */
+  :root{
+    --bg:#0f1319; --panel:#1a1f29; --panel-2:#232b38; --panel-3:#2a3342;
+    --border:#303948; --border-strong:#3d4757;
+    --text:#edf1f7; --text-2:#a2acbb; --text-3:#8b95a5;
+    --accent:#d97b4f; --accent-ink:#df8760;
+    --green:#57ab7c; --amber:#d9a13f; --blue:#7ea8dd; --red:#e07f74; --violet:#a48fd0;
+    --radius:6px; --radius-lg:10px; --radius-full:999px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",-apple-system,sans-serif;
+    font-size:14px;line-height:1.55;padding:26px}
+  h1{font-size:23px;margin:0 0 6px}
+  h2{font-size:18px;margin:34px 0 4px}
+  h3{font-size:15px;margin:0}
+  p{margin:0 0 14px}
+  .sub{color:var(--text-3);font-size:13px;margin:0 0 22px}
+  .note{border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));
+    border-radius:var(--radius-lg);background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+    padding:14px 18px;margin:0 0 24px}
+  .note b{color:var(--accent-ink)}
+  .opt{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+    overflow:hidden;margin:0 0 26px}
+  .ohead{padding:14px 18px;border-bottom:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent-ink);
+    border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:var(--radius-full);
+    padding:2px 9px}
+  .q{color:var(--text-2);font-size:13px}
+  .obody{padding:18px}
+  .screen{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg);padding:16px}
+
+  /* แถบตัวเลขคิว */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 16px}
+  .cnt{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);padding:10px 12px}
+  .cnt b{display:block;font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .cnt span{font-size:12px;color:var(--text-3)}
+  .cnt.red b{color:var(--red)} .cnt.amber b{color:var(--amber)}
+  .cnt.blue b{color:var(--blue)} .cnt.green b{color:var(--green)}
+
+  /* การ์ด "เริ่มที่นี่" */
+  .start{border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:var(--radius-lg);
+    background:color-mix(in srgb,var(--accent) 9%,var(--panel));padding:14px 16px;margin:0 0 16px;
+    display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}
+  .start .why{font-size:12px;color:var(--accent-ink);font-weight:700;letter-spacing:.04em}
+  .start .who{font-size:12.5px;color:var(--text-2)}
+  .btn{border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-3);
+    color:var(--text);font:inherit;font-size:12.5px;padding:6px 14px}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#1b1206;font-weight:700}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:11px;letter-spacing:.05em;color:var(--text-3);font-weight:700;
+    padding:7px 10px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .no{font-variant-numeric:tabular-nums;color:var(--text-2);white-space:nowrap}
+  .who{color:var(--text-3);font-size:12px}
+  .num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:var(--radius-full);
+    border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
+  .pill.red{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--border))}
+  .pill.amber{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--border))}
+  .pill.green{color:var(--green);border-color:color-mix(in srgb,var(--green) 45%,var(--border))}
+  .pill.blue{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 45%,var(--border))}
+  .pill.violet{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 45%,var(--border))}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .dot.red{background:var(--red)} .dot.amber{background:var(--amber)}
+  .dot.green{background:var(--green)} .dot.blue{background:var(--blue)}
+
+  /* แบบ ข — คอลัมน์ตามเจ้าของ */
+  .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .lane{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden}
+  .lanehead{padding:9px 12px;background:var(--panel-2);border-bottom:1px solid var(--border);
+    display:flex;justify-content:space-between;align-items:center}
+  .lanehead b{font-size:13px}
+  .lanehead .n{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:12px}
+  .card{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .card:last-child{border-bottom:0}
+  .card .t{font-size:12.5px;margin-bottom:3px}
+  .card .m{font-size:11.5px;color:var(--text-3);display:flex;gap:8px;flex-wrap:wrap}
+
+  /* แบบ ค — รางเวลา */
+  .rail{display:grid;grid-template-columns:96px 1fr;gap:0}
+  .railday{padding:9px 10px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+    font-size:12px;color:var(--text-2);background:var(--panel-2)}
+  .railday b{display:block;font-size:13px;color:var(--text)}
+  .railrow{padding:9px 12px;border-bottom:1px solid var(--border)}
+  .railrow.late{background:color-mix(in srgb,var(--red) 8%,transparent)}
+  .railrow .t{font-size:12.5px}
+  .railrow .m{font-size:11.5px;color:var(--text-3)}
+
+  .pro{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0 0;font-size:12.5px}
+  .pro div{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--panel-2)}
+  .pro b{display:block;font-size:11px;letter-spacing:.05em;margin-bottom:5px}
+  .pro .good b{color:var(--green)} .pro .bad b{color:var(--red)}
+  small{color:var(--text-3)}
+  .cap{font-size:12px;color:var(--text-3);margin:8px 0 0}
+</style>
+</head>
+<body>
+
+<h1>รื้อโมดูล RD — หน้าภาพรวม 3 แบบ</h1>
+<p class="sub">ข้อมูลตัวอย่างเป็นของจริงจากคิวคำร้อง RD · ทั้งสามแบบใช้ของกลางชุดเดิม
+(<code>queueBoard</code> · <code>RequestQueuePanel</code> · <code>QueueCountStrip</code>) ต่างกันแค่ <b>คำถามที่หน้าจอตอบ</b></p>
+
+<div class="note">
+  <b>ทั้งสามแบบมีเหมือนกัน</b> — แถบตัวเลขคิว 4 ตัว · ตารางคิวชุดเดียวกับหน้า <code>/rd/requests</code>
+  (ห้ามโคลน ม-34) · ปุ่มเปิดใบไปจอเดียวกับฝั่ง SA (ม-31)<br>
+  <b>ต่างกันที่ก้อนบนสุด</b> — ก้อนที่ตอบคำถามหลักของฝ่าย ซึ่งเป็นตัวตัดสินว่าคนเปิดหน้ามาแล้วรู้อะไรก่อน<br>
+  <b>ต้องมาพร้อมกัน</b> — ลบแท็บ "แดชบอร์ด RD" ในคอมมิตเดียวกัน ไม่งั้น role <code>rd</code> เหลือศูนย์แท็บ
+</div>
+
+<!-- ── แบบ ก ─────────────────────────────────────────────────────────── -->
+<div class="opt">
+  <div class="ohead">
+    <span class="tag">แบบ ก</span>
+    <h3>วันนี้ต้องทำอะไรก่อน</h3>
+    <span class="q">— เปิดมาแล้วรู้ทันทีว่า “หยิบใบไหนขึ้นมาทำ”</span>
+  </div>
+  <div class="obody">
+    <div class="screen">
+      <div class="strip">
+        <div class="cnt red"><b>2</b><span>ยังไม่มีใครรับ</span></div>
+        <div class="cnt amber"><b>1</b><span>เลยกำหนด</span></div>
+        <div class="cnt blue"><b>5</b><span>กำลังทำ</span></div>
+        <div class="cnt green"><b>3</b><span>รอฝ่ายขายทำต่อ</span></div>
+      </div>
+
+      <div class="start">
+        <div>
+          <div class="why">เริ่มที่นี่ · ยังไม่มีใครรับ 2 วันแล้ว</div>
+          <div style="font-size:14px;margin:2px 0 1px"><b>RQ-26080031</b> · บรีฟกลิ่นใหม่ Room Spray, Reed Diffuser</div>
+          <div class="who">เคมีโก้ อินเตอร์ · AE สุพิศรา · ต้องการคำตอบ 14/08/2026 · 3 กลิ่น</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn">ดูใบ</button>
+          <button class="btn pri">รับเรื่อง</button>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>คิวถัดไป</th><th>ลูกค้า / เรื่อง</th><th>ขั้นต่อไป</th><th>กำหนด</th></tr></thead>
+        <tbody>
+          <tr><td class="no">2</td>
+              <td>ลอรีอัล · <span class="who">ขอราคา FB สูตรเดิม</span></td>
+              <td><span class="dot amber"></span>รับแล้ว ยังไม่ส่งของ</td>
+              <td class="no">พรุ่งนี้</td></tr>
+          <tr><td class="no">3</td>
+              <td>บาธ แอนด์ บลูม · <span class="who">พัฒนาสูตร Sachet ×2</span></td>
+              <td><span class="dot blue"></span>ส่งแล้ว 1/2 กลิ่น</td>
+              <td class="no">18/08</td></tr>
+          <tr><td class="no">4</td>
+              <td>ยูนิลีเวอร์ · <span class="who">ขอเอกสาร IFRA</span></td>
+              <td><span class="dot blue"></span>รอออกเอกสาร</td>
+              <td class="no">20/08</td></tr>
+        </tbody>
+      </table>
+      <p class="cap">ต่อจากนี้คือตารางคิวเต็ม (แท็บ รอฝ่ายตอบ / รอฝ่ายขายทำต่อ / ประวัติ) — ชุดเดียวกับข้างล่าง</p>
+    </div>
+
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>หยิบงานถูกใบโดยไม่ต้องคิดเอง · คนใหม่ในทีมใช้ได้ทันที ·
+        เกณฑ์เรียงมาจาก <code>startHereRequest</code> ที่มีอยู่แล้ว ไม่ต้องคิดกฎใหม่</div>
+      <div class="bad"><b>เสียอะไร</b>ตอบไม่ได้ว่า “ทั้งทีมมีอะไรค้างอยู่กี่ใบที่ใคร” ·
+        ถ้ามีหลายคนช่วยกัน อาจแย่งหยิบใบเดียวกัน</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ข ─────────────────────────────────────────────────────────── -->
+<div class="opt">
+  <div class="ohead">
+    <span class="tag">แบบ ข</span>
+    <h3>งานค้างอยู่ที่ใคร</h3>
+    <span class="q">— เปิดมาแล้วรู้ว่า “ตอนนี้ลูกบอลอยู่มือใคร”</span>
+  </div>
+  <div class="obody">
+    <div class="screen">
+      <div class="strip">
+        <div class="cnt red"><b>2</b><span>ยังไม่มีใครรับ</span></div>
+        <div class="cnt amber"><b>1</b><span>เลยกำหนด</span></div>
+        <div class="cnt blue"><b>5</b><span>กำลังทำ</span></div>
+        <div class="cnt green"><b>3</b><span>รอฝ่ายขายทำต่อ</span></div>
+      </div>
+
+      <div class="lanes">
+        <div class="lane">
+          <div class="lanehead"><b>รอฝ่ายเรารับ</b><span class="n">2 ใบ</span></div>
+          <div class="card"><div class="t">RQ-26080031 · บรีฟกลิ่นใหม่</div>
+            <div class="m"><span>เคมีโก้</span><span class="pill red">ค้าง 2 วัน</span></div></div>
+          <div class="card"><div class="t">RQ-26080029 · ขอ Mockup + ราคา FB</div>
+            <div class="m"><span>ลอรีอัล</span><span class="pill amber">วันนี้</span></div></div>
+        </div>
+        <div class="lane">
+          <div class="lanehead"><b>อยู่ที่ RD</b><span class="n">5 ใบ</span></div>
+          <div class="card"><div class="t">RQ-26080024 · พัฒนาสูตร Sachet</div>
+            <div class="m"><span>ปกิตา</span><span class="pill blue">ส่งแล้ว 1/2</span></div></div>
+          <div class="card"><div class="t">RQ-26080018 · ออกแบบกลิ่น 6 ทาง</div>
+            <div class="m"><span>ณิชา</span><span class="pill red">เลยกำหนด 3 วัน</span></div></div>
+          <div class="card"><div class="t">RQ-26080012 · แก้ไขกลิ่นเดิม</div>
+            <div class="m"><span>ปกิตา</span><span class="pill">18/08</span></div></div>
+        </div>
+        <div class="lane">
+          <div class="lanehead"><b>อยู่ที่ฝ่ายขาย/ลูกค้า</b><span class="n">3 ใบ</span></div>
+          <div class="card"><div class="t">RQ-26080009 · ส่งตัวอย่าง 3 ทาง</div>
+            <div class="m"><span>รอ AE ส่งลูกค้า</span><span class="pill green">5 วัน</span></div></div>
+          <div class="card"><div class="t">RQ-26080003 · รอผลทดลอง</div>
+            <div class="m"><span>รอลูกค้าตอบ</span><span class="pill green">12 วัน</span></div></div>
+        </div>
+      </div>
+      <p class="cap">กดที่หัวคอลัมน์ = เปิดตารางคิวที่กรองไว้แล้ว (ไม่ใช่ตารางคนละชุด)</p>
+    </div>
+
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>เห็นทั้งทีมในจอเดียว · รู้ทันทีว่าอะไรไม่ใช่งานเรา (ค้างที่ฝั่งขาย) ·
+        หัวหน้าใช้มอบงานได้</div>
+      <div class="bad"><b>เสียอะไร</b>ไม่บอกลำดับว่าควรหยิบใบไหนก่อน · สามคอลัมน์บนจอแคบต้องเลื่อน ·
+        ต้องมีคนถือใบจริง (<code>assignee</code>) ถึงจะคุ้ม — วันนี้ RD ยังไม่ได้มอบหมายรายคน</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── แบบ ค ─────────────────────────────────────────────────────────── -->
+<div class="opt">
+  <div class="ohead">
+    <span class="tag">แบบ ค</span>
+    <h3>อะไรจะเลยกำหนด</h3>
+    <span class="q">— เปิดมาแล้วรู้ว่า “อีกกี่วันจะพลาดสัญญา”</span>
+  </div>
+  <div class="obody">
+    <div class="screen">
+      <div class="strip">
+        <div class="cnt red"><b>1</b><span>เลยกำหนดแล้ว</span></div>
+        <div class="cnt amber"><b>2</b><span>ครบกำหนดใน 3 วัน</span></div>
+        <div class="cnt blue"><b>4</b><span>ใน 7 วัน</span></div>
+        <div class="cnt green"><b>3</b><span>ยังมีเวลา</span></div>
+      </div>
+
+      <div class="lane">
+        <div class="rail">
+          <div class="railday" style="color:var(--red)"><b>เลยแล้ว</b>3 วัน</div>
+          <div class="railrow late"><div class="t">RQ-26080018 · ออกแบบกลิ่น 6 ทาง — ยูนิลีเวอร์</div>
+            <div class="m">สัญญาไว้ 07/08 · ส่งแล้ว 4/6 กลิ่น · ณิชา</div></div>
+
+          <div class="railday"><b>วันนี้</b>11/08</div>
+          <div class="railrow"><div class="t">RQ-26080029 · ขอ Mockup + ราคา FB — ลอรีอัล</div>
+            <div class="m">ยังไม่มีใครรับ · เปิดมา 2 วัน</div></div>
+
+          <div class="railday"><b>พรุ่งนี้</b>12/08</div>
+          <div class="railrow"><div class="t">RQ-26080024 · พัฒนาสูตร Sachet ×2 — บาธ แอนด์ บลูม</div>
+            <div class="m">ส่งแล้ว 1/2 · ปกิตา</div></div>
+
+          <div class="railday"><b>ใน 7 วัน</b>13–18/08</div>
+          <div class="railrow"><div class="t">RQ-26080031 · บรีฟกลิ่นใหม่ 3 กลิ่น — เคมีโก้</div>
+            <div class="m">ยังไม่มีใครรับ · ต้องการคำตอบ 14/08</div></div>
+          <div class="railrow"><div class="t">RQ-26080012 · แก้ไขกลิ่นเดิม — ที.เอ.ซี.</div>
+            <div class="m">รับแล้ว · 18/08</div></div>
+        </div>
+      </div>
+      <p class="cap">ใบที่ยังไม่มีวันกำหนด (ยังไม่รับเรื่อง) ขึ้นกลุ่มท้ายสุดว่า “ยังไม่ได้ให้วัน” — ไม่หายไปเฉย ๆ</p>
+    </div>
+
+    <div class="pro">
+      <div class="good"><b>ได้อะไร</b>ตรงกับตัวชี้วัดที่ฝ่ายโดนวัดจริง (ส่งทันวันที่สัญญาไว้) ·
+        เห็นภาระของสัปดาห์หน้าล่วงหน้า · ใช้ <code>committedDueDate</code> ที่มีอยู่แล้ว</div>
+      <div class="bad"><b>เสียอะไร</b>ใบที่ยังไม่รับเรื่องยังไม่มีวันกำหนด ⇒ ของด่วนจริงอาจไปกองท้าย ·
+        ต้องมีวินัยใส่วันตอนรับเรื่องทุกใบ ไม่งั้นหน้านี้ว่าง</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ตารางคิว (ใช้ร่วมกันทั้งสามแบบ) ──────────────────────────────── -->
+<h2>ตารางคิวคำร้อง — ของเดิม vs ที่เสนอ</h2>
+<p class="sub">ตารางนี้อยู่ทั้งหน้า <code>/rd/requests</code> และครึ่งล่างของภาพรวม — ทั้งสามแบบข้างบนใช้ตัวเดียวกัน</p>
+
+<div class="opt">
+  <div class="ohead"><span class="tag" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--border))">ของเดิม</span>
+    <h3>4 คอลัมน์</h3><span class="q">— อ่านแล้วยังต้องเปิดใบถึงจะรู้ว่าติดอะไร</span></div>
+  <div class="obody"><div class="screen">
+    <table>
+      <thead><tr><th>เลขที่</th><th>เรื่อง</th><th>สถานะ</th><th>กำหนด</th></tr></thead>
+      <tbody>
+        <tr><td class="no">RQ-26080018</td><td>ออกแบบกลิ่น 6 ทาง</td><td>รับเรื่องแล้ว</td><td class="no">07/08/2026</td></tr>
+        <tr><td class="no">RQ-26080024</td><td>พัฒนาสูตร Sachet</td><td>รับเรื่องแล้ว</td><td class="no">12/08/2026</td></tr>
+        <tr><td class="no">RQ-26080029</td><td>ขอ Mockup กลิ่นและราคา FB</td><td>ส่งแล้ว</td><td class="no">—</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">“รับเรื่องแล้ว” เหมือนกันสองใบ แต่ใบหนึ่งส่งไป 4/6 กลิ่นแล้ว อีกใบยังไม่เริ่ม ·
+      วันที่ไม่บอกว่าเหลือกี่วัน · ไม่รู้ว่าใครถือ</p>
+  </div></div>
+</div>
+
+<div class="opt">
+  <div class="ohead"><span class="tag">ที่เสนอ</span><h3>ขั้นต่อไป + ความคืบหน้า + เหลือกี่วัน</h3>
+    <span class="q">— ตอบสามคำถามที่ต้องเปิดใบถึงจะรู้</span></div>
+  <div class="obody"><div class="screen">
+    <table>
+      <thead><tr><th>ใบ</th><th>ลูกค้า / เรื่อง</th><th>ขั้นต่อไป — ใครต้องทำ</th><th>คืบหน้า</th><th class="num">เหลือ</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="no">RQ-26080018<div class="who">พัฒนากลิ่น</div></td>
+          <td>ยูนิลีเวอร์<div class="who">ออกแบบกลิ่น 6 ทาง</div></td>
+          <td><span class="dot red"></span>ส่งกลิ่นที่เหลือ — <b>เรา</b><div class="who">ณิชา ลัคนาภิเศรษฐ์</div></td>
+          <td><span class="pill blue">4/6 กลิ่น</span></td>
+          <td class="num"><span class="pill red">เลย 3 วัน</span><div class="who">สัญญา 07/08</div></td>
+        </tr>
+        <tr>
+          <td class="no">RQ-26080029<div class="who">สอบถามข้อมูล</div></td>
+          <td>ลอรีอัล<div class="who">ขอ Mockup + ราคา FB</div></td>
+          <td><span class="dot amber"></span>ยังไม่มีใครรับ — <b>เรา</b><div class="who">เปิดมา 2 วัน</div></td>
+          <td><span class="pill">ยังไม่เริ่ม</span></td>
+          <td class="num"><span class="pill amber">วันนี้</span><div class="who">ขอไว้ 11/08</div></td>
+        </tr>
+        <tr>
+          <td class="no">RQ-26080009<div class="who">พัฒนากลิ่น</div></td>
+          <td>บาธ แอนด์ บลูม<div class="who">ส่งตัวอย่าง 3 ทาง</div></td>
+          <td><span class="dot green"></span>รอ AE ส่งลูกค้า — <b>ฝ่ายขาย</b><div class="who">ส่งของครบแล้ว 06/08</div></td>
+          <td><span class="pill green">3/3 กลิ่น</span></td>
+          <td class="num"><span class="pill green">ไม่ใช่ของเรา</span><div class="who">ค้างฝั่งนั้น 5 วัน</div></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="cap"><b>สามอย่างที่เพิ่ม</b> — (1) ขั้นต่อไปพร้อม<b>เจ้าของขั้น</b> จาก <code>requestNextStep()</code>
+      ที่มีอยู่แล้ว (2) ความคืบหน้าเป็น <b>x/y กลิ่น</b> ไม่ใช่คำว่า “รับเรื่องแล้ว”
+      (3) วันเป็น <b>เหลือกี่วัน</b> ไม่ใช่วันที่ดิบ — วันที่จริงอยู่บรรทัดรองไว้อ้างอิง</p>
+  </div></div>
+</div>
+
+<div class="note" style="margin-top:26px">
+  <b>ผมเอนไปทาง ก</b> — เพราะ RD วันนี้ยังไม่ได้มอบหมายงานรายคน (แบบ ข จึงยังไม่มีข้อมูลจริงมาเติม)
+  และใบที่ยังไม่รับเรื่องยังไม่มีวันกำหนด (แบบ ค จึงมองไม่เห็นของด่วนที่สุด ซึ่งคือใบที่ยังไม่มีใครแตะ)<br>
+  แบบ ก ใช้ของที่มีครบวันนี้ และ <b>ตารางที่เสนอข้างล่างเติมข้อมูลของอีกสองแบบเข้าไปแล้ว</b> —
+  “ใครถือ” อยู่ในคอลัมน์ขั้นต่อไป · “เหลือกี่วัน” อยู่คอลัมน์สุดท้าย ⇒ ได้ประโยชน์ของทั้งสามโดยไม่ต้องมีสามหน้า
+</div>
+
+</body>
+</html>

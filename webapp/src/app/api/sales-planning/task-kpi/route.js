@@ -9,7 +9,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-// KPI งานของฝ่ายขาย — ตัวคิดคะแนนกลางอยู่ที่ lib/pm/taskKpi.js (แชร์กับ rd-kpi)
+// KPI งานของฝ่ายขาย — ตัวคิดคะแนนกลางอยู่ที่ lib/pm/taskKpi.js
+// (เคยแชร์กับ /api/sales-planning/rd-kpi ซึ่งถูกลบพร้อมแท็บแดชบอร์ด RD 2026-08-11)
 const SALES_ROLES = new Set(['ae', 'ac', 'senior_ae', 'ae_supervisor']);
 
 export const GET = withUser(async ({ user, supabase, req }) => {

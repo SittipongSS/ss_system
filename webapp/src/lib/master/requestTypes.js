@@ -74,6 +74,17 @@ export function requestKindLabel(kind) {
   return REQUEST_KINDS[kind]?.label || kind || '—';
 }
 
+/**
+ * หน่วยของ "แถว" ในใบหัวข้อนี้ — คิวโชว์ความคืบหน้าเป็น `4 / 6` ซึ่งอ่านไม่ออกว่า
+ * นับอะไรถ้าไม่มีหน่วยกำกับ (พัฒนากลิ่นนับเป็นกลิ่น · ที่เหลือเป็นรายการ)
+ *
+ * ⚠️ อยู่ในทะเบียน ไม่ใช่ `kind === 'scent_dev'` กลางคิว (ม-34) — หัวข้อถัดไปที่นับ
+ * เป็นหน่วยอื่นจะได้เติมที่ทะเบียนแล้วจบ ไม่ต้องไปต่อเงื่อนไขในจอที่ทุกหัวข้อใช้
+ */
+export function requestLineNoun(kind) {
+  return REQUEST_KINDS[kind]?.lineNoun || 'รายการ';
+}
+
 // หัวข้อนี้ใช้แบบฟอร์ม PDR ไหม — ฟอร์มอ่านธงจากทะเบียน ไม่เช็คชื่อหัวข้อเอง
 export function requestHasPdr(kind) {
   return !!REQUEST_KINDS[kind]?.hasPdr;

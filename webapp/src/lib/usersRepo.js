@@ -23,7 +23,7 @@ export async function loadUserDirectory(supabase) {
         // ทุกทีมที่สังกัด — คนเดียวอยู่ได้หลายทีม ทุกด่านที่ถามว่า "ทีมเดียวกันไหม"
         // ต้องอ่านช่องนี้ ไม่ใช่ `team` (ดู userTeams ใน permissions.js)
         teams: userTeams({ team: u.app_metadata?.team, teams: u.app_metadata?.teams }),
-        department: u.app_metadata?.department || null, // ใช้กรองคนฝ่าย (rd-kpi)
+        department: u.app_metadata?.department || null, // ใช้กรองคนฝ่าย
         // บัญชีถูกปิด = ban ที่ Supabase auth (สูตรเดียวกับ GET /api/users) — ผู้เรียกที่
         // ต้องการเฉพาะคนที่ยังทำงานอยู่ต้องกรองเอง (loader ไม่กรองให้ เพราะบางที่ยังต้อง
         // เห็นคนที่ปิดบัญชีแล้ว เช่นการโอนงานต่อ)

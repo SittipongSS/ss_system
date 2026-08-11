@@ -25,7 +25,7 @@ import {
 import { businessDate } from "@/lib/businessDate";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
-import { REQUEST_DEPT_LABELS, requestKindLabel } from "@/lib/master/requestTypes";
+import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [],
@@ -224,12 +224,21 @@ export default function RequestQueuePanel({
                     <td>
                       {next
                         ? (
-                          <span
-                            className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
-                            data-owner={next.owner}
-                          >
-                            {next.label}
-                          </span>
+                          <>
+                            <span
+                              className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
+                              data-owner={next.owner}
+                            >
+                              {next.label}
+                            </span>
+                            {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่
+                                *ฝั่งไหน* · ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
+                                ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย — ใบที่รออีกฝั่งอยู่ ชื่อคนของเรา
+                                ไม่ใช่คำตอบของคำถาม "ใครต้องทำต่อ" */}
+                            {next.owner === "dept" && ask.acknowledgedByName && (
+                              <div className={styles.subText}>{ask.acknowledgedByName}</div>
+                            )}
+                          </>
                         )
                         : <span className={styles.muted}>—</span>}
                     </td>
@@ -257,28 +266,32 @@ export default function RequestQueuePanel({
                     {/* ⭐ กำหนดส่งเคยต้องเข้าใบถึงจะเห็น ทั้งที่ "เลยกำหนดไหม" คือ
                         คำถามที่สองของหัวหน้า · `.num` ให้ชิดขวา + tabular-nums
                         ⇒ หลักวันตรงกันทุกแถว เทียบข้ามแถวได้ (กฎ 3) */}
+                    {/* ⭐ **"เหลือกี่วัน" เป็นบรรทัดหลัก วันที่เป็นบรรทัดรอง** (มติผู้ใช้
+                        2026-08-11 · แบบ ก) — คนกวาดคิวถามว่า *ทันไหม* ไม่ได้ถามว่า
+                        *วันที่เท่าไร* · วันที่ยังอยู่ไว้อ้างอิงตอนคุยกับฝ่ายขาย
+                        ⚠️ ใบที่ยังไม่มีใครให้วันขึ้น "ยังไม่ให้วัน" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง
+                        "ไม่มีกำหนด" และ "ระบบไม่รู้" ซึ่งคนละเรื่องกัน */}
                     <td className="num">
                       {due
                         ? (
                           <>
                             <div className={due.overdue ? styles.overdue : undefined}>
-                              {fmtDate(due.date)}
+                              {due.note || fmtDate(due.date)}
                             </div>
                             {due.note && (
-                              <div className={`${styles.subText} ${due.overdue ? styles.overdue : ""}`.trim()}>
-                                {due.note}
-                              </div>
+                              <div className={styles.subText}>{fmtDate(due.date)}</div>
                             )}
                           </>
                         )
-                        : <span className={styles.muted}>—</span>}
+                        : <span className={styles.muted}>ยังไม่ให้วัน</span>}
                     </td>
                     <td className="num">
                       {p.total > 0
                         ? (
                           <>
                             <div>{p.done} / {p.total}</div>
-                            <div className={styles.subText}>รายการ</div>
+                            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" */}
+                            <div className={styles.subText}>{requestLineNoun(ask.kind)}</div>
                           </>
                         )
                         : <span className={styles.muted}>—</span>}
