@@ -145,6 +145,14 @@ const PRODUCT_NAMES = [
 function lineAt(index, overrides = {}) {
   const qty = overrides.qty ?? (index % 4 === 3 ? 1 : (index + 1) * 120);
   const unitPrice = overrides.unitPrice ?? (index % 4 === 3 ? 25000 : 145 + ((index % 5) * 20));
+  // ส่วนลดรายบรรทัดคิดแบบเดียวกับของจริง (quoteLineNet) — lineTotal ตัวอย่างจึงเป็น
+  // ยอดหลังหักส่วนลด เหมือนใบจริง ไม่งั้นพรีวิวโชว์ตัวเลขที่บวกลบไม่ลง
+  const discountType = ['percent', 'amount'].includes(overrides.discountType) ? overrides.discountType : null;
+  const discountValue = discountType ? Number(overrides.discountValue || 0) : 0;
+  const gross = roundMoney(qty * unitPrice);
+  const discountAmount = discountType === 'percent'
+    ? roundMoney(gross * (discountValue / 100))
+    : Math.min(gross, roundMoney(discountValue));
   return {
     id: `preview-line-${index + 1}`,
     fgCode: overrides.fgCode ?? `FG-PV-${String(index + 1).padStart(3, '0')}`,
@@ -154,7 +162,10 @@ function lineAt(index, overrides = {}) {
     qty,
     unit: overrides.unit ?? (index % 4 === 3 ? 'งาน' : 'ชิ้น'),
     unitPrice,
-    lineTotal: roundMoney(qty * unitPrice),
+    discountType,
+    discountValue,
+    discountAmount,
+    lineTotal: roundMoney(gross - discountAmount),
   };
 }
 
@@ -542,7 +553,11 @@ function scenarioInput(id) {
     case 'standard':
     default:
       return {
-        lines: Array.from({ length: 4 }, (_, index) => lineAt(index)),
+        // บรรทัดที่ 2 มีส่วนลดรายบรรทัด (%) บรรทัดที่ 3 เป็นส่วนลดจำนวนเงิน — พรีวิว
+        // มาตรฐานต้องเห็นคอลัมน์ส่วนลดทำงานจริงทั้งสองแบบ
+        lines: Array.from({ length: 4 }, (_, index) => lineAt(index, index === 1
+          ? { discountType: 'percent', discountValue: 5 }
+          : (index === 2 ? { discountType: 'amount', discountValue: 3000 } : {}))),
         discount: { type: 'amount', value: 10000 },
         installments: [
           { label: 'มัดจำ', percent: 50, trigger: 'ยืนยันใบเสนอราคา', dueRule: 'ภายใน 7 วัน', note: 'เริ่มงานหลังได้รับมัดจำ' },
@@ -740,6 +755,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       qty: Number(line.qty || 0),
       unit: line.unit || 'ชิ้น',
       unitPrice: Number(line.unitPrice || 0),
+      // ส่วนลดรายบรรทัดต้องไปถึงเอกสาร: lineTotal ที่พิมพ์คือยอด "หลังหักส่วนลดแล้ว"
+      // (quoteLineNet) ถ้าไม่โชว์ส่วนลด ลูกค้าคูณ ราคา/หน่วย × จำนวน แล้วไม่ตรงกับ
+      // จำนวนเงิน — เอกสารดูเหมือนคำนวณผิด (มติผู้ใช้ 2026-08-11)
+      discountType: ['percent', 'amount'].includes(line.discountType) ? line.discountType : null,
+      discountValue: Number(line.discountValue || 0),
+      discountAmount: Number(line.discountAmount || 0),
       lineTotal: Number(line.lineTotal || 0),
     }));
 

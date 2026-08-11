@@ -59,7 +59,24 @@ function partyGrid(model) {
   });
 }
 
-function itemTable(lines, startIndex) {
+// มีบรรทัดไหนถูกลดราคาบ้าง — ตัดสินจากทั้งใบ ไม่ใช่ทีละหน้า เพราะหัวตารางทุกหน้า
+// ต้องมีจำนวนคอลัมน์เท่ากัน (ใบหลายหน้าไม่งั้นสลับหน้าละแบบ)
+function hasLineDiscount(lines = []) {
+  return lines.some((line) => Number(line.discountAmount || 0) > 0);
+}
+
+// ช่องส่วนลดของบรรทัด: จำนวนเงินที่หัก + กำกับ % ไว้ใต้ตัวเลขเมื่อกรอกเป็นเปอร์เซ็นต์
+// (ลูกค้าต้องกระทบยอดได้เอง: ราคา/หน่วย × จำนวน − ส่วนลด = จำนวนเงิน)
+function discountCell(line) {
+  const amount = Number(line.discountAmount || 0);
+  if (!(amount > 0)) return '<td class="number">-</td>';
+  const percentNote = line.discountType === 'percent' && Number(line.discountValue || 0) > 0
+    ? `<span class="itemDiscountRate">${Number(line.discountValue)}%</span>`
+    : '';
+  return `<td class="number">-${money(amount)}${percentNote}</td>`;
+}
+
+function itemTable(lines, startIndex, showDiscount) {
   const rows = lines.map((line, index) => {
     const identityMeta = [line.fgCode, line.brand].filter(Boolean).map(esc).join(' · ');
     return `
@@ -73,11 +90,12 @@ function itemTable(lines, startIndex) {
           <td class="number">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
           <td class="center">${val(line.unit)}</td>
           <td class="number">${money(line.unitPrice)}</td>
+          ${showDiscount ? discountCell(line) : ''}
           <td class="number">${money(line.lineTotal)}</td>
         </tr>`;
   }).join('');
   return `
-    <table class="itemTable">
+    <table class="itemTable${showDiscount ? ' withLineDiscount' : ''}">
       <thead>
         <tr>
           <th class="center">ลำดับ</th>
@@ -85,6 +103,7 @@ function itemTable(lines, startIndex) {
           <th class="number">จำนวน</th>
           <th class="center">หน่วย</th>
           <th class="number">ราคา/หน่วย</th>
+          ${showDiscount ? '<th class="number">ส่วนลด</th>' : ''}
           <th class="number">จำนวนเงิน</th>
         </tr>
       </thead>
@@ -188,6 +207,9 @@ function documentFooter(model, pageNumber, pageCount) {
 
 function renderPages(model) {
   let lineOffset = 0;
+  // ดูจากบรรทัดที่ถูกพิมพ์จริง (ทุกหน้ารวมกัน) — ใบที่ไม่มีส่วนลดรายบรรทัดเลยไม่ต้องมี
+  // คอลัมน์เปล่า ๆ กินความกว้างช่องรายละเอียด
+  const showDiscount = hasLineDiscount(model.pages.flatMap((page) => page.lines || []));
   return model.pages.map((page, pageIndex) => {
     const startIndex = lineOffset;
     lineOffset += page.lines.length;
@@ -206,7 +228,7 @@ function renderPages(model) {
         ${page.showParty ? partyGrid(model) : ''}
         ${page.kind === 'items' && pageIndex > 0 ? `<div class="continuation">รายการสินค้าและบริการต่อ · ${val(model.document.number)}</div>` : ''}
         ${(page.kind === 'payment' || page.kind === 'acceptance') ? sectionLead(page.kind, model.document.number) : ''}
-        ${page.lines.length > 0 ? itemTable(page.lines, startIndex) : ''}
+        ${page.lines.length > 0 ? itemTable(page.lines, startIndex, showDiscount) : ''}
         ${page.showTotals ? totalsSection(model) : ''}
         ${paymentBlock}
       </div>
