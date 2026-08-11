@@ -904,16 +904,11 @@ export default function RequestDetailPage() {
         )}
 
 
-        {/* ของที่ไม่ติดสี่ช่องบนแถบข้อเท็จจริง แต่ทิ้งไม่ได้ — ผู้รับเรื่องคือหลักฐาน
-            ว่ามีคนรับงานไปจริง ไม่ใช่แค่สถานะเปลี่ยน */}
-        {(req.acknowledgedByName || req.formulaCode) && (
-          <p className={styles.headMeta}>
-            {req.acknowledgedByName
-              ? `รับเรื่องโดย ${req.acknowledgedByName} · ${fmtDate(req.acknowledgedAt)}`
-              : ""}
-            {req.acknowledgedByName && req.formulaCode ? " · " : ""}
-            {req.formulaCode ? `สูตร ${req.formulaCode}` : ""}
-          </p>
+        {/* ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้แล้ว** — ย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นบนหัวใบ (ม-101)
+            บรรทัดนี้เคยพูดซ้ำกับชิปคำต่อคำ (ผู้ใช้ทัก 2026-08-11) · เหลือไว้เฉพาะรหัสสูตร
+            ซึ่งยังไม่มีที่อยู่อื่นบนหัวใบ */}
+        {req.formulaCode && (
+          <p className={styles.headMeta}>สูตร {req.formulaCode}</p>
         )}
 
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
