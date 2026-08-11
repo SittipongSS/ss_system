@@ -14,6 +14,8 @@ import {
 } from '@/lib/documentStandards';
 import { SCENTOTYPES, SCENT_PERFORMANCE } from '@/lib/requests/kinds/rd/scentBriefTypes';
 import { PDR_SECTIONS, pdrFieldText, pdrSectionGroups } from '@/lib/requests/pdrFields';
+import { PDR_TARGET_KINDS } from '@/lib/requests/pdrTargets';
+import { categoryLabel } from '@/lib/master/categoryOf';
 
 const PDR_KEY = 'pdr';
 
@@ -152,6 +154,47 @@ function groupRow(group, request, context) {
   const cost = (stacked ? COST.optionBase : 0)
     + group.fields.reduce((sum, f) => sum + fieldValueCost(f, request, context), 0);
   return { tr: `<tr><th>${head}</th><td>${body}${note}</td></tr>`, cost };
+}
+
+// ── 2.2 / 2.3 · ต้นทุนและราคาขายเป้าหมาย รายสินค้า (mig 0229) ────────────
+//
+// ⭐ **บนจอกรอกเป็นตารางเดียว แต่บนกระดาษแยกสองข้อ** (มติผู้ใช้ 2026-08-10) —
+// ฟอร์ม FM-RD-01 นับข้อ 2.2 กับ 2.3 แยกกัน · รวมเป็นข้อเดียวบนกระดาษเมื่อไร เลขข้อ
+// ของทั้งแผ่นจะเลื่อนไม่ตรงกับต้นฉบับที่ทุกคนถืออยู่
+//
+// ⚠️ ใบที่ยังไม่มีรายการต้องได้กล่อง N/A เหมือนช่องอื่น ไม่ใช่หายไปทั้งข้อ — กระดาษที่
+// พิมพ์ออกไปต้องบอกได้ว่า "ถามแล้วแต่ยังไม่มีคำตอบ"
+function targetRows(request, categoryName) {
+  const list = Array.isArray(request.targets) ? request.targets : [];
+  const money = (v) => (v == null || v === '' ? null : Number(v).toLocaleString('th-TH'));
+
+  const costLines = list.map((t) => {
+    const parts = [];
+    for (const kind of PDR_TARGET_KINDS) {
+      if (!t[kind.onField]) continue;
+      const price = money(t[kind.priceField]);
+      const note = String(t[kind.noteField] || '').trim();
+      parts.push(`${kind.label}${note ? ` ${note}` : ''}${price ? ` ${price} บาท/Kg` : ''}`);
+    }
+    return parts.length ? `${categoryName(t.categoryCode)} — ${parts.join(' · ')}` : null;
+  }).filter(Boolean);
+
+  const unitLines = list.map((t) => {
+    const price = money(t.pricePerUnit);
+    return price ? `${categoryName(t.categoryCode)} — ${price} บาท/ชิ้น` : null;
+  }).filter(Boolean);
+
+  const row = (no, label, lines) => ({
+    tr: `<tr><th><span class="no">${esc(no)}</span>${esc(label)}</th><td>${
+      lines.length ? `<ul class="opts">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : cell(null)
+    }</td></tr>`,
+    cost: COST.row + COST.note * Math.max(0, lines.length - 1),
+  });
+
+  return [
+    row('2.2', 'Target Cost / KG (F/FB ไม่รวมบรรจุภัณฑ์)', costLines),
+    row('2.3', 'Target Price / Unit (ราคาขาย)', unitLines),
+  ];
 }
 
 // ── 2.1 บรีฟกลิ่น — สองคอลัมน์เหมือนกระดาษ ───────────────────────────────
@@ -367,6 +410,10 @@ export function renderPdrDocument({
       html: briefBlock(brief, index, list.length),
       cost: briefCost(brief),
     });
+  }
+  // ⚠️ 2.2/2.3 ต้องมาก่อนข้ออื่นของหมวดสเปก — เรียงตามเลขข้อบนกระดาษ
+  for (const { tr, cost } of targetRows(request, (code) => categoryLabel(code, context.categories || []))) {
+    items.push({ type: 'row', section: 'spec', heading: PAPER_HEADINGS.spec, tr, cost });
   }
   const specSection = PDR_SECTIONS.find((s) => s.key === 'spec');
   for (const group of pdrSectionGroups(specSection, request, context)) {

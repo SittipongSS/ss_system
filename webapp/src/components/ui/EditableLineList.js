@@ -21,6 +21,10 @@ export default function EditableLineList({
   children,              // ตัวแก้ไขของบรรทัดที่เปิดอยู่
   onAdd,
   addLabel = "เพิ่มรายการ",
+  /* ⭐ คอนโทรลที่ต้องเลือกก่อนถึงจะกดเพิ่มได้ (เช่น "ประเภทสินค้า" ของ PDR 2.2) —
+     วางไว้ **ในแถวเดียวกับปุ่ม** ไม่ใช่ลอยอยู่เหนือรายการ · ผู้เรียกที่ไม่ส่งมา
+     ได้ปุ่มเปล่าเหมือนเดิมทุกประการ */
+  addControl = null,
   emptyText = "ยังไม่มีรายการ — กดปุ่มข้างล่างเพื่อเพิ่มรายการแรก",
   disabled = false,
 }) {
@@ -41,9 +45,18 @@ export default function EditableLineList({
         </button>
       )))}
 
-      <Button size="sm" disabled={disabled} icon={<Plus size={14} aria-hidden="true" />} onClick={onAdd}>
-        {addLabel}
-      </Button>
+      {addControl ? (
+        <div className="line-add">
+          {addControl}
+          <Button size="sm" disabled={disabled} icon={<Plus size={14} aria-hidden="true" />} onClick={onAdd}>
+            {addLabel}
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" disabled={disabled} icon={<Plus size={14} aria-hidden="true" />} onClick={onAdd}>
+          {addLabel}
+        </Button>
+      )}
     </div>
   );
 }

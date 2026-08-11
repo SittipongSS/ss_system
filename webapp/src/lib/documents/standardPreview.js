@@ -97,10 +97,8 @@ const pdrPreviewRequest = () => ({
   pdrMoodTone: 'สดชื่น อบอุ่น เข้าถึงง่าย',
   pdrProjectValue: 950000,
   pdrCustomerKind: 'new',
-  pdrProductKind: 'น้ำหอม Eau de Parfum 50 ml',
+  pdrProductKinds: ['01-001', '02-010'],
   pdrWantedAt: '2026-09-15',
-  pdrTargetCost: 1200,
-  pdrTargetPrice: 590,
   pdrMoq: '1,000 ขวด',
   pdrTexture: 'premium',
   pdrPackSize: '50 ml · 1,000 ชิ้น/กลิ่น',
@@ -111,6 +109,28 @@ const pdrPreviewRequest = () => ({
   pdrSignCoordinator: 'ณิชา ลัคนาภิเศรษฐ์',
   pdrSignFinalApprover: 'รุจิรา ตระกูลยิ่งเจริญ',
   requestedByName: 'ตัวอย่าง ผู้ดูแล',
+  // ⭐ ข้อ 2.2/2.3 เป็นแถวรายสินค้าตั้งแต่ mig 0229 — ใบตัวอย่างต้องโชว์ของจริงที่
+  // กระดาษจะพิมพ์ ไม่ใช่ N/A · **ไม่ใส่ `pdrTargetCost`/`pdrTargetPrice` (ช่องเก่า)**
+  // เพราะใบใหม่ไม่เขียนลงช่องนั้นแล้ว ใส่ไปจะได้บรรทัด "(บันทึกไว้เดิม)" บนใบตัวอย่าง
+  // ซึ่งไม่มีทางเกิดกับใบที่เปิดวันนี้
+  targets: [
+    {
+      categoryCode: '01-001',
+      fOn: true,
+      fNote: 'เข้มข้น 20% เบสแอลกอฮอล์',
+      fPricePerKg: 1200,
+      fbOn: false,
+      pricePerUnit: 590,
+    },
+    {
+      categoryCode: '02-010',
+      fOn: false,
+      fbOn: true,
+      fbNote: 'เบสน้ำ ไม่มีแอลกอฮอล์',
+      fbPricePerKg: 880,
+      pricePerUnit: 250,
+    },
+  ],
   // ค่าที่ปกติ server เติมให้ (`findRequest`) — พรีวิวเป็นฝั่ง client จึงป้อนตรง ๆ
   pdrContext: {
     requestedAt: '2026-07-20',
@@ -122,6 +142,11 @@ const pdrPreviewRequest = () => ({
     deal: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     sampleDue: '2026-08-20',
     scentCount: 3,
+    // ป้ายหมวดของข้อ 1.11 และ 2.2/2.3 — พรีวิวเป็นฝั่ง client จึงป้อนทะเบียนย่อ ๆ เอง
+    categories: [
+      { mainCategoryCode: '01', typeCode: '001', nameTh: 'น้ำหอม', nameEn: 'PERFUME' },
+      { mainCategoryCode: '02', typeCode: '010', nameTh: 'สเปรย์ปรับอากาศ', nameEn: 'ROOM SPRAY' },
+    ],
   },
 });
 

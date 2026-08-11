@@ -479,3 +479,14 @@
    เหลื่อมกัน 6px มองออกชัดตอนอยู่ติดกัน (ผู้ใช้ทักมา 2026-08-09) */
 .pickAdd { display: flex; align-items: stretch; gap: var(--space-2); }
 .pickAdd > :first-child { flex: 1; min-width: 0; }
+
+/* หัวแถวของรายการต้นทุน/ราคาขาย (PDR 2.2+2.3) — ชื่อสินค้าซ้าย ปุ่มเอาออกขวา
+   ⚠️ ปุ่มลบอยู่ใน **แถวที่กางอยู่** ไม่ใช่บนแถวสรุป — แถวสรุปทั้งแถวเป็นปุ่มเปิดอยู่แล้ว
+   ซุกปุ่มลบไว้ในนั้นคือปุ่มซ้อนปุ่ม กดพลาดแล้วข้อมูลหาย */
+.pdrTargetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}

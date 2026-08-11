@@ -39,6 +39,7 @@ import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
+import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
@@ -501,7 +502,12 @@ export default function RequestDetailPage() {
         if (pdrDraft) {
           const ok = await call("", {
             method: "PATCH",
-            body: JSON.stringify({ action: "pdr", pdr: pdrDraft.pdr, briefs: pdrDraft.briefs }),
+            body: JSON.stringify({
+              action: "pdr",
+              pdr: pdrDraft.pdr,
+              briefs: pdrDraft.briefs,
+              pdrTargets: pdrDraft.targets,
+            }),
           }, "บันทึกการแก้ไขแล้ว");
           if (!ok) return;
         }
@@ -674,6 +680,10 @@ export default function RequestDetailPage() {
             setPdrDraft({
               pdr: pdrValuesFrom(req),
               briefs: (req.briefs || []).map((b) => ({ ...b })),
+              // แถวข้อ 2.2/2.3 (mig 0229) — แปลงเป็นค่าสตริงของฟอร์มด้วยตัวแปลงกลาง
+              // ⚠️ ลืมบรรทัดนี้ = เปิดโหมดแก้แล้วรายการราคาหายทั้งชุด แล้วกดบันทึก
+              // ทับของจริง (บั๊กเดียวกับที่ `pdrValuesFrom` มีไว้กันฝั่งหัวใบ)
+              targets: (req.targets || []).map(pdrTargetValuesFrom),
             });
           }
         },

@@ -167,7 +167,14 @@ export async function findRequest(supabase, id) {
     .from('dept_request_scents').select('*').eq('requestId', id)
     .order('sortOrder', { ascending: true });
   if (briefError) throw briefError;
-  const withBriefs = { ...row, briefs: briefs || [] };
+  // ⭐ แถวข้อ 2.2/2.3 (mig 0229) — ต้นทุน F/FB ต่อกิโล และราคาขายต่อชิ้น รายสินค้า
+  // ⚠️ โหลดคู่กับบรีฟตรงนี้ เพราะทั้งจอสรุปและ **เอกสาร** อ่านจากก้อนเดียวกัน ·
+  // เอกสารเป็นฟังก์ชันบริสุทธิ์ที่โหลดเองไม่ได้ (เหตุผลเดียวกับ `pdrContext` ข้างล่าง)
+  const { data: targets, error: targetError } = await supabase
+    .from('dept_request_pdr_targets').select('*').eq('requestId', id)
+    .order('sortOrder', { ascending: true });
+  if (targetError) throw targetError;
+  const withBriefs = { ...row, briefs: briefs || [], targets: targets || [] };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)
   //

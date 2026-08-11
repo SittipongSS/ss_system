@@ -33,6 +33,17 @@ test('⭐ หมวด 03 ทั้งก้อนใช้ไม่ได้ �
   assert.ok(!isScentDesignLine({ categoryCode: '03-003' }), 'PACKAGE DESIGN ไม่ใช่งานกลิ่น');
   assert.ok(!isScentDesignLine({ categoryCode: '03-004' }), 'CI DESIGN ไม่ใช่งานกลิ่น');
   assert.ok(!isScentDesignLine({ categoryCode: '01-002' }));
+  // ⭐ สามตัวที่เพิ่มตามมติผู้ใช้ 2026-08-10 — เกณฑ์เดียวกัน: RD ต้องปรุงกลิ่นจริง
+  // แล้วส่ง direction กลับ ⇒ ใบที่ขายแต่รหัสพวกนี้ต้องเปิดคำร้องพัฒนากลิ่นได้
+  for (const [code, name] of [
+    ['03-008', 'SCENT TOPPING'], ['03-009', 'EXPERIENCE SCENT DESIGN'], ['03-010', 'แก้ไขกลิ่น'],
+  ]) {
+    assert.ok(isScentDesignLine({ categoryCode: code }), `${code} ${name} ต้องผ่าน`);
+    assert.equal(scentCountForOrder([{ qty: 2, categoryCode: code }]), 2);
+  }
+  // ⚠️ MOCK UP / WORK SHOP ยังไม่ใช่งานกลิ่น — ไม่ใช่ว่าหมวด 03 ทั้งก้อนผ่านแล้ว
+  assert.ok(!isScentDesignLine({ categoryCode: '03-006' }), 'MOCK UP ไม่ใช่งานกลิ่น');
+  assert.ok(!isScentDesignLine({ categoryCode: '03-007' }), 'WORK SHOP ไม่ใช่งานกลิ่น');
 });
 
 test('จำนวนกลิ่นมาจาก qty ของบรรทัดออกแบบกลิ่น', () => {
