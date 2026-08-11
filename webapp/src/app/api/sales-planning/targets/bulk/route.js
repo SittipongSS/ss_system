@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { isSuperuser } from '@/lib/permissions';
+import { hasTeam, isSuperuser, primaryTeam } from '@/lib/permissions';
 import { canEditSalesTarget, normalizeTargetPeriod, toMoney } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
@@ -27,11 +27,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!normalized) return badRequest('ต้องระบุช่วงเวลาเป้าหมาย');
     const { period, periodType } = normalized;
 
-    const team = isSuper ? (item.team || null) : (user.team || null);
+    // คนอยู่หลายทีมได้ ⇒ ตั้งเป้าให้ทีมไหนก็ได้ที่ตัวเองสังกัด (ไม่ส่งมา = ทีมหลัก)
+    const team = isSuper ? (item.team || null) : (hasTeam(user, item.team) ? item.team : primaryTeam(user));
     if (!team && !isSuper) return badRequest('ต้องระบุทีม');
     if (item.ownerId && !team) return badRequest('เป้ารายบุคคลต้องมีทีม');
     // Team-scoped editors cannot touch another team's rows.
-    if (!isSuper && team !== (user.team || null)) return forbidden();
+    if (!isSuper && !hasTeam(user, team)) return forbidden();
 
     const ownerId = item.ownerId || null;
     const targetAmount = toMoney(item.targetAmount);

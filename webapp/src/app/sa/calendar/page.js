@@ -16,7 +16,9 @@ import { CalendarDays, ChevronLeft, ChevronRight, List, CalendarRange } from "lu
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
+import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { leadScopes, TEAM_LABELS } from "@/lib/permissions";
 import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import { isInLocalMonth } from "@/lib/sales/leadCalendar";
@@ -50,6 +52,9 @@ export default function SalesCalendarPage() {
   const canLead = useCan("salesplan:lead");
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
+  // อยู่หลายทีม → เลือกได้ว่าขอบเขต "ทีม" จะรวมทีมไหนบ้าง
+  const myTeams = useMyTeamsFilter();
   const router = useRouter();
 
   const now = useMemo(() => new Date(), []);
@@ -104,9 +109,10 @@ export default function SalesCalendarPage() {
     // ตัดวันที่ server ถ่างเผื่อขอบมาให้ก่อน — ดู isInLocalMonth ว่าทำไมต้องตัดที่นี่
     if (!isInLocalMonth(entry.at, cursor.y, cursor.m)) return false;
     if (activeScope === "mine") return !!meId && entry.assigneeId === meId;
-    if (activeScope === "team") return !!team && entry.team === team;
+    // "ทีมของฉัน" = ทุกทีมที่สังกัด (คนเดียวอยู่ได้หลายทีม)
+    if (activeScope === "team") return teams.includes(entry.team) && myTeams.matches(entry.team);
     return true;
-  }), [entries, activeScope, meId, team, cursor]);
+  }), [entries, activeScope, meId, teams, myTeams, cursor]);
 
   const holidayByDay = useMemo(() => {
     const map = new Map();
@@ -185,6 +191,9 @@ export default function SalesCalendarPage() {
               onChange={setScope}
               options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
             />
+          )}
+          {activeScope === "team" && (
+            <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
           )}
           <span className="ui-badge">{visible.length} นัด</span>
         </div>

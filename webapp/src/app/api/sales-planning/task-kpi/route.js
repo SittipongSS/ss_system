@@ -1,5 +1,5 @@
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
-import { can, canSeeTaskKpi } from '@/lib/permissions';
+import { can, canSeeTaskKpi, hasTeam, primaryTeam, userTeams } from '@/lib/permissions';
 import { loadUserDirectory, teamUserIds } from '@/lib/usersRepo';
 import { businessDate } from '@/lib/businessDate';
 import {
@@ -21,12 +21,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const requestedTeam = (url.searchParams.get('team') || '').trim();
   const directory = await loadUserDirectory(supabase);
   const users = Array.from(directory.values()).filter((u) => SALES_ROLES.has(u.role));
-  const availableTeams = Array.from(new Set(users.map((u) => u.team).filter(Boolean))).sort();
+  // คนหนึ่งคนอยู่ได้หลายทีม ⇒ โผล่ในตัวเลือกทีมทุกทีมที่สังกัด
+  const availableTeams = Array.from(new Set(users.flatMap((u) => userTeams(u)))).sort();
 
+  // หัวหน้าทีมที่อยู่หลายทีม เลือกได้ว่าจะดู KPI ทีมไหน ตราบใดที่เป็นทีมของตัวเอง
+  // ไม่เลือก (หรือเลือกทีมที่ไม่ได้สังกัด) = ทีมหลัก
   let team = requestedTeam;
   let targetIds = null;
   if (user.role === 'senior_ae') {
-    team = user.team || '';
+    team = hasTeam(user, requestedTeam) ? requestedTeam : (primaryTeam(user) || '');
     targetIds = await teamUserIds(supabase, team);
   } else if (team) {
     targetIds = await teamUserIds(supabase, team);
@@ -34,7 +37,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const targetUsers = users
     .filter((u) => (!targetIds || targetIds.includes(u.id)))
-    .filter((u) => (!team || u.team === team));
+    .filter((u) => (!team || hasTeam(u, team)));
   const targetSet = new Set(targetUsers.map((u) => u.id));
   const rowsByUser = new Map(targetUsers.map((u) => [u.id, emptyPerson(u)]));
 
@@ -55,9 +58,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   const rows = Array.from(rowsByUser.values()).map(finalize).sort((a, b) => b.score - a.score || b.completed - a.completed || a.name.localeCompare(b.name, 'th'));
-  const teams = Array.from(new Set(rows.map((r) => r.team).filter(Boolean)))
-    .map((t) => aggregateGroup(t, rows.filter((r) => r.team === t)))
-    .sort((a, b) => b.score - a.score || a.team.localeCompare(b.team, 'th'));
+  // แยกตามทีม — ใช้ **ทีมหลัก** ของแต่ละคน คนหนึ่งคนจึงอยู่กลุ่มเดียว ไม่ถูกนับซ้ำ
+  // ⚠️ แต่ตอนกรองทีมอยู่ ต้องเป็นกลุ่มเดียวชื่อทีมที่กรอง — ไม่งั้นคนที่อยู่ทีมนี้เป็น
+  // ทีมรองจะพาป้ายทีมหลักของตัวเองขึ้นมา แล้วหน้าจอขึ้นว่า "ทีม ODM" ทั้งที่กรอง SV อยู่
+  const teams = team
+    ? [aggregateGroup(team, rows)]
+    : Array.from(new Set(rows.map((r) => r.team).filter(Boolean)))
+      .map((t) => aggregateGroup(t, rows.filter((r) => r.team === t)))
+      .sort((a, b) => b.score - a.score || a.team.localeCompare(b.team, 'th'));
   const summary = aggregateGroup(team || 'รวม', rows);
 
   return ok({

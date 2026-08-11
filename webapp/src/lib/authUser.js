@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { departmentFor, sanitizeExtraCaps } from '@/lib/permissions';
+import { departmentFor, sanitizeExtraCaps, userTeams } from '@/lib/permissions';
 
 // ลด round-trip ไป Supabase Auth (GoTrue): ก่อนหน้านี้ทุก API request จ่าย getUser()
 // 2 รอบ (proxy + route handler). รอบของ route handler cache ได้ 60 วิ ต่อ access
@@ -13,8 +13,10 @@ const IDENTITY_TTL_MS = 60 * 1000;
 
 // Server-side identity for API route handlers. Reads the signed-in user from
 // the Supabase session cookie and returns the fields needed for access checks:
-//   { id, role, team, name }
+//   { id, role, team, teams, name }
 // Role + team come from app_metadata (service-role-only, not self-editable).
+// `teams` = ทุกทีมที่สังกัด (ใช้เป็นขอบเขต) · `team` = ทีมหลัก (ใช้ตอน stamp
+// เจ้าของงานใหม่) — บัญชีเก่าที่ยังไม่มี teams จะถอยไปใช้ [team] เอง
 //
 // Dev fallback: if Supabase isn't configured (local dev), return a supervisor
 // so the app keeps working without auth — mirrors AppLayout/proxy behavior.
@@ -22,7 +24,7 @@ export async function getCurrentUser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    return { id: 'local-dev', role: 'ae_supervisor', team: null, department: 'SALES', name: 'Local Dev', devBypass: true };
+    return { id: 'local-dev', role: 'ae_supervisor', team: null, teams: [], department: 'SALES', name: 'Local Dev', devBypass: true };
   }
 
   const cookieStore = await cookies();
@@ -34,7 +36,7 @@ export async function getCurrentUser() {
     const hit = identityCache.get(cacheKey);
     // คืนสำเนา — กัน handler เผลอ mutate object ที่แชร์ใน cache
     if (hit && Date.now() - hit.at < IDENTITY_TTL_MS) {
-      return { ...hit.user, extraCaps: [...(hit.user.extraCaps || [])] };
+      return { ...hit.user, extraCaps: [...(hit.user.extraCaps || [])], teams: [...(hit.user.teams || [])] };
     }
   }
   const supabase = createServerClient(url, anon, {
@@ -58,6 +60,7 @@ export async function getCurrentUser() {
     id: user.id,
     role,
     team: user.app_metadata?.team || null,
+    teams: userTeams({ team: user.app_metadata?.team, teams: user.app_metadata?.teams }),
     department: user.app_metadata?.department || departmentFor(role) || null,
     // Per-user capability grants (e.g. an SA granted the LG legal:approve). The
     // effective caps are role caps ∪ these — see capsForUser/canUser.

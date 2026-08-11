@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canDeleteRecord, viewScopeUser } from '@/lib/permissions';
+import { attributionTeam, canDeleteRecord, viewScopeUser } from '@/lib/permissions';
+import { whereTeamIn } from '@/lib/teamScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
@@ -22,7 +23,7 @@ export async function GET(request) {
     .from('excise_registrations')
     .select(slim ? REGISTRATION_SELECT_SLIM : '*')
     .order('createdAt', { ascending: false });
-  if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
+  if (viewScopeUser(user) === 'team') query = whereTeamIn(query, user);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -97,7 +98,8 @@ export async function POST(request) {
     // Created as a draft — SA attaches the required documents, then submits
     // (draft → pending_legal) which is gated on those documents being present.
     status: 'draft',
-    team: user?.team ?? null,
+    // คนอยู่หลายทีมเลือกได้ว่าทะเบียนใบนี้เข้าคิวทีมไหน (ค่าที่ไม่ใช่ทีมตัวเอง = ทีมหลัก)
+    team: attributionTeam(user, body.team),
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',
     // เก็บ snapshot ทั้งสองภาษาไว้สำหรับค้นหา แม้ป้ายที่แสดงจะใช้ภาษาเดียว.

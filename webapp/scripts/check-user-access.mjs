@@ -12,6 +12,7 @@
 //   ✗ role ที่ไม่รู้จัก (พิมพ์ผิด/ของเก่า) → capsFor คืน [] แบบเงียบ
 //   ⚠ extraCaps ที่ grant รายคน — ไม่ใช่ของผิด แต่ต้องมีคนรู้ว่ามีอยู่
 //   ⚠ team ที่ไม่อยู่ใน TEAMS · department ที่ไม่ตรงกับ role
+//   ✗ ทีมหลักไม่อยู่ในชุดทีมที่สังกัด (teams[]) — ของใหม่เข้าทีมที่เจ้าตัวมองไม่เห็น
 //   ⚠ บัญชีถูกระงับที่ยังถูกอ้างอยู่ (เตือนให้ตรวจงานค้าง)
 //
 // วิธีใช้:  node scripts/check-user-access.mjs
@@ -23,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ROLES, ROLE_LABELS, TEAMS, TEAM_ROLES, DEPARTMENTS, GRANTABLE_CAPS,
   capsFor, departmentFor, normalizeDepartment,
-  viewScope, editScope, isSuperuser,
+  viewScope, editScope, isSuperuser, userTeams,
 } from '../src/lib/permissions.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -80,7 +81,8 @@ const label = (u) => `${(u.user_metadata?.name || '').trim() || u.email || u.id}
 
 for (const u of users) {
   const role = u.app_metadata?.role || null;
-  const team = u.app_metadata?.team || null;
+  const team = u.app_metadata?.team || null;   // ทีมหลัก (ยอดของใหม่เข้าทีมนี้)
+  const teams = userTeams(u.app_metadata);      // ทุกทีมที่สังกัด (ขอบเขตจริง)
   const dept = u.app_metadata?.department || null;
   const extraCaps = u.app_metadata?.extraCaps || [];
   const disabled = !!u.banned_until && new Date(u.banned_until) > new Date();
@@ -94,14 +96,26 @@ for (const u of users) {
     problems.push(`✗ ${who}: role "${role}" ไม่มีอยู่ในระบบ — capsFor() คืนค่าว่างแบบเงียบ`);
     continue;
   }
-  if (TEAM_ROLES.includes(role) && !team) {
+  if (TEAM_ROLES.includes(role) && !teams.length) {
     problems.push(`✗ ${who} (${ROLE_LABELS[role]}): ไม่มีทีม — inScope('team') เป็น false ทุกกรณี ⇒ มองไม่เห็น/แก้ไม่ได้เกือบทั้งระบบ`);
   }
-  if (team && !TEAMS.includes(team)) {
-    problems.push(`✗ ${who}: ทีม "${team}" ไม่อยู่ในรายการ (${TEAMS.join('/')})`);
+  const badTeams = teams.filter((t) => !TEAMS.includes(t));
+  if (badTeams.length) {
+    problems.push(`✗ ${who}: ทีม "${badTeams.join(', ')}" ไม่อยู่ในรายการ (${TEAMS.join('/')})`);
   }
-  if (team && !TEAM_ROLES.includes(role) && !isSuperuser(role)) {
-    notes.push(`⚠ ${who} (${ROLE_LABELS[role]}): ตั้งทีม "${team}" ไว้ทั้งที่ตำแหน่งนี้ไม่ได้ใช้ทีมตัดสินสิทธิ์`);
+  // ทีมหลักต้องอยู่ในชุดที่สังกัดเสมอ (resolveTeamAssignment บังคับตอนเขียน) — หลุดได้
+  // ทางเดียวคือมีคนแก้ app_metadata มือ · ผลคือของใหม่ถูกบันทึกเข้าทีมที่เจ้าตัวไม่ได้อยู่
+  if (team && teams.length && !teams.includes(team)) {
+    problems.push(`✗ ${who}: ทีมหลัก "${team}" ไม่อยู่ในทีมที่สังกัด (${teams.join(', ')}) — ของใหม่จะถูกบันทึกเข้าทีมที่ตัวเองมองไม่เห็น`);
+  }
+  if (TEAM_ROLES.includes(role) && teams.length && !team) {
+    problems.push(`✗ ${who}: มีทีมสังกัด (${teams.join(', ')}) แต่ไม่มีทีมหลัก — ดีล/ลูกค้าที่สร้างใหม่จะไร้ทีม`);
+  }
+  if (teams.length && !TEAM_ROLES.includes(role) && !isSuperuser(role)) {
+    notes.push(`⚠ ${who} (${ROLE_LABELS[role]}): ตั้งทีม "${teams.join(', ')}" ไว้ทั้งที่ตำแหน่งนี้ไม่ได้ใช้ทีมตัดสินสิทธิ์`);
+  }
+  if (teams.length > 1) {
+    notes.push(`⚠ ${who} (${ROLE_LABELS[role]}): อยู่ ${teams.length} ทีม (${teams.join(' + ')}) — ทีมหลัก ${team} คือทีมที่ยอด/เป้าถูกนับเข้า`);
   }
   if (dept && !DEPARTMENTS.includes(normalizeDepartment(dept))) {
     problems.push(`✗ ${who}: department "${dept}" ไม่อยู่ในรายการ`);
@@ -135,7 +149,8 @@ for (const u of [...users].sort((a, b) => (a.app_metadata?.role || '').localeCom
   console.log([
     label(u),
     known ? `${role} (${capsFor(role).length} cap)` : `**${role}**`,
-    u.app_metadata?.team || '-',
+    // ทีมหลักขึ้นก่อน แล้วต่อด้วยทีมรอง — ตารางนี้คือที่เดียวที่คนตรวจเห็นสังกัดจริง
+    userTeams(u.app_metadata).map((t) => (t === u.app_metadata?.team ? `**${t}**` : t)).join(' + ') || '-',
     normalizeDepartment(u.app_metadata?.department) || departmentFor(role) || '-',
     known ? `${viewScope(role)}/${editScope(role)}` : '?',
     (u.app_metadata?.extraCaps || []).join(', ') || '-',

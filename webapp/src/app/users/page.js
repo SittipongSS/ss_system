@@ -18,9 +18,13 @@ import {
   DEPARTMENT_NAMES_TH,
   departmentFor,
   rolesForDepartment,
+  resolveTeamAssignment,
+  userTeams,
   GRANTABLE_CAPS,
   GRANTABLE_CAP_LABELS,
 } from "@/lib/permissions";
+import OptionTiles from "@/components/ui/OptionTiles";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import Modal from "@/components/Modal";
 import { fmtPhone, fmtDate } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -29,7 +33,12 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", extraCaps: [] };
+// team = ทีมหลัก (ยอด/เจ้าของงานที่สร้างใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
+// (ขอบเขตการเห็น/แก้) — คนเดียวอยู่ได้หลายทีม เช่น AE ที่อยู่ทั้ง ODM และ Services
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", teams: ["ODM"], extraCaps: [] };
+
+// ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
+const teamLabelsOf = (u) => userTeams(u).map((t) => TEAM_LABELS[t] || t);
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -55,7 +64,7 @@ export default function UserManagement() {
     email: (u) => u.email || "",
     role: (u) => ROLE_LABELS[u.role] || u.role || "",
     department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
-    team: (u) => TEAM_LABELS[u.team] || u.team || "",
+    team: (u) => teamLabelsOf(u).join(", "),
     lastSignInAt: (u) => (u.lastSignInAt ? new Date(u.lastSignInAt).getTime() : null),
   });
   const sortedUsers = sort.sorted;
@@ -79,15 +88,17 @@ export default function UserManagement() {
     else setLoading(false);
   }, [canManage]);
 
-  // When a role isn't team-bound, drop the team value.
-  const normalizeTeam = (role, team) => (TEAM_ROLES.includes(role) ? team || TEAMS[0] : "");
+  // ทีมที่จะส่งขึ้น API — กติกาเดียวกับฝั่งเซิร์ฟเวอร์ (resolveTeamAssignment):
+  // ตำแหน่งที่ไม่ผูกทีมถูกล้างทิ้ง · ทีมหลักต้องอยู่ในชุดที่สังกัด
+  const teamPayload = (form) =>
+    resolveTeamAssignment(form.role, { team: form.team, teams: form.teams });
 
   const handleCreate = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     const payload = {
       ...createForm,
-      team: normalizeTeam(createForm.role, createForm.team),
+      ...teamPayload(createForm),
     };
     try {
       const res = await fetch("/api/users", {
@@ -117,7 +128,8 @@ export default function UserManagement() {
       phone: u.phone || "",
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
-      team: u.team || TEAMS[0],
+      team: u.team || userTeams(u)[0] || TEAMS[0],
+      teams: userTeams(u).length ? userTeams(u) : [u.team || TEAMS[0]],
       extraCaps: Array.isArray(u.extraCaps) ? u.extraCaps : [],
       password: "",
     });
@@ -132,7 +144,7 @@ export default function UserManagement() {
       phone: editForm.phone,
       role: editForm.role,
       department: editForm.department,
-      team: normalizeTeam(editForm.role, editForm.team),
+      ...teamPayload(editForm),
       extraCaps: editForm.extraCaps || [],
     };
     if (editForm.password) payload.password = editForm.password;
@@ -311,7 +323,16 @@ export default function UserManagement() {
                         })()}
                       </td>
                       <td className="text-[var(--text-2)]">
-                        {u.team ? TEAM_LABELS[u.team] || u.team : "-"}
+                        {(() => {
+                          // อยู่หลายทีมได้ — โชว์ครบทุกทีม ทีมหลักตัวแรก (ตัวที่ยอดของใหม่เข้า)
+                          const labels = teamLabelsOf(u);
+                          if (!labels.length) return "-";
+                          return (
+                            <span title={labels.length > 1 ? `ทีมหลัก: ${labels[0]}` : undefined}>
+                              {labels.join(" + ")}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="text-[var(--text-3)] text-xs">
                         {u.lastSignInAt ? fmtDate(u.lastSignInAt) : "ยังไม่เคย"}
@@ -440,7 +461,11 @@ export default function UserManagement() {
                 onChange={(e) => setTransferForm((f) => ({ ...f, toUserId: e.target.value }))}
                 options={users
                   .filter((x) => !x.disabled && x.role && x.role !== "user" && x.id !== transferUser?.id)
-                  .map((x) => ({ value: x.id, label: `${`${x.firstName || ""} ${x.lastName || ""}`.trim() || x.email}${x.team ? ` · ${TEAM_LABELS[x.team] || x.team}` : ""}` }))}
+                  .map((x) => {
+                    const teams = teamLabelsOf(x);
+                    const name = `${x.firstName || ""} ${x.lastName || ""}`.trim() || x.email;
+                    return { value: x.id, label: teams.length ? `${name} · ${teams.join(" + ")}` : name };
+                  })}
                 placeholder="เลือกพนักงานที่รับช่วงต่อ"
               />
             </div>
@@ -490,6 +515,10 @@ function SectionHeading({ children }) {
 function UserFields({ form, setForm, requirePassword, edit }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isTeamRole = TEAM_ROLES.includes(form.role);
+  const teams = userTeams(form);
+  // ติ๊กทีมออกแล้วทีมหลักต้องตามไปด้วย ไม่งั้นจะเหลือทีมหลักที่ตัวเองไม่ได้อยู่
+  const setTeams = (next) =>
+    setForm((f) => ({ ...f, teams: next, team: next.includes(f.team) ? f.team : (next[0] || "") }));
   const deptRoles = rolesForDepartment(form.department);
   const grants = form.extraCaps || [];
   const toggleGrant = (cap) =>
@@ -606,26 +635,45 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           ))}
         </Select>
       </div>
+      {/* ทีม — ติ๊กได้หลายทีม (มติผู้ใช้ 2026-08-11: "ฝ่ายขาย Account Executive
+          อยู่ ODM กับ Service") · ชุดตายตัว 3 ตัว = แผ่นเลือก ไม่ใช่ดรอปดาวน์
+          (docs/form-design-rules.md §3) */}
       <div className="form-group col-span-2">
         <label>
           ทีม {isTeamRole && <span className="text-[var(--red)]">*</span>}
         </label>
-        <Select
-          value={isTeamRole ? form.team : ""}
-          onChange={(e) => set("team", e.target.value)}
-          disabled={!isTeamRole}
-          className="premium-input w-full"
-        >
-          {isTeamRole ? (
-            TEAMS.map((t) => (
-              <option key={t} value={t}>
-                {TEAM_LABELS[t]}
-              </option>
-            ))
-          ) : (
-            <option value="">— ไม่ต้องระบุ —</option>
-          )}
-        </Select>
+        {isTeamRole ? (
+          <>
+            <OptionTiles
+              multiple
+              ariaLabel="ทีมที่สังกัด"
+              value={teams}
+              onChange={(next) => setTeams(next)}
+              options={TEAMS.map((t) => ({ value: t, label: TEAM_LABELS[t] }))}
+            />
+            {teams.length === 0 && (
+              <p className="text-[11px] text-[var(--red)] mt-1">ตำแหน่งนี้ต้องเลือกอย่างน้อยหนึ่งทีม</p>
+            )}
+            {/* ทีมหลักถามเฉพาะตอนที่มันมีคำตอบให้เลือกจริง — ทีมเดียวก็คือทีมหลักอยู่แล้ว */}
+            {teams.length > 1 && (
+              <div className="form-group mt-3">
+                <label>ทีมหลัก</label>
+                <ChoiceChips
+                  ariaLabel="ทีมหลัก"
+                  value={form.team}
+                  onChange={(t) => set("team", t)}
+                  options={teams.map((t) => ({ value: t, label: TEAM_LABELS[t] }))}
+                />
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
+                  ดีล/ลูกค้า/โครงการที่คนนี้สร้างใหม่จะถูกบันทึกเข้าทีมหลัก — ยอดและเป้าจึงนับที่ทีมนี้
+                  ส่วนทีมที่เหลือใช้กำหนดว่าเห็นและแก้งานของทีมไหนได้บ้าง
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="premium-input w-full opacity-[var(--op-disabled)]">— ไม่ต้องระบุ —</div>
+        )}
       </div>
 
       {/* —— สิทธิ์เสริมรายคน (grants) —— */}

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Boxes, LogOut, Settings, ShieldCheck, TriangleAlert, UserRound, Users } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
-import { canUser, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
+import { canUser, userTeams, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { fmtName } from "@/lib/format";
 import {
   recentSystemForUser,
@@ -65,7 +65,7 @@ export default function HomeHubPage() {
     setLoadError("");
 
     if (!SUPABASE_CONFIGURED) {
-      setSession({ role: "ae_supervisor", team: null, extraCaps: [], userName: "Local Dev" });
+      setSession({ role: "ae_supervisor", team: null, teams: [], extraCaps: [], userName: "Local Dev" });
       setLoading(false);
       return;
     }
@@ -82,6 +82,9 @@ export default function HomeHubPage() {
       setSession({
         role: user.app_metadata?.role || "user",
         team: user.app_metadata?.team || null,
+        // ทุกทีมที่สังกัด — การ์ดระบบบางใบกั้นด้วยทีม (สหมิตร = KA) ขาดช่องนี้แล้ว
+        // คนที่ KA เป็นทีมรองจะไม่เห็นการ์ด ทั้งที่กดเข้าหน้าและ API ผ่าน
+        teams: userTeams(user.app_metadata),
         extraCaps: Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : [],
         userName: fmtName({ ...meta, email: user.email }) || user.email || "ผู้ใช้งาน",
       });

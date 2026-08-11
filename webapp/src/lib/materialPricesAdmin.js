@@ -131,7 +131,8 @@ export async function loadRequests(supabase, {
   if (requestedById) query = query.eq('requestedById', requestedById);
   // ⚠️ ขอบเขต "ทีม" กรองที่นี่ ไม่ใช่ที่จอ (กับดักข้อ 9) — กรองที่จอแปลว่าคำร้อง
   // ของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จากแท็บ Network
-  if (team) query = query.eq('team', team);
+  // `team` รับได้ทั้งทีมเดียวและอาร์เรย์ — คนเปิดคิวอยู่ได้หลายทีม (scopeFilter)
+  if (team) query = Array.isArray(team) ? query.in('team', team) : query.eq('team', team);
   const { data: asks, error } = await query.order('createdAt', { ascending: false });
   if (error) throw error;
   if (!asks?.length) return [];

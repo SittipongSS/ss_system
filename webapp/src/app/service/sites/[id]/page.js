@@ -25,7 +25,7 @@ import {
   visitTimeText,
 } from "@/lib/service/rounds";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -34,8 +34,9 @@ export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [site, setSite] = useState(null);
   const [assets, setAssets] = useState([]);

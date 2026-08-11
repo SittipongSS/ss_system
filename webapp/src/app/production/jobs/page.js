@@ -14,7 +14,7 @@ import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import ProductionJobModal from "@/components/pm/ProductionJobModal";
 import { canEditProduction } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
   JOB_STATUS_LABELS,
   jobDateRange,
@@ -28,8 +28,9 @@ const OPEN_STATUSES = "draft,planned,in_progress";
 export default function ProductionJobsPage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditProduction({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
   const [jobs, setJobs] = useState([]);
   const [lines, setLines] = useState([]);

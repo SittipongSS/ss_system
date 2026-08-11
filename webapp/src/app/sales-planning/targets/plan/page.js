@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp }
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
+import { userTeams } from "@/lib/permissions";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -155,7 +156,7 @@ export default function SalesTargetPlanPage() {
   const teamMembers = useMemo(() => {
     const map = {};
     for (const t of SALES_TEAMS) {
-      map[t] = users.filter((u) => TARGET_OWNER_ROLES.includes(u.role) && u.team === t);
+      map[t] = users.filter((u) => TARGET_OWNER_ROLES.includes(u.role) && userTeams(u).includes(t));
     }
     return map;
   }, [users]);

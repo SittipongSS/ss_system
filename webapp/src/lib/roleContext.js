@@ -1,14 +1,19 @@
 "use client";
-import { createContext, useContext } from "react";
-import { can as _can, sanitizeExtraCaps } from "./permissions";
+import { createContext, useContext, useMemo } from "react";
+import { can as _can, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
 
 // Provided by AppLayout (which already knows the signed-in user's role).
 // Pages use useCan('<resource>:<action>') to show/hide actions.
 export const RoleContext = createContext(null);
 
-// The signed-in user's team (ODM/KA/SV), or null for non-team roles. Kept in a
-// separate context so useRole/useCan stay simple string consumers.
+// The signed-in user's PRIMARY team (ODM/KA/SV), or null for non-team roles.
+// Kept in a separate context so useRole/useCan stay simple string consumers.
+// ⚠️ ทีมหลักใช้ตอบคำถาม "ของใหม่ที่คนนี้สร้างเข้าทีมไหน" (attribution) เท่านั้น —
+//    ถ้าจะถามว่า "เห็น/แก้แถวของทีมนี้ได้ไหม" ต้องใช้ useTeams() เพราะคนอยู่หลายทีมได้
 export const TeamContext = createContext(null);
+
+// ทุกทีมที่ผู้ใช้สังกัด (app_metadata.teams) — ใช้ตัดสินขอบเขตแถวฝั่ง UI
+export const TeamsContext = createContext(null);
 
 // Per-user capability grants (app_metadata.extraCaps) — additive caps on top of
 // the role, e.g. an SA granted the LG legal:approve. useCan unions these so the
@@ -24,10 +29,27 @@ export function useRole() {
   return useContext(RoleContext);
 }
 
-// Current user's team — used for row-level scope decisions in the UI (e.g.
-// hiding approve buttons for another team's records).
+// ทีมหลักของผู้ใช้ — ใช้ตอนตั้งค่าเริ่มต้นของฟอร์ม/แสดงสังกัด
 export function useTeam() {
   return useContext(TeamContext);
+}
+
+// ทุกทีมของผู้ใช้ — ใช้ตัดสินขอบเขตแถว (เช่นซ่อนปุ่มอนุมัติของทีมอื่น)
+// ถอยไปทีมหลักเองถ้า provider ยังไม่ส่ง teams มา
+//
+// ⚠️ ต้องคืน "อาร์เรย์ตัวเดิม" ตราบใดที่ทีมไม่เปลี่ยน — ผู้เรียกเอาไปใส่ dependency
+// ของ useMemo/useCallback กันทั้งระบบ ถ้าสร้างอาร์เรย์ใหม่ทุกรอบ memo จะพังทุกตัว
+export function useTeams() {
+  const teams = useContext(TeamsContext);
+  const team = useContext(TeamContext);
+  const key = (Array.isArray(teams) && teams.length ? teams : _userTeams(team)).join(",");
+  return useMemo(() => (key ? key.split(",") : []), [key]);
+}
+
+// ผู้ใช้อยู่ในทีมนี้ไหม (ทีมเดียวหรือหลายทีมก็ถาม) — คู่กับ hasTeam ฝั่งเซิร์ฟเวอร์
+export function useHasTeam(team) {
+  const mine = useTeams();
+  return _userTeams(team).some((t) => mine.includes(t));
 }
 
 export function useDepartment() {

@@ -14,6 +14,7 @@
 //                       entityId: id, before, after: updated, request });
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { userTeams } from '@/lib/permissions';
 
 // Fields ที่ไม่ถือว่าเป็น "การเปลี่ยนแปลงที่มีความหมาย" ในการ diff (timestamp ระบบ).
 const NOISE_KEYS = new Set(['updatedAt', 'createdAt']);
@@ -94,7 +95,8 @@ export function userAuditSnapshot(u) {
     name: m.name || `${m.firstName || ''} ${m.lastName || ''}`.trim() || null,
     phone: m.phone || null,
     role: a.role || null,
-    team: a.team || null,
+    team: a.team || null,          // ทีมหลัก
+    teams: userTeams(a),           // ทุกทีมที่สังกัด — ต้องเก็บด้วย เพราะนี่คือช่องที่คุมขอบเขตจริง
     department: a.department || null,
     disabled: !!u.banned_until && new Date(u.banned_until) > new Date(),
   };

@@ -14,10 +14,25 @@ import { ROLES } from '../permissions.js';
 import { canCreateDeal, salesPlanningEditScope } from '../salesPlanning.js';
 import {
   DEAL_HOLDER_ROLES, DEAL_OWNER_ROLES, assignableOwners, canAssignDealOwner, ownerLockedToSelf,
+  validateDealOwner,
 } from './dealOwner.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
+
+// stub auth admin: id -> user (รูปเดียวกับ leadAssignee.test.mjs)
+const ownerStub = (users) => ({
+  auth: {
+    admin: {
+      async getUserById(id) {
+        const user = users[id];
+        return user
+          ? { data: { user: { id, banned_until: null, ...user } }, error: null }
+          : { data: { user: null }, error: { message: 'User not found' } };
+      },
+    },
+  },
+});
 
 test('AC เปิดดีลได้แล้ว — และ AE/Senior AE/ผู้กำกับดูแลยังได้เหมือนเดิม', () => {
   for (const role of ['ac', 'ae', 'senior_ae', 'admin']) {
@@ -103,7 +118,9 @@ test('ae/senior_ae ล็อกชื่อตัวเอง — ac/ae_supervis
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
 test('POST/PATCH ตรวจ ownerId ที่ server ไม่รับชื่อจาก client', () => {
   const post = read('src/app/api/sales-planning/deals/route.js');
-  assert.match(post, /validateDealOwner\(supabase, body\.ownerId, user\)/);
+  // อาร์กิวเมนต์ที่ 4 = ทีมที่ฟอร์มเลือก — ต้องส่งเข้าไปตรวจกับทีมของ **เจ้าของ**
+  // ไม่ใช่เอา body.team ไปเขียนตรง ๆ (มติ 2026-08-11 รอบสาม)
+  assert.match(post, /validateDealOwner\(supabase, body\.ownerId, user, body\.team\)/);
   assert.doesNotMatch(post, /ownerName: body\.ownerName/, 'ชื่อต้องมาจาก server');
   assert.match(post, /if \(!body\.ownerId && !ownerLockedToSelf\(user\.role\)\)/,
     'ac/ae_supervisor/admin ต้องระบุ AE — ปล่อยว่างแล้วดีลตกเป็นของผู้ประสาน/ผู้กำกับเงียบ ๆ');
@@ -115,8 +132,10 @@ test('POST/PATCH ตรวจ ownerId ที่ server ไม่รับชื�
 });
 
 test('ทีมของดีลตามเจ้าของ ไม่ใช่ตามคนกดสร้าง', () => {
+  // เจ้าของอยู่หลายทีมได้ ⇒ ทีมที่ได้มาจาก validateDealOwner ซึ่งกรอง body.team
+  // ด้วยทีมของเจ้าของแล้ว · ไม่มีเจ้าของ = ทีมของคนกด (ผ่าน attributionTeam เช่นกัน)
   assert.match(read('src/app/api/sales-planning/deals/route.js'),
-    /team: owner\?\.team \|\| body\.team \|\| user\.team/);
+    /team: owner\?\.team \|\| attributionTeam\(user, body\.team\)/);
 });
 
 /* กติกาต้องอยู่ที่เดียว — 3 หน้าเปิดฟอร์มดีลได้ ถ้าแต่ละหน้ากรองเอง "เฉพาะทีมตัวเอง"
@@ -139,4 +158,19 @@ test('หน้ารวมดีลเลิกเขียนรายชื�
 
 test('ฟอร์มแก้ดีลโหลดเจ้าของเดิมมาด้วย — ไม่งั้นบันทึกแล้วช่องว่างทับของเดิม', () => {
   assert.match(read('src/app/sales-planning/deals/page.js'), /ownerId: deal\.ownerId \|\| ""/);
+});
+
+/* ── คนสั่งและคนรับอยู่หลายทีม (มติ 2026-08-11) ────────────────────────────
+   ด่านนี้เคยเทียบทีมหลักต่อทีมหลัก ⇒ ปฏิเสธคู่ที่ทำงานทีมเดียวกันจริง
+   (หัวหน้าดูแล SV · AE อยู่ ODM+SV ทีมหลัก ODM) ซึ่งเป็นเคสหลักของฟีเจอร์นี้ */
+test('มอบดีลได้เมื่อมีทีมร่วมกัน แม้ทีมหลักคนละทีม', async () => {
+  const dualOwner = { app_metadata: { role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] }, user_metadata: { name: 'ดูอัล' } };
+  const svLead = { role: 'senior_ae', id: 'A', team: 'SV', teams: ['SV'] };
+  const ok = await validateDealOwner(ownerStub({ 'U-D': dualOwner }), 'U-D', svLead);
+  assert.equal(ok.ok, true);
+  // ดีลยังถูกบันทึกเข้า **ทีมหลัก** ของเจ้าของ — ยอดไม่ถูกนับสองทีม
+  assert.equal(ok.team, 'ODM');
+  // ไม่มีทีมร่วมกันเลย = ยังกันเหมือนเดิม
+  const kaLead = { role: 'senior_ae', id: 'B', team: 'KA', teams: ['KA'] };
+  assert.equal((await validateDealOwner(ownerStub({ 'U-D': dualOwner }), 'U-D', kaLead)).ok, false);
 });

@@ -37,6 +37,7 @@ export function emptyPerson(user) {
     userId: user.id,
     name: user.name || user.email || user.id,
     role: user.role || '',
+    // ทีมหลัก (คอลัมน์เดี่ยวบนตาราง KPI) — คนอยู่หลายทีมยังนับยอดเข้าทีมหลักทีมเดียว
     team: user.team || '',
     total: 0,
     completed: 0,

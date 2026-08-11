@@ -3,6 +3,7 @@
 // re-querying Supabase inline (which had drifted into 3 divergent copies).
 import { generateEntityCode } from '@/lib/entityCode';
 import { purgeUpdatesMany } from '@/lib/master/updates';
+import { userTeams } from '@/lib/permissions';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -21,8 +22,11 @@ export async function loadProject(supabase, idOrCode) {
 }
 
 // Internal project ids for a team (used to scope project_tasks / personal_tasks).
+// `team` รับได้ทั้งทีมเดียวและอาร์เรย์ (ผู้ใช้อยู่หลายทีม) — ไม่มีทีมเลย = ไม่มีโครงการ
 export async function teamProjectIds(supabase, team) {
-  const { data } = await supabase.from('projects').select('id').eq('team', team ?? null);
+  const teams = userTeams(team);
+  if (!teams.length) return [];
+  const { data } = await supabase.from('projects').select('id').in('team', teams);
   return (data || []).map((p) => p.id);
 }
 

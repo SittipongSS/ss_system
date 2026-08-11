@@ -6,9 +6,9 @@ import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, Rec
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canAccessRd, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessRd, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
-import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
@@ -35,6 +35,7 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [teams, setTeams] = useState([]);
   const [department, setDepartment] = useState(null); // ฝ่ายของผู้ใช้ (SA/RD/PC/...)
   const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
   const [userName, setUserName] = useState('');
@@ -88,8 +89,10 @@ export default function AppLayout({ children }) {
       }
 
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
+      // team = ทีมหลัก (attribution) · teams = ทุกทีมที่สังกัด (ขอบเขตแถว) — คนอยู่หลายทีมได้
       setRole(user.app_metadata?.role || 'user');
       setTeam(user.app_metadata?.team || null);
+      setTeams(userTeams({ team: user.app_metadata?.team, teams: user.app_metadata?.teams }));
       // ฝ่าย: กติกาเดียวกับ server (assignable-users) — department ตรง หรืออนุมานจาก role
       setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(user.app_metadata?.role) || null);
       setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
@@ -376,7 +379,7 @@ export default function AppLayout({ children }) {
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
   // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
-  const userContext = { role, team, department, extraCaps };
+  const userContext = { role, team, teams, department, extraCaps };
   const activeSystemDefinition = getSystemByKey(activeSystem);
   const systemSubtitle = activeSystem === 'settings'
     ? 'การตั้งค่าระบบ'
@@ -491,7 +494,9 @@ export default function AppLayout({ children }) {
             <AccountMenu
               userName={userName}
               userInitials={userInitials}
-              roleLabel={team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
+              roleLabel={teams.length
+                ? `${ROLE_LABELS[role] || role} · ${teams.map((t) => TEAM_LABELS[t] || t).join(' + ')}`
+                : (ROLE_LABELS[role] || role)}
               roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
               isDark={isDark}
               canChangePassword={SUPABASE_CONFIGURED}
@@ -544,7 +549,9 @@ export default function AppLayout({ children }) {
           <RoleContext.Provider value={role}>
             <ExtraCapsContext.Provider value={extraCaps}>
               <TeamContext.Provider value={team}>
-                <DepartmentContext.Provider value={department}>{children}</DepartmentContext.Provider>
+                <TeamsContext.Provider value={teams}>
+                  <DepartmentContext.Provider value={department}>{children}</DepartmentContext.Provider>
+                </TeamsContext.Provider>
               </TeamContext.Provider>
             </ExtraCapsContext.Provider>
           </RoleContext.Provider>

@@ -18,7 +18,7 @@
 import { after } from 'next/server';
 import { notifyUsers } from '@/lib/notifications';
 import { LEAD_CHANNEL_LABELS } from '@/lib/sales/leads';
-import { TEAM_LABELS } from '@/lib/permissions';
+import { hasTeam, TEAM_LABELS } from '@/lib/permissions';
 
 /* ตำแหน่งที่ "คัดกรอง" ได้ — คิวกลางเป็นของหัวหน้าฝ่ายขาย
    admin เป็น **ตัวสำรอง** ใช้เมื่อไม่มี ae_supervisor ในระบบเลย: ไม่มีใครรับแจ้งเตือน
@@ -59,7 +59,7 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
     body = `รับผ่าน ${channelOf(lead)} — คัดกรองและเลือกทีมภายใน 1 วันทำการ`;
   } else if (action === 'screen') {
     if (!lead.team) return null; // คัดกรองแล้วต้องมีทีมเสมอ — ไม่มีทีม = ไม่รู้จะบอกใคร
-    userIds = usersWhere(directory, (u) => SPREADERS.includes(u.role) && u.team === lead.team);
+    userIds = usersWhere(directory, (u) => SPREADERS.includes(u.role) && hasTeam(u, lead.team));
     // เว้นวรรคหลัง "ทีม" — ชื่อทีมทุกตัวเป็นอังกฤษ ("New ODM") ติดกันแล้วอ่านสะดุด
     title = `ลีดเข้าทีม ${teamOf(lead)} รอกระจาย · ${who}`;
     body = 'มอบหมายผู้รับผิดชอบภายใน 1 วันทำการ';
@@ -137,7 +137,7 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
   for (const lead of rows) {
     if (lead.status === 'new') push('screeners', screeners, lead);
     else if (lead.status === 'screened') {
-      push(`team:${lead.team}`, usersWhere(directory, (u) => SPREADERS.includes(u.role) && u.team === lead.team), lead);
+      push(`team:${lead.team}`, usersWhere(directory, (u) => SPREADERS.includes(u.role) && hasTeam(u, lead.team)), lead);
     } else if (lead.assigneeId) push(`ae:${lead.assigneeId}`, [lead.assigneeId], lead);
   }
 

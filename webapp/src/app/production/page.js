@@ -27,7 +27,7 @@ import {
   runningToday,
 } from "@/lib/pm/productionOverview";
 import { canEditProduction } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 
@@ -54,8 +54,9 @@ export default function ProductionOverviewPage() {
   const router = useRouter();
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditProduction({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
   const [jobs, setJobs] = useState([]);
   const [lines, setLines] = useState([]);

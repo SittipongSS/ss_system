@@ -1,4 +1,4 @@
-import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee } from '@/lib/permissions';
+import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, userTeams } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -76,7 +76,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // จะได้ไม่ต้องยิง /api/pm/my-work ทั้งก้อนมาเอาแค่ 3 ฟิลด์
     // department ต้องติดมาด้วย — หน้ารายละเอียดกรองรายชื่อมอบหมายด้วย canAssignTask
     // ซึ่งเทียบฝ่ายเป็นด่านแรก
-    me: { id: user.id, role: user.role, team: user.team ?? null, department: user.department ?? null },
+    me: { id: user.id, role: user.role, team: user.team ?? null, teams: user.teams ?? [], department: user.department ?? null },
   });
 });
 
@@ -156,6 +156,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const assignee = {
         id: next,
         team: au.user.app_metadata?.team ?? null,
+        // ต้องมี teams — canAssignTask ตัดชุดทีมสองฝั่ง (ดู personal-tasks/route.js)
+        teams: userTeams(au.user.app_metadata),
         // role ต้องส่งไปด้วย — ฝ่ายส่วนใหญ่ไม่ได้ตั้งไว้ตรง ๆ canAssignTask อนุมานจาก role ให้
         role: au.user.app_metadata?.role ?? null,
         department: au.user.app_metadata?.department ?? null,

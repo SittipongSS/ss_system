@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamAssignment } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
 
@@ -25,11 +25,12 @@ export async function PATCH(request, { params }) {
   // reset password is temporary. Otherwise keep whatever the flag already was.
   const mustChange = body.password ? true : !!existingMeta.must_change_password;
 
-  // role + team always travel together. NOTE: Supabase admin.updateUserById
+  // role + team + teams always travel together. NOTE: Supabase admin.updateUserById
   // MERGES app_metadata top-level keys — it does NOT replace the object. So a
   // key we omit keeps its old value. When a role drops its team (e.g. senior_ae
-  // → viewer/legal), we must send team: null explicitly to overwrite the stale
-  // team, otherwise the user keeps their old team scope after the role change.
+  // → viewer/legal), we must send team: null AND teams: [] explicitly to overwrite
+  // the stale values, otherwise the user keeps their old team scope after the
+  // role change — teams[] คือช่องที่คุมขอบเขตจริง ลืมล้างแล้วสิทธิ์ค้างเงียบ ๆ
   // Per-user capability grants: use the sanitized body value if the client sent
   // one, otherwise preserve what's already stored (so an unrelated edit doesn't
   // wipe a grant). Whitelisted to GRANTABLE_CAPS — never mints admin-system caps.
@@ -38,15 +39,15 @@ export async function PATCH(request, { params }) {
     : sanitizeExtraCaps(existingMeta.extraCaps);
 
   if (body.role !== undefined) {
-    const team = body.team || null;
-    const invalid = validateIdentity(body.role, team, body.department);
+    const { team, teams } = resolveTeamAssignment(body.role, { team: body.team || null, teams: body.teams });
+    const invalid = validateIdentity(body.role, teams, body.department);
     if (invalid) return Response.json({ error: invalid }, { status: 400 });
     // Guard against self-demotion locking everyone out of user management.
     if (id === me.id && !isSuperuser(body.role)) {
       return Response.json({ error: 'ไม่สามารถลดสิทธิ์ของตัวเองได้' }, { status: 400 });
     }
     const department = normalizeDepartment(body.department) || departmentFor(body.role);
-    updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team, extraCaps };
+    updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team, teams, extraCaps };
   } else if (body.extraCaps !== undefined || mustChange !== !!existingMeta.must_change_password) {
     // extraCaps-only change, or a password reset without a role change — persist
     // the flag + grants while keeping the rest of app_metadata intact.

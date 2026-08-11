@@ -34,6 +34,8 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import DocumentLines from "@/components/requests/DocumentLines";
 import { RequestDueUrgentFields, RequestTitleBodyFields } from "./RequestEditableFields";
+import TeamPickerField from "@/components/ui/TeamPickerField";
+import { userTeams } from "@/lib/permissions";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
@@ -79,6 +81,9 @@ function DerivedField({ label, value, from }) {
 const onlyDept = () => (REQUEST_DEPTS.length === 1 ? REQUEST_DEPTS[0] : "");
 
 export const emptyRequestForm = (over = {}) => ({
+  // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้)
+  // ช่องนี้โผล่เฉพาะตอนคนเปิดอยู่หลายทีม (มติ 2026-08-11)
+  team: "",
   projectId: "",
   dealId: "",
   salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
@@ -148,6 +153,10 @@ export default function RequestForm({
   topicAction = null,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
+  /* ทีมของคนเปิดใบ — มาจาก `me` (/api/users/me) ไม่ใช่ context เพราะฟอร์มนี้ถูกใช้
+     ทั้งในหน้าเปิดคำร้องและโมดัลของหน้าอื่น ซึ่งส่ง `me` มาให้อยู่แล้ว */
+  const myTeams = userTeams(me);
+  const myTeam = me?.team || null;
   const items = value.items || [];
   const kind = value.kind || "";
   const meta = requestKindMeta(kind) || {};
@@ -886,6 +895,17 @@ export default function RequestForm({
       <div className="form-grid cols-2">
         {/* ⭐ ช่องเดียวกับที่โมดัล "แก้ไข" ใช้ — ห้ามวางซ้ำที่นี่ */}
         <RequestDueUrgentFields value={value} onChange={onChange} disabled={disabled} />
+
+        {/* ทีมเจ้าของคำร้อง — โผล่เฉพาะคนที่อยู่หลายทีม (มติ 2026-08-11)
+            คำถามเชิง "ความรับผิดชอบ" จึงอยู่ท้ายฟอร์มตามกติกาลำดับช่องข้อ 4 */}
+        <TeamPickerField
+          teams={myTeams}
+          value={myTeams.includes(value.team) ? value.team : (myTeam || myTeams[0])}
+          onChange={(team) => set({ team })}
+          disabled={disabled}
+          label="ทีมเจ้าของคำร้อง"
+          hint="คำร้องใบนี้จะเข้าคิวของทีมที่เลือก"
+        />
 
       {/* ── แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ────────────────
           ⭐ **ช่องไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่

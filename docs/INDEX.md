@@ -111,7 +111,7 @@
 เฟส 0–6B `เสร็จสมบูรณ์` · 7A–7D `รอตรวจ` (รอ UAT + ยืนยันการรัน migration บนฐานจริง) ·
 เฟส 8–9 (Permission redesign) `รอดำเนินการ` เป็นลำดับสุดท้ายของโปรแกรม
 
-**มติ (ADR) 14 ใบ** อยู่ที่ [system-modernization/decisions/](system-modernization/decisions/) —
+**มติ (ADR) 15 ใบ** อยู่ที่ [system-modernization/decisions/](system-modernization/decisions/) —
 เป็นแพตเทิร์นที่ควรลอกไปใช้กับส่วนอื่นของโปรเจกต์
 
 ---

@@ -16,7 +16,7 @@
 //
 // แพตเทิร์นเดียวกับ `validateLeadAssignee` — ตรวจด้วย id แล้ว **คืนชื่อจาก server**
 // ให้ผู้เรียกเขียนลงแถว ไม่รับชื่อจาก client อีก
-import { ROLES } from '@/lib/permissions';
+import { attributionTeam, hasTeam, userTeams, ROLES } from '@/lib/permissions';
 import { salesPlanningEditScope } from '@/lib/salesPlanning';
 
 /* role ที่มี edit scope กับดีล (ไม่ใช่ 'none') — คำนวณจากของจริง ไม่พิมพ์รายชื่อทิ้งไว้ */
@@ -57,7 +57,8 @@ export function assignableOwners(users = [], viewerTeam = null) {
     if (!DEAL_HOLDER_ROLES.includes(user?.role)) return false;
     if (user?.disabled) return false;
     if (!viewerTeam) return true;
-    return !user?.team || user.team === viewerTeam;
+    // ทั้งคนดูและคนถือดีลอยู่ได้หลายทีม ⇒ มีทีมร่วมกันก็พอ
+    return !userTeams(user).length || hasTeam(user, viewerTeam);
   });
 }
 
@@ -99,9 +100,11 @@ export async function loadDealOwnerContact(supabase, ownerId) {
 /**
  * ตรวจว่า `ownerId` เป็นเจ้าของดีลได้จริงไหม
  * @param actor  คนที่กดบันทึก — ใช้เทียบทีม (ผู้กำกับดูแลที่ไม่มีทีม = ข้ามด่านทีม)
- * @returns {Promise<{ ok: true, ownerId, ownerName, team } | { ok: false, error }>}
+ * @param requestedTeam  ทีมที่ฟอร์มเลือกมา — ใช้ได้เฉพาะเมื่อ **เจ้าของ** สังกัดทีมนั้น
+ *   (เจ้าของอยู่หลายทีมได้ · ไม่ส่งมา/ไม่ใช่ทีมของเขา = ถอยเป็นทีมหลักของเจ้าของ)
+ * @returns {Promise<{ ok: true, ownerId, ownerName, team, teams } | { ok: false, error }>}
  */
-export async function validateDealOwner(supabase, ownerId, actor = null) {
+export async function validateDealOwner(supabase, ownerId, actor = null, requestedTeam = null) {
   const id = String(ownerId || '').trim();
   if (!id) return { ok: false, error: 'ต้องเลือกผู้รับผิดชอบ (AE)' };
 
@@ -120,15 +123,20 @@ export async function validateDealOwner(supabase, ownerId, actor = null) {
      AC/Senior AE มอบได้เฉพาะคนในทีมตัวเอง — ไม่ใช่แค่ความเป็นระเบียบ: ดีลจะถูกตั้ง
      `team` ตามเจ้าของ ถ้ามอบข้ามทีม คนสั่งเองจะมองไม่เห็นดีลนั้นอีกเลย (scope 'team')
      ผู้ที่ไม่มีทีม (admin) ผ่านได้ทั้งสองทาง — กำกับดูแลข้ามทีม */
-  const ownerTeam = user.app_metadata?.team || null;
-  const actorTeam = actor?.team || null;
+  // ⚠️ ทั้งสองฝั่งอยู่ได้หลายทีม ⇒ เทียบ **ชุดทีม** ไม่ใช่ทีมหลักต่อทีมหลัก · เทียบทีมหลัก
+  // ตรง ๆ จะปฏิเสธคู่ที่ทำงานทีมเดียวกันจริง (คนสั่งดูแล SV · คนรับอยู่ ODM+SV ทีมหลัก ODM)
+  const ownerTeams = userTeams(user.app_metadata);
+  // ทีมของดีล = ทีมที่ฟอร์มเลือก ถ้าเจ้าของสังกัดจริง ไม่งั้นทีมหลักของเจ้าของ
+  const ownerTeam = attributionTeam(user.app_metadata, requestedTeam);
+  const actorTeams = userTeams(actor);
   const actorScope = salesPlanningEditScope(actor?.role);
-  if (actorScope === 'team' && actorTeam && ownerTeam && ownerTeam !== actorTeam) {
-    return { ok: false, error: `ผู้รับผิดชอบอยู่ทีม ${ownerTeam} แต่คุณดูแลทีม ${actorTeam} — เลือกได้เฉพาะคนในทีมตัวเอง` };
+  if (actorScope === 'team' && actorTeams.length && ownerTeams.length
+      && !ownerTeams.some((t) => actorTeams.includes(t))) {
+    return { ok: false, error: `ผู้รับผิดชอบอยู่ทีม ${ownerTeams.join('/')} แต่คุณดูแลทีม ${actorTeams.join('/')} — เลือกได้เฉพาะคนในทีมตัวเอง` };
   }
 
   const name = dealOwnerName(user);
   if (!name) return { ok: false, error: 'ผู้ใช้รายนี้ยังไม่มีชื่อในระบบ — ตั้งชื่อที่หน้าจัดการผู้ใช้ก่อน' };
 
-  return { ok: true, ownerId: id, ownerName: name, team: ownerTeam };
+  return { ok: true, ownerId: id, ownerName: name, team: ownerTeam, teams: ownerTeams };
 }

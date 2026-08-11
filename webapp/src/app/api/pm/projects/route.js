@@ -2,6 +2,7 @@ import { viewScope, can, canDeleteRecord, inPmProjectScope } from '@/lib/permiss
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 import { canApproveProjectClose } from '@/lib/pm/projectClose';
+import { teamInClause } from '@/lib/teamScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,8 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
   if (viewScope(user?.role) === 'team') {
-    const team = user?.team ?? '';
     const own = user?.id ?? '';
-    query = query.or(`team.eq.${team},ownerId.eq.${own}`);
+    query = query.or(`${teamInClause(user)},ownerId.eq.${own}`);
   }
 
   const { data, error } = await query;
@@ -62,7 +62,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     // ไม่มีทางโผล่เลย (หน้ารายละเอียดส่งค่านี้อยู่แล้ว หน้ารายการเพิ่งมีคนใช้)
     project.canApproveClose = canApproveProjectClose(user);
     // ใช้เทียบว่าคำขอปิดเป็นของเราเอง — คนยื่นอนุมัติเองไม่ได้ (API ก็ปฏิเสธ)
-    project.me = { id: user.id, name: user.name, role: user.role, team: user.team };
+    project.me = { id: user.id, name: user.name, role: user.role, team: user.team, teams: user.teams };
   }
 
   return ok(data);

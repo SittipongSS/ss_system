@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -664,4 +664,152 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   assert.equal(canAccessRd({ role: 'staff', department: 'RD' }), true);
   assert.equal(canAccessRd({ role: 'staff', department: 'PC' }), false);
   assert.equal(canAccessRd(null), false);
+});
+
+// ── ผู้ใช้อยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11) ─────────────────────────────
+// "ฝ่ายขาย Account Executive อยู่ ODM กับ Service" — ของเดิม 1 คน = 1 ทีมตายตัว
+// คนแบบนี้จึงต้องเปิดบัญชีซ้ำ หรือถูกตัดไม่ให้เห็นงานอีกทีมไปเลย
+//
+// สัญญาสองชั้นที่ห้ามปนกัน:
+//   teams[] = ขอบเขต (เห็น/แก้ได้กี่ทีม)  ·  team = ทีมหลัก (ของใหม่เข้าทีมไหน)
+test('userTeams: teams[] มาก่อน, ถอยไป team เดี่ยว, ว่าง = ไม่มีทีม', () => {
+  assert.deepEqual(userTeams({ team: 'ODM', teams: ['ODM', 'SV'] }), ['ODM', 'SV']);
+  assert.deepEqual(userTeams({ team: 'ODM' }), ['ODM'], 'บัญชีเก่าที่ยังไม่มี teams');
+  assert.deepEqual(userTeams({ team: 'ODM', teams: [] }), ['ODM'], 'teams ว่าง = ยังไม่ถูกตั้ง ไม่ใช่ถูกล้าง');
+  assert.deepEqual(userTeams({}), []);
+  assert.deepEqual(userTeams(null), []);
+  // รับค่าดิบได้ด้วย (ด่านเก่าบางตัวส่ง team มาตรง ๆ)
+  assert.deepEqual(userTeams('KA'), ['KA']);
+  assert.deepEqual(userTeams(['KA', 'KA', 'SV']), ['KA', 'SV'], 'ซ้ำถูกยุบ');
+});
+
+test('primaryTeam / hasTeam: ทีมหลักคือทีมเดียว · hasTeam รับทั้งค่าเดียวและอาร์เรย์', () => {
+  const dual = { role: 'ae', id: 'u1', team: 'ODM', teams: ['ODM', 'SV'] };
+  assert.equal(primaryTeam(dual), 'ODM');
+  assert.equal(primaryTeam({ teams: ['SV'] }), 'SV', 'ไม่มีทีมหลัก = ตัวแรกที่สังกัด');
+  assert.equal(hasTeam(dual, 'SV'), true);
+  assert.equal(hasTeam(dual, 'KA'), false);
+  assert.equal(hasTeam(dual, ['KA', 'SV']), true, 'ตัดกันแค่ตัวเดียวก็พอ');
+  assert.equal(hasTeam(dual, []), false);
+  assert.equal(hasTeam(dual, null), false);
+});
+
+test('inScope/canViewRecord/canEditRecord: เห็นและแก้ได้ทุกทีมที่สังกัด — ทีมที่ไม่ได้สังกัดยังกัน', () => {
+  const dualSenior = { role: 'senior_ae', id: 'u2', team: 'ODM', teams: ['ODM', 'SV'] };
+  const odmOnly = { role: 'senior_ae', id: 'u3', team: 'ODM', teams: ['ODM'] };
+
+  // แถวทีมเดี่ยว (orders/projects/registrations)
+  assert.equal(canViewRecord(dualSenior, 'orders', { team: 'SV', ownerId: 'x' }), true);
+  assert.equal(canEditRecord(dualSenior, 'orders', { team: 'SV', ownerId: 'x' }), true);
+  assert.equal(canEditRecord(odmOnly, 'orders', { team: 'SV', ownerId: 'x' }), false, 'ไม่ได้สังกัด = แก้ไม่ได้');
+  assert.equal(canEditRecord(dualSenior, 'orders', { team: 'KA', ownerId: 'x' }), false);
+
+  // แถวหลายทีม (customers.teams[] — mig 0037): ตัดกันฝั่งไหนก็เข้าขอบเขต
+  assert.equal(canEditRecord(dualSenior, 'customers', { teams: ['SV'] }), true);
+  assert.equal(canEditRecord(dualSenior, 'customers', { teams: ['KA', 'SV'] }), true);
+  assert.equal(canEditRecord(odmOnly, 'customers', { teams: ['KA', 'SV'] }), false);
+  // สินค้า: caller ส่งทีมที่ดูแลของลูกค้าเจ้าของมาเอง
+  assert.equal(canEditRecord(dualSenior, 'products', { id: 'p1' }, ['SV']), true);
+  assert.equal(canEditRecord(odmOnly, 'products', { id: 'p1' }, ['SV']), false);
+});
+
+test('ด่านทีมเฉพาะโมดูล: อยู่ KA ทีมใดทีมหนึ่งก็เข้าสหมิตรได้', () => {
+  const kaPlus = { role: 'ae', id: 'u1', team: 'ODM', teams: ['ODM', 'KA'] };
+  assert.equal(canAccessSahamit('ae', userTeams(kaPlus)), true);
+  assert.equal(canAccessSahamit('ae', userTeams({ team: 'ODM', teams: ['ODM', 'SV'] })), false);
+  // สัญญาเดิม (ส่ง team เดี่ยว) ต้องไม่พัง
+  assert.equal(canAccessSahamit('ae', 'KA'), true);
+  assert.equal(canAccessSahamit('ae', 'ODM'), false);
+});
+
+test('มอบหมาย/ดึงงาน: "ทีมเดียวกัน" = มีทีมร่วมกันอย่างน้อยหนึ่งทีม', () => {
+  const dual = { id: 'a', role: 'ae', team: 'ODM', teams: ['ODM', 'SV'], department: 'SA' };
+  const sv = { id: 'b', role: 'ae', team: 'SV', teams: ['SV'], department: 'SA' };
+  const ka = { id: 'c', role: 'ae', team: 'KA', teams: ['KA'], department: 'SA' };
+  assert.equal(canAssignTask(dual, sv), true);
+  assert.equal(canAssignTask(sv, dual), true, 'ทิศไหนก็ต้องเท่ากัน');
+  assert.equal(canAssignTask(dual, ka), false);
+
+  const task = { id: 't', status: 'Open', ownerId: 'b', assigneeId: 'b' };
+  assert.equal(canPullTask(dual, task, ['SV']), true);
+  assert.equal(canPullTask(dual, task, 'SV'), true, 'respTeam เป็นค่าเดียวก็ได้');
+  assert.equal(canPullTask(dual, task, 'KA'), false);
+});
+
+test('validateIdentity: ตำแหน่งสายทีมต้องมีอย่างน้อยหนึ่งทีม และทุกทีมต้องถูกต้อง', () => {
+  assert.equal(validateIdentity('ae', ['ODM', 'SV'], 'SA'), null);
+  assert.equal(validateIdentity('ae', 'ODM', 'SA'), null, 'ค่าเดียวยังใช้ได้');
+  assert.match(validateIdentity('ae', [], 'SA'), /ต้องระบุทีม/);
+  assert.match(validateIdentity('ae', ['ODM', 'XX'], 'SA'), /ทีมไม่ถูกต้อง/);
+  assert.match(validateIdentity('legal', ['ODM'], 'LG'), /ไม่ต้องระบุทีม/);
+});
+
+test('resolveTeamAssignment: ทีมหลักต้องอยู่ในชุดที่สังกัดเสมอ · ตำแหน่งไม่ผูกทีมถูกล้าง', () => {
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'SV', teams: ['ODM', 'SV'] }), { team: 'SV', teams: ['ODM', 'SV'] });
+  // เรียงตาม TEAMS เสมอ ไม่ใช่ตามลำดับที่ติ๊ก — ป้ายบนจอจะได้ไม่สลับที่
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'SV', teams: ['SV', 'ODM'] }).teams, ['ODM', 'SV']);
+  // ติ๊กทีมหลักออก → ทีมหลักเลื่อนไปตัวแรก ไม่ค้างเป็นทีมที่ตัวเองไม่ได้อยู่
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA', teams: ['ODM', 'SV'] }), { team: 'ODM', teams: ['ODM', 'SV'] });
+  // ค่าขยะถูกทิ้ง · ไม่ส่ง teams มา = ใช้ทีมหลักเดี่ยว (บัญชีเก่า/ผู้เรียกสายเดิม)
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'ODM', teams: ['ODM', 'XX'] }), { team: 'ODM', teams: ['ODM'] });
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA' }), { team: 'KA', teams: ['KA'] });
+  // ตำแหน่งที่ไม่ผูกทีม: ต้องล้างทั้งสองช่อง ไม่งั้นสิทธิ์ทีมเดิมค้างหลังเปลี่ยน role
+  assert.deepEqual(resolveTeamAssignment('viewer', { team: 'ODM', teams: ['ODM'] }), { team: null, teams: [] });
+});
+
+// ── ข้อ 4 ของรอบตรวจ: สถานะทีมที่ "เพี้ยนได้" ต้องเพี้ยนไม่ได้จริง ──────────
+// ช่องใหม่ (teams[]) เพิ่มโอกาสตั้งค่าผิด — ที่อันตรายสุดคือ **ทีมหลักหลุดออกนอก
+// ชุดที่สังกัด** เพราะของใหม่จะถูกบันทึกเข้าทีมที่เจ้าตัวมองไม่เห็น แล้วเงียบสนิท
+// ทุกทางเขียน (POST/PATCH /api/users + ฟอร์ม) ผ่าน resolveTeamAssignment ตัวเดียว
+// เทสต์นี้ตรึงว่า **ไม่ว่าส่งอะไรเข้ามา ผลลัพธ์ต้องสอดคล้องกันเสมอ**
+test('resolveTeamAssignment: ผลลัพธ์สอดคล้องเสมอ ไม่ว่า input จะเพี้ยนแค่ไหน', () => {
+  const junk = [null, undefined, '', 'XX', 'ODM', ['ODM', 'SV'], ['XX'], [], ['ODM', 'ODM'], ['SV', 'ODM']];
+  for (const team of junk) {
+    for (const teams of junk) {
+      const out = resolveTeamAssignment('ae', { team, teams });
+      assert.ok(out.teams.every((t) => TEAMS.includes(t)), `ทีมนอกรายการหลุด: ${JSON.stringify({ team, teams })}`);
+      assert.equal(new Set(out.teams).size, out.teams.length, 'มีทีมซ้ำ');
+      if (out.teams.length) {
+        assert.ok(out.teams.includes(out.team), `ทีมหลัก ${out.team} ไม่อยู่ใน [${out.teams}]`);
+      } else {
+        assert.equal(out.team, null, 'ไม่มีทีมสังกัดแต่ยังมีทีมหลักค้าง');
+      }
+      // ตำแหน่งที่ไม่ผูกทีม ต้องถูกล้างทั้งสองช่องเสมอ — ไม่งั้นขอบเขตเดิมค้างหลังเปลี่ยน role
+      assert.deepEqual(resolveTeamAssignment('viewer', { team, teams }), { team: null, teams: [] });
+    }
+  }
+});
+
+// ── เลือกทีมตอนสร้างงาน (มติผู้ใช้ 2026-08-11 รอบสาม) ──────────────────────
+// ก่อนหน้านี้ของใหม่ถูกบันทึกเข้า "ทีมหลัก" เสมอ ⇒ ดีลที่ AE เปิดให้งานฝั่ง Services
+// ไปโผล่ในยอด ODM ทั้งใบ ตัวเลขทีมกับงานจริงจึงเล่าคนละเรื่อง
+//
+// ⚠️ ด่านสำคัญที่สุดของช่องนี้: **เลือกทีมที่ตัวเองไม่ได้อยู่ไม่ได้** — ไม่งั้นยิง API
+// ตรงแล้วโยนยอดเข้าทีมอื่นได้ทั้งที่มองไม่เห็นทีมนั้นด้วยซ้ำ
+test('attributionTeam: เลือกได้เฉพาะทีมที่สังกัด · ค่าอื่นถอยเป็นทีมหลัก', () => {
+  const dual = { role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] };
+  assert.equal(attributionTeam(dual, 'SV'), 'SV', 'ทีมรองของตัวเอง = เลือกได้');
+  assert.equal(attributionTeam(dual, 'ODM'), 'ODM');
+  assert.equal(attributionTeam(dual, 'KA'), 'ODM', 'ทีมที่ไม่ได้สังกัด = ถอยเป็นทีมหลัก');
+  assert.equal(attributionTeam(dual, null), 'ODM', 'ไม่ส่งมา = ทีมหลัก (ผู้เรียกสายเก่า)');
+  assert.equal(attributionTeam(dual, ''), 'ODM');
+
+  // คนทีมเดียว: ไม่ว่าส่งอะไรมาก็ได้ทีมตัวเองเสมอ — พฤติกรรมเดิมไม่ขยับ
+  const solo = { role: 'ae', team: 'KA', teams: ['KA'] };
+  for (const requested of ['ODM', 'SV', null, '', 'XX']) {
+    assert.equal(attributionTeam(solo, requested), 'KA', `solo + ${requested}`);
+  }
+  // คนไม่มีทีม (admin) — ไม่มีทีมให้ stamp ก็ต้องเป็น null ไม่ใช่ค่าที่ client ส่งมา
+  assert.equal(attributionTeam({ role: 'admin' }, 'KA'), null);
+  assert.equal(attributionTeam(null, 'KA'), null);
+});
+
+// ทีมของดีลตามเจ้าของ ไม่ใช่ตามคนกด — AC ที่อยู่ ODM มอบดีลให้ AE ทีม SV
+// ต้องได้ดีลทีม SV ไม่ใช่ ODM (ไม่งั้นเจ้าของมองไม่เห็นดีลตัวเอง)
+test('attributionTeam: อ้างอิง "คนที่จะเป็นเจ้าของงาน" ไม่ใช่คนกดสร้าง', () => {
+  const actor = { role: 'ac', team: 'ODM', teams: ['ODM'] };
+  const owner = { role: 'ae', team: 'SV', teams: ['SV', 'KA'] };
+  assert.equal(attributionTeam(owner, 'KA'), 'KA');
+  assert.equal(attributionTeam(owner, 'ODM'), 'SV', 'ทีมของคนกดไม่มีผลกับทีมของงาน');
+  assert.equal(attributionTeam(actor, 'SV'), 'ODM');
 });

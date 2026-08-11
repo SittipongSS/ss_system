@@ -81,6 +81,9 @@ export function requestPayload(form, extra = {}) {
   return {
     kind: form.kind,
     dept: form.dept || null,
+    // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้ผ่าน attributionTeam)
+    // ช่องนี้โผล่บนฟอร์มเฉพาะตอนคนเปิดอยู่หลายทีม (มติ 2026-08-11)
+    team: form.team || null,
     // ของที่ผูก — ส่งไปเท่าที่มี server ตรวจตามหัวข้อเอง (ดู `needs`)
     dealId: form.dealId || null,
     salesOrderId: form.salesOrderId || null,

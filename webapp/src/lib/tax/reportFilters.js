@@ -13,7 +13,8 @@ export const asList = (v) => {
 
 // ตัวกรองทีมของรายงานมี **สองช่องที่ทำงานคนละหน้าที่** แล้ว AND กัน:
 //   scopeTeam = ขอบเขตของผู้ใช้ (บังคับตาม role) → ทีมตัวเอง **+ แถวไร้ทีมซึ่งเป็นของกลาง**
-//               null = ไม่บังคับ (role ที่เห็นทุกทีม หรือคนที่ scope 'team' แต่ไม่มีทีม)
+//               รับได้ทั้งทีมเดียวและอาร์เรย์ (คนเดียวอยู่ได้หลายทีม)
+//               ว่าง = ไม่บังคับ (role ที่เห็นทุกทีม หรือคนที่ scope 'team' แต่ไม่มีทีม)
 //   team      = ตัวกรองที่ผู้ใช้เลือก (ไม่บังคับ) → เฉพาะทีมที่เลือก **ไม่พ่วงแถวไร้ทีม**
 //
 // ⚠️ ห้ามยุบสองช่องนี้กลับเป็น `.eq('team', X)` ตัวเดียว (เดิมเป็นแบบนั้น) เพราะ
@@ -23,7 +24,8 @@ export const asList = (v) => {
 //     ไร้ทีมพ่วงมาด้วย ซึ่งไม่ใช่สิ่งที่เขาสั่ง
 export function applyTeamScope(query, { scopeTeam, team } = {}) {
   let q = query;
-  if (scopeTeam) q = q.or(`team.eq.${scopeTeam},team.is.null`);
+  const scopeTeams = asList(scopeTeam);
+  if (scopeTeams.length) q = q.or(`team.in.(${scopeTeams.join(',')}),team.is.null`);
   const teams = asList(team);
   if (teams.length) q = q.in('team', teams);
   return q;

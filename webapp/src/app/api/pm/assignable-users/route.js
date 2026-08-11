@@ -1,4 +1,4 @@
-import { can, canUser, departmentFor, normalizeDepartment } from '@/lib/permissions';
+import { can, canUser, departmentFor, normalizeDepartment, userTeams } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 import { cachedJson } from '@/lib/serverCache';
 
@@ -27,7 +27,11 @@ async function loadAssignableUsers(supabase) {
         email: u.email || '',
         phone: u.user_metadata?.phone || '',
         role,
-        team: u.app_metadata?.team || null,
+        team: u.app_metadata?.team || null,   // ทีมหลัก (ใช้แสดง/บันทึกเจ้าของงานใหม่)
+        // ⚠️ ต้องส่ง teams ด้วย — ฝั่งจอเอาไปตัดสิน "ทีมเดียวกันไหม" (assignableUsersFor /
+        // useDealOwners / ปุ่มจัดการงาน) ถ้าส่งแต่ทีมหลัก คนที่อยู่หลายทีมจะหายจาก
+        // dropdown ทั้งที่ server อนุญาต = จอกับ API ไม่ตรงกัน (บั๊กตระกูลเดิมของบ้านนี้)
+        teams: userTeams(u.app_metadata),
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(role) || null,
         // ระงับอยู่ = banned_until เป็นวันอนาคต (เกณฑ์เดียวกับ /api/users) —
         // เก็บลง cache ครบทุกคนแล้วค่อยกรองตอนตอบ (cache เดียวใช้ได้ทั้งสองแบบ)

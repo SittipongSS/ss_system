@@ -4,7 +4,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -39,6 +39,7 @@ export default function ProductRegistry() {
   const canMargin = useCan("products:margin");
   const role = useRole();
   const myTeam = useTeam();
+  const myTeams = useTeams();
   // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
   // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
   // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
@@ -46,7 +47,7 @@ export default function ProductRegistry() {
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
   const canApproveRow = (rec) =>
-    canApproveMasterData(role) && (isSuperuser(role) || rec?.team === myTeam);
+    canApproveMasterData(role) && (isSuperuser(role) || myTeams.includes(rec?.team));
   const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);

@@ -188,7 +188,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const canEditDeliveryRows = canEditDeliveries(user, project);
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
   // ผู้รับมอบใน dropdown ตามทีมโครงการ.
-  const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
+  const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null, teams: user.teams ?? [] } : null;
   // วันที่ของ Rev ที่ "อยู่ตอนนี้" (currentRev เป็นตัวชี้ — อาจถูกย้อนถอยหลังได้) — โชว์ในหัวพิมพ์
   // และ maxRev = เลข Rev สูงสุดที่เคยออก → ใช้คำนวณเลข Rev ถัดไป (ออก Rev ใหม่ = max+1 ไม่ชนเลข)
   let revisedAt = null;

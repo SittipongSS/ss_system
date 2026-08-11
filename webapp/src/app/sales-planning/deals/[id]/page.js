@@ -23,7 +23,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
 import RecordControlCard from "@/components/ui/RecordControlCard";
-import { useRole, useTeam } from "@/lib/roleContext";
+import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { createClient } from "@/lib/supabaseBrowser";
 import { isSuperuser } from "@/lib/permissions";
@@ -380,9 +380,10 @@ export default function DealOverviewPage() {
      ⚠️ คนละตัวกับ `lc` (salesPlanningLifecycle) ที่ยังคุมแถบขั้นตอน/การ์ดปลายทาง
      (ทะเบียนสรรพสามิต · PO สหมิตร · ส่งของ) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
   const team = useTeam();
+  const teams = useTeams();
   /* dealLifecycle ตัดสินจาก `deal.canEdit` (API ส่งมาต่อใบ) + สิทธิ์ตาม role — ไม่ต้องใช้ id
      จึงไม่ต้องยิง /api/users/me เพิ่มที่หน้านี้ */
-  const viewer = useMemo(() => ({ role, team }), [role, team]);
+  const viewer = useMemo(() => ({ role, team, teams }), [role, team, teams]);
   const controlLc = useMemo(() => createDealLifecycle(), []);
 
   const [actionBusy, setActionBusy] = useState("");

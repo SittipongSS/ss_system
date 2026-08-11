@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { forecastAccuracyRollup, isRealLostDeal, wonMonthOf } from './dashboardMetrics.js';
+import { attributionTeam } from '../permissions.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const route = readFileSync(join(ROOT, 'src/app/api/sales-planning/dashboard/route.js'), 'utf8');
@@ -26,16 +27,19 @@ test('byTeam ต้องไม่ทิ้งถังของดีลที�
   );
 });
 
-/* ทีมของดีลมาจากบัญชีผู้สร้าง ไม่ได้มาจากฟอร์ม — ตรึงไว้เพื่อให้เหตุผลข้างบนยังจริง
-   ถ้าวันหนึ่งฟอร์มมีช่องทีม/บังคับทีม เงื่อนไขจะเปลี่ยนและควรกลับมาทบทวนตรงนี้ */
-test('ทีมของดีลมาจาก user.team (ฟอร์มไม่มีช่องทีม) — ต้นเหตุที่ทำให้เกิดดีลไร้ทีม', () => {
+/* **ดีลไร้ทีมยังเกิดได้อยู่** — เหตุผลของเทสต์ข้างบน (ถัง null ต้องโชว์) จึงยังจริง
+   2026-08-11: ฟอร์มมีช่องทีมแล้ว แต่ช่องนั้นให้เลือกได้เฉพาะ "ทีมของเจ้าของ" เท่านั้น
+   ⇒ เจ้าของที่ไม่มีทีม (admin/AE Sup เปิดดีลเอง) ยังได้ดีลไร้ทีมเหมือนเดิม
+   ตรวจด้วยฟังก์ชันจริง ไม่ใช่ regex — แข็งแรงกว่าและไม่พังตอนจัดรูปโค้ดใหม่ */
+test('ดีลยังไร้ทีมได้เมื่อเจ้าของไม่มีทีม — ต้นเหตุที่ถัง null ต้องโชว์', () => {
+  assert.equal(attributionTeam({ role: 'admin' }, 'KA'), null,
+    'คนไม่มีทีมเลือกทีมไม่ได้ แม้ยิงค่ามาเอง ⇒ ดีลไร้ทีม');
+  assert.equal(attributionTeam({ role: 'ae_supervisor', team: null, teams: [] }, 'ODM'), null);
+  // คนมีทีมยังได้ทีมเสมอ — ไม่ใช่ว่ากติกาใหม่ทำให้ทุกใบไร้ทีม
+  assert.equal(attributionTeam({ role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] }, 'SV'), 'SV');
+
   const post = readFileSync(join(ROOT, 'src/app/api/sales-planning/deals/route.js'), 'utf8');
-  /* 2026-08-05: มี "ผู้รับผิดชอบ (AE)" แล้ว ทีมจึงตามเจ้าของก่อน — แต่ปลายทางของ
-     ทอดยังเป็น user.team เหมือนเดิม (เจ้าของที่ไม่มีทีม/ไม่ได้เลือกเจ้าของ ต้องไม่ได้
-     ดีลไร้ทีม ซึ่งเป็นต้นเรื่องของเทสต์นี้) */
-  assert.match(post, /team: owner\?\.team \|\| body\.team \|\| user\.team \|\| null/);
-  const form = readFileSync(join(ROOT, 'src/components/salesPlanning/DealFormFields.js'), 'utf8');
-  assert.doesNotMatch(form, /name="team"|label="ทีม"/, 'ฟอร์มยังไม่มีช่องทีมให้พิมพ์เอง');
+  assert.match(post, /team: owner\?\.team \|\| attributionTeam\(user, body\.team\)/);
 });
 
 // ── กติกาการรวมยอดที่หน้าเว็บกับ server ต้องใช้ชุดเดียวกัน ──────────────────

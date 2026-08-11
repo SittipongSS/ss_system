@@ -22,7 +22,7 @@ import {
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTimelineGen';
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
-import { isSuperuser } from '@/lib/permissions';
+import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 
@@ -113,7 +113,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
   let owner = null;
   if (body.ownerId) {
-    const checked = await validateDealOwner(supabase, body.ownerId, user);
+    const checked = await validateDealOwner(supabase, body.ownerId, user, body.team);
     if (!checked.ok) return badRequest(checked.error);
     owner = checked;
   }
@@ -180,7 +180,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ownerName: owner?.ownerName || user.name || null,
     // ทีมตามเจ้าของ ไม่ใช่ตามคนกด — ไม่งั้นดีลที่ AC มอบให้ AE ทีมอื่นจะติดทีมของ AC
     // (เจ้าของมองไม่เห็นดีลตัวเอง) · เจ้าของที่ไม่มีทีม (admin) ตกกลับไปใช้ทีมคนกด
-    team: owner?.team || body.team || user.team || null,
+    // ทีมตามเจ้าของ ไม่ใช่ตามคนกด · เจ้าของอยู่หลายทีมได้ ⇒ ฟอร์มเลือกได้ว่าใบนี้เข้าทีมไหน
+    // (validateDealOwner ตีค่าที่ไม่ใช่ทีมของเจ้าของทิ้งแล้ว) · ไม่มีเจ้าของ = ทีมของคนกด
+    team: owner?.team || attributionTeam(user, body.team),
     // ประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER) = คอลัมน์จริง (mig 0088) — ค่าตรงกับ
     // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
     // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.

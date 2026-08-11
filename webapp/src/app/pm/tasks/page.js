@@ -20,7 +20,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
+import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -206,7 +206,8 @@ export default function TasksPage() {
   const q = search.trim().toLowerCase();
   const resolveProj = (pid) => projectsMap[pid] || allProjects.find((p) => p.id === pid) || null;
   const resolveDeal = (did) => dealsMap[did] || allDeals.find((d) => d.id === did) || null;
-  const userTeamOf = (id) => users.find((u) => u.id === id)?.team || null;
+  // ทีมของคนคนนั้น — เป็นอาร์เรย์เพราะคนเดียวอยู่ได้หลายทีม
+  const userTeamOf = (id) => userTeams(users.find((u) => u.id === id));
 
   // ใครจัดการงานได้ (mirror server canManage): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีม
   const canManageTask = (t) => {
@@ -214,10 +215,9 @@ export default function TasksPage() {
     if (!canEdit && me.role !== "rd") return false; // rd manages its own operational tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
-    if (me.role === "senior_ae" && me.team) {
-      const targetTeam = userTeamOf(t.assigneeId || t.ownerId);
-      if (targetTeam && targetTeam === me.team) return true;
-      if (resolveProj(t.projectId)?.team === me.team) return true;
+    if (me.role === "senior_ae" && userTeams(me).length) {
+      if (hasTeam(me, userTeamOf(t.assigneeId || t.ownerId))) return true;
+      if (hasTeam(me, resolveProj(t.projectId)?.team)) return true;
     }
     return false;
   };

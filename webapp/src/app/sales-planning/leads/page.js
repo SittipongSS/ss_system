@@ -16,12 +16,14 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
 import Segmented from "@/components/ui/Segmented";
+import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
+import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { canSeeLeadKpi, leadScopes } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
@@ -82,6 +84,9 @@ export default function LeadsPage() {
   const canView = useCan("salesplan:view");
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
+  // อยู่หลายทีม → เลือกได้ว่าขอบเขต "ทีม" จะรวมทีมไหนบ้าง
+  const myTeams = useMyTeamsFilter();
   const canCreate = canCreateLead(role);
   const [meId, setMeId] = useState(null);
 
@@ -215,9 +220,10 @@ export default function LeadsPage() {
      ตัวกรองมีไว้ *หาใบ* ไม่ใช่เปลี่ยนภาพรวม (และการ์ดเองเป็นตัวสั่งตัวกรอง) */
   const scopedLeads = useMemo(() => leads.filter((l) => {
     if (activeScope === "mine" && meId) return l.assigneeId === meId || l.createdBy === meId;
-    if (activeScope === "team" && team) return l.team === team;
+    // "ทีมของฉัน" = ทุกทีมที่สังกัด (คนเดียวอยู่ได้หลายทีม)
+    if (activeScope === "team" && teams.length) return teams.includes(l.team) && myTeams.matches(l.team);
     return true;
-  }), [leads, activeScope, meId, team]);
+  }), [leads, activeScope, meId, teams, myTeams]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -225,7 +231,7 @@ export default function LeadsPage() {
       // ขอบเขต: "ของฉัน" = ถูกมอบให้เรา หรือเรากรอกเข้ามา (ตรงกับสาขา ae ของ
       // applyLeadScope) · "ทีม" = ทีมเดียวกับเรา · "ทั้งหมด" = ไม่กรอง
       if (activeScope === "mine" && meId && !(l.assigneeId === meId || l.createdBy === meId)) return false;
-      if (activeScope === "team" && team && l.team !== team) return false;
+      if (activeScope === "team" && teams.length && !(teams.includes(l.team) && myTeams.matches(l.team))) return false;
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
       // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง
       // ไม่งั้นพอกรองทีม คิวกลางจะหายไปทั้งก้อนโดยไม่มีอะไรบอก
@@ -247,7 +253,7 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, activeScope, meId, team, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
+  }, [leads, query, activeScope, meId, teams, myTeams, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
@@ -431,6 +437,9 @@ export default function LeadsPage() {
                   onChange={setScope}
                   options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
                 />
+              )}
+              {activeScope === "team" && (
+                <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
               )}
               {canSeeLeadKpi(role) && (
                 <Link href="/sa/dashboard?tab=lead_kpi" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>

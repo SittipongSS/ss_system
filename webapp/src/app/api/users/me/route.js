@@ -8,6 +8,7 @@ export const GET = withUser(async ({ user }) => {
     id: user.id,
     name: user.name,
     role: user.role,
-    team: user.team,
+    team: user.team,     // ทีมหลัก (ยอดของใหม่เข้าทีมนี้)
+    teams: user.teams,   // ทุกทีมที่สังกัด (ขอบเขตการเห็น/แก้)
   });
 });

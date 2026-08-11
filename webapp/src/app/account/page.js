@@ -8,7 +8,7 @@ import Workspace from "@/components/ui/Workspace";
 import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
-import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
+import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS, userTeams } from "@/lib/permissions";
 import { fmtDateTime, fmtName } from "@/lib/format";
 import styles from "./page.module.css";
 
@@ -101,7 +101,8 @@ export default function AccountPage() {
   };
 
   const roleLabel = ROLE_LABELS[profile?.role] || profile?.role || "—";
-  const teamLabel = profile?.team ? (TEAM_LABELS[profile.team] || profile.team) : "—";
+  // อยู่ได้หลายทีม — โชว์ครบ ทีมหลักขึ้นก่อน (ยอดของใหม่เข้าทีมแรก)
+  const teamLabel = userTeams(profile).map((t) => TEAM_LABELS[t] || t).join(" + ") || "—";
   const departmentCode = profile?.department ? (DEPARTMENT_LABELS[profile.department] || profile.department) : "—";
   const departmentName = profile?.department ? DEPARTMENT_NAMES_TH[profile.department] : "";
   const displayName = profile ? (fmtName(profile) || profile.email) : "";

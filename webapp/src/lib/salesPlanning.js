@@ -1,4 +1,5 @@
 import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberParts, publishedNumberingPattern } from '@/lib/documentStandards';
 
@@ -273,7 +274,7 @@ export function forecastAmount(deal) {
 
 export function applyDealScope(query, user) {
   const scope = salesPlanningViewScope(user?.role);
-  if (scope === 'team') return query.eq('team', user?.team ?? null);
+  if (scope === 'team') return whereTeamIn(query, user);
   // ⚠️ เทียบ `ownerId` อย่างเดียว — เดิมมี `or(ownerId.eq.…,ownerName.eq.…)` พ่วงมา
   // ซึ่งแปลว่า "เปลี่ยนชื่อ = ดีลของตัวเองหายจากหน้าจอ" (ชื่อในแถวเป็นสำเนาที่ไม่ถูก
   // อัปเดตตอน rename). ตรวจ prod แล้วสาขาชื่อไม่ได้ครอบแถวไหนเพิ่มเลย — ดีลทุกใบมี ownerId

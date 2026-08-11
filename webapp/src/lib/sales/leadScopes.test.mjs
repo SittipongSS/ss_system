@@ -22,13 +22,15 @@ function actualBreadth(role) {
   const calls = [];
   const q = {
     eq: (col, val) => { calls.push(['eq', col, val]); return q; },
+    // ขอบเขตทีมเป็น `.in()` แล้ว — คนหนึ่งคนอยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11)
+    in: (col, vals) => { calls.push(['in', col, vals]); return q; },
     or: (expr) => { calls.push(['or', expr]); return q; },
   };
-  const out = applyLeadScope(q, { role, id: 'U-1', team: 'ODM' });
+  const out = applyLeadScope(q, { role, id: 'U-1', team: 'ODM', teams: ['ODM'] });
   if (out === q && !calls.length) return 'all';           // คืน query เดิม = ไม่กรอง
   const [kind, col, val] = calls[0];
   if (kind === 'or') return 'own';                        // assigneeId/createdBy
-  if (col === 'team') return 'team';
+  if (col === 'team') return 'team';                      // in('team', [...])
   if (col === 'id' && val === '__no_lead_scope__') return 'none';
   return 'unknown';
 }

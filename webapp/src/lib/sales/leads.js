@@ -4,7 +4,8 @@
 // เปิดลูกค้า (qualified) / ไม่ไปต่อ (disqualified) / ตีกลับทีมผิด (bounce → new).
 // KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ.
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
-import { can, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { whereTeamIn } from '@/lib/teamScope';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform',
@@ -86,11 +87,11 @@ export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified',
 //   · ae → ที่ถูกมอบหมายให้ตัวเอง **หรือที่ตัวเองกรอก** · role อื่น (rd ฯลฯ) → ไม่เห็นเลย
 //
 // ⚠️ senior_ae/ac **ไม่เห็นคิวกลาง (`new`)** — ลีดที่ยังไม่คัดกรองมี team = null
-// ซึ่ง `.eq('team', …)` ไม่คืนให้ (บรรทัดคอมเมนต์เดิมเขียนว่าเห็น "คิวกลาง (new)" ด้วย
+// ซึ่ง `.in('team', …)` ไม่คืนให้ (บรรทัดคอมเมนต์เดิมเขียนว่าเห็น "คิวกลาง (new)" ด้วย
 // ซึ่งไม่ตรงกับโค้ดมาตั้งแต่ต้น — แก้คำอธิบายให้ตรงของจริง 2026-08-04)
 // `canEditLead` ยังยอมให้ senior_ae แก้ลีดที่ยังไม่มีทีม (`!lead.team`) อยู่ตามเดิม —
 // แต่ **ไปไม่ถึงแล้ว**: ทั้ง GET / PATCH / DELETE ผ่านด่าน `inLeadScope` ก่อนเสมอ
-// ซึ่งบังคับ `!!lead.team && lead.team === user.team` สำหรับ senior_ae/ac
+// ซึ่งบังคับ `hasTeam(user, lead.team)` สำหรับ senior_ae/ac (ทีมของคน ∩ ทีมของลีด)
 // (เดิม PATCH ไม่มีด่านนี้ ⇒ ยิง URL ตรงเข้าไปแก้ลีดในคิวกลางได้ · ปิดแล้ว 2026-08-08)
 // ปล่อยสาขานี้ไว้เพราะมันไม่ใช่นโยบายที่ผิด — ที่ผิดคือด่านมองเห็นที่ขาดไป
 //
@@ -104,7 +105,8 @@ export function applyLeadScope(query, user) {
   if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return query;
   if (role === 'senior_ae' || role === 'ac') {
     // Senior/AC only see leads that have been screened to their team.
-    return query.eq('team', user?.team ?? '__no_team__');
+    // อยู่หลายทีมได้ ⇒ เห็นคิวของทุกทีมที่สังกัด (in ไม่ใช่ eq)
+    return whereTeamIn(query, user);
   }
   if (role === 'ae') {
     return query.or(`assigneeId.eq.${user?.id ?? ''},createdBy.eq.${user?.id ?? ''}`);
@@ -116,7 +118,7 @@ export function applyLeadScope(query, user) {
 export function inLeadScope(user, lead) {
   const role = user?.role;
   if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return true;
-  if (role === 'senior_ae' || role === 'ac') return !!lead.team && lead.team === user?.team;
+  if (role === 'senior_ae' || role === 'ac') return hasTeam(user, lead.team);
   if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
   return false;
 }
@@ -162,7 +164,7 @@ export function canEditLead(user, lead) {
   if (LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return false;
   if (isSuperuser(role)) return true;
   if (role === 'marketing') return !!user?.id && lead.createdBy === user.id;
-  if (role === 'senior_ae') return !lead.team || lead.team === user?.team;
+  if (role === 'senior_ae') return !lead.team || hasTeam(user, lead.team);
   if (role === 'ae') return (!!user?.id && (lead.assigneeId === user.id || lead.createdBy === user.id));
   return false;
 }
@@ -174,7 +176,7 @@ export function canEditLead(user, lead) {
 export function canWorkLead(user, lead) {
   const role = user?.role;
   if (role === 'admin') return true;
-  if ((role === 'senior_ae' || role === 'ac') && lead.team === user?.team) return true;
+  if ((role === 'senior_ae' || role === 'ac') && hasTeam(user, lead.team)) return true;
   if (role === 'ae' && !!user?.id && lead.assigneeId === user.id) return true;
   return false;
 }

@@ -11,7 +11,7 @@ import {
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
   FileText,
 } from "lucide-react";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import ProjectDealsHub, { ProjectActivityFeed, ProjectQuotationsCard } from "@/components/pm/ProjectDealsHub";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
@@ -85,6 +85,7 @@ export default function ProjectDetailPage() {
   const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
   const team = useTeam();
+  const teams = useTeams();
   // ตัวตนของผู้ใช้ปัจจุบัน — `id` เป็นหลัก (เทียบกับ aeOwnerId) ส่วน `name` เก็บไว้
   // เป็นทางถอยสำหรับใบเก่าที่ยังไม่มี aeOwnerId (ดู isAeOwner ใน projectLifecycle)
   const [myId, setMyId] = useState("");
@@ -99,7 +100,7 @@ export default function ProjectDetailPage() {
      ⚠️ ห้ามคำนวณสิทธิ์ซ้ำในหน้านี้: ของเดิมเช็ค `salesplan:edit` ทั้งที่ทุก API ตรวจ
      `pm:edit` — lifecycle แก้ให้แล้ว เอาไปใช้ตรง ๆ
      name เข้าไปด้วยเพราะ transition "ดึงกลับจากระงับ" เทียบเจ้าของด้วย *ชื่อ* ไม่ใช่ id */
-  const viewer = useMemo(() => ({ role: userRole, team, id: myId, name: myName }), [userRole, team, myId, myName]);
+  const viewer = useMemo(() => ({ role: userRole, team, teams, id: myId, name: myName }), [userRole, team, teams, myId, myName]);
   const projectLc = useMemo(() => createProjectLifecycle(), []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

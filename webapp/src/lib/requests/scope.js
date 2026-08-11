@@ -4,7 +4,7 @@
 // กรองที่จอแปลว่าข้อมูลของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน — เปิดดูได้จาก
 // แท็บ Network โดยไม่ต้องมีความรู้อะไรเลย · ตัวเลือกที่ไม่มีสิทธิ์ต้อง **จางและ
 // กดไม่ได้ ไม่ใช่ซ่อน** เพราะการซ่อนทำให้คนไม่รู้ว่ามีของที่ตัวเองเข้าไม่ถึงอยู่
-import { isSuperuser } from '@/lib/permissions';
+import { isSuperuser, userTeams } from '@/lib/permissions';
 
 export const REQUEST_SCOPES = ['mine', 'team', 'all'];
 
@@ -21,7 +21,7 @@ export const REQUEST_SCOPES = ['mine', 'team', 'all'];
 export function canUseScope(user, scope) {
   if (scope === 'mine') return true;
   if (scope === 'all') return isSuperuser(user?.role);
-  if (scope === 'team') return isSuperuser(user?.role) || !!user?.team;
+  if (scope === 'team') return isSuperuser(user?.role) || userTeams(user).length > 0;
   return false;
 }
 
@@ -45,7 +45,9 @@ export function scopeFilter(user, scope) {
   if (scope === 'team') {
     // ไม่มีทีม = เห็นแต่ของตัวเอง · คืนตัวกรองที่ไม่มีวันตรงกับใครไม่ได้ เพราะนั่น
     // จะกลายเป็น "คิวว่าง" ที่อ่านเหมือนไม่มีงาน แทนที่จะเป็น "ไม่มีทีม"
-    return user?.team ? { team: user.team } : { requestedById: user?.id || '—' };
+    // อยู่หลายทีมได้ ⇒ คิวทีม = ของทุกทีมที่สังกัด (ชั้นข้อมูลรับเป็นอาร์เรย์)
+    const teams = userTeams(user);
+    return teams.length ? { team: teams } : { requestedById: user?.id || '—' };
   }
   return { requestedById: user?.id || '—' };
 }
