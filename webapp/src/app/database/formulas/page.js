@@ -34,6 +34,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
+import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import Link from "next/link";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
@@ -133,6 +134,21 @@ export default function FormulasPage() {
     (id) => scents.find((s) => s.id === id)?.name || null, [scents],
   );
 
+  /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003 — เหมือนทะเบียนกลิ่น)
+     สูตรของลูกค้าตั้งรหัสล้อกับรหัสลูกค้าเช่นกัน ⇒ ต้องอ่านคู่กันได้ในบรรทัดเดียว
+     ⚠️ แผนที่เดียวใช้ทั้งสองตาราง — สร้างใหม่ทุกแถวคือ O(n²) ตอนเรนเดอร์ */
+  const arIndex = useMemo(() => customerArIndex(customers), [customers]);
+  const customerCell = (row, fallback) => {
+    if (!row.customerId && !row.customerName) return fallback;
+    const { name, arCode } = customerWithAr(row.customerId, row.customerName, arIndex);
+    return (
+      <>
+        {name}
+        {arCode ? <span className={styles.arCode}>{arCode}</span> : null}
+      </>
+    );
+  };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return formulas.filter((f) => {
@@ -145,10 +161,14 @@ export default function FormulasPage() {
       if (kindFilter === "base" && f.customerId) return false;
       if (!q) return true;
       // ค้นด้วยชื่อที่ลูกค้าเรียกและรหัสหมวดได้ด้วย (เหมือนทะเบียนกลิ่น)
-      return [f.name, f.code, f.customerName, f.customerTradeName, f.categoryCode, scentName(f.scentId)]
+      // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าอยากรู้ว่ารายนี้มีสูตรอะไรบ้าง
+      return [
+        f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
+        f.customerTradeName, f.categoryCode, scentName(f.scentId),
+      ]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [formulas, statusFilter, kindFilter, sourceFilter, search, scentName]);
+  }, [formulas, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
@@ -348,7 +368,7 @@ export default function FormulasPage() {
                     <td className={styles.name}>{r.formulaName}</td>
                     <td className="mono">{r.formulaDate ? fmtDate(r.formulaDate) : "—"}</td>
                     <td>{r.productName}</td>
-                    <td>{r.customerName || "—"}</td>
+                    <td>{customerCell(r, "—")}</td>
                     <td>
                       <div className={styles.rowActions}>
                         {registrar && (
@@ -501,7 +521,7 @@ export default function FormulasPage() {
                     </td>
                     <td className="mono">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
                     <td>
-                      {f.customerName || <span className={styles.muted}>สูตรกลาง</span>}
+                      {customerCell(f, <span className={styles.muted}>สูตรกลาง</span>)}
                     </td>
                     {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ — แสดงอย่างเดียว */}
                     <td className="num"><RegistryPrice price={f.price} /></td>

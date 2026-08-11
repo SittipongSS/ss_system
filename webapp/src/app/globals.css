@@ -1087,6 +1087,28 @@ button, select, input, textarea {
   background: var(--accent);
 }
 .topnav-item.active svg { color: var(--accent-ink); }
+/* ป้ายจำนวน "รอคุณทำ" บนเมนู — ขึ้นเฉพาะเมื่อ > 0 (ดู lib/nav/useNavCounts.js)
+   ⚠️ **เทาคงที่ทั้งตอน active และไม่ active** — ขีดชี้กับสีอักษรบอก "อยู่หน้านี้"
+   อยู่แล้ว · ป้ายที่เปลี่ยนสีตามด้วยจะกลายเป็นสัญญาณที่สองที่แข่งกับขีดชี้
+   ⚠️ min-width + tabular-nums ห้ามถอด: เลขเปลี่ยนหลักแล้วเมนูทั้งแถวต้องไม่ขยับ */
+.topnav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 19px;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-lg);
+  background: var(--panel-3);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-flat);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* ในแผ่นเมนูมือถือการ์ดเรียงไอคอน+ชื่อกลางช่อง — ป้ายไปต่อท้ายชื่อได้เลย
+   (ต่างจากแถบล่างที่ช่องแคบจนต้องเกาะมุมไอคอน ดู .mbn-count) */
+.mobile-nav-card .topnav-count { margin-left: var(--space-1); }
 /* เมนูอรรถประโยชน์ (วางเป้า/ตั้งค่า) — ภาษาเดียวกัน แค่ "เบา" กว่าเมนูงานหลัก
    🔴 เดิมทำให้เบาด้วย --text-3 ซึ่งวัดบนพื้นแถวเมนูจริงได้ **4.21:1 ในธีมสว่าง** = ตก AA
    (ตัวอักษร 13px ต้องการ 4.5:1) · ธีมมืดผ่านที่ 5.40:1 — ตกเฉพาะธีมสว่าง
@@ -1265,6 +1287,32 @@ button, select, input, textarea {
     place-items: center;
     width: 38px;
     height: 24px;
+    position: relative;
+  }
+  /* ป้ายจำนวนบนแถบล่าง — เกาะมุมไอคอน ไม่ใช่ต่อท้ายชื่อ (ช่องกว้าง ~71px
+     ป้ายที่ดันชื่อจะทำให้ชื่อโดนตัดด้วย … จนอ่านไม่ออกทั้งคู่)
+     ⚠️ ที่นี่ใช้พื้น accent เต็ม ไม่ใช่ป้ายเทาแบบบนแถบบน — ป้ายเล็กระดับนี้
+     บนพื้นแถบต้องใช้สีเป็นตัวเรียกสายตา ไม่งั้นมันจมหายไปกับไอคอน */
+  .mbn-count {
+    position: absolute;
+    /* ⚠️ ห้ามดันขึ้นไปติดขอบบนของปุ่ม — ขีดชี้ของเมนูที่ active อยู่ตรงนั้นและ
+       เป็นสีเดียวกัน สองก้อนสีส้มติดกันจะอ่านเป็นก้อนเดียว */
+    top: 0;
+    left: 50%;
+    transform: translateX(4px);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--space-1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: var(--fs-1);
+    font-weight: var(--fw-bold);
+    line-height: var(--lh-flat);
+    font-variant-numeric: tabular-nums lining-nums;
   }
   /* active = **ขีดชี้ + อักษร accent** ภาษาเดียวกับเมนูบนแถบบน (มติ 2026-07-18)
      ⚠️ ห้ามกลับไปใช้เม็ดยารอบไอคอน — ทรง pill สงวนให้ .segmented ที่เป็น *ตัวกรอง*
@@ -3992,6 +4040,26 @@ button.empty-state { width: 100%; font: inherit; }
 .segmented > button:disabled { opacity: var(--op-disabled); cursor: default; }
 .segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 var(--space-0-5); }
+
+/* ป้ายจำนวนในเม็ดยา (ส่ง `count` ให้ Segmented — อย่าต่อ "(12)" ท้ายป้ายชื่อเอง)
+   ⭐ พื้นผสมจาก currentColor เหมือน .chip/.ui-badge — ตอน active ตัวอักษรเป็น
+   --accent-fg บนพื้นส้ม ป้ายจึงเปลี่ยนตามเองโดยไม่ต้องมีกฎสีชุดที่สอง
+   ⚠️ min-width + tabular-nums ห้ามถอด: เลข 1 หลักกับ 2 หลักต้องกว้างเท่ากัน
+   ไม่งั้นแถบทั้งแถบขยับทุกครั้งที่จำนวนเปลี่ยน */
+.seg-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 17px;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-flat);
+  font-variant-numeric: tabular-nums lining-nums;
+}
 
 /* ตัวสลับขอบเขต "ของฉัน / ทีม / ทั้งหมด" — ใช้ร่วมกันทุกหน้าที่มีขอบเขต
    (คิวลีด · ไปป์ไลน์ดีล · งาน PM) เดิมชื่อผูกกับหน้าดีล คิวลีดจึงไม่ได้ใส่ ปุ่มสอง

@@ -323,6 +323,7 @@ function Section({ group, active, ...props }) {
 export default function DesignPreviewPage() {
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("list");
+  const [queueTab, setQueueTab] = useState("todo");
   const [sort, setSort] = useState("date");
   const [direction, setDirection] = useState("desc");
   const [filters, setFilters] = useState([]);
@@ -586,6 +587,22 @@ export default function DesignPreviewPage() {
                 ]}
                 selected={teamFilter}
                 onChange={setTeamFilter}
+              />
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>
+                ป้ายจำนวน — ส่ง <code>count</code> เป็นตัวเลข ห้ามต่อ &quot;(6)&quot; ท้ายป้ายชื่อ
+                (เลขในสตริงทำให้ปุ่มกว้างไม่เท่ากันแล้วแถบขยับตอนจำนวนเปลี่ยน)
+              </span>
+              <Segmented
+                ariaLabel="ตัวอย่างป้ายจำนวน"
+                value={queueTab}
+                onChange={setQueueTab}
+                options={[
+                  { value: "todo", label: "รอฉันตอบ", count: 6 },
+                  { value: "mine", label: "ที่ฉันเปิด", count: 5 },
+                  { value: "history", label: "ประวัติ", count: 128 },
+                ]}
               />
             </div>
             <div className={styles.row}>

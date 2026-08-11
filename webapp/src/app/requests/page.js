@@ -279,9 +279,11 @@ export default function RequestsPage() {
           onChange={setTab}
           options={QUEUE_TABS.map((t) => ({
             value: t.key,
+            label: t.label,
             // นับจากชุดเดียวกับที่แท็บนั้นจะแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
             // ขัดกันไม่ได้ (เดิมนับคนละที่กัน)
-            label: `${t.label} (${queueTabRows(requests, { tab: t.key, myDepts }).length})`,
+            // ⚠️ ส่งเป็น `count` ไม่ใช่ต่อ "(6)" ท้ายป้ายชื่อ — เหตุผลอยู่ใน Segmented.js
+            count: queueTabRows(requests, { tab: t.key, myDepts }).length,
           }))}
         />}
         {activeScope === "team" && (

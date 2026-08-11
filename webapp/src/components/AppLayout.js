@@ -15,6 +15,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
+import useNavCounts, { navCountFor } from '@/lib/nav/useNavCounts';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -41,6 +42,8 @@ export default function AppLayout({ children }) {
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
+  // ป้ายจำนวน "รอคุณทำ" บนเมนู — คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็นไม่ถูกส่งมาเลย
+  const navCounts = useNavCounts(pathname);
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -522,10 +525,20 @@ export default function AppLayout({ children }) {
                 </span>
               );
             }
+            // ⚠️ ป้ายจำนวนขึ้นเฉพาะเมื่อ > 0 (navCountFor คืน null ให้ 0/ไม่มีสิทธิ์) —
+            // ต่างจากแท็บในหน้าที่ต้องคง 0 ไว้กันแถวขยับ · แถวเมนูที่มี "0" เรียงกัน
+            // ทั้งแถวคือของประดับที่ไม่มีใครอ่าน
+            const count = navCountFor(navCounts, item.href);
             return (
-              <Link href={item.href} key={item.href} className={`topnav-item ${active ? 'active' : ''}`}>
+              <Link
+                href={item.href}
+                key={item.href}
+                className={`topnav-item ${active ? 'active' : ''}`}
+                aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+              >
                 <Icon size={16} className="ico" />
                 <span>{item.name}</span>
+                {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
               </Link>
             );
           })}
@@ -561,7 +574,7 @@ export default function AppLayout({ children }) {
       {/* แถบเมนูล่างบนมือถือ — เมนูของระบบครบทุกตัว แบ่งหน้าปัดเอา (มติ 2026-08-02)
           ไม่โผล่ในบริบทตั้งค่า เพราะที่นั่นไม่มีเมนูของระบบ */}
       {!isSettingsContext && (
-        <MobileBottomNav items={menuItems} pathname={pathname} label={systemSubtitle} />
+        <MobileBottomNav items={menuItems} pathname={pathname} label={systemSubtitle} counts={navCounts} />
       )}
 
       {mobileMoreOpen && (
@@ -587,9 +600,16 @@ export default function AppLayout({ children }) {
                       </span>
                     );
                   }
+                  const count = navCountFor(navCounts, item.href);
                   return (
-                    <Link href={item.href} key={item.href} className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}>
+                    <Link
+                      href={item.href}
+                      key={item.href}
+                      className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}
+                      aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+                    >
                       <Icon size={20} /><span>{item.name}</span>
+                      {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
                     </Link>
                   );
                 })}
