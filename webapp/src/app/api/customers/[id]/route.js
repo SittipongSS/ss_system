@@ -9,6 +9,9 @@ import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import { CODE_MODE_MANUAL, arCodeError, isAutoArCode } from '@/lib/master/masterCodes';
+import {
+  branchKeyOf, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError,
+} from '@/lib/master/customerTaxId';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
@@ -319,6 +322,25 @@ export async function PATCH(request, { params }) {
     }
     updates.addresses = addresses;
     Object.assign(updates, mirror);
+  }
+  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12) ────────────────
+  // ต้องอยู่ **หลัง** บล็อกที่อยู่ เพราะสาขาที่ใช้เทียบอาจเพิ่งเปลี่ยนในใบแก้นี้เอง
+  // (แก้ที่อยู่ออกบิลจาก สนญ. ไปสาขา = ย้ายไปชนกับลูกค้าอีกรายได้) · เช็คเมื่อฝั่งใด
+  // ฝั่งหนึ่งของคีย์ขยับเท่านั้น — ใบที่แก้แค่ชื่อ/เบอร์ ไม่ต้องแตะฐานข้อมูลเพิ่ม
+  const nextTaxId = updates.taxId !== undefined ? taxIdDigits(updates.taxId) : taxIdDigits(customer.taxId);
+  const nextBranch = updates.branchCode !== undefined ? updates.branchCode : customer.branchCode;
+  const taxKeyChanged = (updates.taxId !== undefined && nextTaxId !== taxIdDigits(customer.taxId))
+    || (updates.branchCode !== undefined && branchKeyOf(nextBranch) !== branchKeyOf(customer.branchCode));
+  if (nextTaxId && taxKeyChanged) {
+    if (updates.taxId !== undefined) updates.taxId = nextTaxId; // เก็บตัวเลขล้วนเสมอ
+    const { data: sameTax, error: taxError } = await supabase
+      .from('customers').select('id, arCode, name, taxId, branchCode').eq('taxId', nextTaxId);
+    if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
+    const { sameBranch } = splitTaxIdMatches(sameTax, {
+      taxId: nextTaxId, branchCode: nextBranch, excludeId: customer.id,
+    });
+    const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: nextBranch });
+    if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
   }
   // teams[] (0037): assigning caretaker teams is a cross-team management action —
   // supervisor/admin only (others may edit the record but not re-scope it).

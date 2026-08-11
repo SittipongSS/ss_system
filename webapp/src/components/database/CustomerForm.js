@@ -14,6 +14,7 @@
 // โหมดรหัส (มติผู้ใช้ 2026-08-12 · mig 0230): `onCodeMode` = โหมดสร้าง (มีสวิตช์
 // "ระบบใหม่" เปิด/ปิดได้ทุกครั้ง · เปิด = แถบรหัสโชว์เลขถัดไป ไม่มีช่องให้พิมพ์) ·
 // ไม่ส่ง = โหมดแก้ (ช่องรหัสธรรมดา + `arLocked` เมื่อรหัสนั้นระบบเป็นคนออกให้)
+import { useEffect, useState } from "react";
 import CodeStrip from "@/components/ui/CodeStrip";
 import OptionTiles from "@/components/ui/OptionTiles";
 import AddressesEditor from "@/components/database/AddressesEditor";
@@ -21,7 +22,10 @@ import BrandsEditor from "@/components/database/BrandsEditor";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import PhoneInput from "@/components/ui/PhoneInput";
-import { customerAddresses } from "@/lib/master/addresses";
+import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
+import {
+  isCompleteTaxId, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError, taxIdOtherBranchWarning,
+} from "@/lib/master/customerTaxId";
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
@@ -76,6 +80,7 @@ export default function CustomerForm({
   onCodeMode = null,
   nextArNumber = null,    // เลขถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
   arLocked = false,       // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
+  selfId = null,          // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const mode = codeModeOf(codeMode);
@@ -84,6 +89,35 @@ export default function CustomerForm({
   // เป็นคำที่ผิดทันทีเมื่อเลือกบุคคลธรรมดา (กฎในเอกสารฟอร์ม: ป้ายต้องเรียกชื่อสิ่งที่
   // อยู่ตรงหน้าจริง ๆ ไม่ใช่ชื่อที่ใช้ได้กับกรณีส่วนใหญ่)
   const isCompany = form.customerType !== "individual";
+
+  // ── เช็คลูกค้าซ้ำจากเลขผู้เสียภาษี ตั้งแต่กรอกครบ 13 หลัก (มติผู้ใช้ 2026-08-12) ──
+  // เตือน **ก่อน** กรอกทั้งใบเสร็จแล้วค่อยโดนตีกลับตอนกดบันทึก · ด่านจริงอยู่ที่ API
+  // (ทั้ง POST/PATCH) ตัวนี้คือการเอาคำตอบเดียวกันมาวางตรงหน้าให้เร็วขึ้น
+  const [taxMatches, setTaxMatches] = useState([]);
+  const taxKey = taxIdDigits(form.taxId);
+  useEffect(() => {
+    if (!isCompleteTaxId(taxKey)) { setTaxMatches([]); return undefined; }
+    // หน่วงไว้ก่อนยิง — เลขครบ 13 หลักเกิดระหว่างพิมพ์/แก้กลางเลขได้หลายครั้ง
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/master/customers/by-tax-id?taxId=${taxKey}`, { signal: controller.signal });
+        setTaxMatches(res.ok ? await res.json() : []);
+      } catch {
+        // ถามไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — ด่านจริงยังอยู่ที่ API ตอนบันทึก
+        setTaxMatches([]);
+      }
+    }, 350);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [taxKey]);
+
+  // สาขาที่ใช้เทียบ = สาขาของที่อยู่ออกบิลหลักในฟอร์มนี้ (คีย์ซ้ำคือ เลขภาษี + สาขา)
+  const formBranchCode = legacyAddressMirror(form.addresses || []).branchCode;
+  const { sameBranch, otherBranch } = splitTaxIdMatches(taxMatches, {
+    taxId: taxKey, branchCode: formBranchCode, excludeId: selfId,
+  });
+  const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
+  const taxWarning = taxIdOtherBranchWarning(otherBranch);
 
   return (
     <>
@@ -189,6 +223,14 @@ export default function CustomerForm({
           <div className="form-group">
             <label>{isCompany ? "เลขประจำตัวผู้เสียภาษี" : "เลขประจำตัวประชาชน"}</label>
             <NationalIdInput name="taxId" value={form.taxId} onChange={(v) => onForm({ taxId: v })} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full" />
+            {/* ซ้ำจริง (เลขเดียวกัน + สาขาเดียวกัน) = บันทึกไม่ผ่านแน่นอน — บอกตั้งแต่ตรงนี้
+                ว่าไปชนกับรายไหน · คนละสาขา = เตือนเฉย ๆ เพราะเปิดสาขาเป็นงานปกติ */}
+            {taxDupError && (
+              <span className="text-[11px] text-[var(--red)] mt-1">{taxDupError}</span>
+            )}
+            {!taxDupError && taxWarning && (
+              <span className="text-[11px] text-[var(--amber)] mt-1">{taxWarning}</span>
+            )}
           </div>
           <div className="form-group">
             <label>{isCompany ? "เบอร์โทรบริษัท" : "เบอร์โทร"}</label>

@@ -7,6 +7,7 @@ import { normalizeBrands } from '@/lib/master/brands';
 import {
   AR_SCOPE, CODE_MODE_AUTO, arCodeError, codeModeOf, formatArCode, nextMasterNumber,
 } from '@/lib/master/masterCodes';
+import { splitTaxIdMatches, taxIdDigits, taxIdDuplicateError } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 
@@ -136,13 +137,28 @@ export async function POST(request) {
     return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
   }
 
+  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12) ────────────────
+  // ⚠️ ต้องเช็ค **หลัง** คำนวณ mirror.branchCode เพราะสาขาคือครึ่งหนึ่งของคีย์ซ้ำ
+  // (unique (taxId, branchCode), mig 0039) — บริษัทเดียวเปิดหลายสาขาได้โดยชอบ
+  // ⚠️ DB มี unique อยู่แล้วและจะตีกลับเองถ้าด่านนี้แพ้ race — ที่ด่านนี้มีเพิ่มคือ
+  // **บอกว่าไปชนกับรายไหน** ข้อความจาก unique บอกแค่ว่าซ้ำ คนกรอกหาไม่เจอว่าซ้ำกับอะไร
+  const taxId = taxIdDigits(body.taxId) || null;
+  if (taxId) {
+    const { data: sameTax, error: taxError } = await supabase
+      .from('customers').select('id, arCode, name, taxId, branchCode').eq('taxId', taxId);
+    if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
+    const { sameBranch } = splitTaxIdMatches(sameTax, { taxId, branchCode: mirror.branchCode });
+    const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: mirror.branchCode });
+    if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
+  }
+
   const newCustomer = {
     // Collision-proof id. The old 'CUS-'+last-6-ms scheme repeated every ~16.7
     // min and the live DB has no unique on id — two customers could share one.
     id: 'CUS-' + randomUUID(),
     arCode,
     name: body.name,
-    taxId: body.taxId || null,
+    taxId,                                    // ตัวเลขล้วน (ถอดขีดแล้วที่ด่านเช็คซ้ำ)
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     addresses,                                // ที่อยู่ทั้งหมด (migration 0202)
     // ── กระจกของที่อยู่หลัก (อย่าเขียนทับมือ) ────────────────────────────

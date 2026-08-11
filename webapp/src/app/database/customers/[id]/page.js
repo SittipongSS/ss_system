@@ -813,6 +813,7 @@ export default function CustomerDetails() {
             showTeams
             canEditTeams={superuser}
             arLocked={isAutoArCode(customer.arCode)}
+            selfId={customer.id}
           />
           <div className="form-action-bar is-page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
