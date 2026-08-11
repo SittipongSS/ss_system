@@ -34,6 +34,7 @@ import { fmtDate } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
+import { requestHeaderFacts } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
@@ -766,25 +767,14 @@ export default function RequestDetailPage() {
     })),
   ];
 
-  // ⚠️ สี่ช่องพอดี — `.quickFacts` เป็น grid 4 คอลัมน์ตายตัว ใส่ช่องที่ห้าแล้วแถวที่สอง
-  // จะเหลือช่องโหว่และเส้นคั่นวิ่งผิด · ของที่ไม่ติดสี่อันดับแรก (ผู้รับเรื่อง) เล่าใน
-  // รางก้าวและบรรทัดใต้เนื้อคำร้องแทน
-  const headerFacts = [
-    { key: "created", icon: ClipboardList, label: "วันที่สร้าง", value: fmtDate(req.createdAt) },
-    { key: "requester", label: "ผู้ขอ", value: req.requestedByName || "—" },
-    ...(hasItems
-      ? [{ key: "progress", label: "ตอบแล้ว", value: `${progress.done}/${progress.total} รายการ` }]
-      : [{ key: "customer", label: "ลูกค้า", value: req.customerName || "—" }]),
-    {
-      key: "due",
-      // วันที่คาดหวังเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง — แสดงตัวที่
-      // ผูกพันจริงก่อนเสมอ เพราะนั่นคือตัวที่คิวใช้นับว่าเลยกำหนดหรือยัง
-      label: req.committedDueDate ? "รับปากส่ง" : "ต้องการคำตอบ",
-      value: req.committedDueDate
-        ? fmtDate(req.committedDueDate)
-        : (req.requestedDueDate ? fmtDate(req.requestedDueDate) : "—"),
-    },
-  ];
+  // ⭐ **กติกา "ช่องไหนขึ้นเมื่อไร" อยู่ที่ `lib/requests/headerFacts.js`** พร้อมเทสต์
+  // (ม-98) — ของเดิมประกอบตรงนี้กลาง JSX แล้วให้ "ลูกค้า" กับ "ตอบแล้ว" สลับกันใช้
+  // ช่องเดียว ⇒ ใบที่มีบรรทัดไม่เคยโชว์ลูกค้าเลย ซึ่งผู้ใช้แจ้งเข้ามาเอง (IS-26080003)
+  // ⚠️ ไอคอนอยู่ที่นี่ ไม่ใช่ในไลบรารี — ไลบรารีต้องไม่ import component ของ React
+  // (เทสต์รันด้วย node เปล่า) · คีย์ที่ไม่มีไอคอนไม่ต้องประกาศ
+  const FACT_ICONS = { created: ClipboardList };
+  const headerFacts = requestHeaderFacts(req, { hasItems, progress })
+    .map((fact) => ({ ...fact, icon: FACT_ICONS[fact.key] }));
 
   /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
      ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
