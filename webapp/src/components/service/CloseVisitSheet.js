@@ -16,6 +16,7 @@ import { describeResponseError } from "@/lib/fetchError";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
+import { fmtNumber } from "@/lib/format";
 
 const nowHHMM = () => {
   const d = new Date();
@@ -190,7 +191,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
           <div key={item.id} className={styles.itemRow}>
             <span className={styles.itemLabel}>{item.label}</span>
             <span className={styles.itemQty}>
-              {item.qty == null ? "—" : `${Number(item.qty).toLocaleString("th-TH")}${item.unit ? ` ${item.unit}` : ""}`}
+              {item.qty == null ? "—" : `${fmtNumber(item.qty)}${item.unit ? ` ${item.unit}` : ""}`}
             </span>
             <Button iconOnly tone="danger" variant="quiet" size="sm" aria-label={`ลบ ${item.label}`}
               onClick={() => removeItem(item.id)} disabled={busy} icon={<Trash2 size={14} aria-hidden="true" />} />

@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Flag, AlertCircle, ChevronRight, ChevronDown, Save } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
 import { useCan } from "@/lib/roleContext";
 
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 const KIND_COLOR = { drop: "var(--red)", po_filled: "var(--green)", shift_suspect: "var(--blue)", lockedBreak: "var(--amber)" };
 const STATUS_COLOR = { open: "var(--red)", confirmed_shift: "var(--blue)", confirmed_filled: "var(--green)", confirmed_cut: "var(--amber)", ignored: "var(--text-3)" };
 

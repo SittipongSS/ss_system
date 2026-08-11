@@ -16,6 +16,7 @@ import { costingDecisionUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
+import { fmtNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,7 @@ export async function POST(request, { params }) {
       const price = raw == null || raw === '' ? null : Number(raw);
       if (price == null || !Number.isFinite(price) || price < 0) {
         return Response.json({
-          error: `ต้องระบุราคาผลิตของชั้น ${Number(tier.qty).toLocaleString('th-TH')} ชิ้น ให้ครบก่อนอนุมัติ`,
+          error: `ต้องระบุราคาผลิตของชั้น ${fmtNumber(tier.qty)} ชิ้น ให้ครบก่อนอนุมัติ`,
         }, { status: 400 });
       }
     }

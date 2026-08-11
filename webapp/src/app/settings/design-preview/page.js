@@ -77,6 +77,7 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import { STATUS_TONES, toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
+import { fmtNumber } from "@/lib/format";
 
 const SURFACES = [
   { cls: styles.bg, token: "--bg", use: "พื้นหน้า" },
@@ -127,7 +128,7 @@ const DEMO_LINE_ITEMS = [
   { code: "CN-0071", name: "เทียนหอมในแก้ว 220 g", qty: 600, total: 204000 },
 ];
 
-const money = (value) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value) => fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /* วันนี้แบบ ISO (โซนเวลาเครื่อง) — ใช้เป็น min ของตัวอย่าง "ห้ามเลือกย้อนหลัง" */
 const DEMO_TODAY = (() => {
@@ -1304,7 +1305,7 @@ export default function DesignPreviewPage() {
                         <DetailRow key={row.code} href="#">
                           <td className="mono">{row.code}</td>
                           <td>{row.name}</td>
-                          <td className="num">{row.qty.toLocaleString("th-TH")}</td>
+                          <td className="num">{fmtNumber(row.qty)}</td>
                           <td className="num">{money(row.total)}</td>
                         </DetailRow>
                       ))}

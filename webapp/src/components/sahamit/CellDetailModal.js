@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import Modal from "@/components/Modal";
 import Tabs from "@/components/ui/Tabs";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -17,7 +17,7 @@ const C = {
   green: "var(--green)", teal: "var(--teal)", amber: "var(--amber)",
   red: "var(--red)", violet: "var(--violet)", blue: "var(--blue)", "text-3": "var(--text-3)",
 };
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 const TABS = [
   { key: "overview", label: "ภาพรวม" },
   { key: "docs", label: "เอกสารอ้างอิง" },

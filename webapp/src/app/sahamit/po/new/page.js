@@ -8,6 +8,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { ppcOf } from "@/lib/sahamit/units";
 import { useCan } from "@/lib/roleContext";
+import { fmtNumber } from "@/lib/format";
 
 // สร้าง PO — หน้าเต็ม. ฟอร์มมาจาก PoForm (ตัวเดียวกับหน้าแก้ /sahamit/po/[id]/edit)
 export default function PoCreatePage() {
@@ -96,7 +97,7 @@ export default function PoCreatePage() {
         {error && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>}
         <div className="form-action-bar is-page">
           <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
-            {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : "ยังไม่มีรายการ"}
+            {rows.length ? `${rows.length} รายการ · รวม ${fmtNumber(totalQty)} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : "ยังไม่มีรายการ"}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn" onClick={() => router.push("/sahamit/po")} disabled={busy}>ยกเลิก</button>

@@ -11,7 +11,7 @@ import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ReadableText from "@/components/ui/ReadableText";
 import { DestinationToggle } from "@/components/sahamit/destinations";
-import { productMeta } from "@/lib/format";
+import { fmtNumber, productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
 import Textarea from "@/components/ui/Textarea";
@@ -40,7 +40,7 @@ export const poToForm = (po) => ({
 // ราคา/มูลค่าบน PO อ่านอย่างเดียว — ยึดราคาผลิต (costPrice) จาก master แก้ไม่ได้
 // (มติ: ห้ามแก้ราคาในสหมิตร). มูลค่า = จำนวนชิ้น × ราคา/ชิ้น; VAT 7% ท้ายเอกสาร.
 const VAT_RATE = 0.07;
-const nfBaht = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nfBaht = (n) => fmtNumber(n || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function PoForm({
   header, onHeader,          // {poNumber,...}, (patch) => void
@@ -249,7 +249,7 @@ export default function PoForm({
                         const n = Number(r.qty);
                         if (!ppc || !Number.isFinite(n) || n <= 0) return null;
                         const hint = entryUnit === "case"
-                          ? `= ${Math.round(n * ppc).toLocaleString("th-TH")} ชิ้น`
+                          ? `= ${fmtNumber(Math.round(n * ppc))} ชิ้น`
                           : (casesText(n, ppc) ? `= ${casesText(n, ppc)}` : null);
                         return hint ? <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{hint}</div> : null;
                       })()}

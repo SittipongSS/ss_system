@@ -6,6 +6,7 @@
 // → SA ถาม PC ทีไรก็ต้องไล่ถามเป็นรายตัวนอกระบบ (มีของจริงเฉพาะสายสหมิตร)
 import { MATERIAL_KINDS, canQuoteMaterial } from '@/lib/materialPrices';
 import { can, inScope, pmEditScope } from '@/lib/permissions';
+import { fmtNumber } from '@/lib/format';
 
 export const DELIVERY_SOURCES = ['manual', 'costing'];
 
@@ -206,7 +207,7 @@ export function openDeliveriesToChase(rows = [], { dealId = null } = {}) {
 // เนื้อคำร้อง — PC ต้องอ่านแล้วรู้ทันทีว่าต้องอัปเดตอะไรบ้าง โดยไม่ต้องเปิดโครงการ
 export function chaseRequestBody(rows = []) {
   const lines = rows.map((r) => {
-    const qty = r.qty == null ? '' : ` · ${Number(r.qty).toLocaleString('th-TH')}${r.unit ? ` ${r.unit}` : ''}`;
+    const qty = r.qty == null ? '' : ` · ${fmtNumber(r.qty)}${r.unit ? ` ${r.unit}` : ''}`;
     const po = r.poRef ? ` · ${r.poRef}` : '';
     const due = r.dueDate ? ` · กำหนดเดิม ${r.dueDate}` : ' · ยังไม่มีกำหนด';
     return `• ${r.label}${qty}${po}${due}`;

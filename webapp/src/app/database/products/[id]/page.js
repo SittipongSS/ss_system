@@ -18,7 +18,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -415,7 +415,7 @@ export default function ProductDetails() {
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">จำนวนต่อลัง (Per Case)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ${unit}/ลัง` : "—"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${fmtNumber(product.piecesPerCase)} ${unit}/ลัง` : "—"}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>

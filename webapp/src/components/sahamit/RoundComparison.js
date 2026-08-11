@@ -3,6 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { AlertTriangle, ArrowUp, ArrowDown, Plus, X, MoveRight, CheckCircle2 } from "lucide-react";
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { fmtNumber } from "@/lib/format";
 
 // Renders the round-to-round comparison from compareRounds(): a peak-drop alert
 // section first (the items S&S must ask the customer about), then a per-SKU
@@ -13,7 +14,7 @@ const COLORS = {
 };
 
 function fmt(n) {
-  return Number(n || 0).toLocaleString("th-TH");
+  return fmtNumber(n || 0);
 }
 
 function ChangeChips({ diff }) {

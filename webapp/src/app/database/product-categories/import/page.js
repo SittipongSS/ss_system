@@ -17,7 +17,7 @@ import Toast from "@/components/ui/Toast";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtNumber } from "@/lib/format";
 import styles from "./page.module.css";
 
 const ACTION_META = {
@@ -232,7 +232,7 @@ export default function ProductCategoryImportPage() {
                 {file && (
                   <div className={styles.selectedFile}>
                     <FileSpreadsheet size={20} />
-                    <div><strong>{file.name}</strong><small>{(file.size / 1024).toLocaleString("th-TH", { maximumFractionDigits: 1 })} KB</small></div>
+                    <div><strong>{file.name}</strong><small>{fmtNumber((file.size / 1024), { maximumFractionDigits: 1 })} KB</small></div>
                     <button type="button" className="btn ghost" onClick={resetImport}>นำออก</button>
                   </div>
                 )}

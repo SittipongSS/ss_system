@@ -19,6 +19,7 @@ import { statusMeta } from '@/lib/excise/workflow';
 import { TEAM_LABELS } from '@/lib/permissions';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
+import { fmtNumber } from '@/lib/format';
 
 const inRange = (value, from, to) => {
   if (!value) return false;
@@ -29,7 +30,7 @@ const inRange = (value, from, to) => {
   return true;
 };
 const sum = (arr, pick) => arr.reduce((s, x) => s + (Number(pick(x)) || 0), 0);
-const money = (v) => '฿' + (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (v) => '฿' + fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const statusLabel = (s) => statusMeta(s).label;
 const teamLabel = (t) => (t ? (TEAM_LABELS[t] || t) : '-');
 const two = (a, b) => `${a}\n${b}`;

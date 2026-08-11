@@ -22,6 +22,7 @@ import { appendMaterialRevision, ensureMaterial, findRequest } from '@/lib/mater
 import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { fmtNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,7 +146,7 @@ export async function POST(request, { params }) {
       entityType: 'dept_request',
       entityId: id,
       kind: 'quoted',
-      body: `ใส่ราคา ${source.code || source.name} — ${price.toLocaleString('th-TH')} ฿/กก.`,
+      body: `ใส่ราคา ${source.code || source.name} — ${fmtNumber(price)} ฿/กก.`,
       user,
     }).catch(() => {});
 

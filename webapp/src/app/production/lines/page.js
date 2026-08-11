@@ -20,6 +20,7 @@ import { LINE_KIND_LABELS, capacityOn } from "@/lib/pm/productionLines";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditProduction } from "@/lib/permissions";
 import styles from "./page.module.css";
+import { fmtNumber } from "@/lib/format";
 
 const todayIso = () => {
   const now = new Date();
@@ -198,7 +199,7 @@ export default function ProductionLinesPage() {
                     {/* ยังไม่กรอกกำลัง ≠ กำลัง 0 — ต้องอ่านออกจากตารางทันทีว่าอันไหนคืออะไร */}
                     {line.capacityPerDay == null
                       ? <span className={styles.unknown}>ยังไม่ระบุ</span>
-                      : `${Number(line.capacityPerDay).toLocaleString("th-TH")} ${line.unit || ""}`}
+                      : `${fmtNumber(line.capacityPerDay)} ${line.unit || ""}`}
                   </td>
                   <td>
                     {line.isActive === false
@@ -267,7 +268,7 @@ export default function ProductionLinesPage() {
                       <td className={styles.numCol}>
                         {Number(day.capacityPerDay) === 0
                           ? <span className={styles.closed}>ปิดไลน์</span>
-                          : `${Number(day.capacityPerDay).toLocaleString("th-TH")} ${expandedLine.unit || ""}`}
+                          : `${fmtNumber(day.capacityPerDay)} ${expandedLine.unit || ""}`}
                       </td>
                       <td>{day.reason || "-"}</td>
                       {canEdit && (
@@ -293,7 +294,7 @@ export default function ProductionLinesPage() {
                 const value = capacityOn(expandedLine, today, map);
                 if (value === null) return "ยังไม่ระบุ";
                 if (value === 0) return "ปิด";
-                return `${value.toLocaleString("th-TH")} ${expandedLine.unit || ""}`;
+                return `${fmtNumber(value)} ${expandedLine.unit || ""}`;
               })()}
             </strong>
           </p>

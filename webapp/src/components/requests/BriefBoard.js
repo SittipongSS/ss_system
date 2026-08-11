@@ -16,8 +16,9 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./briefBoard.module.css";
+import { fmtNumber } from "@/lib/format";
 
-const qty = (n) => Number(n).toLocaleString("th-TH");
+const qty = (n) => fmtNumber(n);
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน

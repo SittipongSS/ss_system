@@ -35,7 +35,7 @@ import CostingRequestForm, {
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import { kindForMaterial } from "@/lib/master/requestTypes";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
   approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
@@ -57,9 +57,9 @@ import { businessDate } from "@/lib/businessDate";
 
 const money = (value) => (value == null
   ? "—"
-  : Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  : fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
-const qty = (value) => Number(value).toLocaleString("th-TH");
+const qty = (value) => fmtNumber(value);
 
 // สีป้ายสถานะการผูกทะเบียนของบรรทัด (token เท่านั้น — ห้าม hex ตรง ๆ)
 const LIBRARY_TONE = {
@@ -471,7 +471,7 @@ export default function CostingDetailPage() {
           >
             {COSTING_STATUS_LABELS[request.status] || request.status}
           </span>
-          <span className="chip">MOQ {Number(request.moq).toLocaleString("th-TH")} ชิ้น</span>
+          <span className="chip">MOQ {fmtNumber(request.moq)} ชิ้น</span>
           <span className="chip">
             ราคา {pricing.total === 0 ? "—" : `${pricing.quoted}/${pricing.total}`}
           </span>
@@ -733,7 +733,7 @@ export default function CostingDetailPage() {
                     className="chip"
                     style={isMoqTier(tier, request.moq) ? { color: "var(--accent)" } : undefined}
                   >
-                    {Number(tier.qty).toLocaleString("th-TH")} ชิ้น:{" "}
+                    {fmtNumber(tier.qty)} ชิ้น:{" "}
                     {tier.approvedUnitPrice == null ? "รออนุมัติ" : `${money(tier.approvedUnitPrice)} ฿`}
                     {isMoqTier(tier, request.moq) ? " · MOQ" : ""}
                   </span>
@@ -757,7 +757,7 @@ export default function CostingDetailPage() {
             {item.costFedAt ? (
               <p style={{ margin: "12px 0 0", fontSize: "var(--fs-5)", color: "var(--green)" }}>
                 ป้อนราคาผลิต {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
-                {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
+                {item.costFedTierQty ? ` (อ้างชั้น ${fmtNumber(item.costFedTierQty)} ชิ้น)` : ""}
                 {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
                 <span style={{ color: "var(--text-3)" }}>
                   {" "}— ฝ่ายขายปรับราคาเพิ่มได้ที่ฐานข้อมูลสินค้า
@@ -936,7 +936,7 @@ export default function CostingDetailPage() {
                   {(item.tiers || []).map((tier) => (
                     <div className="form-group" key={tier.id}>
                       <label htmlFor={`tier-${tier.id}`}>
-                        ราคาผลิตที่ {Number(tier.qty).toLocaleString("th-TH")} ชิ้น
+                        ราคาผลิตที่ {fmtNumber(tier.qty)} ชิ้น
                         {isMoqTier(tier, request.moq) ? " (MOQ)" : ""}
                       </label>
                       <input

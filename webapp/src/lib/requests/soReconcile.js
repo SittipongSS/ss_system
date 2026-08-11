@@ -1,3 +1,4 @@
+import { fmtNumber } from '@/lib/format';
 // ── กระทบยอดกับใบสั่งขาย (P3d) — logic ล้วน ไม่แตะ DB ────────────────────
 //
 // ⭐ **เตือน ไม่บล็อก** (มติผู้ใช้) — ส่งเกิน SO เกิดได้จริง (แถมให้ลูกค้าเลือก)
@@ -51,7 +52,7 @@ export const SO_RECONCILE_TONE = {
 
 export function soReconcileText(summary) {
   if (!summary) return null;
-  const n = (v) => Number(v).toLocaleString('th-TH');
+  const n = (v) => fmtNumber(v);
   if (summary.state === 'pending') {
     return `ใบสั่งขาย ${n(summary.ordered)} — ยังไม่มีรายการที่ลูกค้าคอนเฟิร์ม`;
   }

@@ -1,7 +1,7 @@
 import { notifyToast } from "@/lib/feedback";
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { productIdentity } from '@/lib/master/productIdentity';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -36,7 +36,7 @@ import { printPlaceholderHtml } from "@/lib/printTheme";
 // ไม่งั้นเลขบนจอกับบนเอกสารจะเดินหนีกัน
 const NOTICE_KEY = 'exciseTaxNotice';
 
-const fmtInt = (v) => (Number(v) || 0).toLocaleString("th-TH");
+const fmtInt = (v) => fmtNumber(v);
 
 // สถานะใบที่ยังไม่ใช่ฉบับจริง → ขึ้นลายน้ำกลางหน้า (แพตเทิร์นเดียวกับใบเสนอราคา
 // ที่ขึ้น "ฉบับร่าง" ตอนยังไม่อนุมัติ) · สถานะอื่นถือเป็นฉบับใช้งานจริง ไม่มีลายน้ำ

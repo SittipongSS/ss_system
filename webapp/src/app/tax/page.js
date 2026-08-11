@@ -11,6 +11,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { fmtNumber } from "@/lib/format";
 
 // Helper for date filtering
 function isWithinRange(dateStr, range) {
@@ -71,7 +72,7 @@ export default function TaxDashboard() {
   const itemsLine = (ord) => {
     // slim ส่ง itemCount (ตัวเลข); โหมดเต็ม (cache เก่า) ยังมี items[] — รองรับทั้งคู่
     const n = ord.itemCount ?? ord.items?.length ?? 0;
-    const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ฿${(ord.totalTax || 0).toLocaleString("th-TH")}`;
+    const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ฿${fmtNumber((ord.totalTax || 0))}`;
     return `${n} รายการ · ${tax}`;
   };
 

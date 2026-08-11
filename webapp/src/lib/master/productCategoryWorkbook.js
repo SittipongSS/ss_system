@@ -5,6 +5,7 @@ import {
   PRODUCT_CATEGORY_IMPORT_VERSION,
   PRODUCT_CATEGORY_STATUS_LABELS,
 } from './productCategoryImport';
+import { fmtNumber } from '@/lib/format';
 
 const FONT = 'Leelawadee UI';
 const HEADER_FILL = 'FFC17A52';
@@ -201,7 +202,7 @@ export async function parseProductCategoryWorkbook(buffer) {
     if (!headerIndex.has(header)) throw new Error(`ไม่พบคอลัมน์ “${header}”`);
   }
   if (sheet.rowCount - 1 > PRODUCT_CATEGORY_IMPORT_MAX_ROWS) {
-    throw new Error(`ไฟล์มีข้อมูลเกิน ${PRODUCT_CATEGORY_IMPORT_MAX_ROWS.toLocaleString('th-TH')} แถว`);
+    throw new Error(`ไฟล์มีข้อมูลเกิน ${fmtNumber(PRODUCT_CATEGORY_IMPORT_MAX_ROWS)} แถว`);
   }
 
   const read = (row, header) => {

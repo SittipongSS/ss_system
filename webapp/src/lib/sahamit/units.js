@@ -7,7 +7,9 @@
 // สหมิตรคุยกับลูกค้าเป็น "ลัง" แต่ตกลงจำนวนชิ้นกันเองด้วย — จึงโชว์ชิ้นเป็นหลัก
 // และลังเป็นวงเล็บรอง.
 
-const NF = (n) => Number(n || 0).toLocaleString("th-TH");
+import { fmtNumber } from '@/lib/format';
+
+const NF = (n) => fmtNumber(n || 0);
 
 // จำนวนชิ้นต่อลังที่ใช้ได้จริง (บวก) หรือ null.
 export function ppcOf(product) {
@@ -35,7 +37,7 @@ export function casesText(pieces, ppc) {
   if (cases == null) return null;
   const t = Number.isInteger(cases)
     ? NF(cases)
-    : cases.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+    : fmtNumber(cases, { maximumFractionDigits: 2 });
   return `${t} ลัง`;
 }
 
@@ -70,7 +72,7 @@ export function displayQty(pieces, ppc, unit = "piece", { dot = false } = {}) {
   if (!n) return dot ? "·" : NF(0);
   if (unit === "case") {
     const c = casesFromPieces(n, ppc);
-    if (c != null) return Number.isInteger(c) ? NF(c) : c.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+    if (c != null) return Number.isInteger(c) ? NF(c) : fmtNumber(c, { maximumFractionDigits: 2 });
   }
   return NF(n);
 }

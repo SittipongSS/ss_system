@@ -6,6 +6,7 @@
 // ที่ผู้บริหารอนุมัติราคาแล้ว เป็นหลักฐาน ลบทิ้งเงียบ ๆ ไม่ได้ — ต้องแจ้งกลับ
 // ให้คนแก้รู้ตัวว่าจะทำอะไรหาย
 import { normalizeCostTemplateLines } from '@/lib/master/costTemplate';
+import { fmtNumber } from '@/lib/format';
 
 // สินค้าในใบ: จับคู่ด้วย id ที่ client ส่งกลับมา (แถวใหม่ไม่มี id)
 export function planItemChanges(existingItems = [], payloadItems = []) {
@@ -80,7 +81,7 @@ export function planTierChanges(existingTiers = [], quantities = [], moq) {
 export function blockingTierError(itemLabel, toRemove = []) {
   const priced = toRemove.filter((t) => t.approvedUnitPrice != null);
   if (priced.length) {
-    const qtys = priced.map((t) => Number(t.qty).toLocaleString('th-TH')).join(', ');
+    const qtys = priced.map((t) => fmtNumber(t.qty)).join(', ');
     return `ลบชั้นจำนวน ${qtys} ของ "${itemLabel}" ไม่ได้ — ผู้บริหารอนุมัติราคาชั้นนั้นแล้ว`;
   }
   return null;

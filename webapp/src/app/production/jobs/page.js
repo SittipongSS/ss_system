@@ -21,6 +21,7 @@ import {
   jobWarnings,
 } from "@/lib/pm/productionPlan";
 import styles from "./page.module.css";
+import { fmtNumber } from "@/lib/format";
 
 // คิวเปิดมาเห็น "งานที่ยังต้องตัดสินใจ" ก่อน — จบ/ยกเลิกไม่ใช่คิว
 const OPEN_STATUSES = "draft,planned,in_progress";
@@ -145,7 +146,7 @@ export default function ProductionJobsPage() {
                       {job.fgCode && job.productName ? <span className={styles.muted}> · {job.fgCode}</span> : null}
                     </td>
                     <td className={styles.numCol}>
-                      {Number(job.qty).toLocaleString("th-TH")}{job.unit ? ` ${job.unit}` : ""}
+                      {fmtNumber(job.qty)}{job.unit ? ` ${job.unit}` : ""}
                     </td>
                     <td>{job.dueDate || <span className={styles.muted}>ยังไม่กำหนด</span>}</td>
                     <td>

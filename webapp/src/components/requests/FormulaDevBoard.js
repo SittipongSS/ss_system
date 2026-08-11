@@ -14,11 +14,11 @@ import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 
-const qty = (n) => Number(n).toLocaleString("th-TH");
-const money = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+const qty = (n) => fmtNumber(n);
+const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
 
 export default function FormulaDevBoard({ rows = [], renderStep = null }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง

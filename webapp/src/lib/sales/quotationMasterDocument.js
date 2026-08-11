@@ -6,7 +6,7 @@
 // DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
 // (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
-import { fmtPhone } from '@/lib/format';
+import { fmtNumber, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
   documentFileName,
@@ -86,7 +86,7 @@ function itemTable(lines, startIndex, showDiscount) {
             <strong class="itemName">${val(line.description)}</strong>
             ${line.note ? `<span class="itemNote">${esc(line.note)}</span>` : ''}
           </td>
-          <td class="number">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
+          <td class="number">${fmtNumber(line.qty || 0)}</td>
           <td class="center">${val(line.unit)}</td>
           <td class="number">${money(line.unitPrice)}</td>
           ${showDiscount ? discountCell(line) : ''}

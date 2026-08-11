@@ -1,4 +1,5 @@
 import styles from "./Badge.module.css";
+import { fmtNumber } from "@/lib/format";
 
 export default function CountBadge({
   count,
@@ -8,12 +9,12 @@ export default function CountBadge({
   className = "",
 }) {
   const numericCount = Number(count) || 0;
-  const visibleCount = Number.isFinite(max) && numericCount > max ? `${max}+` : numericCount.toLocaleString("th-TH");
+  const visibleCount = Number.isFinite(max) && numericCount > max ? `${max}+` : fmtNumber(numericCount);
   return (
     <span
       className={`${styles.base} ${styles.count} ${className}`.trim()}
       data-tone={tone}
-      aria-label={`${label} ${numericCount.toLocaleString("th-TH")}`}
+      aria-label={`${label} ${fmtNumber(numericCount)}`}
     >
       {visibleCount}
     </span>
