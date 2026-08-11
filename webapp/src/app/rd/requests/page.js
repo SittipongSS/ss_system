@@ -108,7 +108,7 @@ export default function RdRequestsPage() {
           counts={counts}
           filter activeKey={board.countFilter}
           note="กดเพื่อกรองรายการ"
-          ariaLabel="ตัวเลขสรุปคิวของฝ่าย — กดเพื่อกรอง"
+          ariaLabel="ตัวเลขสรุปคิวของฝ่าย — กดเพื่อกรอง" scope="dept"
           onSelect={(key, on) => board.setCountFilter(on ? null : key)}
         />
       )}

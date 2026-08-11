@@ -133,6 +133,11 @@
 
 .cardGroupLabel:first-child { margin-top: 0; }
 
+/* กลุ่ม "ตีกลับ" — กลุ่มเดียวที่เป็นงานของคนอ่านเอง จึงต้องอ่านออกจากระยะไกล
+   ว่าไม่ใช่หัวข้อบอกตำแหน่งเฉย ๆ (สีเดียวกับป้ายเลยกำหนด) */
+.cardGroupLabel[data-group="bounced"],
+.groupRow[data-group="bounced"] td { color: var(--red); }
+
 .queueCard {
   display: flex;
   flex-direction: column;

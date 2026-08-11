@@ -19,7 +19,7 @@ import { fmtDate } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, groupQueueRows, matchesQueueCount, queueCounts,
+  QUEUE_COUNT_META, bouncedDaysText, groupQueueRows, matchesQueueCount, queueCounts,
   requestDueText, requestNextStep,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
@@ -124,11 +124,13 @@ export default function RequestQueuePanel({
         <div className={styles.queueCards}>
           {groups.map((g) => (
             <Fragment key={g.group}>
-              <div className={styles.cardGroupLabel}>{g.label} · {g.rows.length}</div>
+              <div className={styles.cardGroupLabel} data-group={g.group}>{g.label} · {g.rows.length}</div>
               {g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
                 const due = requestDueText(ask, { todayIso: today });
+                // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
+                const bounced = bouncedDaysText(ask, { todayIso: today });
                 return (
                   <button
                     key={ask.id} type="button" className={styles.queueCard}
@@ -159,8 +161,17 @@ export default function RequestQueuePanel({
                       ].filter(Boolean).join(" · ")}
                       {` → ${ask.dept}`}
                     </span>
+                    {/* ⭐ ใบตีกลับบอกใครส่งคืนและเพราะอะไรตั้งแต่ในการ์ด (2026-08-11) */}
+                    {bounced && (ask.bouncedByName || ask.bounceReason) && (
+                      <span className={`${styles.subText} ${styles.overdue}`}>
+                        {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+                      </span>
+                    )}
                     <span className={styles.cardMeta}>
-                      {due && (
+                      {bounced && (
+                        <span className={`ui-badge ${styles.overdue}`}>ตีกลับ · {bounced.note}</span>
+                      )}
+                      {!bounced && due && (
                         <span className={`ui-badge ${due.overdue ? styles.overdue : ""}`.trim()}>
                           กำหนด {fmtDate(due.date)}{due.note ? ` · ${due.note}` : ""}
                         </span>
@@ -205,13 +216,15 @@ export default function RequestQueuePanel({
                   (ตัวเรียงไม่ได้เรียงตามลำดับกลุ่มเป๊ะ ๆ จะได้หัวข้อซ้ำกลางตาราง) */}
               {groups.map((g) => (
                 <Fragment key={g.group}>
-                  <tr className={styles.groupRow}>
+                  <tr className={styles.groupRow} data-group={g.group}>
                     <td colSpan={4}>{g.label} · {g.rows.length}</td>
                   </tr>
                   {g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const next = requestNextStep(ask);
                 const due = requestDueText(ask, { todayIso: today });
+                // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
+                const bounced = bouncedDaysText(ask, { todayIso: today });
                 return (
                   <tr
                     key={ask.id} className={styles.rowLink}
@@ -237,6 +250,12 @@ export default function RequestQueuePanel({
                                 ไม่ใช่คำตอบของคำถาม "ใครต้องทำต่อ" */}
                             {next.owner === "dept" && ask.acknowledgedByName && (
                               <div className={styles.subText}>{ask.acknowledgedByName}</div>
+                            )}
+                            {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
+                            {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
+                              <div className={`${styles.subText} ${styles.overdue}`}>
+                                {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+                              </div>
                             )}
                           </>
                         )
@@ -272,18 +291,21 @@ export default function RequestQueuePanel({
                         ⚠️ ใบที่ยังไม่มีใครให้วันขึ้น "ยังไม่ให้วัน" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง
                         "ไม่มีกำหนด" และ "ระบบไม่รู้" ซึ่งคนละเรื่องกัน */}
                     <td className="num">
-                      {due
-                        ? (
-                          <>
-                            <div className={due.overdue ? styles.overdue : undefined}>
-                              {due.note || fmtDate(due.date)}
-                            </div>
-                            {due.note && (
-                              <div className={styles.subText}>{fmtDate(due.date)}</div>
-                            )}
-                          </>
-                        )
-                        : <span className={styles.muted}>ยังไม่ให้วัน</span>}
+                      {bounced ? (
+                        <>
+                          <div className={styles.overdue}>{bounced.note}</div>
+                          <div className={styles.subText}>{fmtDate(bounced.date)}</div>
+                        </>
+                      ) : due ? (
+                        <>
+                          <div className={due.overdue ? styles.overdue : undefined}>
+                            {due.note || fmtDate(due.date)}
+                          </div>
+                          {due.note && (
+                            <div className={styles.subText}>{fmtDate(due.date)}</div>
+                          )}
+                        </>
+                      ) : <span className={styles.muted}>ยังไม่ให้วัน</span>}
                     </td>
                     <td className="num">
                       {p.total > 0

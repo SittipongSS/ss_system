@@ -21,7 +21,17 @@ import { compareRequestUrgency } from '@/lib/requests/queue';
 // คืน { owner, label } หรือ null เมื่อใบนี้ไม่ต้องการอะไรอีกแล้ว
 export function requestNextStep(request) {
   if (!request) return null;
-  if (request.status === 'draft') return { owner: 'requester', label: 'ยังไม่ได้ส่ง' };
+  /* 🐞 **ใบที่ถูกตีกลับเคยเป็นใบเงียบ** (ผู้ใช้ถามเอง 2026-08-11: "ตีกลับอยู่ไหน")
+     ตีกลับ = ฝ่ายผู้รับส่งคืน ⇒ `status` กลับเป็น `draft` พร้อม `bounceReason`/`bouncedAt`
+     (เลขที่เดิม) · แต่คิวอ่านแค่ `status` ⇒ ป้ายขึ้น "ยังไม่ได้ส่ง" เหมือนร่างที่ไม่เคย
+     ส่งเลย · ไม่มีตัวเลขไหนนับ ไม่มีอะไรทวง ⇒ **นาฬิกาหยุดเดินแต่ใบยังไม่จบ**
+     ⚠️ ดู `bouncedAt` ไม่ใช่ `bounceReason` — เหตุผลเป็นข้อความที่วันหน้าอาจว่างได้
+     แต่ตราประทับเวลาคือหลักฐานว่า "เคยถูกส่งคืน" ซึ่งลบไม่ได้ */
+  if (request.status === 'draft') {
+    return request.bouncedAt
+      ? { owner: 'requester', label: 'ตีกลับ — ต้องแก้', bounced: true }
+      : { owner: 'requester', label: 'ยังไม่ได้ส่ง' };
+  }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
 
   const items = request.items || [];
@@ -62,6 +72,11 @@ export function requestNextStep(request) {
  * เพราะทั้งสองฝั่งดู "ถูก" ในตัวเอง · ตอนนี้ขัดกันไม่ได้เชิงโครงสร้าง
  */
 export function matchesQueueCount(request, key, { todayIso = null } = {}) {
+  /* ⭐ **ใบที่ถูกตีกลับต้องนับได้** — มันเป็น `draft` จึงตกด่านบรรทัดล่างทั้งหมด
+     (`REQUEST_OPEN_STATUSES` ไม่รวม draft) ⇒ เดิมไม่ถูกนับสักช่องเดียว
+     ⚠️ นับเฉพาะตัวเองเท่านั้น ไม่ให้ไหลไปช่องอื่น — ใบตีกลับไม่ใช่ "กำลังดำเนินการ"
+     และไม่ใช่ "เลยกำหนด" (ไม่มีวันกำหนดแล้ว เพราะยังไม่ถูกรับเรื่อง) */
+  if (key === 'bounced') return !!request?.bouncedAt && request?.status === 'draft';
   if (!REQUEST_OPEN_STATUSES.includes(request?.status)) return false;
   const next = requestNextStep(request);
 
@@ -80,7 +95,11 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
 }
 
 export function queueCounts(rows = [], { todayIso = null } = {}) {
-  const out = { unacked: 0, overdue: 0, working: 0, waitingRequester: 0 };
+  // ⚠️ ตั้งต้นจาก **ทะเบียน** ไม่ใช่พิมพ์คีย์ซ้ำ — เพิ่มตัวเลขใหม่ (เช่น `bounced`
+  // 2026-08-11) แล้วลืมมาเติมที่นี่ = ตัวนับคืน `undefined` ให้จอเงียบ ๆ (เจอจริง
+  // ตอนเพิ่มตัวที่ 5) · `QUEUE_COUNT_META` ประกาศใต้ฟังก์ชันนี้ แต่อ่านตอนเรียก
+  // ไม่ใช่ตอนโหลดโมดูล จึงไม่ติด TDZ
+  const out = Object.fromEntries(QUEUE_COUNT_META.map((m) => [m.key, 0]));
   for (const request of rows) {
     for (const key of Object.keys(out)) {
       if (matchesQueueCount(request, key, { todayIso })) out[key] += 1;
@@ -95,7 +114,23 @@ export const QUEUE_COUNT_META = [
   { key: 'working', label: 'กำลังดำเนินการ', tone: 'info' },
   // ⭐ ตัวนี้ไม่มีในระบบวันนี้ — มันคือตัวที่ทำให้ฝ่ายเลิกถูกนับงานที่ไม่ใช่ของตัวเอง
   { key: 'waitingRequester', label: 'รอฝ่ายขายทำต่อ', tone: 'neutral' },
+  /* ⭐ ตัวที่ 5 (2026-08-11) — **งานของผู้ขอ ไม่ใช่ของฝ่าย** · ใบที่ฝ่ายส่งคืนแล้วรอ
+     คนเปิดใบมาแก้ · ก่อนหน้านี้ไม่มีตัวเลขไหนนับเลย ใบจึงค้างได้ไม่จำกัดโดยเงียบ
+     ⚠️ หน้าคิวของ *ฝ่าย* (`/rd/requests`) จะได้ 0 เสมอ เพราะฝ่ายไม่ใช่คนแก้ —
+     ตัวเลขนี้มีความหมายบนหน้า `/requests` ของผู้ขอ */
+  { key: 'bounced', label: 'ตีกลับ รอคุณแก้', tone: 'danger', requesterOnly: true },
 ];
+
+/**
+ * ตัวเลขที่ควรโชว์บนหน้านั้น — `scope: 'dept'` ตัดตัวที่ฝ่ายได้ 0 เสมอทิ้ง
+ *
+ * ⚠️ กล่องที่เป็น 0 ตลอดกาลไม่ใช่ "ข้อมูลที่ยังไม่มี" แต่เป็น **สัญญาณรบกวน** —
+ * คนอ่านต้องเรียนรู้ทุกครั้งว่ากล่องนี้ไม่เกี่ยวกับตัวเอง · ตัดที่ทะเบียนที่เดียว
+ * ไม่ใช่ให้แต่ละหน้าพิมพ์รายการคีย์ของตัวเอง (แล้วลืมอัปเดตตอนเพิ่มตัวที่ 6)
+ */
+export function queueCountMeta({ scope = 'requester' } = {}) {
+  return scope === 'dept' ? QUEUE_COUNT_META.filter((m) => !m.requesterOnly) : QUEUE_COUNT_META;
+}
 
 // ── แท็บ 3 ตัวคงที่ (P6c) ─────────────────────────────────────────────────
 //
@@ -136,6 +171,11 @@ export function queueTabRows(rows = [], { tab, myDepts = [] } = {}) {
 // ⭐ ทำให้ลำดับที่ `compareRequestUrgency` จัดไว้ **มองเห็นได้** — ของเดิมเรียงถูก
 // แล้วแต่คนอ่านไม่รู้ว่าทำไมใบนี้อยู่บน เพราะไม่มีอะไรบอกว่าเส้นแบ่งอยู่ตรงไหน
 export const QUEUE_GROUPS = [
+  /* ⭐ **บนสุด** (2026-08-11) — ใบตีกลับคือใบเดียวในคิวที่ *คนเปิดหน้าอยู่* ต้องลงมือ
+     เอง ไม่ใช่รอใคร ⇒ ขวางงานตัวเองอยู่ · เดิม `status` กลับเป็น `draft` ซึ่งไม่อยู่
+     ใน `REQUEST_OPEN_STATUSES` ⇒ ตกกลุ่ม **"จบแล้ว"** พร้อมใบที่ปิดไปแล้วจริง ๆ
+     และหลุดจากการ์ด "เริ่มที่นี่" ทั้งที่เป็นของค้างที่เร่งที่สุด */
+  { key: 'bounced', label: 'ตีกลับ — รอคุณแก้แล้วส่งใหม่' },
   { key: 'unacked', label: 'ยังไม่มีใครรับเรื่อง' },
   { key: 'overdue', label: 'เลยกำหนดที่รับปากไว้' },
   { key: 'open', label: 'กำลังดำเนินการ' },
@@ -144,6 +184,8 @@ export const QUEUE_GROUPS = [
 
 export function requestGroupKey(request, { todayIso = null } = {}) {
   if (!request) return 'settled';
+  // ⚠️ ก่อนด่าน `REQUEST_OPEN_STATUSES` — ใบตีกลับเป็น `draft` จึงไม่ผ่านด่านนั้น
+  if (request.status === 'draft' && request.bouncedAt) return 'bounced';
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return 'settled';
   if (request.status === 'pending') return 'unacked';
   if (todayIso && request.committedDueDate
@@ -283,6 +325,22 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
 // บนแถบพูดตรงกันเสมอ)
 //
 // คืน { date, note, overdue } หรือ null เมื่อยังไม่มีกำหนด
+/**
+ * ใบนี้ถูกตีกลับมากี่วันแล้ว — คืน null เมื่อไม่ใช่ใบที่ถูกตีกลับ
+ *
+ * ⚠️ ใบตีกลับไม่มี "กำหนดส่ง" ให้นับถอยหลัง (ยังไม่ถูกรับเรื่อง) ⇒ สิ่งที่ต้องทวงคือ
+ * **ค้างมากี่วันแล้ว** ไม่ใช่ "เหลืออีกกี่วัน" · คนละคำถาม คนละตัวเลข
+ */
+export function bouncedDaysText(request, { todayIso = null } = {}) {
+  if (!request?.bouncedAt || request.status !== 'draft') return null;
+  const at = String(request.bouncedAt).slice(0, 10);
+  if (!todayIso) return { date: at, note: 'ตีกลับแล้ว', days: null };
+  const ms = Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${at}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return { date: at, note: 'ตีกลับแล้ว', days: null };
+  const days = Math.max(0, Math.round(ms / 86400000));
+  return { date: at, days, note: days === 0 ? 'ตีกลับวันนี้' : `ค้าง ${days} วัน` };
+}
+
 export function requestDueText(request, { todayIso = null } = {}) {
   const due = request?.committedDueDate ? String(request.committedDueDate) : null;
   if (!due) return null;

@@ -109,7 +109,7 @@ export default function RdOverviewPage() {
         <QueueCountStrip
           counts={counts}
           note="กดเพื่อเปิดคิวที่กรองไว้"
-          ariaLabel="งานค้างของฝ่าย — กดเพื่อเปิดคิว"
+          ariaLabel="งานค้างของฝ่าย — กดเพื่อเปิดคิว" scope="dept"
           onSelect={(key) => router.push(key === "waitingRequester"
             ? "/rd/requests?tab=waiting"
             : "/rd/requests?tab=todo")}

@@ -13,9 +13,9 @@
 // ⭐ **ไอคอน + โน้ตตามต้นแบบหน้างานของฉัน** (มติผู้ใช้ 2026-08-08) — `Metric` ของ
 // กลางรองรับทั้งคู่อยู่แล้ว · โน้ตบอกว่า *กดแล้วเกิดอะไร* ซึ่งต่างกันตามหน้า จึงรับ
 // มาจากผู้เรียก ไม่ตั้งเอง · ตอนกดค้างอยู่เปลี่ยนเป็น "กำลังใช้ตัวกรองนี้"
-import { AlarmClock, Clock, Hourglass, Inbox } from "lucide-react";
+import { AlarmClock, Clock, Hourglass, Inbox, Undo2 } from "lucide-react";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
-import { QUEUE_COUNT_META } from "@/lib/requests/queueBoard";
+import { queueCountMeta } from "@/lib/requests/queueBoard";
 
 // ⚠️ ไอคอนเป็นเรื่องของ **จอ** ไม่ใช่ของทะเบียน — ทะเบียนกลาง (`QUEUE_COUNT_META`)
 // ถูกอ่านจากฝั่ง server ด้วย ยัด component ลงไปที่นั่นแล้วมันจะพังตอน import
@@ -24,6 +24,8 @@ const ICONS = {
   overdue: AlarmClock,
   working: Clock,
   waitingRequester: Hourglass,
+  // ตีกลับ — งานที่เด้งกลับมาที่ผู้ขอ (2026-08-11)
+  bounced: Undo2,
 };
 
 export default function QueueCountStrip({
@@ -35,10 +37,14 @@ export default function QueueCountStrip({
   onSelect,
   note = null,
   ariaLabel = "ตัวเลขสรุปคิวคำร้อง",
+  // มุมมองของหน้า — 'dept' ตัดตัวเลขที่เป็นงานของผู้ขอออก (ฝ่ายได้ 0 เสมอ)
+  scope = "requester",
 }) {
+  const metas = queueCountMeta({ scope });
   return (
-    <MetricStrip aria-label={ariaLabel}>
-      {QUEUE_COUNT_META.map((meta) => {
+    // จำนวนช่องต่างกันตามมุมมอง — บอก CSS ตรง ๆ ไม่งั้นช่องที่ 5 ตกบรรทัดใหม่ตัวเดียว
+    <MetricStrip aria-label={ariaLabel} data-count={metas.length}>
+      {metas.map((meta) => {
         const on = filter && activeKey === meta.key;
         const Icon = ICONS[meta.key];
         return (
