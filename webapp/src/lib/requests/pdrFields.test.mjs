@@ -186,6 +186,42 @@ test('⭐ แถว 2.2/2.3 ต้องถูกเดินสายครบ�
   }
 });
 
+// 🐞 โรคเดียวกับช่องเงินที่ผู้ใช้เจอ 2026-08-10 แต่เป็นเรื่องความยาว: เพดานอยู่ฝั่ง
+// server ส่วนกล่องกรอกรับได้ไม่จำกัด ⇒ พิมพ์ยาวเกินแล้วเพิ่งรู้ตอนกดบันทึก · ตอนนี้
+// เพดานประกาศที่ทะเบียน (`max`) ที่เดียว แล้วทั้งฟอร์มและด่านอ่านตัวเดียวกัน
+test('⭐ ทุกช่องที่มีเพดานความยาว ต้องมี maxLength บนกล่องกรอกด้วย', () => {
+  const src = readFileSync('src/components/requests/PdrForm.js', 'utf8');
+  // ช่องเลือก (select) พิมพ์เองไม่ได้อยู่แล้ว · ช่อง legacy ไม่มีกล่องบนฟอร์ม
+  const typed = PDR_FIELDS.filter((f) => f.max && !f.legacy && f.type !== 'select');
+  assert.equal(typed.length > 0, true);
+  // สามทางที่ฟอร์มส่งเพดานเข้าไป: ระบุคีย์ตรง ๆ · ลูป VP (`cap(key)`) · ลูปผู้เซ็น (`f.max`)
+  const looped = new Set(['vpAttribute', 'vpBenefit', 'vpValue',
+    ...PDR_SECTIONS.find((s) => s.key === 'signers').fields.map((f) => f.key)]);
+  const missing = typed
+    .filter((f) => !looped.has(f.key) && !src.includes(`cap("${f.key}")`))
+    .map((f) => f.key);
+  assert.deepEqual(missing, [], `ช่องที่ยังไม่ได้ใส่ maxLength: ${missing.join(', ')}`);
+  assert.match(src, /max=\{cap\(key\)\}/, 'ลูป Value Proposition ต้องส่งเพดานเข้าไปด้วย');
+  assert.match(src, /maxLength=\{f\.max\}/, 'ลูปช่องผู้เซ็นต้องส่งเพดานเข้าไปด้วย');
+});
+
+// ⚠️ เพดานต้อง **ไม่หลวมกว่า CHECK ของ 0214/0218** — ตัวเลขชุดนี้คือสิ่งเดียวที่กัน
+// error ดิบของ Postgres ไม่ให้โผล่หน้าผู้ใช้ ⇒ ตรึงไว้ทั้งชุด แก้เมื่อไรต้องแก้ migration ด้วย
+test('⭐ เพดานความยาวตรงกับที่ฐานยอมรับ', () => {
+  const byKey = Object.fromEntries(PDR_FIELDS.filter((f) => f.max).map((f) => [f.key, f.max]));
+  assert.equal(byKey.specialRequirements, 2000);
+  assert.equal(byKey.vpAttribute, 2000);
+  assert.equal(byKey.customerBrand, 200);
+  assert.equal(byKey.moq, 100);
+  assert.equal(byKey.requestType, 40);
+  assert.equal(byKey.signPerfumer, 200);
+  // ทุกช่องข้อความที่มีคอลัมน์ต้องมีเพดาน — ไม่มี = เขียนยาวเท่าไรก็ได้ลงฐาน
+  const uncapped = PDR_FIELDS
+    .filter((f) => f.column && ['text', 'tick', 'textarea', 'select'].includes(f.type) && !f.max)
+    .map((f) => f.key);
+  assert.deepEqual(uncapped, [], `ช่องข้อความที่ยังไม่มีเพดาน: ${uncapped.join(', ')}`);
+});
+
 test('⭐ ไม่มีจอไหนเขียนป้ายของตัวเองซ้ำอีก', () => {
   // ป้ายที่เคยเพี้ยนกันจริงในสามจอ — ต้องไม่มีตัวไหนถูกพิมพ์ตายไว้ในไฟล์อื่น
   const DRIFTED = ['Target Cost / Unit', 'ข้อมูลลูกค้าและคำขอ', 'วันที่ต้องการจำหน่ายสินค้า'];

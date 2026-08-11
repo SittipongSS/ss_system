@@ -8,23 +8,13 @@
 // บนจอแต่ไม่เคยถูกบันทึก ซึ่งเป็นบั๊กเดียวกับที่เพิ่งแก้ไปใน #1052 แค่มาอีกทาง
 import { PDR_FIELDS, pdrIsArrayField } from '@/lib/requests/pdrFields';
 
-const TEXT_LIMITS = {
-  pdrRequestType: 40, pdrCustomerBrand: 200, pdrMoodTone: 500, pdrBrandDirection: 500,
-  pdrShipTo: 500, pdrCustomerKind: 40, pdrTargetDemographic: 500,
-  pdrTargetPsychographic: 500, pdrTargetPainpoint: 500, pdrProductKind: 200,
-  pdrMoq: 100, pdrTexture: 40, pdrColor: 200, pdrPackSize: 500,
-  pdrBrandSample: 500, pdrSpecialRequirements: 2000,
-  // 0218
-  pdrPrevProductCode: 200, pdrPackagingArtwork: 40,
-  pdrVpAttribute: 2000, pdrVpBenefit: 2000, pdrVpValue: 2000, pdrExportDocNote: 500,
-  // 0221 — ชื่อผู้เซ็นบนกระดาษ (ม-45)
-  pdrSignSalesManager: 200, pdrSignPerfumer: 200, pdrSignChemist: 200,
-  pdrSignCoordinator: 200, pdrSignFinalApprover: 200,
-  // 0227 — ข้อความต่อท้ายตัวเลือก "อื่น ๆ"
-  pdrPackagingFormsOther: 500, pdrDocumentsOther: 500,
-  // 0228 — หัวน้ำหอมนำไปใช้กับอะไร (โน้ตสีแดงข้อ 1.11)
-  pdrFragranceUse: 500,
-};
+// ⭐ **เพดานความยาวประกาศที่ทะเบียนช่องเดียว** (`pdrFields.js` · ฟิลด์ `max`) —
+// ที่นี่แค่ derive ⇒ ฟอร์มใส่ `maxLength` จากตัวเลขเดียวกับที่ด่านนี้ใช้ตัดสิน
+// 🐞 เดิมตารางนี้เขียนมือ 30 บรรทัด และ **ฟอร์มไม่รู้จักมันเลย** ⇒ พิมพ์เกินได้บนจอ
+// แล้วไปโดนตีกลับตอนกดบันทึก — โรคเดียวกับช่องเงินที่เพิ่งแก้ไป ต่างแค่ตัวเลข
+const TEXT_LIMITS = Object.fromEntries(
+  PDR_FIELDS.filter((f) => f.column && f.max).map((f) => [f.column, f.max]),
+);
 
 // ช่องติ๊กหลายตัว — เก็บเป็น text[] ตามแพตเทิร์นของ dept_request_scents (0213)
 const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20, pdrProductKinds: 20 };

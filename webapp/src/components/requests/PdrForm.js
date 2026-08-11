@@ -52,6 +52,12 @@ const label = (key) => (FIELD[key].hint
   ? `${FIELD[key].label} (${FIELD[key].hint})`
   : FIELD[key].label);
 
+/* ⭐ **เพดานความยาวมาจากทะเบียนช่องเดียวกับที่ด่าน server ใช้** (`pdrFields.js` · `max`)
+   🐞 ผู้ใช้เจอกับช่องเงินมาแล้วรอบหนึ่ง: กล่องรับได้ไม่จำกัด แต่ด่านตีกลับตอนกดบันทึก
+   ⇒ พิมพ์ยาวไปสองย่อหน้าแล้วเพิ่งรู้ตอนกดบันทึกว่าเกิน · `maxLength` หยุดตั้งแต่ตัวที่
+   เกิน และเบราว์เซอร์บอกเองว่าพิมพ์ต่อไม่ได้ · ตัวเลขชุดเดียวกันเป๊ะ ไม่มีทางเพี้ยน */
+const cap = (key) => FIELD[key]?.max;
+
 const withBlank = (options) => [{ value: "", label: "— เลือก —" }, ...options];
 
 // ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
@@ -135,7 +141,7 @@ function Section({ title, note, children, open = false, progress = null, flat = 
 // เหตุ-ผลชัดกว่ากล่องติ๊กเล็ก ๆ
 // ⚠️ ค่าที่เก็บยังเป็น string เหมือนเดิม (" " = เปิดแต่ยังไม่พิมพ์) — เอกสารกับจอสรุป
 // อ่านค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean
-function TickAndWrite({ label, value, onChange, disabled }) {
+function TickAndWrite({ label, value, onChange, disabled, max }) {
   const on = value != null && value !== "";
   return (
     <div className="form-group">
@@ -150,7 +156,7 @@ function TickAndWrite({ label, value, onChange, disabled }) {
       </div>
       {on && (
         <Input
-          value={value.trim()} disabled={disabled} aria-label={label}
+          value={value.trim()} disabled={disabled} aria-label={label} maxLength={max}
           onChange={(e) => onChange(e.target.value || " ")}
         />
       )}
@@ -430,7 +436,7 @@ export default function PdrForm({
             <label htmlFor="pdr-type">{label("requestType")}</label>
             <Select
               id="pdr-type" value={value.requestType} disabled={disabled}
-              onChange={(e) => set({ requestType: e.target.value })}
+              maxLength={cap("requestType")} onChange={(e) => set({ requestType: e.target.value })}
               options={withBlank(PDR_REQUEST_TYPES)}
             />
           </div>
@@ -440,7 +446,7 @@ export default function PdrForm({
             <div className="form-group">
               <label htmlFor="pdr-prev">{label("prevProductCode")}</label>
               <Input id="pdr-prev" mono value={value.prevProductCode || ""} disabled={disabled}
-                onChange={(e) => set({ prevProductCode: e.target.value })} />
+                maxLength={cap("prevProductCode")} onChange={(e) => set({ prevProductCode: e.target.value })} />
             </div>
           )}
         </div>
@@ -460,27 +466,27 @@ export default function PdrForm({
           <div className="form-group">
             <label htmlFor="pdr-brand">{label("customerBrand")}</label>
             <Input id="pdr-brand" value={value.customerBrand} disabled={disabled}
-              onChange={(e) => set({ customerBrand: e.target.value })} />
+              maxLength={cap("customerBrand")} onChange={(e) => set({ customerBrand: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-mood">{label("moodTone")}</label>
             <Input id="pdr-mood" value={value.moodTone} disabled={disabled}
-              onChange={(e) => set({ moodTone: e.target.value })} />
+              maxLength={cap("moodTone")} onChange={(e) => set({ moodTone: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-dir">{label("brandDirection")}</label>
             <Input id="pdr-dir" value={value.brandDirection} disabled={disabled}
-              onChange={(e) => set({ brandDirection: e.target.value })} />
+              maxLength={cap("brandDirection")} onChange={(e) => set({ brandDirection: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-ship">{label("shipTo")}</label>
             <Input id="pdr-ship" value={value.shipTo} disabled={disabled}
-              onChange={(e) => set({ shipTo: e.target.value })} />
+              maxLength={cap("shipTo")} onChange={(e) => set({ shipTo: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-ckind">{label("customerKind")}</label>
             <Select id="pdr-ckind" value={value.customerKind} disabled={disabled}
-              onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
+              maxLength={cap("customerKind")} onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
           </div>
           {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
               โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
@@ -495,11 +501,11 @@ export default function PdrForm({
         {/* ⭐ ข้อ 1.10 บนกระดาษ — อยู่ระหว่าง 1.9 กับ 1.11 ตามลำดับกระดาษ ไม่ใช่ท้ายสุด
             (AE กรอกโดยวางกระดาษไว้ข้าง ๆ ลำดับที่ไม่ตรงทำให้ต้องกระโดดหาไปมา) */}
         <span className={styles.fieldLabel}>{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
-        <TickAndWrite label={label("targetDemographic")} disabled={disabled}
+        <TickAndWrite label={label("targetDemographic")} disabled={disabled} max={cap("targetDemographic")}
           value={value.targetDemographic} onChange={(v) => set({ targetDemographic: v })} />
-        <TickAndWrite label={label("targetPsychographic")} disabled={disabled}
+        <TickAndWrite label={label("targetPsychographic")} disabled={disabled} max={cap("targetPsychographic")}
           value={value.targetPsychographic} onChange={(v) => set({ targetPsychographic: v })} />
-        <TickAndWrite label={label("targetPainpoint")} disabled={disabled}
+        <TickAndWrite label={label("targetPainpoint")} disabled={disabled} max={cap("targetPainpoint")}
           value={value.targetPainpoint} onChange={(v) => set({ targetPainpoint: v })} />
         {/* ⚠️ `.form-grid` เปล่า = คอลัมน์เดียว — ต้องมี `cols-2` สองวันที่ถึงจะอยู่
             บรรทัดเดียวกันซ้ายขวาตามที่ผู้ใช้ขอ (2026-08-09) */}
@@ -570,7 +576,7 @@ export default function PdrForm({
               <Input
                 id="pdr-fragrance-use" value={value.fragranceUse || ""} disabled={disabled}
                 placeholder={FIELD.fragranceUse.hint}
-                onChange={(e) => set({ fragranceUse: e.target.value })}
+                maxLength={cap("fragranceUse")} onChange={(e) => set({ fragranceUse: e.target.value })}
               />
             </div>
           )}
@@ -765,24 +771,24 @@ export default function PdrForm({
           <div className="form-group">
             <label htmlFor="pdr-moq">{label("moq")}</label>
             <Input id="pdr-moq" value={value.moq} disabled={disabled}
-              onChange={(e) => set({ moq: e.target.value })} />
+              maxLength={cap("moq")} onChange={(e) => set({ moq: e.target.value })} />
           </div>
           {/* ⭐ ขนาดบรรจุอยู่ติด MOQ (มติผู้ใช้ 2026-08-09) — สองข้อนี้ตอบคำถาม
               เดียวกันของฝ่ายผลิต ("สั่งขั้นต่ำเท่าไร บรรจุขนาดไหน") จึงต้องอ่านคู่กัน */}
           <div className="form-group">
             <label htmlFor="pdr-pack">{label("packSize")}</label>
             <Input id="pdr-pack" value={value.packSize} disabled={disabled}
-              onChange={(e) => set({ packSize: e.target.value })} />
+              maxLength={cap("packSize")} onChange={(e) => set({ packSize: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-tex">{label("texture")}</label>
             <Select id="pdr-tex" value={value.texture} disabled={disabled}
-              onChange={(e) => set({ texture: e.target.value })} options={withBlank(PDR_TEXTURES)} />
+              maxLength={cap("texture")} onChange={(e) => set({ texture: e.target.value })} options={withBlank(PDR_TEXTURES)} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-color">{label("color")}</label>
             <Input id="pdr-color" value={value.color} disabled={disabled}
-              onChange={(e) => set({ color: e.target.value })} />
+              maxLength={cap("color")} onChange={(e) => set({ color: e.target.value })} />
           </div>
           <ChipPicker
             label={label("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
@@ -794,7 +800,7 @@ export default function PdrForm({
               <label htmlFor="pdr-pack-other">{label("packagingFormsOther")}</label>
               <Input id="pdr-pack-other" value={value.packagingFormsOther || ""} disabled={disabled}
                 placeholder={FIELD.packagingFormsOther.placeholder}
-                onChange={(e) => set({ packagingFormsOther: e.target.value })} />
+                maxLength={cap("packagingFormsOther")} onChange={(e) => set({ packagingFormsOther: e.target.value })} />
             </div>
           )}
           <div className="form-group">
@@ -828,7 +834,7 @@ export default function PdrForm({
             <span className={styles.fieldLabel}>{FIELD.vpAttribute.group} — ติ๊กแล้วเขียนต่อ</span>
             {["vpAttribute", "vpBenefit", "vpValue"].map((key) => (
               <TickAndWrite
-                key={key} label={label(key)} disabled={disabled}
+                key={key} label={label(key)} disabled={disabled} max={cap(key)}
                 value={value[key]} onChange={(v) => set({ [key]: v })}
               />
             ))}
@@ -838,10 +844,10 @@ export default function PdrForm({
             {/* ⭐ ข้อความยาว (มติผู้ใช้ 2026-08-09) — ลูกค้ามักยกตัวอย่างหลายแบรนด์
                 พร้อมเหตุผล ช่องบรรทัดเดียวทำให้พิมพ์แล้วอ่านย้อนไม่ได้ */}
             <Textarea
-              id="pdr-sample" rows={3} maxLength={2000}
+              id="pdr-sample" rows={3}
               value={value.brandSample} disabled={disabled}
               placeholder="เช่น Jo Malone Wood Sage & Sea Salt — ชอบความสดโปร่ง · Diptyque Baies — ชอบกลิ่นผลไม้"
-              onChange={(e) => set({ brandSample: e.target.value })}
+              maxLength={cap("brandSample")} onChange={(e) => set({ brandSample: e.target.value })}
             />
           </div>
         </div>
@@ -864,7 +870,7 @@ export default function PdrForm({
             <label htmlFor="pdr-doc-other">{label("documentsOther")}</label>
             <Input id="pdr-doc-other" value={value.documentsOther || ""} disabled={disabled}
               placeholder={FIELD.documentsOther.placeholder}
-              onChange={(e) => set({ documentsOther: e.target.value })} />
+              maxLength={cap("documentsOther")} onChange={(e) => set({ documentsOther: e.target.value })} />
           </div>
         )}
         {pdrFieldVisible(FIELD.exportDocNote, value) && (
@@ -872,16 +878,16 @@ export default function PdrForm({
             <label htmlFor="pdr-export">{label("exportDocNote")}</label>
             <Input id="pdr-export" value={value.exportDocNote || ""} disabled={disabled}
               placeholder={FIELD.exportDocNote.placeholder}
-              onChange={(e) => set({ exportDocNote: e.target.value })} />
+              maxLength={cap("exportDocNote")} onChange={(e) => set({ exportDocNote: e.target.value })} />
           </div>
         )}
         <div className="form-group col-span-2">
           <label htmlFor="pdr-special">{label("specialRequirements")}</label>
           <Textarea
-            variant="data" id="pdr-special" rows={2} maxLength={2000}
+            variant="data" id="pdr-special" rows={2}
             value={value.specialRequirements} disabled={disabled}
             placeholder={FIELD.specialRequirements.placeholder}
-            onChange={(e) => set({ specialRequirements: e.target.value })}
+            maxLength={cap("specialRequirements")} onChange={(e) => set({ specialRequirements: e.target.value })}
           />
         </div>
       </Section>
@@ -901,7 +907,7 @@ export default function PdrForm({
             <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
             <Input
               id={`pdr-${f.key}`} value={value[f.key] || ""} disabled={disabled}
-              placeholder="ชื่อผู้เซ็น (เว้นว่างได้)"
+              placeholder="ชื่อผู้เซ็น (เว้นว่างได้)" maxLength={f.max}
               onChange={(e) => set({ [f.key]: e.target.value })}
             />
           </div>

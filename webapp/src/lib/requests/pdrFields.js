@@ -129,13 +129,13 @@ export const PDR_SECTIONS = [
       { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
       { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },
       {
-        key: 'requestType', column: 'pdrRequestType', label: 'ประเภทของคำขอ',
+        key: 'requestType', column: 'pdrRequestType', max: 40, label: 'ประเภทของคำขอ',
         type: 'select', options: PDR_REQUEST_TYPES,
       },
       // ⭐ สองประเภทบนกระดาษมีช่องกรอกต่อ (Product Modification → รหัสสินค้าก่อนหน้า ·
       // Cost Reduction → รหัสลูกค้า/รหัสสินค้าก่อนหน้า) — ช่องเดียวรับทั้งสองแบบ
       {
-        key: 'prevProductCode', column: 'pdrPrevProductCode', label: 'รหัสสินค้า/ลูกค้าก่อนหน้า',
+        key: 'prevProductCode', column: 'pdrPrevProductCode', max: 200, label: 'รหัสสินค้า/ลูกค้าก่อนหน้า',
         hint: 'สำหรับ Product Modification และ Cost Reduction', type: 'text',
         showFor: ['modification', 'cost_reduction'],
       },
@@ -174,12 +174,12 @@ export const PDR_SECTIONS = [
       { key: 'contactName', no: '1.1', label: 'ชื่อผู้ติดต่อ', type: 'derived', derive: 'contactName', from: 'เติมจากทะเบียนลูกค้า' },
       { key: 'contactPhone', no: '1.2', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
       { key: 'customer', no: '1.3', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
-      { key: 'customerBrand', no: '1.4', column: 'pdrCustomerBrand', label: 'ชื่อแบรนด์', type: 'text' },
-      { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', label: 'Mood & Tone', type: 'text' },
-      { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', label: 'ทิศทางการเติบโตของแบรนด์', type: 'text' },
-      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'text' },
+      { key: 'customerBrand', no: '1.4', column: 'pdrCustomerBrand', max: 200, label: 'ชื่อแบรนด์', type: 'text' },
+      { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', max: 500, label: 'Mood & Tone', type: 'text' },
+      { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', max: 500, label: 'ทิศทางการเติบโตของแบรนด์', type: 'text' },
+      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', max: 500, label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'text' },
       {
-        key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', label: 'ประเภทลูกค้า',
+        key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', max: 40, label: 'ประเภทลูกค้า',
         type: 'select', options: PDR_CUSTOMER_KINDS,
       },
       // ⚠️ **ไม่ derive จากดีล** — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
@@ -194,15 +194,15 @@ export const PDR_SECTIONS = [
       },
       // ⭐ ติ๊กแล้วเขียนต่อ (มติผู้ใช้) — สามช่องนี้คือข้อ 1.10 ข้อเดียวบนกระดาษ
       {
-        key: 'targetDemographic', no: '1.10', column: 'pdrTargetDemographic', label: 'DemoGraphic',
+        key: 'targetDemographic', no: '1.10', column: 'pdrTargetDemographic', max: 500, label: 'DemoGraphic',
         hint: 'เพศ · อายุ · การศึกษา · รายได้', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
       {
-        key: 'targetPsychographic', column: 'pdrTargetPsychographic', label: 'PsychoGraphic',
+        key: 'targetPsychographic', column: 'pdrTargetPsychographic', max: 500, label: 'PsychoGraphic',
         hint: 'ความสนใจ · ไลฟ์สไตล์', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
       {
-        key: 'targetPainpoint', column: 'pdrTargetPainpoint', label: 'Painpoint',
+        key: 'targetPainpoint', column: 'pdrTargetPainpoint', max: 500, label: 'Painpoint',
         hint: 'ทำไมต้องทำแบรนด์นี้', type: 'tick', group: 'กลุ่มลูกค้าเป้าหมาย',
       },
       // ⭐ **หมวดสินค้าหลายรายการ** (มติผู้ใช้ 2026-08-09) — เลือกจากทะเบียนเดียวกับ
@@ -219,7 +219,7 @@ export const PDR_SECTIONS = [
       // ⚠️ เงื่อนไขการโผล่มาจากทะเบียน (`showForMulti`) ไม่ใช่ `if` ในฟอร์ม — กติกา
       // เดียวกับช่อง "อื่น ๆ" ของบรรจุภัณฑ์/เอกสาร
       {
-        key: 'fragranceUse', column: 'pdrFragranceUse',
+        key: 'fragranceUse', column: 'pdrFragranceUse', max: 500,
         label: 'หัวน้ำหอมนี้นำไปใช้กับสินค้าประเภทใด', type: 'text',
         hint: 'เช่น น้ำหอม EDP · น้ำยาปรับผ้านุ่ม · เทียนหอม',
         showForMulti: { key: 'productKinds', value: PDR_FRAGRANCE_OIL_CODE },
@@ -228,7 +228,7 @@ export const PDR_SECTIONS = [
       // อย่าง "ครีมบำรุงผิว" แปลงเป็นรหัสหมวดอัตโนมัติไม่ได้ · ฟอร์มไม่เขียนลงตัวนี้แล้ว
       // แต่จอสรุป/เอกสารยังพิมพ์ถ้าใบนั้นมีค่า (ไม่งั้นข้อมูลเก่าหายไปจากกระดาษ)
       {
-        key: 'productKind', column: 'pdrProductKind', label: 'ประเภทสินค้า (บันทึกไว้เดิม)',
+        key: 'productKind', column: 'pdrProductKind', max: 200, label: 'ประเภทสินค้า (บันทึกไว้เดิม)',
         type: 'text', legacy: true,
       },
       {
@@ -263,42 +263,42 @@ export const PDR_SECTIONS = [
         key: 'targetPrice', column: 'pdrTargetPrice', label: 'Target Price / Unit (บันทึกไว้เดิม)',
         type: 'money', legacy: true,
       },
-      { key: 'moq', no: '2.4', column: 'pdrMoq', label: 'MOQ ที่คาดหวัง', type: 'text' },
+      { key: 'moq', no: '2.4', column: 'pdrMoq', max: 100, label: 'MOQ ที่คาดหวัง', type: 'text' },
       {
-        key: 'texture', no: '2.5', column: 'pdrTexture', label: 'ลักษณะเนื้อผลิตภัณฑ์',
+        key: 'texture', no: '2.5', column: 'pdrTexture', max: 40, label: 'ลักษณะเนื้อผลิตภัณฑ์',
         type: 'select', options: PDR_TEXTURES,
       },
-      { key: 'color', no: '2.6', column: 'pdrColor', label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
-      { key: 'packSize', no: '2.7', column: 'pdrPackSize', label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
+      { key: 'color', no: '2.6', column: 'pdrColor', max: 200, label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
+      { key: 'packSize', no: '2.7', column: 'pdrPackSize', max: 500, label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
       // 2.8 รูปแบบบรรจุภัณฑ์ — กระดาษรวม ขวด/ฝา/กล่อง กับ มี/ไม่มีภาพประกอบ ไว้ข้อเดียว
       {
         key: 'packagingForms', no: '2.8', column: 'pdrPackagingForms', label: 'รูปแบบบรรจุภัณฑ์',
         type: 'multi', options: PDR_PACKAGING_FORMS, group: 'รูปแบบบรรจุภัณฑ์',
       },
       {
-        key: 'packagingFormsOther', column: 'pdrPackagingFormsOther',
+        key: 'packagingFormsOther', column: 'pdrPackagingFormsOther', max: 500,
         label: 'รูปแบบบรรจุภัณฑ์ — อื่น ๆ ระบุ', type: 'text', wide: true,
         group: 'รูปแบบบรรจุภัณฑ์', showForMulti: { key: 'packagingForms', value: 'other' },
         placeholder: 'เช่น ถุงซิป · หลอดบีบ · ขวดสเปรย์',
       },
       {
-        key: 'packagingArtwork', column: 'pdrPackagingArtwork', label: 'ภาพประกอบบรรจุภัณฑ์',
+        key: 'packagingArtwork', column: 'pdrPackagingArtwork', max: 40, label: 'ภาพประกอบบรรจุภัณฑ์',
         type: 'select', options: PDR_ARTWORK, group: 'รูปแบบบรรจุภัณฑ์',
       },
       // 2.9 Value Proposition — **ของทั้งใบ ไม่ใช่รายกลิ่น** (มติผู้ใช้)
       {
-        key: 'vpAttribute', no: '2.9', column: 'pdrVpAttribute', label: 'Attribute',
+        key: 'vpAttribute', no: '2.9', column: 'pdrVpAttribute', max: 2000, label: 'Attribute',
         hint: 'คุณสมบัติของสินค้า', type: 'tick', group: 'Value Proposition', wide: true,
       },
       {
-        key: 'vpBenefit', column: 'pdrVpBenefit', label: 'Benefit',
+        key: 'vpBenefit', column: 'pdrVpBenefit', max: 2000, label: 'Benefit',
         hint: 'ประโยชน์ที่ผู้ใช้ได้รับ', type: 'tick', group: 'Value Proposition', wide: true,
       },
       {
-        key: 'vpValue', column: 'pdrVpValue', label: 'Value',
+        key: 'vpValue', column: 'pdrVpValue', max: 2000, label: 'Value',
         hint: 'คุณค่าที่แบรนด์ส่งมอบ', type: 'tick', group: 'Value Proposition', wide: true,
       },
-      { key: 'brandSample', no: '2.10', column: 'pdrBrandSample', label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
+      { key: 'brandSample', no: '2.10', column: 'pdrBrandSample', max: 500, label: 'ตัวอย่างแบรนด์ (กลิ่นที่ชอบ)', type: 'text', wide: true },
     ],
   },
   {
@@ -311,17 +311,17 @@ export const PDR_SECTIONS = [
         type: 'multi', options: PDR_DOCUMENTS,
       },
       {
-        key: 'documentsOther', column: 'pdrDocumentsOther', label: 'เอกสาร — อื่น ๆ ระบุ',
+        key: 'documentsOther', column: 'pdrDocumentsOther', max: 500, label: 'เอกสาร — อื่น ๆ ระบุ',
         type: 'text', wide: true, showForDocument: 'other',
         placeholder: 'ระบุชื่อเอกสารที่ลูกค้าขอ',
       },
       {
-        key: 'exportDocNote', column: 'pdrExportDocNote', label: 'เอกสารส่งออก — ระบุ',
+        key: 'exportDocNote', column: 'pdrExportDocNote', max: 500, label: 'เอกสารส่งออก — ระบุ',
         type: 'text', wide: true, showForDocument: 'export',
         placeholder: 'ประเทศปลายทาง / ชนิดเอกสาร',
       },
       {
-        key: 'specialRequirements', column: 'pdrSpecialRequirements', label: 'ข้อกำหนดเฉพาะอื่น ๆ',
+        key: 'specialRequirements', column: 'pdrSpecialRequirements', max: 2000, label: 'ข้อกำหนดเฉพาะอื่น ๆ',
         type: 'textarea', wide: true,
         placeholder: 'เช่น ห้ามใช้สารพาราเบน · Vegan · No Alcohol',
       },
@@ -340,11 +340,11 @@ export const PDR_SECTIONS = [
     title: 'ผู้เซ็นบนเอกสาร',
     note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
     fields: [
-      { key: 'signSalesManager', column: 'pdrSignSalesManager', label: 'Sale & Marketing Manager', type: 'text' },
-      { key: 'signPerfumer', column: 'pdrSignPerfumer', label: 'Perfumer', type: 'text' },
-      { key: 'signChemist', column: 'pdrSignChemist', label: 'Product Development Chemist', type: 'text' },
-      { key: 'signCoordinator', column: 'pdrSignCoordinator', label: 'Project Coordinator', type: 'text' },
-      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', label: 'Final Approval (RD Supervisor)', type: 'text' },
+      { key: 'signSalesManager', column: 'pdrSignSalesManager', max: 200, label: 'Sale & Marketing Manager', type: 'text' },
+      { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', type: 'text' },
+      { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', type: 'text' },
+      { key: 'signCoordinator', column: 'pdrSignCoordinator', max: 200, label: 'Project Coordinator', type: 'text' },
+      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', max: 200, label: 'Final Approval (RD Supervisor)', type: 'text' },
     ],
   },
 ];
