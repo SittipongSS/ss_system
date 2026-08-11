@@ -4,9 +4,8 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
 // คัดกรอง (Supervisor เลือกทีม) → กระจาย (Senior เลือก AE) → ติดต่อ/นัด → เปิดลูกค้า.
-// SLA 1 วันทำการ **ทั้งสามด่าน** (คัดกรอง · กระจาย · ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ.
-// ⚠️ แถบ KPI บนหน้านี้มี 4 ช่องตายตัวจึงโชว์ได้แค่ 2 ด่าน — ครบสามด่านอยู่ที่แท็บ "KPI ลีด"
-// (/sa/dashboard?tab=lead_kpi) · จะเอามาครบต้องรื้อ `.ui-metric-strip` ที่ repeat(4, …) ก่อน
+// SLA 1 วันทำการ **ทั้งสามด่าน** (คัดกรอง · กระจาย · ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ
+// โชว์ครบบนแถบ KPI ของหน้านี้ · ตัวเลขเชิงลึก (รายช่องทาง · รายคน) อยู่ที่แท็บ "KPI ลีด"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -495,16 +494,16 @@ export default function LeadsPage() {
             <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
             {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
                 ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ */}
+            {/* ครบสามด่านแล้ว — `MetricStrip` นับช่องเอง ไม่ต้องแก้ CSS กลางเวลาเพิ่ม/ลดใบ
+                (เดิม `.ui-metric-strip` ฮาร์ดโค้ด 4 คอลัมน์ ใบที่ห้าจึงห้อยเป็นแถวสอง) */}
             <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.screen?.pending)} />
+            <SaMetric icon={<Users />} label="SLA กระจาย ≤1 วันทำการ" value={slaPct(kpi?.sla?.assign)} note={`ทัน ${kpi?.sla?.assign?.hit ?? 0}/${kpi?.sla?.assign?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.assign?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.assign?.pending)} />
             <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.contact?.pending)} />
-            {/* Conversion เป็นสองสเตป: เข้า → ติดต่อ → เปิดลูกค้า (มติผู้ใช้ 2026-08-11)
-                ค่าบนการ์ดคือ **ตลอดสาย** (เปิดลูกค้า ÷ เข้า) ส่วนโน้ตกางให้เห็นทั้งสามจุด —
-                แถบนี้มี 4 ช่องตายตัว (`.ui-metric-strip` = repeat(4,…)) จึงแยกเป็นใบ ๆ
-                ไม่ได้เหมือนแท็บ KPI เต็ม · อัตราได้นัดอยู่ที่แท็บนั้น ไม่ยัดมาที่นี่
-                ⚠️ **นัดไม่อยู่ในสาย** — เปิดลูกค้าข้ามขั้นนัดได้ ถ้าใส่กลางสายจะได้ผังที่
-                ปลายสายมากกว่าต้นสาย (ดูเหตุผลเต็มที่ CONVERSION_STEPS ใน KpiLeadsTab)
-                🐞 ของเดิมเขียน "ลีด → นัด → เปิดลูกค้า" ติดลูกศรกันแบบนั้นจริง ๆ */}
-            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`เข้า ${kpi?.funnel?.total ?? 0} → ติดต่อ ${kpi?.funnel?.contacted ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
+            {/* อัตราปิด = เปิดลูกค้า ÷ ลีดเข้า · ตัวหารเดียวกับแท็บ KPI เต็ม ตัวเลขจึงตรงกันสองจอ
+                ⚠️ โน้ตสั้นแค่นี้เพราะแถบมี 5 ช่องแล้ว — ยาวกว่านี้โดน ellipsis ตัดกลางคัน
+                (ก่อนหน้านี้เขียนโซ่ "เข้า → ติดต่อ → เปิดลูกค้า" แล้วโดนตัดจริง)
+                รายละเอียดว่าหล่นตรงไหนอยู่ที่แท็บ "KPI ลีด" ซึ่งมีที่พอ */}
+            <SaMetric icon={<CalendarClock />} label="อัตราปิด (เปิดลูกค้า)" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${kpi?.funnel?.qualified ?? 0} จาก ${kpi?.funnel?.total ?? 0} ใบ`} />
           </SaMetricStrip>
           )}
 
