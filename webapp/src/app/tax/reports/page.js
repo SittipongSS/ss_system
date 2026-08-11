@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2, ChevronDown, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import DataList from "@/components/excise/DataList";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -168,7 +168,7 @@ export default function ReportsPage() {
       const v = row[c.key];
       if (c.money) return <span className="font-mono">{v == null ? "-" : fmtMoney(v)}</span>;
       if (c.date) return fmtDate(v);
-      if (c.num) return <span className="font-mono">{v == null ? "-" : Number(v).toLocaleString("th-TH")}</span>;
+      if (c.num) return <span className="font-mono">{v == null ? "-" : fmtNumber(v)}</span>;
       if (c.multiline) {
         const [main, ...rest] = String(v ?? "-").split("\n");
         return (
@@ -279,7 +279,7 @@ export default function ReportsPage() {
         <div className="glass-panel flex items-center gap-6 flex-wrap mb-4" style={{ padding: "12px 16px" }}>
           <span style={{ fontWeight: "var(--fw-semibold)" }}>{summary._label}</span>
           {summary.qty != null && (
-            <span style={{ fontSize: "var(--fs-7)" }}>จำนวนรวม: <strong className="font-mono">{Number(summary.qty).toLocaleString("th-TH")}</strong></span>
+            <span style={{ fontSize: "var(--fs-7)" }}>จำนวนรวม: <strong className="font-mono">{fmtNumber(summary.qty)}</strong></span>
           )}
           {summary.tax != null && (
             <span style={{ fontSize: "var(--fs-7)" }}>ยอดภาษีรวม: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.tax)}</strong></span>

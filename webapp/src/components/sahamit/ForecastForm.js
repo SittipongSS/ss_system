@@ -7,7 +7,7 @@ import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy, History } from 
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { productMeta } from "@/lib/format";
+import { fmtNumber, productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, convertEntryUnit } from "@/lib/sahamit/units";
 import { businessDate } from "@/lib/businessDate";
@@ -410,7 +410,7 @@ export default function ForecastForm({ products = [], editRound = null, existing
       <div className="form-action-bar is-page">
         <span className="text-[13px] text-[var(--text-3)]">
           {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
-          {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
+          {hasGrid ? ` · ${rows.length} สินค้า · รวม ${fmtNumber(totalQty)} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
         </span>
         <div className="flex gap-2">
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>ยกเลิก</button>

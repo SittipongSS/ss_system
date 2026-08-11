@@ -20,7 +20,7 @@ import Modal from "@/components/Modal";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { MATERIAL_KINDS, MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { deliveryRollup, openDeliveriesToChase } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -209,7 +209,7 @@ export default function DeliveriesPanel({
                       {/* จำนวนว่าง = ยังไม่รู้ยอด **ห้ามแสดงเป็น 0** */}
                       {row.qty == null
                         ? <span className={styles.muted}>—</span>
-                        : `${Number(row.qty).toLocaleString("th-TH")} ${row.unit || ""}`}
+                        : `${fmtNumber(row.qty)} ${row.unit || ""}`}
                     </td>
                     <td className="mono">{row.poRef || <span className={styles.muted}>—</span>}</td>
                     {/* ผูก SO = บอกว่าของชุดนี้สั่งมาเพื่อผลิตใบไหน · ว่างได้ เพราะของ

@@ -8,6 +8,7 @@ import { TableScroll } from "@/components/ui/Table";
 //
 // 1 แถว = ราคาเดียวไม่แบ่งชั้น (เว้นช่องจำนวนไว้) · หลายแถว = ต้องบอกจำนวนทุกแถว
 import { Plus, Trash2 } from "lucide-react";
+import { fmtNumber } from "@/lib/format";
 
 const QTY_SHORTCUTS = [500, 1000, 3000, 5000, 10000];
 
@@ -85,7 +86,7 @@ export default function PriceTierFields({
                 key={q} type="button" className="chip" disabled={disabled}
                 onClick={() => addRow(q)} style={{ cursor: disabled ? "not-allowed" : "pointer" }}
               >
-                +{q.toLocaleString("th-TH")}
+                +{fmtNumber(q)}
               </button>
             ))}
           </>

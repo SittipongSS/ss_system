@@ -22,7 +22,7 @@
 // เดียวกันทั้งตอนกันไม่ให้เปิดใบผิด และตอนพิมพ์ลงกระดาษ
 import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
 import { categoryLabel } from '@/lib/master/categoryOf';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -353,7 +353,7 @@ export const PDR_SECTIONS = [
 export const PDR_FIELDS = PDR_SECTIONS.flatMap((s) => s.fields);
 export const PDR_COLUMNS = PDR_FIELDS.map((f) => f.column).filter(Boolean);
 
-const money = (v) => (v == null || v === '' ? null : Number(v).toLocaleString('th-TH'));
+const money = (v) => (v == null || v === '' ? null : fmtNumber(v));
 
 /**
  * ค่าที่ **พร้อมแสดง** ของช่องหนึ่ง — คืน string หรือ null ถ้าไม่ได้กรอก

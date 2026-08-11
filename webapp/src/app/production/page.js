@@ -30,6 +30,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { fmtDayMonth, fmtNumber } from "@/lib/format";
 
 const OPEN_STATUSES = "draft,planned,in_progress";
 const ATTENTION_LIMIT = 8;
@@ -43,12 +44,9 @@ const shiftDays = (iso, days) => {
   return toLocalISODate(d);
 };
 
-const fmtDate = (iso) => {
-  if (!iso) return "—";
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-};
+// "14 ส.ค." — ตัวกลางเดียวกับบอร์ดผลิต/ตารางบริการ (`fmtDayMonth`)
+// ⚠️ ต่อ T00:00:00 ก่อน — สตริง `YYYY-MM-DD` ล้วนถูกอ่านเป็น UTC แล้วเลื่อนวัน
+const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : "—");
 
 export default function ProductionOverviewPage() {
   const router = useRouter();
@@ -236,10 +234,10 @@ export default function ProductionOverviewPage() {
                           {row.line.name}
                           <span className={styles.sub}>{row.line.code}</span>
                         </th>
-                        <td className="num">{row.planned ? Number(row.planned).toLocaleString("th-TH") : "—"}</td>
+                        <td className="num">{row.planned ? fmtNumber(row.planned) : "—"}</td>
                         <td className="num">
                           {/* ยังไม่กรอกกำลัง = "—" ไม่ใช่ 0 (ดู capacityOn) */}
-                          {row.capacity == null ? "—" : Number(row.capacity).toLocaleString("th-TH")}
+                          {row.capacity == null ? "—" : fmtNumber(row.capacity)}
                           {row.pct != null && <span className={styles.sub}>{row.pct}%</span>}
                         </td>
                         <td>

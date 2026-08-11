@@ -309,6 +309,29 @@ export const fmtMonthYear = (value, { locale = "en" } = {}) => {
   return `${m} ${String(d.getFullYear()).slice(-2)}`;
 };
 
+// วัน + เดือนย่อ ไม่มีปี: "14 ส.ค." / "14 Aug" — หัวคอลัมน์ปฏิทินและบอร์ดรายสัปดาห์
+//
+// ⚠️ **ตั้งต้นเป็นไทย** ต่างจาก `fmtMonthYear`/`fmtDayMonthYear` ที่ตั้งต้นอังกฤษ —
+// ที่ใช้จริงคือหัวคอลัมน์วันของบอร์ดผลิต/ตารางบริการ ซึ่งเดิมเรียก
+// `toLocaleDateString("th-TH", …)` เอง (กวาดเข้ามา 2026-08-11) · เปลี่ยนค่าตั้งต้น
+// เมื่อไรหัวตารางสี่หน้านั้นจะพลิกภาษาพร้อมกันโดยไม่มีใครตั้งใจ
+export const fmtDayMonth = (value, { locale = "th" } = {}) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  const m = locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
+  return `${d.getDate()} ${m}`;
+};
+
+// เดือนย่ออย่างเดียว: "ส.ค." / "Aug" — ใช้กับช่วงวันที่ที่เขียนเดือนครั้งเดียว
+// ("1 ส.ค. – 7 ส.ค. 2026") ซึ่งวันกับปีถูกประกอบข้างนอก
+export const fmtMonthShort = (value, { locale = "th" } = {}) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
+};
+
 // วัน เดือน ปี (§2.6): "25 Jul 26" / "25 ก.ค. 26" (ปี ค.ศ. 2 หลัก).
 export const fmtDayMonthYear = (value, { locale = "en" } = {}) => {
   if (!value) return "-";

@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtMoney, fmtMoneyCompact, fmtNumber } from "@/lib/format";
 
 // ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้บอร์ดเช้า/ตารางสรุป/
 // แผงทบยอด แสดงแถบความคืบหน้าและรูปแบบตัวเลขหน้าตาเดียวกัน
@@ -8,7 +8,7 @@ import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 export const money = (v) => fmtMoney(v);
 export const moneyCompact = (v) => fmtMoneyCompact(v);
 export const pctFmt = (v) =>
-  v == null ? "–" : `${Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+  v == null ? "–" : `${fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
 /* `StatusPill` (ป้ายสถานะงวดจาก `statusOf`) ถูกถอดออกพร้อมคอลัมน์สถานะของ
    ตารางติดตามยอดขาย (มติผู้ใช้ 2026-08-03) — บอร์ดเช้าเป็นผู้ใช้รายเดียวของมัน

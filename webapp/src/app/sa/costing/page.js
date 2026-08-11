@@ -21,7 +21,7 @@ import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import {
   COSTING_STATUSES,
@@ -267,7 +267,7 @@ export default function CostingListPage() {
                           </span>
                         )}
                     </td>
-                    <td>{Number(row.moq).toLocaleString("th-TH")}</td>
+                    <td>{fmtNumber(row.moq)}</td>
                     <td>{fmtDate(row.createdAt)}</td>
                     {isAdmin && (
                       <td>

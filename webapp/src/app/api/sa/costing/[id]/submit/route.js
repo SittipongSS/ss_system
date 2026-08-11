@@ -12,6 +12,7 @@ import { costingSubmitUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
+import { fmtNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ export async function POST(request, { params }) {
     subtitle: after.customerName || '',
     rows: [
       { label: 'สินค้า', value: `${(after.items || []).length} รายการ` },
-      { label: 'MOQ', value: `${Number(after.moq).toLocaleString('th-TH')} ชิ้น` },
+      { label: 'MOQ', value: `${fmtNumber(after.moq)} ชิ้น` },
       { label: 'ผู้ขอ', value: after.requestedByName || '' },
     ],
     linkPath: `/sa/costing/${id}`,

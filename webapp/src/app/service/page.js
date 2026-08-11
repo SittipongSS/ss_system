@@ -34,6 +34,7 @@ import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { fmtDayMonth } from "@/lib/format";
 
 // ⚠️ ต้องย้อนหลังพอที่จะเห็น **นัดค้าง** ทั้งหมด ไม่ใช่แค่สัปดาห์ที่แล้ว —
 // นัดที่ค้างมา 2 เดือนคือนัดที่เจ็บที่สุด ถ้าช่วงที่ดึงสั้นไปมันจะหายไปเงียบ ๆ
@@ -49,12 +50,9 @@ const shiftDays = (iso, days) => {
   return toLocalISODate(d);
 };
 
-const fmtDate = (iso) => {
-  if (!iso) return "—";
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-};
+// "14 ส.ค." — ตัวกลางเดียวกับบอร์ดผลิต/ตารางบริการ (`fmtDayMonth`)
+// ⚠️ ต่อ T00:00:00 ก่อน — สตริง `YYYY-MM-DD` ล้วนถูกอ่านเป็น UTC แล้วเลื่อนวัน
+const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : "—");
 
 export default function ServiceOverviewPage() {
   const router = useRouter();

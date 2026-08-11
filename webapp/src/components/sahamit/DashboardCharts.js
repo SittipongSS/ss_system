@@ -8,9 +8,10 @@ import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { poRollupStatus } from "@/lib/sahamit/po";
 import ChartCard, { ChartCanvas, ChartEmptyState, ChartTooltip } from "@/components/ui/ChartCard";
 import { CHART_SERIES } from "@/lib/chartTheme";
+import { fmtNumber } from "@/lib/format";
 
 // --- Formatter Helpers ---
-const formatNumber = (num) => Number(num || 0).toLocaleString("th-TH");
+const formatNumber = (num) => fmtNumber(num || 0);
 const formatShortMonth = (ym) => {
   if (!ym) return "";
   const [y, m] = ym.split("-");

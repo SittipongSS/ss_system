@@ -12,7 +12,7 @@ import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
@@ -281,7 +281,7 @@ export default function FilingDetailPage() {
                         <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
                         <div>{productDisplayName(p)}</div>
                       </td>
-                      <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{(it.quantity || 0).toLocaleString("th-TH")}</td>
+                      <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtNumber((it.quantity || 0))}</td>
                       <td className="font-mono" style={{ padding: "8px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtMoney(it.totalTax || 0)}</td>
                     </tr>
                   );

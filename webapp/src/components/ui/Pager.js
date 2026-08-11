@@ -5,6 +5,7 @@ import { PAGE_SIZE_OPTIONS } from "@/lib/usePagination";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import styles from "./Pager.module.css";
+import { fmtNumber } from "@/lib/format";
 
 export default function Pager({
   page = 1,
@@ -45,7 +46,7 @@ export default function Pager({
 
   return (
     <nav className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
-      <span>ทั้งหมด {safeTotal.toLocaleString("th-TH")} {itemLabel}</span>
+      <span>ทั้งหมด {fmtNumber(safeTotal)} {itemLabel}</span>
       <div className={styles.controls}>
         {showSize ? (
           <div className={styles.size}>
@@ -82,7 +83,7 @@ export default function Pager({
                 aria-current={number === safePage ? "page" : undefined}
                 aria-label={`หน้า ${number}`}
               >
-                {number.toLocaleString("th-TH")}
+                {fmtNumber(number)}
               </Button>
             ))}
             <Button

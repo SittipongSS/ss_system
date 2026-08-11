@@ -25,7 +25,7 @@ import MaterialForm, { emptyMaterialForm, materialToForm } from "@/components/ma
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import {
   MATERIAL_KINDS, MATERIAL_KIND_LABELS, MATERIAL_STATE_LABELS,
   canQuoteMaterial, latestRevision, materialPriceState, revisionPriceRange,
@@ -34,8 +34,8 @@ import {
 import { pmTypeLabel } from "@/lib/master/materialTypes";
 import { businessDate } from "@/lib/businessDate";
 
-const money = (v) => (v == null ? "—" : Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const qtyText = (v) => (v == null ? "ทุกจำนวน" : `≥ ${Number(v).toLocaleString("th-TH")}`);
+const money = (v) => (v == null ? "—" : fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const qtyText = (v) => (v == null ? "ทุกจำนวน" : `≥ ${fmtNumber(v)}`);
 const todayIso = () => businessDate();
 const unitOf = (kind) => (kind === "PM" ? "฿/ชิ้น" : "฿/กก.");
 

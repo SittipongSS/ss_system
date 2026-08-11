@@ -37,7 +37,7 @@ import {
   isCustomerCancelReason,
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -846,7 +846,7 @@ export default function SalesOrderDetailPage() {
                     />
                     <strong>{job.productName || job.fgCode || job.code}</strong>
                     <span className={styles.deliveryMeta}>
-                      {Number(job.qty).toLocaleString("th-TH")}{job.unit ? ` ${job.unit}` : ""}
+                      {fmtNumber(job.qty)}{job.unit ? ` ${job.unit}` : ""}
                       {range ? ` · ผลิต ${fmtDate(range.start)} – ${fmtDate(range.finish)}` : " · ยังไม่ได้วางวัน"}
                     </span>
                   </div>

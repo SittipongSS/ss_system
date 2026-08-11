@@ -1,6 +1,6 @@
 import { notifyToast } from "@/lib/feedback";
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtNumber } from "@/lib/format";
 import {
   documentFooter,
   documentHeader,
@@ -31,7 +31,7 @@ const genAt = () => {
 const cellText = (c, value) => {
   if (c.money) return money(value);
   if (c.date) return value ? fmtDate(value) : '-';
-  if (c.num) return (Number(value) || 0).toLocaleString("th-TH");
+  if (c.num) return fmtNumber(value);
   return esc(value ?? "-");
 };
 const cellHtml = (c, value) => {
@@ -95,7 +95,7 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
         if (i === 0) return `<td>${esc(s._label || "รวม")}</td>`;
         const v = s[c.key];
         if (v == null) return `<td></td>`;
-        return `<td style="text-align:${align(c)}">${typeof v === "number" ? (c.money ? money(v) : (Number(v) || 0).toLocaleString("th-TH")) : esc(v)}</td>`;
+        return `<td style="text-align:${align(c)}">${typeof v === "number" ? (c.money ? money(v) : fmtNumber(v)) : esc(v)}</td>`;
       }).join("")}</tr>`
     : "";
 

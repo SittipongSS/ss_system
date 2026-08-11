@@ -18,6 +18,7 @@ import { PDR_TARGET_KINDS } from "@/lib/requests/pdrTargets";
 import { categoryLabel } from "@/lib/master/categoryOf";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
+import { fmtNumber } from "@/lib/format";
 
 /* ── 2.2/2.3 ฝั่งอ่าน — ตารางเดียวเหมือนฝั่งกรอก (mig 0229) ──────────────
    ⚠️ ประกอบ **แถวป้าย/ค่า** ส่งเข้า `Facts` ตัวเดิม ไม่วาดตารางของตัวเอง — จอนี้มี
@@ -25,7 +26,7 @@ import styles from "./requestForm.module.css";
 function targetFacts(request) {
   const list = Array.isArray(request.targets) ? request.targets : [];
   const categories = request.pdrContext?.categories || [];
-  const money = (v) => (v == null || v === "" ? null : Number(v).toLocaleString("th-TH"));
+  const money = (v) => (v == null || v === "" ? null : fmtNumber(v));
   const nameOf = (code) => categoryLabel(code, categories) || code;
 
   const cost = list.map((t) => {

@@ -16,7 +16,7 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
-import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtNumber } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -53,9 +53,9 @@ import { businessDate } from "@/lib/businessDate";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
-  if (it.kind === "dropped") return `${it.fgCode}: ถูกตัดออกจาก FC ล่าสุด (เดิม ${it.month} · ${Number(it.fromQty || 0).toLocaleString("th-TH")})`;
+  if (it.kind === "dropped") return `${it.fgCode}: ถูกตัดออกจาก FC ล่าสุด (เดิม ${it.month} · ${fmtNumber(it.fromQty || 0)})`;
   if (it.kind === "shifted") return `${it.fgCode}: เลื่อนเดือน ${it.month} → ${(it.toMonths || []).join(", ")}`;
-  if (it.kind === "qtyChanged") return `${it.fgCode} (${it.month}): จำนวน ${Number(it.fromQty || 0).toLocaleString("th-TH")} → ${Number(it.toQty || 0).toLocaleString("th-TH")}`;
+  if (it.kind === "qtyChanged") return `${it.fgCode} (${it.month}): จำนวน ${fmtNumber(it.fromQty || 0)} → ${fmtNumber(it.toQty || 0)}`;
   return `${it.fgCode}: มีการเปลี่ยนแปลง`;
 }
 

@@ -16,6 +16,7 @@ import { SCENTOTYPES, SCENT_PERFORMANCE } from '@/lib/requests/kinds/rd/scentBri
 import { PDR_SECTIONS, pdrFieldText, pdrSectionGroups } from '@/lib/requests/pdrFields';
 import { PDR_TARGET_KINDS } from '@/lib/requests/pdrTargets';
 import { categoryLabel } from '@/lib/master/categoryOf';
+import { fmtNumber } from '@/lib/format';
 
 const PDR_KEY = 'pdr';
 
@@ -166,7 +167,7 @@ function groupRow(group, request, context) {
 // พิมพ์ออกไปต้องบอกได้ว่า "ถามแล้วแต่ยังไม่มีคำตอบ"
 function targetRows(request, categoryName) {
   const list = Array.isArray(request.targets) ? request.targets : [];
-  const money = (v) => (v == null || v === '' ? null : Number(v).toLocaleString('th-TH'));
+  const money = (v) => (v == null || v === '' ? null : fmtNumber(v));
 
   const costLines = list.map((t) => {
     const parts = [];

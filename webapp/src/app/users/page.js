@@ -26,7 +26,7 @@ import {
 import OptionTiles from "@/components/ui/OptionTiles";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import Modal from "@/components/Modal";
-import { fmtPhone, fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtPhone } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
@@ -445,7 +445,7 @@ export default function UserManagement() {
             </div>
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
               <li>ดีลเปิดที่ย้ายผู้ดูแล: <b>{transferResult.deals}</b> ใบ (FC ย้ายตามทันที)</li>
-              <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{Number(transferResult.targetAmount || 0).toLocaleString("th-TH")}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
+              <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{fmtNumber(transferResult.targetAmount || 0)}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
               <li>ดีลที่ปิด Won/Lost แล้ว และเป้าเดือนที่ผ่านมา: ไม่ถูกแตะ (ประวัติคงเดิม)</li>
             </ul>
             <div className="form-action-bar">

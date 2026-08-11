@@ -13,6 +13,7 @@ import { apiCache } from "@/lib/apiCache";
 import { lineLockReason } from "@/lib/sahamit/poEdit";
 import { ppcOf } from "@/lib/sahamit/units";
 import { useCan } from "@/lib/roleContext";
+import { fmtNumber } from "@/lib/format";
 
 export default function PoEditPage() {
   const params = useParams();
@@ -130,7 +131,7 @@ export default function PoEditPage() {
       {error && <div role="alert" style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>}
       <div className="form-action-bar is-page">
         <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
-          {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ชิ้น` : "ยังไม่มีรายการ"}
+          {rows.length ? `${rows.length} รายการ · รวม ${fmtNumber(totalQty)} ชิ้น` : "ยังไม่มีรายการ"}
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" className="btn" onClick={() => router.push(`/sahamit/po/${id}`)} disabled={busy}>ยกเลิก</button>

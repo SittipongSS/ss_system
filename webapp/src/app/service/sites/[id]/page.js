@@ -1,7 +1,7 @@
 "use client";
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fmtPhone } from "@/lib/format";
+import { fmtNumber, fmtPhone } from "@/lib/format";
 import { use } from "react";
 import { MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -297,8 +297,8 @@ export default function ServiceSiteDetailPage({ params }) {
                       </td>
                       <td>{asset.productName || "-"}</td>
                       <td className={styles.numCol}>
-                        {asset.bottleMl ? `${Number(asset.bottleMl).toLocaleString("th-TH")} ml` : "-"}
-                        {asset.mlPerDay ? ` / ${Number(asset.mlPerDay).toLocaleString("th-TH")} ต่อวัน` : ""}
+                        {asset.bottleMl ? `${fmtNumber(asset.bottleMl)} ml` : "-"}
+                        {asset.mlPerDay ? ` / ${fmtNumber(asset.mlPerDay)} ต่อวัน` : ""}
                       </td>
                       {/* ⚠️ ข้อมูลไม่พอ = ไม่เดา · ป้ายที่มั่วจะทำให้ป้ายจริงถูกเมินไปด้วย */}
                       <td className={refill.state === "overdue" ? styles.overdue : refill.state === "soon" ? styles.soon : undefined}>

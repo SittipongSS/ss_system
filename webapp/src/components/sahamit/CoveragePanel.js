@@ -4,8 +4,9 @@ import { useState } from "react";
 import { suggestCoverage, suggestCoverageTargets } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { casesText } from "@/lib/sahamit/units";
+import { fmtNumber } from "@/lib/format";
 
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 
 // ชดเชยข้ามเดือนสำหรับช่อง (sku × เดือน) — อัตโนมัติล้วน (ไม่มีฟอร์มกรอกเอง):
 //  • เดือนนี้ "ขาด" (shortage>0)   → เสนอ "ดึงจาก" เดือนที่ PO เกิน (pull in)
@@ -130,7 +131,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
             {related.map((c) => (
               <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <span style={{ color: "var(--blue)" }}>{c.sourceMonth} → {c.targetMonth}</span>
-                <span style={{ fontWeight: "var(--fw-semibold)" }}>{Number(c.qty).toLocaleString("th-TH")}{caseSuffix(Number(c.qty))}</span>
+                <span style={{ fontWeight: "var(--fw-semibold)" }}>{fmtNumber(c.qty)}{caseSuffix(Number(c.qty))}</span>
                 {c.targetMonth === month ? (
                   <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)" }}>รับเข้า</span>
                 ) : (

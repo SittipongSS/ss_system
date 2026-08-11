@@ -17,7 +17,7 @@ import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtName } from "@/lib/format";
+import { fmtMoney, fmtName, fmtNumber } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
@@ -589,7 +589,7 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const money = (value) => fmtMoney(value);
-  const pctFmt = (value) => (value == null ? "–" : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+  const pctFmt = (value) => (value == null ? "–" : `${fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
 
   /* แถวดีลหนึ่งแถว — ใช้ร่วมกันทั้งโหมดตารางปกติ (แบ่งหน้า) และโหมดจัดกลุ่ม
      ต้องเป็นตัวเดียวกันเสมอ ไม่งั้นสองโหมดจะเพี้ยนหากันแบบเดียวกับฟอร์มสร้าง/แก้ */

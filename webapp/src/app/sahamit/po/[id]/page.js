@@ -21,7 +21,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { fmtDate, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
@@ -32,7 +32,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import Textarea from "@/components/ui/Textarea";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / — (แก้ที่เมนูวัสดุเท่านั้น)
 function matCell(dueDate, arrivedAt) {
@@ -110,7 +110,7 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
           {casesText(line.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(line.qty, ppcOf(product))}</div>}
           {Number(product?.price) > 0 && (
             <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>
-              @ ฿{Number(product.price).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ฿{(Number(line.qty || 0) * Number(product.price)).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              @ ฿{fmtNumber(product.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ฿{fmtNumber(Number(line.qty || 0) * Number(product.price), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           )}
           {line.shippedQty != null && (
@@ -499,7 +499,7 @@ export default function PoDetailPage() {
             <>
               <DocumentSummaryCard
                 title="สรุป Purchase Order"
-                total={poValueBeforeVat > 0 ? `฿${(poValueBeforeVat * 1.07).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
+                total={poValueBeforeVat > 0 ? `฿${fmtNumber((poValueBeforeVat * 1.07), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
                 rows={[
                   { id: "lines", label: "จำนวนรายการ", value: `${poLineCount(po)} รายการ` },
                   { id: "qty", label: "ยอดรวม", value: `${nf(poTotalQty(po))} ชิ้น` },

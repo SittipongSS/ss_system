@@ -15,10 +15,11 @@
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
 import { PRINT_FONT_STACK } from '@/lib/printTheme';
+import { fmtNumber } from '@/lib/format';
 
 export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-export const money = (v) => Number(v || 0).toLocaleString('th-TH', {
+export const money = (v) => fmtNumber(v || 0, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });

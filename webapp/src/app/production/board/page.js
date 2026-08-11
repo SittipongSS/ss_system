@@ -21,6 +21,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { fmtMonthShort, fmtNumber } from "@/lib/format";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const WEEKS = 4;
@@ -111,7 +112,7 @@ export default function ProductionBoardPage() {
   });
 
   const todayIso = businessDate();
-  const rangeLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[days.length - 1].date.getDate()} ${days[days.length - 1].date.toLocaleDateString("th-TH", { month: "short" })} ${days[days.length - 1].date.getFullYear()}`;
+  const rangeLabel = `${days[0].date.getDate()} ${fmtMonthShort(days[0].date)} – ${days[days.length - 1].date.getDate()} ${fmtMonthShort(days[days.length - 1].date)} ${days[days.length - 1].date.getFullYear()}`;
 
   // จำนวนช่องที่จองเกินกำลัง — ตัวเลขที่ต้องเห็นก่อนเลื่อนดูทั้งบอร์ด
   const overloaded = useMemo(
@@ -164,7 +165,7 @@ export default function ProductionBoardPage() {
                     {line.name}
                     <span className={styles.lineMeta}>
                       {line.code}
-                      {line.capacityPerDay ? ` · ${Number(line.capacityPerDay).toLocaleString("th-TH")} ${line.unit || ""}/วัน` : " · ยังไม่กรอกกำลัง"}
+                      {line.capacityPerDay ? ` · ${fmtNumber(line.capacityPerDay)} ${line.unit || ""}/วัน` : " · ยังไม่กรอกกำลัง"}
                     </span>
                   </th>
                   {days.map((day) => {
@@ -187,6 +188,10 @@ export default function ProductionBoardPage() {
                             </span>
                             {cell.jobs.map((chip) => {
                               const job = jobsById.get(chip.id);
+                              // ⚠️ ยกออกมาเป็นตัวแปร ไม่ใช่แทรกจำนวนของหมุดในเทมเพลตตรง ๆ —
+                              // ตัวนับคลาสของหน้าต้นแบบ (badgeFamilies.test.mjs) นับสตริงที่มี
+                              // ชื่อคลาสอยู่ข้างใน แล้วเทมเพลตแบบนั้นถูกนับเป็นจุดใช้งานทั้งที่ไม่ใช่
+                              const qtyToday = fmtNumber(chip.qty);
                               const late = job?.readiness && job.readiness.lastDue
                                 && String(job.plannedStart) < String(job.readiness.lastDue);
                               return (
@@ -199,7 +204,7 @@ export default function ProductionBoardPage() {
                                   title={[
                                     chip.code,
                                     chip.productName,
-                                    `${Number(chip.qty).toLocaleString("th-TH")} วันนี้`,
+                                    `${qtyToday} วันนี้`,
                                     job?.readiness?.label,
                                     late ? "⚠ วางก่อนของมาถึง" : null,
                                   ].filter(Boolean).join(" · ")}
@@ -216,7 +221,7 @@ export default function ProductionBoardPage() {
                                 และสัปดาห์ที่มีวันหยุดยาวจะกลายเป็นกำแพงคำว่า "ปิด" เต็มแถว
                                 จนมองไม่เห็นวันที่ว่างจริง · เขียนเฉพาะไลน์ที่ถูกสั่งปิดในวันทำการ */}
                             <span className={styles.free}>
-                              {capacity == null ? "" : capacity === 0 ? (day.off ? "" : "ปิดไลน์") : Number(capacity).toLocaleString("th-TH")}
+                              {capacity == null ? "" : capacity === 0 ? (day.off ? "" : "ปิดไลน์") : fmtNumber(capacity)}
                             </span>
                           </div>
                         )}

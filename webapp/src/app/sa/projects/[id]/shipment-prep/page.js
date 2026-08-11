@@ -13,11 +13,11 @@ import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
 import { PageShell as SaPageShell } from "@/components/ui/Workspace";
 
-const num = (value) => Number(value || 0).toLocaleString("th-TH");
+const num = (value) => fmtNumber(value || 0);
 const paginateShipmentLines = (lines = []) => {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
   const pages = [];

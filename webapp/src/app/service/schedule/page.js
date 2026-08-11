@@ -27,6 +27,7 @@ import {
 } from "@/lib/service/rounds";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { fmtMonthShort } from "@/lib/format";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -181,7 +182,7 @@ export default function ServiceSchedulePage() {
     setFormVisit(null);
   };
 
-  const weekLabel = `${days[0].date.getDate()} ${days[0].date.toLocaleDateString("th-TH", { month: "short" })} – ${days[6].date.getDate()} ${days[6].date.toLocaleDateString("th-TH", { month: "short" })} ${days[6].date.getFullYear()}`;
+  const weekLabel = `${days[0].date.getDate()} ${fmtMonthShort(days[0].date)} – ${days[6].date.getDate()} ${fmtMonthShort(days[6].date)} ${days[6].date.getFullYear()}`;
   const todayIso = businessDate();
 
   const shiftWeek = (weeks) => setWeekStart((prev) => {

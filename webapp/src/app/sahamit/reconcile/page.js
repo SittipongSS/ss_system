@@ -10,7 +10,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { deliveryMonthOf } from "@/lib/sahamit/po";
-import { fmtMoneyCompact, fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
@@ -33,7 +33,7 @@ const VIEWS = [
   { key: "po", label: "PO" },
 ];
 
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 const nfBaht = (n) => fmtMoneyCompact(n);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 

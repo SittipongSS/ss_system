@@ -11,11 +11,11 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 
-const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nf = (n) => fmtNumber(n || 0);
 
 // สถานะวัสดุ 1 ช่อง: มาแล้ว (เขียว+วันที่) / กำหนดถึง (วันที่) / —
 function matCell(dueDate, arrivedAt) {
