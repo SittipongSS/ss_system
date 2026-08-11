@@ -18,7 +18,7 @@ import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { capacityOn, overridesByDate } from "@/lib/pm/productionLines";
 import { lineLoad } from "@/lib/pm/productionPlan";
 import { canEditProduction } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 
@@ -35,8 +35,9 @@ function mondayOf(date) {
 export default function ProductionBoardPage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditProduction({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
   const [start, setStart] = useState(() => mondayOf(new Date()));
   const [lines, setLines] = useState([]);

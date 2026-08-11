@@ -166,7 +166,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     periodFrom,
     periodTo,
     // ตัวตนผู้ใช้ — การ์ด "เป้าหมายของฉัน" ใช้ลิงก์เข้าแท็บผลงานขายแบบเจาะตัวเอง
-    me: { id: user.id, name: user.name || null, team: user.team || null },
+    me: { id: user.id, name: user.name || null, team: user.team || null, teams: user.teams || [] },
     userId: user.id,
     target,
     // แยก "ยังไม่ตั้งเป้า" (ไม่มี record เดือนนี้) ออกจาก "เป้า = 0 จริง" — UI ใช้ตัดสินว่าจะแสดง dash แทน ฿0.00

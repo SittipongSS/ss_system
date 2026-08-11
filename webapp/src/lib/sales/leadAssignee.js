@@ -28,6 +28,8 @@
 // ต่างกันที่ลีดผูกด้วย **id** ซึ่งแข็งแรงกว่าชื่อ จึงตรวจด้วย id แล้ว *คืนชื่อจาก
 // server* ให้ผู้เรียกเขียนลงแถว (ไม่รับชื่อจาก client อีกต่อไป)
 
+import { userTeams } from '@/lib/permissions';
+
 export const LEAD_ASSIGNEE_ROLES = ['admin', 'senior_ae', 'ae'];
 
 // ชื่อที่แสดง — กติกาเดียวกับ /api/pm/assignable-users (name → email)
@@ -72,9 +74,11 @@ export async function validateLeadAssignee(supabase, assigneeId, lead = null) {
   // ทีมตัวเอง ⇒ มอบข้ามทีมให้สองตำแหน่งนี้ = คนรับกดติดต่อ/นัดไม่ได้เลย ลีดค้าง
   // ผู้ที่ไม่มีทีม (admin) ผ่านได้ — canWorkLead ให้ admin ทำได้ทุกใบ
   // ต้องย้ายทีมจริง ๆ ให้ใช้ "ตีกลับ" แล้วคัดกรองใหม่ (เส้นทางที่มีร่องรอย)
-  const assigneeTeam = user.app_metadata?.team || null;
-  if (lead?.team && assigneeTeam && assigneeTeam !== lead.team) {
-    return { ok: false, error: `ผู้รับผิดชอบอยู่ทีม ${assigneeTeam} แต่ลีดนี้อยู่ทีม ${lead.team} — ถ้าต้องเปลี่ยนทีมให้ใช้ "ตีกลับ" แล้วคัดกรองใหม่` };
+  // ⚠️ คนรับอยู่ได้หลายทีม ⇒ ถามว่า "อยู่ทีมของลีดหรือเปล่า" ไม่ใช่ "ทีมหลักตรงกับลีดไหม"
+  // เทียบทีมหลักตรง ๆ จะกันคนที่อยู่ทีมนั้นจริงและ canWorkLead ให้ทำงานได้แล้ว
+  const assigneeTeams = userTeams(user.app_metadata);
+  if (lead?.team && assigneeTeams.length && !assigneeTeams.includes(lead.team)) {
+    return { ok: false, error: `ผู้รับผิดชอบอยู่ทีม ${assigneeTeams.join('/')} แต่ลีดนี้อยู่ทีม ${lead.team} — ถ้าต้องเปลี่ยนทีมให้ใช้ "ตีกลับ" แล้วคัดกรองใหม่` };
   }
 
   const name = leadAssigneeName(user);

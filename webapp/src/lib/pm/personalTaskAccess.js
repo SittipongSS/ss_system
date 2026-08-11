@@ -1,10 +1,12 @@
-import { can, isReadOnlyObserver, isSuperuser, normalizeDepartment, TEAM_ROLES } from '@/lib/permissions';
+import { can, hasTeam, isReadOnlyObserver, isSuperuser, normalizeDepartment, userTeams, TEAM_ROLES } from '@/lib/permissions';
 
+// `team` = ทุกทีมของคนคนนั้น (อาร์เรย์) — คนที่รับผิดชอบงานก็อยู่หลายทีมได้ ผู้เรียก
+// ทุกรายส่งค่านี้เข้า hasTeam ซึ่งรับทั้งค่าเดียวและอาร์เรย์
 async function userIdentity(supabase, id) {
-  if (!id) return { team: null, department: null };
+  if (!id) return { team: [], department: null };
   const { data } = await supabase.auth.admin.getUserById(id);
   const meta = data?.user?.app_metadata || {};
-  return { team: meta.team ?? null, department: normalizeDepartment(meta.department) || null };
+  return { team: userTeams(meta), department: normalizeDepartment(meta.department) || null };
 }
 
 async function taskProjectTeam(supabase, task) {
@@ -35,11 +37,12 @@ export async function canManagePersonalTask(supabase, task, user) {
   // จัดการงานของ "คนอื่น" ยังสงวนให้สายบังคับบัญชาฝ่ายขาย (pm:edit) เหมือนเดิม
   if (!can(user.role, 'pm:edit')) return false;
   if (isSuperuser(user.role)) return true;
-  if (user.role !== 'senior_ae' || !user.team) return false;
+  if (user.role !== 'senior_ae' || !userTeams(user).length) return false;
 
+  // อยู่หลายทีมได้ ⇒ "ทีมเดียวกัน" = มีทีมร่วมกันอย่างน้อยหนึ่งทีม
   const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);
-  if (responsibleTeam && responsibleTeam === user.team) return true;
-  return (await taskProjectTeam(supabase, task)) === user.team;
+  if (hasTeam(user, responsibleTeam)) return true;
+  return hasTeam(user, await taskProjectTeam(supabase, task));
 }
 
 export async function canViewPersonalTask(supabase, task, user) {
@@ -59,11 +62,11 @@ export async function canViewPersonalTask(supabase, task, user) {
   // เปิดให้ (pmTaskScopes = ['mine','team'] ทั้งสามตำแหน่ง). เดิมจำกัดแค่ senior_ae →
   // ac/ae เห็นงานทีมในลิสต์แต่กดเปิด detail แล้ว 403 (list/detail ไม่ตรงกัน, มติ 2026-07-21).
   // นี่คือสิทธิ์ "ดู" อย่างเดียว; การจัดการงานของคนอื่นยังสงวนให้ senior_ae (canManagePersonalTask).
-  if (!TEAM_ROLES.includes(user.role) || !user.team) return false;
+  if (!TEAM_ROLES.includes(user.role) || !userTeams(user).length) return false;
 
   const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);
-  if (responsibleTeam && responsibleTeam === user.team) return true;
-  return (await taskProjectTeam(supabase, task)) === user.team;
+  if (hasTeam(user, responsibleTeam)) return true;
+  return hasTeam(user, await taskProjectTeam(supabase, task));
 }
 
 export async function canAttachToPersonalTask(supabase, task, user) {

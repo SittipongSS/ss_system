@@ -7,14 +7,23 @@ test('task deal linking is limited to the user team', () => {
   assert.equal(canLinkTaskToDeal(user, { team: 'KA' }), true);
   assert.equal(canLinkTaskToDeal(user, { team: 'ODM' }), false);
   assert.equal(canLinkTaskToDeal(user, { team: null }), false);
-  assert.deepEqual(taskDealScope(user), { kind: 'team', team: 'KA' });
+  assert.deepEqual(taskDealScope(user), { kind: 'team', teams: ['KA'] });
+});
+
+// คนหนึ่งคนอยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11) — ผูกงานกับดีลของทีมไหนก็ได้ที่สังกัด
+test('ผู้ใช้ที่อยู่หลายทีม ผูกดีลได้ทุกทีมที่สังกัด', () => {
+  const user = { role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] };
+  assert.equal(canLinkTaskToDeal(user, { team: 'ODM' }), true);
+  assert.equal(canLinkTaskToDeal(user, { team: 'SV' }), true);
+  assert.equal(canLinkTaskToDeal(user, { team: 'KA' }), false, 'ทีมที่ไม่ได้สังกัดยังผูกไม่ได้');
+  assert.deepEqual(taskDealScope(user), { kind: 'team', teams: ['ODM', 'SV'] });
 });
 
 // มติผู้ใช้ 2026-08-06: ฝ่ายที่ไม่มีทีมเห็น "ดีลทั้งหมด" — เดิมเป็น 'none' ซึ่งแปลว่า
 // ไม่มีดีลให้เลือกเลย จึงบังคับผูกดีลกับเขาไม่ได้ (บังคับ = สร้างงานไม่ได้ทั้งฝ่าย)
 test('ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) เลือกดีลได้ทุกทีม', () => {
   assert.equal(canLinkTaskToDeal({ role: 'rd', team: null }, { team: 'KA' }), true);
-  assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'all', team: null });
+  assert.deepEqual(taskDealScope({ role: 'rd', team: null }), { kind: 'all', teams: [] });
 });
 
 // ⭐ ไม่มีข้อยกเว้นตาม role — รอบแรกยกเว้น admin/เลขาไว้ แล้วกลายเป็นว่าบัญชีที่
@@ -29,5 +38,5 @@ test('ทุกงานต้องผูกดีล — ทุก role ไม
 
 test('superusers retain cross-team administration access', () => {
   assert.equal(canLinkTaskToDeal({ role: 'admin' }, { team: 'KA' }), true);
-  assert.deepEqual(taskDealScope({ role: 'admin' }), { kind: 'all', team: null });
+  assert.deepEqual(taskDealScope({ role: 'admin' }), { kind: 'all', teams: [] });
 });

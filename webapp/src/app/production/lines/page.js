@@ -17,7 +17,7 @@ import Toast from "@/components/ui/Toast";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import ProductionLineModal from "@/components/pm/ProductionLineModal";
 import { LINE_KIND_LABELS, capacityOn } from "@/lib/pm/productionLines";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditProduction } from "@/lib/permissions";
 import styles from "./page.module.css";
 
@@ -30,10 +30,11 @@ const todayIso = () => {
 export default function ProductionLinesPage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
   // ⚠️ cap อย่างเดียวไม่พอ — `staff` ถือ production:edit ทั้ง PC/PD/WH/QC/TS
   // ฝ่ายคือตัวกั้นจริง (เหมือนที่ server ทำใน requireProduction)
-  const canEdit = useMemo(() => canEditProduction({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
   const [lines, setLines] = useState([]);
   const [capacityDays, setCapacityDays] = useState([]);

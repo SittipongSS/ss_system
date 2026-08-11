@@ -1,4 +1,4 @@
-import { isSuperuser } from '@/lib/permissions';
+import { hasTeam, isSuperuser, userTeams } from '@/lib/permissions';
 
 // ── ทุกงานต้องผูกดีล (มติผู้ใช้ 2026-08-06) ─────────────────────────────────
 // เดิมบังคับเฉพาะฝ่ายขาย (SA) เพราะฝ่ายอื่นไม่มี team → taskDealScope = 'none' →
@@ -32,12 +32,14 @@ export function canLinkTaskToDeal(user, deal) {
   if (isSuperuser(user.role)) return true;
   // ฝ่ายที่ไม่มีทีม (RD/PC/PD/WH/QC/TS/FN) รับงานจากทุกทีมขาย — ขอบเขต "ทีมเดียวกัน"
   // ใช้กับคนที่มีทีมเท่านั้น ไม่งั้นกติกาจะกลายเป็น "ผูกดีลไม่ได้เลย"
-  if (!user.team) return true;
-  return !!deal.team && user.team === deal.team;
+  if (!userTeams(user).length) return true;
+  return hasTeam(user, deal.team);
 }
 
+// `teams` = ทุกทีมที่ผู้ใช้สังกัด (คนเดียวอยู่ได้หลายทีม) — ผู้เรียกกรองด้วย .in()
 export function taskDealScope(user) {
-  if (!user) return { kind: 'none', team: null };
-  if (isSuperuser(user.role)) return { kind: 'all', team: null };
-  return user.team ? { kind: 'team', team: user.team } : { kind: 'all', team: null };
+  if (!user) return { kind: 'none', teams: [] };
+  if (isSuperuser(user.role)) return { kind: 'all', teams: [] };
+  const teams = userTeams(user);
+  return teams.length ? { kind: 'team', teams } : { kind: 'all', teams: [] };
 }

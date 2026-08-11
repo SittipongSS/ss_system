@@ -14,7 +14,7 @@ import { TableScroll } from "@/components/ui/Table";
 import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
@@ -43,8 +43,9 @@ function mondayOf(date) {
 export default function ServiceSchedulePage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [visits, setVisits] = useState([]);

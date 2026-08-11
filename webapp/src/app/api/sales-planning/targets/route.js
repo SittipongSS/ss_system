@@ -1,7 +1,8 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { isSuperuser } from '@/lib/permissions';
+import { hasTeam, isSuperuser, primaryTeam } from '@/lib/permissions';
+import { teamInClause } from '@/lib/teamScope';
 import { canEditSalesTarget, canViewSalesPlanning, normalizeTargetPeriod, salesPlanningViewScope, toMoney, yearKey } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // (แก้ได้เฉพาะ superuser — บังคับตอน write); AE เห็นเฉพาะเป้ารายบุคคลของตัวเอง;
   // นอกนั้นไม่เห็น — กันเป้าคนอื่น/ทีมอื่นรั่วเมื่อยิง API ตรง.
   const scope = salesPlanningViewScope(user.role);
-  if (scope === 'team') query = query.or(`team.eq.${user.team ?? ''},team.is.null`);
+  if (scope === 'team') query = query.or(`${teamInClause(user)},team.is.null`);
   else if (scope === 'own') query = query.eq('ownerId', user.id ?? '');
   else if (scope !== 'all') query = query.eq('id', '__no_scope__');
   if (year) {
@@ -51,7 +52,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const isSuper = isSuperuser(user.role);
   // SA-wide targets (team null) are superuser-only; other roles are locked to
   // their own team and cannot set a company-wide or cross-team target.
-  const team = isSuper ? (body.team || null) : (user.team || null);
+  // คนอยู่หลายทีมได้ ⇒ ตั้งเป้าให้ทีมไหนก็ได้ที่ตัวเองสังกัด (ไม่ส่งมา = ทีมหลัก)
+  const team = isSuper ? (body.team || null) : (hasTeam(user, body.team) ? body.team : primaryTeam(user));
   if (!team && !isSuper) return badRequest('ต้องระบุทีม');
   if (body.ownerId && !team) return badRequest('เป้ารายบุคคลต้องมีทีม');
 

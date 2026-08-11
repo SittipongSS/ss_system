@@ -1,3 +1,5 @@
+import { userTeams } from "@/lib/permissions";
+
 const MAX_NAME_LENGTH = 80;
 const LEGACY_DEPARTMENTS = { SALES: "SA", LEGAL: "LG", VIEWER: "Viewer" };
 
@@ -48,7 +50,8 @@ export function accountProfileFromAuthUser(user) {
     name: metadata.name || `${metadata.firstName || ""} ${metadata.lastName || ""}`.trim(),
     phone: metadata.phone || "",
     role: appMetadata.role || "user",
-    team: appMetadata.team || null,
+    team: appMetadata.team || null,   // ทีมหลัก
+    teams: userTeams(appMetadata),    // ทุกทีมที่สังกัด — หน้าโปรไฟล์โชว์ครบ
     department: LEGACY_DEPARTMENTS[appMetadata.department] || appMetadata.department || null,
     mustChangePassword: !!appMetadata.must_change_password,
     createdAt: user?.created_at || null,

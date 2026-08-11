@@ -15,7 +15,7 @@
 // เรื่อง "สิทธิ์ตาม role/ทีม" ไม่ใช่ "ยังไม่ถึงเวลา"
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { hasTeam, isSuperuser, userTeams, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
@@ -66,7 +66,7 @@ const STEPS = [
 ];
 
 const inTeamOf = (user, lead) =>
-  (user?.role === "senior_ae" || user?.role === "ac") && !!lead?.team && lead.team === user?.team;
+  (user?.role === "senior_ae" || user?.role === "ac") && hasTeam(user, lead?.team);
 
 /* "ขั้นกำกับดูแล" (ตีกลับ/ไม่ไปต่อ) — ทีมเจ้าของงาน + ผู้ดูแล
    ต่างจาก "ขั้นทำงาน" (ติดต่อ/นัด) ที่ใช้ canWorkLead: มติผู้ใช้ 2026-07-21 ว่า
@@ -105,7 +105,8 @@ export function assignableFor(users, viewerTeam, leadTeam = null) {
   return users.filter((user) => {
     if (!LEAD_ASSIGNEE_ROLES.includes(user?.role)) return false;
     if (!team) return true;                // ไม่รู้ทีมทั้งสองทาง — ไม่ตัดใครออก
-    return !user?.team || user.team === team;
+    // คนรับอยู่หลายทีมได้ ⇒ อยู่ทีมของลีดทีมใดทีมหนึ่งก็รับได้ (ไม่มีทีมเลย = admin ติดมาเสมอ)
+    return !userTeams(user).length || hasTeam(user, team);
   });
 }
 

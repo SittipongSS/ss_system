@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScopeUser, canUser, TEAMS } from '@/lib/permissions';
+import { viewScopeUser, canUser, userTeams, TEAMS } from '@/lib/permissions';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildRegistrationFilesZip } from '@/lib/tax/registrationFiles';
@@ -31,7 +31,8 @@ export async function GET(request) {
   //   team      — **ตัวกรองที่ผู้ใช้เลือก** ไม่บังคับ · เอาเฉพาะทีมที่เลือกจริง ๆ ไม่พ่วง
   //               แถวไร้ทีม · multi-select ตามมาตรฐานตัวกรองของบ้านนี้ (มติ 2026-07-18)
   // ผู้ใช้ที่ scope 'team' ส่ง ?team= มาได้ แต่ AND กันแล้วมันได้แค่ *แคบลง* เท่านั้น
-  const scopeTeam = viewScopeUser(user) === 'team' ? (user?.team || null) : null;
+  // อยู่หลายทีมได้ ⇒ ขอบเขตเป็น "ชุดทีม" ไม่ใช่ทีมเดียว (applyTeamScope รับอาร์เรย์)
+  const scopeTeam = viewScopeUser(user) === 'team' ? userTeams(user) : null;
 
   // ทีมที่ไม่รู้จักต้องเด้ง ไม่ใช่ถูกกรองทิ้งเงียบ ๆ — พิมพ์ผิดแล้วได้ "ทุกทีม" คือบั๊ก
   // ตระกูลเดียวกับที่ไล่เก็บอยู่ (query ที่ผิดแล้วเงียบ กลายเป็นข้อมูลที่ดูเหมือนถูก)

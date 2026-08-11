@@ -111,5 +111,6 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0012 — Settings lifecycle standard](./decisions/0012-settings-lifecycle-standard.md)
 - [Decision 0013 — แยกเทมเพลตเงื่อนไขการชำระออกจากงวดการชำระ](./decisions/0013-separate-payment-terms-and-installments.md)
 - [Decision 0014 — เอกสารไทม์ไลน์โครงการ (FM-PD-05) เป็นเอกสารควบคุม](./decisions/0014-controlled-project-timeline-document.md)
+- [Decision 0015 — ผู้ใช้หนึ่งคนสังกัดได้หลายทีม](./decisions/0015-multi-team-membership.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)

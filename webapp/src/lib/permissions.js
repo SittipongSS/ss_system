@@ -4,9 +4,12 @@
 //   2. scope      — WHOSE records it may do it to       (viewScope / editScope / deleteScope)
 //
 // Identity comes from Supabase app_metadata (service-role-only, not
-// self-editable): app_metadata.role + app_metadata.team + app_metadata.department.
+// self-editable): app_metadata.role + app_metadata.team + app_metadata.teams
+// + app_metadata.department.
 // department (ฝ่าย) sits above team; it is stored explicitly and is NOT 1:1
 // with role (see DEPARTMENT_ROLES). team (ODM/KA/SV) only exists under SA.
+// คนหนึ่งคนอยู่ได้หลายทีม — `teams` คือขอบเขต (scope) · `team` คือทีมหลักที่ใช้
+// ตอนบันทึกเจ้าของงานใหม่ (attribution) ดู userTeams() / primaryTeam()
 //
 // Roles (org structure):
 //   admin         — System administrator (ฝ่าย AD). Superuser: every capability,
@@ -171,8 +174,77 @@ export const ROLE_LABELS = {
   staff: 'พนักงาน (Staff)',
 };
 
-// Roles that operate within a single team (team is required for them).
+// Roles that operate inside a team (at least one team is required for them).
 export const TEAM_ROLES = ['senior_ae', 'ac', 'ae'];
+
+// ── ผู้ใช้อยู่ได้หลายทีม ───────────────────────────────────────────────
+// มติผู้ใช้ 2026-08-11: "ฝ่ายขาย Account Executive อยู่ ODM กับ Service" — คนขาย
+// คนเดียวดูแลงานสองสายพร้อมกันเป็นเรื่องปกติ ของเดิมผูก 1 คน = 1 ทีมตายตัว
+// คนแบบนี้จึงต้องเปิดบัญชีซ้ำหรือถูกตัดไม่ให้เห็นงานอีกทีมไปเลย
+//
+// รูปเดียวกับฝั่งเรคคอร์ด (customers.teams[] — migration 0037):
+//   app_metadata.team   = **ทีมหลัก** — ใช้ตอน stamp เจ้าของงานที่สร้างใหม่
+//                         (ยอดเข้าทีมไหน / KPI / เป้า) — ค่าเดี่ยวเสมอ
+//   app_metadata.teams  = **ทุกทีมที่สังกัด** — ใช้เป็นขอบเขตการเห็น/แก้ (scope)
+//                         รวมทีมหลักอยู่ในนี้ด้วย
+//
+// ⚠️ อย่าเอา userTeams() ไปใช้ตอน "เขียนทีมลงเรคคอร์ดใหม่" — ตรงนั้นต้องเป็น
+//    ทีมเดียว (user.team) ไม่งั้นยอดจะเข้าสองทีมพร้อมกันแล้วเป้ารวมบวกเกินจริง
+//
+// รับได้ทั้ง user object และค่าทีมดิบ (string | array) เพราะบางด่านเก่ารับ
+// `team` มาเป็นพารามิเตอร์ตรง ๆ (เช่น canAccessSahamit)
+export function userTeams(userOrTeams) {
+  const source = userOrTeams && typeof userOrTeams === 'object' && !Array.isArray(userOrTeams)
+    ? (Array.isArray(userOrTeams.teams) && userOrTeams.teams.length ? userOrTeams.teams : userOrTeams.team)
+    : userOrTeams;
+  if (Array.isArray(source)) return [...new Set(source.filter(Boolean))];
+  return source ? [source] : [];
+}
+
+// ทีมหลัก (attribution) — ทีมที่ยอด/เจ้าของงานที่สร้างใหม่จะถูกบันทึกเข้า
+export function primaryTeam(user) {
+  return user?.team || userTeams(user)[0] || null;
+}
+
+// ผู้ใช้คนนี้อยู่ในทีมนั้นไหม — `team` รับได้ทั้งทีมเดียวและอาร์เรย์
+// (ปลายทางบางที่ก็เป็นคนที่อยู่หลายทีมเหมือนกัน เช่น "ทีมของคนที่รับผิดชอบงาน")
+export function hasTeam(user, team) {
+  return shareTeam(user, userTeams(team));
+}
+
+// ทีมของผู้ใช้ตัดกับทีมชุดนี้ไหม (ว่าง = ไม่ตัดกัน)
+function shareTeam(user, teams) {
+  if (!teams.length) return false;
+  return userTeams(user).some((t) => teams.includes(t));
+}
+
+// ── ทีมที่จะ stamp ลงแถวใหม่ (attribution) ────────────────────────────
+// คนอยู่หลายทีมเปิดงานให้ทีมไหนก็ได้ที่ตัวเองสังกัด (มติผู้ใช้ 2026-08-11 รอบสอง) —
+// ก่อนหน้านี้บังคับเป็นทีมหลักเสมอ ⇒ ดีลที่ AE เปิดให้งานฝั่ง Services ไปโผล่ในยอด
+// ODM ทั้งใบ ตัวเลขทีมกับงานจริงจึงเล่าคนละเรื่อง
+//
+// ⚠️ ตัวเดียวที่ทุก route ใช้ — **ห้าม** route ไหนอ่าน `body.team` ไปใช้ตรง ๆ
+// เพราะนั่นคือช่องให้ยิง API ตรงแล้วโยนงานเข้าทีมที่ตัวเองไม่ได้อยู่
+//   • ไม่ส่งมา / ส่งทีมที่ไม่ได้สังกัด → ถอยเป็นทีมหลัก (ไม่ใช่ปฏิเสธทั้งคำขอ —
+//     ผู้เรียกสายเก่าที่ไม่รู้จักช่องนี้ต้องยังทำงานได้เหมือนเดิม)
+//   • `who` = คนที่งานจะถูกยกให้ ซึ่ง**ไม่จำเป็นต้องเป็นคนกด** (ดีล: เจ้าของคือ AE
+//     ที่ถูกเลือก ไม่ใช่ AC ที่กดสร้าง)
+export function attributionTeam(who, requested) {
+  return hasTeam(who, requested) ? requested : primaryTeam(who);
+}
+
+// สังกัดทีมที่จะเขียนลง app_metadata — ตัวเดียวที่ทั้ง API สร้าง/แก้ และฟอร์มใช้
+// (กันฝั่งใดฝั่งหนึ่งคิดกติกาเอง แล้ว "ทีมหลัก" ของสองฝั่งไม่ตรงกัน)
+//   • ตำแหน่งที่ไม่ผูกทีม → ไม่มีทีมเลย
+//   • เรียงตาม TEAMS เสมอ ให้ลำดับบนหน้าจอคงที่ไม่ว่าติ๊กเรียงยังไง
+//   • ทีมหลักต้องเป็นหนึ่งในทีมที่สังกัด ถ้าไม่ใช่ก็ถอยไปตัวแรก — ค่าที่ค้างจาก
+//     ตอนติ๊กทีมออกจะได้ไม่กลายเป็นทีมหลักที่ตัวเองไม่ได้อยู่
+export function resolveTeamAssignment(role, { team, teams } = {}) {
+  if (!TEAM_ROLES.includes(role)) return { team: null, teams: [] };
+  const picked = userTeams(teams).length ? userTeams(teams) : userTeams(team);
+  const valid = TEAMS.filter((t) => picked.includes(t));
+  return { team: valid.includes(team) ? team : (valid[0] || null), teams: valid };
+}
 
 // Sales operational base (no delete, no legal). Shared by ae / ac.
 // PM (project management) is a SALES-only tool — every sales role views+edits it
@@ -541,7 +613,7 @@ export function canEditService(user) {
   if (!canUser(user, 'service:edit')) return false;
   if (isSuperuser(user?.role)) return true;
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
-  return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
+  return TEAM_ROLES.includes(user?.role) && hasTeam(user, SERVICE_SALES_TEAM);
 }
 
 // คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ฝ่ายช่าง TS **หรือ** ทีมขาย SV
@@ -556,7 +628,7 @@ export function canEditService(user) {
 // 👉 พอเปิดบัญชีฝ่าย TS จริงแล้ว ทั้งสองกลุ่มยังใช้ได้ ไม่ต้องแก้โค้ดอีก
 export function canBeServiceAssignee(user) {
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
-  return TEAM_ROLES.includes(user?.role) && user?.team === SERVICE_SALES_TEAM;
+  return TEAM_ROLES.includes(user?.role) && hasTeam(user, SERVICE_SALES_TEAM);
 }
 
 // อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.
@@ -609,10 +681,11 @@ export function canManageCommercialPresets(role) {
 // it. Used by the /home card, the /sahamit page guard, and the API handlers
 // (which additionally scope to customer สหมิตร AR-109).
 //   user = { role, team }
+// `team` รับได้ทั้งทีมเดียวและอาร์เรย์ (ผู้ใช้อยู่หลายทีม) — อยู่ KA ทีมใดทีมหนึ่งก็เข้าได้
 export function canAccessSahamit(role, team) {
   if (isSuperuser(role)) return true;           // admin + sales head: cross-team oversight
   if (isReadOnlyObserver(role)) return true;    // viewer/executive see every module (writes still blocked by cap)
-  return can(role, 'sahamit:view') && team === 'KA';
+  return can(role, 'sahamit:view') && userTeams(team).includes('KA');
 }
 
 // ── งานบริหาร (Management / Executive Office) module access ────────────
@@ -723,12 +796,12 @@ export function inScope(scope, user, record) {
     case 'all':
       return true;
     case 'team':
-      if (!user?.team) return false;
-      // Multi-team records (customers.teams[], migration 0037): in scope if the
-      // user's team is any of the caretaker teams. Falls back to the single
-      // `team` for records without teams[] (products / orders / projects).
-      if (Array.isArray(record?.teams) && record.teams.length) return record.teams.includes(user.team);
-      return user.team === record?.team;
+      if (!userTeams(user).length) return false;
+      // ทั้งสองฝั่งเป็นได้หลายทีม — ในขอบเขตเมื่อ **ทีมของคน ∩ ทีมของเรคคอร์ด**
+      // ไม่ว่าง · ฝั่งเรคคอร์ด: teams[] (customers, migration 0037) ถ้าไม่มีก็ถอย
+      // ไปทีมเดี่ยว (products / orders / projects) · ฝั่งคน: app_metadata.teams
+      if (Array.isArray(record?.teams) && record.teams.length) return shareTeam(user, record.teams);
+      return hasTeam(user, record?.team);
     case 'own':
       return !!user?.id && user.id === record?.ownerId;
     case 'none':
@@ -742,11 +815,11 @@ export function inScope(scope, user, record) {
 // API route handlers. `user` = { id, role, team }.
 
 // เอกสารภาษี (ใบยื่น orders / ทะเบียน registrations) ที่ **ไม่มีทีมเลย** = "ของกลาง"
-// ทุกทีมทั้งเห็นและจัดการได้ — กฎเดียวกับตัวกรองของลิสต์ (`or('team.eq.X,team.is.null')`)
+// ทุกทีมทั้งเห็นและจัดการได้ — กฎเดียวกับตัวกรองของลิสต์ (`or(teamInClause(user),team.is.null)`)
 // และกับ master data ที่ caretakerTeamsOf ถือว่า `[]` = ของกลาง
 //
-// **ทำไมต้องมี** — ลิสต์โชว์แถวไร้ทีมให้ทุกทีมแล้ว แต่ inScope('team') เทียบ
-// `user.team === record.team` ตรง ๆ ซึ่งเป็น false เมื่อ `record.team` เป็น null →
+// **ทำไมต้องมี** — ลิสต์โชว์แถวไร้ทีมให้ทุกทีมแล้ว แต่ inScope('team') ตัดทีมของคน
+// กับทีมของแถว ซึ่งได้ชุดว่างเสมอเมื่อ `record.team` เป็น null →
 // แถวเดียวกันที่เห็นในลิสต์ กด GET/PATCH/DELETE รายตัวแล้วได้ 404/403 · ถ้าปล่อยไว้
 // เอกสารที่ถูกตีกลับจะไม่มีใครในฝ่ายขายแก้ได้เลย (ของจริง: ทะเบียนที่ Admin สร้าง
 // ค้าง "รออนุมัติ" 6 วันโดยไม่มีใครในทีมเห็น)
@@ -776,7 +849,7 @@ export function canViewRecord(user, resource, record) {
   // คนที่ scope 'team' แต่ตัวเองไม่มีทีม scope ไม่ได้ → เห็นทั้งหมด (ลิสต์ข้ามตัวกรองทิ้ง
   // ในกรณีนี้เหมือนกัน) · ปิดไว้แค่ชั้น "เห็น" — แก้/ลบยัง fail closed เพราะบัญชีที่
   // role เป็นสายทีมแต่ไม่มีทีมคือบัญชีที่ตั้งค่าไม่ครบ ไม่ใช่สิทธิ์ที่ตั้งใจให้
-  if (scope === 'team' && TEAMLESS_SHARED_RESOURCES.has(resource) && !user?.team) return true;
+  if (scope === 'team' && TEAMLESS_SHARED_RESOURCES.has(resource) && !userTeams(user).length) return true;
   return inScope(scope, user, record);
 }
 
@@ -817,7 +890,7 @@ export function canEditRecord(user, resource, record, caretakerTeams) {
       teams = caretakerTeamsOf(record);
     }
     if (teams.length === 0) return true;                  // teamless = shared
-    return !!user?.team && teams.includes(user.team);
+    return shareTeam(user, teams);
   }
 
   // Orders / registrations / projects — creator/team/own scope. เอกสารภาษีที่ไม่มีทีม
@@ -901,8 +974,9 @@ export function canAssignTask(assigner, assignee) {
   // Any team member (Senior AE / AE / AC) may hand work to any teammate —
   // peer-to-peer within the team, not just top-down. Uses the canonical
   // TEAM_ROLES list so server + client + this rule never drift apart.
+  // คนอยู่หลายทีมได้ — "ทีมเดียวกัน" = มีทีมร่วมกันอย่างน้อยหนึ่งทีม
   if (TEAM_ROLES.includes(assigner.role)) {
-    return !!assigner.team && assigner.team === assignee.team;
+    return shareTeam(assigner, userTeams(assignee));
   }
   if (assigner.role === 'rd') return true; // ผ่านด่านฝ่ายมาแล้ว = RD ด้วยกัน
   return false;
@@ -949,7 +1023,7 @@ export function canPullTask(user, task, respTeam, respDept) {
   if (isSuperuser(user.role)) return true;                     // sup/admin → any team
   // an actual team member (not a read-only viewer / non-sales staff) may pull
   // within their own team.
-  if (TEAM_ROLES.includes(user.role)) return !!user.team && user.team === respTeam;
+  if (TEAM_ROLES.includes(user.role)) return hasTeam(user, respTeam);
   // rd: ช่วยกันภายในฝ่ายเดียวกัน (mirror กติกามอบหมาย canAssignTask ของ rd)
   if (user.role === 'rd') {
     const dept = normalizeDepartment(user.department);
@@ -1074,15 +1148,19 @@ export function redactProductMargin(user, product) {
   return out;
 }
 
-// ── Identity validation (role + team + department) ────────────────────
-// Used by the user-management API. Team-bound roles need a valid team;
-// others must not carry one. Department, if supplied, must match the role's
-// canonical department. Returns an error string, or null when valid.
+// ── Identity validation (role + teams + department) ───────────────────
+// Used by the user-management API. Team-bound roles need at least one valid
+// team; others must not carry any. Department, if supplied, must match the
+// role's canonical department. Returns an error string, or null when valid.
+//
+// `team` รับได้ทั้งทีมเดียวและอาร์เรย์ (ผู้ใช้อยู่หลายทีม) — ตรวจทุกตัวในชุด
 export function validateIdentity(role, team, department) {
   if (!ROLES.includes(role)) return 'role ไม่ถูกต้อง';
+  const teams = userTeams(team);
   if (TEAM_ROLES.includes(role)) {
-    if (!TEAMS.includes(team)) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
-  } else if (team) {
+    if (!teams.length) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
+    if (teams.some((t) => !TEAMS.includes(t))) return 'ทีมไม่ถูกต้อง (ODM/KA/SV)';
+  } else if (teams.length) {
     return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
   }
   const dep = normalizeDepartment(department);

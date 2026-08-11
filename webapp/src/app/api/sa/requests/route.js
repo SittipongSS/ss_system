@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import {
-  REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, canUser, canViewRequests, isSuperuser,
+  REQUEST_ANSWER_DEPARTMENTS, attributionTeam, canAnswerRequestsFor, canUser, canViewRequests, isSuperuser,
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
@@ -430,7 +430,9 @@ export async function POST(request) {
       requestedById: user?.id ?? null,
       requestedByName: user?.name ?? null,
       requestedDueDate: body.requestedDueDate || null,
-      team: user?.team ?? null,
+      // ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
+      // (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
+      team: attributionTeam(user, body.team),
       // ⚠️ เลิกเขียน `note` (มติผู้ใช้ 2026-08-03: "ไม่ต้องมีหมายเหตุ") — คำร้องมี
       // "รายละเอียด" (body) ที่ทำงานเดียวกันอยู่แล้ว สองช่องข้อความอิสระบนเรื่อง
       // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่

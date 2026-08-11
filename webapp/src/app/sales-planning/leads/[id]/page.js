@@ -15,7 +15,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
-import { useRole, useTeam } from "@/lib/roleContext";
+import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
@@ -69,6 +69,7 @@ export default function LeadDetailPage() {
      (role/team มาจาก context ส่วน id ต้องถามเพราะ context ไม่ได้เก็บไว้) */
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const canCreateDeals = canCreateDealFromLead(role);
   const [meId, setMeId] = useState(null);
   /* รายชื่อผู้ใช้สองหน้าที่ — ชุดเดียวกับหน้ารายการลีด (ห้ามแยกแหล่ง):
@@ -92,7 +93,7 @@ export default function LeadDetailPage() {
       .then((me) => setMeId(me?.id || null)).catch(() => setMeId(null));
   }, []);
 
-  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  const viewer = useMemo(() => ({ role, id: meId, team, teams }), [role, meId, team, teams]);
   /* ผู้รับผิดชอบ (AE) ของดีลที่จะเปิดจากลีดนี้ — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook
      ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
   const dealOwners = useDealOwners(meId);

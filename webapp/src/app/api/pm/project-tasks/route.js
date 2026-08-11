@@ -41,7 +41,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // Cross-project list — limit to the team's projects when team-scoped.
   if (viewScope(user?.role) === 'team') {
-    const ids = await teamProjectIds(supabase, user?.team);
+    const ids = await teamProjectIds(supabase, user?.teams);
     if (!ids.length) return ok([]);
     const { data, error } = await supabase
       .from('project_tasks')

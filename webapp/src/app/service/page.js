@@ -31,7 +31,7 @@ import {
   todayByTechnician,
 } from "@/lib/service/overview";
 import { canEditService } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 
@@ -60,8 +60,9 @@ export default function ServiceOverviewPage() {
   const router = useRouter();
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [visits, setVisits] = useState([]);
   const [visitSites, setVisitSites] = useState([]);

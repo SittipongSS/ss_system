@@ -1,6 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { isSuperuser } from '@/lib/permissions';
+import { hasTeam, isSuperuser, primaryTeam } from '@/lib/permissions';
 import { canEditSalesTarget, inSalesEditScope, normalizeTargetPeriod, toMoney } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
   // Non-superuser cannot move a target to another team.
   if ('team' in body) {
-    patch.team = isSuperuser(user.role) ? (body.team || null) : (user.team || null);
+    // ย้ายเป้าไปทีมอื่นไม่ได้ — แต่คนอยู่หลายทีมย้ายระหว่าง **ทีมของตัวเอง** ได้
+    patch.team = isSuperuser(user.role) ? (body.team || null)
+      : (hasTeam(user, body.team) ? body.team : primaryTeam(user));
   }
   if ('targetAmount' in body) patch.targetAmount = toMoney(body.targetAmount);
 

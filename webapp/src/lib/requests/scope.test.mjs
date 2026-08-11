@@ -33,13 +33,21 @@ test('⭐ สิทธิ์ไม่พอให้ **ถอยลงมา ไ
 
 test('⚠️ ตัวกรองต้องแคบเสมอ — ไม่มีทางหลุดเป็น "ไม่กรอง" นอกจาก all', () => {
   assert.equal(scopeFilter(boss, 'all'), null);
-  assert.deepEqual(scopeFilter(ae, 'team'), { team: 'KA' });
+  assert.deepEqual(scopeFilter(ae, 'team'), { team: ['KA'] });
   assert.deepEqual(scopeFilter(ae, 'mine'), { requestedById: 'u-ae' });
   // ไม่มีทีม + ขอ team → ถอยเป็นของตัวเอง **ไม่ใช่คืน null** (null = เห็นทั้งระบบ)
   assert.deepEqual(scopeFilter(loner, 'team'), { requestedById: 'u-rd' });
   // ผู้ใช้หาย (session ขาด) ต้องไม่กลายเป็นเห็นทุกอย่าง
   assert.deepEqual(scopeFilter(null, 'mine'), { requestedById: '—' });
   assert.deepEqual(scopeFilter(null, 'team'), { requestedById: '—' });
+});
+
+// คนหนึ่งคนอยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11) — คิว "ทีม" ต้องรวมทุกทีมที่สังกัด
+// ไม่ใช่แค่ทีมหลัก ไม่งั้นคำร้องของอีกทีมหายจากคิวทั้งที่เจ้าตัวเป็นคนดูแลอยู่
+test('อยู่หลายทีม — คิวทีมรวมทุกทีมที่สังกัด', () => {
+  const dual = { id: 'u-dual', role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] };
+  assert.equal(canUseScope(dual, 'team'), true);
+  assert.deepEqual(scopeFilter(dual, 'team'), { team: ['ODM', 'SV'] });
 });
 
 test('ชุดขอบเขตตรงกับที่ตัวสลับกลางของสายงานขายใช้อยู่', () => {

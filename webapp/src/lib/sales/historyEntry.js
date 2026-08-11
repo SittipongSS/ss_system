@@ -7,6 +7,8 @@
 // จึงคุมด้วยกติกาว่า **ทุกช่องเป็นทางเลือก ปล่อยว่างได้ ไม่กรอก = ไม่มีแถวในฐานข้อมูล**
 // (ต่างจากใส่ 0 ซึ่งแปลว่า "ขายไม่ได้เลย") — คนกรอกเลือกเองว่าปีไหนแยกได้จริง
 
+import { hasTeam } from '@/lib/permissions';
+
 export const MONTHS_IN_YEAR = 12;
 
 // ปีปัจจุบัน + ย้อนหลัง 3 ปี — ต้องมีปีปัจจุบันด้วยเพราะเดือนต้นปีที่ยังไม่ได้ใช้ระบบ
@@ -79,7 +81,8 @@ export function buildHistoryRows({ teams = [], users = [], savedRows = [], owner
 
     const members = new Set();
     for (const user of users) {
-      if (!ownerRoles.includes(user.role) || user.team !== team) continue;
+      // คนอยู่หลายทีมได้ ⇒ โผล่ในสรุปของทุกทีมที่สังกัด
+      if (!ownerRoles.includes(user.role) || !hasTeam(user, team)) continue;
       members.add(user.id);
       rows.push({ key: historyRowKey({ team, ownerId: user.id }), scope: 'owner', team, ownerId: user.id, ownerName: user.name || user.id });
     }

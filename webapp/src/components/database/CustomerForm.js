@@ -57,6 +57,10 @@ export default function CustomerForm({
   onForm,                 // (patch) => void
   showTeams = false,      // true = โหมดแก้ (ช่องทีมดูแล)
   canEditTeams = false,   // superuser เท่านั้น (API บังคับซ้ำอยู่แล้ว)
+  /* ทีมที่ *เลือกได้* — superuser ไม่ส่งมา = เลือกได้ทุกทีม · คนสายทีมที่อยู่หลายทีม
+     ส่งทีมของตัวเองมา แล้วเลือกได้ว่าลูกค้ารายนี้ให้ทีมไหนดูแล (มติ 2026-08-11)
+     ⚠️ ด่านจริงอยู่ที่ API — ที่นี่แค่ไม่กางตัวเลือกที่กดไปก็โดนตีกลับ */
+  teamOptions = TEAMS,
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
 
@@ -81,7 +85,7 @@ export default function CustomerForm({
             <div className="form-group col-span-2">
               <label>ทีมดูแล {!canEditTeams && <span className="text-[11px] font-normal text-[var(--text-3)]">(เฉพาะหัวหน้า/แอดมินแก้ได้)</span>}</label>
               <div className="flex flex-wrap gap-2">
-                {TEAMS.map((t) => {
+                {teamOptions.map((t) => {
                   const on = (form.teams || []).includes(t);
                   return (
                     <button

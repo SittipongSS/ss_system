@@ -146,3 +146,17 @@ test('ไม่ส่งลีดมา = ข้ามด่านทีม (ผ
   const supabase = stub({ 'U-1': authUser({ app_metadata: { role: 'ae', team: 'KA' } }) });
   assert.equal((await validateLeadAssignee(supabase, 'U-1')).ok, true);
 });
+
+/* ── คนรับอยู่หลายทีม (มติ 2026-08-11) ────────────────────────────────────
+   ด่านนี้เคยเทียบ **ทีมหลัก** ของคนรับกับทีมของลีดตรง ๆ ⇒ AE ที่อยู่ ODM+SV
+   (ทีมหลัก ODM) รับลีดของ SV ไม่ได้เลย ทั้งที่ canWorkLead ให้ทำงานใบนั้นแล้ว —
+   ฟีเจอร์ "อยู่หลายทีม" จึงถูกด่านนี้ตัดทิ้งครึ่งหนึ่ง */
+test('ทีมรองก็รับลีดได้ — ด่านถามว่า "อยู่ทีมของลีดไหม" ไม่ใช่ "ทีมหลักตรงไหม"', async () => {
+  const dual = authUser({ app_metadata: { role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] } });
+  assert.equal((await validateLeadAssignee(stub({ 'U-1': dual }), 'U-1', { team: 'SV' })).ok, true);
+  assert.equal((await validateLeadAssignee(stub({ 'U-1': dual }), 'U-1', { team: 'ODM' })).ok, true);
+  // ทีมที่ไม่ได้สังกัดยังกันเหมือนเดิม
+  const blocked = await validateLeadAssignee(stub({ 'U-1': dual }), 'U-1', { team: 'KA' });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.error, /ตีกลับ/);
+});

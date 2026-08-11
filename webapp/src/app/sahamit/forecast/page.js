@@ -11,6 +11,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
+import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
@@ -37,7 +38,7 @@ function ForecastPageInner() {
   const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
   // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
-  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && u.team === "KA"), [assignables]);
+  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && userTeams(u).includes("KA")), [assignables]);
   const canEdit = useCan("sahamit:edit");
   const router = useRouter();
   const searchParams = useSearchParams();

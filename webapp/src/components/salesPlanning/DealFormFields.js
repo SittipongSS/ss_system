@@ -4,6 +4,7 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import OptionTiles from "@/components/ui/OptionTiles";
 import StageSteps from "@/components/ui/StageSteps";
 import ChoiceChips from "@/components/ui/ChoiceChips";
+import { TEAM_LABELS } from "@/lib/permissions";
 
 // ชุดช่องกรอกดีลมาตรฐาน — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล / โมดัลหน้าดีล /
 // ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากัน (กฎ AGENTS.md)
@@ -16,6 +17,8 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 //   → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
 //   → ผู้รับผิดชอบ (AE) **ล่างสุด บังคับเสมอ**: ae/senior_ae = ล็อกชื่อตัวเอง
 //     (ดีลเป็นหน้าที่ของ AE/Senior AE) · ac/ae_supervisor/admin = ต้องเลือก
+//   → ทีมเจ้าของงาน — โผล่เฉพาะตอนเจ้าของที่เลือกอยู่หลายทีม (มติ 2026-08-11)
+//     เป็นคำถามที่เกิดจากคำตอบของช่องผู้รับผิดชอบ จึงอยู่ใต้มันเสมอ
 //
 // ช่องบังคับ (มติผู้ใช้ 2026-08-08 รอบสาม): **ทุกช่อง ยกเว้น** ลูกค้า · แบรนด์ ·
 // โครงการ · หมวดสินค้า · รายละเอียด — ด่านจริงอยู่ที่ submit ของ DealCreateModal
@@ -200,6 +203,31 @@ export default function DealFormFields({
           <small>ดีลเป็นหน้าที่ของ AE / Senior AE — เลือกได้เฉพาะคนในทีมของคุณ</small>
         </>
       )}
+    </div>
+  );
+
+  /* ทีมเจ้าของงาน — ถามเฉพาะตอนที่ **เจ้าของดีล** อยู่หลายทีม (มติผู้ใช้ 2026-08-11)
+     ทีมของดีลตามเจ้าของเสมอ ไม่ใช่ตามคนกด ⇒ ตัวเลือกมาจากทีมของ AE ที่ถูกเลือก
+     ไม่ใช่ทีมของคนเปิดฟอร์ม · เจ้าของอยู่ทีมเดียว = ไม่มีคำถาม ช่องไม่โผล่
+     ⚠️ วางใต้ช่องผู้รับผิดชอบเสมอ — มันเป็นคำถามที่ *เกิดจาก* คำตอบของช่องนั้น
+     (กติกาลำดับช่องข้อ 3 ใน docs/form-design-rules.md) */
+  const ownerPick = lockedOwner || owners.find((o) => o.id === form.ownerId) || null;
+  const ownerTeams = ownerPick?.teams || [];
+  /* ⚠️ ค่าที่โชว์ตอนยังไม่ได้เลือก/เลือกค้างจากเจ้าของคนก่อน ต้องเป็น **ทีมหลักของเจ้าของ**
+     ให้ตรงกับที่ server จะบันทึกจริง (attributionTeam) — ถ้าถอยไป `ownerTeams[0]` เฉย ๆ
+     ชิปจะชี้ทีมหนึ่งแต่ดีลไปลงอีกทีมเงียบ ๆ เพราะลำดับใน teams[] ไม่ใช่ลำดับความสำคัญ */
+  const teamValue = ownerTeams.includes(form.team) ? form.team : (ownerPick?.team || ownerTeams[0]);
+  const teamField = ownerTeams.length > 1 && (
+    <div className="deal-field" key="team">
+      <span className="deal-field-label">ทีมเจ้าของงาน <span className="required-mark">*</span></span>
+      <ChoiceChips
+        ariaLabel="ทีมเจ้าของงาน"
+        value={teamValue}
+        onChange={set("team")}
+        disabled={alreadyWon}
+        options={ownerTeams.map((t) => ({ value: t, label: TEAM_LABELS[t] || t }))}
+      />
+      <small>ยอดขายและเป้าของดีลใบนี้จะถูกนับเข้าทีมที่เลือก</small>
     </div>
   );
 
@@ -394,6 +422,7 @@ export default function DealFormFields({
       {pairRows([startField, endField])}
       {pairRows([notesField])}
       {pairRows([ownerField])}
+      {pairRows([teamField])}
     </>
   );
 }

@@ -3,8 +3,8 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { canApproveMasterData, isSuperuser, TEAMS } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
@@ -36,11 +36,12 @@ export default function CustomerDirectory() {
   const role = useRole();
   const superuser = isSuperuser(role);
   const myTeam = useTeam();
+  const myTeams = useTeams();
   // May this user approve THIS record? Senior AE only own team; supervisor/admin
   // any team. Customers are a central registry (all teams shown in manage view),
   // so the team check matters here — hide the buttons for other teams' records.
   const canApproveRow = (rec) =>
-    canApproveMasterData(role) && (isSuperuser(role) || teamsOf(rec).includes(myTeam));
+    canApproveMasterData(role) && (isSuperuser(role) || teamsOf(rec).some((t) => myTeams.includes(t)));
   const [customers, setCustomers] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -384,14 +385,17 @@ export default function CustomerDirectory() {
       >
         <form onSubmit={handleSubmit}>
           {/* ฟอร์มเดียวกับโมดัลแก้ไข (หน้า [id]) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
-              ช่อง "ทีมดูแล" โชว์เฉพาะ superuser (admin/AE Sup) เพราะพวกเขาไม่มีทีม
-              ของตัวเอง จึงต้องเลือกทีมดูแลตอนสร้าง ไม่งั้นลูกค้าไร้ทีม (มติ 2026-07-21);
-              team-role อื่น server ตั้งทีมให้จากทีมตัวเองอัตโนมัติ */}
+              ช่อง "ทีมดูแล" โชว์เมื่อคนสร้าง **มีอะไรให้เลือกจริง**:
+                • superuser (admin/AE Sup) — ไม่มีทีมของตัวเอง ต้องเลือกเอง ไม่งั้นลูกค้า
+                  ไร้ทีม (มติ 2026-07-21)
+                • คนที่อยู่หลายทีม — เลือกได้ว่าลูกค้ารายนี้ให้ทีมไหนดูแล (มติ 2026-08-11)
+              คนที่อยู่ทีมเดียวไม่เห็นช่องนี้ — server ตั้งทีมให้จากทีมตัวเองเหมือนเดิม */}
           <CustomerForm
             form={formData}
             onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
-            showTeams={superuser}
-            canEditTeams={superuser}
+            showTeams={superuser || myTeams.length > 1}
+            canEditTeams={superuser || myTeams.length > 1}
+            teamOptions={superuser ? TEAMS : myTeams}
           />
           <div className="form-action-bar">
             <button

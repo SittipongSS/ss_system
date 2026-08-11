@@ -34,7 +34,7 @@ import CostingRequestForm, {
 } from "@/components/costing/CostingRequestForm";
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import { kindForMaterial } from "@/lib/master/requestTypes";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
@@ -76,6 +76,7 @@ export default function CostingDetailPage() {
   const router = useRouter();
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
 
   const [request, setRequest] = useState(null);
@@ -136,12 +137,12 @@ export default function CostingDetailPage() {
   // ผู้ใช้ปัจจุบันในรูปที่ predicate ฝั่ง lib ต้องการ (id มาจาก requestedById ไม่ได้ —
   // ใช้ role/team/department ที่ context ให้มา; server กันซ้ำอยู่แล้ว)
   const canEdit = useMemo(
-    () => !!request && canEditCostingRequest({ role, team, department, id: request.requestedById }, request),
-    [request, role, team, department],
+    () => !!request && canEditCostingRequest({ role, team, teams, department, id: request.requestedById }, request),
+    [request, role, team, teams, department],
   );
   const canFeed = useMemo(
-    () => !!request && canFeedCostFromRequest({ role, team, department, id: request.requestedById }, request),
-    [request, role, team, department],
+    () => !!request && canFeedCostFromRequest({ role, team, teams, department, id: request.requestedById }, request),
+    [request, role, team, teams, department],
   );
 
   // รายการที่มีราคาที่ฝ่ายอื่นตอบแล้ว หรือมีราคาอนุมัติแล้ว = ลบ/เปลี่ยนประเภทไม่ได้
@@ -152,7 +153,7 @@ export default function CostingDetailPage() {
       .map((item) => item.id),
   ), [request]);
 
-  const me = useMemo(() => ({ role, team, department }), [role, team, department]);
+  const me = useMemo(() => ({ role, team, teams, department }), [role, team, teams, department]);
 
   // เรียก endpoint แล้วโหลดใบใหม่ — ใช้ร่วมทุก action (ส่ง/ตอบราคา/อนุมัติ)
   const runAction = useCallback(async (path, init, successMsg) => {
@@ -352,7 +353,7 @@ export default function CostingDetailPage() {
   // (บทเรียนจาก QT/SO: ปุ่มโผล่แต่ API ปฏิเสธ หรือกลับกัน). รูปแบบ user เดียวกับ
   // canEdit/canFeed ข้างบน — roleContext ไม่มี id ให้ ด่านตัวจริงจึงอยู่ที่ route เสมอ
   const canWithdraw = canWithdrawCostingRequest(
-    { role, team, department, id: request.requestedById },
+    { role, team, teams, department, id: request.requestedById },
     request,
   );
   const documentPrimaryAction = canEdit && editableStatus

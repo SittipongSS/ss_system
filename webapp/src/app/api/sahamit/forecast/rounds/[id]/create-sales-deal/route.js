@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { userTeams } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
@@ -50,7 +51,8 @@ export async function POST(request, { params }) {
   const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
   const owner = ownerRes?.user;
   if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
-  if (owner.app_metadata?.role !== 'ae' || owner.app_metadata?.team !== 'KA') {
+  // อยู่ KA เป็นทีมรองก็ถือดีลสหมิตรได้ — ด่านนี้ถามว่า "อยู่ KA ไหม" ไม่ใช่ "KA เป็นทีมหลักไหม"
+  if (owner.app_metadata?.role !== 'ae' || !userTeams(owner.app_metadata).includes('KA')) {
     return Response.json({ error: 'ผู้ดูแลต้องเป็น AE ทีม KA เท่านั้น' }, { status: 400 });
   }
   const ownerId = owner.id;

@@ -9,8 +9,8 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, Che
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
+import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { canSeeDealKpi, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
@@ -27,6 +27,8 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import MenuSelect from "@/components/ui/MenuSelect";
 import Segmented from "@/components/ui/Segmented";
+import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
+import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import Button from "@/components/ui/Button";
 import ForecastMonthCell from "@/components/salesPlanning/ForecastMonthCell";
 import StageCell from "@/components/salesPlanning/StageCell";
@@ -81,6 +83,7 @@ export default function SalesPlanningPipelinePage() {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
+  const teams = useTeams();
   /* ⚠️ ตั้งต้นที่ขอบเขต **กว้างสุด** ไม่ใช่ "ของฉัน" — เดิมตั้งต้นที่ตัวแรกของลิสต์
      ซึ่งคือ mine เสมอ ⇒ แอดมิน/หัวหน้าฝ่ายที่ไม่ได้เป็นเจ้าของดีลสักใบ เปิดหน้ามาเจอ
      KPI เป็น 0 ทุกช่องทั้งที่ตารางข้างล่างมีดีลเต็มไปหมด (null = ยังไม่ได้เลือกเอง) */
@@ -96,8 +99,10 @@ export default function SalesPlanningPipelinePage() {
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
   }, []);
-  const me = { id: meId, team };
-  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  const me = useMemo(() => ({ id: meId, team, teams }), [meId, team, teams]);
+  // อยู่หลายทีม → เลือกได้ว่าขอบเขต "ทีม" จะรวมทีมไหนบ้าง
+  const teamFilter = useMyTeamsFilter();
+  const viewer = useMemo(() => ({ role, id: meId, team, teams }), [role, meId, team, teams]);
   /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" มาจากไฟล์เดียวกับที่หน้ารายละเอียดจะใช้ —
      ของเดิมหน้านี้เช็คเงื่อนไขเองในแต่ละปุ่ม แล้วหลวมกว่า API อยู่ 3 จุด */
   /* ผู้รับผิดชอบ (AE) — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook ที่เดียว (3 หน้าใช้ร่วมกัน) */
@@ -212,9 +217,11 @@ export default function SalesPlanningPipelinePage() {
      ตอนนี้ทั้ง KPI และตารางใช้ตัวเดียวกัน (กติกาเดียวกับคิวลีด) */
   const inScopeDeal = useCallback((deal) => {
     if (activeScope === "mine") return !!me?.id && deal.ownerId === me.id;
-    if (activeScope === "team") return !!me?.team && deal.team === me.team;
+    // "ทีมของฉัน" = ทุกทีมที่ฉันสังกัด — คนอยู่หลายทีมได้ ถ้าเทียบทีมหลักตัวเดียว
+    // ดีลของอีกทีมจะหายจากตารางทั้งที่สิทธิ์ฝั่ง API เปิดให้เห็น
+    if (activeScope === "team") return hasTeam(me, deal.team) && teamFilter.matches(deal.team);
     return true;
-  }, [activeScope, me?.id, me?.team]);
+  }, [activeScope, me, teamFilter]);
 
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -338,6 +345,8 @@ export default function SalesPlanningPipelinePage() {
       lockedProjectId: deal.projectId || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
+      // ทีมปัจจุบันของดีล — เจ้าของที่อยู่หลายทีมย้ายใบนี้ระหว่างทีมตัวเองได้จากช่องนี้
+      team: deal.team || "",
     });
     setDealModal(true);
   };
@@ -739,6 +748,9 @@ export default function SalesPlanningPipelinePage() {
                     onChange={setScope}
                     options={allowedScopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
                   />
+                )}
+                {activeScope === "team" && (
+                  <MyTeamsFilter teams={teamFilter.teams} selected={teamFilter.selected} onChange={teamFilter.setSelected} />
                 )}
                 {/* ?tab=performance = "ผลงานขาย" ซึ่งเป็นที่อยู่ของ KPI ดีลฉบับเต็ม
                     (แท็บ overview เดิมถูกยุบเข้าไปแล้ว — ดูหัวไฟล์ sa/dashboard) */}

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canApproveMasterData, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
+import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
@@ -43,10 +43,11 @@ export async function GET(request) {
   // team can see. A team-scoped user without a team can't be scoped → show all.
   if (!scopeAll) {
     const user = await getCurrentUser();
-    if (viewScopeUser(user) === 'team' && user?.team) {
+    // คนอยู่หลายทีมได้ ⇒ เห็นลูกค้าของทุกทีมที่สังกัด (กติกาเดียวกับ inScope)
+    if (viewScopeUser(user) === 'team' && userTeams(user).length) {
       rows = rows.filter((c) => {
-        const teams = Array.isArray(c.teams) && c.teams.length ? c.teams : (c.team ? [c.team] : []);
-        return teams.length === 0 || teams.includes(user.team);
+        const teams = caretakerTeamsOf(c);
+        return teams.length === 0 || hasTeam(user, teams);
       });
     }
   }
@@ -79,14 +80,23 @@ export async function POST(request) {
   const contacts = Array.isArray(body.contacts) ? body.contacts : [];
   const primary = contacts[0] || {};
 
-  // ทีมดูแล (migration 0037): team-role สร้าง = ตั้งเป็นทีมตัวเองอัตโนมัติ. superuser
-  // (admin / ae_supervisor) ไม่มีทีมของตัวเอง จึงเลือกทีมดูแลจากฟอร์มได้ (mirror การ
-  // ย้ายทีมใน PATCH ที่เปิดเฉพาะ superuser) — ถ้าไม่เลือก = ไร้ทีม = "ส่วนกลาง" ทุกทีม
-  // แก้ได้ (canEditRecord). สำคัญเพราะ edit ผูกกับ teams[] แล้ว (มติ 2026-07-21): ลูกค้า
-  // ที่ superuser สร้างโดยไม่ระบุทีมจะกลายเป็นกำพร้าถ้าไม่มี fallback นี้.
-  const pickedTeams = isSuperuser(user?.role) && Array.isArray(body.teams)
-    ? body.teams.filter((t) => TEAMS.includes(t))
-    : (user?.team ? [user.team] : []);
+  /* ทีมดูแล (migration 0037) — ไม่เลือก = ไร้ทีม = "ส่วนกลาง" ทุกทีมแก้ได้
+     (canEditRecord) · fallback ทีมหลักสำคัญเพราะ edit ผูกกับ teams[] แล้ว
+     (มติ 2026-07-21): ลูกค้าที่สร้างโดยไม่ระบุทีมจะกลายเป็นกำพร้าถ้าไม่มี fallback
+
+     คนสร้างเลือกได้ แต่ **เลือกได้เฉพาะทีมที่ตัวเองสังกัด** (มติ 2026-08-11)
+     ⚠️ ไม่ใช่ "ทุกทีมของเขา" โดยอัตโนมัติ — ลูกค้าหนึ่งรายจะถูกยกให้สองทีมดูแลได้ก็ต่อเมื่อ
+     มีคนสั่งเท่านั้น · ไม่ส่งมา = ทีมหลัก (พฤติกรรมเดิมของคนอยู่ทีมเดียว)
+     superuser (admin/AE Sup) ไม่มีทีมของตัวเอง จึงเลือกได้ทุกทีมเหมือนเดิม
+     ⚠️ ห้ามเชื่อ body.teams ตรง ๆ สำหรับคนสายทีม — ไม่งั้นยิง API ตรงแล้วยกลูกค้า
+     ให้ทีมที่ตัวเองไม่ได้อยู่ได้ */
+  const requestedTeams = Array.isArray(body.teams) ? body.teams.filter((t) => TEAMS.includes(t)) : [];
+  const mine = userTeams(user);
+  const pickedTeams = isSuperuser(user?.role)
+    ? requestedTeams
+    : (requestedTeams.filter((t) => mine.includes(t)).length
+      ? requestedTeams.filter((t) => mine.includes(t))
+      : (primaryTeam(user) ? [primaryTeam(user)] : []));
 
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง — ช่องเดี่ยวเดิมเป็นกระจกของที่อยู่หลัก
   // ผู้เรียกที่ยังส่งแบบเก่า (address/shippingAddress) แปลงขึ้นลิสต์ให้

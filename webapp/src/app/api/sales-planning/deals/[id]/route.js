@@ -90,7 +90,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      คนที่แตะดีลของตัวเองไม่ได้ก็ได้ (ด่าน inSalesEditScope ข้างล่างตรวจแค่ว่า **ผู้แก้**
      ยังเห็นแถวหลังแก้อยู่ไหม ไม่ได้ตรวจว่าผู้รับเป็นใคร) */
   if ('ownerId' in body) {
-    const checked = await validateDealOwner(supabase, body.ownerId, user);
+    const checked = await validateDealOwner(supabase, body.ownerId, user, body.team);
     if (!checked.ok) return badRequest(checked.error);
     patch.ownerId = checked.ownerId;
     patch.ownerName = checked.ownerName;

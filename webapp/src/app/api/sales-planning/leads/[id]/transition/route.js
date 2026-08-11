@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { can, isSuperuser } from '@/lib/permissions';
+import { can, hasTeam, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
   meetingTimesSinceBounce, pickNextMeetingAt,
@@ -61,7 +61,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const role = user.role;
   const superuser = isSuperuser(role);
-  const inTeam = (role === 'senior_ae' || role === 'ac') && lead.team === user.team;
+  const inTeam = (role === 'senior_ae' || role === 'ac') && hasTeam(user, lead.team);
   const isAssignee = role === 'ae' && lead.assigneeId === user.id;
   // สองระดับ (มติผู้ใช้ 2026-07-21): ปุ่มกำกับดูแล (ตีกลับ/ไม่ไปต่อ) = ทีม + supervisor;
   // ขั้นทำงาน (ติดต่อ/นัด) = ทีมเจ้าของงานเท่านั้น — supervisor จบงานที่คัดกรอง

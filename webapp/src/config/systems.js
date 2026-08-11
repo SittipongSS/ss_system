@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService } from '@/lib/permissions';
+import { canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -96,7 +96,7 @@ export const SYSTEM_CATALOG = [
     label: 'งานสหมิตร',
     description: 'ติดตาม Forecast, PO, การกระทบยอด และแผนวัสดุของงานสหมิตร',
     icon: LineChart,
-    isVisible: (user) => canAccessSahamit(user?.role, user?.team),
+    isVisible: (user) => canAccessSahamit(user?.role, userTeams(user)),
     landing: () => '/sahamit',
   },
   {

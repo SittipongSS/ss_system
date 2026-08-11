@@ -11,26 +11,42 @@
 //
 // `tone` ต่อตัวเลือก: "amber" | "blue" | "teal" — ชุดสีเดียวกับ badge
 // (เช่น DEAL_TYPE_COLORS) · ไม่ส่ง = โทนกลาง
+//
+// `multiple` = ติ๊กได้หลายอัน (`value` เป็นอาร์เรย์ · `onChange` คืนอาร์เรย์ใหม่)
+// ใช้กับชุดตายตัวที่ตอบได้มากกว่าหนึ่ง เช่น **ทีมที่ผู้ใช้สังกัด** (ODM/KA/SV) —
+// คนเดียวอยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11) · โหมดนี้เป็น checkbox ไม่ใช่ radio
+// จึงคืนลำดับตาม `options` เสมอ ไม่ใช่ตามลำดับที่กด — ป้ายบนหน้าจอจะได้ไม่สลับที่
 export default function OptionTiles({
   value,
   onChange,
   options = [],   // [{ value, label, description?, tone?, disabled? }]
+  multiple = false,
   disabled = false,
   ariaLabel,
 }) {
+  const selected = multiple ? (Array.isArray(value) ? value : []) : null;
+  const isOn = (option) => (multiple ? selected.includes(option.value) : value === option.value);
+  const pick = (option) => {
+    if (!multiple) return onChange?.(option.value);
+    const next = selected.includes(option.value)
+      ? selected.filter((v) => v !== option.value)
+      : [...selected, option.value];
+    onChange?.(options.map((o) => o.value).filter((v) => next.includes(v)));
+  };
+
   return (
-    <div className="option-tiles" role="radiogroup" aria-label={ariaLabel}>
+    <div className="option-tiles" role={multiple ? "group" : "radiogroup"} aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          data-on={value === option.value ? "1" : undefined}
+          role={multiple ? "checkbox" : "radio"}
+          aria-checked={isOn(option)}
+          data-on={isOn(option) ? "1" : undefined}
           data-tone={option.tone}
           className="option-tile"
           disabled={disabled || option.disabled}
-          onClick={() => onChange?.(option.value)}
+          onClick={() => pick(option)}
         >
           <span className="option-tile-title">{option.label}</span>
           {option.description ? (

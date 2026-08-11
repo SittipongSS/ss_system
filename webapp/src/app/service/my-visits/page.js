@@ -17,7 +17,7 @@ import Workspace from "@/components/ui/Workspace";
 import CloseVisitSheet from "@/components/service/CloseVisitSheet";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canEditService } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
 import { VISIT_SCOPES, VISIT_SCOPE_LABELS, groupVisits, openCount } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
@@ -34,8 +34,9 @@ const SECTIONS = [
 export default function MyVisitsPage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [scope, setScope] = useState("mine");
   const [visits, setVisits] = useState([]);

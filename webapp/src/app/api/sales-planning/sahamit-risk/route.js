@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { canAccessSahamit } from '@/lib/permissions';
+import { canAccessSahamit, userTeams } from '@/lib/permissions';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { buildSahamitReverseRiskRows } from '@/lib/salesPlanningReverse';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
@@ -10,7 +10,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
-  if (!canAccessSahamit(user.role, user.team)) {
+  if (!canAccessSahamit(user.role, userTeams(user))) {
     return ok({ enabled: false, rows: [], summary: { total: 0, risk: 0, dueThisMonth: 0 } });
   }
 

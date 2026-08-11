@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps } from '@/lib/permissions';
+import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps, userTeams, resolveTeamAssignment } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
 
@@ -41,7 +41,10 @@ export async function GET() {
         // เบอร์โทรผู้ใช้ — ใช้แสดงในเอกสาร ISO (เบอร์มือถือของ AE ผู้ดูแล) ฯลฯ.
         phone: u.user_metadata?.phone || '',
         role: u.app_metadata?.role || null,
+        // team = ทีมหลัก (ยอดของใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
+        // บัญชีเก่าที่ยังไม่มี teams ถอยไปใช้ [team] เอง — ไม่ต้องแบ็คฟิล
         team: u.app_metadata?.team || null,
+        teams: userTeams({ team: u.app_metadata?.team, teams: u.app_metadata?.teams }),
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(u.app_metadata?.role) || null,
         // Per-user capability grants (e.g. an SA granted the LG legal:approve).
         extraCaps: sanitizeExtraCaps(u.app_metadata?.extraCaps),
@@ -70,11 +73,12 @@ export async function POST(request) {
   const name = `${firstName} ${lastName}`.trim();
   const phone = (body.phone || '').trim();
   const role = body.role;
-  const team = body.team || null;
+  // อยู่ได้หลายทีม — teams คือสังกัดทั้งหมด, team คือทีมหลักที่ใช้ stamp ของใหม่
+  const { team, teams } = resolveTeamAssignment(role, { team: body.team || null, teams: body.teams });
 
   if (!email || !password) return Response.json({ error: 'ต้องระบุอีเมลและรหัสผ่าน' }, { status: 400 });
   if (password.length < 6) return Response.json({ error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
-  const invalid = validateIdentity(role, team, body.department);
+  const invalid = validateIdentity(role, teams, body.department);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
   const department = normalizeDepartment(body.department) || departmentFor(role);
   // Per-user capability grants — whitelisted (GRANTABLE_CAPS) so a create call
@@ -89,7 +93,7 @@ export async function POST(request) {
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
-    app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}), ...(extraCaps.length ? { extraCaps } : {}) },
+    app_metadata: { role, department, must_change_password: true, ...(team ? { team, teams } : {}), ...(extraCaps.length ? { extraCaps } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   invalidateCache('assignable-users'); // dropdown ผู้รับผิดชอบเห็นคนใหม่ทันที

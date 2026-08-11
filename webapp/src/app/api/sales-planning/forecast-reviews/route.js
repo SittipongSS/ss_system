@@ -1,6 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { userTeams } from '@/lib/permissions';
 import {
   canReviewSalesForecast,
   canViewSalesPlanning,
@@ -15,8 +16,14 @@ export const dynamic = 'force-dynamic';
 
 const REVIEW_STATUSES = new Set(['draft', 'approved', 'rejected']);
 
+// รอบทบทวนหนึ่งใบ = หนึ่งทีม ⇒ ต้องได้ทีมเดียวเสมอ ไม่ใช่ชุดทีม
+// คนที่ scope 'team' และอยู่หลายทีม เลือกทีมที่จะทบทวนได้ ตราบใดที่เป็นทีมของตัวเอง
+// (ขอทีมที่ไม่ได้สังกัดมา = ถอยไปทีมหลัก ไม่ใช่ปฏิเสธ — ลิงก์ที่แชร์กันไว้จะได้ไม่พัง)
 function scopedTeam(user, requestedTeam) {
-  if (salesPlanningViewScope(user.role) === 'team') return user.team || null;
+  const mine = userTeams(user);
+  if (salesPlanningViewScope(user.role) === 'team') {
+    return mine.includes(requestedTeam) ? requestedTeam : (user.team || mine[0] || null);
+  }
   return requestedTeam || user.team || null;
 }
 

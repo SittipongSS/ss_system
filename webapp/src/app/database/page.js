@@ -10,7 +10,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import KpiCard from "@/components/ui/KpiCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { useApiList } from "@/lib/excise/useApiList";
-import { useRole, useTeam } from "@/lib/roleContext";
+import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
@@ -28,6 +28,7 @@ export default function DatabaseOverview() {
   const router = useRouter();
   const role = useRole();
   const myTeam = useTeam();
+  const myTeams = useTeams();
   const { data: rawProducts, loading: l1 } = useApiList("/api/master/products?manage=1");
   const { data: rawCustomers, loading: l2 } = useApiList("/api/master/customers?manage=1");
 
@@ -122,8 +123,9 @@ export default function DatabaseOverview() {
   const cStats = countOf(customers);
 
   const queue = useMemo(() => {
-    const canApproveProduct = (p) => canApprove && (isSuperuser(role) || p?.team === myTeam);
-    const canApproveCustomer = (c) => canApprove && (isSuperuser(role) || teamsOf(c).includes(myTeam));
+    // คนอยู่หลายทีมได้ ⇒ อนุมัติของทุกทีมที่ตัวเองสังกัด
+    const canApproveProduct = (p) => canApprove && (isSuperuser(role) || myTeams.includes(p?.team));
+    const canApproveCustomer = (c) => canApprove && (isSuperuser(role) || teamsOf(c).some((t) => myTeams.includes(t)));
     const q = [];
     products.filter((x) => approvalStatusOf(x) === "pending").forEach((x) => {
       const mine = canApproveProduct(x);
@@ -146,7 +148,7 @@ export default function DatabaseOverview() {
       });
     });
     return q;
-  }, [products, customers, canApprove, role, myTeam, router]);
+  }, [products, customers, canApprove, role, myTeams, router]);
 
   const toolbar = (
     <div className="toolbar">

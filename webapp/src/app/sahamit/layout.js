@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useRole, useTeam } from "@/lib/roleContext";
+import { useRole, useTeams } from "@/lib/roleContext";
 import { canAccessSahamit } from "@/lib/permissions";
 
 // Client-side guard for the whole SAHAMIT module. The proxy only gates by role
@@ -11,8 +11,8 @@ import { canAccessSahamit } from "@/lib/permissions";
 export default function SahamitLayout({ children }) {
   const router = useRouter();
   const role = useRole();
-  const team = useTeam();
-  const allowed = role ? canAccessSahamit(role, team) : null;
+  const teams = useTeams();
+  const allowed = role ? canAccessSahamit(role, teams) : null;
 
   useEffect(() => {
     if (role && allowed === false) router.replace("/home");

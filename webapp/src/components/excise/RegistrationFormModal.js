@@ -5,6 +5,8 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
+import TeamPickerField from "@/components/ui/TeamPickerField";
+import { useTeam, useTeams } from "@/lib/roleContext";
 
 // Create or edit an excise registration (master FG product × customer).
 // ลำดับกรอก = ลูกค้า → FG (มติผู้ใช้ 2026-07-22): ผู้ใช้คิดจาก "ขึ้นทะเบียนให้ลูกค้า
@@ -19,6 +21,13 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
   const editing = !!registration;
   const [customerId, setCustomerId] = useState("");
   const [productId, setProductId] = useState("");
+  /* ทีมเจ้าของทะเบียน — โผล่เฉพาะคนที่อยู่หลายทีม (มติ 2026-08-11)
+     ทะเบียนเข้าคิวภาษีของทีมไหน = ทีมนี้ · ตั้งต้นที่ทีมหลัก ให้ตรงกับที่ server
+     จะเติมให้เองเมื่อไม่ส่งค่ามา (attributionTeam) */
+  const myTeams = useTeams();
+  const myTeam = useTeam();
+  const [team, setTeam] = useState("");
+  const teamValue = myTeams.includes(team) ? team : (myTeam || myTeams[0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -80,7 +89,9 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
         {
           method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editing ? { productId, customerId } : { productId, customerId, assignee: userName }),
+          body: JSON.stringify(editing
+            ? { productId, customerId }
+            : { productId, customerId, assignee: userName, team: teamValue }),
         },
       );
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "บันทึกไม่สำเร็จ");
@@ -98,6 +109,17 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
     <Modal open={open} onClose={() => !busy && onClose()} title={editing ? "แก้ไขการขึ้นทะเบียน" : "สร้างทะเบียน (ร่าง)"} size="md">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
+          {!editing && (
+            <TeamPickerField
+              teams={myTeams}
+              value={teamValue}
+              onChange={setTeam}
+              disabled={busy}
+              className="form-group"
+              label="ทีมเจ้าของทะเบียน"
+              hint="ทะเบียนใบนี้จะเข้าคิวภาษีของทีมที่เลือก"
+            />
+          )}
           <div className="form-group">
             <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect

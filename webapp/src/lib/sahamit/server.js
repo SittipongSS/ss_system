@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canAccessSahamit } from '@/lib/permissions';
+import { canAccessSahamit, userTeams } from '@/lib/permissions';
 import { categoryOf } from '@/lib/master/categoryOf';
 import { brandLabel } from '@/lib/master/brands';
 
@@ -22,7 +22,7 @@ export const SAHAMIT_AR_CODE = 'AR-109';
 export async function getSahamitContext() {
   const user = await getCurrentUser();
   if (!user) return { ok: false, status: 401, error: 'unauthorized' };
-  if (!canAccessSahamit(user.role, user.team)) {
+  if (!canAccessSahamit(user.role, userTeams(user))) {
     return { ok: false, status: 403, error: 'forbidden' };
   }
 

@@ -16,17 +16,18 @@ import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 
 export default function ServiceSitesPage() {
   const role = useRole();
   const team = useTeam();
+  const teams = useTeams();
   const department = useDepartment();
   // ⚠️ cap อย่างเดียวไม่พอ — service:edit ถือกว้างทั้ง staff และ sales role
   // ฝ่าย TS / ทีม SV คือตัวกั้นจริง (เหมือนที่ server ทำใน requireService)
-  const canEdit = useMemo(() => canEditService({ role, team, department }), [role, team, department]);
+  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [sites, setSites] = useState([]);
   const [customers, setCustomers] = useState([]);

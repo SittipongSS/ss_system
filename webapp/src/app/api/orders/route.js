@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { caretakerTeamsOf, viewScopeUser } from '@/lib/permissions';
+import { caretakerTeamsOf, viewScopeUser, userTeams } from '@/lib/permissions';
+import { teamInClause } from '@/lib/teamScope';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
@@ -32,8 +33,8 @@ export async function GET(request) {
   // สร้าง เพราะ POST ตรึง team = user.team · (2) คนที่ scope 'team' แต่ไม่มีทีมจะได้
   // `team=eq.null` ซึ่ง PostgREST แปลเป็น `= NULL` = ไม่มีอะไรตรงเลย → 0 แถว (ต้อง is.null)
   // → scope ไม่ได้ ก็แสดงทั้งหมด
-  if (viewScopeUser(user) === 'team' && user?.team) {
-    query = query.or(`team.eq.${user.team},team.is.null`);
+  if (viewScopeUser(user) === 'team' && userTeams(user).length) {
+    query = query.or(`${teamInClause(user)},team.is.null`);
   }
 
   const { data, error } = await query;

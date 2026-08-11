@@ -15,9 +15,11 @@ import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import Button from "@/components/ui/Button";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
+import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
+import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
 import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest } from "@/lib/requests/queueBoard";
 import StartHereCard from "@/components/requests/StartHereCard";
@@ -49,9 +51,12 @@ export default function RequestsPage() {
   const role = useRole();
   const department = useDepartment();
   const team = useTeam();
+  const teams = useTeams();
+  // อยู่หลายทีม → เลือกได้ว่าคิว "ทีม" จะรวมทีมไหนบ้าง
+  const myTeams = useMyTeamsFilter();
   // ⚠️ `team` ต้องอยู่ในนี้ด้วย — `canUseScope` ตัดสิน "ทีม" จากมัน · ขาดไปแล้วปุ่ม
   // "ทีม" จะจางตลอดกาลสำหรับทุกคน ทั้งที่ server ยอมให้ใช้
-  const me = useMemo(() => ({ role, department, team }), [role, department, team]);
+  const me = useMemo(() => ({ role, department, team, teams }), [role, department, team, teams]);
   // filter ไม่ใช่ find — admin ตอบได้ทั้ง RD และ PC (isSuperuser ผ่านทุกฝ่าย)
   // ถ้าใช้ find คิวของ PC จะหายไปทั้งก้อนโดยไม่มีอะไรบอก
   // ⚠️ ห้ามสะกดรายชื่อฝ่ายที่นี่ — ฝ่ายที่สี่จะได้คิวว่างเปล่าโดยไม่มีใครรู้
@@ -67,7 +72,7 @@ export default function RequestsPage() {
 
   // สถานะร่วมของหัวการ์ดกับตาราง (ตัวสลับมุมมอง · ตัวกรองตัวเลข · ค้นหา)
   const board = useQueueBoard();
-  const [requests, setRequests] = useState([]);
+  const [rawRequests, setRequests] = useState([]);
   // ⚠️ เหลือ **ดีลอย่างเดียว** — ใช้เติมค่าตั้งต้นให้ปุ่ม "เปิดคำร้อง" ตอนมาจากหน้าดีล
   // (`?dealId=`) · ทะเบียนที่เหลือเคยโหลดไว้ส่งให้ `RequestQueuePanel` ซึ่ง **ไม่เคย
   // อ่านมันเลย** ⇒ 8 endpoint ต่อการเปิดคิวหนึ่งครั้ง โดยไม่มีอะไรบนจอเปลี่ยน
@@ -122,6 +127,13 @@ export default function RequestsPage() {
       .then((r) => r.json()).then((d) => setDeals(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
+  /* ⚠️ ทุกอย่างท้ายน้ำต้องอ่านจาก `requests` ตัวนี้ตัวเดียว — ตัวเลขบนแท็บกับตาราง
+     ข้างล่างขัดกันไม่ได้ (กติกาเดิมของหน้านี้) ⇒ กรองทีมที่นี่ที่เดียว ไม่ใช่ที่ตาราง
+     คนอยู่ทีมเดียว: `matches` คืน true เสมอ = ชุดเดิมทั้งก้อน ไม่มีอะไรเปลี่ยน */
+  const requests = useMemo(
+    () => (activeScope === "team" ? rawRequests.filter((r) => myTeams.matches(r.team)) : rawRequests),
+    [rawRequests, activeScope, myTeams],
+  );
   const mine = useMemo(() => requests.filter((r) => r._mine), [requests]);
   // 🐞 subtitle ของหน้านี้บอกไว้ตั้งแต่ต้นว่า "เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ"
   // แต่ไม่มีใครเรียงจริง — API คืนมาเรียง createdAt ล้วน · ตัวเรียงมีอยู่แล้วใน lib
@@ -232,6 +244,9 @@ export default function RequestsPage() {
             label: `${t.label} (${queueTabRows(requests, { tab: t.key, myDepts }).length})`,
           }))}
         />
+        {activeScope === "team" && (
+          <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
+        )}
         {activeScope !== scope && (
           <span className="toolbar-label">
             สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน

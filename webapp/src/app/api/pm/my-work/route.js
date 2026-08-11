@@ -4,6 +4,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
+import { whereTeamIn } from '@/lib/teamScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       const { data } = await supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true });
       projectTasks = data || [];
     } else {
-      const ids = await teamProjectIds(supabase, user.team);
+      const ids = await teamProjectIds(supabase, user.teams);
       if (ids.length) {
       const { data } = await supabase
         .from('project_tasks').select('*').in('projectId', ids)
@@ -94,9 +95,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       extraPersonal = results.flatMap((r) => r.data || []);
     } else {
     const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
-      teamProjectIds(supabase, user.team),
-      teamUserIds(supabase, user.team),
-      supabase.from('sales_deals').select('id').eq('team', user.team ?? null),
+      teamProjectIds(supabase, user.teams),
+      teamUserIds(supabase, user.teams),
+      whereTeamIn(supabase.from('sales_deals').select('id'), user),
     ]);
     const teamDealIds = (teamDeals || []).map((d) => d.id);
     const queries = [];
@@ -167,7 +168,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return ok({
     scope,
     allowedScopes: allowed,
-    me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, department: normalizeDepartment(user.department) },
+    me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, teams: user.teams ?? [], department: normalizeDepartment(user.department) },
     projectTasks,
     personalTasks: personalTasks || [],
     inquiries,

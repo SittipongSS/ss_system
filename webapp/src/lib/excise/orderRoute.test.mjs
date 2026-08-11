@@ -21,13 +21,20 @@ const fromSalesOrderRoute = read('../../app/api/tax/orders/from-sales-order/rout
 test('ลิสต์ใบยื่น: ทีมตัวเอง + แถวไม่มีทีม (ของกลาง) — ห้ามใช้ eq(team, null)', () => {
   assert.match(
     listRoute,
-    /if \(viewScopeUser\(user\) === 'team' && user\?\.team\) \{/,
+    /if \(viewScopeUser\(user\) === 'team' && userTeams\(user\)\.length\) \{/,
     'คนที่ scope team แต่ไม่มีทีม scope ไม่ได้ → ต้องไม่กรองเลย',
   );
+  // คนหนึ่งคนอยู่ได้หลายทีม (2026-08-11) ⇒ ขอบเขตเป็น in ไม่ใช่ eq — แต่แถวไร้ทีม
+  // ยังต้องพ่วงมาเหมือนเดิม (นั่นคือหัวใจของบั๊กเดิม)
   assert.match(
     listRoute,
-    /query\.or\(`team\.eq\.\$\{user\.team\},team\.is\.null`\)/,
+    /query\.or\(`\$\{teamInClause\(user\)\},team\.is\.null`\)/,
     'ต้องรวมแถว team = null ด้วย และ null ต้องเทียบด้วย is.null',
+  );
+  assert.doesNotMatch(
+    listCode,
+    /\.eq\('team',\s*user\.team\)/,
+    'ทีมเดี่ยวห้ามกลับมา — คนอยู่หลายทีมจะเห็นแค่ทีมหลัก',
   );
   assert.doesNotMatch(
     listCode,
@@ -39,15 +46,15 @@ test('ลิสต์ใบยื่น: ทีมตัวเอง + แถว
 // กฎบ้านนี้เขียนไว้ที่ /api/customers GET: "ไม่มีทีม = ของกลาง" และ "scope ไม่ได้ = เห็นทั้งหมด"
 // ล็อกไว้เพื่อให้เห็นว่าทั้งสองที่อ่านกฎฉบับเดียวกัน ไม่ใช่บังเอิญเขียนคล้ายกัน
 test('กฎ team scope ของใบยื่นตรงกับต้นฉบับที่ /api/customers', () => {
-  assert.match(customersRoute, /viewScopeUser\(user\) === 'team' && user\?\.team/);
-  assert.match(customersRoute, /teams\.length === 0 \|\| teams\.includes\(user\.team\)/);
+  assert.match(customersRoute, /viewScopeUser\(user\) === 'team' && userTeams\(user\)\.length/);
+  assert.match(customersRoute, /teams\.length === 0 \|\| hasTeam\(user, teams\)/);
 });
 
 // ต้นตอของแถว team = null คือ POST ที่ตรึงทีมของคนกด — คนไม่มีทีมกดสร้างได้จริง จึงต้อง
 // ถอยไปใช้ทีมที่ดูแลลูกค้าเจ้าของใบ · ลูกค้าหลายทีม = เดาไม่ได้ ปล่อย null (ของกลาง)
 // ดีกว่าตรึงผิดทีมแล้วทีมจริงมองไม่เห็นใบของตัวเอง
 test('POST ตรึงทีมจากลูกค้าเมื่อคนสร้างไม่มีทีม และไม่เดาเมื่อลูกค้าหลายทีม', () => {
-  assert.match(listRoute, /import \{ caretakerTeamsOf, viewScopeUser \} from '@\/lib\/permissions'/);
+  assert.match(listRoute, /import \{ caretakerTeamsOf, viewScopeUser, userTeams \} from '@\/lib\/permissions'/);
   assert.match(listRoute, /const caretakerTeams = caretakerTeamsOf\(customer\)/);
   assert.match(
     listRoute,

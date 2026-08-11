@@ -8,7 +8,8 @@ import Link from "next/link";
 import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { useCan, useRole, useTeams } from "@/lib/roleContext";
+import { userTeams } from "@/lib/permissions";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtNumber } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -23,7 +24,7 @@ const sum = (arr) => arr.reduce((s, v) => s + v, 0);
 export default function SalesPlanningTargetsPage() {
   const canTarget = useCan("salesplan:target");
   const role = useRole();
-  const team = useTeam();
+  const myTeams = useTeams();
   const isSuper = role === "admin" || role === "ae_supervisor";
 
   const [year, setYear] = useState(thisYear());
@@ -95,12 +96,13 @@ export default function SalesPlanningTargetsPage() {
     [rowsFor],
   );
 
-  const teamsToShow = useMemo(() => (isSuper ? SALES_TEAMS : team ? [team] : []), [isSuper, team]);
+  // คนอยู่หลายทีมได้ ⇒ กางเป้าของทุกทีมที่สังกัด ไม่ใช่แค่ทีมหลัก
+  const teamsToShow = useMemo(() => (isSuper ? SALES_TEAMS : myTeams), [isSuper, myTeams]);
 
   const baseTree = useMemo(() => {
     const teams = teamsToShow.map((t) => {
       const members = users
-        .filter((u) => TARGET_OWNER_ROLES.includes(u.role) && u.team === t)
+        .filter((u) => TARGET_OWNER_ROLES.includes(u.role) && userTeams(u).includes(t))
         .map((u) => buildNode("ae", t, u));
       // เป้าค้างของคนที่ไม่อยู่ในทีมแล้ว (ลาออก/ย้ายทีม/เปลี่ยนบทบาท) — target ผูกทีม
       // ตอนสร้าง จึงยังถูกบวกเข้ายอดทีมในภาพรวมอยู่ ต้องโชว์แถวให้เห็น + เกลี่ยออกได้
@@ -117,7 +119,7 @@ export default function SalesPlanningTargetsPage() {
         // ชื่อจากบัญชีจริงก่อน — `x.ownerName` ที่ค้างในแถวเป็นชื่อ ณ ตอนวางเป้า
         // (ของจริงบน prod: 12 แถวยังเป็นนามสกุลเดิมของคนที่เปลี่ยนชื่อไปแล้ว)
         const node = buildNode("ae", t, { id, name: still?.name || name });
-        node.ghost = still ? `ย้ายไปทีม ${still.team || "-"} แล้ว` : "ออกจากระบบแล้ว";
+        node.ghost = still ? `ย้ายไปทีม ${userTeams(still).join(" + ") || "-"} แล้ว` : "ออกจากระบบแล้ว";
         return node;
       });
       const node = buildNode("team", t, null);

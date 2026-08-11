@@ -14,7 +14,7 @@
 import {
   canAccessSahamit, canApproveCosting, canChangeTaskStatus, canEditRecord, canUser,
   canEditService, canViewService, inPmProjectScope, inScope, viewScope,
-  canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser,
+  canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser, userTeams,
 } from '@/lib/permissions';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
@@ -239,10 +239,10 @@ export const UPDATE_ENTITIES = {
     table: 'sahamit_pos',
     attachments: true,
     async canView(supabase, parent, user) {
-      return canAccessSahamit(user?.role, user?.team);
+      return canAccessSahamit(user?.role, userTeams(user));
     },
     async canPost(supabase, parent, user) {
-      if (!canAccessSahamit(user?.role, user?.team)) return false;
+      if (!canAccessSahamit(user?.role, userTeams(user))) return false;
       return !isReadOnlyObserver(user?.role);   // viewer/executive อ่านได้ ไม่เขียน
     },
     recipients: () => [],
