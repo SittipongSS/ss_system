@@ -152,3 +152,20 @@ test('บรรทัดที่ผูกสินค้ายังถูก�
   );
   assert.equal(lines[0].unit, 'ขวด');
 });
+
+test('ส่วนลด % เกิน 100 ถูกตัดเหลือ 100 ตั้งแต่ตอนบันทึก — ป้ายบนเอกสารจะได้ไม่ขัดกับยอด', () => {
+  const [line] = normalizeManualLines([{
+    description: 'ค่าบริการ', qty: 2, unitPrice: 500, discountType: 'percent', discountValue: 150,
+  }]);
+  assert.equal(line.discountValue, 100, 'เก็บค่าที่ตัดแล้ว ไม่ใช่ค่าดิบ 150');
+  assert.equal(line.discountAmount, 1000);
+  assert.equal(line.lineTotal, 0, 'ยอดไม่ติดลบ');
+});
+
+test('ส่วนลดแบบจำนวนเงินไม่โดนเพดาน 100 (คนละหน่วยกับ %)', () => {
+  const [line] = normalizeManualLines([{
+    description: 'ค่าบริการ', qty: 1, unitPrice: 5000, discountType: 'amount', discountValue: 1500,
+  }]);
+  assert.equal(line.discountValue, 1500);
+  assert.equal(line.lineTotal, 3500);
+});

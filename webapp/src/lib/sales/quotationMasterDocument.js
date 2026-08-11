@@ -65,15 +65,12 @@ function hasLineDiscount(lines = []) {
   return lines.some((line) => Number(line.discountAmount || 0) > 0);
 }
 
-// ช่องส่วนลดของบรรทัด: จำนวนเงินที่หัก + กำกับ % ไว้ใต้ตัวเลขเมื่อกรอกเป็นเปอร์เซ็นต์
-// (ลูกค้าต้องกระทบยอดได้เอง: ราคา/หน่วย × จำนวน − ส่วนลด = จำนวนเงิน)
+// ช่องส่วนลดของบรรทัด: **ยอดเงินอย่างเดียว** ไม่กำกับอัตรา % (มติผู้ใช้ 2026-08-11) —
+// บนกระดาษลูกค้ากระทบยอดจากตัวเงิน: ราคา/หน่วย × จำนวน − ส่วนลด = จำนวนเงิน
+// อัตราเป็นกติกาภายในของฝ่ายขาย ไม่ต้องขึ้นเอกสาร
 function discountCell(line) {
   const amount = Number(line.discountAmount || 0);
-  if (!(amount > 0)) return '<td class="number">-</td>';
-  const percentNote = line.discountType === 'percent' && Number(line.discountValue || 0) > 0
-    ? `<span class="itemDiscountRate">${Number(line.discountValue)}%</span>`
-    : '';
-  return `<td class="number">-${money(amount)}${percentNote}</td>`;
+  return `<td class="number">${amount > 0 ? `-${money(amount)}` : '-'}</td>`;
 }
 
 function itemTable(lines, startIndex, showDiscount) {

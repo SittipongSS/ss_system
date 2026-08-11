@@ -1,7 +1,7 @@
 // helper บรรทัดใบเสนอราคา (เฟส D) — ใช้ร่วมระหว่าง route สร้าง (deals/[id]/quotations)
 // และ route แก้ไข (quotations/[id]): normalize บรรทัดจาก client + seed จาก FG ของโครงการ.
 import { genId } from '@/lib/id';
-import { quoteLineNet, toMoney } from '@/lib/salesPlanning';
+import { normalizeDiscountValue, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
   productBrandName,
@@ -163,7 +163,7 @@ export function normalizeManualLines(lines = []) {
       const qty = line.qty === '' || line.qty == null ? 1 : toMoney(line.qty, 0);
       const unitPrice = toMoney(line.unitPrice);
       const discountType = ['percent', 'amount'].includes(line.discountType) ? line.discountType : null;
-      const discountValue = discountType ? toMoney(line.discountValue) : 0;
+      const discountValue = normalizeDiscountValue(discountType, line.discountValue);
       const net = quoteLineNet({ qty, unitPrice, discountType, discountValue });
       return {
         id: genId('QTL'),

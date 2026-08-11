@@ -741,6 +741,13 @@ export const quotationDealTitle = (quote) =>
 // ไม่มีดีลจริง (snapshot เก่าที่เหลือแต่ชื่อ) → ห้ามเดาประเภทให้
 export const quotationDealType = (quote) => (quote?.deal ? dealTypeOf(quote.deal) || '-' : '-');
 
+// อัตราส่วนลดท้ายใบที่พิมพ์บนกระดาษ ("หัก ส่วนลด X%") — % ตัดที่ 100 ให้ตรงกับยอดที่หัก
+// จริง (discountAmountOf clamp ไว้เหมือนกัน) ฝั่งบันทึกก็ clamp แล้ว (normalizeDiscountValue)
+// แต่ใบเก่าที่บันทึกค่าเกินไว้ก่อนหน้านั้นยังมีอยู่ใน DB จึงต้องกันตอนแสดงด้วย
+// (ส่วนลดรายบรรทัดพิมพ์ยอดเงินอย่างเดียว ไม่ผ่านทางนี้)
+const printedDiscountValue = (type, value) =>
+  (type === 'percent' ? Math.min(Number(value || 0), 100) : Number(value || 0));
+
 export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const form = options.form || DOCUMENT_FORMS.quotation;
   const lines = (Array.isArray(quote.lines) ? quote.lines : [])
@@ -758,8 +765,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // ส่วนลดรายบรรทัดต้องไปถึงเอกสาร: lineTotal ที่พิมพ์คือยอด "หลังหักส่วนลดแล้ว"
       // (quoteLineNet) ถ้าไม่โชว์ส่วนลด ลูกค้าคูณ ราคา/หน่วย × จำนวน แล้วไม่ตรงกับ
       // จำนวนเงิน — เอกสารดูเหมือนคำนวณผิด (มติผู้ใช้ 2026-08-11)
-      discountType: ['percent', 'amount'].includes(line.discountType) ? line.discountType : null,
-      discountValue: Number(line.discountValue || 0),
+      // เอกสารพิมพ์เฉพาะ "ยอดเงินที่หัก" — ชนิด/อัตราส่วนลดไม่ขึ้นกระดาษ จึงไม่ส่งต่อ
       discountAmount: Number(line.discountAmount || 0),
       lineTotal: Number(line.lineTotal || 0),
     }));
@@ -919,7 +925,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     ],
     lines,
     totals,
-    discount: { type: quote.discountType || 'amount', value: Number(quote.discountValue || 0) },
+    discount: {
+      type: quote.discountType || 'amount',
+      value: printedDiscountValue(quote.discountType, quote.discountValue),
+    },
     vatRate: Number(quote.vatRate || 0),
     installments,
     paymentMethod,
