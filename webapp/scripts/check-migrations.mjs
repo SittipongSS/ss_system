@@ -8,10 +8,18 @@ const migrationsDir = path.join(root, 'supabase', 'migrations');
 // These duplicate numeric prefixes were already committed and may already be
 // recorded/applied in production. Renaming them would make an existing database
 // disagree with git. Keep the exception explicit and reject every new duplicate.
+//
+// 0230 (2026-08-12): #1146 กับ #1147 ต่างคนต่างจอง 0230 แล้วเข้า main ทั้งคู่ภายในวันเดียว
+// — CI ของแต่ละใบเขียวเพราะตอนนั้นสาขาตัวเองเห็นไฟล์ของตัวเองไฟล์เดียว พอ merge ครบ
+// main ก็แดงทุก PR ที่ตามมา · **ตรวจแล้วว่ารันขึ้น production ไปแล้วทั้งคู่** จึงเปลี่ยนชื่อ
+// ไม่ได้: `dept_requests."assigneeId"` มีจริง และ `entity_number_counters` มีแถว
+// (AR, '-', 1000) กับ (FG, '-', 10000) ครบ ⇒ ลงทะเบียนเป็นข้อยกเว้นตามแนวเดียวกับ
+// 0076/0087/0099 ⚠️ ห้ามใช้เลข 0230 ซ้ำอีก และเลขถัดไปเริ่มที่ 0231
 const LEGACY_DUPLICATES = new Map([
   ['0076', ['0076_mgmt_departments.sql', '0076_product_pieces_per_case.sql']],
   ['0087', ['0087_personal_tasks_proxy_worker.sql', '0087_sales_history.sql']],
   ['0099', ['0099_chat_webhooks.sql', '0099_quotation_concurrent_create_guard.sql']],
+  ['0230', ['0230_master_code_counters.sql', '0230_request_assignee.sql']],
 ]);
 
 const files = (await readdir(migrationsDir))
@@ -52,11 +60,20 @@ for (const [version, expected] of LEGACY_DUPLICATES) {
 if (malformed.length || unexpectedDuplicates.length || changedLegacyDuplicates.length) {
   console.error('Migration integrity check failed.');
   if (malformed.length) console.error(`Malformed filenames:\n- ${malformed.join('\n- ')}`);
-  if (unexpectedDuplicates.length) console.error(`Unexpected duplicate versions:\n- ${unexpectedDuplicates.join('\n- ')}`);
+  if (unexpectedDuplicates.length) {
+    console.error(`Unexpected duplicate versions:\n- ${unexpectedDuplicates.join('\n- ')}`);
+    // ⚠️ เคสนี้เกิดจากสองสาขาจองเลขเดียวกันแล้วเข้า main ทั้งคู่ (CI ของแต่ละใบเขียว
+    // เพราะเห็นไฟล์ของตัวเองไฟล์เดียว) — ทางแก้ขึ้นกับว่า "รันขึ้น production ไปแล้วหรือยัง"
+    console.error(
+      'ทางแก้: ถ้าใบที่ชนยัง **ไม่ได้รัน** บน production ให้เปลี่ยนชื่อเป็นเลขว่างถัดไป · '
+      + 'ถ้ารันไปแล้วทั้งคู่ (เปลี่ยนชื่อ = ฐานข้อมูลจริงไม่ตรงกับ git) ให้ลงทะเบียนใน '
+      + 'LEGACY_DUPLICATES พร้อมหลักฐานว่าตรวจอะไรถึงรู้ว่ารันแล้ว',
+    );
+  }
   if (changedLegacyDuplicates.length) console.error(`Changed legacy duplicate groups:\n- ${changedLegacyDuplicates.join('\n- ')}`);
   process.exit(1);
 }
 
 const latest = files.at(-1)?.slice(0, 4) || 'none';
 console.log(`Migration integrity OK: ${files.length} files, latest ${latest}.`);
-console.warn('Legacy duplicate versions are intentionally preserved: 0076, 0087, 0099. Do not reuse them.');
+console.warn(`Legacy duplicate versions are intentionally preserved: ${[...LEGACY_DUPLICATES.keys()].join(', ')}. Do not reuse them.`);
