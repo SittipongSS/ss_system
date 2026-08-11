@@ -9,7 +9,7 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf, slaStage, slaPendingTone,
+  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup,
 } from './leads';
 import { bangkokDate } from './handoffQueue';
 import { businessDayKey } from '../datePeriods';
@@ -106,6 +106,44 @@ test('นาฬิกาเดียวกันทั้งระบบ: bangko
   }
   assert.equal(bangkokDate(null), '');
   assert.equal(bangkokDate('ไม่ใช่วันที่'), '');
+});
+
+test('channelRollup: ช่องสถานะไม่ซ้อนกัน รวมกันเท่าจำนวนลีดของช่องทางนั้นเป๊ะ', () => {
+  const rows = [
+    // เปิดลูกค้าแล้ว — เคยติดต่อและเคยนัดด้วย ⇒ นับใน funnel ทุกขั้น แต่สถานะอยู่ช่อง won ช่องเดียว
+    { channel: 'chatcone_line', firstContactAt: 'x', meetingAt: 'x', status: 'qualified' },
+    // ไม่ไปต่อ ทั้งที่เคยติดต่อ ⇒ ต้องไปอยู่ lost ไม่ใช่ talking
+    { channel: 'chatcone_line', firstContactAt: 'x', status: 'disqualified' },
+    { channel: 'chatcone_line', firstContactAt: 'x', status: 'contacted' },
+    { channel: 'chatcone_line', status: 'assigned' },
+    { channel: 'typeform', status: 'new' },
+  ];
+  const [line, typeform] = channelRollup(rows);
+  assert.equal(line.channel, 'chatcone_line');
+  assert.equal(line.group, 'online');
+  assert.deepEqual(
+    { count: line.count, contacted: line.contacted, meeting: line.meeting, qualified: line.qualified },
+    { count: 4, contacted: 3, meeting: 1, qualified: 1 },
+  );
+  assert.deepEqual(
+    { won: line.won, lost: line.lost, talking: line.talking, untouched: line.untouched },
+    { won: 1, lost: 1, talking: 1, untouched: 1 },
+  );
+  // 🐞 หัวใจ: สี่ช่องสถานะรวมกันต้องเท่ากับจำนวนลีด ไม่งั้นแท่งสัดส่วนจะยาวเกินราง
+  assert.equal(line.won + line.lost + line.talking + line.untouched, line.count);
+  assert.equal(typeform.count, 1);
+  assert.equal(typeform.untouched, 1);
+});
+
+test('channelRollup: เรียงจากช่องทางที่เข้ามาเยอะสุด · ไม่มีช่องทางคืน unknown ไม่ระเบิด', () => {
+  const rows = [
+    { channel: 'website' }, { channel: 'website' }, { channel: 'phone' }, {},
+  ];
+  const out = channelRollup(rows);
+  assert.deepEqual(out.map((r) => r.channel), ['website', 'phone', 'unknown']);
+  assert.equal(out[0].count, 2);
+  assert.deepEqual(channelRollup([]), []);
+  assert.deepEqual(channelRollup(undefined), []);
 });
 
 test('slaPendingTone: null = นับไม่ได้ ต้องไม่ขึ้นเขียว · 0 = ไม่มีของค้างจริง ๆ', () => {

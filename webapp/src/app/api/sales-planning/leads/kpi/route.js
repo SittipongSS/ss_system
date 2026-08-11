@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelGroupOf, chunkLeadIds } from '@/lib/sales/leads';
+import { slaHit, slaStage, channelRollup, chunkLeadIds } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
@@ -23,9 +23,11 @@ async function countLeadsByStatus(supabase, status, team) {
 }
 
 // GET /api/sales-planning/leads/kpi?month=YYYY-MM — KPI ลีด (เฟส C v1):
-//   • จำนวนกรอกรายวัน/รายเดือน ต่อคน (Marketing KPI) + ต่อช่องทาง
-//   • SLA คัดกรอง ≤1 วันทำการ (Supervisor) · SLA ติดต่อกลับ ≤1 วันทำการ (AE)
-//   • conversion: ลีด → นัด → เปิดลูกค้า + ตีกลับ
+//   • จำนวนกรอกรายวัน/รายเดือน ต่อคน (Marketing KPI)
+//   • SLA ≤1 วันทำการ **ทั้งสามด่าน** — คัดกรอง (หัวหน้าฝ่ายขาย) · กระจาย (Senior AE) ·
+//     ติดต่อกลับ (AE) พร้อมจำนวนที่ค้างอยู่ ณ ตอนนี้ของแต่ละด่าน
+//   • รายช่องทาง: เข้า → ติดต่อ → นัด → เปิดลูกค้า + สถานะปัจจุบันที่ไม่ซ้อนกัน
+//   • ผลลัพธ์รวม: เปิดลูกค้า · ไม่ไปต่อ · ตีกลับ
 // ทุกตัวคำนวณจาก timestamp (วันทำการอิงตาราง holidays) — ไม่มีการกรอกมือ.
 // ⚠️ ด่านคือ `canSeeLeadKpi` **ไม่ใช่ `canViewLeads`** — ก้อนที่คืนไปมีข้อมูล
 // ประเมินผลรายบุคคล (`byAssignee` = SLA ติดต่อกลับรายคนทั้งฝ่าย · `byCreator` =
@@ -71,7 +73,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // จำนวนกรอกต่อคน (Marketing) + ต่อวัน
   const byCreator = {};
   const byDay = {};
-  const byChannel = {};
   for (const l of rows) {
     // วันไทย ไม่ใช่ `slice(0, 10)` (= วัน UTC) — ไม่งั้นลีดที่กรอกหลังห้าโมงเย็นตกไปวันก่อน
     const day = businessDayKey(l.createdAt);
@@ -80,11 +81,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!byCreator[ck]) byCreator[ck] = { createdBy: l.createdBy, name: l.createdByName || 'ไม่ระบุ', count: 0, days: new Set() };
     byCreator[ck].count += 1;
     byCreator[ck].days.add(day);
-    const ch = l.channel || 'unknown';
-    if (!byChannel[ch]) byChannel[ch] = { channel: ch, group: channelGroupOf(ch), count: 0, qualified: 0 };
-    byChannel[ch].count += 1;
-    if (l.status === 'qualified') byChannel[ch].qualified += 1;
   }
+
+  /* รายช่องทาง — ตอบ "เข้ามาทางไหน แล้วติดต่อ/นัด/เปิดลูกค้าได้เท่าไร" (มติผู้ใช้ 2026-08-12)
+     เดิมคืนแค่ count + qualified ⇒ หน้าจอบอกได้แค่ปริมาณกับผลลัพธ์ปลายทาง มองไม่เห็นว่า
+     ช่องทางไหนติดต่อไม่ทันหรือกองอยู่ตรงไหน · กติกาการจัดช่องอยู่ใน channelRollup ที่เดียว
+     (มีเทสคุมว่าช่องสถานะสี่ช่องรวมกันต้องเท่าจำนวนลีดเป๊ะ ไม่งั้นแท่งสัดส่วนยาวเกินราง) */
+  const byChannel = channelRollup(rows);
 
   /* SLA (นับเฉพาะใบที่ถึงขั้นนั้นแล้ว): hit = ≤1 วันทำการ · กติกาอยู่ใน slaStage ที่เดียว
      เส้นทางลีดมี **สามด่าน** ไม่ใช่สอง — ด่านกลาง "กระจาย" (Senior AE เลือก AE) เคยหายไป
@@ -169,7 +172,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     byCreator: Object.values(byCreator)
       .map((c) => ({ ...c, days: c.days.size, perDay: c.days.size ? +(c.count / c.days.size).toFixed(1) : 0 }))
       .sort((a, b) => b.count - a.count),
-    byChannel: Object.values(byChannel).sort((a, b) => b.count - a.count),
+    byChannel,
     byAssignee: Object.values(byAssignee).sort((a, b) => b.assigned - a.assigned),
     byDay,
   });

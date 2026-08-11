@@ -372,6 +372,41 @@ export function slaStage(rows, fromKey, toKey, holidays, limitDays = 1) {
   return { checked: checked.length, hit: hit.length };
 }
 
+/** สรุปลีดรายช่องทาง — ตอบ "เข้ามาทางไหน แล้วติดต่อ/นัด/เปิดลูกค้าได้เท่าไร"
+ *
+ *  คืนสองชุดในแถวเดียวกันเพราะตอบคนละคำถาม:
+ *  · **Funnel** `count` · `contacted` · `meeting` · `qualified` — สะสม ซ้อนทับกันได้
+ *    (ใบที่เปิดลูกค้าแล้วก็ยังนับใน contacted ด้วย) ใช้ตอบ "ทำไปถึงไหน"
+ *  · **สถานะตอนนี้** `won` · `lost` · `talking` · `untouched` — **ไม่ซ้อนกัน**
+ *    ใบหนึ่งอยู่ได้ช่องเดียว รวมกันเท่ากับ `count` เป๊ะ ใช้วาดแท่งสัดส่วนได้ตรง ๆ
+ *
+ *  ⚠️ จัดช่องสถานะตามลำดับความสำคัญ ไม่ใช่ตาม timestamp: ปิดแล้ว (qualified/disqualified)
+ *  มาก่อนเสมอ แล้วค่อยดูว่าเคยติดต่อไหม · ถ้าไล่จาก firstContactAt ก่อน ใบที่ปิดไปแล้ว
+ *  จะไปโผล่ในช่อง "คุยอยู่" ด้วย แล้วผลรวมเกินจำนวนลีดจริง
+ */
+export function channelRollup(rows) {
+  const map = new Map();
+  for (const lead of rows || []) {
+    const channel = lead?.channel || 'unknown';
+    if (!map.has(channel)) {
+      map.set(channel, {
+        channel, group: channelGroupOf(channel),
+        count: 0, contacted: 0, meeting: 0, qualified: 0, disqualified: 0,
+        won: 0, lost: 0, talking: 0, untouched: 0,
+      });
+    }
+    const row = map.get(channel);
+    row.count += 1;
+    if (lead?.firstContactAt) row.contacted += 1;
+    if (lead?.meetingAt) row.meeting += 1;
+    if (lead?.status === 'qualified') { row.qualified += 1; row.won += 1; }
+    else if (lead?.status === 'disqualified') { row.disqualified += 1; row.lost += 1; }
+    else if (lead?.firstContactAt) row.talking += 1;
+    else row.untouched += 1;
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));
+}
+
 /** โทนของการ์ด SLA — ตัดสินจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
  *
  *  ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง"

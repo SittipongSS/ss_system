@@ -1,8 +1,13 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 
-import { useCallback, useEffect, useState } from "react";
-import { Inbox, Filter, Users, PhoneCall, CalendarClock } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Inbox, Filter, Users, PhoneCall, CalendarClock, PieChart as PieIcon } from "lucide-react";
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RTooltip,
+} from "recharts";
+import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
+import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
 import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, slaPendingTone } from "@/lib/sales/leads";
 import { TEAM_LABELS } from "@/lib/permissions";
@@ -41,6 +46,22 @@ const SLA_STAGES = [
  * ⚠️ โน้ตต้องสั้นระดับนี้ — `.ui-metric em` เป็น nowrap + ellipsis ที่ไม่ทำงาน
  * (ไม่มี min-width:0) ข้อความยาวจะล้นไปทับการ์ดข้าง ๆ
  */
+/* สีวงกลม = ชุดจำแนกประเภทของระบบ (3 ตัวแรกผ่านตัวตรวจ CVD ทุกข้อในทั้งสองธีม)
+   ⚠️ วงกลมรับได้แค่ระดับ **กลุ่ม** 3 ชิ้น ไม่ใช่รายช่องทาง 6 ชิ้น — วัดด้วย
+   validate_palette แบบ all-pairs แล้วคู่ที่ 2↔6 ของชุดนี้ได้ ΔE 2.3 กับสายตาปกติ
+   (เกณฑ์ขั้นต่ำ 15) = คนตาปกติก็แยกไม่ออก · รายช่องทางจึงไปอยู่บนแท่งกับตารางที่มีชื่อกำกับ */
+const GROUP_COLORS = CHART_CATEGORICAL.slice(0, 3);
+
+/* แท่งซ้อน = **สถานะ ณ ตอนนี้** ไม่ใช่ขั้นของ funnel — ใบหนึ่งอยู่ได้ช่องเดียว
+   เรียงจากผลดีไปผลเสียแล้วปิดท้ายด้วยของที่ยังไม่แตะ · จงใจไม่ให้เขียวไปติดแดง
+   (คู่ที่ตาบอดสีอ่านพลาดบ่อยที่สุด) และทุกช่องมีป้ายใน legend ไม่ได้ใช้สีลอย ๆ */
+const STATUS_SERIES = [
+  { key: "won", label: "เปิดลูกค้า", color: "var(--green)" },
+  { key: "talking", label: "คุยอยู่", color: "var(--blue)" },
+  { key: "lost", label: "ไม่ไปต่อ", color: "var(--red)" },
+  { key: "untouched", label: "ยังไม่ได้ติดต่อ", color: "var(--text-3)" },
+];
+
 const OUTCOME_CARDS = [
   { key: "in", label: "ลีดเข้า", value: (f) => f.total ?? "-", note: () => "ตัวหารของทุกอัตราในแถวนี้" },
   { key: "meet", label: "นัดประชุมได้", value: (f) => pct(f.meeting, f.total), note: (f) => `${f.meeting ?? 0} จาก ${f.total ?? 0} ใบ` },
@@ -79,6 +100,19 @@ export default function KpiLeadsTab({ month, teamFilter }) {
 
   const f = kpi?.funnel || {};
   const sla = kpi?.sla || {};
+
+  // ป้ายไทยเติมที่นี่ครั้งเดียว ทั้งแท่งและตารางใช้ตัวเดียวกัน จะได้ไม่หลุดกันคนละชื่อ
+  const channels = useMemo(
+    () => (kpi?.byChannel || []).map((c) => ({ ...c, label: LEAD_CHANNEL_LABELS[c.channel] || c.channel })),
+    [kpi],
+  );
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const c of channels) map.set(c.group, (map.get(c.group) || 0) + c.count);
+    return [...map.entries()]
+      .map(([key, value]) => ({ key, value, label: CHANNEL_GROUP_LABELS[key] || key }))
+      .sort((a, b) => b.value - a.value);
+  }, [channels]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,8 +170,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         </div>
       </SaSection>
 
-      <div className={styles.splitSections}>
-        {/* Marketing: กรอกรายวัน */}
+      {/* Marketing: กรอกรายวัน */}
         <SaSection icon={<Inbox size={17} />} title="การกรอกลีด (Marketing KPI)" subtitle="ปริมาณลีดแยกตามผู้กรอก">
           <TableScroll surface="embedded"><table>
               <thead><tr><th>ผู้กรอก</th><th className="num">ลีด</th><th className="num">วันที่กรอก</th><th className="num">เฉลี่ย/วัน</th></tr></thead>
@@ -153,26 +186,84 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                 {!(kpi?.byCreator || []).length && <tr><td colSpan={4} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
               </tbody>
             </table></TableScroll>
-        </SaSection>
+      </SaSection>
 
-        {/* ช่องทาง */}
-        <SaSection icon={<CalendarClock size={17} />} title="แยกตามช่องทาง" subtitle="ผลลัพธ์ของลีดจากแต่ละช่องทาง">
-          <TableScroll surface="embedded"><table>
-              <thead><tr><th>ช่องทาง</th><th>กลุ่ม</th><th className="num">ลีด</th><th className="num">เปิดลูกค้า</th></tr></thead>
+      {/* ช่องทาง — วงกลม (สัดส่วนระดับกลุ่ม) · แท่ง (สถานะปัจจุบันรายช่องทาง) · ตาราง (Funnel)
+          สามอันตอบคนละคำถามของเรื่องเดียวกัน จึงอยู่ในส่วนเดียวกัน */}
+      <SaSection
+        icon={<PieIcon size={17} />}
+        title="ช่องทางที่ลีดเข้ามา"
+        subtitle="วงกลม = สัดส่วนระดับกลุ่ม · แท่ง = สถานะปัจจุบันของแต่ละช่องทาง · ตาราง = Funnel รายช่องทาง"
+      >
+        {channels.length ? (
+          <>
+            <div className={styles.channelFigure}>
+              <ChartCanvas className={styles.donut}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    {/* 🐞 `isAnimationActive={false}` **จำเป็น** ไม่ใช่เรื่องความชอบ — Recharts 3.9.2
+                        เรนเดอร์ `<Pie>` ที่เปิดอนิเมชัน (ค่าเริ่มต้น) ออกมาเป็น sector เปล่าไม่มี
+                        path เลย = วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง
+                        ⚠️ กราฟวงกลมเดิมของหน้าสหมิตร/ภาษี/ฐานข้อมูลติดบั๊กเดียวกันอยู่ตอนนี้
+                        (ตรวจ 2026-08-12: sector 1 อัน path 0) — ใครไปแก้ที่นั่นให้ใส่ prop นี้ด้วย */}
+                    <Pie data={groups} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="none" isAnimationActive={false}>
+                      {groups.map((g, i) => <Cell key={g.key} fill={GROUP_COLORS[i % GROUP_COLORS.length]} />)}
+                    </Pie>
+                    <RTooltip content={<ChartTooltip valueFormatter={(v) => `${v} ใบ (${pct(v, f.total)})`} />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartCanvas>
+              <ChartCanvas className={styles.channelBars}>
+                <ResponsiveContainer width="100%" height="100%">
+                  {/* แท่งซ้อน = สถานะ ณ ตอนนี้ ใบหนึ่งอยู่ได้ช่องเดียว ความยาวรวมจึงเท่าจำนวนลีด
+                      ของช่องทางนั้นพอดี (channelRollup มีเทสคุมไว้) */}
+                  <BarChart data={channels} layout="vertical" margin={{ top: 4, right: 8, bottom: 4, left: 4 }} barSize={14}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="label" width={78} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
+                    <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
+                    {STATUS_SERIES.map((st, i) => (
+                      <Bar key={st.key} dataKey={st.key} name={st.label} stackId="s" fill={st.color}
+                        radius={i === STATUS_SERIES.length - 1 ? [0, 3, 3, 0] : 0} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCanvas>
+            </div>
+            <ChartLegend items={[
+              ...groups.map((g, i) => ({ key: `g-${g.key}`, label: `${g.label} ${g.value}`, color: GROUP_COLORS[i % GROUP_COLORS.length] })),
+              ...STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color })),
+            ]} />
+            <TableScroll surface="embedded"><table>
+              <thead><tr>
+                <th>ช่องทาง</th><th>กลุ่ม</th>
+                <th className="num">ลีดเข้า</th><th className="num">ติดต่อแล้ว</th>
+                <th className="num">นัดได้</th><th className="num">เปิดลูกค้า</th>
+              </tr></thead>
               <tbody>
-                {(kpi?.byChannel || []).map((c) => (
+                {channels.map((c) => (
                   <tr key={c.channel} className="premium-row">
-                    <td>{LEAD_CHANNEL_LABELS[c.channel] || c.channel}</td>
+                    <td>{c.label}</td>
                     <td>{CHANNEL_GROUP_LABELS[c.group] || c.group}</td>
                     <td className="num mono">{c.count}</td>
+                    <td className="num mono">{c.contacted}</td>
+                    <td className="num mono">{c.meeting}</td>
                     <td className="num mono">{c.qualified}</td>
                   </tr>
                 ))}
-                {!(kpi?.byChannel || []).length && <tr><td colSpan={4} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
               </tbody>
+              <tfoot><tr className="premium-row">
+                <td><strong>รวม</strong></td><td />
+                <td className="num mono"><strong>{f.total ?? 0}</strong></td>
+                <td className="num mono"><strong>{f.contacted ?? 0}</strong></td>
+                <td className="num mono"><strong>{f.meeting ?? 0}</strong></td>
+                <td className="num mono"><strong>{f.qualified ?? 0}</strong></td>
+              </tr></tfoot>
             </table></TableScroll>
-        </SaSection>
-      </div>
+          </>
+        ) : (
+          <ChartEmptyState>ยังไม่มีลีดในเดือนนี้</ChartEmptyState>
+        )}
+      </SaSection>
 
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
       <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="SLA และผลลัพธ์แยกตาม AE">
