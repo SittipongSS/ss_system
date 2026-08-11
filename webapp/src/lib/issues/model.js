@@ -201,6 +201,15 @@ export function autoClosePatch(now = new Date()) {
 export function sortIssueQueue(rows = []) {
   const order = { blocked: 0, workaround: 1, minor: 2 };
   return [...rows].sort((a, b) => {
+    // ⚠️ **เรื่องที่จบแล้วไปท้ายเสมอ ไม่ว่าผลกระทบจะแรงแค่ไหน** (2026-08-11)
+    // 🐞 ของเดิมเรียงผลกระทบก่อนอย่างเดียว ⇒ ในแท็บ "ทั้งหมด" เรื่องที่ปิด/ปฏิเสธ
+    // ไปแล้วแต่เคยตั้งเป็น `blocked` ลอยอยู่เหนือเรื่องที่ยังไม่มีใครรับ
+    // (ของจริง: IS-26080002 ที่ถูกปฏิเสธไปแล้ว อยู่บนสุดของรายการ)
+    // ⚠️ ลำดับผลกระทบยังเป็นตัวตัดสินของ "เรื่องที่ยังเดินอยู่" เหมือนเดิม —
+    // ชั้นนี้เพิ่มมาข้างหน้า ไม่ได้แทนที่
+    const settled = (row) => (ISSUE_OPEN_STATUSES.includes(String(row?.status || '')) ? 0 : 1);
+    const bySettled = settled(a) - settled(b);
+    if (bySettled !== 0) return bySettled;
     const impact = (order[a.impact] ?? 9) - (order[b.impact] ?? 9);
     if (impact !== 0) return impact;
     return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
