@@ -1,59 +1,61 @@
-/* การ์ด "การชำระ" ของใบสั่งขาย — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง (มติ 2026-08-13) */
+/* การ์ด "การชำระ" — เงียบไว้ก่อน พูดเมื่อมีเรื่อง (feedback ผู้ใช้ 2026-08-13)
+   สรุปยอดอยู่บนหัวการ์ด · แถบเตือนขึ้นเฉพาะตอนเลยกำหนด · ใบงวดเดียวไม่มีพิธีรีตอง */
 
-.wonGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--space-3) var(--space-5);
-  margin: 0;
-  padding-bottom: var(--space-3-5);
+/* หลักฐานปิดการขาย — แถวเดียว ไม่ใช่ตาราง 4 ช่อง (ของเดิมกิน 2 บรรทัดบนจอกว้าง) */
+.won {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5) var(--space-3);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
-.wonGrid > div { display: grid; gap: var(--space-0-5); min-width: 0; }
-.wonGrid dt { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
-.wonGrid dd {
-  margin: 0;
-  min-width: 0;
-  color: var(--text);
-  font-size: var(--fs-7);
-  line-height: var(--lh-text);
-}
+.wonLabel { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+.wonValue { min-width: 0; color: var(--text); font-size: var(--fs-6); }
+.wonValue b { font-weight: var(--fw-bold); }
 
-.empty { color: var(--text-3); font-style: italic; }
-
-.files { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
 .fileLink {
-  display: flex;
+  display: inline-flex;
+  max-width: 100%;
   min-width: 0;
   align-items: center;
-  gap: var(--space-1-5);
+  gap: var(--space-1);
   color: var(--accent-ink);
-  font-size: var(--fs-6);
+  font-size: var(--fs-5);
   text-decoration: none;
 }
 .fileLink:hover { text-decoration: underline; }
 .fileLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 
-.startBlock { display: grid; justify-items: start; gap: var(--space-3); }
-
-.list { display: grid; gap: var(--space-2-5); margin: 0; padding: 0; list-style: none; }
+.list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 
 .row {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3-5);
+  gap: var(--space-1-5);
+  padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel-2);
 }
 
-.rowHead {
+.main {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
   min-width: 0;
   flex-wrap: wrap;
 }
-.rowLabel { min-width: 0; flex: 1; color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
+.name {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+}
+.name em { color: var(--text-3); font-size: var(--fs-4); font-style: normal; font-weight: var(--fw-normal); }
 .amount {
   color: var(--text);
   font-size: var(--fs-7);
@@ -62,14 +64,17 @@
   letter-spacing: var(--ls-tabular);
 }
 
-.rowMeta {
+.meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
   color: var(--text-3);
   font-size: var(--fs-5);
 }
 .overdue { color: var(--red); font-weight: var(--fw-bold); }
+
+.evidence { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 
 /* เหตุผลที่บัญชีตีกลับ — เป็นข้อความ ไม่ใช่ป้ายเปล่า (กฎเดียวกับใบที่ถูกตีกลับ) */
 .rejected {
@@ -84,12 +89,15 @@
 }
 .rejected :global(.readable-text-block) { color: var(--text-2); }
 
-.rowActions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* แผนจากใบเสนอราคาที่ยังไม่ถูกสร้างเป็นงวดจริง — เส้นประบอกว่ายังกดอะไรไม่ได้
+   ไม่พึ่งข้อความคาดหัวอีกแล้ว (ผู้ใช้บอกว่าไม่จำเป็น) */
+.preview .row { border-style: dashed; background: transparent; }
+.preview .name, .preview .amount { color: var(--text-2); }
+
+.start { justify-self: start; }
 
 .dialog { display: grid; gap: var(--space-3); padding: var(--space-4); }
 .field { display: grid; gap: var(--space-1); }
-.field > span {
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-bold);
-}
+.field > span { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }

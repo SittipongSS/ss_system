@@ -11,6 +11,7 @@ import {
   paymentLockReason,
   paymentRollup,
   paymentState,
+  previewInstallments,
 } from './salesOrderPayments.js';
 
 const SA = { id: 'u-sa', role: 'ae' };
@@ -285,4 +286,26 @@ test('ทุกสถานะมีป้ายและโทนครบ', ()
     assert.ok(INSTALLMENT_STATUS_TONES[status], `ขาดโทนของ ${status}`);
   }
   assert.deepEqual(Object.keys(INSTALLMENT_STATUS_LABELS).sort(), [...INSTALLMENT_STATUSES].sort());
+});
+
+/* ── preview: โชว์งวดตั้งแต่ใบยังเป็นร่าง (มติผู้ใช้ 2026-08-13) ─────────── */
+test('preview คำนวณสดจากแผน QT และตรงกับงวดจริงที่จะถูกสร้าง', () => {
+  const plan = { type: 'installment', installments: [{ label: 'มัดจำ', percent: 30 }, { label: 'ที่เหลือ', percent: 70 }] };
+  const rows = previewInstallments(plan, 100000);
+  assert.deepEqual(rows.map((r) => r.amount), installmentsFromPaymentPlan(plan, 100000).map((r) => r.amount));
+});
+
+/* 🔴 preview ต้องกดอะไรไม่ได้ — ยังไม่มีแถวใน DB ให้อ้างถึง
+   ไม่มี id = หน้าเว็บซ่อนปุ่มได้ · และถึงหลุดไปยิง API ก็ไม่มี installmentId ให้ส่ง */
+test('preview ไม่มี id และถูกทำเครื่องหมายไว้ชัดเจน', () => {
+  for (const row of previewInstallments({ type: 'full' }, 500)) {
+    assert.equal(row.id, null);
+    assert.equal(row.preview, true);
+    assert.equal(row.status, 'pending');
+  }
+});
+
+test('ใบเสนอราคาไม่มีแผนชำระ = preview ยังได้หนึ่งงวดเต็มจำนวน ไม่ใช่ศูนย์', () => {
+  assert.equal(previewInstallments(null, 1000).length, 1);
+  assert.equal(previewInstallments(undefined, 1000)[0].percent, 100);
 });

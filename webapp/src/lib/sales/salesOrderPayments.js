@@ -61,6 +61,20 @@ export function installmentsFromPaymentPlan(plan, total) {
 }
 
 /**
+ * งวดที่ **ยังไม่ถูกสร้างจริง** — คำนวณสดจากแผนของ QT ทุกครั้งที่เรนเดอร์ เพื่อโชว์ให้ดู
+ * ตั้งแต่ใบยังเป็นร่าง (มติผู้ใช้ 2026-08-13: *"แค่สร้างก็โชว์งวดให้ดูได้แล้ว"*)
+ *
+ * ⭐ ที่ไม่เขียนลง DB ตั้งแต่ตอนร่างเพราะ **ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ** —
+ * เขียนไว้ก่อนแล้วยอดต่องวดจะค้างของเก่าเงียบ ๆ · preview ไม่มีปัญหานั้นเพราะ
+ * คำนวณใหม่จาก `totalAmount` ปัจจุบันทุกครั้ง
+ * ⚠️ **ห้ามนับ preview เป็นงวดจริง** — ไม่มี id ไม่มีสถานะ กดอะไรไม่ได้ทั้งสิ้น
+ */
+export function previewInstallments(plan, total) {
+  const rows = installmentsFromPaymentPlan(plan, total);
+  return rows.map((row) => ({ ...row, preview: true, status: 'pending', id: null }));
+}
+
+/**
  * งวดพร้อม insert — เท่ากับ `installmentsFromPaymentPlan` แต่ **ยืมหลักฐานจากตอนปิด Won**
  * มาตั้งงวดแรกให้เมื่อใบนั้นปิดด้วยสลิปโอนเงิน (มติผู้ใช้ 2026-08-13)
  *
