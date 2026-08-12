@@ -6,7 +6,7 @@ import { AlertCircle, X } from "lucide-react";
 import Link from "next/link";
 import EmptyState from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { snapForecastLevel, stageBadge, money } from "@/components/salesPlanning/ui";
+import { snapForecastLevel, forecastToneClass, stageBadge, money } from "@/components/salesPlanning/ui";
 import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import { isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
 import { fmtDateTime } from "@/lib/format";
@@ -209,7 +209,8 @@ export default function DealDrillDownModal({ filter, onClose }) {
                 <thead>
                   <tr>
                     <th>โครงการ / ลูกค้า</th>
-                    <th>สถานะ / โอกาส</th>
+                    <th>สถานะ</th>
+                    <th className="fc-detail-chance">โอกาส</th>
                     <th className="num">มูลค่า (บาท)</th>
                   </tr>
                 </thead>
@@ -223,11 +224,18 @@ export default function DealDrillDownModal({ filter, onClose }) {
                         <div className="fc-detail-meta">{deal.customer?.name || deal.customerName || "ไม่ระบุลูกค้า"}</div>
                         <div className="fc-detail-meta">อัปเดตล่าสุด: {fmtDateTime(deal.updatedAt)}</div>
                       </td>
+                      {/* ป้ายกว้างเท่ากันทั้งคอลัมน์ด้วย `ui-badge-cell` + `ui-badge-w-*`
+                          (ชุดเดียวกับตารางดีล) — ขอบป้ายจึงเรียงเป็นเส้นตรงลงมา */}
                       <td>
-                        <div className="fc-detail-badges">
-                          {stageBadge(deal.stage)}
-                          {isOpenDeal(deal) && <span className="ui-badge">FC {deal.probability}%</span>}
-                        </div>
+                        <div className="fc-detail-badges">{stageBadge(deal.stage, "ui-badge-cell ui-badge-w-stage")}</div>
+                      </td>
+                      {/* โอกาสมีเฉพาะดีลที่ยังเปิด — Won/แพ้ จบไปแล้วจึงไม่มีเปอร์เซ็นต์ให้ถ่วง
+                          (ขีดกลาง = ไม่มีค่า ไม่ใช่ 0%) · โชว์ % ดิบ ไม่ snap เป็นชั้น 20/50/80
+                          เหมือน `forecastBadge` เพราะนี่คือหน้าที่ผู้ใช้กดเข้ามาตรวจตัวเลขจริง */}
+                      <td className="fc-detail-chance">
+                        {isOpenDeal(deal)
+                          ? <span className={`ui-badge ui-badge-cell ui-badge-w-fc ${forecastToneClass(deal.probability)}`}>{deal.probability}%</span>
+                          : <span className="ui-badge-w-fc fc-detail-nochance">—</span>}
                       </td>
                       <td className="num fc-detail-amount">{money(amountOf(deal))}</td>
                     </tr>

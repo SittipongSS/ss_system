@@ -1956,6 +1956,14 @@ h1, h2, h3, h4, h5, h6 {
 
 .ui-badge-w-stage { --cell-badge-w: 124px; }   /* ขั้นของดีล — "เสนอไทม์ไลน์" / "ปิดได้ (Won)" */
 .ui-badge-w-fc { --cell-badge-w: 74px; }       /* FC% — กันแถวที่ยังไม่มีค่าเยื้อง */
+
+/* โทนของป้ายโอกาส (FC%) — ระดับตาม FORECAST_LEVELS ใน lib/sales/forecastLevels.js
+   ⚠️ นิยามสีอยู่ที่นี่ที่เดียว · `forecastToneClass()` ใน components/salesPlanning/ui.js
+   เป็นตัวเลือกคลาส ทั้งป้าย "FC 50%" ของตารางดีลและป้าย "%" ดิบของลิ้นชักเจาะ FC
+   จึงได้สีชุดเดียวกันโดยไม่ต้องก๊อปแมปสี */
+.ui-badge.fc-level-20 { color: var(--text-3); }
+.ui-badge.fc-level-50 { color: var(--amber); }
+.ui-badge.fc-level-80 { color: var(--teal); }
 .ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
 .ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ยกเลิกอนุมัติ" */
 .ui-badge-w-lead { --cell-badge-w: 92px; }     /* สถานะลีด — "เปิดลูกค้าแล้ว" / "นัดประชุมแล้ว" 88px */
@@ -2626,7 +2634,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .fc-detail-drawer {
-  width: min(640px, 100vw);
+  /* 🪤 640px คงที่ทำให้คอลัมน์ "มูลค่า (บาท)" หลุดออกนอกจอ — `.premium-table` มี
+     `min-width: 700px` แต่ในลิ้นชัก 640px เหลือที่ให้แค่ 587px ผู้อ่านต้องเลื่อนแนวนอน
+     ถึงจะเห็นตัวเลขที่กดเข้ามาดู (วัดจริง 2026-08-13 ที่ viewport 1600px)
+     พื้นล่าง 760px = 700 + padding ซ้ายขวาของ `.fc-detail-body` (53px) ⇒ ตารางไม่มี
+     สกรอลล์แนวนอนทุกจอตั้งแต่แท็บเล็ตขึ้นไป · เพดาน 920px และ 58vw กันไม่ให้ลิ้นชัก
+     กลืนตารางต้นทางที่ตั้งใจให้ยังเห็นอยู่ข้างหลัง (จอ ≤640px ใช้เต็มจอตาม media query ล่าง) */
+  width: clamp(min(100vw, 760px), 58vw, 920px);
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -2735,10 +2749,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 .fc-detail-table-wrap { overflow: visible; }
 .fc-detail-table { table-layout: fixed; }
-.fc-detail-table th:first-child { width: 48%; }
-.fc-detail-table th:nth-child(2) { width: 25%; }
-.fc-detail-table th:last-child { width: 27%; }
+/* 4 คอลัมน์: โครงการ/ลูกค้า · สถานะ · โอกาส · มูลค่า — สถานะกับโอกาสแยกช่องกันแล้ว
+   (เดิมป้ายขั้นดีลกับป้าย FC% อยู่ช่องเดียวกัน อ่านเป็นชุดเดียวจนแยกไม่ออกว่าอันไหนคืออะไร) */
+.fc-detail-table th:nth-child(1) { width: 43%; }
+.fc-detail-table th:nth-child(2) { width: 21%; }
+.fc-detail-table th:nth-child(3) { width: 12%; }
+.fc-detail-table th:nth-child(4) { width: 24%; }
 .fc-detail-table td { white-space: normal !important; vertical-align: top; }
+.fc-detail-chance { text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; }
+/* ขีดกลางกินพื้นที่เท่าป้าย FC% (ผ่าน --cell-badge-w ที่ `.ui-badge-w-fc` ตั้งไว้)
+   ไม่งั้นแถวที่ไม่มีค่าจะเยื้องไปชิดซ้ายคนเดียวในคอลัมน์ */
+.fc-detail-nochance { display: inline-block; min-width: var(--cell-badge-w); color: var(--text-3); text-align: center; }
+/* `td { white-space: normal !important }` ข้างบนกินกฎ nowrap ของ `.ui-badge-cell` —
+   ป้ายที่ถูกบังคับความกว้างจึงตัดคำกลางป้ายได้ ต้องทวงคืนด้วย !important เท่ากัน */
+.fc-detail-table .ui-badge-cell { white-space: nowrap !important; }
 .fc-detail-project-link {
   color: var(--text);
   font-weight: var(--fw-semibold);
@@ -2761,11 +2785,21 @@ h1, h2, h3, h4, h5, h6 {
   .fc-detail-summary { padding: var(--space-3-5) var(--space-4); gap: var(--space-2) var(--space-4); }
   .fc-detail-body { padding: var(--space-3) var(--space-3) var(--space-5); }
   .fc-detail-table-wrap { border: 0; background: transparent; }
+  /* 🪤 `.premium-table` มี `min-width: 700px` — พอเปลี่ยนเป็นการ์ด มันยังดันแถวให้กว้าง
+     700px ทั้งที่จอ 375px ช่อง "มูลค่า" จึงไปอยู่นอกลิ้นชักจนมองไม่เห็นเลย
+     (วัดจริง 2026-08-13: เซลล์มูลค่า x=213 w=487 ⇒ ขอบขวา 700 บนจอ 375)
+     ⚠️ ต้องเขียนคู่กับ `.premium-table` — กฎ min-width ของมันอยู่ท้ายไฟล์ (บรรทัด ~4490)
+     ถ้าใช้คลาสเดียว specificity เท่ากันแล้วกฎที่มาทีหลังชนะ media query นี้ */
+  .fc-detail-table.premium-table { min-width: 0; }
+  /* ความกว้างป้ายตายตัวมีไว้ให้ "คอลัมน์" เรียงตรงกัน — ในโหมดการ์ดไม่มีคอลัมน์แล้ว
+     ถ้าคงไว้ ป้ายสองใบจะกินที่จนช่องมูลค่าเหลือ 39px แล้วตัวเลขล้น (วัดจริงบนจอ 375) */
+  .fc-detail-table .ui-badge-cell, .fc-detail-nochance { min-width: 0; }
   .fc-detail-table, .fc-detail-table tbody { display: block; }
   .fc-detail-table thead { display: none; }
   .fc-detail-table tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* บรรทัดล่างของการ์ด: [สถานะ] [โอกาส] ........ [มูลค่า ชิดขวา] */
+    grid-template-columns: auto auto minmax(0, 1fr);
     gap: var(--space-2) var(--space-3);
     margin-bottom: var(--space-2);
     padding: var(--space-3);
@@ -2775,7 +2809,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   .fc-detail-table td { display: block; padding: 0; border: 0; }
   .fc-detail-table td:first-child { grid-column: 1 / -1; }
-  .fc-detail-table td:nth-child(2) { align-self: center; }
+  .fc-detail-table td:nth-child(2), .fc-detail-table td:nth-child(3) { align-self: center; }
   .fc-detail-table td:last-child { align-self: center; text-align: right; white-space: nowrap !important; }
   .fc-detail-table tr:hover td { background: transparent; }
 }

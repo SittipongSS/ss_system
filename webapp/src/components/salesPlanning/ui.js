@@ -71,11 +71,15 @@ export function dealTypeBadge(type, className = "") {
 // ฝั่ง server ใช้ร่วมได้ เพราะไม่มี JSX). re-export ไว้ให้หน้าเดิมที่ import จากที่นี่
 export { FORECAST_LEVELS, snapForecastLevel };
 
+/* โทนสีของโอกาส — สีจริงอยู่ที่คลาส fc-level-* ของป้ายใน globals.css **ที่เดียว**
+   เดิมแมปสีเขียนเป็น style ในฟังก์ชันนี้ ป้ายที่โชว์ % ดิบ (ลิ้นชักเจาะ FC) จึงยืมสี
+   ไม่ได้นอกจากก๊อปแมปไปอีกชุด — แยกออกมาเป็นคลาสแล้วทั้งสองที่อ้างนิยามเดียวกัน */
+export const forecastToneClass = (probability) => `fc-level-${snapForecastLevel(probability)}`;
+
 export function forecastBadge(probability, className = "") {
   const p = snapForecastLevel(probability);
-  const color = { 20: "var(--text-3)", 50: "var(--amber)", 80: "var(--teal)" }[p] || "var(--text-3)";
   return (
-    <span className={badgeClass(className)} style={{ color }}>
+    <span className={badgeClass([forecastToneClass(p), className].filter(Boolean).join(" "))}>
       FC {p}%
     </span>
   );
