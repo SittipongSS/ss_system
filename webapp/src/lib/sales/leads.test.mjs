@@ -524,15 +524,22 @@ test('chunkLeadIds: ซอยเป็นก้อนละ 200 · ทิ้ง�
   assert.deepEqual(chunkLeadIds(['a', 'b'], 0), [['a', 'b']]);
 });
 
-test('route KPI: ต้องซอย .in() และคืน null เมื่อนับไม่ได้ — ห้ามกลบเป็น 0', () => {
+/* ตัวเลขที่ไม่มีใครแสดง = ไม่ต้องยิง query · "ตีกลับ" ออกจากแท็บตั้งแต่มติ 2026-08-11
+   แต่ route ยังนับต่ออีกเป็นปี ⇒ จ่ายค่า query ทุกครั้งที่เปิดแท็บให้ค่าที่ทิ้งทันที
+   เอากลับมาเมื่อไรต้องมีที่แสดงด้วย และต้องซอย `.in()` ด้วย chunkLeadIds เหมือนเดิม */
+test('route KPI: ไม่ยิง query นับ "ตีกลับ" ที่ไม่มีหน้าจอไหนอ่าน', () => {
   const routeSource = readFileSync(
     new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url),
     'utf8',
   );
-  assert.match(routeSource, /for \(const chunk of chunkLeadIds\(/);
-  assert.match(routeSource, /bounceCount = null;/, 'นับไม่ได้ต้องเป็น null ให้หน้าจอโชว์ "-"');
-  assert.doesNotMatch(routeSource, /bounceCount = count \|\| 0;/,
-    'กลบ error เป็น 0 = คำตอบที่ดูปกติจนไม่มีใครสงสัย');
+  assert.doesNotMatch(routeSource, /kind', 'bounce'|kind: 'bounce'/,
+    'นับตีกลับกลับมาแล้วต้องมีที่แสดงบนแท็บด้วย ไม่งั้นจ่ายค่า query ฟรี');
+  assert.doesNotMatch(routeSource, /bounced:/, 'ก้อน funnel ไม่ควรมีคีย์ที่ไม่มีใครอ่าน');
+  const tabSource = readFileSync(
+    new URL('../../components/salesPlanning/dashboard/KpiLeadsTab.js', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(tabSource, /f\.bounced/, 'ถ้าจะแสดงตีกลับ ต้องเปิด query ฝั่ง route คู่กัน');
 });
 
 test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null และยังโชว์ 0 จริงตามปกติ', () => {
@@ -544,7 +551,11 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
      ตอนนี้กริดถูกแทนด้วยกราฟแท่ง และ "ตีกลับ" ออกจากแท็บไปแล้ว (มติผู้ใช้ 2026-08-11)
      ⇒ ค่าที่ null ได้และยังโชว์อยู่จริงคือ "ค้างตอนนี้" ของ SLA — ย้ายด่านมาคุมตรงนั้นแทน
      กฎเดิมไม่เปลี่ยน: null = นับไม่ได้ ต้องขึ้น "-" ห้ามกลบเป็น 0 */
-  assert.match(tabSource, /ค้างตอนนี้ \$\{s\.pending \?\? "-"\}/);
+  // ป้ายของด่านคัดกรองต่างจากอีกสองด่าน (ของค้างเป็นคิวกลางทั้งบริษัท) จึงเล็งที่
+  // ตัวกันค่า null ไม่ใช่คำนำหน้า — กฎที่คุมคือ "นับไม่ได้ต้องขึ้น - ไม่ใช่ 0"
+  assert.match(tabSource, /\$\{pendingLabel\} \$\{s\.pending \?\? "-"\}/);
+  assert.match(tabSource, /pendingLabel: "ค้างทั้งบริษัท"/,
+    'ค้างของด่านคัดกรองไม่ตามตัวกรองทีม (คิวกลางไม่มีทีม) — ต้องบอกบนจอว่าคนละขอบเขต');
   // เล็งเฉพาะ `sla.pending` ซึ่งเป็นตัวเดียวที่ null ได้จริง (countLeadsByStatus ล้ม)
   // ส่วน pending ของตาราง AE การันตีเป็นตัวเลขจาก withAssigneePending — ไม่เข้าข่าย
   assert.doesNotMatch(tabSource, /s\.pending \?\? 0/, 'ห้ามกลบ SLA pending ที่นับไม่ได้ให้เป็น 0');
@@ -552,4 +563,8 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
   assert.match(tabSource, /livePersonName\(directory, a\.assigneeId, a\.name\)/);
   assert.match(tabSource, /livePersonName\(directory, c\.createdBy, c\.name\)/);
   assert.match(tabSource, /TEAM_LABELS\[a\.team\]/, 'คอลัมน์ทีมต้องเป็นป้ายเต็ม ไม่ใช่รหัสดิบ');
+  /* % ที่ไม่มีตัวหารกำกับ = คนที่ติดต่อไป 2 ใบจาก 11 ใบขึ้น 100.00% ได้หน้าตาเฉย
+     (การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว — สองที่บนจอเดียวกันต้องเชื่อถือได้เท่ากัน) */
+  assert.match(tabSource, /\{a\.slaHit\}\/\{a\.contacted\}/,
+    'คอลัมน์ SLA ของ AE ต้องโชว์ตัวหารคู่กับเปอร์เซ็นต์เสมอ');
 });

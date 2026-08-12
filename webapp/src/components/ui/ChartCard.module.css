@@ -103,6 +103,14 @@
   gap: 5px;
 }
 
+/* หัวกำกับชุดสี — ต้องอ่านต่างจากรายการพอให้เห็นว่าคุมของถัดไปกี่ตัว
+   (ตัวหนาอย่างเดียวไม่พอเมื่อรายการมีสวอตช์สีนำหน้าทุกตัว) */
+.legendTitle {
+  color: var(--text-3);
+  font-weight: var(--fw-semibold);
+}
+.legendTitle::after { content: ":"; }
+
 .legendSwatch {
   width: 9px;
   height: 9px;

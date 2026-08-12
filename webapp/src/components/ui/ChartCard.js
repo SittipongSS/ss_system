@@ -1,9 +1,14 @@
 import { isValidElement } from "react";
 import styles from "./ChartCard.module.css";
 
-export function ChartLegend({ items = [], className = "" }) {
+/* `title` = หัวกำกับของชุดสี — จำเป็นเมื่อการ์ดหนึ่งมีคำอธิบายมากกว่าหนึ่งชุด
+   🐞 การ์ด "ช่องทางที่ลีดเข้ามา" เคยต่อสองชุดเป็นแถวเดียว (กลุ่มช่องทางของวงกลม +
+   สถานะของแท่ง) แล้วสีชนกันพอดี: `--chart-cat-1` กับ `--blue` เป็น #466990 ตัวเดียวกัน
+   และ `--chart-cat-3` กับ `--green` เป็น #357558 ⇒ สีเดียวกันมีสองความหมายในแถวเดียว */
+export function ChartLegend({ items = [], className = "", title = "" }) {
   return (
-    <div className={`${styles.legend} ${className}`.trim()} aria-label="คำอธิบายชุดข้อมูล">
+    <div className={`${styles.legend} ${className}`.trim()} aria-label={title || "คำอธิบายชุดข้อมูล"}>
+      {title ? <span className={styles.legendTitle}>{title}</span> : null}
       {items.map((item) => (
         <span key={item.key || item.label} className={styles.legendItem}>
           <span className={styles.legendSwatch} style={{ "--legend-color": item.color }} aria-hidden="true" />

@@ -198,7 +198,7 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 | Senior AE กระจายทัน SLA | `assignedAt − screenedAt ≤ 1 วันทำการ` (% hit) — **ของรอบปัจจุบัน** | `sales_leads` |
 | AE ติดต่อกลับทัน SLA | `firstContactAt − assignedAt ≤ 1 วันทำการ` (% hit) | `sales_leads` |
 | นัดประชุม | จำนวนนัด onsite/online ต่อ AE + conversion ลีด→นัด→เปิดลูกค้า | `lead_events` (meeting) |
-| ตีกลับทีมผิด | จำนวน + rework time | `lead_events` (bounce) |
+| ตีกลับทีมผิด | จำนวน + rework time | `lead_events` (bounce) — **ยังไม่คำนวณ** ถอดออกจาก route 2026-08-12 เพราะไม่มีหน้าจอไหนแสดง (มติ 2026-08-11 เอาออกจากผัง) · เอากลับมาพร้อมที่แสดงเสมอ และซอย `.in()` ด้วย `chunkLeadIds` |
 | %ปิดยอด | `Actual ÷ Target` (บริษัท/ทีม/บุคคล ตาม 0075) | targets + deals |
 | ความแม่นยำ FC | ต่อดีล won: `1 − |FC − AT| ÷ FC` → เฉลี่ยรายคน/ทีม/เดือน | deals (projectValue vs wonValue) |
 | ดีลค้างเก็บ | ลิสต์ดีลเปิดที่ `forecastMonth` เลยแล้ว | deals |
