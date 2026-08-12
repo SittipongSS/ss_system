@@ -126,31 +126,6 @@
   min-width: 0;
 }
 
-/* ภาษาของเอกสาร (IS-26080005) — ชุดตายตัว 2 ตัวเลือกจึงกางเป็นแผ่นเลือก ไม่ใช่ dropdown
-   (กติกาคอนโทรล มติผู้ใช้ 2026-08-08) · กิน 2 คอลัมน์เพราะแผ่นหนึ่งกว้างขั้นต่ำ 9rem
-   สองแผ่นจึงไม่พอในช่องความกว้างเดียวของกริดนี้ — จอแคบกริดเหลือคอลัมน์เดียวอยู่แล้ว */
-.docLanguageField {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
-  grid-column: span 2;
-  color: var(--text-2);
-  font-size: var(--fs-5);
-  font-weight: var(--fw-bold);
-}
-
-.docLanguageField > * + * {
-  margin-top: var(--space-1-5);
-}
-
-.docLanguageNote {
-  color: var(--text-3);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-normal);
-  line-height: var(--lh-thai);
-}
-
 .lineActions {
   display: flex;
   justify-content: flex-end;
