@@ -128,7 +128,12 @@ export default function SalesOrdersPage() {
                 {pageRows.map((row) => (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                     <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
-                    <td>{row.customerName || "-"}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span></td>
+                    <td>
+                      {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
+                      {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
+                      {row.customerName || "-"}
+                      <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span>
+                    </td>
                     <td><Link prefetch={false} href={`/sa/quotations/${row.quotationId}`} className="linklike mono">{row.quotation?.quoteNumber || "-"}</Link></td>
                     <td>{fmtDate(row.orderDate)}</td>
                     <td>{fmtDate(row.paymentDueDate)}</td>
