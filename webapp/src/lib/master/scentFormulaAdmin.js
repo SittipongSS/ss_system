@@ -4,6 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
+import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
   latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
@@ -82,6 +83,25 @@ export async function countRequestItemsProducingScent(supabase, scentId) {
     .eq('producedScentId', scentId);
   if (error) throw error;
   return count || 0;
+}
+
+/**
+ * นับทุก pointer ที่เป็น `RESTRICT` หลัง mig 0231 — ใช้เป็น `linkedCount` ของด่านลบ
+ *
+ * ⭐ **ต้องนับให้ครบทุกช่อง ไม่ใช่เฉพาะช่องที่นึกออก** — ช่องที่ตกหล่นจะผ่านด่านนี้
+ * ไปแล้วไปตายที่ฐานข้อมูลด้วย 23503 ซึ่งขึ้นจอเป็นภาษาอังกฤษที่ผู้ใช้อ่านไม่ออก
+ * ⚠️ รายการต้องตรงกับ `unlinkRegistryRefs()` ใน `lib/forceDelete.js` เสมอ —
+ * นับอย่าง ปลดอีกอย่าง แปลว่าบังคับลบแล้วยังโดนปฏิเสธอยู่ดี
+ */
+export async function countRegistryRefs(supabase, kind, id) {
+  let total = 0;
+  for (const [table, column] of registryRefTargets(kind)) {
+    const { count, error } = await supabase
+      .from(table).select('id', { count: 'exact', head: true }).eq(column, id);
+    if (error) throw error;
+    total += count || 0;
+  }
+  return total;
 }
 
 // ด่านสายพันธุ์ที่ต้องถาม DB — โยน Error เป็นภาษาไทยให้ route ตอบ 400 ตามเดิม

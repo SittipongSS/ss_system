@@ -8,9 +8,9 @@ import {
   sendScentError,
 } from '@/lib/master/scents';
 import {
-  assertDerivedFromScent, countRequestItemsProducingScent, findScent, findScentDetail, updateScent,
+  assertDerivedFromScent, countRegistryRefs, findScent, findScentDetail, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
-import { canForceDelete, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
+import { canForceDelete, unlinkRegistryRefs, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
@@ -169,8 +169,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const preview = await scentForcePreview(supabase, scent);
     if (isDryRun(req)) return ok(preview);
 
-    // ลูกทั้งหมดมี FK จริง (CASCADE / SET NULL) ตั้งแต่ mig 0171 → ลบตัวแม่พอ
-    // แต่เธรดเป็น polymorphic ไม่มี FK ต้องกวาดเองเหมือนทุก entity ที่ใช้ของกลาง
+    /* ⭐ **ปลด pointer ที่เป็น RESTRICT ก่อน** (mig 0231) — คำร้อง · บรรทัดคำร้อง ·
+       ทะเบียนราคา ไม่ยอมให้ลบกลิ่นที่ถูกอ้างอยู่แล้ว (เดิมฐานข้อมูลเซ็ต NULL ให้เอง
+       เงียบ ๆ ซึ่งคือรูที่ R-5 ปิด) · ที่เหลือ (สินค้า/สูตร/สายพันธุ์) ยังเป็น SET NULL
+       ⚠️ ปลดไม่สำเร็จต้องหยุด ไม่ใช่ลบต่อ — ไม่งั้นได้ 23503 ที่ผู้ใช้อ่านไม่ออก */
+    try {
+      await unlinkRegistryRefs(supabase, 'scent', id);
+    } catch (unlinkError) {
+      return fail(unlinkError.message, 500);
+    }
+    // เธรดเป็น polymorphic ไม่มี FK ต้องกวาดเองเหมือนทุก entity ที่ใช้ของกลาง
     const { error: delError } = await supabase.from('scents').delete().eq('id', id);
     if (delError) return fail(delError.message, 500);
     await purgeUpdates(supabase, 'scent', id);
@@ -185,8 +193,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   // นับสดตอนจะลบ ไม่ใช่พ่วงมากับ findScent — ทุกหน้าที่อ่านกลิ่นจะต้องจ่ายค่านับนั้น
   // ทั้งที่ใช้จริงเฉพาะตอนลบ (เดิม findScent join Rev ทุกครั้งด้วยเหตุผลเดียวกันนี้)
+  // ⚠️ นับทุก pointer ที่เป็น RESTRICT (mig 0231) ไม่ใช่แค่ `producedScentId` —
+  // ช่องที่ตกหล่นจะผ่านด่านนี้แล้วไปตายที่ฐานข้อมูลด้วย 23503 ที่ผู้ใช้อ่านไม่ออก
   const error = deleteScentError(scent, {
-    linkedCount: await countRequestItemsProducingScent(supabase, id),
+    linkedCount: await countRegistryRefs(supabase, 'scent', id),
   });
   if (error) return badRequest(error);
 

@@ -13,6 +13,7 @@
 // ทุก preview เป็น pure-ish (query อย่างเดียว ไม่ลบ) เพื่อให้ ?dryRun=1 ใช้ซ้ำ
 // เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ.
 import { purgeUpdatesMany } from '@/lib/master/updates';
+import { registryRefTargets } from '@/lib/master/registryRefs';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { isWonStage } from '@/lib/salesPlanning';
 
@@ -269,24 +270,56 @@ export async function cleanupQuotationOrphans(supabase, quote) {
   }
 }
 
-// ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171) ─────────────────────────────
-// ต่างจากเอกสารข้างบนตรงที่ **ไม่มีอะไรถูกลบพ่วง** — ความสัมพันธ์ทั้งหมดเป็น FK
-// จริงที่ตั้ง ON DELETE SET NULL / CASCADE ไว้แล้วตั้งแต่ migration:
-//   formulas.scentId                   → SET NULL (สูตรอยู่ต่อ แต่ไม่รู้ว่าใช้กลิ่นไหน)
-//   products.scentId/formulaId         → SET NULL
-//   material_prices.*                  → SET NULL
-//   dept_request_items.producedScentId → SET NULL (คำร้องอยู่ต่อ แต่ขาดสายพันธุ์)
-// พรีวิวจึงเป็นรายการ "ของที่จะถูกปลดการเชื่อมโยง" ไม่ใช่ "ของที่จะถูกลบ" — ต้อง
-// เขียนป้ายให้ตรงความจริง ไม่งั้นผู้ดูแลระบบเข้าใจผิดว่ากำลังจะลบสินค้าทิ้ง
+// ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171 · 0231) ──────────────────────
+// ไม่มีอะไรถูก **ลบ** พ่วง — มีแต่ของที่ถูก **ปลดการเชื่อมโยง** · พรีวิวจึงต้องเขียน
+// ป้ายให้ตรงความจริง ไม่งั้นผู้ดูแลระบบเข้าใจผิดว่ากำลังจะลบสินค้าทิ้ง
+//
+// ⭐ **หลัง mig 0231 การปลดไม่ได้เกิดเอง** — pointer ที่เป็น *หลักฐาน* ถูกเปลี่ยนเป็น
+// `ON DELETE RESTRICT` แล้ว (คำร้อง · บรรทัดคำร้อง · ทะเบียนราคา) ⇒ ลบตรง ๆ จะโดน
+// ฐานข้อมูลปฏิเสธ (23503) ⇒ ทางบังคับลบต้อง **ปลดเองก่อน** ด้วย `unlinkRegistryRefs()`
+// ซึ่งเป็นสิ่งที่ต้องการพอดี: ของที่เคยหายเงียบ กลายเป็นของที่ต้องกดยืนยันหลังเห็นรายการ
+//   คง SET NULL (ลบแล้วชี้ไปที่ว่างได้โดยไม่เสียความหมาย):
+//     formulas.scentId · products.scentId/formulaId · scent_lineage.derivedFromScentId
+//   RESTRICT (mig 0231 · ต้องปลดเองก่อนลบ):
+//     dept_requests.scentId/formulaId · dept_request_items.scentId/producedScentId/
+//     producedFormulaId · material_prices.scentId/formulaId
+/**
+ * ปลด pointer ที่เป็น `RESTRICT` ออกก่อนลบทะเบียน (mig 0231)
+ *
+ * ⭐ **นี่คือสิ่งที่ฐานข้อมูลเคยทำให้เองแบบเงียบ ๆ** — ตอนนี้ต้องทำเองอย่างตั้งใจ
+ * หลังผู้ดูแลระบบเห็นพรีวิวแล้วกดยืนยัน · ไม่ทำ = `DELETE` โดนปฏิเสธด้วย 23503
+ *
+ * ⚠️ **ไม่แตะของที่ยังเป็น SET NULL** (`products` · `formulas.scentId` · lineage) —
+ * ฐานข้อมูลจัดการเองถูกอยู่แล้ว และการมาอัปเดตซ้ำคือ write ที่ไม่มีเหตุผล
+ * ⚠️ รายการเป้าหมายอยู่ที่ `lib/master/registryRefs.js` ที่เดียว — ใช้ร่วมกับตัวนับ
+ * ก่อนลบ · นับอย่างปลดอีกอย่างเมื่อไร บังคับลบจะยังโดนปฏิเสธอยู่ดี
+ *
+ * @param kind 'scent' | 'formula'
+ */
+export async function unlinkRegistryRefs(supabase, kind, id) {
+  for (const [table, column] of registryRefTargets(kind)) {
+    // ⚠️ ปล่อย error ขึ้นไป ไม่กลืน — ปลดไม่สำเร็จแล้วไปลบต่อจะได้ 23503 ที่อ่านไม่ออก
+    // ส่วนการปลดสำเร็จบางตารางแล้วพังกลางทางยังดีกว่าลบทะเบียนทิ้งโดยลิงก์ยังค้าง
+    const { error } = await supabase.from(table).update({ [column]: null }).eq(column, id);
+    if (error) throw new Error(`ปลดการเชื่อมโยง ${table}.${column} ไม่สำเร็จ: ${error.message}`);
+  }
+}
+
 export async function scentForcePreview(supabase, scent) {
-  const [requestItems, formulas, products, materials] = await Promise.all([
+  const [requestItems, requestedItems, requests, formulas, products, materials] = await Promise.all([
     countBy(supabase, 'dept_request_items', 'producedScentId', scent.id),
+    // ⚠️ สองแถวนี้เพิ่มหลัง mig 0231 — เดิมไม่ได้นับ ทั้งที่มันเป็น pointer ที่หายเงียบ
+    // ได้เหมือนกัน ⇒ พรีวิวเคยบอกน้อยกว่าความจริง
+    countBy(supabase, 'dept_request_items', 'scentId', scent.id),
+    countBy(supabase, 'dept_requests', 'scentId', scent.id),
     countBy(supabase, 'formulas', 'scentId', scent.id),
     countBy(supabase, 'products', 'scentId', scent.id),
     countBy(supabase, 'material_prices', 'scentId', scent.id),
   ]);
   const cascade = [
     line('บรรทัดคำร้องที่ผลิตกลิ่นนี้ขึ้นมา (ปลดการเชื่อมโยง คำร้องยังอยู่)', requestItems),
+    line('บรรทัดคำร้องที่ขอกลิ่นนี้ (ปลดการเชื่อมโยง คำร้องยังอยู่)', requestedItems),
+    line('คำร้องที่อ้างกลิ่นนี้ทั้งใบ (ปลดการเชื่อมโยง คำร้องยังอยู่)', requests),
     line('สูตรที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สูตรยังอยู่)', formulas),
     line('สินค้าที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
     line('วัสดุในทะเบียนที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง)', materials),
@@ -424,11 +457,16 @@ export async function cleanupRequestOrphans(supabase, requestId) {
 }
 
 export async function formulaForcePreview(supabase, formula) {
-  const [products, materials] = await Promise.all([
+  const [products, materials, requests, requestItems] = await Promise.all([
     countBy(supabase, 'products', 'formulaId', formula.id),
     countBy(supabase, 'material_prices', 'formulaId', formula.id),
+    // เพิ่มหลัง mig 0231 ด้วยเหตุผลเดียวกับฝั่งกลิ่น — เดิมพรีวิวไม่เคยพูดถึงคำร้องเลย
+    countBy(supabase, 'dept_requests', 'formulaId', formula.id),
+    countBy(supabase, 'dept_request_items', 'producedFormulaId', formula.id),
   ]);
   const cascade = [
+    line('คำร้องที่อ้างสูตรนี้ทั้งใบ (ปลดการเชื่อมโยง คำร้องยังอยู่)', requests),
+    line('บรรทัดคำร้องที่ผลิตสูตรนี้ขึ้นมา (ปลดการเชื่อมโยง คำร้องยังอยู่)', requestItems),
     line('สินค้าที่อ้างสูตรนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
     line('วัสดุในทะเบียนที่อ้างสูตรนี้ (ปลดการเชื่อมโยง)', materials),
   ].filter((r) => r.count > 0);
