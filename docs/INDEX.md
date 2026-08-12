@@ -128,7 +128,7 @@
 
 | เอกสาร | ปิดเมื่อ | หมายเหตุ |
 |---|---|---|
-| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | 2026-08-12 | R-1…R-6 ครบ · R-5 (FK `RESTRICT` กันลบทะเบียนแล้วลิงก์หายเงียบ) ปิดด้วย mig 0231 · เหลือหนี้เก่าคนละก้อน: `material_prices_identity_uk` ยังยึด `formulaCode` (text) |
+| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | 2026-08-12 | R-1…R-6 ครบ · R-5 (FK `RESTRICT` กันลบทะเบียนแล้วลิงก์หายเงียบ) ปิดด้วย mig 0232 · เหลือหนี้เก่าคนละก้อน: `material_prices_identity_uk` ยังยึด `formulaCode` (text) |
 | [cross-department-requests-plan.md](cross-department-requests-plan.md) | 2026-08-12 | รวมสามเมนูเป็น `dept_requests` ครบแล้ว (mig 0171–0174 · notifications · role `executive`) · **บรรทัดสถานะเดิมค้างว่า "รอเริ่ม PR-1" มาสองสัปดาห์** — ตรวจกับโค้ดแล้วปิดเล่ม · ของที่ยังค้างข้อเดียวย้ายไปอยู่ `request-hub-rebuild-plan.md` (R-5) |
 
 ## 6. แบบหน้าจอ

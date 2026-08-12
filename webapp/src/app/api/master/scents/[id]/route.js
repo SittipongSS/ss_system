@@ -169,7 +169,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const preview = await scentForcePreview(supabase, scent);
     if (isDryRun(req)) return ok(preview);
 
-    /* ⭐ **ปลด pointer ที่เป็น RESTRICT ก่อน** (mig 0231) — คำร้อง · บรรทัดคำร้อง ·
+    /* ⭐ **ปลด pointer ที่เป็น RESTRICT ก่อน** (mig 0232) — คำร้อง · บรรทัดคำร้อง ·
        ทะเบียนราคา ไม่ยอมให้ลบกลิ่นที่ถูกอ้างอยู่แล้ว (เดิมฐานข้อมูลเซ็ต NULL ให้เอง
        เงียบ ๆ ซึ่งคือรูที่ R-5 ปิด) · ที่เหลือ (สินค้า/สูตร/สายพันธุ์) ยังเป็น SET NULL
        ⚠️ ปลดไม่สำเร็จต้องหยุด ไม่ใช่ลบต่อ — ไม่งั้นได้ 23503 ที่ผู้ใช้อ่านไม่ออก */
@@ -193,7 +193,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   // นับสดตอนจะลบ ไม่ใช่พ่วงมากับ findScent — ทุกหน้าที่อ่านกลิ่นจะต้องจ่ายค่านับนั้น
   // ทั้งที่ใช้จริงเฉพาะตอนลบ (เดิม findScent join Rev ทุกครั้งด้วยเหตุผลเดียวกันนี้)
-  // ⚠️ นับทุก pointer ที่เป็น RESTRICT (mig 0231) ไม่ใช่แค่ `producedScentId` —
+  // ⚠️ นับทุก pointer ที่เป็น RESTRICT (mig 0232) ไม่ใช่แค่ `producedScentId` —
   // ช่องที่ตกหล่นจะผ่านด่านนี้แล้วไปตายที่ฐานข้อมูลด้วย 23503 ที่ผู้ใช้อ่านไม่ออก
   const error = deleteScentError(scent, {
     linkedCount: await countRegistryRefs(supabase, 'scent', id),

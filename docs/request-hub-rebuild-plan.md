@@ -4,7 +4,7 @@
 > ประสานงาน SA กับฝ่ายอื่น ๆ … ทั้งขอข้อมูล ขอเอกสาร ขอราคา ถึงแต่ละหัวข้อมีเงื่อนไข
 > แตกต่างกัน"*
 
-> สถานะ: **เสร็จสมบูรณ์** · ตรวจกับโค้ดเมื่อ 2026-08-12 — R-1…R-6 ครบแล้ว (R-5 ปิดด้วย mig 0231)
+> สถานะ: **เสร็จสมบูรณ์** · ตรวจกับโค้ดเมื่อ 2026-08-12 — R-1…R-6 ครบแล้ว (R-5 ปิดด้วย mig 0232)
 >
 > ⚠️ เล่มนี้ไม่เคยมีบรรทัดสถานะเลยตั้งแต่เขียน (2026-08-03) และสารบัญเขียนว่า
 > "รอดำเนินการ" มาตลอด ทั้งที่ห้าข้อจากหกถูกทำไปแล้ว ⇒ เติมให้ครบตามกฎ `INDEX.md`
@@ -15,7 +15,7 @@
 > | R-2 ฝ่ายผู้รับเกินกว่า RD/PC | ✅ | `0212_request_dept_fn.sql` → `CHECK (dept IN ('RD','PC','FN'))` · มีบ้านของ FN ที่ `lib/requests/kinds/fn/` |
 > | R-3 สามตระกูล ไม่ใช่แปดหัวข้อแบน | ✅ | `requestKindFamily()` + ทะเบียนแยกรายฝ่าย `lib/requests/kinds/{rd,pc,fn,shared}/` |
 > | R-4 แท็บ = มุมมองของคน · หัวข้อ = ตัวกรอง | ✅ | `QUEUE_TABS` (รอฉันตอบ · ที่ฉันเปิด · ประวัติ) + ตัวกรอง/จัดกลุ่ม 5 มิติ (ม-103) |
-> | **R-5 ปิดรูรั่ว `ON DELETE SET NULL`** | ✅ *(2026-08-12 · mig 0231)* | 7 FK เป็น `RESTRICT` แล้ว: `dept_requests.scentId/formulaId` · `dept_request_items.scentId/producedScentId/producedFormulaId` · `material_prices.scentId/formulaId` · `products` คง `SET NULL` ตามมติ · บังคับลบต้องปลดเองก่อนผ่าน `unlinkRegistryRefs()` |
+> | **R-5 ปิดรูรั่ว `ON DELETE SET NULL`** | ✅ *(2026-08-12 · mig 0232)* | 7 FK เป็น `RESTRICT` แล้ว: `dept_requests.scentId/formulaId` · `dept_request_items.scentId/producedScentId/producedFormulaId` · `material_prices.scentId/formulaId` · `products` คง `SET NULL` ตามมติ · บังคับลบต้องปลดเองก่อนผ่าน `unlinkRegistryRefs()` |
 > | R-6 ผลลัพธ์ต่อหัวข้อ | ✅ *(ตกไปโดยธรรมชาติ)* | `OUTCOME_REGISTRY_BY_KIND` ว่าง **โดยตั้งใจ** — โมเดลใหม่กลิ่นเข้าทะเบียน **ตอน RD กดส่ง** (`producedScentId`) ไม่ใช่ตอนปิดเรื่อง · กลไกเก็บไว้เป็นตาข่าย (ดูคอมเมนต์ใน `lib/requests/outcomes.js`) |
 >
 > 🪤 **สิ่งที่ R-5 ไม่ได้แก้ และยังค้างอยู่** — `material_prices_identity_uk` ยังยึด

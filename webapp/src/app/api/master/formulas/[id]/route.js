@@ -142,7 +142,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (!canForceDelete(user)) return forbidden('บังคับลบต้องเป็นผู้ดูแลระบบ (admin)');
     const preview = await formulaForcePreview(supabase, formula);
     if (isDryRun(req)) return ok(preview);
-    /* ปลด pointer ที่เป็น RESTRICT ก่อน (mig 0231) — เหตุผลเดียวกับฝั่งกลิ่น:
+    /* ปลด pointer ที่เป็น RESTRICT ก่อน (mig 0232) — เหตุผลเดียวกับฝั่งกลิ่น:
        คำร้อง/บรรทัดคำร้อง/ทะเบียนราคา ไม่ยอมให้ลบสูตรที่ถูกอ้างอยู่ */
     try {
       await unlinkRegistryRefs(supabase, 'formula', id);
@@ -162,7 +162,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const error = deleteFormulaError(formula, {
     productCount,
-    // pointer ที่เป็น RESTRICT หลัง mig 0231 — คำร้อง/บรรทัด/ทะเบียนราคา
+    // pointer ที่เป็น RESTRICT หลัง mig 0232 — คำร้อง/บรรทัด/ทะเบียนราคา
     linkedCount: await countRegistryRefs(supabase, 'formula', id),
   });
   if (error) return badRequest(error);

@@ -270,21 +270,21 @@ export async function cleanupQuotationOrphans(supabase, quote) {
   }
 }
 
-// ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171 · 0231) ──────────────────────
+// ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171 · 0232) ──────────────────────
 // ไม่มีอะไรถูก **ลบ** พ่วง — มีแต่ของที่ถูก **ปลดการเชื่อมโยง** · พรีวิวจึงต้องเขียน
 // ป้ายให้ตรงความจริง ไม่งั้นผู้ดูแลระบบเข้าใจผิดว่ากำลังจะลบสินค้าทิ้ง
 //
-// ⭐ **หลัง mig 0231 การปลดไม่ได้เกิดเอง** — pointer ที่เป็น *หลักฐาน* ถูกเปลี่ยนเป็น
+// ⭐ **หลัง mig 0232 การปลดไม่ได้เกิดเอง** — pointer ที่เป็น *หลักฐาน* ถูกเปลี่ยนเป็น
 // `ON DELETE RESTRICT` แล้ว (คำร้อง · บรรทัดคำร้อง · ทะเบียนราคา) ⇒ ลบตรง ๆ จะโดน
 // ฐานข้อมูลปฏิเสธ (23503) ⇒ ทางบังคับลบต้อง **ปลดเองก่อน** ด้วย `unlinkRegistryRefs()`
 // ซึ่งเป็นสิ่งที่ต้องการพอดี: ของที่เคยหายเงียบ กลายเป็นของที่ต้องกดยืนยันหลังเห็นรายการ
 //   คง SET NULL (ลบแล้วชี้ไปที่ว่างได้โดยไม่เสียความหมาย):
 //     formulas.scentId · products.scentId/formulaId · scent_lineage.derivedFromScentId
-//   RESTRICT (mig 0231 · ต้องปลดเองก่อนลบ):
+//   RESTRICT (mig 0232 · ต้องปลดเองก่อนลบ):
 //     dept_requests.scentId/formulaId · dept_request_items.scentId/producedScentId/
 //     producedFormulaId · material_prices.scentId/formulaId
 /**
- * ปลด pointer ที่เป็น `RESTRICT` ออกก่อนลบทะเบียน (mig 0231)
+ * ปลด pointer ที่เป็น `RESTRICT` ออกก่อนลบทะเบียน (mig 0232)
  *
  * ⭐ **นี่คือสิ่งที่ฐานข้อมูลเคยทำให้เองแบบเงียบ ๆ** — ตอนนี้ต้องทำเองอย่างตั้งใจ
  * หลังผู้ดูแลระบบเห็นพรีวิวแล้วกดยืนยัน · ไม่ทำ = `DELETE` โดนปฏิเสธด้วย 23503
@@ -308,7 +308,7 @@ export async function unlinkRegistryRefs(supabase, kind, id) {
 export async function scentForcePreview(supabase, scent) {
   const [requestItems, requestedItems, requests, formulas, products, materials] = await Promise.all([
     countBy(supabase, 'dept_request_items', 'producedScentId', scent.id),
-    // ⚠️ สองแถวนี้เพิ่มหลัง mig 0231 — เดิมไม่ได้นับ ทั้งที่มันเป็น pointer ที่หายเงียบ
+    // ⚠️ สองแถวนี้เพิ่มหลัง mig 0232 — เดิมไม่ได้นับ ทั้งที่มันเป็น pointer ที่หายเงียบ
     // ได้เหมือนกัน ⇒ พรีวิวเคยบอกน้อยกว่าความจริง
     countBy(supabase, 'dept_request_items', 'scentId', scent.id),
     countBy(supabase, 'dept_requests', 'scentId', scent.id),
@@ -460,7 +460,7 @@ export async function formulaForcePreview(supabase, formula) {
   const [products, materials, requests, requestItems] = await Promise.all([
     countBy(supabase, 'products', 'formulaId', formula.id),
     countBy(supabase, 'material_prices', 'formulaId', formula.id),
-    // เพิ่มหลัง mig 0231 ด้วยเหตุผลเดียวกับฝั่งกลิ่น — เดิมพรีวิวไม่เคยพูดถึงคำร้องเลย
+    // เพิ่มหลัง mig 0232 ด้วยเหตุผลเดียวกับฝั่งกลิ่น — เดิมพรีวิวไม่เคยพูดถึงคำร้องเลย
     countBy(supabase, 'dept_requests', 'formulaId', formula.id),
     countBy(supabase, 'dept_request_items', 'producedFormulaId', formula.id),
   ]);

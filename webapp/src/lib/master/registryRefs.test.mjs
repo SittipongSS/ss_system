@@ -10,7 +10,7 @@ import { deleteScentError } from './scents.js';
 import { deleteFormulaError } from './formulas.js';
 
 const MIGRATION = readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/0231_registry_pointer_restrict.sql'),
+  path.join(process.cwd(), 'supabase/migrations/0232_registry_pointer_restrict.sql'),
   'utf8',
 );
 
@@ -21,7 +21,7 @@ test('registryRefTargets — เลือกรายการตามชนิ
   assert.throws(() => SCENT_REF_TARGETS.push(['x', 'y']));
 });
 
-test('🔴 ทุกเป้าหมายในทะเบียนต้องมี FK RESTRICT จริงใน mig 0231', () => {
+test('🔴 ทุกเป้าหมายในทะเบียนต้องมี FK RESTRICT จริงใน mig 0232', () => {
   /* 🐞 นี่คือรูที่ R-5 ปิด — ก่อนหน้านี้ทั้งหมดเป็น ON DELETE SET NULL ⇒ ลบกลิ่น/สูตร
      แล้ว pointer บนคำร้องและทะเบียนราคาถูกล้างเงียบ ๆ ไม่มี error ไม่มี warning
      ⚠️ เทสต์อ่านไฟล์ migration จริง ไม่ใช่ลิสต์ที่พิมพ์ไว้เอง — เพิ่มเป้าหมายใน
@@ -32,10 +32,10 @@ test('🔴 ทุกเป้าหมายในทะเบียนต้อ
     const pattern = new RegExp(
       `FOREIGN KEY \\("${column}"\\)[\\s\\S]{0,80}?ON DELETE RESTRICT`,
     );
-    assert.match(MIGRATION, pattern, `${table}.${column} ต้องถูกตั้งเป็น RESTRICT ใน 0231`);
+    assert.match(MIGRATION, pattern, `${table}.${column} ต้องถูกตั้งเป็น RESTRICT ใน 0232`);
     assert.ok(
       MIGRATION.includes(`public.${table}`),
-      `0231 ต้องพูดถึงตาราง ${table}`,
+      `0232 ต้องพูดถึงตาราง ${table}`,
     );
   }
 });
@@ -47,7 +47,7 @@ test('⚠️ ของที่ตั้งใจคง SET NULL ต้องไ
   for (const forbidden of ['products.scentId', 'products.formulaId', 'formulas.scentId']) {
     assert.ok(!all.includes(forbidden), `${forbidden} ต้องคง SET NULL ตามมติ`);
   }
-  assert.ok(MIGRATION.includes('products'), '0231 ต้องเขียนไว้ว่าทำไมถึงไม่แตะ products');
+  assert.ok(MIGRATION.includes('products'), '0232 ต้องเขียนไว้ว่าทำไมถึงไม่แตะ products');
 });
 
 test('🔴 ด่านลบต้องบอกเป็นภาษาไทยก่อน ไม่ใช่ปล่อยให้ไปตายที่ 23503', () => {
