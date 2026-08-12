@@ -105,6 +105,7 @@
 | [webapp/SAHAMIT_PHASE5B_DESIGN.md](../webapp/SAHAMIT_PHASE5B_DESIGN.md) | Shift/Cut Audit · Locked cells · Coverage |
 | [webapp/SAHAMIT_UI_REVAMP_PLAN.md](../webapp/SAHAMIT_UI_REVAMP_PLAN.md) | รื้อ UI Forecast/PO/Reconciliation |
 | [entity-updates-plan.md](entity-updates-plan.md) | เธรดอัปเดตของกลาง — รอเคาะก่อนเริ่มโค้ด |
+| [notifications-inbox.md](notifications-inbox.md) | กล่องแจ้งเตือนรายคน (mig 0185) — กระดิ่ง + หน้า `/notifications` · วิธีนับ · กติกาอ่านแล้ว · **`lead_overdue` ยังไม่เคยยิงสักแถว รอยืนยันฝั่ง Vercel Cron** |
 
 ---
 

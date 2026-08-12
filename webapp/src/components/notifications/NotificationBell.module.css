@@ -57,3 +57,16 @@ a.link:hover { background: var(--panel-2); }
 .meta { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-text); }
 
 .empty { padding: var(--space-6); color: var(--text-3); font-size: var(--fs-5); text-align: center; }
+
+/* ทางออกไปหน้าเต็ม — เกาะล่างของกล่องแบบเดียวกับหัวที่เกาะบน จะได้ยังกดได้ตอน
+   เลื่อนอยู่กลางรายการ */
+.seeAll {
+  position: sticky; bottom: 0;
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--panel-float);
+  color: var(--accent-ink); font-size: var(--fs-5); font-weight: var(--fw-semibold);
+  text-align: center; text-decoration: none;
+}
+.seeAll:hover { background: var(--panel-2); }

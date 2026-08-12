@@ -133,6 +133,16 @@ export default function AppLayout({ children }) {
     const sys = systemForPathname(pathname);
 
     if (sys) setActiveSystem(sys);
+    else {
+      /* หน้าที่ไม่ได้เป็นของระบบไหน (กล่องแจ้งเตือน — รวมของทุกระบบไว้กองเดียว)
+         ⚠️ เดินมาจากในแอปแล้วปล่อยผ่านเฉย ๆ ได้ เพราะ state เดิมยังอยู่ **แต่เปิด
+         จาก URL ตรง ๆ ไม่ได้** — ค่าตั้งต้นของ state คือ 'tax' ⇒ หน้าจะสวมเมนู
+         ภาษีสรรพสามิตให้คนที่ไม่เคยเข้าระบบนั้นเลย · ถอยไปที่ระบบล่าสุดที่จำไว้แทน */
+      try {
+        const recent = localStorage.getItem(RECENT_SYSTEM_STORAGE_KEY);
+        if (recent && getSystemByKey(recent)) setActiveSystem(recent);
+      } catch { /* โหมดส่วนตัว — คงเปลือกเดิมไว้ */ }
+    }
     if (getSystemByKey(sys)) {
       try { localStorage.setItem(RECENT_SYSTEM_STORAGE_KEY, sys); } catch {}
     }
