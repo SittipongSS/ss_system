@@ -52,8 +52,12 @@ export default function RequestRows({
     <>
       {!bare && item.spec && <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />}
       {renderExtra?.(item)}
+      {/* ⭐ **ป้ายซ้ายเฉพาะตอนไม่ได้อยู่ในการ์ดของตัวเอง** (มติผู้ใช้ 2026-08-13)
+          ในการ์ด direction หัวการ์ดบอกไปแล้วว่าไฟล์เป็นของตัวไหน ⇒ ป้าย "รูป / สเปกแนบ"
+          ซ้ำหน้าที่ และทำให้กล่องไฟล์ในการ์ดหน้าตาไม่เหมือนกล่องเดียวกันที่การ์ด
+          "ไฟล์แนบของคำร้อง" ซึ่งไม่มีป้ายซ้าย ⇒ ตัดออกให้เหลือทรงเดียวทั้งหน้า */}
       <div className={styles.rowAttach}>
-        <div className="toolbar-label">{attachLabel}</div>
+        {!bare && <div className="toolbar-label">{attachLabel}</div>}
         {attachHint && <p className={styles.rowAttachHint}>{attachHint}</p>}
         <AttachmentsPanel
           entityType="dept_request_item"
