@@ -2,7 +2,7 @@
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowsWithEntityCode } from '@/lib/entityCode';
 import { ensureVisits } from './rounds';
 import { loadVisits } from './visitsRepo';
 
@@ -22,16 +22,17 @@ export async function generateVisitsForPlan({ supabase, plan, user, req, horizon
   for (const draft of rows) {
     payload.push({
       id: genId('SVV'),
-      // ⚠️ ออกรหัสทีละใบผ่าน RPC atomic — ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1
-      // (สองคนกดเติมนัดพร้อมกันจะได้รหัสชนกัน แล้ว unique constraint เด้งทั้งชุด)
-      code: await generateEntityCode(supabase, 'SV'),
+      // ⚠️ ไม่ใส่ code ตรงนี้ — รหัสออกทีละใบในฟังก์ชัน SQL ตอน insert (mig 0238)
+      // ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1 (สองคนกดเติมนัดพร้อมกันจะได้รหัสชนกัน)
+      // และห้ามจองเลขไว้ก่อนตรงนี้ — ชุดนี้ล้มทั้งชุด เลขที่จองไว้จะหายไปทั้งหมด
       ...draft,
       createdById: user?.id ? String(user.id) : null,
       createdByName: user?.name || null,
     });
   }
 
-  const { data, error } = await supabase.from('service_visits').insert(payload).select();
+  // ออกรหัสทุกใบ + insert ในทรานแซกชันเดียว — ล้มใบไหนก็คืนเลขทั้งชุด (mig 0238)
+  const { data, error } = await insertRowsWithEntityCode(supabase, 'SV', payload);
   if (error) throw error;
 
   await recordAudit({

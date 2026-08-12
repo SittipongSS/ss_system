@@ -6,7 +6,7 @@ import { buildProjectTasks, recalculateGraph, todayStr } from '@/lib/pm/schedule
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
-import { generateProjectCode } from '@/lib/pm/projectsRepo';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
@@ -58,8 +58,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const { data: cust } = await supabase.from('customers').select('email').eq('id', custId).maybeSingle();
     customerEmail = cust?.email || '';
   }
+  // รหัสโครงการอัตโนมัติออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — ห้ามจองไว้ก่อน
+  // ตรงนี้: ลูป retry ข้างล่างเคยออกรหัสใหม่ทุกรอบที่ชน ⇒ กินเลขทิ้งรอบละใบ
   const autoCode = !body.code;
-  let projectCode = body.code || (await generateProjectCode(supabase));
+  const projectCode = body.code || null;
   const now = new Date().toISOString();
 
   // ฟิลด์จากโมดัลสร้างโครงการ (เหมือนหน้า PM) — ปรับแก้ได้ ใช้ค่าจากดีลเป็น default
@@ -118,16 +120,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   let error = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const projectId = genId('PRJ');
-    ({ data: project, error } = await supabase
-      .from('projects')
-      .insert({ ...baseRow, id: projectId, code: projectCode })
-      .select()
-      .single());
+    ({ data: project, error } = autoCode
+      ? await insertRowWithEntityCode(supabase, 'PJ', { ...baseRow, id: projectId })
+      : await supabase
+        .from('projects')
+        .insert({ ...baseRow, id: projectId, code: projectCode })
+        .select()
+        .single());
     if (!error) break;
     if (error.code === '23505') {
       if (!autoCode) return conflict(`รหัสโครงการซ้ำ: ${projectCode}`);
-      projectCode = await generateProjectCode(supabase);
-      continue;
+      continue; // เลขของรอบที่ล้มถูกคืนแล้ว รอบใหม่ฟังก์ชันออกรหัสให้เอง
     }
     break;
   }

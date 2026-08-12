@@ -3,7 +3,7 @@
 // POST : สร้างนัด (นอกรอบก็ได้ — งานซ่อมด่วนไม่ได้มาจากรอบไหน)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { normalizeVisitInput } from '@/lib/service/rounds';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
@@ -52,15 +52,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       if (plan.siteId !== value.siteId) return badRequest('รอบบริการที่เลือกเป็นของไซต์อื่น');
     }
 
+    // รหัส SV ออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — insert ล้ม = เลขคืน
     const row = {
       id: genId('SVV'),
-      code: await generateEntityCode(supabase, 'SV'),
       ...value,
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
-    const { data, error: insertError } = await supabase
-      .from('service_visits').insert(row).select().single();
+    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'SV', row);
     if (insertError) return fail(insertError.message, 500);
 
     await recordAudit({

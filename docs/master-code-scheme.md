@@ -215,14 +215,49 @@ not null default now() ซึ่งฝั่งแอปไม่เคยส่
 **สูตรเป็นชั้นที่สองในอนาคต** — เมื่อ Product Spec ผูกสูตรเข้า FG แล้ว (ดู
 `rm-price-registry-split.md`) ค่อยเพิ่มเข้าไปในคีย์ ตอนนี้เพิ่มไปก็ไม่มีวันเตือน
 
-## 8. ไฟล์ที่เกี่ยวข้อง
+## 8. รหัสเอนทิตีที่เหลือ (DL · PJ · PB · SV · SS · IS) ใช้กติกาเดียวกัน
+
+รหัสชุดนี้ (mig 0096) เคยมีอาการเดียวกันทุกตัว: ฝั่งแอปเรียก `generateEntityCode()`
+จองเลขก่อน แล้วค่อย `insert` อีกคำสั่งหนึ่ง ⇒ insert ล้มเมื่อไรเลขนั้นหายถาวร
+mig 0238 ยกทั้งชุดมาใช้แพตเทิร์นเดียวกับ AR/FG — **รหัสออกพร้อม insert ในทรานแซกชันเดียว**
+
+| scope | ตาราง | ที่เรียก |
+|---|---|---|
+| `DL` | `sales_deals` | POST /api/sales-planning/deals |
+| `PJ` | `projects` | POST /api/sa/projects · deals/[id]/create-project · sahamit/po/[id]/create-project |
+| `PB` | `production_jobs` | POST /api/production/jobs · `productionAutoDraft` (ทีละชุด) |
+| `SV` | `service_visits` | POST /api/service/visits · `planGen` (ทีละชุด) |
+| `SS` | `service_sites` | POST /api/service/sites |
+| `IS` | `system_issues` | POST /api/issues |
+
+**ฟังก์ชันรับหลายแถวเสมอ** — สองที่ที่ gen ทีละชุด (ใบผลิตอัตโนมัติ · นัดบริการตามรอบ)
+ต้องได้พฤติกรรมเดิมคือล้มใบไหนก็ล้มทั้งชุด ไม่ค้างครึ่งทาง · ทั้งลูปอยู่ในฟังก์ชันเดียว
+= ทรานแซกชันเดียว ⇒ rollback คืนทุกเลขที่จองในรอบนั้น · ใบเดี่ยวคือ array สมาชิกเดียว
+
+**สามที่ของ `PJ` มีลูป retry 5 รอบ** ซึ่งเดิม**ออกรหัสใหม่ทุกรอบที่ชน** = กินเลขรอบละใบ
+ตอนนี้ลูปเหลือหน้าที่เดียวคือหา `id` ที่ไม่ชน — รหัสฟังก์ชันออกให้เองในรอบถัดไป และเลข
+ของรอบที่ล้มถูกคืนไปแล้ว
+
+**ไม่มีฟังก์ชัน "ขอรหัสมาถือไว้ก่อน" เหลืออยู่แล้ว** — `generateEntityCode()` และ
+`generateProjectCode()` ถูกลบทิ้งทั้งคู่ เพื่อไม่ให้มีทางกลับไปจองเลขแยกจาก insert อีก
+ที่ยังอยู่คือ `peekNextEntityCode()` ซึ่งอ่านอย่างเดียวสำหรับพรีวิวบนฟอร์ม
+
+**ยังไม่ได้แก้: `QT` (ใบเสนอราคา) · `CR` (ใบขอราคาผลิต) · เลขที่คำร้อง** — ทั้งสามยังจอง
+เลขแยกจาก insert เหมือนเดิม จึงยังข้ามได้ถ้า insert ล้ม (เลขที่คำร้องออกตอนกดส่งอยู่แล้ว
+จึงข้ามยากกว่าเพื่อน) · `SO` ไม่มีปัญหานี้มาแต่ต้น เพราะอยู่ใน `create_sales_order_draft`
+
+---
+
+## 9. ไฟล์ที่เกี่ยวข้อง
 
 | ไฟล์ | หน้าที่ |
 |---|---|
 | `webapp/src/lib/master/masterCodes.js` | **ที่เดียวที่รู้รูปแบบรหัส** — ประกอบ · ตรวจ · จอง/พรีวิวเลข |
 | `webapp/src/components/ui/CodeStrip.js` | แถบรหัสที่แตกเป็นท่อนพร้อมป้ายว่าท่อนไหนมาจากไหน |
 | `webapp/supabase/migrations/0230_master_code_counters.sql` | ตั้งค่าเคาน์เตอร์ AR/FG (ไม่มี DDL — รันซ้ำได้) |
-| `webapp/supabase/migrations/0237_master_code_atomic_insert.sql` | ออกรหัส + insert ในทรานแซกชันเดียว — insert ล้ม = เลขคืน |
+| `webapp/supabase/migrations/0237_master_code_atomic_insert.sql` | ออกรหัส AR/FG + insert ในทรานแซกชันเดียว — insert ล้ม = เลขคืน |
+| `webapp/supabase/migrations/0238_entity_code_atomic_insert.sql` | เหมือนกันสำหรับ DL/PJ/PB/SV/SS/IS · รับหลายแถวต่อครั้ง |
+| `webapp/src/lib/entityCode.js` (+ `.test.mjs`) | **ที่เดียวที่รู้รูปแบบรหัสเอนทิตี** — `insertRowWithEntityCode` / `insertRowsWithEntityCode` · พรีวิวที่ไม่กินเลข |
 | `webapp/src/lib/master/masterCodes.test.mjs` | ล็อกกติกาไว้ รวมเคส `categoryOf` ต้องไม่จับผิดท่อนเมื่อรหัสลูกค้ายาว 4 หลัก |
 | `webapp/src/lib/master/customerTaxId.js` (+ `.test.mjs`) | เช็คซ้ำจากเลขผู้เสียภาษี — แยก "สาขาเดียวกัน = ซ้ำจริง" ออกจาก "คนละสาขา = เตือน" |
 | `webapp/src/app/api/customers/by-tax-id/route.js` | ค้นลูกค้าจากเลขผู้เสียภาษี (ฟอร์มใช้เตือนสด) |

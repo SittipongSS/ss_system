@@ -1,7 +1,6 @@
 // Data-access helpers for PM projects — mirrors the lib/master/* repo pattern.
 // Routes should load projects / team scope / next code through here instead of
 // re-querying Supabase inline (which had drifted into 3 divergent copies).
-import { generateEntityCode } from '@/lib/entityCode';
 import { purgeUpdatesMany } from '@/lib/master/updates';
 import { userTeams } from '@/lib/permissions';
 
@@ -106,9 +105,10 @@ export async function emptyProjectAfterDealDelete(supabase, project) {
   };
 }
 
-// รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก atomic ต่อเดือน — mig 0096).
-// แสดงเป็น PJ-YYMMXXXX-R ที่ฝั่ง UI/เอกสาร (R = currentRev ผ่าน entityCodeDisplay).
-// atomic แล้ว (RPC) จึงไม่ชนกัน แต่ callers เดิมยัง retry on unique(code) ได้ (ไม่เสียหาย).
-export async function generateProjectCode(supabase, now = new Date()) {
-  return generateEntityCode(supabase, 'PJ', now);
-}
+// รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก ต่อเดือน — mig 0096)
+// แสดงเป็น PJ-YYMMXXXX-R ที่ฝั่ง UI/เอกสาร (R = currentRev ผ่าน entityCodeDisplay)
+//
+// ⚠️ **ไม่มีฟังก์ชัน "ขอรหัสมาถือไว้ก่อน" อีกแล้ว** (มติผู้ใช้ 2026-08-12) — รหัสออก
+// พร้อม insert ในทรานแซกชันเดียวผ่าน insertRowWithEntityCode(supabase, 'PJ', row)
+// ของ lib/entityCode.js (mig 0238) · ตัวเดิม generateProjectCode() จองเลขคนละคำสั่ง
+// กับ insert ⇒ ทุก insert ที่ล้ม (รวมลูป retry ที่ออกรหัสใหม่ทุกรอบ) กินเลขทิ้ง
