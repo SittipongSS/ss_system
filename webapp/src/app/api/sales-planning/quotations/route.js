@@ -25,5 +25,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const rows = latestQuotationRevisions(visibleRows)
     .filter((q) => !status || status === 'all' || q.status === status)
     .map((q) => ({ ...q, lineCount: (q.lines || []).length, lines: undefined }));
-  return ok(rows);
+
+  /* ⭐ รหัสลูกค้า (AR) คู่ชื่อกิจการ (มติผู้ใช้ IS-26080003) — ตัวเชื่อมกับรหัสกลิ่น/MU
+     ⚠️ อ่านสดจากทะเบียนเสมอ ไม่ใช่ค่าที่ใบประทับไว้ — `customerName` บนใบคือชื่อ ณ วันที่
+     ออกใบ (หลักฐานบนเอกสารที่ส่งลูกค้าไปแล้ว) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน
+     ⚠️ query เดียวหลังกรองแล้ว — ดึงรายใบ = 500 query ต่อการเปิดหน้าหนึ่งครั้ง */
+  const customerIds = [...new Set(rows.map((q) => q.customerId).filter(Boolean))];
+  let arById = new Map();
+  if (customerIds.length) {
+    const { data: customers, error: customerError } = await supabase
+      .from('customers').select('id, "arCode"').in('id', customerIds);
+    if (customerError) return fail(customerError.message, 500);
+    arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
+  }
+  return ok(rows.map((q) => ({ ...q, customerArCode: arById.get(q.customerId) ?? null })));
 });

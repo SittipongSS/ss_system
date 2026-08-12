@@ -108,7 +108,9 @@ export default function QuotationsPage() {
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
       if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerId || "")) return false;
       if (!q) return true;
-      return [r.quoteNumber, r.customerName, r.deal?.title, ownerNameOf(r)].some((v) => (v || "").toLowerCase().includes(q));
+      // ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
+      return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r)]
+        .some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds, ownerNameOf]);
 
@@ -238,6 +240,8 @@ export default function QuotationsPage() {
                     </td>
                     <td>
                       {r.customerName || "-"}
+                      {/* รหัสลูกค้าเป็นบรรทัดเล็กใต้ชื่อ — เหนือบรรทัดดีล (มติ IS-26080003) */}
+                      {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                         {r.deal && dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type")}
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
