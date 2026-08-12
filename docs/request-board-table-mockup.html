@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตารางสรุปทั้งใบ — รื้อรอบสอง (IS-26080021)</title>
+<style>
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding:var(--space-6) var(--space-4) var(--space-7)}
+h1{font-size:var(--fs-22);margin:0 0 var(--space-2)}
+h2{font-size:var(--fs-16);margin:var(--space-7) 0 var(--space-3);padding-bottom:var(--space-2);border-bottom:1px solid var(--border)}
+.lede{color:var(--text-2);margin:0 0 var(--space-4)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden}
+.cardHead{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.cardHead h3{margin:0;font-size:var(--fs-16)}
+.ico{color:var(--accent)}
+.issues{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.issues li{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3);align-items:start;padding:var(--space-3) var(--space-4);background:var(--panel);border:1px solid var(--border);border-radius:var(--radius)}
+.num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-full);background:var(--red-soft);color:var(--red);font-size:var(--fs-12);font-weight:700}
+.ok{background:var(--green-soft);color:var(--green)}
+.issues b{display:block}.issues small{color:var(--text-3);font-size:var(--fs-12)}
+
+/* ── ตาราง ── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-11);letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);
+  font-weight:600;padding:var(--space-2) var(--space-5);border-bottom:1px solid var(--border)}
+td{padding:var(--space-3) var(--space-5);vertical-align:middle}
+tbody tr+tr>td{border-top:1px solid var(--border)}
+.rowBtn{display:inline-flex;align-items:center;gap:var(--space-2);border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;text-align:left}
+.chev{color:var(--text-3);transition:transform .15s}
+tr[data-open] .chev{transform:rotate(90deg)}
+.nm{font-weight:600}
+.sub{display:block;color:var(--text-3);font-size:var(--fs-12);margin-top:2px}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);font-size:var(--fs-12);font-weight:600;background:var(--panel-3);color:var(--text-2)}
+.badge.work{background:var(--blue-soft);color:var(--blue)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.tiny{padding:4px 10px;font-size:var(--fs-12)}
+.num-col{text-align:right}
+.detail>td{background:var(--panel-2);padding-top:var(--space-4);padding-bottom:var(--space-4)}
+.dbody{max-width:78ch}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-4);margin:0 0 var(--space-3)}
+.kv dt{color:var(--text-3);font-size:var(--fs-12)}.kv dd{margin:0}
+.fileline{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.fileline .lbl{color:var(--text-3);font-size:var(--fs-12);margin-right:auto}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--border);border-radius:var(--radius-full);font-size:var(--fs-12);color:var(--text-2);background:var(--panel)}
+.note{margin:var(--space-3) 0 0;padding:var(--space-3) var(--space-4);border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-13)}
+.note b{color:var(--accent-ink)}
+.small{color:var(--text-3);font-size:var(--fs-12)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ตารางสรุปทั้งใบ — รื้อรอบสอง</h1>
+<p class="lede">ต่อจาก <b>IS-26080021</b> · รอบแรกยุบการ์ดซ้ำออกไปแล้ว รอบนี้แก้ตัวตาราง</p>
+
+<h2>1 · ที่เหลือจากภาพล่าสุด</h2>
+<ol class="issues">
+  <li><span class="num">1</span><span><b>หัวตารางเป็นแถบสีคั่นกลางการ์ดขาว</b>
+    <small>อ่านเหมือนตารางเป็นของแปลกปลอมที่ถูกวางลงในการ์ด ไม่ใช่เนื้อของการ์ด</small></span></li>
+  <li><span class="num">2</span><span><b>แถวเดียวกินความสูง 3 ชั้น</b>
+    <small>แถว + ป้าย “รูป / สเปกแนบ” + คำใบ้ลาก-วาง — ทั้งที่ยังไม่มีไฟล์สักใบ</small></span></li>
+  <li><span class="num">3</span><span><b>กล่องไฟล์ว่างแต่กินที่เต็ม</b>
+    <small>ป้ายบรรทัดหนึ่ง ปุ่มอีกบรรทัด คำใบ้อีกบรรทัด = 3 บรรทัดที่ไม่มีเนื้อ</small></span></li>
+  <li><span class="num">4</span><span><b><code>ครีมทามือ · - CHAO PHRAYA…</code></b>
+    <small>มี <code>· -</code> ค้างอยู่ — ช่องว่างในข้อมูล ต้องแก้ที่ต้นทาง ไม่ใช่ CSS</small></span></li>
+</ol>
+
+<h2>2 · แบบใหม่</h2>
+
+<div class="card">
+  <div class="cardHead"><span class="ico">▤</span><h3>สรุปทั้งใบ</h3></div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:44%">รายการ</th>
+        <th style="width:20%">ผลลัพธ์</th>
+        <th style="width:14%">สถานะ</th>
+        <th style="width:22%" class="num-col">ก้าวถัดไป</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr data-open>
+        <td>
+          <button class="rowBtn"><span class="chev">▸</span><span>
+            <span class="nm">ครีมทามือ · CHAO PHRAYA THAI CONTEMPORARY 01 REV 3</span>
+            <span class="sub">ยังไม่มีสูตรออกมาจากแถวนี้ · ขอ 3 ชิ้น</span>
+          </span></button>
+        </td>
+        <td>ยังไม่ถึงตาลูกค้า</td>
+        <td><span class="badge work">กำลังทำ</span></td>
+        <td class="num-col"><button class="btn primary">ส่งของ</button></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="4">
+          <div class="dbody">
+            <dl class="kv">
+              <dt>สเปกที่ขอ</dt><dd>ครีมทามือ 30 ml · หลอดบีบ · ฉลากตัวอย่าง</dd>
+            </dl>
+            <!-- ⭐ ไฟล์อยู่บรรทัดเดียว: ป้าย → ไฟล์ → ปุ่ม -->
+            <div class="fileline">
+              <span class="lbl">รูป / สเปกแนบ · ยังไม่มีไฟล์</span>
+              <button class="btn tiny">📎 แนบไฟล์</button>
+            </div>
+            <p class="small" style="margin:var(--space-2) 0 0">ลากไฟล์มาวาง หรือ Ctrl+V ได้</p>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <button class="rowBtn"><span class="chev">▸</span><span>
+            <span class="nm">ครีมทามือ · CHAO PHRAYA THAI CONTEMPORARY 02</span>
+            <span class="sub">เข้าทะเบียนสูตรแล้ว · ขอ 2 ชิ้น</span>
+          </span></button>
+        </td>
+        <td>ลูกค้าอนุมัติ</td>
+        <td><span class="badge" style="background:var(--green-soft);color:var(--green)">เสร็จแล้ว</span></td>
+        <td class="num-col"><span class="small">—</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>3 · ที่เปลี่ยน</h2>
+<ol class="issues">
+  <li><span class="num ok">✓</span><span><b>หัวตารางไม่มีแถบสี</b>
+    <small>เหลือแค่บรรทัดหัวคอลัมน์ตัวเล็ก + เส้นคั่นบาง — ตารางกลายเป็นเนื้อของการ์ด ไม่ใช่ของที่วางทับ</small></span></li>
+  <li><span class="num ok">✓</span><span><b>ไฟล์อยู่บรรทัดเดียว</b>
+    <small>ป้าย + สถานะไฟล์ + ปุ่ม เรียงกันแถวเดียว · ปุ่มอยู่ติดกับสิ่งที่มันทำ ไม่ลอยไปสุดขวา</small></span></li>
+  <li><span class="num ok">✓</span><span><b>ยังไม่มีไฟล์ = บอกไปเลย</b>
+    <small>“ยังไม่มีไฟล์” อยู่ในบรรทัดเดียวกับป้าย — ไม่ต้องเว้นที่ว่างให้กล่องเปล่า</small></span></li>
+  <li><span class="num ok">✓</span><span><b>แถวสูงเท่าเนื้อ</b>
+    <small>แถวที่ยุบ = บรรทัดเดียว · จัดกลาง ไม่ใช่ชิดบนแล้วเหลือที่ว่างใต้</small></span></li>
+  <li><span class="num ok">✓</span><span><b>คอลัมน์ 44 / 20 / 14 / 22</b>
+    <small>ปุ่มก้าวถัดไปชิดขวาเสมอ — ตาไล่จากซ้าย “อะไร → ผลเป็นไง → อยู่ขั้นไหน → ทำอะไรต่อ”</small></span></li>
+</ol>
+
+<div class="note">
+  <b>ข้อ 4 (<code>· -</code> ค้างในชื่อ) ไม่ได้แก้ในม็อกอัพ</b> — เป็นข้อมูล ไม่ใช่ดีไซน์ ·
+  ชื่อแถวถูกประกอบจาก “หมวดสินค้า · ชื่อกลิ่น” แล้วมีช่องกลางที่ว่าง ⇒ ต้องไล่หาว่าใครประกอบ
+  แล้วกรองค่าว่างทิ้งก่อน join · แยกเป็นงานของตัวเอง
+</div>
+
+<div class="note" style="border-color:var(--blue);background:var(--blue-soft)">
+  <b>ยังไม่ตัดสิน:</b> แถวที่ <b>ยังไม่มีทั้งสเปกและไฟล์</b> ควรกดกางได้ไหม —
+  กางแล้วเจอ “ยังไม่มีไฟล์” อย่างเดียวก็เป็นการกดเปล่า ·
+  ทางเลือก: ซ่อนลูกศรไปเลยเมื่อไม่มีอะไรให้กาง
+</div>
+
+</div>
+</body>
+</html>
