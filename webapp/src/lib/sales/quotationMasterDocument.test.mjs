@@ -271,3 +271,132 @@ test('V4 doc: ส่วนลดท้ายใบตั้งเป็นจำ
   const html = buildQuotationMasterHTML(q, {});
   assert.match(html, /<span>หัก ส่วนลด<\/span><strong>-300\.00<\/strong>/, 'ป้ายเปล่า + ยอดเงิน');
 });
+
+// ── ใบภาษาอังกฤษ (IS-26080005 · mig 0238) ──────────────────────────────────
+
+/* ส่วนของเอกสารที่ "ป้ายต้องเป็นภาษาเดียวกันทั้งหมด" — ตัดสามอย่างที่ไม่ใช่ป้ายออกก่อน:
+     1. <style> — เอกสารฝัง CSS ทั้งก้อน และคอมเมนต์ใน CSS เป็นไทย (เปลือกใช้ร่วมทุกชนิด)
+     2. แถบเครื่องมือ no-print — ปุ่มของพนักงานไทยที่กดพิมพ์ ไม่ได้ติดไปกับกระดาษ
+     3. บล็อกแบรนด์ — ชื่อนิติบุคคลไทยอยู่บนใบอังกฤษโดยตั้งใจ (มีเทสต์ของตัวเองด้านล่าง) */
+const printedMarkup = (html) => html
+  .replace(/<style>[\s\S]*?<\/style>/g, '')
+  .replace(/<div class="toolbar no-print">[\s\S]*?<\/div>/, '')
+  .replace(/<div class="brandBlock">[\s\S]*?<div class="identityBlock">/g, '');
+
+test('V4 doc: docLanguage=en → ป้ายทั้งใบเป็นอังกฤษ ไม่มีป้ายไทยตกค้าง', () => {
+  /* ข้อมูลในใบทดสอบนี้เป็นอังกฤษล้วนโดยตั้งใจ (แบบใบจริงที่ส่งลูกค้าต่างชาติ) —
+     ตัวอักษรไทยที่โผล่ในผลลัพธ์จึงมาจาก "ป้ายที่ลืมแปล" ได้อย่างเดียว ไม่ปนกับข้อมูล */
+  const q = {
+    ...baseQuote([
+      lineOf('1', { description: 'Reed diffuser 100 ml', unit: 'pcs' }),
+      lineOf('2', { description: 'Room spray 250 ml', unit: 'pcs' }),
+    ]),
+    docLanguage: 'en',
+    customerName: 'ACME PTE LTD',
+    billingAddress: '1 Marina Blvd, Singapore',
+    contactName: 'Mr. Lim',
+    paymentPlan: { type: 'full', paymentMethod: 'Bank transfer' },
+    paymentTerms: 'Net 30 days',
+    notes: 'Price excludes overseas freight.',
+    approvedByName: 'Kanti T.',
+    approvedByRole: 'Sales Manager',
+    createdByName: 'Nattawut P.',
+    deal: { title: 'Room Diffuser 2026', ownerName: 'Kanti T.' },
+    project: { name: 'Signature Bloom' },
+  };
+  const html = printedMarkup(buildQuotationMasterHTML(q, {}));
+  assert.doesNotMatch(html, /[฀-๿]/, 'ใบอังกฤษต้องไม่มีอักขระไทยเหลือบนกระดาษเลย');
+  assert.match(html, /<html lang="en">/, 'ประกาศภาษาให้ตัวอ่านออกเสียง/ตัวพิมพ์รู้');
+  // หัวเอกสาร + ตาราง + สรุปยอด + งวด + เงื่อนไข + ลงนาม + ท้ายกระดาษ
+  for (const label of [
+    'Tax ID', 'No.', 'Date', 'Valid Until', 'CUSTOMER', 'REFERENCE', 'Project No.', 'Quoted By',
+    'Description', 'Qty', 'Unit Price', 'Amount', 'Subtotal', 'VAT', 'Grand Total', 'THB',
+    'PAYMENT SCHEDULE', 'PAYMENT METHOD', 'PAYMENT TERMS', 'REMARKS',
+    'Prepared By', 'Approved By', 'Confirmed By', 'Page',
+  ]) {
+    assert.ok(html.includes(label), `ขาดป้ายอังกฤษ "${label}"`);
+  }
+  // แถวงวดที่ระบบสังเคราะห์เองต้องแปลด้วย ไม่ใช่แค่หัวข้อ
+  assert.ok(html.includes('Full payment'), 'แถวชำระเต็มจำนวนที่ระบบสร้างเองต้องเป็นอังกฤษ');
+  // ข้อความที่ "คนกรอก" ไม่ถูกแปล — ระดับ 1 แปลเฉพาะป้าย (มติผู้ใช้)
+  assert.ok(html.includes('Net 30 days'), 'เงื่อนไขชำระพิมพ์ตามที่คนกรอกไว้');
+  assert.ok(html.includes('Reed diffuser 100 ml'), 'ชื่อสินค้าพิมพ์ตามที่คนกรอกไว้');
+});
+
+test('V4 doc: ใบอังกฤษที่แบ่งงวดเอง — ชื่องวดที่คนตั้งพิมพ์ตามเดิม ไม่ถูกแปล', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    docLanguage: 'en',
+    paymentPlan: {
+      type: 'installment',
+      paymentMethod: 'Bank transfer',
+      installments: [
+        { label: 'Deposit', percent: 50, note: '' },
+        { label: 'มัดจำงวดสอง', percent: 50, note: '' },
+      ],
+    },
+  };
+  const html = printedMarkup(buildQuotationMasterHTML(q, {}));
+  assert.ok(html.includes('Deposit'));
+  assert.ok(html.includes('มัดจำงวดสอง'), 'ชื่องวดที่คนตั้งเองเป็นข้อมูล ไม่ใช่ป้าย');
+  assert.ok(!html.includes('Full payment'), 'ใบที่แบ่งงวดไม่มีแถวสังเคราะห์');
+});
+
+test('V4 doc: ใบอังกฤษที่ข้อมูลยังเป็นไทย พิมพ์ข้อมูลตามที่กรอก — แปลเฉพาะป้าย (ระดับ 1)', () => {
+  const q = { ...baseQuote([lineOf('1')]), docLanguage: 'en' };
+  const html = printedMarkup(buildQuotationMasterHTML(q, {}));
+  assert.ok(html.includes('ลูกค้าทดสอบ'), 'ชื่อลูกค้าไม่ถูกแตะ');
+  assert.ok(html.includes('เครดิต 30 วัน'), 'เงื่อนไขชำระไม่ถูกแตะ');
+  // ป้ายรอบ ๆ ข้อมูลนั้นยังต้องเป็นอังกฤษ
+  assert.match(html, /<th class="center">No\.<\/th>/);
+  assert.match(html, /<span>Grand Total<\/span>/);
+});
+
+test('V4 doc: ใบอังกฤษเอาชื่อ/ที่อยู่บริษัทอังกฤษขึ้นบรรทัดบน ชื่อไทยยังอยู่เป็นบรรทัดรอง', () => {
+  const company = {
+    legalNameTh: 'บริษัท เซนท์ แอนด์ เซนส์ จำกัด',
+    legalNameEn: 'SCENT AND SENSE CO., LTD.',
+    address: '88 ถนนไทย กรุงเทพฯ',
+    addressEn: '88 Thai Road, Bangkok',
+  };
+  const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage: 'en' }, { company });
+  assert.match(html, /<strong>SCENT AND SENSE CO\., LTD\.<\/strong>/);
+  assert.match(html, /<span>บริษัท เซนท์ แอนด์ เซนส์ จำกัด<\/span>/, 'นิติบุคคลไทย ชื่อไทยต้องยังอยู่บนเอกสาร');
+  assert.ok(html.includes('88 Thai Road, Bangkok'), 'ใช้ที่อยู่จดทะเบียนภาษาอังกฤษ');
+  assert.ok(!html.includes('88 ถนนไทย กรุงเทพฯ'), 'ไม่พิมพ์ที่อยู่ไทยซ้ำ');
+  // ชื่อท้ายกระดาษต้องเป็นชื่อเดียวกับบรรทัดบนสุด ไม่ใช่คนละภาษาคนละที่
+  assert.match(html, /<footer class="footer">\s*<span>SCENT AND SENSE CO\., LTD\.<\/span>/);
+});
+
+test('V4 doc: ใบอังกฤษที่ยังไม่ได้กรอกที่อยู่อังกฤษ ถอยไปใช้ที่อยู่ไทย ไม่ปล่อยช่องว่าง', () => {
+  // registeredAddressEn (mig 0120) ยังไม่ถูกกรอก — เป็นสถานะจริงของฐานตอนเริ่มใช้งาน
+  // (ต่างจากชื่อบริษัทอังกฤษที่ resolveCompanyBlock มีค่าสำรองในตัวเสมอ)
+  const company = { legalNameTh: 'บริษัท ทดสอบ จำกัด', legalNameEn: 'TEST CO., LTD.', address: '1 ถนนไทย', addressEn: '' };
+  const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage: 'en' }, { company });
+  assert.ok(html.includes('1 ถนนไทย'), 'ที่อยู่ไทยดีกว่าที่อยู่ว่างบนเอกสารที่ส่งลูกค้า');
+  assert.match(html, /<strong>TEST CO\., LTD\.<\/strong>/);
+});
+
+test('V4 doc: ใบอังกฤษยังไม่อนุมัติ → ลายน้ำเป็น DRAFT', () => {
+  const q = { ...baseQuote([lineOf('1')]), docLanguage: 'en', approvalStatus: 'pending' };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /class="watermark">DRAFT</);
+});
+
+test('V4 doc: ไม่ระบุภาษา = ใบไทยเดิมเป๊ะ (ใบสั่งขายและใบเก่าทุกใบเดินทางนี้)', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.match(html, /<html lang="th">/);
+  assert.match(html, /<h2>งวดชำระเงิน <span>\/ PAYMENT SCHEDULE<\/span><\/h2>/);
+  assert.match(html, /<h2>ผู้ซื้อ <span>\/ CUSTOMER<\/span><\/h2>/);
+  assert.match(html, /<th class="center">ลำดับ<\/th>/);
+  assert.match(html, /<span>ยอดรวมทั้งสิ้น<\/span>/);
+  assert.ok(html.includes('เลขประจำตัวผู้เสียภาษี'), 'ป้ายในบล็อกบริษัทคงเดิม');
+  assert.ok(html.includes('หน้า 1 / '), 'เลขหน้าคงคำเดิม');
+  assert.ok(html.includes('ชำระเต็มจำนวน'), 'แถวงวดสังเคราะห์คงคำเดิม');
+});
+
+test('V4 doc: แถบเครื่องมือด้านบนเป็นไทยเสมอ — คนกดพิมพ์คือพนักงานไทย', () => {
+  const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage: 'en' }, {});
+  assert.match(html, /class="toolbar no-print"><h1>ใบเสนอราคา QT-2026-0001<\/h1>/);
+  assert.match(html, />พิมพ์เอกสาร<\/button>/);
+});

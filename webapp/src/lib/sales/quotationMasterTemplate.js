@@ -60,6 +60,114 @@ const DEFAULT_SALES_ORDER_STANDARD = Object.freeze({
   numberingPattern: DEFAULT_NUMBERING_PATTERNS.salesOrder,
 });
 
+// ── ภาษาของเอกสาร (IS-26080005 · มติผู้ใช้ 2026-08-12) ───────────────────────
+//
+// **ระดับ 1: ป้ายบนกระดาษเท่านั้น** — ป้ายทุกช่องมีคู่ไทย/อังกฤษที่นี่ที่เดียว ส่วน
+// *ข้อมูล* ที่คนกรอก (ชื่อลูกค้า ที่อยู่ ชื่อสินค้า เงื่อนไขชำระ หมายเหตุ) ไม่มีคู่อังกฤษ
+// — ใบที่ส่งลูกค้าต่างชาติกรอกข้อความพวกนั้นเป็นอังกฤษมาแต่ต้นอยู่แล้ว
+//
+// ⚠️ **หน้าจอของระบบยังเป็นไทยล้วน** ตารางนี้แปลเฉพาะสิ่งที่พิมพ์ออกไปหาลูกค้า
+// คนใช้ระบบเป็นคนไทยทั้งหมด (มติผู้ใช้) — ห้ามลากพจนานุกรมนี้ไปใช้กับ UI
+//
+// ⚠️ **ค่าฝั่ง th ต้องตรงกับข้อความเดิมทุกตัวอักษร** — ใบภาษาไทยคือใบเดิมทุกใบใน
+// ระบบ เปลี่ยนคำที่นี่แม้คำเดียวคือเปลี่ยนหน้าตาเอกสารของทุกคนพร้อมกัน
+export const QUOTATION_DOC_LANGUAGES = Object.freeze(['th', 'en']);
+export const DEFAULT_QUOTATION_DOC_LANGUAGE = 'th';
+
+// ค่านอกลิสต์ (ใบเก่าก่อน mig 0238 · ข้อมูลเพี้ยน) ตกไปเป็นไทย = พฤติกรรมเดิม
+export function docLanguageOf(value) {
+  return QUOTATION_DOC_LANGUAGES.includes(value) ? value : DEFAULT_QUOTATION_DOC_LANGUAGE;
+}
+
+// คู่ไทย/อังกฤษของทุกป้ายบนเอกสาร — คีย์เดียว ค่าเป็นคู่ ไม่ใช่พจนานุกรมสองก้อนแยกกัน
+// (สองก้อนแยกกันคือรูปแบบที่ทำให้ฝั่งหนึ่งขาดคีย์แล้วไม่มีใครรู้จนเอกสารพิมพ์ออกมาว่าง)
+const DOC_LABEL_PAIRS = Object.freeze({
+  // หัวเอกสาร
+  number: ['เลขที่', 'No.'],
+  issueDate: ['วันที่', 'Date'],
+  validUntil: ['ยืนราคาถึง', 'Valid Until'],
+  companyTaxId: ['เลขประจำตัวผู้เสียภาษี', 'Tax ID'],
+  companyPhone: ['โทร', 'Tel.'],
+  companyLine: ['Line', 'Line'],
+  // กล่องคู่สัญญา + ข้อมูลอ้างอิง
+  customer: ['ผู้ซื้อ', 'CUSTOMER'],
+  reference: ['ข้อมูลอ้างอิง', 'REFERENCE'],
+  customerTaxId: ['เลขผู้เสียภาษี', 'Tax ID'],
+  shippingAddress: ['ที่อยู่จัดส่ง', 'Shipping Address'],
+  contact: ['ผู้ติดต่อ', 'Contact'],
+  projectCode: ['เลขที่โครงการ', 'Project No.'],
+  project: ['โครงการ', 'Project'],
+  projectType: ['ประเภทโครงการ', 'Project Type'],
+  salesOwner: ['ผู้เสนอราคา', 'Quoted By'],
+  phone: ['โทร', 'Tel.'],
+  // ตารางรายการ
+  lineNo: ['ลำดับ', 'No.'],
+  lineDescription: ['รายละเอียดสินค้า / บริการ', 'Description'],
+  qty: ['จำนวน', 'Qty'],
+  unit: ['หน่วย', 'Unit'],
+  unitPrice: ['ราคา/หน่วย', 'Unit Price'],
+  lineDiscount: ['ส่วนลด', 'Discount'],
+  amount: ['จำนวนเงิน', 'Amount'],
+  itemsContinued: ['รายการสินค้าและบริการต่อ', 'Items continued'],
+  // สรุปยอด
+  totalsAria: ['สรุปยอด', 'Summary'],
+  subtotal: ['รวมสินค้า / บริการ', 'Subtotal'],
+  discountLine: ['หัก ส่วนลด', 'Less Discount'],
+  afterDiscount: ['ยอดหลังหักส่วนลด', 'Net After Discount'],
+  vat: ['ภาษีมูลค่าเพิ่ม', 'VAT'],
+  grandTotal: ['ยอดรวมทั้งสิ้น', 'Grand Total'],
+  currency: ['บาท', 'THB'],
+  // งวดชำระ + เงื่อนไข
+  paymentSchedule: ['งวดชำระเงิน', 'PAYMENT SCHEDULE'],
+  // แถวเดียวที่ระบบสร้างเองเมื่อใบไม่ได้แบ่งงวด (paymentScheduleRows) — ป้าย ไม่ใช่
+  // ข้อความที่คนกรอก จึงต้องแปล · ชื่องวดที่คนตั้งเองยังพิมพ์ตามที่พิมพ์ไว้
+  fullPayment: ['ชำระเต็มจำนวน', 'Full payment'],
+  installmentDetail: ['รายละเอียด', 'Description'],
+  paymentMethod: ['วิธีชำระเงิน', 'PAYMENT METHOD'],
+  paymentTerms: ['เงื่อนไขการชำระเงิน', 'PAYMENT TERMS'],
+  remarks: ['หมายเหตุ', 'REMARKS'],
+  paymentDetails: ['รายละเอียดการชำระเงิน', 'PAYMENT DETAILS'],
+  documentAcceptance: ['การยืนยันเอกสาร', 'DOCUMENT ACCEPTANCE'],
+  // ช่องลงนาม
+  signaturesAria: ['ส่วนลงนาม', 'Signatures'],
+  signHere: ['ลงชื่อ', 'Signature'],
+  signDateBlank: ['วันที่ ______ / ______ / ______', 'Date ______ / ______ / ______'],
+  esignature: ['ลายเซ็นอิเล็กทรอนิกส์', 'Electronic Signature'],
+  signatureOf: ['ลายเซ็น', 'Signature of'],
+  preparedBy: ['ผู้จัดทำ', 'Prepared By'],
+  preparedByRole: ['พนักงานขาย', 'Sales Representative'],
+  approvedBy: ['ผู้อนุมัติเสนอราคา', 'Approved By'],
+  approver: ['ผู้อนุมัติ', 'Approver'],
+  confirmedBy: ['ผู้ยืนยันคำสั่งซื้อ', 'Confirmed By'],
+  confirmedByRole: ['ลูกค้า', 'Customer'],
+  // ท้ายกระดาษ + ลายน้ำ + ชื่อเอกสารบนแถบเครื่องมือ
+  page: ['หน้า', 'Page'],
+  draft: ['ฉบับร่าง', 'DRAFT'],
+  cancelled: ['ยกเลิก', 'CANCELLED'],
+  documentLabel: ['ใบเสนอราคา', 'Quotation'],
+  headOffice: ['สำนักงานใหญ่', 'Head Office'],
+  branch: ['สาขาที่', 'Branch'],
+});
+
+/* ตัวอ่านป้ายของภาษาที่ใบนี้เลือก
+   - `t(key)` = ป้ายเดี่ยวในภาษานั้น
+   - `pair(key)` = คู่ { text, sub } สำหรับหัวข้อที่ใบไทยพิมพ์สองบรรทัดอยู่แล้ว
+     (`งวดชำระเงิน / PAYMENT SCHEDULE`) — ใบอังกฤษเหลือบรรทัดเดียว ไม่ต้องมีไทยกำกับ
+     เพราะคนอ่านคือลูกค้าต่างชาติ */
+export function quotationDocLabels(language) {
+  const index = docLanguageOf(language) === 'en' ? 1 : 0;
+  const t = (key) => DOC_LABEL_PAIRS[key]?.[index] ?? '';
+  return {
+    language: docLanguageOf(language),
+    isEnglish: index === 1,
+    t,
+    pair: (key) => ({
+      text: t(key),
+      sub: index === 0 ? `/ ${DOC_LABEL_PAIRS[key][1]}` : '',
+    }),
+  };
+}
+
 // วันที่/เลขรันของเอกสารตัวอย่าง — ตรึงไว้ให้พรีวิวนิ่ง (ตรงกับ 20/07/2569 บนใบ)
 const PREVIEW_NUMBER_DATE = new Date('2026-07-20T12:00:00+07:00');
 const PREVIEW_RUNNING_NO = 28;
@@ -775,6 +883,11 @@ const printedDiscountValue = (type, value) =>
 
 export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const form = options.form || DOCUMENT_FORMS.quotation;
+  /* ภาษาของใบนี้ (mig 0238) — ตรึงอยู่กับตัวใบ ไม่ใช่ค่าที่คนกดเลือกตอนพิมพ์
+     ใบสั่งขายเดินผ่านฟังก์ชันนี้ด้วย (salesOrderPrint) แต่ไม่มีคอลัมน์นี้ ⇒ ได้ 'th'
+     เหมือนเดิมทุกใบ */
+  const language = docLanguageOf(options.docLanguage ?? quote.docLanguage);
+  const L = quotationDocLabels(language);
   const lines = (Array.isArray(quote.lines) ? quote.lines : [])
     .slice()
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -798,7 +911,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const paymentPlan = quote.paymentPlan || {};
   const installments = paymentScheduleRows(paymentPlan)
     .map((row) => ({
-      label: row.label || '',
+      // ใบที่ไม่ได้แบ่งงวด: paymentScheduleRows สังเคราะห์แถว "ชำระเต็มจำนวน" ให้เอง
+      // เป็นป้ายของระบบ ไม่ใช่ข้อความที่คนกรอก จึงแปลตามภาษาของใบ (ชื่องวดที่คนตั้งเอง
+      // ในโหมดแบ่งงวดยังพิมพ์ตามที่พิมพ์ไว้)
+      label: paymentPlan.type === 'installment' ? (row.label || '') : L.t('fullPayment'),
       note: row.note || '',
       percent: Number(row.percent || 0),
       amount: paymentPlan.type === 'installment'
@@ -811,7 +927,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     address: quote.billingAddress || '-',
     shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
-    branch: quote.branchCode ? `สาขาที่ ${quote.branchCode}` : 'สำนักงานใหญ่',
+    branch: quote.branchCode ? `${L.t('branch')} ${quote.branchCode}` : L.t('headOffice'),
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',
   };
@@ -868,12 +984,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)
   // หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มีลายน้ำ
   const preApproval = ['not_submitted', 'pending'].includes(quote.approvalStatus);
-  const watermark = options.watermark || (preApproval ? 'ฉบับร่าง' : '');
+  const watermark = options.watermark || (preApproval ? L.t('draft') : '');
   // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
   const signature = !preApproval && quote.approvedByName
     ? {
       signerName: quote.approvedByName,
-      signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
+      signerRole: quote.approvedByRole || L.t('approver'),
       signedAt: quote.approvedAt ? fmtDate(quote.approvedAt) : '',
       evidenceId: quote.signatureEvidenceId || '',
       // รูปลายเซ็นจริงของผู้อนุมัติ (ดึงจาก signature evidence ตอนตรึง snapshot ฝั่ง server)
@@ -889,10 +1005,15 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     templateVariant: 'v4',
     templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
     accentKey: options.accentKey || 'terracotta',
+    // ภาษาที่เรนเดอร์ต้องใช้ — ส่งไปกับ model ไม่ให้ฝั่งเรนเดอร์ต้องไปอ่าน quote เอง
+    docLanguage: language,
     company: {
       nameTh: company.legalNameTh,
       nameEn: company.legalNameEn,
       address: company.address,
+      // ที่อยู่จดทะเบียนภาษาอังกฤษ (organization_settings.registeredAddressEn, mig 0120)
+      // ยังไม่ได้กรอก → ใบอังกฤษถอยไปใช้ที่อยู่ไทย ดีกว่าเว้นที่อยู่บริษัทว่างบนเอกสาร
+      addressEn: company.addressEn || '',
       taxId: company.taxId,
       phone: company.phone,
       line: company.line,
@@ -902,9 +1023,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     formLine: documentFormLine(form),
     document: {
       number: options.documentNumber || quote.quoteNumber || '-',
-      dateLabel: options.dateLabel || 'วันที่',
+      dateLabel: options.dateLabel || L.t('issueDate'),
       dateValue: options.dateValue !== undefined ? options.dateValue : (quote.quoteDate ? fmtDate(quote.quoteDate) : '-'),
-      secondaryLabel: options.secondaryLabel || 'ยืนราคาถึง',
+      secondaryLabel: options.secondaryLabel || L.t('validUntil'),
       secondaryValue: options.secondaryValue !== undefined ? options.secondaryValue : (quote.validUntil ? fmtDate(quote.validUntil) : '-'),
     },
     customer,
@@ -917,11 +1038,11 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // "โครงการ" บนเอกสาร = ดีล (มติผู้ใช้ 2026-08-05) — ลูกค้ามองงานที่สั่งเป็นโครงการ
       // ของตัวเอง ไม่ได้แยกชั้นโครงการแม่/ดีลแบบที่ฝ่ายขายใช้ · เลขที่โครงการยังเป็นรหัส
       // PJ ของโครงการแม่ ซึ่งเป็นเลขที่ที่อ้างอิงกันจริงทั้งสองฝั่ง
-      { label: 'เลขที่โครงการ', value: quotationProjectCode(quote) },
-      { label: 'โครงการ', value: quotationDealTitle(quote) },
-      { label: 'ประเภทโครงการ', value: quotationDealType(quote) },
-      { label: 'ผู้เสนอราคา', value: salesOwner },
-      ...(salesOwnerPhone ? [{ label: 'โทร', value: salesOwnerPhone }] : []),
+      { label: L.t('projectCode'), value: quotationProjectCode(quote) },
+      { label: L.t('project'), value: quotationDealTitle(quote) },
+      { label: L.t('projectType'), value: quotationDealType(quote) },
+      { label: L.t('salesOwner'), value: salesOwner },
+      ...(salesOwnerPhone ? [{ label: L.t('phone'), value: salesOwnerPhone }] : []),
     ],
     signers: options.signers || [
       // ช่องแรก = "ผู้จัดทำ" คนที่ลงมือทำใบนี้จริง (มติผู้ใช้ 2026-08-05) — คนละคนกับ
@@ -934,8 +1055,8 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
         ? {
-          label: 'ผู้จัดทำ',
-          role: 'พนักงานขาย',
+          label: L.t('preparedBy'),
+          role: L.t('preparedByRole'),
           esignature: {
             imageDataUri: options.proposerSignatureImage,
             signerName: options.proposerEvidence?.signerName || preparedBy,
@@ -944,9 +1065,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
             evidenceId: options.proposerEvidence?.id || '',
           },
         }
-        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: preparedBy },
-      { label: 'ผู้อนุมัติเสนอราคา', role: 'Authorized signature', esignature: signature },
-      { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
+        : { label: L.t('preparedBy'), role: L.t('preparedByRole'), name: preparedBy },
+      // "Authorized signature" เป็นอังกฤษอยู่แล้วทั้งสองภาษา — คำที่ใช้กันบนเอกสารการค้า
+      { label: L.t('approvedBy'), role: 'Authorized signature', esignature: signature },
+      { label: L.t('confirmedBy'), role: L.t('confirmedByRole') },
     ],
     lines,
     totals,

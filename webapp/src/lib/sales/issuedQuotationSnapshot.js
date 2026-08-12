@@ -25,8 +25,32 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 // ในช่วงนั้น (tag ไม่เคยขยับตามสัญญาไว้ข้างบน)
 // v4.2 = ช่องผู้เสนอราคาเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0155)
 //        + ข้อมูลลูกค้าที่ว่างถูกเติมจากทะเบียนก่อนตรึง (#710)
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.2';
+// v4.3 = ใบเลือกภาษาเอกสารได้ (quotations.docLanguage, mig 0238 · IS-26080005) — artifact
+//        ที่ตรึงเป็นภาษาที่ใบเลือกไว้ ณ เวลาอนุมัติ และ locale บันทึกภาษานั้นจริง ๆ
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.3';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
+
+/* ── docLanguage กับฉบับตรึง: ตัดสินแล้ว (2026-08-12) ────────────────────────
+   ใบที่ออกไปแล้ว **เปลี่ยนภาษาตามค่าปัจจุบันไม่ได้อยู่แล้ว** เพราะ reprint เล่น
+   `issued_document_artifacts.content` ซึ่งเป็น HTML ที่ตรึงตอนอนุมัติ ภาษาถูกอบอยู่
+   ในไฟล์นั้นแล้ว (ดู GET .../issued?render=…) — ไม่มีเส้นทางไหน re-render จากข้อมูลสด
+   แล้วเรียกว่า "ฉบับตรึง"
+
+   ถึงอย่างนั้นก็ยังต้องบันทึกภาษาลงฉบับตรึงด้วย สองเหตุผล:
+     1. คอลัมน์ `locale` เคยเป็น 'th-TH' ตายตัว — ปล่อยไว้แปลว่าใบอังกฤษถูกบันทึกใน
+        ทะเบียนเอกสารที่ออกจริงว่าเป็นใบไทย = หลักฐานโกหก (API รายการ snapshot คืนค่านี้)
+     2. `resolvedPayload` คือ "เนื้อหาที่ resolve แล้ว" ที่อยู่เบื้องหลัง artifact ถ้าวันหนึ่ง
+        มีคนสร้างเอกสารจาก payload (route PDF อ่าน payload อยู่แล้วสำหรับชื่อไฟล์)
+        แล้วไม่มีภาษาอยู่ในนั้น มันจะกลับไปเป็นไทยเงียบ ๆ
+
+   ⛔ **ห้ามเอา docLanguage ไปใส่ `quotationApprovalContent`** (fingerprint การอนุมัติ)
+   ค่านั้นถูกเก็บไว้ในคอลัมน์ `approvalFingerprint` ของใบทุกใบบน prod แล้วเทียบกับค่าที่
+   คำนวณสดตอนกด "ส่งลูกค้า" (validateDocumentReadiness) — เพิ่มคีย์เข้าไปคือทำให้ค่าที่
+   คำนวณสดไม่ตรงกับที่เก็บไว้ **ทุกใบที่อนุมัติไปแล้ว** ⇒ ส่งใบไม่ได้ทั้งระบบ
+   และไม่ได้อะไรกลับมาเลย เพราะสวิตช์ภาษาล็อกตั้งแต่ใบพ้นสถานะ not_submitted */
+export function issuedQuotationLocale(quote = {}) {
+  return quote.docLanguage === 'en' ? 'en-US' : ISSUED_QUOTATION_LOCALE;
+}
 
 const trimOrNull = (value) => {
   const text = String(value ?? '').trim();
@@ -47,6 +71,11 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) 
       quoteDate: quote.quoteDate || null,
       validUntil: quote.validUntil || null,
       revisionNo: Number(quote.revisionNo) || 0,
+      // ภาษาที่ใบนี้ถูกออกจริง (mig 0238) — ใบก่อนหน้าคอลัมน์นี้คือไทยทั้งหมด
+      // ⚠️ คีย์ใหม่เปลี่ยน contentFingerprint ของ **ฉบับที่จะตรึงต่อจากนี้** เท่านั้น
+      // ของเก่าเก็บค่าไว้ในตารางแล้ว ไม่เคยถูกคำนวณซ้ำ (RPC ใช้เทียบเพื่อกันตรึงซ้ำ
+      // ของใบเดียวกัน ซึ่งเกิดครั้งเดียวตอนอนุมัติ)
+      docLanguage: quote.docLanguage === 'en' ? 'en' : 'th',
     },
     content: quotationApprovalContent(quote, lines),
     customer: {
@@ -97,6 +126,7 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) 
 // ให้ self-contained (reprint แสดงรูปเดิมเสมอ แม้ลายเซ็นถูกเปลี่ยน/ยกเลิกภายหลัง)
 export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
   return buildQuotationMasterHTML(
+    // ภาษาเดินทางมากับตัวใบ (quote.docLanguage) — builder อ่านเอง ไม่ต้องส่งซ้ำทาง options
     { ...quote, approvalStatus: 'approved' },
     {
       watermark: '',
@@ -218,7 +248,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
       || filledQuote?.metadata?.commercialPresetVersionId || null,
     p_signature_evidence_id: evidence.id,
     p_layout_version: ISSUED_QUOTATION_LAYOUT_VERSION,
-    p_locale: ISSUED_QUOTATION_LOCALE,
+    p_locale: issuedQuotationLocale(filledQuote),
     p_actor_id: user?.id || quote.approvedBy || null,
     p_actor_name: user?.name || quote.approvedByName || null,
   });

@@ -144,6 +144,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       discountValue,
       vatRate,
       paymentTerms,
+      // ภาษาเอกสารสืบทอดจากใบเดิม (mig 0238) — ลูกค้ารายเดิมยังอ่านภาษาเดิม
+      // ฉบับ Rev. ยังเป็นร่าง สลับได้เองถ้าต้องการ
+      docLanguage: quote.docLanguage === 'en' ? 'en' : 'th',
       // ฉบับ revise = ร่างใหม่ ต้องกดยื่นอนุมัติเองอีกครั้ง (mig 0155) ไม่สืบทอดการยื่น/อนุมัติเดิม
       approvalStatus: 'not_submitted',
       approvalReason: null,
