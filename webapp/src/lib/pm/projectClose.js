@@ -28,6 +28,16 @@ export function canApproveProjectClose(user) {
   return !!user && isSuperuser(user.role);
 }
 
+/* "รอฉันลงมือ" ของโครงการ = คำขอปิดที่รอ **ฉัน** เซ็น — ไม่ใช่จำนวนโครงการที่เปิดอยู่
+   (โครงการเป็นคลังงาน ไม่มีวันเป็นศูนย์ ⇒ ป้ายที่นับมันคือวอลเปเปอร์)
+   ⚠️ ผู้ขอปิดอนุมัติของตัวเองไม่ได้ ⇒ ใบของตัวเองไม่ใช่ "งานรอฉัน" — เงื่อนไขเดียวกับ
+   ปุ่มบนหน้ารายละเอียด (`canApprove(project) && !isRequester(project)`) */
+export function isProjectCloseWaitingOnMe(project, user) {
+  return Boolean(project) && canApproveProjectClose(user)
+    && (project.closeStatus || 'open') === 'pending_close'
+    && project.closeRequestedBy !== user?.id;
+}
+
 // ด่านกันเขียนหลังปิด (BOUNDARY_MAP §5.1 — ด่านจริงคือ server): โครงการ closed แล้ว
 // เนื้อหาทั้งหมด (หัวเอกสาร/ขั้นตอน/FG/ลำดับดีล/ย้อน snapshot/ลบ) ต้องผ่าน reopen
 // (อนุมัติที่ route /close) ก่อน — ไม่งั้นด่านอนุมัติปิดคุ้มแค่ธง closeStatus เอง.

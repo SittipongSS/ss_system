@@ -1,11 +1,13 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 
 // หน้ารวมโครงการ (/sa/projects — เฟส B, SALES_REVAMP_PLAN §5):
 // โครงการ = ภาชนะรวมดีล (SCENT→NPD→RE-ORDER…) — ตารางทุกโครงการพร้อม KPI
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -39,7 +41,14 @@ export default function ProjectsIndexPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active"); // active = ไม่รวม Done/Drop
+  /* ⭐ `?count=projectCloses` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "คำขอปิดที่รอ
+     ฉันเซ็น" ไม่ใช่จำนวนโครงการ ⇒ กรองด้วยธง `_waitingOnMe` จาก server ซึ่งรู้ทั้ง
+     closeStatus และว่าใครเป็นคนยื่น (คนยื่นเซ็นให้ตัวเองไม่ได้ จึงไม่นับใบของตัวเอง)
+     ⚠️ **ต้องเปิดสถานะเป็น "ทั้งหมด" ด้วย** — โครงการที่ขอปิดมักอยู่สถานะ Completed
+     ซึ่งค่าตั้งต้น "active" กรองทิ้ง ⇒ กดจากป้ายแล้วเจอลิสต์ว่างทั้งที่มีของรออยู่ */
+  const fromNavCount = useSearchParams().get("count") === "projectCloses";
+  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "all" : "active"); // active = ไม่รวม Done/Drop
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(fromNavCount);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [customers, setCustomers] = useState([]);
@@ -77,6 +86,7 @@ export default function ProjectsIndexPage() {
       /* 🐞 ของเดิมกรองด้วย ["Done","Drop"] ซึ่ง **ไม่ใช่ค่าที่มีอยู่จริง** — CHECK ของตาราง
          ยอมแค่ New / In Progress / Completed / On Hold / Dropped
          ผลคือ "กำลังดำเนินการ" ไม่เคยกรองอะไรออกเลย และเลือก Done/Drop แล้วตารางว่างตลอด */
+      if (waitingOnMeOnly && !p._waitingOnMe) return false;
       if (statusFilter === "active" && CLOSED_WORK_STATUSES.includes(p.status)) return false;
       if (statusFilter === "closed" && !CLOSED_WORK_STATUSES.includes(p.status)) return false;
       if (!["active", "all", "closed"].includes(statusFilter) && p.status !== statusFilter) return false;
@@ -85,10 +95,10 @@ export default function ProjectsIndexPage() {
       return [p.code, p.name, p.customerName, brand, p.formulaName, ...(p.deals || []).map((d) => d.title)]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, customers]);
+  }, [rows, query, statusFilter, waitingOnMeOnly, customers]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, { resetKey: `${query}|${statusFilter}` });
+    usePagination(filtered, { resetKey: `${query}|${statusFilter}|${waitingOnMeOnly}` });
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
   const totals = useMemo(() => {
@@ -161,6 +171,10 @@ export default function ProjectsIndexPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />
             </div>
+            {waitingOnMeOnly && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+              <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันเซ็นปิด ×</Button>
+            )}
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
               <option value="active">กำลังดำเนินการ</option>
               <option value="all">ทุกสถานะ</option>

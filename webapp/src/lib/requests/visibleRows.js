@@ -17,6 +17,8 @@ import { loadRequests } from '@/lib/materialPricesAdmin';
  * @param user       ผู้ใช้ที่ล็อกอินอยู่
  * @param scopeParam ค่าดิบจาก `?scope=` — null/ไม่รู้จัก = ไม่ได้ระบุ
  * @param status     กรองสถานะ (ถ้ามี)
+ * @param lean       ผู้เรียกที่ **นับ** ไม่ใช่ **แสดง** — ข้ามการเติมชื่อโครงการ/รหัส AR
+ *                   (ดู loadRequests · ตัวกรองแถวไม่แตะสองช่องนั้น ตัวเลขจึงไม่เปลี่ยน)
  * @returns { rows, scope, explicit }
  *   rows     ติดธง `_mine` มาแล้ว
  *   scope    ขอบเขตที่ใช้จริงหลังถอยตามสิทธิ์ — 'all' เมื่อ admin ไม่ได้ระบุมา
@@ -26,7 +28,7 @@ import { loadRequests } from '@/lib/materialPricesAdmin';
  * ตั้งแต่เปิดให้ทีมทำแทนกันได้ (ม-100) สองอย่างนี้ไม่เท่ากันแล้ว · หน้ารายละเอียด
  * ติดธงชื่อเดียวกันแต่คนละความหมาย อย่า "แก้ให้ตรงกัน" โดยไม่อ่านสองที่ก่อน
  */
-export async function loadVisibleRequests(supabase, user, { scopeParam = null, status = null } = {}) {
+export async function loadVisibleRequests(supabase, user, { scopeParam = null, status = null, lean = false } = {}) {
   const scope = resolveScope(user, scopeParam);
   const explicit = REQUEST_SCOPES.includes(scopeParam);
   const scopeWhere = scopeFilter(user, scope);
@@ -38,7 +40,7 @@ export async function loadVisibleRequests(supabase, user, { scopeParam = null, s
   if (isSuperuser(user?.role)) {
     const adminWhere = explicit ? (scopeWhere || {}) : {};
     return {
-      rows: decorate(await loadRequests(supabase, { status, ...adminWhere })),
+      rows: decorate(await loadRequests(supabase, { status, lean, ...adminWhere })),
       scope: explicit ? scope : 'all',
       explicit,
     };
@@ -46,12 +48,12 @@ export async function loadVisibleRequests(supabase, user, { scopeParam = null, s
 
   // ผู้ใช้ทั่วไป: `scopeWhere` แคบกว่าหรือเท่ากับ "ของตัวเอง" เสมอ (resolveScope
   // ไม่มีทางคืน 'all' ให้คนที่ไม่ใช่ผู้ดูแล) ⇒ ใช้แทนตัวกรองเดิมได้ตรง ๆ
-  const mine = await loadRequests(supabase, { status, ...(scopeWhere || {}) });
+  const mine = await loadRequests(supabase, { status, lean, ...(scopeWhere || {}) });
   // ฝ่ายที่ผู้ใช้คนนี้รับคำร้องได้ — อ่านจากลิสต์กลาง ไม่สะกดเองในนี้
   const dept = REQUEST_ANSWER_DEPARTMENTS.find((d) => canAnswerRequestsFor(user, d));
   if (!dept) return { rows: decorate(mine), scope, explicit };
 
-  const queue = await loadRequests(supabase, { status, dept });
+  const queue = await loadRequests(supabase, { status, lean, dept });
   const byId = new Map([...queue, ...mine].map((r) => [r.id, r]));
   // ร่างของคนอื่นยังไม่ถูกส่ง = ยังไม่ใช่งานของฝ่าย ไม่ควรโผล่ในคิว
   const rows = [...byId.values()]

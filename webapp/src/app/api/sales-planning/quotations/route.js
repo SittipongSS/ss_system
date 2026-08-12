@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning, inSalesViewScope, isClosedStage } from '@/lib/salesPlanning';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
+import { isQuotationWaitingOnMe } from '@/lib/sales/quotationWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,5 +39,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (customerError) return fail(customerError.message, 500);
     arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
   }
-  return ok(rows.map((q) => ({ ...q, customerArCode: arById.get(q.customerId) ?? null })));
+  /* `_waitingOnMe` = ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ **server**
+     ด้วย helper ตัวเดียวกัน ไม่ให้จอคำนวณเอง · จอไม่รู้ด้วยซ้ำว่าใครเป็นผู้อนุมัติ
+     (ต้องรู้เจ้าของดีล + ว่าดีลปิดยัง) ⇒ ปล่อยให้จอเดา = เลขบนเมนูกับลิสต์ที่กรอง
+     แล้วไม่ตรงกัน ซึ่งเป็นบั๊กที่ ม-102/ม-112 เพิ่งไล่ปิดไป */
+  return ok(rows.map((q) => ({
+    ...q,
+    customerArCode: arById.get(q.customerId) ?? null,
+    _waitingOnMe: isQuotationWaitingOnMe(q, {
+      userId: user.id,
+      dealOwnerId: q.deal?.ownerId ?? null,
+      dealClosed: isClosedStage(q.deal?.stage),
+    }),
+  })));
 });
