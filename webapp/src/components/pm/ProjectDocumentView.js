@@ -820,10 +820,14 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
         : "1.5px solid color-mix(in srgb, var(--amber) 60%, var(--text))";
     return (
       <>
+        {/* จุดสำคัญก็มีของจริงเหมือนงานอื่น — ใช้ภาษาเดียวกับบาร์ (ของจริงอยู่ขอบล่างเสมอ)
+            ไม่วาดข้าวหลามตัดใบที่สองทับใบแผน: จุดสำคัญที่ทำได้ตรงวันจะซ้อนกันพอดีจนดู
+            เหมือนเรนเดอร์พลาด · ช่วงจริงของจุดสำคัญกว้างวันเดียว จึงเป็นขีดสั้น ๆ */}
+        <ActualBar task={task} rangeStartMs={rangeStartMs} pxPerDay={pxPerDay} />
         <div
           data-bar-id={task.id}
           onPointerDown={begin("move")}
-          title={`${task.name}\n${fmtDate(task.startDate)} (จุดสำคัญ)${kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขแล้ว" : ""}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย" : ""}`}
+          title={`${task.name}\n${fmtDate(task.startDate)} (จุดสำคัญ)${kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขแล้ว" : ""}${actualNote(task)}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย" : ""}`}
           style={{
             position: "absolute", top: (ROW_H - size) / 2, left: cx - size / 2, width: size, height: size,
             background: "var(--amber)", transform: "rotate(45deg)", borderRadius: "3px",

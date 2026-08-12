@@ -150,3 +150,13 @@ test('ใบพิมพ์: legend อธิบายแถบของจร�
   assert.match(html, /ช่วงที่ทำจริง/);
   assert.match(html, /ช้า \(\+\) \/ เร็ว \(−\)/);
 });
+
+test('ใบพิมพ์: จุดสำคัญที่ทำไปแล้วก็มีแถบของจริง ไม่ใช่มีแต่ ◆ ของแผน', () => {
+  const html = withActual([step({
+    isMilestone: true, durationDays: 1,
+    startDate: '2026-09-01', finishDate: '2026-09-01',
+    actualStartDate: '2026-09-03', actualFinishDate: '2026-09-03',
+  })]);
+  assert.match(html, /class="c-act">03\/09\/26 \+2<\/div>/, 'จุดสำคัญที่ช้าไป 2 วันทำการต้องบอกด้วย');
+  assert.ok((html.match(/class="act"/g) || []).length >= 1, 'ต้องมีแถบของจริงในกริดสัปดาห์ด้วย');
+});

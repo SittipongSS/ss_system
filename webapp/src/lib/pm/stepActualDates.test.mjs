@@ -107,6 +107,16 @@ test('ตาราง: มีเซลล์สองบรรทัดแล้
   assert.match(block, /vertical-align: top/, 'สลับทั้งตาราง ไม่ใช่ทีละเซลล์');
 });
 
+test('Gantt: จุดสำคัญมีของจริงเหมือนงานอื่น — ใช้ภาษาเดียวกัน ไม่วาดข้าวหลามตัดใบที่สองทับ', () => {
+  const src = read(DOC_VIEW);
+  // สาขา milestone ของ TaskBar คืนก่อนสาขาบาร์ปกติ ⇒ ต้องมี ActualBar ของตัวเอง
+  const branch = src.match(/if \(task\.isMilestone\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.ok(branch, 'หาสาขา milestone ไม่เจอ — เทสต์นี้ต้องอัปเดตตามโครงใหม่');
+  assert.match(branch, /<ActualBar task=\{task\}/, 'จุดสำคัญที่ทำไปแล้วต้องเห็นวันที่ทำจริงด้วย');
+  assert.match(branch, /\$\{actualNote\(task\)\}/, 'tooltip ของจุดสำคัญต้องบอกวันจริงเหมือนบาร์');
+  assert.doesNotMatch(branch, /rotate\(45deg\)[\s\S]*rotate\(45deg\)/, 'ห้ามมีข้าวหลามตัดสองใบ — ตรงวันแล้วจะซ้อนกันจนดูเหมือนเรนเดอร์พลาด');
+});
+
 test('Gantt: เส้นของจริงเป็นคนละชั้นกับบาร์แผน — ลากไม่ได้ ไม่มี handle', () => {
   const src = read(DOC_VIEW);
   assert.match(src, /function ActualBar\(/);
