@@ -62,7 +62,19 @@ export default function RegistryPriceModal({
   const priceMissing = price === "" || price == null;
 
   return (
-    <Modal open={open} onClose={close} size="sm" dismissible={!saving} title={title}>
+    <Modal
+      open={open} onClose={close} size="sm" dismissible={!saving} title={title}
+      /* ปุ่มอยู่ในโซน .drawer-footer ของโครงโมดัล — ห้ามใช้ div class เอง
+         (.modal-actions ที่เคยลอกมาไม่มี CSS อยู่จริง ปุ่มติดกัน 0px) */
+      footer={(
+        <>
+          <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
+          <Button tone="accent" onClick={submit} disabled={saving || priceMissing}>
+            บันทึกราคาใหม่
+          </Button>
+        </>
+      )}
+    >
       <div className="form-group">
         <label htmlFor="registry-price">ราคา ({unitLabel})</label>
         <MoneyInput
@@ -92,12 +104,6 @@ export default function RegistryPriceModal({
         />
       </div>
       {error && <div className={styles.priceModalError}>{error}</div>}
-      <div className="modal-actions">
-        <Button onClick={close} disabled={saving}>ยกเลิก</Button>
-        <Button tone="accent" onClick={submit} disabled={saving || priceMissing}>
-          บันทึกราคาใหม่
-        </Button>
-      </div>
     </Modal>
   );
 }

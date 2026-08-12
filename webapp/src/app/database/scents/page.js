@@ -606,25 +606,28 @@ export default function ScentsPage() {
       )}
 
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
+      {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล (ชิดขวา + gap
+          มาตรฐาน) — เดิมใช้ <div className="modal-actions"> ซึ่ง **ไม่มี CSS อยู่จริง**
+          ปุ่มเลยติดกัน 0px ชิดซ้าย (เจอตอนวัดจริง 2026-08-12) */}
       <Modal
         open={!!form} onClose={() => setForm(null)} size="md" dismissible={!saving}
         title={form?.mode === "edit" ? `แก้ข้อมูลกลิ่น — ${form.scent.name}` : "เพิ่มกลิ่นเข้าทะเบียน"}
+        footer={form && (
+          <>
+            <Button variant="quiet" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
+          </>
+        )}
       >
         {form && (
-          <>
-            <ScentForm
-              mode={form.mode} value={form.value} customers={customers}
-              // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
-              // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
-              scents={scents} editingId={form.scent?.id || null}
-              canSetCode={registrar} disabled={saving}
-              onChange={(value) => setForm({ ...form, value })}
-            />
-            <div className="modal-actions">
-              <Button onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
-            </div>
-          </>
+          <ScentForm
+            mode={form.mode} value={form.value} customers={customers}
+            // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
+            // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
+            scents={scents} editingId={form.scent?.id || null}
+            canSetCode={registrar} disabled={saving}
+            onChange={(value) => setForm({ ...form, value })}
+          />
         )}
       </Modal>
 
@@ -632,25 +635,25 @@ export default function ScentsPage() {
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}
         title={accept ? `รับเข้าทะเบียน — ${accept.scent.name}` : ""}
+        footer={accept && (
+          <>
+            <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+              รับเข้าทะเบียน
+            </Button>
+          </>
+        )}
       >
         {accept && (
-          <>
-            <div className="form-group">
-              <label htmlFor="accept-code">รหัสกลิ่น</label>
-              <input
-                id="accept-code" className="premium-input" value={accept.code} disabled={saving}
-                placeholder="เช่น SC-2026-001" autoFocus
-                onChange={(e) => setAccept({ ...accept, code: e.target.value })}
-              />
-              <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
-                รับเข้าทะเบียน
-              </Button>
-            </div>
-          </>
+          <div className="form-group">
+            <label htmlFor="accept-code">รหัสกลิ่น</label>
+            <input
+              id="accept-code" className="premium-input" value={accept.code} disabled={saving}
+              placeholder="เช่น SC-2026-001" autoFocus
+              onChange={(e) => setAccept({ ...accept, code: e.target.value })}
+            />
+            <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
+          </div>
         )}
       </Modal>
 
@@ -660,26 +663,26 @@ export default function ScentsPage() {
       <Modal
         open={!!sending} onClose={() => setSending(null)} size="sm" dismissible={!saving}
         title={sending ? `วันที่ส่งกลิ่น — ${sending.scent.name}` : ""}
+        footer={sending && (
+          <>
+            <Button variant="quiet" onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
+              บันทึก
+            </Button>
+          </>
+        )}
       >
         {sending && (
-          <>
-            <div className="form-group">
-              <label htmlFor="send-date">ส่งให้ลูกค้าวันไหน</label>
-              <DateInput
-                id="send-date" value={sending.sentAt} disabled={saving}
-                onChange={(v) => setSending({ ...sending, sentAt: v })}
-              />
-              <small className={styles.hint}>
-                กลิ่นตัวหนึ่งส่งครั้งเดียว — ลูกค้าขอให้แก้แล้วจะเป็นกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง
-              </small>
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
-                บันทึก
-              </Button>
-            </div>
-          </>
+          <div className="form-group">
+            <label htmlFor="send-date">ส่งให้ลูกค้าวันไหน</label>
+            <DateInput
+              id="send-date" value={sending.sentAt} disabled={saving}
+              onChange={(v) => setSending({ ...sending, sentAt: v })}
+            />
+            <small className={styles.hint}>
+              กลิ่นตัวหนึ่งส่งครั้งเดียว — ลูกค้าขอให้แก้แล้วจะเป็นกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง
+            </small>
+          </div>
         )}
       </Modal>
 

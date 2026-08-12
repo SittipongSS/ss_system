@@ -581,50 +581,52 @@ export default function FormulasPage() {
       )}
 
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
+      {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล — เดิมใช้
+          <div className="modal-actions"> ซึ่งไม่มี CSS อยู่จริง ปุ่มติดกัน 0px */}
       <Modal
         open={!!form} onClose={() => setForm(null)} size="md" dismissible={!saving}
         title={form?.mode === "edit" ? `แก้ข้อมูลสูตร — ${form.formula.name}` : "เพิ่มสูตรเข้าทะเบียน"}
+        footer={form && (
+          <>
+            <Button variant="quiet" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
+          </>
+        )}
       >
         {form && (
-          <>
-            <FormulaForm
-              customers={customers}
-              mode={form.mode} value={form.value} scents={scents}
-              formulas={formulas} categories={categories}
-              editingId={form.formula?.id || null}
-              canSetCode={registrar} disabled={saving}
-              onChange={(value) => setForm({ ...form, value })}
-            />
-            <div className="modal-actions">
-              <Button onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
-            </div>
-          </>
+          <FormulaForm
+            customers={customers}
+            mode={form.mode} value={form.value} scents={scents}
+            formulas={formulas} categories={categories}
+            editingId={form.formula?.id || null}
+            canSetCode={registrar} disabled={saving}
+            onChange={(value) => setForm({ ...form, value })}
+          />
         )}
       </Modal>
 
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}
         title={accept ? `รับเข้าทะเบียน — ${accept.formula.name}` : ""}
+        footer={accept && (
+          <>
+            <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+              รับเข้าทะเบียน
+            </Button>
+          </>
+        )}
       >
         {accept && (
-          <>
-            <div className="form-group">
-              <label htmlFor="accept-formula-code">รหัสสูตร</label>
-              <input
-                id="accept-formula-code" className="premium-input" value={accept.code} disabled={saving}
-                placeholder="เช่น PF638010202-P1" autoFocus
-                onChange={(e) => setAccept({ ...accept, code: e.target.value })}
-              />
-              <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับสูตรอื่น</small>
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
-                รับเข้าทะเบียน
-              </Button>
-            </div>
-          </>
+          <div className="form-group">
+            <label htmlFor="accept-formula-code">รหัสสูตร</label>
+            <input
+              id="accept-formula-code" className="premium-input" value={accept.code} disabled={saving}
+              placeholder="เช่น PF638010202-P1" autoFocus
+              onChange={(e) => setAccept({ ...accept, code: e.target.value })}
+            />
+            <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับสูตรอื่น</small>
+          </div>
         )}
       </Modal>
 
@@ -632,6 +634,19 @@ export default function FormulasPage() {
       <Modal
         open={!!sorting} onClose={() => setSorting(null)} size="sm" dismissible={!saving}
         title={sorting ? `จัดระเบียบ — ${sorting.row.formulaName}` : ""}
+        footer={sorting && (
+          <>
+            <Button variant="quiet" onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
+            <Button
+              tone="accent" onClick={submitSorting}
+              disabled={saving
+                || (sorting.as === "scent" && !sorting.row.customerId)
+                || (sorting.as === "formula" && !sorting.categoryCode)}
+            >
+              ย้ายเข้าทะเบียน
+            </Button>
+          </>
+        )}
       >
         {sorting && (
           <>
@@ -700,17 +715,6 @@ export default function FormulasPage() {
                 เลือกหมวดสินค้าก่อน — หมวดกับกลิ่นคือตัวตนของสูตร ไม่มีหมวดแล้วระบบเทียบไม่ได้ว่าซ้ำกับสูตรเดิมหรือเปล่า
               </p>
             )}
-            <div className="modal-actions">
-              <Button onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
-              <Button
-                tone="accent" onClick={submitSorting}
-                disabled={saving
-                  || (sorting.as === "scent" && !sorting.row.customerId)
-                  || (sorting.as === "formula" && !sorting.categoryCode)}
-              >
-                ย้ายเข้าทะเบียน
-              </Button>
-            </div>
           </>
         )}
       </Modal>
