@@ -24,6 +24,7 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -52,6 +53,50 @@ export default function FormulasPage() {
   // ปุ่มใส่ราคา FB ต่อแถว (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12):
   // ฝ่าย RD + สูตรสถานะใช้งานได้ (ร่าง/กำลังพัฒนายังอ้างราคาไม่ได้)
   const canPriceFormula = (f) => canQuoteMaterial(me, "RM_FB") && isFormulaUsable(f);
+
+  // เมนู ⋯ ต่อแถว (มติผู้ใช้ 2026-08-12 — ปุ่มเรียง 3-4 ตัวกินสองบรรทัดทุกแถว)
+  // แพตเทิร์นเดียวกับทะเบียนกลิ่น: เงื่อนไขทุกข้อยกมาเท่าเดิม เปลี่ยนแค่ที่วาง
+  // · ปุ่มที่ยังโผล่นอกเมนู = งานหลักของแถว (รับเข้าทะเบียน · ใส่ราคาแถวที่ยังไม่มี)
+  const rowMenu = (f) => [
+    {
+      id: "price",
+      label: "ออกราคา FB ใหม่",
+      icon: Coins,
+      visible: canPriceFormula(f) && f.price?.unitPrice != null,
+      onClick: () => setPricing(f),
+    },
+    {
+      id: "edit",
+      label: "แก้ไขข้อมูล",
+      icon: Pencil,
+      separatorBefore: true,
+      visible: !!f._canEdit,
+      onClick: () => setForm({ mode: "edit", formula: f, value: formulaToForm(f) }),
+    },
+    {
+      id: "archive",
+      label: "เก็บเข้ากรุ",
+      icon: Archive,
+      visible: registrar && f.status === "active",
+      onClick: () => setConfirm({ kind: "archive", formula: f }),
+    },
+    {
+      id: "restore",
+      label: "เปิดใช้อีกครั้ง",
+      icon: ArchiveRestore,
+      visible: registrar && f.status === "archived",
+      onClick: () => setConfirm({ kind: "restore", formula: f }),
+    },
+    {
+      id: "delete",
+      label: f.status === "draft" ? "ลบร่างนี้" : "ลบสูตร (ผู้ดูแลระบบ)",
+      icon: Trash2,
+      tone: "danger",
+      separatorBefore: true,
+      visible: isAdmin || (f._canEdit && f.status === "draft"),
+      onClick: () => setConfirm({ kind: "delete", formula: f }),
+    },
+  ];
   const canPropose = canProposeFormula(me);
   // break-glass ของผู้ดูแลระบบ = role admin เท่านั้น (ดู lib/forceDelete.js)
   const isAdmin = role === "admin";
@@ -554,6 +599,9 @@ export default function FormulasPage() {
                       />
                     </td>
                     <td>
+                      {/* ⋯ แทนปุ่มเรียง 3-4 ตัวที่เคยตกสองบรรทัดทุกแถว (มติผู้ใช้
+                          2026-08-12) — เงื่อนไขทุกข้อคงเดิมใน rowMenu · ปุ่มที่ยังอยู่
+                          นอกเมนูคืองานหลักของแถว: รับเข้าทะเบียน (ร่าง) */}
                       <div className={styles.rowActions}>
                         {registrar && f.status === "draft" && (
                           <Button size="sm" title="รับเข้าทะเบียน"
@@ -562,37 +610,7 @@ export default function FormulasPage() {
                             รับเข้าทะเบียน
                           </Button>
                         )}
-                        {f._canEdit && (
-                          <Button size="sm" variant="quiet" title="แก้ไข"
-                            icon={<Pencil size={14} aria-hidden="true" />}
-                            onClick={() => setForm({ mode: "edit", formula: f, value: formulaToForm(f) })} />
-                        )}
-                        {canPriceFormula(f) && f.price?.unitPrice != null && (
-                          <Button size="sm" variant="quiet" title="ออกราคา FB ใหม่"
-                            icon={<Coins size={14} aria-hidden="true" />}
-                            onClick={() => setPricing(f)} />
-                        )}
-                        {registrar && f.status === "active" && (
-                          <Button size="sm" variant="quiet" title="เก็บเข้ากรุ"
-                            icon={<Archive size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "archive", formula: f })} />
-                        )}
-                        {registrar && f.status === "archived" && (
-                          <Button size="sm" variant="quiet" title="เปิดใช้อีกครั้ง"
-                            icon={<ArchiveRestore size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "restore", formula: f })} />
-                        )}
-                        {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass)
-                            ⚠️ variant="ghost" (= action-ghost) ไม่ใช่ "quiet" เพราะสีแดง
-                            ผูกกับ .btn.action-ghost.btn-danger เท่านั้น */}
-                        {(isAdmin || (f._canEdit && f.status === "draft")) && (
-                          <Button
-                            size="sm" variant="ghost" tone="danger"
-                            title={f.status === "draft" ? "ลบร่าง" : "ลบสูตร (ผู้ดูแลระบบ)"}
-                            icon={<Trash2 size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "delete", formula: f })}
-                          />
-                        )}
+                        <RowActionMenu label={`การจัดการของ ${f.code || f.name}`} items={rowMenu(f)} />
                       </div>
                     </td>
                   </tr>
