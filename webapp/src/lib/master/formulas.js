@@ -136,11 +136,17 @@ export function archiveFormulaError(formula) {
   return null;
 }
 
-// ลบได้เฉพาะร่างที่ยังไม่มีสินค้าอ้างถึง — ของที่รับเข้าทะเบียนแล้วเป็นหลักฐาน
-export function deleteFormulaError(formula, { productCount = 0 } = {}) {
+// ลบได้เฉพาะร่างที่ยังไม่มีใครอ้างถึง — ของที่รับเข้าทะเบียนแล้วเป็นหลักฐาน
+//
+// ⭐ `linkedCount` เพิ่มหลัง mig 0232 — pointer ที่เป็น RESTRICT (คำร้องทั้งใบ ·
+// บรรทัดที่ผลิตสูตรนี้ · ทะเบียนราคา) · แยกจาก `productCount` เพราะสินค้ายังเป็น
+// SET NULL ตามมติ (สินค้ามีตัวตนของตัวเอง สูตรของมันเปลี่ยนได้) แต่ด่านนี้ยังกันไว้
+// เหมือนเดิมเพื่อไม่ให้ลบสูตรที่มีสินค้าใช้อยู่โดยไม่ตั้งใจ
+export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0 } = {}) {
   if (!formula) return 'ไม่พบสูตร';
   if (formula.status !== 'draft') return 'ลบได้เฉพาะร่าง — สูตรในทะเบียนให้เปลี่ยนเป็น "เลิกใช้" แทน';
   if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างสูตรนี้อยู่ ลบไม่ได้`;
+  if (linkedCount > 0) return `สูตรนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
   return null;
 }
 

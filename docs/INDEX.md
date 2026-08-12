@@ -80,7 +80,6 @@
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
 | [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |
 | [costing-request-plan.md](costing-request-plan.md) | merge ครบ 3 PR · mig 0157/0158/0159 รัน prod แล้ว (ยืนยัน 2026-08-08) · เหลือ UAT ข้อ 1–17 | รอตรวจ |
-| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | **เหลือ R-5 ข้อเดียว** — FK `scentId`/`formulaId` ยังเป็น `ON DELETE SET NULL` (ลบทะเบียนแล้วลิงก์หายเงียบ) · R-1…R-4 · R-6 เสร็จแล้ว (ตรวจกับโค้ด 2026-08-12) | กำลังดำเนินการ |
 | [qt-so-tax-followup-plan.md](qt-so-tax-followup-plan.md) | 6 จุดขัดแผนจาก PR #739 + บั๊กที่ผู้ใช้เจอได้ | รอดำเนินการ |
 | [business-line-vs-project-seam.md](business-line-vs-project-seam.md) · [business-line-level-and-handoff.md](business-line-level-and-handoff.md) | มติเคาะแล้ว ยังไม่เขียนโค้ด | รอดำเนินการ |
 | [service-business-system-plan.md](service-business-system-plan.md) · [service-field-operations.md](service-field-operations.md) | มติเคาะแล้ว ยังไม่เขียนโค้ด | รอดำเนินการ |
@@ -129,6 +128,7 @@
 
 | เอกสาร | ปิดเมื่อ | หมายเหตุ |
 |---|---|---|
+| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | 2026-08-12 | R-1…R-6 ครบ · R-5 (FK `RESTRICT` กันลบทะเบียนแล้วลิงก์หายเงียบ) ปิดด้วย mig 0232 · เหลือหนี้เก่าคนละก้อน: `material_prices_identity_uk` ยังยึด `formulaCode` (text) |
 | [cross-department-requests-plan.md](cross-department-requests-plan.md) | 2026-08-12 | รวมสามเมนูเป็น `dept_requests` ครบแล้ว (mig 0171–0174 · notifications · role `executive`) · **บรรทัดสถานะเดิมค้างว่า "รอเริ่ม PR-1" มาสองสัปดาห์** — ตรวจกับโค้ดแล้วปิดเล่ม · ของที่ยังค้างข้อเดียวย้ายไปอยู่ `request-hub-rebuild-plan.md` (R-5) |
 
 ## 6. แบบหน้าจอ
