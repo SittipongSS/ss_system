@@ -61,6 +61,17 @@ export const GET = withUser(async ({ user, supabase }) => {
     (scentRequests || []).map((row) => [row.salesOrderId, row]),
   );
 
+  // รหัส AR โชว์เหนือชื่อลูกค้าในตาราง (มติผู้ใช้ 2026-08-12) — พ่วงจากทะเบียน
+  // แพตเทิร์นเดียวกับ QT route · ids ว่างไม่ยิง query
+  const customerIds = [...new Set((orders || []).map((row) => row.customerId).filter(Boolean))];
+  let arById = new Map();
+  if (customerIds.length) {
+    const { data: customers, error: customerError } = await supabase
+      .from('customers').select('id, "arCode"').in('id', customerIds);
+    if (customerError) return fail(customerError.message, 500);
+    arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
+  }
+
   const dealIds = [...new Set((orders || []).map((row) => row.dealId).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
@@ -78,6 +89,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   const visible = (orders || [])
     .map((row) => ({
       ...row,
+      customerArCode: arById.get(row.customerId) ?? null,
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
       quotation: quoteById.get(row.quotationId) || null,
