@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 // อยู่ใน appendUpdate) การอ้างกลับจะเป็นวงกลม · ต้องการรู้แค่ "ใครเคยโพสต์" จึง
 // query คอลัมน์เดียวเองตรง ๆ ซึ่งถูกกว่าโหลดเธรดทั้งเธรดอยู่แล้ว
 import { updateEntityConfig, updateRecipients } from '@/lib/master/updateAccess';
-import { isSystemUpdateItem, updateKindMeta } from '@/lib/master/updateTypes';
+import { isQuietUpdateKind, isSystemUpdateItem, updateKindMeta } from '@/lib/master/updateTypes';
 import { mentionIdsOf } from '@/lib/master/mentions';
 // ปลายทาง/ป้ายชื่ออยู่แยกเพราะหน้าจอต้อง import ด้วย (ไฟล์นี้ลากของฝั่ง server มา)
 // re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้ — ทะเบียนยังมีชุดเดียว
@@ -83,6 +83,9 @@ export async function recipientsForUpdate(supabase, { entityType, entityId, pare
 export async function notifyThreadUpdate(supabase, { entityType, entityId, parent, update, actor }) {
   try {
     if (!updateEntityConfig(entityType) || !update?.id) return { sent: 0 };
+    // ชนิดที่ลงเธรดแต่ไม่เด้ง — วันนี้คือ `override` ของลูกค้า/สินค้า ซึ่งถูกเขียนคู่กับ
+    // `approve` เสมอ (ดูเหตุผลเต็มที่ isQuietUpdateKind ใน lib/master/updateTypes.js)
+    if (isQuietUpdateKind(entityType, update.kind)) return { sent: 0, quiet: true };
     const userIds = await recipientsForUpdate(supabase, {
       entityType, entityId, parent, actorId: actor?.id, update,
     });
