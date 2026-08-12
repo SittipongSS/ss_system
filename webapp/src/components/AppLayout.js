@@ -212,7 +212,11 @@ export default function AppLayout({ children }) {
         // ⚠️ cap ต้องคง costing:view + canViewCosting ไว้ ห้ามกลืนเป็น products:view
         //    ตามเพื่อนบ้านในกลุ่มนี้ — products:view อยู่ใน DEFAULT_CAPS (แทบทุกคนถือ)
         //    ส่วนแถวในทะเบียนนี้คือ **ราคาต้นทุน** ถ้าเปิดกว้างคือต้นทุนรั่วทั้งบริษัท
-        { href: '/database/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/database/materials') },
+        // `disabled: true` = จางและกดไม่ได้ **ไม่ใช่ถอดออก** (มติผู้ใช้ 2026-08-12) —
+        // ทะเบียนนี้เหลือบรรจุภัณฑ์ (PM) รอโมดูลจัดซื้อ (docs/rm-price-registry-split.md)
+        // และยังว่างอยู่ · ราคา F/FB ย้ายไปทะเบียนกลิ่น/สูตรแล้ว จึงพักเมนูไว้ก่อน
+        // เปิดใช้อีกครั้งตอนโมดูลจัดซื้อมา — แค่ลบ flag นี้
+        { href: '/database/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/database/materials') },
         { href: '/database/product-categories', name: 'หมวดสินค้า', icon: Tags, cap: 'products:view', managerOnly: true, match: (p) => p.startsWith('/database/product-categories') },
       ],
     },
