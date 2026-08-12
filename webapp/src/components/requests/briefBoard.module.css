@@ -10,11 +10,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
+  margin-bottom: 0;
 }
 
 .head {
@@ -182,7 +178,4 @@
    เหมือนหลุดออกจากตาราง แทนที่จะดูเป็นเนื้อที่ยุบอยู่ข้างใน
    ⇒ `--panel-3` ซึ่งเข้มกว่าพื้นหน้าเล็กน้อย = อ่านเป็น "ชั้นที่จมลงไป" ตามที่ควรเป็น
    ⚠️ เส้นซ้ายบอกว่าเป็นเนื้อของแถวข้างบน ไม่ใช่แถวใหม่ที่มีสิทธิ์เท่ากัน */
-.detailRow > td {
-  background: var(--panel-3);
-  box-shadow: inset 3px 0 0 var(--accent-soft);
-}
+.detailRow > td { background: var(--panel-2); }

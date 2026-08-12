@@ -69,7 +69,6 @@ export default function BriefBoard({ groups = [], renderStep = null, renderDetai
   if (!active.length) {
     return (
       <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-        <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
         <div className={styles.restStrip}>
           <strong>{idle.length}</strong> บรีฟ · ยังไม่มี direction จากฝ่ายสักตัว
           <Button variant="quiet" size="sm" className={styles.restToggle}
@@ -88,7 +87,6 @@ export default function BriefBoard({ groups = [], renderStep = null, renderDetai
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-      <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
       {active.map((g) => {
         const key = g.id || "orphan";

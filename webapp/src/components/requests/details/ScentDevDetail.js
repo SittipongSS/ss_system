@@ -23,6 +23,8 @@ import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
 import RequestRows from "./RequestRows";
+import { ClipboardList } from "lucide-react";
+import { DetailCard } from "@/components/ui/DetailPage";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
 import { RowStepActions } from "@/components/requests/NextStepBar";
@@ -92,7 +94,12 @@ export default function ScentDevDetail({
               ⚠️ หัวข้ออื่น (พัฒนาสูตร/ขอเอกสาร/สอบถาม) ยังใช้ `RequestRows` ตามเดิม —
               พวกนั้นไม่มีตารางสรุป จึงไม่เคยซ้ำ */}
           {/* ปุ่มก้าวติดแถว direction (ม-94) — แถวของ board ชี้กลับ item ดิบด้วย id */}
-          <BriefBoard
+          {/* ⭐ ครอบด้วย `DetailCard` ของระบบ ไม่ประกอบการ์ดเอง (มติผู้ใช้ 2026-08-12 ·
+          IS-26080021 "ตารางกับไฟล์ ดีไซน์ไม่เหมือนอันอื่นเลย") — การ์ดอื่นทุกใบบนหน้านี้
+          มีหัวไอคอน+ชื่อ+เส้นคั่นชุดเดียวกัน ส่วนตารางเคยมีหัวเป็นตัวหนาลอย ๆ
+          ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
+      <DetailCard icon={ClipboardList} title="สรุปทั้งใบ">
+      <BriefBoard
             groups={board}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
@@ -109,6 +116,7 @@ export default function ScentDevDetail({
                 : null;
             }}
           />
+          </DetailCard>
         </>
       )}
 

@@ -40,7 +40,6 @@ export default function FormulaDevBoard({ rows = [], renderStep = null, renderDe
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-      <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
       <TableScroll surface="embedded" minWidth={renderStep ? 760 : 640}>
         <table>
