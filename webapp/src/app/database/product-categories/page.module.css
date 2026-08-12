@@ -46,7 +46,6 @@
 .form label { display: flex; flex-direction: column; gap: var(--space-1-5); color: var(--text-2); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
 .form label b { color: var(--red); }
 .form label small { color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-normal); }
-.form textarea { min-height: 92px; resize: vertical; }
 .codeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 
 /* ช่องติ๊กกำกับดูแล (mig 0131) — เสียภาษีสรรพสามิต / ต้องจดแจ้ง อย. */

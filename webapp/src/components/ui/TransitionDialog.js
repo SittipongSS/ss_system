@@ -172,7 +172,7 @@ export default function TransitionDialog({
         {reason !== "none" ? (
           <label className="form-group">
             <span>{reasonPolicy.label}{reasonRequired ? " *" : ""}</span>
-            <Textarea variant="data"
+            <Textarea
               rows={4}
               required={reasonRequired}
               minLength={reasonPolicy.minLength}

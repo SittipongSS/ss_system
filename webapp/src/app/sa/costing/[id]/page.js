@@ -875,7 +875,7 @@ export default function CostingDetailPage() {
       <Modal open={pendingCancel} onClose={() => setPendingCancel(false)} title="ยกเลิกใบขอราคา" size="sm" dismissible={!saving}>
         <div className="form-group">
           <label htmlFor="cr-cancel-reason">เหตุผลที่ยกเลิก</label>
-          <Textarea variant="data"
+          <Textarea
             id="cr-cancel-reason" rows={3} maxLength={500}
             placeholder="เช่น ดีลไม่ไปต่อ / ลูกค้าเปลี่ยนสเปก"
             value={cancelReason}
@@ -915,7 +915,7 @@ export default function CostingDetailPage() {
               {decision.mode === "return" ? (
                 <div className="form-group">
                   <label htmlFor="cr-return-reason">เหตุผลที่ตีกลับ</label>
-                  <Textarea variant="data"
+                  <Textarea
                     id="cr-return-reason" rows={3} maxLength={500}
                     placeholder="เช่น ต้นทุนบรรจุภัณฑ์สูงผิดปกติ ให้ตรวจสอบราคาใหม่"
                     value={returnReason}

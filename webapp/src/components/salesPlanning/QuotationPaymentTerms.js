@@ -82,7 +82,7 @@ export default function QuotationPaymentTerms({
           </div>
         ) : (
           <label>ข้อความเงื่อนไขการชำระ
-            <Textarea variant="data"
+            <Textarea
               rows={3}
               value={payment.paymentTerms}
               placeholder="เช่น เครดิต 30 วันนับจากวันส่งมอบ"
