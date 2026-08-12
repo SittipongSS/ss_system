@@ -2,29 +2,37 @@
 
 import { useMemo } from "react";
 import { Search } from "lucide-react";
+import Segmented from "@/components/ui/Segmented";
 import Select from "@/components/ui/Select";
 import PerformanceKpiCards from "./PerformanceKpiCards";
 import PerformanceCharts from "./PerformanceCharts";
 import CarryPanel from "./CarryPanel";
-import SummaryTable from "./SummaryTable";
 
 // 🔍 เจาะรายละเอียด — เลือกมุมมอง (บริษัท/ทีม/คน) + ช่วงเวลา แล้วขับการ์ด KPI,
-// กราฟทุกตัว, แผงทบยอด และตารางสรุปด้านล่างพร้อมกัน.
+// กราฟ และแผงทบยอดพร้อมกัน.
+//
+// ตาราง "สรุปรายคน/รายทีม" เคยอยู่ท้ายส่วนนี้ — ลบแล้ว (2026-08-12) เพราะเป็นตาราง
+// ติดตามยอดขายด้านบนในโหมดงวด "ปี" ทุกประการ (แถวชุดเดียวกัน คอลัมน์ซ้ำ 6 จาก 9)
+// และแถวรวมท้ายตารางก็คือการ์ด KPI 6 ใบที่อยู่เหนือมันซ้ำอีกชั้น
 
 const SCOPES = [
-  { key: "company", label: "รวมทั้งบริษัท" },
-  { key: "team", label: "รายทีม" },
-  { key: "person", label: "รายคน" },
+  { value: "company", label: "รวมทั้งบริษัท" },
+  { value: "team", label: "รายทีม" },
+  { value: "person", label: "รายคน" },
 ];
-const PERIODS = [
-  { key: "month", label: "รายเดือน" },
-  { key: "quarter", label: "รายไตรมาส" },
-  { key: "year", label: "รายปี" },
+
+/* ⚠️ **ไม่ใช่หน้าต่างเวลา** — ตัวนี้คือความถี่ของแกน X ของกราฟ (12 จุด / 4 จุด / 1 จุด)
+   ไม่ได้ตัดช่วงข้อมูล · เดิมใช้ป้าย "ช่วงเวลา · รายเดือน/รายไตรมาส/รายปี" ซึ่งชนกับ
+   ตัวคุมงวดจริงบนหัวแท็บจนอ่านเป็นตัวเดียวกัน (2026-08-12) */
+const CHART_BUCKETS = [
+  { value: "month", label: "เดือน" },
+  { value: "quarter", label: "ไตรมาส" },
+  { value: "year", label: "ปี" },
 ];
 
 const BLANK = { target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Array(12).fill(0) };
 
-export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, onChange, onDrill }) {
+export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, onChange }) {
   // แถวข้อมูลของมุมมองที่เลือก + Actual ปีก่อนของมุมมองเดียวกัน (ถ้ามี)
   const active = useMemo(() => {
     if (scope === "person") {
@@ -53,41 +61,35 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
             <Search size={16} aria-hidden="true" /> เจาะรายละเอียด
           </span>
           <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>มุมมอง</span>
-          <div className="segmented" role="group" aria-label="มุมมอง">
-            {SCOPES.map((s) => (
-              <button key={s.key} type="button" className={scope === s.key ? "active" : ""} onClick={() => onChange({ scope: s.key })}>
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <Segmented ariaLabel="มุมมอง" options={SCOPES} value={scope} onChange={(v) => onChange({ scope: v })} />
+          {/* ทีมมี 3 ตัวเลือกและเป็นรหัสสั้น — โชว์ให้เห็นทั้งหมด ไม่ต้องกดเปิดถึงจะรู้ว่ามีอะไร */}
           {scope === "team" && (
-            <Select className="premium-select" value={active.teamKey || ""} onChange={(e) => onChange({ team: e.target.value })} aria-label="เลือกทีม" style={{ width: 120 }}>
-              {matrix.teams.map((t) => <option key={t.team} value={t.team}>ทีม {t.team}</option>)}
-            </Select>
+            <Segmented
+              ariaLabel="เลือกทีม"
+              options={matrix.teams.map((t) => ({ value: t.team, label: t.team }))}
+              value={active.teamKey || ""}
+              onChange={(v) => onChange({ team: v })}
+            />
           )}
+          {/* พนักงานยัง**คง**เป็นดรอปดาวน์ — ชื่อยาวและมีหลายคน (กติกาเดียวกับช่อง AE
+              ของฟอร์มดีล ที่ผู้ใช้เคยให้ถอยจาก chips กลับมาเป็นดรอปดาวน์) */}
           {scope === "person" && (
             <Select className="premium-select" value={active.personId || ""} onChange={(e) => onChange({ person: e.target.value })} aria-label="เลือกพนักงาน" style={{ width: 170 }}>
               {matrix.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.team ? ` · ${p.team}` : ""}</option>)}
             </Select>
           )}
-          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: 6 }}>ช่วงเวลา</span>
-          <div className="segmented" role="group" aria-label="ช่วงเวลา">
-            {PERIODS.map((p) => (
-              <button key={p.key} type="button" className={period === p.key ? "active" : ""} onClick={() => onChange({ period: p.key })}>
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: 6 }}>แกนกราฟ</span>
+          <Segmented ariaLabel="ความถี่แกนกราฟ" options={CHART_BUCKETS} value={period} onChange={(v) => onChange({ period: v })} />
         </div>
         <div style={{ marginTop: 8, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-          ตัวเลือกนี้มีผลกับการ์ดสรุปและกราฟด้านล่างทั้งหมด · บอร์ดประชุมเช้าด้านบนแสดงทุกคนเสมอ
+          <b>มุมมอง</b> เปลี่ยนการ์ดสรุป กราฟ และแผงทบยอดในส่วนนี้ · <b>แกนกราฟ</b> คุมเฉพาะความถี่แกน X ของกราฟ
+          ไม่ได้ตัดช่วงข้อมูล (งวดอยู่ที่แถบบนสุด) · ตารางติดตามด้านบนแสดงทุกคนเสมอ
         </div>
       </section>
 
       <PerformanceKpiCards {...common} />
       <PerformanceCharts {...common} />
       {carry && <CarryPanel {...common} />}
-      <SummaryTable matrix={matrix} prevMatrix={prevMatrix} year={year} closedCount={closedCount} ytdCount={ytdCount} carry={carry} onDrill={onDrill} />
     </div>
   );
 }
