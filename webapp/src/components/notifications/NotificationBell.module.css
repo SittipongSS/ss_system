@@ -35,16 +35,19 @@
 }
 
 .list { margin: 0; padding: 0; list-style: none; }
-.item { border-bottom: 1px solid var(--border); }
+/* แถวเป็นแถบแนวนอน: เนื้อหากดไปเธรด + ปุ่ม "อ่านแล้ว" ชิดขวา (ทรงเดียวกับหน้าเต็ม) */
+.item { display: flex; align-items: flex-start; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-right: var(--space-2); }
 .item:last-child { border-bottom: 0; }
 /* ยังไม่อ่าน = พื้นอ่อน + ขอบซ้ายสีเน้น (ไม่พึ่งสีตัวอักษรอย่างเดียว) */
 .itemUnread { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 
 .link {
-  display: flex; flex-direction: column; gap: var(--space-1);
+  display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0;
   padding: var(--space-3) var(--space-4);
   color: inherit; text-decoration: none;
 }
+/* ปุ่มอ่านแล้วรายแถว — กลางแนวตั้งของแถว ไม่เกาะบรรทัดแรก */
+.readBtn { align-self: center; }
 a.link:hover { background: var(--panel-2); }
 
 /* ⚠️ line-height ≥1.45 ทุกกล่องที่ห่อข้อความไทย (สระบน/วรรณยุกต์ยื่นเหนือตัวอักษร) */

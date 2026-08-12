@@ -218,7 +218,12 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // ไม่เจอบั๊กเพราะผ่านตั้งแต่บรรทัดแรกของ lockedOut · ผู้ใช้แจ้งเข้ามาเองผ่านระบบ
 // แจ้งปัญหา ("เข้าหน้าวิจัยและพัฒนาไม่ได้") — เทสต์ข้อ "ทุก landing ต้องอยู่ใน
 // OPEN_PAGES" ใน proxy.test.mjs กันไม่ให้โมดูลตัวถัดไปซ้ำรอย
-const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/rd', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
+// 🐞 `/notifications` (กล่องแจ้งเตือนของตัวเอง) ตกลิสต์นี้ตอนส่ง #1193 ⇒ **ทุก role ที่
+// ไม่ใช่ admin กด "ดูทั้งหมด" ในกระดิ่งแล้วถูกเด้งกลับ /home เงียบ ๆ** · ผู้ใช้แจ้งเข้ามาเอง
+// ทดสอบตอนทำด้วยบัญชี admin จึงไม่เห็น (admin ผ่านตั้งแต่บรรทัดแรกของ lockedOut) —
+// อาการเดียวกับที่ `/rd` เคยเจอ ซึ่งคอมเมนต์ข้างบนเตือนไว้แล้วว่าต้อง smoke test ด้วย
+// บัญชีของฝ่าย · หน้านี้ไม่มีอะไรให้กั้นอยู่แล้ว: API อ่าน userId จาก session เท่านั้น
+const OPEN_PAGES = ['/account', '/home', '/notifications', '/sa', '/pm', '/rd', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
