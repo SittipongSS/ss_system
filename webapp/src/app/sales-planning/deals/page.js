@@ -43,6 +43,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
+import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
 
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
    (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
@@ -70,6 +71,10 @@ export default function SalesPlanningPipelinePage() {
   const [allMonths, setAllMonths] = useState(true);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
+  /* ⭐ รหัสลูกค้า (AR) คู่ชื่อกิจการ (มติผู้ใช้ IS-26080003) — ตัวเชื่อมกับรหัสกลิ่น/MU
+     ⚠️ อ่านสดจากทะเบียนเสมอ ไม่ใช่ค่าที่ดีลประทับไว้ — `customerName` บนดีลคือชื่อ ณ วันที่
+     ผูก (หลักฐาน) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน */
+  const arIndex = useMemo(() => customerArIndex(customers), [customers]);
   const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -236,7 +241,10 @@ export default function SalesPlanningPipelinePage() {
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
-      return [deal.title, deal.customerName, ownerNameOf(deal), deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
+      return [
+        deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
+        ownerNameOf(deal), deal.notes, deal.formulaName,
+      ].some((v) => (v || "").toLowerCase().includes(q));
     });
 
     const mul = sortDir === "desc" ? -1 : 1;
@@ -264,10 +272,12 @@ export default function SalesPlanningPipelinePage() {
     if (groupBy === "none") return null;
     const map = new Map();
     for (const deal of filteredDeals) {
-      let key; let label;
+      let key; let label; let sub = null;
       if (groupBy === "customer") {
         key = deal.customerId || (deal.customerName || "").trim().toLocaleLowerCase("th-TH") || "__none";
         label = deal.customerName || "ไม่ระบุลูกค้า";
+        // ⚠️ รหัสไม่ใช่ส่วนหนึ่งของกุญแจ — ดีลเก่าที่ผูกก่อนออกรหัสต้องยังรวมกลุ่มเดียวกัน
+        sub = deal.customerId ? arIndex.get(deal.customerId) || null : null;
       } else if (groupBy === "project") {
         key = deal.projectId || "__none";
         label = deal.projectId
@@ -283,7 +293,9 @@ export default function SalesPlanningPipelinePage() {
         key = deal.ownerId || deal.team || "__none";
         label = ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "ไม่ระบุผู้ดูแล");
       }
-      const group = map.get(key) || { key, label, deals: [], total: 0, missing: key === "__none" };
+      const group = map.get(key) || { key, label, sub, deals: [], total: 0, missing: key === "__none" };
+      // ดีลใบแรกของกลุ่มอาจผูกก่อนออกรหัส — เอาค่าแรกที่มีจริง
+      if (!group.sub && sub) group.sub = sub;
       group.deals.push(deal);
       group.total += dealValue(deal);
       map.set(key, group);
@@ -607,6 +619,8 @@ export default function SalesPlanningPipelinePage() {
           </strong>
           <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
             {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
+            {/* รหัสลูกค้าขึ้นบรรทัดของตัวเองใต้ชื่อ · แบรนด์ยังเกาะท้ายชื่อเหมือนเดิม */}
+            {deal.customerId && arIndex.get(deal.customerId) ? <span className="ar-code ar-code-block">{arIndex.get(deal.customerId)}</span> : null}
           </span>
         </Link>
       </td>
@@ -885,6 +899,7 @@ export default function SalesPlanningPipelinePage() {
                           <button type="button" onClick={() => toggleGroup(group.key)} aria-expanded={!collapsed}>
                             {collapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
                             <strong>{group.label}</strong>
+                            {group.sub ? <span className="ar-code">{group.sub}</span> : null}
                             <span className="ui-badge">{group.deals.length} ดีล</span>
                             <span className="group-total mono" title="มูลค่ารวมของกลุ่ม (Won ใช้ยอดปิดจริง)">{fmtMoney(group.total)}</span>
                           </button>
