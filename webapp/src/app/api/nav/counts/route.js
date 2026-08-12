@@ -23,7 +23,7 @@ import { DEPTS_WITH_OWN_MODULE, deptsInSharedQueue } from '@/lib/requests/module
 import {
   QUOTATION_ACTIONABLE_STATUSES, isQuotationWaitingOnMe,
 } from '@/lib/sales/quotationWorkflow';
-import { isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
@@ -131,13 +131,17 @@ export const GET = withUser(async ({ user, supabase }) => {
     }));
 
     jobs.push(attempt('salesOrders', async () => {
+      /* ⚠️ ดึง **สองสถานะ** มาให้ helper ตัดสิน ไม่กรองซ้ำที่นี่ (ม-119) — เลนผู้รีวิว
+         (รออนุมัติ) กับเลนผู้จัดทำ (ถูกตีกลับ) อยู่คนละ where ⇒ เขียนเงื่อนไขที่ route
+         เมื่อไรก็มีกติกาสองชุดทันที · ชุดข้อมูลเล็ก (ค้างจริงเท่านั้น) */
+      const reviewer = isSalesOrderReviewer(user.role);
       const { data } = await supabase
         .from('sales_orders')
         .select('id, status, createdBy')
-        .eq('status', 'rejected')
-        .eq('createdBy', user.id)
+        .in('status', ['pending_approval', 'rejected'])
         .limit(5000);
-      return (data || []).filter((row) => isSalesOrderWaitingOnMe(row, { userId: user.id })).length;
+      return (data || [])
+        .filter((row) => isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer })).length;
     }));
   }
 
