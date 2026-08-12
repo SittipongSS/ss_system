@@ -42,6 +42,8 @@ AS $$
 DECLARE
   v_table   text;
   v_no      integer;
+  v_seed    integer := 0;
+  v_pos     integer;
   v_cols    text;
   v_payload jsonb;
   v_one     jsonb;
@@ -65,9 +67,24 @@ BEGIN
   IF jsonb_typeof(p_rows) <> 'array' THEN RAISE EXCEPTION 'entity_rows_must_be_array'; END IF;
   IF jsonb_array_length(p_rows) = 0 THEN RETURN v_out; END IF;
 
+  -- ⚠️ **ห้ามใช้เลขที่เคยออกไปแล้วซ้ำ แม้แถวนั้นถูกลบทิ้ง** (มติผู้ใช้ 2026-08-12)
+  -- เคาน์เตอร์บวกอย่างเดียวจึงไม่ถอยตามการลบแถวอยู่แล้ว · ที่เหลือคือกรณีแถวเคาน์เตอร์
+  -- ของ (scope, month) นั้นหายไปเอง (restore บางส่วน/ลบมือ) แล้วฟังก์ชันเริ่มนับ 1 ใหม่
+  -- ⇒ ตั้งต้นจาก "เลขสูงสุดที่รหัสในตารางถืออยู่จริง" แทนการเริ่มที่ 1
+  -- (mig 0239 มี trigger กันลบ/กันถอยอีกชั้น — ตรงนี้คือด่านสุดท้ายเผื่อของเก่าที่หายไปแล้ว)
+  IF NOT EXISTS (SELECT 1 FROM public.entity_number_counters WHERE scope = p_scope AND month = p_month) THEN
+    v_pos := length(p_prefix) + 1;
+    -- p_prefix เป็นรูปแบบคงที่ของระบบ (เช่น 'DL-2608') ไม่มี % หรือ _ จึงใช้ LIKE ตรง ๆ ได้
+    EXECUTE format(
+      'SELECT COALESCE(max(substring(code from %s)::integer), 0) FROM public.%I'
+      || ' WHERE code LIKE $1 AND substring(code from %s) ~ ''^[0-9]+$''',
+      v_pos, v_table, v_pos
+    ) USING p_prefix || '%' INTO v_seed;
+  END IF;
+
   FOR v_i IN 0..jsonb_array_length(p_rows) - 1 LOOP
     INSERT INTO public.entity_number_counters AS c (scope, month, "lastNo")
-    VALUES (p_scope, p_month, 1)
+    VALUES (p_scope, p_month, v_seed + 1)
     ON CONFLICT (scope, month) DO UPDATE SET "lastNo" = c."lastNo" + 1
     RETURNING "lastNo" INTO v_no;
 
