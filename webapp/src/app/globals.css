@@ -2948,6 +2948,8 @@ input[type="number"] {
 .ui-kpi-card {
   width: 100%;
   height: 100%;
+  /* การ์ดเป็น container ให้ตัวเลขข้างในวัดขนาดจากความกว้างของการ์ด (ดู .ui-kpi-value) */
+  container-type: inline-size;
   min-height: 136px;
   padding: 15px var(--space-4) var(--space-3-5);
   display: grid;
@@ -2980,9 +2982,24 @@ button.ui-kpi-card { cursor: pointer; }
   -webkit-line-clamp: 2;
 }
 .ui-kpi-icon svg { width: 16px; height: 16px; }
-.ui-kpi-value-row { min-width: 0; min-height: 32px; display: flex; align-items: baseline; flex-wrap: nowrap; gap: var(--space-2); }
-.ui-kpi-value { min-width: 0; color: var(--text); font-size: var(--fs-metric); font-weight: var(--fw-bold); line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ui-kpi-value.compact { font-size: var(--fs-12); }
+/* ขนาดตัวเลขวัดจาก **ความกว้างจริงของการ์ด** หารด้วยความยาวค่า — การ์ดเป็น container
+   ⚠️ ของเดิมย่อฟอนต์ด้วยการนับตัวอักษรอย่างเดียว (`length > 14` ใน KpiCard.js) ซึ่งไม่รู้
+   ว่าการ์ดกว้างเท่าไร: แถบ KPI 6 ใบที่จอ 1280px ให้การ์ดละ 158px แต่ "฿78,553,913.00"
+   (ยาว 14 พอดี จึงไม่เข้าเงื่อนไขย่อ) กินที่ 201px ⇒ เลขถูกกรอบตัดหายไปสองหลัก
+   0.56 = ความกว้างต่อตัวอักษรหน่วยเป็น em ของฟอนต์ตัวเลข (วัดได้จริง 0.52–0.54 เผื่อไว้)
+   `--kpi-len` มาจาก KpiCard.js · ไม่มีค่า = ค่าสั้น ไม่ต้องย่อ ได้ขั้นเต็มเหมือนเดิม */
+.ui-kpi-value-row { min-width: 0; min-height: 32px; display: flex; align-items: baseline; flex-wrap: nowrap; gap: var(--space-2); --kpi-fit: 100cqi; }
+/* การ์ดที่มียอดภาษีต่อท้าย (หน้าภาษีสรรพสามิต) แบ่งบรรทัดกับอีกค่าหนึ่ง — กันที่ไว้ให้ */
+.ui-kpi-value-row:has(.ui-kpi-tax) { --kpi-fit: 58cqi; }
+.ui-kpi-value {
+  min-width: 0;
+  color: var(--text);
+  font-size: clamp(var(--fs-9), calc(var(--kpi-fit) / (var(--kpi-len, 8) * 0.56)), var(--fs-metric));
+  font-weight: var(--fw-bold);
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .ui-kpi-tax { color: var(--text-2); font-size: var(--fs-7); font-weight: var(--fw-semibold); }
 .ui-kpi-hint {
   min-height: 32px;
