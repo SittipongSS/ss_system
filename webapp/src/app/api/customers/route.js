@@ -5,7 +5,7 @@ import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
-  AR_SCOPE, CODE_MODE_AUTO, arCodeError, codeModeOf, formatArCode, nextMasterNumber,
+  CODE_MODE_AUTO, arCodeError, codeModeOf, insertCustomerWithCode,
 } from '@/lib/master/masterCodes';
 import { splitTaxIdMatches, taxIdDigits, taxIdDuplicateError } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
@@ -148,24 +148,14 @@ export async function POST(request) {
     if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
   }
 
-  // ── จองเลขรัน (โหมด auto) — ด่านสุดท้ายก่อน insert ────────────────────────
-  // ⚠️ **ห้ามย้ายขึ้นไปไว้ก่อนด่านตรวจใด ๆ** และห้ามเพิ่มด่านที่ตีกลับไว้ใต้บรรทัดนี้:
-  // เลขที่ RPC คืนมาถูก commit ทันทีในตัวมันเอง เอาคืนไม่ได้ ⇒ ทุก return ที่อยู่หลังจุดนี้
-  // = รหัสลูกค้าหายไปหนึ่งเลขโดยไม่มีใครรู้ (เหลือแค่ insert ที่ยังพลาดได้ ซึ่งเป็นเคส
-  // ที่ตัดไม่ได้ถ้าไม่ยกทั้งก้อนลงไปเป็น SQL function แบบ create_sales_order_draft)
-  if (codeMode === CODE_MODE_AUTO) {
-    try {
-      arCode = formatArCode(await nextMasterNumber(supabase, AR_SCOPE));
-    } catch (e) {
-      return Response.json({ error: e.message }, { status: 500 });
-    }
-  }
-
   const newCustomer = {
     // Collision-proof id. The old 'CUS-'+last-6-ms scheme repeated every ~16.7
     // min and the live DB has no unique on id — two customers could share one.
     id: 'CUS-' + randomUUID(),
-    arCode,
+    // โหมด auto **ไม่ใส่คีย์ arCode เลย** — ฟังก์ชัน SQL เป็นคนเติมหลังจองเลขในทราน
+    // แซกชันเดียวกับ insert (mig 0237) · ใส่มาเป็น null ไว้ก่อนไม่ได้ เพราะถ้าวันหนึ่ง
+    // ท่อนเติมรหัสหลุดไป จะได้ลูกค้าที่ไม่มีรหัสแบบเงียบ ๆ แทนที่จะพังให้เห็น
+    ...(codeMode === CODE_MODE_AUTO ? {} : { arCode }),
     name: body.name,
     taxId,                                    // ตัวเลขล้วน (ถอดขีดแล้วที่ด่านเช็คซ้ำ)
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
@@ -199,7 +189,14 @@ export async function POST(request) {
     createdAt: nowIso,
   };
 
-  const { data, error } = await supabase.from('customers').insert(newCustomer).select().single();
+  // ── ออกรหัส + insert ──────────────────────────────────────────────────────
+  // โหมด auto ผ่านฟังก์ชัน SQL (mig 0237): บวกเลขเคาน์เตอร์กับ insert อยู่ในคำสั่งเดียว
+  // ⇒ insert ล้มด้วยเหตุใดก็ตาม เลขที่จองถูก rollback คืน ไม่มีรหัสหายจากระบบ
+  // ⚠️ ห้ามแยกกลับไปเป็น "จองเลขก่อน แล้วค่อย insert" — สองคำสั่ง = เลขข้ามทุกครั้งที่
+  // insert ไม่ผ่าน · โหมด manual ไม่มีเลขให้จอง จึง insert ตรงตามเดิม
+  const { data, error } = codeMode === CODE_MODE_AUTO
+    ? await insertCustomerWithCode(supabase, newCustomer)
+    : await supabase.from('customers').insert(newCustomer).select().single();
   if (error) {
     // Unique violation (migration 0031): a concurrent insert beat the app-level
     // dup check above, or taxId already exists. Map to a friendly 409.

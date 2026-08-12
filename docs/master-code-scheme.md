@@ -89,9 +89,25 @@
 0031/0035 เป็นตาข่ายท้ายสุดอยู่แล้ว) ส่วนสินค้าใช้วิธี "ลองประกอบรหัสด้วยเลขแรกของ scope"
 เป็นด่านตรวจแทน — ได้ preconditions ครบชุดโดยไม่ต้องไล่เดาเงื่อนไขซ้ำกับ `composeFgCode`
 
-ที่ยังเหลือคือ `insert` ล้มเอง (เช่นชน unique จริง ๆ) ซึ่งตัดไม่ได้ถ้าไม่ยกทั้งก้อนลงไป
-เป็น SQL function แบบ `create_sales_order_draft` (mig 0155) ที่ counter กับ insert อยู่ใน
-transaction เดียว rollback แล้วคืนเลข
+**`insert` ล้มเองก็ไม่กินเลขแล้ว** (mig 0237) — โหมด auto ไม่ได้จองเลขแล้วค่อย insert อีกที
+แต่เรียกฟังก์ชัน SQL ที่บวกเลขเคาน์เตอร์กับ insert อยู่ในคำสั่งเดียว ⇒ ล้มตรงไหนก็ตาม
+(ชน unique จริง ๆ, คอนเนกชันหลุด, RAISE เอง) เลขที่บวกไปถูก rollback คืน แพตเทิร์นเดียวกับ
+`create_sales_order_draft` (mig 0155)
+
+| ฟังก์ชัน | รับ | ทำ |
+|---|---|---|
+| `create_customer_with_code(p_prefix, p_width, p_row)` | `'AR-'` · `4` · แถวเป็น jsonb | จองเลข scope `AR` → เติม `arCode` → insert |
+| `create_product_with_code(p_prefix, p_width, p_row)` | `'FG-AAAA-BB-CCC-'` · `5` · แถวเป็น jsonb | จองเลข scope `FG` → เติม `fgCode` → insert |
+
+**ฟังก์ชันไม่รู้จักรูปแบบรหัส** — รับท่อนหน้าเลขรันกับความกว้างมาจากแอป แล้วเติมเฉพาะ
+ตัวเลขที่จองได้ · `masterCodes.js` ยังเป็นที่เดียวที่รู้ว่ารหัสหน้าตาอย่างไร (`fgCodePrefix()`
+เป็นตัวเดียวกับที่ `composeFgCode()` ใช้ประกอบ จึงไม่มีทางประกอบคนละแบบ)
+
+**แถวส่งเป็น jsonb แล้วเลือกคอลัมน์ตามคีย์ที่ส่งจริง** ไม่ใช่ populate ทั้งแถว เพราะ
+คอลัมน์ที่ไม่ได้ส่งจะกลายเป็น `NULL` ทับ DEFAULT แล้วชน NOT NULL ทันที (`"updatedAt"`
+not null default now() ซึ่งฝั่งแอปไม่เคยส่ง) · ฝั่งแอปจึง**ไม่ใส่คีย์รหัสเลย**ในโหมด auto
+ให้ฟังก์ชันเป็นคนเติม — ใส่ `null` ไว้ก่อนไม่ได้ เพราะถ้าวันหนึ่งท่อนเติมรหัสหลุดไป จะได้
+แถวที่ไม่มีรหัสแบบเงียบ ๆ แทนที่จะพังให้เห็น
 
 **ค่าที่ client ส่งมาในโหมด auto ไม่ถูกใช้เลย** — ถือเป็นแค่สิ่งที่หน้าจอโชว์ตอนนั้น
 ไม่ใช่คำสั่ง (สองคนเปิดฟอร์มพร้อมกันเห็นเลขเดียวกัน แต่ต้องได้คนละเลข) · ท่อน `AAAA`/
@@ -206,6 +222,7 @@ transaction เดียว rollback แล้วคืนเลข
 | `webapp/src/lib/master/masterCodes.js` | **ที่เดียวที่รู้รูปแบบรหัส** — ประกอบ · ตรวจ · จอง/พรีวิวเลข |
 | `webapp/src/components/ui/CodeStrip.js` | แถบรหัสที่แตกเป็นท่อนพร้อมป้ายว่าท่อนไหนมาจากไหน |
 | `webapp/supabase/migrations/0230_master_code_counters.sql` | ตั้งค่าเคาน์เตอร์ AR/FG (ไม่มี DDL — รันซ้ำได้) |
+| `webapp/supabase/migrations/0237_master_code_atomic_insert.sql` | ออกรหัส + insert ในทรานแซกชันเดียว — insert ล้ม = เลขคืน |
 | `webapp/src/lib/master/masterCodes.test.mjs` | ล็อกกติกาไว้ รวมเคส `categoryOf` ต้องไม่จับผิดท่อนเมื่อรหัสลูกค้ายาว 4 หลัก |
 | `webapp/src/lib/master/customerTaxId.js` (+ `.test.mjs`) | เช็คซ้ำจากเลขผู้เสียภาษี — แยก "สาขาเดียวกัน = ซ้ำจริง" ออกจาก "คนละสาขา = เตือน" |
 | `webapp/src/app/api/customers/by-tax-id/route.js` | ค้นลูกค้าจากเลขผู้เสียภาษี (ฟอร์มใช้เตือนสด) |

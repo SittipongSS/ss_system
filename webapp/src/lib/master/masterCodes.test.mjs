@@ -12,7 +12,10 @@ import {
   customerCodeSegment,
   fgCodeError,
   fgCodeParts,
+  fgCodePrefix,
   formatArCode,
+  insertCustomerWithCode,
+  insertProductWithCode,
   isAutoArCode,
   isAutoFgCode,
   peekMasterNumber,
@@ -47,6 +50,42 @@ test('ประกอบรหัส FG จากลูกค้า + หมว�
   assert.equal(composeFgCode({ arCode: 'AR-109', categoryCode: '', runNo: 10001 }), null);
   assert.equal(composeFgCode({ arCode: '', categoryCode: '01-002', runNo: 10001 }), null);
   assert.equal(composeFgCode({ arCode: 'AR-109', categoryCode: '01-002', runNo: 0 }), null);
+});
+
+// ท่อนหน้าเลขรันต้องเป็นตัวเดียวกับที่ composeFgCode ใช้ — ฟังก์ชัน SQL (mig 0237)
+// รับค่านี้ไปเติมเลขท้าย ถ้าสองทางประกอบไม่เหมือนกัน รหัสจะต่างกันระหว่างพรีวิวกับของจริง
+test('ท่อนหน้าเลขรันของรหัส FG', () => {
+  assert.equal(fgCodePrefix({ arCode: 'AR-109', categoryCode: '01-002' }), 'FG-0109-01-002-');
+  assert.equal(fgCodePrefix({ arCode: 'AR-1001', categoryCode: '33-444' }), 'FG-1001-33-444-');
+  assert.equal(fgCodePrefix({ arCode: 'AR-109', categoryCode: '' }), null);
+  assert.equal(fgCodePrefix({ arCode: '', categoryCode: '01-002' }), null);
+  assert.equal(fgCodePrefix({ arCode: 'AR-109', categoryCode: '1-2' }), null);
+  // ต่อเลขเข้าไปแล้วต้องได้รหัสเดียวกับ composeFgCode เป๊ะ
+  assert.equal(
+    `${fgCodePrefix({ arCode: 'AR-109', categoryCode: '01-002' })}10001`,
+    composeFgCode({ arCode: 'AR-109', categoryCode: '01-002', runNo: 10001 }),
+  );
+});
+
+test('สร้างแถวพร้อมออกรหัส: ส่ง prefix/width ให้ฟังก์ชัน SQL ไม่ใช่ตัวรหัสสำเร็จรูป', async () => {
+  const calls = [];
+  const fakeSupabase = { rpc: async (fn, args) => { calls.push([fn, args]); return { data: {}, error: null }; } };
+
+  await insertCustomerWithCode(fakeSupabase, { id: 'CUS-1', name: 'ก' });
+  assert.deepEqual(calls[0], [
+    'create_customer_with_code',
+    { p_prefix: 'AR-', p_width: 4, p_row: { id: 'CUS-1', name: 'ก' } },
+  ]);
+
+  await insertProductWithCode(fakeSupabase, 'FG-0109-01-002-', { id: 'PRD-1' });
+  assert.deepEqual(calls[1], [
+    'create_product_with_code',
+    { p_prefix: 'FG-0109-01-002-', p_width: 5, p_row: { id: 'PRD-1' } },
+  ]);
+
+  // แถวที่ส่งไปต้องไม่มีคีย์รหัสติดไปด้วย — เลขยังไม่ถูกจองตอนประกอบแถว
+  assert.equal('arCode' in calls[0][1].p_row, false);
+  assert.equal('fgCode' in calls[1][1].p_row, false);
 });
 
 test('แถบรหัสโชว์ครบทุกท่อน ท่อนที่ยังไม่ตอบเป็นค่าว่าง', () => {

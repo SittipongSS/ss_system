@@ -35,6 +35,12 @@ export const FG_SCOPE = 'FG';
 export const AR_FIRST_NUMBER = 1001;
 export const FG_FIRST_NUMBER = 10001;
 
+// ท่อนหน้าเลขรัน + ความกว้างของเลข — ฟังก์ชัน SQL ที่ออกรหัส (mig 0237) รับสองค่านี้ไป
+// แล้วเติมเฉพาะตัวเลขที่จองได้ ⇒ ไฟล์นี้ยังเป็นที่เดียวที่รู้รูปแบบรหัส
+export const AR_PREFIX = 'AR-';
+export const AR_WIDTH = 4;
+export const FG_WIDTH = 5;
+
 // รูปแบบรหัส — auto/manual ต่างกันที่ **จำนวนหลัก** เท่านั้น จึงแยกกันได้จากตัวรหัสเอง
 // โดยไม่ต้องเก็บธงว่าใบไหนออกด้วยโหมดไหน (ธงที่เก็บซ้ำกับสิ่งที่อ่านได้จากค่าจริง คือ
 // ธงที่วันหนึ่งจะไม่ตรงกับค่าจริง)
@@ -55,7 +61,7 @@ const digitsOf = (value) => String(value ?? '').trim();
 export const isAutoArCode = (code) => AR_AUTO_RE.test(digitsOf(code));
 export const isAutoFgCode = (code) => FG_AUTO_RE.test(digitsOf(code));
 
-export const formatArCode = (number) => `AR-${String(number).padStart(4, '0')}`;
+export const formatArCode = (number) => `${AR_PREFIX}${String(number).padStart(AR_WIDTH, '0')}`;
 
 // ── AAAA ของรหัส FG = รหัสลูกค้าเติมศูนย์ให้ครบ 4 หลัก ────────────────────
 // ⚠️ มติผู้ใช้ 2026-08-12: **ลูกค้าเก่ารหัส 3 หลักไม่ถูกเปลี่ยนรหัส** — AR-109 ยังเป็น
@@ -68,14 +74,22 @@ export function customerCodeSegment(arCode) {
   return m[1].padStart(4, '0');
 }
 
+// ท่อนหน้าเลขรันของรหัส FG (`FG-AAAA-BB-CCC-`) — คืน null ถ้ายังตอบไม่ครบ
+// ตัวออกรหัสฝั่ง SQL รับค่านี้ไปเติมเลขท้าย จึงต้องเป็นตัวเดียวกับที่ composeFgCode ใช้
+export function fgCodePrefix({ arCode, categoryCode } = {}) {
+  const customer = customerCodeSegment(arCode);
+  const category = digitsOf(categoryCode).match(/^(\d{2})-(\d{3})$/);
+  if (!customer || !category) return null;
+  return `FG-${customer}-${category[1]}-${category[2]}-`;
+}
+
 // ประกอบรหัส FG จากสามคำตอบ — คืน null ถ้ายังตอบไม่ครบ (ฟอร์มใช้ค่านี้โชว์ช่องว่าง
 // ทีละท่อนตามที่กรอก ไม่ใช่รอครบแล้วค่อยโผล่ทั้งก้อน)
 export function composeFgCode({ arCode, categoryCode, runNo } = {}) {
-  const customer = customerCodeSegment(arCode);
-  const category = digitsOf(categoryCode).match(/^(\d{2})-(\d{3})$/);
+  const prefix = fgCodePrefix({ arCode, categoryCode });
   const run = Number(runNo);
-  if (!customer || !category || !Number.isFinite(run) || run <= 0) return null;
-  return `FG-${customer}-${category[1]}-${category[2]}-${String(run).padStart(5, '0')}`;
+  if (!prefix || !Number.isFinite(run) || run <= 0) return null;
+  return `${prefix}${String(run).padStart(FG_WIDTH, '0')}`;
 }
 
 // ท่อนของรหัส FG สำหรับ "แถบรหัส" ในฟอร์ม (CodeStrip) — ท่อนที่ยังตอบไม่ครบเป็น
@@ -159,12 +173,28 @@ export function fgCodeError(code, { mode = CODE_MODE_MANUAL, categoryCode = null
   return null;
 }
 
-// ── เคาน์เตอร์ (mig 0230 · RPC ของ mig 0096) ──────────────────────────────
-// จองเลขจริง — atomic ต้องเรียกตอน insert เท่านั้น
-export async function nextMasterNumber(supabase, scope) {
-  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: scope, p_month: COUNTER_MONTH });
-  if (error) throw new Error(`ออกเลขรัน ${scope} ไม่สำเร็จ: ${error.message}`);
-  return Number(data);
+// ── สร้างแถวพร้อมออกรหัส (mig 0237) ───────────────────────────────────────
+// ⚠️ **ห้ามกลับไปจองเลขเองแล้วค่อย insert แยก** — นั่นคือสองทรานแซกชัน เลขถูก commit
+// ตั้งแต่คำสั่งแรก ⇒ insert ล้มเมื่อไรเลขนั้นหายจากระบบถาวร (เลขข้าม) · ฟังก์ชัน SQL
+// ข้างล่างบวกเลขกับ insert ในคำสั่งเดียว ล้มตรงไหนก็ rollback คืนเลขให้เอง
+//
+// คืน { data, error } ดิบจาก supabase-js ตามเดิม — ผู้เรียกยังแปลง error.code '23505'
+// เป็นข้อความซ้ำได้เหมือนตอนที่ยัง insert ตรง ๆ
+export function insertCustomerWithCode(supabase, row) {
+  return supabase.rpc('create_customer_with_code', {
+    p_prefix: AR_PREFIX,
+    p_width: AR_WIDTH,
+    p_row: row,
+  });
+}
+
+// prefix มาจาก fgCodePrefix() ของใบนั้น (ลูกค้า + หมวดที่ตรวจแล้ว) — ไม่ใช่สตริงจาก client
+export function insertProductWithCode(supabase, prefix, row) {
+  return supabase.rpc('create_product_with_code', {
+    p_prefix: prefix,
+    p_width: FG_WIDTH,
+    p_row: row,
+  });
 }
 
 // พรีวิว "เลขถัดไป" โดยไม่กินเลข — สำหรับโชว์ในฟอร์มเท่านั้น (ไม่ atomic)
