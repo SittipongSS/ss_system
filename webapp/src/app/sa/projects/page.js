@@ -1,6 +1,8 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
+import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
+import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import Select from "@/components/ui/Select";
 
 // หน้ารวมโครงการ (/sa/projects — เฟส B, SALES_REVAMP_PLAN §5):
@@ -80,12 +82,17 @@ export default function ProjectsIndexPage() {
      ย้ายไปอยู่บนการ์ด Record Control ของหน้ารายละเอียดทั้งหมดแล้ว (#902)
      หน้านี้จึงไม่ยิง PATCH / DELETE / POST close อีกต่อไป — โหลดอย่างเดียว */
 
+  /* ⭐ คนอยู่หลายทีมต้องเลือกดูทีละทีมได้ (IS-26080012 — ผู้ใช้อยู่ ODM+SV แจ้งเอง)
+     โผล่เฉพาะคนที่อยู่ตั้งแต่ 2 ทีมขึ้นไป · ค่าที่เลือกจำข้ามหน้าให้แล้วใน hook */
+  const myTeams = useMyTeamsFilter();
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((p) => {
       /* 🐞 ของเดิมกรองด้วย ["Done","Drop"] ซึ่ง **ไม่ใช่ค่าที่มีอยู่จริง** — CHECK ของตาราง
          ยอมแค่ New / In Progress / Completed / On Hold / Dropped
          ผลคือ "กำลังดำเนินการ" ไม่เคยกรองอะไรออกเลย และเลือก Done/Drop แล้วตารางว่างตลอด */
+      if (!myTeams.matches(p.team)) return false;
       if (waitingOnMeOnly && !p._waitingOnMe) return false;
       if (statusFilter === "active" && CLOSED_WORK_STATUSES.includes(p.status)) return false;
       if (statusFilter === "closed" && !CLOSED_WORK_STATUSES.includes(p.status)) return false;
@@ -95,10 +102,10 @@ export default function ProjectsIndexPage() {
       return [p.code, p.name, p.customerName, brand, p.formulaName, ...(p.deals || []).map((d) => d.title)]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, waitingOnMeOnly, customers]);
+  }, [rows, query, statusFilter, waitingOnMeOnly, customers, myTeams]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, { resetKey: `${query}|${statusFilter}|${waitingOnMeOnly}` });
+    usePagination(filtered, { resetKey: `${query}|${statusFilter}|${waitingOnMeOnly}|${myTeams.selected.join(",")}` });
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
   const totals = useMemo(() => {
@@ -175,6 +182,7 @@ export default function ProjectsIndexPage() {
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันเซ็นปิด ×</Button>
             )}
+            <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
               <option value="active">กำลังดำเนินการ</option>
               <option value="all">ทุกสถานะ</option>
