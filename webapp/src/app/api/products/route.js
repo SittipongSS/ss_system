@@ -5,8 +5,8 @@ import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permis
 import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import {
-  CODE_MODE_AUTO, FG_SCOPE, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError,
-  nextMasterNumber,
+  CODE_MODE_AUTO, codeModeOf, customerCodeSegment, fgCodeError, fgCodePrefix,
+  insertProductWithCode,
 } from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
@@ -94,7 +94,11 @@ export async function POST(request) {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
 
+  // ⚠️ **โหมด auto ยังไม่มีรหัสตรงนี้** — เลขรันจองพร้อม insert ในฟังก์ชัน SQL ท้าย
+  // ฟังก์ชัน (mig 0237) ตรงนี้เตรียมได้แค่ "ท่อนหน้าเลขรัน" ซึ่งเป็นตัวเดียวกับที่
+  // composeFgCode ใช้ ⇒ ประกอบ prefix ไม่ได้ = ประกอบรหัสไม่ได้ ตีกลับตั้งแต่ยังไม่แตะเลข
   let fgCode = String(body.fgCode || '').trim();
+  let fgPrefix = null;
   if (codeMode === CODE_MODE_AUTO) {
     if (!customerCodeSegment(customer.arCode)) {
       return Response.json(
@@ -102,28 +106,28 @@ export async function POST(request) {
         { status: 400 },
       );
     }
-    try {
-      fgCode = composeFgCode({
-        arCode: customer.arCode,
-        categoryCode,
-        runNo: await nextMasterNumber(supabase, FG_SCOPE),
-      });
-    } catch (e) {
-      return Response.json({ error: e.message }, { status: 500 });
+    fgPrefix = fgCodePrefix({ arCode: customer.arCode, categoryCode });
+    if (!fgPrefix) {
+      return Response.json(
+        { error: `หมวดสินค้า "${categoryCode || '—'}" ไม่ใช่รูปแบบ BB-CCC ที่ประกอบรหัสได้ — เลือกหมวดใหม่หรือปิดสวิตช์ระบบใหม่แล้วกรอกรหัสเอง` },
+        { status: 400 },
+      );
     }
-  }
-  const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
-  if (codeError) return Response.json({ error: codeError }, { status: 400 });
+  } else {
+    const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
+    if (codeError) return Response.json({ error: codeError }, { status: 400 });
 
-  // Duplicate FG Code check
-  const { data: dup, error: dupError } = await supabase
-    .from('products')
-    .select('id')
-    .eq('fgCode', fgCode)
-    .maybeSingle();
-  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
-  if (dup) {
-    return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    // Duplicate FG Code check — เฉพาะรหัสที่กรอกเอง (เลขจากเคาน์เตอร์ยังไม่ได้จอง
+    // จึงไม่มีอะไรให้เช็ค · unique index 0035 เป็นตาข่ายท้ายสุดอยู่แล้ว)
+    const { data: dup, error: dupError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('fgCode', fgCode)
+      .maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
+    if (dup) {
+      return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    }
   }
 
   const { volume, costPrice, retailPriceIncVat } = body;
@@ -173,7 +177,9 @@ export async function POST(request) {
     // Collision-proof id (was 'PRD-'+last-6-ms, repeated every ~16.7 min with
     // no DB unique). Mirrors customers (migration 0031/0035).
     id: 'PRD-' + randomUUID(),
-    fgCode,
+    // โหมด auto **ไม่ใส่คีย์ fgCode เลย** — ฟังก์ชัน SQL เติมให้หลังจองเลขในทราน
+    // แซกชันเดียวกับ insert (mig 0237) เหมือนฝั่งลูกค้า
+    ...(codeMode === CODE_MODE_AUTO ? {} : { fgCode }),
     customerId: customer.id,
     customerName: customer.name,
     productDescription: body.productDescription ?? null,
@@ -219,7 +225,14 @@ export async function POST(request) {
     createdAt: nowIso,
   };
 
-  const { data, error } = await supabase.from('products').insert(newProduct).select().single();
+  // ── ออกรหัส + insert ──────────────────────────────────────────────────────
+  // โหมด auto ผ่านฟังก์ชัน SQL (mig 0237): บวกเลขเคาน์เตอร์กับ insert อยู่ในคำสั่งเดียว
+  // ⇒ insert ล้มด้วยเหตุใดก็ตาม เลขรันที่จองถูก rollback คืน ไม่มีรหัสหายจากระบบ
+  // ⚠️ ห้ามแยกกลับไปเป็น "จองเลขก่อน แล้วค่อย insert" — สองคำสั่ง = เลขข้ามทุกครั้งที่
+  // insert ไม่ผ่าน · โหมด manual ไม่มีเลขให้จอง จึง insert ตรงตามเดิม
+  const { data, error } = codeMode === CODE_MODE_AUTO
+    ? await insertProductWithCode(supabase, fgPrefix, newProduct)
+    : await supabase.from('products').insert(newProduct).select().single();
   if (error) {
     // Unique violation (migration 0035) — a concurrent insert beat the app-level
     // dup check, or fgCode already exists.
