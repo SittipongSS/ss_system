@@ -87,8 +87,9 @@ test('route ต่อสายครบทั้งรับลีดและ 3
   assert.match(transition, /\['screen', 'assign', 'bounce'\]\.includes\(action\)/);
   assert.match(transition, /previousAssigneeId: lead\.assigneeId/,
     'ตีกลับล้าง assigneeId ไปแล้ว ต้องอ่านจากแถวก่อนแก้');
-  // ต้องอยู่คู่กับ webhook ไม่ใช่แทนที่ (คนละหน้าที่ตาม mig 0185)
-  assert.match(transition, /sendChat\('leads'/);
+  // 🪦 เดิมต้องอยู่คู่กับ Chat webhook (คนละหน้าที่ตาม mig 0185) · ท่อ Chat ถูกถอด
+  // ออก 2026-08-12 ⇒ กล่องแจ้งเตือนเป็นช่องทางเดียวของจุดส่งมอบลีดแล้ว
+  assert.doesNotMatch(transition, /sendChat|chatCard/);
 });
 
 /* ── ทวงประจำวัน: ลีดที่เลย SLA แล้ว ─────────────────────────────────────
@@ -148,10 +149,11 @@ test('เนื้อความบอกชื่อลูกค้าให�
   assert.match(n[0].body, /^ลูกค้า A · ลูกค้า B · ลูกค้า C และอีก 2$/);
 });
 
-test('cron ต้องยิงการทวงแยกจากการ์ด Chat — การ์ดพังต้องไม่ทำให้การทวงหาย', () => {
+test('cron ต้องยิงการทวงเข้ากล่องแจ้งเตือน ไม่ใช่การ์ดเข้าห้องรวม', () => {
   const src = readFileSync(new URL('../../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8');
   assert.match(src, /results\.leadOverdue = await notifyOverdueLeads\(supabase\)/);
   assert.match(src, /overdueLeadNotices\(data, \{/);
   assert.match(src, /dedupeKey: notice\.dedupeKey/);
   assert.match(src, /href: '\/sa\/leads'/, 'สรุปหลายใบต้องพาไปที่คิว ไม่ใช่ใบใดใบหนึ่ง');
+  assert.doesNotMatch(src, /sendChat|chatCard/, 'ท่อ Chat ถูกถอดออกแล้ว (2026-08-12)');
 });

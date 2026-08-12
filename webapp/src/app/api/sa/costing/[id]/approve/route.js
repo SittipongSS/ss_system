@@ -14,7 +14,6 @@ import {
 import { findCostingRequest } from '@/lib/costingAdmin';
 import { costingDecisionUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
-import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
 
@@ -129,22 +128,6 @@ export async function POST(request, { params }) {
     await appendUpdate(supabase, { entityType: 'costing_request', entityId: id, ...event, user });
   }
 
-  // แจ้งฝ่ายขายเมื่อ "จบรอบ" เท่านั้น — อนุมัติทีละรายการไม่ต้องเด้งทุกครั้ง
-  if (nextStatus !== afterWrite.status && ['approved', 'returned'].includes(nextStatus)) {
-    sendChat('sales', chatCard({
-      title: nextStatus === 'approved'
-        ? `อนุมัติราคาผลิตครบแล้ว ${after.docNo || ''}`
-        : `ผู้บริหารตีกลับใบขอราคา ${after.docNo || ''}`,
-      subtitle: after.customerName || '',
-      rows: [
-        { label: 'อนุมัติแล้ว', value: `${progress.approved}/${progress.total} รายการ` },
-        { label: 'ตีกลับ', value: progress.returned ? `${progress.returned} รายการ` : '' },
-        { label: 'ผู้ขอ', value: after.requestedByName || '' },
-      ],
-      linkPath: `/sa/costing/${id}`,
-      linkLabel: 'เปิดใบขอราคา',
-    }));
-  }
 
   return Response.json(after);
 }

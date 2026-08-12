@@ -7,8 +7,7 @@ import {
   meetingTimesSinceBounce, pickNextMeetingAt,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
-import { TEAMS, TEAM_LABELS } from '@/lib/permissions';
-import { sendChat, chatCard } from '@/lib/chat';
+import { TEAMS } from '@/lib/permissions';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -187,33 +186,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // จุดส่งมอบ 2–3/3: แจ้งคนรับช่วงถัดไปให้เริ่มนับ SLA (fire-and-forget หลังเขียน DB).
-  // แจ้งเฉพาะ "จุดส่งมอบงานระหว่างคน" — screen (→ Senior ทีม) และ assign (→ AE ผู้รับ).
-  // การกระทำอื่น (contact/meeting/bounce/disqualify) ไม่ใช่การส่งต่อ ไม่ต้องแจ้งทันที.
-  const subject = data.company ? `${data.contactName} · ${data.company}` : data.contactName;
-  if (action === 'screen') {
-    sendChat('leads', chatCard({
-      title: '🧭 ลีดคัดกรองแล้ว รอกระจาย',
-      subtitle: subject,
-      rows: [
-        { label: 'ทีม', value: TEAM_LABELS[data.team] || data.team },
-        { label: 'สิ่งที่ต้องทำ', value: `Senior AE ทีม${TEAM_LABELS[data.team] || data.team} มอบให้ AE (ภายใน 1 วันทำการ)` },
-      ],
-      linkPath: `/sa/leads`,
-      linkLabel: 'เปิดคิวลีด',
-    }));
-  } else if (action === 'assign') {
-    sendChat('leads', chatCard({
-      title: '📌 ลีดถูกมอบหมาย รอติดต่อกลับ',
-      subtitle: subject,
-      rows: [
-        { label: 'ผู้รับผิดชอบ', value: data.assigneeName || '' },
-        { label: 'ทีม', value: TEAM_LABELS[data.team] || data.team || '' },
-        { label: 'สิ่งที่ต้องทำ', value: 'AE ติดต่อลูกค้ากลับ (ภายใน 1 วันทำการ)' },
-      ],
-      linkPath: `/sa/leads/${data.id}`,
-      linkLabel: 'เปิดลีด',
-    }));
-  }
 
   return ok(data);
 });

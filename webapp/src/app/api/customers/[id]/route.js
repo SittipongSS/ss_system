@@ -5,7 +5,6 @@ import {
   changedFieldsAgainst, CUSTOMER_ADDRESS_EXEMPT_FIELDS, CUSTOMER_CONTACT_FIELDS, normalizeRejectionReason,
   rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
-import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
 import { CODE_MODE_MANUAL, arCodeError, isAutoArCode } from '@/lib/master/masterCodes';
@@ -21,7 +20,6 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,16 +215,6 @@ export async function PATCH(request, { params }) {
     // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
     if (body.approvalStatus !== 'pending') {
       const approvedNow = body.approvalStatus === 'approved';
-      sendChat('sales', chatCard({
-        title: approvedNow ? '✅ ลูกค้าได้รับอนุมัติ' : '⛔ ลูกค้าถูกปฏิเสธ',
-        subtitle: decided.name,
-        rows: [
-          { label: 'รหัสลูกค้า (AR)', value: decided.arCode },
-          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ปฏิเสธ', value: user?.name },
-          { label: 'เหตุผล', value: decided.rejectionReason },
-        ],
-        linkPath: '/database/customers',
-      }));
     }
     return Response.json(decided);
   }
@@ -391,11 +379,10 @@ export async function PATCH(request, { params }) {
   void oldName; void oldTaxId;
 
   await recordAudit({ user, action: 'update', entityType: 'customer', entityId: id, before: customer, after: updated, request });
-  // ตกกลับรออนุมัติ = ลูกค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
+  // ตกกลับรออนุมัติ = ลูกค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ
   if (reapproval) {
-    notifyMasterDataReapproval({ entityType: 'customer', record: updated, user, changedFields });
-    // เดิมเรื่องนี้ไปโผล่แค่ใน Chat ของฝ่าย → คนเปิดหน้าดูทีหลังไม่มีทางรู้ว่า
-    // "ทำไมของที่เคยอนุมัติแล้วกลับมา pending" · ลงเธรดให้ติดอยู่กับตัวลูกค้า
+    // เธรดคือช่องทางเดียวที่เหลือหลังถอด Google Chat ออก (2026-08-12) — คนเปิดหน้าดู
+    // ทีหลังต้องอ่านออกว่า "ทำไมของที่เคยอนุมัติแล้วกลับมา pending"
     const resetEvent = masterReapprovalUpdate(changedFields);
     if (resetEvent) {
       await appendUpdate(supabase, { entityType: 'customer', entityId: id, ...resetEvent, user });

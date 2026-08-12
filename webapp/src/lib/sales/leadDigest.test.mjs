@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DIGEST_MAX_OWNERS, describeOwners, leadDigestRows, summarizeLeadQueue } from './leadDigest.js';
+import { DIGEST_MAX_OWNERS, describeOwners, summarizeLeadQueue } from './leadDigest.js';
 import { businessDaysWaiting } from './handoffQueue.js';
 
 /* ⚠️ ต้องเป็น **วันทำการ** — เคยตั้งเป็นวันเสาร์แล้วทุกอายุกลายเป็น 0 เพราะปลายทาง
@@ -67,39 +67,4 @@ test('describeOwners: ใส่จำนวนวันเฉพาะราย�
   assert.match(text, /อีก 2 คน$/);
   assert.equal((text.match(/วันทำการ/g) || []).length, 1, 'ใส่ทุกตัวการ์ดจะยาวจนไม่มีใครอ่าน');
   assert.equal(describeOwners([]), '');
-});
-
-test('แถวการ์ด: มีเฉพาะสถานะที่มีของค้าง · ไม่มีอะไรค้างคืน []', () => {
-  const rows = leadDigestRows(sum([
-    lead({ status: 'new', createdAt: '2026-07-24T03:00:00Z' }),
-    lead({ status: 'assigned', assigneeId: 'u1', assigneeName: 'Ann', assignedAt: '2026-08-06T03:00:00Z' }),
-  ]));
-  assert.equal(rows.length, 2, 'ไม่มี "รอกระจาย" ค้าง จึงต้องไม่มีแถวนั้น');
-  assert.match(rows[0].label, /รอคัดกรอง \(1\)/);
-  assert.match(rows[0].value, new RegExp(`นานสุด ${businessDaysWaiting('2026-07-24T03:00:00Z', NOW, HOLIDAYS)} วันทำการ`));
-  assert.match(rows[1].label, /รอติดต่อกลับ \(1\)/);
-  assert.match(rows[1].value, new RegExp(`Ann 1 ใบ · นานสุด ${businessDaysWaiting('2026-08-06T03:00:00Z', NOW, HOLIDAYS)} วันทำการ`));
-
-  assert.deepEqual(leadDigestRows(sum([])), []);
-  assert.deepEqual(leadDigestRows(null), []);
-});
-
-test('รอกระจาย: บอกทีมที่ค้าง เพราะเจ้าของงานคือ Senior AE ของทีมนั้น', () => {
-  const rows = leadDigestRows(sum([
-    lead({ status: 'screened', team: 'KA', screenedAt: '2026-08-06T03:00:00Z' }),
-    lead({ status: 'screened', team: 'KA', screenedAt: '2026-08-07T03:00:00Z' }),
-    lead({ status: 'screened', team: 'SV', screenedAt: '2026-08-07T03:00:00Z' }),
-  ]));
-  assert.match(rows[0].value, /KA 2/);
-  assert.match(rows[0].value, /SV 1/);
-  assert.match(rows[0].value, new RegExp(`นานสุด ${businessDaysWaiting('2026-08-06T03:00:00Z', NOW, HOLIDAYS)} วันทำการ`));
-});
-
-test('route ของ digest ต้องกินสรุปจากกติกากลาง ไม่นับเองในไฟล์ route', () => {
-  const src = readFileSync(new URL('../../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8');
-  assert.match(src, /summarizeLeadQueue\(rows, \{/);
-  assert.match(src, /rows: leadDigestRows\(summary\)/);
-  // ต้องดึงฟิลด์ที่ใช้คำนวณอายุ/เจ้าของมาด้วย ไม่ใช่ select('status') เฉย ๆ เหมือนเดิม
-  assert.match(src, /assigneeId, assigneeName, createdAt, screenedAt, assignedAt/);
-  assert.doesNotMatch(src, /const nAssigned = count\('assigned'\)/, 'ตรรกะเดิมต้องถูกแทนแล้ว');
 });

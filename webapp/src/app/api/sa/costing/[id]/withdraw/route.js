@@ -11,7 +11,6 @@ import { withdrawFromExecError } from '@/lib/costing';
 import { findCostingRequest } from '@/lib/costingAdmin';
 import { costingWithdrawUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
-import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -62,17 +61,6 @@ export async function POST(request, { params }) {
   }
 
   // แจ้งผู้บริหารว่าใบหลุดออกจากคิวแล้ว — ไม่งั้นจะเปิดเข้าไปหาใบที่หายไปเฉย ๆ
-  sendChat('executive', chatCard({
-    title: `ดึงกลับใบขอราคาผลิต ${after.docNo || ''}`,
-    subtitle: after.customerName || '',
-    rows: [
-      { label: 'เหตุผล', value: reason },
-      { label: 'ผู้ดึงกลับ', value: user?.name || '' },
-      { label: 'สถานะใหม่', value: 'กลับไปให้ฝ่ายขายแก้ไข — จะยื่นเข้ามาใหม่อีกครั้ง' },
-    ],
-    linkPath: `/sa/costing/${id}`,
-    linkLabel: 'เปิดใบขอราคา',
-  }));
 
   return Response.json(after);
 }

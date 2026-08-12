@@ -10,9 +10,7 @@ import { findCostingRequest, loadPendingAskLinks, syncCostingPricingStatus } fro
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import { costingSubmitUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
-import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
-import { fmtNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,17 +66,6 @@ export async function POST(request, { params }) {
     await appendUpdate(supabase, { entityType: 'costing_request', entityId: id, ...event, user });
   }
 
-  sendChat('executive', chatCard({
-    title: `รออนุมัติราคาผลิต ${after.docNo || ''}`,
-    subtitle: after.customerName || '',
-    rows: [
-      { label: 'สินค้า', value: `${(after.items || []).length} รายการ` },
-      { label: 'MOQ', value: `${fmtNumber(after.moq)} ชิ้น` },
-      { label: 'ผู้ขอ', value: after.requestedByName || '' },
-    ],
-    linkPath: `/sa/costing/${id}`,
-    linkLabel: 'เปิดใบขอราคา',
-  }));
 
   return Response.json(after);
 }

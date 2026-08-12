@@ -31,19 +31,16 @@ test('มีชนิดเดียวที่คนพิมพ์เอง�
   assert.deepEqual(authorable, ['comment']);
 });
 
-// อ่านซอร์สแทนการ import — lib/chat.js ลาก `next/server` เข้ามาซึ่งไม่มีใน
-// runtime ของเทสต์ (เหตุผลเดียวกับที่ driveEntityMap.test.mjs อ่าน updateAccess.js)
-test('มี space ผู้ดูแลระบบใน CHAT_SPACES และ notify ยิงเข้า space นั้น', () => {
-  const chatSrc = readFileSync(join(here, '../chat.js'), 'utf8');
-  assert.match(chatSrc, /admin: 'CHAT_WEBHOOK_ADMIN'/, 'ยังไม่ได้ผูก env ของ space admin');
-  assert.match(chatSrc, /\{ key: 'admin', label: '[^']+', hint: '[^']+' \}/, 'space admin ต้องมีป้ายและคำอธิบายให้หน้าตั้งค่า');
-  assert.match(notifySrc, /sendChat\('admin'/, 'เรื่องใหม่ต้องยิงเข้าห้องผู้ดูแลระบบ');
+// 🪦 ท่อ Google Chat ถูกถอดออกทั้งระบบ 2026-08-12 — เรื่องใหม่เข้าคิวจึง **ไม่มี
+// สัญญาณอัตโนมัติแล้ว** (แอดมินเปิดคิว /support เอง) · เทสต์นี้กันไม่ให้ใครเผลอ
+// ต่อท่อกลับมาโดยไม่ตั้งใจ
+test('ไม่เหลือร่องรอย Chat webhook ในสายเรื่องแจ้งปัญหา', () => {
+  assert.doesNotMatch(notifySrc, /sendChat|chatCard|lib\/chat/);
 });
 
 // ⚠️ กติกาเหล็ก: แจ้งเตือนพลาดต้องไม่ทำให้เรื่องที่บันทึกสำเร็จแล้วตอบ error
 // คนที่กำลังแจ้งบั๊กอยู่ต้องไม่เจอบั๊กซ้อนบั๊ก
-test('ทั้งสองทางกลืน error เอง ไม่ throw ออกไปหาผู้เรียก', () => {
-  assert.match(notifySrc, /export function notifyNewIssue[\s\S]*?try \{[\s\S]*?\} catch/);
+test('ทางเดียวที่เหลือกลืน error เอง ไม่ throw ออกไปหาผู้เรียก', () => {
   assert.match(notifySrc, /export async function recordIssueEvent[\s\S]*?try \{[\s\S]*?\} catch/);
 });
 
@@ -67,10 +64,10 @@ test('route เรียก recordIssueEvent หลัง update แถวเส
 });
 
 // เรื่องใหม่ไม่ยิง notification รายคน — ตอนนั้นยังไม่รู้ว่าแอดมินคนไหนจะรับ
-// และมติ 14 ห้าม fan-out ให้ "ทุกคนในฝ่าย"
-test('POST เรื่องใหม่ใช้ Chat webhook อย่างเดียว ไม่ fan-out รายคน', () => {
+// และมติ 14 ห้าม fan-out ให้ "ทุกคนในฝ่าย" · หลังถอด Chat ออกแล้วขั้นนี้จึงเงียบ
+// โดยตั้งใจ (มติผู้ใช้ 2026-08-12) ไม่ใช่ลืมต่อสาย
+test('POST เรื่องใหม่ไม่ fan-out รายคน', () => {
   const routeSrc = readFileSync(join(here, '../../app/api/issues/route.js'), 'utf8');
-  assert.match(routeSrc, /notifyNewIssue\(data\)/);
   assert.ok(!routeSrc.includes('notifyThreadUpdate'));
   assert.ok(!routeSrc.includes('recordIssueEvent'));
 });
