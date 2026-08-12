@@ -8,6 +8,21 @@ import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, ca
 //   2. Gate access: unauthenticated users are redirected to "/" (login);
 //      unauthenticated /api calls get 401.
 export async function proxy(request) {
+  /* 🐞 **Vercel Cron ไม่มี cookie session** — มันยืนยันตัวด้วย header
+     `Authorization: Bearer $CRON_SECRET` เท่านั้น · ด่านล่าง (`!user && isApi → 401`)
+     จึงตีตกทุกครั้งตั้งแต่ก่อนถึง route ⇒ ตัว `cronOk` ใน handler **ไม่เคยถูกรันเลย**
+
+     ของจริงที่เกิด: log ของ production 2026-08-12 มี
+       01:30:34Z /api/cron/daily-digest         401
+       02:00:02Z /api/cron/close-resolved-issues 401
+     ตรงเวลาที่ตั้งไว้เป๊ะทั้งคู่ ⇒ Vercel เรียกถูกต้องมาตลอด แอปเป็นฝ่ายปิดประตูเอง
+     ทวงลีดค้าง SLA จึงไม่เคยเด้ง และการ์ดสรุปเช้าไม่เคยเข้าห้องแชทตั้งแต่ 2026-07-15
+
+     ⚠️ **ไม่ได้เปิดช่องโหว่**: ทั้งสอง route ตรวจสิทธิ์เองครบ — ต้องมี Bearer ที่ตรงกับ
+     `CRON_SECRET` หรือเป็นผู้ใช้ที่มี `master:manage` (แอดมินกดทดสอบเอง) · ที่นี่แค่
+     เลิกตัดสินด้วย "มี cookie ไหม" ซึ่งเป็นคำถามที่ผิดสำหรับผู้เรียกที่เป็นเครื่อง */
+  if (bypassesSessionGate(request.nextUrl.pathname)) return NextResponse.next();
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -134,6 +149,20 @@ export async function proxy(request) {
   }
 
   return response;
+}
+
+/**
+ * เส้นที่ผู้เรียกเป็น **เครื่อง ไม่ใช่คน** จึงไม่มีทางมี cookie session
+ *
+ * แยกเป็นฟังก์ชันเพื่อให้เทสต์จับได้ว่าเปิดกว้างแค่ไหน — ด่านนี้ตัดสินก่อนทุกอย่าง
+ * เขียนพลาดหนึ่งตัวอักษรแล้วเปิดทั้ง API โดยไม่มีอะไรฟ้อง
+ *
+ * ⚠️ เพิ่มเส้นใหม่ที่นี่ได้เฉพาะเมื่อ **route นั้นตรวจสิทธิ์ของตัวเองครบแล้ว**
+ * (วันนี้: cron ทั้งสองตัวเช็ค `Bearer $CRON_SECRET` หรือ cap `master:manage`)
+ */
+export function bypassesSessionGate(path) {
+  // ต้องมี `/` ปิดท้าย — `/api/cron` เปล่า ๆ หรือ `/api/crontab` ต้องไม่ผ่าน
+  return path.startsWith('/api/cron/');
 }
 
 // Master switch for the phased lockdown. Set to false to re-open all three

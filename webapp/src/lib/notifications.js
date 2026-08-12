@@ -16,46 +16,15 @@ import { randomUUID } from 'node:crypto';
 import { updateEntityConfig, updateRecipients } from '@/lib/master/updateAccess';
 import { isSystemUpdateItem, updateKindMeta } from '@/lib/master/updateTypes';
 import { mentionIdsOf } from '@/lib/master/mentions';
+// ปลายทาง/ป้ายชื่ออยู่แยกเพราะหน้าจอต้อง import ด้วย (ไฟล์นี้ลากของฝั่ง server มา)
+// re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้ — ทะเบียนยังมีชุดเดียว
+import { ENTITY_LABEL, entityLabel, notificationHref } from '@/lib/notificationTargets';
+
+export { entityLabel, notificationHref };
 
 export const NOTIFICATION_LIST_LIMIT = 30;
-
-// เธรดของ entity ไหนกดไปหน้าไหน — เก็บ path ตอนสร้างเพราะกล่องแจ้งเตือนไม่ควรต้อง
-// รู้จัก routing ของทุกโมดูล · entity ที่ไม่มีในนี้ = แจ้งเตือนไม่มีลิงก์ (ยังอ่านได้)
-const HREF = {
-  personal_task: (id) => `/pm/tasks/${id}`,
-  project: (id) => `/sa/projects/${id}`,
-  dept_request: (id) => `/requests/${id}`,
-  deal: (id) => `/sa/deals/${id}`,
-  lead: (id) => `/sa/leads/${id}`,
-  costing_request: (id) => `/sa/costing/${id}`,
-  customer: (id) => `/database/customers/${id}`,
-  product: (id) => `/database/products/${id}`,
-  excise_registration: (id) => `/tax/registrations/${id}`,
-  excise_order: (id) => `/tax/filings/${id}`,
-  sahamit_po: (id) => `/sahamit/po/${id}`,
-  // นัดเข้าบริการยังไม่มีหน้ารายละเอียดรายใบ — ส่งไปที่ **ตาราง** ซึ่งเป็นที่ที่เปิด
-  // นัดนั้นได้จริง (คลิกชิปแล้วโมดัลเปิดพร้อมเธรด)
-  service_visit: () => '/service/schedule',
-  system_issue: (id) => `/support/${id}`,
-};
-
-// ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
-// (⚠️ กฎเดิม: อย่า fallback เป็น id ดิบบนหน้าจอถ้าเลี่ยงได้ — ลองหลายช่องก่อน)
-const ENTITY_LABEL = {
-  personal_task: 'งาน',
-  project: 'โครงการ',
-  dept_request: 'คำร้อง',
-  deal: 'ดีล',
-  lead: 'ลีด',
-  costing_request: 'ใบขอราคาผลิต',
-  customer: 'ลูกค้า',
-  product: 'สินค้า',
-  excise_registration: 'ทะเบียนสรรพสามิต',
-  excise_order: 'ใบยื่นชำระภาษี',
-  sahamit_po: 'PO สหมิตร',
-  service_visit: 'นัดเข้าบริการ',
-  system_issue: 'เรื่องแจ้งปัญหา',
-};
+// เพดานต่อคำขอของหน้า "ดูทั้งหมด" — กันคนแก้ query string ให้ดึงทั้งตารางในทีเดียว
+export const NOTIFICATION_PAGE_MAX = 100;
 
 export function entityTitle(entityType, parent) {
   // ⚠️ ลำดับสำคัญ: ของที่มี "เลขที่เอกสาร" ต้องมาก่อน `name`/`title` เสมอ —
@@ -65,10 +34,6 @@ export function entityTitle(entityType, parent) {
     || parent?.contactName || parent?.name || parent?.id || '';
   const label = ENTITY_LABEL[entityType] || 'รายการ';
   return `${label} ${name}`.trim().slice(0, 200);
-}
-
-export function notificationHref(entityType, entityId) {
-  return HREF[entityType] ? HREF[entityType](entityId) : null;
 }
 
 // ── ผู้รับของอัปเดตหนึ่งแถว ──────────────────────────────────────────────
@@ -209,20 +174,77 @@ export async function notifyUsers(supabase, { userIds = [], entityType, entityId
 }
 
 // ── อ่าน ─────────────────────────────────────────────────────────────────
-export async function listNotifications(supabase, userId, { limit = NOTIFICATION_LIST_LIMIT } = {}) {
-  const { data, error } = await supabase
-    .from('notifications').select('*')
-    .eq('userId', String(userId))
-    .order('createdAt', { ascending: false })
-    .limit(limit);
+//
+// ⚠️ **เรียงด้วยสองคอลัมน์เสมอ (`createdAt` แล้ว `id`)** — fan-out เขียนหลายแถวด้วย
+// `new Date().toISOString()` ค่าเดียวกัน ⇒ แถวเวลาชนกันเป็นเรื่องปกติ ไม่ใช่กรณีหายาก
+// เรียงคอลัมน์เดียวแล้วลำดับของแถวที่ชนกันไม่นิ่ง หน้า "ดูทั้งหมด" จะข้ามหรือซ้ำแถว
+// ตอนกดโหลดเพิ่ม (กุญแจหน้าถัดไปอ้างอิงแถวสุดท้ายของหน้าก่อน)
+const pageOrder = (query) => query
+  .order('createdAt', { ascending: false })
+  .order('id', { ascending: false });
+
+/**
+ * กุญแจหน้าถัดไป = แถวสุดท้ายที่ส่งไปแล้ว (ไม่ใช่ offset)
+ *
+ * ⚠️ ห้ามเปลี่ยนไปใช้ `.range()` — ระหว่างที่คนกำลังไล่อ่าน แจ้งเตือนใหม่เข้ามาได้
+ * ตลอด offset จะเลื่อนตามแล้วแถวเดิมโผล่ซ้ำ/หายไปเงียบ ๆ
+ */
+export function notificationCursor(row) {
+  return row?.createdAt && row?.id ? `${row.createdAt}|${row.id}` : null;
+}
+
+function applyCursor(query, cursor) {
+  const at = String(cursor || '').indexOf('|');
+  if (at < 1) return query;
+  const createdAt = cursor.slice(0, at);
+  const id = cursor.slice(at + 1);
+  // ครอบค่าด้วย double quote — timestamptz มี `:` และ `+` ที่ PostgREST ต้องอ่านเป็น
+  // ค่าไม่ใช่ตัวคั่น (ไม่มี `,` ในสองค่านี้จึงปลอดภัยที่จะฝังใน or)
+  return query.or(`createdAt.lt."${createdAt}",and(createdAt.eq."${createdAt}",id.lt."${id}")`);
+}
+
+export async function listNotifications(supabase, userId, {
+  limit = NOTIFICATION_LIST_LIMIT, unreadOnly = false, cursor = null,
+} = {}) {
+  let query = supabase.from('notifications').select('*').eq('userId', String(userId));
+  if (unreadOnly) query = query.is('readAt', null);
+  query = applyCursor(query, cursor);
+  const { data, error } = await pageOrder(query).limit(limit);
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * หนึ่งหน้าของกล่องแจ้งเตือน + รู้ว่ายังมีต่อไหม
+ *
+ * ขอเกินมา 1 แถวแล้วตัดทิ้ง — ถูกกว่า count ทั้งตารางทุกครั้งที่กดโหลดเพิ่ม และตอบ
+ * คำถามเดียวที่หน้าจอถามจริง ๆ ("ปุ่มโหลดเพิ่มควรขึ้นไหม")
+ */
+export async function listNotificationPage(supabase, userId, options = {}) {
+  const limit = Math.max(1, Math.min(options.limit || NOTIFICATION_LIST_LIMIT, NOTIFICATION_PAGE_MAX));
+  const rows = await listNotifications(supabase, userId, { ...options, limit: limit + 1 });
+  const items = rows.slice(0, limit);
+  return {
+    items,
+    hasMore: rows.length > limit,
+    nextCursor: rows.length > limit ? notificationCursor(items[items.length - 1]) : null,
+  };
 }
 
 export async function unreadCount(supabase, userId) {
   const { count, error } = await supabase
     .from('notifications').select('id', { count: 'exact', head: true })
     .eq('userId', String(userId)).is('readAt', null);
+  if (error) throw error;
+  return count || 0;
+}
+
+// จำนวนทั้งหมดของคนนี้ — หน้า "ดูทั้งหมด" ใช้บอกว่ากำลังไล่อ่านอยู่ในกองใหญ่แค่ไหน
+// (กระดิ่งไม่ต้องรู้ จึงไม่ถูกเรียกจากที่นั่น)
+export async function totalCount(supabase, userId) {
+  const { count, error } = await supabase
+    .from('notifications').select('id', { count: 'exact', head: true })
+    .eq('userId', String(userId));
   if (error) throw error;
   return count || 0;
 }
@@ -235,6 +257,26 @@ export async function markThreadRead(supabase, userId, entityType, entityId) {
     .from('notifications').update({ readAt: new Date().toISOString() })
     .eq('userId', String(userId))
     .eq('entityType', entityType).eq('entityId', String(entityId))
+    .is('readAt', null);
+  if (error) throw error;
+}
+
+/**
+ * ทำเครื่องหมายอ่านแล้วทีละแถว — มีไว้เพื่อหน้า "ดูทั้งหมด" โดยเฉพาะ
+ *
+ * ⚠️ **ไม่ได้ทำลายมติ 15** — มติ 15 พูดถึง *เธรด*: ไม่มีเส้นคั่น "ข้อความใหม่" ราย
+ * ข้อความแบบ Slack และเปิดเธรด = อ่านทั้ง entity ก้อนเดียว ยังเป็นแบบนั้นทุกประการ
+ * ตัวนี้ทำงานกับ *แถวในกล่อง* ซึ่งเป็นของคนละชั้น และจำเป็นเพราะมีแจ้งเตือนที่
+ * ปลายทางไม่มีเธรดให้เปิด (`lead_overdue` ชี้ไปหน้าคิว · `service_visit` ชี้ไปตาราง)
+ * ⇒ ถ้าไม่มีปุ่มนี้ แถวพวกนั้นจะค้างเป็น "ยังไม่อ่าน" ตลอดไป เหลือทางเดียวคือ
+ * "อ่านทั้งหมด" ซึ่งล้างของที่ยังไม่ได้อ่านจริงไปด้วย
+ *
+ * ⚠️ ตัดขอบเขตด้วย `userId` เสมอ — id ของแถวมาจากฝั่งเบราว์เซอร์ ห้ามเชื่อลอย ๆ
+ */
+export async function markOneRead(supabase, userId, id) {
+  const { error } = await supabase
+    .from('notifications').update({ readAt: new Date().toISOString() })
+    .eq('userId', String(userId)).eq('id', String(id))
     .is('readAt', null);
   if (error) throw error;
 }
