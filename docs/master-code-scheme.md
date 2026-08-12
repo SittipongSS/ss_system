@@ -242,9 +242,23 @@ mig 0238 ยกทั้งชุดมาใช้แพตเทิร์น�
 `generateProjectCode()` ถูกลบทิ้งทั้งคู่ เพื่อไม่ให้มีทางกลับไปจองเลขแยกจาก insert อีก
 ที่ยังอยู่คือ `peekNextEntityCode()` ซึ่งอ่านอย่างเดียวสำหรับพรีวิวบนฟอร์ม
 
-**ยังไม่ได้แก้: `QT` (ใบเสนอราคา) · `CR` (ใบขอราคาผลิต) · เลขที่คำร้อง** — ทั้งสามยังจอง
-เลขแยกจาก insert เหมือนเดิม จึงยังข้ามได้ถ้า insert ล้ม (เลขที่คำร้องออกตอนกดส่งอยู่แล้ว
-จึงข้ามยากกว่าเพื่อน) · `SO` ไม่มีปัญหานี้มาแต่ต้น เพราะอยู่ใน `create_sales_order_draft`
+**`QT` และ `CR` ปิดแล้วเหมือนกัน (mig 0240)** — สองตัวนี้ต่างจากชุดข้างบนตรงรูปแบบ
+
+| | ต่างตรงไหน | ฟังก์ชัน |
+|---|---|---|
+| `QT` | เลขมาจาก `quote_number_counters` (mig 0092) ไม่ใช่ `entity_number_counters` · รูปแบบมาจาก "มาตรฐานเอกสารที่เผยแพร่" ไม่ใช่ค่าคงที่ · เติมสองคอลัมน์ (`baseNumber` + `quoteNumber`) | `create_quotation_with_number` |
+| `CR` | ใบมีตัวตนก่อนมีเลข — เลขออกตอน **กดส่งผู้บริหาร** ครั้งแรก ⇒ เป็น update-with-code ไม่ใช่ insert-with-code | `assign_costing_doc_no` |
+
+QT ไม่ย้ายไปใช้ `entity_number_counters` โดยตั้งใจ — การย้ายแหล่งเลขของเอกสารที่ออกไปหา
+ลูกค้าแล้วมีความเสี่ยงมากกว่าที่ได้ · รูปแบบยังแตกฝั่ง JS ด้วย `documentNumberSlots()` ที่คืน
+`{ prefix, width, tail, separator }` ให้ SQL เติมเฉพาะตัวเลข — มีเทสล็อกว่าประกอบกลับแล้ว
+ต้องได้ผลเท่า `documentNumberParts()` ทุกรูปแบบ ไม่งั้นเลขบนใบจริงจะต่างจากที่ระบบคำนวณที่อื่น
+
+CR ที่มีเลขแล้ว (ส่งซ้ำหลังถูกตีกลับ) ไม่กินเลขใหม่ — ฟังก์ชัน `SELECT … FOR UPDATE` แล้วเช็ค
+`docNo` เดิมก่อน · กติกาว่าจะเปลี่ยนสถานะอะไรยังอยู่ฝั่ง JS (ส่งมาใน `p_patch`)
+
+**เหลือแค่เลขที่คำร้อง** — ยังจองเลขแยกจาก insert แต่ออกตอนกดส่งอยู่แล้ว จึงข้ามยากกว่าเพื่อน ·
+`SO` ไม่มีปัญหานี้มาแต่ต้น เพราะอยู่ใน `create_sales_order_draft`
 
 ### "ไม่ข้าม" กับ "ไม่ซ้ำ" เป็นคนละเรื่อง ต้องได้ทั้งคู่ (mig 0239)
 
@@ -283,6 +297,8 @@ mig 0238 ยกทั้งชุดมาใช้แพตเทิร์น�
 | `webapp/supabase/migrations/0237_master_code_atomic_insert.sql` | ออกรหัส AR/FG + insert ในทรานแซกชันเดียว — insert ล้ม = เลขคืน |
 | `webapp/supabase/migrations/0238_entity_code_atomic_insert.sql` | เหมือนกันสำหรับ DL/PJ/PB/SV/SS/IS · รับหลายแถวต่อครั้ง |
 | `webapp/supabase/migrations/0239_entity_counter_no_reuse.sql` | **ห้ามเลขที่ออกไปแล้วถูกออกซ้ำ** — trigger กันเคาน์เตอร์ถอย/ถูกลบ/ถูก truncate + ตั้งต้นจากรหัสสูงสุดที่มีจริงถ้าแถวหาย |
+| `webapp/supabase/migrations/0240_quote_costing_atomic_number.sql` | QT ออกเลขพร้อม insert · CR ออกเลขพร้อม update · guard ให้ตัวนับ QT/SO ด้วย |
+| `webapp/src/lib/documentStandards.js` → `documentNumberSlots()` | แตกรูปแบบเลขที่เป็น prefix/ความกว้าง/ท่อนท้าย/ตัวคั่น ให้ SQL เติมเฉพาะตัวเลข |
 | `webapp/src/lib/entityCode.js` (+ `.test.mjs`) | **ที่เดียวที่รู้รูปแบบรหัสเอนทิตี** — `insertRowWithEntityCode` / `insertRowsWithEntityCode` · พรีวิวที่ไม่กินเลข |
 | `webapp/src/lib/master/masterCodes.test.mjs` | ล็อกกติกาไว้ รวมเคส `categoryOf` ต้องไม่จับผิดท่อนเมื่อรหัสลูกค้ายาว 4 หลัก |
 | `webapp/src/lib/master/customerTaxId.js` (+ `.test.mjs`) | เช็คซ้ำจากเลขผู้เสียภาษี — แยก "สาขาเดียวกัน = ซ้ำจริง" ออกจาก "คนละสาขา = เตือน" |
