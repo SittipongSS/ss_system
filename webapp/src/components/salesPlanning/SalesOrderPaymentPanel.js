@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState } from "react";
-import { ChevronDown, Paperclip, Wallet } from "lucide-react";
+import { CalendarClock, Paperclip, Undo2, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import PendingFiles from "@/components/ui/PendingFiles";
@@ -10,6 +10,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import Modal from "@/components/Modal";
 import { TableScroll } from "@/components/ui/Table";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
@@ -37,7 +38,6 @@ export default function SalesOrderPaymentPanel({
   const [reportFor, setReportFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
   const [scheduleFor, setScheduleFor] = useState(null);
-  const [opened, setOpened] = useState({}); // แถวที่ผู้ใช้กดกางเอง
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -65,13 +65,6 @@ export default function SalesOrderPaymentPanel({
       rejectedCount ? `บัญชีตีกลับ ${rejectedCount} งวด` : null,
     ].filter(Boolean).join(" · ")
     : null;
-
-  /* แถวไหน "ต้องลงมือ" = กางเอง · ที่เหลือกดกางได้
-     ⚠️ ผูกกับสถานะ ไม่ใช่กับสิทธิ์ของคนดู — ฝ่ายขายเปิดมาเห็นงวดที่บัญชีตีกลับกางอยู่
-     ก็ถูกแล้ว เพราะเป็นงวดที่ต้องแก้ */
-  const autoOpen = (row) => row.status === "reported" || row.status === "rejected";
-  const isOpen = (row) => (row.id in opened ? opened[row.id] : autoOpen(row));
-  const toggle = (row) => setOpened((s) => ({ ...s, [row.id]: !isOpen(row) }));
 
   const pct = rollup.totalAmount > 0 ? Math.round((rollup.confirmedAmount / rollup.totalAmount) * 100) : 0;
 
@@ -120,7 +113,7 @@ export default function SalesOrderPaymentPanel({
       {!rows.length ? (
         <p className="form-note">ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม</p>
       ) : (
-        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={520}>
+        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={680}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
             <thead>
               <tr>
@@ -128,46 +121,51 @@ export default function SalesOrderPaymentPanel({
                 <th>รายละเอียด</th>
                 <th>กำหนด / จ่ายจริง</th>
                 <th className="num">ยอด</th>
+                <th>หลักฐาน</th>
                 <th>สถานะ</th>
-                <th aria-label="ขยาย" />
+                <th aria-label="การจัดการ" />
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => {
                 const overdue = row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso);
-                const open = !row.preview && isOpen(row);
-                const actions = row.preview ? [] : [
-                  !gate(row, "schedule") && (
-                    <Button key="s" variant="quiet" size="sm" disabled={!!busy}
-                      onClick={() => setScheduleFor({ row, dueDate: row.dueDate || "" })}>
-                      {row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ"}
-                    </Button>
-                  ),
-                  !gate(row, "report", { paidOn: "placeholder" }) && (
-                    <Button key="r" tone="accent" size="sm" disabled={!!busy}
-                      onClick={() => setReportFor({ row, paidOn: todayIso, files: [] })}>
-                      แจ้งลูกค้าจ่ายแล้ว
-                    </Button>
-                  ),
-                  !gate(row, "withdraw") && (
-                    <Button key="w" variant="quiet" size="sm" disabled={!!busy}
-                      onClick={() => onAction(row, "withdraw")}>ดึงกลับ</Button>
-                  ),
-                  !gate(row, "confirm") && (
-                    <Button key="c" tone="accent" size="sm" disabled={!!busy}
-                      onClick={() => onAction(row, "confirm")}>บัญชีคอนเฟิร์ม</Button>
-                  ),
-                  !gate(row, "reject", { reason: "x".repeat(MIN_REJECT_REASON) }) && (
-                    <Button key="j" variant="quiet" size="sm" disabled={!!busy}
-                      onClick={() => setRejectFor({ row, reason: "" })}>ตีกลับ</Button>
-                  ),
-                ].filter(Boolean);
                 const evidence = Array.isArray(row.evidence) ? row.evidence : [];
-                const hasDetail = actions.length || evidence.length || row.rejectedReason;
+
+                /* ⭐ **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01 · RowActionMenu)
+                   "ก้าวถัดไป" = action ที่ทำให้งวดนี้เดินหน้า **สำหรับคนที่กำลังดูอยู่**
+                     · รอชำระ / ถูกตีกลับ → ฝ่ายขายแจ้งชำระ
+                     · รอบัญชีตรวจ       → บัญชีคอนเฟิร์ม
+                   ⚠️ ฝ่ายขายเปิดดูงวดที่ "รอบัญชีตรวจ" จะ **ไม่มีปุ่มหลัก** โดยตั้งใจ —
+                   สิ่งเดียวที่เขาทำได้คือ "ดึงกลับ" ซึ่งเป็นการถอย ไม่ใช่ก้าวถัดไป
+                   เอามาเป็นปุ่มเด่นจะกลายเป็นชวนให้ถอย */
+                const canReport = !row.preview && !gate(row, "report", { paidOn: "placeholder" });
+                const canConfirm = !row.preview && !gate(row, "confirm");
+                const primary = canReport
+                  ? { label: row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
+                      onClick: () => setReportFor({ row, paidOn: todayIso, files: [] }) }
+                  : canConfirm
+                    ? { label: "บัญชีคอนเฟิร์ม", onClick: () => onAction(row, "confirm") }
+                    : null;
+
+                const menu = row.preview ? [] : [
+                  !gate(row, "schedule") && {
+                    id: "schedule", icon: CalendarClock,
+                    label: row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",
+                    onClick: () => setScheduleFor({ row, dueDate: row.dueDate || "" }),
+                  },
+                  !gate(row, "withdraw") && {
+                    id: "withdraw", icon: Undo2, tone: "warning", label: "ดึงกลับการแจ้งชำระ",
+                    onClick: () => onAction(row, "withdraw"),
+                  },
+                  !gate(row, "reject", { reason: "x".repeat(MIN_REJECT_REASON) }) && {
+                    id: "reject", icon: XCircle, tone: "danger", label: "ตีกลับให้แก้",
+                    onClick: () => setRejectFor({ row, reason: "" }),
+                  },
+                ].filter(Boolean);
 
                 return (
                   <Fragment key={row.id || `preview-${row.seq}`}>
-                  <tr className={open ? styles.openRow : undefined}>
+                  <tr>
                     {single ? null : <td className={styles.seqCol}>{row.seq}</td>}
                     <td>
                       <strong>{row.label}</strong>
@@ -179,8 +177,30 @@ export default function SalesOrderPaymentPanel({
                         {overdue ? " · เลยกำหนด" : ""}
                       </span>
                       {row.paidOn ? <small>จ่าย {fmtDate(row.paidOn)}</small> : null}
+                      {row.reportedByName || row.confirmedByName ? (
+                        <small>
+                          {row.confirmedByName ? `บัญชีรับรอง ${row.confirmedByName}` : `แจ้งโดย ${row.reportedByName}`}
+                        </small>
+                      ) : null}
                     </td>
                     <td className="num">{fmtMoney(row.amount)}</td>
+                    <td>
+                      {evidence.length ? (
+                        <span className={styles.evidence}>
+                          {evidence.map((att, i) => (
+                            <a
+                              key={`${att.storagePath || "e"}-${i}`}
+                              href={`/api/sales-planning/sales-orders/${order.id}/payment-file?installment=${encodeURIComponent(row.id)}&i=${i}`}
+                              target="_blank" rel="noreferrer" className={styles.fileLink}
+                              title={att.fileName || `หลักฐาน ${i + 1}`}
+                            >
+                              <Paperclip size={13} aria-hidden="true" />
+                              <span className="cell-ellipsis">{att.fileName || `หลักฐาน ${i + 1}`}</span>
+                            </a>
+                          ))}
+                        </span>
+                      ) : <span className={styles.none}>—</span>}
+                    </td>
                     <td>
                       <StatusBadge
                         size="sm"
@@ -188,53 +208,27 @@ export default function SalesOrderPaymentPanel({
                         label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[row.status] || row.status)}
                       />
                     </td>
-                    <td className={styles.toggleCell}>
-                      {hasDetail ? (
-                        <button
-                          type="button" className={styles.toggle} onClick={() => toggle(row)}
-                          aria-expanded={open}
-                          aria-label={open ? `ย่อรายละเอียดงวดที่ ${row.seq}` : `กางรายละเอียดงวดที่ ${row.seq}`}
-                        >
-                          <ChevronDown size={15} aria-hidden="true" className={open ? styles.flip : undefined} />
-                        </button>
+                    <td className={styles.actionCell}>
+                      {primary ? (
+                        <Button tone="accent" size="sm" disabled={!!busy} onClick={primary.onClick}>
+                          {primary.label}
+                        </Button>
+                      ) : null}
+                      {menu.length ? (
+                        <RowActionMenu items={menu} busy={!!busy}
+                          label={single ? "การจัดการอื่นของงวดนี้" : `การจัดการอื่นของงวดที่ ${row.seq}`} />
                       ) : null}
                     </td>
-
                   </tr>
-                  {/* ⚠️ แถวรายละเอียดต้องเป็น <tr> ของตัวเอง — td ที่ colSpan อยู่ในแถวเดียว
-                      กับเซลล์อื่นไม่ได้ตามสเปกตาราง */}
-                  {open && hasDetail ? (
+                  {/* เหตุผลที่บัญชีตีกลับ — **โชว์เสมอ ไม่ซ่อนในเมนู** เพราะมันคือสิ่งที่
+                      บอกว่าต้องแก้อะไรก่อนแจ้งใหม่ (กฎเดียวกับใบสั่งขายที่ถูกตีกลับ) */}
+                  {row.status === "rejected" && row.rejectedReason ? (
                     <tr className={styles.detailRow}>
-                      <td className={styles.detail} colSpan={single ? 5 : 6}>
-                        {row.rejectedReason ? (
-                          <div className={styles.rejected}>
-                            <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
-                            <ReadableText text={row.rejectedReason} lines={3} />
-                          </div>
-                        ) : null}
-                        {row.reportedByName || row.confirmedByName ? (
-                          <p className={styles.who}>
-                            {row.reportedByName ? `แจ้งโดย ${row.reportedByName}` : ""}
-                            {row.reportedByName && row.confirmedByName ? " · " : ""}
-                            {row.confirmedByName ? `บัญชีรับรองโดย ${row.confirmedByName}` : ""}
-                          </p>
-                        ) : null}
-                        {evidence.length ? (
-                          <div className={styles.evidence}>
-                            {evidence.map((att, i) => (
-                              <a
-                                key={`${att.storagePath || "e"}-${i}`}
-                                href={`/api/sales-planning/sales-orders/${order.id}/payment-file?installment=${encodeURIComponent(row.id)}&i=${i}`}
-                                target="_blank" rel="noreferrer" className={styles.fileLink}
-                                title={att.fileName || `หลักฐาน ${i + 1}`}
-                              >
-                                <Paperclip size={13} aria-hidden="true" />
-                                <span className="cell-ellipsis">{att.fileName || `หลักฐาน ${i + 1}`}</span>
-                              </a>
-                            ))}
-                          </div>
-                        ) : null}
-                        {actions.length ? <div className={styles.actions}>{actions}</div> : null}
+                      <td className={styles.detail} colSpan={single ? 6 : 7}>
+                        <div className={styles.rejected}>
+                          <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
+                          <ReadableText text={row.rejectedReason} lines={3} />
+                        </div>
                       </td>
                     </tr>
                   ) : null}

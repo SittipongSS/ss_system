@@ -46,38 +46,20 @@
 .seqCol { width: 44px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .overdue { color: var(--red); font-weight: var(--fw-bold); }
 
-/* แถวที่กางอยู่ต่อกับแถวรายละเอียดข้างล่าง — ตัดเส้นคั่นระหว่างกันไม่ให้ดูเป็นคนละแถว */
-.openRow > td { border-bottom-color: transparent; }
-.openRow > td:first-child { background: var(--accent-soft); }
-
-.toggleCell { width: 36px; text-align: right; }
-.toggle {
-  display: grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
+/* ⭐ ท้ายแถว = **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01)
+   ก้าวถัดไปต้องเห็นโดยไม่ต้องเปิดเมนู · ที่เหลือ (ตั้งกำหนด/ดึงกลับ/ตีกลับ) อยู่ในเมนู */
+.actionCell {
+  width: 1%;
+  white-space: nowrap;
 }
-.toggle:hover { background: var(--panel-3); color: var(--text); }
-.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.flip { transform: rotate(180deg); }
+.actionCell > * + * { margin-left: var(--space-1-5); }
 
-/* ⭐ แถวรายละเอียด — ที่อยู่ของหลักฐาน เหตุผลตีกลับ และปุ่ม
-   แก้ข้อแลกของแบบ ข ที่รู้ตั้งแต่ตอนเทียบ: mockup ซ่อนปุ่มไว้ในเมนู `⋯`
-   ซึ่งเพิ่มคลิกทุกครั้ง และแถวเดียวใส่หลักฐาน+เหตุผลไม่ลง */
+.evidence { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
+.none { color: var(--text-3); }
+
+/* เหตุผลตีกลับกินทั้งแถว — ต่อจากแถวของงวดนั้นโดยไม่มีเส้นคั่นกลาง */
 .detailRow > td { border-bottom: 1px solid var(--border); }
-.detail {
-  display: grid;
-  gap: var(--space-2-5);
-  padding-top: 0 !important;
-}
-.who { margin: 0; color: var(--text-3); font-size: var(--fs-5); }
-.evidence { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
-.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.detail { padding-top: 0 !important; }
 
 /* เหตุผลที่บัญชีตีกลับ — เป็นข้อความ ไม่ใช่ป้ายเปล่า (กฎเดียวกับใบที่ถูกตีกลับ) */
 .rejected {
