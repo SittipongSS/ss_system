@@ -21,7 +21,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -53,7 +53,7 @@ function eventDetail(event) {
   if (event.assigneeName) parts.push(event.assigneeName);
   return parts.join(" · ");
 }
-const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", details: "" };
+const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", budgetMax: "", details: "" };
 
 export default function LeadDetailPage() {
   const { id } = useParams();
@@ -109,7 +109,7 @@ export default function LeadDetailPage() {
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
       setLead(body);
-      setForm({ ...blank, ...body, budget: body.budget ?? "" });
+      setForm({ ...blank, ...body, budget: body.budget ?? "", budgetMax: body.budgetMax ?? "" });
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
 
@@ -192,7 +192,7 @@ export default function LeadDetailPage() {
      · ขอราคาผลิต · PO · ใบยื่นภาษี) — มีแต่หน้าทะเบียนภาษีที่ยังใช้ไอคอนหัวหน้า */
   const backActions = editing ? (
     <>
-      <Button icon={<X size={14} aria-hidden="true" />} onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "" }); }} disabled={busy}>ยกเลิก</Button>
+      <Button icon={<X size={14} aria-hidden="true" />} onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "" }); }} disabled={busy}>ยกเลิก</Button>
       <Button tone="primary" icon={<Save size={14} aria-hidden="true" />} onClick={save} disabled={busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </>
   ) : null;
@@ -255,7 +255,7 @@ export default function LeadDetailPage() {
           badges={<SalesStateBadge label={LEAD_STATUS_LABELS[lead.status] || lead.status} color={LEAD_STATUS_COLORS[lead.status]} />}
           facts={[
             { icon: Sparkles, label: "บริการที่สนใจ", value: SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest },
-            { icon: CircleDollarSign, label: "งบประมาณ", value: lead.budget != null ? fmtMoney(lead.budget) : "ไม่ระบุ" },
+            { icon: CircleDollarSign, label: "งบประมาณ", value: leadBudgetText(lead, fmtMoney) },
             { icon: Users, label: "ทีม", value: TEAM_LABELS[lead.team] || lead.team || "ยังไม่มอบหมาย" },
             // ชื่อจาก `assigneeId` — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ
             { icon: UserRound, label: "ผู้รับผิดชอบ", value: livePersonName(directory, lead.assigneeId, lead.assigneeName) || "ยังไม่มอบหมาย" },

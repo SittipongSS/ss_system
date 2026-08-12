@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Archive, ArchiveRestore, Beaker, Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
+  Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -24,7 +24,9 @@ import DateInput from "@/components/ui/DateInput";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -32,19 +34,70 @@ import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { useRole } from "@/lib/roleContext";
+import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
+import { canQuoteMaterial } from "@/lib/materialPrices";
+import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
-  formulaSourceLabel, isFormulaRegistrar, matchesFormulaSource,
+  formulaSourceLabel, isFormulaRegistrar, isFormulaUsable, matchesFormulaSource,
 } from "@/lib/master/formulas";
 
 export default function FormulasPage() {
   const role = useRole();
-  const me = useMemo(() => ({ role }), [role]);
+  const department = useDepartment();
+  // department ใช้กับด่านใส่ราคา FB (canQuoteMaterial — ฝ่าย RD) เท่านั้น
+  const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isFormulaRegistrar(me);
+  // ปุ่มใส่ราคา FB ต่อแถว (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12):
+  // ฝ่าย RD + สูตรสถานะใช้งานได้ (ร่าง/กำลังพัฒนายังอ้างราคาไม่ได้)
+  const canPriceFormula = (f) => canQuoteMaterial(me, "RM_FB") && isFormulaUsable(f);
+
+  // เมนู ⋯ ต่อแถว (มติผู้ใช้ 2026-08-12 — ปุ่มเรียง 3-4 ตัวกินสองบรรทัดทุกแถว)
+  // แพตเทิร์นเดียวกับทะเบียนกลิ่น: เงื่อนไขทุกข้อยกมาเท่าเดิม เปลี่ยนแค่ที่วาง
+  // · ปุ่มที่ยังโผล่นอกเมนู = งานหลักของแถว (รับเข้าทะเบียน · ใส่ราคาแถวที่ยังไม่มี)
+  const rowMenu = (f) => [
+    {
+      id: "price",
+      label: "ออกราคา FB ใหม่",
+      icon: Coins,
+      visible: canPriceFormula(f) && f.price?.unitPrice != null,
+      onClick: () => setPricing(f),
+    },
+    {
+      id: "edit",
+      label: "แก้ไขข้อมูล",
+      icon: Pencil,
+      separatorBefore: true,
+      visible: !!f._canEdit,
+      onClick: () => setForm({ mode: "edit", formula: f, value: formulaToForm(f) }),
+    },
+    {
+      id: "archive",
+      label: "เก็บเข้ากรุ",
+      icon: Archive,
+      visible: registrar && f.status === "active",
+      onClick: () => setConfirm({ kind: "archive", formula: f }),
+    },
+    {
+      id: "restore",
+      label: "เปิดใช้อีกครั้ง",
+      icon: ArchiveRestore,
+      visible: registrar && f.status === "archived",
+      onClick: () => setConfirm({ kind: "restore", formula: f }),
+    },
+    {
+      id: "delete",
+      label: f.status === "draft" ? "ลบร่างนี้" : "ลบสูตร (ผู้ดูแลระบบ)",
+      icon: Trash2,
+      tone: "danger",
+      separatorBefore: true,
+      visible: isAdmin || (f._canEdit && f.status === "draft"),
+      onClick: () => setConfirm({ kind: "delete", formula: f }),
+    },
+  ];
   const canPropose = canProposeFormula(me);
   // break-glass ของผู้ดูแลระบบ = role admin เท่านั้น (ดู lib/forceDelete.js)
   const isAdmin = role === "admin";
@@ -68,7 +121,15 @@ export default function FormulasPage() {
   const [search, setSearch] = useState(linkedQuery);
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   const [sourceFilter, setSourceFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
+     กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
+     ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
+     "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "formulas";
+  const [statusFilter, setStatusFilter] = useState(
+    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
+  );
   // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
   // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
   // ทะเบียนมีหน้าละหลายสิบแถวและแถวคั่นจะกระจายข้ามหน้า
@@ -80,6 +141,7 @@ export default function FormulasPage() {
   const [confirm, setConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [pricing, setPricing] = useState(null); // สูตรที่กำลังใส่ราคา FB
 
   // ⚠️ โหลดกลิ่นมาพร้อมกันใน reload เดียวกัน ไม่ใช่ useEffect แยกตอน mount —
   // ตารางแปลง scentId เป็นชื่อกลิ่นจากชุดนี้ ถ้าโหลดพลาดครั้งเดียวแล้วปุ่มรีเฟรช
@@ -133,18 +195,22 @@ export default function FormulasPage() {
   const scentName = useCallback(
     (id) => scents.find((s) => s.id === id)?.name || null, [scents],
   );
+  const scentCode = useCallback(
+    (id) => scents.find((s) => s.id === id)?.code || null, [scents],
+  );
 
   /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003 — เหมือนทะเบียนกลิ่น)
      สูตรของลูกค้าตั้งรหัสล้อกับรหัสลูกค้าเช่นกัน ⇒ ต้องอ่านคู่กันได้ในบรรทัดเดียว
      ⚠️ แผนที่เดียวใช้ทั้งสองตาราง — สร้างใหม่ทุกแถวคือ O(n²) ตอนเรนเดอร์ */
   const arIndex = useMemo(() => customerArIndex(customers), [customers]);
+  // AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — รหัสนำทุกตาราง)
   const customerCell = (row, fallback) => {
     if (!row.customerId && !row.customerName) return fallback;
     const { name, arCode } = customerWithAr(row.customerId, row.customerName, arIndex);
     return (
       <>
+        {arCode ? <span className="mono block text-[11px] text-[var(--text-3)]">{arCode}</span> : null}
         {name}
-        {arCode ? <span className={styles.arCode}>{arCode}</span> : null}
       </>
     );
   };
@@ -164,11 +230,14 @@ export default function FormulasPage() {
       // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าอยากรู้ว่ารายนี้มีสูตรอะไรบ้าง
       return [
         f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
-        f.customerTradeName, f.categoryCode, scentName(f.scentId),
+        f.customerTradeName, f.categoryCode,
+        // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)
+        categoryNameBoth(findCategoryByCode(categories, f.categoryCode)),
+        scentName(f.scentId),
       ]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [formulas, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
+  }, [formulas, categories, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
@@ -177,8 +246,8 @@ export default function FormulasPage() {
   );
   const categoryLabel = useCallback((code) => {
     if (!code) return null;
-    const row = categories.find((c) => `${c.mainCategoryCode}-${c.typeCode}` === code);
-    const name = row?.nameTh || row?.nameEn || "";
+    // โชว์ "รหัส EN · TH" (มติ 2026-08-12) — helper กลางตัวเดียวกับตัวเลือกหมวด
+    const name = categoryNameBoth(findCategoryByCode(categories, code));
     // ⚠️ หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปแสดงรหัส ห้ามบรรทัดว่าง
     return name ? `${code} ${name}` : code;
   }, [categories]);
@@ -451,21 +520,26 @@ export default function FormulasPage() {
             <table>
               <thead>
                 <tr>
-                  <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
+                  {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) */}
+                  <th>สูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
                   <th className={styles.colSource}>ที่มา</th>
-                  <th>วันที่</th><th>ลูกค้า</th>
+                  {/* วันที่ = .num (ชิดขวา + tabular) — `mono` ไม่จัดชิด เทียบข้ามแถว
+                      ไม่ได้ (กฎ 3 UI_DESIGN_SYSTEM — โรคเดียวกับที่ทะเบียนกลิ่นแก้แล้ว) */}
+                  <th className="num">วันที่</th><th className={styles.colCustomer}>ลูกค้า</th>
                   {/* ราคา FB มาจากทะเบียนวัสดุ — คู่ขนานกับราคา F ของกลิ่น */}
-                  <th className="num">ราคา FB</th>
+                  <th className={`${styles.colPrice} num`}>ราคา FB</th>
                   <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((f) => (
                   <tr key={f.id}>
-                    <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
                     <td className={styles.name}>
-                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด (กติกาเดียวกับทะเบียนกลิ่น) */}
-                      <Link href={`/database/formulas/${f.id}`}>{f.name}</Link>
+                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด · รหัสบน ชื่อล่าง (มติ 2026-08-12) */}
+                      <Link href={`/database/formulas/${f.id}`}>
+                        <span className="mono block text-[12px] text-[var(--accent)]">{f.code || "ไม่มีรหัส"}</span>
+                        <span className="block">{f.name}</span>
+                      </Link>
                       {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
                           ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
                       {f.customerTradeName && (
@@ -481,7 +555,12 @@ export default function FormulasPage() {
                         แปลว่ายังไม่มีตัวตนที่เทียบซ้ำได้ ต้องเห็นว่าค้าง ไม่ใช่ขีดกลางเฉย ๆ */}
                     <td>
                       {f.categoryCode
-                        ? categoryLabel(f.categoryCode)
+                        ? (
+                          <>
+                            <span className="mono block text-[11px] text-[var(--text-3)]">{f.categoryCode}</span>
+                            {categoryNameBoth(findCategoryByCode(categories, f.categoryCode)) || null}
+                          </>
+                        )
                         : f.scentId
                           ? <span className={styles.warn}>ยังไม่ระบุหมวด</span>
                           : <span className={styles.muted}>—</span>}
@@ -489,10 +568,12 @@ export default function FormulasPage() {
                     <td>
                       {f.scentId && scentName(f.scentId)
                         ? (
-                          <span className={styles.scentChip}>
-                            <FlaskConical size={13} aria-hidden="true" />
+                          <>
+                            {scentCode(f.scentId)
+                              ? <span className="mono block text-[11px] text-[var(--text-3)]">{scentCode(f.scentId)}</span>
+                              : null}
                             {scentName(f.scentId)}
-                          </span>
+                          </>
                         )
                         : <span className={styles.muted}>—</span>}
                     </td>
@@ -519,12 +600,24 @@ export default function FormulasPage() {
                         );
                       })()}
                     </td>
-                    <td className="mono">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
+                    <td className="num">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
                     <td>
                       {customerCell(f, <span className={styles.muted}>สูตรกลาง</span>)}
                     </td>
-                    {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ — แสดงอย่างเดียว */}
-                    <td className="num"><RegistryPrice price={f.price} /></td>
+                    {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ · ปุ่มใส่ราคาเฉพาะแถวที่ยัง
+                        ไม่มีราคา (งานกรอกจริง) — แถวที่มีแล้วออกใหม่ที่ปุ่ม Coins
+                        ในคอลัมน์จัดการ (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12) */}
+                    <td className="num">
+                      <RegistryPrice price={f.price} />
+                      {canPriceFormula(f) && f.price?.unitPrice == null && (
+                        <div className={styles.rowActions}>
+                          <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
+                            onClick={() => setPricing(f)}>
+                            ใส่ราคา
+                          </Button>
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <StatusBadge
                         tone={FORMULA_STATUS_TONES[f.status]}
@@ -532,6 +625,9 @@ export default function FormulasPage() {
                       />
                     </td>
                     <td>
+                      {/* ⋯ แทนปุ่มเรียง 3-4 ตัวที่เคยตกสองบรรทัดทุกแถว (มติผู้ใช้
+                          2026-08-12) — เงื่อนไขทุกข้อคงเดิมใน rowMenu · ปุ่มที่ยังอยู่
+                          นอกเมนูคืองานหลักของแถว: รับเข้าทะเบียน (ร่าง) */}
                       <div className={styles.rowActions}>
                         {registrar && f.status === "draft" && (
                           <Button size="sm" title="รับเข้าทะเบียน"
@@ -540,32 +636,7 @@ export default function FormulasPage() {
                             รับเข้าทะเบียน
                           </Button>
                         )}
-                        {f._canEdit && (
-                          <Button size="sm" variant="quiet" title="แก้ไข"
-                            icon={<Pencil size={14} aria-hidden="true" />}
-                            onClick={() => setForm({ mode: "edit", formula: f, value: formulaToForm(f) })} />
-                        )}
-                        {registrar && f.status === "active" && (
-                          <Button size="sm" variant="quiet" title="เก็บเข้ากรุ"
-                            icon={<Archive size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "archive", formula: f })} />
-                        )}
-                        {registrar && f.status === "archived" && (
-                          <Button size="sm" variant="quiet" title="เปิดใช้อีกครั้ง"
-                            icon={<ArchiveRestore size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "restore", formula: f })} />
-                        )}
-                        {/* ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass)
-                            ⚠️ variant="ghost" (= action-ghost) ไม่ใช่ "quiet" เพราะสีแดง
-                            ผูกกับ .btn.action-ghost.btn-danger เท่านั้น */}
-                        {(isAdmin || (f._canEdit && f.status === "draft")) && (
-                          <Button
-                            size="sm" variant="ghost" tone="danger"
-                            title={f.status === "draft" ? "ลบร่าง" : "ลบสูตร (ผู้ดูแลระบบ)"}
-                            icon={<Trash2 size={14} aria-hidden="true" />}
-                            onClick={() => setConfirm({ kind: "delete", formula: f })}
-                          />
-                        )}
+                        <RowActionMenu label={`การจัดการของ ${f.code || f.name}`} items={rowMenu(f)} />
                       </div>
                     </td>
                   </tr>
@@ -718,6 +789,19 @@ export default function FormulasPage() {
           </>
         )}
       </Modal>
+
+      {/* ใส่ราคา FB จากแถวตาราง — โมดัลกลางตัวเดียวกับหน้ารายละเอียด */}
+      <RegistryPriceModal
+        open={!!pricing}
+        onClose={() => setPricing(null)}
+        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา FB ใหม่" : "ใส่ราคา FB"} — ${pricing.name}` : ""}
+        endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
+        onSaved={(msg) => {
+          setPricing(null);
+          setToast({ kind: "success", msg });
+          reload();
+        }}
+      />
 
       <ConfirmDialog
         open={!!confirm}

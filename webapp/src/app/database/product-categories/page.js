@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
 import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Upload } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -289,7 +290,7 @@ export default function ProductCategoriesPage() {
                   {group.rows.map((row) => (
                     <article key={row.id} className={styles.mobileCard}>
                       <div className={styles.mobileCardHead}>
-                        <div><strong>{row.code}</strong><span>{row.nameTh || row.nameEn || "ยังไม่ระบุชื่อ"}</span></div>
+                        <div><strong>{row.code}</strong><span>{categoryNameBoth(row) || "ยังไม่ระบุชื่อ"}</span></div>
                         <StatusBadge active={row.isActive !== false} />
                       </div>
                       <CompliancePills row={row} />
@@ -414,7 +415,7 @@ export default function ProductCategoriesPage() {
       <ConfirmDialog
         open={exciseConfirm}
         title={form.isExcise ? "เปิดธงเสียภาษีสรรพสามิต" : "ปิดธงเสียภาษีสรรพสามิต"}
-        description={drawer?.row ? `${drawer.row.code} — ${form.nameTh || form.nameEn || drawer.row.nameTh || drawer.row.nameEn || "ไม่ระบุชื่อ"}` : ""}
+        description={drawer?.row ? `${drawer.row.code} — ${categoryNameBoth(form) || categoryNameBoth(drawer.row) || "ไม่ระบุชื่อ"}` : ""}
         detail={form.isExcise
           ? "สินค้าในหมวดนี้จะถูกคิดภาษีสรรพสามิตอัตโนมัติ มีป้าย/คำเตือนด้านภาษี และไทม์ไลน์โครงการใหม่จะมีขั้นตอนสรรพสามิต — การเปลี่ยนแปลงถูกบันทึกใน audit log"
           : "ระบบจะเลิกคิดภาษีสรรพสามิตให้สินค้าหมวดนี้ และไทม์ไลน์โครงการใหม่จะไม่มีขั้นตอนสรรพสามิต (โครงการเดิมไม่ถูกแก้อัตโนมัติ) — การเปลี่ยนแปลงถูกบันทึกใน audit log"}
@@ -428,7 +429,7 @@ export default function ProductCategoriesPage() {
       <ConfirmDialog
         open={!!confirmRow}
         title={confirmRow?.isActive === false ? "เปิดใช้งานหมวดสินค้า" : "พักใช้งานหมวดสินค้า"}
-        description={confirmRow ? `${confirmRow.code} — ${confirmRow.nameTh || confirmRow.nameEn || "ไม่ระบุชื่อ"}` : ""}
+        description={confirmRow ? `${confirmRow.code} — ${categoryNameBoth(confirmRow) || "ไม่ระบุชื่อ"}` : ""}
         detail={confirmRow?.isActive === false
           ? "หมวดนี้จะกลับมาให้เลือกในสินค้า ดีล และโครงการใหม่"
           : `${usageText(confirmRow?.usage)} ข้อมูลเดิมจะยังคงอยู่ แต่หมวดนี้จะไม่ปรากฏให้เลือกในงานใหม่`}
@@ -453,7 +454,7 @@ function CategoryGroupRows({ group, onEdit, onToggle }) {
         <tr key={row.id} className="premium-row">
           <td className="mono"><strong>{row.code}</strong></td>
           <td>
-            <strong>{row.nameTh || row.nameEn || "ยังไม่ระบุชื่อ"}</strong>
+            <strong>{categoryNameBoth(row) || "ยังไม่ระบุชื่อ"}</strong>
             <CompliancePills row={row} />
             {row.note && <small className={styles.cellNote}>{row.note}</small>}
           </td>

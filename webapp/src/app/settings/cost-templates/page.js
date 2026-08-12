@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 // หน้าตั้งค่า "แม่แบบต้นทุนต่อประเภทสินค้า" (mig 0140) — ผู้ดูแลระบบเท่านั้น
 //
 // แม่แบบ = โครงบรรทัดต้นทุนที่ใบขอราคา (PR3) จะกางออกมาเป็นบรรทัดจริงตอนเลือก
@@ -50,7 +51,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
       .filter((t) => t.isActive !== false)
       .map((t) => ({
         value: `${t.mainCategoryCode}-${t.typeCode}`,
-        label: `${t.mainCategoryCode}-${t.typeCode} · ${t.nameTh || t.nameEn || "(ไม่มีชื่อ)"}`,
+        label: `${t.mainCategoryCode}-${t.typeCode} · ${categoryNameBoth(t) || "(ไม่มีชื่อ)"}`,
       }));
     // ประเภทที่มีแม่แบบใช้งานอยู่แล้วเลือกซ้ำไม่ได้ (unique index ฝั่ง DB)
     return rows.filter((r) => r.value === form.categoryCode || !takenCategories.has(r.value));
@@ -276,7 +277,7 @@ export default function CostTemplatesPage() {
   const typeLabel = useCallback((categoryCode) => {
     const [main, type] = String(categoryCode || "").split("-");
     const row = productTypes.find((t) => t.mainCategoryCode === main && t.typeCode === type);
-    return row ? (row.nameTh || row.nameEn || categoryCode) : categoryCode;
+    return row ? (categoryNameBoth(row) || categoryCode) : categoryCode;
   }, [productTypes]);
 
   const takenCategories = useMemo(

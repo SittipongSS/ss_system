@@ -198,6 +198,37 @@ test('⚠️ ใบร่างของตัวเองไม่โผล่�
   assert.deepEqual(queueTabRows(rows, { tab: 'mine' }).map((r) => r.id), ['D1']);
 });
 
+// 🐞 ป้ายตัวเลขบนเมนู "คำร้อง" เงียบทั้งที่การ์ด "เริ่มที่นี่" ชี้ใบตีกลับให้ทำอยู่ —
+// เพราะป้ายอ่านจากแท็บ "รอฉันตอบ" ซึ่งตัด `draft` ทิ้งทั้งหมด ส่วนการ์ดบวกใบตีกลับ
+// เองในหน้า ⇒ สองที่ตอบคำถามเดียวกันคนละคำตอบ · `waitingOnMeRows` คือตัวบวกร่วม
+test('⭐ "รอฉันลงมือ" = แท็บรอฉันตอบ + ใบตีกลับของตัวเอง (ป้ายเมนูกับการ์ดใช้ชุดเดียวกัน)', async () => {
+  const { waitingOnMeRows } = await import('./queueBoard.js');
+  const rows = [
+    req({ id: 'A', dept: 'RD', items: [waitDept] }),                        // ตาฝ่ายฉัน
+    req({ id: 'B', dept: 'PC', items: [waitDept] }),                        // ฝ่ายอื่น
+    req({ id: 'C', dept: 'RD', items: [waitRequester], _mine: true }),      // ตาฉัน (ผู้ขอ)
+    req({ id: 'D1', status: 'draft', _mine: true }),                        // ร่างที่ไม่เคยส่ง
+    req({ id: 'B1', status: 'draft', _mine: true, bouncedAt: '2026-08-08T03:00:00Z' }),
+    req({ id: 'B2', status: 'draft', _mine: false, bouncedAt: '2026-08-08T03:00:00Z' }),
+  ];
+  const got = waitingOnMeRows(rows, { myDepts: ['RD'] }).map((r) => r.id);
+  assert.deepEqual(got, ['A', 'C', 'B1']);
+  // ⚠️ ร่างที่ไม่เคยส่งยังไม่นับ (ตาฉันก็จริง แต่มันอยู่แท็บ "ที่ฉันเปิด" และไม่มีใครทวง)
+  assert.equal(got.includes('D1'), false);
+  // ⚠️ ใบตีกลับของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา
+  assert.equal(got.includes('B2'), false);
+  // ⚠️ ห้ามซ้ำ — `queueTabRows` ตัด draft ทิ้ง ส่วนก้อนหลังรับเฉพาะ draft ที่ตีกลับ
+  assert.equal(new Set(got).size, got.length);
+});
+
+test('⚠️ ใบตีกลับยังไม่ไหลเข้าแท็บ "รอฉันตอบ" — มันอยู่แท็บ "ที่ฉันเปิด" ที่เดียว (ม-102 ข้อ 4)', async () => {
+  const { waitingOnMeRows } = await import('./queueBoard.js');
+  const rows = [req({ id: 'B1', status: 'draft', _mine: true, bouncedAt: '2026-08-08T03:00:00Z' })];
+  assert.deepEqual(queueTabRows(rows, { tab: 'todo', myDepts: ['RD'] }), []);
+  assert.deepEqual(queueTabRows(rows, { tab: 'mine' }).map((r) => r.id), ['B1']);
+  assert.deepEqual(waitingOnMeRows(rows, { myDepts: ['RD'] }).map((r) => r.id), ['B1']);
+});
+
 test('⚠️ ประวัติ = ใบที่จบแล้ว ไม่ใช่ "ทุกใบ"', () => {
   // รวมใบที่ยังเปิดอยู่ด้วยจะซ้ำกับสองแท็บแรก แล้วไม่มีใครรู้ว่าต้องดูแท็บไหน
   const rows = [

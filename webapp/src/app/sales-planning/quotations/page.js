@@ -6,9 +6,11 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, FolderKanban, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
+import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -49,7 +51,14 @@ export default function QuotationsPage() {
   );
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
   const [salesOrders, setSalesOrders] = useState([]);
+  const navCountParam = useSearchParams().get("count") || "";
   const [pendingSoOnly, setPendingSoOnly] = useState(false);
+  /* ⭐ `?count=quotations` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบที่รอฉันลงมือ"
+     (รอฉันอนุมัติ + ใบของฉันที่ถูกตีกลับ) ⇒ กดแล้วต้องเจอเท่านั้น
+     ⚠️ ธง `_waitingOnMe` มาจาก **server** ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — จอไม่รู้ว่า
+     ใครเป็นผู้อนุมัติ (ต้องรู้เจ้าของดีล + ดีลปิดยัง) คำนวณเองเมื่อไรเลขก็ไม่ตรงกัน
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นผู้ใช้กดล้างตัวกรองไม่ได้ */
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "quotations");
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
@@ -103,6 +112,7 @@ export default function QuotationsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
+      if (waitingOnMeOnly && !r._waitingOnMe) return false;
       if (pendingSoOnly && !awaitingSalesOrderIds.has(r.id)) return false;
       if (statusFilter.length && !statusFilter.includes(r.status)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
@@ -112,7 +122,7 @@ export default function QuotationsPage() {
       return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r)]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds, ownerNameOf]);
+  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, waitingOnMeOnly, awaitingSalesOrderIds, ownerNameOf]);
 
   /* ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
      🐞 เดิมรวมกลุ่มด้วย **ชื่อ** ที่ค้างอยู่ในแถว → คนเดียวที่เปลี่ยนชื่อกลางทาง
@@ -194,6 +204,13 @@ export default function QuotationsPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
             </div>
+            {waitingOnMeOnly && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง
+                 (ตัวกรองที่ซ่อนอยู่คือตัวกรองที่ผู้ใช้กล่าวหาว่าข้อมูลหาย) */
+              <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>
+                กรอง: รอฉันลงมือ ×
+              </Button>
+            )}
             <FilterPopover
               count={statusFilter.length + typeFilter.length + ownerFilter.length}
               onClear={() => { setStatusFilter([]); setTypeFilter([]); setOwnerFilter([]); }}

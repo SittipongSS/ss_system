@@ -15,6 +15,7 @@ import {
   systemLandingForUser,
   systemsForUser,
 } from "@/config/systems";
+import useNavCounts, { navCountForSystem } from "@/lib/nav/useNavCounts";
 import BrandMark from "@/components/BrandMark";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import EmptyState from "@/components/ui/EmptyState";
@@ -59,6 +60,9 @@ export default function HomeHubPage() {
   const [loadError, setLoadError] = useState("");
   const [recentKey, setRecentKey] = useState(null);
   const [mustChangePwd, setMustChangePwd] = useState(false);
+  /* หน้านี้อยู่นอก `AppLayout` (ไม่มีแถบเมนู) จึงต้องเรียกฮุกเอง — ส่ง "/home" คงที่
+     เพราะไม่มีการเปลี่ยนหน้าภายในหน้านี้ ตัวฮุกยังดึงตอน mount และทุก 2 นาทีตามเดิม */
+  const navCounts = useNavCounts("/home");
 
   const loadSession = useCallback(async () => {
     setLoading(true);
@@ -234,9 +238,20 @@ export default function HomeHubPage() {
                 // `legacySurface` ของ `glass-panel` (scripts/uiLegacyBudget.mjs) ขึ้น 1
                 // แล้ว `npm run audit:ui` ดับ เพราะเพดานขึ้นไม่ได้ ลงได้อย่างเดียว
                 const cardClass = `home-system-card glass-panel${system.disabled ? ' is-disabled' : ''}`;
+                /* ⭐ ป้าย "รอคุณ N" บนการ์ด (2026-08-12) — หน้านี้คือจุดตัดสินใจว่าจะเข้า
+                   ระบบไหนก่อน แต่เดิมทุกการ์ดหน้าตาเหมือนกันหมดไม่ว่ามีงานค้างหรือไม่
+                   ⚠️ **มีคำกำกับ ไม่ใช่ตัวเลขเปล่าแบบบนเมนู** — บนเมนู ป้ายเกาะชื่อเมนูที่
+                   บอกอยู่แล้วว่าเป็นงานอะไร ส่วนบนการ์ดใหญ่ ตัวเลขลอย ๆ อ่านได้หลายอย่าง
+                   (จำนวนเมนู? เวอร์ชัน?) · ใช้ทรงชิปตัวเดียวกับชิปบทบาทในหัวหน้านี้ */
+                const systemCount = navCountForSystem(navCounts, system.key);
                 const body = (
                   <>
-                    <span className="home-system-icon"><Icon size={24} strokeWidth={1.7} aria-hidden="true" /></span>
+                    <span className="home-system-head">
+                      <span className="home-system-icon"><Icon size={24} strokeWidth={1.7} aria-hidden="true" /></span>
+                      {systemCount ? (
+                        <span className="chip home-system-count">รอคุณ {systemCount > 99 ? '99+' : systemCount}</span>
+                      ) : null}
+                    </span>
                     <span className="home-system-copy">
                       <strong>{system.label}</strong>
                       <span id={descriptionId}>{system.description}</span>

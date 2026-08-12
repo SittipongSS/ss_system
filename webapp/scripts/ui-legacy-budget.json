@@ -4,8 +4,8 @@
     "sales": {
       "legacyTable": 44,
       "legacySurface": 73,
-      "inlineStyle": 929,
-      "rawButtonClass": 161,
+      "inlineStyle": 920,
+      "rawButtonClass": 159,
       "rawInputClass": 55
     },
     "sahamit": {
@@ -25,9 +25,9 @@
     "tax": {
       "legacyTable": 1,
       "legacySurface": 13,
-      "inlineStyle": 154,
+      "inlineStyle": 152,
       "rawButtonClass": 30,
-      "rawInputClass": 11
+      "rawInputClass": 9
     },
     "mgmt": {
       "legacyTable": 1,

@@ -1,7 +1,8 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
-import { CheckCircle2, FileText, Paperclip, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import Modal from "@/components/Modal";
+import PendingFiles from "@/components/ui/PendingFiles";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
@@ -9,7 +10,6 @@ import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 import {
   WON_DOC_TYPES, isPaymentDocType, validateWonEvidence, MAX_WON_ATTACHMENTS,
 } from "@/lib/sales/quotationWonEvidence";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
 import { businessDate } from "@/lib/businessDate";
 
@@ -25,7 +25,6 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (ยังไม่อัป)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const fileInputRef = useRef(null);
 
   const wonAmount = useMemo(() => quotationWonAmount(quote), [quote]);
   const needsDueDate = !isPaymentDocType(docType);
@@ -42,19 +41,6 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
     reset();
     onClose();
   };
-
-  const onPickFiles = (e) => {
-    const picked = Array.from(e.target.files || []);
-    e.target.value = ""; // ให้เลือกไฟล์เดิมซ้ำได้
-    setError("");
-    const valid = [];
-    for (const file of picked) {
-      if (file.size > MAX_UPLOAD_BYTES) { setError(`ไฟล์ ${file.name} ใหญ่เกิน ${MAX_UPLOAD_MB} MB`); continue; }
-      valid.push(file);
-    }
-    setFiles((prev) => [...prev, ...valid].slice(0, MAX_WON_ATTACHMENTS));
-  };
-  const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const uploadOne = async (file) => {
     const fd = new FormData();
@@ -148,30 +134,15 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
           </p>
         )}
 
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
-            <div className="spacer" />
-            <button type="button" className="btn ghost sm" onClick={() => fileInputRef.current?.click()} disabled={busy || files.length >= MAX_WON_ATTACHMENTS}>
-              <Paperclip size={14} aria-hidden="true" /> แนบไฟล์
-            </button>
-            <input ref={fileInputRef} type="file" accept={UPLOAD_ACCEPT_ATTR} multiple onChange={onPickFiles} style={{ display: "none" }} />
-          </div>
-          {files.length ? (
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-              {files.map((f, i) => (
-                <li key={`${f.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)", border: "1px solid var(--border)", borderRadius: 10, padding: "6px 10px" }}>
-                  <FileText size={14} aria-hidden="true" style={{ color: "var(--text-3)", flexShrink: 0 }} />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                  <span style={{ color: "var(--text-3)", flexShrink: 0 }}>{(f.size / (1024 * 1024)).toFixed(2)} MB</span>
-                  <div className="spacer" />
-                  <button type="button" className="btn-icon danger" onClick={() => removeFile(i)} disabled={busy} aria-label={`ลบไฟล์ ${f.name}`}>
-                    <Trash2 size={13} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
+        <div className="form-group">
+          <span className="toolbar-label">ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
+          {/* ⭐ ตะกร้าไฟล์กลาง — เดิมที่นี่วาดปุ่ม+รายการเองด้วย inline style ทั้งก้อน
+              ซึ่งเป็นทรงที่ 4 ของ "แนบไฟล์" ในระบบ · ได้ลากมาวาง/Ctrl+V ติดมาด้วย */}
+          <PendingFiles
+            files={files} onChange={setFiles} disabled={busy}
+            max={MAX_WON_ATTACHMENTS} onOversize={setError}
+          />
+          {!files.length && (
             <p style={{ margin: 0, color: "var(--text-3)", fontSize: "var(--fs-6)" }}>ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
           )}
         </div>

@@ -54,27 +54,6 @@
   color: var(--text-2);
 }
 
-/* ── ไฟล์ประกอบต่อ direction (ม-91) — แพตเทิร์นเดียวกับช่องไฟล์หน้าสร้างคำร้อง:
-   เก็บ File ค้างในฟอร์ม แล้วอัปหลังแถวเกิด (แถวสายกลิ่นเกิดตอนกดส่ง) */
-.fileDrop {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--ctl-h);
-  padding: 0 var(--space-3);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-2);
-  font-size: var(--fs-6);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.fileDrop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-.fileInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
 .fileList { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
 .fileRow {
   display: flex;

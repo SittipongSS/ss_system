@@ -3,9 +3,11 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
+import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
@@ -27,6 +29,11 @@ export default function SalesOrdersPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
+     ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
+     (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
+  const navCountParam = useSearchParams().get("count") || "";
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,14 +68,15 @@ export default function SalesOrdersPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
+      if (waitingOnMeOnly && !row._waitingOnMe) return false;
       if (status !== "all" && row.status !== status) return false;
       return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, status]);
+  }, [query, rows, status, waitingOnMeOnly]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, { resetKey: `${query}|${status}` });
+    usePagination(filtered, { resetKey: `${query}|${status}|${waitingOnMeOnly}` });
 
   const summary = useMemo(() => ({
     total: rows.length,
@@ -104,6 +112,10 @@ export default function SalesOrdersPage() {
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar">
             <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล" /></div>
+            {waitingOnMeOnly && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+              <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
+            )}
             <Select value={status} onChange={(e) => setStatus(e.target.value)} className="premium-select" style={{ width: 170 }}>
               <option value="all">ทุกสถานะ</option>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </Select>

@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import PendingFiles from "@/components/ui/PendingFiles";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { fmtMoney } from "@/lib/format";
-import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
@@ -142,7 +142,11 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
                 </div>
                 <div className="form-group">
                   <label>แนบไฟล์ใบเสร็จ/แบบ ภส.</label>
-                  <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: "var(--fs-5)" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  <PendingFiles
+                    files={file ? [file] : []} multiple={false}
+                    onChange={(picked) => setFile(picked[0] || null)}
+                    disabled={busy} onOversize={setError}
+                  />
                 </div>
               </div>
             </>
