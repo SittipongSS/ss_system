@@ -22,6 +22,19 @@ test('ร่างของตัวเองไม่นับ — ไม่ง
   assert.equal(requestsTodoCount(rows, ['PC']), 0);
 });
 
+// 🐞 ผู้ใช้ถามเอง 2026-08-12 — เมนูคำร้องไม่ขึ้นป้ายเลย ทั้งที่กดเข้าไปแล้วการ์ด
+// "เริ่มที่นี่" ชี้ใบตีกลับให้แก้อยู่ตรงหน้า · ใบตีกลับเป็น `draft` ⇒ ตกด่านบรรทัดบน
+test('⭐ ใบของฉันที่ถูกตีกลับต้องนับ — มันรอเราแก้อยู่ ไม่ใช่ร่างที่ยังไม่ได้ส่ง', () => {
+  const bounced = req({ status: 'draft', _mine: true, dept: 'PC', bouncedAt: '2026-08-08T03:00:00Z' });
+  assert.equal(requestsTodoCount([bounced], ['PC']), 1);
+  // ไม่มีฝ่ายที่ตอบได้ก็ยังนับ — ใบนี้รอ **ผู้ขอ** ไม่ได้รอฝ่าย
+  assert.equal(requestsTodoCount([bounced], []), 1);
+  // ของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา
+  assert.equal(requestsTodoCount([{ ...bounced, _mine: false }], ['PC']), 0);
+  // ส่งใหม่แล้วไม่ใช่ใบตีกลับอีก — นับเป็นใบที่รอฝ่ายตามปกติ ไม่ใช่นับสองรอบ
+  assert.equal(requestsTodoCount([{ ...bounced, status: 'pending' }], ['PC']), 1);
+});
+
 test('ไม่มีฝ่ายที่ตอบได้ = ไม่มีอะไรรอเรา', () => {
   assert.equal(requestsTodoCount([req({ dept: 'PC' })], []), 0);
 });
