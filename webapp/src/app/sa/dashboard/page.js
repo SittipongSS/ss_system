@@ -43,6 +43,11 @@ function DashboardContent() {
   const role = useRole();
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
+  /* ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29 · ท่าเดียวกับหน้าลีด/ดีล)
+     ⚠️ อยู่ที่หน้านี้ ไม่ใช่ในแต่ละแท็บ — มันเป็นคู่กับตัวเลือกเดือนบนหัวหน้าซึ่งอยู่ที่นี่
+     แท็บที่กินเดือน (`TAB_PERIOD === "month"`) ต้องรับไปใช้ทุกตัว ไม่งั้นติ๊กแล้ว
+     ตัวเลขไม่ขยับ = ตัวคุมที่โกหก */
+  const [allMonths, setAllMonths] = useState(false);
   /* ปีของแท็บผลงานขายเป็น state แยก ไม่ได้เฉือนมาจาก `month` — ของเดิมใช้
      month.slice(0,4) ทำให้ตัวเลือกเดือนกลายเป็นตัวเลือกปีที่พาเดือนติดไปด้วย
      แยกกันแล้ว สลับแท็บไปกลับจึงไม่ลากค่าของอีกฝั่งเปลี่ยนตาม */
@@ -71,7 +76,7 @@ function DashboardContent() {
       title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={
-        period === "month" ? <MonthPicker value={month} onChange={setMonth} />
+        period === "month" ? <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
           : period === "year" ? (
             <Select
               className={styles.yearSelect}
@@ -105,10 +110,10 @@ function DashboardContent() {
         )}
 
         {/* เงื่อนไขสิทธิ์ไม่ต้องเช็คซ้ำตรงนี้ — activeTab มาจาก allowedTabs อยู่แล้ว */}
-        {activeTab === "my" && <MyDashboardTab month={month} />}
+        {activeTab === "my" && <MyDashboardTab month={month} allMonths={allMonths} />}
 
 
-        {activeTab === "lead_kpi" && <KpiLeadsTab month={month} />}
+        {activeTab === "lead_kpi" && <KpiLeadsTab month={month} allMonths={allMonths} />}
 
         {activeTab === "task_kpi" && <SalesKpiDashboard />}
 

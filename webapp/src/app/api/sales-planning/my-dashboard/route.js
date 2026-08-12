@@ -6,24 +6,33 @@ import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import { businessDate } from '@/lib/businessDate';
+import { isYearValue } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
 
-  const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
+  const params = new URL(req.url).searchParams;
+  const month = monthKey(params.get('month')) || monthKey(new Date().toISOString());
+  /* year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บนหัวแดชบอร์ด) — กติกาเดียวกับ
+     ลีด/ดีล (มติ 2026-07-29): ทุกเดือน**ของปีที่เลือก** ไม่ใช่ทุกปีตั้งแต่เปิดระบบ
+     ⚠️ `month` ยังส่งมาเสมอ ตัวนี้แค่ขยายขอบเป็นทั้งปีของเดือนนั้น */
+  const year = isYearValue(params.get('year')) ? params.get('year') : null;
 
   // 1. My Target & Won
   const [
     targetRes, dealsRes, leadsRes, tasksByOwner, tasksByAssignee, tasksByProxy, myRequestsRes,
   ] = await Promise.all([
-    supabase
-      .from('sales_targets')
-      .select('targetAmount')
-      .eq('ownerId', user.id)
-      .eq('targetMonth', month)
-      .single(),
+    /* เป้าของฉัน — **รวมทุกแถวที่เข้าเงื่อนไข** ไม่ใช่ `.single()`
+       · โหมดทั้งปี = 12 แถวรายเดือนบวกกัน (`targetMonth` มีค่าเฉพาะแถวรายเดือน
+         แถวเป้ารายปีเป็น null จึงไม่หลุดเข้ามาซ้ำ)
+       · โหมดเดือนเดียวก็รวมเช่นกัน — คนอยู่หลายทีมมีเป้าเดือนเดียวกันได้มากกว่าหนึ่งแถว
+         (unique คือ period+team+ownerId) แล้ว `.single()` เดิมคืน error ⇒ จอขึ้น
+         "ยังไม่ตั้งเป้า" ทั้งที่ตั้งไว้แล้ว */
+    (year
+      ? supabase.from('sales_targets').select('targetAmount').eq('ownerId', user.id).like('targetMonth', `${year}-%`)
+      : supabase.from('sales_targets').select('targetAmount').eq('ownerId', user.id).eq('targetMonth', month)),
     supabase
       .from('sales_deals')
       .select('*')
@@ -47,7 +56,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .in('status', ['draft', 'pending', 'acknowledged']),
   ]);
 
-  const target = targetRes.data?.targetAmount || 0;
+  const targetRows = targetRes.data || [];
+  const target = targetRows.reduce((sum, row) => sum + Number(row.targetAmount || 0), 0);
   const myDeals = dealsRes.data || [];
   const activeLeads = leadsRes.data || [];
   const seenTaskIds = new Set();
@@ -69,8 +79,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const wonAmt = dealActualFromSalesOrders;
   const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
 
-  // Calculate Won this month
-  const wonDealsThisMonth = myDeals.filter(d => isWon(d) && wonMonth(d) === month);
+  // ยอดปิดได้ของงวดที่เลือก — เดือนเดียว หรือทั้งปีเมื่อติ๊ก "ทุกเดือน"
+  const inPeriod = (d) => (year ? String(wonMonth(d) || '').slice(0, 4) === year : wonMonth(d) === month);
+  const wonDealsThisMonth = myDeals.filter(d => isWon(d) && inPeriod(d));
   const wonValue = wonDealsThisMonth.reduce((sum, d) => sum + wonAmt(d), 0);
   
   // Calculate Pipeline (Open Deals)
@@ -172,20 +183,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const myRequests = (myRequestsRes.data || [])
     .filter((r) => r.status !== 'draft' || r.bouncedAt);
 
-  const [year, monthNumber] = month.split('-').map(Number);
-  const periodFrom = `${month}-01`;
-  const periodTo = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
+  const [monthYear, monthNumber] = month.split('-').map(Number);
+  const periodFrom = year ? `${year}-01-01` : `${month}-01`;
+  const periodTo = year
+    ? `${year}-12-31`
+    : `${month}-${String(new Date(monthYear, monthNumber, 0).getDate()).padStart(2, '0')}`;
 
   return ok({
     month,
+    // ปีที่ถูกขอมาแบบ "ทุกเดือน" — null = ก้อนนี้เป็นของเดือนเดียว
+    year,
     periodFrom,
     periodTo,
     // ตัวตนผู้ใช้ — การ์ด "เป้าหมายของฉัน" ใช้ลิงก์เข้าแท็บผลงานขายแบบเจาะตัวเอง
     me: { id: user.id, name: user.name || null, team: user.team || null, teams: user.teams || [] },
     userId: user.id,
     target,
-    // แยก "ยังไม่ตั้งเป้า" (ไม่มี record เดือนนี้) ออกจาก "เป้า = 0 จริง" — UI ใช้ตัดสินว่าจะแสดง dash แทน ฿0.00
-    hasTarget: !!targetRes.data,
+    // แยก "ยังไม่ตั้งเป้า" (ไม่มี record ของงวดนี้) ออกจาก "เป้า = 0 จริง" — UI ใช้ตัดสินว่าจะแสดง dash แทน ฿0.00
+    hasTarget: targetRows.length > 0,
     wonValue,
     pipelineValue,
     weightedForecast,
