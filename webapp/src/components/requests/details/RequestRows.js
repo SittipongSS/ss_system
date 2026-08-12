@@ -52,8 +52,12 @@ export default function RequestRows({
     <>
       {!bare && item.spec && <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />}
       {renderExtra?.(item)}
+      {/* ⭐ **ป้ายซ้ายเฉพาะตอนไม่ได้อยู่ในการ์ดของตัวเอง** (มติผู้ใช้ 2026-08-13)
+          ในการ์ด direction หัวการ์ดบอกไปแล้วว่าไฟล์เป็นของตัวไหน ⇒ ป้าย "รูป / สเปกแนบ"
+          ซ้ำหน้าที่ และทำให้กล่องไฟล์ในการ์ดหน้าตาไม่เหมือนกล่องเดียวกันที่การ์ด
+          "ไฟล์แนบของคำร้อง" ซึ่งไม่มีป้ายซ้าย ⇒ ตัดออกให้เหลือทรงเดียวทั้งหน้า */}
       <div className={styles.rowAttach}>
-        <div className="toolbar-label">{attachLabel}</div>
+        {!bare && <div className="toolbar-label">{attachLabel}</div>}
         {attachHint && <p className={styles.rowAttachHint}>{attachHint}</p>}
         <AttachmentsPanel
           entityType="dept_request_item"
@@ -68,8 +72,11 @@ export default function RequestRows({
   /* 🐞 โหมด `bare` เคยไม่ห่อ `.rowBody` ⇒ **ไม่มีเพดานความกว้าง** · ในเซลล์ตารางที่
      กว้างเต็มการ์ด ปุ่มแนบไฟล์ (จัดชิดขวาโดย AttachmentsPanel) เลยไปอยู่ไกลจากป้าย
      "รูป / สเปกแนบ" กว่า 1,300px — ที่ว่างกลางแถวยาวจนอ่านไม่ออกว่าปุ่มเป็นของอะไร
-     ⇒ ใช้ `.rowBody` ตัวเดียวกับโหมดปกติ (เพดาน 78ch ชุดเดียวกับ `.readable-text`) */
-  if (bare) return rows.map((item) => <div key={item.id} className={styles.rowBody}>{body(item)}</div>);
+     🐞 **แล้วแก้ผิดทางรอบหนึ่ง** — ไปใส่เพดาน 78ch (เพดานของ *บรรทัดข้อความ*) ครอบ
+     ทั้งก้อน ⇒ ปุ่มไปชิดขวาของกล่อง 78ch แทนที่จะเป็นขวาของการ์ด = จอดกลางการ์ด
+     ⇒ ในการ์ด **ไม่ต้องมีเพดาน** — การ์ดเป็นตัวคุมความกว้างอยู่แล้ว และข้อความยาว
+     ก็มี `ReadableText` คุม measure ให้ในตัวเองอยู่แล้ว (`.readable-text` = 78ch) */
+  if (bare) return rows.map((item) => <div key={item.id} className={styles.bareBody}>{body(item)}</div>);
 
   return rows.map((item) => {
     const expanded = open.includes(item.id);
