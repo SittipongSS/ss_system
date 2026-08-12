@@ -35,6 +35,7 @@ import { groupThreadItems } from "@/lib/master/updateGrouping";
 import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -257,6 +258,19 @@ export default function UpdateThread({
     }
     if (next.length) setPending((p) => [...p, ...next]);
   };
+
+  /* 🐞 เดิมผูก onPaste ไว้ที่ `<textarea>` ตัวเดียว ⇒ แปะรูปได้เฉพาะตอนเคอร์เซอร์
+     อยู่ในช่องพิมพ์ · จับภาพหน้าจอมาแล้วกด Ctrl+V ทันทีไม่ติด และลากไฟล์มาวางก็ไม่ได้
+     ⇒ ใช้ทางเข้าไฟล์กลางคร่อมทั้งกล่องพิมพ์ (IS-26080013 · 2026-08-12) */
+  const intake = useFileIntake({
+    disabled: !allowAttachments || busy,
+    onFiles: pickFiles,
+    onOversize: setErr,
+    // ⚠️ ถอยให้แผงเอกสารแนบเมื่อทั้งสองอยู่บนหน้าเดียวกัน — Ctrl+V ลอย ๆ บนหน้า
+    // รายละเอียดหมายถึง "แนบเข้าเอกสาร" · จะแปะลงแชทก็ต่อเมื่อเคอร์เซอร์อยู่ในช่องพิมพ์
+    // ซึ่งกติกาข้อแรกของ useFileIntake รับไปก่อนแล้ว
+    weight: 1,
+  });
 
   const post = async () => {
     if (!text.trim() && !pending.length) return;
@@ -548,7 +562,7 @@ export default function UpdateThread({
       )}
 
       {canPost && (
-        <div className={styles.composer}>
+        <div className={styles.composer} {...intake.zoneProps}>
           {/* กำลังตอบข้อความไหน — ต้องเห็นก่อนกดส่ง ไม่ใช่รู้ทีหลังว่ายกผิดอัน */}
           {replyTo && (
             <div className={styles.replyBar}>
@@ -586,7 +600,6 @@ export default function UpdateThread({
               placeholder={placeholder} aria-label="ข้อความอัปเดต"
               onChange={(e) => onComposerChange(e.target.value, e.target.selectionStart)}
               onKeyDown={(e) => { if (e.key === "Escape" && mentionQuery) setMentionQuery(null); }}
-              onPaste={allowAttachments ? (e) => pickFiles(e.clipboardData?.files) : undefined}
             />
             {/* รายชื่อที่ @ ได้ — กรองด้วยสิทธิ์ของเธรดนี้มาจาก server แล้ว
                 (ดู /api/updates/mentionable) จึงไม่มีชื่อคนที่เปิดเธรดไม่ได้ */}

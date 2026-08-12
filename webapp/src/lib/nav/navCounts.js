@@ -3,17 +3,19 @@
 // กติกาข้อเดียวที่ห้ามพลาด: **กดเข้าไปแล้วต้องเจอของเท่าที่เมนูบอก** เลขที่กด
 // แล้วไม่มีอะไรให้ทำ คนจะเลิกเชื่อมันภายในสัปดาห์เดียว แล้วเมนูก็เหลือแค่ของประดับ
 // ⇒ ตัวนับทุกตัวในไฟล์นี้ใช้ helper **ตัวเดียวกับที่หน้าปลายทางใช้กรองแถว**
-// (queueTabRows · deptQueueRows · matchesMineTaskView) ห้ามเขียนเงื่อนไขใหม่ที่นี่
+// (waitingOnMeRows · deptQueueRows · matchesMineTaskView) ห้ามเขียนเงื่อนไขใหม่ที่นี่
 //
 // ฟังก์ชันในไฟล์นี้เป็น logic ล้วน — รับแถวที่โหลดมาแล้ว ไม่แตะ DB
 // (ตัว query อยู่ที่ app/api/nav/counts/route.js · แยกเพื่อให้เทสต์เข้าถึงได้)
-import { queueTabRows, deptQueueRows } from '@/lib/requests/queueBoard';
+import { waitingOnMeRows, deptQueueRows } from '@/lib/requests/queueBoard';
 import { MINE_TASK_VIEWS, matchesMineTaskView } from '@/lib/pm/taskViews';
 
-/** เมนู "คำร้อง" — ใบที่รอฝ่ายฉันตอบ หรือรอฉันในฐานะผู้ขอลงมือต่อ
- *  ชุดเดียวกับแท็บ "รอฉันตอบ" ที่ /requests */
+/** เมนู "คำร้อง" — ใบที่รอฝ่ายฉันตอบ · รอฉันในฐานะผู้ขอลงมือต่อ · และใบของฉันที่ถูกตีกลับ
+ *
+ *  ชุดเดียวกับที่การ์ด "เริ่มที่นี่" ที่ /requests ชี้ — **ไม่ใช่แค่แท็บ "รอฉันตอบ"**
+ *  เพราะใบตีกลับเป็น `draft` ซึ่งแท็บนั้นตัดทิ้ง (ม-102 ข้อ 4) แต่มันคืองานของเราแท้ ๆ */
 export function requestsTodoCount(rows = [], myDepts = []) {
-  return queueTabRows(rows, { tab: 'todo', myDepts }).length;
+  return waitingOnMeRows(rows, { myDepts }).length;
 }
 
 /** เมนู "คิวคำร้อง" ของฝ่าย (RD) — ชุดเดียวกับแท็บ "รอฝ่ายตอบ" ที่ /rd/requests */

@@ -26,49 +26,6 @@
   line-height: var(--lh-tight);
 }
 
-.files {
-  display: grid;
-  gap: var(--space-1-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.file {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1-5) var(--space-2-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  font-size: var(--fs-5);
-}
-
-.fileName {
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fileRemove {
-  display: grid;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-  place-items: center;
-}
-
-.fileRemove:hover {
-  color: var(--red);
-}
-
 /* แถบบริบทอัตโนมัติ — จาง ๆ อ่านอย่างเดียว แต่ **ไม่ซ่อน**: ผู้ใช้ต้องรู้ว่าระบบ
    เก็บอะไรไปด้วยก่อนกดส่ง (มติ Q6) */
 .context {

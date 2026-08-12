@@ -39,6 +39,7 @@ import Segmented from "@/components/ui/Segmented";
 import Select from "@/components/ui/Select";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
+import PendingFiles from "@/components/ui/PendingFiles";
 import DateInput from "@/components/ui/DateInput";
 import TimeInput from "@/components/ui/TimeInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
@@ -111,7 +112,7 @@ const BADGE_TONES = STATUS_TONES;
 const BADGE_FAMILIES = [
   { cls: "ui-badge", count: 167 },
   { cls: "status-pill", count: 44 },
-  { cls: "chip", count: 22 },
+  { cls: "chip", count: 23 },
 ];
 
 const ROWS = [
@@ -322,6 +323,8 @@ function Section({ group, active, ...props }) {
 
 export default function DesignPreviewPage() {
   const [tab, setTab] = useState("overview");
+  // ตะกร้าไฟล์ตัวอย่างของหน้าต้นแบบ — ลาก/วางใส่ได้จริง ไม่ได้อัปที่ไหน
+  const [demoFiles, setDemoFiles] = useState([]);
   const [view, setView] = useState("list");
   const [queueTab, setQueueTab] = useState("todo");
   const [sort, setSort] = useState("date");
@@ -687,6 +690,24 @@ export default function DesignPreviewPage() {
             ตัวอักษรไว้แล้ว — ที่ผ่านมามี 50 จุดเติม <code>w-full</code> ซ้ำ และบางจุดเขียน
             <code>h-[30px]</code> ทับความสูงมาตรฐาน ทำให้ช่องกรอกในฟอร์มเดียวกันสูงไม่เท่ากัน
           </StatusNotice>
+        </Section>
+
+        <Section group="controls" active={group}
+          title="แนบไฟล์"
+          subtitle="ui/PendingFiles + lib/ui/useFileIntake — กดเลือก · ลากมาวาง · Ctrl+V ทางเดียวกันทั้งระบบ"
+        >
+          <div className={styles.stack}>
+            <PendingFiles files={demoFiles} onChange={setDemoFiles} />
+            <StatusNotice tone="info" title="ห้ามเขียน <input type=&quot;file&quot;> เองอีก">
+              ก่อน 2026-08-12 จุดแนบไฟล์ 13 จุดเขียน input ของตัวเองทั้งหมด ⇒ วางจากคลิปบอร์ด
+              ได้ 2 จุด ลากได้ 2 จุด ที่เหลือกดปุ่มอย่างเดียว โดยไม่มีใครตั้งใจให้ต่างกัน
+              (ผู้ใช้แจ้งเข้ามาเองว่า <b>&quot;ไฟล์แนบอยาก ctrl+V ได้ค่ะ&quot;</b> — IS-26080013)
+              <br />
+              ไฟล์ที่ยังไม่บันทึก ใช้ <code>ui/PendingFiles</code> · ของที่บันทึกแล้วบนเซิร์ฟเวอร์
+              ใช้ <code>AttachmentsPanel</code> · จอที่มีทางอัปของตัวเองจริง ๆ เรียก{" "}
+              <code>lib/ui/useFileIntake</code> เพื่อให้ลาก/วางทำงานเหมือนกัน — มีเทสต์กันไว้แล้ว
+            </StatusNotice>
+          </div>
         </Section>
 
         <Section group="controls" active={group}

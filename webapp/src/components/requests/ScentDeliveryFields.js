@@ -6,17 +6,16 @@
 //
 // ⚠️ **รหัสซ้ำเตือนที่ช่อง ไม่ใช่ตอนกดส่ง** — ปล่อยไปตายที่ DB จะได้ error 23505
 // ภาษาอังกฤษ และมาตอนที่คนกรอกไปหมดแล้วซึ่งสายเกินจะไล่แก้ทีละช่อง
-import { Paperclip, Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { notifyToast } from "@/components/ui/Toast";
+import PendingFiles from "@/components/ui/PendingFiles";
 import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { businessDate } from "@/lib/businessDate";
-import {
-  MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
-} from "@/lib/master/attachmentTypes";
 import styles from "./scentDelivery.module.css";
 
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
@@ -190,34 +189,14 @@ export default function ScentDeliveryFields({
                 <span className="toolbar-label">
                   ไฟล์ประกอบ <span className={styles.hint}>(ไม่บังคับ · อัปให้หลังส่ง)</span>
                 </span>
-                <label className={styles.fileDrop}>
-                  <Paperclip size={14} aria-hidden="true" />
-                  <span>เลือกไฟล์ (สูงสุด {MAX_UPLOAD_MB} MB ต่อไฟล์)</span>
-                  <input
-                    type="file" multiple accept={UPLOAD_ACCEPT_ATTR} disabled={disabled}
-                    className={styles.fileInput}
-                    onChange={(e) => {
-                      const picked = Array.from(e.target.files || [])
-                        .filter((f) => f.size <= MAX_UPLOAD_BYTES);
-                      if (picked.length) patch(i, { _files: [...(row._files || []), ...picked] });
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                {!!(row._files || []).length && (
-                  <ul className={styles.fileList}>
-                    {(row._files || []).map((f, fi) => (
-                      <li key={`${f.name}-${fi}`} className={styles.fileRow}>
-                        <span className={styles.fileName}>{f.name}</span>
-                        <Button
-                          iconOnly icon={<X size={13} />} disabled={disabled}
-                          onClick={() => patch(i, { _files: (row._files || []).filter((_, j) => j !== fi) })}
-                          aria-label={`เอา ${f.name} ออก`}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {/* ⭐ ตะกร้าไฟล์กลาง — เดิมที่นี่วาด label+ลิสต์เอง (ทรงที่ 5 ในระบบ)
+                    และเงียบสนิทเมื่อไฟล์ใหญ่เกิน: กรองทิ้งโดยไม่บอกอะไรเลย */}
+                <PendingFiles
+                  files={row._files || []} disabled={disabled}
+                  onChange={(next) => patch(i, { _files: next })}
+                  onOversize={(message) => notifyToast.error(message)}
+                  label="เลือกไฟล์"
+                />
               </div>
             </div>
           </div>

@@ -276,19 +276,9 @@
   cursor: pointer;
 }
 
-.fileInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.fileButton:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+/* กล่องรับไฟล์ — กรอบตอนลากมาจาก [data-file-intake] ใน globals.css ที่เดียวทั้งระบบ */
+.fileZone {
+  width: 100%;
 }
 
 .assistText {
