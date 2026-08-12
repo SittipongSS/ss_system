@@ -106,7 +106,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // (ทำเฉพาะเมื่อ client ไม่ได้ส่งค่านั้นมาเอง)
   //
   // ไทม์ไลน์เก็บสองชั้น: **แผน** (startDate/finishDate ที่คำนวณจากจำนวนวันทำการ) กับ
-  // **ของจริง** (actualStartDate/actualFinishDate ที่สแตมตอนคนเดินสถานะ — mig 0238)
+  // **ของจริง** (actualStartDate/actualFinishDate ที่สแตมตอนคนเดินสถานะ — mig 0239)
   // สองชั้นนี้ห้ามปนกัน: แผนขยับได้ตลอดเมื่อ predecessor เลื่อน ของจริงขยับไม่ได้
   if (body.status !== undefined && body.status !== task.status) {
     // เริ่มทำจริง — กด "กำลังทำ" คือคนบอกว่าเริ่มวันนี้ (status.js คุมอัตโนมัติเฉพาะ Pending)

@@ -4,7 +4,7 @@
 //   แผน     — startDate / finishDate · คำนวณจากจำนวนวันทำการ ขยับได้เมื่อ predecessor เลื่อน
 //   ของจริง — actualStartDate / actualFinishDate · สแตมตอนคนเดินสถานะ ขยับเองไม่ได้
 //
-// ก่อน mig 0238 ฐานเก็บของจริงไว้ครึ่งเดียว (มีแต่วันเสร็จ) จึงตอบไม่ได้ว่าขั้นไหน
+// ก่อน mig 0239 ฐานเก็บของจริงไว้ครึ่งเดียว (มีแต่วันเสร็จ) จึงตอบไม่ได้ว่าขั้นไหน
 // "เริ่มทำจริง" วันไหน — ทั้งที่การกด "กำลังทำ" เป็นการกระทำของคนล้วน ๆ
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +19,7 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
 const PATCH_ROUTE = 'app/api/pm/project-tasks/[id]/route.js';
-const MIGRATION = '../supabase/migrations/0238_project_task_actual_start.sql';
+const MIGRATION = '../supabase/migrations/0239_project_task_actual_start.sql';
 const TABLE = 'components/salesPlanning/DealTimelineTable.js';
 const DOC_VIEW = 'components/pm/ProjectDocumentView.js';
 
@@ -48,13 +48,13 @@ test('actualVariance: ยังไม่มีของจริง = null (ค�
 
 // ── ฐานข้อมูล ────────────────────────────────────────────────────────────────
 
-test('mig 0238: เพิ่มคอลัมน์ + กันวันจริงกลับด้าน', () => {
+test('mig 0239: เพิ่มคอลัมน์ + กันวันจริงกลับด้าน', () => {
   const sql = read(MIGRATION);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "actualStartDate" date/);
   assert.match(sql, /CHECK \(\s*"actualStartDate" IS NULL/, 'ต้องมี CHECK กันเสร็จจริงมาก่อนเริ่มจริง');
 });
 
-test('mig 0238: ย้อน Rev ต้องไม่กลืนวันเริ่มจริง — RPC ต้องต่อคอลัมน์ด้วย', () => {
+test('mig 0239: ย้อน Rev ต้องไม่กลืนวันเริ่มจริง — RPC ต้องต่อคอลัมน์ด้วย', () => {
   const sql = read(MIGRATION);
   assert.match(
     sql,

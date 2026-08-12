@@ -5360,7 +5360,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   min-width: 1250px;
   table-layout: fixed;
 }
-/* บรรทัดรอง "ของจริง" ใต้วันตามแผน (mig 0238) — สีบอกผลทันทีโดยไม่ต้องอ่านตัวเลข
+/* บรรทัดรอง "ของจริง" ใต้วันตามแผน (mig 0239) — สีบอกผลทันทีโดยไม่ต้องอ่านตัวเลข
    late = ช้ากว่าแผน · early = เร็วกว่า · ค่าตั้งต้น (ontime) = เทา ไม่ดึงสายตา */
 .timeline-actual {
   display: block;
@@ -5387,7 +5387,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .timeline-task-table td { padding-left: var(--space-2); padding-right: var(--space-2); }
 .timeline-task-table .date-input-wrap { max-width: 116px; }
 .timeline-task-table thead th { height: 48px; vertical-align: middle; }
-/* เซลล์วันเริ่ม/วันจบมีบรรทัดรอง "ของจริง" ได้ (mig 0238) ⇒ ทั้งตารางต้องชิดบน ไม่ใช่
+/* เซลล์วันเริ่ม/วันจบมีบรรทัดรอง "ของจริง" ได้ (mig 0239) ⇒ ทั้งตารางต้องชิดบน ไม่ใช่
    สลับทีละเซลล์ — UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 5: พอมีเซลล์สองบรรทัดปนเซลล์
    บรรทัดเดียว บรรทัดแรกของแต่ละเซลล์จะไม่อยู่ระดับเดียวกัน · padding บนชดเชยให้
    คอนโทรลในเซลล์ยังอยู่ระดับตาเดิมเมื่อแถวไม่มีบรรทัดรอง */
