@@ -441,7 +441,7 @@ export default function DesignPreviewPage() {
           <Swatches items={COLORS} />
         </Section>
 
-        <Section group="foundation" active={group} title="ตัวอักษร" subtitle="IBM Plex Sans Thai — ชั้นพิมพ์เดียวทั้งระบบ">
+        <Section group="foundation" active={group} title="ตัวอักษร" subtitle="Sarabun — ชั้นพิมพ์เดียวทั้งระบบ">
           <div className={styles.typeSample}>
             <h1>หัวเรื่องหน้า · Page title</h1>
             <h2>หัวข้อส่วน · Section</h2>

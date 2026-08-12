@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เทียบฟอนต์ไทย — ของที่ใช้อยู่ vs Sarabun</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Sans+Thai+Looped:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-22:22px;--fs-28:28px;
+--ui:"IBM Plex Sans Thai","Sarabun",Tahoma,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}
+
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-7) var(--space-5) 72px;background:var(--bg);color:var(--text);
+  font-family:var(--ui);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:40px}
+h1{margin:0;font-size:var(--fs-28);line-height:1.3}
+h2{margin:0;font-size:var(--fs-22)}
+h3{margin:0;font-size:var(--fs-16)}
+p{margin:0;color:var(--text-2);max-width:82ch}
+.sectionHead{display:grid;gap:var(--space-3)}
+.themeBtn{position:fixed;right:16px;top:16px;z-index:9;padding:7px 14px;border:1px solid var(--border-strong);
+  border-radius:var(--radius-full);background:var(--panel);color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-11);font-weight:700;letter-spacing:.04em}
+.tag.now{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.ok{background:var(--green-soft);color:var(--green)}
+.tag.warn{background:var(--amber-soft);color:var(--amber)}
+.panel{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-5);display:grid;gap:var(--space-4)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-13)}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text-3);font-size:var(--fs-12);font-weight:700}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.good{color:var(--green);font-weight:700}
+.bad{color:var(--red);font-weight:700}
+code{font-size:.92em;background:var(--panel-3);padding:1px 5px;border-radius:4px}
+
+/* ── แถวเทียบฟอนต์ ─────────────────────────────────────── */
+.specimens{display:grid;gap:var(--space-4)}
+.spec{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.spec.current{border-top:2px solid var(--accent)}
+.specHead{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-4);
+  padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--border);background:var(--panel-2)}
+.specHead b{font-size:var(--fs-14)}
+.specHead small{color:var(--text-3);font-size:var(--fs-12)}
+.specBody{padding:var(--space-4) var(--space-5);display:grid;gap:var(--space-3)}
+.glyphs{font-size:46px;font-weight:700;line-height:1.4;letter-spacing:.02em}
+.sample{font-size:var(--fs-16)}
+.sampleSm{font-size:var(--fs-13);color:var(--text-2)}
+.nums{font-size:var(--fs-22);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* การ์ดยอดสุทธิจำลอง — เทียบของจริงในหน้า SO */
+.moneyCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-4)}
+.mcard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-4) var(--space-5);display:grid;gap:var(--space-2)}
+.mcard .eyebrow{color:var(--accent-ink);font-size:var(--fs-11);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.mcard .big{font-size:var(--fs-28);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.mrow{display:flex;justify-content:space-between;font-size:var(--fs-13);color:var(--text-2)}
+.mrow b{color:var(--text);font-variant-numeric:tabular-nums}
+.mtag{justify-self:start;margin-bottom:2px}
+
+@media (max-width:768px){.glyphs{font-size:34px}}
+</style>
+</head>
+<body>
+<button class="themeBtn" id="themeBtn" type="button">สลับธีม</button>
+<div class="wrap">
+
+<header class="sectionHead">
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="tag now">ตัวพิมพ์ของระบบ</span><span class="tag warn">รอตัดสิน</span></div>
+  <h1>เทียบฟอนต์ไทย — ของที่ใช้อยู่ vs Sarabun</h1>
+  <p>
+    ทั้งสี่ตัวข้างล่าง <b>มีหัวหมด</b> — ต่างกันที่ขนาดหัวและความกว้าง
+    ระบบตอนนี้ใช้ <b>IBM Plex Sans Thai</b> ซึ่งหัวเล็กและทรงเรขาคณิต
+    ส่วน <b>Sarabun</b> หัวใหญ่กว่าและช่องในตัวอักษรเปิดกว่า
+  </p>
+</header>
+
+<section class="sectionHead">
+  <h2>ทำไม mockup ถึงดูไม่เหมือนแอป</h2>
+  <div class="panel">
+    <p>
+      mockup รุ่นก่อนประกาศ <code>--font-sans: "IBM Plex Sans Thai", "Leelawadee UI", "Noto Sans Thai", Sarabun, Tahoma…</code>
+      <b>แต่ไม่ได้โหลดฟอนต์</b> (ไม่มี <code>@font-face</code> ไม่มีลิงก์) — และเครื่อง Mac เครื่องนี้
+      <b>ไม่มี IBM Plex Sans Thai ติดตั้ง</b> ส่วน Leelawadee UI กับ Noto Sans Thai ก็ไม่มี
+      ⇒ ตกไปตัวถัดไปในลิสต์ที่มีจริงคือ <b>Sarabun</b>
+    </p>
+    <p>
+      ตรวจแล้วด้วย <code>system_profiler SPFontsDataType</code> — ในตระกูลที่เกี่ยวข้อง เครื่องนี้มีแค่ <code>Family: Sarabun</code>
+      · ส่วนแอปจริงไม่พึ่งฟอนต์ในเครื่องเลย เพราะ <code>next/font/google</code> โฮสต์ไฟล์เอง
+    </p>
+  </div>
+</section>
+
+<section class="sectionHead">
+  <h2>ตัวอย่างจริง</h2>
+  <div class="specimens">
+
+    <div class="spec current">
+      <div class="specHead"><b>IBM Plex Sans Thai</b><small>ระบบใช้อยู่ตอนนี้ · โหลดผ่าน next/font/google น้ำหนัก 400/500/600/700</small></div>
+      <div class="specBody" style="font-family:'IBM Plex Sans Thai'">
+        <div class="glyphs">ก ถ ภ ผ พ ย อ ด ส ล บ</div>
+        <div class="sample">รายการสินค้าและบริการ · ใบสั่งขาย SO-26080005-0</div>
+        <div class="sampleSm">หลังจากชำระค่าออกแบบกลิ่นเรียบร้อยแล้ว ลูกค้าจะต้องนัดประชุมเพื่อบรีฟรายละเอียดการทำงาน ภายใน 30 วัน</div>
+        <div class="nums">฿1,234,567.89 · 0123456789 · Sales Order Detail</div>
+      </div>
+    </div>
+
+    <div class="spec">
+      <div class="specHead"><b>Sarabun</b><small>ตัวที่เห็นใน mockup รุ่นก่อน · หัวใหญ่กว่า ช่องในตัวเปิดกว่า</small></div>
+      <div class="specBody" style="font-family:'Sarabun'">
+        <div class="glyphs">ก ถ ภ ผ พ ย อ ด ส ล บ</div>
+        <div class="sample">รายการสินค้าและบริการ · ใบสั่งขาย SO-26080005-0</div>
+        <div class="sampleSm">หลังจากชำระค่าออกแบบกลิ่นเรียบร้อยแล้ว ลูกค้าจะต้องนัดประชุมเพื่อบรีฟรายละเอียดการทำงาน ภายใน 30 วัน</div>
+        <div class="nums">฿1,234,567.89 · 0123456789 · Sales Order Detail</div>
+      </div>
+    </div>
+
+    <div class="spec">
+      <div class="specHead"><b>IBM Plex Sans Thai Looped</b><small>ตัวหัวใหญ่ของตระกูลเดิม — เปลี่ยนน้อยที่สุดถ้าอยากได้หัวเด่นขึ้นแต่คงทรงเดิม</small></div>
+      <div class="specBody" style="font-family:'IBM Plex Sans Thai Looped'">
+        <div class="glyphs">ก ถ ภ ผ พ ย อ ด ส ล บ</div>
+        <div class="sample">รายการสินค้าและบริการ · ใบสั่งขาย SO-26080005-0</div>
+        <div class="sampleSm">หลังจากชำระค่าออกแบบกลิ่นเรียบร้อยแล้ว ลูกค้าจะต้องนัดประชุมเพื่อบรีฟรายละเอียดการทำงาน ภายใน 30 วัน</div>
+        <div class="nums">฿1,234,567.89 · 0123456789 · Sales Order Detail</div>
+      </div>
+    </div>
+
+    <div class="spec">
+      <div class="specHead"><b>Noto Sans Thai</b><small>ตัวสำรองใน PRINT_FONT_STACK — ใส่ไว้เทียบเฉย ๆ</small></div>
+      <div class="specBody" style="font-family:'Noto Sans Thai'">
+        <div class="glyphs">ก ถ ภ ผ พ ย อ ด ส ล บ</div>
+        <div class="sample">รายการสินค้าและบริการ · ใบสั่งขาย SO-26080005-0</div>
+        <div class="sampleSm">หลังจากชำระค่าออกแบบกลิ่นเรียบร้อยแล้ว ลูกค้าจะต้องนัดประชุมเพื่อบรีฟรายละเอียดการทำงาน ภายใน 30 วัน</div>
+        <div class="nums">฿1,234,567.89 · 0123456789 · Sales Order Detail</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sectionHead">
+  <h2>การ์ดยอดสุทธิของจริง — เทียบสองตัว</h2>
+  <div class="moneyCards">
+    <div class="mcard" style="font-family:'IBM Plex Sans Thai'">
+      <span class="tag now mtag">IBM Plex Sans Thai</span>
+      <span class="eyebrow">ยอดสุทธิ ใบสั่งขาย</span>
+      <div class="big">฿64,200.00</div>
+      <div class="mrow"><span>ยอดก่อนส่วนลด</span><b>฿60,000.00</b></div>
+      <div class="mrow"><span>ส่วนลดท้ายใบ</span><b>฿0.00</b></div>
+      <div class="mrow"><span>VAT</span><b>฿4,200.00</b></div>
+      <div class="mrow"><span>Actual ก่อน VAT</span><b>฿60,000.00</b></div>
+    </div>
+    <div class="mcard" style="font-family:'Sarabun'">
+      <span class="tag ok mtag">Sarabun</span>
+      <span class="eyebrow">ยอดสุทธิ ใบสั่งขาย</span>
+      <div class="big">฿64,200.00</div>
+      <div class="mrow"><span>ยอดก่อนส่วนลด</span><b>฿60,000.00</b></div>
+      <div class="mrow"><span>ส่วนลดท้ายใบ</span><b>฿0.00</b></div>
+      <div class="mrow"><span>VAT</span><b>฿4,200.00</b></div>
+      <div class="mrow"><span>Actual ก่อน VAT</span><b>฿60,000.00</b></div>
+    </div>
+  </div>
+</section>
+
+<section class="sectionHead">
+  <h2>วัดจริงก่อนตัดสิน</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>สิ่งที่วัด</th><th class="num">IBM Plex Sans Thai</th><th class="num">Sarabun</th><th>ผล</th></tr></thead>
+      <tbody>
+        <tr><td>ความกว้างเลข 0–9 (ที่ 100px)</td><td class="num">60px ทุกตัว</td><td class="num">55px ทุกตัว</td>
+            <td class="good">ทั้งคู่ tabular โดยกำเนิด — ตัวเลขยังตรงคอลัมน์</td></tr>
+        <tr><td>ข้อความไทย (700)</td><td class="num">1282.8</td><td class="num">1286.4</td><td class="good">+0.3% · แทบไม่ขยับ</td></tr>
+        <tr><td>ข้อความละติน (400)</td><td class="num">1072.3</td><td class="num">1017.6</td><td class="good">−5.1% · แคบลง ไม่ล้น</td></tr>
+        <tr><td>ป้ายยาว “รอผู้ขอทำต่อ”</td><td class="num">530.5</td><td class="num">521.0</td><td class="good">−1.8% · คลาส <code>--ui-badge-w-*</code> ยังพอ</td></tr>
+        <tr><td>จำนวนเงิน ฿1,234,567.89 (700)</td><td class="num">699.5</td><td class="num">656.1</td><td class="good">−6.2% · คอลัมน์เงินเหลือที่</td></tr>
+      </tbody>
+    </table>
+    <p>
+      ทุกค่าที่เปลี่ยนเป็นทิศ <b>แคบลง</b> ไม่ใช่กว้างขึ้น ⇒ ไม่มีจุดไหนล้นคอลัมน์หรือดันป้าย
+      ซึ่งเป็นความเสี่ยงหลักของการเปลี่ยนฟอนต์ · แต่ยังต้องวัดของจริงบนหน้าเว็บตามวิธีใน
+      <code>UI_DESIGN_SYSTEM.md §วิธีวัดว่าหน้าตาไม่ขยับ</code> ก่อนปิดงาน
+    </p>
+  </div>
+</section>
+
+<section class="sectionHead">
+  <h2>ถ้าจะเปลี่ยนทั้งระบบ ต้องแตะอะไรบ้าง</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>#</th><th>ไฟล์</th><th>ต้องทำอะไร</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>src/app/layout.js</code></td>
+            <td>สลับ <code>IBM_Plex_Sans_Thai</code> → <code>Sarabun</code> จาก <code>next/font/google</code> ·
+                Sarabun มี 400/500/600/700 ครบ (ไม่ต้องแตะโทเคน <code>--fw-*</code>)</td></tr>
+        <tr><td>2</td><td><code>src/app/globals.css</code></td>
+            <td>แก้ชื่อสำรองใน <code>--font-sans</code> · <code>--font-mono</code>/<code>--font-numeric</code> ชี้ตัวเดียวกันอยู่แล้ว</td></tr>
+        <tr><td>3</td><td><code>src/lib/sales/quotationDocumentFonts.js</code></td>
+            <td><b>ก้อนใหญ่สุด</b> — ไฟล์ 118KB ที่ฝัง woff2 เป็น base64 8 บล็อก (400/500/600/700 × thai/latin)
+                ต้อง regenerate ใหม่จาก Sarabun ไม่งั้นใบพิมพ์/ฉบับตรึงยังเป็นฟอนต์เดิม</td></tr>
+        <tr><td>4</td><td><code>src/lib/printTheme.js</code> + <code>printTheme.test.mjs</code></td>
+            <td>แก้ <code>PRINT_FONT_STACK</code> · เทสต์ assert หาคำว่า <code>IBM Plex Sans Thai</code> อยู่ ต้องแก้คู่กัน</td></tr>
+        <tr><td>5</td><td><code>webapp/UI_DESIGN_SYSTEM.md</code></td>
+            <td>ย่อหน้า “ตัวเลขตรงคอลัมน์อยู่แล้วโดยกำเนิด เพราะ 0-9 ของ IBM Plex Sans Thai กว้าง 600/1000 em”
+                ต้องแก้เลขเป็น 550/1000 em ของ Sarabun (วัดแล้วยังเท่ากันทุกหลัก)</td></tr>
+        <tr><td>6</td><td>วัดซ้ำ</td>
+            <td><code>--ui-badge-w-*</code> ทุกตัวถูกวัดจากฟอนต์เดิม · ต้องวัดใหม่ตาม
+                §“ความกว้างต้องวัดจากของจริง” แล้วรูดค่าลงถ้าแคบลงจริง</td></tr>
+        <tr><td>7</td><td>CI</td>
+            <td><code>npm run audit:ui</code> (font-family นอกโทเคน = 0) · <code>fontWeightScale.test.mjs</code>
+                ผูก layout.js กับโทเคนน้ำหนักไว้ · <code>npm test</code> · <code>npm run build</code></td></tr>
+      </tbody>
+    </table>
+    <p>
+      🪤 <b>ไม่มีสคริปต์ generate ฟอนต์เอกสารในรีโป</b> — หัวไฟล์ <code>quotationDocumentFonts.js</code>
+      เขียนว่า “อย่าแก้มือ: รันสคริปต์ generate ใหม่” แต่ค้นทั้งรีโปแล้วไม่มีสคริปต์นั้น
+      ⇒ ข้อ 3 ต้องเขียนสคริปต์ขึ้นมาก่อน (และคอมมิตไปด้วย ไม่งั้นรอบหน้าเจอปัญหาเดิม)
+    </p>
+    <p>
+      ⚠️ <b>ฉบับตรึง (issued snapshot) ที่ออกไปแล้วไม่เปลี่ยนตาม</b> — เอกสารที่อนุมัติแล้วฝัง CSS
+      ของฟอนต์ไว้ใน snapshot ตอนตรึง (ADR 0011) เอกสารเก่าจะยังเป็นฟอนต์เดิมตลอดไป
+      ซึ่ง <b>ถูกต้องแล้ว</b> — ฉบับตรึงต้องเล่นซ้ำได้เหมือนวันที่เซ็น ห้ามแก้ย้อนหลัง
+    </p>
+  </div>
+</section>
+
+</div>
+<script>
+const b=document.getElementById('themeBtn');
+b.addEventListener('click',()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  b.textContent=next==='dark'?'ธีมสว่าง':'ธีมมืด';
+});
+</script>
+</body>
+</html>

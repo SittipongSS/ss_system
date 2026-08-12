@@ -10,9 +10,12 @@ const tokens = Object.fromEntries(
   [...css.matchAll(/--fw-([\w-]+):\s*(\d+);/g)].map((m) => [m[1], Number(m[2])]),
 );
 
-/** น้ำหนักที่ next/font โหลดมาจริงจากบล็อก IBM_Plex_Sans_Thai */
+/** น้ำหนักที่ next/font โหลดมาจริง — อ่านชื่อฟอนต์จาก import ไม่ผูกกับชื่อใดชื่อหนึ่ง
+    (ของเดิมฮาร์ดโค้ด `IBM_Plex_Sans_Thai(` แล้วพังตอนเปลี่ยนเป็น Sarabun 2026-08-13) */
 function loadedWeights() {
-  const block = layout.slice(layout.indexOf("IBM_Plex_Sans_Thai("));
+  const imported = layout.match(/import\s*\{\s*([\w]+)\s*\}\s*from\s*["']next\/font\/google["']/);
+  assert.ok(imported, "อ่านชื่อฟอนต์จาก layout.js ไม่ได้ — เช็ค selector ของเทสต์");
+  const block = layout.slice(layout.indexOf(`${imported[1]}(`));
   const list = block.slice(block.indexOf("weight:"), block.indexOf("]", block.indexOf("weight:")));
   return [...list.matchAll(/'(\d+)'|"(\d+)"/g)].map((m) => Number(m[1] ?? m[2]));
 }

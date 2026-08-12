@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FlaskConical, FolderKanban, MapPin, Pencil, ShieldAlert,
-  Factory, PackageCheck, Paperclip, Trash2, Undo2, XCircle,
+  ExternalLink, FileCheck2, FileText, FolderKanban, History, MapPin, Pencil, ShieldAlert,
+  Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -48,17 +48,18 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { statusMeta } from "@/lib/excise/workflow";
 import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import styles from "./page.module.css";
-import StatusBadge from "@/components/ui/StatusBadge";
 import Button from "@/components/ui/Button";
-import { MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { scentCountForOrder, scentDesignLines, scentDesignOrderError } from "@/lib/requests/scentDesignOrders";
 import { productionReadiness } from "@/lib/pm/deliveries";
-import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPlan";
-import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import Textarea from "@/components/ui/Textarea";
 import Input from "@/components/ui/Input";
-import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { businessDate } from "@/lib/businessDate";
+import { describeResponseError } from "@/lib/fetchError";
+import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
+import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
+import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
+import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -247,10 +248,79 @@ export default function SalesOrderDetailPage() {
     });
   }
 
-  /* ไฟล์หลักฐาน Won ของ QT ต้นทาง — ยืมมาโชว์บนใบนี้เท่านั้น ไม่ได้ถือครอง
-     (ดูเหตุผลตรงจุดที่เรนเดอร์) */
-  const wonFiles = Array.isArray(order?.quotation?.wonAttachments) ? order.quotation.wonAttachments : [];
-  const wonDocTypeLabel = WON_DOC_TYPE_LABELS[order?.quotation?.wonDocType] || order?.quotation?.wonDocType || "";
+  /* ── งวดชำระ (mig 0245) ────────────────────────────────────────────────
+     ⭐ หลักฐานปิด Won ย้ายไปอยู่ **หัวการ์ด "การชำระ"** แล้ว (มติผู้ใช้ 2026-08-13)
+     เพราะเป็นเรื่องเดียวกัน: ตกลงซื้อด้วยเอกสารอะไร แล้วจ่ายมากี่งวดแล้ว
+     ⚠️ ยังเป็นการ **ยืมมาโชว์ ไม่ย้ายข้อมูล** — `wonAttachments` เป็น audit trail
+     ของการกด Won ซึ่งเป็นของ QT (mig 0138 เก็บไว้แม้ถูก unaccept) */
+  async function uploadPaymentEvidence(file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("entityType", "sales_order_payment_evidence");
+    fd.append("entityId", id);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
+    const payload = await res.json();
+    return {
+      fileUrl: payload.url || null,
+      storageBucket: payload.storageBucket || null,
+      storagePath: payload.storagePath || null,
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+  }
+
+  async function startPaymentTracking() {
+    setBusy("start-payments");
+    setError("");
+    const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setBusy("");
+    if (!res.ok) { setError(data.error || "เริ่มติดตามการชำระไม่สำเร็จ"); return false; }
+    setOrder((current) => ({ ...current, installments: data.installments || [] }));
+    setToast({ kind: "success", msg: `สร้างงวดชำระ ${data.installments?.length || 0} งวดแล้ว` });
+    return true;
+  }
+
+  /* ด่านของแต่ละคำสั่งอยู่ที่ `installmentActionError` ซึ่งการ์ดใช้ซ่อนปุ่มและ API ใช้ปฏิเสธ
+     ที่นี่จึงเหลือแค่ "อัปไฟล์ (ถ้ามี) แล้วยิง" — ไม่ตัดสินสิทธิ์ซ้ำ */
+  async function runInstallmentAction(row, action, options = {}) {
+    setBusy(`installment-${action}`);
+    setError("");
+    setToast(null);
+    try {
+      let evidence;
+      if (action === "report") {
+        evidence = [];
+        for (const file of options.files || []) evidence.push(await uploadPaymentEvidence(file));
+      }
+      const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ installmentId: row.id, action, ...options, files: undefined, evidence }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(data.error || "อัปเดตงวดชำระไม่สำเร็จ"); return false; }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({
+        kind: action === "reject" ? "info" : "success",
+        msg: {
+          report: "ส่งให้บัญชีตรวจแล้ว",
+          withdraw: "ดึงกลับแล้ว",
+          confirm: "บัญชีรับรองการชำระแล้ว",
+          reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",
+          schedule: "บันทึกกำหนดชำระแล้ว",
+        }[action] || "อัปเดตเรียบร้อยแล้ว",
+      });
+      return true;
+    } catch (uploadError) {
+      setError(uploadError.message || "อัปโหลดหลักฐานไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
 
   function leaveEditMode() {
     setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
@@ -446,6 +516,29 @@ export default function SalesOrderDetailPage() {
     };
   }, [order]);
 
+  /* ── เส้นเดินงานของใบนี้ (มติผู้ใช้ 2026-08-13) ────────────────────────
+     ⭐ **เส้นเดียวสามช่วง** แทนการ์ดเต็มสามใบ — บรีฟกลิ่นจบก่อนถึงสั่งของ
+     ของครบก่อนถึงผลิต ⇒ มันต่อกัน ไม่ได้เดินพร้อมกัน · วัดจากหน้าจริงก่อนรื้อ:
+     สามการ์ดเดิมกิน ~600px เพื่อบอกสิ่งที่อ่านจบได้ในแถบเดียว
+     ⚠️ ช่วงที่ไม่เกี่ยวกับใบนี้เลยต้อง **หายไปทั้งช่วง** ไม่ใช่ขึ้นว่า "ไม่มี" */
+  const workTrack = useMemo(
+    () => salesOrderWorkTrack({
+      scent: scentBrief,
+      readiness,
+      plan,
+      orderId: order?.id || id,
+      projectId: order?.projectId || null,
+      approved: order?.status === "approved",
+    }),
+    [scentBrief, readiness, plan, order?.id, id, order?.projectId, order?.status],
+  );
+
+  const installments = useMemo(() => order?.installments || [], [order?.installments]);
+  const paymentSummary = useMemo(
+    () => paymentRollup(installments, todayIso),
+    [installments, todayIso],
+  );
+
   if (!order) {
     return <Workspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
@@ -539,7 +632,7 @@ export default function SalesOrderDetailPage() {
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span>}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -563,14 +656,20 @@ export default function SalesOrderDetailPage() {
         )}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
 
+        {/* ⭐ ลำดับ ลูกค้า › โครงการ › ดีล › QT (มติผู้ใช้ 2026-08-13) — ไล่จาก
+            "ใครซื้อ" ไป "งานอยู่ในโครงการไหน" ไป "รอบขายไหน" ไป "ใบไหนเป็นต้นทาง"
+            ⚠️ การ์ดลูกค้าไม่พูดสถานะ SO ซ้ำแล้ว — ป้ายบนหัวใบกับการ์ดจัดการเอกสาร
+            พูดอยู่แล้ว ของเดิมพูดซ้ำสี่ที่ */}
         <ContextGrid>
-          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "สถานะ SO", value: status.label }]} />
+          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: order.quotation?.contactName || "-" }]} />
+          <ContextCard icon={Building2} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
           <ContextCard icon={FolderKanban} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName) || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
           <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={order.quotation?.quoteNumber || "-"} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
-          <ContextCard icon={Building2} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
         </ContextGrid>
+
+        <SalesOrderWorkTrack track={workTrack} />
 
         <DetailPageLayout
           asideLabel="สรุปและจัดการ ใบสั่งขาย"
@@ -585,6 +684,16 @@ export default function SalesOrderDetailPage() {
                 { id: "discount", label: "ส่วนลดท้ายใบ", value: fmtMoney(order.discountAmount) },
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
                 { id: "actual", label: "Actual ก่อน VAT", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+                /* 🔴 บรรทัดนี้คือ **ยอดที่เก็บเงินได้** ไม่ใช่ Actual — Actual เป็นยอดเต็ม
+                   ของใบเสมอ ต่อให้แบ่งจ่ายกี่งวด (ยืนยันกับผู้ใช้ 2026-08-13)
+                   วางไว้ใต้ Actual โดยตั้งใจ ให้เห็นคู่กันว่าคนละตัว */
+                ...(paymentSummary.count
+                  ? [{
+                    id: "collected",
+                    label: `เก็บเงินแล้ว ${paymentSummary.confirmedCount}/${paymentSummary.count} งวด`,
+                    value: fmtMoney(paymentSummary.confirmedAmount),
+                  }]
+                  : []),
               ]}
             />
 
@@ -600,7 +709,7 @@ export default function SalesOrderDetailPage() {
               notices={<>
                 {editable ? <SaveStatus status={saveState} /> : null}
                 {canAdminOverride
-                  ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
+                  ? <span className="ui-badge ui-badge-warn">ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
                   : reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval"
                     ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
                     : null}
@@ -613,127 +722,6 @@ export default function SalesOrderDetailPage() {
               )}
             />
 
-            <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร">
-              <div className={styles.formStack}>
-                <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
-                <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
-                {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
-                    จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
-                    ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ
-                    ⚠️ ช่องบรรทัดเดียว ไม่ใช่ Textarea — เพดาน 200 และมันคือ "ตัวชี้ไปเอกสาร
-                    อีกใบ" ไม่ใช่ข้อความยาว (กติกาข้อความยาวใน form-design-rules §3) */}
-                {editable
-                  ? (
-                    <label>
-                      <span>เอกสารอ้างอิง</span>
-                      <Input
-                        value={form.referenceDoc} maxLength={200}
-                        placeholder="เช่น PO-2569-00123 · สัญญาเลขที่ ABC/2569"
-                        onChange={(event) => updateField("referenceDoc", event.target.value)}
-                      />
-                    </label>
-                  )
-                  : (
-                    <div className={styles.readonlyFormField}>
-                      <span>เอกสารอ้างอิง</span>
-                      <div className="readable-field">
-                        {form.referenceDoc || <span className="readable-field-empty">ไม่มีเอกสารอ้างอิง</span>}
-                      </div>
-                    </div>
-                  )}
-                {/* ⭐ ไฟล์หลักฐานการปิด Won อยู่ **ติดกับเลขเอกสารอ้างอิง** (มติผู้ใช้ 2026-08-12)
-                    🐞 ก่อนหน้านี้เลข PO อยู่ที่ SO แต่ไฟล์ PO อยู่ที่ QT ⇒ คนที่ถามว่า
-                    "PO ใบนี้หน้าตายังไง" ต้องเด้งไปอีกหน้าแล้วเลื่อนหา ทั้งที่ยืนอยู่บนใบ
-                    ที่มีเลขนั้นพอดี
-                    ⚠️ **ยืมมาโชว์ ไม่ย้ายข้อมูล** — `wonAttachments` เป็นหลักฐานของ
-                    "การกด Won" ซึ่งเป็น audit trail ของ QT (mig 0138 เก็บไว้แม้ถูก
-                    unaccept) ย้ายออกเมื่อไรก็ทำลายร่องรอยนั้น
-                    ⚠️ ลิงก์ยิงเข้า proxy ของ QT ตัวเดิม (`quotations/[id]/file`) ซึ่งคุม
-                    สิทธิ์ด้วย view-scope ของดีล — ด่านเดียวกับที่หน้านี้ใช้อยู่แล้ว
-                    จึงไม่มีสิทธิ์ใหม่ให้พลาด */}
-                {wonFiles.length > 0 && (
-                  <div className={styles.readonlyFormField}>
-                    <span>ไฟล์หลักฐาน Won{wonDocTypeLabel ? ` · ${wonDocTypeLabel}` : ""}</span>
-                    <div className={styles.wonFileList}>
-                      {wonFiles.map((att, i) => (
-                        <a
-                          key={`${att.storagePath || att.fileUrl || "f"}-${i}`}
-                          href={`/api/sales-planning/quotations/${order.quotationId}/file?i=${i}`}
-                          target="_blank" rel="noreferrer"
-                          className={styles.wonFileLink}
-                          title={att.fileName || `ไฟล์ ${i + 1}`}
-                        >
-                          <Paperclip size={13} aria-hidden="true" />
-                          <span className="cell-ellipsis">{att.fileName || `ไฟล์ ${i + 1}`}</span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {editable
-                  ? <label><span>หมายเหตุ</span><Textarea rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
-                  : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
-              </div>
-            </DetailCard>
-
-            {/* ที่อยู่/ผู้ติดต่อบนใบสั่งขาย — **อ่านอย่างเดียวเสมอ** และมาจากใบเสนอราคา
-                ที่ใบนี้ออกมาจาก (กฎผู้ใช้ 2026-08-05: ใบสั่งขายห้ามเลือกที่อยู่เอง)
-                ตาราง sales_orders ไม่มีคอลัมน์ที่อยู่ด้วยซ้ำ — บังคับด้วยโครงสร้าง
-                ก่อนหน้านี้หน้านี้ไม่โชว์ที่อยู่เลย ทั้งที่ "ส่งไปที่ไหน" คือสิ่งที่ฝ่ายผลิต/
-                จัดส่งต้องใช้จากใบนี้ ต้องเด้งไปเปิดใบเสนอราคาเองทุกครั้ง */}
-            <DetailCard icon={MapPin} eyebrow="CUSTOMER SNAPSHOT" title="ข้อมูลลูกค้าในเอกสาร">
-              <dl className={styles.addressList}>
-                <div>
-                  {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขสาขาที่ต้องอ่าน
-                      (ดู lib/master/thaiAddress.js · หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว) */}
-                  <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · ${branchLabel(order.quotation.branchCode)}` : ""}</dt>
-                  <dd>{order.quotation?.billingAddress || "-"}</dd>
-                </div>
-                <div>
-                  <dt>ที่อยู่จัดส่ง</dt>
-                  <dd>{order.quotation?.shippingAddress || order.quotation?.billingAddress || "-"}</dd>
-                </div>
-                <div>
-                  <dt>ผู้ติดต่อ</dt>
-                  <dd>{[order.quotation?.contactName, order.quotation?.contactPhone].filter(Boolean).join(" · ") || "-"}</dd>
-                </div>
-              </dl>
-              <p className={styles.snapshotNote}>
-                ตามใบเสนอราคา {order.quotation?.quoteNumber || "-"} — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)
-              </p>
-            </DetailCard>
-
-            <DetailCard icon={ClipboardList} eyebrow="DOCUMENT INFO" title="ข้อมูลควบคุม">
-              <dl className={styles.auditList}>
-                <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
-                <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
-                <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
-                {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span></dd></div>}
-                {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
-                {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
-              </dl>
-            </DetailCard>
-
-            {order.revisionHistory?.length > 1 ? (
-              <DetailCard icon={FileText} eyebrow="REVISION HISTORY" title="ประวัติฉบับแก้ไข">
-                <div className={styles.revisionList}>
-                  {order.revisionHistory.map((revision) => (
-                    <Link
-                      key={revision.id}
-                      href={`/sa/sales-orders/${revision.id}`}
-                      className={styles.revisionLink}
-                      aria-current={revision.id === order.id ? "page" : undefined}
-                    >
-                      <span>
-                        <strong>{revision.orderNumber}</strong>
-                        <small>{fmtDate(revision.orderDate)} · {STATUS[revision.status]?.label || revision.status}</small>
-                      </span>
-                      {revision.id === order.id ? <span className="ui-badge">ฉบับนี้</span> : <ExternalLink size={13} />}
-                    </Link>
-                  ))}
-                </div>
-              </DetailCard>
-            ) : null}
 
             <RelatedDocumentCard
               icon={FileCheck2}
@@ -783,138 +771,6 @@ export default function SalesOrderDetailPage() {
             </RelatedDocumentCard>
           </>}
         >
-          {/* ⭐ บรีฟกลิ่นของใบนี้ — วางเป็นการ์ดแรกโดยตั้งใจ: สำหรับใบที่ขายบริการ
-              ออกแบบกลิ่น นี่คือ **ก้าวถัดไปทันทีหลังอนุมัติ** ยังไม่ใช่เรื่องของเข้า/ผลิต
-              ⚠️ ซ่อนทั้งการ์ดเมื่อใบนี้ไม่ใช่งานออกแบบกลิ่นเลย — ใบขายสินค้าธรรมดา
-              ไม่ควรเห็นการ์ดที่บอกว่า "เปิดไม่ได้" ทุกใบตลอดไป (นั่นคือ noise ไม่ใช่ข้อมูล)
-              ⚠️ ส่วนใบที่ **ใช่** งานออกแบบกลิ่นแต่ยังกดไม่ได้ ต้องขึ้นเหตุผลเป็นข้อความ
-              ไม่ใช่ปุ่มจาง — ปุ่มจางไม่บอกว่าต้องทำอะไรต่อ (กฎเดียวกับหน้าเปิดคำร้อง) */}
-          {canOpenRequest && scentBrief?.hasDesignLines && (
-            <DetailCard
-              icon={FlaskConical}
-              eyebrow="SCENT BRIEF"
-              title="บรีฟกลิ่นของใบนี้"
-              meta={scentBrief.count != null ? `${scentBrief.count} กลิ่น` : undefined}
-              actions={scentBrief.existing
-                ? (
-                  <Button
-                    as={Link} href={`/requests/${scentBrief.existing.id}`}
-                    variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
-                  >
-                    เปิดคำร้อง
-                  </Button>
-                )
-                : !scentBrief.blocked
-                  ? (
-                    <Button
-                      as={Link}
-                      href={`/requests/new?kind=scent_dev&salesOrderId=${encodeURIComponent(order.id)}&returnTo=${encodeURIComponent(`/sa/sales-orders/${order.id}`)}`}
-                      tone="accent" size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
-                    >
-                      เปิดคำร้องพัฒนากลิ่น
-                    </Button>
-                  )
-                  : undefined}
-            >
-              <StatusNotice tone={scentBrief.existing ? "info" : scentBrief.blocked ? "warning" : "success"}>
-                {scentBrief.existing
-                  ? `เปิดคำร้องไปแล้ว ${scentBrief.existing.docNo || scentBrief.existing.id} — 1 ใบสั่งขาย เปิดได้ใบเดียว ขอเพิ่มต้องออกใบสั่งขายใหม่`
-                  : scentBrief.blocked
-                    || `ใบนี้ขายบริการออกแบบกลิ่น ${scentBrief.count} กลิ่น — เปิดคำร้องส่งบรีฟให้ฝ่าย R&D ได้เลย`}
-              </StatusNotice>
-            </DetailCard>
-          )}
-
-          {/* ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — มติผู้ใช้ 2026-07-29:
-              "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต"
-              คำถามที่การ์ดนี้ต้องตอบคือ **ใบนี้เริ่มผลิตได้เมื่อไหร่** ไม่ใช่แค่
-              ของมาถึงกี่ชิ้น · อ่านอย่างเดียว แก้ที่หน้าโครงการซึ่ง PC เป็นเจ้าของงาน */}
-          <DetailCard
-            icon={PackageCheck}
-            eyebrow="MATERIAL READINESS"
-            title="ของเข้าเพื่อผลิตใบนี้"
-            meta={readiness.total ? `${readiness.total} รายการ` : undefined}
-            actions={order.projectId
-              ? (
-                <Button
-                  as={Link} href={`/sa/projects/${order.projectId}?tab=timeline`}
-                  variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
-                >
-                  จัดการที่โครงการ
-                </Button>
-              )
-              : undefined}
-          >
-            <StatusNotice tone={readiness.tone === "danger" ? "error" : readiness.tone === "success" ? "success" : readiness.tone === "warning" ? "warning" : "info"}>
-              {readiness.label}
-            </StatusNotice>
-            {deliveries.length ? (
-              <div className={styles.deliveryList}>
-                {deliveries.map((row) => (
-                  <div key={row.id} className={styles.deliveryRow}>
-                    <StatusBadge
-                      size="sm"
-                      tone={row.arrivedAt ? "success" : (row.dueDate && row.dueDate < todayIso) ? "danger" : "neutral"}
-                      label={row.arrivedAt ? "มาแล้ว" : "รอของ"}
-                    />
-                    <strong>{row.label}</strong>
-                    <span className={styles.deliveryMeta}>
-                      {MATERIAL_KIND_LABELS[row.kind] || row.kind}
-                      {row.poRef ? ` · ${row.poRef}` : ""}
-                      {row.arrivedAt
-                        ? ` · ถึง ${fmtDate(row.arrivedAt)}`
-                        : row.dueDate ? ` · กำหนด ${fmtDate(row.dueDate)}` : " · ยังไม่มีกำหนด"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.deliveryEmpty}>
-                ยังไม่มีรายการของเข้าที่ผูกกับใบนี้ — ผูกได้ที่พาเนล &ldquo;ของเข้า&rdquo; ใต้ไทม์ไลน์ของโครงการ
-              </p>
-            )}
-          </DetailCard>
-
-          {/* ⭐ แผนผลิต (P-3) — วางถัดจากการ์ดของเข้าโดยตั้งใจ: ของเข้าตอบว่า
-              "เริ่มได้เมื่อไหร่" การ์ดนี้ตอบว่า "จริง ๆ แล้ววางไว้วันไหน" · สองอันคู่กัน
-              คือคำตอบเต็มของคำถาม "ของจะเสร็จเมื่อไหร่" ที่ลูกค้าถามจริง */}
-          <DetailCard
-            icon={Factory}
-            eyebrow="PRODUCTION PLAN"
-            title="แผนผลิตของใบนี้"
-            meta={plan.jobs.length ? `${plan.jobs.length} งานผลิต` : undefined}
-            actions={(
-              <Button
-                as={Link} href="/production/jobs"
-                variant="quiet" size="sm" icon={<ExternalLink size={13} aria-hidden="true" />}
-              >
-                เปิดคิวงานผลิต
-              </Button>
-            )}
-          >
-            <StatusNotice tone={plan.tone === "warning" ? "warning" : plan.tone === "success" ? "success" : "info"}>
-              {plan.label}
-            </StatusNotice>
-            {plan.jobs.length > 0 && (
-              <div className={styles.deliveryList}>
-                {plan.jobs.map(({ job, range }) => (
-                  <div key={job.id} className={styles.deliveryRow}>
-                    <StatusBadge
-                      size="sm"
-                      tone={job.status === "done" ? "success" : job.status === "in_progress" ? "info" : job.status === "draft" ? "warning" : "neutral"}
-                      label={JOB_STATUS_LABELS[job.status] || job.status}
-                    />
-                    <strong>{job.productName || job.fgCode || job.code}</strong>
-                    <span className={styles.deliveryMeta}>
-                      {fmtNumber(job.qty)}{job.unit ? ` ${job.unit}` : ""}
-                      {range ? ` · ผลิต ${fmtDate(range.start)} – ${fmtDate(range.finish)}` : " · ยังไม่ได้วางวัน"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </DetailCard>
-
           <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
@@ -927,6 +783,123 @@ export default function SalesOrderDetailPage() {
               highlightRows={[{ id: "actual", label: "Actual ก่อน VAT", value: fmtMoney(order.actualAmount), tone: "success" }]}
             />
           </DetailCard>
+
+          {/* ⭐ การ์ดเดียว "ข้อมูลบนเอกสาร" (มติผู้ใช้ 2026-08-13) — ของเดิมแตกเป็น
+              สองการ์ดในราง 330px: "ตรวจข้อมูลเอกสาร" (ฟอร์ม) กับ "ข้อมูลลูกค้าในเอกสาร"
+              (ที่อยู่) ทั้งที่ตอบคำถามเดียวกันว่า "ใบนี้เขียนว่าอะไรบ้าง"
+              วัดจากหน้าจริงก่อนรื้อ: ที่อยู่อยู่ที่ระยะ 2167px และกว้างแค่ 330px
+              ⚠️ ที่อยู่/ผู้ติดต่อ **อ่านอย่างเดียวเสมอ** — ตาราง sales_orders ไม่มี
+              คอลัมน์ที่อยู่ด้วยซ้ำ (กฎผู้ใช้ 2026-08-05) ส่วนวันที่/เอกสารอ้างอิง/หมายเหตุ
+              แก้ที่นี่ได้ตอนใบยังเป็นร่าง */}
+          <DetailCard
+            icon={MapPin}
+            eyebrow="ON THIS DOCUMENT"
+            title="ข้อมูลบนเอกสาร"
+            meta={`ที่อยู่และผู้ติดต่อยึดตามใบเสนอราคา ${order.quotation?.quoteNumber || "-"}`}
+          >
+            <div className={styles.docGrid}>
+              <div className={styles.docAddress}>
+
+              <dl className={styles.addressList}>
+                <div>
+                  {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขสาขาที่ต้องอ่าน
+                      (ดู lib/master/thaiAddress.js · หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว) */}
+                  <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · ${branchLabel(order.quotation.branchCode)}` : ""}</dt>
+                  <dd>{order.quotation?.billingAddress || "-"}</dd>
+                </div>
+                <div>
+                  <dt>ที่อยู่จัดส่ง</dt>
+                  <dd>{order.quotation?.shippingAddress || order.quotation?.billingAddress || "-"}</dd>
+                </div>
+                <div>
+                  <dt>ผู้ติดต่อ</dt>
+                  <dd>{[order.quotation?.contactName, order.quotation?.contactPhone].filter(Boolean).join(" · ") || "-"}</dd>
+                </div>
+              </dl>
+              <p className={styles.snapshotNote}>
+                ตามใบเสนอราคา {order.quotation?.quoteNumber || "-"} — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)
+              </p>
+              </div>
+              <div className={styles.formStack}>
+                <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
+                <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
+                {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
+                    จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
+                    ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ
+                    ⚠️ ช่องบรรทัดเดียว ไม่ใช่ Textarea — เพดาน 200 และมันคือ "ตัวชี้ไปเอกสาร
+                    อีกใบ" ไม่ใช่ข้อความยาว (กติกาข้อความยาวใน form-design-rules §3) */}
+                {editable
+                  ? (
+                    <label>
+                      <span>เอกสารอ้างอิง</span>
+                      <Input
+                        value={form.referenceDoc} maxLength={200}
+                        placeholder="เช่น PO-2569-00123 · สัญญาเลขที่ ABC/2569"
+                        onChange={(event) => updateField("referenceDoc", event.target.value)}
+                      />
+                    </label>
+                  )
+                  : (
+                    <div className={styles.readonlyFormField}>
+                      <span>เอกสารอ้างอิง</span>
+                      <div className="readable-field">
+                        {form.referenceDoc || <span className="readable-field-empty">ไม่มีเอกสารอ้างอิง</span>}
+                      </div>
+                    </div>
+                  )}
+                {editable
+                  ? <label><span>หมายเหตุ</span><Textarea rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
+                  : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
+              </div>
+            </div>
+          </DetailCard>
+
+          {/* ⭐ การ์ด "การชำระ" (mig 0245/0246) — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง
+              ⚠️ **ยอด Actual ไม่เกี่ยวกับการ์ดนี้** — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
+              ต่อให้แบ่งจ่ายกี่งวด (ยืนยันกับผู้ใช้ 2026-08-13) */}
+          <SalesOrderPaymentPanel
+            order={order}
+            installments={installments}
+            user={{ id: order.meId, role }}
+            todayIso={todayIso}
+            canStart={canEdit}
+            busy={busy}
+            onStart={startPaymentTracking}
+            onAction={runInstallmentAction}
+          />
+
+          {/* ข้อมูลควบคุม + ประวัติฉบับแก้ไข — ข้อมูล "เย็น" ที่ไม่ใช่คำถามแรกของใคร
+              จึงอยู่ท้ายคอลัมน์ ของเดิมอยู่กลางรางขวาที่ระยะ 2537px */}
+  <DetailCard icon={History} eyebrow="AUDIT TRAIL" title="ใครทำอะไรกับใบนี้">
+                <dl className={styles.auditList}>
+                  <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
+                  <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
+                  <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
+                  {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge ui-badge-warn">Admin Override</span></dd></div>}
+                  {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
+                  {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
+                </dl>
+              </DetailCard>
+  {order.revisionHistory?.length > 1 ? (
+                <DetailCard icon={FileText} eyebrow="REVISION HISTORY" title="ประวัติฉบับแก้ไข">
+                  <div className={styles.revisionList}>
+                    {order.revisionHistory.map((revision) => (
+                      <Link
+                        key={revision.id}
+                        href={`/sa/sales-orders/${revision.id}`}
+                        className={styles.revisionLink}
+                        aria-current={revision.id === order.id ? "page" : undefined}
+                      >
+                        <span>
+                          <strong>{revision.orderNumber}</strong>
+                          <small>{fmtDate(revision.orderDate)} · {STATUS[revision.status]?.label || revision.status}</small>
+                        </span>
+                        {revision.id === order.id ? <span className="ui-badge">ฉบับนี้</span> : <ExternalLink size={13} />}
+                      </Link>
+                    ))}
+                  </div>
+                </DetailCard>
+              ) : null}
 
           {/* ใบไม่มีเธรดของตัวเองแล้ว (มติผู้ใช้ 2026-08-04) — ความเคลื่อนไหวของใบ
               ทุกอย่างไปอยู่ในเธรดของ **ดีลแม่** ที่เดียว (และไหลต่อขึ้นหน้าโครงการ)

@@ -4,11 +4,13 @@ import { CheckCircle2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import PendingFiles from "@/components/ui/PendingFiles";
 import Select from "@/components/ui/Select";
+import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
 import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 import {
   WON_DOC_TYPES, isPaymentDocType, validateWonEvidence, MAX_WON_ATTACHMENTS,
+  MAX_WON_DOC_NO, wonDocNoRule,
 } from "@/lib/sales/quotationWonEvidence";
 import { describeResponseError } from "@/lib/fetchError";
 import { businessDate } from "@/lib/businessDate";
@@ -21,6 +23,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   const today = businessDate();
   const [docType, setDocType] = useState("payment_slip");
   const [docDate, setDocDate] = useState(today);
+  const [docNo, setDocNo] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (ยังไม่อัป)
   const [busy, setBusy] = useState(false);
@@ -28,10 +31,13 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
 
   const wonAmount = useMemo(() => quotationWonAmount(quote), [quote]);
   const needsDueDate = !isPaymentDocType(docType);
+  // เลขที่เอกสาร — บังคับเมื่อเป็น PO เพราะใบสั่งขายดึงไปเป็น "เอกสารอ้างอิง" (mig 0246)
+  const docNoRule = wonDocNoRule(docType);
 
   const reset = () => {
     setDocType("payment_slip");
     setDocDate(today);
+    setDocNo("");
     setDueDate("");
     setFiles([]);
     setError("");
@@ -66,7 +72,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   const submit = async () => {
     // ตรวจฟอร์มก่อนอัปไฟล์ (ใช้ placeholder แทนไฟล์ที่จะอัป — กันอัปแล้วค่อยเจอ error ฟอร์ม)
     const preview = validateWonEvidence({
-      docType, docDate, paymentDueDate: dueDate || null,
+      docType, docDate, docNo, paymentDueDate: dueDate || null,
       attachments: files.map((f) => ({ fileUrl: "pending", fileName: f.name })),
     });
     if (!preview.ok) { setError(preview.error); return; }
@@ -78,7 +84,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
       const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docType, docDate, paymentDueDate: dueDate || null, attachments }),
+        body: JSON.stringify({ docType, docDate, docNo, paymentDueDate: dueDate || null, attachments }),
       });
       if (!res.ok) throw new Error(await describeResponseError(res, "ปิด Won ไม่สำเร็จ"));
       const data = await res.json();
@@ -124,13 +130,27 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
           <label>วันที่เอกสาร *
             <DateInput value={docDate} onChange={setDocDate} disabled={busy} />
           </label>
+          {docNoRule !== "none" && (
+            <label>เลขที่เอกสาร {docNoRule === "required" ? "*" : "(ถ้ามี)"}
+              <Input
+                value={docNo} maxLength={MAX_WON_DOC_NO} disabled={busy}
+                placeholder="เช่น PO-2569-00123"
+                onChange={(e) => setDocNo(e.target.value)}
+              />
+            </label>
+          )}
           <label>กำหนดชำระ {needsDueDate ? "*" : "(ถ้ามี)"}
             <DateInput value={dueDate} min={docDate || undefined} onChange={setDueDate} disabled={busy} />
           </label>
         </div>
         {needsDueDate && (
-          <p style={{ margin: 0, color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
+          <p className="form-note">
             เอกสารนี้ไม่ใช่เอกสารการชำระเงิน — ต้องระบุกำหนดชำระ
+          </p>
+        )}
+        {docNoRule !== "none" && (
+          <p className="form-note">
+            เลขที่นี้จะถูกดึงไปเป็น &ldquo;เอกสารอ้างอิง&rdquo; ของใบสั่งขายที่ออกจากใบนี้ — ค้นหาได้และขึ้นเป็นคอลัมน์ในตาราง
           </p>
         )}
 
@@ -143,7 +163,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
             max={MAX_WON_ATTACHMENTS} onOversize={setError}
           />
           {!files.length && (
-            <p style={{ margin: 0, color: "var(--text-3)", fontSize: "var(--fs-6)" }}>ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
+            <p className="form-note">ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
           )}
         </div>
 

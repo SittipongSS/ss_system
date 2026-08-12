@@ -19,6 +19,9 @@ const read = (rel) => readFileSync(join(HERE, rel), 'utf8');
 
 const ORDER_ROUTE = read('../api/sales-planning/sales-orders/[id]/route.js');
 const ORDER_PAGE = read('./sales-orders/[id]/page.js');
+/* ทางเข้าย้ายจากการ์ด "บรีฟกลิ่น" มาอยู่ในช่วงแรกของ **เส้นเดินงาน** (2026-08-13)
+   หน้ายังตัดสินด้วย `scentDesignOrderError` เหมือนเดิม แต่ลิงก์ถูกประกอบในลิบนี้ */
+const WORK_TRACK = read('../../lib/sales/salesOrderWorkTrack.js');
 const NEW_REQUEST_PAGE = read('../requests/new/page.js');
 const MIGRATION = read('../../../supabase/migrations/0219_rd_requests_structure.sql');
 
@@ -46,9 +49,18 @@ test('⭐ หน้า SO ตัดสินด้วย scentDesignOrderError �
 });
 
 test('⭐ ปุ่มพาไปหน้าเปิดคำร้องพร้อมหัวข้อและใบสั่งขาย — ไม่ใช่หน้าเปล่า', () => {
-  assert.match(ORDER_PAGE, /\/requests\/new\?kind=scent_dev&salesOrderId=/);
+  assert.match(WORK_TRACK, /\/requests\/new\?kind=scent_dev&salesOrderId=/);
   // กลับมาที่ใบเดิมหลังบันทึกร่าง — ไม่ใช่โยนไปหน้าคิวรวม
-  assert.match(ORDER_PAGE, /returnTo=/);
+  assert.match(WORK_TRACK, /returnTo=/);
+  // หน้า SO ต้องส่ง orderId เข้าไปจริง ไม่งั้นลิงก์ประกอบมาแล้วไม่มีใบติดไปด้วย
+  assert.match(ORDER_PAGE, /orderId:/);
+});
+
+/* 🔴 ใบที่เปิดคำร้องไม่ได้ต้องขึ้น **เหตุผล** ไม่ใช่ปุ่มจาง — ปุ่มจางไม่บอกว่าต้องทำอะไรต่อ
+   (กฎเดียวกับหน้าเปิดคำร้อง) ⇒ ไม่มี href ให้กดเมื่อ blocked */
+test('⭐ ใบที่ยังเปิดคำร้องไม่ได้ ต้องไม่มีปุ่มให้กด', () => {
+  assert.match(WORK_TRACK, /actionLabel: scent\.blocked \? null :/);
+  assert.match(WORK_TRACK, /href: scent\.blocked \|\| !orderId/);
 });
 
 test('⭐ หน้าเปิดคำร้องอ่าน ?salesOrderId= และงอกบล็อกบรีฟให้เอง', () => {

@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รื้อหน้ารายละเอียดใบสั่งขาย — แบบที่เลือก (ข) + เส้นเดินงาน</title>
+<!-- ฟอนต์เดียวกับของจริง: แอปโหลด IBM Plex Sans Thai ผ่าน next/font/google (layout.js)
+     น้ำหนัก 400/500/600/700 เท่านั้น · mockup เดิมประกาศแค่ชื่อจึงตกไปใช้ฟอนต์ระบบ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ (ชุดเดียวกับ request-header-options-mockup.html) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--violet:#6f5e9f;--violet-soft:#eee9f6;--teal:#377275;--teal-soft:#e0f0f0;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}
+
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-7) var(--space-5) 80px;background:var(--bg);color:var(--text);
+  font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1440px;margin:0 auto;display:grid;gap:44px}
+h1{margin:0;font-size:var(--fs-28);line-height:1.3}
+h2{margin:0;font-size:var(--fs-22)}
+h3{margin:0;font-size:var(--fs-16)}
+p{margin:0;color:var(--text-2);max-width:80ch}
+.lede{font-size:var(--fs-16)}
+.sectionHead{display:grid;gap:var(--space-3)}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-11);font-weight:700;letter-spacing:.04em}
+.tag.opt{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.now{background:var(--red-soft);color:var(--red)}
+.tag.ok{background:var(--green-soft);color:var(--green)}
+.tag.dim{background:var(--panel-3);color:var(--text-3)}
+.eyebrowRow{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.themeBtn{position:fixed;right:16px;top:16px;z-index:9;padding:7px 14px;border:1px solid var(--border-strong);
+  border-radius:var(--radius-full);background:var(--panel);color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer}
+
+table{width:100%;border-collapse:collapse;font-size:var(--fs-13)}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text-3);font-size:var(--fs-12);font-weight:700}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.bad{color:var(--red);font-weight:700}
+.good{color:var(--green);font-weight:700}
+code{font-size:.92em;background:var(--panel-3);padding:1px 5px;border-radius:4px}
+.panel{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-5);display:grid;gap:var(--space-4)}
+
+.screen{border:1px solid var(--border-strong);border-radius:14px;background:var(--bg);padding:var(--space-5);
+  display:grid;gap:var(--space-4);box-shadow:var(--shadow-md)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:var(--space-4);align-items:start}
+.col{display:grid;gap:var(--space-4);min-width:0}
+.rail{display:grid;gap:var(--space-4);position:sticky;top:var(--space-4)}
+
+.card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.card.accentTop{border-top:2px solid var(--accent)}
+.cardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4);
+  padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--border)}
+.cardTitle{display:grid;gap:3px;min-width:0}
+.eyebrow{color:var(--accent-ink);font-size:var(--fs-11);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.cardTitle b{font-size:var(--fs-16);font-weight:700}
+.cardTitle small{color:var(--text-3);font-size:var(--fs-12)}
+.cardBody{padding:var(--space-4);display:grid;gap:var(--space-3)}
+.linkAction{color:var(--accent-ink);font-size:var(--fs-12);font-weight:700;white-space:nowrap}
+
+.overview{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md);
+  background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel)}
+.ovHead{display:flex;justify-content:space-between;gap:var(--space-5);padding:var(--space-5) 22px var(--space-4)}
+.docNo{margin:0;font-size:var(--fs-28);font-weight:700;line-height:1.15}
+.subject{color:var(--text-2);font-size:var(--fs-13)}
+.badge{display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:2px 10px;border-radius:var(--radius-full);
+  border:1px solid var(--border);font-size:var(--fs-11);font-weight:700}
+.badge.green{color:var(--green);background:var(--green-soft);border-color:transparent}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-top:1px solid var(--border)}
+.fact{background:var(--panel);padding:var(--space-3) 22px;display:grid;gap:2px}
+.fact span{color:var(--text-3);font-size:var(--fs-11)}
+.fact b{font-size:var(--fs-14);font-variant-numeric:tabular-nums}
+
+.ctxGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-3)}
+.ctx{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);padding:var(--space-3) var(--space-4);
+  display:grid;gap:var(--space-2);box-shadow:var(--shadow-sm);min-width:0}
+.ctx b{font-size:var(--fs-14);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctx small{color:var(--text-3);font-size:var(--fs-12);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.lines{width:100%;border-collapse:collapse;font-size:var(--fs-13)}
+.lines th{color:var(--text-3);font-size:var(--fs-11);border-bottom:1px solid var(--border-strong);padding:8px 10px}
+.lines td{padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+.lines .num{text-align:right;font-variant-numeric:tabular-nums}
+.totalsRow{display:flex;justify-content:space-between;padding:6px 10px;font-size:var(--fs-13);color:var(--text-2)}
+.totalsRow.grand{border-top:1px solid var(--border-strong);margin-top:6px;padding-top:10px;color:var(--text);font-weight:700;font-size:var(--fs-16)}
+.totalsRow.actual{background:var(--green-soft);color:var(--green);border-radius:var(--radius);font-weight:700}
+
+.docGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4) var(--space-5)}
+.docGrid .wide{grid-column:span 2}
+.docGrid .full{grid-column:1/-1}
+.field{display:grid;gap:3px;min-width:0}
+.field .lab{color:var(--text-3);font-size:var(--fs-11);font-weight:700}
+.field .val{margin:0;font-size:var(--fs-14);white-space:pre-wrap;line-height:1.5}
+.divider{grid-column:1/-1;height:1px;background:var(--border)}
+.lockNote{grid-column:1/-1;color:var(--text-3);font-size:var(--fs-11)}
+.inputBox{border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--panel-2);
+  padding:7px 10px;font-size:var(--fs-13);min-height:34px;display:flex;align-items:center}
+
+/* ── แถบสรุปสามช่อง (ของเดิมในแบบ ข ก่อนใส่เส้น) ─────────────────── */
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.stripCell{background:var(--panel);padding:var(--space-3) var(--space-4);display:grid;gap:5px;min-width:0}
+.stripCell .lab{color:var(--text-3);font-size:var(--fs-11);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.stripCell b{font-size:var(--fs-14)}
+.stripCell em{font-style:normal;color:var(--text-3);font-size:var(--fs-12);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── ⭐ เส้นเดินงาน — เส้นเดียวสามช่วง ──────────────────────────── */
+.track{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-4) var(--space-5) var(--space-4)}
+.trackHead{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-4);margin-bottom:var(--space-4)}
+.trackHead .eyebrow{margin:0}
+.trackHead .now{color:var(--text-2);font-size:var(--fs-12)}
+.trackHead .now b{color:var(--text)}
+.segs{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:var(--space-4)}
+.seg{display:grid;gap:var(--space-2);min-width:0}
+/* รางจุดของแต่ละช่วง — จุด = สถานะจริงของช่วงนั้น (จำนวนจุดต่างกันได้
+   เพราะเป็นสเกลของช่วงตัวเอง ไม่ได้เอาไปเทียบข้ามช่วง) */
+.segTrack{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr}
+.pt{position:relative;display:grid;justify-items:center;gap:6px;text-align:center;min-width:0}
+.pt i{position:relative;z-index:1;width:11px;height:11px;border-radius:var(--radius-full);
+  background:var(--panel-2);border:2px solid var(--border-strong)}
+.pt::after{content:'';position:absolute;top:5px;left:50%;width:100%;height:2px;background:var(--panel-3)}
+.pt:last-child::after{display:none}
+.pt span{font-size:10px;line-height:1.25;color:var(--text-3)}
+.pt.done i{background:var(--green);border-color:var(--green)}
+.pt.done::after{background:var(--green)}
+.pt.done span{color:var(--text-2)}
+.pt.live i{background:var(--accent);border-color:var(--accent);outline:3px solid var(--accent-soft)}
+.pt.live span{color:var(--text);font-weight:700}
+.pt.late i{background:var(--red);border-color:var(--red);outline:3px solid var(--red-soft)}
+.pt.late span{color:var(--red);font-weight:700}
+
+/* ช่วงที่ "เกี่ยวกับใบนี้ แต่ยังไม่เชื่อม" — ไม่โชว์จุดสเตจ ขึ้นคำชวนแทน */
+.segHint{display:flex;flex-direction:column;gap:5px;padding:9px 12px;min-height:44px;
+  border:1px dashed var(--border-strong);border-radius:var(--radius);background:var(--panel-2)}
+.segHint span{font-size:var(--fs-12);color:var(--text-3)}
+.segHint .link{color:var(--accent-ink);font-weight:700}
+.segLabel{display:flex;align-items:center;gap:7px;font-size:var(--fs-13);font-weight:700;min-width:0}
+.segLabel .mark{width:18px;height:18px;border-radius:var(--radius-full);flex:none;display:grid;place-items:center;
+  font-size:10px;font-weight:700;border:2px solid var(--border-strong);color:var(--text-3);background:var(--panel-2)}
+.seg.done .segLabel .mark{background:var(--green);border-color:var(--green);color:#fff}
+.seg.live .segLabel .mark{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg.late .segLabel .mark{background:var(--red);border-color:var(--red);color:#fff}
+.seg.todo .segLabel{color:var(--text-3)}
+.segState{font-size:var(--fs-12);color:var(--text-2);display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
+.segState .link{color:var(--accent-ink);font-weight:700;white-space:nowrap}
+.seg.done .segState{color:var(--green)}
+.seg.late .segState{color:var(--red)}
+.seg.todo .segState{color:var(--text-3)}
+
+/* ── แบบเทียบ: สามเส้นขนาน (ที่ไม่เอา) ─────────────────────────── */
+.badTrack{display:grid;gap:var(--space-3)}
+.badRow{display:grid;grid-template-columns:110px minmax(0,1fr);gap:var(--space-3);align-items:center}
+.badRow .rn{font-size:var(--fs-12);color:var(--text-2);font-weight:700}
+.dots{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;align-items:center}
+.dotStep{display:grid;gap:5px;justify-items:center;text-align:center}
+.dotStep i{width:11px;height:11px;border-radius:var(--radius-full);background:var(--panel-3);border:2px solid var(--border-strong)}
+.dotStep.on i{background:var(--accent);border-color:var(--accent)}
+.dotStep.ok i{background:var(--green);border-color:var(--green)}
+.dotStep span{font-size:10px;color:var(--text-3);line-height:1.25}
+
+.money{font-size:var(--fs-28);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.sumRow{display:flex;justify-content:space-between;font-size:var(--fs-13);color:var(--text-2)}
+.sumRow b{color:var(--text);font-variant-numeric:tabular-nums}
+.steps{display:grid;gap:var(--space-2)}
+.step{display:flex;gap:var(--space-3);align-items:flex-start;font-size:var(--fs-12)}
+.dot{width:18px;height:18px;border-radius:var(--radius-full);border:2px solid var(--border-strong);flex:none;margin-top:2px}
+.step.done .dot{background:var(--green);border-color:var(--green)}
+.step.cur .dot{background:var(--accent);border-color:var(--accent)}
+.step small{color:var(--text-3);display:block}
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:0 14px;
+  border:1px solid var(--border-strong);border-radius:var(--radius);background:transparent;
+  color:var(--text-2);font-size:var(--fs-13);font-weight:700}
+.btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,var(--border))}
+.btnStack{display:grid;gap:var(--space-2)}
+.ghostBlock{border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--space-3) var(--space-4);
+  color:var(--text-3);font-size:var(--fs-12);text-align:center}
+
+.callouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--space-4)}
+.callout{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);
+  background:var(--panel-2);padding:var(--space-3) var(--space-4);display:grid;gap:5px}
+.callout b{font-size:var(--fs-13)}
+.callout p{font-size:var(--fs-13);color:var(--text-2)}
+.callout.warn{border-left-color:var(--amber)}
+.callout.no{border-left-color:var(--red)}
+
+@media (max-width:1000px){
+  .layout,.facts,.ctxGrid,.docGrid,.strip{grid-template-columns:1fr}
+  .rail{position:static}
+  .docGrid .wide{grid-column:auto}
+  .segs{grid-auto-flow:row}
+}
+</style>
+</head>
+<body>
+<button class="themeBtn" id="themeBtn" type="button">สลับธีม</button>
+<div class="wrap">
+
+<header class="sectionHead">
+  <div class="eyebrowRow"><span class="tag opt">SALES ORDER DETAIL</span><span class="tag ok">เลือกแบบ ข แล้ว</span><span class="tag now">รอตัดสินเรื่องเส้นเดินงาน</span></div>
+  <h1>รื้อหน้ารายละเอียดใบสั่งขาย</h1>
+  <p class="lede">
+    หน้าใหม่ตอบสองคำถามแรกตั้งแต่จอแรก — <b>“ใบนี้ขายอะไร ยอดเท่าไร”</b> และ
+    <b>“ส่งไปที่ไหน ใครติดต่อ เอกสารอ้างอิงอะไร”</b> · งานปลายน้ำ (บรีฟกลิ่น · ของเข้า · ผลิต)
+    ยุบเป็นแถบเดียวใต้การ์ดบริบท
+  </p>
+</header>
+
+<!-- ─────────────────────── วินิจฉัยของเดิม ─────────────────────── -->
+<section class="sectionHead">
+  <h2>ของเดิมพังตรงไหน — วัดจากหน้าจริง (viewport 1440×960)</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>สิ่งที่วัด</th><th class="num">ใบเสนอราคา (QT)</th><th class="num">ใบสั่งขาย (SO)</th><th>อ่านว่าอย่างไร</th></tr></thead>
+      <tbody>
+        <tr><td>ความสูงคอลัมน์ซ้าย (กว้าง ~1030px)</td><td class="num">2835px</td><td class="num bad">1081px</td><td>ซ้ายของ SO แทบว่าง</td></tr>
+        <tr><td>ความสูงรางขวา (กว้าง 330px)</td><td class="num">1177px</td><td class="num bad">2371px</td><td>รางแคบแบก 2.2 เท่าของคอลัมน์กว้าง</td></tr>
+        <tr><td>จำนวนการ์ดในรางขวา</td><td class="num">3</td><td class="num bad">6</td><td>ราง SO กลายเป็นถังใส่ของ</td></tr>
+        <tr><td>ที่ว่างเปล่าใต้คอลัมน์ซ้าย</td><td class="num">—</td><td class="num bad">1290px</td><td>เลื่อนผ่านที่โล่งเกือบ 1.4 จอ</td></tr>
+      </tbody>
+    </table>
+    <p>QT กับ SO ถูกตัดสินไว้ตั้งแต่ 2026-07-25 ว่าต้องเป็น design system เดียวกัน
+       (<code>docs/system-modernization/qt-so-unified-detail-page.md</code>) แต่ตอนนี้สัดส่วนคอลัมน์กลับหัวกัน</p>
+  </div>
+
+  <div class="panel">
+    <table>
+      <thead><tr><th>คำถามที่ต้องได้คำตอบ</th><th>ตอบด้วยการ์ดไหน</th><th class="num">อยู่ที่ระยะ</th><th class="num">กว้าง</th></tr></thead>
+      <tbody>
+        <tr><td class="bad">อันดับ 1 — ใบนี้ขายอะไร ยอดเท่าไร</td><td>รายการสินค้าและบริการ</td><td class="num bad">1177px</td><td class="num">1026px</td></tr>
+        <tr><td class="bad">อันดับ 1 — ส่งไปที่ไหน ใครติดต่อ</td><td>ข้อมูลลูกค้าในเอกสาร</td><td class="num bad">2167px</td><td class="num bad">330px</td></tr>
+        <tr><td class="bad">อันดับ 1 — เอกสารอ้างอิงอะไร</td><td>ตรวจข้อมูลเอกสาร</td><td class="num bad">1583px</td><td class="num bad">330px</td></tr>
+        <tr><td>รอง — ของเข้ามาครบยัง</td><td>ของเข้าเพื่อผลิตใบนี้</td><td class="num good">800px</td><td class="num">1026px</td></tr>
+        <tr><td>รอง — วางผลิตวันไหน</td><td>แผนผลิตของใบนี้</td><td class="num good">997px</td><td class="num">1026px</td></tr>
+      </tbody>
+    </table>
+    <p><b>สรุป:</b> คำถามอันดับ 1 ทั้งสามข้อถูกดันลงจอที่ 2–3 และสองในสามถูกบีบอยู่ในราง 330px ส่วนคำถามรองได้ที่ดีที่สุดของหน้า</p>
+  </div>
+</section>
+
+<!-- ─────────────────────── เส้นเดินงาน ─────────────────────── -->
+<section class="sectionHead">
+  <div class="eyebrowRow"><span class="tag opt">คำถามที่ต้องตัดสิน</span></div>
+  <h2>แถบเดินงานควรมี “เส้นสเตจ” ไหม</h2>
+  <p>คำตอบสั้น: <b>ควรมี แต่เป็นเส้นเดียวสามช่วง ไม่ใช่สามเส้นขนาน</b> — เหตุผลอยู่ที่โมเดลสถานะจริงในโค้ด</p>
+
+  <div class="panel">
+    <table>
+      <thead><tr><th>ช่วง</th><th>สถานะจริงในโค้ด</th><th>เป็นเส้นได้ไหม</th></tr></thead>
+      <tbody>
+        <tr><td>บรีฟกลิ่น</td>
+            <td><code>REQUEST_STATUS_LABELS</code> — ร่าง · รอรับเรื่อง · กำลังดำเนินการ · ตอบแล้ว · ปิดเรื่อง</td>
+            <td class="good">ได้ · 5 ขั้น เรียงจริง</td></tr>
+        <tr><td>ของเข้า</td>
+            <td><code>productionReadiness</code> — ยังไม่มีรายการ · รอของ · <b>เลยกำหนดแล้ว N รายการ</b> · ของครบแล้ว</td>
+            <td class="bad">ไม่ได้ · “เลยกำหนด” ไม่ใช่ขั้นถัดจาก “รอของ” มันคือสุขภาพของขั้นเดียวกัน — ของจริงคือสัดส่วน (มาแล้ว 4/7)</td></tr>
+        <tr><td>แผนผลิต</td>
+            <td><code>salesOrderPlanSummary</code> — ยังไม่วางคิว · ร่าง · วางคิวแล้ว · กำลังผลิต · ผลิตเสร็จ</td>
+            <td class="good">ได้ · 5 ขั้น เรียงจริง</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callouts">
+    <div class="callout no"><b>ทำไมไม่เอาสามเส้นขนาน</b>
+      <p>จำนวนจุดไม่เท่ากัน (5 · 3 · 5) ตาเทียบข้ามแถวไม่ได้ — ดูเหมือนเทียบได้แต่เทียบไม่ได้จริง</p></div>
+    <div class="callout no"><b>และมันไม่ขนานกันตั้งแต่ต้น</b>
+      <p>บรีฟกลิ่นจบก่อนถึงสั่งของ · ของครบก่อนถึงผลิต — วาดขนานคือบอกว่าเดินพร้อมกัน ซึ่งผิดลำดับงานจริง</p></div>
+    <div class="callout"><b>เส้นเดียวสามช่วงตอบตรงคำถาม</b>
+      <p>คำถามจริงคือ “ตอนนี้ติดอยู่ตรงไหน” ซึ่งอ่านจากเส้นเดียวซ้ายไปขวาได้ทันที</p></div>
+  </div>
+
+  <h3 style="margin-top:var(--space-3)">แบบที่เสนอ — เส้นเดียวสามช่วง</h3>
+  <div class="track">
+    <div class="trackHead">
+      <span class="eyebrow">เส้นเดินงานของใบนี้</span>
+      <span class="now">ตอนนี้อยู่ที่ <b>บรีฟกลิ่น</b> — รอ R&amp;D รับเรื่อง</span>
+    </div>
+    <div class="segs">
+      <div class="seg live">
+        <div class="segLabel"><span class="mark">1</span>บรีฟกลิ่น</div>
+        <div class="segTrack">
+          <div class="pt done"><i></i><span>ร่าง</span></div>
+          <div class="pt live"><i></i><span>รอรับเรื่อง</span></div>
+          <div class="pt"><i></i><span>กำลังทำ</span></div>
+          <div class="pt"><i></i><span>ตอบแล้ว</span></div>
+          <div class="pt"><i></i><span>ปิดเรื่อง</span></div>
+        </div>
+        <div class="segState">2 กลิ่น<span class="link">SB-26080002 →</span></div>
+      </div>
+      <div class="seg todo">
+        <div class="segLabel"><span class="mark">2</span>ของเข้า</div>
+        <div class="segHint">
+          <span>ยังไม่ผูกรายการของเข้ากับใบนี้</span>
+          <span class="link">ผูกที่ไทม์ไลน์โครงการ →</span>
+        </div>
+      </div>
+      <div class="seg todo">
+        <div class="segLabel"><span class="mark">3</span>ผลิต</div>
+        <div class="segHint">
+          <span>ยังไม่มีงานผลิตที่ผูกกับใบนี้</span>
+          <span class="link">เปิดคิวงานผลิต →</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top:var(--space-2)">ใบที่เดินไปไกลกว่านี้จะอ่านแบบนี้ — ช่วงที่จบเป็นเขียวทึบ ช่วงที่มีปัญหาเป็นแดง:</p>
+  <div class="track">
+    <div class="trackHead">
+      <span class="eyebrow">เส้นเดินงานของใบนี้</span>
+      <span class="now">ตอนนี้อยู่ที่ <b>ของเข้า</b> — เลยกำหนดแล้ว 2 รายการ</span>
+    </div>
+    <div class="segs">
+      <div class="seg done">
+        <div class="segLabel"><span class="mark">✓</span>บรีฟกลิ่น</div>
+        <div class="segTrack">
+          <div class="pt done"><i></i><span>ร่าง</span></div>
+          <div class="pt done"><i></i><span>รอรับเรื่อง</span></div>
+          <div class="pt done"><i></i><span>กำลังทำ</span></div>
+          <div class="pt done"><i></i><span>ตอบแล้ว</span></div>
+          <div class="pt done"><i></i><span>ปิดเรื่อง</span></div>
+        </div>
+        <div class="segState">2 กลิ่น<span class="link">SB-26080002 →</span></div>
+      </div>
+      <div class="seg late">
+        <div class="segLabel"><span class="mark">!</span>ของเข้า</div>
+        <div class="segTrack">
+          <div class="pt done"><i></i><span>ผูกรายการ</span></div>
+          <div class="pt late"><i></i><span>ของทยอยเข้า</span></div>
+          <div class="pt"><i></i><span>ครบทุกรายการ</span></div>
+        </div>
+        <div class="segState">มาแล้ว 4/7 · เลยกำหนด 2<span class="link">ผูกที่โครงการ →</span></div>
+      </div>
+      <div class="seg live">
+        <div class="segLabel"><span class="mark">3</span>ผลิต</div>
+        <div class="segTrack">
+          <div class="pt done"><i></i><span>ร่าง</span></div>
+          <div class="pt live"><i></i><span>วางคิวแล้ว</span></div>
+          <div class="pt"><i></i><span>กำลังผลิต</span></div>
+          <div class="pt"><i></i><span>ผลิตเสร็จ</span></div>
+        </div>
+        <div class="segState">12/08 – 20/08<span class="link">คิวงานผลิต →</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top:var(--space-2)">ใบขายสินค้าธรรมดา (ไม่มีบรรทัดออกแบบกลิ่น) — ช่วงบรีฟกลิ่น
+     <b>หายไปทั้งช่วง</b> ไม่ใช่ขึ้นว่า “ไม่มี”:</p>
+  <div class="track">
+    <div class="trackHead">
+      <span class="eyebrow">เส้นเดินงานของใบนี้</span>
+      <span class="now">ตอนนี้อยู่ที่ <b>ของเข้า</b> — รอของ ครบเมื่อ 18/08/2026</span>
+    </div>
+    <div class="segs">
+      <div class="seg live">
+        <div class="segLabel"><span class="mark">1</span>ของเข้า</div>
+        <div class="segTrack">
+          <div class="pt done"><i></i><span>ผูกรายการ</span></div>
+          <div class="pt live"><i></i><span>ของทยอยเข้า</span></div>
+          <div class="pt"><i></i><span>ครบทุกรายการ</span></div>
+        </div>
+        <div class="segState">มาแล้ว 5/6 · ครบ 18/08<span class="link">ผูกที่โครงการ →</span></div>
+      </div>
+      <div class="seg todo">
+        <div class="segLabel"><span class="mark">2</span>ผลิต</div>
+        <div class="segHint">
+          <span>ยังไม่มีงานผลิตที่ผูกกับใบนี้</span>
+          <span class="link">เปิดคิวงานผลิต →</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:var(--space-4)">จุดในแต่ละช่วงมาจากไหน</h3>
+  <div class="panel">
+    <table>
+      <thead><tr><th>ช่วง</th><th>จุด</th><th>อ่านจากอะไร</th><th>“ยังไม่เชื่อม” คือ</th></tr></thead>
+      <tbody>
+        <tr><td>บรีฟกลิ่น</td>
+            <td>ร่าง · รอรับเรื่อง · กำลังทำ · ตอบแล้ว · ปิดเรื่อง</td>
+            <td><code>REQUEST_STATUSES</code> ของคำร้อง <code>scent_dev</code> ที่ผูกกับใบนี้</td>
+            <td><code>order.scentRequest === null</code> — ชวนกด “เปิดคำร้องพัฒนากลิ่น”</td></tr>
+        <tr><td>ของเข้า</td>
+            <td>ผูกรายการ · ของทยอยเข้า · ครบทุกรายการ</td>
+            <td><code>deliveryRollup</code> — <code>total</code> / <code>arrived</code> / <code>complete</code> ·
+                <code>late &gt; 0</code> ทำให้จุดกลางเป็นแดง ไม่ใช่จุดใหม่</td>
+            <td><code>deliveries.length === 0</code> — ชวนไปผูกที่ไทม์ไลน์โครงการ</td></tr>
+        <tr><td>ผลิต</td>
+            <td>ร่าง · วางคิวแล้ว · กำลังผลิต · ผลิตเสร็จ</td>
+            <td><code>JOB_STATUS_LABELS</code> + <code>salesOrderPlanSummary().state</code></td>
+            <td><code>state === 'none'</code> — ชวนไปคิวงานผลิต</td></tr>
+      </tbody>
+    </table>
+    <p>
+      จำนวนจุดไม่เท่ากัน (5 · 3 · 4) <b>ไม่เป็นปัญหาในแบบเส้นเดียว</b> เพราะแต่ละช่วงเป็นสเกลของตัวเอง
+      อ่านทีละช่วง — ต่างจากแบบสามเส้นขนานข้างล่างที่บังคับให้ตาเทียบข้ามแถว
+    </p>
+    <p>
+      ⚠️ <b>“ยังไม่เชื่อม” กับ “ไม่เกี่ยวกับใบนี้” ต้องคนละอย่าง</b> — ยังไม่เชื่อมขึ้นกล่องเส้นประชวนกด ·
+      ไม่เกี่ยวเลย (ใบไม่มีบรรทัดออกแบบกลิ่น) หายไปทั้งช่วง เส้นหดเหลือสองช่วง
+    </p>
+  </div>
+
+  <h3 style="margin-top:var(--space-4)">แบบที่ไม่เอา — สามเส้นขนาน (ไว้เทียบให้เห็นปัญหา)</h3>
+  <div class="panel badTrack">
+    <div class="badRow"><span class="rn">บรีฟกลิ่น</span>
+      <div class="dots">
+        <div class="dotStep ok"><i></i><span>ร่าง</span></div>
+        <div class="dotStep on"><i></i><span>รอรับเรื่อง</span></div>
+        <div class="dotStep"><i></i><span>กำลังทำ</span></div>
+        <div class="dotStep"><i></i><span>ตอบแล้ว</span></div>
+        <div class="dotStep"><i></i><span>ปิดเรื่อง</span></div>
+      </div></div>
+    <div class="badRow"><span class="rn">ของเข้า</span>
+      <div class="dots" style="grid-template-columns:repeat(3,1fr);grid-auto-flow:row">
+        <div class="dotStep on"><i></i><span>ยังไม่มีรายการ</span></div>
+        <div class="dotStep"><i></i><span>รอของ</span></div>
+        <div class="dotStep"><i></i><span>ครบแล้ว</span></div>
+      </div></div>
+    <div class="badRow"><span class="rn">แผนผลิต</span>
+      <div class="dots">
+        <div class="dotStep on"><i></i><span>ยังไม่วางคิว</span></div>
+        <div class="dotStep"><i></i><span>ร่าง</span></div>
+        <div class="dotStep"><i></i><span>วางคิวแล้ว</span></div>
+        <div class="dotStep"><i></i><span>กำลังผลิต</span></div>
+        <div class="dotStep"><i></i><span>เสร็จ</span></div>
+      </div></div>
+    <p><b>เห็นปัญหาชัด:</b> จุดของแต่ละแถวไม่ตรงคอลัมน์กัน · แถวของเข้ามี 3 จุดจึงถูกยืดจนดูคืบหน้ากว่าความจริง ·
+       และไม่มีตรงไหนบอกได้ว่าใบนี้ “ติดอยู่ตรงไหน” เพราะทั้งสามแถวชี้คนละที่พร้อมกัน</p>
+  </div>
+
+  <div class="callouts">
+    <div class="callout warn"><b>กติกาที่ต้องติดมากับเส้น</b>
+      <p>ช่วงที่ไม่เกี่ยวกับใบนี้ต้องหายไป ไม่ใช่ขึ้นว่า “ไม่มี” — ใบขายสินค้าธรรมดาไม่มีช่วงบรีฟกลิ่น เหลือสองช่วง
+         (กฎเดียวกับที่การ์ดบรีฟกลิ่นเดิมซ่อนทั้งใบเมื่อไม่มีบรรทัดออกแบบกลิ่น)</p></div>
+    <div class="callout warn"><b>ไม่ชนกับรางก้าวของเอกสาร</b>
+      <p>ในการ์ด “จัดการเอกสาร” มีเส้นอยู่แล้ว (จัดทำร่าง → ยื่น → ตรวจ → นับ Actual) — คนละเรื่องกัน:
+         เส้นนั้นคือชีวิตของ <b>เอกสาร</b> เส้นใหม่คือชีวิตของ <b>ของที่ขาย</b> · แยกด้วยตำแหน่ง (บน/ราง) และชื่อ</p></div>
+    <div class="callout"><b>อ่านอย่างเดียวเสมอ</b>
+      <p>ทั้งสามช่วงแก้ที่หน้าเจ้าของงาน (คำร้อง · โครงการ · คิวผลิต) — หน้า SO ไม่ตั้งสถานะให้ใคร</p></div>
+  </div>
+</section>
+
+<!-- ─────────────────────── หน้าเต็ม แบบ ข ─────────────────────── -->
+<section class="sectionHead">
+  <div class="eyebrowRow"><span class="tag opt">แบบ ข</span><span class="tag ok">เลือกแล้ว</span><span class="tag dim">การ์ดบริบทเรียงใหม่: ลูกค้า › โครงการ › ดีล › QT</span></div>
+  <h2>หน้าเต็ม</h2>
+
+  <div class="screen">
+    <div class="overview">
+      <div class="ovHead">
+        <div class="cardTitle">
+          <span class="eyebrow">SALE ORDER · COMMERCIAL APPROVAL</span>
+          <h3 class="docNo">SO-26080005-0</h3>
+          <span class="subject">บริษัท แฮปป้าเวลเนส จำกัด · ODM_Happa_Scent Design</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <span class="badge green">● อนุมัติแล้ว</span><span class="badge green">มีหลักฐานลายเซ็น</span>
+        </div>
+      </div>
+      <div class="facts">
+        <div class="fact"><span>วันที่ SO</span><b>07/08/2026</b></div>
+        <div class="fact"><span>กำหนดชำระ</span><b>07/08/2026</b></div>
+        <div class="fact"><span>อ้างอิง QT</span><b>QT-26080028-0</b></div>
+        <div class="fact"><span>ยอดก่อน VAT</span><b>฿60,000.00</b></div>
+      </div>
+    </div>
+
+    <!-- ⭐ ลำดับใหม่: ลูกค้า › โครงการ › ดีล › QT -->
+    <div class="ctxGrid">
+      <div class="ctx"><span class="eyebrow">ลูกค้า</span><b>บริษัท แฮปป้าเวลเนส จำกัด</b><small>AR-336</small></div>
+      <div class="ctx"><span class="eyebrow">โครงการ</span><b>ODM_Happa_Room Spray</b><small>PJ-26080039</small></div>
+      <div class="ctx"><span class="eyebrow">ดีล</span><b>ODM_Happa_Scent Design</b><small>ODM · Supisara Sangkaew</small></div>
+      <div class="ctx"><span class="eyebrow">ใบเสนอราคา Won</span><b>QT-26080028-0</b><small>หลักฐาน 07/08/2026 · 1 ไฟล์</small></div>
+    </div>
+
+    <!-- ⭐ เส้นเดินงาน แทนแถบสามช่องเปล่า -->
+    <div class="track">
+      <div class="trackHead">
+        <span class="eyebrow">เส้นเดินงานของใบนี้</span>
+        <span class="now">ตอนนี้อยู่ที่ <b>บรีฟกลิ่น</b> — รอ R&amp;D รับเรื่อง</span>
+      </div>
+      <div class="segs">
+        <div class="seg live">
+          <div class="segLabel"><span class="mark">1</span>บรีฟกลิ่น</div>
+          <div class="segTrack">
+            <div class="pt done"><i></i><span>ร่าง</span></div>
+            <div class="pt live"><i></i><span>รอรับเรื่อง</span></div>
+            <div class="pt"><i></i><span>กำลังทำ</span></div>
+            <div class="pt"><i></i><span>ตอบแล้ว</span></div>
+            <div class="pt"><i></i><span>ปิดเรื่อง</span></div>
+          </div>
+          <div class="segState">2 กลิ่น<span class="link">SB-26080002 →</span></div>
+        </div>
+        <div class="seg todo">
+          <div class="segLabel"><span class="mark">2</span>ของเข้า</div>
+          <div class="segHint">
+            <span>ยังไม่ผูกรายการของเข้ากับใบนี้</span>
+            <span class="link">ผูกที่ไทม์ไลน์โครงการ →</span>
+          </div>
+        </div>
+        <div class="seg todo">
+          <div class="segLabel"><span class="mark">3</span>ผลิต</div>
+          <div class="segHint">
+            <span>ยังไม่มีงานผลิตที่ผูกกับใบนี้</span>
+            <span class="link">เปิดคิวงานผลิต →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="col">
+        <div class="card accentTop">
+          <div class="cardHead">
+            <div class="cardTitle"><span class="eyebrow">ORDER LINES</span><b>รายการสินค้าและบริการ</b>
+              <small>1 รายการ · snapshot จาก QT Won</small></div>
+            <span class="linkAction">เปิด QT ต้นทาง ↗</span>
+          </div>
+          <div class="cardBody">
+            <table class="lines">
+              <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th class="num">จำนวน</th><th>หน่วย</th><th class="num">ราคาต่อหน่วย</th><th class="num">ส่วนลด</th><th class="num">รวม</th></tr></thead>
+              <tbody>
+                <tr><td>1</td>
+                  <td><b>FG-336-03-002</b><br><small style="color:var(--text-3)">หมายเหตุ: Detail /Detaile · Mood Board…</small></td>
+                  <td class="num">2</td><td>ชิ้น</td><td class="num">฿30,000.00</td><td class="num">–</td><td class="num">฿60,000.00</td></tr>
+              </tbody>
+            </table>
+            <div>
+              <div class="totalsRow"><span>ยอดก่อนส่วนลด</span><b>฿60,000.00</b></div>
+              <div class="totalsRow"><span>ส่วนลดท้ายใบ</span><b>–</b></div>
+              <div class="totalsRow"><span>VAT</span><b>฿4,200.00</b></div>
+              <div class="totalsRow grand"><span>ยอดรวมทั้งสิ้น</span><b>฿64,200.00</b></div>
+              <div class="totalsRow actual"><span>Actual ก่อน VAT</span><b>฿60,000.00</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card accentTop">
+          <div class="cardHead">
+            <div class="cardTitle"><span class="eyebrow">ON THIS DOCUMENT</span><b>ข้อมูลบนเอกสาร</b>
+              <small>ที่อยู่/ผู้ติดต่อยึดตามใบเสนอราคา · วันที่และเอกสารอ้างอิงแก้ที่นี่</small></div>
+            <span class="linkAction">✎ แก้ไขข้อมูล</span>
+          </div>
+          <div class="cardBody">
+            <div class="docGrid">
+              <div class="field wide"><span class="lab">ที่อยู่จัดส่ง</span>
+                <p class="val">287/107 ถนนอรัญญิกวงศ์ แขวงบางขุนศรี เขตบางกอกน้อย กรุงเทพมหานคร 10700</p></div>
+              <div class="field"><span class="lab">ผู้ติดต่อ</span><p class="val">คุณนา · 0904239623</p></div>
+              <div class="field wide"><span class="lab">ที่อยู่ออกบิล · สำนักงานใหญ่</span>
+                <p class="val">287/107 ถนนอรัญญิกวงศ์ แขวงบางขุนศรี เขตบางกอกน้อย กรุงเทพมหานคร 10700</p></div>
+              <div class="field"><span class="lab">เอกสารอ้างอิง (PO/สัญญา)</span><div class="inputBox">PO-2569-00123</div></div>
+              <div class="lockNote">🔒 ที่อยู่และผู้ติดต่อยึดตามใบเสนอราคา QT-26080028-0 — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)</div>
+              <div class="divider"></div>
+              <div class="field"><span class="lab">วันที่ SO</span><div class="inputBox">07/08/2026</div></div>
+              <div class="field"><span class="lab">กำหนดชำระ</span><div class="inputBox">07/08/2026</div></div>
+              <div class="field"><span class="lab">ไฟล์หลักฐาน Won · PO ลูกค้า</span>
+                <p class="val" style="color:var(--accent-ink)">📎 62626228295984778 2.jpg</p></div>
+              <div class="field full"><span class="lab">หมายเหตุบนเอกสาร</span>
+                <p class="val">หลังจากชำระค่าออกแบบกลิ่นเรียบร้อยแล้ว ลูกค้าจะต้องนัดประชุมเพื่อบรีฟรายละเอียดการทำงาน ภายใน 30 วัน…</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead"><div class="cardTitle"><span class="eyebrow">AUDIT TRAIL</span><b>ใครทำอะไรกับใบนี้</b></div></div>
+          <div class="cardBody">
+            <div class="docGrid">
+              <div class="field"><span class="lab">ผู้จัดทำ</span><p class="val">Supisara Sangkaew</p></div>
+              <div class="field"><span class="lab">ผู้ยื่น</span><p class="val">Supisara Sangkaew</p></div>
+              <div class="field"><span class="lab">ผู้อนุมัติ</span><p class="val">Patcharapit Jueajan</p></div>
+            </div>
+            <div class="ghostBlock">ประวัติฉบับแก้ไข (Rev.) แสดงต่อท้ายเมื่อใบนี้มีมากกว่าหนึ่งฉบับ</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail">
+        <div class="card">
+          <div class="cardBody">
+            <span class="eyebrow">ยอดสุทธิ ใบสั่งขาย</span>
+            <div class="money">฿64,200.00</div>
+            <div class="sumRow"><span>ยอดก่อนส่วนลด</span><b>฿60,000.00</b></div>
+            <div class="sumRow"><span>ส่วนลดท้ายใบ</span><b>฿0.00</b></div>
+            <div class="sumRow"><span>VAT</span><b>฿4,200.00</b></div>
+            <div class="sumRow"><span>Actual ก่อน VAT</span><b>฿60,000.00</b></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cardHead"><div class="cardTitle"><span class="eyebrow">DOCUMENT CONTROL</span><b>จัดการเอกสาร</b><small>ยอดถูกนับเป็น Actual แล้ว</small></div></div>
+          <div class="cardBody">
+            <div class="steps">
+              <div class="step done"><span class="dot"></span><span>จัดทำร่าง<small>Supisara Sangkaew</small></span></div>
+              <div class="step done"><span class="dot"></span><span>ยื่นอนุมัติ<small>10/08/2026</small></span></div>
+              <div class="step done"><span class="dot"></span><span>AE Supervisor ตรวจ<small>Patcharapit Jueajan</small></span></div>
+              <div class="step cur"><span class="dot"></span><span>นับ Actual<small>฿60,000.00</small></span></div>
+            </div>
+            <div class="btnStack">
+              <div class="btn">🔓 ยกเลิกอนุมัติ</div>
+              <div class="btn">🖨 ออกเอกสาร</div>
+              <div class="btn danger">✕ ยกเลิก SO</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cardHead"><div class="cardTitle"><span class="eyebrow">RELATED DOCUMENT</span><b>การยื่นชำระสรรพสามิต</b></div></div>
+          <div class="cardBody">
+            <p style="font-size:var(--fs-12);color:var(--text-2);margin:0">ยังไม่มีใบยื่นที่เชื่อมกับใบสั่งขายนี้</p>
+            <div class="btn">สร้างใบยื่นชำระ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────── สรุปสิ่งที่เปลี่ยน ─────────────────────── -->
+<section class="sectionHead">
+  <h2>สรุปสิ่งที่เปลี่ยน</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>เรื่อง</th><th>ของเดิม</th><th>ของใหม่</th></tr></thead>
+      <tbody>
+        <tr><td>การ์ดบริบท 4 ใบ</td><td>ลูกค้า › ดีล › QT › โครงการ</td><td class="good">ลูกค้า › โครงการ › ดีล › QT</td></tr>
+        <tr><td>บรีฟกลิ่น · ของเข้า · แผนผลิต</td><td class="bad">การ์ดเต็ม 3 ใบ กลางคอลัมน์ซ้าย</td><td class="good">เส้นเดินงานเส้นเดียว ใต้การ์ดบริบท</td></tr>
+        <tr><td>การ์ดในรางขวา</td><td class="bad">6 ใบ / 2371px</td><td class="good">3 ใบ — ยอดสุทธิ · จัดการเอกสาร · เอกสารเกี่ยวข้อง (เท่า QT)</td></tr>
+        <tr><td>รายการสินค้า</td><td class="bad">อยู่ที่ 1177px</td><td class="good">การ์ดแรกของคอลัมน์ซ้าย</td></tr>
+        <tr><td>ที่อยู่ · ผู้ติดต่อ · เอกสารอ้างอิง</td><td class="bad">แยกอยู่ 2 การ์ดในราง 330px</td><td class="good">รวมเป็นการ์ด “ข้อมูลบนเอกสาร” ใบเดียว กว้าง 1026px</td></tr>
+        <tr><td>ฟอร์มแก้ไข</td><td class="bad">คนละการ์ดกับข้อมูลที่มันแก้</td><td class="good">การ์ดเดียวกัน สลับโหมดอ่าน/แก้ ปุ่มแก้ไขอยู่หัวการ์ด</td></tr>
+        <tr><td>eyebrow <code>DOCUMENT CONTROL</code></td><td class="bad">ใช้ซ้ำ 2 การ์ด</td><td class="good">เหลือการ์ดเดียว · อีกใบเป็น <code>ON THIS DOCUMENT</code></td></tr>
+        <tr><td>ข้อมูลควบคุม + ประวัติ Rev.</td><td>กลางรางขวา</td><td class="good">ท้ายคอลัมน์ซ้าย ชื่อ “ใครทำอะไรกับใบนี้”</td></tr>
+        <tr><td>สถานะเอกสาร</td><td class="bad">พูดซ้ำ 4 ที่</td><td class="good">ป้ายบนหัวใบ + การ์ดจัดการเอกสาร เท่านั้น</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>ของที่ไม่แตะ — พฤติกรรมต้องเท่าเดิมทุกอย่าง</h3>
+    <p>
+      สิทธิ์/เงื่อนไขปุ่มทุกตัว (<code>canSubmitSalesOrder</code>, <code>canRevokeSalesOrderApproval</code>,
+      <code>canIssueSalesOrderRevision</code>, <code>canHardDeleteSalesOrder</code>) ·
+      ปุ่มออกเอกสารต้องเรียก <code>openSalesOrderPrintWindowPreferIssued</code> เสมอ (ADR 0011) ·
+      dry-run preview ก่อนบังคับลบ · <code>SignatureReadyNotice</code> ยังเตือนทั้งผู้ยื่นและผู้อนุมัติ ·
+      filled action ไม่เกินหนึ่งปุ่มต่อบริบท · ที่อยู่บนใบสั่งขายยัง <b>อ่านอย่างเดียว</b> เสมอ
+      (ตาราง <code>sales_orders</code> ไม่มีคอลัมน์ที่อยู่)
+    </p>
+    <p>ทำ SO ก่อนตามที่ตกลง แล้วยก QT ตามใน PR ถัดไป — รางขวาของทั้งสองหน้าจะกลับมาเป็นทรงเดียวกันตามมติ 2026-07-25</p>
+  </div>
+</section>
+
+</div>
+<script>
+const b=document.getElementById('themeBtn');
+b.addEventListener('click',()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  b.textContent=next==='dark'?'ธีมสว่าง':'ธีมมืด';
+});
+</script>
+</body>
+</html>

@@ -22,6 +22,25 @@ function statusBadge(status, className = "") {
   return <span className={["ui-badge", className].filter(Boolean).join(" ")} style={{ color }}>{STATUS[status] || status}</span>;
 }
 
+/* เซลล์ "งวดชำระ" ของตารางรายการ — เก็บแล้ว/ทั้งหมด
+   สีบอกเรื่องเดียว: เขียว = ครบ · แดง = เลยกำหนดหรือถูกตีกลับ · จาง = ยังไม่เริ่มติดตาม
+   ⚠️ ไม่ใช้ป้าย (badge) เพราะเป็น **ตัวเลขที่คนกวาดตาเทียบข้ามแถว** ⇒ ต้องชิดขวา
+   และเป็น tabular (กฎ 3 · UI_DESIGN_SYSTEM §ป้ายในตาราง) */
+function paymentCell(payment) {
+  if (!payment) return <span className="cell-num-idle">-</span>;
+  const { tracked, paid, count, complete, overdue, rejected } = payment;
+  const tone = !tracked ? "cell-num-idle"
+    : complete ? "cell-num-ok"
+      : (overdue || rejected) ? "cell-num-bad"
+        : undefined;
+  const why = !tracked ? "ยังไม่เริ่มติดตาม — จำนวนงวดมาจากแผนในใบเสนอราคา"
+    : complete ? "เก็บเงินครบทุกงวดแล้ว"
+      : overdue ? `เลยกำหนดแล้ว ${overdue} งวด`
+        : rejected ? `บัญชีตีกลับ ${rejected} งวด`
+          : "นับเฉพาะงวดที่บัญชีคอนเฟิร์มแล้ว";
+  return <span className={tone} title={why}>{paid}/{count}</span>;
+}
+
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
@@ -125,7 +144,7 @@ export default function SalesOrdersPage() {
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
             <TableScroll surface="embedded"><table className="w-full text-sm">
-              <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>เอกสารอ้างอิง</th><th>วันที่ SO</th><th>กำหนดชำระ</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
+              <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>เอกสารอ้างอิง</th><th>วันที่ SO</th><th>กำหนดชำระ</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ</th><th>สถานะ</th></tr></thead>
               <tbody>
                 {pageRows.map((row) => (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
@@ -151,10 +170,16 @@ export default function SalesOrdersPage() {
                     <td className="num mono" style={row.status === "approved" ? undefined : { color: "var(--text-3)" }} title={row.status === "approved" ? undefined : "ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ"}>
                       {fmtMoney(row.actualAmount)}
                     </td>
+                    {/* ⭐ งวดชำระ (mig 0245) — "เก็บแล้ว x/y" อ่านจบในสายตาเดียว
+                        ⚠️ นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** — reported ไม่นับ (กฎเดียวกับ
+                        ทั้งระบบ) ⇒ เลขนี้คือเงินที่รับมาจริง ไม่ใช่ที่ฝ่ายขายแจ้ง
+                        ⚠️ ใบที่ยังไม่เริ่มติดตามโชว์ y จาก **แผนของใบเสนอราคา** และหรี่สี
+                        ลง — ต่างจาก 0/2 ที่ติดตามแล้วแต่ยังเก็บไม่ได้เลย */}
+                    <td className="num mono">{paymentCell(row.payment)}</td>
                     <td>{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                   </DetailRow>
                 ))}
-                {!filtered.length && !loading && <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
+                {!filtered.length && !loading && <tr><td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
               </tbody>
             </table></TableScroll>
           </div>

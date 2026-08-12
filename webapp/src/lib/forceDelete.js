@@ -231,10 +231,13 @@ export async function quotationForcePreview(supabase, quote) {
 // พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
 // sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
 export async function salesOrderForcePreview(supabase, order) {
-  const [evidence, issued, filings] = await Promise.all([
+  const [evidence, issued, filings, installments, paidInstallments] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
     exciseFilingsOfSalesOrder(supabase, order.id),
+    countBy(supabase, 'sales_order_installments', 'salesOrderId', order.id),
+    // งวดที่บัญชีคอนเฟิร์มแล้ว = เงินที่รับมาจริง ต้องขึ้นให้เห็นเป็นบรรทัดของตัวเอง
+    countBy(supabase, 'sales_order_installments', 'salesOrderId', order.id, (q) => q.eq('status', 'confirmed')),
   ]);
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
@@ -242,10 +245,15 @@ export async function salesOrderForcePreview(supabase, order) {
   const cascade = [
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
+    line('งวดชำระของใบนี้', installments),
+    line('— ในนั้นเป็นงวดที่บัญชีคอนเฟิร์มแล้ว', paidInstallments),
   ].filter((r) => r.count > 0);
   const notes = [];
   if (evidence > 0 || issued > 0) {
     notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น/ฉบับตรึง — บังคับลบจะทำลายหลักฐานถาวร กู้คืนไม่ได้');
+  }
+  if (paidInstallments > 0) {
+    notes.push(`🔴 มีงวดที่บัญชีคอนเฟิร์มแล้ว ${paidInstallments} งวด = เงินที่รับมาจริง — ลบแล้วร่องรอยการรับเงินหายถาวร`);
   }
   if (order.status === 'approved') {
     notes.push('ใบนี้อนุมัติแล้ว = แหล่งยอด Actual ของดีล — ปกติควรใช้ “ยกเลิก SO” แทน');

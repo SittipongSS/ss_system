@@ -23,6 +23,8 @@ import {
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import { ensureInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import { paymentLockReason } from '@/lib/sales/salesOrderPayments';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
@@ -61,7 +63,7 @@ async function loadOrder(supabase, id) {
 
   const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
-    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
+    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย)
       ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
@@ -97,6 +99,8 @@ async function loadOrder(supabase, id) {
     revisionHistory: revisionHistory || [],
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
     scentRequest: scentRequest || null,
+    // งวดชำระ (mig 0245) — โหลดมากับใบเลยเพื่อไม่ให้การ์ด "การชำระ" ต้องยิงรอบสอง
+    installments: await loadInstallments(supabase, order.id).catch(() => []),
   };
 }
 
@@ -278,6 +282,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ยกเลิกอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
+    // ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ถอยใบทับมันเงียบ ๆ ไม่ได้
+    // (กติกาเดียวกับที่ใบยื่นสรรพสามิตบล็อกปุ่มนี้อยู่แล้ว)
+    const paymentBlock = paymentLockReason(before.installments);
+    if (paymentBlock) return badRequest(paymentBlock);
     const reason = String(body.reason || '').trim();
     const expected = resolveExpectedUpdatedAt(body);
     if (!expected.ok) return badRequest(expected.error);
@@ -462,6 +470,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       console.error('issued sales order snapshot capture failed', id, snapshotError);
     }
 
+    /* ⭐ งวดชำระเกิดตอนนี้ ไม่ใช่ตอนสร้างร่าง (mig 0245) — ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ
+       ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว งวดล้มต้องไม่ roll back
+       กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ซึ่งเรียก ensureInstallments ตัวเดียวกัน (idempotent) */
+    try {
+      await ensureInstallments(supabase, {
+        order: { ...before, ...data, quotation: before.quotation },
+        user,
+      });
+    } catch (installmentError) {
+      console.error('sales order installment seed failed', id, installmentError);
+    }
+
     await logThread('approve', { overrideReason });
     await recordAudit({
       user,
@@ -498,6 +518,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'cancel') {
+    // ⚠️ เหตุผลเดียวกับ revoke — งวดที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง
+    // ยกเลิกใบทิ้งเงียบ ๆ ไม่ได้ ต้องให้บัญชีจัดการก่อน
+    const cancelPaymentBlock = paymentLockReason(before.installments);
+    if (cancelPaymentBlock) return badRequest(cancelPaymentBlock);
     // Once Tax owns a downstream filing, cancelling/reversing the source would
     // invalidate its immutable snapshot. Delete the eligible filing first.
     const { data: filing, error: filingError } = await supabase

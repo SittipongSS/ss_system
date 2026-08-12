@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateWonEvidence, sanitizeWonAttachments, isPaymentDocType, MAX_WON_ATTACHMENTS,
-  DEFAULT_WON_EVIDENCE_BUCKET,
+  DEFAULT_WON_EVIDENCE_BUCKET, MAX_WON_DOC_NO, wonDocNoRule,
 } from './quotationWonEvidence.js';
 
 const file = { fileUrl: 'https://drive.example/f1', driveFileId: 'd1', fileName: 'slip.pdf', mimeType: 'application/pdf', sizeBytes: 1024 };
@@ -16,12 +16,59 @@ test('payment slip: file + doc date is enough (no due date required)', () => {
 
 test('non-payment doc (po/order_confirmation) requires paymentDueDate', () => {
   for (const docType of ['po', 'order_confirmation']) {
-    const missing = validateWonEvidence({ docType, docDate: '2026-07-15', attachments: [file] });
+    // po ต้องมีเลขที่เอกสารด้วย (mig 0246) — ใส่ให้ครบเพื่อแยกให้ชัดว่าเทสต์นี้วัดเรื่องกำหนดชำระ
+    const base = { docType, docDate: '2026-07-15', docNo: 'PO-2569-00123', attachments: [file] };
+    const missing = validateWonEvidence(base);
     assert.equal(missing.ok, false, `${docType} without due date must fail`);
-    const withDue = validateWonEvidence({ docType, docDate: '2026-07-15', paymentDueDate: '2026-08-15', attachments: [file] });
+    const withDue = validateWonEvidence({ ...base, paymentDueDate: '2026-08-15' });
     assert.equal(withDue.ok, true);
     assert.equal(withDue.evidence.paymentDueDate, '2026-08-15');
   }
+});
+
+/* ── เลขที่เอกสาร (mig 0246 · มติผู้ใช้ 2026-08-13) ────────────────────────
+   ⭐ ใบสั่งขายดึงค่านี้ไปเป็น "เอกสารอ้างอิง" ให้อัตโนมัติ ⇒ ต้องมีจริงตอนปิด Won
+   ด้วย PO ไม่งั้นช่องนั้นว่างแล้ว AE ต้องพิมพ์เองเหมือนเดิม */
+test('ปิด Won ด้วย PO ต้องมีเลขที่ใบสั่งซื้อ', () => {
+  const base = { docType: 'po', docDate: '2026-07-15', paymentDueDate: '2026-08-15', attachments: [file] };
+  assert.equal(validateWonEvidence(base).ok, false);
+  assert.match(validateWonEvidence(base).error, /เลขที่ใบสั่งซื้อ/);
+  assert.equal(validateWonEvidence({ ...base, docNo: '   ' }).ok, false, 'ช่องว่างล้วนไม่นับ');
+  const ok = validateWonEvidence({ ...base, docNo: '  PO-2569-00123 ' });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.evidence.docNo, 'PO-2569-00123', 'ตัดช่องว่างหัวท้ายก่อนเก็บ');
+});
+
+test('เอกสารยืนยันการสั่งซื้อกรอกเลขที่ได้แต่ไม่บังคับ', () => {
+  const base = { docType: 'order_confirmation', docDate: '2026-07-15', paymentDueDate: '2026-08-15', attachments: [file] };
+  const without = validateWonEvidence(base);
+  assert.equal(without.ok, true);
+  assert.equal(without.evidence.docNo, null);
+  assert.equal(validateWonEvidence({ ...base, docNo: 'OC-77' }).evidence.docNo, 'OC-77');
+});
+
+test('สลิปโอนเงินไม่มีช่องเลขที่ — ส่งมาก็ไม่เก็บ', () => {
+  const r = validateWonEvidence({
+    docType: 'payment_slip', docDate: '2026-07-15', docNo: 'เลขมั่ว', attachments: [file],
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.evidence.docNo, null);
+});
+
+test('เลขที่ยาวเกินเพดานถูกปฏิเสธ ไม่ใช่ตัดเงียบ ๆ', () => {
+  const r = validateWonEvidence({
+    docType: 'po', docDate: '2026-07-15', paymentDueDate: '2026-08-15',
+    docNo: 'P'.repeat(MAX_WON_DOC_NO + 1), attachments: [file],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /ยาวเกิน/);
+});
+
+test('กติกาเลขที่ของแต่ละประเภทตรงกับที่ฟอร์มใช้ตัดสิน', () => {
+  assert.equal(wonDocNoRule('po'), 'required');
+  assert.equal(wonDocNoRule('order_confirmation'), 'optional');
+  assert.equal(wonDocNoRule('payment_slip'), 'none');
+  assert.equal(wonDocNoRule('ไม่มีชนิดนี้'), 'none');
 });
 
 test('attachments are mandatory', () => {

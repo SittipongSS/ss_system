@@ -1,4 +1,4 @@
-import { IBM_Plex_Sans_Thai } from "next/font/google";
+import { Sarabun } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
@@ -14,11 +14,16 @@ export const dynamic = "force-dynamic";
    มาคู่กัน แต่ Plex Mono ไม่มีชุดไทย ⇒ ฿ (U+0E3F อยู่ในบล็อกไทย) และข้อความไทย
    ในกล่อง mono ตกไปใช้ฟอนต์ระบบ กลายเป็นฟอนต์ที่สาม/สี่บนจอโดยไม่มีใครสั่ง
    เหตุผลเต็มและข้อยกเว้นเดียว (กล่องวางข้อมูลดิบ) อยู่ที่ globals.css บนโทเคน
-   `--font-mono` — อย่าเพิ่มฟอนต์ที่นี่โดยไม่แก้ที่นั่นด้วย */
-const ibmPlexSansThai = IBM_Plex_Sans_Thai({
+   `--font-mono` — อย่าเพิ่มฟอนต์ที่นี่โดยไม่แก้ที่นั่นด้วย
+
+   ⭐ **ตัวพิมพ์คือ Sarabun** (มติผู้ใช้ 2026-08-13) — เปลี่ยนจาก IBM Plex Sans Thai
+   ทั้งระบบรวมเอกสารพิมพ์ เหตุผลและตัวเลขที่วัดก่อนเปลี่ยนอยู่ที่
+   `docs/typography-system.md` · น้ำหนักที่โหลดต้องตรงกับโทเคน `--fw-*` ใน
+   globals.css เสมอ (`fontWeightScale.test.mjs` ผูกสองที่นี้ไว้ด้วยกัน) */
+const appSans = Sarabun({
   weight: ['400', '500', '600', '700'],
   subsets: ["thai", "latin"],
-  variable: "--font-plex-sans",
+  variable: "--font-app-sans",
 });
 
 export const metadata = {
@@ -28,7 +33,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th" className={ibmPlexSansThai.variable} suppressHydrationWarning>
+    <html lang="th" className={appSans.variable} suppressHydrationWarning>
       <body className="font-sans antialiased transition-colors duration-300">
         {/* Anti-FOUC theme script. next/script with beforeInteractive is injected
             into <head> and runs before hydration, so the theme is set before
