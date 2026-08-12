@@ -3,7 +3,12 @@
 **อ่านไฟล์นี้ก่อนเริ่มงานที่กินเวลามากกว่าหนึ่งคอมมิต** — เอกสารในโปรเจกต์นี้เก็บมติที่ตัดสินไปแล้ว
 ถ้าไม่อ่านก่อน มีสิทธิ์ไปรื้อของที่เคยเคาะแล้วโดยไม่รู้ตัว
 
-ปรับปรุงสารบัญล่าสุด 2026-08-06 · ทุกสถานะในรอบนี้ตรวจกับโค้ดจริงแล้ว
+ปรับปรุงสารบัญล่าสุด 2026-08-12 · ทุกสถานะในรอบนี้ตรวจกับโค้ดจริงแล้ว
+
+⚠️ รอบ 2026-08-12 ตรวจเจอสามแถวที่สถานะเน่า (เนื้อในเดินหน้าไปแล้วแต่ไม่มีใครแก้บรรทัดสถานะ):
+`cross-department-requests-plan` (เขียนว่า "รอเริ่ม PR-1" ทั้งที่ปิดครบแล้ว) ·
+`request-hub-rebuild-plan` (ไม่เคยมีบรรทัดสถานะเลย · เหลือ R-5 ข้อเดียว) ·
+`scent-dev-panel-plan` (สารบัญเขียน "รอดำเนินการ" แต่ในไฟล์เขียน "กำลังดำเนินการ · เหลืองวด 3")
 
 ---
 
@@ -55,7 +60,7 @@
 | [all-documents-system-ui-mockup.html](all-documents-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "เอกสารของโครงการ/ดีล"** — 3 ทางที่เอกสารเข้าสายนี้ · ขอจาก R&D อย่างเดียว (ม-87) · §05 บันทึกว่าอะไรอยู่นอกสาย |
 | [document-request-system-ui-mockup.html](document-request-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "ขอเอกสาร" ทุกขั้นตอน SA × RD** — 8 ขั้นตาม ม-88 · ตรงกับโค้ดที่ส่งแล้วทุกจอ (เขียนใหม่หลัง ม-83…ม-88) |
 | [info-inquiry-system-ui-mockup.html](info-inquiry-system-ui-mockup.html) | ⭐ **แบบหน้าจอ "สอบถามข้อมูล" ทุกขั้นตอน SA × RD** — หัวข้อสุดท้ายของชุดคำร้อง · ไม่มีรายการ ทั้งใบคือเธรด · ตรงกับโค้ดที่ merge แล้ว (ม-83/84/86/87/89/92) |
-| [scent-dev-panel-plan.md](scent-dev-panel-plan.md) | **แผนพัฒนากลิ่น × Control Panel (ม-94 ขั้นสุดท้าย)** — 3 งวด · โฟกัส PDR (รอเคาะทาง ก/ข/ค) · สถานะ รอดำเนินการ |
+| [scent-dev-panel-plan.md](scent-dev-panel-plan.md) | **แผนพัฒนากลิ่น × Control Panel (ม-94 ขั้นสุดท้าย)** — งวด 1 ✓ (#1102) · งวด 2 ✓ (#1103) · **เหลืองวด 3: เดินวงจริงกับใบร่าง SB + อัปเดตม็อกอัพ** · สถานะ กำลังดำเนินการ |
 | [rd-formula-dev-ui-mockup.html](rd-formula-dev-ui-mockup.html) | ⭐ **แบบหน้าจอ "พัฒนาสูตร" รายก้าว** — P4 (ม-36) · §05/§06 เป็นคำถามค้างที่ตัดสินไปแล้ว ดูใบระดับทั้งระบบแทน |
 | [lead-flow-ui-mockup.html](lead-flow-ui-mockup.html) | ⭐ **แบบหน้าจอ "ระบบลีด" ครบทุกฝ่าย** — MKT รับลีด → Sup คัดกรอง → Senior กระจาย → AE ติดต่อ/นัด/เปิดดีล + ตารางสิทธิ์ + ข้อเสนอปฏิทินนัด |
 | [FM-RD-01-pdr-form-rev02.pdf](FM-RD-01-pdr-form-rev02.pdf) | ⭐ **ฟอร์มกระดาษ PDR ที่ใช้จริง** — ต้นฉบับของคำถามทั้งหมด (ม-52) |
@@ -75,8 +80,7 @@
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
 | [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |
 | [costing-request-plan.md](costing-request-plan.md) | merge ครบ 3 PR · mig 0157/0158/0159 รัน prod แล้ว (ยืนยัน 2026-08-08) · เหลือ UAT ข้อ 1–17 | รอตรวจ |
-| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | รื้อเมนูคำร้องเป็นศูนย์ประสานงาน SA | รอดำเนินการ |
-| [cross-department-requests-plan.md](cross-department-requests-plan.md) | มติครบ รอเริ่ม PR-1 (ใหญ่สุด 1,030 บรรทัด) | รอดำเนินการ |
+| [request-hub-rebuild-plan.md](request-hub-rebuild-plan.md) | **เหลือ R-5 ข้อเดียว** — FK `scentId`/`formulaId` ยังเป็น `ON DELETE SET NULL` (ลบทะเบียนแล้วลิงก์หายเงียบ) · R-1…R-4 · R-6 เสร็จแล้ว (ตรวจกับโค้ด 2026-08-12) | กำลังดำเนินการ |
 | [qt-so-tax-followup-plan.md](qt-so-tax-followup-plan.md) | 6 จุดขัดแผนจาก PR #739 + บั๊กที่ผู้ใช้เจอได้ | รอดำเนินการ |
 | [business-line-vs-project-seam.md](business-line-vs-project-seam.md) · [business-line-level-and-handoff.md](business-line-level-and-handoff.md) | มติเคาะแล้ว ยังไม่เขียนโค้ด | รอดำเนินการ |
 | [service-business-system-plan.md](service-business-system-plan.md) · [service-field-operations.md](service-field-operations.md) | มติเคาะแล้ว ยังไม่เขียนโค้ด | รอดำเนินการ |
@@ -122,6 +126,10 @@
 ## 5. เสร็จแล้ว
 
 → [archive/](archive/README.md) — 7 ไฟล์ เก็บเป็นหลักฐานการตัดสินใจ ไม่ใช่งานค้าง
+
+| เอกสาร | ปิดเมื่อ | หมายเหตุ |
+|---|---|---|
+| [cross-department-requests-plan.md](cross-department-requests-plan.md) | 2026-08-12 | รวมสามเมนูเป็น `dept_requests` ครบแล้ว (mig 0171–0174 · notifications · role `executive`) · **บรรทัดสถานะเดิมค้างว่า "รอเริ่ม PR-1" มาสองสัปดาห์** — ตรวจกับโค้ดแล้วปิดเล่ม · ของที่ยังค้างข้อเดียวย้ายไปอยู่ `request-hub-rebuild-plan.md` (R-5) |
 
 ## 6. แบบหน้าจอ
 
