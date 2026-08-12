@@ -78,6 +78,35 @@ export const MEETING_MODE_LABELS = {
 // ลบ   → คงเข้มเท่าเดิมทุกประการ: แก้ผิดยังตามกลับได้จาก audit log แต่ลบแล้ว
 //   `lead_events` หายตาม (ON DELETE CASCADE — mig 0091) กู้ไม่ได้
 //   ฝ่ายขายจึงใช้ "ไม่ไปต่อ" (disqualify) แทนการลบเสมอ
+/* ── งบประมาณเป็นช่วงได้ (mig 0233) ────────────────────────────────────────
+   ⭐ **ด่านเดียวใช้ทั้งฟอร์มและ API** ตามกติกา form-design-rules §2 — เงื่อนไขที่
+   ปุ่มรู้แต่ฟอร์มไม่รู้ (หรือกลับกัน) คือจุดที่ผู้ใช้กดแล้วโดนตีกลับโดยไม่รู้ว่าเพราะอะไร
+   `budget` = ต่ำสุด · `budgetMax` = สูงสุด (ว่าง = ระบุตัวเลขเดียว) */
+export function leadBudgetError(form = {}) {
+  const raw = (v) => (v === '' || v == null ? null : Number(v));
+  const min = raw(form.budget);
+  const max = raw(form.budgetMax);
+  if (max == null) return '';
+  if (!Number.isFinite(max) || max < 0) return 'งบประมาณสูงสุดต้องเป็นตัวเลขไม่ติดลบ';
+  // ปลายบนลอย ๆ อ่านไม่ออกว่าแปลว่าอะไร — และทำให้การเรียงตามงบตกท้ายตารางเงียบ ๆ
+  if (min == null) return 'กรอกงบประมาณสูงสุดแล้ว ต้องกรอกต่ำสุดด้วย';
+  if (!Number.isFinite(min) || min < 0) return 'งบประมาณต่ำสุดต้องเป็นตัวเลขไม่ติดลบ';
+  if (max < min) return 'งบประมาณสูงสุดต้องไม่น้อยกว่าต่ำสุด';
+  return '';
+}
+
+/* ⭐ **คำเดียวที่ใช้แสดงงบของลีดทั้งระบบ** — ตาราง · หน้ารายละเอียด · ที่อื่นในอนาคต
+   ห้ามให้แต่ละจอเขียนเงื่อนไข "มี budgetMax ไหม" เอง เพราะจอที่ลืมเช็คจะโชว์แค่
+   ปลายล่างแล้วอ่านเหมือนงบน้อยกว่าจริง (เคสเดียวกับที่เคยเกิดกับป้ายอื่นในโปรเจกต์นี้)
+   @param {(n: number) => string} money ตัวจัดรูปแบบเงินของจอนั้น (fmtMoney/fmtCompact) */
+export function leadBudgetText(lead = {}, money = String, empty = 'ไม่ระบุ') {
+  const min = lead.budget;
+  const max = lead.budgetMax;
+  if (min == null) return empty;
+  if (max == null || Number(max) === Number(min)) return money(min);
+  return `${money(min)} – ${money(max)}`;
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 
