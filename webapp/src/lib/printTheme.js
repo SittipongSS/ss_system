@@ -1,4 +1,4 @@
-export const PRINT_FONT_STACK = "'IBM Plex Sans Thai', 'Noto Sans Thai', Tahoma, Arial, sans-serif";
+export const PRINT_FONT_STACK = "'Sarabun', 'Noto Sans Thai', Tahoma, Arial, sans-serif";
 // PRINT_MONO_STACK ถูกลบ (2026-08-09) — ไม่มีใครเรียกเลยแม้แต่จุดเดียว และระบบ
 // เหลือตัวพิมพ์เดียวแล้ว · เอกสารพิมพ์ไม่ผูกกับ --font-sans จึงไม่เปลี่ยนตาม
 

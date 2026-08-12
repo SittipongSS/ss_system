@@ -251,7 +251,11 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       if (!ctx) return 220;
-      ctx.font = "12px IBM Plex Sans Thai, system-ui, sans-serif";
+      // อ่านฟอนต์จริงจากหน้า ไม่เขียนชื่อฟอนต์ซ้ำที่นี่ — ของเดิมฮาร์ดโค้ด
+      // "IBM Plex Sans Thai" ไว้ พอเปลี่ยนฟอนต์ระบบเป็น Sarabun (2026-08-13)
+      // ตัววัดจะวัดด้วยฟอนต์ที่ไม่มีอยู่จริงแล้วคืนความกว้างผิดเงียบ ๆ
+      const uiFont = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
+      ctx.font = `12px ${uiFont}`;
       const maxPx = tasks.reduce((max, t) => {
         const nameW = ctx.measureText(t.name || "").width;
         const iconW = t.isMilestone ? 18 : 0;

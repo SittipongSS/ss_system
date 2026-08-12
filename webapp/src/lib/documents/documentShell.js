@@ -236,8 +236,8 @@ export function documentShellCss(orientation = 'portrait') {
     gap: 20px;
     padding: 16px 0 40px;
     color: var(--doc-text);
-    /* เอกสาร standalone ไม่มี --font-plex-sans (ตัวแปร next/font ที่มีเฉพาะในแอป) —
-       จึงฝัง IBM Plex Sans Thai เป็น @font-face base64 ในตัว (DOCUMENT_FONT_FACE_CSS)
+    /* เอกสาร standalone ไม่มี --font-app-sans (ตัวแปร next/font ที่มีเฉพาะในแอป) —
+       จึงฝัง Sarabun เป็น @font-face base64 ในตัว (DOCUMENT_FONT_FACE_CSS)
        = ฟอนต์เดียวกับที่ next/font เสิร์ฟให้แอป แสดงผลตรงกันทุกที่ แม้พิมพ์/ตรึง snapshot
        ออฟไลน์ (ไม่พึ่ง Google CDN ที่โหลดไม่ทัน/ไม่ได้แล้วหล่นไป Leelawadee) */
     font-family: ${PRINT_FONT_STACK};
