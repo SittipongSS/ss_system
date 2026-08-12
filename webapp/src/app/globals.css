@@ -391,6 +391,9 @@
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
   --topnav-menu-h: 44px;            /* ชั้นเมนูของระบบปัจจุบัน */
+  /* ระยะเผื่อแถบเมนูสองชั้นสำหรับ `scroll-margin-top` ของจุดที่โค้ดสั่งเลื่อนไปหา
+     (เปลี่ยนหน้าในตาราง/สลับแท็บ) — ไม่มีค่านี้ หัวตารางจะไปจอดใต้แถบเมนูพอดี */
+  --scroll-anchor-top: calc(var(--topbar-h) + var(--topnav-menu-h) + var(--space-3));
   /* ── ชั้นซ้อน (z-index) ────────────────────────────────────────────────
      **ของใหม่ต้องหยิบชื่อจากที่นี่ ห้ามคิดเลขเอง** (audit:ui บังคับไว้)
 
@@ -4408,6 +4411,8 @@ button.empty-state { width: 100%; font: inherit; }
   padding-bottom: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  /* จุดจอดเวลาสลับแท็บแล้วโค้ดพาเลื่อนกลับขึ้นมา (ดู lib/ui/scrollToTopOf.js) */
+  scroll-margin-top: var(--scroll-anchor-top);
 }
 
 /* M3 primary tabs: active = ตัวหนังสือ + แถบชี้สี --accent (มน ๆ แบบ M3 indicator)
@@ -5203,6 +5208,8 @@ button.empty-state { width: 100%; font: inherit; }
   border-radius: var(--radius-lg);
   background: var(--panel);
   box-shadow: var(--glass-shadow);
+  /* จุดจอดเวลากดเปลี่ยนหน้าท้ายตารางแล้วโค้ดพากลับขึ้นหัวส่วน (lib/ui/scrollToTopOf.js) */
+  scroll-margin-top: var(--scroll-anchor-top);
 }
 .ui-section-header {
   display: flex;

@@ -3,13 +3,9 @@
 
 /* ผังลดหลั่น — สูงพอให้แท่ง 6 แถวไม่ถูกบีบจนอ่านชื่อไม่ออก */
 .funnelChart { height: 210px; }
-/* คุณภาพของ funnel (SLA / Conversion) — ช่องกว้างกว่าเพราะป้ายยาวและมีคำอธิบายใต้เลข */
-.qualityGrid {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-top: var(--space-3);
-}
+/* คุณภาพของ funnel (SLA / Conversion) — ตัวแถบเป็น `.ui-metric-strip` กลาง
+   ที่นี่เติมแค่ระยะห่างจากของที่อยู่เหนือมัน */
+.qualityStrip { margin-top: var(--space-3); }
 
 /* คำอธิบายใต้กราฟ — ของที่ต้องอ่านคู่กับผัง ไม่ใช่หัวข้อของส่วนถัดไป
    จึงชิดกราฟด้านบนและเว้นจากกริดข้างล่าง */

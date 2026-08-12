@@ -1,7 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PAGE_SIZE_OPTIONS } from "@/lib/usePagination";
+import { closestScrollSection, scrollToTopOf } from "@/lib/ui/scrollToTopOf";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import styles from "./Pager.module.css";
@@ -19,6 +21,7 @@ export default function Pager({
   ariaLabel = "การแบ่งหน้า",
   className = "",
 }) {
+  const rootRef = useRef(null);
   const safeTotal = Math.max(0, Number(total) || 0);
   const safePageCount = Math.max(1, Number(pageCount) || 1);
   const safePage = Math.min(safePageCount, Math.max(1, Number(page) || 1));
@@ -30,8 +33,13 @@ export default function Pager({
 
   if (!showSize && !showNav) return null;
 
+  /* ปุ่มพวกนี้อยู่ท้ายตาราง — เปลี่ยนหน้าแล้วต้องพากลับขึ้นหัวตารางให้ ไม่งั้นแถวแรก
+     ของหน้าใหม่อยู่เหนือจอ ต้องไถขึ้นเองทุกครั้ง (เลื่อนขึ้นอย่างเดียว ดู scrollToTopOf) */
   const goTo = (nextPage) => {
-    onPage?.(Math.min(safePageCount, Math.max(1, nextPage)));
+    const target = Math.min(safePageCount, Math.max(1, nextPage));
+    if (target === safePage) return;
+    onPage?.(target);
+    scrollToTopOf(closestScrollSection(rootRef.current));
   };
 
   /* หน้าต้นแบบใช้ปุ่มเลขหน้า กดข้ามได้ทันที (มติ 2026-07-26 ข้อ 9)
@@ -45,7 +53,7 @@ export default function Pager({
   const pageNumbers = Array.from({ length: windowSize }, (_, index) => windowStart + index);
 
   return (
-    <nav className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
+    <nav ref={rootRef} className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
       <span>ทั้งหมด {fmtNumber(safeTotal)} {itemLabel}</span>
       <div className={styles.controls}>
         {showSize ? (
