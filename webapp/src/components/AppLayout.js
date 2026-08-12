@@ -15,7 +15,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
-import useNavCounts, { navCountFor, navCountForSystem } from '@/lib/nav/useNavCounts';
+import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -200,12 +200,12 @@ export default function AppLayout({ children }) {
       system: 'master',
       items: [
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
-        { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
+        { href: '/database/customers', name: 'ข้อมูลลูกค้า', countHref: '/database/customers?count=customers', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         // ทะเบียนกลิ่น + สูตร (mig 0171) — ข้อมูลหลักของ RD ที่คำร้องขอราคา F/FB
         // อ้างถึง · อยู่ใต้ "ฐานข้อมูล" เพราะเป็น master data ไม่ใช่เอกสารงาน
-        { href: '/database/scents', name: 'ทะเบียนกลิ่น', icon: FlaskConical, cap: 'products:view', match: (p) => p.startsWith('/database/scents') },
-        { href: '/database/formulas', name: 'ทะเบียนสูตร', icon: Beaker, cap: 'products:view', match: (p) => p.startsWith('/database/formulas') },
+        { href: '/database/scents', name: 'ทะเบียนกลิ่น', countHref: '/database/scents?count=scents', icon: FlaskConical, cap: 'products:view', match: (p) => p.startsWith('/database/scents') },
+        { href: '/database/formulas', name: 'ทะเบียนสูตร', countHref: '/database/formulas?count=formulas', icon: Beaker, cap: 'products:view', match: (p) => p.startsWith('/database/formulas') },
         // ทะเบียนวัสดุ — ย้ายมาจาก /sa/materials เพราะเหตุผลที่เคยอยู่ใต้ "ขาย" คือ
         // แท็บคิวเคสขอราคา ซึ่งย้ายออกไปเป็นเมนู "คำร้อง" แล้ว (mig 0173) เหลือ
         // งานเดียวคือข้อมูลหลักราคาวัสดุ = ทรงเดียวกับกลิ่น/สูตร/สินค้า
@@ -245,10 +245,10 @@ export default function AppLayout({ children }) {
         // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
         { href: '/sa/deals', name: 'ดีล', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
         // เฟส B: หน้ารวมโครงการ (ภาชนะรวมดีล + KPI rollup) — เดิม /sa/projects เด้งไปหน้าดีล
-        { href: '/sa/projects', name: 'โครงการ', icon: Boxes, cap: 'salesplan:view', match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
+        { href: '/sa/projects', name: 'โครงการ', countHref: '/sa/projects?count=projectCloses', icon: Boxes, cap: 'salesplan:view', match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
         // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
-        { href: '/sa/quotations', name: 'ใบเสนอราคา', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
-        { href: '/sa/sales-orders', name: 'ใบสั่งขาย', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
+        { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
+        { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
         // (เมนู "สอบถาม RD" ถูกถอดใน mig 0174 — งานย้ายไปเมนู "คำร้อง" ข้างล่าง
         //  ซึ่งรับได้ทุกชนิดรวมสอบถาม/ขอเอกสาร ไม่ใช่แค่ถาม RD อย่างเดียว)
         // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
@@ -542,7 +542,7 @@ export default function AppLayout({ children }) {
             const count = navCountFor(navCounts, item.href);
             return (
               <Link
-                href={item.href}
+                href={navHrefFor(item, count)}
                 key={item.href}
                 className={`topnav-item ${active ? 'active' : ''}`}
                 aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
@@ -614,7 +614,7 @@ export default function AppLayout({ children }) {
                   const count = navCountFor(navCounts, item.href);
                   return (
                     <Link
-                      href={item.href}
+                      href={navHrefFor(item, count)}
                       key={item.href}
                       className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}
                       aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
