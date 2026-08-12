@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { apiWriteAllowed, lockedOut } from './proxy.js';
+import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
+
+/* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
+   Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
+   ⇒ cron ทั้งสองตัวโดนปิดประตูตั้งแต่ 2026-07-15 โดยไม่มีอะไรฟ้อง (log production
+   2026-08-12: 01:30:34Z daily-digest 401 · 02:00:02Z close-resolved-issues 401
+   ตรงเวลาที่ตั้งไว้เป๊ะ) — ทวงลีดค้าง SLA จึงไม่เคยเด้งสักแถว */
+test('⭐ เส้น cron ต้องข้ามด่าน session — ผู้เรียกเป็นเครื่อง ไม่มีวันมี cookie', () => {
+  assert.equal(bypassesSessionGate('/api/cron/daily-digest'), true);
+  assert.equal(bypassesSessionGate('/api/cron/close-resolved-issues'), true);
+});
+
+test('ด่านที่ข้ามได้ต้องแคบ — เปิดเฉพาะใต้ /api/cron/ เท่านั้น', () => {
+  // ⚠️ ถ้าเผลอเขียนเป็น startsWith('/api/cron') เปล่า ๆ สองเส้นล่างจะหลุดตามไปด้วย
+  for (const path of ['/api/cron', '/api/crontab', '/api/cronjobs/run', '/api/notifications', '/home', '/']) {
+    assert.equal(bypassesSessionGate(path), false, `${path} ต้องไม่ข้ามด่าน session`);
+  }
+});
 
 test('every signed-in role can open its own account page', () => {
   const roles = ['ae', 'ac', 'rd', 'legal', 'staff', 'viewer', 'secretary'];
