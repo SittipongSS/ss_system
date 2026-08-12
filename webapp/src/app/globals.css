@@ -3645,6 +3645,17 @@ button.empty-state { width: 100%; font: inherit; }
   .lead-budget-dash { display: none; }
 }
 
+/* ข้อความยาวในเซลล์ตาราง — ตัดด้วย ellipsis แทนที่จะดันคอลัมน์อื่นหลุดขอบ
+   🐞 บทเรียนจาก IS-26080004: ป้ายยาวที่ไม่มีที่หด ลากทั้งตาราง/ฟอร์มเลื่อนออกนอกจอ
+   ⚠️ ต้องคู่กับ `title` ที่ปลายทางเสมอ — ตัดข้อความแล้วไม่มีทางอ่านเต็มคือซ่อนข้อมูล */
+.cell-ellipsis {
+  display: block;
+  overflow: hidden;
+  max-width: 22ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 /* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
 /* ใช้ได้ทั้งบรรทัดเหตุผลใต้ปุ่ม และคำขยายในป้ายช่อง ("(ไม่บังคับ · เช่น …)") */

@@ -56,6 +56,7 @@ import { productionReadiness } from "@/lib/pm/deliveries";
 import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import Textarea from "@/components/ui/Textarea";
+import Input from "@/components/ui/Input";
 import { businessDate } from "@/lib/businessDate";
 
 const STATUS = {
@@ -92,7 +93,7 @@ export default function SalesOrderDetailPage() {
   const reviewer = ["admin", "ae_supervisor"].includes(role);
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
-  const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", notes: "" });
+  const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", referenceDoc: "", notes: "" });
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
   const [toast, setToast] = useState(null);
@@ -152,7 +153,7 @@ export default function SalesOrderDetailPage() {
       return false;
     }
     setOrder(data);
-    setForm({ orderDate: data.orderDate || "", paymentDueDate: data.paymentDueDate || "", notes: data.notes || "" });
+    setForm({ orderDate: data.orderDate || "", paymentDueDate: data.paymentDueDate || "", referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
     setDirty(false);
     return true;
   }, [id]);
@@ -246,7 +247,7 @@ export default function SalesOrderDetailPage() {
   }
 
   function leaveEditMode() {
-    setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", notes: order.notes || "" });
+    setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
     setDirty(false);
     setSaveState("idle");
     setEditMode(false);
@@ -610,6 +611,30 @@ export default function SalesOrderDetailPage() {
               <div className={styles.formStack}>
                 <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
                 <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
+                {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0234) — PO/สัญญา/เลขในระบบ
+                    จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
+                    ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ
+                    ⚠️ ช่องบรรทัดเดียว ไม่ใช่ Textarea — เพดาน 200 และมันคือ "ตัวชี้ไปเอกสาร
+                    อีกใบ" ไม่ใช่ข้อความยาว (กติกาข้อความยาวใน form-design-rules §3) */}
+                {editable
+                  ? (
+                    <label>
+                      <span>เอกสารอ้างอิง</span>
+                      <Input
+                        value={form.referenceDoc} maxLength={200}
+                        placeholder="เช่น PO-2569-00123 · สัญญาเลขที่ ABC/2569"
+                        onChange={(event) => updateField("referenceDoc", event.target.value)}
+                      />
+                    </label>
+                  )
+                  : (
+                    <div className={styles.readonlyFormField}>
+                      <span>เอกสารอ้างอิง</span>
+                      <div className="readable-field">
+                        {form.referenceDoc || <span className="readable-field-empty">ไม่มีเอกสารอ้างอิง</span>}
+                      </div>
+                    </div>
+                  )}
                 {editable
                   ? <label><span>หมายเหตุ</span><Textarea rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
                   : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
