@@ -35,10 +35,15 @@ export function isSalesOrderSubmitter(order, userId) {
    ⚠️ `draft` ไม่นับ แม้จะเป็นใบของตัวเอง — ร่างที่ยังไม่เคยยื่นไม่มีใครรออยู่ปลายทาง
    (กติกาเดียวกับใบร่างคำร้อง ม-112 และใบเสนอราคา) · ต่างกันตรงใบสั่งขายเก็บ "ตีกลับ"
    เป็น `status` ของมันเอง จึงไม่ต้องดูเหตุผลค้างเหมือนใบเสนอราคา
-   ⚠️ ยังไม่รวมสาย "รอฉันอนุมัติ" — ผู้รีวิวใบสั่งขายเป็นคนละเส้นกับเจ้าของดีล
-   (ดู canReviewSalesOrder) ค่อยเติมตอนทำเฟสถัดไป ไม่เดาเส้นผู้อนุมัติที่นี่ */
-export function isSalesOrderWaitingOnMe(order, { userId = '' } = {}) {
-  return Boolean(userId) && order?.status === 'rejected' && order?.createdBy === userId;
+   ⭐ **เลนผู้รีวิวเติมใน ม-119** — ใบที่ยื่นมาแล้วรออนุมัติ (`pending_approval`)
+   ผู้รีวิวคือ role ระดับหัวหน้า (`isSalesOrderReviewer`) **ไม่ใช่เจ้าของดีล** แบบใบเสนอราคา
+   ⇒ ต้องส่ง `reviewer` เข้ามา ห้ามเดาจาก `userId`
+   ⚠️ ใบที่ตัวเองยื่นแล้วตัวเองอนุมัติได้ก็นับ — ระบบเปิดให้จริง (route อนุมัติเช็คแค่
+   `reviewer`) ⇒ มันรอเราลงมืออยู่จริง ไม่ใช่ของคนอื่น */
+export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false } = {}) {
+  if (!order) return false;
+  if (reviewer && order.status === 'pending_approval') return true;
+  return Boolean(userId) && order.status === 'rejected' && order.createdBy === userId;
 }
 
 // ดึงกลับ = **ของผู้ยื่นเท่านั้น** (มติ 2026-07-26) — ผู้รีวิวที่อยากส่งเอกสารกลับใช้

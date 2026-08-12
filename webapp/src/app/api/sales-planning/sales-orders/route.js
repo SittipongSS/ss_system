@@ -3,7 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
-import { isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,7 +96,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       scentRequest: scentRequestByOrder.get(row.id) || null,
       // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
       // ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
-      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id }),
+      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) }),
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 

@@ -208,6 +208,22 @@ test('canSubmitSalesOrder: ยื่นได้เฉพาะ AE เจ้า�
 });
 
 // ── "รอฉันลงมือ" — ชุดเดียวกับที่ป้ายตัวเลขบนเมนูใช้นับ ──────────────────
+test('⭐ เลนผู้รีวิว: ใบที่ยื่นมาแล้วรออนุมัติต้องนับ (ม-119)', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const pending = { status: 'pending_approval', createdBy: 'USR-MAKER' };
+  // ผู้รีวิว = role ระดับหัวหน้า ไม่ใช่เจ้าของดีล ⇒ ตัดสินด้วยธง reviewer ไม่ใช่ userId
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-BOSS', reviewer: true }), true);
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-BOSS', reviewer: false }), false,
+    'คนที่ไม่ใช่ผู้รีวิวไม่มีอะไรให้ทำกับใบที่รออนุมัติ');
+  // ใบที่ตัวเองยื่นแล้วตัวเองอนุมัติได้ก็ยังนับ — ระบบเปิดให้จริง
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-MAKER', reviewer: true }), true);
+  // ผู้รีวิวไม่ได้ถูกทวงใบที่อนุมัติไปแล้ว
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'approved' }, { reviewer: true }), false);
+  // ใบตีกลับของคนอื่น ผู้รีวิวก็ไม่ต้องแก้ให้
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'rejected', createdBy: 'USR-X' },
+    { userId: 'USR-BOSS', reviewer: true }), false);
+});
+
 test('⭐ ใบสั่งขายที่ถูกตีกลับมาให้ฉันแก้ต้องนับ — ร่างของตัวเองไม่นับ', async () => {
   const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
   const me = 'USR-MAKER';
