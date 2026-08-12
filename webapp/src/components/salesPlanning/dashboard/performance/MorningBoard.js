@@ -4,7 +4,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useMemo } from "react";
 import { Sun } from "lucide-react";
 import { windowStat, yearSummary } from "@/lib/sales/performanceMath";
-import { money, pctFmt, periodLabel, ProgressBar } from "./shared";
+import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar } from "./shared";
 
 // ☀️ บอร์ดประชุมเช้า — ทุกคน ทุกทีม ในตารางเดียว ตามยอดของงวดที่เลือก.
 // "ต้องปิด" = เป้างวด + ยอดทบยกมา (ปิดโหมดทบ = เป้าปกติ คอลัมน์ทบหาย).
@@ -30,6 +30,8 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
   const statOf = (row) => windowStat(row, opts);
   // คอลัมน์ ต้องทำ/เดือน · YoY · สถานะ เป็นตัวเลขระดับปี — งวดเล็กกว่าปีไม่มีความหมาย
   const isYear = kind === "year";
+  // สามคอลัมน์นั้นเทียบเฉพาะเดือนที่จบแล้ว ป้ายหัวคอลัมน์ต้องบอกฐานให้ชัด
+  const through = closedThroughLabel(closedCount);
 
   /* จัดคนตามทีม (matrix.people เรียง KA→ODM→SV มาแล้ว)
      คีย์กลุ่มมาจาก **สองทาง** รวมกัน: ทีมที่มีคน + ทีมที่มีแถวเป้าระดับทีม —
@@ -71,7 +73,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
 
   const Row = ({ row, isTeam = false, isTotal = false }) => {
     const s = statOf(row);
-    const y = isYear ? yearSummary(row, { ytdCount, lastYearActual: lastYearActualOf(row, isTeam, isTotal) }) : null;
+    const y = isYear ? yearSummary(row, { closedCount, ytdCount, lastYearActual: lastYearActualOf(row, isTeam, isTotal) }) : null;
     const label = isTotal ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name;
     const clickable = !isTotal;
     const cellClass = (base = "") => `${base}${isTotal ? " fz-foot" : ""}`.trim();
@@ -165,7 +167,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
         {" "}· แถบ: เขียว = Actual · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
-        {isYear && ' · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้า YTD (เดือนที่ยังไม่ถึงไม่นับ)'}
+        {isYear && ` · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้าเฉพาะเดือนที่จบแล้ว (${through}) — เดือนที่กำลังวิ่งไม่นับ`}
       </p>
 
       <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
@@ -186,8 +188,8 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
               <th className="num">ขาด / เกิน{isYear ? " (ทั้งปี)" : ""}</th>
               <th>% ปิดได้{carry ? " (เทียบต้องปิด)" : ""}</th>
               {isYear && <th className="num">ต้องทำ/เดือน</th>}
-              {isYear && <th className="num">YoY (YTD)</th>}
-              {isYear && <th>สถานะ (YTD)</th>}
+              {isYear && <th className="num">YoY ({through})</th>}
+              {isYear && <th>สถานะ ({through})</th>}
             </tr>
           </thead>
           <tbody>

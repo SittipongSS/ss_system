@@ -157,32 +157,53 @@ export function statusOf(stat, { periodKind }) {
   return { key: 'pending_fc_short', label: 'รอปิด · Forecast ขาด', tone: 'amber', amount: stat.mustClose - stat.forecast };
 }
 
-/* สรุประดับ "ทั้งปี + YTD" ของแถวหนึ่ง — คู่หูของ `windowStat` ที่มองทั้งปีแทนงวด.
+/* สรุประดับ "ทั้งปี + สะสม" ของแถวหนึ่ง — คู่หูของ `windowStat` ที่มองทั้งปีแทนงวด.
    ใช้ทั้งการ์ด KPI และคอลัมน์โหมดปีของตารางติดตาม **สูตรเดียวกันที่เดียว**
    ⚠️ เคยเขียนซ้ำสองไฟล์ (PerformanceKpiCards + SummaryTable) แล้วเลขชนกันเอง:
    การ์ดกับแถวรวมท้ายตารางเป็นตัวเลขชุดเดียวกัน แต่แก้ที่เดียวอีกที่ไม่ตาม
 
-   ⚠️ ระวังนิยาม: `gap` เทียบ **Target YTD** (เป้าเฉพาะเดือนที่ผ่านมา) ไม่ใช่เป้าทั้งปี
-   ต่างจาก `windowStat().diff` ของงวดปีที่เทียบเป้าทั้ง 12 เดือน — สองเลขนี้อยู่ในตาราง
-   เดียวกันได้ แต่ต้องติดป้ายให้ต่างกัน ไม่งั้นอ่านแล้วขัดกันเอง */
-export function yearSummary(row, { ytdCount = 12, lastYearActual = null } = {}) {
+   ⭐ **สองฐานในฟังก์ชันเดียว — เลือกให้ถูกเรื่อง** (แก้ 2026-08-12)
+   · `actualYtd` = เงินที่ได้มาแล้วจริง **รวมเดือนที่กำลังวิ่ง** — เป็นข้อเท็จจริง
+     ไม่ได้เทียบกับอะไร ใช้ตอบ "ขายไปได้เท่าไรแล้ว"
+   · `gap` · `achv` · `yoy` = เทียบเป้า/ปีก่อน **เฉพาะเดือนที่จบแล้ว** (`closedCount`)
+
+   🐞 เดิมใช้ `ytdCount` (รวมเดือนที่วิ่งอยู่) ทั้งหมด ⇒ เอา **เป้าเต็มเดือน** ไปเทียบกับ
+   **ยอดครึ่งเดือน** ของเดือนเดียวกัน · ของจริงบน prod วันที่ 12 ส.ค. 2026:
+     % Achievement    96.24%  ← ที่ถูกคือ 112.7%  (78,493,913 / 69,620,000 ถึง ก.ค.)
+     YoY              +25.9%  ← ที่ถูกคือ +48.2%  (2025 ส.ค. เป็นเดือนเต็ม 2026 มี 12 วัน)
+   ทั้งสองตัวต่ำกว่าความจริงมากในช่วงต้นเดือน แล้วค่อย ๆ ไต่ขึ้นเมื่อเดือนเดินไป —
+   อ่านในที่ประชุมเช้าแล้วเข้าใจว่าทีมกำลังพลาดเป้าทั้งที่เกินเป้าอยู่
+
+   ⚠️ ระวังนิยาม: `gap` เทียบเป้า**เฉพาะเดือนที่จบแล้ว** ไม่ใช่เป้าทั้งปี — ต่างจาก
+   `windowStat().diff` ของงวดปีที่เทียบเป้าทั้ง 12 เดือน สองเลขนี้อยู่ในตารางเดียวกันได้
+   แต่ต้องติดป้ายให้ต่างกัน ไม่งั้นอ่านแล้วขัดกันเอง
+
+   ปีที่จบไปแล้ว closedCount = ytdCount = 12 ⇒ สองฐานเท่ากัน ผลลัพธ์ไม่เปลี่ยนจากเดิม */
+export function yearSummary(row, { closedCount = 12, ytdCount = closedCount, lastYearActual = null } = {}) {
   const targetYear = sumRange(row.target, 0, 11);
-  const targetYtd = sumRange(row.target, 0, ytdCount - 1);
+  const targetClosed = sumRange(row.target, 0, closedCount - 1);
+  const actualClosed = sumRange(row.actual, 0, closedCount - 1);
   const actualYtd = sumRange(row.actual, 0, ytdCount - 1);
-  const remainMonths = 12 - ytdCount;
-  const lastYtd = lastYearActual ? sumRange(lastYearActual, 0, ytdCount - 1) : 0;
+  /* เดือนที่ยังวิ่งอยู่นับเป็น "ยังเหลือ" — เดิมหาร 12 − ytdCount ทำให้เป้าที่เหลือของ
+     เดือนปัจจุบันถูกโยนไปกองเดือนถัด ๆ ไปทั้งที่เดือนนี้ยังขายได้อยู่
+     (12 ส.ค. เคยบอก "อีก 4 เดือน ๆ ละ 14.7 ล้าน" ทั้งที่ยังเหลือ ส.ค. อีก 19 วัน) */
+  const remainMonths = 12 - closedCount;
+  const lastClosed = lastYearActual ? sumRange(lastYearActual, 0, closedCount - 1) : 0;
   return {
     targetYear,
     fcTotalYear: sumRange(row.fcTotal || [], 0, 11),
     forecastYear: sumRange(row.forecast, 0, 11),
-    targetYtd,
+    closedCount,
+    targetClosed,
+    actualClosed,
     actualYtd,
-    gap: actualYtd - targetYtd,
-    achv: targetYtd > 0 ? (actualYtd / targetYtd) * 100 : null,
+    gap: actualClosed - targetClosed,
+    achv: targetClosed > 0 ? (actualClosed / targetClosed) * 100 : null,
     remainMonths,
     // เหลือ 0 เดือน = ปีจบแล้ว ไม่มี "ต่อเดือน" ให้พูดถึง (null ⇒ UI แสดง "—")
+    // หักด้วย actualYtd (เงินที่ได้มาแล้วทั้งหมด รวมเดือนที่วิ่ง) ไม่ใช่ actualClosed
     needPerMonth: remainMonths > 0 ? Math.max(0, targetYear - actualYtd) / remainMonths : null,
-    yoy: lastYtd > 0 ? (actualYtd / lastYtd - 1) * 100 : null,
+    yoy: lastClosed > 0 ? (actualClosed / lastClosed - 1) * 100 : null,
   };
 }
 
@@ -211,9 +232,13 @@ export function carryTable(row, { closedCount = 12 } = {}) {
 }
 
 // % เติบโต YoY รายเดือน — เฉพาะเดือนที่มียอดปีนี้แล้วและปีก่อนมีฐาน (>0), ที่เหลือ null.
-export function yoySeries(actual, lastYear, ytdCount = 12) {
+/* ⚠️ หยุดที่ **เดือนที่จบแล้ว** ไม่ใช่เดือนที่มียอดแล้ว — จุดของเดือนที่กำลังวิ่งคือ
+   ยอดครึ่งเดือนเทียบกับเดือนเต็มของปีก่อน ได้ค่าติดลบเกือบ −100% ทุกต้นเดือน
+   แล้วไต่ขึ้นจนสิ้นเดือน (12 ส.ค. 2026: ฿60,000 เทียบ ฿9.42M ของ ส.ค. 2025 = −99.4%)
+   เป็นหลุมที่ไม่ได้แปลว่ายอดตก แต่แปลว่าเดือนยังไม่จบ */
+export function yoySeries(actual, lastYear, closedCount = 12) {
   return Array.from({ length: 12 }, (_, i) => {
-    if (i >= ytdCount) return null;
+    if (i >= closedCount) return null;
     const base = Number(lastYear?.[i] || 0);
     if (base <= 0) return null;
     return (Number(actual[i] || 0) / base - 1) * 100;

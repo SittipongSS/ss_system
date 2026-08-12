@@ -201,7 +201,7 @@ function Panel({ icon, title, desc, legend, children }) {
   );
 }
 
-export default function PerformanceCharts({ row, lastYear, label, year, ytdCount, period }) {
+export default function PerformanceCharts({ row, lastYear, label, year, closedCount, ytdCount, period }) {
   const [tooltip, setTooltip] = useState(null);
   // พิกัด tooltip อ้างกรอบนอกตัวเดียว (ไม่ใช่ svg แต่ละตัว) — ชาร์ตล่างจะได้ไม่เพี้ยน
   const wrapRef = useRef(null);
@@ -222,10 +222,11 @@ export default function PerformanceCharts({ row, lastYear, label, year, ytdCount
     return labels.map((lb, i) => ({ label: lb, target: t[i] || 0, forecast: f[i] || 0, actual: a[i] || 0, lastYear: ly ? ly[i] : null }));
   }, [row, lastYear, period, year]);
 
+  // เดือนที่ยังวิ่งอยู่ไม่มีจุด — ยอดครึ่งเดือนเทียบเดือนเต็มของปีก่อนได้หลุมปลอม
   const yoyData = useMemo(() => {
-    const yoy = yoySeries(row.actual, lastYear, ytdCount);
+    const yoy = yoySeries(row.actual, lastYear, closedCount);
     return MONTH_LABELS.map((m, i) => ({ label: m, value: yoy[i] }));
-  }, [row, lastYear, ytdCount]);
+  }, [row, lastYear, closedCount]);
 
   const cum = useMemo(() => cumulativeSeries(row.target, row.actual, lastYear && lastYear.some((v) => Number(v || 0) > 0) ? lastYear : null, ytdCount), [row, lastYear, ytdCount]);
 
@@ -243,7 +244,7 @@ export default function PerformanceCharts({ row, lastYear, label, year, ytdCount
         <Panel
           icon={<TrendingUp size={17} aria-hidden="true" />}
           title="การเติบโต YoY (%)"
-          desc={`Actual ${year} เทียบ Actual ${year - 1} เดือนเดียวกัน (เฉพาะเดือนที่มียอดทั้งสองปี)`}
+          desc={`Actual ${year} เทียบ Actual ${year - 1} เดือนเดียวกัน (เฉพาะเดือนที่จบแล้วและมียอดทั้งสองปี)`}
         >
           <SignedBarChart data={yoyData} onHover={onHover} onLeave={onLeave} />
         </Panel>

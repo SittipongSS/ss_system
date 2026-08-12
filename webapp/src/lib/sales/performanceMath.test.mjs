@@ -134,37 +134,64 @@ test('windowStat pct is null when mustClose is zero', () => {
 
 /* ---------- yearSummary ---------- */
 
-test('yearSummary: YTD เทียบเฉพาะเดือนที่ผ่านมา แต่ ต้องทำ/เดือน หารจากเป้าทั้งปี', () => {
-  const r = row(fill(10), [12, 8, 0]);
-  const s = yearSummary(r, { ytdCount: 3, lastYearActual: fill(10) });
-  assert.equal(s.targetYear, 120);
-  assert.equal(s.targetYtd, 30);
-  assert.equal(s.actualYtd, 20);
-  assert.equal(s.gap, -10);
-  assert.equal(Math.round(s.achv * 100) / 100, 66.67);
-  assert.equal(s.remainMonths, 9);
-  assert.equal(Math.round(s.needPerMonth * 100) / 100, 11.11); // (120 − 20) / 9
-  assert.equal(Math.round(s.yoy * 10) / 10, -33.3); // 20 เทียบ 30 ของปีก่อน
+/* ⭐ เดือนที่กำลังวิ่ง: จบไปแล้ว 2 เดือน (ม.ค. 12 · ก.พ. 8) กำลังอยู่เดือนที่ 3 ซึ่งเพิ่ง
+   ได้มา 1 — เป้าเดือนละ 10 ทุกเดือน · ปีก่อนได้เดือนละ 10 เท่ากันทุกเดือน */
+const RUNNING = { closedCount: 2, ytdCount: 3 };
+
+test('⭐ เทียบเป้า/ปีก่อน นับเฉพาะเดือนที่จบแล้ว — ไม่เอาเป้าเต็มเดือนไปเทียบยอดครึ่งเดือน', () => {
+  const r = row(fill(10), [12, 8, 1]);
+  const s = yearSummary(r, { ...RUNNING, lastYearActual: fill(10) });
+
+  assert.equal(s.targetClosed, 20, 'เป้าของสองเดือนที่จบแล้ว ไม่รวมเดือนที่วิ่ง');
+  assert.equal(s.actualClosed, 20, 'ยอดของสองเดือนที่จบแล้ว');
+  assert.equal(s.actualYtd, 21, 'Actual สะสมเป็นข้อเท็จจริง รวมยอดของเดือนที่วิ่งด้วย');
+  assert.equal(s.gap, 0, 'จบแล้วพอดีเป้า — ถ้าเอาเป้าเดือนที่ 3 มานับด้วยจะกลายเป็น -9');
+  assert.equal(s.achv, 100, 'ฐานเดิมจะได้ 70% ทั้งที่ยังไม่มีเดือนไหนพลาดเป้า');
+  assert.equal(s.yoy, 0, 'ฐานเดิมจะได้ -30% เพราะเดือนที่วิ่งเทียบกับเดือนเต็มของปีก่อน');
+});
+
+test('⭐ เดือนที่ยังวิ่งนับเป็น "ยังเหลือ" — ยังขายได้อยู่ ไม่ใช่เดือนที่หมดสิทธิ์', () => {
+  const s = yearSummary(row(fill(10), [12, 8, 1]), RUNNING);
+  assert.equal(s.remainMonths, 10, '12 − เดือนที่จบแล้ว (เดิมหักเดือนที่วิ่งออกด้วยได้ 9)');
+  // หักเงินที่ได้มาแล้วทั้งหมด (รวมเดือนที่วิ่ง) ออกจากเป้าทั้งปี แล้วเฉลี่ยลงเดือนที่เหลือ
+  assert.equal(Math.round(s.needPerMonth * 100) / 100, 9.9); // (120 − 21) / 10
 });
 
 test('⭐ gap ของ yearSummary ไม่ใช่ diff ของงวดปี — คนละฐาน ห้ามเอามาแทนกัน', () => {
   const r = row(fill(10), [12, 8, 0]);
   // งวด "ทั้งปี": Actual ทั้งปี − เป้าทั้ง 12 เดือน = เหลืออีกเท่าไรถึงปิดปี
   assert.equal(windowStat(r, { startIdx: 0, endIdx: 11, carryOn: false, closedCount: 2 }).diff, -100);
-  // YTD: Actual − เป้าเฉพาะเดือนที่ผ่านมา = ตอนนี้ตามแผนอยู่ไหม
-  assert.equal(yearSummary(r, { ytdCount: 3 }).gap, -10);
+  // สะสม: Actual − เป้าเฉพาะเดือนที่จบแล้ว = ตอนนี้ตามแผนอยู่ไหม
+  assert.equal(yearSummary(r, { closedCount: 2, ytdCount: 3 }).gap, 0);
 });
 
 test('yearSummary: เกินเป้าทั้งปีแล้ว ต้องทำ/เดือน = 0 ไม่ใช่ค่าติดลบ', () => {
-  const s = yearSummary(row(fill(10), [130]), { ytdCount: 3 });
+  const s = yearSummary(row(fill(10), [130]), { closedCount: 1, ytdCount: 2 });
   assert.equal(s.needPerMonth, 0);
 });
 
 test('yearSummary: ปีจบแล้วไม่มี "ต่อเดือน" · ไม่มีเป้า/ไม่มีฐานปีก่อน = null ไม่ใช่ 0', () => {
-  assert.equal(yearSummary(row(fill(10), fill(10)), { ytdCount: 12 }).needPerMonth, null);
-  const blank = yearSummary(row(fill(0), fill(5)), { ytdCount: 6, lastYearActual: fill(0) });
+  assert.equal(yearSummary(row(fill(10), fill(10)), { closedCount: 12, ytdCount: 12 }).needPerMonth, null);
+  const blank = yearSummary(row(fill(0), fill(5)), { closedCount: 6, ytdCount: 6, lastYearActual: fill(0) });
   assert.equal(blank.achv, null); // เป้า 0 → หารไม่ได้
   assert.equal(blank.yoy, null); // ปีก่อนไม่มียอด → ไม่มี % เติบโต
+});
+
+test('ต้นปีที่ยังไม่มีเดือนไหนจบ — เทียบไม่ได้ ต้องคืน null ไม่ใช่ 0%', () => {
+  const s = yearSummary(row(fill(10), [3]), { closedCount: 0, ytdCount: 1, lastYearActual: fill(10) });
+  assert.equal(s.achv, null);
+  assert.equal(s.yoy, null);
+  assert.equal(s.gap, 0);
+  assert.equal(s.actualYtd, 3, 'ยอดที่ขายได้จริงยังต้องรายงาน');
+  assert.equal(s.remainMonths, 12);
+});
+
+test('ปีที่จบไปแล้ว สองฐานเท่ากัน ผลลัพธ์ไม่เปลี่ยนจากของเดิม', () => {
+  const r = row(fill(10), fill(9));
+  const s = yearSummary(r, { closedCount: 12, ytdCount: 12, lastYearActual: fill(6) });
+  assert.equal(s.actualClosed, s.actualYtd);
+  assert.equal(s.achv, 90);
+  assert.equal(Math.round(s.yoy * 10) / 10, 50);
 });
 
 /* ---------- statusOf — ทุก branch ---------- */
@@ -240,12 +267,20 @@ test('carryTable tracks per-month carry and cumulative, nulls unfinished months'
 
 /* ---------- yoy / cumulative ---------- */
 
-test('yoySeries nulls months without base or beyond ytd', () => {
+test('yoySeries nulls months without base or beyond closed months', () => {
   const yoy = yoySeries([12, 20, 30, ...fill(0).slice(3)], [10, 0, 20, ...fill(0).slice(3)], 3);
   assert.equal(Math.round(yoy[0]), 20); // 12 vs 10 = +20%
   assert.equal(yoy[1], null); // ฐานปีก่อน 0
   assert.equal(Math.round(yoy[2]), 50);
-  assert.equal(yoy[3], null); // เกิน YTD
+  assert.equal(yoy[3], null); // เกินเดือนที่จบแล้ว
+});
+
+test('⭐ เดือนที่กำลังวิ่งต้องไม่มีจุดบนกราฟ YoY — ยอดครึ่งเดือนเทียบเดือนเต็มได้หลุมปลอม', () => {
+  // ม.ค.–ก.พ. จบแล้ว · มี.ค. เพิ่งเริ่ม ได้มา 1 จากที่ปีก่อนทั้งเดือนได้ 100
+  const yoy = yoySeries([100, 100, 1, ...fill(0).slice(3)], fill(100), 2);
+  assert.equal(yoy[0], 0);
+  assert.equal(yoy[1], 0);
+  assert.equal(yoy[2], null, 'ฐานเดิมจะพล็อต -99% ทั้งที่แค่เดือนยังไม่จบ');
 });
 
 test('cumulativeSeries: December cumulative equals annual total, actual stops at ytd', () => {
