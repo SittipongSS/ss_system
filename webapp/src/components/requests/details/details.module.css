@@ -1,15 +1,40 @@
 /* ── เนื้อของหน้ารายละเอียดรายหัวข้อ (P3b) ──────────────────────────────
    ⚠️ ไฟล์เดียวสำหรับทุกหัวข้อโดยเจตนา — โครงการ์ดต้องเหมือนกันทุกหัวข้อ
    สิ่งที่ต่างคือ *เนื้อ* ไม่ใช่กรอบ (มติเดิม R-3: "หน้าเดียว เนื้อสลับตามหัวข้อ") */
+/* ⭐ แถวกางได้ (IS-26080021) — ยุบแล้วสูงเท่าหัวแถว ไม่ใช่การ์ดเต็มก้อนที่มีกล่อง
+   ไฟล์แนบกางค้างไว้แม้ยังไม่มีไฟล์ (อาการที่ผู้ใช้ส่งภาพมา) */
 .rowCard {
-  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-bottom: var(--space-2-5);
+  margin-bottom: var(--space-2);
   background: var(--panel);
+  overflow: hidden;
 }
-.rowHead { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
-.rowTitle { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* กางแล้วขอบเข้มขึ้นนิดเดียว — พอให้เห็นว่าแถวไหนเปิดอยู่ตอนกางหลายแถวพร้อมกัน
+   ⚠️ ไม่เปลี่ยนพื้นหลังการ์ด: กางสามแถวแล้วหน้าจะกลายเป็นบล็อกสีทับกันทั้งหน้า */
+.rowCard[data-open] { border-color: var(--border-strong); }
+
+/* หัวแถวเป็นปุ่มเต็มความกว้าง — พื้นที่กดใหญ่ และคนคาดหวังว่ากดที่ชื่อแล้วต้องกาง */
+.rowToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rowToggle:hover { background: var(--panel-2); }
+.rowToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rowChevron { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-fast); }
+.rowCard[data-open] .rowChevron { transform: rotate(90deg); }
+
+.rowBody { padding: 0 var(--space-3) var(--space-3); }
+.rowTitle { display: flex; min-width: 0; flex: 1; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .rowSpec { margin-top: var(--space-1-5); font-size: var(--fs-7); color: var(--text-2); }
 .rowAttach { margin-top: var(--space-3); }
 /* คำชี้ทางใต้หัวข้อไฟล์ของแถว — สายเอกสารใช้บอกว่า "แนบผ่านปุ่มส่งเอกสาร" (ม-90) */
