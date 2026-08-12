@@ -12,11 +12,12 @@ import assert from 'node:assert/strict';
 import { linkProductToRegistry, productFormulaSnapshot } from './scentFormulaAdmin.js';
 
 const FORMULAS = [
-  { id: 'FML-1', code: 'F-2569-014', name: 'มิดไนท์บลูม v2', formulaDate: '2026-03-01' },
-  { id: 'FML-2', code: null, name: 'ร่างยังไม่มีรหัส', formulaDate: null },
+  { id: 'FML-1', code: 'F-2569-014', name: 'มิดไนท์บลูม v2', formulaDate: '2026-03-01', scentId: 'SCT-1' },
+  { id: 'FML-2', code: null, name: 'ร่างยังไม่มีรหัส', formulaDate: null, scentId: null },
 ];
 
-function fakeSupabase({ onUpdate } = {}) {
+// `holders` = แถวสินค้าที่ถือสูตรอยู่ (ด่าน 1 สูตร : 1 FG อ่านจาก products)
+function fakeSupabase({ onUpdate, holders = [] } = {}) {
   return {
     from(table) {
       return {
@@ -29,6 +30,10 @@ function fakeSupabase({ onUpdate } = {}) {
               return Promise.resolve({ data: rows.find((r) => r.id === chain._id) || null, error: null });
             },
             single() { return Promise.resolve({ data: { id: chain._id }, error: null }); },
+            // ด่าน 1:1 await ทั้ง chain ตรง ๆ — ต้อง thenable
+            then(resolve) {
+              return resolve({ data: table === 'products' ? holders : [], error: null });
+            },
           };
           return chain;
         },
@@ -43,14 +48,28 @@ function fakeSupabase({ onUpdate } = {}) {
   };
 }
 
-test('ชื่อ/รหัส/วันที่ ดึงจากทะเบียน ไม่ใช่จากที่ผู้ใช้พิมพ์', async () => {
+test('ชื่อ/รหัส/วันที่/กลิ่น ดึงจากทะเบียน ไม่ใช่จากที่ผู้ใช้พิมพ์', async () => {
   const snap = await productFormulaSnapshot(fakeSupabase(), 'FML-1');
   assert.deepEqual(snap, {
     formulaId: 'FML-1',
     formulaCode: 'F-2569-014',
     formulaName: 'มิดไนท์บลูม v2',
     formulaDate: '2026-03-01',
+    // กลิ่นของสินค้า = กลิ่นของสูตรเสมอ (FG → สูตร → กลิ่น)
+    scentId: 'SCT-1',
   });
+});
+
+test('1 สูตร : 1 FG — สูตรที่ FG อื่นถือแล้วเลือกซ้ำไม่ได้ แต่เจ้าของเดิมบันทึกซ้ำได้', async () => {
+  const holders = [{ id: 'PRD-1', fgCode: 'FG-100-01-001-0001' }];
+  // FG อื่นมาขอใช้ → โดนตีกลับพร้อมบอกว่าใครถืออยู่
+  await assert.rejects(
+    () => productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-2' }),
+    /FG-100-01-001-0001/,
+  );
+  // เจ้าของเดิมกดบันทึกฟอร์มแก้ → ผ่าน (ไม่งั้นแก้ชื่อสินค้าเฉย ๆ ก็บันทึกไม่ได้)
+  const snap = await productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-1' });
+  assert.equal(snap.formulaId, 'FML-1');
 });
 
 test('สูตรร่างที่ยังไม่มีรหัสก็ผูกได้ — ช่องที่ว่างเป็น null ไม่ใช่ ""', async () => {
