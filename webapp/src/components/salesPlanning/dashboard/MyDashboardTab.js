@@ -19,6 +19,7 @@ import {
   Target, TrendingUp, Undo2,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
+import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
@@ -42,7 +43,7 @@ const ACTIVITY_KIND_LABEL = {
 
 const FEED_PAGE = 8;
 
-export default function MyDashboardTab({ month }) {
+export default function MyDashboardTab({ month, allMonths = false }) {
   const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -56,7 +57,11 @@ export default function MyDashboardTab({ month }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/sales-planning/my-dashboard?month=${encodeURIComponent(month)}`);
+      /* ติ๊ก "ทุกเดือน" ⇒ เติม `year` ให้ route ขยายขอบเป็นทั้งปีของเดือนนั้น
+         (ยังส่ง `month` ไปด้วยเสมอ — route ใช้เป็นค่าถอยและใช้บอกงวดกลับมา) */
+      const query = new URLSearchParams({ month });
+      if (allMonths) query.set("year", yearOfMonth(month) || "");
+      const response = await fetch(`/api/sales-planning/my-dashboard?${query.toString()}`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "ไม่สามารถโหลดแดชบอร์ดส่วนตัวได้");
       setData(payload);
@@ -65,11 +70,11 @@ export default function MyDashboardTab({ month }) {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, allMonths]);
 
   useEffect(() => { load(); }, [load]);
-  // เปลี่ยนตัวกรองหรือเดือน = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
-  useEffect(() => { setVisible(FEED_PAGE); }, [filter, month]);
+  // เปลี่ยนตัวกรองหรืองวด = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
+  useEffect(() => { setVisible(FEED_PAGE); }, [filter, month, allMonths]);
 
   const today = businessDate();
   const handoff = data?.handoff || {};
@@ -110,6 +115,13 @@ export default function MyDashboardTab({ month }) {
   const actual = Number(data?.wonValue || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
   const byForecast = data?.byForecast || [];
+  /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
+     ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
+     เพราะเลือกเดือนย้อนหลังได้อยู่แล้ว (ของเดิมเขียน "เดือนนี้" ทุกที่ = โกหกทั้งคู่) */
+  const scopeLabel = periodScopeLabel(month, allMonths);
+  // ป้ายบนการ์ด KPI ต้องสั้น — `.ui-metric small` ตัดบรรทัดได้ และการ์ดในแถบสูงเท่ากันหมด
+  // ⇒ ป้ายยาวใบเดียวดันทั้งแถบสูงตาม ("เป้า ส.ค. 2026" ไม่ใช่ "เป้าเดือน ส.ค. 2026")
+  const scopeShort = periodScopeLabel(month, allMonths, { short: true });
 
   if (error) return <StatusNotice tone="error" title="โหลดแดชบอร์ดไม่สำเร็จ">{error}</StatusNotice>;
 
@@ -140,7 +152,7 @@ export default function MyDashboardTab({ month }) {
             active={kind === "document"} onClick={() => setKind(kind === "document" ? null : "document")}
           />
           <Metric
-            icon={<Target />} label="เป้าเดือนนี้"
+            icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
             value={hasTarget ? fmtPercent(targetPct, 0) : "—"}
             note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
@@ -250,13 +262,13 @@ export default function MyDashboardTab({ month }) {
       {!loading && (
         <WorkspaceSection
           icon={<TrendingUp size={17} />}
-          title="ตัวเลขของฉันเดือนนี้"
+          title={`ตัวเลขของฉัน — ${scopeLabel}`}
           subtitle="เป้า · ยอดปิดได้ · ไปป์ไลน์ที่ยังเปิดอยู่"
           actions={(
             <div className="flex gap-2 items-center flex-wrap">
               {data && !hasTarget && canSetTarget && (
                 <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
-                  ตั้งเป้าเดือนนี้
+                  ตั้งเป้า
                 </Button>
               )}
               <Button
@@ -274,7 +286,7 @@ export default function MyDashboardTab({ month }) {
             <p>
               ยอดปิดได้
               <strong>{fmtMoney(actual)}</strong>
-              <span>{hasTarget ? `จากเป้า ${fmtMoney(target)}` : "ยังไม่ตั้งเป้าเดือนนี้"}</span>
+              <span>{hasTarget ? `จากเป้า ${fmtMoney(target)}` : `ยังไม่ตั้งเป้า${scopeLabel}`}</span>
             </p>
             <p>
               ดีลที่เปิดอยู่

@@ -125,6 +125,15 @@ export function yearOfMonth(value) {
   return isMonthValue(value) ? String(value).slice(0, 4) : null;
 }
 
+/** ป้ายบอกงวดที่กำลังดู — "เดือน ส.ค. 2026" หรือ "ทั้งปี 2026" เมื่อติ๊ก "ทุกเดือน"
+ *  ⚠️ ทุกจอที่มีติ๊ก "ทุกเดือน" ต้องพิมพ์งวดกำกับตัวเลขเสมอ — ตัวติ๊กอยู่บนหัวหน้า
+ *  ส่วนตัวเลขอยู่กลางหน้า เลื่อนจอลงมาแล้วไม่มีอะไรบอกว่ากำลังดูเดือนเดียวหรือทั้งปี */
+export function periodScopeLabel(month, allMonths, { short = false } = {}) {
+  if (!allMonths) return short ? formatMonthLabel(month) : `เดือน ${formatMonthLabel(month)}`;
+  const year = yearOfMonth(month) || String(month || "").slice(0, 4);
+  return `ทั้งปี ${displayYear(year)}`;
+}
+
 /** ขอบเขตงวดเดือนของทั้งปี — ใช้เทียบกับคอลัมน์ที่เก็บเป็น YYYY-MM */
 export function monthRangeOfYear(year) {
   if (!isYearValue(year)) return null;
