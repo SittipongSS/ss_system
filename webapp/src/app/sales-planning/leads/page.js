@@ -29,11 +29,14 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning"
 import { brandThList } from "@/lib/master/brands";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
+import PendingFiles from "@/components/ui/PendingFiles";
+import { postUpdateWithFiles } from "@/lib/master/updatePost";
 import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES,
+  leadBudgetText, LEAD_STATUS_LABELS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
 } from "@/lib/sales/leads";
@@ -56,7 +59,7 @@ const NO_ASSIGNEE = "__no_assignee__";
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
   contactChannel: "", phone: "", serviceInterest: "diffuser", serviceDetail: "",
-  budget: "", details: "",
+  budget: "", budgetMax: "", details: "",
 };
 
 /* ป้ายสถานะ/ช่องทาง — ความกว้างและสีอยู่ใน page.module.css ทั้งหมด
@@ -165,6 +168,8 @@ export default function LeadsPage() {
   // modals
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
+  // ไฟล์อ้างอิงที่แนบไว้ตอนกรอกลีดใหม่ — ยังไม่มี id ให้อัป จึงถือไว้จนลีดเกิด
+  const [pendingFiles, setPendingFiles] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -307,7 +312,31 @@ export default function LeadsPage() {
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกลีดไม่สำเร็จ");
+      /* ⭐ ไฟล์ที่แนบไว้ตอนกรอก อัปหลังลีดเกิด (IS-26080014) — ก่อนหน้านี้ต้องบันทึกลีด
+         ให้เสร็จ เปิดหน้ารายละเอียด แล้วค่อยแปะรูปในเธรด ⇒ คนกรอกลีดจากแชทลูกค้า
+         (ทีม Marketing) มีรูปอ้างอิงอยู่ในมือตั้งแต่ตอนนั้นแต่ไม่มีที่ให้วาง
+         ⚠️ ลงเธรด ไม่ใช่ตาราง attachments — หน้าลีดไม่มีแผงเอกสารแนบ ไฟล์ที่ลง
+         ตารางนั้นจะไม่โผล่ที่ไหนเลย (ทะเบียน updateAccess ตั้ง attachments: true
+         ให้ลีดไว้แล้วด้วยเหตุผลเดียวกัน: "สกรีนช็อตแชท/นามบัตร = หลักฐานต้นทาง")
+         ⚠️ ลีดถูกสร้างสำเร็จไปแล้ว ณ จุดนี้ — ไฟล์พลาดต้องไม่ทำให้ทั้งรายการล้ม
+         แค่บอกให้ไปแนบต่อที่หน้ารายละเอียด */
+      const created = await res.json().catch(() => null);
+      let fileError = "";
+      if (!form.id && pendingFiles.length && created?.id) {
+        try {
+          await postUpdateWithFiles({
+            entityType: "lead",
+            entityId: created.id,
+            body: "ไฟล์อ้างอิงจากตอนรับลีด",
+            files: pendingFiles,
+          });
+        } catch (upErr) {
+          fileError = `บันทึกลีดแล้ว แต่แนบไฟล์ไม่สำเร็จ (${upErr.message}) — แนบต่อได้ที่หน้ารายละเอียดลีด`;
+        }
+      }
+      setPendingFiles([]);
       setFormOpen(false);
+      if (fileError) setError(fileError);
       await load();
     } catch (e2) {
       setError(e2.message || "บันทึกลีดไม่สำเร็จ");
@@ -406,7 +435,7 @@ export default function LeadsPage() {
         <>
           <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
           {canCreate && (
-            <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setFormOpen(true); }}>
+            <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setPendingFiles([]); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่
             </button>
           )}
@@ -556,7 +585,7 @@ export default function LeadsPage() {
                       {SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest}
                       {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{lead.serviceDetail}</span>}
                     </td>
-                    <td className="num mono">{lead.budget != null ? fmtMoney(lead.budget) : "-"}</td>
+                    <td className="num mono">{leadBudgetText(lead, fmtMoney, "-")}</td>
                     <td>
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : "-"}
                       {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
@@ -583,7 +612,7 @@ export default function LeadsPage() {
                         onTransition={(actionId, values) => runTransition(lead, actionId, values)}
                         canEdit={canEditRow(lead)}
                         canDelete={canDeleteRow(lead)}
-                        onEdit={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}
+                        onEdit={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "", details: lead.details || "" }); setPendingFiles([]); setFormOpen(true); }}
                         onDelete={() => deleteLead(lead)}
                       />
                     </td>
@@ -628,6 +657,18 @@ export default function LeadsPage() {
       >
         <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"}>
           <LeadFormFields form={form} onPatch={(patch) => setForm((f) => ({ ...f, ...patch }))} disabled={busy === "save"} />
+          {/* ⭐ แนบไฟล์ได้ตั้งแต่ตอนรับลีด (IS-26080014) — โหมดสร้างเท่านั้น
+              แพตเทิร์นเดียวกับโมดัลงาน: สร้าง = ถือไฟล์ไว้อัปหลังบันทึก ·
+              แก้ = ไปแนบที่เธรดบนหน้ารายละเอียด ซึ่งลบ/ตอบกลับ/เห็นว่าใครแนบได้ */}
+          {!form.id && (
+            <div className="form-group col-span-2">
+              <span className="toolbar-label">ไฟล์อ้างอิงจากลูกค้า <span className="pending-files-note">(ไม่บังคับ · เช่น รูปบรรจุภัณฑ์ · สินค้าอ้างอิง · สกรีนช็อตแชท)</span></span>
+              <PendingFiles
+                files={pendingFiles} onChange={setPendingFiles}
+                disabled={busy === "save"} onOversize={setError}
+              />
+            </div>
+          )}
         </form>
       </Modal>
 
