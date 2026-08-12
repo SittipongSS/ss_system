@@ -1,7 +1,7 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
 // GET /api/nav/counts → { requests?, tasks?, rdRequests?, leads?, quotations?,
 //                         salesOrders?, projectCloses?, scents?, formulas?, customers?,
-//                         visits?, mgmtTasks? }
+//                         visits?, mgmtTasks?, taxRegistrations?, taxFilings? }
 //
 // คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็น **ไม่ถูกส่งมาเลย** (ไม่ใช่ส่ง 0) — เมนูที่ถูกกรองทิ้ง
 // อยู่แล้วไม่ต้องมีตัวเลข และเลข 0 ที่หลุดมาจะกลายเป็นป้ายเปล่าบนเมนูของคนอื่น
@@ -33,6 +33,7 @@ import { listTasks } from '@/lib/mgmt/repo';
 import { isMyOpenTask } from '@/lib/mgmt/constants';
 import { businessDate } from '@/lib/businessDate';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
+import { deptOf, ownedStages } from '@/lib/excise/workflow';
 import {
   LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount, pruneZeroCounts, requestsTodoCount,
 } from '@/lib/nav/navCounts';
@@ -204,6 +205,25 @@ export const GET = withUser(async ({ user, supabase }) => {
       const tasks = await listTasks(supabase, { year });
       return tasks.filter((task) => isMyOpenTask(task, user.id)).length;
     }));
+  }
+
+  /* ── เฟส 3: ภาษีสรรพสามิต ───────────────────────────────────────────────
+     โมดูลนี้ประกาศ **เจ้าของขั้น** ไว้ใน TRACKS อยู่แล้ว (SA / LG) ⇒ "รอฉันลงมือ"
+     = แถวที่อยู่ขั้นซึ่งเลนของฉันเป็นเจ้าของและยังไม่จบ · ไม่ต้องเดา ไม่ต้องมีลิสต์ที่สอง
+     ⚠️ แอดมิน (AD) ได้ลิสต์ว่าง = ไม่มีป้าย ตามที่โมดูลประกาศเองว่า "เห็นสองเลน
+     แต่ไม่เป็นเจ้าของอะไร" · นับด้วย head:true ไม่ดึงแถวเลย */
+  const taxDept = deptOf(user.role);
+  const taxCount = async (table, trackKey) => {
+    const stages = ownedStages(trackKey, taxDept);
+    if (!stages.length) return 0;
+    const { count } = await supabase
+      .from(table).select('id', { count: 'exact', head: true }).in('status', stages);
+    return count || 0;
+  };
+
+  if (can(user.role, 'history:view')) {
+    jobs.push(attempt('taxRegistrations', () => taxCount('excise_registrations', 'registration')));
+    jobs.push(attempt('taxFilings', () => taxCount('orders', 'payment')));
   }
 
   await Promise.all(jobs);
