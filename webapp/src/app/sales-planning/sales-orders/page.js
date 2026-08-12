@@ -70,7 +70,9 @@ export default function SalesOrdersPage() {
     return rows.filter((row) => {
       if (waitingOnMeOnly && !row._waitingOnMe) return false;
       if (status !== "all" && row.status !== status) return false;
-      return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber]
+      // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
+      // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
+      return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
   }, [query, rows, status, waitingOnMeOnly]);
@@ -111,7 +113,7 @@ export default function SalesOrdersPage() {
 
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar">
-            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล" /></div>
+            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
             {waitingOnMeOnly && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
@@ -123,7 +125,7 @@ export default function SalesOrdersPage() {
           </div>
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
             <TableScroll surface="embedded"><table className="w-full text-sm">
-              <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>วันที่ SO</th><th>กำหนดชำระ</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
+              <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>เอกสารอ้างอิง</th><th>วันที่ SO</th><th>กำหนดชำระ</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
               <tbody>
                 {pageRows.map((row) => (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
@@ -135,6 +137,13 @@ export default function SalesOrdersPage() {
                       <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span>
                     </td>
                     <td><Link prefetch={false} href={`/sa/quotations/${row.quotationId}`} className="linklike mono">{row.quotation?.quoteNumber || "-"}</Link></td>
+                    {/* เอกสารฝั่งลูกค้า (PO/สัญญา) — วางติดกับอ้างอิง QT เพราะเป็นเรื่อง
+                        เดียวกันคือ "ใบนี้ชี้ไปเอกสารไหน" ต่างกันแค่ของเราหรือของลูกค้า
+                        ⚠️ ยาวได้ 200 ตัวอักษร ⇒ ตัดด้วย ellipsis ไม่ให้ดันคอลัมน์อื่นหลุดขอบ
+                        (บทเรียนจาก IS-26080004) และเก็บข้อความเต็มไว้ใน title */}
+                    <td className="mono" title={row.referenceDoc || undefined}>
+                      <span className="cell-ellipsis">{row.referenceDoc || "-"}</span>
+                    </td>
                     <td>{fmtDate(row.orderDate)}</td>
                     <td>{fmtDate(row.paymentDueDate)}</td>
                     {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า" —
@@ -145,7 +154,7 @@ export default function SalesOrdersPage() {
                     <td>{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                   </DetailRow>
                 ))}
-                {!filtered.length && !loading && <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
+                {!filtered.length && !loading && <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
               </tbody>
             </table></TableScroll>
           </div>
