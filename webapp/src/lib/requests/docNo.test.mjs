@@ -1,81 +1,76 @@
-// เลขที่คำร้อง — ออกใหม่เฉพาะใบที่ยังไม่เคยส่ง
+// เลขที่คำร้อง — ออกพร้อมบันทึกแถวในทรานแซกชันเดียว (mig 0243)
 //
 // ⚠️ เทสต์ชุดนี้เกิดจากบั๊กจริง (IS-26080010): ใบที่ถูกตีกลับส่งซ้ำไม่ได้เพราะ
-// เส้นทางกดส่งออกเลขใหม่ทุกครั้ง แล้วชน trigger ที่ห้ามแก้ `docNo`
+// เส้นทางกดส่งออกเลขใหม่ทุกครั้ง แล้วชน trigger ที่ห้ามแก้ `docNo` · ระหว่างทาง
+// ตัวนับ RQ เดือน 2608 วิ่งไปถึง 37 ทั้งที่เลขที่ออกจริงสูงสุดคือ RQ-26080029
+//
+// ⚠️ การตัดสิน "ใบนี้มีเลขแล้วหรือยัง" ย้ายไปอยู่ใน SQL ใต้ `SELECT … FOR UPDATE` แล้ว
+// (สองคนกดส่งพร้อมกันต้องไม่ได้คนละเลขบนใบเดียวกัน — เช็คฝั่ง JS ทำแบบนั้นไม่ได้)
+// ฝั่งนี้จึงเหลือหน้าที่เดียว: ส่งชิ้นส่วนของเลขให้ถูก และ **ไม่ยัด docNo ไปเอง**
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureRequestDocNo, generateRequestDocNo } from './docNo.js';
+import { assignRequestDocNo, insertRequestWithDocNo, requestDocNoParts } from './docNo.js';
 
-// supabase ปลอมที่นับว่ามีการยิง RPC กี่ครั้ง — จุดสำคัญของบั๊กนี้คือ "ยิงหรือไม่ยิง"
-// ไม่ใช่แค่ค่าที่คืน (RPC เพิ่มตัวนับแบบ atomic ⇒ ยิงเปล่า = เลขหายจากระบบหนึ่งเลข)
-function fakeSupabase(nextNo = 7) {
+function fakeSupabase() {
   const calls = [];
   return {
     calls,
     async rpc(fn, args) {
       calls.push({ fn, args });
-      return { data: nextNo, error: null };
+      return { data: { docNo: 'RQ-26080007' }, error: null };
     },
   };
 }
 
 const AUG = new Date('2026-08-11T09:00:00Z');
 
-test('ใบใหม่ที่ยังไม่มีเลข — ออกเลขใหม่ตาม scope ของหัวข้อ', async () => {
-  const supabase = fakeSupabase(7);
-  const docNo = await ensureRequestDocNo(supabase, { kind: 'info', dept: 'RD' }, AUG);
-
-  assert.equal(docNo, 'RQ-26080007');
-  assert.equal(supabase.calls.length, 1, 'ต้องยิง next_entity_number หนึ่งครั้ง');
-  assert.equal(supabase.calls[0].fn, 'next_entity_number');
+test('scope มาจากหัวข้อ ไม่ใช่ฝ่ายล้วน — หัวข้อที่ไม่มี scope ตกไปที่ฝ่าย (PC ⇒ PM · ที่เหลือ ⇒ RM)', () => {
+  assert.deepEqual(requestDocNoParts('info', 'RD', AUG), {
+    scope: 'RQ', month: '2608', prefix: 'RQ-2608', width: 4,
+  });
+  assert.equal(requestDocNoParts('ไม่รู้จัก', 'PC', AUG).prefix, 'PM-2608');
+  assert.equal(requestDocNoParts('ไม่รู้จัก', 'RD', AUG).prefix, 'RM-2608');
 });
 
-test('ใบที่ถูกตีกลับ (draft ที่มีเลขแล้ว) — ใช้เลขเดิม ไม่ยิงตัวนับซ้ำ', async () => {
-  const supabase = fakeSupabase(99);
-  const bounced = {
-    kind: 'info', dept: 'RD', status: 'draft',
-    docNo: 'RQ-26080029',
-    submittedAt: '2026-08-10T12:23:41.938+00:00',
-    bouncedAt: '2026-08-11T08:03:29.826+00:00',
-  };
+test('กดส่ง: ยิงฟังก์ชันเดียวพร้อม patch — ไม่จองเลขแยกก่อน', async () => {
+  const supabase = fakeSupabase();
+  const before = { id: 'DR-1', kind: 'info', dept: 'RD' };
+  const patch = { status: 'pending', submittedAt: '2026-08-11T09:00:00.000Z' };
 
-  const docNo = await ensureRequestDocNo(supabase, bounced, AUG);
+  const { data } = await assignRequestDocNo(supabase, before, patch, AUG);
 
-  // เลขเปลี่ยน = UPDATE ชน `dept_request_doc_no_immutable` ⇒ กดส่งไม่ได้ตลอดกาล
-  assert.equal(docNo, 'RQ-26080029');
-  // ยิงตัวนับ = เลขถูกกินทิ้งทุกครั้งที่ผู้ใช้กดส่งซ้ำ (ของจริง: RQ วิ่งไป 37 ทั้งที่ออกจริงถึง 29)
-  assert.equal(supabase.calls.length, 0, 'ห้ามยิง next_entity_number ซ้ำ');
+  // ยิงครั้งเดียว = ไม่มีจังหวะที่เลขถูก commit ไปแล้วแต่แถวยังไม่ถูกเขียน
+  assert.equal(supabase.calls.length, 1);
+  assert.deepEqual(supabase.calls[0], {
+    fn: 'assign_dept_request_doc_no',
+    args: {
+      p_id: 'DR-1', p_scope: 'RQ', p_month: '2608', p_prefix: 'RQ-2608', p_width: 4, p_patch: patch,
+    },
+  });
+  // เลขจริงมาจากฟังก์ชัน ไม่ใช่จากที่ฝั่ง JS เดาไว้
+  assert.equal(data.docNo, 'RQ-26080007');
+  // patch ต้องไม่มีคีย์ docNo ติดไป — ใบที่ถูกตีกลับยังถือเลขเดิม การส่ง docNo ไปเอง
+  // คือทางเดียวที่จะไปชน dept_request_doc_no_immutable อีก
+  assert.equal('docNo' in supabase.calls[0].args.p_patch, false);
 });
 
-test('ตีกลับแล้วส่งซ้ำหลายรอบ ก็ยังเป็นใบเดิมเลขเดิม', async () => {
-  const supabase = fakeSupabase(50);
-  const row = { kind: 'scent_dev', dept: 'RD', docNo: 'SB-26080003' };
+test('เปิดแล้วส่งในจังหวะเดียว: แถวที่ส่งไปต้องไม่มีคีย์ docNo', async () => {
+  const supabase = fakeSupabase();
+  const row = { id: 'DR-2', kind: 'material_eta', dept: 'PC', status: 'pending' };
 
-  const first = await ensureRequestDocNo(supabase, row, AUG);
-  const second = await ensureRequestDocNo(supabase, row, AUG);
+  await insertRequestWithDocNo(supabase, row, AUG);
 
-  assert.equal(first, 'SB-26080003');
-  assert.equal(second, 'SB-26080003');
-  assert.equal(supabase.calls.length, 0);
+  assert.equal(supabase.calls[0].fn, 'create_dept_request_with_doc_no');
+  // material_eta ส่งเข้าฝ่าย PC แต่ scope มาจาก **หัวข้อ** จึงเป็น RQ ไม่ใช่ PM
+  // (PM/RM เป็น fallback ของหัวข้อที่ไม่ได้ประกาศ scope ไว้เท่านั้น)
+  assert.equal(supabase.calls[0].args.p_prefix, 'RQ-2608');
+  assert.equal(supabase.calls[0].args.p_width, 4);
+  assert.equal('docNo' in supabase.calls[0].args.p_row, false);
 });
 
-test('หัวข้อที่ไม่มี scope ของตัวเอง ตกไปที่ฝ่าย (PC ⇒ PM · ที่เหลือ ⇒ RM)', async () => {
-  assert.equal(
-    await generateRequestDocNo(fakeSupabase(3), 'ไม่รู้จัก', 'PC', AUG),
-    'PM-26080003',
-  );
-  assert.equal(
-    await generateRequestDocNo(fakeSupabase(3), 'ไม่รู้จัก', 'RD', AUG),
-    'RM-26080003',
-  );
-});
-
-test('RPC พัง = โยนข้อความไทย ไม่ปล่อยข้อความดิบของ postgres', async () => {
-  const supabase = {
-    async rpc() { return { data: null, error: { message: 'permission denied' } }; },
-  };
-  await assert.rejects(
-    () => ensureRequestDocNo(supabase, { kind: 'info', dept: 'RD' }, AUG),
-    /ออกเลขที่คำร้องไม่สำเร็จ/,
-  );
+test('error ส่งกลับตามเดิม ไม่กลืน — ผู้เรียกยังแปลเป็น HTTP status เองได้', async () => {
+  const supabase = { async rpc() { return { data: null, error: { message: 'permission denied' } }; } };
+  const { data, error } = await assignRequestDocNo(supabase, { id: 'DR-3', kind: 'info', dept: 'RD' }, {}, AUG);
+  assert.equal(data, null);
+  assert.equal(error.message, 'permission denied');
 });

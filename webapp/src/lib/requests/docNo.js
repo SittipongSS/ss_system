@@ -5,16 +5,17 @@
 import { businessMonthKey } from '@/lib/businessDate';
 import { requestDocScope } from '@/lib/master/requestTypes';
 
-export async function generateRequestDocNo(supabase, kind, dept, now = new Date()) {
+export const REQUEST_RUNNING_WIDTH = 4;
+
+// ชิ้นส่วนของเลขที่สำหรับส่งให้ฟังก์ชัน SQL — ที่นี่ยังเป็นที่เดียวที่รู้รูปแบบเลข
+export function requestDocNoParts(kind, dept, now = new Date()) {
   const scope = requestDocScope(kind, dept);
   const month = businessMonthKey(now);
-  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: scope, p_month: month });
-  if (error) throw new Error(`ออกเลขที่คำร้องไม่สำเร็จ: ${error.message}`);
-  return `${scope}-${month}${String(data).padStart(4, '0')}`;
+  return { scope, month, prefix: `${scope}-${month}`, width: REQUEST_RUNNING_WIDTH };
 }
 
 /**
- * เลขที่สำหรับ "กดส่ง" — ใบที่มีเลขแล้วใช้เลขเดิม ออกใหม่เฉพาะใบที่ยังไม่เคยส่ง
+ * กดส่ง: ออกเลข (ถ้าใบยังไม่มี) + บันทึก patch ในทรานแซกชันเดียว (mig 0243)
  *
  * 🐞 บั๊กจริงที่ผู้ใช้แจ้ง (IS-26080010 · 2026-08-11): ฝ่าย RD ตีกลับคำร้อง ⇒ ใบกลับ
  * เป็น `draft` โดย `docNo` ยังคาอยู่ (ตั้งใจตามมติ mig 0209 — ตีกลับคือใบเดิม ไม่ใช่
@@ -22,14 +23,39 @@ export async function generateRequestDocNo(supabase, kind, dept, now = new Date(
  * `guard_dept_request` (`dept_request_doc_no_immutable`) ⇒ **ใบที่ถูกตีกลับส่งซ้ำ
  * ไม่ได้เลย** ทั้งที่ทั้งฟีเจอร์ตีกลับมีไว้ให้แก้แล้วส่งใหม่
  *
- * ⚠️ `next_entity_number` เพิ่มตัวนับแบบ atomic **ก่อน** UPDATE จะถูกปฏิเสธ ⇒ ทุกครั้ง
- * ที่ผู้ใช้กดส่งซ้ำ เลขจะถูกกินทิ้งหนึ่งเลขโดยไม่มีใบไหนได้ไป (ของจริง: ตัวนับ RQ
- * เดือน 2608 วิ่งไปถึง 37 ทั้งที่เลขที่ออกจริงสูงสุดคือ RQ-26080029)
+ * ⚠️ ตอนนั้นแก้ด้วยการเช็ค `docNo` เดิมฝั่ง JS ก่อนออกเลข ซึ่งพอสำหรับอาการนั้น แต่
+ * โครงยังเป็น "จองเลขก่อน แล้วค่อยเขียนแถว" — เลขถูก commit ตั้งแต่คำสั่งแรก ⇒ ทุกครั้ง
+ * ที่ UPDATE ไม่ผ่าน (ด่านอื่น/ชน guard/คอนเนกชันหลุด) เลขนั้นหายถาวร ของจริงที่วัดได้:
+ * ตัวนับ RQ เดือน 2608 วิ่งไปถึง 37 ทั้งที่เลขที่ออกจริงสูงสุดคือ RQ-26080029
+ *
+ * ⇒ ตอนนี้ทั้งการออกเลขและการเขียนแถวอยู่ในฟังก์ชัน SQL ตัวเดียว ล้มตรงไหนก็คืนเลข
+ * และการเช็ค "ใบนี้มีเลขแล้วหรือยัง" ย้ายไปอยู่ใต้ `SELECT … FOR UPDATE` ⇒ สองคนกดส่ง
+ * พร้อมกันก็ไม่ได้คนละเลขบนใบเดียวกัน
  *
  * ⚠️ นี่ไม่ใช่ด่าน "ส่งได้ไหม" — ด่านนั้นคือ `submitRequestError` · ที่นี่ตอบแค่
  * "ใช้เลขไหน" ⇒ ใบที่มีเลขแล้วต้องส่งผ่านได้ตามปกติ ห้ามเปลี่ยนเป็น error
  */
-export async function ensureRequestDocNo(supabase, request, now = new Date()) {
-  if (request?.docNo) return request.docNo;
-  return generateRequestDocNo(supabase, request?.kind, request?.dept, now);
+export function assignRequestDocNo(supabase, request, patch, now = new Date()) {
+  const { scope, month, prefix, width } = requestDocNoParts(request?.kind, request?.dept, now);
+  return supabase.rpc('assign_dept_request_doc_no', {
+    p_id: request?.id,
+    p_scope: scope,
+    p_month: month,
+    p_prefix: prefix,
+    p_width: width,
+    p_patch: patch,
+  });
+}
+
+// เปิดใบแล้วส่งในจังหวะเดียว (ขออัปเดตกำหนดของเข้าจากหน้าโครงการ) — insert พร้อมเลข
+// ⚠️ ห้ามใส่คีย์ docNo ลงใน row เอง ฟังก์ชัน SQL เป็นคนเติมหลังจองเลขสำเร็จ
+export function insertRequestWithDocNo(supabase, row, now = new Date()) {
+  const { scope, month, prefix, width } = requestDocNoParts(row?.kind, row?.dept, now);
+  return supabase.rpc('create_dept_request_with_doc_no', {
+    p_scope: scope,
+    p_month: month,
+    p_prefix: prefix,
+    p_width: width,
+    p_row: row,
+  });
 }
