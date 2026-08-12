@@ -34,6 +34,15 @@ export function periodLabel(win) {
 
 // `bpOfWindow` / `toKind` เป็นคณิตล้วน อยู่ที่ lib/sales/performanceMath พร้อมเทสต์
 
+/* ป้ายบอก "ฐาน" ของตัวเลขที่เทียบเป้า/ปีก่อน — นับเฉพาะเดือนที่จบแล้ว
+   ⚠️ ตัวเลขเทียบทุกตัวต้องมีป้ายนี้กำกับ ไม่งั้นคนอ่านนึกว่ารวมเดือนปัจจุบันด้วย
+   แล้วสงสัยว่าทำไมยอดที่เพิ่งปิดวันนี้ไม่ขยับเลข */
+export function closedThroughLabel(closedCount) {
+  if (closedCount >= 12) return "ทั้งปี";
+  if (closedCount <= 0) return "ยังไม่มีเดือนที่จบ";
+  return `ถึง ${MONTH_LABELS[closedCount - 1]}`;
+}
+
 export function periodOptions(kind, year) {
   if (kind === "year") return [{ value: String(year), label: `ปี ${year}` }];
   if (kind === "quarter") return QUARTER_LABELS.map((q, i) => ({ value: `${year}-Q${i + 1}`, label: `${q} ${year}` }));
