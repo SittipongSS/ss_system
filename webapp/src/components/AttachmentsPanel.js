@@ -381,7 +381,7 @@ export default function AttachmentsPanel({
       className="mt-2"
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))",
         gap: 8,
       }}
     >
@@ -402,7 +402,9 @@ export default function AttachmentsPanel({
               src={fileHref(it)}
               alt={it.fileName || "รูปแนบ"}
               loading="lazy"
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              /* IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
+                 จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */
+              style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
             />
           </button>
           {canEdit && (

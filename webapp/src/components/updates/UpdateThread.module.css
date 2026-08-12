@@ -112,9 +112,18 @@
 .replyBar { display: flex; gap: var(--space-2); align-items: flex-start; }
 .replyBar > .quote { flex: 1 1 auto; margin-bottom: 0; }
 
-/* ตารางภาพย่อของไฟล์แนบในข้อความ — ขนาดเดียวกับไฟล์แนบของ entity (AttachmentsPanel) */
+/* ตารางภาพย่อของไฟล์แนบในข้อความ — ขนาดเดียวกับไฟล์แนบของ entity (AttachmentsPanel)
+   🐞 **ผู้ใช้แจ้งว่า "ส่งไฟล์แจ้งคำร้อง ละภาพไม่สวย"** (IS-26080016 · แก้ 2026-08-12)
+   ตรวจแล้วไฟล์ที่เก็บเป็นต้นฉบับ ไม่มีการย่อ/บีบตอนอัปเลย — เสียที่ "วิธีแสดง" สองชั้น:
+     1 `object-fit: cover` + กรอบจัตุรัส = **ครอปทิ้ง** ทุกใบที่ไม่ได้เป็นสี่เหลี่ยม
+       จัตุรัสพอดี · เธรดคำร้องส่วนใหญ่เป็นสกรีนช็อตสเปก/แชท (แนวตั้ง) กับรูปสินค้า
+       (แนวนอน) ⇒ เห็นแต่กลางภาพ อ่านไม่ออกว่าคืออะไร ต้องกดเปิดทีละใบถึงจะรู้
+     2 กรอบ 104px เล็กเกินกว่าจะดูออกอยู่แล้ว และการยัดภาพ 4000px ลงกรอบเท่านั้น
+       ในขั้นเดียว ได้ขอบหยักฟุ้ง
+   ⇒ `contain` (เห็นทั้งใบ ไม่ตัด) + กรอบใหญ่ขึ้นเป็น 148px
+   ⚠️ พื้นหลังต้องมี เพราะ `contain` เหลือแถบว่างข้างภาพที่สัดส่วนไม่ตรงกรอบ */
 .photos {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: var(--space-2); margin-top: var(--space-0-5);
 }
 .photoBtn {
@@ -122,7 +131,7 @@
   border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   background: var(--panel-2);
 }
-.photoBtn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photoBtn img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 .files { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-0-5); }
 .fileLink {
