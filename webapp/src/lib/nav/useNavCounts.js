@@ -19,6 +19,14 @@ export const NAV_COUNT_KEYS = {
   "/sa/tasks": "tasks",
   "/rd/requests": "rdRequests",
   "/sa/leads": "leads",
+  // เฟส 1 — ขาย
+  "/sa/quotations": "quotations",
+  "/sa/sales-orders": "salesOrders",
+  "/sa/projects": "projectCloses",
+  // เฟส 1 — ฐานข้อมูล
+  "/database/scents": "scents",
+  "/database/formulas": "formulas",
+  "/database/customers": "customers",
 };
 
 /* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
@@ -29,8 +37,12 @@ export const NAV_COUNT_KEYS = {
    ที่นี่ = ป้ายขึ้นบนเมนูแต่การ์ดหน้าแรกยังโล่ง แล้วคนสรุปว่าระบบนั้นว่าง
    (เทสต์ล็อกไว้ว่า **ทุก href ใน NAV_COUNT_KEYS ต้องอยู่ในระบบใดระบบหนึ่งเสมอ**) */
 export const SYSTEM_COUNT_HREFS = {
-  salesplan: ["/sa/leads", "/sa/tasks", "/requests"],
+  salesplan: [
+    "/sa/leads", "/sa/tasks", "/requests",
+    "/sa/quotations", "/sa/sales-orders", "/sa/projects",
+  ],
   rd: ["/rd/requests"],
+  master: ["/database/scents", "/database/formulas", "/database/customers"],
 };
 
 export default function useNavCounts(pathname) {

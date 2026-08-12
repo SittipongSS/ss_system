@@ -171,8 +171,21 @@ export async function priceRegistryEntry(supabase, {
 
 // ── เคสขอราคาวัสดุ (mig 0158) ──────────────────────────────────────────
 // โหลดเคส + รายการ + ชั้นจำนวนที่ขอ เป็นก้อนเดียว (กัน N+1)
+/**
+ * @param lean  ข้ามการเติมข้อมูลที่มีไว้ให้ "จอ" อ่าน (ชื่อ/รหัสโครงการ · รหัส AR)
+ *
+ * ⭐ สำหรับผู้เรียกที่ **นับ** ไม่ใช่ **แสดง** — `/api/nav/counts` ยิงทุก 2 นาที
+ * ต่อคนต่อแท็บ และเรียกฟังก์ชันนี้ถึง 3 รอบ (คำร้องของฉัน · คิวฝ่ายฉัน · คิว RD)
+ * ⇒ query สองตัวท้ายถูกยิงซ้ำ 3 รอบเพื่อเติมข้อความที่ไม่มีใครอ่านสักตัว
+ * วัดบนพรีวิว: 16 query · ~340ms ต่อการเรียกหนึ่งครั้ง
+ *
+ * ⚠️ **ตัดได้แค่ของที่ตัวกรองแถวไม่แตะเท่านั้น** — `items` ยังต้องมาเสมอ เพราะ
+ * `requestNextStep` อ่านมันเพื่อตัดสินว่า "ใบนี้รอใคร" ⇒ ตัวนับกับหน้าคิวยังกรอง
+ * ด้วย helper ชุดเดียวกันบนข้อมูลชุดเดียวกัน (กติกาของ lib/nav/navCounts.js)
+ * ⚠️ ห้ามใช้กับผู้เรียกที่ส่งแถวลงจอ — คิวจะได้หัวกลุ่มเป็น uuid และไม่มีรหัส AR
+ */
 export async function loadRequests(supabase, {
-  id = null, dept = null, status = null, requestedById = null, team = null,
+  id = null, dept = null, status = null, requestedById = null, team = null, lean = false,
 } = {}) {
   let query = supabase.from('dept_requests').select('*');
   if (id) query = query.eq('id', id);
@@ -199,7 +212,7 @@ export async function loadRequests(supabase, {
      อ่านออก · `findRequest` โหลดโครงการอยู่แล้วแต่นั่นคือตอนเปิด **ใบเดียว**
      ⚠️ **คิวรวมเดียว ไม่ใช่ N+1** — คิวหนึ่งหน้ามีได้ 100+ ใบ · ดึงรายใบแปลว่า
      100 query ต่อการเปิดหน้าหนึ่งครั้ง (โรคที่หน้านี้เพิ่งถอด 8 endpoint ทิ้งไป) */
-  const projectIds = [...new Set(asks.map((a) => a.projectId).filter(Boolean))];
+  const projectIds = lean ? [] : [...new Set(asks.map((a) => a.projectId).filter(Boolean))];
   let projects = [];
   if (projectIds.length) {
     const { data, error: projectError } = await supabase
@@ -214,7 +227,7 @@ export async function loadRequests(supabase, {
      ⚠️ **อ่านสดจากทะเบียนเสมอ ไม่ประทับลงแถวคำร้อง** — `customerName` ที่แถวเก็บไว้คือ
      ชื่อ ณ วันที่ผูก (หลักฐาน) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน
      ⚠️ รวมเป็น query เดียวเหมือนโครงการ — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
-  const customerIds = [...new Set(asks.map((a) => a.customerId).filter(Boolean))];
+  const customerIds = lean ? [] : [...new Set(asks.map((a) => a.customerId).filter(Boolean))];
   let customers = [];
   if (customerIds.length) {
     const { data, error: customerError } = await supabase
