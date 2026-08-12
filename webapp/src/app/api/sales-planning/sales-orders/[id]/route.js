@@ -372,7 +372,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const paymentDueDate = String(body.paymentDueDate || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return badRequest('วันที่ SO ไม่ถูกต้อง');
     if (paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDate)) return badRequest('วันที่กำหนดชำระไม่ถูกต้อง');
-    // ⚠️ เพดาน 200 = ด่านเดียวกับ CHECK ของ mig 0234 — ตัดที่นี่ก่อนถึง DB เพื่อไม่ให้
+    // ⚠️ เพดาน 200 = ด่านเดียวกับ CHECK ของ mig 0235 — ตัดที่นี่ก่อนถึง DB เพื่อไม่ให้
     // คนกรอกเจอ error ภาษาอังกฤษของ Postgres · ยาวกว่านี้แปลว่ากำลังใช้ช่องนี้เป็น
     // ช่องหมายเหตุ ซึ่งมี `notes` อยู่แล้วข้างล่าง
     const referenceDoc = String(body.referenceDoc || '').trim().slice(0, 200);

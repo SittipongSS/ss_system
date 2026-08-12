@@ -611,7 +611,7 @@ export default function SalesOrderDetailPage() {
               <div className={styles.formStack}>
                 <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
                 <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
-                {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0234) — PO/สัญญา/เลขในระบบ
+                {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
                     จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
                     ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ
                     ⚠️ ช่องบรรทัดเดียว ไม่ใช่ Textarea — เพดาน 200 และมันคือ "ตัวชี้ไปเอกสาร
