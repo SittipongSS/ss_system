@@ -196,3 +196,31 @@ test('ไม่มีใบ = ทำอะไรไม่ได้สักอ�
   assert.equal(isEditableQuotation(null), false);
   assert.equal(isRevisableQuotation(undefined), false);
 });
+
+// ── "รอฉันลงมือ" — ชุดเดียวกับที่ป้ายตัวเลขบนเมนูใช้นับ ──────────────────
+test('⭐ ใบที่รอฉันอนุมัติ = ยื่นแล้ว + ฉันเป็นเจ้าของดีล + ดีลยังไม่ปิด', async () => {
+  const { isQuotationWaitingOnMe } = await import('./quotationWorkflow.js');
+  const me = 'USR-OWNER';
+  const row = { status: 'draft', approvalStatus: 'pending' };
+
+  assert.equal(isQuotationWaitingOnMe(row, { userId: me, dealOwnerId: me }), true);
+  assert.equal(isQuotationWaitingOnMe(row, { userId: me, dealOwnerId: 'USR-OTHER' }), false,
+    'ใบของดีลคนอื่นไม่ใช่ของฉัน');
+  // ดีลปิดแล้ว = ใบตายไปกับดีล (กติกาเดียวกับรายงานความพร้อมลายเซ็น)
+  assert.equal(isQuotationWaitingOnMe(row, { userId: me, dealOwnerId: me, dealClosed: true }), false);
+  // อนุมัติไปแล้ว/ยังไม่ยื่น = ไม่มีอะไรรอ
+  assert.equal(isQuotationWaitingOnMe({ ...row, approvalStatus: 'approved' }, { userId: me, dealOwnerId: me }), false);
+});
+
+test('⭐ ใบที่ฉันสร้างแล้วถูกตีกลับต้องนับ — ร่างที่ไม่เคยยื่นไม่นับ', async () => {
+  const { isQuotationWaitingOnMe } = await import('./quotationWorkflow.js');
+  const me = 'USR-MAKER';
+  const rejected = {
+    status: 'draft', approvalStatus: 'not_submitted', createdBy: me, rejectionReason: 'ราคาต่ำไป',
+  };
+  assert.equal(isQuotationWaitingOnMe(rejected, { userId: me }), true);
+  // ร่างเปล่า = ไม่มีเหตุผลค้าง = ยังไม่เคยยื่น
+  assert.equal(isQuotationWaitingOnMe({ ...rejected, rejectionReason: '' }, { userId: me }), false);
+  // ใบที่คนอื่นสร้างถูกตีกลับ ไม่ใช่ของค้างของเรา
+  assert.equal(isQuotationWaitingOnMe(rejected, { userId: 'USR-OTHER' }), false);
+});

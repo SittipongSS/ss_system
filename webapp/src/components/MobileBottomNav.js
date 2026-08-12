@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { paginateMobileNav, pageIndexOfActive } from '@/lib/mobileNavPages';
-import { navCountFor } from '@/lib/nav/useNavCounts';
+import { navCountFor, navHrefFor } from '@/lib/nav/useNavCounts';
 
 export default function MobileBottomNav({ items, pathname, label, counts }) {
   const pagerRef = useRef(null);
@@ -72,7 +72,7 @@ export default function MobileBottomNav({ items, pathname, label, counts }) {
               const count = navCountFor(counts, item.href);
               return (
                 <Link
-                  href={item.href}
+                  href={navHrefFor(item, count)}
                   key={item.href}
                   className={`mbn-item${active ? ' active' : ''}`}
                   aria-current={active ? 'page' : undefined}

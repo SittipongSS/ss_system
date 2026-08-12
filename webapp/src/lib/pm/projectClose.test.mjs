@@ -46,3 +46,18 @@ test('close transitions: request/approve/reject/reopen gated by status + approve
   // action มั่ว
   assert.equal(canProjectCloseTransition('open', 'bogus'), false);
 });
+
+// ── "รอฉันลงมือ" — ชุดเดียวกับที่ป้ายตัวเลขบนเมนูใช้นับ ──────────────────
+test('⭐ คำขอปิดที่รอฉันเซ็นต้องนับ — ของที่ฉันขอเองไม่นับ (เซ็นให้ตัวเองไม่ได้)', async () => {
+  const { isProjectCloseWaitingOnMe } = await import('./projectClose.js');
+  const approver = { id: 'USR-ADMIN', role: 'admin' };
+  const pending = { closeStatus: 'pending_close', closeRequestedBy: 'USR-PM' };
+
+  assert.equal(isProjectCloseWaitingOnMe(pending, approver), true);
+  assert.equal(isProjectCloseWaitingOnMe({ ...pending, closeRequestedBy: approver.id }, approver), false);
+  // ยังไม่ได้ขอปิด / ปิดไปแล้ว = ไม่มีอะไรรอ
+  assert.equal(isProjectCloseWaitingOnMe({ closeStatus: 'open' }, approver), false);
+  assert.equal(isProjectCloseWaitingOnMe({ closeStatus: 'closed' }, approver), false);
+  // คนที่เซ็นไม่ได้ไม่ควรมีป้าย
+  assert.equal(isProjectCloseWaitingOnMe(pending, { id: 'USR-AE', role: 'ae' }), false);
+});

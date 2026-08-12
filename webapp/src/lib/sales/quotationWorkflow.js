@@ -100,6 +100,34 @@ export function quotationRejectionNotice(quotation) {
   };
 }
 
+/* ── "รอฉันลงมือ" ของใบเสนอราคา — กติกาเดียวที่ป้ายเมนูและหน้าทะเบียนใช้ร่วมกัน ──
+   สองสายเท่านั้น ไม่ใช่ "ใบที่ยังไม่จบ":
+     1. ใบที่ยื่นมาแล้วรอ **ฉัน** อนุมัติ — ผู้อนุมัติคือเจ้าของดีล (เส้นเดียวกับ
+        รายงานความพร้อมลายเซ็น `pendingCounts`) · ดีลที่ปิดแล้วไม่นับ ใบมันตายไปกับดีล
+     2. ใบของฉันที่ถูก **ตีกลับ** — กลับเป็น not_submitted พร้อมเหตุผลค้างอยู่
+        (ตัวชี้เดียวกับ `quotationRejectionNotice` ที่หน้ารายละเอียดใช้โชว์แถบเหตุผล)
+   ⚠️ ร่างที่ยังไม่เคยยื่นไม่นับ — ตาฉันก็จริง แต่ไม่มีใครรออยู่ปลายทางและไม่มีอะไรทวง
+   (กติกาเดียวกับใบร่างคำร้อง ม-112) */
+export const QUOTATION_ACTIONABLE_STATUSES = [...EDITABLE_QUOTATION_STATUSES];
+
+export function isQuotationAwaitingMyApproval(quotation, { userId = '', dealOwnerId = null, dealClosed = false } = {}) {
+  return Boolean(quotation) && Boolean(userId)
+    && quotation.approvalStatus === 'pending'
+    && EDITABLE_QUOTATION_STATUSES.has(quotation.status)
+    && !dealClosed
+    && dealOwnerId === userId;
+}
+
+export function isQuotationRejectedToMe(quotation, { userId = '' } = {}) {
+  return Boolean(userId)
+    && quotation?.createdBy === userId
+    && Boolean(quotationRejectionNotice(quotation));
+}
+
+export function isQuotationWaitingOnMe(quotation, ctx = {}) {
+  return isQuotationAwaitingMyApproval(quotation, ctx) || isQuotationRejectedToMe(quotation, ctx);
+}
+
 // ── ด่านเต็ม = ตัวเอกสาร + สิทธิ์ของผู้ใช้ + ขอบเขตทีม ─────────────────────
 //
 // ⚠️ **ชุดสถานะอยู่ใน `isEditableQuotation` / `isRevisableQuotation` ที่เดียว** —

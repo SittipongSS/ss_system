@@ -78,7 +78,15 @@ export default function ScentsPage() {
      (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
   const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
-  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
+     กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
+     ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
+     "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "scents";
+  const [statusFilter, setStatusFilter] = useState(
+    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
+  );
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useState("");

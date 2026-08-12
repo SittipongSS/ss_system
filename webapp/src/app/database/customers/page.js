@@ -1,6 +1,7 @@
 "use client";
 import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -50,7 +51,13 @@ export default function CustomerDirectory() {
   const [search, setSearch] = useState("");
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
-  const [statusFilter, setStatusFilter] = useState([]);
+  /* ⭐ `?count=customers` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับใบที่รออนุมัติ
+     ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียน 121 รายให้ไล่หาเอง
+     ⚠️ ตั้งเป็นค่าตั้งต้นของตัวกรองจริง (ไม่ใช่ตัวกรองซ่อน) — FilterPopover ขึ้นเลข 1
+     และล้างได้จากที่เดิม ⇒ ไม่ต้องมีปุ่มล้างซ้ำอีกตัว
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "customers";
+  const [statusFilter, setStatusFilter] = useState(fromNavCount ? ["pending"] : []);
   const [teamFilter, setTeamFilter] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });

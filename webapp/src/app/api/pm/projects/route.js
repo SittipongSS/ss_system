@@ -1,7 +1,7 @@
 import { viewScope, can, canDeleteRecord, inPmProjectScope } from '@/lib/permissions';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { rollupDeals } from '@/lib/sales/projectRollup';
-import { canApproveProjectClose } from '@/lib/pm/projectClose';
+import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { teamInClause } from '@/lib/teamScope';
 
 export const dynamic = 'force-dynamic';
@@ -63,6 +63,8 @@ export const GET = withUser(async ({ user, supabase }) => {
     project.canApproveClose = canApproveProjectClose(user);
     // ใช้เทียบว่าคำขอปิดเป็นของเราเอง — คนยื่นอนุมัติเองไม่ได้ (API ก็ปฏิเสธ)
     project.me = { id: user.id, name: user.name, role: user.role, team: user.team, teams: user.teams };
+    // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — helper ตัวเดียวกับหน้ารายละเอียด
+    project._waitingOnMe = isProjectCloseWaitingOnMe(project, user);
   }
 
   return ok(data);
