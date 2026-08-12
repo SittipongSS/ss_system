@@ -1,40 +1,19 @@
 // ── แจ้งเตือนของเรื่องแจ้งปัญหาระบบ (mig 0223) ───────────────────────────
 //
-// ⭐ **สองช่อง คนละหน้าที่** (มติ Q11)
-//   เรื่องใหม่เข้าคิว  → Chat webhook ห้องผู้ดูแลระบบ (ห้อง ไม่ใช่คน — ยังไม่รู้ว่าใครรับ)
-//   หลังจากนั้นทุกก้าว → notification รายคน ผ่านเธรดอัปเดตของกลาง
+// ทุกก้าวไปที่ **กล่องแจ้งเตือนรายคน** ผ่านเธรดอัปเดตของกลาง
+//
+// 🪦 เดิม "เรื่องใหม่เข้าคิว" ยิงเข้า Chat ห้องผู้ดูแลระบบ (มติ Q11 — ห้อง ไม่ใช่คน
+// เพราะตอนเรื่องเข้ามายังไม่รู้ว่าแอดมินคนไหนจะรับ) · ท่อ Chat ถูกถอดออกทั้งระบบ
+// 2026-08-12 ⇒ **ตอนนี้เรื่องใหม่ไม่มีสัญญาณอัตโนมัติ** แอดมินต้องเปิดคิว /support เอง
 //
 // ⚠️ **fire-and-forget เสมอ** — ทุกฟังก์ชันที่นี่กลืน error เอง (log ไว้) เพราะ
 // ผู้เรียกอยู่หลังจุดที่ข้อมูลถูกบันทึกสำเร็จแล้ว · แจ้งเตือนพลาดต้องไม่ทำให้เรื่อง
-// ที่ส่งสำเร็จแล้วตอบ error กลับไปหาคนที่กำลังแจ้งบั๊กอยู่ (กติกาเดียวกับ lib/chat.js
-// และ lib/notifications.js)
-import { chatCard, sendChat } from '@/lib/chat';
+// ที่ส่งสำเร็จแล้วตอบ error กลับไปหาคนที่กำลังแจ้งบั๊กอยู่ (กติกาเดียวกับ lib/notifications.js)
 import { appendUpdate } from '@/lib/master/updates';
-import { issueImpactLabel, issueKindLabel } from '@/lib/issues/statuses';
 
 export const ISSUE_ENTITY_TYPE = 'system_issue';
 
 export const issuePath = (id) => `/support/${id}`;
-
-// ── เรื่องใหม่เข้าคิว → ห้องผู้ดูแลระบบ ─────────────────────────────────
-export function notifyNewIssue(row) {
-  try {
-    sendChat('admin', chatCard({
-      title: `🐞 ${row.title || 'เรื่องแจ้งปัญหาใหม่'}`,
-      subtitle: `${row.code || row.id} · ${issueKindLabel(row.kind)}`,
-      rows: [
-        { label: 'ผลกระทบ', value: issueImpactLabel(row.impact) },
-        { label: 'ผู้แจ้ง', value: row.reportedByName },
-        { label: 'ฝ่าย/ทีม', value: [row.reporterDepartment, row.reporterTeam].filter(Boolean).join(' · ') },
-        { label: 'หน้าที่พบ', value: row.pageUrl },
-      ],
-      linkPath: issuePath(row.id),
-      linkLabel: 'เปิดเรื่องนี้',
-    }));
-  } catch (e) {
-    console.error('[issues] chat webhook failed', row?.id, e?.message || e);
-  }
-}
 
 /**
  * บันทึกเหตุการณ์ลงเธรด — การแจ้งเตือนรายคนตามมาเอง

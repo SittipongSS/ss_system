@@ -2,7 +2,7 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers, Palette, HardDrive } from "lucide-react";
+import { Settings, CalendarDays, Users, History, ChevronRight, Building2, Workflow, FileBadge2, WalletCards, Signature, Layers, Palette, HardDrive } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
 import Workspace from "@/components/ui/Workspace";
@@ -85,13 +85,6 @@ export default function SettingsPage() {
           icon: Layers,
           title: "แม่แบบต้นทุนตามประเภทสินค้า",
           desc: "โครงบรรทัดต้นทุน (หัวน้ำหอม เนื้อสาร บรรจุภัณฑ์ ค่าดำเนินการ) ที่ใบขอราคาจะกางให้อัตโนมัติ",
-          show: canChat,
-        },
-        {
-          href: "/settings/chat-webhooks",
-          icon: BellRing,
-          title: "แจ้งเตือน Google Chat",
-          desc: "Webhook ของแต่ละ Space ที่ระบบใช้ส่งการ์ดแจ้งเตือน",
           show: canChat,
         },
       ],

@@ -26,7 +26,7 @@ import {
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   deleteRequestError, ensureRequestDocNo, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
-import { requestHasItems, requestKindLabel, requestShapeError } from '@/lib/master/requestTypes';
+import { requestHasItems, requestShapeError } from '@/lib/master/requestTypes';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
@@ -35,7 +35,6 @@ import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { purgeUpdates } from '@/lib/master/updates';
-import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -476,34 +475,6 @@ export async function PATCH(request, { params }) {
       mentions,
     });
 
-    // แจ้งฝ่ายเจ้าของเมื่อมีคำร้องใหม่เข้าคิว (space rd/pc ตามฝ่าย)
-    if (action === 'submit') {
-      sendChat(after.dept === 'PC' ? 'pc' : 'rd', chatCard({
-        title: `คำร้องใหม่ ${after.docNo}`,
-        subtitle: `${requestKindLabel(after.kind)}${after.customerName ? ` · ${after.customerName}` : ''}`,
-        rows: [
-          { label: 'ผู้ขอ', value: after.requestedByName || '' },
-          { label: 'เรื่อง', value: after.title || `${(after.items || []).length} รายการ` },
-          { label: 'ต้องการคำตอบภายใน', value: after.requestedDueDate || '' },
-          { label: 'ความเร่งด่วน', value: after.urgent ? 'ด่วน' : '' },
-        ],
-        linkPath: `/requests/${id}`,
-        linkLabel: 'เปิดคำร้อง',
-      }));
-    }
-    // ผู้ขอควรรู้ว่ามีคนรับเรื่องแล้ว ไม่ต้องเดาว่าเงียบเพราะอะไร
-    if (action === 'acknowledge') {
-      sendChat('sales', chatCard({
-        title: `รับเรื่อง ${after.docNo} แล้ว`,
-        subtitle: `ฝ่าย ${after.dept} กำลังดำเนินการ`,
-        rows: [
-          { label: 'ผู้รับเรื่อง', value: after.acknowledgedByName || '' },
-          { label: 'รับปากว่าจะตอบ', value: after.committedDueDate || '' },
-        ],
-        linkPath: `/requests/${id}`,
-        linkLabel: 'เปิดคำร้อง',
-      }));
-    }
     return Response.json({
       ...after,
       _mine: canManageRequest(user, after),

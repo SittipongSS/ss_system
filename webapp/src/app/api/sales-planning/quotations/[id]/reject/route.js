@@ -1,6 +1,5 @@
 import { recordAudit } from '@/lib/audit';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
-import { chatCard, sendChat } from '@/lib/chat';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canApproveQuotation,
@@ -71,17 +70,5 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
   // แจ้งทีมขายเหมือนฝั่งใบสั่งขาย — ผู้จัดทำต้องรู้ว่าต้องกลับมาแก้ ไม่ใช่รอเงียบ ๆ
-  sendChat('sales', chatCard({
-    title: '↩️ ใบเสนอราคาถูกตีกลับ',
-    subtitle: quote.deal?.title || quote.quoteNumber,
-    rows: [
-      { label: 'เลขที่ใบ', value: quote.quoteNumber },
-      { label: 'เหตุผล', value: reason },
-      { label: 'ผู้ตีกลับ', value: user.name || '' },
-      { label: 'ผู้ยื่น', value: quote.approvalRequestedByName || '' },
-    ],
-    linkPath: `/sa/quotations/${id}`,
-    linkLabel: 'แก้ไขใบเสนอราคา',
-  }));
   return ok(data);
 });

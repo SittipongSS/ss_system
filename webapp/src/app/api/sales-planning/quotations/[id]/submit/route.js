@@ -2,9 +2,6 @@ import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope, dealAuditLabel } from '@/lib/salesPlanning';
-import { sendChat, chatCard } from '@/lib/chat';
-import { fmtMoney } from '@/lib/format';
-import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
@@ -77,18 +74,5 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // แจ้งผู้อนุมัติ: ใบรอเจ้าของดีลเซ็น — เดิมเงียบทั้งขั้นตอน (ผู้อนุมัติต้องเปิดหน้าเจอเอง)
   // ต่างจาก SO ที่แจ้ง space approvals ตั้งแต่ตอนยื่น. ระบุชื่อเจ้าของดีลไว้ในการ์ดเพราะ
   // ผู้อนุมัติของ QT คือ "เจ้าของดีลรายนั้น" ไม่ใช่หัวหน้าคนเดียวทั้ง space
-  sendChat('approvals', chatCard({
-    title: '📝 ใบเสนอราคารออนุมัติ',
-    subtitle: quote.deal.title || quote.quoteNumber,
-    rows: [
-      { label: 'เลขที่ใบเสนอราคา', value: quote.quoteNumber },
-      { label: 'ยอด (ก่อน VAT)', value: `${fmtMoney(quotationWonAmount(quote))} บาท` },
-      { label: 'ลูกค้า', value: quote.customerName || quote.deal.customerName || '' },
-      { label: 'ผู้อนุมัติ (เจ้าของดีล)', value: quote.deal.ownerName || '' },
-      { label: 'ผู้ยื่น', value: user.name || '' },
-    ],
-    linkPath: `/sa/quotations/${id}`,
-    linkLabel: 'ตรวจ/อนุมัติ',
-  }));
   return ok(data);
 });

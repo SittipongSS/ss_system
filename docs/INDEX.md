@@ -77,6 +77,7 @@
 
 | เอกสาร | ค้างอะไร | สถานะ |
 |---|---|---|
+| [timeline-dates-plan.md](timeline-dates-plan.md) | เฟส 1–5 เสร็จ · mig 0239 (เดิม 0236 · ชนเลข) รันบนฐานจริงแล้ว 2026-08-12 · ยังไม่ merge · เว้นข้อ 6 (บรรทัดของจริงบนใบพิมพ์ FM-PD-05) ไว้เป็นมติแยก | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
 | [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |
 | [costing-request-plan.md](costing-request-plan.md) | merge ครบ 3 PR · mig 0157/0158/0159 รัน prod แล้ว (ยืนยัน 2026-08-08) · เหลือ UAT ข้อ 1–17 | รอตรวจ |
@@ -105,7 +106,7 @@
 | [webapp/SAHAMIT_PHASE5B_DESIGN.md](../webapp/SAHAMIT_PHASE5B_DESIGN.md) | Shift/Cut Audit · Locked cells · Coverage |
 | [webapp/SAHAMIT_UI_REVAMP_PLAN.md](../webapp/SAHAMIT_UI_REVAMP_PLAN.md) | รื้อ UI Forecast/PO/Reconciliation |
 | [entity-updates-plan.md](entity-updates-plan.md) | เธรดอัปเดตของกลาง — รอเคาะก่อนเริ่มโค้ด |
-| [notifications-inbox.md](notifications-inbox.md) | กล่องแจ้งเตือนรายคน (mig 0185) — กระดิ่ง + หน้า `/notifications` · วิธีนับ · กติกาอ่านแล้ว · **§5 บันทึกบั๊ก proxy ที่ทำให้ Vercel Cron โดน 401 มาตั้งแต่ 2026-07-15** |
+| [notifications-inbox.md](notifications-inbox.md) | **ช่องทางแจ้งเตือนเดียวของระบบ** (mig 0185) — กระดิ่ง + หน้า `/notifications` · วิธีนับ · กติกาอ่านแล้ว · §5 บั๊ก proxy ที่ทำให้ Vercel Cron โดน 401 · **§6–7 ถอด Google Chat ออกทั้งระบบ (mig 0236) + รายการที่ยอมให้เงียบ** |
 
 ---
 

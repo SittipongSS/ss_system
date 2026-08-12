@@ -103,6 +103,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       vatRate,
       paymentPlan,
       paymentTerms: (body.paymentTerms || '').trim() || null,
+      // ภาษาเอกสาร (mig 0238) — ใบใหม่เริ่มที่ไทยเสมอ ยกเว้นผู้เรียกระบุมา
+      // (สายสหมิตรไม่ระบุ → ไทย ตามเดิม) · สลับได้ทีหลังที่หน้าใบตราบใดที่ยังไม่ยื่น
+      docLanguage: body.docLanguage === 'en' ? 'en' : 'th',
       // ใบใหม่เริ่มที่ "ร่าง ยังไม่ยื่น" (mig 0155) — ต้องกดยื่นอนุมัติเองก่อนเข้าคิวเจ้าของดีล
       // (เดิมเกิดมาเป็น 'pending' ทันที = อนุมัติใบที่ยังกรอกไม่เสร็จได้ และไม่มีจุดลงนามผู้เสนอราคา)
       // ใบเดิม grandfather เป็น not_required ไว้ที่ mig 0114

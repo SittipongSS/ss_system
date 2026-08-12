@@ -11,7 +11,6 @@ import { withUser, ok, fail, badRequest, unauthorized } from '@/lib/http';
 import { canReportIssue } from '@/lib/issues/access';
 import { normalizeIssueInput } from '@/lib/issues/model';
 import { issuesForPage, listIssues } from '@/lib/issues/repo';
-import { notifyNewIssue } from '@/lib/issues/notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,9 +49,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'IS', row);
     if (insertError) return fail(insertError.message, 500);
 
-    // ⚠️ ทั้งสองอย่างข้างล่างนี้ **ห้ามทำให้ POST ตอบ error** — เรื่องถูกบันทึกแล้ว
-    // คนที่กำลังแจ้งบั๊กอยู่ต้องไม่เจอบั๊กซ้อนบั๊ก (ทั้งคู่กลืน error เองอยู่แล้ว)
-    notifyNewIssue(data);
+    // ⚠️ **ห้ามทำให้ POST ตอบ error** — เรื่องถูกบันทึกแล้ว คนที่กำลังแจ้งบั๊กอยู่
+    // ต้องไม่เจอบั๊กซ้อนบั๊ก (recordAudit กลืน error เองอยู่แล้ว)
     await recordAudit({
       user, action: 'create', entityType: 'system_issue', entityId: data.id, after: data,
       summary: `แจ้งปัญหาระบบ ${data.code} · ${data.title || ''}`.trim(),

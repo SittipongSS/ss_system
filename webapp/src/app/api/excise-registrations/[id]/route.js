@@ -8,7 +8,6 @@ import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
-import { chatCard, sendChat } from '@/lib/chat';
 import { normalizeRejectionReason, rejectionReasonError } from '@/lib/master/approval';
 
 export const dynamic = 'force-dynamic';
@@ -98,18 +97,6 @@ export async function PATCH(request, { params }) {
         summary: `ปลดอนุมัติทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง): ${reason}`, request,
       });
       // ปลดอนุมัติ = SO ที่รอออกใบยื่นหลุดจากตัวเลือกทันที ฝ่ายขายต้องรู้
-      sendChat('sales', chatCard({
-        title: '⚠️ ทะเบียนสรรพสามิตถูกปลดอนุมัติ',
-        subtitle: `${data.fgCode || id} · ${data.customerName || ''}`.trim(),
-        rows: [
-          { label: 'สินค้า', value: data.productName || data.fgCode },
-          { label: 'เหตุผล', value: reason },
-          { label: 'ผู้ปลดอนุมัติ', value: user?.name },
-          { label: 'ผลที่ตามมา', value: 'ใบสั่งขายที่ใช้สินค้านี้จะออกใบยื่นชำระภาษีไม่ได้จนกว่าจะขึ้นทะเบียนใหม่' },
-        ],
-        linkPath: `/tax/registrations/${id}`,
-        linkLabel: 'เปิดทะเบียน',
-      }));
       return Response.json(data);
     }
     return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่ายกฎหมายปลดอนุมัติก่อน' }, { status: 403 });
@@ -226,42 +213,13 @@ export async function PATCH(request, { params }) {
   }
   await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
 
-  // แจ้งข้ามเลน SA ↔ LG — ทั้งสองทางเคยเงียบสนิท (ไม่มี sendChat ในไฟล์นี้เลย) แปลว่า
+  // แจ้งข้ามเลน SA ↔ LG — ทั้งสองทางเคยเงียบสนิท แปลว่า
   // ฝ่ายกฎหมายไม่รู้ว่ามีทะเบียนรออนุมัติ และฝ่ายขายไม่รู้ผลจนกว่าจะเปิดหน้าเช็คเอง
   if (data.status !== reg.status) {
     const subtitle = `${data.fgCode || id} · ${data.customerName || ''}`.trim();
     if (data.status === 'pending_legal') {
-      sendChat('legal', chatCard({
-        title: '🏷️ ทะเบียนสรรพสามิตรออนุมัติ',
-        subtitle,
-        rows: [
-          { label: 'สินค้า', value: data.productName || data.fgCode },
-          { label: 'ลูกค้า', value: data.customerName },
-          { label: 'ผู้ยื่น', value: user?.name },
-        ],
-        linkPath: '/tax/registrations?status=pending_legal',
-        linkLabel: 'ตรวจ/อนุมัติ',
-      }));
     } else if (data.status === 'approved' || data.status === 'rejected') {
       const approvedNow = data.status === 'approved';
-      sendChat('sales', chatCard({
-        title: approvedNow ? '✅ ขึ้นทะเบียนสรรพสามิตแล้ว' : '↩️ ทะเบียนสรรพสามิตถูกตีกลับ',
-        subtitle,
-        rows: [
-          { label: 'สินค้า', value: data.productName || data.fgCode },
-          { label: 'ลูกค้า', value: data.customerName },
-          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ตีกลับ', value: user?.name },
-          { label: 'เหตุผล', value: approvedNow ? null : data.rejectionReason },
-          {
-            label: 'ขั้นถัดไป',
-            value: approvedNow
-              ? 'ออกใบยื่นชำระภาษีจาก ใบสั่งขายที่อนุมัติแล้วได้'
-              : 'แก้ไขตามเหตุผลแล้วยื่นขึ้นทะเบียนอีกครั้ง',
-          },
-        ],
-        linkPath: `/tax/registrations/${id}`,
-        linkLabel: 'เปิดทะเบียน',
-      }));
     }
   }
   return Response.json(data);

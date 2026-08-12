@@ -4,7 +4,6 @@ import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, re
 import {
   changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
-import { notifyMasterDataReapproval } from '@/lib/master/approvalNotify';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode } from '@/lib/master/masterCodes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
@@ -15,7 +14,6 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { chatCard, sendChat } from '@/lib/chat';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
@@ -155,16 +153,6 @@ export async function PATCH(request, { params }) {
     // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
     if (body.approvalStatus !== 'pending') {
       const approvedNow = body.approvalStatus === 'approved';
-      sendChat('sales', chatCard({
-        title: approvedNow ? '✅ สินค้าได้รับอนุมัติ' : '⛔ สินค้าถูกปฏิเสธ',
-        subtitle: productDisplayName(decided) || decided.fgCode,
-        rows: [
-          { label: 'FG Code', value: decided.fgCode },
-          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ปฏิเสธ', value: user?.name },
-          { label: 'เหตุผล', value: decided.rejectionReason },
-        ],
-        linkPath: '/database/products',
-      }));
     }
     return Response.json(decided);
   }
@@ -326,9 +314,9 @@ export async function PATCH(request, { params }) {
     metadata: { fgCode: data.fgCode, customerId: data.customerId },
   });
   await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
-  // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ (ดู approvalNotify.js)
+  // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ · เธรดคือช่องทางเดียว
+  // ที่เหลือหลังถอด Google Chat ออก (2026-08-12) จึงต้องเขียนลงเธรดเสมอ
   if (reapproval) {
-    notifyMasterDataReapproval({ entityType: 'product', record: data, user, changedFields });
     const resetEvent = masterReapprovalUpdate(changedFields);
     if (resetEvent) {
       await appendUpdate(supabase, { entityType: 'product', entityId: id, ...resetEvent, user });

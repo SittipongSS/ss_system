@@ -14,7 +14,6 @@ import { loadDeliveries, requireProject } from '@/lib/pm/deliveriesRepo';
 import { openDeliveriesToChase, chaseRequestBody } from '@/lib/pm/deliveries';
 import { generateRequestDocNo } from '@/lib/deptRequests';
 import { requestStepKey } from '@/lib/master/requestTypes';
-import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,16 +88,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
     // คิวฝ่ายจัดซื้อ — เหมือนคำร้องชนิดอื่นที่ส่งเข้าคิว (ไม่เช็ค error: แจ้งเตือน
     // พลาดต้องไม่ทำให้คำร้องที่บันทึกแล้วตอบ 500)
-    sendChat('pc', chatCard({
-      title: `ขออัปเดตกำหนดของเข้า ${docNo}`,
-      subtitle: `${project.code || ''} ${project.name || ''}`.trim(),
-      rows: [
-        { label: 'ผู้ขอ', value: user?.name || '' },
-        { label: 'รายการที่รออยู่', value: `${rows.length} รายการ` },
-      ],
-      linkPath: `/requests/${requestId}`,
-      linkLabel: 'เปิดคำร้อง',
-    }));
 
     return ok({
       requestId,

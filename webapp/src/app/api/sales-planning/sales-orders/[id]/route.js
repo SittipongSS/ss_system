@@ -43,7 +43,6 @@ import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFall
 import {
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
-import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
@@ -306,18 +305,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     // แจ้งทีมขาย: Actual หายไปจากยอด ต้องไม่เงียบ
-    sendChat('sales', chatCard({
-      title: '⚠️ ยกเลิกอนุมัติ ใบสั่งขาย',
-      subtitle: before.deal?.title || before.orderNumber,
-      rows: [
-        { label: 'เลขที่ SO', value: before.orderNumber },
-        { label: 'Actual ที่หลุดออก', value: soAmount(before) },
-        { label: 'เหตุผล', value: reason },
-        { label: 'ผู้ดำเนินการ', value: user.name || '' },
-      ],
-      linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'ออก Rev. ต่อ',
-    }));
     return ok(data);
   }
 
@@ -424,18 +411,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await logThread('submit');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ)`, request: req });
     // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
-    sendChat('approvals', chatCard({
-      title: 'ใบสั่งขายรออนุมัติ',
-      subtitle: before.deal?.title || before.orderNumber,
-      rows: [
-        { label: 'เลขที่ SO', value: before.orderNumber },
-        { label: 'ยอด (ก่อน VAT)', value: soAmount(before) },
-        { label: 'ลูกค้า', value: before.customerName || '' },
-        { label: 'ผู้ยื่น', value: user.name || '' },
-      ],
-      linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'ตรวจ/อนุมัติ',
-    }));
     return ok(data);
   }
 
@@ -501,22 +476,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
-    sendChat('sales', chatCard({
-      title: '✅ ใบสั่งขายอนุมัติแล้ว',
-      subtitle: before.deal?.title || before.orderNumber,
-      rows: [
-        { label: 'เลขที่ SO', value: before.orderNumber },
-        { label: 'ยอด Actual (ก่อน VAT)', value: soAmount(before) },
-        { label: 'ผู้อนุมัติ', value: user.name || '' },
-        { label: 'ผู้ยื่น', value: before.submittedByName || '' },
-        ...(selfApproval ? [{ label: 'รูปแบบ', value: 'Admin Override' }] : []),
-        // รอยต่อถัดไปเป็น manual. เขียนแบบมีเงื่อนไขเพราะตรงนี้ยังไม่รู้ว่าในใบมีสินค้า
-        // สรรพสามิตไหม (ต้องยิงอีก 4 query) — ตัวกรองจริงอยู่ที่หน้ายื่นชำระกับการ์ดคิว
-        { label: 'ขั้นถัดไป', value: 'ถ้าในใบมีสินค้าสรรพสามิต ให้สร้างใบยื่นชำระภาษีที่เมนูการยื่นชำระ' },
-      ],
-      linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'เปิด ใบสั่งขาย',
-    }));
     return ok(data);
   }
 
@@ -535,18 +494,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await logThread('reject', { reason });
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `reject ${before.orderNumber}: ${reason}`, request: req });
     // แจ้งทีมขาย: SO ถูกตีกลับ ให้ผู้ยื่นแก้แล้วยื่นใหม่
-    sendChat('sales', chatCard({
-      title: '↩️ ใบสั่งขายถูกตีกลับ',
-      subtitle: before.deal?.title || before.orderNumber,
-      rows: [
-        { label: 'เลขที่ SO', value: before.orderNumber },
-        { label: 'เหตุผล', value: reason },
-        { label: 'ผู้ตีกลับ', value: user.name || '' },
-        { label: 'ผู้ยื่น', value: before.submittedByName || '' },
-      ],
-      linkPath: `/sa/sales-orders/${id}`,
-      linkLabel: 'แก้ไข ใบสั่งขาย',
-    }));
     return ok(data);
   }
 
@@ -615,18 +562,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         await recordAudit({ user, action: 'update', entityType: 'sales_deal', entityId: before.dealId, after: result?.deal, summary: `ย้อน Won (${targetLabel}) จากยกเลิก SO ${before.orderNumber}: ${revReason}`, request: req });
       }
       // แจ้งทีมขาย: ดีลถูกถอนจาก Won (จุดสำคัญ — ยอด Actual ถูกนำออก)
-      sendChat('sales', chatCard({
-        title: '↩️ ย้อน Won (ถอนยอดขาย)',
-        subtitle: before.deal?.title || before.orderNumber,
-        rows: [
-          { label: 'SO', value: before.orderNumber },
-          { label: 'เหตุผล', value: revReason },
-          { label: 'ดีลไปสถานะ', value: targetLabel },
-          { label: 'โดย', value: user.name || '' },
-        ],
-        linkPath: before.dealId ? `/sa/deals/${before.dealId}` : `/sa/sales-orders/${id}`,
-        linkLabel: 'เปิดดีล',
-      }));
       return ok(result?.order || {});
     }
 

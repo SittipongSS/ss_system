@@ -9,7 +9,6 @@ import {
 } from '@/lib/master/masterCodes';
 import { splitTaxIdMatches, taxIdDigits, taxIdDuplicateError } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
-import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 // Customers are a central registry (so teams don't re-register the same
@@ -208,19 +207,6 @@ export async function POST(request) {
   }
   await recordAudit({ user, action: 'create', entityType: 'customer', entityId: data.id, after: data, request });
 
-  // แจ้งผู้อนุมัติเมื่อมีลูกค้าใหม่ค้างรออนุมัติ (AE Supervisor สร้างเอง = approved ไม่ต้องแจ้ง)
-  if (data.approvalStatus === 'pending') {
-    sendChat('approvals', chatCard({
-      title: '👤 ลูกค้าใหม่รออนุมัติ',
-      subtitle: data.name,
-      rows: [
-        { label: 'รหัสลูกค้า (AR)', value: data.arCode },
-        { label: 'ทีม', value: data.team },
-        { label: 'ผู้เพิ่ม', value: data.submittedByName },
-      ],
-      linkPath: '/database/customers',
-    }));
-  }
 
   return Response.json(data, { status: 201 });
 }

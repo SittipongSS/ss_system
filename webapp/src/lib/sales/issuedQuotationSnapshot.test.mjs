@@ -8,6 +8,7 @@ import {
   issuedContentFingerprint,
   artifactSha256,
   ISSUED_QUOTATION_LAYOUT_VERSION,
+  issuedQuotationLocale,
 } from './issuedQuotationSnapshot.js';
 
 const baseQuote = {
@@ -178,7 +179,7 @@ test('capture ไม่ทับค่าที่ตรึงไว้แล้
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.2');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.3');
 });
 
 test('artifact embeds approver signature image when provided', () => {
@@ -246,4 +247,36 @@ test('ใบที่ตรึงใช้มาตรฐานเอกสา�
   assert.match(html, /ใบเสนอราคา \(ควบคุม\)/);
   // ไม่มีมาตรฐานส่งมา → ตกไปใช้ค่าสำรองเดิม เอกสารยังออกได้
   assert.match(buildIssuedQuotationArtifactHtml(baseQuote), /FM-SA-01/);
+});
+
+// ── ภาษาเอกสารกับฉบับตรึง (IS-26080005 · mig 0238) ─────────────────────────
+
+test('ฉบับตรึงบันทึกภาษาของใบ — payload + locale ตรงกับที่ใบเลือกไว้', () => {
+  assert.equal(buildIssuedQuotationPayload(baseQuote, {}).document.docLanguage, 'th');
+  assert.equal(
+    buildIssuedQuotationPayload({ ...baseQuote, docLanguage: 'en' }, {}).document.docLanguage,
+    'en',
+  );
+  assert.equal(issuedQuotationLocale(baseQuote), 'th-TH');
+  assert.equal(issuedQuotationLocale({ ...baseQuote, docLanguage: 'en' }), 'en-US');
+  // ค่าเพี้ยน/ใบเก่าที่ไม่มีคอลัมน์ = ไทย ไม่ใช่ค่าดิบที่หลุดเข้าไปในหลักฐาน
+  assert.equal(buildIssuedQuotationPayload({ ...baseQuote, docLanguage: 'jp' }, {}).document.docLanguage, 'th');
+  assert.equal(issuedQuotationLocale({ ...baseQuote, docLanguage: 'jp' }), 'th-TH');
+});
+
+test('ใบอังกฤษกับใบไทยคนละ fingerprint — ภาษาเป็นส่วนหนึ่งของเนื้อหาที่ตรึง', () => {
+  const th = issuedContentFingerprint(buildIssuedQuotationPayload(baseQuote, {}));
+  const en = issuedContentFingerprint(buildIssuedQuotationPayload({ ...baseQuote, docLanguage: 'en' }, {}));
+  assert.notEqual(th, en);
+});
+
+test('artifact ที่ตรึงถูกอบเป็นภาษาของใบแล้ว — reprint จึงเปลี่ยนภาษาตามค่าปัจจุบันไม่ได้', () => {
+  const html = buildIssuedQuotationArtifactHtml({ ...baseQuote, docLanguage: 'en' });
+  assert.match(html, /<html lang="en">/);
+  assert.ok(html.includes('Grand Total'));
+  assert.ok(!html.includes('ยอดรวมทั้งสิ้น'));
+  // ใบเดิมที่ไม่ได้เลือกภาษา = ไทยเหมือนเดิมทุกใบ
+  const thai = buildIssuedQuotationArtifactHtml(baseQuote);
+  assert.match(thai, /<html lang="th">/);
+  assert.ok(thai.includes('ยอดรวมทั้งสิ้น'));
 });

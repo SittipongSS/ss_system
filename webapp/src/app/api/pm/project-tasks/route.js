@@ -146,8 +146,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     note: body.note || '',
     showNoteInPrint: !!body.showNoteInPrint,
     origin: 'custom', // ผู้ใช้เพิ่มเอง (template ใช้ DB default 'template') — migration 0022
-    // ไม่ใส่ startLocked ตอนสร้าง — ปล่อย DB default false (กัน insert พังถ้า migration 0032
-    // ยังไม่รัน); ปักหมุดทำผ่านการแก้วันเริ่มภายหลัง (PATCH)
+    // กรอกวันเริ่มตอนเพิ่มขั้นตอน = ปักหมุด (กติกาเดียวกับ PATCH: 'startDate' ใน updates →
+    // startLocked = มีวันเริ่มไหม). 🐞 เดิมไม่ใส่เลยเพื่อกัน insert พังตอน migration 0032
+    // ยังไม่รัน — รันไปตั้งแต่ยุคนั้นแล้ว (ปัจจุบัน 0198) ผลข้างเคียงคือวันเริ่มที่ผู้ใช้กรอก
+    // ถูก recalculateGraph ด้านล่างดึงกลับไปเกาะ anchor/predecessors ทันทีตั้งแต่แถวแรกที่สร้าง
+    startLocked: !!body.startDate,
   };
 
   setHolidays([...(await holidaySet())]);

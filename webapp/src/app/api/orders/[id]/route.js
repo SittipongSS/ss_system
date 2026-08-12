@@ -2,7 +2,6 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
-import { notifyFilingHandoff } from '@/lib/tax/filingNotify';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
@@ -231,7 +230,6 @@ export async function PATCH(request, { params }) {
   // attachRegistrations) ออก กันบวมและให้ changedKeys เทียบกับ before (plain) ได้ตรง.
   const { items: _items, registrations: _regs, ...plainAfter } = data;
   await recordAudit({ user, action: 'update', entityType: 'order', entityId: id, before: order, after: plainAfter, summary, request });
-  notifyFilingHandoff({ before: order, after: plainAfter, user });
   return Response.json(data);
 }
 

@@ -75,7 +75,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const now = new Date().toISOString();
-  const startDate = body.startDate || todayStr();
+  // วันเริ่มของ segment เป็นของดีล — ลำดับเดียวกับ create-project: ที่ส่งมา > วันเริ่มของดีล > วันนี้
+  // 🐞 เดิมข้าม deal.startDate ไปเลย ดีลที่ระบุวันเริ่มไว้แล้วแต่ไทม์ไลน์ถูกลบ พอผูกเข้าโครงการ
+  //    จะได้ segment ที่เริ่มนับจากวันนี้ ไม่ใช่วันของดีล (ทางที่มีไทม์ไลน์ลอยอยู่แล้วไม่โดน
+  //    เพราะ "รับเลี้ยง" ชุดเดิมที่คำนวณจากวันของดีลมาแล้ว)
+  const startDate = body.startDate || deal.startDate || todayStr();
 
   // ต่อ segment: task ชุดตาม template ของประเภทดีล ต่อท้าย stepOrder เดิม
   setHolidays([...(await holidaySet())]);
