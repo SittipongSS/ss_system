@@ -32,6 +32,9 @@ export async function POST(request) {
     const entityType = formData.get('entityType');
     const entityId = formData.get('entityId');
     const isWonEvidence = entityType === 'quotation_won_evidence';
+    // หลักฐานการชำระรายงวดของใบสั่งขาย (mig 0245) — bucket เดียวกับหลักฐาน Won
+    // แต่คนละโฟลเดอร์ ⇒ proxy อ่านไฟล์ของแต่ละเอกสารแยกด่านกันได้
+    const isPaymentEvidence = entityType === 'sales_order_payment_evidence';
 
     if (!file) {
       return Response.json({ error: 'ไม่พบไฟล์ที่ส่งมา' }, { status: 400 });
@@ -102,6 +105,48 @@ export async function POST(request) {
       if (uploadError) {
         console.error('[upload] private Won evidence failed:', uploadError);
         return Response.json({ error: 'อัปโหลดหลักฐาน Won ไม่สำเร็จ' }, { status: 500 });
+      }
+      return Response.json({
+        url: null,
+        storageBucket: PRIVATE_EVIDENCE_BUCKET,
+        storagePath: objectPath,
+      });
+    }
+
+    // ── หลักฐานการชำระของใบสั่งขาย: private bucket เหมือนหลักฐาน Won ──────
+    // ⚠️ ด่านเป็น **edit-scope ของดีลเจ้าของใบ** เหมือนกัน — คนที่แนบสลิปคือ SA/AC
+    //    ที่ดูแลดีลนั้น ไม่ใช่ใครก็ได้ที่เห็นใบ
+    // ⚠️ อนุญาตเฉพาะใบที่อนุมัติแล้ว: งวดเกิดตอนอนุมัติ ก่อนหน้านั้นไม่มีอะไรให้แนบ
+    if (isPaymentEvidence) {
+      if (!entityId || !canEditSalesPlanning(user)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 });
+      }
+      const supabase = getSupabaseAdmin();
+      const { data: order, error: orderError } = await supabase
+        .from('sales_orders').select('id, dealId, status').eq('id', entityId).maybeSingle();
+      if (orderError) return Response.json({ error: orderError.message }, { status: 500 });
+      if (!order) return Response.json({ error: 'ไม่พบใบสั่งขาย' }, { status: 404 });
+      if (order.status !== 'approved') {
+        return Response.json({ error: 'แนบหลักฐานการชำระได้หลังใบสั่งขายอนุมัติแล้ว' }, { status: 409 });
+      }
+      const { data: deal, error: dealError } = await supabase
+        .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
+      if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
+      if (!deal || !inSalesEditScope(user, deal)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 });
+      }
+
+      const safeOrderId = String(order.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+      const safeName = (file.name || 'file')
+        .replace(/[^a-zA-Z0-9.\-_]+/g, '_')
+        .replace(/^_+/, '') || 'file';
+      const objectPath = `sales-orders/${safeOrderId}/payments/${Date.now()}_${crypto.randomUUID()}_${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PRIVATE_EVIDENCE_BUCKET)
+        .upload(objectPath, buffer, { contentType, upsert: false });
+      if (uploadError) {
+        console.error('[upload] private payment evidence failed:', uploadError);
+        return Response.json({ error: 'อัปโหลดหลักฐานการชำระไม่สำเร็จ' }, { status: 500 });
       }
       return Response.json({
         url: null,
