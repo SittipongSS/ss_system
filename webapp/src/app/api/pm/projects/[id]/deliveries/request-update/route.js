@@ -12,7 +12,7 @@ import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { loadDeliveries, requireProject } from '@/lib/pm/deliveriesRepo';
 import { openDeliveriesToChase, chaseRequestBody } from '@/lib/pm/deliveries';
-import { generateRequestDocNo } from '@/lib/deptRequests';
+import { insertRequestWithDocNo } from '@/lib/deptRequests';
 import { requestStepKey } from '@/lib/master/requestTypes';
 
 export const dynamic = 'force-dynamic';
@@ -48,14 +48,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
     const requestId = `DR-${randomUUID()}`;
     const nowIso = new Date().toISOString();
-    const docNo = await generateRequestDocNo(supabase, KIND, DEPT);
     // เปิดแล้วส่งเลยในจังหวะเดียว — คำร้องร่างที่ไม่มีใครกดส่งคือคิวที่หายไปเงียบ ๆ
-    const { data: request, error } = await supabase.from('dept_requests').insert({
+    // ⚠️ ไม่ใส่ docNo ตรงนี้ — เลขออกพร้อม insert ในทรานแซกชันเดียว (mig 0243)
+    // ไม่งั้น insert ที่ล้มจะกินเลขที่คำร้องทิ้งทุกครั้ง
+    const { data: request, error } = await insertRequestWithDocNo(supabase, {
       id: requestId,
       kind: KIND,
       dept: DEPT,
       status: 'pending',
-      docNo,
       title: `ขออัปเดตกำหนดของเข้า ${project.code || project.name || ''}`.trim(),
       body: chaseRequestBody(rows),
       projectId: project.id,
@@ -69,8 +69,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       submittedAt: nowIso,
       createdAt: nowIso,
       updatedAt: nowIso,
-    }).select().single();
+    });
     if (error) return fail(error.message, 500);
+    const docNo = request?.docNo || '';
 
     // ประทับแถวที่ขอ — พาเนลจะได้โชว์ว่า "ขอไปแล้ว" และรอบหน้าจะไม่ขอซ้ำ
     // (เขียนพลาดไม่ rollback คำร้อง: คำร้องถูกส่งไปแล้วจริง แค่แถวไม่ติดธง

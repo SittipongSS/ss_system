@@ -46,7 +46,11 @@ DROP TABLE IF EXISTS public.inquiry_messages;
 DROP TABLE IF EXISTS public.inquiries;
 
 -- เลขที่ IQ- เลิกใช้แล้ว — ตัวนับที่ค้างอยู่ไม่มีใครอ่านอีก
+-- ⚠️ ตั้งแต่ mig 0241 มี trigger กันลบแถวเคาน์เตอร์ (เลขที่ออกแล้วห้ามถูกออกซ้ำ)
+-- การล้าง scope ที่เลิกใช้ทั้งตัวชอบธรรม แต่ต้องประกาศเจตนาก่อน — ใบนี้จึงยังรันซ้ำได้
+SET LOCAL app.entity_counter_unlock = 'on';
 DELETE FROM public.entity_number_counters WHERE scope = 'IQ';
+RESET app.entity_counter_unlock;
 
 COMMIT;
 

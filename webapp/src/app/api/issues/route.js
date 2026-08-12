@@ -6,7 +6,7 @@
 // เปิดเรื่องในนามคนอื่นไม่ได้ (ไม่ใช่แค่ "ไม่มีปุ่ม" แต่ไม่มีทางเลย)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest, unauthorized } from '@/lib/http';
 import { canReportIssue } from '@/lib/issues/access';
 import { normalizeIssueInput } from '@/lib/issues/model';
@@ -44,13 +44,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return badRequest(error);
 
   try {
-    const row = {
-      id: genId('ISS'),
-      code: await generateEntityCode(supabase, 'IS'),
-      ...value,
-    };
-    const { data, error: insertError } = await supabase
-      .from('system_issues').insert(row).select().single();
+    // รหัส IS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
+    const row = { id: genId('ISS'), ...value };
+    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'IS', row);
     if (insertError) return fail(insertError.message, 500);
 
     // ⚠️ **ห้ามทำให้ POST ตอบ error** — เรื่องถูกบันทึกแล้ว คนที่กำลังแจ้งบั๊กอยู่

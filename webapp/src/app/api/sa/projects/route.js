@@ -3,7 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, unauthorized, forbidden, badRequest, conflict } from '@/lib/http';
 import { can } from '@/lib/permissions';
 import { todayStr } from '@/lib/pm/schedule';
-import { generateProjectCode } from '@/lib/pm/projectsRepo';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { normalizeDealType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
@@ -35,8 +35,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerEmail = cust?.email || '';
   }
   
+  // รหัสโครงการอัตโนมัติออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — ห้ามจองไว้ก่อน
+  // ตรงนี้: ลูป retry ข้างล่างเคยออกรหัสใหม่ทุกรอบที่ชน ⇒ กินเลขทิ้งรอบละใบ
   const autoCode = !body.code;
-  let projectCode = body.code || (await generateProjectCode(supabase));
+  const projectCode = body.code || null;
   
   const baseRow = {
     name: body.name,
@@ -84,16 +86,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   let error = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const projectId = genId('PRJ');
-    ({ data: project, error } = await supabase
-      .from('projects')
-      .insert({ ...baseRow, id: projectId, code: projectCode })
-      .select()
-      .single());
+    ({ data: project, error } = autoCode
+      ? await insertRowWithEntityCode(supabase, 'PJ', { ...baseRow, id: projectId })
+      : await supabase
+        .from('projects')
+        .insert({ ...baseRow, id: projectId, code: projectCode })
+        .select()
+        .single());
     if (!error) break;
     if (error.code === '23505') {
       if (!autoCode) return conflict(`รหัสโครงการซ้ำ: ${projectCode}`);
-      projectCode = await generateProjectCode(supabase);
-      continue;
+      continue; // เลขของรอบที่ล้มถูกคืนแล้ว รอบใหม่ฟังก์ชันออกรหัสให้เอง
     }
     break;
   }

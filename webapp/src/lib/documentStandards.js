@@ -255,6 +255,37 @@ export function documentNumberParts(pattern, { date = new Date(), running = 0 } 
   return { base: separator ? head.slice(0, -separator.length) : head, separator };
 }
 
+// แตกรูปแบบเป็นชิ้นส่วนที่ "เติมเฉพาะเลขรัน" ได้ — ฟังก์ชัน SQL ที่ออกเลขพร้อมบันทึกแถว
+// (mig 0242) รับสี่ค่านี้ไปประกอบ จึงไม่ต้องรู้จัก token เอง ⇒ ไฟล์นี้ยังเป็นที่เดียว
+// ที่รู้ว่ารูปแบบเลขที่หน้าตาอย่างไร
+//
+// ประกอบกลับ: base = prefix + lpad(running, width) + tail · เลขเต็ม = base + separator + rev
+// ต้องได้ผลเท่ากับ documentNumberParts(pattern, { date, running }) เสมอ (ล็อกไว้ใน test)
+//
+// ⚠️ รูปแบบที่ไม่มี {RUNNING:n} เลย (validator ไม่ควรปล่อยผ่าน แต่ published แก้ย้อนหลังไม่ได้)
+// ถือความกว้าง 4 แล้วต่อเลขท้าย prefix — ดีกว่าออกเลขเดียวกันทุกใบจนชน unique
+export function documentNumberSlots(pattern, { date = new Date() } = {}) {
+  const text = String(pattern || '');
+  const cut = text.indexOf(REVISION_TOKEN);
+  const head = cut < 0 ? text : text.slice(0, cut);
+  const run = /\{RUNNING:(\d+)\}/.exec(head);
+  const width = run ? Number(run[1]) : 4;
+  const prefix = formatDocumentNumber(run ? head.slice(0, run.index) : head, { date });
+  const tail = run ? formatDocumentNumber(head.slice(run.index + run[0].length), { date }) : '';
+  // ไม่มี {REVISION}: ทั้งก้อนคือเลขฐาน แล้วต่อ R ด้วย '-' (กติกาเดียวกับ documentNumberParts)
+  if (cut < 0) return { prefix, width, tail, separator: '-' };
+  // ตัวคั่นก่อน {REVISION} ไม่นับเป็นส่วนของเลขฐาน — ตัดจาก "ชิ้นที่อยู่ท้ายเลขรัน"
+  // ⚠️ ต้องเป็น tail เสมอเมื่อมี {RUNNING:n} แม้ tail จะว่าง: ขีดที่อยู่ **หน้า** เลขรัน
+  // (เช่น QT-{YY}{MM}-{RUNNING:4}{REVISION}) เป็นส่วนหนึ่งของเลขฐาน ตัดทิ้งไม่ได้
+  if (run) {
+    const sep = SEPARATOR_TAIL.exec(tail)?.[0] || '';
+    return { prefix, width, tail: sep ? tail.slice(0, -sep.length) : tail, separator: sep };
+  }
+  // ไม่มี {RUNNING:n}: เลขไปต่อท้าย prefix ⇒ ตัวคั่นท้าย prefix คือตัวคั่นของ revision
+  const sep = SEPARATOR_TAIL.exec(prefix)?.[0] || '';
+  return { prefix: sep ? prefix.slice(0, -sep.length) : prefix, width, tail: '', separator: sep };
+}
+
 // ตัวคั่นก่อนเลข revision ของ "ใบต้นทางเอง" — ใบที่ออกด้วยรูปแบบเก่าต้องต่อ R ด้วย
 // ตัวคั่นของตัวเอง ไม่ใช่ของรูปแบบปัจจุบันที่อาจถูกเปลี่ยนไปแล้วหลังใบนั้นออก
 // เลขที่ของ "ฉบับที่กำลังพิมพ์" สำหรับเอกสารที่เดิน Rev อยู่บนแถวเดิม (เอกสารไทม์ไลน์

@@ -5,6 +5,7 @@ import {
   DOCUMENT_ACCENT_KEYS,
   DOCUMENT_STANDARD_KEYS,
   documentNumberParts,
+  documentNumberSlots,
   documentNumberWithRevision,
   documentStandardFormLine,
   formatDocumentNumber,
@@ -224,6 +225,43 @@ test('แยกเลขฐานกับตัวคั่นจากรู�
   assert.deepEqual(
     documentNumberParts('QT-{YY}{MM}{RUNNING:4}{REVISION}', { date: JULY_2026, running: 2 }),
     { base: 'QT-26070002', separator: '' },
+  );
+});
+
+// ชิ้นส่วนที่ส่งให้ฟังก์ชัน SQL ไปเติมเลขเอง (mig 0240) — ถ้าประกอบกลับแล้วไม่ตรงกับ
+// documentNumberParts เมื่อไร เลขบนใบจริงจะต่างจากที่ระบบคำนวณไว้ทุกที่อื่น
+test('ชิ้นส่วนรูปแบบเลขที่: ประกอบกลับต้องได้ผลเท่า documentNumberParts', () => {
+  const patterns = [
+    DEFAULT_NUMBERING_PATTERNS.quotation,
+    'QT-{YY}{MM}{RUNNING:4}.{REVISION}',
+    'QT-{YY}{MM}{RUNNING:4}{REVISION}',
+    'QT-{YY}{MM}{RUNNING:4}',                 // ไม่มี {REVISION}
+    'SO/{YYYY}/{RUNNING:5}-{REVISION}',
+    'X{DD}{MM}{RUNNING:3}A-{REVISION}',       // มีตัวอักษรคั่นหลังเลขรัน
+    'QT-{YY}{MM}-{RUNNING:4}{REVISION}',      // 🐞 ขีดอยู่ "หน้า" เลขรัน = ส่วนหนึ่งของเลขฐาน
+    'QT-{YY}{MM}-{RUNNING:4}-{REVISION}',     // ขีดทั้งหน้าและหลังเลขรัน
+  ];
+  for (const pattern of patterns) {
+    const slots = documentNumberSlots(pattern, { date: JULY_2026 });
+    for (const running of [1, 28, 9999]) {
+      const parts = documentNumberParts(pattern, { date: JULY_2026, running });
+      const base = slots.prefix + String(running).padStart(slots.width, '0') + slots.tail;
+      assert.equal(base, parts.base, `base ไม่ตรง: ${pattern} @ ${running}`);
+      assert.equal(slots.separator, parts.separator, `separator ไม่ตรง: ${pattern}`);
+    }
+  }
+});
+
+test('ชิ้นส่วนรูปแบบเลขที่: ความกว้างมาจาก {RUNNING:n} จริง', () => {
+  assert.deepEqual(
+    documentNumberSlots(DEFAULT_NUMBERING_PATTERNS.quotation, { date: JULY_2026 }),
+    { prefix: 'QT-2607', width: 4, tail: '', separator: '-' },
+  );
+  assert.equal(documentNumberSlots('SO/{YYYY}/{RUNNING:5}-{REVISION}', { date: JULY_2026 }).width, 5);
+  // ไม่มี {RUNNING:n} เลย = ถือ 4 หลักแล้วต่อท้าย prefix (ดีกว่าออกเลขซ้ำทุกใบ)
+  assert.deepEqual(
+    documentNumberSlots('QT-{YY}{MM}-{REVISION}', { date: JULY_2026 }),
+    { prefix: 'QT-2607', width: 4, tail: '', separator: '-' },
   );
 });
 

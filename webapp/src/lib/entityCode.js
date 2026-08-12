@@ -15,16 +15,37 @@ export function ymKey(now = new Date()) {
   return businessMonthKey(now);
 }
 
-// ออกรหัสฐานใหม่ผ่าน RPC atomic (กันเลขซ้ำเมื่อสร้างพร้อมกัน). scope = 'PJ' | 'DL'.
-export async function generateEntityCode(supabase, scope, now = new Date()) {
+// เลขรัน 4 หลักต่อเดือน — ฟังก์ชัน SQL ที่ออกรหัส (mig 0240) รับค่านี้ไปเติมศูนย์ให้
+export const ENTITY_RUNNING_WIDTH = 4;
+
+// ── สร้างแถวพร้อมออกรหัส (mig 0240) ───────────────────────────────────────
+// ⚠️ **ห้ามกลับไปจองเลขเองแล้วค่อย insert แยก** — นั่นคือสองทรานแซกชัน เลขถูก commit
+// ตั้งแต่คำสั่งแรก ⇒ insert ล้มเมื่อไรเลขนั้นหายจากระบบถาวร (เลขข้าม) · ฟังก์ชัน SQL
+// จองเลขกับ insert ในคำสั่งเดียว ล้มตรงไหนก็ rollback คืนเลขให้เอง
+//
+// รับหลายแถวเสมอ: ที่ gen ทีละชุด (ใบผลิตอัตโนมัติ · นัดบริการตามรอบ) ต้องได้พฤติกรรม
+// เดิมคือล้มใบไหนก็ล้มทั้งชุด ไม่ค้างครึ่งทาง · คืน { data, error } ดิบตามเดิม
+export function insertRowsWithEntityCode(supabase, scope, rows, now = new Date()) {
   const month = ymKey(now);
-  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: scope, p_month: month });
-  if (error) throw new Error(`ออกรหัส ${scope} ไม่สำเร็จ: ${error.message}`);
-  return `${scope}-${month}${String(data).padStart(4, '0')}`;
+  return supabase.rpc('create_entity_rows_with_code', {
+    p_scope: scope,
+    p_month: month,
+    p_prefix: `${scope}-${month}`,
+    p_width: ENTITY_RUNNING_WIDTH,
+    p_rows: rows,
+  });
+}
+
+// ใบเดี่ยว — คืนแถวเดียวแทน array ให้ผู้เรียกใช้แทน .insert().select().single() ได้ตรง ๆ
+export async function insertRowWithEntityCode(supabase, scope, row, now = new Date()) {
+  const { data, error } = await insertRowsWithEntityCode(supabase, scope, [row], now);
+  if (error) return { data: null, error };
+  return { data: Array.isArray(data) ? (data[0] ?? null) : null, error: null };
 }
 
 // พรีวิวรหัสถัดไป "โดยไม่กินเลข" (สำหรับหน้าฟอร์มโชว์เฉย ๆ — ห้ามใช้ตอน insert จริง
-// เพราะไม่ atomic). ตัวจริงตอนสร้างต้องใช้ generateEntityCode (RPC increment).
+// เพราะไม่ atomic และเลขที่โชว์อาจถูกคนอื่นเอาไปก่อน)
+// ตัวจริงตอนสร้างคือ insertRowWithEntityCode / insertRowsWithEntityCode ข้างบน
 export async function peekNextEntityCode(supabase, scope, now = new Date()) {
   const month = ymKey(now);
   const { data } = await supabase

@@ -263,12 +263,26 @@ export function canDecideItem(user, request, item) {
   return item?.approvalStatus === 'pending';
 }
 
-// ── เลขที่เอกสาร: CR-YYMMXXXX (เลขรัน atomic ต่อเดือน — RPC เดิม mig 0096) ──
-export async function generateCostingDocNo(supabase, now = new Date()) {
+// ── เลขที่เอกสาร: CR-YYMMXXXX (เลขรันต่อเดือน — เคาน์เตอร์เดิมของ mig 0096) ──
+//
+// ใบขอราคาผลิตมีตัวตนก่อนมีเลข: เลขออกตอน "กดส่งผู้บริหาร" ครั้งแรกเท่านั้น
+// (guard 0141 ห้ามเปลี่ยนทีหลัง) ⇒ ไม่ใช่ออกรหัสตอน insert แต่เป็นตอน update
+//
+// ⚠️ **ออกเลขพร้อม UPDATE ในทรานแซกชันเดียว** (mig 0242) — ห้ามกลับไปจองเลขแล้วค่อย
+// update แยก: update ล้มเมื่อไรเลขนั้นหายถาวร และใบเดิมยังไม่มีเลข พอกดส่งใหม่ก็กิน
+// เลขถัดไปอีกใบ · ใบที่มีเลขแล้วส่งซ้ำจะไม่กินเลขใหม่ (ฟังก์ชันเช็คให้)
+//
+// patch = ฟิลด์อื่นที่ต้องเปลี่ยนพร้อมกัน (สถานะ/เวลาที่ส่ง) — กติกาว่าจะเปลี่ยนอะไร
+// ยังอยู่ฝั่งนี้ ฟังก์ชัน SQL รับผิดชอบแค่ตัวเลข
+export function assignCostingDocNo(supabase, id, patch, now = new Date()) {
   const month = businessMonthKey(now);
-  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: 'CR', p_month: month });
-  if (error) throw new Error(`ออกเลขที่ใบขอราคาไม่สำเร็จ: ${error.message}`);
-  return `CR-${month}${String(data).padStart(4, '0')}`;
+  return supabase.rpc('assign_costing_doc_no', {
+    p_id: id,
+    p_month: month,
+    p_prefix: `CR-${month}`,
+    p_width: 4,
+    p_patch: patch,
+  });
 }
 
 // ── บริบทจากดีล (optional — มติ 2026-07-23) ────────────────────────────

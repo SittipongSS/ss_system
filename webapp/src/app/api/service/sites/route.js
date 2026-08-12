@@ -3,7 +3,7 @@
 // POST : เพิ่มไซต์ (ฝ่าย TS หรือทีมขาย SV — ดู canEditService)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
@@ -80,16 +80,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const customer = await findCustomer(supabase, value.customerId);
     if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
 
+    // รหัส SS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('SVS'),
-      code: await generateEntityCode(supabase, 'SS'),
       ...value,
       customerName: customer.name || null,
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
-    const { data, error: insertError } = await supabase
-      .from('service_sites').insert(row).select().single();
+    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'SS', row);
     if (insertError) return fail(insertError.message, 500);
 
     await recordAudit({

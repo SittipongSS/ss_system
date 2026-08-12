@@ -7,7 +7,8 @@ import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
-import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
+import { loadProject } from '@/lib/pm/projectsRepo';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
@@ -80,7 +81,8 @@ export async function POST(request, { params }) {
   const now = new Date().toISOString();
   const startDate = body.startDate || po.receivedDate || po.docDate || todayStr();
   const dueDate = body.dueDate || po.dueDate || null;
-  let projectCode = await generateProjectCode(supabase);
+  // รหัสโครงการออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — ห้ามจองไว้ก่อนตรงนี้:
+  // ลูป retry ข้างล่างเคยออกรหัสใหม่ทุกรอบที่ชน ⇒ กินเลขทิ้งรอบละใบ
   let project = null;
   let projectError = null;
 
@@ -132,16 +134,10 @@ export async function POST(request, { params }) {
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const projectId = genId('PRJ');
-    ({ data: project, error: projectError } = await supabase
-      .from('projects')
-      .insert({ ...baseRow, id: projectId, code: projectCode })
-      .select()
-      .single());
+    ({ data: project, error: projectError } =
+      await insertRowWithEntityCode(supabase, 'PJ', { ...baseRow, id: projectId }));
     if (!projectError) break;
-    if (projectError.code === '23505') {
-      projectCode = await generateProjectCode(supabase);
-      continue;
-    }
+    if (projectError.code === '23505') continue; // เลขของรอบที่ล้มถูกคืนแล้ว
     break;
   }
   if (projectError) return Response.json({ error: projectError.message }, { status: 500 });

@@ -4,7 +4,7 @@
 // เลขที่เอกสารออกครั้งแรกที่นี่ (ส่งออกจากมือฝ่ายขาย = ร่างที่ทิ้งไม่กินเลข)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canEditCostingRequest, generateCostingDocNo, submitToExecError } from '@/lib/costing';
+import { assignCostingDocNo, canEditCostingRequest, submitToExecError } from '@/lib/costing';
 import { libraryPricingBlocker } from '@/lib/costingLibrary';
 import { findCostingRequest, loadPendingAskLinks, syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
@@ -38,9 +38,6 @@ export async function POST(request, { params }) {
   const blocked = submitToExecError({ ...before, status }, libBlocker);
   if (blocked) return Response.json({ error: blocked }, { status: 409 });
 
-  // ออกเลขที่เอกสารครั้งแรกที่ส่งผู้บริหาร (guard 0141 ห้ามเปลี่ยนทีหลัง)
-  const docNo = before.docNo || await generateCostingDocNo(supabase);
-
   // ตีกลับแล้วส่งใหม่: รายการที่เคยถูกตีกลับกลับไปรออนุมัติอีกครั้ง
   // (รายการที่อนุมัติผ่านแล้วไม่ถูกแตะ — ไม่ต้องอนุมัติซ้ำ)
   const { error: resetError } = await supabase.from('costing_request_items')
@@ -48,9 +45,14 @@ export async function POST(request, { params }) {
     .eq('requestId', id).eq('approvalStatus', 'returned');
   if (resetError) return Response.json({ error: resetError.message }, { status: 500 });
 
-  const { error } = await supabase.from('costing_requests')
-    .update({ docNo, status: 'pending_exec', submittedAt: before.submittedAt || nowIso, updatedAt: nowIso })
-    .eq('id', id);
+  // ออกเลขที่เอกสารครั้งแรกที่ส่งผู้บริหาร (guard 0141 ห้ามเปลี่ยนทีหลัง) — ออกพร้อม
+  // UPDATE ในทรานแซกชันเดียว (mig 0242) ⇒ update ล้ม = เลขที่จองถูกคืน ไม่หายจากระบบ
+  // ใบที่มีเลขแล้ว (ส่งซ้ำหลังถูกตีกลับ) ไม่กินเลขใหม่ — ฟังก์ชันเช็คให้
+  const { error } = await assignCostingDocNo(supabase, id, {
+    status: 'pending_exec',
+    submittedAt: before.submittedAt || nowIso,
+    updatedAt: nowIso,
+  });
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   const after = await findCostingRequest(supabase, id);

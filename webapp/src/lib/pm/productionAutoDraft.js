@@ -2,7 +2,7 @@
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowsWithEntityCode } from '@/lib/entityCode';
 import { draftJobsForSalesOrder } from './productionPlan';
 import { approvedOrdersWithLines, existingJobLineIds } from './productionJobsRepo';
 
@@ -24,9 +24,9 @@ export async function autoDraftJobs({ supabase, user, req, salesOrderId = null }
       taken.add(draft.salesOrderLineId);
       payload.push({
         id: genId('PBJ'),
-        // ⚠️ ออกรหัสทีละใบผ่าน RPC atomic — ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1
-        // (สองคนเปิดคิวพร้อมกันจะได้รหัสชนกัน แล้ว unique constraint เด้งทั้งชุด)
-        code: await generateEntityCode(supabase, 'PB'),
+        // ⚠️ ไม่ใส่ code ตรงนี้ — รหัสออกทีละใบในฟังก์ชัน SQL ตอน insert (mig 0240)
+        // ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1 (สองคนเปิดคิวพร้อมกันจะได้รหัสชนกัน)
+        // และห้ามจองเลขไว้ก่อนตรงนี้ — ชุดนี้ล้มทั้งชุด เลขที่จองไว้จะหายไปทั้งหมด
         ...draft,
         dayOverrides: {},
         createdById: user?.id ? String(user.id) : null,
@@ -36,7 +36,8 @@ export async function autoDraftJobs({ supabase, user, req, salesOrderId = null }
   }
   if (!payload.length) return [];
 
-  const { data, error } = await supabase.from('production_jobs').insert(payload).select();
+  // ออกรหัสทุกใบ + insert ในทรานแซกชันเดียว — ล้มใบไหนก็คืนเลขทั้งชุด (mig 0240)
+  const { data, error } = await insertRowsWithEntityCode(supabase, 'PB', payload);
   if (error) {
     // ชนกันเพราะมีคนกดพร้อมกัน = ของถูกสร้างไปแล้ว ไม่ใช่ความผิดพลาดที่ต้องเด้งใส่ผู้ใช้
     if (error.code === '23505') return [];

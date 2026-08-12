@@ -7,7 +7,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import {
-  advanceStage, dealAuditLabel, generateQuoteNumber, normalizeDiscountValue, quoteTotals, toMoney,
+  advanceStage, dealAuditLabel, insertQuotationWithNumber, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
@@ -77,16 +77,13 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
   const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
 
-  // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
-  const { base, quoteNumber } = await generateQuoteNumber(supabase);
+  // เลขรันจาก DB (ต่อเดือน — mig 0092) ออกพร้อม insert ในทรานแซกชันเดียว (mig 0242):
+  // QT-YYMMXXXX-0 · ⚠️ ไม่ใส่ quoteNumber/baseNumber ตรงนี้ — ฟังก์ชัน SQL เป็นคนเติม
+  // หลังจองเลขสำเร็จ ไม่งั้น insert ที่ล้มจะกินเลขใบเสนอราคาทิ้งทุกครั้ง
   const quoteId = genId('QT');
-  const { data: quote, error } = await supabase
-    .from('quotations')
-    .insert({
+  const { data: quote, error } = await insertQuotationWithNumber(supabase, {
       id: quoteId,
       dealId: deal.id,
-      quoteNumber,
-      baseNumber: base,
       revisionNo: 0,
       status: 'draft', // ใบใหม่เป็นร่างเสมอ — ส่งได้หลังเจ้าของดีลอนุมัติ (มติ 2026-07-18)
       quoteDate: body.quoteDate || businessDate(),
@@ -139,12 +136,10 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       createdBy: user.id || null,
       createdByName: user.name || null,
       createdByPhone: user.phone || null, // snapshot เบอร์ผู้เสนอราคา → โชว์บนเอกสาร V4
-    })
-    .select()
-    .single();
+  });
   if (error) {
     throw new QuotationDraftError(
-      error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message,
+      error.code === '23505' ? `เลขใบเสนอราคาซ้ำ (${quoteId})` : error.message,
       error.code === '23505' ? 409 : 500,
     );
   }

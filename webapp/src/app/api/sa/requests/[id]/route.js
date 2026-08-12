@@ -24,7 +24,7 @@ import {
   acknowledgeRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
-  deleteRequestError, ensureRequestDocNo, requestGuardMessage, submitRequestError,
+  assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
 import { requestHasItems, requestShapeError } from '@/lib/master/requestTypes';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
@@ -130,6 +130,8 @@ export async function PATCH(request, { params }) {
   const action = body.action;
   const nowIso = new Date().toISOString();
   const patch = { updatedAt: nowIso };
+  // กดส่ง = ต้องออกเลขที่คำร้องพร้อมบันทึกในทรานแซกชันเดียว (mig 0243) ไม่ใช่ใส่ลง patch
+  let issueDocNo = false;
   let summary = '';
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
@@ -160,11 +162,13 @@ export async function PATCH(request, { params }) {
       if (briefNameError) return Response.json({ error: briefNameError }, { status: 409 });
       // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
       // ⚠️ ใบที่ถูก **ตีกลับ** เป็นร่างที่มีเลขอยู่แล้ว ⇒ ต้องใช้เลขเดิม ไม่ใช่ออกใหม่
-      // (`docNo` แก้ไม่ได้ที่ระดับ trigger — ดูเหตุผลเต็มใน `ensureRequestDocNo`)
-      patch.docNo = await ensureRequestDocNo(supabase, before);
+      // (`docNo` แก้ไม่ได้ที่ระดับ trigger — ดูเหตุผลเต็มใน `assignRequestDocNo`)
+      // ⚠️ ไม่ใส่ docNo ลง patch: เลขออกพร้อม UPDATE ในคำสั่งเดียว (mig 0243) ไม่งั้น
+      // ทุก UPDATE ที่ไม่ผ่านจะกินเลขทิ้ง — เคยเกิดจริง ตัวนับ RQ วิ่งเกินเลขที่ออกจริง 8 เลข
+      issueDocNo = true;
       patch.status = 'pending';
       patch.submittedAt = nowIso;
-      summary = `ส่งคำร้อง ${patch.docNo} ถึงฝ่าย ${before.dept}`;
+      summary = `ส่งคำร้อง ${before.docNo || id} ถึงฝ่าย ${before.dept}`;
     } else if (action === 'acknowledge') {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `รับเรื่องได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
@@ -439,8 +443,12 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('dept_requests').update(patch).eq('id', id);
+    const { data: saved, error } = issueDocNo
+      ? await assignRequestDocNo(supabase, before, patch)
+      : await supabase.from('dept_requests').update(patch).eq('id', id);
     if (error) throw error;
+    // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
+    if (issueDocNo && saved?.docNo) summary = `ส่งคำร้อง ${saved.docNo} ถึงฝ่าย ${before.dept}`;
 
     // ใบขอราคาผลิตที่คำร้องนี้ถามแทน: เปิด = ใบเป็น 'pricing', ปิด/ยกเลิก = คืนสถานะ
     if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);

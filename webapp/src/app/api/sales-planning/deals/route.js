@@ -1,5 +1,5 @@
 import { genId } from '@/lib/id';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
 import { ownerLockedToSelf, validateDealOwner } from '@/lib/sales/dealOwner';
@@ -147,10 +147,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
   }
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
-  const dealCode = await generateEntityCode(supabase, 'DL');
+  // ⚠️ ไม่ใส่ code ตรงนี้ — ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) ไม่งั้นทุก
+  // ครั้งที่ insert ล้ม รหัสดีลจะหายไปหนึ่งเลขโดยไม่มีใครรู้
   const row = {
     id: genId('DEAL'),
-    code: dealCode,
     customerId: body.customerId || null,
     customerName,
     title: body.title.trim(),
@@ -233,8 +233,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     sourceLead = lead;
   }
 
-  const { data, error } = await supabase.from('sales_deals').insert(row).select(selectDeal).single();
+  const { data: created, error } = await insertRowWithEntityCode(supabase, 'DL', row);
   if (error) return fail(error.message, 500);
+  // ฟังก์ชัน SQL คืนเฉพาะแถวของ sales_deals — response เดิมมีลูกค้าที่ join ไว้ใน
+  // selectDeal ติดมาด้วย จึงอ่านกลับอีกครั้งให้หน้าจอได้ของหน้าตาเดิม (อ่านไม่ได้ =
+  // ใช้แถวดิบ ดีลถูกสร้างสำเร็จไปแล้ว ไม่ควรตอบ error เพราะ join ไม่มา)
+  const { data: joined } = await supabase
+    .from('sales_deals').select(selectDeal).eq('id', created.id).maybeSingle();
+  const data = joined || created;
 
   /* ไทม์ไลน์เกิดพร้อมดีลเสมอ ไม่ต้องกดสร้างเอง (มติผู้ใช้ 2026-08-08) — ฟอร์มสร้าง
      มีครบทุกอย่างที่ template ใช้แล้ว (ประเภทดีล/หมวดสินค้า/วันที่เริ่ม/เจ้าของ)

@@ -1,7 +1,7 @@
 import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
-import { documentNumberParts, publishedNumberingPattern } from '@/lib/documentStandards';
+import { documentNumberSlots, publishedNumberingPattern } from '@/lib/documentStandards';
 
 // ⚠️ ลำดับในอาร์เรย์นี้ = กติกา "เดินหน้าอย่างเดียว" ของทั้งระบบ ไม่ใช่แค่ลำดับที่โชว์:
 // ทุกจุดที่ผลักดีลไปข้างหน้าเทียบด้วย stageIndex() ตัวล่างนี้ ("ถ้าอยู่ก่อนเป้าหมาย ค่อยดัน")
@@ -289,15 +289,23 @@ export function dealAuditLabel(deal) {
 
 // เลขใบเสนอราคา: รูปแบบมาจาก "มาตรฐานเอกสารที่เผยแพร่" (หน้าตั้งค่า → mig 0123)
 // ค่าตั้งต้น QT-{YY}{MM}{RUNNING:4}-{REVISION} = QT-YYMMXXXX-R เท่าเดิมทุกตัวอักษร.
-// เลขรันยังออกจาก DB แบบ atomic (RPC next_quote_number — mig 0092) กันเลขซ้ำเมื่อ
-// สร้างพร้อมกัน และยังรีเซ็ตต่อเดือน — ที่เปลี่ยนคือ "การประกอบสตริง" อย่างเดียว.
-export async function generateQuoteNumber(supabase, now = new Date()) {
-  const month = businessMonthKey(now);
-  const { data, error } = await supabase.rpc('next_quote_number', { p_month: month });
-  if (error) throw new Error(`ออกเลขใบเสนอราคาไม่สำเร็จ: ${error.message}`);
+// เลขรันยังออกจาก quote_number_counters ตัวเดิม (mig 0092) และยังรีเซ็ตต่อเดือน
+//
+// ⚠️ **ออกเลขพร้อม insert ในทรานแซกชันเดียว** (mig 0242) — ห้ามกลับไปจองเลขแล้วค่อย
+// insert แยก: RPC เดิมคืนเลขที่ commit ไปแล้ว ⇒ insert ล้มเมื่อไรเลขใบเสนอราคาหายถาวร
+// ฝั่งนี้ส่งได้แค่ชิ้นส่วนของรูปแบบ (prefix/ความกว้าง/ท่อนท้าย/ตัวคั่น) ตัวเลขเป็นของ DB
+// คืน { data, error } ดิบตามเดิม — ผู้เรียกยังอ่าน error.code เองได้
+export async function insertQuotationWithNumber(supabase, row, now = new Date()) {
   const pattern = await publishedNumberingPattern(supabase, 'quotation');
-  const { base, separator } = documentNumberParts(pattern, { date: now, running: data });
-  return { base, quoteNumber: `${base}${separator}0` };
+  const { prefix, width, tail, separator } = documentNumberSlots(pattern, { date: now });
+  return supabase.rpc('create_quotation_with_number', {
+    p_month: businessMonthKey(now),
+    p_prefix: prefix,
+    p_width: width,
+    p_tail: tail,
+    p_separator: separator,
+    p_row: row,
+  });
 }
 
 // ปัดเงินเป็น 2 ตำแหน่ง (สตางค์) — กันทศนิยมลอย (เช่น 99.999) หลุดลง DB/เอกสาร/ยอด Won

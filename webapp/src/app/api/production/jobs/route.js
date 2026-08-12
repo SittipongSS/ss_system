@@ -4,7 +4,7 @@
 // POST : สร้างงานเอง (PC แตก/รวมล็อตเองได้ตามมติ §10.1)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { generateEntityCode } from '@/lib/entityCode';
+import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { deliveriesForSalesOrder, productionReadiness } from '@/lib/pm/deliveries';
@@ -68,15 +68,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return badRequest(error);
 
   try {
+    // รหัส PB ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('PBJ'),
-      code: await generateEntityCode(supabase, 'PB'),
       ...value,
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
-    const { data, error: insertError } = await supabase
-      .from('production_jobs').insert(row).select().single();
+    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'PB', row);
     if (insertError) return fail(insertError.message, 500);
 
     await recordAudit({
