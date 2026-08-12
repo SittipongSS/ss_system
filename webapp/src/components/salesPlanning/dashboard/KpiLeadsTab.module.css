@@ -11,6 +11,24 @@
   margin-top: var(--space-3);
 }
 
+/* คำอธิบายใต้กราฟ — ของที่ต้องอ่านคู่กับผัง ไม่ใช่หัวข้อของส่วนถัดไป
+   จึงชิดกราฟด้านบนและเว้นจากกริดข้างล่าง */
+.chartNote {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-1);
+  line-height: var(--lh-thai);
+}
+
+/* ตัวหารใต้เปอร์เซ็นต์ในช่องตาราง — เล็กและจางกว่าเลขหลัก แต่ยังอ่านออก
+   (ท่าเดียวกับหมายเหตุใต้ตัวเลขของการ์ด SaMetric) */
+.cellSub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-1);
+  line-height: var(--lh-thai);
+}
+
 .emptyCell {
   padding: var(--space-5);
   text-align: center;

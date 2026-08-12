@@ -20,13 +20,18 @@ const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
 
 /* สามด่านของเส้นทางลีด วัดด้วยกติกาเดียวกัน (≤1 วันทำการ) ต่างกันแค่คู่ timestamp —
    ประกาศเป็นลิสต์เพื่อให้เพิ่ม/ลดด่านแล้วไม่ต้องไล่แก้ JSX ทีละใบ
-   ⚠️ หมายเหตุใต้ตัวเลขต้องสั้นระดับ "ทัน x/y · ค้างตอนนี้ z" เท่านั้น — `.ui-metric em`
-   เป็น nowrap + ellipsis แต่กล่องข้างในไม่มี min-width:0 ellipsis เลยไม่ทำงาน
-   ข้อความยาวจึงล้นไปทับการ์ดข้าง ๆ (เจอตอนลองใส่ชื่อผู้รับผิดชอบด่านลงไป) */
+   ⚠️ หมายเหตุใต้ตัวเลขต้องสั้นระดับ "ทัน x/y · ค้างตอนนี้ z" — `.ui-metric em` เป็น
+   nowrap + ellipsis (กล่องในมี min-width:0 แล้ว ellipsis จึงทำงาน ไม่ล้นทับการ์ดข้าง ๆ
+   เหมือนเดิม) แต่ยาวเกินก็ยังโดนตัดหายอยู่ดี — ความสั้นคือเงื่อนไขที่อ่านออก
+
+   ⚠️ `pendingLabel` ของด่านคัดกรองต่างจากอีกสองด่าน **โดยเจตนา** — ของค้างด่านนี้คือคิว
+   กลางที่ยังไม่มีทีม API จึงนับโดยไม่ใส่ตัวกรองทีม (ดู countLeadsByStatus ใน route)
+   เลือกทีมอยู่แล้วเห็น "ค้างตอนนี้" เป็นเลขทั้งบริษัทข้าง ๆ % ของทีม = อ่านผิดแน่นอน
+   ถ้าไม่บอกว่ามันคนละขอบเขต */
 const SLA_STAGES = [
-  { key: "screen", icon: <Filter />, label: "SLA คัดกรอง ≤1 วันทำการ" },
-  { key: "assign", icon: <Users />, label: "SLA กระจาย ≤1 วันทำการ" },
-  { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ" },
+  { key: "screen", icon: <Filter />, label: "SLA คัดกรอง ≤1 วันทำการ", pendingLabel: "ค้างทั้งบริษัท" },
+  { key: "assign", icon: <Users />, label: "SLA กระจาย ≤1 วันทำการ", pendingLabel: "ค้างตอนนี้" },
+  { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ", pendingLabel: "ค้างตอนนี้" },
 ];
 
 /* สีวงกลม = ชุดจำแนกประเภทของระบบ (3 ตัวแรกผ่านตัวตรวจ CVD ทุกข้อในทั้งสองธีม)
@@ -120,6 +125,27 @@ export default function KpiLeadsTab({ month, teamFilter }) {
     { label: "เปิดลูกค้า", value: f.qualified ?? 0, color: "var(--green)" },
   ], [f]);
 
+  /* แถวรวมของสองตารางล่าง — ไม่ใช่ของประดับ: มันคือด่านที่จับได้ว่าตัวเลขในตารางกับ
+     ผัง Funnel ข้างบนหลุดจากกัน (ส.ค. 2026 ผังเคยขึ้น "มอบหมายแล้ว 56" ขณะที่ตาราง AE
+     รวมได้ 54 — ไม่มีใครเห็นจนต้องไล่บวกเอง) */
+  const aeTotals = useMemo(() => {
+    const rows = kpi?.byAssignee || [];
+    const sum = (key) => rows.reduce((n, r) => n + (r[key] || 0), 0);
+    return {
+      assigned: sum("assigned"), contacted: sum("contacted"), slaHit: sum("slaHit"),
+      meetings: sum("meetings"), qualified: sum("qualified"), pending: sum("pending"),
+    };
+  }, [kpi]);
+
+  /* ⚠️ "วันที่กรอก" ของแถวรวม **ไม่ใช่ผลบวกของคอลัมน์** — สองคนกรอกวันเดียวกันนับเป็น
+     วันเดียว จึงต้องนับจาก `byDay` (คีย์ = วันไทยที่มีลีดเข้าจริง) ไม่งั้นค่าเฉลี่ยรวม
+     จะต่ำกว่าความจริงเสมอและไม่ตรงกับที่หน้าอื่นรายงาน */
+  const creatorTotals = useMemo(() => {
+    const count = (kpi?.byCreator || []).reduce((n, c) => n + (c.count || 0), 0);
+    const days = Object.keys(kpi?.byDay || {}).length;
+    return { count, days, perDay: days ? +(count / days).toFixed(1) : 0 };
+  }, [kpi]);
+
   const groups = useMemo(() => {
     const map = new Map();
     for (const c of channels) map.set(c.group, (map.get(c.group) || 0) + c.count);
@@ -161,12 +187,18 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             </BarChart>
           </ResponsiveContainer>
         </ChartCanvas>
+        {/* เหตุผลที่แท่งล่างสองอันสวนทางกันต้องอยู่ **บนจอ** ไม่ใช่ในคอมเมนต์โค้ด —
+            คนอ่านเห็นแท่งเรียงลงมาแล้วเจอ "นัด 2 · เปิดลูกค้า 4" จะอ่านว่าระบบคำนวณพัง
+            สีที่ต่างกันบอกไม่ได้ว่ามันคนละชนิด (มีคนถามจริงตอนตรวจ 2026-08-12) */}
+        <p className={styles.chartNote}>
+          “ผ่านนัดประชุม” เป็นแขนง ไม่ใช่ด่าน — เปิดดีลได้ตั้งแต่ขั้น “ติดต่อแล้ว” จำนวนเปิดลูกค้าจึงมากกว่านัดได้
+        </p>
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
         <div className={styles.qualityGrid} aria-busy={loading}>
           {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
               โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
-          {SLA_STAGES.map(({ key, icon, label }) => {
+          {SLA_STAGES.map(({ key, icon, label, pendingLabel }) => {
             const s = sla[key] || {};
             return (
               <SaMetric
@@ -174,7 +206,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                 icon={icon}
                 label={label}
                 value={pct(s.hit, s.checked)}
-                note={`ทัน ${s.hit ?? 0}/${s.checked ?? 0} · ค้างตอนนี้ ${s.pending ?? "-"}`}
+                note={`ทัน ${s.hit ?? 0}/${s.checked ?? 0} · ${pendingLabel} ${s.pending ?? "-"}`}
                 tone={slaPendingTone(s.pending)}
               />
             );
@@ -204,6 +236,14 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                 ))}
                 {!(kpi?.byCreator || []).length && <tr><td colSpan={4} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
               </tbody>
+              {(kpi?.byCreator || []).length ? (
+                <tfoot><tr className="premium-row">
+                  <td><strong>รวม</strong></td>
+                  <td className="num mono"><strong>{creatorTotals.count}</strong></td>
+                  <td className="num mono"><strong>{creatorTotals.days}</strong></td>
+                  <td className="num mono"><strong>{creatorTotals.perDay}</strong></td>
+                </tr></tfoot>
+              ) : null}
             </table></TableScroll>
       </SaSection>
 
@@ -248,10 +288,22 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                 </ResponsiveContainer>
               </ChartCanvas>
             </div>
-            <ChartLegend items={[
-              ...groups.map((g, i) => ({ key: `g-${g.key}`, label: `${g.label} ${g.value}`, color: GROUP_COLORS[i % GROUP_COLORS.length] })),
-              ...STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color })),
-            ]} />
+            {/* 🐞 สองชุดนี้เคยต่อกันเป็นแถวเดียว แล้วสีชนกันพอดีเพราะชุดจำแนกประเภทกับ
+                ชุดสถานะใช้ค่าสีตัวเดียวกัน: `--chart-cat-1` = `--blue` = #466990 และ
+                `--chart-cat-3` = `--green` = #357558 ⇒ ในแถวเดียว "Online" กับ "คุยอยู่"
+                สวอตช์สีเดียวกัน · "Onsite" กับ "เปิดลูกค้า" ก็สีเดียวกัน (ตรวจ 2026-08-12)
+                ⚠️ ห้ามแก้ด้วยการเปลี่ยนสี — ชุด CHART_CATEGORICAL ผ่านตัวตรวจ CVD มาแล้ว
+                ปัญหาคือเอาสองชุดที่คนละความหมายมาเรียงเป็นแถวเดียว ไม่ใช่ตัวสี */}
+            <ChartLegend
+              title="กลุ่มช่องทาง (วงกลม)"
+              items={groups.map((g, i) => ({
+                key: `g-${g.key}`, label: `${g.label} ${g.value}`, color: GROUP_COLORS[i % GROUP_COLORS.length],
+              }))}
+            />
+            <ChartLegend
+              title="สถานะตอนนี้ (แท่ง)"
+              items={STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color }))}
+            />
             <TableScroll surface="embedded"><table>
               <thead><tr>
                 <th>ช่องทาง</th><th>กลุ่ม</th>
@@ -299,7 +351,14 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                   <td>{TEAM_LABELS[a.team] || a.team || "-"}</td>
                   <td className="num mono">{a.assigned}</td>
                   <td className="num mono">{a.contacted}</td>
-                  <td className="num mono">{pct(a.slaHit, a.contacted)}</td>
+                  {/* 🐞 % เปล่า ๆ โกหกได้เต็มปาก — ตัวหารคือ "ใบที่ติดต่อแล้ว" ไม่ใช่ "ใบที่รับมอบ"
+                      คนที่รับ 11 ใบ ติดต่อไป 2 ใบ ทันทั้งคู่ จึงขึ้น 100.00% ทั้งที่ค้างอยู่ 10 ใบ
+                      (ส.ค. 2026 มีแถวแบบนี้จริง) · การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว
+                      คอลัมน์นี้ต้องโชว์ตัวหารเหมือนกัน ไม่งั้นสองที่บนจอเดียวกันเชื่อถือไม่เท่ากัน */}
+                  <td className="num mono">
+                    {pct(a.slaHit, a.contacted)}
+                    {a.contacted ? <span className={styles.cellSub}>{a.slaHit}/{a.contacted}</span> : null}
+                  </td>
                   <td className="num mono">{a.meetings}</td>
                   <td className="num mono">{a.qualified}</td>
                   {/* 🐞 ห้ามเขียน `a.pending || "-"` — 0 คือ "ไม่มีของค้าง" ซึ่งเป็นคำตอบจริง
@@ -315,6 +374,20 @@ export default function KpiLeadsTab({ month, teamFilter }) {
               ))}
               {!(kpi?.byAssignee || []).length && <tr><td colSpan={8} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
             </tbody>
+            {(kpi?.byAssignee || []).length ? (
+              <tfoot><tr className="premium-row">
+                <td><strong>รวม</strong></td><td />
+                <td className="num mono"><strong>{aeTotals.assigned}</strong></td>
+                <td className="num mono"><strong>{aeTotals.contacted}</strong></td>
+                <td className="num mono">
+                  <strong>{pct(aeTotals.slaHit, aeTotals.contacted)}</strong>
+                  {aeTotals.contacted ? <span className={styles.cellSub}>{aeTotals.slaHit}/{aeTotals.contacted}</span> : null}
+                </td>
+                <td className="num mono"><strong>{aeTotals.meetings}</strong></td>
+                <td className="num mono"><strong>{aeTotals.qualified}</strong></td>
+                <td className="num mono"><strong>{aeTotals.pending}</strong></td>
+              </tr></tfoot>
+            ) : null}
           </table></TableScroll>
       </SaSection>
     </div>

@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelRollup, withAssigneePending, chunkLeadIds } from '@/lib/sales/leads';
+import { slaHit, slaStage, channelRollup, withAssigneePending } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
@@ -55,7 +55,7 @@ async function countLeadsByStatus(supabase, status, team) {
 //   • SLA ≤1 วันทำการ **ทั้งสามด่าน** — คัดกรอง (หัวหน้าฝ่ายขาย) · กระจาย (Senior AE) ·
 //     ติดต่อกลับ (AE) พร้อมจำนวนที่ค้างอยู่ ณ ตอนนี้ของแต่ละด่าน
 //   • รายช่องทาง: เข้า → ติดต่อ → นัด → เปิดลูกค้า + สถานะปัจจุบันที่ไม่ซ้อนกัน
-//   • ผลลัพธ์รวม: เปิดลูกค้า · ไม่ไปต่อ · ตีกลับ
+//   • ผลลัพธ์รวม: เปิดลูกค้า · ไม่ไปต่อ  (ตีกลับออกจากแท็บแล้ว — มติ 2026-08-11)
 // ทุกตัวคำนวณจาก timestamp (วันทำการอิงตาราง holidays) — ไม่มีการกรอกมือ.
 // ⚠️ ด่านคือ `canSeeLeadKpi` **ไม่ใช่ `canViewLeads`** — ก้อนที่คืนไปมีข้อมูล
 // ประเมินผลรายบุคคล (`byAssignee` = SLA ติดต่อกลับรายคนทั้งฝ่าย · `byCreator` =
@@ -162,28 +162,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (l.status === 'qualified') b.qualified += 1;
   }
 
-  // ตีกลับ (ทีมผิด) — นับจาก events ของลีดเดือนนี้
-  //
-  // 🐞 เดิมยัด id ทั้งเดือนลง `.in()` ครั้งเดียวและ **ไม่อ่าน error** ⇒ พอลีดเยอะจน
-  // query string ยาวเกินลิมิต query ล้ม แล้ว `count` เป็น undefined → `|| 0` กลบเป็น 0
-  // ผลคือตัวเลข "ตีกลับ" โชว์ 0 ทั้งที่มีจริง และยิ่งบริษัทโตยิ่งพังแน่ขึ้น (ตรวจ 2026-08-08)
-  //
-  // ⚠️ ล้มแล้วต้องคืน `null` ไม่ใช่ 0 — 0 เป็นคำตอบที่ดูปกติจนไม่มีใครสงสัย
-  // ส่วน null ทำให้หน้าจอโชว์ "-" (ดู KpiLeadsTab) = บอกว่า "ไม่รู้" ไม่ใช่ "ไม่มี"
-  let bounceCount = 0;
-  for (const chunk of chunkLeadIds(rows.map((l) => l.id))) {
-    const { count, error: bounceError } = await supabase
-      .from('lead_events').select('id', { count: 'exact', head: true })
-      .eq('kind', 'bounce').in('leadId', chunk);
-    if (bounceError) {
-      console.error('[lead kpi] นับจำนวนตีกลับไม่สำเร็จ:', bounceError.message);
-      bounceCount = null;
-      break;
-    }
-    bounceCount += count || 0;
-  }
+  /* ⚠️ ไม่มี "ตีกลับ" ในก้อนนี้แล้ว — มติผู้ใช้ 2026-08-11 เอาออกจากผัง แล้วไม่มีหน้าจอไหน
+     อ่าน `funnel.bounced` อีกเลย แต่ route ยังไล่ยิง count query ใส่ `lead_events` เป็นก้อน ๆ
+     ทุกครั้งที่เปิดแท็บอยู่ ~1 ปี ⇒ จ่ายค่า query ให้ตัวเลขที่ไม่มีใครเห็น (ตรวจ 2026-08-12)
+     จะเอากลับมาเมื่อไร: metric "ตีกลับทีมผิด" ยังอยู่ในแผน (SALES_REVAMP_PLAN §3) และ
+     `chunkLeadIds` ยังอยู่พร้อมเทส — ซอย `.in()` ก่อนเสมอ อย่ายัด id ทั้งเดือนก้อนเดียว
 
-  /* ผัง = **สถานะของรอบปัจจุบัน** ทุกขั้น ไม่ใช่ "เคยไปถึง" — ใบที่ถูกตีกลับกลับไปนอน
+     ผัง = **สถานะของรอบปัจจุบัน** ทุกขั้น ไม่ใช่ "เคยไปถึง" — ใบที่ถูกตีกลับกลับไปนอน
      คิวคัดกรองต้องหล่นออกจาก "คัดกรองแล้ว/มอบหมายแล้ว" เหมือนที่มันหล่นออกจาก
      "ติดต่อแล้ว/นัด" อยู่แล้ว (ตีกลับล้างครบทั้งสี่คอลัมน์ตั้งแต่ mig 0234)
      🐞 เดิมสองขั้นบนนับจากซากของรอบก่อนที่ไม่ถูกล้าง ⇒ ส.ค. 2026 ผังขึ้น "มอบหมายแล้ว 56"
@@ -197,7 +182,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     meeting: rows.filter((l) => l.meetingAt).length,
     qualified: rows.filter((l) => l.status === 'qualified').length,
     disqualified: rows.filter((l) => l.status === 'disqualified').length,
-    bounced: bounceCount,
   };
 
   return ok({
