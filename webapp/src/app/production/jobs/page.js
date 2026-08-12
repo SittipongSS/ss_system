@@ -17,6 +17,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
   JOB_STATUS_LABELS,
+  isJobWaitingToSchedule,
   jobDateRange,
   jobWarnings,
 } from "@/lib/pm/productionPlan";
@@ -38,6 +39,12 @@ export default function ProductionJobsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [showDone, setShowDone] = useState(false);
+  /* ⭐ `?count=productionJobs` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-118) · ป้ายนับ "งานร่างที่ยัง
+     ไม่ถูกวางคิว" ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่คิวทั้งโรงงาน
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const [draftOnly, setDraftOnly] = useState(
+    () => new URLSearchParams(window.location.search).get("count") === "productionJobs",
+  );
   const [formJob, setFormJob] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [toast, setToast] = useState(null);
 
@@ -67,6 +74,10 @@ export default function ProductionJobsPage() {
   useEffect(() => { load(); }, [load]);
 
   const linesById = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines]);
+  const visibleJobs = useMemo(
+    () => (draftOnly ? jobs.filter(isJobWaitingToSchedule) : jobs),
+    [jobs, draftOnly],
+  );
 
   const saveJob = async (form) => {
     const editing = !!formJob;
@@ -104,6 +115,10 @@ export default function ProductionJobsPage() {
             <button type="button" onClick={() => setShowDone(true)} aria-pressed={showDone}>ทั้งหมด</button>
           </div>
           <span className={styles.counts}>
+            {draftOnly && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+              <Button size="sm" onClick={() => setDraftOnly(false)}>กรอง: รอวางคิว ×</Button>
+            )}
             ร่าง {counts.draft} · วางคิวแล้ว {counts.planned} · กำลังผลิต {counts.running}
           </span>
         </div>
@@ -111,7 +126,7 @@ export default function ProductionJobsPage() {
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
-      {loading ? <SkeletonRows rows={5} /> : loadError ? null : jobs.length === 0 ? (
+      {loading ? <SkeletonRows rows={5} /> : loadError ? null : visibleJobs.length === 0 ? (
         <EmptyState icon={Factory}>
           ยังไม่มีงานผลิตในคิว — งานร่างจะถูกสร้างให้เองเมื่อมีใบสั่งขายที่อนุมัติแล้ว
         </EmptyState>
@@ -130,7 +145,7 @@ export default function ProductionJobsPage() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => {
+              {visibleJobs.map((job) => {
                 const line = linesById.get(job.lineId);
                 const plan = jobDateRange(job, line);
                 const warnings = jobWarnings(job, line, { readiness: job.readiness });

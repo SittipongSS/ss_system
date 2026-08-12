@@ -314,7 +314,7 @@ export default function AppLayout({ children }) {
         // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
         // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
         // คิวมาก่อนไลน์ — PC เปิดระบบมาเพื่อดูว่าต้องผลิตอะไรก่อน ไม่ใช่มาตั้งค่าไลน์
-        { href: '/production/jobs', name: 'คิวงานผลิต', icon: ClipboardList, cap: 'production:view', visible: canEditProduction, match: (p) => p.startsWith('/production/jobs') },
+        { href: '/production/jobs', name: 'คิวงานผลิต', countHref: '/production/jobs?count=productionJobs', icon: ClipboardList, cap: 'production:view', visible: canEditProduction, match: (p) => p.startsWith('/production/jobs') },
         // บอร์ดเปิดให้ **ทุกคนที่อ่านตารางผลิตได้** (P-3) — คลัง/QC/ฝ่ายขายเข้ามาดู
         // ว่าโรงงานจะผลิตวันไหน โดยไม่ต้องเดินไปถาม · TS ไม่เห็น (คนละทีมปฏิบัติงาน)
         { href: '/production/board', name: 'บอร์ดตารางผลิต', icon: CalendarRange, cap: 'production:view', visible: canViewProduction, match: (p) => p.startsWith('/production/board') },

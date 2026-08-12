@@ -265,3 +265,13 @@ test('กำลังผลิตอยู่ → บอกวันคาดจ
 test('งานที่ยกเลิกไม่นับในสรุป — ยกเลิกหมดแล้วเท่ากับยังไม่ได้วางคิว', () => {
   assert.equal(salesOrderPlanSummary([job({ status: 'cancelled' })], [line()]).state, 'none');
 });
+
+// ── ป้ายตัวเลขบนเมนู (ม-118) ─────────────────────────────────────────────
+test('⭐ "รอวางคิว" = งานร่างเท่านั้น — งานที่วางคิวแล้วไม่นับ', async () => {
+  const { isJobWaitingToSchedule } = await import('./productionPlan.js');
+  assert.equal(isJobWaitingToSchedule({ status: 'draft' }), true);
+  assert.equal(isJobWaitingToSchedule({ status: 'planned' }), false);
+  assert.equal(isJobWaitingToSchedule({ status: 'in_progress' }), false);
+  assert.equal(isJobWaitingToSchedule({ status: 'done' }), false);
+  assert.equal(isJobWaitingToSchedule(null), false);
+});

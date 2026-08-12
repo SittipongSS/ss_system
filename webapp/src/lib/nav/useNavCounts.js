@@ -33,6 +33,9 @@ export const NAV_COUNT_KEYS = {
   // เฟส 3 — ภาษีสรรพสามิต
   "/tax/registrations": "taxRegistrations",
   "/tax/filings": "taxFilings",
+  // เฟส 4 — แจ้งปัญหาระบบ + วางแผนผลิต
+  "/support": "issues",
+  "/production/jobs": "productionJobs",
 };
 
 /* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
@@ -52,6 +55,8 @@ export const SYSTEM_COUNT_HREFS = {
   service: ["/service/my-visits"],
   mgmt: ["/mgmt/tasks"],
   tax: ["/tax/registrations", "/tax/filings"],
+  support: ["/support"],
+  production: ["/production/jobs"],
 };
 
 export default function useNavCounts(pathname) {
