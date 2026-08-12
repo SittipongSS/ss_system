@@ -3627,9 +3627,28 @@ button.empty-state { width: 100%; font: inherit; }
   outline: 2px dashed var(--accent);
   outline-offset: var(--space-1);
 }
+/* ช่วงงบประมาณของลีด (mig 0233) — สองช่องคู่กันมีขีดคั่นตรงกลาง
+   ⚠️ ขีดคั่นต้องไม่หดหาย และสองช่องต้องกว้างเท่ากันเสมอ ไม่งั้นตาอ่านว่าช่องหนึ่ง
+   สำคัญกว่าอีกช่อง ทั้งที่มันเป็นปลายสองข้างของเรื่องเดียวกัน */
+.lead-budget-range {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.lead-budget-dash { color: var(--text-3); }
+.lead-budget-error { color: var(--red); font-size: var(--fs-3); }
+@media (max-width: 480px) {
+  /* จอแคบ: ขีดคั่นกลางบีบจนอ่านไม่ออก — เรียงลงมาแล้วให้ป้าย aria ทำหน้าที่แทน */
+  .lead-budget-range { grid-template-columns: minmax(0, 1fr); }
+  .lead-budget-dash { display: none; }
+}
+
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 /* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
-.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); }
+/* ใช้ได้ทั้งบรรทัดเหตุผลใต้ปุ่ม และคำขยายในป้ายช่อง ("(ไม่บังคับ · เช่น …)") */
+.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-regular); }
 .pending-files-add {
   display: inline-flex;
   align-items: center;

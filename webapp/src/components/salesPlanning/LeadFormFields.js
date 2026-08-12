@@ -21,7 +21,7 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf,
-  SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
+  SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED, leadBudgetError,
 } from "@/lib/sales/leads";
 
 /** ช่องที่ต้องกรอกก่อนบันทึกได้ — ตัวเดียวกันทั้งสองที่เรียกใช้ (ห้ามเขียนกฎซ้ำ) */
@@ -31,7 +31,8 @@ export function leadFormBlocker(form = {}) {
   if (SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) && !String(form.serviceDetail || "").trim()) {
     return `เลือก "${SERVICE_INTEREST_LABELS[form.serviceInterest]}" แล้วต้องระบุรายละเอียดบริการ`;
   }
-  return "";
+  // ด่านเดียวกับที่ API ใช้ — ห้ามเขียนเงื่อนไขงบซ้ำที่นี่ (form-design-rules §2)
+  return leadBudgetError(form);
 }
 
 export default function LeadFormFields({
@@ -41,6 +42,8 @@ export default function LeadFormFields({
   // การ์ดบนหน้ารายละเอียดมีที่น้อยกว่าโมดัล — ย่อชิปช่องทางเป็นกลุ่มเดียวเรียงยาว
   compact = false,
 }) {
+  // เตือนตรงช่องที่ผิด ไม่ใช่รอไปโผล่ที่ท้ายฟอร์มตอนกดบันทึก
+  const budgetError = leadBudgetError(form);
   const set = (key) => (value) => onPatch({ [key]: value });
 
   return (
@@ -119,11 +122,25 @@ export default function LeadFormFields({
         </label>
       )}
 
-      {/* เต็มแถว (มติผู้ใช้ 2026-08-09) — เดิมครึ่งแถวแล้วเป็นช่องกำพร้าข้างที่ว่าง */}
-      <label className="form-field span-2">
-        <span className="form-field-label">งบประมาณ <span className="soft">(บาท)</span></span>
-        <MoneyInput value={form.budget} disabled={disabled} onChange={(value) => set("budget")(value ?? "")} />
-      </label>
+      {/* เต็มแถว (มติผู้ใช้ 2026-08-09) — เดิมครึ่งแถวแล้วเป็นช่องกำพร้าข้างที่ว่าง
+          ⭐ **เป็นช่วงได้** (มติผู้ใช้ 2026-08-12 · mig 0233) — ทีม Marketing กรอกลีด
+          จากที่ลูกค้าพิมพ์มาในแชท ซึ่งแทบไม่เคยเป็นตัวเลขเดียว ("ประมาณ 3–5 แสน")
+          ช่องเดียวบังคับให้คนกรอกเลือกข้าง แล้วช่วงจริงไปจบที่ช่องรายละเอียดซึ่ง
+          เอาไปคำนวณอะไรไม่ได้
+          ⚠️ กรอกช่องซ้ายช่องเดียว = ระบุตัวเลขเดียว (พฤติกรรมเดิมเป๊ะ) ไม่ต้องบังคับ
+          ให้กรอกครบสองช่อง — ลีดที่รู้ตัวเลขแน่นอนก็มี */}
+      <div className="form-field span-2">
+        <span className="form-field-label">งบประมาณ <span className="soft">(บาท · เว้นช่องขวาไว้ถ้าเป็นตัวเลขเดียว)</span></span>
+        <div className="lead-budget-range">
+          <MoneyInput value={form.budget} disabled={disabled} aria-label="งบประมาณต่ำสุด"
+            onChange={(value) => set("budget")(value ?? "")} />
+          <span className="lead-budget-dash" aria-hidden="true">–</span>
+          <MoneyInput value={form.budgetMax} disabled={disabled} aria-label="งบประมาณสูงสุด"
+            placeholder="สูงสุด"
+            onChange={(value) => set("budgetMax")(value ?? "")} />
+        </div>
+        {budgetError && <small className="lead-budget-error">{budgetError}</small>}
+      </div>
 
       <label className="form-field span-2">
         <span className="form-field-label">รายละเอียดเพิ่มเติม</span>

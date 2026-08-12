@@ -36,12 +36,6 @@
 .sortCol { width: 150px; }
 .actionsCol { width: 140px; }
 
-.scentChip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
 .hint { color: var(--text-3); }
 .warn { color: var(--amber); }
 

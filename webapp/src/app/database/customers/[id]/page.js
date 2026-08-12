@@ -330,8 +330,9 @@ export default function CustomerDetails() {
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
       <SalesDetailOverview
-        eyebrow={`CUSTOMER MASTER · ${customer.arCode || "NO AR CODE"}`}
-        title={customer.name}
+        eyebrow="CUSTOMER MASTER"
+        /* รายละเอียด = "รหัส · ชื่อ" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
+        title={`${customer.arCode ? `${customer.arCode} · ` : ""}${customer.name}`}
         description={<><span>{customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล"}</span><span>สร้างเมื่อ {fmtDate(customer.createdAt)}</span></>}
         badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[

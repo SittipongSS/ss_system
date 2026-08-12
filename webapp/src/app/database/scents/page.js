@@ -78,7 +78,15 @@ export default function ScentsPage() {
      (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
   const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
-  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
+     กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
+     ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
+     "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "scents";
+  const [statusFilter, setStatusFilter] = useState(
+    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
+  );
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useState("");
@@ -530,10 +538,10 @@ export default function ScentsPage() {
                       <td>
                         {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด — แถวตารางบอกได้แค่ย่อ ๆ
                             ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
+                        {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
                         <Link href={`/database/scents/${s.id}`} className={styles.name}>
-                          {s.code ? <span className="mono">{s.code}</span> : null}
-                          {s.code ? " · " : null}
-                          {s.name}
+                          <span className="mono block text-[12px] text-[var(--accent)]">{s.code || "ไม่มี PF"}</span>
+                          <span className="block">{s.name}</span>
                         </Link>
                         {(s.customerTradeName || s.derivedFromScentId) && (
                           <div className={styles.sub}>
@@ -547,12 +555,13 @@ export default function ScentsPage() {
                         )}
                       </td>
                       <td>
-                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
+                        {/* AR บน · ชื่อล่าง — ทรงเดียวกับคอลัมน์หลัก */}
                         {customerWithAr(s.customerId, s.customerName, arIndex).arCode ? (
-                          <span className={styles.arCode}>
+                          <span className="mono block text-[11px] text-[var(--text-3)]">
                             {customerWithAr(s.customerId, s.customerName, arIndex).arCode}
                           </span>
                         ) : null}
+                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
                       </td>
                       {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
                           ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง

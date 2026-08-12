@@ -19,6 +19,14 @@ export const NAV_COUNT_KEYS = {
   "/sa/tasks": "tasks",
   "/rd/requests": "rdRequests",
   "/sa/leads": "leads",
+  // เฟส 1 — ขาย
+  "/sa/quotations": "quotations",
+  "/sa/sales-orders": "salesOrders",
+  "/sa/projects": "projectCloses",
+  // เฟส 1 — ฐานข้อมูล
+  "/database/scents": "scents",
+  "/database/formulas": "formulas",
+  "/database/customers": "customers",
 };
 
 /* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
@@ -29,8 +37,12 @@ export const NAV_COUNT_KEYS = {
    ที่นี่ = ป้ายขึ้นบนเมนูแต่การ์ดหน้าแรกยังโล่ง แล้วคนสรุปว่าระบบนั้นว่าง
    (เทสต์ล็อกไว้ว่า **ทุก href ใน NAV_COUNT_KEYS ต้องอยู่ในระบบใดระบบหนึ่งเสมอ**) */
 export const SYSTEM_COUNT_HREFS = {
-  salesplan: ["/sa/leads", "/sa/tasks", "/requests"],
+  salesplan: [
+    "/sa/leads", "/sa/tasks", "/requests",
+    "/sa/quotations", "/sa/sales-orders", "/sa/projects",
+  ],
   rd: ["/rd/requests"],
+  master: ["/database/scents", "/database/formulas", "/database/customers"],
 };
 
 export default function useNavCounts(pathname) {
@@ -65,6 +77,19 @@ export default function useNavCounts(pathname) {
 export function navCountFor(counts, href) {
   const value = counts?.[NAV_COUNT_KEYS[href]];
   return Number(value) > 0 ? Number(value) : null;
+}
+
+/** ปลายทางของเมนู — เมนูที่ **มีป้ายอยู่** พาไปหน้าที่กรองไว้แล้ว
+ *
+ *  ⭐ กติกาข้อแรกของป้ายคือ "กดเข้าไปแล้วต้องเจอของเท่าที่เมนูบอก" · สี่คีย์แรก
+ *  ผ่านข้อนี้ได้ฟรีเพราะแท็บตั้งต้นของหน้าปลายทางเท่ากับสิ่งที่ป้ายนับพอดี
+ *  (คำร้อง = แท็บ "รอฉันตอบ") · คีย์เฟส 1 ไม่มีมุมมองแบบนั้น — ป้ายบอก 1 แต่กดเข้าไป
+ *  เจอทะเบียนลูกค้า 121 ราย ⇒ ผูกตัวกรองไว้กับลิงก์แทน (`?count=<key>`)
+ *  ⚠️ **เฉพาะตอนมีป้ายเท่านั้น** — ไม่มีของค้างแล้วยังพาไปหน้าที่กรองว่างเปล่า
+ *  คือการตอบคำถามที่ไม่มีใครถาม · ไม่มีป้าย = ลิงก์ปกติ เห็นทั้งทะเบียนตามเดิม
+ */
+export function navHrefFor(item, count) {
+  return count && item?.countHref ? item.countHref : item?.href;
 }
 
 /** ยอดรวมของทั้งระบบ — ไม่มี/ศูนย์ = null (กติกาเดียวกับป้ายบนเมนู)

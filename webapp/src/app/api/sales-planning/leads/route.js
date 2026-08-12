@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
-  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf,
+  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, leadBudgetError,
   LEAD_CHANNEL_LABELS, applyLeadScope, canViewLeads, canCreateLead,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
@@ -44,6 +44,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (SERVICE_DETAIL_REQUIRED.has(serviceInterest) && !serviceDetail) {
     return badRequest('บริการที่สนใจประเภทนี้ต้องระบุรายละเอียด');
   }
+  // ⚠️ ด่านเดียวกับ CHECK ของ mig 0233 — ตกที่นี่ได้ข้อความไทยพร้อมชื่อช่อง
+  // ส่วนตกที่ DB ได้ error ภาษาอังกฤษที่คนกรอกอ่านไม่ออก
+  const budgetError = leadBudgetError(body);
+  if (budgetError) return badRequest(budgetError);
 
   const row = {
     id: genId('LEAD'),
@@ -57,6 +61,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     serviceInterest,
     serviceDetail: serviceDetail || null,
     budget: toMoney(body.budget, null),
+    budgetMax: toMoney(body.budgetMax, null),
     details: (body.details || '').trim() || null,
     status: 'new',
     createdBy: user.id || null,

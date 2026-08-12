@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Archive, ArchiveRestore, Beaker, Check, Coins, FlaskConical, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
+  Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -121,7 +121,15 @@ export default function FormulasPage() {
   const [search, setSearch] = useState(linkedQuery);
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   const [sourceFilter, setSourceFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
+     กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
+     ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
+     "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "formulas";
+  const [statusFilter, setStatusFilter] = useState(
+    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
+  );
   // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
   // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
   // ทะเบียนมีหน้าละหลายสิบแถวและแถวคั่นจะกระจายข้ามหน้า
@@ -187,18 +195,22 @@ export default function FormulasPage() {
   const scentName = useCallback(
     (id) => scents.find((s) => s.id === id)?.name || null, [scents],
   );
+  const scentCode = useCallback(
+    (id) => scents.find((s) => s.id === id)?.code || null, [scents],
+  );
 
   /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003 — เหมือนทะเบียนกลิ่น)
      สูตรของลูกค้าตั้งรหัสล้อกับรหัสลูกค้าเช่นกัน ⇒ ต้องอ่านคู่กันได้ในบรรทัดเดียว
      ⚠️ แผนที่เดียวใช้ทั้งสองตาราง — สร้างใหม่ทุกแถวคือ O(n²) ตอนเรนเดอร์ */
   const arIndex = useMemo(() => customerArIndex(customers), [customers]);
+  // AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — รหัสนำทุกตาราง)
   const customerCell = (row, fallback) => {
     if (!row.customerId && !row.customerName) return fallback;
     const { name, arCode } = customerWithAr(row.customerId, row.customerName, arIndex);
     return (
       <>
+        {arCode ? <span className="mono block text-[11px] text-[var(--text-3)]">{arCode}</span> : null}
         {name}
-        {arCode ? <span className={styles.arCode}>{arCode}</span> : null}
       </>
     );
   };
@@ -508,7 +520,8 @@ export default function FormulasPage() {
             <table>
               <thead>
                 <tr>
-                  <th>รหัส</th><th>ชื่อสูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
+                  {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) */}
+                  <th>สูตร</th><th>หมวดสินค้า</th><th>กลิ่นที่ใช้</th>
                   <th className={styles.colSource}>ที่มา</th>
                   {/* วันที่ = .num (ชิดขวา + tabular) — `mono` ไม่จัดชิด เทียบข้ามแถว
                       ไม่ได้ (กฎ 3 UI_DESIGN_SYSTEM — โรคเดียวกับที่ทะเบียนกลิ่นแก้แล้ว) */}
@@ -521,10 +534,12 @@ export default function FormulasPage() {
               <tbody>
                 {pageRows.map((f) => (
                   <tr key={f.id}>
-                    <td className="mono">{f.code || <span className={styles.muted}>—</span>}</td>
                     <td className={styles.name}>
-                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด (กติกาเดียวกับทะเบียนกลิ่น) */}
-                      <Link href={`/database/formulas/${f.id}`}>{f.name}</Link>
+                      {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด · รหัสบน ชื่อล่าง (มติ 2026-08-12) */}
+                      <Link href={`/database/formulas/${f.id}`}>
+                        <span className="mono block text-[12px] text-[var(--accent)]">{f.code || "ไม่มีรหัส"}</span>
+                        <span className="block">{f.name}</span>
+                      </Link>
                       {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
                           ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
                       {f.customerTradeName && (
@@ -540,7 +555,12 @@ export default function FormulasPage() {
                         แปลว่ายังไม่มีตัวตนที่เทียบซ้ำได้ ต้องเห็นว่าค้าง ไม่ใช่ขีดกลางเฉย ๆ */}
                     <td>
                       {f.categoryCode
-                        ? categoryLabel(f.categoryCode)
+                        ? (
+                          <>
+                            <span className="mono block text-[11px] text-[var(--text-3)]">{f.categoryCode}</span>
+                            {categoryNameBoth(findCategoryByCode(categories, f.categoryCode)) || null}
+                          </>
+                        )
                         : f.scentId
                           ? <span className={styles.warn}>ยังไม่ระบุหมวด</span>
                           : <span className={styles.muted}>—</span>}
@@ -548,10 +568,12 @@ export default function FormulasPage() {
                     <td>
                       {f.scentId && scentName(f.scentId)
                         ? (
-                          <span className={styles.scentChip}>
-                            <FlaskConical size={13} aria-hidden="true" />
+                          <>
+                            {scentCode(f.scentId)
+                              ? <span className="mono block text-[11px] text-[var(--text-3)]">{scentCode(f.scentId)}</span>
+                              : null}
                             {scentName(f.scentId)}
-                          </span>
+                          </>
                         )
                         : <span className={styles.muted}>—</span>}
                     </td>
