@@ -2807,6 +2807,15 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: var(--space-3);
 }
 
+/* ข้อความอธิบายใต้ช่องกรอก/กลุ่มช่อง — ทรงเดียวทั้งระบบ
+   เดิมทุกจุดเขียน inline style ชุดเดียวกันซ้ำ ๆ (margin 0 · --text-3 · --fs-6) */
+.form-note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+}
+
 .form-group label {
   font-size: var(--fs-6);
   font-weight: var(--fw-medium);
