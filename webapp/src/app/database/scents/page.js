@@ -538,10 +538,10 @@ export default function ScentsPage() {
                       <td>
                         {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด — แถวตารางบอกได้แค่ย่อ ๆ
                             ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
+                        {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
                         <Link href={`/database/scents/${s.id}`} className={styles.name}>
-                          {s.code ? <span className="mono">{s.code}</span> : null}
-                          {s.code ? " · " : null}
-                          {s.name}
+                          <span className="mono block text-[12px] text-[var(--accent)]">{s.code || "ไม่มี PF"}</span>
+                          <span className="block">{s.name}</span>
                         </Link>
                         {(s.customerTradeName || s.derivedFromScentId) && (
                           <div className={styles.sub}>
@@ -555,12 +555,13 @@ export default function ScentsPage() {
                         )}
                       </td>
                       <td>
-                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
+                        {/* AR บน · ชื่อล่าง — ทรงเดียวกับคอลัมน์หลัก */}
                         {customerWithAr(s.customerId, s.customerName, arIndex).arCode ? (
-                          <span className={styles.arCode}>
+                          <span className="mono block text-[11px] text-[var(--text-3)]">
                             {customerWithAr(s.customerId, s.customerName, arIndex).arCode}
                           </span>
                         ) : null}
+                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
                       </td>
                       {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
                           ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง

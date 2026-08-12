@@ -456,7 +456,9 @@ export default function ProjectDetailPage() {
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
   const showTimeline = tab === "timeline";
   const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand) || "-";
-  const projectTitle = p.name && projectBrand !== "-" && !p.name.includes("/") ? `${p.name} / ${projectBrand}` : (p.name || "โครงการ");
+  // "รหัส · ชื่อ" (มติผู้ใช้ 2026-08-12 — รายละเอียดทุก entity ขึ้นรหัสนำ)
+  const projectBaseTitle = p.name && projectBrand !== "-" && !p.name.includes("/") ? `${p.name} / ${projectBrand}` : (p.name || "โครงการ");
+  const projectTitle = p.code ? `${p.code} · ${projectBaseTitle}` : projectBaseTitle;
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;

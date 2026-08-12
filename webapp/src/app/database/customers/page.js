@@ -354,8 +354,9 @@ export default function CustomerDirectory() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <SortTh label="รหัสลูกค้า" sortKey="arCode" sort={sort} />
-                  <SortTh label={CUSTOMER_NAME_LABEL} sortKey="name" sort={sort} />
+                  {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) —
+                      เรียงด้วยรหัสเหมือนเดิม */}
+                  <SortTh label={`${CUSTOMER_NAME_LABEL} (AR)`} sortKey="arCode" sort={sort} />
                   <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
                   <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
                   <th>สถานะ</th>
@@ -364,9 +365,10 @@ export default function CustomerDirectory() {
               <tbody>
                 {pageRows.map((c) => (
                   <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
-                    <td className="font-semibold font-mono text-[var(--accent)]">{c.arCode}</td>
                     <td>
-                      <div className="font-medium text-[var(--text)]">{c.name}</div>
+                      {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว) */}
+                      <div className="font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</div>
+                      <div className="font-medium text-[var(--text)] mt-0.5">{c.name}</div>
                       <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : "-"}</div>
                       {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
                     </td>
