@@ -12,9 +12,10 @@ import assert from 'node:assert/strict';
 
 import {
   entityLabel, entityTitle, listNotificationPage, notificationCursor,
-  notificationHref, recipientsForUpdate, threadParticipants,
+  notificationHref, notifyThreadUpdate, recipientsForUpdate, threadParticipants,
 } from './notifications.js';
 import { UPDATE_ENTITIES, updateRecipients } from './master/updateAccess.js';
+import { isQuietUpdateKind } from './master/updateTypes.js';
 
 // stub: .from(t).select(...).eq().eq() → thenable คืนแถวของตารางนั้น
 function stub(tables = {}) {
@@ -115,6 +116,40 @@ test('ทุก entity ที่มีเธรดต้องกดจากก
       `${entityType}: ไม่มี href — แจ้งเตือนจะกดแล้วไม่ไปไหน (เติมใน HREF ของ lib/notifications.js)`,
     );
   }
+});
+
+/* 🐞 ของจริง 2026-08-13: อนุมัติสินค้า 1 ครั้ง = แจ้งเตือน 2 ใบ ให้คนกลุ่มเดียวกัน
+   ในวินาทีเดียวกัน (`approve` + `override` เพราะสินค้าบังคับแนบ Artwork แต่ไม่มีใบไหน
+   แนบเลย ⇒ ต้องยกเว้นทุกครั้ง) · 218 จาก 259 แถวของสินค้ามาจากคู่นี้ ไม่ถูกอ่าน 84% */
+test('⭐ ชนิด quiet ลงเธรดได้แต่ต้องไม่เด้ง — กันแจ้งเตือนซ้ำต่อหนึ่งการกระทำ', async () => {
+  let wrote = false;
+  const supabase = {
+    from: () => ({
+      select: () => ({ eq: function () { return this; }, then: (r) => Promise.resolve({ data: [], error: null }).then(r) }),
+      upsert: async () => { wrote = true; return { error: null }; },
+    }),
+  };
+  const got = await notifyThreadUpdate(supabase, {
+    entityType: 'product',
+    entityId: 'PRD-1',
+    parent: { id: 'PRD-1', customerId: 'CUS-1' },
+    update: { id: 'UPD-1', kind: 'override', body: 'อนุมัติโดยยกเว้นเอกสารบังคับ' },
+  });
+  assert.deepEqual(got, { sent: 0, quiet: true });
+  assert.equal(wrote, false, 'ชนิด quiet ต้องไม่แตะตาราง notifications เลย');
+});
+
+test('quiet ผูกกับชนิด ไม่ใช่ทั้ง entity — อนุมัติยังต้องเด้งตามปกติ', () => {
+  assert.equal(isQuietUpdateKind('product', 'override'), true);
+  assert.equal(isQuietUpdateKind('customer', 'override'), true);
+  // ⚠️ ถ้าใครเผลอใส่ quiet ให้สามตัวนี้ = อนุมัติ/ตีกลับ/ตกกลับรออนุมัติ จะเงียบสนิท
+  for (const kind of ['approve', 'reject', 'reset', 'comment']) {
+    assert.equal(isQuietUpdateKind('product', kind), false, kind);
+    assert.equal(isQuietUpdateKind('customer', kind), false, kind);
+  }
+  // entity อื่นไม่มีชนิด quiet เลยในตอนนี้
+  assert.equal(isQuietUpdateKind('deal', 'approve'), false);
+  assert.equal(isQuietUpdateKind('lead', 'comment'), false);
 });
 
 // ── หน้า "ดูทั้งหมด" ─────────────────────────────────────────────────────

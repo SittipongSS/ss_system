@@ -169,14 +169,14 @@ export const UPDATE_KINDS = {
     approve: { label: 'อนุมัติ', color: 'var(--green)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
-    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)' },
+    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)', quiet: true },
   },
   product: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     approve: { label: 'อนุมัติ', color: 'var(--green)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
-    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)' },
+    override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)', quiet: true },
   },
   // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
   excise_registration: {
@@ -282,6 +282,28 @@ export function updateKindMeta(entityType, kind) {
   return set[kind]
     || set[defaultAuthorableKind(entityType)]
     || { label: 'อัปเดต', color: 'var(--accent)' };
+}
+
+/**
+ * ชนิดที่ **ลงเธรดแต่ไม่ต้องเด้งกระดิ่ง**
+ *
+ * 🐞 ที่มา (ตรวจข้อมูลจริง 2026-08-13): อนุมัติสินค้าหนึ่งครั้งเขียนสองเหตุการณ์เสมอ —
+ * `approve` แล้วตามด้วย `override` (เพราะสินค้าบังคับแนบ Artwork แต่บน prod ยังไม่มีใบ
+ * ไหนแนบเลย ⇒ ต้องยกเว้นทุกครั้ง) · ทั้งคู่ fan-out ให้คนกลุ่มเดียวกันในวินาทีเดียวกัน
+ * ⇒ ผู้ใช้ได้แจ้งเตือนสองใบที่แปลว่า "อนุมัติแล้ว" เหมือนกัน
+ *
+ * ตัวเลขตอนเจอ: สินค้ามี 259 แถว · **218 แถว (84%) มาจากคู่นี้** · ไม่ถูกอ่าน 84%
+ * ซึ่งสูงสุดในระบบ — กล่องที่มีของซ้ำครึ่งหนึ่งคือกล่องที่คนเลิกอ่าน (กับดักที่มติ 14
+ * พยายามกันไว้ตั้งแต่แรก)
+ *
+ * ⚠️ **ไม่ได้ลบเหตุการณ์ทิ้ง** — แถวยังอยู่ในเธรดครบ เปิดใบแล้วยังอ่านได้ว่าใครยกเว้น
+ * เอกสารด้วยเหตุผลอะไร (ซึ่งเป็นเรื่องที่ต้องตรวจย้อนได้) · ที่ตัดคือ *การเด้ง* เท่านั้น
+ *
+ * ⚠️ ใส่ `quiet` ให้ชนิดใหม่ได้เฉพาะเมื่อมันมาคู่กับเหตุการณ์อื่นที่เด้งแทนอยู่แล้ว —
+ * ไม่ใช่ใช้เป็นวิธี "ลดเสียง" ของเหตุการณ์ที่ไม่มีใครแจ้งซ้ำให้
+ */
+export function isQuietUpdateKind(entityType, kind) {
+  return !!(UPDATE_KINDS[entityType] || {})[kind]?.quiet;
 }
 
 export function isKnownUpdateKind(entityType, kind) {
