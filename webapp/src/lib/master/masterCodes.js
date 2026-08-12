@@ -9,6 +9,9 @@
 //   ปิด (manual)  AR-AAA             3 หลัก · กรอกเอง
 //                 FG-AAA-BB-CCC-DDDD     กรอกเอง ไม่กินเลขรัน
 //
+// สองโหมดนี้ **แยกขาดจากกัน** — โหมดกรอกเองพิมพ์ได้เฉพาะรูปแบบเดิม ห้ามพิมพ์รูปแบบ
+// ที่ระบบเป็นคนออก (เหตุผลอยู่ที่ arCodeError/fgCodeError ข้างล่าง)
+//
 // ไฟล์นี้เป็น **ที่เดียว** ที่รู้รูปแบบรหัส — ฟอร์ม (ตัวประกอบรหัสให้เห็น) กับ API
 // (ด่านตรวจก่อน insert) เรียกตัวตรวจตัวเดียวกัน ตามกฎ "เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้
 // ห้ามมี" ในเอกสารวิธีคิดออกแบบฟอร์ม
@@ -32,6 +35,12 @@ export const FG_SCOPE = 'FG';
 export const AR_FIRST_NUMBER = 1001;
 export const FG_FIRST_NUMBER = 10001;
 
+// ท่อนหน้าเลขรัน + ความกว้างของเลข — ฟังก์ชัน SQL ที่ออกรหัส (mig 0237) รับสองค่านี้ไป
+// แล้วเติมเฉพาะตัวเลขที่จองได้ ⇒ ไฟล์นี้ยังเป็นที่เดียวที่รู้รูปแบบรหัส
+export const AR_PREFIX = 'AR-';
+export const AR_WIDTH = 4;
+export const FG_WIDTH = 5;
+
 // รูปแบบรหัส — auto/manual ต่างกันที่ **จำนวนหลัก** เท่านั้น จึงแยกกันได้จากตัวรหัสเอง
 // โดยไม่ต้องเก็บธงว่าใบไหนออกด้วยโหมดไหน (ธงที่เก็บซ้ำกับสิ่งที่อ่านได้จากค่าจริง คือ
 // ธงที่วันหนึ่งจะไม่ตรงกับค่าจริง)
@@ -52,7 +61,7 @@ const digitsOf = (value) => String(value ?? '').trim();
 export const isAutoArCode = (code) => AR_AUTO_RE.test(digitsOf(code));
 export const isAutoFgCode = (code) => FG_AUTO_RE.test(digitsOf(code));
 
-export const formatArCode = (number) => `AR-${String(number).padStart(4, '0')}`;
+export const formatArCode = (number) => `${AR_PREFIX}${String(number).padStart(AR_WIDTH, '0')}`;
 
 // ── AAAA ของรหัส FG = รหัสลูกค้าเติมศูนย์ให้ครบ 4 หลัก ────────────────────
 // ⚠️ มติผู้ใช้ 2026-08-12: **ลูกค้าเก่ารหัส 3 หลักไม่ถูกเปลี่ยนรหัส** — AR-109 ยังเป็น
@@ -65,14 +74,22 @@ export function customerCodeSegment(arCode) {
   return m[1].padStart(4, '0');
 }
 
+// ท่อนหน้าเลขรันของรหัส FG (`FG-AAAA-BB-CCC-`) — คืน null ถ้ายังตอบไม่ครบ
+// ตัวออกรหัสฝั่ง SQL รับค่านี้ไปเติมเลขท้าย จึงต้องเป็นตัวเดียวกับที่ composeFgCode ใช้
+export function fgCodePrefix({ arCode, categoryCode } = {}) {
+  const customer = customerCodeSegment(arCode);
+  const category = digitsOf(categoryCode).match(/^(\d{2})-(\d{3})$/);
+  if (!customer || !category) return null;
+  return `FG-${customer}-${category[1]}-${category[2]}-`;
+}
+
 // ประกอบรหัส FG จากสามคำตอบ — คืน null ถ้ายังตอบไม่ครบ (ฟอร์มใช้ค่านี้โชว์ช่องว่าง
 // ทีละท่อนตามที่กรอก ไม่ใช่รอครบแล้วค่อยโผล่ทั้งก้อน)
 export function composeFgCode({ arCode, categoryCode, runNo } = {}) {
-  const customer = customerCodeSegment(arCode);
-  const category = digitsOf(categoryCode).match(/^(\d{2})-(\d{3})$/);
+  const prefix = fgCodePrefix({ arCode, categoryCode });
   const run = Number(runNo);
-  if (!customer || !category || !Number.isFinite(run) || run <= 0) return null;
-  return `FG-${customer}-${category[1]}-${category[2]}-${String(run).padStart(5, '0')}`;
+  if (!prefix || !Number.isFinite(run) || run <= 0) return null;
+  return `${prefix}${String(run).padStart(FG_WIDTH, '0')}`;
 }
 
 // ท่อนของรหัส FG สำหรับ "แถบรหัส" ในฟอร์ม (CodeStrip) — ท่อนที่ยังตอบไม่ครบเป็น
@@ -113,28 +130,37 @@ export function arCodeParts(number) {
 // ── ด่านตรวจ (ฟอร์มกับ API เรียกตัวเดียวกัน) ──────────────────────────────
 // คืนข้อความไทยเมื่อผิด · null เมื่อผ่าน
 //
-// ⚠️ โหมด manual รับ **ทั้งสองรูปแบบ** ตั้งใจ: ปิดสวิตช์แล้วพิมพ์รหัส 4 หลักของใบที่
-// ระบบเคยออกให้ (เช่นย้ายข้อมูลจากอีกที่/พิมพ์ซ้ำใบที่ลบไป) ต้องทำได้ ไม่งั้นจะมีรหัส
-// ที่ระบบเองออกให้แต่กรอกกลับเข้าไปไม่ได้ · ที่ห้ามคือ "รูปแบบอื่น" ล้วน ๆ
+// ⚠️ **โหมด manual รับเฉพาะรูปแบบเดิมเท่านั้น — ทั้งรูปแบบและจำนวนหลัก**
+// (มติผู้ใช้ 2026-08-12 · กลับมติเดิมของวันเดียวกันที่ยอมให้พิมพ์รูปแบบใหม่กลับเข้าไปได้)
+//
+// ที่ต้องห้ามเพราะรหัสรูปแบบใหม่ = เลขที่เคาน์เตอร์กลางเป็นเจ้าของ ปล่อยให้พิมพ์เองได้
+// เมื่อไร คนพิมพ์จะไป "จับจอง" เลขที่เคาน์เตอร์ยังรันไปไม่ถึง เช่นพิมพ์ AR-1005 ตอน
+// เคาน์เตอร์อยู่ที่ 1001 · พอเคาน์เตอร์รันมาถึง 1005 คนที่เปิดสวิตช์อยู่จะโดน unique
+// ตีกลับว่า "รหัสนี้มีในระบบแล้ว" ทั้งที่ไม่ได้ทำอะไรผิด และเลข 1005 ก็หายไปด้วย
+// (เคาน์เตอร์ไม่ได้ซิงก์กับข้อมูลจริงหลัง mig 0230 รันไปแล้ว)
+//
+// ⇒ ต้องการรหัสรูปแบบใหม่ = เปิดสวิตช์ให้ระบบออกให้เท่านั้น
 export function arCodeError(code, { mode = CODE_MODE_MANUAL } = {}) {
   const value = digitsOf(code);
   if (!value) return 'กรุณากรอกรหัสลูกค้า (AR Code)';
   if (codeModeOf(mode) === CODE_MODE_AUTO) {
     return AR_AUTO_RE.test(value) ? null : `รหัสลูกค้าอัตโนมัติต้องเป็น ${AR_AUTO_HINT}`;
   }
-  if (AR_MANUAL_RE.test(value) || AR_AUTO_RE.test(value)) return null;
+  if (AR_MANUAL_RE.test(value)) return null;
+  if (AR_AUTO_RE.test(value)) {
+    return `${value} เป็นรหัสรูปแบบที่ระบบออกให้ (${AR_AUTO_HINT}) — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`;
+  }
   return `รูปแบบรหัสลูกค้าไม่ถูกต้อง — ต้องเป็น ${AR_MANUAL_HINT} เช่น AR-109`;
 }
 
 export function fgCodeError(code, { mode = CODE_MODE_MANUAL, categoryCode = null } = {}) {
   const value = digitsOf(code);
   if (!value) return 'กรุณากรอกรหัสสินค้า (FG Code)';
-  const shapeOk = codeModeOf(mode) === CODE_MODE_AUTO
-    ? FG_AUTO_RE.test(value)
-    : FG_MANUAL_RE.test(value) || FG_AUTO_RE.test(value);
-  if (!shapeOk) {
-    return codeModeOf(mode) === CODE_MODE_AUTO
-      ? `รหัสสินค้าอัตโนมัติต้องเป็น ${FG_AUTO_HINT}`
+  if (codeModeOf(mode) === CODE_MODE_AUTO) {
+    if (!FG_AUTO_RE.test(value)) return `รหัสสินค้าอัตโนมัติต้องเป็น ${FG_AUTO_HINT}`;
+  } else if (!FG_MANUAL_RE.test(value)) {
+    return FG_AUTO_RE.test(value)
+      ? `${value} เป็นรหัสรูปแบบที่ระบบออกให้ (${FG_AUTO_HINT}) — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`
       : `รูปแบบรหัสสินค้าไม่ถูกต้อง — ต้องเป็น ${FG_MANUAL_HINT}`;
   }
   // หมวดที่เลือกไว้ต้องตรงกับ BB-CCC ในรหัส — สองค่านี้ถูกเก็บคนละคอลัมน์
@@ -147,12 +173,28 @@ export function fgCodeError(code, { mode = CODE_MODE_MANUAL, categoryCode = null
   return null;
 }
 
-// ── เคาน์เตอร์ (mig 0230 · RPC ของ mig 0096) ──────────────────────────────
-// จองเลขจริง — atomic ต้องเรียกตอน insert เท่านั้น
-export async function nextMasterNumber(supabase, scope) {
-  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: scope, p_month: COUNTER_MONTH });
-  if (error) throw new Error(`ออกเลขรัน ${scope} ไม่สำเร็จ: ${error.message}`);
-  return Number(data);
+// ── สร้างแถวพร้อมออกรหัส (mig 0237) ───────────────────────────────────────
+// ⚠️ **ห้ามกลับไปจองเลขเองแล้วค่อย insert แยก** — นั่นคือสองทรานแซกชัน เลขถูก commit
+// ตั้งแต่คำสั่งแรก ⇒ insert ล้มเมื่อไรเลขนั้นหายจากระบบถาวร (เลขข้าม) · ฟังก์ชัน SQL
+// ข้างล่างบวกเลขกับ insert ในคำสั่งเดียว ล้มตรงไหนก็ rollback คืนเลขให้เอง
+//
+// คืน { data, error } ดิบจาก supabase-js ตามเดิม — ผู้เรียกยังแปลง error.code '23505'
+// เป็นข้อความซ้ำได้เหมือนตอนที่ยัง insert ตรง ๆ
+export function insertCustomerWithCode(supabase, row) {
+  return supabase.rpc('create_customer_with_code', {
+    p_prefix: AR_PREFIX,
+    p_width: AR_WIDTH,
+    p_row: row,
+  });
+}
+
+// prefix มาจาก fgCodePrefix() ของใบนั้น (ลูกค้า + หมวดที่ตรวจแล้ว) — ไม่ใช่สตริงจาก client
+export function insertProductWithCode(supabase, prefix, row) {
+  return supabase.rpc('create_product_with_code', {
+    p_prefix: prefix,
+    p_width: FG_WIDTH,
+    p_row: row,
+  });
 }
 
 // พรีวิว "เลขถัดไป" โดยไม่กินเลข — สำหรับโชว์ในฟอร์มเท่านั้น (ไม่ atomic)
