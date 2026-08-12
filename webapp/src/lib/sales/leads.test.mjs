@@ -10,6 +10,7 @@ import {
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
   sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending,
+  LEAD_SLA_STAGES, leadSlaNote,
 } from './leads';
 import { bangkokDate } from './handoffQueue';
 import { businessDayKey } from '../datePeriods';
@@ -551,11 +552,8 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
      ตอนนี้กริดถูกแทนด้วยกราฟแท่ง และ "ตีกลับ" ออกจากแท็บไปแล้ว (มติผู้ใช้ 2026-08-11)
      ⇒ ค่าที่ null ได้และยังโชว์อยู่จริงคือ "ค้างตอนนี้" ของ SLA — ย้ายด่านมาคุมตรงนั้นแทน
      กฎเดิมไม่เปลี่ยน: null = นับไม่ได้ ต้องขึ้น "-" ห้ามกลบเป็น 0 */
-  // ป้ายของด่านคัดกรองต่างจากอีกสองด่าน (ของค้างเป็นคิวกลางทั้งบริษัท) จึงเล็งที่
-  // ตัวกันค่า null ไม่ใช่คำนำหน้า — กฎที่คุมคือ "นับไม่ได้ต้องขึ้น - ไม่ใช่ 0"
-  assert.match(tabSource, /\$\{pendingLabel\} \$\{s\.pending \?\? "-"\}/);
-  assert.match(tabSource, /pendingLabel: "ค้างทั้งบริษัท"/,
-    'ค้างของด่านคัดกรองไม่ตามตัวกรองทีม (คิวกลางไม่มีทีม) — ต้องบอกบนจอว่าคนละขอบเขต');
+  // โน้ตของการ์ด SLA ประกอบที่ `leadSlaNote` ที่เดียว (มีเทสของตัวเองข้างล่าง)
+  assert.match(tabSource, /note=\{leadSlaNote\(s, pendingLabel\)\}/);
   // เล็งเฉพาะ `sla.pending` ซึ่งเป็นตัวเดียวที่ null ได้จริง (countLeadsByStatus ล้ม)
   // ส่วน pending ของตาราง AE การันตีเป็นตัวเลขจาก withAssigneePending — ไม่เข้าข่าย
   assert.doesNotMatch(tabSource, /s\.pending \?\? 0/, 'ห้ามกลบ SLA pending ที่นับไม่ได้ให้เป็น 0');
@@ -567,4 +565,44 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
      (การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว — สองที่บนจอเดียวกันต้องเชื่อถือได้เท่ากัน) */
   assert.match(tabSource, /\{a\.slaHit\}\/\{a\.contacted\}/,
     'คอลัมน์ SLA ของ AE ต้องโชว์ตัวหารคู่กับเปอร์เซ็นต์เสมอ');
+});
+
+/* ── ป้าย SLA ต้องมาจากลิสต์เดียวทั้งสองจอ ──────────────────────────────────
+   🐞 สองจอสะกดป้ายเอง แล้ว #1171 แก้คำว่าของค้างที่แท็บ KPI จอเดียว ⇒ หน้าคิวลีดยัง
+   เรียกเลขตัวเดียวกันว่า "ค้างตอนนี้" อยู่ ทั้งที่เป็นคิวกลางทั้งบริษัท */
+test('ป้ายสามด่าน: ด่านคัดกรองบอกว่าเป็นของทั้งบริษัท · อีกสองด่านเป็นของทีมที่เลือก', () => {
+  assert.deepEqual(LEAD_SLA_STAGES.map((s) => s.key), ['screen', 'assign', 'contact'],
+    'ลำดับต้องเป็นลำดับของด่านจริงบนเส้นทาง — สองจอวนลิสต์นี้ตรง ๆ');
+  const byKey = Object.fromEntries(LEAD_SLA_STAGES.map((s) => [s.key, s]));
+  assert.equal(byKey.screen.pendingLabel, 'ค้างทั้งบริษัท',
+    'คิวคัดกรองไม่มีทีม API จึงนับข้ามตัวกรองทีม — ป้ายต้องบอกว่าคนละขอบเขตกับ % ข้างบน');
+  assert.equal(byKey.assign.pendingLabel, 'ค้างตอนนี้');
+  assert.equal(byKey.contact.pendingLabel, 'ค้างตอนนี้');
+});
+
+test('leadSlaNote: 0 คือคำตอบจริง · null คือนับไม่ได้ ต้องขึ้น "-"', () => {
+  assert.equal(leadSlaNote({ hit: 56, checked: 56, pending: 4 }, 'ค้างทั้งบริษัท'),
+    'ทัน 56/56 · ค้างทั้งบริษัท 4');
+  // เคลียร์หมดแล้ว = 0 ต้องขึ้น 0 ไม่ใช่ "-"
+  assert.equal(leadSlaNote({ hit: 3, checked: 3, pending: 0 }), 'ทัน 3/3 · ค้างตอนนี้ 0');
+  // 🐞 countLeadsByStatus ล้ม → null: ห้ามกลบเป็น 0 เพราะ 0 อ่านว่า "ไม่มีของค้าง"
+  assert.equal(leadSlaNote({ hit: 1, checked: 2, pending: null }), 'ทัน 1/2 · ค้างตอนนี้ -');
+  // ยังไม่มีใบไหนถึงด่านนี้ — 0/0 อ่านออกอยู่แล้ว ไม่ต้องเป็น "-"
+  assert.equal(leadSlaNote({}), 'ทัน 0/0 · ค้างตอนนี้ -');
+  assert.equal(leadSlaNote(), 'ทัน 0/0 · ค้างตอนนี้ -');
+});
+
+test('หน้าคิวลีดกับแท็บ KPI อ่านป้ายจากลิสต์เดียวกัน ไม่สะกดเอง', () => {
+  const pageSource = readFileSync(
+    new URL('../../app/sales-planning/leads/page.js', import.meta.url), 'utf8',
+  );
+  const tabSource = readFileSync(
+    new URL('../../components/salesPlanning/dashboard/KpiLeadsTab.js', import.meta.url), 'utf8',
+  );
+  for (const [name, src] of [['หน้าคิวลีด', pageSource], ['แท็บ KPI ลีด', tabSource]]) {
+    assert.match(src, /LEAD_SLA_STAGES\.map\(/, `${name} ต้องวนจาก LEAD_SLA_STAGES`);
+    assert.match(src, /leadSlaNote\(/, `${name} ต้องประกอบโน้ตด้วย leadSlaNote`);
+    assert.doesNotMatch(src, /"SLA คัดกรอง ≤1 วันทำการ"/,
+      `${name} สะกดป้ายด่านเอง = จุดที่สองจอเริ่มพูดไม่ตรงกัน`);
+  }
 });

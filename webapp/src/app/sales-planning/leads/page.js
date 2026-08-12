@@ -32,7 +32,7 @@ import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
-  leadBudgetText, SERVICE_INTEREST_LABELS,
+  LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone,
 } from "@/lib/sales/leads";
 import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
@@ -43,6 +43,9 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
+
+/* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
+const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
 
 /* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
    ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
@@ -493,12 +496,21 @@ export default function LeadsPage() {
           <SaMetricStrip aria-busy={loading}>
             <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
             {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
-                ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ */}
-            {/* ครบสามด่านแล้ว — `MetricStrip` นับช่องเอง ไม่ต้องแก้ CSS กลางเวลาเพิ่ม/ลดใบ
-                (เดิม `.ui-metric-strip` ฮาร์ดโค้ด 4 คอลัมน์ ใบที่ห้าจึงห้อยเป็นแถวสอง) */}
-            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.screen?.pending)} />
-            <SaMetric icon={<Users />} label="SLA กระจาย ≤1 วันทำการ" value={slaPct(kpi?.sla?.assign)} note={`ทัน ${kpi?.sla?.assign?.hit ?? 0}/${kpi?.sla?.assign?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.assign?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.assign?.pending)} />
-            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.contact?.pending)} />
+                ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ
+                ⚠️ ป้ายมาจาก `LEAD_SLA_STAGES` ที่เดียวร่วมกับแท็บ "KPI ลีด" — เคยสะกดเอง
+                ทั้งสองจอ แล้วแก้คำที่จอเดียว (#1171) จนสองจอเรียกเลขตัวเดียวกันคนละชื่อ
+                ด่านคัดกรองจึงขึ้น "ค้างทั้งบริษัท" ตามของจริง: คิวกลางไม่มีทีม API เลย
+                นับโดยไม่ใส่ตัวกรองทีม */}
+            {LEAD_SLA_STAGES.map(({ key, label, pendingLabel }) => (
+              <SaMetric
+                key={key}
+                icon={SLA_STAGE_ICONS[key]}
+                label={label}
+                value={slaPct(kpi?.sla?.[key])}
+                note={leadSlaNote(kpi?.sla?.[key] || {}, pendingLabel)}
+                tone={slaPendingTone(kpi?.sla?.[key]?.pending)}
+              />
+            ))}
             {/* อัตราปิด = เปิดลูกค้า ÷ ลีดเข้า · ตัวหารเดียวกับแท็บ KPI เต็ม ตัวเลขจึงตรงกันสองจอ
                 ⚠️ โน้ตสั้นแค่นี้เพราะแถบมี 5 ช่องแล้ว — ยาวกว่านี้โดน ellipsis ตัดกลางคัน
                 (ก่อนหน้านี้เขียนโซ่ "เข้า → ติดต่อ → เปิดลูกค้า" แล้วโดนตัดจริง)

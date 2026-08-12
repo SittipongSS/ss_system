@@ -9,7 +9,9 @@ import {
 import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
 import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
 import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, slaPendingTone } from "@/lib/sales/leads";
+import {
+  CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, LEAD_SLA_STAGES, leadSlaNote, slaPendingTone,
+} from "@/lib/sales/leads";
 import { TEAM_LABELS } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -28,11 +30,9 @@ const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
    กลางที่ยังไม่มีทีม API จึงนับโดยไม่ใส่ตัวกรองทีม (ดู countLeadsByStatus ใน route)
    เลือกทีมอยู่แล้วเห็น "ค้างตอนนี้" เป็นเลขทั้งบริษัทข้าง ๆ % ของทีม = อ่านผิดแน่นอน
    ถ้าไม่บอกว่ามันคนละขอบเขต */
-const SLA_STAGES = [
-  { key: "screen", icon: <Filter />, label: "SLA คัดกรอง ≤1 วันทำการ", pendingLabel: "ค้างทั้งบริษัท" },
-  { key: "assign", icon: <Users />, label: "SLA กระจาย ≤1 วันทำการ", pendingLabel: "ค้างตอนนี้" },
-  { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ", pendingLabel: "ค้างตอนนี้" },
-];
+/* ป้ายมาจาก `LEAD_SLA_STAGES` ที่เดียว — หน้าคิวลีดอ่านลิสต์เดียวกันนี้
+   ที่นี่เติมแค่ไอคอน เพราะ lib ฝั่งข้อมูลต้องไม่ import react */
+const STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
 
 /* สีวงกลม = ชุดจำแนกประเภทของระบบ (3 ตัวแรกผ่านตัวตรวจ CVD ทุกข้อในทั้งสองธีม)
    ⚠️ วงกลมรับได้แค่ระดับ **กลุ่ม** 3 ชิ้น ไม่ใช่รายช่องทาง 6 ชิ้น — วัดด้วย
@@ -198,15 +198,15 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         <div className={styles.qualityGrid} aria-busy={loading}>
           {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
               โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
-          {SLA_STAGES.map(({ key, icon, label, pendingLabel }) => {
+          {LEAD_SLA_STAGES.map(({ key, label, pendingLabel }) => {
             const s = sla[key] || {};
             return (
               <SaMetric
                 key={key}
-                icon={icon}
+                icon={STAGE_ICONS[key]}
                 label={label}
                 value={pct(s.hit, s.checked)}
-                note={`ทัน ${s.hit ?? 0}/${s.checked ?? 0} · ${pendingLabel} ${s.pending ?? "-"}`}
+                note={leadSlaNote(s, pendingLabel)}
                 tone={slaPendingTone(s.pending)}
               />
             );
