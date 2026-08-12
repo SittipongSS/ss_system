@@ -4,7 +4,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Inbox, Filter, Users, PhoneCall, CalendarClock, PieChart as PieIcon } from "lucide-react";
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RTooltip,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer, Tooltip as RTooltip,
 } from "recharts";
 import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
 import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
@@ -29,6 +29,22 @@ const SLA_STAGES = [
   { key: "contact", icon: <PhoneCall />, label: "SLA ติดต่อกลับ ≤1 วันทำการ" },
 ];
 
+/* สีวงกลม = ชุดจำแนกประเภทของระบบ (3 ตัวแรกผ่านตัวตรวจ CVD ทุกข้อในทั้งสองธีม)
+   ⚠️ วงกลมรับได้แค่ระดับ **กลุ่ม** 3 ชิ้น ไม่ใช่รายช่องทาง 6 ชิ้น — วัดด้วย
+   validate_palette แบบ all-pairs แล้วคู่ที่ 2↔6 ของชุดนี้ได้ ΔE 2.3 กับสายตาปกติ
+   (เกณฑ์ขั้นต่ำ 15) = คนตาปกติก็แยกไม่ออก · รายช่องทางจึงไปอยู่บนแท่งกับตารางที่มีชื่อกำกับ */
+const GROUP_COLORS = CHART_CATEGORICAL.slice(0, 3);
+
+/* แท่งซ้อน = **สถานะ ณ ตอนนี้** ไม่ใช่ขั้นของ funnel — ใบหนึ่งอยู่ได้ช่องเดียว
+   เรียงจากผลดีไปผลเสียแล้วปิดท้ายด้วยของที่ยังไม่แตะ · จงใจไม่ให้เขียวไปติดแดง
+   (คู่ที่ตาบอดสีอ่านพลาดบ่อยที่สุด) และทุกช่องมีป้ายใน legend ไม่ได้ใช้สีลอย ๆ */
+const STATUS_SERIES = [
+  { key: "won", label: "เปิดลูกค้า", color: "var(--green)" },
+  { key: "talking", label: "คุยอยู่", color: "var(--blue)" },
+  { key: "lost", label: "ไม่ไปต่อ", color: "var(--red)" },
+  { key: "untouched", label: "ยังไม่ได้ติดต่อ", color: "var(--text-3)" },
+];
+
 /* สี่ตัวที่ฝ่ายขายอยากวัดจริง ๆ (มติผู้ใช้ 2026-08-12)
  *   ลีดเข้า · นัดประชุมได้ · เปิดลูกค้า · ไม่ไปต่อ
  *
@@ -46,22 +62,6 @@ const SLA_STAGES = [
  * ⚠️ โน้ตต้องสั้นระดับนี้ — `.ui-metric em` เป็น nowrap + ellipsis ที่ไม่ทำงาน
  * (ไม่มี min-width:0) ข้อความยาวจะล้นไปทับการ์ดข้าง ๆ
  */
-/* สีวงกลม = ชุดจำแนกประเภทของระบบ (3 ตัวแรกผ่านตัวตรวจ CVD ทุกข้อในทั้งสองธีม)
-   ⚠️ วงกลมรับได้แค่ระดับ **กลุ่ม** 3 ชิ้น ไม่ใช่รายช่องทาง 6 ชิ้น — วัดด้วย
-   validate_palette แบบ all-pairs แล้วคู่ที่ 2↔6 ของชุดนี้ได้ ΔE 2.3 กับสายตาปกติ
-   (เกณฑ์ขั้นต่ำ 15) = คนตาปกติก็แยกไม่ออก · รายช่องทางจึงไปอยู่บนแท่งกับตารางที่มีชื่อกำกับ */
-const GROUP_COLORS = CHART_CATEGORICAL.slice(0, 3);
-
-/* แท่งซ้อน = **สถานะ ณ ตอนนี้** ไม่ใช่ขั้นของ funnel — ใบหนึ่งอยู่ได้ช่องเดียว
-   เรียงจากผลดีไปผลเสียแล้วปิดท้ายด้วยของที่ยังไม่แตะ · จงใจไม่ให้เขียวไปติดแดง
-   (คู่ที่ตาบอดสีอ่านพลาดบ่อยที่สุด) และทุกช่องมีป้ายใน legend ไม่ได้ใช้สีลอย ๆ */
-const STATUS_SERIES = [
-  { key: "won", label: "เปิดลูกค้า", color: "var(--green)" },
-  { key: "talking", label: "คุยอยู่", color: "var(--blue)" },
-  { key: "lost", label: "ไม่ไปต่อ", color: "var(--red)" },
-  { key: "untouched", label: "ยังไม่ได้ติดต่อ", color: "var(--text-3)" },
-];
-
 const OUTCOME_CARDS = [
   { key: "in", label: "ลีดเข้า", value: (f) => f.total ?? "-", note: () => "ตัวหารของทุกอัตราในแถวนี้" },
   { key: "meet", label: "นัดประชุมได้", value: (f) => pct(f.meeting, f.total), note: (f) => `${f.meeting ?? 0} จาก ${f.total ?? 0} ใบ` },
@@ -98,7 +98,9 @@ export default function KpiLeadsTab({ month, teamFilter }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const f = kpi?.funnel || {};
+  // ห่อ useMemo เพราะ `kpi?.funnel || {}` สร้างอ็อบเจกต์ใหม่ทุกเรนเดอร์เมื่อ kpi ยังว่าง
+  // ⇒ useMemo ที่พึ่ง `f` จะคำนวณใหม่ทุกครั้ง (eslint react-hooks จับได้)
+  const f = useMemo(() => kpi?.funnel || {}, [kpi]);
   const sla = kpi?.sla || {};
 
   // ป้ายไทยเติมที่นี่ครั้งเดียว ทั้งแท่งและตารางใช้ตัวเดียวกัน จะได้ไม่หลุดกันคนละชื่อ
@@ -106,6 +108,18 @@ export default function KpiLeadsTab({ month, teamFilter }) {
     () => (kpi?.byChannel || []).map((c) => ({ ...c, label: LEAD_CHANNEL_LABELS[c.channel] || c.channel })),
     [kpi],
   );
+  /* แถวของผัง — สีบอกบทบาท: ด่านหลักสีเดียวกันหมด · แขนง "นัด" คนละสี · ปลายทางเขียว
+     `?? 0` ตรงนี้ปลอดภัยเพราะทุกค่ามาจาก rows.filter().length ของ route (ไม่มีทางเป็น null
+     ต่างจาก bounced ที่นับแยกและล้มได้ — ซึ่งไม่ได้อยู่ในผังนี้แล้ว) */
+  const funnelRows = useMemo(() => [
+    { label: "เข้า", value: f.total ?? 0, color: "var(--chart-cat-1)" },
+    { label: "คัดกรองแล้ว", value: f.screened ?? 0, color: "var(--chart-cat-1)" },
+    { label: "มอบหมายแล้ว", value: f.assigned ?? 0, color: "var(--chart-cat-1)" },
+    { label: "ติดต่อแล้ว", value: f.contacted ?? 0, color: "var(--chart-cat-1)" },
+    { label: "ผ่านนัดประชุม", value: f.meeting ?? 0, color: "var(--violet)" },
+    { label: "เปิดลูกค้า", value: f.qualified ?? 0, color: "var(--green)" },
+  ], [f]);
+
   const groups = useMemo(() => {
     const map = new Map();
     for (const c of channels) map.set(c.group, (map.get(c.group) || 0) + c.count);
@@ -129,19 +143,24 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             *ไม่มี* เท่านั้น */}
 
       <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle={`ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น · เดือน ${kpi?.month || month}`}>
-        <div className={styles.funnelGrid} aria-busy={loading}>
-          {[["เข้า", f.total], ["คัดกรองแล้ว", f.screened], ["มอบหมายแล้ว", f.assigned], ["ติดต่อแล้ว", f.contacted], ["นัดประชุม", f.meeting], ["เปิดลูกค้า", f.qualified], ["ไม่ไปต่อ", f.disqualified], ["ตีกลับ", f.bounced]].map(([label, v]) => (
-            <SaMetric
-              key={label}
-              label={label}
-              /* `?? "-"` ไม่ใช่ `?? 0` — null แปลว่า "นับไม่ได้" (ดู bounceCount ใน route)
-                 ส่วน 0 จริง ๆ ยังโชว์ 0 ตามปกติเพราะ ?? จับแค่ null/undefined
-                 การกลบ "ไม่รู้" ให้เป็น 0 คือคำตอบที่ดูปกติจนไม่มีใครสงสัย */
-              value={v ?? "-"}
-              note="จำนวนลีด"
-            />
-          ))}
-        </div>
+        {/* ผังลดหลั่นเป็น **กราฟแท่ง** ไม่ใช่กล่องตัวเลข 8 ใบ — ตัวเลขล้วนอ่านไม่ออกว่า
+            หล่นตรงไหน ต้องเอามาลบกันเองในหัว ส่วนความยาวแท่งบอกได้ในแวบเดียว
+            ⚠️ "ผ่านนัดประชุม" เป็น **แขนง** ไม่ใช่ด่าน (สีคนละตัว) — create_deal ข้ามขั้นนัดได้
+            จึงมีเดือนที่นัดน้อยกว่าเปิดลูกค้า · ใส่ไว้ให้เห็นจำนวน ไม่ได้แปลว่าต้องผ่าน
+            ⚠️ ไม่มี "ตีกลับ" ในผัง (มติผู้ใช้ 2026-08-11) และ "ไม่ไปต่อ" อยู่ในแถบผลลัพธ์ข้างล่าง */}
+        <ChartCanvas className={styles.funnelChart} aria-busy={loading}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={funnelRows} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 4 }} barSize={16}>
+              <XAxis type="number" hide domain={[0, Math.max(1, f.total || 1)]} />
+              <YAxis type="category" dataKey="label" width={104} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
+              <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
+              <Bar dataKey="value" name="จำนวนลีด" radius={[0, 3, 3, 0]} isAnimationActive={false}>
+                {funnelRows.map((r) => <Cell key={r.label} fill={r.color} />)}
+                <LabelList dataKey="value" position="right" fill="var(--text-2)" fontSize={12} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCanvas>
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
         <div className={styles.qualityGrid} aria-busy={loading}>

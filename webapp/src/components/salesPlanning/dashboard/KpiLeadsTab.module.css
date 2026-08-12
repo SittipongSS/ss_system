@@ -1,13 +1,8 @@
 /* แท็บ "KPI ลีด" ของแดชบอร์ดฝ่ายขาย — ผังของ funnel/ตาราง
    (เดิมเป็น inline style ทั้งไฟล์ ย้ายออกมาเป็นคลาส 2026-08-05) */
 
-/* จำนวนลีดต่อขั้น — ช่องเล็กเพราะเป็นตัวเลขล้วน 8 ขั้น ต้องเห็นครบในแถวเดียวถ้าจอพอ */
-.funnelGrid {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-}
-
+/* ผังลดหลั่น — สูงพอให้แท่ง 6 แถวไม่ถูกบีบจนอ่านชื่อไม่ออก */
+.funnelChart { height: 210px; }
 /* คุณภาพของ funnel (SLA / Conversion) — ช่องกว้างกว่าเพราะป้ายยาวและมีคำอธิบายใต้เลข */
 .qualityGrid {
   display: grid;
