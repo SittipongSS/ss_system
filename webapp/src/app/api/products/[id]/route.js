@@ -221,10 +221,15 @@ export async function PATCH(request, { params }) {
   // อนุมัติ/พักใช้งาน ที่ PATCH แค่ field เดียว) ต้องไม่ถูกล้างสูตรทิ้ง
   if (body.formulaId !== undefined) {
     try {
-      Object.assign(updated, await productFormulaSnapshot(supabase, body.formulaId));
+      // forProductId = ตัวเอง — แก้สินค้าที่ถือสูตรนี้อยู่แล้วต้องผ่านด่าน 1:1
+      Object.assign(updated, await productFormulaSnapshot(supabase, body.formulaId, { forProductId: id }));
     } catch (e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
+    // ถอดสูตรออกจากสินค้าที่เคยมีสูตร → กลิ่นที่ derive มากับสูตรนั้นต้องหลุดตาม
+    // (snapshot ตอนล้างตั้งใจไม่แตะ scentId — เพื่อไม่ทำลายสินค้าที่ RD จัดระเบียบ
+    // เป็น "กลิ่น" ไว้ ซึ่งไม่มี formulaId มาแต่แรก · ที่นี่รู้ค่าเดิมจึงแยกสองเคสได้)
+    if (!body.formulaId && product.formulaId) updated.scentId = null;
   }
   // ชิ้นต่อลัง (0075) — coerce เป็นตัวเลข/null (ฟอร์มส่งมาเป็น string).
   if (body.piecesPerCase !== undefined) {

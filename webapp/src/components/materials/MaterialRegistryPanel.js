@@ -27,7 +27,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import {
-  MATERIAL_KINDS, MATERIAL_KIND_LABELS, MATERIAL_STATE_LABELS,
+  MATERIAL_STATE_LABELS,
   canQuoteMaterial, latestRevision, materialPriceState, revisionPriceRange,
   revisionTiers, revisionValidUntil, tierUnitPrice,
 } from "@/lib/materialPrices";
@@ -47,8 +47,11 @@ const STATE_TONE = {
   archived: { bg: "var(--panel-3)", fg: "var(--text-3)" },
 };
 
+// ⭐ ทะเบียนนี้เหลือ **บรรจุภัณฑ์ (PM) อย่างเดียว** (มติผู้ใช้ 2026-08-10 —
+// เตรียมต่อโมดูลจัดซื้อ) · ราคา RM (F/FB) จัดการที่หน้ารายละเอียดกลิ่น/สูตร
+// หน้าแม่กรองแถว PM มาให้แล้ว จึงไม่มีตัวกรอง/คอลัมน์ชนิดอีก
 export default function MaterialRegistryPanel({
-  materials = [], customers = [], formulas = [], loading = false, loadError = "", reload,
+  materials = [], customers = [], loading = false, loadError = "", reload,
 }) {
   const role = useRole();
   const department = useDepartment();
@@ -57,7 +60,6 @@ export default function MaterialRegistryPanel({
   // superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js)
   const isAdmin = role === "admin";
 
-  const [kindFilter, setKindFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("open"); // open = ไม่รวมที่เก็บเข้ากรุ
   const [search, setSearch] = useState("");
 
@@ -73,15 +75,14 @@ export default function MaterialRegistryPanel({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return materials.filter((m) => {
-      if (kindFilter && m.kind !== kindFilter) return false;
       if (statusFilter === "open" && m.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && m.status !== statusFilter) return false;
       if (!q) return true;
-      const hay = [m.label, m.customerName, m.formulaCode, m.formulaName, m.supplierNote]
+      const hay = [m.label, m.customerName, m.supplierNote]
         .filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [materials, kindFilter, statusFilter, search]);
+  }, [materials, statusFilter, search]);
 
   const draftCount = useMemo(
     () => materials.filter((m) => m.status === "draft" && canQuoteMaterial(me, m.kind)).length,
@@ -107,11 +108,9 @@ export default function MaterialRegistryPanel({
   const submitForm = async () => {
     const v = form.value;
     const payload = {
-      kind: v.kind,
+      kind: "PM", // ทะเบียนนี้สร้างได้แต่บรรจุภัณฑ์ — RM ไปที่ทะเบียนกลิ่น/สูตร
       label: v.label,
-      pmType: v.kind === "PM" ? v.pmType : null,
-      // สูตรมาจากทะเบียน (mig 0181) — ชื่อ/รหัสเป็น snapshot ที่ server เติมเอง
-      formulaId: v.kind === "PM" ? null : (v.formulaId || null),
+      pmType: v.pmType,
       customerId: v.scope === "customer" ? v.customerId : null,
       customerName: v.scope === "customer"
         ? (customers.find((c) => c.id === v.customerId)?.name || null) : null,
@@ -248,11 +247,6 @@ export default function MaterialRegistryPanel({
           />
         </div>
         <Select
-          value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}
-          options={[{ value: "", label: "ทุกชนิด" }, ...MATERIAL_KINDS.map((k) => ({ value: k, label: MATERIAL_KIND_LABELS[k] }))]}
-          aria-label="กรองชนิดวัสดุ"
-        />
-        <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[
             { value: "open", label: "ที่ใช้งานอยู่" },
@@ -283,7 +277,7 @@ export default function MaterialRegistryPanel({
       ) : visible.length === 0 ? (
         <EmptyState icon={Boxes}>
           {materials.length === 0
-            ? "ทะเบียนยังว่าง — กด \"เพิ่มวัสดุ\" เพื่อเริ่ม หรือรอราคาจากคำขอที่ RD/PC ตอบ"
+            ? "ทะเบียนบรรจุภัณฑ์ยังว่าง — กด \"เพิ่มวัสดุ\" เพื่อเริ่ม (ราคา F/FB อยู่ที่ทะเบียนกลิ่น/สูตร)"
             : "ไม่มีวัสดุที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
@@ -292,7 +286,6 @@ export default function MaterialRegistryPanel({
             <thead>
               <tr>
                 <th>วัสดุ</th>
-                <th style={{ width: 120 }}>ชนิด</th>
                 <th style={{ width: 140 }}>ลูกค้า</th>
                 <th style={{ width: 190 }}>ราคาล่าสุด</th>
                 <th style={{ width: 150 }}>สถานะ</th>
@@ -315,12 +308,10 @@ export default function MaterialRegistryPanel({
                     <td>
                       <div style={{ fontWeight: "var(--fw-medium)" }}>{m.label}</div>
                       <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {m.kind === "PM" && m.pmType && <span>{pmTypeLabel(m.pmType)}</span>}
-                        {m.formulaCode && <span>สูตร {m.formulaCode}</span>}
+                        {m.pmType && <span>{pmTypeLabel(m.pmType)}</span>}
                         {m.supplierNote && <span>{m.supplierNote}</span>}
                       </div>
                     </td>
-                    <td style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>{MATERIAL_KIND_LABELS[m.kind]}</td>
                     <td style={{ fontSize: "var(--fs-5)" }}>
                       {m.customerName || <span style={{ color: "var(--text-3)" }}>ราคากลาง</span>}
                     </td>
@@ -407,7 +398,7 @@ export default function MaterialRegistryPanel({
         {form && (
           <>
             <MaterialForm
-              mode={form.mode} value={form.value} customers={customers} formulas={formulas} disabled={saving}
+              mode={form.mode} value={form.value} customers={customers} disabled={saving}
               canPrice={canQuoteMaterial(me, form.value.kind)}
               onChange={(value) => setForm({ ...form, value })}
             />
