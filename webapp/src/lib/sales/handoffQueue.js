@@ -7,6 +7,7 @@
 // (การ์ดแดชบอร์ด · แถบเตือนหน้ารายการ · การ์ดสรุปเช้าเข้า Google Chat) เพื่อไม่ให้
 // ตัวเลขบนแต่ละหน้าเพี้ยนหากัน — ฟังก์ชันทุกตัวในนี้บริสุทธิ์ ไม่แตะ DB
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
+import { businessDayKey } from '@/lib/datePeriods';
 
 // ── ลูกศรที่ 1: Won → Sale Order ────────────────────────────────────────
 // ⚠️ นิยาม "SO ที่ยังมีชีวิต" ต้องตรงกับด่านใน migration 0169 (create_sales_order_draft)
@@ -43,13 +44,13 @@ export function salesOrdersAwaitingFiling({ salesOrders = [], filings = [] } = {
 // ── อายุของงานค้าง (วันทำการ) ───────────────────────────────────────────
 // วันที่ตามเวลาไทย — server รันที่ UTC ถ้าตัดสตริงตรง ๆ งานที่กดตอนเย็นวันจันทร์
 // (= เช้าวันจันทร์ UTC) จะถูกนับเป็นคนละวันกับที่คนไทยเห็นบนหน้าจอ
+/* ⚠️ นาฬิกาเดียวของทั้งระบบคือ `businessDayKey` — ตัวนี้เป็นแค่เปลือกที่คงสัญญาเดิม
+   (คืน '' แทน null ให้ผู้เรียกเก่าที่เทียบสตริง) ห้ามคำนวณวันเองซ้ำที่นี่
+   ของเดิมใช้ Intl/ICU ซึ่งให้คำตอบเดียวกันก็จริง แต่เป็นนาฬิกาเรือนที่สอง — พอมีสองเรือน
+   ก็มีวันที่มันเดินไม่ตรงกัน (เจอมาแล้วรอบนี้: SLA ใช้วัน UTC ส่วนการ์ดค้างคิวใช้วันไทย)
+   และ datePeriods เลือกไม่พึ่ง ICU ตั้งแต่แรกเพราะบาง runtime มีข้อมูลโซนไม่ครบ */
 export function bangkokDate(value) {
-  if (!value) return '';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(parsed);
+  return businessDayKey(value) || '';
 }
 
 // จำนวนวันทำการที่รอมาแล้ว (ข้ามเสาร์-อาทิตย์ + วันหยุดตามปฏิทินที่ตั้งไว้)

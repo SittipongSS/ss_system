@@ -1,19 +1,17 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import Select from "@/components/ui/Select";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
 // คัดกรอง (Supervisor เลือกทีม) → กระจาย (Senior เลือก AE) → ติดต่อ/นัด → เปิดลูกค้า.
-// SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
+// SLA 1 วันทำการ **ทั้งสามด่าน** (คัดกรอง · กระจาย · ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ
+// โชว์ครบบนแถบ KPI ของหน้านี้ · ตัวเลขเชิงลึก (รายช่องทาง · รายคน) อยู่ที่แท็บ "KPI ลีด"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, LineChart, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
-import MoneyInput from "@/components/ui/MoneyInput";
-import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
@@ -25,8 +23,6 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
-import { brandThList } from "@/lib/master/brands";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
 import PendingFiles from "@/components/ui/PendingFiles";
@@ -35,19 +31,17 @@ import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES,
-  leadBudgetText, LEAD_STATUS_LABELS,
-  SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
+  leadBudgetText, SERVICE_INTEREST_LABELS,
+  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone,
 } from "@/lib/sales/leads";
-import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, thisMonth, snapForecastLevel, yearOfMonth } from "@/components/salesPlanning/ui";
+import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
-import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 
 /* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
@@ -171,6 +165,9 @@ export default function LeadsPage() {
   // ไฟล์อ้างอิงที่แนบไว้ตอนกรอกลีดใหม่ — ยังไม่มี id ให้อัป จึงถือไว้จนลีดเกิด
   const [pendingFiles, setPendingFiles] = useState([]);
 
+  // ยิง KPI เฉพาะ role ที่ API ยอมให้อ่าน — คนอื่นเคยได้ 403 ทุกครั้งที่เปิด/เปลี่ยนเดือน
+  // (ทิ้งไปเปล่า ๆ เพราะแถบตัวเลขก็ไม่ขึ้นให้เขาอยู่แล้ว) · ด่านเดียวกับที่ใช้ตัดสินการ render
+  const showKpi = canSeeLeadKpi(role);
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -178,19 +175,21 @@ export default function LeadsPage() {
       const [leadsRes, kpiRes] = await Promise.all([
         fetch("/api/sales-planning/leads"),
         // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
-        fetch(allMonths
-          ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
-          : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`),
+        showKpi
+          ? fetch(allMonths
+            ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
+            : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`)
+          : null,
       ]);
       if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
       setLeads(await leadsRes.json());
-      setKpi(kpiRes.ok ? await kpiRes.json() : null);
+      setKpi(kpiRes?.ok ? await kpiRes.json() : null);
     } catch (e) {
       setError(e.message || "โหลดลีดไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
-  }, [month, allMonths]);
+  }, [month, allMonths, showKpi]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -251,9 +250,18 @@ export default function LeadsPage() {
     });
     
     const mul = sortDir === "desc" ? -1 : 1;
+    /* ลำดับของสถานะบนเส้นทาง — สถานะแปลกหน้าไปท้ายสุด
+       🐞 เดิมเขียน `LEAD_STATUSES.indexOf(s) || 99` ซึ่ง **พังกับตัวแรกของลิสต์**:
+       `indexOf('new')` = 0 แล้ว `0 || 99` = 99 ⇒ "รอคัดกรอง" (คิวกลางที่ต้องคัดก่อนใคร)
+       ตกไปอยู่ท้ายสุดตอนเรียง ก→ฮ ส่วนสถานะที่ไม่รู้จักได้ -1 แล้วไปโผล่หัวแทน
+       ตรวจจริงบน prod: กดเรียงสถานะแล้วใบรอคัดกรองที่ค้าง 12 วันทำการไปอยู่หน้าสุดท้าย */
+    const statusRank = (status) => {
+      const i = LEAD_STATUSES.indexOf(status);
+      return i < 0 ? 99 : i;
+    };
     return result.sort((a, b) => {
       if (sortKey === "name") return (a.contactName || "").localeCompare(b.contactName || "", "th") * mul;
-      if (sortKey === "status") return ((LEAD_STATUSES.indexOf(a.status) || 99) - (LEAD_STATUSES.indexOf(b.status) || 99)) * mul;
+      if (sortKey === "status") return (statusRank(a.status) - statusRank(b.status)) * mul;
       if (sortKey === "budget") return ((a.budget || 0) - (b.budget || 0)) * mul;
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
@@ -456,7 +464,7 @@ export default function LeadsPage() {
               เพราะ KPI ลีดเปิดให้เฉพาะผู้กำกับดูแล/ทีม intake แต่ขอบเขตเป็นของคนทำงาน
               คิวทุกคน (senior_ae/ac/ae ไม่เห็น KPI แต่ต้องสลับขอบเขตได้)
               ⇒ แถวนี้โผล่เมื่อมีอย่างน้อยหนึ่งอย่าง ไม่ใช่ผูกกับสิทธิ์ใดสิทธิ์หนึ่ง */}
-          {(scopes.length > 1 || canSeeLeadKpi(role)) && (
+          {(scopes.length > 1 || showKpi) && (
             <div className="scope-row">
               {scopes.length > 1 && (
                 <Segmented
@@ -470,20 +478,34 @@ export default function LeadsPage() {
               {activeScope === "team" && (
                 <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
               )}
-              {canSeeLeadKpi(role) && (
+              {showKpi && (
                 <Link href="/sa/dashboard?tab=lead_kpi" className="linklike kpi-full-link">ดู KPI เต็ม →</Link>
               )}
             </div>
           )}
 
+          {/* แถบตัวเลขขึ้นเฉพาะคนที่ API ยอมให้อ่าน — `canSeeLeadKpi` เป็นด่านเดียวกับที่
+              /api/sales-planning/leads/kpi ใช้ (superuser · marketing · ผู้สังเกตการณ์)
+              🐞 เดิม render ไม่มีเงื่อนไข ⇒ AE/AC/Senior AE ที่โดน 403 เปิดหน้ามาเจอ
+              การ์ดเปล่าโชว์ "-" สี่ใบทุกครั้ง กินพื้นที่บนสุดของหน้าไปฟรี ๆ แถมชวนให้คิดว่า
+              ระบบพัง ทั้งที่ตั้งใจไม่ให้เห็น (ลิงก์ "ดู KPI เต็ม" ข้างบนกันด่านนี้อยู่แล้ว) */}
+          {showKpi && (
           <SaMetricStrip aria-busy={loading}>
             <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
             {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
                 ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ */}
-            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
-            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${periodNote} · ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
+            {/* ครบสามด่านแล้ว — `MetricStrip` นับช่องเอง ไม่ต้องแก้ CSS กลางเวลาเพิ่ม/ลดใบ
+                (เดิม `.ui-metric-strip` ฮาร์ดโค้ด 4 คอลัมน์ ใบที่ห้าจึงห้อยเป็นแถวสอง) */}
+            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.screen?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.screen?.pending)} />
+            <SaMetric icon={<Users />} label="SLA กระจาย ≤1 วันทำการ" value={slaPct(kpi?.sla?.assign)} note={`ทัน ${kpi?.sla?.assign?.hit ?? 0}/${kpi?.sla?.assign?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.assign?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.assign?.pending)} />
+            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างตอนนี้ ${kpi?.sla?.contact?.pending ?? "-"}`} tone={slaPendingTone(kpi?.sla?.contact?.pending)} />
+            {/* อัตราปิด = เปิดลูกค้า ÷ ลีดเข้า · ตัวหารเดียวกับแท็บ KPI เต็ม ตัวเลขจึงตรงกันสองจอ
+                ⚠️ โน้ตสั้นแค่นี้เพราะแถบมี 5 ช่องแล้ว — ยาวกว่านี้โดน ellipsis ตัดกลางคัน
+                (ก่อนหน้านี้เขียนโซ่ "เข้า → ติดต่อ → เปิดลูกค้า" แล้วโดนตัดจริง)
+                รายละเอียดว่าหล่นตรงไหนอยู่ที่แท็บ "KPI ลีด" ซึ่งมีที่พอ */}
+            <SaMetric icon={<CalendarClock />} label="อัตราปิด (เปิดลูกค้า)" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${kpi?.funnel?.qualified ?? 0} จาก ${kpi?.funnel?.total ?? 0} ใบ`} />
           </SaMetricStrip>
+          )}
 
         {/* การ์ด "ค้างคิว" — อะไรค้าง ค้างกี่วันทำการ ใครถือ
             ต่างจากแถบ KPI ด้านบนตรงที่**ไม่ผูกกับเดือน**: ของค้างคือของค้าง ไม่ว่าจะ

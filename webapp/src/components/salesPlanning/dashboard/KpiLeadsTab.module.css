@@ -1,26 +1,14 @@
 /* แท็บ "KPI ลีด" ของแดชบอร์ดฝ่ายขาย — ผังของ funnel/ตาราง
    (เดิมเป็น inline style ทั้งไฟล์ ย้ายออกมาเป็นคลาส 2026-08-05) */
 
-/* จำนวนลีดต่อขั้น — ช่องเล็กเพราะเป็นตัวเลขล้วน 8 ขั้น ต้องเห็นครบในแถวเดียวถ้าจอพอ */
-.funnelGrid {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-}
-
+/* ผังลดหลั่น — สูงพอให้แท่ง 6 แถวไม่ถูกบีบจนอ่านชื่อไม่ออก */
+.funnelChart { height: 210px; }
 /* คุณภาพของ funnel (SLA / Conversion) — ช่องกว้างกว่าเพราะป้ายยาวและมีคำอธิบายใต้เลข */
 .qualityGrid {
   display: grid;
   gap: var(--space-3);
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin-top: var(--space-3);
-}
-
-/* สองส่วนที่อ่านคู่กัน (ผู้กรอกลีด / ช่องทาง) — พับลงบนล่างเองเมื่อที่ไม่พอ */
-.splitSections {
-  display: grid;
-  gap: var(--space-5);
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .emptyCell {
@@ -34,3 +22,21 @@
   border-color: var(--red);
   color: var(--red);
 }
+
+/* ช่องทาง: วงกลม (สัดส่วนกลุ่ม) + แท่งซ้อน (สถานะรายช่องทาง) อ่านคู่กัน
+   วงกลมกว้างคงที่เพราะโตไปก็ไม่ได้ข้อมูลเพิ่ม ส่วนแท่งกินที่เหลือทั้งหมด
+   ⚠️ ต้องมี minmax(0, …) ไม่งั้นคอลัมน์แท่งไม่ยอมหด แล้ว ResponsiveContainer
+   วัดความกว้างได้เกินจริงจนกราฟล้นออกนอกการ์ด */
+.channelFigure {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+}
+@media (max-width: 768px) {
+  .channelFigure { grid-template-columns: minmax(0, 1fr); }
+}
+.donut { height: 190px; }
+/* สูงตามจำนวนแถว — ปล่อยให้ ResponsiveContainer สูง 100% ของกล่องที่คำนวณไว้แล้ว
+   ไม่งั้นแท่ง 6 ช่องทางจะถูกบีบจนอ่านชื่อไม่ออก */
+.channelBars { height: 190px; }

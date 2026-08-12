@@ -9,8 +9,10 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf,
+  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending,
 } from './leads';
+import { bangkokDate } from './handoffQueue';
+import { businessDayKey } from '../datePeriods';
 
 test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website→website', () => {
   assert.equal(channelGroupOf('chatcone_line'), 'online');
@@ -49,6 +51,140 @@ test('SLA วันทำการ: วันเดียวกัน=0 (ทั�
   // ปลายทางก่อนต้นทาง (เวลาผิดลำดับ เช่น firstContactAt ค้างจากรอบก่อน bounce) →
   // ไม่นับเป็น "ทัน" (กัน KPI พอง) — คืน null ไม่ใช่ true
   assert.equal(slaHit('2026-07-13', '2026-07-10', noHolidays), null);
+});
+
+test('slaStage: นับเฉพาะใบที่ผ่านด่านแล้ว — ใบที่ยังไม่ถึงด่านถัดไปไม่ใช่ "พลาด"', () => {
+  const noHolidays = new Set();
+  const rows = [
+    // คัดกรองวันเดียวกัน แล้วกระจายวันทำการถัดไป → ทันทั้งสองด่าน
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: '2026-07-13' },
+    // คัดกรองทัน แต่กระจายช้า 2 วันทำการ → ด่านกระจายพลาด
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: '2026-07-14' },
+    // คัดกรองแล้วแต่ยังไม่ได้กระจาย = ของค้าง ต้อง**ไม่**เข้า checked ของด่านกระจาย
+    { createdAt: '2026-07-10', screenedAt: '2026-07-10', assignedAt: null },
+    // ยังไม่ถูกคัดกรองเลย — ไม่เข้า checked ของด่านไหนทั้งนั้น
+    { createdAt: '2026-07-10', screenedAt: null, assignedAt: null },
+  ];
+  assert.deepEqual(slaStage(rows, 'createdAt', 'screenedAt', noHolidays), { checked: 3, hit: 3 });
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 2, hit: 1 });
+});
+
+test('slaStage: เวลาผิดลำดับไม่นับเป็นทัน (กัน KPI พองหลังตีกลับ)', () => {
+  const noHolidays = new Set();
+  // assignedAt ก่อน screenedAt = ข้อมูลค้างจากรอบก่อน — slaHit คืน null ต้องไม่ถูกนับเป็น hit
+  const rows = [{ screenedAt: '2026-07-13', assignedAt: '2026-07-10' }];
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 1, hit: 0 });
+});
+
+test('slaStage: ไม่มีแถวเลย → checked 0 (ไม่ระเบิด, ไม่หารศูนย์ที่ผู้เรียก)', () => {
+  assert.deepEqual(slaStage([], 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
+  assert.deepEqual(slaStage(undefined, 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
+});
+
+test('SLA ใช้วันไทย ไม่ใช่วัน UTC — ลีดดึงดึกต้องไม่โดนหักวันฟรี', () => {
+  const noHolidays = new Set();
+  // 2026-08-10T18:30Z = 2026-08-11 01:30 ตามเวลาไทย ⇒ "วันที่เข้ามา" คือ 11 ไม่ใช่ 10
+  const nightLead = '2026-08-10T18:30:00.000Z';   // อังคาร 01:30 น. เวลาไทย
+  const nextDay   = '2026-08-12T03:00:00.000Z';   // พุธ 10:00 น. เวลาไทย
+  // วันไทย: 11 → 12 = 1 วันทำการ ⇒ ทัน
+  assert.equal(slaBusinessDays(nightLead, nextDay, noHolidays), 1);
+  assert.equal(slaHit(nightLead, nextDay, noHolidays), true);
+  // 🐞 ถ้าหาวันด้วย slice(0,10) จะได้ 10 → 12 = 2 วันทำการ ⇒ พลาดทั้งที่ทำทัน
+  assert.notEqual(slaBusinessDays(nightLead, nextDay, noHolidays), 2);
+});
+
+test('นาฬิกาเดียวกันทั้งระบบ: bangkokDate ของคิวรอยต่อ = businessDayKey', () => {
+  // ถ้าใครแอบเขียนวิธีหาวันของตัวเองเพิ่ม เทสนี้จะพัง — ตัวเลข SLA กับ "ค้างกี่วัน"
+  // ต้องมาจากนาฬิกาเรือนเดียวกันเสมอ ไม่งั้นสองการ์ดบนจอเดียวกันเถียงกันเองได้
+  for (const iso of [
+    '2026-08-10T18:30:00.000Z', // 01:30 น. วันไทยถัดไป
+    '2026-08-10T10:00:00.000Z', // 17:00 น. วันเดียวกัน
+    '2026-08-10T16:59:59.000Z', // 23:59 น. วันเดียวกัน (ขอบ)
+    '2026-08-10T17:00:00.000Z', // 00:00 น. วันถัดไป (ขอบ)
+  ]) {
+    assert.equal(bangkokDate(iso), businessDayKey(iso), `วันไม่ตรงกันที่ ${iso}`);
+  }
+  assert.equal(bangkokDate(null), '');
+  assert.equal(bangkokDate('ไม่ใช่วันที่'), '');
+});
+
+test('channelRollup: ช่องสถานะไม่ซ้อนกัน รวมกันเท่าจำนวนลีดของช่องทางนั้นเป๊ะ', () => {
+  const rows = [
+    // เปิดลูกค้าแล้ว — เคยติดต่อและเคยนัดด้วย ⇒ นับใน funnel ทุกขั้น แต่สถานะอยู่ช่อง won ช่องเดียว
+    { channel: 'chatcone_line', firstContactAt: 'x', meetingAt: 'x', status: 'qualified' },
+    // ไม่ไปต่อ ทั้งที่เคยติดต่อ ⇒ ต้องไปอยู่ lost ไม่ใช่ talking
+    { channel: 'chatcone_line', firstContactAt: 'x', status: 'disqualified' },
+    { channel: 'chatcone_line', firstContactAt: 'x', status: 'contacted' },
+    { channel: 'chatcone_line', status: 'assigned' },
+    { channel: 'typeform', status: 'new' },
+  ];
+  const [line, typeform] = channelRollup(rows);
+  assert.equal(line.channel, 'chatcone_line');
+  assert.equal(line.group, 'online');
+  assert.deepEqual(
+    { count: line.count, contacted: line.contacted, meeting: line.meeting, qualified: line.qualified },
+    { count: 4, contacted: 3, meeting: 1, qualified: 1 },
+  );
+  assert.deepEqual(
+    { won: line.won, lost: line.lost, talking: line.talking, untouched: line.untouched },
+    { won: 1, lost: 1, talking: 1, untouched: 1 },
+  );
+  // 🐞 หัวใจ: สี่ช่องสถานะรวมกันต้องเท่ากับจำนวนลีด ไม่งั้นแท่งสัดส่วนจะยาวเกินราง
+  assert.equal(line.won + line.lost + line.talking + line.untouched, line.count);
+  assert.equal(typeform.count, 1);
+  assert.equal(typeform.untouched, 1);
+});
+
+test('channelRollup: เรียงจากช่องทางที่เข้ามาเยอะสุด · ไม่มีช่องทางคืน unknown ไม่ระเบิด', () => {
+  const rows = [
+    { channel: 'website' }, { channel: 'website' }, { channel: 'phone' }, {},
+  ];
+  const out = channelRollup(rows);
+  assert.deepEqual(out.map((r) => r.channel), ['website', 'phone', 'unknown']);
+  assert.equal(out[0].count, 2);
+  assert.deepEqual(channelRollup([]), []);
+  assert.deepEqual(channelRollup(undefined), []);
+});
+
+test('withAssigneePending: AE ที่เดือนนี้ไม่มีลีดใหม่แต่ยังกองของเก่า ต้องไม่หายจากตาราง', () => {
+  const monthly = [
+    { assigneeId: 'a', name: 'AE ก', team: 'ODM', assigned: 10, contacted: 9, slaHit: 8, meetings: 1, qualified: 2 },
+    { assigneeId: 'b', name: 'AE ข', team: 'SV', assigned: 3, contacted: 3, slaHit: 3, meetings: 0, qualified: 0 },
+  ];
+  // 'c' ไม่มีลีดของเดือนนี้เลย แต่ถือของค้างข้ามเดือนมา 7 ใบ — เคสที่ตารางต้องจับให้ได้
+  const pending = { a: 2, c: 7 };
+  const out = withAssigneePending(monthly, pending, { c: { name: 'AE ค', team: 'SV' } });
+
+  assert.deepEqual(out.map((r) => [r.assigneeId, r.pending]), [['c', 7], ['a', 2], ['b', 0]],
+    'เรียงตามของค้างมากสุด และต้องมีแถวของ c ที่ไม่ได้อยู่ใน monthly');
+  const c = out.find((r) => r.assigneeId === 'c');
+  assert.equal(c.name, 'AE ค');
+  assert.equal(c.team, 'SV', 'ทีมต้องมาจากใบที่เขาถือค้างอยู่ ไม่ใช่ค้างเป็น null');
+  // คอลัมน์ผลงานรายเดือนของคนที่ไม่มีลีดเดือนนี้ต้องเป็น 0 ตามจริง ไม่ใช่ undefined
+  assert.deepEqual(
+    { assigned: c.assigned, contacted: c.contacted, qualified: c.qualified },
+    { assigned: 0, contacted: 0, qualified: 0 },
+  );
+  // แถวเดิมต้องไม่ถูกแตะนอกจากเติม pending
+  assert.equal(out.find((r) => r.assigneeId === 'a').qualified, 2);
+});
+
+test('withAssigneePending: ไม่มีของค้างเลย → แถวเดิมครบ pending เป็น 0 · อินพุตว่างไม่ระเบิด', () => {
+  const monthly = [{ assigneeId: 'a', name: 'AE ก', assigned: 5 }];
+  assert.deepEqual(withAssigneePending(monthly, {}).map((r) => r.pending), [0]);
+  assert.deepEqual(withAssigneePending(monthly, null).map((r) => r.pending), [0]);
+  assert.deepEqual(withAssigneePending([], {}), []);
+  assert.deepEqual(withAssigneePending(undefined, undefined), []);
+  // ค่าศูนย์ใน pending ต้องไม่สร้างแถวผีให้คนที่ไม่มีอะไรค้าง
+  assert.deepEqual(withAssigneePending([], { ghost: 0 }), []);
+});
+
+test('slaPendingTone: null = นับไม่ได้ ต้องไม่ขึ้นเขียว · 0 = ไม่มีของค้างจริง ๆ', () => {
+  assert.equal(slaPendingTone(0), 'good');
+  assert.equal(slaPendingTone(7), 'warning');
+  // 🐞 หัวใจของบั๊ก: `pending ?? 0` เคยกลบ null เป็น 0 แล้วได้ "good"
+  assert.equal(slaPendingTone(null), undefined);
+  assert.equal(slaPendingTone(undefined), undefined);
 });
 
 test('service detail บังคับเฉพาะ product/other', () => {
@@ -336,7 +472,14 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
     new URL('../../components/salesPlanning/dashboard/KpiLeadsTab.js', import.meta.url),
     'utf8',
   );
-  assert.match(tabSource, /value=\{v \?\? "-"\}/);
+  /* ⚠️ เดิมข้อนี้ยิงที่กริด funnel (`value={v ?? "-"}`) ซึ่งมี "ตีกลับ" เป็นค่าที่ null ได้
+     ตอนนี้กริดถูกแทนด้วยกราฟแท่ง และ "ตีกลับ" ออกจากแท็บไปแล้ว (มติผู้ใช้ 2026-08-11)
+     ⇒ ค่าที่ null ได้และยังโชว์อยู่จริงคือ "ค้างตอนนี้" ของ SLA — ย้ายด่านมาคุมตรงนั้นแทน
+     กฎเดิมไม่เปลี่ยน: null = นับไม่ได้ ต้องขึ้น "-" ห้ามกลบเป็น 0 */
+  assert.match(tabSource, /ค้างตอนนี้ \$\{s\.pending \?\? "-"\}/);
+  // เล็งเฉพาะ `sla.pending` ซึ่งเป็นตัวเดียวที่ null ได้จริง (countLeadsByStatus ล้ม)
+  // ส่วน pending ของตาราง AE การันตีเป็นตัวเลขจาก withAssigneePending — ไม่เข้าข่าย
+  assert.doesNotMatch(tabSource, /s\.pending \?\? 0/, 'ห้ามกลบ SLA pending ที่นับไม่ได้ให้เป็น 0');
   // ชื่อคนต้องอ่านจาก id ไม่ใช่สำเนาชื่อในแถว (prod มีชื่อย่อ/ชื่อเก่าค้างอยู่)
   assert.match(tabSource, /livePersonName\(directory, a\.assigneeId, a\.name\)/);
   assert.match(tabSource, /livePersonName\(directory, c\.createdBy, c\.name\)/);

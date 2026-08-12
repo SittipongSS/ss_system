@@ -1,9 +1,11 @@
 // โมดูลลีด (Sales Revamp เฟส C) — enum/labels/กติกา transition + SLA วันทำการ.
 // เส้นชีวิต: Marketing กรอกลีดรายวัน → Supervisor คัดกรองส่งทีม (SLA 1 วันทำการ) →
-// Senior AE กระจายให้ AE → AE ติดต่อกลับ (SLA 1 วันทำการ) → นัดประชุม →
+// Senior AE กระจายให้ AE (SLA 1 วันทำการ) → AE ติดต่อกลับ (SLA 1 วันทำการ) → นัดประชุม →
 // เปิดลูกค้า (qualified) / ไม่ไปต่อ (disqualified) / ตีกลับทีมผิด (bounce → new).
-// KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ.
+// KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ · ทุกด่านวัดด้วย slaStage ตัวเดียว
+// และหาวันด้วย businessDayKey (เวลาไทย) ตัวเดียวเท่านั้น — ดูเหตุผลที่ slaBusinessDays
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
+import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 
@@ -326,9 +328,20 @@ export function chunkLeadIds(ids = [], size = LEAD_ID_CHUNK) {
 
 // SLA "ภายใน 1 วันทำการ": จำนวนวันทำการที่ผ่านไประหว่าง 2 เวลา ≤ 1
 // (เกิดวันเดียวกัน = 0; ข้าม 1 วันทำการ = 1 → ยังทัน; ข้ามเสาร์-อาทิตย์/วันหยุดไม่นับ)
+//
+// 🐞 เดิมหาวันด้วย `String(iso).slice(0, 10)` = **วันแบบ UTC** ⇒ ทุกเหตุการณ์ที่เกิด
+// ช่วง 00:00–07:00 ตามเวลาไทยถูกบันทึกเป็นวันก่อนหน้า นาฬิกา SLA เริ่มเดินเร็วไปหนึ่งวัน
+// (ลีดดึกจาก LINE/Meta/Typeform มีจริงทุกวัน) · ที่แย่กว่าคือ **การ์ดค้างคิวข้าง ๆ ใช้
+// วันไทยอยู่แล้ว** (businessDaysWaiting → businessDayKey) ⇒ ฟีเจอร์เดียวมีสองนาฬิกา
+// เดินคนละเขตเวลา ตัวเลข % กับ "ค้างกี่วัน" จึงเถียงกันเองได้โดยไม่มีอะไรฟ้อง
+// (ตรวจเจอ 2026-08-11 · ตอนนั้นทำให้ SLA กระจายเพี้ยนไป 1 ใบจาก 127)
+//
+// ⇒ ทั้งระบบใช้ `businessDayKey` ตัวเดียวเป็นนาฬิกา ห้ามหาวันจาก timestamp ด้วยวิธีอื่น
 export function slaBusinessDays(fromIso, toIso, holidays) {
-  if (!fromIso || !toIso) return null;
-  return countBusinessDays(String(fromIso).slice(0, 10), String(toIso).slice(0, 10), holidays);
+  const from = businessDayKey(fromIso);
+  const to = businessDayKey(toIso);
+  if (!from || !to) return null;
+  return countBusinessDays(from, to, holidays);
 }
 export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
   const d = slaBusinessDays(fromIso, toIso, holidays);
@@ -336,4 +349,107 @@ export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
   // อย่านับเป็น "ทัน" กันเคส KPI พองจากลีดที่ตีกลับแล้วมอบใหม่ (ต้นเหตุแก้ที่ bounce แล้ว)
   if (d == null || d < 0) return null;
   return d <= limitDays;
+}
+
+/** SLA ของ "หนึ่งด่าน" — คืน { checked, hit } ของลีดที่**ผ่านด่านนั้นไปแล้ว**
+ *
+ *  ทั้งสามด่านของเส้นทางลีดวัดด้วยกติกาเดียวกันเป๊ะ ต่างกันแค่คู่ timestamp:
+ *    คัดกรอง   createdAt  → screenedAt      (หัวหน้าฝ่ายขายเลือกทีม)
+ *    กระจาย    screenedAt → assignedAt      (Senior AE เลือก AE)
+ *    ติดต่อกลับ assignedAt → firstContactAt  (AE ติดต่อลูกค้าครั้งแรก)
+ *
+ *  ⚠️ `checked` นับเฉพาะใบที่มี **ทั้งสองเวลา** — ใบที่ยังไม่ถึงด่านถัดไปเป็น "ค้าง"
+ *  ไม่ใช่ "พลาด" (ของค้างนับแยกจาก countLeadsByStatus ซึ่งดูสถานะ ณ ตอนนี้)
+ *  ⚠️ `hit` เทียบ `=== true` ไม่ใช่ truthy — slaHit คืน null เมื่อข้อมูลเวลาผิดลำดับ
+ *  ซึ่งต้องไม่ถูกนับเป็นทัน (ดูคอมเมนต์ใน slaHit)
+ *
+ *  แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพราะกติกาอยู่ในไฟล์ route แล้วเทสต์เข้าไม่ถึง
+ *  (ท่าเดียวกับ meetingTimesSinceBounce / pickNextMeetingAt ข้างบน)
+ */
+export function slaStage(rows, fromKey, toKey, holidays, limitDays = 1) {
+  const checked = (rows || []).filter((l) => l?.[fromKey] && l?.[toKey]);
+  const hit = checked.filter((l) => slaHit(l[fromKey], l[toKey], holidays, limitDays) === true);
+  return { checked: checked.length, hit: hit.length };
+}
+
+/** สรุปลีดรายช่องทาง — ตอบ "เข้ามาทางไหน แล้วติดต่อ/นัด/เปิดลูกค้าได้เท่าไร"
+ *
+ *  คืนสองชุดในแถวเดียวกันเพราะตอบคนละคำถาม:
+ *  · **Funnel** `count` · `contacted` · `meeting` · `qualified` — สะสม ซ้อนทับกันได้
+ *    (ใบที่เปิดลูกค้าแล้วก็ยังนับใน contacted ด้วย) ใช้ตอบ "ทำไปถึงไหน"
+ *  · **สถานะตอนนี้** `won` · `lost` · `talking` · `untouched` — **ไม่ซ้อนกัน**
+ *    ใบหนึ่งอยู่ได้ช่องเดียว รวมกันเท่ากับ `count` เป๊ะ ใช้วาดแท่งสัดส่วนได้ตรง ๆ
+ *
+ *  ⚠️ จัดช่องสถานะตามลำดับความสำคัญ ไม่ใช่ตาม timestamp: ปิดแล้ว (qualified/disqualified)
+ *  มาก่อนเสมอ แล้วค่อยดูว่าเคยติดต่อไหม · ถ้าไล่จาก firstContactAt ก่อน ใบที่ปิดไปแล้ว
+ *  จะไปโผล่ในช่อง "คุยอยู่" ด้วย แล้วผลรวมเกินจำนวนลีดจริง
+ */
+export function channelRollup(rows) {
+  const map = new Map();
+  for (const lead of rows || []) {
+    const channel = lead?.channel || 'unknown';
+    if (!map.has(channel)) {
+      map.set(channel, {
+        channel, group: channelGroupOf(channel),
+        count: 0, contacted: 0, meeting: 0, qualified: 0, disqualified: 0,
+        won: 0, lost: 0, talking: 0, untouched: 0,
+      });
+    }
+    const row = map.get(channel);
+    row.count += 1;
+    if (lead?.firstContactAt) row.contacted += 1;
+    if (lead?.meetingAt) row.meeting += 1;
+    if (lead?.status === 'qualified') { row.qualified += 1; row.won += 1; }
+    else if (lead?.status === 'disqualified') { row.disqualified += 1; row.lost += 1; }
+    else if (lead?.firstContactAt) row.talking += 1;
+    else row.untouched += 1;
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));
+}
+
+/** รวม "ค้างตอนนี้" รายคนเข้ากับสรุปผลงานรายเดือนของ AE
+ *
+ *  ⚠️ สองชุดนี้ **คนละขอบเขตเวลา** โดยเจตนา:
+ *  · `monthly` = ผลงานของลีดที่เข้ามาในเดือนที่เลือก
+ *  · `pendingByAssignee` = ใบที่ยังรอ AE ติดต่อ **ณ ตอนนี้** ไม่ผูกกับเดือน
+ *    (ใบที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด ตัดด้วยเดือนแล้วมันหาย)
+ *
+ *  🐞 ถ้าแค่เติมเลขลงแถวที่มีอยู่ จะพลาดเคสสำคัญที่สุด: **AE ที่เดือนนี้ไม่ได้รับลีดใหม่เลย
+ *  แต่ยังกองของเก่าไว้** จะไม่มีแถวใน `monthly` ⇒ หายจากตารางทั้งที่เป็นคนที่ต้องตาม
+ *  ⇒ เติมแถวให้คนกลุ่มนี้ด้วย โดยคอลัมน์ผลงานรายเดือนเป็น 0 ตามจริง
+ *
+ *  เรียงตามของค้างมากสุดก่อน — ตารางนี้มีไว้ตอบ "ตอนนี้ต้องไปตามใคร"
+ */
+export function withAssigneePending(monthly, pendingByAssignee, metaOf = {}) {
+  const pending = pendingByAssignee || {};
+  const meta = metaOf || {};
+  const rows = (monthly || []).map((a) => ({ ...a, pending: pending[a.assigneeId] || 0 }));
+  const seen = new Set(rows.map((a) => a.assigneeId));
+  for (const [assigneeId, count] of Object.entries(pending)) {
+    if (seen.has(assigneeId) || !count) continue;
+    rows.push({
+      assigneeId,
+      // ชื่อ/ทีมมาจากใบที่เขาถือค้างอยู่ — คนกลุ่มนี้ไม่มีแถวของเดือนให้อ่าน
+      name: meta[assigneeId]?.name || 'ไม่ระบุ',
+      team: meta[assigneeId]?.team || null,
+      assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0,
+      pending: count,
+    });
+  }
+  return rows.sort((a, b) => b.pending - a.pending || b.assigned - a.assigned);
+}
+
+/** โทนของการ์ด SLA — ตัดสินจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
+ *
+ *  ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง"
+ *  🐞 ทั้งหน้าคิวลีดและแท็บ KPI เคยเขียน `(pending ?? 0) ? "warning" : "good"` ซึ่งกลบ
+ *  null เป็น 0 แล้วการ์ดขึ้น**เขียว**ว่าเรียบร้อย ทั้งที่ตัวเลขข้างในโชว์ "-" อยู่โต้ง ๆ
+ *  — เขียวคือคำตอบที่ดูปกติจนไม่มีใครสงสัย · ไม่รู้คำตอบ = ไม่ตัดสิน (คืน undefined)
+ *
+ *  อยู่ที่นี่เพราะสองหน้าจอโชว์ตัวเลขชุดเดียวกัน ถ้าต่างคนต่างเขียนเงื่อนไขมันเพี้ยนหากัน
+ *  เงียบ ๆ แน่ (เคยเกิดแล้วรอบนี้: แก้แท็บ KPI ไปข้างเดียว หน้าคิวลีดยังเขียวอยู่)
+ */
+export function slaPendingTone(pending) {
+  if (pending == null) return undefined;
+  return pending ? 'warning' : 'good';
 }
