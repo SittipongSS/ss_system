@@ -1001,6 +1001,9 @@ button, select, input, textarea {
 }
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
 .topnav-sys-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); background: var(--accent-soft); }
+/* ยอดรวมของระบบ — ชิดขวาสุดของแถว ให้ตัวเลขของทุกระบบเรียงเป็นคอลัมน์เดียวกวาดตาได้
+   (ชื่อระบบยาวไม่เท่ากัน · ป้ายที่เกาะท้ายชื่อจะกระโดดไปมาทั้งเมนู) */
+.topnav-sys-item .topnav-count { margin-left: auto; }
 
 /* ── ระบบ/เมนูที่ยังไม่เปิดใช้ — จางและกดไม่ได้ ไม่ใช่ซ่อน ────────────────
    มติผู้ใช้ 2026-08-09 · ตัว is-disabled เรนเดอร์เป็น <span> อยู่แล้ว (ไม่ใช่ <a>)
@@ -1756,6 +1759,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 .home-system-card.is-disabled .home-system-icon { background: var(--text-3); }
 .home-system-card.is-disabled .home-system-enter { color: var(--text-3); font-weight: var(--fw-semibold); }
+/* หัวการ์ด — ไอคอนซ้าย ป้าย "รอคุณ N" ขวา (2026-08-12)
+   ⚠️ `width: 100%` ห้ามถอด: การ์ดเป็น flex column ที่ `align-items: flex-start`
+   ⇒ แถวนี้จะหดเท่าไอคอนแล้วป้ายไปแปะติดไอคอนแทนที่จะไปสุดขอบขวา */
+.home-system-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+/* ⚠️ โทนกลางตามค่าตั้งต้นของ .chip โดยตั้งใจ — เหตุผลเดียวกับ .topnav-count:
+   การ์ดมีไอคอน/ชื่อ/ปุ่ม "เข้าใช้งาน" เป็นสัญญาณอยู่แล้ว ป้ายสีจัดจะแข่งกับมัน
+   nowrap: "รอคุณ 99+" ห้ามตัดบรรทัดตอนการ์ดแคบ ไม่งั้นหัวการ์ดสูงขึ้นใบเดียว */
+.home-system-count { white-space: nowrap; }
 .home-system-icon {
   width: 48px;
   height: 48px;
@@ -3595,7 +3612,38 @@ button.empty-state { width: 100%; font: inherit; }
 /* ── ไฟล์ที่เลือกไว้ก่อนบันทึก (`ui/PendingFiles`) ──────────────────────────
    ปุ่มแนบเป็นปุ่มเงียบ ไม่ใช่กล่องเส้นประเต็มแถว — ตอนสร้างของใหม่ ไฟล์เป็น
    ของเสริม ไม่ใช่คำถามหลักของฟอร์ม (แพตเทิร์นเดียวกับโมดัลงาน) */
+/* ⭐ กล่องรับไฟล์ทุกกล่องในระบบตอบสนองการลากเหมือนกัน (มติผู้ใช้ 2026-08-12 ·
+   IS-26080013) — เดิมมีแค่แผงไฟล์แนบโหมด inline ที่วาดกรอบตอนลาก และวาดด้วย
+   inline style ⇒ จุดอื่นลากไปก็ไม่มีอะไรตอบว่า "วางตรงนี้ได้"
+   ⚠️ กรอบวาดด้วย outline ไม่ใช่ border — border ทำให้กล่องขยับตอนลากเข้า/ออก
+   แล้วของข้างล่างเด้งตาม (เจอมาแล้วกับกล่องที่มีรายการไฟล์ยาว ๆ) */
+[data-file-intake] { border-radius: var(--radius); }
+[data-file-intake][data-drag-over] {
+  outline: 2px dashed var(--accent);
+  outline-offset: var(--space-1);
+}
+/* ช่วงงบประมาณของลีด (mig 0233) — สองช่องคู่กันมีขีดคั่นตรงกลาง
+   ⚠️ ขีดคั่นต้องไม่หดหาย และสองช่องต้องกว้างเท่ากันเสมอ ไม่งั้นตาอ่านว่าช่องหนึ่ง
+   สำคัญกว่าอีกช่อง ทั้งที่มันเป็นปลายสองข้างของเรื่องเดียวกัน */
+.lead-budget-range {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.lead-budget-dash { color: var(--text-3); }
+.lead-budget-error { color: var(--red); font-size: var(--fs-3); }
+@media (max-width: 480px) {
+  /* จอแคบ: ขีดคั่นกลางบีบจนอ่านไม่ออก — เรียงลงมาแล้วให้ป้าย aria ทำหน้าที่แทน */
+  .lead-budget-range { grid-template-columns: minmax(0, 1fr); }
+  .lead-budget-dash { display: none; }
+}
+
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+/* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
+/* ใช้ได้ทั้งบรรทัดเหตุผลใต้ปุ่ม และคำขยายในป้ายช่อง ("(ไม่บังคับ · เช่น …)") */
+.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-regular); }
 .pending-files-add {
   display: inline-flex;
   align-items: center;

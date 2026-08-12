@@ -22,7 +22,6 @@ import DateInput from "@/components/ui/DateInput";
 import RichText from "@/components/ui/RichText";
 import Select from "@/components/ui/Select";
 import { fmtDateTime, fmtDayTime } from "@/lib/format";
-import { describeResponseError } from "@/lib/fetchError";
 import { DEPARTMENT_LABELS } from "@/lib/permissions";
 import {
   authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
@@ -35,6 +34,8 @@ import { groupThreadItems } from "@/lib/master/updateGrouping";
 import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
+import { postUpdateWithFiles } from "@/lib/master/updatePost";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -258,41 +259,33 @@ export default function UpdateThread({
     if (next.length) setPending((p) => [...p, ...next]);
   };
 
+  /* 🐞 เดิมผูก onPaste ไว้ที่ `<textarea>` ตัวเดียว ⇒ แปะรูปได้เฉพาะตอนเคอร์เซอร์
+     อยู่ในช่องพิมพ์ · จับภาพหน้าจอมาแล้วกด Ctrl+V ทันทีไม่ติด และลากไฟล์มาวางก็ไม่ได้
+     ⇒ ใช้ทางเข้าไฟล์กลางคร่อมทั้งกล่องพิมพ์ (IS-26080013 · 2026-08-12) */
+  const intake = useFileIntake({
+    disabled: !allowAttachments || busy,
+    onFiles: pickFiles,
+    onOversize: setErr,
+    // ⚠️ ถอยให้แผงเอกสารแนบเมื่อทั้งสองอยู่บนหน้าเดียวกัน — Ctrl+V ลอย ๆ บนหน้า
+    // รายละเอียดหมายถึง "แนบเข้าเอกสาร" · จะแปะลงแชทก็ต่อเมื่อเคอร์เซอร์อยู่ในช่องพิมพ์
+    // ซึ่งกติกาข้อแรกของ useFileIntake รับไปก่อนแล้ว
+    weight: 1,
+  });
+
   const post = async () => {
     if (!text.trim() && !pending.length) return;
     setBusy(true); setErr("");
     try {
       // อัปไฟล์ก่อน แล้วค่อยส่ง ref ไปกับข้อความ (แพตเทิร์นเดียวกับเธรดสอบถาม)
-      const attachments = [];
-      for (const p of pending) {
-        const fd = new FormData();
-        fd.append("file", p.file);
-        fd.append("entityType", entityType);
-        fd.append("entityId", entityId);
-        const up = await fetch("/api/upload", { method: "POST", body: fd });
-        // ข้อความจริงจาก server (ชนิดไฟล์/ขนาด/ปัญหาที่ Drive) — ตายตัวแล้วผู้ใช้ตามต่อไม่ได้
-        // · คำขอที่ตายก่อนถึง handler ไม่มี JSON ให้อ่าน จึงต้องเหลือ status ไว้เป็นเบาะแส
-        if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
-        const payload = await up.json();
-        attachments.push({
-          fileUrl: payload.url, driveFileId: payload.driveFileId || null,
-          fileName: p.file.name, mimeType: p.file.type, sizeBytes: p.file.size,
-        });
-      }
-      const res = await fetch("/api/updates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entityType, entityId, body: text.trim(), attachments, kind,
-          dueDate: showDueDate ? dueDate : "",
-          quotedId: replyTo?.id || "",
-          // ⚠️ ส่งเฉพาะคนที่ชื่อ **ยังอยู่ในข้อความจริง** — เลือกไปแล้วลบชื่อออก
-          // ต้องไม่ถูกแจ้งเตือน (server กรองสิทธิ์ให้อีกชั้นอยู่แล้ว)
-          mentions: picked.filter((p) => text.includes(`@${p.name}`)).map((p) => p.id),
-        }),
+      // ⭐ ตัวส่งอยู่ที่ `lib/master/updatePost` — โมดัลรับลีดใหม่ใช้ตัวเดียวกัน
+      await postUpdateWithFiles({
+        entityType, entityId, body: text, files: pending.map((p) => p.file), kind,
+        dueDate: showDueDate ? dueDate : "",
+        quotedId: replyTo?.id || "",
+        // ⚠️ ส่งเฉพาะคนที่ชื่อ **ยังอยู่ในข้อความจริง** — เลือกไปแล้วลบชื่อออก
+        // ต้องไม่ถูกแจ้งเตือน (server กรองสิทธิ์ให้อีกชั้นอยู่แล้ว)
+        mentions: picked.filter((p) => text.includes(`@${p.name}`)).map((p) => p.id),
       });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "ส่งอัปเดตไม่สำเร็จ");
       pending.forEach((p) => URL.revokeObjectURL(p.url));
       setText(""); setPending([]); setDueDate(""); setReplyTo(null); setPicked([]);
       await load();
@@ -548,7 +541,7 @@ export default function UpdateThread({
       )}
 
       {canPost && (
-        <div className={styles.composer}>
+        <div className={styles.composer} {...intake.zoneProps}>
           {/* กำลังตอบข้อความไหน — ต้องเห็นก่อนกดส่ง ไม่ใช่รู้ทีหลังว่ายกผิดอัน */}
           {replyTo && (
             <div className={styles.replyBar}>
@@ -586,7 +579,6 @@ export default function UpdateThread({
               placeholder={placeholder} aria-label="ข้อความอัปเดต"
               onChange={(e) => onComposerChange(e.target.value, e.target.selectionStart)}
               onKeyDown={(e) => { if (e.key === "Escape" && mentionQuery) setMentionQuery(null); }}
-              onPaste={allowAttachments ? (e) => pickFiles(e.clipboardData?.files) : undefined}
             />
             {/* รายชื่อที่ @ ได้ — กรองด้วยสิทธิ์ของเธรดนี้มาจาก server แล้ว
                 (ดู /api/updates/mentionable) จึงไม่มีชื่อคนที่เปิดเธรดไม่ได้ */}

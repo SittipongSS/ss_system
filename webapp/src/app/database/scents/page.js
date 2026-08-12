@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  Check, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
+  Check, Coins, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -32,6 +32,7 @@ import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import RegistryPrice from "@/components/database/RegistryPrice";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import styles from "./page.module.css";
@@ -39,21 +40,27 @@ import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { useRole } from "@/lib/roleContext";
+import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
+import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
-  isScentRegistrar, matchesScentSource, scentSourceLabel,
+  isScentRegistrar, isScentUsable, matchesScentSource, scentSourceLabel,
 } from "@/lib/master/scents";
 
 const todayIso = () => businessDate();
 
 export default function ScentsPage() {
   const role = useRole();
-  const me = useMemo(() => ({ role }), [role]);
+  const department = useDepartment();
+  // department ใช้กับด่านใส่ราคา F (canQuoteMaterial — ฝ่าย RD) เท่านั้น
+  const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isScentRegistrar(me);
   const canPropose = canProposeScent(me);
+  // ปุ่มใส่ราคา F ต่อแถว (มติผู้ใช้ 2026-08-12 — ขอปุ่มในตาราง ไม่ใช่แค่หน้า
+  // รายละเอียด) · เงื่อนไขเดียวกับหน้ารายละเอียด: ฝ่าย RD + รับเข้าทะเบียนแล้ว
+  const canPriceScent = (s) => canQuoteMaterial(me, "RM_F") && isScentUsable(s);
   // break-glass ของผู้ดูแลระบบ = role admin เท่านั้น (เข้มกว่า isSuperuser —
   // ae_supervisor เป็น superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js)
   const isAdmin = role === "admin";
@@ -71,7 +78,15 @@ export default function ScentsPage() {
      (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
   const linkedEditId = useSearchParams().get("edit") || "";
   const [search, setSearch] = useState(linkedQuery);
-  const [statusFilter, setStatusFilter] = useState(linkedQuery ? "" : "open");
+  /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
+     กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
+     ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
+     "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+  const fromNavCount = useSearchParams().get("count") === "scents";
+  const [statusFilter, setStatusFilter] = useState(
+    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
+  );
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useState("");
@@ -79,6 +94,7 @@ export default function ScentsPage() {
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code }
   const [sending, setSending] = useState(null); // { scent, sentAt }
+  const [pricing, setPricing] = useState(null); // กลิ่นที่กำลังใส่ราคา F
   const [confirm, setConfirm] = useState(null); // { kind, scent }
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -173,6 +189,13 @@ export default function ScentsPage() {
       icon: Send,
       visible: registrar && (s.status === "developing" || s.status === "active"),
       onClick: () => setSending({ scent: s, sentAt: s.sentAt || todayIso() }),
+    },
+    {
+      id: "price",
+      label: s.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F",
+      icon: Coins,
+      visible: canPriceScent(s),
+      onClick: () => setPricing(s),
     },
     {
       id: "edit",
@@ -455,13 +478,28 @@ export default function ScentsPage() {
                         {s.sentAt ? `ส่ง ${fmtDate(s.sentAt)}` : "ยังไม่ส่ง"}
                       </span>
                     </div>
-                    {registrar && s.status === "draft" && (
+                    {/* ราคา F — ฟิลด์เดียวกับคอลัมน์ตาราง (การ์ดเคยขาด ผู้ใช้ทัก
+                        2026-08-12) · ป้ายกำกับเพราะการ์ดไม่มีหัวคอลัมน์ให้พิง */}
+                    <div className={styles.cardPrice}>
+                      <span className={styles.cardPriceLabel}>ราคา F</span>
+                      <RegistryPrice price={s.price} />
+                    </div>
+                    {((registrar && s.status === "draft")
+                      || (canPriceScent(s) && s.price?.unitPrice == null)) && (
                       <div className={styles.rowActions}>
-                        <Button size="sm" title="รับเข้าทะเบียน"
-                          icon={<Check size={14} aria-hidden="true" />}
-                          onClick={() => setAccept({ scent: s, code: "" })}>
-                          รับเข้าทะเบียน
-                        </Button>
+                        {registrar && s.status === "draft" && (
+                          <Button size="sm" title="รับเข้าทะเบียน"
+                            icon={<Check size={14} aria-hidden="true" />}
+                            onClick={() => setAccept({ scent: s, code: "" })}>
+                            รับเข้าทะเบียน
+                          </Button>
+                        )}
+                        {canPriceScent(s) && s.price?.unitPrice == null && (
+                          <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
+                            onClick={() => setPricing(s)}>
+                            ใส่ราคา
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -500,10 +538,10 @@ export default function ScentsPage() {
                       <td>
                         {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด — แถวตารางบอกได้แค่ย่อ ๆ
                             ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
+                        {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
                         <Link href={`/database/scents/${s.id}`} className={styles.name}>
-                          {s.code ? <span className="mono">{s.code}</span> : null}
-                          {s.code ? " · " : null}
-                          {s.name}
+                          <span className="mono block text-[12px] text-[var(--accent)]">{s.code || "ไม่มี PF"}</span>
+                          <span className="block">{s.name}</span>
                         </Link>
                         {(s.customerTradeName || s.derivedFromScentId) && (
                           <div className={styles.sub}>
@@ -517,12 +555,13 @@ export default function ScentsPage() {
                         )}
                       </td>
                       <td>
-                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
+                        {/* AR บน · ชื่อล่าง — ทรงเดียวกับคอลัมน์หลัก */}
                         {customerWithAr(s.customerId, s.customerName, arIndex).arCode ? (
-                          <span className={styles.arCode}>
+                          <span className="mono block text-[11px] text-[var(--text-3)]">
                             {customerWithAr(s.customerId, s.customerName, arIndex).arCode}
                           </span>
                         ) : null}
+                        {customerWithAr(s.customerId, s.customerName, arIndex).name}
                       </td>
                       {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
                           ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง
@@ -564,7 +603,20 @@ export default function ScentsPage() {
                       </td>
                       {/* ราคา F ล่าสุดจากทะเบียนวัสดุ — สามสถานะที่ต้องอ่านออกคนละแบบ:
                           ยังไม่ผูกวัสดุ · ผูกแล้วแต่ยังไม่มีใครใส่ราคา · ราคาหมดอายุ */}
-                      <td className="num"><RegistryPrice price={s.price} /></td>
+                      {/* ปุ่มใส่ราคาโผล่เฉพาะแถวที่ยังไม่มีราคา — 43 แถวแรกคืองาน
+                          กรอกจริงของ RD · แถวที่มีราคาแล้วออกราคาใหม่ผ่านเมนู ⋯
+                          (นาน ๆ ครั้ง ไม่ควรกินที่ทุกแถว) */}
+                      <td className="num">
+                        <RegistryPrice price={s.price} />
+                        {canPriceScent(s) && s.price?.unitPrice == null && (
+                          <div className={styles.rowActions}>
+                            <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
+                              onClick={() => setPricing(s)}>
+                              ใส่ราคา
+                            </Button>
+                          </div>
+                        )}
+                      </td>
                       {/* ⭐ สถานะกับปุ่มอยู่เซลล์เดียวกัน — ปุ่มหลักถูกกำหนดโดยสถานะตรง ๆ
                           (ร่าง → รับเข้าทะเบียน) แยกสองคอลัมน์คือถามซ้ำ
                           ⚠️ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็น
@@ -606,25 +658,28 @@ export default function ScentsPage() {
       )}
 
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
+      {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล (ชิดขวา + gap
+          มาตรฐาน) — เดิมใช้ <div className="modal-actions"> ซึ่ง **ไม่มี CSS อยู่จริง**
+          ปุ่มเลยติดกัน 0px ชิดซ้าย (เจอตอนวัดจริง 2026-08-12) */}
       <Modal
         open={!!form} onClose={() => setForm(null)} size="md" dismissible={!saving}
         title={form?.mode === "edit" ? `แก้ข้อมูลกลิ่น — ${form.scent.name}` : "เพิ่มกลิ่นเข้าทะเบียน"}
+        footer={form && (
+          <>
+            <Button variant="quiet" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
+          </>
+        )}
       >
         {form && (
-          <>
-            <ScentForm
-              mode={form.mode} value={form.value} customers={customers}
-              // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
-              // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
-              scents={scents} editingId={form.scent?.id || null}
-              canSetCode={registrar} disabled={saving}
-              onChange={(value) => setForm({ ...form, value })}
-            />
-            <div className="modal-actions">
-              <Button onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
-            </div>
-          </>
+          <ScentForm
+            mode={form.mode} value={form.value} customers={customers}
+            // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
+            // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
+            scents={scents} editingId={form.scent?.id || null}
+            canSetCode={registrar} disabled={saving}
+            onChange={(value) => setForm({ ...form, value })}
+          />
         )}
       </Modal>
 
@@ -632,25 +687,25 @@ export default function ScentsPage() {
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}
         title={accept ? `รับเข้าทะเบียน — ${accept.scent.name}` : ""}
+        footer={accept && (
+          <>
+            <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+              รับเข้าทะเบียน
+            </Button>
+          </>
+        )}
       >
         {accept && (
-          <>
-            <div className="form-group">
-              <label htmlFor="accept-code">รหัสกลิ่น</label>
-              <input
-                id="accept-code" className="premium-input" value={accept.code} disabled={saving}
-                placeholder="เช่น SC-2026-001" autoFocus
-                onChange={(e) => setAccept({ ...accept, code: e.target.value })}
-              />
-              <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
-                รับเข้าทะเบียน
-              </Button>
-            </div>
-          </>
+          <div className="form-group">
+            <label htmlFor="accept-code">รหัสกลิ่น</label>
+            <input
+              id="accept-code" className="premium-input" value={accept.code} disabled={saving}
+              placeholder="เช่น SC-2026-001" autoFocus
+              onChange={(e) => setAccept({ ...accept, code: e.target.value })}
+            />
+            <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
+          </div>
         )}
       </Modal>
 
@@ -660,28 +715,42 @@ export default function ScentsPage() {
       <Modal
         open={!!sending} onClose={() => setSending(null)} size="sm" dismissible={!saving}
         title={sending ? `วันที่ส่งกลิ่น — ${sending.scent.name}` : ""}
-      >
-        {sending && (
+        footer={sending && (
           <>
-            <div className="form-group">
-              <label htmlFor="send-date">ส่งให้ลูกค้าวันไหน</label>
-              <DateInput
-                id="send-date" value={sending.sentAt} disabled={saving}
-                onChange={(v) => setSending({ ...sending, sentAt: v })}
-              />
-              <small className={styles.hint}>
-                กลิ่นตัวหนึ่งส่งครั้งเดียว — ลูกค้าขอให้แก้แล้วจะเป็นกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง
-              </small>
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
-                บันทึก
-              </Button>
-            </div>
+            <Button variant="quiet" onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
+            <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
+              บันทึก
+            </Button>
           </>
         )}
+      >
+        {sending && (
+          <div className="form-group">
+            <label htmlFor="send-date">ส่งให้ลูกค้าวันไหน</label>
+            <DateInput
+              id="send-date" value={sending.sentAt} disabled={saving}
+              onChange={(v) => setSending({ ...sending, sentAt: v })}
+            />
+            <small className={styles.hint}>
+              กลิ่นตัวหนึ่งส่งครั้งเดียว — ลูกค้าขอให้แก้แล้วจะเป็นกลิ่นตัวใหม่ที่มีวันที่ของตัวเอง
+            </small>
+          </div>
+        )}
       </Modal>
+
+      {/* ใส่ราคา F จากแถวตาราง/การ์ด — โมดัลตัวเดียวกับหน้ารายละเอียด
+          (component กลาง) ราคาลง material_prices ผ่าน endpoint เดิม */}
+      <RegistryPriceModal
+        open={!!pricing}
+        onClose={() => setPricing(null)}
+        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${pricing.name}` : ""}
+        endpoint={pricing ? `/api/master/scents/${pricing.id}/price` : ""}
+        onSaved={(msg) => {
+          setPricing(null);
+          setToast({ kind: "success", msg });
+          reload();
+        }}
+      />
 
       <ConfirmDialog
         open={!!confirm}

@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead,
   canDeleteLead, LEAD_DELETE_LOCKED_STATUSES, LEAD_EDIT_LOCKED_STATUSES, canViewLeads, inLeadScope,
+  leadBudgetError,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { purgeUpdates } from '@/lib/master/updates';
@@ -87,7 +88,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   for (const key of ['company', 'email', 'contactChannel', 'phone', 'details']) {
     if (key in body) patch[key] = (body[key] || '').trim() || null;
   }
-  if ('budget' in body) patch.budget = toMoney(body.budget, null);
+  if ('budget' in body || 'budgetMax' in body) {
+    // ⚠️ ตรวจกับค่าที่จะเป็นจริงหลังแก้ ไม่ใช่เฉพาะช่องที่ส่งมา — ส่ง budgetMax
+    // มาช่องเดียวโดยที่แถวเดิมไม่มี budget ต้องตกด่านตั้งแต่ที่นี่ (ด่านเดียวกับ
+    // CHECK ของ mig 0233 · ตกที่ DB จะได้ error ภาษาอังกฤษที่คนกรอกอ่านไม่ออก)
+    const next = {
+      budget: 'budget' in body ? body.budget : before.budget,
+      budgetMax: 'budgetMax' in body ? body.budgetMax : before.budgetMax,
+    };
+    const budgetError = leadBudgetError(next);
+    if (budgetError) return badRequest(budgetError);
+    if ('budget' in body) patch.budget = toMoney(body.budget, null);
+    if ('budgetMax' in body) patch.budgetMax = toMoney(body.budgetMax, null);
+  }
   if ('serviceInterest' in body || 'serviceDetail' in body) {
     const si = SERVICE_INTERESTS.includes(body.serviceInterest ?? before.serviceInterest)
       ? (body.serviceInterest ?? before.serviceInterest) : 'other';

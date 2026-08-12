@@ -18,16 +18,26 @@ export function categoryName(row) {
   return String(row?.nameTh ?? '').trim() || String(row?.nameEn ?? '').trim() || '';
 }
 
+// ชื่อสองภาษา "EN · TH" (มติผู้ใช้ 2026-08-12 — โชว์ทั้งคู่เสมอ ไม่เลือกภาษาแทนกัน
+// · ลำดับ EN ก่อนตามแพตเทิร์นแบรนด์ brandBoth) — มีภาษาเดียวได้ภาษานั้น ไม่มีเลย = ''
+export function categoryNameBoth(row) {
+  const en = String(row?.nameEn ?? '').trim();
+  const th = String(row?.nameTh ?? '').trim();
+  if (en && th) return `${en} · ${th}`;
+  return en || th || '';
+}
+
 export function mainCategoryName(row) {
   return String(
     row?.mainCategoryName ?? row?.mainCategoryNameTh ?? row?.mainCategoryNameEn ?? '',
   ).trim();
 }
 
-// ป้ายของหมวดรอง = "รหัส ชื่อ" · ไม่มีชื่อ = เหลือแค่รหัส (ไม่ใช่บรรทัดว่าง)
+// ป้ายของหมวดรอง = "รหัส EN · TH" (มติ 2026-08-12) · ไม่มีชื่อ = เหลือแค่รหัส
+// (ไม่ใช่บรรทัดว่าง — prod มีหมวดชื่อว่างทั้งสองภาษา 5 แถวจริง)
 export function categoryOptionLabel(row) {
   const code = productCategoryCode(row);
-  const name = categoryName(row);
+  const name = categoryNameBoth(row);
   const base = name ? `${code} ${name}` : code;
   return row?.isActive === false ? `${base} (พักใช้งาน)` : base;
 }

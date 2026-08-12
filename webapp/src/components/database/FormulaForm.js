@@ -4,11 +4,15 @@
 //   mode="create" → RD ใส่รหัสได้เลย (= เข้าทะเบียนทันที)
 //   mode="edit"   → ไม่มีช่องรหัส เพราะ "ใส่รหัส = รับเข้าทะเบียน" เป็นคนละ action
 //
-// สูตรผูกกลิ่นได้ (มติผู้ใช้: สูตรเกี่ยวข้องกับกลิ่น) — เลือกได้เฉพาะกลิ่นที่
-// รับเข้าทะเบียนแล้ว ร่างยังไม่ใช่ของจริง
+// จัดระเบียบรอบ 2026-08-12 ตาม docs/form-design-rules.md:
+//   ลำดับ = ตามที่คนคิด: **ลูกค้า → กลิ่น → หมวด** (ตัวกำหนดบริบท + ตัวตนของสูตร
+//   คือ หมวด × กลิ่น — mig 0207) มาก่อน แล้วค่อยชื่อ/รหัส · คู่ที่ขึ้นต่อกัน
+//   (ลูกค้า|กลิ่น) อยู่แถวเดียวกันให้เห็นทันทีว่าทำไมช่องขวายังกดไม่ได้
+//   · แบ่งโซนด้วย FormZone
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
+import FormZone from "@/components/ui/FormZone";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
@@ -91,48 +95,12 @@ export default function FormulaForm({
     }));
 
   return (
-    <div className="form-grid">
-      <div className="form-group col-span-2">
-        <label htmlFor="formula-name">ชื่อสูตร</label>
-        <input
-          id="formula-name" className="premium-input" value={value.name} disabled={disabled}
-          placeholder="เช่น Well sleep #2"
-          onChange={(e) => set({ name: e.target.value })}
-        />
-      </div>
+    <div className="form-grid cols-2">
+      {/* ── โซน 1: ตัวตนสูตร — หมวด × กลิ่น คือตัวตน (mig 0207) จึงถามก่อนชื่อ ── */}
+      <FormZone title="ตัวตนสูตร" note="หมวด × กลิ่น = ตัวตนของสูตร" className="col-span-2" />
 
-      {canSetCode && (
-        <div className="form-group">
-          <label htmlFor="formula-code">รหัสสูตร <span className={styles.hint}>(ไม่บังคับ)</span></label>
-          <input
-            id="formula-code" className="premium-input" value={value.code} disabled={disabled}
-            placeholder="เช่น PF638010202-P1"
-            onChange={(e) => set({ code: e.target.value })}
-          />
-          <small className={styles.hint}>ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง</small>
-        </div>
-      )}
-
+      {/* ลูกค้าอยู่ **ก่อน** กลิ่น และอยู่แถวเดียวกัน — เห็นทันทีว่าทำไมช่องขวายังปิด */}
       <div className="form-group">
-        <label htmlFor="formula-date">วันที่ของสูตร</label>
-        <DateInput
-          id="formula-date" value={value.formulaDate} disabled={disabled}
-          onChange={(v) => set({ formulaDate: v })}
-        />
-      </div>
-
-      {/* ⭐ หมวด × กลิ่น = **ตัวตนของสูตร** (mig 0207) — สองช่องนี้ไม่ใช่ข้อมูลประกอบ
-          แต่เป็นตัวบอกว่าสูตรนี้คือของชิ้นไหน · เทียนหอมกลิ่น A กับก้านไม้หอมกลิ่น A
-          เป็นคนละสูตร ส่วนเทียนหอมกลิ่น A สองแถวคือของซ้ำ */}
-      <ProductCategorySelect
-        categories={categories}
-        value={value.categoryCode}
-        disabled={disabled}
-        onChange={(categoryCode) => set({ categoryCode })}
-      />
-
-      {/* ลูกค้าอยู่ **ก่อน** กลิ่น — ลำดับบนจอต้องตรงกับลำดับที่คนคิด */}
-      <div className="form-group col-span-2">
         <label htmlFor="formula-customer">ลูกค้า</label>
         <SearchableSelect
           id="formula-customer" value={value.customerId || ""} disabled={disabled}
@@ -143,7 +111,7 @@ export default function FormulaForm({
         />
       </div>
 
-      <div className="form-group col-span-2">
+      <div className="form-group">
         <label htmlFor="formula-scent">กลิ่นที่ใช้</label>
         <SearchableSelect
           id="formula-scent" value={value.scentId} disabled={disabled || !value.customerId}
@@ -159,9 +127,52 @@ export default function FormulaForm({
         </small>
       </div>
 
-
+      {/* ⭐ หมวด × กลิ่น = **ตัวตนของสูตร** (mig 0207) — สองช่องนี้ไม่ใช่ข้อมูลประกอบ
+          แต่เป็นตัวบอกว่าสูตรนี้คือของชิ้นไหน · เทียนหอมกลิ่น A กับก้านไม้หอมกลิ่น A
+          เป็นคนละสูตร ส่วนเทียนหอมกลิ่น A สองแถวคือของซ้ำ
+          (CSS กลางบังคับ .ui-product-category-select เต็มแถวใน cols-2 อยู่แล้ว) */}
+      <ProductCategorySelect
+        categories={categories}
+        value={value.categoryCode}
+        disabled={disabled}
+        onChange={(categoryCode) => set({ categoryCode })}
+      />
 
       <div className="form-group col-span-2">
+        <label htmlFor="formula-name">ชื่อสูตร</label>
+        <Input
+          id="formula-name" value={value.name} disabled={disabled}
+          placeholder="เช่น Well sleep #2"
+          onChange={(e) => set({ name: e.target.value })}
+        />
+      </div>
+
+      {canSetCode && (
+        <div className="form-group">
+          <label htmlFor="formula-code">รหัสสูตร <span className={styles.hint}>(ไม่บังคับ)</span></label>
+          <Input
+            id="formula-code" value={value.code} disabled={disabled}
+            placeholder="เช่น PF638010202-P1"
+            onChange={(e) => set({ code: e.target.value })}
+          />
+          <small className={styles.hint}>ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง</small>
+        </div>
+      )}
+
+      {/* วันที่คู่กับรหัส (ของที่อ่านคู่กันตอนไล่ทะเบียน) — ตอนไม่มีช่องรหัส
+          ให้กินเต็มแถว ไม่ทิ้งรูข้าง ๆ (กติกา pairRows ใน form-design-rules) */}
+      <div className={`form-group ${canSetCode ? "" : "col-span-2"}`.trim()}>
+        <label htmlFor="formula-date">วันที่ของสูตร</label>
+        <DateInput
+          id="formula-date" value={value.formulaDate} disabled={disabled}
+          onChange={(v) => set({ formulaDate: v })}
+        />
+      </div>
+
+      {/* ── โซน 2: ข้อมูลเสริม ─────────────────────────────────────────────── */}
+      <FormZone title="ข้อมูลเสริม" className="col-span-2" />
+
+      <div className="form-group">
         <label htmlFor="formula-trade-name">
           ชื่อที่ลูกค้าเรียก <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
@@ -173,7 +184,7 @@ export default function FormulaForm({
         <small className={styles.hint}>แสดงคู่กับรหัส/ชื่อของเราเสมอ — ไม่ได้ใช้แทนกัน</small>
       </div>
 
-      <div className="form-group col-span-2">
+      <div className="form-group">
         <label htmlFor="formula-derived-from">
           แก้มาจากสูตร <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>

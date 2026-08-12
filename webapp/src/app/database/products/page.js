@@ -21,6 +21,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
+import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
@@ -121,7 +122,8 @@ export default function ProductRegistry() {
     if (!code) return null;
     const info = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
     if (!info) return null;
-    return { main: info.mainCategoryName, sub: info.nameTh || info.nameEn || code };
+    // sub = "EN · TH" (มติ 2026-08-12) — หมวดชื่อว่างทั้งคู่ถอยไปโชว์รหัส
+    return { main: info.mainCategoryName, sub: categoryNameBoth(info) || code };
   };
 
   useEffect(() => {
@@ -221,7 +223,7 @@ export default function ProductRegistry() {
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
     const catInfo = categoryInfoOf(formData.categoryCode || categoryOf(formData.fgCode), productTypes);
     const catLabel = catInfo?.typeInfo
-      ? `${catInfo.code} (${catInfo.typeInfo.nameTh || catInfo.typeInfo.nameEn || ""})`
+      ? `${catInfo.code} (${categoryNameBoth(catInfo.typeInfo)})`
       : catInfo?.code || "";
     if (catInfo?.typeInfo?.isExcise) {
       const accepted = await confirmAction(
@@ -293,7 +295,12 @@ export default function ProductRegistry() {
       if (!excise || !regFilter.includes(p.registrationStatus || "none")) return false;
     }
     if (!q) return true;
-    return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
+    // ค้นหมวดได้ทั้งรหัสและชื่อสองภาษา (มติ 2026-08-12) — cat อาจเป็น null
+    const cat = categoryLabelOf(p);
+    return [
+      p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn,
+      p.categoryCode, cat?.main, cat?.sub,
+    ].some((v) => (v || "").toLowerCase().includes(q));
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -427,8 +434,8 @@ export default function ProductRegistry() {
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
-                    <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
+                    <div className="text-[11px] text-[var(--accent)] font-mono">{p.fgCode}</div>
+                    <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{productNameBoth(p)}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
@@ -497,13 +504,15 @@ export default function ProductRegistry() {
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
-                        <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
-                        <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
+                        {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
+                        <div className="mono text-[12px] text-[var(--accent)]">{p.fgCode}</div>
+                        <div className="font-semibold text-[var(--text)] mt-0.5">{productNameBoth(p)}</div>
                       </td>
                       <td>
                         {cat ? (
                           <div className="text-xs leading-tight">
-                            <div className="text-[var(--text-3)]">{cat.main}</div>
+                            {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว */}
+                            <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
                             <div className="text-[var(--text-2)]">{cat.sub}</div>
                           </div>
                         ) : <span className="text-[var(--text-3)]">-</span>}

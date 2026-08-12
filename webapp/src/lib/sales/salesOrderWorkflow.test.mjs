@@ -206,3 +206,15 @@ test('canSubmitSalesOrder: ยื่นได้เฉพาะ AE เจ้า�
   assert.equal(canSubmitSalesOrder({ id: 'u-ae-owner', role: 'ae' }, null), false);
   assert.equal(canSubmitSalesOrder(null, deal), false);
 });
+
+// ── "รอฉันลงมือ" — ชุดเดียวกับที่ป้ายตัวเลขบนเมนูใช้นับ ──────────────────
+test('⭐ ใบสั่งขายที่ถูกตีกลับมาให้ฉันแก้ต้องนับ — ร่างของตัวเองไม่นับ', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const me = 'USR-MAKER';
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'rejected', createdBy: me }, { userId: me }), true);
+  // ร่างที่ยังไม่เคยยื่น = ไม่มีใครรออยู่ปลายทาง (กติกาเดียวกับใบร่างคำร้อง ม-112)
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'draft', createdBy: me }, { userId: me }), false);
+  // ใบตีกลับของคนอื่นไม่ใช่ของค้างของเรา
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'rejected', createdBy: 'USR-OTHER' }, { userId: me }), false);
+  assert.equal(isSalesOrderWaitingOnMe(null, { userId: me }), false);
+});

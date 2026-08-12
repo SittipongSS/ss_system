@@ -16,6 +16,7 @@ import { describeResponseError } from "@/lib/fetchError";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { fmtNumber } from "@/lib/format";
 
 const nowHHMM = () => {
@@ -49,6 +50,17 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       }
     })();
   }, [open, visit]);
+
+  /* ⚠️ ต้องอยู่ **เหนือ** `if (!visit) return null` — hook เรียกใต้ early return
+     ไม่ได้ (rules-of-hooks) · `addPhoto` ประกาศทีหลังได้ เพราะ callback ถูกเรียก
+     ตอนผู้ใช้วางไฟล์ ไม่ใช่ตอน render */
+  const intake = useFileIntake({
+    disabled: uploading,
+    multiple: false,
+    accept: "image/*",
+    onFiles: ([file]) => addPhoto(file),
+    onOversize: setError,
+  });
 
   if (!visit) return null;
 
@@ -105,9 +117,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     return data?.url || null;
   };
 
-  const pickPhoto = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  const addPhoto = async (file) => {
     if (!file) return;
     setUploading(true);
     setError("");
@@ -211,7 +221,9 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
 
       <section className={styles.block}>
         <h3 className={styles.blockTitle}>รูปหน้างาน</h3>
-        <div className={styles.photoRow}>
+        {/* ลากรูปมาวาง หรือ Ctrl+V ได้ด้วย — ช่างที่ปิดงานจากโน้ตบุ๊กมีภาพอยู่ใน
+            คลิปบอร์ดอยู่แล้ว ไม่ได้ถ่ายสดจากมือถือทุกครั้ง (IS-26080013) */}
+        <div className={styles.photoRow} {...intake.zoneProps}>
           {form.attachments.map((att) => (
             <a key={att.url} href={att.url} target="_blank" rel="noreferrer noopener" className={styles.photo}>
               {ATTACHMENT_KIND_LABELS[att.kind] || "รูป"}
@@ -219,7 +231,8 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
           ))}
           {/* capture="environment" = เปิดกล้องหลังตรง ๆ บนมือถือ ไม่ต้องเลือกจากอัลบั้ม */}
           <input ref={fileRef} type="file" accept="image/*" capture="environment"
-            onChange={pickPhoto} className={styles.fileInput} aria-label="ถ่ายรูปหน้างาน" />
+            onChange={(event) => { const f = event.target.files?.[0]; event.target.value = ""; addPhoto(f); }}
+            className={styles.fileInput} aria-label="ถ่ายรูปหน้างาน" />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}
             icon={<Camera size={15} aria-hidden="true" />}>
             {uploading ? "กำลังอัปโหลด…" : "ถ่ายรูป"}

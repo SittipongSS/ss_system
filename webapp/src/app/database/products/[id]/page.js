@@ -18,7 +18,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, productNameBoth } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -275,8 +275,9 @@ export default function ProductDetails() {
         </div>
       </div>
       <SalesDetailOverview
-        eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
-        title={productDisplayName(product)}
+        eyebrow="PRODUCT MASTER"
+        /* รายละเอียด = "รหัส · ชื่อ EN·TH" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
+        title={`${product.fgCode ? `${product.fgCode} · ` : ""}${productNameBoth(product) || productDisplayName(product)}`}
         description={<><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<>
           <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />

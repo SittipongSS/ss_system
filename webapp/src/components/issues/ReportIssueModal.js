@@ -10,9 +10,9 @@
 // และปุ่ม "แจ้งปัญหานี้" บนหน้าที่พัง (ก้อน 3) เรียกตัวเดียวกันหมด ห้ามเขียนฟอร์ม
 // แจ้งเรื่องชุดที่สอง (กฎของ repo: สร้าง/แก้ ใช้ component เดียว)
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
+import PendingFiles from "@/components/ui/PendingFiles";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import Segmented from "@/components/ui/Segmented";
@@ -20,7 +20,6 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { notifyToast } from "@/lib/feedback";
 import { shortUserAgent } from "@/lib/issues/userAgent";
 import { describeResponseError } from "@/lib/fetchError";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import {
   ISSUE_IMPACTS, ISSUE_IMPACT_LABELS, ISSUE_KINDS, ISSUE_KIND_LABELS,
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
@@ -43,7 +42,6 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
   const [context, setContext] = useState(null);
   const [related, setRelated] = useState([]);
   const detailRef = useRef(null);
-  const fileRef = useRef(null);
 
   // เก็บบริบทตอน "เปิดโมดัล" ไม่ใช่ตอนกดส่ง — ผู้ใช้อาจเปิดโมดัลค้างไว้แล้วเปลี่ยน
   // หน้าในแท็บอื่น · และไม่เก็บ console log / ไม่จับภาพหน้าจออัตโนมัติ (มติ Q6)
@@ -74,16 +72,6 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
   };
 
   const close = () => { if (!busy) { reset(); onClose?.(); } };
-
-  const pickFiles = (list) => {
-    const next = [];
-    for (const file of Array.from(list || [])) {
-      if (files.length + next.length >= MAX_FILES) break;
-      if (file.size > MAX_UPLOAD_BYTES) { setErr(`ไฟล์ใหญ่เกิน ${MAX_UPLOAD_MB} MB`); continue; }
-      next.push(file);
-    }
-    if (next.length) setFiles((prev) => [...prev, ...next]);
-  };
 
   const submit = async () => {
     if (!detail.trim() || busy) return;
@@ -153,28 +141,13 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
 
         <div className={styles.field}>
           <span className={styles.label}>ไฟล์แนบ <span className={styles.optional}>— ไม่บังคับ</span></span>
-          <input
-            ref={fileRef} type="file" multiple hidden accept={UPLOAD_ACCEPT_ATTR}
-            onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
+          {/* ⭐ ตะกร้าไฟล์กลาง (`ui/PendingFiles`) — เดิมที่นี่วาดปุ่ม+รายการเอง ซึ่งเป็น
+              ฟอร์มที่สามในระบบที่วาดของเดียวกันคนละทรง · ได้ลากมาวาง/Ctrl+V ติดมาด้วย
+              (ผู้ใช้ขอเองใน IS-26080013 — และจอนี้คือจอที่เขาใช้ขอ) */}
+          <PendingFiles
+            files={files} onChange={setFiles} disabled={busy}
+            max={MAX_FILES} onOversize={setErr} label="เลือกไฟล์"
           />
-          <Button variant="quiet" onClick={() => fileRef.current?.click()} disabled={files.length >= MAX_FILES}>
-            <Paperclip size={15} aria-hidden="true" /> เลือกไฟล์
-          </Button>
-          {!!files.length && (
-            <ul className={styles.files}>
-              {files.map((file, i) => (
-                <li key={`${file.name}-${i}`} className={styles.file}>
-                  <span className={styles.fileName}>{file.name}</span>
-                  <button
-                    type="button" className={styles.fileRemove} aria-label={`เอา ${file.name} ออก`}
-                    onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
           <p className={styles.hint}>
             ไฟล์จะเก็บบน Google Drive ของบริษัท — ปิดข้อมูลลูกค้าที่ไม่เกี่ยวก่อนแนบ
           </p>

@@ -2,6 +2,7 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { FileText, FileSpreadsheet, File as FileIcon, Plus, Trash2, ExternalLink, Paperclip, Link2 } from "lucide-react";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
@@ -30,6 +31,15 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
 
   const files = items.filter((it) => !isGoogle(it));
   const docs = items.filter(isGoogle);
+
+  /* ลากมาวาง/Ctrl+V ได้เหมือนทุกกล่องรับไฟล์ในระบบ (IS-26080013 · 2026-08-12) —
+     ที่นี่อัปขึ้น server ทันที จึงส่งทีละไฟล์ตามทางเดิมของแผงนี้ */
+  const intake = useFileIntake({
+    disabled: !canEdit || busy,
+    multiple: false,
+    onFiles: ([f]) => uploadFile(f),
+    onOversize: (message) => notifyToast.error(message),
+  });
 
   const uploadFile = async (f) => {
     if (!f) return;
@@ -104,7 +114,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
   );
 
   return (
-    <div className="glass-panel" style={{ padding: 16 }}>
+    <div className="glass-panel" style={{ padding: 16 }} {...intake.zoneProps}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>
         <Paperclip size={16} style={{ color: "var(--accent)" }} /> ไฟล์ & เอกสาร
       </div>

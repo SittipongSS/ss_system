@@ -168,6 +168,20 @@ export async function PATCH(request, { params }) {
       if (nextError) throw nextError;
     }
 
+    // ── ลูกค้าคอนเฟิร์ม = กลิ่นใช้งานได้จริง (มติผู้ใช้ 2026-08-12) ────────
+    // เดิมทะเบียนค้าง "กำลังพัฒนา" จนกว่า RD จะไปกดเปลี่ยนเองอีกรอบ — ก้าวที่
+    // แปลว่าลูกค้าอนุมัติเกิดตรงนี้แล้ว ทะเบียนต้องขยับตามเอง
+    // ⚠️ flip เฉพาะ developing → active (เส้นเดียวที่ ALLOWED_TRANSITIONS ของ
+    // ทะเบียนอนุญาตจากจุดนี้) — กลิ่นที่ถูกเก็บเข้ากรุระหว่างทางไม่ฟื้นเอง
+    // ⚠️ ล้มแล้วไม่ throw — เหตุผลเดียวกับบล็อกวันส่งข้างล่าง
+    if (hop === 'outcome' && body.outcome === 'confirmed' && row.producedScentId) {
+      const { error: scentError } = await supabase.from('scents').update({
+        status: 'active',
+        updatedAt: nowIso,
+      }).eq('id', row.producedScentId).eq('status', 'developing');
+      if (scentError) console.error('[requests] เปลี่ยนสถานะกลิ่นเป็น active ไม่สำเร็จ:', scentError.message);
+    }
+
     // ── วันส่งลูกค้าไหลกลับขึ้นทะเบียนกลิ่น (ม-66 · mig 0224) ─────────────
     //
     // ⭐ **ทะเบียนต้องตอบได้ว่ากลิ่นตัวนี้ถึงมือลูกค้าเมื่อไร** — ก่อนหน้านี้ `scents.sentAt`

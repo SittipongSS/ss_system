@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import PendingFiles from "@/components/ui/PendingFiles";
 import { fmtMoney } from "@/lib/format";
-import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
 import { notifyToast } from "@/components/ui/Toast";
 
@@ -80,7 +80,11 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           )}
           <div className="form-group">
             <label>แนบหลักฐานการชำระจากลูกค้า</label>
-            <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: "var(--fs-5)" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <PendingFiles
+              files={file ? [file] : []} multiple={false}
+              onChange={(picked) => setFile(picked[0] || null)}
+              disabled={busy} onOversize={setError}
+            />
             <p style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: 4 }}>เช่น สลิปโอนเงิน/หลักฐานที่ลูกค้าส่งมา (แนบทีหลังที่หน้ารายละเอียดก็ได้)</p>
           </div>
           {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }}>{error}</div>}
