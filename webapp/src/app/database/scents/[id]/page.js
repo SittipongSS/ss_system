@@ -6,12 +6,16 @@
 //
 // ⚠️ เปลือกและปุ่มมาจากของกลาง (`RegistryDetailShell`) ที่ใช้ร่วมกับทะเบียนสูตร —
 // เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎเดียวกับฟอร์มสร้าง/แก้ใน AGENTS.md)
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FlaskConical, Pencil } from "lucide-react";
+import { BadgeDollarSign, FlaskConical, Pencil } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import Toast from "@/components/ui/Toast";
 import { fmtDate } from "@/lib/format";
-import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, scentSourceLabel } from "@/lib/master/scents";
+import { useDepartment, useRole } from "@/lib/roleContext";
+import { canQuoteMaterial } from "@/lib/materialPrices";
+import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentUsable, scentSourceLabel } from "@/lib/master/scents";
 
 // โทนของ StatusBadge → สีจริง (การ์ดจัดการรับเป็นค่า CSS ไม่ใช่ชื่อโทน)
 const TONE_COLOR = {
@@ -21,9 +25,14 @@ const TONE_COLOR = {
 export default function ScentDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const role = useRole();
+  const department = useDepartment();
+  const me = useMemo(() => ({ role, department }), [role, department]);
   const [scent, setScent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pricing, setPricing] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -54,6 +63,12 @@ export default function ScentDetailPage() {
      (เจอจริงตอนเปิดหน้านี้ครั้งแรก) · ที่นี่ใช้แค่ `label` */
   const src = scentSourceLabel(scent);
   const srcLabel = src?.label || null;
+  /* ปุ่มใส่ราคา F (มติผู้ใช้ 2026-08-10 — ทะเบียนวัสดุเหลือ PM แล้ว RM จัดการที่นี่)
+     · เฉพาะ RD (สิทธิ์เดียวกับตอบราคาในสายคำร้อง) และกลิ่นที่รับเข้าทะเบียนแล้ว
+     · ป้ายเปลี่ยนตามของจริง: ยังไม่เคยมีราคา = "ใส่ราคา F" · มีแล้ว = "ออกราคาใหม่"
+       (rev เดิม immutable — แก้ราคาคือการต่อ rev ไม่ใช่ทับ) */
+  const canPrice = canQuoteMaterial(me, "RM_F") && isScentUsable(scent);
+  const hasPrice = scent.price?.unitPrice != null;
   return (
     <RegistryDetailShell
       back={back}
@@ -79,6 +94,12 @@ export default function ScentDetailPage() {
         icon: Pencil,
         onClick: () => router.push(`/database/scents?edit=${scent.id}`),
       }}
+      secondaryActions={canPrice ? [{
+        id: "price",
+        label: hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F",
+        icon: BadgeDollarSign,
+        onClick: () => setPricing(true),
+      }] : []}
     >
       <RegistryFactCard
         icon={FlaskConical}
@@ -94,6 +115,19 @@ export default function ScentDetailPage() {
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
       />
+
+      <RegistryPriceModal
+        open={pricing}
+        onClose={() => setPricing(false)}
+        title={`${hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scent.name}`}
+        endpoint={`/api/master/scents/${scent.id}/price`}
+        onSaved={(msg) => {
+          setPricing(false);
+          setToast({ kind: "success", msg });
+          load(); // ราคาบนการ์ดจัดการมาจาก GET เดิม — โหลดใหม่ให้เห็น rev ล่าสุด
+        }}
+      />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </RegistryDetailShell>
   );
 }

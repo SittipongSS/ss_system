@@ -43,6 +43,15 @@ export async function POST(request) {
   if (!canViewCosting(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
+  // มติผู้ใช้ 2026-08-10: ทะเบียนวัสดุสร้างมือได้เฉพาะบรรจุภัณฑ์ — วัสดุ RM (F/FB)
+  // เกิดจากปุ่มใส่ราคาบนทะเบียนกลิ่น/สูตร หรือขั้นราคาในสายคำร้อง (priceRegistryEntry)
+  // ซึ่งผูก scentId/formulaId ให้ถูกตัวเสมอ · เปิดให้สร้าง RM ลอย ๆ จากหน้านี้เมื่อไร
+  // จะได้วัสดุที่ไม่ผูกทะเบียนแล้วราคาไม่ขึ้นบนหน้ากลิ่น/สูตรโดยไม่มีใครรู้
+  if (body.kind !== 'PM') {
+    return Response.json({
+      error: 'ทะเบียนวัสดุเพิ่มได้เฉพาะบรรจุภัณฑ์ (PM) — ราคา F/FB ใส่ที่ทะเบียนกลิ่น/สูตร',
+    }, { status: 400 });
+  }
   const { value, error } = normalizeMaterialInput(body);
   if (error) return Response.json({ error }, { status: 400 });
 

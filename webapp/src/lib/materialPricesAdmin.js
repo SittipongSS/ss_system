@@ -119,6 +119,56 @@ export async function ensureMaterial(supabase, input = {}) {
   return { material: { ...data, revisions: [] }, created: true };
 }
 
+// ── ใส่ราคา F/FB ให้กลิ่น/สูตรในทะเบียน ─────────────────────────────────
+//
+// ⭐ **ทางเข้าราคา RM มีกี่ทาง ก็ต้องผ่านก้อนนี้ก้อนเดียว** — ตอนนี้มีสองทาง:
+// ขั้นใส่ราคาบนคำร้องสายพัฒนา (price/route.js) และปุ่มใส่ราคาบนหน้าทะเบียน
+// กลิ่น/สูตร · เขียนแยกกันเมื่อไร ตัวตนวัสดุ/การประทับ pointer จะเพี้ยนหากัน
+// (โรคเดียวกับฟอร์มสร้าง/แก้ใน AGENTS.md)
+//
+// กลไก: วัสดุ 1 ตัวต่อกลิ่น/สูตร (ensureMaterial หาตัวเดิมจากตัวตน ชนิด+ชื่อ+ลูกค้า)
+// → ประทับ `scentId`/`formulaId` ครั้งแรกครั้งเดียว (ห้ามทับ — ประวัติราคาชี้ตัวผิด
+// ย้อนหลังทั้งชุด) → ต่อ rev ใหม่ผ่าน RPC
+//
+// ⚠️ F/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาเดียวต่อ กก.
+// คืน { material, revision }
+export async function priceRegistryEntry(supabase, {
+  kind,               // 'RM_F' (กลิ่น) | 'RM_FB' (สูตร)
+  stampColumn,        // 'scentId' | 'formulaId'
+  source,             // แถวจากทะเบียนกลิ่น/สูตร — ใช้ name + customerId/Name
+  price,
+  validUntil = null,
+  note = null,
+  askItemId = null,
+  user = null,
+}) {
+  const { material } = await ensureMaterial(supabase, {
+    kind,
+    label: source.name,
+    customerId: source.customerId,
+    customerName: source.customerName,
+    user,
+  });
+
+  if (!material[stampColumn]) {
+    const { error: stampError } = await supabase.from('material_prices')
+      .update({ [stampColumn]: source.id, updatedAt: new Date().toISOString() })
+      .eq('id', material.id);
+    if (stampError) throw stampError;
+  }
+
+  const { revision } = await appendMaterialRevision(supabase, {
+    materialId: material.id,
+    kind,
+    price,
+    validUntil,
+    note,
+    askItemId,
+    user,
+  });
+  return { material, revision };
+}
+
 // ── เคสขอราคาวัสดุ (mig 0158) ──────────────────────────────────────────
 // โหลดเคส + รายการ + ชั้นจำนวนที่ขอ เป็นก้อนเดียว (กัน N+1)
 export async function loadRequests(supabase, {

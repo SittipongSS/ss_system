@@ -18,7 +18,7 @@ import { canViewRequests } from '@/lib/permissions';
 import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
-import { appendMaterialRevision, ensureMaterial, findRequest } from '@/lib/materialPricesAdmin';
+import { findRequest, priceRegistryEntry } from '@/lib/materialPricesAdmin';
 import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
@@ -93,28 +93,12 @@ export async function POST(request, { params }) {
       return Response.json({ error: 'ไม่พบกลิ่นหรือสูตรในทะเบียน' }, { status: 400 });
     }
 
-    // ตัวตนของวัสดุ = ชนิด + ชื่อ + ลูกค้า · ถามซ้ำรอบสองจะเจอตัวเดิมแล้วต่อ rev
-    // ไม่ใช่เกิดวัสดุตัวใหม่ (บั๊กที่ ensureMaterial ถูกเขียนขึ้นมาปิด)
-    const { material } = await ensureMaterial(supabase, {
+    // ตัวตนวัสดุ + ประทับ pointer + ต่อ rev — ก้อนเดียวกับปุ่มใส่ราคาบนหน้าทะเบียน
+    // (`priceRegistryEntry`) ห้ามเขียนซ้ำที่นี่ ไม่งั้นสองทางเข้าเพี้ยนหากัน
+    const { revision } = await priceRegistryEntry(supabase, {
       kind: priced.kind,
-      label: source.name,
-      customerId: source.customerId,
-      customerName: source.customerName,
-      user,
-    });
-
-    // ประทับกลิ่น/สูตรลงแถววัสดุ — **ไม่ทับของเดิม** เพราะวัสดุตัวหนึ่งอาจถูกถามซ้ำ
-    // จากหลายคำร้อง ถ้าใบหลังทับได้ ประวัติราคาจะชี้ตัวผิดย้อนหลังทั้งชุด
-    // ⚠️ `material_prices.formulaId` มีอยู่แล้วตั้งแต่ mig 0171 — รอใช้มาตลอด
-    if (!material[priced.stampColumn]) {
-      const { error: stampError } = await supabase.from('material_prices')
-        .update({ [priced.stampColumn]: source.id, updatedAt: nowIso }).eq('id', material.id);
-      if (stampError) throw stampError;
-    }
-
-    const { revision } = await appendMaterialRevision(supabase, {
-      materialId: material.id,
-      kind: priced.kind,
+      stampColumn: priced.stampColumn,
+      source,
       price,
       validUntil: body.validUntil || null,
       note: body.note || null,

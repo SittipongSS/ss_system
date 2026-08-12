@@ -47,6 +47,7 @@
 | [form-design-rules.md](form-design-rules.md) | **ก่อนออกแบบฟอร์มใหม่ทุกครั้ง** — ลำดับคำถาม · การกรอก · ตารางเลือกคอนโทรล (dropdown/แผ่น/แถบขั้น/ชิป/แผงสองชั้น) + กับดักที่เจ็บมาแล้ว |
 | [master-code-scheme.md](master-code-scheme.md) | **ก่อนแตะรหัสลูกค้า (AR) / รหัสสินค้า (FG)** — สวิตช์ "ระบบใหม่" ในโมดัลเพิ่ม · กติกา 4 หลัก/เลขรัน 10001 · เคาน์เตอร์ atomic (mig 0230) · รหัสที่ระบบออกให้แก้ไม่ได้ · เช็คซ้ำ: ลูกค้า = เลขผู้เสียภาษี + สาขา (บล็อก) · สินค้า = ลูกค้า + ชื่อ + ขนาด (เตือน) |
 | [webapp/BOUNDARY_MAP.md](../webapp/BOUNDARY_MAP.md) | พิมพ์เขียวสถาปัตยกรรม — entity ไหนเป็นของใคร |
+| [rm-price-registry-split.md](rm-price-registry-split.md) | **ราคา F/FB จัดการที่ทะเบียนกลิ่น/สูตร · ทะเบียนวัสดุ = PM อย่างเดียว (รอโมดูลจัดซื้อ)** — ที่เก็บยังเป็น `material_prices` ที่เดียว · ก่อนแตะราคาวัสดุ/RM อ่านก่อน |
 | [webapp/MASTER_DATA_PLAN.md](../webapp/MASTER_DATA_PLAN.md) §2 §3 | ก่อนแตะ `src/lib/master/` — มติที่ล็อก + กฎทอง 3 ข้อ (ตรวจแล้วยังตรงทุกข้อ) |
 | [webapp/SALES_UX_PHASE0.md](../webapp/SALES_UX_PHASE0.md) | มาตรฐาน UX ฝั่งขาย — สถานะ `idle → dirty → saving → saved` |
 | [webapp/ATTACHMENT_REQUIREMENT_SPEC.md](../webapp/ATTACHMENT_REQUIREMENT_SPEC.md) | ก่อนแตะไฟล์แนบ/เงื่อนไขความครบถ้วน |

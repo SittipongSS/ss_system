@@ -2,22 +2,22 @@
 // ── ฟอร์มวัสดุในทะเบียน (mig 0157) ─────────────────────────────────────
 // ⚠️ ฟอร์มเดียวใช้ทั้ง "เพิ่มวัสดุ" และ "แก้ข้อมูลวัสดุ" (กฎ AGENTS.md) —
 // ต่างกันแค่โหมดผ่าน props:
-//   mode="create" → เลือกชนิดได้ + ใส่ราคา rev.1 ได้ (ถ้าเป็นฝ่ายเจ้าของ)
-//   mode="edit"   → ชนิดล็อก (ฝ่ายเจ้าของและหน่วยราคาผูกกับชนิด rev เก่าจะเพี้ยน)
-//                   และไม่มีช่องราคา เพราะ "แก้ราคา = ออก rev ใหม่" คนละ action
+//   mode="create" → ใส่ราคา rev.1 ได้ (ถ้าเป็นฝ่ายเจ้าของ)
+//   mode="edit"   → ไม่มีช่องราคา เพราะ "แก้ราคา = ออก rev ใหม่" คนละ action
+//
+// ⭐ **ทะเบียนวัสดุเหลือบรรจุภัณฑ์ (PM) อย่างเดียว** (มติผู้ใช้ 2026-08-10) —
+// ราคา RM (หัวน้ำหอม F / เนื้อสาร FB) จัดการที่ทะเบียนกลิ่น/สูตรโดยตรง
+// (ปุ่มใส่ราคาบนหน้ารายละเอียด ซึ่งลงเอย material_prices ก้อนเดียวกัน) ฟอร์มนี้
+// จึงไม่มีช่องชนิด/สูตรแล้ว · แถว RM เดิมใน DB อยู่ครบ แค่ไม่จัดการจากหน้านี้
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import PriceTierFields from "@/components/materials/PriceTierFields";
-import { MATERIAL_KINDS, MATERIAL_KIND_LABELS, unitBasisForMaterialKind } from "@/lib/materialPrices";
 import { pmTypeOptions } from "@/lib/master/materialTypes";
 
 export const emptyMaterialForm = () => ({
   kind: "PM",
   label: "",
   pmType: "",
-  // ⭐ ตัวตนของ F/FB คือ "สูตรในทะเบียน" ไม่ใช่รหัสที่พิมพ์เอง (mig 0181) —
-  // ของเดิมเป็น text ซึ่งพิมพ์ต่างช่องว่าง/ตัวพิมพ์แล้วกลายเป็นวัสดุคนละตัวเงียบ ๆ
-  formulaId: "",
   scope: "central", // central = ราคากลาง · customer = ทับรายลูกค้า
   customerId: "",
   supplierNote: "",
@@ -29,7 +29,6 @@ export function materialToForm(material) {
     kind: material.kind,
     label: material.label || "",
     pmType: material.pmType || "",
-    formulaId: material.formulaId || "",
     scope: material.customerId ? "customer" : "central",
     customerId: material.customerId || "",
     supplierNote: material.supplierNote || "",
@@ -38,71 +37,31 @@ export function materialToForm(material) {
 }
 
 export default function MaterialForm({
-  mode = "create", value, onChange, customers = [], formulas = [], canPrice = false, disabled = false,
+  mode = "create", value, onChange, customers = [], canPrice = false, disabled = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
-  const isPm = value.kind === "PM";
-  const unitLabel = unitBasisForMaterialKind(value.kind) === "per_kg" ? "฿/กก." : "฿/ชิ้น";
 
   return (
     <>
       <div className="form-grid">
         <div className="form-group">
-          <label htmlFor="mat-kind">ชนิดวัสดุ</label>
-          <Select
-            id="mat-kind" value={value.kind} disabled={disabled || mode === "edit"}
-            onChange={(e) => set({
-              kind: e.target.value,
-              // ล้างช่องเฉพาะชนิดทิ้ง ไม่งั้นสูตรค้างบน PM หรือประเภทค้างบน RM
-              pmType: "", formulaCode: "", formulaName: "",
-            })}
-            options={MATERIAL_KINDS.map((k) => ({ value: k, label: MATERIAL_KIND_LABELS[k] }))}
-          />
-          {mode === "edit" && (
-            <small style={{ color: "var(--text-3)" }}>ชนิดเปลี่ยนไม่ได้ — ประวัติราคาผูกกับหน่วยของชนิดนี้</small>
-          )}
-        </div>
-
-        <div className="form-group">
           <label htmlFor="mat-label">ชื่อวัสดุ</label>
           <input
             id="mat-label" className="premium-input" value={value.label} disabled={disabled}
-            placeholder={isPm ? "เช่น ขวดแก้ว 30 ml สีชา" : "เช่น หัวน้ำหอม Lavender"}
+            placeholder="เช่น ขวดแก้ว 30 ml สีชา"
             onChange={(e) => set({ label: e.target.value })}
           />
         </div>
 
-        {isPm ? (
-          <div className="form-group">
-            <label htmlFor="mat-pm-type">ประเภทบรรจุภัณฑ์</label>
-            <Select
-              id="mat-pm-type" value={value.pmType} disabled={disabled}
-              onChange={(e) => set({ pmType: e.target.value })}
-              options={pmTypeOptions(value.pmType)}
-            />
-            <small style={{ color: "var(--text-3)" }}>ใช้กรองตัวเลือกวัสดุตอนประกอบต้นทุน</small>
-          </div>
-        ) : (
-          <div className="form-group">
-            <label htmlFor="mat-formula">สูตร</label>
-            {/* ⭐ เลือกจากทะเบียน ไม่ใช่พิมพ์รหัสเอง (mig 0181) — ตัวตนของ F/FB
-                คือสูตร ถ้าเป็นข้อความ พิมพ์ต่างช่องว่างนิดเดียวก็กลายเป็นวัสดุ
-                คนละตัวโดยไม่มีใครรู้ (บั๊กตระกูล "จับคู่ด้วยข้อความ") */}
-            <SearchableSelect
-              id="mat-formula" value={value.formulaId} disabled={disabled}
-              onChange={(v) => set({ formulaId: v })}
-              placeholder="— เลือกสูตรจากทะเบียน —"
-              options={formulas.map((f) => ({
-                value: f.id,
-                label: `${f.code ? `${f.code} · ` : ""}${f.name}`,
-              }))}
-            />
-            <small style={{ color: "var(--text-3)" }}>
-              ตัวตนของ F/FB คือสูตร — ชื่อเดียวกันแต่คนละสูตร = คนละราคา
-              {formulas.length ? "" : " · ยังไม่มีสูตรในทะเบียน เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร"}
-            </small>
-          </div>
-        )}
+        <div className="form-group">
+          <label htmlFor="mat-pm-type">ประเภทบรรจุภัณฑ์</label>
+          <Select
+            id="mat-pm-type" value={value.pmType} disabled={disabled}
+            onChange={(e) => set({ pmType: e.target.value })}
+            options={pmTypeOptions(value.pmType)}
+          />
+          <small style={{ color: "var(--text-3)" }}>ใช้กรองตัวเลือกวัสดุตอนประกอบต้นทุน</small>
+        </div>
 
         <div className="form-group">
           <label htmlFor="mat-scope">ขอบเขตราคา</label>
@@ -140,8 +99,9 @@ export default function MaterialForm({
       </div>
 
       {mode === "create" && canPrice && (
+        // PM อย่างเดียวแล้ว — หน่วยตายตัวต่อชิ้น (RM ต่อ กก. ไปอยู่ทะเบียนกลิ่น/สูตร)
         <PriceTierFields
-          value={value.tiers} unitLabel={unitLabel} disabled={disabled}
+          value={value.tiers} unitLabel="฿/ชิ้น" disabled={disabled}
           onChange={(tiers) => set({ tiers })}
         />
       )}
