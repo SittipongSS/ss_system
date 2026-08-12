@@ -18,6 +18,7 @@ import RecordDrawer from "@/components/excise/RecordDrawer";
 import Toast from "@/components/ui/Toast";
 import SignatureCropper from "./SignatureCropper";
 import styles from "./SignatureVault.module.css";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
 import Textarea from "@/components/ui/Textarea";
 
 const ACTION_LABELS = {
@@ -107,9 +108,14 @@ export default function SignatureVault() {
     setConfirmAction("");
   };
 
-  const selectFile = (event) => {
-    const file = event.target.files?.[0] || null;
-    event.target.value = "";
+  const intake = useFileIntake({
+    multiple: false,
+    accept: "image/png,.png",
+    maxBytes: Number.POSITIVE_INFINITY,   // ด่านจริงอยู่ใน selectFile (1 MB + ต้องเป็น PNG)
+    onFiles: ([file]) => selectFile(file),
+  });
+
+  const selectFile = (file) => {
     setConfirmAction("");
     setCandidateError("");
     if (!file) return;
@@ -340,10 +346,15 @@ export default function SignatureVault() {
               <div className={styles.sectionHeading}>
                 <div><h3 id="signature-upload-heading">{active ? "เปลี่ยนลายเซ็น" : "เพิ่มลายเซ็น"}</h3><p>ไฟล์เดิมจะไม่ถูกเขียนทับหรือลบย้อนหลัง</p></div>
               </div>
-              <label className={`btn ${styles.fileButton}`}>
-                <ImagePlus size={16} aria-hidden="true" /> เลือกไฟล์ PNG
-                <input type="file" accept="image/png,.png" onChange={selectFile} className={styles.fileInput} />
-              </label>
+              {/* ⭐ ลากไฟล์มาวาง หรือ Ctrl+V ได้ (IS-26080013) — ลายเซ็นสแกนมักถูก
+                  ครอปจากภาพอื่นแล้วอยู่ในคลิปบอร์ดพอดี · ด่าน PNG/1 MB ยังเป็นของ
+                  หน้านี้เอง เพราะมันแคบกว่าด่านไฟล์แนบทั่วไป */}
+              <div className={styles.fileZone} {...intake.zoneProps}>
+                <button type="button" className={`btn ${styles.fileButton}`} onClick={intake.open}>
+                  <ImagePlus size={16} aria-hidden="true" /> เลือกไฟล์ PNG
+                </button>
+                <input {...intake.inputProps} />
+              </div>
               <p className={styles.assistText}>PNG ไม่เกิน 1 MB · เลือกแล้วครอปเป็น 1200×400 px · แนะนำพื้นหลังโปร่งใส</p>
               {candidateError && <p className={styles.validationError} role="alert">{candidateError}</p>}
             </section>

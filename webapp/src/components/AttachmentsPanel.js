@@ -37,6 +37,7 @@ import {
   UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
@@ -91,8 +92,6 @@ export default function AttachmentsPanel({
 
   // รูปที่กำลังเปิดดูขยาย (lightbox) — null = ปิดอยู่
   const [preview, setPreview] = useState(null);
-  // ลากไฟล์มาวางอยู่เหนือกล่องหรือเปล่า (ใช้เน้นขอบให้รู้ว่าวางได้)
-  const [dragOver, setDragOver] = useState(false);
 
   const fetchItems = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -187,23 +186,16 @@ export default function AttachmentsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, types, fetchItems]);
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    acceptFiles(e.dataTransfer?.files);
-  };
-
-  // วางรูปจากคลิปบอร์ด (เช่น จับภาพหน้าจอสเปกมาแปะ) — ผูกที่กล่องนี้เท่านั้น
-  const handlePaste = (e) => {
-    const files = Array.from(e.clipboardData?.items || [])
-      .filter((i) => i.kind === "file")
-      .map((i) => i.getAsFile())
-      .filter(Boolean);
-    if (files.length) {
-      e.preventDefault();
-      acceptFiles(files);
-    }
-  };
+  /* 🐞 เดิมเขียน onDrop/onPaste เองไว้ที่ `<div>` ของโหมด inline **โหมดเดียว** และ
+     handler paste ที่ผูกกับ div เฉย ๆ ไม่ได้รับ event ถ้าไม่มีอะไรข้างในโฟกัสอยู่
+     ⇒ ผู้ใช้จับภาพหน้าจอแล้วกด Ctrl+V ทันที (ลำดับที่คนทำจริง) ไม่เกิดอะไรขึ้นเลย
+     · แผงเต็ม (ที่อยู่บนหน้ารายละเอียดทุกหน้า) ไม่มีทั้งลากและวาง
+     ⇒ 2026-08-12 ย้ายมาใช้ทางเข้าไฟล์กลาง แล้วผูก **ทั้งสองโหมด** (IS-26080013) */
+  const intake = useFileIntake({
+    disabled: !canEdit,
+    onFiles: acceptFiles,
+    onOversize: (message) => notifyToast.error(message),
+  });
 
   // ── detailed mode: บันทึกพร้อมรายละเอียด ──
   const handleDetailedSave = async () => {
@@ -470,16 +462,7 @@ export default function AttachmentsPanel({
     const busy = uploadingType === inlineType;
 
     return (
-      <div
-        className="mt-1"
-        onPaste={canEdit ? handlePaste : undefined}
-        onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
-        onDragLeave={canEdit ? () => setDragOver(false) : undefined}
-        onDrop={canEdit ? handleDrop : undefined}
-        style={dragOver ? {
-          outline: "2px dashed var(--accent)", outlineOffset: 4, borderRadius: "var(--radius)",
-        } : undefined}
-      >
+      <div className="mt-1" {...intake.zoneProps}>
         <div className="flex min-h-8 items-center justify-end gap-2">
           {canEdit && (
             <button
@@ -541,7 +524,7 @@ export default function AttachmentsPanel({
   }
 
   return (
-    <div className="glass-panel p-[20px]">
+    <div className="glass-panel p-[20px]" {...intake.zoneProps}>
       <div className="flex items-center justify-between border-b border-[var(--border)] pb-3 mb-4 gap-3 flex-wrap">
         <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2">
           <Paperclip size={16} className="text-[var(--accent)]" />
@@ -781,6 +764,13 @@ export default function AttachmentsPanel({
             />
           )}
         </>
+      )}
+      {/* คำเดียวกับโหมด inline — ผู้ใช้ต้องรู้ว่าทำได้ ไม่งั้นความสามารถนี้ก็เท่ากับไม่มี
+          (คนที่แจ้ง IS-26080013 คือคนที่ไม่รู้ว่ามีอยู่ในบางจอมาตลอด) */}
+      {canEdit && !loading && (
+        <p className="mt-3 text-[10px] text-[var(--text-3)]">
+          ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
+        </p>
       )}
       {lightbox}
     </div>

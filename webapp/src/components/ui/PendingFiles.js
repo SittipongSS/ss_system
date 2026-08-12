@@ -8,12 +8,12 @@
 // ⚠️ **คนละตัวกับ `AttachmentsPanel`** — ตัวนั้นคุยกับ server ได้แล้ว (ของที่บันทึกแล้ว
 // มี id) มีลบจริง/พรีวิว/ประวัติ · อันนี้เป็นแค่ตะกร้ารอ ยังไม่มีอะไรอยู่บนเซิร์ฟเวอร์
 //
-// ⚠️ ด่านขนาดไฟล์อยู่ที่นี่ที่เดียว — ปล่อยให้ผู้เรียกเช็คเองแล้วจะมีที่ที่ลืมเช็ค
-// แล้วผู้ใช้เพิ่งรู้ตอนอัปไม่ผ่านหลังกดบันทึก (เสียรอบไปหนึ่งรอบ)
-import { useRef } from "react";
+// ⭐ ทางเข้าไฟล์ (กด · ลาก · Ctrl+V) และด่านขนาดไฟล์อยู่ที่ `lib/ui/useFileIntake`
+// ที่เดียวทั้งระบบ (มติผู้ใช้ 2026-08-12 · IS-26080013) — ที่นี่เหลือแค่หน้าตา
 import { FileText, Paperclip, X } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { useFileIntake } from "@/lib/ui/useFileIntake";
+import { MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 const keyOf = (file) => `${file.name}:${file.size}:${file.lastModified}`;
 
@@ -23,34 +23,41 @@ export default function PendingFiles({
   disabled = false,
   onOversize,          // (message) => void — ผู้เรียกเอาไปโชว์ที่ที่ตัวเองใช้แจ้ง error
   label = "แนบไฟล์",
+  // จำนวนสูงสุดที่ผู้เรียกยอมรับ — เกินแล้วปุ่มปิดตัวเอง พร้อมบอกเหตุผลติดปุ่ม
+  // (ไม่ใช่ปุ่มจางเฉย ๆ ซึ่งเป็นสิ่งที่ทำให้คนคิดว่าระบบพัง — กติกา form-design-rules §2)
+  max = 0,
+  multiple = true,
+  accept = UPLOAD_ACCEPT_ATTR,
+  // คำบรรยายใต้ปุ่ม — ผู้เรียกที่มีข้อจำกัดของตัวเอง (PNG · 1 MB) เขียนทับได้
+  hint,
 }) {
-  const inputRef = useRef(null);
+  const full = max > 0 && files.length >= max;
+  const off = disabled || full;
 
-  const pick = (event) => {
-    const picked = Array.from(event.target.files || []);
-    event.target.value = "";   // เลือกไฟล์เดิมซ้ำได้ (ถอดออกแล้วเปลี่ยนใจ)
-    const oversized = picked.filter((f) => f.size > MAX_UPLOAD_BYTES);
-    if (oversized.length) {
-      onOversize?.(`ไฟล์ใหญ่เกิน ${MAX_UPLOAD_MB} MB: ${oversized.map((f) => f.name).join(", ")}`);
-    }
-    const ok = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES);
-    if (ok.length) onChange([...files, ...ok]);
-  };
+  const { open, inputProps, zoneProps } = useFileIntake({
+    disabled: off,
+    multiple,
+    accept,
+    onOversize,
+    onFiles: (picked) => onChange(multiple ? [...files, ...picked] : picked),
+  });
 
   return (
-    <div className="pending-files">
+    <div className="pending-files" {...zoneProps}>
       <button
-        type="button" className="pending-files-add" disabled={disabled}
-        onClick={() => inputRef.current?.click()}
+        type="button" className="pending-files-add" disabled={off}
+        onClick={open}
+        title={full ? `แนบได้สูงสุด ${max} ไฟล์` : undefined}
       >
         <Paperclip size={13} aria-hidden="true" />
         <span>{label}</span>
-        <small>สูงสุด {MAX_UPLOAD_MB} MB ต่อไฟล์</small>
+        <small>{hint ?? `ลากมาวาง หรือ Ctrl+V ได้ · สูงสุด ${MAX_UPLOAD_MB} MB ต่อไฟล์`}</small>
       </button>
-      <input
-        ref={inputRef} type="file" multiple accept={UPLOAD_ACCEPT_ATTR}
-        disabled={disabled} onChange={pick} className="hidden"
-      />
+      <input {...inputProps} />
+
+      {full && (
+        <p className="pending-files-note">แนบครบ {max} ไฟล์แล้ว — เอาบางไฟล์ออกก่อนถ้าจะเปลี่ยน</p>
+      )}
 
       {files.length > 0 && (
         <ul className="pending-files-list">
