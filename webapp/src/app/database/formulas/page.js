@@ -38,6 +38,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
@@ -217,11 +218,14 @@ export default function FormulasPage() {
       // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าอยากรู้ว่ารายนี้มีสูตรอะไรบ้าง
       return [
         f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
-        f.customerTradeName, f.categoryCode, scentName(f.scentId),
+        f.customerTradeName, f.categoryCode,
+        // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)
+        categoryNameBoth(findCategoryByCode(categories, f.categoryCode)),
+        scentName(f.scentId),
       ]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [formulas, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
+  }, [formulas, categories, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
@@ -230,8 +234,8 @@ export default function FormulasPage() {
   );
   const categoryLabel = useCallback((code) => {
     if (!code) return null;
-    const row = categories.find((c) => `${c.mainCategoryCode}-${c.typeCode}` === code);
-    const name = row?.nameTh || row?.nameEn || "";
+    // โชว์ "รหัส EN · TH" (มติ 2026-08-12) — helper กลางตัวเดียวกับตัวเลือกหมวด
+    const name = categoryNameBoth(findCategoryByCode(categories, code));
     // ⚠️ หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปแสดงรหัส ห้ามบรรทัดว่าง
     return name ? `${code} ${name}` : code;
   }, [categories]);

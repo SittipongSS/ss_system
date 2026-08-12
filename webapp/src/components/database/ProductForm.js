@@ -23,6 +23,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
 } from "@/lib/master/categoryOf";
+import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
   CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment, fgCodeParts,
 } from "@/lib/master/masterCodes";
@@ -100,7 +101,7 @@ function CategoryBox({ categoryCode, fgCode, productTypes }) {
         {/* พื้นชิปเคยเป็น bg-white/50 — บนธีมมืดกลายเป็นขาวจาง ๆ ทับตัวอักษรสีส้ม
             อ่านแทบไม่ออก · ใช้พื้นของระบบแทนเพื่อให้อ่านได้ทั้งสองธีม */}
         <span className="font-mono px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--panel)]">{cat.code}</span>
-        <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
+        <span className="font-semibold">{categoryNameBoth(cat.typeInfo) || cat.code}</span>
       </div>
       <div className="text-[11px] opacity-80 pl-1">กลุ่มหลัก: {cat.typeInfo.mainCategoryName}</div>
       {/* เตือนเฉพาะหมวดที่ติ๊กธง (ส่วนน้อย) — หมวดอื่นไม่ต้องพูดถึงภาษี/อย. เลย */}

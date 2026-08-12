@@ -21,6 +21,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
+import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
@@ -121,7 +122,8 @@ export default function ProductRegistry() {
     if (!code) return null;
     const info = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
     if (!info) return null;
-    return { main: info.mainCategoryName, sub: info.nameTh || info.nameEn || code };
+    // sub = "EN · TH" (มติ 2026-08-12) — หมวดชื่อว่างทั้งคู่ถอยไปโชว์รหัส
+    return { main: info.mainCategoryName, sub: categoryNameBoth(info) || code };
   };
 
   useEffect(() => {
@@ -221,7 +223,7 @@ export default function ProductRegistry() {
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
     const catInfo = categoryInfoOf(formData.categoryCode || categoryOf(formData.fgCode), productTypes);
     const catLabel = catInfo?.typeInfo
-      ? `${catInfo.code} (${catInfo.typeInfo.nameTh || catInfo.typeInfo.nameEn || ""})`
+      ? `${catInfo.code} (${categoryNameBoth(catInfo.typeInfo)})`
       : catInfo?.code || "";
     if (catInfo?.typeInfo?.isExcise) {
       const accepted = await confirmAction(
@@ -293,7 +295,12 @@ export default function ProductRegistry() {
       if (!excise || !regFilter.includes(p.registrationStatus || "none")) return false;
     }
     if (!q) return true;
-    return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
+    // ค้นหมวดได้ทั้งรหัสและชื่อสองภาษา (มติ 2026-08-12) — cat อาจเป็น null
+    const cat = categoryLabelOf(p);
+    return [
+      p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn,
+      p.categoryCode, cat?.main, cat?.sub,
+    ].some((v) => (v || "").toLowerCase().includes(q));
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
