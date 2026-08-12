@@ -22,6 +22,15 @@ export const MEETING_FOLLOWUP_LABELS = { none: 'ไม่ติดตาม', fo
 export const isDoneStatus = (status) => status === 'done';
 export const isOpenStatus = (status) => status === 'todo' || status === 'in_progress';
 
+/* "รอฉันลงมือ" ของงานบริหาร = งานที่ยังไม่จบและ **มอบหมายให้ฉัน** (ม-116)
+   ⚠️ คนละตารางกับ "งานของฉัน" ใต้ระบบขาย (`personal_tasks`) — งานจากที่ประชุม
+   อยู่ `mgmt_tasks` ⇒ ป้ายสองตัวนี้นับคนละก้อน ไม่ใช่ตัวเลขซ้ำ
+   ⚠️ ผู้สั่งงาน (คนสร้าง) ไม่นับ — งานที่เรามอบให้คนอื่นไม่ใช่งานที่รอเรา
+   (กติกาเดียวกับ `myTasksTodoCount` ที่ตัด assignedBy ออก) */
+export const isMyOpenTask = (task, userId) => Boolean(userId)
+  && isOpenStatus(task?.status)
+  && task?.assigneeId === userId;
+
 // %เสร็จ (live badge) = สัดส่วนงานที่ done จากงานที่ไม่ถูกยกเลิก.
 export function completionPercent(tasks) {
   const counted = (tasks || []).filter((t) => t.status !== 'cancelled');

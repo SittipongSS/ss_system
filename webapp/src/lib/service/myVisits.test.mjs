@@ -106,3 +106,19 @@ test('ไฟล์แนบเก็บเฉพาะแถวที่มี�
     { url: 'https://drive/2', name: 'ไฟล์แนบ', kind: 'other' },
   ]);
 });
+
+// ── ป้ายตัวเลขบนเมนู (ม-116) ─────────────────────────────────────────────
+test('⭐ "รอฉันลงมือ" = นัดค้าง + นัดวันนี้ที่ยังไม่ปิด — พรุ่งนี้ยังไม่ใช่ของค้าง', async () => {
+  const { waitingOnMeVisitCount } = await import('./myVisits.js');
+  const today = '2026-08-12';
+  const visits = [
+    { id: 'a', scheduledDate: '2026-08-10', status: 'scheduled' },  // ค้าง
+    { id: 'b', scheduledDate: '2026-08-10', status: 'done' },       // ค้างแต่ปิดแล้ว
+    { id: 'c', scheduledDate: today, status: 'scheduled' },         // วันนี้
+    { id: 'd', scheduledDate: today, status: 'done' },              // วันนี้ ปิดแล้ว
+    { id: 'e', scheduledDate: '2026-08-13', status: 'scheduled' },  // พรุ่งนี้ = แผน
+    { id: 'f', scheduledDate: '2026-08-11', status: 'cancelled' },  // ยกเลิก
+  ];
+  assert.equal(waitingOnMeVisitCount(visits, today), 2);
+  assert.equal(waitingOnMeVisitCount([], today), 0);
+});

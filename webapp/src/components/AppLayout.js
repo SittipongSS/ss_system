@@ -351,7 +351,7 @@ export default function AppLayout({ children }) {
       system: 'mgmt',
       items: [
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
-        { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
+        { href: '/mgmt/tasks', name: 'รายการงาน', countHref: '/mgmt/tasks?count=mgmtTasks', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
         { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
         { href: '/mgmt/rocks', name: 'Rock & Improve', shortName: 'Rocks', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
         { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
