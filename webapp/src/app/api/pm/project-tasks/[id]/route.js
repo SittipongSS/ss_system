@@ -1,9 +1,10 @@
 import { pmEditScope, inScope, pmTaskEditTier } from '@/lib/permissions';
 import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
-import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
+import { setHolidays } from '@/lib/pm/dateHelpers';
+import { durationFromDates } from '@/lib/pm/stepSchedule';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
-import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, notFound, conflict } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { milestoneDoneUpdate } from '@/lib/pm/projectUpdates';
@@ -12,11 +13,14 @@ import { appendUpdate } from '@/lib/master/updates';
 export const dynamic = 'force-dynamic';
 
 // แก้ field เหล่านี้แล้วต้องคำนวณ timeline ใหม่ (วันเริ่ม/วันเสร็จ + เลื่อนขั้นถัดไป)
+// ไม่มี finishDate ในลิสต์เพราะบล็อก "วันจบ↔duration" ด้านล่างถอดมันออกจาก updates เสมอ
+// (แปลงเป็น durationDays ซึ่งอยู่ในลิสต์นี้แล้ว) — ห้ามปล่อยให้ finishDate รอดไปถึง .update()
+// ไม่งั้นจะเขียนวันจบที่ไม่ผ่านการ snap วันทำการ แล้วไม่มีอะไรกระตุ้น recalc ต่อ
 const SCHEDULE_FIELDS = ['startDate', 'durationDays', 'predecessors'];
 
 const EDITABLE = [
   'name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays',
-  'startDate', 'finishDate', 'actualFinishDate', 'dueDate', 'status',
+  'startDate', 'finishDate', 'actualStartDate', 'actualFinishDate', 'dueDate', 'status',
   'predecessors', 'cellsOverride', 'stepOrder',
   'note', 'showNoteInPrint',
 ];
@@ -61,9 +65,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
-  const WORKFLOW_FIELDS = ['status', 'actualFinishDate', 'note', 'showNoteInPrint'];
+  // วันของจริงทั้งคู่เป็นเรื่องของคนทำงาน ไม่ใช่โครงแผน → tier workflow แก้ได้
+  const WORKFLOW_FIELDS = ['status', 'actualStartDate', 'actualFinishDate', 'note', 'showNoteInPrint'];
   const editable = workflowEdit ? EDITABLE.filter((k) => WORKFLOW_FIELDS.includes(k)) : EDITABLE;
-  const updates = pickFields(body, editable, { nullable: ['startDate', 'finishDate', 'actualFinishDate', 'dueDate'] });
+  const updates = pickFields(body, editable, { nullable: ['startDate', 'finishDate', 'actualStartDate', 'actualFinishDate', 'dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   // ── วันจบ↔duration: ให้ server เป็นเจ้าของการคำนวณวันทำการเพียงเจ้าเดียว ──
@@ -71,26 +76,50 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // นับวันทำการไม่ตรงกัน (เช่น ปฏิทินวันหยุดฝั่ง client โหลดไม่ทัน) แล้วเกิดอาการ "ไม่ซิงค์".
   // แปลงเป็น durationDays ที่นี่ แล้วลบ finishDate ออก → ปล่อยให้ recalcForward กางใหม่
   // (ได้วันจบที่ snap เป็นวันทำการถูกต้อง + เลื่อน downstream ตามจริง).
-  if (updates.finishDate && (project || task.dealId)) {
-    setHolidays([...(await holidaySet())]);
+  //
+  // กติกาเดียวของช่องนี้: **วันจบเป็นค่าคำนวณเสมอ (วันเริ่ม + จำนวนวันทำการ) ไม่เคยเก็บ
+  // ค่าที่ client ส่งมาตรง ๆ** จึงถอด finishDate ออกจาก updates ทุกกรณี — เข้าเงื่อนไขด้วย
+  // "มีคีย์ไหม" ไม่ใช่ "ค่า truthy ไหม"
+  // 🐞 เดิมเช็คว่าค่ามีจริงก่อนถึงจะเข้าบล็อกนี้ ทำให้สองทางหลุด: (1) ค่าว่าง (ผู้ใช้กดล้าง
+  //    วันในตาราง) ผ่านเข้าไปเขียน null ลงฐานตรง ๆ โดย durationDays เดิมค้าง และ
+  //    SCHEDULE_FIELDS ไม่มี finishDate จึงไม่ recalc ต่อ = แถววันจบว่างแต่มีจำนวนวัน
+  //    (2) ส่งวันจบมาทั้งที่ขั้นตอนยังไม่มีวันเริ่ม → คำนวณ duration ไม่ได้ แล้วค่าถูกลบทิ้งเงียบ ๆ
+  // ⚠️ ห้ามเขียนเงื่อนไขแบบเช็คค่า truthy ที่นี่อีก แม้ในคอมเมนต์ — ตัวสแกนของเทสต์
+  //    (stepDateSync.test.mjs) ไม่แยกโค้ดกับคอมเมนต์
+  if ('finishDate' in updates) {
     const startForCalc = updates.startDate || task.startDate;
-    if (startForCalc) {
-      const dur = new Date(updates.finishDate) <= new Date(startForCalc)
-        ? 1
-        : countBusinessDays(startForCalc, updates.finishDate) + 1;
-      updates.durationDays = Math.max(1, dur);
+    if (updates.finishDate) {
+      // ไม่มีวันเริ่ม = คำนวณจำนวนวันไม่ได้ → บอกสาเหตุ ไม่ใช่กลืนค่าแล้วตอบ 200
+      if (!startForCalc) return badRequest('ขั้นตอนนี้ยังไม่มีวันเริ่ม — ตั้งวันเริ่มก่อนจึงจะกำหนดวันจบได้');
+      setHolidays([...(await holidaySet())]);
+      // สูตรเดียวกับที่ฟอร์ม/ตารางใช้พรีวิว (lib/pm/stepSchedule) — คนละฝั่งกันแต่ต้องได้เลขเท่ากัน
+      updates.durationDays = durationFromDates(startForCalc, updates.finishDate);
     }
+    // ล้างวันจบ (null) = ไม่มีอะไรให้เปลี่ยน — วันจบวิ่งตามจำนวนวันอยู่แล้ว
     delete updates.finishDate;
   }
 
   // ผู้ใช้ตั้งวันเริ่มเอง = ปักหมุด (startLocked); เคลียร์วันเริ่ม = ปลดหมุด → ไหลตาม dependency
   if ('startDate' in updates) updates.startLocked = !!updates.startDate;
 
-  // ── #2 variance: ตั้ง/ล้าง actualFinishDate ตามการเปลี่ยนสถานะ ──
-  // (ทำเฉพาะเมื่อ client ไม่ได้ส่ง actualFinishDate มาเอง)
-  if (body.status !== undefined && body.status !== task.status && body.actualFinishDate === undefined) {
-    if (body.status === 'Completed') updates.actualFinishDate = todayStr();
-    else if (task.status === 'Completed') updates.actualFinishDate = null;
+  // ── #2 variance: ตั้ง/ล้าง "วันของจริง" ตามการเปลี่ยนสถานะ ──
+  // (ทำเฉพาะเมื่อ client ไม่ได้ส่งค่านั้นมาเอง)
+  //
+  // ไทม์ไลน์เก็บสองชั้น: **แผน** (startDate/finishDate ที่คำนวณจากจำนวนวันทำการ) กับ
+  // **ของจริง** (actualStartDate/actualFinishDate ที่สแตมตอนคนเดินสถานะ — mig 0239)
+  // สองชั้นนี้ห้ามปนกัน: แผนขยับได้ตลอดเมื่อ predecessor เลื่อน ของจริงขยับไม่ได้
+  if (body.status !== undefined && body.status !== task.status) {
+    // เริ่มทำจริง — กด "กำลังทำ" คือคนบอกว่าเริ่มวันนี้ (status.js คุมอัตโนมัติเฉพาะ Pending)
+    // ข้ามจาก Pending ไป Completed รวดเดียว = เริ่มและจบวันเดียวกัน จึงสแตมทั้งคู่
+    if (body.actualStartDate === undefined) {
+      if (body.status !== 'Pending' && !task.actualStartDate) updates.actualStartDate = todayStr();
+      // ถอยกลับไป Pending = ยังไม่ได้เริ่ม ล้างทิ้ง (กระจกเงาของกติกาวันเสร็จด้านล่าง)
+      else if (body.status === 'Pending') updates.actualStartDate = null;
+    }
+    if (body.actualFinishDate === undefined) {
+      if (body.status === 'Completed') updates.actualFinishDate = todayStr();
+      else if (task.status === 'Completed') updates.actualFinishDate = null;
+    }
   }
 
   // ── origin tracking (migration 0022): mark "แก้ไขโดยผู้ใช้" เมื่อแก้ field สำคัญของแผน

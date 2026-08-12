@@ -18,7 +18,7 @@ import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
@@ -392,6 +392,15 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       .catch(() => setAvailableDeals([]));
   }, [linkOpen, p.id, p.customerId]);
 
+  /* เลือกดีล = ได้วันเริ่มของดีลนั้นมาเป็นค่าตั้งต้นของ segment (มติผู้ใช้ 2026-08-12:
+     วันเริ่มเป็นของดีล ไม่ใช่ของโครงการ) — ดีลที่ไม่ได้ระบุวันเริ่มจึงตกมาที่วันนี้เหมือนเดิม
+     แก้ต่อในช่องได้ ค่าที่กรอกเองชนะ (route ก็เรียงลำดับเดียวกัน: ที่ส่งมา > วันของดีล > วันนี้) */
+  const pickDeal = (nextDealId) => {
+    setDealId(nextDealId);
+    const deal = availableDeals.find((row) => row.id === nextDealId);
+    setStartDate(deal?.startDate || localToday());
+  };
+
   // ดีลที่เลือกอยู่ในโมดัล = "ย้ายมา" หรือ "ผูกครั้งแรก" — คุมทั้งชื่อโมดัล ปุ่ม และช่องวันที่
   const pickedDeal = dealId ? availableDeals.find((deal) => deal.id === dealId) : null;
   const movingPicked = !!pickedDeal?.projectId;
@@ -640,7 +649,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
                 ดีลที่อยู่โครงการอื่นก็เลือกได้ = "ย้ายมา" (ป้ายบอกต้นทางกำกับไว้ทุกบรรทัด
                 และมีคำถามยืนยันก่อน — ไม่ใช่ผลข้างเคียงเงียบ ๆ ของการกดผูก) */}
             <SearchableSelect className="w-full" entity="deal" ariaLabel="ดีลที่จะผูกเข้าโครงการ"
-              value={dealId} onChange={setDealId}
+              value={dealId} onChange={pickDeal}
               options={availableDeals.map((deal) => ({
                 value: deal.id,
                 // FC = เดือนคาดการณ์ปิด — ตัวแยกดีลชื่อซ้ำ (มติผู้ใช้ 2026-08-06)
@@ -656,7 +665,13 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           </div>
           {/* ย้ายดีล = ไม่ตั้งวันใหม่: ไทม์ไลน์เดิมมีวันจริง/ความคืบหน้าอยู่แล้ว การ
               re-anchor จะเลื่อนงานที่ทำค้างอยู่ทั้งชุด — ช่องนี้จึงมีเฉพาะตอนผูกครั้งแรก */}
-          {!movingPicked && <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>}
+          {!movingPicked && (
+            <div className="form-group">
+              <label>วันที่เริ่ม segment</label>
+              <DateInput value={startDate} onChange={setStartDate} className="w-full" />
+              <small>{pickedDeal?.startDate ? `ตั้งตามวันเริ่มของดีลที่เลือก (${fmtDate(pickedDeal.startDate)})` : "ดีลที่เลือกยังไม่ได้ระบุวันเริ่ม — ตั้งต้นเป็นวันนี้"}</small>
+            </div>
+          )}
           {linkError && <div style={{ color: "var(--red)", fontSize: "var(--fs-7)" }}>{linkError}</div>}
           <div className="form-action-bar"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? (movingPicked ? "กำลังย้าย..." : "กำลังผูก...") : (movingPicked ? "ย้ายเข้าโครงการนี้" : "ผูกเข้าโครงการ")}</button></div>
         </div>

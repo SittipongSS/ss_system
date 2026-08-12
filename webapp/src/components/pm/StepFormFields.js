@@ -19,9 +19,14 @@ const STAFF_DEPTS = ["PC", "PD", "WH", "RD", "QC"];
 const deptRep = (users, dept) => users.find((u) => u.role === "staff" && u.department === dept) || null;
 
 /** ค่าตั้งต้นของฟอร์มขั้นตอน — ต้องมีครบทุกคีย์ที่ฟอร์มแตะ ไม่งั้น input จะสลับ controlled/uncontrolled */
+/* ไม่มี `dueDate` — ขั้นตอนไทม์ไลน์ไม่มี "กำหนดเสร็จ" แยกจากวันจบตามแผน
+   (วันจบ = วันเริ่ม + จำนวนวันทำการ) คอลัมน์ `project_tasks.dueDate` มีอยู่ในฐานก็จริง
+   แต่ไม่มีช่องไหนเขียนและไม่มีหน้าไหนอ่านสำหรับขั้นตอน — เคยติดมาในฟอร์มโดยไม่มี input
+   แล้วเดินทางไป-กลับ API เปล่า ๆ · "กำหนดเสร็จ" ที่ผู้ใช้เห็นคือของ **งานส่วนบุคคล**
+   (ตาราง personal_tasks · TaskFormModal) คนละตัวกัน */
 export const EMPTY_STEP_FORM = {
   name: "", role: "SA", phase: "", durationDays: 1, predecessors: [],
-  assignee: "", assigneeId: "", startDate: "", finishDate: "", dueDate: "",
+  assignee: "", assigneeId: "", startDate: "", finishDate: "",
   isMilestone: false, note: "", showNoteInPrint: false,
 };
 
@@ -35,7 +40,6 @@ export const stepToForm = (task) => ({
   durationDays: task.durationDays ?? 1,
   startDate: task.startDate || "",
   finishDate: task.finishDate || "",
-  dueDate: task.dueDate || "",
   isMilestone: !!task.isMilestone,
   phase: task.phase || "",
   predecessors: task.predecessors || [],

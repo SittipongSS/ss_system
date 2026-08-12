@@ -10,6 +10,7 @@ import DateInput from "@/components/ui/DateInput";
 import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } from "react";
 import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { businessDate } from "@/lib/businessDate";
 import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -682,6 +683,46 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
 
 let activeDragRef = null;
 
+/* ── เส้น "ของจริง" ใต้บาร์แผน (มติผู้ใช้ 2026-08-12) ─────────────────────────
+   บาร์หนาคือ **แผน** (ลากได้ ขยับตาม predecessor) · เส้นบางใต้มันคือ **ของจริง**
+   ที่สแตมตอนคนเดินสถานะ (mig 0239) ลากไม่ได้ ไม่มี handle — สองชั้นนี้ห้ามปนกัน
+   สีบอกผลทันที: เขียว = จบทันแผนหรือเร็วกว่า · แดง = จบช้ากว่าแผน · accent = ยังทำอยู่
+   ขั้นที่ยังไม่เริ่ม = ไม่มีเส้น (ไม่เดาอนาคต) · ของเก่าที่มีแต่วันเสร็จจริง = ขีดสั้นวันเดียว */
+const actualNote = (task) => {
+  if (!task.actualStartDate && !task.actualFinishDate) return "";
+  const from = task.actualStartDate ? fmtDate(task.actualStartDate) : "ไม่ทราบ";
+  const to = task.actualFinishDate ? fmtDate(task.actualFinishDate) : "ยังไม่จบ";
+  return `\nของจริง: ${from} – ${to}`;
+};
+
+function ActualBar({ task, rangeStartMs, pxPerDay }) {
+  if (!task.actualStartDate && !task.actualFinishDate) return null;
+  const startIdx = dayIndexOf(task.actualStartDate || task.actualFinishDate, rangeStartMs);
+  const rawEnd = task.actualFinishDate
+    ? dayIndexOf(task.actualFinishDate, rangeStartMs)
+    : dayIndexOf(businessDate(), rangeStartMs); // ยังทำอยู่ = ลากถึงวันนี้ (โซนเวลาธุรกิจ ไม่ใช่ของเครื่อง)
+  if (isNaN(startIdx)) return null;
+  const endIdx = isNaN(rawEnd) ? startIdx : Math.max(rawEnd, startIdx);
+
+  const planFinish = dayIndexOf(task.finishDate, rangeStartMs);
+  const color = !task.actualFinishDate
+    ? "var(--accent)"
+    : (!isNaN(planFinish) && endIdx > planFinish) ? "var(--red)" : "var(--green)";
+
+  return (
+    <div
+      aria-hidden="true"
+      title={`ของจริง${actualNote(task)}`}
+      style={{
+        position: "absolute", top: ROW_H - 6, height: 3,
+        left: startIdx * pxPerDay + 1,
+        width: Math.max(pxPerDay - 2, (endIdx - startIdx + 1) * pxPerDay - 2),
+        background: color, borderRadius: 2, zIndex: 1, pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 // ── บาร์ลากได้แบบ Monday/ClickUp ──
 function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, onPickDeps }) {
   const [dragState, setDragState] = useState(null);
@@ -818,10 +859,12 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
   const originNote = kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขโดยผู้ใช้" : "";
 
   return (
+    <>
+    <ActualBar task={task} rangeStartMs={rangeStartMs} pxPerDay={pxPerDay} />
     <div
       data-bar-id={task.id}
       onPointerDown={begin("move")}
-      title={`${task.name}\n${fmtDate(task.startDate)} – ${fmtDate(task.finishDate)} · ${task.durationDays} วันทำการ${originNote}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย · ลากขอบเพื่อยืด-หด" : ""}`}
+      title={`${task.name}\n${fmtDate(task.startDate)} – ${fmtDate(task.finishDate)} · ${task.durationDays} วันทำการ${originNote}${actualNote(task)}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย · ลากขอบเพื่อยืด-หด" : ""}`}
       style={{
         position: "absolute", top: (ROW_H - barH) / 2, left, width, height: barH,
         background: isPending ? "var(--panel-2)" : fill,
@@ -835,7 +878,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
         transition: dragging ? "none" : "box-shadow var(--motion-medium), opacity var(--motion-medium)",
       }}
     >
-      {kind === "edited" && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)", zIndex: 1, pointerEvents: "none" }} />}
+      {kind === "edited" && <span className="gantt-origin-edited" />}
       {canEdit && !saving && <div onPointerDown={begin("left")} style={handle("left")}><span style={grip} /></div>}
       <span style={{
         fontSize: "var(--fs-3)", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -846,6 +889,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
       {saving && spinner(isPending ? "var(--text-2)" : "var(--accent-fg)")}
       {canEdit && !saving && <div onPointerDown={begin("right")} style={handle("right")}><span style={grip} /></div>}
     </div>
+    </>
   );
 }
 

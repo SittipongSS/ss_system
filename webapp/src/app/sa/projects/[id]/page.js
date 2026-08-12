@@ -35,7 +35,7 @@ import { setHolidays, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import { isExciseCategory } from "@/lib/master/categoryOf";
-import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
+import { getComputedStatus, projectDateRange, statusDotColor } from "@/lib/pm/derived";
 import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
@@ -146,6 +146,8 @@ export default function ProjectDetailPage() {
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
   const [issuingRev, setIssuingRev] = useState(false);
+  // ขั้นตอนที่ TimelineWorkspace แก้ค้างไว้ยังไม่บันทึก — ใช้เป็นด่านก่อนออก Rev
+  const [timelineDirty, setTimelineDirty] = useState(0);
   const [showIssueRev, setShowIssueRev] = useState(false); // modal ออกเวอร์ชันใหม่ (แทน window.prompt)
   const [revNote, setRevNote] = useState("");
   const [revError, setRevError] = useState("");
@@ -290,11 +292,15 @@ export default function ProjectDetailPage() {
   // การแก้ task = บันทึกทับ live ไม่เก็บประวัติ; "ออก Revise" คือการกระทำระดับ
   // เอกสารที่ตั้งใจ → snapshot ทุก task + เด้งเลข Rev (เริ่มที่ 0) ที่โชว์บนหน้าพิมพ์.
   // เปิด modal ออกเวอร์ชัน
-  // 🔴 ด่าน "กันออก Rev ตอนยังมีการแก้ค้าง" หายไปตอนย้ายมา TimelineWorkspace — ของเดิม
-  //    เช็ค dirtyCount ของหน้า ซึ่งค้าง 0 ตลอดหลังวิวเก่าถูกปิด (เท่ากับไม่มีด่านมานานแล้ว)
-  //    ตอนนี้ของค้างอยู่ใน `drafts` ของ TimelineWorkspace ที่หน้านี้มองไม่เห็น — จะเอาด่าน
-  //    กลับมาต้องให้ TimelineWorkspace รายงาน dirtyCount ขึ้นมา (ยังไม่มี prop นั้น)
+  // ด่าน "กันออก Rev ตอนยังมีการแก้ค้าง" — เคยหายไปตอนย้ายวิวมา TimelineWorkspace
+  // (หน้านี้เช็ค dirtyCount ของตัวเองซึ่งค้าง 0 ตลอด = ไม่มีด่านจริงมานาน) ตอนนี้
+  // TimelineWorkspace รายงานขึ้นมาทาง onDirtyChange แล้ว · Rev คือ snapshot ของ task
+  // ทั้งชุด ออกตอนมีแก้ค้างจะได้เวอร์ชันที่ไม่ตรงกับที่คนเห็นบนจอ
   const openIssueRev = () => {
+    if (timelineDirty > 0) {
+      setToast({ kind: "error", msg: `มีการแก้ไขไทม์ไลน์ค้างอยู่ ${timelineDirty} ขั้นตอน — กด "บันทึกการเปลี่ยนแปลง" ก่อนออก Rev` });
+      return;
+    }
     setRevNote(""); setRevError(""); setShowIssueRev(true);
   };
   const confirmIssueRev = async () => {
@@ -400,6 +406,8 @@ export default function ProjectDetailPage() {
      ตอนนี้ TimelineWorkspace ยิง API ชุดเดียวกันเองแล้วเรียก onChanged={load} กลับมา */
 
   const allTasks = useMemo(() => data?.tasks || [], [data?.tasks]);
+  // ช่วงเวลาจริงของโครงการ = อ่านจากขั้นตอน (ทุก segment + งานกลาง) ไม่ใช่คอลัมน์สำเนา
+  const dateRange = useMemo(() => projectDateRange(data), [data]);
   const tasks = useMemo(
     () => filterTimelineTasks(allTasks, dealFilters),
     [allTasks, dealFilters],
@@ -672,9 +680,17 @@ export default function ProjectDetailPage() {
         actions={tab !== "overview" && tab !== "timeline"
           ? <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")}><GanttChart size={14} /> เปิดไทม์ไลน์</button>
           : null}
+        /* วันเริ่ม/วันสิ้นสุด อ่านจากขั้นตอนจริง ไม่ใช่คอลัมน์สำเนาบนแถวโครงการ
+           (projectDateRange — โครงการหลายดีลเคยโชว์วันของดีลใบแรกค้างไว้)
+           "กำหนดส่ง" คือเป้าที่คนตั้ง คนละตัวกับวันจบตามแผน จึงแยกบรรทัด */
         facts={[
-          { icon: Calendar, label: "วันเริ่ม", value: p.startDate || "-" },
-          { icon: Clock, label: "วันสิ้นสุด", value: p.dueDate || "-" },
+          { icon: Calendar, label: "วันเริ่ม", value: dateRange.start || "-" },
+          {
+            icon: Clock,
+            label: "วันจบตามแผน",
+            value: dateRange.finish || "-",
+            sub: dateRange.target ? `กำหนดส่ง ${dateRange.target}` : null,
+          },
           { icon: User, label: "AE / ทีม", value: `${p.aeOwner || "-"} · ${p.team || "-"}` },
           { icon: GanttChart, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
         ]}
@@ -794,6 +810,7 @@ export default function ProjectDetailPage() {
             showViewSwitcher={false}
             documentProject={{ ...p, tasks }}
             canEditProjectFields={canEdit}
+            onDirtyChange={setTimelineDirty}
             onUpdateProject={updateProject}
             timelineContext={{
               name: p.name,
@@ -1061,6 +1078,10 @@ export default function ProjectDetailPage() {
           onClose={() => setShowEditProject(false)}
           editingId={p.id}
           initialData={p}
+          /* โครงการที่มีดีลแล้ว: วันเริ่มของแต่ละ segment เป็นของดีล (ราก segment ถูกปักหมุด
+             ตอนรับเลี้ยงเข้าโครงการ — แก้ที่นี่ไม่ขยับ) ⇒ ล็อกช่องแล้วชี้ไปที่ดีล
+             ยังไม่มีดีล = โครงการเป็นเจ้าของวันเอง กรอกได้ตามเดิม */
+          startDateFrom={(p.deals || []).length ? "ดีลในโครงการ" : null}
           onSuccess={(data) => {
             // บั๊ก D: หลังแก้โครงการ (อาจ resync ขั้นตอนสรรพสามิตใน DB) ต้อง reload
             // ทั้งก้อน — PATCH คืนแค่แถว project ไม่มี tasks ที่เปลี่ยน

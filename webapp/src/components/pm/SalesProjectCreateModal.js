@@ -27,6 +27,7 @@ import { brandSelectOptions } from "@/lib/master/brands";
 import { categoryFlags } from "@/lib/master/categoryOf";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { fmtDate } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 
 const today = () => {
@@ -48,6 +49,11 @@ export default function SalesProjectCreateModal({
   createLabel = "สร้างโครงการ",
   // บรรทัดบริบทใต้ชื่อโมดัล เช่น "ดีลก่อตั้ง: DL-… · ชื่อดีล · NPD"
   subtitle = null,
+  /* เจ้าของ "วันที่เริ่ม" (มติผู้ใช้ 2026-08-12): โครงการที่ยังไม่มีดีลเป็นเจ้าของวันเอง
+     พอมีดีลแล้ววันของแต่ละ segment เป็นของดีล (ราก segment ถูกปักหมุด — แก้ที่โครงการ
+     ไม่ขยับอยู่ดี) ⇒ ส่งชื่อที่มาเข้ามาเมื่อวันไม่ใช่ของโครงการ แล้วช่องกลายเป็นช่องเส้นประ
+     อ่านอย่างเดียว **ล็อกไม่ใช่ซ่อน** (form-design-rules §2) คนต้องเห็นว่าค่ามาจากไหน */
+  startDateFrom = null,
 }) {
   const [users, setUsers] = useState([]);
   // ล็อกช่องผู้รับผิดชอบตามตำแหน่งผู้สร้าง (มติผู้ใช้): AE/Senior→ผู้ดูแลโครงการ,
@@ -126,7 +132,8 @@ export default function SalesProjectCreateModal({
       [!form.line, "สายธุรกิจ"],
       [!form.name.trim(), "ชื่อโครงการ"],
       [!form.customerId, "ลูกค้า"],
-      [!form.startDate, "วันที่เริ่มโครงการ"],
+      // วันเริ่มที่มาจากดีลไม่ใช่ช่องที่คนกรอก จึงไม่ใช่ช่องบังคับของฟอร์มนี้
+      [!startDateFrom && !form.startDate, "วันที่เริ่มโครงการ"],
     ].filter(([absent]) => absent).map(([, label]) => label);
     if (missing.length) return setError(`กรุณากรอก ${missing.join(" · ")} ให้ครบ`);
     setSubmitting(true);
@@ -226,8 +233,15 @@ export default function SalesProjectCreateModal({
             )}
           </div>
           <div className="form-group">
-            <label>วันที่เริ่มโครงการ <span className="required-mark">*</span></label>
-            <DateInput value={form.startDate} onChange={(startDate) => setForm((f) => ({ ...f, startDate }))} className="w-full" />
+            <label>วันที่เริ่มโครงการ {startDateFrom ? null : <span className="required-mark">*</span>}</label>
+            {startDateFrom ? (
+              <>
+                <div className="deal-derived">{form.startDate ? fmtDate(form.startDate) : "— ตามวันเริ่มของดีล —"}</div>
+                <small>มาจาก{startDateFrom} · แก้วันของงานให้ไปแก้ที่ดีลนั้น</small>
+              </>
+            ) : (
+              <DateInput value={form.startDate} onChange={(startDate) => setForm((f) => ({ ...f, startDate }))} className="w-full" />
+            )}
           </div>
           <div className="form-group">
             <label>วันที่สิ้นสุด <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
