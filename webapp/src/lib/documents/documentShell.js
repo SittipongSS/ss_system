@@ -190,12 +190,33 @@ export function documentShellCss(orientation = 'portrait') {
   body { margin: 0; background: #eceff3; -webkit-font-smoothing: antialiased;
          -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
          font-family: ${PRINT_FONT_STACK}; }
-  .toolbar { display: flex; justify-content: space-between; align-items: center;
+  /* แถบเครื่องมือเป็นสองแถว: แถวบน = ชื่อเอกสาร | ปุ่ม · แถวล่าง = ข้อความแจ้งผล
+     🐞 เดิมยัดข้อความแจ้งผลไว้แถวเดียวกับปุ่ม พอข้อความยาว (เช่น "บันทึกไม่สำเร็จ …")
+     มันบีบจนป้ายปุ่มโดนตัดกลางคำและปุ่มพิมพ์ตกบรรทัด — ข้อความยาวได้เสมอ อย่าให้มัน
+     แย่งที่กับปุ่ม */
+  .toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 6px;
              width: ${paper.width}; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
              font-family: ${PRINT_FONT_STACK}; }
+  .toolbar-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .toolbar h1 { font-size: 15px; font-weight: 600; color: #1f3551; }
+  .toolbar-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
   .btn-print { background: #1f3551; color: #fff; border: 0; font: inherit; font-weight: 600;
                padding: 8px 18px; border-radius: 8px; cursor: pointer; }
+
+  /* สลับภาษาบนแถบเครื่องมือ — เอกสารสองภาษาอยู่ในไฟล์เดียว ซ่อนฝั่งที่ไม่ได้เลือกด้วย CSS
+     จึงสลับได้ทันทีโดยไม่ต้องโหลดใหม่ และตอนสั่งพิมพ์ก็ออกเฉพาะฝั่งที่เห็นอยู่ */
+  .langSwitch { display: flex; border: 1px solid #c2cbd6; border-radius: 8px; overflow: hidden; }
+  .langSwitch button { background: #fff; color: #4a5766; border: 0; font: inherit; font-size: 13px;
+                       padding: 7px 14px; cursor: pointer; }
+  .langSwitch button + button { border-left: 1px solid #c2cbd6; }
+  .langSwitch button[aria-pressed="true"] { background: #1f3551; color: #fff; font-weight: 600; }
+  .langSwitch button:disabled { cursor: progress; opacity: .6; }
+  .toolbar-note { font-size: 12px; line-height: 1.5; color: #647080; text-align: right; }
+  .toolbar-note:empty { display: none; }
+  .toolbar-note[data-tone="error"] { color: #b3261e; font-weight: 600; }
+  .langPane { display: contents; }
+  .document[data-active-lang="th"] .langPane[data-lang="en"],
+  .document[data-active-lang="en"] .langPane[data-lang="th"] { display: none; }
 
   .document {
     --doc-accent: #ad5d43;
@@ -381,9 +402,18 @@ export function renderDocumentHTML({
   // ภาษาของ "เนื้อเอกสาร" — มีผลกับการอ่านออกเสียง/การตัดคำของเบราว์เซอร์ตอนพิมพ์
   // แถบเครื่องมือด้านบนเป็นของคนในบริษัท จึงเป็นไทยเสมอไม่ว่าเอกสารจะภาษาอะไร
   lang = 'th',
+  // สคริปต์ของแถบเครื่องมือ (เช่น สลับภาษา) — ไม่มีผลกับกระดาษ เอกสารยัง self-contained
+  // ⚠️ ผู้เรียกต้องประกอบสตริงนี้เอง = ต้อง escape ค่าที่มาจากข้อมูลด้วย JSON.stringify
+  script = '',
 } = {}) {
+  /* toolbar.controlsHtml = ปุ่มเพิ่มเติมซ้ายปุ่มพิมพ์ (ผู้เรียกประกอบ HTML มาเอง)
+     toolbar.noteId = id ของช่องข้อความแจ้งผลแถวล่าง — ข้อความยาวได้ จึงต้องมีแถวของตัวเอง
+     ทั้งแถบเป็น no-print — ไม่ติดไปกับเอกสารที่ลูกค้าได้รับ */
   const toolbarHtml = toolbar
-    ? `<div class="toolbar no-print"><h1>${esc(toolbar.label)}</h1><button class="btn-print" type="button" onclick="window.print()">${esc(toolbar.button || 'พิมพ์เอกสาร')}</button></div>`
+    ? `<div class="toolbar no-print">
+    <div class="toolbar-row"><h1>${esc(toolbar.label)}</h1><div class="toolbar-actions">${toolbar.controlsHtml || ''}<button class="btn-print" type="button" onclick="window.print()">${esc(toolbar.button || 'พิมพ์เอกสาร')}</button></div></div>
+    ${toolbar.noteId ? `<div class="toolbar-note" id="${esc(toolbar.noteId)}" role="status" aria-live="polite"></div>` : ''}
+  </div>`
     : '';
   const classes = ['document', variantClass, grayscale ? 'grayscale' : ''].filter(Boolean).join(' ');
   return `<!doctype html>
@@ -400,6 +430,7 @@ export function renderDocumentHTML({
   <div class="${classes}" style="${accentStyle(accentKey)}"${dataAttrs}>
     ${pages}
   </div>
+${script ? `  <script>${script}</script>` : ''}
 </body>
 </html>`;
 }

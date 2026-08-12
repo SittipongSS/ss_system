@@ -5,7 +5,12 @@
 // ไฟล์นี้เป็น "แหล่งเดียว" ของหน้าตาเอกสารใบเสนอราคา V4 แล้ว (markup + CSS ฝังใน
 // DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
 // (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
-import { buildQuotationMasterModelFromQuote, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
+import {
+  QUOTATION_DOC_LANGUAGES,
+  buildQuotationMasterModelFromQuote,
+  docLanguageOf,
+  quotationDocLabels,
+} from '@/lib/sales/quotationMasterTemplate';
 import { fmtNumber, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
@@ -298,4 +303,114 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
 export function buildQuotationMasterHTML(quote, options = {}) {
   const model = buildQuotationMasterModelFromQuote(quote, options);
   return renderQuotationMasterDocumentHTML(model, options);
+}
+
+/* ── เอกสารสองภาษาในไฟล์เดียว + สวิตช์บนแถบเครื่องมือ (IS-26080005 · มติผู้ใช้ 2026-08-12)
+   ─────────────────────────────────────────────────────────────────────────────
+   ผู้ใช้ตัดสินว่าจุดที่คนคิดถึงภาษาคือ "ตอนกำลังจะส่งเอกสาร" ไม่ใช่ตอนกรอกหัวใบ
+   สวิตช์จึงย้ายมาอยู่ที่หน้าพรีวิว/พิมพ์ และ **บันทึกกลับลงใบ** ด้วย ไม่ใช่สลับมุมมองเฉย ๆ
+   (สลับเฉย ๆ = พิมพ์ครั้งหน้าเด้งกลับไทย ต้องจำเองทุกครั้งว่าลูกค้ารายไหนเป็นต่างชาติ)
+
+   ⚠️ **ยังต้องมีค่าเก็บอยู่กับใบ** (quotations.docLanguage) เพราะตอนอนุมัติ ระบบตรึง
+   artifact **ไฟล์เดียว ภาษาเดียว** ทันที — ถ้าภาษาเป็นแค่ค่าที่เลือกตอนกดพิมพ์
+   จะตอบไม่ได้ว่าไฟล์ที่ตรึงต้องเป็นภาษาอะไร
+
+   ทำไมฝังสองภาษาแทนที่จะเรนเดอร์ใหม่ตอนกด: หน้าต่างพิมพ์ถูกตัด `opener` ทิ้งด้วยเหตุผล
+   ความปลอดภัย จึงเรียกกลับไปหาหน้าหลักไม่ได้ · ฝังทั้งสองฝั่งแล้วซ่อนด้วย CSS ทำให้สลับ
+   ได้ทันทีและยังทำงานต่อได้แม้หน้าหลักถูกปิดไปแล้ว · ต้นทุนคือ markup ของหน้ากระดาษซ้ำสองชุด
+   ซึ่งเล็กมากเทียบกับฟอนต์ที่ฝังอยู่แล้วและใช้ร่วมกัน */
+const LANG_SWITCH_OPTIONS = Object.freeze([
+  { value: 'th', label: 'ไทย' },
+  { value: 'en', label: 'English' },
+]);
+
+const LANG_NOTE_ID = 'langNote';
+
+function langSwitchControls(active, { editable }) {
+  if (!editable) {
+    // ใบที่ยื่น/อนุมัติ/รับแล้ว — ภาษาถูกตรึงไปกับเอกสารแล้ว บอกให้รู้ว่าอันไหน แต่กดไม่ได้
+    const current = LANG_SWITCH_OPTIONS.find((o) => o.value === active)?.label || active;
+    return `<span class="toolbar-note">ภาษาเอกสาร: ${esc(current)} · เปลี่ยนไม่ได้แล้ว ต้องออก Rev.</span>`;
+  }
+  const buttons = LANG_SWITCH_OPTIONS.map((option) => `<button type="button" data-lang="${esc(option.value)}" aria-pressed="${option.value === active}" onclick="ssSetDocLanguage('${esc(option.value)}')">${esc(option.label)}</button>`).join('');
+  return `<div class="langSwitch" role="group" aria-label="ภาษาเอกสาร">${buttons}</div>`;
+}
+
+/* สคริปต์บนแถบเครื่องมือ — สลับมุมมองก่อน (ทันตา) แล้วค่อยบันทึก
+   ⚠️ บันทึกไม่ผ่านต้องบอกให้เห็น ไม่ใช่กลืนเงียบ: คนจะพิมพ์ใบอังกฤษส่งลูกค้าไปแล้วเข้าใจว่า
+   ระบบจำให้แล้ว พอกลับมาพิมพ์ใหม่กลายเป็นไทย โดยไม่มีอะไรเคยเตือน */
+function langSwitchScript(quotationId) {
+  return `
+(function () {
+  var doc = document.querySelector('.document');
+  var note = document.getElementById("langNote");
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.langSwitch button'));
+  var url = '/api/sales-planning/quotations/' + encodeURIComponent(${JSON.stringify(quotationId)});
+  function paint(lang, busy) {
+    doc.setAttribute('data-active-lang', lang);
+    document.documentElement.lang = lang;
+    buttons.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === lang));
+      b.disabled = !!busy;
+    });
+  }
+  function say(text, tone) {
+    note.textContent = text || '';
+    if (tone) note.setAttribute('data-tone', tone); else note.removeAttribute('data-tone');
+  }
+  window.ssSetDocLanguage = function (lang) {
+    if (doc.getAttribute('data-active-lang') === lang) return;
+    paint(lang, true);
+    say('กำลังบันทึก…');
+    fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docLanguage: lang }),
+    }).then(function (res) {
+      if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) {
+        throw new Error(d.error || ('บันทึกไม่สำเร็จ (' + res.status + ')'));
+      });
+      paint(lang, false);
+      say('บันทึกแล้ว — ใบนี้จะพิมพ์เป็นภาษานี้ทุกครั้ง');
+    }).catch(function (err) {
+      paint(lang, false);
+      say('เปลี่ยนมุมมองแล้วแต่บันทึกไม่สำเร็จ: ' + (err.message || 'ไม่ทราบสาเหตุ') + ' — พิมพ์ครั้งหน้าจะกลับเป็นภาษาเดิม', 'error');
+    });
+  };
+})();`;
+}
+
+/* สร้างเอกสารพร้อมสวิตช์ภาษาสำหรับหน้าพรีวิว/พิมพ์ (เส้นทาง client เท่านั้น)
+   options.editable = ใบนี้ยังแก้ได้ไหม (isEditableQuotation) — ตัดสินว่าสวิตช์กดได้หรือเป็นป้าย
+   ฉบับตรึง snapshot ไม่เดินทางนี้: มันเสิร์ฟ HTML ที่ตรึงไว้ตรง ๆ จาก server */
+export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
+  const active = docLanguageOf(quote?.docLanguage);
+  const models = Object.fromEntries(QUOTATION_DOC_LANGUAGES.map((language) => [
+    language,
+    buildQuotationMasterModelFromQuote(quote, { ...options, docLanguage: language }),
+  ]));
+  const shown = models[active];
+  const documentLabel = options.documentLabel || 'ใบเสนอราคา';
+  const number = shown.document?.number || '';
+  const editable = options.editable === true;
+  return renderDocumentHTML({
+    lang: active,
+    // ชื่อไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" — ประกอบจากรหัส/ลูกค้า/ดีล จึงเท่ากันทั้งสองภาษา
+    title: documentFileName(number, shown.customer?.name, shown.dealTitle),
+    accentKey: shown.accentKey,
+    grayscale: options.grayscale === true,
+    variantClass: 'v4',
+    dataAttrs: ` data-template-version="${esc(shown.templateVersion || '')}" data-active-lang="${esc(active)}"`,
+    toolbar: {
+      label: `${documentLabel} ${number}`,
+      controlsHtml: langSwitchControls(active, { editable }),
+      // ช่องแจ้งผลการบันทึกอยู่แถวล่างของแถบ — ข้อความยาวได้โดยไม่บีบปุ่ม
+      noteId: editable ? LANG_NOTE_ID : null,
+    },
+    pages: QUOTATION_DOC_LANGUAGES.map((language) => {
+      const model = models[language];
+      return `<div class="langPane" data-lang="${esc(language)}">${renderPages(model, labelsOf(model))}</div>`;
+    }).join(''),
+    script: editable && quote?.id ? langSwitchScript(quote.id) : '',
+  });
 }

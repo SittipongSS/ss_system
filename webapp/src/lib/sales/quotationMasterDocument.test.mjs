@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildQuotationMasterHTML, renderQuotationMasterDocumentHTML } from './quotationMasterDocument.js';
+import {
+  buildQuotationMasterHTML,
+  buildQuotationMasterSwitchableHTML,
+  renderQuotationMasterDocumentHTML,
+} from './quotationMasterDocument.js';
 import { buildQuotationMasterModelFromQuote, buildQuotationMasterPreview } from './quotationMasterTemplate.js';
 
 const lineOf = (id, over = {}) => ({
@@ -397,6 +401,91 @@ test('V4 doc: ไม่ระบุภาษา = ใบไทยเดิมเ
 
 test('V4 doc: แถบเครื่องมือด้านบนเป็นไทยเสมอ — คนกดพิมพ์คือพนักงานไทย', () => {
   const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage: 'en' }, {});
-  assert.match(html, /class="toolbar no-print"><h1>ใบเสนอราคา QT-2026-0001<\/h1>/);
+  assert.match(html, /class="toolbar-row"><h1>ใบเสนอราคา QT-2026-0001<\/h1>/);
   assert.match(html, />พิมพ์เอกสาร<\/button>/);
+});
+
+// ── สวิตช์ภาษาที่แถบพรีวิว (IS-26080005 · มติผู้ใช้ 2026-08-12) ─────────────
+
+const switchableQuote = (over = {}) => ({
+  ...baseQuote([lineOf('1'), lineOf('2')]),
+  id: 'QT-abc123',
+  status: 'draft',
+  approvalStatus: 'not_submitted',
+  approvedByName: null,
+  ...over,
+});
+
+test('พรีวิว: ฝังทั้งสองภาษาในไฟล์เดียว · ฝั่งที่ไม่ได้เลือกถูกซ่อนด้วย CSS', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  assert.match(html, /<div class="langPane" data-lang="th">/);
+  assert.match(html, /<div class="langPane" data-lang="en">/);
+  // ทั้งสองฝั่งมีเนื้อจริง ไม่ใช่กล่องเปล่า
+  assert.ok(html.includes('ยอดรวมทั้งสิ้น'), 'ฝั่งไทยมีเนื้อ');
+  assert.ok(html.includes('Grand Total'), 'ฝั่งอังกฤษมีเนื้อ');
+  // กติกาซ่อนต้องมาด้วย ไม่งั้นพิมพ์ออกมาได้เอกสารสองภาษาซ้อนกัน
+  assert.match(html, /\.document\[data-active-lang="th"\] \.langPane\[data-lang="en"\]/);
+  assert.match(html, /\.document\[data-active-lang="en"\] \.langPane\[data-lang="th"\]/);
+});
+
+test('พรีวิว: ภาษาที่เปิดมาคือภาษาที่ใบจำไว้ ไม่ใช่ค่าตั้งต้นตายตัว', () => {
+  const th = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  assert.match(th, /data-active-lang="th"/);
+  assert.match(th, /<html lang="th">/);
+
+  const en = buildQuotationMasterSwitchableHTML(switchableQuote({ docLanguage: 'en' }), { editable: true });
+  assert.match(en, /data-active-lang="en"/);
+  assert.match(en, /<html lang="en">/);
+  // ปุ่มที่ถูกเลือกต้องตรงกับภาษาที่เปิดมา
+  assert.match(en, /data-lang="en" aria-pressed="true"/);
+  assert.match(en, /data-lang="th" aria-pressed="false"/);
+});
+
+test('พรีวิว: ใบที่ยังแก้ได้มีสวิตช์ + สคริปต์บันทึกที่ยิงไปที่ใบใบนี้', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  assert.match(html, /class="langSwitch"/);
+  assert.match(html, /ssSetDocLanguage/);
+  assert.match(html, /'\/api\/sales-planning\/quotations\/' \+ encodeURIComponent\("QT-abc123"\)/);
+  assert.match(html, /method: 'PATCH'/);
+  assert.match(html, /JSON\.stringify\(\{ docLanguage: lang \}\)/);
+  // บันทึกไม่ผ่านต้องมีทางบอกผู้ใช้ ไม่ใช่กลืนเงียบ
+  assert.match(html, /บันทึกไม่สำเร็จ/);
+});
+
+test('พรีวิว: ใบที่ยื่น/อนุมัติแล้วไม่มีสวิตช์และไม่มีสคริปต์ — ภาษาถูกตรึงไปกับเอกสารแล้ว', () => {
+  const html = buildQuotationMasterSwitchableHTML(
+    switchableQuote({ docLanguage: 'en', approvalStatus: 'approved' }),
+    { editable: false },
+  );
+  assert.doesNotMatch(html, /class="langSwitch"/);
+  assert.doesNotMatch(html, /ssSetDocLanguage/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /ภาษาเอกสาร: English · เปลี่ยนไม่ได้แล้ว ต้องออก Rev\./);
+  assert.doesNotMatch(html, /id="langNote"/, 'ไม่มีช่องแจ้งผลเพราะไม่มีอะไรให้บันทึก');
+  // ยังต้องเปิดมาที่ภาษาของใบ
+  assert.match(html, /data-active-lang="en"/);
+});
+
+test('พรีวิว: id ของใบถูก escape ก่อนฝังในสคริปต์ — ห้ามหลุดเป็นโค้ด', () => {
+  const html = buildQuotationMasterSwitchableHTML(
+    switchableQuote({ id: 'QT-x");alert(1);//' }),
+    { editable: true },
+  );
+  assert.ok(html.includes('encodeURIComponent("QT-x\\");alert(1);//")'), 'ฝังเป็นสตริง JSON ที่ปลอดภัย');
+  assert.doesNotMatch(html, /\);alert\(1\);\/\/"\)\)/, 'ไม่มีวงเล็บที่หลุดออกมาเป็นโค้ด');
+});
+
+test('พรีวิว: ชื่อไฟล์ตอนบันทึก PDF เท่ากันทั้งสองภาษา — ไฟล์เดียวกันคนละมุมมอง', () => {
+  const th = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  const en = buildQuotationMasterSwitchableHTML(switchableQuote({ docLanguage: 'en' }), { editable: true });
+  const titleOf = (html) => html.match(/<title>([^<]*)<\/title>/)[1];
+  assert.equal(titleOf(th), titleOf(en));
+});
+
+test('พรีวิว: แถบเครื่องมือทั้งแถบเป็น no-print — ไม่ติดไปกับกระดาษที่ลูกค้าได้รับ', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  const toolbar = html.match(/<div class="toolbar no-print">[\s\S]*?\n  <\/div>/)[0];
+  assert.ok(toolbar.includes('langSwitch'), 'สวิตช์อยู่ในแถบ no-print');
+  assert.ok(toolbar.includes('btn-print'), 'ปุ่มพิมพ์อยู่ในแถบเดียวกัน');
+  assert.match(html, /\.no-print \{ display: none/, 'CSS ตอนพิมพ์ซ่อนแถบนี้');
 });
