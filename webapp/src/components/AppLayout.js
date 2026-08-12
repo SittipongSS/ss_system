@@ -17,6 +17,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
+import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
 const SUPABASE_CONFIGURED =
@@ -34,6 +35,8 @@ const SUPABASE_CONFIGURED =
 export default function AppLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  // เปลี่ยนหน้าจากเมนูแล้วจอเคยค้างที่เดิม — ดูเหตุผลใน useScrollTopOnNavigate
+  useScrollTopOnNavigate();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
   const [teams, setTeams] = useState([]);
