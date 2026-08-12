@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList,
   ExternalLink, FileCheck2, FileText, FlaskConical, FolderKanban, MapPin, Pencil, ShieldAlert,
-  Factory, PackageCheck, Trash2, Undo2, XCircle,
+  Factory, PackageCheck, Paperclip, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -57,6 +57,7 @@ import { JOB_STATUS_LABELS, salesOrderPlanSummary } from "@/lib/pm/productionPla
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import Textarea from "@/components/ui/Textarea";
 import Input from "@/components/ui/Input";
+import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { businessDate } from "@/lib/businessDate";
 
 const STATUS = {
@@ -245,6 +246,11 @@ export default function SalesOrderDetailPage() {
       action: () => requestAction("submit"),
     });
   }
+
+  /* ไฟล์หลักฐาน Won ของ QT ต้นทาง — ยืมมาโชว์บนใบนี้เท่านั้น ไม่ได้ถือครอง
+     (ดูเหตุผลตรงจุดที่เรนเดอร์) */
+  const wonFiles = Array.isArray(order?.quotation?.wonAttachments) ? order.quotation.wonAttachments : [];
+  const wonDocTypeLabel = WON_DOC_TYPE_LABELS[order?.quotation?.wonDocType] || order?.quotation?.wonDocType || "";
 
   function leaveEditMode() {
     setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
@@ -635,6 +641,35 @@ export default function SalesOrderDetailPage() {
                       </div>
                     </div>
                   )}
+                {/* ⭐ ไฟล์หลักฐานการปิด Won อยู่ **ติดกับเลขเอกสารอ้างอิง** (มติผู้ใช้ 2026-08-12)
+                    🐞 ก่อนหน้านี้เลข PO อยู่ที่ SO แต่ไฟล์ PO อยู่ที่ QT ⇒ คนที่ถามว่า
+                    "PO ใบนี้หน้าตายังไง" ต้องเด้งไปอีกหน้าแล้วเลื่อนหา ทั้งที่ยืนอยู่บนใบ
+                    ที่มีเลขนั้นพอดี
+                    ⚠️ **ยืมมาโชว์ ไม่ย้ายข้อมูล** — `wonAttachments` เป็นหลักฐานของ
+                    "การกด Won" ซึ่งเป็น audit trail ของ QT (mig 0138 เก็บไว้แม้ถูก
+                    unaccept) ย้ายออกเมื่อไรก็ทำลายร่องรอยนั้น
+                    ⚠️ ลิงก์ยิงเข้า proxy ของ QT ตัวเดิม (`quotations/[id]/file`) ซึ่งคุม
+                    สิทธิ์ด้วย view-scope ของดีล — ด่านเดียวกับที่หน้านี้ใช้อยู่แล้ว
+                    จึงไม่มีสิทธิ์ใหม่ให้พลาด */}
+                {wonFiles.length > 0 && (
+                  <div className={styles.readonlyFormField}>
+                    <span>ไฟล์หลักฐาน Won{wonDocTypeLabel ? ` · ${wonDocTypeLabel}` : ""}</span>
+                    <div className={styles.wonFileList}>
+                      {wonFiles.map((att, i) => (
+                        <a
+                          key={`${att.storagePath || att.fileUrl || "f"}-${i}`}
+                          href={`/api/sales-planning/quotations/${order.quotationId}/file?i=${i}`}
+                          target="_blank" rel="noreferrer"
+                          className={styles.wonFileLink}
+                          title={att.fileName || `ไฟล์ ${i + 1}`}
+                        >
+                          <Paperclip size={13} aria-hidden="true" />
+                          <span className="cell-ellipsis">{att.fileName || `ไฟล์ ${i + 1}`}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {editable
                   ? <label><span>หมายเหตุ</span><Textarea rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
                   : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
