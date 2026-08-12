@@ -731,11 +731,11 @@ export default function RequestDetailPage() {
         /* 🐞 **ชื่อคนยาวดันปุ่มล้นกรอบ** (IS-26080021 · ผู้ใช้ส่งภาพมา) — ชื่อบัญชี
            ในระบบเป็น "ProjectCo.Jeab : Project Management, R&D" ⇒ ป้ายปุ่มยาว 55
            ตัวอักษร ตกสองบรรทัดแล้วล้นออกนอกปุ่มบนรางขวาที่กว้าง 330px
-           ⇒ ตัดชื่อในป้าย เก็บชื่อเต็มไว้ที่ `title` (กติกาเดียวกับที่ใช้แก้ IS-26080004) */
-        label: assignee.name
-          ? `เปลี่ยนผู้รับผิดชอบ (${assignee.name.length > 18 ? `${assignee.name.slice(0, 17)}…` : assignee.name})`
-          : "มอบหมายผู้รับผิดชอบ",
-        title: assignee.name ? `เปลี่ยนผู้รับผิดชอบ — ตอนนี้คือ ${assignee.name}` : undefined,
+           ⇒ **ป้ายปุ่มบอกแค่การกระทำ** (มติผู้ใช้ 2026-08-12) — ชื่อคนที่ถืออยู่ตอนนี้
+           ไม่ใช่หน้าที่ของปุ่ม มันอยู่บนการ์ดผู้รับผิดชอบและในเธรดอยู่แล้ว ·
+           ชื่อเต็มเก็บไว้ที่ `title` เผื่อคนอยากรู้โดยไม่ต้องเลื่อนไปหา */
+        label: assignee.name ? "เปลี่ยนผู้รับผิดชอบ" : "มอบหมายผู้รับผิดชอบ",
+        title: assignee.name ? `ตอนนี้คือ ${assignee.name}` : undefined,
         kind: "edit",
         icon: UserPlus,
         onClick: () => setAssign(req.assigneeId || ""),
