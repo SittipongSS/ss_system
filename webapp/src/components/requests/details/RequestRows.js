@@ -65,7 +65,11 @@ export default function RequestRows({
     </>
   );
 
-  if (bare) return rows.map((item) => <div key={item.id}>{body(item)}</div>);
+  /* 🐞 โหมด `bare` เคยไม่ห่อ `.rowBody` ⇒ **ไม่มีเพดานความกว้าง** · ในเซลล์ตารางที่
+     กว้างเต็มการ์ด ปุ่มแนบไฟล์ (จัดชิดขวาโดย AttachmentsPanel) เลยไปอยู่ไกลจากป้าย
+     "รูป / สเปกแนบ" กว่า 1,300px — ที่ว่างกลางแถวยาวจนอ่านไม่ออกว่าปุ่มเป็นของอะไร
+     ⇒ ใช้ `.rowBody` ตัวเดียวกับโหมดปกติ (เพดาน 78ch ชุดเดียวกับ `.readable-text`) */
+  if (bare) return rows.map((item) => <div key={item.id} className={styles.rowBody}>{body(item)}</div>);
 
   return rows.map((item) => {
     const expanded = open.includes(item.id);
