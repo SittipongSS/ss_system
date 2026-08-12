@@ -47,6 +47,26 @@ export const getOverdueCount = (p) => {
   return (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
 };
 
+/* ── ช่วงเวลาจริงของโครงการ (มติผู้ใช้ 2026-08-12) ─────────────────────────
+   โครงการเป็น "ภาชนะรวมดีล" — วันเริ่มของงานเป็นของแต่ละดีล (ราก segment ถูกปักหมุด
+   ตอนรับเลี้ยงเข้าโครงการ) ⇒ วันที่โชว์บนหัวโครงการต้องอ่านจากขั้นตอนจริง ไม่ใช่จาก
+   คอลัมน์ `projects.startDate` / `dueDate` ซึ่งเป็นค่าที่ก๊อบมาตอนสร้างครั้งเดียว
+   แล้วไม่เดินตามดีลอีกเลย (โครงการหลายดีลจะค้างเป็นวันของดีลใบแรก)
+
+   `projects.startDate` ยังมีหน้าที่อยู่ — เป็น anchor ของ **งานกลาง** (ขั้นตอนที่ไม่มี
+   `dealId`) และของโครงการที่ยังไม่มีดีล จึงใช้เป็นค่าสำรองเมื่อยังไม่มีขั้นตอนเลย
+   `projects.dueDate` = **เป้า** ที่คนตั้งไว้ (หมุดบน Gantt) คนละตัวกับ "จบจริงตามแผน" */
+export const projectDateRange = (p) => {
+  const tasks = p?.tasks || [];
+  const starts = tasks.map((t) => t.startDate).filter(Boolean).sort();
+  const finishes = tasks.map((t) => t.finishDate).filter(Boolean).sort();
+  return {
+    start: starts[0] || p?.startDate || null,
+    finish: finishes[finishes.length - 1] || null,
+    target: p?.dueDate || null,
+  };
+};
+
 // ── Task-level urgency ────────────────────────────────────────────────
 // วันที่ใช้วัดความเร่งด่วน: finishDate ก่อน แล้วค่อย dueDate
 export const targetDate = (t) => t.finishDate || t.dueDate || null;

@@ -1464,6 +1464,8 @@ export default function DealOverviewPage() {
         categories={categories}
         createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
         createLabel="สร้างโครงการจากดีลนี้"
+        /* วันเริ่มของงานเป็นของดีล ไม่ใช่ของโครงการ — โครงการที่เกิดจากดีลจึงไม่ถามซ้ำ */
+        startDateFrom={deal ? `ดีล ${deal.code || deal.id}` : "ดีลก่อตั้ง"}
         subtitle={deal ? `ดีลก่อตั้ง: ${deal.code || deal.id} · ${deal.title || ""} · ${dealTypeOf(deal)} — ดีลถัดไปของงานเดียวกันผูกเข้าโครงการนี้ได้` : null}
       />
 

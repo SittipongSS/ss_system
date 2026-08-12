@@ -10,7 +10,7 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -23,7 +23,8 @@ import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { useDepartment } from "@/lib/roleContext";
-import { addBusinessDays, countBusinessDays, isBusinessDay, setHolidays, toLocalISODate } from "@/lib/pm/dateHelpers";
+import { setHolidays } from "@/lib/pm/dateHelpers";
+import { actualVariance, syncStepPatch } from "@/lib/pm/stepSchedule";
 import { recalculateGraph } from "@/lib/pm/schedule";
 import { cachedFetchJson } from "@/lib/apiCache";
 import Link from "next/link";
@@ -46,29 +47,24 @@ const ROLE_META = {
 };
 const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--teal)", "var(--amber)", "var(--green)", "var(--blue)"];
 
-
-function withOptimisticSchedule(task, body) {
-  const next = { ...body };
-  const startValue = "startDate" in body ? body.startDate : task.startDate;
-  if (!startValue) return next;
-  const start = new Date(startValue);
-  if (Number.isNaN(start.getTime())) return next;
-  while (!isBusinessDay(start)) start.setDate(start.getDate() + 1);
-  const startIso = toLocalISODate(start);
-  // ผู้ใช้ตั้งวันเริ่มเอง = ปักหมุด (กติกาเดียวกับ server) — พรีวิวกราฟจะได้ไม่ดูดแถวนี้
-  // กลับไปเกาะ anchor/predecessors ระหว่างยังไม่กดบันทึก
-  if ("startDate" in body) { next.startDate = startIso; next.startLocked = !!startIso; }
-  if ("finishDate" in body && body.finishDate) {
-    const durationDays = Math.max(1, countBusinessDays(startIso, body.finishDate) + 1);
-    next.durationDays = durationDays;
-    next.finishDate = toLocalISODate(addBusinessDays(start, durationDays - 1));
-  } else if ("startDate" in body || "durationDays" in body) {
-    const durationDays = Math.max(1, Number("durationDays" in body ? body.durationDays : task.durationDays) || 1);
-    next.durationDays = durationDays;
-    next.finishDate = toLocalISODate(addBusinessDays(start, durationDays - 1));
-  }
-  return next;
+/* บรรทัดรอง "ของจริง" ใต้วันตามแผน (มติผู้ใช้ 2026-08-12 — แบบ B)
+   ไทม์ไลน์เก็บสองชั้น: แผน (คำนวณจากจำนวนวันทำการ ขยับได้เมื่อ predecessor เลื่อน) กับ
+   ของจริง (สแตมตอนคนเดินสถานะ — mig 0238 ขยับไม่ได้) · เซลล์เดียวโชว์ทั้งคู่จึงเทียบได้
+   โดยไม่ต้องกวาดตาข้ามคอลัมน์ และตารางไม่กว้างขึ้น
+   ขั้นที่ยังไม่ถึงคิว = ไม่มีบรรทัดรอง (ไม่เดาว่าจะช้าหรือไม่)
+   ของเก่าก่อน mig 0238 = มีวันเสร็จจริงแต่ไม่มีวันเริ่มจริง — บรรทัดรองฝั่งเริ่มจึงหายไปเฉย ๆ */
+function ActualLine({ plan, actual }) {
+  if (!actual) return null;
+  const diff = actualVariance(plan, actual);
+  const tone = diff === null || diff === 0 ? "ontime" : diff > 0 ? "late" : "early";
+  const label = diff === null ? "" : diff === 0 ? " · ตรงวัน" : diff > 0 ? ` · ช้า ${diff} วัน` : ` · เร็ว ${-diff} วัน`;
+  return (
+    <span className="timeline-actual" data-tone={tone}>
+      จริง {fmtDate(actual)}{label}
+    </span>
+  );
 }
+
 
 // ── หมุดคำร้องบนขั้นตอน (มติ 3 + 6) ──────────────────────────────────────
 // บรีฟกลิ่น / ขอ Mock-up / ขอราคา PM / ติดตามของเข้า ไม่ใช่งานลอย ๆ แต่เป็น
@@ -130,6 +126,9 @@ export default function TimelineWorkspace({
   showViewSwitcher = true,
   onChanged,
   onError,
+  /* จำนวนขั้นตอนที่แก้ค้างยังไม่บันทึก — หน้าแม่ต้องรู้เพื่อกัน "ออก Rev ทับงานที่ยังไม่บันทึก"
+     (drafts อยู่ในนี้ หน้าแม่มองไม่เห็นเอง) */
+  onDirtyChange,
 }) {
   const [responsiveView, setResponsiveView] = useResponsiveView({ portrait: "list", landscape: "table" });
   const view = controlledView || responsiveView;
@@ -250,8 +249,10 @@ export default function TimelineWorkspace({
     }
   };
 
+  // สามช่องวัน (เริ่ม/จบ/จำนวนวัน) ซิงค์ผ่าน syncStepPatch ตัวเดียวกับที่ฟอร์มขั้นตอนใช้
+  // (lib/pm/stepSchedule) — แก้จากตาราง จากมุมมองเอกสาร หรือจากโมดัล ต้องได้ผลเท่ากัน
   const patch = (t, body) => {
-    const next = withOptimisticSchedule(t, body);
+    const next = syncStepPatch(t, body);
     setDrafts((current) => ({ ...current, [t.id]: { ...current[t.id], ...next } }));
     return Promise.resolve(true);
   };
@@ -260,6 +261,7 @@ export default function TimelineWorkspace({
     return task ? patch(task, body) : Promise.resolve(false);
   };
   const dirtyCount = Object.keys(drafts).length;
+  useEffect(() => { onDirtyChange?.(dirtyCount); }, [dirtyCount, onDirtyChange]);
   const discardDrafts = () => setDrafts({});
   const saveDrafts = async () => {
     const entries = Object.entries(drafts);
@@ -527,7 +529,7 @@ export default function TimelineWorkspace({
                           </div>
                           {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
                         </div>
-                        {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}>▴</button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}>▾</button></div>}
+                        {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}><ArrowUp size={14} aria-hidden="true" /></button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}><ArrowDown size={14} aria-hidden="true" /></button></div>}
                       </div>
                     );
                   })}
@@ -563,7 +565,9 @@ export default function TimelineWorkspace({
           <thead>
             <tr>
               <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
-              <th>สถานะ</th><th>เริ่ม</th><th>เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
+              {/* วันที่คนเทียบข้ามแถว ("ขั้นไหนจบก่อน") ต้องชิดขวาเหมือนตัวเลข —
+                  UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3 · หัวตารางชิดตามเนื้อข้างล่าง (กฎ 4) */}
+              <th>สถานะ</th><th className="num">เริ่ม</th><th className="num">เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
               {canEdit && <th>จัดการ</th>}
             </tr>
           </thead>
@@ -584,8 +588,8 @@ export default function TimelineWorkspace({
                     <td className="timeline-move-cell">
                       {canReorder && tableSort === "step" && (
                         <span style={{ display: "inline-flex", flexDirection: "column" }}>
-                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}>▴</button>
-                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}>▾</button>
+                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}><ArrowUp size={12} aria-hidden="true" /></button>
+                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}><ArrowDown size={12} aria-hidden="true" /></button>
                         </span>
                       )}
                     </td>
@@ -623,20 +627,32 @@ export default function TimelineWorkspace({
                         </span>
                       )}
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
                       {canEdit ? (
                         <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
                       ) : fmtDate(t.startDate)}
+                      <ActualLine plan={t.startDate} actual={t.actualStartDate} />
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
                       {canEdit ? (
-                        <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => patch(t, { finishDate: v || null })} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
+                        /* ล้างช่องนี้ไม่ได้ — วันจบวิ่งตามวันเริ่ม+จำนวนวันเสมอ (ท่าเดียวกับ
+                           ช่องวันจบในมุมมองเอกสาร) · อยากให้จบเร็ว/ช้าลงให้แก้จำนวนวัน */
+                        <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => { if (v && v !== t.finishDate) patch(t, { finishDate: v }); }} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
                       ) : fmtDate(t.finishDate)}
+                      <ActualLine plan={t.finishDate} actual={t.actualFinishDate} />
                     </td>
                     <td className="num">
                       {canEdit ? (
-                        <input type="number" min="1" className="premium-input mono" defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
+                        /* 🐞 key: ช่องนี้ uncontrolled (พิมพ์ได้อิสระ commit ตอน blur) แต่แถวไม่
+                           remount ⇒ ค่าที่ "คนอื่น" คำนวณให้ (แก้วันเริ่ม/วันจบ หรือ recalc
+                           หลังบันทึก) จะไม่เข้า DOM เลย เลขวันจึงค้างเป็นซากค่าเก่า
+                           ผูก key กับค่าปัจจุบันให้ React สร้าง input ใหม่เมื่อค่าเปลี่ยนจากทางอื่น
+                           (ท่าเดียวกับช่องจำนวนวันในมุมมองเอกสาร — ProjectDocumentView) */
+                        <input type="number" min="1" className="premium-input mono"
+                          key={`dur-${t.id}-${t.durationDays ?? 1}`}
+                          defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
                           aria-label={`จำนวนวัน ${t.name}`} disabled={!!busyId}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                           onBlur={(e) => {
                             const v = Math.max(1, Number(e.target.value) || 1);
                             if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });

@@ -77,6 +77,7 @@
 
 | เอกสาร | ค้างอะไร | สถานะ |
 |---|---|---|
+| [timeline-dates-plan.md](timeline-dates-plan.md) | เฟส 1–5 เสร็จ ยังไม่ merge · **mig 0238 ต้องรันก่อน deploy** ไม่งั้นกดเดินสถานะขั้นตอนไม่ได้ทั้งระบบ · เว้นข้อ 6 (บรรทัดของจริงบนใบพิมพ์ FM-PD-05) ไว้เป็นมติแยก | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
 | [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |
 | [costing-request-plan.md](costing-request-plan.md) | merge ครบ 3 PR · mig 0157/0158/0159 รัน prod แล้ว (ยืนยัน 2026-08-08) · เหลือ UAT ข้อ 1–17 | รอตรวจ |
