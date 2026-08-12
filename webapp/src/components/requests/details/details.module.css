@@ -33,7 +33,13 @@
 .rowChevron { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-fast); }
 .rowCard[data-open] .rowChevron { transform: rotate(90deg); }
 
-.rowBody { padding: 0 var(--space-3) var(--space-3); }
+/* 🐞 **ปุ่มแนบไฟล์เคยลอยไปติดขอบขวาห่างจากหัวข้อที่มันสังกัดเกือบ 500px**
+   (IS-26080021 · เห็นชัดในภาพที่ผู้ใช้ส่งมา) — `AttachmentsPanel` โหมด inline จัด
+   ปุ่มชิดขวาของกล่องที่ครอบมัน · บนจอ 1600px กล่องแถวกว้าง 1076px แต่ข้อความถูก
+   `ReadableText` คุมไว้ที่ 608px (78ch) ⇒ เหลือที่ว่าง ~470px คั่นกลาง
+   ⇒ คุมความกว้างของ **เนื้อทั้งก้อน** ให้เท่าบรรทัดที่อ่านได้ ทุกอย่างในแถวจึงเรียงเป็น
+   คอลัมน์เดียวกัน — ตัวเลข 78ch ชุดเดียวกับ `.readable-text` ใน globals.css */
+.rowBody { max-width: 78ch; padding: 0 var(--space-3) var(--space-3); }
 .rowTitle { display: flex; min-width: 0; flex: 1; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .rowSpec { margin-top: var(--space-1-5); font-size: var(--fs-7); color: var(--text-2); }
 .rowAttach { margin-top: var(--space-3); }

@@ -31,9 +31,19 @@ export default function FormulaDevDetail({
     : null;
   return (
     <>
-      <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
-
-      <FormulaDevBoard rows={board} renderStep={renderStep} />
+      {/* 🐞 **เคยมี `RequestRows` ยืนเดี่ยวตรงนี้เหนือตาราง** ⇒ ไล่แถวชุดเดียวกันสองรอบ
+          ชื่อกลิ่นและป้ายสถานะโผล่ซ้ำ (IS-26080021 — อาการเดียวกับสายกลิ่นเป๊ะ)
+          ⇒ ย้ายเข้าไปเป็นเนื้อของแถวที่กางได้ ไม่ใช่ก้อนแยกข้างบน */}
+      <FormulaDevBoard
+        rows={board}
+        renderStep={renderStep}
+        renderDetail={(boardRow) => {
+          const item = itemsById.get(boardRow.id);
+          return item
+            ? <RequestRows bare rows={[item]} canEditAttachments={canEditAttachments} />
+            : null;
+        }}
+      />
 
       {/* ⚠️ แถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 — FormulaPanel) — โครง
           หัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำที่นี่อีก */}

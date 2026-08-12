@@ -44,9 +44,13 @@ export default function RequestRows({
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
   ));
 
+  /* ⚠️ โหมด `bare` **ไม่โชว์ `spec`** — แถวของตารางที่ครอบมันอยู่บอกชื่อ/สเปกไปแล้ว
+     ทั้งบรรทัดหลักและบรรทัดรอง ⇒ โชว์ซ้ำที่นี่คือสำเนาที่สาม ซึ่งเป็นอาการเดิมที่
+     IS-26080021 แจ้งมา แค่ย้ายที่ · `bare` มีหน้าที่เดียวคือให้ **ไฟล์แนบของแถว**
+     กับของที่หัวข้อนั้นแปะเพิ่ม (`renderExtra`) */
   const body = (item) => (
     <>
-      {item.spec && <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />}
+      {!bare && item.spec && <ReadableText text={item.spec} lines={3} className={styles.rowSpec} />}
       {renderExtra?.(item)}
       <div className={styles.rowAttach}>
         <div className="toolbar-label">{attachLabel}</div>
