@@ -34,7 +34,7 @@
 
 /* ความกว้างคอลัมน์ — เหลือ 5 คอลัมน์ (เดิม 8) หลังยุบรหัส+ชื่อ และวันผลิต+วันส่ง
    เข้าเซลล์ละก้อน · ดู docs/scent-dev-ui-revamp-proposal.html §02 */
-.colCustomer { width: 190px; }
+.colCustomer { width: 260px; } /* ชื่อบริษัทไทยยาว เคยตก 2 บรรทัดที่ 190px (ผู้ใช้ทัก 2026-08-12) — คอลัมน์กลิ่นที่กว้างเกินเป็นคนจ่ายที่ให้ */
 .colSource { width: 158px; }
 .colDates { width: 132px; }
 .colStatus { width: 150px; }
@@ -97,3 +97,12 @@
   font-size: var(--fs-2);
   white-space: nowrap;
 }
+
+/* ราคา F บนการ์ด — การ์ดไม่มีหัวคอลัมน์ ป้ายจึงอยู่ในบรรทัดเดียวกับค่า */
+.cardPrice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.cardPriceLabel { color: var(--text-3); font-size: var(--fs-3); }
