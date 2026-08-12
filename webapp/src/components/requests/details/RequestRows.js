@@ -68,8 +68,11 @@ export default function RequestRows({
   /* 🐞 โหมด `bare` เคยไม่ห่อ `.rowBody` ⇒ **ไม่มีเพดานความกว้าง** · ในเซลล์ตารางที่
      กว้างเต็มการ์ด ปุ่มแนบไฟล์ (จัดชิดขวาโดย AttachmentsPanel) เลยไปอยู่ไกลจากป้าย
      "รูป / สเปกแนบ" กว่า 1,300px — ที่ว่างกลางแถวยาวจนอ่านไม่ออกว่าปุ่มเป็นของอะไร
-     ⇒ ใช้ `.rowBody` ตัวเดียวกับโหมดปกติ (เพดาน 78ch ชุดเดียวกับ `.readable-text`) */
-  if (bare) return rows.map((item) => <div key={item.id} className={styles.rowBody}>{body(item)}</div>);
+     🐞 **แล้วแก้ผิดทางรอบหนึ่ง** — ไปใส่เพดาน 78ch (เพดานของ *บรรทัดข้อความ*) ครอบ
+     ทั้งก้อน ⇒ ปุ่มไปชิดขวาของกล่อง 78ch แทนที่จะเป็นขวาของการ์ด = จอดกลางการ์ด
+     ⇒ ในการ์ด **ไม่ต้องมีเพดาน** — การ์ดเป็นตัวคุมความกว้างอยู่แล้ว และข้อความยาว
+     ก็มี `ReadableText` คุม measure ให้ในตัวเองอยู่แล้ว (`.readable-text` = 78ch) */
+  if (bare) return rows.map((item) => <div key={item.id} className={styles.bareBody}>{body(item)}</div>);
 
   return rows.map((item) => {
     const expanded = open.includes(item.id);
