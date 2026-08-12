@@ -434,8 +434,8 @@ export default function ProductRegistry() {
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
-                    <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
+                    <div className="text-[11px] text-[var(--accent)] font-mono">{p.fgCode}</div>
+                    <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{productNameBoth(p)}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
@@ -504,13 +504,15 @@ export default function ProductRegistry() {
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
-                        <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
-                        <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
+                        {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
+                        <div className="mono text-[12px] text-[var(--accent)]">{p.fgCode}</div>
+                        <div className="font-semibold text-[var(--text)] mt-0.5">{productNameBoth(p)}</div>
                       </td>
                       <td>
                         {cat ? (
                           <div className="text-xs leading-tight">
-                            <div className="text-[var(--text-3)]">{cat.main}</div>
+                            {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว */}
+                            <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
                             <div className="text-[var(--text-2)]">{cat.sub}</div>
                           </div>
                         ) : <span className="text-[var(--text-3)]">-</span>}

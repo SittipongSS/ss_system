@@ -197,9 +197,13 @@ export default function ProjectsIndexPage() {
                       <td>
                         {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
                         <Link prefetch={false} href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
+                          {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
+                          <span className="mono block text-[12px] text-[var(--accent)]">
+                            {p.code || p.id}
+                          </span>
                           <strong>{p.name || "-"}</strong>
-                          <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                            {p.code || p.id}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
+                          <span className="block text-[12px] text-[var(--text-3)]">
+                            {p.formulaName ? `สูตร ${p.formulaName}` : ""}
                           </span>
                           {/* ⚠️ ป้ายนี้คือตัวทวงที่ตัวกรองพัดหายไม่ได้ — ต่างจากตัวนับบนแถบ KPI
                               ที่ขยับตามตัวกรอง · โครงการที่ยังไม่ระบุสายต้องสะดุดตาตรงที่มันอยู่ */}
