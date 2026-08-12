@@ -16,6 +16,7 @@ import { approveRequestError } from '@/lib/requests/approval';
 import { assignPatch, assignRequestError } from '@/lib/requests/assign';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
+import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { listAttachments } from '@/lib/master/attachments';
@@ -133,6 +134,8 @@ export async function PATCH(request, { params }) {
   // กดส่ง = ต้องออกเลขที่คำร้องพร้อมบันทึกในทรานแซกชันเดียว (mig 0243) ไม่ใช่ใส่ลง patch
   let issueDocNo = false;
   let summary = '';
+  // รายการเปลี่ยนแปลงของ PDR — ใช้ตอนเขียนเธรดท้าย handler
+  let pdrChanges = null;
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
 
@@ -302,6 +305,9 @@ export async function PATCH(request, { params }) {
           if (insertError) throw insertError;
         }
       }
+      /* ⭐ เก็บ "ช่องไหนเปลี่ยนจากอะไรเป็นอะไร" ไว้ลงเธรด (IS-26080021) — ต้องคิด
+         **ก่อน** เขียน patch ลง DB เพราะหลังจากนั้น `before` ไม่มีค่าเดิมให้เทียบแล้ว */
+      pdrChanges = pdrChangeSummary(before, columns);
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
     } else if (action === 'reschedule') {
       // ⭐ **เลื่อนวันกำหนดส่ง** — RD เลือกวันตอนรับเรื่องแล้วเปลี่ยนใจได้ (มติผู้ใช้)
@@ -473,6 +479,7 @@ export async function PATCH(request, { params }) {
       request: after, action,
       opts: {
         reason: patch.cancelReason ?? patch.bounceReason ?? eventReason,
+        pdrChanges,
         // วันเดิมก่อนเลื่อน — อ่านจาก `before` เพราะ `after` ถูกทับไปแล้ว
         previousDueDate: before.committedDueDate ?? null,
         // ⚠️ อ่านจาก `patch` ไม่ใช่ `body` — ตอนถอนมอบหมาย `patch` เป็น null ชัดเจน

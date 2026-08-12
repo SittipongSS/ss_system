@@ -11,7 +11,6 @@
 // ⚠️ การจัดกลุ่ม/นับ อยู่ที่ `lib/requests/briefBoard.js` ทั้งหมด — กฎที่ตั้งไว้หลัง
 // บั๊กรางซ้ำ (#1033): ประกอบ array ของแถวใน JSX เมื่อไร CI จะมองไม่เห็น
 import { Fragment, useState } from "react";
-import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
@@ -25,7 +24,12 @@ const qty = (n) => fmtNumber(n);
  * `briefBoardTotals` จากก้อนเดียวกัน ⇒ ตัวเลขข้างบนกับตารางข้างล่างขัดกันไม่ได้
  * เชิงโครงสร้าง · ประกอบสองรอบเมื่อไรก็เปิดทางให้สองที่นับคนละแบบ
  */
-export default function BriefBoard({ groups = [], renderStep = null }) {
+/* ⭐ `renderDetail` — เนื้อรายแถวที่ตารางไม่รู้จัก (สเปกที่ขอ · ไฟล์แนบของ direction)
+   ⚠️ **รับเป็น prop ไม่ใช่ให้ตารางรู้เรื่องไฟล์แนบเอง** — แพตเทิร์นเดียวกับ `renderStep`
+   ตารางนี้ถูกใช้ซ้ำหลายที่ ผูกไฟล์แนบเข้ามาตรง ๆ เมื่อไรก็ลากของสายอื่นเข้ามาด้วย
+   🐞 ที่มา (IS-26080021): หน้าพัฒนากลิ่นเคยวาง `RequestRows` ไว้เหนือตารางนี้ ⇒ ไล่
+   direction ชุดเดียวกันสองรอบ · ยุบเหลือตารางเดียวแล้วสเปก/ไฟล์แนบต้องมีที่อยู่ */
+export default function BriefBoard({ groups = [], renderStep = null, renderDetail = null }) {
   // ยังไม่มีทั้งบรีฟและ direction = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง
   const active = groups.filter((g) => g.directions.length);
   const idle = groups.filter((g) => !g.directions.length);
@@ -37,6 +41,7 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
     active.filter((g) => g.summary?.needsAction).map((g) => g.id || 'orphan'),
   ));
   const [showIdle, setShowIdle] = useState(false);
+  // ยุบ/กางระดับ "ก้อนบรีฟ" — สิ่งที่ทำให้ใบ 25 บรีฟไม่กลายเป็นกำแพง (มติ 2026-08-10)
   const toggle = (key) => setOpen((cur) => {
     const next = new Set(cur);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -51,7 +56,6 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
   if (!active.length) {
     return (
       <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-        <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
         <div className={styles.restStrip}>
           <strong>{idle.length}</strong> บรีฟ · ยังไม่มี direction จากฝ่ายสักตัว
           <Button variant="quiet" size="sm" className={styles.restToggle}
@@ -70,7 +74,6 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-      <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
       {active.map((g) => {
         const key = g.id || "orphan";
@@ -95,48 +98,45 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
             </button>
 
             {isOpen && (
-              <TableScroll surface="embedded" minWidth={renderStep ? 780 : 640}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th className={styles.colName}>direction</th>
-                      <th className={styles.colOutcome}>ผลลัพธ์</th>
-                      <th className={styles.colStage}>สถานะ</th>
-                      {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.directions.map((d) => (
-                      <tr key={d.id}>
+              /* ⭐ **การ์ดรายแถว ไม่ใช่ตาราง** (มติผู้ใช้ 2026-08-13 · IS-26080021 แบบ ข)
+                 สเปกเต็ม: docs/request-board-table-options.html หัวข้อ "แบบ ข"
+                 🐞 ตารางเป็นทรงที่ผิดสำหรับข้อมูลชุดนี้ — บรีฟหนึ่งก้อนมี direction
+                 1–3 ตัว ตารางจ่ายค่าหัวคอลัมน์ฟรีแล้วยังบีบเนื้อลงช่องแคบจนต้องซ่อน
+                 สเปก/ไฟล์แนบไว้หลังปุ่มกาง ⇒ การ์ดเห็นครบโดยไม่ต้องกดสักครั้ง
+                 ⚠️ **การยุบ/กางระดับ "ก้อนบรีฟ" ยังอยู่** — นั่นคือสิ่งที่ทำให้ใบ 25 บรีฟ
+                 ไม่กลายเป็นกำแพง (มติ 2026-08-10) · ที่ตัดออกคือการกางรายแถวเท่านั้น */
+              <div className={styles.cardList}>
+                {g.directions.map((d) => (
+                  <article key={d.id} className={styles.itemCard} data-child={d.depth ? "" : undefined}>
+                    <div className={styles.itemTop}>
+                      <div className={styles.itemName}>
                         {/* ⭐ รอบแก้เยื้องใต้ตัวต้นทาง — ใช้สายพันธุ์ที่ฐานเก็บไว้แล้ว
                             (`derivedFromItemId`) ตอบว่า "ตัวนี้แก้มาจากตัวไหน" */}
-                        <td className={d.depth ? styles.childCell : undefined}>
-                          <span className={styles.name}>{d.name}</span>
-                          {d.rework && <span className={styles.rework}>รอบแก้</span>}
-                        </td>
-                        <td>
-                          {d.outcomeLabel ? (
-                            <>
-                              <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
-                              {d.confirmedQty != null && (
-                                <span className={styles.qty}>{qty(d.confirmedQty)}</span>
-                              )}
-                              {d.outcomeNote && (
-                                <ReadableText text={d.outcomeNote} lines={2} className={styles.note} />
-                              )}
-                            </>
-                          ) : (
-                            // ⚠️ ยังไม่ถึงตาลูกค้า ≠ ลูกค้าเงียบ — ขีดเฉย ๆ อ่านเป็นอย่างหลัง
-                            <span className={styles.pending}>ยังไม่ถึงขั้นลูกค้าตอบ</span>
-                          )}
-                        </td>
-                        <td><StatusBadge tone={d.stageTone} label={d.stageLabel} /></td>
-                        {renderStep && <td className={styles.stepCell}>{renderStep(d)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
+                        <strong>{d.name}</strong>
+                        {d.rework && <span className={styles.rework}>รอบแก้</span>}
+                      </div>
+                      <StatusBadge tone={d.stageTone} label={d.stageLabel} />
+                      {renderStep && <div className={styles.itemStep}>{renderStep(d)}</div>}
+                    </div>
+
+                    <div className={styles.facts}>
+                      <span>
+                        ผลลัพธ์{" "}
+                        {d.outcomeLabel
+                          ? <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
+                          // ⚠️ ยังไม่ถึงตาลูกค้า ≠ ลูกค้าเงียบ — ขีดเฉย ๆ อ่านเป็นอย่างหลัง
+                          : <strong>ยังไม่ถึงขั้นลูกค้าตอบ</strong>}
+                        {d.confirmedQty != null && ` · คอนเฟิร์ม ${qty(d.confirmedQty)}`}
+                      </span>
+                    </div>
+                    {d.outcomeNote && (
+                      <ReadableText text={d.outcomeNote} lines={2} className={styles.note} />
+                    )}
+
+                    {renderDetail?.(d)}
+                  </article>
+                ))}
+              </div>
             )}
           </Fragment>
         );

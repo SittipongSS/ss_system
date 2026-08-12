@@ -20,6 +20,7 @@ export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState(null);
   const boxRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -45,15 +46,30 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", outside);
   }, [open]);
 
+  const patch = (body) => fetch("/api/notifications", {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+
   const readAll = async () => {
     setBusy(true);
     try {
-      await fetch("/api/notifications", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "read_all" }),
-      });
+      await patch({ action: "read_all" });
       await load();
     } catch { /* เงียบ */ } finally { setBusy(false); }
+  };
+
+  /* อ่านแล้วทีละแถว — ท่าเดียวกับหน้า /notifications (ของชิ้นเดียวกันต้องทำได้เท่ากัน
+     ทั้งสองที่) · จำเป็นเพราะแจ้งเตือนบางชนิดปลายทางไม่มีเธรดให้เปิด (`lead_overdue`
+     ชี้ไปหน้าคิว · `service_visit` ชี้ไปตาราง) กดเข้าไปแล้วตัวเลขก็ไม่ลด
+     ⚠️ อัปเดตในที่ ไม่โหลดใหม่ทั้งกอง — ไม่งั้นรายการขยับใต้เมาส์ระหว่างที่ยังอ่านอยู่ */
+  const readOne = async (id) => {
+    setBusyId(id);
+    const at = new Date().toISOString();
+    try {
+      await patch({ action: "read_one", id });
+      setItems((prev) => prev.map((row) => (row.id === id ? { ...row, readAt: at } : row)));
+      setUnread((n) => Math.max(0, n - 1));
+    } catch { /* เงียบ */ } finally { setBusyId(null); }
   };
 
   return (
@@ -100,6 +116,19 @@ export default function NotificationBell() {
                     {n.href
                       ? <Link href={n.href} className={styles.link} onClick={() => setOpen(false)}>{row}</Link>
                       : <div className={styles.link}>{row}</div>}
+                    {!n.readAt && (
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        icon={<Check size={13} />}
+                        className={styles.readBtn}
+                        disabled={busyId === n.id}
+                        onClick={() => readOne(n.id)}
+                        aria-label="ทำเครื่องหมายว่าอ่านแล้ว"
+                        title="ทำเครื่องหมายว่าอ่านแล้ว"
+                      />
+                    )}
                   </li>
                 );
               })}

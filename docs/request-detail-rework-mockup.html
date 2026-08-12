@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>หน้ารายละเอียดคำร้อง — รื้อใหม่ (IS-26080021)</title>
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ (ชุดเดียวกับ mockup อื่นใน docs/) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+--font-mono:ui-monospace,"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding:var(--space-6) var(--space-4) var(--space-7)}
+h1{font-size:var(--fs-22);margin:0 0 var(--space-2)}
+h2{font-size:var(--fs-16);margin:var(--space-7) 0 var(--space-3);padding-bottom:var(--space-2);border-bottom:1px solid var(--border)}
+.lede{color:var(--text-2);margin:0 0 var(--space-4)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)}
+.pad{padding:var(--space-5)}
+
+/* ── รายการปัญหา ── */
+.issues{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.issues li{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3);align-items:start;
+  padding:var(--space-3) var(--space-4);background:var(--panel);border:1px solid var(--border);border-radius:var(--radius)}
+.num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-full);
+  background:var(--red-soft);color:var(--red);font-size:var(--fs-12);font-weight:700}
+.issues b{display:block}
+.issues small{color:var(--text-3);font-size:var(--fs-12)}
+
+/* ── โครงหน้าใหม่ ── */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--space-4);align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+.stack{display:grid;gap:var(--space-4);min-width:0}
+
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2) var(--space-3)}
+.code{font-family:var(--font-mono);font-size:var(--fs-13);color:var(--text-3)}
+.title{font-size:var(--fs-18);font-weight:600;margin:0}
+.meta{color:var(--text-3);font-size:var(--fs-12)}
+.brief{margin:var(--space-3) 0 0;color:var(--text-2)}
+
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-12);font-weight:600;background:var(--panel-3);color:var(--text-2)}
+.badge.work{background:var(--blue-soft);color:var(--blue)}
+.badge.done{background:var(--green-soft);color:var(--green)}
+
+/* ตารางเดียวของแท็บงาน */
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+  padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.sec-head h3{margin:0;font-size:var(--fs-14)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-11);letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);
+  font-weight:600;padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--border)}
+td{padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.rowline{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
+.rowline b{font-weight:600}
+.sub{display:block;color:var(--text-3);font-size:var(--fs-12);margin-top:2px}
+.num-col{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);
+  border:1px solid var(--border-strong);background:transparent;color:var(--text);font:inherit;
+  font-size:var(--fs-13);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.tiny{padding:3px 10px;font-size:var(--fs-12)}
+.expand{background:var(--panel-2)}
+.expand td{padding-top:var(--space-4);padding-bottom:var(--space-4)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-4);margin:0}
+.kv dt{color:var(--text-3);font-size:var(--fs-12)}
+.kv dd{margin:0}
+.filerow{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--border);
+  border-radius:var(--radius-full);font-size:var(--fs-12);color:var(--text-2);background:var(--panel)}
+.hint{color:var(--text-3);font-size:var(--fs-11)}
+
+/* รางขวา */
+.rail{display:grid;gap:var(--space-4);position:sticky;top:var(--space-4)}
+.eyebrow{font-size:var(--fs-11);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.steps{display:grid;gap:0;margin:var(--space-3) 0 0;padding:0;list-style:none}
+.steps li{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3);padding:var(--space-2) 0;align-items:start}
+.dot{width:20px;height:20px;border-radius:var(--radius-full);display:grid;place-items:center;
+  font-size:var(--fs-11);background:var(--panel-3);color:var(--text-3)}
+.dot.on{background:var(--accent);color:#fff;font-weight:700}
+.dot.ok{background:var(--green-soft);color:var(--green)}
+.steps b{font-weight:600;font-size:var(--fs-13)}
+.steps small{display:block;color:var(--text-3);font-size:var(--fs-11)}
+.actions{display:grid;gap:var(--space-2);margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--border)}
+.danger{color:var(--red);border-color:var(--red)}
+
+.note{margin:var(--space-3) 0 0;padding:var(--space-3) var(--space-4);border-left:3px solid var(--accent);
+  background:var(--accent-soft);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-13)}
+.note b{color:var(--accent-ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>หน้ารายละเอียดคำร้อง — รื้อใหม่</h1>
+<p class="lede">
+  ที่มา: <b>IS-26080021</b> — “หน้ารายละเอียดคำร้อง แท็บงาน หน้าตาไม่สวยงาม” ·
+  ม็อกอัพนี้ใช้ใบจริงจากภาพหน้าจอ (Mock up Hand Cream · CHAO PHRAYA THAI CONTEMPORARY 01 REV 3)
+</p>
+
+<h2>1 · ปัญหาที่วัดได้จากหน้าจริง</h2>
+<ol class="issues">
+  <li><span class="num">1</span><span>
+    <b>ชื่อกลิ่นโผล่ 4 ครั้งในจอเดียว</b>
+    <small>หัวการ์ด · บรรทัดใต้หัว · คอลัมน์แรกของตาราง · บรรทัดใต้ในตาราง — ทั้งหมดคือ “CHAO PHRAYA THAI CONTEMPORARY 01 REV 3”</small>
+  </span></li>
+  <li><span class="num">2</span><span>
+    <b>การ์ดรายแถว กับ “สรุปทั้งใบ” เป็นของชุดเดียวกัน</b>
+    <small>ใบนี้มี direction เดียว จึงเห็นชัดว่าอ่านสองรอบ · ใบที่มี 6 direction จะได้การ์ด 6 ใบแล้วตามด้วยตาราง 6 แถวเดิม</small>
+  </span></li>
+  <li><span class="num">3</span><span>
+    <b>“สรุปทั้งใบ” หลุดออกจากระบบการ์ด</b>
+    <small>ไม่มีกรอบ ไม่มีพื้นการ์ด ลอยอยู่บนพื้นหน้า — อ่านเหมือนคนละหน้ากับของข้างบน</small>
+  </span></li>
+  <li><span class="num">4</span><span>
+    <b>ป้ายสถานะ “กำลังทำ” ซ้ำสองที่</b>
+    <small>หัวการ์ด และในตาราง — ป้ายเดียวกัน แถวเดียวกัน</small>
+  </span></li>
+  <li><span class="num">5</span><span>
+    <b>การ์ด “รูป / สเปกแบบ” สูงเกินเนื้อ</b>
+    <small>มีข้อความจริง 2 บรรทัด แต่กินความสูงเท่าการ์ดใหญ่ · ปุ่มแนบไฟล์ลอยไปชิดขวา ห่างจากหัวข้อที่มันสังกัด</small>
+  </span></li>
+  <li><span class="num">6</span><span>
+    <b>คอลัมน์ในตารางถ่วงน้ำหนักผิด</b>
+    <small>“หมวดสินค้า × กลิ่น” กินเกินครึ่งตาราง ส่วน ผลลัพธ์ / สถานะ / ก้าวถัดไป เบียดกันอยู่ขวาสุด</small>
+  </span></li>
+</ol>
+
+<h2>2 · แบบใหม่</h2>
+<p class="lede">
+  หลักคิด: <b>ของชิ้นเดียวเขียนครั้งเดียว</b> — ยุบการ์ดรายแถวกับตารางสรุปเหลือ
+  <b>ตารางเดียวที่กางรายละเอียดได้</b> · ไฟล์แนบ สเปก และปุ่มก้าว อยู่ในแถวที่มันสังกัด ไม่ใช่การ์ดลอยแยก
+</p>
+
+<div class="layout">
+  <div class="stack">
+
+    <!-- หัวใบ: รวบเป็นก้อนเดียว ไม่แยกการ์ด "รายละเอียดคำร้อง" ออกมาต่างหาก -->
+    <section class="card pad">
+      <div class="head">
+        <span class="code">DR-26080042</span>
+        <h2 class="title" style="margin:0;border:0;padding:0">ขอ Mock up ครีมทามือ</h2>
+        <span class="badge work">ฝ่าย RD กำลังทำ</span>
+      </div>
+      <div class="meta">พัฒนากลิ่น · ถึงฝ่าย RD · เปิดโดย Patinya Poonsittichokchai · 12 ส.ค. 2569</div>
+      <p class="brief">ลูกค้าขอ Mock up Hand Cream ใช้กลิ่น CHAO PHRAYA THAI CONTEMPORARY 01 REV 3 สูตร STD. จำนวน 2 ชิ้น Ae 1 ชิ้น</p>
+    </section>
+
+    <!-- ตารางเดียวของแท็บงาน -->
+    <section class="card">
+      <div class="sec-head">
+        <h3>งานที่ RD ส่งกลับ <span class="hint">· 1 รายการ</span></h3>
+        <button class="btn tiny">แบบฟอร์ม PDR</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:44%">รายการ</th>
+            <th style="width:20%">ผลลัพธ์</th>
+            <th style="width:14%">สถานะ</th>
+            <th style="width:22%" class="num-col">ก้าวถัดไป</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="rowline">
+                <b>ครีมทามือ</b>
+                <span class="badge">CHAO PHRAYA THAI CONTEMPORARY 01 REV 3</span>
+              </div>
+              <span class="sub">ขอ 3 ชิ้น · ยังไม่มีสูตรออกมาจากแถวนี้</span>
+              <button class="btn tiny" style="margin-top:8px">▸ รูป / สเปก / ไฟล์แนบ</button>
+            </td>
+            <td>ยังไม่ถึงตาลูกค้า</td>
+            <td><span class="badge work">กำลังทำ</span></td>
+            <td class="num-col"><button class="btn primary">ส่งของ</button></td>
+          </tr>
+          <!-- แถวที่กางแล้ว — ของที่เคยเป็นการ์ดลอยข้างบน ย้ายมาอยู่ในนี้ -->
+          <tr class="expand">
+            <td colspan="4">
+              <dl class="kv">
+                <dt>สเปกที่ขอ</dt>
+                <dd>ครีมทามือ 30 ml · หลอดบีบ · ฉลากตัวอย่าง</dd>
+                <dt>กลิ่น</dt>
+                <dd>CHAO PHRAYA THAI CONTEMPORARY 01 REV 3 · สูตร STD.</dd>
+              </dl>
+              <div class="filerow">
+                <span class="chip">📎 ref-packaging.jpg</span>
+                <span class="chip">📎 spec-handcream.pdf</span>
+                <button class="btn tiny">แนบไฟล์</button>
+                <span class="hint">ลากมาวาง หรือ Ctrl+V ได้</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card pad">
+      <div class="eyebrow">Discussion</div>
+      <h3 style="margin:4px 0 0;font-size:var(--fs-16)">พูดคุยในคำร้องนี้</h3>
+      <p class="meta" style="margin-top:var(--space-3)">ส่งเคสถึงฝ่าย RD — 1 รายการ · Patinya Poonsittichokchai</p>
+    </section>
+
+  </div>
+
+  <!-- รางขวา: เหมือนเดิม แค่บีบระยะ -->
+  <aside class="rail">
+    <section class="card pad">
+      <div class="eyebrow">Document control</div>
+      <h3 style="margin:4px 0 0;font-size:var(--fs-16)">จัดการคำร้อง</h3>
+      <ol class="steps">
+        <li><span class="dot ok">✓</span><span><b>จัดทำคำร้อง</b><small>ระบุวัสดุและชั้นจำนวน</small></span></li>
+        <li><span class="dot ok">✓</span><span><b>รอรับเรื่อง</b><small>ส่งถึงฝ่าย RD</small></span></li>
+        <li><span class="dot on">3</span><span><b>ฝ่าย RD กำลังทำ</b><small>เสร็จแล้ว 0/1</small></span></li>
+        <li><span class="dot">4</span><span><b>ตอบแล้ว</b><small>ผู้ตอบยืนยันว่าตอบครบ</small></span></li>
+        <li><span class="dot">5</span><span><b>ปิดเรื่อง</b><small>งานนี้สิ้นสุด</small></span></li>
+      </ol>
+      <div class="actions">
+        <button class="btn">เลื่อนวันกำหนดส่ง</button>
+        <button class="btn">เปลี่ยนผู้รับผิดชอบ</button>
+        <button class="btn danger">ยกเลิกคำร้อง</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<h2>3 · สิ่งที่เปลี่ยน</h2>
+<ol class="issues">
+  <li><span class="num" style="background:var(--green-soft);color:var(--green)">✓</span><span>
+    <b>ตารางเดียว ไม่มีการ์ดรายแถวซ้อน</b>
+    <small>กดแถวเพื่อกางสเปก/ไฟล์แนบ — ของที่เคยเป็นการ์ดลอยข้างบนย้ายมาอยู่ในแถวที่มันสังกัด</small>
+  </span></li>
+  <li><span class="num" style="background:var(--green-soft);color:var(--green)">✓</span><span>
+    <b>ชื่อกลิ่นเขียนครั้งเดียว</b>
+    <small>อยู่เป็นชิปคู่กับชื่อหมวดสินค้า — เห็นว่าเป็น “ของสองชั้น” โดยไม่ต้องพิมพ์ซ้ำสี่รอบ</small>
+  </span></li>
+  <li><span class="num" style="background:var(--green-soft);color:var(--green)">✓</span><span>
+    <b>สถานะที่เดียว</b>
+    <small>อยู่ในคอลัมน์สถานะของแถว · ป้ายบนหัวใบเป็นสถานะ “ทั้งใบ” ซึ่งคนละระดับ ไม่ซ้ำกัน</small>
+  </span></li>
+  <li><span class="num" style="background:var(--green-soft);color:var(--green)">✓</span><span>
+    <b>คอลัมน์ถ่วงน้ำหนักใหม่ 44 / 20 / 14 / 22</b>
+    <small>ปุ่มก้าวถัดไปได้ที่พอไม่ตกบรรทัด · “ผลลัพธ์” ไม่ถูกบีบจนอ่านไม่ออก</small>
+  </span></li>
+  <li><span class="num" style="background:var(--green-soft);color:var(--green)">✓</span><span>
+    <b>หัวใบรวบเป็นก้อนเดียว</b>
+    <small>รหัส · ชื่อเรื่อง · สถานะ · ที่มา · รายละเอียด อยู่การ์ดเดียว — ไม่แยก “รายละเอียดคำร้อง” เป็นการ์ดของตัวเอง</small>
+  </span></li>
+</ol>
+
+<div class="note">
+  <b>ยังไม่ตัดสินในม็อกอัพนี้:</b> แถวที่กางอยู่โชว์ค้างไว้ให้ดูของข้างใน —
+  ของจริงต้องเลือกว่า <b>กางทีละแถว</b> (คลิกแล้วปิดอันอื่น) หรือ <b>กางค้างหลายแถวได้</b> ·
+  ใบที่มี direction เดียวควร <b>กางอัตโนมัติ</b> เพราะไม่มีอะไรให้เลือก
+</div>
+
+<div class="note" style="border-color:var(--blue);background:var(--blue-soft)">
+  <b>เรื่องแท็บตั้งต้น (ข้อ 2 ของใบ):</b> ตอนนี้เข้ามาที่ “งาน” เมื่อมี direction แล้ว ·
+  เข้า “แบบฟอร์ม PDR” เมื่อยังไม่มี — เป็นมติ 2026-08-09 เพราะแท็บงานเปล่าอ่านเหมือนระบบพัง ·
+  พอแท็บงานมีตารางที่บอกว่ากำลังรออะไรอยู่แล้ว <b>จะให้เข้า “งาน” เสมอก็ปลอดภัยขึ้น</b> — รอเคาะ
+</div>
+
+</div>
+</body>
+</html>

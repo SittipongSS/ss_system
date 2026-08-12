@@ -465,7 +465,20 @@ export default function AttachmentsPanel({
 
     return (
       <div className="mt-1" {...intake.zoneProps}>
-        <div className="flex min-h-8 items-center justify-end gap-2">
+        {/* ⭐ **คำใบ้อยู่แถวเดียวกับปุ่ม** (มติผู้ใช้ 2026-08-13 · IS-26080021)
+            🐞 เดิมคำใบ้เป็น <p> ใต้แถวปุ่ม ⇒ กล่องไฟล์กินสองบรรทัดโดยที่บรรทัดบนมีแต่
+            ปุ่มลอยชิดขวา และที่ว่างกลางแถวไม่มีอะไรเลย · ผู้ใช้ส่งภาพมาว่าโล่งทั้งสองจุด
+            ⇒ คำใบ้ชิดซ้าย ปุ่มชิดขวา บรรทัดเดียว — ที่ว่างกลางแถวมีของอยู่แล้ว
+            ⚠️ `flex-wrap` กันจอแคบ: คำใบ้ยาว 40 ตัวอักษร บีบกับปุ่มแล้วตัดคำมั่ว */}
+        <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          {/* ⚠️ คำสั้น "ลากมาวาง · Ctrl+V" ไม่ใช่ประโยคเต็ม — กล่องนี้ไปโผล่ในรางขวา
+              ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
+              ⇒ กล่องเดียวกันสูงไม่เท่ากันสองที่ในหน้าเดียว (ผู้ใช้ทักเอง) */}
+          {canEdit && (
+            <p className="mr-auto text-[10px] text-[var(--text-3)]">
+              ลากมาวาง · Ctrl+V
+            </p>
+          )}
           {canEdit && (
             <button
               type="button"
@@ -514,11 +527,6 @@ export default function AttachmentsPanel({
             onChange={handleCardFile}
             className="hidden"
           />
-        )}
-        {canEdit && (
-          <p className="mt-1 text-[10px] text-[var(--text-3)]">
-            ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
-          </p>
         )}
         {lightbox}
       </div>

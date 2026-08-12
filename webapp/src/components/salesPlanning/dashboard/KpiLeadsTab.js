@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
 import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
-import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, LEAD_SLA_STAGES, leadSlaNote, slaPendingTone,
 } from "@/lib/sales/leads";
@@ -16,6 +16,7 @@ import { TEAM_LABELS } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtName, fmtPercent } from "@/lib/format";
+import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
@@ -74,7 +75,7 @@ const OUTCOME_CARDS = [
   { key: "lost", label: "ไม่ไปต่อ", value: (f) => pct(f.disqualified, f.total), note: (f) => `${f.disqualified ?? 0} จาก ${f.total ?? 0} ใบ` },
 ];
 
-export default function KpiLeadsTab({ month, teamFilter }) {
+export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
   /* ชื่อคน — อ่านจาก id ไม่ใช่สำเนาชื่อที่ค้างอยู่ในแถว (ท่าเดียวกับหน้าคิวลีด)
      🐞 ตารางสองใบนี้เคยโชว์ `assigneeName` / `createdByName` ตรง ๆ ซึ่งเป็น snapshot
      ตอนที่บันทึก — prod มี 64 แถวที่เป็นชื่อย่อ/ชื่อเก่าที่ไม่ตรงบัญชีใครเลย ⇒ ตาราง
@@ -89,7 +90,9 @@ export default function KpiLeadsTab({ month, teamFilter }) {
     setLoading(true);
     setError("");
     try {
-      const q = new URLSearchParams({ month });
+      /* ติ๊ก "ทุกเดือน" ⇒ ส่ง `year` ไม่ใช่ `month=all` — `all` แปลว่า *ทุกปีตั้งแต่
+         เปิดระบบ* ซึ่งไม่ตรงกับปีที่ค้างอยู่บนปุ่มเลือกงวด (มติ 2026-07-29) */
+      const q = allMonths ? new URLSearchParams({ year: yearOfMonth(month) || "" }) : new URLSearchParams({ month });
       if (teamFilter && teamFilter !== "all") q.set("team", teamFilter);
       const res = await fetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลด KPI ลีดไม่สำเร็จ");
@@ -99,7 +102,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
     } finally {
       setLoading(false);
     }
-  }, [month, teamFilter]);
+  }, [month, allMonths, teamFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -107,6 +110,9 @@ export default function KpiLeadsTab({ month, teamFilter }) {
   // ⇒ useMemo ที่พึ่ง `f` จะคำนวณใหม่ทุกครั้ง (eslint react-hooks จับได้)
   const f = useMemo(() => kpi?.funnel || {}, [kpi]);
   const sla = kpi?.sla || {};
+  /* ป้ายงวดคิดจากค่าที่หน้าจอถืออยู่ ไม่ใช่ `kpi.month` ที่ตอบกลับมา — โหมดทั้งปี
+     route ไม่ได้ใช้ `month` แต่ยังคืนค่าถอย (เดือนปัจจุบัน) ติดมาด้วย */
+  const scopeLabel = periodScopeLabel(month, allMonths);
 
   // ป้ายไทยเติมที่นี่ครั้งเดียว ทั้งแท่งและตารางใช้ตัวเดียวกัน จะได้ไม่หลุดกันคนละชื่อ
   const channels = useMemo(
@@ -168,7 +174,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
           ⇒ อย่าเอาแถบซ้ำกลับมา ถ้าอยากให้หน้านี้มีพาดหัว ให้เป็นตัวเลขที่หน้าคิวลีด
             *ไม่มี* เท่านั้น */}
 
-      <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle={`ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น · เดือน ${kpi?.month || month}`}>
+      <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle={`ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น · ${scopeLabel}`}>
         {/* ผังลดหลั่นเป็น **กราฟแท่ง** ไม่ใช่กล่องตัวเลข 8 ใบ — ตัวเลขล้วนอ่านไม่ออกว่า
             หล่นตรงไหน ต้องเอามาลบกันเองในหัว ส่วนความยาวแท่งบอกได้ในแวบเดียว
             ⚠️ "ผ่านนัดประชุม" เป็น **แขนง** ไม่ใช่ด่าน (สีคนละตัว) — create_deal ข้ามขั้นนัดได้
@@ -195,7 +201,10 @@ export default function KpiLeadsTab({ month, teamFilter }) {
         </p>
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
-        <div className={styles.qualityGrid} aria-busy={loading}>
+        {/* ใช้ `MetricStrip` ไม่ใช่กริดของตัวเอง — แถบกลางมีเส้นคั่น 1px ระหว่างช่องและ
+            กรอบรอบแถบให้อยู่แล้ว (กริดเดิมเป็นการ์ดลอยไม่มีอะไรแบ่ง อ่านไม่ออกว่าเลข
+            ไหนคู่กับป้ายไหนเวลามีหลายใบเรียงกัน) */}
+        <SaMetricStrip className={styles.qualityStrip} aria-busy={loading}>
           {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
               โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
           {LEAD_SLA_STAGES.map(({ key, label, pendingLabel }) => {
@@ -211,14 +220,14 @@ export default function KpiLeadsTab({ month, teamFilter }) {
               />
             );
           })}
-        </div>
-        {/* ผลลัพธ์แยกกริดของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม
-            (ทันเวลาไหม vs ได้ผลเท่าไร) และรวมกริดเดียวแล้วจะตัดบรรทัดค้างเป็นแถวเศษ */}
-        <div className={styles.qualityGrid} aria-busy={loading}>
+        </SaMetricStrip>
+        {/* ผลลัพธ์แยกแถบของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม
+            (ทันเวลาไหม vs ได้ผลเท่าไร) และรวมแถบเดียวแล้วจะตัดบรรทัดค้างเป็นแถวเศษ */}
+        <SaMetricStrip className={styles.qualityStrip} aria-busy={loading}>
           {OUTCOME_CARDS.map(({ key, label, value, note }) => (
             <SaMetric key={key} icon={<CalendarClock />} label={label} value={value(f)} note={note(f)} />
           ))}
-        </div>
+        </SaMetricStrip>
       </SaSection>
 
       {/* Marketing: กรอกรายวัน */}
@@ -332,12 +341,12 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             </table></TableScroll>
           </>
         ) : (
-          <ChartEmptyState>ยังไม่มีลีดในเดือนนี้</ChartEmptyState>
+          <ChartEmptyState>ยังไม่มีลีด · {scopeLabel}</ChartEmptyState>
         )}
       </SaSection>
 
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
-      <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="เรียงตามของค้างมากสุด · คอลัมน์ผลงานเป็นของเดือนที่เลือก ส่วน “ค้างตอนนี้” ไม่ผูกกับเดือน">
+      <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle={`เรียงตามของค้างมากสุด · คอลัมน์ผลงานเป็นของ${scopeLabel} ส่วน “ค้างตอนนี้” ไม่ผูกกับงวด`}>
         <TableScroll surface="embedded"><table>
             {/* "ค้างตอนนี้" อยู่ท้ายสุด (มติผู้ใช้ 2026-08-12) — คอลัมน์ซ้ายไล่ตามลำดับงาน
                 ของเดือน (รับมอบ → ติดต่อ → SLA → นัด → เปิดลูกค้า) ตัวนี้คนละขอบเขตเวลา

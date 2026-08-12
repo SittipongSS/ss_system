@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สรุปทั้งใบ — เลือกแบบ ข แล้ว (IS-26080021)</title>
+<style>
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;
+--font-sans:"IBM Plex Sans Thai","Leelawadee UI","Noto Sans Thai","Sarabun",Tahoma,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1100px;margin:0 auto;padding:var(--space-6) var(--space-4) var(--space-7)}
+h1{font-size:var(--fs-22);margin:0 0 var(--space-2)}
+h2{font-size:var(--fs-18);margin:var(--space-7) 0 var(--space-2)}
+.lede{color:var(--text-2);margin:0 0 var(--space-4)}
+.why{margin:0 0 var(--space-3);padding:var(--space-3) var(--space-4);background:var(--panel);
+  border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-13)}
+.why b{color:var(--accent-ink)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden}
+.cardHead{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.cardHead h3{margin:0;font-size:var(--fs-16)}
+.ico{color:var(--accent)}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);font-size:var(--fs-12);font-weight:600;background:var(--panel-3);color:var(--text-2)}
+.badge.work{background:var(--blue-soft);color:var(--blue)}
+.badge.done{background:var(--green-soft);color:var(--green)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.tiny{padding:4px 10px;font-size:var(--fs-12)}
+.small{color:var(--text-3);font-size:var(--fs-12)}
+.nm{font-weight:600}
+.sub{display:block;color:var(--text-3);font-size:var(--fs-12);margin-top:2px}
+.fileline{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
+.fileline .lbl{color:var(--text-3);font-size:var(--fs-12);margin-right:auto}
+
+/* ── ก) ตาราง ── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-11);letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);font-weight:600;padding:var(--space-2) var(--space-5);border-bottom:1px solid var(--border)}
+td{padding:var(--space-3) var(--space-5);vertical-align:middle}
+tbody tr+tr>td{border-top:1px solid var(--border)}
+.rowBtn{display:inline-flex;align-items:flex-start;gap:var(--space-2);border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;text-align:left}
+.chev{color:var(--text-3)}
+.detail>td{background:var(--panel-2)}
+.dbody{max-width:78ch}
+.num-col{text-align:right}
+
+/* ── ข) การ์ดรายแถว ── */
+.stack{display:grid;gap:var(--space-3);padding:var(--space-4) var(--space-5)}
+.item{border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-4);background:var(--panel)}
+.itemTop{display:flex;align-items:flex-start;gap:var(--space-3);flex-wrap:wrap}
+.itemTop .grow{flex:1;min-width:0}
+.facts{display:flex;gap:var(--space-5);flex-wrap:wrap;margin-top:var(--space-2);font-size:var(--fs-13);color:var(--text-2)}
+.facts b{color:var(--text);font-weight:600}
+
+/* ── ค) รายการมีรางสถานะ ── */
+.feed{padding:var(--space-2) var(--space-5) var(--space-4)}
+.fitem{display:grid;grid-template-columns:auto 1fr auto;gap:var(--space-3);align-items:start;
+  padding:var(--space-4) 0;border-bottom:1px solid var(--border)}
+.fitem:last-child{border-bottom:0}
+.dot{width:26px;height:26px;border-radius:var(--radius-full);display:grid;place-items:center;font-size:var(--fs-12);flex:0 0 auto}
+.dot.work{background:var(--blue-soft);color:var(--blue)}
+.dot.done{background:var(--green-soft);color:var(--green)}
+.frow2{display:flex;gap:var(--space-4);flex-wrap:wrap;margin-top:var(--space-1);font-size:var(--fs-13);color:var(--text-2)}
+.pick{display:grid;gap:var(--space-2);margin:var(--space-4) 0 0;padding:0;list-style:none}
+.pick li{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3);padding:var(--space-3) var(--space-4);background:var(--panel);border:1px solid var(--border);border-radius:var(--radius)}
+.tag{font-weight:700;color:var(--accent-ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>สรุปทั้งใบ — <b style="color:var(--accent-ink)">เลือกแบบ ข แล้ว</b></h1>
+<p class="lede">
+  ข้อมูลชุดเดียวกันทั้งสามแบบ (ใบ FD-26080006 · 2 direction) · เลือกได้ว่าอยากได้ทรงไหน
+</p>
+<div class="why">
+  <b>ข้อเท็จจริงที่ควรใช้ตัดสิน:</b> ใบส่วนใหญ่ในระบบมี direction <b>1–3 ตัว</b> ไม่ใช่หลายสิบ ·
+  ตารางออกแบบมาเพื่อกวาดสายตาเทียบหลายแถว — ถ้าของจริงมีสองแถว ตารางก็จ่ายค่าหัวคอลัมน์
+  ไปฟรี ๆ · แต่ถ้าจะมีใบที่ 6–10 direction (บรีฟหลายก้อน × รอบแก้) ตารางจะชนะขาด
+</div>
+
+<!-- ═══ ก ═══ -->
+<h2>แบบ ก · ตาราง (แบบที่เสนอไปรอบก่อน)</h2>
+<div class="card">
+  <div class="cardHead"><span class="ico">▤</span><h3>สรุปทั้งใบ</h3></div>
+  <table>
+    <thead><tr>
+      <th style="width:44%">รายการ</th><th style="width:20%">ผลลัพธ์</th>
+      <th style="width:14%">สถานะ</th><th style="width:22%" class="num-col">ก้าวถัดไป</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>
+        <button class="rowBtn"><span class="chev">▾</span><span>
+          <span class="nm">ครีมทามือ · CHAO PHRAYA 01 REV 3</span>
+          <span class="sub">ยังไม่มีสูตรออกมาจากแถวนี้ · ขอ 3 ชิ้น</span></span></button>
+      </td>
+        <td>ยังไม่ถึงตาลูกค้า</td><td><span class="badge work">กำลังทำ</span></td>
+        <td class="num-col"><button class="btn primary">ส่งของ</button></td></tr>
+      <tr class="detail"><td colspan="4"><div class="dbody">
+        <div class="small">สเปกที่ขอ · ครีมทามือ 30 ml · หลอดบีบ</div>
+        <div class="fileline"><span class="lbl">รูป / สเปกแนบ · ยังไม่มีไฟล์</span>
+          <button class="btn tiny">📎 แนบไฟล์</button></div>
+      </div></td></tr>
+      <tr><td>
+        <button class="rowBtn"><span class="chev">▸</span><span>
+          <span class="nm">ครีมทามือ · CHAO PHRAYA 02</span>
+          <span class="sub">เข้าทะเบียนสูตรแล้ว · ขอ 2 ชิ้น</span></span></button>
+      </td>
+        <td>ลูกค้าอนุมัติ</td><td><span class="badge done">เสร็จแล้ว</span></td>
+        <td class="num-col"><span class="small">—</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="small" style="margin-top:var(--space-2)">
+  ✓ กวาดตาเทียบหลายแถวได้ · ✓ ปุ่มเรียงตรงกันทุกแถว &nbsp;·&nbsp;
+  ✗ ใบที่มีแถวเดียวจ่ายค่าหัวคอลัมน์ฟรี · ✗ จอแคบต้องเลื่อนแนวนอน
+</p>
+
+<!-- ═══ ข ═══ -->
+<h2>แบบ ข · การ์ดรายแถว (ไม่มีตาราง ไม่ต้องกด)</h2>
+<div class="card">
+  <div class="cardHead"><span class="ico">▤</span><h3>สรุปทั้งใบ <span class="small">· 2 รายการ</span></h3></div>
+  <div class="stack">
+    <div class="item">
+      <div class="itemTop">
+        <div class="grow">
+          <div class="nm">ครีมทามือ · CHAO PHRAYA 01 REV 3</div>
+          <div class="sub">ยังไม่มีสูตรออกมาจากแถวนี้</div>
+        </div>
+        <span class="badge work">กำลังทำ</span>
+        <button class="btn primary">ส่งของ</button>
+      </div>
+      <div class="facts">
+        <span>จำนวน <b>3 ชิ้น</b></span>
+        <span>ผลลัพธ์ <b>ยังไม่ถึงตาลูกค้า</b></span>
+        <span>สเปก <b>30 ml · หลอดบีบ</b></span>
+      </div>
+      <div class="fileline"><span class="lbl">รูป / สเปกแนบ · ยังไม่มีไฟล์</span>
+        <button class="btn tiny">📎 แนบไฟล์</button></div>
+    </div>
+    <div class="item">
+      <div class="itemTop">
+        <div class="grow">
+          <div class="nm">ครีมทามือ · CHAO PHRAYA 02</div>
+          <div class="sub">เข้าทะเบียนสูตรแล้ว — เปิดดู</div>
+        </div>
+        <span class="badge done">เสร็จแล้ว</span>
+      </div>
+      <div class="facts">
+        <span>จำนวน <b>2 ชิ้น</b></span>
+        <span>ผลลัพธ์ <b>ลูกค้าอนุมัติ</b></span>
+      </div>
+      <div class="fileline"><span class="lbl">รูป / สเปกแนบ</span>
+        <span class="badge">📎 ref-packaging.jpg</span>
+        <button class="btn tiny">แนบไฟล์</button></div>
+    </div>
+  </div>
+</div>
+<p class="small" style="margin-top:var(--space-2)">
+  ✓ เห็นครบไม่ต้องกด · ✓ จอแคบไม่พัง · ✓ ใบที่มี 1–2 แถวอ่านง่ายสุด &nbsp;·&nbsp;
+  ✗ ใบที่มี 8 แถวกลายเป็นเสายาว · ✗ เทียบข้ามแถวยากเพราะค่าไม่ตรงคอลัมน์
+</p>
+
+<!-- ═══ ค ═══ -->
+<h2>แบบ ค · รายการมีรางสถานะ (อ่านเป็น “ค้างอะไรอยู่”)</h2>
+<div class="card">
+  <div class="cardHead"><span class="ico">▤</span><h3>สรุปทั้งใบ <span class="small">· ค้าง 1 · เสร็จ 1</span></h3></div>
+  <div class="feed">
+    <div class="fitem">
+      <span class="dot work">●</span>
+      <div>
+        <div class="nm">ครีมทามือ · CHAO PHRAYA 01 REV 3</div>
+        <div class="frow2">
+          <span class="small">ขอ 3 ชิ้น</span>
+          <span class="small">ยังไม่ถึงตาลูกค้า</span>
+          <span class="small">ยังไม่มีสูตร</span>
+        </div>
+        <div class="fileline"><span class="lbl">ยังไม่มีไฟล์แนบ</span>
+          <button class="btn tiny">📎 แนบไฟล์</button></div>
+      </div>
+      <button class="btn primary">ส่งของ</button>
+    </div>
+    <div class="fitem">
+      <span class="dot done">✓</span>
+      <div>
+        <div class="nm">ครีมทามือ · CHAO PHRAYA 02</div>
+        <div class="frow2">
+          <span class="small">ขอ 2 ชิ้น</span>
+          <span class="small">ลูกค้าอนุมัติ</span>
+          <span class="small">เข้าทะเบียนสูตรแล้ว</span>
+        </div>
+        <div class="fileline"><span class="badge">📎 ref-packaging.jpg</span></div>
+      </div>
+      <span class="small">—</span>
+    </div>
+  </div>
+</div>
+<p class="small" style="margin-top:var(--space-2)">
+  ✓ ตอบ “ค้างอะไรอยู่” ทันทีจากจุดสีซ้าย · ✓ ไม่มีหัวคอลัมน์ให้จ่ายฟรี · ✓ จอแคบไม่พัง &nbsp;·&nbsp;
+  ✗ ตัวเลข/ผลลัพธ์ไม่เรียงเป็นคอลัมน์ เทียบเชิงปริมาณยากสุดในสามแบบ
+</p>
+
+<h2>เลือกยังไง</h2>
+<ul class="pick">
+  <li><span class="tag">ก</span><span><b>ถ้าจะมีใบที่ 6–10 direction จริง</b> — บรีฟหลายก้อน × รอบแก้ · ตารางชนะขาดเพราะเทียบข้ามแถวได้</span></li>
+  <li><span class="tag">ข</span><span><b>ถ้าใบส่วนใหญ่มี 1–3 direction</b> — เห็นครบโดยไม่ต้องกดสักครั้ง และไม่มีอะไรซ่อน</span></li>
+  <li><span class="tag">ค</span><span><b>ถ้างานหลักคือ “ตามว่าค้างอะไร”</b> ไม่ใช่ “เทียบตัวเลข” — จุดสีซ้ายตอบได้จากระยะไกล</span></li>
+</ul>
+
+<div class="why" style="margin-top:var(--space-4);border-left-color:var(--green)">
+  <b>✓ มติผู้ใช้ 2026-08-13: เอาแบบ ข</b> — การ์ดรายแถว ไม่มีตาราง ไม่ต้องกดกาง<br>
+  <b>เหตุผลที่เลือก:</b> — ของจริงในฐานตอนนี้คือ 1 direction ต่อใบ และ ข ไม่ต้องกดเลยสักครั้ง ·
+  ถ้าอนาคตมีใบใหญ่ ค่อยสลับเป็น ก โดยไม่ต้องแก้ข้อมูล เพราะทั้งสองกินโครงเดียวกัน
+</div>
+
+</div>
+</body>
+</html>

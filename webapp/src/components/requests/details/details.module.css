@@ -1,17 +1,81 @@
 /* ── เนื้อของหน้ารายละเอียดรายหัวข้อ (P3b) ──────────────────────────────
    ⚠️ ไฟล์เดียวสำหรับทุกหัวข้อโดยเจตนา — โครงการ์ดต้องเหมือนกันทุกหัวข้อ
    สิ่งที่ต่างคือ *เนื้อ* ไม่ใช่กรอบ (มติเดิม R-3: "หน้าเดียว เนื้อสลับตามหัวข้อ") */
+/* ⭐ แถวกางได้ (IS-26080021) — ยุบแล้วสูงเท่าหัวแถว ไม่ใช่การ์ดเต็มก้อนที่มีกล่อง
+   ไฟล์แนบกางค้างไว้แม้ยังไม่มีไฟล์ (อาการที่ผู้ใช้ส่งภาพมา) */
 .rowCard {
-  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-bottom: var(--space-2-5);
+  margin-bottom: var(--space-2);
   background: var(--panel);
+  overflow: hidden;
 }
-.rowHead { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
-.rowTitle { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* กางแล้วขอบเข้มขึ้นนิดเดียว — พอให้เห็นว่าแถวไหนเปิดอยู่ตอนกางหลายแถวพร้อมกัน
+   ⚠️ ไม่เปลี่ยนพื้นหลังการ์ด: กางสามแถวแล้วหน้าจะกลายเป็นบล็อกสีทับกันทั้งหน้า */
+.rowCard[data-open] { border-color: var(--border-strong); }
+
+/* หัวแถวเป็นปุ่มเต็มความกว้าง — พื้นที่กดใหญ่ และคนคาดหวังว่ากดที่ชื่อแล้วต้องกาง */
+.rowToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rowToggle:hover { background: var(--panel-2); }
+.rowToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rowChevron { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-fast); }
+.rowCard[data-open] .rowChevron { transform: rotate(90deg); }
+
+/* 🐞 **ปุ่มแนบไฟล์เคยลอยไปติดขอบขวาห่างจากหัวข้อที่มันสังกัดเกือบ 500px**
+   (IS-26080021 · เห็นชัดในภาพที่ผู้ใช้ส่งมา) — `AttachmentsPanel` โหมด inline จัด
+   ปุ่มชิดขวาของกล่องที่ครอบมัน · บนจอ 1600px กล่องแถวกว้าง 1076px แต่ข้อความถูก
+   `ReadableText` คุมไว้ที่ 608px (78ch) ⇒ เหลือที่ว่าง ~470px คั่นกลาง
+   ⇒ คุมความกว้างของ **เนื้อทั้งก้อน** ให้เท่าบรรทัดที่อ่านได้ ทุกอย่างในแถวจึงเรียงเป็น
+   คอลัมน์เดียวกัน — ตัวเลข 78ch ชุดเดียวกับ `.readable-text` ใน globals.css */
+.rowBody { max-width: 78ch; padding: 0 var(--space-3) var(--space-3); }
+/* ในเซลล์ตาราง (โหมด bare) เซลล์มี padding ของตัวเองอยู่แล้ว — ไม่ต้องเว้นซ้อน */
+/* ในการ์ด (โหมด bare) — ไม่มีเพดานความกว้าง ไม่มี padding ซ้อน
+   ⚠️ **ห้ามใส่ max-width ที่นี่** เพราะข้างในมีตัวคุมไฟล์ที่จัดชิดขวา · ใส่แล้วปุ่มจะ
+   ไปจอดกลางการ์ดแทนที่จะชิดขอบ (เจอมาแล้ว IS-26080021) · measure ของข้อความมี
+   `ReadableText` คุมในตัวเองอยู่แล้ว */
+.bareBody { display: block; }
+.rowTitle { display: flex; min-width: 0; flex: 1; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .rowSpec { margin-top: var(--space-1-5); font-size: var(--fs-7); color: var(--text-2); }
-.rowAttach { margin-top: var(--space-3); }
+/* ⭐ **ไฟล์แนบอยู่แถวเดียว** (มติผู้ใช้ 2026-08-13 · IS-26080021 แบบ ข)
+   🐞 เดิมป้าย · ปุ่ม · คำใบ้ อยู่คนละบรรทัด ⇒ กินครึ่งความสูงการ์ดทั้งที่ยังไม่มีไฟล์
+   สักใบ และปุ่มลอยอยู่กลางที่ว่างจนอ่านไม่ออกว่าเป็นของอะไร
+   ⇒ ป้ายซ้าย · ปุ่มขวา · บรรทัดเดียว (`AttachmentsPanel` จัดปุ่มชิดขวาให้อยู่แล้ว)
+   ⚠️ เส้นคั่นบางบอกว่าไฟล์เป็นคนละเรื่องกับข้อเท็จจริงข้างบน โดยไม่ต้องเพิ่มหัวข้อ */
+.rowAttach {
+  display: flex;
+  /* ⚠️ `flex-start` ไม่ใช่ `center` — ตัวคุมไฟล์สูงกว่าป้ายเพราะมีคำใบ้ "ลากไฟล์มาวาง…"
+     ต่อท้ายอยู่ในก้อนเดียวกัน · จัดกึ่งกลางแล้วป้ายจะไหลลงไป 13px ไม่ตรงบรรทัดปุ่ม */
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* ป้ายไม่กินทั้งบรรทัด — ดันตัวคุมไฟล์ไปอยู่ขวาแทน */
+/* แถวปุ่มของตัวคุมไฟล์สูง 32px (`min-h-8`) ส่วนป้ายสูงเท่าบรรทัดเดียว
+   ⇒ ให้ป้ายสูง 32px เท่ากันแล้วจัดกึ่งกลางในตัวเอง — สองกล่องสูงเท่ากันและชิดบน
+   เหมือนกัน จุดกึ่งกลางจึงตรงกันเป๊ะ **โดยไม่ต้องเดาตัวเลขชดเชย** */
+.rowAttach > .toolbar-label,
+.rowAttach > :global(.toolbar-label) {
+  margin: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.rowAttach > :global([data-file-intake]) { flex: 1; min-width: 0; }
 /* คำชี้ทางใต้หัวข้อไฟล์ของแถว — สายเอกสารใช้บอกว่า "แนบผ่านปุ่มส่งเอกสาร" (ม-90) */
 .rowAttachHint { margin: var(--space-1) 0 0; font-size: var(--fs-7); color: var(--text-3); }
 

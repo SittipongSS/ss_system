@@ -19,6 +19,24 @@ test('ด่านที่ข้ามได้ต้องแคบ — เป
   }
 });
 
+/* 🐞 ผู้ใช้แจ้งเอง: กด "ดูทั้งหมด" ในกระดิ่งแล้วเด้งกลับหน้าแรก — `/notifications`
+   ตกจาก OPEN_PAGES ตอนส่ง #1193 ⇒ ด่าน default-deny เด้ง non-admin ทุกคน
+   ⚠️ ทดสอบด้วย admin ไม่มีวันเห็น (ผ่านตั้งแต่บรรทัดแรกของ lockedOut) — ต้องไล่ role จริง */
+test('⭐ กล่องแจ้งเตือนของตัวเองต้องเปิดได้ทุก role ที่ล็อกอิน', () => {
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'legal', 'staff', 'viewer', 'secretary', 'marketing', 'executive']) {
+    assert.equal(
+      lockedOut({ role, extraCaps: [] }, '/notifications', 'GET', false),
+      false,
+      `${role} เปิด /notifications ไม่ได้`,
+    );
+  }
+  // API ของกล่องก็ต้องเปิดคู่กัน ไม่งั้นหน้าโหลดขึ้นแต่ข้อมูลไม่มา
+  for (const role of ['ae', 'viewer', 'marketing']) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/api/notifications', 'GET', true), false, role);
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/api/notifications', 'PATCH', true), false, `${role} PATCH`);
+  }
+});
+
 test('every signed-in role can open its own account page', () => {
   const roles = ['ae', 'ac', 'rd', 'legal', 'staff', 'viewer', 'secretary'];
 
