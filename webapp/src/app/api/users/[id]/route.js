@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamAssignment } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
+import { syncPersonName } from '@/lib/personNameFanOut';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +105,19 @@ export async function PATCH(request, { params }) {
   const notes = [];
   if (updates.password) notes.push('รีเซ็ตรหัสผ่าน');
   if (body.disabled !== undefined) notes.push(body.disabled ? 'ปิดบัญชี' : 'เปิดบัญชี');
+
+  /* เปลี่ยนชื่อแล้วสำเนาชื่อในตารางต้องตามด้วย — ไม่งั้นค้างชื่อเก่าตลอดกาล
+     (ดู lib/personNameFanOut.js ว่าคอลัมน์ไหนซิงก์ได้ คอลัมน์ไหนเป็น snapshot ห้ามแตะ)
+     ⚠️ ล้มตรงนี้ไม่ทำให้การเปลี่ยนชื่อล้ม — ชื่อบนบัญชีเปลี่ยนไปแล้วและจอที่ใช้
+     `livePersonName` ก็อ่านถูกอยู่ดี แค่บันทึกไว้ใน audit ว่าสำเนายังไม่ตาม */
+  const newName = after?.user?.user_metadata?.name;
+  const oldName = existing.user.user_metadata?.name;
+  if (newName && newName !== oldName) {
+    const { updated, errors } = await syncPersonName(supabase, { userId: id, name: newName });
+    const touched = Object.entries(updated).map(([k, n]) => `${k} ${n}`);
+    if (touched.length) notes.push(`ทาชื่อใหม่ทับสำเนา ${touched.join(' · ')}`);
+    if (errors.length) notes.push(`สำเนาชื่อบางส่วนไม่ตาม: ${errors.join(' · ')}`);
+  }
   await recordAudit({
     user: me, action: 'update', entityType: 'user', entityId: id,
     before: userAuditSnapshot(existing.user), after: userAuditSnapshot(after?.user),
