@@ -21,7 +21,9 @@ import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
-import { QUEUE_TABS, queueCounts, queueTabRows, startHereRequest, visibleQueueRows } from "@/lib/requests/queueBoard";
+import {
+  QUEUE_TABS, queueCounts, queueTabRows, startHereRequest, visibleQueueRows, waitingOnMeRows,
+} from "@/lib/requests/queueBoard";
 import StartHereCard from "@/components/requests/StartHereCard";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { bouncedDaysText } from "@/lib/requests/queueBoard";
@@ -162,17 +164,12 @@ export default function RequestsPage() {
   // ร่างทิ้งทั้งหมด (ไม่งั้นเลขบนแท็บบวกกันเกินจริง) แต่ใบตีกลับคือร่างที่ **ฝ่าย
   // ส่งคืนมาให้เราแก้** ⇒ เป็นของค้างที่ขวางงานตัวเองอยู่จริง ๆ · ปล่อยไว้แบบเดิม
   // การ์ดจะขึ้นว่า "ไม่มีเรื่องรอคุณอยู่ตอนนี้" ทั้งที่มีใบรอเราแก้อยู่
-  // ⚠️ บวกเข้าที่ **ตัวการ์ด** ไม่ใช่ที่ `queueTabRows` — ใบยังต้องอยู่แท็บ
-  // "ที่ฉันเปิด" ที่เดียว ไม่งั้นนับซ้ำสองแท็บ
+  // ⚠️ ยังบวกนอก `queueTabRows` เหมือนเดิม — ใบยังต้องอยู่แท็บ "ที่ฉันเปิด" ที่เดียว
+  // ไม่งั้นนับซ้ำสองแท็บ · แต่ตัวบวกย้ายไป `waitingOnMeRows` (2026-08-12) เพื่อให้
+  // **ป้ายตัวเลขบนเมนู** ใช้ชุดเดียวกับการ์ดนี้ — เดิมการ์ดบวกเองในหน้า ป้ายจึงไม่นับ
   const today = businessDate();
   const startHere = useMemo(
-    () => startHereRequest(
-      [
-        ...queueTabRows(requests, { tab: "todo", myDepts }),
-        ...requests.filter((r) => r._mine && r.status === "draft" && r.bouncedAt),
-      ],
-      { todayIso: today },
-    ),
+    () => startHereRequest(waitingOnMeRows(requests, { myDepts }), { todayIso: today }),
     [requests, myDepts, today],
   );
 

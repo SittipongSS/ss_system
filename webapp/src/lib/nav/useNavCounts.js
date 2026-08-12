@@ -21,6 +21,18 @@ export const NAV_COUNT_KEYS = {
   "/sa/leads": "leads",
 };
 
+/* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
+   หน้าแรก** กับ **เมนูสลับระบบ** สองที่ที่คนตัดสินใจว่า "จะเข้าไปทำอะไรก่อน"
+   ⭐ เดิมสองที่นั้นไม่มีตัวเลขเลย ⇒ คนที่ทำงานหลายระบบต้องเข้าไปดูทีละระบบเพื่อรู้ว่า
+   มีของค้างไหม · เมนูในระบบมีป้ายอยู่แล้ว แต่กว่าจะเห็นก็ต้องเข้าไปอยู่ในระบบนั้นก่อน
+   ⚠️ ประกาศติดกับ `NAV_COUNT_KEYS` โดยตั้งใจ — เพิ่มเมนูใหม่ที่มีป้ายแล้วลืมมาใส่
+   ที่นี่ = ป้ายขึ้นบนเมนูแต่การ์ดหน้าแรกยังโล่ง แล้วคนสรุปว่าระบบนั้นว่าง
+   (เทสต์ล็อกไว้ว่า **ทุก href ใน NAV_COUNT_KEYS ต้องอยู่ในระบบใดระบบหนึ่งเสมอ**) */
+export const SYSTEM_COUNT_HREFS = {
+  salesplan: ["/sa/leads", "/sa/tasks", "/requests"],
+  rd: ["/rd/requests"],
+};
+
 export default function useNavCounts(pathname) {
   const [counts, setCounts] = useState({});
   const lastAt = useRef(0);
@@ -53,4 +65,15 @@ export default function useNavCounts(pathname) {
 export function navCountFor(counts, href) {
   const value = counts?.[NAV_COUNT_KEYS[href]];
   return Number(value) > 0 ? Number(value) : null;
+}
+
+/** ยอดรวมของทั้งระบบ — ไม่มี/ศูนย์ = null (กติกาเดียวกับป้ายบนเมนู)
+ *
+ *  ⚠️ **บวกจาก `counts` ที่ API ส่งมาแล้วเท่านั้น** ไม่ยิงคำขอเพิ่ม — คีย์ที่ผู้ใช้
+ *  ไม่มีสิทธิ์เห็นไม่ถูกส่งมาตั้งแต่ต้น (ดู api/nav/counts) ⇒ ยอดรวมของแต่ละคน
+ *  นับเฉพาะเมนูที่ตัวเองเปิดได้อยู่แล้วโดยอัตโนมัติ */
+export function navCountForSystem(counts, systemKey) {
+  const total = (SYSTEM_COUNT_HREFS[systemKey] || [])
+    .reduce((sum, href) => sum + (navCountFor(counts, href) || 0), 0);
+  return total > 0 ? total : null;
 }
