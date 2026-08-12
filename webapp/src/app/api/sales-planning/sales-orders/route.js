@@ -4,6 +4,8 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   //
   // ⚠️ เอาเฉพาะช่องที่ผู้เรียกใช้จริง — ทั้งแถวมีราคาต่อหน่วยและส่วนลดซึ่งไม่เกี่ยวกับ
   // คำร้อง ยิ่งดึงมามาก ยิ่งมีของให้หลุดออกทาง response โดยไม่ตั้งใจ
+  const todayIso = businessDate();
   const orderIds = (orders || []).map((row) => row.id);
   const { data: lines, error: lineError } = orderIds.length
     ? await supabase.from('sales_order_lines')
@@ -79,10 +82,31 @@ export const GET = withUser(async ({ user, supabase }) => {
       ? supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').in('id', dealIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length
-      ? supabase.from('quotations').select('id, quoteNumber, status').in('id', quoteIds)
+      // paymentPlan มาด้วยเพื่อบอกจำนวนงวด **ตามแผน** ของใบที่ยังไม่เริ่มติดตาม
+      // (ไม่งั้นคอลัมน์งวดจะว่างทั้งที่ใบเสนอราคาระบุไว้แล้วว่าแบ่งกี่งวด)
+      ? supabase.from('quotations').select('id, quoteNumber, status, paymentPlan').in('id', quoteIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (dealError || quoteError) return fail((dealError || quoteError).message, 500);
+
+  /* ── งวดชำระของแต่ละใบ (mig 0245) — คอลัมน์ "เก็บแล้ว x/y" ในตาราง ────────
+     ⚠️ ยิงรวดเดียวทั้งหน้าแล้วจัดกลุ่มใน JS — ห้ามยิงรายใบในลูป (N+1)
+     ⚠️ ดึงแค่ 3 คอลัมน์ที่ใช้จริง ไม่เอา evidence/เหตุผลมาทั้งก้อน
+     (`orderIds` ประกาศไว้ข้างบนแล้วตอนดึงบรรทัดของใบ) */
+  const installmentsByOrder = new Map();
+  if (orderIds.length) {
+    const { data: rows, error: installmentError } = await supabase
+      .from('sales_order_installments')
+      .select('salesOrderId, status, "dueDate"')
+      .in('salesOrderId', orderIds);
+    // ตารางยังไม่ถูกสร้าง (ยังไม่รัน mig 0245) ต้องไม่ทำให้ทั้งหน้าพัง — คอลัมน์ว่างแทน
+    if (installmentError) console.error('[sales-orders] โหลดงวดชำระไม่สำเร็จ:', installmentError.message);
+    for (const row of rows || []) {
+      const list = installmentsByOrder.get(row.salesOrderId) || [];
+      list.push(row);
+      installmentsByOrder.set(row.salesOrderId, list);
+    }
+  }
 
   const dealById = new Map((deals || []).map((row) => [row.id, row]));
   const quoteById = new Map((quotes || []).map((row) => [row.id, row]));
@@ -94,6 +118,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       deal: dealById.get(row.dealId) || null,
       quotation: quoteById.get(row.quotationId) || null,
       scentRequest: scentRequestByOrder.get(row.id) || null,
+      // สรุปงวดพอให้ตารางวาดได้ — รายละเอียดเต็มอยู่ที่หน้ารายละเอียดใบ
+      payment: salesOrderPaymentCell(
+        installmentsByOrder.get(row.id) || [],
+        quoteById.get(row.quotationId)?.paymentPlan,
+        todayIso,
+      ),
       // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
       // ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
       _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) }),

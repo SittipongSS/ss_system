@@ -227,3 +227,33 @@ export function paymentLockReason(rows = []) {
   if (!confirmed.length) return null;
   return `มีงวดที่บัญชีคอนเฟิร์มแล้ว ${confirmed.length} งวด — ต้องให้บัญชีจัดการก่อน`;
 }
+
+/**
+ * สรุปงวดพอให้ **ตารางรายการ SO** วาดคอลัมน์ "เก็บแล้ว x/y" ได้ (มติผู้ใช้ 2026-08-13)
+ *
+ * ⭐ `y` มาจากงวดจริงถ้ามี · ถ้ายังไม่เริ่มติดตามใช้ **จำนวนงวดตามแผนของ QT** แทน
+ * ไม่งั้นใบร่างจะขึ้นช่องว่างทั้งที่ใบเสนอราคาระบุไว้แล้วว่าแบ่งกี่งวด
+ * ⚠️ `tracked:false` = ตัวเลขมาจากแผน ไม่ใช่ของจริง — หน้าเว็บต้องแยกให้ตาเห็น
+ * ⚠️ คืนค่าเบา ๆ เท่าที่ตารางใช้ ไม่ใช่ rollup ทั้งก้อน (ลิสต์มีได้หลายร้อยแถว)
+ */
+export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length) {
+    const paid = list.filter((r) => r.status === 'confirmed').length;
+    const overdue = list.filter(
+      (r) => r.status !== 'confirmed' && r.dueDate && todayIso && String(r.dueDate) < String(todayIso),
+    ).length;
+    return {
+      tracked: true,
+      paid,
+      count: list.length,
+      complete: paid === list.length,
+      overdue,
+      reviewing: list.filter((r) => r.status === 'reported').length,
+      rejected: list.filter((r) => r.status === 'rejected').length,
+    };
+  }
+  const planned = paymentScheduleRows(plan).length;
+  if (!planned) return null;
+  return { tracked: false, paid: 0, count: planned, complete: false, overdue: 0, reviewing: 0, rejected: 0 };
+}
